@@ -54,9 +54,9 @@ These are the projects the site will start with. Each one lives in its own repos
 
 | | Project | What it is | Try it |
 | :---: | :--- | :--- | :--- |
-| 🌙 | **[Sonic Advance Dreamport](https://github.com/NahuelGenchi/sonic-advance-dreamport)** | Sonic Advance (Game Boy Advance, 2001), rebuilt to play in your web browser. No emulator, nothing to install. | [Play in your browser](https://nahuelgenchi.github.io/sonic-advance-dreamport/) |
-| ✨ | **[Kirby's Dead Land](https://github.com/NahuelGenchi/kirbys-dead-land)** | A mod that lets you play as Kirby inside Dead Cells, with his moves and copy abilities. For Linux; Windows is in testing. | [Download](https://github.com/NahuelGenchi/kirbys-dead-land/releases/latest) |
-| 🧭 | **Your favorite fan port?** | External ports are on their way. Know a great one? | [Suggest it](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml) |
+| 🌙 | **[Sonic Advance Dreamport](https://github.com/NahuelGenchi/sonic-advance-dreamport)** | Sonic Advance (Game Boy Advance, 2001), rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [▶&nbsp;Play](https://nahuelgenchi.github.io/sonic-advance-dreamport/) |
+| ✨ | **[Kirby's Dead Land](https://github.com/NahuelGenchi/kirbys-dead-land)** | A mod that lets you play as Kirby inside Dead Cells, with his moves and copy abilities. For Linux; Windows is in testing. | [⬇&nbsp;Download](https://github.com/NahuelGenchi/kirbys-dead-land/releases/latest) |
+| 🧭 | **Your favorite fan port?** | External ports are on their way. Know a great one? | [💡&nbsp;Suggest](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml) |
 
 ## The golden rule: bring your own game
 
@@ -73,14 +73,14 @@ Before you play or download anything, the site will ask you to confirm that you'
 
 ## Progress
 
-The work is split into four steps, called *milestones*. The bars update by themselves as work gets done.
+The work is split into four steps, called *milestones*. The counts update by themselves as tasks are finished.
 
 | Step | What it means | Progress |
 | :--- | :--- | :--- |
-| **[M0 — Project foundation](https://github.com/NahuelGenchi/dreamports/milestone/1)** | This repository: its look, its rules and how work is tracked | ![M0 progress](https://img.shields.io/github/milestones/progress-percent/NahuelGenchi/dreamports/1?style=flat-square&label=done&color=8b5cf6) |
-| **[M1 — First version of the site](https://github.com/NahuelGenchi/dreamports/milestone/2)** | The website itself: the home page, every section, and the about page | ![M1 progress](https://img.shields.io/github/milestones/progress-percent/NahuelGenchi/dreamports/2?style=flat-square&label=done&color=8b5cf6) |
-| **[M2 — Live on dreamports.net](https://github.com/NahuelGenchi/dreamports/milestone/3)** | The site online at its own address, updated automatically | ![M2 progress](https://img.shields.io/github/milestones/progress-percent/NahuelGenchi/dreamports/3?style=flat-square&label=done&color=8b5cf6) |
-| **[M3 — Growth](https://github.com/NahuelGenchi/dreamports/milestone/4)** | More entries, plus search, filters and news | ![M3 progress](https://img.shields.io/github/milestones/progress-percent/NahuelGenchi/dreamports/4?style=flat-square&label=done&color=8b5cf6) |
+| **[M0 — Project foundation](https://github.com/NahuelGenchi/dreamports/milestone/1)** | This repository: its look, its rules and how work is tracked | ![M0 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/1?style=flat-square&label=tasks%20done&color=8b5cf6) |
+| **[M1 — First version of the site](https://github.com/NahuelGenchi/dreamports/milestone/2)** | The website itself: the home page, every section, and the about page | ![M1 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/2?style=flat-square&label=tasks%20done&color=8b5cf6) |
+| **[M2 — Live on dreamports.net](https://github.com/NahuelGenchi/dreamports/milestone/3)** | The site online at its own address, updated automatically | ![M2 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/3?style=flat-square&label=tasks%20done&color=8b5cf6) |
+| **[M3 — Growth](https://github.com/NahuelGenchi/dreamports/milestone/4)** | More entries, plus search, filters and news | ![M3 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/4?style=flat-square&label=tasks%20done&color=8b5cf6) |
 
 ✅ The address **dreamports.net** is registered and waiting for the site.
 
