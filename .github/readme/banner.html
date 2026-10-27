@@ -1,0 +1,189 @@
+<!--
+  Source of the README banners and the social preview image. Original artwork, no game assets.
+
+  Redraw with Chrome (the fonts load from Google Fonts), at twice the size for sharp text:
+    google-chrome --headless=new --hide-scrollbars --default-background-color=00000000 \
+      --force-device-scale-factor=2 --virtual-time-budget=10000 --window-size=1280,400 \
+      --screenshot=banner-dark.png "file://$PWD/banner.html?theme=dark&kind=banner"
+  Use theme=light for the light banner, and kind=social with --window-size=1280,640 for the
+  social preview. Then save the banners as WebP and scale the social preview to 1280x640
+  (GitHub's limit is 1 MB).
+-->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600&family=Nunito:wght@600;700&display=block" rel="stylesheet">
+<style>
+  :root {
+    --bg: linear-gradient(165deg, #070b24 0%, #161a4a 38%, #3b1a78 72%, #7a1d6e 100%);
+    --glow-a: rgba(236, 72, 153, .55);
+    --glow-b: rgba(99, 102, 241, .55);
+    --ink: #ffffff;
+    --ink-soft: #ddd6fe;
+    --word-a: #ffffff;
+    --word-b: #f9c8ec;
+    --star: #ffffff;
+    --cloud: rgba(196, 181, 253, .20);
+    --cloud-2: rgba(244, 114, 182, .16);
+    --pill-bg: rgba(255, 255, 255, .10);
+    --pill-border: rgba(255, 255, 255, .22);
+    --arch-a: #a5b4fc;
+    --arch-b: #f472b6;
+    --arch-fill-a: rgba(129, 140, 248, .35);
+    --arch-fill-b: rgba(244, 114, 182, .10);
+    --moon: #fdf4ff;
+  }
+  :root.light {
+    --bg: linear-gradient(165deg, #eef2ff 0%, #e0e7ff 30%, #f5e1fb 66%, #ffe4e6 100%);
+    --glow-a: rgba(251, 182, 206, .75);
+    --glow-b: rgba(165, 180, 252, .70);
+    --ink: #1e1b4b;
+    --ink-soft: #3f3a8c;
+    --word-a: #3730a3;
+    --word-b: #c026d3;
+    --star: #8b5cf6;
+    --cloud: rgba(255, 255, 255, .75);
+    --cloud-2: rgba(255, 255, 255, .55);
+    --pill-bg: rgba(255, 255, 255, .55);
+    --pill-border: rgba(99, 102, 241, .25);
+    --arch-a: #6366f1;
+    --arch-b: #ec4899;
+    --arch-fill-a: rgba(99, 102, 241, .16);
+    --arch-fill-b: rgba(236, 72, 153, .05);
+    --moon: #fbbf24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: transparent; }
+  .card {
+    position: relative; overflow: hidden;
+    width: var(--w); height: var(--h);
+    border-radius: var(--r);
+    background: radial-gradient(60% 90% at 88% 110%, var(--glow-a), transparent 70%),
+                radial-gradient(50% 80% at 8% -10%, var(--glow-b), transparent 70%),
+                var(--bg);
+    font-family: 'Nunito', sans-serif;
+  }
+  #sky { position: absolute; inset: 0; }
+  .clouds { position: absolute; left: 0; right: 0; bottom: 0; height: 45%; filter: blur(14px); }
+  .clouds span { position: absolute; border-radius: 50%; }
+  .content {
+    position: absolute; inset: 0; display: flex; align-items: center; gap: var(--gap);
+    padding: 0 var(--pad);
+  }
+  .social .content { flex-direction: column; justify-content: center; text-align: center; gap: 18px; }
+  .mark { width: var(--mark); height: var(--mark); flex: none; filter: drop-shadow(0 0 22px var(--glow-a)); }
+  h1 {
+    font-family: 'Fredoka', sans-serif; font-weight: 600;
+    font-size: var(--word); line-height: 1; letter-spacing: -0.01em;
+    background: linear-gradient(100deg, var(--word-a) 30%, var(--word-b) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 4px 24px rgba(76, 29, 149, .35));
+  }
+  p.tag { margin-top: 14px; font-size: var(--tag); font-weight: 700; color: var(--ink-soft); letter-spacing: .005em; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 10px; margin-top: 22px;
+    padding: 8px 18px 8px 14px; border-radius: 999px;
+    background: var(--pill-bg); border: 1px solid var(--pill-border);
+    color: var(--ink); font-weight: 700; font-size: var(--pill);
+    backdrop-filter: blur(6px);
+  }
+  .pill i { width: 10px; height: 10px; border-radius: 50%; background: linear-gradient(135deg, var(--arch-a), var(--arch-b)); box-shadow: 0 0 10px var(--arch-b); }
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <canvas id="sky"></canvas>
+  <div class="clouds" id="clouds"></div>
+  <div class="content">
+    <svg class="mark" viewBox="0 0 120 140" aria-hidden="true">
+      <defs>
+        <linearGradient id="stroke" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="var(--arch-a)"/><stop offset="1" stop-color="var(--arch-b)"/>
+        </linearGradient>
+        <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="var(--arch-fill-a)"/><stop offset="1" stop-color="var(--arch-fill-b)"/>
+        </linearGradient>
+        <linearGradient id="path" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="var(--arch-b)" stop-opacity=".0"/><stop offset="1" stop-color="var(--arch-b)" stop-opacity=".75"/>
+        </linearGradient>
+      </defs>
+      <!-- A doorway (the "port") opening onto a starry night (the "dream"). -->
+      <path d="M14 132 V58 a46 46 0 0 1 92 0 V132 Z" fill="url(#fill)" stroke="url(#stroke)" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M50 132 L56 92 h8 L70 132 Z" fill="url(#path)"/>
+      <path d="M60 34 l4.2 10.4 10.4 4.2 -10.4 4.2 -4.2 10.4 -4.2 -10.4 -10.4 -4.2 10.4 -4.2 Z" fill="var(--moon)"/>
+      <circle cx="36" cy="70" r="2.2" fill="var(--moon)" opacity=".85"/>
+      <circle cx="84" cy="64" r="2.6" fill="var(--moon)" opacity=".9"/>
+      <circle cx="78" cy="88" r="1.6" fill="var(--moon)" opacity=".7"/>
+      <circle cx="42" cy="96" r="1.4" fill="var(--moon)" opacity=".6"/>
+    </svg>
+    <div>
+      <h1>Dreamports</h1>
+      <p class="tag" id="tag">Enhanced fan ports of classic games</p>
+      <span class="pill"><i></i>dreamports.net</span>
+    </div>
+  </div>
+</div>
+<script>
+  const params = new URLSearchParams(location.search);
+  const theme = params.get('theme') || 'dark';
+  const kind = params.get('kind') || 'banner';
+  if (theme === 'light') document.documentElement.classList.add('light');
+  const sizes = {
+    banner: { w: 1280, h: 400, r: 28, gap: 44, pad: 96, mark: 200, word: 128, tag: 34, pill: 22 },
+    social: { w: 1280, h: 640, r: 0, gap: 18, pad: 80, mark: 170, word: 136, tag: 38, pill: 24 },
+  }[kind];
+  const card = document.getElementById('card');
+  for (const [k, v] of Object.entries(sizes)) card.style.setProperty('--' + k, v + 'px');
+  if (kind === 'social') card.classList.add('social');
+
+  document.fonts.ready.then(() => {
+  // Deterministic stars, so every render of a variant is identical.
+  let seed = 7;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const canvas = document.getElementById('sky');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = sizes.w * dpr; canvas.height = sizes.h * dpr;
+  canvas.style.width = sizes.w + 'px'; canvas.style.height = sizes.h + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const star = getComputedStyle(document.documentElement).getPropertyValue('--star').trim();
+  const count = Math.round(sizes.w * sizes.h / 2600);
+  const clear = [...document.querySelectorAll('h1, .tag, .pill, .mark')].map(el => el.getBoundingClientRect());
+  const blocked = (x, y) => clear.some(b => x > b.left - 14 && x < b.right + 14 && y > b.top - 10 && y < b.bottom + 10);
+  for (let i = 0; i < count; i++) {
+    const x = rand() * sizes.w, y = rand() * sizes.h * 0.85, r = 0.4 + rand() * rand() * 1.9;
+    if (blocked(x, y)) { rand(); continue; }
+    ctx.globalAlpha = (theme === 'light' ? 0.18 : 0.35) + rand() * 0.6;
+    ctx.fillStyle = star;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+  // A few four-point sparkles.
+  const sparkle = (x, y, s, a) => {
+    ctx.globalAlpha = a; ctx.fillStyle = star; ctx.beginPath();
+    ctx.moveTo(x, y - s); ctx.quadraticCurveTo(x, y, x + s, y); ctx.quadraticCurveTo(x, y, x, y + s);
+    ctx.quadraticCurveTo(x, y, x - s, y); ctx.quadraticCurveTo(x, y, x, y - s); ctx.fill();
+  };
+  const spots = kind === 'social'
+    ? [[180, 120, 12, .9], [1090, 96, 14, .95], [1160, 300, 8, .7], [120, 420, 9, .6], [980, 470, 7, .6], [330, 70, 6, .7]]
+    : [[1120, 70, 13, .95], [1010, 160, 8, .75], [1200, 230, 7, .6], [880, 60, 6, .7], [60, 60, 7, .6], [700, 330, 6, .5]];
+  for (const s of spots) if (!blocked(s[0], s[1])) sparkle(...s);
+  ctx.globalAlpha = 1;
+
+  // Soft clouds along the bottom edge.
+  const clouds = document.getElementById('clouds');
+  const blobs = kind === 'social' ? 16 : 12;
+  for (let i = 0; i < blobs; i++) {
+    const el = document.createElement('span');
+    const w = 160 + rand() * 260, h = w * (0.45 + rand() * 0.2);
+    el.style.width = w + 'px'; el.style.height = h + 'px';
+    el.style.left = (i / blobs) * sizes.w - 80 + rand() * 60 + 'px';
+    el.style.bottom = -h * (0.45 + rand() * 0.25) + 'px';
+    el.style.background = i % 2 ? 'var(--cloud)' : 'var(--cloud-2)';
+    clouds.appendChild(el);
+  }
+  });
+</script>
+</body>
+</html>
