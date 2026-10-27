@@ -20,7 +20,7 @@ Free · Bring your own copy of the game · Coming soon to **dreamports.net**
 
 Dreamports is a website, coming soon at **dreamports.net**, that gathers fan-made ports of classic games in one place. This repository holds its source code.
 
-A **port** is a game brought somewhere new to play: your web browser, your computer, or a newer console. A **Dreamport** is a port with the extras fans dream of, like widescreen, smoother motion or new ways to play, each one optional. The *dream* stands for *fan*: every Dreamport is made by a fan, for fans.
+A **port** is a game brought somewhere new to play: your web browser, your computer, or a newer console. A **Dreamport** is the port fans always dreamed of: the game you remember, with the extras you wished it had. Widescreen, smoother motion, new ways to play: every extra is optional, and every Dreamport is made by a fan, for fans.
 
 <table>
 <tr>
@@ -142,7 +142,7 @@ The rules about copying games you own differ from country to country, so check t
 <summary><b>Why "Dream"?</b></summary>
 <br>
 
-*Dream* stands for *fan*. A Dreamport is the version of a game that fans dream of, made by a fan.
+A Dreamport is the port fans always dreamed of: the game you remember, with the extras you wished it had.
 
 </details>
 
