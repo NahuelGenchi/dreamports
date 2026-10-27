@@ -1,9 +1,6 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset=".github/readme/banner-dark.webp">
-  <img src=".github/readme/banner-light.webp" width="100%" alt="Dreamports: enhanced fan ports of classic games. A glowing doorway opens onto a starry night sky.">
-</picture>
+<img src=".github/readme/banner.webp" width="100%" alt="Dreamports: enhanced fan ports of classic games, at dreamports.net. A pixel-art doorway opens onto a night sky with a golden star.">
 
 <br>
 
@@ -177,7 +174,7 @@ Privately, please, through the **Security** tab. [SECURITY.md](SECURITY.md) expl
 
 The code is free and open source under the [MIT License](LICENSE).
 
-The banner is original artwork made for Dreamports. It uses the [Fredoka](https://fonts.google.com/specimen/Fredoka) and [Nunito](https://fonts.google.com/specimen/Nunito) fonts, both under the SIL Open Font License. Its source, [`.github/readme/banner.html`](.github/readme/banner.html), can redraw it.
+The banner and the social preview are original pixel art made for Dreamports, set in [Monocraft](https://github.com/IdreesInc/Monocraft) by Idrees Hassan, under the SIL Open Font License. Their source, [`.github/readme/banner.html`](.github/readme/banner.html), can redraw them.
 
 Game names and trademarks belong to their owners. Dreamports is not affiliated with or endorsed by Sega, Nintendo, or any other publisher.
 
