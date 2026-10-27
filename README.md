@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src=".github/readme/banner.webp" width="100%" alt="Dreamports: enhanced fan ports of classic games, at dreamports.net. A pixel-art doorway opens onto a night sky with a golden star.">
+<img src=".github/readme/banner.webp" width="100%" alt="Dreamports: enhanced fan ports of classic games, at dreamports.net. A black pixel-art doorway opens onto a night sky with a golden star, with more golden stars around the name.">
 
 <br>
 

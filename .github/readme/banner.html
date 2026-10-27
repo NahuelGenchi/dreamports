@@ -1,14 +1,14 @@
 <!--
   Source of the README banner and the social preview image. Original artwork, no game assets.
-  Palette: white, black, blues and gold only. Font: Monocraft (SIL Open Font License,
+  Palette: white, black and gold only. Font: Monocraft (SIL Open Font License,
   https://github.com/IdreesInc/Monocraft), which must be installed on the machine that renders.
 
   Redraw with Chrome, at twice the size for sharp edges:
     google-chrome --headless=new --hide-scrollbars --default-background-color=00000000 \
       --force-device-scale-factor=2 --virtual-time-budget=5000 --window-size=1280,400 \
       --screenshot=banner.png "file://$PWD/banner.html?kind=banner"
-  Use kind=social with --window-size=1280,640 for the social preview. Then save the banner
-  as WebP and scale the social preview to 1280x640 (GitHub's limit is 1 MB).
+  For the social preview use kind=social, --window-size=1280,640 and --force-device-scale-factor=1
+  (GitHub wants 1280x640 under 1 MB). Save the banner as lossless WebP.
 -->
 <!doctype html>
 <html>
@@ -17,13 +17,11 @@
 <style>
   :root {
     --white: #ffffff;
-    --ink: #0a0f1f;
-    --night: #0b1a45;
-    --blue: #1d4ed8;
-    --blue-soft: #dbe5ff;
-    --blue-faint: #eef3ff;
-    --gold: #f2b300;
-    --gold-deep: #c98d00;
+    --ink: #0a0a0a;
+    --gold: #f5b800;
+    --gold-deep: #c98a00;
+    --gold-text: #9a6b00;
+    --gold-pale: #efe3c2;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { background: transparent; }
@@ -31,13 +29,13 @@
     position: relative; overflow: hidden;
     width: var(--w); height: var(--h); border-radius: var(--r);
     background: var(--white);
-    border: 2px solid var(--blue-soft);
+    border: 2px solid var(--gold-pale);
     font-family: 'Monocraft', monospace;
     -webkit-font-smoothing: antialiased;
   }
   .grid {
     position: absolute; inset: 0;
-    background-image: radial-gradient(var(--blue-soft) 1.6px, transparent 1.8px);
+    background-image: radial-gradient(var(--gold-pale) 1.6px, transparent 1.8px);
     background-size: 24px 24px; background-position: 12px 12px;
     -webkit-mask-image: radial-gradient(70% 120% at 100% 50%, #000 0%, transparent 70%);
             mask-image: radial-gradient(70% 120% at 100% 50%, #000 0%, transparent 70%);
@@ -45,7 +43,6 @@
   .social .grid {
     -webkit-mask-image: radial-gradient(60% 60% at 50% 50%, transparent 30%, #000 100%);
             mask-image: radial-gradient(60% 60% at 50% 50%, transparent 30%, #000 100%);
-    opacity: .7;
   }
   .content {
     position: absolute; inset: 0; display: flex; align-items: center; gap: var(--gap);
@@ -55,20 +52,20 @@
   svg.pixels { shape-rendering: crispEdges; display: block; }
   .mark { width: var(--mark); flex: none; }
   h1 { font-weight: 700; font-size: var(--word); line-height: 1; color: var(--ink); letter-spacing: -0.01em; }
-  .tag { margin-top: var(--tag-gap); font-size: var(--tag); font-weight: 400; color: var(--blue); }
+  .tag { margin-top: var(--tag-gap); font-size: var(--tag); font-weight: 400; color: var(--gold-text); }
   .url {
     display: inline-flex; align-items: center; gap: 14px; margin-top: var(--url-gap);
     font-size: var(--url); font-weight: 600; color: var(--ink);
-    padding: 10px 18px; border: 2px solid var(--blue-soft); border-radius: 12px; background: var(--white);
+    padding: 10px 18px; border: 2px solid var(--gold-pale); border-radius: 12px; background: var(--white);
   }
   .url i { width: 12px; height: 12px; background: var(--gold); box-shadow: 0 0 0 2px var(--white), 0 0 0 4px var(--gold-deep); }
-  .sparkles { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .stars { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 </style>
 </head>
 <body>
 <div class="card" id="card">
   <div class="grid"></div>
-  <svg class="sparkles pixels" id="sparkles"></svg>
+  <svg class="stars pixels" id="stars"></svg>
   <div class="content">
     <svg class="mark pixels" id="mark" aria-hidden="true"></svg>
     <div>
@@ -90,7 +87,7 @@
   if (kind === 'social') card.classList.add('social');
 
   const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  const palette = { B: css('--blue'), N: css('--night'), G: css('--gold'), D: css('--gold-deep'), W: css('--white') };
+  const palette = { K: css('--ink'), G: css('--gold'), D: css('--gold-deep'), W: css('--white') };
   const draw = (svg, rows, cell, x0 = 0, y0 = 0) => {
     rows.forEach((row, y) => [...row].forEach((c, x) => {
       if (!palette[c]) return;
@@ -101,40 +98,55 @@
     }));
   };
 
-  // A doorway (the "port") opening onto a night sky with a golden star (the "dream").
+  // A black doorway (the "port") opening onto a night sky with a golden star (the "dream").
   const doorway = [
-    '....BBBBBBB....',
-    '..BBNNNNNNNBB..',
-    '.BNNNNNNNNNNNB.',
-    '.BNNNNNGNNNNNB.',
-    'BNNWNNNGNNNNNNB',
-    'BNNNNGGGGGNNNNB',
-    'BNNNNNNGNNNNWNB',
-    'BNNNNNNGNNNNNNB',
-    'BNNNNNNNNNNNNNB',
-    'BNWNNNNNNNNNNNB',
-    'BNNNNNNNNNNWNNB',
-    'BNNNNNNNNNNNNNB',
-    'BNNNNNNDNNNNNNB',
-    'BNNNNNNDNNNNNNB',
-    'BNNNNNDDDNNNNNB',
-    'BNNNNDDDDDNNNNB',
-    'BNNNDDDDDDDNNNB',
-    'BBBBBBBBBBBBBBB',
+    '....KKKKKKK....',
+    '..KKKKKKKKKKK..',
+    '.KKKKKKGKKKKKK.',
+    '.KKKKKGGGKKKKK.',
+    'KKWKGGGGGGGKKKK',
+    'KKKKKGGGGGKKKKK',
+    'KKKKKKGGGKKKWKK',
+    'KKKKKGGKGGKKKKK',
+    'KKKKKGKKKGKKKKK',
+    'KKKKKKKKKKKKKKK',
+    'KKKWKKKKKKKKKKK',
+    'KKKKKKKKKKKWKKK',
+    'KKKKKKKKKKKKKKK',
+    'KKKKKKKDKKKKKKK',
+    'KKKKKKDDDKKKKKK',
+    'KKKKKDDDDDKKKKK',
+    'KKKKDDDDDDDKKKK',
+    'KKKKKKKKKKKKKKK',
   ];
   const mark = document.getElementById('mark');
   mark.setAttribute('viewBox', '0 0 15 18');
   mark.style.height = (sizes.mark * 18 / 15) + 'px';
   draw(mark, doorway, 1);
 
-  // A few pixel sparkles, gold and blue.
-  const sparkle = ['..G..', '..G..', 'GGGGG', '..G..', '..G..'];
-  const small = ['.B.', 'BBB', '.B.'];
-  const sparkles = document.getElementById('sparkles');
+  // Chubby five-point stars, in the spirit of classic platformers. No face: just the shape.
+  const star = [
+    '......DDD......',
+    '.....DWGGD.....',
+    '.....DGGGD.....',
+    '....DGGGGGD....',
+    'DDDDDGGGGGDDDDD',
+    'DGGGGGGGGGGGGGD',
+    '.DGGGGGGGGGGGD.',
+    '..DGGGGGGGGGD..',
+    '...DGGGGGGGD...',
+    '...DGGGGGGGD...',
+    '..DGGGGDGGGGD..',
+    '..DGGGD.DGGGD..',
+    '.DGGGD...DGGGD.',
+    '.DGGD.....DGGD.',
+    '.DDD.......DDD.',
+  ];
+  const stars = document.getElementById('stars');
   const spots = kind === 'social'
-    ? [[sparkle, 6, 150, 110], [small, 6, 1090, 120], [sparkle, 5, 1110, 520], [small, 5, 210, 500], [small, 4, 1150, 300]]
-    : [[sparkle, 6, 1130, 70], [small, 6, 1040, 300], [small, 4, 1190, 200]];
-  for (const [shape, cell, x, y] of spots) draw(sparkles, shape, cell, x, y);
+    ? [[4, 150, 96], [3, 1080, 120], [3, 1110, 500], [2, 220, 500], [2, 1170, 300]]
+    : [[4, 1140, 46], [2, 1050, 290], [2, 1190, 190]];
+  for (const [cell, x, y] of spots) draw(stars, star, cell, x, y);
 </script>
 </body>
 </html>
