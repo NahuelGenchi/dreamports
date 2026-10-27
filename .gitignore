@@ -1,0 +1,56 @@
+# Game files never belong in this repository: Dreamports hosts no ROMs or game data.
+*.gba
+*.gb
+*.gbc
+*.nds
+*.3ds
+*.cia
+*.nes
+*.sfc
+*.smc
+*.n64
+*.z64
+*.v64
+*.iso
+*.cso
+*.chd
+*.xci
+*.nsp
+*.wbfs
+*.rvz
+*.sav
+*.srm
+*.state
+*.ss[0-9]
+roms/
+saves/
+
+# Assets extracted from a game stay on the machine that extracted them.
+extracted/
+assets-extracted/
+*.extracted.*
+
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+.dev.vars
+*.pem
+*.key
+
+# Build output, caches and dependencies
+dist/
+.astro/
+.wrangler/
+node_modules/
+.cache/
+npm-debug.log*
+
+# Editors and operating systems
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

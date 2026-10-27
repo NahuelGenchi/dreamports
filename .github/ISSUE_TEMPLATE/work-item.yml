@@ -1,0 +1,61 @@
+name: Work item
+description: Suggest a port, report a problem, or track a feature, improvement, document, research decision, or repository task.
+title: ""
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping Dreamports! Plain words are fine: you don't need to be a developer to fill this in.
+        Every change needs an issue, a milestone, its own branch, and a linked delivery PR. Reuse an existing issue when it already covers the work.
+        Never include ROMs, game files, extracted game assets, private email addresses, or passwords.
+  - type: dropdown
+    id: work-type
+    attributes:
+      label: Work type
+      description: "Not sure? Pick bug for something broken, enhancement for an idea or a port suggestion."
+      options:
+        - implementation
+        - bug
+        - enhancement
+        - documentation
+        - research
+        - operations
+    validations:
+      required: true
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Milestone
+      description: Choose the outcome this work belongs to. If you aren't sure, leave the default and the owner will move it.
+      options:
+        - M0 — Project foundation
+        - M1 — First version of the site
+        - M2 — Live on dreamports.net
+        - M3 — Growth
+      default: 1
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Goal and scope
+      description: What should happen, which pages or files it touches, and what is out of scope. For a problem, say which page, which browser and device, what you did, what you expected, and what happened.
+      placeholder: "Example: On the Dreamports page on my phone (Android, Chrome), the Sonic Advance card is cut off on the right."
+    validations:
+      required: true
+  - type: textarea
+    id: completion
+    attributes:
+      label: Completion criteria
+      description: How we'll know it's done, and how it will be checked (a browser check, a build, or a review).
+      placeholder: "Example: The card fits the screen at 360 px wide, checked in Chrome and Firefox."
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Dependencies, evidence, and constraints
+      description: Links to related issues, screenshots of the problem, or sources. For a port suggestion, link the port's own page and say who made it.
+      placeholder: "Dependencies: none known. Evidence: ... Constraints: ..."
+    validations:
+      required: true
