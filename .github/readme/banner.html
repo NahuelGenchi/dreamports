@@ -8,7 +8,7 @@
       --force-device-scale-factor=2 --virtual-time-budget=5000 --window-size=1280,400 \
       --screenshot=banner.png "file://$PWD/banner.html?kind=banner"
   For the social preview use kind=social, --window-size=1280,640 and --force-device-scale-factor=1
-  (GitHub wants 1280x640 under 1 MB). Save the banner as lossless WebP.
+  (GitHub wants 1280x640 under 1 MB). Save the banner as lossless WebP. star.png must sit next to this file.
 -->
 <!doctype html>
 <html>
@@ -103,12 +103,12 @@
     '....KKKKKKK....',
     '..KKKKKKKKKKK..',
     '.KKKKKKGKKKKKK.',
-    '.KKKKKGGGKKKKK.',
-    'KKWKGGGGGGGKKKK',
-    'KKKKKGGGGGKKKKK',
+    '.KKKKKKGKKKKKK.',
+    'KKWKKKGGGKKKKKK',
+    'KKKKGGGGGGGKKKK',
     'KKKKKKGGGKKKWKK',
-    'KKKKKGGKGGKKKKK',
-    'KKKKKGKKKGKKKKK',
+    'KKKKKKKGKKKKKKK',
+    'KKKKKKKGKKKKKKK',
     'KKKKKKKKKKKKKKK',
     'KKKWKKKKKKKKKKK',
     'KKKKKKKKKKKWKKK',
@@ -124,29 +124,20 @@
   mark.style.height = (sizes.mark * 18 / 15) + 'px';
   draw(mark, doorway, 1);
 
-  // Chubby five-point stars, in the spirit of classic platformers. No face: just the shape.
-  const star = [
-    '......DDD......',
-    '.....DWGGD.....',
-    '.....DGGGD.....',
-    '....DGGGGGD....',
-    'DDDDDGGGGGDDDDD',
-    'DGGGGGGGGGGGGGD',
-    '.DGGGGGGGGGGGD.',
-    '..DGGGGGGGGGD..',
-    '...DGGGGGGGD...',
-    '...DGGGGGGGD...',
-    '..DGGGGDGGGGD..',
-    '..DGGGD.DGGGD..',
-    '.DGGGD...DGGGD.',
-    '.DGGD.....DGGD.',
-    '.DDD.......DDD.',
-  ];
+  // Small golden stars: star.png is Narik's "Pixel Art Animated Star", recolored (see the README credits).
+  // The banner renders at 2x, so 1.5x stays on whole pixels there; the social preview renders at 1x.
   const stars = document.getElementById('stars');
   const spots = kind === 'social'
-    ? [[4, 150, 96], [3, 1080, 120], [3, 1110, 500], [2, 220, 500], [2, 1170, 300]]
-    : [[4, 1140, 46], [2, 1050, 290], [2, 1190, 190]];
-  for (const [cell, x, y] of spots) draw(stars, star, cell, x, y);
+    ? [[2, 160, 110], [1, 1090, 130], [2, 1110, 500], [1, 230, 500], [1, 1170, 310]]
+    : [[1.5, 1150, 60], [1, 1205, 200], [1, 1060, 300]];
+  for (const [scale, x, y] of spots) {
+    const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+    img.setAttribute('href', 'star.png');
+    img.setAttribute('x', x); img.setAttribute('y', y);
+    img.setAttribute('width', 20 * scale); img.setAttribute('height', 22 * scale);
+    img.style.imageRendering = 'pixelated';
+    stars.appendChild(img);
+  }
 </script>
 </body>
 </html>
