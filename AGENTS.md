@@ -2,7 +2,7 @@
 
 ## The project
 
-Dreamports is the source code for dreamports.net, a home for enhanced fan ports of classic games ("dream" means "fan"). The site lists the owner's own Dreamports (for example Sonic Advance Dreamport), external ports made by other people (links and credits only), and other fan games that aren't ports (for example Kirby's Dead Land). The planned stack is a static Astro site hosted on Cloudflare (#3, #4). Until #3 merges, the repository holds only documentation and tracking files.
+Dreamports is the source code for dreamports.net, a home for enhanced fan ports of classic games. A Dreamport is "the port fans always dreamed of: the game you remember, with the extras you wished it had"; use that wording rather than "dream means fan". The site lists the owner's own Dreamports (for example Sonic Advance Dreamport), external ports made by other people (links and credits only), and other fan games that aren't ports (for example Kirby's Dead Land). The planned stack is a static Astro site hosted on Cloudflare (#3, #4). Until #3 merges, the repository holds only documentation and tracking files.
 
 Never describe something as working or complete unless a recorded check establishes it. A build is not a browser check.
 
