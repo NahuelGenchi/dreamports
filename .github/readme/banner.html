@@ -1,0 +1,143 @@
+<!--
+  Source of the README banner and the social preview image. Original artwork, no game assets.
+  Palette: white, black and gold only. Font: Monocraft (SIL Open Font License,
+  https://github.com/IdreesInc/Monocraft), which must be installed on the machine that renders.
+
+  Redraw with Chrome, at twice the size for sharp edges:
+    google-chrome --headless=new --hide-scrollbars --default-background-color=00000000 \
+      --force-device-scale-factor=2 --virtual-time-budget=5000 --window-size=1280,400 \
+      --screenshot=banner.png "file://$PWD/banner.html?kind=banner"
+  For the social preview use kind=social, --window-size=1280,640 and --force-device-scale-factor=1
+  (GitHub wants 1280x640 under 1 MB). Save the banner as lossless WebP. star.png must sit next to this file.
+-->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --white: #ffffff;
+    --ink: #0a0a0a;
+    --gold: #f5b800;
+    --gold-deep: #c98a00;
+    --gold-text: #9a6b00;
+    --gold-pale: #efe3c2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: transparent; }
+  .card {
+    position: relative; overflow: hidden;
+    width: var(--w); height: var(--h); border-radius: var(--r);
+    background: var(--white);
+    border: 2px solid var(--gold-pale);
+    font-family: 'Monocraft', monospace;
+    -webkit-font-smoothing: antialiased;
+  }
+  .grid {
+    position: absolute; inset: 0;
+    background-image: radial-gradient(var(--gold-pale) 1.6px, transparent 1.8px);
+    background-size: 24px 24px; background-position: 12px 12px;
+    -webkit-mask-image: radial-gradient(70% 120% at 100% 50%, #000 0%, transparent 70%);
+            mask-image: radial-gradient(70% 120% at 100% 50%, #000 0%, transparent 70%);
+  }
+  .social .grid {
+    -webkit-mask-image: radial-gradient(60% 60% at 50% 50%, transparent 30%, #000 100%);
+            mask-image: radial-gradient(60% 60% at 50% 50%, transparent 30%, #000 100%);
+  }
+  .content {
+    position: absolute; inset: 0; display: flex; align-items: center; gap: var(--gap);
+    padding: 0 var(--pad);
+  }
+  .social .content { flex-direction: column; justify-content: center; text-align: center; }
+  svg.pixels { shape-rendering: crispEdges; display: block; }
+  .mark { width: var(--mark); flex: none; }
+  h1 { font-weight: 700; font-size: var(--word); line-height: 1; color: var(--ink); letter-spacing: -0.01em; }
+  .tag { margin-top: var(--tag-gap); font-size: var(--tag); font-weight: 400; color: var(--gold-text); }
+  .url {
+    display: inline-flex; align-items: center; gap: 14px; margin-top: var(--url-gap);
+    font-size: var(--url); font-weight: 600; color: var(--ink);
+    padding: 10px 18px; border: 2px solid var(--gold-pale); border-radius: 12px; background: var(--white);
+  }
+  .url i { width: 12px; height: 12px; background: var(--gold); box-shadow: 0 0 0 2px var(--white), 0 0 0 4px var(--gold-deep); }
+  .stars { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <div class="grid"></div>
+  <svg class="stars pixels" id="stars"></svg>
+  <div class="content">
+    <svg class="mark pixels" id="mark" aria-hidden="true"></svg>
+    <div>
+      <h1>Dreamports</h1>
+      <p class="tag">Enhanced fan ports of classic games</p>
+      <span class="url"><i></i>dreamports.net</span>
+    </div>
+  </div>
+</div>
+<script>
+  const params = new URLSearchParams(location.search);
+  const kind = params.get('kind') || 'banner';
+  const sizes = {
+    banner: { w: 1280, h: 400, r: 28, gap: 64, pad: 112, mark: 165, word: 116, tag: 30, 'tag-gap': 18, url: 22, 'url-gap': 28 },
+    social: { w: 1280, h: 640, r: 0, gap: 40, pad: 80, mark: 150, word: 128, tag: 34, 'tag-gap': 20, url: 24, 'url-gap': 30 },
+  }[kind];
+  const card = document.getElementById('card');
+  for (const [k, v] of Object.entries(sizes)) card.style.setProperty('--' + k, v + 'px');
+  if (kind === 'social') card.classList.add('social');
+
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const palette = { K: css('--ink'), G: css('--gold'), D: css('--gold-deep'), W: css('--white') };
+  const draw = (svg, rows, cell, x0 = 0, y0 = 0) => {
+    rows.forEach((row, y) => [...row].forEach((c, x) => {
+      if (!palette[c]) return;
+      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r.setAttribute('x', x0 + x * cell); r.setAttribute('y', y0 + y * cell);
+      r.setAttribute('width', cell); r.setAttribute('height', cell); r.setAttribute('fill', palette[c]);
+      svg.appendChild(r);
+    }));
+  };
+
+  // A black doorway (the "port") opening onto a night sky with a golden star (the "dream").
+  const doorway = [
+    '....KKKKKKK....',
+    '..KKKKKKKKKKK..',
+    '.KKKKKKGKKKKKK.',
+    '.KKKKKKGKKKKKK.',
+    'KKWKKKGGGKKKKKK',
+    'KKKKGGGGGGGKKKK',
+    'KKKKKKGGGKKKWKK',
+    'KKKKKKKGKKKKKKK',
+    'KKKKKKKGKKKKKKK',
+    'KKKKKKKKKKKKKKK',
+    'KKKWKKKKKKKKKKK',
+    'KKKKKKKKKKKWKKK',
+    'KKKKKKKKKKKKKKK',
+    'KKKKKKKDKKKKKKK',
+    'KKKKKKDDDKKKKKK',
+    'KKKKKDDDDDKKKKK',
+    'KKKKDDDDDDDKKKK',
+    'KKKKKKKKKKKKKKK',
+  ];
+  const mark = document.getElementById('mark');
+  mark.setAttribute('viewBox', '0 0 15 18');
+  mark.style.height = (sizes.mark * 18 / 15) + 'px';
+  draw(mark, doorway, 1);
+
+  // Small golden stars: star.png is Narik's "Pixel Art Animated Star", recolored (see the README credits).
+  // The banner renders at 2x, so 1.5x stays on whole pixels there; the social preview renders at 1x.
+  const stars = document.getElementById('stars');
+  const spots = kind === 'social'
+    ? [[2, 160, 110], [1, 1090, 130], [2, 1110, 500], [1, 230, 500], [1, 1170, 310]]
+    : [[1.5, 1150, 60], [1, 1205, 200], [1, 1060, 300]];
+  for (const [scale, x, y] of spots) {
+    const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+    img.setAttribute('href', 'star.png');
+    img.setAttribute('x', x); img.setAttribute('y', y);
+    img.setAttribute('width', 20 * scale); img.setAttribute('height', 22 * scale);
+    img.style.imageRendering = 'pixelated';
+    stars.appendChild(img);
+  }
+</script>
+</body>
+</html>
