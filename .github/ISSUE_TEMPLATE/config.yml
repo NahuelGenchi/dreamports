@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contribution and tracking rules
+    url: https://github.com/NahuelGenchi/dreamports/blob/main/CONTRIBUTING.md
+    about: Read the issue → branch → milestone → PR workflow before opening work.
+  - name: Report a security problem privately
+    url: https://github.com/NahuelGenchi/dreamports/security/advisories/new
+    about: For anything that could put visitors at risk. Please don't open a public issue for it.
