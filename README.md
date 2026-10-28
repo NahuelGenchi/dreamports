@@ -70,14 +70,15 @@ Before you play or download anything, the site asks you to confirm that you're u
 
 ## Progress
 
-The work is split into four steps, called *milestones*. The counts update by themselves as tasks are finished.
+The work is split into five steps, called *milestones*. The counts update by themselves as tasks are finished.
 
 | Step | What it means | Progress |
 | :--- | :--- | :--- |
 | **[M0 — Project foundation](https://github.com/NahuelGenchi/dreamports/milestone/1)** | This repository: its look, its rules and how work is tracked | ![M0 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/1?style=flat-square&label=tasks%20done&color=8b5cf6) |
 | **[M1 — First version of the site](https://github.com/NahuelGenchi/dreamports/milestone/2)** | The website itself: the home page, every section, and the about page | ![M1 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/2?style=flat-square&label=tasks%20done&color=8b5cf6) |
 | **[M2 — Live on dreamports.net](https://github.com/NahuelGenchi/dreamports/milestone/3)** | The site online at its own address, updated automatically | ![M2 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/3?style=flat-square&label=tasks%20done&color=8b5cf6) |
-| **[M3 — Growth](https://github.com/NahuelGenchi/dreamports/milestone/4)** | More entries, plus search, filters and news | ![M3 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/4?style=flat-square&label=tasks%20done&color=8b5cf6) |
+| **[M3 — Growth](https://github.com/NahuelGenchi/dreamports/milestone/4)** | More entries, plus search, filters and news. On hold for now | ![M3 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/4?style=flat-square&label=tasks%20done&color=8b5cf6) |
+| **[M4 — Sonic Advance Dreamport on dreamports.net](https://github.com/NahuelGenchi/dreamports/milestone/5)** | Sonic Advance Dreamport played right here on the site, with accounts, achievements and leaderboards | ![M4 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/5?style=flat-square&label=tasks%20done&color=8b5cf6) |
 
 ✅ The site is live at **[dreamports.net](https://dreamports.net)**.
 
