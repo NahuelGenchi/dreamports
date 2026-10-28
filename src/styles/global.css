@@ -1953,6 +1953,47 @@ dialog.card.is-in::backdrop {
   }
 }
 
+@media (max-height: 500px) and (min-width: 641px) {
+  /* a phone held sideways: cards take the screen's height, clear of the notch and the home bar */
+  dialog.card {
+    inset: 0 env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    width: min(var(--card-w, 560px), calc(100% - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    max-height: calc(100% - 16px - env(safe-area-inset-bottom, 0px));
+  }
+
+  .card-inspect {
+    height: calc(100% - 16px - env(safe-area-inset-bottom, 0px));
+  }
+
+  .card-body {
+    padding: 18px 22px 6px;
+  }
+
+  .card-close {
+    height: 40px;
+    margin: 8px 10px 10px;
+  }
+
+  .inspect {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+
+  .ins-show {
+    justify-content: safe center;
+    gap: 14px;
+    padding: 14px 20px;
+  }
+
+  /* the picture shrinks so that it, its button and the close bar fit the screen's height */
+  .show-wrap {
+    --s: clamp(120px, calc((100dvh - 162px - env(safe-area-inset-bottom, 0px)) * 1.6), 220px);
+  }
+
+  .ins-text {
+    padding: 18px 24px 20px;
+  }
+}
+
 @media (max-width: 560px) {
   .tab {
     padding: 0 5px;
