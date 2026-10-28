@@ -971,6 +971,14 @@ function start(launcher: HTMLElement) {
     const label = $('.check', form);
     const buttons = $$<HTMLButtonElement>('button[type="submit"]', form);
     const lockedNote = $('.note-locked', form);
+    const openNote = $('.note-open', form);
+    const openText = openNote.textContent ?? '';
+    // the download whose new tab the browser just blocked; pressing it again opens it here
+    let blocked = '';
+    const unblock = () => {
+      blocked = '';
+      openNote.textContent = openText;
+    };
     const key = `dreamports:own:${game}`;
     const sync = () => {
       for (const button of buttons) button.setAttribute('aria-disabled', String(!box.checked));
@@ -1007,11 +1015,22 @@ function start(launcher: HTMLElement) {
         return;
       }
       // downloads open in a new tab, so the menu stays as it was. If the browser blocks the
-      // new tab, the download opens here instead.
+      // new tab, the menu stays and says so, and a second press opens the download here.
+      if (blocked === href) {
+        window.location.assign(href);
+        return;
+      }
       const tab = window.open(href, '_blank');
-      if (tab) tab.opener = null;
-      else window.location.assign(href);
+      if (tab) {
+        tab.opener = null;
+        unblock();
+        return;
+      }
+      blocked = href;
+      openNote.textContent = 'your browser blocked the new tab. press the same download again to open it here.';
+      sound.play('empty');
     });
+    dlg.addEventListener('close', unblock);
   }
 
   // ---------- The launch ----------
