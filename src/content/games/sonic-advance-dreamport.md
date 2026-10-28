@@ -11,9 +11,9 @@ ownCopy:
   confirm: i own sonic advance, and i’m using my own legal copy of the game.
   links:
     - label: play in your browser
-      href: https://nahuelgenchi.github.io/sonic-advance-dreamport/
+      href: https://dreamports.net/play/sonic-advance/
       icon: play
-  note: opens the game at nahuelgenchi.github.io. your copy stays on your device.
+  note: opens the game here on dreamports.net. your copy stays on your device.
 facts:
   - label: original
     value: sonic advance, game boy advance, 2001
