@@ -877,6 +877,16 @@ kbd {
   display: block;
 }
 
+/* a corner button with no word on it: its key, its controller button, or its icon on touch screens */
+.corner.no-label {
+  padding: 0 6px;
+}
+
+:root[data-input='touch'] .corner.no-label,
+:root:not(.js) .corner.no-label {
+  padding: 0 10px;
+}
+
 .corner[aria-disabled='true'] {
   opacity: 0.45;
   cursor: default;
