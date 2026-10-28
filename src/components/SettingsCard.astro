@@ -1,0 +1,48 @@
+---
+// Settings: menu sounds, light or dark, and full or calm motion. It needs JavaScript, like
+// everything it changes, so the menu shows its button only when JavaScript runs.
+import Key from './Key.astro';
+---
+
+<dialog class="card card-settings" id="card-settings" data-card="settings" aria-labelledby="settings-title">
+  <div class="card-body">
+    <h2 class="card-title" id="settings-title">settings</h2>
+    <div class="set-list">
+      <div class="set-row">
+        <div class="set-text">
+          <span class="set-label" id="snd-label">menu sounds</span>
+          <span class="set-desc">soft clicks and chimes as you move. made for dreamports and played by your own browser.</span>
+        </div>
+        <button type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="snd-label" id="snd-switch" autofocus>
+          <span class="switch-track"><span class="switch-knob"></span></span><span class="switch-state" id="snd-state" aria-hidden="true">off</span>
+        </button>
+      </div>
+      <div class="set-row">
+        <div class="set-text">
+          <span class="set-label" id="theme-label">look</span>
+          <span class="set-desc" id="theme-desc">light, or dark for the evening.</span>
+        </div>
+        <div class="seg" role="radiogroup" aria-labelledby="theme-label">
+          <input type="radio" name="theme" id="theme-light" value="light" /><label for="theme-light">light</label>
+          <input type="radio" name="theme" id="theme-dark" value="dark" /><label for="theme-dark">dark</label>
+        </div>
+      </div>
+      <div class="set-row">
+        <div class="set-text">
+          <span class="set-label" id="motion-label">motion</span>
+          <span class="set-desc" id="motion-desc">calm keeps the games still and swaps the slides for fades.</span>
+        </div>
+        <div class="seg" role="radiogroup" aria-labelledby="motion-label">
+          <input type="radio" name="motion" id="motion-full" value="full" /><label for="motion-full">full</label>
+          <input type="radio" name="motion" id="motion-calm" value="calm" /><label for="motion-calm">calm</label>
+        </div>
+      </div>
+    </div>
+    <p class="card-note">
+      <span id="memory-note">the menu remembers nothing yet.</span>{' '}
+      <span id="forget-wrap" hidden><button type="button" class="linkish" id="btn-forget">forget my choices</button> ·{' '}</span>
+      <a class="linkish" id="btn-privacy" href="/about/#privacy">your privacy</a>
+    </p>
+  </div>
+  <button type="button" class="card-close" data-close><Key label="esc" pad="B" round />close</button>
+</dialog>

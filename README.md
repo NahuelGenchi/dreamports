@@ -22,24 +22,20 @@ Dreamports is a website, at **[dreamports.net](https://dreamports.net)**, that g
 
 A **port** is a game brought somewhere new to play: your web browser, your computer, or a newer console. A **Dreamport** is the port fans always dreamed of: the game you remember, with the extras you wished it had. Widescreen, smoother motion, new ways to play: every extra is optional, and every Dreamport is made by a fan, for fans.
 
+The site works like the menu of a game console. It's one screen with a row of games, and you move along it with the arrow keys, a game controller, a click or a swipe. The game you're on wakes up and plays a short recording of itself. Two tabs at the top switch between two rows:
+
 <table>
 <tr>
-<td width="33%" valign="top">
+<td width="50%" valign="top">
 
 🌙 **Dreamports**<br>
 Enhanced ports, each named after the game it brings back, such as *Sonic Advance Dreamport*.
 
 </td>
-<td width="33%" valign="top">
+<td width="50%" valign="top">
 
-🧭 **External ports**<br>
-Great ports made by other fans, with a link to their own page and full credit to the people who made them.
-
-</td>
-<td width="33%" valign="top">
-
-✨ **Other games**<br>
-Fan games that aren't ports, such as *Kirby's Dead Land*.
+✨ **Mash-ups**<br>
+Great ports made by other fans, with a link to their own page and full credit to the people who made them, and fan games that aren't ports, such as *Kirby's Dead Land*.
 
 </td>
 </tr>
@@ -53,7 +49,7 @@ These are the projects on the site so far. Each one lives in its own repository.
 | :---: | :--- | :--- | :--- |
 | 🌙 | **[Sonic Advance Dreamport](https://github.com/NahuelGenchi/sonic-advance-dreamport)** | Sonic Advance (Game Boy Advance, 2001), rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
 | ✨ | **[Kirby's Dead Land](https://github.com/NahuelGenchi/kirbys-dead-land)** | A mod that lets you play as Kirby inside Dead Cells, with his moves and copy abilities. For Linux; Windows is in testing. | [⬇&nbsp;Download](https://github.com/NahuelGenchi/kirbys-dead-land/releases/latest) |
-| 🧭 | **Your favorite fan port?** | External ports are on their way. Know a great one? | [💡&nbsp;Suggest](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml) |
+| ✨ | **Your favorite fan port?** | Ports made by other fans are on their way to the mash-ups. Know a great one? | [💡&nbsp;Suggest](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml) |
 
 ## The golden rule: bring your own game
 
@@ -168,7 +164,7 @@ At **[dreamports.net](https://dreamports.net)**. It updates by itself whenever a
 <summary><b>Does the site track me?</b></summary>
 <br>
 
-No accounts, no ads and no cookies. To see which pages people read, the site counts visits with [Cloudflare Web Analytics](https://www.cloudflare.com/web-analytics/), which stores nothing in your browser and doesn't keep your IP address. The site's [privacy section](https://dreamports.net/about/#privacy) has the details.
+No accounts, no ads and no cookies. The site keeps a few small notes in your own browser, such as whether you switched on the menu's sounds and whether you picked light or dark. They never leave your device, and **forget my choices** in the site's settings clears them. To see which pages people read, the site counts visits with [Cloudflare Web Analytics](https://www.cloudflare.com/web-analytics/), which stores nothing in your browser and doesn't keep your IP address. The site's [privacy section](https://dreamports.net/about/#privacy) has the details.
 
 </details>
 
@@ -189,6 +185,8 @@ The banner and the social preview are original pixel art made for Dreamports, se
 The website sets its headings in Monocraft too, and its text in [Newsreader](https://github.com/productiontype/Newsreader) by Production Type, also under the SIL Open Font License. The site carries a smaller copy of Monocraft with only the letters it uses; the licenses are in [`src/assets/fonts/OFL.txt`](src/assets/fonts/OFL.txt) and [`public/licenses/`](public/licenses/).
 
 The small stars are the [Pixel Art Animated Star](https://soulofkiran.itch.io/pixel-art-animated-star) by Narik, recolored to match. They're used under Narik's terms, which allow personal and commercial use and edits, so [`.github/readme/star.png`](.github/readme/star.png) and the website's copy, [`public/images/star.png`](public/images/star.png), aren't covered by the MIT License. Thank you, Narik!
+
+The recordings of the games, in [`public/media/`](public/media/), are the owner's own captures of their own projects. They show the games those projects work with, so they aren't covered by the MIT License either. The menu's sounds are made for Dreamports: your browser creates them as it plays them, so there are no sound files.
 
 Game names and trademarks belong to their owners. Dreamports is not affiliated with or endorsed by Sega, Nintendo, or any other publisher.
 

@@ -3,13 +3,14 @@ import type { Game } from '../lib/site';
 
 interface Props {
   facts: Game['data']['facts'];
+  id: string;
 }
 
-const { facts } = Astro.props;
+const { facts, id } = Astro.props;
 ---
 
-<section class="facts" aria-labelledby="facts-title">
-  <h2 id="facts-title" class="box-title">the game</h2>
+<section class="facts" aria-labelledby={id}>
+  <h3 id={id}>the game</h3>
   <dl>
     {
       facts.map((fact) => (

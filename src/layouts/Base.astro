@@ -1,20 +1,17 @@
 ---
 import '../styles/global.css';
-import Sidebar from '../components/Sidebar.astro';
-import Footer from '../components/Footer.astro';
-import type { Kind } from '../lib/site';
+import { pageTitle } from '../lib/site';
 
 interface Props {
   title?: string;
   description: string;
-  current?: Kind | 'about';
-  currentIsPage?: boolean;
-  toc?: { id: string; text: string }[];
+  // A page that shows the same screen as another address names that address here.
+  canonical?: string;
 }
 
-const { title, description, current, currentIsPage, toc } = Astro.props;
-const fullTitle = title ? `${title} · dreamports` : 'dreamports · enhanced fan ports of classic games';
-const canonical = new URL(Astro.url.pathname, Astro.site);
+const { title, description, canonical: canonicalPath } = Astro.props;
+const fullTitle = pageTitle(title);
+const canonical = new URL(canonicalPath ?? Astro.url.pathname, Astro.site);
 const socialImage = new URL('/images/social-preview.png', Astro.site);
 ---
 
@@ -22,13 +19,14 @@ const socialImage = new URL('/images/social-preview.png', Astro.site);
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="theme-color" content="#fcfbf8" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#050a24" media="(prefers-color-scheme: dark)" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="dreamports" />
     <meta property="og:title" content={fullTitle} />
@@ -38,30 +36,30 @@ const socialImage = new URL('/images/social-preview.png', Astro.site);
     <meta property="og:image:alt" content="dreamports: enhanced fan ports of classic games" />
     <meta name="twitter:card" content="summary_large_image" />
     <script is:inline>
-      // Runs before the page is drawn, so a saved dark choice never flashes light first.
+      // Runs before the page is drawn, so a saved look never flashes the other one first.
+      // The page follows the device's light or dark setting until the visitor picks one.
       (() => {
         const root = document.documentElement;
         root.classList.add('js');
+        root.dataset.input = matchMedia('(pointer: coarse)').matches ? 'touch' : 'keys';
+        let theme = null;
+        let motion = null;
         try {
-          if (localStorage.getItem('dreamports:theme') === 'dark') {
-            root.dataset.theme = 'dark';
-            document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#171612');
-          }
+          theme = localStorage.getItem('dreamports:theme');
+          motion = localStorage.getItem('dreamports:motion');
         } catch {}
+        if (theme === 'light' || theme === 'dark') {
+          root.dataset.theme = theme;
+          for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
+            meta.setAttribute('content', theme === 'dark' ? '#050a24' : '#ffffff');
+          }
+        }
+        const calm = motion === 'calm' || (motion !== 'full' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+        root.dataset.motion = calm ? 'calm' : 'full';
       })();
     </script>
   </head>
   <body>
-    <a class="skip" href="#main">skip to the text</a>
-    <div class="shell">
-      <Sidebar current={current} currentIsPage={currentIsPage} toc={toc} />
-      <main id="main" tabindex="-1">
-        <slot />
-      </main>
-      <Footer />
-    </div>
-    <script>
-      import '../scripts/site';
-    </script>
+    <slot />
   </body>
 </html>

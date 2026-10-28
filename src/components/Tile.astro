@@ -1,0 +1,34 @@
+---
+// A game as a little screen in a white frame, showing the maker's own recording of it.
+// The still is the recording's first frame; the launcher plays the recording over it.
+// A game without a recording gets a plain dreamports card.
+import { sectionFor, type Game } from '../lib/site';
+
+interface Props {
+  game: Game;
+  // Tiles inside closed cards wait until they're shown before loading their picture.
+  lazy?: boolean;
+}
+
+const { game, lazy = false } = Astro.props;
+const { title, platform, kind, screen } = game.data;
+---
+
+<div class="tile" aria-hidden="true">
+  {
+    screen ? (
+      <div class:list={['screen', screen.pixelated && 'px']} data-clip={screen.clip}>
+        <img class="still" src={screen.still} alt="" draggable="false" loading={lazy ? 'lazy' : undefined} />
+        <img class="clip" alt="" draggable="false" />
+        <i class="scan" />
+      </div>
+    ) : (
+      <div class="screen emblem">
+        <img class="e-star px" src="/images/star.png" alt="" width="20" height="22" />
+        <span class="e-plat">{platform}</span>
+        <span class="e-name">{title}</span>
+        <span class="e-tag">{sectionFor(kind).label}</span>
+      </div>
+    )
+  }
+</div>

@@ -33,6 +33,11 @@ facts:
   - label: the story
     value: on nahuelgenchi.com
     href: https://nahuelgenchi.com/gaming/onsoku-advance/
+screen:
+  clip: /media/sonic-advance-dreamport.webp
+  still: /media/sonic-advance-dreamport-still.webp
+  pixelated: true
+glow: '#8fd1ff'
 ---
 
 ## what it adds
