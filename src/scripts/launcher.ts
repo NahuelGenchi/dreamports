@@ -260,7 +260,7 @@ function start(launcher: HTMLElement) {
     state.sel[state.filter] = i;
     applySel(rowEl.contains(document.activeElement));
     grab();
-    if (withSound) sound.play('move', i);
+    if (withSound) sound.play('move');
     if (!rowEl.contains(document.activeElement)) announce(slots[i].dataset.title ?? 'empty slot');
   }
 
@@ -523,7 +523,7 @@ function start(launcher: HTMLElement) {
       updatePlate();
       updateCorners();
       wakeRow(320);
-      sound.play('move', near);
+      sound.play('move');
     }
   });
   function endDrag(e: PointerEvent) {
@@ -538,7 +538,7 @@ function start(launcher: HTMLElement) {
     const goal = clamp(Math.round(d.frac + fling), 0, max);
     if (goal !== sel()) {
       state.sel[state.filter] = goal;
-      sound.play('move', goal);
+      sound.play('move');
     }
     applySel(false);
     if (goal !== d.start) grab();
@@ -1235,12 +1235,11 @@ function start(launcher: HTMLElement) {
     },
     play(name: string, arg = 0) {
       if (!state.sound || !this.init()) return;
-      // each slot has its own note, so moving along the row plays a little scale
-      const N = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66, 1318.51, 1567.98];
       switch (name) {
         case 'move':
-          this.tone({ f: N[arg % N.length], d: 0.11, g: 0.09 });
-          this.tone({ f: N[arg % N.length] * 2, type: 'sine', d: 0.06, g: 0.025 });
+          // the same note for every move, wherever it lands
+          this.tone({ f: 659.25, d: 0.11, g: 0.09 });
+          this.tone({ f: 1318.51, type: 'sine', d: 0.06, g: 0.025 });
           break;
         case 'edge':
           this.tone({ f: 150, f2: 92, type: 'sine', d: 0.14, g: 0.2 });
@@ -1597,10 +1596,11 @@ function start(launcher: HTMLElement) {
 
   // ---------- Clock ----------
 
+  // always 24-hour time, such as 09:05 or 21:00, whatever the device's region
   const clock = $('#clock', launcher);
-  const fmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
   function tick() {
-    clock.textContent = fmt.format(new Date()).replace(/[  ]/g, ' ').toLowerCase();
+    const now = new Date();
+    clock.textContent = [now.getHours(), now.getMinutes()].map((n) => String(n).padStart(2, '0')).join(':');
   }
 
   // ---------- Start ----------
