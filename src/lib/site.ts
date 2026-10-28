@@ -7,6 +7,8 @@ export const SUGGEST_URL =
   'https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml';
 export const SOURCE_URL = 'https://github.com/NahuelGenchi/dreamports';
 export const OWNER_URL = 'https://nahuelgenchi.com/';
+// Forwards to the owner's inbox through Cloudflare Email Routing (#4).
+export const CONTACT_EMAIL = 'hello@dreamports.net';
 
 export interface Section {
   kind: Kind;

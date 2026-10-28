@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import OwnGameSteps from '../components/OwnGameSteps.astro';
-import { OWNER_URL, SOURCE_URL, SUGGEST_URL } from '../lib/site';
+import { CONTACT_EMAIL, OWNER_URL, SOURCE_URL, SUGGEST_URL } from '../lib/site';
 ---
 
 <Base
@@ -86,10 +86,13 @@ import { OWNER_URL, SOURCE_URL, SUGGEST_URL } from '../lib/site';
       </li>
     </ul>
 
-    <h2 id="contact">suggest a port, or report a problem</h2>
+    <h2 id="contact">suggest a port, report a problem or get in touch</h2>
     <p>
       open an <a href={SUGGEST_URL}>issue on github</a>. it takes a free github account, and you don’t need to
       be a developer to fill it in. please never attach game files.
+    </p>
+    <p>
+      for anything else, including messages from publishers or other rights holders, write to <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
     </p>
   </div>
 </Base>
