@@ -1,0 +1,36 @@
+---
+import type { GetStaticPaths } from 'astro';
+import Base from '../../layouts/Base.astro';
+import EntryList from '../../components/EntryList.astro';
+import { SECTIONS, SUGGEST_URL, getGames, type Section } from '../../lib/site';
+
+export const getStaticPaths = (() =>
+  SECTIONS.map((section) => ({ params: { section: section.path }, props: { section } }))) satisfies GetStaticPaths;
+
+interface Props {
+  section: Section;
+}
+
+const { section } = Astro.props;
+const games = await getGames(section.kind);
+---
+
+<Base title={section.title} description={section.lead} current={section.kind} currentIsPage>
+  <h1>{section.title}</h1>
+  <p class="lead">{section.lead}</p>
+
+  <section class="games games--page" aria-label={section.title}>
+    {
+      games.length > 0 ? (
+        <EntryList games={games} level={2} />
+      ) : (
+        <p class="empty">
+          {section.kind === 'external' ? 'none yet. external ports, made by other fans, are on their way.' : 'none yet.'}
+        </p>
+      )
+    }
+    <p class="list-note">
+      {section.kind === 'other' ? 'know a great fan game?' : 'know a great port?'} <a href={SUGGEST_URL}>suggest it</a>.
+    </p>
+  </section>
+</Base>

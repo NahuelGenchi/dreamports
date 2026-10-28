@@ -1,0 +1,37 @@
+---
+import Base from '../layouts/Base.astro';
+import EntryList from '../components/EntryList.astro';
+import OwnGameSteps from '../components/OwnGameSteps.astro';
+import Star from '../components/Star.astro';
+import { SUGGEST_URL, getGames } from '../lib/site';
+
+const games = await getGames();
+const hasExternal = games.some((game) => game.data.kind === 'external');
+---
+
+<Base description="enhanced fan ports of classic games. a dreamport is the port fans always dreamed of: the game you remember, with the extras you wished it had.">
+  <h1>enhanced fan ports of classic games.<Star class="title-star" /></h1>
+  <p class="intro">
+    a dreamport is the port fans always dreamed of: the game you remember, with the extras you wished it
+    had. every one is free, and every one asks you to bring your own copy of the game.
+  </p>
+
+  <section class="games" aria-labelledby="games-label">
+    <h2 id="games-label" class="games-label">the games</h2>
+    <EntryList games={games} />
+    <p class="list-note">
+      {hasExternal ? 'know a great port, made by other fans?' : 'external ports, made by other fans, are on their way. know a great one?'}{' '}
+      <a href={SUGGEST_URL}>suggest it</a>.
+    </p>
+  </section>
+
+  <section class="block" aria-labelledby="rule-title">
+    <h2 id="rule-title" class="h2">bring your own game</h2>
+    <p>
+      dreamports never hosts game files: no <abbr class="caps" title="read-only memory">ROMs</abbr>, no game
+      data, nothing taken from a game. every project here asks you to use your own legal copy, and the site
+      asks you to confirm it before you play or download anything.
+    </p>
+    <OwnGameSteps />
+  </section>
+</Base>

@@ -1,0 +1,64 @@
+---
+import Doorway from './Doorway.astro';
+import { SECTIONS, getGames, type Kind } from '../lib/site';
+
+interface Props {
+  current?: Kind | 'about';
+  // aria-current="page" on a section's own page, "true" on a game page inside it.
+  currentIsPage?: boolean;
+  toc?: { id: string; text: string }[];
+}
+
+const { current, currentIsPage = false, toc } = Astro.props;
+const games = await getGames();
+const count = (kind: Kind) => games.filter((game) => game.data.kind === kind).length;
+const mark = (key: Kind | 'about') =>
+  key === current ? (currentIsPage ? 'page' : 'true') : undefined;
+---
+
+<header class="side">
+  <div class="side-in">
+    <div class="mark-row">
+      <a class="mark" href="/">
+        <Doorway />
+        <span>dreamports</span>
+      </a>
+      <button type="button" class="menu-btn" aria-expanded="false" aria-controls="side-body">menu</button>
+    </div>
+    <div id="side-body" class="side-body">
+      <nav class="nav" aria-label="sections">
+        <ul>
+          {
+            SECTIONS.map((section) => (
+              <li>
+                <a href={`/${section.path}/`} aria-current={mark(section.kind)}>
+                  {section.title}
+                  {count(section.kind) > 0 && <span class="count">{count(section.kind)}</span>}
+                </a>
+              </li>
+            ))
+          }
+          <li><a href="/about/" aria-current={mark('about')}>about</a></li>
+        </ul>
+      </nav>
+      <button type="button" class="theme-btn">
+        <span class="to-dark"><span class="sr-only">switch to </span>dark<span class="sr-only"> mode</span></span>
+        <span class="to-light"><span class="sr-only">switch to </span>light<span class="sr-only"> mode</span></span>
+      </button>
+      {
+        toc && toc.length > 0 && (
+          <nav class="toc" aria-labelledby="toc-title">
+            <p id="toc-title">on this page</p>
+            <ul>
+              {toc.map((item) => (
+                <li>
+                  <a href={`#${item.id}`}>{item.text}</a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        )
+      }
+    </div>
+  </div>
+</header>

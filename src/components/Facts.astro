@@ -1,0 +1,23 @@
+---
+import type { Game } from '../lib/site';
+
+interface Props {
+  facts: Game['data']['facts'];
+}
+
+const { facts } = Astro.props;
+---
+
+<section class="facts" aria-labelledby="facts-title">
+  <h2 id="facts-title" class="box-title">the game</h2>
+  <dl>
+    {
+      facts.map((fact) => (
+        <div>
+          <dt>{fact.label}</dt>
+          <dd>{fact.href ? <a href={fact.href}>{fact.value}</a> : fact.value}</dd>
+        </div>
+      ))
+    }
+  </dl>
+</section>

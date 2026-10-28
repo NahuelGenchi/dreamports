@@ -1,0 +1,67 @@
+---
+import '../styles/global.css';
+import Sidebar from '../components/Sidebar.astro';
+import Footer from '../components/Footer.astro';
+import type { Kind } from '../lib/site';
+
+interface Props {
+  title?: string;
+  description: string;
+  current?: Kind | 'about';
+  currentIsPage?: boolean;
+  toc?: { id: string; text: string }[];
+}
+
+const { title, description, current, currentIsPage, toc } = Astro.props;
+const fullTitle = title ? `${title} · dreamports` : 'dreamports · enhanced fan ports of classic games';
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const socialImage = new URL('/images/social-preview.png', Astro.site);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#fcfbf8" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="dreamports" />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={socialImage} />
+    <meta property="og:image:alt" content="dreamports: enhanced fan ports of classic games" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script is:inline>
+      // Runs before the page is drawn, so a saved dark choice never flashes light first.
+      (() => {
+        const root = document.documentElement;
+        root.classList.add('js');
+        try {
+          if (localStorage.getItem('dreamports:theme') === 'dark') {
+            root.dataset.theme = 'dark';
+            document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#171612');
+          }
+        } catch {}
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">skip to the text</a>
+    <div class="shell">
+      <Sidebar current={current} currentIsPage={currentIsPage} toc={toc} />
+      <main id="main" tabindex="-1">
+        <slot />
+      </main>
+      <Footer />
+    </div>
+    <script>
+      import '../scripts/site';
+    </script>
+  </body>
+</html>

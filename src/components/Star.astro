@@ -1,0 +1,10 @@
+---
+// The pixel star from the README banner (by Narik, see public/images/star-credits.txt).
+interface Props {
+  class?: string;
+}
+
+const { class: className } = Astro.props;
+---
+
+<img class:list={['px twinkle', className]} src="/images/star.png" alt="" width="20" height="22" />
