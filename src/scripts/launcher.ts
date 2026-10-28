@@ -66,6 +66,7 @@ function start(launcher: HTMLElement) {
 
   const stage = $('#stage', launcher);
   const rowEl = $('#row', launcher);
+  const corners = $('.corners', launcher);
   const plate = $('#nameplate', launcher);
   const plateName = $('#np-name', launcher);
   const plateDetail = $('#np-detail', launcher);
@@ -205,7 +206,9 @@ function start(launcher: HTMLElement) {
     const phone = W < 640;
     const topH = narrow ? 50 : 56;
     const botH = narrow ? 60 : 68;
-    const stageH = H - topH - botH;
+    // the bottom bar sits above the strip a phone keeps for its home bar
+    const homeBar = parseFloat(getComputedStyle(corners).marginBottom) || 0;
+    const stageH = H - topH - botH - homeBar;
     let s = W * (phone ? 0.68 : 0.34);
     while (s > 120 && tileH(s) > stageH - 110) s -= 4;
     S = Math.round(clamp(s, 120, 560));
