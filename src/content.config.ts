@@ -51,6 +51,12 @@ const games = defineCollection({
         pixelated: z.boolean().default(false),
       })
       .optional(),
+    // The picture shown when the game's page is shared: 1200×630, made from the same recording.
+    // Without one, the page shares the site's own picture.
+    share: z
+      .string()
+      .regex(/^\/media\/[a-z0-9-]+\.(png|jpg)$/, 'a .png or .jpg file in public/media/, such as /media/my-port-share.png')
+      .optional(),
     // The light the game's screen casts on the menu while it's selected.
     glow: z
       .string()

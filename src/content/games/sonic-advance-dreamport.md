@@ -37,6 +37,7 @@ screen:
   clip: /media/sonic-advance-dreamport.webp
   still: /media/sonic-advance-dreamport-still.webp
   pixelated: true
+share: /media/sonic-advance-dreamport-share.png
 glow: '#8fd1ff'
 ---
 

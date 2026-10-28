@@ -38,6 +38,7 @@ facts:
 screen:
   clip: /media/kirbys-dead-land.webp
   still: /media/kirbys-dead-land-still.webp
+share: /media/kirbys-dead-land-share.jpg
 glow: '#ffa9d4'
 ---
 

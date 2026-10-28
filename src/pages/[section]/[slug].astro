@@ -18,8 +18,10 @@ interface Props {
 }
 
 const { game } = Astro.props;
+const { share, title } = game.data;
+const image = share ? { src: share, width: 1200, height: 630, alt: `${title}, from the maker’s own recording` } : undefined;
 ---
 
-<Base title={game.data.title} description={game.data.summary}>
+<Base title={title} description={game.data.summary} image={image}>
   <Launcher filter={filterFor(game.data.kind).key} selected={game.id} open="inspect" />
 </Base>
