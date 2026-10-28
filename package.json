@@ -14,12 +14,14 @@
   "engines": {
     "node": ">=22.23.4"
   },
+  "packageManager": "npm@12.2.0",
   "dependencies": {
     "@fontsource-variable/newsreader": "5.3.0",
     "astro": "7.4.2"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.12",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "wrangler": "4.154.0"
   }
 }
