@@ -2,6 +2,7 @@
 // "before you play": the visitor confirms they're using their own legal copy of the game
 // before any play or download link opens. Without JavaScript, the browser itself refuses to
 // follow a link until the box is ticked, and the card shows when the address ends in #play.
+// Play links open in the same tab; download links open in a new one, so the menu stays put.
 import Key from './Key.astro';
 import Star from './Star.astro';
 import { gameUrl, pageTitle, type Game } from '../lib/site';
@@ -51,6 +52,7 @@ const nudgeNote = downloads ? 'tick the box first, then download.' : 'tick the b
                 type="submit"
                 class:list={['btn', index > 0 && 'btn--alt']}
                 formaction={link.href}
+                formtarget={link.icon === 'download' ? '_blank' : undefined}
                 data-icon={link.icon}
                 aria-describedby={`gate-note-${id}`}
               >
