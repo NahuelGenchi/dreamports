@@ -303,8 +303,15 @@ kbd {
   white-space: nowrap;
 }
 
-.clock {
-  justify-self: start;
+/* each side of the bar fills its column, so the badge in it can tell how much room it has */
+.side {
+  display: flex;
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.side.end {
+  justify-content: flex-end;
 }
 
 .clock .door {
@@ -313,7 +320,6 @@ kbd {
 }
 
 .status {
-  justify-self: end;
   gap: 11px;
   padding: 0 12px;
   border: 0;
@@ -1983,22 +1989,33 @@ dialog.card.is-in::backdrop {
   }
 }
 
-@media (max-width: 400px) {
+/* the time shows only when its side of the bar has room for the whole clock, 87 px at its widest */
+@container (width < 87px) {
   .clock time {
-    display: none;
-  }
-
-  .status #ico-pad.is-off {
     display: none;
   }
 
   .clock {
     padding: 0 8px;
   }
+}
+
+/* and the controller icon, while no controller is on, only when the badge has its 72 px */
+@container (width < 72px) {
+  .status #ico-pad.is-off {
+    display: none;
+  }
 
   .status {
     gap: 8px;
     padding: 0 9px;
+  }
+}
+
+/* narrower still, as on 360 px phones: a tighter frame round the speaker */
+@container (width < 34px) {
+  .status {
+    padding: 0 6px;
   }
 }
 
