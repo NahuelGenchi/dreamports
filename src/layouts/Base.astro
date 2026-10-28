@@ -7,12 +7,20 @@ interface Props {
   description: string;
   // A page that shows the same screen as another address names that address here.
   canonical?: string;
+  // The picture shown when the page is shared; without one, the site's own picture.
+  image?: { src: string; width: number; height: number; alt: string };
 }
 
-const { title, description, canonical: canonicalPath } = Astro.props;
+const { title, description, canonical: canonicalPath, image } = Astro.props;
 const fullTitle = pageTitle(title);
 const canonical = new URL(canonicalPath ?? Astro.url.pathname, Astro.site);
-const socialImage = new URL('/images/social-preview.png', Astro.site);
+const social = image ?? {
+  src: '/images/social-preview.png',
+  width: 1280,
+  height: 640,
+  alt: 'dreamports: enhanced fan ports of classic games',
+};
+const socialImage = new URL(social.src, Astro.site);
 ---
 
 <!doctype html>
@@ -33,8 +41,12 @@ const socialImage = new URL('/images/social-preview.png', Astro.site);
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={socialImage} />
-    <meta property="og:image:alt" content="dreamports: enhanced fan ports of classic games" />
+    <meta property="og:image:width" content={String(social.width)} />
+    <meta property="og:image:height" content={String(social.height)} />
+    <meta property="og:image:alt" content={social.alt} />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={socialImage} />
+    <meta name="twitter:image:alt" content={social.alt} />
     <script is:inline>
       // Runs before the page is drawn, so a saved look never flashes the other one first.
       // The page follows the device's light or dark setting until the visitor picks one.

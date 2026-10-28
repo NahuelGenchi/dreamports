@@ -55,6 +55,7 @@ The top of the file, between the two `---` lines, holds the details. The site is
 | `ownCopy` → `note` | A short line shown once the box is ticked, such as where the link goes |
 | `facts` | The rows of the "the game" box, each with a `label`, a `value` and, if it's a link, an `href` |
 | `screen` | Optional, and only with the owner's own recording: `clip` (the recording), `still` (its first frame) and, for pixel-art games, `pixelated: true`, which keeps the pixels sharp. See below |
+| `share` | Optional: the picture shown when the game's page is shared, such as `/media/my-port-share.png`. See below |
 | `glow` | Optional: the colour of the light the game casts on the menu while it's selected, in quotes, such as `'#8fd1ff'` |
 
 Below the second `---` is the page itself, in Markdown. `## ` lines become headings and the "on this page" list, `- ` lines become bullet points, and `1. ` lines become numbered steps.
@@ -66,8 +67,11 @@ screen:
   clip: /media/my-port.webp
   still: /media/my-port-still.webp
   pixelated: true
+share: /media/my-port-share.png
 glow: '#8fd1ff'
 ```
+
+**A game's share picture** is what chat apps and social sites show when someone shares the game's page. It is 1200×630 pixels: the recording's still on the site's navy background (`#050a24`), saved in `public/media/`. Scale pixel-art stills by whole steps, such as three times, so the pixels stay sharp, and save them as PNG; save other games as JPEG. Without a share picture, the page shares the site's own picture.
 
 Recordings come only from the owner's own play of their own projects: never box art, logos or pictures from publishers. A game without a recording gets a plain dreamports card.
 
