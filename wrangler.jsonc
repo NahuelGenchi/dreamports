@@ -1,0 +1,12 @@
+// How Cloudflare serves dreamports.net. The site is plain files: `npm run build`
+// writes them to dist/, and Cloudflare uploads that folder as it is, with no server code.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "dreamports",
+  "compatibility_date": "2026-10-23",
+  "assets": {
+    "directory": "./dist",
+    // An address with no page shows the site's own 404 page (src/pages/404.astro).
+    "not_found_handling": "404-page"
+  }
+}
