@@ -108,7 +108,7 @@ Press **Star** at the top of this page to keep Dreamports on your radar.
 </tr>
 </table>
 
-**Developers:** every change follows the same trail, 📝 issue → 🌿 branch → 🎯 milestone → 🔀 pull request, so anything on the site can be traced back to why it was made. Start with [CONTRIBUTING.md](CONTRIBUTING.md); the full rules are in [docs/TRACKING.md](docs/TRACKING.md).
+**Developers:** every change follows the same trail, 📝 issue → 🌿 branch → 🎯 milestone → 🔀 pull request, so anything on the site can be traced back to why it was made. Start with [CONTRIBUTING.md](CONTRIBUTING.md); the full rules are in [docs/TRACKING.md](docs/TRACKING.md). The site is built with [Astro](https://astro.build/), and adding a game takes one Markdown file: CONTRIBUTING.md shows how.
 
 ## Questions
 
@@ -176,7 +176,9 @@ The code is free and open source under the [MIT License](LICENSE).
 
 The banner and the social preview are original pixel art made for Dreamports, set in [Monocraft](https://github.com/IdreesInc/Monocraft) by Idrees Hassan, under the SIL Open Font License. Their source, [`.github/readme/banner.html`](.github/readme/banner.html), can redraw them.
 
-The small stars are the [Pixel Art Animated Star](https://soulofkiran.itch.io/pixel-art-animated-star) by Narik, recolored to match. They're used under Narik's terms, which allow personal and commercial use and edits, so [`.github/readme/star.png`](.github/readme/star.png) isn't covered by the MIT License. Thank you, Narik!
+The website sets its headings in Monocraft too, and its text in [Newsreader](https://github.com/productiontype/Newsreader) by Production Type, also under the SIL Open Font License. The site carries a smaller copy of Monocraft with only the letters it uses; the licenses are in [`src/assets/fonts/OFL.txt`](src/assets/fonts/OFL.txt) and [`public/licenses/`](public/licenses/).
+
+The small stars are the [Pixel Art Animated Star](https://soulofkiran.itch.io/pixel-art-animated-star) by Narik, recolored to match. They're used under Narik's terms, which allow personal and commercial use and edits, so [`.github/readme/star.png`](.github/readme/star.png) and the website's copy, [`public/images/star.png`](public/images/star.png), aren't covered by the MIT License. Thank you, Narik!
 
 Game names and trademarks belong to their owners. Dreamports is not affiliated with or endorsed by Sega, Nintendo, or any other publisher.
 

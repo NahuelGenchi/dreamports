@@ -1,0 +1,10 @@
+star.png
+
+Source: "Pixel Art Animated Star" by Narik
+        https://soulofkiran.itch.io/pixel-art-animated-star
+Taken from the first 32x32 frame of Star.png, cropped to 20x22 and recolored
+(outline to black, body to gold, edge to darker gold).
+
+License: the author's own terms on that page allow use in personal and
+commercial projects and allow editing; credit is optional but appreciated.
+This file is not covered by the repository's MIT License.

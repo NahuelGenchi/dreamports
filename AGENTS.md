@@ -2,7 +2,7 @@
 
 ## The project
 
-Dreamports is the source code for dreamports.net, a home for enhanced fan ports of classic games. A Dreamport is "the port fans always dreamed of: the game you remember, with the extras you wished it had"; use that wording rather than "dream means fan". The site lists the owner's own Dreamports (for example Sonic Advance Dreamport), external ports made by other people (links and credits only), and other fan games that aren't ports (for example Kirby's Dead Land). The planned stack is a static Astro site hosted on Cloudflare (#3, #4). Until #3 merges, the repository holds only documentation and tracking files.
+Dreamports is the source code for dreamports.net, a home for enhanced fan ports of classic games. A Dreamport is "the port fans always dreamed of: the game you remember, with the extras you wished it had"; use that wording rather than "dream means fan". The site lists the owner's own Dreamports (for example Sonic Advance Dreamport), external ports made by other people (links and credits only), and other fan games that aren't ports (for example Kirby's Dead Land). The site is a static Astro site (#3); hosting it on Cloudflare is #4.
 
 Never describe something as working or complete unless a recorded check establishes it. A build is not a browser check.
 
@@ -14,6 +14,13 @@ Never describe something as working or complete unless a recorded check establis
 | `CONTRIBUTING.md` | Contribution workflow and rules |
 | `docs/` | One record per decision or process (`docs/TRACKING.md`) |
 | `.github/` | Issue form, PR template, tracking workflow, README images |
+| `src/content/games/` | One Markdown file per game page; `src/content.config.ts` checks its fields |
+| `src/pages/`, `src/layouts/`, `src/components/` | The site's pages and their shared parts |
+| `src/styles/global.css` | Colours (light and dark), type and layout for the whole site |
+| `src/lib/site.ts` | Sections, their addresses and labels, and shared links |
+| `public/` | Files served as they are: icons, the star, the social preview, font licenses |
+
+Commands: `npm run dev`, `npm run check`, `npm run build`, `npm run preview`. Site text is lowercase, with exceptions such as abbreviations (`ROM`) and key names. Play and download links live only in a game's `ownCopy.links`, behind the "before you play" confirmation.
 
 ## Working well here
 

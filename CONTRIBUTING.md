@@ -14,6 +14,57 @@ Open a new issue, choose **Work item**, and describe it in your own words. The f
 
 Please never attach ROMs, game files, or anything extracted from a game, and never post private details such as your email address.
 
+## Run the site on your computer
+
+You need [Node.js](https://nodejs.org/) 22 or newer. In a terminal, inside this folder:
+
+```sh
+npm ci
+npm run dev
+```
+
+Then open <http://localhost:4321> in your browser. The page updates as you save files.
+
+| Command | What it does |
+| :--- | :--- |
+| `npm run dev` | Runs the site on your computer while you work on it |
+| `npm run check` | Looks for mistakes in the pages and the game files |
+| `npm run build` | Makes the finished site in the `dist/` folder |
+| `npm run preview` | Opens that finished site, to check it before it goes online |
+
+## Add a game
+
+Each game page comes from **one Markdown file** in [`src/content/games/`](src/content/games/). To add a game, copy one of the files there, give it a new name, and change the text. Nothing else needs editing: the home page, the section page and the counts in the menu find the new file by themselves.
+
+The file name becomes the page address. `src/content/games/my-port.md` appears at `/dreamports/my-port/`, `/external-ports/my-port/` or `/other-games/my-port/`, depending on its `kind`. Use lowercase letters, numbers and dashes.
+
+The top of the file, between the two `---` lines, holds the details. The site is written in lowercase, so write these in lowercase too.
+
+| Field | What to write |
+| :--- | :--- |
+| `title` | The game's name on the site, such as `sonic advance dreamport` |
+| `kind` | `dreamport`, `external` (a port made by someone else) or `other` (a fan game that isn't a port) |
+| `platform` | The short line above the title, such as `game boy advance` or `a mod for dead cells` |
+| `year` | Optional: the year the original game came out |
+| `added` | The day it was added, written as `2026-10-27` |
+| `summary` | One sentence for the lists of games |
+| `lead` | The paragraph under the title on the game's own page |
+| `ownCopy` → `text` | Which copy of the game it needs, and that dreamports never hosts game files |
+| `ownCopy` → `confirm` | The sentence visitors tick, such as `i own sonic advance, and i’m using my own legal copy of the game.` |
+| `ownCopy` → `links` | The play or download links. Each has a `label`, an `href` starting with `https://`, and an `icon`: `play` or `download`. The first is the main button |
+| `ownCopy` → `note` | A short line shown once the box is ticked, such as where the link goes |
+| `facts` | The rows of the "the game" box, each with a `label`, a `value` and, if it's a link, an `href` |
+| `media` | Optional, and only with the owner's own recording: `src` (a picture saved next to the Markdown file), `alt` (what it shows, for people who can't see it) and `caption` |
+
+Below the second `---` is the page itself, in Markdown. `## ` lines become headings and the "on this page" list, `- ` lines become bullet points, and `1. ` lines become numbered steps.
+
+Two rules keep the site honest:
+
+- **Every play or download link goes in `ownCopy` → `links`,** never in the text below, so visitors always confirm they own the game first.
+- **For an external port,** link its own page and credit the people who made it, by name.
+
+Then run `npm run check` and `npm run build`. If a detail is missing or misspelled, they stop and name it. Finally, look at the new page in a browser at a phone width and a computer width, in light and dark mode.
+
 ## One work item, one delivery trail
 
 1. **Start with an issue.** Reuse the issue that already owns the work, or open the work-item form. Record the goal, scope, completion criteria, dependencies, and milestone before editing files. Bugs, enhancements, documentation, research and repository operations are work items too.
