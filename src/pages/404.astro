@@ -4,11 +4,10 @@ import Doorway from '../components/Doorway.astro';
 ---
 
 <Base title="page not found" description="this page isn’t here.">
-  <div class="lost">
+  <main class="lost">
     <Doorway scale={4} />
     <h1>nothing behind this door.</h1>
-    <p class="lead">
-      this page isn’t here. it may have moved, or the link may have a typo. <a href="/">go to the home page</a>.
-    </p>
-  </div>
+    <p>this page isn’t here. it may have moved, or the link may have a typo.</p>
+    <a class="btn" href="/"><span aria-hidden="true">←</span> back to the menu</a>
+  </main>
 </Base>

@@ -1,0 +1,54 @@
+---
+// A game's own page, as a card over the menu: its recording, its details and its text.
+import Facts from './Facts.astro';
+import Key from './Key.astro';
+import Tile from './Tile.astro';
+import { filterFor, gameUrl, pageTitle, sectionFor, type Game } from '../lib/site';
+
+interface Props {
+  game: Game;
+  // Open when the page loads, on the game's own address.
+  open?: boolean;
+}
+
+const { game, open = false } = Astro.props;
+const { title, kind, platform, year, lead, facts, glow, ownCopy } = game.data;
+const id = game.id;
+const Title = open ? 'h1' : 'h2';
+const downloads = ownCopy.links.every((link) => link.icon === 'download');
+// Every page holds every game's card, so each game's headings get ids of their own.
+const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$1 id="${id}-$2"`);
+---
+
+<dialog
+  class="card card-inspect"
+  id={`inspect-${id}`}
+  data-card="inspect"
+  data-game={id}
+  data-path={gameUrl(game)}
+  data-title={pageTitle(title)}
+  aria-labelledby={`ins-title-${id}`}
+  open={open}
+>
+  <div class="inspect">
+    <div class="ins-show">
+      <div class="show-wrap">
+        <i class="glow" style={`--g: ${glow}`}></i>
+        <div class="show-tile"><Tile game={game} lazy={!open} /></div>
+      </div>
+      <a class="btn" href={`${gameUrl(game)}#play`} data-gate autofocus>
+        <span aria-hidden="true">{downloads ? '↓' : '▶'}</span>{downloads ? 'before you download' : 'before you play'}
+      </a>
+    </div>
+    <div class="ins-text" tabindex="0">
+      <p class="ins-label">
+        <span class="kind">{sectionFor(kind).label}</span> · {platform}{year && ` · ${year}`}
+      </p>
+      <Title class="ins-title" id={`ins-title-${id}`}>{title}</Title>
+      <p class="ins-lead">{lead}</p>
+      {facts.length > 0 && <Facts facts={facts} id={`facts-${id}`} />}
+      <div class="prose" set:html={body} />
+    </div>
+  </div>
+  <a class="card-close" href={filterFor(kind).path} data-close><Key label="esc" pad="B" round />close</a>
+</dialog>

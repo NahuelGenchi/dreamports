@@ -1,0 +1,43 @@
+---
+// One place in the launcher's row: a game, which links to its own page, or an empty slot.
+import Tile from './Tile.astro';
+import { gameUrl, sectionFor, type Game } from '../lib/site';
+
+interface Props {
+  game?: Game;
+  index: number;
+}
+
+const { game, index } = Astro.props;
+const detail = game
+  ? [sectionFor(game.data.kind).label, game.data.platform, game.data.year].filter(Boolean).join(' · ')
+  : '';
+---
+
+{
+  game ? (
+    <a
+      class="slot"
+      href={gameUrl(game)}
+      data-index={index}
+      data-game={game.id}
+      data-title={game.data.title}
+      data-detail={detail}
+      draggable="false"
+    >
+      <i class="glow" style={`--g: ${game.data.glow}`} />
+      <span class="lift">
+        <Tile game={game} />
+      </span>
+      <span class="sr-only">
+        {game.data.title}, {detail}
+      </span>
+    </a>
+  ) : (
+    <div class="slot" data-index={index} data-empty>
+      <span class="lift">
+        <span class="hollow" />
+      </span>
+    </div>
+  )
+}

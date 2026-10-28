@@ -1,0 +1,149 @@
+---
+// About and legal, as a card over the menu: what dreamports is, the rules, privacy and credits.
+import Key from './Key.astro';
+import OwnGameSteps from './OwnGameSteps.astro';
+import { CONTACT_EMAIL, OWNER_URL, SOURCE_URL, SUGGEST_URL, pageTitle } from '../lib/site';
+
+interface Props {
+  // Open when the page loads, at /about/.
+  open?: boolean;
+}
+
+const { open = false } = Astro.props;
+const Title = open ? 'h1' : 'h2';
+const Sec = open ? 'h2' : 'h3';
+const sections = [
+  { id: 'dreamport', label: 'what a dreamport is' },
+  { id: 'kinds', label: 'what you’ll find here' },
+  { id: 'own-game', label: 'bring your own game' },
+  { id: 'legal', label: 'not affiliated' },
+  { id: 'privacy', label: 'your privacy' },
+  { id: 'credits', label: 'credits' },
+  { id: 'contact', label: 'get in touch' },
+];
+---
+
+<dialog
+  class="card card-about"
+  id="card-about"
+  data-card="about"
+  data-path="/about/"
+  data-title={pageTitle('about and legal')}
+  aria-labelledby="about-title"
+  open={open}
+>
+  <div class="about">
+    <nav class="about-nav" aria-label="about and legal">
+      <Title id="about-title">about and legal</Title>
+      {
+        sections.map((section, index) => (
+          <a href={`#${section.id}`} data-sec={section.id} aria-current={index === 0 ? 'true' : undefined} autofocus={index === 0}>
+            {section.label}
+          </a>
+        ))
+      }
+    </nav>
+    <div class="about-text prose" tabindex="0">
+      <section id="dreamport">
+        <Sec>what a dreamport is</Sec>
+        <p>dreamports.net is a home for enhanced fan ports of classic games, made by a fan, for fans.</p>
+        <p>
+          a dreamport is the port fans always dreamed of: the game you remember, with the extras you wished it
+          had. it starts from the game as you know it, then adds the things fans have asked for over the years.
+        </p>
+      </section>
+
+      <section id="kinds">
+        <Sec>what you’ll find here</Sec>
+        <ul>
+          <li>
+            <strong>dreamports.</strong> the ports made here, by <a href={OWNER_URL}>nahuel genchi</a>.
+          </li>
+          <li>
+            <strong>mash-ups.</strong> great ports made by other fans, and fan games that aren’t ports, like
+            kirby’s dead land. dreamports links to other fans’ own pages and credits the people who made them.
+          </li>
+        </ul>
+      </section>
+
+      <section id="own-game">
+        <Sec>bring your own game</Sec>
+        <p>
+          dreamports never hosts game files: no <abbr class="caps" title="read-only memory">ROMs</abbr>, no game
+          data and nothing taken from a game. it only lists projects that ask you to use your own legal copy, and
+          before every play or download link it asks you to confirm that you are.
+        </p>
+        <OwnGameSteps />
+      </section>
+
+      <section id="legal">
+        <Sec>not affiliated with any publisher</Sec>
+        <p>
+          dreamports is an unofficial fan project. it is not affiliated with, endorsed by or sponsored by sega,
+          nintendo or any other publisher. game names and trademarks belong to their owners, and appear here only
+          to say which game a project works with.
+        </p>
+        <p>
+          the site’s own design never uses publishers’ logos, box art or characters. pictures of games come only
+          from the makers’ own recordings.
+        </p>
+      </section>
+
+      <section id="privacy">
+        <Sec>your privacy</Sec>
+        <p>
+          there are no accounts, no ads and no cookies. the site keeps a few small notes in your own browser:
+          whether you switched on menu sounds, which look and motion you picked, and, until you close the tab,
+          which games you’ve confirmed you own. those notes never leave your device, and “forget my choices” in
+          settings clears your menu choices at any time.
+        </p>
+        <p>
+          sonic advance dreamport, played here on dreamports.net, keeps its own notes in your browser: your settings,
+          the emeralds you’ve collected and, unless you untick “remember on this device”, your game files, so you don’t
+          have to add them on every visit. they never leave your device either, and clearing this site’s data removes them.
+        </p>
+        <p>
+          to see which pages people read, the site counts visits with <a href="https://www.cloudflare.com/web-analytics/">cloudflare web analytics</a>.
+          it notes the page you opened, the site that sent you there, your browser, your country and how fast the
+          page loaded. it stores nothing in your browser, doesn’t keep your ip address and doesn’t follow you to
+          other sites.
+        </p>
+      </section>
+
+      <section id="credits">
+        <Sec>credits</Sec>
+        <ul>
+          <li>
+            <strong>the site.</strong> made by <a href={OWNER_URL}>nahuel genchi</a>.
+            its <a href={SOURCE_URL}>source code</a> is free to reuse under the mit license.
+          </li>
+          <li>
+            <strong>type.</strong> headings are set in <a href="https://github.com/IdreesInc/Monocraft">monocraft</a> by
+            idrees hassan, and the text in <a href="https://github.com/productiontype/Newsreader">newsreader</a> by
+            production type, both under the sil open font license
+            (<a href="/licenses/monocraft-OFL.txt">monocraft’s</a>, <a href="/licenses/newsreader-OFL.txt">newsreader’s</a>).
+          </li>
+          <li>
+            <strong>the star.</strong> drawn by narik,
+            from <a href="https://soulofkiran.itch.io/pixel-art-animated-star">pixel art animated star</a>.
+          </li>
+          <li>
+            <strong>the menu’s sounds.</strong> made for dreamports, and played by your own browser.
+          </li>
+        </ul>
+      </section>
+
+      <section id="contact">
+        <Sec>suggest a port, report a problem or get in touch</Sec>
+        <p>
+          open an <a href={SUGGEST_URL}>issue on github</a>. it takes a free github account, and you don’t need to
+          be a developer to fill it in. please never attach game files.
+        </p>
+        <p>
+          for anything else, including messages from publishers or other rights holders, write to <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+        </p>
+      </section>
+    </div>
+  </div>
+  <a class="card-close" href="/" data-close><Key label="esc" pad="B" round />close</a>
+</dialog>

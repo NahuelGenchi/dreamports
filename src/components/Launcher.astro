@@ -1,0 +1,156 @@
+---
+// The whole site is this one screen: a top bar with the filters, one row of games across the
+// middle, corner buttons at the bottom, and cards that open over it. Every page shows it, with
+// its own card open: a game's own page opens that game's card, and /about/ opens about.
+// Without JavaScript the row is a plain list of links and the open card is the page's text.
+import AboutCard from './AboutCard.astro';
+import Doorway from './Doorway.astro';
+import GateCard from './GateCard.astro';
+import InspectCard from './InspectCard.astro';
+import Key from './Key.astro';
+import SettingsCard from './SettingsCard.astro';
+import Slot from './Slot.astro';
+import { FILTERS, SECTIONS, SLOTS, gameUrl, getGames, type Filter, type FilterKey, type Game } from '../lib/site';
+
+interface Props {
+  filter: FilterKey;
+  // The game the row starts on.
+  selected?: string;
+  // The card that is open when the page loads.
+  open?: 'about' | 'inspect';
+}
+
+const { filter, selected, open } = Astro.props;
+const games = await getGames();
+const rows = FILTERS.map((f) => {
+  const list: (Game | undefined)[] = games.filter((game) => f.kinds.includes(game.data.kind));
+  while (list.length < SLOTS) list.push(undefined);
+  return { filter: f, list };
+});
+const current = rows.find((row) => row.filter.key === filter)!;
+const selIndex = Math.max(0, current.list.findIndex((game) => game && game.id === selected));
+const selGame = current.list[selIndex];
+const Heading = open ? 'h2' : 'h1';
+// Every address that shows a filter: its own, and the older one for each kind of game in it.
+const pathsFor = (f: Filter) =>
+  [f.path, ...SECTIONS.filter((s) => f.kinds.includes(s.kind)).map((s) => `/${s.path}/`)].join(' ');
+---
+
+<div class="launcher" id="launcher" data-filter={filter} data-sel={selIndex}>
+  <header class="topbar">
+    <div class="pill clock" aria-hidden="true"><Doorway /><time id="clock"></time></div>
+    <div class="filters">
+      <button type="button" class="shoulder" id="btn-l" aria-label="previous filter" aria-keyshortcuts="L Q">L</button>
+      <div class="tabs" role="tablist" aria-label="filters">
+        {
+          FILTERS.map((f, i) => (
+            <Fragment>
+              {i > 0 && <span class="tab-sep" aria-hidden="true">·</span>}
+              <a
+                class="tab"
+                role="tab"
+                id={`tab-${i}`}
+                href={f.path}
+                data-filter={f.key}
+                data-title={f.title}
+                data-paths={pathsFor(f)}
+                aria-selected={f.key === filter ? 'true' : 'false'}
+                aria-controls="row"
+                tabindex={f.key === filter ? undefined : -1}
+              >
+                {f.label}
+              </a>
+            </Fragment>
+          ))
+        }
+        <i class="tab-mark" id="tab-mark" aria-hidden="true"></i>
+      </div>
+      <button type="button" class="shoulder" id="btn-r" aria-label="next filter" aria-keyshortcuts="R E">R</button>
+    </div>
+    <button type="button" class="pill status" id="status" aria-label="settings">
+      <svg id="ico-sound" viewBox="0 0 11 9" shape-rendering="crispEdges" aria-hidden="true"></svg>
+      <svg id="ico-pad" viewBox="0 0 13 8" shape-rendering="crispEdges" aria-hidden="true"></svg>
+    </button>
+  </header>
+
+  <main class="stage" id="stage">
+    <Heading class="sr-only">dreamports</Heading>
+    <div class="row" id="row" aria-label={`games: ${current.filter.label}`}>
+      {current.list.map((game, i) => <Slot game={game} index={i} />)}
+    </div>
+    <div class="cursor" id="cursor" aria-hidden="true">
+      <i class="c-tl" data-dx="-1" data-dy="-1"></i>
+      <i class="c-tr" data-dx="1" data-dy="-1"></i>
+      <i class="c-bl" data-dx="-1" data-dy="1"></i>
+      <i class="c-br" data-dx="1" data-dy="1"></i>
+    </div>
+    <div class="nameplate" id="nameplate" aria-hidden="true">
+      <Key label="enter" pad="A" round />
+      <span class="np-text"><span class="np-name" id="np-name"></span><span class="np-detail" id="np-detail"></span></span>
+    </div>
+  </main>
+
+  <div class="target" id="target" aria-hidden="true">
+    <div class="t-door"><Doorway /><span class="t-door-mouth"></span><span class="t-glow"></span></div>
+  </div>
+
+  <nav class="corners" aria-label="menu">
+    <div class="corner-group">
+      <button type="button" class="corner" id="btn-settings" aria-keyshortcuts="S">
+        <Key label="s">
+          <svg viewBox="0 0 5 4"><path d="M0 0h5v1H0zM0 1.5h5v1H0zM0 3h5v1H0z"></path></svg>
+        </Key>
+        <svg class="c-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
+          <path d="M0 1h9v1H0zM5 0h2v3H5zM0 4h9v1H0zM1 3h2v3H1zM0 7h9v1H0zM4 6h2v3H4z"></path>
+        </svg>
+        settings
+      </button>
+      <a class="corner" id="btn-about" href="/about/" aria-keyshortcuts="A">
+        <Key label="a" pad="Y" round />
+        <Doorway class="c-icon" />
+        about
+      </a>
+    </div>
+    <div class="corner-group">
+      <a class="corner" id="btn-inspect" href={selGame ? gameUrl(selGame) : current.filter.path} aria-keyshortcuts="I">
+        <Key label="i" pad="X" round />
+        <svg class="c-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
+          <path d="M1 0h4v1H1zM0 1h1v4H0zM5 1h1v4H5zM1 5h4v1H1zM5 5h2v2H5zM7 7h2v2H7z"></path>
+        </svg>
+        inspect
+      </a>
+    </div>
+  </nav>
+</div>
+
+<div class="blackout" id="blackout" hidden>
+  <div class="bo-inner">
+    <Doorway />
+    <p class="bo-line">opening <span id="bo-name"></span><span class="bo-dots"></span></p>
+    <button type="button" class="bo-back" id="bo-back" hidden><Key label="esc" pad="B" round />back to the menu</button>
+  </div>
+</div>
+
+{
+  rows.map((row) => (
+    <template id={`slots-${row.filter.key}`}>
+      {row.list.map((game, i) => <Slot game={game} index={i} />)}
+    </template>
+  ))
+}
+
+<SettingsCard />
+<AboutCard open={open === 'about'} />
+{
+  games.map((game) => (
+    <Fragment>
+      <InspectCard game={game} open={open === 'inspect' && game.id === selected} />
+      <GateCard game={game} own={open === 'inspect' && game.id === selected} />
+    </Fragment>
+  ))
+}
+<div class="sr-only" aria-live="polite" id="live"></div>
+
+<script>
+  import '../scripts/launcher';
+</script>

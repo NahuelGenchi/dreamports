@@ -1,11 +1,9 @@
 ---
+// A game's own page: the menu, on that game, with its card open.
 import type { GetStaticPaths } from 'astro';
-import { Image } from 'astro:assets';
-import { render } from 'astro:content';
 import Base from '../../layouts/Base.astro';
-import Facts from '../../components/Facts.astro';
-import OwnCopyGate from '../../components/OwnCopyGate.astro';
-import { getGames, sectionFor, type Game } from '../../lib/site';
+import Launcher from '../../components/Launcher.astro';
+import { filterFor, getGames, sectionFor, type Game } from '../../lib/site';
 
 export const getStaticPaths = (async () => {
   const games = await getGames();
@@ -20,39 +18,8 @@ interface Props {
 }
 
 const { game } = Astro.props;
-const { title, kind, platform, year, lead, summary, facts, media } = game.data;
-const section = sectionFor(kind);
-const { Content, headings } = await render(game);
-const toc = [
-  { id: 'play', text: 'before you play' },
-  ...headings.filter((heading) => heading.depth === 2).map((heading) => ({ id: heading.slug, text: heading.text })),
-];
 ---
 
-<Base title={title} description={summary} current={kind} toc={toc}>
-  <p class="label">
-    <span class="kind">{section.label}</span> · {platform}{year && ` · ${year}`}
-  </p>
-  <h1>{title}</h1>
-  <p class="lead">{lead}</p>
-
-  {
-    media && (
-      <figure class="media">
-        <Image src={media.src} alt={media.alt} widths={[640, 1280]} sizes="(max-width: 760px) 100vw, 640px" />
-        {media.caption && <figcaption>{media.caption}</figcaption>}
-      </figure>
-    )
-  }
-
-  <OwnCopyGate game={game} />
-  {facts.length > 0 && <Facts facts={facts} />}
-
-  <div class="prose">
-    <Content />
-  </div>
-
-  <p class="back">
-    <a href={`/${section.path}/`}><span aria-hidden="true">←</span> {section.backLabel}</a>
-  </p>
+<Base title={game.data.title} description={game.data.summary}>
+  <Launcher filter={filterFor(game.data.kind).key} selected={game.id} open="inspect" />
 </Base>

@@ -35,6 +35,10 @@ facts:
   - label: the story
     value: on nahuelgenchi.com
     href: https://nahuelgenchi.com/gaming/kirbys-dead-land/
+screen:
+  clip: /media/kirbys-dead-land.webp
+  still: /media/kirbys-dead-land-still.webp
+glow: '#ffa9d4'
 ---
 
 ## what it adds

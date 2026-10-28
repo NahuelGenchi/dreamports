@@ -1,0 +1,16 @@
+---
+// A button hint: the key to press, or the controller button while a controller is in use.
+// Hints hide on touch screens. A controller button that is an icon goes in the slot.
+interface Props {
+  label: string;
+  pad?: string;
+  round?: boolean;
+}
+
+const { label, pad, round = false } = Astro.props;
+---
+
+<span class:list={['key', round && 'round']} aria-hidden="true">
+  <span class="kk">{label}</span>
+  <span class="kp">{pad ?? <slot />}</span>
+</span>
