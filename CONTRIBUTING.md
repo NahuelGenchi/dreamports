@@ -6,7 +6,7 @@ Thanks for helping Dreamports! Keep the work small, traceable, and honest about 
 
 You don't need to write code to make Dreamports better. With a free GitHub account you can:
 
-- **Suggest a port** for the External ports section: a fan port made by someone else. Link its own page and say who made it.
+- **Suggest a port** made by another fan, for the site's mash-ups. Link its own page and say who made it.
 - **Report a problem** on the site: a broken link, a page that looks wrong on your phone, a typo.
 - **Share an idea** for something the site could do.
 
@@ -34,7 +34,7 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 
 ## Add a game
 
-Each game page comes from **one Markdown file** in [`src/content/games/`](src/content/games/). To add a game, copy one of the files there, give it a new name, and change the text. Nothing else needs editing: the home page, the section page and the counts in the menu find the new file by themselves.
+Each game page comes from **one Markdown file** in [`src/content/games/`](src/content/games/). To add a game, copy one of the files there, give it a new name, and change the text. Nothing else needs editing: the menu finds the new file by itself. Dreamports appear in the **dreamports** row, and external ports and other games in the **mash-ups** row.
 
 The file name becomes the page address. `src/content/games/my-port.md` appears at `/dreamports/my-port/`, `/external-ports/my-port/` or `/other-games/my-port/`, depending on its `kind`. Use lowercase letters, numbers and dashes.
 
@@ -44,26 +44,39 @@ The top of the file, between the two `---` lines, holds the details. The site is
 | :--- | :--- |
 | `title` | The game's name on the site, such as `sonic advance dreamport` |
 | `kind` | `dreamport`, `external` (a port made by someone else) or `other` (a fan game that isn't a port) |
-| `platform` | The short line above the title, such as `game boy advance` or `a mod for dead cells` |
+| `platform` | The short line under the game's name in the menu and above its title, such as `game boy advance` or `a mod for dead cells` |
 | `year` | Optional: the year the original game came out |
 | `added` | The day it was added, written as `2026-10-27` |
-| `summary` | One sentence for the lists of games |
+| `summary` | One sentence about the game, shown when its page is shared or found with a search engine |
 | `lead` | The paragraph under the title on the game's own page |
 | `ownCopy` → `text` | Which copy of the game it needs, and that dreamports never hosts game files |
 | `ownCopy` → `confirm` | The sentence visitors tick, such as `i own sonic advance, and i’m using my own legal copy of the game.` |
 | `ownCopy` → `links` | The play or download links. Each has a `label`, an `href` starting with `https://`, and an `icon`: `play` or `download`. The first is the main button |
 | `ownCopy` → `note` | A short line shown once the box is ticked, such as where the link goes |
 | `facts` | The rows of the "the game" box, each with a `label`, a `value` and, if it's a link, an `href` |
-| `media` | Optional, and only with the owner's own recording: `src` (a picture saved next to the Markdown file), `alt` (what it shows, for people who can't see it) and `caption` |
+| `screen` | Optional, and only with the owner's own recording: `clip` (the recording), `still` (its first frame) and, for pixel-art games, `pixelated: true`, which keeps the pixels sharp. See below |
+| `glow` | Optional: the colour of the light the game casts on the menu while it's selected, in quotes, such as `'#8fd1ff'` |
 
 Below the second `---` is the page itself, in Markdown. `## ` lines become headings and the "on this page" list, `- ` lines become bullet points, and `1. ` lines become numbered steps.
+
+**A game's recording** is a few seconds of the game being played, looping smoothly, saved as an animated WebP in [`public/media/`](public/media/). Its first frame goes next to it as a still WebP picture. The menu shows the still until someone selects the game, and keeps showing it when motion is set to calm. Keep the recording short and small, because visitors download it when they select the game. In the game's file it looks like this:
+
+```yaml
+screen:
+  clip: /media/my-port.webp
+  still: /media/my-port-still.webp
+  pixelated: true
+glow: '#8fd1ff'
+```
+
+Recordings come only from the owner's own play of their own projects: never box art, logos or pictures from publishers. A game without a recording gets a plain dreamports card.
 
 Two rules keep the site honest:
 
 - **Every play or download link goes in `ownCopy` → `links`,** never in the text below, so visitors always confirm they own the game first.
 - **For an external port,** link its own page and credit the people who made it, by name.
 
-Then run `npm run check` and `npm run build`. If a detail is missing or misspelled, they stop and name it. Finally, look at the new page in a browser at a phone width and a computer width, in light and dark mode.
+Then run `npm run check` and `npm run build`. If a detail is missing or misspelled, they stop and name it. Finally, look at the menu and the new page in a browser at a phone width and a computer width, in light and dark mode.
 
 ## One work item, one delivery trail
 
