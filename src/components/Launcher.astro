@@ -116,12 +116,17 @@ const pathsFor = (f: Filter) =>
       </a>
     </div>
     <div class="corner-group">
-      <a class="corner" id="btn-inspect" href={selGame ? gameUrl(selGame) : current.filter.path} aria-keyshortcuts="I">
+      <a
+        class="corner no-label"
+        id="btn-inspect"
+        href={selGame ? gameUrl(selGame) : current.filter.path}
+        aria-label="game info"
+        aria-keyshortcuts="I"
+      >
         <Key label="i" pad="X" round />
         <svg class="c-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
-          <path d="M1 0h4v1H1zM0 1h1v4H0zM5 1h1v4H5zM1 5h4v1H1zM5 5h2v2H5zM7 7h2v2H7z"></path>
+          <path d="M2 0h5v1H2zM1 1h1v1H1zM7 1h1v1H7zM0 2h1v5H0zM8 2h1v5H8zM1 7h1v1H1zM7 7h1v1H7zM2 8h5v1H2zM4 2h1v1H4zM4 4h1v3H4z"></path>
         </svg>
-        inspect
       </a>
     </div>
   </nav>
