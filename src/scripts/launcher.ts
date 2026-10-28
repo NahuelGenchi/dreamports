@@ -1002,7 +1002,14 @@ function start(launcher: HTMLElement) {
       if (!box.checked) return;
       const button = e.submitter instanceof HTMLButtonElement ? e.submitter : buttons[0];
       const href = button.formAction;
-      if (button.dataset.icon === 'play') launch(dlg, href);
+      if (button.dataset.icon === 'play') {
+        launch(dlg, href);
+        return;
+      }
+      // downloads open in a new tab, so the menu stays as it was. If the browser blocks the
+      // new tab, the download opens here instead.
+      const tab = window.open(href, '_blank');
+      if (tab) tab.opener = null;
       else window.location.assign(href);
     });
   }
