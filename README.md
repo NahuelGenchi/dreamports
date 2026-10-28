@@ -6,7 +6,7 @@
 
 ### Classic games, brought back by fans, with the extras fans dream of.
 
-Free · Bring your own copy of the game · Coming soon to **dreamports.net**
+Free · Bring your own copy of the game · Live at **[dreamports.net](https://dreamports.net)**
 
 <br>
 
@@ -18,7 +18,7 @@ Free · Bring your own copy of the game · Coming soon to **dreamports.net**
 
 ## What is Dreamports?
 
-Dreamports is a website, coming soon at **dreamports.net**, that gathers fan-made ports of classic games in one place. This repository holds its source code.
+Dreamports is a website, at **[dreamports.net](https://dreamports.net)**, that gathers fan-made ports of classic games in one place. This repository holds its source code.
 
 A **port** is a game brought somewhere new to play: your web browser, your computer, or a newer console. A **Dreamport** is the port fans always dreamed of: the game you remember, with the extras you wished it had. Widescreen, smoother motion, new ways to play: every extra is optional, and every Dreamport is made by a fan, for fans.
 
@@ -47,7 +47,7 @@ Fan games that aren't ports, such as *Kirby's Dead Land*.
 
 ## What's inside
 
-These are the projects the site will start with. Each one lives in its own repository.
+These are the projects on the site so far. Each one lives in its own repository.
 
 | | Project | What it is | Try it |
 | :---: | :--- | :--- | :--- |
@@ -66,7 +66,7 @@ Not sure what that means? Here's how it works:
 2. **You make your own copy** of it on your computer, called a *ROM* or a *game dump*. Each project explains which copy it needs.
 3. **The port reads your copy on your device.** Your copy is never uploaded anywhere.
 
-Before you play or download anything, the site will ask you to confirm that you're using your own legal copy.
+Before you play or download anything, the site asks you to confirm that you're using your own legal copy.
 
 ## Progress
 
@@ -79,7 +79,7 @@ The work is split into four steps, called *milestones*. The counts update by the
 | **[M2 — Live on dreamports.net](https://github.com/NahuelGenchi/dreamports/milestone/3)** | The site online at its own address, updated automatically | ![M2 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/3?style=flat-square&label=tasks%20done&color=8b5cf6) |
 | **[M3 — Growth](https://github.com/NahuelGenchi/dreamports/milestone/4)** | More entries, plus search, filters and news | ![M3 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/4?style=flat-square&label=tasks%20done&color=8b5cf6) |
 
-✅ The address **dreamports.net** is registered and waiting for the site.
+✅ The site is live at **[dreamports.net](https://dreamports.net)**.
 
 ## Help out
 
@@ -108,7 +108,7 @@ Press **Star** at the top of this page to keep Dreamports on your radar.
 </tr>
 </table>
 
-**Developers:** every change follows the same trail, 📝 issue → 🌿 branch → 🎯 milestone → 🔀 pull request, so anything on the site can be traced back to why it was made. Start with [CONTRIBUTING.md](CONTRIBUTING.md); the full rules are in [docs/TRACKING.md](docs/TRACKING.md). The site is built with [Astro](https://astro.build/), and adding a game takes one Markdown file: CONTRIBUTING.md shows how.
+**Developers:** every change follows the same trail, 📝 issue → 🌿 branch → 🎯 milestone → 🔀 pull request, so anything on the site can be traced back to why it was made. Start with [CONTRIBUTING.md](CONTRIBUTING.md); the full rules are in [docs/TRACKING.md](docs/TRACKING.md). The site is built with [Astro](https://astro.build/) and hosted on [Cloudflare](https://www.cloudflare.com/); every change merged here goes live by itself. Adding a game takes one Markdown file: CONTRIBUTING.md shows how.
 
 ## Questions
 
@@ -155,10 +155,18 @@ Yes, if it asks players to bring their own legal copy and doesn't include game f
 </details>
 
 <details>
-<summary><b>When will the website be online?</b></summary>
+<summary><b>Where is the website?</b></summary>
 <br>
 
-The site is being built now. Follow the [progress](#progress) above: it goes live with milestone M2.
+At **[dreamports.net](https://dreamports.net)**. It updates by itself whenever a change is accepted here.
+
+</details>
+
+<details>
+<summary><b>Does the site track me?</b></summary>
+<br>
+
+No accounts, no ads and no cookies. To see which pages people read, the site counts visits with [Cloudflare Web Analytics](https://www.cloudflare.com/web-analytics/), which stores nothing in your browser and doesn't keep your IP address. The site's [privacy section](https://dreamports.net/about/#privacy) has the details.
 
 </details>
 
