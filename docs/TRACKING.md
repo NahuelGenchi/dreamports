@@ -33,10 +33,11 @@ Track all meaningful work: pages, features, bugs, enhancements, docs, research, 
 | M2 | M2 — Live on dreamports.net | The site hosted on Cloudflare at dreamports.net and updated from main, with HTTPS, the www redirect, privacy-friendly analytics, and a contact address |
 | M3 | M3 — Growth | New entries, and features that make the catalog easier to explore, such as search, filters, news, and link previews |
 | M4 | M4 — Sonic Advance Dreamport on dreamports.net | Sonic Advance Dreamport played at dreamports.net, with accounts, achievements and leaderboards, on free Cloudflare services |
+| M5 | M5 — Game launcher | The site as a one-screen game launcher: a row of games to move through, filters, panels such as settings and about, and a launch animation, on phones and computers |
 
 The first issue is #1 (M0). Later milestones may be created deliberately; assign them directly in GitHub.
 
-M0, M1 and M2 are finished and closed. M3 is on hold: for now the work is only Sonic Advance Dreamport, in M4, which is the default for new issues.
+M0, M1 and M2 are finished and closed. M3 is on hold: for now the work is Sonic Advance Dreamport, in M4, and the game launcher, in M5. M4 is the default for new issues.
 
 ## Issue and PR conventions
 
