@@ -66,7 +66,8 @@ jobs:
             M1: ['M1 — First version of the site', 'The Dreamports website built with Astro: the home page, Dreamports, external ports, other games, and the about and legal page, easy to read on phones and computers.'],
             M2: ['M2 — Live on dreamports.net', 'The site hosted on Cloudflare at dreamports.net and updated from main, with HTTPS, the www redirect, privacy-friendly analytics, and a contact address.'],
             M3: ['M3 — Growth', 'New entries, and features that make the catalog easier to explore, such as search, filters, news, and link previews.'],
-            M4: ['M4 — Sonic Advance Dreamport on dreamports.net', 'Sonic Advance Dreamport played at dreamports.net, with accounts, achievements and leaderboards, on free Cloudflare services.']
+            M4: ['M4 — Sonic Advance Dreamport on dreamports.net', 'Sonic Advance Dreamport played at dreamports.net, with accounts, achievements and leaderboards, on free Cloudflare services.'],
+            M5: ['M5 — Game launcher', 'The site as a one-screen game launcher: a row of games to move through, filters, panels such as settings and about, and a launch animation, on phones and computers.']
           };
           const existingMilestones = await list('/milestones?state=all');
           const milestones = {};
@@ -100,7 +101,7 @@ jobs:
             const path = `/issues/${item.number}`;
             const body = item.body ?? '';
             const labels = new Set(item.labels.map(label => label.name));
-            const milestoneKey = body.match(/(?:^Milestone:\s*|^### Milestone\s*\n\s*)(M[0-4])\b/im)?.[1];
+            const milestoneKey = body.match(/(?:^Milestone:\s*|^### Milestone\s*\n\s*)(M[0-5])\b/im)?.[1];
             let desired = item.milestone ?? milestones[milestoneKey ?? 'M4'];
             let incomplete = false;
             if (item.pull_request) {

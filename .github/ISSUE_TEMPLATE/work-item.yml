@@ -33,6 +33,7 @@ body:
         - M2 — Live on dreamports.net
         - M3 — Growth
         - M4 — Sonic Advance Dreamport on dreamports.net
+        - M5 — Game launcher
       default: 4
     validations:
       required: true
