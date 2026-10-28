@@ -13,5 +13,7 @@
   "routes": [{ "pattern": "dreamports.net", "custom_domain": true }],
   // No dreamports.<account>.workers.dev copy of the site, but pull requests keep their preview links.
   "workers_dev": false,
-  "preview_urls": true
+  "preview_urls": true,
+  // Pull request previews use the same settings as the live site. `npx wrangler preview` requires this block.
+  "previews": {}
 }
