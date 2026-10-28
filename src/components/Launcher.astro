@@ -38,7 +38,9 @@ const pathsFor = (f: Filter) =>
 
 <div class="launcher" id="launcher" data-filter={filter} data-sel={selIndex}>
   <header class="topbar">
-    <div class="pill clock" aria-hidden="true"><Doorway /><time id="clock"></time></div>
+    <div class="side">
+      <div class="pill clock" aria-hidden="true"><Doorway /><time id="clock"></time></div>
+    </div>
     <div class="filters">
       <button type="button" class="shoulder" id="btn-l" aria-label="previous filter" aria-keyshortcuts="L Q">L</button>
       <div class="tabs" role="tablist" aria-label="filters">
@@ -67,10 +69,12 @@ const pathsFor = (f: Filter) =>
       </div>
       <button type="button" class="shoulder" id="btn-r" aria-label="next filter" aria-keyshortcuts="R E">R</button>
     </div>
-    <button type="button" class="pill status" id="status" aria-label="settings">
-      <svg id="ico-sound" viewBox="0 0 11 9" shape-rendering="crispEdges" aria-hidden="true"></svg>
-      <svg id="ico-pad" viewBox="0 0 13 8" shape-rendering="crispEdges" aria-hidden="true"></svg>
-    </button>
+    <div class="side end">
+      <button type="button" class="pill status" id="status" aria-label="settings">
+        <svg id="ico-sound" viewBox="0 0 11 9" shape-rendering="crispEdges" aria-hidden="true"></svg>
+        <svg id="ico-pad" viewBox="0 0 13 8" shape-rendering="crispEdges" aria-hidden="true"></svg>
+      </button>
+    </div>
   </header>
 
   <main class="stage" id="stage">
