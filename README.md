@@ -41,6 +41,8 @@ Great ports made by other fans, with a link to their own page and full credit to
 </tr>
 </table>
 
+On a phone or tablet, you can add dreamports to your Home Screen: in Safari, tap Share, then **Add to Home Screen**; in Chrome on Android, open the ⋮ menu and choose **Add to Home screen**. It then opens like an app, without the browser's bars, and so do the games you play from it.
+
 ## What's inside
 
 These are the projects on the site so far. Each one lives in its own repository.
