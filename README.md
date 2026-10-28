@@ -41,6 +41,8 @@ Great ports made by other fans, with a link to their own page and full credit to
 </tr>
 </table>
 
+To find a game by its name, press the magnifier at the bottom right (or the / key) and type. The row then shows only the games whose names match.
+
 On a phone or tablet, you can add dreamports to your Home Screen: in Safari, tap Share, then **Add to Home Screen**; in Chrome on Android, open the ⋮ menu and choose **Add to Home screen**. It then opens like an app, without the browser's bars, and so do the games you play from it.
 
 ## What's inside

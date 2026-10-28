@@ -73,6 +73,9 @@ function start(launcher: HTMLElement) {
   const cursor = $('#cursor', launcher);
   const target = $('#target', launcher);
   const btnInspect = $<HTMLAnchorElement>('#btn-inspect', launcher);
+  const btnSearch = $<HTMLButtonElement>('#btn-search', launcher);
+  const searchBox = $('#search', launcher);
+  const searchInput = $<HTMLInputElement>('#search-input', searchBox);
   const blackout = $('#blackout');
   const boBack = $<HTMLButtonElement>('#bo-back');
   const live = $('#live');
@@ -111,6 +114,8 @@ function start(launcher: HTMLElement) {
     motion: (storedMotion === 'full' || storedMotion === 'calm' ? storedMotion : 'auto') as Motion,
     theme: (storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : null) as Theme | null,
     aboutSec: 'dreamport',
+    // what the search field holds while a search is on
+    search: null as string | null,
   };
   state.sel[state.filter] = Number(launcher.dataset.sel) || 0;
 
@@ -157,20 +162,27 @@ function start(launcher: HTMLElement) {
   const sel = () => state.sel[state.filter];
   const gameAt = (i: number) => slots[i]?.dataset.game ?? null;
 
-  function buildRow() {
+  // keep: the game to stay on, where the new row has it, or else the first place
+  function buildRow(keep?: string | null) {
     sleepRow();
     const f = FILTERS[state.filter];
     rowEl.replaceChildren(f.template.content.cloneNode(true));
+    const words = searchWords();
+    if (words.length) narrow(words);
     slots = $$('.slot', rowEl);
+    if (keep !== undefined) state.sel[state.filter] = Math.max(0, slots.findIndex((el) => el.dataset.game === keep));
+    state.sel[state.filter] = Math.min(sel(), slots.length - 1);
     slots.forEach((el, i) => {
       el.id = `slot-${i}`;
       el.setAttribute('role', 'option');
       el.setAttribute('aria-posinset', String(i + 1));
       el.setAttribute('aria-setsize', String(slots.length));
-      el.setAttribute('aria-label', el.dataset.game ? `${el.dataset.title}, ${el.dataset.detail}` : 'empty slot');
+      el.setAttribute('aria-label', el.dataset.game ? `${el.dataset.title}, ${el.dataset.detail}` : (el.dataset.note ?? 'empty slot'));
       el.tabIndex = -1;
     });
-    rowEl.setAttribute('aria-label', 'games: ' + f.label);
+    rowEl.setAttribute('aria-label', 'games: ' + f.label + (words.length ? `, matching ${state.search}` : ''));
+    for (const el of [searchInput, btnSearch]) el.setAttribute('aria-label', 'search ' + f.label);
+    searchInput.placeholder = 'search ' + f.label;
     rowEl.classList.add('no-anim');
     applySel(false);
     void rowEl.offsetWidth;
@@ -298,7 +310,7 @@ function start(launcher: HTMLElement) {
   function updatePlate() {
     const slot = slots[sel()];
     const game = slot?.dataset.game;
-    const text = game ? slot.dataset.title! : 'empty slot';
+    const text = game ? slot.dataset.title! : (slot?.dataset.note ?? 'empty slot');
     if (plateName.textContent === text) return;
     const w0 = plate.getBoundingClientRect().width;
     plateName.textContent = text;
@@ -442,8 +454,7 @@ function start(launcher: HTMLElement) {
       rowEl.classList.remove(inCls);
       if (hadFocus) slots[sel()].focus({ preventScroll: true });
       switching = false;
-      const n = FILTERS[f].count;
-      announce(`${FILTERS[f].label}: ${n} ${n === 1 ? 'game' : 'games'} and ${slots.length - n} empty slots`);
+      announce(rowNews());
     };
     history.replaceState(history.state, '', FILTERS[f].path);
     document.title = FILTERS[f].title;
@@ -484,6 +495,102 @@ function start(launcher: HTMLElement) {
     mark.style.left = t.offsetLeft + pad + 'px';
     mark.style.width = Math.max(0, t.offsetWidth - pad * 2) + 'px';
   }
+
+  // ---------- Search ----------
+
+  // The search field takes the filters' place, and the row keeps only the games whose titles
+  // have every word typed. L and R still switch rows, and the search goes along. What is typed
+  // stays on the page.
+
+  // capitals, accents and punctuation don't count, so "kirbys" finds "kirby’s dead land"
+  const plain = (text: string) =>
+    text
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .replace(/['’‘`]/g, '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim();
+  const searchWords = () => (state.search ? plain(state.search).split(' ').filter(Boolean) : []);
+
+  function narrow(words: string[]) {
+    let n = 0;
+    for (const el of $$('.slot', rowEl)) {
+      const title = el.dataset.title;
+      if (title && words.every((w) => plain(title).includes(w))) el.dataset.index = String(n++);
+      else el.remove();
+    }
+    if (n) return;
+    // with nothing to show, one empty place says so
+    const none = document.createElement('div');
+    none.className = 'slot';
+    none.dataset.index = '0';
+    none.dataset.empty = '';
+    none.dataset.note = 'nothing matches';
+    none.innerHTML = '<span class="lift"><span class="hollow"></span></span>';
+    rowEl.append(none);
+  }
+
+  // what a screen reader hears about the row: its games and empty slots, or what the search found
+  function rowNews() {
+    const f = FILTERS[state.filter];
+    if (searchWords().length) {
+      const n = slots.filter((el) => el.dataset.game).length;
+      return n ? `${f.label}: ${n} ${n === 1 ? 'game matches' : 'games match'}` : `${f.label}: nothing matches`;
+    }
+    const n = f.count;
+    return `${f.label}: ${n} ${n === 1 ? 'game' : 'games'} and ${slots.length - n} empty slots`;
+  }
+
+  // where each row was when the search started, for when it ends without a game picked
+  let searchSel: number[] = [];
+  function startSearch() {
+    if (busy()) return;
+    if (state.search === null) {
+      searchSel = [...state.sel];
+      state.search = '';
+      searchInput.value = '';
+      searchBox.hidden = false;
+      launcher.classList.add('is-searching');
+      btnSearch.setAttribute('aria-expanded', 'true');
+      sound.play('open');
+    }
+    searchInput.focus({ preventScroll: true });
+  }
+  // the whole row comes back, on the game the search was on
+  function endSearch() {
+    if (state.search === null) return;
+    const game = gameAt(sel());
+    const hadFocus = searchBox.contains(document.activeElement) || rowEl.contains(document.activeElement);
+    state.search = null;
+    state.sel = searchSel;
+    searchBox.hidden = true;
+    launcher.classList.remove('is-searching');
+    btnSearch.setAttribute('aria-expanded', 'false');
+    buildRow(game ?? undefined);
+    if (hadFocus) slots[sel()].focus({ preventScroll: true });
+    sound.play('close');
+    announce(rowNews());
+  }
+  const toResults = () => slots[sel()].focus({ preventScroll: true });
+
+  searchInput.addEventListener('input', () => {
+    if (state.search === null) return;
+    state.search = searchInput.value;
+    buildRow(gameAt(sel()));
+    if (searchWords().length) announce(rowNews());
+  });
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.isComposing) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      endSearch();
+    } else if (e.key === 'Enter' || e.key === 'ArrowDown') {
+      // the keyboard's search key on a phone, too: it goes to the results and puts the keyboard away
+      e.preventDefault();
+      toResults();
+    }
+  });
 
   // ---------- Swipe, drag, click and wheel ----------
 
@@ -1349,6 +1456,8 @@ function start(launcher: HTMLElement) {
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target as Element;
+    // letters type into the search field, and a phone's own keyboard keeps the touch hints
+    if (t === searchInput) return;
     setInput('keys');
     // only escape goes back: a held enter key must not undo the launch it started
     if (state.launching) {
@@ -1377,6 +1486,12 @@ function start(launcher: HTMLElement) {
           nextFilter();
           FILTERS[state.filter].tab.focus();
         } else move(1);
+        break;
+      case 'ArrowUp':
+        // from the results back up to the search field
+        if (state.search === null || !onSlot) break;
+        e.preventDefault();
+        searchInput.focus({ preventScroll: true });
         break;
       case 'Home':
         e.preventDefault();
@@ -1417,6 +1532,15 @@ function start(launcher: HTMLElement) {
       case 'a':
         e.preventDefault();
         if (!busy()) openCard(aboutCard);
+        break;
+      case '/':
+        e.preventDefault();
+        startSearch();
+        break;
+      case 'Escape':
+        if (state.search === null) break;
+        e.preventDefault();
+        endSearch();
         break;
     }
   });
@@ -1505,6 +1629,11 @@ function start(launcher: HTMLElement) {
       return;
     }
     if (step === 1 || step === -1) move(step);
+    // select opens the search, down and up go between its field and the results, and B ends it
+    if (edges.includes(8)) startSearch();
+    if (step === 2 && document.activeElement === searchInput) toResults();
+    if (step === -2 && state.search !== null) searchInput.focus({ preventScroll: true });
+    if (edges.includes(1)) endSearch();
     if (edges.includes(0)) primary();
     if (edges.includes(2)) inspect();
     if (edges.includes(3) && !busy()) openCard(aboutCard);
@@ -1563,6 +1692,8 @@ function start(launcher: HTMLElement) {
     e.preventDefault();
     if (!busy()) openCard(aboutCard, { opener: e.currentTarget as HTMLElement });
   });
+  btnSearch.addEventListener('click', startSearch);
+  $('#search-end', searchBox).addEventListener('click', endSearch);
   btnInspect.addEventListener('click', (e) => {
     if (!plainClick(e) && btnInspect.getAttribute('aria-disabled') !== 'true') return;
     e.preventDefault();
