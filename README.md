@@ -51,7 +51,7 @@ These are the projects on the site so far. Each one lives in its own repository.
 
 | | Project | What it is | Try it |
 | :---: | :--- | :--- | :--- |
-| 🌙 | **[Sonic Advance Dreamport](https://github.com/NahuelGenchi/sonic-advance-dreamport)** | Sonic Advance (Game Boy Advance, 2001), rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [▶&nbsp;Play](https://nahuelgenchi.github.io/sonic-advance-dreamport/) |
+| 🌙 | **[Sonic Advance Dreamport](https://github.com/NahuelGenchi/sonic-advance-dreamport)** | Sonic Advance (Game Boy Advance, 2001), rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
 | ✨ | **[Kirby's Dead Land](https://github.com/NahuelGenchi/kirbys-dead-land)** | A mod that lets you play as Kirby inside Dead Cells, with his moves and copy abilities. For Linux; Windows is in testing. | [⬇&nbsp;Download](https://github.com/NahuelGenchi/kirbys-dead-land/releases/latest) |
 | 🧭 | **Your favorite fan port?** | External ports are on their way. Know a great one? | [💡&nbsp;Suggest](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml) |
 
