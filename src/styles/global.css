@@ -1302,12 +1302,9 @@ dialog.card.is-in::backdrop {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 12px;
   padding: 6px 2px;
   border: 0;
   background: none;
-  color: var(--dim);
-  font: 400 13.5px var(--font);
   cursor: pointer;
 }
 
@@ -1342,11 +1339,6 @@ dialog.card.is-in::backdrop {
 .switch[aria-checked='true'] .switch-knob {
   transform: translateX(16px);
   background: #0a1738;
-}
-
-.switch-state {
-  min-width: 2em;
-  text-align: left;
 }
 
 .seg {
@@ -2049,8 +2041,15 @@ dialog.card.is-in::backdrop {
     --bz: 4px;
   }
 
+  /* the button takes the room beside the picture, and a long name goes onto two lines */
   .ins-show .btn {
-    padding: 0 14px;
+    flex: 1 1 0;
+    gap: 8px;
+    min-width: 0;
+    padding: 10px;
+    line-height: 20px;
+    white-space: normal;
+    text-wrap: balance;
   }
 
   .row {

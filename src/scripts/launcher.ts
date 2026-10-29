@@ -937,7 +937,6 @@ function start(launcher: HTMLElement) {
   const sndSwitch = $('#snd-switch', settingsCard);
   function syncSettings() {
     sndSwitch.setAttribute('aria-checked', String(state.sound));
-    $('#snd-state', settingsCard).textContent = state.sound ? 'On' : 'Off';
     $<HTMLInputElement>('#theme-light', settingsCard).checked = !isDark();
     $<HTMLInputElement>('#theme-dark', settingsCard).checked = isDark();
     $('#theme-desc', settingsCard).textContent = state.theme
