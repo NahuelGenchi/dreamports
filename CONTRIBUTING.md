@@ -38,19 +38,19 @@ Each game page comes from **one Markdown file** in [`src/content/games/`](src/co
 
 The file name becomes the page address. `src/content/games/my-port.md` appears at `/dreamports/my-port/`, `/external-ports/my-port/` or `/other-games/my-port/`, depending on its `kind`. Use lowercase letters, numbers and dashes.
 
-The top of the file, between the two `---` lines, holds the details. The site is written in lowercase, so write these in lowercase too.
+The top of the file, between the two `---` lines, holds the details. Write them as normal sentences and labels: a capital at the start, and names with their own capitals.
 
 | Field | What to write |
 | :--- | :--- |
-| `title` | The game's name on the site, such as `sonic advance dreamport` |
+| `title` | The game's name on the site, such as `Sonic Advance Dreamport` |
 | `kind` | `dreamport`, `external` (a port made by someone else) or `other` (a fan game that isn't a port) |
-| `platform` | The short line under the game's name in the menu and above its title, such as `game boy advance` or `a mod for dead cells` |
+| `platform` | The short line under the game's name in the menu and above its title, such as `Game Boy Advance` or `A mod for Dead Cells` |
 | `year` | Optional: the year the original game came out |
 | `added` | The day it was added, written as `2026-10-27` |
 | `summary` | One sentence about the game, shown when its page is shared or found with a search engine |
 | `lead` | The paragraph under the title on the game's own page |
 | `ownCopy` → `text` | Which copy of the game it needs, and that dreamports never hosts game files |
-| `ownCopy` → `confirm` | The sentence visitors tick, such as `i own sonic advance, and i’m using my own legal copy of the game.` |
+| `ownCopy` → `confirm` | The sentence visitors tick, such as `I own Sonic Advance, and I’m using my own legal copy of the game.` |
 | `ownCopy` → `links` | The play or download links. Each has a `label`, an `href` starting with `https://`, and an `icon`: `play` or `download`. The first is the main button |
 | `ownCopy` → `note` | A short line shown once the box is ticked, such as where the link goes |
 | `facts` | The rows of the "the game" box, each with a `label`, a `value` and, if it's a link, an `href` |

@@ -22,7 +22,7 @@ Never describe something as working or complete unless a recorded check establis
 | `public/` | Files served as they are: icons, the star, the social preview, font licenses, and the games' recordings in `public/media/` |
 | `wrangler.jsonc` | How Cloudflare serves the built site from `dist/`, with no server code |
 
-Commands: `npm run dev`, `npm run check`, `npm run build`, `npm run preview`. Site text is lowercase, with exceptions such as abbreviations (`ROM`) and key names. Play and download links live only in a game's `ownCopy.links`, behind the "before you play" confirmation.
+Commands: `npm run dev`, `npm run check`, `npm run build`, `npm run preview`. Site text uses normal capitals: sentences and labels start with one, and names keep theirs (games, platforms, people, Dreamports); key hints are written as on a keyboard (`Esc`, `Enter`). Play and download links live only in a game's `ownCopy.links`, behind the "Before you play" confirmation.
 
 ## Working well here
 

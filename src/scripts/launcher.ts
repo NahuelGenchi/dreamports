@@ -177,12 +177,12 @@ function start(launcher: HTMLElement) {
       el.setAttribute('role', 'option');
       el.setAttribute('aria-posinset', String(i + 1));
       el.setAttribute('aria-setsize', String(slots.length));
-      el.setAttribute('aria-label', el.dataset.game ? `${el.dataset.title}, ${el.dataset.detail}` : (el.dataset.note ?? 'empty slot'));
+      el.setAttribute('aria-label', el.dataset.game ? `${el.dataset.title}, ${el.dataset.detail}` : (el.dataset.note ?? 'Empty slot'));
       el.tabIndex = -1;
     });
-    rowEl.setAttribute('aria-label', 'games: ' + f.label + (words.length ? `, matching ${state.search}` : ''));
-    for (const el of [searchInput, btnSearch]) el.setAttribute('aria-label', 'search ' + f.label);
-    searchInput.placeholder = 'search ' + f.label;
+    rowEl.setAttribute('aria-label', 'Games: ' + f.label + (words.length ? `, matching ${state.search}` : ''));
+    for (const el of [searchInput, btnSearch]) el.setAttribute('aria-label', 'Search ' + f.label);
+    searchInput.placeholder = 'Search ' + f.label;
     rowEl.classList.add('no-anim');
     applySel(false);
     void rowEl.offsetWidth;
@@ -276,7 +276,7 @@ function start(launcher: HTMLElement) {
     applySel(rowEl.contains(document.activeElement));
     grab();
     if (withSound) sound.play('move');
-    if (!rowEl.contains(document.activeElement)) announce(slots[i].dataset.title ?? 'empty slot');
+    if (!rowEl.contains(document.activeElement)) announce(slots[i].dataset.title ?? 'Empty slot');
   }
 
   let switching = false;
@@ -310,7 +310,7 @@ function start(launcher: HTMLElement) {
   function updatePlate() {
     const slot = slots[sel()];
     const game = slot?.dataset.game;
-    const text = game ? slot.dataset.title! : (slot?.dataset.note ?? 'empty slot');
+    const text = game ? slot.dataset.title! : (slot?.dataset.note ?? 'Empty slot');
     if (plateName.textContent === text) return;
     const w0 = plate.getBoundingClientRect().width;
     plateName.textContent = text;
@@ -502,7 +502,7 @@ function start(launcher: HTMLElement) {
   // have every word typed. L and R still switch rows, and the search goes along. What is typed
   // stays on the page.
 
-  // capitals, accents and punctuation don't count, so "kirbys" finds "kirby’s dead land"
+  // capitals, accents and punctuation don't count, so "kirbys" finds "Kirby’s Dead Land"
   const plain = (text: string) =>
     text
       .normalize('NFD')
@@ -526,7 +526,7 @@ function start(launcher: HTMLElement) {
     none.className = 'slot';
     none.dataset.index = '0';
     none.dataset.empty = '';
-    none.dataset.note = 'nothing matches';
+    none.dataset.note = 'Nothing matches';
     none.innerHTML = '<span class="lift"><span class="hollow"></span></span>';
     rowEl.append(none);
   }
@@ -937,27 +937,27 @@ function start(launcher: HTMLElement) {
   const sndSwitch = $('#snd-switch', settingsCard);
   function syncSettings() {
     sndSwitch.setAttribute('aria-checked', String(state.sound));
-    $('#snd-state', settingsCard).textContent = state.sound ? 'on' : 'off';
+    $('#snd-state', settingsCard).textContent = state.sound ? 'On' : 'Off';
     $<HTMLInputElement>('#theme-light', settingsCard).checked = !isDark();
     $<HTMLInputElement>('#theme-dark', settingsCard).checked = isDark();
     $('#theme-desc', settingsCard).textContent = state.theme
-      ? 'light, or dark for the evening.'
-      : 'light, or dark for the evening. it follows your device until you pick one.';
+      ? 'Light, or dark for the evening.'
+      : 'Light, or dark for the evening. It follows your device until you pick one.';
     $<HTMLInputElement>('#motion-full', settingsCard).checked = !calm();
     $<HTMLInputElement>('#motion-calm', settingsCard).checked = calm();
     $('#motion-desc', settingsCard).textContent =
       state.motion === 'auto'
         ? reducedMQ.matches
-          ? 'calm, because your device asks for less motion. calm keeps the games still and swaps the slides for fades.'
-          : 'calm keeps the games still and swaps the slides for fades. it follows your device until you pick one.'
-        : 'calm keeps the games still and swaps the slides for fades.';
+          ? 'Calm, because your device asks for less motion. Calm keeps the games still and swaps the slides for fades.'
+          : 'Calm keeps the games still and swaps the slides for fades. It follows your device until you pick one.'
+        : 'Calm keeps the games still and swaps the slides for fades.';
     const kept: string[] = [];
     if (store.get('sound')) kept.push('menu sounds on');
     if (store.get('theme')) kept.push(store.get('theme') + ' look');
     if (store.get('motion')) kept.push(store.get('motion') + ' motion');
     $('#memory-note', settingsCard).textContent = kept.length
-      ? `this browser remembers: ${kept.join(', ')}. it never leaves your device.`
-      : 'the menu remembers nothing yet. what you change here stays in this browser.';
+      ? `This browser remembers: ${kept.join(', ')}. It never leaves your device.`
+      : 'The menu remembers nothing yet. What you change here stays in this browser.';
     $('#forget-wrap', settingsCard).hidden = !kept.length;
   }
   sndSwitch.addEventListener('click', () => {
@@ -1137,7 +1137,7 @@ function start(launcher: HTMLElement) {
         return;
       }
       blocked = href;
-      openNote.textContent = 'your browser blocked the new tab. press the same download again to open it here.';
+      openNote.textContent = 'Your browser blocked the new tab. Press the same download again to open it here.';
       sound.play('empty');
     });
     dlg.addEventListener('close', unblock);
@@ -1184,7 +1184,7 @@ function start(launcher: HTMLElement) {
     closeCard({ instant: true, quiet: true, keepFocus: true });
     const title = slotEl.dataset.title ?? '';
     $('#bo-name', blackout).textContent = title;
-    announce('opening ' + title);
+    announce('Opening ' + title);
     launcher.classList.add('is-launching');
     launcher.inert = true;
     const lift = $('.lift', slotEl);
@@ -1447,7 +1447,7 @@ function start(launcher: HTMLElement) {
     pad.classList.toggle('is-off', !padConnected);
     $('#status', launcher).setAttribute(
       'aria-label',
-      `settings. menu sounds ${state.sound ? 'on' : 'off'}. ${padConnected ? 'a controller is connected.' : 'no controller connected.'}`,
+      `Settings. Menu sounds ${state.sound ? 'on' : 'off'}. ${padConnected ? 'A controller is connected.' : 'No controller connected.'}`,
     );
   }
 

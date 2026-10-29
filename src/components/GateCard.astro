@@ -1,5 +1,5 @@
 ---
-// "before you play": the visitor confirms they're using their own legal copy of the game
+// "Before you play": the visitor confirms they're using their own legal copy of the game
 // before any play or download link opens. Without JavaScript, the browser itself refuses to
 // follow a link until the box is ticked, and the card shows when the address ends in #play.
 // Play links open in the same tab; download links open in a new one, so the menu stays put.
@@ -17,8 +17,8 @@ const { game, own = false } = Astro.props;
 const { text, confirm, links, note } = game.data.ownCopy;
 const id = game.id;
 const downloads = links.every((link) => link.icon === 'download');
-const lockedNote = downloads ? 'tick the box to unlock the downloads.' : 'tick the box to unlock play.';
-const nudgeNote = downloads ? 'tick the box first, then download.' : 'tick the box first, then press play.';
+const lockedNote = downloads ? 'Tick the box to unlock the downloads.' : 'Tick the box to unlock play.';
+const nudgeNote = downloads ? 'Tick the box first, then download.' : 'Tick the box first, then press play.';
 ---
 
 <dialog
@@ -31,7 +31,7 @@ const nudgeNote = downloads ? 'tick the box first, then download.' : 'tick the b
   aria-labelledby={`gate-title-${id}`}
 >
   <div class="card-body">
-    <h2 class="gate-title" id={`gate-title-${id}`}><Star /><span>before you play</span></h2>
+    <h2 class="gate-title" id={`gate-title-${id}`}><Star /><span>Before you play</span></h2>
     <p class="gate-text">{text}</p>
     <form
       class="gate-form"
@@ -72,5 +72,5 @@ const nudgeNote = downloads ? 'tick the box first, then download.' : 'tick the b
       </div>
     </form>
   </div>
-  <a class="card-close" href="#" data-close><Key label="esc" pad="B" round />close</a>
+  <a class="card-close" href="#" data-close><Key label="Esc" pad="B" round />Close</a>
 </dialog>

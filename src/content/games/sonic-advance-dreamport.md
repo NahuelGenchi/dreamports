@@ -1,37 +1,37 @@
 ---
-title: sonic advance dreamport
+title: Sonic Advance Dreamport
 kind: dreamport
-platform: game boy advance
+platform: Game Boy Advance
 year: 2001
 added: 2026-10-27
-summary: sonic advance, rebuilt to play in your web browser. no emulator, nothing to install.
-lead: sonic advance, rebuilt to play in your web browser. no emulator, nothing to install, and every extra is optional.
+summary: Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install.
+lead: Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install, and every extra is optional.
 ownCopy:
-  text: "this dreamport reads your own copy of sonic advance: the .gba file copied from your cartridge. dreamports never hosts game files and can’t give you one."
-  confirm: i own sonic advance, and i’m using my own legal copy of the game.
+  text: "This Dreamport reads your own copy of Sonic Advance: the .gba file copied from your cartridge. Dreamports never hosts game files and can’t give you one."
+  confirm: I own Sonic Advance, and I’m using my own legal copy of the game.
   links:
-    - label: play in your browser
+    - label: Play in your browser
       href: https://dreamports.net/play/sonic-advance/
       icon: play
-  note: opens the game here on dreamports.net. your copy stays on your device.
+  note: Opens the game here on dreamports.net. Your copy stays on your device.
 facts:
-  - label: original
-    value: sonic advance, game boy advance, 2001
-  - label: you need
-    value: your own copy of sonic advance (usa), as a .gba file
-  - label: plays in
-    value: your web browser
-  - label: controls
-    value: keyboard, xbox controller or touch
-  - label: status
-    value: "early days: every zone is playable, and six special stages are on the way"
-  - label: made by
-    value: nahuel genchi
-  - label: source code
-    value: on github
+  - label: Original
+    value: Sonic Advance, Game Boy Advance, 2001
+  - label: You need
+    value: Your own copy of Sonic Advance (USA), as a .gba file
+  - label: Plays in
+    value: Your web browser
+  - label: Controls
+    value: Keyboard, Xbox controller or touch
+  - label: Status
+    value: "Early days: every zone is playable, and six special stages are on the way"
+  - label: Made by
+    value: Nahuel Genchi
+  - label: Source code
+    value: On GitHub
     href: https://github.com/NahuelGenchi/sonic-advance-dreamport
-  - label: the story
-    value: on nahuelgenchi.com
+  - label: The story
+    value: On nahuelgenchi.com
     href: https://nahuelgenchi.com/gaming/onsoku-advance/
 screen:
   clip: /media/sonic-advance-dreamport.webp
@@ -41,21 +41,21 @@ share: /media/sonic-advance-dreamport-share.png
 glow: '#8fd1ff'
 ---
 
-## what it adds
+## What it adds
 
-four extras on top of the original game. each one is off until you switch it on, and with all of them off, the game plays just like the cartridge.
+Four extras on top of the original game. Each one is off until you switch it on, and with all of them off, the game plays just like the cartridge.
 
-- **widescreen view.** see more of each act around the original screen, up to 368 × 208, with every pixel still sharp.
-- **sonic rush boost.** hold a button and sonic blasts ahead at top speed, in rush’s blue aura and trail. *needs your copy of sonic rush too.*
-- **boost mode.** from sonic advance 2: keep running flat out and sonic breaks into an even faster run. *needs your copy of sonic advance 2 too.*
-- **sonic advance 2 tricks.** four mid-air tricks: the back star, the hop jump, the humming top and the bound. *needs your copy of sonic advance 2 too.*
+- **Widescreen view.** See more of each act around the original screen, up to 368 × 208, with every pixel still sharp.
+- **Sonic Rush boost.** Hold a button and Sonic blasts ahead at top speed, in Rush’s blue aura and trail. *Needs your copy of Sonic Rush too.*
+- **Boost Mode.** From Sonic Advance 2: keep running flat out and Sonic breaks into an even faster run. *Needs your copy of Sonic Advance 2 too.*
+- **Sonic Advance 2 tricks.** Four mid-air tricks: the Back Star, the Hop Jump, the Humming Top and the Bound. *Needs your copy of Sonic Advance 2 too.*
 
-## play in three steps
+## Play in three steps
 
-1. tick the box in [before you play](#play) and press play. a current desktop browser works best.
-2. add your sonic advance file, the .gba copied from your cartridge. tick *remember on this device* to keep it for next time.
-3. play. press <kbd>H</kbd> during the game to see the controls.
+1. Tick the box in [Before you play](#play) and press Play. A current desktop browser works best.
+2. Add your Sonic Advance file, the .gba copied from your cartridge. Tick *Remember on this device* to keep it for next time.
+3. Play. Press <kbd>H</kbd> during the game to see the controls.
 
-## credits
+## Credits
 
-made by [nahuel genchi](https://nahuelgenchi.com/). the game’s rules come from [sat-r](https://github.com/SAT-R), the community project that turned sonic advance’s program back into readable code.
+Made by [Nahuel Genchi](https://nahuelgenchi.com/). The game’s rules come from [SAT-R](https://github.com/SAT-R), the community project that turned Sonic Advance’s program back into readable code.
