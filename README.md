@@ -186,7 +186,7 @@ The code is free and open source under the [MIT License](LICENSE).
 
 The banner and the social preview are original pixel art made for Dreamports, set in [Monocraft](https://github.com/IdreesInc/Monocraft) by Idrees Hassan, under the SIL Open Font License. Their source, [`.github/readme/banner.html`](.github/readme/banner.html), can redraw them.
 
-The website sets its headings in Monocraft too, and its text in [Newsreader](https://github.com/productiontype/Newsreader) by Production Type, also under the SIL Open Font License. The site carries a smaller copy of Monocraft with only the letters it uses; the licenses are in [`src/assets/fonts/OFL.txt`](src/assets/fonts/OFL.txt) and [`public/licenses/`](public/licenses/).
+The website is set in Monocraft too. It carries a smaller copy with only the letters it uses; the license is in [`src/assets/fonts/OFL.txt`](src/assets/fonts/OFL.txt) and [`public/licenses/`](public/licenses/).
 
 The small stars are the [Pixel Art Animated Star](https://soulofkiran.itch.io/pixel-art-animated-star) by Narik, recolored to match. They're used under Narik's terms, which allow personal and commercial use and edits, so [`.github/readme/star.png`](.github/readme/star.png) and the website's copy, [`public/images/star.png`](public/images/star.png), aren't covered by the MIT License. Thank you, Narik!
 

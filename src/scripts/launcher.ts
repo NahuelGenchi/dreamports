@@ -1812,10 +1812,10 @@ function start(launcher: HTMLElement) {
     state.ready = true;
     wakeRow(400);
   });
-  // get the cards' text face ready while nothing is happening, so the first card opens without a hitch
+  // get the font's weights ready while nothing is happening, so the first card opens without a hitch
   const idle = window.requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 600));
   idle(() => {
-    for (const font of ['400 17px "Newsreader Variable"', 'italic 400 17px "Newsreader Variable"', '700 15px Monocraft']) {
+    for (const font of ['400 15px Monocraft', '700 15px Monocraft']) {
       document.fonts?.load(font).catch(() => {});
     }
   });
