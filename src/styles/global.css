@@ -1,10 +1,5 @@
-/* Newsreader by Production Type (SIL Open Font License 1.1). The weight-only files are drawn
-   at optical size 18, which matches the site's 15–22px text, at half the download. */
-@import '@fontsource-variable/newsreader/wght.css';
-@import '@fontsource-variable/newsreader/wght-italic.css';
-
-/* Monocraft by Idrees Hassan (SIL Open Font License 1.1, see src/assets/fonts/OFL.txt),
-   cut down to the Latin letters and signs the site uses. */
+/* Monocraft by Idrees Hassan (SIL Open Font License 1.1, see src/assets/fonts/OFL.txt), the
+   site's one font, cut down to the Latin letters and signs the site uses. */
 @font-face {
   font-family: 'Monocraft';
   src: url('../assets/fonts/monocraft-400.woff2') format('woff2');
@@ -51,8 +46,7 @@
   --black: #000000;
   --on-black: #eef4ff;
 
-  --head: 'Monocraft', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
-  --text: 'Newsreader Variable', 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  --font: 'Monocraft', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   --glide: cubic-bezier(0.22, 1, 0.36, 1);
 
   color-scheme: light;
@@ -146,8 +140,9 @@ body {
   margin: 0;
   background: var(--page-glow), var(--page);
   color: var(--ink);
-  font-family: var(--head);
+  font-family: var(--font);
   font-variant-ligatures: none;
+  font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -237,7 +232,7 @@ kbd {
   padding: 0 5px;
   background: var(--chip);
   color: var(--on-chip);
-  font: 400 0.78em var(--head);
+  font: 400 0.78em var(--font);
 }
 
 .door {
@@ -412,7 +407,7 @@ kbd {
   border: 0;
   background: var(--chip);
   color: var(--on-chip);
-  font: 700 12px/1 var(--head);
+  font: 700 12px/1 var(--font);
   cursor: pointer;
   transition: transform 0.1s ease;
 }
@@ -542,7 +537,7 @@ kbd {
   padding: 0 4px;
   background: var(--chip);
   color: var(--on-chip);
-  font: 400 11px/1 var(--head);
+  font: 400 11px/1 var(--font);
 }
 
 .key .kp,
@@ -1147,7 +1142,7 @@ kbd {
   border: 0;
   background: #8fd1ff;
   color: #0a1738;
-  font: 400 14px var(--head);
+  font: 400 14px var(--font);
   cursor: pointer;
 }
 
@@ -1227,7 +1222,7 @@ dialog.card.is-in::backdrop {
 .card-title {
   margin: 0;
   color: var(--ink);
-  font: 400 24px/32px var(--head);
+  font: 400 24px/32px var(--font);
 }
 
 .card-close {
@@ -1242,7 +1237,7 @@ dialog.card.is-in::backdrop {
   border: 0;
   background: var(--hover);
   color: var(--ink);
-  font: 400 15px var(--head);
+  font: 400 15px var(--font);
   letter-spacing: 1px;
   text-decoration: none;
   cursor: pointer;
@@ -1293,14 +1288,14 @@ dialog.card.is-in::backdrop {
 .set-label {
   display: block;
   color: var(--ink);
-  font: 400 15px/20px var(--head);
+  font: 400 15px/20px var(--font);
 }
 
 .set-desc {
   display: block;
   margin-top: 4px;
   color: var(--dim);
-  font: 400 15px/1.4 var(--text);
+  font: 400 13.5px/20px var(--font);
 }
 
 .switch {
@@ -1312,7 +1307,7 @@ dialog.card.is-in::backdrop {
   border: 0;
   background: none;
   color: var(--dim);
-  font: 400 13.5px var(--head);
+  font: 400 13.5px var(--font);
   cursor: pointer;
 }
 
@@ -1374,7 +1369,7 @@ dialog.card.is-in::backdrop {
 .seg label {
   padding: 6px 12px;
   color: var(--dim);
-  font: 400 13.5px/20px var(--head);
+  font: 400 13.5px/20px var(--font);
   cursor: pointer;
 }
 
@@ -1400,7 +1395,7 @@ dialog.card.is-in::backdrop {
 .card-note {
   margin: 18px 2px 4px;
   color: var(--dim);
-  font: 400 15px/1.45 var(--text);
+  font: 400 13.5px/20px var(--font);
 }
 
 .linkish {
@@ -1414,16 +1409,16 @@ dialog.card.is-in::backdrop {
   cursor: pointer;
 }
 
-/* text inside cards: the site's own type */
+/* text inside cards */
 .prose {
   color: var(--dim);
-  font: 400 17px/1.55 var(--text);
+  font: 400 15px/24px var(--font);
 }
 
 .prose :is(h2, h3) {
   margin: 30px 0 0;
   color: var(--ink);
-  font: 400 18px/26px var(--head);
+  font: 400 18px/26px var(--font);
 }
 
 .prose > :is(h2, h3):first-child,
@@ -1445,12 +1440,18 @@ dialog.card.is-in::backdrop {
 
 .prose strong {
   color: var(--ink);
-  font-weight: 600;
+  font-weight: 700;
+}
+
+/* Monocraft has no italics: what's emphasized, such as a button's name, is set in the ink */
+.prose em {
+  color: var(--ink);
+  font-style: normal;
 }
 
 .prose code {
   color: var(--ink);
-  font: 400 0.82em var(--head);
+  font: 400 0.82em var(--font);
 }
 
 .prose ul,
@@ -1493,7 +1494,7 @@ dialog.card.is-in::backdrop {
   top: 0;
   left: 0;
   color: var(--blue);
-  font-family: var(--head);
+  font-family: var(--font);
   font-size: 0.8em;
   line-height: 1.95;
 }
@@ -1521,7 +1522,7 @@ dialog.card.is-in::backdrop {
 .about-nav :is(h1, h2) {
   margin: 0 0 14px 8px;
   color: var(--ink);
-  font: 400 20px/28px var(--head);
+  font: 400 20px/28px var(--font);
 }
 
 .about-nav a {
@@ -1529,7 +1530,7 @@ dialog.card.is-in::backdrop {
   margin: 2px;
   padding: 8px 10px;
   color: var(--dim);
-  font: 400 13.5px/1.35 var(--head);
+  font: 400 13.5px/1.35 var(--font);
   text-decoration: none;
 }
 
@@ -1610,7 +1611,7 @@ dialog.card.is-in::backdrop {
 .ins-label {
   margin: 0;
   color: var(--dim);
-  font: 400 15px/1.4 var(--text);
+  font: 400 13.5px/20px var(--font);
 }
 
 .ins-label .kind {
@@ -1620,14 +1621,14 @@ dialog.card.is-in::backdrop {
 .ins-title {
   margin: 6px 0 0;
   color: var(--ink);
-  font: 400 26px/34px var(--head);
+  font: 400 26px/34px var(--font);
   text-wrap: balance;
 }
 
 .ins-lead {
   margin: 14px 0 0;
   color: var(--dim);
-  font: 400 18px/1.45 var(--text);
+  font: 400 15px/24px var(--font);
 }
 
 .facts {
@@ -1640,12 +1641,12 @@ dialog.card.is-in::backdrop {
 .facts h3 {
   margin: 0;
   color: var(--ink);
-  font: 400 16px/1.4 var(--head);
+  font: 400 16px/1.4 var(--font);
 }
 
 .facts dl {
   margin: 10px 0 0;
-  font: 400 15px/1.45 var(--text);
+  font: 400 13.5px/20px var(--font);
 }
 
 .facts dl > div {
@@ -1688,7 +1689,7 @@ dialog.card.is-in::backdrop {
   gap: 12px;
   margin: 0;
   color: var(--blue);
-  font: 400 19px/1.4 var(--head);
+  font: 400 19px/1.4 var(--font);
 }
 
 .gate-title img {
@@ -1701,7 +1702,7 @@ dialog.card.is-in::backdrop {
 .gate-text {
   margin: 12px 0 0;
   color: var(--dim);
-  font: 400 17px/1.5 var(--text);
+  font: 400 15px/24px var(--font);
 }
 
 .check {
@@ -1713,7 +1714,7 @@ dialog.card.is-in::backdrop {
   padding: 14px 16px;
   background: var(--hover);
   color: var(--ink);
-  font: 400 17px/1.45 var(--text);
+  font: 400 15px/24px var(--font);
   cursor: pointer;
 }
 
@@ -1757,7 +1758,7 @@ dialog.card.is-in::backdrop {
 .gate-note {
   margin: 0;
   color: var(--dim);
-  font: 400 15px/1.4 var(--text);
+  font: 400 13.5px/20px var(--font);
 }
 
 .btn {
@@ -1772,7 +1773,7 @@ dialog.card.is-in::backdrop {
   border: 0;
   background: var(--sky);
   color: #0a1738;
-  font: 400 15px/1 var(--head);
+  font: 400 15px/1 var(--font);
   text-align: center;
   text-decoration: none;
   cursor: pointer;
@@ -1912,7 +1913,7 @@ dialog.card.is-in::backdrop {
   overflow: visible;
   clip-path: none;
   white-space: normal;
-  font: 400 14px/18px var(--head);
+  font: 400 14px/18px var(--font);
 }
 
 :root:not(.js) .slot:focus-visible {
@@ -1951,14 +1952,14 @@ dialog.card.is-in::backdrop {
 
 .lost h1 {
   margin: 14px 0 0;
-  font: 400 clamp(22px, 3vw, 30px) / 1.3 var(--head);
+  font: 400 clamp(22px, 3vw, 30px) / 1.3 var(--font);
 }
 
 .lost p {
   max-width: 30em;
   margin: 0 0 10px;
   color: var(--dim);
-  font: 400 18px/1.5 var(--text);
+  font: 400 15px/24px var(--font);
 }
 
 /* ---------- Phones ---------- */
