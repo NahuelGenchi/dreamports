@@ -1,6 +1,7 @@
 ---
 // A game as a little screen in a white frame, showing the maker's own recording of it.
-// The still is the recording's first frame; the launcher plays the recording over it.
+// The still is the recording's first frame; the launcher plays the recording, a silent video,
+// over it.
 // A game without a recording gets a plain Dreamports card.
 import { sectionFor, type Game } from '../lib/site';
 
@@ -19,7 +20,7 @@ const { title, platform, kind, screen } = game.data;
     screen ? (
       <div class:list={['screen', screen.pixelated && 'px']} data-clip={screen.clip}>
         <img class="still" src={screen.still} alt="" draggable="false" loading={lazy ? 'lazy' : undefined} />
-        <img class="clip" alt="" draggable="false" />
+        <video class="clip" muted loop playsinline disablepictureinpicture preload="none"></video>
         <i class="scan" />
       </div>
     ) : (

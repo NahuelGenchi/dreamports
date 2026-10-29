@@ -40,7 +40,6 @@
   --on-act: #ffffff;
   --hollow: #eef7ff;
   --glow-o: 0.62;
-  --scrim: rgba(10, 23, 56, 0.3);
   --door-k: #0a1738;
   --door-o: transparent;
   --black: #000000;
@@ -70,7 +69,6 @@
     --on-act: #0a1738;
     --hollow: rgba(127, 180, 255, 0.05);
     --glow-o: 0.34;
-    --scrim: rgba(1, 3, 15, 0.62);
     --door-k: #000000;
     --door-o: #3552b8;
 
@@ -95,7 +93,6 @@
   --on-act: #0a1738;
   --hollow: rgba(127, 180, 255, 0.05);
   --glow-o: 0.34;
-  --scrim: rgba(1, 3, 15, 0.62);
   --door-k: #000000;
   --door-o: #3552b8;
 
@@ -209,7 +206,6 @@ kbd,
 .corner,
 .pad-hint,
 .search,
-.card-close,
 .set-list,
 .seg,
 .switch-track,
@@ -830,10 +826,6 @@ kbd {
   }
 }
 
-.launcher.is-covered .cursor i {
-  animation-play-state: paused;
-}
-
 /* the label under the selected game */
 .nameplate {
   --frame: var(--line);
@@ -1225,28 +1217,6 @@ dialog.card[open] {
   display: flex;
 }
 
-/* a plain tint behind the card: no blur, so nothing behind it has to be redrawn while it moves */
-dialog.card::backdrop {
-  background: rgba(10, 23, 56, 0.3);
-  opacity: 0;
-  transition: opacity 0.16s ease;
-}
-
-:root[data-theme='dark'] dialog.card::backdrop {
-  background: rgba(1, 3, 15, 0.62);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) dialog.card::backdrop {
-    background: rgba(1, 3, 15, 0.62);
-  }
-}
-
-dialog.card.is-in::backdrop {
-  opacity: 1;
-  transition-duration: 0.24s;
-}
-
 .card-body {
   flex: 1;
   min-height: 0;
@@ -1258,42 +1228,6 @@ dialog.card.is-in::backdrop {
   margin: 0;
   color: var(--ink);
   font: 400 24px/32px var(--font);
-}
-
-.card-close {
-  --frame: var(--line);
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin: 16px 18px 18px;
-  height: 50px;
-  border: 0;
-  background: var(--hover);
-  color: var(--ink);
-  font: 400 15px var(--font);
-  letter-spacing: 1px;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.card-close:hover {
-  --frame: var(--sky);
-  background: var(--sky);
-  color: #0a1738;
-}
-
-.card-close .key {
-  --frame: transparent;
-  background: var(--tint);
-  color: var(--dim);
-  letter-spacing: 0;
-}
-
-.card-close:hover .key {
-  background: rgba(10, 23, 56, 0.12);
-  color: rgba(10, 23, 56, 0.72);
 }
 
 /* settings: one box, a row for each setting, like the insert cartridge list */
@@ -1635,16 +1569,6 @@ dialog.card.is-in::backdrop {
   -webkit-user-select: text;
 }
 
-.ins-label {
-  margin: 0;
-  color: var(--dim);
-  font: 400 13.5px/20px var(--font);
-}
-
-.ins-label .kind {
-  color: var(--blue);
-}
-
 .ins-title {
   margin: 6px 0 0;
   color: var(--ink);
@@ -1652,10 +1576,16 @@ dialog.card.is-in::backdrop {
   text-wrap: balance;
 }
 
-.ins-lead {
-  margin: 14px 0 0;
-  color: var(--dim);
-  font: 400 15px/24px var(--font);
+/* what kind of game it is, after its name, like the extras' "Needs" tags */
+.ins-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--chip);
+  color: var(--on-chip);
+  font-size: 13px;
+  line-height: 20px;
+  vertical-align: 0.3em;
+  white-space: nowrap;
 }
 
 .facts {
@@ -1703,33 +1633,6 @@ dialog.card.is-in::backdrop {
 
 .ins-text .prose {
   margin-top: 26px;
-}
-
-/* before you play */
-.card-gate {
-  --card-w: 600px;
-}
-
-.gate-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0;
-  color: var(--blue);
-  font: 400 19px/1.4 var(--font);
-}
-
-.gate-title img {
-  display: block;
-  flex: none;
-  width: 20px;
-  height: 22px;
-}
-
-.gate-text {
-  margin: 12px 0 0;
-  color: var(--dim);
-  font: 400 15px/24px var(--font);
 }
 
 .check {
@@ -1948,19 +1851,13 @@ dialog.card.is-in::backdrop {
   outline-offset: 6px;
 }
 
-:root:not(.js) :is(.cursor, .nameplate, .shoulder, .status, .glow, #btn-settings, #btn-search, #btn-inspect) {
+:root:not(.js) :is(.cursor, .nameplate, .shoulder, .status, .glow, #btn-settings, #btn-search) {
   display: none;
 }
 
-/* a card the page opens by itself looks the same before the script makes it a proper card */
-:is(:root:not(.js) dialog.card[open], :root:not(.js) dialog.card:target, dialog.card[open]:not(:modal)) {
-  display: flex;
-  box-shadow:
-    0 -2px var(--frame),
-    0 2px var(--frame),
-    -2px 0 var(--frame),
-    2px 0 var(--frame),
-    0 0 0 100vmax var(--scrim);
+/* on a card's page the card has the row's place */
+:root:not(.js) .launcher[data-view] .row {
+  display: none;
 }
 
 /* ---------- Not found ---------- */
@@ -2001,12 +1898,6 @@ dialog.card.is-in::backdrop {
     box-shadow: 0 -2px var(--frame);
   }
 
-  :is(:root:not(.js) dialog.card[open], :root:not(.js) dialog.card:target, dialog.card[open]:not(:modal)) {
-    box-shadow:
-      0 -2px var(--frame),
-      0 0 0 100vmax var(--scrim);
-  }
-
   .card-about,
   .card-inspect {
     height: calc(100% - 16px);
@@ -2014,10 +1905,6 @@ dialog.card.is-in::backdrop {
 
   .card-body {
     padding: 22px 18px 6px;
-  }
-
-  .card-close {
-    margin: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px));
   }
 
   .set-row {
@@ -2115,11 +2002,6 @@ dialog.card.is-in::backdrop {
 
   .card-body {
     padding: 18px 22px 6px;
-  }
-
-  .card-close {
-    height: 40px;
-    margin: 8px 10px 10px;
   }
 
   .inspect {
@@ -2251,7 +2133,6 @@ dialog.card.is-in::backdrop {
 @media (forced-colors: active) {
   .key,
   .shoulder,
-  .card-close,
   .btn,
   .pill,
   .corner,
@@ -2278,5 +2159,448 @@ dialog.card.is-in::backdrop {
   .prose ul > li::before {
     forced-color-adjust: none;
     background: CanvasText;
+  }
+}
+
+/* ---------- Views: a game's page, about and settings take the menu's place ---------- */
+
+/* the menu steps aside while a view is up: its buttons and the filters go, and the row drops
+   back and fades. On a game's page, the game's picture stands in for its place in the row. */
+.filters {
+  transition: opacity 0.25s ease;
+}
+
+.launcher[data-view] :is(.cursor, .nameplate, .corners, .pad-hint, .filters) {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.launcher[data-view]:not([data-view='inspect']) .row {
+  opacity: 0;
+  translate: 0 4%;
+}
+
+.launcher[data-view='inspect'] .slot:not(.is-sel) .lift,
+.launcher[data-view='inspect'] .slot .glow {
+  opacity: 0;
+}
+
+.launcher[data-view='inspect'] .slot.is-sel .lift {
+  visibility: hidden;
+}
+
+.launcher > dialog.view {
+  position: absolute;
+  inset: var(--top-h, 56px) 0 0;
+  z-index: 4;
+  width: auto;
+  height: auto;
+  max-height: none;
+  margin: 0;
+  overflow: visible;
+  background: none;
+  box-shadow: none;
+}
+
+.launcher > dialog.view[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+/* the bar along the bottom, where the corner buttons stand on the menu */
+.view-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: var(--bot-h, 68px);
+  margin-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: max(18px, env(safe-area-inset-left, 0px));
+  padding-right: max(18px, env(safe-area-inset-right, 0px));
+}
+
+/* what a view holds, between the two bars */
+.view .inspect,
+.view .about,
+.view.card-settings .card-body {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  margin: 0 auto;
+  padding-left: max(24px, env(safe-area-inset-left, 0px));
+  padding-right: max(24px, env(safe-area-inset-right, 0px));
+}
+
+/* a game's page: its picture big on the left with its button, its text on the right */
+.view .inspect {
+  max-width: 1240px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: clamp(24px, 4vw, 56px);
+}
+
+.view .ins-show {
+  /* the picture's width, which the box to tick and the button below it share */
+  --hero: min(42vw, 540px, (100dvh - 320px) * 1.6);
+  justify-content: center;
+  gap: clamp(20px, 3.4vh, 32px);
+  padding: 0 0 12px;
+  overflow: visible;
+  background: none;
+  border: 0;
+}
+
+.view .show-wrap {
+  --s: var(--hero);
+  --bz: calc(var(--s) * 0.028);
+}
+
+/* under the picture: the box to tick, then play, locked until it is ticked */
+.view .gate-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: var(--hero);
+}
+
+.view .gate-form .check {
+  margin: 0 2px;
+  padding: 12px 14px;
+}
+
+.view .gate-actions {
+  flex-wrap: nowrap;
+  margin: 0;
+}
+
+.view .gate-buttons {
+  flex: none;
+}
+
+.view .ins-show .btn {
+  min-width: 150px;
+}
+
+/* long text scrolls under soft edges */
+.view :is(.ins-text, .about-text) {
+  -webkit-mask-image: linear-gradient(transparent, #000 26px, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(transparent, #000 26px, #000 calc(100% - 36px), transparent);
+}
+
+.view .ins-text {
+  padding: 30px 6px 36px 0;
+}
+
+/* a game's page scrolls with the wheel, touch, the arrow keys and the controller's right stick,
+   with no scroll bar, as a launcher's screens do */
+.view :is(.ins-text, .inspect) {
+  scrollbar-width: none;
+}
+
+.view :is(.ins-text, .inspect)::-webkit-scrollbar {
+  display: none;
+}
+
+/* a game's extras, in a box like the game's details: a square each, and below them the text
+   of the one picked */
+.extras {
+  --frame: var(--line);
+  margin: 22px 2px 0;
+  padding: 14px 16px 16px;
+  background: var(--paper);
+  box-shadow:
+    0 -2px var(--frame),
+    0 2px var(--frame),
+    -2px 0 var(--frame),
+    2px 0 var(--frame);
+}
+
+.extras h3 {
+  margin: 0;
+  color: var(--ink);
+  font: 400 16px/1.4 var(--font);
+}
+
+.x-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 2px 0;
+}
+
+.x-tile {
+  --frame: var(--line);
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin: 2px;
+  padding: 0;
+  border: 0;
+  background: var(--hover);
+  color: var(--dim);
+  cursor: pointer;
+  box-shadow:
+    0 -2px var(--frame),
+    0 2px var(--frame),
+    -2px 0 var(--frame),
+    2px 0 var(--frame);
+}
+
+.x-tile:hover {
+  color: var(--ink);
+}
+
+.x-tile.is-sel {
+  --frame: var(--sky);
+  background: var(--sky);
+  color: #0a1738;
+}
+
+.x-tile:active {
+  transform: translateY(2px);
+}
+
+.x-panels {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 2px solid var(--line);
+}
+
+.js .x-panels {
+  display: grid;
+}
+
+/* every text takes the same place, so the page below doesn't jump when another is picked */
+.js .x-panel {
+  grid-area: 1 / 1;
+}
+
+.js .x-panel:not(.is-sel) {
+  visibility: hidden;
+}
+
+:root:not(.js) .x-row {
+  display: none;
+}
+
+:root:not(.js) .x-panel + .x-panel {
+  margin-top: 14px;
+}
+
+.x-name {
+  margin: 0;
+  color: var(--ink);
+  font: 400 15px/24px var(--font);
+}
+
+.x-panel p {
+  margin: 4px 0 0;
+  color: var(--dim);
+  font: 400 14px/22px var(--font);
+}
+
+.x-panel .x-needs {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 2px 8px;
+  background: var(--chip);
+  color: var(--on-chip);
+  font-size: 12.5px;
+  line-height: 20px;
+}
+
+/* the ways to play, as icons, and how close the port is to the original */
+.ctl {
+  display: flex;
+  gap: 16px;
+  color: var(--ink);
+}
+
+.ctl-i {
+  display: inline-flex;
+}
+
+.pct {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+.pct-bar {
+  display: flex;
+  gap: 3px;
+  padding-top: 4px;
+}
+
+.pct-bar i {
+  width: 12px;
+  height: 12px;
+  background: var(--line);
+}
+
+.pct-bar i.is-on {
+  background: var(--blue);
+}
+
+.pct-parts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.6em, 1fr));
+  gap: 2px 18px;
+  width: 100%;
+  margin-top: 2px;
+  color: var(--dim);
+  font-size: 12.5px;
+  line-height: 20px;
+}
+
+.pct-parts > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pct-parts > span > span:last-child {
+  color: var(--ink);
+}
+
+.pct-note {
+  color: var(--dim);
+}
+
+.view .ins-title {
+  font-size: 30px;
+  line-height: 40px;
+}
+
+/* about: its parts on the left, the text on the right */
+.view .about {
+  max-width: 1120px;
+  grid-template-columns: 250px minmax(0, 1fr);
+}
+
+.view .about-nav {
+  padding: 30px 18px 16px 0;
+}
+
+.view .about-text {
+  padding: 30px 6px 36px 36px;
+}
+
+.view .about-text section {
+  max-width: 64ch;
+}
+
+/* settings: one column in the middle */
+.view.card-settings .card-body {
+  max-width: 760px;
+  padding-top: 30px;
+  padding-bottom: 24px;
+}
+
+/* while a game launches from its page, everything there but its picture goes */
+.launcher.is-launching .view :is(.ins-text, .ins-show .gate-form, .view-bar) {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+@media (max-height: 500px) and (min-width: 641px) {
+  /* a phone held sideways: a smaller picture, so it, the box and the button fit the height */
+  .view .ins-show {
+    --hero: min(40vw, (100dvh - 270px) * 1.6);
+    gap: 12px;
+  }
+
+  .view .gate-form {
+    width: 100%;
+    gap: 8px;
+  }
+
+  .view .gate-form .check {
+    padding: 8px 12px;
+    font-size: 13.5px;
+    line-height: 20px;
+  }
+
+  .view .ins-show .btn {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 640px) {
+  /* a game's page: picture, button and text in one column that scrolls */
+  .view .inspect {
+    display: block;
+    overflow: auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  .view .ins-show {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 18px;
+    padding: 18px 0 0;
+  }
+
+  .view .ins-show {
+    --hero: min(100vw - 32px, 460px);
+  }
+
+  .view .show-wrap {
+    align-self: center;
+  }
+
+  .view .gate-form {
+    width: auto;
+  }
+
+  .view .gate-actions {
+    flex-wrap: wrap;
+  }
+
+  .view .gate-buttons {
+    flex: 1 1 100%;
+  }
+
+  .view .ins-show .btn {
+    flex: 1 1 0;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .x-tile {
+    width: 46px;
+    height: 46px;
+  }
+
+  .view :is(.ins-text, .about-text) {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+
+  .view .ins-text {
+    overflow: visible;
+    padding: 24px 0 28px;
+  }
+
+  .view .ins-title {
+    font-size: 22px;
+    line-height: 30px;
+  }
+
+  .view .about {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0;
+  }
+
+  .view .about-nav {
+    padding: 12px 16px 10px;
+  }
+
+  .view .about-text {
+    padding: 20px 16px 24px;
+  }
+
+  .view.card-settings .card-body {
+    padding: 22px 16px 8px;
   }
 }

@@ -1,0 +1,16 @@
+---
+// A pixel icon from src/lib/icons.ts. Its size is a whole number of screen pixels per grid square,
+// so every pixel stays sharp.
+import { ICONS, type IconName } from '../lib/icons';
+
+interface Props {
+  name: IconName;
+  size?: 24 | 48;
+}
+
+const { name, size = 24 } = Astro.props;
+---
+
+<svg class="px-icon" viewBox="0 0 24 24" width={size} height={size} fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">
+  {ICONS[name].map((d) => <path d={d} />)}
+</svg>

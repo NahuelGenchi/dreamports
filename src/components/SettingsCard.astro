@@ -1,10 +1,10 @@
 ---
 // Settings: menu sounds, light or dark, and full or calm motion. It needs JavaScript, like
 // everything it changes, so the menu shows its button only when JavaScript runs.
-import Key from './Key.astro';
+import ViewBar from './ViewBar.astro';
 ---
 
-<dialog class="card card-settings" id="card-settings" data-card="settings" aria-labelledby="settings-title">
+<dialog class="card view card-settings" id="card-settings" data-card="settings" aria-labelledby="settings-title">
   <div class="card-body">
     <h2 class="card-title" id="settings-title">Settings</h2>
     <div class="set-list">
@@ -44,5 +44,5 @@ import Key from './Key.astro';
       <a class="linkish" id="btn-privacy" href="/about/#privacy">Your privacy</a>
     </p>
   </div>
-  <button type="button" class="card-close" data-close><Key label="Esc" pad="B" round />Close</button>
+  <ViewBar />
 </dialog>

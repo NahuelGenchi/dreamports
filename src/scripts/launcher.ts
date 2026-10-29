@@ -1,6 +1,7 @@
 // The launcher: one row of games to move through with the arrow keys, L and R, a swipe, a click
-// or a game controller, and cards that open over it. Each card keeps the address of the page it
-// stands for, so links can be shared and the browser's back button closes it. Everything here is
+// or a game controller, and cards that take its place as full screens: a game's page, about and
+// settings. Each card keeps the address of the page it stands for, so links can be shared and the
+// browser's back button closes it. Everything here is
 // added on top of plain pages: without this script, the row is a list of links.
 
 type Input = 'keys' | 'pad' | 'touch';
@@ -20,6 +21,7 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const root = document.documentElement;
+
 const found = document.querySelector<HTMLElement>('#launcher');
 
 try {
@@ -57,7 +59,6 @@ function start(launcher: HTMLElement) {
   };
   const reducedMQ = matchMedia('(prefers-reduced-motion: reduce)');
   const darkMQ = matchMedia('(prefers-color-scheme: dark)');
-  const sheetMQ = matchMedia('(max-width: 640px)');
 
   const storedTheme = store.get('theme');
   const storedMotion = store.get('motion');
@@ -73,7 +74,6 @@ function start(launcher: HTMLElement) {
   const plateDetail = $('#np-detail', launcher);
   const cursor = $('#cursor', launcher);
   const target = $('#target', launcher);
-  const btnInspect = $<HTMLAnchorElement>('#btn-inspect', launcher);
   const btnSearch = $<HTMLButtonElement>('#btn-search', launcher);
   const searchBox = $('#search', launcher);
   const searchInput = $<HTMLInputElement>('#search-input', searchBox);
@@ -85,7 +85,6 @@ function start(launcher: HTMLElement) {
   const aboutText = $('.about-text', aboutCard);
   const cards = $$<HTMLDialogElement>('dialog.card');
   const inspectCards = new Map($$<HTMLDialogElement>('dialog[data-card="inspect"]').map((d) => [d.dataset.game!, d]));
-  const gateCards = new Map($$<HTMLDialogElement>('dialog[data-card="gate"]').map((d) => [d.dataset.game!, d]));
 
   // The filters, from their tabs. Each one's row of slots waits in a template.
   const FILTERS = $$<HTMLAnchorElement>('.tab', launcher).map((tab) => {
@@ -109,6 +108,8 @@ function start(launcher: HTMLElement) {
     input: (root.dataset.input as Input) || 'keys',
     open: null as HTMLDialogElement | null,
     opener: null as HTMLElement | null,
+    // the card that has the menu's place: a game's page, about or settings
+    view: null as HTMLDialogElement | null,
     launching: false,
     ready: false,
     sound: store.get('sound') === 'on',
@@ -262,7 +263,6 @@ function start(launcher: HTMLElement) {
     });
     place(i);
     updatePlate();
-    updateCorners();
     wakeRow();
     if (focus) slots[i].focus({ preventScroll: true });
   }
@@ -341,58 +341,93 @@ function start(launcher: HTMLElement) {
     }
   }
 
-  function updateCorners() {
-    const slot = slots[sel()];
-    const game = slot?.dataset.game;
-    btnInspect.setAttribute('aria-disabled', String(!game));
-    btnInspect.href = game ? slot.getAttribute('href')! : FILTERS[state.filter].path;
-  }
-
   // ---------- The selected game wakes up: its recording plays from its still ----------
 
+  // A recording is a short silent video at 60 frames a second, kept in two forms: AV1, the
+  // smaller, for a device that decodes it in hardware, and H.264 for every other, since every
+  // phone and computer decodes that in hardware. Each is fetched whole before it plays, so it
+  // never stops to load.
+  let clipEnd: Promise<string> | null = null;
+  function clipFile(base: string) {
+    clipEnd ??= (async () => {
+      try {
+        const info = await navigator.mediaCapabilities.decodingInfo({
+          type: 'file',
+          video: { contentType: 'video/mp4; codecs="av01.0.04M.08"', width: 736, height: 416, bitrate: 1_500_000, framerate: 60 },
+        });
+        if (info.supported && info.smooth && info.powerEfficient) return '.av1.mp4';
+      } catch {}
+      return '.h264.mp4';
+    })();
+    return clipEnd.then((end) => base + end);
+  }
   const clips = new Map<string, Promise<Blob | null>>();
-  function clipBlob(url: string) {
+  function clipBlob(url: string, priority: 'auto' | 'low' = 'auto') {
     let blob = clips.get(url);
     if (!blob) {
-      blob = fetch(url)
+      blob = fetch(url, { priority } as RequestInit)
         .then((res) => (res.ok ? res.blob() : null))
         .catch(() => null);
       clips.set(url, blob);
     }
     return blob;
   }
-  function setClip(img: HTMLImageElement, src: string | null) {
-    const old = img.getAttribute('src');
-    if (src) img.src = src;
-    else img.removeAttribute('src');
+  // fetches a recording before it is needed, behind everything else
+  function prefetch(base: string | undefined) {
+    if (base && !calm()) clipFile(base).then((url) => clipBlob(url, 'low'));
+  }
+  function setClip(vid: HTMLVideoElement, src: string | null) {
+    const old = vid.getAttribute('src');
+    if (src) vid.src = src;
+    else {
+      // an empty video stops decoding and lets its memory go
+      vid.pause();
+      vid.removeAttribute('src');
+      vid.load();
+    }
     if (old && old !== src && old.startsWith('blob:')) URL.revokeObjectURL(old);
   }
+  // once the first frame is on the screen, so the video fades in over its still without a gap
+  function firstFrame(vid: HTMLVideoElement) {
+    return new Promise<void>((done) => {
+      const late = setTimeout(done, 600);
+      const go = () => {
+        clearTimeout(late);
+        done();
+      };
+      const v = vid as HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number };
+      if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(go);
+      else vid.addEventListener('playing', go, { once: true });
+    });
+  }
   async function play(scr: HTMLElement) {
-    const url = scr.dataset.clip!;
+    const url = await clipFile(scr.dataset.clip!);
     const blob = await clipBlob(url);
-    const img = $<HTMLImageElement>('.clip', scr);
+    const vid = $<HTMLVideoElement>('.clip', scr);
     // a fresh address every time, so the recording always starts on the still it fades in over
     const src = blob ? URL.createObjectURL(blob) : url;
-    setClip(img, src);
+    setClip(vid, src);
+    vid.muted = true;
     try {
-      await img.decode();
+      await vid.play();
+      await firstFrame(vid);
     } catch {}
     return src;
   }
   // a wake that was overtaken leaves the screen as the newer one wants it
   function drop(scr: HTMLElement, src: string) {
-    const img = $<HTMLImageElement>('.clip', scr);
-    if (img.getAttribute('src') === src && !scr.classList.contains('is-awake')) setClip(img, null);
+    const vid = $<HTMLVideoElement>('.clip', scr);
+    if (vid.getAttribute('src') === src && !scr.classList.contains('is-awake')) setClip(vid, null);
   }
   function stop(scr: HTMLElement | null) {
     if (!scr) return;
     scr.classList.remove('is-awake');
-    const img = scr.querySelector<HTMLImageElement>('.clip');
-    const src = img?.getAttribute('src');
-    if (!img || !src) return;
-    // let it fade out first; then the still shows again, and the recording stops decoding
+    const vid = scr.querySelector<HTMLVideoElement>('.clip');
+    const src = vid?.getAttribute('src');
+    if (!vid || !src) return;
+    // let it fade out first; then the still shows again, and the recording stops
     setTimeout(() => {
-      if (!scr.classList.contains('is-awake') && img.getAttribute('src') === src) setClip(img, null);
+      if (!scr.classList.contains('is-awake') && vid.getAttribute('src') === src) setClip(vid, null);
     }, 240);
   }
   function scan(scr: HTMLElement) {
@@ -633,7 +668,6 @@ function start(launcher: HTMLElement) {
         el.tabIndex = j === near ? 0 : -1;
       });
       updatePlate();
-      updateCorners();
       wakeRow(320);
       sound.play('move');
     }
@@ -704,15 +738,9 @@ function start(launcher: HTMLElement) {
 
   // ---------- Actions ----------
 
+  // a game's page takes the menu's place; its button leads on to before you play
   function primary() {
-    if (busy()) return;
-    const game = gameAt(sel());
-    const gate = game && gateCards.get(game);
-    if (!gate) {
-      nope();
-      return;
-    }
-    openCard(gate);
+    inspect(slots[sel()]);
   }
   function nope() {
     sound.play('empty');
@@ -738,35 +766,6 @@ function start(launcher: HTMLElement) {
 
   // ---------- Cards ----------
 
-  // Cards move only by transform and opacity, so the browser can run them off the main thread.
-  // On a computer a card grows out of the button that opened it; on a phone it slides up as a sheet.
-  function cardIn(dlg: HTMLDialogElement, opener: HTMLElement | null) {
-    if (calm()) return dlg.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 });
-    if (sheetMQ.matches) return dlg.animate([{ transform: 'translateY(100%)' }, { transform: 'none' }], { duration: 440, easing: 'cubic-bezier(.32,.72,0,1)' });
-    const b = dlg.getBoundingClientRect();
-    let ox = b.width / 2;
-    let oy = b.height / 2;
-    const from = opener && opener.isConnected && launcher.contains(opener) ? opener.getBoundingClientRect() : null;
-    if (from && from.width) {
-      ox = clamp(from.left + from.width / 2 - b.left, 0, b.width);
-      oy = clamp(from.top + from.height / 2 - b.top, 0, b.height);
-    }
-    dlg.style.transformOrigin = `${ox.toFixed(0)}px ${oy.toFixed(0)}px`;
-    return dlg.animate([{ opacity: 0, transform: 'scale(.9)' }, { opacity: 1, offset: 0.4 }, { transform: 'none' }], {
-      duration: 320,
-      easing: 'cubic-bezier(.2,.9,.25,1)',
-    });
-  }
-  function cardOut(dlg: HTMLDialogElement) {
-    if (calm()) return dlg.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' });
-    if (sheetMQ.matches) return dlg.animate([{ transform: 'none' }, { transform: 'translateY(100%)' }], { duration: 260, easing: 'cubic-bezier(.4,0,1,1)', fill: 'forwards' });
-    return dlg.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'scale(.96)' }], {
-      duration: 170,
-      easing: 'cubic-bezier(.4,0,1,1)',
-      fill: 'forwards',
-    });
-  }
-
   // Each card has the address of the page it stands for. Opening one from the menu adds a step
   // to the browser's history, so the back button closes it again.
   function addressOf(dlg: HTMLDialogElement) {
@@ -779,9 +778,9 @@ function start(launcher: HTMLElement) {
     if (dlg.dataset.title) document.title = dlg.dataset.title;
   }
   let popGuard = 0;
+  // back to the menu's address
   function leaveAddress() {
-    const f = FILTERS[state.filter];
-    document.title = f.title;
+    document.title = FILTERS[state.filter].title;
     if (history.state && history.state.card) {
       popping = true;
       clearTimeout(popGuard);
@@ -790,7 +789,7 @@ function start(launcher: HTMLElement) {
       }, 800);
       history.back();
     } else {
-      history.replaceState(null, '', f.path);
+      history.replaceState(null, '', FILTERS[state.filter].path);
     }
   }
 
@@ -802,44 +801,46 @@ function start(launcher: HTMLElement) {
   }
   function openCard(dlg: HTMLDialogElement, opts: OpenOptions = {}) {
     if (state.launching || state.open === dlg) return;
+    openView(dlg, opts);
+  }
+
+  // a card takes the menu's place: the row steps aside and the card's parts come in. A card that
+  // is up gives way at once.
+  function openView(dlg: HTMLDialogElement, opts: OpenOptions) {
     let opener = opts.opener ?? (document.activeElement as HTMLElement | null);
-    const replacing = !!state.open;
-    if (state.open) {
+    const replacing = !!state.view;
+    if (state.view) {
       opener = state.opener;
-      closeCard({ instant: true, quiet: true, keepFocus: true, address: false });
+      closeView({ instant: true, quiet: true, keepFocus: true, address: false, swap: true });
     }
     if (dlg === settingsCard) syncSettings();
-    state.open = dlg;
+    state.view = state.open = dlg;
     state.opener = opener;
-    // nothing behind the card moves while it is open
     sleepRow();
-    launcher.classList.add('is-covered');
-    for (const a of dlg.getAnimations()) a.cancel();
-    // a card that opens at once gets its tint at once, without fading it in
-    if (opts.instant) dlg.classList.add('is-in');
-    // a card the page opened by itself becomes a proper card over the menu
+    for (const a of dlg.getAnimations({ subtree: true })) a.cancel();
+    launcher.dataset.view = dlg.dataset.card;
     if (dlg.open) dlg.close();
-    dlg.showModal();
-    // one layout pass now, so the card and its tint both start from their hidden look
+    dlg.show();
     dlg.getBoundingClientRect();
-    if (!opts.instant) cardIn(dlg, opener);
-    dlg.classList.add('is-in');
-    // the card's own address comes last, below, as a step of its own
     if (dlg === aboutCard) jumpAbout(opts.section ?? 'dreamport', true, false);
     if (dlg.dataset.card === 'inspect') {
       $('.ins-text', dlg).scrollTop = 0;
-      startShow(dlg, !opts.instant);
+      $('.inspect', dlg).scrollTop = 0;
+      resetExtras(dlg);
+      startShow(dlg, !opts.instant && !replacing);
     }
+    if (!opts.instant) viewIn(dlg);
     focusStart(dlg)?.focus({ preventScroll: true });
     if (!opts.instant) sound.play('open');
     enterAddress(dlg, opts.address ?? (replacing ? 'replace' : 'push'));
   }
 
-  // where focus starts in a card: about's current section, the box to tick (or, once it is
+  // where focus starts in a card: about's current section, a game's box to tick (or, once it is
   // ticked, the button it unlocked), or the control the card marks with autofocus
   function focusStart(dlg: HTMLDialogElement) {
     if (dlg === aboutCard) return aboutLinks.find((a) => a.getAttribute('aria-current') === 'true') ?? null;
-    if (dlg.dataset.card === 'gate' && $<HTMLInputElement>('input[type="checkbox"]', dlg).checked) return $('.gate-buttons .btn', dlg);
+    const box = dlg.querySelector<HTMLInputElement>('.gate-form .check input');
+    if (box) return box.checked ? $('.gate-buttons .btn', dlg) : box;
     return dlg.querySelector<HTMLElement>('[autofocus]');
   }
 
@@ -849,44 +850,97 @@ function start(launcher: HTMLElement) {
     keepFocus?: boolean;
     // false when the address has already moved on, by the back button or another card
     address?: boolean;
+    // true when another view takes this one's place
+    swap?: boolean;
   }
   function closeCard(opts: CloseOptions = {}) {
-    const dlg = state.open;
+    if (state.open) closeView(opts);
+  }
+
+  // the view's parts go, a game's picture flies back to its place in the row, and the row returns
+  function closeView(opts: CloseOptions = {}) {
+    const dlg = state.view;
     if (!dlg) return;
+    state.view = null;
     state.open = null;
-    dlg.classList.remove('is-in');
     if (!opts.quiet) sound.play('close');
     if (dlg.dataset.card === 'inspect') {
       stop(showScr);
       showScr = null;
     }
     const opener = state.opener;
+    if (opts.address !== false) leaveAddress();
     const finish = () => {
-      if (state.open === dlg) return;
+      if (state.view === dlg) return;
       if (dlg.open) dlg.close();
-      if (state.open || state.launching) return;
-      launcher.classList.remove('is-covered');
+      for (const a of dlg.getAnimations({ subtree: true })) a.cancel();
+      if (opts.swap || state.view || state.launching) return;
+      delete launcher.dataset.view;
       if (!opts.keepFocus) {
-        const back = opener && opener.isConnected && launcher.contains(opener) ? opener : null;
+        const back = opener && opener.isConnected && launcher.contains(opener) && !opener.closest('dialog') ? opener : null;
         (back ?? slots[sel()]).focus({ preventScroll: true });
       }
       wakeRow();
     };
-    for (const a of dlg.getAnimations()) a.cancel();
-    if (opts.address !== false) leaveAddress();
     if (opts.instant) {
       finish();
       return;
     }
-    // the card finishes leaving before it closes, so it never cuts out halfway
-    const out = cardOut(dlg);
-    out.finished.then(
-      () => {
-        finish();
-        out.cancel();
-      },
-      () => {},
+    viewOut(dlg).then(finish);
+  }
+
+  // what comes in when a view opens, in order. A game's picture flies in from the row instead.
+  function viewParts(dlg: HTMLDialogElement) {
+    const kind = dlg.dataset.card;
+    const parts =
+      kind === 'inspect' ? ['.ins-text', '.ins-show .gate-form'] : kind === 'about' ? ['.about-nav', '.about-text'] : ['.card-title', '.set-list', '.card-note'];
+    return [...parts.map((part) => $(part, dlg)), $('.view-bar', dlg)];
+  }
+  function viewIn(dlg: HTMLDialogElement) {
+    if (calm()) {
+      dlg.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 });
+      return;
+    }
+    const d = Math.round(clamp(Math.min(W, H) * 0.04, 12, 32));
+    viewParts(dlg).forEach((el, i) => {
+      const from = el.matches('.ins-text') ? `translateX(${d * 2}px)` : `translateY(${d}px)`;
+      el.animate([{ opacity: 0, transform: from }, { opacity: 1, transform: 'none' }], {
+        duration: 480,
+        delay: 60 + i * 60,
+        easing: 'cubic-bezier(.2,.9,.25,1)',
+        fill: 'backwards',
+      });
+    });
+  }
+  function viewOut(dlg: HTMLDialogElement) {
+    if (calm()) return dlg.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }).finished.catch(() => {});
+    const d = Math.round(clamp(Math.min(W, H) * 0.02, 6, 16));
+    const runs: Promise<unknown>[] = viewParts(dlg).map(
+      (el) =>
+        el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateY(${d}px)` }], {
+          duration: 160,
+          easing: 'cubic-bezier(.4,0,1,1)',
+          fill: 'forwards',
+        }).finished,
     );
+    if (dlg.dataset.card === 'inspect') runs.push(heroBack(dlg));
+    return Promise.all(runs).catch(() => {});
+  }
+  // a game's picture flies back to its place in the row, or fades if the row has moved on
+  function heroBack(dlg: HTMLDialogElement) {
+    const hero = $('.show-wrap', dlg);
+    for (const a of hero.getAnimations()) a.cancel();
+    const slotEl = slots[sel()];
+    const tile = slotEl && slotEl.dataset.game === dlg.dataset.game ? slotEl.querySelector('.tile') : null;
+    const from = hero.getBoundingClientRect();
+    const to = tile?.getBoundingClientRect();
+    if (!to || !to.width || !from.width) return hero.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: 'forwards' }).finished;
+    const dx = to.left + to.width / 2 - (from.left + from.width / 2);
+    const dy = to.top + to.height / 2 - (from.top + from.height / 2);
+    return hero.animate(
+      [{ transform: 'none' }, { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${(to.width / from.width).toFixed(3)})` }],
+      { duration: 380, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'forwards' },
+    ).finished;
   }
 
   for (const dlg of cards) {
@@ -909,11 +963,12 @@ function start(launcher: HTMLElement) {
       const link = el.closest<HTMLAnchorElement>('a[href]');
       if (link && plainClick(e)) {
         const href = link.getAttribute('href')!;
-        // "before you play", from a game's card or its text
-        if (link.hasAttribute('data-gate') || href === '#play') {
+        // a link to the box to tick, from the game's text
+        if (href === '#play') {
           e.preventDefault();
-          const gate = gateCards.get(dlg.dataset.game ?? '');
-          if (gate) openCard(gate);
+          const box = dlg.querySelector<HTMLInputElement>('.gate-form .check input');
+          box?.focus({ preventScroll: true });
+          box?.scrollIntoView({ block: 'nearest', behavior: calm() ? 'auto' : 'smooth' });
           return;
         }
         if (link.dataset.sec) {
@@ -928,10 +983,6 @@ function start(launcher: HTMLElement) {
           return;
         }
       }
-      if (e.target !== dlg) return;
-      // a click on the tint around the card closes it
-      const b = dlg.getBoundingClientRect();
-      if (e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom) closeCard();
     });
   }
 
@@ -1063,12 +1114,13 @@ function start(launcher: HTMLElement) {
     if (calm() || !animate) return;
     const tile = slots[sel()]?.querySelector('.tile');
     if (!tile || slots[sel()].dataset.game !== dlg.dataset.game) return;
+    const hero = $('.show-wrap', dlg);
     const from = tile.getBoundingClientRect();
-    const to = showTile.getBoundingClientRect();
+    const to = hero.getBoundingClientRect();
     if (!from.width || !to.width) return;
     const dx = from.left + from.width / 2 - (to.left + to.width / 2);
     const dy = from.top + from.height / 2 - (to.top + to.height / 2);
-    showTile.animate(
+    hero.animate(
       [{ transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${(from.width / to.width).toFixed(3)})` }, { transform: 'none' }],
       { duration: 560, easing: 'cubic-bezier(.2,.9,.3,1)' },
     );
@@ -1076,8 +1128,9 @@ function start(launcher: HTMLElement) {
 
   // before you play: the links stay locked until the box is ticked, and the tick lasts
   // until the tab is closed
-  for (const [game, dlg] of gateCards) {
-    const form = $<HTMLFormElement>('form', dlg);
+  for (const [game, dlg] of inspectCards) {
+    const form = dlg.querySelector<HTMLFormElement>('form.gate-form');
+    if (!form) continue;
     const box = $<HTMLInputElement>('input[type="checkbox"]', form);
     const label = $('.check', form);
     const buttons = $$<HTMLButtonElement>('button[type="submit"]', form);
@@ -1144,6 +1197,89 @@ function start(launcher: HTMLElement) {
     dlg.addEventListener('close', unblock);
   }
 
+  // a game's extras: a square each, with the text of the picked one below, while the game's
+  // picture shows it at work. Moving onto a square picks it, by the arrow keys, a controller or a
+  // tap, and each page opens on the first.
+  function pickExtra(tab: HTMLElement, quiet = false) {
+    if (tab.getAttribute('aria-selected') === 'true') return;
+    let panel: HTMLElement | null = null;
+    const tabs = $$('[role="tab"]', tab.parentElement!);
+    for (const t of tabs) {
+      const on = t === tab;
+      t.setAttribute('aria-selected', String(on));
+      t.classList.toggle('is-sel', on);
+      if (on) t.removeAttribute('tabindex');
+      else t.tabIndex = -1;
+      const p = document.getElementById(t.getAttribute('aria-controls')!);
+      p?.classList.toggle('is-sel', on);
+      if (on) panel = p;
+    }
+    if (quiet) return;
+    sound.play('tick');
+    showExtra(tab, true);
+    const at = tabs.indexOf(tab);
+    prefetch(tabs[at - 1]?.dataset.clip);
+    prefetch(tabs[at + 1]?.dataset.clip);
+    if (panel && !calm()) {
+      (panel as HTMLElement).animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], {
+        duration: 220,
+        easing: 'cubic-bezier(.2,.9,.3,1)',
+      });
+    }
+  }
+  // the picture changes to the picked extra's recording, or the game's own: the old one fades
+  // out over the new one's still, and the new one fades in once its first frame is up
+  let extraRun = 0;
+  function showExtra(tab: HTMLElement, wake: boolean) {
+    const dlg = tab.closest('dialog')!;
+    const scr = dlg.querySelector<HTMLElement>('.show-tile .screen[data-clip]');
+    const base = tab.dataset.clip;
+    if (!scr || !base || scr.dataset.clip === base) return;
+    const run = ++extraRun;
+    scr.dataset.clip = base;
+    $<HTMLImageElement>('.still', scr).src = tab.dataset.still!;
+    if (!wake || calm() || state.open !== dlg || showScr !== scr) return;
+    scr.classList.remove('is-awake');
+    setTimeout(async () => {
+      if (run !== extraRun || state.open !== dlg) return;
+      const src = await play(scr);
+      if (run !== extraRun || state.open !== dlg || scr.dataset.clip !== base) {
+        drop(scr, src);
+        return;
+      }
+      scr.classList.add('is-awake');
+    }, 180);
+  }
+  function resetExtras(dlg: HTMLElement) {
+    const first = dlg.querySelector<HTMLElement>('.x-row [role="tab"]');
+    if (!first) return;
+    pickExtra(first, true);
+    showExtra(first, false);
+    prefetch((first.nextElementSibling as HTMLElement | null)?.dataset.clip);
+  }
+  for (const row of $$('.x-row', launcher)) {
+    const tabs = $$<HTMLElement>('[role="tab"]', row);
+    const tabOf = (e: Event) => (e.target as Element).closest<HTMLElement>('[role="tab"]');
+    row.addEventListener('click', (e) => {
+      const tab = tabOf(e);
+      if (tab) pickExtra(tab);
+    });
+    row.addEventListener('focusin', (e) => {
+      const tab = tabOf(e);
+      if (tab) pickExtra(tab);
+    });
+    // a pointer on its way to a square starts fetching its recording
+    row.addEventListener('pointerover', (e) => prefetch(tabOf(e)?.dataset.clip));
+    row.addEventListener('keydown', (e) => {
+      const at = tabs.indexOf(document.activeElement as HTMLElement);
+      if (at < 0) return;
+      const to = { ArrowLeft: at - 1, ArrowRight: at + 1, Home: 0, End: tabs.length - 1 }[e.key];
+      if (to === undefined) return;
+      e.preventDefault();
+      tabs[clamp(to, 0, tabs.length - 1)].focus();
+    });
+  }
+
   // ---------- The launch ----------
 
   let irisAnim: Animation | null = null;
@@ -1171,10 +1307,12 @@ function start(launcher: HTMLElement) {
   // the selected game rises, drops through the doorway, and the screen closes into it
   let launchRun = 0;
   let leaving = false;
-  async function launch(gate: HTMLDialogElement, href: string) {
+  // what goes through the doorway: the game in the row, or the picture on the game's page
+  let flyer: HTMLElement | null = null;
+  async function launch(dlg: HTMLDialogElement, href: string) {
     if (state.launching) return;
     const slotEl = slots[sel()];
-    if (!slotEl || slotEl.dataset.game !== gate.dataset.game) {
+    if (!slotEl || slotEl.dataset.game !== dlg.dataset.game) {
       window.location.assign(href);
       return;
     }
@@ -1182,13 +1320,17 @@ function start(launcher: HTMLElement) {
     // going back to the menu part way through stops the launch
     const run = ++launchRun;
     const still = () => run === launchRun;
-    closeCard({ instant: true, quiet: true, keepFocus: true });
     const title = slotEl.dataset.title ?? '';
     $('#bo-name', blackout).textContent = title;
     announce('Opening ' + title);
     launcher.classList.add('is-launching');
     launcher.inert = true;
-    const lift = $('.lift', slotEl);
+    const view = state.view?.dataset.card === 'inspect' ? state.view : null;
+    const lift = view ? $('.show-wrap', view) : $('.lift', slotEl);
+    for (const a of lift.getAnimations()) a.cancel();
+    flyer = lift;
+    const box = lift.getBoundingClientRect();
+    const size = box.width || S;
     if (calm()) {
       sound.play('iris');
       await launcher.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 280, fill: 'forwards' }).finished.catch(() => {});
@@ -1196,7 +1338,7 @@ function start(launcher: HTMLElement) {
       return;
     }
     sound.play('launch');
-    const up = `translateY(${(-S * 0.1).toFixed(1)}px) scale(1.06)`;
+    const up = `translateY(${(-size * 0.1).toFixed(1)}px) scale(1.06)`;
     target.classList.add('is-up');
     await lift
       .animate([{ transform: 'none' }, { transform: up }], { duration: 320, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'forwards' })
@@ -1205,10 +1347,9 @@ function start(launcher: HTMLElement) {
     await wait(150);
     if (!still()) return;
     const mouth = $('.t-door-mouth', target).getBoundingClientRect();
-    const box = slotEl.getBoundingClientRect();
     const dx = mouth.left + mouth.width / 2 - (box.left + box.width / 2);
     const dy = mouth.top + mouth.height / 2 - (box.top + box.height / 2);
-    const k = (mouth.width / S) * 0.95;
+    const k = (mouth.width / size) * 0.95;
     const dropEnd = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${(k * 0.05).toFixed(4)})`;
     await lift.animate(
       [
@@ -1257,12 +1398,12 @@ function start(launcher: HTMLElement) {
     blackout.hidden = true;
     boBack.hidden = true;
     const slotEl = slots[sel()];
-    const lift = $('.lift', slotEl);
+    const lift = flyer ?? $('.lift', slotEl);
     // the game comes back up from wherever the launch left it
     const left = getComputedStyle(lift);
     const from = { transform: left.transform, opacity: left.opacity };
     target.classList.remove('is-flash');
-    launcher.classList.remove('is-launching', 'is-covered');
+    launcher.classList.remove('is-launching');
     launcher.inert = false;
     for (const a of lift.getAnimations()) a.cancel();
     for (const a of launcher.getAnimations()) if (a !== irisAnim) a.cancel();
@@ -1291,7 +1432,8 @@ function start(launcher: HTMLElement) {
     }
     state.launching = false;
     returning = false;
-    slotEl.focus({ preventScroll: true });
+    flyer = null;
+    (state.view ? focusStart(state.view) : slotEl)?.focus({ preventScroll: true });
     wakeRow();
   }
   boBack.addEventListener('click', () => back());
@@ -1469,7 +1611,14 @@ function start(launcher: HTMLElement) {
       }
       return;
     }
-    if (state.open) return;
+    if (state.open) {
+      // escape goes back to the menu
+      if (e.key === 'Escape' && !e.repeat) {
+        e.preventDefault();
+        closeCard();
+      }
+      return;
+    }
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     const onTab = !!t.closest?.('[role="tablist"]');
     const onSlot = !!t.closest?.('.slot');
@@ -1522,10 +1671,6 @@ function start(launcher: HTMLElement) {
       case 'PageDown':
         e.preventDefault();
         nextFilter();
-        break;
-      case 'i':
-        e.preventDefault();
-        inspect();
         break;
       case 's':
         e.preventDefault();
@@ -1580,7 +1725,7 @@ function start(launcher: HTMLElement) {
     const ry = gp.axes[3] || 0;
     // the right stick scrolls the open card's text
     if (state.open && Math.abs(ry) > 0.2) {
-      const area = $$('.about-text, .ins-text, .card-body', state.open).find((el) => el.scrollHeight > el.clientHeight + 2);
+      const area = $$('.about-text, .ins-text, .inspect, .card-body', state.open).find((el) => el.scrollHeight > el.clientHeight + 2);
       if (area) area.scrollTop += ry * 16;
     }
     let dir = 0;
@@ -1637,7 +1782,6 @@ function start(launcher: HTMLElement) {
     if (step === -2 && state.search !== null) searchInput.focus({ preventScroll: true });
     if (edges.includes(1)) endSearch();
     if (edges.includes(0)) primary();
-    if (edges.includes(2)) inspect();
     if (edges.includes(3) && !busy()) openCard(aboutCard);
     if (edges.includes(9) && !busy()) openCard(settingsCard);
     if (edges.includes(4)) prevFilter();
@@ -1731,7 +1875,7 @@ function start(launcher: HTMLElement) {
     if (!busy()) openCard(settingsCard, { opener: e.currentTarget as HTMLElement });
   });
   $('#status', launcher).addEventListener('click', (e) => {
-    if (!busy()) openCard(settingsCard, { opener: e.currentTarget as HTMLElement });
+    if (!busy() || (state.open && !state.launching)) openCard(settingsCard, { opener: e.currentTarget as HTMLElement });
   });
   $('#btn-about', launcher).addEventListener('click', (e) => {
     if (!plainClick(e)) return;
@@ -1740,11 +1884,6 @@ function start(launcher: HTMLElement) {
   });
   btnSearch.addEventListener('click', startSearch);
   $('#search-end', searchBox).addEventListener('click', endSearch);
-  btnInspect.addEventListener('click', (e) => {
-    if (!plainClick(e) && btnInspect.getAttribute('aria-disabled') !== 'true') return;
-    e.preventDefault();
-    inspect(btnInspect);
-  });
 
   // ---------- The address ----------
 
@@ -1758,7 +1897,7 @@ function start(launcher: HTMLElement) {
     for (const ins of inspectCards.values()) {
       if (ins.dataset.path === path) {
         game = ins.dataset.game!;
-        card = location.hash === '#play' ? (gateCards.get(game) ?? ins) : ins;
+        card = ins;
       }
     }
     // the filter that shows this address, and the game it is about

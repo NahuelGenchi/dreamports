@@ -42,31 +42,42 @@ The top of the file, between the two `---` lines, holds the details. Write them 
 
 | Field | What to write |
 | :--- | :--- |
-| `title` | The game's name on the site, such as `Sonic Advance Dreamport` |
+| `title` | The game's name on the site, such as `Sonic Advance Dreamport`. On a Dreamport's own page, *Dreamport* shows as a tag after the name |
 | `kind` | `dreamport`, `external` (a port made by someone else) or `other` (a fan game that isn't a port) |
-| `platform` | The short line under the game's name in the menu and above its title, such as `Game Boy Advance` or `A mod for Dead Cells` |
+| `platform` | The short line under the game's name in the menu, such as `Game Boy Advance` or `A mod for Dead Cells` |
 | `year` | Optional: the year the original game came out |
 | `added` | The day it was added, written as `2026-10-27` |
 | `summary` | One sentence about the game, shown when its page is shared or found with a search engine |
-| `lead` | The paragraph under the title on the game's own page |
-| `ownCopy` → `text` | Which copy of the game it needs, and that dreamports never hosts game files |
-| `ownCopy` → `confirm` | The sentence visitors tick, such as `I own Sonic Advance, and I’m using my own legal copy of the game.` |
-| `ownCopy` → `links` | The play or download links. Each has a `label`, an `href` starting with `https://`, and an `icon`: `play` or `download`. The first is the main button |
-| `ownCopy` → `note` | A short line shown once the box is ticked, such as where the link goes |
-| `facts` | The rows of the "the game" box, each with a `label`, a `value` and, if it's a link, an `href` |
-| `screen` | Optional, and only with the owner's own recording: `clip` (the recording), `still` (its first frame) and, for pixel-art games, `pixelated: true`, which keeps the pixels sharp. See below |
+| `ownCopy` → `confirm` | The sentence visitors tick, under the game's picture, such as `I own Sonic Advance and use my own copy.` |
+| `ownCopy` → `links` | The play or download links. Each has a `label`, an `href` starting with `https://`, and an `icon`: `play` or `download`. The first is the main button, usually labelled `Play` |
+| `ownCopy` → `note` | A very short line shown once the box is ticked, such as `Your copy stays on your device.` |
+| `extras` | Optional: what the game adds, one square each on its page. Each has a `name`, an `icon` (one of the names in `src/lib/icons.ts`), a short `text`, `needs` when it needs another game, and a `screen` with its own `clip` and `still`. While an extra is picked, the game's picture plays its recording, or the game's own without one |
+| `facts` | The rows of the *The game* box. Each has a `label` and one of: a `value` (with an `href` if it's a link); `controls`, any of `keyboard`, `controller` and `touch`, shown as icons; or `parts`, the parts of the original game, each with a `name` and a `percent`, whose average shows as how close the port is to the original. Name the exact copy under *You need*, such as `A Sonic Advance (USA) ROM (.gba)` |
+| `screen` | Optional, and only with the owner's own recording: `clip` (the recording, named without its ending), `still` (its first frame) and, for pixel-art games, `pixelated: true`, which keeps the pixels sharp. See below |
 | `share` | Optional: the picture shown when the game's page is shared, such as `/media/my-port-share.png`. See below |
 | `glow` | Optional: the colour of the light the game casts on the menu while it's selected, in quotes, such as `'#8fd1ff'` |
 
 Below the second `---` is the page itself, in Markdown. `## ` lines become headings and the "on this page" list, `- ` lines become bullet points, and `1. ` lines become numbered steps.
 
-**A game's recording** is a few seconds of the game being played, looping smoothly, saved as an animated WebP in [`public/media/`](public/media/). Its first frame goes next to it as a still WebP picture. The menu shows the still until someone selects the game, and keeps showing it when motion is set to calm. Keep the recording short and small, because visitors download it when they select the game. In the game's file it looks like this:
+**A game's recording** is a few seconds of the game being played, looping smoothly, saved in [`public/media/`](public/media/) as two silent MP4 videos at 60 frames a second:
+
+- `my-port.h264.mp4`, in H.264, which every browser plays;
+- `my-port.av1.mp4`, in AV1, which is smaller. The site plays it only where the device decodes AV1 smoothly in hardware.
+
+Its first frame goes next to them as a still WebP picture. The menu shows the still until someone selects the game, and keeps showing it when motion is set to calm. Keep the recording short and small, because visitors download it when they select the game: the ones here are 2 to 7 seconds and 0.2 to 1.4 MB each. Scale pixel-art games up by a whole step, such as twice, before encoding, so the pixels stay sharp.
+
+The recordings here were encoded with these settings, which keep pixel art sharp and the files small:
+
+- **H.264:** `libx264`, CRF 24, the `veryslow` preset, `animation` tuning, the `high` profile, and one keyframe every 600 frames.
+- **AV1:** SVT-AV1, CRF 44, preset 3, with its screen-content tools on (`scm=1:enable-overlays=1:tune=0`), and one keyframe every 600 frames.
+- **Both:** `yuv420p` colour and the file's index at its start (`faststart`), so a video can start before it has all arrived.
+
+In the game's file, the recording is named without its ending:
 
 ```yaml
 screen:
-  clip: /media/my-port.webp
+  clip: /media/my-port
   still: /media/my-port-still.webp
-  pixelated: true
 share: /media/my-port-share.png
 glow: '#8fd1ff'
 ```

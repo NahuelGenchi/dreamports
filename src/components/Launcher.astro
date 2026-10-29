@@ -1,17 +1,17 @@
 ---
 // The whole site is this one screen: a top bar with the filters (or the search field, while a
 // search is on), one row of games across the middle, corner buttons at the bottom, and cards
-// that open over it. Every page shows it, with its own card open: a game's own page opens that
-// game's card, and /about/ opens about.
-// Without JavaScript the row is a plain list of links and the open card is the page's text.
+// that take the row's place as full screens. Every page shows it, with its own card open: a
+// game's own page opens that game's card, and /about/ opens about.
+// Without JavaScript the row is a plain list of links, and on a card's page the card is the
+// page's text in the row's place.
 import AboutCard from './AboutCard.astro';
 import Doorway from './Doorway.astro';
-import GateCard from './GateCard.astro';
 import InspectCard from './InspectCard.astro';
 import Key from './Key.astro';
 import SettingsCard from './SettingsCard.astro';
 import Slot from './Slot.astro';
-import { FILTERS, SECTIONS, SLOTS, gameUrl, getGames, type Filter, type FilterKey, type Game } from '../lib/site';
+import { FILTERS, SECTIONS, SLOTS, getGames, type Filter, type FilterKey, type Game } from '../lib/site';
 
 interface Props {
   filter: FilterKey;
@@ -30,14 +30,13 @@ const rows = FILTERS.map((f) => {
 });
 const current = rows.find((row) => row.filter.key === filter)!;
 const selIndex = Math.max(0, current.list.findIndex((game) => game && game.id === selected));
-const selGame = current.list[selIndex];
 const Heading = open ? 'h2' : 'h1';
 // Every address that shows a filter: its own, and the older one for each kind of game in it.
 const pathsFor = (f: Filter) =>
   [f.path, ...SECTIONS.filter((s) => f.kinds.includes(s.kind)).map((s) => `/${s.path}/`)].join(' ');
 ---
 
-<div class="launcher" id="launcher" data-filter={filter} data-sel={selIndex}>
+<div class="launcher" id="launcher" data-filter={filter} data-sel={selIndex} data-view={open}>
   <header class="topbar">
     <div class="side">
       <div class="pill clock" aria-hidden="true"><Doorway /><time id="clock"></time></div>
@@ -154,18 +153,6 @@ const pathsFor = (f: Filter) =>
           <path d="M1 0h4v1H1zM0 1h1v4H0zM5 1h1v4H5zM1 5h4v1H1zM5 5h2v2H5zM7 7h2v2H7z"></path>
         </svg>
       </button>
-      <a
-        class="corner no-label"
-        id="btn-inspect"
-        href={selGame ? gameUrl(selGame) : current.filter.path}
-        aria-label="Game info"
-        aria-keyshortcuts="I"
-      >
-        <Key label="I" pad="X" round />
-        <svg class="c-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
-          <path d="M2 0h5v1H2zM1 1h1v1H1zM7 1h1v1H7zM0 2h1v5H0zM8 2h1v5H8zM1 7h1v1H1zM7 7h1v1H7zM2 8h5v1H2zM4 2h1v1H4zM4 4h1v3H4z"></path>
-        </svg>
-      </a>
     </div>
   </nav>
 
@@ -173,13 +160,17 @@ const pathsFor = (f: Filter) =>
     <svg viewBox="0 0 13 8" shape-rendering="crispEdges" aria-hidden="true"></svg>
     <span>Controller? Tap the screen.</span>
   </p>
+
+  <SettingsCard />
+  <AboutCard open={open === 'about'} />
+  {games.map((game) => <InspectCard game={game} open={open === 'inspect' && game.id === selected} />)}
 </div>
 
 <div class="blackout" id="blackout" hidden>
   <div class="bo-inner">
     <Doorway />
     <p class="bo-line">Opening <span id="bo-name"></span><span class="bo-dots"></span></p>
-    <button type="button" class="bo-back" id="bo-back" hidden><Key label="Esc" pad="B" round />Back to the menu</button>
+    <button type="button" class="bo-back" id="bo-back" hidden><Key label="Esc" pad="B" round />Back</button>
   </div>
 </div>
 
@@ -191,16 +182,6 @@ const pathsFor = (f: Filter) =>
   ))
 }
 
-<SettingsCard />
-<AboutCard open={open === 'about'} />
-{
-  games.map((game) => (
-    <Fragment>
-      <InspectCard game={game} open={open === 'inspect' && game.id === selected} />
-      <GateCard game={game} own={open === 'inspect' && game.id === selected} />
-    </Fragment>
-  ))
-}
 <div class="sr-only" aria-live="polite" id="live"></div>
 
 <script>

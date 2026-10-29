@@ -5,56 +5,76 @@ platform: Game Boy Advance
 year: 2001
 added: 2026-10-27
 summary: Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install.
-lead: Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install, and every extra is optional.
 ownCopy:
-  text: "This Dreamport reads your own copy of Sonic Advance: the .gba file copied from your cartridge. Dreamports never hosts game files and can’t give you one."
-  confirm: I own Sonic Advance, and I’m using my own legal copy of the game.
+  confirm: I own Sonic Advance and use my own copy.
   links:
-    - label: Play in your browser
+    - label: Play
       href: https://dreamports.net/play/sonic-advance/
       icon: play
-  note: Opens the game here on dreamports.net. Your copy stays on your device.
+  note: Your copy stays on your device.
+extras:
+  - name: Widescreen
+    icon: aspect-ratio
+    text: See more of each act, up to 368 × 208, with every pixel still sharp.
+    screen:
+      clip: /media/sonic-widescreen
+      still: /media/sonic-widescreen-still.webp
+  - name: Rush boost
+    icon: zap
+    text: Hold a button and Sonic blasts ahead in Sonic Rush’s blue aura and trail.
+    needs: Sonic Rush
+    screen:
+      clip: /media/sonic-rush-boost
+      still: /media/sonic-rush-boost-still.webp
+  - name: Boost Mode
+    icon: speed-fast
+    text: Keep running flat out and Sonic breaks into an even faster run, as in Sonic Advance 2.
+    needs: Sonic Advance 2
+    screen:
+      clip: /media/sonic-boost-mode
+      still: /media/sonic-boost-mode-still.webp
+  - name: Mid-air tricks
+    icon: sparkles
+    text: "Four tricks from Sonic Advance 2: the Back Star, the Hop Jump, the Humming Top and the Bound."
+    needs: Sonic Advance 2
+    screen:
+      clip: /media/sonic-tricks
+      still: /media/sonic-tricks-still.webp
 facts:
   - label: Original
-    value: Sonic Advance, Game Boy Advance, 2001
+    value: Game Boy Advance, 2001
   - label: You need
-    value: Your own copy of Sonic Advance (USA), as a .gba file
-  - label: Plays in
-    value: Your web browser
+    value: A Sonic Advance (USA) ROM (.gba)
   - label: Controls
-    value: Keyboard, Xbox controller or touch
+    controls: [keyboard, controller, touch]
   - label: Status
-    value: "Early days: every zone is playable, and six special stages are on the way"
-  - label: Made by
-    value: Nahuel Genchi
+    parts:
+      - name: Maps
+        percent: 100
+      - name: Physics
+        percent: 100
+      - name: Mechanics
+        percent: 100
+      - name: Sound
+        percent: 100
+      - name: Options
+        percent: 85
+      - name: Modes
+        percent: 30
+      - name: Characters
+        percent: 25
   - label: Source code
     value: On GitHub
     href: https://github.com/NahuelGenchi/sonic-advance-dreamport
-  - label: The story
+  - label: Article
     value: On nahuelgenchi.com
     href: https://nahuelgenchi.com/gaming/onsoku-advance/
 screen:
-  clip: /media/sonic-advance-dreamport.webp
+  clip: /media/sonic-advance-dreamport
   still: /media/sonic-advance-dreamport-still.webp
-  pixelated: true
 share: /media/sonic-advance-dreamport-share.png
 glow: '#8fd1ff'
 ---
-
-## What it adds
-
-Four extras on top of the original game. Each one is off until you switch it on, and with all of them off, the game plays just like the cartridge.
-
-- **Widescreen view.** See more of each act around the original screen, up to 368 × 208, with every pixel still sharp.
-- **Sonic Rush boost.** Hold a button and Sonic blasts ahead at top speed, in Rush’s blue aura and trail. *Needs your copy of Sonic Rush too.*
-- **Boost Mode.** From Sonic Advance 2: keep running flat out and Sonic breaks into an even faster run. *Needs your copy of Sonic Advance 2 too.*
-- **Sonic Advance 2 tricks.** Four mid-air tricks: the Back Star, the Hop Jump, the Humming Top and the Bound. *Needs your copy of Sonic Advance 2 too.*
-
-## Play in three steps
-
-1. Tick the box in [Before you play](#play) and press Play. A current desktop browser works best.
-2. Add your Sonic Advance file, the .gba copied from your cartridge. Tick *Remember on this device* to keep it for next time.
-3. Play. Press <kbd>H</kbd> during the game to see the controls.
 
 ## Credits
 
