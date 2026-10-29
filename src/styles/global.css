@@ -2252,30 +2252,49 @@ dialog.card[open] {
   --bz: calc(var(--s) * 0.028);
 }
 
-/* under the picture: the box to tick, then play, locked until it is ticked */
+/* under the picture: the box to tick, and right below it the buttons it unlocks, locked until it
+   is ticked. They share one width, the wider of the box's words and the buttons, from the
+   picture's left edge; the note under them wraps to that width. */
 .view .gate-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: var(--hero);
+  display: grid;
+  grid-template-columns: minmax(0, max-content);
+  justify-content: start;
+  gap: 10px;
+  width: max-content;
+  min-width: var(--hero);
+  max-width: 100%;
 }
 
 .view .gate-form .check {
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  margin: 2px;
+  padding: 0 18px;
+}
+
+.view .gate-form .check input {
   margin: 0 2px;
-  padding: 12px 14px;
+}
+
+.view .gate-form .check:has(input:checked) {
+  --frame: var(--blue);
 }
 
 .view .gate-actions {
-  flex-wrap: nowrap;
+  display: grid;
+  gap: 8px;
   margin: 0;
 }
 
-.view .gate-buttons {
-  flex: none;
+.view .ins-show .btn {
+  flex: 1 1 auto;
+  min-width: 150px;
 }
 
-.view .ins-show .btn {
-  min-width: 150px;
+.view .gate-note {
+  contain: inline-size;
+  margin: 0 2px;
 }
 
 /* long text scrolls under soft edges */
@@ -2504,33 +2523,45 @@ dialog.card[open] {
 }
 
 @media (max-height: 500px) and (min-width: 641px) {
-  /* a phone held sideways: a smaller picture, so it, the box and the button fit the height */
+  /* a phone held sideways: a smaller picture, so it, the box and the button fit the height, and
+     a smaller title, so the game's name stays on one line */
   .view .ins-show {
-    --hero: min(40vw, (100dvh - 270px) * 1.6);
+    --hero: min(40vw, (100dvh - 266px - env(safe-area-inset-bottom, 0px)) * 1.54);
     gap: 12px;
   }
 
   .view .gate-form {
-    width: 100%;
-    gap: 8px;
+    gap: 6px;
   }
 
-  .view .gate-form .check {
-    padding: 8px 12px;
+  .view :is(.gate-form .check, .ins-show .btn) {
+    min-height: 42px;
+    padding: 0 14px;
     font-size: 13.5px;
-    line-height: 20px;
   }
 
   .view .ins-show .btn {
-    min-height: 44px;
+    min-width: 0;
+  }
+
+  .view .ins-text {
+    padding: 16px 6px 28px 0;
+    -webkit-mask-image: linear-gradient(transparent, #000 14px, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(transparent, #000 14px, #000 calc(100% - 28px), transparent);
+  }
+
+  .view .ins-title {
+    font-size: 22px;
+    line-height: 30px;
   }
 }
 
 @media (max-width: 640px) {
-  /* a game's page: picture, button and text in one column that scrolls */
+  /* a game's page: picture, button and text in one column that scrolls, only up and down: the
+     glow round the picture is wider than the screen */
   .view .inspect {
     display: block;
-    overflow: auto;
+    overflow: hidden auto;
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
@@ -2551,19 +2582,12 @@ dialog.card[open] {
   }
 
   .view .gate-form {
+    grid-template-columns: minmax(0, 1fr);
     width: auto;
-  }
-
-  .view .gate-actions {
-    flex-wrap: wrap;
-  }
-
-  .view .gate-buttons {
-    flex: 1 1 100%;
+    min-width: 0;
   }
 
   .view .ins-show .btn {
-    flex: 1 1 0;
     min-width: 0;
     white-space: nowrap;
   }

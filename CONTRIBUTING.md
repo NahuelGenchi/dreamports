@@ -48,7 +48,7 @@ The top of the file, between the two `---` lines, holds the details. Write them 
 | `year` | Optional: the year the original game came out |
 | `added` | The day it was added, written as `2026-10-27` |
 | `summary` | One sentence about the game, shown when its page is shared or found with a search engine |
-| `ownCopy` → `confirm` | The sentence visitors tick, under the game's picture, such as `I own Sonic Advance and use my own copy.` |
+| `ownCopy` → `confirm` | The words visitors tick, in a box under the game's picture as wide as the buttons below it, such as `I own Sonic Advance`. Keep them short |
 | `ownCopy` → `links` | The play or download links. Each has a `label`, an `href` starting with `https://`, and an `icon`: `play` or `download`. The first is the main button, usually labelled `Play` |
 | `ownCopy` → `note` | A very short line shown once the box is ticked, such as `Your copy stays on your device.` |
 | `extras` | Optional: what the game adds, one square each on its page. Each has a `name`, an `icon` (one of the names in `src/lib/icons.ts`), a short `text`, `needs` when it needs another game, and a `screen` with its own `clip` and `still`. While an extra is picked, the game's picture plays its recording, or the game's own without one |

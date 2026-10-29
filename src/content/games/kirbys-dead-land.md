@@ -5,7 +5,7 @@ platform: A mod for Dead Cells
 added: 2026-10-27
 summary: Play as Kirby inside Dead Cells, with his moves and copy abilities. For Linux; Windows is in testing.
 ownCopy:
-  confirm: I own both games and use my own copies.
+  confirm: I own both games
   links:
     - label: Linux
       href: https://github.com/NahuelGenchi/kirbys-dead-land/releases/latest
