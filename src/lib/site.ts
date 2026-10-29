@@ -10,8 +10,8 @@ export const OWNER_URL = 'https://nahuelgenchi.com/';
 // Forwards to the owner's inbox through Cloudflare Email Routing (#4).
 export const CONTACT_EMAIL = 'hello@dreamports.net';
 
-export const HOME_TITLE = 'dreamports · enhanced fan ports of classic games';
-export const pageTitle = (title?: string): string => (title ? `${title} · dreamports` : HOME_TITLE);
+export const HOME_TITLE = 'Dreamports · Enhanced fan ports of classic games';
+export const pageTitle = (title?: string): string => (title ? `${title} · Dreamports` : HOME_TITLE);
 
 // Each kind of game has its own part of the site's addresses: /dreamports/, /external-ports/
 // and /other-games/. A game's page lives at /<path>/<file name>/.
@@ -27,23 +27,23 @@ export const SECTIONS: Section[] = [
   {
     kind: 'dreamport',
     path: 'dreamports',
-    title: 'dreamports',
-    label: 'dreamport',
-    lead: 'the port fans always dreamed of: the game you remember, with the extras you wished it had. these are made here, they are free, and each one asks you to bring your own copy of the game.',
+    title: 'Dreamports',
+    label: 'Dreamport',
+    lead: 'The port fans always dreamed of: the game you remember, with the extras you wished it had. These are made here, they are free, and each one asks you to bring your own copy of the game.',
   },
   {
     kind: 'external',
     path: 'external-ports',
-    title: 'external ports',
-    label: 'external port',
-    lead: 'great ports made by other fans. dreamports links to their own sites and credits the people who made them, and lists only projects that ask you to bring your own legal copy of the game.',
+    title: 'External ports',
+    label: 'External port',
+    lead: 'Great ports made by other fans. Dreamports links to their own sites and credits the people who made them, and lists only projects that ask you to bring your own legal copy of the game.',
   },
   {
     kind: 'other',
     path: 'other-games',
-    title: 'other games',
-    label: 'other game',
-    lead: 'fan games that aren’t ports: mods and new games made with the same care, and the same bring-your-own-game rule.',
+    title: 'Other games',
+    label: 'Other game',
+    lead: 'Fan games that aren’t ports: mods and new games made with the same care, and the same bring-your-own-game rule.',
   },
 ];
 
@@ -68,20 +68,20 @@ export interface Filter {
 export const FILTERS: Filter[] = [
   {
     key: 'dreamports',
-    label: 'dreamports',
+    label: 'Dreamports',
     path: '/',
     title: HOME_TITLE,
     description:
-      'enhanced fan ports of classic games. a dreamport is the port fans always dreamed of: the game you remember, with the extras you wished it had.',
+      'Enhanced fan ports of classic games. A Dreamport is the port fans always dreamed of: the game you remember, with the extras you wished it had.',
     kinds: ['dreamport'],
   },
   {
     key: 'mash-ups',
-    label: 'mash-ups',
+    label: 'Mash-ups',
     path: '/mash-ups/',
-    title: pageTitle('mash-ups'),
+    title: pageTitle('Mash-ups'),
     description:
-      'great ports made by other fans, and fan games that aren’t ports, like kirby’s dead land. each one asks you to bring your own copy of the game.',
+      'Great ports made by other fans, and fan games that aren’t ports, like Kirby’s Dead Land. Each one asks you to bring your own copy of the game.',
     kinds: ['external', 'other'],
   },
 ];

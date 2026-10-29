@@ -37,7 +37,7 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
         <div class="show-tile"><Tile game={game} lazy={!open} /></div>
       </div>
       <a class="btn" href={`${gameUrl(game)}#play`} data-gate autofocus>
-        <span aria-hidden="true">{downloads ? '↓' : '▶'}</span>{downloads ? 'before you download' : 'before you play'}
+        <span aria-hidden="true">{downloads ? '↓' : '▶'}</span>{downloads ? 'Before you download' : 'Before you play'}
       </a>
     </div>
     <div class="ins-text" tabindex="0">
@@ -50,5 +50,5 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
       <div class="prose" set:html={body} />
     </div>
   </div>
-  <a class="card-close" href={filterFor(kind).path} data-close><Key label="esc" pad="B" round />close</a>
+  <a class="card-close" href={filterFor(kind).path} data-close><Key label="Esc" pad="B" round />Close</a>
 </dialog>

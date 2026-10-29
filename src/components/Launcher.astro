@@ -43,8 +43,8 @@ const pathsFor = (f: Filter) =>
       <div class="pill clock" aria-hidden="true"><Doorway /><time id="clock"></time></div>
     </div>
     <div class="filters">
-      <button type="button" class="shoulder" id="btn-l" aria-label="previous filter" aria-keyshortcuts="L Q">L</button>
-      <div class="tabs" role="tablist" aria-label="filters">
+      <button type="button" class="shoulder" id="btn-l" aria-label="Previous filter" aria-keyshortcuts="L Q">L</button>
+      <div class="tabs" role="tablist" aria-label="Filters">
         {
           FILTERS.map((f, i) => (
             <Fragment>
@@ -68,7 +68,7 @@ const pathsFor = (f: Filter) =>
         }
         <i class="tab-mark" id="tab-mark" aria-hidden="true"></i>
       </div>
-      <button type="button" class="shoulder" id="btn-r" aria-label="next filter" aria-keyshortcuts="R E">R</button>
+      <button type="button" class="shoulder" id="btn-r" aria-label="Next filter" aria-keyshortcuts="R E">R</button>
       <div class="search" id="search" role="search" hidden>
         <svg class="s-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
           <path d="M1 0h4v1H1zM0 1h1v4H0zM5 1h1v4H5zM1 5h4v1H1zM5 5h2v2H5zM7 7h2v2H7z"></path>
@@ -76,16 +76,16 @@ const pathsFor = (f: Filter) =>
         <input
           type="search"
           id="search-input"
-          placeholder={`search ${current.filter.label}`}
-          aria-label={`search ${current.filter.label}`}
+          placeholder={`Search ${current.filter.label}`}
+          aria-label={`Search ${current.filter.label}`}
           aria-controls="row"
           autocomplete="off"
           autocapitalize="off"
           spellcheck="false"
           enterkeyhint="search"
         />
-        <button type="button" class="search-end" id="search-end" aria-label="end the search" aria-keyshortcuts="Escape">
-          <Key label="esc" pad="B" round />
+        <button type="button" class="search-end" id="search-end" aria-label="End the search" aria-keyshortcuts="Escape">
+          <Key label="Esc" pad="B" round />
           <svg viewBox="0 0 7 7" shape-rendering="crispEdges" aria-hidden="true">
             <path d="M0 0h1v1H0zM6 0h1v1H6zM1 1h1v1H1zM5 1h1v1H5zM2 2h1v1H2zM4 2h1v1H4zM3 3h1v1H3zM2 4h1v1H2zM4 4h1v1H4zM1 5h1v1H1zM5 5h1v1H5zM0 6h1v1H0zM6 6h1v1H6z"></path>
           </svg>
@@ -93,7 +93,7 @@ const pathsFor = (f: Filter) =>
       </div>
     </div>
     <div class="side end">
-      <button type="button" class="pill status" id="status" aria-label="settings">
+      <button type="button" class="pill status" id="status" aria-label="Settings">
         <svg id="ico-sound" viewBox="0 0 11 9" shape-rendering="crispEdges" aria-hidden="true"></svg>
         <svg id="ico-pad" viewBox="0 0 13 8" shape-rendering="crispEdges" aria-hidden="true"></svg>
       </button>
@@ -101,8 +101,8 @@ const pathsFor = (f: Filter) =>
   </header>
 
   <main class="stage" id="stage">
-    <Heading class="sr-only">dreamports</Heading>
-    <div class="row" id="row" aria-label={`games: ${current.filter.label}`}>
+    <Heading class="sr-only">Dreamports</Heading>
+    <div class="row" id="row" aria-label={`Games: ${current.filter.label}`}>
       {current.list.map((game, i) => <Slot game={game} index={i} />)}
     </div>
     <div class="cursor" id="cursor" aria-hidden="true">
@@ -112,7 +112,7 @@ const pathsFor = (f: Filter) =>
       <i class="c-br" data-dx="1" data-dy="1"></i>
     </div>
     <div class="nameplate" id="nameplate" aria-hidden="true">
-      <Key label="enter" pad="A" round />
+      <Key label="Enter" pad="A" round />
       <span class="np-text"><span class="np-name" id="np-name"></span><span class="np-detail" id="np-detail"></span></span>
     </div>
   </main>
@@ -121,10 +121,10 @@ const pathsFor = (f: Filter) =>
     <div class="t-door"><Doorway /><span class="t-door-mouth"></span><span class="t-glow"></span></div>
   </div>
 
-  <nav class="corners" aria-label="menu">
+  <nav class="corners" aria-label="Menu">
     <div class="corner-group">
       <button type="button" class="corner" id="btn-settings" aria-keyshortcuts="S">
-        <Key label="s">
+        <Key label="S">
           <svg viewBox="0 0 5 4"><path d="M0 0h5v1H0zM0 1.5h5v1H0zM0 3h5v1H0z"></path></svg>
         </Key>
         <svg class="c-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
@@ -132,9 +132,9 @@ const pathsFor = (f: Filter) =>
         </svg>
       </button>
       <a class="corner" id="btn-about" href="/about/" aria-keyshortcuts="A">
-        <Key label="a" pad="Y" round />
+        <Key label="A" pad="Y" round />
         <Doorway class="c-icon" />
-        about
+        About
       </a>
     </div>
     <div class="corner-group">
@@ -142,7 +142,7 @@ const pathsFor = (f: Filter) =>
         type="button"
         class="corner no-label"
         id="btn-search"
-        aria-label={`search ${current.filter.label}`}
+        aria-label={`Search ${current.filter.label}`}
         aria-controls="search"
         aria-expanded="false"
         aria-keyshortcuts="/"
@@ -158,10 +158,10 @@ const pathsFor = (f: Filter) =>
         class="corner no-label"
         id="btn-inspect"
         href={selGame ? gameUrl(selGame) : current.filter.path}
-        aria-label="game info"
+        aria-label="Game info"
         aria-keyshortcuts="I"
       >
-        <Key label="i" pad="X" round />
+        <Key label="I" pad="X" round />
         <svg class="c-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
           <path d="M2 0h5v1H2zM1 1h1v1H1zM7 1h1v1H7zM0 2h1v5H0zM8 2h1v5H8zM1 7h1v1H1zM7 7h1v1H7zM2 8h5v1H2zM4 2h1v1H4zM4 4h1v3H4z"></path>
         </svg>
@@ -173,8 +173,8 @@ const pathsFor = (f: Filter) =>
 <div class="blackout" id="blackout" hidden>
   <div class="bo-inner">
     <Doorway />
-    <p class="bo-line">opening <span id="bo-name"></span><span class="bo-dots"></span></p>
-    <button type="button" class="bo-back" id="bo-back" hidden><Key label="esc" pad="B" round />back to the menu</button>
+    <p class="bo-line">Opening <span id="bo-name"></span><span class="bo-dots"></span></p>
+    <button type="button" class="bo-back" id="bo-back" hidden><Key label="Esc" pad="B" round />Back to the menu</button>
   </div>
 </div>
 

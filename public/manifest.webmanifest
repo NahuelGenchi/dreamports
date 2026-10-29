@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "dreamports",
-  "short_name": "dreamports",
-  "description": "enhanced fan ports of classic games",
+  "name": "Dreamports",
+  "short_name": "Dreamports",
+  "description": "Enhanced fan ports of classic games",
   "lang": "en",
   "start_url": "/",
   "scope": "/",
