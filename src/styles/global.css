@@ -2074,6 +2074,33 @@ dialog.card[open] {
   }
 }
 
+/* under 360 px, as on a 320 px iPhone SE, the filters leave the badges no room: the bar's edges
+   and spaces narrow, so both badges keep their icons and the search keeps "Search Dreamports" */
+@media (max-width: 359px) {
+  .topbar {
+    gap: 6px;
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+  }
+
+  .filters {
+    gap: 4px;
+  }
+
+  .tab {
+    padding: 0 3px;
+  }
+
+  .search {
+    gap: 4px;
+    padding-left: 6px;
+  }
+
+  .search-end {
+    padding: 0 3px;
+  }
+}
+
 /* the time shows only when its side of the bar has room for the whole clock, 87 px at its widest */
 @container (width < 87px) {
   .clock time {
@@ -2101,6 +2128,17 @@ dialog.card[open] {
 @container (width < 34px) {
   .status {
     padding: 0 6px;
+  }
+}
+
+/* and narrowest, as on 320 px phones: tighter frames round the doorway and the speaker */
+@container (width < 29px) {
+  .clock {
+    padding: 0 6px;
+  }
+
+  .status {
+    padding: 0 4px;
   }
 }
 
