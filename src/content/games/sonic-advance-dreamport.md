@@ -6,7 +6,7 @@ year: 2001
 added: 2026-10-27
 summary: Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install.
 ownCopy:
-  confirm: I own Sonic Advance and use my own copy.
+  confirm: I own Sonic Advance
   links:
     - label: Play
       href: https://dreamports.net/play/sonic-advance/
