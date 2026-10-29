@@ -2,7 +2,7 @@
 
 ## The project
 
-Dreamports is the source code for dreamports.net, a home for enhanced fan ports of classic games. A Dreamport is "the port fans always dreamed of: the game you remember, with the extras you wished it had"; use that wording rather than "dream means fan". The site lists the owner's own Dreamports (for example Sonic Advance Dreamport), external ports made by other people (links and credits only), and other fan games that aren't ports (for example Kirby's Dead Land). The site is a static Astro site (#3); hosting it on Cloudflare is #4. Since #23 the whole site is one screen that works like a game launcher: every page shows the menu, with that page's card open.
+Dreamports is the source code for dreamports.net, a home for enhanced fan ports of classic games. A Dreamport is "the port fans always dreamed of: the game you remember, with the extras you wished it had"; use that wording rather than "dream means fan". The site lists the owner's own Dreamports (for example Sonic Advance Dreamport), external ports made by other people (links and credits only), and other fan games that aren't ports (for example Kirby's Dead Land). The site is a static Astro site (#3); hosting it on Cloudflare is #4. Since #23 the whole site is one screen that works like a game launcher: every page shows the menu, with that page's card open. Since #59 a card takes the menu's place as a full screen instead of opening over it.
 
 Never describe something as working or complete unless a recorded check establishes it. A build is not a browser check.
 
@@ -22,7 +22,7 @@ Never describe something as working or complete unless a recorded check establis
 | `public/` | Files served as they are: icons, the star, the social preview, font licenses, and the games' recordings in `public/media/` |
 | `wrangler.jsonc` | How Cloudflare serves the built site from `dist/`, with no server code |
 
-Commands: `npm run dev`, `npm run check`, `npm run build`, `npm run preview`. Site text uses normal capitals: sentences and labels start with one, and names keep theirs (games, platforms, people, Dreamports); key hints are written as on a keyboard (`Esc`, `Enter`). Play and download links live only in a game's `ownCopy.links`, behind the "Before you play" confirmation.
+Commands: `npm run dev`, `npm run check`, `npm run build`, `npm run preview`. Site text uses normal capitals: sentences and labels start with one, and names keep theirs (games, platforms, people, Dreamports); key hints are written as on a keyboard (`Esc`, `Enter`). Play and download links live only in a game's `ownCopy.links`, behind the own-copy tick on the game's page.
 
 ## Working well here
 

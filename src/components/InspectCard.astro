@@ -1,8 +1,13 @@
 ---
-// A game's own page, as a card over the menu: its recording, its details and its text.
+// A game's own page, in the menu's place: its recording with the box to tick and the button
+// to play, then its name, its extras, its details and its text.
+// The play and download links stay locked until the visitor confirms they're using their own
+// legal copy of the game. Without JavaScript the browser itself refuses to follow a link until
+// the box is ticked. Play links open in the same tab; download links open in a new one.
 import Facts from './Facts.astro';
-import Key from './Key.astro';
+import PixelIcon from './PixelIcon.astro';
 import Tile from './Tile.astro';
+import ViewBar from './ViewBar.astro';
 import { filterFor, gameUrl, pageTitle, sectionFor, type Game } from '../lib/site';
 
 interface Props {
@@ -12,16 +17,19 @@ interface Props {
 }
 
 const { game, open = false } = Astro.props;
-const { title, kind, platform, year, lead, facts, glow, ownCopy } = game.data;
+const { title, kind, facts, glow, ownCopy, extras, screen } = game.data;
+const { confirm, links, note } = ownCopy;
 const id = game.id;
 const Title = open ? 'h1' : 'h2';
-const downloads = ownCopy.links.every((link) => link.icon === 'download');
+// "Sonic Advance Dreamport" shows as the game's name with "Dreamport" as a tag after it
+const tag = kind === 'dreamport' ? sectionFor(kind).label : null;
+const name = tag && title.endsWith(` ${tag}`) ? title.slice(0, -tag.length - 1) : title;
 // Every page holds every game's card, so each game's headings get ids of their own.
 const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$1 id="${id}-$2"`);
 ---
 
 <dialog
-  class="card card-inspect"
+  class="card view card-inspect"
   id={`inspect-${id}`}
   data-card="inspect"
   data-game={id}
@@ -36,19 +44,89 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
         <i class="glow" style={`--g: ${glow}`}></i>
         <div class="show-tile"><Tile game={game} lazy={!open} /></div>
       </div>
-      <a class="btn" href={`${gameUrl(game)}#play`} data-gate autofocus>
-        <span aria-hidden="true">{downloads ? '↓' : '▶'}</span>{downloads ? 'Before you download' : 'Before you play'}
-      </a>
+      <form
+        class="gate-form"
+        id={open ? 'play' : `play-${id}`}
+        method="get"
+        action={links[0].href}
+        data-locked-note="Tick to unlock."
+        data-nudge-note="Tick the box first."
+      >
+        <label class="check" for={`own-${id}`}>
+          <input type="checkbox" id={`own-${id}`} required autofocus />
+          <span>{confirm}</span>
+        </label>
+        <div class="gate-actions">
+          <div class="gate-buttons">
+            {
+              links.map((link, index) => (
+                <button
+                  type="submit"
+                  class:list={['btn', index > 0 && 'btn--alt']}
+                  formaction={link.href}
+                  formtarget={link.icon === 'download' ? '_blank' : undefined}
+                  data-icon={link.icon}
+                  aria-describedby={`gate-note-${id}`}
+                >
+                  <svg class="icon-lock" viewBox="0 0 8 7" width="16" height="14" fill="currentColor" aria-hidden="true">
+                    <path d="M2 0h4v1H2zM1 1h1v2H1zM6 1h1v2H6zM0 3h8v1H0zM0 4h3v2H0zM5 4h3v2H5zM0 6h8v1H0z" />
+                  </svg>
+                  <span class="icon-go" aria-hidden="true">{link.icon === 'download' ? '↓' : '▶'}</span>
+                  {link.label}
+                </button>
+              ))
+            }
+          </div>
+          <p id={`gate-note-${id}`} class="gate-note" aria-live="polite">
+            <span class="note-locked">Tick to unlock.</span>
+            <span class="note-open">{note}</span>
+          </p>
+        </div>
+      </form>
     </div>
     <div class="ins-text" tabindex="0">
-      <p class="ins-label">
-        <span class="kind">{sectionFor(kind).label}</span> · {platform}{year && ` · ${year}`}
-      </p>
-      <Title class="ins-title" id={`ins-title-${id}`}>{title}</Title>
-      <p class="ins-lead">{lead}</p>
+      <Title class="ins-title" id={`ins-title-${id}`}>
+        {name}
+        {tag && name !== title && <>{' '}<span class="ins-tag">{tag}</span></>}
+      </Title>
+      {
+        extras.length > 0 && (
+          <section class="extras" aria-labelledby={`extras-${id}`}>
+            <h3 id={`extras-${id}`}>Extras</h3>
+            <div class="x-row" role="tablist" aria-labelledby={`extras-${id}`}>
+              {extras.map((extra, i) => (
+                <button
+                  type="button"
+                  class:list={['x-tile', i === 0 && 'is-sel']}
+                  role="tab"
+                  id={`x-${id}-${i}`}
+                  aria-selected={i === 0 ? 'true' : 'false'}
+                  aria-controls={`xp-${id}-${i}`}
+                  tabindex={i === 0 ? undefined : -1}
+                  title={extra.name}
+                  data-clip={(extra.screen ?? screen)?.clip}
+                  data-still={(extra.screen ?? screen)?.still}
+                >
+                  <PixelIcon name={extra.icon} />
+                  <span class="sr-only">{extra.name}</span>
+                </button>
+              ))}
+            </div>
+            <div class="x-panels">
+              {extras.map((extra, i) => (
+                <div class:list={['x-panel', i === 0 && 'is-sel']} role="tabpanel" id={`xp-${id}-${i}`} aria-labelledby={`x-${id}-${i}`}>
+                  <h4 class="x-name">{extra.name}</h4>
+                  <p>{extra.text}</p>
+                  {extra.needs && <p class="x-needs">Needs {extra.needs}</p>}
+                </div>
+              ))}
+            </div>
+          </section>
+        )
+      }
       {facts.length > 0 && <Facts facts={facts} id={`facts-${id}`} />}
       <div class="prose" set:html={body} />
     </div>
   </div>
-  <a class="card-close" href={filterFor(kind).path} data-close><Key label="Esc" pad="B" round />Close</a>
+  <ViewBar href={filterFor(kind).path} />
 </dialog>

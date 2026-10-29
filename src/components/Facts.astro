@@ -1,4 +1,5 @@
 ---
+import PixelIcon from './PixelIcon.astro';
 import type { Game } from '../lib/site';
 
 interface Props {
@@ -7,6 +8,16 @@ interface Props {
 }
 
 const { facts, id } = Astro.props;
+const CONTROLS = {
+  keyboard: { icon: 'keyboard', name: 'Keyboard' },
+  controller: { icon: 'gamepad', name: 'Controller' },
+  touch: { icon: 'pointer', name: 'Touch' },
+} as const;
+// how close a port is: its own figure, or the average of its parts
+const percentOf = (fact: Props['facts'][number]) =>
+  fact.parts ? Math.round(fact.parts.reduce((sum, part) => sum + part.percent, 0) / fact.parts.length) : (fact.percent ?? 0);
+// the status meter is ten blocks
+const blocks = (percent: number) => Array.from({ length: 10 }, (_, i) => i < Math.round(percent / 10));
 ---
 
 <section class="facts" aria-labelledby={id}>
@@ -16,7 +27,42 @@ const { facts, id } = Astro.props;
       facts.map((fact) => (
         <div>
           <dt>{fact.label}</dt>
-          <dd>{fact.href ? <a href={fact.href}>{fact.value}</a> : fact.value}</dd>
+          <dd>
+            {fact.controls ? (
+              <span class="ctl">
+                {fact.controls.map((c) => (
+                  <span class="ctl-i" title={CONTROLS[c].name}>
+                    <PixelIcon name={CONTROLS[c].icon} />
+                    <span class="sr-only">{CONTROLS[c].name}</span>
+                  </span>
+                ))}
+              </span>
+            ) : fact.percent !== undefined || fact.parts ? (
+              <span class="pct">
+                <span class="pct-bar" aria-hidden="true">
+                  {blocks(percentOf(fact)).map((on) => (
+                    <i class:list={[on && 'is-on']} />
+                  ))}
+                </span>
+                <span class="pct-num">≈ {percentOf(fact)}% of the original</span>
+                {fact.parts && (
+                  <span class="pct-parts">
+                    {fact.parts.map((part) => (
+                      <span>
+                        <span>{part.name}</span>
+                        <span>{part.percent}%</span>
+                      </span>
+                    ))}
+                  </span>
+                )}
+                {fact.value && <span class="pct-note">{fact.value}</span>}
+              </span>
+            ) : fact.href ? (
+              <a href={fact.href}>{fact.value}</a>
+            ) : (
+              fact.value
+            )}
+          </dd>
         </div>
       ))
     }

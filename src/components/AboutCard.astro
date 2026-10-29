@@ -1,7 +1,8 @@
 ---
-// About and legal, as a card over the menu: what Dreamports is, the rules, privacy and credits.
-import Key from './Key.astro';
+// About and legal, as a full screen in the menu's place: what Dreamports is, the rules, privacy
+// and credits.
 import OwnGameSteps from './OwnGameSteps.astro';
+import ViewBar from './ViewBar.astro';
 import { CONTACT_EMAIL, OWNER_URL, SOURCE_URL, SUGGEST_URL, pageTitle } from '../lib/site';
 
 interface Props {
@@ -24,7 +25,7 @@ const sections = [
 ---
 
 <dialog
-  class="card card-about"
+  class="card view card-about"
   id="card-about"
   data-card="about"
   data-path="/about/"
@@ -122,6 +123,10 @@ const sections = [
             Idrees Hassan, under the <a href="/licenses/monocraft-OFL.txt">SIL Open Font License</a>.
           </li>
           <li>
+            <strong>Icons.</strong> From <a href="https://github.com/halfmage/pixelarticons">Pixelarticons</a> by Gerrit
+            Halfmann, under the <a href="/licenses/pixelarticons-MIT.txt">MIT License</a>.
+          </li>
+          <li>
             <strong>The star.</strong> Drawn by Narik,
             from <a href="https://soulofkiran.itch.io/pixel-art-animated-star">Pixel Art Animated Star</a>.
           </li>
@@ -143,5 +148,5 @@ const sections = [
       </section>
     </div>
   </div>
-  <a class="card-close" href="/" data-close><Key label="Esc" pad="B" round />Close</a>
+  <ViewBar href="/" />
 </dialog>
