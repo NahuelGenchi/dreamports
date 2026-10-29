@@ -67,6 +67,7 @@ function start(launcher: HTMLElement) {
   const stage = $('#stage', launcher);
   const rowEl = $('#row', launcher);
   const corners = $('.corners', launcher);
+  const padHint = $('#pad-hint', launcher);
   const plate = $('#nameplate', launcher);
   const plateName = $('#np-name', launcher);
   const plateDetail = $('#np-detail', launcher);
@@ -248,6 +249,7 @@ function start(launcher: HTMLElement) {
     void rowEl.offsetWidth;
     rowEl.classList.remove('no-anim');
     moveTabMark(false);
+    placePadHint(topH, rowY - RISE - TH / 2 - cg);
   }
 
   function applySel(focus: boolean) {
@@ -1448,6 +1450,7 @@ function start(launcher: HTMLElement) {
       'aria-label',
       `Settings. Menu sounds ${state.sound ? 'on' : 'off'}. ${padConnected ? 'A controller is connected.' : 'No controller connected.'}`,
     );
+    if (padConnected) padHint.hidden = true;
   }
 
   // ---------- Keyboard ----------
@@ -1658,6 +1661,50 @@ function start(launcher: HTMLElement) {
     padConnected = false;
     updateStatus();
   });
+
+  // iOS sends a controller's input only to the page it treats as in use. A page in Safari is, but
+  // a web app opened from the Home Screen only becomes one once the screen is tapped, and no
+  // browser shows a page a controller before one of its buttons is pressed. So in the Home Screen
+  // app on an iPhone or iPad, a line says what to do, until a tap, a key or a controller.
+  const homeScreenApp = (navigator as Navigator & { standalone?: boolean }).standalone === true && navigator.maxTouchPoints > 0;
+  padHint.hidden = !homeScreenApp || !navigator.getGamepads;
+  $('svg', padHint).innerHTML = ICON_PAD;
+  let tapFrom: { x: number; y: number } | null = null;
+  window.addEventListener('pointerdown', (e) => (tapFrom = { x: e.clientX, y: e.clientY }), true);
+  window.addEventListener(
+    'pointerup',
+    (e) => {
+      // a tap counts, not a swipe
+      if (tapFrom && Math.hypot(e.clientX - tapFrom.x, e.clientY - tapFrom.y) < 10) padHint.hidden = true;
+      tapFrom = null;
+    },
+    true,
+  );
+  // a page that gets keys is the one in use already
+  window.addEventListener('keydown', () => (padHint.hidden = true), true);
+  // held upright, the line sits between the top bar and the row. Where that leaves too little
+  // room, as on a phone held sideways, it goes between the bottom buttons.
+  function placePadHint(topH: number, rowTop: number) {
+    if (padHint.hidden) return;
+    const st = padHint.style;
+    const text = $('span', padHint);
+    st.left = st.maxWidth = text.style.width = '';
+    const box = launcher.getBoundingClientRect();
+    const bar = corners.getBoundingClientRect();
+    const [a, b] = $$('.corner-group', corners).map((g) => g.getBoundingClientRect());
+    const room = b.left - a.right - 24;
+    if (rowTop - topH >= padHint.offsetHeight + 24 || room < 160) {
+      st.top = Math.round(topH + Math.max(8, Math.min(24, (rowTop - topH - padHint.offsetHeight) / 2))) + 'px';
+    } else {
+      st.maxWidth = room + 'px';
+      st.left = Math.round((a.right + b.left) / 2 - box.left) + 'px';
+      st.top = Math.round(bar.top - box.top + (bar.height - padHint.offsetHeight) / 2) + 'px';
+    }
+    // the box then hugs its longest line, instead of keeping all the width it was allowed
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    text.style.width = Math.ceil(Math.max(...[...range.getClientRects()].map((r) => r.width))) + 'px';
+  }
 
   // ---------- Pointer and touch hints ----------
 

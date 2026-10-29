@@ -207,6 +207,7 @@ kbd,
 .tile,
 .nameplate,
 .corner,
+.pad-hint,
 .search,
 .card-close,
 .set-list,
@@ -992,6 +993,40 @@ kbd {
 
 .corner[aria-disabled='true']:active {
   transform: none;
+}
+
+/* in the Home Screen app on an iPhone or iPad, how to get a controller seen; the script places it */
+.pad-hint {
+  --frame: var(--line);
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: calc(var(--top-h, 56px) + 16px);
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: calc(100% - 36px);
+  margin: 0;
+  padding: 7px 14px 7px 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 18px;
+  text-wrap: balance;
+  pointer-events: none;
+}
+
+.pad-hint svg {
+  flex: none;
+  width: auto;
+  height: 11px;
+  fill: currentColor;
+}
+
+.pad-hint .hole {
+  fill: var(--paper);
 }
 
 /* the doorway the game goes through when it launches */
@@ -2151,6 +2186,11 @@ dialog.card.is-in::backdrop {
   .corner-group {
     gap: 8px;
   }
+
+  .pad-hint {
+    font-size: 12px;
+    line-height: 16px;
+  }
 }
 
 /* the time shows only when its side of the bar has room for the whole clock, 87 px at its widest */
@@ -2217,6 +2257,7 @@ dialog.card.is-in::backdrop {
   .corner,
   .search,
   .nameplate,
+  .pad-hint,
   .tile,
   .set-list,
   .seg,
