@@ -43,6 +43,8 @@ Great ports made by other fans, with a link to their own page and full credit to
 
 To find a game by its name, press the magnifier at the bottom right (or the / key) and type. The row then shows only the games whose names match.
 
+**Profile**, at the bottom right (or the P key), keeps the achievements you earn in Sonic Advance Dreamport on any device. You sign in with a passkey: no password, no email. Your profile is private unless you make it public.
+
 On a phone or tablet, you can add dreamports to your Home Screen: in Safari, tap Share, then **Add to Home Screen**; in Chrome on Android, open the ⋮ menu and choose **Add to Home screen**. It then opens like an app, without the browser's bars, and so do the games you play from it.
 
 ## What's inside
@@ -168,7 +170,9 @@ At **[dreamports.net](https://dreamports.net)**. It updates by itself whenever a
 <summary><b>Does the site track me?</b></summary>
 <br>
 
-No accounts, no ads and no cookies. The site keeps a few small notes in your own browser, such as whether you switched on the menu's sounds and whether you picked light or dark. They never leave your device, and **forget my choices** in the site's settings clears them. To see which pages people read, the site counts visits with [Cloudflare Web Analytics](https://www.cloudflare.com/web-analytics/), which stores nothing in your browser and doesn't keep your IP address. The site's [privacy section](https://dreamports.net/about/#privacy) has the details.
+No. There are no ads, and nothing follows you around the web. The site keeps a few small notes in your own browser, such as whether you switched on the menu's sounds and whether you picked light or dark. They never leave your device, and **forget my choices** in the site's settings clears them. To see which pages people read, the site counts visits with [Cloudflare Web Analytics](https://www.cloudflare.com/web-analytics/), which stores nothing in your browser and doesn't keep your IP address.
+
+A **profile** is optional. It keeps your achievements from Sonic Advance Dreamport on any device, under a name you pick. You sign in with a passkey, so there's no password and no email address, and one cookie keeps you signed in. Your profile stays private unless you make it public, and you can download it or delete it at any time. The site's [privacy section](https://dreamports.net/about/#privacy) has the details.
 
 </details>
 

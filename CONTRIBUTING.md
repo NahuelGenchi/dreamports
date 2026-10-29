@@ -31,6 +31,7 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 | `npm run check` | Looks for mistakes in the pages and the game files |
 | `npm run build` | Makes the finished site in the `dist/` folder |
 | `npm run preview` | Opens that finished site, to check it before it goes online |
+| `npm run worker` | Makes the finished site and opens it with its profiles, at <http://localhost:8787>, with a database on your computer. Profiles only work here, not with `npm run dev` |
 
 ## Add a game
 

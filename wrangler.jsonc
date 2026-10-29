@@ -1,19 +1,40 @@
-// How Cloudflare serves dreamports.net. The site is plain files: `npm run build`
-// writes them to dist/, and Cloudflare uploads that folder as it is, with no server code.
+// How Cloudflare serves dreamports.net. `npm run build` writes the site's pages to dist/, and Cloudflare
+// serves that folder as plain files. A small Worker, worker/index.ts, answers only the addresses in
+// `run_worker_first`: the accounts API, players' public profiles and, away from dreamports.net, the games.
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "dreamports",
+  "main": "worker/index.ts",
   "compatibility_date": "2026-10-23",
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
     // An address with no page shows the site's own 404 page (src/pages/404.astro).
-    "not_found_handling": "404-page"
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/api/*", "/players/*", "/play/*"]
   },
+  // The accounts' database (docs/ACCOUNTS.md). The Worker makes its tables itself the first time.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dreamports-accounts",
+      "database_id": "ffd8acb5-7503-4985-afa7-b4a176eb0a9b"
+    }
+  ],
   // The site's only public address. Cloudflare creates its DNS record and HTTPS certificate.
   "routes": [{ "pattern": "dreamports.net", "custom_domain": true }],
   // No dreamports.<account>.workers.dev copy of the site, but pull requests keep their preview links.
   "workers_dev": false,
   "preview_urls": true,
-  // Pull request previews use the same settings as the live site. `npx wrangler preview` requires this block.
-  "previews": {}
+  // Pull request previews, made with `npx wrangler preview`, use the same settings as the live site, but
+  // their own database, so trying a preview never touches players' real profiles.
+  "previews": {
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "dreamports-accounts-previews",
+        "database_id": "49fcbd1e-76ff-4f4c-b81d-de34aea1b999"
+      }
+    ]
+  }
 }
