@@ -1920,7 +1920,6 @@ dialog.card[open] {
     display: flex;
     gap: 4px;
     overflow-x: auto;
-    scrollbar-width: none;
     padding: 12px 12px 10px;
     border-right: 0;
     border-bottom: 2px solid var(--line);
@@ -2289,13 +2288,15 @@ dialog.card[open] {
   padding: 30px 6px 36px 0;
 }
 
-/* a game's page scrolls with the wheel, touch, the arrow keys and the controller's right stick,
-   with no scroll bar, as a launcher's screens do */
-.view :is(.ins-text, .inspect) {
+/* the launcher never shows a scroll bar: long text still scrolls with the wheel, touch, the arrow
+   keys and the controller's right stick */
+.launcher,
+.launcher * {
   scrollbar-width: none;
 }
 
-.view :is(.ins-text, .inspect)::-webkit-scrollbar {
+.launcher::-webkit-scrollbar,
+.launcher *::-webkit-scrollbar {
   display: none;
 }
 
