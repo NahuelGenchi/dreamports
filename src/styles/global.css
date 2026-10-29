@@ -2174,6 +2174,12 @@ dialog.card[open] {
   pointer-events: none;
 }
 
+/* nothing inside them takes a press either: the corner buttons turn presses back on for
+   themselves, and would lie unseen over the view's Back */
+.launcher[data-view] :is(.cursor, .nameplate, .corners, .pad-hint, .filters) * {
+  pointer-events: none;
+}
+
 .launcher[data-view]:not([data-view='inspect']) .row {
   opacity: 0;
   translate: 0 4%;
