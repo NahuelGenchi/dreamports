@@ -37,6 +37,8 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 
 Each game page comes from **one Markdown file** in [`src/content/games/`](src/content/games/). To add a game, copy one of the files there, give it a new name, and change the text. Nothing else needs editing: the menu finds the new file by itself. Dreamports appear in the **dreamports** row, and external ports and other games in the **mash-ups** row.
 
+**A Dreamport** also has to keep every rule in the [Dreamport standard](docs/STANDARD.md), whoever makes it.
+
 The file name becomes the page address. `src/content/games/my-port.md` appears at `/dreamports/my-port/`, `/external-ports/my-port/` or `/other-games/my-port/`, depending on its `kind`. Use lowercase letters, numbers and dashes.
 
 The top of the file, between the two `---` lines, holds the details. Write them as normal sentences and labels: a capital at the start, and names with their own capitals.
@@ -128,7 +130,7 @@ Pictures of games appear only where the owner decides, and only from the owner's
 
 ## License
 
-The project's own files are licensed under the MIT License ([LICENSE](LICENSE)), and contributions are accepted under the same license.
+The project's own files are licensed under the MIT License ([LICENSE](LICENSE)), and contributions are accepted under the same license. Dreamports and the kits they share, once they live in this repository, use GPL-3.0-or-later instead, as the [Dreamport standard](docs/STANDARD.md#licenses) explains.
 
 Game names and trademarks belong to their owners. Dreamports is an unofficial fan project, not affiliated with or endorsed by Sega, Nintendo, or any other publisher. Anything bundled from elsewhere, such as fonts or icons, needs a license compatible with MIT, its notices kept next to the files, and a line in the README credits.
 
