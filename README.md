@@ -49,11 +49,11 @@ On a phone or tablet, you can add dreamports to your Home Screen: in Safari, tap
 
 ## What's inside
 
-These are the projects on the site so far. Each one lives in its own repository.
+These are the projects on the site so far. Dreamports live in this repository, in [`games/`](games/README.md); the others have repositories of their own.
 
 | | Project | What it is | Try it |
 | :---: | :--- | :--- | :--- |
-| 🌙 | **[Sonic Advance Dreamport](https://github.com/NahuelGenchi/sonic-advance-dreamport)** | Sonic Advance (Game Boy Advance, 2001), rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
+| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance (Game Boy Advance, 2001), rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
 | ✨ | **[Kirby's Dead Land](https://github.com/NahuelGenchi/kirbys-dead-land)** | A mod that lets you play as Kirby inside Dead Cells, with his moves and copy abilities. For Linux; Windows is in testing. | [⬇&nbsp;Download](https://github.com/NahuelGenchi/kirbys-dead-land/releases/latest) |
 | ✨ | **Your favorite fan port?** | Ports made by other fans are on their way to the mash-ups. Know a great one? | [💡&nbsp;Suggest](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml) |
 
