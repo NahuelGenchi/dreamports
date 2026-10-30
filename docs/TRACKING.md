@@ -34,10 +34,11 @@ Track all meaningful work: pages, features, bugs, enhancements, docs, research, 
 | M3 | M3 — Growth | New entries, and features that make the catalog easier to explore, such as search, filters, news, and link previews |
 | M4 | M4 — Sonic Advance Dreamport on dreamports.net | Sonic Advance Dreamport played at dreamports.net, with accounts, achievements and leaderboards, on free Cloudflare services |
 | M5 | M5 — Game launcher | The site as a one-screen game launcher: a row of games to move through, filters, panels such as settings and about, and a launch animation, on phones and computers |
+| M6 | M6 — Anyone can make a Dreamport | Anyone can make or help with a Dreamport in this repository: the Dreamport standard, games played from here, proof of progress with clips and a percentage, previews on GitHub Pages that need no approval, claims and teams, and a step-by-step guide with commands for coding agents |
 
 The first issue is #1 (M0). Later milestones may be created deliberately; assign them directly in GitHub.
 
-M0, M1 and M2 are finished and closed. M3 is on hold: for now the work is Sonic Advance Dreamport, in M4, and the game launcher, in M5. M4 is the default for new issues.
+M0, M1 and M2 are finished and closed. M3 is on hold: for now the work is Sonic Advance Dreamport, in M4, the game launcher, in M5, and opening Dreamports to everyone, in M6. M4 is the default for new issues.
 
 ## Issue and PR conventions
 

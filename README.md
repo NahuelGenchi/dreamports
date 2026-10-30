@@ -72,7 +72,7 @@ Before you play or download anything, the site asks you to confirm that you're u
 
 ## Progress
 
-The work is split into six steps, called *milestones*. The counts update by themselves as tasks are finished.
+The work is split into seven steps, called *milestones*. The counts update by themselves as tasks are finished.
 
 | Step | What it means | Progress |
 | :--- | :--- | :--- |
@@ -82,6 +82,7 @@ The work is split into six steps, called *milestones*. The counts update by them
 | **[M3 — Growth](https://github.com/NahuelGenchi/dreamports/milestone/4)** | More entries, plus search, filters and news. On hold for now | ![M3 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/4?style=flat-square&label=tasks%20done&color=8b5cf6) |
 | **[M4 — Sonic Advance Dreamport on dreamports.net](https://github.com/NahuelGenchi/dreamports/milestone/5)** | Sonic Advance Dreamport played right here on the site, with accounts, achievements and leaderboards | ![M4 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/5?style=flat-square&label=tasks%20done&color=8b5cf6) |
 | **[M5 — Game launcher](https://github.com/NahuelGenchi/dreamports/milestone/6)** | The site redesigned as a one-screen game launcher: a row of games to move through, filters, panels such as settings and about, and a launch animation, on phones and computers | ![M5 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/6?style=flat-square&label=tasks%20done&color=8b5cf6) |
+| **[M6 — Anyone can make a Dreamport](https://github.com/NahuelGenchi/dreamports/milestone/7)** | Opening Dreamports to everyone: anyone can make a Dreamport or help with one, with clear rules, a step-by-step guide, and proof that every step plays like the original | ![M6 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/7?style=flat-square&label=tasks%20done&color=8b5cf6) |
 
 ✅ The site is live at **[dreamports.net](https://dreamports.net)**.
 
