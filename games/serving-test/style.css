@@ -1,0 +1,61 @@
+:root {
+  --served: yes;
+  --ink: #0b1440;
+  --paper: #f4f6ff;
+  --passed: #0a7d3c;
+  --failed: #b3261e;
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e8ecff;
+    --paper: #050a24;
+    --passed: #5fd38d;
+    --failed: #ff8a80;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+main {
+  max-width: 36rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  line-height: 1.5;
+}
+
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+li {
+  margin: 0.75rem 0;
+}
+
+li::before {
+  display: inline-block;
+  min-width: 4.5rem;
+  font-weight: 600;
+  content: 'Waiting';
+}
+
+li[data-state='passed']::before {
+  color: var(--passed);
+  content: 'Passed';
+}
+
+li[data-state='failed']::before {
+  color: var(--failed);
+  content: 'Failed';
+}
+
+a {
+  color: inherit;
+}
