@@ -402,7 +402,8 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
       }
 
       // achievements from a game: one just earned, or what a device earned before signing in. The
-      // earliest time wins.
+      // earliest time wins. The answer has all the game's achievements on the profile, so the game
+      // shows those earned on other devices too.
       case 'POST /api/achievements': {
         const player = await mustSignIn();
         const body = await readBody(request);
@@ -416,7 +417,8 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
           if (!ACHIEVEMENT_PATTERN.test(id)) continue;
           earned[id] = typeof at === 'number' && at >= FIRST_DAY && at <= now ? Math.floor(at) : now;
         }
-        if (!Object.keys(earned).length) return json({ saved: 0 });
+        const onProfile = async () => (await earnedBy(db, player.id))[game] ?? {};
+        if (!Object.keys(earned).length) return json({ saved: 0, earned: await onProfile() });
         const sent = JSON.stringify(earned);
         // what the profile would keep for this game afterwards: what it has, and the ids that are new
         const total = await db
@@ -435,7 +437,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
           )
           .bind(player.id, game, sent)
           .run();
-        return json({ saved: result.meta.changes ?? 0 });
+        return json({ saved: result.meta.changes ?? 0, earned: await onProfile() });
       }
     }
 
