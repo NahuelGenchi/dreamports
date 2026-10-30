@@ -2,7 +2,7 @@
 
 ## The project
 
-Dreamports is the source code for dreamports.net, a home for enhanced fan ports of classic games. A Dreamport is "the port fans always dreamed of: the game you remember, with the extras you wished it had"; use that wording rather than "dream means fan". The site lists the owner's own Dreamports (for example Sonic Advance Dreamport), external ports made by other people (links and credits only), and other fan games that aren't ports (for example Kirby's Dead Land). Every Dreamport keeps the rules in `docs/STANDARD.md`, whoever makes it (#73). The site is a static Astro site (#3); hosting it on Cloudflare is #4. Since #68 a small Worker adds players' profiles, signed in with Google, Discord, Steam or GitHub, and keeps the achievements games send through `/dreamports.js` (`docs/ACCOUNTS.md`). Since #23 the whole site is one screen that works like a game launcher: every page shows the menu, with that page's card open. Since #59 a card takes the menu's place as a full screen instead of opening over it.
+Dreamports is the source code for dreamports.net, a home for enhanced fan ports of classic games. A Dreamport is "the port fans always dreamed of: the game you remember, with the extras you wished it had"; use that wording rather than "dream means fan". The site lists the owner's own Dreamports (for example Sonic Advance Dreamport), external ports made by other people (links and credits only), and other fan games that aren't ports (for example Kirby's Dead Land). Every Dreamport keeps the rules in `docs/STANDARD.md`, whoever makes it (#73). Since #74 the games made here live in `games/`, one folder each, and play at `/play/<game>/` (`games/README.md`). The site is a static Astro site (#3); hosting it on Cloudflare is #4. Since #68 a small Worker adds players' profiles, signed in with Google, Discord, Steam or GitHub, and keeps the achievements games send through `/dreamports.js` (`docs/ACCOUNTS.md`). Since #23 the whole site is one screen that works like a game launcher: every page shows the menu, with that page's card open. Since #59 a card takes the menu's place as a full screen instead of opening over it.
 
 Never describe something as working or complete unless a recorded check establishes it. A build is not a browser check.
 
@@ -14,6 +14,7 @@ Never describe something as working or complete unless a recorded check establis
 | `CONTRIBUTING.md` | Contribution workflow and rules |
 | `docs/` | One record per decision or process (`docs/TRACKING.md`) |
 | `.github/` | Issue form, PR template, tracking workflow, README images |
+| `games/` | The games made here, one folder each, copied as they are to `/play/<game>/` by `src/integrations/games.mjs` (`games/README.md`) |
 | `src/content/games/` | One Markdown file per game page; `src/content.config.ts` checks its fields |
 | `src/pages/`, `src/layouts/`, `src/components/` | The site's pages and their shared parts |
 | `src/scripts/launcher.ts` | The launcher: moving through the row, the cards, the launch, sounds and controllers |

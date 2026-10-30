@@ -37,7 +37,7 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 
 Each game page comes from **one Markdown file** in [`src/content/games/`](src/content/games/). To add a game, copy one of the files there, give it a new name, and change the text. Nothing else needs editing: the menu finds the new file by itself. Dreamports appear in the **dreamports** row, and external ports and other games in the **mash-ups** row.
 
-**A Dreamport** also has to keep every rule in the [Dreamport standard](docs/STANDARD.md), whoever makes it.
+**A Dreamport** also has to keep every rule in the [Dreamport standard](docs/STANDARD.md), whoever makes it. Its code goes in a folder of its own in [`games/`](games/README.md), and plays at `/play/<game>/`.
 
 The file name becomes the page address. `src/content/games/my-port.md` appears at `/dreamports/my-port/`, `/external-ports/my-port/` or `/other-games/my-port/`, depending on its `kind`. Use lowercase letters, numbers and dashes.
 
