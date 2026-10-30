@@ -1,0 +1,478 @@
+// Neo Green Hill act 1's and Angel Island's enemies and their shots, following SA1's enemy code (SAT-R
+// decompilation, src/game/sa1/stage/enemies/kiki.c, buzzer.c, gamigami.c, rhinotank.c, kerokero.c, leon.c and
+// wamu.c, and the USA ROM's own code where the decompilation doesn't match it). Each one works
+// out its position from its spawn point every frame and goes when both that and the screen leave the range
+// around the camera; a defeated one is gone until the act starts over. Speeds and offsets in 1/256 px are
+// kept as the original's integers. The quirks the original has are kept too: they are noted where they are.
+//
+// Each maker returns a task for objects.js: run(ctx) with ctx = { player, cam, world, anims, attack(s, x, y),
+// projectile(s, x, y), add(task, priority = 0x2000), draw(s, x, y) }.
+
+import { makeSprite, startAnim, animate } from './objects.js';
+import { overlap } from './collide.js';
+import { tileFloor } from './terrain.js';
+import { SINE } from './trig.js';
+import { createEggHammerTankIntro, createEggHammerTank, EGG_HAMMER_TANK_INTRO, EGG_HAMMER_TANK } from './boss1.js';
+import { drisame, DRISAME } from './drisame.js';
+import { kuraa, KURAA } from './kuraa.js';
+import { mole, MOLE } from './mole.js';
+import { tentou, TENTOU } from './tentou.js';
+import { senbon, SENBON } from './senbon.js';
+import { fireball, FIREBALL } from './fireball.js';
+import { createEggPress, EGG_PRESS } from './eggpress.js';
+import { hanabii, HANABII } from './hanabii.js';
+import { slotMachine, SLOT } from './slot.js';
+import { pierrot, PIERROT } from './pierrot.js';
+import { eggBall, EGG_BALL } from './eggball.js';
+import { eggSpider, EGG_SPIDER } from './eggspider.js';
+import { yukimaru, yukimaruWall, YUKIMARU, YUKIMARU_WALL } from './yukimaru.js';
+import { pen, PEN } from './pen.js';
+import { createMechaKnuckles, MECHA_KNUCKLES } from './mechaknuckles.js';
+import { oct, OCT } from './oct.js';
+import { mirror, MIRROR } from './mirror.js';
+import { eggSnake, EGG_SNAKE } from './eggsnake.js';
+import { eggWrecker } from './eggwrecker.js';
+import { eggDrillster } from './eggdrillster.js';
+import { eggX } from './eggx.js';
+
+export const KIKI = 0, BUZZER = 1, GAMIGAMI = 2, RHINOTANK = 3, KEROKERO = 4, LEON = 11, WAMU = 13;
+
+export const TILE = 8;
+export const I = v => v >> 8;                        // Q8.8 to pixels, rounding down
+export const Div = (a, b) => Math.trunc(a / b);      // the BIOS divide, rounding toward 0
+export const s8 = v => (v << 24) >> 24;
+export const s16 = v => (v << 16) >> 16;
+export const COS = a => SINE[a + 256], SIN = a => SINE[a];
+
+// IS_OUT_OF_CAM_RANGE on a screen position, IS_OUT_OF_DISPLAY_RANGE on a world position
+const offCam = (sx, sy) => ((sx + 128) & 0xFFFF) > 496 || sy + 128 < 0 || sy > 288;
+const offDisplay = (wx, wy, cam) => wx > cam.x + 368 || wx < cam.x - 128 || wy > cam.y + 288 || wy < cam.y - 128;
+export const gone = (spawnX, spawnY, x, y, cam) => offDisplay(spawnX, spawnY, cam) && offCam(x - cam.x, y - cam.y);
+
+export const sonicX = ctx => Math.floor(ctx.player.x), sonicY = ctx => Math.floor(ctx.player.y);
+
+// a hitbox of the enemy's own that hurts Sonic's body (HB_COLLISION, then Coll_DamagePlayer)
+function hurts(box, x, y, ctx) {
+  const p = ctx.player;
+  if (box && p.boxes[0] && overlap(x, y, box, sonicX(ctx), sonicY(ctx), p.boxes[0])) ctx.world.damage();
+}
+
+// a new enemy's sprite has run its script once, so its hitbox is set from the first frame
+export function sprite(name, anims, opts) {
+  const s = makeSprite(name, opts);
+  animate(s, anims);
+  return s;
+}
+
+// the enemy record's data bytes: d0 and d1 signed, d2 and d3 not
+export const data = e => ({ d0: s8(e.d[0]), d1: s8(e.d[1]), d2: e.d[2], d3: e.d[3] });
+// the Buzzer, the Senbon, the Slot, the Pen, the Leon and the Mirror are each made only on Normal in one zone
+// (LEVEL_TO_ZONE: 0 Neo Green Hill … 5 Egg Rocket and Cosmic Angel): on Easy their makers make nothing there
+export const leftOutOnEasy = (ctx, zone) => ctx.world.zone === zone && ctx.world.difficulty !== 0;
+
+// Kiki (kiki.c): a monkey that climbs up and down its tree at 1 px a frame and throws a coconut on every
+// second visit to the top. Facing right, it is drawn 8 px to the left of where it collides.
+function kiki(e, slot, anims) {
+  const { d1, d3 } = data(e), s = sprite('kikiBob', anims);
+  let vel = 1, yoff = 0, tops = 0, t = 0, throwing = false;
+  return {
+    run(ctx) {
+      const x = e.x, wasThrowing = throwing;
+      if (!throwing) {
+        yoff = s8(yoff + vel);
+        if (yoff <= d1 * TILE) {
+          tops = (tops + 1) & 0xFF; vel = 1;
+          if (!(tops & 1)) { t = 0; startAnim(s, 'kikiThrow'); throwing = true; }
+        } else if (yoff >= d1 * TILE + d3 * TILE) vel = -1;
+      }
+      const y = e.y + yoff;
+      if (ctx.attack(s, x, y)) { slot.gone = true; slot.live = null; return false; }
+      if (offCam(x - ctx.cam.x, y - ctx.cam.y)) { slot.live = null; return false; }
+      s.flipX = !(sonicX(ctx) < x);
+      // the throw counts from the frame after the top and ends on its 15th frame, before its animation does
+      if (wasThrowing && ++t > 14) {
+        throwing = false; startAnim(s, 'kikiBob');
+        ctx.add(coconut(s.flipX ? x - 18 : x + 8, y - 8, ctx));
+      }
+      animate(s, ctx.anims);
+      ctx.draw(s, s.flipX ? x - 8 : x, y);
+      return true;
+    },
+  };
+}
+
+// the coconut: thrown toward where Sonic is, up to 1.5 px a frame, it bounces once, rests for 96 frames and
+// bursts; touching Sonic bursts it at once, even while he can't be hurt. In flight it never leaves.
+function coconut(x0, y0, ctx) {
+  const s = sprite('coconut', ctx.anims), px = sonicX(ctx);
+  let vx = px < x0 ? -Div((x0 - px) * 400, 800) : Div((px - x0) * 400, 800);
+  vx = Math.max(-60, Math.min(60, vx));
+  let vy = -512, acc = 0, bounces = 0, x = x0, y = y0, resting = false, rest = 0;
+  return {
+    run(ctx) {
+      if (!resting) {
+        vy = s16(vy + 40); acc = s16(acc + vx);
+        x = x0 + Div(acc, 40);
+        y = s16(y + I(vy));
+        if (vy > 0) {
+          const d = tileFloor(ctx.world.terrain, x, y, 1);
+          if (d < 0) {
+            y += d;
+            if (!bounces) { vy = -(vy >> 2); bounces++; } else { resting = true; rest = 0; vy = 0; }
+          }
+        }
+      } else if (rest++ >= 0x60) { ctx.add(piece(x, y, ctx)); return false; }
+      if (ctx.projectile(s, x, y)) { ctx.add(piece(x, y, ctx)); return false; }
+      animate(s, ctx.anims);
+      ctx.draw(s, x, y);
+      return true;
+    },
+  };
+}
+
+// what is left of a coconut: it hurts Sonic for the 15 frames it shows
+function piece(x, y, ctx) {
+  const s = sprite('coconutPiece', ctx.anims);
+  return {
+    run(ctx) {
+      ctx.projectile(s, x, y, true);
+      if (animate(s, ctx.anims)) return false;
+      ctx.draw(s, x, y);
+      return true;
+    },
+  };
+}
+
+// Buzzer (buzzer.c): a wasp that flies back and forth at 1 px a frame and, once per leg, stops to shoot at Sonic
+// when he is in a wedge below it on the side it faces. Its animation steps before it decides, so a change shows on
+// the next frame. Not made in Neo Green Hill on Easy.
+function buzzer(e, slot, anims, ctx0) {
+  if (leftOutOnEasy(ctx0, 0)) return null;
+  const { d0, d2 } = data(e), s = makeSprite('buzzerFly');
+  let vx = -256, off = 0, shot = false, t = 0, state = 'patrol';
+  if (sonicX(ctx0) >= e.x) { vx = 256; s.flipX = true; }
+  animate(s, anims);
+  return {
+    run(ctx) {
+      if (state === 'patrol') off += vx;
+      const x = e.x + I(off), y = e.y;
+      if (state === 'shoot' && ++t === 10) ctx.add(buzzerShot(x, y + 6, ctx), 0x9000);
+      if (offDisplay(x, y, ctx.cam) && offCam(x - ctx.cam.x, y - ctx.cam.y)) { slot.live = null; return false; }
+      if (ctx.attack(s, x, y)) { slot.gone = true; slot.live = null; return false; }
+      if (state === 'patrol') {
+        animate(s, ctx.anims);
+        ctx.draw(s, x, y);
+        if (I(off) <= d0 * TILE) {
+          vx = 256; startAnim(s, 'buzzerTurn', true); state = 'turn'; s.flipX = true;
+        } else if (I(off) >= (d0 + d2) * TILE) {
+          vx = -256; startAnim(s, 'buzzerTurn', true); state = 'turn'; s.flipX = false;
+        } else if (!shot) {
+          const py = sonicY(ctx);
+          if (y <= py && y + 96 >= py) {
+            const dy = py - y, dx = x - sonicX(ctx);
+            let hi = s16(Div(dx * 17, 10)), lo = s16(Div(dx * 10, 17));
+            // `frameFlags &= X_FLIP` where `&` was meant: it also clears the sprite's priority, so from now
+            // on it is drawn over every background layer
+            s.prio = 0;
+            if (s.flipX) { hi = -hi; lo = -lo; }
+            if (hi >= dy && lo <= dy) { startAnim(s, 'buzzerShoot', true); t = 0; state = 'shoot'; }
+          }
+        }
+        return true;
+      }
+      if (state === 'shoot') {
+        if (t >= 30) { startAnim(s, 'buzzerFly', true); state = 'patrol'; shot = true; }
+        animate(s, ctx.anims);
+      } else {
+        shot = false;
+        if (animate(s, ctx.anims)) { startAnim(s, 'buzzerFly'); state = 'patrol'; }
+      }
+      ctx.draw(s, x, y);
+      return true;
+    },
+  };
+}
+
+// sub_8004418: an angle (1024 per turn) from a distance, linear within each eighth of the turn
+function octantAngle(a, b) {
+  let index = 0;
+  if (a <= 0) { a = -a; index = 4; }
+  if (b <= 0) { b = -b; index += 2; }
+  let frac;
+  if (a >= b) frac = Div(b * 128, a);
+  else { index++; frac = Div(a * 128, b); }
+  const arr = [1, 0, 2, 3, 6, 7, 5, 4];
+  if (arr[index] & 1) frac = 128 - frac;
+  return (frac + arr[index] * 128) & 1023;
+}
+
+// the Buzzer's shot flies straight at where Sonic was, about 1.68 px a frame; it runs after Sonic and goes on
+// through him
+function buzzerShot(x0, y0, ctx) {
+  const s = sprite('buzzerShot', ctx.anims);
+  const a = octantAngle(sonicY(ctx) - y0, sonicX(ctx) - x0);
+  const vx = Div(COS(a), 38), vy = Div(SIN(a), 38);
+  let qx = x0 * 256, qy = y0 * 256;
+  return {
+    run(ctx) {
+      qx += vx; qy += vy;
+      const x = I(qx), y = I(qy);
+      ctx.projectile(s, x, y);
+      const sx = x - ctx.cam.x, sy = y - ctx.cam.y;
+      if (((sx + 40) & 0xFFFF) > 280 || sy + 40 < 0 || sy > 200) return false;
+      animate(s, ctx.anims);
+      ctx.draw(s, x, y);
+      return true;
+    },
+  };
+}
+
+// GamiGami (gamigami.c): a crab that walks at 0.625 px a frame and, at each end, raises its claws for 19
+// frames and fires two shots on the 15th. It follows the ground, and its sprite never turns round.
+function gamigami(e, slot, anims, ctx0) {
+  const { d0, d2, d3 } = data(e), s = sprite('gamiWalk', anims), layer = d3 ? 1 : 0;
+  let vx = -160, off = 0, yoff = 0, t = 0, right = false, turning = false;
+  if (sonicX(ctx0) >= e.x) { vx = 160; right = true; }
+  return {
+    run(ctx) {
+      if (!turning) off += vx;
+      const x = e.x + Div(off, 256), y = e.y - 6 + yoff;
+      if (turning && ++t === 15) {
+        // the right one first; both run after Sonic, from this frame
+        ctx.add(gamiShot((x + 14) * 4, 6, y - 20, ctx), 0x3000);
+        ctx.add(gamiShot((x - 14) * 4, -6, y - 20, ctx), 0x3000);
+      }
+      if (gone(e.x, e.y, x, y, ctx.cam)) { slot.live = null; return false; }
+      if (ctx.attack(s, x, y)) { slot.gone = true; slot.live = null; return false; }
+      yoff += tileFloor(ctx.world.terrain, x, y, layer);
+      if (!turning) {
+        if (Div(off, 256) <= d0 * TILE) {
+          if (!right) { vx = 160; t = 0; right = true; startAnim(s, 'gamiClaws'); turning = true; }
+        } else if (Div(off, 256) >= (d0 + d2) * TILE) {
+          if (right) { vx = -160; t = 0; right = false; startAnim(s, 'gamiClaws'); turning = true; }
+        }
+      } else if (t > 18) { startAnim(s, 'gamiWalk'); turning = false; }
+      animate(s, ctx.anims);
+      ctx.draw(s, x, y);
+      return true;
+    },
+  };
+}
+
+// a crab's shot: 1.5 px a frame sideways, thrown up and falling through everything; it goes on through Sonic
+function gamiShot(x4, dx, y0, ctx) {
+  const s = sprite('gamiShot', ctx.anims, { order: 9 });
+  let vy = -512, y = y0;
+  return {
+    run(ctx) {
+      x4 += dx;
+      const x = x4 >> 2;
+      vy += 40; y += I(vy);
+      ctx.projectile(s, x, y);
+      const sx = x - ctx.cam.x, sy = y - ctx.cam.y;
+      if (((sx + 20) & 0xFFFF) > 276 || sy + 20 < 0 || sy > 240) return false;
+      animate(s, ctx.anims);
+      ctx.draw(s, x, y);
+      return true;
+    },
+  };
+}
+
+// Rhinotank (rhinotank.c): drives at 0.625 px a frame, slides round at each end, and charges at 3 px a frame
+// when Sonic is within 80 px in front of it. It rounds its position down while turning or revving and toward
+// 0 while driving, so the sprite can shift 1 px when it changes.
+function rhinotank(e, slot, anims) {
+  const { d0, d2 } = data(e), s = sprite('rhinoDrive', anims);
+  let vx = -160, off = 0, yoff = 0, t = 0, tackle = false, state = 'patrol';
+  return {
+    run(ctx) {
+      if (state === 'patrol') off += vx;
+      const x = e.x + (state === 'patrol' ? Div(off, 256) : I(off)), y = e.y + yoff;
+      if (gone(e.x, e.y, x, y, ctx.cam)) { slot.live = null; return false; }
+      if (ctx.attack(s, x, y)) { slot.gone = true; slot.live = null; return false; }
+      yoff += tileFloor(ctx.world.terrain, x, y, 1);
+      if (state === 'patrol') {
+        const px = sonicX(ctx), py = sonicY(ctx);
+        // at either end it turns if it faces that way; facing away it doesn't look for Sonic that frame
+        if (I(off) <= (d0 + 1) * TILE) {
+          if (!s.flipX) {
+            if (tackle) off += 768;
+            t = 0; vx = 160; startAnim(s, 'rhinoTurn'); state = 'turn';
+          }
+        } else if (I(off) >= (d0 + d2 - 1) * TILE) {
+          if (s.flipX) {
+            if (tackle) off -= 768;
+            t = 0; vx = -160; startAnim(s, 'rhinoTurn'); state = 'turn';
+          }
+        } else if (!tackle && y - 32 <= py && y + 8 >= py
+          && (s.flipX ? x <= px && x + 80 >= px : x - 80 <= px && x >= px)) {
+          tackle = true; t = 0; vx = s.flipX ? 768 : -768; startAnim(s, 'rhinoRev'); state = 'rev';
+        }
+      } else if (state === 'turn') {
+        // it slides on the old way, slowing down and coming back a little at the end
+        const k = Div(COS(t * 21), tackle ? 32 : 64);
+        off += s.flipX ? k : -k;
+        if (++t === 24) {
+          startAnim(s, 'rhinoDrive'); off += vx; vx = s.flipX ? -160 : 160;
+          s.flipX = !s.flipX; tackle = false; state = 'patrol';
+        }
+      } else if (++t === 25) { startAnim(s, 'rhinoDrive'); state = 'patrol'; }
+      animate(s, ctx.anims);
+      ctx.draw(s, x, y);
+      return true;
+    },
+  };
+}
+
+// KeroKero (kerokero.c): a frog that jumps 1 px a frame toward Sonic when he is within 80 px on the side it
+// faces, at any height, and croaks now and then. Sitting, its animation doesn't run, so it shows one frame.
+const CROAK_STEPS = [54, 43, 34, 32, 12, 100, 25, 32];
+function kerokero(e, slot, anims) {
+  const { d0, d2, d3 } = data(e), s = sprite('keroJump', anims), layer = d3 ? 1 : 0;
+  let off = 0, yoff = 0, vy = 0, cd = 0, i = 0, n = 0, state = 'idle';
+  const face = ctx => { s.flipX = sonicX(ctx) > e.x + I(off); };
+  return {
+    run(ctx) {
+      if (state === 'jump') {
+        vy += 64; yoff += Div(vy, 256);
+        off += s.flipX ? 256 : -256;
+      }
+      const x = e.x + I(off), y = e.y + yoff;
+      if (gone(e.x, e.y, x, y, ctx.cam)) { slot.live = null; return false; }
+      if (state === 'idle') n = s16(n + 1);
+      if (ctx.attack(s, x, y)) { slot.gone = true; slot.live = null; return false; }
+      const d = tileFloor(ctx.world.terrain, x, y, layer);
+      if (state === 'idle') {
+        yoff += d;
+        face(ctx);
+        const px = sonicX(ctx);
+        if (n > 250) { cd = 0; n -= 250; startAnim(s, 'keroCroak'); state = 'croak'; }
+        else if (cd !== 0) cd--;
+        else if ((s.flipX && I(off) <= (d0 + d2 - 8) * TILE && x <= px && x + 80 >= px)
+          || (!s.flipX && I(off) >= (d0 + 8) * TILE && x - 80 <= px && x >= px)) {
+          vy = -1280; startAnim(s, 'keroJump'); n = s16(n + CROAK_STEPS[i]); i = (i + 1) & 7; state = 'jump';
+        }
+        ctx.draw(s, x, y);
+        return true;
+      }
+      if (state === 'jump') {
+        if (d <= 0) {
+          cd = 5; yoff += d;
+          startAnim(s, 'keroCroak'); animate(s, ctx.anims); startAnim(s, 'keroJump', true);
+          state = 'idle';
+          face(ctx);
+        }
+      } else {
+        yoff += d;
+        if (++cd > 60) { cd = 0; startAnim(s, 'keroJump'); state = 'idle'; }
+      }
+      animate(s, ctx.anims);
+      ctx.draw(s, x, y);
+      return true;
+    },
+  };
+}
+
+// Leon (leon.c, Task_LeonInit at 0x0806E7C0 in the USA ROM): a chameleon that walks at 0.625 px a frame and
+// turns round at each end in 14 frames, standing still. When Sonic is within 80 px in front of it and between
+// 32 px above and 8 px below it, it shoots its tongue for 31 frames: the tongue's box hurts him. It then has
+// to walk 60 frames before it can shoot again, counted only away from the ends. It follows the ground. Not
+// made in Angel Island on Easy. The original never sets that count when it makes the Leon (unk4E): it starts
+// with whatever the memory held, which delays or prevents the first shot; this game starts it at 0. The tongue's
+// box stays set after the shot, so it hurts again from the first frame of the next one, where it was then.
+function leon(e, slot, anims, ctx0) {
+  if (leftOutOnEasy(ctx0, 4)) return null;
+  const { d0, d2 } = data(e), s = sprite('leonWalk', anims);
+  let vx = -160, off = 0, yoff = 0, t = 0, wait = 0, state = 'walk';
+  return {
+    run(ctx) {
+      if (state === 'walk') off += vx;
+      const x = s16(e.x + I(off)), y = s16(e.y + yoff);
+      if (gone(e.x, e.y, x, y, ctx.cam)) { slot.live = null; return false; }
+      if (state === 'shoot') hurts(s.boxes[1], x, y, ctx);
+      if (ctx.attack(s, x, y)) { slot.gone = true; slot.live = null; return false; }
+      yoff = s16(yoff + tileFloor(ctx.world.terrain, x, y + 3, 1));
+      if (state === 'walk') {
+        if (I(off) <= d0 * TILE) {
+          if (!s.flipX) { vx = 160; t = 0; startAnim(s, 'leonTurn'); state = 'turn'; s.flipX = true; }
+        } else if (I(off) >= (d0 + d2) * TILE) {
+          if (s.flipX) { vx = -160; t = 0; startAnim(s, 'leonTurn'); state = 'turn'; s.flipX = false; }
+        } else if (wait === 0) {
+          const px = sonicX(ctx), py = sonicY(ctx);
+          if (py <= y + 8 && y - 32 <= py && (s.flipX ? px >= x && x + 80 >= px : px <= x && x - 80 <= px)) {
+            wait = 60; t = 0; startAnim(s, 'leonShoot'); state = 'shoot';
+          }
+        } else wait--;
+      } else if (++t === (state === 'turn' ? 14 : 31)) { startAnim(s, 'leonWalk'); state = 'walk'; }
+      animate(s, ctx.anims);
+      ctx.draw(s, x, y);
+      return true;
+    },
+  };
+}
+
+// Wamu (wamu.c, Task_Wamu at 0x0806EFF8 in the USA ROM): a flying snake whose head swings to and fro on an
+// arc, its angle stepping by 5 or 8 (1024 a turn) between two limits, and turns round at a swing's end beyond
+// its range. It keeps its last 64 positions: two body segments and two tail segments follow it, each where the
+// head was some frames before, across 24, 19, 14 and 7 frames back and up 40, 30, 20 and 10, and each leaning
+// out by half its distance from the head. Only the head can be destroyed; every segment's box hurts Sonic, at
+// the segment's own place (the decompilation's C tests them at the head's, the ROM doesn't).
+const WAMU_SEGMENTS = [['wamuTail', 24, 40], ['wamuTail', 19, 30], ['wamuBody', 14, 20], ['wamuBody', 7, 10]];
+function wamu(e, slot, anims) {
+  const { d0, d2, d3 } = data(e);
+  const head = sprite('wamuHead', anims), body = sprite('wamuBody', anims), tail = sprite('wamuTail', anims);
+  const xs = new Int16Array(64).fill(e.x), ys = new Int16Array(64).fill(e.y);
+  let angle = 100, out = true, qx = 0, qy = 0, n = 0;
+  return {
+    run(ctx) {
+      let ended = false;
+      qx += Div(COS(angle & 1023), 80 - d3 * 4);
+      qy += Div(SIN(angle & 1023), 80);
+      const x = s16(e.x + (qx >> 8)), y = s16(e.y + (qy >> 8));
+      // facing right it swings between 100 and 924 the short way round, over 0; facing left between 412 and 612
+      if (head.flipX) {
+        angle = (angle + (out ? 5 : -5)) & 0xFFFF;
+        if ((((angle & 1023) - 101) & 0xFFFF) < 823) { angle = out ? 100 : 924; out = !out; ended = true; }
+      } else if (out) {
+        angle = (angle + 5) & 0xFFFF;
+        if ((angle & 1023) > 612) { angle = 612; out = false; ended = true; }
+      } else {
+        angle = (angle - 8) & 0xFFFF;
+        if ((angle & 1023) < 412) { angle = 412; out = true; ended = true; }
+      }
+      n = (n + 1) & 0xFF;
+      xs[n & 63] = x; ys[n & 63] = y;
+      if (gone(e.x, e.y, x, y, ctx.cam)) { slot.live = null; return false; }
+      if (ctx.attack(head, x, y)) { slot.gone = true; slot.live = null; return false; }
+      const turn = right => { head.flipX = body.flipX = tail.flipX = right; angle ^= 0x100; };
+      if (I(qx) <= d0 * TILE) { if (!head.flipX && ended) turn(true); }
+      else if (I(qx) >= (d0 + d2) * TILE) { if (head.flipX && ended) turn(false); }
+      animate(head, ctx.anims);
+      ctx.draw(head, x, y);
+      for (const [name, back, up] of WAMU_SEGMENTS) {
+        const s = name === 'wamuBody' ? body : tail, px = xs[(n - back) & 63];
+        const sx = s16(px - (s16(x - px) >> 1)), sy = ys[(n - up) & 63];
+        // each sprite's animation steps once, as its first segment is drawn
+        if (back === 24 || back === 14) animate(s, ctx.anims);
+        ctx.draw(s, sx, sy);
+        hurts(s.boxes[0], sx, sy, ctx);
+      }
+      return true;
+    },
+  };
+}
+
+/** Makers by enemy kind (gSpriteInits_Enemies): (entity, slot, anims, ctx) → task. */
+// X Zone's bosses (eggwrecker.js, eggdrillster.js, eggx.js)
+export const EGG_WRECKER = 28, EGG_DRILLSTER = 29, EGG_X = 30;
+
+export const ENEMIES = {
+  [KIKI]: kiki, [BUZZER]: buzzer, [GAMIGAMI]: gamigami, [RHINOTANK]: rhinotank, [KEROKERO]: kerokero,
+  [EGG_HAMMER_TANK_INTRO]: createEggHammerTankIntro, [EGG_HAMMER_TANK]: createEggHammerTank,
+  [DRISAME]: drisame, [KURAA]: kuraa, [MOLE]: mole, [TENTOU]: tentou, [SENBON]: senbon, [FIREBALL]: fireball,
+  [EGG_PRESS]: createEggPress, [HANABII]: hanabii, [SLOT]: slotMachine, [PIERROT]: pierrot, [EGG_BALL]: eggBall,
+  [YUKIMARU]: yukimaru, [YUKIMARU_WALL]: yukimaruWall, [PEN]: pen, [EGG_SPIDER]: eggSpider,
+  [LEON]: leon, [WAMU]: wamu,
+  [MECHA_KNUCKLES]: createMechaKnuckles, [OCT]: oct, [MIRROR]: mirror, [EGG_SNAKE]: eggSnake,
+  [EGG_WRECKER]: eggWrecker, [EGG_DRILLSTER]: eggDrillster, [EGG_X]: eggX,
+};

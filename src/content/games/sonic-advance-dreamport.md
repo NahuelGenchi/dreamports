@@ -65,7 +65,7 @@ facts:
         percent: 25
   - label: Source code
     value: On GitHub
-    href: https://github.com/NahuelGenchi/sonic-advance-dreamport
+    href: https://github.com/NahuelGenchi/dreamports/tree/main/games/sonic-advance
   - label: Article
     value: On nahuelgenchi.com
     href: https://nahuelgenchi.com/gaming/onsoku-advance/

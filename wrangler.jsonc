@@ -1,21 +1,20 @@
 // How Cloudflare serves dreamports.net. `npm run build` writes the site's pages and the games in games/
 // to dist/, and Cloudflare serves that folder as plain files. A small Worker, worker/index.ts, answers
-// only the addresses in `run_worker_first`: the accounts API, players' public profiles and the games.
+// only the addresses in `run_worker_first`: the accounts API and players' public profiles.
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "dreamports",
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-23",
-  // A preview fetches the games it doesn't have from dreamports.net, where this same Worker answers
-  // them. Cloudflare refuses a Worker's fetch to its own address (error 522) unless it goes out the way
-  // any visitor's request comes in, which this flag does. On dreamports.net the Worker never fetches it.
-  "compatibility_flags": ["global_fetch_strictly_public"],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
     // An address with no page shows the site's own 404 page (src/pages/404.astro).
     "not_found_handling": "404-page",
-    "run_worker_first": ["/api/*", "/players/*", "/play/*"]
+    // Only these run the Worker. The games under /play/ stay plain files: Cloudflare's free plan serves
+    // those without limit but runs the Worker at most 100,000 times a day, and Sonic Advance Dreamport
+    // alone loads over 200 files each time it starts.
+    "run_worker_first": ["/api/*", "/players/*"]
   },
   // The accounts' database (docs/ACCOUNTS.md). The Worker makes its tables itself the first time.
   "d1_databases": [

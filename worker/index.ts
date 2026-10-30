@@ -1,6 +1,6 @@
-// The site's Worker. Cloudflare serves the built site's files by themselves; this runs only for the
-// addresses wrangler.jsonc sends it: the accounts API under /api/, players' public profiles under
-// /players/ and the games under /play/. docs/ACCOUNTS.md describes it.
+// The site's Worker. Cloudflare serves the built site's files by themselves, the games under /play/
+// included; this runs only for the addresses wrangler.jsonc sends it: the accounts API under /api/ and
+// players' public profiles under /players/. docs/ACCOUNTS.md describes it.
 
 import { ACHIEVEMENT_PATTERN, MINIMUM_AGE, NAME_PATTERN, PLAYABLE, isWay, type Way } from '../src/lib/players';
 import { Cancelled, WayError, accountOf, b64url, signInPage, type Flight, type WayEnv } from './ways';
@@ -11,7 +11,6 @@ interface Env extends WayEnv {
   DB?: D1Database;
 }
 
-const LIVE = 'dreamports.net';
 // the cookies: only this site's own pages over HTTPS get them, and no script can read them. The
 // session; an account that's new here, while its player picks a name; and a sign-in on its way
 // through a service's own page.
@@ -32,7 +31,6 @@ export default {
     if (url.pathname.startsWith('/api/oauth/')) return oauth(request, env, url);
     if (url.pathname.startsWith('/api/')) return api(request, env, url);
     if (url.pathname.startsWith('/players/')) return playerPage(request, env, url);
-    if (url.pathname.startsWith('/play/')) return play(request, env, url);
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
@@ -490,35 +488,4 @@ async function playerPage(request: Request, env: Env, url: URL) {
   if (!match![2]) return Response.redirect(new URL(`/players/${name}/${url.search}`, url).href, 308);
   const page = await env.ASSETS.fetch(new Request(new URL('/players/', url), request));
   return new Response(page.body, { status: page.ok ? 200 : page.status, headers: page.headers });
-}
-
-// The games under /play/<game>/. A game in this repository's games/ folder is part of the built site
-// (src/integrations/games.mjs). Away from dreamports.net (a pull request's preview, or `npm run worker`
-// on a computer), a game that isn't here comes from the live site, so it can be tried with this copy's
-// profiles. On dreamports.net a game with its own Worker, such as Sonic Advance Dreamport until #75,
-// has that Worker answer its /play/<game>/ before this one does.
-async function play(request: Request, env: Env, url: URL) {
-  const response = await env.ASSETS.fetch(request);
-  if (response.status !== 404 || url.hostname === LIVE) return response;
-  // a game that is here never mixes in the live site's copy: a file it doesn't have stays missing
-  const game = url.pathname.split('/')[2];
-  if (game) {
-    const home = await env.ASSETS.fetch(new Request(new URL(`/play/${game}/`, url), { method: 'HEAD' }));
-    if (home.status !== 404) return response;
-  }
-  await response.body?.cancel();
-  return fromLiveSite(request, url);
-}
-
-async function fromLiveSite(request: Request, url: URL) {
-  if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 });
-  const live = new URL(url.pathname + url.search, `https://${LIVE}`);
-  const response = await fetch(live, { method: request.method, redirect: 'manual' });
-  const headers = new Headers(response.headers);
-  const location = headers.get('Location');
-  if (location) {
-    const to = new URL(location, live);
-    if (to.host === LIVE) headers.set('Location', to.pathname + to.search + to.hash);
-  }
-  return new Response(response.body, { status: response.status, headers });
 }
