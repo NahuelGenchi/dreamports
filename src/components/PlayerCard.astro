@@ -1,0 +1,25 @@
+---
+// Another player's public profile, as a full screen in the menu's place, at /players/<name>/.
+// src/scripts/profile.ts fills it from the address.
+import ViewBar from './ViewBar.astro';
+
+interface Props {
+  // Open when the page loads, at /players/<name>/.
+  open?: boolean;
+}
+
+const { open = false } = Astro.props;
+const Title = open ? 'h1' : 'h2';
+---
+
+<dialog class="card view card-profile card-player" id="card-player" data-card="player" aria-labelledby="player-title" open={open}>
+  <div class="card-body">
+    <Title class="card-title" id="player-title">Player</Title>
+    <div class="pf-body">
+      <p class="pf-status" id="pl-status" role="status" aria-live="polite"></p>
+      <p class="pf-since" id="pl-since"></p>
+      <div class="pf-games" id="pl-games"></div>
+    </div>
+  </div>
+  <ViewBar href="/" />
+</dialog>

@@ -2,13 +2,16 @@
 // The whole site is this one screen: a top bar with the filters (or the search field, while a
 // search is on), one row of games across the middle, corner buttons at the bottom, and cards
 // that take the row's place as full screens. Every page shows it, with its own card open: a
-// game's own page opens that game's card, and /about/ opens about.
+// game's own page opens that game's card, /about/ opens about, /profile/ the player's profile and
+// /players/<name>/ another player's public one.
 // Without JavaScript the row is a plain list of links, and on a card's page the card is the
 // page's text in the row's place.
 import AboutCard from './AboutCard.astro';
 import Doorway from './Doorway.astro';
 import InspectCard from './InspectCard.astro';
 import Key from './Key.astro';
+import PlayerCard from './PlayerCard.astro';
+import ProfileCard from './ProfileCard.astro';
 import SettingsCard from './SettingsCard.astro';
 import Slot from './Slot.astro';
 import { FILTERS, SECTIONS, SLOTS, getGames, type Filter, type FilterKey, type Game } from '../lib/site';
@@ -18,7 +21,7 @@ interface Props {
   // The game the row starts on.
   selected?: string;
   // The card that is open when the page loads.
-  open?: 'about' | 'inspect';
+  open?: 'about' | 'inspect' | 'profile' | 'player';
 }
 
 const { filter, selected, open } = Astro.props;
@@ -137,6 +140,13 @@ const pathsFor = (f: Filter) =>
       </a>
     </div>
     <div class="corner-group">
+      <a class="corner" id="btn-profile" href="/profile/" aria-keyshortcuts="P">
+        <Key label="P" pad="X" round />
+        <svg class="c-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
+          <path d="M3 0h3v4H3zM1 5h7v1H1zM0 6h9v3H0z"></path>
+        </svg>
+        <span class="c-word">Profile</span>
+      </a>
       <button
         type="button"
         class="corner no-label"
@@ -163,6 +173,8 @@ const pathsFor = (f: Filter) =>
 
   <SettingsCard />
   <AboutCard open={open === 'about'} />
+  <ProfileCard open={open === 'profile'} />
+  <PlayerCard open={open === 'player'} />
   {games.map((game) => <InspectCard game={game} open={open === 'inspect' && game.id === selected} />)}
 </div>
 
@@ -185,5 +197,7 @@ const pathsFor = (f: Filter) =>
 <div class="sr-only" aria-live="polite" id="live"></div>
 
 <script>
+  // the profile first, so it hears the launcher open its card when a page starts on it
+  import '../scripts/profile';
   import '../scripts/launcher';
 </script>

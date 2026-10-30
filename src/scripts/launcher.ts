@@ -1,6 +1,6 @@
 // The launcher: one row of games to move through with the arrow keys, L and R, a swipe, a click
-// or a game controller, and cards that take its place as full screens: a game's page, about and
-// settings. Each card keeps the address of the page it stands for, so links can be shared and the
+// or a game controller, and cards that take its place as full screens: a game's page, about,
+// settings, the player's profile and other players' public ones (filled by profile.ts). Each card keeps the address of the page it stands for, so links can be shared and the
 // browser's back button closes it. Everything here is
 // added on top of plain pages: without this script, the row is a list of links.
 
@@ -83,6 +83,8 @@ function start(launcher: HTMLElement) {
   const settingsCard = $<HTMLDialogElement>('#card-settings');
   const aboutCard = $<HTMLDialogElement>('#card-about');
   const aboutText = $('.about-text', aboutCard);
+  const profileCard = $<HTMLDialogElement>('#card-profile');
+  const playerCard = $<HTMLDialogElement>('#card-player');
   const cards = $$<HTMLDialogElement>('dialog.card');
   const inspectCards = new Map($$<HTMLDialogElement>('dialog[data-card="inspect"]').map((d) => [d.dataset.game!, d]));
 
@@ -821,6 +823,8 @@ function start(launcher: HTMLElement) {
     launcher.dataset.view = dlg.dataset.card;
     if (dlg.open) dlg.close();
     dlg.show();
+    // a card that fills itself, such as the profile, starts now
+    dlg.dispatchEvent(new Event('view-open'));
     dlg.getBoundingClientRect();
     if (dlg === aboutCard) jumpAbout(opts.section ?? 'dreamport', true, false);
     if (dlg.dataset.card === 'inspect') {
@@ -841,7 +845,7 @@ function start(launcher: HTMLElement) {
     if (dlg === aboutCard) return aboutLinks.find((a) => a.getAttribute('aria-current') === 'true') ?? null;
     const box = dlg.querySelector<HTMLInputElement>('.gate-form .check input');
     if (box) return box.checked ? $('.gate-buttons .btn', dlg) : box;
-    return dlg.querySelector<HTMLElement>('[autofocus]');
+    return $$('[autofocus]', dlg).find((el) => !el.closest('[hidden]')) ?? null;
   }
 
   interface CloseOptions {
@@ -893,7 +897,13 @@ function start(launcher: HTMLElement) {
   function viewParts(dlg: HTMLDialogElement) {
     const kind = dlg.dataset.card;
     const parts =
-      kind === 'inspect' ? ['.ins-text', '.ins-show .gate-form'] : kind === 'about' ? ['.about-nav', '.about-text'] : ['.card-title', '.set-list', '.card-note'];
+      kind === 'inspect'
+        ? ['.ins-text', '.ins-show .gate-form']
+        : kind === 'about'
+          ? ['.about-nav', '.about-text']
+          : kind === 'profile' || kind === 'player'
+            ? ['.card-title', '.pf-body']
+            : ['.card-title', '.set-list', '.card-note'];
     return [...parts.map((part) => $(part, dlg)), $('.view-bar', dlg)];
   }
   function viewIn(dlg: HTMLDialogElement) {
@@ -977,9 +987,16 @@ function start(launcher: HTMLElement) {
           sound.play('tick');
           return;
         }
-        if (link.id === 'btn-privacy') {
+        if (href === '/about/#privacy') {
           e.preventDefault();
           openCard(aboutCard, { section: 'privacy' });
+          return;
+        }
+        // a player's public profile, from the player's own
+        if (link.dataset.player !== undefined) {
+          e.preventDefault();
+          playerCard.dataset.path = href;
+          openCard(playerCard);
           return;
         }
       }
@@ -1600,9 +1617,10 @@ function start(launcher: HTMLElement) {
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target as Element;
-    // letters type into the search field, and a phone's own keyboard keeps the touch hints
+    // letters type into the search field and the profile's name, and a phone's own keyboard keeps
+    // the touch hints
     if (t === searchInput) return;
-    setInput('keys');
+    if (!(t instanceof HTMLInputElement && t.type === 'text')) setInput('keys');
     // only escape goes back: a held enter key must not undo the launch it started
     if (state.launching) {
       if (e.key === 'Escape' && !e.repeat) {
@@ -1679,6 +1697,10 @@ function start(launcher: HTMLElement) {
       case 'a':
         e.preventDefault();
         if (!busy()) openCard(aboutCard);
+        break;
+      case 'p':
+        e.preventDefault();
+        if (!busy()) openCard(profileCard);
         break;
       case '/':
         e.preventDefault();
@@ -1782,6 +1804,7 @@ function start(launcher: HTMLElement) {
     if (step === -2 && state.search !== null) searchInput.focus({ preventScroll: true });
     if (edges.includes(1)) endSearch();
     if (edges.includes(0)) primary();
+    if (edges.includes(2) && !busy()) openCard(profileCard);
     if (edges.includes(3) && !busy()) openCard(aboutCard);
     if (edges.includes(9) && !busy()) openCard(settingsCard);
     if (edges.includes(4)) prevFilter();
@@ -1882,6 +1905,11 @@ function start(launcher: HTMLElement) {
     e.preventDefault();
     if (!busy()) openCard(aboutCard, { opener: e.currentTarget as HTMLElement });
   });
+  $('#btn-profile', launcher).addEventListener('click', (e) => {
+    if (!plainClick(e)) return;
+    e.preventDefault();
+    if (!busy()) openCard(profileCard, { opener: e.currentTarget as HTMLElement });
+  });
   btnSearch.addEventListener('click', startSearch);
   $('#search-end', searchBox).addEventListener('click', endSearch);
 
@@ -1894,6 +1922,14 @@ function start(launcher: HTMLElement) {
     let card: HTMLDialogElement | null = null;
     let game: string | null = null;
     if (path === '/about/') card = aboutCard;
+    if (path === '/profile/') card = profileCard;
+    if (/^\/players\/[^/]+\/$/.test(path)) {
+      card = playerCard;
+      // another player's profile, from the browser's back or forward button, loads in its place
+      const moved = state.open === card && card.dataset.path !== path;
+      card.dataset.path = path;
+      if (moved) card.dispatchEvent(new Event('view-open'));
+    }
     for (const ins of inspectCards.values()) {
       if (ins.dataset.path === path) {
         game = ins.dataset.game!;
