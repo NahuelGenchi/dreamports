@@ -1,7 +1,7 @@
 // Puts the games in this repository on the site (#74). After `astro build`, each folder in games/ is
-// copied as it is to dist/play/<game>/, where the site's Worker serves it at /play/<game>/. The build
-// stops and names every problem if a folder breaks one of the rules in games/README.md, or if the site
-// grows past what Cloudflare's free plan takes.
+// copied as it is to dist/play/<game>/, which Cloudflare serves at /play/<game>/ as plain files. The
+// build stops and names every problem if a folder breaks one of the rules in games/README.md, or if the
+// site grows past what Cloudflare's free plan takes.
 import { copyFile, lstat, mkdir, readdir } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
