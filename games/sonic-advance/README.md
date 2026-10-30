@@ -153,7 +153,7 @@ Add `?character=2` to play as Knuckles, for example [dreamports.net/play/sonic-a
 The goal is a game that behaves *exactly* like the original, not one that looks roughly like it.
 
 - **Rules from the source.** Sonic's speed, jumps and rolls, the camera and every object follow the original game's rules, as worked out by [SAT-R](https://github.com/SAT-R), the community project that turned Sonic Advance's program back into readable code.
-- **Checked against the real thing.** The results are compared with the original game running in an emulator. Even the original's own bugs are kept, so the two match; they are [listed](https://github.com/NahuelGenchi/sonic-advance-dreamport/issues/56) for an optional fix later.
+- **Checked against the real thing.** The results are compared with the original game running in an emulator. Even the original's own bugs are kept, so the two match; they are [listed](https://github.com/NahuelGenchi/dreamports/issues/88) for an optional fix later.
 - **The game's own sound.** The music and sound effects are played by a rebuilt copy of the cartridge's sound engine, whose output matches the original's byte for byte.
 - **Sharp pixels.** The game draws at the Game Boy Advance's own 240 × 160 and scales up in whole steps, so every pixel stays crisp on any screen.
 

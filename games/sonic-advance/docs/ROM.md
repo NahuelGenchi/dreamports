@@ -918,7 +918,7 @@ These runs also showed where the USA ROM keeps the settings and the emeralds. Th
 - **Its task** runs at `0xFFFE`, after every task but the ones already at that priority. On the frame Start opens it in an act it runs only if such a task comes after the stage clock's (Ice Mountain's water); otherwise the act runs one more frame, and the menu starts on the next. Its first frame (`Task_PauseMenuInit`) stops every music player but the pause sound's (song 142, player 3), plays it and sets `FLAGS_PAUSE_GAME`.
 - **The sign.** PAUSE (animation 718) over its background (720), both at (120, 80) with OAM order 1 and priority 0, in front of everything. They are made with the task; their animations load sprite palette 68 into OBJ row 6 at once, and nothing loads that row's own colours back after the menu closes. In an act row 6 already holds palette 68, the HUD font's. From its second frame on, the task shows them each frame (`Task_PauseMenuUpdate`), semi-transparent while `gBldRegs.bldY` is above 0: a fade's brightness change then leaves them alone.
 - **Paused.** At each VBlank `FLAGS_800` follows `FLAGS_PAUSE_GAME`, and while it is set only the tasks flagged `TASK_x0004` run, the menu's alone. With `FLAGS_PAUSE_GAME` set the VBlank doesn't clear the OAM buffer: on the first frame the entries move to its end, behind the sign that comes first from then on, so the screen keeps the act's sprites as the last frame left them. It doesn't swap the two buffers of per-line offsets either, so what the HBlank interrupt reads from the second one is from the frame before the last one that ran: the Moon Zone's ground scroll, and the waves below Ice Mountain's water line. What the HBlank DMA copies from the first (the backgrounds' parallax, the spotlights) is the last frame's.
-- **Going on.** Start again clears `FLAGS_PAUSE_GAME`, continues every music player from where it stopped (`m4aMPlayAllContinue`) and ends the task. That frame stays paused, with the act's sprites and without the sign; the act runs again from the next. In Time Attack the sign is the Time Attack one and A leaves for the Time Attack lobby ([#138](https://github.com/NahuelGenchi/sonic-advance-dreamport/issues/138)).
+- **Going on.** Start again clears `FLAGS_PAUSE_GAME`, continues every music player from where it stopped (`m4aMPlayAllContinue`) and ends the task. That frame stays paused, with the act's sprites and without the sign; the act runs again from the next. In Time Attack the sign is the Time Attack one and A leaves for the Time Attack lobby ([#95](https://github.com/NahuelGenchi/dreamports/issues/95)).
 
 **How it was checked.** mGBA 0.10.5 recorded each run from the character select (the level set in IWRAM) or from the act's special spring, with the screen, IWRAM, VRAM, OAM, the palettes and the sound's EWRAM dumped every frame; the port played the same keys.
 
@@ -1580,7 +1580,7 @@ The kinds that other zones' acts share came from their branches as they are: spi
 - **Small Barrel of Doom** (57, `Task_BarrelOfDoomMini` in `platform_square.c`, `493`): a barrel that bobs on a spring. Sonic lands on its top from any side while he isn't rising, and landing pushes it down by 6/10 of his falling speed. Off its place it is pulled back at 48/256 px a frame per frame, its speed loses 1% a frame, and it rests when that speed is under 48/256 px a frame within 3 px of its place. A jump from it throws him off at half its speed less 4 px a frame up.
 - **Box that hides Sonic** (70, `toggle_player_visibility.c`): along the tubes. While his centre is inside one, `d2` × 8 px across and `d3` × 8 down, it hides him when `d0` is set and shows him again when it is 0 (`MOVESTATE_100000`). Its task runs at priority `0x2000` plus `d3`. A dead Sonic is always drawn, and the box and the tube tracks show him again.
 
-Kept from the original (issue [#56](https://github.com/NahuelGenchi/sonic-advance-dreamport/issues/56)):
+Kept from the original (issue [#88](https://github.com/NahuelGenchi/dreamports/issues/88)):
 
 - A party balloon restarts the partner's animation, not Sonic's (`Task_PartyBalloon` swaps the two branches), so his rise keeps the animation he had.
 - The circling bumper works out its throw from 8 times its own offset, so it doesn't throw Sonic straight away from it.
@@ -1616,7 +1616,7 @@ Read in the code only: the bumpers' sway, the teleport orb's death branch and th
 
 A defeat in Casino Paradise frees a lion (`440`), which sits, a peacock (`439`), which hops away, and a parrot (`442`), which flies off swaying, in turn (`sAnimsTrappedAnimals`, `0x681154` in the USA ROM; [#77](https://github.com/NahuelGenchi/sonic-advance-dreamport/issues/77) built every zone's).
 
-Kept from the original (issue [#56](https://github.com/NahuelGenchi/sonic-advance-dreamport/issues/56)): the Hanabii squares its distances to Sonic into 16 bits (`CamCoord`), so from 182 px away along either axis the square wraps negative and it launches as if he were within 100 px.
+Kept from the original (issue [#88](https://github.com/NahuelGenchi/dreamports/issues/88)): the Hanabii squares its distances to Sonic into 16 bits (`CamCoord`), so from 182 px away along either axis the square wraps negative and it launches as if he were within 100 px.
 
 **How it was checked.** mGBA 0.10.5, from act 1 with Sonic placed by memory writes: a Hanabii walking and launching (1000 frames, its own task's memory matching on every frame) and one launching at Sonic held 182 to 199 px away, the 16-bit wrap (900); a Slot dropping coins on Sonic, the coin shattering on the floor and on him (1000 and 880); Pierrots rolling on screen in three runs; and a Slot defeated three times, with the game's next-animal counter (`gTrappedAnimalVariant`, `0x0300501C`) set to each animal (750 frames each). Sonic's state and every screen match.
 
@@ -2141,7 +2141,7 @@ These are the decompilation's EU addresses less `0x7124`.
 - all four characters' unlocked levels are past 12;
 - and not both of: the first unlocked level is 15, and the course select started on level 12.
 
-[`src/engine/unlock.js`](../src/engine/unlock.js) has it as `theMoonOpens(…)`. The stage results' part of the save calls it ([`save.js`](../src/engine/save.js)); the way on after X Zone doesn't yet ([#133](https://github.com/NahuelGenchi/sonic-advance-dreamport/issues/133)). `?level=13` starts the Moon Zone directly.
+[`src/engine/unlock.js`](../src/engine/unlock.js) has it as `theMoonOpens(…)`. The stage results' part of the save calls it ([`save.js`](../src/engine/save.js)); the way on after X Zone doesn't yet ([#93](https://github.com/NahuelGenchi/dreamports/issues/93)). `?level=13` starts the Moon Zone directly.
 
 ## The normal ending
 

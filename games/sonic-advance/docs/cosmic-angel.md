@@ -99,7 +99,7 @@ A beaten boss stops the clock, the rings and the entities manager (`STAGE_FLAG__
 
 ## Original-game bugs kept
 
-These are listed in [#56](https://github.com/NahuelGenchi/sonic-advance-dreamport/issues/56) for an opt-in fix later:
+These are listed in [#88](https://github.com/NahuelGenchi/dreamports/issues/88) for an opt-in fix later:
 - After the Egg Snake is beaten, its shots still find it through the laser's task, which has been freed. They keep flying until the boss's next debris takes that task over (three frames in the recordings).
 - A shot fired from straight on top of Sonic reads the halfword before the sine table.
 - Shots fired upward are only removed once they leave the screen sideways.
