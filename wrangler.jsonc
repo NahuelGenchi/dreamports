@@ -6,6 +6,10 @@
   "name": "dreamports",
   "main": "worker/index.ts",
   "compatibility_date": "2026-10-23",
+  // A preview fetches the games it doesn't have from dreamports.net, where this same Worker answers
+  // them. Cloudflare refuses a Worker's fetch to its own address (error 522) unless it goes out the way
+  // any visitor's request comes in, which this flag does. On dreamports.net the Worker never fetches it.
+  "compatibility_flags": ["global_fetch_strictly_public"],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
