@@ -446,8 +446,15 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
       const way = unlink[1];
       const ways = (await profile(db, player)).ways;
       if (!isWay(way) || !ways.includes(way)) throw new Problem(404, 'That account isn’t linked to your profile.');
-      if (ways.length === 1) throw new Problem(400, 'That’s your only way in, so it stays.');
-      await db.prepare('DELETE FROM ways WHERE player = ? AND way = ?').bind(player.id, way).run();
+      // one statement, so two at once can't both take a way and leave none
+      const gone = await db
+        .prepare('DELETE FROM ways WHERE player = ?1 AND way = ?2 AND (SELECT COUNT(*) FROM ways WHERE player = ?1) > 1')
+        .bind(player.id, way)
+        .run();
+      if (!gone.meta.changes) throw new Problem(400, 'That’s your only way in, so it stays.');
+      // whoever signed in through that account on another device is signed out
+      const token = cookieValue(request, SESSION)!;
+      await db.prepare('DELETE FROM sessions WHERE player = ? AND hash != ?').bind(player.id, await hashOf(token)).run();
       return json({ player: await profile(db, player) });
     }
 

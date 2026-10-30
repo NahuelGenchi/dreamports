@@ -338,7 +338,7 @@ function startProfile(card: HTMLDialogElement) {
           say((data as { error?: string }).error ?? 'That didn’t work. Try again.');
           return;
         }
-        say(`${WAYS[way]} no longer signs in to your profile.`);
+        say(`${WAYS[way]} no longer signs in to your profile, and your other devices are signed out.`);
         await show(data.player);
         row.querySelector<HTMLElement>('[data-link]')!.focus({ preventScroll: true });
       }),

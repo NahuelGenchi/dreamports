@@ -45,7 +45,7 @@ To set or change a secret: `npx wrangler secret put <NAME>` for dreamports.net, 
 3. If that account already signs in to a profile, the player is signed in. If not, the Worker notes the account for half an hour and the profile asks for a name; picking one makes the profile, and **Cancel** forgets the account.
 4. The Worker sends the player back to `/profile/` with how it went: `?signed-in`, `?new`, `?linked`, or `?trouble=` `cancelled`, `taken`, `expired` or `failed`, each with `&way=<service>`. The profile reads it once and puts the address back to plain `/profile/`.
 
-A signed-in player can link another account from **Signs in with** on their profile (`/api/oauth/<service>/start?link`). An account that already signs in to another profile can't be linked, and a profile's last way in can't be unlinked.
+A signed-in player can link another account from **Signs in with** on their profile (`/api/oauth/<service>/start?link`). An account that already signs in to another profile can't be linked, and a profile's last way in can't be unlinked. Unlinking an account also signs the profile out on every other device, so whoever signed in through it is out too.
 
 ## What a profile keeps
 
