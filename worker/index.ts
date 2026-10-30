@@ -2,31 +2,26 @@
 // addresses wrangler.jsonc sends it: the accounts API under /api/, players' public profiles under
 // /players/ and, away from dreamports.net, the games under /play/. docs/ACCOUNTS.md describes it.
 
-import { ACHIEVEMENT_PATTERN, MINIMUM_AGE, NAME_PATTERN, PLAYABLE } from '../src/lib/players';
-import {
-  ALGORITHM_IDS,
-  PasskeyError,
-  b64url,
-  challengeOf,
-  verifyAssertion,
-  verifyRegistration,
-  type NewPasskey,
-  type PasskeyProof,
-  type StoredPasskey,
-} from './passkeys';
+import { ACHIEVEMENT_PATTERN, MINIMUM_AGE, NAME_PATTERN, PLAYABLE, isWay, type Way } from '../src/lib/players';
+import { Cancelled, WayError, accountOf, b64url, signInPage, type Flight, type WayEnv } from './ways';
 
-interface Env {
+interface Env extends WayEnv {
   ASSETS: Fetcher;
   // the accounts' database; without it, as in a copy of the site with no database, the API says so
   DB?: D1Database;
 }
 
 const LIVE = 'dreamports.net';
-// the session's cookie: only this site's own pages over HTTPS can send it, and no script can read it
-const COOKIE = '__Host-dreamports';
+// the cookies: only this site's own pages over HTTPS get them, and no script can read them. The
+// session; an account that's new here, while its player picks a name; and a sign-in on its way
+// through a service's own page.
+const SESSION = '__Host-dreamports';
+const NEWCOMER = '__Host-dreamports-new';
+const FLIGHT = '__Host-dreamports-oauth';
 const DAY = 86_400_000;
 const SESSION_DAYS = 365;
-const CHALLENGE_MS = 5 * 60_000;
+const NEWCOMER_MS = 30 * 60_000;
+const FLIGHT_MS = 10 * 60_000;
 // a game can't have kept an achievement before this, or after now
 const FIRST_DAY = Date.UTC(2026, 0, 1);
 const MOST_PER_GAME = 500;
@@ -34,6 +29,7 @@ const MOST_PER_GAME = 500;
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname.startsWith('/api/oauth/')) return oauth(request, env, url);
     if (url.pathname.startsWith('/api/')) return api(request, env, url);
     if (url.pathname.startsWith('/players/')) return playerPage(request, env, url);
     if (url.pathname.startsWith('/play/') && url.hostname !== LIVE) return fromLiveSite(request, url);
@@ -52,16 +48,14 @@ class Problem extends Error {
   }
 }
 
-function json(data: unknown, status = 200, headers: HeadersInit = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': 'no-store',
-      'X-Content-Type-Options': 'nosniff',
-      ...headers,
-    },
+function json(data: unknown, status = 200, cookies: string[] = []) {
+  const headers = new Headers({
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff',
   });
+  for (const cookie of cookies) headers.append('Set-Cookie', cookie);
+  return new Response(JSON.stringify(data), { status, headers });
 }
 
 async function readBody(request: Request): Promise<Record<string, unknown>> {
@@ -72,6 +66,18 @@ async function readBody(request: Request): Promise<Record<string, unknown>> {
     if (body && typeof body === 'object' && !Array.isArray(body)) return body;
   } catch {}
   throw new Problem(400, 'The request wasn’t readable.');
+}
+
+const cookie = (name: string, value: string, ms: number) =>
+  `${name}=${value}; Path=/; Max-Age=${Math.floor(ms / 1000)}; Secure; HttpOnly; SameSite=Lax`;
+const ended = (name: string) => cookie(name, '', 0);
+
+function cookieValue(request: Request, name: string, pattern = /^[A-Za-z0-9_-]{43}$/) {
+  for (const part of (request.headers.get('Cookie') ?? '').split(';')) {
+    const [key, value] = part.trim().split('=');
+    if (key === name && value && pattern.test(value)) return value;
+  }
+  return null;
 }
 
 // ---------- The database ----------
@@ -86,18 +92,16 @@ const SCHEMA = [
     public INTEGER NOT NULL DEFAULT 0,
     created INTEGER NOT NULL
   )`,
-  // a passkey's public key, as SPKI, with its COSE algorithm
-  `CREATE TABLE IF NOT EXISTS passkeys (
-    id TEXT PRIMARY KEY,
+  // an account a player signs in with: the service, and the account's id there. One per service.
+  `CREATE TABLE IF NOT EXISTS ways (
+    way TEXT NOT NULL,
+    account TEXT NOT NULL,
     player TEXT NOT NULL REFERENCES players (id) ON DELETE CASCADE,
-    key TEXT NOT NULL,
-    alg INTEGER NOT NULL,
-    counter INTEGER NOT NULL DEFAULT 0,
-    transports TEXT NOT NULL DEFAULT '[]',
     created INTEGER NOT NULL,
-    used INTEGER
-  )`,
-  `CREATE INDEX IF NOT EXISTS passkeys_player ON passkeys (player)`,
+    used INTEGER,
+    PRIMARY KEY (way, account),
+    UNIQUE (player, way)
+  ) WITHOUT ROWID`,
   // a session is kept by the SHA-256 of its cookie's value, never the value itself
   `CREATE TABLE IF NOT EXISTS sessions (
     hash TEXT PRIMARY KEY,
@@ -107,13 +111,12 @@ const SCHEMA = [
   )`,
   `CREATE INDEX IF NOT EXISTS sessions_player ON sessions (player)`,
   `CREATE INDEX IF NOT EXISTS sessions_expires ON sessions (expires)`,
-  // a challenge handed out for a passkey, used once: to sign up (with the new player's id and name),
-  // to add a passkey (with the player's id) or to sign in
-  `CREATE TABLE IF NOT EXISTS challenges (
-    id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL,
-    player TEXT,
-    name TEXT,
+  // an account that's new here, for half an hour while its player picks a name, kept by the SHA-256
+  // of its cookie's value
+  `CREATE TABLE IF NOT EXISTS newcomers (
+    hash TEXT PRIMARY KEY,
+    way TEXT NOT NULL,
+    account TEXT NOT NULL,
     expires INTEGER NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS achievements (
@@ -134,8 +137,8 @@ function ready(db: D1Database) {
   return schema;
 }
 
-const random = (bytes: number) => b64url.encode(crypto.getRandomValues(new Uint8Array(bytes)));
-const hashOf = async (token: string) => b64url.encode(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)));
+const random = (bytes: number) => b64url(crypto.getRandomValues(new Uint8Array(bytes)));
+const hashOf = async (token: string) => b64url(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)));
 
 interface Player {
   id: string;
@@ -144,16 +147,8 @@ interface Player {
   created: number;
 }
 
-function cookieValue(request: Request) {
-  for (const part of (request.headers.get('Cookie') ?? '').split(';')) {
-    const [key, value] = part.trim().split('=');
-    if (key === COOKIE && value && /^[A-Za-z0-9_-]{43}$/.test(value)) return value;
-  }
-  return null;
-}
-
 async function signedIn(db: D1Database, request: Request): Promise<Player | null> {
-  const token = cookieValue(request);
+  const token = cookieValue(request, SESSION);
   if (!token) return null;
   return db
     .prepare(
@@ -163,7 +158,7 @@ async function signedIn(db: D1Database, request: Request): Promise<Player | null
     .first<Player>();
 }
 
-// a new session: the statement that keeps it, and the cookie that carries it. Signing in again ends
+// a new session: the statements that keep it, and the cookie that carries it. Signing in again ends
 // the session this browser had.
 async function newSession(db: D1Database, request: Request, player: string) {
   const token = random(32);
@@ -172,45 +167,22 @@ async function newSession(db: D1Database, request: Request, player: string) {
     db.prepare('INSERT INTO sessions (hash, player, created, expires) VALUES (?, ?, ?, ?)').bind(await hashOf(token), player, now, now + SESSION_DAYS * DAY),
     db.prepare('DELETE FROM sessions WHERE expires <= ?').bind(now),
   ];
-  const old = cookieValue(request);
+  const old = cookieValue(request, SESSION);
   if (old) statements.push(db.prepare('DELETE FROM sessions WHERE hash = ?').bind(await hashOf(old)));
-  return { statements, cookie: `${COOKIE}=${token}; Path=/; Max-Age=${SESSION_DAYS * 86_400}; Secure; HttpOnly; SameSite=Lax` };
-}
-const ENDED = `${COOKIE}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax`;
-
-async function newChallenge(db: D1Database, kind: string, player: string | null = null, name: string | null = null) {
-  const id = random(32);
-  const now = Date.now();
-  await db.batch([
-    db.prepare('DELETE FROM challenges WHERE expires <= ?').bind(now),
-    db.prepare('INSERT INTO challenges (id, kind, player, name, expires) VALUES (?, ?, ?, ?, ?)').bind(id, kind, player, name, now + CHALLENGE_MS),
-  ]);
-  return id;
+  return { statements, cookie: cookie(SESSION, token, SESSION_DAYS * DAY) };
 }
 
-// the challenge a passkey's answer names, used up whether or not the answer turns out right
-async function takeChallenge(db: D1Database, answer: unknown, kind: string) {
-  const id = challengeOf((answer as { clientDataJSON?: unknown } | null)?.clientDataJSON);
-  const row = id
-    ? await db
-        .prepare('DELETE FROM challenges WHERE id = ? RETURNING kind, player, name, expires')
-        .bind(id)
-        .first<{ kind: string; player: string | null; name: string | null; expires: number }>()
-    : null;
-  if (!id || !row || row.kind !== kind || row.expires <= Date.now()) {
-    throw new Problem(400, 'That took too long, or the passkey was for something else. Try again.');
-  }
-  return { id, player: row.player, name: row.name };
+// the account that's new here, from this browser's cookie, while it lasts
+async function newcomer(db: D1Database, request: Request) {
+  const token = cookieValue(request, NEWCOMER);
+  if (!token) return null;
+  const hash = await hashOf(token);
+  const row = await db.prepare('SELECT way, account FROM newcomers WHERE hash = ? AND expires > ?').bind(hash, Date.now()).first<{ way: Way; account: string }>();
+  return row && { ...row, hash };
 }
 
 const nameTaken = async (db: D1Database, name: string) =>
   !!(await db.prepare('SELECT 1 FROM players WHERE name_key = ?').bind(name.toLowerCase()).first());
-
-function addPasskey(db: D1Database, player: string, key: Awaited<ReturnType<typeof verifyRegistration>>) {
-  return db
-    .prepare('INSERT INTO passkeys (id, player, key, alg, counter, transports, created) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .bind(key.id, player, key.key, key.alg, key.counter, JSON.stringify(key.transports), Date.now());
-}
 
 // what was earned, by game and then id, with the time
 async function earnedBy(db: D1Database, player: string) {
@@ -225,14 +197,95 @@ async function earnedBy(db: D1Database, player: string) {
 
 // the signed-in player's own profile
 async function profile(db: D1Database, player: Player) {
-  const passkeys = await db.prepare('SELECT COUNT(*) AS n FROM passkeys WHERE player = ?').bind(player.id).first<number>('n');
+  const { results } = await db.prepare('SELECT way FROM ways WHERE player = ? ORDER BY created').bind(player.id).all<{ way: Way }>();
   return {
     name: player.name,
     public: !!player.public,
     since: player.created,
-    passkeys: passkeys ?? 0,
+    ways: results.map((row) => row.way),
     achievements: await earnedBy(db, player.id),
   };
+}
+
+// ---------- Signing in with an account ----------
+
+// /api/oauth/<way>/start sends the player to the service's own page, and the service sends them back
+// to /api/oauth/<way>/callback. Either way the player ends up on /profile/, whose address says how it
+// went: ?signed-in, ?new (a name to pick), ?linked, or ?trouble=<what>.
+async function oauth(request: Request, env: Env, url: URL): Promise<Response> {
+  const match = /^\/api\/oauth\/([a-z]+)\/(start|callback)$/.exec(url.pathname);
+  if (!match || !isWay(match[1]) || request.method !== 'GET') return json({ error: 'Nothing here.' }, 404);
+  const way = match[1];
+  const back = `${url.origin}/api/oauth/${way}/callback`;
+  const home = (how: string, cookies: string[] = []) => {
+    const headers = new Headers({ Location: `${url.origin}/profile/?${how}&way=${way}`, 'Cache-Control': 'no-store' });
+    for (const c of [ended(FLIGHT), ...cookies]) headers.append('Set-Cookie', c);
+    return new Response(null, { status: 302, headers });
+  };
+  const db = env.DB;
+  if (!db) return home('trouble=failed');
+
+  if (match[2] === 'start') {
+    const flight: Flight = { way, state: random(24), verifier: random(32), link: url.searchParams.has('link') };
+    let page: URL;
+    try {
+      page = await signInPage(env, flight, back, url.origin);
+    } catch (error) {
+      console.warn(`${way} sign-in can't start:`, String(error));
+      return home('trouble=failed');
+    }
+    const value = [way, flight.state, flight.verifier, flight.link ? 1 : 0].join('.');
+    const headers = new Headers({ Location: page.href, 'Cache-Control': 'no-store' });
+    headers.append('Set-Cookie', cookie(FLIGHT, value, FLIGHT_MS));
+    return new Response(null, { status: 302, headers });
+  }
+
+  // back from the service: the sign-in this browser started, with the state the service handed back
+  const kept = cookieValue(request, FLIGHT, /^[a-z]+\.[A-Za-z0-9_-]{32}\.[A-Za-z0-9_-]{43}\.[01]$/)?.split('.');
+  if (!kept || kept[0] !== way || kept[1] !== url.searchParams.get('state')) return home('trouble=expired');
+  const flight: Flight = { way, state: kept[1], verifier: kept[2], link: kept[3] === '1' };
+  let account: string;
+  try {
+    account = await accountOf(env, flight, url, back);
+  } catch (error) {
+    if (error instanceof Cancelled) return home('trouble=cancelled');
+    console.warn(`${way} sign-in refused:`, error instanceof WayError ? error.message : error);
+    return home('trouble=failed');
+  }
+
+  try {
+    await ready(db);
+    const now = Date.now();
+    const owner = await db.prepare('SELECT player FROM ways WHERE way = ? AND account = ?').bind(way, account).first<string>('player');
+    const player = flight.link ? await signedIn(db, request) : null;
+    // linking the account to the signed-in player
+    if (player) {
+      if (owner && owner !== player.id) return home('trouble=taken');
+      if (!owner) {
+        await db.batch([
+          db.prepare('DELETE FROM ways WHERE player = ? AND way = ?').bind(player.id, way),
+          db.prepare('INSERT INTO ways (way, account, player, created, used) VALUES (?, ?, ?, ?, ?)').bind(way, account, player.id, now, now),
+        ]);
+      }
+      return home('linked');
+    }
+    // an account with a profile: signed in
+    if (owner) {
+      const session = await newSession(db, request, owner);
+      await db.batch([db.prepare('UPDATE ways SET used = ? WHERE way = ? AND account = ?').bind(now, way, account), ...session.statements]);
+      return home('signed-in', [session.cookie, ended(NEWCOMER)]);
+    }
+    // an account that's new here: its player picks a name next
+    const token = random(32);
+    await db.batch([
+      db.prepare('DELETE FROM newcomers WHERE expires <= ?').bind(now),
+      db.prepare('INSERT INTO newcomers (hash, way, account, expires) VALUES (?, ?, ?, ?)').bind(await hashOf(token), way, account, now + NEWCOMER_MS),
+    ]);
+    return home('new', [cookie(NEWCOMER, token, NEWCOMER_MS)]);
+  } catch (error) {
+    console.error(error);
+    return home('trouble=failed');
+  }
 }
 
 // ---------- The API ----------
@@ -240,13 +293,11 @@ async function profile(db: D1Database, player: Player) {
 async function api(request: Request, env: Env, url: URL): Promise<Response> {
   const db = env.DB;
   if (!db) return json({ error: 'Profiles aren’t available on this copy of the site.' }, 503);
-  // only the site's own pages can change anything; the cookie's SameSite=Lax already keeps other
+  // only the site's own pages can change anything; the cookies' SameSite=Lax already keeps other
   // sites' forms out
   if (request.method !== 'GET' && request.method !== 'HEAD' && request.headers.get('Origin') !== url.origin) {
     return json({ error: 'That came from another site.' }, 403);
   }
-  // passkeys belong to the site's own host: dreamports.net, or a preview's
-  const ceremony = { origin: url.origin, rpId: url.hostname };
   try {
     await ready(db);
     const route = `${request.method} ${url.pathname}`;
@@ -257,9 +308,11 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     };
 
     switch (route) {
+      // the signed-in player, or else the service of an account that's new here and waits for a name
       case 'GET /api/me': {
         const player = await signedIn(db, request);
-        return json({ player: player && (await profile(db, player)) });
+        if (player) return json({ player: await profile(db, player), pending: null });
+        return json({ player: null, pending: (await newcomer(db, request))?.way ?? null });
       }
 
       case 'PATCH /api/me': {
@@ -274,19 +327,18 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
       case 'DELETE /api/me': {
         const player = await mustSignIn();
         await db.batch(
-          ['achievements', 'passkeys', 'sessions', 'challenges'].map((table) => db.prepare(`DELETE FROM ${table} WHERE player = ?`).bind(player.id)).concat(
+          ['achievements', 'ways', 'sessions'].map((table) => db.prepare(`DELETE FROM ${table} WHERE player = ?`).bind(player.id)).concat(
             db.prepare('DELETE FROM players WHERE id = ?').bind(player.id),
           ),
         );
-        // the page tells the player's password manager the passkeys are gone, by the id they were made for
-        return json({ deleted: true, user: player.id }, 200, { 'Set-Cookie': ENDED });
+        return json({ deleted: true }, 200, [ended(SESSION)]);
       }
 
       // all the site keeps about the player, as a file
       case 'GET /api/me/data': {
         const player = await mustSignIn();
-        const [passkeys, sessions] = await db.batch<Record<string, unknown>>([
-          db.prepare('SELECT alg, transports, created, used FROM passkeys WHERE player = ? ORDER BY created').bind(player.id),
+        const [ways, sessions] = await db.batch<Record<string, unknown>>([
+          db.prepare('SELECT way, account, created, used FROM ways WHERE player = ? ORDER BY created').bind(player.id),
           db.prepare('SELECT created, expires FROM sessions WHERE player = ? ORDER BY created').bind(player.id),
         ]);
         const when = (ms: unknown) => (typeof ms === 'number' ? new Date(ms).toISOString() : null);
@@ -295,12 +347,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
           site: url.origin,
           exported: when(Date.now()),
           player: { name: player.name, public: !!player.public, created: when(player.created) },
-          passkeys: passkeys.results.map((row) => ({
-            algorithm: row.alg,
-            transports: JSON.parse(String(row.transports)),
-            created: when(row.created),
-            lastUsed: when(row.used),
-          })),
+          signsInWith: ways.results.map((row) => ({ service: row.way, account: row.account, linked: when(row.created), lastUsed: when(row.used) })),
           sessions: sessions.results.map((row) => ({ started: when(row.created), ends: when(row.expires) })),
           achievements: Object.entries(earned).flatMap(([game, ids]) =>
             Object.entries(ids).map(([id, at]) => ({ game, id, earned: when(at) })),
@@ -315,108 +362,43 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
         });
       }
 
-      case 'POST /api/sign-up/options': {
+      // the account that's new here gets its profile, by the name its player picked
+      case 'POST /api/sign-up': {
         const body = await readBody(request);
+        const arrival = await newcomer(db, request);
+        if (!arrival) throw new Problem(410, 'That took too long. Sign in again.');
         const name = typeof body.name === 'string' ? body.name.trim() : '';
         if (!NAME_PATTERN.test(name)) throw new Problem(400, 'Pick a name of 3 to 20 letters, numbers, dashes or underscores.');
         if (body.age !== true) throw new Problem(400, `Profiles are for players aged ${MINIMUM_AGE} or older.`);
         if (await nameTaken(db, name)) throw new Problem(409, 'That name is taken. Try another one.');
-        const player = random(16);
-        const challenge = await newChallenge(db, 'sign-up', player, name);
-        return json({
-          options: {
-            challenge,
-            rp: { id: ceremony.rpId, name: 'Dreamports' },
-            user: { id: player, name, displayName: name },
-            pubKeyCredParams: ALGORITHM_IDS.map((alg) => ({ type: 'public-key', alg })),
-            authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'preferred' },
-            attestation: 'none',
-            timeout: CHALLENGE_MS,
-          },
-        });
-      }
-
-      case 'POST /api/sign-up': {
-        const body = await readBody(request);
-        const challenge = await takeChallenge(db, body.passkey, 'sign-up');
-        const key = await verifyRegistration(body.passkey as NewPasskey, { ...ceremony, challenge: challenge.id });
-        const player = { id: challenge.player!, name: challenge.name!, public: 0, created: Date.now() };
+        const player = { id: random(16), name, public: 0, created: Date.now() };
         const session = await newSession(db, request, player.id);
         try {
           await db.batch([
-            db.prepare('INSERT INTO players (id, name, name_key, public, created) VALUES (?, ?, ?, 0, ?)').bind(player.id, player.name, player.name.toLowerCase(), player.created),
-            addPasskey(db, player.id, key),
+            db.prepare('INSERT INTO players (id, name, name_key, public, created) VALUES (?, ?, ?, 0, ?)').bind(player.id, name, name.toLowerCase(), player.created),
+            db.prepare('INSERT INTO ways (way, account, player, created, used) VALUES (?, ?, ?, ?, ?)').bind(arrival.way, arrival.account, player.id, player.created, player.created),
+            db.prepare('DELETE FROM newcomers WHERE hash = ?').bind(arrival.hash),
             ...session.statements,
           ]);
         } catch (error) {
           if (String(error).includes('players.name_key')) throw new Problem(409, 'Someone just took that name. Try another one.');
+          if (String(error).includes('ways.')) throw new Problem(409, 'That account already has a profile. Sign in again.');
           throw error;
         }
-        return json({ player: await profile(db, player) }, 200, { 'Set-Cookie': session.cookie });
+        return json({ player: await profile(db, player) }, 200, [session.cookie, ended(NEWCOMER)]);
       }
 
-      case 'POST /api/sign-in/options': {
-        const challenge = await newChallenge(db, 'sign-in');
-        return json({ options: { challenge, rpId: ceremony.rpId, userVerification: 'preferred', timeout: CHALLENGE_MS } });
-      }
-
-      case 'POST /api/sign-in': {
-        const body = await readBody(request);
-        const proof = body.passkey as PasskeyProof;
-        const challenge = await takeChallenge(db, proof, 'sign-in');
-        const stored =
-          typeof proof?.id === 'string'
-            ? await db.prepare('SELECT id, player, key, alg, counter FROM passkeys WHERE id = ?').bind(proof.id).first<StoredPasskey & { player: string }>()
-            : null;
-        // a passkey the site doesn't know, perhaps one left from a deleted profile
-        if (!stored || (proof.userHandle && proof.userHandle !== stored.player)) {
-          return json({ error: 'That passkey isn’t for a profile here. Its profile may have been deleted.', unknown: true }, 401);
-        }
-        const counter = await verifyAssertion(proof, stored, { ...ceremony, challenge: challenge.id });
-        const session = await newSession(db, request, stored.player);
-        await db.batch([db.prepare('UPDATE passkeys SET counter = ?, used = ? WHERE id = ?').bind(counter, Date.now(), stored.id), ...session.statements]);
-        const player = await db.prepare('SELECT id, name, public, created FROM players WHERE id = ?').bind(stored.player).first<Player>();
-        return json({ player: player && (await profile(db, player)) }, 200, { 'Set-Cookie': session.cookie });
+      // the player changed their mind about the account that's new here
+      case 'DELETE /api/sign-up': {
+        const token = cookieValue(request, NEWCOMER);
+        if (token) await db.prepare('DELETE FROM newcomers WHERE hash = ?').bind(await hashOf(token)).run();
+        return json({ pending: null }, 200, [ended(NEWCOMER)]);
       }
 
       case 'POST /api/sign-out': {
-        const token = cookieValue(request);
+        const token = cookieValue(request, SESSION);
         if (token) await db.prepare('DELETE FROM sessions WHERE hash = ?').bind(await hashOf(token)).run();
-        return json({ player: null }, 200, { 'Set-Cookie': ENDED });
-      }
-
-      // another passkey for the signed-in player, such as one on another device
-      case 'POST /api/passkeys/options': {
-        const player = await mustSignIn();
-        const { results } = await db.prepare('SELECT id, transports FROM passkeys WHERE player = ?').bind(player.id).all<{ id: string; transports: string }>();
-        const challenge = await newChallenge(db, 'passkey', player.id);
-        return json({
-          options: {
-            challenge,
-            rp: { id: ceremony.rpId, name: 'Dreamports' },
-            user: { id: player.id, name: player.name, displayName: player.name },
-            pubKeyCredParams: ALGORITHM_IDS.map((alg) => ({ type: 'public-key', alg })),
-            authenticatorSelection: { residentKey: 'required', requireResidentKey: true, userVerification: 'preferred' },
-            excludeCredentials: results.map((row) => ({ type: 'public-key', id: row.id, transports: JSON.parse(row.transports) })),
-            attestation: 'none',
-            timeout: CHALLENGE_MS,
-          },
-        });
-      }
-
-      case 'POST /api/passkeys': {
-        const player = await mustSignIn();
-        const body = await readBody(request);
-        const challenge = await takeChallenge(db, body.passkey, 'passkey');
-        if (challenge.player !== player.id) throw new Problem(403, 'That passkey was started for another profile.');
-        const key = await verifyRegistration(body.passkey as NewPasskey, { ...ceremony, challenge: challenge.id });
-        try {
-          await addPasskey(db, player.id, key).run();
-        } catch (error) {
-          if (String(error).includes('passkeys.id')) throw new Problem(409, 'That passkey is already on your profile.');
-          throw error;
-        }
-        return json({ player: await profile(db, player) });
+        return json({ player: null }, 200, [ended(SESSION)]);
       }
 
       // achievements from a game: one just earned, or what a device earned before signing in. The
@@ -457,6 +439,18 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
       }
     }
 
+    // an account the player no longer signs in with; the last one stays
+    const unlink = /^\/api\/me\/ways\/([a-z]+)$/.exec(url.pathname);
+    if (unlink && request.method === 'DELETE') {
+      const player = await mustSignIn();
+      const way = unlink[1];
+      const ways = (await profile(db, player)).ways;
+      if (!isWay(way) || !ways.includes(way)) throw new Problem(404, 'That account isn’t linked to your profile.');
+      if (ways.length === 1) throw new Problem(400, 'That’s your only way in, so it stays.');
+      await db.prepare('DELETE FROM ways WHERE player = ? AND way = ?').bind(player.id, way).run();
+      return json({ player: await profile(db, player) });
+    }
+
     // a public profile; a private one, like a missing one, isn't there
     const named = /^\/api\/players\/([^/]+)$/.exec(url.pathname);
     if (named && request.method === 'GET') {
@@ -470,10 +464,6 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     throw new Problem(404, 'Nothing here.');
   } catch (error) {
     if (error instanceof Problem) return json({ error: error.message }, error.status);
-    if (error instanceof PasskeyError) {
-      console.warn('passkey refused:', error.message);
-      return json({ error: 'That passkey couldn’t be checked. Try again.' }, 400);
-    }
     console.error(error);
     return json({ error: 'Something went wrong. Try again in a moment.' }, 500);
   }

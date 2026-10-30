@@ -1,14 +1,15 @@
-// Profiles: making one and signing in with a passkey, the player's own profile, and other players'
-// public ones. The launcher (launcher.ts) opens and closes their views and tells each one when it
+// Profiles: signing in with an account the player already has, picking a name the first time, the
+// player's own profile, and other players' public ones. The launcher (launcher.ts) opens and closes their views and tells each one when it
 // opens, with a `view-open` event; this fills them from the site's API (worker/index.ts).
 
-import { NAME_PATTERN, PLAYABLE } from '../lib/players';
+import { NAME_PATTERN, PLAYABLE, WAYS, isWay, type Way } from '../lib/players';
 
 interface Profile {
   name: string;
   public: boolean;
   since: number;
-  passkeys: number;
+  // the accounts that sign in to it
+  ways: Way[];
   // the time each achievement was earned, by game and then id
   achievements: Record<string, Record<string, number>>;
 }
@@ -25,18 +26,6 @@ const PLAYER = 'dreamports:player';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-
-const b64url = {
-  encode(buffer: ArrayBuffer) {
-    let text = '';
-    for (const byte of new Uint8Array(buffer)) text += String.fromCharCode(byte);
-    return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  },
-  decode(text: string) {
-    const binary = atob(text.replace(/-/g, '+').replace(/_/g, '/'));
-    return Uint8Array.from(binary, (c) => c.charCodeAt(0));
-  },
-};
 
 async function api<T = Record<string, unknown>>(path: string, method = 'GET', body?: unknown) {
   try {
@@ -65,70 +54,6 @@ function notePlayer(name: string | null) {
     if (name) localStorage.setItem(PLAYER, name);
     else localStorage.removeItem(PLAYER);
   } catch {}
-}
-
-// ---------- Passkeys ----------
-
-const passkeysWork = () =>
-  typeof window.PublicKeyCredential === 'function' && typeof navigator.credentials?.create === 'function';
-
-type Signals = {
-  signalUnknownCredential?: (o: { rpId: string; credentialId: string }) => Promise<void>;
-  signalAllAcceptedCredentials?: (o: { rpId: string; userId: string; allAcceptedCredentialIds: string[] }) => Promise<void>;
-};
-const signals = () => window.PublicKeyCredential as unknown as Signals;
-
-function passkeyTrouble(error: unknown) {
-  const name = error instanceof DOMException ? error.name : '';
-  if (name === 'NotAllowedError' || name === 'AbortError') return 'The passkey was cancelled, or took too long.';
-  if (name === 'InvalidStateError') return 'This device already has a passkey for this profile.';
-  if (name === 'SecurityError') return 'Passkeys don’t work on this address.';
-  return 'The passkey didn’t work here. Try again, or try another device.';
-}
-
-interface CreationJSON {
-  challenge: string;
-  user: { id: string; name: string; displayName: string };
-  excludeCredentials?: { type: 'public-key'; id: string; transports?: AuthenticatorTransport[] }[];
-}
-
-// a new passkey, from the options the API handed out, as the API wants it back
-async function makePasskey(options: CreationJSON) {
-  const credential = (await navigator.credentials.create({
-    publicKey: {
-      ...(options as unknown as PublicKeyCredentialCreationOptions),
-      challenge: b64url.decode(options.challenge),
-      user: { ...options.user, id: b64url.decode(options.user.id) },
-      excludeCredentials: (options.excludeCredentials ?? []).map((c) => ({ ...c, id: b64url.decode(c.id) })),
-    },
-  })) as PublicKeyCredential | null;
-  if (!credential) throw new DOMException('no passkey', 'NotAllowedError');
-  const response = credential.response as AuthenticatorAttestationResponse;
-  const publicKey = response.getPublicKey();
-  if (!publicKey) throw new Error('this browser can’t read the passkey’s public key');
-  return {
-    id: b64url.encode(credential.rawId),
-    clientDataJSON: b64url.encode(response.clientDataJSON),
-    authenticatorData: b64url.encode(response.getAuthenticatorData()),
-    publicKey: b64url.encode(publicKey),
-    publicKeyAlgorithm: response.getPublicKeyAlgorithm(),
-    transports: response.getTransports?.() ?? [],
-  };
-}
-
-async function usePasskey(options: { challenge: string; rpId: string; userVerification: UserVerificationRequirement; timeout: number }) {
-  const credential = (await navigator.credentials.get({
-    publicKey: { ...options, challenge: b64url.decode(options.challenge) },
-  })) as PublicKeyCredential | null;
-  if (!credential) throw new DOMException('no passkey', 'NotAllowedError');
-  const response = credential.response as AuthenticatorAssertionResponse;
-  return {
-    id: b64url.encode(credential.rawId),
-    clientDataJSON: b64url.encode(response.clientDataJSON),
-    authenticatorData: b64url.encode(response.authenticatorData),
-    signature: b64url.encode(response.signature),
-    userHandle: response.userHandle ? b64url.encode(response.userHandle) : null,
-  };
 }
 
 // ---------- Achievements ----------
@@ -225,31 +150,56 @@ async function claimDevice() {
 
 // ---------- The player's own profile ----------
 
+// what went wrong on an account's own page, as the worker names it in the address it sends the
+// player back to
+const TROUBLE: Record<string, (way: string) => string> = {
+  cancelled: (way) => `${way} didn’t sign you in. Try again, or pick another account.`,
+  taken: (way) => `That ${way} account already signs in to another profile.`,
+  expired: () => 'That took too long. Try again.',
+  failed: (way) => `Signing in with ${way} didn’t work. Try again in a moment.`,
+};
+
+type State = 'out' | 'pick' | 'in';
+
 function startProfile(card: HTMLDialogElement) {
   const games = JSON.parse(card.dataset.games ?? '{}') as Games;
   const title = byId('profile-title');
   const status = byId('pf-status');
   const out = byId('pf-out');
+  const pick = byId<HTMLFormElement>('pf-pick');
   const inside = byId('pf-in');
-  const form = byId<HTMLFormElement>('pf-new');
   const nameInput = byId<HTMLInputElement>('pf-name');
   const age = byId<HTMLInputElement>('pf-age');
   const publicSwitch = byId('pf-public');
   const confirm = byId('pf-confirm');
+  const firstWay = out.querySelector<HTMLElement>('.pf-way')!;
   let me: Profile | null = null;
   let busy = false;
+  // where the worker sent the player back to, after an account's own page: read once, then the
+  // address goes back to plain /profile/
+  let back: URLSearchParams | null = location.pathname === '/profile/' && location.search ? new URLSearchParams(location.search) : null;
+  if (back) history.replaceState(history.state, '', location.pathname + location.hash);
 
   const say = (text: string) => {
     status.textContent = text;
   };
 
-  async function show(profile: Profile | null, focus = false) {
+  function showState(state: State) {
+    card.dataset.state = state;
+    out.hidden = state !== 'out';
+    pick.hidden = state !== 'pick';
+    inside.hidden = state !== 'in';
+    confirm.hidden = true;
+    title.textContent = state === 'in' && me ? me.name : state === 'pick' ? 'Pick a name' : 'Sign in';
+  }
+
+  // the profile, or the name to pick for an account that's new here, or the way in
+  async function show(profile: Profile | null, pending: Way | null = null, focus = false) {
     me = profile;
     notePlayer(profile?.name ?? null);
-    title.textContent = profile ? profile.name : 'Profile';
-    out.hidden = !!profile;
-    inside.hidden = !profile;
-    confirm.hidden = true;
+    showState(profile ? 'in' : pending ? 'pick' : 'out');
+    // focus that was on a state now hidden, or on none yet, moves to the one showing
+    focus ||= card.open && !document.activeElement?.closest('.pf-state:not([hidden])');
     if (profile) {
       byId('pf-since').textContent = `Since ${day.format(profile.since)}`;
       publicSwitch.setAttribute('aria-checked', String(profile.public));
@@ -264,27 +214,52 @@ function startProfile(card: HTMLDialogElement) {
       } else {
         desc.textContent = 'Off: only you can see your profile. On, anyone can see your name and achievements.';
       }
-      byId('pf-passkeys').textContent =
-        profile.passkeys === 1
-          ? 'One passkey signs in to this profile. Add another for a device that doesn’t share it.'
-          : `${profile.passkeys} passkeys sign in to this profile.`;
+      for (const row of inside.querySelectorAll<HTMLElement>('.pf-link')) {
+        const way = row.dataset.way as Way;
+        const linked = profile.ways.includes(way);
+        const only = linked && profile.ways.length === 1;
+        row.querySelector('[data-desc]')!.textContent = !linked
+          ? `Link it to sign in with ${WAYS[way]} too.`
+          : only
+            ? 'Linked. It’s your only way in, so it stays.'
+            : 'Linked: it signs in to your profile.';
+        row.querySelector<HTMLElement>('[data-link]')!.hidden = linked;
+        row.querySelector<HTMLElement>('[data-unlink]')!.hidden = !linked || only;
+      }
       await showGames(byId('pf-games'), games, profile.achievements, true);
+      if (focus) publicSwitch.focus({ preventScroll: true });
+    } else if (pending) {
+      byId('pf-pick-lead').textContent = `You’re in with ${WAYS[pending]}. One last step: the name your profile goes by.`;
+      if (focus) nameInput.focus({ preventScroll: true });
+    } else {
+      if (focus) firstWay.focus({ preventScroll: true });
     }
-    if (!passkeysWork() && !profile) say('This browser can’t use passkeys, so it can’t make a profile or sign in to one.');
-    if (focus) (profile ? publicSwitch : nameInput).focus({ preventScroll: true });
   }
 
   async function refresh() {
-    const { ok, data } = await api<{ player: Profile | null }>('/api/me');
+    const { ok, data } = await api<{ player: Profile | null; pending: Way | null }>('/api/me');
     if (!ok) {
       say(data.error ?? 'Profiles aren’t available right now.');
-      out.hidden = inside.hidden = true;
+      out.hidden = pick.hidden = inside.hidden = true;
       return;
     }
-    await show(data.player, card.open && !card.contains(document.activeElement));
+    const from = back;
+    back = null;
+    const way = from?.get('way');
+    const name = isWay(way) ? WAYS[way] : 'That account';
+    // just signed in: what this device earned comes along
+    if (data.player && from?.has('signed-in')) {
+      say(`Welcome back, ${data.player.name}.`);
+      await welcome(data.player);
+      return;
+    }
+    if (data.player && from?.has('linked')) say(`${name} signs in to your profile too.`);
+    const trouble = from?.get('trouble');
+    if (trouble) say((TROUBLE[trouble] ?? TROUBLE.failed)(name));
+    await show(data.player, isWay(data.pending) ? data.pending : null);
   }
 
-  // a passkey step: one at a time, with a word while the device asks the player
+  // one step at a time
   async function step(work: () => Promise<void>) {
     if (busy) return;
     busy = true;
@@ -302,10 +277,10 @@ function startProfile(card: HTMLDialogElement) {
     notePlayer(profile.name);
     await claimDevice();
     const { ok, data } = await api<{ player: Profile | null }>('/api/me');
-    await show(ok && data.player ? data.player : profile, true);
+    await show(ok && data.player ? data.player : profile, null, true);
   }
 
-  form.addEventListener('submit', (e) => {
+  pick.addEventListener('submit', (e) => {
     e.preventDefault();
     step(async () => {
       const name = nameInput.value.trim();
@@ -319,24 +294,12 @@ function startProfile(card: HTMLDialogElement) {
         age.focus();
         return;
       }
-      if (!passkeysWork()) return;
-      const start = await api<{ options: CreationJSON }>('/api/sign-up/options', 'POST', { name, age: true });
-      if (!start.ok) {
-        say(start.data.error ?? 'That didn’t work. Try again.');
-        nameInput.focus();
-        return;
-      }
-      say('Make the passkey on your device…');
-      let passkey;
-      try {
-        passkey = await makePasskey(start.data.options);
-      } catch (error) {
-        say(passkeyTrouble(error));
-        return;
-      }
-      const done = await api<{ player: Profile }>('/api/sign-up', 'POST', { passkey });
+      const done = await api<{ player: Profile }>('/api/sign-up', 'POST', { name, age: true });
       if (!done.ok) {
         say(done.data.error ?? 'That didn’t work. Try again.');
+        // the account's sign-in ran out: back to the start
+        if (done.status === 410) await show(null, null, true);
+        else nameInput.focus();
         return;
       }
       say(`Welcome, ${done.data.player.name}. Your profile is ready.`);
@@ -344,31 +307,11 @@ function startProfile(card: HTMLDialogElement) {
     });
   });
 
-  byId('pf-sign-in').addEventListener('click', () =>
+  byId('pf-cancel').addEventListener('click', () =>
     step(async () => {
-      if (!passkeysWork()) return;
-      const start = await api<{ options: Parameters<typeof usePasskey>[0] }>('/api/sign-in/options', 'POST', {});
-      if (!start.ok) {
-        say(start.data.error ?? 'That didn’t work. Try again.');
-        return;
-      }
-      say('Pick your passkey on your device…');
-      let passkey;
-      try {
-        passkey = await usePasskey(start.data.options);
-      } catch (error) {
-        say(passkeyTrouble(error));
-        return;
-      }
-      const done = await api<{ player: Profile | null; unknown?: boolean }>('/api/sign-in', 'POST', { passkey });
-      if (!done.ok || !done.data.player) {
-        // a passkey left from a deleted profile: the device can forget it
-        if (done.data.unknown) signals().signalUnknownCredential?.({ rpId: location.hostname, credentialId: passkey.id }).catch(() => {});
-        say(done.data.error ?? 'That didn’t work. Try again.');
-        return;
-      }
-      say(`Welcome back, ${done.data.player.name}.`);
-      await welcome(done.data.player);
+      await api('/api/sign-up', 'DELETE');
+      say('');
+      await show(null, null, true);
     }),
   );
 
@@ -385,37 +328,28 @@ function startProfile(card: HTMLDialogElement) {
     }),
   );
 
-  byId('pf-add').addEventListener('click', () =>
-    step(async () => {
-      if (!passkeysWork()) return;
-      const start = await api<{ options: CreationJSON }>('/api/passkeys/options', 'POST', {});
-      if (!start.ok) {
-        say(start.data.error ?? 'That didn’t work. Try again.');
-        return;
-      }
-      say('Make the passkey on your device, or on your phone…');
-      let passkey;
-      try {
-        passkey = await makePasskey(start.data.options);
-      } catch (error) {
-        say(passkeyTrouble(error));
-        return;
-      }
-      const done = await api<{ player: Profile }>('/api/passkeys', 'POST', { passkey });
-      if (!done.ok) {
-        say(done.data.error ?? 'That didn’t work. Try again.');
-        return;
-      }
-      say('The new passkey signs in to your profile too.');
-      await show(done.data.player);
-    }),
-  );
+  for (const row of inside.querySelectorAll<HTMLElement>('.pf-link')) {
+    const way = row.dataset.way as Way;
+    const unlink = row.querySelector<HTMLElement>('[data-unlink]')!;
+    unlink.addEventListener('click', () =>
+      step(async () => {
+        const { ok, data } = await api<{ player: Profile }>(`/api/me/ways/${way}`, 'DELETE');
+        if (!ok) {
+          say((data as { error?: string }).error ?? 'That didn’t work. Try again.');
+          return;
+        }
+        say(`${WAYS[way]} no longer signs in to your profile.`);
+        await show(data.player);
+        row.querySelector<HTMLElement>('[data-link]')!.focus({ preventScroll: true });
+      }),
+    );
+  }
 
   byId('pf-sign-out').addEventListener('click', () =>
     step(async () => {
       await api('/api/sign-out', 'POST', {});
       say('You’re signed out. What you earn now stays on this device until you sign in again.');
-      await show(null, true);
+      await show(null, null, true);
     }),
   );
 
@@ -429,34 +363,21 @@ function startProfile(card: HTMLDialogElement) {
   });
   byId('pf-delete-yes').addEventListener('click', () =>
     step(async () => {
-      const { ok, data } = await api<{ user?: string }>('/api/me', 'DELETE');
+      const { ok, data } = await api('/api/me', 'DELETE');
       if (!ok) {
         say((data as { error?: string }).error ?? 'That didn’t work. Try again.');
         return;
       }
-      // the passkeys for it are no use now, so the password manager can drop them
-      if (data.user) {
-        signals().signalAllAcceptedCredentials?.({ rpId: location.hostname, userId: data.user, allAcceptedCredentialIds: [] }).catch(() => {});
-      }
-      say('Your profile is deleted. If your password manager still shows its passkey, you can remove it there.');
-      await show(null, true);
+      say('Your profile is deleted.');
+      await show(null, null, true);
     }),
   );
 
-  const signIn = byId('pf-sign-in');
   card.addEventListener('view-open', () => {
     // a word from the last visit gives way
     say('');
-    // where focus starts: the name to type on a keyboard, otherwise signing in, so a phone's
-    // keyboard doesn't jump up
-    const keys = document.documentElement.dataset.input === 'keys';
-    nameInput.autofocus = keys;
-    signIn.autofocus = !keys;
     // signed out, as far as this browser knows: the way in shows at once
-    if (!me && !playerNoted()) {
-      out.hidden = false;
-      inside.hidden = true;
-    }
+    if (!me && !playerNoted() && !back?.has('new')) showState('out');
     refresh();
   });
 }

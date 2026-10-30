@@ -2,7 +2,7 @@
 
 ## The project
 
-Dreamports is the source code for dreamports.net, a home for enhanced fan ports of classic games. A Dreamport is "the port fans always dreamed of: the game you remember, with the extras you wished it had"; use that wording rather than "dream means fan". The site lists the owner's own Dreamports (for example Sonic Advance Dreamport), external ports made by other people (links and credits only), and other fan games that aren't ports (for example Kirby's Dead Land). The site is a static Astro site (#3); hosting it on Cloudflare is #4. Since #68 a small Worker adds players' profiles, signed in with passkeys, and keeps the achievements games send through `/dreamports.js` (`docs/ACCOUNTS.md`). Since #23 the whole site is one screen that works like a game launcher: every page shows the menu, with that page's card open. Since #59 a card takes the menu's place as a full screen instead of opening over it.
+Dreamports is the source code for dreamports.net, a home for enhanced fan ports of classic games. A Dreamport is "the port fans always dreamed of: the game you remember, with the extras you wished it had"; use that wording rather than "dream means fan". The site lists the owner's own Dreamports (for example Sonic Advance Dreamport), external ports made by other people (links and credits only), and other fan games that aren't ports (for example Kirby's Dead Land). The site is a static Astro site (#3); hosting it on Cloudflare is #4. Since #68 a small Worker adds players' profiles, signed in with Google, Discord, Steam or GitHub, and keeps the achievements games send through `/dreamports.js` (`docs/ACCOUNTS.md`). Since #23 the whole site is one screen that works like a game launcher: every page shows the menu, with that page's card open. Since #59 a card takes the menu's place as a full screen instead of opening over it.
 
 Never describe something as working or complete unless a recorded check establishes it. A build is not a browser check.
 
@@ -17,11 +17,11 @@ Never describe something as working or complete unless a recorded check establis
 | `src/content/games/` | One Markdown file per game page; `src/content.config.ts` checks its fields |
 | `src/pages/`, `src/layouts/`, `src/components/` | The site's pages and their shared parts |
 | `src/scripts/launcher.ts` | The launcher: moving through the row, the cards, the launch, sounds and controllers |
-| `src/scripts/profile.ts` | The profile and public player views: passkeys, achievements, sign-out and deletion |
+| `src/scripts/profile.ts` | The profile and public player views: signing in, linked accounts, achievements, sign-out and deletion |
 | `src/styles/global.css` | Colours (light and dark), type and layout for the whole site |
 | `src/lib/site.ts` | Sections, their addresses and labels, the launcher's filters, and shared links |
 | `src/lib/players.ts` | The games that keep achievements, and the rules for names and ids, shared with the Worker |
-| `worker/` | The Worker: the accounts API under `/api/`, public profiles and passkey checks, with its own `tsconfig.json` |
+| `worker/` | The Worker: the accounts API under `/api/`, public profiles and sign-in with Google, Discord, Steam and GitHub (`worker/ways.ts`), with its own `tsconfig.json` |
 | `public/` | Files served as they are: icons, the star, the social preview, font licenses, `dreamports.js` for the games, and the games' recordings in `public/media/` |
 | `wrangler.jsonc` | How Cloudflare serves the built site from `dist/`, the Worker's addresses, and the accounts' D1 databases |
 

@@ -1,10 +1,11 @@
 ---
-// The player's profile, as a full screen in the menu's place: making one or signing in with a
-// passkey, then the achievements it keeps. src/scripts/profile.ts fills it, and it needs
-// JavaScript, like passkeys.
+// The player's profile, as a full screen in the menu's place: signing in with an account the player
+// already has, picking a name the first time, then the achievements the profile keeps.
+// src/scripts/profile.ts fills it, and the worker (worker/index.ts) does the signing in.
 import { getEntry } from 'astro:content';
 import ViewBar from './ViewBar.astro';
-import { MINIMUM_AGE, PLAYABLE } from '../lib/players';
+import WayIcon from './WayIcon.astro';
+import { MINIMUM_AGE, PLAYABLE, WAYS, type Way } from '../lib/players';
 import { gameUrl, pageTitle } from '../lib/site';
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
 
 const { open = false } = Astro.props;
 const Title = open ? 'h1' : 'h2';
+const ways = Object.entries(WAYS) as [Way, string][];
 // each game's name and page, by the name in its address under /play/
 const games: Record<string, { title: string; href: string }> = {};
 for (const [play, { entry }] of Object.entries(PLAYABLE)) {
@@ -29,57 +31,60 @@ for (const [play, { entry }] of Object.entries(PLAYABLE)) {
   data-path="/profile/"
   data-title={pageTitle('Profile')}
   data-games={JSON.stringify(games)}
+  data-state="out"
   aria-labelledby="profile-title"
   open={open}
 >
   <div class="card-body">
-    <Title class="card-title" id="profile-title">Profile</Title>
+    <Title class="card-title" id="profile-title">Sign in</Title>
     <div class="pf-body">
       <p class="pf-status" id="pf-status" role="status" aria-live="polite"></p>
 
-      <div class="pf-state" id="pf-out" hidden>
-        <p class="pf-lead">
-          Keep the achievements you earn in Dreamports, on any device. Your profile is private unless you make it public.
-          There’s no password and no email: you sign in with a passkey, which your device or password manager keeps.
-        </p>
-        <form class="pf-new" id="pf-new" novalidate>
-          <div class="set-list">
-            <div class="set-row pf-field">
-              <div class="set-text">
-                <label class="set-label" for="pf-name">Player name</label>
-                <span class="set-desc" id="pf-name-desc">3 to 20 letters, numbers, dashes or underscores. Others see it only on a public profile.</span>
-              </div>
-              <input
-                class="pf-input"
-                id="pf-name"
-                name="name"
-                type="text"
-                minlength="3"
-                maxlength="20"
-                autocomplete="off"
-                autocapitalize="off"
-                spellcheck="false"
-                enterkeyhint="done"
-                aria-describedby="pf-name-desc"
-              />
-            </div>
-          </div>
-          <label class="check">
-            <input type="checkbox" id="pf-age" />
-            <span>I’m {MINIMUM_AGE} or older</span>
-          </label>
-          <button type="submit" class="btn pf-create" id="pf-create">Make my profile</button>
-        </form>
-        <div class="set-list">
-          <div class="set-row">
-            <div class="set-text">
-              <span class="set-label">Already have a profile?</span>
-              <span class="set-desc">Sign in with its passkey, from this device or your phone.</span>
-            </div>
-            <button type="button" class="btn btn--alt" id="pf-sign-in">Sign in</button>
-          </div>
+      <div class="pf-state pf-door" id="pf-out" hidden>
+        <p class="pf-lead">Keep the achievements you earn on Dreamports, on any device.</p>
+        <div class="pf-ways">
+          {
+            ways.map(([way, name], i) => (
+              <a class="btn btn--alt pf-way" href={`/api/oauth/${way}/start`} data-way={way} autofocus={i === 0}>
+                <WayIcon way={way} />
+                <span>Continue with {name}</span>
+              </a>
+            ))
+          }
         </div>
+        <p class="pf-small">New here? Pick one, then a player name, and your profile is made.</p>
+        <p class="pf-small">
+          Dreamports keeps only an id from the account you pick: never its email, password or friends. Your profile is
+          private until you make it public. <a href="/about/#privacy">Your privacy</a>
+        </p>
       </div>
+
+      <form class="pf-state pf-door" id="pf-pick" novalidate hidden>
+        <p class="pf-lead" id="pf-pick-lead">One last step: the name your profile goes by.</p>
+        <label class="pf-label" for="pf-name">Player name</label>
+        <input
+          class="pf-input"
+          id="pf-name"
+          name="name"
+          type="text"
+          minlength="3"
+          maxlength="20"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          enterkeyhint="done"
+          aria-describedby="pf-name-desc"
+        />
+        <p class="pf-small pf-hint" id="pf-name-desc">
+          3 to 20 letters, numbers, dashes or underscores. Others see it only if you make your profile public.
+        </p>
+        <label class="check">
+          <input type="checkbox" id="pf-age" />
+          <span>I’m {MINIMUM_AGE} or older</span>
+        </label>
+        <button type="submit" class="btn pf-create" id="pf-create">Make my profile</button>
+        <p class="pf-small"><button type="button" class="linkish" id="pf-cancel">Cancel</button></p>
+      </form>
 
       <div class="pf-state" id="pf-in" hidden>
         <p class="pf-since" id="pf-since"></p>
@@ -96,14 +101,27 @@ for (const [play, { entry }] of Object.entries(PLAYABLE)) {
         </div>
         <h3 class="pf-heading">Achievements</h3>
         <div class="pf-games" id="pf-games"></div>
-        <div class="set-list">
-          <div class="set-row">
-            <div class="set-text">
-              <span class="set-label">Passkeys</span>
-              <span class="set-desc" id="pf-passkeys"></span>
-            </div>
-            <button type="button" class="btn btn--alt" id="pf-add">Add a passkey</button>
-          </div>
+        <h3 class="pf-heading">Signs in with</h3>
+        <div class="set-list pf-links">
+          {
+            ways.map(([way, name]) => (
+              <div class="set-row pf-link" data-way={way}>
+                <div class="set-text">
+                  <span class="set-label pf-link-name">
+                    <WayIcon way={way} />
+                    {name}
+                  </span>
+                  <span class="set-desc" data-desc />
+                </div>
+                <a class="btn btn--alt" href={`/api/oauth/${way}/start?link`} data-link>
+                  Link
+                </a>
+                <button type="button" class="btn btn--alt" data-unlink hidden>
+                  Unlink
+                </button>
+              </div>
+            ))
+          }
         </div>
         <p class="card-note">
           <a class="linkish" href="/api/me/data" download>Download my data</a> ·{' '}
@@ -115,7 +133,7 @@ for (const [play, { entry }] of Object.entries(PLAYABLE)) {
           <div class="set-row">
             <div class="set-text">
               <span class="set-label">Delete your profile?</span>
-              <span class="set-desc">Its name, passkeys and achievements go for good. What the games keep on this device stays.</span>
+              <span class="set-desc">Its name, linked accounts and achievements go for good. What the games keep on this device stays.</span>
             </div>
             <div class="pf-buttons">
               <button type="button" class="btn btn--alt" id="pf-keep">Keep it</button>
@@ -125,7 +143,7 @@ for (const [play, { entry }] of Object.entries(PLAYABLE)) {
         </div>
       </div>
 
-      <noscript><p class="pf-lead">Profiles need JavaScript, like the passkeys they use.</p></noscript>
+      <noscript><p class="pf-lead">Profiles need JavaScript.</p></noscript>
     </div>
   </div>
   <ViewBar href="/" />

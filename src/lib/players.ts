@@ -29,3 +29,14 @@ export const ACHIEVEMENT_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 // Players must be at least this old to make an account (to confirm in #16).
 export const MINIMUM_AGE = 13;
+
+// The accounts a player can sign in with, in the order the profile offers them. A profile keeps only
+// each account's id there, never its email or password.
+export const WAYS = {
+  google: 'Google',
+  discord: 'Discord',
+  steam: 'Steam',
+  github: 'GitHub',
+} as const;
+export type Way = keyof typeof WAYS;
+export const isWay = (text: unknown): text is Way => typeof text === 'string' && Object.hasOwn(WAYS, text);
