@@ -1,6 +1,6 @@
-// How Cloudflare serves dreamports.net. `npm run build` writes the site's pages to dist/, and Cloudflare
-// serves that folder as plain files. A small Worker, worker/index.ts, answers only the addresses in
-// `run_worker_first`: the accounts API, players' public profiles and, away from dreamports.net, the games.
+// How Cloudflare serves dreamports.net. `npm run build` writes the site's pages and the games in games/
+// to dist/, and Cloudflare serves that folder as plain files. A small Worker, worker/index.ts, answers
+// only the addresses in `run_worker_first`: the accounts API, players' public profiles and the games.
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "dreamports",

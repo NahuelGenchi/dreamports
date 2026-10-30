@@ -1,6 +1,6 @@
 // The site's Worker. Cloudflare serves the built site's files by themselves; this runs only for the
 // addresses wrangler.jsonc sends it: the accounts API under /api/, players' public profiles under
-// /players/ and, away from dreamports.net, the games under /play/. docs/ACCOUNTS.md describes it.
+// /players/ and the games under /play/. docs/ACCOUNTS.md describes it.
 
 import { ACHIEVEMENT_PATTERN, MINIMUM_AGE, NAME_PATTERN, PLAYABLE, isWay, type Way } from '../src/lib/players';
 import { Cancelled, WayError, accountOf, b64url, signInPage, type Flight, type WayEnv } from './ways';
@@ -32,7 +32,7 @@ export default {
     if (url.pathname.startsWith('/api/oauth/')) return oauth(request, env, url);
     if (url.pathname.startsWith('/api/')) return api(request, env, url);
     if (url.pathname.startsWith('/players/')) return playerPage(request, env, url);
-    if (url.pathname.startsWith('/play/') && url.hostname !== LIVE) return fromLiveSite(request, url);
+    if (url.pathname.startsWith('/play/')) return play(request, env, url);
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
@@ -492,9 +492,24 @@ async function playerPage(request: Request, env: Env, url: URL) {
   return new Response(page.body, { status: page.ok ? 200 : page.status, headers: page.headers });
 }
 
-// Away from dreamports.net (a pull request's preview, or `npm run worker` on a computer), the games
-// under /play/ come from the live site, so they can be tried with this copy's profiles. On
-// dreamports.net each game's own Worker answers its /play/<game>/ before this one does.
+// The games under /play/<game>/. A game in this repository's games/ folder is part of the built site
+// (src/integrations/games.mjs). Away from dreamports.net (a pull request's preview, or `npm run worker`
+// on a computer), a game that isn't here comes from the live site, so it can be tried with this copy's
+// profiles. On dreamports.net a game with its own Worker, such as Sonic Advance Dreamport until #75,
+// has that Worker answer its /play/<game>/ before this one does.
+async function play(request: Request, env: Env, url: URL) {
+  const response = await env.ASSETS.fetch(request);
+  if (response.status !== 404 || url.hostname === LIVE) return response;
+  // a game that is here never mixes in the live site's copy: a file it doesn't have stays missing
+  const game = url.pathname.split('/')[2];
+  if (game) {
+    const home = await env.ASSETS.fetch(new Request(new URL(`/play/${game}/`, url), { method: 'HEAD' }));
+    if (home.status !== 404) return response;
+  }
+  await response.body?.cancel();
+  return fromLiveSite(request, url);
+}
+
 async function fromLiveSite(request: Request, url: URL) {
   if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 });
   const live = new URL(url.pathname + url.search, `https://${LIVE}`);

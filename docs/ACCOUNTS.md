@@ -12,12 +12,12 @@ The games played on dreamports.net load a small script, `/dreamports.js`. When a
 
 Everything is on Cloudflare's free plan (#16):
 
-- The site's pages are plain files, as before. A small Worker, [`worker/index.ts`](../worker/index.ts), answers only `/api/`, `/players/<name>/` and, away from dreamports.net, `/play/` ([`wrangler.jsonc`](../wrangler.jsonc)).
+- The site's pages are plain files, as before, and so are the games in [`games/`](../games/README.md). A small Worker, [`worker/index.ts`](../worker/index.ts), answers only `/api/`, `/players/<name>/` and `/play/` ([`wrangler.jsonc`](../wrangler.jsonc)).
 - Profiles live in a D1 database, `dreamports-accounts`. Pull request previews use their own, `dreamports-accounts-previews`, so trying a preview never touches real profiles. The Worker makes its tables itself the first time it uses a database.
 - Signing in is [`worker/ways.ts`](../worker/ways.ts): OAuth 2.0 with PKCE for Google, Discord and GitHub, and OpenID 2.0 for Steam, with the Worker's own `fetch` and Web Crypto and no library. Each service's sign-in is free.
 - On a computer, `npm run worker` builds the site and runs it at `http://localhost:8787` with the Worker and a local database. Steam signs in there as it is. Google, Discord and GitHub need their apps' secrets in a `.dev.vars` file next to `wrangler.jsonc` (`GOOGLE_CLIENT_SECRET=…`, one per line), which git ignores and which must never be committed.
 
-Away from dreamports.net (a preview, or `npm run worker`), the Worker fetches the games under `/play/` from the live site, so they can be tried with that copy's own profiles. On dreamports.net each game's own Worker answers its `/play/<game>/` first.
+Under `/play/`, the Worker serves the games in [`games/`](../games/README.md) from the built site. Away from dreamports.net (a preview, or `npm run worker`), it fetches any other game from the live site, so it can be tried with that copy's own profiles, while a game in `games/` never mixes in the live site's files. On dreamports.net a game with its own Worker, as Sonic Advance Dreamport has until [#75](https://github.com/NahuelGenchi/dreamports/issues/75), answers its `/play/<game>/` first.
 
 ## The sign-in apps
 

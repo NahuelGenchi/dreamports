@@ -34,7 +34,7 @@ What the repository may keep about a game is what tells its versions apart and m
 
 ### At home on dreamports.net
 
-**What it asks.** Every Dreamport lives in this repository and plays at `dreamports.net/play/<game>/`, on the same site as the player's profile. Sonic Advance Dreamport moves here from its own repository with [#75](https://github.com/NahuelGenchi/dreamports/issues/75).
+**What it asks.** Every Dreamport lives in this repository, in a folder of its own in [`games/`](../games/README.md), and plays at `dreamports.net/play/<game>/`, on the same site as the player's profile. Sonic Advance Dreamport moves here from its own repository with [#75](https://github.com/NahuelGenchi/dreamports/issues/75).
 
 It works with the launcher at least as well as Sonic Advance Dreamport. The player's copy is checked before play, so they know it's the right game and a version the Dreamport supports. Achievements go to the player's profile through `/dreamports.js`, as [Profiles and achievements](ACCOUNTS.md#for-a-game-dreamportsjs) describes, and stay on the device for players who aren't signed in. Its settings, keyboard, controller and touch, saves and the Home Screen app all work, on phones and computers. Its asset viewer lets players look through the graphics and sounds read from their own copy.
 
@@ -92,7 +92,7 @@ The Mash-ups row on dreamports.net stays as it is: for fan games that aren't por
 
 Today, these rules are checked by the Dreamports team's review. The rest of milestone M6 builds what makes them easier to keep and to check.
 
-Every Dreamport will live in this repository and play at `/play/<game>/` ([#74](https://github.com/NahuelGenchi/dreamports/issues/74)). Sonic Advance Dreamport moves in from its own repository with [#75](https://github.com/NahuelGenchi/dreamports/issues/75), and its Game Boy Advance kit comes out of it with [#76](https://github.com/NahuelGenchi/dreamports/issues/76).
+Sonic Advance Dreamport moves into [`games/`](../games/README.md) from its own repository with [#75](https://github.com/NahuelGenchi/dreamports/issues/75), and its Game Boy Advance kit comes out of it with [#76](https://github.com/NahuelGenchi/dreamports/issues/76).
 
 The proof tools, with recorded play, code maps, the % and clips, are [#77](https://github.com/NahuelGenchi/dreamports/issues/77). Previews and progress threads are [#78](https://github.com/NahuelGenchi/dreamports/issues/78), one entry per game with its measured % is [#79](https://github.com/NahuelGenchi/dreamports/issues/79), and claims and teams are [#80](https://github.com/NahuelGenchi/dreamports/issues/80). The guide and commands for newcomers are [#81](https://github.com/NahuelGenchi/dreamports/issues/81), and a contact for rights holders, with clips of the original allowed in pull requests and progress posts, is [#82](https://github.com/NahuelGenchi/dreamports/issues/82).
 
