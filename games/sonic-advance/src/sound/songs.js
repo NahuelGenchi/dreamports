@@ -1,0 +1,124 @@
+// Song numbers in the ROM's song table, for what the game plays so far (SAT-R decompilation,
+// include/constants/sa1/songs.h; where each is played is listed in docs/ROM.md). The 1-up jingle, 307, is
+// the music manager's, in synth.js.
+export const SONG = {
+  INTRO: 1,                // MUS_INTRO
+  TITLE_FANFARE: 2,        // MUS_TITLE_FANFARE
+  CHARACTER_SELECTION: 3,  // MUS_CHARACTER_SELECTION: the Options menu stops it as it opens the sound test
+  VS_RECORD: 10,           // MUS_VS_RECORD: the player data's VS record
+  OPTIONS: 11,             // MUS_OPTIONS: the Options menu (Scrap Brain Zone's remix)
+  VS_WIN: 7,               // MUS_007: the multiplayer results screen when this player won,
+  VS_LOSE: 8,              // MUS_008: lost,
+  VS_DRAW: 9,              // MUS_009: or drew
+  NEO_GREEN_HILL_1: 12,
+  NEO_GREEN_HILL_2: 13,
+  DROWNING: 27,            // MUS_DROWNING: the countdown music under water
+  INVINCIBILITY: 28,       // MUS_INVINCIBILITY
+  BOSS_FIGHT: 29,          // MUS_BOSS_FIGHT: also started and stopped at once to stop the menu's music
+  ACT_CLEAR: 33,           // MUS_ACT_CLEAR: the results of an act without a boss
+  BOSS_CLEAR: 34,          // MUS_BOSS_CLEAR: the results of a zone's second act, after its boss
+  SPECIAL_STAGE_INTRO: 41, // MUS_SPECIAL_STAGE_INTRO: the fall into the special stage
+  SPECIAL_STAGE: 42,       // MUS_SPECIAL_STAGE
+  SPECIAL_STAGE_TRICK: 43, // MUS_SP_STAGE_TRICK: a trick in the bumpers' window
+  SPECIAL_STAGE_CLEAR: 44, // MUS_SPECIAL_STAGE_CLEAR: the goal reached with enough rings
+  CHAOS_EMERALD: 45,       // MUS_CHAOS_EMERALD: the emerald's scene
+  SPECIAL_STAGE_LOSE: 46,  // MUS_SPECIAL_STAGE_RESULT_LOSE: the results without the emerald
+  SPECIAL_STAGE_WIN: 47,   // MUS_047: the results with it
+  PLAYER_DATA: 48,         // MUS_PLAYER_DATA: the player data menu and the name input
+  SEGA_RING: 102,          // SE_RING: Sonic Team's logo
+  SELECT: 106,             // SE_SELECT: Start on the title screen, a choice in the menu
+  RETURN: 107,             // SE_RETURN: back out of a choice in the Options menu
+  MENU_CURSOR: 108,        // SE_MENU_CURSOR_MOVE
+  SPIN: 109,               // SE_SPIN_ATTACK: spin dash start and revs, rolling, the combo's first hit
+  SPIN_DASH_RELEASE: 110,
+  SLIDE: 111,              // SE_SONIC_SKID_ATTACK
+  AIR_DASH: 112,           // SE_SONIC_MIDAIR_SOMERSAULT
+  INSTA_SHIELD: 113,
+  GRINDING: 114,           // SE_GRINDING: from a grind rail's start until Sonic leaves it
+  BRAKE: 115,
+  JUMP: 116,               // also the combo's backflip
+  RING: 117,               // SE_RING_COPY: what the ring manager and the ring sparkle play
+  RINGS_LOST: 118,         // SE_RINGS_LOST: the rings scatter
+  LIFE_LOST: 119,          // SE_LIFE_LOST: Sonic dies
+  TAILS_FLYING: 120,       // SE_TAILS_PROPELLER_FLYING: Tails' flight, started again on each of its frames
+  TAIL_SWIPE: 121,         // SE_TAILS_TAIL_SWIPE
+  SOMERSAULT: 121,         // SE_TAILS_TAIL_SWIPE, which Sonic's somersault kick reuses
+  PUNCH_2: 126,            // SE_126: Knuckles' second punch
+  PUNCH_3: 127,            // SE_127: and his third
+  GOAL: 135,               // SE_GOAL: Sonic passes the goal signpost
+  CAPSULE_LANDS: 136,      // SE_136: the boss capsule lands
+  CAPSULE_OPENS: 137,      // SE_137: Sonic lands on its switch
+  ENEMY_DEFEAT: 138,       // SE_ITEM_BOX: an enemy is defeated
+  RESULT_COUNTER: 140,     // SE_STAGE_RESULT_COUNTER: a results tally counting
+  RESULT_COUNTER_DONE: 141,
+  RESULT_CONTINUE: 154,    // SE_154: the special stage's results end with continues won
+  EXPLOSION: 144,          // SE_EXPLOSION: a special stage bomb
+  SPECIAL_DASH: 148,       // SE_148: a special stage dash pad
+  SPECIAL_TRICK: 149,      // SE_149: a trick in the special stage
+  SPECIAL_BUMPER: 150,     // SE_150: a special stage trick bumper
+  SPECIAL_TOKEN: 151,      // SE_151: what the special stage's type 10 objects play
+  TIMER: 139,              // SE_TIMER: the warning beep in the last 20 seconds
+  RESULTS_COUNT: 140,      // SE_STAGE_RESULT_COUNTER: every fourth frame of the results' count
+  RESULTS_DONE: 141,       // SE_STAGE_RESULT_COUNTER_DONE: the count is over
+  PAUSE: 142,              // SE_PAUSE_SCREEN: the pause menu opens
+  BOSS_HIT: 143,           // SE_BOSS_HIT: also a skating stone breaking
+  EXPLOSION: 144,          // SE_EXPLOSION: a boss is beaten
+  IMPACT: 145,             // SE_IMPACT: the Egg Hammer Tank's hammer lands, as the Egg Press does, and the Egg Spider dropping an icicle
+  TIME_UP: 166,            // SE_TIME_UP: the course time ran out
+  ITEM_BOX_BREAK: 167,     // SE_ITEM_BOX_2
+  VS_WIN_SE: 157,          // SE_157: 45 frames into the results screen when this player won,
+  VS_LOSE_SE: 158,         // SE_158: lost,
+  VS_DRAW_SE: 159,         // SE_159: or drew
+  KNOCK_TEAMMATE: 161,     // SE_KNOCK_TEAMMATE: a player standing on another is knocked off at speed
+  KNOCK_OPPONENT: 162,     // SE_KNOCK_OPPONENT: one runs into another at speed
+  CHAO_HUH: 163,           // SE_CHAO_HUH: a Chao goes to a player
+  SHIELD: 168,             // SE_ACTIVATE_SHIELD
+  CHECKPOINT: 169,
+  SPRING: 170,
+  SPIKES: 171,             // SE_171: hurt by spikes
+  BOOSTER: 172,            // SE_BOOSTER: every frame a booster sends Sonic on
+  CRUMBLING_PLATFORM: 173, // SE_173: also an Egg Rocket stage separation's start
+  POLE: 175,               // SE_POLE: a wall pole catches Sonic
+  TRAMPOLINE: 176,
+  WATER_BRIDGE_SPLASH: 177, // SE_WATER_BRIDGE_SPLASH: the water bridge takes Sonic
+  SHRUBBERY: 178,          // SE_SHRUBBERY: Sonic goes into a bush
+  HOOK_RAIL: 180,          // SE_HOOK_RAIL: while a hook rail carries Sonic
+  LIFT: 181,               // SE_LIFT: a crane claw carries Sonic
+  STEAM_EXHAUST: 182,      // SE_LAVA_PLATFORM_SPURT: a steam exhaust blows
+  LAVA_SPURT: 182,         // SE_LAVA_PLATFORM_SPURT
+  BUMPER_A: 183,           // SE_BUMPER_A: a hexagonal or round bumper
+  BUMPER_B: 184,           // SE_BUMPER_B: a triangular bumper
+  PANEL_GATE: 185,         // SE_PANEL_GATE: a panel gate spins open
+  BALLOON_POP: 189,        // a party balloon pops
+  SURFACE_HIT: 190,        // SE_WATERFALL_SURFACE_HIT: Sonic goes into the water or out of it
+  AIR_BUBBLE: 191,         // SE_AIR_BUBBLE: a breath from an air bubble
+  DROWNED: 192,            // SE_DROWNED: Sonic drowns, in place of SE_LIFE_LOST
+  ICE_BLOCK_BREAK: 193,    // SE_193: a block of ice breaks, after SE_ITEM_BOX
+  SKATING_STONE: 198,      // SE_198: a skating stone sliding again after a drop
+  TUBE: 202,               // SE_202: a tube's track takes Sonic
+  BOWL: 206,               // SE_BOWL: a bowl catches Sonic
+  BOWL_2: 207,             // SE_BOWL_2 and SE_BOWL_3: 56 and 112 frames later
+  BOWL_3: 208,
+  CAROUSEL_A: 209,         // SE_CAROUSEL_A, _B and _C: a carousel takes Sonic, and turns slowly, faster or fast
+  CAROUSEL_B: 210,
+  CAROUSEL_C: 211,
+  WHIRLWIND: 200,          // SE_200: a whirlwind (player float toggle) first lifting Sonic
+  WATERFALL: 201,          // SE_201: Angel Island's waterfalls, from when one first holds Sonic
+  RUN_WHEEL_SLOW: 212,     // SE_RUN_WHEEL_A, B and C: a run wheel turning, by its speed
+  RUN_WHEEL_MEDIUM: 213,
+  RUN_WHEEL_FAST: 214,
+  ROCKET: 200,             // SE_200: Mecha Knuckles' rocket, stopped as it goes
+  MUD_SLIDE: 201,          // SE_201: Angel Island's forced slide takes Sonic
+  ROUND_OVER: 304,         // SE_VS_MULTIPAK_ROUND_OVER: a multiplayer round's time is up
+};
+
+// what the Moon Zone, the Super Egg Robo and the true ending play besides those
+export const EXTRA_SONG = {
+  EXTRA_BOSS: 26,          // MUS_EXTRA_BOSS: the Moon Zone's music
+  DROWNING: 27,            // MUS_DROWNING, TAILS_FLYING (SE_TAILS_PROPELLER_FLYING) and INVINCIBILITY: what
+  TAILS_FLYING: 120,       // Super Sonic's death stops
+  EXTRA_CLEAR: 36,         // MUS_EXTRA_CLEAR: the Super Egg Robo's results
+  A_FEW_DAYS_LATER: 39,    // MUS_CUTSCENE_A_FEW_DAYS_LATER
+  ROCK_BREAK: 126,         // SE_126: a rock broken by a dash
+  LASER: 155,              // SE_155: the robot's laser
+};
