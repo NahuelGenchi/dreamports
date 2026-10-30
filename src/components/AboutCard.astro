@@ -3,6 +3,7 @@
 // and credits.
 import OwnGameSteps from './OwnGameSteps.astro';
 import ViewBar from './ViewBar.astro';
+import { MINIMUM_AGE } from '../lib/players';
 import { CONTACT_EMAIL, OWNER_URL, SOURCE_URL, SUGGEST_URL, pageTitle } from '../lib/site';
 
 interface Props {
@@ -93,15 +94,26 @@ const sections = [
       <section id="privacy">
         <Sec>Your privacy</Sec>
         <p>
-          There are no accounts, no ads and no cookies. The site keeps a few small notes in your own browser:
-          whether you switched on menu sounds, which look and motion you picked, and, until you close the tab,
-          which games you’ve confirmed you own. Those notes never leave your device, and “Forget my choices” in
+          There are no ads and nothing follows you around the web. The site keeps a few small notes in your own
+          browser: whether you switched on menu sounds, which look and motion you picked, and, until you close the
+          tab, which games you’ve confirmed you own. Those notes never leave your device, and “Forget my choices” in
           Settings clears your menu choices at any time.
         </p>
         <p>
           Sonic Advance Dreamport, played here on dreamports.net, keeps its own notes in your browser: your settings,
-          the emeralds you’ve collected and, unless you untick “Remember on this device”, your game files, so you don’t
-          have to add them on every visit. They never leave your device either, and clearing this site’s data removes them.
+          the emeralds and achievements you’ve collected and, unless you untick “Remember on this device”, your game
+          files, so you don’t have to add them on every visit. They never leave your device, except your achievements
+          while you’re signed in to a profile, and clearing this site’s data removes them.
+        </p>
+        <p>
+          A <a href="/profile/">profile</a> is up to you, for players aged {MINIMUM_AGE} or older. It keeps the name
+          you pick, your achievements with the day you earned each one, and, for each account you sign in with
+          (Google, Discord, Steam or GitHub), only the id that service gives it. Dreamports never gets that account’s
+          email address, password, name or friends, and keeps no password of its own. While you’re signed in, one
+          cookie keeps you signed in, and your browser notes your player name so the games know to send your
+          achievements. Your profile is private unless you make it public;
+          then anyone can see your name, the day you joined and your achievements, and nothing else. From your
+          profile you can download everything it keeps, or delete it for good.
         </p>
         <p>
           To see which pages people read, the site counts visits with <a href="https://www.cloudflare.com/web-analytics/">Cloudflare Web Analytics</a>.
@@ -125,6 +137,10 @@ const sections = [
           <li>
             <strong>Icons.</strong> From <a href="https://github.com/halfmage/pixelarticons">Pixelarticons</a> by Gerrit
             Halfmann, under the <a href="/licenses/pixelarticons-MIT.txt">MIT License</a>.
+          </li>
+          <li>
+            <strong>Sign-in marks.</strong> The Google, Discord, Steam and GitHub marks belong to their companies.
+            Discord’s, Steam’s and GitHub’s come from <a href="https://simpleicons.org/">Simple Icons</a>.
           </li>
           <li>
             <strong>The star.</strong> Drawn by Narik,

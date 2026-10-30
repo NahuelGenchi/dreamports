@@ -42,6 +42,7 @@
   --glow-o: 0.62;
   --door-k: #0a1738;
   --door-o: transparent;
+  --discord: #5865f2;
   --black: #000000;
   --on-black: #eef4ff;
 
@@ -71,6 +72,7 @@
     --glow-o: 0.34;
     --door-k: #000000;
     --door-o: #3552b8;
+    --discord: #8c95ff;
 
     color-scheme: dark;
   }
@@ -95,6 +97,7 @@
   --glow-o: 0.34;
   --door-k: #000000;
   --door-o: #3552b8;
+  --discord: #8c95ff;
 
   color-scheme: dark;
 }
@@ -212,6 +215,7 @@ kbd,
 .btn,
 .check,
 .check input,
+.pf-input,
 .facts,
 .about-nav a[aria-current='true'],
 .bo-back,
@@ -1370,6 +1374,247 @@ dialog.card[open] {
   cursor: pointer;
 }
 
+/* profiles: the way in, then the player's achievements, in the same boxes as settings */
+.pf-status {
+  margin: 14px 2px 0;
+  color: var(--ink);
+  font: 400 15px/24px var(--font);
+}
+
+.pf-status:empty {
+  display: none;
+}
+
+.pf-lead,
+.pf-since {
+  margin: 14px 2px 0;
+  color: var(--dim);
+  font: 400 15px/24px var(--font);
+}
+
+.pf-since {
+  margin-top: 4px;
+  font-size: 13.5px;
+  line-height: 20px;
+}
+
+/* signed out, and the first time: one narrow column in the middle of the screen, like any sign-in */
+.view.card-profile:is([data-state='out'], [data-state='pick']) .card-body {
+  display: flex;
+  flex-direction: column;
+  max-width: 452px;
+}
+
+.card-profile:is([data-state='out'], [data-state='pick']) .card-title {
+  margin-top: auto;
+  text-align: center;
+}
+
+.card-profile:is([data-state='out'], [data-state='pick']) .pf-body {
+  margin-bottom: auto;
+}
+
+.card-profile:is([data-state='out'], [data-state='pick']) .pf-status {
+  text-align: center;
+}
+
+.pf-door {
+  display: grid;
+}
+
+.pf-door > :is(.pf-lead, .pf-small) {
+  text-align: center;
+}
+
+.pf-ways {
+  display: grid;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+/* an account to sign in with: its mark, then its name, all lined up down the column */
+.btn.pf-way {
+  justify-content: flex-start;
+  gap: 16px;
+  padding: 0 20px;
+  background: var(--paper);
+}
+
+.way-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+.btn .way-icon {
+  shape-rendering: geometricPrecision;
+}
+
+.way-icon--discord {
+  color: var(--discord);
+}
+
+.pf-small {
+  margin: 18px 2px 0;
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
+}
+
+.pf-small .linkish {
+  font-size: 15px;
+}
+
+.pf-label {
+  margin: 26px 2px 10px;
+  color: var(--ink);
+  font: 400 15px/20px var(--font);
+}
+
+/* a profile's address is one long word, which breaks where it must on a narrow phone */
+.card-profile .set-desc {
+  overflow-wrap: anywhere;
+}
+
+.pf-input {
+  --frame: var(--line);
+  min-width: 0;
+  height: 48px;
+  margin: 2px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 16px/1 var(--font);
+}
+
+.pf-input:focus-visible {
+  --frame: var(--blue);
+  outline: none;
+}
+
+.pf-door .pf-hint {
+  margin-top: 10px;
+  text-align: left;
+}
+
+.pf-door .check {
+  margin-top: 20px;
+}
+
+.pf-door .pf-create {
+  margin-top: 20px;
+}
+
+/* the accounts the profile signs in with */
+.pf-link-name {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pf-heading {
+  margin: 28px 2px 0;
+  color: var(--ink);
+  font: 400 18px/26px var(--font);
+}
+
+.pf-games {
+  display: grid;
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.pf-games:empty {
+  display: none;
+}
+
+.pf-games .set-list,
+.pf-body > .set-list,
+.pf-state > .set-list {
+  margin-top: 18px;
+}
+
+.pf-games .set-list {
+  margin-top: 0;
+}
+
+.pf-game-head .set-label {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.pf-game-head .set-label:hover {
+  text-decoration: underline;
+}
+
+.pf-count,
+.pf-when {
+  flex: none;
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
+}
+
+.pf-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 2px solid var(--line);
+}
+
+/* an earned achievement: its star, its title and description, and the day it was earned, which
+   goes under the description on a phone */
+.pf-ach {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+@media (max-width: 560px) {
+  .pf-ach {
+    grid-template-columns: 24px minmax(0, 1fr);
+    row-gap: 4px;
+  }
+
+  .pf-ach .pf-when {
+    grid-column: 2;
+  }
+}
+
+.pf-star {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  fill: var(--blue);
+}
+
+.pf-none {
+  margin: 0;
+  border-top: 2px solid var(--line);
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
+}
+
+.card-profile .set-row .btn {
+  flex: none;
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.pf-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pf-confirm .set-row {
+  flex-wrap: wrap;
+}
+
+.card-profile[aria-busy='true'] :is(.btn, .switch) {
+  cursor: progress;
+}
+
 /* text inside cards */
 .prose {
   color: var(--dim);
@@ -1851,7 +2096,7 @@ dialog.card[open] {
   outline-offset: 6px;
 }
 
-:root:not(.js) :is(.cursor, .nameplate, .shoulder, .status, .glow, #btn-settings, #btn-search) {
+:root:not(.js) :is(.cursor, .nameplate, .shoulder, .status, .glow, #btn-settings, #btn-search, #btn-profile) {
   display: none;
 }
 
@@ -2101,6 +2346,27 @@ dialog.card[open] {
   }
 }
 
+/* on the narrowest phones the profile button keeps only its key, its controller button or its icon, like Settings */
+@media (max-width: 359px) {
+  #btn-profile .c-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  #btn-profile {
+    padding: 0 6px;
+  }
+
+  :root[data-input='touch'] #btn-profile {
+    padding: 0 10px;
+  }
+}
+
 /* the time shows only when its side of the bar has room for the whole clock, 87 px at its widest */
 @container (width < 87px) {
   .clock time {
@@ -2212,6 +2478,12 @@ dialog.card[open] {
   pointer-events: none;
 }
 
+/* nothing inside them takes a press either: the corner buttons turn presses back on for
+   themselves, and would lie unseen over the view's Back */
+.launcher[data-view] :is(.cursor, .nameplate, .corners, .pad-hint, .filters) * {
+  pointer-events: none;
+}
+
 .launcher[data-view]:not([data-view='inspect']) .row {
   opacity: 0;
   translate: 0 4%;
@@ -2258,7 +2530,8 @@ dialog.card[open] {
 /* what a view holds, between the two bars */
 .view .inspect,
 .view .about,
-.view.card-settings .card-body {
+.view.card-settings .card-body,
+.view.card-profile .card-body {
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -2290,30 +2563,49 @@ dialog.card[open] {
   --bz: calc(var(--s) * 0.028);
 }
 
-/* under the picture: the box to tick, then play, locked until it is ticked */
+/* under the picture: the box to tick, and right below it the buttons it unlocks, locked until it
+   is ticked. They share one width, the wider of the box's words and the buttons, from the
+   picture's left edge; the note under them wraps to that width. */
 .view .gate-form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  width: var(--hero);
+  display: grid;
+  grid-template-columns: minmax(0, max-content);
+  justify-content: start;
+  gap: 10px;
+  width: max-content;
+  min-width: var(--hero);
+  max-width: 100%;
 }
 
 .view .gate-form .check {
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  margin: 2px;
+  padding: 0 18px;
+}
+
+.view .gate-form .check input {
   margin: 0 2px;
-  padding: 12px 14px;
+}
+
+.view .gate-form .check:has(input:checked) {
+  --frame: var(--blue);
 }
 
 .view .gate-actions {
-  flex-wrap: nowrap;
+  display: grid;
+  gap: 8px;
   margin: 0;
 }
 
-.view .gate-buttons {
-  flex: none;
+.view .ins-show .btn {
+  flex: 1 1 auto;
+  min-width: 150px;
 }
 
-.view .ins-show .btn {
-  min-width: 150px;
+.view .gate-note {
+  contain: inline-size;
+  margin: 0 2px;
 }
 
 /* long text scrolls under soft edges */
@@ -2528,8 +2820,9 @@ dialog.card[open] {
   max-width: 64ch;
 }
 
-/* settings: one column in the middle */
-.view.card-settings .card-body {
+/* settings and profiles: one column in the middle */
+.view.card-settings .card-body,
+.view.card-profile .card-body {
   max-width: 760px;
   padding-top: 30px;
   padding-bottom: 24px;
@@ -2542,33 +2835,45 @@ dialog.card[open] {
 }
 
 @media (max-height: 500px) and (min-width: 641px) {
-  /* a phone held sideways: a smaller picture, so it, the box and the button fit the height */
+  /* a phone held sideways: a smaller picture, so it, the box and the button fit the height, and
+     a smaller title, so the game's name stays on one line */
   .view .ins-show {
-    --hero: min(40vw, (100dvh - 270px) * 1.6);
+    --hero: min(40vw, (100dvh - 266px - env(safe-area-inset-bottom, 0px)) * 1.54);
     gap: 12px;
   }
 
   .view .gate-form {
-    width: 100%;
-    gap: 8px;
+    gap: 6px;
   }
 
-  .view .gate-form .check {
-    padding: 8px 12px;
+  .view :is(.gate-form .check, .ins-show .btn) {
+    min-height: 42px;
+    padding: 0 14px;
     font-size: 13.5px;
-    line-height: 20px;
   }
 
   .view .ins-show .btn {
-    min-height: 44px;
+    min-width: 0;
+  }
+
+  .view .ins-text {
+    padding: 16px 6px 28px 0;
+    -webkit-mask-image: linear-gradient(transparent, #000 14px, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(transparent, #000 14px, #000 calc(100% - 28px), transparent);
+  }
+
+  .view .ins-title {
+    font-size: 22px;
+    line-height: 30px;
   }
 }
 
 @media (max-width: 640px) {
-  /* a game's page: picture, button and text in one column that scrolls */
+  /* a game's page: picture, button and text in one column that scrolls, only up and down: the
+     glow round the picture is wider than the screen */
   .view .inspect {
     display: block;
-    overflow: auto;
+    overflow: hidden auto;
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
@@ -2589,19 +2894,12 @@ dialog.card[open] {
   }
 
   .view .gate-form {
+    grid-template-columns: minmax(0, 1fr);
     width: auto;
-  }
-
-  .view .gate-actions {
-    flex-wrap: wrap;
-  }
-
-  .view .gate-buttons {
-    flex: 1 1 100%;
+    min-width: 0;
   }
 
   .view .ins-show .btn {
-    flex: 1 1 0;
     min-width: 0;
     white-space: nowrap;
   }
@@ -2639,7 +2937,8 @@ dialog.card[open] {
     padding: 20px 16px 24px;
   }
 
-  .view.card-settings .card-body {
+  .view.card-settings .card-body,
+  .view.card-profile .card-body {
     padding: 22px 16px 8px;
   }
 }

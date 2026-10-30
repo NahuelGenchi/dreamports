@@ -1,0 +1,10 @@
+---
+// One page for every player's public profile: the site's Worker serves it at /players/<name>/, and
+// the profile script asks for the player named in the address.
+import Base from '../../layouts/Base.astro';
+import Launcher from '../../components/Launcher.astro';
+---
+
+<Base title="Player" description="A player’s public Dreamports profile and the achievements they’ve earned." noindex>
+  <Launcher filter="dreamports" open="player" />
+</Base>

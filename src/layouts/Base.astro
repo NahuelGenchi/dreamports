@@ -9,9 +9,11 @@ interface Props {
   canonical?: string;
   // The picture shown when the page is shared; without one, the site's own picture.
   image?: { src: string; width: number; height: number; alt: string };
+  // A page search engines leave out, such as the one every player's profile shares.
+  noindex?: boolean;
 }
 
-const { title, description, canonical: canonicalPath, image } = Astro.props;
+const { title, description, canonical: canonicalPath, image, noindex = false } = Astro.props;
 const fullTitle = pageTitle(title);
 const canonical = new URL(canonicalPath ?? Astro.url.pathname, Astro.site);
 const social = image ?? {
@@ -30,7 +32,8 @@ const socialImage = new URL(social.src, Astro.site);
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
-    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex" />}
+    {!noindex && <link rel="canonical" href={canonical} />}
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
@@ -43,7 +46,7 @@ const socialImage = new URL(social.src, Astro.site);
     <meta property="og:site_name" content="Dreamports" />
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
-    <meta property="og:url" content={canonical} />
+    {!noindex && <meta property="og:url" content={canonical} />}
     <meta property="og:image" content={socialImage} />
     <meta property="og:image:width" content={String(social.width)} />
     <meta property="og:image:height" content={String(social.height)} />
