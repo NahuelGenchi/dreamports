@@ -438,12 +438,7 @@ Also on the way: the title screen's demos, the character select, Amy (Tails is i
 <summary><b>Milestones</b></summary>
 <br>
 
-| Milestone | Outcome | Issues closed |
-| :--- | :--- | :--- |
-| [M0 — Project foundation](https://github.com/NahuelGenchi/sonic-advance-dreamport/milestone/1) | Repository, documentation, tracking and presentation | ![M0 issues closed](https://img.shields.io/github/milestones/progress/NahuelGenchi/sonic-advance-dreamport/1?style=flat-square&label=&color=4f86ff&labelColor=0b1240) |
-| [M1 — Playable prototype](https://github.com/NahuelGenchi/sonic-advance-dreamport/milestone/2) | Sonic on a Neo Green Hill platform, assets from your own ROM | ![M1 issues closed](https://img.shields.io/github/milestones/progress/NahuelGenchi/sonic-advance-dreamport/2?style=flat-square&label=&color=4f86ff&labelColor=0b1240) |
-| [M2 — Stages and gameplay](https://github.com/NahuelGenchi/sonic-advance-dreamport/milestone/3) | Full stages with collision, rings, objects, enemies, sound and music | ![M2 issues closed](https://img.shields.io/github/milestones/progress/NahuelGenchi/sonic-advance-dreamport/3?style=flat-square&label=&color=4f86ff&labelColor=0b1240) |
-| [M3 — Release](https://github.com/NahuelGenchi/sonic-advance-dreamport/milestone/4) | A hosted build and versioned releases, with no game files | ![M3 issues closed](https://img.shields.io/github/milestones/progress/NahuelGenchi/sonic-advance-dreamport/4?style=flat-square&label=&color=4f86ff&labelColor=0b1240) |
+Until October 2026 the game had a repository of its own, [NahuelGenchi/sonic-advance-dreamport](https://github.com/NahuelGenchi/sonic-advance-dreamport), which keeps its first milestones (M0 to M3) with their closed issues and pull requests. Its open issues moved here with the game, and carry the [`sonic-advance`](https://github.com/NahuelGenchi/dreamports/issues?q=is%3Aissue%20label%3Asonic-advance) label.
 
 The game is [live at dreamports.net](https://dreamports.net/play/sonic-advance/); versioned releases are planned.
 
@@ -547,11 +542,11 @@ flowchart LR
 
 ## Run it on your own computer
 
-There is no build step. The pages use JavaScript modules, which browsers only load over HTTP, so serve the repository folder with any static file server and open it on `localhost`:
+There is no build step. The pages use JavaScript modules, which browsers only load over HTTP, so serve the game's folder, `games/sonic-advance/` in the [Dreamports repository](https://github.com/NahuelGenchi/dreamports), with any static file server and open it on `localhost`:
 
 ```sh
-git clone https://github.com/NahuelGenchi/sonic-advance-dreamport.git
-cd sonic-advance-dreamport
+git clone https://github.com/NahuelGenchi/dreamports.git
+cd dreamports/games/sonic-advance
 python -m http.server 8000
 ```
 
@@ -561,20 +556,15 @@ Two addresses skip ahead for testing: <http://localhost:8000/?debug> starts the 
 
 To see everything the extractor decodes, open *Asset viewer* in the game's settings: the ROM's tables, Sonic's, the springs' and the rings' animations playing with their original timing, the sprite atlas, the act being played with its collision, and the zone's background. It opens inside the settings, over the game, which waits, with its parts on the left (<kbd>Q</kbd> <kbd>E</kbd>, or <kbd>LB</kbd> <kbd>RB</kbd>, go through them), and its back arrow, <kbd>Esc</kbd> or <kbd>B</kbd> goes back to the settings. On its own, <http://localhost:8000/viewer.html> shows the same for the ROM kept in this browser (Neo Green Hill Zone act 1, or `?level=N`), and asks for the ROM when none is kept.
 
-[`wrangler.jsonc`](wrangler.jsonc) sets up the copy that Cloudflare serves at `dreamports.net/play/sonic-advance/`. Its build copies only the committed pages, `src/`, `styles/` and the social preview picture into `dist/play/sonic-advance/`. To try that copy on your computer, commit your changes, run `npx wrangler dev` and open <http://localhost:8787/play/sonic-advance/>.
+The site serves this folder as it is at `dreamports.net/play/sonic-advance/`, as [games/README.md](../README.md) explains. To try the game that way, with the rest of the site, run `npm run worker` in the repository's folder and open <http://localhost:8787/play/sonic-advance/>.
 
-The page also loads `/dreamports.js` from the site's root, which saves achievements to the player's Dreamports profile and gives the game the ones the profile has. Only dreamports.net serves it, so on your own computer and on this repository's Cloudflare previews it isn't found, and achievements stay in the browser.
+The page also loads `/dreamports.js` from the site's root, which saves achievements to the player's Dreamports profile and gives the game the ones the profile has. A file server like the one above doesn't have it, so there achievements stay in the browser. With `npm run worker` the site serves it, and profiles are kept in a database on your computer.
 
 ## Contributing
 
-Every change follows one trail: **issue → branch → milestone → pull request**.
+The game is part of the Dreamports repository, and every change to it follows that repository's trail: **issue → branch → milestone → pull request**. Read its [CONTRIBUTING.md](../../CONTRIBUTING.md) and [the Dreamport standard](../../docs/STANDARD.md) before opening work. Bugs and ideas start as an [issue](https://github.com/NahuelGenchi/dreamports/issues/new/choose) there. Never attach ROMs, save files or extracted game assets.
 
-```mermaid
-flowchart LR
-    issue["Issue<br/>scope and done criteria"] --> branch["Branch<br/>type/issue-slug"] --> pr["Pull request<br/>Closes #issue"] --> milestone["Milestone<br/>M0 → M3"]
-```
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/TRACKING.md](docs/TRACKING.md) before opening work. Bugs and ideas start as an [issue](https://github.com/NahuelGenchi/sonic-advance-dreamport/issues/new/choose). Never attach ROMs, save files or extracted game assets.
+Contributions to the game are accepted under its license, [GPL-3.0-or-later](LICENSE). The SAT-R decompilation is a research reference only: none of its code or data is copied here. Anything bundled from elsewhere, such as fonts or sounds, needs a license compatible with GPL-3.0-or-later, its notices kept next to the files, and a line in [Thanks](#thanks).
 
 ## Thanks
 
