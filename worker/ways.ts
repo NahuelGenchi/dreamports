@@ -146,18 +146,26 @@ export async function accountOf(env: WayEnv, flight: Flight, url: URL, back: str
 
 // Steam's answer names the player's Steam id, and Steam itself confirms it signed that answer
 async function steamAccount(answer: URLSearchParams, back: string, state: string) {
-  if (answer.get('openid.mode') === 'cancel') throw new Cancelled();
-  if (answer.get('openid.mode') !== 'id_res' || answer.get('openid.op_endpoint') !== STEAM || answer.get('openid.return_to') !== `${back}?state=${state}`) {
+  // each field once: with a field twice, the copy read here and the copy Steam confirms could differ
+  const fields = new Map<string, string>();
+  for (const [key, value] of answer) {
+    if (!key.startsWith('openid.')) continue;
+    if (fields.has(key)) throw new WayError('the Steam answer repeats a field');
+    fields.set(key, value);
+  }
+  const field = (name: string) => fields.get(`openid.${name}`);
+  if (field('mode') === 'cancel') throw new Cancelled();
+  if (field('mode') !== 'id_res' || field('op_endpoint') !== STEAM || field('return_to') !== `${back}?state=${state}`) {
     throw new WayError('the Steam answer is for another sign-in');
   }
-  const claimed = /^https:\/\/steamcommunity\.com\/openid\/id\/(\d{17})$/.exec(answer.get('openid.claimed_id') ?? '');
-  const signed = new Set((answer.get('openid.signed') ?? '').split(','));
-  if (!claimed || answer.get('openid.identity') !== answer.get('openid.claimed_id')) throw new WayError('no Steam id');
-  if (!['op_endpoint', 'claimed_id', 'identity', 'return_to', 'response_nonce'].every((field) => signed.has(field))) {
+  const claimed = /^https:\/\/steamcommunity\.com\/openid\/id\/(\d{17})$/.exec(field('claimed_id') ?? '');
+  const signed = new Set((field('signed') ?? '').split(','));
+  if (!claimed || field('identity') !== field('claimed_id')) throw new WayError('no Steam id');
+  if (!['op_endpoint', 'claimed_id', 'identity', 'return_to', 'response_nonce'].every((name) => signed.has(name))) {
     throw new WayError('Steam didn’t sign the answer’s fields');
   }
-  const check = new URLSearchParams();
-  for (const [key, value] of answer) if (key.startsWith('openid.')) check.set(key, value);
+  // Steam checks exactly the fields read above
+  const check = new URLSearchParams([...fields]);
   check.set('openid.mode', 'check_authentication');
   const response = await fetch(STEAM, {
     method: 'POST',
