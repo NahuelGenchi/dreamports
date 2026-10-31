@@ -22,8 +22,8 @@
 import { createSprite, updateSprite, displaySprite, transformSprite, rotateSprite, SPRITE } from '../gba/sprite.js';
 import { KEY } from '../gba/engine.js';
 import { SONG } from '../sound/songs.js';
-import { createM4A } from '../sound/m4a.js';
-import { createApu } from '../sound/apu.js';
+import { createM4A } from '../../../../kit/gba/sound/m4a.js';
+import { createApu } from '../../../../kit/gba/sound/apu.js';
 import { soundLayout } from '../rom/sound.js';
 import { SINE } from '../engine/trig.js';
 import { createUiTask, uiGfxStackInit, uiGraphics, loadUiGfx, drawUiGlyphs, createFade, fadeStep, fadeShow } from './ui.js';

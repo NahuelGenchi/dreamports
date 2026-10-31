@@ -3,7 +3,7 @@
 // drawn. Some scroll a layer differently on each line; the others draw a window's left and right edges along
 // the sides of a shape, a line at a time.
 
-import { REG } from './video.js';
+import { REG } from '../../../../kit/gba/video.js';
 
 const s8 = v => (v << 24) >> 24, s16 = v => (v << 16) >> 16;
 

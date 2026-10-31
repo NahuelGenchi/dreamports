@@ -1,51 +1,19 @@
-// Keyboard, touch and gamepad input folded into one set of held buttons plus press edges for A (jump),
-// B (attack), the optional Sonic Rush boost and the optional Sonic Advance 2 tricks (R). A button is held while
-// any of them holds it, so letting go on one doesn't drop it on another. Start, Select, L and R are for the
-// screens before the act, and Start also pauses it (pause.js).
+// Keyboard, touch and controllers folded into one set of held buttons, the game's own, plus the press edges of
+// those the game also reads as just pressed. A button is held while any of them holds it, so letting go on one
+// doesn't drop it on another. The game names its buttons and says which keys and which of a controller's buttons
+// press each (its layout); an extra the player turns on can bring buttons of its own, which do nothing while it is
+// off. While a proof tool runs the game (proof.js), the tool's frames hold the buttons instead.
 
-const KEYS = {
-  ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right', ArrowUp: 'up', KeyW: 'up',
-  ArrowDown: 'down', KeyS: 'down', Space: 'jump', KeyZ: 'jump', KeyJ: 'jump', KeyX: 'attack', KeyK: 'attack',
-  KeyL: 'boost', ShiftLeft: 'boost', ShiftRight: 'boost',   // only with the Rush boost on
-  KeyE: ['trick', 'r'], KeyI: 'trick',                       // the trick only with the SA2 tricks on
-  KeyQ: 'l', Enter: 'start', Backspace: 'select',
-};
-const BUTTONS = ['left', 'right', 'up', 'down', 'jump', 'attack', 'boost', 'trick', 'start', 'select', 'l', 'r'];
+import { proof } from './proof.js';
 
-// the standard gamepad layout (an Xbox controller's): A jumps, B or X attacks, the d-pad or the left stick
-// moves, Menu is Start, View is Select, and LB and RB are L and R. With the Rush boost on, X boosts instead, as in
-// Sonic Rush; with the SA2 tricks on, RB is the trick too.
-const PAD_BUTTONS = { jump: [0], attack: [1, 2], up: [12], down: [13], left: [14], right: [15], boost: [], trick: [], start: [9], select: [8], l: [4], r: [5] };
-const RUSH_PAD_BUTTONS = { ...PAD_BUTTONS, attack: [1], boost: [2] };
-const TRICK_PAD_BUTTONS = [5];
 const DPAD = { up: 12, down: 13, left: 14, right: 15 };
 const DEAD_ZONE = 0.5;
 const XBOX = /xbox|xinput|045e|microsoft/i;   // the names browsers give Microsoft's controllers
 const SETTINGS_COMBO = [8, 9];                 // View + Menu (Select + Start) together open the settings, not the game's
 const COMBO_WAIT = 4;                          // steps a controller's Start or Select waits for the other to join it
 
-// the multiplayer modes' two players on one keyboard: the first on WASD with F to jump and G to attack, the
-// second on the arrows with . to jump and / to attack; the players after them play with controllers
-export const PLAYER_KEYS = [
-  { KeyA: 'left', KeyD: 'right', KeyW: 'up', KeyS: 'down', KeyF: 'jump', KeyG: 'attack' },
-  { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', Period: 'jump', Slash: 'attack' },
-  {}, {},
-];
-
-const SWAPPED = { jump: 'attack', attack: 'jump', jumpPressed: 'attackPressed', attackPressed: 'jumpPressed' };
-
-/**
- * SetPlayerControls: the jump and attack buttons as the game reads them, from `input` (A jumps and B attacks), or
- * with A and B swapped when the save's button setting is REVERSE (btnConfig 1). The swapped buttons are a view of
- * `input`: what is pressed or cleared on one is on the other.
- */
-export function playerControls(input, btnConfig) {
-  if (btnConfig !== 1) return input;
-  return new Proxy(input, {
-    get: (target, key) => target[SWAPPED[key] ?? key],
-    set: (target, key, value) => { target[SWAPPED[key] ?? key] = value; return true; },
-  });
-}
+/** The Game Boy Advance's buttons, as its KEYINPUT register has them, a bit each. */
+export const KEY = { A: 0x1, B: 0x2, SELECT: 0x4, START: 0x8, RIGHT: 0x10, LEFT: 0x20, UP: 0x40, DOWN: 0x80, R: 0x100, L: 0x200 };
 
 /** The connected controllers in the browser's order. */
 export const connectedPads = () => [...(navigator.getGamepads?.() ?? [])].filter(p => p?.connected);
@@ -66,31 +34,47 @@ export function playerPads(player, count) {
 }
 
 /**
- * The buttons one player holds: from `keys` (the single-player keys by default) and the controllers `pads()`
- * gives (all of them by default).
+ * The buttons one player holds, as the game's `layout` names them:
+ * - `buttons`: every button's name, such as 'left' or 'jump'
+ * - `gba`: for those that are one of the console's own buttons, which (a name in KEY)
+ * - `keys`: the keys that press them, by KeyboardEvent.code, each pressing one button or a list of them
+ * - `pad`: for each button, the controller buttons that press it, by their numbers in the standard layout (0 A,
+ *   1 B, 2 X, 3 Y, 4 LB, 5 RB, 6 LT, 7 RT, 8 View, 9 Menu, 12 to 15 the d-pad's up, down, left and right); the
+ *   left stick, and the d-pad of a controller the browser doesn't map to that layout, press left, right, up and down
+ * - `edges`: the buttons the game also reads as just pressed, as `<button>Pressed`, which it clears once it has
+ * - `extras`: by an extra's name, the buttons it brings, `buttons`, which do nothing while it is off, and `pad`,
+ *   the controller buttons that press something else while it is on
+ * The keys can be another set (`keys`, such as a second player's) and the controllers some of them (`pads()`,
+ * all of them by default).
  */
-export function createInput({ keys = KEYS, pads = connectedPads } = {}) {
-  const input = {
-    left: false, right: false, up: false, down: false, jump: false, attack: false, boost: false, trick: false, start: false, select: false,
-    l: false, r: false,
-    jumpPressed: false, attackPressed: false, boostPressed: false, trickPressed: false, enabled: false,
-    rush: false,     // the Rush boost is on: its buttons count
-    tricks: false,   // the SA2 tricks are on: theirs count
-  };
+export function createInput(layout, { keys = layout.keys, pads = connectedPads } = {}) {
+  const { buttons, edges = [], extras = {} } = layout;
+  const input = { enabled: false, layout };
+  for (const b of buttons) input[b] = false;
+  for (const b of edges) input[`${b}Pressed`] = false;
+  const on = {};                        // the extras turned on
+  const extraOf = {};                   // the extra each of their buttons belongs to
+  for (const [name, extra] of Object.entries(extras)) for (const b of extra.buttons ?? []) extraOf[b] = name;
   // the buttons of an extra that is off do nothing
-  const off = button => (button === 'boost' && !input.rush) || (button === 'trick' && !input.tricks);
+  const off = button => button in extraOf && !on[extraOf[button]];
+  // the controller's buttons for each of the game's, with those of the extras turned on
+  let padMap = null;
+  const padButtons = () => (padMap ??= Object.assign({}, layout.pad, ...Object.keys(on).filter(n => on[n]).map(n => extras[n].pad ?? {})));
+  // a controller's Start and Select: its View and Menu, which open the settings when held together
+  const comboButtons = buttons.filter(b => (layout.pad[b] ?? []).some(i => SETTINGS_COMBO.includes(i)));
   const held = { keys: {}, pad: {}, touch: {} };   // what each source holds; the pad's is read once a step by poll()
   const touched = new Set();            // the on-screen controller's buttons a finger is on, by their standard numbers
   let padFresh = true;                  // after a release, what the pad still holds comes back without a press
   const spent = new Set();              // Start and Select held for the settings: the game doesn't see them until let go
   const waiting = {};                   // Start or Select just pressed alone: the steps left before the game sees it
+  // a proof tool runs the game on this player's buttons (proof.js): in play mode its frames hold them, and in record
+  // mode what the game read at each frame is kept
+  const proofs = () => proof?.input === input;
+  const played = () => proofs() && proof.mode === 'play';
 
   function set(button, quiet) {
     const down = !!(held.keys[button] || held.pad[button] || held.touch[button]);
-    if (!quiet && button === 'jump' && down && !input.jump) input.jumpPressed = true;
-    if (!quiet && button === 'attack' && down && !input.attack) input.attackPressed = true;
-    if (!quiet && button === 'boost' && down && !input.boost) input.boostPressed = true;
-    if (!quiet && button === 'trick' && down && !input.trick) input.trickPressed = true;
+    if (!quiet && down && !input[button] && edges.includes(button)) input[`${button}Pressed`] = true;
     input[button] = down;
   }
 
@@ -100,39 +84,52 @@ export function createInput({ keys = KEYS, pads = connectedPads } = {}) {
   };
   input.release = () => {
     held.keys = {}; held.pad = {}; held.touch = {}; touched.clear(); padFresh = true;
-    for (const b of BUTTONS) input[b] = false;
-    input.jumpPressed = input.attackPressed = input.boostPressed = input.trickPressed = false;
+    for (const b of buttons) input[b] = false;
+    for (const b of edges) input[`${b}Pressed`] = false;
   };
 
-  /** Turns the Rush boost's buttons on or off; turned off, a held boost button lets go. */
-  input.setRush = on => {
-    input.rush = on;
-    if (on) return;
-    held.keys.boost = held.pad.boost = held.touch.boost = false;
-    set('boost', true);
-    input.boostPressed = false;
+  /** Turns the extra `name`'s buttons on or off; turned off, a held one lets go. */
+  input.setExtra = (name, turnOn) => {
+    on[name] = turnOn;
+    padMap = null;
+    if (turnOn) return;
+    for (const b of extras[name].buttons ?? []) {
+      held.keys[b] = held.pad[b] = held.touch[b] = false;
+      set(b, true);
+      if (edges.includes(b)) input[`${b}Pressed`] = false;
+    }
   };
 
-  /** Turns the SA2 tricks' buttons on or off; turned off, a held trick button lets go. */
-  input.setTricks = on => {
-    input.tricks = on;
-    if (on) return;
-    held.keys.trick = held.pad.trick = held.touch.trick = false;
-    set('trick', true);
-    input.trickPressed = false;
+  /** The console's buttons held, a bit each as KEY has them, for those the layout says are one: set while held,
+   *  as the game's own code reads them once it has flipped the hardware's KEYINPUT, which clears them. */
+  input.gbaKeys = () => {
+    let bits = 0;
+    for (const b of buttons) if (input[b] && layout.gba?.[b]) bits |= KEY[layout.gba[b]];
+    return bits;
   };
 
   // the game's buttons a controller holds, `on(i)` telling whether its button i (standard layout) is down
-  function padHolds(on, now = {}) {
-    const map = input.rush ? RUSH_PAD_BUTTONS : PAD_BUTTONS;
-    for (const b of BUTTONS) if (map[b].some(on)) now[b] = true;
-    if (input.tricks && TRICK_PAD_BUTTONS.some(on)) now.trick = true;
+  function padHolds(isDown, now = {}) {
+    const map = padButtons();
+    for (const b of buttons) if (map[b]?.some(isDown)) now[b] = true;
     return now;
+  }
+  // what the game reads at this frame, as a proof tool's frame: the buttons held and those just pressed
+  const seen = () => ({ held: buttons.filter(b => input[b]), pressed: edges.filter(b => input[`${b}Pressed`]) });
+  // a proof tool's frame: its buttons held, and those just pressed as it says, or else those held now and not before
+  function play({ held: holding = [], pressed } = {}) {
+    const now = new Set(holding.filter(b => !off(b)));
+    for (const b of buttons) {
+      const down = now.has(b);
+      if (edges.includes(b)) input[`${b}Pressed`] = pressed ? pressed.includes(b) : input[`${b}Pressed`] || (down && !input[b]);
+      input[b] = down;
+    }
   }
   // the on-screen controller, read like a real one; again each step, for an extra turned on or off under a finger
   function touchSync() {
+    if (played()) return;
     const now = padHolds(i => touched.has(i));
-    for (const b of BUTTONS) {
+    for (const b of buttons) {
       if (!!held.touch[b] === !!now[b]) continue;
       held.touch[b] = !!now[b];
       set(b);
@@ -142,6 +139,11 @@ export function createInput({ keys = KEYS, pads = connectedPads } = {}) {
   /** Reads the connected gamepads; the game calls it at the start of each step, as the original reads its keys.
    *  A controller plugged in mid-game is read from then on; one unplugged lets go of its buttons. */
   input.poll = () => {
+    if (played()) return play(proof.frame ?? undefined);
+    read();
+    if (proofs()) proof.record(seen());
+  };
+  function read() {
     if (!input.enabled) return;
     touchSync();
     const now = {};
@@ -162,7 +164,7 @@ export function createInput({ keys = KEYS, pads = connectedPads } = {}) {
     padFresh = false;
     // View + Menu are the settings' (sheet.js), so a pad's Start or Select reaches the game a few steps late,
     // in case the other is on its way; held together, neither reaches it until let go
-    for (const b of ['start', 'select']) {
+    for (const b of comboButtons) {
       if (combo) { spent.add(b); delete waiting[b]; }
       if (!now[b]) spent.delete(b);
       if (spent.has(b)) { now[b] = false; continue; }
@@ -171,29 +173,29 @@ export function createInput({ keys = KEYS, pads = connectedPads } = {}) {
       if (now[b] && waiting[b] > 0) { waiting[b]--; now[b] = false; }
       else { delete waiting[b]; now[b] = true; }   // waited long enough, or let go first: the game gets its press
     }
-    for (const b of BUTTONS) {
+    for (const b of buttons) {
       if (!!held.pad[b] === !!now[b]) continue;
       held.pad[b] = !!now[b];
       set(b, quiet);
     }
-  };
+  }
 
-  // the buttons a key holds, but those of an extra that is off
-  const buttonsOf = code => [].concat(keys[code] ?? []).filter(b => !off(b));
+  // the buttons a key holds, but those of an extra that is off; none while a proof tool plays the game
+  const buttonsOf = code => (played() ? [] : [].concat(keys[code] ?? []).filter(b => !off(b)));
   addEventListener('keydown', e => {
-    const buttons = buttonsOf(e.code);
-    if (!input.enabled || !buttons.length || e.ctrlKey || e.metaKey || e.altKey) return;
+    const pressing = buttonsOf(e.code);
+    if (!input.enabled || !pressing.length || e.ctrlKey || e.metaKey || e.altKey) return;
     e.preventDefault();
-    if (!e.repeat) for (const b of buttons) input.press(b, true);
+    if (!e.repeat) for (const b of pressing) input.press(b, true);
   });
   addEventListener('keyup', e => {
-    const buttons = buttonsOf(e.code);
-    if (!buttons.length) return;
+    const pressing = buttonsOf(e.code);
+    if (!pressing.length) return;
     if (input.enabled) e.preventDefault();
-    for (const b of buttons) input.press(b, false);
+    for (const b of pressing) input.press(b, false);
   });
-  addEventListener('blur', input.release);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) input.release(); });
+  addEventListener('blur', () => { if (!played()) input.release(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && !played()) input.release(); });
 
   /**
    * The on-screen controller: any element with data-pad-button set to an Xbox controller's button by its number in

@@ -1,6 +1,6 @@
 // The save (SAT-R decompilation, src/game/sa1/save.c, and CreateEmptySaveGame in src/game/game.c): Sonic
 // Advance's one save, struct SaveGame, the 0x430 bytes the cartridge's flash memory keeps. Here the browser
-// keeps them, in its storage (localStorage, as base64). At power-on the game reads the save (SaveGameExists),
+// keeps them, in its storage (the kit's save.js). At power-on the game reads the save (SaveGameExists),
 // or starts an empty one (CreateEmptySaveGame) and the language screen; then it changes the save in memory
 // (LOADED_SAVE) as it goes, and writes it at set moments (WriteSaveGame): as that language screen ends, as the
 // Options menu ends, as an act's results end, as a game over ends, before the congratulations and with the Moon
@@ -22,6 +22,7 @@
 // - 0x428 score: the rings every act's results have counted, the Tiny Chao Garden's to spend
 // - 0x42C checksum: the sum of the 32-bit words before it
 
+import { browserStorage, cartridgeSave } from '../../../../kit/gba/save.js';
 import { theMoonOpens, ALL_EMERALDS, MOON_BEATEN } from './unlock.js';
 
 const SAVE_KEY = 'onsoku.save';
@@ -34,11 +35,6 @@ const MAX_COURSE_TIME = 10 * 3600;
 export const WRITE_FRAMES = 14;
 /** The frames erasing the flash takes mGBA (sub_8012F6C, the Options menu's Delete Game Data). */
 export const ERASE_FRAMES = 1;
-
-// the browser's storage, or null where it is blocked
-function browserStorage() {
-  try { return globalThis.localStorage ?? null; } catch { return null; }
-}
 
 // CalculateChecksum
 function checksum(bytes) {
@@ -64,17 +60,11 @@ function emptySave() {
 }
 
 // SaveGameExists: the save the browser keeps, if it is one (its security and checksum right)
-function readStored(storage) {
-  try {
-    const text = storage?.getItem(SAVE_KEY);
-    if (!text) return null;
-    const bytes = Uint8Array.from(atob(text), c => c.charCodeAt(0));
-    if (bytes.length !== SIZE) return null;
-    const view = new DataView(bytes.buffer);
-    return view.getUint32(0, true) === SECURITY && view.getUint32(CHECKSUM, true) === checksum(bytes) ? bytes : null;
-  } catch {
-    return null;   // storage blocked, or not a save
-  }
+function readStored(flashMemory) {
+  const bytes = flashMemory.read();
+  if (bytes?.length !== SIZE) return null;
+  const view = new DataView(bytes.buffer);
+  return view.getUint32(0, true) === SECURITY && view.getUint32(CHECKSUM, true) === checksum(bytes) ? bytes : null;
 }
 
 /**
@@ -83,7 +73,8 @@ function readStored(storage) {
  * it lasts as long as the page, the way a cartridge's flash would.
  */
 export function openSave(storage = browserStorage()) {
-  let flash = readStored(storage);   // what the flash holds: the save as last written, or null before the first
+  const flashMemory = cartridgeSave(SAVE_KEY, storage);
+  let flash = readStored(flashMemory);   // what the flash holds: the save as last written, or null before the first
   const bytes = flash ? flash.slice() : emptySave(), view = new DataView(bytes.buffer);
   if (!flash) {
     try { bytes[0x1C] = Number(storage?.getItem(EMERALDS_KEY)) & ALL_EMERALDS; } catch { /* none kept */ }
@@ -122,7 +113,7 @@ export function openSave(storage = browserStorage()) {
     /** sub_8012F6C: the flash erased, so the browser keeps no save until the next write. */
     erase() {
       flash = null;
-      try { storage?.removeItem(SAVE_KEY); } catch { /* storage blocked */ }
+      flashMemory.erase();
     },
     /** CreateEmptySaveGame: the save in memory empty again. */
     reset() { bytes.set(emptySave()); },
@@ -135,10 +126,9 @@ export function openSave(storage = browserStorage()) {
       view.setUint32(0, SECURITY, true);
       view.setUint32(CHECKSUM, checksum(bytes), true);
       flash = bytes.slice();
-      try {
-        storage?.setItem(SAVE_KEY, btoa(String.fromCharCode(...flash)));
-        storage?.removeItem(EMERALDS_KEY);   // the save has them now
-      } catch { /* storage blocked or full: kept for this visit */ }
+      if (flashMemory.write(flash)) {
+        try { storage?.removeItem(EMERALDS_KEY); } catch { /* storage blocked */ }   // the save has them now
+      }
       return true;
     },
   };

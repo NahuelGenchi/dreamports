@@ -3,7 +3,7 @@
 // and, without all seven Chaos Emeralds, the message (credits.js). Its end is where the SEGA logo comes up.
 
 import { TICK_MS } from './constants.js';
-import { createClock } from './clock.js';
+import { createClock } from '../../../../kit/gba/clock.js';
 import { createRenderer } from './renderer.js';
 import { createEndingRenderer } from './endingrender.js';
 import { createCongratulations } from './congratulations.js';

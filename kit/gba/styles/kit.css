@@ -1,3 +1,7 @@
+/* The look of a game's page on the kit: its start screen (ui/rom-setup.js), the game's screen with the settings
+   button and, on touch screens, the controller drawn around it, the unlock popup, the settings and the views they
+   grow into (ui/sheet.js), and the asset viewer, drawn like the dreamports.net launcher, light or dark as it is. */
+
 :root {
   color-scheme: dark;
   --bg: #050a24;
@@ -31,7 +35,7 @@ button { font: inherit; }
 .link { padding: 0; border: 0; background: none; color: #9cc3ff; text-decoration: underline; cursor: pointer; }
 .link[hidden] { display: none; }
 
-/* the game's ROM setup: a row for each of the three ROMs, with their extras under them, then Play. It is drawn
+/* the game's ROM setup: a row for each ROM the game reads, with their extras under them, then Play. It is drawn
    like the dreamports.net launcher the game opens from, at its sizes: all in Monocraft, a pixel font nine of its
    pixels to the em, with names and buttons at 15 px and what's said about them at 13.5 px, and 2 px pixel-art
    frames with their corner pixels left out. Light or dark, as the launcher is. */
@@ -342,8 +346,8 @@ button { font: inherit; }
   .touch .start { bottom: calc(var(--edge) + var(--pad) / 2 - 40px); }
 }
 
-/* the asset viewer (src/ui/assets-view.js), drawn like the start screen: each part on the launcher's paper in a
-   pixel frame, the sprites and the act on its sky blue, the wide ones in boxes that scroll */
+/* the asset viewer (ui/assets-view.js), drawn like the start screen: each part on the launcher's paper in a
+   pixel frame, the game's pictures on its sky blue, the wide ones in boxes that scroll */
 .assets[hidden] { display: none; }
 .assets-page {
   --frame: var(--line);
@@ -377,7 +381,7 @@ button { font: inherit; }
   .assets-facts dd { margin-bottom: 8px; }
 }
 
-/* the unlock popup (src/achievements/popup.js) in a layer over the game's screen, which it comes in from the edge of:
+/* the unlock popup (achievements/popup.js) in a layer over the game's screen, which it comes in from the edge of:
    its pixels are `--dot` CSS px each, and its sizes and places (`--h`, `--margin`, `--trophy-x` …) come from popup.js;
    a light sweeps over it once */
 .unlock-layer { position: fixed; z-index: 4; overflow: hidden; pointer-events: none; }
@@ -399,7 +403,7 @@ button { font: inherit; }
 }
 .unlock-said { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* the settings (src/ui/sheet.js): one sheet in the middle of the screen over the game, which waits behind it,
+/* the settings (ui/sheet.js): one sheet in the middle of the screen over the game, which waits behind it,
    blurred, drawn like the dreamports.net launcher, light or dark as it is: Monocraft, its tokens and its 2 px pixel
    frames with the corner pixels left out. The settings are its first view; the achievements, Your ROMs, the asset
    viewer and the controls are wider views it grows into, each with how far along it is or its parts on the left and

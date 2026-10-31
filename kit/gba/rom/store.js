@@ -1,44 +1,49 @@
-// Keeps the player's ROM in this browser's IndexedDB so it doesn't have to be chosen every visit: the Sonic
-// Advance ROM, and under their own keys the Sonic Rush ROM the optional Rush boost reads and the Sonic Advance
-// 2 ROM the optional Boost Mode reads.
-// Nothing is sent anywhere; clearing site data or "Forget" removes it.
+// Keeps the player's ROMs in this browser's IndexedDB so they don't have to be chosen every visit: in a database
+// of the game's own, each under a key of the game's, such as its own ROM's and those of other games its extras
+// read. Nothing is sent anywhere; clearing site data or "Forget" removes them.
 
-const DB_NAME = 'onsoku-advance', STORE = 'rom', KEY = 'current';
-export const SA1_ROM = KEY, RUSH_ROM = 'rush', SA2_ROM = 'sa2';
+const STORE = 'rom';
 
-function openDb() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function run(mode, action) {
-  const db = await openDb();
-  try {
-    return await new Promise((resolve, reject) => {
-      const request = action(db.transaction(STORE, mode).objectStore(STORE));
+/**
+ * The ROMs kept in the database named `name`: { load(key), remember(name, buffer, key), forget(key) }. `load`
+ * resolves to the ROM kept under `key`, { name, buffer }, or null; `remember` keeps one and resolves to whether
+ * it could; `forget` lets it go.
+ */
+export function createRomStore(name) {
+  function openDb() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(name, 1);
+      request.onupgradeneeded = () => request.result.createObjectStore(STORE);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-  } finally {
-    db.close();
   }
-}
 
-/** @returns {Promise<{name: string, buffer: ArrayBuffer} | null>} */
-export async function loadRememberedRom(key = KEY) {
-  try { return (await run('readonly', s => s.get(key))) ?? null; }
-  catch { return null; }   // private mode or storage disabled: just ask again
-}
+  async function run(mode, action) {
+    const db = await openDb();
+    try {
+      return await new Promise((resolve, reject) => {
+        const request = action(db.transaction(STORE, mode).objectStore(STORE));
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    } finally {
+      db.close();
+    }
+  }
 
-export async function rememberRom(name, buffer, key = KEY) {
-  try { await run('readwrite', s => s.put({ name, buffer }, key)); return true; }
-  catch { return false; }
-}
-
-export async function forgetRom(key = KEY) {
-  try { await run('readwrite', s => s.delete(key)); } catch { /* nothing stored */ }
+  return {
+    /** @returns {Promise<{name: string, buffer: ArrayBuffer} | null>} */
+    async load(key) {
+      try { return (await run('readonly', s => s.get(key))) ?? null; }
+      catch { return null; }   // private mode or storage disabled: just ask again
+    },
+    async remember(fileName, buffer, key) {
+      try { await run('readwrite', s => s.put({ name: fileName, buffer }, key)); return true; }
+      catch { return false; }
+    },
+    async forget(key) {
+      try { await run('readwrite', s => s.delete(key)); } catch { /* nothing stored */ }
+    },
+  };
 }

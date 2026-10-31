@@ -1,15 +1,16 @@
-// The settings as one sheet in the middle of the screen, over the game, which waits behind it, blurred (main.js),
-// drawn like the dreamports.net launcher and light or dark as it is. The settings are its first view; the
-// achievements, Your ROMs, the asset viewer and the controls are views it grows into from them, each with its way
-// back. It rises in as it opens and fades as it closes.
+// The settings as one sheet in the middle of the screen, over the game, which waits behind it, blurred (the
+// game's page), drawn like the dreamports.net launcher and light or dark as it is. The settings are its first
+// view; the achievements, Your ROMs, the asset viewer and the controls are views it grows into from them, each
+// with its way back. It rises in as it opens and fades as it closes.
 //
 // With a keyboard the arrows move to the nearest button that way, Z or Enter presses it, Q and E go through a
 // view's tabs, and Esc, X or Backspace goes back a step, closing the sheet from the settings (H closes it from
-// anywhere, main.js). With a controller View + Menu held together open and close it (the game sees neither then),
-// the d-pad or the left stick moves, A presses, B goes back a step, LB and RB go through the tabs and the right
-// stick scrolls. A box that scrolls, once picked, scrolls with the arrows or the d-pad before they move on.
+// anywhere, the game's page). With a controller View + Menu held together open and close it (the game sees
+// neither then), the d-pad or the left stick moves, A presses, B goes back a step, LB and RB go through the tabs
+// and the right stick scrolls. A box that scrolls, once picked, scrolls with the arrows or the d-pad before they
+// move on.
 
-import { connectedPads, holdsSettingsCombo } from '../engine/input.js';
+import { connectedPads, holdsSettingsCombo } from '../input.js';
 import { padsHeld, rightStick, toward, REPEAT_AFTER, REPEAT_EVERY } from './pad-nav.js';
 import { isDark } from './theme.js';
 import { keyHtml } from './keys.js';

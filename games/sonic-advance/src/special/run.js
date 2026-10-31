@@ -16,11 +16,11 @@
 // own globals once CreateSpecialStage has set them (stage.js), `ctx.tables` the tables all the stages share
 // (stages.js).
 
-import { createVideo, SCREEN_W, SCREEN_H } from '../gba/video.js';
+import { createVideo, SCREEN_W, SCREEN_H } from '../../../../kit/gba/video.js';
 import { createEngine } from '../gba/engine.js';
 import { spriteTables } from '../rom/sprites.js';
-import { GBA_FRAME_MS, keysOf } from '../front/front.js';
-import { createClock } from '../engine/clock.js';
+import { keysOf } from '../front/front.js';
+import { createClock, GBA_FRAME_MS } from '../../../../kit/gba/clock.js';
 import { createSpecialStageIntro, createEmeraldScene } from './intro.js';
 import { createSpecialStage } from './stage.js';
 import { createTitleCard } from './card.js';

@@ -8,7 +8,7 @@ import { createChaoHunt } from './engine/chaohunt.js';
 import { createResultsScreen } from './engine/mpresults.js';
 import { createInput, playerControls, PLAYER_KEYS, playerPads } from './engine/input.js';
 import { TICK_MS } from './engine/constants.js';
-import { createClock } from './engine/clock.js';
+import { createClock } from '../../../kit/gba/clock.js';
 
 // what the link hands every GBA as the round starts, by default as in the link recordings (docs/ROM.md):
 // the shared random number and the Chao's place among the stage's eight

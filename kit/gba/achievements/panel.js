@@ -11,9 +11,10 @@ const LOCKED = { G: '#8b93a6', S: '#5d6578', L: '#c3c9d6' };
 const day = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 const escape = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
-// the statuses: their names, what each needs out of every achievement, and what that is in a few words
+// the statuses: their names, what each needs out of every achievement, and what that is in a few words, which for
+// Beaten the game can say in its own
 const STATUSES = {
-  beaten: { name: 'Beaten', needs: all => all.filter(a => a.beaten), hint: 'Clear every zone and the X Zone' },
+  beaten: { name: 'Beaten', needs: all => all.filter(a => a.beaten), hint: 'Earn every achievement marked To beat' },
   mastered: { name: 'Mastered', needs: all => all, hint: 'Earn every achievement' },
 };
 const SHOWN = { all: () => true, earned: a => !!a.earned, locked: a => !a.earned };
@@ -28,9 +29,11 @@ const cells = (n, on) => Array.from({ length: n }, (_, i) => `<i${i < on ? ' cla
 
 /**
  * Adds the achievements of `store` (store.js) to `sheet` as its view 'achievements', and fills the settings' `tile`
- * for them. Returns { refresh() }, which shows a new unlock.
+ * for them. `beaten` says in a few words what the Beaten status takes in this game, such as clearing every level.
+ * Returns { refresh() }, which shows a new unlock.
  */
-export function createAchievementsPanel(sheet, store, tile) {
+export function createAchievementsPanel(sheet, store, tile, { beaten: beatenHint = STATUSES.beaten.hint } = {}) {
+  const hints = { beaten: beatenHint, mastered: STATUSES.mastered.hint };
   const { el, body } = sheet.view('achievements', {
     title: 'Achievements',
     show: () => { status = null; shown = 'all'; fill(); main.scrollTop = 0; },
@@ -86,7 +89,7 @@ export function createAchievementsPanel(sheet, store, tile) {
       b.toggleAttribute('data-done', done);
       b.setAttribute('aria-pressed', String(status === b.dataset.status));
       b.innerHTML = `<span class="status-top"><span>${s.name}</span><span>${done ? 'Reached' : `${got}/${wanted.length}`}</span></span>
-        <span class="meter" aria-hidden="true"><i style="width: ${(got / wanted.length) * 100}%"></i></span><small>${s.hint}</small>`;
+        <span class="meter" aria-hidden="true"><i style="width: ${(got / wanted.length) * 100}%"></i></span><small>${hints[b.dataset.status]}</small>`;
     }
     const latest = earned.reduce((a, b) => (!a || b.earned > a.earned ? b : a), null);
     $('.latest').innerHTML = latest ? `Latest<b>${escape(latest.title)}</b>${day.format(latest.earned)}` : '';

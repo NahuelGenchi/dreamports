@@ -3,7 +3,7 @@
 // results, the game over, Neo Green Hill Zone's two acts with their collision, objects, enemies and rings, and the zone's
 // background. Runs entirely in the browser.
 
-import { Rom } from './rom.js';
+import { Rom } from '../../../../kit/gba/rom/rom.js';
 import { identify } from './identify.js';
 import { locateTables } from './locate.js';
 import { spriteTables, animationFrames, animationPalette, renderFrame, framePieces, paletteAnimation, frameLayout } from './sprites.js';
@@ -18,8 +18,8 @@ import { resultsGraphics } from './results.js';
 import { levelInfo, LEVELS } from './levels.js';
 import { extraStageArt, EXTRA_SPRITES } from './extra.js';
 import { gameOverGraphics } from './gameover.js';
-import { createM4A } from '../sound/m4a.js';
-import { createApu } from '../sound/apu.js';
+import { createM4A } from '../../../../kit/gba/sound/m4a.js';
+import { createApu } from '../../../../kit/gba/sound/apu.js';
 import { normalEndingArt } from './credits.js';
 
 // [animation id, variant] in the sprite tables, as the ROM's character state table maps them for Sonic

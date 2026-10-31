@@ -2,7 +2,7 @@
 // channels (two squares, wave, noise) with their sweep, envelopes, length counters and wave RAM banks, and the
 // final mix with the two DirectSound FIFOs, the bias and the 10-bit clip (GBATEK "GBA Sound Controller", Pan
 // Docs "Audio"). Time is counted in CPU cycles at 2^24 Hz; the mix is sampled every 256 cycles (65536 Hz),
-// the PWM rate SA1 selects.
+// the PWM rate the sound library sets as it starts (SoundInit, m4a.js).
 
 export const CPU_HZ = 16777216, TICK = 256;
 const SEQ_PERIOD = 32768;   // the frame sequencer steps at 512 Hz

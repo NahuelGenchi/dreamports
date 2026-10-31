@@ -1,16 +1,15 @@
-// The game page's start: a row for each ROM the game reads, the Sonic Advance ROM it runs on and the two its
-// optional extras take from, with the switches for those extras under it. A ROM is chosen on its row or dropped
-// on it, or dropped anywhere on the page, where it goes to the row of the game its header names. Each is read as
-// soon as it is chosen, and kept in this browser if the player wants, so Play starts the game straight away.
+// The game page's start: a row for each ROM the game reads, the one it runs on and any its optional extras take
+// from, with the switches for those extras under it. A ROM is chosen on its row or dropped on it, or dropped
+// anywhere on the page, where it goes to the row of the game its header names. Each is read as soon as it is
+// chosen, and kept in this browser if the player wants, so Play starts the game straight away.
 // It is drawn like the dreamports.net launcher the game is opened from, light or dark as the launcher is. While the
 // game runs, its rows are lent to the settings' Your ROMs (sheet.js), where they work the same.
 
-import { loadRememberedRom, rememberRom, forgetRom } from './rom-store.js';
 import { bindController } from './setup-controller.js';
 import { acceptRoms } from './rom-types.js';
 import { darkDevice, pickedTheme, isDark } from './theme.js';
 
-const MAX_BYTES = 512 * 1024 * 1024;   // the largest Nintendo DS cartridge; a Game Boy Advance one is 32 MB
+const GBA_BYTES = 32 * 1024 * 1024;   // the largest Game Boy Advance cartridge
 
 // pixel art on the grid of the page's font, Monocraft: a unit is one of its pixels, 2 px at its 18 px size
 const pixels = (name, width, height, path) =>
@@ -25,8 +24,6 @@ const ICONS = {
   add: pixels('add-icon', 5, 5, 'M2 0h1v2H2zM0 2h5v1H0zM2 3h1v2H2z'),
 };
 
-// the game's own page on dreamports.net, where the way back goes when the player didn't come from its menu
-const DREAMPORTS = 'https://dreamports.net/dreamports/sonic-advance-dreamport/';
 // whether the page before this one is the dreamports.net menu: a page of the same site outside the games, which
 // are under /play/
 function cameFromMenu() {
@@ -40,27 +37,36 @@ function cameFromMenu() {
 }
 
 const escape = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+// "A", "A or B", "A, B or C"
+const either = names => (names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names.at(-1)}` : names[0] ?? '');
 // waits for the page to draw what was just set, or a moment when it isn't drawing (a hidden tab)
 const drawn = () => new Promise(resolve => { requestAnimationFrame(() => setTimeout(resolve)); setTimeout(resolve, 100); });
 
 /**
- * Renders the screen into `host`. Each of `slots` is { key, store, title, required, accept, claims(buffer),
- * read(buffer, progress), unload(), extras }: `claims` says whether a file's header names this game; `read` reads
- * the ROM and resolves to a line about it (its region), or throws with a message for the player, keeping the ROM
- * it had; `unload` lets go of that one; `extras` are its options, each { label, hint, keys, key, get(), set(on),
- * auto }, where `hint` says what it does, `keys` (if any) the keys that use it, shown only to a keyboard, `key` is
- * the key that switches it in the game and `auto` turns it on when the ROM is chosen. `onPlay()` starts the game
- * once every required ROM is read, and `onChange()` is told whenever a ROM comes in or goes.
+ * Renders the screen into `host`, under the game's name, `brand`, with its way back to `home`, the game's own page
+ * on dreamports.net, where it goes when the player didn't come from its menu. The ROMs are kept in `roms`
+ * (rom/store.js). Each of `slots` is { key, store, title, required, accept, claims(buffer), read(buffer, progress),
+ * unload(), extras, console, maxBytes }: `store` is its key in `roms`; `claims` says whether a file's header names
+ * this game; `console` is the one the ROM is for and `maxBytes` the largest it can be (a Game Boy Advance one, 32
+ * MB, unless they say otherwise); `read` reads the ROM and resolves to a line about it (its region), or throws
+ * with a message for the player, keeping the ROM it had; `unload` lets go of that one; `extras` (none by default)
+ * are its options, each { label, hint, keys, key, get(), set(on), auto }, where `hint` says what it does, `keys`
+ * (if any) the keys that use it, shown only to a keyboard, `key` is the key that switches it in the game and
+ * `auto` turns it on when the ROM is chosen. `onPlay()` starts the game once every required ROM is read, and
+ * `onChange()` is told whenever a ROM comes in or goes.
  */
-export function createRomSetup(host, { heading, intro, slots, onPlay, onChange = () => {} }) {
+export function createRomSetup(host, { brand, home, roms, heading, intro, slots, onPlay, onChange = () => {} }) {
+  slots = slots.map(slot => ({ ...slot, extras: slot.extras ?? [] }));
+  const maxBytes = Math.max(...slots.map(s => s.maxBytes ?? GBA_BYTES));
+  const consoles = [...new Set(slots.map(s => s.console ?? 'Game Boy Advance'))];
   host.innerHTML = `
     <div class="setup">
       <header class="setup-head">
         <div class="setup-bar">
-          <a class="setup-back" href="${DREAMPORTS}" aria-label="Back to Dreamports" title="Back to Dreamports">${ICONS.back}</a>
+          <a class="setup-back" href="${home}" aria-label="Back to Dreamports" title="Back to Dreamports">${ICONS.back}</a>
           <div class="pad" data-state="gone"><span class="pad-icon" aria-hidden="true"></span><span class="pad-note" role="status" aria-live="polite"></span></div>
         </div>
-        <p class="setup-brand">Sonic Advance Dreamport</p>
+        <p class="setup-brand">${escape(brand)}</p>
         <h1>${heading}</h1>
         <p class="setup-intro">${intro}</p>
       </header>
@@ -197,7 +203,7 @@ export function createRomSetup(host, { heading, intro, slots, onPlay, onChange =
       if (token !== c.token) return null;
       c.text.title = name;
       c.about = detail;
-      c.saved = saved || (store && await rememberRom(name, buffer, c.slot.store));
+      c.saved = saved || (store && await roms.remember(name, buffer, c.slot.store));
       if (auto) c.slot.extras.forEach(e => { if (e.auto) e.set(true); });
       setState(c, 'ready');
       return null;
@@ -215,10 +221,10 @@ export function createRomSetup(host, { heading, intro, slots, onPlay, onChange =
   async function addFile(file, target, auto, alone) {
     const into = target && rows[target];
     const fail = error => { if (into) say(into, error, 'error'); else showNote(error); return { key: null, error }; };
-    if (file.size > MAX_BYTES) return fail(`${file.name} is too large to be a Game Boy Advance or Nintendo DS ROM.`);
+    if (file.size > maxBytes) return fail(`${file.name} is too large to be a ${either(consoles)} ROM.`);
     const buffer = await file.arrayBuffer();
     const c = Object.values(rows).find(c => c.slot.claims(buffer)) ?? into;
-    if (!c) return fail(`${file.name} isn't Sonic Advance, Sonic Advance 2 or Sonic Rush.`);
+    if (!c) return fail(`${file.name} isn't ${either(slots.map(s => s.title))}.`);
     const error = await load(c, buffer, file.name, { store: remember.checked, auto });
     if (!error && alone && into && into !== c) say(into, `That was ${c.slot.title}, so it went to its own row.`);
     return { key: c.slot.key, error };
@@ -252,7 +258,7 @@ export function createRomSetup(host, { heading, intro, slots, onPlay, onChange =
       c.token++;
       c.slot.unload();
       c.slot.extras.forEach(e => e.set(false));
-      await forgetRom(c.slot.store);
+      await roms.forget(c.slot.store);
       c.saved = false;
       c.about = '';
       c.text.removeAttribute('title');
@@ -289,7 +295,7 @@ export function createRomSetup(host, { heading, intro, slots, onPlay, onChange =
   });
   forget.addEventListener('click', async () => {
     for (const c of Object.values(rows)) {
-      await forgetRom(c.slot.store);
+      await roms.forget(c.slot.store);
       c.saved = false;
     }
     update();
@@ -303,7 +309,7 @@ export function createRomSetup(host, { heading, intro, slots, onPlay, onChange =
   for (const c of Object.values(rows)) setState(c, 'empty');
   // the ROMs kept from an earlier visit, each read again
   const restored = Promise.all(Object.values(rows).map(async c => {
-    const saved = await loadRememberedRom(c.slot.store);
+    const saved = await roms.load(c.slot.store);
     if (saved && c.el.dataset.state === 'empty') await load(c, saved.buffer, saved.name, { saved: true });
   })).then(() => { if (!play.disabled) play.focus({ preventScroll: true }); });
 

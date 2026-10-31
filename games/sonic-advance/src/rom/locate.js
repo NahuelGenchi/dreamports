@@ -1,7 +1,7 @@
 // Finds the extractor's tables by their shape, for ROM versions without known offsets.
 
 import { RomError } from './identify.js';
-import { ROM_BASE } from './rom.js';
+import { ROM_BASE } from '../../../../kit/gba/rom/rom.js';
 import { rlDecompress } from './entities.js';
 import { findMusicPlayers } from './sound.js';
 import { findUiGraphics } from './hud.js';

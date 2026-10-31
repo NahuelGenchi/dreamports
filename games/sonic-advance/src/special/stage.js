@@ -28,7 +28,7 @@
 import { createBackground, drawBackground } from '../gba/background.js';
 import { createSprite, updateSprite } from '../gba/sprite.js';
 import { soundLayout } from '../rom/sound.js';
-import { songFrames } from '../sound/synth.js';
+import { songFrames } from '../../../../kit/gba/sound/synth.js';
 import { SONG } from '../sound/songs.js';
 import { stageData, stageTables } from './stages.js';
 import { createPlayer, createPlayerState, FLAG } from './player.js';
