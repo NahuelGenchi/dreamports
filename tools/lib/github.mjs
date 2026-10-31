@@ -84,6 +84,17 @@ export function findFork(remotes, wanted) {
       + 'gh repo fork --remote makes one and adds it.');
 }
 
+/** Whether GitHub has a commit in a repository, so a link to it there works: a commit that was never pushed has none. */
+export function hasCommit(repository, commit) {
+  try {
+    return !!api(`repos/${repository}/commits/${commit}`);
+  } catch (error) {
+    // GitHub answers 422 for a commit it doesn't have
+    if (error.status === 422) return false;
+    throw error;
+  }
+}
+
 /** The fork's GitHub Pages site: { url, branch, status }, or null while Pages is off. */
 export function pagesOf(repository) {
   const pages = api(`repos/${repository}/pages`);

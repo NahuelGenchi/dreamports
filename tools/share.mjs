@@ -14,7 +14,7 @@ import { head, uncommitted, remotes, fileAt, filesAt, fetchPreviews, pushPreview
 import { percentText, proofOf } from '../src/lib/entries.mjs';
 import { progressMap } from '../src/lib/progress-map.mjs';
 import {
-  UPSTREAM, api, signedInAs, findFork, pagesOf, turnOnPages, lastBuild, buildPages, progressCategory, threadOf, openThread, postIn,
+  UPSTREAM, api, signedInAs, findFork, hasCommit, pagesOf, turnOnPages, lastBuild, buildPages, progressCategory, threadOf, openThread, postIn,
 } from './lib/github.mjs';
 
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -46,6 +46,8 @@ export async function run(args) {
   }
   const url = pages?.url ?? predictedAddress(fork);
   const address = `${url}${name}/`;
+  // the commit is linked only once GitHub has it, which it doesn't until the work is pushed, as /dreamport-send does
+  const linked = hasCommit(fork.repository, commit);
 
   // what the post says, and the clip that goes with it
   const clip = post ? chooseClip(game, clipFile) : null;
@@ -60,15 +62,16 @@ export async function run(args) {
     category = progressCategory();
     thread = threadOf(category.categoryId, game);
   }
-  const postText = siteUrl => postBody({ about, title, clip, clips, map, siteUrl, numbers: numbersAt(commit, game), address: `${siteUrl}${name}/`, fork, commit, branch });
+  const postText = siteUrl => postBody({ about, title, clip, clips, map, siteUrl, numbers: numbersAt(commit, game), address: `${siteUrl}${name}/`, fork, commit, branch, linked });
 
   const tip = fetchPreviews(fork.remote);
-  const preview = makePreview({ tip, commit, branch, game, title, name, author: login, repository: fork.repository, url, about, guide: GUIDE, clips: [...clips, ...(map ? [map] : [])] });
+  const preview = makePreview({ tip, commit, branch, game, title, name, author: login, repository: fork.repository, linked, url, about, guide: GUIDE, clips: [...clips, ...(map ? [map] : [])] });
 
   console.log(`A preview of ${title}, from commit ${commit.slice(0, 7)} on ${branch}:\n  ${address}`);
   console.log(`It holds ${preview.files} files, ${(preview.bytes / 1e6).toFixed(1)} MB, and only code: the game, its console's kit and the preview's own pages.`);
   console.log(`Anyone with the link can open it, on ${fork.repository}'s GitHub Pages. It says it hasn't been reviewed, and the player gives it their own copy.`);
   if (clips.length) console.log(`The clip for the post goes on the same site, apart from the preview: ${clips.map(c => `${url}${c.path}`).join(' and ')}.`);
+  if (!linked) console.log(`Commit ${commit.slice(0, 7)} isn't on GitHub yet, so the preview${post ? ' and the post name it' : ' names it'} without a link.`);
   const turnOn = !pages;
   if (!(await ask(turnOn
     ? `\nGitHub Pages is off for ${fork.repository}. Switch it on, publishing the ${BRANCH} branch, and publish the preview?`
@@ -215,7 +218,7 @@ function numbersAt(commit, game) {
   }
 }
 
-function postBody({ about, title, clip, clips, map, siteUrl, numbers, address, fork, commit, branch }) {
+function postBody({ about, title, clip, clips, map, siteUrl, numbers, address, fork, commit, branch, linked }) {
   const lines = [`**What changed:** ${about.trim()}`, ''];
   if (clip) {
     const video = `${siteUrl}${clips[0].path}`;
@@ -230,7 +233,9 @@ function postBody({ about, title, clip, clips, map, siteUrl, numbers, address, f
       : ['**Progress:** not measured: the game\'s proof files don\'t add up, and npm run check says why']),
     ...(map ? ['', `![${map.alt}](${siteUrl}${map.path})`, ''] : []),
     `**Preview:** ${address} (not reviewed by the Dreamports team: play it only if you trust its author)`,
-    `**Code:** [${fork.repository}@${commit.slice(0, 7)}](https://github.com/${fork.repository}/commit/${commit}) on \`${branch}\``,
+    linked
+      ? `**Code:** [${fork.repository}@${commit.slice(0, 7)}](https://github.com/${fork.repository}/commit/${commit}) on \`${branch}\``
+      : `**Code:** commit \`${commit.slice(0, 7)}\` on \`${branch}\`, not on GitHub yet`,
   );
   return lines.join('\n');
 }
