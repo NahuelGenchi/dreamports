@@ -57,7 +57,7 @@ Sonic Advance Dreamport's [first act](../games/sonic-advance/proof/recordings/ne
 
 `npm run dp -- prove <game>` plays every recording of the game in the original and in the Dreamport, both from power-on, and compares every frame, pixel for pixel, in the console's own colours. Add recordings' names after the game's to play only those. The Dreamport runs in a browser you don't see, a frame at a time, through its kit's proof mode ([the Game Boy Advance kit's](../kit/gba/README.md#for-the-proof-tools)). Sonic Advance Dreamport's first act, 3,300 frames, takes about a minute.
 
-For each recording it says how many frames were the same and which first differs: the frame, how many pixels differ, and the box they're in. It lists every stretch of frames that differs, and the stretches where the original's screen is one colour, as it is between one screen and the next, which helps find where each of the game's parts starts and ends. For each part the recording proves in `parts.json`, it says whether every frame of it matched. At the end it gives the game's two numbers as they are now. It also compares with the last time the recording was proven: frames that differ now where they matched then are listed apart, with the first of them, which is usually the one a change just broke. If any frame differs, `prove` ends with an error, so a script that runs it stops. Frames are numbered as the Dreamport counts them. The console shows each frame's work one frame later, and `prove` lines the two up.
+For each recording it says how many frames were the same and which first differs: the frame, how many pixels differ, and the box they're in. It lists every stretch of frames that differs, and the stretches where the original's screen is one colour, as it is between one screen and the next, which helps find where each of the game's parts starts and ends. For each part the recording proves in `parts.json`, it says whether every frame of it matched. At the end it gives the game's two numbers as they are now. It also compares with the last time the recording was proven: frames that differ now where they matched then are listed apart, with the first of them, which is usually the one a change just broke. If any frame differs, `prove` ends with an error, so a script that runs it stops. Frames are numbered as the Dreamport counts them. The console shows each frame's work one frame later, and `prove` lines the two up. A game that reads its buttons just after the V-blank, rather than just before it as most do, reads each frame's buttons in the frame `prove` counts as the next one: `"keysAfterVBlank": true` in its `original.json` gives the original its buttons a frame later, so the two still line up. Sonic Battle is one.
 
 Its results go in `.dreamports/results/<game>/<recording>/`:
 
@@ -121,7 +121,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 
 | File | What it holds |
 | :--- | :--- |
-| `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum |
+| `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum, and `keysAfterVBlank` for a game that reads its buttons just after the V-blank |
 | `recordings/` | Recorded play, one file per recording |
 | `code-map.json` | The code map |
 | `progress.json` | Each recording's results and the code that ran in matching play, written by `prove` |
