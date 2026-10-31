@@ -140,11 +140,15 @@ jobs:
           }
           // the game's issue, which lists its pieces: the New Dreamport issue its entry names, or else the open one that
           // claims it, which is also what a copy of the repository finds, where the entry's number is another issue
-          async function gameIssueOf(game) {
-            const named = (await entryOf(game))?.issue;
-            const issue = named && await api(`/issues/${named}`);
-            if (issue && !issue.pull_request && isNewDreamport(issue) && folderIn(issue) === game) return issue;
-            return leadIssueOf(game);
+          const homes = new Map();
+          function gameIssueOf(game) {
+            if (!homes.has(game)) homes.set(game, (async () => {
+              const named = (await entryOf(game))?.issue;
+              const issue = named && await api(`/issues/${named}`);
+              if (issue && !issue.pull_request && isNewDreamport(issue) && folderIn(issue) === game) return issue;
+              return leadIssueOf(game);
+            })());
+            return homes.get(game);
           }
           // a game's pieces: the issues of this repository under its game's issue, open and closed
           const piecesOf = async home => (await list(`/issues/${home.number}/sub_issues`)).filter(i => i.repository_url?.toLowerCase() === root.toLowerCase());
