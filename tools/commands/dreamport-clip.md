@@ -11,4 +11,4 @@ The proof tools play the same button presses in the original and in the Dreampor
 4. Tell them what it found, plainly: how many frames matched, the first frame that differs and where on the screen, the parts it proves, and the game's two numbers, code ported and gameplay proven. Never say it matches unless every frame did. Show them the clip, `.dreamports/results/<game>/<recording>/clip.mp4`, and `first-difference.png` beside it when a frame differs: open it for them, or give its full path.
 5. If something differs, say what it looks like and that `/dreamport-fix` followed by what's wrong goes after it. When it all matches, `/dreamport-play` tries it and `/dreamport-share` puts it online.
 
-The clip and the pictures show the game, so they stay in `.dreamports/`, on this computer. This command posts nothing.
+The clip and the pictures show the game, so they stay in `.dreamports/` and never go in a commit. A clip may go in a pull request or a progress post, and nowhere else (`docs/STANDARD.md`, Clips). This command posts nothing.

@@ -65,12 +65,12 @@ Its results go in `.dreamports/results/<game>/<recording>/`:
 - `first-difference.png`: the first frame that differs, as the original, the Dreamport, and the original in grey with every pixel that differs in magenta.
 - `first-new-difference.png`: the same, for the first frame that differs where it matched last time.
 - `clip.mp4`, with `clip-start.png`, `clip-middle.png` and `clip-end.png`, pictures of its first, middle and last frames.
-- `dreamport.mp4`, the same frames of the Dreamport on its own, with nothing of the original, and `dreamport.png`, its middle frame. It's the clip `share` posts.
+- `dreamport.mp4`, the same frames of the Dreamport on its own, with nothing of the original, and `dreamport.png`, its middle frame. `share` posts `clip.mp4`, and this one when asked with `--clip`.
 - `stills/`, a picture of both at each frame `--stills` names, such as `--stills 249,250` or `--stills 900-905`, up to 600 at a time, and at each part's first and last frames, with the one before and the one after. Each is `frame-<frame>.png`, with where the two differ when they do.
 
 The clip shows the original and the Dreamport side by side, with the frame's number, and *differs* over frames that don't match. It holds every frame, about 60 a second, made inside the browser rather than filmed from a screen, so it's smooth and its pixels stay sharp. It shows the frames the recording's `clip` names, or else the four seconds before the first difference and the second after it, or else the recording's last five seconds. It's an H.264 MP4 video under 2 MB, which phones and browsers play.
 
-The clips and the pictures show the game, so they stay in `.dreamports/`, which the ignore rules keep out of commits. [Clips](../docs/STANDARD.md#clips) in the standard says where they may be shared: `share` posts the Dreamport's on its own, and clips of the original wait for [#82](https://github.com/NahuelGenchi/dreamports/issues/82).
+The clips and the pictures show the game, so they stay in `.dreamports/`, which the ignore rules keep out of commits. [Clips](../docs/STANDARD.md#clips) in the standard says where they may be shared: the clips, the original's included, in pull requests and progress posts, and nowhere else.
 
 ## The code map and the two numbers
 
@@ -97,7 +97,7 @@ Sonic Advance Dreamport's logos are frames 254 to 932 of [`logos-and-intro`](../
 
 ## Sharing a preview
 
-`npm run dp -- share <game>` publishes a preview of the game as it is in your last commit, on GitHub Pages from your own fork, at `https://<you>.github.io/dreamports/<game>/`, so anyone can play it with their own copy without waiting for a review. `--as <name>` names the preview, to keep more than one. With `--post --about "<what changed>"` it also posts in the game's progress thread in this repository's Discussions: what changed, the newest `dreamport.mp4` that `prove` made (or the file `--clip` names), the game's two numbers and the preview's link. It asks before it publishes, before it switches Pages on for your fork the first time, and before it posts, and `--yes` answers yes for you. [Previews and progress threads](../docs/PREVIEWS.md) explains what a preview holds, what it risks for players, and how the threads work.
+`npm run dp -- share <game>` publishes a preview of the game as it is in your last commit, on GitHub Pages from your own fork, at `https://<you>.github.io/dreamports/<game>/`, so anyone can play it with their own copy without waiting for a review. `--as <name>` names the preview, to keep more than one. With `--post --about "<what changed>"` it also posts in the game's progress thread in this repository's Discussions: what changed, the newest side-by-side `clip.mp4` that `prove` made (or the file `--clip` names), the game's two numbers and the preview's link. It asks before it publishes, before it switches Pages on for your fork the first time, and before it posts, and `--yes` answers yes for you. [Previews and progress threads](../docs/PREVIEWS.md) explains what a preview holds, what it risks for players, and how the threads work.
 
 ## Claims and team builds
 
