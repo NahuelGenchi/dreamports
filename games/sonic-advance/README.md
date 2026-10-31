@@ -540,23 +540,25 @@ flowchart LR
 3. **Draw.** The logos, the intro, the title screen and the menu run on a port of the original's own engine (its tasks, sprites, backgrounds, line-by-line effects and V-blank) at the GBA's 59.73 frames a second, and a model of the GBA's video hardware draws them as mGBA does. In the act, sprites and layers are composed at the Game Boy Advance's own 240 × 160 resolution, including the per-line background scrolling the original uses for its sea and clouds. The widescreen view draws up to 368 × 208 around the same screen; the game runs exactly as it does at 240 × 160. The optional [Sonic Rush boost](#sonic-rush-boost) adds its trail and aura around Sonic, the optional [Boost Mode](#sonic-advance-2-boost-mode) Sonic Advance 2's afterimages and sparks, and the optional [Sonic Advance 2 tricks](#sonic-advance-2-tricks) draw Sonic from Sonic Advance 2's sprites while he does one.
 4. **Play.** A port of the game's sound engine runs on its own audio thread. It reads the songs and samples from your ROM, and its mixed output matches the original's byte for byte (see [docs/ROM.md](docs/ROM.md#sound)). The Rush boost's sound plays from your Sonic Rush ROM on a port of the Nintendo DS's sound engine, and Boost Mode's and the tricks' from your Sonic Advance 2 ROM on a second copy of the Game Boy Advance one, all added to the same output.
 
+What every Game Boy Advance Dreamport shares, such as the model of the video hardware, the sound engine, the controls, the settings, saves and achievements, comes from the Game Boy Advance kit, [`kit/gba/`](../../kit/gba/README.md) in the Dreamports repository. This game adds what is its own: Sonic Advance's rules, screens and extras.
+
 ## Run it on your own computer
 
-There is no build step. The pages use JavaScript modules, which browsers only load over HTTP, so serve the game's folder, `games/sonic-advance/` in the [Dreamports repository](https://github.com/NahuelGenchi/dreamports), with any static file server and open it on `localhost`:
+There is no build step. The pages use JavaScript modules, which browsers only load over HTTP, so serve the [Dreamports repository](https://github.com/NahuelGenchi/dreamports)'s folder with any static file server and open the game's folder, `games/sonic-advance/`, on `localhost`. The server runs in the repository's folder, not the game's, because the game loads the [Game Boy Advance kit](../../kit/gba/README.md) from `kit/gba/`:
 
 ```sh
 git clone https://github.com/NahuelGenchi/dreamports.git
-cd dreamports/games/sonic-advance
+cd dreamports
 python -m http.server 8000
 ```
 
-Then open <http://localhost:8000>, add your ROMs and press *Play*. To start another act, add its number in the game's level list: <http://localhost:8000/?level=2> is Secret Base Zone act 1. Add `&character=1` to play as Tails, or `&character=2` as Knuckles.
+Then open <http://localhost:8000/games/sonic-advance/>, add your ROMs and press *Play*. To start another act, add its number in the game's level list: <http://localhost:8000/games/sonic-advance/?level=2> is Secret Base Zone act 1. Add `&character=1` to play as Tails, or `&character=2` as Knuckles.
 
-Two addresses skip ahead for testing: <http://localhost:8000/?debug> starts the act straight away, without the logos and the intro, and <http://localhost:8000/?special> starts Special Stage 1 as soon as the ROM is read, as if Sonic had just left act 1 on its special spring. When the stage ends, the act picks up again from that spring. With the level of another act that has a special spring it starts that act's stage instead: <http://localhost:8000/?special&level=3> is Special Stage 2, from Secret Base Zone act 2.
+Two addresses skip ahead for testing: <http://localhost:8000/games/sonic-advance/?debug> starts the act straight away, without the logos and the intro, and <http://localhost:8000/games/sonic-advance/?special> starts Special Stage 1 as soon as the ROM is read, as if Sonic had just left act 1 on its special spring. When the stage ends, the act picks up again from that spring. With the level of another act that has a special spring it starts that act's stage instead: <http://localhost:8000/games/sonic-advance/?special&level=3> is Special Stage 2, from Secret Base Zone act 2.
 
-To see everything the extractor decodes, open *Asset viewer* in the game's settings: the ROM's tables, Sonic's, the springs' and the rings' animations playing with their original timing, the sprite atlas, the act being played with its collision, and the zone's background. It opens inside the settings, over the game, which waits, with its parts on the left (<kbd>Q</kbd> <kbd>E</kbd>, or <kbd>LB</kbd> <kbd>RB</kbd>, go through them), and its back arrow, <kbd>Esc</kbd> or <kbd>B</kbd> goes back to the settings. On its own, <http://localhost:8000/viewer.html> shows the same for the ROM kept in this browser (Neo Green Hill Zone act 1, or `?level=N`), and asks for the ROM when none is kept.
+To see everything the extractor decodes, open *Asset viewer* in the game's settings: the ROM's tables, Sonic's, the springs' and the rings' animations playing with their original timing, the sprite atlas, the act being played with its collision, and the zone's background. It opens inside the settings, over the game, which waits, with its parts on the left (<kbd>Q</kbd> <kbd>E</kbd>, or <kbd>LB</kbd> <kbd>RB</kbd>, go through them), and its back arrow, <kbd>Esc</kbd> or <kbd>B</kbd> goes back to the settings. On its own, <http://localhost:8000/games/sonic-advance/viewer.html> shows the same for the ROM kept in this browser (Neo Green Hill Zone act 1, or `?level=N`), and asks for the ROM when none is kept.
 
-The site serves this folder as it is at `dreamports.net/play/sonic-advance/`, as [games/README.md](../README.md) explains. To try the game that way, with the rest of the site, run `npm run worker` in the repository's folder and open <http://localhost:8787/play/sonic-advance/>.
+The site serves this folder as it is at `dreamports.net/play/sonic-advance/`, and the kit at `dreamports.net/kit/gba/`, as [games/README.md](../README.md) explains. To try the game that way, with the rest of the site, run `npm run worker` in the repository's folder and open <http://localhost:8787/play/sonic-advance/>.
 
 The page also loads `/dreamports.js` from the site's root, which saves achievements to the player's Dreamports profile and gives the game the ones the profile has. A file server like the one above doesn't have it, so there achievements stay in the browser. With `npm run worker` the site serves it, and profiles are kept in a database on your computer.
 
@@ -569,9 +571,9 @@ Contributions to the game are accepted under its license, [GPL-3.0-or-later](LIC
 ## Thanks
 
 - The [SAT-R](https://github.com/SAT-R) decompilation of Sonic Advance, the reference for the game's data formats, physics and camera behavior. None of its code or data is copied into this repository.
-- [Monocraft](https://github.com/IdreesInc/Monocraft) by Idrees Hassan, the pixel font of the start screen. A subset of it is bundled under the SIL Open Font License 1.1 ([styles/fonts/Monocraft-OFL.txt](styles/fonts/Monocraft-OFL.txt)).
+- [Monocraft](https://github.com/IdreesInc/Monocraft) by Idrees Hassan, the pixel font of the start screen. A subset of it is bundled with the Game Boy Advance kit under the SIL Open Font License 1.1 ([kit/gba/styles/fonts/Monocraft-OFL.txt](../../kit/gba/styles/fonts/Monocraft-OFL.txt)).
 - Palmaris, the author's RetroAchievements project for the Nintendo DSi, whose unlock popup's trophy and 5×7 pixel font the achievement popup uses.
-- [Pixelarticons](https://github.com/halfmage/pixelarticons) by Gerrit Halfmann, whose gamepad icon is the start screen's controller badge, under the MIT License ([styles/icons/pixelarticons-LICENSE.txt](styles/icons/pixelarticons-LICENSE.txt)).
+- [Pixelarticons](https://github.com/halfmage/pixelarticons) by Gerrit Halfmann, whose gamepad icon is the start screen's controller badge, bundled with the Game Boy Advance kit under the MIT License ([kit/gba/styles/icons/pixelarticons-LICENSE.txt](../../kit/gba/styles/icons/pixelarticons-LICENSE.txt)).
 
 ## Legal
 
