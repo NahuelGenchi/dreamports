@@ -104,6 +104,8 @@ jobs:
             const labels = new Set(item.labels.map(label => label.name));
             const milestoneKey = body.match(/(?:^Milestone:\s*|^### Milestone\s*\n\s*)(M[0-6])\b/im)?.[1];
             let desired = item.milestone ?? milestones[milestoneKey ?? 'M4'];
+            // a game's issues, from the New Dreamport and Task forms, go in the game's milestone, which the claims workflow sets
+            const gameIssue = !item.pull_request && /^###\s*Game folder\s*$/m.test(body);
             let incomplete = false;
             if (item.pull_request) {
               // Ignore examples/comments; closing references must be standalone same-repo lines.
@@ -123,7 +125,7 @@ jobs:
                 || linked.some(issue => issue.milestone?.number !== desired.number);
               if (incomplete) needsTracking.push(item.number);
             }
-            if (!item.milestone) {
+            if (!item.milestone && !gameIssue) {
               await api(path, 'PATCH', { milestone: desired.number });
               item.milestone = desired;
             }
