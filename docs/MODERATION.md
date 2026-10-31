@@ -68,7 +68,7 @@ Nothing happens to the post: it waits. Its issue, pull request or thread gets th
 
 ## What the bot leaves to GitHub
 
-The workflow's token can't do the following, so they stay with GitHub's own tools, for the account that owns the repository:
+These stay with GitHub's own tools, for the account that owns the repository: deleting, which the bot doesn't do, and what the workflow's token can't do.
 
 - **Deleting a post.** The bot hides; it doesn't delete. Hidden posts stay readable for whoever opens them, so whether the bot should delete posts with game files is a question for the Dreamports team, asked in [#129](https://github.com/NahuelGenchi/dreamports/issues/129).
 - **Blocking someone** who keeps breaking the rules, which keeps them out of the repository's issues, pull requests and Discussions, and reporting them to GitHub.
