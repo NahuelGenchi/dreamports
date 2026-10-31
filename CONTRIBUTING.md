@@ -9,7 +9,7 @@ You don't need to write code to make Dreamports better. With a free GitHub accou
 - **Suggest a port** made by another fan, for the site's mash-ups. Link its own page and say who made it.
 - **Report a problem** on the site: a broken link, a page that looks wrong on your phone, a typo.
 - **Share an idea** for something the site could do.
-- **Help make a Dreamport.** Each game's tasks are issues with its label. Comment `/claim` on a free one to take it, so nobody else does the same work, as [Claims and teams](docs/TEAMS.md) explains.
+- **Help make a Dreamport.** Each game's tasks are listed under its game's issue. Comment `/claim` on a free one to take it, so nobody else does the same work, as [Claims and teams](docs/TEAMS.md) explains.
 - **Try work in progress.** Each game's [progress thread](https://github.com/NahuelGenchi/dreamports/discussions/categories/progress) links previews of what people are making. Nobody has reviewed them, so play only previews from people you trust, as [Previews and progress threads](docs/PREVIEWS.md) explains.
 
 Open a new issue, choose **Work item**, and describe it in your own words. The form gives examples for every box. If you aren't sure which work type or milestone to pick, leave the defaults; the owner will sort it.

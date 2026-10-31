@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        One person works on a task at a time. To take a free task, comment `/claim` on it, and `/release` gives it back. The Dreamports bot answers in a few seconds, and if someone was faster, it lists the tasks that are still free.
+        A task lands under its game's issue, which lists every piece of the game and who has it. One person works on a task at a time. To take a free task, comment `/claim` on it, and `/release` gives it back. The Dreamports bot answers in a few seconds, and if someone was faster, it lists the tasks that are still free.
 
         A claim with no activity for 14 days is released, and nothing done so far is lost. [Claims and teams](https://github.com/NahuelGenchi/dreamports/blob/main/docs/TEAMS.md) explains the rest.
 
@@ -15,7 +15,7 @@ body:
     id: folder
     attributes:
       label: Game folder
-      description: The game's folder in games/, which is also its label. Lowercase letters, numbers and single dashes.
+      description: The game's folder in games/, which is also its label. The task goes under that game's issue. Lowercase letters, numbers and single dashes.
       placeholder: sonic-battle
     validations:
       required: true

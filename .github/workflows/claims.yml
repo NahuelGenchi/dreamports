@@ -1,13 +1,15 @@
 name: Claims
 
 # One lead per game and one person per task (docs/TEAMS.md). A New Dreamport issue claims a whole game for the
-# person who opens it, unless the game already has a Dreamport or an earlier open New Dreamport issue, and a Task
-# issue claims its task for its author when they tick the box. On any open issue of a game, a comment starting with
-# /claim takes it while nobody has it, and /release gives it back. Each answer is a comment, and the daily run
-# releases every claim whose holder has done nothing on the game's issues, pull requests or progress thread for 14
-# days. Each run only reads the issues' text and the repository's files, through the API, and runs nothing from
-# them. Runs on one issue wait for each other, and each answers every command on its issue that has no answer yet,
-# since GitHub cancels all but the newest waiting run of a concurrency group.
+# person who opens it, unless the game already has a Dreamport or an earlier open New Dreamport issue, and becomes the
+# game's issue, which lists every piece of the game. A game's issue is the New Dreamport issue its entry names, or for
+# a game with no entry yet, the open one that claims it. A Task issue goes under its game's issue as a sub-issue, and
+# claims its task for its author when they tick the box. On any open issue of a game, a comment starting with /claim
+# takes it while nobody has it, and /release gives it back. Each answer is a comment, and the daily run releases every
+# claim whose holder has done nothing on the game's issues, pull requests or progress thread for 14 days. Each run only
+# reads the issues' text and the repository's files, through the API, and runs nothing from them. Runs on one issue
+# wait for each other, and each answers every command on its issue that has no answer yet, since GitHub cancels all
+# but the newest waiting run of a concurrency group.
 on:
   issues:
     types: [opened]
@@ -134,14 +136,28 @@ jobs:
             if (!file?.content) return null;
             const text = Buffer.from(file.content, 'base64').toString('utf8');
             const value = key => new RegExp(`^${key}:\\s*(.+)$`, 'm').exec(text)?.[1].trim().replace(/^(['"])(.*)\1$/, '$2') ?? null;
-            return { title: value('title'), lead: value('lead') };
+            return { title: value('title'), lead: value('lead'), issue: Number(value('issue')) || null };
           }
-          // the game an issue is for: its form's folder, or a game's label
+          // the game's issue, which lists its pieces: the New Dreamport issue its entry names, or else the open one that
+          // claims it, which is also what a copy of the repository finds, where the entry's number is another issue
+          async function gameIssueOf(game) {
+            const named = (await entryOf(game))?.issue;
+            const issue = named && await api(`/issues/${named}`);
+            if (issue && !issue.pull_request && isNewDreamport(issue) && folderIn(issue) === game) return issue;
+            return leadIssueOf(game);
+          }
+          // a game's pieces: the issues of this repository under its game's issue, open and closed
+          const piecesOf = async home => (await list(`/issues/${home.number}/sub_issues`)).filter(i => i.repository_url?.toLowerCase() === root.toLowerCase());
+          // the game an issue is for: its form's folder, a game's label, or the game's issue it's under
           async function gameOf(issue) {
             const named = folderIn(issue);
             if (named !== null) return NAME.test(named) ? named : null;
             const games = await gameFolders(), claimed = (await leadIssues()).map(folderIn);
-            return issue.labels.map(l => l.name).find(l => games.has(l) || claimed.includes(l)) ?? null;
+            const labelled = issue.labels.map(l => l.name).find(l => games.has(l) || claimed.includes(l));
+            if (labelled) return labelled;
+            const parent = issue.parent_issue_url?.toLowerCase().startsWith(`${root}/issues/`.toLowerCase()) && await api(issue.parent_issue_url.slice(root.length));
+            const game = parent && isNewDreamport(parent) ? folderIn(parent) : null;
+            return game && NAME.test(game) ? game : null;
           }
           async function titleOf(game) {
             const entry = await entryOf(game);
@@ -187,15 +203,14 @@ jobs:
             await api(`/issues/${issue.number}`, 'PATCH', { state: 'closed', state_reason: reason });
           }
 
-          // what's still free in a game: its lead, when nobody leads it, and its tasks nobody has
+          // what's still free in a game: its lead, when nobody leads it, and the pieces under its game's issue nobody has
           async function free(game, title, except) {
-            const lead = await leadIssueOf(game);
-            const tasks = (await list(`/issues?state=open&labels=${encodeURIComponent(game)}&sort=created&direction=asc`))
-              .filter(i => !i.pull_request && !i.assignees.length && !isNewDreamport(i) && i.number !== except);
+            const home = await gameIssueOf(game);
+            const tasks = home ? (await piecesOf(home)).filter(i => i.state === 'open' && !i.assignees.length && i.number !== except) : [];
             const lines = [];
-            if (lead && !lead.assignees.length && lead.number !== except) lines.push(`- #${lead.number}: leading ${title}`);
+            if (home?.state === 'open' && !home.assignees.length && home.number !== except) lines.push(`- #${home.number}: leading ${title}`);
             lines.push(...tasks.slice(0, 10).map(t => `- #${t.number}: ${t.title.replace(/^Task:\s*/i, '')}`));
-            if (tasks.length > 10) lines.push(`- and [${tasks.length - 10} more](https://github.com/${repository}/issues?q=${encodeURIComponent(`is:issue is:open no:assignee label:${game}`)})`);
+            if (tasks.length > 10) lines.push(`- and ${tasks.length - 10} more, listed in #${home.number}`);
             return lines.length
               ? `What's still free in ${title}, each yours with \`/claim\` on it:\n\n${lines.join('\n')}`
               : `Nothing else in ${title} is free right now. [The Task form](${form('task.yml')}) suggests a new task.`;
@@ -221,7 +236,7 @@ jobs:
             }
             const help = `A claim with no activity on ${title}'s issues, pull requests or progress thread for ${period} is released, and \`/release\` gives it back sooner. [Claims and teams](${guide}) says what comes next.`;
             return answer(issue, about, lead
-              ? `@${user}, ${title} is yours to lead. Its label is \`${game}\`: the tasks you open for it with [the Task form](${form('task.yml')}) carry it, and anyone can claim them. ${help}`
+              ? `@${user}, ${title} is yours to lead. This is its game's issue, where it's talked about: the tasks you open for it with [the Task form](${form('task.yml')}) land under it, with the label \`${game}\`, and anyone can claim them. ${help}`
               : `@${user}, this task is yours, and nobody else can claim it while you have it. ${help}`,
             `granted=${user}`);
           }
@@ -253,9 +268,17 @@ jobs:
               return close(issue, 'not_planned');
             }
             const entry = await entryOf(game);
+            // a game made before the forms gets its game's issue this way, once its entry names it
+            if (entry?.issue === issue.number) {
+              const title = entry.title ?? `${named} Dreamport`;
+              await prepare(issue, game, title);
+              return claim(issue, user, 'issue', game, title);
+            }
             if (entry || (await gameFolders()).has(game)) {
               const title = entry?.title ?? game;
-              await answer(issue, 'issue', `@${user}, ${title} already exists, in games/${game}/${entry?.lead ? `, led by @${entry.lead}` : ''}.\n\n${await free(game, title, issue.number)}`);
+              const home = await gameIssueOf(game);
+              const lead = home ? home.assignees[0]?.login : entry?.lead;
+              await answer(issue, 'issue', `@${user}, ${title} already exists, in games/${game}/${lead ? `, led by @${lead}` : ''}.${home ? ` Its game's issue is #${home.number}, which lists its pieces.` : ''}\n\n${await free(game, title, issue.number)}`);
               return close(issue, 'duplicate');
             }
             const earlier = (await leadIssues()).find(i => folderIn(i) === game && i.number < issue.number);
@@ -270,7 +293,31 @@ jobs:
             await claim(issue, user, 'issue', game, title);
           }
 
-          // a Task issue gets its game's label and milestone, and its author when they take it
+          // a task goes under its game's issue, unless it's under an issue already
+          async function attach(issue, game) {
+            if (issue.parent_issue_url) return;
+            const home = await gameIssueOf(game);
+            if (!home || home.number === issue.number) return;
+            try {
+              await api(`/issues/${home.number}/sub_issues`, 'POST', { sub_issue_id: issue.id });
+              issue.parent_issue_url = home.url;
+              done.push(`#${issue.number}: under #${home.number}`);
+            } catch (error) {
+              // under one already, put there at the same moment, or past GitHub's 100 sub-issues: it can still be claimed
+              if (error.status !== 422) throw error;
+              done.push(`#${issue.number}: not put under #${home.number}, ${error.message}`);
+            }
+          }
+          // a task nobody took at first is done once it has its game's label, its kind and its milestone, and is under
+          // its game's issue, if the game has one
+          async function prepared(issue) {
+            const game = folderIn(issue);
+            if (![game, 'task'].every(l => issue.labels.some(x => x.name === l)) || !issue.milestone) return false;
+            return Boolean(issue.parent_issue_url) || !(await gameIssueOf(game));
+          }
+
+          // a Task issue gets its game's label and milestone, goes under its game's issue, and gets its author when they
+          // take it
           async function openTask(issue) {
             const user = issue.user.login, game = folderIn(issue);
             const known = NAME.test(game) && ((await gameFolders()).has(game) || await leadIssueOf(game));
@@ -280,6 +327,7 @@ jobs:
             }
             const title = await titleOf(game);
             await prepare(issue, game, title);
+            await attach(issue, game);
             if (ticked(issue)) await claim(issue, user, 'issue', game, title);
           }
 
@@ -289,11 +337,9 @@ jobs:
             if (!issue || issue.pull_request) return;
             const comments = await list(`/issues/${number}/comments`);
             const answered = new Set(comments.filter(c => c.user.login === BOT).map(c => MARK.exec(c.body)?.[1]).filter(Boolean));
-            // a task nobody took at first is done once it has its game's label, its kind and its milestone
-            const prepared = [folderIn(issue), 'task'].every(l => issue.labels.some(x => x.name === l)) && issue.milestone;
             if (issue.state === 'open' && !answered.has('issue')) {
               if (isNewDreamport(issue)) await openGame(issue);
-              else if (isTask(issue) && (!prepared || ticked(issue))) await openTask(issue);
+              else if (isTask(issue) && (ticked(issue) || !(await prepared(issue)))) await openTask(issue);
             }
             for (const comment of comments) {
               const verb = comment.user.type === 'Bot' || answered.has(String(comment.id)) ? null : commandIn(comment.body);
@@ -305,7 +351,7 @@ jobs:
               }
               const game = await gameOf(issue);
               if (!game) {
-                await answer(issue, about, `@${user}, this issue isn't one of a Dreamport's tasks, so it can't be claimed. A game's tasks carry its label, and [the Task form](${form('task.yml')}) opens a new one.`);
+                await answer(issue, about, `@${user}, this issue isn't one of a Dreamport's tasks, so it can't be claimed. A game's tasks are under its game's issue, and [the Task form](${form('task.yml')}) opens a new one.`);
                 continue;
               }
               const title = await titleOf(game);

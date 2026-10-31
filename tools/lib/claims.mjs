@@ -1,6 +1,7 @@
 // What find and team read of the claims (docs/TEAMS.md), through the GitHub CLI: the repository's open issues, where
-// a New Dreamport issue claims a game for its lead and a game's tasks carry its label, each one claimed by whoever
-// it's assigned to; and the lead's team build, a branch of their fork that gathers the team's finished pieces.
+// a New Dreamport issue claims a game for its lead; each game's issue, which lists the game's pieces as its sub-issues,
+// each one claimed by whoever it's assigned to; and the lead's team build, a branch of their fork that gathers the
+// team's finished pieces.
 
 import { UPSTREAM, api } from './github.mjs';
 
@@ -21,8 +22,8 @@ const folderIn = issue => field(issue.body, 'Game folder')?.replace(/`/g, '').tr
 export const isNewDreamport = issue => folderIn(issue) !== null && field(issue.body, 'Where it starts') !== null;
 
 /**
- * The repository's open issues as claims: for each game claimed with a New Dreamport issue, the first one, and a
- * game's tasks, the open issues with its label. Throws when the GitHub CLI can't read them.
+ * The repository's open issues as claims: for each game claimed with a New Dreamport issue, the first one, and each
+ * game's issue and its pieces. Throws when the GitHub CLI can't read them.
  */
 export function readClaims(repository = UPSTREAM) {
   const issues = [];
@@ -38,20 +39,48 @@ export function readClaims(repository = UPSTREAM) {
     const game = folderIn(issue);
     if (NAME.test(game) && !leads.has(game)) leads.set(game, issue);
   }
+  const homes = new Map(), pieces = new Map();
+  /**
+   * A game's issue, which lists its pieces: the New Dreamport issue its entry names, or else the first open one that
+   * claims it, which is also what a copy of the repository finds, where the entry's number is another issue. null
+   * while it has none.
+   */
+  const gameIssueOf = (game, entry) => {
+    if (!homes.has(game)) {
+      const number = entry?.issue;
+      const named = Number.isInteger(number) ? issues.find(i => i.number === number) ?? api(`repos/${repository}/issues/${number}`) : null;
+      homes.set(game, named && !named.pull_request && isNewDreamport(named) && folderIn(named) === game ? named : leads.get(game) ?? null);
+    }
+    return homes.get(game);
+  };
   return {
     repository,
     /** The New Dreamport issue of each game claimed with one: Map(game → issue). */
     leads,
-    /** A game's open tasks: its issues other than its New Dreamport one. */
-    tasksOf: game => issues.filter(i => !isNewDreamport(i) && (i.labels.some(l => l.name === game) || folderIn(i) === game)),
+    gameIssueOf,
+    /** A game's pieces, open and closed: the repository's issues under its game's issue, in its order, or [] without one. */
+    piecesOf: (game, entry) => {
+      const home = gameIssueOf(game, entry);
+      if (!home) return [];
+      if (!pieces.has(home.number)) {
+        const found = [];
+        for (let page = 1; ; page++) {
+          const batch = api(`repos/${repository}/issues/${home.number}/sub_issues?per_page=100&page=${page}`) ?? [];
+          found.push(...batch.filter(i => i.repository_url?.toLowerCase() === home.repository_url?.toLowerCase()));
+          if (batch.length < 100) break;
+        }
+        pieces.set(home.number, found);
+      }
+      return pieces.get(home.number);
+    },
     /** The game's name in its New Dreamport issue, such as Sonic Battle, or null. */
     nameOf: game => field(leads.get(game)?.body, 'Game')?.replace(/\s+Dreamport$/i, '') ?? null,
   };
 }
 
-/** A game's lead: whoever its New Dreamport issue is assigned to, or its entry's lead. null while nobody leads it. */
+/** A game's lead: whoever its game's issue is assigned to, or its entry's lead. null while nobody leads it. */
 export function leadOf(game, claims, entry) {
-  const issue = claims?.leads.get(game);
+  const issue = claims?.gameIssueOf(game, entry);
   if (issue) return issue.assignees[0]?.login ?? null;
   return entry?.lead ?? null;
 }
