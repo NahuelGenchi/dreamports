@@ -13,12 +13,13 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `play` | Opens a game in a browser with your copy, and with `--record` keeps what you play as a recording |
 | `prove` | Plays each recording in the original and in the Dreamport, compares every frame, and updates the % |
 | `codemap` | Makes the code map: every function in the original, with its address and size |
+| `share` | Publishes a preview of a game on GitHub Pages from your own fork, and with `--post` posts in the game's progress thread |
 
 For now they work with Game Boy Advance games, and they have only been tried on Linux.
 
 ## What you need
 
-You need Node.js and the repository's packages, as [running the site on your computer](../CONTRIBUTING.md#run-the-site-on-your-computer) explains, and Google Chrome, Chromium or Microsoft Edge. If the tools don't find your browser, set `CHROME` to where it is. To build the reference emulator you also need git, CMake and a C compiler: on Debian or Ubuntu, `sudo apt install git cmake build-essential` installs them. On Windows, run the tools inside WSL (Windows Subsystem for Linux).
+You need Node.js and the repository's packages, as [running the site on your computer](../CONTRIBUTING.md#run-the-site-on-your-computer) explains, and Google Chrome, Chromium or Microsoft Edge. `share` also needs the [GitHub CLI](https://cli.github.com), signed in with `gh auth login`. If the tools don't find your browser, set `CHROME` to where it is. To build the reference emulator you also need git, CMake and a C compiler: on Debian or Ubuntu, `sudo apt install git cmake build-essential` installs them. On Windows, run the tools inside WSL (Windows Subsystem for Linux).
 
 And you need your own copy of the game, made from your own cartridge: the version the Dreamport is built from, such as the USA version.
 
@@ -55,16 +56,21 @@ Its results go in `.dreamports/results/<game>/<recording>/`:
 - `first-difference.png`: the first frame that differs, as the original, the Dreamport, and the original in grey with every pixel that differs in magenta.
 - `first-new-difference.png`: the same, for the first frame that differs where it matched last time.
 - `clip.mp4`, with `clip-start.png`, `clip-middle.png` and `clip-end.png`, pictures of its first, middle and last frames.
+- `dreamport.mp4`, the same frames of the Dreamport on its own, with nothing of the original, and `dreamport.png`, its middle frame. It's the clip `share` posts.
 
 The clip shows the original and the Dreamport side by side, with the frame's number, and *differs* over frames that don't match. It holds every frame, about 60 a second, made inside the browser rather than filmed from a screen, so it's smooth and its pixels stay sharp. It shows the frames the recording's `clip` names, or else the four seconds before the first difference and the second after it, or else the recording's last five seconds. It's an H.264 MP4 video under 2 MB, which phones and browsers play.
 
-The clip and the pictures show the game, so they stay in `.dreamports/`, which the ignore rules keep out of commits. [Clips](../docs/STANDARD.md#clips) in the standard says where clips of the original may be shared.
+The clips and the pictures show the game, so they stay in `.dreamports/`, which the ignore rules keep out of commits. [Clips](../docs/STANDARD.md#clips) in the standard says where they may be shared: `share` posts the Dreamport's on its own, and clips of the original wait for [#82](https://github.com/NahuelGenchi/dreamports/issues/82).
 
 ## The code map and the %
 
 The code map, `games/<game>/proof/code-map.json`, lists every function in the original program with its address and its size, and nothing of its code. `npm run dp -- codemap <game>` makes one by finding the functions in your copy itself, following the code from where the game starts. A decompilation knows its functions better, and `npm run dp -- codemap <game> --from <list>` takes them from a list: what `nm -S` prints from the decompilation's ELF file, or a CSV with columns for the address and the size, such as the list of functions Ghidra exports. A function listed without a size gets the space up to the next one.
 
 The % is the size of the functions that ran in recorded play where every frame of both versions matched, divided by the size of every function in the code map. `prove` notes which of the original's functions ran in each frame, keeps those that ran in frames that matched, and writes the % to `games/<game>/proof/progress.json`, with each recording's results. Recordings it didn't play this time count as they were last proven. It also says how many of the original's instructions ran outside every function of the code map: code the map is missing, or code the game copies into the console's memory before running it.
+
+## Sharing a preview
+
+`npm run dp -- share <game>` publishes a preview of the game as it is in your last commit, on GitHub Pages from your own fork, at `https://<you>.github.io/dreamports/<game>/`, so anyone can play it with their own copy without waiting for a review. `--as <name>` names the preview, to keep more than one. With `--post --about "<what changed>"` it also posts in the game's progress thread in this repository's Discussions: what changed, the newest `dreamport.mp4` that `prove` made (or the file `--clip` names), the % from `progress.json` and the preview's link. It asks before it publishes, before it switches Pages on for your fork the first time, and before it posts, and `--yes` answers yes for you. [Previews and progress threads](../docs/PREVIEWS.md) explains what a preview holds, what it risks for players, and how the threads work.
 
 ## A game's proof folder
 

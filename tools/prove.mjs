@@ -1,8 +1,8 @@
 // npm run dp -- prove <game> [recording…]: plays each recording, from power-on, in the original (in the reference
 // emulator) and in the Dreamport (in a headless browser), compares every frame, notes which of the original's
 // functions ran in the frames that matched, updates the game's progress.json and its %, and makes a clip and stills
-// of both side by side. The pictures and the clip stay in .dreamports/results/ on this computer: they show the
-// game, so they never go in a commit.
+// of both side by side, with a clip and a still of the Dreamport on its own. The pictures and the clips stay in
+// .dreamports/results/ on this computer: they show the game, so they never go in a commit.
 
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -216,24 +216,32 @@ async function prove({ game, recording, copy, server, codeMap, before }) {
     await still(clipFrames[clipFrames.length >> 1], 'clip-middle.png', false);
     await still(clip[1], 'clip-end.png', false);
     const length = clipFrames.length * 280896 / 16777216;
-    let bitrate = Math.round(Math.min(1_800_000, CLIP_TARGET * 8 / length)), file;
-    for (let tries = 0; tries < 4; tries++) {
-      const video = await page.evaluate(`__proof.video(${JSON.stringify(clipFrames)}, { bitrate: ${bitrate} })`);
-      file = mp4({
-        width: video.width, height: video.height, description: Buffer.from(video.description, 'base64'),
-        frames: video.frames.map(f => ({ key: f.key, data: Buffer.from(f.data, 'base64') })),
-        timescale: 16777216, duration: 280896,
-      });
-      if (file.length <= CLIP_LIMIT) break;
-      bitrate = Math.round(bitrate * CLIP_TARGET / file.length);
-    }
+    const encode = async alone => {
+      let bitrate = Math.round(Math.min(1_800_000, CLIP_TARGET * 8 / length) / (alone ? 2 : 1)), file;
+      for (let tries = 0; tries < 4; tries++) {
+        const video = await page.evaluate(`__proof.video(${JSON.stringify(clipFrames)}, { bitrate: ${bitrate}, alone: ${alone} })`);
+        file = mp4({
+          width: video.width, height: video.height, description: Buffer.from(video.description, 'base64'),
+          frames: video.frames.map(f => ({ key: f.key, data: Buffer.from(f.data, 'base64') })),
+          timescale: 16777216, duration: 280896,
+        });
+        if (file.length <= CLIP_LIMIT) break;
+        bitrate = Math.round(bitrate * CLIP_TARGET / file.length);
+      }
+      return { file, bitrate };
+    };
+    const { file, bitrate } = await encode(false);
     writeFileSync(join(out, 'clip.mp4'), file);
+    // the Dreamport on its own, with nothing of the original: the clip share can post (tools/share.mjs)
+    const own = await encode(true);
+    writeFileSync(join(out, 'dreamport.mp4'), own.file);
+    writeFileSync(join(out, 'dreamport.png'), Buffer.from((await page.evaluate(`__proof.still(${clipFrames[clipFrames.length >> 1]}, false, true)`)).png, 'base64'));
 
     const outside = first.outside;
     const report = {
       recording: name, frames, matched, differs, firstDifference: difference, onlyInOriginal,
       ...(wasDifferent ? { sinceLastProven: { differs: newly, firstDifference: newDifference, matches: fixed } } : {}),
-      clip: { from: clip[0], to: clip[1], frames: clipFrames.length, bytes: file.length, bitrate },
+      clip: { from: clip[0], to: clip[1], frames: clipFrames.length, bytes: file.length, bitrate, dreamport: { bytes: own.file.length, bitrate: own.bitrate } },
       seconds, errors: page.errors,
       ...(codeMap ? { functions: proven.size, outsideCodeMap: outside } : {}),
     };
@@ -253,7 +261,7 @@ async function prove({ game, recording, copy, server, codeMap, before }) {
     if (codeMap && (outside.cartridge || outside.memory)) {
       console.log(`  Instructions that ran outside every function of the code map: ${outside.cartridge} in the cartridge, ${outside.memory} copied into the console's memory.`);
     }
-    console.log(`  Clip, ${(file.length / 1e6).toFixed(2)} MB, frames ${clip[0]} to ${clip[1]}, and stills: ${where}/`);
+    console.log(`  Clip, ${(file.length / 1e6).toFixed(2)} MB, frames ${clip[0]} to ${clip[1]}, the Dreamport's on its own, ${(own.file.length / 1e6).toFixed(2)} MB, and stills: ${where}/`);
     if (file.length > CLIP_LIMIT) console.log('  The clip is still over 2 MB: a shorter "clip" in the recording makes it lighter.');
     return { frames, matched, differs, onlyInOriginal, functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };
   } finally {

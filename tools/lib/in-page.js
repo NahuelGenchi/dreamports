@@ -57,18 +57,18 @@
 
   const panel = new OffscreenCanvas(WIDTH, HEIGHT);
   // the original, the Dreamport and, if asked, their differences, side by side and twice the size, under a bar
-  // that names them and gives the Dreamport's frame
-  function draw(canvas, frame, { difference = false } = {}) {
+  // that names them and gives the Dreamport's frame; or, `alone`, the Dreamport on its own, with nothing of the original
+  function draw(canvas, frame, { difference = false, alone = false } = {}) {
     const context = canvas.getContext('2d');
-    const original = originals.get(frame), dreamport = kept.get(frame);
-    const same = original.every((c, i) => c === dreamport[i]);
+    const original = alone ? null : originals.get(frame), dreamport = kept.get(frame);
+    const same = alone || original.every((c, i) => c === dreamport[i]);
     context.fillStyle = '#10141c';
     context.fillRect(0, 0, canvas.width, BAR);
     context.font = '12px sans-serif';
     context.textBaseline = 'middle';
     context.fillStyle = '#e8ecf4';
-    context.fillText('Original', 8, BAR / 2);
-    context.fillText('Dreamport', WIDTH * SCALE + 8, BAR / 2);
+    if (!alone) context.fillText('Original', 8, BAR / 2);
+    context.fillText('Dreamport', alone ? 8 : WIDTH * SCALE + 8, BAR / 2);
     context.textAlign = 'right';
     context.fillText(`frame ${frame}`, canvas.width - 8, BAR / 2);
     if (!same) {
@@ -77,7 +77,7 @@
     }
     context.textAlign = 'left';
     context.imageSmoothingEnabled = false;
-    const pictures = [toImage(original), toImage(dreamport)];
+    const pictures = alone ? [toImage(dreamport)] : [toImage(original), toImage(dreamport)];
     let found = null;
     if (difference) {
       found = differences(original, dreamport);
@@ -121,17 +121,17 @@
       originals.set(frame, new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.length / 2));
     },
 
-    /** A still of one frame as a PNG in base64, with where it differs when `difference`. */
-    async still(frame, difference = false) {
-      const canvas = new OffscreenCanvas(WIDTH * SCALE * (difference ? 3 : 2), HEIGHT * SCALE + BAR);
-      const found = draw(canvas, frame, { difference });
+    /** A still of one frame as a PNG in base64, with where it differs when `difference`, or of the Dreamport `alone`. */
+    async still(frame, difference = false, alone = false) {
+      const canvas = new OffscreenCanvas(WIDTH * SCALE * (alone ? 1 : difference ? 3 : 2), HEIGHT * SCALE + BAR);
+      const found = draw(canvas, frame, { difference, alone });
       const png = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer());
       return { png: toBase64(png), pixels: found?.pixels ?? 0, box: found?.box ?? null };
     },
 
-    /** The clip of these frames, encoded as H.264: { description, frames: [{ key, data }] }, in base64. */
-    async video(frames, { bitrate }) {
-      const canvas = new OffscreenCanvas(WIDTH * SCALE * 2, HEIGHT * SCALE + BAR);
+    /** The clip of these frames, encoded as H.264, of both or of the Dreamport `alone`: { description, frames: [{ key, data }] }, in base64. */
+    async video(frames, { bitrate, alone = false }) {
+      const canvas = new OffscreenCanvas(WIDTH * SCALE * (alone ? 1 : 2), HEIGHT * SCALE + BAR);
       const chunks = [];
       let description = null, failure = null;
       const encoder = new VideoEncoder({
@@ -149,7 +149,7 @@
       if (!(await VideoEncoder.isConfigSupported(config)).supported) throw new Error('This browser can\'t encode H.264 video, so there\'s no clip: Chrome can.');
       encoder.configure(config);
       for (let i = 0; i < frames.length && !failure; i++) {
-        draw(canvas, frames[i]);
+        draw(canvas, frames[i], { alone });
         const frame = new VideoFrame(canvas, { timestamp: Math.round(i * FRAME_US), duration: Math.round(FRAME_US) });
         encoder.encode(frame, { keyFrame: i % 120 === 0 });
         frame.close();

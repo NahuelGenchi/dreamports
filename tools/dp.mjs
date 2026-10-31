@@ -6,6 +6,7 @@ const TOOLS = {
   play: 'Opens a game in a browser with your copy, and with --record keeps what you play as a recording',
   prove: 'Plays each recording in the original and in the Dreamport, compares every frame, and updates the %',
   codemap: 'Makes the code map: every function in the original, with its address and size',
+  share: 'Publishes a preview on GitHub Pages from your fork, and with --post posts in the game\'s progress thread',
 };
 
 const [tool, ...args] = process.argv.slice(2);

@@ -9,6 +9,7 @@ You don't need to write code to make Dreamports better. With a free GitHub accou
 - **Suggest a port** made by another fan, for the site's mash-ups. Link its own page and say who made it.
 - **Report a problem** on the site: a broken link, a page that looks wrong on your phone, a typo.
 - **Share an idea** for something the site could do.
+- **Try work in progress.** Each game's [progress thread](https://github.com/NahuelGenchi/dreamports/discussions/categories/progress) links previews of what people are making. Nobody has reviewed them, so play only previews from people you trust, as [Previews and progress threads](docs/PREVIEWS.md) explains.
 
 Open a new issue, choose **Work item**, and describe it in your own words. The form gives examples for every box. If you aren't sure which work type or milestone to pick, leave the defaults; the owner will sort it.
 
@@ -32,7 +33,7 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 | `npm run build` | Makes the finished site in the `dist/` folder |
 | `npm run preview` | Opens that finished site, to check it before it goes online |
 | `npm run worker` | Makes the finished site and opens it with its profiles, at <http://localhost:8787>, with a database on your computer. Profiles only work here, not with `npm run dev` |
-| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame. [`tools/README.md`](tools/README.md) explains them |
+| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame, and `share`, which puts a preview of your work online for anyone to try. [`tools/README.md`](tools/README.md) explains them |
 
 ## Add a game
 
@@ -108,7 +109,7 @@ Then run `npm run check` and `npm run build`. If a detail is missing or misspell
    ```
 
    Name it `<type>/<issue>-<slug>`. Types are `feat`, `fix`, `enh`, `docs`, `research` and `ops`. One branch holds one issue: never reuse a merged or existing branch for new work, and never mix two features on one branch. Use focused commits such as `feat: add the Dreamports catalog page (#3)`. Do not commit directly to `main`. Delete the branch after its PR merges.
-3. **Open a linked PR.** Include a standalone `Closes #N` line for each completed, same-repository issue. Set the PR to the same milestone as its primary issue. Split cross-milestone changes into separate PRs. Use `Refs #N` for unfinished parent or related work; it does not replace a closing reference to the scoped issue.
+3. **Open a linked PR.** A pull request from a fork gets no preview of its own, so share one with `npm run dp -- share` ([Previews and progress threads](docs/PREVIEWS.md)) and put its link in the PR. Include a standalone `Closes #N` line for each completed, same-repository issue. Set the PR to the same milestone as its primary issue. Split cross-milestone changes into separate PRs. Use `Refs #N` for unfinished parent or related work; it does not replace a closing reference to the scoped issue.
 4. **Record the outcome.** Describe exactly what changed, which checks ran, and what was not run. Close the issue only when its stated scope is complete.
 
 For non-file operations (repository settings, hosting, domains), put sanitized commands and results in the issue. When an operation produces no code change, deliver its lasting decision through a small documentation PR instead of an empty PR.
