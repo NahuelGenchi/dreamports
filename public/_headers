@@ -1,5 +1,0 @@
-# Each Dreamport's progress map changes whenever its proof files do. GitHub shows pictures from other sites through
-# its own image cache, which keeps one as long as the site lets it, so no-cache asks it, and browsers, to check for a
-# newer one every time it's shown.
-/dreamports/:page/progress.svg
-  Cache-Control: no-cache

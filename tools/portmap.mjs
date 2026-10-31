@@ -52,7 +52,7 @@ export async function run(args) {
     return 0;
   }
   try {
-    if (writeReadme().changed) console.log('Written: README.md\'s table of Dreamports, with the new numbers.');
+    if (writeReadme().changed) console.log('Written: README.md\'s table of Dreamports and the progress maps, with the new numbers.');
   } catch (error) {
     console.log(`README.md's table of Dreamports wasn't written: ${error.message}`);
   }

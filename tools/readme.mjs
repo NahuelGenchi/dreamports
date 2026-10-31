@@ -1,13 +1,15 @@
 // npm run dp -- readme [--check]: writes the table of Dreamports in README.md from each Dreamport's entry,
-// games/<game>/entry.md, with its code ported and gameplay proven from its proof/ folder, and its lead. `prove` and
-// `portmap` write it too, after they change a game's numbers, so nobody types them. With --check it changes nothing and fails when the table is out of date,
-// or when an entry doesn't agree with its folder, which `npm run check` uses.
+// games/<game>/entry.md, with its code ported and gameplay proven from its proof/ folder, and its lead, and each
+// Dreamport's progress map, in .github/readme/progress/<game>.svg, which the table links. `prove` and `portmap` write
+// them too, after they change a game's numbers, so nobody types them. With --check it changes nothing and fails when
+// the table or a map is out of date, or when an entry doesn't agree with its folder, which `npm run check` uses.
 
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
 import { parse } from 'yaml';
 import { REPO } from './lib/paths.mjs';
 import { ENTRY, mapOf, percentText, proofOf } from '../src/lib/entries.mjs';
+import { progressMap } from '../src/lib/progress-map.mjs';
 
 const README = join(REPO, 'README.md');
 const START = '<!-- The proof tools write this table from each Dreamport\'s entry: npm run dp -- readme. -->';
@@ -15,21 +17,42 @@ const END = '<!-- End of the table of Dreamports. -->';
 
 export async function run(args) {
   const check = args.includes('--check');
-  const { changed } = writeReadme({ check });
-  if (check && changed) throw new Error('README.md\'s table of Dreamports is out of date: npm run dp -- readme writes it again.');
-  console.log(check ? 'README.md\'s table of Dreamports is up to date.' : changed ? 'Written: README.md\'s table of Dreamports.' : 'README.md\'s table of Dreamports was already up to date.');
+  const { changed, files } = writeReadme({ check });
+  if (check && changed) throw new Error(`Out of date: ${files.join(', ')}. npm run dp -- readme writes them again.`);
+  console.log(check ? 'README.md\'s table of Dreamports and the progress maps are up to date.'
+    : changed ? `Updated: ${files.join(', ')}.` : 'README.md\'s table of Dreamports and the progress maps were already up to date.');
   return 0;
 }
 
-/** Writes the table in README.md, or only compares it with `check`: { changed }. */
+/**
+ * Writes the table in README.md and each Dreamport's progress map, and removes the map of a game that's gone, or only
+ * compares them with `check`: { changed, files }, with the files that changed, or would.
+ */
 export function writeReadme({ check = false } = {}) {
+  const list = dreamports();
   const text = readFileSync(README, 'utf8');
   const start = text.indexOf(START), end = text.indexOf(END);
   if (start < 0 || end < start) throw new Error(`README.md has lost the lines that mark its table of Dreamports:\n${START}\n${END}`);
   // blank lines around the table, so GitHub doesn't read the lines that mark it as part of it
-  const next = `${text.slice(0, start + START.length)}\n\n${table(dreamports())}\n\n${text.slice(end)}`;
-  if (next !== text && !check) writeFileSync(README, next);
-  return { changed: next !== text };
+  const files = new Map([[README, `${text.slice(0, start + START.length)}\n\n${table(list)}\n\n${text.slice(end)}`]]);
+  for (const { game, entry } of list) files.set(join(REPO, mapOf(game)), progressMap(game, readProofFiles(game), entry.title).svg);
+  const changed = [];
+  for (const [file, next] of files) {
+    if (existsSync(file) && readFileSync(file, 'utf8') === next) continue;
+    changed.push(file);
+    if (!check) {
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, next);
+    }
+  }
+  const maps = dirname(join(REPO, mapOf('game')));
+  for (const name of existsSync(maps) ? readdirSync(maps) : []) {
+    const file = join(maps, name);
+    if (files.has(file)) continue;
+    changed.push(file);
+    if (!check) rmSync(file);
+  }
+  return { changed: changed.length > 0, files: changed.map(file => relative(REPO, file)) };
 }
 
 /** Every Dreamport's entry and what its proof measures, newest first, as the site lists them. */
@@ -51,7 +74,10 @@ function readEntry(game) {
 }
 
 /** What a game's proof folder measures (proofOf), from its files. */
-export function readProof(game) {
+export const readProof = game => proofOf(game, readProofFiles(game));
+
+/** A game's proof files, as proofOf takes them. */
+function readProofFiles(game) {
   const folder = join(REPO, 'games', game, 'proof');
   const read = name => {
     const file = join(folder, name);
@@ -66,9 +92,9 @@ export function readProof(game) {
   const recordings = existsSync(join(folder, 'recordings'))
     ? Object.fromEntries(readdirSync(join(folder, 'recordings')).filter(f => f.endsWith('.json')).map(f => [f.slice(0, -5), read(`recordings/${f}`)]))
     : {};
-  return proofOf(game, {
+  return {
     original: read('original.json'), map: read('code-map.json'), progress, portMap: read('port-map.json'), parts: read('parts.json'), recordings,
-  });
+  };
 }
 
 // what the site also checks as it's built (src/lib/dreamports.ts), so `npm run check` finds it first
@@ -93,7 +119,7 @@ function table(list) {
   const rows = list.map(({ game, entry, proof }) => {
     const link = entry.ownCopy.links[0];
     const team = entry.team?.length ? `, with ${entry.team.map(profile).join(', ')}` : '';
-    const map = text => `[${text}](https://dreamports.net${mapOf(game)})`;
+    const map = text => `[${text}](${mapOf(game)})`;
     const ported = map(percentText(proof.ported.percent));
     const { gameplay } = proof;
     const proven = gameplay ? map(`${percentText(gameplay.percent)}, ${gameplay.proven} of ${gameplay.total} parts`) : 'No parts listed yet';

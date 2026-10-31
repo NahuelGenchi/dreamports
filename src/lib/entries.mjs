@@ -9,8 +9,8 @@ export const ENTRY = 'entry.md';
 /** The id of a Dreamport's page, which is at /dreamports/<id>/: its folder's name, then "-dreamport". */
 export const pageOf = game => `${game}-dreamport`;
 
-/** Where a Dreamport's progress map is served, next to its page (progress-map.mjs). */
-export const mapOf = game => `/dreamports/${pageOf(game)}/progress.svg`;
+/** Where a Dreamport's progress map is kept in the repository, next to the README's pictures (progress-map.mjs). */
+export const mapOf = game => `.github/readme/progress/${game}.svg`;
 
 /** A GitHub account's name, as a lead or a member of a team writes it. */
 export const GITHUB_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;

@@ -2781,25 +2781,6 @@ dialog.card[open] {
   background: var(--blue);
 }
 
-/* the progress map under the numbers: the picture, cut to leave out the badges at its top */
-.pmap {
-  display: block;
-  margin-top: 14px;
-  overflow: hidden;
-  background: #050a24;
-}
-
-.pmap img {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-.pmap:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: 3px;
-}
-
 /* what proves the numbers, folded into one line under them */
 .parts {
   margin-top: 12px;
