@@ -93,7 +93,7 @@ export async function run(args) {
   if (posting) {
     if (!thread) {
       thread = openThread(category, game, title, `${title}, made in games/${game}/. One post per step: what changed, a clip, the % and a preview.`);
-      console.log(`Opened ${title}'s progress thread: ${thread.url}`);
+      console.log(`Opened ${title}'s progress thread: ${thread.url}\nAdd it to games/${game}/entry.md as \`thread: ${thread.url}\`, so the game's page links it.`);
     }
     console.log(`Posted: ${postIn(thread.id, postText(siteUrl))}`);
   }
@@ -129,14 +129,10 @@ async function ask(question, yes) {
   }
 }
 
-// the game's name on the site: the title of its page in src/content/games/, the one that plays /play/<game>/
+// the game's name on the site: the title in its entry, games/<game>/entry.md
 function titleOf(commit, game) {
-  const list = fileAt(commit, 'src/content/games/')?.toString('utf8') ?? '';
-  for (const file of list.split('\n').filter(f => f.endsWith('.md'))) {
-    const text = fileAt(commit, `src/content/games/${file}`)?.toString('utf8') ?? '';
-    if (text.includes(`/play/${game}/`)) return /^title:\s*(.+)$/m.exec(text)?.[1].trim().replace(/^(['"])(.*)\1$/, '$2') ?? game;
-  }
-  return game;
+  const text = fileAt(commit, `games/${game}/entry.md`)?.toString('utf8') ?? '';
+  return /^title:\s*(.+)$/m.exec(text)?.[1].trim().replace(/^(['"])(.*)\1$/, '$2') ?? game;
 }
 
 // where GitHub Pages will put the fork's site: <owner>.github.io/<fork>/, or the owner's own domain if they have one

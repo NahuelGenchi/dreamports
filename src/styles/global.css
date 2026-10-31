@@ -2701,7 +2701,7 @@ dialog.card[open] {
   line-height: 20px;
 }
 
-/* the ways to play, as icons, and how close the port is to the original */
+/* the ways to play, as icons, lists of links with their notes, and a Dreamport's measured % */
 .ctl {
   display: flex;
   gap: 16px;
@@ -2712,10 +2712,35 @@ dialog.card[open] {
   display: inline-flex;
 }
 
-.pct {
+.fact-items {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fact-note {
+  display: block;
+  color: var(--dim);
+}
+
+.meter {
   display: grid;
   justify-items: start;
-  gap: 6px;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.meter-text {
+  margin: 0;
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
+}
+
+.meter-num {
+  color: var(--ink);
+  font-size: 16px;
 }
 
 .pct-bar {
@@ -2732,31 +2757,6 @@ dialog.card[open] {
 
 .pct-bar i.is-on {
   background: var(--blue);
-}
-
-.pct-parts {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9.6em, 1fr));
-  gap: 2px 18px;
-  width: 100%;
-  margin-top: 2px;
-  color: var(--dim);
-  font-size: 12.5px;
-  line-height: 20px;
-}
-
-.pct-parts > span {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.pct-parts > span > span:last-child {
-  color: var(--ink);
-}
-
-.pct-note {
-  color: var(--dim);
 }
 
 .view .ins-title {

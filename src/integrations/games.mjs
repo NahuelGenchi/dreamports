@@ -6,6 +6,7 @@
 import { copyFile, lstat, mkdir, readdir } from 'node:fs/promises';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ENTRY } from '../lib/entries.mjs';
 
 // a game's folder name is its address: lowercase letters and numbers, with single dashes between them
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -84,6 +85,7 @@ async function problemsWith(kind, folder, name, site) {
   const { files, others } = await walk(join(folder, name), false);
   const paths = new Set(files.map((file) => relative(join(folder, name), file.path)));
   if (kind.page && !paths.has('index.html')) problems.push(`${at}: It needs an index.html, the page the game starts from.`);
+  if (kind.page && !paths.has(ENTRY)) problems.push(`${at}: It needs its entry, ${ENTRY}, which says everything about it and makes its page on the site.`);
   if (!LICENSES.some((license) => paths.has(license))) {
     problems.push(`${at}: It needs a license for its code, in a file named LICENSE or COPYING.`);
   }

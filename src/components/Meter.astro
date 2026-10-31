@@ -1,0 +1,32 @@
+---
+// A Dreamport's measured %, at the top of its progress box: ten blocks, the figure, and what it counts.
+import { SOURCE_URL } from '../lib/site';
+
+interface Props {
+  // null until the proof tools have measured it
+  percent: number | null;
+  text: string | null;
+}
+
+const { percent, text } = Astro.props;
+const on = Math.round((percent ?? 0) / 10);
+const how = `${SOURCE_URL}/blob/main/docs/STANDARD.md#how-progress-is-measured`;
+---
+
+<div class="meter">
+  <span class="pct-bar" aria-hidden="true">
+    {Array.from({ length: 10 }, (_, i) => <i class:list={[i < on && 'is-on']} />)}
+  </span>
+  <p class="meter-text">
+    {
+      text ? (
+        <>
+          <span class="meter-num">{text}</span> of the original’s code, proven by playing.
+        </>
+      ) : (
+        'Not measured yet.'
+      )
+    }{' '}
+    <a href={how}>How it’s measured</a>
+  </p>
+</div>
