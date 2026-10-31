@@ -1173,7 +1173,8 @@ function start(launcher: HTMLElement) {
     } catch {}
     sync();
     box.addEventListener('change', () => {
-      lockedNote.textContent = form.dataset.lockedNote ?? '';
+      // the nudge goes once the box is used
+      lockedNote.textContent = '';
       sync();
       sound.play(box.checked ? 'on' : 'tick');
     });

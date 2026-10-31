@@ -49,7 +49,6 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
         id={open ? 'play' : `play-${id}`}
         method="get"
         action={links[0].href}
-        data-locked-note="Tick to unlock."
         data-nudge-note="Tick the box first."
       >
         <label class="check" for={`own-${id}`}>
@@ -77,8 +76,9 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
               ))
             }
           </div>
+          {/* the padlocks say the buttons are locked: the note only speaks up when one is pressed */}
           <p id={`gate-note-${id}`} class="gate-note" aria-live="polite">
-            <span class="note-locked">Tick to unlock.</span>
+            <span class="note-locked"></span>
             <span class="note-open">{note}</span>
           </p>
         </div>
