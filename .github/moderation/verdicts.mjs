@@ -130,6 +130,7 @@ export function logLine({ item, key, by, model, did = [], flagged = null }) {
     const why = flagged === 'claims' ? 'it\'s a claims command, which the claims workflow handles' : `\`${item.author}\` is one of the repository's own people`;
     return `Flagged ${post}: ${reason}. I left it alone, since ${why}. Decided by ${decided}.`;
   }
-  const actions = did.map((d, i) => (i ? (verbs[d] ?? d).toLowerCase() : verbs[d] ?? d)).join(', ');
+  const words = did.map((d, i) => (i ? (verbs[d] ?? d).toLowerCase() : verbs[d] ?? d));
+  const actions = words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words.at(-1)}` : words[0];
   return `${actions} ${post}: ${reason}. Decided by ${decided}.`;
 }

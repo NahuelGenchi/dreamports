@@ -1,7 +1,6 @@
-// The Dreamports bot's model (docs/MODERATION.md). OpenCode's free models answer first, through a pinned OpenCode run
-// in a process of its own, with an empty home, no token and every tool refused. GitHub Models' free tier is the
-// fallback, with the workflow's token. Each gets the post as data between markers, and an answer counts only if it's
-// one key from the fixed list. Nothing here logs a post or an answer.
+// The Dreamports bot's model (docs/MODERATION.md): OpenCode's free models, asked through a pinned OpenCode run in a
+// process of its own, with an empty home, no token and every tool refused. Each gets the post as data between
+// markers, and an answer counts only if it's one key from the fixed list. Nothing here logs a post or an answer.
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -11,7 +10,6 @@ import { parseAnswer } from './verdicts.mjs';
 
 export const PROMPT = readFileSync(new URL('./prompt.md', import.meta.url), 'utf8');
 export const DEFAULT_MODELS = 'deepseek-v4.1-flash-free,glm-5.3-flash-free';
-export const DEFAULT_FALLBACK = 'openai/gpt-4.1-mini';
 
 // OpenCode 2.0.29 for Linux on x64, from npm, which runs only if its archive has this SHA-256
 const OPENCODE = {
@@ -201,53 +199,6 @@ export function openCodeAsker(setting, { timeout = 90000, budget = 15 * MINUTE }
         }
       }
       if (silent === models.length) down = true;
-      return null;
-    }
-  };
-}
-
-// Asks GitHub Models' free tier, with the workflow's token, twice when it fails for a moment. Once it fails, it stops
-// asking for the rest of the job.
-export function gitHubModelsAsker(setting, token, { budget = 10 * MINUTE } = {}) {
-  const model = setting || DEFAULT_FALLBACK;
-  const started = Date.now();
-  const tried = new Set();
-  let down = !/^[\w.-]+\/[\w.-]+$/.test(model) || !token;
-  return {
-    tried,
-    async ask(post) {
-      if (down || Date.now() - started > budget) return null;
-      tried.add(`github/${model}`);
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        let why, again = true;
-        try {
-          const response = await fetch('https://models.github.ai/inference/chat/completions', {
-            method: 'POST', signal: AbortSignal.timeout(60000),
-            headers: {
-              Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json',
-              'X-GitHub-Api-Version': '2022-11-28'
-            },
-            body: JSON.stringify({
-              model, temperature: 0, max_tokens: 20,
-              messages: [{ role: 'system', content: PROMPT }, { role: 'user', content: messageFor(post) }]
-            })
-          });
-          if (response.ok) {
-            const key = parseAnswer((await response.json()).choices?.[0]?.message?.content);
-            if (key) return { key, model: `github/${model}` };
-            console.log(`github/${model}: no verdict, since its answer wasn't a key.`);
-            return null;
-          }
-          why = `HTTP ${response.status}`;
-          again = [429, 500, 502, 503, 504].includes(response.status);
-        } catch (error) {
-          why = error.name === 'TimeoutError' ? 'it timed out' : error.message;
-        }
-        console.log(`github/${model}: no verdict (${why}).`);
-        if (attempt === 2 || !again) break;
-        await sleep(15000);
-      }
-      down = true;
       return null;
     }
   };

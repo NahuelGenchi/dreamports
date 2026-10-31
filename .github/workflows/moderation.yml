@@ -1,13 +1,13 @@
 name: Moderation
 
 # The Dreamports bot checks what people write here against the project's rules, and acts on its own
-# (docs/MODERATION.md). The judging job reads each post with a read-only token and applies the plain rules. It asks a
-# model only about what they leave: OpenCode's free models in a step with no token at all, then GitHub Models' free
-# tier. Its verdicts hold no text from any post. The acting job checks them against a fixed schema and carries out a
-# fixed plan, from hiding, replying with a fixed text, closing, locking and labelling. Both check out only the bot's
-# own folder from the default branch, never a pull request's code. Runs about one post wait for each other. The hourly
-# run tries again the posts that wait for a model, and checks the reviews and comments on code made since its last run,
-# since those events come with a read-only token on pull requests from forks.
+# (docs/MODERATION.md). The judging job reads each post with a read-only token, then applies the plain rules and asks
+# OpenCode's free models only about what they leave, in a step with no token at all. Its verdicts hold no text from
+# any post. The acting job checks them against a fixed schema and carries out a fixed plan, from hiding, replying with
+# a fixed text, closing, locking and labelling. Both check out only the bot's own folder from the default branch, never
+# a pull request's code. Runs about one post wait for each other. The hourly run tries again the posts that wait for a
+# model, and checks the reviews and comments on code made since its last run, since those events come with a
+# read-only token on pull requests from forks.
 on:
   issues:
     types: [opened, edited]
@@ -44,9 +44,8 @@ jobs:
       pull-requests: read
       discussions: read
       actions: read
-      models: read
     outputs:
-      verdicts: ${{ steps.fallback.outputs.verdicts }}
+      verdicts: ${{ steps.judge.outputs.verdicts }}
     steps:
       - name: Check out the bot, never a pull request's code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,15 +58,10 @@ jobs:
           MODERATION_TREAT_AS_PUBLIC: ${{ vars.MODERATION_TREAT_AS_PUBLIC }}
         run: node .github/moderation/judge.mjs fetch
       - name: Judge them, with no token
+        id: judge
         env:
           MODERATION_MODELS: ${{ vars.MODERATION_MODELS }}
         run: node .github/moderation/judge.mjs judge
-      - name: Ask GitHub Models about what's left, and write the verdicts
-        id: fallback
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          MODERATION_FALLBACK_MODEL: ${{ vars.MODERATION_FALLBACK_MODEL }}
-        run: node .github/moderation/judge.mjs fallback
 
   act:
     name: Act

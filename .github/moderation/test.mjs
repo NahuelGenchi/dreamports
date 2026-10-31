@@ -102,7 +102,7 @@ test('verdicts that don\'t fit the schema do nothing', () => {
   const good = {
     version: 1, mode: 'event', gone: ['IC_kwDOgone'],
     results: [{ kind: 'issue-comment', node: 'IC_kwDOtest123', key: 'spam', by: 'model', model: 'opencode/deepseek-v4.1-flash-free', body: 'text' }],
-    model: { answered: true, failed: false, tried: ['opencode/deepseek-v4.1-flash-free', 'github/openai/gpt-4.1-mini'] }
+    model: { answered: true, failed: false, tried: ['opencode/deepseek-v4.1-flash-free', 'opencode/glm-5.3-flash-free'] }
   };
   const checked = checkVerdicts(JSON.stringify(good));
   assert.deepEqual(checked.results, [{ kind: 'issue-comment', node: 'IC_kwDOtest123', key: 'spam', by: 'model', model: 'opencode/deepseek-v4.1-flash-free', rule: null }]);
@@ -153,7 +153,8 @@ test('replies never quote the post, and say which post they answer', () => {
 test('the log names people as code and never quotes the post', () => {
   const post = { ...item('issue-comment'), text: 'SECRET-TEXT-123' };
   const done = logLine({ item: post, key: 'game-files', by: 'rules', did: ['hid', 'replied'] });
-  assert.equal(done, 'Hid, replied to [a comment](/o/r/issues/1#issuecomment-1) by `someone`: it shares or links a game file. Decided by the plain rules.');
+  assert.equal(done, 'Hid and replied to [a comment](/o/r/issues/1#issuecomment-1) by `someone`: it shares or links a game file. Decided by the plain rules.');
+  assert.ok(logLine({ item: post, key: 'spam', by: 'rules', did: ['labelled', 'closed', 'locked'] }).startsWith('Labelled, closed and locked [a comment]'));
   const flagged = logLine({ item: post, key: 'spam', by: 'model', model: 'opencode/glm-5.3-flash-free', flagged: 'trusted' });
   assert.ok(flagged.startsWith('Flagged') && !flagged.includes('@') && !flagged.includes('SECRET'));
 });

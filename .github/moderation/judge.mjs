@@ -1,7 +1,7 @@
 // The Dreamports bot's judging job (docs/MODERATION.md), one step of the workflow each:
-//   fetch     reads the posts to check, with the workflow's read-only token
-//   judge     applies the plain rules, and asks OpenCode about what they leave, in a step with no token at all
-//   fallback  asks GitHub Models about what OpenCode didn't answer, then writes the verdicts, which hold no post's text
+//   fetch  reads the posts to check, with the workflow's read-only token
+//   judge  applies the plain rules, asks OpenCode about what they leave, and writes the verdicts, which hold no text
+//          from any post, in a step with no token at all
 // An event checks its own post. The hourly run checks the posts waiting for a model, and the reviews and comments on
 // pull requests' code since its last run, since those events come without write access from forks.
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -9,11 +9,11 @@ import { join } from 'node:path';
 import { checkRules } from './rules.mjs';
 import { accounts, isClaimsCommand, isTrusted } from './verdicts.mjs';
 import { api, fetchItems, graphql, list, repository, waitingEntries } from './github.mjs';
-import { gitHubModelsAsker, openCodeAsker } from './model.mjs';
+import { openCodeAsker } from './model.mjs';
 
 const MINUTE = 60000, HOUR = 60 * MINUTE;
 const folder = join(process.env.RUNNER_TEMP, 'moderation');
-const posts = join(folder, 'posts.json'), judged = join(folder, 'judged.json');
+const posts = join(folder, 'posts.json');
 const sweep = ['schedule', 'workflow_dispatch'].includes(process.env.GITHUB_EVENT_NAME);
 const read = file => JSON.parse(readFileSync(file, 'utf8'));
 
@@ -64,7 +64,8 @@ async function readPosts() {
 }
 
 // The plain rules first. The repository's own people and claims commands get the rules alone, without the spam rule,
-// since the bot only flags them. Whatever has nothing the rules notice is allowed, and the rest goes to OpenCode.
+// since the bot only flags them. Whatever has nothing the rules notice is allowed, and the rest goes to OpenCode. A
+// post no model answers for waits.
 async function judgePosts() {
   const data = read(posts);
   const opencode = openCodeAsker(process.env.MODERATION_MODELS);
@@ -80,30 +81,14 @@ async function judgePosts() {
     else {
       const answer = await opencode.ask({ ...item, hints: rules.hints });
       item.verdict = answer ? { key: answer.key, by: 'model', model: answer.model } : { key: 'wait', by: 'none' };
-      item.hints = rules.hints;
     }
-  }
-  writeFileSync(judged, JSON.stringify({ ...data, tried: [...opencode.tried] }));
-}
-
-const KIND_WORDS = {
-  issue: 'Issue', 'pull-request': 'Pull request', discussion: 'Thread', 'issue-comment': 'Comment', 'review-comment': 'Comment on code',
-  review: 'Review', 'discussion-comment': 'Comment in Discussions'
-};
-
-async function askFallback() {
-  const data = read(judged);
-  const github = gitHubModelsAsker(process.env.MODERATION_FALLBACK_MODEL, process.env.GITHUB_TOKEN);
-  for (const item of data.items.filter(item => item.verdict.key === 'wait')) {
-    const answer = await github.ask(item);
-    if (answer) item.verdict = { key: answer.key, by: 'model', model: answer.model };
   }
   const results = data.items.map(item => ({ kind: item.kind, node: item.node, ...item.verdict }));
   const verdicts = {
     version: 1, mode: sweep ? 'sweep' : 'event', results, gone: data.gone,
     model: {
       answered: results.some(result => result.by === 'model'), failed: results.some(result => result.key === 'wait'),
-      tried: [...data.tried, ...github.tried]
+      tried: [...opencode.tried]
     }
   };
   appendFileSync(process.env.GITHUB_OUTPUT, `verdicts=${JSON.stringify(verdicts)}\n`);
@@ -120,6 +105,11 @@ async function askFallback() {
   appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
 }
 
-const steps = { fetch: readPosts, judge: judgePosts, fallback: askFallback };
+const KIND_WORDS = {
+  issue: 'Issue', 'pull-request': 'Pull request', discussion: 'Thread', 'issue-comment': 'Comment', 'review-comment': 'Comment on code',
+  review: 'Review', 'discussion-comment': 'Comment in Discussions'
+};
+
+const steps = { fetch: readPosts, judge: judgePosts };
 if (!steps[process.argv[2]]) throw new Error(`judge.mjs runs one step: ${Object.keys(steps).join(', ')}.`);
 await steps[process.argv[2]]();

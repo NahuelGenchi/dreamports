@@ -60,8 +60,7 @@ The bot treats the model like the post it reads: as something that could try any
 
 - **OpenCode's free models first.** The workflow runs the [OpenCode](https://opencode.ai) program, version 2.0.29, downloaded from npm and checked against its SHA-256 before it runs. It runs without a screen, in an empty folder with an empty home of its own, with no account and no key, in a step of the workflow whose environment holds no token at all. Its config refuses every tool. Its `read` tool is set to ask rather than refused, since OpenCode's free models refuse a request that offers no tool at all, and a run with nobody to ask refuses each read before it happens, so the model can't open a file.
 - **Which models.** The repository variable `MODERATION_MODELS` lists them in order. When it isn't set, they're `deepseek-v4.1-flash-free` and `glm-5.3-flash-free`, OpenCode's free models whose provider keeps nothing and doesn't train on what it gets. The bot asks the first one OpenCode lists at that moment, and refuses any model whose id doesn't end in `-free`, so it can never reach a paid plan.
-- **GitHub Models next.** When no OpenCode model answers, the bot asks [GitHub Models](https://docs.github.com/en/github-models)' free tier with the workflow's own token, which needs only the `models: read` permission: `openai/gpt-4.1-mini`, or the model the repository variable `MODERATION_FALLBACK_MODEL` names.
-- **Free usage limits.** OpenCode's free models stop answering for a while after many requests, with "Free usage limit reached". That's when GitHub Models answers instead.
+- **No other model.** OpenCode's free models stop answering for a while after many requests, with "Free usage limit reached", and they can be down. The bot has no other model to ask: GitHub Models' free tier, which it was meant to fall back on, was [retired](https://docs.github.com/en/github-models) on 30 July 2026, and every other service needs an account and a key. So when neither model answers, the post waits, as the next part says.
 
 ## When no model answers
 
@@ -88,7 +87,7 @@ Both jobs check out only `.github/moderation/` from the default branch. A pull r
 | `.github/moderation/rules.mjs` | The plain rules |
 | `.github/moderation/rom-sites.txt` | The sites that share game files |
 | `.github/moderation/prompt.md` | The model's instructions |
-| `.github/moderation/model.mjs` | How OpenCode and GitHub Models are asked |
+| `.github/moderation/model.mjs` | How OpenCode is installed, locked down and asked |
 | `.github/moderation/verdicts.mjs` | The keys, the schema of verdicts, the plans, the replies and the log's entries |
 | `.github/moderation/judge.mjs`, `act.mjs`, `github.mjs` | The two jobs, and the calls to GitHub's API |
 | `.github/moderation/test.mjs` | The unit tests of the rules and verdicts, which `npm run check` runs |
@@ -96,5 +95,5 @@ Both jobs check out only `.github/moderation/` from the default branch. A pull r
 ## For the Dreamports team
 
 - **A site the bot missed**: add its domain to `.github/moderation/rom-sites.txt`, in a pull request of its own.
-- **The repository variables**, in the repository's settings under *Secrets and variables*, *Actions*, *Variables*: `MODERATION_MODELS` and `MODERATION_FALLBACK_MODEL`, above, and `MODERATION_TREAT_AS_PUBLIC`, only for tests. It lists accounts whose posts the bot judges like anyone else's, even if they're the repository's own people, so their test posts can be hidden. Leave it unset otherwise.
+- **The repository variables**, in the repository's settings under *Secrets and variables*, *Actions*, *Variables*: `MODERATION_MODELS`, above, and `MODERATION_TREAT_AS_PUBLIC`, only for tests. It lists accounts whose posts the bot judges like anyone else's, even if they're the repository's own people, so their test posts can be hidden. Leave it unset otherwise.
 - **To check everything at once**, run the workflow from the Actions tab: it does what the hourly run does.
