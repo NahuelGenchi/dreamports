@@ -1,10 +1,10 @@
 ---
-// About and legal, as a full screen in the menu's place: what Dreamports is, the rules, privacy
-// and credits.
+// About and legal, as a full screen in the menu's place: what Dreamports is, the rules, how rights holders
+// reach the Dreamports team, privacy and credits.
 import OwnGameSteps from './OwnGameSteps.astro';
 import ViewBar from './ViewBar.astro';
 import { MINIMUM_AGE } from '../lib/players';
-import { CONTACT_EMAIL, OWNER_URL, SOURCE_URL, SUGGEST_URL, pageTitle } from '../lib/site';
+import { CONTACT_EMAIL, GITHUB_NOTICES_URL, OWNER_URL, SOURCE_URL, SUGGEST_URL, pageTitle } from '../lib/site';
 
 interface Props {
   // Open when the page loads, at /about/.
@@ -19,6 +19,7 @@ const sections = [
   { id: 'kinds', label: 'What you’ll find here' },
   { id: 'own-game', label: 'Bring your own game' },
   { id: 'legal', label: 'Not affiliated' },
+  { id: 'rights', label: 'For rights holders' },
   { id: 'privacy', label: 'Your privacy' },
   { id: 'credits', label: 'Credits' },
   { id: 'contact', label: 'Get in touch' },
@@ -91,6 +92,22 @@ const sections = [
         </p>
       </section>
 
+      <section id="rights">
+        <Sec>For rights holders</Sec>
+        <p>
+          If you hold the rights to a game and want something on Dreamports taken down, write to <a href={`mailto:${CONTACT_EMAIL}?subject=Rights%20notice`}>{CONTACT_EMAIL}</a>,
+          with “Rights notice” in the subject. Say which game and what you’d like removed, who you are or whom you act
+          for, and how to reach you. You can also send a notice through <a href={GITHUB_NOTICES_URL}>GitHub</a>, where
+          the source code lives.
+        </p>
+        <p>
+          Every game here lives in a folder of its own, so the Dreamports team can take it off dreamports.net and out
+          of the source code in one change, usually within one business day. The team answers every notice, and
+          never makes the sender’s details public. <a href={`${SOURCE_URL}/blob/main/docs/RIGHTS.md`}>How a notice is handled</a> has
+          the details.
+        </p>
+      </section>
+
       <section id="privacy">
         <Sec>Your privacy</Sec>
         <p>
@@ -159,7 +176,8 @@ const sections = [
           be a developer to fill it in. Please never attach game files.
         </p>
         <p>
-          For anything else, including messages from publishers or other rights holders, write to <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
+          For anything else, write to <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>. Rights holders have <a href="#rights">their own section</a>,
+          above.
         </p>
       </section>
     </div>

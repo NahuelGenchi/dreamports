@@ -14,7 +14,7 @@ Branch: <type>/<issue>-<slug>, new from the latest main and used only for this i
 
 <!-- For a change to a game in games/ or a kit in kit/. Delete this part for anything else. -->
 
-Clips: <links to the clips npm run dp -- share published, or drag them here; each a few seconds of H.264 MP4 under about 2 MB. Clips of the original wait for #82>
+Clips: <the clips npm run dp -- prove made, the original next to the Dreamport: links to those share published, or drag them here; each a few seconds of H.264 MP4 under about 2 MB>
 Code ported: <before, from main's README> → <after, from this branch's>
 Gameplay proven: <before, with its parts> → <after, with its parts>
 Sources: <every source used, such as a decompilation or a port made elsewhere, with its license and whether code came in from it>

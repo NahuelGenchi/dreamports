@@ -9,6 +9,9 @@ export const SOURCE_URL = 'https://github.com/NahuelGenchi/dreamports';
 export const OWNER_URL = 'https://nahuelgenchi.com/';
 // Forwards to the owner's inbox through Cloudflare Email Routing (#4).
 export const CONTACT_EMAIL = 'hello@dreamports.net';
+// GitHub's own way for rights holders to send a notice about a repository, such as this one.
+export const GITHUB_NOTICES_URL =
+  'https://docs.github.com/en/site-policy/content-removal-policies/guide-to-submitting-a-dmca-takedown-notice';
 
 export const HOME_TITLE = 'Dreamports · Enhanced fan ports of classic games';
 export const pageTitle = (title?: string): string => (title ? `${title} · Dreamports` : HOME_TITLE);

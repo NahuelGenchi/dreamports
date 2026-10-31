@@ -1,15 +1,15 @@
 // npm run dp -- share <game> [--as <preview>] [--post --about "<what changed>"] [--clip <file>] [--fork <owner/name>]
 // [--yes]: publishes a preview of the game as it is in the last commit, on GitHub Pages from the contributor's own
 // fork, at <owner>.github.io/<fork>/<preview>/. With --post it also posts in the game's progress thread, in the
-// repository's Discussions, from the contributor's own account: what changed, a clip of the Dreamport, its two numbers and
+// repository's Discussions, from the contributor's own account: what changed, a clip of the Dreamport next to the original, its two numbers and
 // the preview's link. A preview holds only code: the player gives it their own copy, as on dreamports.net. share
 // asks before it publishes, before it switches Pages on and before it posts; --yes answers yes, once the
 // contributor has said yes.
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
-import { join, resolve, relative, extname, basename, dirname, sep } from 'node:path';
+import { join, resolve, extname, basename, dirname, sep } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { REPO, LOCAL } from './lib/paths.mjs';
+import { LOCAL } from './lib/paths.mjs';
 import { head, uncommitted, remotes, fileAt, filesAt, fetchPreviews, pushPreviews, makePreview, BRANCH, CLIPS } from './lib/preview.mjs';
 import { percentText, proofOf } from '../src/lib/entries.mjs';
 import {
@@ -143,13 +143,13 @@ function predictedAddress(fork) {
   return `https://${host}/${fork.name}/`;
 }
 
-// the clip for the post: the one named, or the newest clip of the Dreamport on its own that prove made; never one
-// that shows the original, which waits for #82
+// the clip for the post: the one named, or the newest clip prove made of the original and the Dreamport side by
+// side, which progress posts may show (docs/STANDARD.md#clips)
 function chooseClip(game, file) {
   const results = join(LOCAL, 'results', game);
   if (!file) {
     const made = existsSync(results)
-      ? readdirSync(results).map(r => join(results, r, 'dreamport.mp4')).filter(existsSync).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
+      ? readdirSync(results).map(r => join(results, r, 'clip.mp4')).filter(existsSync).sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
       : [];
     if (!made.length) {
       console.log(`No clip: npm run dp -- prove ${game} makes one of the Dreamport, and --clip <file> picks another.\n`);
@@ -160,13 +160,13 @@ function chooseClip(game, file) {
   file = resolve(file);
   if (!existsSync(file)) throw new Error(`${file} isn't there.`);
   if (!['.mp4', '.png'].includes(extname(file).toLowerCase())) throw new Error('A clip is an MP4 video or a PNG picture, as the standard asks.');
-  if (file.startsWith(join(LOCAL, 'results') + sep) && !/^dreamport\.(mp4|png)$/.test(basename(file))) {
-    throw new Error(`${relative(REPO, file)} shows the original next to the Dreamport. Clips of the original can't be posted until #82 allows them: post dreamport.mp4, the clip of the Dreamport on its own.`);
-  }
   const bytes = statSync(file).size;
   if (bytes > CLIP_LIMIT) throw new Error(`${basename(file)} is ${(bytes / 1e6).toFixed(1)} MB, and a clip stays under 2 MB: a shorter one is lighter.`);
-  const still = extname(file) === '.mp4' ? join(dirname(file), `${basename(file, '.mp4')}.png`) : null;
-  return { file, bytes, still: still && existsSync(still) ? still : null };
+  // a frame for the post: prove keeps dreamport.png beside dreamport.mp4, and clip-middle.png beside clip.mp4
+  const base = extname(file) === '.mp4' ? join(dirname(file), basename(file, '.mp4')) : null;
+  const still = base && [`${base}.png`, `${base}-middle.png`].find(existsSync);
+  const sideBySide = file.startsWith(join(LOCAL, 'results') + sep) && /^clip(-[a-z]+)?\.(mp4|png)$/.test(basename(file));
+  return { file, bytes, still: still ?? null, sideBySide };
 }
 
 // the game's two numbers in the last commit, as the post writes them, or null when its proof doesn't add up
@@ -199,7 +199,8 @@ function postBody({ about, title, clip, clips, siteUrl, numbers, address, fork, 
     const video = `${siteUrl}${clips[0].path}`;
     const kind = extname(clip.file) === '.png' ? 'PNG' : 'MP4';
     if (clips[1]) lines.push(`[![${title}: a frame of the clip](${siteUrl}${clips[1].path})](${video})`, '');
-    lines.push(kind === 'PNG' ? `![${title}](${video})` : `[Watch the clip](${video}) (MP4, ${(clip.bytes / 1e6).toFixed(1)} MB)`, '');
+    const what = clip.sideBySide ? ', the original on the left and the Dreamport on the right, with the same button presses' : '';
+    lines.push(kind === 'PNG' ? `![${title}${what}](${video})` : `[Watch the clip](${video}) (MP4, ${(clip.bytes / 1e6).toFixed(1)} MB${what})`, '');
   }
   lines.push(
     ...(numbers
