@@ -213,11 +213,12 @@ jobs:
               const since = granted ? ` since ${day(granted.created_at)}` : '';
               return answer(issue, about, `@${user}, ${lead ? `@${holders[0]} has led ${title}${since}` : `@${holders[0]} has had this task${since}`}, so it isn't free.\n\n${await free(game, title, issue.number)}`);
             }
-            if (!(await api(`/issues/${issue.number}/assignees/${encodeURIComponent(user)}`))) {
-              return answer(issue, about, `@${user}, GitHub won't let me assign this to you, so it's still free. A comment on the issue usually fixes that: try \`/claim\` again.`);
-            }
+            // GitHub leaves out anyone it can't assign, so the answer says whether it worked
             const after = await api(`/issues/${issue.number}/assignees`, 'POST', { assignees: [user] });
             issue.assignees = after.assignees;
+            if (!issue.assignees.some(a => same(a.login, user))) {
+              return answer(issue, about, `@${user}, GitHub didn't let me assign this to you, so it's still free. Say so here, and the Dreamports team will look into it.`);
+            }
             const help = `A claim with no activity on ${title}'s issues, pull requests or progress thread for ${period} is released, and \`/release\` gives it back sooner. [Claims and teams](${guide}) says what comes next.`;
             return answer(issue, about, lead
               ? `@${user}, ${title} is yours to lead. Its label is \`${game}\`: the tasks you open for it with [the Task form](${form('task.yml')}) carry it, and anyone can claim them. ${help}`
