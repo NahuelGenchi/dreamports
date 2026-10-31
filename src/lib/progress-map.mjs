@@ -3,9 +3,10 @@
 // in the original's code map, sized by its bytes and grouped by where it sits in the program, green when it counts
 // toward code ported and grey when it doesn't. Then a smaller panel for gameplay proven, with one equal block for each
 // of the game's parts, green once it's proven. It's measured by the same code as the two numbers (entries.mjs), so it
-// can't disagree with them. The site serves it at /dreamports/<game>-dreamport/progress.svg and shows it on the game's
-// page, and `npm run dp -- share --post` adds a copy of it to each progress post. It holds addresses and sizes only,
-// as the code map does, and nothing of the game.
+// can't disagree with them. It's for the people making the game, so it's only shown on GitHub, never on the site: the
+// proof tools keep it in the repository with the README's table (tools/readme.mjs), and `npm run dp -- share --post`
+// adds a copy of it to each progress post. It holds addresses and sizes only, as the code map does, and nothing of the
+// game.
 
 import { measure, percentText, portedFunctions, proofOf } from './entries.mjs';
 
@@ -38,8 +39,7 @@ const count = number => number.toLocaleString('en');
 
 /**
  * A Dreamport's progress map, from its proof files as proofOf takes them, or null without a code map. `title` is the
- * Dreamport's name. Returns { svg, alt, width, height, badges }, where `badges` is the height of the badges at the
- * top, which a page that shows the two numbers already can leave out.
+ * Dreamport's name. Returns { svg, alt }, where `alt` says what it shows in words.
  */
 export function progressMap(game, files, title) {
   const proof = proofOf(game, files);
@@ -119,7 +119,7 @@ export function progressMap(game, files, title) {
     ...out,
     '</svg>',
   ].join('\n');
-  return { svg: `${svg}\n`, alt, width: WIDTH, height: y, badges: BADGES + GAP };
+  return { svg: `${svg}\n`, alt };
 }
 
 // a dark panel with its title bar, `height` tall under it
