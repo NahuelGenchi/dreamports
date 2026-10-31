@@ -157,6 +157,9 @@ test('the log names people as code and never quotes the post', () => {
   assert.ok(logLine({ item: post, key: 'spam', by: 'rules', did: ['labelled', 'closed', 'locked'] }).startsWith('Labelled, closed and locked [a comment]'));
   const flagged = logLine({ item: post, key: 'spam', by: 'model', model: 'opencode/glm-5.3-flash-free', flagged: 'trusted' });
   assert.ok(flagged.startsWith('Flagged') && !flagged.includes('@') && !flagged.includes('SECRET'));
+  // a flag's mark is not a reply's, so a flag never counts as an answer, nor an answer as a flag
+  const [flag, answer] = [markFor(post.node, 'spam', 'flagged'), markFor(post.node, 'spam')];
+  assert.ok(!flag.includes(answer) && !answer.includes(flag));
 });
 
 test('the repository\'s own people and claims commands are told apart', () => {

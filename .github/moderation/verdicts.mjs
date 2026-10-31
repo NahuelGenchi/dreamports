@@ -69,9 +69,9 @@ export function planFor(key, item) {
   return [{ do: 'reply' }];
 }
 
-// the hidden note each reply ends with, which says which post it answers, so none is answered twice
-export const MARK = /<!-- dreamports-moderation: about=(\S+) key=(\S+) -->/;
-export const markFor = (node, key) => `<!-- dreamports-moderation: about=${node} key=${key} -->`;
+// the hidden note each reply ends with, which says which post it answers, so none is answered twice, and the one each
+// flag in the log ends with, so no post is flagged twice for the same reason
+export const markFor = (node, key, what = 'about') => `<!-- dreamports-moderation: ${what}=${node} key=${key} -->`;
 
 const nouns = { issue: 'this issue', 'pull-request': 'this pull request', discussion: 'this thread', review: 'your review' };
 

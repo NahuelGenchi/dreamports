@@ -53,11 +53,14 @@ async function labelId(label) {
   return labelIds.get(label);
 }
 
+// the bot's own issues with this label, oldest first
+const ownIssues = async (label, state) => ((await api(`/issues?labels=${label}&state=${state}&sort=created&direction=asc&per_page=30`)) ?? [])
+  .filter(issue => !issue.pull_request && issue.user?.login === BOT);
+
 // The bot's own issue with this label, opened the first time it's needed. When two runs open one at the same time,
 // the older stays and the other is closed.
 async function ownIssue(label, title, body, { state, lock = false }) {
-  const find = async () => ((await api(`/issues?labels=${label}&state=${state}&sort=created&direction=asc&per_page=30`)) ?? [])
-    .filter(issue => !issue.pull_request && issue.user?.login === BOT);
+  const find = () => ownIssues(label, state);
   const found = await find();
   if (found.length) return found[0].number;
   await labelId(label);
@@ -71,15 +74,15 @@ async function ownIssue(label, title, body, { state, lock = false }) {
   return issue.number;
 }
 
-// the log: one comment for each thing the bot does or flags
+// the log: one comment for each thing the bot does or flags, a flag ending with its mark
 let logNumber;
-async function log(line) {
+async function log(line, mark = '') {
   summary.push(`- ${line}`);
   logNumber ??= await ownIssue('moderation-log', 'Moderation log', [
     'The Dreamports bot writes a comment here for each thing it does: each post it hides, answers, closes, locks or labels, and each post it only flags, with a link, the reason, and whether the plain rules or a model decided. It never quotes a post. This issue is locked, so only the bot and the Dreamports team write here.',
     '', `[How moderation works](${docs.moderation})`
   ].join('\n'), { state: 'all', lock: true });
-  await api(`/issues/${logNumber}/comments`, 'POST', { body: line });
+  await api(`/issues/${logNumber}/comments`, 'POST', { body: mark ? `${line}\n\n${mark}` : line });
 }
 
 // the alert issue, while some posts wait for a model
@@ -126,16 +129,24 @@ async function settle(node, item, how) {
   }
 }
 
-// whether the bot already answered this post with this verdict, from the marks its replies end with
-async function replied(item, key) {
+// whether the bot already wrote a comment ending with this mark, among the last ones of this issue, pull request or
+// thread
+async function wrote(id, mark) {
   const fields = 'body author { login __typename }';
   const { node } = await graphql(`query($id: ID!) { node(id: $id) {
     ... on Issue { comments(last: 100) { nodes { ${fields} } } }
     ... on PullRequest { comments(last: 100) { nodes { ${fields} } } }
-    ... on Discussion { comments(last: 100) { nodes { ${fields} replies(last: 50) { nodes { ${fields} } } } } } } }`, { id: item.parent.node });
-  const mark = markFor(item.node, key);
+    ... on Discussion { comments(last: 100) { nodes { ${fields} replies(last: 50) { nodes { ${fields} } } } } } } }`, { id });
   return (node?.comments?.nodes ?? []).flatMap(comment => [comment, ...(comment.replies?.nodes ?? [])])
     .some(comment => comment.author?.__typename === 'Bot' && comment.author.login === 'github-actions' && comment.body?.includes(mark));
+}
+
+// whether the bot already answered this post with this verdict, or flagged it for this reason in the log, as when two
+// hourly runs both check a review
+const replied = (item, key) => wrote(item.parent.node, markFor(item.node, key));
+async function flaggedBefore(item, key) {
+  const [issue] = await ownIssues('moderation-log', 'all');
+  return Boolean(issue) && wrote(issue.node_id, markFor(item.node, key, 'flagged'));
 }
 
 // a reply in the post's issue, pull request or thread. In Discussions it goes under the post's own comment, or at
@@ -159,7 +170,10 @@ async function act(result, item) {
   if (!plan.length) return;
   const entry = { item, key: result.key, by: result.by, model: result.model };
   const flagged = isClaimsCommand(item) ? 'claims' : isTrusted(item, treatAsPublic) ? 'trusted' : null;
-  if (flagged) return log(logLine({ ...entry, flagged }));
+  if (flagged) {
+    if (!await flaggedBefore(item, result.key)) await log(logLine({ ...entry, flagged }), markFor(item.node, result.key, 'flagged'));
+    return;
+  }
   const did = [];
   try {
     for (const step of plan) {
