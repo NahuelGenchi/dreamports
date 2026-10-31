@@ -147,7 +147,7 @@ A successful site build shows that the site builds, nothing more. Browser checks
 
 ## Private data and game files
 
-Dreamports never hosts ROMs, game files or assets extracted from games, and links only to projects that ask players to bring their own legal copy. Keep ROMs, saves, extracted assets, private email addresses, account IDs and credentials out of commits, issues, and PRs. The ignore rules are an accidental-staging guard, not permission to collect that data. If a secret is exposed, stop sharing it and revoke it. The Dreamports bot hides posts that break these rules, as [Moderation](docs/MODERATION.md) explains.
+Dreamports never hosts ROMs, game files or assets extracted from games, and links only to projects that ask players to bring their own legal copy. Keep ROMs, saves, extracted assets, private email addresses, account IDs and credentials out of commits, issues, and PRs. The ignore rules are an accidental-staging guard, not permission to collect that data. If a secret is exposed, stop sharing it and revoke it. The Dreamports bot deletes or hides posts that break these rules, as [Moderation](docs/MODERATION.md) explains.
 
 Pictures of games on the site appear only where the owner decides, and only from the owner's own recordings of their own projects. The one exception is clips that show the original game next to a Dreamport, which `npm run dp -- prove` makes to show a match: they may appear in pull requests and in progress posts, and nowhere else, never on the site, in a game's files or in a commit ([Clips](docs/STANDARD.md#clips)). Never present an invented or reconstructed image as a capture.
 

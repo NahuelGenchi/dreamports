@@ -3,11 +3,11 @@ name: Moderation
 # The Dreamports bot checks what people write here against the project's rules, and acts on its own
 # (docs/MODERATION.md). The judging job reads each post with a read-only token, then applies the plain rules and asks
 # OpenCode's free models only about what they leave, in a step with no token at all. Its verdicts hold no text from
-# any post. The acting job checks them against a fixed schema and carries out a fixed plan, from hiding, replying with
-# a fixed text, closing, locking and labelling. Both check out only the bot's own folder, from the default branch or
-# the branch a pull request would merge into, never a pull request's code. Runs about one post wait for each other.
-# The hourly run tries again the posts that wait for a model, and checks the reviews and comments on code made since
-# its last run, since those events come with a read-only token on pull requests from forks.
+# any post. The acting job checks them against a fixed schema and carries out a fixed plan, from deleting, hiding,
+# replying with a fixed text, closing, locking and labelling. Both check out only the bot's own folder, from the
+# default branch or the branch a pull request would merge into, never a pull request's code. Runs about one post wait
+# for each other. The hourly run tries again the posts that wait for a model, and checks the reviews and comments on
+# code made since its last run, since those events come with a read-only token on pull requests from forks.
 on:
   issues:
     types: [opened, edited]

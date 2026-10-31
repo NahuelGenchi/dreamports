@@ -52,9 +52,9 @@ A thread names its game in its first post, under *Game folder*, such as `sonic-a
 
 ## For the Dreamports team: keeping the threads tidy
 
-The [workflow](../.github/workflows/progress-threads.yml) handles duplicate threads and threads without a game. The Dreamports bot moderates everything else on its own, as [Moderation](MODERATION.md) explains. It checks each post as it's written, hides the ones that share game files, link sites that share them, show private details, keys or passwords, or are spam or abuse, and tells their authors why without quoting them. It closes and locks a thread that is spam, and keeps a log the team can read when it wants to. Clips of the original are welcome in progress posts, as [Clips](STANDARD.md#clips) says, so the bot leaves them there.
+The [workflow](../.github/workflows/progress-threads.yml) handles duplicate threads and threads without a game. The Dreamports bot moderates everything else on its own, as [Moderation](MODERATION.md) explains. It checks each post as it's written, deletes the comments that share game files or link sites that share them, hides the ones that show private details, keys or passwords, or are spam or abuse, and tells their authors why without quoting them. It closes and locks a thread that is spam, and keeps a log the team can read when it wants to. Clips of the original are welcome in progress posts, as [Clips](STANDARD.md#clips) says, so the bot leaves them there.
 
-What the bot can't do, such as deleting a post, blocking someone, limiting who can post for a while or reporting a preview to GitHub, is listed in [What the bot leaves to GitHub](MODERATION.md#what-the-bot-leaves-to-github).
+What the bot leaves to GitHub, such as deleting other posts, blocking someone, limiting who can post for a while or reporting a preview to GitHub, is listed in [What the bot leaves to GitHub](MODERATION.md#what-the-bot-leaves-to-github).
 
 ## Words used here
 

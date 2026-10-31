@@ -4,9 +4,9 @@
 
 ## In plain words
 
-Everything people write on this repository's GitHub is checked by the Dreamports bot against the project's rules: issues, pull requests, comments, reviews, and the threads and posts in Discussions. When a post breaks a rule, the bot acts on its own, straight away: it hides the post or closes it, and tells its author why, without quoting it. By the Dreamports team's decision of 31 October 2026, moderation here is done by the bot, never by people: the bot decides, and keeps a log the team can read when it wants to.
+Everything people write on this repository's GitHub is checked by the Dreamports bot against the project's rules: issues, pull requests, comments, reviews, and the threads and posts in Discussions. When a post breaks a rule, the bot acts on its own, straight away: it deletes, hides or closes the post, and tells its author why, without quoting it. By the Dreamports team's decision of 31 October 2026, moderation here is done by the bot, never by people: the bot decides, and keeps a log the team can read when it wants to.
 
-The bot only adds friction. It never deletes a post, edits anyone's words or code, approves or merges anything, or takes or releases a claim. It runs on GitHub Actions and on free models, so it costs nothing.
+The bot only adds friction. The one thing it deletes is a comment that the plain rules find sharing a game file or a site that shares them. It never edits anyone's words or code, approves or merges anything, or takes or releases a claim. It runs on GitHub Actions and on free models, so it costs nothing.
 
 ## What it checks
 
@@ -32,7 +32,7 @@ Each verdict has a fixed plan, written in code, for each kind of post:
 
 | Verdict | A comment or review | An issue or a thread | A pull request |
 | :--- | :--- | :--- | :--- |
-| Game files, or a site that shares them | Hidden as off-topic, and a reply | A reply, then closed and locked | A reply asking to edit it out |
+| Game files, or a site that shares them | Deleted, and a reply; hidden as off-topic instead when a model decided, for a review, or for a comment in Discussions with replies | A reply, then closed and locked | A reply asking to edit it out |
 | Asks for a game | A reply | A reply, then closed | A reply |
 | Clip of the original | Hidden as off-topic, and a reply | A reply, then closed and locked | Nothing: it's allowed there |
 | Private details, or a key, token or password | Hidden as off-topic, and a reply | A reply asking to edit it out | A reply asking to edit it out |
@@ -40,17 +40,17 @@ Each verdict has a fixed plan, written in code, for each kind of post:
 | Spam | Hidden as spam | Labelled `spam`, closed and locked | Labelled `spam`, closed and locked |
 | Notice from a rights holder | Its issue, pull request or thread labelled `rights-notice`, and a reply | Labelled `rights-notice`, and a reply | Labelled `rights-notice`, and a reply |
 
-A hidden comment shows GitHub's reason, such as off-topic, spam or abuse, and stays readable for whoever opens it. A post the bot closes and locks can't get more comments. A reply names the post's author, links the post and the rule, never quotes the post, and ends with a line saying it comes from the Dreamports bot. In Discussions it goes under the comment it answers, or at the end of the thread when that comment is hidden, since GitHub takes no replies under a hidden comment. A reply to a key, token or password asks its owner to revoke it, since anyone may have copied it already.
+A deleted comment is gone for everyone. The bot deletes only when the plain rules found a game file or a site that shares them, which they rarely get wrong, since a deletion can't be undone; a review can't be deleted, and a comment in Discussions that has replies is only hidden, so the replies stay. A hidden comment shows GitHub's reason, such as off-topic, spam or abuse, and stays readable for whoever opens it. A post the bot closes and locks can't get more comments. A reply names the post's author, links the post, unless it was deleted, and the rule, never quotes the post, and ends with a line saying it comes from the Dreamports bot. In Discussions it goes under the comment it answers, or at the end of the thread when that comment is deleted or hidden, since GitHub takes no replies under a hidden comment. A reply to a key, token or password asks its owner to revoke it, since anyone may have copied it already.
 
 **Clips of the original** are welcome in pull requests and in progress posts, the comments in a game's [progress thread](PREVIEWS.md#progress-threads), as [Clips](STANDARD.md#clips) says. Comments on a pull request count as the pull request's, so the bot only acts on clips of the original anywhere else.
 
 **The repository's own people**, its owner, members and collaborators, are never hidden or closed: when the plain rules find something in one of their posts, the bot only flags it in the log, once for each reason, and it never sends their posts to a model. The same goes for comments starting with `/claim` or `/release`, which the [claims workflow](TEAMS.md) answers: the bot never hides them, answers them or sends them to a model. One gap: in a repository that belongs to an organization, GitHub only tells the workflow about the members whose membership is public, so the bot treats a member whose membership is private like anyone else.
 
-**What it never does.** The bot only hides comments, replies with its fixed texts, closes and locks issues, pull requests and threads, and adds its labels: `spam`, `rights-notice` and `moderation-waiting`. It never deletes, unhides or reopens anything, edits anyone's post or code, approves, merges or pushes, assigns anyone, or takes or releases a claim.
+**What it never does.** The bot only deletes and hides comments, replies with its fixed texts, closes and locks issues, pull requests and threads, and adds its labels: `spam`, `rights-notice` and `moderation-waiting`. It never deletes anything else, unhides or reopens anything, edits anyone's post or code, approves, merges or pushes, assigns anyone, or takes or releases a claim.
 
 ## The log
 
-The bot opens one issue, *Moderation log*, labelled `moderation-log`, the first time it needs it, and locks it. It adds a comment there for each thing it does and each post it flags: what it did, a link to the post, its author's name written as code, so nobody is notified, the reason, and whether the plain rules or which model decided. It never quotes a post. Its links leave out `https://github.com`, since GitHub notes a full link to an issue in that issue's own timeline, as "mentioned this", which would mark every post the bot checks.
+The bot opens one issue, *Moderation log*, labelled `moderation-log`, the first time it needs it, and locks it. It adds a comment there for each thing it does and each post it flags: what it did, a link to the post, its author's name written as code, so nobody is notified, the reason, and whether the plain rules or which model decided. It never quotes a post. A link to a comment it deleted leads nowhere, but the entry still says what the comment was and why it went. Its links leave out `https://github.com`, since GitHub notes a full link to an issue in that issue's own timeline, as "mentioned this", which would mark every post the bot checks.
 
 Each run of the [workflow](../.github/workflows/moderation.yml) also has a summary, on its page in the repository's Actions tab, with every post it checked, its verdict, and what decided it.
 
@@ -68,9 +68,9 @@ Nothing happens to the post: it waits. Its issue, pull request or thread gets th
 
 ## What the bot leaves to GitHub
 
-These stay with GitHub's own tools, for the account that owns the repository: deleting, which the bot doesn't do, and what the workflow's token can't do.
+These stay with GitHub's own tools, for the account that owns the repository:
 
-- **Deleting a post.** The bot hides; it doesn't delete. Hidden posts stay readable for whoever opens them, so whether the bot should delete posts with game files is a question for the Dreamports team, asked in [#129](https://github.com/NahuelGenchi/dreamports/issues/129).
+- **Deleting other posts.** The bot deletes only comments in which the plain rules find a game file or a site that shares them, as the Dreamports team decided in [#129](https://github.com/NahuelGenchi/dreamports/issues/129). What else it hides or closes stays readable, and deleting that is up to the account that owns the repository: GitHub only lets admins delete an issue, and a pull request can't be deleted.
 - **Blocking someone** who keeps breaking the rules, which keeps them out of the repository's issues, pull requests and Discussions, and reporting them to GitHub.
 - **Limiting interactions** during a wave of spam, from 24 hours to 6 months, in the repository's settings under *Moderation options*: to accounts older than a day, to people who have contributed before, or to collaborators.
 - **Reporting a preview** that misbehaves to GitHub, which can take a Pages site down.
