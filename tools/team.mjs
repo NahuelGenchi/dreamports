@@ -90,6 +90,13 @@ function gameOf(game) {
   return { title, lead: leadOf(game, claims, local?.entry) };
 }
 
+// back to the team build as it was: the merge undone, and what portmap and prove wrote with it, since the folder
+// had no changes when add began
+function undo() {
+  git(['merge', '--abort'], { quiet: true });
+  git(['reset', '--quiet', '--hard', 'HEAD']);
+}
+
 function needsClean() {
   const changed = git(['status', '--porcelain', '--untracked-files=no']);
   if (changed) throw new Error(`Commit or put aside your changes first, as team switches branches and merges:\n${changed.split('\n').slice(0, 6).map(l => `  ${l}`).join('\n')}`);
@@ -240,7 +247,7 @@ async function add(game, rest, { fork: wanted, all = false, yes = false }) {
     const clashes = git(['diff', '--name-only', '--diff-filter=U']).split('\n').filter(Boolean);
     const real = clashes.filter(f => !generated.has(f));
     if (real.length || !clashes.length) {
-      git(['merge', '--abort'], { quiet: true });
+      undo();
       throw new Error(`#${number} clashes with the team build in:\n${real.map(f => `  ${f}`).join('\n')}\nMerge it by hand (git merge ${piece.slice(0, 7)}), or ask @${pull.user.login} in ${pull.html_url} to bring the branch up to date.`);
     }
     // the proof files and the README's table are written again below, so the team build's stand for now
@@ -255,11 +262,11 @@ async function add(game, rest, { fork: wanted, all = false, yes = false }) {
     after = { proof: readProof(game), progress: readProgress(game) };
     worse = worseThan(before, after);
   } catch (error) {
-    git(['merge', '--abort'], { quiet: true });
+    undo();
     throw new Error(`${error.message}\nNothing was added: the team build is as it was.`);
   }
   if (worse.length) {
-    git(['merge', '--abort']);
+    undo();
     console.log(`\nNothing was added: with #${number}, ${worse.join('; ')}. The team build is as it was. The pull request is where to say so: ${pull.html_url}`);
     return 1;
   }
@@ -298,7 +305,7 @@ function worseThan(before, after) {
     } else if (now.matched < was.matched) worse.push(`${now.matched} frames of ${name} match the original, against ${was.matched} before`);
   }
   const parts = p => p?.gameplay?.proven ?? 0, ported = p => p?.ported?.percent ?? 0;
-  if (parts(after.proof) < parts(before.proof)) worse.push(`${parts(after.proof)} parts are proven, against ${parts(before.proof)} before`);
+  if (parts(after.proof) < parts(before.proof)) worse.push(`${parts(after.proof)} of the game's parts ${parts(after.proof) === 1 ? 'is' : 'are'} proven, against ${parts(before.proof)} before`);
   if (ported(after.proof) < ported(before.proof)) worse.push(`code ported is ${percentText(ported(after.proof))}, against ${percentText(ported(before.proof))} before`);
   return worse;
 }
