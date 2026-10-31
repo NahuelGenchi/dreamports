@@ -29,12 +29,12 @@ An entry is a Markdown file. Its fields go at its top, between two `---` lines, 
 | `summary` | One sentence about it, shown in the README's table and when its page is shared |
 | `needs` | The exact copy players need, such as `A Sonic Advance (USA) ROM (.gba)`. It names the same copy as `proof/original.json` |
 | `controls` | The ways to play: any of `keyboard`, `controller` and `touch` |
-| `lead` | The GitHub account of whoever leads the work on it, such as `NahuelGenchi`, shown in the README's table |
+| `lead` | The GitHub account of whoever leads the work on it, such as `NahuelGenchi`, shown in the README's table. A new game's lead is whoever claimed it with a [New Dreamport](../docs/TEAMS.md#start-a-dreamport) issue |
 | `team` | Optional: the GitHub accounts of everyone else working on it |
 | `kit` | Its console's kit, a folder in [`kit/`](../kit/), such as `gba` |
 | `sources` | Every source of its code, each with a `name`, an `href`, its `license` (such as `MIT`, or `none`) and its `use`: `code` when code came in from it, or `guide` when it was only read. Code brought in without a license that allows it also needs `agreement`, a link to its authors' agreement, as [the standard](../docs/STANDARD.md#fair-to-everyone-who-helped) asks |
 | `thread` | Its [progress thread](../docs/PREVIEWS.md#progress-threads), once there is one. The page links it as the game thread, where people follow the game and help with it |
-| `preview` | Optional: the lead's team preview, which the page shows with a reminder that nobody has reviewed it |
+| `preview` | Optional: the lead's [team preview](../docs/TEAMS.md#team-builds), which `npm run dp -- team <game> add` updates with each piece, and which the page shows with a reminder that nobody has reviewed it |
 | `ownCopy`, `extras`, `screen`, `share`, `glow` | The game's page, as for [every game on the site](../CONTRIBUTING.md#add-a-game) |
 | `facts` | Optional: more lines for the game's box, each with a `label`, a `value`, and an `href` if it's a link, such as an article about it |
 
@@ -46,7 +46,7 @@ The rest of the game's page comes from its folder, not from the entry:
 - **The achievements** are counted from the game's list, if it keeps them on players' profiles ([Profiles and achievements](../docs/ACCOUNTS.md#for-a-game-dreamportsjs)).
 - **The source code** is the folder itself, on GitHub.
 
-The game's tasks are the open issues with its label, which is its folder's name, such as [`sonic-advance`](https://github.com/NahuelGenchi/dreamports/issues?q=is%3Aissue%20is%3Aopen%20label%3Asonic-advance).
+The game's tasks are the open issues with its label, which is its folder's name, such as [`sonic-advance`](https://github.com/NahuelGenchi/dreamports/issues?q=is%3Aissue%20is%3Aopen%20label%3Asonic-advance). One person works on a task at a time, and a comment saying `/claim` takes a free one, as [Claims and teams](../docs/TEAMS.md) explains. `npm run dp -- find <game>` lists who has which, and what's still free.
 
 The README's table of Dreamports comes from the entries too. `npm run dp -- prove` and `npm run dp -- portmap` write it whenever they change a game's numbers, and `npm run dp -- readme` writes it after an entry or a list of parts changes. `npm run check` says when it or a port map is out of date.
 

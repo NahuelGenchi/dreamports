@@ -9,6 +9,7 @@ You don't need to write code to make Dreamports better. With a free GitHub accou
 - **Suggest a port** made by another fan, for the site's mash-ups. Link its own page and say who made it.
 - **Report a problem** on the site: a broken link, a page that looks wrong on your phone, a typo.
 - **Share an idea** for something the site could do.
+- **Help make a Dreamport.** Each game's tasks are issues with its label. Comment `/claim` on a free one to take it, so nobody else does the same work, as [Claims and teams](docs/TEAMS.md) explains.
 - **Try work in progress.** Each game's [progress thread](https://github.com/NahuelGenchi/dreamports/discussions/categories/progress) links previews of what people are making. Nobody has reviewed them, so play only previews from people you trust, as [Previews and progress threads](docs/PREVIEWS.md) explains.
 
 Open a new issue, choose **Work item**, and describe it in your own words. The form gives examples for every box. If you aren't sure which work type or milestone to pick, leave the defaults; the owner will sort it.
@@ -39,7 +40,7 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 
 Each game page comes from **one Markdown file**. Nothing else needs editing: the menu finds the new file by itself. Dreamports appear in the **dreamports** row, and external ports and other games in the **mash-ups** row.
 
-**A Dreamport** keeps every rule in the [Dreamport standard](docs/STANDARD.md), whoever makes it. Its code goes in a folder of its own in [`games/`](games/README.md), and plays at `/play/<game>/`. Its page comes from its **entry**, `entry.md` in the same folder, which says everything about it, from the copy it needs to its lead and its sources, and shows the two numbers the proof tools measured, code ported and gameplay proven. [The entry](games/README.md#the-entry) explains its fields. Its page appears at `/dreamports/<game>-dreamport/`.
+**A Dreamport** keeps every rule in the [Dreamport standard](docs/STANDARD.md), whoever makes it. Its code goes in a folder of its own in [`games/`](games/README.md), and plays at `/play/<game>/`. Its page comes from its **entry**, `entry.md` in the same folder, which says everything about it, from the copy it needs to its lead and its sources, and shows the two numbers the proof tools measured, code ported and gameplay proven. [The entry](games/README.md#the-entry) explains its fields. Its page appears at `/dreamports/<game>-dreamport/`. Before starting one, `npm run dp -- find <game>` says whether someone already makes it, and a [New Dreamport](docs/TEAMS.md#start-a-dreamport) issue claims it for you, as its lead.
 
 **Any other game**, an external port or a fan game that isn't a port, has its page in [`src/content/games/`](src/content/games/). To add one, copy the file there, give it a new name, and change the text. The file name becomes the page address: `src/content/games/my-port.md` appears at `/external-ports/my-port/` or `/other-games/my-port/`, depending on its `kind`. Use lowercase letters, numbers and dashes.
 
