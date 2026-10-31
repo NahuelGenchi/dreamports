@@ -153,7 +153,8 @@ function textOf(out) {
   }
   return texts.length ? texts.join('\n') : null;
 }
-// errors worth one more try after a pause, and OpenCode's free usage limit, which isn't
+// errors worth one more try after a pause, and OpenCode's "Free usage limit reached", which isn't: its free models
+// answer that to a request they refuse, such as one that offers no tool
 const RETRY = /unavailable|overloaded|timed? ?out|ECONNRESET|fetch failed|"status":\s*(?:50[234]|529)\b/i;
 const QUOTA = /FreeUsageLimitError|"type":\s*"provider\.quota"/;
 
@@ -188,7 +189,7 @@ export function openCodeAsker(setting, { timeout = 90000, budget = 15 * MINUTE }
           const key = parseAnswer(text);
           if (key) return { key, model: `opencode/${model}` };
           const why = run.timedOut ? 'it timed out' : text !== null ? 'its answer wasn\'t a key'
-            : QUOTA.test(run.out) ? 'OpenCode\'s free usage limit is reached for now' : `it answered nothing (exit code ${run.code})`;
+            : QUOTA.test(run.out) ? 'OpenCode refused it with "Free usage limit reached"' : `it answered nothing (exit code ${run.code})`;
           console.log(`opencode/${model}: no verdict, since ${why}.`);
           if (text !== null) break;
           if (attempt === 2 || QUOTA.test(run.out) || !(run.timedOut || RETRY.test(run.out + run.err))) {
