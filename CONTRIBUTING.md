@@ -16,6 +16,26 @@ Open a new issue, choose **Work item**, and describe it in your own words. The f
 
 Please never attach ROMs, game files, or anything extracted from a game, and never post private details such as your email address.
 
+## Make a Dreamport
+
+Anyone can make a Dreamport, or help with one, without writing code: a coding agent does the work, guided by seven `/dreamport` commands, as the [README](README.md#make-a-dreamport) shows step by step. Each command runs the repository's own tools, which you can also run yourself:
+
+| Command | What it runs |
+| :--- | :--- |
+| `/dreamport <game>` | `npm run dp -- find`, for where the game stands, and `rom`, which checks your copy |
+| `/dreamport-claim <task>` | A New Dreamport or Task issue, or `/claim` on a task's issue, which the Dreamports bot answers ([Claims and teams](docs/TEAMS.md)) |
+| `/dreamport-clip` | `portmap`, then `prove`, which compares every frame with the original and makes the clip |
+| `/dreamport-play` | `play`, which opens the game in a browser with your copy |
+| `/dreamport-fix <what feels wrong>` | A recording of that moment, `prove` with `--stills` to see it, the fix, then `prove` with every recording |
+| `/dreamport-share` | `share --post`: a preview on your fork's GitHub Pages and a post in the game's progress thread ([Previews and progress threads](docs/PREVIEWS.md)) |
+| `/dreamport-send` | `team send`, to the lead's team build, or, for the lead, a pull request to this repository |
+
+Nothing is posted, pushed or sent until you say yes, and the agent follows the part of [AGENTS.md](AGENTS.md) on working on a Dreamport, and [the standard](docs/STANDARD.md).
+
+**How the commands are made.** Each is written once, in [`tools/commands/`](tools/commands/), and `npm run dp -- commands` writes it in the form each agent reads: `.claude/skills/` for Claude Code, `.agents/skills/` for Codex, which Cursor, Gemini CLI and Antigravity CLI read too, and `.gemini/commands/` for Gemini CLI's own commands. To change a command, change its file in `tools/commands/` and run the tool again. `npm run check` fails when a copy differs from its file. Every copy is set to run only when it's typed, in each agent's own way, and it starts by telling the agent to stop if the person didn't type it, for the agents that could load it by themselves.
+
+**A Dreamport's pull request** shows the Dreamports team what it needs to judge it at a glance: the clips, the two numbers before and after, the preview, and every source used, with its license. The [pull request template](.github/pull_request_template.md) has a part for it.
+
 ## Run the site on your computer
 
 You need [Node.js](https://nodejs.org/) 22 or newer. In a terminal, inside this folder:
@@ -34,13 +54,13 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 | `npm run build` | Makes the finished site in the `dist/` folder |
 | `npm run preview` | Opens that finished site, to check it before it goes online |
 | `npm run worker` | Makes the finished site and opens it with its profiles, at <http://localhost:8787>, with a database on your computer. Profiles only work here, not with `npm run dev` |
-| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame, `portmap`, which lists the original's functions your code names, `share`, which puts a preview of your work online for anyone to try, and `readme`, which writes the README's table of Dreamports from their entries. [`tools/README.md`](tools/README.md) explains them |
+| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame, `portmap`, which lists the original's functions your code names, `share`, which puts a preview of your work online for anyone to try, `readme`, which writes the README's table of Dreamports from their entries, and `commands`, which writes the `/dreamport` commands for each coding agent. [`tools/README.md`](tools/README.md) explains them |
 
 ## Add a game
 
 Each game page comes from **one Markdown file**. Nothing else needs editing: the menu finds the new file by itself. Dreamports appear in the **dreamports** row, and external ports and other games in the **mash-ups** row.
 
-**A Dreamport** keeps every rule in the [Dreamport standard](docs/STANDARD.md), whoever makes it. Its code goes in a folder of its own in [`games/`](games/README.md), and plays at `/play/<game>/`. Its page comes from its **entry**, `entry.md` in the same folder, which says everything about it, from the copy it needs to its lead and its sources, and shows the two numbers the proof tools measured, code ported and gameplay proven. [The entry](games/README.md#the-entry) explains its fields. Its page appears at `/dreamports/<game>-dreamport/`. Before starting one, `npm run dp -- find <game>` says whether someone already makes it, and a [New Dreamport](docs/TEAMS.md#start-a-dreamport) issue claims it for you, as its lead.
+**A Dreamport** keeps every rule in the [Dreamport standard](docs/STANDARD.md), whoever makes it. Its code goes in a folder of its own in [`games/`](games/README.md), and plays at `/play/<game>/`. Its page comes from its **entry**, `entry.md` in the same folder, which says everything about it, from the copy it needs to its lead and its sources, and shows the two numbers the proof tools measured, code ported and gameplay proven. [The entry](games/README.md#the-entry) explains its fields. Its page appears at `/dreamports/<game>-dreamport/`. Before starting one, `npm run dp -- find <game>`, or `/dreamport <game>` in your coding agent, says whether someone already makes it, and a [New Dreamport](docs/TEAMS.md#start-a-dreamport) issue claims it for you, as its lead.
 
 **Any other game**, an external port or a fan game that isn't a port, has its page in [`src/content/games/`](src/content/games/). To add one, copy the file there, give it a new name, and change the text. The file name becomes the page address: `src/content/games/my-port.md` appears at `/external-ports/my-port/` or `/other-games/my-port/`, depending on its `kind`. Use lowercase letters, numbers and dashes.
 

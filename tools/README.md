@@ -18,6 +18,7 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `find` | Shows where a game stands: its lead, its two numbers, its team build, who has claimed which task, and the tasks still free |
 | `team` | The game's team build, the lead's branch with the team's finished pieces: `start` makes it, `join` starts a piece from it, `send` sends a piece to the lead, and `add` proves a piece and takes it in |
 | `readme` | Writes the README's table of Dreamports, with each one's numbers and lead, from their [entries](../games/README.md#the-entry) |
+| `commands` | Writes the `/dreamport` commands, from `tools/commands/`, in the form each coding agent reads |
 
 For now they work with Game Boy Advance games, and they have only been tried on Linux.
 
@@ -103,6 +104,16 @@ Sonic Advance Dreamport's logos are frames 254 to 932 of [`logos-and-intro`](../
 `npm run dp -- find <game>` shows where a game stands before you start on it: its lead, its two numbers, its progress thread, its team build and team preview, who has claimed which task, and the tasks still free. It takes a game's folder or a few words of its name, and with no game it lists them all. The numbers come from `games/` in your folder, and the claims from this repository's issues.
 
 `npm run dp -- team <game> start`, `join <branch>`, `send` and `add <pull request>` make and use the game's team build, a branch of the lead's fork that gathers the team's finished pieces. `add` merges a piece, runs `portmap` and `prove`, and only takes it in if nothing that matched the original before differs now, then updates the team preview with `share`. [Claims and teams](../docs/TEAMS.md) explains claims, tasks and team builds.
+
+## The /dreamport commands
+
+The README's [Make a Dreamport](../README.md#make-a-dreamport) teaches seven commands that a coding agent runs these tools with, such as `/dreamport-clip`, which runs `portmap` and `prove`. Each is written once, as a Markdown file in [`commands/`](commands/), with its name, its description and, for those that take one, what's typed after it. `npm run dp -- commands` writes each in the form an agent reads:
+
+- `.claude/skills/<name>/SKILL.md` for Claude Code, set to run only when typed (`disable-model-invocation`).
+- `.agents/skills/<name>/SKILL.md` for Codex, with `agents/openai.yaml` turning off its implicit use. Cursor, Gemini CLI and Antigravity CLI read this folder too.
+- `.gemini/commands/<name>.toml` for Gemini CLI's own commands.
+
+Every copy starts the same way: it tells the agent to do nothing unless the person typed the command, for the agents that might load it by themselves, and where what was typed after it is. A command's file can't hold `{{`, `!{`, `@{` or `'''`, which Gemini CLI would read as its own. `npm run check` runs `npm run dp -- commands --check`, which fails when a copy differs from its file, and removing a command's file and running the tool removes its copies.
 
 ## A game's proof folder
 

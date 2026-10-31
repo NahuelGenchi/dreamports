@@ -1,0 +1,3 @@
+# Written by npm run dp -- commands from tools/commands/dreamport-play.md. Codex runs the command only when it's typed.
+policy:
+  allow_implicit_invocation: false

@@ -11,6 +11,7 @@ const TOOLS = {
   find: 'Shows where a game stands: its lead, its numbers, its team build, who has claimed what and its free tasks',
   team: 'The team build, the lead\'s branch with the team\'s finished pieces: start, join, send and add a piece',
   readme: 'Writes the README\'s table of Dreamports, with each one\'s numbers and lead, from their entries',
+  commands: 'Writes the /dreamport commands, from tools/commands/, in the form each coding agent reads',
 };
 
 const [tool, ...args] = process.argv.slice(2);
