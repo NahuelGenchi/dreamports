@@ -83,7 +83,7 @@ You need three things: your own copy of the game as a file, a free GitHub accoun
 Clone dreamports.net/code into a folder called dreamports.
 ```
 
-**Step 2: open that folder in your agent.** Start a new session inside the dreamports folder. If you're not sure how, ask your agent. The commands live in that folder, so your agent finds them by itself.
+**Step 2: open that folder in your agent.** Start a new session inside the dreamports folder. If you're not sure how, ask your agent. The commands live in that folder, so your agent finds them by itself. If you made the folder a while ago, or your agent doesn't know a command, ask it to update the folder, then start a new session.
 
 **Step 3: start with your game.** Type `/dreamport`, then the game's name and console:
 
