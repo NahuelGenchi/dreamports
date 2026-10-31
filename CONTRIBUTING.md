@@ -32,6 +32,7 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 | `npm run build` | Makes the finished site in the `dist/` folder |
 | `npm run preview` | Opens that finished site, to check it before it goes online |
 | `npm run worker` | Makes the finished site and opens it with its profiles, at <http://localhost:8787>, with a database on your computer. Profiles only work here, not with `npm run dev` |
+| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame. [`tools/README.md`](tools/README.md) explains them |
 
 ## Add a game
 
