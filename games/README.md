@@ -64,4 +64,4 @@ The build stops and says what's wrong if a game's or a kit's folder breaks one o
 
 ## Removing a game
 
-A game comes off the site in one commit: delete its folder, entry included, and write the README's table again with `npm run dp -- readme`. A game that keeps achievements is also listed in `src/lib/players.ts` and `public/dreamports.js`, as [Profiles and achievements](../docs/ACCOUNTS.md#for-a-game-dreamportsjs) explains, so those lines go in the same commit.
+A game comes off the site in one commit: delete its folder, entry included, any recordings of it in `public/media/`, and write the README's table again with `npm run dp -- readme`. It's how a rights holder's notice is answered, as [Notices from rights holders](../docs/RIGHTS.md) says. A game that keeps achievements is also listed in `src/lib/players.ts` and `public/dreamports.js`, as [Profiles and achievements](../docs/ACCOUNTS.md#for-a-game-dreamportsjs) explains, so those lines go in the same commit.

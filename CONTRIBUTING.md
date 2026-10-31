@@ -149,13 +149,13 @@ A successful site build shows that the site builds, nothing more. Browser checks
 
 Dreamports never hosts ROMs, game files or assets extracted from games, and links only to projects that ask players to bring their own legal copy. Keep ROMs, saves, extracted assets, private email addresses, account IDs and credentials out of commits, issues, and PRs. The ignore rules are an accidental-staging guard, not permission to collect that data. If a secret is exposed, stop sharing it and revoke it.
 
-Pictures of games appear only where the owner decides, and only from the owner's own recordings of their own projects. Never present an invented or reconstructed image as a capture.
+Pictures of games on the site appear only where the owner decides, and only from the owner's own recordings of their own projects. The one exception is clips that show the original game next to a Dreamport, which `npm run dp -- prove` makes to show a match: they may appear in pull requests and in progress posts, and nowhere else, never on the site, in a game's files or in a commit ([Clips](docs/STANDARD.md#clips)). Never present an invented or reconstructed image as a capture.
 
 ## License
 
 The project's own files are licensed under the MIT License ([LICENSE](LICENSE)), and contributions are accepted under the same license. Dreamports and the kits they share, in [`games/`](games/README.md) and [`kit/`](games/README.md#the-kits-games-start-from), use GPL-3.0-or-later instead, each with its license file in its own folder, as the [Dreamport standard](docs/STANDARD.md#licenses) explains.
 
-Game names and trademarks belong to their owners. Dreamports is an unofficial fan project, not affiliated with or endorsed by Sega, Nintendo, or any other publisher. Anything bundled from elsewhere, such as fonts or icons, needs a license compatible with MIT, its notices kept next to the files, and a line in the README credits.
+Game names and trademarks belong to their owners. Dreamports is an unofficial fan project, not affiliated with or endorsed by Sega, Nintendo, or any other publisher. A rights holder's notice is handled as [Notices from rights holders](docs/RIGHTS.md) says. Anything bundled from elsewhere, such as fonts or icons, needs a license compatible with MIT, its notices kept next to the files, and a line in the README credits.
 
 ## Documentation standard
 

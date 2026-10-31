@@ -187,7 +187,7 @@ From cartridges or discs you own. You copy the game to your computer with a read
 <summary><b>Is this legal?</b></summary>
 <br>
 
-Dreamports never hosts game files, and it only lists projects that ask you to use your own copy. Game names and trademarks belong to their owners. Dreamports is an unofficial fan project, not affiliated with or endorsed by Sega, Nintendo, or any other publisher.
+Dreamports never hosts game files, and it only lists projects that ask you to use your own copy. Game names and trademarks belong to their owners, and rights holders can reach the Dreamports team at hello@dreamports.net, as [docs/RIGHTS.md](docs/RIGHTS.md) explains. Dreamports is an unofficial fan project, not affiliated with or endorsed by Sega, Nintendo, or any other publisher.
 
 The rules about copying games you own differ from country to country, so check the ones where you live. This isn't legal advice.
 
