@@ -1,0 +1,95 @@
+name: Moderation
+
+# The Dreamports bot checks what people write here against the project's rules, and acts on its own
+# (docs/MODERATION.md). The judging job reads each post with a read-only token and applies the plain rules. It asks a
+# model only about what they leave: OpenCode's free models in a step with no token at all, then GitHub Models' free
+# tier. Its verdicts hold no text from any post. The acting job checks them against a fixed schema and carries out a
+# fixed plan, from hiding, replying with a fixed text, closing, locking and labelling. Both check out only the bot's
+# own folder from the default branch, never a pull request's code. Runs about one post wait for each other. The hourly
+# run tries again the posts that wait for a model, and checks the reviews and comments on code made since its last run,
+# since those events come with a read-only token on pull requests from forks.
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created, edited]
+  pull_request_target:
+    types: [opened, edited]
+  discussion:
+    types: [created, edited]
+  discussion_comment:
+    types: [created, edited]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: >-
+    moderation-${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'hourly'
+    || github.event.comment.node_id || github.event.pull_request.node_id || github.event.issue.node_id
+    || github.event.discussion.node_id }}
+  cancel-in-progress: false
+
+jobs:
+  judge:
+    name: Judge
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event.sender.type != 'Bot'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      discussions: read
+      actions: read
+      models: read
+    outputs:
+      verdicts: ${{ steps.fallback.outputs.verdicts }}
+    steps:
+      - name: Check out the bot, never a pull request's code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/moderation
+      - name: Read the posts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MODERATION_TREAT_AS_PUBLIC: ${{ vars.MODERATION_TREAT_AS_PUBLIC }}
+        run: node .github/moderation/judge.mjs fetch
+      - name: Judge them, with no token
+        env:
+          MODERATION_MODELS: ${{ vars.MODERATION_MODELS }}
+        run: node .github/moderation/judge.mjs judge
+      - name: Ask GitHub Models about what's left, and write the verdicts
+        id: fallback
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MODERATION_FALLBACK_MODEL: ${{ vars.MODERATION_FALLBACK_MODEL }}
+        run: node .github/moderation/judge.mjs fallback
+
+  act:
+    name: Act
+    needs: judge
+    if: ${{ !cancelled() && needs.judge.result != 'skipped' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      discussions: write
+    steps:
+      - name: Check out the bot, never a pull request's code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/moderation
+      - name: Act on the verdicts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERDICTS: ${{ needs.judge.outputs.verdicts }}
+          JUDGED: ${{ needs.judge.result }}
+          MODERATION_TREAT_AS_PUBLIC: ${{ vars.MODERATION_TREAT_AS_PUBLIC }}
+        run: node .github/moderation/act.mjs

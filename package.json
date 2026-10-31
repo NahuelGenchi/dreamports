@@ -9,7 +9,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "check": "astro check && tsc -p worker && node tools/dp.mjs portmap --check && node tools/dp.mjs readme --check && node tools/dp.mjs commands --check",
+    "check": "astro check && tsc -p worker && node tools/dp.mjs portmap --check && node tools/dp.mjs readme --check && node tools/dp.mjs commands --check && node --test .github/moderation/test.mjs",
     "worker": "astro build && wrangler dev --local-upstream localhost:8787",
     "dp": "node tools/dp.mjs"
   },
