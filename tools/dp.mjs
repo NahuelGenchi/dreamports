@@ -4,10 +4,11 @@ const TOOLS = {
   setup: 'Builds the reference emulator the original runs in, on this computer',
   rom: 'Checks a copy of a game, says which game and version it is, and remembers where it is',
   play: 'Opens a game in a browser with your copy, and with --record keeps what you play as a recording',
-  prove: 'Plays each recording in the original and in the Dreamport, compares every frame, and updates the %',
+  prove: 'Plays each recording in the original and in the Dreamport, compares every frame, and updates the numbers',
   codemap: 'Makes the code map: every function in the original, with its address and size',
+  portmap: 'Makes the port map: each function of the original the Dreamport\'s code names, and where',
   share: 'Publishes a preview on GitHub Pages from your fork, and with --post posts in the game\'s progress thread',
-  readme: 'Writes the README\'s table of Dreamports, with each one\'s % and lead, from their entries',
+  readme: 'Writes the README\'s table of Dreamports, with each one\'s numbers and lead, from their entries',
 };
 
 const [tool, ...args] = process.argv.slice(2);

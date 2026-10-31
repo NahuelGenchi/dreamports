@@ -52,6 +52,15 @@ export function fileAt(commit, path) {
   }
 }
 
+/** The names of the files in a folder of a commit, or none. */
+export function filesAt(commit, folder) {
+  try {
+    return git(['ls-tree', '--name-only', `${commit}:${folder}`]).split('\n').filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 /** The previews branch's last commit on the fork, fetched here; or null before the first preview. */
 export function fetchPreviews(remote) {
   const found = git(['ls-remote', remote, `refs/heads/${BRANCH}`]).trim();

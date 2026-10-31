@@ -1,5 +1,5 @@
 // npm run dp -- codemap <game> [--from <list>]: makes games/<game>/proof/code-map.json, every function in the
-// original with its address and its size, and nothing of its code. It's what the % is measured against.
+// original with its address and its size, and nothing of its code. It's what code ported is measured against.
 // Without --from, it finds the functions in the contributor's copy itself (gba/functions.mjs). With --from, it takes
 // them from a list: a decompilation's symbols, as `nm -S` prints them from its ELF file, or a CSV with an address
 // and a size on each line, as a disassembler such as Ghidra exports its list of functions.

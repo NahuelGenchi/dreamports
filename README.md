@@ -51,13 +51,13 @@ On a phone or tablet, you can add dreamports to your Home Screen: in Safari, tap
 
 These are the projects on the site so far.
 
-**Dreamports** are made in this repository, in [`games/`](games/README.md), each in a folder of its own with an entry that says where it stands. Their progress is how much of the original game's code has been rebuilt and proven by playing it next to the original, as [the Dreamport standard](docs/STANDARD.md#how-progress-is-measured) explains, so a game you can already play a lot of can still have a low %. The lead is who leads the work on it. The proof tools fill in this table from each Dreamport's entry, so nobody types its numbers.
+**Dreamports** are made in this repository, in [`games/`](games/README.md), each in a folder of its own with an entry that says where it stands. Each one shows two numbers, as [the Dreamport standard](docs/STANDARD.md#how-progress-is-measured) explains. **Code ported** is how much of the original game's code has been rebuilt. **Gameplay proven** is how much of the game has been played next to the original, from start to end of each part, with every frame matching. A game can be far along in code and still have little proven, until someone records it. The lead is who leads the work on it. The proof tools fill in this table from each Dreamport's entry, so nobody types its numbers.
 
 <!-- The proof tools write this table from each Dreamport's entry: npm run dp -- readme. -->
 
-| | Dreamport | What it is | Progress | Lead | Try it |
-| :---: | :--- | :--- | :--- | :--- | :--- |
-| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | 11.19% | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
+| | Dreamport | What it is | Code ported | Gameplay proven | Lead | Try it |
+| :---: | :--- | :--- | :--- | :--- | :--- | :--- |
+| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | 37.99% | 2.78%, 1 of 36 parts | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
 
 <!-- End of the table of Dreamports. -->
 

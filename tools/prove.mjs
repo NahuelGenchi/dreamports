@@ -1,7 +1,8 @@
 // npm run dp -- prove <game> [recording…]: plays each recording, from power-on, in the original (in the reference
 // emulator) and in the Dreamport (in a headless browser), compares every frame, notes which of the original's
-// functions ran in the frames that matched, updates the game's progress.json and its %, and the README's table of
-// Dreamports with it (readme.mjs), and makes a clip and stills of both side by side, with a clip and a still of the
+// functions ran in the frames that matched, updates the game's progress.json, which its code ported and its gameplay
+// proven are measured with (docs/STANDARD.md#how-progress-is-measured), and the README's table of Dreamports with it
+// (readme.mjs), and makes a clip and stills of both side by side, with a clip and a still of the
 // Dreamport on its own. The pictures and the clips stay in .dreamports/results/ on this computer: they show the
 // game, so they never go in a commit.
 
@@ -56,22 +57,22 @@ export async function run(args) {
     await server.close();
   }
 
-  // the % from every recording there is, the ones not played now as they were last proven
+  // the code that ran in matching play, from every recording there is, the ones not played now as they were last proven
   const all = new Set(readRecordings(game).map(r => r.name));
   for (const name of Object.keys(progress.recordings)) if (!all.has(name)) delete progress.recordings[name];
   const totals = { original: original.sha1 };
   if (codeMap) {
     const proven = new Set(Object.values(progress.recordings).flatMap(r => r.functions));
     Object.assign(totals, measure(codeMap.functions.map(f => ({ address: hex(f.address), size: f.size })), proven));
-    console.log(`\n${totals.percent}% of ${original.name}'s code proven: ${totals.proven.functions} of ${totals.codeMap.functions} functions, ${totals.proven.bytes.toLocaleString('en')} of ${totals.codeMap.bytes.toLocaleString('en')} bytes, in frames where both played the same.`);
+    console.log(`\n${totals.percent}% of ${original.name}'s code ran in frames where both played the same: ${totals.proven.functions} of ${totals.codeMap.functions} functions, ${totals.proven.bytes.toLocaleString('en')} of ${totals.codeMap.bytes.toLocaleString('en')} bytes. Code ported counts them all.`);
   } else {
-    console.log(`\nNo code map yet, so no %: npm run dp -- codemap ${game} makes one.`);
+    console.log(`\nNo code map yet, so no code ported: npm run dp -- codemap ${game} makes one.`);
   }
   writeProgress(game, { ...totals, recordings: progress.recordings });
   console.log(`Written: games/${game}/proof/progress.json`);
-  // the README's table of Dreamports shows the new %
+  // the README's table of Dreamports shows the new numbers
   try {
-    if (writeReadme().changed) console.log('Written: README.md\'s table of Dreamports, with the new %.');
+    if (writeReadme().changed) console.log('Written: README.md\'s table of Dreamports, with the new numbers.');
   } catch (error) {
     console.log(`README.md's table of Dreamports wasn't written: ${error.message}`);
   }
