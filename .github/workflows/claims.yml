@@ -364,8 +364,12 @@ jobs:
                 continue;
               }
               const title = await titleOf(game);
-              if (verb === 'claim') await claim(issue, user, about, game, title);
-              else await release(issue, user, about, title);
+              if (verb === 'claim') {
+                // a piece someone moved under the game's issue by hand gets the game's label and milestone too, since the
+                // daily run finds a holder's activity by the label
+                await prepare(issue, game, title);
+                await claim(issue, user, about, game, title);
+              } else await release(issue, user, about, title);
             }
           }
 
