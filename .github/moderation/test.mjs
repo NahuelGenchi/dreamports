@@ -117,21 +117,28 @@ test('verdicts that don\'t fit the schema do nothing', () => {
 });
 
 test('every plan is made of the fixed steps, and fits the kind of post', () => {
-  const steps = new Set(['hide', 'reply', 'close', 'lock', 'label']);
+  const steps = new Set(['delete', 'hide', 'reply', 'close', 'lock', 'label']);
   for (const key of KEYS) {
     for (const kind of KINDS) {
-      for (const where of ['issue', 'pull-request', 'discussion', 'progress-thread']) {
-        const plan = planFor(key, item(kind, where));
+      for (const [where, by] of ['issue', 'pull-request', 'discussion', 'progress-thread'].flatMap(w => [[w, 'rules'], [w, 'model']])) {
+        const plan = planFor(key, item(kind, where), by);
         for (const step of plan) assert.ok(steps.has(step.do), `${key} ${kind}: ${step.do}`);
         const comment = !['issue', 'pull-request', 'discussion'].includes(kind);
         if (comment) assert.ok(plan.every(step => step.do !== 'close' && step.do !== 'lock'), `${key} ${kind} closes`);
-        else assert.ok(plan.every(step => step.do !== 'hide'), `${key} ${kind} hides`);
+        else assert.ok(plan.every(step => step.do !== 'hide' && step.do !== 'delete'), `${key} ${kind} hides`);
+        // only the plain rules delete, and only comments with game files or a site that shares them
+        if (plan.some(step => step.do === 'delete')) assert.ok(by === 'rules' && ['game-files', 'rom-site'].includes(key) && kind !== 'review', `${key} ${kind} ${by} deletes`);
         if (key === 'allow') assert.deepEqual(plan, []);
         if (key === 'clip-of-original' && ['pull-request', 'progress-thread'].includes(where)) assert.deepEqual(plan, []);
       }
     }
   }
-  assert.deepEqual(planFor('game-files', item('issue-comment')), [{ do: 'hide', as: 'OFF_TOPIC' }, { do: 'reply' }]);
+  assert.deepEqual(planFor('game-files', item('issue-comment'), 'rules'), [{ do: 'delete', as: 'OFF_TOPIC' }, { do: 'reply' }]);
+  assert.deepEqual(planFor('rom-site', item('review-comment'), 'rules'), [{ do: 'delete', as: 'OFF_TOPIC' }, { do: 'reply' }]);
+  assert.deepEqual(planFor('game-files', item('issue-comment'), 'model'), [{ do: 'hide', as: 'OFF_TOPIC' }, { do: 'reply' }]);
+  assert.deepEqual(planFor('game-files', item('review'), 'rules'), [{ do: 'hide', as: 'OFF_TOPIC' }, { do: 'reply' }]);
+  assert.deepEqual(planFor('game-files', { ...item('discussion-comment'), replies: 2 }, 'rules'), [{ do: 'hide', as: 'OFF_TOPIC' }, { do: 'reply' }]);
+  assert.deepEqual(planFor('credential', item('issue-comment'), 'rules'), [{ do: 'hide', as: 'OFF_TOPIC' }, { do: 'reply' }]);
   assert.deepEqual(planFor('spam', item('issue')), [{ do: 'label', name: 'spam' }, { do: 'close' }, { do: 'lock', as: 'SPAM' }]);
   assert.deepEqual(planFor('game-files', item('pull-request', 'pull-request')), [{ do: 'reply' }]);
   assert.deepEqual(planFor('approve', item('issue')), []);
@@ -148,6 +155,12 @@ test('replies never quote the post, and say which post they answer', () => {
       assert.ok(reply.includes('Dreamports bot'), key);
     }
   }
+  // a deleted comment is gone, so its reply says so and doesn't link it
+  for (const key of ['game-files', 'rom-site']) {
+    const reply = replyFor(key, post, docs, { deleted: true });
+    assert.ok(reply.startsWith('@someone, I deleted your comment because') && !reply.includes(post.url), key);
+  }
+  assert.ok(logLine({ item: post, key: 'game-files', by: 'rules', did: ['deleted', 'replied'] }).startsWith('Deleted and replied to [a comment]'));
 });
 
 test('the log names people as code and never quotes the post', () => {

@@ -54,9 +54,15 @@ export function checkVerdicts(raw) {
 // request only answered, since the Dreamports team reviews it before anything is merged
 const shapeOf = item => ({ issue: 'post', discussion: 'post', 'pull-request': 'pull' })[item.kind] ?? 'comment';
 
-// The fixed plan for a verdict: the steps that carry it out, from hide, reply, close, lock and label. Clips of the
-// original belong in pull requests and progress posts, so a post there never gets that verdict's plan.
-export function planFor(key, item) {
+// the comments the bot deletes when the plain rules find a game file or a site that shares them in one: a review
+// can't be deleted, and a comment in Discussions that has replies is only hidden, so the replies stay
+const deletable = item => ['issue-comment', 'review-comment'].includes(item.kind) || (item.kind === 'discussion-comment' && !item.replies);
+
+// The fixed plan for a verdict: the steps that carry it out, from delete, hide, reply, close, lock and label. A comment
+// is deleted only when the plain rules decided, since a model can be wrong and a deletion can't be undone; if
+// deleting fails, it's hidden instead. Clips of the original belong in pull requests and progress posts, so a post
+// there never gets that verdict's plan.
+export function planFor(key, item, by = null) {
   if (!KEYS.includes(key) || key === 'allow') return [];
   if (key === 'clip-of-original' && ['pull-request', 'progress-thread'].includes(item.where)) return [];
   const shape = shapeOf(item);
@@ -64,6 +70,7 @@ export function planFor(key, item) {
   if (key === 'abuse') return shape === 'comment' ? [{ do: 'hide', as: 'ABUSE' }] : [{ do: 'close' }, { do: 'lock', as: 'TOO_HEATED' }];
   if (key === 'rights-notice') return [{ do: 'label', name: 'rights-notice' }, { do: 'reply' }];
   if (key === 'asks-for-games') return shape === 'post' ? [{ do: 'reply' }, { do: 'close' }] : [{ do: 'reply' }];
+  if (shape === 'comment' && ['game-files', 'rom-site'].includes(key) && by === 'rules' && deletable(item)) return [{ do: 'delete', as: 'OFF_TOPIC' }, { do: 'reply' }];
   if (shape === 'comment') return [{ do: 'hide', as: 'OFF_TOPIC' }, { do: 'reply' }];
   if (shape === 'post' && ['game-files', 'rom-site', 'clip-of-original'].includes(key)) return [{ do: 'reply' }, { do: 'close' }, { do: 'lock', as: 'OFF_TOPIC' }];
   return [{ do: 'reply' }];
@@ -75,14 +82,15 @@ export const markFor = (node, key, what = 'about') => `<!-- dreamports-moderatio
 
 const nouns = { issue: 'this issue', 'pull-request': 'this pull request', discussion: 'this thread', review: 'your review' };
 
-// The fixed reply for a verdict, which never quotes the post. docs gives the addresses of the pages it links.
-export function replyFor(key, item, docs) {
+// The fixed reply for a verdict, which never quotes the post. docs gives the addresses of the pages it links, and
+// deleted says the post is gone, so the reply doesn't link it.
+export function replyFor(key, item, docs, { deleted = false } = {}) {
   const shape = shapeOf(item);
   const who = `@${item.author}`;
   const yours = `[${nouns[item.kind] ?? 'your comment'}](${item.url})`;
   const own = 'everyone plays with their own copy, made from their own cartridge or disc';
   const again = shape === 'post' ? ' You\'re welcome to open a new one without it.' : '';
-  const hidOrClosed = shape === 'post' ? 'I closed this' : `I hid ${yours}`;
+  const hidOrClosed = shape === 'post' ? 'I closed this' : deleted ? 'I deleted your comment' : `I hid ${yours}`;
   const text = {
     'game-files': shape === 'pull'
       ? `${who}, this pull request's description shares or links a game file. Dreamports never shares games or anything taken from them, so please edit it out: a pull request with game files is never merged.`
@@ -118,7 +126,7 @@ const reasons = {
   'personal-data': 'it seems to include private details', credential: 'it seems to include a key, token or password',
   abuse: 'it seems abusive', spam: 'it\'s spam', 'rights-notice': 'it\'s a notice from a rights holder'
 };
-const verbs = { hid: 'Hid', replied: 'Replied to', closed: 'Closed', locked: 'Locked', labelled: 'Labelled' };
+const verbs = { deleted: 'Deleted', hid: 'Hid', replied: 'Replied to', closed: 'Closed', locked: 'Locked', labelled: 'Labelled' };
 
 // One entry of the log: what the bot did, or why it only flagged a post, with a link, the reason and who decided. It
 // names people as code, so nobody is notified, and never quotes the post.

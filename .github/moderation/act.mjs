@@ -1,6 +1,6 @@
 // The Dreamports bot's acting job (docs/MODERATION.md). It takes the judging job's verdicts only if they fit the fixed
-// schema, reads each post again from GitHub, and carries out the fixed plan for its verdict, made of hiding,
-// replying, closing, locking and labelling, with the workflow's write permissions. It also keeps the log, and lists
+// schema, reads each post again from GitHub, and carries out the fixed plan for its verdict, made of deleting,
+// hiding, replying, closing, locking and labelling, with the workflow's write permissions. It also keeps the log, and lists
 // the posts that wait for a model on the alert issue. Nothing it writes quotes a post.
 import { appendFileSync, readFileSync } from 'node:fs';
 import { accounts, checkVerdicts, isClaimsCommand, isTrusted, logLine, markFor, planFor, postLink, replyFor } from './verdicts.mjs';
@@ -21,6 +21,11 @@ const LABELS = {
   'moderation-alert': ['d93f0b', 'The Dreamports bot can\'t judge some posts for now']
 };
 const MUTATIONS = {
+  delete: {
+    'issue-comment': 'mutation($id: ID!) { deleteIssueComment(input: { id: $id }) { clientMutationId } }',
+    'review-comment': 'mutation($id: ID!) { deletePullRequestReviewComment(input: { id: $id }) { clientMutationId } }',
+    'discussion-comment': 'mutation($id: ID!) { deleteDiscussionComment(input: { id: $id }) { clientMutationId } }'
+  },
   hide: 'mutation($id: ID!, $as: ReportedContentClassifiers!) { minimizeComment(input: { subjectId: $id, classifier: $as }) { clientMutationId } }',
   lock: 'mutation($id: ID!, $as: LockReason) { lockLockable(input: { lockableId: $id, lockReason: $as }) { clientMutationId } }',
   comment: 'mutation($id: ID!, $body: String!) { addComment(input: { subjectId: $id, body: $body }) { clientMutationId } }',
@@ -150,10 +155,10 @@ async function flaggedBefore(item, key) {
 }
 
 // a reply in the post's issue, pull request or thread. In Discussions it goes under the post's own comment, or at
-// the end of the thread when GitHub refuses that, as it does under a hidden comment.
-async function reply(item, body) {
+// the end of the thread when that comment is deleted, or GitHub refuses, as it does under a hidden comment.
+async function reply(item, body, deleted) {
   if (item.parent.kind !== 'discussion') return graphql(MUTATIONS.comment, { id: item.parent.node, body });
-  if (item.replyTo) {
+  if (item.replyTo && !(deleted && item.replyTo === item.node)) {
     try {
       return await graphql(MUTATIONS.discussionComment, { id: item.parent.node, replyTo: item.replyTo, body });
     } catch (error) {
@@ -166,7 +171,7 @@ async function reply(item, body) {
 // The fixed plan for the verdict, each step done only if it isn't already, and logged even if a later one fails. A
 // post by the repository's own people, or a claims command, is only flagged in the log.
 async function act(result, item) {
-  const plan = planFor(result.key, item);
+  const plan = planFor(result.key, item, result.by);
   if (!plan.length) return;
   const entry = { item, key: result.key, by: result.by, model: result.model };
   const flagged = isClaimsCommand(item) ? 'claims' : isTrusted(item, treatAsPublic) ? 'trusted' : null;
@@ -177,11 +182,23 @@ async function act(result, item) {
   const did = [];
   try {
     for (const step of plan) {
-      if (step.do === 'hide' && !item.minimized) {
+      if (step.do === 'delete') {
+        try {
+          await graphql(MUTATIONS.delete[item.kind], { id: item.node });
+          did.push('deleted');
+        } catch (error) {
+          console.log(`Hiding ${item.url} instead, since GitHub refused to delete it: ${error.message}`);
+          if (!item.minimized) {
+            await graphql(MUTATIONS.hide, { id: item.node, as: step.as });
+            did.push('hid');
+          }
+        }
+      } else if (step.do === 'hide' && !item.minimized) {
         await graphql(MUTATIONS.hide, { id: item.node, as: step.as });
         did.push('hid');
       } else if (step.do === 'reply' && !await replied(item, result.key)) {
-        await reply(item, replyFor(result.key, item, docs));
+        const deleted = did.includes('deleted');
+        await reply(item, replyFor(result.key, item, docs, { deleted }), deleted);
         did.push('replied');
       } else if (step.do === 'close' && !item.parent.closed) {
         await graphql(MUTATIONS[item.parent.kind], { id: item.parent.node });

@@ -56,7 +56,7 @@ const FIELDS = `__typename
   ... on IssueComment { id url body isMinimized ${AUTHOR} repository { nameWithOwner } issue { ${PARENT} } pullRequest { ${PARENT} } }
   ... on PullRequestReviewComment { id url body isMinimized ${AUTHOR} repository { nameWithOwner } pullRequest { ${PARENT} } }
   ... on PullRequestReview { id url body isMinimized ${AUTHOR} repository { nameWithOwner } pullRequest { ${PARENT} } }
-  ... on DiscussionComment { id url body isMinimized ${AUTHOR} replyTo { id }
+  ... on DiscussionComment { id url body isMinimized ${AUTHOR} replyTo { id } replies { totalCount }
     discussion { ${PARENT} repository { nameWithOwner } category { slug } } }`;
 const KINDS = {
   Issue: 'issue', PullRequest: 'pull-request', Discussion: 'discussion', IssueComment: 'issue-comment',
@@ -79,6 +79,7 @@ export function itemFrom(node) {
     where: parentKind === 'discussion' && parent.category?.slug === 'progress' ? 'progress-thread' : parentKind,
     author: node.author?.login ?? 'ghost', bot: node.author?.__typename === 'Bot', association: node.authorAssociation ?? 'NONE',
     url: node.url, text: post ? `${node.title}\n\n${node.body ?? ''}` : node.body ?? '', minimized: node.isMinimized === true,
+    replies: node.replies?.totalCount ?? 0,
     repository: (node.repository ?? parent.repository)?.nameWithOwner ?? null,
     parent: {
       node: parent.id, kind: parentKind, number: parent.number, url: parent.url, closed: parent.closed === true,
