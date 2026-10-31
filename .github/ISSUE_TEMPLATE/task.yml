@@ -1,0 +1,57 @@
+name: Task
+description: One piece of a Dreamport, such as a character, a level, a mode, an achievement or an extra.
+title: "Task: "
+labels: [task]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One person works on a task at a time. To take a free task, comment `/claim` on it, and `/release` gives it back. The Dreamports bot answers in a few seconds, and if someone was faster, it lists the tasks that are still free.
+
+        A claim with no activity for 14 days is released, and nothing done so far is lost. [Claims and teams](https://github.com/NahuelGenchi/dreamports/blob/main/docs/TEAMS.md) explains the rest.
+
+        Never include ROMs, game files, saves, pictures taken from the game, private email addresses or passwords.
+  - type: input
+    id: folder
+    attributes:
+      label: Game folder
+      description: The game's folder in games/, which is also its label. Lowercase letters, numbers and single dashes.
+      placeholder: sonic-battle
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind
+      options:
+        - Character
+        - Level
+        - Mode
+        - Achievement
+        - Extra
+        - A difference from the original
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What it is
+      description: The piece, and where a player meets it in the game.
+      placeholder: Knuckles, playable in the arenas that are already in. A player can pick him from the start.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: What shows it's finished, such as a recording that plays through it with every frame the same as the original.
+      placeholder: A recording of Knuckles in arena 1 matches the original frame for frame.
+    validations:
+      required: true
+  - type: checkboxes
+    id: claim
+    attributes:
+      label: Taking it
+      options:
+        - label: I'm taking this task myself.

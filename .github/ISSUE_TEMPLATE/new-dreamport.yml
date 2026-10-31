@@ -1,0 +1,59 @@
+name: New Dreamport
+description: Start a Dreamport of a game nobody is making yet. Opening it makes you its lead.
+title: "New Dreamport: "
+labels: [new-dreamport]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Opening this issue claims the whole game for you: you lead its Dreamport, build its first playable piece and split what's left into tasks. The Dreamports bot answers in a few seconds. If someone already leads the game, it says so and lists the tasks that are still free.
+
+        A claim with no activity for 14 days is released, and nothing done so far is lost. [Claims and teams](https://github.com/NahuelGenchi/dreamports/blob/main/docs/TEAMS.md) explains the rest, and [the standard](https://github.com/NahuelGenchi/dreamports/blob/main/docs/STANDARD.md) is what every Dreamport keeps.
+
+        Never include ROMs, game files, saves, pictures taken from the game, private email addresses or passwords.
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      description: The game's name, as on its box.
+      placeholder: Sonic Battle
+    validations:
+      required: true
+  - type: input
+    id: folder
+    attributes:
+      label: Game folder
+      description: Its folder in games/, which is also its label and its address on dreamports.net. Lowercase letters, numbers and single dashes.
+      placeholder: sonic-battle
+    validations:
+      required: true
+  - type: dropdown
+    id: console
+    attributes:
+      label: Console
+      description: Each console has a kit the games on it share. Another console needs a kit of its own first.
+      options:
+        - Game Boy Advance
+        - Another console
+    validations:
+      required: true
+  - type: textarea
+    id: start
+    attributes:
+      label: Where it starts
+      description: The first piece you'll make playable, usually where a player starts.
+      placeholder: Sonic moving in the first arena.
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Ports and sources
+      description: Optional. Ports of the game made elsewhere, decompilations or other sources you know of, with their licenses if you know them.
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Your copy
+      options:
+        - label: I have my own legal copy of the game, and nothing from it, such as its files, saves or pictures, goes in the repository.
+          required: true

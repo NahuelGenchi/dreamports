@@ -15,13 +15,15 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `codemap` | Makes the code map: every function in the original, with its address and size |
 | `portmap` | Makes the port map: each function of the original the Dreamport's code names, and where |
 | `share` | Publishes a preview of a game on GitHub Pages from your own fork, and with `--post` posts in the game's progress thread |
+| `find` | Shows where a game stands: its lead, its two numbers, its team build, who has claimed which task, and the tasks still free |
+| `team` | The game's team build, the lead's branch with the team's finished pieces: `start` makes it, `join` starts a piece from it, `send` sends a piece to the lead, and `add` proves a piece and takes it in |
 | `readme` | Writes the README's table of Dreamports, with each one's numbers and lead, from their [entries](../games/README.md#the-entry) |
 
 For now they work with Game Boy Advance games, and they have only been tried on Linux.
 
 ## What you need
 
-You need Node.js and the repository's packages, as [running the site on your computer](../CONTRIBUTING.md#run-the-site-on-your-computer) explains, and Google Chrome, Chromium or Microsoft Edge. `share` also needs the [GitHub CLI](https://cli.github.com), signed in with `gh auth login`. If the tools don't find your browser, set `CHROME` to where it is. To build the reference emulator you also need git, CMake and a C compiler: on Debian or Ubuntu, `sudo apt install git cmake build-essential` installs them. On Windows, run the tools inside WSL (Windows Subsystem for Linux).
+You need Node.js and the repository's packages, as [running the site on your computer](../CONTRIBUTING.md#run-the-site-on-your-computer) explains, and Google Chrome, Chromium or Microsoft Edge. `share`, `find` and `team` also need the [GitHub CLI](https://cli.github.com), signed in with `gh auth login`. If the tools don't find your browser, set `CHROME` to where it is. To build the reference emulator you also need git, CMake and a C compiler: on Debian or Ubuntu, `sudo apt install git cmake build-essential` installs them. On Windows, run the tools inside WSL (Windows Subsystem for Linux).
 
 And you need your own copy of the game, made from your own cartridge: the version the Dreamport is built from, such as the USA version.
 
@@ -95,6 +97,12 @@ Sonic Advance Dreamport's logos are frames 254 to 932 of [`logos-and-intro`](../
 ## Sharing a preview
 
 `npm run dp -- share <game>` publishes a preview of the game as it is in your last commit, on GitHub Pages from your own fork, at `https://<you>.github.io/dreamports/<game>/`, so anyone can play it with their own copy without waiting for a review. `--as <name>` names the preview, to keep more than one. With `--post --about "<what changed>"` it also posts in the game's progress thread in this repository's Discussions: what changed, the newest `dreamport.mp4` that `prove` made (or the file `--clip` names), the game's two numbers and the preview's link. It asks before it publishes, before it switches Pages on for your fork the first time, and before it posts, and `--yes` answers yes for you. [Previews and progress threads](../docs/PREVIEWS.md) explains what a preview holds, what it risks for players, and how the threads work.
+
+## Claims and team builds
+
+`npm run dp -- find <game>` shows where a game stands before you start on it: its lead, its two numbers, its progress thread, its team build and team preview, who has claimed which task, and the tasks still free. It takes a game's folder or a few words of its name, and with no game it lists them all. The numbers come from `games/` in your folder, and the claims from this repository's issues.
+
+`npm run dp -- team <game> start`, `join <branch>`, `send` and `add <pull request>` make and use the game's team build, a branch of the lead's fork that gathers the team's finished pieces. `add` merges a piece, runs `portmap` and `prove`, and only takes it in if nothing that matched the original before differs now, then updates the team preview with `share`. [Claims and teams](../docs/TEAMS.md) explains claims, tasks and team builds.
 
 ## A game's proof folder
 

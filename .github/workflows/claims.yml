@@ -1,0 +1,394 @@
+name: Claims
+
+# One lead per game and one person per task (docs/TEAMS.md). A New Dreamport issue claims a whole game for the
+# person who opens it, unless the game already has a Dreamport or an earlier open New Dreamport issue, and a Task
+# issue claims its task for its author when they tick the box. On any open issue of a game, a comment starting with
+# /claim takes it while nobody has it, and /release gives it back. Each answer is a comment, and the daily run
+# releases every claim whose holder has done nothing on the game's issues, pull requests or progress thread for 14
+# days. Each run only reads the issues' text and the repository's files, through the API, and runs nothing from
+# them. Runs on one issue wait for each other, and each answers every command on its issue that has no answer yet,
+# since GitHub cancels all but the newest waiting run of a concurrency group.
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+    inputs:
+      days:
+        description: Days without activity before a claim is released (a fraction of a day tries it out)
+        default: '14'
+
+permissions:
+  contents: read
+  issues: write
+  discussions: read
+
+concurrency:
+  group: claims-${{ github.event.issue.number || 'release' }}
+  cancel-in-progress: false
+
+jobs:
+  claims:
+    name: Answer claims, and release quiet ones
+    if: >-
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'issues' && contains(github.event.issue.body, '### Game folder'))
+      || (github.event_name == 'issue_comment' && !github.event.issue.pull_request
+        && (startsWith(github.event.comment.body, '/claim') || startsWith(github.event.comment.body, '/release')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Answer claims, or release the quiet ones
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DAYS: ${{ inputs.days || '14' }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+
+          const repository = process.env.GITHUB_REPOSITORY;
+          const [owner, name] = repository.split('/');
+          const root = `https://api.github.com/repos/${repository}`;
+          const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+          const headers = {
+            Authorization: `Bearer ${process.env.GH_TOKEN}`,
+            Accept: 'application/vnd.github+json',
+            'Content-Type': 'application/json',
+            'X-GitHub-Api-Version': '2022-11-28'
+          };
+          // a REST call: its answer, true for an empty one, and null for a GET of something that isn't there
+          async function api(path, method = 'GET', body) {
+            const response = await fetch(root + path, {
+              method, headers, signal: AbortSignal.timeout(30000),
+              ...(body === undefined ? {} : { body: JSON.stringify(body) })
+            });
+            if (method === 'GET' && response.status === 404) return null;
+            if (!response.ok) {
+              const error = new Error(`GitHub API ${method} ${path}: HTTP ${response.status} ${await response.text()}`);
+              error.status = response.status;
+              throw error;
+            }
+            return response.status === 204 ? true : response.json();
+          }
+          async function list(path) {
+            const result = [];
+            for (let page = 1; ; page++) {
+              const batch = await api(`${path}${path.includes('?') ? '&' : '?'}per_page=100&page=${page}`) ?? [];
+              result.push(...batch);
+              if (batch.length < 100) return result;
+            }
+          }
+          async function graphql(query, variables) {
+            const response = await fetch('https://api.github.com/graphql', {
+              method: 'POST', headers, signal: AbortSignal.timeout(30000), body: JSON.stringify({ query, variables })
+            });
+            const out = await response.json();
+            if (!response.ok || out.errors) throw new Error(`GitHub GraphQL: HTTP ${response.status} ${JSON.stringify(out.errors ?? '')}`);
+            return out.data;
+          }
+
+          const BOT = 'github-actions[bot]';
+          // each answer ends with what it answers (a comment's id, the issue itself, or a quiet claim) and what it did
+          const MARK = /<!-- dreamports-claims: answers=(\S+)(?: (granted|released)=(\S+))? -->/;
+          const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+          const DAY = 86400000;
+          const days = Number(process.env.DAYS);
+          if (!(days > 0)) throw new Error(`A claim is released after a number of days above 0, not "${process.env.DAYS}".`);
+          const period = days === 1 ? '1 day' : `${days} days`;
+          const form = template => `https://github.com/${repository}/issues/new?template=${template}`;
+          const guide = `https://github.com/${repository}/blob/main/docs/TEAMS.md`;
+          const same = (a, b) => a.toLowerCase() === b.toLowerCase();
+          const done = [];
+
+          // a field of an issue form: the text under its "### <label>" heading, or null when it's empty
+          function field(body, label) {
+            const found = new RegExp(`^###\\s*${label}[ \\t]*\\r?\\n([\\s\\S]*?)(?=^###\\s|(?![\\s\\S]))`, 'm').exec(body ?? '');
+            const text = found?.[1].trim();
+            return text && text !== '_No response_' ? text : null;
+          }
+          const folderIn = issue => field(issue.body, 'Game folder')?.replace(/`/g, '').trim() ?? null;
+          const isNewDreamport = issue => folderIn(issue) !== null && field(issue.body, 'Where it starts') !== null;
+          const isTask = issue => folderIn(issue) !== null && field(issue.body, 'Done when') !== null;
+          const ticked = issue => /^- \[x\] I'm taking this task myself\.?\s*$/im.test(issue.body ?? '');
+          const commandIn = body => /^\s*\/(claim|release)\b/i.exec(body ?? '')?.[1].toLowerCase() ?? null;
+          const day = when => new Date(when).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+          // the games: the folders in games/, and the games claimed with an open New Dreamport issue
+          let folders, leads;
+          async function gameFolders() {
+            folders ??= new Set(((await api('/contents/games')) ?? []).filter(f => f.type === 'dir').map(f => f.name));
+            return folders;
+          }
+          async function leadIssues() {
+            leads ??= (await list('/issues?state=open&sort=created&direction=asc')).filter(i => !i.pull_request && isNewDreamport(i));
+            return leads;
+          }
+          // the issue that claims the game for its lead: the first open New Dreamport issue for it
+          const leadIssueOf = async game => (await leadIssues()).find(i => folderIn(i) === game) ?? null;
+          async function entryOf(game) {
+            const file = await api(`/contents/games/${game}/entry.md`);
+            if (!file?.content) return null;
+            const text = Buffer.from(file.content, 'base64').toString('utf8');
+            const value = key => new RegExp(`^${key}:\\s*(.+)$`, 'm').exec(text)?.[1].trim().replace(/^(['"])(.*)\1$/, '$2') ?? null;
+            return { title: value('title'), lead: value('lead') };
+          }
+          // the game an issue is for: its form's folder, or a game's label
+          async function gameOf(issue) {
+            const named = folderIn(issue);
+            if (named !== null) return NAME.test(named) ? named : null;
+            const games = await gameFolders(), claimed = (await leadIssues()).map(folderIn);
+            return issue.labels.map(l => l.name).find(l => games.has(l) || claimed.includes(l)) ?? null;
+          }
+          async function titleOf(game) {
+            const entry = await entryOf(game);
+            if (entry?.title) return entry.title;
+            const named = field((await leadIssueOf(game))?.body, 'Game');
+            return named ? `${named.replace(/\s+Dreamport$/i, '')} Dreamport` : game;
+          }
+
+          async function ensureLabel(label, color, description) {
+            if (await api(`/labels/${encodeURIComponent(label)}`)) return;
+            try {
+              await api('/labels', 'POST', { name: label, color, description });
+            } catch (error) {
+              // made at the same moment by another run
+              if (error.status !== 422) throw error;
+            }
+          }
+          // a game's milestone: the one its issues already use, or one named after its Dreamport
+          async function milestoneOf(game, title) {
+            const used = (await list(`/issues?state=all&labels=${encodeURIComponent(game)}&sort=created&direction=asc`)).find(i => i.milestone);
+            if (used) return used.milestone;
+            const found = (await list('/milestones?state=all')).find(m => m.title === title);
+            return found ?? await api('/milestones', 'POST', { title, description: `${title}, made in games/${game}/: its New Dreamport issue and its tasks.` });
+          }
+          // a game's issue carries its label, its kind and its milestone
+          async function prepare(issue, game, title) {
+            await ensureLabel(game, '4f86ff', `${title}, in games/${game}/`);
+            const kind = isNewDreamport(issue) ? 'new-dreamport' : isTask(issue) ? 'task' : null;
+            const missing = [game, kind].filter(l => l && !issue.labels.some(x => x.name === l));
+            if (missing.length) issue.labels = await api(`/issues/${issue.number}/labels`, 'POST', { labels: missing });
+            if (!issue.milestone) {
+              const milestone = await milestoneOf(game, title);
+              await api(`/issues/${issue.number}`, 'PATCH', { milestone: milestone.number });
+              issue.milestone = milestone;
+            }
+          }
+
+          async function answer(issue, about, text, what) {
+            await api(`/issues/${issue.number}/comments`, 'POST', { body: `${text}\n\n<!-- dreamports-claims: answers=${about}${what ? ` ${what}` : ''} -->` });
+            done.push(`#${issue.number}: ${what ?? 'answered'}`);
+          }
+          async function close(issue, reason) {
+            await api(`/issues/${issue.number}`, 'PATCH', { state: 'closed', state_reason: reason });
+          }
+
+          // what's still free in a game: its lead, when nobody leads it, and its tasks nobody has
+          async function free(game, title, except) {
+            const lead = await leadIssueOf(game);
+            const tasks = (await list(`/issues?state=open&labels=${encodeURIComponent(game)}&sort=created&direction=asc`))
+              .filter(i => !i.pull_request && !i.assignees.length && !isNewDreamport(i) && i.number !== except);
+            const lines = [];
+            if (lead && !lead.assignees.length && lead.number !== except) lines.push(`- #${lead.number}: leading ${title}`);
+            lines.push(...tasks.slice(0, 10).map(t => `- #${t.number}: ${t.title.replace(/^Task:\s*/i, '')}`));
+            if (tasks.length > 10) lines.push(`- and [${tasks.length - 10} more](https://github.com/${repository}/issues?q=${encodeURIComponent(`is:issue is:open no:assignee label:${game}`)})`);
+            return lines.length
+              ? `What's still free in ${title}, each yours with \`/claim\` on it:\n\n${lines.join('\n')}`
+              : `Nothing else in ${title} is free right now. [The Task form](${form('task.yml')}) suggests a new task.`;
+          }
+
+          async function claim(issue, user, about, game, title) {
+            const lead = isNewDreamport(issue);
+            const holders = issue.assignees.map(a => a.login);
+            if (holders.some(h => same(h, user))) {
+              return answer(issue, about, `@${user}, ${lead ? `you already lead ${title}` : 'this task is already yours'}.`);
+            }
+            if (holders.length) {
+              const granted = (await list(`/issues/${issue.number}/comments`))
+                .filter(c => c.user.login === BOT && MARK.exec(c.body)?.[2] === 'granted' && same(MARK.exec(c.body)[3], holders[0])).pop();
+              const since = granted ? ` since ${day(granted.created_at)}` : '';
+              return answer(issue, about, `@${user}, ${lead ? `@${holders[0]} has led ${title}${since}` : `@${holders[0]} has had this task${since}`}, so it isn't free.\n\n${await free(game, title, issue.number)}`);
+            }
+            // GitHub leaves out anyone it can't assign, so the answer says whether it worked
+            const after = await api(`/issues/${issue.number}/assignees`, 'POST', { assignees: [user] });
+            issue.assignees = after.assignees;
+            if (!issue.assignees.some(a => same(a.login, user))) {
+              return answer(issue, about, `@${user}, GitHub didn't let me assign this to you, so it's still free. Say so here, and the Dreamports team will look into it.`);
+            }
+            const help = `A claim with no activity on ${title}'s issues, pull requests or progress thread for ${period} is released, and \`/release\` gives it back sooner. [Claims and teams](${guide}) says what comes next.`;
+            return answer(issue, about, lead
+              ? `@${user}, ${title} is yours to lead. Its label is \`${game}\`: the tasks you open for it with [the Task form](${form('task.yml')}) carry it, and anyone can claim them. ${help}`
+              : `@${user}, this task is yours, and nobody else can claim it while you have it. ${help}`,
+            `granted=${user}`);
+          }
+
+          async function release(issue, user, about, title) {
+            const lead = isNewDreamport(issue);
+            if (!issue.assignees.some(a => same(a.login, user))) {
+              return answer(issue, about, `@${user}, ${lead ? `you don't lead ${title}` : 'this task isn\'t yours'}, so there's nothing to give back.`);
+            }
+            const after = await api(`/issues/${issue.number}/assignees`, 'DELETE', { assignees: [user] });
+            issue.assignees = after.assignees;
+            return answer(issue, about, lead
+              ? `@${user} no longer leads ${title}, so leading it is free: \`/claim\` here takes it.`
+              : `@${user} gave this task back, so it's free: \`/claim\` takes it.`,
+            `released=${user}`);
+          }
+
+          // a New Dreamport issue claims its game, unless something else already does
+          async function openGame(issue) {
+            const user = issue.user.login, game = folderIn(issue);
+            const named = field(issue.body, 'Game')?.replace(/\s+Dreamport$/i, '') ?? game;
+            if (!NAME.test(game)) {
+              await answer(issue, 'issue', `@${user}, \`${game}\` can't be a game's folder: it's lowercase letters, numbers and single dashes, such as \`sonic-battle\`. [The New Dreamport form](${form('new-dreamport.yml')}) starts it again.`);
+              return close(issue, 'not_planned');
+            }
+            const label = await api(`/labels/${encodeURIComponent(game)}`);
+            if (label && !label.description?.endsWith(`in games/${game}/`)) {
+              await answer(issue, 'issue', `@${user}, \`${game}\` is already one of the repository's labels, for something else, so a game can't have it as its folder. [The New Dreamport form](${form('new-dreamport.yml')}) starts it again with another.`);
+              return close(issue, 'not_planned');
+            }
+            const entry = await entryOf(game);
+            if (entry || (await gameFolders()).has(game)) {
+              const title = entry?.title ?? game;
+              await answer(issue, 'issue', `@${user}, ${title} already exists, in games/${game}/${entry?.lead ? `, led by @${entry.lead}` : ''}.\n\n${await free(game, title, issue.number)}`);
+              return close(issue, 'duplicate');
+            }
+            const earlier = (await leadIssues()).find(i => folderIn(i) === game && i.number < issue.number);
+            if (earlier) {
+              const title = await titleOf(game);
+              const who = earlier.assignees[0]?.login;
+              await answer(issue, 'issue', `@${user}, ${title} was claimed first, in #${earlier.number}${who ? `, and @${who} leads it` : ''}.\n\n${await free(game, title, issue.number)}`);
+              return close(issue, 'duplicate');
+            }
+            const title = `${named} Dreamport`;
+            await prepare(issue, game, title);
+            await claim(issue, user, 'issue', game, title);
+          }
+
+          // a Task issue gets its game's label and milestone, and its author when they take it
+          async function openTask(issue) {
+            const user = issue.user.login, game = folderIn(issue);
+            const known = NAME.test(game) && ((await gameFolders()).has(game) || await leadIssueOf(game));
+            if (!known) {
+              await answer(issue, 'issue', `@${user}, nobody is making a Dreamport of \`${game}\` yet, so it has no tasks. [The New Dreamport form](${form('new-dreamport.yml')}) starts one, and \`npm run dp -- find\` lists the games being made.`);
+              return close(issue, 'not_planned');
+            }
+            const title = await titleOf(game);
+            await prepare(issue, game, title);
+            if (ticked(issue)) await claim(issue, user, 'issue', game, title);
+          }
+
+          // everything on one issue that has no answer yet: the issue itself, then each /claim and /release, in order
+          async function handle(number) {
+            const issue = await api(`/issues/${number}`);
+            if (!issue || issue.pull_request) return;
+            const comments = await list(`/issues/${number}/comments`);
+            const answered = new Set(comments.filter(c => c.user.login === BOT).map(c => MARK.exec(c.body)?.[1]).filter(Boolean));
+            // a task nobody took at first is done once it has its game's label, its kind and its milestone
+            const prepared = [folderIn(issue), 'task'].every(l => issue.labels.some(x => x.name === l)) && issue.milestone;
+            if (issue.state === 'open' && !answered.has('issue')) {
+              if (isNewDreamport(issue)) await openGame(issue);
+              else if (isTask(issue) && (!prepared || ticked(issue))) await openTask(issue);
+            }
+            for (const comment of comments) {
+              const verb = comment.user.type === 'Bot' || answered.has(String(comment.id)) ? null : commandIn(comment.body);
+              if (!verb) continue;
+              const user = comment.user.login, about = String(comment.id);
+              if (issue.state !== 'open') {
+                await answer(issue, about, `@${user}, this issue is closed, so there's nothing to ${verb}.`);
+                continue;
+              }
+              const game = await gameOf(issue);
+              if (!game) {
+                await answer(issue, about, `@${user}, this issue isn't one of a Dreamport's tasks, so it can't be claimed. A game's tasks carry its label, and [the Task form](${form('task.yml')}) opens a new one.`);
+                continue;
+              }
+              const title = await titleOf(game);
+              if (verb === 'claim') await claim(issue, user, about, game, title);
+              else await release(issue, user, about, title);
+            }
+          }
+
+          // who did anything on a game since a moment: on its issues and pull requests, or in its progress thread
+          const active = new Map();
+          async function activeOn(game, since) {
+            if (active.has(game)) return active.get(game);
+            const people = new Set();
+            const seen = (who, when) => { if (who && when && Date.parse(when) >= since) people.add(who.toLowerCase()); };
+            for (const item of await list(`/issues?state=all&labels=${encodeURIComponent(game)}&since=${new Date(since).toISOString()}`)) {
+              seen(item.user.login, item.created_at);
+              for (const e of await list(`/issues/${item.number}/timeline`)) seen(e.actor?.login ?? e.user?.login, e.created_at ?? e.submitted_at);
+            }
+            const { repository: found } = await graphql(`query($owner: String!, $name: String!) {
+              repository(owner: $owner, name: $name) { hasDiscussionsEnabled discussionCategories(first: 50) { nodes { id slug } } }
+            }`, { owner, name });
+            const category = found.hasDiscussionsEnabled && found.discussionCategories.nodes.find(c => c.slug === 'progress');
+            for (let after = null; category;) {
+              const { repository: page } = await graphql(`query($owner: String!, $name: String!, $category: ID!, $after: String) {
+                repository(owner: $owner, name: $name) {
+                  discussions(first: 100, after: $after, categoryId: $category) { nodes { id body closed } pageInfo { hasNextPage endCursor } }
+                }
+              }`, { owner, name, category: category.id, after });
+              const thread = page.discussions.nodes.find(t => !t.closed && folderIn(t) === game);
+              if (thread) {
+                const { node } = await graphql(`query($id: ID!) {
+                  node(id: $id) { ... on Discussion { author { login } createdAt comments(last: 100) { nodes {
+                    author { login } createdAt lastEditedAt replies(last: 100) { nodes { author { login } createdAt lastEditedAt } }
+                  } } } }
+                }`, { id: thread.id });
+                seen(node.author?.login, node.createdAt);
+                for (const c of node.comments.nodes) {
+                  seen(c.author?.login, c.lastEditedAt ?? c.createdAt);
+                  for (const r of c.replies.nodes) seen(r.author?.login, r.lastEditedAt ?? r.createdAt);
+                }
+                break;
+              }
+              if (!page.discussions.pageInfo.hasNextPage) break;
+              after = page.discussions.pageInfo.endCursor;
+            }
+            active.set(game, people);
+            return people;
+          }
+
+          // the daily run: answers what a run missed, then releases the claims nobody has worked on
+          async function releaseQuiet() {
+            const since = Date.now() - days * DAY;
+            const open = (await list('/issues?state=open&sort=created&direction=asc')).filter(i => !i.pull_request);
+            // an issue changed in the last minutes has its own run
+            for (const issue of open) if (Date.parse(issue.updated_at) < Date.now() - 600000) await handle(issue.number);
+            for (const listed of open) {
+              const issue = await api(`/issues/${listed.number}`);
+              if (issue.state !== 'open' || !issue.assignees.length) continue;
+              const game = await gameOf(issue);
+              if (!game) continue;
+              // only the claims the bot granted: an issue assigned by hand stays as people left it
+              const held = new Map();
+              for (const c of await list(`/issues/${issue.number}/comments`)) {
+                const found = c.user.login === BOT && MARK.exec(c.body);
+                if (!found?.[2]) continue;
+                if (found[2] === 'granted') held.set(found[3].toLowerCase(), c.created_at);
+                else held.delete(found[3].toLowerCase());
+              }
+              for (const { login } of issue.assignees) {
+                if (!held.has(login.toLowerCase()) || (await activeOn(game, since)).has(login.toLowerCase())) continue;
+                const title = await titleOf(game);
+                await api(`/issues/${issue.number}/assignees`, 'DELETE', { assignees: [login] });
+                await answer(issue, 'quiet', isNewDreamport(issue)
+                  ? `@${login}, there's been no news from you on ${title} for ${period}, so leading it is free again. Nothing is lost: your work and your team build stay where they are, for the next lead to start from, and \`/claim\` here takes it back, you included, while it's still free.`
+                  : `@${login}, there's been no news on this task for ${period}, so it's free again for anyone to take. Nothing is lost: your work and your preview stay where they are, and \`/claim\` takes it back, you included, while it's still free.`,
+                `released=${login}`);
+              }
+            }
+          }
+
+          await ensureLabel('new-dreamport', 'fbca04', 'Claims a whole game for its lead, from the New Dreamport form');
+          await ensureLabel('task', 'c5def5', 'One piece of a Dreamport, which one person claims at a time');
+          if (event.issue) await handle(event.issue.number);
+          else await releaseQuiet();
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `# Claims\n\n${done.length ? done.map(d => `- ${d}`).join('\n') : 'Nothing to answer or release.'}\n\nOnly issues were read and written. Nothing from them was run.\n`);
+          NODE
