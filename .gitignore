@@ -25,6 +25,14 @@
 roms/
 saves/
 
+# What the proof tools keep on the contributor's computer: where the copies are, the reference emulator, and
+# every result with pictures from the game in it (tools/README.md).
+.dreamports/
+# A game's proof folder holds only JSON: its recordings, code map and progress, and never a picture or a clip.
+games/*/proof/**
+!games/*/proof/**/
+!games/*/proof/**/*.json
+
 # Assets extracted from a game stay on the machine that extracted them.
 extracted/
 assets-extracted/
