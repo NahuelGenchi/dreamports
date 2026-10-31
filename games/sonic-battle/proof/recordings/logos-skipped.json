@@ -1,0 +1,11 @@
+{
+  "about": "From power-on, Start held for a moment on SEGA's logo and again on Sonic Team's, which skip each to where it fades out.",
+  "frames": 221,
+  "held": [
+    [0,[]],
+    [110,["START"]],
+    [115,[]],
+    [170,["START"]],
+    [175,[]]
+  ]
+}

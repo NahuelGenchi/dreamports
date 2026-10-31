@@ -1,0 +1,24 @@
+{
+  "about": "Sonic Battle's parts, in the order a player meets them, then its other modes. Each counts the same. A part is proven when a recording plays it from its first frame to its last and every frame matches the original: \"frames\" are the first and last of the recording's frames it covers. A part may end with a press that moves the game on, the way a player leaves it, such as Start on the title screen. Where the screen is one colour between two parts, those frames go with the part before.",
+  "parts": [
+    { "name": "The SEGA and Sonic Team logos", "recording": "logos", "frames": [0, 389] },
+    { "name": "The intro" },
+    { "name": "The title screen" },
+    { "name": "The main menu" },
+    { "name": "Story mode: Sonic's episode" },
+    { "name": "Story mode: Tails's episode" },
+    { "name": "Story mode: Rouge's episode" },
+    { "name": "Story mode: Knuckles's episode" },
+    { "name": "Story mode: Amy's episode" },
+    { "name": "Story mode: Cream's episode" },
+    { "name": "Story mode: Shadow's episode" },
+    { "name": "Story mode: Emerl's episode" },
+    { "name": "Story mode: the last episode" },
+    { "name": "Battle mode" },
+    { "name": "Challenge mode" },
+    { "name": "Training mode" },
+    { "name": "The mini-games" },
+    { "name": "Emerl's skills" },
+    { "name": "The options" }
+  ]
+}
