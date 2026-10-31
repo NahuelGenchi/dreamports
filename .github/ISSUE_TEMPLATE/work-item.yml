@@ -1,6 +1,5 @@
 name: Work item
 description: Suggest a port, report a problem, or track a feature, improvement, document, research decision, or repository task.
-title: ""
 body:
   - type: markdown
     attributes:
