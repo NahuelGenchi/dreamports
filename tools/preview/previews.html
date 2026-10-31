@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:,">
+<title>Dreamports previews by {{owner}}</title>
+<style>
+  :root { color-scheme: light dark; --page: #ffffff; --ink: #0a1738; --dim: rgba(10, 23, 56, 0.68); --line: #cde3f8; }
+  @media (prefers-color-scheme: dark) { :root { --page: #050a24; --ink: #eef4ff; --dim: rgba(238, 244, 255, 0.7); --line: #1f2c6b; } }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.55 system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 16px 48px; }
+  a { color: inherit; }
+  h1 { font-size: 28px; line-height: 1.2; margin: 0 0 8px; }
+  ul { list-style: none; margin: 24px 0; padding: 0; border-top: 1px solid var(--line); }
+  li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  li a { font-weight: 700; }
+  li span, .more { display: block; color: var(--dim); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Previews by {{owner}}</h1>
+  <p>Work in progress on Dreamports, published by {{owner}}. The Dreamports team hasn't reviewed any of it: play only previews from people you trust.</p>
+  <ul>
+{{list}}
+  </ul>
+  <p class="more"><a href="{{guide}}">About previews</a> · <a href="https://dreamports.net/">dreamports.net</a></p>
+</main>
+</body>
+</html>
