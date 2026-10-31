@@ -1,7 +1,7 @@
 // npm run dp -- share <game> [--as <preview>] [--post --about "<what changed>"] [--clip <file>] [--fork <owner/name>]
 // [--yes]: publishes a preview of the game as it is in the last commit, on GitHub Pages from the contributor's own
 // fork, at <owner>.github.io/<fork>/<preview>/. With --post it also posts in the game's progress thread, in the
-// repository's Discussions, from the contributor's own account: what changed, a clip of the Dreamport, the % and
+// repository's Discussions, from the contributor's own account: what changed, a clip of the Dreamport, its two numbers and
 // the preview's link. A preview holds only code: the player gives it their own copy, as on dreamports.net. share
 // asks before it publishes, before it switches Pages on and before it posts; --yes answers yes, once the
 // contributor has said yes.
@@ -10,7 +10,8 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, relative, extname, basename, dirname, sep } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { REPO, LOCAL } from './lib/paths.mjs';
-import { head, uncommitted, remotes, fileAt, fetchPreviews, pushPreviews, makePreview, BRANCH, CLIPS } from './lib/preview.mjs';
+import { head, uncommitted, remotes, fileAt, filesAt, fetchPreviews, pushPreviews, makePreview, BRANCH, CLIPS } from './lib/preview.mjs';
+import { percentText, proofOf } from '../src/lib/entries.mjs';
 import {
   UPSTREAM, api, signedInAs, findFork, pagesOf, turnOnPages, lastBuild, buildPages, progressCategory, threadOf, openThread, postIn,
 } from './lib/github.mjs';
@@ -57,7 +58,7 @@ export async function run(args) {
     category = progressCategory();
     thread = threadOf(category.categoryId, game);
   }
-  const postText = siteUrl => postBody({ about, title, clip, clips, siteUrl, percent: percentOf(commit, game), address: `${siteUrl}${name}/`, fork, commit, branch });
+  const postText = siteUrl => postBody({ about, title, clip, clips, siteUrl, numbers: numbersAt(commit, game), address: `${siteUrl}${name}/`, fork, commit, branch });
 
   const tip = fetchPreviews(fork.remote);
   const preview = makePreview({ tip, commit, branch, game, title, name, author: login, repository: fork.repository, url, about, guide: GUIDE, clips });
@@ -92,8 +93,8 @@ export async function run(args) {
 
   if (posting) {
     if (!thread) {
-      thread = openThread(category, game, title, `${title}, made in games/${game}/. One post per step: what changed, a clip, the % and a preview.`);
-      console.log(`Opened ${title}'s progress thread: ${thread.url}`);
+      thread = openThread(category, game, title, `${title}, made in games/${game}/. One post per step: what changed, a clip, its two numbers and a preview.`);
+      console.log(`Opened ${title}'s progress thread: ${thread.url}\nAdd it to games/${game}/entry.md as \`thread: ${thread.url}\`, so the game's page links it.`);
     }
     console.log(`Posted: ${postIn(thread.id, postText(siteUrl))}`);
   }
@@ -129,14 +130,10 @@ async function ask(question, yes) {
   }
 }
 
-// the game's name on the site: the title of its page in src/content/games/, the one that plays /play/<game>/
+// the game's name on the site: the title in its entry, games/<game>/entry.md
 function titleOf(commit, game) {
-  const list = fileAt(commit, 'src/content/games/')?.toString('utf8') ?? '';
-  for (const file of list.split('\n').filter(f => f.endsWith('.md'))) {
-    const text = fileAt(commit, `src/content/games/${file}`)?.toString('utf8') ?? '';
-    if (text.includes(`/play/${game}/`)) return /^title:\s*(.+)$/m.exec(text)?.[1].trim().replace(/^(['"])(.*)\1$/, '$2') ?? game;
-  }
-  return game;
+  const text = fileAt(commit, `games/${game}/entry.md`)?.toString('utf8') ?? '';
+  return /^title:\s*(.+)$/m.exec(text)?.[1].trim().replace(/^(['"])(.*)\1$/, '$2') ?? game;
 }
 
 // where GitHub Pages will put the fork's site: <owner>.github.io/<fork>/, or the owner's own domain if they have one
@@ -172,16 +169,31 @@ function chooseClip(game, file) {
   return { file, bytes, still: still && existsSync(still) ? still : null };
 }
 
-// the % prove measured, in the last commit
-function percentOf(commit, game) {
+// the game's two numbers in the last commit, as the post writes them, or null when its proof doesn't add up
+function numbersAt(commit, game) {
+  const folder = `games/${game}/proof`;
+  const read = path => {
+    const file = fileAt(commit, `${folder}/${path}`);
+    return file ? JSON.parse(file.toString('utf8')) : undefined;
+  };
   try {
-    return JSON.parse(fileAt(commit, `games/${game}/proof/progress.json`).toString('utf8')).percent ?? null;
+    const recordings = Object.fromEntries(filesAt(commit, `${folder}/recordings`).filter(f => f.path.endsWith('.json'))
+      .map(f => [basename(f.path, '.json'), read(`recordings/${basename(f.path)}`)]));
+    const proof = proofOf(game, {
+      original: read('original.json'), map: read('code-map.json'), progress: read('progress.json'),
+      portMap: read('port-map.json'), parts: read('parts.json'), recordings,
+    });
+    const { ported, gameplay } = proof ?? {};
+    return [
+      ported ? `${percentText(ported.percent)} of the original's code` : 'not measured yet: the game needs a code map',
+      gameplay ? `${percentText(gameplay.percent)} of the game, ${gameplay.proven} of its ${gameplay.total} parts` : 'not measured yet: the game needs a list of its parts',
+    ];
   } catch {
     return null;
   }
 }
 
-function postBody({ about, title, clip, clips, siteUrl, percent, address, fork, commit, branch }) {
+function postBody({ about, title, clip, clips, siteUrl, numbers, address, fork, commit, branch }) {
   const lines = [`**What changed:** ${about.trim()}`, ''];
   if (clip) {
     const video = `${siteUrl}${clips[0].path}`;
@@ -190,7 +202,9 @@ function postBody({ about, title, clip, clips, siteUrl, percent, address, fork, 
     lines.push(kind === 'PNG' ? `![${title}](${video})` : `[Watch the clip](${video}) (MP4, ${(clip.bytes / 1e6).toFixed(1)} MB)`, '');
   }
   lines.push(
-    `**Progress:** ${percent === null ? 'no % yet: the game needs a code map and a proven recording' : `${percent}% of the original's code proven in recorded play`}`,
+    ...(numbers
+      ? [`**Code ported:** ${numbers[0]}`, `**Gameplay proven:** ${numbers[1]}`]
+      : ['**Progress:** not measured: the game\'s proof files don\'t add up, and npm run check says why']),
     `**Preview:** ${address} (not reviewed by the Dreamports team: play it only if you trust its author)`,
     `**Code:** [${fork.repository}@${commit.slice(0, 7)}](https://github.com/${fork.repository}/commit/${commit}) on \`${branch}\``,
   );

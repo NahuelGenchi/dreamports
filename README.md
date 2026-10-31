@@ -49,11 +49,22 @@ On a phone or tablet, you can add dreamports to your Home Screen: in Safari, tap
 
 ## What's inside
 
-These are the projects on the site so far. Dreamports live in this repository, in [`games/`](games/README.md); the others have repositories of their own.
+These are the projects on the site so far.
 
-| | Project | What it is | Try it |
+**Dreamports** are made in this repository, in [`games/`](games/README.md), each in a folder of its own with an entry that says where it stands. Each one shows two numbers, as [the Dreamport standard](docs/STANDARD.md#how-progress-is-measured) explains. **Code ported** is how much of the original game's code has been rebuilt. **Gameplay proven** is how much of the game has been played next to the original, from start to end of each part, with every frame matching. A game can be far along in code and still have little proven, until someone records it. The lead is who leads the work on it. The proof tools fill in this table from each Dreamport's entry, so nobody types its numbers.
+
+<!-- The proof tools write this table from each Dreamport's entry: npm run dp -- readme. -->
+
+| | Dreamport | What it is | Code ported | Gameplay proven | Lead | Try it |
+| :---: | :--- | :--- | :--- | :--- | :--- | :--- |
+| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | 37.99% | 2.78%, 1 of 36 parts | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
+
+<!-- End of the table of Dreamports. -->
+
+**Mash-ups** are fan projects with repositories of their own.
+
+| | Mash-up | What it is | Try it |
 | :---: | :--- | :--- | :--- |
-| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance (Game Boy Advance, 2001), rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
 | ✨ | **[Kirby's Dead Land](https://github.com/NahuelGenchi/kirbys-dead-land)** | A mod that lets you play as Kirby inside Dead Cells, with his moves and copy abilities. For Linux; Windows is in testing. | [⬇&nbsp;Download](https://github.com/NahuelGenchi/kirbys-dead-land/releases/latest) |
 | ✨ | **Your favorite fan port?** | Ports made by other fans are on their way to the mash-ups. Know a great one? | [💡&nbsp;Suggest](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml) |
 

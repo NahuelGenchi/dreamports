@@ -861,7 +861,8 @@ kbd {
 }
 
 .np-name,
-.np-detail {
+.np-detail,
+.np-numbers {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -876,6 +877,20 @@ kbd {
   color: var(--dim);
   font-size: 11.5px;
   line-height: 14px;
+}
+
+/* a Dreamport's two numbers, code ported and gameplay proven: side by side, or one under the other on a narrow screen */
+.np-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 1.2em;
+  color: var(--blue);
+  font-size: 11.5px;
+  line-height: 14px;
+}
+
+.np-numbers:empty {
+  display: none;
 }
 
 .nameplate.is-empty {
@@ -2077,7 +2092,12 @@ dialog.card[open] {
   opacity: 1;
 }
 
-/* with no nameplate to read, each game shows its name under its picture */
+/* with no nameplate to read, each game shows its name under its picture, and a Dreamport its numbers under that */
+:root:not(.js) .slot-numbers {
+  display: block;
+  color: var(--blue);
+}
+
 :root:not(.js) .slot .sr-only {
   position: absolute;
   top: 100%;
@@ -2704,7 +2724,7 @@ dialog.card[open] {
   line-height: 20px;
 }
 
-/* the ways to play, as icons, and how close the port is to the original */
+/* the ways to play, as icons, lists of links with their notes, and a Dreamport's measured % */
 .ctl {
   display: flex;
   gap: 16px;
@@ -2715,50 +2735,126 @@ dialog.card[open] {
   display: inline-flex;
 }
 
-.pct {
+.fact-items {
   display: grid;
-  justify-items: start;
   gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.pct-bar {
+.fact-note {
+  display: block;
+  color: var(--dim);
+}
+
+.meter {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.meter-head {
   display: flex;
-  gap: 3px;
-  padding-top: 4px;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin: 0;
+  color: var(--ink);
+  font: 400 13.5px/20px var(--font);
 }
 
-.pct-bar i {
-  width: 12px;
-  height: 12px;
+.meter-num {
+  font-size: 16px;
+}
+
+/* a flat bar that fills to the %, so a little progress still shows */
+.meter-bar {
+  display: block;
+  height: 10px;
   background: var(--line);
 }
 
-.pct-bar i.is-on {
+.meter-bar i {
+  display: block;
+  height: 100%;
   background: var(--blue);
 }
 
-.pct-parts {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9.6em, 1fr));
-  gap: 2px 18px;
-  width: 100%;
-  margin-top: 2px;
-  color: var(--dim);
-  font-size: 12.5px;
-  line-height: 20px;
+/* what proves the numbers, folded into one line under them */
+.parts {
+  margin-top: 12px;
+  font: 400 13.5px/20px var(--font);
 }
 
-.pct-parts > span {
+.parts summary {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
   gap: 8px;
+  width: max-content;
+  max-width: 100%;
+  color: var(--blue);
+  cursor: pointer;
+  list-style: none;
 }
 
-.pct-parts > span > span:last-child {
+.parts summary::-webkit-details-marker {
+  display: none;
+}
+
+/* a pixel arrow that turns down when the list opens */
+.parts summary::before {
+  content: '';
+  width: 6px;
+  height: 10px;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  transition: rotate 0.2s ease;
+}
+
+.parts[open] summary::before {
+  rotate: 90deg;
+}
+
+.parts summary:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+
+.parts ul {
+  margin: 10px 0 0;
+  padding: 0;
+  columns: 15em auto;
+  column-gap: 24px;
+  list-style: none;
+}
+
+.parts li {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  break-inside: avoid;
+  color: var(--dim);
+}
+
+.parts li.is-proven {
   color: var(--ink);
 }
 
-.pct-note {
+.parts li > i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  background: var(--line);
+}
+
+.parts li.is-proven > i {
+  background: var(--blue);
+}
+
+.parts-links {
+  margin: 10px 0 0;
   color: var(--dim);
 }
 

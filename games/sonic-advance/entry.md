@@ -1,10 +1,20 @@
 ---
+# Sonic Advance Dreamport's entry. games/README.md explains every field, and its % comes from proof/.
 title: Sonic Advance Dreamport
-kind: dreamport
 platform: Game Boy Advance
 year: 2001
 added: 2026-10-27
 summary: Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install.
+needs: A Sonic Advance (USA) ROM (.gba)
+controls: [keyboard, controller, touch]
+lead: NahuelGenchi
+kit: gba
+sources:
+  - name: SAT-R’s decompilations of Sonic Advance and Sonic Advance 2
+    href: https://github.com/SAT-R/sa2
+    license: none
+    use: guide
+thread: https://github.com/NahuelGenchi/dreamports/discussions/110
 ownCopy:
   confirm: I own Sonic Advance
   links:
@@ -41,31 +51,6 @@ extras:
       clip: /media/sonic-tricks
       still: /media/sonic-tricks-still.webp
 facts:
-  - label: Original
-    value: Game Boy Advance, 2001
-  - label: You need
-    value: A Sonic Advance (USA) ROM (.gba)
-  - label: Controls
-    controls: [keyboard, controller, touch]
-  - label: Status
-    parts:
-      - name: Maps
-        percent: 100
-      - name: Physics
-        percent: 100
-      - name: Mechanics
-        percent: 100
-      - name: Sound
-        percent: 100
-      - name: Options
-        percent: 85
-      - name: Modes
-        percent: 30
-      - name: Characters
-        percent: 25
-  - label: Source code
-    value: On GitHub
-    href: https://github.com/NahuelGenchi/dreamports/tree/main/games/sonic-advance
   - label: Article
     value: On nahuelgenchi.com
     href: https://nahuelgenchi.com/gaming/onsoku-advance/

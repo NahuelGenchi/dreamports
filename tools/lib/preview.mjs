@@ -65,8 +65,8 @@ export function pushPreviews(remote, commit) {
   git(['push', '--quiet', remote, `${commit}:refs/heads/${BRANCH}`]);
 }
 
-// every file under these paths in a commit: [{ mode, sha, path }]
-function filesAt(commit, ...paths) {
+/** Every file under these paths in a commit: [{ mode, sha, path }]. */
+export function filesAt(commit, ...paths) {
   if (!commit) return [];
   return git(['ls-tree', '-r', '-z', '--full-tree', commit, '--', ...paths]).split('\0').filter(Boolean).map(line => {
     const [info, path] = line.split('\t');

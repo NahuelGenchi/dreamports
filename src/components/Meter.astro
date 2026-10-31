@@ -1,0 +1,18 @@
+---
+// One of a Dreamport's two numbers, at the top of its progress box: its name and its %, over a bar that fills to it.
+import type { Measure } from '../lib/dreamports';
+
+interface Props {
+  measure: Measure;
+}
+
+const { label, percent, text } = Astro.props.measure;
+---
+
+<div class="meter">
+  <p class="meter-head">
+    <span>{label}</span>
+    <span class="meter-num">{text ?? 'Not measured yet'}</span>
+  </p>
+  <span class="meter-bar" aria-hidden="true"><i style={`width: ${percent ?? 0}%`}></i></span>
+</div>

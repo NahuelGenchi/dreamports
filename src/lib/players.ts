@@ -2,7 +2,8 @@
 // (worker/). docs/ACCOUNTS.md explains how a game uses them.
 
 export interface Playable {
-  // the game's file in src/content/games, whose title and page the profile shows
+  // the id of the game's page, whose title and address the profile shows: for a Dreamport, its folder's name
+  // and "-dreamport" (src/lib/entries.mjs)
   entry: string;
   // the game's own list of achievements, an ES module exporting ACHIEVEMENTS: [{ id, title, description }]
   list: string;

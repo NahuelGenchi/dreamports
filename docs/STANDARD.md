@@ -22,15 +22,15 @@ Some of the checks below are still being built. Where one doesn't exist yet, the
 
 **What it asks.** Everything the game shows or plays, and the data it's made from, comes from the player's own copy, on their device: graphics, sounds, music, levels, text and tables. None of it goes into this repository, a pull request, an issue, a preview or dreamports.net, and nothing uploads the copy or any piece of it. No lock is ever broken: no keys, no decryption and no copy-protection removal. An extra that borrows from another game needs the player's own copy of that game too, the way Sonic Advance Dreamport's Boost Mode needs Sonic Advance 2.
 
-What the repository may keep about a game is what tells its versions apart and maps its program: a checksum of each supported version, and the [code map](#how-progress-is-measured), which lists each function's address and size. Neither holds any of the game. Short recordings of play aren't game files either, and [Clips](#clips) says where they may appear.
+What the repository may keep about a game is what tells its versions apart and maps its program: a checksum of each supported version, the [code map](#how-progress-is-measured), which lists each function's address and size, the port map, which says where the Dreamport's code names each function, and the list of the game's parts. None of them holds any of the game. Short recordings of play aren't game files either, and [Clips](#clips) says where they may appear.
 
 **How it's checked.** The repository's [ignore rules](../.gitignore) stop game files, saves and extracted assets from being committed by accident, but they're a guard, not permission. The Dreamports team checks every pull request for game data, and for anything that sends the copy off the player's device.
 
 ### Always playable, always proven
 
-**What it asks.** The very first piece of a new Dreamport can already be played, usually the first character moving in the first level. Every change keeps it playable, and the work follows the order a player meets things. Progress is proven, not guessed: the [%](#how-progress-is-measured) counts only code that has been played and matches the original, so a game that can't be played stays at 0%. Every change you can see or hear comes with a short [clip](#clips) that shows it, next to the original whenever it claims a match.
+**What it asks.** The very first piece of a new Dreamport can already be played, usually the first character moving in the first level. Every change keeps it playable, and the work follows the order a player meets things. Progress is shown as [two numbers](#how-progress-is-measured), side by side: how much of the original's code is ported, and how much of the game is proven by playing it next to the original. Gameplay proven counts only parts played through with every frame matching, so a game nobody can play has none. Every change you can see or hear comes with a short [clip](#clips) that shows it, next to the original whenever it claims a match.
 
-**How it's checked.** The Dreamports team plays every change on a phone and a computer before it goes live, and watches its clips. Anyone can play it before then, in the preview its author publishes with `npm run dp -- share` ([Previews and progress threads](PREVIEWS.md)). The [proof tools](../tools/README.md) measure the %, which will show on each game's page with its entry ([#79](https://github.com/NahuelGenchi/dreamports/issues/79)). Until then, Sonic Advance Dreamport's page shows progress set by hand.
+**How it's checked.** The Dreamports team plays every change on a phone and a computer before it goes live, and watches its clips. Anyone can play it before then, in the preview its author publishes with `npm run dp -- share` ([Previews and progress threads](PREVIEWS.md)). The [proof tools](../tools/README.md) measure both numbers, which the launcher, each game's page and the README show, from the game's [entry](../games/README.md#the-entry) and its proof folder.
 
 ### At home on dreamports.net
 
@@ -44,19 +44,21 @@ It works with the launcher at least as well as Sonic Advance Dreamport. The play
 
 **What it asks.** Code can come from anywhere, as long as its license allows it or its authors agree: decompilations, disassemblies, recompiler drafts and ports made elsewhere. Whatever comes in is rewritten as readable JavaScript, with names that say what things do. Every source is named, and code brought in keeps its license notice and its authors' names. Code with no license can be read as a guide, but it isn't copied unless its authors agree, and their agreement is linked in the game's credits.
 
-**How it's checked.** Every pull request names the sources it used and their licenses, and the Dreamports team checks them. Each game's credits name every source, and its entry will list them with their licenses ([#79](https://github.com/NahuelGenchi/dreamports/issues/79)).
+**How it's checked.** Every pull request names the sources it used and their licenses, and the Dreamports team checks them. Each game's [entry](../games/README.md#the-entry) lists every source with its license and whether code came in from it, and the game's page shows them.
 
 ## How progress is measured
 
-**The %** is how much of the original game's code has been rewritten for the browser and proven by playing.
+Every Dreamport shows two numbers, side by side: how much of the game has been rebuilt, and how much of it has been proven to play like the original. Rebuilding comes first, and proving takes longer, because someone has to play each part all the way through, so the two can be far apart. Showing both keeps either one from passing for the other. They were decided on 31 October 2026, in [#79](https://github.com/NahuelGenchi/dreamports/issues/79).
 
-**The code map** is what it's measured against: the list of every function in the original program, with its address and size, and nothing of its code. A decompilation's list of functions, or a disassembler, can provide it.
+**The code map** is what code is measured against: the list of every function in the original program, with its address and size, and nothing of its code. A decompilation's list of functions, or a disassembler, can provide it.
 
-**Recorded play** is the button presses for each frame. It holds nothing from the game, so it's kept in the game's folder, and anyone with their own copy can replay it.
+**Code ported** is how much of the original's code the Dreamport has rewritten, by size. A function counts when the Dreamport's code names it, as a comment does when it says which of the original's functions a piece of code rewrites. It also counts when it has run in recorded play where every frame matched the original. The proof tools find the names and write the **port map**, which lists each function that counts and the first place the code names it, and every name that doesn't land on a function, so it can be put right. Bigger functions count for more. Code ported is a claim, checked in review and, as the game is played, by gameplay proven, so the two are always shown together.
 
-**The measure.** The proof tools play each recording in the original and in the Dreamport. A function counts once it has run in recorded play where every frame of both versions matched. The % is the size of the functions that count, divided by the size of every function in the code map. Bigger functions count for more, and code nobody has played counts for nothing, so a high % always means a game you can play.
+**Gameplay proven** is how much of the game has been played next to the original, from start to end, with every frame matching. Each game lists its **parts**: its screens, levels, special stages, endings, characters and modes, each counting the same. A part is proven when a recording plays it from its first frame to its last, in the original and in the Dreamport, and the two match on every one of those frames. One frame that differs, or one the Dreamport doesn't have yet, and the part waits.
 
-The [proof tools](../tools/README.md) do this on the contributor's computer, and make the clips. Showing the % on each game's page is [#79](https://github.com/NahuelGenchi/dreamports/issues/79), which isn't done yet.
+**Recorded play** is the button presses for each frame. It holds nothing from the game, so it's kept in the game's folder, and anyone with their own copy can replay it. It's the evidence for gameplay proven: the game's page links each proven part to its recording and its frames, and the game's [progress thread](PREVIEWS.md#progress-threads) has the clips.
+
+The [proof tools](../tools/README.md) do all of this on the contributor's computer, and make the clips. The launcher, each game's page, the README's table of Dreamports and the game's progress posts show both numbers from its proof folder, and the site checks that they add up before it shows them, so neither can be typed by hand.
 
 ## Clips
 
@@ -76,7 +78,7 @@ Players need their own copy, made from their own cartridge or disc. Each Dreampo
 
 ## Ports made elsewhere
 
-A port someone already made elsewhere is a head start, not a reason to stop. It becomes a Dreamport once its code comes into this repository, which needs its license to allow it or its authors to agree. Its code is rewritten as readable JavaScript on its console's kit, with no emulator and no game files, and then checked against the original. Only what matches counts toward the %, every difference becomes a task, and its authors are credited on the game's page and invited to lead it.
+A port someone already made elsewhere is a head start, not a reason to stop. It becomes a Dreamport once its code comes into this repository, which needs its license to allow it or its authors to agree. Its code is rewritten as readable JavaScript on its console's kit, with no emulator and no game files, and then checked against the original. Only what's played and matches counts as proven, every difference becomes a task, and its authors are credited on the game's page and invited to lead it.
 
 Until someone brings it in, it can be listed in the Mash-ups row as an external port, with a link to its own page and credit to the people who made it.
 
@@ -92,7 +94,7 @@ The Mash-ups row on dreamports.net stays as it is: for fan games that aren't por
 
 Today, these rules are checked by the Dreamports team's review. The rest of milestone M6 builds what makes them easier to keep and to check.
 
-One entry per game with its measured % is [#79](https://github.com/NahuelGenchi/dreamports/issues/79), and claims and teams are [#80](https://github.com/NahuelGenchi/dreamports/issues/80). Previews and progress threads came with [#78](https://github.com/NahuelGenchi/dreamports/issues/78), as [Previews and progress threads](PREVIEWS.md) explains. The guide and commands for newcomers are [#81](https://github.com/NahuelGenchi/dreamports/issues/81), and a contact for rights holders, with clips of the original allowed in pull requests and progress posts, is [#82](https://github.com/NahuelGenchi/dreamports/issues/82).
+Claims and teams are [#80](https://github.com/NahuelGenchi/dreamports/issues/80). Previews and progress threads came with [#78](https://github.com/NahuelGenchi/dreamports/issues/78), as [Previews and progress threads](PREVIEWS.md) explains, and one entry per game with its two numbers came with [#79](https://github.com/NahuelGenchi/dreamports/issues/79), as [the entry](../games/README.md#the-entry) explains. The guide and commands for newcomers are [#81](https://github.com/NahuelGenchi/dreamports/issues/81), and a contact for rights holders, with clips of the original allowed in pull requests and progress posts, is [#82](https://github.com/NahuelGenchi/dreamports/issues/82).
 
 ## Words used here
 
@@ -108,4 +110,8 @@ One entry per game with its measured % is [#79](https://github.com/NahuelGenchi/
 
 **Code map.** The list of every function in the original program, with its address and size.
 
-**Entry.** The one file that says everything about a Dreamport: its %, its team, its sources and what's free to work on.
+**Port map.** The list of the original's functions that a Dreamport's code names, each with the first place it names it.
+
+**Part.** A piece of a game that a player meets as a whole, such as a screen, a level, an ending or a mode. Gameplay proven counts the parts proven.
+
+**Entry.** The one file that says everything about a Dreamport, `entry.md` in its folder: the copy it needs, its lead and team, its sources and where to follow it. Its two numbers come from its proof folder.

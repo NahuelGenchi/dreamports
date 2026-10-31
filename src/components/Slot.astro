@@ -1,7 +1,9 @@
 ---
-// One place in the launcher's row: a game, which links to its own page, or an empty slot.
+// One place in the launcher's row: a game, which links to its own page, or an empty slot. A Dreamport also
+// carries its two numbers, which the nameplate shows under it once it's selected.
 import Tile from './Tile.astro';
 import { gameUrl, sectionFor, type Game } from '../lib/site';
+import { numbersOf } from '../lib/dreamports';
 
 interface Props {
   game?: Game;
@@ -12,6 +14,7 @@ const { game, index } = Astro.props;
 const detail = game
   ? [sectionFor(game.data.kind).label, game.data.platform, game.data.year].filter(Boolean).join(' · ')
   : '';
+const numbers = game?.data.kind === 'dreamport' ? numbersOf(game.data) : undefined;
 ---
 
 {
@@ -23,6 +26,7 @@ const detail = game
       data-game={game.id}
       data-title={game.data.title}
       data-detail={detail}
+      data-numbers={numbers}
       draggable="false"
     >
       <i class="glow" style={`--g: ${game.data.glow}`} />
@@ -31,6 +35,7 @@ const detail = game
       </span>
       <span class="sr-only">
         {game.data.title}, {detail}
+        {numbers && <span class="slot-numbers">{numbers}</span>}
       </span>
     </a>
   ) : (

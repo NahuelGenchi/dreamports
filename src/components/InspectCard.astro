@@ -1,14 +1,17 @@
 ---
 // A game's own page, in the menu's place: its recording with the box to tick and the button
-// to play, then its name, its extras, its details and its text.
+// to play, then its name, its extras, its details, a Dreamport's progress with its two numbers, and its text.
 // The play and download links stay locked until the visitor confirms they're using their own
 // legal copy of the game. Without JavaScript the browser itself refuses to follow a link until
 // the box is ticked. Play links open in the same tab; download links open in a new one.
 import Facts from './Facts.astro';
+import Meter from './Meter.astro';
+import Parts from './Parts.astro';
 import PixelIcon from './PixelIcon.astro';
 import Tile from './Tile.astro';
 import ViewBar from './ViewBar.astro';
 import { filterFor, gameUrl, pageTitle, sectionFor, type Game } from '../lib/site';
+import { dreamportView } from '../lib/dreamports';
 
 interface Props {
   game: Game;
@@ -17,7 +20,10 @@ interface Props {
 }
 
 const { game, open = false } = Astro.props;
-const { title, kind, facts, glow, ownCopy, extras, screen } = game.data;
+const { title, kind, glow, ownCopy, extras, screen } = game.data;
+// a Dreamport's details come from its entry and its proof/ folder (src/lib/dreamports.ts)
+const dreamport = game.data.kind === 'dreamport' ? await dreamportView(game.data) : null;
+const facts = game.data.kind === 'dreamport' ? (dreamport?.game ?? []) : game.data.facts;
 const { confirm, links, note } = ownCopy;
 const id = game.id;
 const Title = open ? 'h1' : 'h2';
@@ -124,7 +130,16 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
           </section>
         )
       }
-      {facts.length > 0 && <Facts facts={facts} id={`facts-${id}`} />}
+      {facts.length > 0 && <Facts facts={facts} id={`facts-${id}`} heading="The game" />}
+      {
+        dreamport && (
+          <Facts facts={dreamport.progress} id={`progress-${id}`} heading="Progress">
+            <Meter measure={dreamport.ported} />
+            <Meter measure={dreamport.gameplay} />
+            <Parts parts={dreamport.parts} evidence={dreamport.evidence} />
+          </Facts>
+        )
+      }
       <div class="prose" set:html={body} />
     </div>
   </div>

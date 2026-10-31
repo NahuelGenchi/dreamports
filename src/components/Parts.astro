@@ -1,0 +1,36 @@
+---
+// What proves a Dreamport's numbers, folded away under them in one line: how many of the game's parts are proven.
+// Opened, it lists every part, a block for each, filled once a recording has proven it, and links to the evidence.
+import type { PartView } from '../lib/dreamports';
+
+interface Props {
+  parts: PartView[];
+  evidence: { value: string; href: string }[];
+}
+
+const { parts, evidence } = Astro.props;
+const proven = parts.filter((part) => part.proven).length;
+---
+
+<details class="parts">
+  <summary>{parts.length ? `${proven} of ${parts.length} parts proven` : 'How it’s proven'}</summary>
+  {
+    parts.length > 0 && (
+      <ul>
+        {parts.map((part) => (
+          <li class:list={[part.proven && 'is-proven']}>
+            <i aria-hidden="true" />
+            <span>
+              {part.href ? <a href={part.href}>{part.name}</a> : part.name}
+              <span class="sr-only">{part.proven ? ', proven' : ', not proven yet'}</span>
+              {part.note && <span class="fact-note">{part.note}</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+  <p class="parts-links">
+    {evidence.map((link, i) => <>{i > 0 && ' · '}<a href={link.href}>{link.value}</a></>)}
+  </p>
+</details>

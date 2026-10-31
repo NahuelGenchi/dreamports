@@ -29,26 +29,26 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 | Command | What it does |
 | :--- | :--- |
 | `npm run dev` | Runs the site on your computer while you work on it |
-| `npm run check` | Looks for mistakes in the pages and the game files |
+| `npm run check` | Looks for mistakes in the pages, the game files and the Dreamports' entries, and checks that the README's table of Dreamports is up to date |
 | `npm run build` | Makes the finished site in the `dist/` folder |
 | `npm run preview` | Opens that finished site, to check it before it goes online |
 | `npm run worker` | Makes the finished site and opens it with its profiles, at <http://localhost:8787>, with a database on your computer. Profiles only work here, not with `npm run dev` |
-| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame, and `share`, which puts a preview of your work online for anyone to try. [`tools/README.md`](tools/README.md) explains them |
+| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame, `portmap`, which lists the original's functions your code names, `share`, which puts a preview of your work online for anyone to try, and `readme`, which writes the README's table of Dreamports from their entries. [`tools/README.md`](tools/README.md) explains them |
 
 ## Add a game
 
-Each game page comes from **one Markdown file** in [`src/content/games/`](src/content/games/). To add a game, copy one of the files there, give it a new name, and change the text. Nothing else needs editing: the menu finds the new file by itself. Dreamports appear in the **dreamports** row, and external ports and other games in the **mash-ups** row.
+Each game page comes from **one Markdown file**. Nothing else needs editing: the menu finds the new file by itself. Dreamports appear in the **dreamports** row, and external ports and other games in the **mash-ups** row.
 
-**A Dreamport** also has to keep every rule in the [Dreamport standard](docs/STANDARD.md), whoever makes it. Its code goes in a folder of its own in [`games/`](games/README.md), and plays at `/play/<game>/`.
+**A Dreamport** keeps every rule in the [Dreamport standard](docs/STANDARD.md), whoever makes it. Its code goes in a folder of its own in [`games/`](games/README.md), and plays at `/play/<game>/`. Its page comes from its **entry**, `entry.md` in the same folder, which says everything about it, from the copy it needs to its lead and its sources, and shows the two numbers the proof tools measured, code ported and gameplay proven. [The entry](games/README.md#the-entry) explains its fields. Its page appears at `/dreamports/<game>-dreamport/`.
 
-The file name becomes the page address. `src/content/games/my-port.md` appears at `/dreamports/my-port/`, `/external-ports/my-port/` or `/other-games/my-port/`, depending on its `kind`. Use lowercase letters, numbers and dashes.
+**Any other game**, an external port or a fan game that isn't a port, has its page in [`src/content/games/`](src/content/games/). To add one, copy the file there, give it a new name, and change the text. The file name becomes the page address: `src/content/games/my-port.md` appears at `/external-ports/my-port/` or `/other-games/my-port/`, depending on its `kind`. Use lowercase letters, numbers and dashes.
 
-The top of the file, between the two `---` lines, holds the details. Write them as normal sentences and labels: a capital at the start, and names with their own capitals.
+The top of the file, between the two `---` lines, holds the details. Write them as normal sentences and labels: a capital at the start, and names with their own capitals. A Dreamport's entry has the same details, except `kind`, and some of its own, which [the entry](games/README.md#the-entry) lists.
 
 | Field | What to write |
 | :--- | :--- |
 | `title` | The game's name on the site, such as `Sonic Advance Dreamport`. On a Dreamport's own page, *Dreamport* shows as a tag after the name |
-| `kind` | `dreamport`, `external` (a port made by someone else) or `other` (a fan game that isn't a port) |
+| `kind` | `external` (a port made by someone else) or `other` (a fan game that isn't a port) |
 | `platform` | The short line under the game's name in the menu, such as `Game Boy Advance` or `A mod for Dead Cells` |
 | `year` | Optional: the year the original game came out |
 | `added` | The day it was added, written as `2026-10-27` |
@@ -57,7 +57,7 @@ The top of the file, between the two `---` lines, holds the details. Write them 
 | `ownCopy` → `links` | The play or download links. Each has a `label`, an `href` starting with `https://`, and an `icon`: `play` or `download`. The first is the main button, usually labelled `Play` |
 | `ownCopy` → `note` | A very short line shown once the box is ticked, such as `Your copy stays on your device.` |
 | `extras` | Optional: what the game adds, one square each on its page. Each has a `name`, an `icon` (one of the names in `src/lib/icons.ts`), a short `text`, `needs` when it needs another game, and a `screen` with its own `clip` and `still`. While an extra is picked, the game's picture plays its recording, or the game's own without one |
-| `facts` | The rows of the *The game* box. Each has a `label` and one of: a `value` (with an `href` if it's a link); `controls`, any of `keyboard`, `controller` and `touch`, shown as icons; or `parts`, the parts of the original game, each with a `name` and a `percent`, whose average shows as how close the port is to the original. Name the exact copy under *You need*, such as `A Sonic Advance (USA) ROM (.gba)` |
+| `facts` | The rows of the *The game* box. Each has a `label` and either a `value` (with an `href` if it's a link) or `controls`, any of `keyboard`, `controller` and `touch`, shown as icons. Name the exact copy under *You need*, such as `A Kirby Super Star Ultra (USA) ROM (.nds)` |
 | `screen` | Optional, and only with the owner's own recording: `clip` (the recording, named without its ending), `still` (its first frame) and, for pixel-art games, `pixelated: true`, which keeps the pixels sharp. See below |
 | `share` | Optional: the picture shown when the game's page is shared, such as `/media/my-port-share.png`. See below |
 | `glow` | Optional: the colour of the light the game casts on the menu while it's selected, in quotes, such as `'#8fd1ff'` |

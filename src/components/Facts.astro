@@ -1,27 +1,26 @@
 ---
+// A box of facts about a game, each a line of text, a link, the ways to play as icons, or a list of
+// links. Whatever the box puts first, such as a Dreamport's two numbers, goes in its slot.
 import PixelIcon from './PixelIcon.astro';
-import type { Game } from '../lib/site';
+import type { Fact } from '../lib/dreamports';
 
 interface Props {
-  facts: Game['data']['facts'];
+  facts: Fact[];
   id: string;
+  heading: string;
 }
 
-const { facts, id } = Astro.props;
+const { facts, id, heading } = Astro.props;
 const CONTROLS = {
   keyboard: { icon: 'keyboard', name: 'Keyboard' },
   controller: { icon: 'gamepad', name: 'Controller' },
   touch: { icon: 'pointer', name: 'Touch' },
 } as const;
-// how close a port is: its own figure, or the average of its parts
-const percentOf = (fact: Props['facts'][number]) =>
-  fact.parts ? Math.round(fact.parts.reduce((sum, part) => sum + part.percent, 0) / fact.parts.length) : (fact.percent ?? 0);
-// the status meter is ten blocks
-const blocks = (percent: number) => Array.from({ length: 10 }, (_, i) => i < Math.round(percent / 10));
 ---
 
 <section class="facts" aria-labelledby={id}>
-  <h3 id={id}>The game</h3>
+  <h3 id={id}>{heading}</h3>
+  <slot />
   <dl>
     {
       facts.map((fact) => (
@@ -37,31 +36,21 @@ const blocks = (percent: number) => Array.from({ length: 10 }, (_, i) => i < Mat
                   </span>
                 ))}
               </span>
-            ) : fact.percent !== undefined || fact.parts ? (
-              <span class="pct">
-                <span class="pct-bar" aria-hidden="true">
-                  {blocks(percentOf(fact)).map((on) => (
-                    <i class:list={[on && 'is-on']} />
-                  ))}
-                </span>
-                <span class="pct-num">≈ {percentOf(fact)}% of the original</span>
-                {fact.parts && (
-                  <span class="pct-parts">
-                    {fact.parts.map((part) => (
-                      <span>
-                        <span>{part.name}</span>
-                        <span>{part.percent}%</span>
-                      </span>
-                    ))}
-                  </span>
-                )}
-                {fact.value && <span class="pct-note">{fact.value}</span>}
-              </span>
+            ) : fact.items ? (
+              <ul class="fact-items">
+                {fact.items.map((item) => (
+                  <li>
+                    {item.href ? <a href={item.href}>{item.value}</a> : item.value}
+                    {item.note && <span class="fact-note">{item.note}</span>}
+                  </li>
+                ))}
+              </ul>
             ) : fact.href ? (
               <a href={fact.href}>{fact.value}</a>
             ) : (
               fact.value
             )}
+            {fact.note && <span class="fact-note">{fact.note}</span>}
           </dd>
         </div>
       ))
