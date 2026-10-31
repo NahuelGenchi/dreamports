@@ -94,7 +94,8 @@ async function judgePosts() {
   appendFileSync(process.env.GITHUB_OUTPUT, `verdicts=${JSON.stringify(verdicts)}\n`);
 
   // the job's summary: each post checked, with its verdict and what decided it, and never its text
-  const decided = item => item.verdict.by === 'rules' ? 'the plain rules' : item.verdict.model ? `\`${item.verdict.model}\`` : 'nothing yet';
+  const decided = item => item.verdict.key === 'skip' ? 'nothing: a bot wrote it' : item.verdict.by === 'rules' ? 'the plain rules'
+    : item.verdict.model ? `\`${item.verdict.model}\`` : 'nothing yet: no model answered';
   const lines = [`## Posts checked${data.since ? ` (the hourly run, since ${data.since})` : ''}`, ''];
   if (!data.items.length) lines.push('None.');
   else {
