@@ -2,7 +2,7 @@
 
 [Back to README](../README.md) · [Contribution workflow](../CONTRIBUTING.md) · [The Dreamport standard](../docs/STANDARD.md) · [Written in: #77](https://github.com/NahuelGenchi/dreamports/issues/77)
 
-The proof tools show that each step of a Dreamport plays like the original game, so its progress is measured instead of guessed. They play the same button presses in the original and in the Dreamport, compare every frame, work out the game's [%](../docs/STANDARD.md#how-progress-is-measured) and make short clips of both side by side. They run on your own computer, with your own copy of the game, and everything they take from the game stays there.
+The proof tools show that each step of a Dreamport plays like the original game, so its progress is measured instead of guessed. They play the same button presses in the original and in the Dreamport, compare every frame, work out the game's [two numbers](../docs/STANDARD.md#how-progress-is-measured), code ported and gameplay proven, and make short clips of both side by side. They run on your own computer, with your own copy of the game, and everything they take from the game stays there.
 
 You start each one from a terminal in the repository's folder, with `npm run dp -- <tool>`. `npm run dp` on its own lists them.
 
@@ -11,10 +11,11 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `setup` | Builds the reference emulator the original runs in |
 | `rom` | Checks a copy of a game, says which game and which version it is, and remembers where it is |
 | `play` | Opens a game in a browser with your copy, and with `--record` keeps what you play as a recording |
-| `prove` | Plays each recording in the original and in the Dreamport, compares every frame, and updates the % |
+| `prove` | Plays each recording in the original and in the Dreamport, compares every frame, and updates the numbers |
 | `codemap` | Makes the code map: every function in the original, with its address and size |
+| `portmap` | Makes the port map: each function of the original the Dreamport's code names, and where |
 | `share` | Publishes a preview of a game on GitHub Pages from your own fork, and with `--post` posts in the game's progress thread |
-| `readme` | Writes the README's table of Dreamports, with each one's % and lead, from their [entries](../games/README.md#the-entry) |
+| `readme` | Writes the README's table of Dreamports, with each one's numbers and lead, from their [entries](../games/README.md#the-entry) |
 
 For now they work with Game Boy Advance games, and they have only been tried on Linux.
 
@@ -63,15 +64,21 @@ The clip shows the original and the Dreamport side by side, with the frame's num
 
 The clips and the pictures show the game, so they stay in `.dreamports/`, which the ignore rules keep out of commits. [Clips](../docs/STANDARD.md#clips) in the standard says where they may be shared: `share` posts the Dreamport's on its own, and clips of the original wait for [#82](https://github.com/NahuelGenchi/dreamports/issues/82).
 
-## The code map and the %
+## The code map and the two numbers
 
 The code map, `games/<game>/proof/code-map.json`, lists every function in the original program with its address and its size, and nothing of its code. `npm run dp -- codemap <game>` makes one by finding the functions in your copy itself, following the code from where the game starts. A decompilation knows its functions better, and `npm run dp -- codemap <game> --from <list>` takes them from a list: what `nm -S` prints from the decompilation's ELF file, or a CSV with columns for the address and the size, such as the list of functions Ghidra exports. A function listed without a size gets the space up to the next one.
 
-The % is the size of the functions that ran in recorded play where every frame of both versions matched, divided by the size of every function in the code map. `prove` notes which of the original's functions ran in each frame, keeps those that ran in frames that matched, and writes the % to `games/<game>/proof/progress.json`, with each recording's results. Recordings it didn't play this time count as they were last proven. It also says how many of the original's instructions ran outside every function of the code map: code the map is missing, or code the game copies into the console's memory before running it. Then it writes the README's table of Dreamports again, with the new %. The game's page shows the % from `progress.json`, and the site checks that it adds up with the code map before it shows it, so it only ever comes from `prove`.
+Each Dreamport shows two numbers, code ported and gameplay proven, which [the standard](../docs/STANDARD.md#how-progress-is-measured) explains. The tools write what both are measured with.
+
+`prove` notes which of the original's functions ran in each frame, keeps those that ran in frames that matched, and writes them to `games/<game>/proof/progress.json`, with each recording's results: how many frames it has, which ones differ, and the share of the code map's size those functions make. Recordings it didn't play this time count as they were last proven. It also says how many of the original's instructions ran outside every function of the code map: code the map is missing, or code the game copies into the console's memory before running it. Then it writes the README's table of Dreamports again, with the new numbers.
+
+`npm run dp -- portmap <game>` writes the port map, `games/<game>/proof/port-map.json`: each function of the original that the game's code names, with the first file and line that names it, and every name that doesn't land on a function in the code map. A name is an address in the cartridge, written as a number, such as `0x08029E78`, or as a label, such as `sub_8029E78`. A number is an address in the copy the proof uses. A label is one in the release the game's labels come from, and when that's another release, the game's `proof/names.json` says how far each stretch of its code is from the copy's. Sonic Advance Dreamport's code uses the labels of a decompilation built from the European release, and [its `names.json`](../games/sonic-advance/proof/names.json) gives the shifts to the USA release. Run it after changing the game's code; `npm run check` says when a port map is out of date.
+
+Code ported is the size of the functions the port map names and those `prove` found running in matching play, divided by the size of every function in the code map. Gameplay proven is the share of the parts in `games/<game>/proof/parts.json` that a recording proves: every frame from the part's first to its last matched, with none the Dreamport doesn't have. The game's page, the launcher and the README show both, and the site checks that they add up with the files before it shows them, so they only ever come from the tools.
 
 ## Sharing a preview
 
-`npm run dp -- share <game>` publishes a preview of the game as it is in your last commit, on GitHub Pages from your own fork, at `https://<you>.github.io/dreamports/<game>/`, so anyone can play it with their own copy without waiting for a review. `--as <name>` names the preview, to keep more than one. With `--post --about "<what changed>"` it also posts in the game's progress thread in this repository's Discussions: what changed, the newest `dreamport.mp4` that `prove` made (or the file `--clip` names), the % from `progress.json` and the preview's link. It asks before it publishes, before it switches Pages on for your fork the first time, and before it posts, and `--yes` answers yes for you. [Previews and progress threads](../docs/PREVIEWS.md) explains what a preview holds, what it risks for players, and how the threads work.
+`npm run dp -- share <game>` publishes a preview of the game as it is in your last commit, on GitHub Pages from your own fork, at `https://<you>.github.io/dreamports/<game>/`, so anyone can play it with their own copy without waiting for a review. `--as <name>` names the preview, to keep more than one. With `--post --about "<what changed>"` it also posts in the game's progress thread in this repository's Discussions: what changed, the newest `dreamport.mp4` that `prove` made (or the file `--clip` names), the game's two numbers and the preview's link. It asks before it publishes, before it switches Pages on for your fork the first time, and before it posts, and `--yes` answers yes for you. [Previews and progress threads](../docs/PREVIEWS.md) explains what a preview holds, what it risks for players, and how the threads work.
 
 ## A game's proof folder
 
@@ -82,7 +89,10 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 | `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum |
 | `recordings/` | Recorded play, one file per recording |
 | `code-map.json` | The code map |
-| `progress.json` | The %, and each recording's results, written by `prove`. The game's page and the README show the % from here |
+| `progress.json` | Each recording's results and the code that ran in matching play, written by `prove` |
+| `port-map.json` | The port map: the functions the game's code names, and the names that don't land on one, written by `portmap` |
+| `names.json` | Optional: how far the release the game's labels come from is from the copy's, stretch by stretch, for `portmap` |
+| `parts.json` | The game's parts, each with the recording and frames that prove it once there are some, written by the game's lead |
 
 ## What stays on your computer
 

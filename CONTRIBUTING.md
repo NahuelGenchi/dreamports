@@ -33,13 +33,13 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 | `npm run build` | Makes the finished site in the `dist/` folder |
 | `npm run preview` | Opens that finished site, to check it before it goes online |
 | `npm run worker` | Makes the finished site and opens it with its profiles, at <http://localhost:8787>, with a database on your computer. Profiles only work here, not with `npm run dev` |
-| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame, `share`, which puts a preview of your work online for anyone to try, and `readme`, which writes the README's table of Dreamports from their entries. [`tools/README.md`](tools/README.md) explains them |
+| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame, `portmap`, which lists the original's functions your code names, `share`, which puts a preview of your work online for anyone to try, and `readme`, which writes the README's table of Dreamports from their entries. [`tools/README.md`](tools/README.md) explains them |
 
 ## Add a game
 
 Each game page comes from **one Markdown file**. Nothing else needs editing: the menu finds the new file by itself. Dreamports appear in the **dreamports** row, and external ports and other games in the **mash-ups** row.
 
-**A Dreamport** keeps every rule in the [Dreamport standard](docs/STANDARD.md), whoever makes it. Its code goes in a folder of its own in [`games/`](games/README.md), and plays at `/play/<game>/`. Its page comes from its **entry**, `entry.md` in the same folder, which says everything about it, from the copy it needs to its lead and its sources, and shows the % the proof tools measured. [The entry](games/README.md#the-entry) explains its fields. Its page appears at `/dreamports/<game>-dreamport/`.
+**A Dreamport** keeps every rule in the [Dreamport standard](docs/STANDARD.md), whoever makes it. Its code goes in a folder of its own in [`games/`](games/README.md), and plays at `/play/<game>/`. Its page comes from its **entry**, `entry.md` in the same folder, which says everything about it, from the copy it needs to its lead and its sources, and shows the two numbers the proof tools measured, code ported and gameplay proven. [The entry](games/README.md#the-entry) explains its fields. Its page appears at `/dreamports/<game>-dreamport/`.
 
 **Any other game**, an external port or a fan game that isn't a port, has its page in [`src/content/games/`](src/content/games/). To add one, copy the file there, give it a new name, and change the text. The file name becomes the page address: `src/content/games/my-port.md` appears at `/external-ports/my-port/` or `/other-games/my-port/`, depending on its `kind`. Use lowercase letters, numbers and dashes.
 

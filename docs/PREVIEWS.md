@@ -32,7 +32,7 @@ That publishes a preview of `games/sonic-advance/` as it is in your last commit,
 npm run dp -- share sonic-advance --post --about "Springs bounce Sonic as high as in the original."
 ```
 
-That does the same, then posts in the game's progress thread from your account: what changed, the clip, the % from the game's `proof/progress.json` and the preview's link. The first time anyone shares a game, `share` opens its thread, and says to add its link to the game's [entry](../games/README.md#the-entry) as `thread`, so the game's page links it.
+That does the same, then posts in the game's progress thread from your account: what changed, the clip, the game's two numbers from its `proof/` folder, code ported and gameplay proven, and the preview's link. The first time anyone shares a game, `share` opens its thread, and says to add its link to the game's [entry](../games/README.md#the-entry) as `thread`, so the game's page links it.
 
 Before anything goes online, `share` shows what it will publish and where, and asks. The first time, it also asks to switch GitHub Pages on for your fork. Then it shows the post and asks again. `--yes` answers yes to every question, for when you've already said yes, for example to an agent working for you. Once the preview is published, `share` waits until GitHub has built it and the address shows it, which usually takes a minute or two, and gives you the link.
 
@@ -46,7 +46,7 @@ Before anything goes online, `share` shows what it will publish and where, and a
 
 ## Progress threads
 
-Each game has one thread in the Progress category of Discussions, where everyone working on it posts each step. A post made by `share` has the same parts every time: what changed, a frame of the clip that opens the clip, the %, the preview's link with a reminder that it hasn't been reviewed, and the commit it was made from.
+Each game has one thread in the Progress category of Discussions, where everyone working on it posts each step. A post made by `share` has the same parts every time: what changed, a frame of the clip that opens the clip, the two numbers, the preview's link with a reminder that it hasn't been reviewed, and the commit it was made from.
 
 A thread names its game in its first post, under *Game folder*, such as `sonic-advance`. `share` writes it, and so does the category's form for anyone who opens a thread by hand. Anyone can open a game's thread, and a [workflow](../.github/workflows/progress-threads.yml) keeps one open thread per game: a thread that names no game, or a game that already has an open thread, gets a reply pointing to the right place, and is closed and locked.
 

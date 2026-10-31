@@ -16,7 +16,7 @@ Nothing from the original game ever goes here: no ROM, no game files, and no mus
 
 ## The entry
 
-Every Dreamport has one entry, `entry.md` in its folder, which says everything about it: the game and the exact copy it needs, what can be played now, who makes it, what it's built with, and where to follow it. The site makes the game's page from it, at `dreamports.net/dreamports/<game>-dreamport/`, where `<game>` is the folder's name, and the README's table of Dreamports shows its % and its lead. [Sonic Advance Dreamport's entry](sonic-advance/entry.md) is an example.
+Every Dreamport has one entry, `entry.md` in its folder, which says everything about it: the game and the exact copy it needs, what can be played now, who makes it, what it's built with, and where to follow it. The site makes the game's page from it, at `dreamports.net/dreamports/<game>-dreamport/`, where `<game>` is the folder's name, and the launcher and the README's table of Dreamports show its two numbers, code ported and gameplay proven, and its lead. [Sonic Advance Dreamport's entry](sonic-advance/entry.md) is an example.
 
 An entry is a Markdown file. Its fields go at its top, between two `---` lines, and the text below them, such as the credits, shows at the end of the game's page. Write them as normal sentences and labels, with a capital at the start. `npm run check` and `npm run build` stop and say what's wrong when a field is missing or wrong.
 
@@ -41,12 +41,14 @@ An entry is a Markdown file. Its fields go at its top, between two `---` lines, 
 
 The rest of the game's page comes from its folder, not from the entry:
 
-- **The %** comes from `proof/progress.json`, which only `npm run dp -- prove` writes, from recorded play that matched the original. `npm run check` and the build check that it adds up with the code map and the functions proven, so it can't be typed by hand.
+- **Code ported** comes from `proof/port-map.json`, which `npm run dp -- portmap` writes from the names of the original's functions in the game's code, and from `proof/progress.json`, which only `npm run dp -- prove` writes, from recorded play that matched the original ([How progress is measured](../docs/STANDARD.md#how-progress-is-measured)).
+- **Gameplay proven** comes from `proof/parts.json`, the game's parts, each counting the same, written by its lead. A part names the recording that proves it and the first and last of that recording's frames it covers, and it's proven when `prove` found every one of those frames matching. The page lists every part, with its recording and frames once it has one.
+- `npm run check` and the build check that both numbers add up with the code map, the port map, the parts and what `prove` found, so neither can be typed by hand.
 - **The achievements** are counted from the game's list, if it keeps them on players' profiles ([Profiles and achievements](../docs/ACCOUNTS.md#for-a-game-dreamportsjs)).
 - **The tasks free to work on** are the open issues with the game's label, which is its folder's name, such as [`sonic-advance`](https://github.com/NahuelGenchi/dreamports/issues?q=is%3Aissue%20is%3Aopen%20label%3Asonic-advance).
 - **The source code** is the folder itself, on GitHub.
 
-The README's table of Dreamports comes from the entries too. `npm run dp -- prove` writes it whenever it updates a game's %, and `npm run dp -- readme` writes it after an entry changes. `npm run check` says when it's out of date.
+The README's table of Dreamports comes from the entries too. `npm run dp -- prove` and `npm run dp -- portmap` write it whenever they change a game's numbers, and `npm run dp -- readme` writes it after an entry or a list of parts changes. `npm run check` says when it or a port map is out of date.
 
 ## The kits games start from
 
