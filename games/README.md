@@ -8,11 +8,45 @@ Every Dreamport made in this repository lives in this folder, one folder per gam
 
 A game is plain HTML, CSS and JavaScript that runs in the browser as it is, with no build step. When the site is built, each game's folder is copied to `/play/<game>/` exactly as it is, so the files in the folder are the files players get. On dreamports.net they are served as plain files, like the site's own pages, without running the site's Worker.
 
-Every folder needs two files at its top: `index.html`, the page the game starts from, and the license for the game's code, in a file named `LICENSE` or `COPYING` (it may end in `.md` or `.txt`). Dreamports use GPL-3.0-or-later, as [the standard explains](../docs/STANDARD.md#licenses). The rest of the game can be in any files and folders it needs. Its pages load them with addresses relative to the page, such as `src/main.js`, and load the site's own files, such as [`/dreamports.js`](../docs/ACCOUNTS.md#for-a-game-dreamportsjs) for achievements, from the site's root. A Dreamport's `proof/` folder holds what the [proof tools](../tools/README.md) measure it with: which copy of the original it's compared with, its recorded play, its code map and its progress, all as JSON. Its entry, with its progress, comes with [#79](https://github.com/NahuelGenchi/dreamports/issues/79).
+Every folder needs three files at its top: `index.html`, the page the game starts from; `entry.md`, the game's [entry](#the-entry); and the license for the game's code, in a file named `LICENSE` or `COPYING` (it may end in `.md` or `.txt`). Dreamports use GPL-3.0-or-later, as [the standard explains](../docs/STANDARD.md#licenses). The rest of the game can be in any files and folders it needs. Its pages load them with addresses relative to the page, such as `src/main.js`, and load the site's own files, such as [`/dreamports.js`](../docs/ACCOUNTS.md#for-a-game-dreamportsjs) for achievements, from the site's root. A Dreamport's `proof/` folder holds what the [proof tools](../tools/README.md) measure it with: which copy of the original it's compared with, its recorded play, its code map and its progress, all as JSON.
 
 The folder's name is the game's address, so it has only lowercase letters, numbers and single dashes, such as `sonic-advance`. Files and folders whose names start with a dot stay out of the site, and links to files somewhere else (symlinks) aren't allowed.
 
 Nothing from the original game ever goes here: no ROM, no game files, and no music, pictures or data taken from them. Players bring their own copy, and the game reads it on their device.
+
+## The entry
+
+Every Dreamport has one entry, `entry.md` in its folder, which says everything about it: the game and the exact copy it needs, what can be played now, who makes it, what it's built with, and where to follow it. The site makes the game's page from it, at `dreamports.net/dreamports/<game>-dreamport/`, where `<game>` is the folder's name, and the README's table of Dreamports shows its % and its lead. [Sonic Advance Dreamport's entry](sonic-advance/entry.md) is an example.
+
+An entry is a Markdown file. Its fields go at its top, between two `---` lines, and the text below them, such as the credits, shows at the end of the game's page. Write them as normal sentences and labels, with a capital at the start. `npm run check` and `npm run build` stop and say what's wrong when a field is missing or wrong.
+
+| Field | What to write |
+| :--- | :--- |
+| `title` | The Dreamport's name, such as `Sonic Advance Dreamport` |
+| `platform` | The console, such as `Game Boy Advance`, shown under the name in the menu |
+| `year` | Optional: the year the original came out |
+| `added` | The day the Dreamport was added, written as `2026-10-27` |
+| `summary` | One sentence about it, shown in the README's table and when its page is shared |
+| `needs` | The exact copy players need, such as `A Sonic Advance (USA) ROM (.gba)`. It names the same copy as `proof/original.json` |
+| `controls` | The ways to play: any of `keyboard`, `controller` and `touch` |
+| `playable` | What can be played now, in a sentence or two |
+| `lead` | The GitHub account of whoever leads the work on it, such as `NahuelGenchi` |
+| `team` | Optional: the GitHub accounts of everyone else working on it |
+| `kit` | Its console's kit, a folder in [`kit/`](../kit/), such as `gba` |
+| `sources` | Every source of its code, each with a `name`, an `href`, its `license` (such as `MIT`, or `none`) and its `use`: `code` when code came in from it, or `guide` when it was only read. Code brought in without a license that allows it also needs `agreement`, a link to its authors' agreement, as [the standard](../docs/STANDARD.md#fair-to-everyone-who-helped) asks |
+| `thread` | Its [progress thread](../docs/PREVIEWS.md#progress-threads), once there is one |
+| `preview` | Optional: the lead's team preview, which the page shows with a reminder that nobody has reviewed it |
+| `ownCopy`, `extras`, `screen`, `share`, `glow` | The game's page, as for [every game on the site](../CONTRIBUTING.md#add-a-game) |
+| `facts` | Optional: more lines for the game's box, each with a `label`, a `value`, and an `href` if it's a link, such as an article about it |
+
+The rest of the game's page comes from its folder, not from the entry:
+
+- **The %** comes from `proof/progress.json`, which only `npm run dp -- prove` writes, from recorded play that matched the original. `npm run check` and the build check that it adds up with the code map and the functions proven, so it can't be typed by hand.
+- **The achievements** are counted from the game's list, if it keeps them on players' profiles ([Profiles and achievements](../docs/ACCOUNTS.md#for-a-game-dreamportsjs)).
+- **The tasks free to work on** are the open issues with the game's label, which is its folder's name, such as [`sonic-advance`](https://github.com/NahuelGenchi/dreamports/issues?q=is%3Aissue%20is%3Aopen%20label%3Asonic-advance).
+- **The source code** is the folder itself, on GitHub.
+
+The README's table of Dreamports comes from the entries too. `npm run dp -- prove` writes it whenever it updates a game's %, and `npm run dp -- readme` writes it after an entry changes. `npm run check` says when it's out of date.
 
 ## The kits games start from
 
@@ -28,4 +62,4 @@ The build stops and says what's wrong if a game's or a kit's folder breaks one o
 
 ## Removing a game
 
-A game comes off the site in one commit: delete its folder and its page in `src/content/games/`. A game that keeps achievements is also listed in `src/lib/players.ts` and `public/dreamports.js`, as [Profiles and achievements](../docs/ACCOUNTS.md#for-a-game-dreamportsjs) explains, so those lines go in the same commit.
+A game comes off the site in one commit: delete its folder, entry included, and write the README's table again with `npm run dp -- readme`. A game that keeps achievements is also listed in `src/lib/players.ts` and `public/dreamports.js`, as [Profiles and achievements](../docs/ACCOUNTS.md#for-a-game-dreamportsjs) explains, so those lines go in the same commit.

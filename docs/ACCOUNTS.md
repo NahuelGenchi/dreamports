@@ -91,7 +91,7 @@ A game played on dreamports.net at `/play/<game>/` uses profiles in four steps:
    const fromProfile = (await globalThis.dreamports?.earned?.()) ?? {};
    ```
 
-To add a game, list it in [`src/lib/players.ts`](../src/lib/players.ts) (its entry in `src/content/games/`, its list of achievements, its `localStorage` key) and add its key to `DEVICE` in [`public/dreamports.js`](../public/dreamports.js). The list is an ES module the game publishes, exporting `ACHIEVEMENTS`, an array of `{ id, title, description }`; the profile reads titles and descriptions from it.
+To add a game, list it in [`src/lib/players.ts`](../src/lib/players.ts) (the id of its page, which for a Dreamport is its folder's name and `-dreamport`, its list of achievements, its `localStorage` key) and add its key to `DEVICE` in [`public/dreamports.js`](../public/dreamports.js). The list is an ES module the game publishes, exporting `ACHIEVEMENTS`, an array of `{ id, title, description }`; the profile reads titles and descriptions from it.
 
 Sonic Advance Dreamport: the list is `/play/sonic-advance/src/achievements/list.js`, and the key is `onsoku.achievements`.
 

@@ -14,6 +14,7 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `prove` | Plays each recording in the original and in the Dreamport, compares every frame, and updates the % |
 | `codemap` | Makes the code map: every function in the original, with its address and size |
 | `share` | Publishes a preview of a game on GitHub Pages from your own fork, and with `--post` posts in the game's progress thread |
+| `readme` | Writes the README's table of Dreamports, with each one's % and lead, from their [entries](../games/README.md#the-entry) |
 
 For now they work with Game Boy Advance games, and they have only been tried on Linux.
 
@@ -66,7 +67,7 @@ The clips and the pictures show the game, so they stay in `.dreamports/`, which 
 
 The code map, `games/<game>/proof/code-map.json`, lists every function in the original program with its address and its size, and nothing of its code. `npm run dp -- codemap <game>` makes one by finding the functions in your copy itself, following the code from where the game starts. A decompilation knows its functions better, and `npm run dp -- codemap <game> --from <list>` takes them from a list: what `nm -S` prints from the decompilation's ELF file, or a CSV with columns for the address and the size, such as the list of functions Ghidra exports. A function listed without a size gets the space up to the next one.
 
-The % is the size of the functions that ran in recorded play where every frame of both versions matched, divided by the size of every function in the code map. `prove` notes which of the original's functions ran in each frame, keeps those that ran in frames that matched, and writes the % to `games/<game>/proof/progress.json`, with each recording's results. Recordings it didn't play this time count as they were last proven. It also says how many of the original's instructions ran outside every function of the code map: code the map is missing, or code the game copies into the console's memory before running it.
+The % is the size of the functions that ran in recorded play where every frame of both versions matched, divided by the size of every function in the code map. `prove` notes which of the original's functions ran in each frame, keeps those that ran in frames that matched, and writes the % to `games/<game>/proof/progress.json`, with each recording's results. Recordings it didn't play this time count as they were last proven. It also says how many of the original's instructions ran outside every function of the code map: code the map is missing, or code the game copies into the console's memory before running it. Then it writes the README's table of Dreamports again, with the new %. The game's page shows the % from `progress.json`, and the site checks that it adds up with the code map before it shows it, so it only ever comes from `prove`.
 
 ## Sharing a preview
 
@@ -81,7 +82,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 | `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum |
 | `recordings/` | Recorded play, one file per recording |
 | `code-map.json` | The code map |
-| `progress.json` | The %, and each recording's results, written by `prove` |
+| `progress.json` | The %, and each recording's results, written by `prove`. The game's page and the README show the % from here |
 
 ## What stays on your computer
 
