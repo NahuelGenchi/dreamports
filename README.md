@@ -73,7 +73,7 @@ These are the projects on the site so far.
 > [!NOTE]
 > **Not open yet.** The Dreamports team is making the next Dreamport by following these steps first, to find what's confusing before anyone else tries ([#83](https://github.com/NahuelGenchi/dreamports/issues/83)). Until then, they may still change.
 
-**No coding needed.** Your coding agent does the technical work. You bring the game, and you say whether it feels right.
+**No coding needed.** Your coding agent does the technical work. You bring the game and play it, and your agent checks what you play against the original.
 
 You need three things: your own copy of the game as a file, a free GitHub account, and a coding agent that works on your computer, such as Claude Code, Codex, Cursor, Gemini CLI or Antigravity CLI. For a Game Boy Advance game, your copy is a `.gba` file made from your cartridge. It never leaves your computer.
 
@@ -83,7 +83,7 @@ You need three things: your own copy of the game as a file, a free GitHub accoun
 Clone dreamports.net/code into a folder called dreamports.
 ```
 
-**Step 2: open that folder in your agent.** Start a new session inside the dreamports folder. If you're not sure how, ask your agent. The commands live in that folder, so your agent finds them by itself.
+**Step 2: open that folder in your agent.** Start a new session inside the dreamports folder. If you're not sure how, ask your agent. The commands live in that folder, so your agent finds them by itself. If you made the folder a while ago, or your agent doesn't know a command, ask it to update the folder, then start a new session.
 
 **Step 3: start with your game.** Type `/dreamport`, then the game's name and console:
 
@@ -98,7 +98,7 @@ Your agent finds out whether the game already has a Dreamport, who's working on 
 | `/dreamport <game>` | Shows where a game stands and what you can do. Start here. |
 | `/dreamport-claim <task>` | Takes a free task, or a whole new game, so nobody else does the same work. |
 | `/dreamport-clip` | Checks your latest step against the original and shows a clip of both. |
-| `/dreamport-play` | Opens the game in your browser, with your copy. |
+| `/dreamport-play` | Opens the game in your browser, with your copy, and checks what you play against the original. |
 | `/dreamport-fix <what feels wrong>` | Compares that moment with the original and fixes it. |
 | `/dreamport-share` | Puts your preview online and posts it in the game's progress thread. |
 | `/dreamport-send` | Sends your finished piece to the game's lead, or to the Dreamports team if you're the lead. |

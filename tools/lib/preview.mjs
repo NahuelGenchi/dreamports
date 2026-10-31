@@ -121,7 +121,7 @@ function gameDataIn(files, contents) {
  * the preview `name`, and any `clips` ([{ path, file }]) under clips/. `about` is what changed, or ''. Resolves to
  * { commit, files, bytes, made } for the preview, or throws with every problem found.
  */
-export function makePreview({ tip, commit, branch, game, title, name, author, repository, url, about, guide, clips = [] }) {
+export function makePreview({ tip, commit, branch, game, title, name, author, repository, linked = true, url, about, guide, clips = [] }) {
   const problems = [];
   const files = [];
   for (const file of filesAt(commit, `games/${game}`, 'kit')) {
@@ -168,7 +168,8 @@ export function makePreview({ tip, commit, branch, game, title, name, author, re
     [`${name}/dreamports.js`, template('dreamports.js').replace('const PREVIEW = {};', `const PREVIEW = ${JSON.stringify({ author, page: `${url}${name}/` })};`)],
     [`${name}/index.html`, fill(template('preview.html'), {
       title: escape(title), author: escape(author), authorUrl: escape(`https://github.com/${author}`), origin: escape(new URL(url).host),
-      branch: escape(branch), commit: escape(commit.slice(0, 7)), commitUrl: escape(`https://github.com/${repository}/commit/${commit}`),
+      branch: escape(branch),
+      commit: linked ? `<a href="${escape(`https://github.com/${repository}/commit/${commit}`)}">${escape(commit.slice(0, 7))}</a>` : escape(commit.slice(0, 7)),
       made: escape(made.slice(0, 10)), play: escape(`play/${game}/`), guide: escape(guide),
       about: about ? `<section class="about"><h2>What changed</h2><p>${escape(about)}</p></section>` : '',
     })],

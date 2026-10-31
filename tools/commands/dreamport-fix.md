@@ -4,7 +4,7 @@ description: Compares that moment with the original and fixes it.
 argument: <what feels wrong>
 ---
 
-What they typed after the command is what feels wrong, such as `the jump feels floaty`. If they typed nothing, ask what feels wrong and where in the game.
+What they typed after the command is what feels wrong, such as `the jump feels floaty`. If they typed nothing, take the first difference the last `prove` found inside a part the Dreamport has ported, and if there's none, say so.
 
 1. Find the moment in a recording that reaches it. If none does, make one: they play it with `npm run dp -- play <game> --record <name>`, after another recording's presses with `--from <recording>:<frame>`, and closing the window saves it. Make sure it does what they described, such as a long jump if the jump feels floaty.
 2. Run `npm run dp -- prove <game> <recording>`, with `--stills <frames>` around the moment, and look at what differs: `first-difference.png` and the pictures in `stills/`, in `.dreamports/results/<game>/<recording>/`.

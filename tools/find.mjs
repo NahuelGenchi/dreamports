@@ -42,7 +42,7 @@ export async function run(args) {
   if (found.length === 1) show(found[0], here.get(found[0]), claims, team);
   else if (found.length) console.log(`More than one Dreamport goes by "${rest.join(' ')}": ${found.join(', ')}. npm run dp -- find <folder> shows one.`);
   else {
-    console.log(`Nobody makes a Dreamport of "${rest.join(' ')}" yet${claims ? '' : ' in this folder'}. The New Dreamport form claims it for you, as its lead: https://github.com/${repo}/issues/new?template=new-dreamport.yml`);
+    console.log(`Nobody makes a Dreamport of "${rest.join(' ')}" yet${claims ? '' : ' in this folder'}. /dreamport-claim claims it for you, as its lead, and so does the New Dreamport form: https://github.com/${repo}/issues/new?template=new-dreamport.yml`);
   }
   for (const other of others) console.log(`\n${other.title} is on the site as ${SECTIONS[other.kind][1]}: https://dreamports.net/${SECTIONS[other.kind][0]}/${other.id}/`);
   return 0;

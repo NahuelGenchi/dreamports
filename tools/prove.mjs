@@ -49,7 +49,7 @@ export async function run(args) {
   try {
     for (const recording of recordings) {
       const own = parts.filter(p => p.recording === recording.name && Array.isArray(p.frames) && p.frames.length === 2 && p.frames.every(Number.isInteger));
-      const result = await prove({ game, recording, copy: copy.path, server, codeMap, before: progress.recordings[recording.name], asked, parts: own });
+      const result = await prove({ game, recording, copy: copy.path, server, codeMap, before: progress.recordings[recording.name], asked, parts: own, keysLate: original.keysAfterVBlank === true });
       failed ||= result.matched < result.frames;
       progress.recordings[recording.name] = {
         frames: result.frames,
@@ -130,7 +130,7 @@ const stretchesOf = frames => {
 const listed = stretches => stretches.slice(0, 8).map(([a, b]) => (a === b ? `${a}` : `${a} to ${b}`)).join(', ')
   + (stretches.length > 8 ? `, and ${stretches.length - 8} more stretches` : '');
 
-async function prove({ game, recording, copy, server, codeMap, before, asked, parts }) {
+async function prove({ game, recording, copy, server, codeMap, before, asked, parts, keysLate }) {
   const { name, frames } = recording;
   const out = resultFolder(game, name);
   rmSync(out, { recursive: true, force: true });
@@ -170,6 +170,9 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
     const ownButtons = [...new Set(held.flat())].filter(b => !(b in KEY));
     if (ownButtons.length) console.log(`\n${name}: holds ${ownButtons.join(', ')}, which only the Dreamport has, so the frames after can't match the original.`);
     const masks = originalHeld.map(list => list.reduce((mask, b) => mask | (KEY[b] ?? 0), 0));
+    // a game that reads its buttons just after the V-blank, rather than before it, reads each frame's in the
+    // frame the tools count as the next one, so the original gets them a frame later (original.json)
+    if (keysLate) masks.unshift(0);
 
     // the original: every frame's picture shows what the frame before worked out, so one more frame than the
     // buttons, and the Dreamport's frame f is the original's frame originalOf[f] + 1
