@@ -45,5 +45,7 @@ Claims are issues in the Dreamports repository, NahuelGenchi/dreamports, and the
 
    A Task's headings are `### Game folder`, `### Kind`, `### What it is`, `### Done when` and `### Taking it`, with `- [X] I'm taking this task myself.` under the last.
 4. Wait half a minute, then read the bot's answer with `gh issue view <number> --repo NahuelGenchi/dreamports --comments`, and tell them what it says in plain words. If someone was faster, list what's still free.
-5. If it's theirs, start the work's branch, named `feat/<issue>-<a few words>`: from the team build with `npm run dp -- team <game> join <branch>` when the game has one, or else from the Dreamports repository's latest `main`. Then say what the first playable step will be, and ask whether to start building it.
+5. If it's theirs, start the work's branch, named `feat/<issue>-<a few words>`: from the team build with `npm run dp -- team <game> join <branch>` when the game has one, or else from the Dreamports repository's latest `main`.
+6. For a whole new game, map all of it before any code, as the standard asks (`docs/STANDARD.md`, How progress is measured). Write `games/<game>/proof/original.json` from what `npm run dp -- rom <their copy>` says about it: its `console` (`gba`), its `name`, such as `Sonic Battle (USA)`, the `title` and `code` in its header, and its `sha1`. Run `rom` on it again, so the tools know it's the copy the proof uses, then `npm run dp -- codemap <game>`, with `--from <list>` when a decompilation or a disassembler lists the game's functions, and commit both. Tell them how many functions it found: the game's progress map shows every one of them, grey until it's ported.
+7. Then say what the first playable step will be, and ask whether to start building it.
 '''

@@ -2,7 +2,8 @@
 // proof/ folder: the game's box, and the progress box with its two numbers, code ported and gameplay proven, and
 // what proves them. games/README.md describes the entry.
 import { PLAYABLE } from './players';
-import { proofOf } from './entries.mjs';
+import { mapOf, proofOf } from './entries.mjs';
+import { progressMap } from './progress-map.mjs';
 import { SOURCE_URL, type Game } from './site';
 
 export type Dreamport = Extract<Game['data'], { kind: 'dreamport' }>;
@@ -28,22 +29,39 @@ const proofLink = (game: string, path: string) => `${SOURCE_URL}/blob/main/games
 
 type Proof = NonNullable<ReturnType<typeof proofOf>>;
 
-// what the proof tools measured for a game, checked as the site is built
-function proofFor(game: string): Proof | null {
+// a game's proof files, as proofOf takes them
+function proofFiles(game: string) {
   const prefix = `/games/${game}/proof/recordings/`;
   const recordings = Object.fromEntries(
     Object.entries(RECORDINGS)
       .filter(([path]) => path.startsWith(prefix))
       .map(([path, recording]) => [path.slice(prefix.length, -'.json'.length), recording]),
   );
-  return proofOf(game, {
+  return {
     original: proofFile(game, 'original'),
     map: proofFile(game, 'code-map'),
     progress: proofFile(game, 'progress'),
     portMap: proofFile(game, 'port-map'),
     parts: proofFile(game, 'parts'),
     recordings: recordings as never,
-  });
+  };
+}
+
+// what the proof tools measured for a game, checked as the site is built
+const proofFor = (game: string): Proof | null => proofOf(game, proofFiles(game));
+
+/**
+ * A Dreamport's progress map (src/lib/progress-map.mjs), drawn from its proof files as the site is built. Every
+ * Dreamport has one from its first day, since its whole original is mapped before anything else
+ * (docs/STANDARD.md#how-progress-is-measured), so the build stops when it can't be drawn.
+ */
+export function progressMapOf(data: Dreamport) {
+  const map = progressMap(data.game, proofFiles(data.game), data.title);
+  if (!map) {
+    throw new Error(`games/${data.game}/proof/ has no code map yet. A Dreamport maps every function of the original first, `
+      + `with npm run dp -- codemap ${data.game}, so its progress map shows the whole game from the start (docs/STANDARD.md#how-progress-is-measured).`);
+  }
+  return map;
 }
 
 // A % as short as the site shows it: whole, such as 38%, but never 0% or 100% unless it's exactly that, so a little
@@ -95,10 +113,21 @@ export interface PartView {
   href: string | null;
 }
 
+// The progress map under the two numbers: where it's served, what it shows in words, its size, and the height of
+// the badges at its top, which repeat the two numbers.
+export interface MapView {
+  src: string;
+  alt: string;
+  width: number;
+  height: number;
+  badges: number;
+}
+
 export interface DreamportView {
   game: Fact[];
   ported: Measure;
   gameplay: Measure;
+  map: MapView;
   // the game's parts and where the evidence for both numbers is, folded away under the numbers
   parts: PartView[];
   evidence: { value: string; href: string }[];
@@ -132,6 +161,7 @@ export async function dreamportView(data: Dreamport): Promise<DreamportView> {
   }
   const achievements = await achievementsOf(game);
   const { ported, gameplay } = proof ?? { ported: null, gameplay: null };
+  const { alt, width, height, badges } = progressMapOf(data);
   return {
     game: [
       { label: 'Original', value: [data.platform, data.year].filter(Boolean).join(', ') },
@@ -142,6 +172,7 @@ export async function dreamportView(data: Dreamport): Promise<DreamportView> {
     ],
     ported: { label: 'Code ported', percent: ported?.percent ?? null, text: shortPercent(ported?.percent) },
     gameplay: { label: 'Gameplay proven', percent: gameplay?.percent ?? null, text: shortPercent(gameplay?.percent) },
+    map: { src: mapOf(game), alt, width, height, badges },
     parts: partsOf(game, gameplay),
     evidence: [
       ...(ported ? [{ value: 'The port map', href: proofLink(game, 'port-map.json') }] : []),

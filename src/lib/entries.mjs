@@ -9,6 +9,9 @@ export const ENTRY = 'entry.md';
 /** The id of a Dreamport's page, which is at /dreamports/<id>/: its folder's name, then "-dreamport". */
 export const pageOf = game => `${game}-dreamport`;
 
+/** Where a Dreamport's progress map is served, next to its page (progress-map.mjs). */
+export const mapOf = game => `/dreamports/${pageOf(game)}/progress.svg`;
+
 /** A GitHub account's name, as a lead or a member of a team writes it. */
 export const GITHUB_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
 
@@ -33,6 +36,16 @@ export function measure(functions, proven) {
     proven: { functions: ran.length, bytes },
   };
 }
+
+/**
+ * The functions that count toward code ported, by their addresses in the code map: those the port map names and those
+ * that ran in recorded play where every frame matched. The two numbers and the progress map (progress-map.mjs) both
+ * count these, so they can't disagree.
+ */
+export const portedFunctions = (portMap, progress) => new Set([
+  ...(portMap?.functions ?? []).map(([address]) => address),
+  ...Object.values(progress?.recordings ?? {}).flatMap(r => r.functions ?? []),
+]);
 
 /**
  * What a Dreamport's proof/ folder measures, from its files, each parsed, or undefined when it's missing:
@@ -89,7 +102,7 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
     }
     const named = new Set((portMap?.functions ?? []).map(([address]) => address));
     missing(named, 'port-map.json');
-    const ported = measure(functions, new Set([...named, ...played]));
+    const ported = measure(functions, portedFunctions(portMap, progress));
     result.ported = {
       percent: ported.percent,
       functions: ported.proven.functions,
