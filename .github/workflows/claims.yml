@@ -179,8 +179,17 @@ jobs:
           async function milestoneOf(game, title) {
             const used = (await list(`/issues?state=all&labels=${encodeURIComponent(game)}&sort=created&direction=asc`)).find(i => i.milestone);
             if (used) return used.milestone;
-            const found = (await list('/milestones?state=all')).find(m => m.title === title);
-            return found ?? await api('/milestones', 'POST', { title, description: `${title}, made in games/${game}/: its New Dreamport issue and its tasks.` });
+            const named = async () => (await list('/milestones?state=all')).find(m => m.title === title);
+            const found = await named();
+            if (found) return found;
+            try {
+              return await api('/milestones', 'POST', { title, description: `${title}, made in games/${game}/: its New Dreamport issue and its tasks.` });
+            } catch (error) {
+              // made at the same moment by another run, such as the New Dreamport issue's when a task follows within seconds
+              const made = error.status === 422 && await named();
+              if (!made) throw error;
+              return made;
+            }
           }
           // a game's issue carries its label, its kind and its milestone
           async function prepare(issue, game, title) {
