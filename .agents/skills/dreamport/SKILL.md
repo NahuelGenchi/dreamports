@@ -35,4 +35,4 @@ Pasting one of the sentences above starts this command as well as typing it, sin
    - A console with no kit in `kit/` yet: its kit comes first, which is bigger work than a game. Say so plainly.
 9. If you weren't opened in this folder, as when they pasted the sentence somewhere else, say where the folder is and how to open their agent in it next time, so it finds the commands: in a terminal, `cd` into it and start the agent again, such as `claude` or `codex`; in an app, open the folder the way they'd open any folder. Until then, when they type a command you haven't loaded, read its file in `tools/commands/` and follow it.
 
-This command posts nothing and claims nothing. The fork, after their yes, is the only thing it makes outside this computer.
+This command posts nothing and claims nothing. The fork, after their yes, is the only thing it makes outside this computer. It starts no work either: it ends by naming the next command, which they type.
