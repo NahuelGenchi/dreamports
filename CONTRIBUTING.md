@@ -50,7 +50,7 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 | Command | What it does |
 | :--- | :--- |
 | `npm run dev` | Runs the site on your computer while you work on it |
-| `npm run check` | Looks for mistakes in the pages, the game files and the Dreamports' entries, and checks that the README's table of Dreamports is up to date |
+| `npm run check` | Looks for mistakes in the pages, the game files and the Dreamports' entries, checks that the README's table of Dreamports is up to date, and tests the moderation bot's rules |
 | `npm run build` | Makes the finished site in the `dist/` folder |
 | `npm run preview` | Opens that finished site, to check it before it goes online |
 | `npm run worker` | Makes the finished site and opens it with its profiles, at <http://localhost:8787>, with a database on your computer. Profiles only work here, not with `npm run dev` |
@@ -147,7 +147,7 @@ A successful site build shows that the site builds, nothing more. Browser checks
 
 ## Private data and game files
 
-Dreamports never hosts ROMs, game files or assets extracted from games, and links only to projects that ask players to bring their own legal copy. Keep ROMs, saves, extracted assets, private email addresses, account IDs and credentials out of commits, issues, and PRs. The ignore rules are an accidental-staging guard, not permission to collect that data. If a secret is exposed, stop sharing it and revoke it.
+Dreamports never hosts ROMs, game files or assets extracted from games, and links only to projects that ask players to bring their own legal copy. Keep ROMs, saves, extracted assets, private email addresses, account IDs and credentials out of commits, issues, and PRs. The ignore rules are an accidental-staging guard, not permission to collect that data. If a secret is exposed, stop sharing it and revoke it. The Dreamports bot deletes or hides posts that break these rules, as [Moderation](docs/MODERATION.md) explains.
 
 Pictures of games on the site appear only where the owner decides, and only from the owner's own recordings of their own projects. The one exception is clips that show the original game next to a Dreamport, which `npm run dp -- prove` makes to show a match: they may appear in pull requests and in progress posts, and nowhere else, never on the site, in a game's files or in a commit ([Clips](docs/STANDARD.md#clips)). Never present an invented or reconstructed image as a capture.
 
