@@ -2747,63 +2747,83 @@ dialog.card[open] {
 
 .meter {
   display: grid;
-  justify-items: start;
-  gap: 8px;
+  gap: 6px;
   margin-top: 12px;
 }
 
-.meter + .meter {
-  padding-top: 12px;
-  border-top: 2px solid var(--line);
-}
-
-.meter-label {
+.meter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
   margin: 0;
   color: var(--ink);
-  font: 400 13.5px/20px var(--font);
-}
-
-.meter-text {
-  margin: 0;
-  color: var(--dim);
   font: 400 13.5px/20px var(--font);
 }
 
 .meter-num {
-  color: var(--ink);
   font-size: 16px;
 }
 
-.pct-bar {
-  display: flex;
-  gap: 3px;
-  padding-top: 4px;
-}
-
-.pct-bar i {
-  width: 12px;
-  height: 12px;
+/* a flat bar that fills to the %, so a little progress still shows */
+.meter-bar {
+  display: block;
+  height: 10px;
   background: var(--line);
 }
 
-.pct-bar i.is-on {
+.meter-bar i {
+  display: block;
+  height: 100%;
   background: var(--blue);
 }
 
-/* the game's parts under a Dreamport's numbers, a block for each, filled once proven */
+/* what proves the numbers, folded into one line under them */
 .parts {
-  margin-top: 10px;
-  padding-top: 12px;
-  border-top: 2px solid var(--line);
+  margin-top: 12px;
+  font: 400 13.5px/20px var(--font);
+}
+
+.parts summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: 100%;
+  color: var(--blue);
+  cursor: pointer;
+  list-style: none;
+}
+
+.parts summary::-webkit-details-marker {
+  display: none;
+}
+
+/* a pixel arrow that turns down when the list opens */
+.parts summary::before {
+  content: '';
+  width: 6px;
+  height: 10px;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  transition: rotate 0.2s ease;
+}
+
+.parts[open] summary::before {
+  rotate: 90deg;
+}
+
+.parts summary:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
 }
 
 .parts ul {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   padding: 0;
   columns: 15em auto;
   column-gap: 24px;
   list-style: none;
-  font: 400 13.5px/20px var(--font);
 }
 
 .parts li {
@@ -2828,6 +2848,11 @@ dialog.card[open] {
 
 .parts li.is-proven > i {
   background: var(--blue);
+}
+
+.parts-links {
+  margin: 10px 0 0;
+  color: var(--dim);
 }
 
 .view .ins-title {

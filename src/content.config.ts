@@ -84,8 +84,6 @@ const dreamport = z.object({
   // the exact copy players need, as the proof names it in proof/original.json
   needs: z.string(),
   controls,
-  // what can be played now, in a sentence or two
-  playable: z.string(),
   // who leads it and who works on it with them, by their GitHub accounts
   lead: githubName,
   team: z.array(githubName).default([]),

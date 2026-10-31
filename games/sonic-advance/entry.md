@@ -7,7 +7,6 @@ added: 2026-10-27
 summary: Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install.
 needs: A Sonic Advance (USA) ROM (.gba)
 controls: [keyboard, controller, touch]
-playable: Every zone, the seven special stages and both endings, as Sonic, Tails or Knuckles, and the first Chao Hunt stage for 2 to 4 players. Still to come are the character select, Amy and the other modes.
 lead: NahuelGenchi
 kit: gba
 sources:

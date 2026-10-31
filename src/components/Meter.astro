@@ -1,27 +1,18 @@
 ---
-// One of a Dreamport's two numbers, at the top of its progress box: its name, ten blocks, the figure, what it
-// counts, and links to its evidence and to how it's measured.
-import { SOURCE_URL } from '../lib/site';
+// One of a Dreamport's two numbers, at the top of its progress box: its name and its %, over a bar that fills to it.
 import type { Measure } from '../lib/dreamports';
 
 interface Props {
   measure: Measure;
 }
 
-const { label, percent, text, about, links } = Astro.props.measure;
-const on = Math.round((percent ?? 0) / 10);
-const how = `${SOURCE_URL}/blob/main/docs/STANDARD.md#how-progress-is-measured`;
+const { label, percent, text } = Astro.props.measure;
 ---
 
 <div class="meter">
-  <p class="meter-label">{label}</p>
-  <span class="pct-bar" aria-hidden="true">
-    {Array.from({ length: 10 }, (_, i) => <i class:list={[i < on && 'is-on']} />)}
-  </span>
-  <p class="meter-text">
-    {text && <span class="meter-num">{text}</span>}
-    {' '}{about}{' '}
-    {links.map((link) => <><a href={link.href}>{link.value}</a>{' · '}</>)}
-    <a href={how}>How it’s measured</a>
+  <p class="meter-head">
+    <span>{label}</span>
+    <span class="meter-num">{text ?? 'Not measured yet'}</span>
   </p>
+  <span class="meter-bar" aria-hidden="true"><i style={`width: ${percent ?? 0}%`}></i></span>
 </div>

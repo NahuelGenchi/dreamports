@@ -136,7 +136,7 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
           <Facts facts={dreamport.progress} id={`progress-${id}`} heading="Progress">
             <Meter measure={dreamport.ported} />
             <Meter measure={dreamport.gameplay} />
-            <Parts slot="after" parts={dreamport.parts} id={`parts-${id}`} />
+            <Parts parts={dreamport.parts} evidence={dreamport.evidence} />
           </Facts>
         )
       }

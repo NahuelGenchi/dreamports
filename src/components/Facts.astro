@@ -1,7 +1,6 @@
 ---
 // A box of facts about a game, each a line of text, a link, the ways to play as icons, or a list of
-// links. Whatever the box puts first, such as a Dreamport's two numbers, goes in its slot, and whatever it puts
-// last, such as the game's parts, in its "after" slot.
+// links. Whatever the box puts first, such as a Dreamport's two numbers, goes in its slot.
 import PixelIcon from './PixelIcon.astro';
 import type { Fact } from '../lib/dreamports';
 
@@ -57,5 +56,4 @@ const CONTROLS = {
       ))
     }
   </dl>
-  <slot name="after" />
 </section>

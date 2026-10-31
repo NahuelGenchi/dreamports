@@ -1,24 +1,22 @@
 ---
-// The parts of a Dreamport's game, under its numbers: a block for each, filled once a recording has proven it, and
-// for a part with a recording, its frames and what they found.
+// What proves a Dreamport's numbers, folded away under them in one line: how many of the game's parts are proven.
+// Opened, it lists every part, a block for each, filled once a recording has proven it, and links to the evidence.
 import type { PartView } from '../lib/dreamports';
 
 interface Props {
   parts: PartView[];
-  id: string;
+  evidence: { value: string; href: string }[];
 }
 
-const { parts, id } = Astro.props;
+const { parts, evidence } = Astro.props;
 const proven = parts.filter((part) => part.proven).length;
 ---
 
-{
-  parts.length > 0 && (
-    <div class="parts">
-      <p class="meter-label" id={id}>
-        The game’s parts, {proven} of {parts.length} proven
-      </p>
-      <ul aria-labelledby={id}>
+<details class="parts">
+  <summary>{parts.length ? `${proven} of ${parts.length} parts proven` : 'How it’s proven'}</summary>
+  {
+    parts.length > 0 && (
+      <ul>
         {parts.map((part) => (
           <li class:list={[part.proven && 'is-proven']}>
             <i aria-hidden="true" />
@@ -30,6 +28,9 @@ const proven = parts.filter((part) => part.proven).length;
           </li>
         ))}
       </ul>
-    </div>
-  )
-}
+    )
+  }
+  <p class="parts-links">
+    {evidence.map((link, i) => <>{i > 0 && ' · '}<a href={link.href}>{link.value}</a></>)}
+  </p>
+</details>

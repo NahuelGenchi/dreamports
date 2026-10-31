@@ -16,7 +16,7 @@ Nothing from the original game ever goes here: no ROM, no game files, and no mus
 
 ## The entry
 
-Every Dreamport has one entry, `entry.md` in its folder, which says everything about it: the game and the exact copy it needs, what can be played now, who makes it, what it's built with, and where to follow it. The site makes the game's page from it, at `dreamports.net/dreamports/<game>-dreamport/`, where `<game>` is the folder's name, and the launcher and the README's table of Dreamports show its two numbers, code ported and gameplay proven, and its lead. [Sonic Advance Dreamport's entry](sonic-advance/entry.md) is an example.
+Every Dreamport has one entry, `entry.md` in its folder, which says everything about it: the game and the exact copy it needs, who makes it, what it's built with, and where to follow it. The site makes the game's page from it, at `dreamports.net/dreamports/<game>-dreamport/`, where `<game>` is the folder's name, and the launcher and the README's table of Dreamports show its two numbers, code ported and gameplay proven, and its lead. [Sonic Advance Dreamport's entry](sonic-advance/entry.md) is an example.
 
 An entry is a Markdown file. Its fields go at its top, between two `---` lines, and the text below them, such as the credits, shows at the end of the game's page. Write them as normal sentences and labels, with a capital at the start. `npm run check` and `npm run build` stop and say what's wrong when a field is missing or wrong.
 
@@ -29,12 +29,11 @@ An entry is a Markdown file. Its fields go at its top, between two `---` lines, 
 | `summary` | One sentence about it, shown in the README's table and when its page is shared |
 | `needs` | The exact copy players need, such as `A Sonic Advance (USA) ROM (.gba)`. It names the same copy as `proof/original.json` |
 | `controls` | The ways to play: any of `keyboard`, `controller` and `touch` |
-| `playable` | What can be played now, in a sentence or two |
-| `lead` | The GitHub account of whoever leads the work on it, such as `NahuelGenchi` |
+| `lead` | The GitHub account of whoever leads the work on it, such as `NahuelGenchi`, shown in the README's table |
 | `team` | Optional: the GitHub accounts of everyone else working on it |
 | `kit` | Its console's kit, a folder in [`kit/`](../kit/), such as `gba` |
 | `sources` | Every source of its code, each with a `name`, an `href`, its `license` (such as `MIT`, or `none`) and its `use`: `code` when code came in from it, or `guide` when it was only read. Code brought in without a license that allows it also needs `agreement`, a link to its authors' agreement, as [the standard](../docs/STANDARD.md#fair-to-everyone-who-helped) asks |
-| `thread` | Its [progress thread](../docs/PREVIEWS.md#progress-threads), once there is one |
+| `thread` | Its [progress thread](../docs/PREVIEWS.md#progress-threads), once there is one. The page links it as the game thread, where people follow the game and help with it |
 | `preview` | Optional: the lead's team preview, which the page shows with a reminder that nobody has reviewed it |
 | `ownCopy`, `extras`, `screen`, `share`, `glow` | The game's page, as for [every game on the site](../CONTRIBUTING.md#add-a-game) |
 | `facts` | Optional: more lines for the game's box, each with a `label`, a `value`, and an `href` if it's a link, such as an article about it |
@@ -42,11 +41,12 @@ An entry is a Markdown file. Its fields go at its top, between two `---` lines, 
 The rest of the game's page comes from its folder, not from the entry:
 
 - **Code ported** comes from `proof/port-map.json`, which `npm run dp -- portmap` writes from the names of the original's functions in the game's code, and from `proof/progress.json`, which only `npm run dp -- prove` writes, from recorded play that matched the original ([How progress is measured](../docs/STANDARD.md#how-progress-is-measured)).
-- **Gameplay proven** comes from `proof/parts.json`, the game's parts, each counting the same, written by its lead. A part names the recording that proves it and the first and last of that recording's frames it covers, and it's proven when `prove` found every one of those frames matching. The page lists every part, with its recording and frames once it has one.
+- **Gameplay proven** comes from `proof/parts.json`, the game's parts, each counting the same, written by its lead. A part names the recording that proves it and the first and last of that recording's frames it covers, and it's proven when `prove` found every one of those frames matching. The page folds the parts away in one line under the two numbers, with the links to the evidence; opened, it lists every part, with its recording and frames once it has one.
 - `npm run check` and the build check that both numbers add up with the code map, the port map, the parts and what `prove` found, so neither can be typed by hand.
 - **The achievements** are counted from the game's list, if it keeps them on players' profiles ([Profiles and achievements](../docs/ACCOUNTS.md#for-a-game-dreamportsjs)).
-- **The tasks free to work on** are the open issues with the game's label, which is its folder's name, such as [`sonic-advance`](https://github.com/NahuelGenchi/dreamports/issues?q=is%3Aissue%20is%3Aopen%20label%3Asonic-advance).
 - **The source code** is the folder itself, on GitHub.
+
+The game's tasks are the open issues with its label, which is its folder's name, such as [`sonic-advance`](https://github.com/NahuelGenchi/dreamports/issues?q=is%3Aissue%20is%3Aopen%20label%3Asonic-advance).
 
 The README's table of Dreamports comes from the entries too. `npm run dp -- prove` and `npm run dp -- portmap` write it whenever they change a game's numbers, and `npm run dp -- readme` writes it after an entry or a list of parts changes. `npm run check` says when it or a port map is out of date.
 

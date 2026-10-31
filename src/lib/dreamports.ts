@@ -2,7 +2,7 @@
 // proof/ folder: the game's box, and the progress box with its two numbers, code ported and gameplay proven, and
 // what proves them. games/README.md describes the entry.
 import { PLAYABLE } from './players';
-import { percentText, proofOf } from './entries.mjs';
+import { proofOf } from './entries.mjs';
 import { SOURCE_URL, type Game } from './site';
 
 export type Dreamport = Extract<Game['data'], { kind: 'dreamport' }>;
@@ -24,7 +24,6 @@ const KITS = import.meta.glob<string>('/kit/*/README.md', { eager: true, query: 
 const LISTS = import.meta.glob<readonly unknown[]>('/games/**/list.js', { import: 'ACHIEVEMENTS' });
 
 const proofFile = (game: string, name: string) => PROOF[`/games/${game}/proof/${name}.json`] as never;
-const profile = (name: string) => `https://github.com/${name}`;
 const proofLink = (game: string, path: string) => `${SOURCE_URL}/blob/main/games/${game}/proof/${path}`;
 
 type Proof = NonNullable<ReturnType<typeof proofOf>>;
@@ -47,12 +46,21 @@ function proofFor(game: string): Proof | null {
   });
 }
 
-/** A Dreamport's two numbers as text, such as "Code ported 37.99% · Gameplay proven 2.78%", for its place in the row. */
+// A % as short as the site shows it: whole, such as 38%, but never 0% or 100% unless it's exactly that, so a little
+// progress still shows and nearly done isn't done. The README and the proof files keep it to two decimals.
+function shortPercent(percent: number | null | undefined): string | null {
+  if (percent === null || percent === undefined) return null;
+  if (percent > 0 && percent < 1) return '<1%';
+  if (percent > 99 && percent < 100) return '99%';
+  return `${Math.round(percent)}%`;
+}
+
+/** A Dreamport's two numbers as text, such as "Code ported 38% · Gameplay proven 3%", for its place in the row. */
 export function numbersOf(data: Dreamport): string {
   const proof = proofFor(data.game);
   return [
-    `Code ported ${percentText(proof?.ported?.percent) ?? 'not measured yet'}`,
-    `Gameplay proven ${percentText(proof?.gameplay?.percent) ?? 'not measured yet'}`,
+    `Code ported ${shortPercent(proof?.ported?.percent) ?? 'not measured yet'}`,
+    `Gameplay proven ${shortPercent(proof?.gameplay?.percent) ?? 'not measured yet'}`,
   ].join(' · ');
 }
 
@@ -72,14 +80,11 @@ async function achievementsOf(game: string): Promise<number | null> {
   return (await load()).length;
 }
 
-// One of the two numbers: its %, as text, what it counts, and where its evidence is. `percent` is null when it isn't
-// measured yet.
+// One of the two numbers: its name, its %, and the % as the page shows it. `percent` is null when it isn't measured yet.
 export interface Measure {
   label: string;
   percent: number | null;
   text: string | null;
-  about: string;
-  links: { value: string; href: string }[];
 }
 
 // A part of the game, as the progress box lists it: proven, with its recording and frames, or not yet.
@@ -94,7 +99,9 @@ export interface DreamportView {
   game: Fact[];
   ported: Measure;
   gameplay: Measure;
+  // the game's parts and where the evidence for both numbers is, folded away under the numbers
   parts: PartView[];
+  evidence: { value: string; href: string }[];
   progress: Fact[];
 }
 
@@ -104,14 +111,14 @@ function partsOf(game: string, gameplay: Proof['gameplay']): PartView[] {
     if (!part.recording || !part.frames) return { name: part.name, proven: false, note: null, href: null };
     const [from, to] = part.frames;
     const found = part.proven
-      ? 'every frame matched the original'
+      ? 'every one matching'
       : part.difference !== null
-        ? `frame ${part.difference} differs from the original`
-        : `the original has frames before ${part.gap} that the Dreamport doesn’t`;
+        ? `frame ${part.difference} differs`
+        : `the Dreamport lacks frames before ${part.gap}`;
     return {
       name: part.name,
       proven: part.proven,
-      note: `Frames ${from} to ${to} of the recording ${part.recording}: ${found}.`,
+      note: `Frames ${from} to ${to} of ${part.recording}, ${found}`,
       href: proofLink(game, `recordings/${part.recording}.json`),
     };
   });
@@ -125,7 +132,6 @@ export async function dreamportView(data: Dreamport): Promise<DreamportView> {
   }
   const achievements = await achievementsOf(game);
   const { ported, gameplay } = proof ?? { ported: null, gameplay: null };
-  const plural = (n: number, word: string) => `${n.toLocaleString('en')} ${word}${n === 1 ? '' : 's'}`;
   return {
     game: [
       { label: 'Original', value: [data.platform, data.year].filter(Boolean).join(', ') },
@@ -134,37 +140,17 @@ export async function dreamportView(data: Dreamport): Promise<DreamportView> {
       ...(achievements ? [{ label: 'Achievements', value: `${achievements}, kept on your profile` }] : []),
       ...data.facts,
     ],
-    ported: {
-      label: 'Code ported',
-      percent: ported?.percent ?? null,
-      text: percentText(ported?.percent),
-      about: ported
-        ? `of the original’s code: ${plural(ported.named, 'function')} its code names${ported.played ? `, and ${ported.played.toLocaleString('en')} more that ran while it matched the original in recorded play` : ''}.`
-        : 'Not measured yet: it needs a code map of the original.',
-      links: ported ? [{ value: 'The port map', href: proofLink(game, 'port-map.json') }] : [],
-    },
-    gameplay: {
-      label: 'Gameplay proven',
-      percent: gameplay?.percent ?? null,
-      text: percentText(gameplay?.percent),
-      about: gameplay
-        ? `of the game: ${gameplay.proven} of its ${gameplay.total} parts played from start to end, every frame matching the original.`
-        : 'Not measured yet: it needs a list of the game’s parts.',
-      links: gameplay ? [{ value: 'The recordings', href: `${SOURCE_URL}/tree/main/games/${game}/proof/recordings` }] : [],
-    },
+    ported: { label: 'Code ported', percent: ported?.percent ?? null, text: shortPercent(ported?.percent) },
+    gameplay: { label: 'Gameplay proven', percent: gameplay?.percent ?? null, text: shortPercent(gameplay?.percent) },
     parts: partsOf(game, gameplay),
+    evidence: [
+      ...(ported ? [{ value: 'The port map', href: proofLink(game, 'port-map.json') }] : []),
+      ...(gameplay ? [{ value: 'The recordings', href: `${SOURCE_URL}/tree/main/games/${game}/proof/recordings` }] : []),
+      { value: 'How it’s measured', href: `${SOURCE_URL}/blob/main/docs/STANDARD.md#how-progress-is-measured` },
+    ],
     progress: [
-      { label: 'Playable now', value: data.playable },
-      { label: 'Lead', value: data.lead, href: profile(data.lead) },
-      ...(data.team.length ? [{ label: 'Team', items: data.team.map((name) => ({ value: name, href: profile(name) })) }] : []),
-      {
-        label: 'Free to work on',
-        value: 'Its open tasks, on GitHub',
-        href: `${SOURCE_URL}/issues?q=${encodeURIComponent(`is:issue is:open label:${game}`)}`,
-      },
-      data.thread
-        ? { label: 'Progress thread', value: 'Clips, previews and news, on GitHub', href: data.thread }
-        : { label: 'Progress thread', value: 'Not opened yet' },
+      // where to follow the game and help with it: its progress thread, opened the first time someone shares it
+      data.thread ? { label: 'Game thread', value: 'Contribute', href: data.thread } : { label: 'Game thread', value: 'Not opened yet' },
       ...(data.preview
         ? [{ label: 'Team preview', value: 'The team’s newest work', href: data.preview, note: `Not reviewed yet: play it only if you trust ${data.lead}.` }]
         : []),

@@ -114,4 +114,4 @@ Claims and teams are [#80](https://github.com/NahuelGenchi/dreamports/issues/80)
 
 **Part.** A piece of a game that a player meets as a whole, such as a screen, a level, an ending or a mode. Gameplay proven counts the parts proven.
 
-**Entry.** The one file that says everything about a Dreamport, `entry.md` in its folder: the copy it needs, what's playable, its team, its sources and where to follow it. Its two numbers come from its proof folder.
+**Entry.** The one file that says everything about a Dreamport, `entry.md` in its folder: the copy it needs, its lead and team, its sources and where to follow it. Its two numbers come from its proof folder.
