@@ -138,8 +138,22 @@ async function replied(item, key) {
     .some(comment => comment.author?.__typename === 'Bot' && comment.author.login === 'github-actions' && comment.body?.includes(mark));
 }
 
-// The fixed plan for the verdict, each step done only if it isn't already. A post by the repository's own people,
-// or a claims command, is only flagged in the log.
+// a reply in the post's issue, pull request or thread. In Discussions it goes under the post's own comment, or at
+// the end of the thread when GitHub refuses that, as it does under a hidden comment.
+async function reply(item, body) {
+  if (item.parent.kind !== 'discussion') return graphql(MUTATIONS.comment, { id: item.parent.node, body });
+  if (item.replyTo) {
+    try {
+      return await graphql(MUTATIONS.discussionComment, { id: item.parent.node, replyTo: item.replyTo, body });
+    } catch (error) {
+      console.log(`The reply goes at the end of the thread, since GitHub refused it under the comment: ${error.message}`);
+    }
+  }
+  return graphql(MUTATIONS.discussionComment, { id: item.parent.node, replyTo: null, body });
+}
+
+// The fixed plan for the verdict, each step done only if it isn't already, and logged even if a later one fails. A
+// post by the repository's own people, or a claims command, is only flagged in the log.
 async function act(result, item) {
   const plan = planFor(result.key, item);
   if (!plan.length) return;
@@ -147,27 +161,28 @@ async function act(result, item) {
   const flagged = isClaimsCommand(item) ? 'claims' : isTrusted(item, treatAsPublic) ? 'trusted' : null;
   if (flagged) return log(logLine({ ...entry, flagged }));
   const did = [];
-  for (const step of plan) {
-    if (step.do === 'hide' && !item.minimized) {
-      await graphql(MUTATIONS.hide, { id: item.node, as: step.as });
-      did.push('hid');
-    } else if (step.do === 'reply' && !await replied(item, result.key)) {
-      const body = replyFor(result.key, item, docs);
-      if (item.parent.kind === 'discussion') await graphql(MUTATIONS.discussionComment, { id: item.parent.node, replyTo: item.replyTo, body });
-      else await graphql(MUTATIONS.comment, { id: item.parent.node, body });
-      did.push('replied');
-    } else if (step.do === 'close' && !item.parent.closed) {
-      await graphql(MUTATIONS[item.parent.kind], { id: item.parent.node });
-      did.push('closed');
-    } else if (step.do === 'lock' && !item.parent.locked) {
-      await graphql(MUTATIONS.lock, { id: item.parent.node, as: step.as });
-      did.push('locked');
-    } else if (step.do === 'label' && !item.parent.labels.includes(step.name)) {
-      await graphql(MUTATIONS.label, { id: item.parent.node, labels: [await labelId(step.name)] });
-      did.push('labelled');
+  try {
+    for (const step of plan) {
+      if (step.do === 'hide' && !item.minimized) {
+        await graphql(MUTATIONS.hide, { id: item.node, as: step.as });
+        did.push('hid');
+      } else if (step.do === 'reply' && !await replied(item, result.key)) {
+        await reply(item, replyFor(result.key, item, docs));
+        did.push('replied');
+      } else if (step.do === 'close' && !item.parent.closed) {
+        await graphql(MUTATIONS[item.parent.kind], { id: item.parent.node });
+        did.push('closed');
+      } else if (step.do === 'lock' && !item.parent.locked) {
+        await graphql(MUTATIONS.lock, { id: item.parent.node, as: step.as });
+        did.push('locked');
+      } else if (step.do === 'label' && !item.parent.labels.includes(step.name)) {
+        await graphql(MUTATIONS.label, { id: item.parent.node, labels: [await labelId(step.name)] });
+        did.push('labelled');
+      }
     }
+  } finally {
+    if (did.length) await log(logLine({ ...entry, did }));
   }
-  if (did.length) await log(logLine({ ...entry, did }));
 }
 
 const treatAsPublic = accounts(process.env.MODERATION_TREAT_AS_PUBLIC);

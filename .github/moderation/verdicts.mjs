@@ -90,7 +90,7 @@ export function replyFor(key, item, docs) {
     'rom-site': shape === 'pull'
       ? `${who}, this pull request's description links a site that shares game files. Dreamports never links to them, so please edit the link out.`
       : `${who}, ${hidOrClosed} because it links a site that shares game files. Dreamports never links to them: ${own}.${again}`,
-    'asks-for-games': `${who}, Dreamports can't help anyone get a game. Every Dreamport plays with the player's own copy, made from their own cartridge or disc, and nobody here shares one or says where to find one.${shape === 'post' ? ' So I closed this.' : ''}`,
+    'asks-for-games': `${who}, about ${shape === 'comment' ? yours : 'this'}: Dreamports can't help anyone get a game. Every Dreamport plays with the player's own copy, made from their own cartridge or disc, and nobody here shares one or says where to find one.${shape === 'post' ? ' So I closed this.' : ''}`,
     'clip-of-original': `${who}, ${hidOrClosed} because it seems to show the original game. Clips and pictures of the original may only appear in pull requests and progress posts, where they show a Dreamport matching it, as [Clips](${docs.clips}) says. Clips of a Dreamport itself are welcome anywhere.${again}`,
     'personal-data': shape === 'comment'
       ? `${who}, I hid ${yours} because it seems to include private details, such as an email address or a phone number. Everything here is public, so please post it again without them.`
