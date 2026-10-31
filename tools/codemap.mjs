@@ -1,8 +1,8 @@
 // npm run dp -- codemap <game> [--from <list>]: makes games/<game>/proof/code-map.json, every function in the
 // original with its address and its size, and nothing of its code. It's what code ported is measured against.
 // Without --from, it finds the functions in the contributor's copy itself (gba/functions.mjs). With --from, it takes
-// them from a list: a decompilation's symbols, as `nm -S` prints them from its ELF file, or a CSV with an address
-// and a size on each line, as a disassembler such as Ghidra exports its list of functions.
+// them from a list: a decompilation's symbols, as `nm -S` prints them from its ELF file, or a CSV with an address on
+// each line and its size or its end, as a disassembler such as Ghidra exports its list of functions.
 
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
@@ -40,7 +40,8 @@ export async function run(args) {
   return 0;
 }
 
-/** The functions in a list: `nm -S` lines, or a CSV with a header naming its address and size columns. */
+/** The functions in a list: `nm -S` lines, or a CSV with a header naming its address column, and its size or end
+ *  column if it has one. */
 export function readList(text) {
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   // an address is hexadecimal, with or without 0x or a memory's name before it (ram:08000204); a size is decimal
@@ -61,11 +62,14 @@ export function readList(text) {
     const column = (...patterns) => head.findIndex(h => patterns.some(p => p.test(h)));
     const at = column(/^(address|location|entry ?point|start)$/, /address|location|entry/);
     const length = column(/^(size|length|function size)$/, /size|length/);
+    // the end is the address just after the function's last byte, as decompilations list their functions' extents
+    const end = column(/^(end|end address)$/);
     const label = column(/^(name|label|function name|symbol)$/);
-    if (at < 0 || length < 0) throw new Error('The list needs columns for the address and the size, named in its first line, or nm -S lines.');
+    if (at < 0) throw new Error('The list needs a column for the address, named in its first line, or nm -S lines.');
     for (const line of lines.slice(1)) {
       const cells = split(line);
-      const start = address(cells[at]), bytes = size(cells[length]);
+      const start = address(cells[at]);
+      const bytes = length >= 0 ? size(cells[length]) : end >= 0 ? address(cells[end]) - start : NaN;
       if (Number.isFinite(start)) out.push({ address: start & ~1, size: Number.isFinite(bytes) ? bytes : 0, name: label >= 0 ? cells[label] : undefined });
     }
   }

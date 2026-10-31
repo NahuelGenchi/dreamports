@@ -1,12 +1,13 @@
 // npm run dp -- portmap [<game>] [--check]: writes games/<game>/proof/port-map.json, the port map: each function of
-// the original that the Dreamport's code names, with the first place it names it, and every name that doesn't land on
-// a function in the code map, so it can be put right. It's what code ported is measured with, beside the functions
+// the original that the Dreamport's code names, with the first place it names it, and every name that lands inside a
+// function of the code map but not at its start, so it can be put right. It's what code ported is measured with, beside the functions
 // that ran in matching play (docs/STANDARD.md#how-progress-is-measured). Without a game it does every game with a
 // code map. With --check it changes nothing and fails when a port map is out of date, which `npm run check` uses.
 //
 // A name is an address of the original's code, in the cartridge: written as a number (0x08029E78 or 0x8029E78),
-// it's an address in the copy the proof uses; written as a label (sub_8029E78, Task_80397A8), it's one in the release
-// the game's labels come from. When that's another release, the game's proof/names.json says how far each stretch of
+// it's an address in the copy the proof uses; written as a label (sub_8029E78, Task_80397A8, or FUN_08029E78 as
+// Ghidra writes them), it's one in the release the game's labels come from. An address outside every function of the
+// code map is the game's data, such as a picture or a table the code reads, and isn't a name. When that's another release, the game's proof/names.json says how far each stretch of
 // its code is from the copy's:
 //
 // {
@@ -22,7 +23,7 @@ import { hex, proofGames, readCodeMap, readOriginal } from './lib/proof-files.mj
 import { writeReadme } from './readme.mjs';
 
 // a label's word and its address, or a number's
-const NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_|0x0?)(8[0-9A-Fa-f]{6})\b/g;
+const NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_0?|0x0?)(8[0-9A-Fa-f]{6})\b/g;
 // the cartridge's first address, which code uses as the base of every address in it, not as a function
 const BASE = 0x08000000;
 
@@ -44,7 +45,7 @@ export async function run(args) {
       continue;
     }
     writeFileSync(file, text);
-    console.log(`Written: games/${game}/proof/port-map.json, ${map.functions.length} functions named, ${map.unmatched.length} name${map.unmatched.length === 1 ? '' : 's'} that don't land on one.`);
+    console.log(`Written: games/${game}/proof/port-map.json, ${map.functions.length} functions named, ${map.unmatched.length} name${map.unmatched.length === 1 ? '' : 's'} inside a function but not at its start.`);
   }
   if (check) {
     if (stale.length) throw new Error(stale.map(game => `games/${game}/proof/port-map.json is out of date: npm run dp -- portmap ${game} writes it again.`).join('\n'));
@@ -65,6 +66,17 @@ export function portMap(game) {
   const codeMap = readCodeMap(game);
   if (!codeMap) throw new Error(`games/${game}/proof/ has no code map yet: npm run dp -- codemap ${game} makes one.`);
   const starts = new Set(codeMap.functions.map(f => f.address));
+  const spans = [...codeMap.functions].sort((a, b) => a.address - b.address);
+  const inside = address => {
+    let low = 0, high = spans.length - 1;
+    while (low <= high) {
+      const middle = (low + high) >> 1, f = spans[middle];
+      if (address < f.address) high = middle - 1;
+      else if (address >= f.address + f.size) low = middle + 1;
+      else return true;
+    }
+    return false;
+  };
   const shifts = readShifts(game);
   const functions = new Map(), unmatched = new Map();
   for (const file of codeFiles(gameFolder(game))) {
@@ -75,6 +87,7 @@ export function portMap(game) {
         if (address === BASE) continue;
         if (label) address -= shifts.find(s => address >= s.from && address <= s.to)?.by ?? 0;
         const found = starts.has(address);
+        if (!found && !inside(address)) continue;
         const list = found ? functions : unmatched, key = found ? address : name;
         if (!list.has(key)) list.set(key, `${where}:${i + 1}`);
       }

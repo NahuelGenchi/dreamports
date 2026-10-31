@@ -46,19 +46,15 @@ Before anything goes online, `share` shows what it will publish and where, and a
 
 ## Progress threads
 
-Each game has one thread in the Progress category of Discussions, where everyone working on it posts each step. A post made by `share` has the same parts every time: what changed, a frame of the clip that opens the clip, the two numbers, the game's [progress map](STANDARD.md#how-progress-is-measured) as it was in that commit, the preview's link with a reminder that it hasn't been reviewed, and the commit it was made from. The map goes on your previews site next to the clips, under a name of its own, so each post keeps its own, and the thread shows the game's progress over time.
+Each game has one thread in the Progress category of Discussions, where everyone working on it posts each step. A post made by `share` has the same parts every time: what changed, a frame of the clip that opens the clip, the two numbers, the game's [progress map](STANDARD.md#how-progress-is-measured) as it was in that commit, the preview's link with a reminder that it hasn't been reviewed, and the commit it was made from, linked once GitHub has it: `share` doesn't push your work's branch, so until it's sent, as `/dreamport-send` does, the commit is named without a link. The map goes on your previews site next to the clips, under a name of its own, so each post keeps its own, and the thread shows the game's progress over time.
 
 A thread names its game in its first post, under *Game folder*, such as `sonic-advance`. `share` writes it, and so does the category's form for anyone who opens a thread by hand. Anyone can open a game's thread, and a [workflow](../.github/workflows/progress-threads.yml) keeps one open thread per game: a thread that names no game, or a game that already has an open thread, gets a reply pointing to the right place, and is closed and locked.
 
 ## For the Dreamports team: keeping the threads tidy
 
-The workflow handles duplicate threads and threads without a game. The rest is moderation, with GitHub's own tools:
+The [workflow](../.github/workflows/progress-threads.yml) handles duplicate threads and threads without a game. The Dreamports bot moderates everything else on its own, as [Moderation](MODERATION.md) explains. It checks each post as it's written, deletes the comments that share game files or link sites that share them, hides the ones that show private details, keys or passwords, or are spam or abuse, and tells their authors why without quoting them. It closes and locks a thread that is spam, and keeps a log the team can read when it wants to. Clips of the original are welcome in progress posts, as [Clips](STANDARD.md#clips) says, so the bot leaves them there.
 
-- **A post that breaks the rules**, such as one with game files or a clip of the original, or one that links someone else's preview: hide it from its *…* menu with a reason, or delete it. Hidden posts stay readable for whoever opens them, so delete anything with game files in it.
-- **A thread that misuses a game's name**: close it. The next `share` for that game opens a new one, since closed threads don't count.
-- **A preview that misbehaves**: hide the posts that link it, say why in the thread, and report it to GitHub, which can take a Pages site down.
-- **Someone who keeps breaking the rules**: block them from the account that owns the repository, which keeps them out of its issues, pull requests and Discussions, and report them to GitHub.
-- **A wave of spam**: limit interactions for a while, from 24 hours to 6 months, in the repository's settings under *Moderation options*: to accounts older than a day, to people who have contributed before, or to collaborators.
+What the bot leaves to GitHub, such as deleting other posts, blocking someone, limiting who can post for a while or reporting a preview to GitHub, is listed in [What the bot leaves to GitHub](MODERATION.md#what-the-bot-leaves-to-github).
 
 ## Words used here
 
