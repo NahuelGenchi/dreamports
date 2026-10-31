@@ -1,4 +1,4 @@
-// What the proof tools need from a game (NahuelGenchi/dreamports#77). With ?proof in the page's address, the game
+// What the proof tools (tools/README.md) need from a game. With ?proof in the page's address, the game
 // keeps no time of its own: it runs a frame only when a tool asks for one, with the buttons the tool gives, and
 // hands over the frame it drew. With ?proof=record it plays as usual and keeps the buttons it read at each frame,
 // which a tool can give it back with ?proof to run the same game again. Without either, none of this runs.

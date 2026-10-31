@@ -16,7 +16,7 @@ Some of the checks below are still being built. Where one doesn't exist yet, the
 
 **What it asks.** The original program never runs: not on its own, not inside a hidden emulator, and not translated on the fly while the game plays. Its logic is rewritten in plain JavaScript that the browser runs as it is, with no build step, and drawing and sound work the way the console did them, in the Dreamport's own code and its console's kit. With every extra switched off, the Dreamport plays exactly like the original on its console, bugs included.
 
-**How it's checked.** The Dreamports team reads every change before it goes live, looking for anything that loads, runs or translates the original program. The proof tools ([#77](https://github.com/NahuelGenchi/dreamports/issues/77)) will also play the same button presses in the original and in the Dreamport, with every extra off, and compare every frame. For that comparison only, the original runs in an emulator on the contributor's own computer. The emulator is never part of a Dreamport and never runs on dreamports.net.
+**How it's checked.** The Dreamports team reads every change before it goes live, looking for anything that loads, runs or translates the original program. The [proof tools](../tools/README.md) also play the same button presses in the original and in the Dreamport, with every extra off, and compare every frame. For that comparison only, the original runs in an emulator on the contributor's own computer. The emulator is never part of a Dreamport and never runs on dreamports.net.
 
 ### Nothing from the game is ever shared
 
@@ -30,7 +30,7 @@ What the repository may keep about a game is what tells its versions apart and m
 
 **What it asks.** The very first piece of a new Dreamport can already be played, usually the first character moving in the first level. Every change keeps it playable, and the work follows the order a player meets things. Progress is proven, not guessed: the [%](#how-progress-is-measured) counts only code that has been played and matches the original, so a game that can't be played stays at 0%. Every change you can see or hear comes with a short [clip](#clips) that shows it, next to the original whenever it claims a match.
 
-**How it's checked.** The Dreamports team plays every change on a phone and a computer before it goes live, and watches its clips. The measured % comes with the proof tools ([#77](https://github.com/NahuelGenchi/dreamports/issues/77)) and shows on each game's page with its entry ([#79](https://github.com/NahuelGenchi/dreamports/issues/79)). Until then, Sonic Advance Dreamport's page shows progress set by hand.
+**How it's checked.** The Dreamports team plays every change on a phone and a computer before it goes live, and watches its clips. The [proof tools](../tools/README.md) measure the %, which will show on each game's page with its entry ([#79](https://github.com/NahuelGenchi/dreamports/issues/79)). Until then, Sonic Advance Dreamport's page shows progress set by hand.
 
 ### At home on dreamports.net
 
@@ -56,7 +56,7 @@ It works with the launcher at least as well as Sonic Advance Dreamport. The play
 
 **The measure.** The proof tools play each recording in the original and in the Dreamport. A function counts once it has run in recorded play where every frame of both versions matched. The % is the size of the functions that count, divided by the size of every function in the code map. Bigger functions count for more, and code nobody has played counts for nothing, so a high % always means a game you can play.
 
-The proof tools are [#77](https://github.com/NahuelGenchi/dreamports/issues/77), and showing the % on each game's page is [#79](https://github.com/NahuelGenchi/dreamports/issues/79). Neither exists yet.
+The [proof tools](../tools/README.md) do this on the contributor's computer, and make the clips. Showing the % on each game's page is [#79](https://github.com/NahuelGenchi/dreamports/issues/79), which isn't done yet.
 
 ## Clips
 
@@ -92,7 +92,7 @@ The Mash-ups row on dreamports.net stays as it is: for fan games that aren't por
 
 Today, these rules are checked by the Dreamports team's review. The rest of milestone M6 builds what makes them easier to keep and to check.
 
-The proof tools, with recorded play, code maps, the % and clips, are [#77](https://github.com/NahuelGenchi/dreamports/issues/77). Previews and progress threads are [#78](https://github.com/NahuelGenchi/dreamports/issues/78), one entry per game with its measured % is [#79](https://github.com/NahuelGenchi/dreamports/issues/79), and claims and teams are [#80](https://github.com/NahuelGenchi/dreamports/issues/80). The guide and commands for newcomers are [#81](https://github.com/NahuelGenchi/dreamports/issues/81), and a contact for rights holders, with clips of the original allowed in pull requests and progress posts, is [#82](https://github.com/NahuelGenchi/dreamports/issues/82).
+Previews and progress threads are [#78](https://github.com/NahuelGenchi/dreamports/issues/78), one entry per game with its measured % is [#79](https://github.com/NahuelGenchi/dreamports/issues/79), and claims and teams are [#80](https://github.com/NahuelGenchi/dreamports/issues/80). The guide and commands for newcomers are [#81](https://github.com/NahuelGenchi/dreamports/issues/81), and a contact for rights holders, with clips of the original allowed in pull requests and progress posts, is [#82](https://github.com/NahuelGenchi/dreamports/issues/82).
 
 ## Words used here
 

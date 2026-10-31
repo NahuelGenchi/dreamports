@@ -171,12 +171,14 @@ Sonic Advance Dreamport's [`index.html`](../../games/sonic-advance/index.html) a
 
 ## For the proof tools
 
-The proof tools ([#77](https://github.com/NahuelGenchi/dreamports/issues/77)) play the same button presses in the original and in the Dreamport, and compare every frame. The kit gives them what they need from any game whose page calls `proof?.watch(screen, input)` with its screen and its player's buttons, as the example above does:
+The [proof tools](../../tools/README.md) play the same button presses in the original and in the Dreamport, and compare every frame. The kit gives them what they need from any game whose page calls `proof?.watch(screen, input)` with its screen and its player's buttons, as the example above does:
 
 - With `?proof` in the page's address, the game keeps no time of its own. It runs a frame only when a tool asks for one, with the buttons the tool gives, and hands over the picture it drew.
 - With `?proof=record`, it plays as usual and keeps the buttons it read at each frame.
 
 A tool reaches it on the page as `dreamportsProof`. Its `buttons` names the game's buttons, `ready` resolves once the game runs, `step({ held, pressed })` runs one frame and resolves to its picture as `ImageData`, and `frames` holds what was recorded, ready to give back to `step()`. Games with more than one player on a page aren't supported yet.
+
+The tools start the game the way a player does, on the kit's start screen: they give the copy to the first file input in its `.rom` part, wait for `.play` to be ready, and press it. While they play, the picture `step()` hands over has to be the console's 240 by 160 pixels.
 
 ## Thanks
 

@@ -10,7 +10,8 @@
     "build": "astro build",
     "preview": "astro preview",
     "check": "astro check && tsc -p worker",
-    "worker": "astro build && wrangler dev --local-upstream localhost:8787"
+    "worker": "astro build && wrangler dev --local-upstream localhost:8787",
+    "dp": "node tools/dp.mjs"
   },
   "engines": {
     "node": ">=22.23.4"
