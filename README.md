@@ -107,7 +107,7 @@ A broken link, a typo, a page that looks wrong on your phone? [Let us know](http
 <td width="33%" valign="top">
 
 ⭐ **Follow along**<br>
-Press **Star** at the top of this page to keep Dreamports on your radar.
+Press **Star** at the top of this page to keep Dreamports on your radar, and see each game grow in its [progress thread](https://github.com/NahuelGenchi/dreamports/discussions/categories/progress).
 
 </td>
 </tr>

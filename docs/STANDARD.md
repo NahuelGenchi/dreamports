@@ -30,7 +30,7 @@ What the repository may keep about a game is what tells its versions apart and m
 
 **What it asks.** The very first piece of a new Dreamport can already be played, usually the first character moving in the first level. Every change keeps it playable, and the work follows the order a player meets things. Progress is proven, not guessed: the [%](#how-progress-is-measured) counts only code that has been played and matches the original, so a game that can't be played stays at 0%. Every change you can see or hear comes with a short [clip](#clips) that shows it, next to the original whenever it claims a match.
 
-**How it's checked.** The Dreamports team plays every change on a phone and a computer before it goes live, and watches its clips. The [proof tools](../tools/README.md) measure the %, which will show on each game's page with its entry ([#79](https://github.com/NahuelGenchi/dreamports/issues/79)). Until then, Sonic Advance Dreamport's page shows progress set by hand.
+**How it's checked.** The Dreamports team plays every change on a phone and a computer before it goes live, and watches its clips. Anyone can play it before then, in the preview its author publishes with `npm run dp -- share` ([Previews and progress threads](PREVIEWS.md)). The [proof tools](../tools/README.md) measure the %, which will show on each game's page with its entry ([#79](https://github.com/NahuelGenchi/dreamports/issues/79)). Until then, Sonic Advance Dreamport's page shows progress set by hand.
 
 ### At home on dreamports.net
 
@@ -64,7 +64,7 @@ Every change you can see or hear comes with a short clip, so anyone can check th
 
 A clip shows every frame the game draws, about 60 a second, captured inside the game rather than filmed from a screen, so it's smooth and its pixels stay sharp. It lasts a few seconds and stays under about 2 MB, as an H.264 MP4 video, which every browser plays. When one frame says enough, a PNG picture does the job. Clips are never GIFs, which are far bigger for the same few seconds.
 
-When a change claims to match the original, its clip shows the original next to the Dreamport, with the same button presses. Clips go with every pull request, and in the game's progress thread once those exist ([#78](https://github.com/NahuelGenchi/dreamports/issues/78)).
+When a change claims to match the original, its clip shows the original next to the Dreamport, with the same button presses. Clips go with every pull request, and in the game's [progress thread](PREVIEWS.md#progress-threads), where `npm run dp -- share` posts the newest clip of the Dreamport on its own.
 
 Clips of the original appear only in pull requests and progress posts. The site itself keeps showing only the Dreamports team's own recordings. [#82](https://github.com/NahuelGenchi/dreamports/issues/82) adds this exception to the picture rule in `AGENTS.md` and `CONTRIBUTING.md`, and until it does, those files allow only the team's own recordings.
 
@@ -92,7 +92,7 @@ The Mash-ups row on dreamports.net stays as it is: for fan games that aren't por
 
 Today, these rules are checked by the Dreamports team's review. The rest of milestone M6 builds what makes them easier to keep and to check.
 
-Previews and progress threads are [#78](https://github.com/NahuelGenchi/dreamports/issues/78), one entry per game with its measured % is [#79](https://github.com/NahuelGenchi/dreamports/issues/79), and claims and teams are [#80](https://github.com/NahuelGenchi/dreamports/issues/80). The guide and commands for newcomers are [#81](https://github.com/NahuelGenchi/dreamports/issues/81), and a contact for rights holders, with clips of the original allowed in pull requests and progress posts, is [#82](https://github.com/NahuelGenchi/dreamports/issues/82).
+One entry per game with its measured % is [#79](https://github.com/NahuelGenchi/dreamports/issues/79), and claims and teams are [#80](https://github.com/NahuelGenchi/dreamports/issues/80). Previews and progress threads came with [#78](https://github.com/NahuelGenchi/dreamports/issues/78), as [Previews and progress threads](PREVIEWS.md) explains. The guide and commands for newcomers are [#81](https://github.com/NahuelGenchi/dreamports/issues/81), and a contact for rights holders, with clips of the original allowed in pull requests and progress posts, is [#82](https://github.com/NahuelGenchi/dreamports/issues/82).
 
 ## Words used here
 

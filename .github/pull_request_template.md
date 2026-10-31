@@ -14,6 +14,7 @@ Branch: <type>/<issue>-<slug>, new from the latest main and used only for this i
 
 Site build: <not run, or the exact command and result>
 Browser checks: <none, or the browser and version, the pages, phone and desktop widths, light and dark mode, and the result>
+Preview: <none, or the link npm run dp -- share gave, for a pull request from a fork>
 Source/diff review: <actual scope>
 Private data: none committed (no ROMs, game files, extracted game assets, private email addresses, or credentials)
 
