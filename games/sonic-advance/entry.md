@@ -7,6 +7,7 @@ added: 2026-10-27
 summary: Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install.
 needs: A Sonic Advance (USA) ROM (.gba)
 controls: [keyboard, controller, touch]
+issue: 146
 lead: NahuelGenchi
 kit: gba
 sources:
