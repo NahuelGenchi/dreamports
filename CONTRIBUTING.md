@@ -130,7 +130,7 @@ Pictures of games appear only where the owner decides, and only from the owner's
 
 ## License
 
-The project's own files are licensed under the MIT License ([LICENSE](LICENSE)), and contributions are accepted under the same license. Dreamports and the kits they share, once they live in this repository, use GPL-3.0-or-later instead, as the [Dreamport standard](docs/STANDARD.md#licenses) explains.
+The project's own files are licensed under the MIT License ([LICENSE](LICENSE)), and contributions are accepted under the same license. Dreamports and the kits they share, in [`games/`](games/README.md) and [`kit/`](games/README.md#the-kits-games-start-from), use GPL-3.0-or-later instead, each with its license file in its own folder, as the [Dreamport standard](docs/STANDARD.md#licenses) explains.
 
 Game names and trademarks belong to their owners. Dreamports is an unofficial fan project, not affiliated with or endorsed by Sega, Nintendo, or any other publisher. Anything bundled from elsewhere, such as fonts or icons, needs a license compatible with MIT, its notices kept next to the files, and a line in the README credits.
 

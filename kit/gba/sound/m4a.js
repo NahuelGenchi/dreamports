@@ -1,13 +1,34 @@
-// The game's sound engine: Nintendo's MusicPlayer2000 ("m4a", "Sappy"), as SA1 builds and configures it (SAT-R
-// decompilation, src/lib/m4a/m4a.c and m4a0.s). It reads the songs, voices and samples straight from the ROM and
-// runs once per GBA frame: the four music players step their sequences, the PSG channels get their register
-// writes, and the DirectSound mixer writes the 176 signed 8-bit samples per side that play during the next
-// frame. Every integer step follows the original, so the mixed bytes match the hardware's byte for byte.
+// The sound engine of most Game Boy Advance games: Nintendo's MusicPlayer2000 ("m4a", "Sappy"), the version of
+// it SAT-R's decompilation of Sonic Advance has (src/lib/m4a/m4a.c and m4a0.s), set up with the game's own sound
+// mode (soundMode). It reads the songs, voices and samples straight from the ROM and runs once per GBA frame: the
+// music players step their sequences, the PSG channels get their register writes, and the DirectSound mixer
+// writes the signed 8-bit samples per side that play during the next frame (176 at 10512 Hz). Every integer step
+// follows the original, so the mixed bytes match the hardware's byte for byte. Another game may have another
+// version of the library, which can differ in small ways, such as how a PSG channel pans (cgbModVol): check it
+// against that game's decompilation.
 
 const ROM_BASE = 0x08000000;
 
-// SA1's sound mode (DEFAULT_SOUND_MODE): 5 DirectSound channels, master volume 15, no reverb, 10512 Hz
-const NUM_CHANS = 5, MASTER_VOL = 15, SAMPLES = 176, FRAMES_PER_DMA = 9, DIV_FREQ = 798, HALF = 1584;
+/** Each side of the mixed samples' buffer (PCM_DMA_BUF_SIZE). */
+export const HALF = 1584;
+// the rates a sound mode can pick (SOUND_MODE_FREQ_05734 to _42048), each with the samples mixed per frame
+const SAMPLES_AT = {
+  5734: 96, 7884: 132, 10512: 176, 13379: 224, 15768: 264, 18157: 304,
+  21024: 352, 26758: 448, 31536: 528, 36314: 608, 40137: 672, 42048: 704,
+};
+
+/**
+ * What a game's sound mode sets (m4aSoundMode, with DEFAULT_SOUND_MODE in its decompilation): `channels`, the
+ * DirectSound channels (1 to 12); `volume`, the master volume (1 to 15); `rate`, the samples a second (10512 for
+ * SOUND_MODE_FREQ_10512); and `reverb`, 0 to 127 (none by default). Returns them with what the rate sets
+ * (SampleFreqSet): the samples mixed per frame, the frames one DMA buffer lasts and the pitch divider.
+ */
+export function soundMode({ channels, volume, rate, reverb = 0 }) {
+  const samples = SAMPLES_AT[rate];
+  if (!samples) throw new Error(`The sound engine has no ${rate} Hz rate: it has ${Object.keys(SAMPLES_AT).join(', ')}.`);
+  const pcmFreq = Math.floor((597275 * samples + 5000) / 10000);
+  return { channels, volume, reverb, samples, framesPerDma: Math.floor(HALF / samples), divFreq: (Math.floor(16777216 / pcmFreq) + 1) >> 1 };
+}
 
 // channel status bits
 const START = 0x80, STOP = 0x40, LOOP = 0x10, IEC = 0x04, ENV = 0x03, ON = START | STOP | IEC | ENV;
@@ -74,9 +95,9 @@ function clearTrack(T) {
   T.flags = EXIST; T.bendRange = 2; T.volPublic = 64; T.lfoSpeed = 22; T.voice = { ...NO_VOICE, type: 1 };
 }
 
-function newChannel(addr) {
+function newChannel() {
   return {
-    addr, status: 0, type: 0, rightVol: 0, leftVol: 0, attack: 0, decay: 0, sustain: 0, release: 0, key: 0,
+    status: 0, type: 0, rightVol: 0, leftVol: 0, attack: 0, decay: 0, sustain: 0, release: 0, key: 0,
     envVol: 0, envR: 0, envL: 0, echoVol: 0, echoLen: 0, gateTime: 0, midiKey: 0, velocity: 0, priority: 0,
     rhythmPan: 0, count: 0, fw: 0, freq: 0, wav: 0, current: 0, track: null, prev: null, next: null,
     // PSG channels only
@@ -86,20 +107,23 @@ function newChannel(addr) {
 
 /**
  * @param {Uint8Array} rom the whole ROM
- * @param {{songTable: number, playerTable: number, players: number, songs: number}} layout file offsets and counts
+ * @param {{songTable: number, playerTable: number, players: number, songs: number, mode: object}} layout file offsets
+ *   and counts (tables.js), and the game's sound mode (soundMode)
  * @param {{read(reg: number): number, write(reg: number, value: number): void}} io the sound registers
  */
 export function createM4A(rom, layout, io) {
   const u32 = at => (rom[at] | rom[at + 1] << 8 | rom[at + 2] << 16 | rom[at + 3] << 24) >>> 0;
   const r8 = addr => rom[addr - ROM_BASE];
 
-  const info = { reverb: 0, dmaCounter: 0, c15: 0, pcm: new Int8Array(2 * HALF), memAcc: new Uint8Array(256) };
+  if (!layout.mode) throw new Error("The sound engine needs the game's sound mode (layout.mode).");
+  const { channels: NUM_CHANS, volume: MASTER_VOL, samples: SAMPLES, framesPerDma: FRAMES_PER_DMA, divFreq: DIV_FREQ, reverb } = soundMode(layout.mode);
+  const info = { reverb, dmaCounter: 0, c15: 0, pcm: new Int8Array(2 * HALF), memAcc: new Uint8Array(256) };
   // what is left out of the output: `music` silences the notes of the first music player (the BGM's), as the
   // second and later GBAs of a multiplayer game do on one page, where the first one's music is heard
   const muted = { music: false };
-  // the five DirectSound channels and the four PSG ones sit in EWRAM in this order (gSoundInfo, gCgbChans)
-  const chans = Array.from({ length: NUM_CHANS }, (_, i) => newChannel(0x02001450 + 0x40 * i));
-  const cgbChans = Array.from({ length: 4 }, (_, i) => newChannel(0x02002440 + 0x40 * i));
+  // the DirectSound channels (gSoundInfo's) and the four PSG ones (gCgbChans)
+  const chans = Array.from({ length: NUM_CHANS }, newChannel);
+  const cgbChans = Array.from({ length: 4 }, newChannel);
   cgbChans.forEach((C, i) => { C.type = i + 1; C.panMask = 0x11 << i; });
 
   const players = [];
@@ -222,7 +246,8 @@ export function createM4A(rom, layout, io) {
     T.repN = u8(T.repN + 1);
     if (T.repN < n) { T.cmdPtr++; goto(P, T); } else { T.repN = 0; T.cmdPtr += 5; }
   }
-  // reads and writes the players' shared scratch bytes, or jumps on a comparison with them (no SA1 song uses it)
+  // reads and writes the players' shared scratch bytes, or jumps on a comparison with them (untested: none of the
+  // songs checked so far uses it)
   function memacc(P, T) {
     const op = arg(T), at = arg(T), data = arg(T), mem = info.memAcc, v = mem[at];
     const ops = [
@@ -453,7 +478,7 @@ export function createM4A(rom, layout, io) {
 
   // ---- PSG channels ----
 
-  // SA1's version: a channel that is mostly on one side plays on that side only
+  // in this version of the library, a channel that is mostly on one side plays on that side only
   function cgbModVol(C) {
     const r = C.rightVol, l = C.leftVol;
     let pan, goal;
@@ -729,8 +754,10 @@ export function createM4A(rom, layout, io) {
 
   return {
     info, chans, cgbChans, players, muted,
+    /** the samples mixed per side each frame */
+    samples: SAMPLES,
 
-    /** One GBA frame: the V-blank's DMA bookkeeping, then SoundMain. Returns the offset of the 176 bytes just
+    /** One GBA frame: the V-blank's DMA bookkeeping, then SoundMain. Returns the offset of the samples just
      *  mixed into info.pcm (right side; the left side is HALF bytes later). */
     frame() {
       const dc = u8(info.dmaCounter - 1);
@@ -787,5 +814,3 @@ export function createM4A(rom, layout, io) {
     tempoControl(p, tempo) { const P = players[p]; P.tempoU = tempo; P.tempoI = (P.tempoD * tempo) >> 8; },
   };
 }
-
-export const SOUND = { SAMPLES, HALF, FRAMES_PER_DMA };

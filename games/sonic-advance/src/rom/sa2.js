@@ -3,7 +3,7 @@
 // them in the same formats. Each extra reads its own art from what openSa2 returns (sa2boost.js for Boost Mode).
 // Nothing of Sonic Advance 2 is in this repository.
 
-import { Rom } from './rom.js';
+import { Rom } from '../../../../kit/gba/rom/rom.js';
 import { RomError, readHeader } from './identify.js';
 import { findSpriteTables } from './locate.js';
 import { findMusicPlayers, soundLayout } from './sound.js';

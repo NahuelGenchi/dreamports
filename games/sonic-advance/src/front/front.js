@@ -6,17 +6,15 @@
 // A new game, with no save yet, starts with the language screen (language.js), which writes the save; with a save,
 // the game starts with the logos. The Options menu (options.js) changes the save and writes it.
 
-import { createVideo, REG, SCREEN_W, SCREEN_H } from '../gba/video.js';
+import { createVideo, REG, SCREEN_W, SCREEN_H } from '../../../../kit/gba/video.js';
 import { createEngine, KEY } from '../gba/engine.js';
 import { spriteTables } from '../rom/sprites.js';
 import { createSegaLogo } from './logos.js';
 import { createLanguageScreen, hasLanguageScreen } from './language.js';
 import { createIntro } from './intro.js';
 import { createTitleScreen } from './title.js';
-import { createClock } from '../engine/clock.js';
+import { createClock, GBA_FRAME_MS } from '../../../../kit/gba/clock.js';
 
-// a GBA frame: 280896 cycles of its 16.78 MHz clock, the rate the music plays at
-export const GBA_FRAME_MS = 280896 / 16777216 * 1000;
 /**
  * The frames after power-on before the game starts: the GBA (mGBA) is still starting up, the screen white (forced
  * blank), and gFrameCount isn't counted yet (VBlankIntr, which counts it, starts with GameInit).

@@ -41,7 +41,7 @@ import { SONG } from '../sound/songs.js';
 import { RUSH_BOOST_SE } from '../rom/rush.js';
 import { BOOST_MODE_SE } from '../rom/sa2boost.js';
 import { createExtraStage } from './extra.js';
-import { createClock } from './clock.js';
+import { createClock } from '../../../../kit/gba/clock.js';
 import { createPauseMenu, PAUSE_PRIORITY } from './pause.js';
 import { openSave, saveActCleared, WRITE_FRAMES } from './save.js';
 import { playerControls } from './input.js';

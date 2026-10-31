@@ -14,7 +14,7 @@ Some of the checks below are still being built. Where one doesn't exist yet, the
 
 ### It's the real game, rebuilt
 
-**What it asks.** The original program never runs: not on its own, not inside a hidden emulator, and not translated on the fly while the game plays. Its logic is rewritten in plain JavaScript that the browser runs as it is, with no build step, and drawing and sound work the way the console did them, in the Dreamport's own code. With every extra switched off, the Dreamport plays exactly like the original on its console, bugs included.
+**What it asks.** The original program never runs: not on its own, not inside a hidden emulator, and not translated on the fly while the game plays. Its logic is rewritten in plain JavaScript that the browser runs as it is, with no build step, and drawing and sound work the way the console did them, in the Dreamport's own code and its console's kit. With every extra switched off, the Dreamport plays exactly like the original on its console, bugs included.
 
 **How it's checked.** The Dreamports team reads every change before it goes live, looking for anything that loads, runs or translates the original program. The proof tools ([#77](https://github.com/NahuelGenchi/dreamports/issues/77)) will also play the same button presses in the original and in the Dreamport, with every extra off, and compare every frame. For that comparison only, the original runs in an emulator on the contributor's own computer. The emulator is never part of a Dreamport and never runs on dreamports.net.
 
@@ -92,8 +92,6 @@ The Mash-ups row on dreamports.net stays as it is: for fan games that aren't por
 
 Today, these rules are checked by the Dreamports team's review. The rest of milestone M6 builds what makes them easier to keep and to check.
 
-Sonic Advance Dreamport's Game Boy Advance kit comes out of it with [#76](https://github.com/NahuelGenchi/dreamports/issues/76).
-
 The proof tools, with recorded play, code maps, the % and clips, are [#77](https://github.com/NahuelGenchi/dreamports/issues/77). Previews and progress threads are [#78](https://github.com/NahuelGenchi/dreamports/issues/78), one entry per game with its measured % is [#79](https://github.com/NahuelGenchi/dreamports/issues/79), and claims and teams are [#80](https://github.com/NahuelGenchi/dreamports/issues/80). The guide and commands for newcomers are [#81](https://github.com/NahuelGenchi/dreamports/issues/81), and a contact for rights holders, with clips of the original allowed in pull requests and progress posts, is [#82](https://github.com/NahuelGenchi/dreamports/issues/82).
 
 ## Words used here
@@ -106,7 +104,7 @@ The proof tools, with recorded play, code maps, the % and clips, are [#77](https
 
 **Recompiler draft.** Code a tool translated straight from the game's program, which can serve as a first draft to rewrite.
 
-**Kit.** The parts every Dreamport on the same console shares, such as reading the copy, drawing, sound and controls.
+**Kit.** The parts every Dreamport on the same console shares, such as reading the copy, drawing, sound and controls. The Game Boy Advance kit, in [`kit/gba/`](../kit/gba/README.md), came out of Sonic Advance Dreamport with [#76](https://github.com/NahuelGenchi/dreamports/issues/76).
 
 **Code map.** The list of every function in the original program, with its address and size.
 

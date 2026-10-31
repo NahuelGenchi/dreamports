@@ -1,10 +1,10 @@
-// The GBA's video hardware as the front end drives it: VRAM, palette RAM, OAM and the display registers, and a
+// The GBA's video hardware as a game drives it: VRAM, palette RAM, OAM and the display registers, and a
 // renderer that draws a frame from them one line at a time. It composes the layers, the windows and the colour
-// effects the way mGBA's software renderer does (mGBA 0.10, src/gba/renderers/), the emulator every recording
-// this project checks against comes from, so a frame matches its pixels exactly: the same 8-bit colours, the same
-// blending arithmetic, the same order of sprites and layers, and the same quirks where it departs from the plain
-// rules (how a rotated sprite's line starts and stops, which pixels a semi-transparent sprite brightens or darkens).
-// Mosaic and the OBJ window aren't drawn yet; nothing that uses them is.
+// effects the way mGBA's software renderer does (mGBA 0.10, src/gba/renderers/), the emulator the original games
+// are recorded in, so a frame matches its pixels exactly: the same 8-bit colours, the same blending arithmetic,
+// the same order of sprites and layers, and the same quirks where it departs from the plain rules (how a rotated
+// sprite's line starts and stops, which pixels a semi-transparent sprite brightens or darkens). Mosaic and the
+// OBJ window aren't drawn yet: a game that needs them adds them here.
 //
 // The widescreen view draws a wider frame with the original screen in its middle, drawn exactly as above. Around
 // it, each scene goes on as it really is: each layer as the scene says it carries on past the screen's edges

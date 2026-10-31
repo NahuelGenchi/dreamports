@@ -2,7 +2,7 @@
 // settings (sheet.js): what the pads hold, where the right stick leans, and the button to go to from one toward a
 // direction.
 
-import { connectedPads } from '../engine/input.js';
+import { connectedPads } from '../input.js';
 
 const DEAD_ZONE = 0.5, STICK_DEAD_ZONE = 0.2;
 const BUTTONS = { a: 0, b: 1, lb: 4, rb: 5, menu: 9, up: 12, down: 13, left: 14, right: 15 };

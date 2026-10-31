@@ -10,7 +10,7 @@
 // (`onCredits`).
 
 import { TICK_MS, SCREEN_W, SCREEN_H } from './constants.js';
-import { createClock } from './clock.js';
+import { createClock } from '../../../../kit/gba/clock.js';
 import { makeAnimator, setAnim, tickAnim, frameOf } from './animator.js';
 import { createCamera, updateCamera, viewOf } from './camera.js';
 import { createTerrain } from './terrain.js';

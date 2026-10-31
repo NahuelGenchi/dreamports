@@ -3,7 +3,7 @@
 // stick moves between them, A presses the one picked, Menu presses Play and B the way back. Browsers only show a
 // controller to the page once one of its buttons is pressed.
 
-import { connectedPads, xboxConnected } from '../engine/input.js';
+import { connectedPads, xboxConnected } from '../input.js';
 import { padsHeld, toward, REPEAT_AFTER, REPEAT_EVERY } from './pad-nav.js';
 
 const PRESSABLE = 'a[href], button:not([hidden]):not(:disabled), input:not([type=file]):not(:disabled)';

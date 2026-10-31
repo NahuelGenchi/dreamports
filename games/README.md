@@ -14,11 +14,17 @@ The folder's name is the game's address, so it has only lowercase letters, numbe
 
 Nothing from the original game ever goes here: no ROM, no game files, and no music, pictures or data taken from them. Players bring their own copy, and the game reads it on their device.
 
+## The kits games start from
+
+What every game on the same console shares, such as reading the player's copy, drawing, sound, controls, settings and saves, is that console's kit, in a folder of its own in [`kit/`](../kit/). The first is the Game Boy Advance kit, [`kit/gba/`](../kit/gba/README.md), whose guide shows how a new Game Boy Advance game starts from it. When the site is built, each kit is copied as it is to `/kit/<console>/`, next to the games, so a game's pages load it with addresses relative to the page, such as `../../kit/gba/styles/kit.css`. Those addresses work the same on dreamports.net and on a file server run in the repository's folder.
+
+A kit's folder follows a game's rules, but it isn't a page of its own, so it needs no `index.html`, only its license: kits use GPL-3.0-or-later, like the games. A kit holds only what any game on its console can use. What only one game needs stays in that game's folder, and nothing from any game ever goes in a kit.
+
 ## Trying a game on your computer
 
-After [setting up the site on your computer](../CONTRIBUTING.md#run-the-site-on-your-computer), `npm run worker` builds it with every game in it and opens it at `http://localhost:8787`, with its profiles and a database on your computer. There, `http://localhost:8787/play/<game>/` plays the game the way dreamports.net does. `npm run build` followed by `npm run preview` shows the games too, without profiles. `npm run dev` shows only the site's own pages, not the games. While you work on a game, any static file server run in its folder also plays it, without the site's own files such as `/dreamports.js`, as [Sonic Advance Dreamport's README](sonic-advance/README.md#run-it-on-your-own-computer) shows.
+After [setting up the site on your computer](../CONTRIBUTING.md#run-the-site-on-your-computer), `npm run worker` builds it with every game in it and opens it at `http://localhost:8787`, with its profiles and a database on your computer. There, `http://localhost:8787/play/<game>/` plays the game the way dreamports.net does. `npm run build` followed by `npm run preview` shows the games too, without profiles. `npm run dev` shows only the site's own pages, not the games. While you work on a game, any static file server run in the repository's folder also plays it, at `/games/<game>/`, without the site's own files such as `/dreamports.js`, as [Sonic Advance Dreamport's README](sonic-advance/README.md#run-it-on-your-own-computer) shows. The server runs in the repository's folder rather than the game's so the game can load its kit.
 
-The build stops and says what's wrong if a game's folder breaks one of these rules, or if the site grows past what Cloudflare's free plan takes: 20,000 files at most, and none bigger than 25 MiB.
+The build stops and says what's wrong if a game's or a kit's folder breaks one of these rules, or if the site grows past what Cloudflare's free plan takes: 20,000 files at most, and none bigger than 25 MiB.
 
 ## Removing a game
 

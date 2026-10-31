@@ -1,14 +1,15 @@
-// Game page: the player's ROMs, each read in the browser as it is chosen (rom-setup.js), then the game's start
-// (the logos and the intro) and the act, with its special stage between two runs of it. With ?debug Play starts
-// the act straight away, and with ?special the special stage, as if Sonic had just left act 1 on its special spring.
+// Game page: the player's ROMs, each read in the browser as it is chosen (the kit's ui/rom-setup.js), then the
+// game's start (the logos and the intro) and the act, with its special stage between two runs of it. With ?debug
+// Play starts the act straight away, and with ?special the special stage, as if Sonic had just left act 1 on its
+// special spring. The parts every Game Boy Advance Dreamport shares come from the kit, kit/gba/.
 
-import './engine/cpucanvas.js';
-import { createRomSetup } from './ui/rom-setup.js';
-import { SA1_ROM, RUSH_ROM, SA2_ROM } from './ui/rom-store.js';
-import { acceptRoms } from './ui/rom-types.js';
+import '../../../kit/gba/canvas.js';
+import { createRomSetup } from '../../../kit/gba/ui/rom-setup.js';
+import { acceptRoms } from '../../../kit/gba/ui/rom-types.js';
+import { roms, SA1_ROM, RUSH_ROM, SA2_ROM } from './ui/roms.js';
 import { extractAssets } from './rom/extract.js';
 import { isSonicAdvance, RomError } from './rom/identify.js';
-import { Rom } from './rom/rom.js';
+import { Rom } from '../../../kit/gba/rom/rom.js';
 import { createFrontEnd } from './front/front.js';
 import { extractRush, isRush } from './rom/rush.js';
 import { openSa2, isSa2 } from './rom/sa2.js';
@@ -24,13 +25,17 @@ import { THE_MOON, ALL_EMERALDS } from './engine/unlock.js';
 import { openSave } from './engine/save.js';
 import { levelInfo } from './rom/levels.js';
 import { startMultiplayer, DEFAULT_SEED, DEFAULT_CHAO_PLACE } from './multiplayer.js';
-import { openAchievements } from './achievements/store.js';
-import { createUnlockPopup } from './achievements/popup.js';
-import { createAchievementsPanel } from './achievements/panel.js';
-import { holdClocks } from './engine/clock.js';
-import { createSheet } from './ui/sheet.js';
-import { createControlsView } from './ui/controls-view.js';
-import { createAssetsSheetView } from './ui/assets-view.js';
+import { openAchievements } from '../../../kit/gba/achievements/store.js';
+import { createUnlockPopup } from '../../../kit/gba/achievements/popup.js';
+import { createAchievementsPanel } from '../../../kit/gba/achievements/panel.js';
+import * as list from './achievements/list.js';
+import { holdClocks } from '../../../kit/gba/clock.js';
+import { proof } from '../../../kit/gba/proof.js';
+import { createSheet } from '../../../kit/gba/ui/sheet.js';
+import { createControlsView } from '../../../kit/gba/ui/controls-view.js';
+import { createAssetsSheetView } from '../../../kit/gba/ui/assets-view.js';
+import { CONTROLS, TOKENS, NOTE } from './ui/controls.js';
+import { assetParts } from './ui/assets.js';
 
 const picker = document.getElementById('picker');
 const stage = document.getElementById('stage');
@@ -64,6 +69,8 @@ stage.classList.toggle('debug', debug);   // the panel shows the player's speed 
 
 const input = createInput();
 input.bindTouch(touch);
+// with ?proof in the address a proof tool runs the game frame by frame on this player's buttons (the kit's proof.js)
+proof?.watch(screen, input);
 const sound = createSound();
 
 // an extra's switch in the settings, with the line under it: what it does, or the ROM it still needs (`needs`), for
@@ -125,7 +132,7 @@ requestAnimationFrame(function watchPads() {
 });
 
 // how solid the drawn buttons are, set in the settings' Button opacity: 20 to 100 %, 60 at first. The settings
-// button and the buttons that cover the game are a step fainter (app.css).
+// button and the buttons that cover the game are a step fainter (kit.css).
 const OPACITY_KEY = 'onsoku.touchOpacity', opacitySlider = document.getElementById('button-opacity');
 const OPACITY_MIN = Number(opacitySlider.min), OPACITY_MAX = Number(opacitySlider.max);
 function showOpacity(value) {
@@ -158,10 +165,10 @@ opacitySlider.addEventListener('pointermove', e => { if (e.pointerType === 'touc
 // the achievements, kept in this browser and, on dreamports.net, on the player's profile (store.js): each new one
 // shows its popup over the game, and so does the game's status once it changes (Beaten, Mastered); the settings show
 // how many are earned and open the list of them
-const achievements = openAchievements();
+const achievements = openAchievements({ key: 'onsoku.achievements', list });
 const unlockPopup = createUnlockPopup(stage, screen, () => sound);
 const achievementsButton = document.getElementById('achievements-open');
-const achievementsPanel = createAchievementsPanel(sheet, achievements, achievementsButton);
+const achievementsPanel = createAchievementsPanel(sheet, achievements, achievementsButton, { beaten: 'Clear every zone and the X Zone' });
 achievements.onUnlock(a => {
   unlockPopup.show(a);
   achievementsPanel.refresh();
@@ -184,7 +191,7 @@ const achieve = id => { if (counts) achievements.unlock(id); };
 achievementsButton.addEventListener('click', () => sheet.go('achievements'));
 
 // every key and every controller button, and what each does
-createControlsView(sheet);
+createControlsView(sheet, { controls: CONTROLS, tokens: TOKENS, note: NOTE });
 document.getElementById('controls-open').addEventListener('click', () => sheet.go('controls'));
 
 // the sound, also M on a keyboard
@@ -296,6 +303,9 @@ const region = code => REGIONS[code[3]] ?? code;
 const MAX_GBA_BYTES = 32 * 1024 * 1024;   // largest Game Boy Advance cartridge
 
 const setup = createRomSetup(picker, {
+  brand: 'Sonic Advance Dreamport',
+  home: 'https://dreamports.net/dreamports/sonic-advance-dreamport/',
+  roms,
   heading: 'Insert cartridge',
   intro: 'Your ROMs stay on this device.',
   slots: [
@@ -332,6 +342,7 @@ const setup = createRomSetup(picker, {
     },
     {
       key: 'rush', store: RUSH_ROM, title: 'Sonic Rush', required: false,
+      console: 'Nintendo DS', maxBytes: 512 * 1024 * 1024,   // the largest Nintendo DS cartridge
       accept: '.nds', claims: isRush,
       read(buffer) {
         const code = useRush(buffer);
@@ -525,7 +536,7 @@ showRomCount();
 document.getElementById('change-rom').addEventListener('click', () => sheet.go('roms'));
 // the asset viewer shows what was decoded for the act being played, or the first one before it starts; with a
 // modifier, the link opens it on its own page
-createAssetsSheetView(sheet, () => playing ?? sa1?.assets);
+createAssetsSheetView(sheet, () => playing ?? sa1?.assets, { rom: 'Sonic Advance', parts: assetParts });
 document.getElementById('assets-open').addEventListener('click', e => {
   if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || !sa1) return;
   e.preventDefault();

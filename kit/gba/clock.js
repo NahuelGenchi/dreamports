@@ -9,6 +9,13 @@
 // once, in order. The game then keeps the display's pace: at 59.94 Hz it runs 0.1% slow, which no one sees. A
 // late frame, and any frame on another display, counts as the time it took. Without `snap` (the screens on the
 // GBA's 59.73 Hz, whose timing the music follows) time always counts as it comes.
+//
+// While a proof tool plays the game (proof.js), every clock runs a frame only when the tool asks for one.
+
+import { proof } from './proof.js';
+
+/** A Game Boy Advance frame, in ms: 280896 cycles of its 16.78 MHz clock, 59.73 frames a second. */
+export const GBA_FRAME_MS = 280896 / 16777216 * 1000;
 
 const MAX_FRAME_MS = 100;    // after a stall, catch up at most 100 ms instead of fast-forwarding
 const RATE_TOLERANCE = 0.01; // how far off the game's rate a display can be and still show one step a frame
@@ -29,6 +36,7 @@ export function createClock(stepMs, { snap = false } = {}) {
     reset(now = performance.now()) { last = now; pending = 0; period = 0; late = 0; },
     /** How many steps the display frame at `now` runs. */
     steps(now) {
+      if (proof?.mode === 'play') return proof.take();
       if (holding) { last = now; return 0; }
       let ms = Math.min(MAX_FRAME_MS, now - last);
       last = now;

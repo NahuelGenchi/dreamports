@@ -16,7 +16,7 @@
 // buffers and their copy as they are. The first such V-blank moves every OAM entry of that frame to the end of
 // OAM, where they stay behind what the tasks still show, until the V-blank after the game goes on again.
 
-import { REG, SCREEN_W, SCREEN_H } from './video.js';
+import { REG, SCREEN_W, SCREEN_H } from '../../../../kit/gba/video.js';
 
 export const FLAGS = {
   UPDATE_BG_PALETTES: 0x1, UPDATE_OBJ_PALETTES: 0x2, HBLANK_COPY: 0x4, KEEP_HBLANK_BUFFER: 0x20,
