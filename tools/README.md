@@ -107,13 +107,13 @@ Sonic Advance Dreamport's logos are frames 254 to 932 of [`logos-and-intro`](../
 
 ## The /dreamport commands
 
-The README's [Make a Dreamport](../README.md#make-a-dreamport) teaches seven commands that a coding agent runs these tools with, such as `/dreamport-clip`, which runs `portmap` and `prove`. Each is written once, as a Markdown file in [`commands/`](commands/), with its name, its description and, for those that take one, what's typed after it. `npm run dp -- commands` writes each in the form an agent reads:
+The README's [Make a Dreamport](../README.md#make-a-dreamport) teaches seven commands that a coding agent runs these tools with, such as `/dreamport-clip`, which runs `portmap` and `prove`. Each is written once, as a Markdown file in [`commands/`](commands/), with its name, its description and, for those that take one, what's typed after it. `/dreamport` also lists, as `pasted`, the sentences that start it when they're pasted into an agent, as the README gives them. `npm run dp -- commands` writes each in the form an agent reads:
 
 - `.claude/skills/<name>/SKILL.md` for Claude Code, set to run only when typed (`disable-model-invocation`).
 - `.agents/skills/<name>/SKILL.md` for Codex, with `agents/openai.yaml` turning off its implicit use. Cursor, Gemini CLI and Antigravity CLI read this folder too.
 - `.gemini/commands/<name>.toml` for Gemini CLI's own commands.
 
-Every copy starts the same way: it tells the agent to do nothing unless the person typed the command, for the agents that might load it by themselves, and where what was typed after it is. A command's file can't hold `{{`, `!{`, `@{` or `'''`, which Gemini CLI would read as its own. `npm run check` runs `npm run dp -- commands --check`, which fails when a copy differs from its file, and removing a command's file and running the tool removes its copies.
+Every copy starts the same way: it tells the agent to do nothing unless the person typed the command, or pasted one of its sentences, for the agents that might load it by themselves, and where what was typed after it is. A command's file can't hold `{{`, `!{`, `@{` or `'''`, which Gemini CLI would read as its own. `npm run check` runs `npm run dp -- commands --check`, which fails when a copy differs from its file, and removing a command's file and running the tool removes its copies.
 
 ## A game's proof folder
 

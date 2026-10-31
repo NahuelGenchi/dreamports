@@ -1,8 +1,8 @@
 // npm run dp -- commands [--check]: writes the /dreamport commands, each written once in tools/commands/<name>.md, in
 // the form each coding agent reads: .claude/skills/ for Claude Code, .agents/skills/ for Codex (which Cursor and
-// Antigravity CLI read too) and .gemini/commands/ for Gemini CLI. Every copy runs only when the person types it, and
-// starts by saying so, for the agents that might load it by themselves. With --check it changes nothing and fails
-// when a copy differs from its source, which `npm run check` uses.
+// Antigravity CLI read too) and .gemini/commands/ for Gemini CLI. Every copy runs only when the person types it, or
+// pastes one of the sentences its source lists, and starts by saying so, for the agents that might load it by
+// themselves. With --check it changes nothing and fails when a copy differs from its source, which `npm run check` uses.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -41,31 +41,38 @@ export async function run(args) {
   return 0;
 }
 
-/** Each source in tools/commands/: { name, description, argument, body }. */
+/** Each source in tools/commands/: { name, description, argument, pasted, body }. */
 function readCommands() {
   return listed(SOURCES).filter(f => f.endsWith('.md')).sort().map(file => {
     const where = `tools/commands/${file}`;
     const text = readFileSync(join(SOURCES, file), 'utf8');
     const found = /^---\n([\s\S]*?)\n---\n+([\s\S]*)$/.exec(text);
     if (!found) throw new Error(`${where} needs its name and description between two --- lines at its top.`);
-    const { name, description, argument, ...other } = parse(found[1]) ?? {};
+    const { name, description, argument, pasted = [], ...other } = parse(found[1]) ?? {};
     const body = found[2].trimEnd();
     if (Object.keys(other).length) throw new Error(`${where} has fields commands doesn't know: ${Object.keys(other).join(', ')}.`);
     if (name !== file.slice(0, -3) || !NAME.test(name)) throw new Error(`${where}'s name has to be its file's name, starting with dreamport, such as dreamport-play.`);
     if (typeof description !== 'string' || !description.trim() || description.length > 200) throw new Error(`${where} needs a description of one short sentence.`);
+    // the sentences that start it when they're pasted, as the README gives them
+    if (!Array.isArray(pasted) || !pasted.every(s => typeof s === 'string' && /^\S[^`]*\.$/.test(s))) {
+      throw new Error(`${where}'s pasted has to be a list of sentences, each ending with a full stop.`);
+    }
     // Gemini CLI reads {{…}}, !{…} and @{…} in a prompt as its own, and its prompt is a ''' string
-    if (/\{\{|[!@]\{|'''/.test(body)) throw new Error(`${where} can't hold {{, !{, @{ or ''', which Gemini CLI would read as its own.`);
+    if (/\{\{|[!@]\{|'''/.test([body, ...pasted].join('\n'))) throw new Error(`${where} can't hold {{, !{, @{ or ''', which Gemini CLI would read as its own.`);
     if (/\u2014/.test(text)) throw new Error(`${where} has an em dash: the repository's writing doesn't use them.`);
-    return { name, description: description.trim(), argument, body };
+    return { name, description: description.trim(), argument, pasted, body };
   });
 }
 
-/** What every copy says first: that it runs only when typed, and what was typed after it. */
-function opening(name, typed, after, codex = false) {
+/** What every copy says first: that it runs only when typed or pasted, and what was typed after it. */
+function opening(name, typed, after, pasted, codex = false) {
+  const sentences = pasted.length
+    ? `, or pasted ${pasted.length === 1 ? 'this sentence' : 'one of these sentences'}, with a game's name for any \`<game>\`:\n\n${pasted.map(s => `- \`${s}\``).join('\n')}\n\n`
+    : '. ';
   return [
     `<!-- Written by npm run dp -- commands from tools/commands/${name}.md: change that file, not this one. -->`,
     '',
-    `Only do this if the person typed ${typed} in their message. If you're reading it because of something they said in their own words, such as "send it" or "put it online", stop here and do none of it: tell them in one sentence what \`/${name}\` does, and wait for them to type it.`,
+    `Only do this if the person typed ${typed} in their message${sentences}If you're reading it because of something ${pasted.length ? 'else ' : ''}they said in their own words, such as "send it" or "put it online", stop here and do none of it: tell them in one sentence what \`/${name}\` does, and wait for them to type it.`,
     '',
     after,
     '',
@@ -81,19 +88,19 @@ function frontmatter(fields) {
 }
 
 /** The files one command becomes: [{ path, text }], with paths from the repository's folder. */
-function copiesOf({ name, description, argument, body }) {
+function copiesOf({ name, description, argument, pasted, body }) {
   const after = placeholder => `What they typed after the command, if anything: ${placeholder}`;
   return [
     {
       path: `.claude/skills/${name}/SKILL.md`,
       text: frontmatter({ name, description, ...(argument ? { 'argument-hint': argument } : {}), 'disable-model-invocation': true })
-        + opening(name, `\`/${name}\``, after('$ARGUMENTS')) + body + '\n',
+        + opening(name, `\`/${name}\``, after('$ARGUMENTS'), pasted) + body + '\n',
     },
     {
       // Codex reads only name and description; Cursor, which reads this folder too, honours disable-model-invocation
       path: `.agents/skills/${name}/SKILL.md`,
       text: frontmatter({ name, description, 'disable-model-invocation': true })
-        + opening(name, `\`/${name}\`, or \`$${name}\` in Codex,`, 'What they typed after the command, if anything, is in their message.', true) + body + '\n',
+        + opening(name, `\`/${name}\`, or \`$${name}\` in Codex,`, 'What they typed after the command, if anything, is in their message.', pasted, true) + body + '\n',
     },
     {
       path: `.agents/skills/${name}/agents/openai.yaml`,
@@ -103,7 +110,7 @@ function copiesOf({ name, description, argument, body }) {
       path: `.gemini/commands/${name}.toml`,
       text: `# Written by npm run dp -- commands from tools/commands/${name}.md: change that file, not this one.\n`
         + `description = ${JSON.stringify(description)}\n`
-        + `prompt = '''\n${opening(name, `\`/${name}\``, after('{{args}}')).replace(/^<!--.*-->\n\n/, '')}${body}\n'''\n`,
+        + `prompt = '''\n${opening(name, `\`/${name}\``, after('{{args}}'), pasted).replace(/^<!--.*-->\n\n/, '')}${body}\n'''\n`,
     },
   ];
 }

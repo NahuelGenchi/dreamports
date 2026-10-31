@@ -18,11 +18,11 @@ Please never attach ROMs, game files, or anything extracted from a game, and nev
 
 ## Make a Dreamport
 
-Anyone can make a Dreamport, or help with one, without writing code: a coding agent does the work, guided by seven `/dreamport` commands, as the [README](README.md#make-a-dreamport) shows step by step. Each command runs the repository's own tools, which you can also run yourself:
+Anyone can make a Dreamport, or help with one, without writing code: a coding agent does the work, guided by seven `/dreamport` commands, as the [README](README.md#make-a-dreamport) shows step by step. It starts from one sentence pasted into the agent, `Set up https://dreamports.net/code and help me make <game> Dreamport.`, which gets the folder ready and starts `/dreamport <game>`. Each command runs the repository's own tools, which you can also run yourself:
 
 | Command | What it runs |
 | :--- | :--- |
-| `/dreamport <game>` | `npm run dp -- find`, for where the game stands, and `rom`, which checks your copy |
+| `/dreamport <game>` | `git clone` and `npm ci` the first time, `gh repo fork --remote` after your yes, then `npm run dp -- find`, for where the game stands, and `rom`, which checks your copy |
 | `/dreamport-claim <task>` | A New Dreamport or Task issue, or `/claim` on a task's issue, which the Dreamports bot answers ([Claims and teams](docs/TEAMS.md)) |
 | `/dreamport-clip` | `portmap`, then `prove`, which compares every frame with the original and makes the clip |
 | `/dreamport-play` | `play --record`, which opens the game in a browser with your copy and keeps what you play, then `prove` on it |
