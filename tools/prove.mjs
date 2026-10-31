@@ -3,31 +3,36 @@
 // functions ran in the frames that matched, updates the game's progress.json, which its code ported and its gameplay
 // proven are measured with (docs/STANDARD.md#how-progress-is-measured), and the README's table of Dreamports with it
 // (readme.mjs), and makes a clip and stills of both side by side, with a clip and a still of the
-// Dreamport on its own. The pictures and the clips stay in .dreamports/results/ on this computer: they show the
-// game, so they never go in a commit.
+// Dreamport on its own. To help find where each of the game's parts starts and ends, it lists the frames where the
+// original's screen is one colour, as between one screen and the next, and with --stills <frames> keeps pictures of
+// those frames, as it does of each part's first and last. The pictures and the clips stay in .dreamports/results/
+// on this computer: they show the game, so they never go in a commit.
 
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { REPO, LOCAL, resultFolder } from './lib/paths.mjs';
-import { readOriginal, readRecordings, readCodeMap, readProgress, writeProgress, hex } from './lib/proof-files.mjs';
+import { readOriginal, readRecordings, readCodeMap, readProgress, writeProgress, readParts, hex } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { expand } from './lib/recording.mjs';
 import { serveRepository } from './lib/server.mjs';
 import { openChrome } from './lib/chrome.mjs';
 import { openDreamport } from './lib/dreamport.mjs';
 import { mp4 } from './lib/mp4.mjs';
-import { measure } from '../src/lib/entries.mjs';
-import { writeReadme } from './readme.mjs';
+import { measure, percentText } from '../src/lib/entries.mjs';
+import { writeReadme, readProof } from './readme.mjs';
 import { KEY, ensureOriginal, runOriginal } from './gba/original.mjs';
 
 const BATCH = 120;
+const STILLS = 600;
 // a clip stays under 2 MB: encoded again at a lower rate while it's over, as the encoder can overshoot its target
 const CLIP_LIMIT = 2_000_000, CLIP_TARGET = 1_700_000;
 const IN_PAGE = readFileSync(new URL('./lib/in-page.js', import.meta.url), 'utf8');
 
 export async function run(args) {
-  const [game, ...names] = args.filter(a => !a.startsWith('--'));
-  if (!game) throw new Error('Usage: npm run dp -- prove <game> [recording…]');
+  const stillsAt = args.indexOf('--stills');
+  const asked = stillsAt >= 0 ? framesIn(args[stillsAt + 1]) : [];
+  const [game, ...names] = args.filter((a, i) => !a.startsWith('--') && (stillsAt < 0 || i !== stillsAt + 1));
+  if (!game) throw new Error('Usage: npm run dp -- prove <game> [recording…] [--stills <frames>]');
   const original = readOriginal(game);
   if (original.console !== 'gba') throw new Error(`The proof tools run Game Boy Advance games; ${original.console} isn't one yet.`);
   const recordings = readRecordings(game, names);
@@ -38,12 +43,13 @@ export async function run(args) {
   if (codeMap && codeMap.original !== original.sha1) throw new Error(`games/${game}/proof/code-map.json is for another copy than original.json names.`);
   ensureOriginal(console.log);
 
-  const progress = readProgress(game);
+  const progress = readProgress(game), parts = readParts(game);
   const server = await serveRepository();
   let failed = false;
   try {
     for (const recording of recordings) {
-      const result = await prove({ game, recording, copy: copy.path, server, codeMap, before: progress.recordings[recording.name] });
+      const own = parts.filter(p => p.recording === recording.name && Array.isArray(p.frames) && p.frames.length === 2 && p.frames.every(Number.isInteger));
+      const result = await prove({ game, recording, copy: copy.path, server, codeMap, before: progress.recordings[recording.name], asked, parts: own });
       failed ||= result.matched < result.frames;
       progress.recordings[recording.name] = {
         frames: result.frames,
@@ -76,8 +82,35 @@ export async function run(args) {
   } catch (error) {
     console.log(`README.md's table of Dreamports wasn't written: ${error.message}`);
   }
+  // the two numbers the game shows now
+  try {
+    const { ported, gameplay } = readProof(game) ?? {};
+    if (ported) console.log(`Code ported: ${percentText(ported.percent)}.`);
+    if (gameplay) console.log(`Gameplay proven: ${percentText(gameplay.percent)}, ${gameplay.proven} of ${gameplay.total} parts.`);
+  } catch (error) {
+    console.log(error.message);
+  }
   return failed ? 1 : 0;
 }
+
+// the frames --stills names: numbers and stretches, such as 249,250 or 900-905
+function framesIn(text) {
+  const frames = new Set();
+  for (const part of (text ?? '').split(',')) {
+    const [, a, b = a] = /^(\d+)(?:-(\d+))?$/.exec(part.trim()) ?? [];
+    if (a === undefined || +b < +a) throw new Error('--stills takes the frames to keep pictures of, such as 249,250 or 900-905.');
+    for (let f = +a; f <= +b && frames.size <= STILLS; f++) frames.add(f);
+  }
+  if (frames.size > STILLS) throw new Error(`--stills keeps up to ${STILLS} pictures at a time.`);
+  return [...frames].sort((x, y) => x - y);
+}
+
+// a colour of the console's, as people write one
+const colourName = c => {
+  if (c === 0) return 'black';
+  if (c === 0x7FFF) return 'white';
+  return '#' + [c & 31, c >> 5 & 31, c >> 10 & 31].map(v => (v << 3 | v >> 2).toString(16).padStart(2, '0')).join('');
+};
 
 // the frames in a list of stretches, [[first, last], …]
 const inStretches = stretches => {
@@ -97,7 +130,7 @@ const stretchesOf = frames => {
 const listed = stretches => stretches.slice(0, 8).map(([a, b]) => (a === b ? `${a}` : `${a} to ${b}`)).join(', ')
   + (stretches.length > 8 ? `, and ${stretches.length - 8} more stretches` : '');
 
-async function prove({ game, recording, copy, server, codeMap, before }) {
+async function prove({ game, recording, copy, server, codeMap, before, asked, parts }) {
   const { name, frames } = recording;
   const out = resultFolder(game, name);
   rmSync(out, { recursive: true, force: true });
@@ -151,6 +184,10 @@ async function prove({ game, recording, copy, server, codeMap, before }) {
     const wanted = new Set();
     const clipAt = recording.clip ? [recording.clip.at, recording.clip.at + recording.clip.frames - 1] : null;
     if (clipAt) for (let f = clipAt[0]; f <= clipAt[1]; f++) wanted.add(f);
+    // the stills asked for, and each part's first and last frames with the one before and the one after
+    const boundaries = parts.flatMap(({ frames: [a, b] }) => [a - 1, a, b, b + 1]);
+    const stills = [...new Set([...asked, ...boundaries])].filter(f => f >= 0 && f < frames).sort((a, b) => a - b);
+    for (const f of stills) wanted.add(f);
     const hashes = [], keptFrames = new Set();
     let firstDifference = -1, firstNew = -1;
     const started = Date.now();
@@ -189,6 +226,24 @@ async function prove({ game, recording, copy, server, codeMap, before }) {
       for (const f of first.ran[originalOf[frame]]) proven.add(f);
     }
     const differs = stretchesOf(different);
+    // where the original's screen is one colour, as it is between one screen and the next: { from, to, colour }
+    const plain = [];
+    for (let frame = 0; frame < frames; frame++) {
+      const colour = first.plain[originalOf[frame] + 1], last = plain.at(-1);
+      if (colour < 0) continue;
+      if (last?.to === frame - 1 && last.value === colour) last.to = frame;
+      else plain.push({ from: frame, to: frame, value: colour });
+    }
+    const oneColour = plain.map(({ from, to, value }) => ({ from, to, colour: colourName(value) }));
+    // each part this recording proves, as the site will count it (src/lib/entries.mjs)
+    const partsFound = parts.map(({ name: part, frames: [a, b] }) => {
+      const differing = different.find(f => f >= a && f <= b);
+      const gap = recording.onlyInOriginal.find(g => g.at > a && g.at <= b);
+      return {
+        name: part, frames: [a, b], proven: b < frames && differing === undefined && !gap,
+        ...(b >= frames ? { past: frames - 1 } : {}), ...(differing !== undefined ? { differs: differing } : {}), ...(gap ? { gap: gap.at } : {}),
+      };
+    });
     const newly = wasDifferent ? stretchesOf(different.filter(f => !wasDifferent.has(f))) : [];
     const fixed = wasDifferent ? stretchesOf([...wasDifferent].filter(f => f < frames && hashes[f] === expected[f]).sort((a, b) => a - b)) : [];
 
@@ -217,6 +272,8 @@ async function prove({ game, recording, copy, server, codeMap, before }) {
     };
     const difference = firstDifference >= 0 ? await still(firstDifference, 'first-difference.png', true) : null;
     const newDifference = firstNew >= 0 ? await still(firstNew, 'first-new-difference.png', true) : null;
+    if (stills.length) mkdirSync(join(out, 'stills'));
+    for (const f of stills) await still(f, join('stills', `frame-${f}.png`), hashes[f] !== expected[f]);
     await still(clip[0], 'clip-start.png', false);
     await still(clipFrames[clipFrames.length >> 1], 'clip-middle.png', false);
     await still(clip[1], 'clip-end.png', false);
@@ -244,7 +301,7 @@ async function prove({ game, recording, copy, server, codeMap, before }) {
 
     const outside = first.outside;
     const report = {
-      recording: name, frames, matched, differs, firstDifference: difference, onlyInOriginal,
+      recording: name, frames, matched, differs, firstDifference: difference, onlyInOriginal, oneColour, parts: partsFound, stills,
       ...(wasDifferent ? { sinceLastProven: { differs: newly, firstDifference: newDifference, matches: fixed } } : {}),
       clip: { from: clip[0], to: clip[1], frames: clipFrames.length, bytes: file.length, bitrate, dreamport: { bytes: own.file.length, bitrate: own.bitrate } },
       seconds, errors: page.errors,
@@ -261,6 +318,20 @@ async function prove({ game, recording, copy, server, codeMap, before }) {
       console.log(`  Frames that differ: ${listed(differs)}.`);
     }
     if (newly.length) console.log(`  Differs where it matched when last proven: ${listed(newly)}. The first is ${at(newDifference)}.`);
+    if (oneColour.length) {
+      const shown = oneColour.slice(0, 12).map(({ from, to, colour }) => `${from === to ? from : `${from} to ${to}`} (${colour})`).join(', ');
+      console.log(`  The original's screen is one colour, as between screens, at frames ${shown}${oneColour.length > 12 ? `, and ${oneColour.length - 12} more in report.json` : ''}.`);
+    }
+    for (const part of partsFound) {
+      const state = part.past !== undefined ? `ends past the recording's last frame, ${part.past}`
+        : part.differs !== undefined ? `not proven, as frame ${part.differs} differs`
+          : part.gap !== undefined ? `not proven, as the original has frames of its own before frame ${part.gap}`
+            : 'proven, every frame the same';
+      console.log(`  ${part.name}, frames ${part.frames[0]} to ${part.frames[1]}: ${state}.`);
+    }
+    const outOfReach = asked.filter(f => f >= frames);
+    if (outOfReach.length) console.log(`  --stills names frames past the recording's last, ${frames - 1}: ${outOfReach.slice(0, 8).join(', ')}${outOfReach.length > 8 ? '…' : ''}.`);
+    if (stills.length) console.log(`  Stills of ${asked.length ? 'the frames asked for' : ''}${asked.length && parts.length ? ', and of ' : ''}${parts.length ? 'each part\'s first and last frames, with the one before and the one after' : ''}: ${where}/stills/`);
     if (fixed.length) console.log(`  Matches where it differed when last proven: ${listed(fixed)}.`);
     if (page.errors.length) console.log(`  The page reported ${page.errors.length} errors; ${where}/report.json lists them.`);
     if (codeMap && (outside.cartridge || outside.memory)) {

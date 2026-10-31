@@ -68,9 +68,10 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
   const spent = new Set();              // Start and Select held for the settings: the game doesn't see them until let go
   const waiting = {};                   // Start or Select just pressed alone: the steps left before the game sees it
   // a proof tool runs the game on this player's buttons (proof.js): in play mode its frames hold them, and in record
-  // mode what the game read at each frame is kept
+  // mode what the game read at each frame is kept, after any frames it gave to replay first, which hold them too
   const proofs = () => proof?.input === input;
-  const played = () => proofs() && proof.mode === 'play';
+  const played = () => proofs() && (proof.mode === 'play' || !!proof.frame);
+  let replayed = false;                 // a proof tool's frame held the buttons at the last step
 
   function set(button, quiet) {
     const down = !!(held.keys[button] || held.pad[button] || held.touch[button]);
@@ -139,8 +140,15 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
   /** Reads the connected gamepads; the game calls it at the start of each step, as the original reads its keys.
    *  A controller plugged in mid-game is read from then on; one unplugged lets go of its buttons. */
   input.poll = () => {
-    if (played()) return play(proof.frame ?? undefined);
-    read();
+    if (played()) {
+      play(proof.frame ?? undefined);
+      replayed = true;
+    } else {
+      // the tool's frames are over and the player takes over, with the buttons they hold now
+      if (replayed) for (const b of buttons) set(b);
+      replayed = false;
+      read();
+    }
     if (proofs()) proof.record(seen());
   };
   function read() {

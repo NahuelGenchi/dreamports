@@ -10,8 +10,9 @@
 //   PICTURES   a file with the frames whose whole picture to write (32 bits each, in order), or -
 //
 // For each frame it writes to stdout: a hash of the picture (FNV-1a over each pixel's 15-bit colour, as the
-// console has it), the number of functions that ran in the frame and their places in FUNCTIONS (32 bits each),
-// then the picture itself if PICTURES names the frame (240 x 160 pixels of 16 bits, the console's 15-bit colour).
+// console has it), the picture's one colour if every pixel has it or else 0xFFFFFFFF, the number of functions that
+// ran in the frame and their places in FUNCTIONS (32 bits each), then the picture itself if PICTURES names the
+// frame (240 x 160 pixels of 16 bits, the console's 15-bit colour).
 // At the end it writes to stderr, as JSON, how many instructions ran outside every function of the code map: in the
 // cartridge, and in the work RAM games copy code into.
 #include <mgba/core/core.h>
@@ -130,14 +131,17 @@ int main(int argc, char** argv) {
 			}
 			core->step(core);
 		}
-		uint32_t hash = 0x811C9DC5;
+		uint32_t hash = 0x811C9DC5, plain = 0;
 		for (int i = 0; i < WIDTH * HEIGHT; i++) {
 			uint32_t pixel = video[i];
 			uint16_t colour = ((pixel >> 3) & 0x1F) | (((pixel >> 11) & 0x1F) << 5) | (((pixel >> 19) & 0x1F) << 10);
 			picture[i] = colour;
 			hash = (hash ^ colour) * 0x01000193;
+			if (!i) plain = colour;
+			else if (colour != plain) plain = 0xFFFFFFFF;
 		}
 		fwrite(&hash, 4, 1, stdout);
+		fwrite(&plain, 4, 1, stdout);
 		fwrite(&count, 4, 1, stdout);
 		fwrite(ran, 4, count, stdout);
 		while (nextPicture < pictureCount && pictures[nextPicture] < (uint32_t) frame) nextPicture++;

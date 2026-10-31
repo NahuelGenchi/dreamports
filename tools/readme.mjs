@@ -50,7 +50,8 @@ function readEntry(game) {
   return parse(front[1]);
 }
 
-function readProof(game) {
+/** What a game's proof folder measures (proofOf), from its files. */
+export function readProof(game) {
   const folder = join(REPO, 'games', game, 'proof');
   const read = name => {
     const file = join(folder, name);

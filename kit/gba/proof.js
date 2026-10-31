@@ -1,7 +1,8 @@
 // What the proof tools (tools/README.md) need from a game. With ?proof in the page's address, the game
 // keeps no time of its own: it runs a frame only when a tool asks for one, with the buttons the tool gives, and
 // hands over the frame it drew. With ?proof=record it plays as usual and keeps the buttons it read at each frame,
-// which a tool can give it back with ?proof to run the same game again. Without either, none of this runs.
+// which a tool can give it back with ?proof to run the same game again; a tool can also give it frames to play
+// first, such as another recording's, before the player takes over. Without either, none of this runs.
 //
 // The game's page names its screen and the player's buttons with proof.watch(screen, input), and its clocks
 // (clock.js) and that player's input (input.js) do the rest. A tool reaches it on the page as `dreamportsProof`:
@@ -13,6 +14,10 @@
 //   `frame.pressed` just pressed (without `pressed`, those held now and not at the frame before), and resolves
 //   to what the screen shows after it, as ImageData; a frame at a time
 // - `frames`: in record mode, what the game read at every frame so far, as { held, pressed }, ready for step()
+// - `replay(frames)`: in record mode, before the game starts, frames for it to play first, each { held } with the
+//   console's names for its buttons (or the game's own), as a recording has them; the player's buttons do nothing
+//   until the last of them has run, and `frames` keeps them with the player's own
+// - `replaying`: in record mode, how many of those frames are still to run
 
 const asked = new URLSearchParams(location.search).get('proof');
 
@@ -22,8 +27,14 @@ export const proof = asked === null ? null : createProof(asked === 'record' ? 'r
 function createProof(mode) {
   let screen = null, wanted = null, running = null, drawn = null, started;
   const frames = [];
+  let replays = [];   // in record mode, the frames a tool gave to run before the player's own (replay())
   const ready = new Promise(resolve => { started = resolve; });
   const picture = () => screen?.getContext('2d')?.getImageData(0, 0, screen.width, screen.height) ?? null;
+  // a button by the game's name: the first of its buttons that is this one of the console's, or the name as it is
+  const named = name => {
+    const layout = state.input?.layout;
+    return layout?.buttons.find(b => layout.gba?.[b] === name) ?? name;
+  };
   const state = {
     mode,
     /** the player's input whose buttons the proof holds or keeps (input.js) */
@@ -45,8 +56,13 @@ function createProof(mode) {
       queueMicrotask(() => done(picture()));
       return 1;
     },
-    /** In play mode, the frame running now, as a tool gave it (input.js). */
-    get frame() { return running; },
+    /** The frame running now, as a tool gave it: in play mode the one it asked for, and in record mode the next of
+     *  those it gave to replay, or null once they're over (input.js). */
+    get frame() {
+      if (mode === 'play') return running;
+      const next = replays[frames.length];
+      return next ? { held: next.held.map(named) } : null;
+    },
     /** In record mode, keeps what the game read at a frame (input.js). */
     record(frame) { if (mode === 'record') { frames.push(frame); started(); } },
   };
@@ -64,6 +80,12 @@ function createProof(mode) {
       return new Promise(resolve => { drawn = resolve; });
     },
     frames,
+    replay(list) {
+      if (mode !== 'record') throw new Error('replay() gives frames to run first with ?proof=record in the address.');
+      if (frames.length) throw new Error('The game has started: replay() gives its frames before it does.');
+      replays = list.map(frame => ({ held: [...(frame.held ?? [])] }));
+    },
+    get replaying() { return Math.max(0, replays.length - frames.length); },
   };
   return state;
 }
