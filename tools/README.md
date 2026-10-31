@@ -10,8 +10,8 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | :--- | :--- |
 | `setup` | Builds the reference emulator the original runs in |
 | `rom` | Checks a copy of a game, says which game and which version it is, and remembers where it is |
-| `play` | Opens a game in a browser with your copy, and with `--record` keeps what you play as a recording |
-| `prove` | Plays each recording in the original and in the Dreamport, compares every frame, and updates the numbers |
+| `play` | Opens a game in a browser with your copy, and with `--record` keeps what you play as a recording, after another recording's presses with `--from` |
+| `prove` | Plays each recording in the original and in the Dreamport, compares every frame, updates the numbers, and with `--stills` keeps pictures of the frames you name |
 | `codemap` | Makes the code map: every function in the original, with its address and size |
 | `portmap` | Makes the port map: each function of the original the Dreamport's code names, and where |
 | `share` | Publishes a preview of a game on GitHub Pages from your own fork, and with `--post` posts in the game's progress thread |
@@ -37,6 +37,10 @@ mGBA is the reference: the original runs in it, on your computer only, so there'
 
 `npm run dp -- play <game> --record <name>` opens the game in a browser window, ready to press Play. Nothing is saved in that window, so the game starts from power-on, the way the original does. Play with the keyboard or a controller, then close the window, and the buttons you held at every frame are written to `games/<game>/proof/recordings/<name>.json`. A recording's name has lowercase letters, numbers and single dashes, such as `act-1`. Without `--record`, `play` just opens the game with your copy, and keeps its saves for next time.
 
+`--from <recording>` starts the new recording with another recording's presses, so a part later in the game can be recorded without playing everything before it again. Press Play and the game first plays them, at its own speed and with your buttons doing nothing, then it's your turn, and the terminal says when. `--from <recording>:<frame>` plays them up to that frame only, so `--from act-1:2100` takes over at frame 2100 of `act-1`. The new recording keeps those presses, and the stretches only the original has among them, so it still starts from power-on and `prove` plays it like any other.
+
+A recording can also be written by hand, as a list of presses, which suits a part played with nothing pressed, such as logos and an intro left alone. Sonic Advance Dreamport's [logos and intro](../games/sonic-advance/proof/recordings/logos-and-intro.json) is one: A on the language screen, then nothing.
+
 A recording holds nothing from the game, only button presses, so it lives in the game's folder and goes in a commit, and anyone with their own copy can play it again. Write what it plays in its `about`. Its other fields:
 
 - `frames`: how many frames it lasts.
@@ -50,7 +54,7 @@ Sonic Advance Dreamport's [first act](../games/sonic-advance/proof/recordings/ne
 
 `npm run dp -- prove <game>` plays every recording of the game in the original and in the Dreamport, both from power-on, and compares every frame, pixel for pixel, in the console's own colours. Add recordings' names after the game's to play only those. The Dreamport runs in a browser you don't see, a frame at a time, through its kit's proof mode ([the Game Boy Advance kit's](../kit/gba/README.md#for-the-proof-tools)). Sonic Advance Dreamport's first act, 3,300 frames, takes about a minute.
 
-For each recording it says how many frames were the same and which first differs: the frame, how many pixels differ, and the box they're in. It lists every stretch of frames that differs. It also compares with the last time the recording was proven: frames that differ now where they matched then are listed apart, with the first of them, which is usually the one a change just broke. If any frame differs, `prove` ends with an error, so a script that runs it stops. Frames are numbered as the Dreamport counts them. The console shows each frame's work one frame later, and `prove` lines the two up.
+For each recording it says how many frames were the same and which first differs: the frame, how many pixels differ, and the box they're in. It lists every stretch of frames that differs, and the stretches where the original's screen is one colour, as it is between one screen and the next, which helps find where each of the game's parts starts and ends. For each part the recording proves in `parts.json`, it says whether every frame of it matched. At the end it gives the game's two numbers as they are now. It also compares with the last time the recording was proven: frames that differ now where they matched then are listed apart, with the first of them, which is usually the one a change just broke. If any frame differs, `prove` ends with an error, so a script that runs it stops. Frames are numbered as the Dreamport counts them. The console shows each frame's work one frame later, and `prove` lines the two up.
 
 Its results go in `.dreamports/results/<game>/<recording>/`:
 
@@ -59,6 +63,7 @@ Its results go in `.dreamports/results/<game>/<recording>/`:
 - `first-new-difference.png`: the same, for the first frame that differs where it matched last time.
 - `clip.mp4`, with `clip-start.png`, `clip-middle.png` and `clip-end.png`, pictures of its first, middle and last frames.
 - `dreamport.mp4`, the same frames of the Dreamport on its own, with nothing of the original, and `dreamport.png`, its middle frame. It's the clip `share` posts.
+- `stills/`, a picture of both at each frame `--stills` names, such as `--stills 249,250` or `--stills 900-905`, up to 600 at a time, and at each part's first and last frames, with the one before and the one after. Each is `frame-<frame>.png`, with where the two differ when they do.
 
 The clip shows the original and the Dreamport side by side, with the frame's number, and *differs* over frames that don't match. It holds every frame, about 60 a second, made inside the browser rather than filmed from a screen, so it's smooth and its pixels stay sharp. It shows the frames the recording's `clip` names, or else the four seconds before the first difference and the second after it, or else the recording's last five seconds. It's an H.264 MP4 video under 2 MB, which phones and browsers play.
 
@@ -75,6 +80,17 @@ Each Dreamport shows two numbers, code ported and gameplay proven, which [the st
 `npm run dp -- portmap <game>` writes the port map, `games/<game>/proof/port-map.json`: each function of the original that the game's code names, with the first file and line that names it, and every name that doesn't land on a function in the code map. A name is an address in the cartridge, written as a number, such as `0x08029E78`, or as a label, such as `sub_8029E78`. A number is an address in the copy the proof uses. A label is one in the release the game's labels come from, and when that's another release, the game's `proof/names.json` says how far each stretch of its code is from the copy's. Sonic Advance Dreamport's code uses the labels of a decompilation built from the European release, and [its `names.json`](../games/sonic-advance/proof/names.json) gives the shifts to the USA release. Run it after changing the game's code; `npm run check` says when a port map is out of date.
 
 Code ported is the size of the functions the port map names and those `prove` found running in matching play, divided by the size of every function in the code map. Gameplay proven is the share of the parts in `games/<game>/proof/parts.json` that a recording proves: every frame from the part's first to its last matched, with none the Dreamport doesn't have. The game's page, the launcher and the README show both, and the site checks that they add up with the files before it shows them, so they only ever come from the tools.
+
+## Proving a part
+
+A part, such as a game's logos or one of its acts, is proven by a recording that plays the whole of it, from its first frame to its last, so a recording that skips any of it with Start doesn't prove it. These steps prove one:
+
+1. Make a recording that plays the whole part and a little of what comes after it, with `play --record`, with `play --record --from` to start where another recording reaches the part, or by hand.
+2. Run `npm run dp -- prove <game> <recording>` and read the stretches where the original's screen is one colour. A part usually starts as one of them ends and ends as the next one does. Where the screen is one colour between two parts, as when one fades out and the next fades in, those frames go with the part before, so the next part starts on the first frame that isn't one colour.
+3. Check the frames you picked with `--stills`, such as `--stills 253,254,932,933`, and look at the pictures in `stills/`.
+4. Write the part's `recording` and `frames` in `parts.json`, and run `prove` again. It says whether the part is proven, and keeps pictures of its first and last frames, with the one before and the one after, so the lead can check them once more.
+
+Sonic Advance Dreamport's logos are frames 254 to 932 of [`logos-and-intro`](../games/sonic-advance/proof/recordings/logos-and-intro.json): the language screen fades to white until frame 253, and the Sonic Team logo fades to black, which stays until 932.
 
 ## Sharing a preview
 
