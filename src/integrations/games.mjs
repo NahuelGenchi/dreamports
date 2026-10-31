@@ -1,5 +1,6 @@
-// Puts the games in this repository on the site (#74). After `astro build`, each folder in games/ is
-// copied as it is to dist/play/<game>/, which Cloudflare serves at /play/<game>/ as plain files. The
+// Puts the games in this repository on the site (#74), and the kits they start from (#76). After
+// `astro build`, each folder in games/ is copied as it is to dist/play/<game>/, and each in kit/ to
+// dist/kit/<console>/, which Cloudflare serves at /play/<game>/ and /kit/<console>/ as plain files. The
 // build stops and names every problem if a folder breaks one of the rules in games/README.md, or if the
 // site grows past what Cloudflare's free plan takes.
 import { copyFile, lstat, mkdir, readdir } from 'node:fs/promises';
@@ -12,6 +13,9 @@ const LICENSES = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'COPYING', 'COPYING.md
 // what Cloudflare's free plan serves in one version of the site: this many files, none bigger than this
 const MOST_FILES = 20_000;
 const MOST_BYTES = 25 * 1024 * 1024;
+// the two kinds of folders: games, each with a page of its own, and the kits they share, one for each console
+const GAMES = { folder: 'games', address: 'play', what: 'game', example: 'sonic-advance', page: true };
+const KITS = { folder: 'kit', address: 'kit', what: 'kit', example: 'gba', page: false };
 
 /** @returns {import('astro').AstroIntegration} */
 export default function games() {
@@ -24,13 +28,19 @@ export default function games() {
       },
       'astro:build:done': async ({ dir, logger }) => {
         const site = fileURLToPath(dir);
-        const folder = join(root, 'games');
-        const names = await gameFolders(folder);
-        const problems = [];
-        for (const name of names) problems.push(...(await problemsWith(folder, name, site)));
-        stopIf('The games in games/ can’t go on the site', problems);
-        for (const name of names) await copy(join(folder, name), join(site, 'play', name));
-        logger.info(names.length ? `Copied to /play/: ${names.join(', ')}` : 'No games in games/');
+        const found = [];
+        for (const kind of [GAMES, KITS]) {
+          const folder = join(root, kind.folder);
+          const names = await folders(folder);
+          const problems = [];
+          for (const name of names) problems.push(...(await problemsWith(kind, folder, name, site)));
+          stopIf(`The ${kind.what}s in ${kind.folder}/ can’t go on the site`, problems);
+          found.push({ kind, folder, names });
+        }
+        for (const { kind, folder, names } of found) {
+          for (const name of names) await copy(join(folder, name), join(site, kind.address, name));
+          logger.info(names.length ? `Copied to /${kind.address}/: ${names.join(', ')}` : `No ${kind.what}s in ${kind.folder}/`);
+        }
 
         const { files } = await walk(site, true);
         const largest = files.reduce((most, file) => Math.max(most, file.size), 0);
@@ -48,9 +58,9 @@ export default function games() {
   };
 }
 
-// every game's folder name: whatever is in games/ besides plain files, such as its README, and names
-// starting with a dot
-async function gameFolders(folder) {
+// every game's or kit's folder name: whatever is in games/ or kit/ besides plain files, such as its
+// README, and names starting with a dot
+async function folders(folder) {
   try {
     const entries = await readdir(folder, { withFileTypes: true });
     return entries.filter((entry) => !entry.isFile() && !entry.name.startsWith('.')).map((entry) => entry.name).sort();
@@ -60,32 +70,33 @@ async function gameFolders(folder) {
   }
 }
 
-// what keeps games/<name>/ off the site, in words for whoever made it: nothing, when it's ready
-async function problemsWith(folder, name, site) {
-  const at = `games/${name}/`;
+// what keeps games/<name>/ or kit/<name>/ off the site, in words for whoever made it: nothing, when it's ready
+async function problemsWith(kind, folder, name, site) {
+  const { what } = kind;
+  const at = `${kind.folder}/${name}/`;
   const problems = [];
   if (!NAME.test(name)) {
-    problems.push(`${at}: The folder’s name is the game’s address, so it has only lowercase letters, numbers and single dashes, such as sonic-advance.`);
+    problems.push(`${at}: The folder’s name is the ${what}’s address, so it has only lowercase letters, numbers and single dashes, such as ${kind.example}.`);
   }
   if (!(await lstat(join(folder, name))).isDirectory()) {
-    return [...problems, `${at}: A game is a folder of its own, not a link to one somewhere else.`];
+    return [...problems, `${at}: A ${what} is a folder of its own, not a link to one somewhere else.`];
   }
   const { files, others } = await walk(join(folder, name), false);
   const paths = new Set(files.map((file) => relative(join(folder, name), file.path)));
-  if (!paths.has('index.html')) problems.push(`${at}: It needs an index.html, the page the game starts from.`);
+  if (kind.page && !paths.has('index.html')) problems.push(`${at}: It needs an index.html, the page the game starts from.`);
   if (!LICENSES.some((license) => paths.has(license))) {
     problems.push(`${at}: It needs a license for its code, in a file named LICENSE or COPYING.`);
   }
   for (const other of others) {
-    problems.push(`${at}${relative(join(folder, name), other)}: Every file has to be a plain file in the game’s folder, not a link.`);
+    problems.push(`${at}${relative(join(folder, name), other)}: Every file has to be a plain file in the ${what}’s folder, not a link.`);
   }
-  if (await exists(join(site, 'play', name))) {
-    problems.push(`${at}: The site already has its own /play/${name}/, from public/ or src/pages/.`);
+  if (await exists(join(site, kind.address, name))) {
+    problems.push(`${at}: The site already has its own /${kind.address}/${name}/, from public/ or src/pages/.`);
   }
   return problems;
 }
 
-// copies a game's files, leaving out names starting with a dot
+// copies a game's or a kit's files, leaving out names starting with a dot
 async function copy(from, to) {
   for (const file of (await walk(from, false)).files) {
     const target = join(to, relative(from, file.path));
