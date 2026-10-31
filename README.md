@@ -10,7 +10,7 @@ Free · Bring your own copy of the game · Live at **[dreamports.net](https://dr
 
 <br>
 
-[What is it?](#what-is-dreamports) &nbsp;·&nbsp; [What's inside](#whats-inside) &nbsp;·&nbsp; [Bring your own game](#the-golden-rule-bring-your-own-game) &nbsp;·&nbsp; [Progress](#progress) &nbsp;·&nbsp; [Help out](#help-out) &nbsp;·&nbsp; [Questions](#questions)
+[What is it?](#what-is-dreamports) &nbsp;·&nbsp; [What's inside](#whats-inside) &nbsp;·&nbsp; [Make a Dreamport](#make-a-dreamport) &nbsp;·&nbsp; [Bring your own game](#the-golden-rule-bring-your-own-game) &nbsp;·&nbsp; [Progress](#progress) &nbsp;·&nbsp; [Help out](#help-out) &nbsp;·&nbsp; [Questions](#questions)
 
 </div>
 
@@ -67,6 +67,45 @@ These are the projects on the site so far.
 | :---: | :--- | :--- | :--- |
 | ✨ | **[Kirby's Dead Land](https://github.com/NahuelGenchi/kirbys-dead-land)** | A mod that lets you play as Kirby inside Dead Cells, with his moves and copy abilities. For Linux; Windows is in testing. | [⬇&nbsp;Download](https://github.com/NahuelGenchi/kirbys-dead-land/releases/latest) |
 | ✨ | **Your favorite fan port?** | Ports made by other fans are on their way to the mash-ups. Know a great one? | [💡&nbsp;Suggest](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml) |
+
+## Make a Dreamport
+
+> [!NOTE]
+> **Not open yet.** The Dreamports team is making the next Dreamport by following these steps first, to find what's confusing before anyone else tries ([#83](https://github.com/NahuelGenchi/dreamports/issues/83)). Until then, they may still change.
+
+**No coding needed.** Your coding agent does the technical work. You bring the game, and you say whether it feels right.
+
+You need three things: your own copy of the game as a file, a free GitHub account, and a coding agent that works on your computer, such as Claude Code, Codex, Cursor, Gemini CLI or Antigravity CLI. For a Game Boy Advance game, your copy is a `.gba` file made from your cartridge. It never leaves your computer.
+
+**Step 1: get the Dreamports folder.** Ask your agent, in your own words:
+
+```text
+Clone dreamports.net/code into a folder called dreamports.
+```
+
+**Step 2: open that folder in your agent.** Start a new session inside the dreamports folder. If you're not sure how, ask your agent. The commands live in that folder, so your agent finds them by itself.
+
+**Step 3: start with your game.** Type `/dreamport`, then the game's name and console:
+
+```text
+/dreamport Sonic Battle (Game Boy Advance)
+```
+
+Your agent finds out whether the game already has a Dreamport, who's working on it, and whether someone ported it somewhere else. Then it tells you which command to use next. These are all of them, in the order you'll usually need them:
+
+| Command | What it does |
+| :--- | :--- |
+| `/dreamport <game>` | Shows where a game stands and what you can do. Start here. |
+| `/dreamport-claim <task>` | Takes a free task, or a whole new game, so nobody else does the same work. |
+| `/dreamport-clip` | Checks your latest step against the original and shows a clip of both. |
+| `/dreamport-play` | Opens the game in your browser, with your copy. |
+| `/dreamport-fix <what feels wrong>` | Compares that moment with the original and fixes it. |
+| `/dreamport-share` | Puts your preview online and posts it in the game's progress thread. |
+| `/dreamport-send` | Sends your finished piece to the game's lead, or to the Dreamports team if you're the lead. |
+
+Each command does one thing, and only when you type it. Before anything is posted or sent, your agent tells you exactly where it's going and waits for your yes. Between commands, answer its questions in your own words. In Codex, type `$` instead of `/`, as in `$dreamport`.
+
+Every Dreamport keeps the same rules, the [Dreamport standard](docs/STANDARD.md), and [CONTRIBUTING.md](CONTRIBUTING.md#make-a-dreamport) says what each command does behind the scenes.
 
 ## The golden rule: bring your own game
 

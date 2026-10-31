@@ -2,7 +2,7 @@
 
 [Back to README](../README.md) · [Contribution workflow](../CONTRIBUTING.md) · [Previews and progress threads](PREVIEWS.md) · [Issues](https://github.com/NahuelGenchi/dreamports/issues)
 
-Every Dreamport has one lead, and each of its tasks one person at a time, so nobody does the same work twice. Claims are issues in this repository, and the Dreamports bot answers them within seconds. When several people work on one game, the lead's **team build** gathers their finished pieces, and its preview, the **team preview**, shows everyone's work together before the Dreamports team reviews it.
+Every Dreamport has one lead, and each of its tasks one person at a time, so nobody does the same work twice. Claims are issues in this repository, and the Dreamports bot answers them within seconds. When several people work on one game, the lead's **team build** gathers their finished pieces, and its preview, the **team preview**, shows everyone's work together before the Dreamports team reviews it. With a coding agent, [`/dreamport-claim`](../README.md#make-a-dreamport) takes a game or a task for you, and `/dreamport-send` sends a finished piece to the lead.
 
 ## Where a game stands
 

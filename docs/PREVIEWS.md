@@ -20,7 +20,7 @@ A preview is someone's work in progress, at an address like `https://<name>.gith
 
 ## For contributors: sharing a preview
 
-You need your own fork of this repository, with your work committed on a branch of it, and the [GitHub CLI](https://cli.github.com) signed in with `gh auth login`. If you cloned this repository rather than your fork, `gh repo fork --remote` makes your fork and adds it.
+You need your own fork of this repository, with your work committed on a branch of it, and the [GitHub CLI](https://cli.github.com) signed in with `gh auth login`. If you cloned this repository rather than your fork, `gh repo fork --remote` makes your fork and adds it. With a coding agent, [`/dreamport-share`](../README.md#make-a-dreamport) does all of this for you, and asks before each step.
 
 ```sh
 npm run dp -- share sonic-advance

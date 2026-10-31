@@ -94,7 +94,7 @@ The Mash-ups row on dreamports.net stays as it is: for fan games that aren't por
 
 Today, these rules are checked by the Dreamports team's review. The rest of milestone M6 builds what makes them easier to keep and to check.
 
-Claims and teams are [#80](https://github.com/NahuelGenchi/dreamports/issues/80). Previews and progress threads came with [#78](https://github.com/NahuelGenchi/dreamports/issues/78), as [Previews and progress threads](PREVIEWS.md) explains, and one entry per game with its two numbers came with [#79](https://github.com/NahuelGenchi/dreamports/issues/79), as [the entry](../games/README.md#the-entry) explains. The guide and commands for newcomers are [#81](https://github.com/NahuelGenchi/dreamports/issues/81), and a contact for rights holders, with clips of the original allowed in pull requests and progress posts, is [#82](https://github.com/NahuelGenchi/dreamports/issues/82).
+Claims and teams are [#80](https://github.com/NahuelGenchi/dreamports/issues/80). Previews and progress threads came with [#78](https://github.com/NahuelGenchi/dreamports/issues/78), as [Previews and progress threads](PREVIEWS.md) explains, and one entry per game with its two numbers came with [#79](https://github.com/NahuelGenchi/dreamports/issues/79), as [the entry](../games/README.md#the-entry) explains. The guide and commands for newcomers came with [#81](https://github.com/NahuelGenchi/dreamports/issues/81), in the README's [Make a Dreamport](../README.md#make-a-dreamport), and a contact for rights holders, with clips of the original allowed in pull requests and progress posts, is [#82](https://github.com/NahuelGenchi/dreamports/issues/82).
 
 ## Words used here
 
