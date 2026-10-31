@@ -4,7 +4,8 @@
 //   start [--fork <owner/name>]: the lead makes it in their fork, from the commit they're on.
 //   join <branch> [--team <owner/name>]: a member starts a branch of their own from it, for their piece.
 //   send [--title "<what it is>"] [--task <number>] [--as <preview>] [--fork <owner/name>] [--team <owner/name>] [--yes]:
-//     a member sends the piece on their branch to the lead, as a pull request from their fork to the team build.
+//     a member sends the piece on their branch to the lead, as a pull request from their fork to the team build. Its
+//     task is one of the pieces under the game's issue: the one --task names, or else the one piece the member has.
 //   add <pull request> [--fork <owner/name>] [--all] [--yes]: the lead takes a piece in. It merges it into the team
 //     build and runs prove, and only if nothing that matched the original before differs now, it pushes the team
 //     build, which closes the pull request as merged, and updates the team preview with share.
@@ -81,13 +82,29 @@ async function ask(question, yes) {
   }
 }
 
-// the game, its lead and its name, from the claims and from games/ in this folder
+// the game, its lead, its name, its game's issue and its pieces, from the claims and from games/ in this folder
 function gameOf(game) {
   const local = dreamports().find(d => d.game === game);
   const claims = readClaims();
   if (!local && !claims.leads.has(game)) throw new Error(`Nobody makes a Dreamport of ${game}: npm run dp -- find lists the games, and the New Dreamport form claims a new one.`);
   const title = local?.entry.title ?? `${claims.nameOf(game) ?? game} Dreamport`;
-  return { title, lead: leadOf(game, claims, local?.entry) };
+  return { title, lead: leadOf(game, claims, local?.entry), home: claims.gameIssueOf(game, local?.entry), pieces: claims.piecesOf(game, local?.entry) };
+}
+
+// the piece a member sends: the task --task names, which has to be one of the game's pieces, or else the one open
+// piece they have, if they have exactly one
+function taskOf(game, { title, home, pieces }, login, task) {
+  const name = p => `#${p.number} ${p.title.replace(/^Task:\s*/i, '')}`;
+  if (task !== undefined) {
+    if (home && !pieces.some(p => p.number === Number(task))) {
+      throw new Error(`#${task} isn't one of ${title}'s pieces, the issues under its game's issue, ${home.html_url}. npm run dp -- find ${game} lists them.`);
+    }
+    return task;
+  }
+  const mine = pieces.filter(p => p.state === 'open' && p.assignees.some(a => a.login.toLowerCase() === login.toLowerCase()));
+  if (mine.length > 1) throw new Error(`You have ${mine.length} of ${title}'s pieces: ${mine.map(name).join(', ')}. --task <number> says which one this is.`);
+  if (mine.length) console.log(`The piece: ${name(mine[0])}, the one you have.\n`);
+  return mine.length ? String(mine[0].number) : undefined;
 }
 
 // back to the team build as it was: the merge undone, and what portmap and prove wrote with it, since the folder
@@ -155,10 +172,12 @@ async function send(game, rest, { fork: wanted, team, title: named, task, as, ye
   const fork = findFork(remotes(), wanted);
   const { commit, branch } = head();
   if (branch === 'HEAD' || branch === 'main' || branch === teamBranch(game)) throw new Error(`You're on ${branch}: send sends the branch with your piece, which npm run dp -- team ${game} join makes.`);
-  const { title, lead } = gameOf(game);
+  const known = gameOf(game);
+  const { title, lead } = known;
   if (!lead) throw new Error(`Nobody leads ${title} now, so there's no team build to send to.`);
   const build = teamBuildOf(lead, game, team);
   if (!build) throw new Error(`@${lead} hasn't made ${title}'s team build yet.`);
+  task = taskOf(game, known, login, task);
   const left = git(['status', '--porcelain', '--untracked-files=no']);
   if (left) console.log(`Changes that aren't committed stay here and aren't sent:\n${left.split('\n').slice(0, 6).map(l => `  ${l}`).join('\n')}\n`);
   git(['fetch', '--quiet', '--no-tags', `https://github.com/${build.repository}.git`, `refs/heads/${build.branch}`]);

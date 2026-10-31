@@ -100,9 +100,10 @@ function readProofFiles(game) {
 // what the site also checks as it's built (src/lib/dreamports.ts), so `npm run check` finds it first
 function checkEntry(game, entry, proof) {
   const at = `games/${game}/${ENTRY}`;
-  for (const key of ['title', 'summary', 'needs', 'lead', 'kit', 'added', 'ownCopy']) {
+  for (const key of ['title', 'summary', 'needs', 'issue', 'lead', 'kit', 'added', 'ownCopy']) {
     if (!entry?.[key]) throw new Error(`${at} needs "${key}", as games/README.md explains.`);
   }
+  if (!Number.isInteger(entry.issue) || entry.issue < 1) throw new Error(`${at} names its game's issue by its number, such as "issue: 123", not "${entry.issue}".`);
   if (!existsSync(join(REPO, 'kit', entry.kit, 'README.md'))) throw new Error(`${at} names the kit "${entry.kit}", but kit/${entry.kit}/ has no README.md.`);
   if (proof && !entry.needs.includes(proof.copy)) throw new Error(`${at} needs ${entry.needs}, but its proof uses ${proof.copy}: "needs" names the same copy.`);
   if (!proof?.ported) {

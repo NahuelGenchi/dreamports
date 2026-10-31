@@ -1,8 +1,8 @@
 // npm run dp -- find [<game>] [--repo <owner/name>] [--team <owner/name>]: where a game stands, so nobody does the
-// same work twice: its lead, its two numbers, its progress thread, its team build and team preview, who has claimed
-// what, and its free tasks (docs/TEAMS.md). <game> is a game's folder or a few words of its name, and a name also
+// same work twice: its lead, its game's issue, its two numbers, its progress thread, its team build and team preview,
+// and its pieces, the issues under its game's issue, with who has claimed which and the ones still free (docs/TEAMS.md). <game> is a game's folder or a few words of its name, and a name also
 // finds the site's other games, such as a port made elsewhere. With no game it lists every Dreamport and every game
-// claimed with a New Dreamport issue. The numbers come from games/ in this folder, and the claims from the
+// claimed with a New Dreamport issue. The numbers come from games/ in this folder, and the claims and pieces from the
 // repository's issues, through the GitHub CLI. --repo reads the claims of another copy of the repository, such as a
 // fork that tries the claims workflow, and --team names the fork with the lead's team build when it isn't the
 // lead's own, such as one of an organisation's.
@@ -61,16 +61,24 @@ function options(args) {
   return found;
 }
 
+// the open pieces of a game nobody has claimed
+const freeOf = (game, claims, entry) => claims.piecesOf(game, entry).filter(p => p.state === 'open' && !p.assignees.length);
+const freeText = (game, claims, entry) => {
+  const count = claims && freeOf(game, claims, entry).length;
+  return claims ? `${count} free piece${count === 1 ? '' : 's'}` : null;
+};
+
 // every Dreamport here and every game claimed, one line each
 function list(here, claims) {
   const rows = [...here.values()].map(({ game, entry, proof }) => [
     game, entry.title, leadOf(game, claims, entry), [
       proof?.ported && `code ported ${percentText(proof.ported.percent)}`,
       proof?.gameplay && `gameplay proven ${percentText(proof.gameplay.percent)}`,
+      freeText(game, claims, entry),
     ].filter(Boolean).join(', '),
   ]);
   for (const [game, issue] of claims?.leads ?? []) {
-    if (!here.has(game)) rows.push([game, `${claims.nameOf(game)} Dreamport`, leadOf(game, claims), `claimed in #${issue.number}`]);
+    if (!here.has(game)) rows.push([game, `${claims.nameOf(game)} Dreamport`, leadOf(game, claims), `claimed in #${issue.number}, ${freeText(game, claims)}`]);
   }
   if (!rows.length) console.log('No Dreamports yet.');
   const width = column => Math.max(...rows.map(r => (r[column] ?? '').length));
@@ -84,12 +92,15 @@ function list(here, claims) {
 // one game in full
 function show(game, local, claims, team) {
   const { entry, proof } = local ?? {};
-  const issue = claims?.leads.get(game);
+  const home = claims ? claims.gameIssueOf(game, entry) : null;
+  // without the claims, the issue the entry names, in the repository Dreamports are made in
+  const homeUrl = home?.html_url ?? (!claims && entry?.issue ? `https://github.com/${UPSTREAM}/issues/${entry.issue}` : null);
   const title = entry?.title ?? `${claims?.nameOf(game) ?? game} Dreamport`;
   const lead = leadOf(game, claims, entry);
   const rows = [];
   const row = (label, ...values) => rows.push([label, values.flat().filter(Boolean)]);
-  row('Lead', lead ? `@${lead}` : 'nobody', issue && (lead ? `claimed in ${issue.html_url}` : `/claim on ${issue.html_url} makes you its lead`));
+  row('Lead', lead ? `@${lead}` : `nobody${home ? ': /claim on its game\'s issue makes you its lead' : ''}`);
+  row('Game issue', homeUrl ? `${homeUrl}, which lists its pieces, and where it's talked about` : 'none yet');
   row('Code ported', proof?.ported ? percentText(proof.ported.percent) : local ? 'not measured yet: it needs a code map' : 'not measured yet');
   row('Gameplay proven', proof?.gameplay ? `${percentText(proof.gameplay.percent)}, ${proof.gameplay.proven} of ${proof.gameplay.total} parts` : local ? 'not measured yet: it needs a list of its parts' : 'not measured yet');
   if (entry) row('Its page', `https://dreamports.net/dreamports/${pageOf(game)}/`);
@@ -99,11 +110,13 @@ function show(game, local, claims, team) {
   const site = !entry?.preview && build ? pagesOf(build.repository)?.url : null;
   row('Team preview', entry?.preview ?? (site ? `${site}${game}/` : 'none yet'));
   if (claims) {
-    const tasks = claims.tasksOf(game);
+    const pieces = claims.piecesOf(game, entry);
     const name = t => `#${t.number} ${t.title.replace(/^Task:\s*/i, '')}`;
-    const taken = tasks.filter(t => t.assignees.length), free = tasks.filter(t => !t.assignees.length);
+    const taken = pieces.filter(t => t.state === 'open' && t.assignees.length), free = freeOf(game, claims, entry);
+    const done = pieces.filter(t => t.state !== 'open').length;
     row(`Claimed (${taken.length})`, taken.length ? taken.map(t => `${name(t)}: @${t.assignees.map(a => a.login).join(', @')}`) : 'nothing');
     row(`Free (${free.length})`, free.length ? free.map(name) : 'nothing: the Task form suggests a new task');
+    if (done) row(`Done (${done})`, 'listed in its game\'s issue');
   }
   console.log(`${title}, in games/${game}/${local ? '' : ', not in this folder yet'}\n`);
   const width = Math.max(...rows.map(r => r[0].length)) + 2;

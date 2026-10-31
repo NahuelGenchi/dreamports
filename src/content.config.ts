@@ -84,6 +84,9 @@ const dreamport = z.object({
   // the exact copy players need, as the proof names it in proof/original.json
   needs: z.string(),
   controls,
+  // its game's issue: the New Dreamport issue in NahuelGenchi/dreamports that claimed it, which lists its pieces, and
+  // where it's talked about
+  issue: z.number().int().positive(),
   // who leads it and who works on it with them, by their GitHub accounts
   lead: githubName,
   team: z.array(githubName).default([]),

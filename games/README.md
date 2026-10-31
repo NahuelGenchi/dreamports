@@ -29,6 +29,7 @@ An entry is a Markdown file. Its fields go at its top, between two `---` lines, 
 | `summary` | One sentence about it, shown in the README's table and when its page is shared |
 | `needs` | The exact copy players need, such as `A Sonic Advance (USA) ROM (.gba)`. It names the same copy as `proof/original.json` |
 | `controls` | The ways to play: any of `keyboard`, `controller` and `touch` |
+| `issue` | The number of its game's issue, the [New Dreamport](../docs/TEAMS.md#start-a-dreamport) issue that claimed it, such as `123` for Sonic Battle Dreamport's. Every piece of the game is a sub-issue of it, and it's where people talk about the game |
 | `lead` | The GitHub account of whoever leads the work on it, such as `NahuelGenchi`, shown in the README's table. A new game's lead is whoever claimed it with a [New Dreamport](../docs/TEAMS.md#start-a-dreamport) issue |
 | `team` | Optional: the GitHub accounts of everyone else working on it |
 | `kit` | Its console's kit, a folder in [`kit/`](../kit/), such as `gba` |
@@ -46,7 +47,7 @@ The rest of the game's page comes from its folder, not from the entry:
 - **The achievements** are counted from the game's list, if it keeps them on players' profiles ([Profiles and achievements](../docs/ACCOUNTS.md#for-a-game-dreamportsjs)).
 - **The source code** is the folder itself, on GitHub.
 
-The game's tasks are the open issues with its label, which is its folder's name, such as [`sonic-advance`](https://github.com/NahuelGenchi/dreamports/issues?q=is%3Aissue%20is%3Aopen%20label%3Asonic-advance). One person works on a task at a time, and a comment saying `/claim` takes a free one, as [Claims and teams](../docs/TEAMS.md) explains. `npm run dp -- find <game>` lists who has which, and what's still free.
+The game's tasks are the sub-issues of its game's issue, each also with the game's label, which is its folder's name. One person works on a task at a time, and a comment saying `/claim` takes a free one, as [Claims and teams](../docs/TEAMS.md) explains. `npm run dp -- find <game>` lists who has which, and what's still free.
 
 The README's table of Dreamports comes from the entries too, with each Dreamport's **progress map**, which its numbers link: a picture of both, with a rectangle for each function in `proof/code-map.json`, green when it counts toward code ported, and a block for each part, green once it's proven ([How progress is measured](../docs/STANDARD.md#how-progress-is-measured)). The map is kept in `.github/readme/progress/<game>.svg` and shown only on GitHub, never on the site. `npm run dp -- prove` and `npm run dp -- portmap` write the table and the maps whenever they change a game's numbers, and `npm run dp -- readme` writes them after an entry or a list of parts changes. `npm run check` says when one of them or a port map is out of date.
 
