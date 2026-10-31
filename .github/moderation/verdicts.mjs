@@ -108,8 +108,10 @@ const kindWords = {
   issue: 'an issue', 'pull-request': 'a pull request', 'issue-comment': 'a comment', 'review-comment': 'a comment on code',
   review: 'a review', discussion: 'a thread', 'discussion-comment': 'a comment'
 };
-// a post as the log and the alert issue name it: a link, and its author as code, so nobody is notified
-export const postLink = item => `[${kindWords[item.kind] ?? 'a post'}](${item.url}) by \`${item.author}\``;
+// A post as the log and the alert issue name it: a link, and its author as code, so nobody is notified. The link
+// leaves out https://github.com, since GitHub notes a full link to an issue in that issue's own timeline, as
+// "mentioned this", which would mark every post the bot checks.
+export const postLink = item => `[${kindWords[item.kind] ?? 'a post'}](${String(item.url).replace(/^https:\/\/github\.com(?=\/)/, '')}) by \`${item.author}\``;
 const reasons = {
   'game-files': 'it shares or links a game file', 'rom-site': 'it links a site that shares game files',
   'asks-for-games': 'it asks where to get a game', 'clip-of-original': 'it seems to show the original game',

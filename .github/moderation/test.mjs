@@ -153,7 +153,7 @@ test('replies never quote the post, and say which post they answer', () => {
 test('the log names people as code and never quotes the post', () => {
   const post = { ...item('issue-comment'), text: 'SECRET-TEXT-123' };
   const done = logLine({ item: post, key: 'game-files', by: 'rules', did: ['hid', 'replied'] });
-  assert.equal(done, 'Hid, replied to [a comment](https://github.com/o/r/issues/1#issuecomment-1) by `someone`: it shares or links a game file. Decided by the plain rules.');
+  assert.equal(done, 'Hid, replied to [a comment](/o/r/issues/1#issuecomment-1) by `someone`: it shares or links a game file. Decided by the plain rules.');
   const flagged = logLine({ item: post, key: 'spam', by: 'model', model: 'opencode/glm-5.3-flash-free', flagged: 'trusted' });
   assert.ok(flagged.startsWith('Flagged') && !flagged.includes('@') && !flagged.includes('SECRET'));
 });

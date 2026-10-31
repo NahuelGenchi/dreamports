@@ -50,7 +50,7 @@ A hidden comment shows GitHub's reason, such as off-topic, spam or abuse, and st
 
 ## The log
 
-The bot opens one issue, *Moderation log*, labelled `moderation-log`, the first time it needs it, and locks it. It adds a comment there for each thing it does and each post it flags: what it did, a link to the post, its author's name written as code, so nobody is notified, the reason, and whether the plain rules or which model decided. It never quotes a post.
+The bot opens one issue, *Moderation log*, labelled `moderation-log`, the first time it needs it, and locks it. It adds a comment there for each thing it does and each post it flags: what it did, a link to the post, its author's name written as code, so nobody is notified, the reason, and whether the plain rules or which model decided. It never quotes a post. Its links leave out `https://github.com`, since GitHub notes a full link to an issue in that issue's own timeline, as "mentioned this", which would mark every post the bot checks.
 
 Each run of the [workflow](../.github/workflows/moderation.yml) also has a summary, on its page in the repository's Actions tab, with every post it checked, its verdict, and what decided it.
 
