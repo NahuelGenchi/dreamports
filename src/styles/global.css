@@ -861,7 +861,8 @@ kbd {
 }
 
 .np-name,
-.np-detail {
+.np-detail,
+.np-numbers {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -876,6 +877,20 @@ kbd {
   color: var(--dim);
   font-size: 11.5px;
   line-height: 14px;
+}
+
+/* a Dreamport's two numbers, code ported and gameplay proven: side by side, or one under the other on a narrow screen */
+.np-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 1.2em;
+  color: var(--blue);
+  font-size: 11.5px;
+  line-height: 14px;
+}
+
+.np-numbers:empty {
+  display: none;
 }
 
 .nameplate.is-empty {
@@ -2077,7 +2092,12 @@ dialog.card[open] {
   opacity: 1;
 }
 
-/* with no nameplate to read, each game shows its name under its picture */
+/* with no nameplate to read, each game shows its name under its picture, and a Dreamport its numbers under that */
+:root:not(.js) .slot-numbers {
+  display: block;
+  color: var(--blue);
+}
+
 :root:not(.js) .slot .sr-only {
   position: absolute;
   top: 100%;
@@ -2729,7 +2749,18 @@ dialog.card[open] {
   display: grid;
   justify-items: start;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 12px;
+}
+
+.meter + .meter {
+  padding-top: 12px;
+  border-top: 2px solid var(--line);
+}
+
+.meter-label {
+  margin: 0;
+  color: var(--ink);
+  font: 400 13.5px/20px var(--font);
 }
 
 .meter-text {
@@ -2756,6 +2787,46 @@ dialog.card[open] {
 }
 
 .pct-bar i.is-on {
+  background: var(--blue);
+}
+
+/* the game's parts under a Dreamport's numbers, a block for each, filled once proven */
+.parts {
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 2px solid var(--line);
+}
+
+.parts ul {
+  margin: 8px 0 0;
+  padding: 0;
+  columns: 15em auto;
+  column-gap: 24px;
+  list-style: none;
+  font: 400 13.5px/20px var(--font);
+}
+
+.parts li {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  break-inside: avoid;
+  color: var(--dim);
+}
+
+.parts li.is-proven {
+  color: var(--ink);
+}
+
+.parts li > i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  background: var(--line);
+}
+
+.parts li.is-proven > i {
   background: var(--blue);
 }
 

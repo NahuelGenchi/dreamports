@@ -76,7 +76,7 @@ const controls = z.array(z.enum(['keyboard', 'controller', 'touch'])).min(1);
 // A fact is a line of text, or a link, in the game's box.
 const fact = z.object({ label: z.string(), value: z.string(), href: https.optional() });
 
-// A Dreamport's entry. Its kind and its folder come from where it is; its % from its proof/ folder.
+// A Dreamport's entry. Its kind and its folder come from where it is; its two numbers from its proof/ folder.
 const dreamport = z.object({
   ...page,
   kind: z.literal('dreamport'),

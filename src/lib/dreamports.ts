@@ -1,5 +1,6 @@
-// What a Dreamport's page shows from its entry, games/<game>/entry.md, and its proof/ folder: the game's box,
-// and the progress box with the % the proof tools measured. games/README.md describes the entry.
+// What a Dreamport's page and its place in the launcher's row show from its entry, games/<game>/entry.md, and its
+// proof/ folder: the game's box, and the progress box with its two numbers, code ported and gameplay proven, and
+// what proves them. games/README.md describes the entry.
 import { PLAYABLE } from './players';
 import { percentText, proofOf } from './entries.mjs';
 import { SOURCE_URL, type Game } from './site';
@@ -17,12 +18,43 @@ export interface Fact {
 }
 
 // Read as the site is built, so the page always shows what's in the folders.
-const PROOF = import.meta.glob<unknown>('/games/*/proof/{original,code-map,progress}.json', { eager: true, import: 'default' });
+const PROOF = import.meta.glob<unknown>('/games/*/proof/{original,code-map,progress,port-map,parts}.json', { eager: true, import: 'default' });
+const RECORDINGS = import.meta.glob<unknown>('/games/*/proof/recordings/*.json', { eager: true, import: 'default' });
 const KITS = import.meta.glob<string>('/kit/*/README.md', { eager: true, query: '?raw', import: 'default' });
 const LISTS = import.meta.glob<readonly unknown[]>('/games/**/list.js', { import: 'ACHIEVEMENTS' });
 
 const proofFile = (game: string, name: string) => PROOF[`/games/${game}/proof/${name}.json`] as never;
 const profile = (name: string) => `https://github.com/${name}`;
+const proofLink = (game: string, path: string) => `${SOURCE_URL}/blob/main/games/${game}/proof/${path}`;
+
+type Proof = NonNullable<ReturnType<typeof proofOf>>;
+
+// what the proof tools measured for a game, checked as the site is built
+function proofFor(game: string): Proof | null {
+  const prefix = `/games/${game}/proof/recordings/`;
+  const recordings = Object.fromEntries(
+    Object.entries(RECORDINGS)
+      .filter(([path]) => path.startsWith(prefix))
+      .map(([path, recording]) => [path.slice(prefix.length, -'.json'.length), recording]),
+  );
+  return proofOf(game, {
+    original: proofFile(game, 'original'),
+    map: proofFile(game, 'code-map'),
+    progress: proofFile(game, 'progress'),
+    portMap: proofFile(game, 'port-map'),
+    parts: proofFile(game, 'parts'),
+    recordings: recordings as never,
+  });
+}
+
+/** A Dreamport's two numbers as text, such as "Code ported 37.99% · Gameplay proven 2.78%", for its place in the row. */
+export function numbersOf(data: Dreamport): string {
+  const proof = proofFor(data.game);
+  return [
+    `Code ported ${percentText(proof?.ported?.percent) ?? 'not measured yet'}`,
+    `Gameplay proven ${percentText(proof?.gameplay?.percent) ?? 'not measured yet'}`,
+  ].join(' · ');
+}
 
 // the kit's name, from its guide's heading, such as "Game Boy Advance kit"
 function kitName(kit: string): string {
@@ -40,26 +72,60 @@ async function achievementsOf(game: string): Promise<number | null> {
   return (await load()).length;
 }
 
+// One of the two numbers: its %, as text, what it counts, and where its evidence is. `percent` is null when it isn't
+// measured yet.
+export interface Measure {
+  label: string;
+  percent: number | null;
+  text: string | null;
+  about: string;
+  links: { value: string; href: string }[];
+}
+
+// A part of the game, as the progress box lists it: proven, with its recording and frames, or not yet.
+export interface PartView {
+  name: string;
+  proven: boolean;
+  note: string | null;
+  href: string | null;
+}
+
 export interface DreamportView {
   game: Fact[];
-  // the % of the original's code proven in recorded play, and as text, or null when it isn't measured yet
-  percent: number | null;
-  percentText: string | null;
+  ported: Measure;
+  gameplay: Measure;
+  parts: PartView[];
   progress: Fact[];
+}
+
+// what each part shows: for a part with a recording, its frames and what they found
+function partsOf(game: string, gameplay: Proof['gameplay']): PartView[] {
+  return (gameplay?.parts ?? []).map((part) => {
+    if (!part.recording || !part.frames) return { name: part.name, proven: false, note: null, href: null };
+    const [from, to] = part.frames;
+    const found = part.proven
+      ? 'every frame matched the original'
+      : part.difference !== null
+        ? `frame ${part.difference} differs from the original`
+        : `the original has frames before ${part.gap} that the Dreamport doesn’t`;
+    return {
+      name: part.name,
+      proven: part.proven,
+      note: `Frames ${from} to ${to} of the recording ${part.recording}: ${found}.`,
+      href: proofLink(game, `recordings/${part.recording}.json`),
+    };
+  });
 }
 
 export async function dreamportView(data: Dreamport): Promise<DreamportView> {
   const { game } = data;
-  const proof = proofOf(game, {
-    original: proofFile(game, 'original'),
-    map: proofFile(game, 'code-map'),
-    progress: proofFile(game, 'progress'),
-  });
+  const proof = proofFor(game);
   if (proof && !data.needs.includes(proof.copy)) {
     throw new Error(`games/${game}/entry.md needs ${data.needs}, but its proof uses ${proof.copy}: "needs" names the same copy.`);
   }
   const achievements = await achievementsOf(game);
-  const percent = proof?.percent ?? null;
+  const { ported, gameplay } = proof ?? { ported: null, gameplay: null };
+  const plural = (n: number, word: string) => `${n.toLocaleString('en')} ${word}${n === 1 ? '' : 's'}`;
   return {
     game: [
       { label: 'Original', value: [data.platform, data.year].filter(Boolean).join(', ') },
@@ -68,8 +134,25 @@ export async function dreamportView(data: Dreamport): Promise<DreamportView> {
       ...(achievements ? [{ label: 'Achievements', value: `${achievements}, kept on your profile` }] : []),
       ...data.facts,
     ],
-    percent,
-    percentText: percentText(percent),
+    ported: {
+      label: 'Code ported',
+      percent: ported?.percent ?? null,
+      text: percentText(ported?.percent),
+      about: ported
+        ? `of the original’s code: ${plural(ported.named, 'function')} its code names${ported.played ? `, and ${ported.played.toLocaleString('en')} more that ran while it matched the original in recorded play` : ''}.`
+        : 'Not measured yet: it needs a code map of the original.',
+      links: ported ? [{ value: 'The port map', href: proofLink(game, 'port-map.json') }] : [],
+    },
+    gameplay: {
+      label: 'Gameplay proven',
+      percent: gameplay?.percent ?? null,
+      text: percentText(gameplay?.percent),
+      about: gameplay
+        ? `of the game: ${gameplay.proven} of its ${gameplay.total} parts played from start to end, every frame matching the original.`
+        : 'Not measured yet: it needs a list of the game’s parts.',
+      links: gameplay ? [{ value: 'The recordings', href: `${SOURCE_URL}/tree/main/games/${game}/proof/recordings` }] : [],
+    },
+    parts: partsOf(game, gameplay),
     progress: [
       { label: 'Playable now', value: data.playable },
       { label: 'Lead', value: data.lead, href: profile(data.lead) },

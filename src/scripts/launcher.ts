@@ -72,6 +72,7 @@ function start(launcher: HTMLElement) {
   const plate = $('#nameplate', launcher);
   const plateName = $('#np-name', launcher);
   const plateDetail = $('#np-detail', launcher);
+  const plateNumbers = $('#np-numbers', launcher);
   const cursor = $('#cursor', launcher);
   const target = $('#target', launcher);
   const btnSearch = $<HTMLButtonElement>('#btn-search', launcher);
@@ -181,7 +182,8 @@ function start(launcher: HTMLElement) {
       el.setAttribute('role', 'option');
       el.setAttribute('aria-posinset', String(i + 1));
       el.setAttribute('aria-setsize', String(slots.length));
-      el.setAttribute('aria-label', el.dataset.game ? `${el.dataset.title}, ${el.dataset.detail}` : (el.dataset.note ?? 'Empty slot'));
+      const numbers = el.dataset.numbers ? `. ${el.dataset.numbers}` : '';
+      el.setAttribute('aria-label', el.dataset.game ? `${el.dataset.title}, ${el.dataset.detail}${numbers}` : (el.dataset.note ?? 'Empty slot'));
       el.tabIndex = -1;
     });
     rowEl.setAttribute('aria-label', 'Games: ' + f.label + (words.length ? `, matching ${state.search}` : ''));
@@ -319,6 +321,9 @@ function start(launcher: HTMLElement) {
     const w0 = plate.getBoundingClientRect().width;
     plateName.textContent = text;
     plateDetail.textContent = game ? slot.dataset.detail! : '';
+    // a Dreamport's two numbers, code ported and gameplay proven, each kept whole when they need two lines
+    const numbers = game && slot.dataset.numbers ? slot.dataset.numbers.split(' · ') : [];
+    plateNumbers.replaceChildren(...numbers.map((text) => Object.assign(document.createElement('span'), { textContent: text })));
     plate.classList.toggle('is-empty', !game);
     if (calm() || !w0 || !state.ready) return;
     const w1 = plate.getBoundingClientRect().width;
