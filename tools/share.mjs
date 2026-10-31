@@ -177,7 +177,8 @@ function numbersAt(commit, game) {
     return file ? JSON.parse(file.toString('utf8')) : undefined;
   };
   try {
-    const recordings = Object.fromEntries(filesAt(commit, `${folder}/recordings`).filter(f => f.endsWith('.json')).map(f => [f.slice(0, -5), read(`recordings/${f}`)]));
+    const recordings = Object.fromEntries(filesAt(commit, `${folder}/recordings`).filter(f => f.path.endsWith('.json'))
+      .map(f => [basename(f.path, '.json'), read(`recordings/${basename(f.path)}`)]));
     const proof = proofOf(game, {
       original: read('original.json'), map: read('code-map.json'), progress: read('progress.json'),
       portMap: read('port-map.json'), parts: read('parts.json'), recordings,
