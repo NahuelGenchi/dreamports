@@ -16,7 +16,7 @@ npm run dp -- find sonic battle
 
 Open a [New Dreamport](https://github.com/NahuelGenchi/dreamports/issues/new?template=new-dreamport.yml) issue. It names the game, its folder in `games/`, such as `sonic-battle`, its console, and where it starts, usually where a player starts. Opening it claims the whole game: you're its lead. The bot assigns the issue to you, gives the game a label, which is its folder's name, and a milestone named after it, such as *Sonic Battle Dreamport*. If the game already has a Dreamport, or an earlier New Dreamport issue claimed it, the bot closes yours instead, and says who leads it and what's still free.
 
-The lead builds the first playable piece, then splits what's left into tasks.
+The lead maps the whole game first, with its [code map](../tools/README.md#the-code-map-and-the-two-numbers), so its progress map shows all of it from the start. Then they build the first playable piece, and split what's left into tasks.
 
 ## Tasks
 

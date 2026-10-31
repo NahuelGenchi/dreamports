@@ -1,17 +1,18 @@
 // npm run dp -- share <game> [--as <preview>] [--post --about "<what changed>"] [--clip <file>] [--fork <owner/name>]
 // [--yes]: publishes a preview of the game as it is in the last commit, on GitHub Pages from the contributor's own
 // fork, at <owner>.github.io/<fork>/<preview>/. With --post it also posts in the game's progress thread, in the
-// repository's Discussions, from the contributor's own account: what changed, a clip of the Dreamport next to the original, its two numbers and
-// the preview's link. A preview holds only code: the player gives it their own copy, as on dreamports.net. share
+// repository's Discussions, from the contributor's own account: what changed, a clip of the Dreamport next to the original, its two numbers,
+// its progress map as it is in that commit, and the preview's link. A preview holds only code: the player gives it their own copy, as on dreamports.net. share
 // asks before it publishes, before it switches Pages on and before it posts; --yes answers yes, once the
 // contributor has said yes.
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve, extname, basename, dirname, sep } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { LOCAL } from './lib/paths.mjs';
 import { head, uncommitted, remotes, fileAt, filesAt, fetchPreviews, pushPreviews, makePreview, BRANCH, CLIPS } from './lib/preview.mjs';
 import { percentText, proofOf } from '../src/lib/entries.mjs';
+import { progressMap } from '../src/lib/progress-map.mjs';
 import {
   UPSTREAM, api, signedInAs, findFork, pagesOf, turnOnPages, lastBuild, buildPages, progressCategory, threadOf, openThread, postIn,
 } from './lib/github.mjs';
@@ -53,15 +54,16 @@ export async function run(args) {
     { path: `${CLIPS}/${game}/${stamp}${extname(clip.file)}`, file: clip.file },
     ...(clip.still ? [{ path: `${CLIPS}/${game}/${stamp}-still.png`, file: clip.still }] : []),
   ] : [];
+  const map = post ? mapAt(commit, game, title, stamp) : null;
   let thread = null, category = null;
   if (post) {
     category = progressCategory();
     thread = threadOf(category.categoryId, game);
   }
-  const postText = siteUrl => postBody({ about, title, clip, clips, siteUrl, numbers: numbersAt(commit, game), address: `${siteUrl}${name}/`, fork, commit, branch });
+  const postText = siteUrl => postBody({ about, title, clip, clips, map, siteUrl, numbers: numbersAt(commit, game), address: `${siteUrl}${name}/`, fork, commit, branch });
 
   const tip = fetchPreviews(fork.remote);
-  const preview = makePreview({ tip, commit, branch, game, title, name, author: login, repository: fork.repository, url, about, guide: GUIDE, clips });
+  const preview = makePreview({ tip, commit, branch, game, title, name, author: login, repository: fork.repository, url, about, guide: GUIDE, clips: [...clips, ...(map ? [map] : [])] });
 
   console.log(`A preview of ${title}, from commit ${commit.slice(0, 7)} on ${branch}:\n  ${address}`);
   console.log(`It holds ${preview.files} files, ${(preview.bytes / 1e6).toFixed(1)} MB, and only code: the game, its console's kit and the preview's own pages.`);
@@ -169,20 +171,40 @@ function chooseClip(game, file) {
   return { file, bytes, still: still ?? null, sideBySide };
 }
 
-// the game's two numbers in the last commit, as the post writes them, or null when its proof doesn't add up
-function numbersAt(commit, game) {
+// the game's proof files in the last commit, as proofOf takes them
+function proofFilesAt(commit, game) {
   const folder = `games/${game}/proof`;
   const read = path => {
     const file = fileAt(commit, `${folder}/${path}`);
     return file ? JSON.parse(file.toString('utf8')) : undefined;
   };
+  const recordings = Object.fromEntries(filesAt(commit, `${folder}/recordings`).filter(f => f.path.endsWith('.json'))
+    .map(f => [basename(f.path, '.json'), read(`recordings/${basename(f.path)}`)]));
+  return {
+    original: read('original.json'), map: read('code-map.json'), progress: read('progress.json'),
+    portMap: read('port-map.json'), parts: read('parts.json'), recordings,
+  };
+}
+
+// the game's progress map in the last commit, for the post: written to .dreamports/ and put next to the clips under a
+// name of its own, so each post keeps the map as it was then. Null when it can't be drawn.
+function mapAt(commit, game, title, stamp) {
   try {
-    const recordings = Object.fromEntries(filesAt(commit, `${folder}/recordings`).filter(f => f.path.endsWith('.json'))
-      .map(f => [basename(f.path, '.json'), read(`recordings/${basename(f.path)}`)]));
-    const proof = proofOf(game, {
-      original: read('original.json'), map: read('code-map.json'), progress: read('progress.json'),
-      portMap: read('port-map.json'), parts: read('parts.json'), recordings,
-    });
+    const map = progressMap(game, proofFilesAt(commit, game), title);
+    if (!map) return null;
+    const file = join(LOCAL, 'maps', game, `${stamp}.svg`);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, map.svg);
+    return { path: `${CLIPS}/${game}/${stamp}-progress.svg`, file, alt: map.alt };
+  } catch {
+    return null;
+  }
+}
+
+// the game's two numbers in the last commit, as the post writes them, or null when its proof doesn't add up
+function numbersAt(commit, game) {
+  try {
+    const proof = proofOf(game, proofFilesAt(commit, game));
     const { ported, gameplay } = proof ?? {};
     return [
       ported ? `${percentText(ported.percent)} of the original's code` : 'not measured yet: the game needs a code map',
@@ -193,7 +215,7 @@ function numbersAt(commit, game) {
   }
 }
 
-function postBody({ about, title, clip, clips, siteUrl, numbers, address, fork, commit, branch }) {
+function postBody({ about, title, clip, clips, map, siteUrl, numbers, address, fork, commit, branch }) {
   const lines = [`**What changed:** ${about.trim()}`, ''];
   if (clip) {
     const video = `${siteUrl}${clips[0].path}`;
@@ -206,6 +228,7 @@ function postBody({ about, title, clip, clips, siteUrl, numbers, address, fork, 
     ...(numbers
       ? [`**Code ported:** ${numbers[0]}`, `**Gameplay proven:** ${numbers[1]}`]
       : ['**Progress:** not measured: the game\'s proof files don\'t add up, and npm run check says why']),
+    ...(map ? ['', `![${map.alt}](${siteUrl}${map.path})`, ''] : []),
     `**Preview:** ${address} (not reviewed by the Dreamports team: play it only if you trust its author)`,
     `**Code:** [${fork.repository}@${commit.slice(0, 7)}](https://github.com/${fork.repository}/commit/${commit}) on \`${branch}\``,
   );

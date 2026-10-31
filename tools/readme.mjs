@@ -7,7 +7,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { REPO } from './lib/paths.mjs';
-import { ENTRY, percentText, proofOf } from '../src/lib/entries.mjs';
+import { ENTRY, mapOf, percentText, proofOf } from '../src/lib/entries.mjs';
 
 const README = join(REPO, 'README.md');
 const START = '<!-- The proof tools write this table from each Dreamport\'s entry: npm run dp -- readme. -->';
@@ -79,18 +79,24 @@ function checkEntry(game, entry, proof) {
   }
   if (!existsSync(join(REPO, 'kit', entry.kit, 'README.md'))) throw new Error(`${at} names the kit "${entry.kit}", but kit/${entry.kit}/ has no README.md.`);
   if (proof && !entry.needs.includes(proof.copy)) throw new Error(`${at} needs ${entry.needs}, but its proof uses ${proof.copy}: "needs" names the same copy.`);
+  if (!proof?.ported) {
+    throw new Error(`games/${game}/proof/ has no code map yet. A Dreamport maps every function of the original first, with npm run dp -- codemap ${game}, `
+      + 'so its progress map shows the whole game from the start (docs/STANDARD.md#how-progress-is-measured).');
+  }
 }
 
-// one row for each Dreamport: its name, what it is, its two numbers, its lead and team, and where to play it
+// one row for each Dreamport: its name, what it is, its two numbers, each a link to its progress map, its lead and
+// team, and where to play it
 function table(list) {
   const profile = name => `[${name}](https://github.com/${name})`;
   const cell = text => String(text).replaceAll('|', '\\|').replace(/\s+/g, ' ').trim();
   const rows = list.map(({ game, entry, proof }) => {
     const link = entry.ownCopy.links[0];
     const team = entry.team?.length ? `, with ${entry.team.map(profile).join(', ')}` : '';
-    const ported = percentText(proof?.ported?.percent) ?? 'Not measured yet';
-    const { gameplay } = proof ?? {};
-    const proven = gameplay ? `${percentText(gameplay.percent)}, ${gameplay.proven} of ${gameplay.total} parts` : 'No parts listed yet';
+    const map = text => `[${text}](https://dreamports.net${mapOf(game)})`;
+    const ported = map(percentText(proof.ported.percent));
+    const { gameplay } = proof;
+    const proven = gameplay ? map(`${percentText(gameplay.percent)}, ${gameplay.proven} of ${gameplay.total} parts`) : 'No parts listed yet';
     return `| 🌙 | **[${cell(entry.title)}](games/${game}/)** | ${cell(entry.summary)} Bring your own copy of the game. | ${ported} | ${proven} | ${profile(entry.lead)}${team} | [${link.icon === 'download' ? '⬇' : '▶'}&nbsp;${cell(link.label)}](${link.href}) |`;
   });
   return [

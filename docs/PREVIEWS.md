@@ -46,7 +46,7 @@ Before anything goes online, `share` shows what it will publish and where, and a
 
 ## Progress threads
 
-Each game has one thread in the Progress category of Discussions, where everyone working on it posts each step. A post made by `share` has the same parts every time: what changed, a frame of the clip that opens the clip, the two numbers, the preview's link with a reminder that it hasn't been reviewed, and the commit it was made from.
+Each game has one thread in the Progress category of Discussions, where everyone working on it posts each step. A post made by `share` has the same parts every time: what changed, a frame of the clip that opens the clip, the two numbers, the game's [progress map](STANDARD.md#how-progress-is-measured) as it was in that commit, the preview's link with a reminder that it hasn't been reviewed, and the commit it was made from. The map goes on your previews site next to the clips, under a name of its own, so each post keeps its own, and the thread shows the game's progress over time.
 
 A thread names its game in its first post, under *Game folder*, such as `sonic-advance`. `share` writes it, and so does the category's form for anyone who opens a thread by hand. Anyone can open a game's thread, and a [workflow](../.github/workflows/progress-threads.yml) keeps one open thread per game: a thread that names no game, or a game that already has an open thread, gets a reply pointing to the right place, and is closed and locked.
 
