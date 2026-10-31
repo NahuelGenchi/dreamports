@@ -40,11 +40,11 @@ Each verdict has a fixed plan, written in code, for each kind of post:
 | Spam | Hidden as spam | Labelled `spam`, closed and locked | Labelled `spam`, closed and locked |
 | Notice from a rights holder | Its issue, pull request or thread labelled `rights-notice`, and a reply | Labelled `rights-notice`, and a reply | Labelled `rights-notice`, and a reply |
 
-A hidden comment shows GitHub's reason, such as off-topic, spam or abuse, and stays readable for whoever opens it. A post the bot closes and locks can't get more comments. A reply names the post's author, links the post and the rule, never quotes the post, and ends with a line saying it comes from the Dreamports bot. A reply to a key, token or password asks its owner to revoke it, since anyone may have copied it already.
+A hidden comment shows GitHub's reason, such as off-topic, spam or abuse, and stays readable for whoever opens it. A post the bot closes and locks can't get more comments. A reply names the post's author, links the post and the rule, never quotes the post, and ends with a line saying it comes from the Dreamports bot. In Discussions it goes under the comment it answers, or at the end of the thread when that comment is hidden, since GitHub takes no replies under a hidden comment. A reply to a key, token or password asks its owner to revoke it, since anyone may have copied it already.
 
 **Clips of the original** are welcome in pull requests and in progress posts, the comments in a game's [progress thread](PREVIEWS.md#progress-threads), as [Clips](STANDARD.md#clips) says. Comments on a pull request count as the pull request's, so the bot only acts on clips of the original anywhere else.
 
-**The repository's own people**, its owner, members and collaborators, are never hidden or closed: when the plain rules find something in one of their posts, the bot only flags it in the log, and it never sends their posts to a model. The same goes for comments starting with `/claim` or `/release`, which the [claims workflow](TEAMS.md) answers: the bot never hides them, answers them or sends them to a model.
+**The repository's own people**, its owner, members and collaborators, are never hidden or closed: when the plain rules find something in one of their posts, the bot only flags it in the log, once for each reason, and it never sends their posts to a model. The same goes for comments starting with `/claim` or `/release`, which the [claims workflow](TEAMS.md) answers: the bot never hides them, answers them or sends them to a model. One gap: in a repository that belongs to an organization, GitHub only tells the workflow about the members whose membership is public, so the bot treats a member whose membership is private like anyone else.
 
 **What it never does.** The bot only hides comments, replies with its fixed texts, closes and locks issues, pull requests and threads, and adds its labels: `spam`, `rights-notice` and `moderation-waiting`. It never deletes, unhides or reopens anything, edits anyone's post or code, approves, merges or pushes, assigns anyone, or takes or releases a claim.
 
@@ -79,7 +79,7 @@ The workflow's token can't do the following, so they stay with GitHub's own tool
 
 The [workflow](../.github/workflows/moderation.yml) has two jobs. The judging job can only read. It reads each post through GitHub's API, applies the plain rules, asks a model about what they leave, and writes its verdicts as JSON, with no text from any post in them. The acting job has the write permissions. It takes the verdicts only if they fit a fixed schema, reads each post again from GitHub rather than from the verdict, and carries out the fixed plan for its verdict. A verdict that doesn't fit is dropped, so it does nothing.
 
-Both jobs check out only `.github/moderation/` from the default branch. A pull request's code is never checked out or run, not even for a pull request from a fork, whose text the bot reads through the API. Runs about one post wait for each other, so a post edited twice is judged as it ends up.
+Both jobs check out only `.github/moderation/`, from the default branch, or for a pull request from the branch it would merge into. A pull request's own code is never checked out or run, not even for a pull request from a fork, whose text the bot reads through the API. Runs about one post wait for each other, so a post edited twice is judged as it ends up.
 
 | File | What it holds |
 | :--- | :--- |
