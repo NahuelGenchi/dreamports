@@ -57,7 +57,7 @@ These are the projects on the site so far.
 
 | | Dreamport | What it is | Code ported | Gameplay proven | Lead | Try it |
 | :---: | :--- | :--- | :--- | :--- | :--- | :--- |
-| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | 38.95% | 8.33%, 3 of 36 parts | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
+| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | 38.95% | 13.89%, 5 of 36 parts | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
 
 <!-- End of the table of Dreamports. -->
 
