@@ -9,7 +9,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "check": "astro check && tsc -p worker",
+    "check": "astro check && tsc -p worker && node tools/dp.mjs readme --check",
     "worker": "astro build && wrangler dev --local-upstream localhost:8787",
     "dp": "node tools/dp.mjs"
   },
@@ -24,6 +24,7 @@
     "@astrojs/check": "0.9.12",
     "@cloudflare/workers-types": "5.20261023.1",
     "typescript": "6.0.3",
-    "wrangler": "4.154.0"
+    "wrangler": "4.154.0",
+    "yaml": "2.9.1"
   }
 }
