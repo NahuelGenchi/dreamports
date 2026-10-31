@@ -214,7 +214,7 @@ async function waitUntilOnline(repository, pushed, probe, made) {
     }
     if (Date.now() - started > 10 * 60_000) {
       throw new Error(`\nGitHub hasn't built ${repository}'s Pages site after 10 minutes. Its Actions tab shows the build, called pages-build-deployment, `
-        + 'and why it waits: in a fork, it may ask you to allow workflows first.');
+        + 'and why it waits.');
     }
     process.stdout.write('.');
     await wait(5000);
