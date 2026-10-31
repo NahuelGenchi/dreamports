@@ -1,18 +1,16 @@
 name: Progress threads
 
 # One open thread per game in the Progress category of Discussions (docs/PREVIEWS.md). A thread names its game in
-# its "Game folder" field. A thread without a game, or one that takes a game another open thread already has, is
-# answered with a link to the right place, closed and locked. Nothing from the thread is run: its text is only read.
+# its "Game folder" field. A thread without a game, a new thread for a game an older open thread has, and a thread
+# edited or moved into Progress to take a game another open thread has, are answered with a link to the right
+# place, closed and locked. Each run looks at one thread and runs nothing from it: its text is only read. Runs
+# don't wait for each other, since GitHub cancels all but the newest waiting run of a concurrency group.
 on:
   discussion:
     types: [created, edited, category_changed]
 
 permissions:
   discussions: write
-
-concurrency:
-  group: progress-threads
-  cancel-in-progress: false
 
 jobs:
   one-per-game:
@@ -50,7 +48,7 @@ jobs:
           }
 
           const { repository } = await graphql(`query($owner: String!, $name: String!, $number: Int!) {
-            repository(owner: $owner, name: $name) { discussion(number: $number) { id url closed body category { id slug } } }
+            repository(owner: $owner, name: $name) { discussion(number: $number) { id number url closed body category { id slug } } }
           }`, { owner, name, number: event.discussion.number });
           const thread = repository.discussion;
           if (!thread || thread.closed || thread.category.slug !== 'progress') process.exit(0);
@@ -67,12 +65,14 @@ jobs:
               const { repository: { discussions } } = await graphql(`query($owner: String!, $name: String!, $category: ID!, $after: String) {
                 repository(owner: $owner, name: $name) {
                   discussions(first: 100, after: $after, categoryId: $category, orderBy: { field: CREATED_AT, direction: ASC }) {
-                    nodes { id url closed body }
+                    nodes { id number url closed body }
                     pageInfo { hasNextPage endCursor }
                   }
                 }
               }`, { owner, name, category: thread.category.id, after });
-              first = discussions.nodes.find(t => t.id !== thread.id && !t.closed && gameOf(t.body) === game) ?? null;
+              // a new thread gives way to an older one; one edited or moved in to take the game gives way to any
+              first = discussions.nodes.find(t => t.id !== thread.id && !t.closed && gameOf(t.body) === game
+                && (event.action !== 'created' || t.number < thread.number)) ?? null;
               if (first || !discussions.pageInfo.hasNextPage) break;
               after = discussions.pageInfo.endCursor;
             }
