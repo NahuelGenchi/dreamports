@@ -117,10 +117,12 @@ const pathsFor = (f: Filter) =>
       </div>
     </div>
     <div class="side end">
-      <button type="button" class="pill status" id="status" aria-label="Settings">
-        <svg id="ico-sound" viewBox="0 0 11 9" shape-rendering="crispEdges" aria-hidden="true"></svg>
-        <svg id="ico-pad" viewBox="0 0 13 8" shape-rendering="crispEdges" aria-hidden="true"></svg>
-      </button>
+      <div class="pill status">
+        <button type="button" class="status-sound" id="btn-sound" role="switch" aria-checked="false" aria-label="Menu sounds">
+          <svg id="ico-sound" viewBox="0 0 11 9" shape-rendering="crispEdges" aria-hidden="true"></svg>
+        </button>
+        <svg id="ico-pad" viewBox="0 0 13 8" shape-rendering="crispEdges" role="img"></svg>
+      </div>
     </div>
   </header>
 

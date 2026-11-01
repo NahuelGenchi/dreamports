@@ -1079,7 +1079,7 @@ function start(launcher: HTMLElement) {
       : 'The menu remembers nothing yet. What you change here stays in this browser.';
     $('#forget-wrap', settingsCard).hidden = !kept.length;
   }
-  sndSwitch.addEventListener('click', () => {
+  function toggleSound() {
     if (state.sound) {
       sound.play('off');
       state.sound = false;
@@ -1091,7 +1091,8 @@ function start(launcher: HTMLElement) {
     }
     syncSettings();
     updateStatus();
-  });
+  }
+  sndSwitch.addEventListener('click', toggleSound);
   for (const input of $$<HTMLInputElement>('input[name="theme"]', settingsCard)) {
     input.addEventListener('change', () => {
       state.theme = input.value as Theme;
@@ -1740,12 +1741,10 @@ function start(launcher: HTMLElement) {
     const pad = $('#ico-pad', launcher);
     snd.innerHTML = state.sound ? ICON_SOUND_ON : ICON_SOUND_OFF;
     snd.classList.toggle('is-off', !state.sound);
+    $('#btn-sound', launcher).setAttribute('aria-checked', String(state.sound));
     pad.innerHTML = ICON_PAD;
     pad.classList.toggle('is-off', !padConnected);
-    $('#status', launcher).setAttribute(
-      'aria-label',
-      `Settings. Menu sounds ${state.sound ? 'on' : 'off'}. ${padConnected ? 'A controller is connected.' : 'No controller connected.'}`,
-    );
+    pad.setAttribute('aria-label', padConnected ? 'A controller is connected' : 'No controller connected');
     if (padConnected) padHint.hidden = true;
   }
 
@@ -2125,9 +2124,7 @@ function start(launcher: HTMLElement) {
   $('#btn-settings', launcher).addEventListener('click', (e) => {
     if (!busy()) openCard(settingsCard, { opener: e.currentTarget as HTMLElement });
   });
-  $('#status', launcher).addEventListener('click', (e) => {
-    if (!busy() || (state.open && !state.launching)) openCard(settingsCard, { opener: e.currentTarget as HTMLElement });
-  });
+  $('#btn-sound', launcher).addEventListener('click', toggleSound);
   $('#btn-about', launcher).addEventListener('click', (e) => {
     if (!plainClick(e)) return;
     e.preventDefault();
