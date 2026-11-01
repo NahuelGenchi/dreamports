@@ -14,6 +14,7 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `prove` | Plays each recording in the original and in the Dreamport, compares every frame, its picture and its sound, updates the numbers, and with `--stills` keeps pictures of the frames you name |
 | `codemap` | Makes the code map: every function in the original, with its address and size |
 | `portmap` | Makes the port map: each function of the original the Dreamport's code names, and where |
+| `read` | Prints one of the original's functions, its instructions, from your copy, for code its decompilation has no C for |
 | `share` | Publishes a preview of a game on GitHub Pages from your own fork, with the newest clip for the step's pull request |
 | `find` | Shows where a game stands: its lead, its two numbers, its team build, who has claimed which task, and the tasks still free |
 | `team` | The game's team build, the lead's branch with the team's finished pieces: `start` makes it, `join` starts a piece from it, `send` sends a piece to the lead, and `add` proves a piece and takes it in |
@@ -30,7 +31,7 @@ And you need your own copy of the game, made from your own cartridge: the versio
 
 ## Getting ready
 
-`npm run dp -- setup` downloads the source code of [mGBA](https://mgba.io) 0.10.5 with git and builds it, along with a small program of the tools' own, [`gba/original.c`](gba/original.c), that runs the original a frame at a time. Both go in `.dreamports/gba/`, and it takes a few minutes the first time. If you already have mGBA 0.10.5's source code, `MGBA_SOURCE=<its folder> npm run dp -- setup` builds that instead of downloading it. `prove` runs the setup by itself if it hasn't been done.
+`npm run dp -- setup` downloads the source code of [mGBA](https://mgba.io) 0.10.5 with git and builds it, along with two small programs of the tools' own: [`gba/original.c`](gba/original.c), which runs the original a frame at a time, and [`gba/read.c`](gba/read.c), which prints its instructions for `read`. They go in `.dreamports/gba/`, and it takes a few minutes the first time. If you already have mGBA 0.10.5's source code, `MGBA_SOURCE=<its folder> npm run dp -- setup` builds that instead of downloading it. `prove` runs the setup by itself if it hasn't been done.
 
 mGBA is the reference: the original runs in it, on your computer only, so there's something to compare against. It's never part of a Dreamport and never runs on dreamports.net. It starts the game with its own stand-in for the console's start-up program, so no BIOS file is needed.
 
@@ -98,6 +99,32 @@ Each Dreamport shows two numbers, code ported and gameplay proven, which [the st
 
 Code ported is the size of the functions the port map names and those `prove` found running in matching play, divided by the size of every function in the code map. Gameplay proven is the share of the parts in `games/<game>/proof/parts.json` that a recording proves: every frame from the part's first to its last matched, picture and sound, with none the Dreamport doesn't have. The game's page, the launcher and the README show both, and the site checks that they add up with the files before it shows them, so they only ever come from the tools. The tools also draw each game's progress map from the same files, with [`src/lib/progress-map.mjs`](../src/lib/progress-map.mjs): a picture of every function in the code map and every part, green once it counts. They keep it in `.github/readme/progress/<game>.svg`, which the README's table links, and write it whenever they write the table. It's only shown on GitHub, never on the site.
 
+## Reading the original's instructions
+
+A Dreamport rewrites each of the original's functions from how the original does it, usually from its decompilation's C. When a function has none, because the decompilation hasn't reached it or its C doesn't match, or the game has no decompilation, `npm run dp -- read <game> <function>` prints the function's own instructions, the machine code the console runs, from your copy. The function is an address, such as `0x08016078`, a name in the code map, such as `FUN_08016078`, or a label of the release the game's labels come from, such as `Task_803775C`, which `names.json` moves to the copy's address as it does for `portmap`. It prints the whole function, as the code map has it.
+
+mGBA's own decoder reads the instructions. The library `setup` builds leaves out the part that writes them as text, so `setup` builds that part on its own, with [`gba/read.c`](gba/read.c), and each line is the one mGBA's debugger shows for the same address. On 1 November 2026 every instruction of every function in Sonic Battle's and Sonic Advance's code maps, 375,316 lines, was the same as mGBA 0.10.5's `disassemble` command printed. Beyond what mGBA's debugger shows, `read`:
+
+- Writes the numbers the code keeps beside itself, its literal pool, as `.word`, and a switch's jump table, the address of each of its cases, the same way. It finds them by following the code from the function's start, so a number only reached by other code, as in a code map entry that starts partway into a function, still reads as instructions, as it does in mGBA's debugger.
+- Adds the code map's name of each function a line calls or loads the address of, after `@`.
+- Reads the function as ARM or Thumb, the console's two kinds of instructions, as the tools found it by following the game's code, or else from how its first instructions look. `--arm` or `--thumb` reads it the other way.
+- Reads `--bytes <n>` bytes from the address instead of the whole function. A function the code map doesn't list gets as much as the tools can follow of it, or else its first 256 bytes.
+- Reads code at `0x02000000` or `0x03000000`, which the game copies into the console's memory to run there, as it is 60 frames after power-on, or `--frame <n>` frames after.
+
+What it prints comes from your copy of the game, so it stays on your computer: in the terminal and in `.dreamports/read/<game>/<address>.txt`. It never goes in a commit, an issue or a pull request, not even a few lines. The Dreamport's code says which function it rewrites, and that's enough.
+
+A line such as `08001234:  4801  ldr r0, =0x03000010  @ 0x0800123C`, made up for this guide, is an address, the bytes there and the instruction they make. A Thumb instruction takes 2 bytes, or 4 for a call, and an ARM one 4. Most of a game's code is Thumb. A short guide to the rest:
+
+- **Registers.** `r0` to `r12` hold numbers, `sp` points to the stack, where a function keeps what doesn't fit in them, `lr` holds where a call returns to, and `pc` the instruction running. A function gets its first four arguments in `r0` to `r3`, gives its result back in `r0`, and leaves `r4` to `r11` as it found them.
+- **In and out.** `stmdb sp!, {r4-r6,lr}`, which other tools write as `push`, saves registers as a function starts, and `ldmia sp!, {r4-r6}`, or `pop`, puts them back before it returns with `bx` or by loading `pc`.
+- **Calls and branches.** `bl` calls a function. `b` jumps, and `beq`, `bne`, `bhi` and the like jump only when the `cmp` before found the two equal, not equal, greater and so on: `lt`, `gt`, `le` and `ge` compare numbers that can be negative, and `lo`, `hi`, `ls` and `hs` those that can't.
+- **Numbers.** `ldr r0, =0x03000010` loads a number from the literal pool, at the address after `@`. `mov` and `add` with `#` use a number written in the instruction itself.
+- **Memory.** `ldr` and `str` read and write 32 bits, `ldrh` and `strh` 16, `ldrb` and `strb` 8, and `ldrsh` and `ldrsb` read numbers that can be negative. `[r1, #8]` is the address in `r1` plus 8, often a field of a structure.
+- **Addresses.** `0x02000000` and `0x03000000` are the console's work memory, where the game keeps its variables, `0x04000000` its registers, which drive the screen, sound, buttons and copies (`0x040000D4` is DMA 3), `0x05000000` the palettes, `0x06000000` video memory, `0x07000000` the sprites and `0x08000000` the cartridge.
+- **The BIOS.** `swi` calls the console's built-in program: `swi #11` is CpuSet, `swi #12` CpuFastSet, `swi #5` waits for the next frame and `swi #6` divides.
+
+[GBATEK](https://problemkaputt.de/gbatek.htm) describes every instruction, register and BIOS call. Rewrite what the function does, not each instruction: readable JavaScript, with names that say what things are, and every number taken from the instructions. Name the function in a comment, by its address or its name in the code map, so the port map counts it, and prove the step. Sonic Battle Dreamport's `newScreen`, in [`games/sonic-battle/src/core.js`](../games/sonic-battle/src/core.js), rewrites `0x08016078`, which its decompilation has no C for.
+
 ## Proving a part
 
 A part, such as a game's logos or one of its acts, is proven by a recording that plays the whole of it, from its first frame to its last, so a recording that skips any of it with Start doesn't prove it. It may end with a press that moves the game on, the way a player leaves it: Sonic Advance Dreamport's title screen is frames 902 to 1252 of `neo-green-hill-act-1`, which ends it with Start, as left alone it would move on to a demo the Dreamport doesn't have yet. These steps prove one:
@@ -145,7 +172,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 
 ## What stays on your computer
 
-Everything else the tools keep is in `.dreamports/`, in the repository's folder, which the ignore rules keep out of commits: where your copies are, the reference emulator, every result with its pictures and clips, and the browser profiles the tools use. Deleting it is safe, as `setup` and `rom` make it again.
+Everything else the tools keep is in `.dreamports/`, in the repository's folder, which the ignore rules keep out of commits: where your copies are, the reference emulator, every result with its pictures and clips, what `read` prints, and the browser profiles the tools use. Deleting it is safe, as `setup` and `rom` make it again.
 
 ## For a game on the Game Boy Advance kit
 

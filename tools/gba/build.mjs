@@ -1,5 +1,5 @@
 // Builds the reference emulator on the contributor's computer: mGBA's library, from mGBA's own repository at a fixed
-// version, and original.c against it. Everything lands in .dreamports/gba/, which never goes in a commit, and none
+// version, and original.c and read.c against it. Everything lands in .dreamports/gba/, which never goes in a commit, and none
 // of it is ever part of a Dreamport or of dreamports.net. It needs git, CMake and a C compiler.
 
 import { spawnSync } from 'node:child_process';
@@ -18,19 +18,23 @@ const FOLDER = join(LOCAL, 'gba');
 const SOURCE = process.env.MGBA_SOURCE || join(FOLDER, 'mgba');
 const BUILD = join(FOLDER, 'mgba-build');
 const HARNESS = fileURLToPath(new URL('./original.c', import.meta.url));
+const READER_SOURCE = fileURLToPath(new URL('./read.c', import.meta.url));
 /** The program that runs the original (original.c). */
 export const ORIGINAL = join(FOLDER, process.platform === 'win32' ? 'original.exe' : 'original');
+/** The program that prints the original's instructions (read.c). */
+export const READER = join(FOLDER, process.platform === 'win32' ? 'read.exe' : 'read');
 const STAMP = join(FOLDER, 'built.json');
 
-const harness = () => createHash('sha1').update(readFileSync(HARNESS)).digest('hex');
+const sha1 = file => createHash('sha1').update(readFileSync(file)).digest('hex');
+const harness = () => sha1(HARNESS);
 const built = () => {
   try { return JSON.parse(readFileSync(STAMP, 'utf8')); } catch { return {}; }
 };
 
-/** Whether the reference emulator is built, from this version of mGBA and of original.c. */
+/** Whether the reference emulator is built, from this version of mGBA, of original.c and of read.c. */
 export function isBuilt() {
-  const { mgba, program } = built();
-  return existsSync(ORIGINAL) && mgba === MGBA_VERSION && program === harness();
+  const { mgba, program, reader } = built();
+  return existsSync(ORIGINAL) && existsSync(READER) && mgba === MGBA_VERSION && program === harness() && reader === sha1(READER_SOURCE);
 }
 
 function run(command, args, what) {
@@ -65,7 +69,14 @@ export function build(log = console.log) {
   }
   log('Building the program that runs the original…');
   const compiler = process.env.CC || 'cc';
-  run(compiler, ['-O2', '-o', ORIGINAL, HARNESS, '-I', join(source, 'include'), '-I', join(BUILD, 'include'),
-    join(BUILD, 'libmgba.a'), '-lm', ...(process.platform === 'linux' ? ['-lpthread'] : [])], 'Building the program that runs the original');
-  writeFileSync(STAMP, JSON.stringify({ mgba, source, program: harness() }) + '\n');
+  const headers = ['-I', join(source, 'include'), '-I', join(BUILD, 'include')];
+  const library = [join(BUILD, 'libmgba.a'), '-lm', ...(process.platform === 'linux' ? ['-lpthread'] : [])];
+  run(compiler, ['-O2', '-o', ORIGINAL, HARNESS, ...headers, ...library], 'Building the program that runs the original');
+  // the decoder's text is in mGBA's debugger part, which the library leaves out: decoder.c is built again with it,
+  // on its own, as the rest has to be built as the library was
+  log('Building the program that prints the original\'s instructions…');
+  const decoder = join(FOLDER, 'decoder.o');
+  run(compiler, ['-O2', '-c', '-DUSE_DEBUGGERS', '-o', decoder, join(source, 'src', 'arm', 'decoder.c'), ...headers], 'Building mGBA\'s decoder');
+  run(compiler, ['-O2', '-o', READER, READER_SOURCE, decoder, ...headers, ...library], 'Building the program that prints the original\'s instructions');
+  writeFileSync(STAMP, JSON.stringify({ mgba, source, program: harness(), reader: sha1(READER_SOURCE) }) + '\n');
 }
