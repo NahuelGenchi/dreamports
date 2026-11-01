@@ -72,8 +72,6 @@ export interface Filter {
   title: string;
   description: string;
   kinds: Kind[];
-  // a line over the row, for a row that needs saying what it is
-  lead?: string;
 }
 
 export const FILTERS: Filter[] = [
@@ -103,15 +101,11 @@ export const FILTERS: Filter[] = [
     description:
       'Every Dreamport being made, where it stands and what’s left to make. Anyone can help, with one sentence pasted into a coding agent.',
     kinds: [],
-    lead: 'Every Dreamport being made, where it stands and what’s left to make.',
   },
 ];
 
 export const filterFor = (kind: Kind): Filter =>
   FILTERS.find((filter) => filter.kinds.includes(kind))!;
-
-// Every row has this many places. The ones without a game stay in place, empty.
-export const SLOTS = 9;
 
 const kindOrder = SECTIONS.map((section) => section.kind);
 

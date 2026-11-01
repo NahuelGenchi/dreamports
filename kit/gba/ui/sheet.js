@@ -23,9 +23,10 @@ const PRESSABLE = 'button:not(:disabled), a[href], input:not([type=file]):not(:d
 const pixels = (w, h, d) => `<svg viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges" aria-hidden="true"><path d="${d}"/></svg>`;
 const BACK = pixels(7, 7, 'M3 0h1v1H3zM2 1h1v1H2zM1 2h1v1H1zM0 3h7v1H0zM1 4h1v1H1zM2 5h1v1H2zM3 6h1v1H3z');
 const PAUSED = pixels(7, 9, 'M0 0h2v9H0zM5 0h2v9H5z');
-// the keys each view's foot names, for a keyboard and for a controller; `tabs` only where the view has tabs
-const KEYS = [['↑↓←→', 'Move'], ['Z', 'Pick'], ['Q E', 'Tabs', 'tabs'], ['Esc', 'Back'], ['H', 'Close']];
-const PAD = [['D-pad', 'Move'], ['A', 'Pick'], ['LB RB', 'Tabs', 'tabs'], ['B', 'Back'], ['View Menu', 'Close']];
+// the keys each view's foot names, for a keyboard and for a controller; `tabs` only where the view has tabs, and
+// `deeper` only past the settings, where going back and closing the sheet are the same
+const KEYS = [['↑↓←→', 'Move'], ['Z', 'Pick'], ['Q E', 'Tabs', 'tabs'], ['Esc', 'Back'], ['H', 'Close', 'deeper']];
+const PAD = [['D-pad', 'Move'], ['A', 'Pick'], ['LB RB', 'Tabs', 'tabs'], ['B', 'Back'], ['View Menu', 'Close', 'deeper']];
 
 /**
  * Makes the sheet in `wrap` (a child of `stage`, holding `.sheet-veil` and `.sheet`). `onOpen()` and `onClose()`
@@ -51,7 +52,7 @@ export function createSheet(stage, wrap, { onOpen = () => {}, onClose = () => {}
       el.innerHTML = `
         <header class="sheet-head">
           <button type="button" class="sheet-back" data-back aria-label="Back to the settings" title="Back to the settings">${BACK}</button>
-          <div class="sheet-title"><p class="sheet-crumb">Settings</p><h2 id="sheet-${name}-title">${title}</h2></div>
+          <div class="sheet-title"><h2 id="sheet-${name}-title">${title}</h2></div>
           <span class="sheet-note"></span>
           <span class="sheet-paused">${PAUSED}Paused</span>
           <button type="button" class="sheet-close" data-close aria-label="Close" title="Close">×</button>
@@ -73,7 +74,7 @@ export function createSheet(stage, wrap, { onOpen = () => {}, onClose = () => {}
   function showKeys(v) {
     const pad = connectedPads().length > 0;
     v.foot.dataset.input = pad ? 'pad' : 'keys';
-    v.foot.innerHTML = (pad ? PAD : KEYS).filter(([, , only]) => !only || v.tabs)
+    v.foot.innerHTML = (pad ? PAD : KEYS).filter(([, , only]) => !only || (only === 'tabs' ? v.tabs : v.name !== 'settings'))
       .map(([keys, what]) => `<span>${keys.split(' ').map(k => keyHtml(k, pad)).join('')}${what}</span>`).join('');
   }
 

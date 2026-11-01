@@ -90,7 +90,7 @@ proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded but
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives
 const touch = createTouch(stage, input, { screen, key: 'my-game' });
-createSettings(stage, input, { brand: 'My Game Dreamport', touch });
+createSettings(stage, input, { touch });
 let rom = null;
 
 createRomSetup(picker, {
@@ -149,7 +149,7 @@ function start() {
 }
 ```
 
-The settings open over the game with the settings button in the top-left corner, <kbd>H</kbd>, or View and Menu together on a controller, and the game waits while they're open. Their Controls list every key and controller button `LAYOUT` gives, and the console's button each presses. Once a button does something in the game, `what` says so, by the button's name in `LAYOUT`, and `dpad` for the d-pad, as Sonic Battle Dreamport's [`src/main.js`](../../games/sonic-battle/src/main.js) does for Start: `createSettings(stage, input, { brand: 'My Game Dreamport', what: { start: 'Start: skips the logos' } })`. That list is what a player and `/dreamport-play` go by to play the game.
+The settings open over the game with the settings button in the top-left corner, <kbd>H</kbd>, or View and Menu together on a controller, and the game waits while they're open. Their Controls list every key and controller button `LAYOUT` gives, and the console's button each presses. Once a button does something in the game, `what` says so, by the button's name in `LAYOUT`, and `dpad` for the d-pad, as Sonic Battle Dreamport's [`src/main.js`](../../games/sonic-battle/src/main.js) does for Start: `createSettings(stage, input, { what: { start: 'Start: skips the logos' } })`. That list is what a player and `/dreamport-play` go by to play the game.
 
 On a phone or a tablet, `createTouch()` draws the same controller for every game, as Sonic Advance Dreamport has it: an Xbox controller's d-pad, LB, LT, RB, RT, A, B, X, Y, Select and Start, with Select and Start for View and Menu. Each does what the controller's button does in `LAYOUT`'s `pad`, so they match the settings' Controls, and a button the game gives nothing does nothing yet. They step aside while a real controller is connected, and the settings' Button opacity sets how solid they are, kept in the browser under the game's `key`. The screen is sized among them, upright or sideways, so the game doesn't size it itself. Once touch works, the entry's `controls` lists `touch` too.
 

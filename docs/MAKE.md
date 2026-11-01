@@ -8,7 +8,7 @@ Every Dreamport being made has a page in the Make tab on [dreamports.net](https:
 
 ## What a page shows
 
-- **Pieces free to take** are the open issues under the game's issue, its [New Dreamport issue](TEAMS.md), that nobody has claimed. The same number shows on the game's picture in the Make row, such as "19 free", and under its name.
+- **Pieces free to take** are the open issues under the game's issue, its [New Dreamport issue](TEAMS.md), that nobody has claimed. The same number shows under the game's name in the Make row, such as "19 pieces free to take", and nothing shows there while none is free.
 - **Steps** are the game's merged pull requests: those in the game's milestone, which the claims workflow makes for each game, and those with the game's label, such as `sonic-advance`. Each shows its title without its `feat:` and issue number, the day it merged and a link to it. The page shows the latest one, with the others folded under it.
 
 A game's pieces and its pull requests get their milestone and label from the claims and tracking workflows, so a step or a piece shows up on its own. An older pull request that belongs to a game shows up once it has the game's label.

@@ -74,7 +74,6 @@ function start(launcher: HTMLElement) {
   const plateDetail = $('#np-detail', launcher);
   const plateNumbers = $('#np-numbers', launcher);
   const plateHelp = $('#np-help', launcher);
-  const rowLead = $('#row-lead', launcher);
   const cursor = $('#cursor', launcher);
   const target = $('#target', launcher);
   const btnSearch = $<HTMLButtonElement>('#btn-search', launcher);
@@ -107,7 +106,6 @@ function start(launcher: HTMLElement) {
       path: tab.getAttribute('href')!,
       paths: (tab.dataset.paths ?? '').split(' '),
       title: tab.dataset.title!,
-      lead: tab.dataset.lead ?? '',
       count: template.content.querySelectorAll('.slot[data-game]').length,
     };
   });
@@ -181,6 +179,8 @@ function start(launcher: HTMLElement) {
     rowEl.replaceChildren(f.template.content.cloneNode(true));
     const words = searchWords();
     if (words.length) narrow(words);
+    // with nothing to show, one empty place says so
+    if (!rowEl.children.length) rowEl.append(emptyPlace(words.length ? 'Nothing matches' : 'Nothing here yet'));
     slots = $$('.slot', rowEl);
     if (keep !== undefined) state.sel[state.filter] = Math.max(0, slots.findIndex((el) => el.dataset.game === keep));
     state.sel[state.filter] = Math.min(sel(), slots.length - 1);
@@ -192,7 +192,7 @@ function start(launcher: HTMLElement) {
       const numbers = el.dataset.numbers ? `. ${el.dataset.numbers}` : '';
       const detail = el.dataset.detail ? `, ${el.dataset.detail}` : '';
       const help = el.dataset.help ? `. ${el.dataset.help}` : '';
-      el.setAttribute('aria-label', el.dataset.title ? `${el.dataset.title}${detail}${numbers}${help}` : (el.dataset.note ?? 'Empty slot'));
+      el.setAttribute('aria-label', el.dataset.title ? `${el.dataset.title}${detail}${numbers}${help}` : (el.dataset.note ?? ''));
       el.tabIndex = -1;
     });
     rowEl.setAttribute('aria-label', 'Games: ' + f.label + (words.length ? `, matching ${state.search}` : ''));
@@ -263,7 +263,6 @@ function start(launcher: HTMLElement) {
     void rowEl.offsetWidth;
     rowEl.classList.remove('no-anim');
     moveTabMark(false);
-    placeLead();
     placePadHint(topH, rowY - RISE - TH / 2 - cg);
   }
 
@@ -292,7 +291,7 @@ function start(launcher: HTMLElement) {
     applySel(rowEl.contains(document.activeElement));
     grab();
     if (withSound) sound.play('move');
-    if (!rowEl.contains(document.activeElement)) announce(slots[i].dataset.title ?? 'Empty slot');
+    if (!rowEl.contains(document.activeElement)) announce(slots[i].dataset.title ?? '');
   }
 
   let switching = false;
@@ -327,7 +326,7 @@ function start(launcher: HTMLElement) {
     const slot = slots[sel()];
     // a game, or the Make row's way to start a Dreamport
     const named = slot?.dataset.title;
-    const text = named ?? slot?.dataset.note ?? 'Empty slot';
+    const text = named ?? slot?.dataset.note ?? '';
     if (plateName.textContent === text) return;
     const w0 = plate.getBoundingClientRect().width;
     plateName.textContent = text;
@@ -505,7 +504,6 @@ function start(launcher: HTMLElement) {
       const hadFocus = rowEl.contains(document.activeElement);
       rowEl.classList.remove(outCls);
       rowEl.classList.add(inCls);
-      setLead();
       buildRow();
       void rowEl.offsetWidth;
       rowEl.classList.remove(inCls);
@@ -520,25 +518,7 @@ function start(launcher: HTMLElement) {
       return;
     }
     rowEl.classList.add(outCls);
-    rowLead.classList.add('is-out');
     setTimeout(swap, 170);
-  }
-  // the line over a row that needs saying what it is, such as Make's, between the top bar and the row
-  function setLead() {
-    const lead = FILTERS[state.filter].lead;
-    rowLead.textContent = lead;
-    rowLead.hidden = !lead;
-    rowLead.classList.remove('is-out');
-    placeLead();
-  }
-  function placeLead() {
-    if (rowLead.hidden) return;
-    const top = parseFloat(launcher.style.getPropertyValue('--top-h')) || 56;
-    const rowTop = parseFloat(launcher.style.getPropertyValue('--row-y')) - RISE - TH / 2 - parseFloat(launcher.style.getPropertyValue('--cg') || '8');
-    const room = rowTop - top;
-    // where there's no room for it, as on a phone held sideways, the row goes without it
-    rowLead.classList.toggle('no-room', room < rowLead.offsetHeight + 24);
-    rowLead.style.top = Math.round(top + Math.max(8, (room - rowLead.offsetHeight) / 2)) + 'px';
   }
   const nextFilter = () => {
     press('#btn-r');
@@ -595,18 +575,17 @@ function start(launcher: HTMLElement) {
       if (title && words.every((w) => plain(title).includes(w))) el.dataset.index = String(n++);
       else el.remove();
     }
-    if (n) return;
-    // with nothing to show, one empty place says so
+  }
+  function emptyPlace(note: string) {
     const none = document.createElement('div');
     none.className = 'slot';
     none.dataset.index = '0';
-    none.dataset.empty = '';
-    none.dataset.note = 'Nothing matches';
+    none.dataset.note = note;
     none.innerHTML = '<span class="lift"><span class="hollow"></span></span>';
-    rowEl.append(none);
+    return none;
   }
 
-  // what a screen reader hears about the row: its games and empty slots, or what the search found
+  // what a screen reader hears about the row: its games, or what the search found
   function rowNews() {
     const f = FILTERS[state.filter];
     if (searchWords().length) {
@@ -614,11 +593,10 @@ function start(launcher: HTMLElement) {
       return n ? `${f.label}: ${n} ${n === 1 ? 'game matches' : 'games match'}` : `${f.label}: nothing matches`;
     }
     const n = f.count;
-    const empty = slots.filter((el) => el.dataset.empty !== undefined).length;
     // the Make row's way to start a Dreamport, by its name
     const others = slots.filter((el) => !el.dataset.game && el.dataset.title).map((el) => el.dataset.title);
     const games = `${n} ${n === 1 ? 'game' : 'games'}`;
-    return `${f.label}: ${[games, ...others].join(', ')}${empty ? ` and ${empty} empty slots` : ''}`;
+    return `${f.label}: ${[games, ...others].join(', ')}`;
   }
 
   // where each row was when the search started, for when it ends without a game picked
@@ -1059,24 +1037,16 @@ function start(launcher: HTMLElement) {
     sndSwitch.setAttribute('aria-checked', String(state.sound));
     $<HTMLInputElement>('#theme-light', settingsCard).checked = !isDark();
     $<HTMLInputElement>('#theme-dark', settingsCard).checked = isDark();
-    $('#theme-desc', settingsCard).textContent = state.theme
-      ? 'Light, or dark for the evening.'
-      : 'Light, or dark for the evening. It follows your device until you pick one.';
+    $('#theme-desc', settingsCard).textContent = state.theme ? '' : 'Follows your device until you pick one.';
     $<HTMLInputElement>('#motion-full', settingsCard).checked = !calm();
     $<HTMLInputElement>('#motion-calm', settingsCard).checked = calm();
-    $('#motion-desc', settingsCard).textContent =
-      state.motion === 'auto'
-        ? reducedMQ.matches
-          ? 'Calm, because your device asks for less motion. Calm keeps the games still and swaps the slides for fades.'
-          : 'Calm keeps the games still and swaps the slides for fades. It follows your device until you pick one.'
-        : 'Calm keeps the games still and swaps the slides for fades.';
     const kept: string[] = [];
     if (store.get('sound')) kept.push('menu sounds on');
     if (store.get('theme')) kept.push(store.get('theme') + ' look');
     if (store.get('motion')) kept.push(store.get('motion') + ' motion');
     $('#memory-note', settingsCard).textContent = kept.length
       ? `This browser remembers: ${kept.join(', ')}. It never leaves your device.`
-      : 'The menu remembers nothing yet. What you change here stays in this browser.';
+      : 'What you change here stays in this browser.';
     $('#forget-wrap', settingsCard).hidden = !kept.length;
   }
   function toggleSound() {
@@ -1204,12 +1174,11 @@ function start(launcher: HTMLElement) {
     const buttons = $$<HTMLButtonElement>('button[type="submit"]', form);
     const lockedNote = $('.note-locked', form);
     const openNote = $('.note-open', form);
-    const openText = openNote.textContent ?? '';
     // the download whose new tab the browser just blocked; pressing it again opens it here
     let blocked = '';
     const unblock = () => {
       blocked = '';
-      openNote.textContent = openText;
+      openNote.textContent = '';
     };
     const key = `dreamports:own:${game}`;
     const sync = () => {
@@ -1731,9 +1700,9 @@ function start(launcher: HTMLElement) {
   const ICON_SOUND_ON = r(0, 3, 2, 3) + r(2, 2, 1, 5) + r(3, 1, 1, 7) + r(4, 0, 1, 9) + r(6, 3, 1, 3) + r(8, 1, 1, 7);
   const ICON_SOUND_OFF =
     r(0, 3, 2, 3) + r(2, 2, 1, 5) + r(3, 1, 1, 7) + r(4, 0, 1, 9) + r(6, 2) + r(10, 2) + r(7, 3) + r(9, 3) + r(8, 4) + r(7, 5) + r(9, 5) + r(6, 6) + r(10, 6);
+  // its buttons are holes, so it shows on any background
   const ICON_PAD =
-    r(2, 0, 9, 1) + r(1, 1, 11, 1) + r(0, 2, 13, 4) + r(0, 6, 4, 1) + r(9, 6, 4, 1) + r(0, 7, 3, 1) + r(10, 7, 3, 1) +
-    `<g class="hole">${r(2, 3, 3, 1)}${r(3, 2, 1, 3)}${r(9, 2)}${r(10, 4)}</g>`;
+    '<path fill-rule="evenodd" d="M2 0h9v1H2zM1 1h11v1H1zM0 2h13v4H0zM0 6h4v1H0zM9 6h4v1H9zM0 7h3v1H0zM10 7h3v1H10zM3 2h1v1H3zM2 3h3v1H2zM3 4h1v1H3zM9 2h1v1H9zM10 4h1v1h-1z"/>';
 
   let padConnected = false;
   function updateStatus() {
@@ -1744,7 +1713,6 @@ function start(launcher: HTMLElement) {
     $('#btn-sound', launcher).setAttribute('aria-checked', String(state.sound));
     pad.innerHTML = ICON_PAD;
     pad.classList.toggle('is-off', !padConnected);
-    pad.setAttribute('aria-label', padConnected ? 'A controller is connected' : 'No controller connected');
     if (padConnected) padHint.hidden = true;
   }
 
@@ -2200,15 +2168,6 @@ function start(launcher: HTMLElement) {
     followAddress(false);
   });
 
-  // ---------- Clock ----------
-
-  // always 24-hour time, such as 09:05 or 21:00, whatever the device's region
-  const clock = $('#clock', launcher);
-  function tick() {
-    const now = new Date();
-    clock.textContent = [now.getHours(), now.getMinutes()].map((n) => String(n).padStart(2, '0')).join(':');
-  }
-
   // ---------- Start ----------
 
   rowEl.setAttribute('role', 'listbox');
@@ -2225,8 +2184,6 @@ function start(launcher: HTMLElement) {
     if (state.open === settingsCard) syncSettings();
   });
   updateStatus();
-  tick();
-  setInterval(tick, 10000);
   buildRow();
   layout();
   updateTabs(false);

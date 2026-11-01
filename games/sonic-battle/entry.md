@@ -21,9 +21,8 @@ ownCopy:
     - label: Play
       href: https://dreamports.net/play/sonic-battle/
       icon: play
-  note: Your copy stays on your device.
 ---
 
 ## Credits
 
-Made by the Dreamports team. The game’s rules come from [cypressru’s decompilation](https://github.com/cypressru/SonicBattleDecomp), a community project turning Sonic Battle’s program back into readable code, which this Dreamport reads as a guide.
+Made by the Dreamports team.

@@ -21,7 +21,6 @@ ownCopy:
     - label: Play
       href: https://dreamports.net/play/sonic-advance/
       icon: play
-  note: Your copy stays on your device.
 extras:
   - name: Widescreen
     icon: aspect-ratio
@@ -52,7 +51,6 @@ extras:
       still: /media/sonic-tricks-still.webp
 facts:
   - label: Article
-    value: On nahuelgenchi.com
     href: https://nahuelgenchi.com/gaming/onsoku-advance/
 screen:
   clip: /media/sonic-advance-dreamport
@@ -63,4 +61,4 @@ glow: '#8fd1ff'
 
 ## Credits
 
-Made by [Nahuel Genchi](https://nahuelgenchi.com/). The game’s rules come from [SAT-R](https://github.com/SAT-R), the community project that turned Sonic Advance’s program back into readable code.
+Made by [Nahuel Genchi](https://nahuelgenchi.com/).

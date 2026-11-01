@@ -12,11 +12,10 @@ const Tag = href ? 'a' : 'button';
 ---
 
 <div class="view-bar">
-  <Tag class="corner view-back" href={href} type={href ? undefined : 'button'} data-close>
+  <Tag class="corner no-label view-back" href={href} type={href ? undefined : 'button'} aria-label="Back" data-close>
     <Key label="Esc" pad="B" round />
     <svg class="c-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
       <path d="M3 1h1v1H3zM2 2h2v1H2zM1 3h8v1H1zM0 4h9v1H0zM1 5h8v1H1zM2 6h2v1H2zM3 7h1v1H3z"></path>
     </svg>
-    Back
   </Tag>
 </div>

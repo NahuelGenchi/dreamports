@@ -15,7 +15,7 @@ import PlayerCard from './PlayerCard.astro';
 import ProfileCard from './ProfileCard.astro';
 import SettingsCard from './SettingsCard.astro';
 import Slot from './Slot.astro';
-import { FILTERS, SECTIONS, SLOTS, getGames, type Filter, type FilterKey, type Game } from '../lib/site';
+import { FILTERS, SECTIONS, getGames, type Filter, type FilterKey, type Game } from '../lib/site';
 import { beingMade, makeView } from '../lib/dreamports';
 import { making as readMaking } from '../lib/making';
 
@@ -27,12 +27,12 @@ interface Props {
   open?: 'about' | 'inspect' | 'make' | 'profile' | 'player';
 }
 
-// a place in a row: a game, a Dreamport's place in the Make row, the way to start one, or an empty slot
+// a place in a row: a game, a Dreamport's place in the Make row, or the way to start one
 interface Place {
   game?: Game;
   make?: boolean;
   start?: boolean;
-  free?: { count: number; help: string };
+  free?: { help: string };
 }
 
 const { filter, selected, open } = Astro.props;
@@ -48,9 +48,7 @@ const rows = FILTERS.map((f) => {
   if (f.key === 'make') {
     return { filter: f, list: [...making.map((game): Place => ({ game, make: true, free: freeOf(game) })), { start: true }] };
   }
-  const list: Place[] = games.filter((game) => f.kinds.includes(game.data.kind)).map((game) => ({ game }));
-  while (list.length < SLOTS) list.push({});
-  return { filter: f, list };
+  return { filter: f, list: games.filter((game) => f.kinds.includes(game.data.kind)).map((game): Place => ({ game })) };
 });
 const current = rows.find((row) => row.filter.key === filter)!;
 const selIndex = Math.max(0, current.list.findIndex((place) => !!place.game && place.game.id === selected));
@@ -63,31 +61,27 @@ const pathsFor = (f: Filter) =>
 <div class="launcher" id="launcher" data-filter={filter} data-sel={selIndex} data-view={open}>
   <header class="topbar">
     <div class="side">
-      <div class="pill clock" aria-hidden="true"><Doorway /><time id="clock"></time></div>
+      <Doorway />
     </div>
     <div class="filters">
       <button type="button" class="shoulder" id="btn-l" aria-label="Previous filter" aria-keyshortcuts="L Q">L</button>
       <div class="tabs" role="tablist" aria-label="Filters">
         {
           FILTERS.map((f, i) => (
-            <Fragment>
-              {i > 0 && <span class="tab-sep" aria-hidden="true">·</span>}
-              <a
-                class="tab"
-                role="tab"
-                id={`tab-${i}`}
-                href={f.path}
-                data-filter={f.key}
-                data-title={f.title}
-                data-paths={pathsFor(f)}
-                data-lead={f.lead}
-                aria-selected={f.key === filter ? 'true' : 'false'}
-                aria-controls="row"
-                tabindex={f.key === filter ? undefined : -1}
-              >
-                {f.label}
-              </a>
-            </Fragment>
+            <a
+              class="tab"
+              role="tab"
+              id={`tab-${i}`}
+              href={f.path}
+              data-filter={f.key}
+              data-title={f.title}
+              data-paths={pathsFor(f)}
+              aria-selected={f.key === filter ? 'true' : 'false'}
+              aria-controls="row"
+              tabindex={f.key === filter ? undefined : -1}
+            >
+              {f.label}
+            </a>
           ))
         }
         <i class="tab-mark" id="tab-mark" aria-hidden="true"></i>
@@ -117,18 +111,17 @@ const pathsFor = (f: Filter) =>
       </div>
     </div>
     <div class="side end">
-      <div class="pill status">
+      <div class="status">
+        <svg id="ico-pad" class="is-off" viewBox="0 0 13 8" shape-rendering="crispEdges" role="img" aria-label="A controller is connected"></svg>
         <button type="button" class="status-sound" id="btn-sound" role="switch" aria-checked="false" aria-label="Menu sounds">
           <svg id="ico-sound" viewBox="0 0 11 9" shape-rendering="crispEdges" aria-hidden="true"></svg>
         </button>
-        <svg id="ico-pad" viewBox="0 0 13 8" shape-rendering="crispEdges" role="img"></svg>
       </div>
     </div>
   </header>
 
   <main class="stage" id="stage">
     <Heading class="sr-only">Dreamports</Heading>
-    <p class="row-lead" id="row-lead" hidden={!current.filter.lead}>{current.filter.lead}</p>
     <div class="row" id="row" aria-label={`Games: ${current.filter.label}`}>
       {current.list.map((place, i) => <Slot {...place} index={i} />)}
     </div>
@@ -155,7 +148,7 @@ const pathsFor = (f: Filter) =>
 
   <nav class="corners" aria-label="Menu">
     <div class="corner-group">
-      <button type="button" class="corner" id="btn-settings" aria-keyshortcuts="S">
+      <button type="button" class="corner no-label" id="btn-settings" aria-label="Settings" aria-keyshortcuts="S">
         <Key label="S">
           <svg viewBox="0 0 5 4"><path d="M0 0h5v1H0zM0 1.5h5v1H0zM0 3h5v1H0z"></path></svg>
         </Key>
@@ -163,10 +156,11 @@ const pathsFor = (f: Filter) =>
           <path d="M0 1h9v1H0zM5 0h2v3H5zM0 4h9v1H0zM1 3h2v3H1zM0 7h9v1H0zM4 6h2v3H4z"></path>
         </svg>
       </button>
-      <a class="corner" id="btn-about" href="/about/" aria-keyshortcuts="A">
+      <a class="corner no-label" id="btn-about" href="/about/" aria-label="About" aria-keyshortcuts="A">
         <Key label="A" pad="Y" round />
-        <Doorway class="c-icon" />
-        About
+        <svg class="c-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
+          <path d="M2 0h5v1H2zM1 1h1v1H1zM7 1h1v1H7zM0 2h1v5H0zM8 2h1v5H8zM1 7h1v1H1zM7 7h1v1H7zM2 8h5v1H2zM4 2h1v1H4zM4 4h1v3H4z"></path>
+        </svg>
       </a>
     </div>
     <div class="corner-group">
@@ -212,7 +206,12 @@ const pathsFor = (f: Filter) =>
   <div class="bo-inner">
     <Doorway />
     <p class="bo-line">Opening <span id="bo-name"></span><span class="bo-dots"></span></p>
-    <button type="button" class="bo-back" id="bo-back" hidden><Key label="Esc" pad="B" round />Back</button>
+    <button type="button" class="bo-back" id="bo-back" aria-label="Back" hidden>
+      <Key label="Esc" pad="B" round />
+      <svg class="c-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
+        <path d="M3 1h1v1H3zM2 2h2v1H2zM1 3h8v1H1zM0 4h9v1H0zM1 5h8v1H1zM2 6h2v1H2zM3 7h1v1H3z"></path>
+      </svg>
+    </button>
   </div>
 </div>
 
