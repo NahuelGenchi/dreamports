@@ -64,7 +64,7 @@ These are the projects on the site so far.
 | | Dreamport | What it is | Code ported | Gameplay proven | Lead | Try it |
 | :---: | :--- | :--- | :--- | :--- | :--- | :--- |
 | 🌙 | **[Sonic Battle Dreamport](games/sonic-battle/)** | Sonic Battle, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install. Bring your own copy of the game. | [3.51%](.github/readme/progress/sonic-battle.svg) | [0%, 0 of 19 parts](.github/readme/progress/sonic-battle.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-battle/) |
-| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [38.95%](.github/readme/progress/sonic-advance.svg) | [13.89%, 5 of 36 parts](.github/readme/progress/sonic-advance.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
+| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [41.07%](.github/readme/progress/sonic-advance.svg) | [13.89%, 5 of 36 parts](.github/readme/progress/sonic-advance.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
 
 <!-- End of the table of Dreamports. -->
 
@@ -82,7 +82,7 @@ These are the projects on the site so far.
 
 **No coding needed.** Your coding agent does the technical work. You bring the game and play it, and your agent checks what you play against the original.
 
-You need three things: your own copy of the game as a file, a free GitHub account, and a coding agent that works on your computer, such as Claude Code, Codex, Cursor, Gemini CLI or Antigravity CLI. For a Game Boy Advance game, your copy is a `.gba` file made from your cartridge. It never leaves your computer.
+You need three things: your own copy of the game as a file, a free GitHub account, and a coding agent that works on your computer, such as Claude Code, Codex, Cursor, Gemini CLI or Antigravity CLI. For a Game Boy Advance game, your copy is a `.gba` file made from your cartridge. The file never leaves your computer. When your agent needs to see how one of the game's functions works, it reads just that function, and that part goes to the company that runs your agent's model, as everything an agent reads does.
 
 **Step 1: paste one sentence.** Make a new, empty folder, open your coding agent in it, and paste this, with your game's name in it. Every Dreamport being made has a page in the Make tab on [dreamports.net](https://dreamports.net/make/), with its sentence ready to copy, how many of its pieces are free to take and its latest steps:
 
