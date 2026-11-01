@@ -2428,8 +2428,9 @@ dialog.card[open] {
 /* with three filters, a phone keeps room in the top bar for the clock and the badge: the tabs switch rows by
    themselves, so L and R go, and on the narrowest phones the tabs draw closer together. The search field reaches
    4 px past the tabs into the room L and R leave, with less room round its icon and its ×, so it keeps
-   "Search Dreamports". The Settings badge keeps the tighter frame it has on narrower phones, with its controller icon
-   too, so the search's focus ring stays clear of it */
+   "Search Dreamports". The × drops its Esc hint, as on touch screens, so a computer zoomed in to this width keeps it
+   too. The Settings badge keeps the tighter frame it has on narrower phones, with its controller icon too, so the
+   search's focus ring stays clear of it */
 @media (max-width: 440px) {
   .shoulder {
     display: none;
@@ -2444,6 +2445,10 @@ dialog.card[open] {
 
   .search-end {
     padding: 0 3px;
+  }
+
+  .search-end .key {
+    display: none;
   }
 
   .status {
