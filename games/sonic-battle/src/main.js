@@ -10,6 +10,7 @@ import { createVideo, SCREEN_W, SCREEN_H } from '../../../kit/gba/video.js';
 import { createClock, GBA_FRAME_MS } from '../../../kit/gba/clock.js';
 import { createInput } from '../../../kit/gba/input.js';
 import { proof } from '../../../kit/gba/proof.js';
+import { createSettings } from '../../../kit/gba/ui/settings.js';
 import { createCore, step } from './core.js';
 import { logos } from './logos.js';
 
@@ -34,6 +35,8 @@ const stage = document.getElementById('stage');
 const screen = document.getElementById('screen');
 const input = createInput(LAYOUT);
 proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
+// the settings, with the controls the layout gives, and what a button does so far
+createSettings(stage, input, { brand: 'Sonic Battle Dreamport', what: { start: 'Start: skips the SEGA and Sonic Team logos' } });
 let rom = null;
 
 createRomSetup(picker, {
