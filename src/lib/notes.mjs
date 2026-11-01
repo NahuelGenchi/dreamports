@@ -1,6 +1,6 @@
 // The notes in a game's or a kit's folder (docs/NOTES.md), read the same way by the build, `npm run check` and the proof
 // tools. What a note is and what it may hold is in .github/moderation/notes.mjs, which the Dreamports bot uses too.
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { NOTE_NAME, noteProblems, parseNote } from '../../.github/moderation/notes.mjs';
 
@@ -15,9 +15,14 @@ const listed = folder => (existsSync(folder) ? readdirSync(folder, { withFileTyp
  *  keeps it from being read. A note with problems is still listed, with no parts, and nothing but the build's and
  *  `npm run check`'s messages quotes from it. */
 export function notesIn(root, top, name) {
-  return listed(join(root, top, name, 'notes')).filter(entry => !entry.name.startsWith('.')).map(entry => {
+  const folder = join(root, top, name, 'notes');
+  const empty = (file, path) => ({ name: file.replace(/\.md$/, ''), path, title: '', about: [], proof: [], text: '' });
+  if (existsSync(folder) && !lstatSync(folder).isDirectory()) {
+    return [{ ...empty('notes', `${top}/${name}/notes`), problems: ['A notes folder has to be a folder of its own, not a link to one somewhere else.'] }];
+  }
+  return listed(folder).filter(entry => !entry.name.startsWith('.')).map(entry => {
     const path = `${top}/${name}/notes/${entry.name}`;
-    const base = { name: entry.name.replace(/\.md$/, ''), path, title: '', about: [], proof: [], text: '' };
+    const base = empty(entry.name, path);
     if (!entry.isFile() || !NOTE_NAME.test(entry.name)) {
       return { ...base, problems: ['A note is a plain file named with lowercase letters, numbers and single dashes, ending in .md.'] };
     }

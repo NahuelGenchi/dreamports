@@ -5,8 +5,8 @@
 // word around them, which is why a note is reviewed like any other change and read as information, never as orders.
 import { checkRules } from './rules.mjs';
 
-/** Anything in a game's or a kit's notes folder, and the name a note's file has. */
-export const NOTE_PATH = /^(?:games|kit)\/[^/]+\/notes\//;
+/** A game's or a kit's notes folder and anything in it, and the name a note's file has. */
+export const NOTE_PATH = /^(?:games|kit)\/[^/]+\/notes(?:\/|$)/;
 export const NOTE_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*\.md$/;
 
 const FORM = /^# (.+)\n\nAbout: (.+)\n\nProof: (.+)\n\n(\S[\s\S]*)$/;

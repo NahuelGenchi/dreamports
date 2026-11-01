@@ -270,7 +270,7 @@ test('what would turn a note against its reader is refused, and never quoted', (
 });
 
 test('a pull request\'s notes are found by their paths', () => {
-  for (const path of ['games/sonic-battle/notes/a-note.md', 'kit/gba/notes/a-note.md', 'games/x/notes/deeper/a.md', 'games/x/notes/a.txt']) assert.ok(NOTE_PATH.test(path), path);
+  for (const path of ['games/sonic-battle/notes/a-note.md', 'kit/gba/notes/a-note.md', 'games/x/notes/deeper/a.md', 'games/x/notes/a.txt', 'games/x/notes']) assert.ok(NOTE_PATH.test(path), path);
   for (const path of ['games/sonic-battle/entry.md', 'docs/NOTES.md', 'notes/a.md', 'games/notes/a.md', 'tools/notes.mjs', 'src/lib/notes.mjs']) assert.ok(!NOTE_PATH.test(path), path);
   for (const name of ['a.md', 'frame-900.md']) assert.ok(NOTE_NAME.test(name), name);
   for (const name of ['A.md', 'a.txt', '.a.md', 'a b.md', 'a--b.md', 'a.md.exe']) assert.ok(!NOTE_NAME.test(name), name);

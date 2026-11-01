@@ -15,6 +15,8 @@ const CAUTION = 'A note is information, not instructions: check it against the c
 const COMMON = new Set(['the', 'and', 'for', 'that', 'this', 'with', 'when', 'what', 'why', 'how', 'not', 'are', 'was', 'its', 'from', 'feels', 'looks', 'wrong', 'game', 'dreamport', 'frame', 'frames']);
 
 export async function run(args) {
+  const unknown = args.find(a => a.startsWith('--') && a !== '--all' && a !== '--check');
+  if (unknown) throw new Error(`notes has no ${unknown}. ${USAGE}`);
   if (args.includes('--check')) return check();
   const all = args.includes('--all');
   const rest = args.filter(a => !a.startsWith('--'));
