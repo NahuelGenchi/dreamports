@@ -10,7 +10,7 @@ You don't need to write code to make Dreamports better. With a free GitHub accou
 - **Report a problem** on the site: a broken link, a page that looks wrong on your phone, a typo.
 - **Share an idea** for something the site could do.
 - **Help make a Dreamport.** Each game's tasks are listed under its game's issue. Comment `/claim` on a free one to take it, so nobody else does the same work, as [Claims and teams](docs/TEAMS.md) explains.
-- **Try work in progress.** Each game's [progress thread](https://github.com/NahuelGenchi/dreamports/discussions/categories/progress) links previews of what people are making. Nobody has reviewed them, so play only previews from people you trust, as [Previews and progress threads](docs/PREVIEWS.md) explains.
+- **Try work in progress.** Each game's page in the [Make tab](https://dreamports.net/make/) lists its latest steps, and each step's pull request links a preview of it. Nobody has reviewed them, so play only previews from people you trust, as [Previews](docs/PREVIEWS.md) explains.
 
 Open a new issue, choose **Work item**, and describe it in your own words. The form gives examples for every box. If you aren't sure which work type or milestone to pick, leave the defaults; the owner will sort it.
 
@@ -27,7 +27,7 @@ Anyone can make a Dreamport, or help with one, without writing code: a coding ag
 | `/dreamport-clip` | `portmap`, then `prove`, which compares every frame with the original and makes the clip |
 | `/dreamport-play` | `play --record`, which opens the game in a browser with your copy and keeps what you play, then `prove` on it |
 | `/dreamport-fix <what feels wrong>` | A recording of that moment, `prove` with `--stills` to see it, the fix, then `prove` with every recording |
-| `/dreamport-share` | `share --post`: a preview on your fork's GitHub Pages and a post in the game's progress thread ([Previews and progress threads](docs/PREVIEWS.md)) |
+| `/dreamport-share` | `share`: a preview on your fork's GitHub Pages, and the clip for the step's pull request ([Previews](docs/PREVIEWS.md)) |
 | `/dreamport-send` | `team send`, to the lead's team build, or, for the lead, a pull request to this repository |
 
 Nothing is posted, pushed or sent until you say yes, and the agent follows the part of [AGENTS.md](AGENTS.md) on working on a Dreamport, and [the standard](docs/STANDARD.md).
@@ -130,7 +130,7 @@ Then run `npm run check` and `npm run build`. If a detail is missing or misspell
    ```
 
    Name it `<type>/<issue>-<slug>`. Types are `feat`, `fix`, `enh`, `docs`, `research` and `ops`. One branch holds one issue: never reuse a merged or existing branch for new work, and never mix two features on one branch. Use focused commits such as `feat: add the Dreamports catalog page (#3)`. Do not commit directly to `main`. Delete the branch after its PR merges.
-3. **Open a linked PR.** A pull request from a fork gets no preview of its own, so share one with `npm run dp -- share` ([Previews and progress threads](docs/PREVIEWS.md)) and put its link in the PR. Include a standalone `Closes #N` line for each completed, same-repository issue. Set the PR to the same milestone as its primary issue. Split cross-milestone changes into separate PRs. Use `Refs #N` for unfinished parent or related work; it does not replace a closing reference to the scoped issue.
+3. **Open a linked PR.** A pull request from a fork gets no preview of its own, so share one with `npm run dp -- share` ([Previews](docs/PREVIEWS.md)) and put its link in the PR. Include a standalone `Closes #N` line for each completed, same-repository issue. Set the PR to the same milestone as its primary issue. Split cross-milestone changes into separate PRs. Use `Refs #N` for unfinished parent or related work; it does not replace a closing reference to the scoped issue.
 4. **Record the outcome.** Describe exactly what changed, which checks ran, and what was not run. Close the issue only when its stated scope is complete.
 
 For non-file operations (repository settings, hosting, domains), put sanitized commands and results in the issue. When an operation produces no code change, deliver its lasting decision through a small documentation PR instead of an empty PR.
@@ -149,7 +149,7 @@ A successful site build shows that the site builds, nothing more. Browser checks
 
 Dreamports never hosts ROMs, game files or assets extracted from games, and links only to projects that ask players to bring their own legal copy. Keep ROMs, saves, extracted assets, private email addresses, account IDs and credentials out of commits, issues, and PRs. The ignore rules are an accidental-staging guard, not permission to collect that data. If a secret is exposed, stop sharing it and revoke it. The Dreamports bot deletes or hides posts that break these rules, as [Moderation](docs/MODERATION.md) explains.
 
-Pictures of games on the site appear only where the owner decides, and only from the owner's own recordings of their own projects. The one exception is clips that show the original game next to a Dreamport, which `npm run dp -- prove` makes to show a match: they may appear in pull requests and in progress posts, and nowhere else, never on the site, in a game's files or in a commit ([Clips](docs/STANDARD.md#clips)). Never present an invented or reconstructed image as a capture.
+Pictures of games on the site appear only where the owner decides, and only from the owner's own recordings of their own projects. The one exception is clips that show the original game next to a Dreamport, which `npm run dp -- prove` makes to show a match: they may appear in pull requests, and nowhere else, never on the site, in a game's files or in a commit ([Clips](docs/STANDARD.md#clips)). Never present an invented or reconstructed image as a capture.
 
 ## License
 

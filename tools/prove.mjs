@@ -297,7 +297,7 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
     };
     const { file, bitrate } = await encode(false);
     writeFileSync(join(out, 'clip.mp4'), file);
-    // the Dreamport on its own, with nothing of the original: the clip share can post (tools/share.mjs)
+    // the Dreamport on its own, with nothing of the original, which may go anywhere: share --clip takes it
     const own = await encode(true);
     writeFileSync(join(out, 'dreamport.mp4'), own.file);
     writeFileSync(join(out, 'dreamport.png'), Buffer.from((await page.evaluate(`__proof.still(${clipFrames[clipFrames.length >> 1]}, false, true)`)).png, 'base64'));

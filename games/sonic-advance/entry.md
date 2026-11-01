@@ -15,7 +15,6 @@ sources:
     href: https://github.com/SAT-R/sa2
     license: none
     use: guide
-thread: https://github.com/NahuelGenchi/dreamports/discussions/110
 ownCopy:
   confirm: I own Sonic Advance
   links:

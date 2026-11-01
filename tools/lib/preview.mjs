@@ -16,7 +16,7 @@ import { looksLikeCopy } from '../gba/header.mjs';
 
 /** The fork's branch GitHub Pages serves the previews from. */
 export const BRANCH = 'dreamports-previews';
-/** Where the clips posted in progress threads go on the previews site, apart from the previews. */
+/** Where the clips for pull requests go on the previews site, apart from the previews. */
 export const CLIPS = 'clips';
 
 const TEMPLATES = new URL('../preview/', import.meta.url);

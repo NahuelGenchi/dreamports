@@ -187,8 +187,8 @@ export function credentialIn(text) {
 
 // What the plain rules make of a post. key is the verdict when a rule settles it, with rule naming the rule; with no
 // key, hints lists what's worth the model's look, and a post with no hints keeps the rules. context gives the post's
-// author, whose own previews on GitHub Pages need no second look, where it is (issue, pull-request, discussion or
-// progress-thread), and spam: false to leave out the spam rule, for the repository's own people.
+// author, whose own previews on GitHub Pages need no second look, where it is (issue, pull-request or discussion),
+// and spam: false to leave out the spam rule, for the repository's own people.
 export function checkRules(text, context = {}) {
   const plain = normalize(String(text ?? '').slice(0, 100000));
   const links = linksIn(plain);

@@ -1,6 +1,6 @@
 # Moderation
 
-[Back to README](../README.md) · [Contribution workflow](../CONTRIBUTING.md) · [Previews and progress threads](PREVIEWS.md) · [Written in: #129](https://github.com/NahuelGenchi/dreamports/issues/129)
+[Back to README](../README.md) · [Contribution workflow](../CONTRIBUTING.md) · [Previews](PREVIEWS.md) · [Written in: #129](https://github.com/NahuelGenchi/dreamports/issues/129)
 
 ## In plain words
 
@@ -24,7 +24,7 @@ Each new or edited issue, pull request title and description, comment on an issu
 
 A post the rules find nothing in, with no links outside a short list of known sites, no attachments and none of the words that hint at a broken rule, is allowed without a model.
 
-**A model gets the rest**, with what the rules noticed: a link to a site they don't know, an attached file, words about getting games, piracy, insults, private details or takedowns, or words that talk to the bot. Its instructions, in [`.github/moderation/prompt.md`](../.github/moderation/prompt.md), sum up the project's rules from the [standard](STANDARD.md), [Clips](STANDARD.md#clips), [Previews and progress threads](PREVIEWS.md) and [Notices from rights holders](RIGHTS.md). It gets the post as data, never as instructions, and answers with one key from a fixed list, alone: `allow`, `game-files`, `rom-site`, `asks-for-games`, `clip-of-original`, `personal-data`, `credential`, `abuse`, `spam` or `rights-notice`. Anything else counts as no answer, and nothing the model writes is ever posted. When it's unsure, it allows the post.
+**A model gets the rest**, with what the rules noticed: a link to a site they don't know, an attached file, words about getting games, piracy, insults, private details or takedowns, or words that talk to the bot. Its instructions, in [`.github/moderation/prompt.md`](../.github/moderation/prompt.md), sum up the project's rules from the [standard](STANDARD.md), [Clips](STANDARD.md#clips), [Previews](PREVIEWS.md) and [Notices from rights holders](RIGHTS.md). It gets the post as data, never as instructions, and answers with one key from a fixed list, alone: `allow`, `game-files`, `rom-site`, `asks-for-games`, `clip-of-original`, `personal-data`, `credential`, `abuse`, `spam` or `rights-notice`. Anything else counts as no answer, and nothing the model writes is ever posted. When it's unsure, it allows the post.
 
 ## What it does
 
@@ -42,7 +42,7 @@ Each verdict has a fixed plan, written in code, for each kind of post:
 
 A deleted comment is gone for everyone. The bot deletes only when the plain rules found a game file or a site that shares them, which they rarely get wrong, since a deletion can't be undone; a review can't be deleted, and a comment in Discussions that has replies is only hidden, so the replies stay. A hidden comment shows GitHub's reason, such as off-topic, spam or abuse, and stays readable for whoever opens it. A post the bot closes and locks can't get more comments. A reply names the post's author, links the post, unless it was deleted, and the rule, never quotes the post, and ends with a line saying it comes from the Dreamports bot. In Discussions it goes under the comment it answers, or at the end of the thread when that comment is deleted or hidden, since GitHub takes no replies under a hidden comment. A reply to a key, token or password asks its owner to revoke it, since anyone may have copied it already.
 
-**Clips of the original** are welcome in pull requests and in progress posts, the comments in a game's [progress thread](PREVIEWS.md#progress-threads), as [Clips](STANDARD.md#clips) says. Comments on a pull request count as the pull request's, so the bot only acts on clips of the original anywhere else.
+**Clips of the original** are welcome in pull requests, as [Clips](STANDARD.md#clips) says. Comments and reviews on a pull request count as the pull request's, so the bot only acts on clips of the original anywhere else, Discussions included.
 
 **The repository's own people**, its owner, members and collaborators, are never hidden or closed: when the plain rules find something in one of their posts, the bot only flags it in the log, once for each reason, and it never sends their posts to a model. The same goes for comments starting with `/claim` or `/release`, which the [claims workflow](TEAMS.md) answers: the bot never hides them, answers them or sends them to a model. One gap: in a repository that belongs to an organization, GitHub only tells the workflow about the members whose membership is public, so the bot treats a member whose membership is private like anyone else.
 

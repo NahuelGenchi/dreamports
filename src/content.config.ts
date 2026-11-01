@@ -2,7 +2,7 @@ import { defineCollection } from 'astro:content';
 import { glob, type Loader } from 'astro/loaders';
 import { z } from 'astro/zod';
 import { ICON_NAMES } from './lib/icons';
-import { ENTRY, GITHUB_NAME, THREAD, pageOf } from './lib/entries.mjs';
+import { ENTRY, GITHUB_NAME, pageOf } from './lib/entries.mjs';
 
 // Every game on the site. A Dreamport's page comes from its entry, games/<game>/entry.md, which
 // games/README.md explains field by field; every other game's from one Markdown file in
@@ -109,8 +109,7 @@ const dreamport = z.object({
         }),
     )
     .default([]),
-  // the game's progress thread, and the lead's team preview, which nobody has reviewed
-  thread: z.string().regex(THREAD, 'a discussion in NahuelGenchi/dreamports, such as https://github.com/NahuelGenchi/dreamports/discussions/110').optional(),
+  // the lead's team preview, which nobody has reviewed
   preview: https.optional(),
   // more lines for the game's box, such as an article about it
   facts: z.array(fact).default([]),

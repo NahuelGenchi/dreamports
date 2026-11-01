@@ -1035,14 +1035,12 @@ function start(launcher: HTMLElement) {
           openCard(aboutCard, { section: 'privacy' });
           return;
         }
-        // a game's page, from its page in the Make row, takes that page's place
-        if (link.dataset.page !== undefined) {
-          const page = [...inspectCards.values()].find((d) => d.dataset.path === href);
-          if (page) {
-            e.preventDefault();
-            openCard(page);
-            return;
-          }
+        // another page of the launcher's, such as a game's page from its page in the Make row, takes this one's place
+        const page = [...inspectCards.values(), ...makeCards].find((d) => d !== dlg && d.dataset.path === href);
+        if (page) {
+          e.preventDefault();
+          openCard(page);
+          return;
         }
         // a player's public profile, from the player's own
         if (link.dataset.player !== undefined) {

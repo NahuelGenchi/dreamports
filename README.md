@@ -109,7 +109,7 @@ These are all the commands, in the order you'll usually need them:
 | `/dreamport-clip` | Checks your latest step against the original and shows a clip of both. |
 | `/dreamport-play` | Opens the game in your browser, with your copy, and checks what you play against the original. |
 | `/dreamport-fix <what feels wrong>` | Compares that moment with the original and fixes it. |
-| `/dreamport-share` | Puts your preview online and posts it in the game's progress thread. |
+| `/dreamport-share` | Puts your preview online, where anyone with the link can play it. |
 | `/dreamport-send` | Sends your finished piece to the game's lead, or to the Dreamports team if you're the lead. |
 
 Pasting the sentence starts the first one, `/dreamport`, which only looks and explains. Every other command does one thing, and only when you type it. Before anything is posted or sent, your agent tells you exactly where it's going and waits for your yes. Between commands, answer its questions in your own words. In Codex, type `$` instead of `/`, as in `$dreamport`.
@@ -168,7 +168,7 @@ A broken link, a typo, a page that looks wrong on your phone? [Let us know](http
 <td width="33%" valign="top">
 
 ⭐ **Follow along**<br>
-Press **Star** at the top of this page to keep Dreamports on your radar, and see each game grow in its [progress thread](https://github.com/NahuelGenchi/dreamports/discussions/categories/progress).
+Press **Star** at the top of this page to keep Dreamports on your radar, and see each game grow on its page in the [Make tab](https://dreamports.net/make/).
 
 </td>
 </tr>

@@ -1,16 +1,10 @@
 // What share needs from GitHub, through the GitHub CLI (gh) signed in as the contributor: their fork of the
-// repository, its GitHub Pages site, and the progress threads in the repository's Discussions. Everything it
-// publishes or posts goes out under the contributor's own account.
+// repository and its GitHub Pages site. Everything it publishes goes out under the contributor's own account.
 
 import { execFileSync } from 'node:child_process';
 
-/** The repository Dreamports are made in, whose Discussions hold the progress threads. */
+/** The repository Dreamports are made in. */
 export const UPSTREAM = 'NahuelGenchi/dreamports';
-/** The Discussions category with one thread per game, and the field its threads name their game with. */
-export const PROGRESS = 'progress';
-export const GAME_FIELD = 'Game folder';
-
-const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 function gh(args, input) {
   try {
@@ -33,13 +27,6 @@ export function api(path, { method = 'GET', body } = {}) {
     if (error.status === 404) return null;
     throw error;
   }
-}
-
-/** A GraphQL query or change: its data. */
-export function graphql(query, variables = {}) {
-  const out = JSON.parse(gh(['api', 'graphql', '--input', '-'], JSON.stringify({ query, variables })));
-  if (out.errors?.length) throw new Error(out.errors.map(e => e.message).join('\n'));
-  return out.data;
 }
 
 /** The contributor's GitHub name, or an error saying how to sign in. */
@@ -116,63 +103,4 @@ export function lastBuild(repository) {
 /** Asks GitHub to build the Pages site again. */
 export function buildPages(repository) {
   api(`repos/${repository}/pages/builds`, { method: 'POST' });
-}
-
-/** The game a progress thread is for: what its first post gives as its folder, or null. */
-export function gameOfThread(body) {
-  const found = new RegExp(`^###\\s*${GAME_FIELD}\\s*\\n+\\s*\`?([^\\n\`]+)\`?\\s*$`, 'm').exec(body ?? '');
-  const game = found?.[1].trim();
-  return game && NAME.test(game) ? game : null;
-}
-
-/** The first post of a game's thread, as the Progress category's form writes it. */
-export function threadBody(game, about) {
-  return `### ${GAME_FIELD}\n\n${game}\n\n### About the game\n\n${about}\n`;
-}
-
-/** The Progress category of the repository's Discussions, { repositoryId, categoryId }, or an error if there's none. */
-export function progressCategory() {
-  const [owner, name] = UPSTREAM.split('/');
-  const { repository } = graphql(`query($owner: String!, $name: String!) {
-    repository(owner: $owner, name: $name) { id hasDiscussionsEnabled discussionCategories(first: 50) { nodes { id slug } } }
-  }`, { owner, name });
-  const category = repository.hasDiscussionsEnabled && repository.discussionCategories.nodes.find(c => c.slug === PROGRESS);
-  if (!category) throw new Error(`${UPSTREAM} has no Progress category in its Discussions yet, so there's nowhere to post.`);
-  return { repositoryId: repository.id, categoryId: category.id };
-}
-
-/** A game's progress thread, the first one opened that's still open: { id, url, title }; or null. */
-export function threadOf(categoryId, game) {
-  const [owner, name] = UPSTREAM.split('/');
-  for (let after = null; ;) {
-    const { repository } = graphql(`query($owner: String!, $name: String!, $category: ID!, $after: String) {
-      repository(owner: $owner, name: $name) {
-        discussions(first: 100, after: $after, categoryId: $category, orderBy: { field: CREATED_AT, direction: ASC }) {
-          nodes { id url title body closed }
-          pageInfo { hasNextPage endCursor }
-        }
-      }
-    }`, { owner, name, category: categoryId, after });
-    const { nodes, pageInfo } = repository.discussions;
-    const thread = nodes.find(t => !t.closed && gameOfThread(t.body) === game);
-    if (thread) return { id: thread.id, url: thread.url, title: thread.title };
-    if (!pageInfo.hasNextPage) return null;
-    after = pageInfo.endCursor;
-  }
-}
-
-/** Opens a game's progress thread: { id, url, title }. */
-export function openThread({ repositoryId, categoryId }, game, title, about) {
-  const { createDiscussion } = graphql(`mutation($repository: ID!, $category: ID!, $title: String!, $body: String!) {
-    createDiscussion(input: { repositoryId: $repository, categoryId: $category, title: $title, body: $body }) { discussion { id url title } }
-  }`, { repository: repositoryId, category: categoryId, title, body: threadBody(game, about) });
-  return createDiscussion.discussion;
-}
-
-/** Posts in a thread: the post's address. */
-export function postIn(threadId, body) {
-  const { addDiscussionComment } = graphql(`mutation($thread: ID!, $body: String!) {
-    addDiscussionComment(input: { discussionId: $thread, body: $body }) { comment { url } }
-  }`, { thread: threadId, body });
-  return addDiscussionComment.comment.url;
 }

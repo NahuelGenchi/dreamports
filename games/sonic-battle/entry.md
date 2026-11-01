@@ -10,7 +10,6 @@ controls: [keyboard, controller]
 issue: 123
 lead: NahuelGenchi
 kit: gba
-thread: https://github.com/NahuelGenchi/dreamports/discussions/128
 sources:
   - name: cypressru’s decompilation of Sonic Battle
     href: https://github.com/cypressru/SonicBattleDecomp

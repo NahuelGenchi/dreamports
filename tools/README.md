@@ -14,7 +14,7 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `prove` | Plays each recording in the original and in the Dreamport, compares every frame, updates the numbers, and with `--stills` keeps pictures of the frames you name |
 | `codemap` | Makes the code map: every function in the original, with its address and size |
 | `portmap` | Makes the port map: each function of the original the Dreamport's code names, and where |
-| `share` | Publishes a preview of a game on GitHub Pages from your own fork, and with `--post` posts in the game's progress thread |
+| `share` | Publishes a preview of a game on GitHub Pages from your own fork, with the newest clip for the step's pull request |
 | `find` | Shows where a game stands: its lead, its two numbers, its team build, who has claimed which task, and the tasks still free |
 | `team` | The game's team build, the lead's branch with the team's finished pieces: `start` makes it, `join` starts a piece from it, `send` sends a piece to the lead, and `add` proves a piece and takes it in |
 | `readme` | Writes the README's table of Dreamports, with each one's numbers and lead, from their [entries](../games/README.md#the-entry), and each one's progress map |
@@ -70,7 +70,7 @@ Its results go in `.dreamports/results/<game>/<recording>/`:
 
 The clip shows the original and the Dreamport side by side, with the frame's number, and *differs* over frames that don't match. It holds every frame, about 60 a second, made inside the browser rather than filmed from a screen, so it's smooth and its pixels stay sharp. It shows the frames the recording's `clip` names, or else the four seconds before the first difference and the second after it, or else the recording's last five seconds. It's an H.264 MP4 video under 2 MB, which phones and browsers play.
 
-The clips and the pictures show the game, so they stay in `.dreamports/`, which the ignore rules keep out of commits. [Clips](../docs/STANDARD.md#clips) in the standard says where they may be shared: the clips, the original's included, in pull requests and progress posts, and nowhere else.
+The clips and the pictures show the game, so they stay in `.dreamports/`, which the ignore rules keep out of commits. [Clips](../docs/STANDARD.md#clips) in the standard says where they may be shared: clips of the original in pull requests and nowhere else, and clips of the Dreamport alone anywhere.
 
 ## The code map and the two numbers
 
@@ -97,11 +97,11 @@ Sonic Advance Dreamport's logos are frames 254 to 932 of [`logos-and-intro`](../
 
 ## Sharing a preview
 
-`npm run dp -- share <game>` publishes a preview of the game as it is in your last commit, on GitHub Pages from your own fork, at `https://<you>.github.io/dreamports/<game>/`, so anyone can play it with their own copy without waiting for a review. `--as <name>` names the preview, to keep more than one. With `--post --about "<what changed>"` it also posts in the game's progress thread in this repository's Discussions: what changed, the newest side-by-side `clip.mp4` that `prove` made (or the file `--clip` names), the game's two numbers, its progress map as it is in your last commit, and the preview's link. It asks before it publishes, before it switches Pages on for your fork the first time, and before it posts, and `--yes` answers yes for you. [Previews and progress threads](../docs/PREVIEWS.md) explains what a preview holds, what it risks for players, and how the threads work.
+`npm run dp -- share <game>` publishes a preview of the game as it is in your last commit, on GitHub Pages from your own fork, at `https://<you>.github.io/dreamports/<game>/`, so anyone can play it with their own copy without waiting for a review. `--as <name>` names the preview, to keep more than one. `--about "<what changed>"` puts a sentence of what changed on the preview's first page. Beside the preview, apart from it, goes the newest side-by-side `clip.mp4` that `prove` made (or the file `--clip` names), and `share` prints the lines that show it in the step's pull request. It posts nothing. It asks before it publishes and before it switches Pages on for your fork the first time, and `--yes` answers yes for you. [Previews](../docs/PREVIEWS.md) explains what a preview holds, what it risks for players, and where the clip goes.
 
 ## Claims and team builds
 
-`npm run dp -- find <game>` shows where a game stands before you start on it: its lead, its two numbers, its progress thread, its team build and team preview, who has claimed which task, and the tasks still free. It takes a game's folder or a few words of its name, and with no game it lists them all. The numbers come from `games/` in your folder, and the claims from this repository's issues.
+`npm run dp -- find <game>` shows where a game stands before you start on it: its lead, its two numbers, its Make page, its team build and team preview, who has claimed which task, and the tasks still free. It takes a game's folder or a few words of its name, and with no game it lists them all. The numbers come from `games/` in your folder, and the claims from this repository's issues.
 
 `npm run dp -- team <game> start`, `join <branch>`, `send` and `add <pull request>` make and use the game's team build, a branch of the lead's fork that gathers the team's finished pieces. `add` merges a piece, runs `portmap` and `prove`, and only takes it in if nothing that matched the original before differs now, then updates the team preview with `share`. [Claims and teams](../docs/TEAMS.md) explains claims, tasks and team builds.
 

@@ -1,10 +1,10 @@
-# Previews and progress threads
+# Previews
 
-[Back to README](../README.md) · [Contribution workflow](../CONTRIBUTING.md) · [The Dreamport standard](STANDARD.md) · [The proof tools](../tools/README.md) · [Written in: #78](https://github.com/NahuelGenchi/dreamports/issues/78)
+[Back to README](../README.md) · [Contribution workflow](../CONTRIBUTING.md) · [The Dreamport standard](STANDARD.md) · [The proof tools](../tools/README.md) · [Written in: #78](https://github.com/NahuelGenchi/dreamports/issues/78) · [Posts left out in: #144](https://github.com/NahuelGenchi/dreamports/issues/144)
 
 ## In plain words
 
-Nobody has to wait for the Dreamports team to see new work on a Dreamport. Whoever made it can put a **preview** online themselves: the game as it is on their branch, playable in a browser, on GitHub Pages from their own fork of this repository. It's free, online in a minute or two, and needs nobody's approval. They can also post in the game's **progress thread**, in this repository's [Discussions](https://github.com/NahuelGenchi/dreamports/discussions/categories/progress): what changed, a short clip, the game's [%](STANDARD.md#how-progress-is-measured) and the preview's link. One command does both, `npm run dp -- share`, and it asks before it publishes or posts anything.
+Nobody has to wait for the Dreamports team to see new work on a Dreamport. Whoever made it can put a **preview** online themselves: the game as it is on their branch, playable in a browser, on GitHub Pages from their own fork of this repository. It's free, online in a minute or two, and needs nobody's approval. One command does it, `npm run dp -- share`, and it asks before it publishes anything. It posts nothing: each step's pull request links its preview and shows its clip, and the game's page in the Make tab on [dreamports.net](https://dreamports.net/make/) lists its steps.
 
 Pull requests from forks get no preview on dreamports.net's own hosting, so previews on contributors' own GitHub Pages are how everyone tries work in progress.
 
@@ -16,7 +16,7 @@ A preview is someone's work in progress, at an address like `https://<name>.gith
 
 **What it keeps belongs to its author's address.** Your saves, settings and achievements in a preview, and your copy if you let it remember it, are kept in your browser for `<name>.github.io`, and every page that person publishes on GitHub Pages can read them. To keep your copy to yourself, untick *Remember on this device* before you play, or use *Forget the saved ROMs* afterwards. Clearing the site's data in your browser's settings removes everything a preview kept.
 
-**It can't touch your profile.** A preview never runs on dreamports.net. Your sign-in belongs to dreamports.net, your browser doesn't send it to other addresses, and dreamports.net only accepts changes from its own pages. So a preview can't see or change your profile, and the achievements you earn in it stay in that browser. dreamports.net never asks you to sign in on a preview: if one does, don't, and say so in its thread.
+**It can't touch your profile.** A preview never runs on dreamports.net. Your sign-in belongs to dreamports.net, your browser doesn't send it to other addresses, and dreamports.net only accepts changes from its own pages. So a preview can't see or change your profile, and the achievements you earn in it stay in that browser. dreamports.net never asks you to sign in on a preview: if one does, don't, and say so on the game's issue.
 
 ## For contributors: sharing a preview
 
@@ -28,33 +28,23 @@ npm run dp -- share sonic-advance
 
 That publishes a preview of `games/sonic-advance/` as it is in your last commit, at `https://<you>.github.io/dreamports/sonic-advance/`. `--as <name>` gives it another name, such as `sonic-advance-springs`, so you can keep several. A preview of the same name replaces the last one.
 
-```sh
-npm run dp -- share sonic-advance --post --about "Springs bounce Sonic as high as in the original."
-```
+`--about "Springs bounce Sonic as high as in the original."` puts a sentence of what changed on the preview's first page.
 
-That does the same, then posts in the game's progress thread from your account: what changed, the clip, the game's two numbers from its `proof/` folder, code ported and gameplay proven, and the preview's link. The first time anyone shares a game, `share` opens its thread, and says to add its link to the game's [entry](../games/README.md#the-entry) as `thread`, so the game's page links it.
-
-Before anything goes online, `share` shows what it will publish and where, and asks. The first time, it also asks to switch GitHub Pages on for your fork. Then it shows the post and asks again. `--yes` answers yes to every question, for when you've already said yes, for example to an agent working for you. Once the preview is published, `share` waits until GitHub has built it and the address shows it, which usually takes a minute or two, and gives you the link.
+Before anything goes online, `share` shows what it will publish and where, and asks. The first time, it also asks to switch GitHub Pages on for your fork. `--yes` answers yes to every question, for when you've already said yes, for example to an agent working for you. Once the preview is published, `share` waits until GitHub has built it and the address shows it, which usually takes a minute or two, and gives you the link and the lines that show the clip in your pull request.
 
 **What goes in a preview.** Only what's in your last commit: the game's folder, the kits, and the site's own files the game's pages load, such as its icon. Changes you haven't committed stay out, and `share` lists them. It refuses anything the repository's ignore rules keep out, such as ROMs and saves, and any file that is a copy of a game. It adds a stand-in for the site's `/dreamports.js`, which saves no achievements to a profile and shows the notice, a first page with the warning above, and a page listing all your previews. Previews are kept out of search engines.
 
-**The clip.** `npm run dp -- prove` makes a clip of the original and the Dreamport side by side, `clip.mp4`, and one of the Dreamport on its own, `dreamport.mp4`, and `--post` posts the newest side-by-side one, since it shows the match. `--clip <file>` posts another MP4 or PNG instead, under 2 MB, such as `dreamport.mp4`. A clip of the original may appear in progress posts and pull requests, and nowhere else, as [Clips](STANDARD.md#clips) says. GitHub can't attach a video to a post made this way, so the clip goes on your previews site, in `clips/`, and the post shows one of its frames, which opens the clip. Clips stay there when a preview is replaced, so old posts keep theirs.
+**The clip.** `npm run dp -- prove` makes a clip of the original and the Dreamport side by side, `clip.mp4`, and one of the Dreamport on its own, `dreamport.mp4`. `share` takes the newest side-by-side one, since it shows the match, and `--clip <file>` takes another MP4 or PNG instead, under 2 MB, such as `dreamport.mp4`. A clip of the original may appear in pull requests, and nowhere else, as [Clips](STANDARD.md#clips) says. GitHub can't attach a video to a pull request from the command line, so the clip goes on your previews site, in `clips/`, apart from the preview, which never shows it, and `share` prints the lines for the pull request: one of its frames, which opens the clip. Clips stay there when a preview is replaced, so older pull requests keep theirs.
 
 **Where it all lives.** Your previews are on a branch of your fork called `dreamports-previews`, one folder each, which GitHub Pages serves. GitHub builds it with its own *pages build and deployment*, which runs even though a new fork's own workflows stay off until you allow them, so you don't need to allow them. `share` makes its commits with git alone, so your own branch, folder and staged changes stay as they are. To take a preview down, delete its folder from that branch on GitHub. To take them all down, switch Pages off in your fork's settings, under Pages.
 
-**Free.** GitHub Pages and Discussions are free for public repositories. A Pages site can hold up to 1 GB, which is about a hundred previews of a game the size of Sonic Advance Dreamport, and GitHub builds it up to about ten times an hour.
+**Free.** GitHub Pages is free for public repositories. A Pages site can hold up to 1 GB, which is about a hundred previews of a game the size of Sonic Advance Dreamport, and GitHub builds it up to about ten times an hour.
 
-## Progress threads
+## For the Dreamports team: keeping it tidy
 
-Each game has one thread in the Progress category of Discussions, where everyone working on it posts each step. A post made by `share` has the same parts every time: what changed, a frame of the clip that opens the clip, the two numbers, the game's [progress map](STANDARD.md#how-progress-is-measured) as it was in that commit, the preview's link with a reminder that it hasn't been reviewed, and the commit it was made from, linked once GitHub has it: `share` doesn't push your work's branch, so until it's sent, as `/dreamport-send` does, the commit is named without a link. The map goes on your previews site next to the clips, under a name of its own, so each post keeps its own, and the thread shows the game's progress over time.
+The Dreamports bot moderates what people write on GitHub on its own, as [Moderation](MODERATION.md) explains, previews' links included: it checks a link to a preview like any other, and leaves its author's own previews alone. Clips of the original are welcome in pull requests, as [Clips](STANDARD.md#clips) says, so the bot leaves them there and hides them anywhere else.
 
-A thread names its game in its first post, under *Game folder*, such as `sonic-advance`. `share` writes it, and so does the category's form for anyone who opens a thread by hand. Anyone can open a game's thread, and a [workflow](../.github/workflows/progress-threads.yml) keeps one open thread per game: a thread that names no game, or a game that already has an open thread, gets a reply pointing to the right place, and is closed and locked.
-
-## For the Dreamports team: keeping the threads tidy
-
-The [workflow](../.github/workflows/progress-threads.yml) handles duplicate threads and threads without a game. The Dreamports bot moderates everything else on its own, as [Moderation](MODERATION.md) explains. It checks each post as it's written, deletes the comments that share game files or link sites that share them, hides the ones that show private details, keys or passwords, or are spam or abuse, and tells their authors why without quoting them. It closes and locks a thread that is spam, and keeps a log the team can read when it wants to. Clips of the original are welcome in progress posts, as [Clips](STANDARD.md#clips) says, so the bot leaves them there.
-
-What the bot leaves to GitHub, such as deleting other posts, blocking someone, limiting who can post for a while or reporting a preview to GitHub, is listed in [What the bot leaves to GitHub](MODERATION.md#what-the-bot-leaves-to-github).
+What the bot leaves to GitHub, such as blocking someone or reporting a preview to GitHub, is listed in [What the bot leaves to GitHub](MODERATION.md#what-the-bot-leaves-to-github).
 
 ## Words used here
 
@@ -63,5 +53,3 @@ What the bot leaves to GitHub, such as deleting other posts, blocking someone, l
 **GitHub Pages.** GitHub's free hosting for a repository's web pages, at `<owner>.github.io/<repository>/`.
 
 **Preview.** A game as it is on someone's branch, published on their own GitHub Pages, not reviewed.
-
-**Progress thread.** A game's thread in the Progress category of this repository's Discussions, with one post per step.

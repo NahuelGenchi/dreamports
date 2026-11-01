@@ -1,6 +1,6 @@
 # Claims and teams
 
-[Back to README](../README.md) · [Contribution workflow](../CONTRIBUTING.md) · [Previews and progress threads](PREVIEWS.md) · [Issues](https://github.com/NahuelGenchi/dreamports/issues)
+[Back to README](../README.md) · [Contribution workflow](../CONTRIBUTING.md) · [Previews](PREVIEWS.md) · [Issues](https://github.com/NahuelGenchi/dreamports/issues)
 
 Every Dreamport has one lead, and each of its tasks one person at a time, so nobody does the same work twice. Claims are issues in this repository, and the Dreamports bot answers them within seconds. Each game has one issue of its own, its **game's issue**, which lists every piece of the game and is where people talk about it. When several people work on one game, the lead's **team build** gathers their finished pieces, and its preview, the **team preview**, shows everyone's work together before the Dreamports team reviews it. With a coding agent, [`/dreamport-claim`](../README.md#make-a-dreamport) takes a game or a task for you, and `/dreamport-send` sends a finished piece to the lead.
 
@@ -10,7 +10,7 @@ Every Dreamport has one lead, and each of its tasks one person at a time, so nob
 npm run dp -- find sonic battle
 ```
 
-`find` takes a game's folder or a few words of its name. It shows the game's lead, its game's issue, its two numbers, code ported and gameplay proven, its progress thread, its team build and team preview, and the pieces under its game's issue: who has claimed which, the ones still free, and how many are done. If nobody makes a Dreamport of the game yet, it says so, and it also finds the site's other games, such as a port made elsewhere. With no game, it lists every Dreamport and every game claimed so far.
+`find` takes a game's folder or a few words of its name. It shows the game's lead, its game's issue, its two numbers, code ported and gameplay proven, its Make page, its team build and team preview, and the pieces under its game's issue: who has claimed which, the ones still free, and how many are done. If nobody makes a Dreamport of the game yet, it says so, and it also finds the site's other games, such as a port made elsewhere. With no game, it lists every Dreamport and every game claimed so far.
 
 ## Start a Dreamport
 
@@ -28,7 +28,7 @@ Whoever an issue is assigned to has it. The Dreamports team can also assign and 
 
 ## Going quiet
 
-A claim with no activity for 14 days is released, with a friendly note on its issue. Activity is anything its holder does on the game's issues and pull requests in this repository, such as a comment or a pull request that mentions the task, or in its progress thread, such as a post `share` makes. Nothing done so far is lost: the work and its preview stay where they are, and anyone can claim it again, the same person included.
+A claim with no activity for 14 days is released, with a friendly note on its issue. Activity is anything its holder does on the game's issues and pull requests in this repository, such as a comment or a pull request that mentions the task. Nothing done so far is lost: the work and its preview stay where they are, and anyone can claim it again, the same person included.
 
 A lead's claim is released the same way. The team build stays in their fork, so the next lead starts from it.
 
