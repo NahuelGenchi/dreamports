@@ -1,6 +1,6 @@
 // The launcher: one row of games to move through with the arrow keys, L and R, a swipe, a click
-// or a game controller, and cards that take its place as full screens: a game's page, about,
-// settings, the player's profile and other players' public ones (filled by profile.ts). Each card keeps the address of the page it stands for, so links can be shared and the
+// or a game controller, and cards that take its place as full screens: a game's page, a Dreamport's
+// page in the Make row, about, settings, the player's profile and other players' public ones (filled by profile.ts). Each card keeps the address of the page it stands for, so links can be shared and the
 // browser's back button closes it. Everything here is
 // added on top of plain pages: without this script, the row is a list of links.
 
@@ -73,6 +73,8 @@ function start(launcher: HTMLElement) {
   const plateName = $('#np-name', launcher);
   const plateDetail = $('#np-detail', launcher);
   const plateNumbers = $('#np-numbers', launcher);
+  const plateHelp = $('#np-help', launcher);
+  const rowLead = $('#row-lead', launcher);
   const cursor = $('#cursor', launcher);
   const target = $('#target', launcher);
   const btnSearch = $<HTMLButtonElement>('#btn-search', launcher);
@@ -88,6 +90,10 @@ function start(launcher: HTMLElement) {
   const playerCard = $<HTMLDialogElement>('#card-player');
   const cards = $$<HTMLDialogElement>('dialog.card');
   const inspectCards = new Map($$<HTMLDialogElement>('dialog[data-card="inspect"]').map((d) => [d.dataset.game!, d]));
+  const makeCards = $$<HTMLDialogElement>('dialog[data-card="make"]');
+  // a game's page and a Dreamport's page in the Make row both show the game's picture, which grows out of its place in
+  // the row as the page opens and flies back as it closes
+  const hasHero = (dlg: HTMLDialogElement | null) => dlg?.dataset.card === 'inspect' || dlg?.dataset.card === 'make';
 
   // The filters, from their tabs. Each one's row of slots waits in a template.
   const FILTERS = $$<HTMLAnchorElement>('.tab', launcher).map((tab) => {
@@ -101,6 +107,7 @@ function start(launcher: HTMLElement) {
       path: tab.getAttribute('href')!,
       paths: (tab.dataset.paths ?? '').split(' '),
       title: tab.dataset.title!,
+      lead: tab.dataset.lead ?? '',
       count: template.content.querySelectorAll('.slot[data-game]').length,
     };
   });
@@ -183,7 +190,9 @@ function start(launcher: HTMLElement) {
       el.setAttribute('aria-posinset', String(i + 1));
       el.setAttribute('aria-setsize', String(slots.length));
       const numbers = el.dataset.numbers ? `. ${el.dataset.numbers}` : '';
-      el.setAttribute('aria-label', el.dataset.game ? `${el.dataset.title}, ${el.dataset.detail}${numbers}` : (el.dataset.note ?? 'Empty slot'));
+      const detail = el.dataset.detail ? `, ${el.dataset.detail}` : '';
+      const help = el.dataset.help ? `. ${el.dataset.help}` : '';
+      el.setAttribute('aria-label', el.dataset.title ? `${el.dataset.title}${detail}${numbers}${help}` : (el.dataset.note ?? 'Empty slot'));
       el.tabIndex = -1;
     });
     rowEl.setAttribute('aria-label', 'Games: ' + f.label + (words.length ? `, matching ${state.search}` : ''));
@@ -254,6 +263,7 @@ function start(launcher: HTMLElement) {
     void rowEl.offsetWidth;
     rowEl.classList.remove('no-anim');
     moveTabMark(false);
+    placeLead();
     placePadHint(topH, rowY - RISE - TH / 2 - cg);
   }
 
@@ -315,16 +325,18 @@ function start(launcher: HTMLElement) {
 
   function updatePlate() {
     const slot = slots[sel()];
-    const game = slot?.dataset.game;
-    const text = game ? slot.dataset.title! : (slot?.dataset.note ?? 'Empty slot');
+    // a game, or the Make row's way to start a Dreamport
+    const named = slot?.dataset.title;
+    const text = named ?? slot?.dataset.note ?? 'Empty slot';
     if (plateName.textContent === text) return;
     const w0 = plate.getBoundingClientRect().width;
     plateName.textContent = text;
-    plateDetail.textContent = game ? slot.dataset.detail! : '';
+    plateDetail.textContent = (named && slot.dataset.detail) || '';
     // a Dreamport's two numbers, code ported and gameplay proven, each kept whole when they need two lines
-    const numbers = game && slot.dataset.numbers ? slot.dataset.numbers.split(' · ') : [];
+    const numbers = named && slot.dataset.numbers ? slot.dataset.numbers.split(' · ') : [];
     plateNumbers.replaceChildren(...numbers.map((text) => Object.assign(document.createElement('span'), { textContent: text })));
-    plate.classList.toggle('is-empty', !game);
+    plateHelp.textContent = (named && slot.dataset.help) || '';
+    plate.classList.toggle('is-empty', !named);
     if (calm() || !w0 || !state.ready) return;
     const w1 = plate.getBoundingClientRect().width;
     plate.animate([{ width: w0 + 'px' }, { width: w1 + 'px' }], { duration: 300, easing: 'cubic-bezier(.22,1,.36,1)' });
@@ -493,6 +505,7 @@ function start(launcher: HTMLElement) {
       const hadFocus = rowEl.contains(document.activeElement);
       rowEl.classList.remove(outCls);
       rowEl.classList.add(inCls);
+      setLead();
       buildRow();
       void rowEl.offsetWidth;
       rowEl.classList.remove(inCls);
@@ -507,7 +520,25 @@ function start(launcher: HTMLElement) {
       return;
     }
     rowEl.classList.add(outCls);
+    rowLead.classList.add('is-out');
     setTimeout(swap, 170);
+  }
+  // the line over a row that needs saying what it is, such as Make's, between the top bar and the row
+  function setLead() {
+    const lead = FILTERS[state.filter].lead;
+    rowLead.textContent = lead;
+    rowLead.hidden = !lead;
+    rowLead.classList.remove('is-out');
+    placeLead();
+  }
+  function placeLead() {
+    if (rowLead.hidden) return;
+    const top = parseFloat(launcher.style.getPropertyValue('--top-h')) || 56;
+    const rowTop = parseFloat(launcher.style.getPropertyValue('--row-y')) - RISE - TH / 2 - parseFloat(launcher.style.getPropertyValue('--cg') || '8');
+    const room = rowTop - top;
+    // where there's no room for it, as on a phone held sideways, the row goes without it
+    rowLead.classList.toggle('no-room', room < rowLead.offsetHeight + 24);
+    rowLead.style.top = Math.round(top + Math.max(8, (room - rowLead.offsetHeight) / 2)) + 'px';
   }
   const nextFilter = () => {
     press('#btn-r');
@@ -583,7 +614,11 @@ function start(launcher: HTMLElement) {
       return n ? `${f.label}: ${n} ${n === 1 ? 'game matches' : 'games match'}` : `${f.label}: nothing matches`;
     }
     const n = f.count;
-    return `${f.label}: ${n} ${n === 1 ? 'game' : 'games'} and ${slots.length - n} empty slots`;
+    const empty = slots.filter((el) => el.dataset.empty !== undefined).length;
+    // the Make row's way to start a Dreamport, by its name
+    const others = slots.filter((el) => !el.dataset.game && el.dataset.title).map((el) => el.dataset.title);
+    const games = `${n} ${n === 1 ? 'game' : 'games'}`;
+    return `${f.label}: ${[games, ...others].join(', ')}${empty ? ` and ${empty} empty slots` : ''}`;
   }
 
   // where each row was when the search started, for when it ends without a game picked
@@ -745,7 +780,8 @@ function start(launcher: HTMLElement) {
 
   // ---------- Actions ----------
 
-  // a game's page takes the menu's place; its button leads on to before you play
+  // a game's page, or a Dreamport's page in the Make row, takes the menu's place; a game's button leads on to before you
+  // play, and the Make row's way to start a Dreamport leads to the README's steps
   function primary() {
     inspect(slots[sel()]);
   }
@@ -762,13 +798,12 @@ function start(launcher: HTMLElement) {
   }
   function inspect(opener?: HTMLElement) {
     if (busy()) return;
-    const game = gameAt(sel());
-    const card = game && inspectCards.get(game);
-    if (!card) {
-      nope();
-      return;
-    }
-    openCard(card, { opener });
+    const slot = slots[sel()];
+    const id = slot?.dataset.card;
+    const card = id ? document.getElementById(id) : null;
+    if (card instanceof HTMLDialogElement) openCard(card, { opener });
+    else if (slot?.dataset.href) window.location.assign(slot.dataset.href);
+    else nope();
   }
 
   // ---------- Cards ----------
@@ -832,10 +867,11 @@ function start(launcher: HTMLElement) {
     dlg.dispatchEvent(new Event('view-open'));
     dlg.getBoundingClientRect();
     if (dlg === aboutCard) jumpAbout(opts.section ?? 'dreamport', true, false);
-    if (dlg.dataset.card === 'inspect') {
+    if (hasHero(dlg)) {
       $('.ins-text', dlg).scrollTop = 0;
       $('.inspect', dlg).scrollTop = 0;
       resetExtras(dlg);
+      resetParts(dlg);
       startShow(dlg, !opts.instant && !replacing);
     }
     if (!opts.instant) viewIn(dlg);
@@ -873,7 +909,7 @@ function start(launcher: HTMLElement) {
     state.view = null;
     state.open = null;
     if (!opts.quiet) sound.play('close');
-    if (dlg.dataset.card === 'inspect') {
+    if (hasHero(dlg)) {
       stop(showScr);
       showScr = null;
     }
@@ -904,7 +940,9 @@ function start(launcher: HTMLElement) {
     const parts =
       kind === 'inspect'
         ? ['.ins-text', '.ins-show .gate-form']
-        : kind === 'about'
+        : kind === 'make'
+          ? ['.ins-text', '.ins-show .mk-play']
+          : kind === 'about'
           ? ['.about-nav', '.about-text']
           : kind === 'profile' || kind === 'player'
             ? ['.card-title', '.pf-body']
@@ -938,7 +976,7 @@ function start(launcher: HTMLElement) {
           fill: 'forwards',
         }).finished,
     );
-    if (dlg.dataset.card === 'inspect') runs.push(heroBack(dlg));
+    if (hasHero(dlg)) runs.push(heroBack(dlg));
     return Promise.all(runs).catch(() => {});
   }
   // a game's picture flies back to its place in the row, or fades if the row has moved on
@@ -996,6 +1034,15 @@ function start(launcher: HTMLElement) {
           e.preventDefault();
           openCard(aboutCard, { section: 'privacy' });
           return;
+        }
+        // a game's page, from its page in the Make row, takes that page's place
+        if (link.dataset.page !== undefined) {
+          const page = [...inspectCards.values()].find((d) => d.dataset.path === href);
+          if (page) {
+            e.preventDefault();
+            openCard(page);
+            return;
+          }
         }
         // a player's public profile, from the player's own
         if (link.dataset.player !== undefined) {
@@ -1300,6 +1347,92 @@ function start(launcher: HTMLElement) {
       if (to === undefined) return;
       e.preventDefault();
       tabs[clamp(to, 0, tabs.length - 1)].focus();
+    });
+  }
+
+  // a Dreamport's parts, on its page in the Make row: a block each, and under them one line on where the game stands,
+  // or on the picked part. Moving onto a block picks it, by the arrow keys or a controller; a click or a tap picks it
+  // or lets it go, and so does leaving the blocks. The blocks take one place in the keyboard's order.
+  function resetParts(dlg: HTMLElement) {
+    const row = dlg.querySelector<HTMLElement>('.mk-parts');
+    if (!row) return;
+    pickPart(row, null);
+    $$('.mk-part', row).forEach((block, i) => (block.tabIndex = i === 0 ? 0 : -1));
+  }
+  function pickPart(row: HTMLElement, block: HTMLElement | null) {
+    const caption = $('.mk-caption', row.parentElement!);
+    for (const b of $$('.mk-part', row)) b.setAttribute('aria-pressed', String(b === block));
+    caption.textContent = block?.dataset.caption ?? caption.dataset.summary ?? '';
+  }
+  for (const row of $$('.mk-parts', launcher)) {
+    const blocks = $$<HTMLElement>('.mk-part', row);
+    const blockOf = (e: Event) => (e.target as Element).closest<HTMLElement>('.mk-part');
+    // a press focuses the block before its click, which then decides
+    let pressed = -Infinity;
+    row.addEventListener('pointerdown', () => (pressed = performance.now()));
+    row.addEventListener('click', (e) => {
+      const block = blockOf(e);
+      if (!block) return;
+      pickPart(row, block.getAttribute('aria-pressed') === 'true' ? null : block);
+      sound.play('tick');
+    });
+    row.addEventListener('focusin', (e) => {
+      const block = blockOf(e);
+      if (!block) return;
+      for (const b of blocks) b.tabIndex = b === block ? 0 : -1;
+      if (performance.now() - pressed > 500 && block.getAttribute('aria-pressed') !== 'true') {
+        pickPart(row, block);
+        sound.play('tick');
+      }
+    });
+    row.addEventListener('focusout', (e) => {
+      if (!row.contains(e.relatedTarget as Node | null)) pickPart(row, null);
+    });
+    row.addEventListener('keydown', (e) => {
+      const at = blocks.indexOf(document.activeElement as HTMLElement);
+      if (at < 0) return;
+      const to = { ArrowLeft: at - 1, ArrowRight: at + 1, Home: 0, End: blocks.length - 1 }[e.key];
+      if (to === undefined) return;
+      e.preventDefault();
+      blocks[clamp(to, 0, blocks.length - 1)].focus();
+    });
+  }
+
+  // the sentence on a Dreamport's page in the Make row copies when pressed, and its icon turns into a tick for a moment
+  for (const button of $$<HTMLButtonElement>('.mk-copy', launcher)) {
+    const text = button.dataset.copy!;
+    let done = 0;
+    button.addEventListener('click', async () => {
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(text);
+        copied = true;
+      } catch {
+        // where the clipboard can't be written to directly, the older way
+        const area = Object.assign(document.createElement('textarea'), { value: text, readOnly: true });
+        area.style.cssText = 'position: fixed; opacity: 0';
+        document.body.append(area);
+        area.select();
+        try {
+          copied = document.execCommand('copy');
+        } catch {}
+        area.remove();
+        button.focus({ preventScroll: true });
+      }
+      if (!copied) {
+        sound.play('empty');
+        announce('This browser didn’t let the page copy it.');
+        return;
+      }
+      button.classList.add('is-copied');
+      button.setAttribute('aria-label', `Copied: ${text}`);
+      sound.play('on');
+      announce('Copied');
+      clearTimeout(done);
+      done = window.setTimeout(() => {
+        button.classList.remove('is-copied');
+        button.setAttribute('aria-label', `Copy: ${text}`);
+      }, 2000);
     });
   }
 
@@ -1792,7 +1925,14 @@ function start(launcher: HTMLElement) {
           other.click();
         }
       } else if (step) {
-        const list = focusables(dlg);
+        // left and right go along a row of blocks, such as a Dreamport's parts; up and down step over it, and into it
+        // at the block that has the keyboard's place
+        const group = here?.closest('[data-roving]');
+        const list = focusables(dlg).filter((el) => {
+          const own = el.closest('[data-roving]');
+          if (!own || el === here) return true;
+          return own === group ? step === 1 || step === -1 : el.tabIndex >= 0;
+        });
         const at = list.indexOf(document.activeElement as HTMLElement);
         const nextEl = list[clamp(at + (step > 0 ? 1 : -1), 0, list.length - 1)];
         if (nextEl) {
@@ -1936,15 +2076,15 @@ function start(launcher: HTMLElement) {
       card.dataset.path = path;
       if (moved) card.dispatchEvent(new Event('view-open'));
     }
-    for (const ins of inspectCards.values()) {
-      if (ins.dataset.path === path) {
-        game = ins.dataset.game!;
-        card = ins;
+    for (const page of [...inspectCards.values(), ...makeCards]) {
+      if (page.dataset.path === path) {
+        game = page.dataset.game!;
+        card = page;
       }
     }
     // the filter that shows this address, and the game it is about
     let f = FILTERS.findIndex((filter) => filter.paths.includes(path));
-    if (game) f = FILTERS.findIndex((filter) => !!filter.template.content.querySelector(`.slot[data-game="${CSS.escape(game!)}"]`));
+    if (game) f = FILTERS.findIndex((filter) => filter.key === card!.dataset.filter);
     if (f >= 0 && f !== state.filter) {
       state.filter = f;
       updateTabs(false);

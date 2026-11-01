@@ -1,0 +1,11 @@
+---
+import Base from '../../layouts/Base.astro';
+import Launcher from '../../components/Launcher.astro';
+import { FILTERS } from '../../lib/site';
+
+const filter = FILTERS.find((f) => f.key === 'make')!;
+---
+
+<Base title={filter.label} description={filter.description}>
+  <Launcher filter={filter.key} />
+</Base>

@@ -58,7 +58,7 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 
 ## Add a game
 
-Each game page comes from **one Markdown file**. Nothing else needs editing: the menu finds the new file by itself. Dreamports appear in the **dreamports** row, and external ports and other games in the **mash-ups** row.
+Each game page comes from **one Markdown file**. Nothing else needs editing: the menu finds the new file by itself. Dreamports appear in the **dreamports** row, and external ports and other games in the **mash-ups** row. Every Dreamport being made also has a place in the **make** row.
 
 **A Dreamport** keeps every rule in the [Dreamport standard](docs/STANDARD.md), whoever makes it. Its code goes in a folder of its own in [`games/`](games/README.md), and plays at `/play/<game>/`. Its page comes from its **entry**, `entry.md` in the same folder, which says everything about it, from the copy it needs to its lead and its sources, and shows the two numbers the proof tools measured, code ported and gameplay proven. [The entry](games/README.md#the-entry) explains its fields. Its page appears at `/dreamports/<game>-dreamport/`. Before starting one, `npm run dp -- find <game>`, or `/dreamport <game>` in your coding agent, says whether someone already makes it, and a [New Dreamport](docs/TEAMS.md#start-a-dreamport) issue claims it for you, as its lead.
 

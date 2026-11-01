@@ -22,20 +22,26 @@ Dreamports is a website, at **[dreamports.net](https://dreamports.net)**, that g
 
 A **port** is a game brought somewhere new to play: your web browser, your computer, or a newer console. A **Dreamport** is the port fans always dreamed of: the game you remember, with the extras you wished it had. Widescreen, smoother motion, new ways to play: every extra is optional, and every Dreamport is made by a fan, for fans.
 
-The site works like the menu of a game console. It's one screen with a row of games, and you move along it with the arrow keys, a game controller, a click or a swipe. The game you're on wakes up and plays a short recording of itself. Two tabs at the top switch between two rows:
+The site works like the menu of a game console. It's one screen with a row of games, and you move along it with the arrow keys, a game controller, a click or a swipe. The game you're on wakes up and plays a short recording of itself. Three tabs at the top switch between three rows:
 
 <table>
 <tr>
-<td width="50%" valign="top">
+<td width="33%" valign="top">
 
 🌙 **Dreamports**<br>
 Enhanced ports, each named after the game it brings back, such as *Sonic Advance Dreamport*.
 
 </td>
-<td width="50%" valign="top">
+<td width="33%" valign="top">
 
 ✨ **Mash-ups**<br>
 Great ports made by other fans, with a link to their own page and full credit to the people who made them, and fan games that aren't ports, such as *Kirby's Dead Land*.
+
+</td>
+<td width="33%" valign="top">
+
+🛠️ **Make**<br>
+Every Dreamport being made, where it stands and what's left to make, with the one sentence that gets you ready to help.
 
 </td>
 </tr>
@@ -78,7 +84,7 @@ These are the projects on the site so far.
 
 You need three things: your own copy of the game as a file, a free GitHub account, and a coding agent that works on your computer, such as Claude Code, Codex, Cursor, Gemini CLI or Antigravity CLI. For a Game Boy Advance game, your copy is a `.gba` file made from your cartridge. It never leaves your computer.
 
-**Step 1: paste one sentence.** Make a new, empty folder, open your coding agent in it, and paste this, with your game's name in it:
+**Step 1: paste one sentence.** Make a new, empty folder, open your coding agent in it, and paste this, with your game's name in it. Every Dreamport being made has a page in the Make tab on [dreamports.net](https://dreamports.net/make/), with its sentence ready to copy:
 
 ```text
 Set up https://dreamports.net/code and help me make Sonic Battle Dreamport.
