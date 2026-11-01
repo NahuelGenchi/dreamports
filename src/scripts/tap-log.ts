@@ -158,4 +158,9 @@ window.addEventListener('click', (e) => e.defaultPrevented && log(`${ms()} click
 for (const type of ['resize', 'orientationchange']) window.addEventListener(type, () => setTimeout(measure, 50));
 window.visualViewport?.addEventListener('resize', measure);
 window.visualViewport?.addEventListener('scroll', measure);
+// what the page's own scrolling does, as the phone turns too
+window.addEventListener('scroll', () => {
+  measure();
+  log(`scroll ${r(scrollY)}`);
+});
 measure();

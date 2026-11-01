@@ -2089,6 +2089,28 @@ function start(launcher: HTMLElement) {
     });
   }
 
+  // ---------- Turning the phone ----------
+
+  // The page under the launcher never scrolls, but when a phone turns back upright in the Home Screen
+  // app, iOS can leave it scrolled by the status bar's height. The launcher is still drawn in its
+  // place, while every press lands that far below the finger, so the buttons seem dead. So the page
+  // goes back to the top, unless it moved on purpose: a pinch zoom, or the keyboard making room for
+  // a text field.
+  const viewport = window.visualViewport;
+  function backToTop() {
+    if (!window.scrollY) return;
+    if (viewport && Math.abs(viewport.scale - 1) > 0.01) return;
+    if (document.activeElement?.matches('input:not([type="checkbox"], [type="radio"]), textarea')) return;
+    window.scrollTo(0, 0);
+  }
+  for (const type of ['scroll', 'resize', 'focusout', 'pageshow', 'pointerdown']) window.addEventListener(type, backToTop);
+  viewport?.addEventListener('resize', backToTop);
+  viewport?.addEventListener('scroll', backToTop);
+  // the turn can end after its last event
+  window.addEventListener('orientationchange', () => {
+    for (const wait of [0, 300, 800]) setTimeout(backToTop, wait);
+  });
+
   // ---------- Buttons and links ----------
 
   $('#btn-l', launcher).addEventListener('click', prevFilter);
