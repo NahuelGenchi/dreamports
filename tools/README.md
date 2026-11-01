@@ -21,11 +21,11 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `readme` | Writes the README's table of Dreamports, with each one's numbers and lead, from their [entries](../games/README.md#the-entry), and each one's progress map |
 | `commands` | Writes the `/dreamport` commands, from `tools/commands/`, in the form each coding agent reads |
 
-For now they work with Game Boy Advance games, and they have only been tried on Linux.
+For now they work with Game Boy Advance games. They've been used on Linux. On a Mac, Apple silicon or Intel, the reference emulator builds and `read` prints the same as on Linux, as far as a small made-up program shows, and `play` and `prove` haven't been tried.
 
 ## What you need
 
-You need Node.js and the repository's packages, as [running the site on your computer](../CONTRIBUTING.md#run-the-site-on-your-computer) explains, and Google Chrome, Chromium or Microsoft Edge. `share`, `find` and `team` also need the [GitHub CLI](https://cli.github.com), signed in with `gh auth login`. If the tools don't find your browser, set `CHROME` to where it is. To build the reference emulator you also need git, CMake and a C compiler: on Debian or Ubuntu, `sudo apt install git cmake build-essential` installs them. On Windows, run the tools inside WSL (Windows Subsystem for Linux).
+You need Node.js and the repository's packages, as [running the site on your computer](../CONTRIBUTING.md#run-the-site-on-your-computer) explains, and Google Chrome, Chromium or Microsoft Edge. `share`, `find` and `team` also need the [GitHub CLI](https://cli.github.com), signed in with `gh auth login`. If the tools don't find your browser, set `CHROME` to where it is. To build the reference emulator you also need git, CMake and a C compiler: on Debian or Ubuntu, `sudo apt install git cmake build-essential` installs them, and on a Mac, `xcode-select --install` and `brew install cmake`. On Windows, run the tools inside WSL (Windows Subsystem for Linux).
 
 And you need your own copy of the game, made from your own cartridge: the version the Dreamport is built from, such as the USA version.
 

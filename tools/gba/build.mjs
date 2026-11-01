@@ -70,13 +70,15 @@ export function build(log = console.log) {
   log('Building the program that runs the original…');
   const compiler = process.env.CC || 'cc';
   const headers = ['-I', join(source, 'include'), '-I', join(BUILD, 'include')];
-  const library = [join(BUILD, 'libmgba.a'), '-lm', ...(process.platform === 'linux' ? ['-lpthread'] : [])];
+  // on macOS, mGBA's library asks Apple's CoreFoundation where the program is
+  const library = [join(BUILD, 'libmgba.a'), '-lm', ...(process.platform === 'linux' ? ['-lpthread'] : []), ...(process.platform === 'darwin' ? ['-framework', 'CoreFoundation'] : [])];
   run(compiler, ['-O2', '-o', ORIGINAL, HARNESS, ...headers, ...library], 'Building the program that runs the original');
   // the decoder's text is in mGBA's debugger part, which the library leaves out: decoder.c is built again with it,
-  // on its own, as the rest has to be built as the library was
+  // on its own, as the rest has to be built as the library was. Its headers declare strlcpy unless told the computer
+  // has one, and macOS's is a macro, so there they have to be told
   log('Building the program that prints the original\'s instructions…');
   const decoder = join(FOLDER, 'decoder.o');
-  run(compiler, ['-O2', '-c', '-DUSE_DEBUGGERS', '-o', decoder, join(source, 'src', 'arm', 'decoder.c'), ...headers], 'Building mGBA\'s decoder');
+  run(compiler, ['-O2', '-c', '-DUSE_DEBUGGERS', ...(process.platform === 'darwin' ? ['-DHAVE_STRLCPY'] : []), '-o', decoder, join(source, 'src', 'arm', 'decoder.c'), ...headers], 'Building mGBA\'s decoder');
   run(compiler, ['-O2', '-o', READER, READER_SOURCE, decoder, ...headers, ...library], 'Building the program that prints the original\'s instructions');
   writeFileSync(STAMP, JSON.stringify({ mgba, source, program: harness(), reader: sha1(READER_SOURCE) }) + '\n');
 }
