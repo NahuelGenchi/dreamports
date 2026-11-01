@@ -136,6 +136,33 @@ html:has(.launcher) {
   overscroll-behavior: none;
 }
 
+/* The site is a launcher, not a page: a long press selects no text, and shows no menu and no
+   preview of a link. Every element says so itself, as iOS doesn't always pass it down. Text
+   fields still select, and so does the text of About and of a game's page in a browser tab, but
+   not in the app opened from the Home Screen. */
+* {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+}
+
+input,
+textarea,
+:where(:root:not(.app) :is(.about-text, .ins-text)),
+:where(:root:not(.app) :is(.about-text, .ins-text)) * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+  -webkit-user-drag: auto;
+}
+
+/* a press on a picture or a recording is a press on what holds it, so iOS looks for no text in it */
+img,
+video {
+  pointer-events: none;
+}
+
 body {
   margin: 0;
   background: var(--page-glow), var(--page);
@@ -267,8 +294,6 @@ kbd {
   inset: 0;
   overflow: hidden;
   background: var(--page-glow), var(--page);
-  user-select: none;
-  -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -641,7 +666,6 @@ kbd {
     opacity 0.3s ease;
   cursor: pointer;
   outline: none;
-  -webkit-user-drag: none;
 }
 
 .row.is-dragging .slot,
@@ -702,8 +726,6 @@ kbd {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  -webkit-user-drag: none;
-  user-select: none;
 }
 
 .screen.px .still,
@@ -1851,8 +1873,6 @@ dialog.card[open] {
   position: relative;
   overflow: auto;
   padding: 24px 30px 28px;
-  user-select: text;
-  -webkit-user-select: text;
 }
 
 .about-text section {
@@ -1906,8 +1926,6 @@ dialog.card[open] {
   position: relative;
   overflow: auto;
   padding: 26px 30px 28px;
-  user-select: text;
-  -webkit-user-select: text;
 }
 
 .ins-title {
