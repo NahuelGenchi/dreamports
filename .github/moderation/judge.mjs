@@ -7,9 +7,8 @@
 // checked with the notes it adds or changes (docs/NOTES.md), since other people's coding agents will read them.
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { checkRules } from './rules.mjs';
-import { noteProblems } from './notes.mjs';
-import { accounts, isClaimsCommand, isTrusted } from './verdicts.mjs';
+import { rulesFor } from './notes.mjs';
+import { accounts, isClaimsCommand, isTrusted, planFor } from './verdicts.mjs';
 import { api, fetchItems, graphql, list, notesOf, repository, waitingEntries } from './github.mjs';
 import { LIMIT, openCodeAsker } from './model.mjs';
 
@@ -55,65 +54,79 @@ async function readPosts() {
     const event = read(process.env.GITHUB_EVENT_PATH);
     const subject = event.comment ?? event.review ?? event.pull_request ?? event.issue ?? event.discussion;
     if (subject?.node_id) ids.push(subject.node_id);
-    pushed = event.action === 'synchronize';
+    pushed = ['synchronize', 'reopened'].includes(event.action);
   }
   const wanted = [...new Set(ids)].slice(0, 300);
   const treatAsPublic = accounts(process.env.MODERATION_TREAT_AS_PUBLIC);
   const items = (await fetchItems(wanted)).filter(item => item.repository === repository)
     .map(item => ({ ...item, trusted: isTrusted(item, treatAsPublic), claims: isClaimsCommand(item) }));
-  for (const item of items) if (item.kind === 'pull-request') item.notes = await notesOf(item.parent.number);
+  for (const item of items.filter(found => found.kind === 'pull-request')) {
+    try {
+      item.notes = await notesOf(item.parent.number);
+    } catch (error) {
+      // it waits, as a post no model answers for does, and the other posts are still checked
+      console.log(`The notes of ${item.url} couldn't be read: ${error.message}`);
+      item.unread = true;
+    }
+  }
   const gone = wanted.filter(id => !items.some(item => item.node === id));
-  // a push changes only what a pull request holds, so it's checked again only for its notes
-  const checked = pushed ? items.filter(item => item.notes?.length) : items;
+  // a push, or a pull request opened again, changes only what it holds, so it's checked again only for its notes
+  const checked = pushed ? items.filter(item => item.notes?.length || item.unread) : items;
   mkdirSync(folder, { recursive: true });
   writeFileSync(posts, JSON.stringify({ since, items: checked, gone }));
   console.log(`Read ${checked.length} of ${wanted.length} posts${since ? `, with the comments on code and reviews since ${since}` : ''}.`);
 }
 
-// a post's text and its notes, as many at a time as a model reads whole
+// a post's text and its notes, each after its file's path, as many at a time as a model reads whole
 function piecesOf(item) {
   const pieces = [item.text];
   for (const note of item.notes ?? []) {
-    if (pieces.at(-1).length + note.text.length > LIMIT) pieces.push(note.text);
-    else pieces[pieces.length - 1] += `\n\n${note.text}`;
+    const text = `${note.path}\n${note.text}`;
+    if (pieces.at(-1).length + text.length > LIMIT) pieces.push(text);
+    else pieces[pieces.length - 1] += `\n\n${text}`;
   }
   return pieces;
 }
 
-// what OpenCode says of the whole post, piece by piece: the first answer that isn't allow, or else allow, and nothing
-// when any piece gets no answer
+// What OpenCode says of the whole post, piece by piece: the first answer the post has a plan for, or else the last,
+// and nothing when any piece gets no answer. An answer with no plan, such as a clip of the original in a pull request,
+// doesn't stop the rest from being read.
 async function askAbout(opencode, item, hints) {
   let answer = null;
   for (const text of piecesOf(item)) {
     answer = await opencode.ask({ ...item, text, hints });
-    if (answer?.key !== 'allow') return answer;
+    if (!answer || planFor(answer.key, item, 'model').length) return answer;
   }
   return answer;
 }
 
-// The plain rules first, on the post with its notes, and then the rules for notes. The repository's own people and
+// The plain rules first, on the post and on its notes, and then the rules for notes. The repository's own people and
 // claims commands get the rules alone, without the spam rule, since the bot only flags them. Whatever has nothing the
-// rules notice and no notes is allowed, and the rest goes to OpenCode. A post no model answers for waits.
+// rules notice and no notes is allowed, and the rest goes to OpenCode. A post no model answers for waits, and so does
+// a pull request whose notes couldn't be read.
 async function judgePosts() {
   const data = read(posts);
   const opencode = openCodeAsker(process.env.MODERATION_MODELS);
   for (const item of data.items) {
-    if (item.bot) {
-      item.verdict = { key: 'skip', by: 'none' };
+    const notes = item.notes ?? [];
+    if (item.unread) {
+      item.verdicts = [{ key: 'wait', by: 'none' }];
+      continue;
+    }
+    if (item.bot && !notes.length) {
+      item.verdicts = [{ key: 'skip', by: 'none' }];
       continue;
     }
     const own = item.trusted || item.claims;
-    const notes = item.notes ?? [];
-    const rules = checkRules([item.text, ...notes.map(note => note.text)].join('\n\n'), { author: item.author, where: item.where, spam: !own });
-    if (rules.key) item.verdict = { key: rules.key, by: 'rules', rule: rules.rule };
-    else if (notes.some(note => noteProblems(note.text).length)) item.verdict = { key: 'bad-note', by: 'rules', rule: 'note' };
-    else if (own || (!rules.hints.length && !notes.length)) item.verdict = { key: 'allow', by: 'rules' };
+    const { verdicts, hints } = rulesFor(item, { spam: !own });
+    if (verdicts.length) item.verdicts = verdicts;
+    else if (own || (!hints.length && !notes.length)) item.verdicts = [{ key: 'allow', by: 'rules' }];
     else {
-      const answer = await askAbout(opencode, item, notes.length ? [...rules.hints, 'notes'] : rules.hints);
-      item.verdict = answer ? { key: answer.key, by: 'model', model: answer.model } : { key: 'wait', by: 'none' };
+      const answer = await askAbout(opencode, item, notes.length ? [...hints, 'notes'] : hints);
+      item.verdicts = [answer ? { key: answer.key, by: 'model', model: answer.model } : { key: 'wait', by: 'none' }];
     }
   }
-  const results = data.items.map(item => ({ kind: item.kind, node: item.node, ...item.verdict }));
+  const results = data.items.flatMap(item => item.verdicts.map(verdict => ({ kind: item.kind, node: item.node, ...verdict })));
   const verdicts = {
     version: 1, mode: sweep ? 'sweep' : 'event', results, gone: data.gone,
     model: {
@@ -124,13 +137,13 @@ async function judgePosts() {
   appendFileSync(process.env.GITHUB_OUTPUT, `verdicts=${JSON.stringify(verdicts)}\n`);
 
   // the job's summary: each post checked, with its verdict and what decided it, and never its text
-  const decided = item => item.verdict.key === 'skip' ? 'nothing: a bot wrote it' : item.verdict.by === 'rules' ? 'the plain rules'
-    : item.verdict.model ? `\`${item.verdict.model}\`` : 'nothing yet: no model answered';
+  const decided = verdict => verdict.key === 'skip' ? 'nothing: a bot wrote it' : verdict.by === 'rules' ? 'the plain rules'
+    : verdict.model ? `\`${verdict.model}\`` : 'nothing yet: no model answered';
   const lines = [`## Posts checked${data.since ? ` (the hourly run, since ${data.since})` : ''}`, ''];
   if (!data.items.length) lines.push('None.');
   else {
     lines.push('| Post | By | Verdict | Decided by |', '| :--- | :--- | :--- | :--- |');
-    for (const item of data.items) lines.push(`| [${KIND_WORDS[item.kind]}](${item.url}) | \`${item.author}\` | ${item.verdict.key} | ${decided(item)} |`);
+    for (const item of data.items) for (const verdict of item.verdicts) lines.push(`| [${KIND_WORDS[item.kind]}](${item.url}) | \`${item.author}\` | ${verdict.key} | ${decided(verdict)} |`);
   }
   if (verdicts.model.tried.length) lines.push('', `Models asked: ${verdicts.model.tried.map(model => `\`${model}\``).join(', ')}.`);
   appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);

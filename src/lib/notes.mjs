@@ -2,31 +2,40 @@
 // tools. What a note is and what it may hold is in .github/moderation/notes.mjs, which the Dreamports bot uses too.
 import { existsSync, lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { NOTE_NAME, noteProblems, parseNote } from '../../.github/moderation/notes.mjs';
+import { nameProblems, noteProblems, parseNote } from '../../.github/moderation/notes.mjs';
 
 // what a game's note says when it's about all of it
 export const WHOLE_GAME = 'the whole game';
 // how a function is written, as `read` takes it: an address, or a label such as sub_8029E78 or FUN_08029E78
 const FUNCTION = /^(?:0x)?[0-9a-f]{7,8}$|^[a-z][a-z0-9]*_0?8[0-9a-f]{6}$/i;
 
+// what a game's or a kit's folder can be called, as the site's build says
+const PLACE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 const listed = folder => (existsSync(folder) ? readdirSync(folder, { withFileTypes: true }) : []);
+// whether a path holds a folder of its own, or nothing: a link could lead to notes nothing has checked
+const folderOrNothing = path => lstatSync(path, { throwIfNoEntry: false })?.isDirectory() ?? true;
+// a name as it can be printed, since a file that breaks the rules can be named anything, and an agent reads what's printed
+const shown = name => name.replace(/[^a-z0-9._-]/gi, '?').slice(0, 64);
+
+/** The games or kits there are, by their folders' names. A name the build would refuse is left out, for the same
+ *  reason a broken note's name is never printed as it is. */
+export const placesIn = (root, top) => listed(join(root, top)).filter(entry => entry.isDirectory() && PLACE.test(entry.name)).map(entry => entry.name);
 
 /** The notes in games/<name>/ or kit/<name>/, by their files' names: each with its parts, and with `problems`, what
  *  keeps it from being read. A note with problems is still listed, with no parts, and nothing but the build's and
  *  `npm run check`'s messages quotes from it. */
 export function notesIn(root, top, name) {
-  const folder = join(root, top, name, 'notes');
+  const home = join(root, top, name), folder = join(home, 'notes');
   const empty = (file, path) => ({ name: file.replace(/\.md$/, ''), path, title: '', about: [], proof: [], text: '' });
-  if (existsSync(folder) && !lstatSync(folder).isDirectory()) {
-    return [{ ...empty('notes', `${top}/${name}/notes`), problems: ['A notes folder has to be a folder of its own, not a link to one somewhere else.'] }];
-  }
+  const broken = why => [{ ...empty('notes', `${top}/${shown(name)}/notes`), problems: [why] }];
+  if (![join(root, top), home, folder].every(folderOrNothing)) return broken('A notes folder, and the game\'s or kit\'s folder it\'s in, has to be a folder of its own, not a link to one somewhere else.');
+  if (listed(home).some(entry => entry.name !== 'notes' && entry.name.toLowerCase() === 'notes')) return broken('A notes folder is called notes, all in lowercase, or some computers wouldn\'t see it as one.');
   return listed(folder).filter(entry => !entry.name.startsWith('.')).map(entry => {
-    const path = `${top}/${name}/notes/${entry.name}`;
-    const base = empty(entry.name, path);
-    if (!entry.isFile() || !NOTE_NAME.test(entry.name)) {
-      return { ...base, problems: ['A note is a plain file named with lowercase letters, numbers and single dashes, ending in .md.'] };
-    }
-    const text = readFileSync(join(root, path), 'utf8');
+    const base = empty(entry.name, `${top}/${shown(name)}/notes/${shown(entry.name)}`);
+    const wrong = entry.isFile() ? nameProblems(entry.name) : ['A note is a plain file, directly in a notes folder.'];
+    if (wrong.length) return { ...base, problems: wrong };
+    const text = readFileSync(join(folder, entry.name), 'utf8');
     const problems = noteProblems(text);
     return problems.length ? { ...base, problems } : { ...base, ...parseNote(text), problems };
   });
@@ -54,10 +63,10 @@ function factsOf(root, game) {
 export function checkNotes(root) {
   const problems = [];
   for (const top of ['games', 'kit']) {
-    for (const entry of listed(join(root, top)).filter(found => found.isDirectory())) {
-      const notes = notesIn(root, top, entry.name);
+    for (const place of placesIn(root, top)) {
+      const notes = notesIn(root, top, place);
       if (!notes.length) continue;
-      const facts = top === 'games' ? factsOf(root, entry.name) : null;
+      const facts = top === 'games' ? factsOf(root, place) : null;
       for (const note of notes) {
         for (const why of note.problems) problems.push({ path: note.path, why });
         if (!facts || note.problems.length) continue;

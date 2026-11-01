@@ -51,11 +51,12 @@ const hintWords = hint => hint.startsWith('link:') ? `a link to ${hint.slice(5)}
   : hint.startsWith('rom-path:') ? `a link about ROMs on ${hint.slice(9)}` : HINT_WORDS[hint] ?? hint;
 
 // What a model gets: what and where the post is, what the plain rules noticed, and the post between markers, cut to
-// its start and end when it's long, with each @ written another way, since OpenCode reads @ as a file to attach.
+// its start and end when it's long, with no run of brackets long enough to pass for a marker, and each @ written
+// another way, since OpenCode reads @ as a file to attach.
 export function messageFor(post) {
   let text = String(post.text ?? '');
   if (text.length > LIMIT) text = `${text.slice(0, 12000)}\n[...]\n${text.slice(-4000)}`;
-  text = text.replace(/<<<POST|POST>>>/g, '').replace(/@/g, '＠');
+  text = text.replace(/<{3,}/g, '<<').replace(/>{3,}/g, '>>').replace(/@/g, '＠');
   return [
     'Check this post against the rules, and answer with one key alone.',
     `It's ${KIND_WORDS[post.kind] ?? 'a post'}, in ${WHERE_WORDS[post.where] ?? 'the repository'}.`,

@@ -6,7 +6,7 @@ name: Moderation
 # any post. The acting job checks them against a fixed schema and carries out a fixed plan, from deleting, hiding,
 # replying with a fixed text, closing, locking and labelling. Both check out only the bot's own folder, from the
 # default branch or the branch a pull request would merge into, never a pull request's code, whose notes it reads
-# through the API as data (docs/NOTES.md), and so a push is checked too. Runs about one post wait for each other. The
+# through the API as data (docs/NOTES.md), and so a push is checked too, whoever made it. Runs about one post wait for each other. The
 # hourly run tries again the posts that wait for a model, and checks the reviews and comments on code made since its
 # last run, since those events come with a read-only token on pull requests from forks.
 on:
@@ -15,7 +15,7 @@ on:
   issue_comment:
     types: [created, edited]
   pull_request_target:
-    types: [opened, edited, synchronize]
+    types: [opened, edited, synchronize, reopened]
   discussion:
     types: [created, edited]
   discussion_comment:
@@ -36,7 +36,7 @@ concurrency:
 jobs:
   judge:
     name: Judge
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event.sender.type != 'Bot'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request_target' || github.event.sender.type != 'Bot'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     permissions:

@@ -20,7 +20,7 @@ Notes are for the people making a game, so they stay off the site: neither dream
 
 ## Writing one
 
-A note is a file of its own in `games/<game>/notes/`, or in `kit/<console>/notes/` when it's true of every game on that console. Its name has lowercase letters, numbers and single dashes, ending in `.md`, such as `logos-need-sound.md`. One file for each finding keeps two people adding notes out of each other's way, and it looks like this:
+A note is a file of its own in `games/<game>/notes/`, or in `kit/<console>/notes/` when it's true of every game on that console. Its name has up to 64 lowercase letters, numbers and single dashes, ending in `.md`, such as `logos-need-sound.md`, and says what it's about, since it's printed like the note is. One file for each finding keeps two people adding notes out of each other's way, and it looks like this:
 
 ```markdown
 # The logos differ only in sound: the original starts its song as Sonic Team's logo comes in.
@@ -38,7 +38,7 @@ Frames 221 to 258 of `logos` and 128 to 165 of `logos-skipped` differ in their s
 
 **Proof** says what shows it's true, with a `;` between each thing: the number of an issue or a pull request, or the name of one of the game's recordings. A guess isn't a note yet.
 
-**The text** is plain sentences, up to 1,500 characters, with what someone would need to use the finding: the frames, the addresses, the numbers `prove` gave.
+**The text** is plain sentences, up to 1,500 characters, with what someone would need to use the finding: the frames, the addresses, the numbers `prove` gave. The whole file takes up to 2,000.
 
 When a note stops being true, the change that makes it so updates it or deletes it.
 
@@ -54,12 +54,14 @@ Other people's coding agents read notes while they can use that person's compute
 
 ## How they're checked
 
-The rules above are code, in [`.github/moderation/notes.mjs`](../.github/moderation/notes.mjs), and they run in four places.
+The rules above are code, in [`.github/moderation/notes.mjs`](../.github/moderation/notes.mjs), and they run in these places, before the team's review.
 
 - `npm run check` and the site's build stop on a note that breaks them, and say which and why. `/dreamport-send` runs both before anything is sent.
 - `notes`, `find`, `read` and `prove` leave out a note that breaks them, however it got here, and `notes` says so.
-- The Dreamports bot checks the notes a pull request adds or changes each time it's opened or pushed to, from a fork too, as [Moderation](MODERATION.md#how-it-decides) explains. A note that breaks the rules gets a reply asking for a fix, and the bot's model reads every note that keeps them.
-- The Dreamports team reviews each note like any other change, against what it names as proof.
+- `team add` stops on a piece with a note that breaks them, and shows the lead the title of each note a piece brings. A team build has no bot, so its notes get the model's reading only when it reaches a pull request here.
+- The Dreamports bot checks the notes a pull request adds or changes each time it's opened or pushed to, from a fork too, as [Moderation](MODERATION.md#how-it-decides) explains. A note that breaks the rules gets a reply asking for a fix, at each push while it does, and unless the Dreamports team wrote it, the bot's model reads every note that keeps them.
+
+The Dreamports team then reviews each note like any other change, against what it names as proof.
 
 The rules are a guard, not proof. Someone determined can word around them, and nothing here can tell a wrong finding from a right one. That's what the review, the Proof line and the reader's own checking are for.
 
@@ -67,7 +69,7 @@ The rules are a guard, not proof. Someone determined can word around them, and n
 
 The first idea was a docs site where anyone, person or agent, could post what they found. Notes in the repository do the same job with less to go wrong.
 
-- **Safety.** Agents would read what strangers posted while holding the person's shell, GitHub login and copy of the game. Here, everything an agent reads has been through a check and a review.
+- **Safety.** Agents would read what strangers posted while holding the person's shell, GitHub login and copy of the game. Here, an agent only reads notes that keep the rules, and everything on `main` has been through a review.
 - **What it would collect.** An open place to post about decompiling games fills up with pieces of games and confident mistakes, which this project has no way to moderate and every reason to avoid.
 - **Staying in step.** A note changes in the same pull request as the code it's about, travels with a team build, needs no account or download, and works with no network.
 

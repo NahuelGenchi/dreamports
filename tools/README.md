@@ -146,7 +146,7 @@ Sonic Advance Dreamport's logos are frames 254 to 932 of [`logos-and-intro`](../
 
 `npm run dp -- find <game>` shows where a game stands before you start on it: its lead, its two numbers, its Make page, how many notes it has, its team build and team preview, who has claimed which task, and the tasks still free. It takes a game's folder or a few words of its name, and with no game it lists them all. The numbers come from `games/` in your folder, and the claims from this repository's issues.
 
-`npm run dp -- team <game> start`, `join <branch>`, `send` and `add <pull request>` make and use the game's team build, a branch of the lead's fork that gathers the team's finished pieces. `add` merges a piece, runs `portmap` and `prove`, and only takes it in if nothing that matched the original before differs now, then updates the team preview with `share`. [Claims and teams](../docs/TEAMS.md) explains claims, tasks and team builds.
+`npm run dp -- team <game> start`, `join <branch>`, `send` and `add <pull request>` make and use the game's team build, a branch of the lead's fork that gathers the team's finished pieces. `add` merges a piece, runs `portmap` and `prove`, and only takes it in if nothing that matched the original before differs now, then updates the team preview with `share`. It stops before a piece with a note that breaks the rules for notes. [Claims and teams](../docs/TEAMS.md) explains claims, tasks and team builds.
 
 ## Notes
 

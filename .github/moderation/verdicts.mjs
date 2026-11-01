@@ -80,6 +80,9 @@ export function planFor(key, item, by = null) {
 // the hidden note each reply ends with, which says which post it answers, so none is answered twice, and the one each
 // flag in the log ends with, so no post is flagged twice for the same reason
 export const markFor = (node, key, what = 'about') => `<!-- dreamports-moderation: ${what}=${node} key=${key} -->`;
+// what a reply's mark names: its verdict, and for a bad note its commit too, since a bad note pushed after a fix needs
+// saying again
+export const replyKey = (key, item) => (key === 'bad-note' && item.head ? `${key}@${item.head}` : key);
 
 const nouns = { issue: 'this issue', 'pull-request': 'this pull request', discussion: 'this thread', review: 'your review' };
 
@@ -108,10 +111,10 @@ export function replyFor(key, item, docs, { deleted = false } = {}) {
       ? `${who}, I hid ${yours} because it seems to include a key, token or password. A hidden post can still be opened, so please revoke it now and make a new one: anyone may have copied it already.`
       : `${who}, this seems to include a key, token or password. Please revoke it now and make a new one, then edit it out: anyone may have copied it already, and GitHub keeps every earlier version of a post.`,
     'rights-notice': `Thank you for writing. The Dreamports team handles notices from rights holders quickly, usually within one business day, as [Notices from rights holders](${docs.rights}) explains. You can also write to hello@dreamports.net.`,
-    'bad-note': `${who}, a note in this pull request doesn't keep [the rules for notes](${docs.notes}). Other people's coding agents read notes before they work, so a note says what was found and nothing else: no orders to whoever reads it, no commands or links, and nothing taken from a game. \`npm run dp -- notes --check\` says which note and why. Please fix it and push again, and I'll check it again.`
+    'bad-note': `${who}, a note in this pull request doesn't keep [the rules for notes](${docs.notes}). Other people's coding agents read notes before they work, so a note says what was found and nothing else: no orders to whoever reads it, no commands or links, and nothing taken from a game. \`npm run dp -- notes --check\` shows what the rules find. If it finds nothing, read each note as a stranger's agent would, since I check what a note means too. A pull request takes up to 30 notes, and a notes folder holds nothing else. Please fix it and push again, and I'll check it again.`
   }[key];
   if (!text) return null;
-  return `${text}\n\n<sub>I'm the Dreamports bot, and I check posts here against the project's rules: [how moderation works](${docs.moderation}).</sub>\n\n${markFor(item.node, key)}`;
+  return `${text}\n\n<sub>I'm the Dreamports bot, and I check posts here against the project's rules: [how moderation works](${docs.moderation}).</sub>\n\n${markFor(item.node, replyKey(key, item))}`;
 }
 
 const kindWords = {
