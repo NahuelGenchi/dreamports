@@ -17,7 +17,7 @@ import { LOCAL } from './lib/paths.mjs';
 import { hex, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { readCopy } from './gba/header.mjs';
-import { findFunctions } from './gba/functions.mjs';
+import { findFunctions, looksLikeArm } from './gba/functions.mjs';
 import { MGBA_VERSION, READER } from './gba/build.mjs';
 import { ensureOriginal } from './gba/original.mjs';
 import { readShifts } from './portmap.mjs';
@@ -147,10 +147,4 @@ export function resolve(game, codeMap, what) {
     return { address: address - by, label: by ? `${what} is 0x${hex(address - by)} in this copy, ${by} bytes before its label, as games/${game}/proof/names.json says.` : null };
   }
   throw new Error(`"${what}" isn't an address, such as 0x08016078, a name in games/${game}/proof/code-map.json, or a label, such as sub_8016078.`);
-}
-
-/** Whether the first words of some code look like ARM instructions: nearly all of those run always, so they start
- *  with E, which in Thumb code would take a branch every other instruction. */
-export function looksLikeArm(words) {
-  return words.length >= 4 && words.filter(word => word >>> 28 === 0xE).length >= 3;
 }
