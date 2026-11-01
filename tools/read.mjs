@@ -18,7 +18,7 @@ import { LOCAL } from './lib/paths.mjs';
 import { hex, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { readCopy } from './gba/header.mjs';
-import { findFunctions } from './gba/functions.mjs';
+import { findFunctions, looksLikeArm } from './gba/functions.mjs';
 import { MGBA_VERSION, READER } from './gba/build.mjs';
 import { ensureOriginal } from './gba/original.mjs';
 import { readShifts } from './portmap.mjs';
@@ -169,10 +169,4 @@ export function functionsFor(codeMap, bytes, found) {
     const arm = traced.has(f.address) ? !traced.get(f.address).thumb : looksLikeArm(words);
     return `${hex(f.address)} ${f.size} ${arm ? 1 : 0}\n`;
   }).join('');
-}
-
-/** Whether the first words of some code look like ARM instructions: nearly all of those run always, so they start
- *  with E, which in Thumb code would take a branch every other instruction. */
-export function looksLikeArm(words) {
-  return words.length >= 4 && words.filter(word => word >>> 28 === 0xE).length >= 3;
 }

@@ -1,15 +1,17 @@
-// npm run dp -- codemap <game> [--from <list>]: makes games/<game>/proof/code-map.json, every function in the
+// npm run dp -- codemap <game> [--from <list> | --fill]: makes games/<game>/proof/code-map.json, every function in the
 // original with its address and its size, and nothing of its code. It's what code ported is measured against.
 // Without --from, it finds the functions in the contributor's copy itself (gba/functions.mjs). With --from, it takes
 // them from a list: a decompilation's symbols, as `nm -S` prints them from its ELF file, or a CSV with an address on
-// each line and its size or its end, as a disassembler such as Ghidra exports its list of functions.
+// each line and its size or its end, as a disassembler such as Ghidra exports its list of functions. A list can stop
+// short, so what the tools find in the copy beyond it is added. With --fill, the same is added to the code map there
+// already is, keeping its names.
 
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
-import { readOriginal, writeCodeMap } from './lib/proof-files.mjs';
+import { readCodeMap, readOriginal, writeCodeMap } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { readCopy } from './gba/header.mjs';
-import { findFunctions } from './gba/functions.mjs';
+import { fillFunctions, findFunctions } from './gba/functions.mjs';
 
 // where code runs on the Game Boy Advance: the cartridge and the two work RAMs
 const CODE = [[0x08000000, 0x0A000000], [0x03000000, 0x03008000], [0x02000000, 0x02040000]];
@@ -19,19 +21,28 @@ export async function run(args) {
   const game = args.find(a => !a.startsWith('--'));
   const fromAt = args.indexOf('--from');
   const list = fromAt >= 0 ? args[fromAt + 1] : null;
-  if (!game || (fromAt >= 0 && !list)) throw new Error('Usage: npm run dp -- codemap <game> [--from <list of functions>]');
+  const fill = args.includes('--fill');
+  if (!game || (fromAt >= 0 && !list) || (list && fill)) throw new Error('Usage: npm run dp -- codemap <game> [--from <list of functions> | --fill]');
   const original = readOriginal(game);
+  const copy = copyWith(original.sha1);
+  if (!copy) throw new Error(`The code map is of ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
+  const read = await readCopy(copy.path);
+  if (read?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
+  const theCopy = readFileSync(copy.path);
+  const FOUND = 'the proof tools (tools/gba/functions.mjs)';
+  const filled = listed => fillFunctions(listed, findFunctions(theCopy, listed));
   let functions, from;
   if (list) {
-    functions = readList(readFileSync(list, 'utf8'));
-    from = `The functions in ${basename(list)}`;
+    functions = filled(readList(readFileSync(list, 'utf8')));
+    from = `The functions in ${basename(list)}, with what ${FOUND} found in the copy beyond them`;
+  } else if (fill) {
+    const map = readCodeMap(game);
+    if (!map) throw new Error(`games/${game}/proof/ has no code map yet: npm run dp -- codemap ${game} makes one.`);
+    functions = filled(map.functions);
+    from = map.from.includes(FOUND) ? map.from : `${map.from}, with what ${FOUND} found in the copy beyond them`;
   } else {
-    const copy = copyWith(original.sha1);
-    if (!copy) throw new Error(`The code map is of ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
-    const read = await readCopy(copy.path);
-    if (read?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
-    functions = findFunctions(readFileSync(copy.path));
-    from = 'Found in the copy by the proof tools (tools/gba/functions.mjs)';
+    functions = findFunctions(theCopy);
+    from = `Found in the copy by ${FOUND}`;
   }
   if (!functions.length) throw new Error('No functions found.');
   writeCodeMap(game, { original: original.sha1, from, functions });
