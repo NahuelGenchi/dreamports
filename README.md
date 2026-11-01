@@ -84,7 +84,7 @@ These are the projects on the site so far.
 
 You need three things: your own copy of the game as a file, a free GitHub account, and a coding agent that works on your computer, such as Claude Code, Codex, Cursor, Gemini CLI or Antigravity CLI. For a Game Boy Advance game, your copy is a `.gba` file made from your cartridge. It never leaves your computer.
 
-**Step 1: paste one sentence.** Make a new, empty folder, open your coding agent in it, and paste this, with your game's name in it. Every Dreamport being made has a page in the Make tab on [dreamports.net](https://dreamports.net/make/), with its sentence ready to copy:
+**Step 1: paste one sentence.** Make a new, empty folder, open your coding agent in it, and paste this, with your game's name in it. Every Dreamport being made has a page in the Make tab on [dreamports.net](https://dreamports.net/make/), with its sentence ready to copy, how many of its pieces are free to take and its latest steps:
 
 ```text
 Set up https://dreamports.net/code and help me make Sonic Battle Dreamport.

@@ -1857,7 +1857,7 @@ function start(launcher: HTMLElement) {
 
   const pad = { prev: [] as boolean[], dir: 0, next: 0 };
   function focusables(scope: ParentNode) {
-    return $$('button:not([hidden]), a[href], input:not([type="radio"]), input[type="radio"]:checked, [tabindex="0"]', scope).filter(
+    return $$('button:not([hidden]), a[href], summary, input:not([type="radio"]), input[type="radio"]:checked, [tabindex="0"]', scope).filter(
       (el) => !el.closest('[hidden]') && el.getClientRects().length,
     );
   }

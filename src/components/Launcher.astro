@@ -16,7 +16,8 @@ import ProfileCard from './ProfileCard.astro';
 import SettingsCard from './SettingsCard.astro';
 import Slot from './Slot.astro';
 import { FILTERS, SECTIONS, SLOTS, getGames, type Filter, type FilterKey, type Game } from '../lib/site';
-import { beingMade } from '../lib/dreamports';
+import { beingMade, makeView } from '../lib/dreamports';
+import { making as readMaking } from '../lib/making';
 
 interface Props {
   filter: FilterKey;
@@ -31,15 +32,22 @@ interface Place {
   game?: Game;
   make?: boolean;
   start?: boolean;
+  free?: { count: number; help: string };
 }
 
 const { filter, selected, open } = Astro.props;
 const games = await getGames();
 // the Dreamports being made, each with a page in the Make row
 const making = games.filter((game) => game.data.kind === 'dreamport' && beingMade(game.data));
+// their pieces and steps, from GitHub
+const github = await readMaking();
+const githubOf = (game: Game) => (game.data.kind === 'dreamport' ? github?.[game.data.game] : undefined);
+const freeOf = (game: Game) => (game.data.kind === 'dreamport' ? makeView(game.data, githubOf(game)).free : undefined);
 const rows = FILTERS.map((f) => {
   // the Make row holds only what it has: the Dreamports being made, then the way to start one
-  if (f.key === 'make') return { filter: f, list: [...making.map((game): Place => ({ game, make: true })), { start: true }] };
+  if (f.key === 'make') {
+    return { filter: f, list: [...making.map((game): Place => ({ game, make: true, free: freeOf(game) })), { start: true }] };
+  }
   const list: Place[] = games.filter((game) => f.kinds.includes(game.data.kind)).map((game) => ({ game }));
   while (list.length < SLOTS) list.push({});
   return { filter: f, list };
@@ -196,7 +204,7 @@ const pathsFor = (f: Filter) =>
   <ProfileCard open={open === 'profile'} />
   <PlayerCard open={open === 'player'} />
   {games.map((game) => <InspectCard game={game} open={open === 'inspect' && game.id === selected} />)}
-  {making.map((game) => <MakeCard game={game} open={open === 'make' && game.id === selected} />)}
+  {making.map((game) => <MakeCard game={game} open={open === 'make' && game.id === selected} github={githubOf(game)} />)}
 </div>
 
 <div class="blackout" id="blackout" hidden>

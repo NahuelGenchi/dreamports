@@ -1,7 +1,8 @@
 ---
 // One place in the launcher's row: a game, which links to its own page; in the Make row, a Dreamport being made,
 // which links to its page there, or the way to start a Dreamport, which leads to the README's steps; or an empty
-// slot. A Dreamport also carries its two numbers, which the nameplate shows under it once it's selected.
+// slot. A Dreamport also carries its two numbers, which the nameplate shows under it once it's selected, and in the
+// Make row, how many of its pieces are free to take, on its tile when there are any and under its numbers.
 import Tile from './Tile.astro';
 import { MAKE_GUIDE_URL, gameUrl, makeUrl, sectionFor, type Game } from '../lib/site';
 import { numbersOf } from '../lib/dreamports';
@@ -13,9 +14,11 @@ interface Props {
   make?: boolean;
   // the Make row's last place: how to start a Dreamport
   start?: boolean;
+  // in the Make row, the pieces free to take, when GitHub could be read for this build
+  free?: { count: number; help: string };
 }
 
-const { game, index, make = false, start = false } = Astro.props;
+const { game, index, make = false, start = false, free } = Astro.props;
 const detail = game && !make
   ? [sectionFor(game.data.kind).label, game.data.platform, game.data.year].filter(Boolean).join(' · ')
   : '';
@@ -55,15 +58,18 @@ const START = {
       data-title={game.data.title}
       data-detail={detail}
       data-numbers={numbers}
+      data-help={free?.help}
       draggable="false"
     >
       <i class="glow" style={`--g: ${game.data.glow}`} />
       <span class="lift">
         <Tile game={game} />
+        {free?.count ? <span class="free-badge" aria-hidden="true">{free.count} free</span> : null}
       </span>
       <span class="sr-only">
         {game.data.title}{detail && `, ${detail}`}
         {numbers && <span class="slot-numbers">{numbers}</span>}
+        {free && <span class="slot-help">{free.help}</span>}
       </span>
     </a>
   ) : (
