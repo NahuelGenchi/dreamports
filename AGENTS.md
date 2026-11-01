@@ -72,3 +72,5 @@ Every change (code, bug fixes, enhancements, docs, research and repository opera
 ## Final report
 
 Report the issue, the PR and what changed. Keep these separate: site builds and browser checks (exact commands, pages, widths and outcomes, or "none run"), and source/diff review scope.
+
+This is for work on the project itself. When you're helping someone make a Dreamport, as in the `/dreamport` commands, leave it out: end with what the command says to tell them, in plain words, with no lines about review scope or which checks ran.
