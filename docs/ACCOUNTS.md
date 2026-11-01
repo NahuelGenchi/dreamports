@@ -6,18 +6,18 @@
 
 Players can make a **profile** on dreamports.net to keep the achievements they earn in Sonic Advance Dreamport, on any device. They sign in with an account they already have: **Google, Discord, Steam or GitHub**. The first time, they pick a player name and the profile is made. The site keeps only the id each service gives the account, never its email address, password, name or friends, and has no password of its own. A profile can link more than one of those accounts, so any of them signs in to it. A profile is private until its player makes it public.
 
-The games played on dreamports.net load a small script, `/dreamports.js`. When a player earns an achievement, the game calls `dreamports.unlock(id)`, and the script saves it to the profile of whoever is signed in. With nobody signed in, it does nothing: the game keeps the achievement on the device, and the profile claims it when its player signs in.
+The games played on dreamports.net load a small script, `/dreamports.js`. When a player earns an achievement, the game calls `dreamports.unlock(id)`, and the script saves it to the profile of whoever is signed in. With nobody signed in, it does nothing: the game keeps the achievement on the device, and the profile claims it when its player signs in. While signed in, the game also shows the achievements its player earned on other devices.
 
 ## Where it runs
 
 Everything is on Cloudflare's free plan (#16):
 
-- The site's pages are plain files, as before. A small Worker, [`worker/index.ts`](../worker/index.ts), answers only `/api/`, `/players/<name>/` and, away from dreamports.net, `/play/` ([`wrangler.jsonc`](../wrangler.jsonc)).
+- The site's pages are plain files, as before, and so are the games in [`games/`](../games/README.md). A small Worker, [`worker/index.ts`](../worker/index.ts), answers only `/api/` and `/players/<name>/` ([`wrangler.jsonc`](../wrangler.jsonc)).
 - Profiles live in a D1 database, `dreamports-accounts`. Pull request previews use their own, `dreamports-accounts-previews`, so trying a preview never touches real profiles. The Worker makes its tables itself the first time it uses a database.
 - Signing in is [`worker/ways.ts`](../worker/ways.ts): OAuth 2.0 with PKCE for Google, Discord and GitHub, and OpenID 2.0 for Steam, with the Worker's own `fetch` and Web Crypto and no library. Each service's sign-in is free.
 - On a computer, `npm run worker` builds the site and runs it at `http://localhost:8787` with the Worker and a local database. Steam signs in there as it is. Google, Discord and GitHub need their apps' secrets in a `.dev.vars` file next to `wrangler.jsonc` (`GOOGLE_CLIENT_SECRET=…`, one per line), which git ignores and which must never be committed.
 
-Away from dreamports.net (a preview, or `npm run worker`), the Worker fetches the games under `/play/` from the live site, so they can be tried with that copy's own profiles. On dreamports.net each game's own Worker answers its `/play/<game>/` first.
+The games under `/play/` never run the Worker: the free plan serves plain files without limit but runs the Worker at most 100,000 times a day, and Sonic Advance Dreamport alone loads over 200 files each time it starts. Every copy of the site, such as a preview or `npm run worker`, plays the games in its own `games/` folder, with its own profiles.
 
 ## The sign-in apps
 
@@ -67,7 +67,7 @@ Players must be at least 13 to make a profile, the age most game sites use for t
 
 ## For a game: `/dreamports.js`
 
-A game played on dreamports.net at `/play/<game>/` uses profiles in three steps:
+A game played on dreamports.net at `/play/<game>/` uses profiles in four steps:
 
 1. **Load the script** on the game's page:
 
@@ -85,7 +85,13 @@ A game played on dreamports.net at `/play/<game>/` uses profiles in three steps:
 
 3. **Keep what was earned on the device** in `localStorage` as an id → time map (milliseconds since 1970). When a player signs in, the site claims that map for their profile, and `/dreamports.js` sends it again each time the game loads, in case an unlock didn't reach the site.
 
-To add a game, list it in [`src/lib/players.ts`](../src/lib/players.ts) (its entry in `src/content/games/`, its list of achievements, its `localStorage` key) and add its key to `DEVICE` in [`public/dreamports.js`](../public/dreamports.js). The list is an ES module the game publishes, exporting `ACHIEVEMENTS`, an array of `{ id, title, description }`; the profile reads titles and descriptions from it.
+4. **Show what the profile earned** with `dreamports.earned()`. It resolves to the signed-in player's achievements for the game when the page loaded, from every device, as an id → time map. With nobody signed in, or the site out of reach, it resolves to `{}`; it never throws. Show those as earned, with no popup, but **keep them apart from the device's map**: if another player signs in on that device, their profile claims the device's map, and it must hold only what was earned there.
+
+   ```js
+   const fromProfile = (await globalThis.dreamports?.earned?.()) ?? {};
+   ```
+
+To add a game, list it in [`src/lib/players.ts`](../src/lib/players.ts) (the id of its page, which for a Dreamport is its folder's name and `-dreamport`, its list of achievements, its `localStorage` key) and add its key to `DEVICE` in [`public/dreamports.js`](../public/dreamports.js). The list is an ES module the game publishes, exporting `ACHIEVEMENTS`, an array of `{ id, title, description }`; the profile reads titles and descriptions from it.
 
 Sonic Advance Dreamport: the list is `/play/sonic-advance/src/achievements/list.js`, and the key is `onsoku.achievements`.
 
@@ -105,7 +111,7 @@ All of it is under `/api/`, answers in JSON, and is never cached. Anything that 
 | `POST /api/sign-up` `{ name, age: true }` | Makes the profile for the account waiting for a name, and signs in |
 | `DELETE /api/sign-up` | Forgets the account waiting for a name |
 | `POST /api/sign-out` | Signs out |
-| `POST /api/achievements` `{ game, earned }` | Saves achievements, an id → time map, to the signed-in profile |
+| `POST /api/achievements` `{ game, earned }` | Saves achievements, an id → time map, to the signed-in profile, and answers with `earned`: all the game's achievements on the profile |
 | `GET /api/players/<name>` | A public profile: its name, when it was made and its achievements |
 
 A sign-in on a service's page has ten minutes, and a name must be picked within half an hour. Times from a device are kept if they fall between 1 January 2026 and now; otherwise the time it arrived is kept. A profile keeps at most 500 achievements per game.
@@ -114,4 +120,4 @@ A sign-in on a service's page has ten minutes, and a name must be picked within 
 
 - Leaderboards: phase 4 of #16.
 - Limits on how fast one visitor can make profiles or send achievements.
-- Sonic Advance Dreamport doesn't load `/dreamports.js` yet; that's a one-line change in its own repository.
+- A game shows the profile's achievements only while it can reach the site: they aren't kept on the device for playing offline.

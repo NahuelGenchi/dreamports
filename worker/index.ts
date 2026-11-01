@@ -1,6 +1,6 @@
-// The site's Worker. Cloudflare serves the built site's files by themselves; this runs only for the
-// addresses wrangler.jsonc sends it: the accounts API under /api/, players' public profiles under
-// /players/ and, away from dreamports.net, the games under /play/. docs/ACCOUNTS.md describes it.
+// The site's Worker. Cloudflare serves the built site's files by themselves, the games under /play/
+// included; this runs only for the addresses wrangler.jsonc sends it: the accounts API under /api/ and
+// players' public profiles under /players/. docs/ACCOUNTS.md describes it.
 
 import { ACHIEVEMENT_PATTERN, MINIMUM_AGE, NAME_PATTERN, PLAYABLE, isWay, type Way } from '../src/lib/players';
 import { Cancelled, WayError, accountOf, b64url, signInPage, type Flight, type WayEnv } from './ways';
@@ -11,7 +11,6 @@ interface Env extends WayEnv {
   DB?: D1Database;
 }
 
-const LIVE = 'dreamports.net';
 // the cookies: only this site's own pages over HTTPS get them, and no script can read them. The
 // session; an account that's new here, while its player picks a name; and a sign-in on its way
 // through a service's own page.
@@ -32,7 +31,6 @@ export default {
     if (url.pathname.startsWith('/api/oauth/')) return oauth(request, env, url);
     if (url.pathname.startsWith('/api/')) return api(request, env, url);
     if (url.pathname.startsWith('/players/')) return playerPage(request, env, url);
-    if (url.pathname.startsWith('/play/') && url.hostname !== LIVE) return fromLiveSite(request, url);
     return env.ASSETS.fetch(request);
   },
 } satisfies ExportedHandler<Env>;
@@ -402,7 +400,8 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
       }
 
       // achievements from a game: one just earned, or what a device earned before signing in. The
-      // earliest time wins.
+      // earliest time wins. The answer has all the game's achievements on the profile, so the game
+      // shows those earned on other devices too.
       case 'POST /api/achievements': {
         const player = await mustSignIn();
         const body = await readBody(request);
@@ -416,7 +415,8 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
           if (!ACHIEVEMENT_PATTERN.test(id)) continue;
           earned[id] = typeof at === 'number' && at >= FIRST_DAY && at <= now ? Math.floor(at) : now;
         }
-        if (!Object.keys(earned).length) return json({ saved: 0 });
+        const onProfile = async () => (await earnedBy(db, player.id))[game] ?? {};
+        if (!Object.keys(earned).length) return json({ saved: 0, earned: await onProfile() });
         const sent = JSON.stringify(earned);
         // what the profile would keep for this game afterwards: what it has, and the ids that are new
         const total = await db
@@ -435,7 +435,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
           )
           .bind(player.id, game, sent)
           .run();
-        return json({ saved: result.meta.changes ?? 0 });
+        return json({ saved: result.meta.changes ?? 0, earned: await onProfile() });
       }
     }
 
@@ -488,20 +488,4 @@ async function playerPage(request: Request, env: Env, url: URL) {
   if (!match![2]) return Response.redirect(new URL(`/players/${name}/${url.search}`, url).href, 308);
   const page = await env.ASSETS.fetch(new Request(new URL('/players/', url), request));
   return new Response(page.body, { status: page.ok ? 200 : page.status, headers: page.headers });
-}
-
-// Away from dreamports.net (a pull request's preview, or `npm run worker` on a computer), the games
-// under /play/ come from the live site, so they can be tried with this copy's profiles. On
-// dreamports.net each game's own Worker answers its /play/<game>/ before this one does.
-async function fromLiveSite(request: Request, url: URL) {
-  if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 });
-  const live = new URL(url.pathname + url.search, `https://${LIVE}`);
-  const response = await fetch(live, { method: request.method, redirect: 'manual' });
-  const headers = new Headers(response.headers);
-  const location = headers.get('Location');
-  if (location) {
-    const to = new URL(location, live);
-    if (to.host === LIVE) headers.set('Location', to.pathname + to.search + to.hash);
-  }
-  return new Response(response.body, { status: response.status, headers });
 }

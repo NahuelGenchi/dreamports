@@ -1,0 +1,8 @@
+{
+  "about": "The code names many of the original's functions by their labels in SAT-R's decompilation, such as sub_8029ED8 or Task_80397A8. The decompilation builds the European release, while the proof uses the USA one, Sonic Advance (USA), whose code sits a few bytes earlier in places. Each shift below is the one that lines up most of the decompilation's labels in its stretch with the functions in the code map. Labels outside every stretch are taken as they are, and port-map.json lists every name that doesn't land on a function.",
+  "shifts": [
+    { "from": "08010CB4", "to": "0801796C", "by": 76 },
+    { "from": "0801C130", "to": "0803AB60", "by": 48 },
+    { "from": "0803F92C", "to": "08069634", "by": 52 }
+  ]
+}

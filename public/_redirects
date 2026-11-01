@@ -1,0 +1,4 @@
+# dreamports.net/code is this repository on GitHub, so the README's first step names no account:
+# git clone https://dreamports.net/code follows it, keeping the rest of the address and its query.
+/code https://github.com/NahuelGenchi/dreamports 302
+/code/* https://github.com/NahuelGenchi/dreamports/:splat 302

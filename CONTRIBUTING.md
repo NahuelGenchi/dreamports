@@ -9,10 +9,32 @@ You don't need to write code to make Dreamports better. With a free GitHub accou
 - **Suggest a port** made by another fan, for the site's mash-ups. Link its own page and say who made it.
 - **Report a problem** on the site: a broken link, a page that looks wrong on your phone, a typo.
 - **Share an idea** for something the site could do.
+- **Help make a Dreamport.** Each game's tasks are listed under its game's issue. Comment `/claim` on a free one to take it, so nobody else does the same work, as [Claims and teams](docs/TEAMS.md) explains.
+- **Try work in progress.** Each game's page in the [Make tab](https://dreamports.net/make/) lists its latest steps, and each step's pull request links a preview of it. Nobody has reviewed them, so play only previews from people you trust, as [Previews](docs/PREVIEWS.md) explains.
 
 Open a new issue, choose **Work item**, and describe it in your own words. The form gives examples for every box. If you aren't sure which work type or milestone to pick, leave the defaults; the owner will sort it.
 
 Please never attach ROMs, game files, or anything extracted from a game, and never post private details such as your email address.
+
+## Make a Dreamport
+
+Anyone can make a Dreamport, or help with one, without writing code: a coding agent does the work, guided by seven `/dreamport` commands, as the [README](README.md#make-a-dreamport) shows step by step. It starts from one sentence pasted into the agent, `Set up https://dreamports.net/code and help me make <game> Dreamport.`, which gets the folder ready and starts `/dreamport <game>`. Each command runs the repository's own tools, which you can also run yourself:
+
+| Command | What it runs |
+| :--- | :--- |
+| `/dreamport <game>` | `git clone` and `npm ci` the first time, `gh repo fork --remote` after your yes, then `npm run dp -- find`, for where the game stands, and `rom`, which checks your copy |
+| `/dreamport-claim <task>` | A New Dreamport or Task issue, or `/claim` on a task's issue, which the Dreamports bot answers ([Claims and teams](docs/TEAMS.md)) |
+| `/dreamport-clip` | `portmap`, then `prove`, which compares every frame with the original and makes the clip |
+| `/dreamport-play` | `play --record`, which opens the game in a browser with your copy and keeps what you play, then `prove` on it |
+| `/dreamport-fix <what feels wrong>` | A recording of that moment, `prove` with `--stills` to see it, the fix, then `prove` with every recording |
+| `/dreamport-share` | `share`: a preview on your fork's GitHub Pages, and the clip for the step's pull request ([Previews](docs/PREVIEWS.md)) |
+| `/dreamport-send` | `team send`, to the lead's team build, or, for the lead, a pull request to this repository |
+
+Nothing is posted, pushed or sent until you say yes, and the agent follows the part of [AGENTS.md](AGENTS.md) on working on a Dreamport, and [the standard](docs/STANDARD.md).
+
+**How the commands are made.** Each is written once, in [`tools/commands/`](tools/commands/), and `npm run dp -- commands` writes it in the form each agent reads: `.claude/skills/` for Claude Code, `.agents/skills/` for Codex, which Cursor, Gemini CLI and Antigravity CLI read too, and `.gemini/commands/` for Gemini CLI's own commands. To change a command, change its file in `tools/commands/` and run the tool again. `npm run check` fails when a copy differs from its file. Every copy is set to run only when it's typed, in each agent's own way, and it starts by telling the agent to stop if the person didn't type it, for the agents that could load it by themselves.
+
+**A Dreamport's pull request** shows the Dreamports team what it needs to judge it at a glance: the clips, the two numbers before and after, the preview, and every source used, with its license. The [pull request template](.github/pull_request_template.md) has a part for it.
 
 ## Run the site on your computer
 
@@ -25,26 +47,31 @@ npm run dev
 
 Then open <http://localhost:4321> in your browser. The page updates as you save files.
 
+**Install scripts.** Since npm 12, `npm ci` runs a package's install scripts only when `package.json` allows them, under `allowScripts`. Two packages have one: esbuild, which builds the site's and the Worker's code, and workerd, which runs the Worker on your computer. Both scripts only put in place a program npm has already installed for your system, as a separate package, and check its version; esbuild and workerd find that program by themselves without them. So `allowScripts` turns both down on purpose, which keeps `npm ci` quiet, and `npm run dev`, `npm run build`, `npm run worker` and Cloudflare's builds work without them (#138). If a new package asks for one, `npm install-scripts ls` lists it, and it's allowed only once it's clear what it does and why it's needed.
+
 | Command | What it does |
 | :--- | :--- |
 | `npm run dev` | Runs the site on your computer while you work on it |
-| `npm run check` | Looks for mistakes in the pages and the game files |
+| `npm run check` | Looks for mistakes in the pages, the game files and the Dreamports' entries, checks that the README's table of Dreamports is up to date, and tests the moderation bot's rules |
 | `npm run build` | Makes the finished site in the `dist/` folder |
 | `npm run preview` | Opens that finished site, to check it before it goes online |
 | `npm run worker` | Makes the finished site and opens it with its profiles, at <http://localhost:8787>, with a database on your computer. Profiles only work here, not with `npm run dev` |
+| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame, `portmap`, which lists the original's functions your code names, `share`, which puts a preview of your work online for anyone to try, `readme`, which writes the README's table of Dreamports from their entries, and `commands`, which writes the `/dreamport` commands for each coding agent. [`tools/README.md`](tools/README.md) explains them |
 
 ## Add a game
 
-Each game page comes from **one Markdown file** in [`src/content/games/`](src/content/games/). To add a game, copy one of the files there, give it a new name, and change the text. Nothing else needs editing: the menu finds the new file by itself. Dreamports appear in the **dreamports** row, and external ports and other games in the **mash-ups** row.
+Each game page comes from **one Markdown file**. Nothing else needs editing: the menu finds the new file by itself. Dreamports appear in the **dreamports** row, and external ports and other games in the **mash-ups** row. Every Dreamport being made also has a place in the **make** row.
 
-The file name becomes the page address. `src/content/games/my-port.md` appears at `/dreamports/my-port/`, `/external-ports/my-port/` or `/other-games/my-port/`, depending on its `kind`. Use lowercase letters, numbers and dashes.
+**A Dreamport** keeps every rule in the [Dreamport standard](docs/STANDARD.md), whoever makes it. Its code goes in a folder of its own in [`games/`](games/README.md), and plays at `/play/<game>/`. Its page comes from its **entry**, `entry.md` in the same folder, which says everything about it, from the copy it needs to its lead and its sources, and shows the two numbers the proof tools measured, code ported and gameplay proven. [The entry](games/README.md#the-entry) explains its fields. Its page appears at `/dreamports/<game>-dreamport/`. Before starting one, `npm run dp -- find <game>`, or `/dreamport <game>` in your coding agent, says whether someone already makes it, and a [New Dreamport](docs/TEAMS.md#start-a-dreamport) issue claims it for you, as its lead.
 
-The top of the file, between the two `---` lines, holds the details. Write them as normal sentences and labels: a capital at the start, and names with their own capitals.
+**Any other game**, an external port or a fan game that isn't a port, has its page in [`src/content/games/`](src/content/games/). To add one, copy the file there, give it a new name, and change the text. The file name becomes the page address: `src/content/games/my-port.md` appears at `/external-ports/my-port/` or `/other-games/my-port/`, depending on its `kind`. Use lowercase letters, numbers and dashes.
+
+The top of the file, between the two `---` lines, holds the details. Write them as normal sentences and labels: a capital at the start, and names with their own capitals. A Dreamport's entry has the same details, except `kind`, and some of its own, which [the entry](games/README.md#the-entry) lists.
 
 | Field | What to write |
 | :--- | :--- |
 | `title` | The game's name on the site, such as `Sonic Advance Dreamport`. On a Dreamport's own page, *Dreamport* shows as a tag after the name |
-| `kind` | `dreamport`, `external` (a port made by someone else) or `other` (a fan game that isn't a port) |
+| `kind` | `external` (a port made by someone else) or `other` (a fan game that isn't a port) |
 | `platform` | The short line under the game's name in the menu, such as `Game Boy Advance` or `A mod for Dead Cells` |
 | `year` | Optional: the year the original game came out |
 | `added` | The day it was added, written as `2026-10-27` |
@@ -53,7 +80,7 @@ The top of the file, between the two `---` lines, holds the details. Write them 
 | `ownCopy` → `links` | The play or download links. Each has a `label`, an `href` starting with `https://`, and an `icon`: `play` or `download`. The first is the main button, usually labelled `Play` |
 | `ownCopy` → `note` | A very short line shown once the box is ticked, such as `Your copy stays on your device.` |
 | `extras` | Optional: what the game adds, one square each on its page. Each has a `name`, an `icon` (one of the names in `src/lib/icons.ts`), a short `text`, `needs` when it needs another game, and a `screen` with its own `clip` and `still`. While an extra is picked, the game's picture plays its recording, or the game's own without one |
-| `facts` | The rows of the *The game* box. Each has a `label` and one of: a `value` (with an `href` if it's a link); `controls`, any of `keyboard`, `controller` and `touch`, shown as icons; or `parts`, the parts of the original game, each with a `name` and a `percent`, whose average shows as how close the port is to the original. Name the exact copy under *You need*, such as `A Sonic Advance (USA) ROM (.gba)` |
+| `facts` | The rows of the *The game* box. Each has a `label` and either a `value` (with an `href` if it's a link) or `controls`, any of `keyboard`, `controller` and `touch`, shown as icons. Name the exact copy under *You need*, such as `A Kirby Super Star Ultra (USA) ROM (.nds)` |
 | `screen` | Optional, and only with the owner's own recording: `clip` (the recording, named without its ending), `still` (its first frame) and, for pixel-art games, `pixelated: true`, which keeps the pixels sharp. See below |
 | `share` | Optional: the picture shown when the game's page is shared, such as `/media/my-port-share.png`. See below |
 | `glow` | Optional: the colour of the light the game casts on the menu while it's selected, in quotes, such as `'#8fd1ff'` |
@@ -105,7 +132,7 @@ Then run `npm run check` and `npm run build`. If a detail is missing or misspell
    ```
 
    Name it `<type>/<issue>-<slug>`. Types are `feat`, `fix`, `enh`, `docs`, `research` and `ops`. One branch holds one issue: never reuse a merged or existing branch for new work, and never mix two features on one branch. Use focused commits such as `feat: add the Dreamports catalog page (#3)`. Do not commit directly to `main`. Delete the branch after its PR merges.
-3. **Open a linked PR.** Include a standalone `Closes #N` line for each completed, same-repository issue. Set the PR to the same milestone as its primary issue. Split cross-milestone changes into separate PRs. Use `Refs #N` for unfinished parent or related work; it does not replace a closing reference to the scoped issue.
+3. **Open a linked PR.** A pull request from a fork gets no preview of its own, so share one with `npm run dp -- share` ([Previews](docs/PREVIEWS.md)) and put its link in the PR. Include a standalone `Closes #N` line for each completed, same-repository issue. Set the PR to the same milestone as its primary issue. Split cross-milestone changes into separate PRs. Use `Refs #N` for unfinished parent or related work; it does not replace a closing reference to the scoped issue.
 4. **Record the outcome.** Describe exactly what changed, which checks ran, and what was not run. Close the issue only when its stated scope is complete.
 
 For non-file operations (repository settings, hosting, domains), put sanitized commands and results in the issue. When an operation produces no code change, deliver its lasting decision through a small documentation PR instead of an empty PR.
@@ -122,15 +149,15 @@ A successful site build shows that the site builds, nothing more. Browser checks
 
 ## Private data and game files
 
-Dreamports never hosts ROMs, game files or assets extracted from games, and links only to projects that ask players to bring their own legal copy. Keep ROMs, saves, extracted assets, private email addresses, account IDs and credentials out of commits, issues, and PRs. The ignore rules are an accidental-staging guard, not permission to collect that data. If a secret is exposed, stop sharing it and revoke it.
+Dreamports never hosts ROMs, game files or assets extracted from games, and links only to projects that ask players to bring their own legal copy. Keep ROMs, saves, extracted assets, private email addresses, account IDs and credentials out of commits, issues, and PRs. The ignore rules are an accidental-staging guard, not permission to collect that data. If a secret is exposed, stop sharing it and revoke it. The Dreamports bot deletes or hides posts that break these rules, as [Moderation](docs/MODERATION.md) explains.
 
-Pictures of games appear only where the owner decides, and only from the owner's own recordings of their own projects. Never present an invented or reconstructed image as a capture.
+Pictures of games on the site appear only where the owner decides, and only from the owner's own recordings of their own projects. The one exception is clips that show the original game next to a Dreamport, which `npm run dp -- prove` makes to show a match: they may appear in pull requests, and nowhere else, never on the site, in a game's files or in a commit ([Clips](docs/STANDARD.md#clips)). Never present an invented or reconstructed image as a capture.
 
 ## License
 
-The project's own files are licensed under the MIT License ([LICENSE](LICENSE)), and contributions are accepted under the same license.
+The project's own files are licensed under the MIT License ([LICENSE](LICENSE)), and contributions are accepted under the same license. Dreamports and the kits they share, in [`games/`](games/README.md) and [`kit/`](games/README.md#the-kits-games-start-from), use GPL-3.0-or-later instead, each with its license file in its own folder, as the [Dreamport standard](docs/STANDARD.md#licenses) explains.
 
-Game names and trademarks belong to their owners. Dreamports is an unofficial fan project, not affiliated with or endorsed by Sega, Nintendo, or any other publisher. Anything bundled from elsewhere, such as fonts or icons, needs a license compatible with MIT, its notices kept next to the files, and a line in the README credits.
+Game names and trademarks belong to their owners. Dreamports is an unofficial fan project, not affiliated with or endorsed by Sega, Nintendo, or any other publisher. A rights holder's notice is handled as [Notices from rights holders](docs/RIGHTS.md) says. Anything bundled from elsewhere, such as fonts or icons, needs a license compatible with MIT, its notices kept next to the files, and a line in the README credits.
 
 ## Documentation standard
 

@@ -1,0 +1,8 @@
+{
+  "console": "gba",
+  "name": "Sonic Battle (USA)",
+  "title": "SONICBATTLE",
+  "code": "BSBE",
+  "sha1": "8cf4fbbe73f6b1907ab9997caab4c4e7d9708937",
+  "keysAfterVBlank": true
+}

@@ -1,0 +1,55 @@
+---
+name: dreamport-claim
+description: Takes a free task, or a whole new game, so nobody else does the same work.
+disable-model-invocation: true
+---
+
+<!-- Written by npm run dp -- commands from tools/commands/dreamport-claim.md: change that file, not this one. -->
+
+Only do this if the person typed `/dreamport-claim`, or `$dreamport-claim` in Codex, in their message. If you're reading it because of something they said in their own words, such as "send it" or "put it online", stop here and do none of it: tell them in one sentence what `/dreamport-claim` does, and wait for them to type it.
+
+What they typed after the command, if anything, is in their message.
+
+Work in the Dreamports repository's folder, as its `AGENTS.md` says under Working on a Dreamport. The person may never have written code: speak plainly, one step at a time, and ask only what they have to decide. In Codex the commands start with `$` instead of `/`, such as `$dreamport-play`.
+
+Claims are issues in the Dreamports repository, NahuelGenchi/dreamports, and the Dreamports bot answers them within seconds: the first claim wins (`docs/TEAMS.md`).
+
+1. Run `npm run dp -- find <the game>` and work out what they asked for. If what they typed could be more than one thing, list the choices and ask.
+2. Say exactly what will be posted, where, and that it's public and in their name on GitHub. Then wait for their yes. Nothing is posted without it.
+   - **A whole new game**, with no Dreamport and nobody on it: a New Dreamport issue, which makes them its lead. It holds the game's name; its folder in `games/`, lowercase letters, numbers and single dashes, such as `sonic-battle`; its console, `Game Boy Advance` or `Another console`, which needs a kit first; where it starts, usually where a player starts, such as `Sonic moving in the first arena.`; the ports and sources found, with their licenses; and that they have their own legal copy and that nothing from it goes in the repository. Ask for whatever you don't know, and suggest an answer.
+   - **A free task**: `/claim` as a comment on its issue.
+   - **A piece that isn't a task yet**, in a game that has a lead: a Task issue they take at once. It holds the game's folder; its kind, one of `Character`, `Level`, `Mode`, `Achievement`, `Extra`, `A difference from the original` or `Something else`; what it is, and where a player meets it; and when it's done, usually a recording that plays through it with every frame matching the original.
+   - **A game or task someone else has**: say who, list what's still free, and post nothing.
+3. Post it. A comment: `gh issue comment <number> --repo NahuelGenchi/dreamports --body "/claim"`. An issue: write its text to a file outside the repository and run `gh issue create --repo NahuelGenchi/dreamports --title "<title>" --body-file <file>`. The title is `New Dreamport: <game>` or `Task: <what it is>`. The bot reads the text by its headings, so write them exactly as the issue forms do, each answer under its heading, and a ticked box as `- [X]`:
+
+   ```markdown
+   ### Game
+
+   Sonic Battle
+
+   ### Game folder
+
+   sonic-battle
+
+   ### Console
+
+   Game Boy Advance
+
+   ### Where it starts
+
+   Sonic moving in the first arena.
+
+   ### Ports and sources
+
+   _No response_
+
+   ### Your copy
+
+   - [X] I have my own legal copy of the game, and nothing from it, such as its files, saves or pictures, goes in the repository.
+   ```
+
+   A Task's headings are `### Game folder`, `### Kind`, `### What it is`, `### Done when` and `### Taking it`, with `- [X] I'm taking this task myself.` under the last.
+4. Wait half a minute, then read the bot's answer with `gh issue view <number> --repo NahuelGenchi/dreamports --comments`, and tell them what it says in plain words. If someone was faster, list what's still free.
+5. If it's theirs, start the work's branch, named `feat/<issue>-<a few words>`: from the team build with `npm run dp -- team <game> join <branch>` when the game has one, or else from the Dreamports repository's latest `main`: fetch it, then `git switch --no-track -c <branch> <remote>/main`, where the remote is `upstream` once they have a fork, or else `origin`, so the new branch isn't set to push to `main`.
+6. For a whole new game, map all of it before any code, as the standard asks (`docs/STANDARD.md`, How progress is measured). Write `games/<game>/proof/original.json` from what `npm run dp -- rom <their copy>` says about it: its `console` (`gba`), its `name`, such as `Sonic Battle (USA)`, the `title` and `code` in its header, and its `sha1`. Run `rom` on it again, so the tools know it's the copy the proof uses, then `npm run dp -- codemap <game>`, with `--from <list>` when a decompilation or a disassembler lists the game's functions, and commit both. Tell them how many functions it found: the game's progress map shows every one of them, grey until it's ported. Its New Dreamport issue is now the game's issue, where its tasks will be listed: the game's entry, `games/<game>/entry.md`, names it as `issue: <number>` once there is one.
+7. Then say what the first playable step will be, and ask whether to start building it.

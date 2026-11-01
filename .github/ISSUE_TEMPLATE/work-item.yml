@@ -1,6 +1,5 @@
 name: Work item
 description: Suggest a port, report a problem, or track a feature, improvement, document, research decision, or repository task.
-title: ""
 body:
   - type: markdown
     attributes:
@@ -34,6 +33,7 @@ body:
         - M3 — Growth
         - M4 — Sonic Advance Dreamport on dreamports.net
         - M5 — Game launcher
+        - M6 — Anyone can make a Dreamport
       default: 4
     validations:
       required: true

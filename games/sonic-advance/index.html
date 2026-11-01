@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Sonic Advance Dreamport: play Sonic Advance in your browser</title>
+<meta name="description" content="Play Sonic Advance in your web browser: a fan-made port, true to the original, with optional extras. Bring your own ROM; it never leaves your device.">
+<link rel="canonical" href="https://dreamports.net/play/sonic-advance/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Sonic Advance Dreamport">
+<meta property="og:title" content="Sonic Advance Dreamport: play Sonic Advance in your browser">
+<meta property="og:description" content="A fan-made port of Sonic Advance, true to the original, with optional extras. Bring your own ROM; it never leaves your device.">
+<meta property="og:url" content="https://dreamports.net/play/sonic-advance/">
+<meta property="og:image" content="https://dreamports.net/play/sonic-advance/docs/assets/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="Sonic Advance Dreamport: Sonic Advance, rebuilt for the browser.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#050a24">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../../kit/gba/styles/kit.css">
+</head>
+<body>
+<main>
+  <section class="picker" id="picker" aria-label="Your ROMs"></section>
+
+  <section class="stage" id="stage" hidden>
+    <canvas id="screen" tabindex="0" aria-label="Sonic Advance: the first time, the language screen, where Up and Down choose and Z keeps the language; then the SEGA and Sonic Team logos and the intro, which Enter, Z or X skips, the title screen, where Enter opens the menu, and the menu, where the arrow keys choose and Z picks Game Start, then Neo Green Hill Zone act 1, or Options, where Left and Right change the setting picked and X goes back. Use the arrow keys to run, Z or Space to jump, X to attack, or a controller: A to jump and pick, B or X to attack, Menu to skip the intro and open the menu. Enter or Menu pauses the act and goes on again."></canvas>
+    <div class="screens" id="screens" hidden></div>
+
+    <button type="button" class="settings-open" id="settings-open" aria-label="Settings" aria-controls="sheet-wrap" aria-expanded="false"><svg viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 1h9v1H0zM5 0h2v3H5zM0 4h9v1H0zM1 3h2v3H1zM0 7h9v1H0zM4 6h2v3H4z"/></svg></button>
+    <div class="sheet-wrap" id="sheet-wrap" hidden>
+      <div class="sheet-veil"></div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <section class="view" id="settings" aria-labelledby="settings-title">
+          <header class="sheet-head">
+            <div class="sheet-title"><p class="sheet-crumb">Sonic Advance Dreamport</p><h2 id="settings-title">Settings</h2></div>
+            <span class="sheet-paused"><svg viewBox="0 0 7 9" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h2v9H0zM5 0h2v9H5z"/></svg>Paused</span>
+            <button type="button" class="sheet-close" data-close aria-label="Close" title="Close">×</button>
+          </header>
+          <div class="sheet-body settings-body">
+            <div class="settings-col sheet-rise">
+              <button type="button" class="resume" data-close><svg viewBox="0 0 4 7" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h1v7H0zM1 1h1v5H1zM2 2h1v3H2zM3 3h1v1H3z"/></svg>Back to the game<kbd class="key">H</kbd></button>
+              <button type="button" class="ach-tile" id="achievements-open">
+                <canvas class="trophy" width="12" height="10" aria-hidden="true"></canvas>
+                <span class="ach-tile-text">
+                  <span class="ach-tile-top"><span>Achievements</span><b class="count"></b></span>
+                  <small class="ach-tile-status"></small>
+                </span>
+                <svg class="chev" viewBox="0 0 3 5" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h1v1h1v1h1v1H2v1H1v1H0z"/></svg>
+                <span class="cells" aria-hidden="true"></span>
+              </button>
+              <ul class="rows">
+                <li><button type="button" class="row" id="controls-open">
+                  <svg viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true"><path fill-rule="evenodd" d="M0 1h9v7H0zM1 2v5h7V2z"/><path d="M2 3h1v1H2zM4 3h1v1H4zM6 3h1v1H6zM3 5h3v1H3z"/></svg>
+                  <span class="row-text">Controls<span class="row-hint">Keys and controller</span></span>
+                  <svg class="chev" viewBox="0 0 3 5" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h1v1h1v1h1v1H2v1H1v1H0z"/></svg>
+                </button></li>
+                <li><button type="button" class="row" id="change-rom">
+                  <svg viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true"><path fill-rule="evenodd" d="M1 0h6v1h1v8H1zM2 2v3h5V2z"/></svg>
+                  <span class="row-text">Your ROMs<span class="row-hint" id="roms-count"></span></span>
+                  <svg class="chev" viewBox="0 0 3 5" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h1v1h1v1h1v1H2v1H1v1H0z"/></svg>
+                </button></li>
+                <li><a class="row" href="viewer.html" id="assets-open">
+                  <svg viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h4v4H0zM5 0h4v4H5zM0 5h4v4H0zM5 5h4v4H5z"/></svg>
+                  <span class="row-text">Asset viewer<span class="row-hint">Sprites, levels and the ROM's tables</span></span>
+                  <svg class="chev" viewBox="0 0 3 5" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h1v1h1v1h1v1H2v1H1v1H0z"/></svg>
+                </a></li>
+              </ul>
+            </div>
+            <div class="settings-col sheet-rise">
+              <p class="settings-label">Extras</p>
+              <ul class="rows">
+              <li><button type="button" class="row" role="switch" id="wide" aria-checked="false">
+                <span class="row-text">Widescreen<span class="row-hint" data-hint="See more of the stage">See more of the stage</span></span>
+                <span class="row-end"><kbd class="key">V</kbd><span class="track" aria-hidden="true"></span></span>
+              </button></li>
+              <li><button type="button" class="row" role="switch" id="rush" aria-checked="false">
+                <span class="row-text">Rush boost<span class="row-hint" data-hint="A burst of speed">A burst of speed</span></span>
+                <span class="row-end"><kbd class="key">R</kbd><span class="track" aria-hidden="true"></span></span>
+              </button></li>
+              <li><button type="button" class="row" role="switch" id="boost-mode" aria-checked="false">
+                <span class="row-text">Boost Mode<span class="row-hint" data-hint="Keep running at top speed">Keep running at top speed</span></span>
+                <span class="row-end"><kbd class="key">B</kbd><span class="track" aria-hidden="true"></span></span>
+              </button></li>
+              <li><button type="button" class="row" role="switch" id="tricks" aria-checked="false">
+                <span class="row-text">SA2 tricks<span class="row-hint" data-hint="Flips and dives in the air">Flips and dives in the air</span></span>
+                <span class="row-end"><kbd class="key">T</kbd><span class="track" aria-hidden="true"></span></span>
+              </button></li>
+              <li><button type="button" class="row" role="switch" id="sound" aria-checked="false">
+                <span class="row-text">Sound<span class="row-hint" data-hint="Music and effects">Music and effects</span></span>
+                <span class="row-end"><kbd class="key">M</kbd><span class="track" aria-hidden="true"></span></span>
+              </button></li>
+                <li class="opacity-row"><label class="row" for="button-opacity">
+                  <span class="row-text">Button opacity<span class="row-hint">The buttons drawn around the game</span></span>
+                  <input type="range" id="button-opacity" min="20" max="100" step="5" value="60">
+                </label></li>
+              </ul>
+              <p class="settings-status" id="rom-status" role="status" aria-live="polite"></p>
+              <p class="settings-status" id="stats" aria-live="off"></p>
+            </div>
+          </div>
+          <footer class="sheet-foot" aria-hidden="true"></footer>
+          <input type="file" id="rom-file" hidden>
+        </section>
+      </div>
+    </div>
+
+    <div class="touch" id="touch" aria-hidden="true">
+      <div class="dpad" data-pad>
+        <span class="arm" data-dir="up"><svg viewBox="0 0 5 3" shape-rendering="crispEdges"><path d="M2 0h1v1H2zM1 1h3v1H1zM0 2h5v1H0z"/></svg></span>
+        <span class="arm" data-dir="right"><svg viewBox="0 0 5 3" shape-rendering="crispEdges"><path d="M2 0h1v1H2zM1 1h3v1H1zM0 2h5v1H0z"/></svg></span>
+        <span class="arm" data-dir="down"><svg viewBox="0 0 5 3" shape-rendering="crispEdges"><path d="M2 0h1v1H2zM1 1h3v1H1zM0 2h5v1H0z"/></svg></span>
+        <span class="arm" data-dir="left"><svg viewBox="0 0 5 3" shape-rendering="crispEdges"><path d="M2 0h1v1H2zM1 1h3v1H1zM0 2h5v1H0z"/></svg></span>
+      </div>
+      <div class="shoulders left">
+        <button type="button" class="pill" data-pad-button="6" tabindex="-1">LT</button>
+        <button type="button" class="pill" data-pad-button="4" tabindex="-1">LB</button>
+      </div>
+      <div class="shoulders right">
+        <button type="button" class="pill" data-pad-button="5" tabindex="-1">RB</button>
+        <button type="button" class="pill" data-pad-button="7" tabindex="-1">RT</button>
+      </div>
+      <button type="button" class="pill select" data-pad-button="8" tabindex="-1">Select</button>
+      <button type="button" class="pill start" data-pad-button="9" tabindex="-1">Start</button>
+      <div class="face">
+        <button type="button" class="round y" data-pad-button="3" tabindex="-1">Y</button>
+        <button type="button" class="round x" data-pad-button="2" tabindex="-1">X</button>
+        <button type="button" class="round b" data-pad-button="1" tabindex="-1">B</button>
+        <button type="button" class="round a" data-pad-button="0" tabindex="-1">A</button>
+      </div>
+    </div>
+  </section>
+</main>
+<script src="/dreamports.js"></script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

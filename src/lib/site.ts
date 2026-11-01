@@ -6,9 +6,14 @@ export type Kind = Game['data']['kind'];
 export const SUGGEST_URL =
   'https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml';
 export const SOURCE_URL = 'https://github.com/NahuelGenchi/dreamports';
+// The README's steps for making a Dreamport, which start from one sentence pasted into a coding agent (#141).
+export const MAKE_GUIDE_URL = `${SOURCE_URL}#make-a-dreamport`;
 export const OWNER_URL = 'https://nahuelgenchi.com/';
 // Forwards to the owner's inbox through Cloudflare Email Routing (#4).
 export const CONTACT_EMAIL = 'hello@dreamports.net';
+// GitHub's own way for rights holders to send a notice about a repository, such as this one.
+export const GITHUB_NOTICES_URL =
+  'https://docs.github.com/en/site-policy/content-removal-policies/guide-to-submitting-a-dmca-takedown-notice';
 
 export const HOME_TITLE = 'Dreamports · Enhanced fan ports of classic games';
 export const pageTitle = (title?: string): string => (title ? `${title} · Dreamports` : HOME_TITLE);
@@ -53,8 +58,12 @@ export const sectionFor = (kind: Kind): Section =>
 export const gameUrl = (game: Game): string =>
   `/${sectionFor(game.data.kind).path}/${game.id}/`;
 
-// The launcher's filters, across the top of the menu. Each shows its games in one row.
-export type FilterKey = 'dreamports' | 'mash-ups';
+// A Dreamport's page in the Make row, for the people making it (#142), named after its folder in games/.
+export const makeUrl = (folder: string): string => `/make/${folder}/`;
+
+// The launcher's filters, across the top of the menu. Each shows its games in one row. Make's row holds
+// the Dreamports being made, not a kind of game, so it has no kinds.
+export type FilterKey = 'dreamports' | 'mash-ups' | 'make';
 
 export interface Filter {
   key: FilterKey;
@@ -63,6 +72,8 @@ export interface Filter {
   title: string;
   description: string;
   kinds: Kind[];
+  // a line over the row, for a row that needs saying what it is
+  lead?: string;
 }
 
 export const FILTERS: Filter[] = [
@@ -83,6 +94,16 @@ export const FILTERS: Filter[] = [
     description:
       'Great ports made by other fans, and fan games that aren’t ports, like Kirby’s Dead Land. Each one asks you to bring your own copy of the game.',
     kinds: ['external', 'other'],
+  },
+  {
+    key: 'make',
+    label: 'Make',
+    path: '/make/',
+    title: pageTitle('Make'),
+    description:
+      'Every Dreamport being made, where it stands and what’s left to make. Anyone can help, with one sentence pasted into a coding agent.',
+    kinds: [],
+    lead: 'Every Dreamport being made, where it stands and what’s left to make.',
   },
 ];
 

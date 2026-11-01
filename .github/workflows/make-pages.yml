@@ -1,0 +1,44 @@
+name: Make pages
+
+# Each Dreamport's page in the Make row on dreamports.net shows how many of its pieces are free to take, which the
+# site reads from GitHub as it's built (docs/MAKE.md). A merged pull request builds the site anyway, and the claims
+# workflow builds it again whenever it gives, takes back or adds a piece. This builds it again when a person changes a
+# piece by hand: assigns or unassigns it, closes or reopens it, or deletes or moves it. It reads only the issue's
+# labels, and runs nothing from it.
+on:
+  issues:
+    types: [assigned, unassigned, closed, reopened, deleted, transferred]
+  workflow_dispatch:
+
+permissions: {}
+
+# changes close together make one build: GitHub keeps only the newest waiting run
+concurrency:
+  group: make-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build dreamports.net again
+    # a piece of a game: a task, a game's issue, or an issue with a game's label; or anything, when started by hand
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || contains(github.event.issue.labels.*.name, 'task')
+      || contains(github.event.issue.labels.*.name, 'new-dreamport')
+      || contains(join(github.event.issue.labels.*.description, ' | '), ' in games/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    env:
+      # the Deploy Hook that builds dreamports.net, kept in the repository's secrets
+      DEPLOY_HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
+    steps:
+      - name: Ask Cloudflare for a build
+        run: |
+          if [ -z "$DEPLOY_HOOK" ]; then
+            echo "::notice::This repository has no CLOUDFLARE_DEPLOY_HOOK secret, so nothing is built."
+          elif curl --fail --silent --show-error --max-time 30 --output /dev/null --request POST "$DEPLOY_HOOK"; then
+            echo 'Cloudflare is building dreamports.net again.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::Cloudflare didn't start a build, so the Make pages wait for the next one."
+            exit 1
+          fi

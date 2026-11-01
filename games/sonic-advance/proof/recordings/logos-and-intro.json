@@ -1,0 +1,9 @@
+{
+  "about": "From power-on with nothing saved: A on the language screen, then nothing pressed through the SEGA and Sonic Team logos and the whole intro, until the title screen shows.",
+  "frames": 3600,
+  "held": [
+    [0,[]],
+    [150,["A"]],
+    [156,[]]
+  ]
+}

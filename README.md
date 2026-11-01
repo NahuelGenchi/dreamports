@@ -10,7 +10,7 @@ Free · Bring your own copy of the game · Live at **[dreamports.net](https://dr
 
 <br>
 
-[What is it?](#what-is-dreamports) &nbsp;·&nbsp; [What's inside](#whats-inside) &nbsp;·&nbsp; [Bring your own game](#the-golden-rule-bring-your-own-game) &nbsp;·&nbsp; [Progress](#progress) &nbsp;·&nbsp; [Help out](#help-out) &nbsp;·&nbsp; [Questions](#questions)
+[What is it?](#what-is-dreamports) &nbsp;·&nbsp; [What's inside](#whats-inside) &nbsp;·&nbsp; [Make a Dreamport](#make-a-dreamport) &nbsp;·&nbsp; [Bring your own game](#the-golden-rule-bring-your-own-game) &nbsp;·&nbsp; [Progress](#progress) &nbsp;·&nbsp; [Help out](#help-out) &nbsp;·&nbsp; [Questions](#questions)
 
 </div>
 
@@ -22,20 +22,26 @@ Dreamports is a website, at **[dreamports.net](https://dreamports.net)**, that g
 
 A **port** is a game brought somewhere new to play: your web browser, your computer, or a newer console. A **Dreamport** is the port fans always dreamed of: the game you remember, with the extras you wished it had. Widescreen, smoother motion, new ways to play: every extra is optional, and every Dreamport is made by a fan, for fans.
 
-The site works like the menu of a game console. It's one screen with a row of games, and you move along it with the arrow keys, a game controller, a click or a swipe. The game you're on wakes up and plays a short recording of itself. Two tabs at the top switch between two rows:
+The site works like the menu of a game console. It's one screen with a row of games, and you move along it with the arrow keys, a game controller, a click or a swipe. The game you're on wakes up and plays a short recording of itself. Three tabs at the top switch between three rows:
 
 <table>
 <tr>
-<td width="50%" valign="top">
+<td width="33%" valign="top">
 
 🌙 **Dreamports**<br>
 Enhanced ports, each named after the game it brings back, such as *Sonic Advance Dreamport*.
 
 </td>
-<td width="50%" valign="top">
+<td width="33%" valign="top">
 
 ✨ **Mash-ups**<br>
 Great ports made by other fans, with a link to their own page and full credit to the people who made them, and fan games that aren't ports, such as *Kirby's Dead Land*.
+
+</td>
+<td width="33%" valign="top">
+
+🛠️ **Make**<br>
+Every Dreamport being made, where it stands and what's left to make, with the one sentence that gets you ready to help.
 
 </td>
 </tr>
@@ -49,13 +55,68 @@ On a phone or tablet, you can add dreamports to your Home Screen: in Safari, tap
 
 ## What's inside
 
-These are the projects on the site so far. Each one lives in its own repository.
+These are the projects on the site so far.
 
-| | Project | What it is | Try it |
+**Dreamports** are made in this repository, in [`games/`](games/README.md), each in a folder of its own with an entry that says where it stands. Each one shows two numbers, as [the Dreamport standard](docs/STANDARD.md#how-progress-is-measured) explains. **Code ported** is how much of the original game's code has been rebuilt. **Gameplay proven** is how much of the game has been played next to the original, from start to end of each part, with every frame matching. A game can be far along in code and still have little proven, until someone records it. Each number opens the game's progress map, a picture for the people making it, with every piece of the original game's code and every part of the game, green once it's done. The lead is who leads the work on it. The proof tools fill in this table from each Dreamport's entry, so nobody types its numbers.
+
+<!-- The proof tools write this table from each Dreamport's entry: npm run dp -- readme. -->
+
+| | Dreamport | What it is | Code ported | Gameplay proven | Lead | Try it |
+| :---: | :--- | :--- | :--- | :--- | :--- | :--- |
+| 🌙 | **[Sonic Battle Dreamport](games/sonic-battle/)** | Sonic Battle, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install. Bring your own copy of the game. | [3.96%](.github/readme/progress/sonic-battle.svg) | [5.26%, 1 of 19 parts](.github/readme/progress/sonic-battle.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-battle/) |
+| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [38.95%](.github/readme/progress/sonic-advance.svg) | [13.89%, 5 of 36 parts](.github/readme/progress/sonic-advance.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
+
+<!-- End of the table of Dreamports. -->
+
+**Mash-ups** are fan projects with repositories of their own.
+
+| | Mash-up | What it is | Try it |
 | :---: | :--- | :--- | :--- |
-| 🌙 | **[Sonic Advance Dreamport](https://github.com/NahuelGenchi/sonic-advance-dreamport)** | Sonic Advance (Game Boy Advance, 2001), rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
 | ✨ | **[Kirby's Dead Land](https://github.com/NahuelGenchi/kirbys-dead-land)** | A mod that lets you play as Kirby inside Dead Cells, with his moves and copy abilities. For Linux; Windows is in testing. | [⬇&nbsp;Download](https://github.com/NahuelGenchi/kirbys-dead-land/releases/latest) |
 | ✨ | **Your favorite fan port?** | Ports made by other fans are on their way to the mash-ups. Know a great one? | [💡&nbsp;Suggest](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml) |
+
+## Make a Dreamport
+
+> [!NOTE]
+> **Not open yet.** The Dreamports team is making the next Dreamport by following these steps first, to find what's confusing before anyone else tries ([#83](https://github.com/NahuelGenchi/dreamports/issues/83)). Until then, they may still change.
+
+**No coding needed.** Your coding agent does the technical work. You bring the game and play it, and your agent checks what you play against the original.
+
+You need three things: your own copy of the game as a file, a free GitHub account, and a coding agent that works on your computer, such as Claude Code, Codex, Cursor, Gemini CLI or Antigravity CLI. For a Game Boy Advance game, your copy is a `.gba` file made from your cartridge. It never leaves your computer.
+
+**Step 1: paste one sentence.** Make a new, empty folder, open your coding agent in it, and paste this, with your game's name in it. Every Dreamport being made has a page in the Make tab on [dreamports.net](https://dreamports.net/make/), with its sentence ready to copy, how many of its pieces are free to take and its latest steps:
+
+```text
+Set up https://dreamports.net/code and help me make Sonic Battle Dreamport.
+```
+
+To start a Dreamport of a game you haven't picked yet, paste this instead, and your agent asks which game:
+
+```text
+Set up https://dreamports.net/code and help me start a Dreamport.
+```
+
+**Step 2: answer your agent.** It gets the Dreamports folder from GitHub, as a folder called dreamports, and checks the programs its tools need. Before it installs one, it tells you what it is and that it's free, and waits for your yes. If you aren't signed in to GitHub on your computer, it asks you to sign in yourself, on GitHub's own page. It offers to make your fork, your own copy of Dreamports on your GitHub account, where your work goes, and makes it only if you say yes. Then it tells you where the game stands: whether it already has a Dreamport, who's working on it, whether someone ported it somewhere else, and which command to type next.
+
+**Step 3: next time, open your agent in the dreamports folder.** The commands live in that folder, and your agent always finds them when it's opened there. In a terminal, type `cd dreamports`, then start your agent again, such as `claude` or `codex`. In an app, open the dreamports folder the way you'd open any folder. If you made the folder a while ago, paste the sentence again, and your agent brings it up to date.
+
+These are all the commands, in the order you'll usually need them:
+
+| Command | What it does |
+| :--- | :--- |
+| `/dreamport <game>` | Shows where a game stands and what you can do. Start here. |
+| `/dreamport-claim <task>` | Takes a free task, or a whole new game, so nobody else does the same work. |
+| `/dreamport-clip` | Checks your latest step against the original and shows a clip of both. |
+| `/dreamport-play` | Opens the game in your browser, with your copy, and checks what you play against the original. |
+| `/dreamport-fix <what feels wrong>` | Compares that moment with the original and fixes it. |
+| `/dreamport-share` | Puts your preview online, where anyone with the link can play it. |
+| `/dreamport-send` | Sends your finished piece to the game's lead, or to the Dreamports team if you're the lead. |
+
+Pasting the sentence starts the first one, `/dreamport`, which only looks and explains. Every other command does one thing, and only when you type it. Before anything is posted or sent, your agent tells you exactly where it's going and waits for your yes. Between commands, answer its questions in your own words. In Codex, type `$` instead of `/`, as in `$dreamport`.
+
+**For coding agents.** If someone asked you to set up https://dreamports.net/code, clone `https://github.com/NahuelGenchi/dreamports.git` into a folder called `dreamports` in the folder you were opened in, or use the Dreamports folder you're already in. Then read its [AGENTS.md](AGENTS.md) and follow Getting ready, under Working on a Dreamport.
+
+Every Dreamport keeps the same rules, the [Dreamport standard](docs/STANDARD.md), and [CONTRIBUTING.md](CONTRIBUTING.md#make-a-dreamport) says what each command does behind the scenes.
 
 ## The golden rule: bring your own game
 
@@ -72,7 +133,7 @@ Before you play or download anything, the site asks you to confirm that you're u
 
 ## Progress
 
-The work is split into six steps, called *milestones*. The counts update by themselves as tasks are finished.
+The work is split into seven steps, called *milestones*. The counts update by themselves as tasks are finished.
 
 | Step | What it means | Progress |
 | :--- | :--- | :--- |
@@ -82,6 +143,7 @@ The work is split into six steps, called *milestones*. The counts update by them
 | **[M3 — Growth](https://github.com/NahuelGenchi/dreamports/milestone/4)** | More entries, plus search, filters and news. On hold for now | ![M3 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/4?style=flat-square&label=tasks%20done&color=8b5cf6) |
 | **[M4 — Sonic Advance Dreamport on dreamports.net](https://github.com/NahuelGenchi/dreamports/milestone/5)** | Sonic Advance Dreamport played right here on the site, with accounts, achievements and leaderboards | ![M4 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/5?style=flat-square&label=tasks%20done&color=8b5cf6) |
 | **[M5 — Game launcher](https://github.com/NahuelGenchi/dreamports/milestone/6)** | The site redesigned as a one-screen game launcher: a row of games to move through, filters, panels such as settings and about, and a launch animation, on phones and computers | ![M5 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/6?style=flat-square&label=tasks%20done&color=8b5cf6) |
+| **[M6 — Anyone can make a Dreamport](https://github.com/NahuelGenchi/dreamports/milestone/7)** | Opening Dreamports to everyone: anyone can make a Dreamport or help with one, with clear rules, a step-by-step guide, and proof that every step plays like the original | ![M6 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/7?style=flat-square&label=tasks%20done&color=8b5cf6) |
 
 ✅ The site is live at **[dreamports.net](https://dreamports.net)**.
 
@@ -106,7 +168,7 @@ A broken link, a typo, a page that looks wrong on your phone? [Let us know](http
 <td width="33%" valign="top">
 
 ⭐ **Follow along**<br>
-Press **Star** at the top of this page to keep Dreamports on your radar.
+Press **Star** at the top of this page to keep Dreamports on your radar, and see each game grow on its page in the [Make tab](https://dreamports.net/make/).
 
 </td>
 </tr>
@@ -136,7 +198,7 @@ From cartridges or discs you own. You copy the game to your computer with a read
 <summary><b>Is this legal?</b></summary>
 <br>
 
-Dreamports never hosts game files, and it only lists projects that ask you to use your own copy. Game names and trademarks belong to their owners. Dreamports is an unofficial fan project, not affiliated with or endorsed by Sega, Nintendo, or any other publisher.
+Dreamports never hosts game files, and it only lists projects that ask you to use your own copy. Game names and trademarks belong to their owners, and rights holders can reach the Dreamports team at hello@dreamports.net, as [docs/RIGHTS.md](docs/RIGHTS.md) explains. Dreamports is an unofficial fan project, not affiliated with or endorsed by Sega, Nintendo, or any other publisher.
 
 The rules about copying games you own differ from country to country, so check the ones where you live. This isn't legal advice.
 

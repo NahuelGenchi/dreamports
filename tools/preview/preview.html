@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:,">
+<title>{{title}}: a preview by {{author}}</title>
+<style>
+  :root { color-scheme: light dark; --page: #ffffff; --ink: #0a1738; --dim: rgba(10, 23, 56, 0.68); --line: #cde3f8; --act: #1a4fb0; --on-act: #ffffff; --warn: #fff3c4; --warn-ink: #2a1f00; --warn-line: #8a6a00; }
+  @media (prefers-color-scheme: dark) { :root { --page: #050a24; --ink: #eef4ff; --dim: rgba(238, 244, 255, 0.7); --line: #1f2c6b; --act: #8fd1ff; --on-act: #050a24; } }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.55 system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 32px 16px 48px; }
+  a { color: inherit; }
+  .crumb, .made, .more { color: var(--dim); font-size: 14px; margin: 0; }
+  h1 { font-size: 28px; line-height: 1.2; margin: 6px 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 6px; }
+  section { margin: 24px 0; }
+  .warning { padding: 14px 16px; border: 2px solid var(--warn-line); border-radius: 4px; background: var(--warn); color: var(--warn-ink); }
+  .warning p { margin: 0 0 8px; }
+  .warning p:last-child { margin: 0; }
+  .about p { margin: 0; white-space: pre-line; }
+  .play { display: inline-block; padding: 10px 28px; border-radius: 4px; background: var(--act); color: var(--on-act); font-weight: 700; text-decoration: none; }
+  .play:hover, .play:focus-visible { outline: 3px solid var(--line); }
+</style>
+</head>
+<body>
+<main>
+  <p class="crumb">A preview by <a href="{{authorUrl}}">{{author}}</a></p>
+  <h1>{{title}}</h1>
+  <p class="made">From {{commit}} on {{branch}}, {{made}}</p>
+  {{about}}
+  <section class="warning" aria-labelledby="warning">
+    <h2 id="warning">This preview hasn't been reviewed</h2>
+    <p>{{author}} published it on their own, and the Dreamports team hasn't checked its code. Like any web page, it can do whatever it wants with the copy of the game you give it, including sending it somewhere else. Play it only if you trust {{author}}.</p>
+    <p>What it keeps in this browser, such as your saves and your copy if it remembers it, belongs to {{origin}}, where every page {{author}} publishes can read it.</p>
+    <p>It isn't on dreamports.net, so it can't see or change your Dreamports profile, and the achievements you earn here stay in this browser.</p>
+  </section>
+  <p><a class="play" href="{{play}}">Play</a></p>
+  <p class="more"><a href="{{guide}}">About previews</a> · <a href="./../">Every preview by {{author}}</a> · <a href="https://dreamports.net/">dreamports.net</a></p>
+</main>
+</body>
+</html>
