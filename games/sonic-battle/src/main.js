@@ -11,6 +11,7 @@ import { createClock, GBA_FRAME_MS } from '../../../kit/gba/clock.js';
 import { createInput } from '../../../kit/gba/input.js';
 import { proof } from '../../../kit/gba/proof.js';
 import { createSettings } from '../../../kit/gba/ui/settings.js';
+import { createTouch } from '../../../kit/gba/ui/touch.js';
 import { createCore, step } from './core.js';
 import { logos } from './logos.js';
 
@@ -35,8 +36,10 @@ const stage = document.getElementById('stage');
 const screen = document.getElementById('screen');
 const input = createInput(LAYOUT);
 proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
-// the settings, with the controls the layout gives, and what a button does so far
-createSettings(stage, input, { brand: 'Sonic Battle Dreamport', what: { start: 'Start: skips the SEGA and Sonic Team logos' } });
+// on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
+// with the controls the layout gives and what a button does so far
+const touch = createTouch(stage, input, { screen, key: 'sonic-battle' });
+createSettings(stage, input, { brand: 'Sonic Battle Dreamport', what: { start: 'Start: skips the SEGA and Sonic Team logos' }, touch });
 let rom = null;
 
 createRomSetup(picker, {
@@ -91,15 +94,5 @@ function start() {
     }
     requestAnimationFrame(loop);
   });
-  fit();
   screen.focus();
 }
-
-// the screen as large as it fits at a whole number of the display's pixels, so they stay square and sharp
-function fit() {
-  const dpr = devicePixelRatio || 1, room = Math.min(innerWidth / SCREEN_W, innerHeight / SCREEN_H);
-  const scale = room * dpr >= 1 ? Math.floor(room * dpr) / dpr : room;
-  screen.style.width = `${SCREEN_W * scale}px`;
-  screen.style.height = `${SCREEN_H * scale}px`;
-}
-addEventListener('resize', fit);

@@ -51,7 +51,7 @@ A new Game Boy Advance Dreamport is a folder in [`games/`](../../games/README.md
 </html>
 ```
 
-`src/main.js` asks for the player's copy and checks it, then runs the game a frame at a time. The game's own code goes in `createGame`. Here it only paints the screen's backdrop, blue, and green while a button is held, which is enough to see that the frames, the drawing and the buttons work. `GAME` and `LAYOUT` are the parts to fill in: the game's header, from the player's copy, and its buttons. `createSettings()` gives the page its settings, with the game's controls listed from `LAYOUT`, so the first piece already shows how to play it.
+`src/main.js` asks for the player's copy and checks it, then runs the game a frame at a time. The game's own code goes in `createGame`. Here it only paints the screen's backdrop, blue, and green while a button is held, which is enough to see that the frames, the drawing and the buttons work. `GAME` and `LAYOUT` are the parts to fill in: the game's header, from the player's copy, and its buttons. `createTouch()` draws the controller's buttons `LAYOUT` gives around the game on touch screens, and sizes the screen among them. `createSettings()` gives the page its settings, with the game's controls listed from `LAYOUT`, so the first piece already shows how to play it, on a computer or a phone.
 
 ```js
 // My Game Dreamport: the player's copy, checked and kept in this browser, then the game a frame at a time, on the
@@ -67,6 +67,7 @@ import { createClock, GBA_FRAME_MS } from '../../../kit/gba/clock.js';
 import { createInput } from '../../../kit/gba/input.js';
 import { proof } from '../../../kit/gba/proof.js';
 import { createSettings } from '../../../kit/gba/ui/settings.js';
+import { createTouch } from '../../../kit/gba/ui/touch.js';
 
 // the game as its cartridge's header names it: the title, the game code of each region, and the SHA-1 of each
 // version the Dreamport supports, { sha1 }
@@ -86,8 +87,10 @@ const stage = document.getElementById('stage');
 const screen = document.getElementById('screen');
 const input = createInput(LAYOUT);
 proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
-// the settings, with the controls the layout gives
-createSettings(stage, input, { brand: 'My Game Dreamport' });
+// on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
+// with the controls the layout gives
+const touch = createTouch(stage, input, { screen, key: 'my-game' });
+createSettings(stage, input, { brand: 'My Game Dreamport', touch });
 let rom = null;
 
 createRomSetup(picker, {
@@ -142,21 +145,13 @@ function start() {
     }
     requestAnimationFrame(loop);
   });
-  fit();
   screen.focus();
 }
-
-// the screen as large as it fits at a whole number of the display's pixels, so they stay square and sharp
-function fit() {
-  const dpr = devicePixelRatio || 1, room = Math.min(innerWidth / SCREEN_W, innerHeight / SCREEN_H);
-  const scale = room * dpr >= 1 ? Math.floor(room * dpr) / dpr : room;
-  screen.style.width = `${SCREEN_W * scale}px`;
-  screen.style.height = `${SCREEN_H * scale}px`;
-}
-addEventListener('resize', fit);
 ```
 
 The settings open over the game with the settings button in the top-left corner, <kbd>H</kbd>, or View and Menu together on a controller, and the game waits while they're open. Their Controls list every key and controller button `LAYOUT` gives, and the console's button each presses. Once a button does something in the game, `what` says so, by the button's name in `LAYOUT`, and `dpad` for the d-pad, as Sonic Battle Dreamport's [`src/main.js`](../../games/sonic-battle/src/main.js) does for Start: `createSettings(stage, input, { brand: 'My Game Dreamport', what: { start: 'Start: skips the logos' } })`. That list is what a player and `/dreamport-play` go by to play the game.
+
+On a phone or a tablet, `createTouch()` draws only the controller buttons `LAYOUT` gives in `pad`, placed as on an Xbox controller, with View and Menu drawn as Select and Start, so they match the settings' Controls. They step aside while a real controller is connected, and the settings' Button opacity sets how solid they are, kept in the browser under the game's `key`. The screen is sized among them, upright or sideways, so the game doesn't size it itself. Once touch works, the entry's `controls` lists `touch` too.
 
 To try it, serve the repository's folder with any static file server, such as `python -m http.server 8000` run in it, and open `http://localhost:8000/games/my-game/`. The server runs in the repository's folder, not the game's, because the game loads the kit from `kit/gba/`, the way dreamports.net serves it from `/kit/gba/`.
 
@@ -168,7 +163,7 @@ Sonic Advance Dreamport's [`index.html`](../../games/sonic-advance/index.html) a
 
 - **Settings.** A game with settings of its own, such as extras to turn on, writes them in its page and makes the sheet itself, instead of `createSettings()`: `ui/sheet.js` opens it over the game with the settings button, <kbd>H</kbd>, or View and Menu together on a controller. While it's open the game waits: `holdClocks()` in `clock.js` holds every clock, and the sound's `held` stops it where it is.
 - **Controls.** `ui/controls-view.js` lists every key and controller button in the settings, from a list the game gives it, like Sonic Advance Dreamport's [`src/ui/controls.js`](../../games/sonic-advance/src/ui/controls.js). `layoutControls()` in `ui/settings.js` makes that list's first part from the game's `LAYOUT`, for a game that writes the rest itself.
-- **Touch.** On a touch screen an Xbox controller is drawn around the game, the page's `touch` part, and `input.bindTouch()` makes its buttons press the game's.
+- **Touch.** `createTouch()` in `ui/touch.js` draws the controller and sizes a game of one screen among its buttons, and `bindSlider()` on what it returns makes a game's own Button opacity slider set how solid they are. A game with views of its own, such as Sonic Advance Dreamport's widescreen view and its players' screens side by side, writes the page's `touch` part itself, and `input.bindTouch()` makes its buttons press the game's.
 - **Saves.** `cartridgeSave()` in `save.js` keeps what the cartridge's save memory holds. What its bytes mean is the game's own.
 - **Sound.** `soundLayout()` in `sound/tables.js` finds the sound engine's tables in the player's copy and takes the game's sound mode, from its decompilation's `DEFAULT_SOUND_MODE`. `createSound()` in `sound/audio.js` plays it. A game with sounds of its own makes its own audio thread from `sound/processor.js`, like Sonic Advance Dreamport's [`src/sound/worklet.js`](../../games/sonic-advance/src/sound/worklet.js).
 - **Achievements.** `openAchievements()` in `achievements/store.js` keeps the achievements the game lists in its own `src/achievements/list.js`, and the page loads `/dreamports.js` to send them to the player's profile. The game is also added to the site's lists, as [Profiles and achievements](../../docs/ACCOUNTS.md#for-a-game-dreamportsjs) explains.
