@@ -1,9 +1,11 @@
-// The controller drawn around the game on touch screens, made from the game's layout alone: the Xbox controller's
-// buttons the layout gives (input.js), drawn like the settings button and see-through as the settings' Button
-// opacity says (kit.css), until a real controller is connected. With them, the game's screen as large as it fits at
-// a whole number of the display's pixels: in the whole window, or on a touch screen held upright in what's between
-// the settings button and the buttons below it; buttons that cover part of it are more see-through. Sonic Advance
-// Dreamport draws its own in its page, for its widescreen view and its players' screens side by side.
+// The controller drawn around the game on touch screens, the same for every game, as Sonic Advance Dreamport draws
+// it: an Xbox controller's d-pad, LB, LT, RB, RT, A, B, X, Y, Select and Start, drawn like the settings button and
+// see-through as the settings' Button opacity says (kit.css), until a real controller is connected. Each does what
+// the controller's own button does in the game's layout (input.js), and nothing where the layout gives it nothing.
+// With them, the game's screen as large as it fits at a whole number of the display's pixels: in the whole window,
+// or on a touch screen held upright in what's between the settings button and the buttons below it; buttons that
+// cover part of it are more see-through. Sonic Advance Dreamport draws the same in its page, for its widescreen view
+// and its players' screens side by side.
 
 import { connectedPads } from '../input.js';
 import { SCREEN_W, SCREEN_H } from '../video.js';
@@ -13,6 +15,15 @@ const ARROW = '<svg viewBox="0 0 5 3" shape-rendering="crispEdges"><path d="M2 0
 // Menu, as the console names them
 const pill = (i, name, kind = '') => `<button type="button" class="pill${kind}" data-pad-button="${i}" tabindex="-1">${name}</button>`;
 const round = (i, name) => `<button type="button" class="round ${name.toLowerCase()}" data-pad-button="${i}" tabindex="-1">${name}</button>`;
+const CONTROLLER = `
+    <div class="touch" aria-hidden="true">
+      <div class="dpad" data-pad>${['up', 'right', 'down', 'left'].map(d => `<span class="arm" data-dir="${d}">${ARROW}</span>`).join('')}</div>
+      <div class="shoulders left">${pill(6, 'LT')}${pill(4, 'LB')}</div>
+      <div class="shoulders right">${pill(5, 'RB')}${pill(7, 'RT')}</div>
+      ${pill(8, 'Select', ' select')}
+      ${pill(9, 'Start', ' start')}
+      <div class="face">${round(3, 'Y')}${round(2, 'X')}${round(1, 'B')}${round(0, 'A')}</div>
+    </div>`;
 // how solid the drawn buttons can be, in %: the settings' Button opacity, 60 at first
 const OPACITY = { min: 20, max: 100, step: 5, start: 60 };
 
@@ -22,21 +33,7 @@ const OPACITY = { min: 20, max: 100, step: 5, start: 60 };
  * storage, where the buttons' opacity is kept. Returns { el, opacity, setOpacity(value), bindSlider(slider) }.
  */
 export function createTouch(stage, input, { screen = stage.querySelector('canvas'), key }) {
-  // the controller's buttons the layout gives, with those its extras bring
-  const { pad, extras = {} } = input.layout;
-  const used = new Set([pad, ...Object.values(extras).map(e => e.pad ?? {})].flatMap(p => Object.values(p).flat()));
-  const has = (...ids) => ids.filter(i => used.has(i));
-  const shoulders = (side, ids, names) => (ids.length ? `<div class="shoulders ${side}">${ids.map(i => pill(i, names[i])).join('')}</div>` : '');
-  const face = has(3, 2, 1, 0);
-  stage.insertAdjacentHTML('beforeend', `
-    <div class="touch" aria-hidden="true">
-      ${has(12, 13, 14, 15).length ? `<div class="dpad" data-pad>${['up', 'right', 'down', 'left'].map(d => `<span class="arm" data-dir="${d}">${ARROW}</span>`).join('')}</div>` : ''}
-      ${shoulders('left', has(6, 4), { 6: 'LT', 4: 'LB' })}
-      ${shoulders('right', has(5, 7), { 5: 'RB', 7: 'RT' })}
-      ${has(8).length ? pill(8, 'Select', ' select') : ''}
-      ${has(9).length ? pill(9, 'Start', ' start') : ''}
-      ${face.length ? `<div class="face">${face.map(i => round(i, 'ABXY'[i])).join('')}</div>` : ''}
-    </div>`);
+  stage.insertAdjacentHTML('beforeend', CONTROLLER);
   const el = stage.lastElementChild;
   input.bindTouch(el);
   // touches on the game are cancelled, but in the settings, so iOS doesn't bring up its magnifier on a finger held
@@ -56,7 +53,7 @@ export function createTouch(stage, input, { screen = stage.querySelector('canvas
   const portrait = matchMedia('(pointer: coarse) and (orientation: portrait)');
   function room() {
     const width = document.documentElement.clientWidth, height = document.documentElement.clientHeight;
-    if (!portrait.matches || el.hidden || !el.children.length) return { width, height, below: 0 };
+    if (!portrait.matches || el.hidden) return { width, height, below: 0 };
     const top = parseFloat(getComputedStyle(stage).paddingTop) || 0;
     const bottom = Math.min(...[...el.children].map(c => c.getBoundingClientRect().top)) - 16;
     return { width, height: Math.max(SCREEN_H, bottom - top), below: Math.max(0, height - bottom) };
