@@ -488,6 +488,9 @@ button { font: inherit; }
 
 /* the settings: the way back and the places to go on the left, the extras on the right */
 .settings-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-content: start; gap: 22px 24px; overflow: auto; overscroll-behavior: contain; padding: 20px 20px 22px; }
+/* the settings a new game starts with (ui/settings.js), one column of them in a narrower sheet */
+.settings-body.single { grid-template-columns: minmax(0, 1fr); }
+.sheet[data-view="settings"]:has(.settings-body.single) { width: 440px; }
 .settings-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .settings-label { margin: 0 2px -4px; color: var(--dim); font-size: 13.5px; }
 .settings-status { margin: 0 2px; color: var(--dim); font-size: 13.5px; line-height: 20px; }
