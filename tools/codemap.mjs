@@ -3,15 +3,15 @@
 // Without --from, it finds the functions in the contributor's copy itself (gba/functions.mjs). With --from, it takes
 // them from a list: a decompilation's symbols, as `nm -S` prints them from its ELF file, or a CSV with an address on
 // each line and its size or its end, as a disassembler such as Ghidra exports its list of functions. A list can stop
-// short, so what the tools find in the copy beyond it is added. With --fill, the same is added to the code map there
-// already is, keeping its names.
+// short, so what the tools find in the copy beyond it is added, and it can name data as a function, so those are left
+// out. With --fill, the same is done to the code map there already is, keeping its names.
 
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
-import { readCodeMap, readOriginal, writeCodeMap } from './lib/proof-files.mjs';
+import { hex, readCodeMap, readOriginal, writeCodeMap } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { readCopy } from './gba/header.mjs';
-import { fillFunctions, findFunctions } from './gba/functions.mjs';
+import { fillFunctions, findFunctions, startsInData } from './gba/functions.mjs';
 
 // where code runs on the Game Boy Advance: the cartridge and the two work RAMs
 const CODE = [[0x08000000, 0x0A000000], [0x03000000, 0x03008000], [0x02000000, 0x02040000]];
@@ -30,7 +30,12 @@ export async function run(args) {
   if (read?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
   const theCopy = readFileSync(copy.path);
   const FOUND = 'the proof tools (tools/gba/functions.mjs)';
-  const filled = listed => fillFunctions(listed, findFunctions(theCopy, listed));
+  const filled = listed => {
+    const inData = startsInData(theCopy, listed);
+    if (inData.length) console.log(`Left out ${inData.length} of the functions listed, which start in the data of the code before them: ${inData.map(f => `0x${hex(f.address)}`).join(', ')}.`);
+    const real = listed.filter(f => !inData.includes(f));
+    return fillFunctions(real, findFunctions(theCopy, real));
+  };
   let functions, from;
   if (list) {
     functions = filled(readList(readFileSync(list, 'utf8')));
