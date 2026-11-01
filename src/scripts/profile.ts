@@ -3,6 +3,7 @@
 // opens, with a `view-open` event; this fills them from the site's API (worker/index.ts).
 
 import { NAME_PATTERN, PLAYABLE, WAYS, isWay, type Way } from '../lib/players';
+import { showTitle } from '../lib/title';
 
 interface Profile {
   name: string;
@@ -108,7 +109,8 @@ async function showGames(box: HTMLElement, games: Games, earned: Profile['achiev
 
     const block = el('section', 'set-list pf-game');
     const head = el('div', 'set-row pf-game-head');
-    const name = el('a', 'set-label', info.title);
+    const name = el('a', 'set-label');
+    showTitle(name, info.title);
     name.setAttribute('href', info.href);
     head.append(name);
     if (list.length) head.append(el('span', 'pf-count', `${ids.length} of ${list.length}`));

@@ -4,6 +4,8 @@
 // browser's back button closes it. Everything here is
 // added on top of plain pages: without this script, the row is a list of links.
 
+import { showTitle } from '../lib/title';
+
 type Input = 'keys' | 'pad' | 'touch';
 type Motion = 'auto' | 'full' | 'calm';
 type Theme = 'light' | 'dark';
@@ -329,7 +331,8 @@ function start(launcher: HTMLElement) {
     const text = named ?? slot?.dataset.note ?? '';
     if (plateName.textContent === text) return;
     const w0 = plate.getBoundingClientRect().width;
-    plateName.textContent = text;
+    if (slot?.dataset.game) showTitle(plateName, text);
+    else plateName.textContent = text;
     plateDetail.textContent = (named && slot.dataset.detail) || '';
     // a Dreamport's two numbers, code ported and gameplay proven, each kept whole when they need two lines
     const numbers = named && slot.dataset.numbers ? slot.dataset.numbers.split(' · ') : [];
@@ -849,7 +852,6 @@ function start(launcher: HTMLElement) {
       $('.ins-text', dlg).scrollTop = 0;
       $('.inspect', dlg).scrollTop = 0;
       resetExtras(dlg);
-      resetParts(dlg);
       startShow(dlg, !opts.instant && !replacing);
     }
     if (!opts.instant) viewIn(dlg);
@@ -1318,54 +1320,6 @@ function start(launcher: HTMLElement) {
     });
   }
 
-  // a Dreamport's parts, on its page in the Make row: a block each, and under them one line on where the game stands,
-  // or on the picked part. Moving onto a block picks it, by the arrow keys or a controller; a click or a tap picks it
-  // or lets it go, and so does leaving the blocks. The blocks take one place in the keyboard's order.
-  function resetParts(dlg: HTMLElement) {
-    const row = dlg.querySelector<HTMLElement>('.mk-parts');
-    if (!row) return;
-    pickPart(row, null);
-    $$('.mk-part', row).forEach((block, i) => (block.tabIndex = i === 0 ? 0 : -1));
-  }
-  function pickPart(row: HTMLElement, block: HTMLElement | null) {
-    const caption = $('.mk-caption', row.parentElement!);
-    for (const b of $$('.mk-part', row)) b.setAttribute('aria-pressed', String(b === block));
-    caption.textContent = block?.dataset.caption ?? caption.dataset.summary ?? '';
-  }
-  for (const row of $$('.mk-parts', launcher)) {
-    const blocks = $$<HTMLElement>('.mk-part', row);
-    const blockOf = (e: Event) => (e.target as Element).closest<HTMLElement>('.mk-part');
-    // a press focuses the block before its click, which then decides
-    let pressed = -Infinity;
-    row.addEventListener('pointerdown', () => (pressed = performance.now()));
-    row.addEventListener('click', (e) => {
-      const block = blockOf(e);
-      if (!block) return;
-      pickPart(row, block.getAttribute('aria-pressed') === 'true' ? null : block);
-      sound.play('tick');
-    });
-    row.addEventListener('focusin', (e) => {
-      const block = blockOf(e);
-      if (!block) return;
-      for (const b of blocks) b.tabIndex = b === block ? 0 : -1;
-      if (performance.now() - pressed > 500 && block.getAttribute('aria-pressed') !== 'true') {
-        pickPart(row, block);
-        sound.play('tick');
-      }
-    });
-    row.addEventListener('focusout', (e) => {
-      if (!row.contains(e.relatedTarget as Node | null)) pickPart(row, null);
-    });
-    row.addEventListener('keydown', (e) => {
-      const at = blocks.indexOf(document.activeElement as HTMLElement);
-      if (at < 0) return;
-      const to = { ArrowLeft: at - 1, ArrowRight: at + 1, Home: 0, End: blocks.length - 1 }[e.key];
-      if (to === undefined) return;
-      e.preventDefault();
-      blocks[clamp(to, 0, blocks.length - 1)].focus();
-    });
-  }
-
   // the sentence on a Dreamport's page in the Make row copies when pressed, and its icon turns into a tick for a moment
   for (const button of $$<HTMLButtonElement>('.mk-copy', launcher)) {
     const text = button.dataset.copy!;
@@ -1445,7 +1399,7 @@ function start(launcher: HTMLElement) {
     const run = ++launchRun;
     const still = () => run === launchRun;
     const title = slotEl.dataset.title ?? '';
-    $('#bo-name', blackout).textContent = title;
+    showTitle($('#bo-name', blackout), title);
     announce('Opening ' + title);
     launcher.classList.add('is-launching');
     launcher.inert = true;
@@ -1890,14 +1844,7 @@ function start(launcher: HTMLElement) {
           other.click();
         }
       } else if (step) {
-        // left and right go along a row of blocks, such as a Dreamport's parts; up and down step over it, and into it
-        // at the block that has the keyboard's place
-        const group = here?.closest('[data-roving]');
-        const list = focusables(dlg).filter((el) => {
-          const own = el.closest('[data-roving]');
-          if (!own || el === here) return true;
-          return own === group ? step === 1 || step === -1 : el.tabIndex >= 0;
-        });
+        const list = focusables(dlg);
         const at = list.indexOf(document.activeElement as HTMLElement);
         const nextEl = list[clamp(at + (step > 0 ? 1 : -1), 0, list.length - 1)];
         if (nextEl) {

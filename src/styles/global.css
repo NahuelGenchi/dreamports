@@ -241,9 +241,10 @@ kbd,
 .btn,
 .check input,
 .pf-input,
+.facts,
 .about-nav a[aria-current='true'],
 .bo-back,
-.mk-part,
+.mk-help,
 .mk-copy,
 dialog.card {
   box-shadow:
@@ -536,16 +537,12 @@ kbd {
   color: var(--ink);
 }
 
-/* its key or controller button says how to end the search; on a touch screen, a × does */
+/* its × says what it does, beside its key or controller button, which say how to press it */
 .search-end > svg {
-  display: none;
+  display: block;
   width: 11px;
   height: 11px;
   fill: currentColor;
-}
-
-:root[data-input='touch'] .search-end > svg {
-  display: block;
 }
 
 /* button hints: keyboard keys or controller buttons, whichever the visitor is using */
@@ -978,7 +975,7 @@ kbd {
 }
 
 .corner .c-icon {
-  display: none;
+  display: block;
   flex: none;
   width: 15px;
   height: 15px;
@@ -990,12 +987,7 @@ kbd {
   padding-left: 12px;
 }
 
-:root[data-input='touch'] .corner .c-icon,
-:root:not(.js) .corner .c-icon {
-  display: block;
-}
-
-/* a button with no word on it: its key or controller button, and its icon on touch screens */
+/* a button with no word on it: its icon says what it is, beside its key or controller button, which say how to press it */
 .corner.no-label {
   padding: 0 6px;
 }
@@ -1005,11 +997,6 @@ kbd {
   padding: 0 10px;
 }
 
-/* on the menu's corner buttons the icon is all that says what each is, so it shows beside its key or controller button
-   too */
-.corners .c-icon {
-  display: block;
-}
 
 .corner[aria-disabled='true'] {
   opacity: 0.45;
@@ -1219,7 +1206,7 @@ kbd {
 }
 
 .bo-back .c-icon {
-  display: none;
+  display: block;
   width: 15px;
   height: 15px;
   fill: currentColor;
@@ -1227,10 +1214,6 @@ kbd {
 
 :root[data-input='touch'] .bo-back {
   padding: 0 16px;
-}
-
-:root[data-input='touch'] .bo-back .c-icon {
-  display: block;
 }
 
 /* ---------- Cards that open over the menu ---------- */
@@ -1855,8 +1838,40 @@ dialog.card[open] {
   text-wrap: balance;
 }
 
+/* the word Dreamport in a game's title, as a tag: a mark of what the game is */
+.dp-tag {
+  display: inline-block;
+  padding: 0.15em 0.6em;
+  background: var(--chip);
+  color: var(--on-chip);
+  font-size: max(11px, 0.5em);
+  line-height: 1.5;
+  vertical-align: 0.3em;
+  white-space: nowrap;
+}
+
+.np-name .dp-tag {
+  padding: 0 0.5em;
+  line-height: 16px;
+  vertical-align: 1px;
+}
+
+/* the Opening screen is dark in both looks */
+.bo-line .dp-tag {
+  background: rgba(143, 209, 255, 0.18);
+  color: #8fd1ff;
+  vertical-align: 1px;
+}
+
+.pf-game-head .dp-tag {
+  vertical-align: 1px;
+}
+
 .facts {
+  --frame: var(--line);
   margin: 24px 2px 0;
+  padding: 14px 16px;
+  background: var(--paper);
 }
 
 .facts h3 {
@@ -2347,8 +2362,8 @@ dialog.card[open] {
 /* with three filters, a phone keeps room in the top bar for the door and the speaker: the tabs switch rows by
    themselves, so L and R go, and on the narrowest phones the tabs draw closer together. The search field reaches
    10 px past the tabs into the room L and R leave, with less room round its icon and its ×, so it keeps
-   "Search Dreamports". The × takes the place of its Esc hint, as on touch screens, so a computer zoomed in to this
-   width keeps it too */
+   "Search Dreamports". Its Esc hint goes, as on touch screens, leaving the ×, so a computer zoomed in to this width
+   keeps it too */
 @media (max-width: 440px) {
   .shoulder {
     display: none;
@@ -2367,10 +2382,6 @@ dialog.card[open] {
 
   .search-end .key {
     display: none;
-  }
-
-  .search-end > svg {
-    display: block;
   }
 }
 
@@ -2430,6 +2441,7 @@ dialog.card[open] {
   .tile,
   .set-list,
   .seg,
+  .facts,
   dialog.card {
     border: 1px solid ButtonText;
   }
@@ -2623,9 +2635,18 @@ dialog.card[open] {
   display: none;
 }
 
-/* a game's extras: a square each, and below them the text of the one picked */
+/* a game's extras, in a box like the game's details: a square each, and below them the text
+   of the one picked */
 .extras {
+  --frame: var(--line);
   margin: 22px 2px 0;
+  padding: 14px 16px 16px;
+  background: var(--paper);
+  box-shadow:
+    0 -2px var(--frame),
+    0 2px var(--frame),
+    -2px 0 var(--frame),
+    2px 0 var(--frame);
 }
 
 .extras h3 {
@@ -3084,55 +3105,23 @@ dialog.card[open] {
   line-height: 40px;
 }
 
-/* a block for each part of the game, filled once it's proven */
-.mk-parts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 14px 2px 0;
-}
-
-.mk-part {
-  --frame: var(--line);
-  flex: none;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  background: var(--hollow);
-  cursor: pointer;
-}
-
-.mk-part.is-proven {
-  --frame: var(--act);
-  background: var(--act);
-}
-
-.mk-part[aria-pressed='true'] {
-  box-shadow:
-    0 0 0 2px var(--paper),
-    0 0 0 5px var(--sky);
-}
-
-/* a picked block's ring already shows where the keyboard is */
-.mk-part[aria-pressed='true']:focus-visible {
-  outline: none;
-}
-
-.mk-caption {
-  min-height: 44px;
-  margin: 14px 0 0;
-  color: var(--ink);
-  font: 400 13.5px/22px var(--font);
+/* under its progress's two bars, where it stands */
+.mk-next {
+  margin: 12px 0 0;
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
 }
 
 /* Help make it: the sentence to paste, and where to talk. A column rather than a grid: WebKit's grid kept the
    sentence's box at its old height when the page narrowed, so the sentence spilled out of it (#160) */
 .mk-help {
+  --frame: var(--sky);
   display: flex;
   flex-direction: column;
   gap: 14px;
-  margin: 34px 2px 0;
+  margin: 22px 2px 0;
+  padding: 20px;
+  background: var(--paper);
 }
 
 .mk-help :is(h2, h3) {
@@ -3328,5 +3317,9 @@ dialog.card[open] {
   .view .mk-title {
     font-size: 28px;
     line-height: 34px;
+  }
+
+  .mk-help {
+    padding: 16px;
   }
 }

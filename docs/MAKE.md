@@ -4,7 +4,7 @@
 
 ## In plain words
 
-Every Dreamport being made has a page in the Make tab on [dreamports.net](https://dreamports.net/make/). Besides its parts and the sentence to paste into a coding agent, it shows two things that live on GitHub: how many of the game's **pieces** are free to take, and its **steps**, the work that has been merged into it, the latest first. Nobody writes them by hand. The site reads them from GitHub each time it's built, and it's built again within a few minutes whenever they change.
+Every Dreamport being made has a page in the Make tab on [dreamports.net](https://dreamports.net/make/). Besides its progress and the sentence to paste into a coding agent, it shows two things that live on GitHub: how many of the game's **pieces** are free to take, and its **steps**, the work that has been merged into it, the latest first. Nobody writes them by hand. The site reads them from GitHub each time it's built, and it's built again within a few minutes whenever they change.
 
 ## What a page shows
 

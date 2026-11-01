@@ -100,6 +100,7 @@ button { font: inherit; }
 .setup-back:active { transform: translateY(2px); }
 .setup-back svg { width: 14px; height: 14px; }
 .setup-brand { margin: 0; color: var(--blue); font-size: 13.5px; line-height: 20px; }
+.dp-tag { display: inline-block; padding: 0 5px; background: var(--line); color: var(--ink); font-size: 11px; line-height: 16px; vertical-align: 1px; white-space: nowrap; }
 .setup h1, .assets h1 { margin: 4px 0 0; font-size: 24px; font-weight: normal; line-height: 32px; }
 .setup-intro { margin: 8px 0 0; color: var(--dim); }
 

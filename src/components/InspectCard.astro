@@ -6,6 +6,7 @@
 // legal copy of the game. Without JavaScript the browser itself refuses to follow a link until
 // the box is ticked. Play links open in the same tab; download links open in a new one.
 import Facts from './Facts.astro';
+import GameTitle from './GameTitle.astro';
 import Meter from './Meter.astro';
 import Parts from './Parts.astro';
 import PixelIcon from './PixelIcon.astro';
@@ -91,7 +92,7 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
       </form>
     </div>
     <div class="ins-text" tabindex="0">
-      <Title class="ins-title" id={`ins-title-${id}`}>{title}</Title>
+      <Title class="ins-title" id={`ins-title-${id}`}><GameTitle title={title} /></Title>
       {
         extras.length > 0 && (
           <section class="extras" aria-labelledby={`extras-${id}`}>

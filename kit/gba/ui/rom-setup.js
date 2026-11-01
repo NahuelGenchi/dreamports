@@ -36,6 +36,8 @@ function cameFromMenu() {
 }
 
 const escape = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+// the word Dreamport in the game's name as a tag, as dreamports.net shows it
+export const brandTag = html => html.replace(/\bDreamport\b/, '<span class="dp-tag">$&</span>');
 // "A", "A or B", "A, B or C"
 const either = names => (names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names.at(-1)}` : names[0] ?? '');
 // waits for the page to draw what was just set, or a moment when it isn't drawing (a hidden tab)
@@ -65,7 +67,7 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
           <a class="setup-back" href="${home}" aria-label="Back to Dreamports" title="Back to Dreamports">${ICONS.back}</a>
           <div class="pad" data-state="gone"><span class="pad-icon" aria-hidden="true"></span><span class="pad-note" role="status" aria-live="polite"></span></div>
         </div>
-        <p class="setup-brand">${escape(brand)}</p>
+        <p class="setup-brand">${brandTag(escape(brand))}</p>
         <h1>${heading}</h1>
         <p class="setup-intro">${intro}</p>
       </header>
