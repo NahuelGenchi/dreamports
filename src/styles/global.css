@@ -1116,6 +1116,11 @@ kbd {
   padding: 0 10px;
 }
 
+/* the profile button's icon is all that says what it is, so it shows beside its key or controller button too */
+#btn-profile .c-icon {
+  display: block;
+}
+
 .corner[aria-disabled='true'] {
   opacity: 0.45;
   cursor: default;
@@ -2508,27 +2513,6 @@ dialog.card[open] {
   .search {
     left: -16px;
     right: -16px;
-  }
-}
-
-/* on the narrowest phones the profile button keeps only its key, its controller button or its icon, like Settings */
-@media (max-width: 359px) {
-  #btn-profile .c-word {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-  }
-
-  #btn-profile {
-    padding: 0 6px;
-  }
-
-  :root[data-input='touch'] #btn-profile {
-    padding: 0 10px;
   }
 }
 
