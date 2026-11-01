@@ -2027,6 +2027,68 @@ function start(launcher: HTMLElement) {
     true,
   );
 
+  // ---------- A long press ----------
+
+  // The styles keep a long press from selecting text or showing a menu, but iOS still brings up its
+  // magnifier on a tap followed by a long press (WebKit bug 296492), and with it a selection and
+  // its menu. So on iOS, where there's nothing to select, a touch that starts right after a tap and
+  // near it is cancelled, as the games' touch buttons cancel theirs, and clicks here instead when
+  // it's a tap too. Only those touches are, so the row still pinches and cards still scroll. A
+  // selection that starts where there's nothing to select is let go.
+  if ('standalone' in navigator && navigator.maxTouchPoints > 0) {
+    const unselectable = (node: EventTarget | null) => {
+      const el = node instanceof Element ? node : node instanceof Node ? node.parentElement : null;
+      if (!el) return false;
+      const style = getComputedStyle(el);
+      return (style.getPropertyValue('user-select') || style.getPropertyValue('-webkit-user-select')) === 'none';
+    };
+    let touch: { x: number; y: number; t: number; target: EventTarget | null; cancelled: boolean } | null = null;
+    let lastTap = { x: 0, y: 0, t: -Infinity };
+    window.addEventListener(
+      'touchstart',
+      (e) => {
+        const t = e.changedTouches[0];
+        if (e.touches.length > 1) {
+          touch = null;
+          return;
+        }
+        const soon = e.timeStamp - lastTap.t < 400 && Math.hypot(t.clientX - lastTap.x, t.clientY - lastTap.y) < 40;
+        const cancelled = soon && unselectable(e.target);
+        if (cancelled) e.preventDefault();
+        touch = { x: t.clientX, y: t.clientY, t: e.timeStamp, target: e.target, cancelled };
+      },
+      { capture: true, passive: false },
+    );
+    window.addEventListener(
+      'touchend',
+      (e) => {
+        const t = e.changedTouches[0];
+        const tap =
+          !!touch &&
+          e.touches.length === 0 &&
+          e.timeStamp - touch.t < 500 &&
+          Math.hypot(t.clientX - touch.x, t.clientY - touch.y) < 10;
+        if (tap && touch!.cancelled) {
+          const { clientX, clientY, screenX, screenY } = t;
+          const click = { bubbles: true, cancelable: true, view: window, detail: 1, clientX, clientY, screenX, screenY };
+          touch!.target?.dispatchEvent(new MouseEvent('click', click));
+        }
+        lastTap = tap ? { x: t.clientX, y: t.clientY, t: e.timeStamp } : { x: 0, y: 0, t: -Infinity };
+        touch = null;
+      },
+      true,
+    );
+    window.addEventListener('touchcancel', () => (touch = null), true);
+    document.addEventListener('selectstart', (e) => {
+      if (unselectable(e.target)) e.preventDefault();
+    });
+    document.addEventListener('selectionchange', () => {
+      const selection = getSelection();
+      if (!selection || selection.isCollapsed || document.activeElement?.matches('input, textarea')) return;
+      if (unselectable(selection.anchorNode)) selection.removeAllRanges();
+    });
+  }
+
   // ---------- Buttons and links ----------
 
   $('#btn-l', launcher).addEventListener('click', prevFilter);

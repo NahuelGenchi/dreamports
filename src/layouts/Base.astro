@@ -60,6 +60,8 @@ const socialImage = new URL(social.src, Astro.site);
       (() => {
         const root = document.documentElement;
         root.classList.add('js');
+        // opened from the Home Screen, the site is an app, where even the text of its cards doesn't select
+        if (navigator.standalone === true || matchMedia('(display-mode: standalone)').matches) root.classList.add('app');
         root.dataset.input = matchMedia('(pointer: coarse)').matches ? 'touch' : 'keys';
         let theme = null;
         let motion = null;
