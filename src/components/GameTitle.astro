@@ -1,0 +1,12 @@
+---
+// A game's title, with the word Dreamport in it as a tag (src/lib/title.ts).
+import { titleParts } from '../lib/title';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+{titleParts(title).map((part, i) => (i % 2 ? <span class="dp-tag">{part}</span> : part))}

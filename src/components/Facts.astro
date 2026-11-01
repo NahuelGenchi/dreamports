@@ -1,6 +1,7 @@
 ---
-// A box of facts about a game, each a line of text, a link, the ways to play as icons, or a list of
-// links. Whatever the box puts first, such as a Dreamport's two numbers, goes in its slot.
+// Facts about a game, each a line of text or the ways to play as icons, and under them those that are only a link,
+// each named by its label. Whatever goes first, such as a Dreamport's two numbers, goes in the slot, and whatever goes
+// last in the slot called end.
 import PixelIcon from './PixelIcon.astro';
 import type { Fact } from '../lib/dreamports';
 
@@ -11,6 +12,8 @@ interface Props {
 }
 
 const { facts, id, heading } = Astro.props;
+const lines = facts.filter((fact) => !fact.href);
+const links = facts.filter((fact) => fact.href);
 const CONTROLS = {
   keyboard: { icon: 'keyboard', name: 'Keyboard' },
   controller: { icon: 'gamepad', name: 'Controller' },
@@ -21,39 +24,45 @@ const CONTROLS = {
 <section class="facts" aria-labelledby={id}>
   <h3 id={id}>{heading}</h3>
   <slot />
-  <dl>
-    {
-      facts.map((fact) => (
-        <div>
-          <dt>{fact.label}</dt>
-          <dd>
-            {fact.controls ? (
-              <span class="ctl">
-                {fact.controls.map((c) => (
-                  <span class="ctl-i" title={CONTROLS[c].name}>
-                    <PixelIcon name={CONTROLS[c].icon} />
-                    <span class="sr-only">{CONTROLS[c].name}</span>
-                  </span>
-                ))}
-              </span>
-            ) : fact.items ? (
-              <ul class="fact-items">
-                {fact.items.map((item) => (
-                  <li>
-                    {item.href ? <a href={item.href}>{item.value}</a> : item.value}
-                    {item.note && <span class="fact-note">{item.note}</span>}
-                  </li>
-                ))}
-              </ul>
-            ) : fact.href ? (
-              <a href={fact.href}>{fact.value}</a>
-            ) : (
-              fact.value
-            )}
+  {
+    lines.length > 0 && (
+      <dl>
+        {lines.map((fact) => (
+          <div>
+            <dt>{fact.label}</dt>
+            <dd>
+              {fact.controls ? (
+                <span class="ctl">
+                  {fact.controls.map((c) => (
+                    <span class="ctl-i" title={CONTROLS[c].name}>
+                      <PixelIcon name={CONTROLS[c].icon} />
+                      <span class="sr-only">{CONTROLS[c].name}</span>
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                fact.value
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    )
+  }
+  {
+    links.length > 0 && (
+      <ul class="fact-links">
+        {links.map((fact) => (
+          <li>
+            <a href={fact.href}>
+              {fact.label}
+              {fact.href?.startsWith('/') ? '' : ' ↗'}
+            </a>
             {fact.note && <span class="fact-note">{fact.note}</span>}
-          </dd>
-        </div>
-      ))
-    }
-  </dl>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+  <slot name="end" />
 </section>

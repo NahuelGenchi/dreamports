@@ -9,6 +9,7 @@
 import { connectedPads } from '../input.js';
 import { padsHeld } from './pad-nav.js';
 import { pickedTheme, isDark } from './theme.js';
+import { brandTag } from './rom-setup.js';
 
 const escape = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const BACK = '<svg viewBox="0 0 7 7" width="14" height="14" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 0h1v1H3zM2 1h1v1H2zM1 2h1v1H1zM0 3h7v1H0zM1 4h1v1H1zM2 5h1v1H2zM3 6h1v1H3z" fill="currentColor"/></svg>';
@@ -45,7 +46,7 @@ export function createAssetsView(host, { back, brand, rom, parts }) {
         <a class="setup-back" href="${back.href}" aria-label="${back.label}" title="${back.label}">${BACK}</a>
       </div>
       <header class="setup-head">
-        <p class="setup-brand">${escape(brand)}</p>
+        <p class="setup-brand">${brandTag(escape(brand))}</p>
         <h1>Asset viewer</h1>
         <p class="setup-intro">Decoded in this browser from your ROM.</p>
       </header>

@@ -100,6 +100,7 @@ button { font: inherit; }
 .setup-back:active { transform: translateY(2px); }
 .setup-back svg { width: 14px; height: 14px; }
 .setup-brand { margin: 0; color: var(--blue); font-size: 13.5px; line-height: 20px; }
+.dp-tag { display: inline-block; padding: 0 5px; background: var(--line); color: var(--ink); font-size: 11px; line-height: 16px; vertical-align: 1px; white-space: nowrap; }
 .setup h1, .assets h1 { margin: 4px 0 0; font-size: 24px; font-weight: normal; line-height: 32px; }
 .setup-intro { margin: 8px 0 0; color: var(--dim); }
 
@@ -123,16 +124,18 @@ button { font: inherit; }
 .rom.over { background: var(--hover); }
 .rom-main { position: relative; display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 0 12px; padding: 14px 16px; }
 .rom[data-state="ready"] .rom-main { padding-right: 10px; }
-.rom[data-state="empty"] .rom-main { cursor: pointer; }
+/* the mark shows once the ROM is in, so a row with none starts with its name */
+.rom[data-state="empty"] .rom-main { grid-template-columns: minmax(0, 1fr) auto; cursor: pointer; }
+.rom[data-state="empty"] .rom-mark { display: none; }
 .rom[data-state="empty"] .rom-main:hover { background: var(--hover); }
-.rom-mark { align-self: start; display: grid; margin-top: 3px; color: var(--faint); }
+.rom-mark { align-self: start; display: grid; margin-top: 3px; color: var(--blue); }
 .rom-mark svg { display: none; grid-area: 1 / 1; width: 14px; height: 14px; }
-.rom[data-state="empty"] .mark-empty, .rom[data-state="reading"] .mark-reading, .rom[data-state="ready"] .mark-ready { display: block; }
-.rom:not([data-state="empty"]) .rom-mark { color: var(--blue); }
+.rom[data-state="reading"] .mark-reading, .rom[data-state="ready"] .mark-ready { display: block; }
 .rom[data-state="reading"] .rom-mark { animation: setup-blink .6s steps(2, jump-none) infinite alternate; }
 .rom-text { min-width: 0; }
 .rom h2 { margin: 0; font-size: inherit; font-weight: normal; line-height: inherit; text-wrap: balance; }
 .rom-detail { margin: 4px 0 0; color: var(--dim); font-size: 13.5px; line-height: 20px; overflow-wrap: anywhere; }
+.rom-detail:empty { display: none; }
 
 /* add, with a plus: filled for the ROM the game needs, framed for the optional ones */
 .rom-add, .rom-actions { display: none; }
@@ -157,6 +160,7 @@ button { font: inherit; }
 
 .rom-status { margin: -6px 0 0; padding: 0 16px 12px 42px; font-size: 13.5px; line-height: 20px; color: var(--dim); }
 .rom-status:empty { display: none; }
+.rom[data-state="empty"] .rom-status { padding-left: 16px; }
 .rom-status[data-kind="error"] { color: var(--ink); }
 .rom-status[data-kind="error"]::before { content: "! "; color: var(--blue); }
 
@@ -227,6 +231,7 @@ button { font: inherit; }
   .rom[data-state="ready"] .rom-main { padding-right: 6px; }
   .rom-actions button { padding-inline: 6px; }
   .rom-status, .rom-extras { padding-left: 36px; padding-right: 12px; }
+  .rom[data-state="empty"] .rom-status { padding-left: 12px; }
 }
 @media (pointer: coarse) {
   .setup kbd, .switch-keys { display: none; }
@@ -459,7 +464,6 @@ button { font: inherit; }
 /* each view's head: where you are, and the ways out */
 .sheet-head { display: flex; flex: none; align-items: center; gap: 12px; padding: 12px 12px 12px 18px; border-bottom: 2px solid var(--line); }
 .sheet-title { flex: 1; min-width: 0; }
-.sheet-crumb { margin: 0; color: var(--blue); font-size: 13.5px; line-height: 20px; }
 .sheet-head h2 { margin: 0; font-size: 20px; font-weight: normal; line-height: 28px; text-wrap: balance; }
 .sheet-note { color: var(--dim); font-size: 13.5px; white-space: nowrap; }
 .sheet-note:empty { display: none; }
@@ -501,7 +505,6 @@ button { font: inherit; }
   border: 0; background: var(--sky); color: #0a1738 !important; cursor: pointer; touch-action: manipulation;
 }
 .resume svg { width: 8px; height: 14px; }
-.resume .key { --frame: transparent; background: rgba(10, 23, 56, .1); color: rgba(10, 23, 56, .72); }
 .resume:active, .ach-tile:active { transform: translateY(2px); }
 .ach-tile {
   display: grid; grid-template-columns: 36px minmax(0, 1fr) 8px; align-items: center; gap: 10px 14px; margin: 2px; padding: 14px 14px 14px 16px;
@@ -653,13 +656,12 @@ button { font: inherit; }
   .sheet-back:hover, .ach-tile:hover, .row:not(:disabled):hover, .nav:not([aria-current="true"]):hover { background: var(--hover); }
   .ach-tile:hover, .status:hover:not([aria-pressed="true"]) { --frame: var(--sky); }
   .resume:hover { --frame: var(--act); background: var(--act); color: var(--on-act) !important; }
-  .resume:hover .key { background: var(--on-act-key); color: var(--on-act-key-ink); }
   .row:not(:disabled):hover .track::after { background: var(--ink); }
   .row[aria-checked="true"]:not(:disabled):hover .track::after { background: #0a1738; }
 }
 /* touch screens have no keys to press, nor a mouse to drop a file with */
 @media (hover: none) {
-  .sheet :is(.row, .resume) .key, .sheet .setup kbd, .sheet-foot[data-input="keys"], .drop { display: none; }
+  .sheet .row .key, .sheet .setup kbd, .sheet-foot[data-input="keys"], .drop { display: none; }
 }
 
 /* a tablet held upright, or a small window: the wider views as tall as the screen lets them be */
@@ -710,7 +712,7 @@ button { font: inherit; }
   .sheet-wrap { --gap: 8px; }
   .sheet:not([data-view="settings"]) { width: 100%; height: 100%; }
   .sheet-head { padding: 6px 8px 6px 14px; }
-  .sheet-crumb, .sheet-foot, .sheet-paused, .latest, .status small { display: none; }
+  .sheet-foot, .sheet-paused, .latest, .status small { display: none; }
   .sheet-head h2 { font-size: 17px; line-height: 24px; }
   .settings-body { gap: 14px 20px; padding: 14px 16px 16px; }
   .split { grid-template-columns: 220px minmax(0, 1fr); }

@@ -3,6 +3,7 @@
 // opens, with a `view-open` event; this fills them from the site's API (worker/index.ts).
 
 import { NAME_PATTERN, PLAYABLE, WAYS, isWay, type Way } from '../lib/players';
+import { showTitle } from '../lib/title';
 
 interface Profile {
   name: string;
@@ -108,7 +109,8 @@ async function showGames(box: HTMLElement, games: Games, earned: Profile['achiev
 
     const block = el('section', 'set-list pf-game');
     const head = el('div', 'set-row pf-game-head');
-    const name = el('a', 'set-label', info.title);
+    const name = el('a', 'set-label');
+    showTitle(name, info.title);
     name.setAttribute('href', info.href);
     head.append(name);
     if (list.length) head.append(el('span', 'pf-count', `${ids.length} of ${list.length}`));
@@ -206,30 +208,26 @@ function startProfile(card: HTMLDialogElement) {
       const address = `${location.host}/players/${profile.name}/`;
       const desc = byId('pf-public-desc');
       if (profile.public) {
-        desc.textContent = 'On: anyone can see your name and achievements at ';
+        desc.textContent = 'Lets anyone see your name and achievements at ';
         const link = el('a', 'linkish', address);
         link.setAttribute('href', `/players/${profile.name}/`);
         link.dataset.player = '';
         desc.append(link, '.');
       } else {
-        desc.textContent = 'Off: only you can see your profile. On, anyone can see your name and achievements.';
+        desc.textContent = 'Lets anyone see your name and achievements.';
       }
       for (const row of inside.querySelectorAll<HTMLElement>('.pf-link')) {
         const way = row.dataset.way as Way;
         const linked = profile.ways.includes(way);
         const only = linked && profile.ways.length === 1;
-        row.querySelector('[data-desc]')!.textContent = !linked
-          ? `Link it to sign in with ${WAYS[way]} too.`
-          : only
-            ? 'Linked. It’s your only way in, so it stays.'
-            : 'Linked: it signs in to your profile.';
+        row.querySelector('[data-desc]')!.textContent = only ? 'It’s your only way in.' : '';
         row.querySelector<HTMLElement>('[data-link]')!.hidden = linked;
         row.querySelector<HTMLElement>('[data-unlink]')!.hidden = !linked || only;
       }
       await showGames(byId('pf-games'), games, profile.achievements, true);
       if (focus) publicSwitch.focus({ preventScroll: true });
     } else if (pending) {
-      byId('pf-pick-lead').textContent = `You’re in with ${WAYS[pending]}. One last step: the name your profile goes by.`;
+      byId('pf-pick-lead').textContent = `You’re in with ${WAYS[pending]}.`;
       if (focus) nameInput.focus({ preventScroll: true });
     } else {
       if (focus) firstWay.focus({ preventScroll: true });

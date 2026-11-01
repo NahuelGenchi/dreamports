@@ -33,7 +33,6 @@ const page = {
         }),
       )
       .min(1),
-    note: z.string(),
   }),
   // What the game adds, one square each, with an icon from src/lib/icons.ts.
   extras: z
@@ -73,8 +72,8 @@ const page = {
 };
 
 const controls = z.array(z.enum(['keyboard', 'controller', 'touch'])).min(1);
-// A fact is a line of text, or a link, in the game's box.
-const fact = z.object({ label: z.string(), value: z.string(), href: https.optional() });
+// A fact is a line of text in the game's details, or with an href, a link of its own, named by its label.
+const fact = { label: z.string(), value: z.string().optional(), href: https.optional() };
 
 // A Dreamport's entry. Its kind and its folder come from where it is; its two numbers from its proof/ folder.
 const dreamport = z.object({
@@ -111,8 +110,8 @@ const dreamport = z.object({
     .default([]),
   // the lead's team preview, which nobody has reviewed
   preview: https.optional(),
-  // more lines for the game's box, such as an article about it
-  facts: z.array(fact).default([]),
+  // more lines for the game's details, such as a link to an article about it
+  facts: z.array(z.object(fact).refine((f) => f.value || f.href, 'a value or an href')).default([]),
 });
 
 // Every other game: an external port, or a fan game that isn't a port.
@@ -120,7 +119,7 @@ const other = z.object({
   ...page,
   kind: z.enum(['external', 'other']),
   facts: z
-    .array(fact.partial({ value: true }).extend({ controls: controls.optional() }).refine((f) => f.value || f.controls, 'a value or controls'))
+    .array(z.object({ ...fact, controls: controls.optional() }).refine((f) => f.value || f.href || f.controls, 'a value, an href or controls'))
     .default([]),
 });
 

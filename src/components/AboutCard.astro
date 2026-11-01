@@ -1,6 +1,6 @@
 ---
-// About and legal, as a full screen in the menu's place: what Dreamports is, the rules, how rights holders
-// reach the Dreamports team, privacy and credits.
+// About, as a full screen in the menu's place: what Dreamports is, the rules, how rights holders reach the Dreamports
+// team, privacy and credits.
 import OwnGameSteps from './OwnGameSteps.astro';
 import ViewBar from './ViewBar.astro';
 import { MINIMUM_AGE } from '../lib/players';
@@ -16,7 +16,6 @@ const Title = open ? 'h1' : 'h2';
 const Sec = open ? 'h2' : 'h3';
 const sections = [
   { id: 'dreamport', label: 'What a Dreamport is' },
-  { id: 'kinds', label: 'What you’ll find here' },
   { id: 'own-game', label: 'Bring your own game' },
   { id: 'legal', label: 'Not affiliated' },
   { id: 'rights', label: 'For rights holders' },
@@ -31,13 +30,13 @@ const sections = [
   id="card-about"
   data-card="about"
   data-path="/about/"
-  data-title={pageTitle('About and legal')}
+  data-title={pageTitle('About')}
   aria-labelledby="about-title"
   open={open}
 >
   <div class="about">
-    <nav class="about-nav" aria-label="About and legal">
-      <Title id="about-title">About and legal</Title>
+    <nav class="about-nav" aria-label="About">
+      <Title id="about-title">About</Title>
       {
         sections.map((section, index) => (
           <a href={`#${section.id}`} data-sec={section.id} aria-current={index === 0 ? 'true' : undefined} autofocus={index === 0}>
@@ -52,25 +51,8 @@ const sections = [
         <p>dreamports.net is a home for enhanced fan ports of classic games, made by a fan, for fans.</p>
         <p>
           A Dreamport is the port fans always dreamed of: the game you remember, with the extras you wished it
-          had. It starts from the game as you know it, then adds the things fans have asked for over the years.
+          had.
         </p>
-      </section>
-
-      <section id="kinds">
-        <Sec>What you’ll find here</Sec>
-        <ul>
-          <li>
-            <strong>Dreamports.</strong> The ports made here, by <a href={OWNER_URL}>Nahuel Genchi</a>.
-          </li>
-          <li>
-            <strong>Mash-ups.</strong> Great ports made by other fans, and fan games that aren’t ports, like
-            Kirby’s Dead Land. Dreamports links to other fans’ own pages and credits the people who made them.
-          </li>
-          <li>
-            <strong>Make.</strong> Every Dreamport being made, where it stands and what’s left to make. Anyone can help,
-            with one sentence pasted into a coding agent, which gets everything ready and guides them.
-          </li>
-        </ul>
       </section>
 
       <section id="own-game">
@@ -84,7 +66,7 @@ const sections = [
       </section>
 
       <section id="legal">
-        <Sec>Not affiliated with any publisher</Sec>
+        <Sec>Not affiliated</Sec>
         <p>
           Dreamports is an unofficial fan project. It is not affiliated with, endorsed by or sponsored by Sega,
           Nintendo or any other publisher. Game names and trademarks belong to their owners, and appear here only
@@ -179,14 +161,13 @@ const sections = [
       </section>
 
       <section id="contact">
-        <Sec>Suggest a port, report a problem or get in touch</Sec>
+        <Sec>Get in touch</Sec>
         <p>
-          Open an <a href={SUGGEST_URL}>issue on GitHub</a>. It takes a free GitHub account, and you don’t need to
-          be a developer to fill it in. Please never attach game files.
+          To suggest a port or report a problem, open an <a href={SUGGEST_URL}>issue on GitHub</a>. It takes a free
+          GitHub account, and you don’t need to be a developer to fill it in. Please never attach game files.
         </p>
         <p>
-          For anything else, write to <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>. Rights holders have <a href="#rights">their own section</a>,
-          above.
+          For anything else, write to <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>.
         </p>
       </section>
     </div>
