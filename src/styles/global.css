@@ -2433,16 +2433,29 @@ dialog.card[open] {
   }
 }
 
+/* under 360 px, as on a 320 px iPhone SE, the bar's edges narrow too, and the search field reaches past the tabs
+   into the room L and R leave, so it keeps "Search Dreamports" with its focus ring clear of the badges */
 @media (max-width: 359px) {
   .topbar {
     gap: 6px;
-    padding-left: max(14px, env(safe-area-inset-left, 0px));
-    padding-right: max(14px, env(safe-area-inset-right, 0px));
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
   }
 
   .tab {
     padding: 0 3px;
     font-size: 11px;
+  }
+
+  .search {
+    left: -16px;
+    right: -16px;
+    gap: 4px;
+    padding-left: 6px;
+  }
+
+  .search-end {
+    padding: 0 3px;
   }
 }
 
@@ -2494,6 +2507,18 @@ dialog.card[open] {
 @container (width < 34px) {
   .status {
     padding: 0 6px;
+  }
+}
+
+/* and on the narrowest phones, under 360 px: tighter frames round the doorway and the speaker, to leave the search
+   room */
+@media (max-width: 359px) {
+  .clock {
+    padding: 0 6px;
+  }
+
+  .status {
+    padding: 0 4px;
   }
 }
 
