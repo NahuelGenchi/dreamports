@@ -29,9 +29,10 @@ export const CONFIG = {
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const MINUTE = 60000;
-const LIMIT = 16000;
+// how much of a post a model reads whole
+export const LIMIT = 16000;
 const KIND_WORDS = {
-  issue: 'a new issue', 'pull-request': 'a pull request\'s title and description', 'issue-comment': 'a comment',
+  issue: 'a new issue', 'pull-request': 'a pull request\'s title and description, or the notes it adds', 'issue-comment': 'a comment',
   'review-comment': 'a comment on a pull request\'s code', review: 'a review of a pull request', discussion: 'a new thread',
   'discussion-comment': 'a comment'
 };
@@ -43,7 +44,8 @@ const HINT_WORDS = {
   'spam-words': 'words spam uses', mentions: 'many people mentioned', 'getting-games': 'words about getting games',
   'file-hosts': 'a file-sharing site or a torrent', piracy: 'words about piracy', abuse: 'insulting words',
   'talks-to-the-bot': 'words that talk to the bot', 'private-details': 'words about private details',
-  secret: 'something like a password', rights: 'words about rights or taking something down'
+  secret: 'something like a password', rights: 'words about rights or taking something down',
+  notes: 'notes, which other people\'s coding agents will read'
 };
 const hintWords = hint => hint.startsWith('link:') ? `a link to ${hint.slice(5)}`
   : hint.startsWith('rom-path:') ? `a link about ROMs on ${hint.slice(9)}` : HINT_WORDS[hint] ?? hint;

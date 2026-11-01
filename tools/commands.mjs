@@ -60,6 +60,8 @@ function readCommands() {
     // Gemini CLI reads {{…}}, !{…} and @{…} in a prompt as its own, and its prompt is a ''' string
     if (/\{\{|[!@]\{|'''/.test([body, ...pasted].join('\n'))) throw new Error(`${where} can't hold {{, !{, @{ or ''', which Gemini CLI would read as its own.`);
     if (/\u2014/.test(text)) throw new Error(`${where} has an em dash: the repository's writing doesn't use them.`);
+    // every command starts from what people already found (docs/NOTES.md)
+    if (!body.includes('npm run dp -- notes')) throw new Error(`${where} has to look at the notes, with npm run dp -- notes, before it starts on anything: docs/NOTES.md says why.`);
     return { name, description: description.trim(), argument, pasted, body };
   });
 }

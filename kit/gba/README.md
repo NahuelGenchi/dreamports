@@ -18,6 +18,7 @@ The kit is plain JavaScript that the browser runs as it is, with no build step, 
 | Saves | `save.js` | The bytes a cartridge's save memory holds, kept in the browser |
 | Screens | `ui/` | The start screen with the player's ROMs, the settings, the list of controls and the asset viewer |
 | Achievements | `achievements/` | The game's achievements, kept in the browser and on the player's profile, with their popup and their list |
+| Notes | `notes/` | What people found about the console while making games on it, for the next person ([Notes](../../docs/NOTES.md)), which the site leaves out |
 | Look | `styles/` | The pages' look, light or dark like the dreamports.net launcher, with its font and icon |
 | Proof | `proof.js` | Runs the game a frame at a time from recorded button presses, for the proof tools |
 

@@ -11,7 +11,8 @@ const sweep = ['schedule', 'workflow_dispatch'].includes(process.env.GITHUB_EVEN
 const docs = {
   moderation: `https://github.com/${repository}/blob/HEAD/docs/MODERATION.md`,
   clips: `https://github.com/${repository}/blob/HEAD/docs/STANDARD.md#clips`,
-  rights: `https://github.com/${repository}/blob/HEAD/docs/RIGHTS.md`
+  rights: `https://github.com/${repository}/blob/HEAD/docs/RIGHTS.md`,
+  notes: `https://github.com/${repository}/blob/HEAD/docs/NOTES.md`
 };
 const LABELS = {
   spam: ['b60205', 'The Dreamports bot closed this as spam'],

@@ -1,5 +1,7 @@
 // GitHub's API for the Dreamports bot (docs/MODERATION.md): REST and GraphQL calls with the workflow's token, the posts
-// it checks, always read fresh from GitHub, and the posts that wait for a model.
+// it checks, always read fresh from GitHub, a pull request's notes, and the posts that wait for a model.
+import { NOTE_NAME, NOTE_PATH } from './notes.mjs';
+
 export const repository = process.env.GITHUB_REPOSITORY ?? '';
 export const [owner, name] = repository.split('/');
 // the workflow's own account, as REST and GraphQL name it
@@ -88,6 +90,20 @@ export function itemFrom(node) {
     // the comment a reply in Discussions goes under: a comment's own thread, since a reply can't have replies
     replyTo: kind === 'discussion-comment' ? node.replyTo?.id ?? node.id : null
   };
+}
+
+// What a pull request adds or changes in games' and kits' notes (docs/NOTES.md), each with its text. One that can't
+// be read as a note has no text, which breaks the rules for notes: a link, a folder's worth too many, or a file with
+// another kind of name.
+const MOST_NOTES = 30;
+export async function notesOf(number) {
+  const files = (await list(`/pulls/${number}/files`, 3000)).filter(file => file.status !== 'removed' && NOTE_PATH.test(file.filename));
+  const notes = [];
+  for (const [i, file] of files.entries()) {
+    const answer = i < MOST_NOTES && NOTE_NAME.test(file.filename.split('/').at(-1)) ? await api(file.contents_url) : null;
+    notes.push({ path: file.filename, text: answer?.encoding === 'base64' ? Buffer.from(answer.content, 'base64').toString('utf8') : '' });
+  }
+  return notes;
 }
 
 // the posts with these node ids, read from GitHub, leaving out any that are gone

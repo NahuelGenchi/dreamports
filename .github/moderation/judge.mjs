@@ -3,13 +3,15 @@
 //   judge  applies the plain rules, asks OpenCode about what they leave, and writes the verdicts, which hold no text
 //          from any post, in a step with no token at all
 // An event checks its own post. The hourly run checks the posts waiting for a model, and the reviews and comments on
-// pull requests' code since its last run, since those events come without write access from forks.
+// pull requests' code since its last run, since those events come without write access from forks. A pull request is
+// checked with the notes it adds or changes (docs/NOTES.md), since other people's coding agents will read them.
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { checkRules } from './rules.mjs';
+import { noteProblems } from './notes.mjs';
 import { accounts, isClaimsCommand, isTrusted } from './verdicts.mjs';
-import { api, fetchItems, graphql, list, repository, waitingEntries } from './github.mjs';
-import { openCodeAsker } from './model.mjs';
+import { api, fetchItems, graphql, list, notesOf, repository, waitingEntries } from './github.mjs';
+import { LIMIT, openCodeAsker } from './model.mjs';
 
 const MINUTE = 60000, HOUR = 60 * MINUTE;
 const folder = join(process.env.RUNNER_TEMP, 'moderation');
@@ -44,7 +46,7 @@ async function reviewsSince(since) {
 
 async function readPosts() {
   const ids = [];
-  let since = null;
+  let since = null, pushed = false;
   if (sweep) {
     for (const entry of await waitingEntries()) if (!entry.settled) ids.push(entry.node);
     since = await lastSweep();
@@ -53,19 +55,45 @@ async function readPosts() {
     const event = read(process.env.GITHUB_EVENT_PATH);
     const subject = event.comment ?? event.review ?? event.pull_request ?? event.issue ?? event.discussion;
     if (subject?.node_id) ids.push(subject.node_id);
+    pushed = event.action === 'synchronize';
   }
   const wanted = [...new Set(ids)].slice(0, 300);
   const treatAsPublic = accounts(process.env.MODERATION_TREAT_AS_PUBLIC);
   const items = (await fetchItems(wanted)).filter(item => item.repository === repository)
     .map(item => ({ ...item, trusted: isTrusted(item, treatAsPublic), claims: isClaimsCommand(item) }));
+  for (const item of items) if (item.kind === 'pull-request') item.notes = await notesOf(item.parent.number);
+  const gone = wanted.filter(id => !items.some(item => item.node === id));
+  // a push changes only what a pull request holds, so it's checked again only for its notes
+  const checked = pushed ? items.filter(item => item.notes?.length) : items;
   mkdirSync(folder, { recursive: true });
-  writeFileSync(posts, JSON.stringify({ since, items, gone: wanted.filter(id => !items.some(item => item.node === id)) }));
-  console.log(`Read ${items.length} of ${wanted.length} posts${since ? `, with the comments on code and reviews since ${since}` : ''}.`);
+  writeFileSync(posts, JSON.stringify({ since, items: checked, gone }));
+  console.log(`Read ${checked.length} of ${wanted.length} posts${since ? `, with the comments on code and reviews since ${since}` : ''}.`);
 }
 
-// The plain rules first. The repository's own people and claims commands get the rules alone, without the spam rule,
-// since the bot only flags them. Whatever has nothing the rules notice is allowed, and the rest goes to OpenCode. A
-// post no model answers for waits.
+// a post's text and its notes, as many at a time as a model reads whole
+function piecesOf(item) {
+  const pieces = [item.text];
+  for (const note of item.notes ?? []) {
+    if (pieces.at(-1).length + note.text.length > LIMIT) pieces.push(note.text);
+    else pieces[pieces.length - 1] += `\n\n${note.text}`;
+  }
+  return pieces;
+}
+
+// what OpenCode says of the whole post, piece by piece: the first answer that isn't allow, or else allow, and nothing
+// when any piece gets no answer
+async function askAbout(opencode, item, hints) {
+  let answer = null;
+  for (const text of piecesOf(item)) {
+    answer = await opencode.ask({ ...item, text, hints });
+    if (answer?.key !== 'allow') return answer;
+  }
+  return answer;
+}
+
+// The plain rules first, on the post with its notes, and then the rules for notes. The repository's own people and
+// claims commands get the rules alone, without the spam rule, since the bot only flags them. Whatever has nothing the
+// rules notice and no notes is allowed, and the rest goes to OpenCode. A post no model answers for waits.
 async function judgePosts() {
   const data = read(posts);
   const opencode = openCodeAsker(process.env.MODERATION_MODELS);
@@ -75,11 +103,13 @@ async function judgePosts() {
       continue;
     }
     const own = item.trusted || item.claims;
-    const rules = checkRules(item.text, { author: item.author, where: item.where, spam: !own });
+    const notes = item.notes ?? [];
+    const rules = checkRules([item.text, ...notes.map(note => note.text)].join('\n\n'), { author: item.author, where: item.where, spam: !own });
     if (rules.key) item.verdict = { key: rules.key, by: 'rules', rule: rules.rule };
-    else if (own || !rules.hints.length) item.verdict = { key: 'allow', by: 'rules' };
+    else if (notes.some(note => noteProblems(note.text).length)) item.verdict = { key: 'bad-note', by: 'rules', rule: 'note' };
+    else if (own || (!rules.hints.length && !notes.length)) item.verdict = { key: 'allow', by: 'rules' };
     else {
-      const answer = await opencode.ask({ ...item, hints: rules.hints });
+      const answer = await askAbout(opencode, item, notes.length ? [...rules.hints, 'notes'] : rules.hints);
       item.verdict = answer ? { key: answer.key, by: 'model', model: answer.model } : { key: 'wait', by: 'none' };
     }
   }

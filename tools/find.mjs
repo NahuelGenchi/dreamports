@@ -1,7 +1,8 @@
 // npm run dp -- find [<game>] [--repo <owner/name>] [--team <owner/name>]: where a game stands, so nobody does the
 // same work twice: its lead, its game's issue, its two numbers, its Make page, its team build and team preview,
-// and its pieces, the issues under its game's issue, with who has claimed which and the ones still free (docs/TEAMS.md). <game> is a game's folder or a few words of its name, and a name also
-// finds the site's other games, such as a port made elsewhere. With no game it lists every Dreamport and every game
+// and its pieces, the issues under its game's issue, with who has claimed which and the ones still free (docs/TEAMS.md),
+// and how many notes people have left on it (docs/NOTES.md). <game> is a game's folder or a few words of its name, and a
+// name also finds the site's other games, such as a port made elsewhere. With no game it lists every Dreamport and every game
 // claimed with a New Dreamport issue. The numbers come from games/ in this folder, and the claims and pieces from the
 // repository's issues, through the GitHub CLI. --repo reads the claims of another copy of the repository, such as a
 // fork that tries the claims workflow, and --team names the fork with the lead's team build when it isn't the
@@ -14,6 +15,7 @@ import { REPO } from './lib/paths.mjs';
 import { UPSTREAM, pagesOf } from './lib/github.mjs';
 import { readClaims, leadOf, teamBuildOf } from './lib/claims.mjs';
 import { dreamports } from './readme.mjs';
+import { notesOfGame } from './notes.mjs';
 import { pageOf, percentText } from '../src/lib/entries.mjs';
 
 const USAGE = 'Usage: npm run dp -- find [<game>] [--repo <owner/name>] [--team <owner/name>]';
@@ -106,6 +108,10 @@ function show(game, local, claims, team) {
   if (entry) row('Its page', `https://dreamports.net/dreamports/${pageOf(game)}/`);
   // a Dreamport has a page in the Make row until every part of it is proven (docs/MAKE.md)
   if (entry && proof?.gameplay?.percent !== 100) row('Make page', `https://dreamports.net/make/${game}/, with its steps and the pieces free to take`);
+  if (entry) {
+    const notes = notesOfGame(game).length;
+    row('Notes', notes ? `${notes} on what people found making it: npm run dp -- notes ${game} lists them` : 'none yet');
+  }
   const build = lead && teamBuildOf(lead, game, team);
   row('Team build', build ? `${build.url}, which npm run dp -- team ${game} join starts from` : `none yet${lead ? `: @${lead} makes it with npm run dp -- team ${game} start` : ''}`);
   const site = !entry?.preview && build ? pagesOf(build.repository)?.url : null;

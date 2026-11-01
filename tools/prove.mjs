@@ -5,8 +5,9 @@
 // (readme.mjs), and makes a clip and stills of both side by side, with a clip and a still of the
 // Dreamport on its own. To help find where each of the game's parts starts and ends, it lists the frames where the
 // original's screen is one colour, as between one screen and the next, and with --stills <frames> keeps pictures of
-// those frames, as it does of each part's first and last. The pictures and the clips stay in .dreamports/results/
-// on this computer: they show the game, so they never go in a commit.
+// those frames, as it does of each part's first and last, and it names any notes people left on what differs
+// (docs/NOTES.md). The pictures and the clips stay in .dreamports/results/ on this computer: they show the game, so
+// they never go in a commit.
 
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -22,6 +23,7 @@ import { makeFilter, soundOf, NEAR } from './lib/sound.mjs';
 import { measure, percentText } from '../src/lib/entries.mjs';
 import { writeReadme, readProof } from './readme.mjs';
 import { KEY, ensureOriginal, runOriginal } from './gba/original.mjs';
+import { notesAbout } from './notes.mjs';
 
 const BATCH = 120;
 const STILLS = 600;
@@ -364,6 +366,11 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
           : part.gap !== undefined ? `not proven, as the original has frames of its own before frame ${part.gap}`
             : 'proven, every frame the same';
       console.log(`  ${part.name}, frames ${part.frames[0]} to ${part.frames[1]}: ${state}.`);
+    }
+    // what people already found about what differs here (docs/NOTES.md)
+    const unproven = partsFound.filter(part => !part.proven).map(part => part.name);
+    for (const note of notesAbout(game, about => unproven.includes(about) || (firstDifference >= 0 && about === name))) {
+      console.log(`  A note on this: ${note.title} npm run dp -- notes ${game} ${note.name} prints it.`);
     }
     const outOfReach = asked.filter(f => f >= frames);
     if (outOfReach.length) console.log(`  --stills names frames past the recording's last, ${frames - 1}: ${outOfReach.slice(0, 8).join(', ')}${outOfReach.length > 8 ? '…' : ''}.`);

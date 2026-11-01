@@ -3,12 +3,12 @@
 // log entry for each key. Nothing here ever quotes a post.
 
 // what a post can get, from the plain rules or the model
-export const KEYS = ['allow', 'game-files', 'rom-site', 'asks-for-games', 'clip-of-original', 'personal-data', 'credential', 'abuse', 'spam', 'rights-notice'];
+export const KEYS = ['allow', 'game-files', 'rom-site', 'asks-for-games', 'clip-of-original', 'personal-data', 'credential', 'abuse', 'spam', 'rights-notice', 'bad-note'];
 // and what the judging job says when there's no verdict: skip a post it leaves alone, or wait for a model
 const OUTCOMES = [...KEYS, 'skip', 'wait'];
 export const KINDS = ['issue', 'pull-request', 'issue-comment', 'review-comment', 'review', 'discussion', 'discussion-comment'];
 const BY = ['rules', 'model', 'none'];
-const RULES = ['credential', 'game-file', 'rom-site', 'spam', 'email', 'phone'];
+const RULES = ['credential', 'game-file', 'rom-site', 'spam', 'email', 'phone', 'note'];
 const NODE = /^[A-Za-z0-9_=+/-]{4,120}$/;
 const MODEL = /^[a-z0-9][\w.-]{0,80}(?:\/[\w.-]{1,80}){1,2}$/;
 
@@ -61,10 +61,11 @@ const deletable = item => ['issue-comment', 'review-comment'].includes(item.kind
 // The fixed plan for a verdict: the steps that carry it out, from delete, hide, reply, close, lock and label. A comment
 // is deleted only when the plain rules decided, since a model can be wrong and a deletion can't be undone; if
 // deleting fails, it's hidden instead. Clips of the original belong in pull requests, so a pull request or a comment
-// on one never gets that verdict's plan.
+// on one never gets that verdict's plan, and only a pull request has notes.
 export function planFor(key, item, by = null) {
   if (!KEYS.includes(key) || key === 'allow') return [];
   if (key === 'clip-of-original' && item.where === 'pull-request') return [];
+  if (key === 'bad-note' && item.kind !== 'pull-request') return [];
   const shape = shapeOf(item);
   if (key === 'spam') return shape === 'comment' ? [{ do: 'hide', as: 'SPAM' }] : [{ do: 'label', name: 'spam' }, { do: 'close' }, { do: 'lock', as: 'SPAM' }];
   if (key === 'abuse') return shape === 'comment' ? [{ do: 'hide', as: 'ABUSE' }] : [{ do: 'close' }, { do: 'lock', as: 'TOO_HEATED' }];
@@ -93,10 +94,10 @@ export function replyFor(key, item, docs, { deleted = false } = {}) {
   const hidOrClosed = shape === 'post' ? 'I closed this' : deleted ? 'I deleted your comment' : `I hid ${yours}`;
   const text = {
     'game-files': shape === 'pull'
-      ? `${who}, this pull request's description shares or links a game file. Dreamports never shares games or anything taken from them, so please edit it out: a pull request with game files is never merged.`
+      ? `${who}, this pull request's description or notes share or link a game file. Dreamports never shares games or anything taken from them, so please edit it out: a pull request with game files is never merged.`
       : `${who}, ${hidOrClosed} because it shares or links a game file. Dreamports never shares games or anything taken from them, not even to test: ${own}.${again}`,
     'rom-site': shape === 'pull'
-      ? `${who}, this pull request's description links a site that shares game files. Dreamports never links to them, so please edit the link out.`
+      ? `${who}, this pull request's description or notes link a site that shares game files. Dreamports never links to them, so please edit the link out.`
       : `${who}, ${hidOrClosed} because it links a site that shares game files. Dreamports never links to them: ${own}.${again}`,
     'asks-for-games': `${who}, about ${shape === 'comment' ? yours : 'this'}: Dreamports can't help anyone get a game. Every Dreamport plays with the player's own copy, made from their own cartridge or disc, and nobody here shares one or says where to find one.${shape === 'post' ? ' So I closed this.' : ''}`,
     'clip-of-original': `${who}, ${hidOrClosed} because it seems to show the original game. Clips and pictures of the original may only appear in pull requests, where they show a Dreamport matching it, as [Clips](${docs.clips}) says. Clips of a Dreamport itself are welcome anywhere.${again}`,
@@ -106,7 +107,8 @@ export function replyFor(key, item, docs, { deleted = false } = {}) {
     credential: shape === 'comment'
       ? `${who}, I hid ${yours} because it seems to include a key, token or password. A hidden post can still be opened, so please revoke it now and make a new one: anyone may have copied it already.`
       : `${who}, this seems to include a key, token or password. Please revoke it now and make a new one, then edit it out: anyone may have copied it already, and GitHub keeps every earlier version of a post.`,
-    'rights-notice': `Thank you for writing. The Dreamports team handles notices from rights holders quickly, usually within one business day, as [Notices from rights holders](${docs.rights}) explains. You can also write to hello@dreamports.net.`
+    'rights-notice': `Thank you for writing. The Dreamports team handles notices from rights holders quickly, usually within one business day, as [Notices from rights holders](${docs.rights}) explains. You can also write to hello@dreamports.net.`,
+    'bad-note': `${who}, a note in this pull request doesn't keep [the rules for notes](${docs.notes}). Other people's coding agents read notes before they work, so a note says what was found and nothing else: no orders to whoever reads it, no commands or links, and nothing taken from a game. \`npm run dp -- notes --check\` says which note and why. Please fix it and push again, and I'll check it again.`
   }[key];
   if (!text) return null;
   return `${text}\n\n<sub>I'm the Dreamports bot, and I check posts here against the project's rules: [how moderation works](${docs.moderation}).</sub>\n\n${markFor(item.node, key)}`;
@@ -124,7 +126,8 @@ const reasons = {
   'game-files': 'it shares or links a game file', 'rom-site': 'it links a site that shares game files',
   'asks-for-games': 'it asks where to get a game', 'clip-of-original': 'it seems to show the original game',
   'personal-data': 'it seems to include private details', credential: 'it seems to include a key, token or password',
-  abuse: 'it seems abusive', spam: 'it\'s spam', 'rights-notice': 'it\'s a notice from a rights holder'
+  abuse: 'it seems abusive', spam: 'it\'s spam', 'rights-notice': 'it\'s a notice from a rights holder',
+  'bad-note': 'a note in it breaks the rules for notes'
 };
 const verbs = { deleted: 'Deleted', hid: 'Hid', replied: 'Replied to', closed: 'Closed', locked: 'Locked', labelled: 'Labelled' };
 
