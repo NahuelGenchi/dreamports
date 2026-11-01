@@ -37,7 +37,8 @@ const NO_CONTROLLERS = `Object.defineProperty(Navigator.prototype, 'getGamepads'
  * { send, evaluate, once, errors, closed, close }.
  */
 export async function openChrome({ profile, headless = true, fresh = true, controllers = !headless }) {
-  if (fresh) rmSync(profile, { recursive: true, force: true });
+  // the last browser's helpers may still be writing their cache as they quit, so emptying it tries again for a moment
+  if (fresh) rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   mkdirSync(profile, { recursive: true });
   const portFile = join(profile, 'DevToolsActivePort');
   rmSync(portFile, { force: true });

@@ -3,8 +3,30 @@
 // (processor.js), which it is sent what they need (keep). Browsers keep audio paused until the page has been
 // interacted with; choosing the ROM counts, and any later key press or tap resumes it too. A multiplayer game on
 // one page has one engine per GBA, each GBA's game calling its own (`forGba`).
+//
+// While a proof tool plays the game (proof.js), the worklet's processor runs on the page instead, with no
+// AudioContext: the tool runs a frame of its sound after each of the game's frames and keeps what it played, at the
+// console's own mix rate (onPage).
+
+import { proof } from '../proof.js';
 
 const GAIN = 0.5;   // the GBA's full scale is loud next to other pages; half of it leaves headroom
+// the rate the console mixes its sound at once the sound library has started: every 256 cycles (apu.js)
+const PROOF_RATE = 65536;
+
+// the worklet module's processor, made on the page: the module finds what an AudioWorklet gives it, registers its
+// processor, and the page talks to it as it would to the worklet's node
+let onPageProcessor = null;
+async function onPage(worklet) {
+  if (!onPageProcessor) {
+    globalThis.sampleRate = PROOF_RATE;
+    globalThis.AudioWorkletProcessor ??= class { constructor() { this.port = { onmessage: null, postMessage() {} }; } };
+    globalThis.registerProcessor = (name, Processor) => { onPageProcessor = Processor; };
+    await import(String(worklet));
+  }
+  const processor = new onPageProcessor();
+  return { processor, port: { postMessage: data => processor.port.onmessage?.({ data }) } };
+}
 
 /**
  * The game's sound. `worklet` is the address of the AudioWorklet module that registers the 'gba-sound' processor:
@@ -80,6 +102,19 @@ export function createSound({ worklet = new URL('./worklet.js', import.meta.url)
       ctx = node = null;
       const bytes = new Uint8Array(romBuffer);
       songPlayers = Array.from({ length: layout.songs }, (_, n) => bytes[layout.songTable + n * 8 + 4]);
+      if (proof?.mode === 'play') {
+        // the game's frames wait while the engine starts, so it starts at the same frame every time
+        const started = onPage(worklet).then(made => {
+          node = made;
+          node.port.postMessage({ type: 'raw' });
+          node.port.postMessage({ type: 'rom', rom: romBuffer, layout, count });
+          for (const message of kept.values()) node.port.postMessage(message);
+          for (const msg of waiting.splice(0)) node.port.postMessage(msg);
+          proof.listen((left, right) => made.processor.process([], [[left, right]]), PROOF_RATE);
+        });
+        proof.wait(started);
+        return started;
+      }
       if (!globalThis.AudioWorkletNode) { waiting.length = 0; return; }
       const c = new AudioContext({ latencyHint: 'interactive' });
       ctx = c;
