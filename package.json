@@ -26,5 +26,9 @@
     "typescript": "6.0.3",
     "wrangler": "4.154.0",
     "yaml": "2.9.1"
+  },
+  "allowScripts": {
+    "esbuild": false,
+    "workerd": false
   }
 }

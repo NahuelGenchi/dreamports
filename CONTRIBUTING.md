@@ -47,6 +47,8 @@ npm run dev
 
 Then open <http://localhost:4321> in your browser. The page updates as you save files.
 
+**Install scripts.** Since npm 12, `npm ci` runs a package's install scripts only when `package.json` allows them, under `allowScripts`. Two packages have one: esbuild, which builds the site's and the Worker's code, and workerd, which runs the Worker on your computer. Both scripts only put in place a program npm has already installed for your system, as a separate package, and check its version; esbuild and workerd find that program by themselves without them. So `allowScripts` turns both down on purpose, which keeps `npm ci` quiet, and `npm run dev`, `npm run build`, `npm run worker` and Cloudflare's builds work without them (#138). If a new package asks for one, `npm install-scripts ls` lists it, and it's allowed only once it's clear what it does and why it's needed.
+
 | Command | What it does |
 | :--- | :--- |
 | `npm run dev` | Runs the site on your computer while you work on it |
