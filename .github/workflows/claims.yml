@@ -9,7 +9,8 @@ name: Claims
 # claim whose holder has done nothing on the game's issues, pull requests or progress thread for 14 days. Each run only
 # reads the issues' text and the repository's files, through the API, and runs nothing from them. Runs on one issue
 # wait for each other, and each answers every command on its issue that has no answer yet, since GitHub cancels all
-# but the newest waiting run of a concurrency group.
+# but the newest waiting run of a concurrency group. A run that gives, takes back or adds a piece builds dreamports.net
+# again, so each game's page in its Make row shows how many pieces are free (docs/MAKE.md).
 on:
   issues:
     types: [opened]
@@ -42,8 +43,12 @@ jobs:
         && (startsWith(github.event.comment.body, '/claim') || startsWith(github.event.comment.body, '/release')))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    env:
+      # the Deploy Hook that builds dreamports.net, kept in the repository's secrets
+      DEPLOY_HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
     steps:
       - name: Answer claims, or release the quiet ones
+        id: claims
         env:
           GH_TOKEN: ${{ github.token }}
           DAYS: ${{ inputs.days || '14' }}
@@ -105,6 +110,8 @@ jobs:
           const guide = `https://github.com/${repository}/blob/main/docs/TEAMS.md`;
           const same = (a, b) => a.toLowerCase() === b.toLowerCase();
           const done = [];
+          // whether a piece was given, taken back or added, which the game's page in the Make row shows
+          let changed = false;
 
           // a field of an issue form: the text under its "### <label>" heading, or null when it's empty
           function field(body, label) {
@@ -247,6 +254,7 @@ jobs:
             if (!issue.assignees.some(a => same(a.login, user))) {
               return answer(issue, about, `@${user}, GitHub didn't let me assign this to you, so it's still free. Say so here, and the Dreamports team will look into it.`);
             }
+            changed = true;
             const help = `A claim with no activity on ${title}'s issues, pull requests or progress thread for ${period} is released, and \`/release\` gives it back sooner. [Claims and teams](${guide}) says what comes next.`;
             return answer(issue, about, lead
               ? `@${user}, ${title} is yours to lead. This is its game's issue, where it's talked about: the tasks you open for it with [the Task form](${form('task.yml')}) land under it, with the label \`${game}\`, and anyone can claim them. ${help}`
@@ -261,6 +269,7 @@ jobs:
             }
             const after = await api(`/issues/${issue.number}/assignees`, 'DELETE', { assignees: [user] });
             issue.assignees = after.assignees;
+            changed = true;
             return answer(issue, about, lead
               ? `@${user} no longer leads ${title}, so leading it is free: \`/claim\` here takes it.`
               : `@${user} gave this task back, so it's free: \`/claim\` takes it.`,
@@ -314,6 +323,7 @@ jobs:
             try {
               await api(`/issues/${home.number}/sub_issues`, 'POST', { sub_issue_id: issue.id });
               issue.parent_issue_url = home.url;
+              changed = true;
               done.push(`#${issue.number}: under #${home.number}`);
             } catch (error) {
               // under one already, put there at the same moment, or past GitHub's 100 sub-issues: it can still be claimed
@@ -441,6 +451,7 @@ jobs:
                 if (!held.has(login.toLowerCase()) || (await activeOn(game, since)).has(login.toLowerCase())) continue;
                 const title = await titleOf(game);
                 await api(`/issues/${issue.number}/assignees`, 'DELETE', { assignees: [login] });
+                changed = true;
                 await answer(issue, 'quiet', isNewDreamport(issue)
                   ? `@${login}, there's been no news from you on ${title} for ${period}, so leading it is free again. Nothing is lost: your work and your team build stay where they are, for the next lead to start from, and \`/claim\` here takes it back, you included, while it's still free.`
                   : `@${login}, there's been no news on this task for ${period}, so it's free again for anyone to take. Nothing is lost: your work and your preview stay where they are, and \`/claim\` takes it back, you included, while it's still free.`,
@@ -454,4 +465,14 @@ jobs:
           if (event.issue) await handle(event.issue.number);
           else await releaseQuiet();
           appendFileSync(process.env.GITHUB_STEP_SUMMARY, `# Claims\n\n${done.length ? done.map(d => `- ${d}`).join('\n') : 'Nothing to answer or release.'}\n\nOnly issues were read and written. Nothing from them was run.\n`);
+          appendFileSync(process.env.GITHUB_OUTPUT, `changed=${changed}\n`);
           NODE
+
+      - name: Build dreamports.net again, for its Make pages
+        if: steps.claims.outputs.changed == 'true' && env.DEPLOY_HOOK != ''
+        run: |
+          if curl --fail --silent --show-error --max-time 30 --output /dev/null --request POST "$DEPLOY_HOOK"; then
+            echo 'Cloudflare is building dreamports.net again.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Cloudflare didn't start a build, so the Make pages wait for the next one."
+          fi

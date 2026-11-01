@@ -2,24 +2,29 @@
 // A Dreamport's page in the Make row, in the menu's place (#142), with only what a newcomer needs to help make it:
 // its cover and the way to play it as it is, which opens its page in the Dreamports row; its name and a block for
 // each part of the game, filled once a recording proves it, with one line on where it stands; and Help make it,
-// the sentence to paste into a coding agent, which copies when pressed, and a link to its game's issue, to talk
-// about it. Who leads it, what waits for review and the code map stay on GitHub. It comes from the entry and the
-// proof/ folder, like the game's page.
+// the sentence to paste into a coding agent, which copies when pressed, how many pieces are free to take, and a link
+// to its game's issue, to talk about it; and its latest step, with the earlier ones folded. Who leads it, what waits
+// for review and the code map stay on GitHub. It comes from the entry and the proof/ folder, like the game's page,
+// and its pieces and steps from GitHub as the site is built (src/lib/making.ts).
 import Tile from './Tile.astro';
 import ViewBar from './ViewBar.astro';
 import { MAKE_GUIDE_URL, gameUrl, makeUrl, pageTitle, type Game } from '../lib/site';
 import { makeView } from '../lib/dreamports';
+import type { Making } from '../lib/making';
 
 interface Props {
   game: Game;
   // Open when the page loads, on its own address.
   open?: boolean;
+  // what GitHub says about it, when GitHub could be read for this build
+  github?: Making;
 }
 
-const { game, open = false } = Astro.props;
+const { game, open = false, github } = Astro.props;
 if (game.data.kind !== 'dreamport') throw new Error(`${game.id} has no page in the Make row: only Dreamports are made here.`);
 const { data } = game;
-const view = makeView(data);
+const view = makeView(data, github);
+const [latest, ...earlier] = view.steps;
 const id = game.id;
 const Title = open ? 'h1' : 'h2';
 const Heading = open ? 'h2' : 'h3';
@@ -83,8 +88,43 @@ const caption = (i: number, part: { name: string; proven: boolean }) =>
           </svg>
         </button>
         <noscript><p class="mk-line">{view.prompt}</p></noscript>
-        <p class="mk-talk"><a href={view.talk}>Talk about it on GitHub ↗</a></p>
+        <p class="mk-talk">
+          {view.free && `${view.free.line} `}<a href={view.talk}>Talk about it on GitHub ↗</a>
+        </p>
       </section>
+      {
+        latest && (
+          <section class="mk-steps" aria-labelledby={`mk-steps-${id}`}>
+            <Heading class="mk-label" id={`mk-steps-${id}`}>Latest step</Heading>
+            <p class="mk-step">{latest.title}</p>
+            <p class="mk-when">
+              <time datetime={latest.merged}>{latest.date}</time> ·{' '}
+              <a href={latest.url} aria-label={`See it on GitHub: ${latest.title}`}>See it ↗</a>
+            </p>
+            {earlier.length > 0 && (
+              <details class="mk-earlier">
+                <summary>
+                  <svg viewBox="0 0 10 10" fill="currentColor" aria-hidden="true">
+                    <path d="M2 0h2v2h2v2h2v2H6v2H4v2H2z" />
+                  </svg>
+                  Earlier steps ({earlier.length})
+                </summary>
+                <ol>
+                  {earlier.map((step) => (
+                    <li>
+                      <span class="mk-step">{step.title}</span>
+                      <span class="mk-when">
+                        <time datetime={step.merged}>{step.date}</time> ·{' '}
+                        <a href={step.url} aria-label={`See it on GitHub: ${step.title}`}>See it ↗</a>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            )}
+          </section>
+        )
+      }
     </div>
   </div>
   <ViewBar href="/make/" />

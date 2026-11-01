@@ -5,6 +5,7 @@
 import { PLAYABLE } from './players';
 import { proofOf } from './entries.mjs';
 import { SOURCE_URL, type Game } from './site';
+import type { Making, Step } from './making';
 
 export type Dreamport = Extract<Game['data'], { kind: 'dreamport' }>;
 
@@ -133,15 +134,25 @@ export const beingMade = (data: Dreamport): boolean => proofFor(data.game)?.game
 
 // What a Dreamport's page in the Make row shows (#142): a block for each part of the game, filled once it's proven,
 // one line on where it stands, the sentence that gets a newcomer's coding agent ready to help (#141), and its game's
-// issue, where it's talked about. Who leads it, what waits for review and the code map stay on GitHub.
+// issue, where it's talked about; and from GitHub (#143, src/lib/making.ts), how many pieces are free to take and its
+// steps, the latest first. Who leads it, what waits for review and the code map stay on GitHub.
 export interface MakeView {
   parts: { name: string; proven: boolean }[];
   summary: string;
   prompt: string;
   talk: string;
+  // nothing when GitHub couldn't be read for this build
+  free?: { count: number; line: string; help: string };
+  steps: (Step & { date: string })[];
 }
 
-export function makeView(data: Dreamport): MakeView {
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const dayOf = (iso: string) => {
+  const date = new Date(iso);
+  return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+};
+
+export function makeView(data: Dreamport, github?: Making): MakeView {
   const proof = proofFor(data.game);
   const parts = (proof?.gameplay?.parts ?? []).map(({ name, proven }) => ({ name, proven }));
   const proven = parts.filter((part) => part.proven).length;
@@ -152,11 +163,21 @@ export function makeView(data: Dreamport): MakeView {
     code ? ` and ${code} of its code ported.` : '.',
     next ? ` Up next: ${next.name}.` : '',
   ].join('');
+  const count = github?.free ?? 0;
+  const pieces = `${count} ${count === 1 ? 'piece' : 'pieces'}`;
   return {
     parts,
     summary,
     prompt: `Set up ${CODE_URL} and help me make ${data.title}.`,
     talk: `${SOURCE_URL}/issues/${data.issue}`,
+    free: github && {
+      count,
+      line: count
+        ? `${pieces} ${count === 1 ? 'is' : 'are'} free to take.`
+        : 'No pieces are free to take yet, but you can play it and say where it differs from the original.',
+      help: count ? `${pieces} free to take` : 'No pieces free to take yet',
+    },
+    steps: (github?.steps ?? []).map((step) => ({ ...step, date: dayOf(step.merged) })),
   };
 }
 

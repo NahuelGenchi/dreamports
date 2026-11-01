@@ -665,6 +665,19 @@ kbd {
   visibility: hidden;
 }
 
+/* in the Make row, how many of a Dreamport's pieces are free to take, on its picture */
+.free-badge {
+  position: absolute;
+  left: calc(var(--bz) + 8px);
+  top: calc(var(--bz) + 8px);
+  z-index: 1;
+  padding: 4px 7px;
+  background: var(--act);
+  color: var(--on-act);
+  font: 400 11px/13px var(--font);
+  pointer-events: none;
+}
+
 /* a game: a little screen in a white frame, showing the game itself */
 .tile {
   --frame: var(--line);
@@ -3281,6 +3294,76 @@ dialog.card[open] {
   line-height: 21px;
   overflow-wrap: anywhere;
   user-select: all;
+}
+
+/* the latest step, from the game's merged pull requests, with the earlier ones folded under it */
+.mk-steps {
+  display: grid;
+  gap: 6px;
+  margin: 30px 2px 0;
+}
+
+.mk-steps .mk-label {
+  margin: 0;
+  color: var(--dim);
+  font: 400 13px/20px var(--font);
+}
+
+.mk-steps p {
+  margin: 0;
+}
+
+.mk-step {
+  display: block;
+  color: var(--ink);
+  font: 400 16px/24px var(--font);
+}
+
+.mk-when {
+  color: var(--dim);
+  font: 400 12.5px/20px var(--font);
+}
+
+.mk-earlier summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: max-content;
+  max-width: 100%;
+  min-height: 44px;
+  color: var(--blue);
+  font: 400 13.5px/22px var(--font);
+  cursor: pointer;
+  list-style: none;
+}
+
+.mk-earlier summary::-webkit-details-marker {
+  display: none;
+}
+
+.mk-earlier summary svg {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  shape-rendering: crispEdges;
+  transition: rotate 0.2s ease;
+}
+
+.mk-earlier[open] summary svg {
+  rotate: 90deg;
+}
+
+.mk-earlier ol {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0 0 4px 20px;
+  list-style: none;
+}
+
+.mk-earlier .mk-step {
+  font-size: 14px;
+  line-height: 22px;
 }
 
 @media (max-height: 500px) and (min-width: 641px) {
