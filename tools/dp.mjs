@@ -7,6 +7,7 @@ const TOOLS = {
   prove: 'Plays each recording in the original and in the Dreamport, compares every frame, and updates the numbers (--stills: pictures of frames)',
   codemap: 'Makes the code map: every function in the original, with its address and size',
   portmap: 'Makes the port map: each function of the original the Dreamport\'s code names, and where',
+  read: 'Prints one of the original\'s functions, its ARM or Thumb instructions, from your copy, for code its decompilation lacks',
   share: 'Publishes a preview on GitHub Pages from your fork, with the newest clip for the step\'s pull request',
   find: 'Shows where a game stands: its lead, its numbers, its team build, who has claimed what and its free tasks',
   team: 'The team build, the lead\'s branch with the team\'s finished pieces: start, join, send and add a piece',

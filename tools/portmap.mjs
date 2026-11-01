@@ -113,7 +113,7 @@ function codeFiles(folder) {
   return files.sort();
 }
 
-function readShifts(game) {
+export function readShifts(game) {
   const file = join(proofFolder(game), 'names.json');
   if (!existsSync(file)) return [];
   const { shifts } = JSON.parse(readFileSync(file, 'utf8'));
