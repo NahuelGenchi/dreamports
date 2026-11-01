@@ -2,8 +2,9 @@
 // settings button in the top-left corner, as on dreamports.net, and the sheet it opens over the game (sheet.js),
 // with the way back to the game and the controls (controls-view.js), which list every key and controller button
 // the layout gives, the console's button each presses, and what it does where the game says. H, or View + Menu on
-// a controller, opens and closes them too, and while they're open the game waits. A game with settings of its own
-// writes them in its page and makes the sheet itself, as Sonic Advance Dreamport does.
+// a controller, opens and closes them too, and while they're open the game waits. With the controller drawn on
+// touch screens (touch.js), they have its Button opacity too. A game with settings of its own writes them in its
+// page and makes the sheet itself, as Sonic Advance Dreamport does.
 
 import { holdClocks } from '../clock.js';
 import { createSheet } from './sheet.js';
@@ -20,9 +21,10 @@ const escape = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0
 /**
  * Adds the settings to `stage`, the game's part of the page, for the player whose buttons `input` reads
  * (input.js): `brand` names the game over them, `what` says what a button does, by its name in the layout, and
- * `dpad` what the d-pad does, and `note` goes under the controls. Returns the sheet (sheet.js).
+ * `dpad` what the d-pad does, and `note` goes under the controls. `touch`, the controller drawn on touch screens
+ * (touch.js), adds how solid its buttons are. Returns the sheet (sheet.js).
  */
-export function createSettings(stage, input, { brand, what = {}, note = '' }) {
+export function createSettings(stage, input, { brand, what = {}, note = '', touch = null }) {
   stage.insertAdjacentHTML('beforeend', `
     <button type="button" class="settings-open" aria-label="Settings" aria-controls="sheet-wrap" aria-expanded="false">${SLIDERS}</button>
     <div class="sheet-wrap" id="sheet-wrap" hidden>
@@ -43,6 +45,10 @@ export function createSettings(stage, input, { brand, what = {}, note = '' }) {
                   <span class="row-text">Controls<span class="row-hint">Keys and controller</span></span>
                   ${CHEVRON.replace('<svg', '<svg class="chev"')}
                 </button></li>
+                ${touch ? `<li class="opacity-row"><label class="row" for="button-opacity">
+                  <span class="row-text">Button opacity<span class="row-hint">The buttons drawn around the game</span></span>
+                  <input type="range" id="button-opacity">
+                </label></li>` : ''}
               </ul>
             </div>
           </div>
@@ -69,6 +75,7 @@ export function createSettings(stage, input, { brand, what = {}, note = '' }) {
   sheet.view('settings', { el: settings, first: () => settings.querySelector('.resume') });
   createControlsView(sheet, { controls: [layoutControls(input.layout, what), SETTINGS_CONTROLS], note });
   settings.querySelector('[data-controls]').addEventListener('click', () => sheet.go('controls'));
+  if (touch) touch.bindSlider(settings.querySelector('#button-opacity'));
 
   // a finger opens them as it lifts, so iOS doesn't bring up its magnifier on one held down; the mouse and the
   // keyboard click
