@@ -39,6 +39,7 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
   id={`inspect-${id}`}
   data-card="inspect"
   data-game={id}
+  data-filter={filterFor(kind).key}
   data-path={gameUrl(game)}
   data-title={pageTitle(title)}
   aria-labelledby={`ins-title-${id}`}

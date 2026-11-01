@@ -1,6 +1,7 @@
 // What a Dreamport's page and its place in the launcher's row show from its entry, games/<game>/entry.md, and its
 // proof/ folder: the game's box, and the progress box with its two numbers, code ported and gameplay proven, and
-// what proves them. games/README.md describes the entry.
+// what proves them; and what its page in the Make row shows, for the people making it. games/README.md describes
+// the entry.
 import { PLAYABLE } from './players';
 import { proofOf } from './entries.mjs';
 import { SOURCE_URL, type Game } from './site';
@@ -122,6 +123,41 @@ function partsOf(game: string, gameplay: Proof['gameplay']): PartView[] {
       href: proofLink(game, `recordings/${part.recording}.json`),
     };
   });
+}
+
+// The address a newcomer's coding agent starts from: it redirects to this repository (public/_redirects).
+const CODE_URL = 'https://dreamports.net/code';
+
+/** Whether a Dreamport is still being made, so it has a place in the Make row: until every part of it is proven. */
+export const beingMade = (data: Dreamport): boolean => proofFor(data.game)?.gameplay?.percent !== 100;
+
+// What a Dreamport's page in the Make row shows (#142): a block for each part of the game, filled once it's proven,
+// one line on where it stands, the sentence that gets a newcomer's coding agent ready to help (#141), and its game's
+// issue, where it's talked about. Who leads it, what waits for review and the code map stay on GitHub.
+export interface MakeView {
+  parts: { name: string; proven: boolean }[];
+  summary: string;
+  prompt: string;
+  talk: string;
+}
+
+export function makeView(data: Dreamport): MakeView {
+  const proof = proofFor(data.game);
+  const parts = (proof?.gameplay?.parts ?? []).map(({ name, proven }) => ({ name, proven }));
+  const proven = parts.filter((part) => part.proven).length;
+  const next = parts.find((part) => !part.proven);
+  const code = shortPercent(proof?.ported?.percent);
+  const summary = [
+    parts.length ? `${proven} of ${parts.length} parts proven` : 'No parts listed yet',
+    code ? ` and ${code} of its code ported.` : '.',
+    next ? ` Up next: ${next.name}.` : '',
+  ].join('');
+  return {
+    parts,
+    summary,
+    prompt: `Set up ${CODE_URL} and help me make ${data.title}.`,
+    talk: `${SOURCE_URL}/issues/${data.issue}`,
+  };
 }
 
 export async function dreamportView(data: Dreamport): Promise<DreamportView> {

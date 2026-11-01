@@ -1,29 +1,57 @@
 ---
-// One place in the launcher's row: a game, which links to its own page, or an empty slot. A Dreamport also
-// carries its two numbers, which the nameplate shows under it once it's selected.
+// One place in the launcher's row: a game, which links to its own page; in the Make row, a Dreamport being made,
+// which links to its page there, or the way to start a Dreamport, which leads to the README's steps; or an empty
+// slot. A Dreamport also carries its two numbers, which the nameplate shows under it once it's selected.
 import Tile from './Tile.astro';
-import { gameUrl, sectionFor, type Game } from '../lib/site';
+import { MAKE_GUIDE_URL, gameUrl, makeUrl, sectionFor, type Game } from '../lib/site';
 import { numbersOf } from '../lib/dreamports';
 
 interface Props {
   game?: Game;
   index: number;
+  // a Dreamport's place in the Make row, which opens its page there
+  make?: boolean;
+  // the Make row's last place: how to start a Dreamport
+  start?: boolean;
 }
 
-const { game, index } = Astro.props;
-const detail = game
+const { game, index, make = false, start = false } = Astro.props;
+const detail = game && !make
   ? [sectionFor(game.data.kind).label, game.data.platform, game.data.year].filter(Boolean).join(' · ')
   : '';
 const numbers = game?.data.kind === 'dreamport' ? numbersOf(game.data) : undefined;
+const href = game && (make && game.data.kind === 'dreamport' ? makeUrl(game.data.game) : gameUrl(game));
+const START = {
+  title: 'Start a Dreamport',
+  help: 'Pick a game you own, then paste one sentence into a coding agent. It sets everything up and guides you from there.',
+};
 ---
 
 {
-  game ? (
+  start ? (
+    <a class="slot" href={MAKE_GUIDE_URL} data-index={index} data-title={START.title} data-help={START.help} data-href={MAKE_GUIDE_URL} draggable="false">
+      <span class="lift">
+        <span class="tile" aria-hidden="true">
+          <span class="screen start">
+            <svg class="st-plus" viewBox="0 0 16 16" shape-rendering="crispEdges">
+              <path d="M7 2h2v12H7zM2 7h12v2H2z" />
+            </svg>
+            <span class="st-name">{START.title}</span>
+          </span>
+        </span>
+      </span>
+      <span class="sr-only">
+        {START.title}
+        <span class="slot-help">{START.help}</span>
+      </span>
+    </a>
+  ) : game ? (
     <a
       class="slot"
-      href={gameUrl(game)}
+      href={href}
       data-index={index}
       data-game={game.id}
+      data-card={`${make ? 'make' : 'inspect'}-${game.id}`}
       data-title={game.data.title}
       data-detail={detail}
       data-numbers={numbers}
@@ -34,7 +62,7 @@ const numbers = game?.data.kind === 'dreamport' ? numbersOf(game.data) : undefin
         <Tile game={game} />
       </span>
       <span class="sr-only">
-        {game.data.title}, {detail}
+        {game.data.title}{detail && `, ${detail}`}
         {numbers && <span class="slot-numbers">{numbers}</span>}
       </span>
     </a>

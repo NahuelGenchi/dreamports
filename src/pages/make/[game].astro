@@ -1,0 +1,31 @@
+---
+// A Dreamport's page in the Make row: the menu, on Make, with that Dreamport's page open (#142).
+import type { GetStaticPaths } from 'astro';
+import Base from '../../layouts/Base.astro';
+import Launcher from '../../components/Launcher.astro';
+import { getGames, type Game } from '../../lib/site';
+import { beingMade } from '../../lib/dreamports';
+
+export const getStaticPaths = (async () => {
+  const games = await getGames('dreamport');
+  return games.flatMap((game) =>
+    game.data.kind === 'dreamport' && beingMade(game.data) ? [{ params: { game: game.data.game }, props: { game } }] : [],
+  );
+}) satisfies GetStaticPaths;
+
+interface Props {
+  game: Game;
+}
+
+const { game } = Astro.props;
+const { share, title } = game.data;
+const image = share ? { src: share, width: 1200, height: 630, alt: `${title}, from the maker’s own recording` } : undefined;
+---
+
+<Base
+  title={`${title} · Make`}
+  description={`Help make ${title}: where it stands, and one sentence to paste into a coding agent, which gets everything ready and guides you.`}
+  image={image}
+>
+  <Launcher filter="make" selected={game.id} open="make" />
+</Base>

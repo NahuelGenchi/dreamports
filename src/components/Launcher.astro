@@ -2,37 +2,50 @@
 // The whole site is this one screen: a top bar with the filters (or the search field, while a
 // search is on), one row of games across the middle, corner buttons at the bottom, and cards
 // that take the row's place as full screens. Every page shows it, with its own card open: a
-// game's own page opens that game's card, /about/ opens about, /profile/ the player's profile and
-// /players/<name>/ another player's public one.
+// game's own page opens that game's card, /make/<game>/ a Dreamport's page in the Make row, /about/ opens
+// about, /profile/ the player's profile and /players/<name>/ another player's public one.
 // Without JavaScript the row is a plain list of links, and on a card's page the card is the
 // page's text in the row's place.
 import AboutCard from './AboutCard.astro';
 import Doorway from './Doorway.astro';
 import InspectCard from './InspectCard.astro';
 import Key from './Key.astro';
+import MakeCard from './MakeCard.astro';
 import PlayerCard from './PlayerCard.astro';
 import ProfileCard from './ProfileCard.astro';
 import SettingsCard from './SettingsCard.astro';
 import Slot from './Slot.astro';
 import { FILTERS, SECTIONS, SLOTS, getGames, type Filter, type FilterKey, type Game } from '../lib/site';
+import { beingMade } from '../lib/dreamports';
 
 interface Props {
   filter: FilterKey;
   // The game the row starts on.
   selected?: string;
   // The card that is open when the page loads.
-  open?: 'about' | 'inspect' | 'profile' | 'player';
+  open?: 'about' | 'inspect' | 'make' | 'profile' | 'player';
+}
+
+// a place in a row: a game, a Dreamport's place in the Make row, the way to start one, or an empty slot
+interface Place {
+  game?: Game;
+  make?: boolean;
+  start?: boolean;
 }
 
 const { filter, selected, open } = Astro.props;
 const games = await getGames();
+// the Dreamports being made, each with a page in the Make row
+const making = games.filter((game) => game.data.kind === 'dreamport' && beingMade(game.data));
 const rows = FILTERS.map((f) => {
-  const list: (Game | undefined)[] = games.filter((game) => f.kinds.includes(game.data.kind));
-  while (list.length < SLOTS) list.push(undefined);
+  // the Make row holds only what it has: the Dreamports being made, then the way to start one
+  if (f.key === 'make') return { filter: f, list: [...making.map((game): Place => ({ game, make: true })), { start: true }] };
+  const list: Place[] = games.filter((game) => f.kinds.includes(game.data.kind)).map((game) => ({ game }));
+  while (list.length < SLOTS) list.push({});
   return { filter: f, list };
 });
 const current = rows.find((row) => row.filter.key === filter)!;
-const selIndex = Math.max(0, current.list.findIndex((game) => game && game.id === selected));
+const selIndex = Math.max(0, current.list.findIndex((place) => !!place.game && place.game.id === selected));
 const Heading = open ? 'h2' : 'h1';
 // Every address that shows a filter: its own, and the older one for each kind of game in it.
 const pathsFor = (f: Filter) =>
@@ -59,6 +72,7 @@ const pathsFor = (f: Filter) =>
                 data-filter={f.key}
                 data-title={f.title}
                 data-paths={pathsFor(f)}
+                data-lead={f.lead}
                 aria-selected={f.key === filter ? 'true' : 'false'}
                 aria-controls="row"
                 tabindex={f.key === filter ? undefined : -1}
@@ -104,8 +118,9 @@ const pathsFor = (f: Filter) =>
 
   <main class="stage" id="stage">
     <Heading class="sr-only">Dreamports</Heading>
+    <p class="row-lead" id="row-lead" hidden={!current.filter.lead}>{current.filter.lead}</p>
     <div class="row" id="row" aria-label={`Games: ${current.filter.label}`}>
-      {current.list.map((game, i) => <Slot game={game} index={i} />)}
+      {current.list.map((place, i) => <Slot {...place} index={i} />)}
     </div>
     <div class="cursor" id="cursor" aria-hidden="true">
       <i class="c-tl" data-dx="-1" data-dy="-1"></i>
@@ -119,7 +134,7 @@ const pathsFor = (f: Filter) =>
         ><span class="np-name" id="np-name"></span><span class="np-detail" id="np-detail"></span><span
           class="np-numbers"
           id="np-numbers"></span
-        ></span
+        ><span class="np-help" id="np-help"></span></span
       >
     </div>
   </main>
@@ -181,6 +196,7 @@ const pathsFor = (f: Filter) =>
   <ProfileCard open={open === 'profile'} />
   <PlayerCard open={open === 'player'} />
   {games.map((game) => <InspectCard game={game} open={open === 'inspect' && game.id === selected} />)}
+  {making.map((game) => <MakeCard game={game} open={open === 'make' && game.id === selected} />)}
 </div>
 
 <div class="blackout" id="blackout" hidden>
@@ -194,7 +210,7 @@ const pathsFor = (f: Filter) =>
 {
   rows.map((row) => (
     <template id={`slots-${row.filter.key}`}>
-      {row.list.map((game, i) => <Slot game={game} index={i} />)}
+      {row.list.map((place, i) => <Slot {...place} index={i} />)}
     </template>
   ))
 }

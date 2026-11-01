@@ -219,6 +219,9 @@ kbd,
 .facts,
 .about-nav a[aria-current='true'],
 .bo-back,
+.mk-part,
+.mk-help,
+.mk-copy,
 dialog.card {
   box-shadow:
     0 -2px var(--frame),
@@ -658,7 +661,7 @@ kbd {
 }
 
 /* before the script has measured the screen, the row and its cursor wait out of sight */
-.js .launcher:not(.is-laid) :is(.row, .cursor, .nameplate) {
+.js .launcher:not(.is-laid) :is(.row, .cursor, .nameplate, .row-lead) {
   visibility: hidden;
 }
 
@@ -781,6 +784,58 @@ kbd {
   line-height: 1;
 }
 
+/* the Make row's way to start a Dreamport: a plus on an empty screen */
+.screen.start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--s) * 0.03);
+  background: var(--hollow);
+  color: var(--blue);
+}
+
+.st-plus {
+  width: calc(var(--s) * 0.145);
+  height: auto;
+  fill: currentColor;
+}
+
+.st-name {
+  color: var(--ink);
+  font-size: max(10px, calc(var(--s) * 0.032));
+  line-height: 1.2;
+}
+
+/* the line over a row that needs saying what it is, such as Make's; the script places it between the top bar and
+   the row, and leaves it out where there's no room */
+.row-lead {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: calc(var(--top-h, 56px) + 16px);
+  translate: -50% 0;
+  width: max-content;
+  max-width: min(560px, calc(100% - 36px));
+  margin: 0;
+  color: var(--dim);
+  font-size: 13.5px;
+  line-height: 22px;
+  text-align: center;
+  text-wrap: balance;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.row-lead.is-out {
+  opacity: 0;
+  transition-duration: 0.17s;
+}
+
+.row-lead.no-room {
+  visibility: hidden;
+}
+
 /* an empty slot: a place where a game will go */
 .hollow {
   position: absolute;
@@ -889,8 +944,21 @@ kbd {
   line-height: 14px;
 }
 
-.np-numbers:empty {
+.np-numbers:empty,
+.np-detail:empty,
+.np-help:empty {
   display: none;
+}
+
+/* in the Make row, what pressing it leads to, such as how many pieces are free to take */
+.np-help {
+  display: block;
+  max-width: 46ch;
+  color: var(--dim);
+  font-size: 11.5px;
+  line-height: 14px;
+  white-space: normal;
+  text-wrap: pretty;
 }
 
 .nameplate.is-empty {
@@ -2098,6 +2166,11 @@ dialog.card[open] {
   color: var(--blue);
 }
 
+:root:not(.js) .slot-help {
+  display: block;
+  color: var(--dim);
+}
+
 :root:not(.js) .slot .sr-only {
   position: absolute;
   top: 100%;
@@ -2339,6 +2412,27 @@ dialog.card[open] {
   }
 }
 
+/* with three filters, a phone keeps room in the top bar for the clock and the badge: the tabs switch rows by
+   themselves, so L and R go, and on the narrowest phones the tabs draw closer together */
+@media (max-width: 440px) {
+  .shoulder {
+    display: none;
+  }
+}
+
+@media (max-width: 359px) {
+  .topbar {
+    gap: 6px;
+    padding-left: max(14px, env(safe-area-inset-left, 0px));
+    padding-right: max(14px, env(safe-area-inset-right, 0px));
+  }
+
+  .tab {
+    padding: 0 3px;
+    font-size: 11px;
+  }
+}
+
 /* on the narrowest phones the profile button keeps only its key, its controller button or its icon, like Settings */
 @media (max-width: 359px) {
   #btn-profile .c-word {
@@ -2455,7 +2549,7 @@ dialog.card[open] {
   transition: opacity 0.25s ease;
 }
 
-.launcher[data-view] :is(.cursor, .nameplate, .corners, .pad-hint, .filters) {
+.launcher[data-view] :is(.cursor, .nameplate, .corners, .pad-hint, .filters, .row-lead) {
   opacity: 0;
   pointer-events: none;
 }
@@ -2466,17 +2560,17 @@ dialog.card[open] {
   pointer-events: none;
 }
 
-.launcher[data-view]:not([data-view='inspect']) .row {
+.launcher[data-view]:not([data-view='inspect'], [data-view='make']) .row {
   opacity: 0;
   translate: 0 4%;
 }
 
-.launcher[data-view='inspect'] .slot:not(.is-sel) .lift,
-.launcher[data-view='inspect'] .slot .glow {
+.launcher:is([data-view='inspect'], [data-view='make']) .slot:not(.is-sel) .lift,
+.launcher:is([data-view='inspect'], [data-view='make']) .slot .glow {
   opacity: 0;
 }
 
-.launcher[data-view='inspect'] .slot.is-sel .lift {
+.launcher:is([data-view='inspect'], [data-view='make']) .slot.is-sel .lift {
   visibility: hidden;
 }
 
@@ -3008,5 +3102,231 @@ dialog.card[open] {
   .view.card-settings .card-body,
   .view.card-profile .card-body {
     padding: 22px 16px 8px;
+  }
+}
+
+/* ---------- A Dreamport's page in the Make row ---------- */
+
+/* its picture and the way to play it on the left, and on the right its name, its parts and Help make it, all
+   from the top, as on a page */
+.view .make,
+.view .make .ins-show {
+  --hero: min(34vw, 436px);
+}
+
+.view .make {
+  max-width: 1120px;
+  grid-template-columns: minmax(0, calc(var(--hero) + 8px)) minmax(0, 1fr);
+  column-gap: clamp(24px, 3.4vw, 44px);
+}
+
+.view .make .ins-show {
+  justify-content: flex-start;
+  gap: 18px;
+  padding: 32px 0 12px;
+}
+
+.view .make .mk-play {
+  flex: none;
+  align-self: center;
+  width: min(var(--hero), 100%);
+  margin: 2px 0;
+  background: var(--paper);
+}
+
+.view .make .mk-play:hover {
+  background: var(--hover);
+}
+
+.view .make .ins-text {
+  padding: 32px 6px 36px 0;
+}
+
+.view .mk-title {
+  margin: 0;
+  font-size: 34px;
+  line-height: 40px;
+}
+
+/* a block for each part of the game, filled once it's proven */
+.mk-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 14px 2px 0;
+}
+
+.mk-part {
+  --frame: var(--line);
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: var(--hollow);
+  cursor: pointer;
+}
+
+.mk-part.is-proven {
+  --frame: var(--act);
+  background: var(--act);
+}
+
+.mk-part[aria-pressed='true'] {
+  box-shadow:
+    0 0 0 2px var(--paper),
+    0 0 0 5px var(--sky);
+}
+
+/* a picked block's ring already shows where the keyboard is */
+.mk-part[aria-pressed='true']:focus-visible {
+  outline: none;
+}
+
+.mk-caption {
+  min-height: 44px;
+  margin: 14px 0 0;
+  color: var(--ink);
+  font: 400 13.5px/22px var(--font);
+}
+
+/* Help make it: the sentence to paste, and where to talk */
+.mk-help {
+  --frame: var(--sky);
+  display: grid;
+  gap: 14px;
+  margin: 34px 2px 0;
+  padding: 20px;
+  background: var(--paper);
+}
+
+.mk-help :is(h2, h3) {
+  margin: 0;
+  color: var(--ink);
+  font: 400 18px/26px var(--font);
+}
+
+.mk-help p {
+  margin: 0;
+  color: var(--dim);
+  font: 400 13.5px/22px var(--font);
+}
+
+/* the sentence is the button: pressing it copies it, and the icon at its end shows on hover, with the keyboard
+   or a controller on it, and always on touch screens, then turns into a tick */
+.mk-copy {
+  --frame: var(--line);
+  position: relative;
+  display: block;
+  width: calc(100% - 4px);
+  min-height: 48px;
+  margin: 2px;
+  padding: 12px 48px 12px 14px;
+  border: 0;
+  background: var(--hollow);
+  color: var(--ink);
+  font: 400 14px/21px var(--font);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mk-copy:hover {
+  --frame: var(--sky);
+}
+
+.mk-copy:active {
+  transform: translateY(2px);
+}
+
+.mk-icon {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  translate: 0 -50%;
+  color: var(--blue);
+  opacity: 0;
+  shape-rendering: crispEdges;
+  transition: opacity 0.15s linear;
+}
+
+.mk-copy:is(:hover, :focus-visible, .is-copied) .mk-icon,
+:root[data-input='touch'] .mk-icon {
+  opacity: 1;
+}
+
+.mk-icon .i-done,
+.mk-copy.is-copied .i-copy {
+  display: none;
+}
+
+.mk-copy.is-copied .i-done {
+  display: inline;
+}
+
+/* without JavaScript nothing copies, so the sentence is plain text to select */
+:root:not(.js) .mk-copy {
+  display: none;
+}
+
+.mk-help .mk-line {
+  padding: 12px 14px;
+  background: var(--hollow);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 21px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+@media (max-height: 500px) and (min-width: 641px) {
+  /* a phone held sideways: a smaller picture, and less room above */
+  .view .make,
+  .view .make .ins-show {
+    --hero: min(34vw, (100dvh - 214px - env(safe-area-inset-bottom, 0px)) * 1.54);
+  }
+
+  .view .make .ins-show {
+    gap: 12px;
+    padding-top: 16px;
+  }
+
+  .view .make .ins-text {
+    padding-top: 16px;
+  }
+
+  .view .mk-title {
+    font-size: 26px;
+    line-height: 32px;
+  }
+}
+
+@media (max-width: 640px) {
+  /* one column that scrolls: picture, its button, then the rest */
+  .view .make,
+  .view .make .ins-show {
+    --hero: min(100vw - 32px, 460px);
+  }
+
+  .view .make .ins-show {
+    gap: 18px;
+    padding: 18px 0 0;
+  }
+
+  .view .make .ins-text {
+    padding: 26px 0 28px;
+  }
+
+  .view .mk-title {
+    font-size: 28px;
+    line-height: 34px;
+  }
+
+  .mk-help {
+    padding: 16px;
   }
 }
