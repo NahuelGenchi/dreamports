@@ -41,7 +41,7 @@ static struct mLogger logger = { .log = quiet };
 
 static struct mCore* core;
 static uint32_t start, end;
-static uint8_t* pool;   // a byte for each halfword from start to end: 1 where a word of data starts
+static uint8_t* pool;   // a byte for each halfword from start to end: not 0 where a word of data starts, 2 once it's no table's address to look at
 static uint8_t* seen;   // and 1 where an instruction the code reaches starts
 static uint32_t* work;  // where code the function reaches starts, still to be followed
 static size_t waiting, room;
@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
 			for (uint32_t entry = table; entry + 4 <= end && entry < first && !seen[(entry - start) / 2]; entry += 4) {
 				uint32_t to = core->busRead32(core, entry);
 				if (to < start || to >= end || to % 2) break;
-				if (!pool[(entry - start) / 2]) pool[(entry - start) / 2] = 1;
+				if (!pool[(entry - start) / 2]) pool[(entry - start) / 2] = 2;
 				if (to < first) first = to;
 				follow(to);
 			}
