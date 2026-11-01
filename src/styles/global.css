@@ -2426,15 +2426,34 @@ dialog.card[open] {
 }
 
 /* with three filters, a phone keeps room in the top bar for the clock and the badge: the tabs switch rows by
-   themselves, so L and R go, and on the narrowest phones the tabs draw closer together */
+   themselves, so L and R go, and on the narrowest phones the tabs draw closer together. The search field reaches
+   4 px past the tabs into the room L and R leave, with less room round its icon and its ×, so it keeps
+   "Search Dreamports". The Settings badge keeps the tighter frame it has on narrower phones, with its controller icon
+   too, so the search's focus ring stays clear of it */
 @media (max-width: 440px) {
   .shoulder {
     display: none;
   }
+
+  .search {
+    left: -4px;
+    right: -4px;
+    gap: 4px;
+    padding-left: 6px;
+  }
+
+  .search-end {
+    padding: 0 3px;
+  }
+
+  .status {
+    gap: 8px;
+    padding: 0 9px;
+  }
 }
 
-/* under 360 px, as on a 320 px iPhone SE, the bar's edges narrow too, and the search field reaches past the tabs
-   into the room L and R leave, so it keeps "Search Dreamports" with its focus ring clear of the badges */
+/* under 360 px, as on a 320 px iPhone SE, the bar's edges narrow too, and the search field reaches further past the
+   tabs, 16 px, so it keeps "Search Dreamports" with its focus ring clear of the badges */
 @media (max-width: 359px) {
   .topbar {
     gap: 6px;
@@ -2450,12 +2469,6 @@ dialog.card[open] {
   .search {
     left: -16px;
     right: -16px;
-    gap: 4px;
-    padding-left: 6px;
-  }
-
-  .search-end {
-    padding: 0 3px;
   }
 }
 
