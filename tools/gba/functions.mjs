@@ -238,8 +238,8 @@ export function findFunctions(bytes, listed = []) {
     }
     for (const { address } of listed) add(address, !startsArm(address), false);
     follow();
-    // what nothing calls or points at: what's left between the functions, past any zeros, that starts as a function
-    // does or reads as code up to a return before the next one
+    // what nothing calls or points at: what's left between the functions, past any zeros and NOPs, which only pad, that
+    // starts as a function does or reads as code up to a return before the next one
     const tried = new Set();
     for (let more = true; more;) {
       more = false;
@@ -251,7 +251,16 @@ export function findFunctions(bytes, listed = []) {
         furthest = Math.max(furthest, end);
         const to = spans[i + 1]?.[0];
         let at = furthest;
-        while (at < to && u16(at) === 0) at += 2;
+        while (at < to && (u16(at) === 0 || u16(at) === 0x46C0)) at += 2;
+        // ARM code may come after a word of data, and the address that leads to it has no mark to tell it from data's
+        if (at < to && !startsFunction(at) && !readsAsCode(at, to)) {
+          for (let arm = at + 3 & ~3; arm < to; arm += 4) {
+            if (startsArm(arm)) {
+              at = arm;
+              break;
+            }
+          }
+        }
         if (at < to && !tried.has(at) && (startsArm(at) || startsFunction(at) || readsAsCode(at, to))) {
           tried.add(at);
           add(at, !startsArm(at), false);

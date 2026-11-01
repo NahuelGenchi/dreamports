@@ -64,7 +64,7 @@ These are the projects on the site so far.
 | | Dreamport | What it is | Code ported | Gameplay proven | Lead | Try it |
 | :---: | :--- | :--- | :--- | :--- | :--- | :--- |
 | 🌙 | **[Sonic Battle Dreamport](games/sonic-battle/)** | Sonic Battle, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install. Bring your own copy of the game. | [3.97%](.github/readme/progress/sonic-battle.svg) | [0%, 0 of 19 parts](.github/readme/progress/sonic-battle.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-battle/) |
-| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [41.07%](.github/readme/progress/sonic-advance.svg) | [13.89%, 5 of 36 parts](.github/readme/progress/sonic-advance.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
+| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [40.26%](.github/readme/progress/sonic-advance.svg) | [13.89%, 5 of 36 parts](.github/readme/progress/sonic-advance.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
 
 <!-- End of the table of Dreamports. -->
 
