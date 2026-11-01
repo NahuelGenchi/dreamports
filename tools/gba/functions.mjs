@@ -4,7 +4,8 @@
 // function addresses in the game's tables. It reads only the cartridge: code the game copies into the console's
 // memory to run there isn't found, so a decompilation's list (codemap --from) is better where there is one. Such a
 // list can still stop short, so this follows the functions it lists too, and fillFunctions adds what it finds beyond
-// them. Last, it looks in what's left between the functions for those nothing calls or points at.
+// them. It can also name data as a function, which startsInData tells. Last, it looks in what's left between the
+// functions for those nothing calls or points at.
 
 const BASE = 0x08000000;
 const HEADER = 0xC0;
@@ -25,15 +26,15 @@ export function looksLikeArm(words) {
 }
 
 /** Each function found, as { address, size, thumb }, sorted by address. `listed` are functions a list already knows,
- *  as { address, size }: their code is followed too, as nothing else may lead to it. */
-export function findFunctions(bytes, listed = []) {
+ *  as { address, size }: their code is followed too, as nothing else may lead to it. `pool` collects the data the
+ *  code uses: the words it loads, which are never code, as after a BL used as a long jump, and its jump tables. */
+export function findFunctions(bytes, listed = [], pool = new Set()) {
   const size = bytes.length;
   const inRom = address => address >= BASE && address < BASE + size;
   const u16 = address => bytes[address - BASE] | bytes[address - BASE + 1] << 8;
   const u32 = address => (bytes[address - BASE] | bytes[address - BASE + 1] << 8 | bytes[address - BASE + 2] << 16 | bytes[address - BASE + 3] << 24) >>> 0;
   const found = new Map();   // address → { thumb, end, called }: `called` when code calls it, not only points at it
   const queue = [];
-  const pool = new Set();   // the words the code loads, which are never code, as after a BL used as a long jump
   const add = (address, thumb, called) => {
     if (!inRom(address) || address % (thumb ? 2 : 4)) return;
     const known = found.get(address);
@@ -113,15 +114,19 @@ export function findFunctions(bytes, listed = []) {
           break;
         }
         if ((op & 0xFF87) === 0x4687 || (op & 0xFF87) === 0x4487) {
-          // MOV pc or ADD pc: a jump table, at the address last loaded from the pool
+          // MOV pc or ADD pc: a jump table, at the address last loaded from the pool, as long as the CMP before it says,
+          // or else, in a switch too big for a CMP to say, up to the first case after it
           const table = loaded.at(-1);
           if (table !== undefined && inRom(table)) {
-            const count = casesBefore(seen, pc) ?? 256;
+            const count = casesBefore(seen, pc) ?? Infinity;
+            let first = Infinity;
             for (let i = 0; i < count; i++) {
               const entry = table + i * 4;
-              if (!inRom(entry + 3)) break;
+              if (entry >= first || !inRom(entry + 3)) break;
               const to = u32(entry);
               if (to & 1 || !inRom(to) || to < start || to > start + 0x4000) break;
+              if (to > entry) first = Math.min(first, to);
+              pool.add(entry).add(entry + 2);
               reach(entry + 4);
               work.push(to);
             }
@@ -278,6 +283,15 @@ export function findFunctions(bytes, listed = []) {
     furthest = Math.max(furthest, f.end);
     return { address: f.address, size: Math.min(furthest, list[i + 1]?.address ?? Infinity) - f.address, thumb: f.thumb };
   });
+}
+
+/** Those of a list's functions that start in the data of the code before them, as a disassembler's list can: on a
+ *  word the code uses, on half of one, or on the zero that pads before one. Nothing the tools find leads to them. */
+export function startsInData(bytes, listed) {
+  const pool = new Set();
+  const functions = new Set(findFunctions(bytes, [], pool).map(f => f.address));
+  const padding = address => pool.has(address + 2) && address % 4 === 2 && !bytes[address - BASE] && !bytes[address - BASE + 1];
+  return listed.filter(({ address }) => !functions.has(address) && (pool.has(address) || padding(address)));
 }
 
 /** A list of functions with what following the code found beyond it, sorted by address, none overlapping. A listed
