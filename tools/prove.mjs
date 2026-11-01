@@ -1,6 +1,6 @@
 // npm run dp -- prove <game> [recording…]: plays each recording, from power-on, in the original (in the reference
-// emulator) and in the Dreamport (in a headless browser), compares every frame, notes which of the original's
-// functions ran in the frames that matched, updates the game's progress.json, which its code ported and its gameplay
+// emulator) and in the Dreamport (in a headless browser), compares every frame, its picture and its sound
+// (lib/sound.mjs), notes which of the original's functions ran in the frames that matched, updates the game's progress.json, which its code ported and its gameplay
 // proven are measured with (docs/STANDARD.md#how-progress-is-measured), and the README's table of Dreamports with it
 // (readme.mjs), and makes a clip and stills of both side by side, with a clip and a still of the
 // Dreamport on its own. To help find where each of the game's parts starts and ends, it lists the frames where the
@@ -18,6 +18,7 @@ import { serveRepository } from './lib/server.mjs';
 import { openChrome } from './lib/chrome.mjs';
 import { openDreamport } from './lib/dreamport.mjs';
 import { mp4 } from './lib/mp4.mjs';
+import { makeFilter, soundOf, NEAR } from './lib/sound.mjs';
 import { measure, percentText } from '../src/lib/entries.mjs';
 import { writeReadme, readProof } from './readme.mjs';
 import { KEY, ensureOriginal, runOriginal } from './gba/original.mjs';
@@ -55,6 +56,7 @@ export async function run(args) {
         frames: result.frames,
         matched: result.matched,
         differs: result.differs,
+        ...(result.soundDiffers.length ? { soundDiffers: result.soundDiffers } : {}),
         ...(result.onlyInOriginal ? { onlyInOriginal: result.onlyInOriginal } : {}),
         functions: result.functions,
       };
@@ -157,6 +159,7 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
   try {
     say('starting the Dreamport…');
     await openDreamport(page, server, game, copy, { query: '?proof' });
+    await page.evaluate(`window.__makeFilter = ${makeFilter}`);
     await page.evaluate(IN_PAGE);
     const buttons = await page.evaluate('dreamportsProof.buttons');
     // the recording's buttons as the Dreamport names them, and as the console's buttons for the original
@@ -175,11 +178,15 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
     if (keysLate) masks.unshift(0);
 
     // the original: every frame's picture shows what the frame before worked out, so one more frame than the
-    // buttons, and the Dreamport's frame f is the original's frame originalOf[f] + 1
+    // buttons, and the Dreamport's frame f is the original's frame originalOf[f] + 1. Its sound lines up the same way
     say('playing the original…');
     const functions = codeMap?.functions ?? [];
-    const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions });
+    const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, sound: true });
     const expected = Array.from(originalOf, g => first.hashes[g + 1]);
+    const compareSound = soundOf(first.sound), heardOf = Array.from(originalOf, g => g + 1);
+    // the frames next to a stretch only the original has, whose sound isn't compared: the original's runs into or out
+    // of the screen the Dreamport skips
+    const unheard = new Set(recording.onlyInOriginal.flatMap(({ at }) => Array.from({ length: 2 * NEAR }, (_, i) => at - NEAR + i)).filter(f => f >= 0 && f < frames));
 
     // the Dreamport, a batch of frames at a time, keeping the pictures the results show: the clip's, and the
     // first frame that differs, with the first that differs where it matched when last proven
@@ -191,16 +198,23 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
     const boundaries = parts.flatMap(({ frames: [a, b] }) => [a - 1, a, b, b + 1]);
     const stills = [...new Set([...asked, ...boundaries])].filter(f => f >= 0 && f < frames).sort((a, b) => a - b);
     for (const f of stills) wanted.add(f);
-    const hashes = [], keptFrames = new Set();
+    // each frame's picture hash, and how its sound differs, or null when it's the same
+    const hashes = [], heard = [], sounds = [], keptFrames = new Set();
+    const differs = f => hashes[f] !== expected[f] || sounds[f] !== null;
     let firstDifference = -1, firstNew = -1;
     const started = Date.now();
     for (let from = 0; from < frames; from += BATCH) {
       const count = Math.min(BATCH, frames - from);
       say(`frame ${from + count} of ${frames}`);
       const batch = held.slice(from, from + count).map(list => list.map(b => named.get(b)));
-      hashes.push(...await page.evaluate(`__proof.run(${from}, ${JSON.stringify(batch)})`));
-      for (let f = from; f < from + count; f++) {
-        if (hashes[f] === expected[f]) continue;
+      const played = await page.evaluate(`__proof.run(${from}, ${JSON.stringify(batch)})`);
+      hashes.push(...played.hashes);
+      heard.push(...played.sound);
+      // a frame's sound is measured with the frame after it, so the batch's last waits for the next batch
+      const known = from + count === frames ? frames : from + count - 1;
+      for (let f = sounds.length; f < known; f++) sounds.push(unheard.has(f) ? null : compareSound(heard, heardOf, f));
+      for (let f = Math.max(0, from - 1); f < known; f++) {
+        if (!differs(f)) continue;
         if (firstDifference < 0) {
           firstDifference = f;
           wanted.add(f);
@@ -212,23 +226,25 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
           wanted.add(f);
         }
       }
-      const keep = [...wanted].filter(f => f < from + count && !keptFrames.has(f));
+      const keep = [...wanted].filter(f => f < known && !keptFrames.has(f));
       for (const f of await page.evaluate(`__proof.keep(${JSON.stringify(keep)})`)) keptFrames.add(f);
     }
     const seconds = (Date.now() - started) / 1000;
 
-    // what matched, and the functions that ran in those frames
+    // what matched, picture and sound, and the functions that ran in those frames
     let matched = 0;
-    const proven = new Set(), different = [];
+    const proven = new Set(), different = [], soundDifferent = [];
     for (let frame = 0; frame < frames; frame++) {
-      if (hashes[frame] !== expected[frame]) {
+      if (sounds[frame]) soundDifferent.push(frame);
+      if (differs(frame)) {
         different.push(frame);
         continue;
       }
       matched++;
       for (const f of first.ran[originalOf[frame]]) proven.add(f);
     }
-    const differs = stretchesOf(different);
+    const differing = stretchesOf(different), soundDiffers = stretchesOf(soundDifferent);
+    const madeSound = await page.evaluate('__proof.heard');
     // where the original's screen is one colour, as it is between one screen and the next: { from, to, colour }
     const plain = [];
     for (let frame = 0; frame < frames; frame++) {
@@ -240,15 +256,17 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
     const oneColour = plain.map(({ from, to, value }) => ({ from, to, colour: colourName(value) }));
     // each part this recording proves, as the site will count it (src/lib/entries.mjs)
     const partsFound = parts.map(({ name: part, frames: [a, b] }) => {
-      const differing = different.find(f => f >= a && f <= b);
+      const first = different.find(f => f >= a && f <= b);
       const gap = recording.onlyInOriginal.find(g => g.at > a && g.at <= b);
       return {
-        name: part, frames: [a, b], proven: b < frames && differing === undefined && !gap,
-        ...(b >= frames ? { past: frames - 1 } : {}), ...(differing !== undefined ? { differs: differing } : {}), ...(gap ? { gap: gap.at } : {}),
+        name: part, frames: [a, b], proven: b < frames && first === undefined && !gap,
+        ...(b >= frames ? { past: frames - 1 } : {}),
+        ...(first !== undefined ? { differs: first, ...(hashes[first] === expected[first] ? { soundOnly: true } : {}) } : {}),
+        ...(gap ? { gap: gap.at } : {}),
       };
     });
     const newly = wasDifferent ? stretchesOf(different.filter(f => !wasDifferent.has(f))) : [];
-    const fixed = wasDifferent ? stretchesOf([...wasDifferent].filter(f => f < frames && hashes[f] === expected[f]).sort((a, b) => a - b)) : [];
+    const fixed = wasDifferent ? stretchesOf([...wasDifferent].filter(f => f < frames && !differs(f)).sort((a, b) => a - b)) : [];
 
     // the clip: the recording's, or around the first difference, or else the last five seconds
     const clip = clipAt ?? (firstDifference >= 0 ? [Math.max(0, firstDifference - 240), Math.min(frames - 1, firstDifference + 59)] : [Math.max(0, frames - 300), frames - 1]);
@@ -260,8 +278,9 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
     const clipFrames = [];
     for (let f = clip[0]; f <= clip[1]; f++) clipFrames.push(f);
 
-    // the original's pictures of those frames, then the stills and the clip
+    // the original's pictures of those frames, then the stills and the clip, which mark the frames whose sound differs
     say('making the pictures and the clip…');
+    await page.evaluate(`__proof.soundDiffers(${JSON.stringify(soundDifferent)})`);
     const kept = [...keptFrames].sort((a, b) => a - b);
     const shown = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, pictures: kept.map(f => originalOf[f] + 1) });
     for (let i = 0; i < kept.length; i += 20) {
@@ -303,8 +322,11 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
     writeFileSync(join(out, 'dreamport.png'), Buffer.from((await page.evaluate(`__proof.still(${clipFrames[clipFrames.length >> 1]}, false, true)`)).png, 'base64'));
 
     const outside = first.outside;
+    // where the first frame whose sound differs is furthest from the original's
+    const firstSound = soundDifferent.length ? { frame: soundDifferent[0], ...sounds[soundDifferent[0]] } : null;
     const report = {
-      recording: name, frames, matched, differs, firstDifference: difference, onlyInOriginal, oneColour, parts: partsFound, stills,
+      recording: name, frames, matched, differs: differing, firstDifference: difference, onlyInOriginal, oneColour, parts: partsFound, stills,
+      sound: { heard: madeSound, differs: soundDiffers, firstDifference: firstSound, ...(unheard.size ? { notCompared: stretchesOf([...unheard].sort((a, b) => a - b)) } : {}) },
       ...(wasDifferent ? { sinceLastProven: { differs: newly, firstDifference: newDifference, matches: fixed } } : {}),
       clip: { from: clip[0], to: clip[1], frames: clipFrames.length, bytes: file.length, bitrate, dreamport: { bytes: own.file.length, bitrate: own.bitrate } },
       seconds, errors: page.errors,
@@ -314,12 +336,23 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
 
     if (process.stdout.isTTY) process.stdout.write(`\r${''.padEnd(70)}\r`);
     const where = relative(REPO, out);
-    const at = d => `frame ${d.frame}: ${d.pixels} pixels${d.box ? `, from ${d.box[0]},${d.box[1]} to ${d.box[2]},${d.box[3]}` : ''}`;
-    if (firstDifference < 0) console.log(`${name}: all ${frames} frames the same in both${onlyInOriginal ? ` (and ${onlyInOriginal} only the original has)` : ''}.`);
+    const at = d => (d.pixels || hashes[d.frame] !== expected[d.frame]
+      ? `frame ${d.frame}: ${d.pixels} pixels${d.box ? `, from ${d.box[0]},${d.box[1]} to ${d.box[2]},${d.box[3]}` : ''}`
+      : `frame ${d.frame}, by its sound`);
+    if (firstDifference < 0) console.log(`${name}: all ${frames} frames the same in both, pictures and sound${onlyInOriginal ? ` (and ${onlyInOriginal} only the original has)` : ''}.`);
     else {
-      console.log(`${name}: ${matched} of ${frames} frames the same. The first that differs is ${at(difference)}.`);
-      console.log(`  Frames that differ: ${listed(differs)}.`);
+      console.log(`${name}: ${matched} of ${frames} frames the same, pictures and sound. The first that differs is ${at(difference)}.`);
+      console.log(`  Frames that differ: ${listed(differing)}.`);
     }
+    if (soundDifferent.length) {
+      const { frame, side, band, original: theirs, dreamport: ours, dB, silent } = firstSound;
+      const where = `around ${band.toLocaleString('en')} Hz, on the ${side}`;
+      console.log(`  Frames whose sound differs: ${listed(soundDiffers)}.${madeSound ? '' : ' The Dreamport makes no sound yet.'}`);
+      console.log(`  The first is frame ${frame}: ${silent === 'dreamport' ? `the Dreamport is silent, and the original ${theirs} steps loud ${where}`
+        : silent === 'original' ? `the original is silent, and the Dreamport ${ours} steps loud ${where}`
+          : `${where}, the original is ${theirs} steps loud and the Dreamport ${ours}, ${dB} dB apart`}.`);
+    }
+    if (unheard.size) console.log(`  The sound of frames ${listed(stretchesOf([...unheard].sort((a, b) => a - b)))} isn't compared, next to the frames only the original has.`);
     if (newly.length) console.log(`  Differs where it matched when last proven: ${listed(newly)}. The first is ${at(newDifference)}.`);
     if (oneColour.length) {
       const shown = oneColour.slice(0, 12).map(({ from, to, colour }) => `${from === to ? from : `${from} to ${to}`} (${colour})`).join(', ');
@@ -327,7 +360,7 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
     }
     for (const part of partsFound) {
       const state = part.past !== undefined ? `ends past the recording's last frame, ${part.past}`
-        : part.differs !== undefined ? `not proven, as frame ${part.differs} differs`
+        : part.differs !== undefined ? `not proven, as ${part.soundOnly ? 'the sound of ' : ''}frame ${part.differs} differs`
           : part.gap !== undefined ? `not proven, as the original has frames of its own before frame ${part.gap}`
             : 'proven, every frame the same';
       console.log(`  ${part.name}, frames ${part.frames[0]} to ${part.frames[1]}: ${state}.`);
@@ -342,7 +375,7 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
     }
     console.log(`  Clip, ${(file.length / 1e6).toFixed(2)} MB, frames ${clip[0]} to ${clip[1]}, the Dreamport's on its own, ${(own.file.length / 1e6).toFixed(2)} MB, and stills: ${where}/`);
     if (file.length > CLIP_LIMIT) console.log('  The clip is still over 2 MB: a shorter "clip" in the recording makes it lighter.');
-    return { frames, matched, differs, onlyInOriginal, functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };
+    return { frames, matched, differs: differing, soundDiffers, onlyInOriginal, functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };
   } finally {
     await page.close();
   }

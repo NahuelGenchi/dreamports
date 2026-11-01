@@ -1,8 +1,8 @@
 // Plays the original in the reference emulator (original.c): the buttons held at each frame in, and out what
-// each frame shows and which of the code map's functions ran in it.
+// each frame shows, what it sounds like and which of the code map's functions ran in it.
 
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { LOCAL } from '../lib/paths.mjs';
 import { ORIGINAL, isBuilt, build } from './build.mjs';
@@ -20,22 +20,27 @@ export function ensureOriginal(log) {
 /**
  * Runs `frames` frames of the original from power-on. `buttons` holds each frame's buttons as KEY bits,
  * `functions` the code map's ({ address, size }), and `pictures` the frames whose whole picture is wanted, in order.
- * Resolves to { hashes, plain, ran, pictures, outside }: each frame's picture hash, its one colour when every pixel
- * has the same (15-bit) or else -1, the places in `functions` of those that ran in it, the pictures asked for
- * (15-bit colour, 240 x 160) and how many instructions ran outside every function ({ cartridge, memory }).
+ * Resolves to { hashes, plain, ran, pictures, sound, outside }: each frame's picture hash, its one colour when every
+ * pixel has the same (15-bit) or else -1, the places in `functions` of those that ran in it, the pictures asked for
+ * (15-bit colour, 240 x 160), with `sound` each frame's sound (an Int16Array of left and right samples, 65536 a
+ * second, in the console's 10-bit units around the bias) or else null, and how many instructions ran outside every
+ * function ({ cartridge, memory }).
  */
-export async function runOriginal({ copy, frames, buttons, functions = [], pictures = [] }) {
+export async function runOriginal({ copy, frames, buttons, functions = [], pictures = [], sound = false }) {
   const folder = join(LOCAL, 'tmp');
   mkdirSync(folder, { recursive: true });
   const id = `${process.pid}-${Date.now()}`;
-  const files = { buttons: join(folder, `buttons-${id}.bin`), functions: join(folder, `functions-${id}.bin`), pictures: join(folder, `pictures-${id}.bin`) };
+  const files = {
+    buttons: join(folder, `buttons-${id}.bin`), functions: join(folder, `functions-${id}.bin`), pictures: join(folder, `pictures-${id}.bin`),
+    sound: join(folder, `sound-${id}.bin`),
+  };
   writeFileSync(files.buttons, new Uint8Array(Uint16Array.from(buttons).buffer));
   const list = new Uint32Array(functions.length * 2);
   functions.forEach((f, i) => { list[i * 2] = f.address; list[i * 2 + 1] = f.size; });
   writeFileSync(files.functions, new Uint8Array(list.buffer));
   writeFileSync(files.pictures, new Uint8Array(Uint32Array.from(pictures).buffer));
   try {
-    const child = spawn(ORIGINAL, [copy, String(frames), files.buttons, files.functions, files.pictures], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(ORIGINAL, [copy, String(frames), files.buttons, files.functions, files.pictures, sound ? files.sound : '-'], { stdio: ['ignore', 'pipe', 'pipe'] });
     const out = [], err = [];
     child.stdout.on('data', chunk => out.push(chunk));
     child.stderr.on('data', chunk => err.push(chunk));
@@ -57,7 +62,17 @@ export async function runOriginal({ copy, frames, buttons, functions = [], pictu
         at += WIDTH * HEIGHT * 2;
       }
     }
-    return { hashes, plain, ran, pictures: shown, outside: JSON.parse(stderr.split('\n').pop()) };
+    let heard = null;
+    if (sound) {
+      const bytes = readFileSync(files.sound);
+      heard = new Array(frames);
+      for (let frame = 0, at = 0; frame < frames; frame++) {
+        const count = bytes.readUInt32LE(at);
+        heard[frame] = new Int16Array(bytes.buffer.slice(bytes.byteOffset + at + 4, bytes.byteOffset + at + 4 + count * 4));
+        at += 4 + count * 4;
+      }
+    }
+    return { hashes, plain, ran, pictures: shown, sound: heard, outside: JSON.parse(stderr.split('\n').pop()) };
   } finally {
     for (const file of Object.values(files)) rmSync(file, { force: true });
   }

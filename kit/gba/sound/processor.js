@@ -7,6 +7,9 @@
 // A game with sounds of its own, such as an extra's, makes its own processor from this one in its own worklet
 // module and registers it as 'gba-sound': it handles its own messages in message() and passes the rest on, adds
 // its sounds to the output in mix(), and can give the engine its music manager in manager() (synth.js).
+//
+// For the proof tools (audio.js) it runs on the page instead, and is told `raw`: it then makes the mix as the console
+// does, at full scale and without the coupling capacitor, so each sample is the console's own level.
 
 import { createSynth } from './synth.js';
 
@@ -15,6 +18,7 @@ export class GbaSoundProcessor extends AudioWorkletProcessor {
     super();
     this.synths = [];
     this.gain = 1;
+    this.raw = false;
     this.port.onmessage = ({ data }) => this.message(data);
   }
 
@@ -28,7 +32,8 @@ export class GbaSoundProcessor extends AudioWorkletProcessor {
         return synth;
       });
     } else if (data.type === 'call') this.synths[data.gba ?? 0]?.call(data.name, ...data.args);
-    else if (data.type === 'gain') this.gain = data.value;
+    else if (data.type === 'gain') this.gain = this.raw ? 1 : data.value;
+    else if (data.type === 'raw') { this.raw = true; this.gain = 1; }
   }
 
   /** Adds the game's own sounds to the output, after the GBAs'. */
@@ -36,12 +41,13 @@ export class GbaSoundProcessor extends AudioWorkletProcessor {
 
   process(inputs, outputs) {
     const [left, right] = outputs[0];
-    if (this.synths.length === 1) this.synths[0].render(left, right, this.gain);
+    if (this.synths.length === 1) this.synths[0].render(left, right, this.gain, !this.raw);
     else if (this.synths.length > 1) {
-      const l = (this.l ??= new Float32Array(left.length)), r = (this.r ??= new Float32Array(right.length));
+      if (this.l?.length !== left.length) { this.l = new Float32Array(left.length); this.r = new Float32Array(right.length); }
+      const l = this.l, r = this.r;
       left.fill(0); right.fill(0);
       for (const synth of this.synths) {
-        synth.render(l, r, this.gain);
+        synth.render(l, r, this.gain, !this.raw);
         for (let i = 0; i < left.length; i++) { left[i] += l[i]; right[i] += r[i]; }
       }
     }

@@ -1,24 +1,31 @@
 // Runs the original game in mGBA, the reference the proof tools compare a Dreamport against, on the contributor's
-// computer only. It plays the buttons it is given, one set per frame, and writes what each frame shows and which of
-// the game's functions ran in it. `npm run dp -- setup` builds it against mGBA's library (build.mjs).
+// computer only. It plays the buttons it is given, one set per frame, and writes what each frame shows, what it
+// sounds like and which of the game's functions ran in it. `npm run dp -- setup` builds it against mGBA's library
+// (build.mjs).
 //
-// original ROM FRAMES BUTTONS FUNCTIONS PICTURES
+// original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND
 //   ROM        the contributor's copy, only ever read
 //   FRAMES     how many frames to run
 //   BUTTONS    a file with the buttons held at each frame: 16 bits each, a bit per button as KEYINPUT has them
 //   FUNCTIONS  a file with the code map's functions, each its address and its size (32 bits each), or -
 //   PICTURES   a file with the frames whose whole picture to write (32 bits each, in order), or -
+//   SOUND      a file to write each frame's sound to, or -
 //
 // For each frame it writes to stdout: a hash of the picture (FNV-1a over each pixel's 15-bit colour, as the
 // console has it), the picture's one colour if every pixel has it or else 0xFFFFFFFF, the number of functions that
 // ran in the frame and their places in FUNCTIONS (32 bits each), then the picture itself if PICTURES names the
 // frame (240 x 160 pixels of 16 bits, the console's 15-bit colour).
+// For each frame it writes to SOUND how many samples of the console's sound the frame made, then each sample, left
+// and right (16 bits each): the mix of the four Game Boy channels and the two DirectSound FIFOs, as offsets around the
+// bias in the console's 10-bit units, 65536 a second (every 256 cycles), the rate the sound library sets as it
+// starts. Before that the console mixes every 512 cycles, and each of those samples is written twice.
 // At the end it writes to stderr, as JSON, how many instructions ran outside every function of the code map: in the
 // cartridge, and in the work RAM games copy code into.
 #include <mgba/core/core.h>
 #include <mgba/core/log.h>
 #include <mgba/gba/core.h>
 #include <mgba/internal/arm/arm.h>
+#include <mgba/internal/gba/gba.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,6 +55,23 @@ static struct region* regionOf(uint32_t address) {
 	return NULL;
 }
 
+// The console's sound as mGBA mixes it: each sample comes through its audio stream, scaled by mGBA's master volume
+// (3/16 of 256, so 48 for each of the console's 10-bit steps), and stretched or thinned to one every 256 cycles.
+#define SOUND_STEP 256
+struct sound { struct mAVStream stream; struct GBA* gba; int16_t* samples; size_t count, capacity; int32_t cycles; };
+
+static void heard(struct mAVStream* stream, int16_t left, int16_t right) {
+	struct sound* sound = (struct sound*) stream;
+	for (sound->cycles += sound->gba->audio.sampleInterval; sound->cycles >= SOUND_STEP; sound->cycles -= SOUND_STEP) {
+		if (sound->count + 2 > sound->capacity) {
+			sound->capacity = sound->capacity ? sound->capacity * 2 : 4096;
+			sound->samples = realloc(sound->samples, sound->capacity * sizeof(int16_t));
+		}
+		sound->samples[sound->count++] = left / 48;
+		sound->samples[sound->count++] = right / 48;
+	}
+}
+
 static void* readAll(const char* path, size_t* size) {
 	*size = 0;
 	if (!strcmp(path, "-")) return NULL;
@@ -64,8 +88,8 @@ static void* readAll(const char* path, size_t* size) {
 }
 
 int main(int argc, char** argv) {
-	if (argc != 6) {
-		fprintf(stderr, "Usage: original ROM FRAMES BUTTONS FUNCTIONS PICTURES\n");
+	if (argc != 7) {
+		fprintf(stderr, "Usage: original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND\n");
 		return 2;
 	}
 	long frames = atol(argv[2]);
@@ -104,6 +128,15 @@ int main(int argc, char** argv) {
 	if (!mCoreLoadFile(core, argv[1])) {
 		fprintf(stderr, "mGBA can't open the copy\n");
 		return 1;
+	}
+	FILE* soundFile = NULL;
+	static struct sound sound;
+	if (strcmp(argv[6], "-")) {
+		soundFile = fopen(argv[6], "wb");
+		if (!soundFile) { fprintf(stderr, "Can't write %s\n", argv[6]); exit(2); }
+		sound.stream.postAudioFrame = heard;
+		sound.gba = core->board;
+		core->setAVStream(core, &sound.stream);
 	}
 	core->reset(core);
 	struct ARMCore* cpu = core->cpu;
@@ -146,8 +179,15 @@ int main(int argc, char** argv) {
 		fwrite(ran, 4, count, stdout);
 		while (nextPicture < pictureCount && pictures[nextPicture] < (uint32_t) frame) nextPicture++;
 		if (nextPicture < pictureCount && pictures[nextPicture] == (uint32_t) frame) fwrite(picture, 2, WIDTH * HEIGHT, stdout);
+		if (soundFile) {
+			uint32_t samples = sound.count / 2;
+			fwrite(&samples, 4, 1, soundFile);
+			fwrite(sound.samples, 2, sound.count, soundFile);
+			sound.count = 0;
+		}
 	}
 	fflush(stdout);
+	if (soundFile) fclose(soundFile);
 	fprintf(stderr, "{\"cartridge\":%ld,\"memory\":%ld}\n", regions[0].seen, regions[1].seen + regions[2].seen);
 	core->deinit(core);
 	return 0;

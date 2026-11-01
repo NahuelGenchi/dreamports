@@ -1,6 +1,7 @@
 // What prove runs inside the Dreamport's page. It plays the game a frame at a time with the recording's buttons,
 // through the kit's proof mode (kit/gba/proof.js), hashes each picture as the original's are hashed
-// (tools/gba/original.c), keeps the pictures prove asks for, and draws the stills and the clip, which the
+// (tools/gba/original.c), measures each frame's sound in bands of pitches with the filter prove gives it
+// (lib/sound.mjs, as __makeFilter), keeps the pictures prove asks for, and draws the stills and the clip, which the
 // browser encodes as H.264. The results stay on the contributor's computer.
 (() => {
   const WIDTH = 240, HEIGHT = 160, RING = 400;
@@ -8,6 +9,10 @@
   const FRAME_US = 1e6 * 280896 / 16777216;   // a Game Boy Advance frame, in microseconds
   // the last pictures, and those kept for the results
   const ring = new Map(), kept = new Map(), originals = new Map();
+  // the frames whose sound differs, which the stills and the clip mark
+  const soundDiffers = new Set();
+  const filter = __makeFilter();
+  let heard = false;
 
   // a picture in the console's 15-bit colour, and its FNV-1a hash
   function reduce(data) {
@@ -71,9 +76,11 @@
     context.fillText('Dreamport', alone ? 8 : WIDTH * SCALE + 8, BAR / 2);
     context.textAlign = 'right';
     context.fillText(`frame ${frame}`, canvas.width - 8, BAR / 2);
-    if (!same) {
+    const loud = !alone && soundDiffers.has(frame);
+    const differs = !same ? (loud ? 'differs, sound too' : 'differs') : loud ? 'sound differs' : '';
+    if (differs) {
       context.fillStyle = '#ff5cf0';
-      context.fillText('differs', canvas.width - 80, BAR / 2);
+      context.fillText(differs, canvas.width - 80, BAR / 2);
     }
     context.textAlign = 'left';
     context.imageSmoothingEnabled = false;
@@ -91,9 +98,10 @@
   }
 
   window.__proof = {
-    /** Plays frames from `from`, each with its buttons held, and resolves to each picture's hash. */
+    /** Plays frames from `from`, each with its buttons held, and resolves to each picture's hash and each frame's
+     *  sound, as { energies, samples }: its energy in each band of pitches and how many samples it had. */
     async run(from, held) {
-      const hashes = [];
+      const hashes = [], sound = [];
       for (let i = 0; i < held.length; i++) {
         const frame = from + i;
         const image = await dreamportsProof.step({ held: held[i] });
@@ -105,9 +113,19 @@
         hashes.push(hash);
         ring.set(frame, picture);
         ring.delete(frame - RING);
+        // a game with no sound, or a kit from before the tools heard it, is silent
+        const samples = dreamportsProof.heard ?? null, energies = new Float64Array(16);
+        if (samples) { filter(samples, energies); heard = true; }
+        sound.push({ energies: Array.from(energies), samples: samples ? samples.length / 2 : 1097 });
       }
-      return hashes;
+      return { hashes, sound };
     },
+
+    /** Whether the game has made any sound so far: false for one with no sound yet. */
+    get heard() { return heard; },
+
+    /** Marks frames whose sound differs, in the stills and the clip. */
+    soundDiffers(frames) { for (const frame of frames) soundDiffers.add(frame); },
 
     /** Keeps the pictures of these frames, from the last few hundred played. */
     keep(frames) {

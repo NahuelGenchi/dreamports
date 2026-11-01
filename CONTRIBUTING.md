@@ -24,7 +24,7 @@ Anyone can make a Dreamport, or help with one, without writing code: a coding ag
 | :--- | :--- |
 | `/dreamport <game>` | `git clone` and `npm ci` the first time, `gh repo fork --remote` after your yes, then `npm run dp -- find`, for where the game stands, and `rom`, which checks your copy |
 | `/dreamport-claim <task>` | A New Dreamport or Task issue, or `/claim` on a task's issue, which the Dreamports bot answers ([Claims and teams](docs/TEAMS.md)) |
-| `/dreamport-clip` | `portmap`, then `prove`, which compares every frame with the original and makes the clip |
+| `/dreamport-clip` | `portmap`, then `prove`, which compares every frame with the original, picture and sound, and makes the clip |
 | `/dreamport-play` | `play --record`, which opens the game in a browser with your copy and keeps what you play, then `prove` on it |
 | `/dreamport-fix <what feels wrong>` | A recording of that moment, `prove` with `--stills` to see it, the fix, then `prove` with every recording |
 | `/dreamport-share` | `share`: a preview on your fork's GitHub Pages, and the clip for the step's pull request ([Previews](docs/PREVIEWS.md)) |
@@ -56,7 +56,7 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 | `npm run build` | Makes the finished site in the `dist/` folder |
 | `npm run preview` | Opens that finished site, to check it before it goes online |
 | `npm run worker` | Makes the finished site and opens it with its profiles, at <http://localhost:8787>, with a database on your computer. Profiles only work here, not with `npm run dev` |
-| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame, `portmap`, which lists the original's functions your code names, `share`, which puts a preview of your work online for anyone to try, `readme`, which writes the README's table of Dreamports from their entries, and `commands`, which writes the `/dreamport` commands for each coding agent. [`tools/README.md`](tools/README.md) explains them |
+| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame, picture and sound, `portmap`, which lists the original's functions your code names, `share`, which puts a preview of your work online for anyone to try, `readme`, which writes the README's table of Dreamports from their entries, and `commands`, which writes the `/dreamport` commands for each coding agent. [`tools/README.md`](tools/README.md) explains them |
 
 ## Add a game
 
