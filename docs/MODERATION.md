@@ -10,7 +10,7 @@ The bot only adds friction. The one thing it deletes is a comment that the plain
 
 ## What it checks
 
-Each new or edited issue, pull request title and description, comment on an issue or a pull request, and thread or comment in Discussions, as soon as it's written. Reviews and comments on a pull request's code come with a read-only token when the pull request is from a fork, so the bot checks those once an hour instead, along with whatever it couldn't judge yet. It leaves alone posts by bots, its own and the other workflows' included.
+Each new or edited issue, pull request title and description, the [notes](NOTES.md) a pull request adds or changes, which it reads again at each push, comment on an issue or a pull request, and thread or comment in Discussions, as soon as it's written. Reviews and comments on a pull request's code come with a read-only token when the pull request is from a fork, so the bot checks those once an hour instead, along with whatever it couldn't judge yet. It leaves alone posts by bots, its own and the other workflows' included.
 
 ## How it decides
 
@@ -24,7 +24,9 @@ Each new or edited issue, pull request title and description, comment on an issu
 
 A post the rules find nothing in, with no links outside a short list of known sites, no attachments and none of the words that hint at a broken rule, is allowed without a model.
 
-**A model gets the rest**, with what the rules noticed: a link to a site they don't know, an attached file, words about getting games, piracy, insults, private details or takedowns, or words that talk to the bot. Its instructions, in [`.github/moderation/prompt.md`](../.github/moderation/prompt.md), sum up the project's rules from the [standard](STANDARD.md), [Clips](STANDARD.md#clips), [Previews](PREVIEWS.md) and [Notices from rights holders](RIGHTS.md). It gets the post as data, never as instructions, and answers with one key from a fixed list, alone: `allow`, `game-files`, `rom-site`, `asks-for-games`, `clip-of-original`, `personal-data`, `credential`, `abuse`, `spam` or `rights-notice`. Anything else counts as no answer, and nothing the model writes is ever posted. When it's unsure, it allows the post.
+**A pull request's notes** count as part of it, and they also have to keep [the rules for notes](NOTES.md#what-a-note-cant-hold), in [`.github/moderation/notes.mjs`](../.github/moderation/notes.mjs). A file in a notes folder that can't be read as a note, such as a link or a file with another kind of name, breaks them, and so does a pull request's thirty-first note, or a pull request with more files than GitHub lists. Whatever else the rules find in a pull request's text, its notes get their own verdict, and the spam rule only reads its text, since a game's notes can well talk about a casino. Since other people's coding agents read notes before they work, a model always reads the notes that keep the rules, each after its file's path, as many at a time as it reads whole, unless they're from the repository's own people or the rules already gave the pull request a verdict.
+
+**A model gets the rest**, with what the rules noticed: a link to a site they don't know, an attached file, words about getting games, piracy, insults, private details or takedowns, or words that talk to the bot. Its instructions, in [`.github/moderation/prompt.md`](../.github/moderation/prompt.md), sum up the project's rules from the [standard](STANDARD.md), [Clips](STANDARD.md#clips), [Previews](PREVIEWS.md) and [Notices from rights holders](RIGHTS.md). It gets the post as data, never as instructions, and answers with one key from a fixed list, alone: `allow`, `game-files`, `rom-site`, `asks-for-games`, `clip-of-original`, `personal-data`, `credential`, `abuse`, `spam`, `rights-notice` or `bad-note`. Anything else counts as no answer, and nothing the model writes is ever posted. When it's unsure, it allows the post.
 
 ## What it does
 
@@ -39,6 +41,7 @@ Each verdict has a fixed plan, written in code, for each kind of post:
 | Abuse | Hidden as abuse | Closed and locked as too heated | Closed and locked as too heated |
 | Spam | Hidden as spam | Labelled `spam`, closed and locked | Labelled `spam`, closed and locked |
 | Notice from a rights holder | Its issue, pull request or thread labelled `rights-notice`, and a reply | Labelled `rights-notice`, and a reply | Labelled `rights-notice`, and a reply |
+| A note that breaks the rules for notes | Nothing: only a pull request has notes | Nothing: only a pull request has notes | A reply asking for a fix, once for each push while it stands |
 
 A deleted comment is gone for everyone. The bot deletes only when the plain rules found a game file or a site that shares them, which they rarely get wrong, since a deletion can't be undone; a review can't be deleted, and a comment in Discussions that has replies is only hidden, so the replies stay. A hidden comment shows GitHub's reason, such as off-topic, spam or abuse, and stays readable for whoever opens it. A post the bot closes and locks can't get more comments. A reply names the post's author, links the post, unless it was deleted, and the rule, never quotes the post, and ends with a line saying it comes from the Dreamports bot. In Discussions it goes under the comment it answers, or at the end of the thread when that comment is deleted or hidden, since GitHub takes no replies under a hidden comment. A reply to a key, token or password asks its owner to revoke it, since anyone may have copied it already.
 
@@ -79,12 +82,13 @@ These stay with GitHub's own tools, for the account that owns the repository:
 
 The [workflow](../.github/workflows/moderation.yml) has two jobs. The judging job can only read. It reads each post through GitHub's API, applies the plain rules, asks a model about what they leave, and writes its verdicts as JSON, with no text from any post in them. The acting job has the write permissions. It takes the verdicts only if they fit a fixed schema, reads each post again from GitHub rather than from the verdict, and carries out the fixed plan for its verdict. A verdict that doesn't fit is dropped, so it does nothing.
 
-Both jobs check out only `.github/moderation/`, from the default branch, or for a pull request from the branch it would merge into. A pull request's own code is never checked out or run, not even for a pull request from a fork, whose text the bot reads through the API. Runs about one post wait for each other, so a post edited twice is judged as it ends up.
+Both jobs check out only `.github/moderation/`, from the default branch, or for a pull request from the branch it would merge into. A pull request's own code is never checked out or run, not even for a pull request from a fork, whose text and notes the bot reads through the API. Runs about one post wait for each other, so a post edited twice is judged as it ends up.
 
 | File | What it holds |
 | :--- | :--- |
 | `.github/workflows/moderation.yml` | The workflow: when it runs, its two jobs and their permissions |
 | `.github/moderation/rules.mjs` | The plain rules |
+| `.github/moderation/notes.mjs` | What a note is and the rules for notes, which the build and the proof tools use too |
 | `.github/moderation/rom-sites.txt` | The sites that share game files |
 | `.github/moderation/prompt.md` | The model's instructions |
 | `.github/moderation/model.mjs` | How OpenCode is installed, locked down and asked |

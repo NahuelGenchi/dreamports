@@ -3,7 +3,7 @@
 // hiding, replying, closing, locking and labelling, with the workflow's write permissions. It also keeps the log, and lists
 // the posts that wait for a model on the alert issue. Nothing it writes quotes a post.
 import { appendFileSync, readFileSync } from 'node:fs';
-import { accounts, checkVerdicts, isClaimsCommand, isTrusted, logLine, markFor, planFor, postLink, replyFor } from './verdicts.mjs';
+import { accounts, checkVerdicts, isClaimsCommand, isTrusted, logLine, markFor, planFor, postLink, replyFor, replyKey } from './verdicts.mjs';
 import { BOT, alertIssues, api, fetchItems, graphql, repository, waitingEntries } from './github.mjs';
 
 const DAY = 86400000;
@@ -11,7 +11,8 @@ const sweep = ['schedule', 'workflow_dispatch'].includes(process.env.GITHUB_EVEN
 const docs = {
   moderation: `https://github.com/${repository}/blob/HEAD/docs/MODERATION.md`,
   clips: `https://github.com/${repository}/blob/HEAD/docs/STANDARD.md#clips`,
-  rights: `https://github.com/${repository}/blob/HEAD/docs/RIGHTS.md`
+  rights: `https://github.com/${repository}/blob/HEAD/docs/RIGHTS.md`,
+  notes: `https://github.com/${repository}/blob/HEAD/docs/NOTES.md`
 };
 const LABELS = {
   spam: ['b60205', 'The Dreamports bot closed this as spam'],
@@ -148,7 +149,7 @@ async function wrote(id, mark) {
 
 // whether the bot already answered this post with this verdict, or flagged it for this reason in the log, as when two
 // hourly runs both check a review
-const replied = (item, key) => wrote(item.parent.node, markFor(item.node, key));
+const replied = (item, key) => wrote(item.parent.node, markFor(item.node, replyKey(key, item)));
 async function flaggedBefore(item, key) {
   const [issue] = await ownIssues('moderation-log', 'all');
   return Boolean(issue) && wrote(issue.node_id, markFor(item.node, key, 'flagged'));
@@ -232,7 +233,8 @@ let failed = false;
 const items = new Map((await fetchItems(results.map(result => result.node))).map(item => [item.node, item]));
 for (const result of results) {
   const item = items.get(result.node);
-  if (!item || item.repository !== repository || item.bot || (result.kind && result.kind !== item.kind) || result.key === 'skip') continue;
+  // a bot's pull request gets a verdict only for its notes, and any other post of a bot none at all
+  if (!item || item.repository !== repository || (item.bot && item.kind !== 'pull-request') || (result.kind && result.kind !== item.kind) || result.key === 'skip') continue;
   try {
     if (result.key === 'wait') await markWaiting(item, tried);
     else {

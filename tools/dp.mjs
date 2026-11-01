@@ -10,6 +10,7 @@ const TOOLS = {
   read: 'Prints one of the original\'s functions, its ARM or Thumb instructions, from your copy, for code its decompilation lacks',
   share: 'Publishes a preview on GitHub Pages from your fork, with the newest clip for the step\'s pull request',
   find: 'Shows where a game stands: its lead, its numbers, its team build, who has claimed what and its free tasks',
+  notes: 'Shows what people found while making a game or its console\'s kit, so nobody has to find it again',
   team: 'The team build, the lead\'s branch with the team\'s finished pieces: start, join, send and add a piece',
   readme: 'Writes the README\'s table of Dreamports, with each one\'s numbers and lead, from their entries',
   commands: 'Writes the /dreamport commands, from tools/commands/, in the form each coding agent reads',

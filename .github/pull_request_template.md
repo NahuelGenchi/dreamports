@@ -18,6 +18,7 @@ Clips: <the clips npm run dp -- prove made, the original next to the Dreamport: 
 Code ported: <before, from main's README> → <after, from this branch's>
 Gameplay proven: <before, with its parts> → <after, with its parts>
 Sources: <every source used, such as a decompilation or a port made elsewhere, with its license and whether code came in from it>
+Notes: <the titles of the notes this adds or changes (docs/NOTES.md), or none>
 
 ## Delivery record
 
