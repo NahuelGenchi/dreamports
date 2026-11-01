@@ -6,7 +6,7 @@ name: Claims
 # a game with no entry yet, the open one that claims it. A Task issue goes under its game's issue as a sub-issue, and
 # claims its task for its author when they tick the box. On any open issue of a game, a comment starting with /claim
 # takes it while nobody has it, and /release gives it back. Each answer is a comment, and the daily run releases every
-# claim whose holder has done nothing on the game's issues, pull requests or progress thread for 14 days. Each run only
+# claim whose holder has done nothing on the game's issues or pull requests for 14 days. Each run only
 # reads the issues' text and the repository's files, through the API, and runs nothing from them. Runs on one issue
 # wait for each other, and each answers every command on its issue that has no answer yet, since GitHub cancels all
 # but the newest waiting run of a concurrency group. A run that gives, takes back or adds a piece builds dreamports.net
@@ -27,7 +27,6 @@ on:
 permissions:
   contents: read
   issues: write
-  discussions: read
 
 concurrency:
   group: claims-${{ github.event.issue.number || 'release' }}
@@ -88,14 +87,6 @@ jobs:
               result.push(...batch);
               if (batch.length < 100) return result;
             }
-          }
-          async function graphql(query, variables) {
-            const response = await fetch('https://api.github.com/graphql', {
-              method: 'POST', headers, signal: AbortSignal.timeout(30000), body: JSON.stringify({ query, variables })
-            });
-            const out = await response.json();
-            if (!response.ok || out.errors) throw new Error(`GitHub GraphQL: HTTP ${response.status} ${JSON.stringify(out.errors ?? '')}`);
-            return out.data;
           }
 
           const BOT = 'github-actions[bot]';
@@ -255,7 +246,7 @@ jobs:
               return answer(issue, about, `@${user}, GitHub didn't let me assign this to you, so it's still free. Say so here, and the Dreamports team will look into it.`);
             }
             changed = true;
-            const help = `A claim with no activity on ${title}'s issues, pull requests or progress thread for ${period} is released, and \`/release\` gives it back sooner. [Claims and teams](${guide}) says what comes next.`;
+            const help = `A claim with no activity on ${title}'s issues or pull requests for ${period} is released, and \`/release\` gives it back sooner. [Claims and teams](${guide}) says what comes next.`;
             return answer(issue, about, lead
               ? `@${user}, ${title} is yours to lead. This is its game's issue, where it's talked about: the tasks you open for it with [the Task form](${form('task.yml')}) land under it, with the label \`${game}\`, and anyone can claim them. ${help}`
               : `@${user}, this task is yours, and nobody else can claim it while you have it. ${help}`,
@@ -387,7 +378,7 @@ jobs:
             }
           }
 
-          // who did anything on a game since a moment: on its issues and pull requests, or in its progress thread
+          // who did anything on a game since a moment: on its issues and pull requests
           const active = new Map();
           async function activeOn(game, since) {
             if (active.has(game)) return active.get(game);
@@ -396,33 +387,6 @@ jobs:
             for (const item of await list(`/issues?state=all&labels=${encodeURIComponent(game)}&since=${new Date(since).toISOString()}`)) {
               seen(item.user.login, item.created_at);
               for (const e of await list(`/issues/${item.number}/timeline`)) seen(e.actor?.login ?? e.user?.login, e.created_at ?? e.submitted_at);
-            }
-            const { repository: found } = await graphql(`query($owner: String!, $name: String!) {
-              repository(owner: $owner, name: $name) { hasDiscussionsEnabled discussionCategories(first: 50) { nodes { id slug } } }
-            }`, { owner, name });
-            const category = found.hasDiscussionsEnabled && found.discussionCategories.nodes.find(c => c.slug === 'progress');
-            for (let after = null; category;) {
-              const { repository: page } = await graphql(`query($owner: String!, $name: String!, $category: ID!, $after: String) {
-                repository(owner: $owner, name: $name) {
-                  discussions(first: 100, after: $after, categoryId: $category) { nodes { id body closed } pageInfo { hasNextPage endCursor } }
-                }
-              }`, { owner, name, category: category.id, after });
-              const thread = page.discussions.nodes.find(t => !t.closed && folderIn(t) === game);
-              if (thread) {
-                const { node } = await graphql(`query($id: ID!) {
-                  node(id: $id) { ... on Discussion { author { login } createdAt comments(last: 100) { nodes {
-                    author { login } createdAt lastEditedAt replies(last: 100) { nodes { author { login } createdAt lastEditedAt } }
-                  } } } }
-                }`, { id: thread.id });
-                seen(node.author?.login, node.createdAt);
-                for (const c of node.comments.nodes) {
-                  seen(c.author?.login, c.lastEditedAt ?? c.createdAt);
-                  for (const r of c.replies.nodes) seen(r.author?.login, r.lastEditedAt ?? r.createdAt);
-                }
-                break;
-              }
-              if (!page.discussions.pageInfo.hasNextPage) break;
-              after = page.discussions.pageInfo.endCursor;
             }
             active.set(game, people);
             return people;

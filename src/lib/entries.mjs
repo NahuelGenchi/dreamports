@@ -15,9 +15,6 @@ export const mapOf = game => `.github/readme/progress/${game}.svg`;
 /** A GitHub account's name, as a lead or a member of a team writes it. */
 export const GITHUB_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
 
-/** A progress thread: a discussion in the repository Dreamports are made in. */
-export const THREAD = /^https:\/\/github\.com\/NahuelGenchi\/dreamports\/discussions\/[1-9][0-9]*$/;
-
 /** A share in hundredths of a percent, as every % here is written. */
 const share = (part, whole) => (whole ? Math.round(part / whole * 10000) / 100 : 0);
 

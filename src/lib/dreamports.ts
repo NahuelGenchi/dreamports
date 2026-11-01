@@ -4,7 +4,7 @@
 // the entry.
 import { PLAYABLE } from './players';
 import { proofOf } from './entries.mjs';
-import { SOURCE_URL, type Game } from './site';
+import { SOURCE_URL, makeUrl, type Game } from './site';
 import type { Making, Step } from './making';
 
 export type Dreamport = Extract<Game['data'], { kind: 'dreamport' }>;
@@ -211,8 +211,8 @@ export async function dreamportView(data: Dreamport): Promise<DreamportView> {
       { value: 'How it’s measured', href: `${SOURCE_URL}/blob/main/docs/STANDARD.md#how-progress-is-measured` },
     ],
     progress: [
-      // where to follow the game and help with it: its progress thread, opened the first time someone shares it
-      data.thread ? { label: 'Game thread', value: 'Contribute', href: data.thread } : { label: 'Game thread', value: 'Not opened yet' },
+      // where to help make it, while it's being made: its page in the Make row, with its steps and free pieces
+      ...(beingMade(data) ? [{ label: 'Join in', value: 'Its page in Make', href: makeUrl(data.game) }] : []),
       ...(data.preview
         ? [{ label: 'Team preview', value: 'The team’s newest work', href: data.preview, note: `Not reviewed yet: play it only if you trust ${data.lead}.` }]
         : []),

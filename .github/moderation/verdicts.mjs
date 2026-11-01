@@ -60,11 +60,11 @@ const deletable = item => ['issue-comment', 'review-comment'].includes(item.kind
 
 // The fixed plan for a verdict: the steps that carry it out, from delete, hide, reply, close, lock and label. A comment
 // is deleted only when the plain rules decided, since a model can be wrong and a deletion can't be undone; if
-// deleting fails, it's hidden instead. Clips of the original belong in pull requests and progress posts, so a post
-// there never gets that verdict's plan.
+// deleting fails, it's hidden instead. Clips of the original belong in pull requests, so a pull request or a comment
+// on one never gets that verdict's plan.
 export function planFor(key, item, by = null) {
   if (!KEYS.includes(key) || key === 'allow') return [];
-  if (key === 'clip-of-original' && ['pull-request', 'progress-thread'].includes(item.where)) return [];
+  if (key === 'clip-of-original' && item.where === 'pull-request') return [];
   const shape = shapeOf(item);
   if (key === 'spam') return shape === 'comment' ? [{ do: 'hide', as: 'SPAM' }] : [{ do: 'label', name: 'spam' }, { do: 'close' }, { do: 'lock', as: 'SPAM' }];
   if (key === 'abuse') return shape === 'comment' ? [{ do: 'hide', as: 'ABUSE' }] : [{ do: 'close' }, { do: 'lock', as: 'TOO_HEATED' }];
@@ -99,7 +99,7 @@ export function replyFor(key, item, docs, { deleted = false } = {}) {
       ? `${who}, this pull request's description links a site that shares game files. Dreamports never links to them, so please edit the link out.`
       : `${who}, ${hidOrClosed} because it links a site that shares game files. Dreamports never links to them: ${own}.${again}`,
     'asks-for-games': `${who}, about ${shape === 'comment' ? yours : 'this'}: Dreamports can't help anyone get a game. Every Dreamport plays with the player's own copy, made from their own cartridge or disc, and nobody here shares one or says where to find one.${shape === 'post' ? ' So I closed this.' : ''}`,
-    'clip-of-original': `${who}, ${hidOrClosed} because it seems to show the original game. Clips and pictures of the original may only appear in pull requests and progress posts, where they show a Dreamport matching it, as [Clips](${docs.clips}) says. Clips of a Dreamport itself are welcome anywhere.${again}`,
+    'clip-of-original': `${who}, ${hidOrClosed} because it seems to show the original game. Clips and pictures of the original may only appear in pull requests, where they show a Dreamport matching it, as [Clips](${docs.clips}) says. Clips of a Dreamport itself are welcome anywhere.${again}`,
     'personal-data': shape === 'comment'
       ? `${who}, I hid ${yours} because it seems to include private details, such as an email address or a phone number. Everything here is public, so please post it again without them.`
       : `${who}, this seems to include private details, such as an email address or a phone number. Everything here is public, so please edit them out.`,

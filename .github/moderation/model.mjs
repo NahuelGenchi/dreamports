@@ -36,8 +36,7 @@ const KIND_WORDS = {
   'discussion-comment': 'a comment'
 };
 const WHERE_WORDS = {
-  issue: 'an issue', 'pull-request': 'a pull request, where clips of the original may appear', discussion: 'Discussions',
-  'progress-thread': 'a game\'s Progress thread, where clips of the original may appear'
+  issue: 'an issue', 'pull-request': 'a pull request, where clips of the original may appear', discussion: 'Discussions'
 };
 const HINT_WORDS = {
   attachment: 'an attached file', 'picture-and-original': 'a picture or video and the word original',

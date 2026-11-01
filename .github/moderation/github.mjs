@@ -52,12 +52,12 @@ const PARENT = 'id number url closed locked labels(first: 30) { nodes { name } }
 const FIELDS = `__typename
   ... on Issue { ${PARENT} title body ${AUTHOR} repository { nameWithOwner } }
   ... on PullRequest { ${PARENT} title body ${AUTHOR} repository { nameWithOwner } }
-  ... on Discussion { ${PARENT} title body ${AUTHOR} repository { nameWithOwner } category { slug } }
+  ... on Discussion { ${PARENT} title body ${AUTHOR} repository { nameWithOwner } }
   ... on IssueComment { id url body isMinimized ${AUTHOR} repository { nameWithOwner } issue { ${PARENT} } pullRequest { ${PARENT} } }
   ... on PullRequestReviewComment { id url body isMinimized ${AUTHOR} repository { nameWithOwner } pullRequest { ${PARENT} } }
   ... on PullRequestReview { id url body isMinimized ${AUTHOR} repository { nameWithOwner } pullRequest { ${PARENT} } }
   ... on DiscussionComment { id url body isMinimized ${AUTHOR} replyTo { id } replies { totalCount }
-    discussion { ${PARENT} repository { nameWithOwner } category { slug } } }`;
+    discussion { ${PARENT} repository { nameWithOwner } } }`;
 const KINDS = {
   Issue: 'issue', PullRequest: 'pull-request', Discussion: 'discussion', IssueComment: 'issue-comment',
   PullRequestReviewComment: 'review-comment', PullRequestReview: 'review', DiscussionComment: 'discussion-comment'
@@ -65,8 +65,8 @@ const KINDS = {
 const POSTS = ['issue', 'pull-request', 'discussion'];
 
 // A post as the bot works with it: what it is, where, who wrote it, its text, and the issue, pull request or thread
-// it's in, which is the post itself for an issue, a pull request or a thread. where is issue, pull-request,
-// discussion, or progress-thread for a game's thread in the Progress category.
+// it's in, which is the post itself for an issue, a pull request or a thread. where is issue, pull-request or
+// discussion.
 export function itemFrom(node) {
   const kind = KINDS[node?.__typename];
   if (!kind) return null;
@@ -76,7 +76,7 @@ export function itemFrom(node) {
   const parentKind = post ? kind : node.discussion ? 'discussion' : node.pullRequest ? 'pull-request' : 'issue';
   return {
     node: node.id, kind,
-    where: parentKind === 'discussion' && parent.category?.slug === 'progress' ? 'progress-thread' : parentKind,
+    where: parentKind,
     author: node.author?.login ?? 'ghost', bot: node.author?.__typename === 'Bot', association: node.authorAssociation ?? 'NONE',
     url: node.url, text: post ? `${node.title}\n\n${node.body ?? ''}` : node.body ?? '', minimized: node.isMinimized === true,
     replies: node.replies?.totalCount ?? 0,

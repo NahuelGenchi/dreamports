@@ -1,5 +1,5 @@
 // npm run dp -- find [<game>] [--repo <owner/name>] [--team <owner/name>]: where a game stands, so nobody does the
-// same work twice: its lead, its game's issue, its two numbers, its progress thread, its team build and team preview,
+// same work twice: its lead, its game's issue, its two numbers, its Make page, its team build and team preview,
 // and its pieces, the issues under its game's issue, with who has claimed which and the ones still free (docs/TEAMS.md). <game> is a game's folder or a few words of its name, and a name also
 // finds the site's other games, such as a port made elsewhere. With no game it lists every Dreamport and every game
 // claimed with a New Dreamport issue. The numbers come from games/ in this folder, and the claims and pieces from the
@@ -104,7 +104,8 @@ function show(game, local, claims, team) {
   row('Code ported', proof?.ported ? percentText(proof.ported.percent) : local ? 'not measured yet: it needs a code map' : 'not measured yet');
   row('Gameplay proven', proof?.gameplay ? `${percentText(proof.gameplay.percent)}, ${proof.gameplay.proven} of ${proof.gameplay.total} parts` : local ? 'not measured yet: it needs a list of its parts' : 'not measured yet');
   if (entry) row('Its page', `https://dreamports.net/dreamports/${pageOf(game)}/`);
-  row('Progress thread', entry?.thread ?? (local ? `none yet: npm run dp -- share ${game} --post opens it` : 'in the Progress category of Discussions, once its first preview is shared'));
+  // a Dreamport has a page in the Make row until every part of it is proven (docs/MAKE.md)
+  if (entry && proof?.gameplay?.percent !== 100) row('Make page', `https://dreamports.net/make/${game}/, with its steps and the pieces free to take`);
   const build = lead && teamBuildOf(lead, game, team);
   row('Team build', build ? `${build.url}, which npm run dp -- team ${game} join starts from` : `none yet${lead ? `: @${lead} makes it with npm run dp -- team ${game} start` : ''}`);
   const site = !entry?.preview && build ? pagesOf(build.repository)?.url : null;
