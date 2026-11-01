@@ -344,15 +344,31 @@ kbd {
   height: 15px;
 }
 
+/* the speaker is a button as tall as the badge that reaches its edge, and the controller beside it only shows */
 .status {
-  gap: 11px;
-  padding: 0 12px;
+  --edge: 12px;
+  --between: 11px;
+  gap: 0;
+  padding: 0;
+}
+
+.status-sound {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 var(--edge);
   border: 0;
+  background: none;
   cursor: pointer;
 }
 
-.status:hover {
+.status-sound:hover {
   background: var(--hover);
+}
+
+/* inside the badge, so the ring stays clear of the controller */
+.status-sound:focus-visible {
+  outline-offset: -3px;
 }
 
 .status svg {
@@ -362,16 +378,16 @@ kbd {
   fill: currentColor;
 }
 
+#ico-pad {
+  margin: 0 var(--edge) 0 calc(var(--between) - var(--edge));
+}
+
 .status .is-off {
   opacity: 0.32;
 }
 
 .status .hole {
   fill: var(--paper);
-}
-
-.status:hover .hole {
-  fill: var(--hover);
 }
 
 .filters {
@@ -2470,8 +2486,8 @@ dialog.card[open] {
   }
 
   .status {
-    gap: 8px;
-    padding: 0 9px;
+    --edge: 9px;
+    --between: 8px;
   }
 }
 
@@ -2534,15 +2550,15 @@ dialog.card[open] {
   }
 
   .status {
-    gap: 8px;
-    padding: 0 9px;
+    --edge: 9px;
+    --between: 8px;
   }
 }
 
 /* narrower still, as on 360 px phones: a tighter frame round the speaker */
 @container (width < 34px) {
   .status {
-    padding: 0 6px;
+    --edge: 6px;
   }
 }
 
@@ -2554,7 +2570,7 @@ dialog.card[open] {
   }
 
   .status {
-    padding: 0 4px;
+    --edge: 4px;
   }
 }
 
