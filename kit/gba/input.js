@@ -226,6 +226,14 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
     for (const pad of root.querySelectorAll('[data-pad]')) bindPad(pad);
     // iOS brings up its magnifier on a finger held down unless the touch itself is cancelled
     root.addEventListener('touchstart', e => e.preventDefault(), { passive: false });
+    // the page never scrolls under the game, but when a phone turns back upright in the Home Screen app, iOS can leave
+    // it scrolled by the status bar's height: the buttons are still drawn in place, while every press lands that far
+    // below the finger. So it goes back to the top, unless the player has zoomed in
+    const stage = root.closest('.stage');
+    const backToTop = () => { if (scrollY && !stage?.hidden && !(visualViewport?.scale > 1.01)) scrollTo(0, 0); };
+    for (const type of ['scroll', 'resize', 'pointerdown']) addEventListener(type, backToTop);
+    // the turn can end after its last event
+    addEventListener('orientationchange', () => { for (const wait of [0, 300, 800]) setTimeout(backToTop, wait); });
   };
 
   // the d-pad: the direction from its middle to the finger, two at once on a diagonal, as a real one presses two.
