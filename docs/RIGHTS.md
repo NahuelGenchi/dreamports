@@ -18,7 +18,7 @@ Dreamports never hosts games, but the games it rebuilds belong to the people who
 
 1. **Answers within a business day**, to say the notice has arrived, and asks for anything missing, such as which game it means.
 2. **Opens an issue** to remove the game, which says only that a rights holder asked. It never names the sender or shares their message.
-3. **Removes the game in one commit**, as [removing a game](../games/README.md#removing-a-game) explains: its folder in `games/`, with its entry, code and proof files; its lines in `src/lib/players.ts` and `public/dreamports.js` if it keeps achievements; its recordings in `public/media/`, if it has any; and its row in the README's table, written again by `npm run dp -- readme`. A port listed in the Mash-ups row goes the same way: its file in `src/content/games/` and its recordings.
+3. **Removes the game in one commit**, as [removing a game](../games/README.md#removing-a-game) explains: its folder in `games/`, with its entry, code and proof files; its recordings in `public/media/`, if it has any; and its row in the README's table, written again by `npm run dp -- readme`. A port listed in the Mash-ups row goes the same way: its file in `src/content/games/` and its recordings.
 4. **Merges it at once.** dreamports.net shows the change about a minute later, and the game's address stops working.
 5. **Closes the game's work.** Its open issues are closed as not planned, and its game's issue gets a short note and is locked. The note asks its lead and team to take down their previews of it, which [Previews](PREVIEWS.md#for-contributors-sharing-a-preview) explains how to do, since those live on their own forks.
 6. **Answers the sender**, with the commit that removed the game.
