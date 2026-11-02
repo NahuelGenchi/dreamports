@@ -73,7 +73,7 @@ const pr = await api(`/pulls/${number}`);
 const comments = pr ? await list(`/issues/${number}/comments`) : [];
 const asked = comments.find(comment => comment.user?.login === BOT && MARK.test(comment.body ?? ''));
 const common = { pr: number, comment: asked?.id ?? null };
-const files = pr?.state === 'open' && !pr.draft && pr.head.repo ? await list(`/pulls/${number}/files`, 101) : null;
+const files = pr?.state === 'open' && !pr.draft && pr.head.repo && pr.base.ref === pr.base.repo.default_branch ? await list(`/pulls/${number}/files`, 101) : null;
 const game = files && files.length <= 100 ? gameOf(files) : null;
 
 if (!game) {

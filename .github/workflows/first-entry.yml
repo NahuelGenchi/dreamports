@@ -8,7 +8,6 @@ name: First entry
 on:
   pull_request_target:
     types: [opened, reopened, synchronize]
-    branches: [main]
   issue_comment:
     types: [edited]
 
