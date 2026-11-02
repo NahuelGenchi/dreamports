@@ -27,7 +27,7 @@ The kit is plain JavaScript that the browser runs as it is, with no build step, 
 A new Game Boy Advance Dreamport is a folder in [`games/`](../../games/README.md), such as `games/my-game/`, with three files to begin with:
 
 - `LICENSE`, a copy of [the kit's](LICENSE), as Dreamports use GPL-3.0-or-later.
-- `index.html`, the page, which loads the kit's look and the game.
+- `index.html`, the page, which loads the kit's look and the game, and has the viewport tag and `/no-zoom.js` that keep it from zooming.
 - `src/main.js`, the game.
 
 ```html
@@ -35,7 +35,8 @@ A new Game Boy Advance Dreamport is a folder in [`games/`](../../games/README.md
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<script defer src="/no-zoom.js"></script>
 <title>My Game Dreamport</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../../kit/gba/styles/kit.css">

@@ -20,6 +20,9 @@
 }
 
 * { box-sizing: border-box; }
+/* nothing zooms: fingers only scroll. Every element says so itself, as a container that scrolls forgets what the ones
+   around it said. The page's viewport tag and the site's /no-zoom.js stop the other ways of zooming */
+* { touch-action: pan-x pan-y; }
 /* a page never scrolls as a whole, however far it's zoomed in: what doesn't fit scrolls inside the container it's in */
 html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
 body {
@@ -486,7 +489,7 @@ button { font: inherit; }
 .sheet-paused svg { width: 7px; height: 9px; color: var(--blue); animation: sheet-blink 1.2s steps(2, jump-none) infinite alternate; }
 .sheet-back, .sheet-close {
   display: grid; place-items: center; flex: none; width: 34px; height: 34px; margin: 2px; padding: 0; border: 0;
-  background: none; color: var(--dim); font-size: 18px; cursor: pointer; touch-action: manipulation;
+  background: none; color: var(--dim); font-size: 18px; cursor: pointer;
 }
 .sheet-back { background: var(--paper); color: var(--ink); }
 .sheet-back svg { width: 14px; height: 14px; }
@@ -517,13 +520,13 @@ button { font: inherit; }
 .stage.debug #stats:not(:empty) { display: block; }
 .resume {
   --frame: var(--sky); display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; margin: 2px; padding: 0 18px;
-  border: 0; background: var(--sky); color: #0a1738 !important; cursor: pointer; touch-action: manipulation;
+  border: 0; background: var(--sky); color: #0a1738 !important; cursor: pointer;
 }
 .resume svg { width: 8px; height: 14px; }
 .resume:active, .ach-tile:active { transform: translateY(2px); }
 .ach-tile {
   display: grid; grid-template-columns: 36px minmax(0, 1fr) 8px; align-items: center; gap: 10px 14px; margin: 2px; padding: 14px 14px 14px 16px;
-  border: 0; background: var(--paper); text-align: left; cursor: pointer; touch-action: manipulation;
+  border: 0; background: var(--paper); text-align: left; cursor: pointer;
 }
 .ach-tile canvas, .card canvas { width: 36px; height: 30px; image-rendering: pixelated; image-rendering: crisp-edges; }
 .ach-tile-text { display: grid; gap: 2px; min-width: 0; }
@@ -544,7 +547,7 @@ button { font: inherit; }
 .row {
   display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; min-height: 48px;
   margin: 0; padding: 10px 14px; border: 0; background: none; color: inherit; text-align: left; text-decoration: none;
-  cursor: pointer; touch-action: manipulation;
+  cursor: pointer;
 }
 .row > svg:first-child { width: 18px; height: 18px; color: var(--blue); }
 .row[role="switch"], label.row { grid-template-columns: minmax(0, 1fr) auto; }
@@ -583,14 +586,14 @@ button { font: inherit; }
 .latest b { display: block; font-weight: normal; color: var(--ink); }
 .chip {
   margin: 2px; padding: 3px 10px; border: 0; background: none; color: var(--dim) !important; font-size: 13.5px; line-height: 20px;
-  cursor: pointer; touch-action: manipulation; --frame: var(--line);
+  cursor: pointer; --frame: var(--line);
 }
 .chip[aria-pressed="true"] { --frame: var(--blue); background: var(--hover); color: var(--ink) !important; }
 .chip em { margin-left: 4px; font-style: normal; color: var(--faint); }
 
 /* the achievements: the total, Beaten and Mastered (each, pressed, shows only what it needs) and the latest on the
    left; every achievement as a card on the right, gold once earned */
-.status { display: grid; gap: 8px; margin: 2px; padding: 12px 14px; border: 0; background: var(--paper); text-align: left; cursor: pointer; touch-action: manipulation; }
+.status { display: grid; gap: 8px; margin: 2px; padding: 12px 14px; border: 0; background: var(--paper); text-align: left; cursor: pointer; }
 .status[aria-pressed="true"] { --frame: var(--blue); }
 .status-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .status-top span:last-child, .status small { color: var(--dim); font-size: 13.5px; line-height: 20px; }
@@ -629,7 +632,7 @@ button { font: inherit; }
 .navs li + li { border-top: 2px solid var(--line); }
 .nav {
   display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; padding: 8px 12px;
-  border: 0; background: none; font-size: 13.5px; line-height: 20px; text-align: left; cursor: pointer; touch-action: manipulation;
+  border: 0; background: none; font-size: 13.5px; line-height: 20px; text-align: left; cursor: pointer;
 }
 .nav[aria-current="true"] { background: var(--sky); color: #0a1738 !important; }
 .nav .chev { color: inherit; opacity: .6; }

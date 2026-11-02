@@ -156,6 +156,12 @@ textarea,
   -webkit-user-drag: auto;
 }
 
+/* Nothing zooms: fingers only scroll. Every element says so itself, as a container that scrolls forgets what the ones
+   around it said. The viewport tag in Base.astro and public/no-zoom.js stop the other ways of zooming. */
+* {
+  touch-action: pan-x pan-y;
+}
+
 /* a press on a picture or a recording is a press on what holds it, so iOS looks for no text in it */
 img,
 video {
@@ -685,7 +691,7 @@ kbd {
   inset: 0;
   z-index: 1;
   margin: 0;
-  touch-action: pan-y pinch-zoom;
+  touch-action: pan-y;
 }
 
 .row {
@@ -3215,7 +3221,7 @@ dialog.card[open] {
 
 .view .ach-top,
 .view.card-achievements .view-bar {
-  touch-action: pinch-zoom;
+  touch-action: none;
 }
 
 .view.card-achievements .card-body {
@@ -3393,7 +3399,7 @@ dialog.card[open] {
   }
 
   .view .ach-top {
-    touch-action: auto;
+    touch-action: pan-x pan-y;
   }
 
   .view.card-achievements .card-body {
