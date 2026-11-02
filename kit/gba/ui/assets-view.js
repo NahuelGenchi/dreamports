@@ -43,7 +43,7 @@ export function createAssetsView(host, { back, brand, rom, parts }) {
   host.innerHTML = `
     <div class="assets-page">
       <div class="setup-bar">
-        <a class="setup-back" href="${back.href}" aria-label="${back.label}" title="${back.label}">${BACK}</a>
+        <button type="button" class="setup-back" aria-label="${back.label}" title="${back.label}">${BACK}</button>
       </div>
       <div class="setup-scroll">
         <div class="setup-page">
@@ -57,6 +57,8 @@ export function createAssetsView(host, { back, brand, rom, parts }) {
       </div>
     </div>`;
   const body = host.querySelector('.assets-body'), backEl = host.querySelector('.setup-back'), scroller = host.querySelector('.setup-scroll');
+
+  backEl.addEventListener('click', () => { location.href = back.href; });
 
   // the launcher's look, picked in its settings or else the device's
   function paint() {

@@ -179,6 +179,11 @@ button {
   color: inherit;
 }
 
+/* a link within the site, once it has given up its href (src/scripts/controls.ts), still looks like one to the pointer */
+:where(a[data-href]) {
+  cursor: pointer;
+}
+
 a {
   color: var(--blue);
   text-decoration-thickness: 1px;

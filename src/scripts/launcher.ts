@@ -5,6 +5,7 @@
 // added on top of plain pages: without this script, the row is a list of links.
 
 import { showTitle } from '../lib/title';
+import { hrefOf } from './controls';
 
 type Input = 'keys' | 'pad' | 'touch';
 type Motion = 'auto' | 'full' | 'calm';
@@ -105,7 +106,7 @@ function start(launcher: HTMLElement) {
       tab,
       template,
       label: tab.textContent!.trim(),
-      path: tab.getAttribute('href')!,
+      path: hrefOf(tab)!,
       paths: (tab.dataset.paths ?? '').split(' '),
       title: tab.dataset.title!,
       count: template.content.querySelectorAll('.slot[data-game]').length,
@@ -993,9 +994,9 @@ function start(launcher: HTMLElement) {
         closeCard();
         return;
       }
-      const link = el.closest<HTMLAnchorElement>('a[href]');
+      const link = el.closest<HTMLAnchorElement>('a[href], a[data-href]');
       if (link && plainClick(e)) {
-        const href = link.getAttribute('href')!;
+        const href = hrefOf(link)!;
         // a link to the box to tick, from the game's text
         if (href === '#play') {
           e.preventDefault();
@@ -1776,7 +1777,7 @@ function start(launcher: HTMLElement) {
 
   const pad = { prev: [] as boolean[], dir: 0, next: 0 };
   function focusables(scope: ParentNode) {
-    return $$('button:not([hidden]), a[href], summary, input:not([type="radio"]), input[type="radio"]:checked, [tabindex="0"]', scope).filter(
+    return $$('button:not([hidden]), a[href], a[data-href], summary, input:not([type="radio"]), input[type="radio"]:checked, [tabindex="0"]', scope).filter(
       (el) => !el.closest('[hidden]') && el.getClientRects().length,
     );
   }

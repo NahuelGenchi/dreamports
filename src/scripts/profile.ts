@@ -4,6 +4,7 @@
 
 import { NAME_PATTERN, PLAYABLE, WAYS, isWay, type Way } from '../lib/players';
 import { showTitle } from '../lib/title';
+import { control } from './controls';
 
 interface Profile {
   name: string;
@@ -111,7 +112,7 @@ async function showGames(box: HTMLElement, games: Games, earned: Profile['achiev
     const head = el('div', 'set-row pf-game-head');
     const name = el('a', 'set-label');
     showTitle(name, info.title);
-    name.setAttribute('href', info.href);
+    control(name, info.href);
     head.append(name);
     if (list.length) head.append(el('span', 'pf-count', `${ids.length} of ${list.length}`));
     block.append(head);
@@ -210,7 +211,7 @@ function startProfile(card: HTMLDialogElement) {
       if (profile.public) {
         desc.textContent = 'Lets anyone see your name and achievements at ';
         const link = el('a', 'linkish', address);
-        link.setAttribute('href', `/players/${profile.name}/`);
+        control(link, `/players/${profile.name}/`);
         link.dataset.player = '';
         desc.append(link, '.');
       } else {

@@ -40,7 +40,7 @@ export function bindController(host, { blocked }) {
   function move(dir) {
     const all = [...host.querySelectorAll(PRESSABLE)].filter(el => el.getClientRects().length);
     const from = all.includes(document.activeElement) ? document.activeElement : null;
-    if (!from) return pick(host.querySelector('.play:not(:disabled)') ?? all.find(el => !el.matches('a')) ?? all[0]);
+    if (!from) return pick(host.querySelector('.play:not(:disabled)') ?? all.find(el => !el.matches('.setup-back')) ?? all[0]);
     pick(toward(all, from, dir, area));
   }
   // the pick is marked as well as focused, so its ring shows even while the window itself isn't focused
