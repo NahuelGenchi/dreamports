@@ -16,15 +16,14 @@ const PAUSED = pixels(7, 9, 'M0 0h2v9H0zM5 0h2v9H5z');
 const PLAY = pixels(4, 7, 'M0 0h1v7H0zM1 1h1v5H1zM2 2h1v3H2zM3 3h1v1H3z');
 const PAD = '<svg viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true"><path fill-rule="evenodd" d="M0 1h9v7H0zM1 2v5h7V2z"/><path d="M2 3h1v1H2zM4 3h1v1H4zM6 3h1v1H6zM3 5h3v1H3z"/></svg>';
 const CHEVRON = pixels(3, 5, 'M0 0h1v1h1v1h1v1H2v1H1v1H0z');
-const escape = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
 /**
  * Adds the settings to `stage`, the game's part of the page, for the player whose buttons `input` reads
- * (input.js): `brand` names the game over them, `what` says what a button does, by its name in the layout, and
- * `dpad` what the d-pad does, and `note` goes under the controls. `touch`, the controller drawn on touch screens
- * (touch.js), adds how solid its buttons are. Returns the sheet (sheet.js).
+ * (input.js): `what` says what a button does, by its name in the layout, and `dpad` what the d-pad does, and `note`
+ * goes under the controls. `touch`, the controller drawn on touch screens (touch.js), adds how solid its buttons are.
+ * Returns the sheet (sheet.js).
  */
-export function createSettings(stage, input, { brand, what = {}, note = '', touch = null }) {
+export function createSettings(stage, input, { what = {}, note = '', touch = null }) {
   stage.insertAdjacentHTML('beforeend', `
     <button type="button" class="settings-open" aria-label="Settings" aria-controls="sheet-wrap" aria-expanded="false">${SLIDERS}</button>
     <div class="sheet-wrap" id="sheet-wrap" hidden>
@@ -32,17 +31,16 @@ export function createSettings(stage, input, { brand, what = {}, note = '', touc
       <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <section class="view" aria-labelledby="settings-title">
           <header class="sheet-head">
-            <div class="sheet-title"><p class="sheet-crumb">${escape(brand)}</p><h2 id="settings-title">Settings</h2></div>
+            <div class="sheet-title"><h2 id="settings-title">Settings</h2></div>
             <span class="sheet-paused">${PAUSED}Paused</span>
-            <button type="button" class="sheet-close" data-close aria-label="Close" title="Close">×</button>
           </header>
           <div class="sheet-body settings-body single">
             <div class="settings-col sheet-rise">
-              <button type="button" class="resume" data-close>${PLAY}Back to the game<kbd class="key">H</kbd></button>
+              <button type="button" class="resume" data-close>${PLAY}Back to the game</button>
               <ul class="rows">
                 <li><button type="button" class="row" data-controls>
                   ${PAD}
-                  <span class="row-text">Controls<span class="row-hint">Keys and controller</span></span>
+                  <span class="row-text">Controls</span>
                   ${CHEVRON.replace('<svg', '<svg class="chev"')}
                 </button></li>
                 ${touch ? `<li class="opacity-row"><label class="row" for="button-opacity">

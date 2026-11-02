@@ -195,7 +195,7 @@ createControlsView(sheet, { controls: CONTROLS, tokens: TOKENS, note: NOTE });
 document.getElementById('controls-open').addEventListener('click', () => sheet.go('controls'));
 
 // the sound, also M on a keyboard
-function showSound() { showSetting(soundButton, !sound.muted); }
+function showSound() { soundButton.setAttribute('aria-checked', String(!sound.muted)); }
 soundButton.addEventListener('click', () => { sound.muted = !sound.muted; showSound(); });
 let game = null, front = null, specialStage = null, round = null, rom = null, statsTimer = 0;
 
@@ -535,12 +535,12 @@ function showRomCount() {
 showRomCount();
 document.getElementById('change-rom').addEventListener('click', () => sheet.go('roms'));
 // the asset viewer shows what was decoded for the act being played, or the first one before it starts; with a
-// modifier, the link opens it on its own page
+// modifier, or before there's a ROM, it opens on its own page
 createAssetsSheetView(sheet, () => playing ?? sa1?.assets, { rom: 'Sonic Advance', parts: assetParts });
 document.getElementById('assets-open').addEventListener('click', e => {
-  if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || !sa1) return;
-  e.preventDefault();
-  sheet.go('assets');
+  if (e.metaKey || e.ctrlKey || e.shiftKey) window.open('viewer.html');
+  else if (sa1) sheet.go('assets');
+  else location.href = 'viewer.html';
 });
 
 addEventListener('keydown', e => {

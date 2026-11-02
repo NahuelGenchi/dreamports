@@ -3,6 +3,8 @@
 // opens, with a `view-open` event; this fills them from the site's API (worker/index.ts).
 
 import { NAME_PATTERN, PLAYABLE, WAYS, isWay, type Way } from '../lib/players';
+import { showTitle } from '../lib/title';
+import { control } from './controls';
 
 interface Profile {
   name: string;
@@ -108,8 +110,9 @@ async function showGames(box: HTMLElement, games: Games, earned: Profile['achiev
 
     const block = el('section', 'set-list pf-game');
     const head = el('div', 'set-row pf-game-head');
-    const name = el('a', 'set-label', info.title);
-    name.setAttribute('href', info.href);
+    const name = el('a', 'set-label');
+    showTitle(name, info.title);
+    control(name, info.href);
     head.append(name);
     if (list.length) head.append(el('span', 'pf-count', `${ids.length} of ${list.length}`));
     block.append(head);
@@ -147,6 +150,90 @@ async function claimDevice() {
     }
   }
 }
+
+// ---------- A Dreamport's page ----------
+
+// what the profile has earned, by game: asked once until the page is shown again, and only while a player is noted in
+// this browser, as each asking is a request to the site's API
+let onProfile: Promise<Profile['achievements']> | null = null;
+function earnedOnProfile() {
+  if (!playerNoted()) return Promise.resolve<Profile['achievements']>({});
+  onProfile ??= api<{ player: Profile | null }>('/api/me').then(({ data }) => data.player?.achievements ?? {});
+  return onProfile;
+}
+
+function earnedOnDevice(game: string): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(PLAYABLE[game].device) ?? 'null') ?? {};
+  } catch {
+    return {};
+  }
+}
+
+// its achievements, on its own page (src/components/Achievements.astro) and on its Achievements page
+// (src/components/AchievementsCard.astro): each earned one's trophy turns gold, those on this device at once and those
+// on the profile as soon as it answers
+function startAchievements(box: HTMLElement) {
+  const game = box.dataset.game!;
+  const card = box.closest('dialog')!;
+  const page = document.querySelector<HTMLDialogElement>(`dialog[data-card="achievements"][data-play="${game}"]`)!;
+  const items = [...page.querySelectorAll<HTMLElement>('.ach')];
+  const tiles = [...box.querySelectorAll<HTMLElement>('.ach-tile:not(.ach-more)')];
+  const counts = [box, page].map((el) => el.querySelector<HTMLElement>('.ach-count')!);
+  const bars = [box, page].map((el) => el.querySelector<HTMLElement>('.ach-bar i')!);
+  const note = page.querySelector<HTMLElement>('.ach-note')!;
+  function fill(group: string, list: HTMLElement[]) {
+    const section = page.querySelector<HTMLElement>(`[data-group="${group}"]`)!;
+    section.hidden = !list.length;
+    section.querySelector('.pf-count')!.textContent = String(list.length);
+    section.querySelector('ul')!.append(...list);
+  }
+  function paint(earned: Record<string, number>) {
+    const has = (item: HTMLElement) => Object.hasOwn(earned, item.dataset.id!);
+    const on = items.filter(has).sort((a, b) => earned[b.dataset.id!] - earned[a.dataset.id!]);
+    const off = items.filter((item) => !has(item));
+    for (const item of items) {
+      item.classList.toggle('is-on', has(item));
+      item.querySelector('.ach-trophy')!.setAttribute('aria-label', has(item) ? 'Earned' : 'Locked');
+      const time = item.querySelector('time')!;
+      const at = new Date(earned[item.dataset.id!]);
+      time.hidden = !has(item) || Number.isNaN(at.getTime());
+      if (!time.hidden) {
+        time.textContent = day.format(at);
+        time.setAttribute('datetime', at.toISOString());
+      }
+    }
+    fill('earned', on);
+    fill('locked', off);
+    // the row shows the earned ones first
+    const order = [...on, ...off];
+    tiles.forEach((tile, i) => {
+      tile.classList.toggle('is-on', has(order[i]));
+      tile.title = order[i].querySelector('.set-label')!.textContent!;
+    });
+    for (const count of counts) count.textContent = `${on.length} / ${items.length}`;
+    for (const bar of bars) bar.style.width = `${(on.length / items.length) * 100}%`;
+  }
+  async function show() {
+    const device = earnedOnDevice(game);
+    paint(device);
+    note.hidden = playerNoted();
+    const profile = await earnedOnProfile();
+    paint({ ...device, ...profile[game] });
+  }
+  for (const dlg of [card, page]) {
+    dlg.addEventListener('view-open', show);
+    // back from the game with the browser's own Back, where this page is shown as it was left
+    addEventListener('pageshow', (e) => {
+      if (e.persisted && dlg.open) show();
+    });
+  }
+}
+
+addEventListener('pageshow', (e) => {
+  if (e.persisted) onProfile = null;
+});
+for (const box of document.querySelectorAll<HTMLElement>('.achievements[data-game]')) startAchievements(box);
 
 // ---------- The player's own profile ----------
 
@@ -206,30 +293,26 @@ function startProfile(card: HTMLDialogElement) {
       const address = `${location.host}/players/${profile.name}/`;
       const desc = byId('pf-public-desc');
       if (profile.public) {
-        desc.textContent = 'On: anyone can see your name and achievements at ';
+        desc.textContent = 'Lets anyone see your name and achievements at ';
         const link = el('a', 'linkish', address);
-        link.setAttribute('href', `/players/${profile.name}/`);
+        control(link, `/players/${profile.name}/`);
         link.dataset.player = '';
         desc.append(link, '.');
       } else {
-        desc.textContent = 'Off: only you can see your profile. On, anyone can see your name and achievements.';
+        desc.textContent = 'Lets anyone see your name and achievements.';
       }
       for (const row of inside.querySelectorAll<HTMLElement>('.pf-link')) {
         const way = row.dataset.way as Way;
         const linked = profile.ways.includes(way);
         const only = linked && profile.ways.length === 1;
-        row.querySelector('[data-desc]')!.textContent = !linked
-          ? `Link it to sign in with ${WAYS[way]} too.`
-          : only
-            ? 'Linked. It’s your only way in, so it stays.'
-            : 'Linked: it signs in to your profile.';
+        row.querySelector('[data-desc]')!.textContent = only ? 'It’s your only way in.' : '';
         row.querySelector<HTMLElement>('[data-link]')!.hidden = linked;
         row.querySelector<HTMLElement>('[data-unlink]')!.hidden = !linked || only;
       }
       await showGames(byId('pf-games'), games, profile.achievements, true);
       if (focus) publicSwitch.focus({ preventScroll: true });
     } else if (pending) {
-      byId('pf-pick-lead').textContent = `You’re in with ${WAYS[pending]}. One last step: the name your profile goes by.`;
+      byId('pf-pick-lead').textContent = `You’re in with ${WAYS[pending]}.`;
       if (focus) nameInput.focus({ preventScroll: true });
     } else {
       if (focus) firstWay.focus({ preventScroll: true });

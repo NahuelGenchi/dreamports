@@ -15,7 +15,6 @@ const GBA_BYTES = 32 * 1024 * 1024;   // the largest Game Boy Advance cartridge
 const pixels = (name, width, height, path) =>
   `<svg class="${name}" viewBox="0 0 ${width} ${height}" width="${width * 2}" height="${height * 2}" shape-rendering="crispEdges" aria-hidden="true"><path d="${path}" fill="currentColor" fill-rule="evenodd"/></svg>`;
 const ICONS = {
-  empty: pixels('mark-empty', 7, 7, 'M0 0h7v7H0zM1 1v5h5V1z'),
   reading: pixels('mark-reading', 7, 7, 'M0 0h7v7H0zM1 1v5h5V1zM2 2h3v3H2z'),
   ready: pixels('mark-ready', 7, 7, 'M5 1h2v1H5zM4 2h2v1H4zM0 3h2v1H0zM3 3h2v1H3zM1 4h3v1H1zM2 5h1v1H2z'),
   play: pixels('play-icon', 4, 7, 'M0 0h1v7H0zM1 1h1v5H1zM2 2h1v3H2zM3 3h1v1H3z'),
@@ -37,6 +36,8 @@ function cameFromMenu() {
 }
 
 const escape = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+// the word Dreamport in the game's name as a tag, as dreamports.net shows it
+export const brandTag = html => html.replace(/\bDreamport\b/, '<span class="dp-tag">$&</span>');
 // "A", "A or B", "A, B or C"
 const either = names => (names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names.at(-1)}` : names[0] ?? '');
 // waits for the page to draw what was just set, or a moment when it isn't drawing (a hidden tab)
@@ -61,24 +62,28 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
   const consoles = [...new Set(slots.map(s => s.console ?? 'Game Boy Advance'))];
   host.innerHTML = `
     <div class="setup">
-      <header class="setup-head">
-        <div class="setup-bar">
-          <a class="setup-back" href="${home}" aria-label="Back to Dreamports" title="Back to Dreamports">${ICONS.back}</a>
-          <div class="pad" data-state="gone"><span class="pad-icon" aria-hidden="true"></span><span class="pad-note" role="status" aria-live="polite"></span></div>
-        </div>
-        <p class="setup-brand">${escape(brand)}</p>
-        <h1>${heading}</h1>
-        <p class="setup-intro">${intro}</p>
-      </header>
-      <ul class="roms" aria-label="Your ROMs">${slots.map(row).join('')}</ul>
-      <div class="setup-play">
-        <button type="button" class="play" disabled><kbd>Enter</kbd>${ICONS.play}<span class="play-label">Play</span></button>
-        <p class="play-note" aria-live="polite"></p>
+      <div class="setup-bar">
+        <button type="button" class="setup-back" aria-label="Back to Dreamports" title="Back to Dreamports">${ICONS.back}</button>
+        <div class="pad" data-state="gone"><span class="pad-icon" aria-hidden="true"></span><span class="pad-note" role="status" aria-live="polite"></span></div>
       </div>
-      <footer class="setup-foot">
-        <label class="remember"><input type="checkbox" checked> Remember on this device</label>
-        <button type="button" class="link forget" hidden>Forget the saved ROMs</button>
-      </footer>
+      <div class="setup-scroll">
+        <div class="setup-page">
+          <header class="setup-head">
+            <p class="setup-brand">${brandTag(escape(brand))}</p>
+            <h1>${heading}</h1>
+            <p class="setup-intro">${intro}</p>
+          </header>
+          <ul class="roms" aria-label="Your ROMs">${slots.map(row).join('')}</ul>
+          <div class="setup-play">
+            <button type="button" class="play" disabled><kbd>Enter</kbd>${ICONS.play}<span class="play-label">Play</span></button>
+            <p class="play-note" aria-live="polite"></p>
+          </div>
+          <footer class="setup-foot">
+            <label class="remember"><input type="checkbox" checked> Remember on this device</label>
+            <button type="button" class="link forget" hidden>Forget the saved ROMs</button>
+          </footer>
+        </div>
+      </div>
       <div class="setup-drag" aria-hidden="true"><div>${ICONS.drop}<span>Drop your ROMs</span><small>Each one goes to its own game</small></div></div>
     </div>`;
 
@@ -87,7 +92,7 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
     return `
       <li class="rom" data-slot="${s.key}" data-state="empty">
         <div class="rom-main">
-          <span class="rom-mark">${ICONS.empty}${ICONS.reading}${ICONS.ready}</span>
+          <span class="rom-mark">${ICONS.reading}${ICONS.ready}</span>
           <div class="rom-text">
             <h2 id="${id}-title">${s.title}</h2>
             <p class="rom-detail" id="${id}-detail"></p>
@@ -143,16 +148,14 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
   new MutationObserver(paint).observe(host, { attributes: true, attributeFilter: ['hidden'] });
 
   // back to dreamports.net: from its menu, back in the browser's history, so the menu comes back as it was left
-  $('.setup-back').addEventListener('click', e => {
-    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    if (!cameFromMenu()) return;
-    e.preventDefault();
-    history.back();
+  $('.setup-back').addEventListener('click', () => {
+    if (cameFromMenu()) history.back();
+    else location.href = home;
   });
 
-  // the line under a ROM's name: while it's missing, whether the game needs it or else the extras it brings (which
-  // show once it's in); once it's in, what was read (while it's being read, the reading's progress). It wraps after
-  // a dot or a comma, never before one or inside an extra's name.
+  // the line under a ROM's name: while it's missing, whether the game needs it, where it has others to tell it from,
+  // or else the extras it brings (which show once it's in); once it's in, what was read (while it's being read, the
+  // reading's progress). It wraps after a dot or a comma, never before one or inside an extra's name.
   function setState(c, state) {
     c.el.dataset.state = state;
     const ready = state === 'ready';
@@ -162,7 +165,7 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
     const whole = name => name.replaceAll(' ', '\u00a0').replaceAll('-', '-\u2060');
     if (ready) c.detail.textContent = c.about;
     else if (state === 'empty') {
-      c.detail.textContent = c.slot.required ? 'Required'
+      c.detail.textContent = c.slot.required ? (slots.length > 1 ? 'Required' : '')
         : line(['Optional', c.slot.extras.map(e => whole(e.label)).join(', ')]);
     }
     c.extras.forEach((box, i) => { box.disabled = !ready; box.checked = ready && c.slot.extras[i].get(); });
@@ -174,18 +177,16 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
     c.status.dataset.kind = kind;
   }
 
-  // the Play button, and the line under it while it's locked
+  // the Play button, and the line under it while a ROM is being read
   function update() {
     const all = Object.values(rows);
     const missing = all.filter(c => c.slot.required && c.el.dataset.state !== 'ready');
     const reading = all.some(c => c.el.dataset.state === 'reading');
     play.disabled = missing.length > 0 || reading;
     forget.hidden = !all.some(c => c.saved);
-    note.textContent = reading ? 'Reading…'
-      : missing.length ? `Add your ${listed(missing.map(c => c.slot.title))} ROM to play.` : '';
+    note.textContent = reading ? 'Reading…' : '';
     onChange();
   }
-  const listed = items => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
 
   // reads `buffer` into the row's game, resolving to null or what's wrong with it; `store` keeps it in this
   // browser, `auto` turns its extras on. A ROM it can't read leaves the one it had.
@@ -328,7 +329,7 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
       lent = to;
       depth = 0;
       host.classList.remove('dragging');
-      if (to) { to.list.append(list); to.foot.append(foot); } else { $('.setup-play').before(list); $('.setup-drag').before(foot); }
+      if (to) { to.list.append(list); to.foot.append(foot); } else { $('.setup-play').before(list); $('.setup-play').after(foot); }
       note = to?.note ?? $('.play-note');
       delete note.dataset.kind;
       update();

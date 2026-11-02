@@ -1,5 +1,6 @@
 ---
-// One of a Dreamport's two numbers, at the top of its progress box: its name and its %, over a bar that fills to it.
+// One of a Dreamport's two numbers, at the top of its progress: its name and its %, over a bar that fills to it. All
+// spans, so that it can be the line that opens the parts (Parts.astro).
 import type { Measure } from '../lib/dreamports';
 
 interface Props {
@@ -9,10 +10,10 @@ interface Props {
 const { label, percent, text } = Astro.props.measure;
 ---
 
-<div class="meter">
-  <p class="meter-head">
+<span class="meter">
+  <span class="meter-head">
     <span>{label}</span>
     <span class="meter-num">{text ?? 'Not measured yet'}</span>
-  </p>
+  </span>
   <span class="meter-bar" aria-hidden="true"><i style={`width: ${percent ?? 0}%`}></i></span>
-</div>
+</span>

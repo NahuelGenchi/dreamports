@@ -22,7 +22,7 @@ Dreamports is a website, at **[dreamports.net](https://dreamports.net)**, that g
 
 A **port** is a game brought somewhere new to play: your web browser, your computer, or a newer console. A **Dreamport** is the port fans always dreamed of: the game you remember, with the extras you wished it had. Widescreen, smoother motion, new ways to play: every extra is optional, and every Dreamport is made by a fan, for fans.
 
-The site works like the menu of a game console. It's one screen with a row of games, and you move along it with the arrow keys, a game controller, a click or a swipe. The game you're on wakes up and plays a short recording of itself. Three tabs at the top switch between three rows:
+The site works like the menu of a game console. It's one screen with a row of games, and you move along it with the arrow keys, a game controller, a click or a swipe. The game you're on wakes up and plays a short recording of itself. The bar at the top turns like a carousel between three rows, with the one you're on in the middle:
 
 <table>
 <tr>

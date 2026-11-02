@@ -39,7 +39,7 @@ proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded but
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives and what a button does so far
 const touch = createTouch(stage, input, { screen, key: 'sonic-battle' });
-createSettings(stage, input, { brand: 'Sonic Battle Dreamport', what: { start: 'Start: skips the SEGA and Sonic Team logos' }, touch });
+createSettings(stage, input, { what: { start: 'Start: skips the SEGA and Sonic Team logos' }, touch });
 let rom = null;
 
 createRomSetup(picker, {

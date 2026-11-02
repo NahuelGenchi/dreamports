@@ -124,16 +124,15 @@
   box-sizing: border-box;
 }
 
+/* The site is a launcher, not a page: no page scrolls as a whole, however far it's zoomed in. What doesn't fit scrolls
+   inside the container it's in. */
 html {
-  min-height: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--page);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-}
-
-html:has(.launcher) {
-  overflow: hidden;
-  overscroll-behavior: none;
 }
 
 /* The site is a launcher, not a page: a long press selects no text, and shows no menu and no
@@ -164,6 +163,7 @@ video {
 }
 
 body {
+  min-height: 100%;
   margin: 0;
   background: var(--page-glow), var(--page);
   color: var(--ink);
@@ -179,6 +179,13 @@ button {
   color: inherit;
 }
 
+/* a link within the site, once it has given up its href (src/scripts/controls.ts), still looks like one: what the
+   browser gives only to a link with an href, which any rule below can still change */
+:where(a[data-href]) {
+  cursor: pointer;
+  text-decoration-line: underline;
+}
+
 a {
   color: var(--blue);
   text-decoration-thickness: 1px;
@@ -188,6 +195,12 @@ a {
 :focus-visible {
   outline: 2px solid var(--blue);
   outline-offset: 4px;
+}
+
+/* a card's first control takes focus as its page loads, which is only a stray border to anyone
+   not using a key or a controller's button yet */
+:root.js:not(.keyed) .launcher :focus-visible {
+  outline: none;
 }
 
 ::selection {
@@ -228,7 +241,6 @@ abbr.caps {
 
 /* a pixel frame, 2 px with the corner pixels left out, as on the insert cartridge screen */
 kbd,
-.pill,
 .shoulder,
 .key,
 .tile,
@@ -240,13 +252,13 @@ kbd,
 .seg,
 .switch-track,
 .btn,
-.check,
 .check input,
 .pf-input,
 .facts,
+.achievements,
+.ach-tile,
 .about-nav a[aria-current='true'],
 .bo-back,
-.mk-part,
 .mk-help,
 .mk-copy,
 dialog.card {
@@ -311,64 +323,52 @@ kbd {
   gap: 10px;
   padding-left: max(18px, env(safe-area-inset-left, 0px));
   padding-right: max(18px, env(safe-area-inset-right, 0px));
-  transition: opacity 0.25s ease;
+  transition:
+    opacity 0.25s ease,
+    visibility 0.25s;
 }
 
-.pill {
-  --frame: var(--line);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  height: 30px;
-  padding: 0 12px 0 9px;
-  background: var(--paper);
-  color: var(--ink);
-  font-size: 13.5px;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-/* each side of the bar fills its column, so the badge in it can tell how much room it has */
 .side {
   display: flex;
+  align-items: center;
   min-width: 0;
-  container-type: inline-size;
 }
 
 .side.end {
   justify-content: flex-end;
 }
 
-.clock .door {
-  width: 13px;
-  height: 15px;
+/* in line with the frames of the corner buttons below it */
+.side > .door {
+  margin-left: 2px;
 }
 
-/* the speaker is a button as tall as the badge that reaches its edge, and the controller beside it only shows */
+/* the speaker is a button, kept in line with the frames of the corner buttons below it, and it's dim while the sounds
+   are off. The controller beside it shows only while one is connected. */
 .status {
-  --edge: 12px;
-  --between: 11px;
-  gap: 0;
-  padding: 0;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin-right: -6px;
+  color: var(--ink);
 }
 
 .status-sound {
   display: flex;
+  flex: none;
   align-items: center;
-  height: 100%;
-  padding: 0 var(--edge);
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
   border: 0;
   background: none;
+  color: inherit;
   cursor: pointer;
 }
 
 .status-sound:hover {
   background: var(--hover);
-}
-
-/* inside the badge, so the ring stays clear of the controller */
-.status-sound:focus-visible {
-  outline-offset: -3px;
 }
 
 .status svg {
@@ -378,16 +378,31 @@ kbd {
   fill: currentColor;
 }
 
-#ico-pad {
-  margin: 0 var(--edge) 0 calc(var(--between) - var(--edge));
+#ico-sound.is-off {
+  color: var(--dim);
 }
 
-.status .is-off {
-  opacity: 0.32;
+#ico-pad.is-off {
+  display: none;
 }
 
-.status .hole {
-  fill: var(--paper);
+/* with little room beside the filters, the hint goes first and then the controller's icon: the speaker always stays */
+@media (max-width: 619px) {
+  #ico-pad:not(.is-off) + .status-sound .key {
+    display: none;
+  }
+}
+
+@media (max-width: 519px) {
+  .status-sound .key {
+    display: none;
+  }
+}
+
+@media (max-width: 437px) {
+  #ico-pad {
+    display: none;
+  }
 }
 
 .filters {
@@ -397,22 +412,61 @@ kbd {
   gap: 8px;
 }
 
+/* the filters stand on a ring, the one showing in the middle and one on each side, whose outer edge fades away. It's
+   all in ch, as the font is monospaced. Two steps from the middle is past the window's edge, out of sight, where a
+   value going round the ring leaves and comes back in */
 .tabs {
+  --ring: 35ch;
+  --step: 12ch;
+  --fade: 7.5ch;
+  --ring-mask: linear-gradient(90deg, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
   position: relative;
   display: flex;
+  flex: none;
   align-items: center;
+  gap: 6px;
+  width: var(--ring);
+  height: 44px;
+  overflow: hidden;
+  overflow: clip;
+  font-size: 13.5px;
+  -webkit-mask-image: var(--ring-mask);
+  mask-image: var(--ring-mask);
 }
 
 .tab {
+  position: absolute;
+  top: 5px;
+  left: 50%;
   display: inline-flex;
   align-items: center;
   height: 34px;
   padding: 0 7px;
   color: var(--dim);
-  font-size: 13.5px;
   font-weight: 400;
   text-decoration: none;
+  white-space: nowrap;
   cursor: pointer;
+  translate: calc(-50% + var(--at, 0) * var(--step)) 0;
+  transition: color 0.2s ease;
+}
+
+/* it glides only as it turns, not when the font arrives or the window changes size */
+.tabs.is-turning .tab {
+  transition:
+    translate 0.4s var(--glide),
+    color 0.2s ease;
+}
+
+.tabs.is-turning .tab-mark {
+  transition: width 0.4s var(--glide);
+}
+
+/* a fingertip's worth to press, above and below the word */
+.tab::after {
+  content: '';
+  position: absolute;
+  inset: -5px 0;
 }
 
 .tab:hover {
@@ -424,20 +478,25 @@ kbd {
   font-weight: 700;
 }
 
-.tab-sep {
-  color: var(--faint);
-  font-size: 13.5px;
+/* its ring stays inside the window, which would cut the outside of it off */
+.tab:focus-visible {
+  outline-offset: 3px;
+}
+
+/* what goes on out of sight while the value it stands in for comes back in at the other edge */
+.tab-gone {
+  pointer-events: none;
 }
 
 .tab-mark {
   position: absolute;
-  bottom: 2px;
+  bottom: 7px;
+  left: 50%;
+  width: calc(var(--len, 0) * 1ch + 14px);
   height: 4px;
   background: var(--sky);
   pointer-events: none;
-  transition:
-    left 0.4s var(--glide),
-    width 0.4s var(--glide);
+  translate: -50% 0;
 }
 
 .shoulder {
@@ -469,7 +528,8 @@ kbd {
 }
 
 /* the search field, in the filters' place while a search is on */
-.launcher.is-searching .filters > :not(.search) {
+.launcher.is-searching .filters > :not(.search),
+.launcher.is-searching #btn-search {
   visibility: hidden;
 }
 
@@ -562,6 +622,7 @@ kbd {
   color: var(--ink);
 }
 
+/* its × says what it does, beside its key or controller button, which say how to press it */
 .search-end > svg {
   display: block;
   width: 11px;
@@ -701,21 +762,8 @@ kbd {
 }
 
 /* before the script has measured the screen, the row and its cursor wait out of sight */
-.js .launcher:not(.is-laid) :is(.row, .cursor, .nameplate, .row-lead) {
+.js .launcher:not(.is-laid) :is(.row, .cursor, .nameplate) {
   visibility: hidden;
-}
-
-/* in the Make row, how many of a Dreamport's pieces are free to take, on its picture */
-.free-badge {
-  position: absolute;
-  left: calc(var(--bz) + 8px);
-  top: calc(var(--bz) + 8px);
-  z-index: 1;
-  padding: 4px 7px;
-  background: var(--act);
-  color: var(--on-act);
-  font: 400 11px/13px var(--font);
-  pointer-events: none;
 }
 
 /* a game: a little screen in a white frame, showing the game itself */
@@ -792,56 +840,23 @@ kbd {
   transition-delay: 0.08s;
 }
 
-/* a game with no recording: a plain dreamports card */
+/* a game with no recording: a plain card with the Dreamports star */
 .emblem {
+  display: grid;
+  place-items: center;
   background: linear-gradient(180deg, #bfe5ff 0%, #ecf7ff 100%);
-  color: #0a1738;
 }
 
 .e-star {
-  position: absolute;
-  right: 6%;
-  top: 9%;
-  width: 12%;
+  width: 20%;
   height: auto;
-}
-
-.e-plat {
-  position: absolute;
-  left: 6%;
-  top: 10%;
-  color: rgba(10, 23, 56, 0.68);
-  font-size: calc(var(--s) * 0.034);
-  line-height: 1;
-}
-
-.e-name {
-  position: absolute;
-  left: 6%;
-  right: 22%;
-  bottom: 22%;
-  font-weight: 700;
-  font-size: calc(var(--s) * 0.072);
-  line-height: 1.12;
-  text-wrap: balance;
-}
-
-.e-tag {
-  position: absolute;
-  left: 6%;
-  bottom: 10%;
-  color: #1a4fb0;
-  font-size: calc(var(--s) * 0.034);
-  line-height: 1;
 }
 
 /* the Make row's way to start a Dreamport: a plus on an empty screen */
 .screen.start {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: calc(var(--s) * 0.03);
   background: var(--hollow);
   color: var(--blue);
 }
@@ -852,52 +867,13 @@ kbd {
   fill: currentColor;
 }
 
-.st-name {
-  color: var(--ink);
-  font-size: max(10px, calc(var(--s) * 0.032));
-  line-height: 1.2;
-}
-
-/* the line over a row that needs saying what it is, such as Make's; the script places it between the top bar and
-   the row, and leaves it out where there's no room */
-.row-lead {
-  position: absolute;
-  z-index: 2;
-  left: 50%;
-  top: calc(var(--top-h, 56px) + 16px);
-  translate: -50% 0;
-  width: max-content;
-  max-width: min(560px, calc(100% - 36px));
-  margin: 0;
-  color: var(--dim);
-  font-size: 13.5px;
-  line-height: 22px;
-  text-align: center;
-  text-wrap: balance;
-  pointer-events: none;
-  transition: opacity 0.25s ease;
-}
-
-.row-lead.is-out {
-  opacity: 0;
-  transition-duration: 0.17s;
-}
-
-.row-lead.no-room {
-  visibility: hidden;
-}
-
-/* an empty slot: a place where a game will go */
+/* an empty place, when a search finds nothing */
 .hollow {
   position: absolute;
   inset: 0;
   display: block;
   background: var(--hollow);
   border: 2px dashed var(--line);
-}
-
-.slot[data-empty]:not(.is-sel) .lift {
-  opacity: 0.9;
 }
 
 /* the cursor: four pixel corners around the selected slot. The row slides under it. */
@@ -1084,16 +1060,11 @@ kbd {
 }
 
 .corner .c-icon {
-  display: none;
+  display: block;
   flex: none;
   width: 15px;
   height: 15px;
   fill: currentColor;
-}
-
-.corner .c-icon.door {
-  width: 13px;
-  height: 15px;
 }
 
 :root[data-input='touch'] .corner,
@@ -1101,12 +1072,7 @@ kbd {
   padding-left: 12px;
 }
 
-:root[data-input='touch'] .corner .c-icon,
-:root:not(.js) .corner .c-icon {
-  display: block;
-}
-
-/* a corner button with no word on it: its key, its controller button, or its icon on touch screens */
+/* a button with no word on it: its icon says what it is, beside its key or controller button, which say how to press it */
 .corner.no-label {
   padding: 0 6px;
 }
@@ -1116,10 +1082,6 @@ kbd {
   padding: 0 10px;
 }
 
-/* the profile button's icon is all that says what it is, so it shows beside its key or controller button too */
-#btn-profile .c-icon {
-  display: block;
-}
 
 .corner[aria-disabled='true'] {
   opacity: 0.45;
@@ -1158,10 +1120,6 @@ kbd {
   width: auto;
   height: 11px;
   fill: currentColor;
-}
-
-.pad-hint .hole {
-  fill: var(--paper);
 }
 
 /* the doorway the game goes through when it launches */
@@ -1308,7 +1266,7 @@ kbd {
   gap: 10px;
   height: 46px;
   margin: 2px;
-  padding: 0 18px 0 10px;
+  padding: 0 10px;
   border: 0;
   background: #8fd1ff;
   color: #0a1738;
@@ -1332,8 +1290,15 @@ kbd {
   outline-offset: 5px;
 }
 
+.bo-back .c-icon {
+  display: block;
+  width: 15px;
+  height: 15px;
+  fill: currentColor;
+}
+
 :root[data-input='touch'] .bo-back {
-  padding-left: 18px;
+  padding: 0 16px;
 }
 
 /* ---------- Cards that open over the menu ---------- */
@@ -1408,6 +1373,10 @@ dialog.card[open] {
   margin-top: 4px;
   color: var(--dim);
   font: 400 13.5px/20px var(--font);
+}
+
+.set-desc:empty {
+  display: none;
 }
 
 .switch {
@@ -1603,12 +1572,6 @@ dialog.card[open] {
   font-size: 15px;
 }
 
-.pf-label {
-  margin: 26px 2px 10px;
-  color: var(--ink);
-  font: 400 15px/20px var(--font);
-}
-
 /* a profile's address is one long word, which breaks where it must on a narrow phone */
 .card-profile .set-desc {
   overflow-wrap: anywhere;
@@ -1630,6 +1593,10 @@ dialog.card[open] {
 .pf-input:focus-visible {
   --frame: var(--blue);
   outline: none;
+}
+
+.pf-door .pf-input {
+  margin-top: 26px;
 }
 
 .pf-door .pf-hint {
@@ -1956,16 +1923,33 @@ dialog.card[open] {
   text-wrap: balance;
 }
 
-/* what kind of game it is, after its name, like the extras' "Needs" tags */
-.ins-tag {
+/* the word Dreamport in a game's title, as a tag: a mark of what the game is */
+.dp-tag {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 0.15em 0.6em;
   background: var(--chip);
   color: var(--on-chip);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: max(11px, 0.5em);
+  line-height: 1.5;
   vertical-align: 0.3em;
   white-space: nowrap;
+}
+
+.np-name .dp-tag {
+  padding: 0 0.5em;
+  line-height: 16px;
+  vertical-align: 1px;
+}
+
+/* the Opening screen is dark in both looks */
+.bo-line .dp-tag {
+  background: rgba(143, 209, 255, 0.18);
+  color: #8fd1ff;
+  vertical-align: 1px;
+}
+
+.pf-game-head .dp-tag {
+  vertical-align: 1px;
 }
 
 .facts {
@@ -2016,13 +2000,10 @@ dialog.card[open] {
 }
 
 .check {
-  --frame: var(--line);
   display: flex;
   align-items: flex-start;
   gap: 14px;
   margin: 18px 2px 0;
-  padding: 14px 16px;
-  background: var(--hover);
   color: var(--ink);
   font: 400 15px/24px var(--font);
   cursor: pointer;
@@ -2241,8 +2222,22 @@ dialog.card[open] {
   outline-offset: 6px;
 }
 
-:root:not(.js) :is(.cursor, .nameplate, .shoulder, .status, .glow, #btn-settings, #btn-search, #btn-profile) {
+:root:not(.js) :is(.cursor, .nameplate, .shoulder, .status, .glow, .tab-mark, #btn-settings, #btn-search, #btn-profile) {
   display: none;
+}
+
+/* nothing turns the ring, so the filters are plain links in a row */
+:root:not(.js) .tabs {
+  width: auto;
+  height: auto;
+  overflow: visible;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+:root:not(.js) .tab {
+  position: static;
+  translate: none;
 }
 
 /* on a card's page the card has the row's place */
@@ -2253,12 +2248,13 @@ dialog.card[open] {
 /* ---------- Not found ---------- */
 
 .lost {
+  position: fixed;
+  inset: 0;
+  overflow: hidden auto;
   display: grid;
   justify-items: center;
-  align-content: center;
+  align-content: safe center;
   gap: 18px;
-  min-height: 100vh;
-  min-height: 100dvh;
   margin: 0;
   padding: 48px max(24px, env(safe-area-inset-left, 0px));
   text-align: center;
@@ -2416,6 +2412,10 @@ dialog.card[open] {
 @media (max-width: 560px) {
   .tab {
     padding: 0 5px;
+  }
+
+  .tabs {
+    gap: 4px;
     font-size: 12px;
   }
 
@@ -2439,11 +2439,6 @@ dialog.card[open] {
     font-size: 11px;
   }
 
-  .pill {
-    height: 28px;
-    font-size: 12px;
-  }
-
   .corner {
     height: 32px;
     font-size: 12px;
@@ -2464,20 +2459,18 @@ dialog.card[open] {
   }
 }
 
-/* with three filters, a phone keeps room in the top bar for the clock and the badge: the tabs switch rows by
-   themselves, so L and R go, and on the narrowest phones the tabs draw closer together. The search field reaches
-   4 px past the tabs into the room L and R leave, with less room round its icon and its ×, so it keeps
-   "Search Dreamports". The × drops its Esc hint, as on touch screens, so a computer zoomed in to this width keeps it
-   too. The Settings badge keeps the tighter frame it has on narrower phones, with its controller icon too, so the
-   search's focus ring stays clear of it */
-@media (max-width: 440px) {
+/* a phone keeps room in the top bar for the door and the speaker: the side values can be pressed themselves, so L and
+   R go */
+@media (max-width: 509px) {
   .shoulder {
     display: none;
   }
+}
 
+/* with less room round the search field's icon and its ×, it keeps "Search Dreamports". Its Esc hint goes, as on touch
+   screens, leaving the ×, so a computer zoomed in to this width keeps it too */
+@media (max-width: 440px) {
   .search {
-    left: -4px;
-    right: -4px;
     gap: 4px;
     padding-left: 6px;
   }
@@ -2489,15 +2482,19 @@ dialog.card[open] {
   .search-end .key {
     display: none;
   }
+}
 
-  .status {
-    --edge: 9px;
-    --between: 8px;
+/* the ring draws in, keeping a little of each side value's fade */
+@media (max-width: 387px) {
+  .tabs {
+    --ring: 31ch;
+    --step: 10.5ch;
+    --fade: 6.5ch;
   }
 }
 
-/* under 360 px, as on a 320 px iPhone SE, the bar's edges narrow too, and the search field reaches further past the
-   tabs, 16 px, so it keeps "Search Dreamports" with its focus ring clear of the badges */
+/* under 360 px, as on a 320 px iPhone SE, the bar's edges narrow too, and the search field reaches a little past the
+   ring, so it keeps "Search Dreamports" with its focus ring clear of the door and the speaker */
 @media (max-width: 359px) {
   .topbar {
     gap: 6px;
@@ -2507,54 +2504,38 @@ dialog.card[open] {
 
   .tab {
     padding: 0 3px;
+  }
+
+  .tabs {
     font-size: 11px;
   }
 
   .search {
-    left: -16px;
-    right: -16px;
+    left: -4px;
+    right: -4px;
   }
 }
 
-/* the time shows only when its side of the bar has room for the whole clock, 87 px at its widest */
-@container (width < 87px) {
-  .clock time {
-    display: none;
-  }
-
-  .clock {
-    padding: 0 8px;
+/* narrower than any phone but a folded one, the side values' outer ends go past the window's edge */
+@media (max-width: 315px) {
+  .tabs {
+    --ring: 27ch;
+    --step: 10ch;
+    --fade: 5.5ch;
   }
 }
 
-/* and the controller icon, while no controller is on, only when the badge has its 72 px */
-@container (width < 72px) {
-  .status #ico-pad.is-off {
-    display: none;
+/* zoomed in about as far as a browser goes, the launcher's two bars don't fit: they scroll sideways inside themselves,
+   so no button is out of reach */
+@media (max-width: 299px) {
+  .topbar {
+    grid-template-columns: max-content max-content max-content;
+    justify-content: space-between;
+    overflow: auto hidden;
   }
 
-  .status {
-    --edge: 9px;
-    --between: 8px;
-  }
-}
-
-/* narrower still, as on 360 px phones: a tighter frame round the speaker */
-@container (width < 34px) {
-  .status {
-    --edge: 6px;
-  }
-}
-
-/* and on the narrowest phones, under 360 px: tighter frames round the doorway and the speaker, to leave the search
-   room */
-@media (max-width: 359px) {
-  .clock {
-    padding: 0 6px;
-  }
-
-  .status {
-    --edge: 4px;
+  .corners {
+    overflow: auto hidden;
   }
 }
 
@@ -2571,7 +2552,6 @@ dialog.card[open] {
 }
 
 :root[data-motion='calm'] .row,
-:root[data-motion='calm'] .tab-mark,
 :root[data-motion='calm'] .t-door,
 :root[data-motion='calm'] .switch-knob {
   transition: none;
@@ -2587,7 +2567,6 @@ dialog.card[open] {
   .key,
   .shoulder,
   .btn,
-  .pill,
   .corner,
   .search,
   .nameplate,
@@ -2596,7 +2575,8 @@ dialog.card[open] {
   .set-list,
   .seg,
   .facts,
-  .check,
+  .achievements,
+  .ach-tile,
   dialog.card {
     border: 1px solid ButtonText;
   }
@@ -2623,7 +2603,7 @@ dialog.card[open] {
   transition: opacity 0.25s ease;
 }
 
-.launcher[data-view] :is(.cursor, .nameplate, .corners, .pad-hint, .filters, .row-lead) {
+.launcher[data-view] :is(.cursor, .nameplate, .corners, .pad-hint, .filters) {
   opacity: 0;
   pointer-events: none;
 }
@@ -2666,6 +2646,18 @@ dialog.card[open] {
   flex-direction: column;
 }
 
+/* on a phone, either way up, a view has the whole screen: the top bar's room goes to what it holds */
+@media (max-width: 640px), (max-height: 500px) {
+  .launcher[data-view] .topbar {
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  .launcher > dialog.view {
+    inset: env(safe-area-inset-top, 0px) 0 0;
+  }
+}
+
 /* the bar along the bottom, where the corner buttons stand on the menu */
 .view-bar {
   flex: none;
@@ -2681,7 +2673,8 @@ dialog.card[open] {
 .view .inspect,
 .view .about,
 .view.card-settings .card-body,
-.view.card-profile .card-body {
+.view.card-profile .card-body,
+.view.card-achievements .card-body {
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -2729,17 +2722,12 @@ dialog.card[open] {
 .view .gate-form .check {
   align-items: center;
   gap: 12px;
-  min-height: 48px;
+  min-height: 40px;
   margin: 2px;
-  padding: 0 18px;
 }
 
 .view .gate-form .check input {
   margin: 0 2px;
-}
-
-.view .gate-form .check:has(input:checked) {
-  --frame: var(--blue);
 }
 
 .view .gate-actions {
@@ -2754,7 +2742,7 @@ dialog.card[open] {
   min-width: auto;
 }
 
-/* the note keeps its line, so nothing moves when the nudge or the game's note shows */
+/* the note keeps its line, so nothing moves when it shows */
 .view .gate-note {
   contain: inline-size;
   min-height: 20px;
@@ -2762,7 +2750,8 @@ dialog.card[open] {
 }
 
 /* long text scrolls under soft edges */
-.view :is(.ins-text, .about-text) {
+.view :is(.ins-text, .about-text),
+.view.card-achievements .card-body {
   -webkit-mask-image: linear-gradient(transparent, #000 26px, #000 calc(100% - 36px), transparent);
   mask-image: linear-gradient(transparent, #000 26px, #000 calc(100% - 36px), transparent);
 }
@@ -2774,12 +2763,14 @@ dialog.card[open] {
 /* the launcher never shows a scroll bar: long text still scrolls with the wheel, touch, the arrow
    keys and the controller's right stick */
 .launcher,
-.launcher * {
+.launcher *,
+.lost {
   scrollbar-width: none;
 }
 
 .launcher::-webkit-scrollbar,
-.launcher *::-webkit-scrollbar {
+.launcher *::-webkit-scrollbar,
+.lost::-webkit-scrollbar {
   display: none;
 }
 
@@ -2797,10 +2788,133 @@ dialog.card[open] {
     2px 0 var(--frame);
 }
 
-.extras h3 {
+.extras h3,
+.achievements :is(h2, h3) {
   margin: 0;
   color: var(--ink);
   font: 400 16px/1.4 var(--font);
+}
+
+/* a Dreamport's achievements: how many are earned beside the heading, over a bar that fills to it, then on its page a
+   row of trophies, as big as fits up to a limit, and on its Achievements page every one. A trophy is gray until it's
+   earned and gold from then on, in the colours the game's own settings draw it in. */
+.achievements {
+  --frame: var(--line);
+  container-type: inline-size;
+  margin: 24px 2px 0;
+  padding: 14px 16px 16px;
+  background: var(--paper);
+}
+
+.ach-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ach-count {
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
+  white-space: nowrap;
+}
+
+.ach-bar {
+  margin-top: 8px;
+}
+
+.ach-bar i {
+  width: 0;
+}
+
+:root:not(.js) .ach-bar {
+  display: none;
+}
+
+.ach-tiles {
+  display: grid;
+  width: fit-content;
+  grid-template-columns: repeat(6, minmax(0, 56px));
+  gap: 8px;
+  margin: 14px 2px 2px;
+  text-decoration: none;
+}
+
+.ach,
+.ach-tile {
+  --trophy-g: #8b93a6;
+  --trophy-s: #5d6578;
+  --trophy-l: #c3c9d6;
+}
+
+.ach.is-on,
+.ach-tile.is-on {
+  --trophy-g: #ffc510;
+  --trophy-s: #b57308;
+  --trophy-l: #ffffa5;
+}
+
+.ach-tile {
+  --frame: var(--line);
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  background: var(--hover);
+}
+
+.ach-tile:hover {
+  --frame: var(--sky);
+}
+
+.ach-tiles:active .ach-tile {
+  transform: translateY(2px);
+}
+
+.ach-more {
+  color: var(--ink);
+  font: 400 13.5px/1 var(--font);
+}
+
+.ach-trophy {
+  display: block;
+  width: 24px;
+  height: 20px;
+}
+
+.ach-tile .ach-trophy {
+  width: 36px;
+  height: 30px;
+}
+
+/* twice the drawing's size instead of three times, once the squares are too small for that, so its pixels stay even */
+@container (max-width: 319px) {
+  .ach-tile .ach-trophy {
+    width: 24px;
+    height: 20px;
+  }
+}
+
+.ach-group .pf-game-head .set-label {
+  margin: 0;
+}
+
+/* without JavaScript nothing knows what's earned, so nothing says what's locked */
+:root:not(.js) .ach-group .pf-game-head {
+  display: none;
+}
+
+.ach:not(.is-on) .set-label {
+  color: var(--dim);
+}
+
+.ach-note {
+  margin: 4px 0 0;
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
+}
+
+.ach-bar + .ach-note {
+  margin-top: 10px;
 }
 
 .x-row {
@@ -2903,12 +3017,19 @@ dialog.card[open] {
   display: inline-flex;
 }
 
-.fact-items {
+.fact-items,
+.fact-links {
   display: grid;
   gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* facts that are only a link, under the others */
+.fact-links {
+  margin-top: 12px;
+  font: 400 13.5px/20px var(--font);
 }
 
 .fact-note {
@@ -2949,7 +3070,8 @@ dialog.card[open] {
   background: var(--blue);
 }
 
-/* what proves the numbers, folded into one line under them */
+/* what's folded away in a Dreamport's progress: what proves the numbers, in gameplay proven's own line, and what it's
+   built with */
 .parts {
   margin-top: 12px;
   font: 400 13.5px/20px var(--font);
@@ -2959,8 +3081,6 @@ dialog.card[open] {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: max-content;
-  max-width: 100%;
   color: var(--blue);
   cursor: pointer;
   list-style: none;
@@ -2970,18 +3090,32 @@ dialog.card[open] {
   display: none;
 }
 
-/* a pixel arrow that turns down when the list opens */
-.parts summary::before {
+/* a pixel arrow that turns down when it opens; in gameplay proven's line it's after the name, so that bar lines up with
+   code ported's */
+.parts summary:not(.parts-meter)::before,
+.parts-meter .meter-head > :first-child::after {
   content: '';
+  display: inline-block;
   width: 6px;
   height: 10px;
-  background: currentColor;
+  background: var(--blue);
   clip-path: polygon(0 0, 100% 50%, 0 100%);
   transition: rotate 0.2s ease;
 }
 
-.parts[open] summary::before {
+.parts[open] summary:not(.parts-meter)::before,
+.parts[open] .parts-meter .meter-head > :first-child::after {
   rotate: 90deg;
+}
+
+.parts-meter .meter-head > :first-child::after {
+  margin-left: 8px;
+}
+
+.parts-meter .meter {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
 }
 
 .parts summary:focus-visible {
@@ -2989,7 +3123,7 @@ dialog.card[open] {
   outline-offset: 3px;
 }
 
-.parts ul {
+.parts ul:not(.fact-items) {
   margin: 10px 0 0;
   padding: 0;
   columns: 15em auto;
@@ -2997,7 +3131,11 @@ dialog.card[open] {
   list-style: none;
 }
 
-.parts li {
+.parts .fact-items {
+  margin-top: 10px;
+}
+
+.parts ul:not(.fact-items) > li {
   display: flex;
   gap: 8px;
   padding: 2px 0;
@@ -3051,7 +3189,8 @@ dialog.card[open] {
 
 /* settings and profiles: one column in the middle */
 .view.card-settings .card-body,
-.view.card-profile .card-body {
+.view.card-profile .card-body,
+.view.card-achievements .card-body {
   max-width: 760px;
   padding-top: 30px;
   padding-bottom: 24px;
@@ -3067,8 +3206,9 @@ dialog.card[open] {
   /* a phone held sideways: a smaller picture, so it, the box and the button fit the height, and
      a smaller title, so the game's name stays on one line */
   .view .ins-show {
-    --hero: min(40vw, (100dvh - 266px - env(safe-area-inset-bottom, 0px)) * 1.54);
+    --hero: min(40vw, (100dvh - 222px - env(safe-area-inset-bottom, 0px)) * 1.54);
     gap: 12px;
+    padding-top: 12px;
   }
 
   /* the picture is narrow here, so words wrap inside the box and the buttons, which
@@ -3080,9 +3220,15 @@ dialog.card[open] {
     min-width: min-content;
   }
 
-  .view :is(.gate-form .check, .ins-show .btn) {
+  .view .gate-form .check {
+    min-height: 34px;
+  }
+
+  .view .ins-show .btn {
     min-height: 42px;
-    padding: 0 14px;
+  }
+
+  .view :is(.gate-form .check, .ins-show .btn) {
     font-size: 13.5px;
     line-height: 18px;
     text-wrap: balance;
@@ -3174,7 +3320,8 @@ dialog.card[open] {
   }
 
   .view.card-settings .card-body,
-  .view.card-profile .card-body {
+  .view.card-profile .card-body,
+  .view.card-achievements .card-body {
     padding: 22px 16px 8px;
   }
 }
@@ -3222,56 +3369,21 @@ dialog.card[open] {
   line-height: 40px;
 }
 
-/* a block for each part of the game, filled once it's proven */
-.mk-parts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 14px 2px 0;
-}
-
-.mk-part {
-  --frame: var(--line);
-  flex: none;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  background: var(--hollow);
-  cursor: pointer;
-}
-
-.mk-part.is-proven {
-  --frame: var(--act);
-  background: var(--act);
-}
-
-.mk-part[aria-pressed='true'] {
-  box-shadow:
-    0 0 0 2px var(--paper),
-    0 0 0 5px var(--sky);
-}
-
-/* a picked block's ring already shows where the keyboard is */
-.mk-part[aria-pressed='true']:focus-visible {
-  outline: none;
-}
-
-.mk-caption {
-  min-height: 44px;
-  margin: 14px 0 0;
-  color: var(--ink);
-  font: 400 13.5px/22px var(--font);
+/* under its progress's two bars, where it stands */
+.mk-next {
+  margin: 12px 0 0;
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
 }
 
 /* Help make it: the sentence to paste, and where to talk. A column rather than a grid: WebKit's grid kept the
    sentence's box at its old height when the page narrowed, so the sentence spilled out of it (#160) */
 .mk-help {
-  --frame: var(--sky);
+  --frame: var(--line);
   display: flex;
   flex-direction: column;
   gap: 14px;
-  margin: 34px 2px 0;
+  margin: 22px 2px 0;
   padding: 20px;
   background: var(--paper);
 }
@@ -3378,7 +3490,6 @@ dialog.card[open] {
 
 .mk-step {
   display: block;
-  color: var(--ink);
   font: 400 16px/24px var(--font);
 }
 
@@ -3433,7 +3544,7 @@ dialog.card[open] {
   /* a phone held sideways: a smaller picture, and less room above */
   .view .make,
   .view .make .ins-show {
-    --hero: min(34vw, (100dvh - 214px - env(safe-area-inset-bottom, 0px)) * 1.54);
+    --hero: min(34vw, (100dvh - 158px - env(safe-area-inset-bottom, 0px)) * 1.54);
   }
 
   .view .make .ins-show {
