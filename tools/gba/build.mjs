@@ -81,7 +81,8 @@ function buildHere(log, windows) {
       ...(windows ? ['-G', 'MinGW Makefiles', `-DCMAKE_MAKE_PROGRAM=${windows.make}`, `-DCMAKE_C_COMPILER=${windows.gcc}`] : []),
       // mGBA 0.10.5 asks for an old CMake, which CMake 4 no longer accepts without this
       '-DCMAKE_POLICY_VERSION_MINIMUM=3.5'], 'Setting up mGBA\'s build', windows?.env);
-    run(cmake, ['--build', BUILD, '--parallel'], 'Building mGBA', windows?.env);
+    // the library alone: on Windows the rest is text files for mGBA's installer, made with a program the compiler's differs from
+    run(cmake, ['--build', BUILD, '--parallel', '--target', 'mgba'], 'Building mGBA', windows?.env);
     [mgba, source] = [MGBA_VERSION, SOURCE];
     writeFileSync(STAMP, JSON.stringify({ mgba, source }) + '\n');
   }
