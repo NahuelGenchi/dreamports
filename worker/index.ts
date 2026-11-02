@@ -403,12 +403,12 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
       // earliest time wins. The answer has all the game's achievements on the profile, so the game
       // shows those earned on other devices too.
       case 'POST /api/achievements': {
-        const player = await mustSignIn();
         const body = await readBody(request);
         const game = body.game;
         // a game keeps them by publishing its list, so a new one needs no line here
         const list = typeof game === 'string' && GAME_PATTERN.test(game) && (await env.ASSETS.fetch(new URL(achievementsListOf(game), url), { method: 'HEAD' }));
         if (!list || !list.ok) throw new Problem(400, 'That game doesn’t keep achievements here.');
+        const player = await mustSignIn();
         const given = body.earned;
         if (!given || typeof given !== 'object' || Array.isArray(given)) throw new Problem(400, 'No achievements were sent.');
         const now = Date.now();
