@@ -14,7 +14,7 @@ import { serveRepository } from './lib/server.mjs';
 import { go, openChrome } from './lib/chrome.mjs';
 import { WINDOW, loopOf, measure, shortlist } from './lib/moments.mjs';
 import { av1Configuration, av1Frame, mp4 } from './lib/mp4.mjs';
-import { withCapture } from './lib/new-game.mjs';
+import { plainWebp, withCapture } from './lib/new-game.mjs';
 import { ensureOriginal, playOriginal, runOriginal } from './gba/original.mjs';
 
 const CLIP_LIMIT = 1.4e6, CLIP_TARGET = 1.2e6;   // a clip's bytes: visitors download it when they select the game
@@ -172,7 +172,7 @@ export async function run(args) {
     };
     const out = name => join(REPO, 'public', 'media', `${game}-dreamport${name}`);
     const h264 = await encode('h264'), av1 = await encode('av1');
-    const still = Buffer.from(await page.evaluate(`__capture.still(${choice})`), 'base64');
+    const still = plainWebp(Buffer.from(await page.evaluate(`__capture.still(${choice})`), 'base64'));
     const share = Buffer.from(await page.evaluate(`__capture.share(${choice})`), 'base64');
     writeFileSync(out('.h264.mp4'), h264);
     writeFileSync(out('.av1.mp4'), av1);

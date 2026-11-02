@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { deflateSync } from 'node:zlib';
 import { mp4 } from '../../tools/lib/mp4.mjs';
-import { startingEntry, startingFiles, withCapture } from '../../tools/lib/new-game.mjs';
+import { plainWebp, startingEntry, startingFiles, withCapture } from '../../tools/lib/new-game.mjs';
 import { checkFirstEntry, gameOf, isClip, isShare, isStill, pathsOf, readCodeMap, readOriginal } from './rules.mjs';
 import { MARK, REASONS, askFor, markOf, normalReview } from './text.mjs';
 
@@ -176,6 +176,10 @@ test('a capture is a silent clip, a still and a share picture, with nothing else
   assert.equal(isClip(Buffer.from('<html>'), 'avc1'), false);
   assert.equal(isClip(Buffer.concat([clip(), Buffer.alloc(1_500_000)]), 'avc1'), false);
   assert.equal(isStill(webp('EXIF')), false, 'words in a still');
+  const profiled = Buffer.concat([webp('ICCP'), webp().subarray(12)]);
+  profiled.writeUInt32LE(profiled.length - 8, 4);
+  assert.equal(isStill(profiled), false, 'room for words beside a still');
+  assert.ok(isStill(plainWebp(profiled)), 'what capture writes from a browser\'s still');
   assert.equal(isStill(Buffer.from('<svg onload="alert(1)"></svg>')), false);
   assert.equal(isShare(png(['tEXt', Buffer.from('words')])), false, 'words in a picture');
   assert.equal(isShare(Buffer.concat([png(), Buffer.from('words')])), false);
