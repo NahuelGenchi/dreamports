@@ -197,6 +197,12 @@ a {
   outline-offset: 4px;
 }
 
+/* a card's first control takes focus as its page loads, which is only a stray border to anyone
+   not using a key or a controller's button yet */
+:root.js:not(.keyed) .launcher :focus-visible {
+  outline: none;
+}
+
 ::selection {
   background: var(--sky);
   color: #0a1738;

@@ -1675,6 +1675,7 @@ function start(launcher: HTMLElement) {
 
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    root.classList.add('keyed');
     const t = e.target as Element;
     // letters type into the search field and the profile's name, and a phone's own keyboard keeps
     // the touch hints
@@ -1824,6 +1825,7 @@ function start(launcher: HTMLElement) {
       step = dir;
     }
     if (!edges.length && !step) return;
+    root.classList.add('keyed');
     setInput('pad');
     if (state.launching) {
       if (edges.includes(1)) back();
