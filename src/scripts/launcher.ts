@@ -2019,8 +2019,8 @@ function start(launcher: HTMLElement) {
   // magnifier on a tap followed by a long press (WebKit bug 296492), and with it a selection and
   // its menu. So on iOS, where there's nothing to select, a touch that starts right after a tap and
   // near it is cancelled, as the games' touch buttons cancel theirs, and clicks here instead when
-  // it's a tap too. Only those touches are, so the row still pinches and cards still scroll. A
-  // selection that starts where there's nothing to select is let go.
+  // it's a tap too. Only those touches are, so cards still scroll. A selection that starts where
+  // there's nothing to select is let go.
   if ('standalone' in navigator && navigator.maxTouchPoints > 0) {
     const unselectable = (node: EventTarget | null) => {
       const el = node instanceof Element ? node : node instanceof Node ? node.parentElement : null;
@@ -2080,8 +2080,8 @@ function start(launcher: HTMLElement) {
   // The page under the launcher never scrolls, but when a phone turns back upright in the Home Screen
   // app, iOS can leave it scrolled by the status bar's height. The launcher is still drawn in its
   // place, while every press lands that far below the finger, so the buttons seem dead. So the page
-  // goes back to the top, unless it moved on purpose: a pinch zoom, or the keyboard making room for
-  // a text field.
+  // goes back to the top, unless it moved on purpose: a zoom from the browser's menu or the device,
+  // or the keyboard making room for a text field.
   const viewport = window.visualViewport;
   function backToTop() {
     if (!window.scrollY) return;
