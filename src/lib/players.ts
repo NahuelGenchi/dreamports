@@ -1,25 +1,17 @@
 // What accounts know about the games played on dreamports.net, shared by the site and its Worker
 // (worker/). docs/ACCOUNTS.md explains how a game uses them.
 
-export interface Playable {
-  // the id of the game's page, whose title and address the profile shows: for a Dreamport, its folder's name
-  // and "-dreamport" (src/lib/entries.mjs)
-  entry: string;
-  // the game's own list of achievements, an ES module exporting ACHIEVEMENTS: [{ id, title, description }]
-  list: string;
-  // where the game keeps, in localStorage, what this device earned before anyone signed in: an id → time map
-  device: string;
-}
+// The name in a game's address, /play/<name>/.
+export const GAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-// By the name in the game's address, /play/<name>/. public/dreamports.js keeps its own copy of the
-// `device` keys.
-export const PLAYABLE: Record<string, Playable> = {
-  'sonic-advance': {
-    entry: 'sonic-advance-dreamport',
-    list: '/play/sonic-advance/src/achievements/list.js',
-    device: 'onsoku.achievements',
-  },
-};
+// A game keeps achievements on players' profiles by having this file, its own list of them, an ES module exporting
+// ACHIEVEMENTS: [{ id, title, description }]. Nothing else has to name the game: the site and the Worker look for it.
+export const achievementsListOf = (game: string) => `/play/${game}/src/achievements/list.js`;
+
+// Where a game keeps, in localStorage, what this device earned before anyone signed in: an id → time map. The kit's
+// achievements/store.js and public/dreamports.js say the same. Sonic Advance Dreamport's came first, and players have
+// it on their devices.
+export const deviceKeyOf = (game: string) => (game === 'sonic-advance' ? 'onsoku.achievements' : `${game}.achievements`);
 
 // A player's name: 3 to 20 letters, numbers, dashes and underscores. Two names that differ only in
 // capitals are the same name.
