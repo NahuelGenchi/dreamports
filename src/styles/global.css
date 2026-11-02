@@ -387,13 +387,19 @@ kbd {
 }
 
 /* with little room beside the filters, the hint goes first and then the controller's icon: the speaker always stays */
-@media (max-width: 500px) {
+@media (max-width: 619px) {
+  #ico-pad:not(.is-off) + .status-sound .key {
+    display: none;
+  }
+}
+
+@media (max-width: 519px) {
   .status-sound .key {
     display: none;
   }
 }
 
-@media (max-width: 340px) {
+@media (max-width: 437px) {
   #ico-pad {
     display: none;
   }
@@ -406,23 +412,61 @@ kbd {
   gap: 8px;
 }
 
+/* the filters stand on a ring, the one showing in the middle and one on each side, whose outer edge fades away. It's
+   all in ch, as the font is monospaced. Two steps from the middle is past the window's edge, out of sight, where a
+   value going round the ring leaves and comes back in */
 .tabs {
+  --ring: 35ch;
+  --step: 12ch;
+  --fade: 7.5ch;
+  --ring-mask: linear-gradient(90deg, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
   position: relative;
   display: flex;
+  flex: none;
   align-items: center;
   gap: 6px;
+  width: var(--ring);
+  height: 44px;
+  overflow: hidden;
+  overflow: clip;
+  font-size: 13.5px;
+  -webkit-mask-image: var(--ring-mask);
+  mask-image: var(--ring-mask);
 }
 
 .tab {
+  position: absolute;
+  top: 5px;
+  left: 50%;
   display: inline-flex;
   align-items: center;
   height: 34px;
   padding: 0 7px;
   color: var(--dim);
-  font-size: 13.5px;
   font-weight: 400;
   text-decoration: none;
+  white-space: nowrap;
   cursor: pointer;
+  translate: calc(-50% + var(--at, 0) * var(--step)) 0;
+  transition: color 0.2s ease;
+}
+
+/* it glides only as it turns, not when the font arrives or the window changes size */
+.tabs.is-turning .tab {
+  transition:
+    translate 0.4s var(--glide),
+    color 0.2s ease;
+}
+
+.tabs.is-turning .tab-mark {
+  transition: width 0.4s var(--glide);
+}
+
+/* a fingertip's worth to press, above and below the word */
+.tab::after {
+  content: '';
+  position: absolute;
+  inset: -5px 0;
 }
 
 .tab:hover {
@@ -434,15 +478,25 @@ kbd {
   font-weight: 700;
 }
 
+/* its ring stays inside the window, which would cut the outside of it off */
+.tab:focus-visible {
+  outline-offset: 3px;
+}
+
+/* what goes on out of sight while the value it stands in for comes back in at the other edge */
+.tab-gone {
+  pointer-events: none;
+}
+
 .tab-mark {
   position: absolute;
-  bottom: 2px;
+  bottom: 7px;
+  left: 50%;
+  width: calc(var(--len, 0) * 1ch + 14px);
   height: 4px;
   background: var(--sky);
   pointer-events: none;
-  transition:
-    left 0.4s var(--glide),
-    width 0.4s var(--glide);
+  translate: -50% 0;
 }
 
 .shoulder {
@@ -2168,8 +2222,22 @@ dialog.card[open] {
   outline-offset: 6px;
 }
 
-:root:not(.js) :is(.cursor, .nameplate, .shoulder, .status, .glow, #btn-settings, #btn-search, #btn-profile) {
+:root:not(.js) :is(.cursor, .nameplate, .shoulder, .status, .glow, .tab-mark, #btn-settings, #btn-search, #btn-profile) {
   display: none;
+}
+
+/* nothing turns the ring, so the filters are plain links in a row */
+:root:not(.js) .tabs {
+  width: auto;
+  height: auto;
+  overflow: visible;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+:root:not(.js) .tab {
+  position: static;
+  translate: none;
 }
 
 /* on a card's page the card has the row's place */
@@ -2344,11 +2412,11 @@ dialog.card[open] {
 @media (max-width: 560px) {
   .tab {
     padding: 0 5px;
-    font-size: 12px;
   }
 
   .tabs {
     gap: 4px;
+    font-size: 12px;
   }
 
   .filters {
@@ -2391,19 +2459,18 @@ dialog.card[open] {
   }
 }
 
-/* with three filters, a phone keeps room in the top bar for the door and the speaker: the tabs switch rows by
-   themselves, so L and R go, and on the narrowest phones the tabs draw closer together. The search field reaches
-   10 px past the tabs into the room L and R leave, with less room round its icon and its ×, so it keeps
-   "Search Dreamports". Its Esc hint goes, as on touch screens, leaving the ×, so a computer zoomed in to this width
-   keeps it too */
-@media (max-width: 440px) {
+/* a phone keeps room in the top bar for the door and the speaker: the side values can be pressed themselves, so L and
+   R go */
+@media (max-width: 509px) {
   .shoulder {
     display: none;
   }
+}
 
+/* with less room round the search field's icon and its ×, it keeps "Search Dreamports". Its Esc hint goes, as on touch
+   screens, leaving the ×, so a computer zoomed in to this width keeps it too */
+@media (max-width: 440px) {
   .search {
-    left: -10px;
-    right: -10px;
     gap: 4px;
     padding-left: 6px;
   }
@@ -2417,8 +2484,17 @@ dialog.card[open] {
   }
 }
 
-/* under 360 px, as on a 320 px iPhone SE, the bar's edges narrow too, and the search field reaches further past the
-   tabs, 22 px, so it keeps "Search Dreamports" with its focus ring clear of the door and the speaker */
+/* the ring draws in, keeping a little of each side value's fade */
+@media (max-width: 387px) {
+  .tabs {
+    --ring: 31ch;
+    --step: 10.5ch;
+    --fade: 6.5ch;
+  }
+}
+
+/* under 360 px, as on a 320 px iPhone SE, the bar's edges narrow too, and the search field reaches a little past the
+   ring, so it keeps "Search Dreamports" with its focus ring clear of the door and the speaker */
 @media (max-width: 359px) {
   .topbar {
     gap: 6px;
@@ -2428,12 +2504,24 @@ dialog.card[open] {
 
   .tab {
     padding: 0 3px;
+  }
+
+  .tabs {
     font-size: 11px;
   }
 
   .search {
-    left: -22px;
-    right: -22px;
+    left: -4px;
+    right: -4px;
+  }
+}
+
+/* narrower than any phone but a folded one, the side values' outer ends go past the window's edge */
+@media (max-width: 315px) {
+  .tabs {
+    --ring: 27ch;
+    --step: 10ch;
+    --fade: 5.5ch;
   }
 }
 
@@ -2441,7 +2529,7 @@ dialog.card[open] {
    so no button is out of reach */
 @media (max-width: 299px) {
   .topbar {
-    grid-template-columns: auto auto auto;
+    grid-template-columns: max-content max-content max-content;
     justify-content: space-between;
     overflow: auto hidden;
   }
@@ -2464,7 +2552,6 @@ dialog.card[open] {
 }
 
 :root[data-motion='calm'] .row,
-:root[data-motion='calm'] .tab-mark,
 :root[data-motion='calm'] .t-door,
 :root[data-motion='calm'] .switch-knob {
   transition: none;
