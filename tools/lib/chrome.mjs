@@ -10,6 +10,25 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 // whether any process of the browser with this profile is still running: its helpers have the folder in their command lines too
 const running = profile => spawnSync('ps', ['-Awwo', 'args='], { encoding: 'utf8' }).stdout?.replaceAll('\n', ' ').includes(`--user-data-dir=${profile} `);
 
+// the browser left behind by a run that was stopped partway, on Windows, where nothing else can find it
+const stopBrowserOf = profile => spawnSync(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoProfile', '-Command',
+  'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:DREAMPORTS_PROFILE) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }'],
+{ env: { ...process.env, DREAMPORTS_PROFILE: `--user-data-dir=${profile}` }, stdio: 'ignore' });
+
+// a browser that has just quit can hold files in its profile for a moment, which Windows won't delete, and one left
+// behind by a run that was stopped partway holds them until it's stopped
+async function emptied(profile) {
+  for (let tries = 100; ; tries--) {
+    try {
+      return rmSync(profile, { recursive: true, force: true });
+    } catch (error) {
+      if (!tries) throw error;
+      if (tries === 50 && process.platform === 'win32') stopBrowserOf(profile);
+      await wait(100);
+    }
+  }
+}
+
 /** The browser to use: $CHROME, or Chrome, Chromium or Edge where they usually are. */
 export function findChrome() {
   if (process.env.CHROME) return process.env.CHROME;
@@ -40,7 +59,7 @@ const NO_CONTROLLERS = `Object.defineProperty(Navigator.prototype, 'getGamepads'
  * { send, evaluate, once, errors, closed, close }.
  */
 export async function openChrome({ profile, headless = true, fresh = true, controllers = !headless }) {
-  if (fresh) rmSync(profile, { recursive: true, force: true });
+  if (fresh) await emptied(profile);
   mkdirSync(profile, { recursive: true });
   const portFile = join(profile, 'DevToolsActivePort');
   rmSync(portFile, { force: true });
@@ -51,20 +70,41 @@ export async function openChrome({ profile, headless = true, fresh = true, contr
     'about:blank',
   ];
   const chrome = spawn(findChrome(), args, { stdio: 'ignore' });
-  const exited = new Promise(resolve => chrome.once('exit', resolve));
+  try {
+    return await drive(chrome, portFile, profile, headless, controllers);
+  } catch (error) {
+    // nothing else would close it, and the tools wouldn't end while it's open
+    chrome.kill();
+    throw error;
+  }
+}
+
+async function drive(chrome, portFile, profile, headless, controllers) {
+  let ended = false;
+  const exited = new Promise(resolve => chrome.once('exit', () => {
+    ended = true;
+    resolve();
+  }));
+  // a browser's first start on a computer can be slow, and one that has ended won't start any more
+  const giveUp = Date.now() + 120000;
   let port;
-  for (let i = 0; i < 300 && !port; i++) {
-    if (existsSync(portFile)) port = readFileSync(portFile, 'utf8').split('\n')[0];
-    else await wait(100);
+  while (Date.now() < giveUp && !ended && !port) {
+    try {
+      // it holds its port on the first line, and the file's done once there's a second
+      const [first, second] = readFileSync(portFile, 'utf8').split('\n');
+      if (second !== undefined) port = first;
+    } catch {
+      // not there yet, or on Windows still being written
+    }
+    if (!port) await wait(100);
   }
   if (!port) {
-    chrome.kill();
     // a window needs a screen, which a terminal on a server or in an old WSL doesn't have
     const noScreen = !headless && process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
     throw new Error(noScreen ? 'The browser\'s window can\'t open, since this terminal has no screen to show it on. In WSL on Windows, run wsl --update in a Windows terminal, then open WSL again.' : 'The browser didn\'t start.');
   }
   let target;
-  for (let i = 0; i < 100 && !target; i++) {
+  while (Date.now() < giveUp && !ended && !target) {
     try {
       target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(t => t.type === 'page');
     } catch {
@@ -72,6 +112,7 @@ export async function openChrome({ profile, headless = true, fresh = true, contr
     }
     if (!target) await wait(100);
   }
+  if (!target) throw new Error('The browser didn\'t start.');
   const socket = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => {
     socket.addEventListener('open', resolve, { once: true });
