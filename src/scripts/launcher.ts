@@ -332,7 +332,7 @@ function start(launcher: HTMLElement) {
     const named = slot?.dataset.title;
     const text = named ?? slot?.dataset.note ?? '';
     if (plateName.textContent === text) return;
-    const w0 = plate.getBoundingClientRect().width;
+    const { width: w0, height: h0 } = plate.getBoundingClientRect();
     if (slot?.dataset.game) showTitle(plateName, text);
     else plateName.textContent = text;
     plateDetail.textContent = (named && slot.dataset.detail) || '';
@@ -342,8 +342,8 @@ function start(launcher: HTMLElement) {
     plateHelp.textContent = (named && slot.dataset.help) || '';
     plate.classList.toggle('is-empty', !named);
     if (calm() || !w0 || !state.ready) return;
-    const w1 = plate.getBoundingClientRect().width;
-    plate.animate([{ width: w0 + 'px' }, { width: w1 + 'px' }], { duration: 300, easing: 'cubic-bezier(.22,1,.36,1)' });
+    const { width: w1, height: h1 } = plate.getBoundingClientRect();
+    plate.animate([{ width: w0 + 'px', height: h0 + 'px' }, { width: w1 + 'px', height: h1 + 'px' }], { duration: 300, easing: 'cubic-bezier(.22,1,.36,1)' });
     $('.np-text', plate).animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], {
       duration: 240,
       easing: 'ease-out',
@@ -876,6 +876,14 @@ function start(launcher: HTMLElement) {
   // how far a game's page had scrolled when a page under it took its place, to come back to
   let leftAt = [0, 0];
 
+  // changes the row with no transition: every part of it with no-anim, or only a game's light with light-now
+  function rowAtOnce(how: 'no-anim' | 'light-now', change: () => void) {
+    rowEl.classList.add(how);
+    change();
+    void rowEl.offsetWidth;
+    rowEl.classList.remove(how);
+  }
+
   // a card takes the menu's place: the row steps aside and the card's parts come in. A card that
   // is up gives way at once.
   function openView(dlg: HTMLDialogElement, opts: OpenOptions) {
@@ -883,7 +891,6 @@ function start(launcher: HTMLElement) {
     const replacing = !!state.view;
     // the page under this one, when coming back from it, and the link that opened it
     const under = state.view && standsUnder(state.view, dlg) ? state.view : null;
-    const kin = !!under || (!!state.view && standsUnder(dlg, state.view));
     const link = under && $$('a', dlg).find((a) => hrefOf(a) === under.dataset.path);
     if (state.view) {
       if (standsUnder(dlg, state.view)) leftAt = [$('.ins-text', state.view).scrollTop, $('.inspect', state.view).scrollTop];
@@ -893,9 +900,14 @@ function start(launcher: HTMLElement) {
     if (dlg === settingsCard) syncSettings();
     state.view = state.open = dlg;
     state.opener = opener;
+    // what the row's recording is showing goes along with the game's picture
+    const frame = !opts.instant && !replacing && hasHero(dlg) ? rowFrame() : null;
     sleepRow();
     for (const a of dlg.getAnimations({ subtree: true })) a.cancel();
-    launcher.dataset.view = dlg.dataset.card;
+    // nothing of the row shows between two cards, and a game's light passes to its page at once, so it never shows twice
+    rowAtOnce(replacing ? 'no-anim' : 'light-now', () => {
+      launcher.dataset.view = dlg.dataset.card;
+    });
     if (dlg.open) dlg.close();
     dlg.show();
     // focus can't leave a page that scrolls as a whole, in a window too short for its top to stay, past that top
@@ -907,10 +919,10 @@ function start(launcher: HTMLElement) {
     if (hasHero(dlg)) {
       $('.ins-text', dlg).scrollTop = under ? leftAt[0] : 0;
       $('.inspect', dlg).scrollTop = under ? leftAt[1] : 0;
-      if (!under) resetExtras(dlg);
-      startShow(dlg, !opts.instant && !replacing);
+      if (!under) resetExtras(dlg, !!opts.instant);
+      startShow(dlg, !opts.instant && !replacing, frame);
     }
-    if (!opts.instant) viewIn(dlg, kin);
+    if (!opts.instant) viewIn(dlg, replacing);
     (link ?? focusStart(dlg))?.focus({ preventScroll: true });
     if (!opts.instant) sound.play('open');
     enterAddress(dlg, opts.address ?? (replacing ? 'replace' : 'push'));
@@ -948,15 +960,19 @@ function start(launcher: HTMLElement) {
     if (hasHero(dlg)) {
       stop(showScr);
       showScr = null;
+      if (!opts.swap && !calm()) ownStill(dlg);
     }
     const opener = state.opener;
     if (opts.address !== false) leaveAddress();
+    const rowBack = () => {
+      delete launcher.dataset.view;
+    };
     const finish = () => {
       if (state.view === dlg) return;
       if (dlg.open) dlg.close();
       for (const a of dlg.getAnimations({ subtree: true })) a.cancel();
       if (opts.swap || state.view || state.launching) return;
-      delete launcher.dataset.view;
+      if ('view' in launcher.dataset) rowAtOnce('light-now', rowBack);
       if (!opts.keepFocus) {
         const back = opener && opener.isConnected && launcher.contains(opener) && !opener.closest('dialog') ? opener : null;
         (back ?? slots[sel()]).focus({ preventScroll: true });
@@ -966,6 +982,12 @@ function start(launcher: HTMLElement) {
     if (opts.instant) {
       finish();
       return;
+    }
+    // the row starts back before a view with no picture to fly has quite gone, so the screen is never empty
+    if (calm() || !hasHero(dlg)) {
+      setTimeout(() => {
+        if (!state.view && !state.launching) rowBack();
+      }, calm() ? 60 : 110);
     }
     viewOut(dlg).then(finish);
   }
@@ -987,11 +1009,13 @@ function start(launcher: HTMLElement) {
             : ['.card-title', '.set-list', '.card-note'];
     return [...parts.map((part) => $(part, dlg)), $('.view-bar', dlg)];
   }
-  // kin: it takes the place of a page it stands over or under, where Back already is, so Back stays and the rest starts at once
-  function viewIn(dlg: HTMLDialogElement, kin = false) {
-    const parts = viewParts(dlg).filter((el) => !kin || !el.matches('.view-bar'));
+  // replacing: it takes another card's place, where Back already is, so Back stays and the rest starts at once, a
+  // little way in, so its first frame isn't an empty one
+  function viewIn(dlg: HTMLDialogElement, replacing = false) {
+    const parts = viewParts(dlg).filter((el) => !replacing || !el.matches('.view-bar'));
+    const started = replacing ? 32 : 0;
     if (calm()) {
-      for (const el of kin ? parts : [dlg]) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 });
+      for (const el of replacing ? parts : [dlg]) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 }).currentTime = started;
       return;
     }
     const d = Math.round(clamp(Math.min(W, H) * 0.04, 12, 32));
@@ -999,10 +1023,10 @@ function start(launcher: HTMLElement) {
       const from = el.matches('.ins-text') ? `translateX(${d * 2}px)` : `translateY(${d}px)`;
       el.animate([{ opacity: 0, transform: from }, { opacity: 1, transform: 'none' }], {
         duration: 480,
-        delay: (kin ? 0 : 60) + i * 60,
+        delay: (replacing ? 0 : 60) + i * 60,
         easing: 'cubic-bezier(.2,.9,.25,1)',
         fill: 'backwards',
-      });
+      }).currentTime = started;
     });
   }
   function viewOut(dlg: HTMLDialogElement) {
@@ -1200,7 +1224,7 @@ function start(launcher: HTMLElement) {
 
   // inspect: the game's screen grows out of the row and wakes up
   let showScr: HTMLElement | null = null;
-  function startShow(dlg: HTMLDialogElement, animate: boolean) {
+  function startShow(dlg: HTMLDialogElement, animate: boolean, frame: HTMLCanvasElement | null = null) {
     const showTile = $('.show-tile', dlg);
     const scr = showTile.querySelector<HTMLElement>('.screen[data-clip]');
     if (scr && !calm()) {
@@ -1225,6 +1249,21 @@ function start(launcher: HTMLElement) {
       [{ transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${(from.width / to.width).toFixed(3)})` }, { transform: 'none' }],
       { duration: 560, easing: 'cubic-bezier(.2,.9,.3,1)' },
     );
+    if (frame && scr) {
+      $('.clip', scr).after(frame);
+      frame.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, delay: 120, fill: 'forwards' }).finished.catch(() => {}).then(() => frame.remove());
+    }
+  }
+  // the frame the row's recording is on, which would otherwise change in one frame to the game's still as it lifts off
+  function rowFrame() {
+    const vid = awake?.querySelector<HTMLVideoElement>('.clip');
+    if (!vid || vid.readyState < 2) return null;
+    const frame = document.createElement('canvas');
+    frame.className = 'still';
+    frame.width = vid.videoWidth;
+    frame.height = vid.videoHeight;
+    frame.getContext('2d')?.drawImage(vid, 0, 0);
+    return frame;
   }
 
   // before you play: the links stay locked until the box is ticked, and the tick lasts
@@ -1331,14 +1370,18 @@ function start(launcher: HTMLElement) {
   // the picture changes to the picked extra's recording, or the game's own: the old one fades
   // out over the new one's still, and the new one fades in once its first frame is up
   let extraRun = 0;
-  function showExtra(tab: HTMLElement, wake: boolean) {
+  function showExtra(tab: HTMLElement, wake: boolean, keepStill = false) {
     const dlg = tab.closest('dialog')!;
     const scr = dlg.querySelector<HTMLElement>('.show-tile .screen[data-clip]');
     const base = tab.dataset.clip;
     if (!scr || !base || scr.dataset.clip === base) return;
     const run = ++extraRun;
     scr.dataset.clip = base;
-    $<HTMLImageElement>('.still', scr).src = tab.dataset.still!;
+    if (!keepStill) {
+      const still = $<HTMLImageElement>('.still', scr);
+      scr.dataset.own ??= still.getAttribute('src')!;
+      still.src = tab.dataset.still!;
+    }
     if (!wake || calm() || state.open !== dlg || showScr !== scr) return;
     scr.classList.remove('is-awake');
     setTimeout(async () => {
@@ -1351,11 +1394,19 @@ function start(launcher: HTMLElement) {
       scr.classList.add('is-awake');
     }, 180);
   }
-  function resetExtras(dlg: HTMLElement) {
+  // the picture a game's page flies in and out with is the row's, so it doesn't change as it lifts off or lands: the
+  // first extra's recording fades in over it. With no recordings there's no flight, and its still shows at once, except
+  // on a page opened from its own address, which would have to fetch it after its first frame.
+  function ownStill(dlg: HTMLElement) {
+    const scr = dlg.querySelector<HTMLElement>('.show-tile .screen[data-clip]');
+    if (scr?.dataset.own) $<HTMLImageElement>('.still', scr).src = scr.dataset.own;
+  }
+  function resetExtras(dlg: HTMLElement, instant: boolean) {
     const first = dlg.querySelector<HTMLElement>('.x-row [role="tab"]');
     if (!first) return;
     pickExtra(first, true);
-    showExtra(first, false);
+    if (!calm()) ownStill(dlg);
+    showExtra(first, false, !calm() || instant);
     prefetch((first.nextElementSibling as HTMLElement | null)?.dataset.clip);
   }
   for (const row of $$('.x-row', launcher)) {
@@ -1448,8 +1499,11 @@ function start(launcher: HTMLElement) {
   let leaving = false;
   // what goes through the doorway: the game in the row, or the picture on the game's page
   let flyer: HTMLElement | null = null;
-  async function launch(dlg: HTMLDialogElement, href: string) {
+  async function launch(dlg: HTMLDialogElement, link: string) {
     if (state.launching) return;
+    // a preview of the site opens the game on that preview
+    const to = new URL(link, location.href);
+    const href = to.hostname === 'dreamports.net' ? location.origin + to.pathname : link;
     const slotEl = slots[sel()];
     if (!slotEl || slotEl.dataset.game !== dlg.dataset.game) {
       window.location.assign(href);
@@ -1541,6 +1595,7 @@ function start(launcher: HTMLElement) {
     // the game comes back up from wherever the launch left it
     const left = getComputedStyle(lift);
     const from = { transform: left.transform, opacity: left.opacity };
+    const faded = getComputedStyle(launcher).opacity;
     target.classList.remove('is-flash');
     launcher.classList.remove('is-launching');
     launcher.inert = false;
@@ -1551,7 +1606,7 @@ function start(launcher: HTMLElement) {
       target.classList.remove('is-up');
       irisAnim?.cancel();
       irisAnim = null;
-      await launcher.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 280 }).finished.catch(() => {});
+      await launcher.animate([{ opacity: faded }, { opacity: 1 }], { duration: 280 }).finished.catch(() => {});
     } else {
       // the screen opens again only if it had closed
       const closed = !!irisAnim;
@@ -1576,6 +1631,10 @@ function start(launcher: HTMLElement) {
     wakeRow();
   }
   boBack.addEventListener('click', () => back());
+  // a page the browser keeps comes back as it left, so the black screen goes as it leaves, not a moment after it's back
+  window.addEventListener('pagehide', (e) => {
+    if (e.persisted && state.launching) blackout.hidden = true;
+  });
   // coming back from the game with the browser's back button finds the menu as it was left
   window.addEventListener('pageshow', (e) => {
     if (!e.persisted || !state.launching) return;
@@ -2209,7 +2268,16 @@ function start(launcher: HTMLElement) {
   buildRow();
   layout();
   updateTabs();
-  launcher.classList.add('is-laid');
+  // all of it in the same frame, and in its own font if that isn't long in coming: the top bar's fade is only for a
+  // view's coming and going
+  const topbar = $('.topbar', launcher);
+  const fonts = ['400 15px Monocraft', '700 15px Monocraft'].map((font) => document.fonts?.load(font));
+  Promise.race([Promise.all(fonts), wait(300)]).finally(() => {
+    topbar.style.transition = 'none';
+    launcher.classList.add('is-laid');
+    void topbar.offsetWidth;
+    topbar.style.transition = '';
+  });
   // the page's own card, if it has one, opens over the menu
   followAddress(true);
   // when the address ends in a #, the browser moves focus to what it points at once the page has
@@ -2237,11 +2305,13 @@ function start(launcher: HTMLElement) {
     state.ready = true;
     wakeRow(400);
   });
-  // get the font's weights ready while nothing is happening, so the first card opens without a hitch
+  // get the other rows' pictures ready while nothing is happening, so the first turn to them doesn't find their screens empty
   const idle = window.requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 600));
   idle(() => {
-    for (const font of ['400 15px Monocraft', '700 15px Monocraft']) {
-      document.fonts?.load(font).catch(() => {});
-    }
+    for (const f of FILTERS) for (const img of f.template.content.querySelectorAll('img')) new Image().src = img.getAttribute('src')!;
+    // which are the pictures the games' pages fly in with, so those are ready to show on their first frame too
+    for (const img of $$<HTMLImageElement>('.show-tile .still[loading="lazy"]', launcher)) img.loading = 'eager';
+    // with no recordings, a game's first extra shows its still as soon as its page opens
+    if (calm()) for (const tab of $$('.x-row [role="tab"]:first-child', launcher)) new Image().src = tab.dataset.still!;
   });
 }

@@ -27,7 +27,7 @@ The kit is plain JavaScript that the browser runs as it is, with no build step, 
 A new Game Boy Advance Dreamport is a folder in [`games/`](../../games/README.md), such as `games/my-game/`, with three files to begin with:
 
 - `LICENSE`, a copy of [the kit's](LICENSE), as Dreamports use GPL-3.0-or-later.
-- `index.html`, the page, which loads the kit's look and the game, and has the viewport tag and `/no-zoom.js` that keep it from zooming.
+- `index.html`, the page, which loads the kit's look and the game, and has the viewport tag and `/no-zoom.js` that keep it from zooming. It starts on the launcher's Opening screen, in the launcher's look, with the game's name, so that a launch runs straight on into it, and the start screen fades in over that once the game's files are in.
 - `src/main.js`, the game.
 
 ```html
@@ -39,10 +39,13 @@ A new Game Boy Advance Dreamport is a folder in [`games/`](../../games/README.md
 <script defer src="/no-zoom.js"></script>
 <title>My Game Dreamport</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<script>try { const root = document.documentElement; root.dataset.theme = localStorage.getItem('dreamports:theme') ?? ''; root.dataset.motion = localStorage.getItem('dreamports:motion') ?? ''; } catch {}</script>
 <link rel="stylesheet" href="../../kit/gba/styles/kit.css">
+<script>document.fonts.load('14px Monocraft');</script>
 </head>
 <body>
 <main>
+  <div class="opening"><div class="opening-in"><i class="opening-door"></i><p>Opening My Game <span class="dp-tag">Dreamport</span><span class="opening-dots"></span></p></div></div>
   <section class="picker" id="picker" aria-label="Your ROMs"></section>
   <section class="stage" id="stage" hidden>
     <canvas id="screen" tabindex="0" aria-label="My Game"></canvas>

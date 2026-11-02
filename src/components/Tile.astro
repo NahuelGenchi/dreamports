@@ -19,7 +19,7 @@ const { screen } = game.data;
   {
     screen ? (
       <div class:list={['screen', screen.pixelated && 'px']} data-clip={screen.clip}>
-        <img class="still" src={screen.still} alt="" draggable="false" loading={lazy ? 'lazy' : undefined} />
+        <img class="still" src={screen.still} alt="" draggable="false" loading={lazy ? 'lazy' : undefined} decoding={lazy ? 'sync' : undefined} />
         <video class="clip" muted loop playsinline disablepictureinpicture preload="none"></video>
         <i class="scan" />
       </div>
