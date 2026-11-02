@@ -77,9 +77,6 @@ These are the projects on the site so far.
 
 ## Make a Dreamport
 
-> [!NOTE]
-> **Not open yet.** The Dreamports team is making the next Dreamport by following these steps first, to find what's confusing before anyone else tries ([#83](https://github.com/NahuelGenchi/dreamports/issues/83)). Until then, they may still change.
-
 **No coding needed.** Your coding agent does the technical work. You bring the game and play it, and your agent checks what you play against the original.
 
 You need three things: your own copy of the game as a file, a free GitHub account, and a coding agent that works on your computer, such as Claude Code, Codex, Cursor, Gemini CLI or Antigravity CLI. For a Game Boy Advance game, your copy is a `.gba` file made from your cartridge. The file never leaves your computer. When your agent needs to see how one of the game's functions works, it reads just that function, and that part goes to the company that runs your agent's model, as everything an agent reads does.
