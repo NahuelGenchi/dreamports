@@ -19,7 +19,7 @@ import SettingsCard from './SettingsCard.astro';
 import Slot from './Slot.astro';
 import TrophySprite from './TrophySprite.astro';
 import { FILTERS, SECTIONS, getGames, type Filter, type FilterKey, type Game } from '../lib/site';
-import { beingMade, makeView } from '../lib/dreamports';
+import { beingMade, makeView, released } from '../lib/dreamports';
 import { making as readMaking } from '../lib/making';
 
 interface Props {
@@ -40,6 +40,8 @@ interface Place {
 
 const { filter, selected, open } = Astro.props;
 const games = await getGames();
+// those with a place in their row and a page of their own
+const forPlayers = games.filter(released);
 // the Dreamports being made, each with a page in the Make row
 const making = games.filter((game) => game.data.kind === 'dreamport' && beingMade(game.data));
 // their pieces and steps, from GitHub
@@ -51,7 +53,7 @@ const rows = FILTERS.map((f) => {
   if (f.key === 'make') {
     return { filter: f, list: [...making.map((game): Place => ({ game, make: true, free: freeOf(game) })), { start: true }] };
   }
-  return { filter: f, list: games.filter((game) => f.kinds.includes(game.data.kind)).map((game): Place => ({ game })) };
+  return { filter: f, list: forPlayers.filter((game) => f.kinds.includes(game.data.kind)).map((game): Place => ({ game })) };
 });
 const current = rows.find((row) => row.filter.key === filter)!;
 const selIndex = Math.max(0, current.list.findIndex((place) => !!place.game && place.game.id === selected));
@@ -206,8 +208,8 @@ const pathsFor = (f: Filter) =>
   <AboutCard open={open === 'about'} />
   <ProfileCard open={open === 'profile'} />
   <PlayerCard open={open === 'player'} />
-  {games.map((game) => <InspectCard game={game} open={open === 'inspect' && game.id === selected} />)}
-  {games.filter((game) => game.data.kind === 'dreamport').map((game) => <AchievementsCard game={game} open={open === 'achievements' && game.id === selected} />)}
+  {forPlayers.map((game) => <InspectCard game={game} open={open === 'inspect' && game.id === selected} />)}
+  {forPlayers.filter((game) => game.data.kind === 'dreamport').map((game) => <AchievementsCard game={game} open={open === 'achievements' && game.id === selected} />)}
   {making.map((game) => <MakeCard game={game} open={open === 'make' && game.id === selected} github={githubOf(game)} />)}
 </div>
 
