@@ -6,6 +6,7 @@ const TOOLS = {
   play: 'Opens a game in a browser with your copy, and with --record keeps what you play as a recording (--from: after another\'s presses)',
   prove: 'Plays each recording in the original and in the Dreamport, compares every frame, and updates the numbers (--stills: pictures of frames)',
   codemap: 'Makes the code map: every function in the original, with its address and size',
+  new: 'Writes a claimed game\'s first files: its page, its code on the kit with everything wired in, its license and its entry',
   portmap: 'Makes the port map: each function of the original the Dreamport\'s code names, and where',
   read: 'Prints one of the original\'s functions, its ARM or Thumb instructions, from your copy, for code its decompilation lacks',
   share: 'Publishes a preview on GitHub Pages from your fork, with the newest clip for the step\'s pull request',

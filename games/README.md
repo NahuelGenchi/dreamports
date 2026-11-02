@@ -18,7 +18,7 @@ Nothing from the original game ever goes here: no ROM, no game files, and no mus
 
 Every Dreamport has one entry, `entry.md` in its folder, which says everything about it: the game and the exact copy it needs, who makes it, what it's built with, and where to follow it. The site makes the game's page from it, at `dreamports.net/dreamports/<game>-dreamport/`, where `<game>` is the folder's name, and its page in the Make row, at `dreamports.net/make/<game>/`, for the people making it, until every part of it is proven. Its page, its place in the Make row and the README's table of Dreamports show its two numbers, code ported and gameplay proven, and the table shows its lead too. [Sonic Advance Dreamport's entry](sonic-advance/entry.md) is an example.
 
-An entry is a Markdown file. Its fields go at its top, between two `---` lines, and the text below them, such as the credits, shows at the end of the game's page. Write them as normal sentences and labels, with a capital at the start. `npm run check` and `npm run build` stop and say what's wrong when a field is missing or wrong.
+`npm run dp -- new <game>` writes a new game's first entry, with its first code ([Starting a game](../tools/README.md#starting-a-game)). An entry is a Markdown file. Its fields go at its top, between two `---` lines, and the text below them, such as the credits, shows at the end of the game's page. Write them as normal sentences and labels, with a capital at the start. `npm run check` and `npm run build` stop and say what's wrong when a field is missing or wrong.
 
 | Field | What to write |
 | :--- | :--- |
