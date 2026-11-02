@@ -4,12 +4,12 @@ import type { GetStaticPaths } from 'astro';
 import Base from '../../../layouts/Base.astro';
 import Launcher from '../../../components/Launcher.astro';
 import { filterFor, getGames, sectionFor, type Game } from '../../../lib/site';
-import { keepsAchievements } from '../../../lib/dreamports';
+import { keepsAchievements, released } from '../../../lib/dreamports';
 
 export const getStaticPaths = (async () => {
   const games = await getGames('dreamport');
   return games.flatMap((game) =>
-    game.data.kind === 'dreamport' && keepsAchievements(game.data.game)
+    game.data.kind === 'dreamport' && released(game) && keepsAchievements(game.data.game)
       ? [{ params: { section: sectionFor(game.data.kind).path, slug: game.id }, props: { game } }]
       : [],
   );

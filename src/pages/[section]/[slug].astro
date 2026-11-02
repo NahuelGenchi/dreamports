@@ -4,10 +4,11 @@ import type { GetStaticPaths } from 'astro';
 import Base from '../../layouts/Base.astro';
 import Launcher from '../../components/Launcher.astro';
 import { filterFor, getGames, sectionFor, type Game } from '../../lib/site';
+import { released } from '../../lib/dreamports';
 
 export const getStaticPaths = (async () => {
   const games = await getGames();
-  return games.map((game) => ({
+  return games.filter(released).map((game) => ({
     params: { section: sectionFor(game.data.kind).path, slug: game.id },
     props: { game },
   }));

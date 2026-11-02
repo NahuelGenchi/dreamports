@@ -138,6 +138,12 @@ const CODE_URL = 'https://dreamports.net/code';
 /** Whether a Dreamport is still being made, so it has a place in the Make row: until every part of it is proven. */
 export const beingMade = (data: Dreamport): boolean => proofFor(data.game)?.gameplay?.percent !== 100;
 
+// whether a Dreamport has code of the original's: what `npm run dp -- new` writes names none and only shows a blue screen
+const hasCode = (data: Dreamport): boolean => (proofFor(data.game)?.ported?.percent ?? 0) > 0;
+
+/** Whether a game has its place in its row and its own page, for players. Until a Dreamport has code, it's only in the Make row. */
+export const released = ({ data }: Game): boolean => data.kind !== 'dreamport' || hasCode(data);
+
 // What a Dreamport's page in the Make row shows besides its two bars (#142): one line on where it stands, the sentence
 // that gets a newcomer's coding agent ready to help (#141), and its game's issue, where it's talked about; and from
 // GitHub (#143, src/lib/making.ts), how many pieces are free to take and its steps, the latest first. Who leads it,
@@ -174,7 +180,9 @@ export function makeView(data: Dreamport, github?: Making): MakeView {
     free: github && {
       line: count
         ? `${pieces} ${count === 1 ? 'is' : 'are'} free to take.`
-        : 'No pieces are free to take yet, but you can play it and say where it differs from the original.',
+        : hasCode(data)
+          ? 'No pieces are free to take yet, but you can play it and say where it differs from the original.'
+          : 'No pieces are free to take yet.',
       help: count ? `${pieces} free to take` : '',
     },
     steps: (github?.steps ?? []).map((step) => ({ ...step, date: dayOf(step.merged) })),
