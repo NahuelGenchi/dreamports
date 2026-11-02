@@ -1,5 +1,7 @@
 // GitHub's API for the Dreamports bot (docs/MODERATION.md): REST and GraphQL calls with the workflow's token, the posts
-// it checks, always read fresh from GitHub, and the posts that wait for a model.
+// it checks, always read fresh from GitHub, a pull request's notes, and the posts that wait for a model.
+import { MOST_NOTE, NOTE_PATH, canBeNote } from './notes.mjs';
+
 export const repository = process.env.GITHUB_REPOSITORY ?? '';
 export const [owner, name] = repository.split('/');
 // the workflow's own account, as REST and GraphQL name it
@@ -51,7 +53,7 @@ const AUTHOR = 'author { login __typename } authorAssociation';
 const PARENT = 'id number url closed locked labels(first: 30) { nodes { name } }';
 const FIELDS = `__typename
   ... on Issue { ${PARENT} title body ${AUTHOR} repository { nameWithOwner } }
-  ... on PullRequest { ${PARENT} title body ${AUTHOR} repository { nameWithOwner } }
+  ... on PullRequest { ${PARENT} headRefOid title body ${AUTHOR} repository { nameWithOwner } }
   ... on Discussion { ${PARENT} title body ${AUTHOR} repository { nameWithOwner } }
   ... on IssueComment { id url body isMinimized ${AUTHOR} repository { nameWithOwner } issue { ${PARENT} } pullRequest { ${PARENT} } }
   ... on PullRequestReviewComment { id url body isMinimized ${AUTHOR} repository { nameWithOwner } pullRequest { ${PARENT} } }
@@ -76,7 +78,7 @@ export function itemFrom(node) {
   const parentKind = post ? kind : node.discussion ? 'discussion' : node.pullRequest ? 'pull-request' : 'issue';
   return {
     node: node.id, kind,
-    where: parentKind,
+    where: parentKind, head: node.headRefOid ?? null,
     author: node.author?.login ?? 'ghost', bot: node.author?.__typename === 'Bot', association: node.authorAssociation ?? 'NONE',
     url: node.url, text: post ? `${node.title}\n\n${node.body ?? ''}` : node.body ?? '', minimized: node.isMinimized === true,
     replies: node.replies?.totalCount ?? 0,
@@ -88,6 +90,24 @@ export function itemFrom(node) {
     // the comment a reply in Discussions goes under: a comment's own thread, since a reply can't have replies
     replyTo: kind === 'discussion-comment' ? node.replyTo?.id ?? node.id : null
   };
+}
+
+// What a pull request adds or changes in games' and kits' notes (docs/NOTES.md), each with as much of its text as
+// shows whether it fits. One that can't be read as a note has no text, which breaks the rules for notes: a link, a
+// folder's worth too many, or a file with another kind of name or in another place. GitHub lists a pull request's
+// first 3,000 files and no more, so one with that many has notes nobody can see, which breaks them too.
+const MOST_NOTES = 30, MOST_FILES = 3000;
+export async function notesOf(number) {
+  const all = await list(`/pulls/${number}/files`, MOST_FILES);
+  const files = all.filter(file => file.status !== 'removed' && NOTE_PATH.test(file.filename));
+  const notes = [];
+  for (const [i, file] of files.entries()) {
+    const answer = i < MOST_NOTES && canBeNote(file.filename) ? await api(file.contents_url) : null;
+    const text = answer?.encoding === 'base64' ? Buffer.from(answer.content, 'base64').toString('utf8') : '';
+    notes.push({ path: file.filename, text: text.slice(0, MOST_NOTE + 1) });
+  }
+  if (all.length >= MOST_FILES) notes.push({ path: 'the files GitHub doesn\'t list', text: '' });
+  return notes;
 }
 
 // the posts with these node ids, read from GitHub, leaving out any that are gone
