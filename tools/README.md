@@ -12,6 +12,7 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `rom` | Checks a copy of a game, says which game and which version it is, and remembers where it is |
 | `play` | Opens a game in a browser with your copy, and with `--record` keeps what you play as a recording, after another recording's presses with `--from` |
 | `prove` | Plays each recording in the original and in the Dreamport, compares every frame, its picture and its sound, updates the numbers, and with `--stills` keeps pictures of the frames you name |
+| `capture` | Lets you play the original in a window, and keeps a real moment of it for the game's card |
 | `codemap` | Makes the code map: every function in the original, with its address and size |
 | `portmap` | Makes the port map: each function of the original the Dreamport's code names, and where |
 | `read` | Prints one of the original's functions, its instructions, from your copy, for code its decompilation has no C for |
@@ -58,6 +59,16 @@ A recording holds nothing from the game, only button presses, so it lives in the
 - `clip` (optional): the frames the clip shows, from frame `at`, for `frames` frames.
 
 Sonic Advance Dreamport's [first act](../games/sonic-advance/proof/recordings/neo-green-hill-act-1.json) is an example: it skips the character select, which the Dreamport doesn't have yet.
+
+## A game's capture
+
+Every game's card in the launcher shows a few seconds of real play. `npm run dp -- capture <game>` makes a Dreamport's from the original, so a game can have one before its Dreamport has anything to play. It opens a window where you play your own copy, from power-on, with the keyboard or a controller, and hear it as you go.
+
+Press Finish, or `Esc`, or View and Menu together on a controller, and it picks out the best stretches of what you played: lively and colourful, with buttons held, and with no fades, logos, menus or text. They come up moving. Press the one you want with the mouse, with the arrows and `Z`, or with a controller's d-pad and A. `Esc` or B goes back to playing where you left off, and the next list comes from all of it.
+
+What you choose becomes a few seconds that loop, as near to seamless as the game allows, in `public/media/`: `<game>-dreamport.h264.mp4` and `.av1.mp4`, silent, `-still.webp` and `-share.png`. The game's entry names them, as `screen` and `share`. Choose play, with no logos or title screens: these go in a commit, on to dreamports.net, and the Dreamports team looks at them in the game's pull request ([the rule](../docs/STANDARD.md#a-games-capture)).
+
+Your presses stay in `.dreamports/captures/<game>/`, so `npm run dp -- capture <game> --choose` shows the same moments again, if the window closed first or you change your mind. The pictures come from running the original again with those presses, and it stops if any frame comes out differently from what you played. A coding agent can start it for you, but the choice is yours: it never looks at the pictures.
 
 ## Proving
 
@@ -182,7 +193,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 
 ## What stays on your computer
 
-Everything else the tools keep is in `.dreamports/`, in the repository's folder, which the ignore rules keep out of commits: where your copies are, the reference emulator, every result with its pictures and clips, what `read` prints, and the browser profiles the tools use. Deleting it is safe, as `setup` and `rom` make it again. Only what you send leaves it, such as a clip in a pull request. A coding agent is different: whatever it reads, such as what `read` prints, goes to the company that runs its model, unless that model runs on your computer too.
+Everything else the tools keep is in `.dreamports/`, in the repository's folder, which the ignore rules keep out of commits: where your copies are, the reference emulator, every result with its pictures and clips, what `read` prints, what you played for `capture`, and the browser profiles the tools use. Deleting it is safe, as `setup` and `rom` make it again. Only what you send leaves it, such as a clip in a pull request. A coding agent is different: whatever it reads, such as what `read` prints, goes to the company that runs its model, unless that model runs on your computer too.
 
 ## For a game on the Game Boy Advance kit
 

@@ -48,9 +48,9 @@ const page = {
       }),
     )
     .default([]),
-  // The game's little screen in the launcher: only the maker's own recording, never box art
-  // or publisher images. The still is the recording's first frame. Without a screen, the game
-  // gets a plain dreamports card.
+  // The game's little screen in the launcher: only a real capture of the game being played,
+  // never drawn or generated pictures, box art or publisher images. The still is its first frame.
+  // Without a screen, the game gets a plain dreamports card.
   screen: z
     .object({
       clip: clipFile,

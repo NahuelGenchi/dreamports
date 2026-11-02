@@ -143,6 +143,7 @@ The work is split into seven steps, called *milestones*. The counts update by th
 | **[M4 — Sonic Advance Dreamport on dreamports.net](https://github.com/NahuelGenchi/dreamports/milestone/5)** | Sonic Advance Dreamport played right here on the site, with accounts, achievements and leaderboards | ![M4 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/5?style=flat-square&label=tasks%20done&color=8b5cf6) |
 | **[M5 — Game launcher](https://github.com/NahuelGenchi/dreamports/milestone/6)** | The site redesigned as a one-screen game launcher: a row of games to move through, filters, panels such as settings and about, and a launch animation, on phones and computers | ![M5 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/6?style=flat-square&label=tasks%20done&color=8b5cf6) |
 | **[M6 — Anyone can make a Dreamport](https://github.com/NahuelGenchi/dreamports/milestone/7)** | Opening Dreamports to everyone: anyone can make a Dreamport or help with one, with clear rules, a step-by-step guide, and proof that every step plays like the original | ![M6 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/7?style=flat-square&label=tasks%20done&color=8b5cf6) |
+| **[M7 — New games join the launcher on their own](https://github.com/NahuelGenchi/dreamports/milestone/9)** | A new Dreamport reaches the launcher with everything wired in and a real capture of the game, with one approval for the picture | ![M7 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/9?style=flat-square&label=tasks%20done&color=8b5cf6) |
 
 ✅ The site is live at **[dreamports.net](https://dreamports.net)**.
 
@@ -255,7 +256,7 @@ The website is set in Monocraft too. It carries a smaller copy with only the let
 
 The small stars are the [Pixel Art Animated Star](https://soulofkiran.itch.io/pixel-art-animated-star) by Narik, recolored to match. They're used under Narik's terms, which allow personal and commercial use and edits, so [`.github/readme/star.png`](.github/readme/star.png) and the website's copy, [`public/images/star.png`](public/images/star.png), aren't covered by the MIT License. Thank you, Narik!
 
-The recordings of the games, in [`public/media/`](public/media/), are the owner's own captures of their own projects. They show the games those projects work with, so they aren't covered by the MIT License either. The menu's sounds are made for Dreamports: your browser creates them as it plays them, so there are no sound files.
+The recordings of the games, in [`public/media/`](public/media/), are captures of play by the people who make each project. They show the games those projects work with, so they aren't covered by the MIT License either. The menu's sounds are made for Dreamports: your browser creates them as it plays them, so there are no sound files.
 
 Game names and trademarks belong to their owners. Dreamports is not affiliated with or endorsed by Sega, Nintendo, or any other publisher.
 
