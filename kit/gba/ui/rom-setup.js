@@ -318,7 +318,10 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
   const restored = Promise.all(Object.values(rows).map(async c => {
     const saved = await roms.load(c.slot.store);
     if (saved && c.el.dataset.state === 'empty') await load(c, saved.buffer, saved.name, { saved: true });
-  })).then(() => { if (!play.disabled) play.focus({ preventScroll: true }); });
+  })).then(() => {
+    $('.setup').dataset.restored = 'true';
+    if (!play.disabled) play.focus({ preventScroll: true });
+  });
 
   return {
     add, restored,

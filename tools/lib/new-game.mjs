@@ -30,6 +30,35 @@ export function startingFiles(game, original) {
   };
 }
 
+/** A WebP with only its picture, in the one part that holds it. A browser's canvas adds a colour profile, room a first entry's check couldn't read (.github/first-entry/rules.mjs). */
+export function plainWebp(bytes) {
+  for (let at = 12; at + 8 <= bytes.length;) {
+    const size = bytes.readUInt32LE(at + 4), end = at + 8 + size + (size & 1);
+    if (['VP8 ', 'VP8L'].includes(bytes.toString('latin1', at, at + 4))) {
+      const head = Buffer.from('RIFF\0\0\0\0WEBP', 'latin1');
+      head.writeUInt32LE(4 + end - at, 4);
+      return Buffer.concat([head, bytes.subarray(at, end)]);
+    }
+    at = end;
+  }
+  throw new Error('The browser made a still with no picture in it.');
+}
+
+/** An entry with its capture named in it, as `npm run dp -- capture` writes it. */
+export function withCapture(entry, game) {
+  const [, head, rest] = entry.match(/^---\r?\n([^]*?)\r?\n---\r?\n([^]*)$/);
+  const lines = [];
+  let dropping = false;
+  for (const line of head.split(/\r?\n/)) {
+    if (/^(screen|share):/.test(line)) dropping = true;
+    else if (!/^\s/.test(line)) dropping = false;
+    if (!dropping) lines.push(line);
+  }
+  const base = `/media/${game}-dreamport`;
+  lines.push('screen:', `  clip: ${base}`, `  still: ${base}-still.webp`, '  pixelated: true', `share: ${base}-share.png`);
+  return `---\n${lines.join('\n')}\n---\n${rest}`;
+}
+
 const yaml = text => JSON.stringify(text);
 
 /** The game's entry, which says the same for now whoever writes it, and which its lead fills in as the game grows. */
