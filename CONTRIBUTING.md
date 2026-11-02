@@ -22,15 +22,15 @@ Anyone can make a Dreamport, or help with one, without writing code: a coding ag
 
 | Command | What it runs |
 | :--- | :--- |
-| `/dreamport <game>` | `git clone` and `npm ci` the first time, `gh repo fork --remote` after your yes, then `npm run dp -- find`, for where the game stands, and `rom`, which checks your copy |
+| `/dreamport <game>` | `git clone` and `npm ci` the first time, `gh repo fork --remote` after your yes, then `npm run dp -- find`, for where the game stands, `notes`, for what people already found, and `rom`, which checks your copy |
 | `/dreamport-claim <task>` | A New Dreamport or Task issue, or `/claim` on a task's issue, which the Dreamports bot answers ([Claims and teams](docs/TEAMS.md)) |
 | `/dreamport-clip` | `portmap`, then `prove`, which compares every frame with the original, picture and sound, and makes the clip |
 | `/dreamport-play` | `play --record`, which opens the game in a browser with your copy and keeps what you play, then `prove` on it |
 | `/dreamport-fix <what feels wrong>` | A recording of that moment, `prove` with `--stills` to see it, the fix, then `prove` with every recording |
 | `/dreamport-share` | `share`: a preview on your fork's GitHub Pages, and the clip for the step's pull request ([Previews](docs/PREVIEWS.md)) |
-| `/dreamport-send` | `team send`, to the lead's team build, or, for the lead, a pull request to this repository |
+| `/dreamport-send` | A note on what the step found, then `team send`, to the lead's team build, or, for the lead, a pull request to this repository |
 
-Nothing is posted, pushed or sent until you say yes, and the agent follows the part of [AGENTS.md](AGENTS.md) on working on a Dreamport, and [the standard](docs/STANDARD.md).
+Nothing is posted, pushed or sent until you say yes, and the agent follows the part of [AGENTS.md](AGENTS.md) on working on a Dreamport, and [the standard](docs/STANDARD.md). Every command starts with `npm run dp -- notes`, which shows [what people already found](docs/NOTES.md) about the game and its console.
 
 **How the commands are made.** Each is written once, in [`tools/commands/`](tools/commands/), and `npm run dp -- commands` writes it in the form each agent reads: `.claude/skills/` for Claude Code, `.agents/skills/` for Codex, which Cursor, Gemini CLI and Antigravity CLI read too, and `.gemini/commands/` for Gemini CLI's own commands. To change a command, change its file in `tools/commands/` and run the tool again. `npm run check` fails when a copy differs from its file. Every copy is set to run only when it's typed, in each agent's own way, and it starts by telling the agent to stop if the person didn't type it, for the agents that could load it by themselves.
 
