@@ -3,10 +3,11 @@ name: Moderation
 # The Dreamports bot checks what people write here against the project's rules, and acts on its own
 # (docs/MODERATION.md). The judging job reads each post with a read-only token, then applies the plain rules and asks
 # OpenCode's free models only about what they leave, in a step with no token at all. Its verdicts hold no text from
-# any post. The acting job checks them against a fixed schema and carries out a fixed plan, from deleting, hiding,
-# replying with a fixed text, closing, locking and labelling. Both check out only the bot's own folder, from the
-# default branch or the branch a pull request would merge into, never a pull request's code, whose notes it reads
-# through the API as data (docs/NOTES.md), and so a push is checked too, whoever made it. Runs about one post wait for each other. The
+# any post. When a post is left waiting, the asking job, on a machine that never ran OpenCode, reads it again and asks
+# DeepSeek's API in a step with only that key. The acting job checks the verdicts against a fixed schema and carries
+# out a fixed plan, from deleting, hiding, replying with a fixed text, closing, locking and labelling. All three check
+# out only the bot's own folder, from the default branch or the branch a pull request would merge into, never a pull
+# request's code, whose notes it reads through the API as data (docs/NOTES.md), and so a push is checked too, whoever made it. Runs about one post wait for each other. The
 # hourly run tries again the posts that wait for a model, and checks the reviews and comments on code made since its
 # last run, since those events come with a read-only token on pull requests from forks.
 on:
@@ -47,6 +48,7 @@ jobs:
       actions: read
     outputs:
       verdicts: ${{ steps.judge.outputs.verdicts }}
+      waiting: ${{ steps.judge.outputs.waiting }}
     steps:
       - name: Check out the bot, never a pull request's code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -64,9 +66,41 @@ jobs:
           MODERATION_MODELS: ${{ vars.MODERATION_MODELS }}
         run: node .github/moderation/judge.mjs judge
 
+  ask:
+    name: Ask DeepSeek
+    needs: judge
+    if: needs.judge.outputs.waiting == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      discussions: read
+    outputs:
+      verdicts: ${{ steps.ask.outputs.verdicts }}
+    steps:
+      - name: Check out the bot, never a pull request's code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/moderation
+      - name: Read the posts that wait
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          MODERATION_TREAT_AS_PUBLIC: ${{ vars.MODERATION_TREAT_AS_PUBLIC }}
+          VERDICTS: ${{ needs.judge.outputs.verdicts }}
+        run: node .github/moderation/judge.mjs fetch-waiting
+      - name: Ask DeepSeek, with only its key
+        id: ask
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          VERDICTS: ${{ needs.judge.outputs.verdicts }}
+        run: node .github/moderation/judge.mjs ask
+
   act:
     name: Act
-    needs: judge
+    needs: [judge, ask]
     if: ${{ !cancelled() && needs.judge.result != 'skipped' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -84,7 +118,7 @@ jobs:
       - name: Act on the verdicts
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          VERDICTS: ${{ needs.judge.outputs.verdicts }}
+          VERDICTS: ${{ needs.ask.outputs.verdicts || needs.judge.outputs.verdicts }}
           JUDGED: ${{ needs.judge.result }}
           MODERATION_TREAT_AS_PUBLIC: ${{ vars.MODERATION_TREAT_AS_PUBLIC }}
         run: node .github/moderation/act.mjs

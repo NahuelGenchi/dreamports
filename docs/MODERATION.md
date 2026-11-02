@@ -6,7 +6,7 @@
 
 Everything people write on this repository's GitHub is checked by the Dreamports bot against the project's rules: issues, pull requests, comments, reviews, and the threads and posts in Discussions. When a post breaks a rule, the bot acts on its own, straight away: it deletes, hides or closes the post, and tells its author why, without quoting it. By the Dreamports team's decision of 31 October 2026, moderation here is done by the bot, never by people: the bot decides, and keeps a log the team can read when it wants to.
 
-The bot only adds friction. The one thing it deletes is a comment that the plain rules find sharing a game file or a site that shares them. It never edits anyone's words or code, approves or merges anything, or takes or releases a claim. It runs on GitHub Actions and on free models, so it costs nothing.
+The bot only adds friction. The one thing it deletes is a comment that the plain rules find sharing a game file or a site that shares them. It never edits anyone's words or code, approves or merges anything, or takes or releases a claim. It runs on GitHub Actions and on free models, with a small prepaid balance on one paid model for the posts those leave, so it costs next to nothing, as [The model](#the-model) says.
 
 ## What it checks
 
@@ -62,12 +62,15 @@ Each run of the [workflow](../.github/workflows/moderation.yml) also has a summa
 The bot treats the model like the post it reads: as something that could try anything, and so gets nothing it could misuse.
 
 - **OpenCode's free models first.** The workflow runs the [OpenCode](https://opencode.ai) program, version 2.0.29, downloaded from npm and checked against its SHA-256 before it runs. It runs without a screen, in an empty folder with an empty home of its own, with no account and no key, in a step of the workflow whose environment holds no token at all. Its config refuses every tool. Its `read` tool is set to ask rather than refused, since OpenCode's free models refuse a request that offers no tool at all, and a run with nobody to ask refuses each read before it happens, so the model can't open a file.
-- **Which models.** The repository variable `MODERATION_MODELS` lists them in order. When it isn't set, they're `deepseek-v4.1-flash-free` and `glm-5.3-flash-free`, OpenCode's free models whose provider keeps nothing and doesn't train on what it gets. The bot asks the first one OpenCode lists at that moment, and refuses any model whose id doesn't end in `-free`, so it can never reach a paid plan.
-- **No other model.** OpenCode's free models can be down, and OpenCode publishes no limit on how much they answer. None was reached in testing; the only "Free usage limit reached" seen came from runs that offered no tool at all, as above. The bot has no other model to ask: GitHub Models' free tier, which it was meant to fall back on, was [retired](https://docs.github.com/en/github-models) on 30 July 2026, and every other service needs an account and a key. So when neither model answers, the post waits, as the next part says.
+- **Which models.** The repository variable `MODERATION_MODELS` lists them in order. When it isn't set, they're `deepseek-v4.1-flash-free` and `glm-5.3-flash-free`, OpenCode's free models whose provider keeps nothing and doesn't train on what it gets. The bot asks the first one OpenCode lists at that moment, and refuses any model whose id doesn't end in `-free`, so OpenCode can never reach a paid plan.
+- **DeepSeek when they don't answer.** OpenCode's free models can be down, and OpenCode publishes no limit on how much they answer. Since 1 November 2026 they've refused every request from GitHub's machines with "Free usage limit reached", while the same request was answered from another computer, and why and for how long isn't known. So the posts they leave waiting go to DeepSeek V4.1 Flash, through [DeepSeek's own API](https://api-docs.deepseek.com). Of the models the Dreamports team tested, it and MiMo V2.6 Flash let no hostile note through and got every ordinary post right.
+- **How that's locked down.** It's a job of its own, on a machine that never ran OpenCode, since a program given strangers' text could have changed the bot's files on its own machine. The job reads the waiting posts again with a read-only token, then asks about them in a step that holds only DeepSeek's key and no GitHub token. It's a plain request that offers no tools, so the model can do nothing but answer, and the answer counts only if it's one key from the fixed list. Its thinking stays on, as the API sets it by default: with it off, the same tests let a hostile note through.
+- **Where those posts go.** DeepSeek's [privacy policy](https://cdn.deepseek.com/policies/en-US/deepseek-privacy-policy.html) says what it gets is stored in the People's Republic of China and may be used to train its models, with a right to opt out, and the Dreamports team found no way to turn that off for the API. What the bot sends was already posted in public on GitHub, and the plain rules settle email addresses, phone numbers and keys in a known format first, so a post with one of those never reaches a model.
+- **What it costs.** A check of an ordinary post cost between $0.15 and $0.60 for every 1,000 in testing, depending on the hour and on what DeepSeek still had cached, and a post a model reads whole at its longest costs a few times that. The balance is prepaid, so the bot can't spend more than it holds: it asks at most 30 times in a run, and when the balance runs out or the key is revoked, it stops asking and the posts wait, as the next part says.
 
 ## When no model answers
 
-Nothing happens to the post: it waits. Its issue, pull request or thread gets the `moderation-waiting` label, and the bot opens one issue labelled `moderation-alert`, which says its models stopped answering and lists each post that waits. The hourly run asks again, notes the time on that issue, and closes it once nothing waits. A post that still waits after a week is left as it is, and the log says so.
+When neither OpenCode's free models nor DeepSeek give a verdict, nothing happens to the post: it waits. Its issue, pull request or thread gets the `moderation-waiting` label, and the bot opens one issue labelled `moderation-alert`, which says its models stopped answering and lists each post that waits. The hourly run asks again, notes the time on that issue, and closes it once nothing waits. A post that still waits after a week is left as it is, and the log says so.
 
 ## What the bot leaves to GitHub
 
@@ -80,24 +83,26 @@ These stay with GitHub's own tools, for the account that owns the repository:
 
 ## How it's built
 
-The [workflow](../.github/workflows/moderation.yml) has two jobs. The judging job can only read. It reads each post through GitHub's API, applies the plain rules, asks a model about what they leave, and writes its verdicts as JSON, with no text from any post in them. The acting job has the write permissions. It takes the verdicts only if they fit a fixed schema, reads each post again from GitHub rather than from the verdict, and carries out the fixed plan for its verdict. A verdict that doesn't fit is dropped, so it does nothing.
+The [workflow](../.github/workflows/moderation.yml) has three jobs. The judging job can only read. It reads each post through GitHub's API, applies the plain rules, asks OpenCode's free models about what they leave, and writes its verdicts as JSON, with no text from any post in them. The asking job can only read too, and runs only when a post is left waiting: it asks DeepSeek about those, and writes the verdicts again. The acting job has the write permissions. It takes the verdicts only if they fit a fixed schema, reads each post again from GitHub rather than from the verdict, and carries out the fixed plan for its verdict. A verdict that doesn't fit is dropped, so it does nothing.
 
-Both jobs check out only `.github/moderation/`, from the default branch, or for a pull request from the branch it would merge into. A pull request's own code is never checked out or run, not even for a pull request from a fork, whose text and notes the bot reads through the API. Runs about one post wait for each other, so a post edited twice is judged as it ends up.
+All three check out only `.github/moderation/`, from the default branch, or for a pull request from the branch it would merge into. A pull request's own code is never checked out or run, not even for a pull request from a fork, whose text and notes the bot reads through the API. Runs about one post wait for each other, so a post edited twice is judged as it ends up.
 
 | File | What it holds |
 | :--- | :--- |
-| `.github/workflows/moderation.yml` | The workflow: when it runs, its two jobs and their permissions |
+| `.github/workflows/moderation.yml` | The workflow: when it runs, its three jobs and their permissions |
 | `.github/moderation/rules.mjs` | The plain rules |
 | `.github/moderation/notes.mjs` | What a note is and the rules for notes, which the build and the proof tools use too |
 | `.github/moderation/rom-sites.txt` | The sites that share game files |
 | `.github/moderation/prompt.md` | The model's instructions |
-| `.github/moderation/model.mjs` | How OpenCode is installed, locked down and asked |
+| `.github/moderation/model.mjs` | How OpenCode is installed, locked down and asked, and what a model gets |
+| `.github/moderation/deepseek.mjs` | How DeepSeek's API is asked |
 | `.github/moderation/verdicts.mjs` | The keys, the schema of verdicts, the plans, the replies and the log's entries |
-| `.github/moderation/judge.mjs`, `act.mjs`, `github.mjs` | The two jobs, and the calls to GitHub's API |
+| `.github/moderation/judge.mjs`, `act.mjs`, `github.mjs` | The jobs, and the calls to GitHub's API |
 | `.github/moderation/test.mjs` | The unit tests of the rules and verdicts, which `npm run check` runs |
 
 ## For the Dreamports team
 
 - **A site the bot missed**: add its domain to `.github/moderation/rom-sites.txt`, in a pull request of its own.
 - **The repository variables**, in the repository's settings under *Secrets and variables*, *Actions*, *Variables*: `MODERATION_MODELS`, above, and `MODERATION_TREAT_AS_PUBLIC`, only for tests. It lists accounts whose posts the bot judges like anyone else's, even if they're the repository's own people, so their test posts can be hidden. Leave it unset otherwise.
+- **DeepSeek's key** is the repository secret `DEEPSEEK_API_KEY`, in the same settings under *Secrets*. It draws on a prepaid balance in DeepSeek's account, the only limit on what it can spend, since the team found no limit per key, and DeepSeek's *Usage* page shows what each key spent. To keep the bot asking, top up the balance. To stop it, revoke the key on the *API Keys* page or delete the secret, and the posts that need a model wait for OpenCode's free ones.
 - **To check everything at once**, run the workflow from the Actions tab: it does what the hourly run does.
