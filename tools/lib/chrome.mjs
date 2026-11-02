@@ -7,6 +7,9 @@ import { join } from 'node:path';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// whether any process of the browser with this profile is still running: its helpers have the folder in their command lines too
+const running = profile => spawnSync('ps', ['-Awwo', 'args='], { encoding: 'utf8' }).stdout?.replaceAll('\n', ' ').includes(`--user-data-dir=${profile} `);
+
 /** The browser to use: $CHROME, or Chrome, Chromium or Edge where they usually are. */
 export function findChrome() {
   if (process.env.CHROME) return process.env.CHROME;
@@ -37,8 +40,7 @@ const NO_CONTROLLERS = `Object.defineProperty(Navigator.prototype, 'getGamepads'
  * { send, evaluate, once, errors, closed, close }.
  */
 export async function openChrome({ profile, headless = true, fresh = true, controllers = !headless }) {
-  // the last browser's helpers may still be writing their cache as they quit, so emptying it tries again for a moment
-  if (fresh) rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  if (fresh) rmSync(profile, { recursive: true, force: true });
   mkdirSync(profile, { recursive: true });
   const portFile = join(profile, 'DevToolsActivePort');
   rmSync(portFile, { force: true });
@@ -121,6 +123,9 @@ export async function openChrome({ profile, headless = true, fresh = true, contr
     socket.close();
     chrome.kill();
     await Promise.race([exited, wait(5000)]);
+    // its helpers outlive it for a moment, and the network service writes to the profile as it quits, so the folder
+    // can't be emptied for the next browser until they've gone
+    for (let i = 0; i < 100 && running(profile); i++) await wait(50);
   };
   return { send, evaluate, once, errors, closed: Promise.race([closed, exited]), close };
 }

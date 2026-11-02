@@ -4,6 +4,7 @@
 // numbers the range kept for fiction.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { DEEPSEEK, deepSeekAsker } from './deepseek.mjs';
 import { itemFrom } from './github.mjs';
 import { messageFor } from './model.mjs';
 import { MOST_NOTE, NOTE_NAME, NOTE_PATH, canBeNote, nameProblems, noteProblems, parseNote, rulesFor } from './notes.mjs';
@@ -369,4 +370,93 @@ test('the model gets the post as data, without an @ OpenCode would read as a fil
   assert.ok(message.includes('a link to x.example; words that talk to the bot'));
   const long = messageFor({ ...item('issue'), text: `${'a'.repeat(20000)}END`, hints: [] });
   assert.ok(long.length < 17000 && long.includes('END'));
+});
+
+// a stand-in for DeepSeek's API, which answers with what it's given in turn, and keeps what it's asked
+const deepSeek = (...answers) => {
+  const asked = [];
+  const fetcher = async (url, options) => {
+    asked.push({ url, headers: options.headers, body: JSON.parse(options.body) });
+    const answer = answers.length > 1 ? answers.shift() : answers[0];
+    if (answer instanceof Error) throw answer;
+    if (typeof answer === 'number') return new Response('{}', { status: answer });
+    return new Response(JSON.stringify({ choices: [{ message: { content: answer } }] }));
+  };
+  return { asked, fetcher, pause: 0 };
+};
+const quietly = async run => {
+  const { log } = console, said = [];
+  console.log = line => said.push(line);
+  try {
+    return { result: await run(), said };
+  } finally {
+    console.log = log;
+  }
+};
+
+test('DeepSeek gets the rules, then the post as data, with no tools, and its answer counts only as a key', async () => {
+  const post = { ...item('issue'), text: 'SECRET-TEXT-123 and the rest of a post', hints: ['link:x.example'] };
+  const api = deepSeek('Thinking it over.\n\n`spam`');
+  const asker = deepSeekAsker('made-up', api);
+  assert.deepEqual(await asker.ask(post), { key: 'spam', model: DEEPSEEK });
+  assert.deepEqual([...asker.tried], [DEEPSEEK]);
+  const [{ url, headers, body }] = api.asked;
+  assert.equal(url, 'https://api.deepseek.com/chat/completions');
+  assert.equal(headers.authorization, 'Bearer made-up');
+  assert.deepEqual(body.messages.map(message => message.role), ['system', 'user']);
+  assert.ok(!body.messages[0].content.includes('SECRET-TEXT-123'));
+  assert.equal(body.messages[1].content, messageFor(post));
+  assert.ok(!('tools' in body) && body.stream === false);
+  // what the acting job takes as who decided
+  const verdicts = checkVerdicts(JSON.stringify({ version: 1, mode: 'event', results: [{ kind: 'issue', node: 'I_kwDOtest123', key: 'spam', by: 'model', model: DEEPSEEK }], model: { tried: [DEEPSEEK] } }));
+  assert.equal(verdicts.results[0].model, DEEPSEEK);
+  assert.deepEqual(verdicts.model.tried, [DEEPSEEK]);
+  for (const answer of ['', 'It looks fine to me.', 'allow, or spam']) {
+    const { result, said } = await quietly(() => deepSeekAsker('made-up', deepSeek(answer)).ask(post));
+    assert.equal(result, null, answer);
+    assert.ok(!said.join('\n').includes('SECRET-TEXT-123'));
+  }
+});
+
+test('DeepSeek is never asked without a key, and refused for good it\'s asked no more', async () => {
+  const none = deepSeek('allow');
+  assert.equal(await deepSeekAsker('', none).ask(item('issue')), null);
+  assert.equal(none.asked.length, 0);
+  for (const status of [401, 402, 403]) {
+    const api = deepSeek(status);
+    const asker = deepSeekAsker('made-up', api);
+    const { result, said } = await quietly(async () => [await asker.ask(item('issue')), await asker.ask(item('issue'))]);
+    assert.deepEqual(result, [null, null]);
+    assert.equal(api.asked.length, 1, status);
+    assert.ok(said.join('\n').includes(String(status)) && !said.join('\n').includes('made-up'));
+  }
+});
+
+test('DeepSeek is asked again once when it fails for a moment, and the next post still gets its turn', async () => {
+  for (const failure of [429, 500, 503, new TypeError('fetch failed')]) {
+    const again = deepSeek(failure, 'allow');
+    assert.equal((await quietly(() => deepSeekAsker('made-up', again).ask(item('issue')))).result.key, 'allow');
+    assert.equal(again.asked.length, 2);
+    const api = deepSeek(failure, failure, 'spam');
+    const asker = deepSeekAsker('made-up', api);
+    assert.equal((await quietly(() => asker.ask(item('issue')))).result, null);
+    assert.equal(api.asked.length, 2);
+    assert.equal((await asker.ask(item('issue'))).key, 'spam');
+  }
+  // a request it can't read is no better a second time
+  const bad = deepSeek(400);
+  assert.equal((await quietly(() => deepSeekAsker('made-up', bad).ask(item('issue')))).result, null);
+  assert.equal(bad.asked.length, 1);
+});
+
+test('DeepSeek gets a limited number of checks and a limited time in a run', async () => {
+  const api = deepSeek('allow');
+  const asker = deepSeekAsker('made-up', { ...api, most: 2 });
+  assert.equal((await asker.ask(item('issue'))).key, 'allow');
+  assert.equal((await asker.ask(item('issue'))).key, 'allow');
+  assert.equal(await asker.ask(item('issue')), null);
+  assert.equal(api.asked.length, 2);
+  const late = deepSeek('allow');
+  assert.equal(await deepSeekAsker('made-up', { ...late, budget: -1 }).ask(item('issue')), null);
+  assert.equal(late.asked.length, 0);
 });
