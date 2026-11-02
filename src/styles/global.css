@@ -2598,7 +2598,8 @@ dialog.card[open] {
 /* ---------- Views: a game's page, about and settings take the menu's place ---------- */
 
 /* the menu steps aside while a view is up: its buttons and the filters go, and the row drops
-   back and fades. On a game's page, the game's picture stands in for its place in the row. */
+   back and fades. On a game's page, the game's picture stands in for its place in the row, and
+   its Achievements page leaves the row as that page does, so nothing of it shows between them. */
 .filters {
   transition: opacity 0.25s ease;
 }
@@ -2614,17 +2615,17 @@ dialog.card[open] {
   pointer-events: none;
 }
 
-.launcher[data-view]:not([data-view='inspect'], [data-view='make']) .row {
+.launcher[data-view]:not([data-view='inspect'], [data-view='make'], [data-view='achievements']) .row {
   opacity: 0;
   translate: 0 4%;
 }
 
-.launcher:is([data-view='inspect'], [data-view='make']) .slot:not(.is-sel) .lift,
-.launcher:is([data-view='inspect'], [data-view='make']) .slot .glow {
+.launcher:is([data-view='inspect'], [data-view='make'], [data-view='achievements']) .slot:not(.is-sel) .lift,
+.launcher:is([data-view='inspect'], [data-view='make'], [data-view='achievements']) .slot .glow {
   opacity: 0;
 }
 
-.launcher:is([data-view='inspect'], [data-view='make']) .slot.is-sel .lift {
+.launcher:is([data-view='inspect'], [data-view='make'], [data-view='achievements']) .slot.is-sel .lift {
   visibility: hidden;
 }
 
@@ -2750,8 +2751,7 @@ dialog.card[open] {
 }
 
 /* long text scrolls under soft edges */
-.view :is(.ins-text, .about-text),
-.view.card-achievements .card-body {
+.view :is(.ins-text, .about-text) {
   -webkit-mask-image: linear-gradient(transparent, #000 26px, #000 calc(100% - 36px), transparent);
   mask-image: linear-gradient(transparent, #000 26px, #000 calc(100% - 36px), transparent);
 }
@@ -3189,11 +3189,39 @@ dialog.card[open] {
 
 /* settings and profiles: one column in the middle */
 .view.card-settings .card-body,
-.view.card-profile .card-body,
-.view.card-achievements .card-body {
+.view.card-profile .card-body {
   max-width: 760px;
   padding-top: 30px;
   padding-bottom: 24px;
+}
+
+/* a Dreamport's Achievements page, in the same column: its name and how many are earned stay in place, and the list
+   scrolls between them and Back. A swipe on what stays moves nothing. The list's soft edges end where its first box
+   starts and where its last row stops, so nothing in it is faded at rest. */
+.view .ach-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.view .ach-top {
+  flex: none;
+  padding: 30px max(24px, env(safe-area-inset-right, 0px)) 0 max(24px, env(safe-area-inset-left, 0px));
+}
+
+.view .ach-top,
+.view.card-achievements .view-bar {
+  touch-action: pinch-zoom;
+}
+
+.view.card-achievements .card-body {
+  padding: 0 max(24px, env(safe-area-inset-right, 0px)) 36px max(24px, env(safe-area-inset-left, 0px));
+  -webkit-mask-image: linear-gradient(transparent, #000 20px, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(transparent, #000 20px, #000 calc(100% - 36px), transparent);
 }
 
 /* while a game launches from its page, everything there but its picture goes */
@@ -3320,9 +3348,49 @@ dialog.card[open] {
   }
 
   .view.card-settings .card-body,
-  .view.card-profile .card-body,
-  .view.card-achievements .card-body {
+  .view.card-profile .card-body {
     padding: 22px 16px 8px;
+  }
+
+  .view .ach-top {
+    padding: 22px 16px 0;
+  }
+
+  .view.card-achievements .card-body {
+    padding: 0 16px 36px;
+  }
+}
+
+/* a phone held sideways: the list beside them, where it has the height */
+@media (max-height: 500px) and (min-width: 641px) {
+  .view .ach-page {
+    flex-direction: row;
+    max-width: 1000px;
+  }
+
+  .view .ach-top {
+    flex: 0 0 38%;
+    padding: 22px 0 0 max(24px, env(safe-area-inset-left, 0px));
+  }
+}
+
+/* a window too short for them to stay, as at a high zoom: they scroll with the list, so that all of it can be reached */
+@media (max-height: 359px) and (max-width: 640px), (max-height: 279px) {
+  .view .ach-page {
+    display: block;
+    overflow: auto;
+    -webkit-mask-image: linear-gradient(transparent, #000 20px, #000 calc(100% - 36px), transparent);
+    mask-image: linear-gradient(transparent, #000 20px, #000 calc(100% - 36px), transparent);
+  }
+
+  .view .ach-top {
+    touch-action: auto;
+  }
+
+  .view.card-achievements .card-body {
+    overflow: visible;
+    -webkit-mask-image: none;
+    mask-image: none;
   }
 }
 
