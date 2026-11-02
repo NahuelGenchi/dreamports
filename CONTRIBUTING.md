@@ -80,20 +80,20 @@ The top of the file, between the two `---` lines, holds the details. Write them 
 | `ownCopy` → `links` | The play or download links. Each has a `label`, an `href` starting with `https://`, and an `icon`: `play` or `download`. The first is the main button, usually labelled `Play` |
 | `extras` | Optional: what the game adds, one square each on its page. Each has a `name`, an `icon` (one of the names in `src/lib/icons.ts`), a short `text`, `needs` when it needs another game, and a `screen` with its own `clip` and `still`. While an extra is picked, the game's picture plays its recording, or the game's own without one |
 | `facts` | The rows under *The game*. Each has a `label` and either a `value`, `controls`, any of `keyboard`, `controller` and `touch`, shown as icons, or an `href`, which makes it a link of its own, named by its `label`, under the rows. Name the exact copy under *You need*, such as `A Kirby Super Star Ultra (USA) ROM (.nds)` |
-| `screen` | Optional, and only with the owner's own recording: `clip` (the recording, named without its ending), `still` (its first frame) and, for pixel-art games, `pixelated: true`, which keeps the pixels sharp. See below |
+| `screen` | Optional, and only a real capture of the game being played, from `npm run dp -- capture` for a Dreamport: `clip` (the recording, named without its ending), `still` (its first frame) and, for pixel-art games, `pixelated: true`, which keeps the pixels sharp. See below |
 | `share` | Optional: the picture shown when the game's page is shared, such as `/media/my-port-share.png`. See below |
 | `glow` | Optional: the colour of the light the game casts on the menu while it's selected, in quotes, such as `'#8fd1ff'` |
 
 Below the second `---` is the page itself, in Markdown. `## ` lines become headings and the "on this page" list, `- ` lines become bullet points, and `1. ` lines become numbered steps.
 
-**A game's recording** is a few seconds of the game being played, looping smoothly, saved in [`public/media/`](public/media/) as two silent MP4 videos at 60 frames a second:
+**A game's recording** is a few seconds of the game being played, looping smoothly. For a Dreamport, `npm run dp -- capture <game>` makes all of it: you play the original on your computer and choose among the best moments ([The proof tools](tools/README.md#a-games-capture)). For another game, it's saved in [`public/media/`](public/media/) as two silent MP4 videos at 60 frames a second:
 
 - `my-port.h264.mp4`, in H.264, which every browser plays;
 - `my-port.av1.mp4`, in AV1, which is smaller. The site plays it only where the device decodes AV1 smoothly in hardware.
 
 Its first frame goes next to them as a still WebP picture. The menu shows the still until someone selects the game, and keeps showing it when motion is set to calm. Keep the recording short and small, because visitors download it when they select the game: the ones here are 2 to 7 seconds and 0.2 to 1.4 MB each. Scale pixel-art games up by a whole step, such as twice, before encoding, so the pixels stay sharp.
 
-The recordings here were encoded with these settings, which keep pixel art sharp and the files small:
+The recordings not made by `capture` were encoded with these settings, which keep pixel art sharp and the files small:
 
 - **H.264:** `libx264`, CRF 24, the `veryslow` preset, `animation` tuning, the `high` profile, and one keyframe every 600 frames.
 - **AV1:** SVT-AV1, CRF 44, preset 3, with its screen-content tools on (`scm=1:enable-overlays=1:tune=0`), and one keyframe every 600 frames.
@@ -111,7 +111,7 @@ glow: '#8fd1ff'
 
 **A game's share picture** is what chat apps and social sites show when someone shares the game's page. It is 1200×630 pixels: the recording's still on the site's navy background (`#050a24`), saved in `public/media/`. Scale pixel-art stills by whole steps, such as three times, so the pixels stay sharp, and save them as PNG; save other games as JPEG. Without a share picture, the page shares the site's own picture.
 
-Recordings come only from the owner's own play of their own projects: never box art, logos or pictures from publishers. A game without a recording gets a plain dreamports card.
+Recordings are only real play, by the people who make the project: never drawn or generated pictures, box art, logos or pictures from publishers. A game without a recording gets a plain dreamports card.
 
 Two rules keep the site honest:
 
@@ -150,7 +150,7 @@ A successful site build shows that the site builds, nothing more. Browser checks
 
 Dreamports never hosts ROMs, game files or assets extracted from games, and links only to projects that ask players to bring their own legal copy. Keep ROMs, saves, extracted assets, private email addresses, account IDs and credentials out of commits, issues, and PRs. The ignore rules are an accidental-staging guard, not permission to collect that data. If a secret is exposed, stop sharing it and revoke it. The Dreamports bot deletes or hides posts that break these rules, as [Moderation](docs/MODERATION.md) explains.
 
-Pictures of games on the site appear only where the owner decides, and only from the owner's own recordings of their own projects. The one exception is clips that show the original game next to a Dreamport, which `npm run dp -- prove` makes to show a match: they may appear in pull requests, and nowhere else, never on the site, in a game's files or in a commit ([Clips](docs/STANDARD.md#clips)). Never present an invented or reconstructed image as a capture.
+Pictures of games on the site are only real play: recordings by the people who make the project, or [a game's capture](docs/STANDARD.md#a-games-capture), which `npm run dp -- capture` makes and the Dreamports team looks at before it appears. Clips that show the original game next to a Dreamport, which `npm run dp -- prove` makes to show a match, may appear in pull requests, and nowhere else, never on the site, in a game's files or in a commit ([Clips](docs/STANDARD.md#clips)). Never present an invented or reconstructed image as a capture.
 
 ## License
 

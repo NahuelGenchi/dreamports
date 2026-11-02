@@ -15,10 +15,14 @@ const TYPES = {
   '.txt': 'text/plain; charset=utf-8', '.md': 'text/markdown; charset=utf-8',
 };
 
-/** Starts the server on a free port of 127.0.0.1: { url, close() }. */
-export async function serveRepository() {
+/**
+ * Starts the server on a free port of 127.0.0.1: { url, close() }. A tool that talks to its page gives `answer`, which
+ * sees each request first, as (request, response, path), and resolves to true if it answered.
+ */
+export async function serveRepository({ answer } = {}) {
   const server = createServer(async (request, response) => {
     const path = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
+    if (await answer?.(request, response, path)) return;
     // nothing outside the repository, and none of its hidden folders, such as .git or .dreamports
     const parts = normalize(path).split(/[\\/]/).filter(Boolean);
     if (parts.some(p => p.startsWith('.'))) return notFound(response);

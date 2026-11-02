@@ -35,7 +35,7 @@ An entry is a Markdown file. Its fields go at its top, between two `---` lines, 
 | `kit` | Its console's kit, a folder in [`kit/`](../kit/), such as `gba` |
 | `sources` | Every source of its code, each with a `name`, an `href`, its `license` (such as `MIT`, or `none`) and its `use`: `code` when code came in from it, or `guide` when it was only read. Code brought in without a license that allows it also needs `agreement`, a link to its authors' agreement, as [the standard](../docs/STANDARD.md#fair-to-everyone-who-helped) asks |
 | `preview` | Optional: the lead's [team preview](../docs/TEAMS.md#team-builds), which `npm run dp -- team <game> add` updates with each piece, and which the page shows with a reminder that nobody has reviewed it |
-| `ownCopy`, `extras`, `screen`, `share`, `glow` | The game's page, as for [every game on the site](../CONTRIBUTING.md#add-a-game) |
+| `ownCopy`, `extras`, `screen`, `share`, `glow` | The game's page, as for [every game on the site](../CONTRIBUTING.md#add-a-game). `npm run dp -- capture` writes `screen` and `share` ([The proof tools](../tools/README.md#a-games-capture)) |
 | `facts` | Optional: more lines for the game's details, each with a `label` and a `value`, or a link of its own, with a `label` and an `href`, such as an article about it |
 
 The rest of the game's page comes from its folder, not from the entry:

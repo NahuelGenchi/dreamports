@@ -33,6 +33,6 @@ A game that was removed doesn't come back unless its rights holder agrees, or Gi
 
 ## Why it's quick
 
-Every Dreamport lives in its own folder in `games/` since [#74](https://github.com/NahuelGenchi/dreamports/issues/74), with nothing of it elsewhere but the few lines listed above, so removing one never touches another. The repository never holds anything from a game, such as its files, graphics or sounds, as the [standard](STANDARD.md#nothing-from-the-game-is-ever-shared) asks, so there's nothing else to find and remove.
+Every Dreamport lives in its own folder in `games/` since [#74](https://github.com/NahuelGenchi/dreamports/issues/74), with nothing of it elsewhere but the few lines listed above, so removing one never touches another. The repository holds nothing from a game, such as its files or sounds, as the [standard](STANDARD.md#nothing-from-the-game-is-ever-shared) asks, but for the few silent seconds of play its card shows, named after the game in `public/media/`, which go with it, so there's nothing else to find and remove.
 
-Clips that show the original game appear only in pull requests, as [Clips](STANDARD.md#clips) says, never on dreamports.net. A rights holder who wants one removed can say so on it, or write to the address above, and the team takes it down, or asks its author to.
+Clips that show the original game next to a Dreamport appear only in pull requests, as [Clips](STANDARD.md#clips) says, never on dreamports.net. A rights holder who wants one removed can say so on it, or write to the address above, and the team takes it down, or asks its author to. [A game's capture](STANDARD.md#a-games-capture) is on dreamports.net, and it comes down the same way, on its own or with the game.

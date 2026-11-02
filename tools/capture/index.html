@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Capture</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+/* drawn like the launcher and the kit's start screen: Monocraft, 2 px pixel-art frames, light or dark as the device is */
+@font-face { font-family: Monocraft; font-display: swap; src: url(../../kit/gba/styles/fonts/Monocraft.woff2) format("woff2"); }
+:root {
+  --page: #fff; --glow: radial-gradient(900px 560px at 50% 0, #ddefff, rgba(221, 239, 255, 0) 80%);
+  --paper: #fff; --hover: #eef7ff; --line: #cde3f8; --blue: #1a4fb0;
+  --ink: #0a1738; --dim: rgba(10, 23, 56, .68);
+  --act: #1a4fb0; --on-act: #fff;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #050a24; --glow: radial-gradient(1200px 600px at 50% -10%, #1a3cb8 0%, rgba(26, 60, 184, 0) 60%);
+    --paper: #0b1240; --hover: #121b4f; --line: #263a66; --blue: #7aa7ff;
+    --ink: #eef4ff; --dim: #a9b8e6;
+    --act: #bfe6ff; --on-act: #0a1738;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body {
+  display: grid; place-items: center; padding: 16px; background: var(--glow), var(--page); color: var(--ink);
+  font: 15px/20px Monocraft, ui-monospace, Menlo, Consolas, monospace; font-variant-ligatures: none; font-synthesis: none; -webkit-font-smoothing: antialiased;
+}
+main { display: grid; justify-items: center; gap: 16px; min-width: 0; }
+p { margin: 0; text-wrap: balance; text-align: center; }
+.quiet { color: var(--dim); font-size: 13.5px; }
+canvas { display: block; background: #000; image-rendering: pixelated; }
+.frame { box-shadow: 0 -2px var(--line), 0 2px var(--line), -2px 0 var(--line), 2px 0 var(--line); }
+.keys { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 14px; color: var(--dim); font-size: 13.5px; }
+.keys span { display: inline-flex; align-items: center; gap: 6px; }
+kbd {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 18px; padding: 0 4px; background: var(--line);
+  color: var(--ink); font: 11px/1 Monocraft, ui-monospace, Menlo, Consolas, monospace;
+}
+button { font: inherit; color: inherit; cursor: pointer; }
+.act {
+  display: inline-flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 14px; border: 0; background: var(--act); color: var(--on-act);
+  box-shadow: 0 -2px var(--act), 0 2px var(--act), -2px 0 var(--act), 2px 0 var(--act);
+}
+.act.plain { background: var(--paper); color: var(--ink); box-shadow: 0 -2px var(--line), 0 2px var(--line), -2px 0 var(--line), 2px 0 var(--line); }
+.act.plain:hover { background: var(--hover); }
+.act:active { transform: translateY(2px); }
+.act kbd { background: transparent; color: inherit; opacity: .75; }
+#moments { display: grid; gap: 14px; justify-content: center; }
+.moment { display: block; padding: 0; border: 0; background: none; box-shadow: 0 -2px var(--line), 0 2px var(--line), -2px 0 var(--line), 2px 0 var(--line); }
+.moment.at { box-shadow: 0 -4px var(--blue), 0 4px var(--blue), -4px 0 var(--blue), 4px 0 var(--blue); }
+.moment:focus { outline: 0; }
+</style>
+</head>
+<body>
+<main id="play" hidden>
+  <canvas id="screen" class="frame" width="240" height="160" aria-label="The game"></canvas>
+  <p id="said" class="quiet" role="status">Play as you like, then finish. The best moments come up to choose from.</p>
+  <div class="keys">
+    <span><kbd>Arrows</kbd> Move</span>
+    <span><kbd>Z</kbd> A</span>
+    <span><kbd>X</kbd> B</span>
+    <span><kbd>A</kbd> L</span>
+    <span><kbd>S</kbd> R</span>
+    <span><kbd>Enter</kbd> Start</span>
+    <span><kbd>Backspace</kbd> Select</span>
+  </div>
+  <button id="finish" class="act" type="button">Finish <kbd>Esc</kbd></button>
+</main>
+<main id="choose" hidden>
+  <p>Choose a moment of play for the game's card, with no logos in it.</p>
+  <div id="moments"></div>
+  <button id="more" class="act plain" type="button">Keep playing <kbd>Esc</kbd></button>
+</main>
+<main id="wait" hidden>
+  <p id="waiting" role="status"></p>
+</main>
+<script type="module" src="capture.js"></script>
+</body>
+</html>
