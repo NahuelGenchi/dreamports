@@ -59,7 +59,9 @@ export async function openChrome({ profile, headless = true, fresh = true, contr
   }
   if (!port) {
     chrome.kill();
-    throw new Error('The browser didn\'t start.');
+    // a window needs a screen, which a terminal on a server or in an old WSL doesn't have
+    const noScreen = !headless && process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
+    throw new Error(noScreen ? 'The browser\'s window can\'t open, since this terminal has no screen to show it on. In WSL on Windows, run wsl --update in a Windows terminal, then open WSL again.' : 'The browser didn\'t start.');
   }
   let target;
   for (let i = 0; i < 100 && !target; i++) {
