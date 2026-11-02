@@ -13,7 +13,7 @@ import Parts from './Parts.astro';
 import PixelIcon from './PixelIcon.astro';
 import Tile from './Tile.astro';
 import ViewBar from './ViewBar.astro';
-import { filterFor, gameUrl, pageTitle, type Game } from '../lib/site';
+import { achievementsUrl, filterFor, gameUrl, pageTitle, type Game } from '../lib/site';
 import { dreamportView } from '../lib/dreamports';
 
 interface Props {
@@ -129,7 +129,7 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
           </section>
         )
       }
-      {game.data.kind === 'dreamport' && dreamport && <Achievements game={game.data.game} id={id} list={dreamport.achievements} />}
+      {game.data.kind === 'dreamport' && dreamport && <Achievements game={game.data.game} id={id} href={achievementsUrl(game)} list={dreamport.achievements} />}
       {facts.length > 0 && <Facts facts={facts} id={`facts-${id}`} heading="The game" />}
       {
         dreamport && (

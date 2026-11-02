@@ -2,11 +2,13 @@
 // The whole site is this one screen: a top bar with the filters (or the search field, while a
 // search is on), one row of games across the middle, corner buttons at the bottom, and cards
 // that take the row's place as full screens. Every page shows it, with its own card open: a
-// game's own page opens that game's card, /make/<game>/ a Dreamport's page in the Make row, /about/ opens
-// about, /profile/ the player's profile and /players/<name>/ another player's public one.
+// game's own page opens that game's card, its achievements/ page under it its Achievements page, /make/<game>/ a
+// Dreamport's page in the Make row, /about/ opens about, /profile/ the player's profile and /players/<name>/ another
+// player's public one.
 // Without JavaScript the row is a plain list of links, and on a card's page the card is the
 // page's text in the row's place.
 import AboutCard from './AboutCard.astro';
+import AchievementsCard from './AchievementsCard.astro';
 import Doorway from './Doorway.astro';
 import InspectCard from './InspectCard.astro';
 import Key from './Key.astro';
@@ -25,7 +27,7 @@ interface Props {
   // The game the row starts on.
   selected?: string;
   // The card that is open when the page loads.
-  open?: 'about' | 'inspect' | 'make' | 'profile' | 'player';
+  open?: 'about' | 'achievements' | 'inspect' | 'make' | 'profile' | 'player';
 }
 
 // a place in a row: a game, a Dreamport's place in the Make row, or the way to start one
@@ -200,6 +202,7 @@ const pathsFor = (f: Filter) =>
   <ProfileCard open={open === 'profile'} />
   <PlayerCard open={open === 'player'} />
   {games.map((game) => <InspectCard game={game} open={open === 'inspect' && game.id === selected} />)}
+  {games.filter((game) => game.data.kind === 'dreamport').map((game) => <AchievementsCard game={game} open={open === 'achievements' && game.id === selected} />)}
   {making.map((game) => <MakeCard game={game} open={open === 'make' && game.id === selected} github={githubOf(game)} />)}
 </div>
 

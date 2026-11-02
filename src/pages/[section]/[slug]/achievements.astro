@@ -1,0 +1,29 @@
+---
+// A Dreamport's Achievements page: the menu, on that game, with the page open.
+import type { GetStaticPaths } from 'astro';
+import Base from '../../../layouts/Base.astro';
+import Launcher from '../../../components/Launcher.astro';
+import { filterFor, getGames, sectionFor, type Game } from '../../../lib/site';
+import { PLAYABLE } from '../../../lib/players';
+
+export const getStaticPaths = (async () => {
+  const games = await getGames('dreamport');
+  return games.flatMap((game) =>
+    game.data.kind === 'dreamport' && Object.hasOwn(PLAYABLE, game.data.game)
+      ? [{ params: { section: sectionFor(game.data.kind).path, slug: game.id }, props: { game } }]
+      : [],
+  );
+}) satisfies GetStaticPaths;
+
+interface Props {
+  game: Game;
+}
+
+const { game } = Astro.props;
+const { share, title } = game.data;
+const image = share ? { src: share, width: 1200, height: 630, alt: `${title}, from the maker’s own recording` } : undefined;
+---
+
+<Base title={`${title} · Achievements`} description={`Every achievement in ${title}, and which ones you’ve earned.`} image={image}>
+  <Launcher filter={filterFor(game.data.kind).key} selected={game.id} open="achievements" />
+</Base>

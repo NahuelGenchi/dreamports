@@ -93,6 +93,8 @@ function start(launcher: HTMLElement) {
   const cards = $$<HTMLDialogElement>('dialog.card');
   const inspectCards = new Map($$<HTMLDialogElement>('dialog[data-card="inspect"]').map((d) => [d.dataset.game!, d]));
   const makeCards = $$<HTMLDialogElement>('dialog[data-card="make"]');
+  // a Dreamport's Achievements page, which stands under its page: Back goes there, not to the menu
+  const achievementCards = $$<HTMLDialogElement>('dialog[data-card="achievements"]');
   // a game's page and a Dreamport's page in the Make row both show the game's picture, which grows out of its place in
   // the row as the page opens and flies back as it closes
   const hasHero = (dlg: HTMLDialogElement | null) => dlg?.dataset.card === 'inspect' || dlg?.dataset.card === 'make';
@@ -797,7 +799,7 @@ function start(launcher: HTMLElement) {
     return dlg.dataset.path ?? location.pathname;
   }
   function enterAddress(dlg: HTMLDialogElement, how: Address) {
-    if (how === 'push') history.pushState({ card: true }, '', addressOf(dlg));
+    if (how === 'push') history.pushState({ card: true, under: !!dlg.dataset.parent }, '', addressOf(dlg));
     else if (how === 'replace') history.replaceState(history.state, '', addressOf(dlg));
     if (dlg.dataset.title) document.title = dlg.dataset.title;
   }
@@ -828,12 +830,28 @@ function start(launcher: HTMLElement) {
     openView(dlg, opts);
   }
 
+  // Back: to the menu, or from a page that stands under another to that one, by a step back in the browser's history
+  // when it came from there
+  function goBack() {
+    const up = state.open?.dataset.parent;
+    if (!up) closeCard();
+    else if (history.state?.under) history.back();
+    else openCard(inspectCards.get(state.open!.dataset.game!)!);
+  }
+
+  // how far a game's page had scrolled when a page under it took its place, to come back to
+  let leftAt = [0, 0];
+
   // a card takes the menu's place: the row steps aside and the card's parts come in. A card that
   // is up gives way at once.
   function openView(dlg: HTMLDialogElement, opts: OpenOptions) {
     let opener = opts.opener ?? (document.activeElement as HTMLElement | null);
     const replacing = !!state.view;
+    // the page under this one, when coming back from it, and the link that opened it
+    const under = state.view?.dataset.parent === dlg.dataset.path ? state.view : null;
+    const link = under && $$('a', dlg).find((a) => hrefOf(a) === under.dataset.path);
     if (state.view) {
+      if (dlg.dataset.parent === state.view.dataset.path) leftAt = [$('.ins-text', state.view).scrollTop, $('.inspect', state.view).scrollTop];
       opener = state.opener;
       closeView({ instant: true, quiet: true, keepFocus: true, address: false, swap: true });
     }
@@ -850,13 +868,13 @@ function start(launcher: HTMLElement) {
     dlg.getBoundingClientRect();
     if (dlg === aboutCard) jumpAbout(opts.section ?? 'dreamport', true, false);
     if (hasHero(dlg)) {
-      $('.ins-text', dlg).scrollTop = 0;
-      $('.inspect', dlg).scrollTop = 0;
-      resetExtras(dlg);
+      $('.ins-text', dlg).scrollTop = under ? leftAt[0] : 0;
+      $('.inspect', dlg).scrollTop = under ? leftAt[1] : 0;
+      if (!under) resetExtras(dlg);
       startShow(dlg, !opts.instant && !replacing);
     }
     if (!opts.instant) viewIn(dlg);
-    focusStart(dlg)?.focus({ preventScroll: true });
+    (link ?? focusStart(dlg))?.focus({ preventScroll: true });
     if (!opts.instant) sound.play('open');
     enterAddress(dlg, opts.address ?? (replacing ? 'replace' : 'push'));
   }
@@ -925,6 +943,8 @@ function start(launcher: HTMLElement) {
           ? ['.ins-text', '.ins-show .mk-play']
           : kind === 'about'
           ? ['.about-nav', '.about-text']
+          : kind === 'achievements'
+            ? ['.card-body']
           : kind === 'profile' || kind === 'player'
             ? ['.card-title', '.pf-body']
             : ['.card-title', '.set-list', '.card-note'];
@@ -980,7 +1000,7 @@ function start(launcher: HTMLElement) {
   for (const dlg of cards) {
     dlg.addEventListener('cancel', (e) => {
       e.preventDefault();
-      closeCard();
+      goBack();
     });
     // if the browser closes a card by itself, catch up. The event comes a moment late, so a card
     // that has been shown again since then stays open.
@@ -991,7 +1011,7 @@ function start(launcher: HTMLElement) {
       const el = e.target as Element;
       if (el.closest('[data-close]')) {
         e.preventDefault();
-        closeCard();
+        goBack();
         return;
       }
       const link = el.closest<HTMLAnchorElement>('a[href], a[data-href]');
@@ -1017,10 +1037,11 @@ function start(launcher: HTMLElement) {
           return;
         }
         // another page of the launcher's, such as a game's page from its page in the Make row, takes this one's place
-        const page = [...inspectCards.values(), ...makeCards, profileCard].find((d) => d !== dlg && d.dataset.path === href);
+        const page = [...inspectCards.values(), ...makeCards, ...achievementCards, profileCard].find((d) => d !== dlg && d.dataset.path === href);
         if (page) {
           e.preventDefault();
-          openCard(page);
+          // one that stands under this one is a step on, for the browser's Back to come back from
+          openCard(page, page.dataset.parent === dlg.dataset.path ? { address: 'push' } : {});
           return;
         }
         // a player's public profile, from the player's own
@@ -1689,10 +1710,10 @@ function start(launcher: HTMLElement) {
       return;
     }
     if (state.open) {
-      // escape goes back to the menu
+      // escape goes back
       if (e.key === 'Escape' && !e.repeat) {
         e.preventDefault();
-        closeCard();
+        goBack();
       }
       return;
     }
@@ -1832,7 +1853,7 @@ function start(launcher: HTMLElement) {
     if (state.open) {
       const dlg = state.open;
       if (edges.includes(1)) {
-        closeCard();
+        goBack();
         return;
       }
       const here = document.activeElement as HTMLInputElement | null;
@@ -2071,7 +2092,7 @@ function start(launcher: HTMLElement) {
       card.dataset.path = path;
       if (moved) card.dispatchEvent(new Event('view-open'));
     }
-    for (const page of [...inspectCards.values(), ...makeCards]) {
+    for (const page of [...inspectCards.values(), ...makeCards, ...achievementCards]) {
       if (page.dataset.path === path) {
         game = page.dataset.game!;
         card = page;
@@ -2111,6 +2132,8 @@ function start(launcher: HTMLElement) {
     if (popping) {
       popping = false;
       clearTimeout(popGuard);
+      // a page that took the place of one under another leaves one step short of the menu's address
+      if (!FILTERS[state.filter].paths.includes(location.pathname)) history.replaceState(null, '', FILTERS[state.filter].path);
       return;
     }
     followAddress(false);

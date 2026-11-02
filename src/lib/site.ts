@@ -58,6 +58,9 @@ export const sectionFor = (kind: Kind): Section =>
 export const gameUrl = (game: Game): string =>
   `/${sectionFor(game.data.kind).path}/${game.id}/`;
 
+// A Dreamport's Achievements page, under its own page.
+export const achievementsUrl = (game: Game): string => `${gameUrl(game)}achievements/`;
+
 // A Dreamport's page in the Make row, for the people making it (#142), named after its folder in games/.
 export const makeUrl = (folder: string): string => `/make/${folder}/`;
 

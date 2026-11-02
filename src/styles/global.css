@@ -250,6 +250,7 @@ kbd,
 .pf-input,
 .facts,
 .achievements,
+.ach-tile,
 .about-nav a[aria-current='true'],
 .bo-back,
 .mk-help,
@@ -2466,6 +2467,7 @@ dialog.card[open] {
   .seg,
   .facts,
   .achievements,
+  .ach-tile,
   dialog.card {
     border: 1px solid ButtonText;
   }
@@ -2562,7 +2564,8 @@ dialog.card[open] {
 .view .inspect,
 .view .about,
 .view.card-settings .card-body,
-.view.card-profile .card-body {
+.view.card-profile .card-body,
+.view.card-achievements .card-body {
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -2638,7 +2641,8 @@ dialog.card[open] {
 }
 
 /* long text scrolls under soft edges */
-.view :is(.ins-text, .about-text) {
+.view :is(.ins-text, .about-text),
+.view.card-achievements .card-body {
   -webkit-mask-image: linear-gradient(transparent, #000 26px, #000 calc(100% - 36px), transparent);
   mask-image: linear-gradient(transparent, #000 26px, #000 calc(100% - 36px), transparent);
 }
@@ -2676,14 +2680,15 @@ dialog.card[open] {
 }
 
 .extras h3,
-.achievements h3 {
+.achievements :is(h2, h3) {
   margin: 0;
   color: var(--ink);
   font: 400 16px/1.4 var(--font);
 }
 
-/* a Dreamport's achievements: how many are earned beside the heading, then every one, with its trophy gray until it's
-   earned and gold from then on, in the colours the game's own settings draw it in */
+/* a Dreamport's achievements: how many are earned beside the heading, over a bar that fills to it, then on its page a
+   row of trophies, as big as fits up to a limit, and on its Achievements page every one. A trophy is gray until it's
+   earned and gold from then on, in the colours the game's own settings draw it in. */
 .achievements {
   --frame: var(--line);
   margin: 24px 2px 0;
@@ -2704,56 +2709,100 @@ dialog.card[open] {
   white-space: nowrap;
 }
 
-.ach-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
-  gap: 14px 18px;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
+.ach-bar {
+  margin-top: 8px;
 }
 
-.ach {
+.ach-bar i {
+  width: 0;
+}
+
+:root:not(.js) .ach-bar {
+  display: none;
+}
+
+.ach-tiles {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 56px));
+  gap: 8px;
+  margin: 14px 2px 2px;
+  text-decoration: none;
+}
+
+.ach,
+.ach-tile {
   --trophy-g: #8b93a6;
   --trophy-s: #5d6578;
   --trophy-l: #c3c9d6;
-  display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
-  align-content: start;
-  gap: 0 10px;
 }
 
-.ach.is-on {
+.ach.is-on,
+.ach-tile.is-on {
   --trophy-g: #ffc510;
   --trophy-s: #b57308;
   --trophy-l: #ffffa5;
 }
 
+.ach-tile {
+  --frame: var(--line);
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  background: var(--hover);
+}
+
+.ach-tile:hover {
+  --frame: var(--sky);
+}
+
+.ach-tiles:active .ach-tile {
+  transform: translateY(2px);
+}
+
+.ach-more {
+  color: var(--ink);
+  font: 400 13.5px/1 var(--font);
+}
+
 .ach-trophy {
   display: block;
-  grid-row: span 2;
   width: 24px;
   height: 20px;
 }
 
-.ach-name {
-  color: var(--dim);
-  font: 400 13.5px/20px var(--font);
+.ach-tile .ach-trophy {
+  width: 36px;
+  height: 30px;
 }
 
-.ach.is-on .ach-name {
-  color: var(--ink);
+@media (max-width: 380px) {
+  .ach-tile .ach-trophy {
+    width: 24px;
+    height: 20px;
+  }
 }
 
-.ach-what {
+.ach-group .pf-game-head .set-label {
+  margin: 0;
+}
+
+/* without JavaScript nothing knows what's earned, so nothing says what's locked */
+:root:not(.js) .ach-group .pf-game-head {
+  display: none;
+}
+
+.ach:not(.is-on) .set-label {
   color: var(--dim);
-  font: 400 13.5px/20px var(--font);
 }
 
 .ach-note {
   margin: 4px 0 0;
   color: var(--dim);
   font: 400 13.5px/20px var(--font);
+}
+
+.ach-bar + .ach-note {
+  margin-top: 10px;
 }
 
 .x-row {
@@ -3028,7 +3077,8 @@ dialog.card[open] {
 
 /* settings and profiles: one column in the middle */
 .view.card-settings .card-body,
-.view.card-profile .card-body {
+.view.card-profile .card-body,
+.view.card-achievements .card-body {
   max-width: 760px;
   padding-top: 30px;
   padding-bottom: 24px;
@@ -3158,7 +3208,8 @@ dialog.card[open] {
   }
 
   .view.card-settings .card-body,
-  .view.card-profile .card-body {
+  .view.card-profile .card-body,
+  .view.card-achievements .card-body {
     padding: 22px 16px 8px;
   }
 }

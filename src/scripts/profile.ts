@@ -170,21 +170,49 @@ function earnedOnDevice(game: string): Record<string, number> {
   }
 }
 
-// its achievements (src/components/Achievements.astro): each earned one's trophy turns gold, those on this device at
-// once and those on the profile as soon as it answers
+// its achievements, on its own page (src/components/Achievements.astro) and on its Achievements page
+// (src/components/AchievementsCard.astro): each earned one's trophy turns gold, those on this device at once and those
+// on the profile as soon as it answers
 function startAchievements(box: HTMLElement) {
   const game = box.dataset.game!;
   const card = box.closest('dialog')!;
-  const items = [...box.querySelectorAll<HTMLElement>('.ach')];
-  const count = box.querySelector<HTMLElement>('.ach-count')!;
-  const note = box.querySelector<HTMLElement>('.ach-note')!;
+  const page = document.querySelector<HTMLDialogElement>(`dialog[data-card="achievements"][data-play="${game}"]`)!;
+  const items = [...page.querySelectorAll<HTMLElement>('.ach')];
+  const tiles = [...box.querySelectorAll<HTMLElement>('.ach-tile:not(.ach-more)')];
+  const counts = [box, page].map((el) => el.querySelector<HTMLElement>('.ach-count')!);
+  const bars = [box, page].map((el) => el.querySelector<HTMLElement>('.ach-bar i')!);
+  const note = page.querySelector<HTMLElement>('.ach-note')!;
+  function fill(group: string, list: HTMLElement[]) {
+    const section = page.querySelector<HTMLElement>(`[data-group="${group}"]`)!;
+    section.hidden = !list.length;
+    section.querySelector('.pf-count')!.textContent = String(list.length);
+    section.querySelector('ul')!.append(...list);
+  }
   function paint(earned: Record<string, number>) {
-    const on = items.filter((item) => Object.hasOwn(earned, item.dataset.id!));
+    const has = (item: HTMLElement) => Object.hasOwn(earned, item.dataset.id!);
+    const on = items.filter(has).sort((a, b) => earned[b.dataset.id!] - earned[a.dataset.id!]);
+    const off = items.filter((item) => !has(item));
     for (const item of items) {
-      item.classList.toggle('is-on', on.includes(item));
-      item.querySelector('.ach-trophy')!.setAttribute('aria-label', on.includes(item) ? 'Earned' : 'Locked');
+      item.classList.toggle('is-on', has(item));
+      item.querySelector('.ach-trophy')!.setAttribute('aria-label', has(item) ? 'Earned' : 'Locked');
+      const time = item.querySelector('time')!;
+      const at = new Date(earned[item.dataset.id!]);
+      time.hidden = !has(item) || Number.isNaN(at.getTime());
+      if (!time.hidden) {
+        time.textContent = day.format(at);
+        time.setAttribute('datetime', at.toISOString());
+      }
     }
-    count.textContent = `${on.length} of ${items.length}`;
+    fill('earned', on);
+    fill('locked', off);
+    // the row shows the earned ones first
+    const order = [...on, ...off];
+    tiles.forEach((tile, i) => {
+      tile.classList.toggle('is-on', has(order[i]));
+      tile.title = order[i].querySelector('.set-label')!.textContent!;
+    });
+    for (const count of counts) count.textContent = `${on.length} / ${items.length}`;
+    for (const bar of bars) bar.style.width = `${(on.length / items.length) * 100}%`;
   }
   async function show() {
     const device = earnedOnDevice(game);
@@ -193,11 +221,13 @@ function startAchievements(box: HTMLElement) {
     const profile = await earnedOnProfile();
     paint({ ...device, ...profile[game] });
   }
-  card.addEventListener('view-open', show);
-  // back from the game with the browser's own Back, where this page is shown as it was left
-  addEventListener('pageshow', (e) => {
-    if (e.persisted && card.open) show();
-  });
+  for (const dlg of [card, page]) {
+    dlg.addEventListener('view-open', show);
+    // back from the game with the browser's own Back, where this page is shown as it was left
+    addEventListener('pageshow', (e) => {
+      if (e.persisted && dlg.open) show();
+    });
+  }
 }
 
 addEventListener('pageshow', (e) => {
