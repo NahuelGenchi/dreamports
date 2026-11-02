@@ -347,6 +347,7 @@ kbd {
    are off. The controller beside it shows only while one is connected. */
 .status {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 4px;
   margin-right: -6px;
@@ -355,7 +356,9 @@ kbd {
 
 .status-sound {
   display: flex;
+  flex: none;
   align-items: center;
+  gap: 6px;
   height: 30px;
   padding: 0 8px;
   border: 0;
@@ -381,6 +384,19 @@ kbd {
 
 #ico-pad.is-off {
   display: none;
+}
+
+/* with little room beside the filters, the hint goes first and then the controller's icon: the speaker always stays */
+@media (max-width: 500px) {
+  .status-sound .key {
+    display: none;
+  }
+}
+
+@media (max-width: 340px) {
+  #ico-pad {
+    display: none;
+  }
 }
 
 .filters {

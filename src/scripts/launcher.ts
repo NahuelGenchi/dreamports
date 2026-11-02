@@ -1704,13 +1704,20 @@ function start(launcher: HTMLElement) {
     // letters type into the search field and the profile's name, and a phone's own keyboard keeps
     // the touch hints
     if (t === searchInput) return;
-    if (!(t instanceof HTMLInputElement && t.type === 'text')) setInput('keys');
+    const typing = t instanceof HTMLInputElement && t.type === 'text';
+    if (!typing) setInput('keys');
     // only escape goes back: a held enter key must not undo the launch it started
     if (state.launching) {
       if (e.key === 'Escape' && !e.repeat) {
         e.preventDefault();
         back();
       }
+      return;
+    }
+    // the sound's key works wherever its icon shows, so with a card open too
+    if (e.key.toLowerCase() === 'm' && !typing) {
+      e.preventDefault();
+      if (!e.repeat) toggleSound();
       return;
     }
     if (state.open) {
@@ -1855,6 +1862,8 @@ function start(launcher: HTMLElement) {
       if (edges.includes(1)) back();
       return;
     }
+    // the right stick pressed in, like the sound's key, works wherever its icon shows
+    if (edges.includes(11)) toggleSound();
     if (state.open) {
       const dlg = state.open;
       if (edges.includes(1)) {
