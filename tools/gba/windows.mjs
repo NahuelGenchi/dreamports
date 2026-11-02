@@ -6,7 +6,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { LOCAL } from '../lib/paths.mjs';
 
 export const WINDOWS_TOOLS = join(LOCAL, 'gba', 'windows');
@@ -27,7 +27,7 @@ const CMAKE = {
 const fromWindows = program => join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', program);
 
 function run(command, args, what) {
-  const result = spawnSync(command, args, { stdio: ['ignore', 'ignore', 'pipe'], encoding: 'utf8' });
+  const result = spawnSync(command, args, { cwd: WINDOWS_TOOLS, stdio: ['ignore', 'ignore', 'pipe'], encoding: 'utf8' });
   if (result.status !== 0) throw new Error(`${what} failed: ${(result.stderr || result.error?.message || '').trim().split('\n').slice(-3).join(' ')}`);
 }
 
@@ -49,7 +49,8 @@ export function windowsTools(log) {
     log(`Getting ${COMPILER.name}, a compiler, and ${CMAKE.name}, about 120 MB, only for this build…`);
     const compiler = fetched(COMPILER), cmake = fetched(CMAKE);
     run(compiler, ['-y', `-o${WINDOWS_TOOLS}`], `Unpacking ${COMPILER.name}`);
-    run(fromWindows('tar.exe'), ['-xf', cmake, '-C', WINDOWS_TOOLS], `Unpacking ${CMAKE.name}`);
+    // by its plain name, from its folder, as tar can't open a path with letters outside the computer's old code page
+    run(fromWindows('tar.exe'), ['-xf', basename(cmake)], `Unpacking ${CMAKE.name}`);
     rmSync(compiler, { force: true });
     rmSync(cmake, { force: true });
   }
