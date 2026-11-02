@@ -1,6 +1,6 @@
 ---
 // A Dreamport's page in the Make row, in the menu's place (#142), with only what a newcomer needs to help make it:
-// its cover and the way to play it as it is, which opens its page in the Dreamports row; its name; Help make it, the
+// its cover and, once it has code, the way to play it as it is, which opens its page in the Dreamports row; its name; Help make it, the
 // sentence to paste into a coding agent, which copies when pressed, how many pieces are free to take, and a link to
 // its game's issue, to talk about it; its progress, the same two bars as on the game's page, with one line on where it
 // stands; and its latest step, with the earlier ones folded. Who leads it, what waits for review and the code map stay
@@ -13,7 +13,7 @@ import Parts from './Parts.astro';
 import Tile from './Tile.astro';
 import ViewBar from './ViewBar.astro';
 import { MAKE_GUIDE_URL, gameUrl, makeUrl, pageTitle, type Game } from '../lib/site';
-import { dreamportView, makeView } from '../lib/dreamports';
+import { dreamportView, makeView, released } from '../lib/dreamports';
 import type { Making } from '../lib/making';
 
 interface Props {
@@ -52,12 +52,14 @@ const Heading = open ? 'h2' : 'h3';
         <i class="glow" style={`--g: ${data.glow}`}></i>
         <div class="show-tile"><Tile game={game} lazy={!open} /></div>
       </div>
-      <a class="btn btn--alt mk-play" href={gameUrl(game)}>
-        <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
-          <path d="M4 2h2v2h2v2h2v2H8v2H6v2H4zM10 6h2v4h-2z" />
-        </svg>
-        Play it as it is
-      </a>
+      {released(game) && (
+        <a class="btn btn--alt mk-play" href={gameUrl(game)}>
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+            <path d="M4 2h2v2h2v2h2v2H8v2H6v2H4zM10 6h2v4h-2z" />
+          </svg>
+          Play it as it is
+        </a>
+      )}
     </div>
     <div class="ins-text" tabindex="0">
       <Title class="ins-title mk-title" id={`mk-title-${id}`}><GameTitle title={data.title} /></Title>

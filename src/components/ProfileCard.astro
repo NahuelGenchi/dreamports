@@ -4,7 +4,7 @@
 // src/scripts/profile.ts fills it, and the worker (worker/index.ts) does the signing in.
 import ViewBar from './ViewBar.astro';
 import WayIcon from './WayIcon.astro';
-import { keepsAchievements } from '../lib/dreamports';
+import { keepsAchievements, released } from '../lib/dreamports';
 import { MINIMUM_AGE, WAYS, type Way } from '../lib/players';
 import { gameUrl, getGames, pageTitle } from '../lib/site';
 
@@ -19,7 +19,7 @@ const ways = Object.entries(WAYS) as [Way, string][];
 // each game that keeps achievements: its name and page, by the name in its address under /play/
 const games: Record<string, { title: string; href: string }> = {};
 for (const game of await getGames('dreamport')) {
-  if (game.data.kind === 'dreamport' && keepsAchievements(game.data.game)) games[game.data.game] = { title: game.data.title, href: gameUrl(game) };
+  if (game.data.kind === 'dreamport' && released(game) && keepsAchievements(game.data.game)) games[game.data.game] = { title: game.data.title, href: gameUrl(game) };
 }
 ---
 
