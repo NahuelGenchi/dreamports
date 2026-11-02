@@ -2,14 +2,18 @@
 //   fetch  reads the posts to check, with the workflow's read-only token
 //   judge  applies the plain rules, asks OpenCode about what they leave, and writes the verdicts, which hold no text
 //          from any post, in a step with no token at all
+// and, when posts are left waiting for a model, two steps of a job of their own, on a machine that never ran OpenCode:
+//   fetch-waiting  reads those posts again, with the workflow's read-only token
+//   ask            asks DeepSeek's API about them, with its key and no GitHub token, and writes the verdicts again
 // An event checks its own post. The hourly run checks the posts waiting for a model, and the reviews and comments on
 // pull requests' code since its last run, since those events come without write access from forks. A pull request is
 // checked with the notes it adds or changes (docs/NOTES.md), since other people's coding agents will read them.
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { rulesFor } from './notes.mjs';
-import { accounts, isClaimsCommand, isTrusted, planFor } from './verdicts.mjs';
+import { accounts, checkVerdicts, isClaimsCommand, isTrusted, planFor } from './verdicts.mjs';
 import { api, fetchItems, graphql, list, notesOf, repository, waitingEntries } from './github.mjs';
+import { deepSeekAsker } from './deepseek.mjs';
 import { LIMIT, openCodeAsker } from './model.mjs';
 
 const MINUTE = 60000, HOUR = 60 * MINUTE;
@@ -56,7 +60,17 @@ async function readPosts() {
     if (subject?.node_id) ids.push(subject.node_id);
     pushed = ['synchronize', 'reopened'].includes(event.action);
   }
-  const wanted = [...new Set(ids)].slice(0, 300);
+  await savePosts([...new Set(ids)].slice(0, 300), { since, pushed });
+}
+
+// the posts that the judging job's step left waiting, read again in case they've changed since
+async function readWaiting() {
+  const results = checkVerdicts(process.env.VERDICTS)?.results ?? [];
+  await savePosts([...new Set(results.filter(result => result.key === 'wait').map(result => result.node))]);
+}
+
+// these posts, as the next step reads them, with the notes of the pull requests among them
+async function savePosts(wanted, { since = null, pushed = false } = {}) {
   const treatAsPublic = accounts(process.env.MODERATION_TREAT_AS_PUBLIC);
   const items = (await fetchItems(wanted)).filter(item => item.repository === repository)
     .map(item => ({ ...item, trusted: isTrusted(item, treatAsPublic), claims: isClaimsCommand(item) }));
@@ -88,13 +102,13 @@ function piecesOf(item) {
   return pieces;
 }
 
-// What OpenCode says of the whole post, piece by piece: the first answer the post has a plan for, or else the last,
+// What a model says of the whole post, piece by piece: the first answer the post has a plan for, or else the last,
 // and nothing when any piece gets no answer. An answer with no plan, such as a clip of the original in a pull request,
 // doesn't stop the rest from being read.
-async function askAbout(opencode, item, hints) {
+async function askAbout(asker, item, hints) {
   let answer = null;
   for (const text of piecesOf(item)) {
-    answer = await opencode.ask({ ...item, text, hints });
+    answer = await asker.ask({ ...item, text, hints });
     if (!answer || planFor(answer.key, item, 'model').length) return answer;
   }
   return answer;
@@ -102,11 +116,11 @@ async function askAbout(opencode, item, hints) {
 
 // The plain rules first, on the post and on its notes, and then the rules for notes. The repository's own people and
 // claims commands get the rules alone, without the spam rule, since the bot only flags them. Whatever has nothing the
-// rules notice and no notes is allowed, and the rest goes to OpenCode. A post no model answers for waits, and so does
-// a pull request whose notes couldn't be read.
-async function judgePosts() {
+// rules notice and no notes is allowed, and the rest goes to the model that asker asks. A post no model answers for
+// waits, and so does a pull request whose notes couldn't be read. With earlier verdicts, these take the place of its
+// waits and it adds to the rest.
+async function judgePosts(asker, earlier = null) {
   const data = read(posts);
-  const opencode = openCodeAsker(process.env.MODERATION_MODELS);
   for (const item of data.items) {
     const notes = item.notes ?? [];
     if (item.unread) {
@@ -122,19 +136,23 @@ async function judgePosts() {
     if (verdicts.length) item.verdicts = verdicts;
     else if (own || (!hints.length && !notes.length)) item.verdicts = [{ key: 'allow', by: 'rules' }];
     else {
-      const answer = await askAbout(opencode, item, notes.length ? [...hints, 'notes'] : hints);
+      const answer = await askAbout(asker, item, notes.length ? [...hints, 'notes'] : hints);
       item.verdicts = [answer ? { key: answer.key, by: 'model', model: answer.model } : { key: 'wait', by: 'none' }];
     }
   }
-  const results = data.items.flatMap(item => item.verdicts.map(verdict => ({ kind: item.kind, node: item.node, ...verdict })));
+  const results = [
+    ...(earlier?.results ?? []).filter(result => result.key !== 'wait'),
+    ...data.items.flatMap(item => item.verdicts.map(verdict => ({ kind: item.kind, node: item.node, ...verdict })))
+  ];
+  const failed = results.some(result => result.key === 'wait');
   const verdicts = {
-    version: 1, mode: sweep ? 'sweep' : 'event', results, gone: data.gone,
+    version: 1, mode: sweep ? 'sweep' : 'event', results, gone: [...new Set([...(earlier?.gone ?? []), ...data.gone])],
     model: {
-      answered: results.some(result => result.by === 'model'), failed: results.some(result => result.key === 'wait'),
-      tried: [...opencode.tried]
+      answered: results.some(result => result.by === 'model'), failed,
+      tried: [...new Set([...(earlier?.model.tried ?? []), ...asker.tried])]
     }
   };
-  appendFileSync(process.env.GITHUB_OUTPUT, `verdicts=${JSON.stringify(verdicts)}\n`);
+  appendFileSync(process.env.GITHUB_OUTPUT, `verdicts=${JSON.stringify(verdicts)}\nwaiting=${failed}\n`);
 
   // the job's summary: each post checked, with its verdict and what decided it, and never its text
   const decided = verdict => verdict.key === 'skip' ? 'nothing: a bot wrote it' : verdict.by === 'rules' ? 'the plain rules'
@@ -154,6 +172,17 @@ const KIND_WORDS = {
   review: 'Review', 'discussion-comment': 'Comment in Discussions'
 };
 
-const steps = { fetch: readPosts, judge: judgePosts };
+// DeepSeek's turn, only with its key: without one, this step writes nothing and the acting job goes by the verdicts
+// the judging job's step wrote, so the posts keep waiting
+async function askDeepSeek() {
+  const earlier = checkVerdicts(process.env.VERDICTS);
+  if (!process.env.DEEPSEEK_API_KEY || !earlier) {
+    console.log('DeepSeek wasn\'t asked, since this job has no key or no verdicts to add to.');
+    return;
+  }
+  await judgePosts(deepSeekAsker(process.env.DEEPSEEK_API_KEY), earlier);
+}
+
+const steps = { fetch: readPosts, 'fetch-waiting': readWaiting, judge: () => judgePosts(openCodeAsker(process.env.MODERATION_MODELS)), ask: askDeepSeek };
 if (!steps[process.argv[2]]) throw new Error(`judge.mjs runs one step: ${Object.keys(steps).join(', ')}.`);
 await steps[process.argv[2]]();
