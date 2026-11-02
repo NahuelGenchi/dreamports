@@ -830,6 +830,9 @@ function start(launcher: HTMLElement) {
     openView(dlg, opts);
   }
 
+  // whether a card is the page that stands under another
+  const standsUnder = (dlg: HTMLDialogElement, other: HTMLDialogElement | null) => !!dlg.dataset.parent && dlg.dataset.parent === other?.dataset.path;
+
   // Back: to the menu, or from a page that stands under another to that one, by a step back in the browser's history
   // when it came from there
   function goBack() {
@@ -848,10 +851,10 @@ function start(launcher: HTMLElement) {
     let opener = opts.opener ?? (document.activeElement as HTMLElement | null);
     const replacing = !!state.view;
     // the page under this one, when coming back from it, and the link that opened it
-    const under = state.view?.dataset.parent === dlg.dataset.path ? state.view : null;
+    const under = state.view && standsUnder(state.view, dlg) ? state.view : null;
     const link = under && $$('a', dlg).find((a) => hrefOf(a) === under.dataset.path);
     if (state.view) {
-      if (dlg.dataset.parent === state.view.dataset.path) leftAt = [$('.ins-text', state.view).scrollTop, $('.inspect', state.view).scrollTop];
+      if (standsUnder(dlg, state.view)) leftAt = [$('.ins-text', state.view).scrollTop, $('.inspect', state.view).scrollTop];
       opener = state.opener;
       closeView({ instant: true, quiet: true, keepFocus: true, address: false, swap: true });
     }
@@ -1041,7 +1044,7 @@ function start(launcher: HTMLElement) {
         if (page) {
           e.preventDefault();
           // one that stands under this one is a step on, for the browser's Back to come back from
-          openCard(page, page.dataset.parent === dlg.dataset.path ? { address: 'push' } : {});
+          openCard(page, standsUnder(page, dlg) ? { address: 'push' } : {});
           return;
         }
         // a player's public profile, from the player's own
