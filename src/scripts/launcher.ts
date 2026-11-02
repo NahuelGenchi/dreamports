@@ -883,6 +883,7 @@ function start(launcher: HTMLElement) {
     const replacing = !!state.view;
     // the page under this one, when coming back from it, and the link that opened it
     const under = state.view && standsUnder(state.view, dlg) ? state.view : null;
+    const kin = !!under || (!!state.view && standsUnder(dlg, state.view));
     const link = under && $$('a', dlg).find((a) => hrefOf(a) === under.dataset.path);
     if (state.view) {
       if (standsUnder(dlg, state.view)) leftAt = [$('.ins-text', state.view).scrollTop, $('.inspect', state.view).scrollTop];
@@ -897,6 +898,8 @@ function start(launcher: HTMLElement) {
     launcher.dataset.view = dlg.dataset.card;
     if (dlg.open) dlg.close();
     dlg.show();
+    // focus can't leave a page that scrolls as a whole, in a window too short for its top to stay, past that top
+    dlg.querySelector('.ach-page')?.scrollTo(0, 0);
     // a card that fills itself, such as the profile, starts now
     dlg.dispatchEvent(new Event('view-open'));
     dlg.getBoundingClientRect();
@@ -907,7 +910,7 @@ function start(launcher: HTMLElement) {
       if (!under) resetExtras(dlg);
       startShow(dlg, !opts.instant && !replacing);
     }
-    if (!opts.instant) viewIn(dlg);
+    if (!opts.instant) viewIn(dlg, kin);
     (link ?? focusStart(dlg))?.focus({ preventScroll: true });
     if (!opts.instant) sound.play('open');
     enterAddress(dlg, opts.address ?? (replacing ? 'replace' : 'push'));
@@ -978,23 +981,25 @@ function start(launcher: HTMLElement) {
           : kind === 'about'
           ? ['.about-nav', '.about-text']
           : kind === 'achievements'
-            ? ['.card-body']
+            ? ['.ach-page']
           : kind === 'profile' || kind === 'player'
             ? ['.card-title', '.pf-body']
             : ['.card-title', '.set-list', '.card-note'];
     return [...parts.map((part) => $(part, dlg)), $('.view-bar', dlg)];
   }
-  function viewIn(dlg: HTMLDialogElement) {
+  // kin: it takes the place of a page it stands over or under, where Back already is, so Back stays and the rest starts at once
+  function viewIn(dlg: HTMLDialogElement, kin = false) {
+    const parts = viewParts(dlg).filter((el) => !kin || !el.matches('.view-bar'));
     if (calm()) {
-      dlg.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 });
+      for (const el of kin ? parts : [dlg]) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160 });
       return;
     }
     const d = Math.round(clamp(Math.min(W, H) * 0.04, 12, 32));
-    viewParts(dlg).forEach((el, i) => {
+    parts.forEach((el, i) => {
       const from = el.matches('.ins-text') ? `translateX(${d * 2}px)` : `translateY(${d}px)`;
       el.animate([{ opacity: 0, transform: from }, { opacity: 1, transform: 'none' }], {
         duration: 480,
-        delay: 60 + i * 60,
+        delay: (kin ? 0 : 60) + i * 60,
         easing: 'cubic-bezier(.2,.9,.25,1)',
         fill: 'backwards',
       });
@@ -1869,7 +1874,7 @@ function start(launcher: HTMLElement) {
     const ry = gp.axes[3] || 0;
     // the right stick scrolls the open card's text
     if (state.open && Math.abs(ry) > 0.2) {
-      const area = $$('.about-text, .ins-text, .inspect, .card-body', state.open).find((el) => el.scrollHeight > el.clientHeight + 2);
+      const area = $$('.about-text, .ins-text, .inspect, .ach-page, .card-body', state.open).find((el) => el.scrollHeight > el.clientHeight + 2);
       if (area) area.scrollTop += ry * 16;
     }
     let dir = 0;
