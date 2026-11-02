@@ -3258,8 +3258,7 @@ dialog.card[open] {
 }
 
 @media (max-width: 640px) {
-  /* a game's page: picture, button and text in one column that scrolls, only up and down: the
-     glow round the picture is wider than the screen */
+  /* a game's page: picture, button and text in one column that scrolls, only up and down */
   .view .inspect {
     display: block;
     overflow: hidden auto;
@@ -3280,6 +3279,16 @@ dialog.card[open] {
 
   .view .show-wrap {
     align-self: center;
+  }
+
+  /* the glow round the picture is as big as ever, but its box stops at the screen's edges: wider, and it would make
+     the column wider than the screen too, which an iPhone can then leave shifted sideways */
+  .view .show-wrap .glow {
+    left: calc((var(--hero) - 100vw) / 2);
+    right: calc((var(--hero) - 100vw) / 2);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: calc(var(--hero) * 1.64) 100%;
   }
 
   .view .ins-show .btn {
