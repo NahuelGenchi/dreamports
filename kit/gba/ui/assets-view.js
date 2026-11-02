@@ -45,14 +45,18 @@ export function createAssetsView(host, { back, brand, rom, parts }) {
       <div class="setup-bar">
         <a class="setup-back" href="${back.href}" aria-label="${back.label}" title="${back.label}">${BACK}</a>
       </div>
-      <header class="setup-head">
-        <p class="setup-brand">${brandTag(escape(brand))}</p>
-        <h1>Asset viewer</h1>
-        <p class="setup-intro">Decoded in this browser from your ROM.</p>
-      </header>
-      <div class="assets-body"></div>
+      <div class="setup-scroll">
+        <div class="setup-page">
+          <header class="setup-head">
+            <p class="setup-brand">${brandTag(escape(brand))}</p>
+            <h1>Asset viewer</h1>
+            <p class="setup-intro">Decoded in this browser from your ROM.</p>
+          </header>
+          <div class="assets-body"></div>
+        </div>
+      </div>
     </div>`;
-  const body = host.querySelector('.assets-body'), backEl = host.querySelector('.setup-back');
+  const body = host.querySelector('.assets-body'), backEl = host.querySelector('.setup-back'), scroller = host.querySelector('.setup-scroll');
 
   // the launcher's look, picked in its settings or else the device's
   function paint() {
@@ -73,8 +77,8 @@ export function createAssetsView(host, { back, brand, rom, parts }) {
     const now = padsHeld(pads);
     if (showing) {
       if (now.has('b') && !held.has('b')) backEl.click();
-      if (now.has('up')) scrollBy({ top: -SCROLL / 4 });
-      if (now.has('down')) scrollBy({ top: SCROLL / 4 });
+      if (now.has('up')) scroller.scrollBy({ top: -SCROLL / 4 });
+      if (now.has('down')) scroller.scrollBy({ top: SCROLL / 4 });
     }
     showing = true;
     held.clear();

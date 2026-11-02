@@ -62,24 +62,28 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
   const consoles = [...new Set(slots.map(s => s.console ?? 'Game Boy Advance'))];
   host.innerHTML = `
     <div class="setup">
-      <header class="setup-head">
-        <div class="setup-bar">
-          <a class="setup-back" href="${home}" aria-label="Back to Dreamports" title="Back to Dreamports">${ICONS.back}</a>
-          <div class="pad" data-state="gone"><span class="pad-icon" aria-hidden="true"></span><span class="pad-note" role="status" aria-live="polite"></span></div>
-        </div>
-        <p class="setup-brand">${brandTag(escape(brand))}</p>
-        <h1>${heading}</h1>
-        <p class="setup-intro">${intro}</p>
-      </header>
-      <ul class="roms" aria-label="Your ROMs">${slots.map(row).join('')}</ul>
-      <div class="setup-play">
-        <button type="button" class="play" disabled><kbd>Enter</kbd>${ICONS.play}<span class="play-label">Play</span></button>
-        <p class="play-note" aria-live="polite"></p>
+      <div class="setup-bar">
+        <a class="setup-back" href="${home}" aria-label="Back to Dreamports" title="Back to Dreamports">${ICONS.back}</a>
+        <div class="pad" data-state="gone"><span class="pad-icon" aria-hidden="true"></span><span class="pad-note" role="status" aria-live="polite"></span></div>
       </div>
-      <footer class="setup-foot">
-        <label class="remember"><input type="checkbox" checked> Remember on this device</label>
-        <button type="button" class="link forget" hidden>Forget the saved ROMs</button>
-      </footer>
+      <div class="setup-scroll">
+        <div class="setup-page">
+          <header class="setup-head">
+            <p class="setup-brand">${brandTag(escape(brand))}</p>
+            <h1>${heading}</h1>
+            <p class="setup-intro">${intro}</p>
+          </header>
+          <ul class="roms" aria-label="Your ROMs">${slots.map(row).join('')}</ul>
+          <div class="setup-play">
+            <button type="button" class="play" disabled><kbd>Enter</kbd>${ICONS.play}<span class="play-label">Play</span></button>
+            <p class="play-note" aria-live="polite"></p>
+          </div>
+          <footer class="setup-foot">
+            <label class="remember"><input type="checkbox" checked> Remember on this device</label>
+            <button type="button" class="link forget" hidden>Forget the saved ROMs</button>
+          </footer>
+        </div>
+      </div>
       <div class="setup-drag" aria-hidden="true"><div>${ICONS.drop}<span>Drop your ROMs</span><small>Each one goes to its own game</small></div></div>
     </div>`;
 
@@ -327,7 +331,7 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
       lent = to;
       depth = 0;
       host.classList.remove('dragging');
-      if (to) { to.list.append(list); to.foot.append(foot); } else { $('.setup-play').before(list); $('.setup-drag').before(foot); }
+      if (to) { to.list.append(list); to.foot.append(foot); } else { $('.setup-play').before(list); $('.setup-play').after(foot); }
       note = to?.note ?? $('.play-note');
       delete note.dataset.kind;
       update();

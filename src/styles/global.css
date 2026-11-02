@@ -124,16 +124,15 @@
   box-sizing: border-box;
 }
 
+/* The site is a launcher, not a page: no page scrolls as a whole, however far it's zoomed in. What doesn't fit scrolls
+   inside the container it's in. */
 html {
-  min-height: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--page);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-}
-
-html:has(.launcher) {
-  overflow: hidden;
-  overscroll-behavior: none;
 }
 
 /* The site is a launcher, not a page: a long press selects no text, and shows no menu and no
@@ -164,6 +163,7 @@ video {
 }
 
 body {
+  min-height: 100%;
   margin: 0;
   background: var(--page-glow), var(--page);
   color: var(--ink);
@@ -2149,12 +2149,13 @@ dialog.card[open] {
 /* ---------- Not found ---------- */
 
 .lost {
+  position: fixed;
+  inset: 0;
+  overflow: hidden auto;
   display: grid;
   justify-items: center;
-  align-content: center;
+  align-content: safe center;
   gap: 18px;
-  min-height: 100vh;
-  min-height: 100dvh;
   margin: 0;
   padding: 48px max(24px, env(safe-area-inset-left, 0px));
   text-align: center;
@@ -2405,6 +2406,20 @@ dialog.card[open] {
   }
 }
 
+/* zoomed in about as far as a browser goes, the launcher's two bars don't fit: they scroll sideways inside themselves,
+   so no button is out of reach */
+@media (max-width: 299px) {
+  .topbar {
+    grid-template-columns: auto auto auto;
+    justify-content: space-between;
+    overflow: auto hidden;
+  }
+
+  .corners {
+    overflow: auto hidden;
+  }
+}
+
 /* ---------- Calm motion: the device asks for less motion, or the visitor chose it ---------- */
 
 :root[data-motion='calm'] .slot {
@@ -2626,12 +2641,14 @@ dialog.card[open] {
 /* the launcher never shows a scroll bar: long text still scrolls with the wheel, touch, the arrow
    keys and the controller's right stick */
 .launcher,
-.launcher * {
+.launcher *,
+.lost {
   scrollbar-width: none;
 }
 
 .launcher::-webkit-scrollbar,
-.launcher *::-webkit-scrollbar {
+.launcher *::-webkit-scrollbar,
+.lost::-webkit-scrollbar {
   display: none;
 }
 
