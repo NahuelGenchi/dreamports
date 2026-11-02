@@ -1,6 +1,6 @@
 ---
-// The whole site is this one screen: a top bar with the filters (or the search field, while a
-// search is on), one row of games across the middle, corner buttons at the bottom, and cards
+// The whole site is this one screen: a top bar whose filters turn like a carousel (or the search
+// field, while a search is on), one row of games across the middle, corner buttons at the bottom, and cards
 // that take the row's place as full screens. Every page shows it, with its own card open: a
 // game's own page opens that game's card, its achievements/ page under it its Achievements page, /make/<game>/ a
 // Dreamport's page in the Make row, /about/ opens about, /profile/ the player's profile and /players/<name>/ another
@@ -55,6 +55,9 @@ const rows = FILTERS.map((f) => {
 });
 const current = rows.find((row) => row.filter.key === filter)!;
 const selIndex = Math.max(0, current.list.findIndex((place) => !!place.game && place.game.id === selected));
+// where a filter stands on the top bar's ring, 0 being the middle, so the page starts with them in place
+const half = FILTERS.length >> 1;
+const ringAt = (i: number) => ((i - FILTERS.indexOf(current.filter) + half + FILTERS.length) % FILTERS.length) - half;
 const Heading = open ? 'h2' : 'h1';
 // Every address that shows a filter: its own, and the older one for each kind of game in it.
 const pathsFor = (f: Filter) =>
@@ -82,12 +85,13 @@ const pathsFor = (f: Filter) =>
               aria-selected={f.key === filter ? 'true' : 'false'}
               aria-controls="row"
               tabindex={f.key === filter ? undefined : -1}
+              style={`--at: ${ringAt(i)}`}
             >
               {f.label}
             </a>
           ))
         }
-        <i class="tab-mark" id="tab-mark" aria-hidden="true"></i>
+        <i class="tab-mark" id="tab-mark" aria-hidden="true" style={`--len: ${current.filter.label.length}`}></i>
       </div>
       <button type="button" class="shoulder" id="btn-r" aria-label="Next filter" aria-keyshortcuts="R E">R</button>
       <div class="search" id="search" role="search" hidden>

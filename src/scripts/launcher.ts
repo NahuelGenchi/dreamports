@@ -267,7 +267,6 @@ function start(launcher: HTMLElement) {
     place(sel());
     void rowEl.offsetWidth;
     rowEl.classList.remove('no-anim');
-    moveTabMark(false);
     placePadHint(topH, rowY - RISE - TH / 2 - cg);
   }
 
@@ -502,7 +501,7 @@ function start(launcher: HTMLElement) {
     if (f === state.filter || switching || busy()) return;
     switching = true;
     state.filter = f;
-    updateTabs(true);
+    updateTabs(dir);
     sound.play('filter', dir);
     const outCls = dir > 0 ? 'out-l' : 'out-r';
     const inCls = dir > 0 ? 'in-r' : 'in-l';
@@ -540,21 +539,53 @@ function start(launcher: HTMLElement) {
     setTimeout(() => b.classList.remove('is-pressed'), 130);
   }
 
-  function updateTabs(anim: boolean) {
+  // a filter's place on the top bar's ring: the one showing is at 0, in the middle, with the others round it
+  const ringAt = (i: number) => {
+    const half = FILTERS.length >> 1;
+    return ((i - state.filter + half + FILTERS.length) % FILTERS.length) - half;
+  };
+  // dir is the way the ring turned, for the filters to glide there. A value it takes past one edge comes back in at the
+  // other, while something that looks like it goes on out of sight. With no dir they go straight to their places.
+  let turning = 0;
+  function updateTabs(dir = 0) {
+    const tabs = $('.tabs', launcher);
+    const glide = !!dir && !calm();
+    tabs.classList.toggle('is-turning', glide);
+    if (glide) {
+      clearTimeout(turning);
+      turning = window.setTimeout(() => tabs.classList.remove('is-turning'), 450);
+    }
     FILTERS.forEach((f, i) => {
       const on = i === state.filter;
       f.tab.setAttribute('aria-selected', String(on));
       f.tab.tabIndex = on ? 0 : -1;
+      const was = Number(f.tab.style.getPropertyValue('--at'));
+      const at = ringAt(i);
+      if (glide && at !== was - dir) {
+        tabGoesOn(f.tab, f.label, was - dir);
+        placeTab(f.tab, at + dir);
+      }
+      f.tab.style.setProperty('--at', String(at));
     });
-    moveTabMark(anim);
+    $('#tab-mark', launcher).style.setProperty('--len', String(FILTERS[state.filter].label.length));
   }
-  function moveTabMark(anim: boolean) {
-    const t = FILTERS[state.filter].tab;
-    const mark = $('#tab-mark', launcher);
-    const pad = parseFloat(getComputedStyle(t).paddingLeft) || 0;
-    mark.style.transition = anim ? '' : 'none';
-    mark.style.left = t.offsetLeft + pad + 'px';
-    mark.style.width = Math.max(0, t.offsetWidth - pad * 2) + 'px';
+  function placeTab(tab: HTMLElement, at: number) {
+    tab.style.transition = 'none';
+    tab.style.setProperty('--at', String(at));
+    void tab.offsetWidth;
+    tab.style.transition = '';
+  }
+  function tabGoesOn(tab: HTMLElement, label: string, to: number) {
+    const gone = document.createElement('span');
+    gone.className = 'tab tab-gone';
+    gone.textContent = label;
+    gone.setAttribute('aria-hidden', 'true');
+    gone.style.translate = getComputedStyle(tab).translate;
+    tab.after(gone);
+    void gone.offsetWidth;
+    gone.style.translate = '';
+    gone.style.setProperty('--at', String(to));
+    setTimeout(() => gone.remove(), 450);
   }
 
   // ---------- Search ----------
@@ -2069,7 +2100,8 @@ function start(launcher: HTMLElement) {
     f.tab.addEventListener('click', (e) => {
       if (!plainClick(e)) return;
       e.preventDefault();
-      setFilter(i, i > state.filter ? 1 : -1);
+      // a side value turns the ring, as L or R does
+      if (i !== state.filter) (ringAt(i) < 0 ? prevFilter : nextFilter)();
     }),
   );
   $('#btn-settings', launcher).addEventListener('click', (e) => {
@@ -2117,7 +2149,7 @@ function start(launcher: HTMLElement) {
     if (game) f = FILTERS.findIndex((filter) => filter.key === card!.dataset.filter);
     if (f >= 0 && f !== state.filter) {
       state.filter = f;
-      updateTabs(false);
+      updateTabs();
       buildRow();
     }
     if (game) {
@@ -2171,7 +2203,7 @@ function start(launcher: HTMLElement) {
   updateStatus();
   buildRow();
   layout();
-  updateTabs(false);
+  updateTabs();
   launcher.classList.add('is-laid');
   // the page's own card, if it has one, opens over the menu
   followAddress(true);
