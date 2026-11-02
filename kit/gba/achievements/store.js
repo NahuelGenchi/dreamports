@@ -1,5 +1,5 @@
 // What the player has earned, of the achievements the game lists. What this device earned is kept in this
-// browser, under a key of the game's own, by id with the time it was earned, and nothing else: on dreamports.net a
+// browser, under a key named after the game, by id with the time it was earned, and nothing else: on dreamports.net a
 // profile claims that map when its player signs in here, so it must hold only what was earned here. There the
 // page loads the site's /dreamports.js, which saves each new unlock to the signed-in player's profile through its
 // unlock(id) (NahuelGenchi/dreamports#68), and whose earned() gives what the profile holds from every device
@@ -29,14 +29,15 @@ async function readProfile(achievement) {
 /**
  * The achievements of the game's `list`, the module the site reads too (list.js in its folder): its ACHIEVEMENTS,
  * each { id, title, description, beaten }, achievement(id) and statusOf(earned). They are kept in this browser
- * under `key`. Returns { unlock(id), earned(id), list(), status(), onUnlock(fn), onStatus(fn), onProfile(fn) }: unlock earns
+ * under `key`, or else `<game>.achievements` for the game in the page's address, which is where the site looks for
+ * them (src/lib/players.ts). Returns { unlock(id), earned(id), list(), status(), onUnlock(fn), onStatus(fn), onProfile(fn) }: unlock earns
  * `id` once, here or on the profile, and returns the achievement if it is new (else null); earned says when it was
  * first earned (ms since the epoch) or null; list gives every achievement with its `earned`; status is the game's,
  * 'beaten', 'mastered' or null (statusOf); onUnlock calls `fn(achievement)` on each new one, onStatus `fn(status,
  * fromProfile)` when an unlock or the profile's achievements change the status, and onProfile `fn()` once the
  * profile's achievements have come, which show no popup.
  */
-export function openAchievements({ key, list: { ACHIEVEMENTS, achievement, statusOf } }) {
+export function openAchievements({ key = `${/\/(?:play|games)\/([a-z0-9-]+)\//.exec(location.pathname)?.[1]}.achievements`, list: { ACHIEVEMENTS, achievement, statusOf } }) {
   const earnedAt = read(key), listeners = [], statusListeners = [], profileListeners = [];
   let fromProfile = {};   // the profile's, from every device, never written to this browser
   const earned = id => {

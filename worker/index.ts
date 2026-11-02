@@ -2,7 +2,7 @@
 // included; this runs only for the addresses wrangler.jsonc sends it: the accounts API under /api/ and
 // players' public profiles under /players/. docs/ACCOUNTS.md describes it.
 
-import { ACHIEVEMENT_PATTERN, MINIMUM_AGE, NAME_PATTERN, PLAYABLE, isWay, type Way } from '../src/lib/players';
+import { ACHIEVEMENT_PATTERN, GAME_PATTERN, MINIMUM_AGE, NAME_PATTERN, achievementsListOf, isWay, type Way } from '../src/lib/players';
 import { Cancelled, WayError, accountOf, b64url, signInPage, type Flight, type WayEnv } from './ways';
 
 interface Env extends WayEnv {
@@ -406,7 +406,9 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
         const player = await mustSignIn();
         const body = await readBody(request);
         const game = body.game;
-        if (typeof game !== 'string' || !Object.hasOwn(PLAYABLE, game)) throw new Problem(400, 'That game doesn’t keep achievements here.');
+        // a game keeps them by publishing its list, so a new one needs no line here
+        const list = typeof game === 'string' && GAME_PATTERN.test(game) && (await env.ASSETS.fetch(new URL(achievementsListOf(game), url), { method: 'HEAD' }));
+        if (!list || !list.ok) throw new Problem(400, 'That game doesn’t keep achievements here.');
         const given = body.earned;
         if (!given || typeof given !== 'object' || Array.isArray(given)) throw new Problem(400, 'No achievements were sent.');
         const now = Date.now();

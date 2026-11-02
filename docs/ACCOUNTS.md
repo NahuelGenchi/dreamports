@@ -91,9 +91,9 @@ A game played on dreamports.net at `/play/<game>/` uses profiles in four steps:
    const fromProfile = (await globalThis.dreamports?.earned?.()) ?? {};
    ```
 
-To add a game, list it in [`src/lib/players.ts`](../src/lib/players.ts) (the id of its page, which for a Dreamport is its folder's name and `-dreamport`, its list of achievements, its `localStorage` key) and add its key to `DEVICE` in [`public/dreamports.js`](../public/dreamports.js). The list is an ES module the game publishes, exporting `ACHIEVEMENTS`, an array of `{ id, title, description }`; the profile reads titles and descriptions from it.
+A game keeps achievements by having its list, `games/<game>/src/achievements/list.js`: an ES module exporting `ACHIEVEMENTS`, an array of `{ id, title, description }`. Nothing else names the game. Its page gets an Achievements section, the profile reads titles and descriptions from the list, and the Worker takes achievements only for a game whose list is on the site ([`src/lib/players.ts`](../src/lib/players.ts)).
 
-Sonic Advance Dreamport: the list is `/play/sonic-advance/src/achievements/list.js`, and the key is `onsoku.achievements`.
+What a device earned is kept under the `localStorage` key `<game>.achievements`, which is what the kit's `openAchievements()` uses unless it's told another. Sonic Advance Dreamport's is `onsoku.achievements`, since it came first and players have it on their devices.
 
 ## The API
 
