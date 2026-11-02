@@ -50,11 +50,11 @@ export async function run(args) {
   }
 
   const server = await serveRepository();
-  // its own profile, kept between plays; a recording starts from a new one, with nothing saved
-  const page = await openChrome({ profile: join(LOCAL, 'chrome', name ? 'record' : `play-${game}`), headless: false, fresh: !!name, controllers: true });
   const frames = [];
-  let buttons = [];
+  let buttons = [], page;
   try {
+    // its own profile, kept between plays; a recording starts from a new one, with nothing saved
+    page = await openChrome({ profile: join(LOCAL, 'chrome', name ? 'record' : `play-${game}`), headless: false, fresh: !!name, controllers: true });
     await openDreamport(page, server, game, copy.path, { query: name ? '?proof=record' : '', start: false });
     // the presses to play first go in before the game starts, and again after a reload
     const giveStart = async () => {
@@ -90,7 +90,7 @@ export async function run(args) {
     }
     await page.closed;
   } finally {
-    await page.close();
+    await page?.close();
     await server.close();
   }
   if (!name) return 0;
