@@ -128,6 +128,7 @@ export function makePreview({ tip, commit, branch, game, title, name, author, re
     if (hidden(file.path)) continue;
     const [top, folder, ...rest] = file.path.split('/');
     if (top === 'kit' && !rest.length) continue;   // kit/README.md: only the kits' folders go on the site
+    if (rest[0] === 'notes') continue;   // notes are for the people making the game (docs/NOTES.md)
     if (file.mode === '120000' || file.mode === '160000') {
       problems.push(`${file.path}: every file has to be a plain file in the folder, not a link.`);
       continue;

@@ -1,12 +1,14 @@
 // Puts the games in this repository on the site (#74), and the kits they start from (#76). After
 // `astro build`, each folder in games/ is copied as it is to dist/play/<game>/, and each in kit/ to
-// dist/kit/<console>/, which Cloudflare serves at /play/<game>/ and /kit/<console>/ as plain files. The
-// build stops and names every problem if a folder breaks one of the rules in games/README.md, or if the
+// dist/kit/<console>/, which Cloudflare serves at /play/<game>/ and /kit/<console>/ as plain files, all but
+// their notes, which are for the people making them (docs/NOTES.md). The build stops and names every problem
+// if a folder breaks one of the rules in games/README.md, if a note breaks the rules for notes, or if the
 // site grows past what Cloudflare's free plan takes.
 import { copyFile, lstat, mkdir, readdir } from 'node:fs/promises';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ENTRY } from '../lib/entries.mjs';
+import { checkNotes } from '../lib/notes.mjs';
 
 // a game's folder name is its address: lowercase letters and numbers, with single dashes between them
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -38,6 +40,7 @@ export default function games() {
           stopIf(`The ${kind.what}s in ${kind.folder}/ can’t go on the site`, problems);
           found.push({ kind, folder, names });
         }
+        stopIf('These notes break the rules for notes (docs/NOTES.md)', checkNotes(root).map(({ path, why }) => `${path}: ${why}`));
         for (const { kind, folder, names } of found) {
           for (const name of names) await copy(join(folder, name), join(site, kind.address, name));
           logger.info(names.length ? `Copied to /${kind.address}/: ${names.join(', ')}` : `No ${kind.what}s in ${kind.folder}/`);
@@ -98,9 +101,10 @@ async function problemsWith(kind, folder, name, site) {
   return problems;
 }
 
-// copies a game's or a kit's files, leaving out names starting with a dot
+// copies a game's or a kit's files, leaving out names starting with a dot and its notes
 async function copy(from, to) {
   for (const file of (await walk(from, false)).files) {
+    if (relative(from, file.path).split(sep)[0] === 'notes') continue;
     const target = join(to, relative(from, file.path));
     await mkdir(dirname(target), { recursive: true });
     await copyFile(file.path, target);

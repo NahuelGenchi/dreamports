@@ -9,7 +9,7 @@
 // reads code the game copies into the console's memory as it is that many frames after power-on. What it prints
 // comes from the copy, so it goes only to the terminal, and to .dreamports/read/, which the ignore rules keep out of
 // commits. A coding agent that reads it sends it to the company that runs the agent's model, as it does anything it
-// reads.
+// reads. After it come any notes people left on that function (docs/NOTES.md).
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -22,6 +22,7 @@ import { findFunctions, looksLikeArm } from './gba/functions.mjs';
 import { MGBA_VERSION, READER } from './gba/build.mjs';
 import { ensureOriginal } from './gba/original.mjs';
 import { readShifts } from './portmap.mjs';
+import { NOTES_CAUTION, notesAbout, showAll } from './notes.mjs';
 
 const USAGE = 'Usage: npm run dp -- read <game> <address or name> [--arm | --thumb] [--bytes <n>] [--frame <n>]';
 const CARTRIDGE = 0x08000000;
@@ -124,7 +125,24 @@ export async function run(args) {
   writeFileSync(join(folder, `${hex(start)}.txt`), text);
   console.log(text);
   console.log(`Also kept in .dreamports/read/${game}/${hex(start)}.txt. It comes from your copy of the game: never put it in a commit, an issue or a pull request. A coding agent that reads it sends it to the company that runs the agent's model.`);
+  const notes = notesAbout(game, about => {
+    const at = addressOf(game, codeMap, about);
+    return at >= start && at < start + length;
+  });
+  if (notes.length) {
+    console.log(`\nNotes on this function, from people who worked on it. ${NOTES_CAUTION}\n`);
+    showAll(notes);
+  }
   return 0;
+}
+
+// the address something in a note's About: line means, or -1 when it isn't a function
+function addressOf(game, codeMap, what) {
+  try {
+    return resolve(game, codeMap, what).address;
+  } catch {
+    return -1;
+  }
 }
 
 function options(args) {

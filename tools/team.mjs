@@ -11,7 +11,8 @@
 //     build, which closes the pull request as merged, and updates the team preview with share.
 // The tools run on the lead's computer, so add stops before a piece that changes anything outside its game's folder,
 // the kits, the README's table and the game's progress map, until the lead has read it and passes --all. Members' code only runs in the
-// browser prove opens. --team names the fork with the lead's team build when it isn't the lead's own, such as one of
+// browser prove opens. It also stops before a piece with a note that breaks the rules for notes, whatever else it's
+// passed, and shows the lead the title of each note a piece brings, since the bot hasn't seen them yet. --team names the fork with the lead's team build when it isn't the lead's own, such as one of
 // an organisation's. send and add ask first; --yes answers yes, once the person has said yes.
 
 import { execFileSync } from 'node:child_process';
@@ -29,6 +30,7 @@ import { dreamports, readProof } from './readme.mjs';
 import { run as prove } from './prove.mjs';
 import { run as portmap } from './portmap.mjs';
 import { run as share } from './share.mjs';
+import { NOTE_PATH, canBeNote, noteProblems, parseNote } from '../.github/moderation/notes.mjs';
 
 const USAGE = `Usage:
   npm run dp -- team <game> start [--fork <owner/name>]
@@ -254,7 +256,13 @@ async function add(game, rest, { fork: wanted, all = false, yes = false }) {
     throw new Error(`${pull.html_url} also changes files outside games/${game}/ and the kits:\n${outside.slice(0, 12).map(p => `  ${p}`).join('\n')}${outside.length > 12 ? `\n  and ${outside.length - 12} more` : ''}\n`
       + 'add runs the tools on your computer, so read those changes first. If they belong in the piece, run it again with --all.');
   }
+  // its notes, which the team's agents read as soon as it's in, and which the Dreamports bot only sees once the team
+  // build reaches a pull request here (docs/NOTES.md). Nothing about a note that breaks the rules is printed but why.
+  const notes = git(['diff', '--name-only', '-z', '--diff-filter=d', `HEAD...${piece}`]).split('\0').filter(p => NOTE_PATH.test(p)).map(path => ({ path, text: git(['show', `${piece}:${path}`], { quiet: true }) ?? '' }));
+  const wrong = notes.map(note => (canBeNote(note.path) ? noteProblems(note.text) : ['It isn\'t a plain file directly in a notes folder, named as a note is.'])).filter(why => why.length);
+  if (wrong.length) throw new Error(`${pull.html_url} can't come in: ${wrong.length} of its notes ${wrong.length === 1 ? 'breaks' : 'break'} the rules for notes (docs/NOTES.md), which whoever sent it can fix.\n${[...new Set(wrong.flat())].map(why => `  ${why}`).join('\n')}`);
   console.log(`#${number}, "${pull.title}", from @${pull.user.login} (${pull.head.repo?.full_name ?? 'a deleted fork'}, ${pull.head.ref}): ${changed.length} files changed, commit ${piece.slice(0, 7)}.`);
+  if (notes.length) console.log(`It brings these notes, which your team's agents will read:\n${notes.map(note => `  ${parseNote(note.text).title}`).join('\n')}`);
   if (!(await ask(`\nMerge it into ${title}'s team build, prove it, and if nothing that matched the original before differs now, push the team build to ${fork.repository} and update the team preview?`, yes))) {
     console.log('Nothing was added.');
     return 0;
