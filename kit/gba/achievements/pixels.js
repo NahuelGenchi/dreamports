@@ -1,6 +1,7 @@
 // The unlock popup's pixel art, from Palmaris (its tools/make_popup_assets.py),
 // kept as text so a wrong pixel shows in review: a 5×7 font in 6×8 cells for printable ASCII, whose g, j, p, q
-// and y go down into an eighth row, and a 12×10 trophy in three golds.
+// and y go down into an eighth row, and a 12×10 trophy in three golds. A Dreamport's page on the site draws the same
+// trophy (src/components/TrophySprite.astro).
 
 // one glyph a line, in code order from 0x20, its rows from the top: 7, or 8 with a descender
 const GLYPHS = `

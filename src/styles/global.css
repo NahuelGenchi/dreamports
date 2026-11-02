@@ -255,6 +255,8 @@ kbd,
 .check input,
 .pf-input,
 .facts,
+.achievements,
+.ach-tile,
 .about-nav a[aria-current='true'],
 .bo-back,
 .mk-help,
@@ -2470,6 +2472,8 @@ dialog.card[open] {
   .set-list,
   .seg,
   .facts,
+  .achievements,
+  .ach-tile,
   dialog.card {
     border: 1px solid ButtonText;
   }
@@ -2566,7 +2570,8 @@ dialog.card[open] {
 .view .inspect,
 .view .about,
 .view.card-settings .card-body,
-.view.card-profile .card-body {
+.view.card-profile .card-body,
+.view.card-achievements .card-body {
   flex: 1;
   min-height: 0;
   width: 100%;
@@ -2642,7 +2647,8 @@ dialog.card[open] {
 }
 
 /* long text scrolls under soft edges */
-.view :is(.ins-text, .about-text) {
+.view :is(.ins-text, .about-text),
+.view.card-achievements .card-body {
   -webkit-mask-image: linear-gradient(transparent, #000 26px, #000 calc(100% - 36px), transparent);
   mask-image: linear-gradient(transparent, #000 26px, #000 calc(100% - 36px), transparent);
 }
@@ -2679,10 +2685,133 @@ dialog.card[open] {
     2px 0 var(--frame);
 }
 
-.extras h3 {
+.extras h3,
+.achievements :is(h2, h3) {
   margin: 0;
   color: var(--ink);
   font: 400 16px/1.4 var(--font);
+}
+
+/* a Dreamport's achievements: how many are earned beside the heading, over a bar that fills to it, then on its page a
+   row of trophies, as big as fits up to a limit, and on its Achievements page every one. A trophy is gray until it's
+   earned and gold from then on, in the colours the game's own settings draw it in. */
+.achievements {
+  --frame: var(--line);
+  container-type: inline-size;
+  margin: 24px 2px 0;
+  padding: 14px 16px 16px;
+  background: var(--paper);
+}
+
+.ach-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ach-count {
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
+  white-space: nowrap;
+}
+
+.ach-bar {
+  margin-top: 8px;
+}
+
+.ach-bar i {
+  width: 0;
+}
+
+:root:not(.js) .ach-bar {
+  display: none;
+}
+
+.ach-tiles {
+  display: grid;
+  width: fit-content;
+  grid-template-columns: repeat(6, minmax(0, 56px));
+  gap: 8px;
+  margin: 14px 2px 2px;
+  text-decoration: none;
+}
+
+.ach,
+.ach-tile {
+  --trophy-g: #8b93a6;
+  --trophy-s: #5d6578;
+  --trophy-l: #c3c9d6;
+}
+
+.ach.is-on,
+.ach-tile.is-on {
+  --trophy-g: #ffc510;
+  --trophy-s: #b57308;
+  --trophy-l: #ffffa5;
+}
+
+.ach-tile {
+  --frame: var(--line);
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  background: var(--hover);
+}
+
+.ach-tile:hover {
+  --frame: var(--sky);
+}
+
+.ach-tiles:active .ach-tile {
+  transform: translateY(2px);
+}
+
+.ach-more {
+  color: var(--ink);
+  font: 400 13.5px/1 var(--font);
+}
+
+.ach-trophy {
+  display: block;
+  width: 24px;
+  height: 20px;
+}
+
+.ach-tile .ach-trophy {
+  width: 36px;
+  height: 30px;
+}
+
+/* twice the drawing's size instead of three times, once the squares are too small for that, so its pixels stay even */
+@container (max-width: 319px) {
+  .ach-tile .ach-trophy {
+    width: 24px;
+    height: 20px;
+  }
+}
+
+.ach-group .pf-game-head .set-label {
+  margin: 0;
+}
+
+/* without JavaScript nothing knows what's earned, so nothing says what's locked */
+:root:not(.js) .ach-group .pf-game-head {
+  display: none;
+}
+
+.ach:not(.is-on) .set-label {
+  color: var(--dim);
+}
+
+.ach-note {
+  margin: 4px 0 0;
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
+}
+
+.ach-bar + .ach-note {
+  margin-top: 10px;
 }
 
 .x-row {
@@ -2957,7 +3086,8 @@ dialog.card[open] {
 
 /* settings and profiles: one column in the middle */
 .view.card-settings .card-body,
-.view.card-profile .card-body {
+.view.card-profile .card-body,
+.view.card-achievements .card-body {
   max-width: 760px;
   padding-top: 30px;
   padding-bottom: 24px;
@@ -3087,7 +3217,8 @@ dialog.card[open] {
   }
 
   .view.card-settings .card-body,
-  .view.card-profile .card-body {
+  .view.card-profile .card-body,
+  .view.card-achievements .card-body {
     padding: 22px 16px 8px;
   }
 }

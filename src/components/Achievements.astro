@@ -1,0 +1,47 @@
+---
+// A Dreamport's achievements on its page, under its extras, in little room: how many are earned, over a bar that fills
+// to it, and a row of trophies, gray until they're earned, the earned ones first, which opens the game's Achievements
+// page with every one (AchievementsCard.astro). Only the visitor's browser knows what's earned: src/scripts/profile.ts
+// turns each earned trophy gold, from what this device keeps and from the visitor's profile. A Dreamport that keeps
+// none yet says so (src/lib/players.ts).
+import type { AchievementView } from '../lib/dreamports';
+
+interface Props {
+  game: string;
+  id: string;
+  // the game's Achievements page
+  href: string;
+  list: readonly AchievementView[];
+}
+
+const { game, id, href, list } = Astro.props;
+// the row holds six: when they don't all fit, the last one says how many more there are
+const ROW = 6;
+const shown = list.length > ROW ? list.slice(0, ROW - 1) : list;
+---
+
+<section class="achievements" aria-labelledby={`ach-${id}`} data-game={list.length > 0 ? game : undefined}>
+  <div class="ach-head">
+    <h3 id={`ach-${id}`}>Achievements</h3>
+    {list.length > 0 && <span class="ach-count">{list.length}</span>}
+  </div>
+  {
+    list.length > 0 ? (
+      <>
+        <span class="meter-bar ach-bar" aria-hidden="true"><i></i></span>
+        <a class="ach-tiles" href={href} aria-label={`All ${list.length} achievements`}>
+          {shown.map((achievement) => (
+            <span class="ach-tile" title={achievement.title}>
+              <svg class="ach-trophy" aria-hidden="true">
+                <use href="#trophy" />
+              </svg>
+            </span>
+          ))}
+          {shown.length < list.length && <span class="ach-tile ach-more">+{list.length - shown.length}</span>}
+        </a>
+      </>
+    ) : (
+      <p class="ach-note">None yet.</p>
+    )
+  }
+</section>

@@ -151,6 +151,90 @@ async function claimDevice() {
   }
 }
 
+// ---------- A Dreamport's page ----------
+
+// what the profile has earned, by game: asked once until the page is shown again, and only while a player is noted in
+// this browser, as each asking is a request to the site's API
+let onProfile: Promise<Profile['achievements']> | null = null;
+function earnedOnProfile() {
+  if (!playerNoted()) return Promise.resolve<Profile['achievements']>({});
+  onProfile ??= api<{ player: Profile | null }>('/api/me').then(({ data }) => data.player?.achievements ?? {});
+  return onProfile;
+}
+
+function earnedOnDevice(game: string): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(PLAYABLE[game].device) ?? 'null') ?? {};
+  } catch {
+    return {};
+  }
+}
+
+// its achievements, on its own page (src/components/Achievements.astro) and on its Achievements page
+// (src/components/AchievementsCard.astro): each earned one's trophy turns gold, those on this device at once and those
+// on the profile as soon as it answers
+function startAchievements(box: HTMLElement) {
+  const game = box.dataset.game!;
+  const card = box.closest('dialog')!;
+  const page = document.querySelector<HTMLDialogElement>(`dialog[data-card="achievements"][data-play="${game}"]`)!;
+  const items = [...page.querySelectorAll<HTMLElement>('.ach')];
+  const tiles = [...box.querySelectorAll<HTMLElement>('.ach-tile:not(.ach-more)')];
+  const counts = [box, page].map((el) => el.querySelector<HTMLElement>('.ach-count')!);
+  const bars = [box, page].map((el) => el.querySelector<HTMLElement>('.ach-bar i')!);
+  const note = page.querySelector<HTMLElement>('.ach-note')!;
+  function fill(group: string, list: HTMLElement[]) {
+    const section = page.querySelector<HTMLElement>(`[data-group="${group}"]`)!;
+    section.hidden = !list.length;
+    section.querySelector('.pf-count')!.textContent = String(list.length);
+    section.querySelector('ul')!.append(...list);
+  }
+  function paint(earned: Record<string, number>) {
+    const has = (item: HTMLElement) => Object.hasOwn(earned, item.dataset.id!);
+    const on = items.filter(has).sort((a, b) => earned[b.dataset.id!] - earned[a.dataset.id!]);
+    const off = items.filter((item) => !has(item));
+    for (const item of items) {
+      item.classList.toggle('is-on', has(item));
+      item.querySelector('.ach-trophy')!.setAttribute('aria-label', has(item) ? 'Earned' : 'Locked');
+      const time = item.querySelector('time')!;
+      const at = new Date(earned[item.dataset.id!]);
+      time.hidden = !has(item) || Number.isNaN(at.getTime());
+      if (!time.hidden) {
+        time.textContent = day.format(at);
+        time.setAttribute('datetime', at.toISOString());
+      }
+    }
+    fill('earned', on);
+    fill('locked', off);
+    // the row shows the earned ones first
+    const order = [...on, ...off];
+    tiles.forEach((tile, i) => {
+      tile.classList.toggle('is-on', has(order[i]));
+      tile.title = order[i].querySelector('.set-label')!.textContent!;
+    });
+    for (const count of counts) count.textContent = `${on.length} / ${items.length}`;
+    for (const bar of bars) bar.style.width = `${(on.length / items.length) * 100}%`;
+  }
+  async function show() {
+    const device = earnedOnDevice(game);
+    paint(device);
+    note.hidden = playerNoted();
+    const profile = await earnedOnProfile();
+    paint({ ...device, ...profile[game] });
+  }
+  for (const dlg of [card, page]) {
+    dlg.addEventListener('view-open', show);
+    // back from the game with the browser's own Back, where this page is shown as it was left
+    addEventListener('pageshow', (e) => {
+      if (e.persisted && dlg.open) show();
+    });
+  }
+}
+
+addEventListener('pageshow', (e) => {
+  if (e.persisted) onProfile = null;
+});
+for (const box of document.querySelectorAll<HTMLElement>('.achievements[data-game]')) startAchievements(box);
+
 // ---------- The player's own profile ----------
 
 // what went wrong on an account's own page, as the worker names it in the address it sends the

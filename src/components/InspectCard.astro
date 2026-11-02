@@ -1,10 +1,11 @@
 ---
 // A game's own page, in the menu's place: its recording with the box to tick and the button
-// to play, then its name, its extras, its details, a Dreamport's progress with its two numbers and what it's built
-// with folded away, and its text.
+// to play, then its name, its extras, a Dreamport's achievements, its details, a Dreamport's progress with its two
+// numbers and what it's built with folded away, and its text.
 // The play and download links stay locked until the visitor confirms they're using their own
 // legal copy of the game. Without JavaScript the browser itself refuses to follow a link until
 // the box is ticked. Play links open in the same tab; download links open in a new one.
+import Achievements from './Achievements.astro';
 import Facts from './Facts.astro';
 import GameTitle from './GameTitle.astro';
 import Meter from './Meter.astro';
@@ -12,7 +13,7 @@ import Parts from './Parts.astro';
 import PixelIcon from './PixelIcon.astro';
 import Tile from './Tile.astro';
 import ViewBar from './ViewBar.astro';
-import { filterFor, gameUrl, pageTitle, type Game } from '../lib/site';
+import { achievementsUrl, filterFor, gameUrl, pageTitle, type Game } from '../lib/site';
 import { dreamportView } from '../lib/dreamports';
 
 interface Props {
@@ -128,6 +129,7 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
           </section>
         )
       }
+      {game.data.kind === 'dreamport' && dreamport && <Achievements game={game.data.game} id={id} href={achievementsUrl(game)} list={dreamport.achievements} />}
       {facts.length > 0 && <Facts facts={facts} id={`facts-${id}`} heading="The game" />}
       {
         dreamport && (

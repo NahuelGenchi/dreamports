@@ -1,0 +1,86 @@
+---
+// A Dreamport's Achievements page, in the menu's place, which the row of trophies on its page opens and Back returns
+// to: how many are earned, then every one, those earned first, the latest on top, each with the day it was earned. Only
+// the visitor's browser knows that, so src/scripts/profile.ts moves each one to its place, and until then all of them
+// show as locked. A Dreamport that keeps none yet has no such page.
+import GameTitle from './GameTitle.astro';
+import ViewBar from './ViewBar.astro';
+import { achievementsUrl, filterFor, gameUrl, pageTitle, type Game } from '../lib/site';
+import { dreamportView } from '../lib/dreamports';
+
+interface Props {
+  game: Game;
+  // Open when the page loads, on its own address.
+  open?: boolean;
+}
+
+const { game, open = false } = Astro.props;
+if (game.data.kind !== 'dreamport') throw new Error(`${game.id} has no Achievements page: only Dreamports keep achievements.`);
+const { data } = game;
+const { achievements: list } = await dreamportView(data);
+const id = game.id;
+const Title = open ? 'h1' : 'h2';
+const Heading = open ? 'h2' : 'h3';
+---
+
+{
+  list.length > 0 && (
+    <dialog
+      class="card view card-achievements"
+      id={`achievements-${id}`}
+      data-card="achievements"
+      data-game={id}
+      data-play={data.game}
+      data-filter={filterFor(data.kind).key}
+      data-path={achievementsUrl(game)}
+      data-parent={gameUrl(game)}
+      data-title={pageTitle(`${data.title} · Achievements`)}
+      aria-labelledby={`ach-title-${id}`}
+      open={open}
+    >
+      <div class="card-body" tabindex="0" autofocus>
+        <Title class="card-title" id={`ach-title-${id}`}>
+          <GameTitle title={data.title} />
+        </Title>
+        <section class="achievements" aria-labelledby={`ach-all-${id}`}>
+          <div class="ach-head">
+            <Heading id={`ach-all-${id}`}>Achievements</Heading>
+            <span class="ach-count">{list.length}</span>
+          </div>
+          <span class="meter-bar ach-bar" aria-hidden="true"><i></i></span>
+          <p class="ach-note" hidden>
+            <a href="/profile/">Sign in</a> to keep them on your profile.
+          </p>
+        </section>
+        <section class="set-list ach-group" data-group="earned" hidden>
+          <div class="set-row pf-game-head">
+            <Heading class="set-label">Earned</Heading>
+            <span class="pf-count">0</span>
+          </div>
+          <ul class="pf-list" />
+        </section>
+        <section class="set-list ach-group" data-group="locked">
+          <div class="set-row pf-game-head">
+            <Heading class="set-label">Locked</Heading>
+            <span class="pf-count">{list.length}</span>
+          </div>
+          <ul class="pf-list">
+            {list.map((achievement) => (
+              <li class="set-row pf-ach ach" data-id={achievement.id}>
+                <svg class="ach-trophy" role="img" aria-label="Locked">
+                  <use href="#trophy" />
+                </svg>
+                <span class="set-text">
+                  <span class="set-label">{achievement.title}</span>
+                  <span class="set-desc">{achievement.description}</span>
+                </span>
+                <time class="pf-when" hidden />
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+      <ViewBar href={gameUrl(game)} />
+    </dialog>
+  )
+}
