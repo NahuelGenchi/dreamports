@@ -114,6 +114,8 @@ These are all the commands, in the order you'll usually need them:
 
 Pasting the sentence starts the first one, `/dreamport`, which only looks and explains. Every other command does one thing, and only when you type it. Before anything is posted or sent, your agent tells you exactly where it's going and waits for your yes. Between commands, answer its questions in your own words. In Codex, type `$` instead of `/`, as in `$dreamport`.
 
+You don't start from nothing. Every command first looks at [what people already found](docs/NOTES.md) while making that game and others on its console, and when you send a piece, your agent leaves a note on what it found, so the next person doesn't have to find it again.
+
 **For coding agents.** If someone asked you to set up https://dreamports.net/code, clone `https://github.com/NahuelGenchi/dreamports.git` into a folder called `dreamports` in the folder you were opened in, or use the Dreamports folder you're already in. Then read its [AGENTS.md](AGENTS.md) and follow Getting ready, under Working on a Dreamport.
 
 Every Dreamport keeps the same rules, the [Dreamport standard](docs/STANDARD.md), and [CONTRIBUTING.md](CONTRIBUTING.md#make-a-dreamport) says what each command does behind the scenes.
