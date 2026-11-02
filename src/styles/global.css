@@ -247,6 +247,7 @@ kbd,
 .check input,
 .pf-input,
 .facts,
+.achievements,
 .about-nav a[aria-current='true'],
 .bo-back,
 .mk-help,
@@ -2462,6 +2463,7 @@ dialog.card[open] {
   .set-list,
   .seg,
   .facts,
+  .achievements,
   dialog.card {
     border: 1px solid ButtonText;
   }
@@ -2671,10 +2673,85 @@ dialog.card[open] {
     2px 0 var(--frame);
 }
 
-.extras h3 {
+.extras h3,
+.achievements h3 {
   margin: 0;
   color: var(--ink);
   font: 400 16px/1.4 var(--font);
+}
+
+/* a Dreamport's achievements: how many are earned beside the heading, then every one, with its trophy gray until it's
+   earned and gold from then on, in the colours the game's own settings draw it in */
+.achievements {
+  --frame: var(--line);
+  margin: 24px 2px 0;
+  padding: 14px 16px 16px;
+  background: var(--paper);
+}
+
+.ach-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ach-count {
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
+  white-space: nowrap;
+}
+
+.ach-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 14px 18px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ach {
+  --trophy-g: #8b93a6;
+  --trophy-s: #5d6578;
+  --trophy-l: #c3c9d6;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-content: start;
+  gap: 0 10px;
+}
+
+.ach.is-on {
+  --trophy-g: #ffc510;
+  --trophy-s: #b57308;
+  --trophy-l: #ffffa5;
+}
+
+.ach-trophy {
+  display: block;
+  grid-row: span 2;
+  width: 24px;
+  height: 20px;
+}
+
+.ach-name {
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
+}
+
+.ach.is-on .ach-name {
+  color: var(--ink);
+}
+
+.ach-what {
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
+}
+
+.ach-note {
+  margin: 4px 0 0;
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
 }
 
 .x-row {

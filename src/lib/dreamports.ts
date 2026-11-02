@@ -23,7 +23,7 @@ export interface Fact {
 const PROOF = import.meta.glob<unknown>('/games/*/proof/{original,code-map,progress,port-map,parts}.json', { eager: true, import: 'default' });
 const RECORDINGS = import.meta.glob<unknown>('/games/*/proof/recordings/*.json', { eager: true, import: 'default' });
 const KITS = import.meta.glob<string>('/kit/*/README.md', { eager: true, query: '?raw', import: 'default' });
-const LISTS = import.meta.glob<readonly unknown[]>('/games/**/list.js', { import: 'ACHIEVEMENTS' });
+const LISTS = import.meta.glob<readonly AchievementView[]>('/games/**/list.js', { import: 'ACHIEVEMENTS' });
 
 const proofFile = (game: string, name: string) => PROOF[`/games/${game}/proof/${name}.json`] as never;
 const proofLink = (game: string, path: string) => `${SOURCE_URL}/blob/main/games/${game}/proof/${path}`;
@@ -73,13 +73,20 @@ function kitName(kit: string): string {
   return /^#\s+(.+)$/m.exec(guide)?.[1].trim() ?? `${kit} kit`;
 }
 
-// how many achievements the game keeps on players' profiles, or null when it keeps none (src/lib/players.ts)
-async function achievementsOf(game: string): Promise<number | null> {
+// the achievements the game keeps on players' profiles, which are none until it keeps some (src/lib/players.ts)
+async function achievementsOf(game: string): Promise<readonly AchievementView[]> {
   const list = PLAYABLE[game]?.list;
-  if (!list) return null;
+  if (!list) return [];
   const load = LISTS[`/games/${list.replace(/^\/play\//, '')}`];
   if (!load) throw new Error(`src/lib/players.ts names ${list} as ${game}’s achievements, but it isn’t in games/.`);
-  return (await load()).length;
+  return load();
+}
+
+// An achievement, as the game's own list names it.
+export interface AchievementView {
+  id: string;
+  title: string;
+  description: string;
 }
 
 // One of the two numbers: its name, its %, and the % as the page shows it. `percent` is null when it isn't measured yet.
@@ -99,6 +106,7 @@ export interface PartView {
 
 export interface DreamportView {
   game: Fact[];
+  achievements: readonly AchievementView[];
   ported: Measure;
   gameplay: Measure;
   // the game's parts and where the evidence for both numbers is, folded away in gameplay proven's line
@@ -193,9 +201,9 @@ export async function dreamportView(data: Dreamport): Promise<DreamportView> {
       { label: 'Original', value: [data.platform, data.year].filter(Boolean).join(', ') },
       { label: 'You need', value: data.needs },
       { label: 'Controls', controls: data.controls },
-      ...(achievements ? [{ label: 'Achievements', value: `${achievements}, kept on your profile` }] : []),
       ...data.facts,
     ],
+    achievements,
     ported: { label: 'Code ported', percent: ported?.percent ?? null, text: shortPercent(ported?.percent) },
     gameplay: { label: 'Gameplay proven', percent: gameplay?.percent ?? null, text: shortPercent(gameplay?.percent) },
     parts: partsOf(game, gameplay),

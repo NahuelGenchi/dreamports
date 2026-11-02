@@ -1017,7 +1017,7 @@ function start(launcher: HTMLElement) {
           return;
         }
         // another page of the launcher's, such as a game's page from its page in the Make row, takes this one's place
-        const page = [...inspectCards.values(), ...makeCards].find((d) => d !== dlg && d.dataset.path === href);
+        const page = [...inspectCards.values(), ...makeCards, profileCard].find((d) => d !== dlg && d.dataset.path === href);
         if (page) {
           e.preventDefault();
           openCard(page);

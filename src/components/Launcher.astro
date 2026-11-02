@@ -15,6 +15,7 @@ import PlayerCard from './PlayerCard.astro';
 import ProfileCard from './ProfileCard.astro';
 import SettingsCard from './SettingsCard.astro';
 import Slot from './Slot.astro';
+import TrophySprite from './TrophySprite.astro';
 import { FILTERS, SECTIONS, getGames, type Filter, type FilterKey, type Game } from '../lib/site';
 import { beingMade, makeView } from '../lib/dreamports';
 import { making as readMaking } from '../lib/making';
@@ -224,6 +225,8 @@ const pathsFor = (f: Filter) =>
 }
 
 <div class="sr-only" aria-live="polite" id="live"></div>
+
+<TrophySprite />
 
 <script>
   // the profile first, so it hears the launcher open its card when a page starts on it

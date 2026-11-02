@@ -1,0 +1,21 @@
+---
+// The trophy that every Dreamport's achievements show, once per page: the Game Boy Advance kit's drawing, in the colours
+// each one sets (src/styles/global.css).
+import { TROPHY_H, TROPHY_W, trophy } from '../../kit/gba/achievements/pixels.js';
+
+// each colour's pixels, as the runs of them along each row
+const paths = [...'GSL'].map((colour) => ({
+  colour: colour.toLowerCase(),
+  d: trophy
+    .flatMap((row: string, y: number) =>
+      [...row.matchAll(new RegExp(`${colour}+`, 'g'))].map((run) => `M${run.index} ${y}h${run[0].length}v1h-${run[0].length}z`),
+    )
+    .join(''),
+}));
+---
+
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+  <symbol id="trophy" viewBox={`0 0 ${TROPHY_W} ${TROPHY_H}`}>
+    {paths.map(({ colour, d }) => <path d={d} shape-rendering="crispEdges" style={`fill: var(--trophy-${colour})`} />)}
+  </symbol>
+</svg>

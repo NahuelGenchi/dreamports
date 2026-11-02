@@ -151,6 +151,60 @@ async function claimDevice() {
   }
 }
 
+// ---------- A Dreamport's page ----------
+
+// what the profile has earned, by game: asked once until the page is shown again, and only while a player is noted in
+// this browser, as each asking is a request to the site's API
+let onProfile: Promise<Profile['achievements']> | null = null;
+function earnedOnProfile() {
+  if (!playerNoted()) return Promise.resolve<Profile['achievements']>({});
+  onProfile ??= api<{ player: Profile | null }>('/api/me').then(({ data }) => data.player?.achievements ?? {});
+  return onProfile;
+}
+
+function earnedOnDevice(game: string): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(PLAYABLE[game].device) ?? 'null') ?? {};
+  } catch {
+    return {};
+  }
+}
+
+// its achievements (src/components/Achievements.astro): each earned one's trophy turns gold, those on this device at
+// once and those on the profile as soon as it answers
+function startAchievements(box: HTMLElement) {
+  const game = box.dataset.game!;
+  const card = box.closest('dialog')!;
+  const items = [...box.querySelectorAll<HTMLElement>('.ach')];
+  const count = box.querySelector<HTMLElement>('.ach-count')!;
+  const note = box.querySelector<HTMLElement>('.ach-note')!;
+  function paint(earned: Record<string, number>) {
+    const on = items.filter((item) => Object.hasOwn(earned, item.dataset.id!));
+    for (const item of items) {
+      item.classList.toggle('is-on', on.includes(item));
+      item.querySelector('.ach-trophy')!.setAttribute('aria-label', on.includes(item) ? 'Earned' : 'Locked');
+    }
+    count.textContent = `${on.length} of ${items.length}`;
+  }
+  async function show() {
+    const device = earnedOnDevice(game);
+    paint(device);
+    note.hidden = playerNoted();
+    const profile = await earnedOnProfile();
+    paint({ ...device, ...profile[game] });
+  }
+  card.addEventListener('view-open', show);
+  // back from the game with the browser's own Back, where this page is shown as it was left
+  addEventListener('pageshow', (e) => {
+    if (e.persisted && card.open) show();
+  });
+}
+
+addEventListener('pageshow', (e) => {
+  if (e.persisted) onProfile = null;
+});
+for (const box of document.querySelectorAll<HTMLElement>('.achievements[data-game]')) startAchievements(box);
+
 // ---------- The player's own profile ----------
 
 // what went wrong on an account's own page, as the worker names it in the address it sends the

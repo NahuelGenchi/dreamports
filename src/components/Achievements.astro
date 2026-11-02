@@ -1,0 +1,43 @@
+---
+// A Dreamport's achievements, under its extras: every one with its trophy, gray until it's earned, and how many are
+// earned. Only the visitor's browser knows that: src/scripts/profile.ts turns each earned trophy gold, from what this
+// device keeps and from the visitor's profile. A Dreamport that keeps none yet says so (src/lib/players.ts).
+import type { AchievementView } from '../lib/dreamports';
+
+interface Props {
+  game: string;
+  id: string;
+  list: readonly AchievementView[];
+}
+
+const { game, id, list } = Astro.props;
+---
+
+<section class="achievements" aria-labelledby={`ach-${id}`} data-game={list.length > 0 ? game : undefined}>
+  <div class="ach-head">
+    <h3 id={`ach-${id}`}>Achievements</h3>
+    {list.length > 0 && <span class="ach-count">{list.length}</span>}
+  </div>
+  {
+    list.length > 0 ? (
+      <>
+        <p class="ach-note" hidden>
+          <a href="/profile/">Sign in</a> to keep them on your profile.
+        </p>
+        <ul class="ach-list">
+          {list.map((achievement) => (
+            <li class="ach" data-id={achievement.id}>
+              <svg class="ach-trophy" role="img" aria-label="Locked">
+                <use href="#trophy" />
+              </svg>
+              <span class="ach-name">{achievement.title}</span>
+              <span class="ach-what">{achievement.description}</span>
+            </li>
+          ))}
+        </ul>
+      </>
+    ) : (
+      <p class="ach-note">None yet.</p>
+    )
+  }
+</section>
