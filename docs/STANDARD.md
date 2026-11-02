@@ -20,7 +20,7 @@ Some of the checks below are still being built. Where one doesn't exist yet, the
 
 ### Nothing from the game is ever shared
 
-**What it asks.** Everything the game shows or plays, and the data it's made from, comes from the player's own copy, on their device: graphics, sounds, music, levels, text and tables. None of it goes into this repository, a pull request, an issue, a preview or dreamports.net, and nothing uploads the copy or any piece of it. No lock is ever broken: no keys, no decryption and no copy-protection removal. An extra that borrows from another game needs the player's own copy of that game too, the way Sonic Advance Dreamport's Boost Mode needs Sonic Advance 2.
+**What it asks.** Everything the game shows or plays, and the data it's made from, comes from the player's own copy, on their device: graphics, sounds, music, levels, text and tables. None of it goes into this repository, a pull request, an issue, a preview or dreamports.net, and nothing uploads the copy or any piece of it. The one exception is [a game's capture](#a-games-capture), the few silent seconds of someone's play that its card shows. No lock is ever broken: no keys, no decryption and no copy-protection removal. An extra that borrows from another game needs the player's own copy of that game too, the way Sonic Advance Dreamport's Boost Mode needs Sonic Advance 2.
 
 What the repository may keep about a game is what tells its versions apart and maps its program: a checksum of each supported version, the [code map](#how-progress-is-measured), which lists each function's address and size, the port map, which says where the Dreamport's code names each function, and the list of the game's parts. None of them holds any of the game. Short recordings of play aren't game files either, and [Clips](#clips) says where they may appear.
 
@@ -72,7 +72,13 @@ A clip shows every frame the game draws, about 60 a second, captured inside the 
 
 When a change claims to match the original, its clip shows the original next to the Dreamport, with the same button presses. Clips go with every pull request, where `npm run dp -- share` puts the newest clip of the original and the Dreamport side by side within reach: it keeps the clip on the contributor's previews site, apart from the preview, and prints the lines that show it ([Previews](PREVIEWS.md)).
 
-Clips of the original appear only in pull requests, and nowhere else: not on dreamports.net, in an issue, a comment outside a pull request or Discussions. The site itself keeps showing only the Dreamports team's own recordings, and no clip goes in a game's files or in a commit. The picture rule in `AGENTS.md` and `CONTRIBUTING.md` says the same since [#82](https://github.com/NahuelGenchi/dreamports/issues/82). A rights holder who wants a clip taken down can ask, as [Notices from rights holders](RIGHTS.md) says.
+Clips that show the original next to a Dreamport appear only in pull requests, and nowhere else: not on dreamports.net, in an issue, a comment outside a pull request or Discussions, and they go in no game's files and no commit. The picture rule in `AGENTS.md` and `CONTRIBUTING.md` says the same since [#82](https://github.com/NahuelGenchi/dreamports/issues/82). A rights holder who wants a clip taken down can ask, as [Notices from rights holders](RIGHTS.md) says.
+
+### A game's capture
+
+Every game's card in the launcher shows a few seconds of the game being played, since a card with nothing to show says nothing about the game. Since [#244](https://github.com/NahuelGenchi/dreamports/issues/244) a Dreamport's can come from the original, so a game can have one before its Dreamport has anything to play. A person makes it with `npm run dp -- capture <game>`: they play their own copy on their computer, the tool picks out the best moments, and they choose one.
+
+It's always real play, never drawn, generated or reconstructed. It stays short and silent, 2 to 7 seconds and under 1.4 MB, in `public/media/`, named after the game, and it shows play, not logos, title screens or box art. The Dreamports team looks at each one before it appears, since nothing on GitHub can check that a picture comes from the game. A rights holder who wants one taken down can ask, as [Notices from rights holders](RIGHTS.md) says, and it comes down at once.
 
 ## Which games qualify
 

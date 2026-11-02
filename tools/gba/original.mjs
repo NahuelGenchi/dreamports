@@ -18,6 +18,53 @@ export function ensureOriginal(log) {
 }
 
 /**
+ * Runs the original along with a person, from power-on: `frame(buttons)` plays one frame with those KEY bits held and
+ * resolves to { picture, sound }, its picture as `runOriginal` gives one and its sound as bytes of left and right
+ * samples, as `runOriginal` gives them too. `end()` stops it. The same buttons at the same frames give `runOriginal`
+ * the same pictures.
+ */
+export function playOriginal(copy) {
+  const child = spawn(ORIGINAL, [copy, 'live'], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const PICTURE = WIDTH * HEIGHT * 2;
+  let data = Buffer.alloc(0), waiting = null, ended = null, stderr = '';
+  const settle = () => {
+    if (!waiting || data.length < PICTURE + 4) return;
+    const whole = PICTURE + 4 + data.readUInt32LE(PICTURE) * 4;
+    if (data.length < whole) return;
+    const { resolve } = waiting;
+    waiting = null;
+    resolve({
+      picture: new Uint16Array(data.buffer.slice(data.byteOffset, data.byteOffset + PICTURE)),
+      sound: data.subarray(PICTURE + 4, whole),
+    });
+    data = data.subarray(whole);
+  };
+  child.stdout.on('data', chunk => {
+    data = Buffer.concat([data, chunk]);
+    settle();
+  });
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  child.stdin.on('error', () => {});   // it has gone, which the next line says
+  child.once('close', () => {
+    ended = new Error(`The original stopped running. ${stderr.trim()}`.trim());
+    waiting?.reject(ended);
+    waiting = null;
+  });
+  child.once('error', error => { ended = error; waiting?.reject(error); waiting = null; });
+  return {
+    frame: buttons => new Promise((resolve, reject) => {
+      if (ended) return reject(ended);
+      waiting = { resolve, reject };
+      child.stdin.write(Buffer.from(Uint16Array.of(buttons).buffer));
+    }),
+    end: () => {
+      child.stdin.end();
+      child.kill();
+    },
+  };
+}
+
+/**
  * Runs `frames` frames of the original from power-on. `buttons` holds each frame's buttons as KEY bits,
  * `functions` the code map's ({ address, size }), and `pictures` the frames whose whole picture is wanted, in order.
  * Resolves to { hashes, plain, ran, pictures, sound, outside }: each frame's picture hash, its one colour when every

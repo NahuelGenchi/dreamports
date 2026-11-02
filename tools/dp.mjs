@@ -5,6 +5,7 @@ const TOOLS = {
   rom: 'Checks a copy of a game, says which game and version it is, and remembers where it is',
   play: 'Opens a game in a browser with your copy, and with --record keeps what you play as a recording (--from: after another\'s presses)',
   prove: 'Plays each recording in the original and in the Dreamport, compares every frame, and updates the numbers (--stills: pictures of frames)',
+  capture: 'Lets you play the original in a window and keep a real moment of it for the game\'s card',
   codemap: 'Makes the code map: every function in the original, with its address and size',
   new: 'Writes a claimed game\'s first files: its page, its code on the kit with everything wired in, its license and its entry',
   portmap: 'Makes the port map: each function of the original the Dreamport\'s code names, and where',

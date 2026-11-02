@@ -21,6 +21,11 @@
 // starts. Before that the console mixes every 512 cycles, and each of those samples is written twice.
 // At the end it writes to stderr, as JSON, how many instructions ran outside every function of the code map: in the
 // cartridge, and in the work RAM games copy code into.
+//
+// original ROM live
+//   Plays along with a person, for capture: for each frame it reads the buttons held from stdin (16 bits, as in
+//   BUTTONS), runs the frame just as above, and writes to stdout its picture, how many samples of sound it made, then
+//   each sample, as SOUND has them. It ends when stdin does.
 #include <mgba/core/core.h>
 #include <mgba/core/log.h>
 #include <mgba/gba/core.h>
@@ -89,10 +94,74 @@ static void* readAll(const char* path, size_t* size) {
 	return data;
 }
 
+static uint32_t video[WIDTH * HEIGHT];
+static uint16_t picture[WIDTH * HEIGHT];
+static struct sound sound;
+
+// no configuration from the computer: no BIOS file and default settings, the same on every computer
+static struct mCore* openCopy(const char* path) {
+	mLogSetDefaultLogger(&logger);
+	struct mCore* core = GBACoreCreate();
+	core->init(core);
+	mCoreInitConfig(core, NULL);
+	core->setVideoBuffer(core, (color_t*) video, WIDTH);
+	if (!mCoreLoadFile(core, path)) {
+		fprintf(stderr, "mGBA can't open the copy\n");
+		exit(1);
+	}
+	return core;
+}
+
+static void hearSound(struct mCore* core) {
+	sound.stream.postAudioFrame = heard;
+	sound.gba = core->board;
+	core->setAVStream(core, &sound.stream);
+}
+
+// the frame's picture in the console's 15-bit colour, and its hash and its one colour, if it has only one
+static void draw(uint32_t* hash, uint32_t* plain) {
+	*hash = 0x811C9DC5;
+	for (int i = 0; i < WIDTH * HEIGHT; i++) {
+		uint32_t pixel = video[i];
+		uint16_t colour = ((pixel >> 3) & 0x1F) | (((pixel >> 11) & 0x1F) << 5) | (((pixel >> 19) & 0x1F) << 10);
+		picture[i] = colour;
+		*hash = (*hash ^ colour) * 0x01000193;
+		if (!i) *plain = colour;
+		else if (colour != *plain) *plain = 0xFFFFFFFF;
+	}
+}
+
+static int playAlong(const char* path) {
+	struct mCore* core = openCopy(path);
+	hearSound(core);
+	core->reset(core);
+	struct ARMCore* cpu = core->cpu;
+	uint16_t keys;
+	while (fread(&keys, 2, 1, stdin) == 1) {
+		core->setKeys(core, keys);
+		uint32_t frameCounter = core->frameCounter(core);
+		while (core->frameCounter(core) == frameCounter) {
+			while (cpu->cycles >= cpu->nextEvent) cpu->irqh.processEvents(cpu);
+			core->step(core);
+		}
+		uint32_t hash, plain;
+		draw(&hash, &plain);
+		uint32_t samples = sound.count / 2;
+		fwrite(picture, 2, WIDTH * HEIGHT, stdout);
+		fwrite(&samples, 4, 1, stdout);
+		fwrite(sound.samples, 2, sound.count, stdout);
+		fflush(stdout);
+		sound.count = 0;
+	}
+	core->deinit(core);
+	return 0;
+}
+
 int main(int argc, char** argv) {
 	onWindows(&argv);
+	if (argc == 3 && !strcmp(argv[2], "live")) return playAlong(argv[1]);
 	if (argc != 7) {
-		fprintf(stderr, "Usage: original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND\n");
+		fprintf(stderr, "Usage: original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND\n       original ROM live\n");
 		return 2;
 	}
 	long frames = atol(argv[2]);
@@ -121,29 +190,15 @@ int main(int argc, char** argv) {
 	uint32_t* ran = malloc((functionCount ? functionCount : 1) * sizeof(uint32_t));
 	for (size_t i = 0; i < functionCount; i++) lastRan[i] = -1;
 
-	mLogSetDefaultLogger(&logger);
-	struct mCore* core = GBACoreCreate();
-	core->init(core);
-	// no configuration from the computer: no BIOS file and default settings, the same on every computer
-	mCoreInitConfig(core, NULL);
-	static uint32_t video[WIDTH * HEIGHT];
-	core->setVideoBuffer(core, (color_t*) video, WIDTH);
-	if (!mCoreLoadFile(core, argv[1])) {
-		fprintf(stderr, "mGBA can't open the copy\n");
-		return 1;
-	}
+	struct mCore* core = openCopy(argv[1]);
 	FILE* soundFile = NULL;
-	static struct sound sound;
 	if (strcmp(argv[6], "-")) {
 		soundFile = fopen(argv[6], "wb");
 		if (!soundFile) { fprintf(stderr, "Can't write %s\n", argv[6]); exit(2); }
-		sound.stream.postAudioFrame = heard;
-		sound.gba = core->board;
-		core->setAVStream(core, &sound.stream);
+		hearSound(core);
 	}
 	core->reset(core);
 	struct ARMCore* cpu = core->cpu;
-	static uint16_t picture[WIDTH * HEIGHT];
 
 	for (long frame = 0; frame < frames; frame++) {
 		core->setKeys(core, (size_t) frame < buttonsSize / 2 ? buttons[frame] : 0);
@@ -167,15 +222,8 @@ int main(int argc, char** argv) {
 			}
 			core->step(core);
 		}
-		uint32_t hash = 0x811C9DC5, plain = 0;
-		for (int i = 0; i < WIDTH * HEIGHT; i++) {
-			uint32_t pixel = video[i];
-			uint16_t colour = ((pixel >> 3) & 0x1F) | (((pixel >> 11) & 0x1F) << 5) | (((pixel >> 19) & 0x1F) << 10);
-			picture[i] = colour;
-			hash = (hash ^ colour) * 0x01000193;
-			if (!i) plain = colour;
-			else if (colour != plain) plain = 0xFFFFFFFF;
-		}
+		uint32_t hash, plain;
+		draw(&hash, &plain);
 		fwrite(&hash, 4, 1, stdout);
 		fwrite(&plain, 4, 1, stdout);
 		fwrite(&count, 4, 1, stdout);
