@@ -26,6 +26,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "on-windows.h"
+
 // decoder.c's text, which decoder.h only declares for a build with mGBA's debugger
 struct mDebuggerSymbols;
 int ARMDisassemble(const struct ARMInstructionInfo* info, struct ARMCore* core, const struct mDebuggerSymbols* symbols, uint32_t pc, char* buffer, int blen);
@@ -78,6 +80,7 @@ static int decode(uint32_t address, int arm, struct ARMInstructionInfo* info, ui
 }
 
 int main(int argc, char** argv) {
+	onWindows(&argv);
 	if (argc != 6) {
 		fprintf(stderr, "Usage: read ROM FRAMES MODE ADDRESS BYTES < FUNCTIONS\n");
 		return 2;

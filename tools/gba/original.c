@@ -31,6 +31,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "on-windows.h"
+
 #define WIDTH 240
 #define HEIGHT 160
 
@@ -88,6 +90,7 @@ static void* readAll(const char* path, size_t* size) {
 }
 
 int main(int argc, char** argv) {
+	onWindows(&argv);
 	if (argc != 7) {
 		fprintf(stderr, "Usage: original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND\n");
 		return 2;

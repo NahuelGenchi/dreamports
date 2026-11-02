@@ -10,6 +10,18 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 // whether any process of the browser with this profile is still running: its helpers have the folder in their command lines too
 const running = profile => spawnSync('ps', ['-Awwo', 'args='], { encoding: 'utf8' }).stdout?.replaceAll('\n', ' ').includes(`--user-data-dir=${profile} `);
 
+// a browser that has just quit can hold files in its profile for a moment, which Windows won't delete
+async function emptied(profile) {
+  for (let tries = 100; ; tries--) {
+    try {
+      return rmSync(profile, { recursive: true, force: true });
+    } catch (error) {
+      if (!tries) throw error;
+      await wait(100);
+    }
+  }
+}
+
 /** The browser to use: $CHROME, or Chrome, Chromium or Edge where they usually are. */
 export function findChrome() {
   if (process.env.CHROME) return process.env.CHROME;
@@ -40,7 +52,7 @@ const NO_CONTROLLERS = `Object.defineProperty(Navigator.prototype, 'getGamepads'
  * { send, evaluate, once, errors, closed, close }.
  */
 export async function openChrome({ profile, headless = true, fresh = true, controllers = !headless }) {
-  if (fresh) rmSync(profile, { recursive: true, force: true });
+  if (fresh) await emptied(profile);
   mkdirSync(profile, { recursive: true });
   const portFile = join(profile, 'DevToolsActivePort');
   rmSync(portFile, { force: true });

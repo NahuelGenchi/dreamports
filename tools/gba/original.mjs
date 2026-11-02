@@ -3,7 +3,7 @@
 
 import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { LOCAL } from '../lib/paths.mjs';
 import { ORIGINAL, isBuilt, build } from './build.mjs';
 
@@ -40,7 +40,8 @@ export async function runOriginal({ copy, frames, buttons, functions = [], pictu
   writeFileSync(files.functions, new Uint8Array(list.buffer));
   writeFileSync(files.pictures, new Uint8Array(Uint32Array.from(pictures).buffer));
   try {
-    const child = spawn(ORIGINAL, [copy, String(frames), files.buttons, files.functions, files.pictures, sound ? files.sound : '-'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    // its files by their plain names, from their folder: only the copy's path has to survive the trip whatever it's called
+    const child = spawn(ORIGINAL, [copy, String(frames), basename(files.buttons), basename(files.functions), basename(files.pictures), sound ? basename(files.sound) : '-'], { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'] });
     const out = [], err = [];
     child.stdout.on('data', chunk => out.push(chunk));
     child.stderr.on('data', chunk => err.push(chunk));
