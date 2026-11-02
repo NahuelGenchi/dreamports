@@ -179,9 +179,11 @@ button {
   color: inherit;
 }
 
-/* a link within the site, once it has given up its href (src/scripts/controls.ts), still looks like one to the pointer */
+/* a link within the site, once it has given up its href (src/scripts/controls.ts), still looks like one: what the
+   browser gives only to a link with an href, which any rule below can still change */
 :where(a[data-href]) {
   cursor: pointer;
+  text-decoration-line: underline;
 }
 
 a {
