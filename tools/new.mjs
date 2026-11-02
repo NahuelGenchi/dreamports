@@ -12,7 +12,6 @@ import { UPSTREAM } from './lib/github.mjs';
 import { readClaims } from './lib/claims.mjs';
 import { startingEntry, startingFiles } from './lib/new-game.mjs';
 import { run as portmap } from './portmap.mjs';
-import { run as readme } from './readme.mjs';
 
 const USAGE = 'Usage: npm run dp -- new <game> [--repo <owner/name>]';
 
@@ -37,7 +36,6 @@ export async function run(args) {
     writeFileSync(join(folder, file), text);
   }
   await portmap([game]);
-  await readme([]);
   console.log(`Written: games/${game}/ with ${Object.keys(files).join(', ')}, for ${lead}, under issue ${issue.number}. Its card needs a real moment of the game next: npm run dp -- capture ${game}.`);
   return 0;
 }
