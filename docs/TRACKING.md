@@ -40,7 +40,7 @@ The first issue is #1 (M0). Later milestones may be created deliberately; assign
 
 A Dreamport's own issues, opened with the New Dreamport and Task forms, go in the game's milestone instead: the one its issues already use, which for Sonic Advance Dreamport is M4, or one named after the game, such as *Sonic Battle Dreamport*, which the claims workflow makes ([Claims and teams](TEAMS.md#how-the-bot-works)).
 
-M0, M1 and M2 are finished and closed. M3 is on hold: for now the work is Sonic Advance Dreamport, in M4, the game launcher, in M5, and opening Dreamports to everyone, in M6. M4 is the default for new issues.
+M0, M1, M2 and M6 are finished and closed. M3 is on hold: for now the work is Sonic Advance Dreamport, in M4, the game launcher, in M5, and Sonic Battle Dreamport, in its own milestone. M4 is the default for new issues.
 
 ## Issue and PR conventions
 
