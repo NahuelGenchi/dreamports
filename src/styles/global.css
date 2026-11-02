@@ -3132,7 +3132,7 @@ dialog.card[open] {
 /* Help make it: the sentence to paste, and where to talk. A column rather than a grid: WebKit's grid kept the
    sentence's box at its old height when the page narrowed, so the sentence spilled out of it (#160) */
 .mk-help {
-  --frame: var(--sky);
+  --frame: var(--line);
   display: flex;
   flex-direction: column;
   gap: 14px;
