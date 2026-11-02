@@ -11,7 +11,7 @@ const SHORTEST = 150;                // a moment lasts at least this long
 const AROUND = 300;                  // and is best at about this long
 const PLAYING = 0x3F3;               // the buttons that play, which leave out Start and Select
 const PLAYED = 0.2;                  // the share of a window's frames some of them have to be held for
-const STILL = 0.002, STILLS = 0.25;  // a frame this little of which changes is still, and a window can hold this share of those
+const STILL = 0.002, STILLS = 0.25;  // a frame this little of which changes, like the one before it, is still, and a window can hold this share of those
 const FEW_COLOURS = 8;
 
 // colours seen in this frame, marked with the frame's stamp, so they needn't be cleared each time
@@ -53,7 +53,8 @@ function worth(frames, buttons, from) {
   let played = 0, stills = 0;
   stretch.forEach((f, i) => {
     if (buttons[from + i] & PLAYING) played++;
-    if (f.moved < STILL) stills++;
+    // two in a row, as a game drawing every second frame repeats half of them however much is going on
+    if (f.moved < STILL && stretch[i - 1]?.moved < STILL) stills++;
   });
   if (played < WINDOW * PLAYED || stills > WINDOW * STILLS) return 0;
   const colours = mean(stretch, 'colours'), light = mean(stretch, 'light'), moved = mean(stretch, 'moved');
