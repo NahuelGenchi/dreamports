@@ -108,7 +108,7 @@ button { font: inherit; }
   flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 56px;
   padding: 0 max(18px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left));
 }
-.setup-back { display: grid; place-items: center; width: 34px; height: 34px; margin: 2px; background: var(--paper); color: var(--ink); }
+.setup-back { display: grid; place-items: center; width: 34px; height: 34px; margin: 2px; padding: 0; border: 0; background: var(--paper); color: var(--ink); cursor: pointer; }
 .setup-back:hover { background: var(--hover); }
 .setup-back:active { transform: translateY(2px); }
 .setup-back svg { width: 14px; height: 14px; }

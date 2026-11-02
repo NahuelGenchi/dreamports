@@ -63,7 +63,7 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
   host.innerHTML = `
     <div class="setup">
       <div class="setup-bar">
-        <a class="setup-back" href="${home}" aria-label="Back to Dreamports" title="Back to Dreamports">${ICONS.back}</a>
+        <button type="button" class="setup-back" aria-label="Back to Dreamports" title="Back to Dreamports">${ICONS.back}</button>
         <div class="pad" data-state="gone"><span class="pad-icon" aria-hidden="true"></span><span class="pad-note" role="status" aria-live="polite"></span></div>
       </div>
       <div class="setup-scroll">
@@ -148,11 +148,9 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
   new MutationObserver(paint).observe(host, { attributes: true, attributeFilter: ['hidden'] });
 
   // back to dreamports.net: from its menu, back in the browser's history, so the menu comes back as it was left
-  $('.setup-back').addEventListener('click', e => {
-    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    if (!cameFromMenu()) return;
-    e.preventDefault();
-    history.back();
+  $('.setup-back').addEventListener('click', () => {
+    if (cameFromMenu()) history.back();
+    else location.href = home;
   });
 
   // the line under a ROM's name: while it's missing, whether the game needs it, where it has others to tell it from,
