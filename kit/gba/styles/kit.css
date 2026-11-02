@@ -20,7 +20,8 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; }
+/* a page never scrolls as a whole, however far it's zoomed in: what doesn't fit scrolls inside the container it's in */
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
 body {
   background: radial-gradient(1200px 600px at 50% -10%, #1a3cb8 0%, transparent 60%), var(--bg);
   color: var(--ink); font: 16px/1.5 var(--font);
@@ -30,7 +31,9 @@ button { font: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 /* the start screen's section */
-.picker { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
+.picker, .assets { position: fixed; inset: 0; overflow: hidden auto; scrollbar-width: none; }
+.picker::-webkit-scrollbar, .assets::-webkit-scrollbar { display: none; }
+.picker { display: grid; place-items: center; padding: 24px 16px; }
 .picker[hidden] { display: none; }
 .link { padding: 0; border: 0; background: none; color: #9cc3ff; text-decoration: underline; cursor: pointer; }
 .link[hidden] { display: none; }
@@ -48,7 +51,6 @@ button { font: inherit; }
   --ink: #0a1738; --dim: rgba(10, 23, 56, .68); --faint: rgba(10, 23, 56, .46);
   --act: #1a4fb0; --on-act: #fff; --on-act-key: rgba(255, 255, 255, .16); --on-act-key-ink: rgba(255, 255, 255, .8);
   --veil: rgba(255, 255, 255, .82);
-  position: relative; min-height: 100dvh; padding: 64px max(18px, env(safe-area-inset-right)) 64px max(18px, env(safe-area-inset-left));
   background: var(--glow), var(--page); color-scheme: light;
 }
 /* dark: the launcher's night blue, when the device is dark and the launcher wasn't set to light, or it was set to dark */
@@ -72,10 +74,21 @@ button { font: inherit; }
 }
 .setup {
   --frame: var(--line);
-  width: min(560px, 100%); padding: 0 0 8px;
   font: 15px/20px Monocraft, var(--mono); color: var(--ink);
   font-variant-ligatures: none; font-synthesis: none; -webkit-font-smoothing: antialiased;
 }
+/* it fills the screen, as the launcher's views do: the top bar stays, and what doesn't fit under it scrolls there, with
+   no scroll bar and with soft edges where it's cut off. At rest nothing reaches those edges. */
+.picker > .setup, .assets-page { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.setup-scroll {
+  flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; align-content: safe center;
+  padding-inline: max(18px, env(safe-area-inset-left)) max(18px, env(safe-area-inset-right));
+  overflow: hidden auto; overscroll-behavior: contain; scrollbar-width: none; scroll-padding-block: 8px 36px;
+  -webkit-mask-image: linear-gradient(transparent, #000 8px, #000 calc(100% - 36px), transparent);
+  mask-image: linear-gradient(transparent, #000 8px, #000 calc(100% - 36px), transparent);
+}
+.setup-scroll::-webkit-scrollbar { display: none; }
+.setup-page { width: min(560px, 100%); padding-block: 8px 72px; }
 .setup :focus-visible, .pad-nav .pad-at { outline: 2px solid var(--blue); outline-offset: 4px; }
 /* a pixel frame, 2 px with the corner pixels left out */
 .setup :is(.setup-back, .roms, .rom-add, .play, kbd, .switch-track, .remember input, .setup-drag > div, .pad),
@@ -92,7 +105,7 @@ button { font: inherit; }
 .setup-head { margin: 0 0 22px; }
 /* the top bar, in the page's top corners: the way back to dreamports.net, an arrow, and the controller badge */
 .setup-bar {
-  position: absolute; inset: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 56px;
+  flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 56px;
   padding: 0 max(18px, env(safe-area-inset-right)) 0 max(18px, env(safe-area-inset-left));
 }
 .setup-back { display: grid; place-items: center; width: 34px; height: 34px; margin: 2px; background: var(--paper); color: var(--ink); }
@@ -224,7 +237,7 @@ button { font: inherit; }
 @keyframes setup-blink { to { opacity: .25; } }
 @keyframes pad-on { 0% { transform: scale(.7); } 60% { transform: scale(1.15); } }
 @media (min-width: 760px) {
-  .picker:has(> .setup) { padding-block: 72px; }
+  .setup-page { padding-block: 16px 80px; }
 }
 @media (max-width: 520px) {
   .rom-main { padding: 12px; gap: 0 10px; }
@@ -356,9 +369,11 @@ button { font: inherit; }
 .assets[hidden] { display: none; }
 .assets-page {
   --frame: var(--line);
-  width: min(1100px, 100%); margin: 0 auto; font: 15px/20px Monocraft, var(--mono); color: var(--ink);
+  font: 15px/20px Monocraft, var(--mono); color: var(--ink);
   font-variant-ligatures: none; font-synthesis: none; -webkit-font-smoothing: antialiased;
 }
+.assets .setup-scroll { align-content: start; }
+.assets .setup-page { width: min(1100px, 100%); padding-block: 8px 64px; }
 .assets-body { display: grid; gap: 22px; }
 .assets-part { min-width: 0; margin: 2px; padding: 14px 16px 16px; background: var(--paper); }
 .assets-part h2 { margin: 0 0 12px; font-size: inherit; font-weight: normal; line-height: inherit; }
@@ -596,7 +611,7 @@ button { font: inherit; }
 
 /* Your ROMs: how many are in, remembering them and a place to drop one on the left; a card for each ROM on the right,
    as on the start screen (rom-setup.js lends its rows), with its extras under it once it's in */
-.sheet .setup { width: auto; padding: 0; font: inherit; }
+.sheet .setup { font: inherit; }
 .sheet .setup-foot { flex-direction: column; align-items: flex-start; margin: 0; }
 .sheet .setup .roms { display: grid; align-content: start; gap: 14px; margin: 0; padding: 18px 20px 22px; background: none; box-shadow: none; }
 .sheet .rom { margin: 2px; background: var(--paper); }
