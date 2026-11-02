@@ -132,7 +132,7 @@ test('original.json holds nothing but what the tools read', () => {
     markup: plain({ name: '<script>alert(1)</script> (USA)' }),
     mention: plain({ name: '@someone (USA)' }),
     link: plain({ name: 'See https://example.com (USA)' }),
-    noRegion: plain({ name: 'Made Up' }),
+    region: plain({ name: 'Made Up (<b>USA</b>)' }),
     extra: plain({ note: 'words' }),
     console: plain({ console: 'snes' }),
     title: plain({ title: "';alert(1);//" }),

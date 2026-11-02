@@ -35,7 +35,7 @@ export function readOriginal(text) {
   const allowed = ['console', 'name', 'title', 'code', 'sha1', 'keysAfterVBlank'];
   if (Object.keys(found).some(key => !allowed.includes(key))) return null;
   const good = found.console === 'gba'
-    && /^[A-Za-z0-9][A-Za-z0-9 '!&.:,+-]{0,60} \([A-Za-z, ]{1,30}\)$/.test(found.name ?? '')
+    && /^[A-Za-z0-9][A-Za-z0-9 '!&.:,+-]{0,60}(?: \([A-Za-z, ]{1,30}\))?$/.test(found.name ?? '')
     && /^[A-Za-z0-9 _.!&'-]{1,12}$/.test(found.title ?? '')
     && /^[A-Z0-9]{4}$/.test(found.code ?? '')
     && /^[0-9a-f]{40}$/.test(found.sha1 ?? '')
