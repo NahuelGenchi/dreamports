@@ -30,6 +30,21 @@ export function startingFiles(game, original) {
   };
 }
 
+/** An entry with its capture named in it, as `npm run dp -- capture` writes it. */
+export function withCapture(entry, game) {
+  const [, head, rest] = entry.match(/^---\r?\n([^]*?)\r?\n---\r?\n([^]*)$/);
+  const lines = [];
+  let dropping = false;
+  for (const line of head.split(/\r?\n/)) {
+    if (/^(screen|share):/.test(line)) dropping = true;
+    else if (!/^\s/.test(line)) dropping = false;
+    if (!dropping) lines.push(line);
+  }
+  const base = `/media/${game}-dreamport`;
+  lines.push('screen:', `  clip: ${base}`, `  still: ${base}-still.webp`, '  pixelated: true', `share: ${base}-share.png`);
+  return `---\n${lines.join('\n')}\n---\n${rest}`;
+}
+
 const yaml = text => JSON.stringify(text);
 
 /** The game's entry, which says the same for now whoever writes it, and which its lead fills in as the game grows. */

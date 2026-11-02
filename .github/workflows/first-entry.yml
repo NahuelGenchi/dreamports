@@ -1,0 +1,74 @@
+name: First entry
+
+# A game's first pull request can come in with no review of its code when it's only what npm run dp -- new and
+# npm run dp -- capture write, for the game its author has claimed (docs/TEAMS.md). The reading job writes all of it again
+# and compares, with a token that can only read, and asks about the capture, the one thing only a person can check, in a
+# comment with a box to tick. Ticking it runs this again, and the acting job merges that very commit. Neither runs
+# anything from the pull request: they check out this repository's own code, and read the pull request's through the API.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+    branches: [main]
+  issue_comment:
+    types: [edited]
+
+permissions: {}
+
+concurrency:
+  group: first-entry-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  read:
+    name: Read the first entry
+    if: >-
+      github.event_name == 'pull_request_target'
+      || (github.event.issue.pull_request && github.event.comment.user.login == 'github-actions[bot]'
+        && startsWith(github.event.comment.body, '<!-- first-entry') && github.event.sender.login != 'github-actions[bot]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      checks: read
+    outputs:
+      plan: ${{ steps.read.outputs.plan }}
+    steps:
+      - name: Check out this repository, never a pull request's code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+      - run: npm ci --ignore-scripts
+      - name: Read it, and write it again to compare
+        id: read
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/first-entry/read.mjs
+
+  act:
+    name: Say so, or merge
+    needs: read
+    if: needs.read.outputs.plan != '' && !contains(needs.read.outputs.plan, '"kind":"none"')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Check out the bot, never a pull request's code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github
+      - name: Carry out the plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PLAN: ${{ needs.read.outputs.plan }}
+        run: node .github/first-entry/act.mjs

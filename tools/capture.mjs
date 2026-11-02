@@ -14,6 +14,7 @@ import { serveRepository } from './lib/server.mjs';
 import { go, openChrome } from './lib/chrome.mjs';
 import { WINDOW, loopOf, measure, shortlist } from './lib/moments.mjs';
 import { av1Configuration, av1Frame, mp4 } from './lib/mp4.mjs';
+import { withCapture } from './lib/new-game.mjs';
 import { ensureOriginal, playOriginal, runOriginal } from './gba/original.mjs';
 
 const CLIP_LIMIT = 1.4e6, CLIP_TARGET = 1.2e6;   // a clip's bytes: visitors download it when they select the game
@@ -27,17 +28,7 @@ const json = (response, value) => {
 /** Names the capture in the game's entry, in place of any it had. */
 function nameInEntry(game) {
   const file = join(gameFolder(game), 'entry.md');
-  const [, head, rest] = readFileSync(file, 'utf8').match(/^---\r?\n([^]*?)\r?\n---\r?\n([^]*)$/);
-  const lines = [];
-  let dropping = false;
-  for (const line of head.split(/\r?\n/)) {
-    if (/^(screen|share):/.test(line)) dropping = true;
-    else if (!/^\s/.test(line)) dropping = false;
-    if (!dropping) lines.push(line);
-  }
-  const base = `/media/${game}-dreamport`;
-  lines.push('screen:', `  clip: ${base}`, `  still: ${base}-still.webp`, '  pixelated: true', `share: ${base}-share.png`);
-  writeFileSync(file, `---\n${lines.join('\n')}\n---\n${rest}`);
+  writeFileSync(file, withCapture(readFileSync(file, 'utf8'), game));
 }
 
 export async function run(args) {
