@@ -27,12 +27,28 @@ const root = document.documentElement;
 
 const found = document.querySelector<HTMLElement>('#launcher');
 
-try {
-  if (found) start(found);
-} catch (error) {
-  // If something here breaks, the page falls back to its plain links instead of an empty screen.
-  root.classList.remove('js');
-  console.error(error);
+function begin() {
+  try {
+    if (found) start(found);
+  } catch (error) {
+    // If something here breaks, the page falls back to its plain links instead of an empty screen.
+    root.classList.remove('js');
+    console.error(error);
+  }
+}
+
+// Safari can get here while the page's stylesheet is still on its way. Whatever was measured then would be wrong, and
+// when the styles landed the row would fade away in front of the page's own card, so the launcher waits for them.
+const sheets = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].filter((link) => !link.sheet);
+if (sheets.length) {
+  const landed = (link: HTMLLinkElement) =>
+    new Promise((done) => {
+      link.addEventListener('load', done, { once: true });
+      link.addEventListener('error', done, { once: true });
+    });
+  Promise.all(sheets.map(landed)).then(begin);
+} else {
+  begin();
 }
 
 function start(launcher: HTMLElement) {
