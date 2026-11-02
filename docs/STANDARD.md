@@ -78,7 +78,7 @@ Clips that show the original next to a Dreamport appear only in pull requests, a
 
 Every game's card in the launcher shows a few seconds of the game being played, since a card with nothing to show says nothing about the game. Since [#244](https://github.com/NahuelGenchi/dreamports/issues/244) a Dreamport's can come from the original, so a game can have one before its Dreamport has anything to play. A person makes it with `npm run dp -- capture <game>`: they play their own copy on their computer, the tool picks out the best moments, and they choose one.
 
-It's always real play, never drawn, generated or reconstructed. It stays short and silent, 2 to 7 seconds and under 1.4 MB, in `public/media/`, named after the game, and it shows play, not logos, title screens or box art. The Dreamports team looks at each one before it appears, since nothing on GitHub can check that a picture comes from the game. A rights holder who wants one taken down can ask, as [Notices from rights holders](RIGHTS.md) says, and it comes down at once.
+It's always real play, never drawn, generated or reconstructed. It stays short and silent, 2 to 7 seconds and under 1.4 MB, in `public/media/`, named after the game, and it shows play, not logos, title screens or box art. The Dreamports team looks at each one before it appears, since nothing on GitHub can check that a picture comes from the game, and on [a game's first entry](TEAMS.md#a-games-first-entry) that's all a person has to look at. A rights holder who wants one taken down can ask, as [Notices from rights holders](RIGHTS.md) says, and it comes down at once.
 
 ## Which games qualify
 
