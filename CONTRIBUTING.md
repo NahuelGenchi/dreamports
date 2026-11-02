@@ -38,7 +38,7 @@ Nothing is posted, pushed or sent until you say yes, and the agent follows the p
 
 ## Run the site on your computer
 
-You need [Node.js](https://nodejs.org/) 22 or newer. In a terminal, inside this folder:
+You need [Node.js](https://nodejs.org/) 22.23.4 or newer. In a terminal, inside this folder:
 
 ```sh
 npm ci
