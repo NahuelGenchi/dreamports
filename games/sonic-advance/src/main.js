@@ -366,6 +366,7 @@ setup.restored.then(() => {
   if (tricks && !tricksArt) setTricks(false);
   setup.refresh();
 });
+showSound();
 showRush();
 showBoostMode();
 showTricks();
