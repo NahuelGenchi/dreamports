@@ -13,7 +13,6 @@ ownCopy:
     - label: Windows (test)
       href: https://github.com/NahuelGenchi/kirbys-dead-land/releases
       icon: download
-  note: From GitHub. Windows is untested.
 extras:
   - name: The real Kirby
     icon: star
@@ -51,10 +50,8 @@ facts:
   - label: Your saves
     value: Untouched, and backed up every time you play
   - label: Source code
-    value: On GitHub
     href: https://github.com/NahuelGenchi/kirbys-dead-land
   - label: Article
-    value: On nahuelgenchi.com
     href: https://nahuelgenchi.com/gaming/kirbys-dead-land/
 screen:
   clip: /media/kirbys-dead-land

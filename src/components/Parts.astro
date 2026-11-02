@@ -1,19 +1,21 @@
 ---
-// What proves a Dreamport's numbers, folded away under them in one line: how many of the game's parts are proven.
-// Opened, it lists every part, a block for each, filled once a recording has proven it, and links to the evidence.
-import type { PartView } from '../lib/dreamports';
+// Gameplay proven, the second of a Dreamport's numbers, as one line that opens to what proves the numbers: every part of
+// the game, a block for each, filled once a recording has proven it, and links to the evidence. A part with a
+// recording links to it, and one that isn't proven yet says where it stands.
+import Meter from './Meter.astro';
+import type { Measure, PartView } from '../lib/dreamports';
 
 interface Props {
+  measure: Measure;
   parts: PartView[];
   evidence: { value: string; href: string }[];
 }
 
-const { parts, evidence } = Astro.props;
-const proven = parts.filter((part) => part.proven).length;
+const { measure, parts, evidence } = Astro.props;
 ---
 
 <details class="parts">
-  <summary>{parts.length ? `${proven} of ${parts.length} parts proven` : 'How it’s proven'}</summary>
+  <summary class="parts-meter"><Meter measure={measure} /></summary>
   {
     parts.length > 0 && (
       <ul>

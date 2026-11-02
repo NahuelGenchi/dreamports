@@ -1,10 +1,10 @@
 ---
-// One place in the launcher's row: a game, which links to its own page; in the Make row, a Dreamport being made,
-// which links to its page there, or the way to start a Dreamport, which leads to the README's steps; or an empty
-// slot. A Dreamport also carries its two numbers, which the nameplate shows under it once it's selected, and in the
-// Make row, how many of its pieces are free to take, on its tile when there are any and under its numbers.
+// One place in the launcher's row: a game, which links to its own page; or in the Make row, a Dreamport being made,
+// which links to its page there, or the way to start a Dreamport, which leads to the README's steps. There, a Dreamport
+// also carries its two numbers, which the nameplate shows under it once it's selected, and under them how many of its
+// pieces are free to take, when there are any.
 import Tile from './Tile.astro';
-import { MAKE_GUIDE_URL, gameUrl, makeUrl, sectionFor, type Game } from '../lib/site';
+import { MAKE_GUIDE_URL, gameUrl, makeUrl, type Game } from '../lib/site';
 import { numbersOf } from '../lib/dreamports';
 
 interface Props {
@@ -15,14 +15,12 @@ interface Props {
   // the Make row's last place: how to start a Dreamport
   start?: boolean;
   // in the Make row, the pieces free to take, when GitHub could be read for this build
-  free?: { count: number; help: string };
+  free?: { help: string };
 }
 
 const { game, index, make = false, start = false, free } = Astro.props;
-const detail = game && !make
-  ? [sectionFor(game.data.kind).label, game.data.platform, game.data.year].filter(Boolean).join(' · ')
-  : '';
-const numbers = game?.data.kind === 'dreamport' ? numbersOf(game.data) : undefined;
+const detail = game && !make ? [game.data.platform, game.data.year].filter(Boolean).join(' · ') : '';
+const numbers = make && game?.data.kind === 'dreamport' ? numbersOf(game.data) : undefined;
 const href = game && (make && game.data.kind === 'dreamport' ? makeUrl(game.data.game) : gameUrl(game));
 const START = {
   title: 'Start a Dreamport',
@@ -39,7 +37,6 @@ const START = {
             <svg class="st-plus" viewBox="0 0 16 16" shape-rendering="crispEdges">
               <path d="M7 2h2v12H7zM2 7h12v2H2z" />
             </svg>
-            <span class="st-name">{START.title}</span>
           </span>
         </span>
       </span>
@@ -58,25 +55,18 @@ const START = {
       data-title={game.data.title}
       data-detail={detail}
       data-numbers={numbers}
-      data-help={free?.help}
+      data-help={free?.help || undefined}
       draggable="false"
     >
       <i class="glow" style={`--g: ${game.data.glow}`} />
       <span class="lift">
         <Tile game={game} />
-        {free?.count ? <span class="free-badge" aria-hidden="true">{free.count} free</span> : null}
       </span>
       <span class="sr-only">
         {game.data.title}{detail && `, ${detail}`}
         {numbers && <span class="slot-numbers">{numbers}</span>}
-        {free && <span class="slot-help">{free.help}</span>}
+        {free?.help && <span class="slot-help">{free.help}</span>}
       </span>
     </a>
-  ) : (
-    <div class="slot" data-index={index} data-empty>
-      <span class="lift">
-        <span class="hollow" />
-      </span>
-    </div>
-  )
+  ) : null
 }

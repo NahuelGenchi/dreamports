@@ -195,7 +195,7 @@ createControlsView(sheet, { controls: CONTROLS, tokens: TOKENS, note: NOTE });
 document.getElementById('controls-open').addEventListener('click', () => sheet.go('controls'));
 
 // the sound, also M on a keyboard
-function showSound() { showSetting(soundButton, !sound.muted); }
+function showSound() { soundButton.setAttribute('aria-checked', String(!sound.muted)); }
 soundButton.addEventListener('click', () => { sound.muted = !sound.muted; showSound(); });
 let game = null, front = null, specialStage = null, round = null, rom = null, statsTimer = 0;
 

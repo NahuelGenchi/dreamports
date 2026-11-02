@@ -1,16 +1,18 @@
 ---
 // A game's own page, in the menu's place: its recording with the box to tick and the button
-// to play, then its name, its extras, its details, a Dreamport's progress with its two numbers, and its text.
+// to play, then its name, its extras, its details, a Dreamport's progress with its two numbers and what it's built
+// with folded away, and its text.
 // The play and download links stay locked until the visitor confirms they're using their own
 // legal copy of the game. Without JavaScript the browser itself refuses to follow a link until
 // the box is ticked. Play links open in the same tab; download links open in a new one.
 import Facts from './Facts.astro';
+import GameTitle from './GameTitle.astro';
 import Meter from './Meter.astro';
 import Parts from './Parts.astro';
 import PixelIcon from './PixelIcon.astro';
 import Tile from './Tile.astro';
 import ViewBar from './ViewBar.astro';
-import { filterFor, gameUrl, pageTitle, sectionFor, type Game } from '../lib/site';
+import { filterFor, gameUrl, pageTitle, type Game } from '../lib/site';
 import { dreamportView } from '../lib/dreamports';
 
 interface Props {
@@ -24,12 +26,9 @@ const { title, kind, glow, ownCopy, extras, screen } = game.data;
 // a Dreamport's details come from its entry and its proof/ folder (src/lib/dreamports.ts)
 const dreamport = game.data.kind === 'dreamport' ? await dreamportView(game.data) : null;
 const facts = game.data.kind === 'dreamport' ? (dreamport?.game ?? []) : game.data.facts;
-const { confirm, links, note } = ownCopy;
+const { confirm, links } = ownCopy;
 const id = game.id;
 const Title = open ? 'h1' : 'h2';
-// "Sonic Advance Dreamport" shows as the game's name with "Dreamport" as a tag after it
-const tag = kind === 'dreamport' ? sectionFor(kind).label : null;
-const name = tag && title.endsWith(` ${tag}`) ? title.slice(0, -tag.length - 1) : title;
 // Every page holds every game's card, so each game's headings get ids of their own.
 const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$1 id="${id}-$2"`);
 ---
@@ -83,19 +82,17 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
               ))
             }
           </div>
-          {/* the padlocks say the buttons are locked: the note only speaks up when one is pressed */}
+          {/* the padlocks say the buttons are locked: the note only speaks up when one is pressed, or when the browser
+              blocks a download's new tab */}
           <p id={`gate-note-${id}`} class="gate-note" aria-live="polite">
             <span class="note-locked"></span>
-            <span class="note-open">{note}</span>
+            <span class="note-open"></span>
           </p>
         </div>
       </form>
     </div>
     <div class="ins-text" tabindex="0">
-      <Title class="ins-title" id={`ins-title-${id}`}>
-        {name}
-        {tag && name !== title && <>{' '}<span class="ins-tag">{tag}</span></>}
-      </Title>
+      <Title class="ins-title" id={`ins-title-${id}`}><GameTitle title={title} /></Title>
       {
         extras.length > 0 && (
           <section class="extras" aria-labelledby={`extras-${id}`}>
@@ -136,8 +133,19 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
         dreamport && (
           <Facts facts={dreamport.progress} id={`progress-${id}`} heading="Progress">
             <Meter measure={dreamport.ported} />
-            <Meter measure={dreamport.gameplay} />
-            <Parts parts={dreamport.parts} evidence={dreamport.evidence} />
+            <Parts measure={dreamport.gameplay} parts={dreamport.parts} evidence={dreamport.evidence} />
+            <details class="parts" slot="end">
+              <summary>Built with</summary>
+              <ul class="fact-items">
+                {dreamport.built.map((item) => (
+                  <li>
+                    <a href={item.href}>{item.value}</a>
+                    {item.note && <span class="fact-note">{item.note}</span>}
+                  </li>
+                ))}
+              </ul>
+              <p class="parts-links"><a href={dreamport.source}>Source code ↗</a></p>
+            </details>
           </Facts>
         )
       }

@@ -52,7 +52,6 @@ for (const [play, { entry }] of Object.entries(PLAYABLE)) {
             ))
           }
         </div>
-        <p class="pf-small">New here? Pick one, then a player name, and your profile is made.</p>
         <p class="pf-small">
           Dreamports keeps only an id from the account you pick: never its email, password or friends. Your profile is
           private until you make it public. <a href="/about/#privacy">Your privacy</a>
@@ -60,8 +59,8 @@ for (const [play, { entry }] of Object.entries(PLAYABLE)) {
       </div>
 
       <form class="pf-state pf-door" id="pf-pick" novalidate hidden>
-        <p class="pf-lead" id="pf-pick-lead">One last step: the name your profile goes by.</p>
-        <label class="pf-label" for="pf-name">Player name</label>
+        <p class="pf-lead" id="pf-pick-lead"></p>
+        <label class="sr-only" for="pf-name">Player name</label>
         <input
           class="pf-input"
           id="pf-name"

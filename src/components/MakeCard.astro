@@ -1,15 +1,19 @@
 ---
 // A Dreamport's page in the Make row, in the menu's place (#142), with only what a newcomer needs to help make it:
-// its cover and the way to play it as it is, which opens its page in the Dreamports row; its name and a block for
-// each part of the game, filled once a recording proves it, with one line on where it stands; and Help make it,
-// the sentence to paste into a coding agent, which copies when pressed, how many pieces are free to take, and a link
-// to its game's issue, to talk about it; and its latest step, with the earlier ones folded. Who leads it, what waits
-// for review and the code map stay on GitHub. It comes from the entry and the proof/ folder, like the game's page,
-// and its pieces and steps from GitHub as the site is built (src/lib/making.ts).
+// its cover and the way to play it as it is, which opens its page in the Dreamports row; its name; Help make it, the
+// sentence to paste into a coding agent, which copies when pressed, how many pieces are free to take, and a link to
+// its game's issue, to talk about it; its progress, the same two bars as on the game's page, with one line on where it
+// stands; and its latest step, with the earlier ones folded. Who leads it, what waits for review and the code map stay
+// on GitHub. It comes from the entry and the proof/ folder, like the game's page, and its pieces and steps from GitHub
+// as the site is built (src/lib/making.ts).
+import Facts from './Facts.astro';
+import GameTitle from './GameTitle.astro';
+import Meter from './Meter.astro';
+import Parts from './Parts.astro';
 import Tile from './Tile.astro';
 import ViewBar from './ViewBar.astro';
 import { MAKE_GUIDE_URL, gameUrl, makeUrl, pageTitle, type Game } from '../lib/site';
-import { makeView } from '../lib/dreamports';
+import { dreamportView, makeView } from '../lib/dreamports';
 import type { Making } from '../lib/making';
 
 interface Props {
@@ -24,12 +28,11 @@ const { game, open = false, github } = Astro.props;
 if (game.data.kind !== 'dreamport') throw new Error(`${game.id} has no page in the Make row: only Dreamports are made here.`);
 const { data } = game;
 const view = makeView(data, github);
+const progress = await dreamportView(data);
 const [latest, ...earlier] = view.steps;
 const id = game.id;
 const Title = open ? 'h1' : 'h2';
 const Heading = open ? 'h2' : 'h3';
-const caption = (i: number, part: { name: string; proven: boolean }) =>
-  `Part ${i + 1}: ${part.name}. ${part.proven ? 'Proven, every frame matches the original.' : 'Not proven yet.'}`;
 ---
 
 <dialog
@@ -57,23 +60,7 @@ const caption = (i: number, part: { name: string; proven: boolean }) =>
       </a>
     </div>
     <div class="ins-text" tabindex="0">
-      <Title class="ins-title mk-title" id={`mk-title-${id}`}>{data.title}</Title>
-      <div class="mk-parts" role="group" aria-label="The game’s parts" data-roving>
-        {
-          view.parts.map((part, i) => (
-            <button
-              type="button"
-              class:list={['mk-part', part.proven && 'is-proven']}
-              aria-pressed="false"
-              aria-label={caption(i, part)}
-              tabindex={i === 0 ? undefined : -1}
-              data-caption={caption(i, part)}
-            />
-          ))
-        }
-      </div>
-      {/* each block says the same as its line, so the line itself needn't be read out */}
-      <p class="mk-caption" data-summary={view.summary}>{view.summary}</p>
+      <Title class="ins-title mk-title" id={`mk-title-${id}`}><GameTitle title={data.title} /></Title>
       <section class="mk-help" aria-labelledby={`mk-help-${id}`}>
         <Heading id={`mk-help-${id}`}>Help make it</Heading>
         <p>
@@ -92,15 +79,17 @@ const caption = (i: number, part: { name: string; proven: boolean }) =>
           {view.free && `${view.free.line} `}<a href={view.talk}>Talk about it on GitHub ↗</a>
         </p>
       </section>
+      <Facts facts={[]} id={`mk-progress-${id}`} heading="Progress">
+        <Meter measure={progress.ported} />
+        <Parts measure={progress.gameplay} parts={progress.parts} evidence={progress.evidence} />
+        <p class="mk-next" slot="end">{view.summary}</p>
+      </Facts>
       {
         latest && (
           <section class="mk-steps" aria-labelledby={`mk-steps-${id}`}>
             <Heading class="mk-label" id={`mk-steps-${id}`}>Latest step</Heading>
-            <p class="mk-step">{latest.title}</p>
-            <p class="mk-when">
-              <time datetime={latest.merged}>{latest.date}</time> ·{' '}
-              <a href={latest.url} aria-label={`See it on GitHub: ${latest.title}`}>See it ↗</a>
-            </p>
+            <a class="mk-step" href={latest.url}>{latest.title}</a>
+            <p class="mk-when"><time datetime={latest.merged}>{latest.date}</time></p>
             {earlier.length > 0 && (
               <details class="mk-earlier">
                 <summary>
@@ -112,11 +101,8 @@ const caption = (i: number, part: { name: string; proven: boolean }) =>
                 <ol>
                   {earlier.map((step) => (
                     <li>
-                      <span class="mk-step">{step.title}</span>
-                      <span class="mk-when">
-                        <time datetime={step.merged}>{step.date}</time> ·{' '}
-                        <a href={step.url} aria-label={`See it on GitHub: ${step.title}`}>See it ↗</a>
-                      </span>
+                      <a class="mk-step" href={step.url}>{step.title}</a>
+                      <span class="mk-when"><time datetime={step.merged}>{step.date}</time></span>
                     </li>
                   ))}
                 </ol>

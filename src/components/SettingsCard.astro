@@ -11,7 +11,7 @@ import ViewBar from './ViewBar.astro';
       <div class="set-row">
         <div class="set-text">
           <span class="set-label" id="snd-label">Menu sounds</span>
-          <span class="set-desc">Soft clicks and chimes as you move. Made for Dreamports and played by your own browser.</span>
+          <span class="set-desc">Soft clicks and chimes as you move.</span>
         </div>
         <button type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="snd-label" id="snd-switch" autofocus>
           <span class="switch-track"><span class="switch-knob"></span></span>
@@ -20,7 +20,7 @@ import ViewBar from './ViewBar.astro';
       <div class="set-row">
         <div class="set-text">
           <span class="set-label" id="theme-label">Look</span>
-          <span class="set-desc" id="theme-desc">Light, or dark for the evening.</span>
+          <span class="set-desc" id="theme-desc">Follows your device until you pick one.</span>
         </div>
         <div class="seg" role="radiogroup" aria-labelledby="theme-label">
           <input type="radio" name="theme" id="theme-light" value="light" /><label for="theme-light">Light</label>
@@ -30,7 +30,7 @@ import ViewBar from './ViewBar.astro';
       <div class="set-row">
         <div class="set-text">
           <span class="set-label" id="motion-label">Motion</span>
-          <span class="set-desc" id="motion-desc">Calm keeps the games still and swaps the slides for fades.</span>
+          <span class="set-desc">Calm keeps the games still and swaps the slides for fades.</span>
         </div>
         <div class="seg" role="radiogroup" aria-labelledby="motion-label">
           <input type="radio" name="motion" id="motion-full" value="full" /><label for="motion-full">Full</label>
@@ -39,7 +39,7 @@ import ViewBar from './ViewBar.astro';
       </div>
     </div>
     <p class="card-note">
-      <span id="memory-note">The menu remembers nothing yet.</span>{' '}
+      <span id="memory-note">What you change here stays in this browser.</span>{' '}
       <span id="forget-wrap" hidden><button type="button" class="linkish" id="btn-forget">Forget my choices</button> ·{' '}</span>
       <a class="linkish" id="btn-privacy" href="/about/#privacy">Your privacy</a>
     </p>
