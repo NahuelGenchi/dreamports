@@ -80,9 +80,15 @@ export async function openChrome({ profile, headless = true, fresh = true, contr
 }
 
 async function drive(chrome, portFile, profile, headless, controllers) {
-  const exited = new Promise(resolve => chrome.once('exit', resolve));
+  let ended = false;
+  const exited = new Promise(resolve => chrome.once('exit', () => {
+    ended = true;
+    resolve();
+  }));
+  // a browser's first start on a computer can be slow, and one that has ended won't start any more
+  const giveUp = Date.now() + 120000;
   let port;
-  for (let i = 0; i < 300 && !port; i++) {
+  while (Date.now() < giveUp && !ended && !port) {
     try {
       // it holds its port on the first line, and the file's done once there's a second
       const [first, second] = readFileSync(portFile, 'utf8').split('\n');
@@ -98,7 +104,7 @@ async function drive(chrome, portFile, profile, headless, controllers) {
     throw new Error(noScreen ? 'The browser\'s window can\'t open, since this terminal has no screen to show it on. In WSL on Windows, run wsl --update in a Windows terminal, then open WSL again.' : 'The browser didn\'t start.');
   }
   let target;
-  for (let i = 0; i < 100 && !target; i++) {
+  while (Date.now() < giveUp && !ended && !target) {
     try {
       target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(t => t.type === 'page');
     } catch {
@@ -106,6 +112,7 @@ async function drive(chrome, portFile, profile, headless, controllers) {
     }
     if (!target) await wait(100);
   }
+  if (!target) throw new Error('The browser didn\'t start.');
   const socket = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => {
     socket.addEventListener('open', resolve, { once: true });
