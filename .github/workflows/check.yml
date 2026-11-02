@@ -1,0 +1,29 @@
+name: Check
+
+# Every pull request gets the checks anyone can run: npm run check, the site's build, and npm run test:game, which tries
+# what every new game starts with in a real browser, with a made-up cartridge, so nothing from any game is needed. A
+# pull request's code runs here, with a token that can only read and no secrets.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - run: npm run test:game
