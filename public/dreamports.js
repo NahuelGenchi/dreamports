@@ -6,8 +6,8 @@
   // the game, from the page's address: /play/sonic-advance/ is sonic-advance
   const game = /^\/play\/([a-z0-9-]+)\//.exec(location.pathname)?.[1] ?? null;
 
-  // where each game keeps what this device earned, as an id → time map (src/lib/players.ts)
-  const DEVICE = { 'sonic-advance': 'onsoku.achievements' };
+  // where the game keeps what this device earned, as an id → time map (src/lib/players.ts)
+  const device = game === 'sonic-advance' ? 'onsoku.achievements' : `${game}.achievements`;
 
   // the site notes the player's name while someone is signed in on this browser
   const PLAYER = 'dreamports:player';
@@ -53,12 +53,11 @@
 
   // As the page loads, anything this device earned that the profile missed, such as an unlock that
   // couldn't reach the site, goes to the profile too, and the answer is what the profile has.
-  const keeps = !!game && Object.hasOwn(DEVICE, game);
   let kept = null;
   try {
-    if (keeps) kept = JSON.parse(localStorage.getItem(DEVICE[game]) ?? 'null');
+    if (game) kept = JSON.parse(localStorage.getItem(device) ?? 'null');
   } catch {}
-  const onProfile = keeps
+  const onProfile = game
     ? send(kept && typeof kept === 'object' && !Array.isArray(kept) ? kept : {}).then((all) => all ?? {})
     : Promise.resolve({});
 

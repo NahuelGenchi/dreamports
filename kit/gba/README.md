@@ -24,135 +24,14 @@ The kit is plain JavaScript that the browser runs as it is, with no build step, 
 
 ## Start a new game
 
-A new Game Boy Advance Dreamport is a folder in [`games/`](../../games/README.md), such as `games/my-game/`, with three files to begin with:
+A new Game Boy Advance Dreamport is a folder in [`games/`](../../games/README.md), such as `games/my-game/`. Once someone has claimed the game and mapped it, `npm run dp -- new my-game` writes what it starts with, from [`tools/gba/new-game/`](../../tools/gba/new-game/):
 
 - `LICENSE`, a copy of [the kit's](LICENSE), as Dreamports use GPL-3.0-or-later.
 - `index.html`, the page, which loads the kit's look and the game, and has the viewport tag and `/no-zoom.js` that keep it from zooming. It starts on the launcher's Opening screen, in the launcher's look, with the game's name, so that a launch runs straight on into it, and the start screen fades in over that once the game's files are in.
 - `src/main.js`, the game.
+- `entry.md`, its [entry](../../games/README.md#the-entry), which makes its page on the site.
 
-```html
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<script defer src="/no-zoom.js"></script>
-<title>My Game Dreamport</title>
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<script>try { const root = document.documentElement; root.dataset.theme = localStorage.getItem('dreamports:theme') ?? ''; root.dataset.motion = localStorage.getItem('dreamports:motion') ?? ''; } catch {}</script>
-<link rel="stylesheet" href="../../kit/gba/styles/kit.css">
-<script>document.fonts.load('14px Monocraft');</script>
-</head>
-<body>
-<main>
-  <div class="opening"><div class="opening-in"><i class="opening-door"></i><p>Opening My Game <span class="dp-tag">Dreamport</span><span class="opening-dots"></span></p></div></div>
-  <section class="picker" id="picker" aria-label="Your ROMs"></section>
-  <section class="stage" id="stage" hidden>
-    <canvas id="screen" tabindex="0" aria-label="My Game"></canvas>
-  </section>
-</main>
-<script type="module" src="src/main.js"></script>
-</body>
-</html>
-```
-
-`src/main.js` asks for the player's copy and checks it, then runs the game a frame at a time. The game's own code goes in `createGame`. Here it only paints the screen's backdrop, blue, and green while a button is held, which is enough to see that the frames, the drawing and the buttons work. `GAME` and `LAYOUT` are the parts to fill in: the game's header, from the player's copy, and its buttons. `createTouch()` draws a controller around the game on touch screens, and sizes the screen among its buttons. `createSettings()` gives the page its settings, with the game's controls listed from `LAYOUT`, so the first piece already shows how to play it, on a computer or a phone.
-
-```js
-// My Game Dreamport: the player's copy, checked and kept in this browser, then the game a frame at a time, on the
-// Game Boy Advance kit (kit/gba/).
-
-import '../../../kit/gba/canvas.js';
-import { createRomSetup } from '../../../kit/gba/ui/rom-setup.js';
-import { createRomStore } from '../../../kit/gba/rom/store.js';
-import { Rom } from '../../../kit/gba/rom/rom.js';
-import { identify, namesGame } from '../../../kit/gba/rom/identify.js';
-import { createVideo, SCREEN_W, SCREEN_H } from '../../../kit/gba/video.js';
-import { createClock, GBA_FRAME_MS } from '../../../kit/gba/clock.js';
-import { createInput } from '../../../kit/gba/input.js';
-import { proof } from '../../../kit/gba/proof.js';
-import { createSettings } from '../../../kit/gba/ui/settings.js';
-import { createTouch } from '../../../kit/gba/ui/touch.js';
-
-// the game as its cartridge's header names it: the title, the game code of each region, and the SHA-1 of each
-// version the Dreamport supports, { sha1 }
-const GAME = { name: 'My Game', title: 'MY GAME', codes: { AXXE: 'USA' }, versions: [] };
-
-// the player's buttons: the console's own, the keys that press them, and the controller's buttons by their
-// numbers in the standard layout (0 A, 1 B, 4 LB, 5 RB, 8 View, 9 Menu, 12 to 15 the d-pad)
-const LAYOUT = {
-  buttons: ['up', 'down', 'left', 'right', 'a', 'b', 'l', 'r', 'start', 'select'],
-  gba: { up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT', a: 'A', b: 'B', l: 'L', r: 'R', start: 'START', select: 'SELECT' },
-  keys: { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', KeyZ: 'a', KeyX: 'b', KeyA: 'l', KeyS: 'r', Enter: 'start', Backspace: 'select' },
-  pad: { a: [0], b: [1], l: [4], r: [5], select: [8], start: [9], up: [12], down: [13], left: [14], right: [15] },
-};
-
-const picker = document.getElementById('picker');
-const stage = document.getElementById('stage');
-const screen = document.getElementById('screen');
-const input = createInput(LAYOUT);
-proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
-// on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
-// with the controls the layout gives
-const touch = createTouch(stage, input, { screen, key: 'my-game' });
-createSettings(stage, input, { touch });
-let rom = null;
-
-createRomSetup(picker, {
-  brand: 'My Game Dreamport',
-  home: 'https://dreamports.net/dreamports/my-game-dreamport/',
-  roms: createRomStore('my-game'),
-  heading: 'Insert cartridge',
-  intro: 'Your ROM stays on this device.',
-  slots: [{
-    key: 'game', store: 'rom', title: GAME.name, required: true, accept: '.gba',
-    claims: buffer => namesGame(buffer, GAME.title),
-    async read(buffer) {
-      const { region, known } = await identify(new Rom(buffer), GAME);
-      rom = new Rom(buffer);
-      return `${region} · ${known ? 'tested version' : 'untested version'}`;
-    },
-    unload() { rom = null; },
-  }],
-  onPlay: start,
-});
-
-// the game's own code: what the original does each frame, writing the video hardware's registers, VRAM, palettes
-// and sprites as it does. To begin with, the screen's backdrop: blue, and green while a button is held.
-function createGame(video, rom) {
-  return {
-    step(keys) { video.pal[0] = keys ? 0x03E0 : 0x7C00; },
-  };
-}
-
-function start() {
-  picker.hidden = true;
-  stage.hidden = false;
-  const video = createVideo(), game = createGame(video, rom);
-  const out = screen.getContext('2d', { alpha: false });
-  screen.width = SCREEN_W;
-  screen.height = SCREEN_H;
-  const image = out.createImageData(SCREEN_W, SCREEN_H), pixels = new Uint32Array(image.data.buffer);
-  // at the console's own rate: each of the display's frames runs the game's frames that are due, then draws
-  const clock = createClock(GBA_FRAME_MS);
-  clock.reset();
-  input.enabled = true;
-  requestAnimationFrame(function loop(now) {
-    let ran = false;
-    for (let n = clock.steps(now); n > 0; n--) {
-      input.poll();
-      game.step(input.gbaKeys());
-      ran = true;
-    }
-    if (ran) {
-      video.drawFrame(pixels);
-      out.putImageData(image, 0, 0);
-    }
-    requestAnimationFrame(loop);
-  });
-  screen.focus();
-}
-```
+`src/main.js` asks for the player's copy and checks it, then runs the game a frame at a time. The game's own code goes in `createGame`. Here it only paints the screen's backdrop, blue, and green while a button is held, which is enough to see that the frames, the drawing and the buttons work. `GAME` and `LAYOUT` are the game's header, from `proof/original.json`, and its buttons, which it can change. `createTouch()` draws a controller around the game on touch screens, and sizes the screen among its buttons. `createSettings()` gives the page its settings, with the game's controls listed from `LAYOUT`, so the first piece already shows how to play it, on a computer or a phone.
 
 The settings open over the game with the settings button in the top-left corner, <kbd>H</kbd>, or View and Menu together on a controller, and the game waits while they're open. Their Controls list every key and controller button `LAYOUT` gives, and the console's button each presses. Once a button does something in the game, `what` says so, by the button's name in `LAYOUT`, and `dpad` for the d-pad, as Sonic Battle Dreamport's [`src/main.js`](../../games/sonic-battle/src/main.js) does for Start: `createSettings(stage, input, { what: { start: 'Start: skips the logos' } })`. That list is what a player and `/dreamport-play` go by to play the game.
 
@@ -171,7 +50,7 @@ Sonic Advance Dreamport's [`index.html`](../../games/sonic-advance/index.html) a
 - **Touch.** `createTouch()` in `ui/touch.js` draws the controller and sizes a game of one screen among its buttons, and `bindSlider()` on what it returns makes a game's own Button opacity slider set how solid they are. A game with views of its own, such as Sonic Advance Dreamport's widescreen view and its players' screens side by side, writes the page's `touch` part itself, and `input.bindTouch()` makes its buttons press the game's.
 - **Saves.** `cartridgeSave()` in `save.js` keeps what the cartridge's save memory holds. What its bytes mean is the game's own.
 - **Sound.** `soundLayout()` in `sound/tables.js` finds the sound engine's tables in the player's copy and takes the game's sound mode, from its decompilation's `DEFAULT_SOUND_MODE`. `createSound()` in `sound/audio.js` plays it. A game with sounds of its own makes its own audio thread from `sound/processor.js`, like Sonic Advance Dreamport's [`src/sound/worklet.js`](../../games/sonic-advance/src/sound/worklet.js).
-- **Achievements.** `openAchievements()` in `achievements/store.js` keeps the achievements the game lists in its own `src/achievements/list.js`, and the page loads `/dreamports.js` to send them to the player's profile. The game is also added to the site's lists, as [Profiles and achievements](../../docs/ACCOUNTS.md#for-a-game-dreamportsjs) explains.
+- **Achievements.** `openAchievements()` in `achievements/store.js` keeps the achievements the game lists in its own `src/achievements/list.js`, and the page loads `/dreamports.js` to send them to the player's profile. The list is all the site needs: the game's page, the profile and the Worker find it, as [Profiles and achievements](../../docs/ACCOUNTS.md#for-a-game-dreamportsjs) explains.
 - **Asset viewer.** `ui/assets-view.js` shows what the game reads from the player's copy, in parts the game makes, like Sonic Advance Dreamport's [`src/ui/assets.js`](../../games/sonic-advance/src/ui/assets.js).
 
 ## For the proof tools

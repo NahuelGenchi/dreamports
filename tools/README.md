@@ -12,7 +12,9 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `rom` | Checks a copy of a game, says which game and which version it is, and remembers where it is |
 | `play` | Opens a game in a browser with your copy, and with `--record` keeps what you play as a recording, after another recording's presses with `--from` |
 | `prove` | Plays each recording in the original and in the Dreamport, compares every frame, its picture and its sound, updates the numbers, and with `--stills` keeps pictures of the frames you name |
+| `capture` | Lets you play the original in a window, and keeps a real moment of it for the game's card |
 | `codemap` | Makes the code map: every function in the original, with its address and size |
+| `new` | Writes a claimed game's first files: its page, its code on the kit with everything wired in, its license and its entry |
 | `portmap` | Makes the port map: each function of the original the Dreamport's code names, and where |
 | `read` | Prints one of the original's functions, its instructions, from your copy, for code its decompilation has no C for |
 | `share` | Publishes a preview of a game on GitHub Pages from your own fork, with the newest clip for the step's pull request |
@@ -59,6 +61,16 @@ A recording holds nothing from the game, only button presses, so it lives in the
 
 Sonic Advance Dreamport's [first act](../games/sonic-advance/proof/recordings/neo-green-hill-act-1.json) is an example: it skips the character select, which the Dreamport doesn't have yet.
 
+## A game's capture
+
+Every game's card in the launcher shows a few seconds of real play. `npm run dp -- capture <game>` makes a Dreamport's from the original, so a game can have one before its Dreamport has anything to play. It opens a window where you play your own copy, from power-on, with the keyboard or a controller, and hear it as you go.
+
+Press Finish, or `Esc`, or View and Menu together on a controller, and it picks out the best stretches of what you played: lively and colourful, with buttons held, and with no fades, logos, menus or text. They come up moving. Press the one you want with the mouse, with the arrows and `Z`, or with a controller's d-pad and A. `Esc` or B goes back to playing where you left off, and the next list comes from all of it.
+
+What you choose becomes a few seconds that loop, as near to seamless as the game allows, in `public/media/`: `<game>-dreamport.h264.mp4` and `.av1.mp4`, silent, `-still.webp` and `-share.png`. The game's entry names them, as `screen` and `share`. Choose play, with no logos or title screens: these go in a commit, on to dreamports.net, and the Dreamports team looks at them in the game's pull request ([the rule](../docs/STANDARD.md#a-games-capture)).
+
+Your presses stay in `.dreamports/captures/<game>/`, so `npm run dp -- capture <game> --choose` shows the same moments again, if the window closed first or you change your mind. The pictures come from running the original again with those presses, and it stops if any frame comes out differently from what you played. A coding agent can start it for you, but the choice is yours: it never looks at the pictures.
+
 ## Proving
 
 `npm run dp -- prove <game>` plays every recording of the game in the original and in the Dreamport, both from power-on, and compares every frame: its picture, pixel for pixel, in the console's own colours, and its sound, as [How sound is compared](#how-sound-is-compared) explains. A frame matches when both are the same. Add recordings' names after the game's to play only those. The Dreamport runs in a browser you don't see, a frame at a time, through its kit's proof mode ([the Game Boy Advance kit's](../kit/gba/README.md#for-the-proof-tools)). Sonic Advance Dreamport's first act, 3,300 frames, takes about a minute.
@@ -103,6 +115,10 @@ Each Dreamport shows two numbers, code ported and gameplay proven, which [the st
 `npm run dp -- portmap <game>` writes the port map, `games/<game>/proof/port-map.json`: each function of the original that the game's code names, with the first file and line that names it, and every name that lands inside a function of the code map but not at its start, which is usually a mistake. A name is an address in the cartridge, written as a number, such as `0x08029E78`, or as a label, such as `sub_8029E78`, or `FUN_08029E78` as Ghidra writes them. An address outside every function of the code map is the game's data, such as a picture the code copies, and isn't counted or listed. A number is an address in the copy the proof uses. A label is one in the release the game's labels come from, and when that's another release, the game's `proof/names.json` says how far each stretch of its code is from the copy's. Sonic Advance Dreamport's code uses the labels of a decompilation built from the European release, and [its `names.json`](../games/sonic-advance/proof/names.json) gives the shifts to the USA release. Run it after changing the game's code; `npm run check` says when a port map is out of date.
 
 Code ported is the size of the functions the port map names and those `prove` found running in matching play, divided by the size of every function in the code map. Gameplay proven is the share of the parts in `games/<game>/proof/parts.json` that a recording proves: every frame from the part's first to its last matched, picture and sound, with none the Dreamport doesn't have. The game's page, the launcher's Make row and the README show both, and the site checks that they add up with the files before it shows them, so they only ever come from the tools. The tools also draw each game's progress map from the same files, with [`src/lib/progress-map.mjs`](../src/lib/progress-map.mjs): a picture of every function in the code map and every part, green once it counts. They keep it in `.github/readme/progress/<game>.svg`, which the README's table links, and write it whenever they write the table. It's only shown on GitHub, never on the site.
+
+## Starting a game
+
+`npm run dp -- new <game>` starts a Dreamport that someone has claimed and mapped: it needs its [New Dreamport](../docs/TEAMS.md#start-a-dreamport) issue, `proof/original.json` and its code map. It writes `index.html`, `src/main.js`, `LICENSE` and `entry.md` in its folder, then its port map and the README's table, and from then on the site has its place in the Make row. The game's code starts as the kit's start for its console, [`gba/new-game/`](gba/new-game/), with the controller, the touch screen, the settings and the start screen already working, and it shows only a blue screen until someone writes the game. The first three files say the same for anyone with the same `original.json`, so nothing has to be reviewed in them. `new` writes over nothing.
 
 ## Reading the original's instructions
 
@@ -182,7 +198,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 
 ## What stays on your computer
 
-Everything else the tools keep is in `.dreamports/`, in the repository's folder, which the ignore rules keep out of commits: where your copies are, the reference emulator, every result with its pictures and clips, what `read` prints, and the browser profiles the tools use. Deleting it is safe, as `setup` and `rom` make it again. Only what you send leaves it, such as a clip in a pull request. A coding agent is different: whatever it reads, such as what `read` prints, goes to the company that runs its model, unless that model runs on your computer too.
+Everything else the tools keep is in `.dreamports/`, in the repository's folder, which the ignore rules keep out of commits: where your copies are, the reference emulator, every result with its pictures and clips, what `read` prints, what you played for `capture`, and the browser profiles the tools use. Deleting it is safe, as `setup` and `rom` make it again. Only what you send leaves it, such as a clip in a pull request. A coding agent is different: whatever it reads, such as what `read` prints, goes to the company that runs its model, unless that model runs on your computer too.
 
 ## For a game on the Game Boy Advance kit
 

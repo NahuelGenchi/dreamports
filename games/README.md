@@ -18,7 +18,9 @@ Nothing from the original game ever goes here: no ROM, no game files, and no mus
 
 Every Dreamport has one entry, `entry.md` in its folder, which says everything about it: the game and the exact copy it needs, who makes it, what it's built with, and where to follow it. The site makes the game's page from it, at `dreamports.net/dreamports/<game>-dreamport/`, where `<game>` is the folder's name, and its page in the Make row, at `dreamports.net/make/<game>/`, for the people making it, until every part of it is proven. Its page, its place in the Make row and the README's table of Dreamports show its two numbers, code ported and gameplay proven, and the table shows its lead too. [Sonic Advance Dreamport's entry](sonic-advance/entry.md) is an example.
 
-An entry is a Markdown file. Its fields go at its top, between two `---` lines, and the text below them, such as the credits, shows at the end of the game's page. Write them as normal sentences and labels, with a capital at the start. `npm run check` and `npm run build` stop and say what's wrong when a field is missing or wrong.
+A game starts with a place in the Make row only, as what `npm run dp -- new` writes has no code of the original's yet. Its place in the Dreamports row and its own page, for players, come with its first reviewed step that names code of the original, when its code ported rises above 0.
+
+`npm run dp -- new <game>` writes a new game's first entry, with its first code ([Starting a game](../tools/README.md#starting-a-game)). An entry is a Markdown file. Its fields go at its top, between two `---` lines, and the text below them, such as the credits, shows at the end of the game's page. Write them as normal sentences and labels, with a capital at the start. `npm run check` and `npm run build` stop and say what's wrong when a field is missing or wrong.
 
 | Field | What to write |
 | :--- | :--- |
@@ -35,7 +37,7 @@ An entry is a Markdown file. Its fields go at its top, between two `---` lines, 
 | `kit` | Its console's kit, a folder in [`kit/`](../kit/), such as `gba` |
 | `sources` | Every source of its code, each with a `name`, an `href`, its `license` (such as `MIT`, or `none`) and its `use`: `code` when code came in from it, or `guide` when it was only read. Code brought in without a license that allows it also needs `agreement`, a link to its authors' agreement, as [the standard](../docs/STANDARD.md#fair-to-everyone-who-helped) asks |
 | `preview` | Optional: the lead's [team preview](../docs/TEAMS.md#team-builds), which `npm run dp -- team <game> add` updates with each piece, and which the page shows with a reminder that nobody has reviewed it |
-| `ownCopy`, `extras`, `screen`, `share`, `glow` | The game's page, as for [every game on the site](../CONTRIBUTING.md#add-a-game) |
+| `ownCopy`, `extras`, `screen`, `share`, `glow` | The game's page, as for [every game on the site](../CONTRIBUTING.md#add-a-game). `npm run dp -- capture` writes `screen` and `share` ([The proof tools](../tools/README.md#a-games-capture)) |
 | `facts` | Optional: more lines for the game's details, each with a `label` and a `value`, or a link of its own, with a `label` and an `href`, such as an article about it |
 
 The rest of the game's page comes from its folder, not from the entry:
@@ -64,4 +66,4 @@ The build stops and says what's wrong if a game's or a kit's folder breaks one o
 
 ## Removing a game
 
-A game comes off the site in one commit: delete its folder, entry included, any recordings of it in `public/media/`, and write the README's table again with `npm run dp -- readme`, which also removes the game's progress map. It's how a rights holder's notice is answered, as [Notices from rights holders](../docs/RIGHTS.md) says. A game that keeps achievements is also listed in `src/lib/players.ts` and `public/dreamports.js`, as [Profiles and achievements](../docs/ACCOUNTS.md#for-a-game-dreamportsjs) explains, so those lines go in the same commit.
+A game comes off the site in one commit: delete its folder, entry included, any recordings of it in `public/media/`, and write the README's table again with `npm run dp -- readme`, which also removes the game's progress map. It's how a rights holder's notice is answered, as [Notices from rights holders](../docs/RIGHTS.md) says.

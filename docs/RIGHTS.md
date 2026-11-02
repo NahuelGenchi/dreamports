@@ -18,7 +18,7 @@ Dreamports never hosts games, but the games it rebuilds belong to the people who
 
 1. **Answers within a business day**, to say the notice has arrived, and asks for anything missing, such as which game it means.
 2. **Opens an issue** to remove the game, which says only that a rights holder asked. It never names the sender or shares their message.
-3. **Removes the game in one commit**, as [removing a game](../games/README.md#removing-a-game) explains: its folder in `games/`, with its entry, code and proof files; its lines in `src/lib/players.ts` and `public/dreamports.js` if it keeps achievements; its recordings in `public/media/`, if it has any; and its row in the README's table, written again by `npm run dp -- readme`. A port listed in the Mash-ups row goes the same way: its file in `src/content/games/` and its recordings.
+3. **Removes the game in one commit**, as [removing a game](../games/README.md#removing-a-game) explains: its folder in `games/`, with its entry, code and proof files; its recordings in `public/media/`, if it has any; and its row in the README's table, written again by `npm run dp -- readme`. A port listed in the Mash-ups row goes the same way: its file in `src/content/games/` and its recordings.
 4. **Merges it at once.** dreamports.net shows the change about a minute later, and the game's address stops working.
 5. **Closes the game's work.** Its open issues are closed as not planned, and its game's issue gets a short note and is locked. The note asks its lead and team to take down their previews of it, which [Previews](PREVIEWS.md#for-contributors-sharing-a-preview) explains how to do, since those live on their own forks.
 6. **Answers the sender**, with the commit that removed the game.
@@ -33,6 +33,6 @@ A game that was removed doesn't come back unless its rights holder agrees, or Gi
 
 ## Why it's quick
 
-Every Dreamport lives in its own folder in `games/` since [#74](https://github.com/NahuelGenchi/dreamports/issues/74), with nothing of it elsewhere but the few lines listed above, so removing one never touches another. The repository never holds anything from a game, such as its files, graphics or sounds, as the [standard](STANDARD.md#nothing-from-the-game-is-ever-shared) asks, so there's nothing else to find and remove.
+Every Dreamport lives in its own folder in `games/` since [#74](https://github.com/NahuelGenchi/dreamports/issues/74), with nothing of it elsewhere but the few lines listed above, so removing one never touches another. The repository holds nothing from a game, such as its files or sounds, as the [standard](STANDARD.md#nothing-from-the-game-is-ever-shared) asks, but for the few silent seconds of play its card shows, named after the game in `public/media/`, which go with it, so there's nothing else to find and remove.
 
-Clips that show the original game appear only in pull requests, as [Clips](STANDARD.md#clips) says, never on dreamports.net. A rights holder who wants one removed can say so on it, or write to the address above, and the team takes it down, or asks its author to.
+Clips that show the original game next to a Dreamport appear only in pull requests, as [Clips](STANDARD.md#clips) says, never on dreamports.net. A rights holder who wants one removed can say so on it, or write to the address above, and the team takes it down, or asks its author to. [A game's capture](STANDARD.md#a-games-capture) is on dreamports.net, and it comes down the same way, on its own or with the game.

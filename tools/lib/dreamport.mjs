@@ -8,10 +8,14 @@ import { go, until, giveFile } from './chrome.mjs';
 export async function openDreamport(page, server, game, copy, { query = '', start = true } = {}) {
   await go(page, `${server.url}/games/${game}/${query}`);
   await until(page, `!!document.querySelector('.rom input[type=file]')`, 'the game\'s start screen, where it takes the copy');
+  // what it says about this copy: a page that kept one from last time has Play ready before it starts reading this
+  await page.evaluate(`window.__copyRead = false; new MutationObserver(records => { if (records.some(r => r.target.matches('.rom') && r.target.dataset.state !== 'reading')) window.__copyRead = true; }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-state'] })`);
   await giveFile(page, '.rom input[type=file]', copy);
-  await until(page, `!document.querySelector('.play')?.disabled || ['error', 'wrong'].includes(document.querySelector('.rom')?.dataset.state)`, 'the game to read the copy');
-  const refused = await page.evaluate(`document.querySelector('.play')?.disabled ? document.querySelector('.rom').innerText.replace(/\\s+/g, ' ').trim() : ''`);
+  const wrong = `document.querySelector('[data-kind="error"]')?.textContent.trim()`;
+  await until(page, `window.__copyRead || !!${wrong}`, 'the game to read the copy');
+  const refused = await page.evaluate(wrong);
   if (refused) throw new Error(`The game didn't take the copy: ${refused}`);
+  await until(page, `!document.querySelector('.play').disabled`, 'Play to be ready', 5000);
   if (!start) return;
   if (!(await page.evaluate(`typeof dreamportsProof === 'object'`)) && query.includes('proof')) {
     throw new Error(`games/${game}/ has no proof mode: its page calls proof?.watch(screen, input) from the kit (kit/gba/README.md).`);

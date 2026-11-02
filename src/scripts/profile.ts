@@ -2,7 +2,7 @@
 // player's own profile, and other players' public ones. The launcher (launcher.ts) opens and closes their views and tells each one when it
 // opens, with a `view-open` event; this fills them from the site's API (worker/index.ts).
 
-import { NAME_PATTERN, PLAYABLE, WAYS, isWay, type Way } from '../lib/players';
+import { NAME_PATTERN, WAYS, achievementsListOf, deviceKeyOf, isWay, type Way } from '../lib/players';
 import { showTitle } from '../lib/title';
 import { control } from './controls';
 
@@ -66,7 +66,7 @@ const lists = new Map<string, Promise<Achievement[]>>();
 function listOf(game: string) {
   let list = lists.get(game);
   if (!list) {
-    list = import(/* @vite-ignore */ PLAYABLE[game].list)
+    list = import(/* @vite-ignore */ achievementsListOf(game))
       .then((module: { ACHIEVEMENTS?: Achievement[] }) => (Array.isArray(module.ACHIEVEMENTS) ? module.ACHIEVEMENTS : []))
       .catch(() => []);
     lists.set(game, list);
@@ -139,11 +139,11 @@ async function showGames(box: HTMLElement, games: Games, earned: Profile['achiev
 }
 
 // what this device's games earned before anyone signed in, claimed for the player who just did
-async function claimDevice() {
-  for (const [game, { device }] of Object.entries(PLAYABLE)) {
+async function claimDevice(games: Games) {
+  for (const game of Object.keys(games)) {
     let earned: unknown = null;
     try {
-      earned = JSON.parse(localStorage.getItem(device) ?? 'null');
+      earned = JSON.parse(localStorage.getItem(deviceKeyOf(game)) ?? 'null');
     } catch {}
     if (earned && typeof earned === 'object' && Object.keys(earned).length) {
       await api('/api/achievements', 'POST', { game, earned });
@@ -164,7 +164,7 @@ function earnedOnProfile() {
 
 function earnedOnDevice(game: string): Record<string, number> {
   try {
-    return JSON.parse(localStorage.getItem(PLAYABLE[game].device) ?? 'null') ?? {};
+    return JSON.parse(localStorage.getItem(deviceKeyOf(game)) ?? 'null') ?? {};
   } catch {
     return {};
   }
@@ -358,7 +358,7 @@ function startProfile(card: HTMLDialogElement) {
   // signed in: claim the device's achievements, then show the profile with them
   async function welcome(profile: Profile) {
     notePlayer(profile.name);
-    await claimDevice();
+    await claimDevice(games);
     const { ok, data } = await api<{ player: Profile | null }>('/api/me');
     await show(ok && data.player ? data.player : profile, null, true);
   }

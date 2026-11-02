@@ -2,7 +2,6 @@
 // folder: its details, and its progress with its two numbers, code ported and gameplay proven, what proves them, and
 // what it's built with; and what its page in the Make row shows, for the people making it. games/README.md describes
 // the entry.
-import { PLAYABLE } from './players';
 import { proofOf } from './entries.mjs';
 import { SOURCE_URL, makeUrl, type Game } from './site';
 import type { Making, Step } from './making';
@@ -23,7 +22,7 @@ export interface Fact {
 const PROOF = import.meta.glob<unknown>('/games/*/proof/{original,code-map,progress,port-map,parts}.json', { eager: true, import: 'default' });
 const RECORDINGS = import.meta.glob<unknown>('/games/*/proof/recordings/*.json', { eager: true, import: 'default' });
 const KITS = import.meta.glob<string>('/kit/*/README.md', { eager: true, query: '?raw', import: 'default' });
-const LISTS = import.meta.glob<readonly AchievementView[]>('/games/**/list.js', { import: 'ACHIEVEMENTS' });
+const LISTS = import.meta.glob<readonly AchievementView[]>('/games/*/src/achievements/list.js', { import: 'ACHIEVEMENTS' });
 
 const proofFile = (game: string, name: string) => PROOF[`/games/${game}/proof/${name}.json`] as never;
 const proofLink = (game: string, path: string) => `${SOURCE_URL}/blob/main/games/${game}/proof/${path}`;
@@ -73,13 +72,12 @@ function kitName(kit: string): string {
   return /^#\s+(.+)$/m.exec(guide)?.[1].trim() ?? `${kit} kit`;
 }
 
-// the achievements the game keeps on players' profiles, which are none until it keeps some (src/lib/players.ts)
+// whether a game keeps achievements on players' profiles, which it does by having its list (src/lib/players.ts)
+export const keepsAchievements = (game: string) => Object.hasOwn(LISTS, `/games/${game}/src/achievements/list.js`);
+
+// the achievements the game keeps on players' profiles, which are none until it keeps some
 async function achievementsOf(game: string): Promise<readonly AchievementView[]> {
-  const list = PLAYABLE[game]?.list;
-  if (!list) return [];
-  const load = LISTS[`/games/${list.replace(/^\/play\//, '')}`];
-  if (!load) throw new Error(`src/lib/players.ts names ${list} as ${game}’s achievements, but it isn’t in games/.`);
-  return load();
+  return keepsAchievements(game) ? LISTS[`/games/${game}/src/achievements/list.js`]() : [];
 }
 
 // An achievement, as the game's own list names it.
@@ -140,6 +138,12 @@ const CODE_URL = 'https://dreamports.net/code';
 /** Whether a Dreamport is still being made, so it has a place in the Make row: until every part of it is proven. */
 export const beingMade = (data: Dreamport): boolean => proofFor(data.game)?.gameplay?.percent !== 100;
 
+// whether a Dreamport has code of the original's: what `npm run dp -- new` writes names none and only shows a blue screen
+const hasCode = (data: Dreamport): boolean => (proofFor(data.game)?.ported?.percent ?? 0) > 0;
+
+/** Whether a game has its place in its row and its own page, for players. Until a Dreamport has code, it's only in the Make row. */
+export const released = ({ data }: Game): boolean => data.kind !== 'dreamport' || hasCode(data);
+
 // What a Dreamport's page in the Make row shows besides its two bars (#142): one line on where it stands, the sentence
 // that gets a newcomer's coding agent ready to help (#141), and its game's issue, where it's talked about; and from
 // GitHub (#143, src/lib/making.ts), how many pieces are free to take and its steps, the latest first. Who leads it,
@@ -176,7 +180,9 @@ export function makeView(data: Dreamport, github?: Making): MakeView {
     free: github && {
       line: count
         ? `${pieces} ${count === 1 ? 'is' : 'are'} free to take.`
-        : 'No pieces are free to take yet, but you can play it and say where it differs from the original.',
+        : hasCode(data)
+          ? 'No pieces are free to take yet, but you can play it and say where it differs from the original.'
+          : 'No pieces are free to take yet.',
       help: count ? `${pieces} free to take` : '',
     },
     steps: (github?.steps ?? []).map((step) => ({ ...step, date: dayOf(step.merged) })),
