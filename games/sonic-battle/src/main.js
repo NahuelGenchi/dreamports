@@ -44,7 +44,7 @@ proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded but
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives and what a button does so far
 const touch = createTouch(stage, input, { screen, key: 'sonic-battle' });
-createSettings(stage, input, { what: { start: 'Start: skips the SEGA and Sonic Team logos and the intro' }, touch });
+createSettings(stage, input, { what: { start: 'Start: skips the SEGA and Sonic Team logos and the intro, and leaves the title screen' }, touch });
 let rom = null, romBuffer = null;
 
 createRomSetup(picker, {
@@ -67,8 +67,8 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the logos and the intro. What comes after them, the title display, is not ported
-// yet, so the screen stays black there.
+// The game so far: the logos, the intro and the title screen. What comes after the title screen, the main menu,
+// is not ported yet, so the screen stays black there.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
   core.main = c => logos(c, intro);

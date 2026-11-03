@@ -1,0 +1,9 @@
+{
+  "about": "From power-on: the logos and the intro, then the title screen, and Start after it has shown for a moment, through its fade to black.",
+  "frames": 779,
+  "held": [
+    [0,[]],
+    [747,["START"]],
+    [748,[]]
+  ]
+}

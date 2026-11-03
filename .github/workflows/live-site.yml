@@ -1,0 +1,74 @@
+name: Live site
+
+# Cloudflare builds dreamports.net on every push to main, but a build can fail before it starts, and the site then stays
+# behind with nothing to say so. After every push, and every half hour in case that run is lost, this reads the live
+# site and checks that it was built from main's latest commit and that every Dreamport's cards show the numbers its
+# proof/ folder makes. While it's behind, this asks Cloudflare for another build. If that doesn't bring it up to date, as
+# when Cloudflare's builds are down, this builds main itself and puts it live, once it has a CLOUDFLARE_API_TOKEN secret,
+# and if the site is still behind, it opens an issue, which it closes once the site has caught up (docs/LIVE-SITE.md).
+# It runs only code from main, and each secret is only in the step that needs it.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '11,41 * * * *'
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Build main here and put it live now, without waiting for Cloudflare's builds
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+
+# a push takes over from whatever is looking at the commit before it; the half-hourly run waits its turn
+concurrency:
+  group: live-site
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+jobs:
+  watch:
+    name: Check dreamports.net against main
+    # not in a contributor's fork, which has no site of its own to look after
+    if: github.repository == 'NahuelGenchi/dreamports'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CAN_DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      - name: Compare the site with main, and ask for a build while it's behind
+        id: watch
+        if: ${{ !inputs.deploy }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # the Deploy Hook that builds dreamports.net, kept in the repository's secrets
+          DEPLOY_HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
+        run: node .github/live-site/watch.mjs
+      - name: Build main here, as Cloudflare's builds haven't brought the site up to date
+        if: ${{ env.CAN_DEPLOY == 'true' && (inputs.deploy || steps.watch.outputs.behind == 'true') }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # stops like a build on Cloudflare if the Make pages have nothing to show from GitHub (docs/MAKE.md)
+          WORKERS_CI: '1'
+        run: npm run build
+      - name: Put it live
+        if: ${{ env.CAN_DEPLOY == 'true' && (inputs.deploy || steps.watch.outputs.behind == 'true') }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler deploy --message "main at ${GITHUB_SHA::7}, from the Live site workflow"
+      - name: Look once more, and open an issue if it's still behind
+        if: ${{ !cancelled() && (inputs.deploy || steps.watch.outputs.behind == 'true') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/live-site/watch.mjs --last
