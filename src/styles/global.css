@@ -43,8 +43,6 @@
   --door-k: #0a1738;
   --door-o: transparent;
   --discord: #5865f2;
-  --black: #000000;
-  --on-black: #eef4ff;
 
   --font: 'Monocraft', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   --glide: cubic-bezier(0.22, 1, 0.36, 1);
@@ -311,6 +309,8 @@ kbd {
   position: fixed;
   inset: 0;
   overflow: hidden;
+  /* not even a browser going to a #section can scroll what clips */
+  overflow: clip;
   background: var(--page-glow), var(--page);
   -webkit-tap-highlight-color: transparent;
 }
@@ -752,7 +752,9 @@ kbd {
 }
 
 .row.is-dragging .slot,
-.row.no-anim .slot {
+.row.no-anim,
+.row.no-anim :is(.slot, .lift, .glow),
+.row.light-now .glow {
   transition: none;
 }
 
@@ -767,9 +769,16 @@ kbd {
   opacity: 0.55;
 }
 
-/* before the script has measured the screen, the row and its cursor wait out of sight */
-.js .launcher:not(.is-laid) :is(.row, .cursor, .nameplate) {
+/* before the script has measured the screen, all of it waits out of sight and comes in one frame, unless the script never comes */
+.js .launcher:not(.is-laid) > * {
   visibility: hidden;
+  animation: laid-anyway 0s 4s forwards;
+}
+
+@keyframes laid-anyway {
+  to {
+    visibility: visible;
+  }
 }
 
 /* a game: a little screen in a white frame, showing the game itself */
@@ -1209,7 +1218,7 @@ kbd {
   pointer-events: none;
 }
 
-/* the black screen the game opens from */
+/* the screen the game opens from: the page's own colour, for the iris to close into, and the game's page goes on showing it (kit.css) */
 .blackout {
   position: fixed;
   inset: 0;
@@ -1218,8 +1227,7 @@ kbd {
   place-items: center;
   padding-left: max(24px, env(safe-area-inset-left, 0px));
   padding-right: max(24px, env(safe-area-inset-right, 0px));
-  background: var(--black);
-  color: var(--on-black);
+  background: var(--page-glow), var(--page);
   text-align: center;
 }
 
@@ -1231,15 +1239,22 @@ kbd {
 }
 
 .bo-inner .door {
-  --door-o: #3552b8;
   width: 34px;
   height: 40px;
 }
 
 .bo-line {
   margin: 0;
-  color: #8fd1ff;
+  color: var(--blue);
   font-size: 14px;
+  line-height: 20px;
+}
+
+/* their room is kept, so the line stays still as they count */
+.bo-dots {
+  display: inline-block;
+  width: 3ch;
+  text-align: left;
 }
 
 .bo-dots::after {
@@ -1947,10 +1962,7 @@ dialog.card[open] {
   vertical-align: 1px;
 }
 
-/* the Opening screen is dark in both looks */
 .bo-line .dp-tag {
-  background: rgba(143, 209, 255, 0.18);
-  color: #8fd1ff;
   vertical-align: 1px;
 }
 

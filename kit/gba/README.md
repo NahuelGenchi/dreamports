@@ -27,7 +27,7 @@ The kit is plain JavaScript that the browser runs as it is, with no build step, 
 A new Game Boy Advance Dreamport is a folder in [`games/`](../../games/README.md), such as `games/my-game/`. Once someone has claimed the game and mapped it, `npm run dp -- new my-game` writes what it starts with, from [`tools/gba/new-game/`](../../tools/gba/new-game/):
 
 - `LICENSE`, a copy of [the kit's](LICENSE), as Dreamports use GPL-3.0-or-later.
-- `index.html`, the page, which loads the kit's look and the game, and has the viewport tag and `/no-zoom.js` that keep it from zooming.
+- `index.html`, the page, which loads the kit's look and the game, and has the viewport tag and `/no-zoom.js` that keep it from zooming. It starts on the launcher's Opening screen, in the launcher's look, with the game's name, so that a launch runs straight on into it, and the start screen fades in over that once the game's files are in.
 - `src/main.js`, the game.
 - `entry.md`, its [entry](../../games/README.md#the-entry), which makes its page on the site.
 
