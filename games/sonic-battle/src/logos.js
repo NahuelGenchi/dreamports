@@ -37,6 +37,7 @@ export function logos(c, next) {
   setBlend(c, ALPHA, LAYER_2, LAYER_3, 0, 0x10, 0);
   c.callback = fadeIn;
   // 0x0801f638: every song stopped (m4aMPlayAllStop)
+  c.sound?.stopAll();
   c.counter = 0;
   c.blend = 0;
   c.blendTarget = 0;
