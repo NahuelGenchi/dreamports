@@ -93,16 +93,37 @@ async function tryGame(page, server, game, rom) {
   check(await until(page, `!(${open})`, 'the settings to close', 5000).then(() => true, () => false), 'and close them');
   await page.evaluate(`__press(8, false); __press(9, false)`);
 
-  // the way back to the launcher, on the start screen. The address it leads to is answered here, and never reached
-  await start();
+  // what a press leads to, the game's page in the launcher. That address is answered here, and never reached
   const home = `https://dreamports.net/dreamports/${game}-dreamport/`;
-  await page.send('Fetch.enable', { patterns: [{ urlPattern: 'https://dreamports.net/*', requestStage: 'Request' }] });
-  const paused = page.once('Fetch.requestPaused');
-  await page.evaluate(`sessionStorage.clear(); document.querySelector('.setup-back').click()`);
-  const request = await Promise.race([paused, wait(5000).then(() => null)]);
-  check(request?.request.url === home, `the way back leads to the game's page in the launcher`);
-  if (request) await page.send('Fetch.fulfillRequest', { requestId: request.requestId, responseCode: 200, body: '' });
-  await page.send('Fetch.disable');
+  const leadsHome = async press => {
+    await page.send('Fetch.enable', { patterns: [{ urlPattern: 'https://dreamports.net/*', requestStage: 'Request' }] });
+    const paused = page.once('Fetch.requestPaused');
+    await page.evaluate(press);
+    const request = await Promise.race([paused, wait(5000).then(() => null)]);
+    if (request) await page.send('Fetch.fulfillRequest', { requestId: request.requestId, responseCode: 200, body: '' });
+    await page.send('Fetch.disable');
+    return request?.request.url === home;
+  };
+
+  // the way out from the settings: the question first, in the same sheet
+  const viewIs = name => `document.querySelector('.sheet').dataset.view === '${name}'`;
+  await page.evaluate(`document.querySelector('.settings-open').click()`);
+  await until(page, open, 'the settings', 5000);
+  await page.evaluate(`document.querySelector('[data-quit]').click()`);
+  check(await until(page, viewIs('quit'), 'the question', 5000).then(() => true, () => false), 'Quit the game asks first, in the settings');
+  await wait(800);
+  check(await page.evaluate(`document.activeElement.matches('.resume') && !!document.activeElement.closest('.view').querySelector('.quit-note')`), 'and Back to the game is picked');
+  await page.evaluate(`document.querySelector('.view:not([hidden]) [data-back]').click()`);
+  check(await until(page, viewIs('settings'), 'the settings', 5000).then(() => true, () => false), 'its way back returns to the settings');
+  await wait(800);
+  await page.evaluate(`document.querySelector('[data-quit]').click()`);
+  await until(page, viewIs('quit'), 'the question', 5000);
+  await wait(800);
+  check(await leadsHome(`document.querySelector('[data-leave]').click()`), `Quit leads to the game's page in the launcher`);
+
+  // the way back to the launcher, on the start screen
+  await start();
+  check(await leadsHome(`sessionStorage.clear(); document.querySelector('.setup-back').click()`), `the way back leads to the game's page in the launcher`);
 
   // a phone, with no controller: the controller drawn around the game presses its buttons
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });

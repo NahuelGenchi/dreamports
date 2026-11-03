@@ -33,6 +33,7 @@ import { holdClocks } from '../../../kit/gba/clock.js';
 import { proof } from '../../../kit/gba/proof.js';
 import { createSheet } from '../../../kit/gba/ui/sheet.js';
 import { createControlsView } from '../../../kit/gba/ui/controls-view.js';
+import { createQuitView } from '../../../kit/gba/ui/quit-view.js';
 import { createAssetsSheetView } from '../../../kit/gba/ui/assets-view.js';
 import { CONTROLS, TOKENS, NOTE } from './ui/controls.js';
 import { assetParts } from './ui/assets.js';
@@ -193,6 +194,10 @@ achievementsButton.addEventListener('click', () => sheet.go('achievements'));
 // every key and every controller button, and what each does
 createControlsView(sheet, { controls: CONTROLS, tokens: TOKENS, note: NOTE });
 document.getElementById('controls-open').addEventListener('click', () => sheet.go('controls'));
+
+// the way out of the game, with the question first
+createQuitView(sheet);
+document.getElementById('quit-open').addEventListener('click', () => sheet.go('quit'));
 
 // the sound, also M on a keyboard
 function showSound() { soundButton.setAttribute('aria-checked', String(!sound.muted)); }
