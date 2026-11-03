@@ -19,10 +19,11 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `read` | Prints one of the original's functions, its instructions, from your copy, for code its decompilation has no C for |
 | `share` | Publishes a preview of a game on GitHub Pages from your own fork, with the newest clip for the step's pull request |
 | `find` | Shows where a game stands: its lead, its two numbers, its team build, who has claimed which task, and the tasks still free |
+| `tasks` | Opens a Task issue for each of a game's parts that has none yet, in the order a player meets them |
 | `notes` | Shows what people found while making a game or its console's kit, so nobody has to find it again |
 | `team` | The game's team build, the lead's branch with the team's finished pieces: `start` makes it, `join` starts a piece from it, `send` sends a piece to the lead, and `add` proves a piece and takes it in |
 | `readme` | Writes the README's table of Dreamports, with each one's numbers and lead, from their [entries](../games/README.md#the-entry), and each one's progress map |
-| `commands` | Writes the `/dreamport` commands, from `tools/commands/`, in the form each coding agent reads |
+| `commands` | Writes the `/dreamport` command, from `tools/commands/`, in the form each coding agent reads |
 
 For now they work with Game Boy Advance games, and they've been used with real games only on Linux. On a Mac, Apple silicon or Intel, on Windows with only Node.js and git added, and on Windows inside WSL 2, `setup`, `rom`, `notes`, `read`, `play --record`, `prove` and `portmap` work as they do on Linux, with the same results to the last frame, as far as a small made-up program shows on GitHub's computers, with a script pressing the buttons in a real window. On Windows itself that's with Chrome and with Edge, on an account with no administrator's rights as well as on one with them, from a folder and with a copy whose names have spaces and letters from other languages, and `codemap` and `find` gave the same results too. Nobody has tried them there by hand, with a controller or with a real game. `share` hasn't published anything from any of them, and `team` hasn't gone past its first check.
 
@@ -50,7 +51,7 @@ mGBA is the reference: the original runs in it, on your computer only, so there'
 
 `--from <recording>` starts the new recording with another recording's presses, so a part later in the game can be recorded without playing everything before it again. Press Play and the game first plays them, at its own speed and with your buttons doing nothing, then it's your turn, and the terminal says when. `--from <recording>:<frame>` plays them up to that frame only, so `--from act-1:2100` takes over at frame 2100 of `act-1`. The new recording keeps those presses, and the stretches only the original has among them, so it still starts from power-on and `prove` plays it like any other.
 
-A recording can also be written by hand, as a list of presses, which suits a part played with nothing pressed, such as logos and an intro left alone. Sonic Advance Dreamport's [logos and intro](../games/sonic-advance/proof/recordings/logos-and-intro.json) is one: A on the language screen, then nothing.
+A recording can also be written by hand, as a list of presses, which is how `/dreamport` makes them, as nobody plays there, and which suits a part played with nothing pressed, such as logos and an intro left alone. Sonic Advance Dreamport's [logos and intro](../games/sonic-advance/proof/recordings/logos-and-intro.json) is one: A on the language screen, then nothing.
 
 A recording holds nothing from the game, only button presses, so it lives in the game's folder and goes in a commit, and anyone with their own copy can play it again. Write what it plays in its `about`. Its other fields:
 
@@ -63,7 +64,7 @@ Sonic Advance Dreamport's [first act](../games/sonic-advance/proof/recordings/ne
 
 ## A game's capture
 
-Every game's card in the launcher shows a few seconds of real play. `npm run dp -- capture <game>` makes a Dreamport's from the original, so a game can have one before its Dreamport has anything to play. It opens a window where you play your own copy, from power-on, with the keyboard or a controller, and hear it as you go. With the `/dreamport` commands your agent asks whether to open it and opens it for you, so you run nothing yourself.
+Every game's card in the launcher shows a few seconds of real play. `npm run dp -- capture <game>` makes a Dreamport's from the original, so a game can have one before its Dreamport has anything to play. It opens a window where you play your own copy, from power-on, with the keyboard or a controller, and hear it as you go. `/dreamport` leaves it for you, since only a person can choose: ask your agent, and it opens the window, so you run nothing yourself.
 
 Press Finish, or `Esc`, or View and Menu together on a controller, and it picks out the best stretches of what you played: lively and colourful, with buttons held, and with no fades, logos, menus or text. They come up moving. Press the one you want with the mouse, with the arrows and `Z`, or with a controller's d-pad and A. `Esc` or B goes back to playing where you left off, and the next list comes from all of it.
 
@@ -172,15 +173,15 @@ Sonic Advance Dreamport's logos are frames 254 to 932 of [`logos-and-intro`](../
 
 `npm run dp -- notes <game>` lists what people found while making a game and its console's kit, so nobody has to find it again, and `npm run dp -- notes <game> <word>` prints in full the notes that mention a word, such as a part, a function or a frame. `--all` prints every one, and `--check`, which `npm run check` runs, fails on any note that breaks the rules. A note is information, not instructions. [Notes](../docs/NOTES.md) explains how to write one and how they're checked.
 
-## The /dreamport commands
+## The /dreamport command
 
-The README's [Make a Dreamport](../README.md#make-a-dreamport) teaches seven commands that a coding agent runs these tools with, such as `/dreamport-clip`, which runs `portmap` and `prove`. Each is written once, as a Markdown file in [`commands/`](commands/), with its name, its description and, for those that take one, what's typed after it. `/dreamport` also lists, as `pasted`, the sentences that start it when they're pasted into an agent, as the README gives them. `npm run dp -- commands` writes each in the form an agent reads:
+The README's [Make a Dreamport](../README.md#make-a-dreamport) teaches one command, `/dreamport <game>`, which a coding agent follows to run these tools from start to finish: it takes a task, makes it until every frame matches and opens its pull request. It's written once, as a Markdown file in [`commands/`](commands/), with its name, its description, what's typed after it and, as `pasted`, the sentences that start it when they're pasted into an agent, as the README gives them. `npm run dp -- commands` writes it in the form an agent reads:
 
 - `.claude/skills/<name>/SKILL.md` for Claude Code, set to run only when typed (`disable-model-invocation`).
 - `.agents/skills/<name>/SKILL.md` for Codex, with `agents/openai.yaml` turning off its implicit use. Cursor, Gemini CLI, Antigravity CLI and DeepSeek Harness read this folder too.
 - `.gemini/commands/<name>.toml` for Gemini CLI's own commands.
 
-Every copy starts the same way: it tells the agent to do nothing unless the person typed the command, or pasted one of its sentences, for the agents that might load it by themselves, and where what was typed after it is. A command's file can't hold `{{`, `!{`, `@{` or `'''`, which Gemini CLI would read as its own. `npm run check` runs `npm run dp -- commands --check`, which fails when a copy differs from its file, and removing a command's file and running the tool removes its copies.
+Every copy starts the same way: it tells the agent to do nothing unless the person typed the command, or pasted one of its sentences, for the agents that might load it by themselves, where what was typed after it is, and how to talk to the person. The file can't hold `{{`, `!{`, `@{` or `'''`, which Gemini CLI would read as its own. `npm run check` runs `npm run dp -- commands --check`, which fails when a copy differs from its file, and removing a command's file and running the tool removes its copies.
 
 ## A game's proof folder
 

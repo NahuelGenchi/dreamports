@@ -1,4 +1,4 @@
-// npm run dp -- commands [--check]: writes the /dreamport commands, each written once in tools/commands/<name>.md, in
+// npm run dp -- commands [--check]: writes the /dreamport command, written once in tools/commands/<name>.md, in
 // the form each coding agent reads: .claude/skills/ for Claude Code, .agents/skills/ for Codex (which Cursor, Antigravity
 // CLI and DeepSeek Harness read too) and .gemini/commands/ for Gemini CLI. Every copy runs only when the person types it, or
 // pastes one of the sentences its source lists, and starts by saying so, for the agents that might load it by
@@ -21,9 +21,9 @@ export async function run(args) {
 
   if (check) {
     if (changed.length || stale.length) {
-      throw new Error(`The /dreamport commands' copies don't match tools/commands/: npm run dp -- commands writes them again.\n${[...changed, ...stale].map(p => `  ${p}`).join('\n')}`);
+      throw new Error(`The copies of the /dreamport command don't match tools/commands/: npm run dp -- commands writes them again.\n${[...changed, ...stale].map(p => `  ${p}`).join('\n')}`);
     }
-    console.log(`The ${commands.length} /dreamport commands' copies match tools/commands/.`);
+    console.log(`The copies of ${named(commands)} match tools/commands/.`);
     return 0;
   }
   for (const path of changed) {
@@ -36,10 +36,12 @@ export async function run(args) {
     for (const name of listed(folder)) removeIfEmpty(join(folder, name));
   }
   console.log(changed.length || stale.length
-    ? `Written: ${changed.length} ${changed.length === 1 ? 'copy' : 'copies'} of the ${commands.length} /dreamport commands${stale.length ? `, and ${stale.length} old ${stale.length === 1 ? 'one' : 'ones'} removed` : ''}.`
-    : `The ${commands.length} /dreamport commands' copies were already up to date.`);
+    ? `Written: ${changed.length} ${changed.length === 1 ? 'copy' : 'copies'} of ${named(commands)}${stale.length ? `, and ${stale.length} old ${stale.length === 1 ? 'one' : 'ones'} removed` : ''}.`
+    : `The copies of ${named(commands)} were already up to date.`);
   return 0;
 }
+
+const named = commands => commands.map(c => `/${c.name}`).join(', ');
 
 /** Each source in tools/commands/: { name, description, argument, pasted, body }. */
 function readCommands() {
@@ -51,7 +53,7 @@ function readCommands() {
     const { name, description, argument, pasted = [], ...other } = parse(found[1]) ?? {};
     const body = found[2].trimEnd();
     if (Object.keys(other).length) throw new Error(`${where} has fields commands doesn't know: ${Object.keys(other).join(', ')}.`);
-    if (name !== file.slice(0, -3) || !NAME.test(name)) throw new Error(`${where}'s name has to be its file's name, starting with dreamport, such as dreamport-play.`);
+    if (name !== file.slice(0, -3) || !NAME.test(name)) throw new Error(`${where}'s name has to be its file's name, starting with dreamport, such as dreamport or dreamport-more.`);
     if (typeof description !== 'string' || !description.trim() || description.length > 200) throw new Error(`${where} needs a description of one short sentence.`);
     // the sentences that start it when they're pasted, as the README gives them
     if (!Array.isArray(pasted) || !pasted.every(s => typeof s === 'string' && /^\S[^`]*\.$/.test(s))) {
@@ -78,8 +80,8 @@ function opening(name, typed, after, pasted, codex = false) {
     '',
     after,
     '',
-    'Work in the Dreamports repository\'s folder, as its `AGENTS.md` says under Working on a Dreamport. The person may never have written code: speak plainly, one step at a time, and ask only what they have to decide.'
-      + (codex ? ' In Codex the commands start with `$` instead of `/`, such as `$dreamport-play`.' : ''),
+    'Work in the Dreamports repository\'s folder, as its `AGENTS.md` says under Working on a Dreamport. The person may never have written code. Everything you say to them is ultra concise, in natural, easy words, divided into a few short sections, with no lists, em dashes or emojis.'
+      + (codex ? ' In Codex the command starts with `$` instead of `/`, as in `$dreamport`.' : ''),
     '',
     '',
   ].join('\n');

@@ -18,21 +18,18 @@ Please never attach ROMs, game files, or anything extracted from a game, and nev
 
 ## Make a Dreamport
 
-Anyone can make a Dreamport, or help with one, without writing code: a coding agent does the work, guided by seven `/dreamport` commands, as the [README](README.md#make-a-dreamport) shows step by step. It starts from one sentence pasted into the agent, `Set up https://dreamports.net/code and help me make <game> Dreamport.`, which gets the folder ready and starts `/dreamport <game>`. Each command runs the repository's own tools, which you can also run yourself:
+Anyone can make a Dreamport, or help with one, without writing code: a coding agent does the work, guided by one command, `/dreamport <game>`, as the [README](README.md#make-a-dreamport) shows step by step. It starts from one sentence pasted into the agent, `Set up https://dreamports.net/code and help me make <game> Dreamport.`, which gets the folder ready and starts the command. It takes one task from start to finish by itself, with the repository's own tools, which you can also run yourself:
 
-| Command | What it runs |
+| Step | What it runs |
 | :--- | :--- |
-| `/dreamport <game>` | `git clone` and `npm ci` the first time, `gh repo fork --remote` after your yes, then `npm run dp -- find`, for where the game stands, `notes`, for what people already found, and `rom`, which checks your copy |
-| `/dreamport-claim <task>` | A New Dreamport or Task issue, or `/claim` on a task's issue, which the Dreamports bot answers ([Claims and teams](docs/TEAMS.md)) |
-| `/dreamport-clip` | `portmap`, then `prove`, which compares every frame with the original, picture and sound, and makes the clip |
-| `/dreamport-play` | `play --record`, which opens the game in a browser with your copy and keeps what you play, then `prove` on it |
-| `/dreamport-fix <what feels wrong>` | A recording of that moment, `prove` with `--stills` to see it, the fix, then `prove` with every recording |
-| `/dreamport-share` | `share`: a preview on your fork's GitHub Pages, and the clip for the step's pull request ([Previews](docs/PREVIEWS.md)) |
-| `/dreamport-send` | A note on what the step found, then `team send`, to the lead's team build, or, for the lead, a pull request to this repository |
+| Getting ready | `git clone` and `npm ci` the first time, `npm run dp -- find`, for where the game stands, `notes`, for what people already found, `rom`, which checks your copy, and `gh repo fork --remote` |
+| Taking a task | `/claim` on the first free task's issue, which the Dreamports bot answers ([Claims and teams](docs/TEAMS.md)). For a new game, a New Dreamport issue, then `codemap`, `new`, and `tasks`, which opens a task for each of its parts |
+| Making it | Recordings written by hand, `portmap`, and `prove`, which compares every frame with the original, picture and sound, and makes the clip, until every frame of the part matches |
+| Sending it | A note on what the step found, `npm run check`, `npm run build`, `share`, for a preview on your fork's GitHub Pages and the clip for the pull request ([Previews](docs/PREVIEWS.md)), then `team send`, to the lead's team build, or a pull request to this repository |
 
-Nothing is posted, pushed or sent until you say yes, and the agent follows the part of [AGENTS.md](AGENTS.md) on working on a Dreamport, and [the standard](docs/STANDARD.md). Every command starts with `npm run dp -- notes`, which shows [what people already found](docs/NOTES.md) about the game and its console.
+Typing the command or pasting the sentence is your yes to everything public it does in your name, and the agent says so before it starts. It asks only which game, if you didn't say, where your copy is, for you to sign in to GitHub, and for your yes before installing a program. When a difference stays that it can't explain, it opens a draft pull request that says so. It never says something matches unless `prove` found every frame the same. It follows the part of [AGENTS.md](AGENTS.md) on working on a Dreamport, and [the standard](docs/STANDARD.md).
 
-**How the commands are made.** Each is written once, in [`tools/commands/`](tools/commands/), and `npm run dp -- commands` writes it in the form each agent reads: `.claude/skills/` for Claude Code, `.agents/skills/` for Codex, which Cursor, Gemini CLI, Antigravity CLI and DeepSeek Harness read too, and `.gemini/commands/` for Gemini CLI's own commands. To change a command, change its file in `tools/commands/` and run the tool again. `npm run check` fails when a copy differs from its file. Every copy is set to run only when it's typed, in each agent's own way, and it starts by telling the agent to stop if the person didn't type it, for the agents that could load it by themselves.
+**How the command is made.** It's written once, in [`tools/commands/`](tools/commands/), and `npm run dp -- commands` writes it in the form each agent reads: `.claude/skills/` for Claude Code, `.agents/skills/` for Codex, which Cursor, Gemini CLI, Antigravity CLI and DeepSeek Harness read too, and `.gemini/commands/` for Gemini CLI's own commands. To change it, change its file in `tools/commands/` and run the tool again. `npm run check` fails when a copy differs from its file. Every copy is set to run only when it's typed, in each agent's own way, and it starts by telling the agent to stop if the person didn't type it, for the agents that could load it by themselves.
 
 **A Dreamport's pull request** shows the Dreamports team what it needs to judge it at a glance: the clips, the two numbers before and after, the preview, and every source used, with its license. The [pull request template](.github/pull_request_template.md) has a part for it.
 

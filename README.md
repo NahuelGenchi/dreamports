@@ -77,7 +77,7 @@ These are the projects on the site so far.
 
 ## Make a Dreamport
 
-**No coding needed.** Your coding agent does the technical work. You bring the game and play it, and your agent checks what you play against the original.
+**No coding needed.** Your coding agent does all the work. You bring the game, and it hands you back a finished piece of the Dreamport, with every frame matching the original.
 
 You need three things: your own copy of the game as a file, a free GitHub account, and a coding agent that works on your computer, such as Claude Code, Codex, Cursor, Gemini CLI or Antigravity CLI. For a Game Boy Advance game, your copy is a `.gba` file made from your cartridge. The file never leaves your computer. When your agent needs to see how one of the game's functions works, it reads just that function, and that part goes to the company that runs your agent's model, as everything an agent reads does.
 
@@ -93,29 +93,21 @@ To start a Dreamport of a game you haven't picked yet, paste this instead, and y
 Set up https://dreamports.net/code and help me start a Dreamport.
 ```
 
-**Step 2: answer your agent.** It gets the Dreamports folder from GitHub, as a folder called dreamports, and checks the programs its tools need. Before it installs one, it tells you what it is and that it's free, and waits for your yes. If you aren't signed in to GitHub on your computer, it asks you to sign in yourself, on GitHub's own page. It offers to make your fork, your own copy of Dreamports on your GitHub account, where your work goes, and makes it only if you say yes. Then it tells you where the game stands: whether it already has a Dreamport, who's working on it, whether someone ported it somewhere else, and which command to type next.
+**Step 2: tell your agent where your game is.** It gets the Dreamports folder from GitHub, as a folder called dreamports, and checks the programs its tools need. Before it installs one, it tells you what it is and that it's free, and waits for your yes. If you aren't signed in to GitHub on your computer, it gives you a code to type on GitHub's own page. Then it asks where your copy of the game is, and that's the last thing it asks.
 
-**Step 3: next time, open your agent in the dreamports folder.** The commands live in that folder, and your agent always finds them when it's opened there. In a terminal, type `cd dreamports`, then start your agent again, such as `claude` or `codex`. In an app, open the dreamports folder the way you'd open any folder. If you made the folder a while ago, paste the sentence again, and your agent brings it up to date.
+**Step 3: wait for your pull request.** Your agent works alone from here. It makes your fork, your own copy of Dreamports on your GitHub account, and takes the first free piece of the game. If nobody is making that game yet, it makes you its lead and opens its tasks first. It makes the piece, checks every frame against the original, puts a preview and a clip online, and opens a pull request, which asks the Dreamports team or the game's lead to take your piece in. It ends by telling you which task is done and where that pull request is. If it can't get every frame to match, it says so, and opens a draft pull request that says what still differs and why.
 
-These are all the commands, in the order you'll usually need them:
+All of that is public and in your name on GitHub. Pasting the sentence, or typing the command, is your yes to it, and your agent says so before it starts.
 
-| Command | What it does |
-| :--- | :--- |
-| `/dreamport <game>` | Shows where a game stands and what you can do. Start here. |
-| `/dreamport-claim <task>` | Takes a free task, or a whole new game, so nobody else does the same work. |
-| `/dreamport-clip` | Checks your latest step against the original and shows a clip of both. |
-| `/dreamport-play` | Opens the game in your browser, with your copy, and checks what you play against the original. |
-| `/dreamport-fix <what feels wrong>` | Compares that moment with the original and fixes it. |
-| `/dreamport-share` | Puts your preview online, where anyone with the link can play it. |
-| `/dreamport-send` | Sends your finished piece to the game's lead, or to the Dreamports team if you're the lead. |
+**Next time, open your agent in the dreamports folder and type `/dreamport <game>`,** such as `/dreamport sonic battle`, which takes the next piece, or carries on with one that isn't finished. It's the only command there is, and in Codex it's `$dreamport`. In a terminal, type `cd dreamports`, then start your agent again, such as `claude` or `codex`. In an app, open the dreamports folder the way you'd open any folder. If you made the folder a while ago, paste the sentence again, and your agent brings it up to date.
 
-Pasting the sentence starts the first one, `/dreamport`, which only looks and explains. Every other command does one thing, and only when you type it. Before anything is posted or sent, your agent tells you exactly where it's going and waits for your yes. Between commands, answer its questions in your own words. In Codex, type `$` instead of `/`, as in `$dreamport`.
+There's one thing only you can do. A game's card on the site shows a few seconds of real play that a person chose, so a new game's card waits for you. Ask your agent when you want to do it, and it opens a window where you play your copy and press the moment you like.
 
-You don't start from nothing. Every command first looks at [what people already found](docs/NOTES.md) while making that game and others on its console, and when you send a piece, your agent leaves a note on what it found, so the next person doesn't have to find it again.
+You don't start from nothing. Your agent first looks at [what people already found](docs/NOTES.md) while making that game and others on its console, and when it sends a piece, it leaves a note on what it found, so the next person doesn't have to find it again.
 
 **For coding agents.** If someone asked you to set up https://dreamports.net/code, clone `https://github.com/NahuelGenchi/dreamports.git` into a folder called `dreamports` in the folder you were opened in, or use the Dreamports folder you're already in. Then read its [AGENTS.md](AGENTS.md) and follow Getting ready, under Working on a Dreamport.
 
-Every Dreamport keeps the same rules, the [Dreamport standard](docs/STANDARD.md), and [CONTRIBUTING.md](CONTRIBUTING.md#make-a-dreamport) says what each command does behind the scenes.
+Every Dreamport keeps the same rules, the [Dreamport standard](docs/STANDARD.md), and [CONTRIBUTING.md](CONTRIBUTING.md#make-a-dreamport) says what the command does behind the scenes.
 
 ## The golden rule: bring your own game
 

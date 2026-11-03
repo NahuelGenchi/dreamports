@@ -3,7 +3,7 @@
 // game's team preview.
 //   start [--fork <owner/name>]: the lead makes it in their fork, from the commit they're on.
 //   join <branch> [--team <owner/name>]: a member starts a branch of their own from it, for their piece.
-//   send [--title "<what it is>"] [--task <number>] [--as <preview>] [--fork <owner/name>] [--team <owner/name>] [--yes]:
+//   send [--title "<what it is>"] [--task <number>] [--as <preview>] [--fork <owner/name>] [--team <owner/name>] [--draft] [--yes]:
 //     a member sends the piece on their branch to the lead, as a pull request from their fork to the team build. Its
 //     task is one of the pieces under the game's issue: the one --task names, or else the one piece the member has.
 //   add <pull request> [--fork <owner/name>] [--all] [--yes]: the lead takes a piece in. It merges it into the team
@@ -35,7 +35,7 @@ import { NOTE_PATH, canBeNote, noteProblems, parseNote } from '../.github/modera
 const USAGE = `Usage:
   npm run dp -- team <game> start [--fork <owner/name>]
   npm run dp -- team <game> join <branch> [--team <owner/name>]
-  npm run dp -- team <game> send [--title "<what it is>"] [--task <number>] [--as <preview>] [--fork <owner/name>] [--team <owner/name>] [--yes]
+  npm run dp -- team <game> send [--title "<what it is>"] [--task <number>] [--as <preview>] [--fork <owner/name>] [--team <owner/name>] [--draft] [--yes]
   npm run dp -- team <game> add <pull request> [--fork <owner/name>] [--all] [--yes]`;
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -54,7 +54,7 @@ function options(args) {
     if (['--fork', '--team', '--title', '--task', '--as'].includes(arg)) {
       if (args[i + 1] === undefined) throw new Error(`${arg} needs a value.\n${USAGE}`);
       found[arg.slice(2)] = args[++i];
-    } else if (arg === '--yes' || arg === '--all') found[arg.slice(2)] = true;
+    } else if (arg === '--yes' || arg === '--all' || arg === '--draft') found[arg.slice(2)] = true;
     else if (arg.startsWith('--')) throw new Error(`team has no ${arg}.\n${USAGE}`);
     else found.rest.push(arg);
   }
@@ -167,7 +167,7 @@ async function join(game, rest, { team }) {
 }
 
 // a member's piece goes to the lead, as a pull request from their fork to the team build
-async function send(game, rest, { fork: wanted, team, title: named, task, as, yes = false }) {
+async function send(game, rest, { fork: wanted, team, title: named, task, as, draft = false, yes = false }) {
   if (rest.length) throw new Error(USAGE);
   if (task !== undefined && !/^[1-9]\d*$/.test(task)) throw new Error('--task is the number of the task\'s issue, such as 90.');
   const login = signedInAs();
@@ -211,7 +211,7 @@ async function send(game, rest, { fork: wanted, team, title: named, task, as, ye
   const headRef = `${fork.owner}:${branch}`;
   let pull;
   try {
-    pull = api(`repos/${build.repository}/pulls`, { method: 'POST', body: { title: what, head: headRef, base: build.branch, body, maintainer_can_modify: true } });
+    pull = api(`repos/${build.repository}/pulls`, { method: 'POST', body: { title: what, head: headRef, base: build.branch, body, draft, maintainer_can_modify: true } });
   } catch (error) {
     if (!/already exists/i.test(error.message)) throw error;
     pull = api(`repos/${build.repository}/pulls?state=open&head=${encodeURIComponent(headRef)}`)?.[0];

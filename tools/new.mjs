@@ -24,7 +24,7 @@ export async function run(args) {
   if (!readCodeMap(game)) throw new Error(`games/${game}/ has no code map yet, and the whole game is mapped first: npm run dp -- codemap ${game}.`);
   if (original.console !== 'gba') throw new Error(`Only the Game Boy Advance has a kit so far, and ${game} is for ${original.console}.`);
   const issue = readClaims(repository).gameIssueOf(game);
-  if (!issue) throw new Error(`Nobody has claimed ${game} with a New Dreamport issue in ${repository} yet, which comes first: /dreamport-claim.`);
+  if (!issue) throw new Error(`Nobody has claimed ${game} with a New Dreamport issue in ${repository} yet, which comes first: /dreamport does it, and so does the New Dreamport form.`);
   const lead = issue.assignees[0]?.login ?? issue.user.login;
 
   const files = { ...startingFiles(game, original), 'entry.md': startingEntry(game, original, { issue: issue.number, lead, added: new Date().toISOString().slice(0, 10) }) };
@@ -36,6 +36,6 @@ export async function run(args) {
     writeFileSync(join(folder, file), text);
   }
   await portmap([game]);
-  console.log(`Written: games/${game}/ with ${Object.keys(files).join(', ')}, for ${lead}, under issue ${issue.number}. Its card needs a real moment of the game next: npm run dp -- capture ${game}.`);
+  console.log(`Written: games/${game}/ with ${Object.keys(files).join(', ')}, for ${lead}, under issue ${issue.number}. Its card waits for a real moment of the game, which a person plays and chooses: npm run dp -- capture ${game}.`);
   return 0;
 }
