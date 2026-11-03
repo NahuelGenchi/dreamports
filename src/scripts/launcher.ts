@@ -196,16 +196,39 @@ function start(launcher: HTMLElement) {
   // keep: the game to stay on, where the new row has it, or else the first place
   function buildRow(keep?: string | null) {
     sleepRow();
-    const f = FILTERS[state.filter];
-    rowEl.replaceChildren(f.template.content.cloneNode(true));
+    rowEl.replaceChildren(FILTERS[state.filter].template.content.cloneNode(true));
     const words = searchWords();
-    if (words.length) narrow(words);
+    if (words.length) for (const el of $$('.slot', rowEl)) if (!matches(el, words)) el.remove();
+    settleRow(keep);
+  }
+
+  // the same row as the search now has it: what still matches stays as it is, and only what doesn't goes, or comes back,
+  // so the game on the screen goes on playing
+  function narrowRow(keep?: string | null) {
+    const on = rowEl.querySelector<HTMLElement>('.slot.is-sel');
+    const words = searchWords();
+    const there = $$('.slot', rowEl);
+    const next = $$('.slot', FILTERS[state.filter].template.content)
+      .filter((el) => !words.length || matches(el, words))
+      .map((el) => there.find((old) => old.dataset.title === el.dataset.title) ?? (el.cloneNode(true) as HTMLElement));
+    for (const el of there) if (!next.includes(el)) el.remove();
+    next.forEach((el, i) => {
+      if (rowEl.children[i] !== el) rowEl.insertBefore(el, rowEl.children[i] ?? null);
+    });
+    settleRow(keep, on);
+  }
+
+  // on: the place that was selected, whose screen stays awake if it still is
+  function settleRow(keep?: string | null, on: HTMLElement | null = null) {
+    const f = FILTERS[state.filter];
+    const words = searchWords();
     // with nothing to show, one empty place says so
     if (!rowEl.children.length) rowEl.append(emptyPlace(words.length ? 'Nothing matches' : 'Nothing here yet'));
     slots = $$('.slot', rowEl);
     if (keep !== undefined) state.sel[state.filter] = Math.max(0, slots.findIndex((el) => el.dataset.game === keep));
     state.sel[state.filter] = Math.min(sel(), slots.length - 1);
     slots.forEach((el, i) => {
+      el.dataset.index = String(i);
       el.id = `slot-${i}`;
       el.setAttribute('role', 'option');
       el.setAttribute('aria-posinset', String(i + 1));
@@ -220,7 +243,7 @@ function start(launcher: HTMLElement) {
     for (const el of [searchInput, btnSearch]) el.setAttribute('aria-label', 'Search ' + f.label);
     searchInput.placeholder = 'Search ' + f.label;
     rowEl.classList.add('no-anim');
-    applySel(false);
+    applySel(false, slots[sel()] !== on);
     void rowEl.offsetWidth;
     rowEl.classList.remove('no-anim');
   }
@@ -286,7 +309,7 @@ function start(launcher: HTMLElement) {
     placePadHint(topH, rowY - RISE - TH / 2 - cg);
   }
 
-  function applySel(focus: boolean) {
+  function applySel(focus: boolean, wake = true) {
     const i = sel();
     slots.forEach((el, j) => {
       const on = j === i;
@@ -296,7 +319,7 @@ function start(launcher: HTMLElement) {
     });
     place(i);
     updatePlate();
-    wakeRow();
+    if (wake) wakeRow();
     if (focus) slots[i].focus({ preventScroll: true });
   }
 
@@ -621,14 +644,7 @@ function start(launcher: HTMLElement) {
       .trim();
   const searchWords = () => (state.search ? plain(state.search).split(' ').filter(Boolean) : []);
 
-  function narrow(words: string[]) {
-    let n = 0;
-    for (const el of $$('.slot', rowEl)) {
-      const title = el.dataset.title;
-      if (title && words.every((w) => plain(title).includes(w))) el.dataset.index = String(n++);
-      else el.remove();
-    }
-  }
+  const matches = (el: HTMLElement, words: string[]) => !!el.dataset.title && words.every((w) => plain(el.dataset.title!).includes(w));
   function emptyPlace(note: string) {
     const none = document.createElement('div');
     none.className = 'slot';
@@ -677,7 +693,7 @@ function start(launcher: HTMLElement) {
     searchBox.hidden = true;
     launcher.classList.remove('is-searching');
     btnSearch.setAttribute('aria-expanded', 'false');
-    buildRow(game ?? undefined);
+    narrowRow(game ?? undefined);
     if (hadFocus) slots[sel()].focus({ preventScroll: true });
     sound.play('close');
     announce(rowNews());
@@ -687,7 +703,7 @@ function start(launcher: HTMLElement) {
   searchInput.addEventListener('input', () => {
     if (state.search === null) return;
     state.search = searchInput.value;
-    buildRow(gameAt(sel()));
+    narrowRow(gameAt(sel()));
     if (searchWords().length) announce(rowNews());
   });
   searchInput.addEventListener('keydown', (e) => {
