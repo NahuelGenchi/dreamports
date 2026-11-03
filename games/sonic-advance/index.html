@@ -19,10 +19,13 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#050a24">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<script>try { const root = document.documentElement; root.dataset.theme = localStorage.getItem('dreamports:theme') ?? ''; root.dataset.motion = localStorage.getItem('dreamports:motion') ?? ''; } catch {}</script>
 <link rel="stylesheet" href="../../kit/gba/styles/kit.css">
+<script>document.fonts.load('14px Monocraft');</script>
 </head>
 <body>
 <main>
+  <div class="opening"><div class="opening-in"><i class="opening-door"></i><p>Opening Sonic Advance <span class="dp-tag">Dreamport</span><span class="opening-dots"></span></p></div></div>
   <section class="picker" id="picker" aria-label="Your ROMs"></section>
 
   <section class="stage" id="stage" hidden>
