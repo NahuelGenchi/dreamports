@@ -29,6 +29,9 @@ const proofLink = (game: string, path: string) => `${SOURCE_URL}/blob/main/games
 
 type Proof = NonNullable<ReturnType<typeof proofOf>>;
 
+/** A game's parts.json as it is, for what its pieces need (src/lib/pieces.mjs), or undefined without one. */
+export const partsFile = (game: string): unknown => PROOF[`/games/${game}/proof/parts.json`];
+
 // what the proof tools measured for a game, checked as the site is built
 function proofFor(game: string): Proof | null {
   const prefix = `/games/${game}/proof/recordings/`;

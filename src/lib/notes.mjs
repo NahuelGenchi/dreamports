@@ -52,7 +52,7 @@ function factsOf(root, game) {
   const proof = join(root, 'games', game, 'proof');
   const json = file => (existsSync(join(proof, file)) ? JSON.parse(readFileSync(join(proof, file), 'utf8')) : {});
   return {
-    parts: new Set((json('parts.json').parts ?? []).map(part => part.name)),
+    parts: new Set([...(json('parts.json').parts ?? []), ...(json('parts.json').foundations ?? [])].map(part => part.name)),
     recordings: new Set(listed(join(proof, 'recordings')).map(entry => entry.name.replace(/\.json$/, ''))),
     functions: new Set((json('code-map.json').functions ?? []).map(([, , name]) => name?.toLowerCase()).filter(Boolean)),
   };
@@ -72,7 +72,7 @@ export function checkNotes(root) {
         if (!facts || note.problems.length) continue;
         for (const about of note.about) {
           if (about === WHOLE_GAME || facts.parts.has(about) || facts.recordings.has(about) || facts.functions.has(about.toLowerCase()) || FUNCTION.test(about)) continue;
-          problems.push({ path: note.path, why: `Its About: line names "${about}", which isn't one of the game's parts in parts.json, a recording, a function, or ${WHOLE_GAME}.` });
+          problems.push({ path: note.path, why: `Its About: line names "${about}", which isn't one of the game's parts or foundations in parts.json, a recording, a function, or ${WHOLE_GAME}.` });
         }
         for (const proof of note.proof) {
           if (!proof.startsWith('#') && !facts.recordings.has(proof)) problems.push({ path: note.path, why: `Its Proof: line names "${proof}", which isn't one of the game's recordings.` });

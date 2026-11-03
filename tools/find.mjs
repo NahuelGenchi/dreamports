@@ -1,7 +1,7 @@
 // npm run dp -- find [<game>] [--repo <owner/name>] [--team <owner/name>]: where a game stands, so nobody does the
 // same work twice: its lead, its game's issue, its two numbers, its Make page, its team build and team preview,
-// and its pieces, the issues under its game's issue, with who has claimed which and the ones still free (docs/TEAMS.md),
-// and how many notes people have left on it (docs/NOTES.md). <game> is a game's folder or a few words of its name, and a
+// and its pieces, the issues under its game's issue, with who has claimed which, the ones free to start and what the
+// others wait on (docs/TEAMS.md), and how many notes people have left on it (docs/NOTES.md). <game> is a game's folder or a few words of its name, and a
 // name also finds the site's other games, such as a port made elsewhere. With no game it lists every Dreamport and every game
 // claimed with a New Dreamport issue. The numbers come from games/ in this folder, and the claims and pieces from the
 // repository's issues, through the GitHub CLI. --repo reads the claims of another copy of the repository, such as a
@@ -13,10 +13,12 @@ import { join } from 'node:path';
 import { parse } from 'yaml';
 import { REPO } from './lib/paths.mjs';
 import { UPSTREAM, pagesOf } from './lib/github.mjs';
-import { readClaims, leadOf, teamBuildOf } from './lib/claims.mjs';
+import { readClaims, leadOf, teamBuildOf, gatheredIn } from './lib/claims.mjs';
+import { readPartsFile } from './lib/proof-files.mjs';
 import { dreamports } from './readme.mjs';
 import { notesOfGame } from './notes.mjs';
 import { pageOf, percentText } from '../src/lib/entries.mjs';
+import { pieceName, whatCanStart } from '../src/lib/pieces.mjs';
 
 const USAGE = 'Usage: npm run dp -- find [<game>] [--repo <owner/name>] [--team <owner/name>]';
 const SECTIONS = { external: ['external-ports', 'a port made elsewhere'], other: ['other-games', 'another fan game'] };
@@ -63,10 +65,10 @@ function options(args) {
   return found;
 }
 
-// the open pieces of a game nobody has claimed
-const freeOf = (game, claims, entry) => claims.piecesOf(game, entry).filter(p => p.state === 'open' && !p.assignees.length);
+// a game's open pieces nobody has claimed: those that can start now, and those waiting on something (src/lib/pieces.mjs)
+const startable = (game, claims, entry, gathered) => whatCanStart(claims.piecesOf(game, entry), readPartsFile(game), gathered);
 const freeText = (game, claims, entry) => {
-  const count = claims && freeOf(game, claims, entry).length;
+  const count = claims && startable(game, claims, entry).free.length;
   return claims ? `${count} free piece${count === 1 ? '' : 's'}` : null;
 };
 
@@ -118,11 +120,20 @@ function show(game, local, claims, team) {
   row('Team preview', entry?.preview ?? (site ? `${site}${game}/` : 'none yet'));
   if (claims) {
     const pieces = claims.piecesOf(game, entry);
-    const name = t => `#${t.number} ${t.title.replace(/^Task:\s*/i, '')}`;
-    const taken = pieces.filter(t => t.state === 'open' && t.assignees.length), free = freeOf(game, claims, entry);
+    const name = t => `#${t.number} ${pieceName(t)}`;
+    const taken = pieces.filter(t => t.state === 'open' && t.assignees.length);
+    const gathered = build ? gatheredIn(build) : new Set();
+    const { free, waiting, needing, isFoundation } = startable(game, claims, entry, gathered);
     const done = pieces.filter(t => t.state !== 'open').length;
+    const foundation = t => {
+      const count = needing(t);
+      return isFoundation(t) ? `, a foundation${count ? `, which ${count} ${count === 1 ? 'piece needs' : 'pieces need'}` : ''}` : '';
+    };
     row(`Claimed (${taken.length})`, taken.length ? taken.map(t => `${name(t)}: @${t.assignees.map(a => a.login).join(', @')}`) : 'nothing');
-    row(`Free (${free.length})`, free.length ? free.map(name) : `nothing: npm run dp -- tasks ${game} opens one for each part that has none, and the Task form suggests a new one`);
+    row(`Free (${free.length})`, free.length ? free.map(t => `${name(t)}${foundation(t)}`)
+      : waiting.length ? 'nothing until what the waiting pieces need is finished'
+        : `nothing: npm run dp -- tasks ${game} opens one for each part that has none, and the Task form suggests a new one`);
+    if (waiting.length) row(`Waiting (${waiting.length})`, waiting.map(({ piece, on }) => `${name(piece)}: needs ${on.map(need => (need.number ? `#${need.number} ${need.name}` : need.name)).join(' and ')}`));
     if (done) row(`Done (${done})`, 'listed in its game\'s issue');
   }
   console.log(`${title}, in games/${game}/${local ? '' : ', not in this folder yet'}\n`);

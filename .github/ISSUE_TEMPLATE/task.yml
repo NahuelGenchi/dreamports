@@ -1,5 +1,5 @@
 name: Task
-description: One piece of a Dreamport, such as a character, a level, a mode, an achievement or an extra.
+description: One piece of a Dreamport, such as a character, a level, a mode, an achievement, an extra or a foundation.
 title: "Task: "
 labels: [task]
 body:
@@ -8,7 +8,7 @@ body:
       value: |
         A task lands under its game's issue, which lists every piece of the game and who has it. One person works on a task at a time. To take a free task, comment `/claim` on it, and `/release` gives it back. The Dreamports bot answers in a few seconds, and if someone was faster, it lists the tasks that are still free.
 
-        A claim with no activity for 14 days is released, and nothing done so far is lost. [Claims and teams](https://github.com/NahuelGenchi/dreamports/blob/main/docs/TEAMS.md) explains the rest.
+        A claim with no activity for 14 days is released, or 7 for a foundation, which other pieces wait on, and nothing done so far is lost. [Claims and teams](https://github.com/NahuelGenchi/dreamports/blob/main/docs/TEAMS.md) explains the rest.
 
         Never include ROMs, game files, saves, pictures taken from the game, private email addresses or passwords.
   - type: input
@@ -23,7 +23,9 @@ body:
     id: kind
     attributes:
       label: Kind
+      description: A foundation is what many other pieces need, such as a game's fighting.
       options:
+        - Foundation
         - Character
         - Level
         - Mode

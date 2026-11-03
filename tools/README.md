@@ -18,8 +18,8 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `portmap` | Makes the port map: each function of the original the Dreamport's code names, and where |
 | `read` | Prints one of the original's functions, its instructions, from your copy, for code its decompilation has no C for |
 | `share` | Publishes a preview of a game on GitHub Pages from your own fork, with the newest clip for the step's pull request |
-| `find` | Shows where a game stands: its lead, its two numbers, its team build, who has claimed which task, and the tasks still free |
-| `tasks` | Opens a Task issue for each of a game's parts that has none yet, in the order a player meets them |
+| `find` | Shows where a game stands: its lead, its two numbers, its team build, who has claimed which task, the tasks free to start, and what the others wait on |
+| `tasks` | Opens a Task issue for each of a game's foundations and parts that has none yet, its foundations first and then in the order a player meets them |
 | `notes` | Shows what people found while making a game or its console's kit, so nobody has to find it again |
 | `team` | The game's team build, the lead's branch with the team's finished pieces: `start` makes it, `join` starts a piece from it, `send` sends a piece to the lead, and `add` proves a piece and takes it in |
 | `readme` | Writes the README's table of Dreamports, with each one's numbers and lead, from their [entries](../games/README.md#the-entry), and each one's progress map |
@@ -165,7 +165,7 @@ Sonic Advance Dreamport's logos are frames 254 to 932 of [`logos-and-intro`](../
 
 ## Claims and team builds
 
-`npm run dp -- find <game>` shows where a game stands before you start on it: its lead, its two numbers, its Make page, how many notes it has, its team build and team preview, who has claimed which task, and the tasks still free. It takes a game's folder or a few words of its name, and with no game it lists them all. The numbers come from `games/` in your folder, and the claims from this repository's issues.
+`npm run dp -- find <game>` shows where a game stands before you start on it: its lead, its two numbers, its Make page, how many notes it has, its team build and team preview, who has claimed which task, the tasks free to start, and what the others wait on ([What a task needs](../docs/TEAMS.md#what-a-task-needs)). It takes a game's folder or a few words of its name, and with no game it lists them all. The numbers come from `games/` in your folder, and the claims from this repository's issues.
 
 `npm run dp -- team <game> start`, `join <branch>`, `send` and `add <pull request>` make and use the game's team build, a branch of the lead's fork that gathers the team's finished pieces. `add` merges a piece, runs `portmap` and `prove`, and only takes it in if nothing that matched the original before differs now, then updates the team preview with `share`. It stops before a piece with a note that breaks the rules for notes. [Claims and teams](../docs/TEAMS.md) explains claims, tasks and team builds.
 
