@@ -39,7 +39,7 @@ On a phone or a tablet, `createTouch()` draws the same controller for every game
 
 To try it, serve the repository's folder with any static file server, such as `python -m http.server 8000` run in it, and open `http://localhost:8000/games/my-game/`. The server runs in the repository's folder, not the game's, because the game loads the kit from `kit/gba/`, the way dreamports.net serves it from `/kit/gba/`.
 
-From there the game grows the way [the standard](../../docs/STANDARD.md#always-playable-always-proven) asks: the original's code rewritten piece by piece in `src/`, in the order a player meets it, every piece playable.
+From there the game grows the way [the standard](../../docs/STANDARD.md#always-playable-always-proven) asks: the original's code rewritten piece by piece in `src/`, every piece playable.
 
 ## The rest of the page
 

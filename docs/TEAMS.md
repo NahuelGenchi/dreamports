@@ -50,6 +50,8 @@ A **foundation** is what many parts build on but no player would call a part, su
 
 A task is **free** when it's open, nobody has claimed it, and everything it needs is finished: its issue is closed, or for a part with no issue, the file names its recording. `find` also counts a piece the team build holds as finished, as members start from the team build. It lists what's free, foundations first, as they hold other pieces up, and each waiting task with what it needs. The Make pages count only what's free, and the bot lists only what's free. `/dreamport <game>` takes the first free task, and `/dreamport <game> <piece>` takes the piece named when it's free. Anyone can still `/claim` a waiting task, to prepare it, and the bot says what it needs.
 
+What comes before a part in the game isn't something it needs. A late level can start from a [start point](../tools/README.md#start-points), so `needs` lists only what a piece can't be finished without, and the rest can go in any order.
+
 Whoever an issue is assigned to has it. The Dreamports team can also assign and unassign issues by hand, and the bot leaves those as they are. Either way, the game's page in the Make tab on dreamports.net shows how many pieces are still free a few minutes later ([The Make pages](MAKE.md)).
 
 ## Going quiet

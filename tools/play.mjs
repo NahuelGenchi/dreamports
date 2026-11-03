@@ -1,17 +1,18 @@
-// npm run dp -- play <game> [--record <name> [--from <recording>[:<frame>]]]: opens the game in a browser window, from
-// this repository and with the contributor's copy, ready to press Play. With --record, the game starts from power-on
-// with nothing saved, keeps the buttons held at every frame (the kit's ?proof=record), and when the window closes
-// they're written as games/<game>/proof/recordings/<name>.json, ready for prove. With --from, it first plays another
-// recording's presses, up to the frame named or to its end, and the player takes over from there, so a part later in
-// the game can be recorded without playing everything before it again; the new recording keeps those presses, and
-// the stretches only the original has among them. The copy stays where it is.
+// npm run dp -- play <game> [--start <what the address adds>] [--record <name> [--from <recording>[:<frame>]]]: opens the
+// game in a browser window, from this repository and with the contributor's copy, ready to press Play. With --record, the
+// game starts from power-on with nothing saved, keeps the buttons held at every frame (the kit's ?proof=record), and when
+// the window closes they're written as games/<game>/proof/recordings/<name>.json, ready for prove. With --from, it first
+// plays another recording's presses, up to the frame named or to its end, and the player takes over from there, so a part
+// later in the game can be recorded without playing everything before it again; the new recording keeps those presses,
+// and the stretches only the original has among them. --start opens the game at a start point (tools/README.md), and
+// --from takes the other recording's, which the new recording keeps too. The copy stays where it is.
 
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { LOCAL, proofFolder } from './lib/paths.mjs';
 import { readOriginal, readRecordings } from './lib/proof-files.mjs';
 import { copyOf } from './lib/copies.mjs';
-import { compress, expand, writeRecording } from './lib/recording.mjs';
+import { checkStart, compress, expand, writeRecording } from './lib/recording.mjs';
 import { serveRepository } from './lib/server.mjs';
 import { openChrome } from './lib/chrome.mjs';
 import { openDreamport } from './lib/dreamport.mjs';
@@ -21,11 +22,13 @@ const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export async function run(args) {
   const value = flag => (args.includes(flag) ? args[args.indexOf(flag) + 1] ?? '' : null);
-  const game = args.find((a, i) => !a.startsWith('--') && !['--record', '--from'].includes(args[i - 1]));
+  const game = args.find((a, i) => !a.startsWith('--') && !['--record', '--from', '--start'].includes(args[i - 1]));
   const name = value('--record'), from = value('--from');
-  if (!game || name === '' || from === '' || (from !== null && name === null)) {
-    throw new Error('Usage: npm run dp -- play <game> [--record <name> [--from <recording>[:<frame>]]]');
+  let startPoint = value('--start');
+  if (!game || name === '' || from === '' || startPoint === '' || (from !== null && name === null)) {
+    throw new Error('Usage: npm run dp -- play <game> [--start <what the address adds>] [--record <name> [--from <recording>[:<frame>]]]');
   }
+  if (startPoint !== null) checkStart(startPoint, '--start');
   if (name && !NAME.test(name)) throw new Error(`A recording's name is lowercase letters, numbers and single dashes, such as act-1.`);
   const original = readOriginal(game);
   const copy = copyOf(game, original.sha1);
@@ -42,6 +45,8 @@ export async function run(args) {
     if (!Number.isInteger(until) || until < 1 || until > recording.frames) {
       throw new Error(`--from ${source}:<frame> plays ${source} up to a frame from 1 to ${recording.frames}, its length.`);
     }
+    if (startPoint && recording.start && startPoint !== recording.start) throw new Error(`--start says ${startPoint}, and ${source} starts at ${recording.start}, which its presses need.`);
+    startPoint ??= recording.start ?? null;
     start = {
       source, until, held: expand(recording.held, until),
       // the stretches only the original has before the player takes over, which the new recording needs too
@@ -55,7 +60,8 @@ export async function run(args) {
   try {
     // its own profile, kept between plays; a recording starts from a new one, with nothing saved
     page = await openChrome({ profile: join(LOCAL, 'chrome', name ? 'record' : `play-${game}`), headless: false, fresh: !!name, controllers: true });
-    await openDreamport(page, server, game, copy.path, { query: name ? '?proof=record' : '', start: false });
+    const asked = [name ? 'proof=record' : '', startPoint ?? ''].filter(Boolean).join('&');
+    await openDreamport(page, server, game, copy.path, { query: asked ? `?${asked}` : '', start: false });
     // the presses to play first go in before the game starts, and again after a reload
     const giveStart = async () => {
       if (!(await page.evaluate(`typeof dreamportsProof?.replay === 'function'`))) {
@@ -113,8 +119,9 @@ export async function run(args) {
   mkdirSync(join(proofFolder(game), 'recordings'), { recursive: true });
   writeRecording(file, {
     about: start ? `Plays ${start.source}'s presses up to frame ${start.until}, then: what this recording plays, in a sentence or two.` : 'What this recording plays, in a sentence or two.',
-    frames: held.length, held: compress(held), onlyInOriginal: start?.onlyInOriginal ?? [],
+    frames: held.length, held: compress(held), onlyInOriginal: start?.onlyInOriginal ?? [], start: startPoint ?? undefined,
   });
-  console.log(`Written: games/${game}/proof/recordings/${name}.json, ${held.length} frames. Say what it plays in its "about", then run npm run dp -- prove ${game} ${name}.`);
+  const reach = startPoint && !start?.onlyInOriginal.length ? ` Its "onlyInOriginal" has to say how the original gets to that start point (tools/README.md, Start points).` : '';
+  console.log(`Written: games/${game}/proof/recordings/${name}.json, ${held.length} frames. Say what it plays in its "about", then run npm run dp -- prove ${game} ${name}.${reach}`);
   return 0;
 }

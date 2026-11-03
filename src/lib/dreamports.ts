@@ -114,7 +114,7 @@ function partsOf(game: string, gameplay: Proof['gameplay']): PartView[] {
     return {
       name: part.name,
       proven: part.proven,
-      note: part.proven ? null : `Frames ${from} to ${to} of ${part.recording}, ${found}`,
+      note: part.proven ? (part.fromStart ? 'Proven from a start point, not yet from power-on' : null) : `Frames ${from} to ${to} of ${part.recording}, ${found}`,
       href: proofLink(game, `recordings/${part.recording}.json`),
     };
   });

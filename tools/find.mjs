@@ -107,6 +107,8 @@ function show(game, local, claims, team) {
   row('Game issue', homeUrl ? `${homeUrl}, which lists its pieces, and where it's talked about` : 'none yet');
   row('Code ported', proof?.ported ? percentText(proof.ported.percent) : local ? 'not measured yet: it needs a code map' : 'not measured yet');
   row('Gameplay proven', proof?.gameplay ? `${percentText(proof.gameplay.percent)}, ${proof.gameplay.proven} of ${proof.gameplay.total} parts` : local ? 'not measured yet: it needs a list of its parts' : 'not measured yet');
+  const fromStart = (proof?.gameplay?.parts ?? []).filter(part => part.proven && part.fromStart);
+  if (fromStart.length) row('From a start point', fromStart.map(part => part.name), 'each proven again from power-on once the game reaches it');
   if (entry) row('Its page', `https://dreamports.net/dreamports/${pageOf(game)}/`);
   // a Dreamport has a page in the Make row from its capture until every part of it is proven (docs/MAKE.md)
   if (entry?.screen && proof?.gameplay?.percent !== 100) row('Make page', `https://dreamports.net/make/${game}/, with its steps and the pieces free to take`);

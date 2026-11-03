@@ -66,29 +66,31 @@ export function playOriginal(copy) {
 
 /**
  * Runs `frames` frames of the original from power-on. `buttons` holds each frame's buttons as KEY bits,
- * `functions` the code map's ({ address, size }), and `pictures` the frames whose whole picture is wanted, in order.
+ * `functions` the code map's ({ address, size }), `pictures` the frames whose whole picture is wanted, in order, and
+ * `sets` the values to write to the work RAM as a frame starts ({ frame, address, bytes, value }), in the order of their frames.
  * Resolves to { hashes, plain, ran, pictures, sound, outside }: each frame's picture hash, its one colour when every
  * pixel has the same (15-bit) or else -1, the places in `functions` of those that ran in it, the pictures asked for
  * (15-bit colour, 240 x 160), with `sound` each frame's sound (an Int16Array of left and right samples, 65536 a
  * second, in the console's 10-bit units around the bias) or else null, and how many instructions ran outside every
  * function ({ cartridge, memory }).
  */
-export async function runOriginal({ copy, frames, buttons, functions = [], pictures = [], sound = false }) {
+export async function runOriginal({ copy, frames, buttons, functions = [], pictures = [], sound = false, sets = [] }) {
   const folder = join(LOCAL, 'tmp');
   mkdirSync(folder, { recursive: true });
   const id = `${process.pid}-${Date.now()}`;
   const files = {
     buttons: join(folder, `buttons-${id}.bin`), functions: join(folder, `functions-${id}.bin`), pictures: join(folder, `pictures-${id}.bin`),
-    sound: join(folder, `sound-${id}.bin`),
+    sound: join(folder, `sound-${id}.bin`), sets: join(folder, `sets-${id}.bin`),
   };
   writeFileSync(files.buttons, new Uint8Array(Uint16Array.from(buttons).buffer));
   const list = new Uint32Array(functions.length * 2);
   functions.forEach((f, i) => { list[i * 2] = f.address; list[i * 2 + 1] = f.size; });
   writeFileSync(files.functions, new Uint8Array(list.buffer));
   writeFileSync(files.pictures, new Uint8Array(Uint32Array.from(pictures).buffer));
+  writeFileSync(files.sets, new Uint8Array(Uint32Array.from(sets.flatMap(({ frame, address, bytes, value }) => [frame, address, bytes, value])).buffer));
   try {
     // its files by their plain names, from their folder: only the copy's path has to survive the trip whatever it's called
-    const child = spawn(ORIGINAL, [copy, String(frames), basename(files.buttons), basename(files.functions), basename(files.pictures), sound ? basename(files.sound) : '-'], { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(ORIGINAL, [copy, String(frames), basename(files.buttons), basename(files.functions), basename(files.pictures), sound ? basename(files.sound) : '-', basename(files.sets)], { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'] });
     const out = [], err = [];
     child.stdout.on('data', chunk => out.push(chunk));
     child.stderr.on('data', chunk => err.push(chunk));

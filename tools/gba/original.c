@@ -3,13 +3,15 @@
 // sounds like and which of the game's functions ran in it. `npm run dp -- setup` builds it against mGBA's library
 // (build.mjs).
 //
-// original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND
+// original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS
 //   ROM        the contributor's copy, only ever read
 //   FRAMES     how many frames to run
 //   BUTTONS    a file with the buttons held at each frame: 16 bits each, a bit per button as KEYINPUT has them
 //   FUNCTIONS  a file with the code map's functions, each its address and its size (32 bits each), or -
 //   PICTURES   a file with the frames whose whole picture to write (32 bits each, in order), or -
 //   SOUND      a file to write each frame's sound to, or -
+//   SETS       a file with values to write to the work RAM as each frame starts, in the order of their frames, or -: each
+//              its frame, its address, how many bytes and its value (32 bits each)
 //
 // For each frame it writes to stdout: a hash of the picture (FNV-1a over each pixel's 15-bit colour, as the
 // console has it), the picture's one colour if every pixel has it or else 0xFFFFFFFF, the number of functions that
@@ -77,6 +79,18 @@ static void heard(struct mAVStream* stream, int16_t left, int16_t right) {
 		sound->samples[sound->count++] = left / 48;
 		sound->samples[sound->count++] = right / 48;
 	}
+}
+
+// a value a recording writes to the work RAM, the only memory it can reach, as a recording can't change the game itself
+static void setValue(struct mCore* core, uint32_t address, uint32_t bytes, uint32_t value) {
+	struct region* region = regionOf(address);
+	if (!region || region == &regions[0] || address - region->base + bytes > region->size) {
+		fprintf(stderr, "A recording can only write to the work RAM, and 0x%08X isn't in it\n", address);
+		exit(2);
+	}
+	if (bytes == 1) core->rawWrite8(core, address, -1, value);
+	else if (bytes == 2) core->rawWrite16(core, address, -1, value);
+	else core->rawWrite32(core, address, -1, value);
 }
 
 static void* readAll(const char* path, size_t* size) {
@@ -160,16 +174,17 @@ static int playAlong(const char* path) {
 int main(int argc, char** argv) {
 	onWindows(&argv);
 	if (argc == 3 && !strcmp(argv[2], "live")) return playAlong(argv[1]);
-	if (argc != 7) {
-		fprintf(stderr, "Usage: original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND\n       original ROM live\n");
+	if (argc != 8) {
+		fprintf(stderr, "Usage: original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS\n       original ROM live\n");
 		return 2;
 	}
 	long frames = atol(argv[2]);
-	size_t buttonsSize, functionsSize, picturesSize;
+	size_t buttonsSize, functionsSize, picturesSize, setsSize;
 	uint16_t* buttons = readAll(argv[3], &buttonsSize);
 	uint32_t* functions = readAll(argv[4], &functionsSize);
 	uint32_t* pictures = readAll(argv[5], &picturesSize);
-	size_t functionCount = functionsSize / 8, pictureCount = picturesSize / 4, nextPicture = 0;
+	uint32_t* sets = readAll(argv[7], &setsSize);
+	size_t functionCount = functionsSize / 8, pictureCount = picturesSize / 4, nextPicture = 0, setCount = setsSize / 16, nextSet = 0;
 
 	// where each function starts (its place + 1), which addresses are inside one, and code seen outside them all
 	for (size_t i = 0; i < REGIONS; i++) {
@@ -202,6 +217,9 @@ int main(int argc, char** argv) {
 
 	for (long frame = 0; frame < frames; frame++) {
 		core->setKeys(core, (size_t) frame < buttonsSize / 2 ? buttons[frame] : 0);
+		for (; nextSet < setCount && sets[nextSet * 4] == (uint32_t) frame; nextSet++) {
+			setValue(core, sets[nextSet * 4 + 1], sets[nextSet * 4 + 2], sets[nextSet * 4 + 3]);
+		}
 		uint32_t count = 0;
 		uint32_t frameCounter = core->frameCounter(core);
 		// one instruction at a time, to see each function start

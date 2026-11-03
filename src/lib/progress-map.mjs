@@ -22,6 +22,8 @@ const COLOURS = {
   text: '#eef4ff',
   dim: '#a9b8e6',
   done: '#3fb950',
+  // a part proven from a start point, until it's proven from power-on
+  fromStart: '#7ba88a',
   todo: '#454c63',
   label: '#1f2d63',
 };
@@ -106,7 +108,7 @@ export function progressMap(game, files, title) {
   const side = (WIDTH - 8) / columns;
   parts.forEach((part, i) => {
     const box = inset({ x: 4 + (i % columns) * side, y: y + BAR + Math.floor(i / columns) * PART, w: side, h: PART }, 1.5);
-    out.push(`<rect x="${n(box.x)}" y="${n(box.y)}" width="${n(box.w)}" height="${n(box.h)}" fill="${part.proven ? COLOURS.done : COLOURS.todo}"><title>${escape(part.name)}${part.proven ? ', proven' : ''}</title></rect>`);
+    out.push(`<rect x="${n(box.x)}" y="${n(box.y)}" width="${n(box.w)}" height="${n(box.h)}" fill="${part.proven ? (part.fromStart ? COLOURS.fromStart : COLOURS.done) : COLOURS.todo}"><title>${escape(part.name)}${part.proven ? (part.fromStart ? ', proven from a start point' : ', proven') : ''}</title></rect>`);
   });
   y += BAR + height + 4;
 
