@@ -40,7 +40,7 @@ Only someone who runs this repository can tick this, and a new push clears it.`;
 
 /** The comment when it can't come in this way. */
 export const normalReview = why => `${markOf('')}
-This looks like a new game's first entry, but it takes a normal review, as ${REASONS[why]}. It can still come in that way, and the Dreamports team will look at it. Running \`npm run dp -- new\` and \`npm run dp -- capture\` again, on the latest \`main\`, makes a first entry that needs no review of its code.`;
+This looks like a new game's first entry, but it takes a normal review, as ${REASONS[why]}. It can still come in that way, and the Dreamports team will look at it. Asking your coding agent to write its first files and its capture again, on the latest \`main\`, makes a first entry that needs no review of its code.`;
 
 /** The comment when the tick came too soon, or GitHub wouldn't merge. */
 export const notYet = (plan, line) => `${askFor(plan)}

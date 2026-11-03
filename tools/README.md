@@ -63,7 +63,7 @@ Sonic Advance Dreamport's [first act](../games/sonic-advance/proof/recordings/ne
 
 ## A game's capture
 
-Every game's card in the launcher shows a few seconds of real play. `npm run dp -- capture <game>` makes a Dreamport's from the original, so a game can have one before its Dreamport has anything to play. It opens a window where you play your own copy, from power-on, with the keyboard or a controller, and hear it as you go.
+Every game's card in the launcher shows a few seconds of real play. `npm run dp -- capture <game>` makes a Dreamport's from the original, so a game can have one before its Dreamport has anything to play. It opens a window where you play your own copy, from power-on, with the keyboard or a controller, and hear it as you go. With the `/dreamport` commands your agent asks whether to open it and opens it for you, so you run nothing yourself.
 
 Press Finish, or `Esc`, or View and Menu together on a controller, and it picks out the best stretches of what you played: lively and colourful, with buttons held, and with no fades, logos, menus or text. They come up moving. Press the one you want with the mouse, with the arrows and `Z`, or with a controller's d-pad and A. `Esc` or B goes back to playing where you left off, and the next list comes from all of it.
 
