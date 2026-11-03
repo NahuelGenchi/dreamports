@@ -2,7 +2,7 @@
 // folder: its details, and its progress with its two numbers, code ported and gameplay proven, what proves them, and
 // what it's built with; and what its page in the Make row shows, for the people making it. games/README.md describes
 // the entry.
-import { proofOf } from './entries.mjs';
+import { hasCode as codeIn, isBeingMade, numbersText, proofOf, shortPercent } from './entries.mjs';
 import { SOURCE_URL, makeUrl, type Game } from './site';
 import type { Making, Step } from './making';
 
@@ -47,23 +47,8 @@ function proofFor(game: string): Proof | null {
   });
 }
 
-// A % as short as the site shows it: whole, such as 38%, but never 0% or 100% unless it's exactly that, so a little
-// progress still shows and nearly done isn't done. The README and the proof files keep it to two decimals.
-function shortPercent(percent: number | null | undefined): string | null {
-  if (percent === null || percent === undefined) return null;
-  if (percent > 0 && percent < 1) return '<1%';
-  if (percent > 99 && percent < 100) return '99%';
-  return `${Math.round(percent)}%`;
-}
-
 /** A Dreamport's two numbers as text, such as "Code ported 38% · Gameplay proven 3%", for its place in the Make row. */
-export function numbersOf(data: Dreamport): string {
-  const proof = proofFor(data.game);
-  return [
-    `Code ported ${shortPercent(proof?.ported?.percent) ?? 'not measured yet'}`,
-    `Gameplay proven ${shortPercent(proof?.gameplay?.percent) ?? 'not measured yet'}`,
-  ].join(' · ');
-}
+export const numbersOf = (data: Dreamport): string => numbersText(proofFor(data.game));
 
 // the kit's name, from its guide's heading, such as "Game Boy Advance kit"
 function kitName(kit: string): string {
@@ -136,10 +121,10 @@ function partsOf(game: string, gameplay: Proof['gameplay']): PartView[] {
 const CODE_URL = 'https://dreamports.net/code';
 
 /** Whether a Dreamport has a place in the Make row: once it has a real capture for its card, until every part of it is proven. */
-export const beingMade = (data: Dreamport): boolean => !!data.screen && proofFor(data.game)?.gameplay?.percent !== 100;
+export const beingMade = (data: Dreamport): boolean => isBeingMade(data, proofFor(data.game));
 
-// whether a Dreamport has code of the original's: what `npm run dp -- new` writes names none and only shows a blue screen
-const hasCode = (data: Dreamport): boolean => (proofFor(data.game)?.ported?.percent ?? 0) > 0;
+// whether a Dreamport has code of the original's
+const hasCode = (data: Dreamport): boolean => codeIn(proofFor(data.game));
 
 /** Whether a game has its place in its row and its own page, for players. Until a Dreamport has code, it's only in the Make row. */
 export const released = ({ data }: Game): boolean => data.kind !== 'dreamport' || hasCode(data);
