@@ -20,7 +20,7 @@ import { openChrome } from './lib/chrome.mjs';
 import { openDreamport } from './lib/dreamport.mjs';
 import { mp4 } from './lib/mp4.mjs';
 import { makeFilter, soundOf, NEAR } from './lib/sound.mjs';
-import { measure, percentText } from '../src/lib/entries.mjs';
+import { fromStartPoint, measure, percentText } from '../src/lib/entries.mjs';
 import { writeReadme, readProof } from './readme.mjs';
 import { KEY, ensureOriginal, runOriginal } from './gba/original.mjs';
 import { notesAbout } from './notes.mjs';
@@ -145,23 +145,26 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
 
   // which of the original's frames is each of the Dreamport's: the same, but for the frames only the original has
   const held = expand(recording.held, frames);
-  const originalOf = new Int32Array(frames), originalHeld = [];
+  const originalOf = new Int32Array(frames), originalHeld = [], sets = [];
+  // a stretch only the original has: its buttons, and the values it writes to its memory, at frames counted the same way
+  const addStretch = ({ frames: count, held: own, sets: values = [] }) => {
+    for (const set of values) sets.push({ ...set, frame: originalHeld.length + set.frame + (keysLate ? 1 : 0), address: parseInt(set.address, 16) });
+    originalHeld.push(...expand(own, count));
+  };
   let gap = 0;
   for (let frame = 0; frame < frames; frame++) {
-    for (; gap < recording.onlyInOriginal.length && recording.onlyInOriginal[gap].at === frame; gap++) {
-      const { frames: count, held: own } = recording.onlyInOriginal[gap];
-      originalHeld.push(...expand(own, count));
-    }
+    for (; gap < recording.onlyInOriginal.length && recording.onlyInOriginal[gap].at === frame; gap++) addStretch(recording.onlyInOriginal[gap]);
     originalOf[frame] = originalHeld.length;
     originalHeld.push(held[frame]);
   }
-  for (; gap < recording.onlyInOriginal.length; gap++) originalHeld.push(...expand(recording.onlyInOriginal[gap].held, recording.onlyInOriginal[gap].frames));
+  for (; gap < recording.onlyInOriginal.length; gap++) addStretch(recording.onlyInOriginal[gap]);
+  sets.sort((a, b) => a.frame - b.frame);
   const onlyInOriginal = originalHeld.length - frames;
 
   const page = await openChrome({ profile: join(LOCAL, 'chrome', 'prove'), headless: true });
   try {
     say('starting the Dreamport…');
-    await openDreamport(page, server, game, copy, { query: '?proof' });
+    await openDreamport(page, server, game, copy, { query: `?proof${recording.start ? `&${recording.start}` : ''}` });
     await page.evaluate(`window.__makeFilter = ${makeFilter}`);
     await page.evaluate(IN_PAGE);
     const buttons = await page.evaluate('dreamportsProof.buttons');
@@ -184,7 +187,7 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
     // buttons, and the Dreamport's frame f is the original's frame originalOf[f] + 1. Its sound lines up the same way
     say('playing the original…');
     const functions = codeMap?.functions ?? [];
-    const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, sound: true });
+    const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, sound: true, sets });
     const expected = Array.from(originalOf, g => first.hashes[g + 1]);
     const compareSound = soundOf(first.sound), heardOf = Array.from(originalOf, g => g + 1);
     // the frames next to a stretch only the original has, whose sound isn't compared: the original's runs into or out
@@ -262,7 +265,7 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
       const first = different.find(f => f >= a && f <= b);
       const gap = recording.onlyInOriginal.find(g => g.at > a && g.at <= b);
       return {
-        name: part, frames: [a, b], proven: b < frames && first === undefined && !gap,
+        name: part, frames: [a, b], proven: b < frames && first === undefined && !gap, fromStart: fromStartPoint(recording, a),
         ...(b >= frames ? { past: frames - 1 } : {}),
         ...(first !== undefined ? { differs: first, ...(hashes[first] === expected[first] ? { soundOnly: true } : {}) } : {}),
         ...(gap ? { gap: gap.at } : {}),
@@ -285,7 +288,7 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
     say('making the pictures and the clip…');
     await page.evaluate(`__proof.soundDiffers(${JSON.stringify(soundDifferent)})`);
     const kept = [...keptFrames].sort((a, b) => a - b);
-    const shown = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, pictures: kept.map(f => originalOf[f] + 1) });
+    const shown = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, pictures: kept.map(f => originalOf[f] + 1), sets });
     for (let i = 0; i < kept.length; i += 20) {
       const sends = kept.slice(i, i + 20).map(f => `__proof.original(${f}, '${Buffer.from(shown.pictures.get(originalOf[f] + 1).buffer).toString('base64')}')`);
       await page.evaluate(sends.join(';'));
@@ -366,7 +369,8 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
       const state = part.past !== undefined ? `ends past the recording's last frame, ${part.past}`
         : part.differs !== undefined ? `not proven, as ${part.soundOnly ? 'the sound of ' : ''}frame ${part.differs} differs`
           : part.gap !== undefined ? `not proven, as the original has frames of its own before frame ${part.gap}`
-            : 'proven, every frame the same';
+            : part.fromStart ? 'proven from a start point, every frame the same. Prove it again from power-on once the game reaches it'
+              : 'proven, every frame the same';
       console.log(`  ${part.name}, frames ${part.frames[0]} to ${part.frames[1]}: ${state}.`);
     }
     // what people already found about what differs here (docs/NOTES.md)

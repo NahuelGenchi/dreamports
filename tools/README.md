@@ -57,10 +57,24 @@ A recording holds nothing from the game, only button presses, so it lives in the
 
 - `frames`: how many frames it lasts.
 - `held`: the buttons held, as a list of changes. `[120, ["A"]]` means A is held from frame 120 until the next change. Buttons have the console's names (`A`, `B`, `SELECT`, `START`, `RIGHT`, `LEFT`, `UP`, `DOWN`, `R` and `L`), or the Dreamport's own name for a button the console doesn't have, after which the original can't match.
-- `onlyInOriginal` (optional): stretches of play the original has and the Dreamport doesn't have yet, such as a menu nobody has made. Each gives `at`, the Dreamport's frame where it goes in, its length in `frames`, the buttons `held` during it, counted from its own start, and an `about`. The original plays them and the Dreamport skips them, so the frames after still line up.
+- `onlyInOriginal` (optional): stretches of play the original has and the Dreamport doesn't have yet, such as a menu nobody has made. Each gives `at`, the Dreamport's frame where it goes in, its length in `frames`, the buttons `held` during it, counted from its own start, and an `about`. The original plays them and the Dreamport skips them, so the frames after still line up. It can also have `sets`, as [Start points](#start-points) says.
+- `start` (optional): what the Dreamport's address adds, as [Start points](#start-points) says.
 - `clip` (optional): the frames the clip shows, from frame `at`, for `frames` frames.
 
 Sonic Advance Dreamport's [first act](../games/sonic-advance/proof/recordings/neo-green-hill-act-1.json) is an example: it skips the character select, which the Dreamport doesn't have yet.
+
+## Start points
+
+A late part doesn't have to wait for everything before it. A recording can have a **start point**, so that the Dreamport opens right at the part and the original gets there by itself. Two things make one, and either can go without the other:
+
+- `start` is what the Dreamport's address adds, such as `level=2&character=1`: words and values, which the game's own page reads. `prove` opens the game with them, and so does `npm run dp -- play <game> --record <name> --start level=2`.
+- `sets`, in a stretch of `onlyInOriginal`, writes values to the original's work RAM as that stretch runs, such as which levels are unlocked: `[{ "frame": 9, "address": "03005168", "bytes": 1, "value": 2 }]`, with `frame` counted from the stretch's start, `address` in hexadecimal, as the code map has it, and `bytes` 1, 2 or 4. They can't reach the cartridge, and `prove` stops if one tries.
+
+Write the presses and values that take the original to the part's first frame as a stretch of `onlyInOriginal`, at the frame where the Dreamport opens at the part, which is 0 when it opens there straight away. Then run `prove` and change the stretch's length until the frames line up. Its list of frames where the original's screen is one colour shows where each screen ends.
+
+It's still all compared: every frame of the part, against the original, the same as any other. A part proven this way counts towards gameplay proven, and `prove`, `find`, the game's page and its progress map mark it as proven from a start point, as it could still differ once the game's real path reaches it. Once that path exists, a recording with no `start` or `sets` proves it again from power-on, and the mark goes.
+
+A recording's start point is only words and numbers, so it goes in a commit and anyone can replay it. Save states stay out of this: they hold the game's memory, so they can't go in a commit, and nobody else could replay them.
 
 ## A game's capture
 
@@ -158,6 +172,8 @@ A part, such as a game's logos or one of its acts, is proven by a recording that
 4. Write the part's `recording` and `frames` in `parts.json`, and run `prove` again. It says whether the part is proven, and keeps pictures of its first and last frames, with the one before and the one after, so the lead can check them once more.
 
 Sonic Advance Dreamport's logos are frames 254 to 932 of [`logos-and-intro`](../games/sonic-advance/proof/recordings/logos-and-intro.json): the language screen fades to white until frame 253, and the Sonic Team logo fades to black, which stays until 932.
+
+A part the game can't reach yet is proven the same way, from a [start point](#start-points).
 
 ## Sharing a preview
 
