@@ -19,7 +19,7 @@ The site is built on Cloudflare, and each build reads GitHub's API: about three 
 
 | What happens | What starts the build |
 | :--- | :--- |
-| A pull request merges | Cloudflare builds every change to `main` |
+| A pull request merges | Cloudflare builds every change to `main`, and [the Live site workflow](LIVE-SITE.md) makes sure it went live |
 | The bot gives, takes back or releases a claim, or puts a new piece under its game | The claims workflow, `.github/workflows/claims.yml`, after its answer |
 | Someone assigns, unassigns, closes, reopens, deletes or moves a piece by hand | The Make pages workflow, `.github/workflows/make-pages.yml` |
 
