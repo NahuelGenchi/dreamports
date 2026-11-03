@@ -4,14 +4,16 @@
 // easing into place. Start after frame 80 fades the palette to black; left alone past frame 600 it fades out to
 // the game's attract mode. Neither screen after it is ported yet.
 //
-// The original queues its sprites and their one affine matrix for the V-blank, which copies the queue into OAM.
-// Here the six OAM entries and the matrix's four words are written where the V-blank would put them, so the
-// kit's renderer sees the same OAM, and the only state the scene keeps is what the original keeps.
+// The original queues its sprites and their one affine matrix for the V-blank, which copies the queue into OAM, so
+// they show a frame after the layers' scrolls, which it writes directly. Their priority, 3, puts them behind the
+// fourth layer, whose priority is 1: the logo's pulse reaches up behind it.
 
 import { REG } from '../../../kit/gba/video.js';
-import { KEY, copyToVram, fadeToBlack, queueRegister, setBlend } from './core.js';
+import { KEY, clearSprites, copyAtVblank, copyToVram, fadeToBlack, queueRegister, setBlend } from './core.js';
 
 const CARTRIDGE = 0x08000000, PALETTE = 0x05000000, SINE = 0x0804DF7C;
+// gSongTable: eight bytes for each song, with the number of the player it plays on at the fifth
+const SONG_TABLE = 0x08BF7244;
 // the display registers the kit's REG doesn't name: BG0VOFS through BG2VOFS, BG2PC and BG2PD, and BG3's scroll
 const BG0VOFS = REG.BG0HOFS + 2, BG1HOFS = REG.BG0HOFS + 4, BG1VOFS = REG.BG0HOFS + 6;
 const BG2HOFS = REG.BG0HOFS + 8, BG2VOFS = REG.BG0HOFS + 10, BG2PC = REG.BG2PA + 4, BG2PD = REG.BG2PA + 6;
@@ -68,10 +70,11 @@ const SPRITES = [
 // counter gUnknown_03001b08, x gUnknown_03001b2c, y gUnknown_030016c0, scale gUnknown_03001b24 and targets.
 const s16 = v => (v << 16) >> 16;
 
-/** Wraps a sprite's type and its place into the three words of an OAM entry; the fourth is its matrix word. */
+/** 0x08016b30's cases 106 and 117: a sprite's type and its place as the three words of an OAM entry. 0x08017690
+ *  gives every sprite priority 3 here. */
 function oamEntry({ x, y, tile, palette, type }) {
   const base = type === 106 ? 0x4300 : 0x4000;
-  return [base | y, 0xC000 | (x & 0x1FF), (tile & 0x3FF) | ((palette & 0xF) << 12)];
+  return [base | y, 0xC000 | (x & 0x1FF), (tile & 0x3FF) | (3 << 10) | ((palette & 0xF) << 12)];
 }
 const ENTRIES = SPRITES.map(oamEntry);
 
@@ -127,26 +130,12 @@ function matrix(c) {
   return [over(cosine) & 0xFFFF, over(sine) & 0xFFFF, -over(sine) & 0xFFFF, over(cosine) & 0xFFFF];
 }
 
-/** The six sprites and their matrix, written where the original's V-blank would copy them: OAM entry by entry. */
-function drawSprites(c) {
-  const oam = c.video.oam;
-  for (let i = 0; i < 128; i++) {
-    oam[i * 4] = 0x200;
-    oam[i * 4 + 1] = 0;
-    oam[i * 4 + 2] = 0;
-    oam[i * 4 + 3] = i % 4 === 0 ? 0x100 : 0;
-  }
-  for (let i = 0; i < ENTRIES.length; i++) {
-    const [a0, a1, a2] = ENTRIES[i];
-    oam[i * 4] = a0;
-    oam[i * 4 + 1] = a1;
-    oam[i * 4 + 2] = a2;
-  }
-  const [pa, pb, pc, pd] = matrix(c);
-  oam[3] = pa;
-  oam[7] = pb;
-  oam[11] = pc;
-  oam[15] = pd;
+/** The six sprites and their matrix, queued for the V-blank (0x08018004 and 0x08017f34), which it asks to copy. */
+function queueSprites(c) {
+  clearSprites(c);
+  c.sprites.push(...ENTRIES);
+  c.matrices.push(matrix(c));
+  copyAtVblank(c);
 }
 
 /** 0x0803e6e8: the palette one step to black each frame, then the next screen; none is ported, so it stops. */
@@ -205,7 +194,7 @@ export function title(c) {
   c.video.write(BG1VOFS, 48 - c.titleY);
   c.video.write(REG.BG0HOFS, c.titleX);
   c.video.write(BG0VOFS, 48 + c.titleY);
-  drawSprites(c);
+  queueSprites(c);
   if ((c.keys.pressed & KEY.START) && c.titleCounter > 80) {
     c.titleCounter = 0;
     c.titlePulse = 0;
@@ -213,8 +202,10 @@ export function title(c) {
     c.titleY = 0;
     c.titleTargetX = 0;
     c.titleTargetY = 0;
+    clearSprites(c);
     c.sound?.play(404);          // 0x0801f618
-    c.sound?.fadeIn(0, 7);       // 0x0801f718(0, 120): song 0's player, 120>>4
+    // 0x0801f718(0, 120): the player of song 0, the title's music, a step down every 120 >> 4 frames
+    c.sound?.fadeOut(c.rom.bytes[SONG_TABLE - CARTRIDGE + 4], 7);
     c.callback = fadeToNext;
   } else if (c.titleCounter > 600) {
     c.titleCounter = 0;
@@ -223,6 +214,7 @@ export function title(c) {
     c.titleY = 0;
     c.titleTargetX = 0;
     c.titleTargetY = 0;
+    clearSprites(c);
     c.callback = fadeToAttract;
   }
 }
@@ -232,9 +224,7 @@ export function title(c) {
 export function toTitle(c) {
   c.video.pal.fill(0);
   c.titleCounter = -1;
-  // the original's pulse lands a frame after the title's own counters say it should: starting one lower puts
-  // the first pulse on the title's 16th frame, where the proof finds it
-  c.titlePulse = -2;
+  c.titlePulse = -1;
   c.titlePulseCount = 0;
   c.titleX = 0;
   c.titleY = 0;

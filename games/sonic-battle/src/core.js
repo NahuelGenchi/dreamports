@@ -44,8 +44,11 @@ export function createCore(video, rom, sound) {
     // gUnknown_03003380 and gUnknown_03003140: the rotating layers' parameters, in two halves, the one being
     // written and the one the V-blank copies
     affine: [new Uint16Array(16), new Uint16Array(16)], affineHalf: 0,
-    // gUnknown_030013a0: set when the V-blank should copy the parameters and the sprites (nothing here sets it)
+    // gUnknown_030013a0: set when the V-blank should copy the parameters and the sprites (0x08017c5c)
     vblankCopies: 0,
+    // gUnknown_030033e0 and gUnknown_03003190: the sprites queued for that copy, each the three words of its OAM
+    // entry, and their rotation matrices, each its four words (0x08018004 and 0x08017f34)
+    sprites: [], matrices: [],
     // gUnknown_03001b08, gUnknown_030016c0 and gUnknown_03001b2c: the logos' frame count, the cross-fade's
     // target and where it is (logos.js)
     counter: 0, blendTarget: 0, blend: 0,
@@ -97,15 +100,45 @@ function readKeys(c, held) {
   k.timer = k.interval;
 }
 
-// 0x080185d8, the V-blank interrupt: the sound engine's frame (0x0801f60c), the V-blanks counted, the registers
-// queued (0x0801fbd8), and the frame counted. Copying the rotation parameters and the sprites waits for
-// gUnknown_030013a0, which nothing sets yet.
+// 0x080185d8, the V-blank interrupt: the sound engine's frame (0x0801f60c), the V-blanks counted, the rotation
+// parameters and the sprites when gUnknown_030013a0 asks for them, the registers queued (0x0801fbd8), and the frame
+// counted. Sprites a callback queues go in here, so they show a frame after what it writes directly.
 function vblank(c) {
   c.vblanks++;
+  if (c.vblankCopies) {
+    // 0x0801694c: the half of the rotation parameters just finished
+    c.affine[c.affineHalf].forEach((word, i) => c.video.write(REG.BG2PA + i * 2, word));
+    // 0x08017eec, 0x0801ff30, 0x08017690 and 0x08017fb0, then 0x0801ffa4 copying them to OAM: every sprite hidden
+    // with its rotation the identity, then the queues over them, the first sprite and the first matrix first
+    hideSprites(c);
+    const { oam } = c.video;
+    c.sprites.forEach((words, i) => oam.set(words, i * 4));
+    c.matrices.forEach((words, m) => words.forEach((word, i) => { oam[m * 16 + i * 4 + 3] = word; }));
+    c.vblankCopies = 0;
+  }
   // 0x0801fbd8, 0x0801fbfc
   for (const [offset, value] of c.queue) c.video.write(offset, value);
   c.queue.length = 0;
   c.frames++;
+}
+
+/** 0x0801ff30's pattern over all of OAM: every sprite hidden, and every rotation matrix the identity. */
+function hideSprites(c) {
+  for (let i = 0; i < 32; i++) {
+    c.video.oam.set([0x200, 0, 0, 0x100, 0x200, 0, 0, 0, 0x200, 0, 0, 0, 0x200, 0, 0, 0x100], i * 16);
+  }
+}
+
+/** 0x08017ed0: nothing queued, so the next copy leaves every sprite hidden. */
+export function clearSprites(c) {
+  c.sprites.length = 0;
+  c.matrices.length = 0;
+}
+
+/** 0x08017c5c: asks the next V-blank for the other half of the rotation parameters and for the queued sprites. */
+export function copyAtVblank(c) {
+  c.affineHalf ^= 1;
+  c.vblankCopies = 1;
 }
 
 /** 0x0801fba0: a display register written at the next V-blank, at most 20 a frame. */
@@ -211,9 +244,7 @@ export function newScreen(c, mode) {
   const { video } = c;
   video.pal.fill(video.pal[0], 1);
   video.vram.fill(0);
-  for (let i = 0; i < 32; i++) {
-    video.oam.set([0x200, 0, 0, 0x100, 0x200, 0, 0, 0, 0x200, 0, 0, 0, 0x200, 0, 0, 0x100], i * 16);
-  }
+  hideSprites(c);
   c.affineHalf = 0;
   c.vblankCopies = 0;
   if ((mode >= 1 && mode <= 4) || mode === 40) queueRegister(c, REG.DISPCNT, 0x1C62);
