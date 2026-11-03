@@ -32,6 +32,19 @@ test('writes a task the claims workflow reads by its headings, free for anyone t
   assert.equal(field(text, 'Where it starts'), null);
 });
 
+test('writes a foundation under its own kind, with what it is, and leaves the player\'s order out of it', () => {
+  const text = taskText('made-up', { name: 'The fighting', foundation: true, what: 'Two fighters in an arena.' });
+  assert.equal(field(text, 'Kind'), 'Foundation');
+  assert.equal(field(text, 'What it is'), 'The fighting, which other pieces of the game need. Two fighters in an arena.');
+  assert.match(field(text, 'Done when'), /npm run dp -- prove made-up/);
+  assert.equal(field(taskText('made-up', { name: 'The fighting', foundation: true, done: 'It fights.' }), 'Done when'), 'It fights.');
+});
+
+test('says what a piece needs, with its number once it has one', () => {
+  const text = taskText('made-up', parts[3], { name: 'The title screen', number: 8 }, [{ name: 'The fighting', number: 9 }, { name: 'The arena' }]);
+  assert.match(field(text, 'What it is'), /right after The title screen \(#8\)\. It needs The fighting \(#9\) and The arena first\.$/);
+});
+
 test('says the first part is where a player starts', () => {
   assert.match(field(taskText('made-up', parts[0]), 'What it is'), /where a player starts/);
 });

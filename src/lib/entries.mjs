@@ -3,6 +3,8 @@
 // games/README.md describes, and its two numbers, code ported and gameplay proven, come only from its proof/ folder,
 // which the proof tools write and docs/STANDARD.md#how-progress-is-measured explains.
 
+import { needsProblems } from './pieces.mjs';
+
 /** A Dreamport's entry, in its folder in games/. */
 export const ENTRY = 'entry.md';
 
@@ -119,11 +121,13 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
 // gameplay proven: each part parts.json lists, proven when a measured recording plays it, from the first frame of
 // it to the last, with no frame that differs and none the original has and the Dreamport lacks
 /** @returns {Gameplay | null} */
-function gameplayOf(at, { parts }, measured, recorded, problems) {
+function gameplayOf(at, file, measured, recorded, problems) {
+  const { parts } = file;
   if (!Array.isArray(parts) || !parts.length) {
     problems.push(`${at}parts.json needs "parts": the game's parts, each with its "name".`);
     return null;
   }
+  problems.push(...needsProblems(file, at));
   const names = new Set();
   const list = parts.map((part, i) => {
     const where = `${at}parts.json's part ${i + 1}`;

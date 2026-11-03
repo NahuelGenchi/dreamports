@@ -3,7 +3,8 @@
 // - code-map.json: every function in that copy, its address and size, and nothing of its code
 // - recordings/<name>.json: recorded play (recording.mjs)
 // - progress.json: what prove found, recording by recording, and the % it makes
-// - parts.json: the game's parts, each with the recording and frames that prove it once there are some
+// - parts.json: the game's parts, each with the recording and frames that prove it once there are some, and its
+//   foundations, each piece with what it needs (src/lib/pieces.mjs)
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
 import { join, basename } from 'node:path';
@@ -44,11 +45,14 @@ export function readRecordings(game, names = []) {
   });
 }
 
-/** The game's parts, as parts.json lists them, or none when there's no parts.json yet. */
-export function readParts(game) {
+/** The game's parts.json as it is, with its parts and its foundations, or {} when there's none yet. */
+export function readPartsFile(game) {
   const file = join(proofFolder(game), 'parts.json');
-  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).parts ?? [] : [];
+  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
 }
+
+/** The game's parts, as parts.json lists them, or none when there's no parts.json yet. */
+export const readParts = game => readPartsFile(game).parts ?? [];
 
 /** The code map, with each function as { address, size, name }, sorted by address; or null when there's none yet. */
 export function readCodeMap(game) {

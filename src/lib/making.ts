@@ -1,12 +1,14 @@
 // What each Dreamport's page in the Make row reads from GitHub as the site is built (#143, docs/MAKE.md): its
 // steps, the pull requests merged in its milestone or with its label, newest first, and how many of its pieces are
-// free to take, the open sub-issues of its game's issue that nobody has claimed. GitHub answers anyone 60 times an
+// free to take, the open sub-issues of its game's issue that nobody has claimed and that wait on nothing
+// (src/lib/pieces.mjs). GitHub answers anyone 60 times an
 // hour, and 5,000 with a read-only token in GITHUB_TOKEN, which Cloudflare can keep for the site's builds. When GitHub
 // doesn't answer, the build takes what dreamports.net last read, from /make/github.json. With neither, a build on
 // Cloudflare stops, so dreamports.net keeps the pages it has, and a build on a contributor's computer goes on without
 // steps or pieces.
 import { SOURCE_URL, getGames } from './site';
-import { beingMade } from './dreamports';
+import { beingMade, partsFile } from './dreamports';
+import { whatCanStart } from './pieces.mjs';
 
 export interface Step {
   number: number;
@@ -88,7 +90,7 @@ async function fromGitHub(games: { game: string; title: string; issue: number }[
     );
     data[game] = {
       steps: [...steps.values()].sort((a, b) => b.merged.localeCompare(a.merged)),
-      free: pieces.filter((piece) => piece.state === 'open' && !piece.assignees?.length).length,
+      free: whatCanStart(pieces, partsFile(game)).free.length,
     };
   }
   return data;
