@@ -1,0 +1,15 @@
+{
+  "about": "From power-on: the logos and the intro, then the first 328 frames of the title screen, which the Dreamport doesn't have yet, with nothing pressed.",
+  "frames": 547,
+  "held": [
+    [0,[]]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 547,
+      "frames": 328,
+      "held": [],
+      "about": "The title screen, which the Dreamport doesn't have yet: it starts where the intro ends."
+    }
+  ]
+}
