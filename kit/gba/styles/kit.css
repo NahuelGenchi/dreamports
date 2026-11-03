@@ -508,7 +508,7 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 .sheet :focus { outline: none; }
 .sheet :focus-visible, .sheet .pad-at { outline: 2px solid var(--blue); outline-offset: 2px; }
 /* a pixel frame, 2 px with the corner pixels left out */
-.sheet :is(.sheet-back, .sheet-paused, .resume, .ach-tile, .rows, .status, .chip, .card, .key, .track, .navs, .ctl-list, .assets-facts, .drop, .assets-sheet, .rom, .assets-choose) {
+.sheet :is(.sheet-back, .sheet-paused, .resume, .quit, .ach-tile, .rows, .status, .chip, .card, .key, .track, .navs, .ctl-list, .assets-facts, .drop, .assets-sheet, .rom, .assets-choose) {
   box-shadow: 0 -2px var(--frame), 0 2px var(--frame), -2px 0 var(--frame), 2px 0 var(--frame);
 }
 .sheet-sr, .key-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -552,12 +552,16 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 .settings-status { margin: 0 2px; color: var(--dim); font-size: 13.5px; line-height: 20px; }
 .settings-status:empty, #stats { display: none; }
 .stage.debug #stats:not(:empty) { display: block; }
-.resume {
+/* the ways out, together: back to the game filled, and quitting in its outline, so it's seen and still comes second */
+.resume, .quit {
   --frame: var(--sky); display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; margin: 2px; padding: 0 18px;
-  border: 0; background: var(--sky); color: #0a1738 !important; cursor: pointer;
+  border: 0; cursor: pointer;
 }
+.resume { background: var(--sky); color: #0a1738 !important; }
+.quit { background: none; }
 .resume svg { width: 8px; height: 14px; }
-.resume:active, .ach-tile:active { transform: translateY(2px); }
+.quit svg { width: 18px; height: 18px; }
+.resume:active, .quit:active, .ach-tile:active { transform: translateY(2px); }
 .ach-tile {
   display: grid; grid-template-columns: 36px minmax(0, 1fr) 8px; align-items: center; gap: 10px 14px; margin: 2px; padding: 14px 14px 14px 16px;
   border: 0; background: var(--paper); text-align: left; cursor: pointer;
@@ -705,7 +709,7 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 @media (hover: hover) {
   .sheet-close:hover, .chip:hover { background: var(--hover); color: var(--ink); }
   .chip:hover { color: var(--ink) !important; }
-  .sheet-back:hover, .ach-tile:hover, .row:not(:disabled):hover, .nav:not([aria-current="true"]):hover { background: var(--hover); }
+  .sheet-back:hover, .quit:hover, .ach-tile:hover, .row:not(:disabled):hover, .nav:not([aria-current="true"]):hover { background: var(--hover); }
   .ach-tile:hover, .status:hover:not([aria-pressed="true"]) { --frame: var(--sky); }
   .resume:hover { --frame: var(--act); background: var(--act); color: var(--on-act) !important; }
   .row:not(:disabled):hover .track::after { background: var(--ink); }

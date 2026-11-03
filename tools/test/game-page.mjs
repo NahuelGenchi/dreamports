@@ -109,6 +109,7 @@ async function tryGame(page, server, game, rom) {
   const viewIs = name => `document.querySelector('.sheet').dataset.view === '${name}'`;
   await page.evaluate(`document.querySelector('.settings-open').click()`);
   await until(page, open, 'the settings', 5000);
+  check(await page.evaluate(`document.querySelector('[data-quit]').previousElementSibling.matches('.resume')`), 'Quit the game stands under Back to the game');
   await page.evaluate(`document.querySelector('[data-quit]').click()`);
   check(await until(page, viewIs('quit'), 'the question', 5000).then(() => true, () => false), 'Quit the game asks first, in the settings');
   await wait(800);

@@ -39,6 +39,7 @@ export function createSettings(stage, input, { what = {}, note = '', touch = nul
           <div class="sheet-body settings-body single">
             <div class="settings-col sheet-rise">
               <button type="button" class="resume" data-close>${PLAY}Back to the game</button>
+              <button type="button" class="quit" data-quit>${LEAVE}Quit the game</button>
               <ul class="rows">
                 <li><button type="button" class="row" data-controls>
                   ${PAD}
@@ -49,11 +50,6 @@ export function createSettings(stage, input, { what = {}, note = '', touch = nul
                   <span class="row-text">Button opacity<span class="row-hint">The buttons drawn around the game</span></span>
                   <input type="range" id="button-opacity">
                 </label></li>` : ''}
-                <li><button type="button" class="row" data-quit>
-                  ${LEAVE}
-                  <span class="row-text">Quit the game</span>
-                  ${CHEVRON.replace('<svg', '<svg class="chev"')}
-                </button></li>
               </ul>
             </div>
           </div>
