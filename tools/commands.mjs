@@ -1,6 +1,6 @@
 // npm run dp -- commands [--check]: writes the /dreamport commands, each written once in tools/commands/<name>.md, in
-// the form each coding agent reads: .claude/skills/ for Claude Code, .agents/skills/ for Codex (which Cursor and
-// Antigravity CLI read too) and .gemini/commands/ for Gemini CLI. Every copy runs only when the person types it, or
+// the form each coding agent reads: .claude/skills/ for Claude Code, .agents/skills/ for Codex (which Cursor, Antigravity
+// CLI and DeepSeek Harness read too) and .gemini/commands/ for Gemini CLI. Every copy runs only when the person types it, or
 // pastes one of the sentences its source lists, and starts by saying so, for the agents that might load it by
 // themselves. With --check it changes nothing and fails when a copy differs from its source, which `npm run check` uses.
 
