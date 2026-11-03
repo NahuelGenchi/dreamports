@@ -5,7 +5,8 @@
 // which only the step's pull request shows (docs/STANDARD.md#clips): share prints the lines for it. share asks before
 // it publishes and before it switches Pages on; --yes answers yes, once the contributor has said yes.
 
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve, extname, basename, dirname, sep } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { LOCAL } from './lib/paths.mjs';
@@ -45,11 +46,7 @@ export async function run(args) {
 
   // the clip for the step's pull request, and a frame of it
   const clip = chooseClip(game, clipFile);
-  const stamp = `${new Date().toISOString().slice(0, 10)}-${commit.slice(0, 7)}`;
-  const clips = clip ? [
-    { path: `${CLIPS}/${game}/${stamp}${extname(clip.file)}`, file: clip.file },
-    ...(clip.still ? [{ path: `${CLIPS}/${game}/${stamp}-still.png`, file: clip.still }] : []),
-  ] : [];
+  const clips = clip ? clipFiles(game, commit, clip) : [];
 
   const tip = fetchPreviews(fork.remote);
   const preview = makePreview({ tip, commit, branch, game, title, name, author: login, repository: fork.repository, linked, url, about, guide: GUIDE, clips });
@@ -144,17 +141,30 @@ function chooseClip(game, file) {
   const base = extname(file) === '.mp4' ? join(dirname(file), basename(file, '.mp4')) : null;
   const still = base && [`${base}.png`, `${base}-middle.png`].find(existsSync);
   const sideBySide = file.startsWith(join(LOCAL, 'results') + sep) && /^clip(-[a-z]+)?\.(mp4|png)$/.test(basename(file));
-  return { file, bytes, still: still ?? null, sideBySide };
+  // the recording it plays, which tells a step's clips apart in its pull request
+  const recording = file.startsWith(results + sep) ? file.slice(results.length + 1).split(sep)[0] : null;
+  return { file, bytes, still: still ?? null, sideBySide, recording };
+}
+
+// where a clip and its frame go on the previews site. What's in the clip names it too, so a step's second clip, from
+// the same commit, has an address of its own and leaves the first where its pull request shows it
+export function clipFiles(game, commit, clip, day = new Date().toISOString().slice(0, 10)) {
+  const stamp = `${day}-${commit.slice(0, 7)}-${createHash('sha1').update(readFileSync(clip.file)).digest('hex').slice(0, 7)}`;
+  return [
+    { path: `${CLIPS}/${game}/${stamp}${extname(clip.file)}`, file: clip.file },
+    ...(clip.still ? [{ path: `${CLIPS}/${game}/${stamp}-still.png`, file: clip.still }] : []),
+  ];
 }
 
 // the clip as the pull request shows it: a frame that links the video, or the picture
-function clipLines(title, clip, clips, siteUrl) {
+export function clipLines(title, clip, clips, siteUrl) {
   const video = `${siteUrl}${clips[0].path}`;
   const what = clip.sideBySide ? ', the original on the left and the Dreamport on the right, with the same button presses' : '';
-  if (extname(clip.file) === '.png') return `![${title}${what}](${video})`;
+  const name = clip.recording ? `${title}, ${clip.recording}` : title;
+  if (extname(clip.file) === '.png') return `![${name}${what}](${video})`;
   return [
-    ...(clips[1] ? [`[![${title}: a frame of the clip](${siteUrl}${clips[1].path})](${video})`, ''] : []),
-    `[Watch the clip](${video}) (MP4, ${(clip.bytes / 1e6).toFixed(1)} MB${what})`,
+    ...(clips[1] ? [`[![${name}: a frame of the clip](${siteUrl}${clips[1].path})](${video})`, ''] : []),
+    `[Watch the clip${clip.recording ? ` of ${clip.recording}` : ''}](${video}) (MP4, ${(clip.bytes / 1e6).toFixed(1)} MB${what})`,
   ].join('\n');
 }
 

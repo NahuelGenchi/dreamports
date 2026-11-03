@@ -63,7 +63,7 @@ This part is for an agent helping someone make a Dreamport, or a piece of one, u
 
 **Proving.** Every step gets a recording and `npm run dp -- prove`, and `portmap` runs after the code changes. Never type a number, and never say something matches the original unless `prove` found every frame the same. A step that makes anything that matched before differ isn't done.
 
-**Its issue and branch.** The claim's issue, New Dreamport or Task, is the work item, and the claims workflow gives it a milestone. Its branch is `feat/<issue>-<slug>`, from the team build (`npm run dp -- team <game> join`) when the game has one, or else from the latest `main`. A pull request to this repository fills in `.github/pull_request_template.md`, with its part for a Dreamport.
+**Its issue and branch.** The claim's issue, New Dreamport or Task, is the work item, and the claims workflow gives it a milestone. Its branch is `feat/<issue>-<slug>`, from the team build (`npm run dp -- team <game> join`) when the game has one, or else from the latest `main`. A pull request to this repository fills in `.github/pull_request_template.md`, with its part for a Dreamport. Since #268 its clips get there through `share`, as GitHub can't attach a file to a pull request from the command line: `/dreamport-send` stops until `/dreamport-share` has printed the lines for each, and telling someone to drag a clip in is only for someone who doesn't want to share it or can't.
 
 ## Private data
 
