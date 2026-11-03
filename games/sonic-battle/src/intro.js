@@ -1,10 +1,11 @@
 // The intro, after the logos and before the title screen (the decompilation's src/unknown_0803d748.cpp:
 // 0x0803d748, 0x0803d860 and 0x0803dd14). It shows five pictures one after another, each a rotating layer 2
-// image moving across the screen with layer 0 over it, then zooms a looping animation out and back in. What
-// comes after it isn't ported yet, so the screen stays black after the intro.
+// image moving across the screen with layer 0 over it, then zooms a looping animation out and back in. Both its
+// Start and the animation's last frame hand over to the title screen (title.js, 0x0803e1b0).
 
 import { REG } from '../../../kit/gba/video.js';
 import { KEY, newScreen, copyToVram, queueRegister, setBlend } from './core.js';
+import { toTitle } from './title.js';
 
 const CARTRIDGE = 0x08000000, SINE = 0x0804DF7C;
 // BG2PA to BG2PD in the display registers; the kit names only the first
@@ -60,15 +61,8 @@ function setReference(c, x, y) {
   c.video.write(REG.BG2Y + 2, (y & 0x0FFF0000) >>> 16);
 }
 
-/** What comes after the intro isn't ported yet: the screen stays black. */
-function afterIntro() {}
-
-/** Start skips the rest of the intro. In the original it goes on to the next screen from the pictures, and
- *  through a fade from the animation; neither is ported, so the screen goes black. */
-function skip(c) {
-  c.video.pal.fill(0);
-  c.callback = afterIntro;
-}
+/** Start leaves the intro for the title screen (0x0803e1b0), whose frame 0 is the next one. */
+function skip(c) { toTitle(c); }
 
 /** 0x0803d748: the intro's start. */
 export function intro(c) {
@@ -171,8 +165,7 @@ function animation(c) {
     c.introY = 0;
     c.introTargetX = 0;
     c.introTargetY = 0;
-    c.video.pal.fill(0);
-    c.callback = afterIntro;   // what comes next isn't ported yet
+    toTitle(c);
   }
   // BG2's matrix at angle 0: pa and pd the cosine, pb the sine, pc its negation, each over the scale
   const cosine = c.rom.s16(SINE - CARTRIDGE + 0x800 * 2) << 3;
@@ -188,5 +181,5 @@ function animation(c) {
   c.video.write(BG2PD, pd);
   setReference(c, ((120 - c.introX) << 8) - s16(pa) * 120 - s16(pb) * 80,
     ((120 - c.introY) << 8) - s16(pc) * 120 - s16(pd) * 80);
-  if ((c.keys.pressed & KEY.START) && c.introTimer > 80) skip(c);
+  if (c.keys.held & KEY.START) skip(c);
 }
