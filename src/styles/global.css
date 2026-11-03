@@ -1514,6 +1514,17 @@ dialog.card[open] {
   display: none;
 }
 
+/* a word while the profile is on its way comes in softly, as what follows it does */
+.card-profile[data-state='wait'] .pf-status {
+  animation: pf-soft 0.2s ease-out;
+}
+
+@keyframes pf-soft {
+  from {
+    opacity: 0;
+  }
+}
+
 .pf-lead,
 .pf-since {
   margin: 14px 2px 0;

@@ -30,12 +30,12 @@ for (const game of await getGames('dreamport')) {
   data-path="/profile/"
   data-title={pageTitle('Profile')}
   data-games={JSON.stringify(games)}
-  data-state="out"
+  data-state="wait"
   aria-labelledby="profile-title"
   open={open}
 >
   <div class="card-body">
-    <Title class="card-title" id="profile-title">Sign in</Title>
+    <Title class="card-title" id="profile-title">Profile</Title>
     <div class="pf-body">
       <p class="pf-status" id="pf-status" role="status" aria-live="polite"></p>
 

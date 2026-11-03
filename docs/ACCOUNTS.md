@@ -61,7 +61,7 @@ A signed-in player can link another account from **Signs in with** on their prof
 
 No email address, no password, no token from a service, no IP address and nothing about the device. The player can download all of it (`/api/me/data`, a JSON file) and delete all of it from the profile. Deleting also forgets the accounts it signed in with, so they're new to the site again.
 
-The browser keeps up to three cookies, all `HttpOnly`, `Secure` and `SameSite=Lax`: `__Host-dreamports` while signed in (a year), `__Host-dreamports-oauth` while on a service's page (ten minutes), and `__Host-dreamports-new` while picking a name (half an hour). It also keeps a note, `dreamports:player` in `localStorage`, with the player's name, so `/dreamports.js` knows whether anyone is signed in without asking the site.
+The browser keeps up to three cookies, all `HttpOnly`, `Secure` and `SameSite=Lax`: `__Host-dreamports` while signed in (a year), `__Host-dreamports-oauth` while on a service's page (ten minutes), and `__Host-dreamports-new` while picking a name (half an hour). It also keeps a note, `dreamports:player` in `localStorage`, with the player's name, so `/dreamports.js` knows whether anyone is signed in without asking the site. The note also lets the launcher show the name at once on the profile, which never shows Sign in to someone signed in, and ask `/api/me` once while it rests, so the profile is ready before it opens. Nobody without a note makes that request.
 
 Players must be at least 13 to make a profile, the age most game sites use for the US children's privacy law (COPPA). This is a placeholder until the owner decides in #16, and sign-up only asks the player to confirm it.
 
