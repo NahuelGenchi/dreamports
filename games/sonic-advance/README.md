@@ -368,7 +368,7 @@ Your achievements are kept in this browser. On dreamports.net, sign in to a [Dre
 | **Select** | <kbd>Backspace</kbd> | <kbd>View</kbd> |
 | Settings open or closed | <kbd>H</kbd> | <kbd>View</kbd> + <kbd>Menu</kbd> held together (the game sees neither then) |
 | In the settings: move between the buttons, press the one picked | Arrows, <kbd>Z</kbd> or <kbd>Enter</kbd> | D-pad or left stick, <kbd>A</kbd> |
-| In the settings: back a step (from Achievements, Controls, Your ROMs or the asset viewer), or close them | <kbd>Esc</kbd>, <kbd>X</kbd> or <kbd>Backspace</kbd> | <kbd>B</kbd> |
+| In the settings: back a step (from Achievements, Controls, Your ROMs, the asset viewer or the question before quitting), or close them | <kbd>Esc</kbd>, <kbd>X</kbd> or <kbd>Backspace</kbd> | <kbd>B</kbd> |
 | In the settings: the previous or the next tab (All, Earned and Locked in the achievements, a kind of control, a part of the asset viewer) | <kbd>Q</kbd> <kbd>E</kbd> | <kbd>LB</kbd> <kbd>RB</kbd> |
 | In the settings: scroll a list or a picture | Pick it, then <kbd>↑</kbd> <kbd>↓</kbd> | Right stick |
 | In the achievements: show only what Beaten or Mastered needs, then all of them again | Pick it, <kbd>Z</kbd>, then <kbd>Z</kbd> again | Pick it, <kbd>A</kbd>, then <kbd>A</kbd> again |
@@ -379,7 +379,7 @@ Your achievements are kept in this browser. On dreamports.net, sign in to a [Dre
 | SA2 tricks on or off | <kbd>T</kbd> | |
 | Show the collision (for checking the level) | <kbd>C</kbd> | |
 
-The settings are behind the button in the top-left corner of the game. They rise in the middle of the screen, drawn like the [dreamports.net](https://dreamports.net/) launcher, over the game, which waits blurred behind them, music and all, and goes on from the same frame once they close; a click or a tap outside them closes them. *Achievements*, *Controls*, *Your ROMs* and *Asset viewer* open inside them: the settings grow into a bigger box for each, with what it holds in kinds on the left and the one picked on the right, and its back arrow goes back to the settings. On a phone held upright they fill the screen, with the kinds and filters at the top, staying there while the list under them scrolls. *Controls* lists every key, or every button of an Xbox controller, and what it does.
+The settings are behind the button in the top-left corner of the game. They rise in the middle of the screen, drawn like the [dreamports.net](https://dreamports.net/) launcher, over the game, which waits blurred behind them, music and all, and goes on from the same frame once they close; a click or a tap outside them closes them. *Achievements*, *Controls*, *Your ROMs* and *Asset viewer* open inside them: the settings grow into a bigger box for each, with what it holds in kinds on the left and the one picked on the right, and its back arrow goes back to the settings. On a phone held upright they fill the screen, with the kinds and filters at the top, staying there while the list under them scrolls. *Controls* lists every key, or every button of an Xbox controller, and what it does. *Quit the game* asks first, in the same box, since anything not saved goes with the game, and then goes back to the launcher.
 
 Other controllers that your browser maps to the Xbox layout work the same way. Press a button once after the page loads so the browser notices the controller; on the start screen, a small controller badge lights up while an Xbox controller is connected, and fades and leaves when it's unplugged.
 
