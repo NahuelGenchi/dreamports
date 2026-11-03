@@ -13,7 +13,7 @@ Never describe something as working or complete unless a recorded check establis
 | `README.md` | Front page of the repository, written for non-technical readers |
 | `CONTRIBUTING.md` | Contribution workflow and rules |
 | `docs/` | One record per decision or process (`docs/TRACKING.md`) |
-| `.claude/skills/`, `.agents/skills/`, `.gemini/commands/` | The `/dreamport` commands for Claude Code, for Codex (also read by Cursor, Gemini CLI and Antigravity CLI) and for Gemini CLI, written by `npm run dp -- commands`: never edit them by hand |
+| `.claude/skills/`, `.agents/skills/`, `.gemini/commands/` | The `/dreamport` commands for Claude Code, for Codex (also read by Cursor, Gemini CLI, Antigravity CLI and DeepSeek Harness) and for Gemini CLI, written by `npm run dp -- commands`: never edit them by hand |
 | `.github/` | Issue forms (work item, New Dreamport, Task), PR template, the check, tracking, claims, Make pages, first entry and moderation workflows, the moderation bot's rules, prompt and code in `.github/moderation/`, what can come in as a first entry in `.github/first-entry/`, README images, and each Dreamport's progress map in `.github/readme/progress/` |
 | `games/` | The games made here, one folder each, with its entry, `entry.md`, copied as they are to `/play/<game>/` by `src/integrations/games.mjs` (`games/README.md`) |
 | `kit/` | What the games on one console share, one folder per console, copied as they are to `/kit/<console>/` by the same integration; the Game Boy Advance's is `kit/gba/` (`kit/gba/README.md`) |
