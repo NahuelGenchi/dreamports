@@ -135,8 +135,8 @@ function partsOf(game: string, gameplay: Proof['gameplay']): PartView[] {
 // The address a newcomer's coding agent starts from: it redirects to this repository (public/_redirects).
 const CODE_URL = 'https://dreamports.net/code';
 
-/** Whether a Dreamport is still being made, so it has a place in the Make row: until every part of it is proven. */
-export const beingMade = (data: Dreamport): boolean => proofFor(data.game)?.gameplay?.percent !== 100;
+/** Whether a Dreamport has a place in the Make row: once it has a real capture for its card, until every part of it is proven. */
+export const beingMade = (data: Dreamport): boolean => !!data.screen && proofFor(data.game)?.gameplay?.percent !== 100;
 
 // whether a Dreamport has code of the original's: what `npm run dp -- new` writes names none and only shows a blue screen
 const hasCode = (data: Dreamport): boolean => (proofFor(data.game)?.ported?.percent ?? 0) > 0;

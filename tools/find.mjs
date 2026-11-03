@@ -106,8 +106,8 @@ function show(game, local, claims, team) {
   row('Code ported', proof?.ported ? percentText(proof.ported.percent) : local ? 'not measured yet: it needs a code map' : 'not measured yet');
   row('Gameplay proven', proof?.gameplay ? `${percentText(proof.gameplay.percent)}, ${proof.gameplay.proven} of ${proof.gameplay.total} parts` : local ? 'not measured yet: it needs a list of its parts' : 'not measured yet');
   if (entry) row('Its page', `https://dreamports.net/dreamports/${pageOf(game)}/`);
-  // a Dreamport has a page in the Make row until every part of it is proven (docs/MAKE.md)
-  if (entry && proof?.gameplay?.percent !== 100) row('Make page', `https://dreamports.net/make/${game}/, with its steps and the pieces free to take`);
+  // a Dreamport has a page in the Make row from its capture until every part of it is proven (docs/MAKE.md)
+  if (entry?.screen && proof?.gameplay?.percent !== 100) row('Make page', `https://dreamports.net/make/${game}/, with its steps and the pieces free to take`);
   if (entry) {
     const notes = notesOfGame(game).length;
     row('Notes', notes ? `${notes} on what people found making it: npm run dp -- notes ${game} lists them` : 'none yet');

@@ -21,6 +21,11 @@ ownCopy:
     - label: Play
       href: https://dreamports.net/play/sonic-battle/
       icon: play
+screen:
+  clip: /media/sonic-battle-dreamport
+  still: /media/sonic-battle-dreamport-still.webp
+  pixelated: true
+share: /media/sonic-battle-dreamport-share.png
 ---
 
 ## Credits
