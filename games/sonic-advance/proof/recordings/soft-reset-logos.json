@@ -1,0 +1,46 @@
+{
+  "about": "From power-on with nothing saved: A on the language screen, then A, B, Start and Select held together for 4 frames on the SEGA logo, where they do nothing, and again for 4 frames on the Sonic Team logo, which starts the game again at the title screen.",
+  "frames": 1700,
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      150,
+      [
+        "A"
+      ]
+    ],
+    [
+      156,
+      []
+    ],
+    [
+      320,
+      [
+        "A",
+        "B",
+        "START",
+        "SELECT"
+      ]
+    ],
+    [
+      324,
+      []
+    ],
+    [
+      620,
+      [
+        "A",
+        "B",
+        "START",
+        "SELECT"
+      ]
+    ],
+    [
+      624,
+      []
+    ]
+  ]
+}

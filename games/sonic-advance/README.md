@@ -366,7 +366,8 @@ Your achievements are kept in this browser. On dreamports.net, sign in to a [Dre
 | **In the name input:** move over the characters, add the one picked, take one out; move along the name; jump to END, then <kbd>Z</kbd> to finish | Arrows, <kbd>Z</kbd> or <kbd>Space</kbd>, <kbd>X</kbd>; <kbd>Q</kbd> <kbd>E</kbd> (the Game Boy Advance's L and R); <kbd>Enter</kbd> | D-pad or left stick, <kbd>A</kbd>, <kbd>B</kbd>; <kbd>LB</kbd> <kbd>RB</kbd>; <kbd>Menu</kbd> |
 | **Continue screen:** continue, or skip to the next number | <kbd>Z</kbd> or <kbd>Space</kbd>, or <kbd>X</kbd> | <kbd>A</kbd>, or <kbd>B</kbd> or <kbd>X</kbd> |
 | **Select** | <kbd>Backspace</kbd> | <kbd>View</kbd> |
-| Settings open or closed | <kbd>H</kbd> | <kbd>View</kbd> + <kbd>Menu</kbd> held together (the game sees neither then) |
+| **Soft reset:** starts the game again, at the title screen, with your save as it is | <kbd>Z</kbd> + <kbd>X</kbd> + <kbd>Enter</kbd> + <kbd>Backspace</kbd> held together (the Game Boy Advance's A, B, Start and Select) | <kbd>A</kbd> + <kbd>B</kbd> + <kbd>Menu</kbd> + <kbd>View</kbd> held together |
+| Settings open or closed | <kbd>H</kbd> | <kbd>View</kbd> + <kbd>Menu</kbd> held together (the game sees neither then; with <kbd>A</kbd> and <kbd>B</kbd> too, it's the soft reset) |
 | In the settings: move between the buttons, press the one picked | Arrows, <kbd>Z</kbd> or <kbd>Enter</kbd> | D-pad or left stick, <kbd>A</kbd> |
 | In the settings: back a step (from Achievements, Controls, Your ROMs, the asset viewer or the question before quitting), or close them | <kbd>Esc</kbd>, <kbd>X</kbd> or <kbd>Backspace</kbd> | <kbd>B</kbd> |
 | In the settings: the previous or the next tab (All, Earned and Locked in the achievements, a kind of control, a part of the asset viewer) | <kbd>Q</kbd> <kbd>E</kbd> | <kbd>LB</kbd> <kbd>RB</kbd> |

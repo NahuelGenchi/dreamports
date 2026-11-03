@@ -44,7 +44,8 @@ export function createSpecialStageRun(canvas, rom, offsets, input, sound, game, 
   engine.wideBars = true;
   // gFrameCount goes on through the special stage, a frame each frame, and the act counts on from it
   engine.frameCount = game.frameCount ?? 0;
-  let finished = false;
+  let finished = false, resetting = false;
+  engine.onSoftReset = game.onSoftReset && (() => { resetting = true; });
   const ctx = {
     engine, rom, sound, game, special: null,
     stageIndex: stageOfLevel(rom, offsets, game.level),
@@ -73,6 +74,7 @@ export function createSpecialStageRun(canvas, rom, offsets, input, sound, game, 
   function step() {
     input.poll?.();
     engine.keys = keysOf(input);
+    engine.nextKeys = keysOf(input, input.nextHeld());
     engine.run();
   }
   function draw() {
@@ -86,7 +88,8 @@ export function createSpecialStageRun(canvas, rom, offsets, input, sound, game, 
   clock.reset();
   function loop(now) {
     let ran = false;
-    for (let n = clock.steps(now); n > 0 && !finished; n--) { step(); ran = true; }
+    for (let n = clock.steps(now); n > 0 && !finished && !resetting; n--) { step(); ran = true; }
+    if (resetting) { stop(); game.onSoftReset(); return; }   // the game that starts again draws the frame the reset is in
     if (ran) draw();
     if (finished) { stop(); done({ ...game, frameCount: engine.frameCount }); return; }
     frame = requestAnimationFrame(loop);

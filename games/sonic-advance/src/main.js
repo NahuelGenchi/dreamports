@@ -395,7 +395,7 @@ function stopAll() {
   clearInterval(statsTimer);
 }
 
-function start(buffer, assets) {
+function start(buffer, assets, afterReset = false) {
   stopAll();
   rom = new Rom(buffer);
   picker.hidden = true;
@@ -410,7 +410,7 @@ function start(buffer, assets) {
   const leaving = specialTest && specialSpringStart(assets, { emeralds: save.chaosEmeralds, continues });
   if (leaving) { enterSpecialStage(assets, leaving); return; }
   if (debug) { play(assets); return; }
-  front = createFrontEnd(screen, rom, assets.info.offsets, input, sound, save, () => { front = null; play(assets); });
+  front = createFrontEnd(screen, rom, assets.info.offsets, input, sound, save, () => { front = null; play(assets); }, { softReset, afterReset });
   fitScreen();
   screen.focus();
 }
@@ -426,6 +426,7 @@ function play(assets, resume = null, carry = null) {
     onNextZone: next => nextZone(next),
     // a game over without a continue goes back to the start of the game, the SEGA logo
     onTitle: () => queueMicrotask(restartGame),
+    onSoftReset: softReset,
     // after the true ending, the staff credits; called from inside a step, so the game changes once that
     // frame is over
     onCredits: () => queueMicrotask(() => endGame(assets, 'credits')),
@@ -452,19 +453,23 @@ let playing = null;
 function endGame(assets, from) {
   const { seed } = game.state;
   game.stop();
-  game = createNormalEnding(screen, assets, input, sound, { from, emeralds: from === 'credits', seed, save, onEnd: () => queueMicrotask(restartGame) });
+  game = createNormalEnding(screen, assets, input, sound, { from, emeralds: from === 'credits', seed, save, onEnd: () => queueMicrotask(restartGame), onSoftReset: softReset });
   fitScreen();
   game.start();
   if (debug) globalThis.onsoku = { game, assets, input, sound, save, nextZone, endGame: from => endGame(assets, from) };
 }
 
 // back to the start of the game, the SEGA logo, with no continues and act 1's art (read again if another
-// act's is loaded)
-async function restartGame() {
+// act's is loaded); after a soft reset (`afterReset`), the title screen, past the logos and the intro
+async function restartGame(afterReset = false) {
   continues = 0;
   const assets = sa1.assets.first === 0 ? sa1.assets : await extractAssets(sa1.buffer, () => {}, { level: 0, character });
-  start(sa1.buffer, assets);
+  start(sa1.buffer, assets, afterReset);
 }
+
+// A, B, Start and Select held together (VBlankIntr's SoftReset), from any screen that hasn't turned it off: the
+// game starts again from the title screen, with the save as it is
+function softReset() { sound.reset(); restartGame(true); }
 
 // the last act decoded is over: the next zone's acts, decoded from the ROM now, played on with the score, the
 // lives and the random numbers carried over (GameStageStart). Past the zones this game has, the screen stays.
@@ -491,7 +496,7 @@ async function nextZone({ level, ...carry }) {
 // and the continues it gives are kept
 function enterSpecialStage(assets, handover) {
   game?.stop(); game = null;
-  specialStage = createSpecialStageRun(screen, rom, assets.info.offsets, input, sound, { ...handover, btnConfig: save.btnConfig, achieve }, back => {
+  specialStage = createSpecialStageRun(screen, rom, assets.info.offsets, input, sound, { ...handover, btnConfig: save.btnConfig, achieve, onSoftReset: softReset }, back => {
     specialStage = null;
     save.chaosEmeralds = back.emeralds;
     continues = back.continues;

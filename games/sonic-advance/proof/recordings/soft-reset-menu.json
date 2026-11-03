@@ -1,0 +1,15 @@
+{
+  "about": "From power-on with nothing saved: A on the language screen, the logos left alone, then Start to skip the intro and again on the title screen, then A, B, Start and Select held together for 4 frames on the main menu, and nothing after.",
+  "frames": 2400,
+  "held": [
+    [0,[]],
+    [150,["A"]],
+    [156,[]],
+    [1250,["START"]],
+    [1256,[]],
+    [1500,["START"]],
+    [1506,[]],
+    [1580,["A","B","START","SELECT"]],
+    [1584,[]]
+  ]
+}

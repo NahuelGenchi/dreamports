@@ -1,0 +1,26 @@
+{
+  "about": "From power-on with nothing saved: A on the language screen, the logos left alone, then Start to skip the intro and again on the title, A on Game Start, then Neo Green Hill Zone act 1 running right, with A, B, Start and Select held together for 4 frames at frame 2300, and nothing after.",
+  "frames": 3100,
+  "held": [
+    [0,[]],
+    [150,["A"]],
+    [156,[]],
+    [1250,["START"]],
+    [1256,[]],
+    [1500,["START"]],
+    [1506,[]],
+    [1600,["A"]],
+    [1606,[]],
+    [1750,["A"]],
+    [1756,[]],
+    [1900,["A"]],
+    [1906,[]],
+    [2100,["RIGHT"]],
+    [2200,["A","RIGHT"]],
+    [2215,["RIGHT"]],
+    [2300,["A","B","START","SELECT","RIGHT"]],
+    [2304,["RIGHT"]],
+    [2310,[]]
+  ],
+  "onlyInOriginal": [{"at":1651,"frames":127,"held":[[69,["A"]],[75,[]]],"about":"The character select, which the Dreamport does not have yet: A picks Sonic."}]
+}

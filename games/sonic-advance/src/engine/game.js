@@ -42,6 +42,7 @@ import { RUSH_BOOST_SE } from '../rom/rush.js';
 import { BOOST_MODE_SE } from '../rom/sa2boost.js';
 import { createExtraStage } from './extra.js';
 import { createClock } from '../../../../kit/gba/clock.js';
+import { holdsSoftReset } from './softreset.js';
 import { createPauseMenu, PAUSE_PRIORITY } from './pause.js';
 import { openSave, saveActCleared, WRITE_FRAMES } from './save.js';
 import { playerControls } from './input.js';
@@ -1018,8 +1019,16 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   const game = { state, get tasks() { return tasks; }, get entities() { return entities; }, ctx, world, player, respawn, sound };
   mode?.setup(game);
 
+  let resetting = false;   // the game starts again from the soft reset, and has the screen now
   function step() {
-    if (special || toTitle) return;
+    if (special || toTitle || resetting) return;
+    // the flash write that keeps the CPU busy for a few frames has the interrupts off: no V-blank sees the buttons
+    const stalled = saving > 1;
+    runFrame();
+    if (!stalled && options.onSoftReset && !special && !toTitle && holdsSoftReset(buttons)) { resetting = true; options.onSoftReset(); }
+  }
+
+  function runFrame() {
     input.poll?.();
     startPressed = input.start && !startHeld; startHeld = input.start;
     if (saving > 0) {
@@ -1054,8 +1063,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   const clock = createClock(TICK_MS, { snap: true });
   function loop(now) {
     let ran = false;
-    for (let n = clock.steps(now); n > 0 && !special && !toTitle; n--) { step(); ran = true; }
-    if (special || toTitle) return;   // the special stage, or the game's start, has the screen now
+    for (let n = clock.steps(now); n > 0 && !special && !toTitle && !resetting; n--) { step(); ran = true; }
+    if (special || toTitle || resetting) return;   // the special stage, or the game's start, has the screen now
     if (ran) show();
     frame = requestAnimationFrame(loop);
   }

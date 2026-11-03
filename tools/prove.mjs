@@ -210,7 +210,8 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
       const count = Math.min(BATCH, frames - from);
       say(`frame ${from + count} of ${frames}`);
       const batch = held.slice(from, from + count).map(list => list.map(b => named.get(b)));
-      const played = await page.evaluate(`__proof.run(${from}, ${JSON.stringify(batch)})`);
+      const after = from + count < frames ? held[from + count].map(b => named.get(b)) : null;
+      const played = await page.evaluate(`__proof.run(${from}, ${JSON.stringify(batch)}, ${JSON.stringify(after)})`);
       hashes.push(...played.hashes);
       heard.push(...played.sound);
       // a frame's sound is measured with the frame after it, so the batch's last waits for the next batch

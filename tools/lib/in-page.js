@@ -100,11 +100,12 @@
   window.__proof = {
     /** Plays frames from `from`, each with its buttons held, and resolves to each picture's hash and each frame's
      *  sound, as { energies, samples }: its energy in each band of pitches and how many samples it had. */
-    async run(from, held) {
+    async run(from, held, after = null) {
       const hashes = [], sound = [];
       for (let i = 0; i < held.length; i++) {
         const frame = from + i;
-        const image = await dreamportsProof.step({ held: held[i] });
+        // `next`: what the frame after holds, which a V-blank that reads the buttons finds held (kit/gba/proof.js)
+        const image = await dreamportsProof.step({ held: held[i], next: held[i + 1] ?? after ?? undefined });
         if (!image) throw new Error('The game handed over no picture.');
         if (image.width !== WIDTH || image.height !== HEIGHT) {
           throw new Error(`The game's screen is ${image.width} x ${image.height}, not the console's ${WIDTH} x ${HEIGHT}: proof needs it as the console had it.`);
