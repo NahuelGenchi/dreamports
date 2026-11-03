@@ -143,6 +143,12 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
     barColour?.setAttribute('content', host.hidden ? gameColour : isDark() ? '#050a24' : '#ffffff');
   }
   paint();
+  // it comes in over the Opening screen the page starts on, which then goes
+  const opening = document.querySelector('.opening');
+  if (opening) {
+    host.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+    setTimeout(() => opening.remove(), 200);
+  }
   addEventListener('pageshow', paint);
   darkDevice.addEventListener('change', paint);
   new MutationObserver(paint).observe(host, { attributes: true, attributeFilter: ['hidden'] });
