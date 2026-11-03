@@ -25,6 +25,10 @@ type Games = Record<string, { title: string; href: string }>;
 // the player's name, noted in this browser while they're signed in, so /dreamports.js knows whether
 // to send achievements
 const PLAYER = 'dreamports:player';
+// what the profile had earned when the site last said, by game, noted with the name, so a game's numbers are right on
+// their first frame
+const EARNED = 'dreamports:earned';
+const LOADING = 'Loading…';
 
 const byId = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -52,12 +56,49 @@ function playerNoted() {
   }
 }
 
-function notePlayer(name: string | null) {
+function notePlayer(player: Profile | null) {
   try {
-    if (name) localStorage.setItem(PLAYER, name);
-    else localStorage.removeItem(PLAYER);
+    if (player) {
+      localStorage.setItem(PLAYER, player.name);
+      localStorage.setItem(EARNED, JSON.stringify(player.achievements));
+    } else {
+      localStorage.removeItem(PLAYER);
+      localStorage.removeItem(EARNED);
+    }
   } catch {}
 }
+
+function earnedNoted(): Profile['achievements'] | null {
+  try {
+    return JSON.parse(localStorage.getItem(EARNED) ?? 'null');
+  } catch {
+    return null;
+  }
+}
+
+// what the site says about the visitor, shared by whoever wants it: asked once until the page is shown again, or until
+// someone needs it new. What it says is noted at once, and a failure isn't kept, so the next to want it asks again.
+interface Me {
+  player: Profile | null;
+  pending: Way | null;
+}
+let said: ReturnType<typeof api<Me>> | null = null;
+let answered = false;
+function askSite(again = false) {
+  if (!said || (again && answered)) {
+    answered = false;
+    said = api<Me>('/api/me').then((answer) => {
+      answered = true;
+      if (answer.ok) notePlayer(answer.data.player);
+      else said = null;
+      return answer;
+    });
+  }
+  return said;
+}
+addEventListener('pageshow', (e) => {
+  if (e.persisted) said = null;
+});
 
 // ---------- Achievements ----------
 
@@ -98,7 +139,7 @@ function star() {
 
 // one box per game: its name and how many of its achievements are earned, then each earned one,
 // newest first. The player's own profile shows every game; a public one, the games played.
-async function showGames(box: HTMLElement, games: Games, earned: Profile['achievements'], own: boolean) {
+async function gameBlocks(games: Games, earned: Profile['achievements'], own: boolean) {
   const blocks: HTMLElement[] = [];
   for (const [game, info] of Object.entries(games)) {
     const got = earned[game] ?? {};
@@ -136,7 +177,7 @@ async function showGames(box: HTMLElement, games: Games, earned: Profile['achiev
     }
     blocks.push(block);
   }
-  box.replaceChildren(...blocks);
+  return blocks;
 }
 
 // what this device's games earned before anyone signed in, claimed for the player who just did
@@ -154,15 +195,6 @@ async function claimDevice(games: Games) {
 
 // ---------- A Dreamport's page ----------
 
-// what the profile has earned, by game: asked once until the page is shown again, and only while a player is noted in
-// this browser, as each asking is a request to the site's API
-let onProfile: Promise<Profile['achievements']> | null = null;
-function earnedOnProfile() {
-  if (!playerNoted()) return Promise.resolve<Profile['achievements']>({});
-  onProfile ??= api<{ player: Profile | null }>('/api/me').then(({ data }) => data.player?.achievements ?? {});
-  return onProfile;
-}
-
 function earnedOnDevice(game: string): Record<string, number> {
   try {
     return JSON.parse(localStorage.getItem(deviceKeyOf(game)) ?? 'null') ?? {};
@@ -172,8 +204,8 @@ function earnedOnDevice(game: string): Record<string, number> {
 }
 
 // its achievements, on its own page (src/components/Achievements.astro) and on its Achievements page
-// (src/components/AchievementsCard.astro): each earned one's trophy turns gold, those on this device at once and those
-// on the profile as soon as it answers
+// (src/components/AchievementsCard.astro): each earned one's trophy is gold, those on this device and those the profile
+// had when the site last said from the first frame, and what's new as soon as it answers
 function startAchievements(box: HTMLElement) {
   const game = box.dataset.game!;
   const card = box.closest('dialog')!;
@@ -183,6 +215,11 @@ function startAchievements(box: HTMLElement) {
   const counts = [box, page].map((el) => el.querySelector<HTMLElement>('.ach-count')!);
   const bars = [box, page].map((el) => el.querySelector<HTMLElement>('.ach-bar i')!);
   const note = page.querySelector<HTMLElement>('.ach-note')!;
+  const body = page.querySelector<HTMLElement>('.card-body')!;
+  const word = page.querySelector<HTMLElement>('.ach-wait')!;
+  // what the trophies show, once they show anything
+  let shown = '';
+  let slow = 0;
   function fill(group: string, list: HTMLElement[]) {
     const section = page.querySelector<HTMLElement>(`[data-group="${group}"]`)!;
     section.hidden = !list.length;
@@ -190,6 +227,9 @@ function startAchievements(box: HTMLElement) {
     section.querySelector('ul')!.append(...list);
   }
   function paint(earned: Record<string, number>) {
+    const before = shown;
+    shown = JSON.stringify(earned);
+    if (shown === before) return;
     const has = (item: HTMLElement) => Object.hasOwn(earned, item.dataset.id!);
     const on = items.filter(has).sort((a, b) => earned[b.dataset.id!] - earned[a.dataset.id!]);
     const off = items.filter((item) => !has(item));
@@ -214,13 +254,31 @@ function startAchievements(box: HTMLElement) {
     });
     for (const count of counts) count.textContent = `${on.length} / ${items.length}`;
     for (const bar of bars) bar.style.width = `${(on.length / items.length) * 100}%`;
+    // what the site says differently comes in softly, in the place it stays
+    if (before && page.open) body.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
   }
+  // signed in with nothing noted yet: nothing says what's earned or locked until the site does, with a word only if the
+  // wait is long enough to wonder about
+  function hold(on: boolean) {
+    const held = page.classList.contains('is-waiting');
+    page.classList.toggle('is-waiting', on);
+    box.classList.toggle('is-waiting', on);
+    clearTimeout(slow);
+    word.textContent = '';
+    if (on) slow = window.setTimeout(() => (word.textContent = LOADING), 1000);
+    else if (held && page.open) body.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+  }
+  const known = () => ({ ...earnedOnDevice(game), ...earnedNoted()?.[game] });
   async function show() {
-    const device = earnedOnDevice(game);
-    paint(device);
     note.hidden = !!playerNoted();
-    const profile = await earnedOnProfile();
-    paint({ ...device, ...profile[game] });
+    // what already shows stays while the site is asked again
+    if (playerNoted() && !earnedNoted() && !shown) hold(true);
+    else paint(known());
+    if (!playerNoted()) return;
+    await askSite();
+    hold(false);
+    paint(known());
+    note.hidden = !!playerNoted();
   }
   for (const dlg of [card, page]) {
     dlg.addEventListener('view-open', show);
@@ -231,9 +289,6 @@ function startAchievements(box: HTMLElement) {
   }
 }
 
-addEventListener('pageshow', (e) => {
-  if (e.persisted) onProfile = null;
-});
 for (const box of document.querySelectorAll<HTMLElement>('.achievements[data-game]')) startAchievements(box);
 
 // ---------- The player's own profile ----------
@@ -248,8 +303,6 @@ const TROUBLE: Record<string, (way: string) => string> = {
 };
 
 type State = 'out' | 'pick' | 'in';
-
-const LOADING = 'Loading…';
 
 function startProfile(card: HTMLDialogElement) {
   const games = JSON.parse(card.dataset.games ?? '{}') as Games;
@@ -310,7 +363,7 @@ function startProfile(card: HTMLDialogElement) {
   // the profile, or the name to pick for an account that's new here, or the way in, all of it at once
   async function show(profile: Profile | null, pending: Way | null = null, focus = false) {
     const mine = ++turn;
-    notePlayer(profile?.name ?? null);
+    notePlayer(profile);
     if (profile) {
       byId('pf-since').textContent = `Since ${day.format(profile.since)}`;
       publicSwitch.setAttribute('aria-checked', String(profile.public));
@@ -333,9 +386,10 @@ function startProfile(card: HTMLDialogElement) {
         row.querySelector<HTMLElement>('[data-link]')!.hidden = linked;
         row.querySelector<HTMLElement>('[data-unlink]')!.hidden = !linked || only;
       }
-      await showGames(byId('pf-games'), games, profile.achievements, true);
+      const blocks = await gameBlocks(games, profile.achievements, true);
       // something newer has been shown while the games' lists were on their way
       if (mine !== turn) return;
+      byId('pf-games').replaceChildren(...blocks);
     } else if (pending) {
       byId('pf-pick-lead').textContent = `You’re in with ${WAYS[pending]}.`;
     }
@@ -346,8 +400,8 @@ function startProfile(card: HTMLDialogElement) {
     if (focus) (profile ? publicSwitch : pending ? nameInput : firstWay).focus({ preventScroll: true });
   }
 
-  async function refresh() {
-    const { ok, data } = await api<{ player: Profile | null; pending: Way | null }>('/api/me');
+  async function refresh(again: boolean) {
+    const { ok, data } = await askSite(again);
     if (!ok) {
       say(data.error ?? 'Profiles aren’t available right now.');
       out.hidden = pick.hidden = inside.hidden = true;
@@ -367,8 +421,8 @@ function startProfile(card: HTMLDialogElement) {
 
   // one question at a time: whoever asks while one is on its way gets the same answer
   let asking: Promise<void> | null = null;
-  const ask = () =>
-    (asking ??= refresh().finally(() => {
+  const ask = (again = false) =>
+    (asking ??= refresh(again).finally(() => {
       asking = null;
     }));
 
@@ -387,7 +441,7 @@ function startProfile(card: HTMLDialogElement) {
 
   // signed in: claim the device's achievements, then show the profile with them
   async function welcome(profile: Profile) {
-    notePlayer(profile.name);
+    notePlayer(profile);
     await claimDevice(games);
     const { ok, data } = await api<{ player: Profile | null }>('/api/me');
     await show(ok && data.player ? data.player : profile, null, true);
@@ -497,7 +551,7 @@ function startProfile(card: HTMLDialogElement) {
       // signed out, as far as this browser knows: the way in shows at once
       else showState('out', false);
     }
-    ask();
+    ask(true);
   });
 
   // signed in, as far as this browser knows: the profile gets ready while the launcher rests, so all of it is there on
@@ -517,28 +571,43 @@ function startPlayer(card: HTMLDialogElement, games: Games) {
   const status = byId('pl-status');
   const since = byId('pl-since');
   const box = byId('pl-games');
+  const body = card.querySelector<HTMLElement>('.pf-body')!;
+  let turn = 0;
+  let slow = 0;
 
+  function named(name: string) {
+    title.textContent = name;
+    card.dataset.title = `${name} · Dreamports`;
+    if (card.open) document.title = card.dataset.title;
+  }
+
+  // the name from the address on the first frame, where it stays, and the rest all at once when the site has answered
+  // and the games' lists have come, with a word where the day they joined will stand only if the wait is long enough to
+  // wonder about
   async function load() {
+    const mine = ++turn;
     const name = /^\/players\/([^/]+)\/$/.exec(card.dataset.path ?? location.pathname)?.[1] ?? '';
-    title.textContent = NAME_PATTERN.test(name) ? name : 'Player';
-    status.textContent = 'Loading…';
-    since.textContent = '';
+    named(NAME_PATTERN.test(name) ? name : 'Player');
+    status.textContent = since.textContent = '';
     box.replaceChildren();
+    clearTimeout(slow);
+    slow = window.setTimeout(() => {
+      since.textContent = LOADING;
+      since.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
+    }, 1000);
     const { ok, data } = await api<{ player: { name: string; since: number; achievements: Profile['achievements'] } }>(
       `/api/players/${encodeURIComponent(name)}`,
     );
-    if (!ok) {
-      status.textContent = data.error ?? 'This profile couldn’t be loaded.';
-      return;
-    }
-    const player = data.player;
-    title.textContent = player.name;
-    card.dataset.title = `${player.name} · Dreamports`;
-    if (card.open) document.title = card.dataset.title;
-    status.textContent = '';
-    since.textContent = `Since ${day.format(player.since)}`;
-    await showGames(box, games, player.achievements, false);
-    if (!box.childElementCount) status.textContent = 'No achievements yet.';
+    if (mine !== turn) return;
+    const blocks = ok ? await gameBlocks(games, data.player.achievements, false) : [];
+    // another player's page has been asked for in the meantime
+    if (mine !== turn) return;
+    clearTimeout(slow);
+    if (ok) named(data.player.name);
+    status.textContent = !ok ? (data.error ?? 'This profile couldn’t be loaded.') : blocks.length ? '' : 'No achievements yet.';
+    since.textContent = ok ? `Since ${day.format(data.player.since)}` : '';
+    box.replaceChildren(...blocks);
+    body.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
   }
 
   card.addEventListener('view-open', load);

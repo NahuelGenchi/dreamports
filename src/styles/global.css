@@ -2936,6 +2936,17 @@ dialog.card[open] {
   color: var(--dim);
 }
 
+/* signed in, and what's earned isn't known yet: nothing says so until it is */
+.is-waiting .ach-count,
+.is-waiting .ach-group {
+  visibility: hidden;
+}
+
+.ach-wait {
+  margin-top: 0;
+  animation: pf-soft 0.2s ease-out;
+}
+
 .ach-note {
   margin: 4px 0 0;
   color: var(--dim);

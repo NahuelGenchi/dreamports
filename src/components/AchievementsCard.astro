@@ -2,8 +2,8 @@
 // A Dreamport's Achievements page, in the menu's place, which the row of trophies on its page opens and Back returns
 // to: how many are earned, which stays in place with the game's name, then every one, which scrolls, those earned first,
 // the latest on top, each with the day it was earned. Only the visitor's browser knows that, so src/scripts/profile.ts
-// moves each one to its place, and until then all of them show as locked. A Dreamport that keeps none yet has no such
-// page.
+// moves each one to its place before it shows, and holds them back when it has to wait for the site to know. A Dreamport
+// that keeps none yet has no such page.
 import GameTitle from './GameTitle.astro';
 import ViewBar from './ViewBar.astro';
 import { achievementsUrl, filterFor, gameUrl, pageTitle, type Game } from '../lib/site';
@@ -56,6 +56,7 @@ const Heading = open ? 'h2' : 'h3';
           </section>
         </div>
         <div class="card-body" tabindex="0" autofocus>
+          <p class="pf-status ach-wait" aria-live="polite"></p>
           <section class="set-list ach-group" data-group="earned" hidden>
             <div class="set-row pf-game-head">
               <Heading class="set-label">Earned</Heading>
