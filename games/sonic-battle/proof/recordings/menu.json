@@ -1,0 +1,22 @@
+{
+  "about": "From power-on: the SEGA and Sonic Team logos, the intro and the title screen, Start there, then the main menu. The original reaches it through its name entry, which the Dreamport doesn't have yet, so this recording skips those frames in the original (see onlyInOriginal).",
+  "frames": 1100,
+  "held": [
+    [0,[]],
+    [747,["START"]],
+    [748,[]]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 779,
+      "frames": 133,
+      "held": [
+        [71,["A"]],
+        [72,[]],
+        [81,["START"]],
+        [82,[]]
+      ],
+      "about": "The name entry between the title screen and the menu, which the Dreamport doesn't have yet: a letter typed and Start, its fade to black, and the menu's first frame."
+    }
+  ]
+}

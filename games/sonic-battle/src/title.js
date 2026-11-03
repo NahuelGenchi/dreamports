@@ -10,6 +10,7 @@
 
 import { REG } from '../../../kit/gba/video.js';
 import { KEY, clearSprites, copyAtVblank, copyToVram, fadeToBlack, queueRegister, setBlend } from './core.js';
+import { menu } from './menu.js';
 
 const CARTRIDGE = 0x08000000, PALETTE = 0x05000000, SINE = 0x0804DF7C;
 // gSongTable: eight bytes for each song, with the number of the player it plays on at the fifth
@@ -138,13 +139,13 @@ function queueSprites(c) {
   copyAtVblank(c);
 }
 
-/** 0x0803e6e8: the palette one step to black each frame, then the next screen; none is ported, so it stops. */
+/** 0x0803e6e8: the palette one step to black each frame, then the screen after it: the name entry in the original,
+ *  which isn't ported, and so the main menu, where the recording skips the original's name entry. */
 function fadeToNext(c) {
   if (fadeToBlack(c, PALETTE, 256)) {
     setBlend(c, 0, 0, 0, 0, 0, 0);
     c.video.pal.fill(0, 0, 256);
-    queueRegister(c, REG.DISPCNT, 0x1F40);
-    c.callback = afterTitle;
+    c.callback = menu;
   }
 }
 

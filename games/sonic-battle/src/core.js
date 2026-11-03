@@ -152,6 +152,52 @@ export function copyToVram(c, from, to, count) {
   c.video.vram.set(c.rom.bytes.subarray(at, at + count * 2), to - VRAM);
 }
 
+/**
+ * 0x0804a5b4, the BIOS's LZ77UnCompVram: a picture the cartridge keeps compressed as a byte stream (GBATEK's
+ * "LZ77 UnCompressed Data"), written to VRAM at `to`. The header gives the uncompressed size; then a flag byte
+ * says, its bits from the top, whether each of the next eight items is one byte as it is or two bytes: four bits
+ * of length less three, and twelve bits of how far back the bytes to copy are.
+ */
+export function decompress(c, from, to) {
+  const bytes = c.rom.bytes, vram = c.video.vram;
+  let at = from - CARTRIDGE;
+  if (bytes[at] !== 0x10) throw new Error(`No LZ77 picture at 0x${from.toString(16)}: its first byte is ${bytes[at]}.`);
+  const size = bytes[at + 1] | (bytes[at + 2] << 8) | (bytes[at + 3] << 16);
+  at += 4;
+  let out = to - VRAM;
+  const end = out + size;
+  while (out < end) {
+    const flags = bytes[at++];
+    for (let bit = 7; bit >= 0 && out < end; bit--) {
+      if (flags & (1 << bit)) {
+        const word = (bytes[at] << 8) | bytes[at + 1];
+        at += 2;
+        const length = (word >> 12) + 3, back = (word & 0xFFF) + 1;
+        for (let i = 0; i < length; i++, out++) vram[out] = vram[out - back];
+      } else {
+        vram[out++] = bytes[at++];
+      }
+    }
+  }
+}
+
+/**
+ * 0x08021000: a `columns` by `rows` block of a tilemap at `to`, each entry `base` plus the tile number the
+ * cartridge's table at `from` gives for it, the map's rows 32 entries apart.
+ */
+export function copyTileBlock(c, to, from, columns, rows, base) {
+  const at = from - CARTRIDGE, vram = c.video.vram;
+  let out = (to - VRAM) >> 1;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < columns; x++, out++) {
+      const tile = c.rom.u16(at + (y * columns + x) * 2);
+      vram[out * 2] = (base + tile) & 0xFF;
+      vram[out * 2 + 1] = ((base + tile) >> 8) & 0xFF;
+    }
+    out += 32 - columns;
+  }
+}
+
 /** The palette's colours from `first`, as 16-bit words, the way the original reads and writes 0x05000000 on. */
 export const colours = (c, first = PALETTE) => c.video.pal.subarray((first - PALETTE) >> 1);
 
