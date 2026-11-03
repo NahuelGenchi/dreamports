@@ -26,10 +26,13 @@ const CARTRIDGE = 0x08000000, PALETTE = 0x05000000, VRAM = 0x06000000;
 // None of it shows; only how long it takes does, which is the console's timing, as mGBA measures it.
 const START_UP_FRAMES = 45;
 
-/** The core's state on `video` (createVideo), reading the cartridge from `rom` (rom.js). */
-export function createCore(video, rom) {
+/**
+ * The core's state on `video` (createVideo), reading the cartridge from `rom` (rom.js), with the game's sound
+ * engine (sound.js, the kit's sound/audio.js) as `sound`, which the screen's callbacks call as the original does.
+ */
+export function createCore(video, rom, sound) {
   const c = {
-    video, rom,
+    video, rom, sound,
     // gUnknown_03002030: the screen's callback, which the main loop runs once a frame
     callback: null,
     // gUnknown_030048e0: the keys (0x08020198)

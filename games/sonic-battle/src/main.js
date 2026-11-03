@@ -12,8 +12,10 @@ import { createInput } from '../../../kit/gba/input.js';
 import { proof } from '../../../kit/gba/proof.js';
 import { createSettings } from '../../../kit/gba/ui/settings.js';
 import { createTouch } from '../../../kit/gba/ui/touch.js';
+import { createSound } from '../../../kit/gba/sound/audio.js';
 import { createCore, step } from './core.js';
 import { logos } from './logos.js';
+import { soundLayout } from './sound.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from: the USA one, whose
 // addresses the code reads at
@@ -35,12 +37,14 @@ const picker = document.getElementById('picker');
 const stage = document.getElementById('stage');
 const screen = document.getElementById('screen');
 const input = createInput(LAYOUT);
+// the game's sound (sound.js): the engine the kit runs, on the player's copy
+const sound = createSound();
 proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives and what a button does so far
 const touch = createTouch(stage, input, { screen, key: 'sonic-battle' });
 createSettings(stage, input, { what: { start: 'Start: skips the SEGA and Sonic Team logos' }, touch });
-let rom = null;
+let rom = null, romBuffer = null;
 
 createRomSetup(picker, {
   brand: 'Sonic Battle Dreamport',
@@ -54,17 +58,18 @@ createRomSetup(picker, {
     async read(buffer) {
       const { region, known } = await identify(new Rom(buffer), GAME);
       rom = new Rom(buffer);
+      romBuffer = buffer;
       return `${region} · ${known ? 'tested version' : 'untested version'}`;
     },
-    unload() { rom = null; },
+    unload() { rom = null; romBuffer = null; },
   }],
   onPlay: start,
 });
 
 // The game so far: the logos. What comes after them, the intro (0x0803d748), isn't ported yet, so the screen
 // stays black there.
-function createGame(video, rom) {
-  const core = createCore(video, rom);
+function createGame(video, rom, sound) {
+  const core = createCore(video, rom, sound);
   core.main = c => logos(c, () => {});
   return { step(keys) { step(core, keys); } };
 }
@@ -72,7 +77,10 @@ function createGame(video, rom) {
 function start() {
   picker.hidden = true;
   stage.hidden = false;
-  const video = createVideo(), game = createGame(video, rom);
+  // the sound engine, started on the player's copy as the original's start-up does (0x0801f5ec): its tables and
+  // mode are this game's (sound.js). The kit's proof tool waits for it, so every frame has its sound.
+  sound.load(romBuffer, soundLayout(rom));
+  const video = createVideo(), game = createGame(video, rom, sound);
   const out = screen.getContext('2d', { alpha: false });
   screen.width = SCREEN_W;
   screen.height = SCREEN_H;
