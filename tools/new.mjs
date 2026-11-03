@@ -1,6 +1,6 @@
 // npm run dp -- new <game> [--repo <owner/name>]: writes the first files of a Dreamport someone has claimed, which is
 // mapped already: its page, its code on the console's kit with the controller, touch screen, settings and start screen
-// wired in, its license and its entry, so that it shows in the Make row at once, with nothing of the game in it yet.
+// wired in, its license and its entry, so that it builds at once, ready for its capture, with nothing of the game in it yet.
 // The claim's issue gives its lead and its number. --repo reads the claims of another copy of the repository, such as a
 // fork that tries the claims workflow.
 
