@@ -43,11 +43,12 @@ async function api<T = Record<string, unknown>>(path: string, method = 'GET', bo
   }
 }
 
+// the name noted, if any
 function playerNoted() {
   try {
-    return !!localStorage.getItem(PLAYER);
+    return localStorage.getItem(PLAYER);
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -217,7 +218,7 @@ function startAchievements(box: HTMLElement) {
   async function show() {
     const device = earnedOnDevice(game);
     paint(device);
-    note.hidden = playerNoted();
+    note.hidden = !!playerNoted();
     const profile = await earnedOnProfile();
     paint({ ...device, ...profile[game] });
   }
@@ -248,8 +249,11 @@ const TROUBLE: Record<string, (way: string) => string> = {
 
 type State = 'out' | 'pick' | 'in';
 
+const LOADING = 'Loading…';
+
 function startProfile(card: HTMLDialogElement) {
   const games = JSON.parse(card.dataset.games ?? '{}') as Games;
+  const body = card.querySelector<HTMLElement>('.card-body')!;
   const title = byId('profile-title');
   const status = byId('pf-status');
   const out = byId('pf-out');
@@ -260,33 +264,53 @@ function startProfile(card: HTMLDialogElement) {
   const publicSwitch = byId('pf-public');
   const confirm = byId('pf-confirm');
   const firstWay = out.querySelector<HTMLElement>('.pf-way')!;
+  // the profile showing, once all of it is there
   let me: Profile | null = null;
   let busy = false;
+  let slow = 0;
+  let turn = 0;
   // where the worker sent the player back to, after an account's own page: read once, then the
   // address goes back to plain /profile/
   let back: URLSearchParams | null = location.pathname === '/profile/' && location.search ? new URLSearchParams(location.search) : null;
   if (back) history.replaceState(history.state, '', location.pathname + location.hash);
 
   const say = (text: string) => {
+    clearTimeout(slow);
     status.textContent = text;
   };
+  const wayName = (way?: string | null) => (isWay(way) ? WAYS[way] : 'That account');
 
-  function showState(state: State) {
+  function showState(state: State, soft = card.open) {
+    const before = title.textContent;
+    const moved = card.dataset.state !== state;
     card.dataset.state = state;
     out.hidden = state !== 'out';
     pick.hidden = state !== 'pick';
     inside.hidden = state !== 'in';
     confirm.hidden = true;
     title.textContent = state === 'in' && me ? me.name : state === 'pick' ? 'Pick a name' : 'Sign in';
+    clearTimeout(slow);
+    if (status.textContent === LOADING) say('');
+    // what takes another state's place comes in softly, and a name already standing there stays still
+    if (soft && moved) (title.textContent === before ? { out, pick, in: inside }[state] : body).animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
   }
 
-  // the profile, or the name to pick for an account that's new here, or the way in
+  // until the site answers: the name this browser knows, where it will stay, with the rest to come under it, and a
+  // word only if the wait is long enough to wonder about
+  function wait(name: string | null) {
+    card.dataset.state = 'wait';
+    out.hidden = pick.hidden = inside.hidden = true;
+    title.textContent = name;
+    clearTimeout(slow);
+    slow = window.setTimeout(() => {
+      if (!status.textContent) say(LOADING);
+    }, 1000);
+  }
+
+  // the profile, or the name to pick for an account that's new here, or the way in, all of it at once
   async function show(profile: Profile | null, pending: Way | null = null, focus = false) {
-    me = profile;
+    const mine = ++turn;
     notePlayer(profile?.name ?? null);
-    showState(profile ? 'in' : pending ? 'pick' : 'out');
-    // focus that was on a state now hidden, or on none yet, moves to the one showing
-    focus ||= card.open && !document.activeElement?.closest('.pf-state:not([hidden])');
     if (profile) {
       byId('pf-since').textContent = `Since ${day.format(profile.since)}`;
       publicSwitch.setAttribute('aria-checked', String(profile.public));
@@ -310,13 +334,16 @@ function startProfile(card: HTMLDialogElement) {
         row.querySelector<HTMLElement>('[data-unlink]')!.hidden = !linked || only;
       }
       await showGames(byId('pf-games'), games, profile.achievements, true);
-      if (focus) publicSwitch.focus({ preventScroll: true });
+      // something newer has been shown while the games' lists were on their way
+      if (mine !== turn) return;
     } else if (pending) {
       byId('pf-pick-lead').textContent = `You’re in with ${WAYS[pending]}.`;
-      if (focus) nameInput.focus({ preventScroll: true });
-    } else {
-      if (focus) firstWay.focus({ preventScroll: true });
     }
+    me = profile;
+    showState(profile ? 'in' : pending ? 'pick' : 'out');
+    // focus that was on a state now hidden, or on none yet, moves to the one showing
+    focus ||= card.open && !document.activeElement?.closest('.pf-state:not([hidden])');
+    if (focus) (profile ? publicSwitch : pending ? nameInput : firstWay).focus({ preventScroll: true });
   }
 
   async function refresh() {
@@ -328,19 +355,22 @@ function startProfile(card: HTMLDialogElement) {
     }
     const from = back;
     back = null;
-    const way = from?.get('way');
-    const name = isWay(way) ? WAYS[way] : 'That account';
     // just signed in: what this device earned comes along
     if (data.player && from?.has('signed-in')) {
-      say(`Welcome back, ${data.player.name}.`);
       await welcome(data.player);
+      say(`Welcome back, ${data.player.name}.`);
       return;
     }
-    if (data.player && from?.has('linked')) say(`${name} signs in to your profile too.`);
-    const trouble = from?.get('trouble');
-    if (trouble) say((TROUBLE[trouble] ?? TROUBLE.failed)(name));
     await show(data.player, isWay(data.pending) ? data.pending : null);
+    if (data.player && from?.has('linked')) say(`${wayName(from.get('way'))} signs in to your profile too.`);
   }
+
+  // one question at a time: whoever asks while one is on its way gets the same answer
+  let asking: Promise<void> | null = null;
+  const ask = () =>
+    (asking ??= refresh().finally(() => {
+      asking = null;
+    }));
 
   // one step at a time
   async function step(work: () => Promise<void>) {
@@ -459,10 +489,25 @@ function startProfile(card: HTMLDialogElement) {
   card.addEventListener('view-open', () => {
     // a word from the last visit gives way
     say('');
-    // signed out, as far as this browser knows: the way in shows at once
-    if (!me && !playerNoted() && !back?.has('new')) showState('out');
-    refresh();
+    const trouble = back?.get('trouble');
+    if (trouble) say((TROUBLE[trouble] ?? TROUBLE.failed)(wayName(back?.get('way'))));
+    if (!me) {
+      const name = playerNoted();
+      if (name || back?.has('signed-in') || back?.has('new') || back?.has('linked')) wait(name);
+      // signed out, as far as this browser knows: the way in shows at once
+      else showState('out', false);
+    }
+    ask();
   });
+
+  // signed in, as far as this browser knows: the profile gets ready while the launcher rests, so all of it is there on
+  // the first frame it opens
+  if (playerNoted() && !card.open) {
+    const idle = window.requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 600));
+    idle(() => {
+      if (!card.open) ask();
+    });
+  }
 }
 
 // ---------- Another player's public profile ----------
