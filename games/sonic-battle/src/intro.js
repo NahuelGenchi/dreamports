@@ -13,8 +13,7 @@ const TILES = 0x06000000, MAP = 0x0600B800, LAYER_0_TILES = 0x0600C000, LAYER_0_
 
 // 0x08172a3c: each picture's centre as it comes in (x, y), then the centre it moves to, and 0x08172a64: layer
 // 0's scroll as each comes in, then where it moves to
-const POSITIONS = [120, 65, -50, 55, 70, 65, -80, 30, 0, 60, 80, 60, 0, 60, 20, 60, -30, 40, 0, 60];
-const SCROLLS = [40, 20, 30, -10, 30, 30, 30, 20, 0, 30];
+const POSITIONS = 0x08172A3C, SCROLLS = 0x08172A64;
 
 // 0x0803d860's five pictures: layer 2's palette, tiles and map, and layer 0's tiles and map, with how many
 // 16-bit words of each there are
@@ -43,6 +42,9 @@ const ANIMATION = new Map([
 ]);
 
 const s16 = value => (value << 16) >> 16;
+
+/** One number of a table in the player's copy, which keeps them as signed 16-bit words. */
+const fromTable = (c, table, index) => c.rom.s16(table - CARTRIDGE + index * 2);
 
 /** One of `count` 16-bit words from the cartridge into the palette, as the original's DMA does. */
 function copyToPalette(c, from, count) {
@@ -85,9 +87,9 @@ export function intro(c) {
   setBlend(c, 0, 0, 0, 0, 0, 0);
   c.introTimer = 255;
   c.introScene = -1;
-  c.introX = POSITIONS[0];
-  c.introY = POSITIONS[1];
-  c.introScroll = SCROLLS[0];
+  c.introX = fromTable(c, POSITIONS, 0);
+  c.introY = fromTable(c, POSITIONS, 1);
+  c.introScroll = fromTable(c, SCROLLS, 0);
   c.introScale = 0;
   c.introScaleTarget = 0;
   c.introTargetX = 0;
@@ -108,9 +110,9 @@ function pictures(c) {
     copyToVram(c, picture.layer0Tiles, LAYER_0_TILES, picture.layer0TilesWords);
     copyToVram(c, picture.layer0Map, LAYER_0_MAP, picture.layer0MapWords);
     c.introTimer = 0;
-    c.introX = POSITIONS[c.introScene * 2];
-    c.introY = POSITIONS[c.introScene * 2 + 1];
-    c.introScroll = SCROLLS[c.introScene];
+    c.introX = fromTable(c, POSITIONS, c.introScene * 2);
+    c.introY = fromTable(c, POSITIONS, c.introScene * 2 + 1);
+    c.introScroll = fromTable(c, SCROLLS, c.introScene);
   } else {
     c.introTimer++;
     if (c.introScene > 3 && c.introTimer > 7) {
@@ -121,9 +123,9 @@ function pictures(c) {
       c.callback = animation;
     }
   }
-  c.introX = s16(c.introX - ((c.introX - POSITIONS[10 + c.introScene * 2]) >> 2));
-  c.introY = s16(c.introY - ((c.introY - POSITIONS[11 + c.introScene * 2]) >> 2));
-  c.introScroll = s16(c.introScroll - ((c.introScroll - SCROLLS[5 + c.introScene]) >> 2));
+  c.introX = s16(c.introX - ((c.introX - fromTable(c, POSITIONS, 10 + c.introScene * 2)) >> 2));
+  c.introY = s16(c.introY - ((c.introY - fromTable(c, POSITIONS, 11 + c.introScene * 2)) >> 2));
+  c.introScroll = s16(c.introScroll - ((c.introScroll - fromTable(c, SCROLLS, 5 + c.introScene)) >> 2));
   c.video.write(REG.BG2PA, 0x100);
   c.video.write(BG2PB, 0);
   c.video.write(BG2PC, 0);
