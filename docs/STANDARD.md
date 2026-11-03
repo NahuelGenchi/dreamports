@@ -68,7 +68,7 @@ The [proof tools](../tools/README.md) do all of this on the contributor's comput
 
 Every change you can see or hear comes with a short clip, so anyone can check the progress from a phone, without owning the game and without installing anything.
 
-A clip shows every frame the game draws, about 60 a second, captured inside the game rather than filmed from a screen, so it's smooth and its pixels stay sharp. It lasts a few seconds and stays under about 2 MB, as an H.264 MP4 video, which every browser plays. When one frame says enough, a PNG picture does the job. Clips are never GIFs, which are far bigger for the same few seconds.
+A clip shows every frame the game draws, about 60 a second, captured inside the game rather than filmed from a screen, so it's smooth and clean. It lasts a few seconds, at the console's own size, as an H.264 MP4 video, which every browser plays, and it's as small as it can be while staying clear: about 0.1 to 0.3 MB for a calm stretch and about 1 MB for five seconds of fast play, and always under about 2 MB. When one frame says enough, a PNG picture does the job, with every pixel sharp. Clips are never GIFs, which are far bigger for the same few seconds.
 
 When a change claims to match the original, its clip shows the original next to the Dreamport, with the same button presses. Clips go with every pull request, where `npm run dp -- share` puts the newest clip of the original and the Dreamport side by side within reach: it keeps the clip on the contributor's previews site, apart from the preview, and prints the lines that show it ([Previews](PREVIEWS.md)).
 

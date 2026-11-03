@@ -8,6 +8,7 @@
 import { bindController } from './setup-controller.js';
 import { acceptRoms } from './rom-types.js';
 import { darkDevice, pickedTheme, isDark } from './theme.js';
+import { leave, setHome } from './leave.js';
 
 const GBA_BYTES = 32 * 1024 * 1024;   // the largest Game Boy Advance cartridge
 
@@ -22,18 +23,6 @@ const ICONS = {
   back: pixels('back-icon', 7, 7, 'M3 0h1v1H3zM2 1h1v1H2zM1 2h1v1H1zM0 3h7v1H0zM1 4h1v1H1zM2 5h1v1H2zM3 6h1v1H3z'),
   add: pixels('add-icon', 5, 5, 'M2 0h1v2H2zM0 2h5v1H0zM2 3h1v2H2z'),
 };
-
-// whether the page before this one is the dreamports.net menu: a page of the same site outside the games, which
-// are under /play/
-function cameFromMenu() {
-  if (history.length < 2 || !location.pathname.startsWith('/play/')) return false;
-  try {
-    const from = new URL(document.referrer);
-    return from.origin === location.origin && !from.pathname.startsWith('/play/');
-  } catch {
-    return false;
-  }
-}
 
 const escape = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 // the word Dreamport in the game's name as a tag, as dreamports.net shows it
@@ -57,6 +46,7 @@ const drawn = () => new Promise(resolve => { requestAnimationFrame(() => setTime
  * `onChange()` is told whenever a ROM comes in or goes.
  */
 export function createRomSetup(host, { brand, home, roms, heading, intro, slots, onPlay, onChange = () => {} }) {
+  setHome(home);
   slots = slots.map(slot => ({ ...slot, extras: slot.extras ?? [] }));
   const maxBytes = Math.max(...slots.map(s => s.maxBytes ?? GBA_BYTES));
   const consoles = [...new Set(slots.map(s => s.console ?? 'Game Boy Advance'))];
@@ -153,11 +143,7 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
   darkDevice.addEventListener('change', paint);
   new MutationObserver(paint).observe(host, { attributes: true, attributeFilter: ['hidden'] });
 
-  // back to dreamports.net: from its menu, back in the browser's history, so the menu comes back as it was left
-  $('.setup-back').addEventListener('click', () => {
-    if (cameFromMenu()) history.back();
-    else location.href = home;
-  });
+  $('.setup-back').addEventListener('click', leave);
 
   // the line under a ROM's name: while it's missing, whether the game needs it, where it has others to tell it from,
   // or else the extras it brings (which show once it's in); once it's in, what was read (while it's being read, the

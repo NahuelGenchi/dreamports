@@ -61,9 +61,9 @@
   }
 
   const panel = new OffscreenCanvas(WIDTH, HEIGHT);
-  // the original, the Dreamport and, if asked, their differences, side by side and twice the size, under a bar
+  // the original, the Dreamport and, if asked, their differences, side by side at `scale` times the size, under a bar
   // that names them and gives the Dreamport's frame; or, `alone`, the Dreamport on its own, with nothing of the original
-  function draw(canvas, frame, { difference = false, alone = false } = {}) {
+  function draw(canvas, frame, { difference = false, alone = false, scale = SCALE } = {}) {
     const context = canvas.getContext('2d');
     const original = alone ? null : originals.get(frame), dreamport = kept.get(frame);
     const same = alone || original.every((c, i) => c === dreamport[i]);
@@ -73,14 +73,14 @@
     context.textBaseline = 'middle';
     context.fillStyle = '#e8ecf4';
     if (!alone) context.fillText('Original', 8, BAR / 2);
-    context.fillText('Dreamport', alone ? 8 : WIDTH * SCALE + 8, BAR / 2);
+    context.fillText('Dreamport', alone ? 8 : WIDTH * scale + 8, BAR / 2);
     context.textAlign = 'right';
     context.fillText(`frame ${frame}`, canvas.width - 8, BAR / 2);
     const loud = !alone && soundDiffers.has(frame);
     const differs = !same ? (loud ? 'differs, sound too' : 'differs') : loud ? 'sound differs' : '';
     if (differs) {
       context.fillStyle = '#ff5cf0';
-      context.fillText(differs, canvas.width - 80, BAR / 2);
+      context.fillText(differs, canvas.width - 76, BAR / 2);
     }
     context.textAlign = 'left';
     context.imageSmoothingEnabled = false;
@@ -92,7 +92,7 @@
     }
     pictures.forEach((image, i) => {
       panel.getContext('2d').putImageData(image, 0, 0);
-      context.drawImage(panel, i * WIDTH * SCALE, BAR, WIDTH * SCALE, HEIGHT * SCALE);
+      context.drawImage(panel, i * WIDTH * scale, BAR, WIDTH * scale, HEIGHT * scale);
     });
     return found;
   }
@@ -147,9 +147,10 @@
       return { png: toBase64(png), pixels: found?.pixels ?? 0, box: found?.box ?? null };
     },
 
-    /** The clip of these frames, encoded as H.264, of both or of the Dreamport `alone`: { description, frames: [{ key, data }] }, in base64. */
-    async video(frames, { bitrate, alone = false }) {
-      const canvas = new OffscreenCanvas(WIDTH * SCALE * (alone ? 1 : 2), HEIGHT * SCALE + BAR);
+    /** The clip of these frames, encoded as H.264, of both or of the Dreamport `alone`, in the encoder's mode for `screen`s or not: { description, frames: [{ key, data }] }, in base64. */
+    async video(frames, { bitrate, alone = false, screen = true }) {
+      // at the console's own size: doubled, the same clip takes about twice the bytes, and more than the limit in fast play
+      const canvas = new OffscreenCanvas(WIDTH * (alone ? 1 : 2), HEIGHT + BAR);
       const chunks = [];
       let description = null, failure = null;
       const encoder = new VideoEncoder({
@@ -162,14 +163,18 @@
         },
         error(error) { failure = error; },
       });
-      // Constrained Baseline: every phone and browser plays it
-      const config = { codec: 'avc1.42E01F', width: canvas.width, height: canvas.height, bitrate, framerate: 1e6 / FRAME_US, avc: { format: 'avc' } };
-      if (!(await VideoEncoder.isConfigSupported(config)).supported) throw new Error('This browser can\'t encode H.264 video, so there\'s no clip: Chrome can.');
-      encoder.configure(config);
+      // Constrained Baseline: every phone and browser plays it. The hint is the encoder's mode for screens, which keeps
+      // the worst frames clear and stops at what a calm clip needs, and software leaves the graphics chip out of it
+      const config = { codec: 'avc1.42E01F', width: canvas.width, height: canvas.height, bitrate, framerate: 1e6 / FRAME_US, ...(screen ? { contentHint: 'text' } : {}), avc: { format: 'avc' } };
+      const software = { ...config, hardwareAcceleration: 'prefer-software' };
+      const hasSoftware = (await VideoEncoder.isConfigSupported(software)).supported;
+      if (!hasSoftware && !(await VideoEncoder.isConfigSupported(config)).supported) throw new Error('This browser can\'t encode H.264 video, so there\'s no clip: Chrome can.');
+      encoder.configure(hasSoftware ? software : config);
       for (let i = 0; i < frames.length && !failure; i++) {
-        draw(canvas, frames[i], { alone });
+        draw(canvas, frames[i], { alone, scale: 1 });
         const frame = new VideoFrame(canvas, { timestamp: Math.round(i * FRAME_US), duration: Math.round(FRAME_US) });
-        encoder.encode(frame, { keyFrame: i % 120 === 0 });
+        // a key frame every five seconds is enough to seek in a clip this short, and each is costly
+        encoder.encode(frame, { keyFrame: i % 300 === 0 });
         frame.close();
         while (encoder.encodeQueueSize > 4 && !failure) await new Promise(resolve => encoder.addEventListener('dequeue', resolve, { once: true }));
       }

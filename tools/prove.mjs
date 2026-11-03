@@ -27,8 +27,9 @@ import { notesAbout } from './notes.mjs';
 
 const BATCH = 120;
 const STILLS = 600;
-// a clip stays under 2 MB: encoded again at a lower rate while it's over, as the encoder can overshoot its target
-const CLIP_LIMIT = 2_000_000, CLIP_TARGET = 1_700_000;
+// a clip stays under 2 MB: encoded again at a lower rate while it's over, as the encoder can overshoot its target.
+// A calm clip stops well short of its rate, which only decides what fast play gets
+const CLIP_LIMIT = 2_000_000, CLIP_TARGET = 1_700_000, CLIP_RATE = 2_000_000;
 const IN_PAGE = readFileSync(new URL('./lib/in-page.js', import.meta.url), 'utf8');
 
 export async function run(args) {
@@ -303,9 +304,10 @@ async function prove({ game, recording, copy, server, codeMap, before, asked, pa
     await still(clip[1], 'clip-end.png', false);
     const length = clipFrames.length * 280896 / 16777216;
     const encode = async alone => {
-      let bitrate = Math.round(Math.min(1_800_000, CLIP_TARGET * 8 / length) / (alone ? 2 : 1)), file;
-      for (let tries = 0; tries < 4; tries++) {
-        const video = await page.evaluate(`__proof.video(${JSON.stringify(clipFrames)}, { bitrate: ${bitrate}, alone: ${alone} })`);
+      let bitrate = Math.round(Math.min(CLIP_RATE, CLIP_TARGET * 8 / length) / (alone ? 2 : 1)), file;
+      for (let tries = 0; tries < 5; tries++) {
+        // the encoder's mode for screens has a size it won't go under, whatever the rate, so the last tries leave it
+        const video = await page.evaluate(`__proof.video(${JSON.stringify(clipFrames)}, { bitrate: ${bitrate}, alone: ${alone}, screen: ${tries < 2} })`);
         file = mp4({
           width: video.width, height: video.height, description: Buffer.from(video.description, 'base64'),
           frames: video.frames.map(f => ({ key: f.key, data: Buffer.from(f.data, 'base64') })),
