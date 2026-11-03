@@ -41,7 +41,7 @@ export async function run(args) {
   }
   const url = pages?.url ?? predictedAddress(fork);
   const address = `${url}${name}/`;
-  // the commit is linked only once GitHub has it, which it doesn't until the work is pushed, as /dreamport-send does
+  // the commit is linked only once GitHub has it, which it doesn't until the work is pushed, as /dreamport does
   const linked = hasCommit(fork.repository, commit);
 
   // the clip for the step's pull request, and a frame of it
