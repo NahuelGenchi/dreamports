@@ -10,7 +10,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "test:game": "node tools/test/game-page.mjs",
-    "check": "astro check && tsc -p worker && node tools/dp.mjs portmap --check && node tools/dp.mjs readme --check && node tools/dp.mjs commands --check && node tools/dp.mjs notes --check && node --test .github/moderation/test.mjs .github/first-entry/test.mjs tools/test/moments.test.mjs tools/test/share-clips.test.mjs",
+    "check": "astro check && tsc -p worker && node tools/dp.mjs portmap --check && node tools/dp.mjs readme --check && node tools/dp.mjs commands --check && node tools/dp.mjs notes --check && node --test .github/moderation/test.mjs .github/first-entry/test.mjs .github/live-site/test.mjs tools/test/moments.test.mjs tools/test/share-clips.test.mjs",
     "worker": "astro build && wrangler dev --local-upstream localhost:8787",
     "dp": "node tools/dp.mjs"
   },

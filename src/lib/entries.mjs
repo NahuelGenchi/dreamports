@@ -160,3 +160,39 @@ function gameplayOf(at, { parts }, measured, recorded, problems) {
 
 /** A % as the site and the README write it, such as 11.19%, or null when there's none. */
 export const percentText = percent => (percent === null || percent === undefined ? null : `${percent.toLocaleString('en', { maximumFractionDigits: 2 })}%`);
+
+/**
+ * A % as short as a card shows it: whole, such as 38%, but never 0% or 100% unless it's exactly that, so a little
+ * progress still shows and nearly done isn't done. The README and the proof files keep it to two decimals.
+ * @param {number | null | undefined} percent
+ */
+export function shortPercent(percent) {
+  if (percent === null || percent === undefined) return null;
+  if (percent > 0 && percent < 1) return '<1%';
+  if (percent > 99 && percent < 100) return '99%';
+  return `${Math.round(percent)}%`;
+}
+
+/**
+ * A Dreamport's two numbers as text, such as "Code ported 38% · Gameplay proven 3%", for its place in the Make row.
+ * @param {Proof | null | undefined} proof
+ */
+export const numbersText = proof => [
+  `Code ported ${shortPercent(proof?.ported?.percent) ?? 'not measured yet'}`,
+  `Gameplay proven ${shortPercent(proof?.gameplay?.percent) ?? 'not measured yet'}`,
+].join(' · ');
+
+/**
+ * Whether a Dreamport has code of the original's, and so its place in the Dreamports row and its own page: what
+ * `npm run dp -- new` writes names none and only shows a blue screen.
+ * @param {Proof | null | undefined} proof
+ */
+export const hasCode = proof => (proof?.ported?.percent ?? 0) > 0;
+
+/**
+ * Whether a Dreamport has a place in the Make row: once its entry has a real capture for its card, until every part
+ * of it is proven.
+ * @param {{ screen?: unknown }} entry
+ * @param {Proof | null | undefined} proof
+ */
+export const isBeingMade = (entry, proof) => !!entry.screen && proof?.gameplay?.percent !== 100;
