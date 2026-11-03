@@ -3,7 +3,7 @@
   "parts": [
     { "name": "The SEGA and Sonic Team logos", "recording": "logos", "frames": [0, 389] },
     { "name": "The intro", "recording": "logos-and-intro", "frames": [390, 546] },
-    { "name": "The title screen" },
+    { "name": "The title screen", "recording": "title", "frames": [547, 778] },
     { "name": "The main menu" },
     { "name": "Story mode: Sonic's episode" },
     { "name": "Story mode: Tails's episode" },
