@@ -11,6 +11,8 @@
 
   // the site notes the player's name while someone is signed in on this browser
   const PLAYER = 'dreamports:player';
+  // and what they had earned when the site last said, by game, so the launcher shows it on the first frame back
+  const EARNED = 'dreamports:earned';
   const signedIn = () => {
     try {
       return !!localStorage.getItem(PLAYER);
@@ -34,11 +36,17 @@
       if (response.status === 401) {
         try {
           localStorage.removeItem(PLAYER);
+          localStorage.removeItem(EARNED);
         } catch {}
       }
       if (!response.ok) return null;
       const { earned: all } = await response.json();
-      return all && typeof all === 'object' && !Array.isArray(all) ? all : {};
+      const answer = all && typeof all === 'object' && !Array.isArray(all) ? all : {};
+      try {
+        const noted = JSON.parse(localStorage.getItem(EARNED) ?? 'null');
+        if (noted) localStorage.setItem(EARNED, JSON.stringify({ ...noted, [game]: answer }));
+      } catch {}
+      return answer;
     } catch {
       return null;
     }
