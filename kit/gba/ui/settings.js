@@ -1,14 +1,15 @@
 // The settings every Game Boy Advance Dreamport starts with, made from its layout of keys and buttons alone: the
 // settings button in the top-left corner, as on dreamports.net, and the sheet it opens over the game (sheet.js),
-// with the way back to the game and the controls (controls-view.js), which list every key and controller button
-// the layout gives, the console's button each presses, and what it does where the game says. H, or View + Menu on
-// a controller, opens and closes them too, and while they're open the game waits. With the controller drawn on
-// touch screens (touch.js), they have its Button opacity too. A game with settings of its own writes them in its
-// page and makes the sheet itself, as Sonic Advance Dreamport does.
+// with the way back to the game, the controls (controls-view.js), which list every key and controller button the
+// layout gives, the console's button each presses, and what it does where the game says, and the way out of the
+// game (quit-view.js). H, or View + Menu on a controller, opens and closes them too, and while they're open the game
+// waits. With the controller drawn on touch screens (touch.js), they have its Button opacity too. A game with
+// settings of its own writes them in its page and makes the sheet itself, as Sonic Advance Dreamport does.
 
 import { holdClocks } from '../clock.js';
 import { createSheet } from './sheet.js';
 import { createControlsView, SETTINGS_CONTROLS } from './controls-view.js';
+import { createQuitView } from './quit-view.js';
 
 const pixels = (w, h, d) => `<svg viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges" aria-hidden="true"><path d="${d}"/></svg>`;
 const SLIDERS = pixels(9, 9, 'M0 1h9v1H0zM5 0h2v3H5zM0 4h9v1H0zM1 3h2v3H1zM0 7h9v1H0zM4 6h2v3H4z');
@@ -16,6 +17,7 @@ const PAUSED = pixels(7, 9, 'M0 0h2v9H0zM5 0h2v9H5z');
 const PLAY = pixels(4, 7, 'M0 0h1v7H0zM1 1h1v5H1zM2 2h1v3H2zM3 3h1v1H3z');
 const PAD = '<svg viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true"><path fill-rule="evenodd" d="M0 1h9v7H0zM1 2v5h7V2z"/><path d="M2 3h1v1H2zM4 3h1v1H4zM6 3h1v1H6zM3 5h3v1H3z"/></svg>';
 const CHEVRON = pixels(3, 5, 'M0 0h1v1h1v1h1v1H2v1H1v1H0z');
+const LEAVE = pixels(9, 9, 'M4 1h1v1H4zM3 2h1v1H3zM2 3h1v1H2zM1 4h7v1H1zM2 5h1v1H2zM3 6h1v1H3zM4 7h1v1H4z');
 
 /**
  * Adds the settings to `stage`, the game's part of the page, for the player whose buttons `input` reads
@@ -37,6 +39,7 @@ export function createSettings(stage, input, { what = {}, note = '', touch = nul
           <div class="sheet-body settings-body single">
             <div class="settings-col sheet-rise">
               <button type="button" class="resume" data-close>${PLAY}Back to the game</button>
+              <button type="button" class="quit" data-quit>${LEAVE}Quit the game</button>
               <ul class="rows">
                 <li><button type="button" class="row" data-controls>
                   ${PAD}
@@ -73,6 +76,8 @@ export function createSettings(stage, input, { what = {}, note = '', touch = nul
   sheet.view('settings', { el: settings, first: () => settings.querySelector('.resume') });
   createControlsView(sheet, { controls: [layoutControls(input.layout, what), SETTINGS_CONTROLS], note });
   settings.querySelector('[data-controls]').addEventListener('click', () => sheet.go('controls'));
+  createQuitView(sheet);
+  settings.querySelector('[data-quit]').addEventListener('click', () => sheet.go('quit'));
   if (touch) touch.bindSlider(settings.querySelector('#button-opacity'));
 
   // a finger opens them as it lifts, so iOS doesn't bring up its magnifier on one held down; the mouse and the

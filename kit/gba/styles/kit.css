@@ -472,6 +472,7 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
   --ink: #0a1738; --dim: rgba(10, 23, 56, .68); --faint: rgba(10, 23, 56, .46);
   --act: #1a4fb0; --on-act: #fff; --on-act-key: rgba(255, 255, 255, .16); --on-act-key-ink: rgba(255, 255, 255, .8);
   --veil: radial-gradient(900px 560px at 50% 0, rgba(221, 239, 255, .55), rgba(221, 239, 255, 0) 80%), rgba(238, 247, 255, .18);
+  --page: radial-gradient(900px 560px at 50% 0, #ddefff, rgba(221, 239, 255, 0) 80%), #fff;
   --lift: 0 24px 64px rgba(5, 10, 36, .35);
   --xa: #2e8a26; --xb: #c8291f; --xx: #1f5fc9; --xy: #a87d00;   /* an Xbox controller's A, B, X and Y */
   --gap: 16px;
@@ -486,12 +487,15 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
   --ink: #eef4ff; --dim: #a9b8e6; --faint: rgba(169, 184, 230, .6);
   --act: #bfe6ff; --on-act: #0a1738; --on-act-key: rgba(10, 23, 56, .12); --on-act-key-ink: rgba(10, 23, 56, .72);
   --veil: radial-gradient(1200px 600px at 50% -10%, rgba(26, 60, 184, .5), rgba(26, 60, 184, 0) 60%), rgba(5, 10, 36, .42);
+  --page: radial-gradient(1200px 600px at 50% -10%, #1a3cb8 0%, rgba(26, 60, 184, 0) 60%), #050a24;
   --lift: 0 24px 64px rgba(0, 0, 0, .55);
   --xa: #6cc95f; --xb: #ff6b61; --xx: #6ea4ff; --xy: #ffd23f;
   color-scheme: dark;
 }
 .sheet-wrap[hidden], .sheet [hidden] { display: none !important; }
 .sheet-veil { position: absolute; inset: 0; background: var(--veil); }
+/* the launcher's page colour, coming up over everything as the game is left */
+.sheet-cover { position: absolute; inset: 0; background: var(--page); }
 .sheet {
   --frame: var(--line); position: relative; display: flex; flex-direction: column; overflow: hidden;
   width: 720px; max-width: calc(100% - 4px); max-height: calc(100% - 4px); margin: 2px; background: var(--paper);
@@ -504,7 +508,7 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 .sheet :focus { outline: none; }
 .sheet :focus-visible, .sheet .pad-at { outline: 2px solid var(--blue); outline-offset: 2px; }
 /* a pixel frame, 2 px with the corner pixels left out */
-.sheet :is(.sheet-back, .sheet-paused, .resume, .ach-tile, .rows, .status, .chip, .card, .key, .track, .navs, .ctl-list, .assets-facts, .drop, .assets-sheet, .rom, .assets-choose) {
+.sheet :is(.sheet-back, .sheet-paused, .resume, .quit, .ach-tile, .rows, .status, .chip, .card, .key, .track, .navs, .ctl-list, .assets-facts, .drop, .assets-sheet, .rom, .assets-choose) {
   box-shadow: 0 -2px var(--frame), 0 2px var(--frame), -2px 0 var(--frame), 2px 0 var(--frame);
 }
 .sheet-sr, .key-name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -548,12 +552,16 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 .settings-status { margin: 0 2px; color: var(--dim); font-size: 13.5px; line-height: 20px; }
 .settings-status:empty, #stats { display: none; }
 .stage.debug #stats:not(:empty) { display: block; }
-.resume {
+/* the ways out, together: back to the game filled, and quitting in its outline, so it's seen and still comes second */
+.resume, .quit {
   --frame: var(--sky); display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 48px; margin: 2px; padding: 0 18px;
-  border: 0; background: var(--sky); color: #0a1738 !important; cursor: pointer;
+  border: 0; cursor: pointer;
 }
+.resume { background: var(--sky); color: #0a1738 !important; }
+.quit { background: none; }
 .resume svg { width: 8px; height: 14px; }
-.resume:active, .ach-tile:active { transform: translateY(2px); }
+.quit svg { width: 18px; height: 18px; }
+.resume:active, .quit:active, .ach-tile:active { transform: translateY(2px); }
 .ach-tile {
   display: grid; grid-template-columns: 36px minmax(0, 1fr) 8px; align-items: center; gap: 10px 14px; margin: 2px; padding: 14px 14px 14px 16px;
   border: 0; background: var(--paper); text-align: left; cursor: pointer;
@@ -701,7 +709,7 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 @media (hover: hover) {
   .sheet-close:hover, .chip:hover { background: var(--hover); color: var(--ink); }
   .chip:hover { color: var(--ink) !important; }
-  .sheet-back:hover, .ach-tile:hover, .row:not(:disabled):hover, .nav:not([aria-current="true"]):hover { background: var(--hover); }
+  .sheet-back:hover, .quit:hover, .ach-tile:hover, .row:not(:disabled):hover, .nav:not([aria-current="true"]):hover { background: var(--hover); }
   .ach-tile:hover, .status:hover:not([aria-pressed="true"]) { --frame: var(--sky); }
   .resume:hover { --frame: var(--act); background: var(--act); color: var(--on-act) !important; }
   .row:not(:disabled):hover .track::after { background: var(--ink); }
@@ -769,6 +777,11 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
   .tools { padding: 12px 16px 8px; }
   .sheet .assets-sheet { max-height: 70vh; }
 }
+/* the question before quitting (ui/quit-view.js) stays small at any size, and its buttons say what the head's would */
+.sheet[data-view="quit"] { width: 480px; height: auto; }
+.sheet[data-view="quit"] :is(.sheet-close, .sheet-paused) { display: none; }
+.settings-body.quit-body { grid-template-columns: minmax(0, 1fr); }
+.quit-note { margin: 0 2px 4px; line-height: 22px; }
 @media (pointer: coarse) {
   .sheet-back, .sheet-close { width: 44px; height: 44px; }
   .sheet :is(.rom-actions button) { height: 44px; }
