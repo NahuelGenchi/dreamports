@@ -15,6 +15,7 @@ import { createTouch } from '../../../kit/gba/ui/touch.js';
 import { createSound } from '../../../kit/gba/sound/audio.js';
 import { createCore, step } from './core.js';
 import { logos } from './logos.js';
+import { intro } from './intro.js';
 import { soundLayout } from './sound.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from: the USA one, whose
@@ -43,7 +44,7 @@ proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded but
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives and what a button does so far
 const touch = createTouch(stage, input, { screen, key: 'sonic-battle' });
-createSettings(stage, input, { what: { start: 'Start: skips the SEGA and Sonic Team logos' }, touch });
+createSettings(stage, input, { what: { start: 'Start: skips the SEGA and Sonic Team logos and the intro' }, touch });
 let rom = null, romBuffer = null;
 
 createRomSetup(picker, {
@@ -66,11 +67,11 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the logos. What comes after them, the intro (0x0803d748), isn't ported yet, so the screen
-// stays black there.
+// The game so far: the logos and the intro. What comes after them, the title display, is not ported
+// yet, so the screen stays black there.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
-  core.main = c => logos(c, () => {});
+  core.main = c => logos(c, intro);
   return { step(keys) { step(core, keys); } };
 }
 
