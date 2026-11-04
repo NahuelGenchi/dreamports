@@ -1,0 +1,28 @@
+{
+  "original": "30db467effa5014806d42db57e2299398a51355b",
+  "from": "The original's functions that games/sonic-advance-3/ names, found by npm run dp -- portmap",
+  "functions": [
+    ["08000390","src/language.js:1"],
+    ["080003B8","src/background.js:1"],
+    ["08001DDC","src/language.js:13"],
+    ["0808F82C","src/language.js:23"],
+    ["0808F96C","src/language.js:49"],
+    ["0808FA44","src/language.js:19"],
+    ["0808FC64","src/language.js:63"],
+    ["0808FDC4","src/language.js:87"],
+    ["0808FE4C","src/language.js:109"],
+    ["0808FEBC","src/language.js:98"],
+    ["0808FF08","src/language.js:120"],
+    ["0808FF8C","src/language.js:16"],
+    ["080BA1F4","src/core.js:27"],
+    ["080BCB6C","src/core.js:38"],
+    ["080BCC04","src/core.js:45"],
+    ["080BCFFC","src/background.js:6"],
+    ["080BF0C4","src/sprite.js:20"],
+    ["080BFFB4","src/sprite.js:75"],
+    ["080C7194","src/language.js:57"]
+  ],
+  "unmatched": [
+
+  ]
+}
