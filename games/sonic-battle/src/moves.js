@@ -36,6 +36,9 @@ const X = 0, Y = 2, Z = 4, OLD_X = 6, OLD_Y = 8, OLD_Z = 10, ANIMATION = 22, SCR
 const FLAG_GROUNDED = 0x1, FLAG_LANDED = 0x2, FLAG_IN_AIR = 0x4, FLAG_LOCKED = 0x100000, FLAG_NEW_STATE = 0x200000,
   FLAG_CHAIN = 0x400000;
 
+// the sound effects asked for, and how many; each song's record in gSongTable, with its player at the fifth byte
+const EFFECT_COUNT = 0x03004470, EFFECTS = 0x03004480, SONG_TABLE = 0x08BF7244, HALF_VOLUME_SOUND = 0x333;
+
 const notPorted = (address, what) => { throw new Error(`0x${address}: ${what} isn't ported`); };
 const record = i => FIGHTERS + i * RECORD;
 const keysNow = (c, i) => { const at = KEYS + i * KEYS_PER_FIGHTER; return at + read8(c, at + KEYS_NOW) * 2; };
@@ -56,12 +59,30 @@ function nextRandom(c) {
 
 /** 0x0801fcd8: a sound effect with its place on the screen asked for, at most 32 a frame. */
 function queueEffect(c, sound, place) {
-  const count = read8(c, 0x03004470);
+  const count = read8(c, EFFECT_COUNT);
   if (count > 31) return 0;
-  write16(c, 0x03004480 + count * 4, sound);
-  write16(c, 0x03004480 + count * 4 + 2, place);
-  write8(c, 0x03004470, count + 1);
+  write16(c, EFFECTS + count * 4, sound);
+  write16(c, EFFECTS + count * 4 + 2, place);
+  write8(c, EFFECT_COUNT, count + 1);
   return 1;
+}
+
+/**
+ * 0x0801fc60, in the interrupt at the display's line 1 (0x080185cc, 0x08018654): the sound effects asked for start, each
+ * through 0x0801f618, with its player straight at the start (0x0801f644) and panned to its place (0x0801f66c).
+ */
+function playQueuedEffects(c) {
+  const count = read8(c, EFFECT_COUNT);
+  for (let n = 0; n < count; n++) {
+    const sound = read16(c, EFFECTS + n * 4), place = (read16(c, EFFECTS + n * 4 + 2) << 24) >> 24;
+    const player = read16(c, SONG_TABLE + sound * 8 + 4);
+    c.sound?.play(sound);
+    c.sound?.call('immInit', player);
+    c.sound?.call('panpotControl', player, 0xFFFF, place);
+    // 0x0801f6a0: this one sound at half its volume
+    if (sound === HALF_VOLUME_SOUND) c.sound?.volume(player, 0xFFFF, 0x80);
+  }
+  write8(c, EFFECT_COUNT, 0);
 }
 
 /** 0x080205d0: the fade's next step, and whether it's over. */
@@ -1003,7 +1024,7 @@ export { fighterAct as fn0800486c };
 export { landOrFall as fn0800444c };
 export { updateThings as fn0800c728 };
 export { followFighter as fn0801a04c };
-export { queueEffect as fn0801fcd8 };
+export { queueEffect as fn0801fcd8, playQueuedEffects as fn0801fc60 };
 export { stepFade as fn080205d0 };
 export { endFade as fn08020944 };
 export { nextRandom as fn08020144 };

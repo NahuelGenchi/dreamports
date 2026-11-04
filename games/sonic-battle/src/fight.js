@@ -11,7 +11,7 @@ import { fn08016684, fn080175d4, fn080176e4, fn08017c5c, fn08017d58, fn08017ed0,
 import { fn08000a2c, fn08000cf4, fn0800186c, fn08006ff4, fn08007e24, fn08007e9c, fn0800fd8c, fn08015f6c, fn08017964, fn0801ce70, fn0801e9ec, fn0801f024 } from './fighters.js';
 import { fn08012b98, fn08013214, fn08015498, fn0801584c } from './hud.js';
 import { fn0800f9c0, fn0800fdc8, fn0801103c, fn08011c7c } from './arena.js';
-import { fn0801c28c, fn080177b8, fn080205d0, fn08020944 } from './moves.js';
+import { fn0801c28c, fn0801fc60, fn080177b8, fn080205d0, fn08020944 } from './moves.js';
 
 const SETUP = 0x03001620;     // gUnknown_03001620: what the fight is
 const PLAYER = 0x03001380;    // gUnknown_03001380: which fighter the player is
@@ -162,6 +162,7 @@ function choosingAfterWait(c) {
  */
 export function startFight(c, vblanks) {
   c.vblanks = vblanks;
+  c.lineOne = fn0801fc60;
   c.video.pal.fill(0);
   write8(c, SAVE + 119, 1);   // the language the save keeps: English in the USA copy (menu.js)
   for (let i = 0; i < REGISTER_COUNT; i++) {

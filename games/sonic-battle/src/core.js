@@ -73,6 +73,8 @@ export function createCore(video, rom, sound) {
     startUp: START_UP_FRAMES,
     main: null,
     fightVblank: false, afterWait: null,
+    // what the interrupt at the display's line 1 does in a fight, which comes after the frame's work starts (fight.js)
+    lineOne: null,
   };
   // the console after its start-up program: the screen white (forced blank) until the game shows it
   video.write(REG.DISPCNT, 0x80);
@@ -98,12 +100,14 @@ export function step(c, held) {
     const rest = c.afterWait;
     c.afterWait = null;
     rest(c);
+    c.lineOne?.(c);
     return;
   }
   runCopies(c);
   readKeys(c, held);
   // 0x080005ac: a link cable game's reset, which needs a second console
   c.callback(c);
+  c.lineOne?.(c);
 }
 
 /** After line `line` is drawn: what a callback's long job has finished by then, which the lines below it show. */
