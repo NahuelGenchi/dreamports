@@ -63,6 +63,12 @@ The [proof tools](../../tools/README.md) play the same button presses in the ori
 
 A tool reaches it on the page as `dreamportsProof`. Its `buttons` names the game's buttons, `ready` resolves once the game runs, `step({ held, pressed })` runs one frame and resolves to its picture as `ImageData`, `heard` holds that frame's sound, left and right samples in an `Int16Array`, or `null` for a game with no sound, `video` holds the video hardware that drew it, whose registers, colours, sprites and video memory `prove` compares with the original's, and `frames` holds what was recorded, ready to give back to `step()`. In record mode, `replay(frames)` gives it the frames to play first, each `{ held }` with the console's names for its buttons, before the game starts, and `replaying` says how many are still to run. Games with more than one player on a page aren't supported yet.
 
+A game can also say that no player could ever see a frame, in `dreamportsProof.neverInPlay`, which `prove` reads after each frame and fails on, as [Start points](../../tools/README.md#start-points) explains. It's for what only a start point can cause, so a game with an opening that holds its character, such as a countdown, keeps a note that a start point moved them and checks it there, as Sonic Advance 2's does. `dreamportsProof` is there only with `?proof`, so the line does nothing for a player:
+
+```js
+if (stage.placed && p.flags & FLAG.IN_AIR && globalThis.dreamportsProof) dreamportsProof.neverInPlay = 'Sonic is in the air during the countdown';
+```
+
 The tools start the game the way a player does, on the kit's start screen: they give the copy to the first file input in its `.rom` part, wait for `.play` to be ready, and press it. While they play, the picture `step()` hands over has to be the console's 240 by 160 pixels.
 
 ## Thanks
