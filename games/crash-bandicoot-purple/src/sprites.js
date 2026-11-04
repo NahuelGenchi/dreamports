@@ -53,9 +53,7 @@ export function createSprites(video, rom) {
 }
 
 // 0x08069648: how many tiles each shape and size holds, and 0x080695E8 its width and height
-const TILES = [1, 4, 16, 64, 2, 4, 8, 32, 2, 4, 8, 32];
-const WIDTHS = [8, 16, 32, 64, 16, 32, 32, 64, 8, 8, 16, 32];
-const HEIGHTS = [8, 16, 32, 64, 8, 8, 16, 32, 16, 32, 32, 64];
+const TILES = 0x08069648 - CARTRIDGE, SIZES = 0x080695E8 - CARTRIDGE;
 
 // 0x0801F7A8: the place a sprite's colours have among the console's 16, given the first time they're asked for
 function colourSlot(sprites, address, colours) {
@@ -77,7 +75,7 @@ export function drawSprite(sprites, sprite, screenX, screenY, colours) {
   for (let n = 0; n < count; n++) {
     const at = parts + n * 8, kind = rom.u8(at + 4);
     const partX = rom.view.getInt16(at, true), partY = rom.view.getInt16(at + 2, true);
-    const w = WIDTHS[kind], h = HEIGHTS[kind];
+    const w = rom.u32(SIZES + kind * 8), h = rom.u32(SIZES + kind * 8 + 4);
     const y = sprite.flipY ? screenY - partY - h : screenY + partY;
     const x = sprite.flipX ? screenX - partX - w : screenX + partX;
     if (y > -h && y <= 159 && x > -w && x <= 239) {
@@ -87,7 +85,7 @@ export function drawSprite(sprites, sprite, screenX, screenY, colours) {
         (slot << 12) | (sprite.priority << 10) | (sprites.tiles + offset),   // as 0x08019190 sets it
       ]);
     }
-    offset += TILES[kind];
+    offset += rom.u32(TILES + kind * 4);
   }
   // 0x08037B5C: the frame's tiles, which go into video memory at the V-blank, in pairs
   sprites.jobs.push([rom.u32(frame + 4) - CARTRIDGE, sprites.tiles, offset]);

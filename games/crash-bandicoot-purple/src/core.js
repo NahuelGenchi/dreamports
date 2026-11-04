@@ -106,8 +106,8 @@ function* mainLoop(c) {
   yield* titleLoop(c);
 }
 
-// The title screen, 0x08087350's next level, which 0x080155E4 makes when the first screens end
-const TITLE = 0x08087360;
+// The title screen, the second word of 0x08087350, which 0x080155E4 makes when the first screens end
+const TITLE_MAPS = 0x08087350;
 // The frames between the script's end and the title's first picture, with the screen black: the console's timing, as
 // mGBA measures it, as start-up's is. How far the animations' clock (0x02007284) has come by that picture, and how many
 // frames the screen stays white after the fade, once A or Start has been pressed
@@ -120,7 +120,7 @@ const NAME_SOUNDS = [
   [[22, 0x08085D6C, 0x08085D60]],
 ];
 // The middle of the screen, which 0x0800C580 draws them from
-const NAME_X = 120, NAME_Y = 80;
+const NAME_PLACE = 0x0806909C;
 // 0x0200741C and 0x020074AC, the tables 0x0803C120 builds: the game's letters in the two colours Press Start blinks in,
 // with where each letter's picture is, how wide it is and the tiles it takes
 const LETTERS = { map: 0x08B54948 - CARTRIDGE, widths: 0x08B54A48 - CARTRIDGE, tiles: 0x08B54B48 - CARTRIDGE, size: 0x40, count: 2 };
@@ -157,9 +157,10 @@ function playSound(c, address) {
 // The main loop on the title screen, until A or Start fades it to white. In the original they go on to the load save
 // screen, and what comes between it and the first world's hub isn't ported yet, so here they go straight to the hub
 function* titleLoop(c) {
-  const { video, rom } = c, at = TITLE - CARTRIDGE;
+  const { video, rom } = c, title = rom.u32(TITLE_MAPS - CARTRIDGE + 4), at = title - CARTRIDGE;
+  const nameX = rom.u32(NAME_PLACE - CARTRIDGE), nameY = rom.u32(NAME_PLACE - CARTRIDGE + 4);
   c.movie = null;
-  const world = createWorld(video, rom, TITLE), sprites = createSprites(video, rom);
+  const world = createWorld(video, rom, title), sprites = createSprites(video, rom);
   // 0x0802CBBC: the level's colours
   c.colours.fill(0);
   for (let i = 0; i < 256; i++) c.colours[i] = rom.u16(rom.u32(at) - CARTRIDGE + i * 2);
@@ -181,7 +182,7 @@ function* titleLoop(c) {
   c.hblank = y => video.write(REG.BG0HOFS, lines[y]);   // 0x08001A98
   const { text, x: textX } = pressStart(rom);
   const name = NAME.map(address => {
-    const sprite = createSprite(rom, address, NAME_X << 8, NAME_Y << 8);
+    const sprite = createSprite(rom, address, nameX << 8, nameY << 8);
     sprite.next = sprite.animation.delay + 1;
     return sprite;
   });
@@ -211,7 +212,7 @@ function* titleLoop(c) {
     stepFade(c);          // 0x0803FB48
     // 0x0800C580: the line of text, then the name from the last animation to the first
     drawText(sprites, { ...LETTERS, colours }, text, textX, TEXT_Y, c.colours);
-    for (const n of [2, 1, 0]) drawSprite(sprites, name[n], NAME_X, NAME_Y, c.colours);
+    for (const n of [2, 1, 0]) drawSprite(sprites, name[n], nameX, nameY, c.colours);
     workOutColours(c);    // 0x0803FBA4
     video.pal.set(c.faded);   // 0x0803FAC4
     video.write(REG.DISPCNT, 0x1940);   // 0x0803B1D4
@@ -232,20 +233,24 @@ function random(c) {
   return c.seed >>> 17;
 }
 
-// The first world's hub: 0x080872EC's first world's first level, whose first map is this one (0x08015324)
-const FIRST_HUB = 0x08087C28;
+// The first world's hub: 0x080872EC's first world's first level, whose first map 0x08015324 makes from this list
+const HUB_MAPS = 0x08087380;
+// The kinds of actor in a level's list: Crash, a fruit and Coco, and how each starts: the animation a fruit is made with,
+// and for the other two the first of their lists of animations
+const KIND_CRASH = 1, KIND_FRUIT = 34, KIND_COCO = 111;
+const CRASH_ANIMATIONS = 0x0807768C, FRUIT_ANIMATION = 0x082FCED4, COCO_ANIMATIONS = 0x08069888;
 
-// What the hub's start shows, from the level's list of actors at 0x08B70934: each one's animation (0x0807768C's first
-// for Crash, the one a fruit is made with and 0x08069888's first for Coco), and its place and whether it faces left, as the
-// list has them.
-const CRASH = { animation: 0x082CBDFC, x: 58, y: 388, flip: false };   // type 1, 0x08021B08
-const OTHERS = [
-  { animation: 0x082FCED4, x: 225, y: 381, flip: false },  // type 34
-  { animation: 0x082FCED4, x: 266, y: 375, flip: false },
-  { animation: 0x082FCED4, x: 310, y: 387, flip: false },
-  { animation: 0x082FCED4, x: 350, y: 399, flip: false },
-  { animation: 0x08307DB4, x: 195, y: 381, flip: true },   // type 111
-];
+// 0x08013968: the actors a level's definition lists at 24, each its kind, its place and what it starts with
+function readActors(rom, def) {
+  const list = rom.u32(def - CARTRIDGE + 24) - CARTRIDGE, actors = [];
+  const records = rom.u32(list + 4) - CARTRIDGE, offsets = rom.u32(list + 8) - CARTRIDGE, data = rom.u32(list + 12) - CARTRIDGE;
+  for (let n = 0, count = rom.u16(list); n < count; n++) {
+    const at = records + n * 8, start = data + rom.u16(offsets + rom.u16(at + 6) * 2);
+    actors.push({ kind: rom.u16(at), x: rom.u16(at + 2), y: rom.u16(at + 4), start });
+  }
+  return actors;
+}
+
 const AKU_AKU = 0x082FD3CC;   // 0x08000A2C
 
 // The clock the actors' animations go by (0x02007284) at the first picture: how many frames they've run by then, as mGBA
@@ -317,13 +322,23 @@ function followCrash(camera, crash) {
 // The main loop in the hub, from the first frame the fade has started: the level's update, then the V-blank's work
 function* hubLoop(c) {
   const { video, rom } = c;
-  const at = FIRST_HUB - CARTRIDGE, world = createWorld(video, rom, FIRST_HUB), sprites = createSprites(video, rom);
+  const hub = rom.u32(HUB_MAPS - CARTRIDGE + 4), at = hub - CARTRIDGE;
+  const world = createWorld(video, rom, hub), sprites = createSprites(video, rom);
   // 0x0801F85C: the level's colours
   c.colours.fill(0);
   for (let i = 0; i < 256; i++) c.colours[i] = rom.u16(rom.u32(at) - CARTRIDGE + i * 2);
   video.write(REG.BLDCNT, 0x3F40);
   video.write(REG.BLDALPHA, 0x0808);
-  const crashSprite = createActor(rom, CRASH), others = OTHERS.map(a => createActor(rom, a));
+  const actors = readActors(rom, hub);
+  // Crash where the list says he starts for the way he comes in, here the first, as the word at 12 of what he
+  // starts with says, and Coco and the fruit where it puts them, each facing left if the first bit of that says so
+  const place = (animation, { x, y }, flip) => createActor(rom, { animation, x, y, flip });
+  const crashActor = actors.find(a => a.kind === KIND_CRASH && rom.u32(a.start + 12) === 0);
+  const crashSprite = place(rom.u32(CRASH_ANIMATIONS - CARTRIDGE), crashActor, (rom.u8(crashActor.start) & 1) !== 0);
+  const others = [
+    ...actors.filter(a => a.kind === KIND_FRUIT).map(a => place(FRUIT_ANIMATION, a, false)),
+    ...actors.filter(a => a.kind === KIND_COCO).map(a => place(rom.u32(COCO_ANIMATIONS - CARTRIDGE), a, (rom.u8(a.start) & 1) !== 0)),
+  ];
   c.seed = RANDOM_SEED;
   c.floats = FLOAT_START;
   c.random = () => random(c);
