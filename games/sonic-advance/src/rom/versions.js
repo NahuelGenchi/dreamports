@@ -34,6 +34,7 @@ export const KNOWN_VERSIONS = [
       credits: 0x6815B4,
       emeraldMessage: 0x6C5650,
       optionsBackground: 0x6C5650,
+      courseSelectBackground: 0x69A6D0,
       playerDataBackground: 0x6C5C10,
       vsRecordBackgrounds: 0x6847B0,
       nameInputMaps: 0x67DC38,

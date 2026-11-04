@@ -55,6 +55,9 @@ const params = new URLSearchParams(location.search);
 const debug = params.has('debug'), specialTest = params.has('special');
 // `?level=N` starts the level the ROM's tables number N (2 is Secret Base Zone act 1) instead of the first
 const firstLevel = Number(params.get('level') ?? 0) | 0;
+// `?unlocked=N` puts the character's progress in the save as the game starts, N being the level after the last one
+// cleared, for the proof's recordings of the course select
+const unlocked = params.has('unlocked') ? Number(params.get('unlocked')) & 0xFFFF : null;
 // a multiplayer stage (`?level=14`) is played by `&players=N` players, 2 to 4 (2 if not given), each on their
 // own screen; `&seed=` and `&chao=` set what the link hands the GBAs as the round starts (the shared random
 // number and the Chao's place, 0–7)
@@ -236,7 +239,8 @@ romFile.addEventListener('change', async () => {
 // as it goes; the continues the special stages have given, kept for this visit; and the level the game was
 // started on, the course select's (gMultiplayerCurrentLevel: the level pick's, or 0 from the start)
 const save = openSave();
-let continues = 0, startLevel = 0;
+if (unlocked !== null) save.setUnlockedLevel(character, unlocked);
+let continues = 0, startLevel = 0, currentLevel = 0;   // currentLevel is gCurrentLevel, which a new start leaves as it was
 
 // Sonic Rush's boost, an extra on top of the original game: off unless chosen, like the widescreen view. Its
 // effects and sound come from the player's own Sonic Rush ROM.
@@ -410,18 +414,30 @@ function start(buffer, assets) {
   const leaving = specialTest && specialSpringStart(assets, { emeralds: save.chaosEmeralds, continues });
   if (leaving) { enterSpecialStage(assets, leaving); return; }
   if (debug) { play(assets); return; }
-  front = createFrontEnd(screen, rom, assets.info.offsets, input, sound, save, () => { front = null; play(assets); });
+  front = createFrontEnd(screen, rom, assets.info.offsets, input, sound, save, (level, frameCount) => {
+    front = null;
+    if (level === undefined) play(assets);
+    else playChosen(level, frameCount);
+  }, { character, levels: () => ({ current: currentLevel, started: startLevel }) });
   fitScreen();
   screen.focus();
 }
 
-// the act, after the game's start, again from what the special stage hands back (`resume`), or the next zone's
-// first act with what the game carries over (`carry`)
-function play(assets, resume = null, carry = null) {
-  const levelPick = assets.first !== 0 && assets.first === firstLevel && !carry;
-  if (!resume && !carry) startLevel = levelPick ? assets.first : 0;
+// the act the course select started, its zone decoded from the ROM unless it's the one the game opened with
+async function playChosen(level, frameCount) {
+  const from = sa1;
+  const assets = from.assets.first === level ? from.assets : await extractAssets(from.buffer, () => {}, { level, character });
+  if (sa1 !== from || stage.hidden) return;   // the player left the game meanwhile
+  play(assets, null, null, { level, frameCount });
+}
+
+// the act, after the game's start, again from what the special stage hands back (`resume`), the next zone's first
+// act with what the game carries over (`carry`), or the act the course select `chosen`, { level, frameCount }
+function play(assets, resume = null, carry = null, chosen = null) {
+  const levelPick = !!chosen || (assets.first !== 0 && assets.first === firstLevel && !carry);
+  if (!resume && !carry) startLevel = chosen ? chosen.level : levelPick ? assets.first : 0;
   game = createGame(screen, assets, input, sound, {
-    resume, carry, save, startLevel, continues, levelPick,
+    resume, carry, save, startLevel, continues, levelPick, frameCount: chosen?.frameCount,
     onSpecialStage: handover => enterSpecialStage(assets, handover),
     onNextZone: next => nextZone(next),
     // a game over without a continue goes back to the start of the game, the SEGA logo
@@ -450,7 +466,8 @@ let playing = null;
 // X Zone's results, with them the credits after the true ending; at its end the game starts over from the
 // SEGA logo
 function endGame(assets, from) {
-  const { seed } = game.state;
+  const { seed, level } = game.state;
+  currentLevel = level;
   game.stop();
   game = createNormalEnding(screen, assets, input, sound, { from, emeralds: from === 'credits', seed, save, onEnd: () => queueMicrotask(restartGame) });
   fitScreen();
@@ -462,6 +479,7 @@ function endGame(assets, from) {
 // act's is loaded)
 async function restartGame() {
   continues = 0;
+  currentLevel = game?.state?.level ?? currentLevel;
   const assets = sa1.assets.first === 0 ? sa1.assets : await extractAssets(sa1.buffer, () => {}, { level: 0, character });
   start(sa1.buffer, assets);
 }
