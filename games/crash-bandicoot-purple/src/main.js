@@ -12,6 +12,7 @@ import { createInput } from '../../../kit/gba/input.js';
 import { proof } from '../../../kit/gba/proof.js';
 import { createSettings } from '../../../kit/gba/ui/settings.js';
 import { createTouch } from '../../../kit/gba/ui/touch.js';
+import { createSound } from '../../../kit/gba/sound/audio.js';
 import { createCore, step } from './core.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from
@@ -30,12 +31,20 @@ const picker = document.getElementById('picker');
 const stage = document.getElementById('stage');
 const screen = document.getElementById('screen');
 const input = createInput(LAYOUT);
+// the game's sound, its own engine on the player's copy (sound/gax.js), and the calls the game makes on it
+const sound = createSound({
+  worklet: new URL('./sound/worklet.js', import.meta.url),
+  calls: call => ({
+    startSong(address) { call('startSong', address); },
+    playEffect(address) { call('playEffect', address); },
+  }),
+});
 proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives
 const touch = createTouch(stage, input, { screen, key: 'crash-bandicoot-purple' });
 createSettings(stage, input, { touch });
-let rom = null;
+let rom = null, romBuffer = null;
 
 createRomSetup(picker, {
   brand: 'Crash Bandicoot Purple: Ripto\'s Rampage Dreamport',
@@ -49,24 +58,28 @@ createRomSetup(picker, {
     async read(buffer) {
       const { region, known } = await identify(new Rom(buffer), GAME);
       rom = new Rom(buffer);
+      romBuffer = buffer;
       return `${region} · ${known ? 'tested version' : 'untested version'}`;
     },
-    unload() { rom = null; },
+    unload() { rom = null; romBuffer = null; },
   }],
   onPlay: start,
 });
 
 // The game so far: the copyright screen and the logos. What comes after them, the title screen, isn't ported yet, so
 // the screen stays black there.
-function createGame(video, rom) {
-  const core = createCore(video, rom);
+function createGame(video, rom, sound) {
+  const core = createCore(video, rom, sound);
   return { step(keys) { step(core, keys); } };
 }
 
 function start() {
   picker.hidden = true;
   stage.hidden = false;
-  const video = createVideo(), game = createGame(video, rom);
+  // the sound engine, on the player's copy. The kit's proof tool waits for it, so every frame has its sound, and its
+  // layout is empty as this engine doesn't read the kit's song table
+  sound.load(romBuffer, { songs: 0, songTable: 0 });
+  const video = createVideo(), game = createGame(video, rom, sound);
   const out = screen.getContext('2d', { alpha: false });
   screen.width = SCREEN_W;
   screen.height = SCREEN_H;
