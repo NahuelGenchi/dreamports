@@ -1,7 +1,7 @@
 {
- "about": "Sonic meeting a ceiling, from a start point in Leaf Forest act 1's cave: the character and the camera are put there as the stage opens, so the rings and the enemies on the way, which aren't made, don't show. He falls to the ground, sets off as the countdown ends, brakes and jumps straight up into the low ceiling with the button held, and comes back down.",
+ "about": "Sonic meeting a ceiling, from a start point on the ground in Leaf Forest act 1's cave: the character and the camera are put there as the stage opens, so the rings and the enemies on the way, which aren't made, don't show. He waits out the countdown there, sets off as it ends, brakes and jumps straight up into the low ceiling with the button held, and comes back down.",
  "frames": 269,
- "start": "level=0&x=3560&y=1610",
+ "start": "level=0&x=3560&y=1665",
  "held": [
   [
    0,
@@ -196,7 +196,7 @@
      "frame": 2319,
      "address": "030059EC",
      "bytes": 4,
-     "value": 412160
+     "value": 426240
     },
     {
      "frame": 2319,
@@ -208,7 +208,7 @@
      "frame": 2319,
      "address": "03005964",
      "bytes": 4,
-     "value": 1530
+     "value": 1585
     }
    ]
   }

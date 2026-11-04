@@ -97,6 +97,16 @@ test('a part from a start point isn\'t proven with a frame that differs, or fram
   assert.deepEqual(gap.gameplay.parts.map(p => [p.proven, p.gap]), [[false, 5]]);
 });
 
+test('frames no player could ever see stop the proof, however they compared', () => {
+  const original = { name: 'Made Up', sha1: 'abc' };
+  const measured = more => ({ original, recordings: { placed: { held: [], frames: 100 } }, progress: { original: 'abc', recordings: { placed: { frames: 100, matched: 100, differs: [], functions: [], ...more } } } });
+  assert.doesNotThrow(() => proofOf('made-up', measured({})));
+  assert.throws(
+    () => proofOf('made-up', measured({ neverInPlay: [{ from: 0, to: 16, why: 'Sonic is in the air during the countdown' }] })),
+    /recordings\/placed\.json plays what no player could ever see at frames 0 to 16: Sonic is in the air during the countdown\..*Start points/,
+  );
+});
+
 test('a list of presses gives the original every frame, with the stretches only it has in their places', () => {
   const buttons = originalButtons({ frames: 3, held: [[1, ['A']]], onlyInOriginal: [{ at: 1, frames: 2, held: [[1, ['START']]] }, { at: 3, frames: 1 }] });
   assert.deepEqual(buttons, [[], [], ['START'], ['A'], ['A'], []]);

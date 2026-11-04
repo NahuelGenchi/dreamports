@@ -38,7 +38,7 @@ const lastLine = ({ out }) => out.trim().split('\n').at(-1);
 
 // the game's own code, which does what the made-up console's cartridge says, as a Dreamport does what its original does.
 // `change` makes a game that differs from it somewhere
-const GAME_CODE = ({ colourB = 'colours[2]', loud = '0.5' } = {}) => `function createGame() {
+const GAME_CODE = ({ colourB = 'colours[2]', loud = '0.5', unseen = false } = {}) => `function createGame() {
   const colours = Array.from(new Uint16Array(rom.buffer.slice(6, 22)));
   let frame = Number(new URLSearchParams(location.search).get('later')), pressed = -1, phase = 0;
   proof?.listen((left, right) => {
@@ -46,7 +46,7 @@ const GAME_CODE = ({ colourB = 'colours[2]', loud = '0.5' } = {}) => `function c
   }, 44100, 1 / 50);
   const paint = colour => 0xFF000000 | (colour & 31) << 19 | (colour >> 6 & 31) << 11 | (colour >> 11 & 31) << 3;
   return {
-    step() { pressed = input.a ? 1 : input.b ? 2 : input.start ? 3 : -1; },
+    step() { pressed = input.a ? 1 : input.b ? 2 : input.start ? 3 : -1;${unseen ? " if (globalThis.dreamportsProof) dreamportsProof.neverInPlay = 'it says so';" : ''} },
     draw(pixels) {
       const bar = paint(colours[4]);
       const shown = pressed === 2 ? ${colourB} : colours[pressed < 0 ? 0 : pressed];
@@ -137,6 +137,12 @@ async function main() {
     run = dp('prove', GAME, 'later', '--quick');
     check(run.status === 0 && !browserLeft(), `one stopped so it can't is ended by the next run: ${lastLine(run)}`);
   }
+
+  writeGame(GAME_CODE({ unseen: true }));
+  run = dp('prove', GAME, 'later');
+  check(run.status !== 0 && report('later').matched === 40 && run.out.includes('No player could ever see'), 'a recording fails when the game says no player could see it, however its frames compare');
+  run = dp('prove', GAME, 'later', '--quick');
+  check(run.status !== 0 && run.out.includes('No player could ever see'), '--quick says so too');
 
   writeGame(GAME_CODE({ colourB: '0x001F' }));
   run = dp('prove', GAME, 'buttons');

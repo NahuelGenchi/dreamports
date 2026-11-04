@@ -179,10 +179,11 @@
      *  the console holds at the first frame whose picture isn't the hash in `expected`, and at those `wantStates` names.
      *  It stops after the first frame from `stopsFrom` on whose picture isn't. */
     async run(from, held, expected, stopsFrom = Infinity) {
-      const hashes = [], sound = [];
+      const hashes = [], sound = [], neverInPlay = [];
       for (let i = 0; i < held.length; i++) {
         const frame = from + i;
         dreamportsProof.video = null;   // a game can draw some screens with a renderer of its own
+        dreamportsProof.neverInPlay = null;
         const image = await played({ held: held[i] });
         if (!image) throw new Error('The game handed over no picture.');
         if (__console.id === 'gba' && (image.width !== WIDTH || image.height !== HEIGHT)) {
@@ -192,6 +193,8 @@
         hashes.push(hash);
         if (first) pictureDiffered = true;
         if (first || wantedStates.has(frame)) keepState(frame);
+        // a game's own word that no player could ever see this frame
+        if (dreamportsProof.neverInPlay) neverInPlay.push({ frame, why: dreamportsProof.neverInPlay });
         // a game with no sound, or a kit from before the tools heard it, is silent
         const samples = dreamportsProof.heard ?? null, energies = new Float64Array(16);
         if (samples) { filter(samples, energies); heard = true; }
@@ -199,7 +202,7 @@
         if (first) kept.set(frame, fromRing(frame));
         if (frame >= stopsFrom && hash !== expected[i]) break;
       }
-      return { hashes, sound };
+      return { hashes, sound, neverInPlay };
     },
 
     /** The frames whose state to keep as they're played, besides the first whose picture differs. */
