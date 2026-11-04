@@ -22,7 +22,7 @@ const SEGMENT_TILES = 4, SEGMENT_BYTES = 32 * SEGMENT_TILES, HEAP_START = 0x1400
 const SONG_WAIT = 5;
 const FIRST_OAM_MATRIX = 4;   // gOamMatrixIndex, each frame, as those below it are the characters'
 
-// 0x08007C10, VramMalloc: sprite memory in segments of 4 tiles, the first stretch that fits each time
+// 0x08007C10, VramMalloc, and VramFree: sprite memory in segments of 4 tiles, the first stretch that fits each time
 function createTileHeap(start, slots) {
   const used = new Uint16Array(slots);
   return {
@@ -41,6 +41,9 @@ function createTileHeap(start, slots) {
         }
       }
       throw new Error('Sprite memory is full.');
+    },
+    free(tiles) {
+      used[(tiles - start) / SEGMENT_BYTES] = 0;
     },
   };
 }
@@ -166,6 +169,7 @@ export function startStage(c, level) {
   // sprite memory past what the character, the rings and the water keep for themselves
   const heap = createTileHeap(HEAP_START, 140);
   stage.allocTiles = heap.alloc;
+  stage.freeTiles = heap.free;
   // PSEUDO_RANDOM_32
   stage.random = () => {
     stage.seed = (Math.imul(stage.seed, 0x196225) + 0x3C6EF35F) | 0;

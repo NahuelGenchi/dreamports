@@ -27,6 +27,7 @@ export function createCore(video, rom, sound) {
     video, rom,
     playSong: song => sound?.play(song),   // 0x0809532C, m4aSongNumStart
     playOn: (player, song, volume, pan) => sound?.playOn(player, song, volume, pan),   // MPlayStart, on one player, with its volume and pan
+    playPitched: (song, pitch) => sound?.playPitched(song, pitch),
     runSound: () => sound?.call('frame'),   // a frame of the sound engine, which comes with no frame of the game's
     flags: 0, flagsPreVBlank: 0,
     dispCnt: 0x80, bgCnt: new Uint16Array(4), bgScroll: new Uint16Array(8), winRegs: new Uint16Array(6), bldCnt: 0, bldAlpha: 0, bldY: 0,

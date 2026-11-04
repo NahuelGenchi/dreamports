@@ -1,6 +1,6 @@
 {
- "about": "Sonic running right through Leaf Forest act 1's first rings, from the start point leaf-forest-opening has, as the countdown ends: taking them with their sparkle and sound and the number going up, on the first slope, up to the frame before the first that needs A character jumping (notes).",
- "frames": 328,
+ "about": "Sonic running right through Leaf Forest act 1's first rings, from the start point leaf-forest-opening has, as the countdown ends: taking them with their sparkle and sound and the number going up, on the first slope and off it through the air, up to the frame before the first object comes on the screen (notes).",
+ "frames": 384,
  "start": "level=0",
  "held": [
   [
@@ -175,6 +175,6 @@
  ],
  "clip": {
   "at": 190,
-  "frames": 138
+  "frames": 194
  }
 }
