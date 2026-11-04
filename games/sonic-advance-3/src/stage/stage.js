@@ -1,5 +1,6 @@
-// A stage, as the original sets one up and runs it: its layers, the camera, the fade in and the task that counts its
-// time. Rewritten from 0x080026BC, 0x08002988 and 0x08002BBC, with InitCamera at 0x0804F73C.
+// A stage as the original sets one up, so far Route 99's overworld with no characters: its layers, where the camera
+// starts, the fade in and the numbers. Rewritten from 0x08002988, with InitCamera at 0x0804F73C. Nothing moves the
+// camera yet, as that follows the player (UpdateCamera), who isn't ported.
 
 import { backgroundFrom, drawStageBackground, animateTiles } from './map.js';
 import { createStageUi } from './ui.js';
@@ -73,7 +74,7 @@ function initCamera(stage) {
 
 // 0x080516D4 and 0x08051704: the layers on from the first frame, then the camera's place as their scroll
 function showLayers(t) {
-  const stage = t.data, { c, camera, layers } = stage;
+  const stage = t.data, { c } = stage;
   c.dispCnt |= stage.dispBits;
   t.main = scrollLayers;
   scrollLayers(t);
@@ -122,7 +123,7 @@ function createFade(stage) {
   }, fade, 0x2100);
 }
 
-/** 0x080026BC and 0x08002988: everything a stage has, from its first frame. */
+/** 0x08002988: what a stage has so far, from its first frame. */
 export function startStage(c, level) {
   const stage = { c, level, zone: Math.trunc((level - 1) / 10), camera: { x: 0, y: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 }, state: 1, layers: null, dispBits: 0, keys: 0, lives: 2 };
   // 0x08003E44: the tiles sprites ask for come from here, to the end of sprite memory (VramMalloc)

@@ -1,5 +1,5 @@
 {
- "about": "Route 99's overworld, from a start point: the original gets there by itself, from power-on, through its menus and the story.",
+ "about": "Route 99's overworld as it starts, with nothing pressed once it's on the screen. It doesn't match yet: the Dreamport has its layers and numbers but no characters, and its stretch only the original has goes past the white frames, so nothing here counts until it's made.",
  "frames": 300,
  "start": "level=2",
  "held": [
@@ -11,7 +11,7 @@
  "onlyInOriginal": [
   {
    "at": 0,
-   "frames": 4742,
+   "frames": 4760,
    "held": [
     [
      0,

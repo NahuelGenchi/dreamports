@@ -7,8 +7,7 @@ const OBJ_VRAM = 0x10000, TILE = 32;
 const ANIM_ASCII = 1122, ANIM_UI_CHARACTER_TYPE = 1420, ANIM_UI_SPECIAL_KEY = 1422, ANIM_LIFE_ICONS = 1423, ANIM_ZONE_NAME = 1424;
 const ANIM_TIME = 0x58D;
 const LIFE_ICON = [0, 4, 2, 1, 3];   // by character: Sonic, Cream, Tails, Knuckles, Amy
-const CHAR_TYPE = { SONIC_TAILS: 0 };
-const DIGITS = 10, ORDER_6 = 6 << 6, ORDER_5 = 5 << 6, ORDER_6_ALT = 0x180;
+const ORDER_6 = 6 << 6, ORDER_5 = 5 << 6, ORDER_6_ALT = 0x180;
 const ZONE_TEXT_X = 112, ZONE_TEXT_Y = 144, PLAYER_ICON_X = 5, ICON_Y = 141, PARTNER_ICON_X = 15, LIVES_X = 36, LIVES_Y = 156;
 const KEYS_X = 36, KEYS_Y = 40;
 
@@ -28,7 +27,7 @@ export function createStageUi(stage, playerCharacter, partnerCharacter) {
   ui.player = icon(ANIM_LIFE_ICONS, LIFE_ICON[playerCharacter], ORDER_5, 6);
   ui.partner = icon(ANIM_LIFE_ICONS, LIFE_ICON[partnerCharacter], ORDER_6_ALT, 6);
   ui.key = icon(ANIM_UI_SPECIAL_KEY, 0, ORDER_6_ALT, 4);
-  ui.type = icon(ANIM_UI_CHARACTER_TYPE, CHAR_TYPE.SONIC_TAILS, ORDER_6_ALT, 9);
+  ui.type = icon(ANIM_UI_CHARACTER_TYPE, 0, ORDER_6_ALT, 9);
   ui.time = createSprite({ tiles, anim: ANIM_TIME, variant: 0, oamFlags: ORDER_6_ALT });
   updateSprite(c, ui.time);
   ui.zone = createSprite({ tiles: stage.allocTiles(16 * 2), anim: ANIM_ZONE_NAME, variant: stage.zone, oamFlags: ORDER_6_ALT });
