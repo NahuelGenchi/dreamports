@@ -1,13 +1,16 @@
 // What stands in a stage: its map lists objects by regions of 256 pixels, and those near the camera get a task
 // (entities_manager.c: CreateStageEntitiesManager, 0x0802B7B8, and its tasks). So far the overworld's big rings and Omochao,
-// breakable walls, springs, platforms, Chao and the enemies in enemies.js.
+// breakable walls, springs, platforms, Chao, grind rails, ramps, item boxes and the enemies in enemies.js.
 
 import { createSprite, updateSprite, displaySprite } from '../sprite.js';
-import { isArriving, hitWallRebound, thrownBySpring, FLAG } from './player.js';
+import { isArriving, hitWallRebound, thrownBySpring, catchOnRail, offRailEnd, leapOffRail, ontoRamp, launchedFromRamp, FLAG } from './player.js';
+import { KEY } from '../core.js';
+import { groundUpDown } from './collision.js';
 import { SINE } from './trig.js';
 import { ENEMIES } from './enemies.js';
 
-const INTERACTABLES = 0xD0E9C, ENEMY_PLACES = 0xD10E4;
+const INTERACTABLES = 0xD0E9C, ITEM_BOX_PLACES = 0xD0FC0, ENEMY_PLACES = 0xD10E4;
+const ANIM_ITEM_BOX = 1316, ITEM_BOX_TILES = 16, ITEM_TILES = 4, ITEMS = 0xCF038, ITEM_LIVES = 0xCF098, ITEM_LIFE = 0;
 const ANIM_FACTORY_RING = 911, ANIM_OMOCHAO = 977, ANIM_ACT_RING = 983;
 const REGION = 256, TILE = 8, BREAKABLE_WALLS = 0xCF208, WALL_CRACKS = 0xCF250, WALL_DEBRIS = 0xCF2B0, PUSH_OUT = 0x400;
 const ANIM_FIRST_CHAO = 1001, PLATFORM_ANIMS = 0xCF16A, PLATFORM_ANIMS_HUB = 0xCF140;
@@ -40,8 +43,9 @@ export function createEntities(stage) {
   const { c } = stage, { rom, } = c;
   const data = unRle(rom, rom.u32(INTERACTABLES + stage.level * 4) - 0x08000000);
   const enemies = unRle(rom, rom.u32(ENEMY_PLACES + stage.level * 4) - 0x08000000);
+  const items = unRle(rom, rom.u32(ITEM_BOX_PLACES + stage.level * 4) - 0x08000000);
   const regionsX = data.getUint32(4, true) & 0xFFFF, regionsY = data.getUint32(8, true) & 0xFFFF, table = 12;
-  const manager = { stage, data, enemies, regionsX, regionsY, table, prevX: 0, prevY: 0, first: true };
+  const manager = { stage, data, enemies, items, regionsX, regionsY, table, prevX: 0, prevY: 0, first: true };
   c.createTask(spawnNear, manager, 0x2000);
   stage.entities = manager;
   return manager;
@@ -73,17 +77,17 @@ function spawn(m, range) {
   const yLow = lim(range.yLow, m.regionsY), yHigh = lim(range.yHigh, m.regionsY);
   for (let ry = yLow >> 8; ry * REGION < yHigh && ry < m.regionsY; ry++) {
     for (let rx = xLow >> 8; rx * REGION < xHigh && rx < m.regionsX; rx++) {
-      // InitEntityBlock_Interactables, then InitEntityBlock_Enemies
-      for (const [data, kinds] of [[m.data, OBJECTS], [m.enemies, ENEMIES]]) {
+      // InitEntityBlock_Interactables, InitEntityBlock_Enemies, then InitEntityBlock_Items, whose records are shorter
+      for (const [data, kinds, size] of [[m.data, OBJECTS, 8], [m.enemies, ENEMIES, 8], [m.items, null, 3]]) {
         const start = data.getUint32(m.table + (m.regionsX * ry + rx) * 4, true);
         if (start === 0) continue;
-        for (let at = m.table + start - 8; ; at += 8) {
+        for (let at = m.table + start - 8; ; at += size) {
           const raw = data.getInt8(at);
           if (raw === -1) break;
           if (raw < -2) continue;
           const x = data.getUint8(at) * TILE + rx * REGION, y = data.getUint8(at + 1) * TILE + ry * REGION;
           if (x < xLow || x > xHigh || y < yLow || y > yHigh) continue;
-          const create = kinds[data.getUint8(at + 2)];
+          const create = kinds ? kinds[data.getUint8(at + 2)] : createItemBox;
           if (create) create({ ...m, data }, at, x, y);
         }
       }
@@ -432,6 +436,35 @@ function layerToggle(layer) {
   };
 }
 
+// CreateEntity_ItemBox, sub_802C35C, Task_ItemBoxInit and sub_802D6CC: a box with what's in it on top, which nothing happens
+// to yet when a character touches it
+function createItemBox(m, at, x, y) {
+  const { stage } = m, { c } = stage, { rom } = c, meX = m.data.getUint8(at), item = m.data.getUint8(at + 2);
+  const s = createSprite({ tiles: stage.allocTiles(ITEM_BOX_TILES), anim: ANIM_ITEM_BOX, variant: 0, oamFlags: 24 << 6, frameFlags: 0x1000 });
+  updateSprite(c, s);
+  const row = item === ITEM_LIFE ? ITEM_LIVES + stage.players[stage.playerIndex].character * 6 : ITEMS + item * 6;
+  const shown = createSprite({
+    tiles: stage.allocTiles(ITEM_TILES), anim: rom.u16(row), variant: rom.u16(row + 2), oamFlags: 24 << 6,
+    frameFlags: 0x1000 | (item === ITEM_LIFE ? 0x40000 : 0), palId: item === ITEM_LIFE ? stage.playerIndex : 0,
+  });
+  updateSprite(c, shown);
+  m.data.setInt8(at, -2);
+  c.createTask(t => {
+    const sx = x - stage.camera.x, sy = y - stage.camera.y;
+    if ((sx + 128) >>> 0 > 240 + 256 || sy + 128 < 0 || sy > 160 + 128) {
+      m.data.setUint8(at, meX);
+      stage.freeTiles(s.tiles);
+      stage.freeTiles(shown.tiles);
+      c.destroyTask(t);
+      return;
+    }
+    s.x = shown.x = sx;
+    s.y = shown.y = sy;
+    displaySprite(c, s);
+    displaySprite(c, shown);
+  }, null, 0x2000);
+}
+
 // CreateEntity_ChaoInStage and sub_804E5CC: a Chao, which nothing happens to yet when a character finds it
 function createChao(m, at, x, y) {
   const { stage } = m, { c } = stage, meX = m.data.getUint8(at), pose = m.data.getUint8(at + 7) >> 4;
@@ -536,10 +569,181 @@ function platform(sway) {
   };
 }
 
+// sub_8039538: whether a character is in the part of a rail's box that catches it, a triangle by the rail's kind
+function inRailCorner(kind, width, height, px, py) {
+  const tall = width < height;
+  if (kind === 1 || kind === 4) {
+    const v = tall ? ((px * Math.trunc((height << 4) / width)) >> 4) + py : ((py * Math.trunc((width << 4) / height)) >> 4) + px;
+    return kind === 1 ? v <= (tall ? height : width) : v >= (tall ? height : width);
+  }
+  if (tall) {
+    const ratio = Math.trunc((height << 8) / width);
+    if (px === 0) return kind === 2 || py === 0;
+    const slope = Math.trunc((py << 8) / px);
+    return kind === 2 ? ratio <= slope : ratio >= slope;
+  }
+  const ratio = Math.trunc((width << 8) / height);
+  if (py === 0) return true;
+  const slope = Math.trunc((px << 8) / py);
+  return kind === 2 ? ratio >= slope : ratio <= slope;
+}
+// the part of a map's object that says the box it looks after, in 1/256 of a pixel
+function boxOf(data, at, x, y) {
+  const left = (x + data.getInt8(at + 3) * TILE) * 256, top = (y + data.getInt8(at + 4) * TILE) * 256;
+  return { left, top, right: left + data.getUint8(at + 5) * TILE * 256, bottom: top + data.getUint8(at + 6) * TILE * 256 };
+}
+const KNUCKLES_CLIMBING = 238, KNUCKLES_CLIMBING_TOO = 239;
+// CreateGrindRail and Task_8039230: a rail, an area that catches a character coming down on it, unless it's the rail it's
+// just been on or there's nothing to land on at that place in the ground's front layer
+function grindRail(kind) {
+  return (m, at, x, y) => {
+    const { stage } = m, { c } = stage, data = m.data, meX = data.getUint8(at), bits = data.getUint8(at + 7);
+    let bit = 0;
+    for (; bit < 6; bit++) if ((bits >> bit) & 1) break;
+    const rail = bit + 1, box = boxOf(data, at, x, y), only = bits >> 6;
+    data.setInt8(at, -2);
+    c.createTask(t => {
+      const sx = x - stage.camera.x, sy = y - stage.camera.y;
+      if ((sx + 128) >>> 0 > 240 + 256 || sy + 128 < 0 || sy > 160 + 128) {
+        data.setUint8(at, meX);
+        c.destroyTask(t);
+        return;
+      }
+      for (const p of stage.players) {
+        if ((p.velY < 0 && p.flags & FLAG.IN_AIR) || p.pose === KNUCKLES_CLIMBING || p.pose === KNUCKLES_CLIMBING_TOO || only === 3) continue;
+        if (p.x < box.left || p.x > box.right || p.y < box.top || p.y > box.bottom) continue;
+        const width = data.getUint8(at + 5) * TILE, height = data.getUint8(at + 6) * TILE;
+        if (kind !== 0 && !inRailCorner(kind, width, height, (p.x - box.left) >> 8, (p.y - box.top) >> 8)) continue;
+        if (p.rail === rail) continue;
+        p.layer = 0;
+        const angle = [0], gap = groundUpDown((p.y >> 8) + p.halfHeight, p.x >> 8, 0, 8, angle), fall = p.velY >> 8;
+        if (gap >= fall) {
+          p.layer = 1;
+          continue;
+        }
+        p.y += gap * 256;
+        catchOnRail(p, rail, angle[0]);
+        return;
+      }
+    }, null, 0x2100);
+  };
+}
+// CreateEntity_Interactable073, Task_Interactable073Main and Task_Interactable074Main: an area that sends a character to the
+// ground's back layer and off a rail on its feet, or one that throws a grinding character off the rail
+function railEnd(m, at, x, y) {
+  const { stage } = m, { c } = stage, data = m.data, meX = data.getUint8(at), box = boxOf(data, at, x, y);
+  data.setInt8(at, -2);
+  c.createTask(t => {
+    if (!active(stage.camera, x, y)) {
+      leave(t, m, at, meX);
+      return;
+    }
+    for (const p of stage.players) {
+      if (p.x <= box.left || p.x >= box.right || p.y <= box.top || p.y >= box.bottom) continue;
+      if (p.flags & FLAG.GRINDING) p.behave = offRailEnd;
+      p.layer = 1;
+    }
+  }, null, 0x2100);
+}
+function railLeap(m, at, x, y) {
+  const { stage } = m, { c } = stage, data = m.data, meX = data.getUint8(at), box = boxOf(data, at, x, y);
+  data.setInt8(at, -2);
+  c.createTask(t => {
+    if (!active(stage.camera, x, y)) {
+      leave(t, m, at, meX);
+      return;
+    }
+    for (const p of stage.players) {
+      if (p.flags & FLAG.GRINDING && p.x > box.left && p.x < box.right && p.y > box.top && p.y < box.bottom) leapOffRail(p);
+    }
+  }, null, 0x2100);
+}
+
+const ANIM_RAMP = 870, RAMP_HEIGHTS = 0xCF194, RAMP_SPEEDS = 0xCF1E4, RAMP_FULL_SPEED = 0x940;
+// CreateEntity_Ramp, Task_Ramp, sub_8031C10, sub_803205C and sub_80322D8: a ramp only the leader runs up, along its slope,
+// off the top of it or, with the button, off it at a speed by how far up it is. It's only stopped by from behind
+function createRamp(m, at, x, y) {
+  const { stage } = m, { c } = stage, { rom } = c, data = m.data, meX = data.getUint8(at), bits = data.getUint8(at + 7);
+  const low = bits & 1, flipped = (bits >> 1) & 1;
+  const s = createSprite({ tiles: stage.allocTiles(low ? 20 : 15), anim: ANIM_RAMP, variant: low ? 0 : 1, oamFlags: 24 << 6, frameFlags: 0x1000 | (flipped ? X_FLIP : 0), hitboxes: [{ index: -1, left: 0, top: 0, right: 0, bottom: 0 }] });
+  data.setInt8(at, -2);
+  const height = (kind, along) => (rom.u8(RAMP_HEIGHTS + kind * 40 + along) << 24) >> 24;
+  const along = px => Math.max(0, Math.min(39, (flipped ? -(px - x) : px - x) + 20));
+  const launch = (p, how) => {
+    const row = RAMP_SPEEDS + (low * 3 + how) * 4, speedX = rom.s16(row);
+    launchedFromRamp(p, flipped ? -speedX : speedX, rom.s16(row + 2), flipped);
+  };
+  const meets = p => {
+    if (!touchesBody(s.hitboxes[0], x, y, p)) return false;
+    const px = p.x >> 8, dy = (p.y >> 8) + p.halfHeight - y, dx = px - x;
+    if (dx + 19 < 0 || dx + 19 > 38) return false;
+    const h = height(low ? 0 : 1, flipped ? 20 - dx : dx + 20);
+    if (h > dy) return false;
+    p.y = (y + h - p.halfHeight) * 256;
+    if (p.velY > 0) p.velY = 0;
+    return true;
+  };
+  const leader = p => {
+    const px = p.x >> 8;
+    if (!(p.flags & (FLAG.ON_OBJECT | FLAG.IN_AIR))) {
+      const box = s.hitboxes[0], touch = box.index === -1 || p.sprite.hitboxes?.[0]?.index === -1 ? null : touching(box, x, y, p);
+      if (touch?.side === (flipped ? 'left' : 'right')) {
+        if (p.held & (flipped ? KEY.RIGHT : KEY.LEFT)) {
+          p.x += flipped ? 256 : -256;
+          p.flags |= FLAG.AT_WALL;
+        }
+        p.x += touch.push << 8;
+        p.groundSpeed = 0;
+        return;
+      }
+    }
+    const onThis = p.flags & FLAG.ON_OBJECT && p.standingOn === s;
+    if (!meets(p)) {
+      if (!onThis) return;
+      if (p.gait > 1 && ((px < x && flipped && p.groundSpeed < 0) || (px > x && !flipped && p.groundSpeed > 0))) {
+        launch(p, 0);
+        p.flags &= ~FLAG.ON_OBJECT;
+      } else if (Math.abs(px - x) < 20 && p.velY >= 0) p.y = (y + height(low, along(px)) - p.halfHeight) * 256;
+      else {
+        p.flags &= ~FLAG.ON_OBJECT;
+        p.standingOn = null;
+      }
+      return;
+    }
+    if (!onThis) ontoRamp(p, s);
+    if (p.velY >= 0 && !(p.pressed & KEY.A) && !(p.flags & FLAG.IN_AIR) && p.flags & FLAG.ON_OBJECT && p.standingOn === s && Math.abs(px - x) < 20) p.y = (y + height(low, along(px)) - p.halfHeight) * 256;
+    if (p.groundSpeed >= RAMP_FULL_SPEED) {
+      p.x -= 3 * 256;
+      p.y -= 256;
+    }
+    if (p.pressed & KEY.A && p.gait > 1) {
+      if (!flipped && p.groundSpeed > 0) launch(p, x >= px ? 2 : 1);
+      else if (flipped && p.groundSpeed < 0) launch(p, x > px ? 1 : 2);
+    }
+  };
+  c.createTask(t => {
+    leader(stage.players[0]);
+    if (!active(stage.camera, x, y)) {
+      for (const p of stage.players) if (p.standingOn === s) {
+        p.flags = (p.flags & ~FLAG.ON_OBJECT) | FLAG.IN_AIR;
+        p.standingOn = null;
+      }
+      leave(t, m, at, meX, s);
+      return;
+    }
+    s.x = x - stage.camera.x;
+    s.y = y - stage.camera.y - 2;
+    updateSprite(c, s);
+    displaySprite(c, s);
+  }, null, 0x2100);
+}
+
 // gSpriteInits_Interactables, those ported so far
 const OBJECTS = {
   1: layerToggle(0), 2: layerToggle(1),
   5: spring(0), 6: spring(1), 7: spring(3), 8: spring(2), 9: spring(6), 10: spring(7), 11: spring(4), 12: spring(5), 13: spring(8), 14: spring(9),
   16: platform(0), 17: platform(1), 18: platform(2), 19: platform(3),
-  57: createBreakableWall, 66: createOmochao, 96: createActRing, 98: createFactoryRing, 140: createChao,
+  43: createRamp, 57: createBreakableWall, 66: createOmochao,
+  72: grindRail(0), 73: railEnd, 74: railLeap, 76: railEnd, 77: grindRail(1), 78: grindRail(2), 79: grindRail(3), 80: grindRail(4),
+  96: createActRing, 98: createFactoryRing, 140: createChao,
 };
