@@ -156,7 +156,7 @@ function choosingAfterWait(c) {
 }
 
 /**
- * The fight's first frame: 0x0803b3c4, what Start on Training's screen leaves, 0x0801c82c, the new screen and its fade,
+ * The fight's first frame: the values Start on Training's screen leaves with its first choices, 0x0801c82c, the new screen and its fade,
  * and 0x0801c8a4, with 0x08019ed8, which load everything and start the song. In the original these take from the
  * Training screen's fade to the fight's first picture, with the screen black all along.
  */

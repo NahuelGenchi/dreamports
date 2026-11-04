@@ -547,10 +547,9 @@ export function rollChance(c, chance) {
   return roll > chance >>> 0 ? 0 : 1;
 }
 
-/** 0x0801d870: a computer player back to its first thought (the callback 0x0801d8f4), kept as its address. */
+/** 0x0801d870: a computer player back to its start. Partly: not its first thought's callback, which nothing runs yet. */
 export function resetBrain(c, i) {
   const r = brain(i & 0xFF);
-  write32(c, r, 0x0801D8F5);
   write16(c, r + 8, 0);
   write8(c, r + 12, 0);
   write8(c, r + 13, 0);
