@@ -1,0 +1,14 @@
+{
+  "about": "From power-on, the copyright screen and the two logos left alone, to the black screen after them.",
+  "frames": 525,
+  "held": [
+    [
+      0,
+      []
+    ]
+  ],
+  "clip": {
+    "at": 270,
+    "frames": 240
+  }
+}

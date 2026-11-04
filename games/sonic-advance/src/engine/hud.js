@@ -17,10 +17,11 @@ const digits = n => String(n).split('').map(Number);
 /**
  * `flash` is the zero-ring flash counter (unk48). The HUD's task never sets it, so it starts with whatever the
  * memory its data takes held: on a restart, and when act 1 starts, the title card's, its fade's done flag, 1;
- * when a level whose memory is laid out otherwise starts, what an earlier task left (levels.js, hudFlash).
+ * when a level whose memory is laid out otherwise starts, what an earlier task left (levels.js, hudFlash). `past` is
+ * what it shows past the string on that first frame: `pastTheFont`, or with none, nothing.
  */
-export function createHud(flash = 1) {
-  return { flash, sprites: [] };
+export function createHud(flash = 1, past = 'pastTheFont') {
+  return { flash, past, sprites: [] };
 }
 
 /**
@@ -35,7 +36,7 @@ export function updateHud(hud, { ringCount, score, lives, courseTime, stageTime,
   // the ring count: no leading zeros, centred on the icon, 999 at most; at zero it flashes red
   if (ringCount === 0) {
     // sub_8053BAC, whose counter can only start at 32 or more, as its first frame, from what it finds in memory
-    row([FLASH[hud.flash >> 3] ?? 'pastTheFont'], 9, 5);
+    row([FLASH[hud.flash >> 3] ?? hud.past].filter(g => g !== null), 9, 5);
     hud.flash = (hud.flash + 1) & 31;
   } else {
     const d = digits(Math.min(ringCount, 999));

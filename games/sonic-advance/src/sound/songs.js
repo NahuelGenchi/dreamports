@@ -16,6 +16,7 @@ export const SONG = {
   DROWNING: 27,            // MUS_DROWNING: the countdown music under water
   INVINCIBILITY: 28,       // MUS_INVINCIBILITY
   BOSS_FIGHT: 29,          // MUS_BOSS_FIGHT: also started and stopped at once to stop the menu's music
+  FINAL_CLEAR: 35, // MUS_FINAL_CLEAR: X Zone's results
   ACT_CLEAR: 33,           // MUS_ACT_CLEAR: the results of an act without a boss
   BOSS_CLEAR: 34,          // MUS_BOSS_CLEAR: the results of a zone's second act, after its boss
   SPECIAL_STAGE_INTRO: 41, // MUS_SPECIAL_STAGE_INTRO: the fall into the special stage

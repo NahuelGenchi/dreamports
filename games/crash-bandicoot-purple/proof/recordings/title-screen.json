@@ -1,0 +1,14 @@
+{
+  "about": "From power-on, the copyright screen, the logos and the title screen left alone for about 21 seconds. Left alone, the original's title screen keeps on as it is, and A or Start moves it on to the load save screen, which isn't ported.",
+  "frames": 1806,
+  "held": [
+    [
+      0,
+      []
+    ]
+  ],
+  "clip": {
+    "at": 519,
+    "frames": 300
+  }
+}

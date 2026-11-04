@@ -44,16 +44,17 @@ function drawTiles(rom, img, x, y, tilesAt, wide, high, palette) {
  * the character's). The face is `character`'s (0 Sonic, 1 Tails, 2 Knuckles, 3 Amy). `pastFont` is the two tiles a zero-ring count reads
  * past its string (`pastTheFont`), the first frame after the course select. It shares its palette
  * with the character's sprite, so in the colours `facePalette` another sprite loads there (Super Sonic's, in the
- * Moon Zone) the sheet has it again as `faceSuper`.
+ * Moon Zone) the sheet has it again as `faceSuper`, and in `faceTurns`' colours, those of each frame of X Zone's
+ * Sonic turning into him, as `faceTurn0` on.
  */
-export function hudGraphics(rom, tableAt, facePalette = null, fontPalette = null, character = 0, pastFont = null) {
+export function hudGraphics(rom, tableAt, facePalette = null, fontPalette = null, character = 0, pastFont = null, faceTurns = []) {
   const entry = i => ({
     tiles: rom.requirePtr(tableAt + i * ENTRY, `UI graphics ${i}`),
     palette: readColors(rom, rom.requirePtr(tableAt + i * ENTRY + 4, `UI palette ${i}`), 16),
   });
   const font = entry(FONT), ring = entry(HUD_RING), face = entry(FACE_SONIC + character);
   if (fontPalette) font.palette = fontPalette;
-  const image = new ImageData(2 * GLYPHS_PER_SET * 8 + 32 + 32 + 8, 32);
+  const image = new ImageData(2 * GLYPHS_PER_SET * 8 + 32 + 32 + 8 + 16 * faceTurns.length, 32);
   const glyphs = [];
   for (let g = 0; g < 2 * GLYPHS_PER_SET; g++) {
     const tile = (g < GLYPHS_PER_SET ? WHITE_DIGITS + 2 * g : RED_DIGITS + 2 * (g - GLYPHS_PER_SET));
@@ -66,5 +67,7 @@ export function hudGraphics(rom, tableAt, facePalette = null, fontPalette = null
   if (facePalette) drawTiles(rom, image, faceX + 16, 0, face.tiles, 2, 2, facePalette);
   const pastX = faceX + 32;
   if (pastFont !== null) drawTiles(rom, image, pastX, 0, pastFont, 1, 2, font.palette);
-  return { image, glyphs, ring: [ringX, 0, 32, 32], face: [faceX, 0, 16, 16], pastTheFont: [pastX, 0, 8, 16], ...(facePalette && { faceSuper: [faceX + 16, 0, 16, 16] }) };
+  faceTurns.forEach((palette, i) => drawTiles(rom, image, pastX + 8 + i * 16, 0, face.tiles, 2, 2, palette));
+  const turns = Object.fromEntries(faceTurns.map((_, i) => [`faceTurn${i}`, [pastX + 8 + i * 16, 0, 16, 16]]));
+  return { image, glyphs, ring: [ringX, 0, 32, 32], face: [faceX, 0, 16, 16], pastTheFont: [pastX, 0, 8, 16], ...(facePalette && { faceSuper: [faceX + 16, 0, 16, 16] }), ...turns };
 }
