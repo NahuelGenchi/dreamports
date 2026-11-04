@@ -1,8 +1,8 @@
 // The characters, written from how the original's player code behaves, as read in its decompilation. Each frame a
 // character does what its `behave` says, which moves it and works out what it stands on, and then it's drawn with the
 // animation its `pose` asks for. So far: coming out of the ring, running, braking, turning round, standing, falling and
-// jumping, meeting walls and ceilings, thrown by springs, looking up, crouching, rolling, the spin dash and Tails flying, with the partner pressing
-// its own buttons (partner.js). Comments name the original's functions by the decompilation's labels, which
+// jumping, meeting walls and ceilings, thrown by springs, looking up, crouching, rolling, the spin dash, Tails flying and being
+// hit, with the partner pressing its own buttons (partner.js). Comments name the original's functions by the decompilation's labels, which
 // proof/names.json moves to the USA copy's addresses, or by those addresses.
 
 import { createSprite, updateSprite, displaySprite, transformSprite, SPRITE } from '../sprite.js';
@@ -10,6 +10,7 @@ import { groundUpDown, groundSideways } from './collision.js';
 import { SINE, sin8, cos8, arcTan2 } from './trig.js';
 import { KEY } from '../core.js';
 import { createMind, partnerButtons } from './partner.js';
+import { dropRings } from './rings.js';
 
 export const SONIC = 0, TAILS = 2;
 /** What a character's `flags` say. */
@@ -19,7 +20,7 @@ const { FACING_LEFT, CURLED, IN_AIR, NO_AIR_STEERING, SPIN_DASHING, ON_OBJECT, A
 const FIRST_ANIMATIONS = 0xCE450, POSE_ANIMATIONS = 0xCE45A, RUN_RATES = 0xCE92A, SPIN_DASH_SPEEDS = 0xCE230;   // the last is gUnknown_080CE5B8
 // 0x080578E8: a sprite the title card's colour effect takes in, as it does while the card covers the stage
 const BLENDED = 0x80;
-export const POSE = { STAND: 0, LOOK_UP: 1, CROUCH: 2, LOOK_AROUND: 6, LOOK_AROUND_PARTNER: 7, RUN: 8, SPIN_DASH: 0xA, ROLL: 0xB, TURN: 0xC, TURN_FROM_SKID: 0xD, SKID: 0x10, SKID_FAST: 0x11, AIR_SLOW: 0x13, AIR_FAST: 0x14, FALLING: 0x18, PUSH: 0x21, FLY: 0xCE, FLY_TURN: 0xCF, FLY_TIRED: 0xD0 };
+export const POSE = { STAND: 0, LOOK_UP: 1, CROUCH: 2, LOOK_AROUND: 6, LOOK_AROUND_PARTNER: 7, RUN: 8, SPIN_DASH: 0xA, ROLL: 0xB, TURN: 0xC, TURN_FROM_SKID: 0xD, SKID: 0x10, SKID_FAST: 0x11, AIR_SLOW: 0x13, AIR_FAST: 0x14, FALLING: 0x18, PUSH: 0x21, HURT: 0x66, FLY: 0xCE, FLY_TURN: 0xCF, FLY_TIRED: 0xD0 };
 const OWN_ANIMATIONS = 0xA5;   // from this pose on, a pose's animation is the same for every character
 const ANIM_FINISHED = 0x4000, SE_STOPPING = 0x73, ANIM_DUST = 0x534, DUST_TILES = 4;
 const SE_SPIN_ATTACK = 0x6D, SE_SPIN_RELEASE = 0x6E, SE_JUMP = 0x74, SE_FLYING = 0x78;
@@ -36,6 +37,7 @@ const GAIT_TOPS = [1.25 * PX, 2.5 * PX, 4 * PX, 7 * PX, 9 * PX];
 const SPRING_SPEEDS = 0xCF0E8, SPRING_STRENGTHS = 0xCF0E0, THROWN = 0x6C, THROWN_FAST = 0x6D, THROWN_FROM = 640;
 const SPRING_CLEARS = 0x23AEF45E | 0x18000000;
 const STANDING_HEIGHT = 14, CURLED_HEIGHT = 9, HALF_WIDTH = 6;
+const HURT_SPEED = 1.5 * PX, HURT_RISE = -3 * PX, INVULNERABLE_FRAMES = 120;
 const CAMERA_LEFT_OF_PLACE = 120, CAMERA_ABOVE_PLACE = 84, PARTNER_BEHIND = 30;
 
 const pixel = v => v >> 8;
@@ -52,7 +54,7 @@ export function createPlayer(stage, id, character, isLeader) {
     x: stage.respawnX * PX, y: stage.respawnY * PX, velX: 0, velY: 0, groundSpeed: 0,
     flags: BUTTONS_OFF, flagsLastFrame: 0, halfWidth: HALF_WIDTH, halfHeight: STANDING_HEIGHT, layer: 1, angle: 0,
     acceleration: 8, braking: 0x40, topSpeed: 7.5 * PX, speedLimit: 9.5 * PX, slipFrames: 0, idleTimer: LOOK_AROUND_AFTER, dustClock: 0,
-    camOffsetY: 0, spinDashSpeed: 0, flyFrames: 0, flyLift: 0, restartAnimation: false,
+    camOffsetY: 0, invulnerable: 0, spinDashSpeed: 0, flyFrames: 0, flyLift: 0, restartAnimation: false,
     pose: POSE.STAND, shownPose: -1, animation: -1, variant: -1, gait: 0,
     held: 0, pressed: 0, heldWithButtonsOff: 0,
     sprite: null, turn: { rotation: 0, scaleX: PX, scaleY: PX, x: 0, y: 0 }, tails: null,
@@ -134,6 +136,8 @@ function drawFrame(t) {
   chooseAnimation(c, p);
   drawBody(c, p);
   drawTails(c, p);
+  // sub_8014670: it only stops blinking once it's back on its feet
+  if (p.stage.state === 3 && p.pose !== POSE.HURT && p.invulnerable > 0) p.invulnerable--;
 }
 
 // 0x080042F4 (sub_80042F4), and sub_8012FA0 and sub_8012FC0: a new height, with its feet staying where they are
@@ -306,6 +310,50 @@ function reboundingFromWall(p) {
   }
 }
 
+/** Player_8014550: hit, unless it's blinking from the last time. In an act the leader drops its rings. With none it only
+ * reels here, as losing a life isn't made yet (Player_HitWithoutRingsUpdate). */
+export function hurtPlayer(p) {
+  const { stage } = p;
+  if (p.invulnerable > 0) return;
+  p.camOffsetY = 0;
+  if (p.isLeader && stage.act >= 3) {
+    const rings = stage.rings;
+    stage.rings = 0;
+    dropRings(stage, p, rings);
+  }
+  p.flags &= ~ON_OBJECT;
+  p.standingOn = null;
+  p.behave = startHurt;
+  p.invulnerable = INVULNERABLE_FRAMES;
+}
+// Player_8008CD0 and Player_800E1E4: thrown back and up, away from where it was going unless that was fast, until it lands
+function startHurt(p) {
+  p.invulnerable = INVULNERABLE_FRAMES;
+  if (p.character === TAILS) stopFlyingSound(p);
+  if (Math.abs(p.velX) <= 2.5 * PX) {
+    const vx = s16(p.velX);
+    if (vx > 0xA0) p.velX = -HURT_SPEED;
+    else if (vx < -0.625 * PX) p.velX = HURT_SPEED;
+    else p.velX = p.flags & FACING_LEFT ? HURT_SPEED : -HURT_SPEED;
+  } else p.velX = p.velX >= 0 ? HURT_SPEED : -HURT_SPEED;
+  p.pose = POSE.HURT;
+  p.velY = HURT_RISE;
+  p.camOffsetY = 0;
+  p.flags = (p.flags & ~(NO_AIR_STEERING | SPIN_DASHING | AT_WALL | FLYING | BUTTONS_OFF | ON_OBJECT | CURLED)) | IN_AIR;
+  setHeight(p, STANDING_HEIGHT);
+  p.halfWidth = HALF_WIDTH;
+  p.behave = hurtFalling;
+  hurtFalling(p);
+}
+function hurtFalling(p) {
+  keepInBounds(p);
+  p.velY += GRAVITY;
+  move(p);
+  stopAtWalls(p);
+  collideInAir(p);
+  afterAir(p);
+}
+
 /** Task_SpringMain: a spring sets its throw going, which the character's next move carries out. */
 export function thrownBySpring(p, direction, strength) {
   const downwards = direction === 1 || direction === 5 || direction === 7, fast = !downwards && p.velX > THROWN_FROM;
@@ -342,6 +390,14 @@ function thrownUp(p) {
   gravityAndMove(p);
   collideInAir(p);
   afterAir(p);
+}
+
+/** sub_80044CC: a character that has beaten something from the air bounces off it. */
+export function reboundFromEnemy(p) {
+  if ((p.flags & (CURLED | IN_AIR)) !== (CURLED | IN_AIR)) return;
+  p.velX >>= 1;
+  if (p.velY >= 0) p.velY = HURT_RISE;
+  startFalling(p);
 }
 
 // sub_801480C and sub_8012E54: with the button pressed and room over its head, it's off on its next frame
@@ -1050,8 +1106,10 @@ function drawBody(c, p) {
     } else s.frameFlags |= SPRITE.X_FLIP;
     updateSprite(c, s);
   }
-  if (!p.stage.cardHides) displaySprite(c, s);
+  if (!p.stage.cardHides && !blinkedOff(p)) displaySprite(c, s);
 }
+// Player_AnimateAndDisplay: blinking, every other pair of frames
+const blinkedOff = p => p.invulnerable !== 0 && p.stage.timer & 2;
 function faceAndTurn(p, turn, rotation, x, y) {
   turn.rotation = rotation;
   turn.scaleX = p.flags & FACING_LEFT ? PX : -PX;
@@ -1076,5 +1134,5 @@ function drawTails(c, p) {
   updateSprite(c, s);
   transformSprite(c, s, turn, SINE);
   s.frameFlags = (s.frameFlags & ~SPRITE.OBJ_MODE) | (p.stage.cardCover ? BLENDED : 0);
-  if (!p.stage.cardHides) displaySprite(c, s);
+  if (!p.stage.cardHides && !blinkedOff(p)) displaySprite(c, s);
 }

@@ -481,6 +481,23 @@ export function createVideo() {
     }
   }
 
+  // mode 4's background over [start, end) of line y: a picture of one byte a pixel, in the page DISPCNT picks
+  function drawBitmap(bg, start, end, ctl) {
+    if (!(ctl & 4)) return;
+    const [flags, colors] = bgFlags(bg, ctl), blend = (flags & TARGET_2) !== 0, page = dispcnt & 0x10 ? 0xA000 : 0;
+    const r = REG.BG2PA >> 1, pa = (io[r] << 16) >> 16, pc = (io[r + 2] << 16) >> 16;
+    let x = cur[0][0] + (start - 1) * pa, y = cur[0][1] + (start - 1) * pc;
+    for (let outX = start; outX < end; outX++) {
+      x += pa; y += pc;
+      const lx = x >> 8, ly = y >> 8;
+      if (lx < 0 || ly < 0 || lx >= SCREEN_W || ly >= SCREEN_H) continue;
+      const pixel = vram[page + ly * SCREEN_W + lx], at = outX + ox;
+      if (!pixel || !(row[at] & WRITABLE)) continue;
+      if (blend) blendInto(at, (colors[pixel] | flags) >>> 0);
+      else layInto(at, (colors[pixel] | flags) >>> 0);
+    }
+  }
+
   function drawLine(y, out, outAt) {
     dispcnt = io[0];
     if (dispcnt & 0x80) { out.fill(0xFFFFFFFF, outAt, outAt + lineW); return; }
@@ -566,6 +583,7 @@ export function createVideo() {
             if (margin) drawTextWide(bg, y, start, end, ctl);
             else drawText(bg, y, start - ox, end - ox, ctl);
           } else if (affine && !marginLine) drawAffine(bg, start - ox, end - ox, ctl);
+          else if (bg.index === 2 && mode === 4 && !marginLine) drawBitmap(bg, start - ox, end - ox, ctl);
         }
       }
     }
