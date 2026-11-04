@@ -67,11 +67,11 @@ export function findChrome() {
 const NO_CONTROLLERS = `Object.defineProperty(Navigator.prototype, 'getGamepads', { value: () => [] });
   for (const type of ['gamepadconnected', 'gamepaddisconnected']) addEventListener(type, e => e.stopImmediatePropagation(), true);`;
 
-// Nothing it would fetch or start for itself, in a window or not (--optimize-for-size: the page's memory falls by more than a
-// third, and a frame takes no longer; the on-device model's helper starts about three minutes in, and holds 40 MB)
+// Nothing it would fetch for itself, in a window or not (--optimize-for-size: the page's memory falls by more than a third,
+// and a frame takes no longer)
 const QUIET = ['--js-flags=--optimize-for-size', '--disable-extensions', '--disable-component-update', '--disable-background-networking', '--disable-sync', '--no-pings', '--disable-default-apps',
   '--disable-domain-reliability', '--disable-client-side-phishing-detection', '--disable-breakpad', '--metrics-recording-only',
-  '--disable-features=Translate,OptimizationHints,MediaRouter,DialMediaRouteProvider,CertificateTransparencyComponentUpdater,AutofillServerCommunication,OptimizationGuideOnDeviceModel,OnDeviceModelPerformanceParams'];
+  '--disable-features=Translate,OptimizationHints,MediaRouter,DialMediaRouteProvider,CertificateTransparencyComponentUpdater,AutofillServerCommunication'];
 // A browser nobody sees needs no graphics chip. A window keeps it, as a person sees it stutter without: drawing it on the
 // processor saves little power, and it was 5 times as often late. Graphics in the browser's own process (--in-process-gpu)
 // would save 18 MB, and end the browser wherever they can't start, such as on GitHub's machines or with a dead DISPLAY
