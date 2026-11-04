@@ -60,6 +60,7 @@ export function createPlayer(stage, level) {
 
 /** Somewhere else in the stage, with the camera there too, for a recording's start point. */
 export function placePlayer(stage, x, y) {
+  stage.placed = true;
   stage.player.x = x * PX;
   stage.player.y = y * PX;
   stage.camera.x = x - CAMERA_LEFT_OF_PLACE;

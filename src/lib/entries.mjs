@@ -79,6 +79,12 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
   if (progress && progress.original !== original.sha1) problems.push(`${at}progress.json is for another copy than original.json names.`);
   if (portMap && portMap.original !== original.sha1) problems.push(`${at}port-map.json is for another copy than original.json names.`);
   const recordings = Object.entries(progress?.recordings ?? {});
+  // a game's own word that no player could ever see these frames, which no match with the original makes up for
+  for (const [name, { neverInPlay = [] }] of recordings) {
+    for (const { from, to, why } of neverInPlay) {
+      problems.push(`${at}recordings/${name}.json plays what no player could ever see at frames ${from} to ${to}: ${why}. A start point only skips the way there (tools/README.md, Start points), so change the recording and prove it again.`);
+    }
+  }
   /** @type {Proof} */
   const result = { copy: original.name, percent: null, recordings: recordings.length, codeMap: null, proven: null, ported: null, gameplay: null };
   const played = new Set(recordings.flatMap(([, r]) => r.functions ?? []));

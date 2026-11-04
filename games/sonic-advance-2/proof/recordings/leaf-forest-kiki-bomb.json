@@ -1,7 +1,7 @@
 {
  "about": "A Kiki bobbing on a pole in Leaf Forest act 1 and throwing a bomb, from a start point on the ground to its left with 12 rings: the bomb flies at Sonic and bursts as he turns back, his rings scatter, and he blinks as he falls off the ledge.",
  "frames": 367,
- "start": "level=0&x=13500&y=2470&rings=12",
+ "start": "level=0&x=13500&y=2480&rings=12",
  "held": [
   [
    0,
@@ -186,7 +186,7 @@
      "frame": 2319,
      "address": "030059EC",
      "bytes": 4,
-     "value": 632320
+     "value": 634880
     },
     {
      "frame": 2319,
@@ -198,7 +198,7 @@
      "frame": 2319,
      "address": "03005964",
      "bytes": 4,
-     "value": 2390
+     "value": 2400
     },
     {
      "frame": 2319,

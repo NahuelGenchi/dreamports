@@ -36,6 +36,8 @@ export function createCountdown(stage) {
       if (counting.timer >= FAST_WITHIN) counting.tooSoon = true;
       else if (!counting.tooSoon) counting.fast = true;
     }
+    // he's on the ground for all of it in real play, so only a start point can leave him in the air with it (tools/README.md, Start points)
+    if (stage.placed && p.flags & FLAG.IN_AIR && globalThis.dreamportsProof) dreamportsProof.neverInPlay = 'Sonic is in the air during the countdown';
     const x = (p.x >> 8) - cam.x, y = (p.y >> 8) - cam.y;
     machine.x = x;
     machine.y = y;
