@@ -279,6 +279,7 @@ document.title = `Capture ${about.name}`;
 if (about.choosing) {
   $('more').hidden = true;
   await showMoments(await (await fetch('/capture/moments')).json());
+  window.__capture.loaded = true;
 } else {
   show('play');
 }

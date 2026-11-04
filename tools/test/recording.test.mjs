@@ -7,7 +7,7 @@ import { strict as assert } from 'node:assert';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkStart, readRecording, writeRecording } from '../lib/recording.mjs';
+import { checkStart, originalButtons, readRecording, writeRecording } from '../lib/recording.mjs';
 import { fromStartPoint, proofOf } from '../../src/lib/entries.mjs';
 
 const folder = mkdtempSync(join(tmpdir(), 'recording-'));
@@ -95,4 +95,10 @@ test('a part from a start point isn\'t proven with a frame that differs, or fram
   const inside = { late: { start: 'level=2', onlyInOriginal: [{ at: 5, frames: 50, sets: [set()] }] } };
   const gap = proofOf('made-up', { original, parts, recordings: inside, progress: { original: 'abc', recordings: { late: { frames: 10 } } } });
   assert.deepEqual(gap.gameplay.parts.map(p => [p.proven, p.gap]), [[false, 5]]);
+});
+
+test('a list of presses gives the original every frame, with the stretches only it has in their places', () => {
+  const buttons = originalButtons({ frames: 3, held: [[1, ['A']]], onlyInOriginal: [{ at: 1, frames: 2, held: [[1, ['START']]] }, { at: 3, frames: 1 }] });
+  assert.deepEqual(buttons, [[], [], ['START'], ['A'], ['A'], []]);
+  assert.throws(() => originalButtons({ frames: 3, held: [], onlyInOriginal: [{ at: 0, frames: 2, sets: [set()] }] }), /only real play/);
 });

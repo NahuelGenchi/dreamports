@@ -12,7 +12,7 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `rom` | Checks a copy of a game, says which game and which version it is, and remembers where it is |
 | `play` | Opens a game in a browser with your copy, and with `--record` keeps what you play as a recording, after another recording's presses with `--from` |
 | `prove` | Plays each recording in the original and in the Dreamport, compares every frame, its picture and its sound, updates the numbers, and with `--stills` keeps pictures of the frames you name |
-| `capture` | Lets you play the original in a window, and keeps a real moment of it for the game's card |
+| `capture` | Lets you play the original in a window, and keeps a real moment of it for the game's card, or with `--open`, `--pick` and `--from` does that while the game is being made, with nothing waiting for anyone |
 | `codemap` | Makes the code map: every function in the original, with its address and size |
 | `new` | Writes a claimed game's first files: its page, its code on the kit with everything wired in, its license and its entry |
 | `portmap` | Makes the port map: each function of the original the Dreamport's code names, and where |
@@ -78,13 +78,15 @@ A recording's start point is only words and numbers, so it goes in a commit and 
 
 ## A game's capture
 
-Every game's card in the launcher shows a few seconds of real play. `npm run dp -- capture <game>` makes a Dreamport's from the original, so a game can have one before its Dreamport has anything to play. It opens a window where you play your own copy, from power-on, with the keyboard or a controller, and hear it as you go. `/dreamport` leaves it for you, since only a person can choose: ask your agent, and it opens the window, so you run nothing yourself.
+Every game's card in the launcher shows a few seconds of real play. `npm run dp -- capture <game>` makes a Dreamport's from the original, so a game can have one before its Dreamport has anything to play. It opens a window where you play your own copy, from power-on, with the keyboard or a controller, and hear it as you go. `/dreamport` opens it for you as soon as it starts on a game with no capture, and you can also ask your agent, so you run nothing yourself.
 
 Press Finish, or `Esc`, or View and Menu together on a controller, and it picks out the best stretches of what you played: lively and colourful, with buttons held, and with no fades, logos, menus or text. They come up moving. Press the one you want with the mouse, with the arrows and `Z`, or with a controller's d-pad and A. `Esc` or B goes back to playing where you left off, and the next list comes from all of it.
 
 What you choose becomes a few seconds that loop, as near to seamless as the game allows, in `public/media/`: `<game>-dreamport.h264.mp4` and `.av1.mp4`, silent, `-still.webp` and `-share.png`. The game's entry names them, as `screen` and `share`. Choose play, with no logos or title screens: these go in a commit, on to dreamports.net, and the Dreamports team looks at them in the game's pull request ([the rule](../docs/STANDARD.md#a-games-capture)).
 
 Your presses stay in `.dreamports/captures/<game>/`, so `npm run dp -- capture <game> --choose` shows the same moments again, if the window closed first or you change your mind. The pictures come from running the original again with those presses, and it stops if any frame comes out differently from what you played. A coding agent can start it for you, but the choice is yours: it never looks at the pictures.
+
+Making a Dreamport never waits for this, so three more ways of running it keep the work going. `--open` starts the window in a process of its own and returns at once. `--pick` ends it, waiting while someone is using it, and keeps what they chose. If they played and didn't choose, it takes the moment the tool ranks first, by those same numbers, in a browser nobody sees. If nobody played it says so, and `--from <file>` plays a list of presses, as a [recording](#recording-play) has them, and takes the first of what they lead to, or says in numbers what each stretch led to: how much of the screen moved, how many colours and how often buttons were held. Values written to the original's memory aren't play, so `--from` stops at them. With any of these, `--yes` also sends what's kept as a pull request of its own, from the commit that needs it: main for a game that's there, or the game's first files for one that isn't, which makes it the game's [first entry](../docs/TEAMS.md#a-games-first-entry). It leaves the branch you're on alone, so what it wrote still shows in this folder to commit there too.
 
 ## Proving
 

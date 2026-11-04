@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { deflateSync } from 'node:zlib';
 import { mp4 } from '../../tools/lib/mp4.mjs';
-import { plainWebp, startingEntry, startingFiles, withCapture } from '../../tools/lib/new-game.mjs';
-import { checkFirstEntry, gameOf, isClip, isShare, isStill, pathsOf, readCodeMap, readOriginal } from './rules.mjs';
+import { captureMessage, firstFilesMessage, plainWebp, startingEntry, startingFiles, withCapture } from '../../tools/lib/new-game.mjs';
+import { checkFirstEntry, gameOf, isClip, isShare, isStill, pathsOf, plainHistory, readCodeMap, readOriginal } from './rules.mjs';
 import { MARK, REASONS, askFor, markOf, normalReview } from './text.mjs';
 
 const GAME = 'made-up', SHA1 = 'a'.repeat(40), LEAD = 'someone';
@@ -203,4 +203,31 @@ test('the bot says only its own words, and its mark names what it checked', () =
   assert.equal(markOf(SHA1), `<!-- first-entry ${SHA1} -->`);
   assert.match(askFor(plan), /^- \[ \] This is real play of Made Up, /m);
   for (const why of Object.keys(REASONS)) assert.ok(normalReview(why).includes(REASONS[why]));
+});
+
+test('a first entry keeps its commits only when they are the two the tools make', () => {
+  const issue = 7, added = '2026-11-02';
+  const person = { name: 'Someone' };
+  const commit = (sha, parent, message, who = person) => ({ sha, parents: [{ sha: parent }], commit: { message, author: who, committer: who } });
+  const history = (changes = {}) => {
+    const state = {
+      commits: [commit('b1', 'a0', firstFilesMessage('Made Up', issue)), commit('c2', 'b1', `${captureMessage('Made Up', issue)}\n`)],
+      between: [...['.h264.mp4', '.av1.mp4', '-still.webp', '-share.png'].map(end => ({ filename: `${media}${end}`, status: 'added' })), { filename: file('entry.md'), status: 'modified' }],
+      firstEntry: startingEntry(GAME, original, { issue, lead: LEAD, added }),
+      game: GAME, original, issue, author: LEAD, added,
+      ...changes,
+    };
+    return plainHistory(state);
+  };
+  assert.equal(history(), true);
+  const [first, second] = [commit('b1', 'a0', firstFilesMessage('Made Up', issue)), commit('c2', 'b1', captureMessage('Made Up', issue))];
+  assert.equal(history({ commits: [second] }), false, 'one commit, which has nothing to keep');
+  assert.equal(history({ commits: [first, commit('x', 'b1', 'more'), second] }), false, 'one more, which could have held anything');
+  assert.equal(history({ commits: [first, commit('c2', 'a0', captureMessage('Made Up', issue))] }), false, 'not one on the other');
+  assert.equal(history({ commits: [{ ...first, parents: [{ sha: 'a0' }, { sha: 'elsewhere' }] }, second] }), false, 'a merge of something else');
+  assert.equal(history({ commits: [commit('b1', 'a0', 'feat: buy my thing (#7)'), second] }), false, 'words of their own');
+  assert.equal(history({ commits: [first, commit('c2', 'b1', captureMessage('Made Up', issue), { name: 'Buy Bitcoin now https://example.com' })] }), false, 'words in a name');
+  assert.equal(history({ between: [{ filename: file('entry.md'), status: 'modified' }] }), false, 'what the first holds has to be all but the capture');
+  assert.equal(history({ between: [{ filename: 'README.md', status: 'modified' }, ...['.h264.mp4', '.av1.mp4', '-still.webp', '-share.png'].map(end => ({ filename: `${media}${end}`, status: 'added' }))] }), false, 'another file changed between them');
+  assert.equal(history({ firstEntry: startingEntry(GAME, original, { issue, lead: 'somebody-else', added }) }), false, 'an entry the tools wouldn\'t write');
 });
