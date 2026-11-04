@@ -35,6 +35,7 @@ export function createCore(video, rom, sound) {
     startUp: START_UP_FRAMES, main: null, tasks: [],
   };
   const graphics = [], backgrounds = [], layers = [];
+  let nextTask = null;
 
   /** 0x080BCB6C, TaskCreate: a task running `main(task)` each frame, after every task of the same or lower priority. */
   c.createTask = (main, data, priority = 0x100) => {
@@ -44,7 +45,11 @@ export function createCore(video, rom, sound) {
     return t;
   };
   /** 0x080BCC04, TaskDestroy */
-  c.destroyTask = t => { c.tasks.splice(c.tasks.indexOf(t), 1); };
+  c.destroyTask = t => {
+    const at = c.tasks.indexOf(t);
+    if (t === nextTask) nextTask = c.tasks[at + 1];
+    c.tasks.splice(at, 1);
+  };
   /** ADD_TO_GRAPHICS_QUEUE: `size` bytes from `src` in the ROM copied to `dest` in VRAM in the next V-blank. */
   c.queueGraphics = (src, dest, size) => { graphics.push({ src, dest, size }); };
   c.queueBackground = bg => { backgrounds.push(bg); };
@@ -158,12 +163,12 @@ export function createCore(video, rom, sound) {
       c.main = null;
     }
     readKeys(held);
-    // in the list's order, as a task that makes another later in it runs that one in the same frame
+    // TasksExec: the next task is fixed before each one runs, so a task made just after the one running waits for the
+    // next frame, and one made later in the list runs in this one
     for (let t = c.tasks[0]; t;) {
-      const after = c.tasks[c.tasks.indexOf(t) + 1];
+      nextTask = c.tasks[c.tasks.indexOf(t) + 1];
       t.main(t);
-      const at = c.tasks.indexOf(t);
-      t = at >= 0 ? c.tasks[at + 1] : after;
+      t = nextTask;
     }
     c.flagsPreVBlank = c.flags;
     vblank();
