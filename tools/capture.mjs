@@ -280,7 +280,7 @@ async function closeWindow(game) {
   const giveUp = Date.now() + LONGEST_WAIT_MS;
   let said = false;
   while (state && state.idle < IDLE_MS && Date.now() < giveUp) {
-    if (!said) console.log('Someone is using the window, so this waits until they stop.');
+    if (!said) console.log(`The window is open, so this waits until nobody has pressed anything for ${IDLE_MS / 60000} minutes.`);
     said = true;
     await wait(5000);
     state = await windowState(game);
