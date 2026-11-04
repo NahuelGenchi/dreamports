@@ -43,8 +43,8 @@ export function stepAnimation(sprite, clock) {
 }
 
 /** The console's sprites as a frame's objects ask for them: 0x08037C54's tile memory, 0x0801F7A8's colours and 0x0200A820's list. */
-export function createSprites(video, rom) {
-  return { video, rom, list: [], tiles: 0, jobs: [], slots: new Map(), nextSlot: 15 };
+export function createSprites(video, rom, firstTile = 0) {
+  return { video, rom, list: [], firstTile, tiles: firstTile, jobs: [], slots: new Map(), nextSlot: 15 };
 }
 
 // 0x08069648: how many tiles each shape and size holds, and 0x080695E8 its width and height
@@ -110,5 +110,5 @@ export function showSprites(sprites) {
   }
   list.length = 0;
   jobs.length = 0;
-  sprites.tiles = 0;
+  sprites.tiles = sprites.firstTile;
 }

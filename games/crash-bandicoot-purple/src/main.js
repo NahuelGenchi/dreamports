@@ -67,8 +67,8 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the copyright screen, the logos, the title screen, the load save game screen and the main menu. What
-// comes after it isn't ported yet, so the screen stays white there.
+// The game so far: the copyright screen, the logos, the title screen, the load save game screen, the main menu and the
+// story's opening scene, whose sound doesn't match yet. What comes after it isn't ported yet, so the screen stays as it is there.
 function createGame(video, rom, sound) {
   // a start point (tools/README.md), which the game's own path doesn't reach yet: ?hub opens in the first world's hub
   const core = createCore(video, rom, sound, new URLSearchParams(location.search).has('hub') ? 'hub' : null);
