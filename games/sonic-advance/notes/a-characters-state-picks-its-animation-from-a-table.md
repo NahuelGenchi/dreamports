@@ -1,4 +1,4 @@
-# A character state's animation is in a table the decompilation only has as bytes, in the USA copy at 0x084A6F10.
+# A character state's animation is in a table the decompilation only has as bytes, in the USA copy at 0x084A6F0C.
 
 About: 0x08038524; Task_8038554; x-zone-the-moon-opens
 

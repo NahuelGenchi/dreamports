@@ -5,9 +5,9 @@
 // the key repeat, and don't wrap round; the lists scroll two rows at a time to keep it in view. A fades out with the
 // choice blinking and starts that act, and B goes back.
 //
-// The character select isn't built yet, so B goes to the main menu, where the character select would go back to
-// (CreateMainMenu(1)), and the screen comes straight after Game Start. Time Attack's and the link play's ways through
-// this screen aren't built either (their own tasks; arg0 and the multiplayer checks).
+// With the address's start point, which leaves out the character select, B goes to the main menu, where the character
+// select would go back to (CreateMainMenu(1)). Time Attack's and the link play's ways through this screen aren't built
+// yet (their own tasks; arg0 and the multiplayer checks).
 
 import { createSprite, updateSprite, displaySprite, SPRITE } from '../gba/sprite.js';
 import { KEY } from '../gba/engine.js';
@@ -16,6 +16,7 @@ import { SONG } from '../sound/songs.js';
 import { moonOpensFor } from '../engine/unlock.js';
 import { createUiTask, uiGfxStackInit, uiGraphics, loadUiGfx, createFade, fadeStep } from './ui.js';
 import { createMainMenu } from './title.js';
+import { createCharacterSelect } from './charselect.js';
 import { put16 } from '../gba/lines.js';
 
 const OBJ_VRAM = 0x10000;
@@ -220,6 +221,7 @@ function fadeOut(t) {
     for (const task of state.tasks) e.destroyTask(task);
     e.destroyTask(t);
     if (state.ending === CHOSEN) ctx.play(state.level - 1);
+    else if (ctx.select) createCharacterSelect(ctx);
     else createMainMenu(ctx, true);
     return;
   }

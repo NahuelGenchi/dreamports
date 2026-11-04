@@ -28,6 +28,7 @@ export const SONG = {
   SPECIAL_STAGE_WIN: 47,   // MUS_047: the results with it
   PLAYER_DATA: 48,         // MUS_PLAYER_DATA: the player data menu and the name input
   SEGA_RING: 102,          // SE_RING: Sonic Team's logo
+  SHIFT: 103,              // SE_SHIFT: the character select's row turning
   SELECT: 106,             // SE_SELECT: Start on the title screen, a choice in the menu
   RETURN: 107,             // SE_RETURN: back out of a choice in the Options menu
   MENU_CURSOR: 108,        // SE_MENU_CURSOR_MOVE

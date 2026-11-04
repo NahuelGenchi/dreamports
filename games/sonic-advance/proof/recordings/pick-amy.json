@@ -1,0 +1,21 @@
+{
+  "about": "From power-on with nothing saved, to Game Start on the main menu, Start coming once the logos are over, then in the character select: Left to Amy and A, up to the end of the screen.",
+  "frames": 1875,
+  "held": [
+    [0,[]],
+    [150,["A"]],
+    [156,[]],
+    [950,["START"]],
+    [956,[]],
+    [1300,["START"]],
+    [1306,[]],
+    [1550,["START"]],
+    [1556,[]],
+    [1650,["A"]],
+    [1656,[]],
+    [1770,["LEFT"]],
+    [1774,[]],
+    [1810,["A"]],
+    [1814,[]]
+  ]
+}

@@ -16,9 +16,6 @@
 export const TOLERANCE = 10;
 /** The bands' middle pitches, in Hz. */
 export const BANDS = [125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-const FRAME = 280896 / 256;   // 1097.25 samples a frame
-/** How far the original's sound is looked for, before or after the frame's, in samples: a frame. */
-export const REACH = Math.round(FRAME);
 const STEP = 16;              // the steps it's looked for in
 const WIDE = 1;               // the frames either side a frame's sound is measured with
 /** How many frames either side of a frame its sound reaches into, measured with its neighbours and looked for a
@@ -32,10 +29,12 @@ export const NEAR = WIDE + 1;
  * in them to `energies`: 16 numbers, the left side's bands, then the right's. With `each`, it also writes each
  * sample's energy in each band there, band k's at each[k * n + i] for the frame's sample i of n.
  */
-export function makeFilter() {
-  const rate = 65536, centres = [125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+export function makeFilter(rate = 65536) {
+  const centres = [125, 250, 500, 1000, 2000, 4000, 8000, 16000];
   // a band-pass of an octave around each band's middle (Robert Bristow-Johnson's, peak gain 1)
   const filters = centres.map(centre => {
+    // a console whose sound stops short of this band has nothing in it
+    if (centre >= rate * 0.495) return [0, 0, 0, 0];
     const w = 2 * Math.PI * centre / rate, alpha = Math.sin(w) / (2 * Math.SQRT2), a0 = 1 + alpha;
     return [alpha / a0, -alpha / a0, -2 * Math.cos(w) / a0, (1 - alpha) / a0];
   });
@@ -65,29 +64,47 @@ const apart = (a, b) => Math.abs(20 * Math.log10(Math.max(a, 1) / Math.max(b, 1)
 
 /**
  * Gets the original's sound ready to compare the Dreamport's with, frame by frame. `original` is the original's
- * sound, frame by frame from power-on, each an Int16Array as runOriginal gives it. Returns `compare(dreamport,
- * originalOf, f)`, which compares the Dreamport's frame `f`: `dreamport` holds its frames so far, each { energies,
- * samples }, each band's energy in it (from makeFilter) and how many samples it had, and `originalOf` the original's
- * frame each of them is compared with. It needs the frame after `f` too, unless `f` is the last. It returns null when
- * the frame's sound is the same, or else how it differs where the original's is closest: { side, band, original,
- * dreamport, dB }, the band furthest apart, with how loud each one is there, in the console's 10-bit steps, and
- * `silent`, 'dreamport' or 'original', when that one is silent and the other isn't.
+ * sound as runOriginal gives it: { lengths, read(frame) }, how many samples each frame has and each frame's, left and
+ * right, read as they're needed. Returns `compare(dreamport, originalOf, f)`, which compares the Dreamport's frame `f`,
+ * from the first to the last: `dreamport` holds its frames so far, each { energies, samples }, each band's energy in it
+ * (from makeFilter) and how many samples it had, and `originalOf` the original's frame each of them is compared with.
+ * It needs the frame after `f` too, unless `f` is the last. It returns null when the frame's sound is the same, or else
+ * how it differs where the original's is closest: { side, band, original, dreamport, dB }, the band furthest apart, with
+ * how loud each one is there, in the console's 10-bit steps, and `silent`, 'dreamport' or 'original', when that one is
+ * silent and the other isn't. `machine` is the console, with its `sound` and `frame` (kit/consoles.js).
  */
-export function soundOf(original) {
-  // the original's energy in each band, gathered over its whole sound a block of STEP samples at a time
-  const filter = makeFilter(), starts = [];
-  let total = 0;
-  for (const samples of original) { starts.push(total); total += samples.length / 2; }
-  starts.push(total);
-  const blocks = Math.ceil(total / STEP) + 1, gathered = new Float64Array(KEYS * blocks);
-  original.forEach((samples, g) => {
-    const n = samples.length / 2, each = new Float64Array(KEYS * n);
-    filter(samples, new Float64Array(KEYS), each);
+export function soundOf(original, machine = { sound: 65536, frame: [280896, 16777216] }) {
+  // how far the original's sound is looked for, before or after the frame's, in samples: a frame
+  const FRAME = machine.sound * machine.frame[0] / machine.frame[1], REACH = Math.round(FRAME);
+  const filter = makeFilter(machine.sound), { lengths } = original, starts = new Float64Array(lengths.length + 1);
+  for (let g = 0; g < lengths.length; g++) starts[g + 1] = starts[g] + lengths[g];
+  const blocks = Math.ceil(starts[lengths.length] / STEP) + 1;
+  // the original's energy in each band up to the end of each block of STEP samples. A long recording has millions of
+  // them, and a frame only looks about a frame either way, so only the last few frames' are held
+  const HELD = Math.ceil(16 * FRAME / STEP), gathered = new Float64Array(KEYS * HELD), open = new Float64Array(KEYS), energies = new Float64Array(KEYS);
+  let each = new Float64Array(KEYS * Math.ceil(FRAME + 1)), read = 0, block = 1, ended = 0;
+  const close = () => {
     for (let k = 0; k < KEYS; k++) {
-      for (let i = 0; i < n; i++) gathered[k * blocks + Math.floor((starts[g] + i) / STEP) + 1] += each[k * n + i];
+      gathered[k * HELD + block % HELD] = open[k] + gathered[k * HELD + (block - 1) % HELD];
+      open[k] = 0;
     }
-  });
-  for (let k = 0; k < KEYS; k++) for (let b = 1; b < blocks; b++) gathered[k * blocks + b] += gathered[k * blocks + b - 1];
+    ended = block++;
+  };
+  // on through the original's sound until `wanted`, the block a frame looks at last, is gathered
+  const reach = wanted => {
+    while (ended < wanted && read < lengths.length) {
+      const samples = original.read(read), n = lengths[read];
+      if (each.length < KEYS * n) each = new Float64Array(KEYS * n);
+      filter(samples, energies, each);
+      for (let i = 0; i < n; i++) {
+        const own = Math.floor((starts[read] + i) / STEP) + 1;
+        while (block < own) close();
+        for (let k = 0; k < KEYS; k++) open[k] += each[k * n + i];
+      }
+      read++;
+    }
+    if (read === lengths.length && ended < blocks - 1) close();
+  };
 
   return (dreamport, originalOf, f) => {
     // the frame with the one before and the one after, so a sound's quick changes weigh less than what goes on
@@ -99,11 +116,13 @@ export function soundOf(original) {
       for (let k = 0; k < KEYS; k++) energies[k] += dreamport[h].energies[k];
     }
     const ours = Array.from(energies, e => Math.sqrt(e / Math.max(1, n))), oursSilent = ours.every(level => level < 1);
+    reach(Math.min(blocks - 1, Math.round((starts[originalOf[first]] + REACH) / STEP) + Math.round(n / STEP)));
     let best = null;
     for (let shift = -REACH; shift <= REACH; shift += STEP) {
       const from = Math.round((starts[originalOf[first]] + shift) / STEP), to = from + Math.round(n / STEP);
       if (from < 0 || to >= blocks) continue;
-      const theirs = Array.from({ length: KEYS }, (_, k) => Math.sqrt(Math.max(0, gathered[k * blocks + to] - gathered[k * blocks + from]) / ((to - from) * STEP)));
+      if (to - from >= HELD / 2 || ended - from >= HELD) throw new Error(`Frame ${f}'s sound is longer than the tools hold of the original's, ${n} samples.`);
+      const theirs = Array.from({ length: KEYS }, (_, k) => Math.sqrt(Math.max(0, gathered[k * HELD + to % HELD] - gathered[k * HELD + from % HELD]) / ((to - from) * STEP)));
       const theirsSilent = theirs.every(level => level < 1);
       if (oursSilent && theirsSilent) return null;
       let worst = null;
@@ -116,6 +135,11 @@ export function soundOf(original) {
       if (!silent && worst.dB <= TOLERANCE) return null;
       const score = (silent ? 1000 : 0) + worst.dB;
       if (!best || score < best.score) best = { ...worst, silent, score };
+    }
+    // none of the original's sound to set it against, as an emulator that never gave any
+    if (!best && !oursSilent) {
+      const k = ours.indexOf(Math.max(...ours));
+      best = { side: k < BANDS.length ? 'left' : 'right', band: BANDS[k % BANDS.length], original: 0, dreamport: ours[k], dB: apart(0, ours[k]), silent: 'original' };
     }
     return best && {
       side: best.side, band: best.band, original: Math.round(best.original * 10) / 10, dreamport: Math.round(best.dreamport * 10) / 10,

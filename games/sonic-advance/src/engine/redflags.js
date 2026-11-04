@@ -22,6 +22,7 @@ export function createRedFlag(e, slot, anims) {
   animate(o, anims);
   // waiting (Task_RedFlag), holding Sonic (Task_8077760) or waving once he's gone (Task_8077918)
   let phase = 'waiting', t = 0, state = null;
+  let held = null;   // tuggingPlayerIndex: the last player it caught, the only one it moves and lets go
 
   // sub_80780B4, and sub_8077FA4 mirrored: Sonic's body on its box, on the ground, fast enough its way
   function catches(p) {
@@ -45,12 +46,15 @@ export function createRedFlag(e, slot, anims) {
 
   return {
     run(ctx) {
-      const p = ctx.player;
       if (phase === 'waiting') {
-        if (!p.dead && catches(p)) {
-          ctx.world.playSound(SONG.POLE);
-          startAnim(o, 'redFlagTug', true);
-          phase = 'holding'; t = 0;
+        // only while Sonic is alive, and it tries every player
+        if (!ctx.player.dead) {
+          for (const p of ctx.players) {
+            if (p.dead || !catches(p)) continue;
+            ctx.world.playSound(SONG.POLE);
+            startAnim(o, 'redFlagTug', true);
+            phase = 'holding'; t = 0; held = p;
+          }
         }
         if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
         animate(o, anims);
@@ -58,10 +62,11 @@ export function createRedFlag(e, slot, anims) {
         // leaving while it holds him would leave him held
         if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
         if (phase === 'holding') {
-          if (p.dead) p.carried = false;
+          // Sonic dying lets go of whoever it holds
+          if (ctx.player.dead) held.carried = false;
           else {
-            if (t > 6) p.x += (t === 7 ? 10 : 7.5) * dir;
-            if (++t > 13) { release(p); phase = 'waving'; }
+            if (t > 6) held.x += (t === 7 ? 10 : 7.5) * dir;
+            if (++t > 13) { release(held); phase = 'waving'; }
           }
           animate(o, anims);
         } else if (animate(o, anims) || o.anim.done) {

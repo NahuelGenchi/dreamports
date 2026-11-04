@@ -10,7 +10,7 @@ import { SINE } from './trig.js';
 const RIGHT = { left: false, right: true, up: false, down: false, jump: false, attack: false, boost: false, jumpPressed: false, attackPressed: false, boostPressed: false };
 const LEFT = { ...RIGHT, right: false, left: true };
 const FADE_FROM = 3072;   // Sonic's x where the screen starts to fade to white (qWorldX > 0xBFFFF)
-const MOON_RUN_TO = 3680, MOON_FLY_TO = 3872;
+const MOON_RUN_TO = 3680, MOON_FLY_TO = 3872, MOON_PARTNER_STOPS = 3632;
 
 /**
  * The task the wrecked Egg X starts once it has landed (priority 0x1FFF, before the objects'): the base comes
@@ -113,10 +113,18 @@ function transformFlash() {
  * he brakes for 12 frames as the first light comes up, and stops looking up. A minute on the results come up over
  * him and run by themselves, and once they are over he turns into Super Sonic, rises and hangs there with a flash on
  * the 34th frame; on the 154th he flies off to the right, his speed growing, hidden past x 3872. 120 frames on the
- * second light comes up, 180 frames later the screen fades to white over 128 frames, and the Moon Zone starts.
+ * second light comes up, 180 frames later the screen fades to white over 128 frames, and the Moon Zone starts. The
+ * CPU partner stops short of him, from x 3632, and stands watching once he turns.
  */
 export function moonEnding() {
-  let phase = 0, timer = 0x1A4, speed = 0, angle = 0, height = 0;
+  let phase = 0, timer = 0x1A4, speed = 0, angle = 0, height = 0, partnerStep = 0;
+  // the partner's part of the task, after Sonic's
+  function partnerWatches(partner) {
+    if (phase > 4) { partner.state = 'moonWatch'; return; }
+    if (partnerStep === 0 && partner.x >= MOON_PARTNER_STOPS) { partner.ignoreInput = true; partner.heldInput = LEFT; partnerStep = 1; }
+    else if (partnerStep === 1 && partner.gsp <= 0.5) { partner.heldInput = null; partnerStep = 2; }
+    else if (partnerStep === 2 && partner.state === 'idle') { partner.override = true; partnerStep = 3; }
+  }
   return {
     run(ctx) {
       const { world, player: p } = ctx, display = world.display;
@@ -210,6 +218,7 @@ export function moonEnding() {
           display.bldY = timer >> 3;
           break;
       }
+      if (ctx.players[1]) partnerWatches(ctx.players[1]);
       return true;
     },
   };

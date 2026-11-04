@@ -13,6 +13,7 @@ import { LAYER_BACK, scan, PROBE_FLOOR, PROBE_WALL } from './terrain.js';
 import { sin8, cos8, s8 } from './trig.js';
 import { SONG } from '../sound/songs.js';
 import { SA2_SE } from '../rom/sa2tricks.js';
+import { fixes } from './fixes.js';
 
 // d-pad bits for the input history the mid-air dash reads
 export const LEFT = 1, RIGHT = 2, UP = 4, DOWN = 8;
@@ -899,7 +900,8 @@ function flightState(p, world) {
 function swimBubbles(p, world) {
   if (world.tick % 8 !== 0 || (world.random() & 0x300) !== 0) return;
   const dx = (world.random() & 0xF00) >> 8, dy = ((world.random() & 0xF00) >> 8) - 8;
-  world.airBubble(q8(p.x) - (p.facing > 0 ? -dx : dx), q8(p.y) - dy, q8(p.xsp), (world.random() & 0x100) !== 0);
+  const k = fixes.on ? 256 : 1;
+  world.airBubble(q8(p.x) - (p.facing > 0 ? -dx : dx) * k, q8(p.y) - dy * k, q8(p.xsp), (world.random() & 0x100) !== 0);
 }
 
 // Knuckles' states (charState 62 and up), which standing up from a glide ends (sub_8022318)
@@ -1566,7 +1568,7 @@ const COUNTDOWN = { 12: 5, 10: 4, 8: 3, 6: 2, 4: 1, 2: 0 };
 // 10 frames. Under water a second goes every 60 frames: at 12, 10, 8, 6, 4 and 2 a number counts down over
 // him, at 11 the drowning music starts and below 0 he drowns; every 16th frame of the stage clock he lets a
 // bubble out, one time in four. Out of the water the count starts over and the drowning music stops.
-function handleWater(p, world) {
+export function handleWater(p, world) {
   const level = world.waterLevel;
   p.waterCrossed = false;
   if (level >= 0 && Math.floor(p.y) - 4 >= level) {

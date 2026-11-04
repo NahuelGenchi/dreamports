@@ -69,11 +69,12 @@ export const SONIC_ANIMATIONS = {
   // hanging from a hang bar, still (charState 35) and moving along it (36)
   hang: [41, 0], hangMove: [41, 1],
 };
-// Tails' own: flying, turning in flight and tired out (charStates 53, 54 and 55), swimming and turning under
+// Tails' own: flying, turning in flight, tired out and landing as the CPU's partner (charStates 53, 54, 55 and 56), swimming and turning under
 // water (57 and 58), the tail swipe (60) and its effect, and the extra sprite of his tails, as a spin shows it
 // and as a marble track does
 export const TAILS_ANIMATIONS = {
-  fly: [155, 0], flyTurn: [156, 0], flyTired: [157, 0], swim: [145, 0], swimTurn: [146, 0],
+  fly: [155, 0], flyTurn: [156, 0], flyTired: [157, 0], flyLand: [158, 0], swim: [145, 0], swimTurn: [146, 0],
+  moonWatch: [198, 0],   // watching Sonic turn, on X Zone's way to the Moon Zone (charState 61)
   tailSwipe: [149, 0], tailSwipeFx: [777, 0], tailsSpin: [107, 1], marbleTrackTails: [138, 1],
 };
 // Knuckles' own (charStates 62 to 84): gliding, turning round in a glide, gliding under water, dropping from it
@@ -432,7 +433,7 @@ export const LEVEL_BOSS_ANIMATIONS = {
     636: { mkSpin: 0 }, 637: { mkSpinDash: 0 }, 638: { mkGlide: 0 }, 640: { mkLand: 0, mkLandEnd: 1 }, 642: { mkCover: 0 },
     643: { mkPunch: 0, mkPunchEnd: 1 }, 644: { mkIdleB: 0 }, 646: { mkHitB: 0 }, 648: { mkSpinB: 0 }, 649: { mkSpinDashB: 0 },
     650: { mkGlideB: 0 }, 652: { mkLandB: 0, mkLandEndB: 1 }, 654: { mkCoverB: 0 }, 655: { mkLaunch: 0, mkLaunchEnd: 1 },
-    656: { mkRocket: 0 }, 657: { mkDefeated: 0, mkDefeatedEnd: 1 }, 658: { mkPart0: 0, mkPart1: 1, mkPart2: 2, mkPart3: 3, mkPart4: 4 },
+    656: { mkRocket: 0 }, 657: { mkDefeated: 0, mkDefeatedEnd: 1 }, 658: { mkPart0: 0, mkPart1: 1, mkPart2: 2, mkPart3: 3, mkPart4: 4, mkPart5: 5 },
     693: { eggMobile: 0, eggMobileEnd: 1 }, 694: { eggmanSeated: 3, eggmanTurn: 6, eggmanLaugh: 9 },
     611: { explosion: 0 },
   },
@@ -475,7 +476,7 @@ const ROTATED = new Set(['moonSparkleA', 'moonSparkleB', 'walk', 'run', 'bounce'
   'stoneDebrisSmall', 'stoneDebrisLarge', 'iceStoneDebrisSmall', 'iceStoneDebrisLarge',
   'bubblesSmall', 'bubblesGroup', ...[0, 1, 2, 3, 4, 5].map(n => `drownCountdown${n}`),
   'eggSpiderPart', 'eggSpiderLeg',
-  'mkRocket', 'mkPart0', 'mkPart1', 'mkPart2', 'mkPart3', 'mkPart4', 'eggSnakeSpike',
+  'mkRocket', 'mkPart0', 'mkPart1', 'mkPart2', 'mkPart3', 'mkPart4', 'mkPart5', 'eggSnakeSpike',
   'grabbed', 'eggXHand0', 'eggXHand1', 'eggXHand2', 'eggXBall0',
   'mysteryBox', 'icon13', 'icon14', 'icon16', 'indicator', ...Object.keys(GAME_OVER_ANIMATIONS[715])]);
 // the sprite palette that fills the whole OBJ palette when an act with water starts, and that the colours
@@ -497,15 +498,36 @@ const MAX_ATLAS_PALETTES = 16;
  * the page draw the message before the next stage.
  * @returns {Promise<object>} { info, sprites: { atlas, frames, anims, tiles, sonic, alts }, hud: { sheet, glyphs, ring, face }, gameOver: { sheet, digits, ok, box, voices, hudSheet, song, songFrames }, acts, first, stage, titleCard, physics, sound }, where `acts[level]` is { level, stage, titleCard, results, anims } for each act decoded (`anims` the animations that act draws its own way), `first` the level asked for, and stage and titleCard are its; each act's stage is { level, zone, act, music, backgroundScroll, hudFlash, width, height, layers, atlas, collision, spawn, loop, interactables, layerToggles, rings, itemBoxes, enemies, entityRegions, paletteAnimations, background, backgroundHoles, backdrop, backgrounds }, its titleCard { sheet, slots, text } and its results { sheet, slots, text }
  */
-export async function extractAssets(buffer, onProgress = () => {}, { level = 0, character = 0 } = {}) {
-  const info = levelInfo(level);
+export async function extractAssets(buffer, onProgress = () => {}, options = {}) {
   const rom = new Rom(buffer);
   await onProgress('Checking the ROM…');
   const id = await identify(rom);
   await onProgress(id.known ? `Found ${id.known.name}.` : 'Unrecognized version, searching for the data…');
+  const steps = readAssets(rom, id, options);
+  for (let step = steps.next(); ; step = steps.next()) {
+    if (step.done) return step.value;
+    await onProgress(step.value);
+  }
+}
+
+/**
+ * What extractAssets gives, read at once from a ROM it has already read (`known`, what it gave then): for the
+ * character select's hand-over, so the act starts on the frame it ends.
+ */
+export function extractAgain(buffer, known, options) {
+  const steps = readAssets(new Rom(buffer), known.id, options);
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+  }
+}
+
+// the assets, yielding what it's doing as it goes
+function* readAssets(rom, id, { level = 0, character = 0, partner = false } = {}) {
+  const info = levelInfo(level);
   const offsets = locateTables(rom, id.known);
 
-  await onProgress(`Decoding ${['Sonic', 'Tails', 'Knuckles', 'Amy'][character]}…`);
+  yield `Decoding ${['Sonic', 'Tails', 'Knuckles', 'Amy'][character]}…`;
   const tables = spriteTables(rom, offsets.spriteTables);
   const turning = level === 12 && character === 0;
   // the zone's acts from `level` on, which share the zone's looks for the objects that differ by level
@@ -520,14 +542,16 @@ export async function extractAssets(buffer, onProgress = () => {}, { level = 0, 
     .filter(name => new Set(actSprites.filter(a => name in a).map(a => a[name].join())).size > 1);
   const own = (i, l) => differs.filter(name => name in actSprites[i]).map(name => [name, `${name}@${l}`]);
   const player = characterAnimations(character, rom.u16(offsets.characterAnims + character * 2));
-  const sprites = extractSprites(rom, tables, water, player, Object.assign({}, ...actSprites,
+  // the CPU partner's animations, each `partner.<name>` (engine/game.js)
+  const partnerAnims = partner ? characterAnimations(1, rom.u16(offsets.characterAnims + 2)) : null;
+  const sprites = extractSprites(rom, tables, water, player, partnerAnims, Object.assign({}, ...actSprites,
     ...levels.map((l, i) => Object.fromEntries(own(i, l).map(([name, key]) => [key, actSprites[i][name]]))),
     // the multiplayer modes' own (src/engine/chaohunt.js)
     info.multiplayer ? MULTIPLAYER_ANIMATIONS : {}));
   const acts = [];
   for (const [i, l] of levels.entries()) {
     const act = levelInfo(l);
-    await onProgress(`Decoding ${act.name}…`);
+    yield `Decoding ${act.name}…`;
     acts[l] = {
       level: l,
       stage: extractStage(rom, offsets, tables, act),
@@ -545,8 +569,8 @@ export async function extractAssets(buffer, onProgress = () => {}, { level = 0, 
   const spinDashSpeeds = Array.from({ length: 18 }, (_, i) => rom.s16(offsets.spinDashSpeeds + i * 2) / 256);
 
   return {
-    info: { ...id.header, region: id.region, sha1: id.sha1, version: id.known?.name ?? null, offsets },
-    sprites, acts, first: level, character, stage: acts[level].stage, titleCard: acts[level].titleCard, physics: { spinDashSpeeds },
+    id, info: { ...id.header, region: id.region, sha1: id.sha1, version: id.known?.name ?? null, offsets },
+    sprites, acts, first: level, character, partner: !!partnerAnims, stage: acts[level].stage, titleCard: acts[level].titleCard, physics: { spinDashSpeeds },
     heartPatterns: heartPatterns(rom, offsets.heartOffsets),
     // X Zone's way to the Moon Zone turns Sonic into Super Sonic, whose colours the face takes on as in the Moon Zone
     hud: extractHud(rom, offsets, water, acts[level].stage.extra?.facePalette ?? (turning ? animationPalette(rom, tables, 399).slice(0, 16) : undefined), character,
@@ -574,11 +598,12 @@ function extractResults(rom, offsets) {
  * Every animation's frames on one atlas. In an act with `water` they are drawn a second time, on an atlas with
  * the same layout, in the colours under the water line: palette 423 in the water's colours, whatever palette
  * the animation loads above it (`under`), and a third time in their own colours in the water's (`underOwn`).
- * `player` are the player's character's animations (characterAnimations). `levelSprites` { name: [anim, variant] }
+ * `player` are the player's character's animations (characterAnimations), and `partner` the CPU partner's or null.
+ * `levelSprites` { name: [anim, variant] }
  * are the level's own looks for objects whose animation the ROM picks by level; they replace the default of the
  * same name.
  */
-function extractSprites(rom, tables, water, player, levelSprites = {}) {
+function extractSprites(rom, tables, water, player, partner, levelSprites = {}) {
   const playerPalette = animationPalette(rom, tables, player.idle[0]), sonicPalette = animationPalette(rom, tables, SONIC_ANIMATIONS.idle[0]);
   const springPalette = animationPalette(rom, tables, SPRING_ANIM);
   const yellowPalette = springPalette.slice();
@@ -589,6 +614,10 @@ function extractSprites(rom, tables, water, player, levelSprites = {}) {
   const underYellow = under && [...under.slice(0, 112), ...under.slice(128, 144), ...under.slice(128)];
   const groups = [
     { list: { ...player, ...EFFECT_ANIMATIONS }, palette: playerPalette },
+    ...(partner ? [{
+      list: Object.fromEntries(Object.entries(partner).map(([name, a]) => [`partner.${name}`, a])),
+      palette: animationPalette(rom, tables, partner.idle[0]),
+    }] : []),
     { list: OBJECT_ANIMATIONS, palette: springPalette },
     { list: yellow, palette: yellowPalette, skipPalette: true, under: underYellow },
     { list: RING_ANIMATIONS, palette: animationPalette(rom, tables, RING_ANIMATIONS.ring[0]) },
@@ -621,7 +650,7 @@ function extractSprites(rom, tables, water, player, levelSprites = {}) {
       made.push({ name, anim, f, palette, rows, under });
     }
     const image = images[byKey.get(key)];
-    if ((ROTATED.has(name) || name in EXTRA_SPRITES) && !image.pieces) image.pieces = framePieces(rom, tables, anim, f.frame, f.tilesAt, palette, f.eightBpp);
+    if ((ROTATED.has(name.replace('partner.', '')) || name in EXTRA_SPRITES) && !image.pieces) image.pieces = framePieces(rom, tables, anim, f.frame, f.tilesAt, palette, f.eightBpp);
     return byKey.get(key);
   };
   for (const { list, palette, skipPalette, under: groupUnder = under } of groups) {

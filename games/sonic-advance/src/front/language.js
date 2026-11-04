@@ -20,6 +20,7 @@ import { WRITE_FRAMES } from '../engine/save.js';
 import { createUiTask, uiGfxStackInit, loadUiGfx, createFade, fadeStep } from './ui.js';
 import { createSegaLogo } from './logos.js';
 import { createOptionsMenu } from './options.js';
+import { fixes } from '../engine/fixes.js';
 
 // the sprites: by the language (0 Japanese, 1 English) their animation, then their variant, their tiles and where
 // they are
@@ -82,7 +83,8 @@ export function createLanguageScreen(ctx, newGame) {
 function choose(t) {
   const screen = t.data, { ctx } = screen, e = ctx.engine;
   let lang = screen.lang;
-  if (fadeStep(e, screen.fade)) {
+  const faded = fadeStep(e, screen.fade), ready = faded || !fixes.on;
+  if (faded) {
     if (e.repeated & KEY.DOWN) {
       e.playSong(SONG.MENU_CURSOR);
       lang = lang !== 0 ? 0 : 1;
@@ -92,11 +94,11 @@ function choose(t) {
     }
   }
   screen.lang = lang;
-  if (e.pressed & (screen.at ? KEY.A | KEY.START : KEY.A)) {
+  if (ready && e.pressed & (screen.at ? KEY.A | KEY.START : KEY.A)) {
     e.playSong(SONG.SELECT);
     ctx.save.uiLanguage = screen.lang;
     turnFade(t);
-  } else if (e.pressed & KEY.B && !screen.at) {
+  } else if (ready && e.pressed & KEY.B && !screen.at) {
     e.playSong(SONG.RETURN);
     turnFade(t);
   }

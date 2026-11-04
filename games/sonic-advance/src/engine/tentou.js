@@ -11,6 +11,7 @@
 
 import { startAnim, animate } from './objects.js';
 import { I, data, gone, sprite, COS, SIN } from './enemies.js';
+import { fixes } from './fixes.js';
 
 export const TENTOU = 6;
 
@@ -23,7 +24,7 @@ export function tentou(e, slot, anims) {
   let phase = 'fly', n = 0, t = 0, ox = 0, oy = 0;
   // the offsets at step `k` of the loop
   const offX = k => Math.imul(d2 << 11, SIN((STEP_X * (k & 0x7F)) & 0x3FF)) >> 14;
-  const offY = k => Math.imul(d3 << 11, COS((STEP_Y * (k & 0x3F)) & 0x3FF)) >> 14;
+  const offY = k => Math.imul(d3 << 11, COS((STEP_Y * (k & (fixes.on ? 0x7F : 0x3F))) & 0x3FF)) >> 14;
   const show = (ctx, x, y) => {
     animate(s, ctx.anims);
     ctx.draw(s, x, y);
@@ -32,6 +33,18 @@ export function tentou(e, slot, anims) {
   return {
     run(ctx) {
       const wx = e.x, wy = e.y, cam = ctx.cam;
+      if (phase === 'fly' && fixes.on) {
+        // flying the loop itself: where the offsets are, for the sprite and its box alike
+        ox = offX(n); oy = offY(n);
+        n = (n + 1) & 0xFFFF;
+        if (n === 0x40 || n === 0x80) { t = 0; startAnim(s, 'tentouHover'); phase = 'hover'; }
+        n &= 0x7F;
+        const x = wx + (ox >> 8), y = wy - (oy >> 8);
+        if (ctx.attack(s, x, y)) { slot.gone = true; slot.live = null; return false; }
+        if (gone(wx, wy, x, y, cam)) { slot.live = null; return false; }
+        show(ctx, x, y);
+        return true;
+      }
       if (phase === 'fly') {
         // Task_TentouMain
         const dx = (offX(n) - ox) >> 5, dy = (offY(n) - oy) >> 4;
@@ -57,7 +70,7 @@ export function tentou(e, slot, anims) {
       ox = offX(n - 1);
       const was = oy;
       oy = offY(n - 1);
-      const dy = (oy - was) >> 4, x = wx + dx, y = wy - dy;
+      const dy = (oy - was) >> 4, x = fixes.on ? wx + (ox >> 8) : wx + dx, y = fixes.on ? wy - (oy >> 8) : wy - dy;
       t++;
       if (phase === 'fire' && t === 15) {
         ctx.add(shot(x, y - 5, 6, ctx), 0x3000);

@@ -58,7 +58,7 @@ export function createEggPress(e, slot, anims, ctx) {
     const ey = s.anim.name === 'eggPressNoSpring' ? y + 46 : y - EGGMAN_RAISE[Div(s.oamIndex, 5)];
     c.draw(s, x, y); c.draw(s2, x, ey);
   }
-  // Sonic against the press, while it isn't flashing (sub_802D748)
+  // Sonic and the CPU partner against the press, while it isn't flashing (sub_802D748)
   function hit(c, x, y) {
     s.white = false;
     if (flash !== 0) return;
@@ -201,6 +201,11 @@ export function createEggPress(e, slot, anims, ctx) {
       c.add(screenShake(0x800, 0x40, 0x100, -1, SHAKE.VERTICAL), SCREEN_SHAKE);
       // on the ground, or Knuckles sliding from a glide (charState 65)
       if (!p.air || p.state === 'glideSlide') {
+        c.world.damage();
+        startAnim(s2, 'eggPressEggmanLaugh'); s2.over = false;
+      }
+      // the CPU partner on the ground: the original tests him here but hurts Sonic
+      if (c.players[1] && !c.players[1].air) {
         c.world.damage();
         startAnim(s2, 'eggPressEggmanLaugh'); s2.over = false;
       }

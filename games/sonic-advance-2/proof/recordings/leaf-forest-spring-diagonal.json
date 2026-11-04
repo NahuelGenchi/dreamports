@@ -1,0 +1,202 @@
+{
+ "about": "Sonic thrown up and to the right by one of Leaf Forest act 1's diagonal springs, from a start point on the ground to its left: he waits out the countdown there, sets off as it ends with nothing pressed, runs into the spring, falls back to the ground far to its right and runs on, with the camera following.",
+ "frames": 364,
+ "start": "level=0&x=8210&y=1850",
+ "held": [
+  [
+   0,
+   []
+  ],
+  [
+   306,
+   [
+    "RIGHT"
+   ]
+  ]
+ ],
+ "onlyInOriginal": [
+  {
+   "at": 0,
+   "frames": 2320,
+   "held": [
+    [
+     0,
+     []
+    ],
+    [
+     640,
+     [
+      "START"
+     ]
+    ],
+    [
+     646,
+     []
+    ],
+    [
+     760,
+     [
+      "A"
+     ]
+    ],
+    [
+     766,
+     []
+    ],
+    [
+     880,
+     [
+      "START"
+     ]
+    ],
+    [
+     886,
+     []
+    ],
+    [
+     1000,
+     [
+      "A"
+     ]
+    ],
+    [
+     1006,
+     []
+    ],
+    [
+     1120,
+     [
+      "START"
+     ]
+    ],
+    [
+     1126,
+     []
+    ],
+    [
+     1240,
+     [
+      "A"
+     ]
+    ],
+    [
+     1246,
+     []
+    ],
+    [
+     1360,
+     [
+      "START"
+     ]
+    ],
+    [
+     1366,
+     []
+    ],
+    [
+     1480,
+     [
+      "A"
+     ]
+    ],
+    [
+     1486,
+     []
+    ],
+    [
+     1600,
+     [
+      "START"
+     ]
+    ],
+    [
+     1606,
+     []
+    ],
+    [
+     1720,
+     [
+      "A"
+     ]
+    ],
+    [
+     1726,
+     []
+    ],
+    [
+     1840,
+     [
+      "START"
+     ]
+    ],
+    [
+     1846,
+     []
+    ],
+    [
+     1960,
+     [
+      "A"
+     ]
+    ],
+    [
+     1966,
+     []
+    ],
+    [
+     2080,
+     [
+      "START"
+     ]
+    ],
+    [
+     2086,
+     []
+    ],
+    [
+     2200,
+     [
+      "A"
+     ]
+    ],
+    [
+     2206,
+     []
+    ],
+    [
+     2316,
+     [
+      "A"
+     ]
+    ]
+   ],
+   "about": "From power-on to Leaf Forest act 1: the language, a name, the logos, the title, Game Start and Sonic. Then Sonic's place, beside a spring.",
+   "sets": [
+    {
+     "frame": 2319,
+     "address": "030059E8",
+     "bytes": 4,
+     "value": 2101760
+    },
+    {
+     "frame": 2319,
+     "address": "030059EC",
+     "bytes": 4,
+     "value": 473600
+    },
+    {
+     "frame": 2319,
+     "address": "03005960",
+     "bytes": 4,
+     "value": 8090
+    },
+    {
+     "frame": 2319,
+     "address": "03005964",
+     "bytes": 4,
+     "value": 1770
+    }
+   ]
+  }
+ ]
+}

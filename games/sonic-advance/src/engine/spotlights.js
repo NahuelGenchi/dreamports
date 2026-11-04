@@ -15,6 +15,7 @@
 // (an original-game bug).
 
 import { SINE } from './trig.js';
+import { fixes } from './fixes.js';
 
 export const SPOTLIGHTS_FADE_X = 1368, SPOTLIGHTS_GONE_X = 1488;
 const MIN_BLEND = 8 * 256;   // Q_MIN_BLEND, 8.8
@@ -33,7 +34,7 @@ function writer(buf, base, half, row) {
   return (line, k, v) => {
     const at = base + line * 4 + half * 2 + k;
     if (at >= 0 && at < buf.length) buf[at] = v & 0xFF;
-    else if (at >= buf.length && at < buf.length + 32) {
+    else if (!fixes.on && at >= buf.length && at < buf.length + 32) {
       row.bytes[at - buf.length] = v & 0xFF;
       row.written |= 1 << ((at - buf.length) >> 1);
     }

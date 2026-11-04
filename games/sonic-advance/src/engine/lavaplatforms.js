@@ -23,16 +23,19 @@ export function createLavaPlatform(e, slot, anims) {
   if (e.kind !== LAVA_PLATFORM) return null;
   // neither runs its animation before the task's first frame, so neither is solid on it
   const lava = { ...makeSprite('lava'), x: e.x, y: e.y }, top = { ...makeSprite('lavaPlatform', { order: 17 }) };
-  let spurting = false, vy = 0, q = 0, n = 0, bounces = 0, riding = false;   // speed and offset in 1/256 px
+  let spurting = false, vy = 0, q = 0, n = 0, bounces = 0;   // speed and offset in 1/256 px
+  const riding = [false, false];   // unk74: each player on it as it spurts
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam;
+      const cam = ctx.cam;
       if (spurting) return spurt(ctx);
-      if (platformTop(top, e.x, e.y, top.boxes[0], p) & LANDED) { p.y = e.y - 27; p.air = false; }
-      platform(lava, lava.boxes[0], p, ctx.world.terrain);
+      for (const p of ctx.players) {
+        if (platformTop(top, e.x, e.y, top.boxes[0], p) & LANDED) { p.y = e.y - 27; p.air = false; }
+        platform(lava, lava.boxes[0], p, ctx.world.terrain);
+      }
       if (offDisplay(e.x, e.y, cam) && offCam(e.x, e.y - 3, cam)) { slot.live = null; return false; }
       if (ctx.world.tick % EVERY === 0) {
-        n = EVERY; riding = false; vy = -5 * 256; q = 0; bounces = 3;
+        n = EVERY; riding.fill(false); vy = -5 * 256; q = 0; bounces = 3;
         startAnim(lava, 'lavaSpurt', true);
         ctx.world.playSound(SONG.LAVA_SPURT);
         spurting = true;
@@ -47,29 +50,32 @@ export function createLavaPlatform(e, slot, anims) {
 
   // Task_80929A0
   function spurt(ctx) {
-    const p = ctx.player;
     vy += 37; q += vy;
     const y = e.y + (q >> 8);
-    if (riding) {
-      if (p.dead || !overlap(e.x, y, top.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) riding = false;
-      else p.y += vy / 256;
-    } else if (platformTop(top, e.x, y, top.boxes[0], p)) {
-      p.y = y - 27;
-      riding = !p.air;
-      if (p.ysp === 0 && p.state !== 'walk') { endAttack(p); p.pushing = false; p.state = 'walk'; }
-    } else riding = false;
+    for (const [i, p] of ctx.players.entries()) {
+      if (riding[i]) {
+        if (p.dead || !overlap(e.x, y, top.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) riding[i] = false;
+        else p.y += vy / 256;
+      } else if (platformTop(top, e.x, y, top.boxes[0], p)) {
+        p.y = y - 27;
+        riding[i] = !p.air;
+        if (p.ysp === 0 && p.state !== 'walk') { endAttack(p); p.pushing = false; p.state = 'walk'; }
+      } else riding[i] = false;
+    }
     if (--n === 48) {
       startAnim(lava, 'lava', true);
       animate(lava, anims);
     } else if (n >= 49 && n < 96) {
-      if (!p.dead && p.boxes[0] && lava.boxes[1] && overlap(e.x, e.y, lava.boxes[1], Math.floor(p.x), Math.floor(p.y), p.boxes[0])) ctx.world.damage();
+      for (const p of ctx.players) {
+        if (!p.dead && p.boxes[0] && lava.boxes[1] && overlap(e.x, e.y, lava.boxes[1], Math.floor(p.x), Math.floor(p.y), p.boxes[0])) ctx.world.damage(p);
+      }
       animate(lava, anims);
     } else if (n < 48) {
       if (animate(lava, anims)) startAnim(lava, 'lava', true);
       animate(lava, anims);
     }
     if (q >= 0) {
-      if (--bounces !== 0) { vy = -Math.trunc(vy * 2 / 5); riding = false; q = 0; }
+      if (--bounces !== 0) { vy = -Math.trunc(vy * 2 / 5); riding.fill(false); q = 0; }
       else { startAnim(lava, 'lava', true); spurting = false; }
     }
     ctx.draw(lava, e.x, e.y - 3);

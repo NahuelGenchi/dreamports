@@ -15,6 +15,7 @@
 import { startAnim, animate } from './objects.js';
 import { I, TILE, s16, data, gone, sonicX, sonicY, sprite } from './enemies.js';
 import { tileFloor, probeTile, PROBE_WALL } from './terrain.js';
+import { fixes } from './fixes.js';
 
 export const YUKIMARU = 16, YUKIMARU_WALL = 17;
 
@@ -94,7 +95,7 @@ const off = (x, y, cam) => (s16(x - cam.x) + 20 & 0xFFFF) > 276 || s16(y - cam.y
 
 // the snowball thrown up (CreateSnowball, Task_Snowball): 5 px a frame, slowing by 40/256 px a frame each frame
 function snowballUp(x0, y0, anims) {
-  const s = sprite('yukimaruSnowball', anims, { order: 1, prio: 0 }), q = s16(x0 * 4), x = (q < 0 ? q + 3 : q) >> 2;
+  const s = sprite('yukimaruSnowball', anims, { order: 1, prio: 0 }), q = s16(x0 * 4), x = fixes.on ? x0 : (q < 0 ? q + 3 : q) >> 2;
   let y = y0, vy = -0x500;
   return {
     run(ctx) {
