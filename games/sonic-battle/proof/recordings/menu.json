@@ -1,5 +1,6 @@
 {
-  "about": "From power-on: the logos, the intro and the title screen, Start there, then the main menu as a player with a saved name reaches it: right through all seven choices, left twice, and A, through its fade to black. The name entry isn't ported, so the original is given a saved name (see onlyInOriginal).",
+  "about": "From power-on: the logos, the intro and the title screen, Start there, then the main menu as a player with a saved name reaches it, with no name entry: right through all seven choices, left twice, and A, through its fade to black. Both are given a saved name: the Dreamport by its address, the original in onlyInOriginal.",
+  "start": "name=1",
   "frames": 1355,
   "held": [
     [0,[]],

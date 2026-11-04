@@ -18,6 +18,14 @@ sources:
     href: https://github.com/NahuelGenchi/dreamports/tree/main/games/sonic-advance
     license: GPL-3.0-or-later
     use: code
+  - name: Sonic Advance 3 Dreamport
+    href: https://github.com/NahuelGenchi/dreamports/tree/main/games/sonic-advance-3
+    license: GPL-3.0-or-later
+    use: code
+  - name: mGBA’s arctangent, by Jeffrey Pfau
+    href: https://github.com/mgba-emu/mgba/blob/0.10.5/src/gba/bios.c
+    license: MPL-2.0
+    use: code
 ownCopy:
   confirm: "I own Sonic Advance 2"
   links:

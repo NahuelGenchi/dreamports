@@ -13,9 +13,12 @@ import { proof } from '../../../kit/gba/proof.js';
 import { createSettings } from '../../../kit/gba/ui/settings.js';
 import { createTouch } from '../../../kit/gba/ui/touch.js';
 import { createSound } from '../../../kit/gba/sound/audio.js';
+import { cartridgeSave } from '../../../kit/gba/save.js';
 import { createCore, step } from './core.js';
 import { logos } from './logos.js';
 import { intro } from './intro.js';
+import { keptName } from './name-entry.js';
+import { skills } from './skills.js';
 import { soundLayout } from './sound.js';
 import { startFight } from './fight.js';
 
@@ -45,7 +48,11 @@ proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded but
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives and what a button does so far
 const touch = createTouch(stage, input, { screen, key: 'sonic-battle' });
-createSettings(stage, input, { what: { start: 'Start: skips the SEGA and Sonic Team logos and the intro, and leaves the title screen' }, touch });
+createSettings(stage, input, { what: {
+  a: 'A: adds a letter to your name, and chooses on the main menu',
+  b: 'B: takes the last letter off your name',
+  start: 'Start: skips the SEGA and Sonic Team logos and the intro, leaves the title screen, and keeps your name',
+}, touch });
 let rom = null, romBuffer = null;
 
 createRomSetup(picker, {
@@ -68,11 +75,22 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the logos, the intro, the title screen and the main menu, with a fight's opening from a start point. What comes after the title screen, the main menu,
-// is not ported yet, so the screen stays black there.
+// The game so far: the logos, the intro, the title screen, the name entry and the main menu, with Emerl's screen's
+// menu and a fight's opening from start points. What the menu's choices lead to isn't ported yet, so the screen stays
+// black there. The proof tools keep no name between runs, as a new cartridge wouldn't have one, and `name` in the
+// address is what a recording's start point gives the game for a saved one.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
+  core.nameSave = cartridgeSave('sonic-battle-name', proof ? null : undefined);
+  keptName(core);
+  const saved = new URLSearchParams(location.search).get('name');
+  if (saved !== null) core.name[0] = Number(saved) & 0xFFFF;
   core.main = c => logos(c, intro);
+  // a recording's start point, as nothing leads to Emerl's screen yet: `skills` in the address opens it (skills.js)
+  if (new URLSearchParams(location.search).has('skills')) {
+    core.startUp = 1;
+    core.main = skills;
+  }
   // a recording's start point, as nothing leads to a fight yet: fight=training&vblanks=<count> opens one (fight.js)
   const asked = new URLSearchParams(location.search);
   if (asked.get('fight') === 'training') {

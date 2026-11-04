@@ -1,10 +1,13 @@
 {
   "about": "Sonic Advance 2's parts, in the order a player meets them, then its other characters and modes. Each counts the same. A part is proven when a recording plays it from its first frame to its last and every frame matches the original: \"frames\" are the first and last of the recording's frames it covers. A part may end with a press that moves the game on, the way a player leaves it, such as Start on the title screen. Where the screen is one colour between two parts, those frames go with the part before. Foundations are what many parts need but no player would call a part, and they don't count towards the parts.",
   "foundations": [
-    {
-      "name": "The platforming",
-      "what": "A character running and jumping through a zone: its layers, the ground under them, the camera, rings, springs and the screen's numbers. Everything played in a zone builds on it. It's the largest piece, so whoever takes it can open smaller tasks with the Task form once the code shows where it divides."
-    }
+    { "name": "An act's opening", "what": "Leaf Forest act 1 from its first frame until a player can move, with nothing pressed once its title card is left: its layers, the camera, the numbers, Sonic, the machine and the countdown, and the song and the announcer. A recording can start here from a start point, so nothing before it in the game has to be ready first." },
+    { "name": "A character running", "what": "Sonic setting off as the countdown ends, START!!, then running, turning and braking both ways on Leaf Forest's ground and slopes, with the camera following.", "needs": ["An act's opening"] },
+    { "name": "A character jumping", "what": "Sonic jumping, falling and landing, rolling, and meeting walls and ceilings.", "needs": ["A character running"] },
+    { "name": "Rings", "what": "Sonic running through Leaf Forest act 1's rings: taking them, their sound and the number going up.", "needs": ["A character running"] },
+    { "name": "Springs", "what": "Sonic thrown by Leaf Forest act 1's springs, with the camera following, falling back to the ground.", "needs": ["A character jumping"] },
+    { "name": "Being hit", "what": "Leaf Forest act 1's first enemies moving and hitting Sonic, his rings scattering and his blinking after it, and beating one with a jump.", "needs": ["A character jumping", "Rings"] },
+    { "name": "The platforming", "what": "A character running and jumping through a whole stretch of an act, with every piece it needs together. Everything played in a zone builds on it.", "needs": ["Springs", "Being hit"] }
   ],
   "parts": [
     { "name": "The language screen, at the first start", "recording": "first-start", "frames": [0, 630] },

@@ -16,12 +16,16 @@ import { createSound } from '../../../kit/gba/sound/audio.js';
 import { createCore } from './core.js';
 import { languageScreen } from './language.js';
 import { soundLayout } from './sound.js';
+import { startStage } from './stage/stage.js';
+import { placePlayer } from './stage/player.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from
 const GAME = { name: 'Sonic Advance 2', title: 'SONICADVANC2', codes: { A2NE: 'USA' }, versions: [{ sha1: '7bcd6a07af7c894746fa28073fe0c0e34408022d' }] };
 
 // the player's buttons: the console's own, the keys that press them, and the controller's buttons by their
 // numbers in the standard layout (0 A, 1 B, 4 LB, 5 RB, 8 View, 9 Menu, 12 to 15 the d-pad)
+const FRAMES_BEFORE_THE_RECORDING = 3;
+
 const LAYOUT = {
   buttons: ['up', 'down', 'left', 'right', 'a', 'b', 'l', 'r', 'start', 'select'],
   gba: { up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT', a: 'A', b: 'B', l: 'L', r: 'R', start: 'START', select: 'SELECT' },
@@ -37,7 +41,7 @@ proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded but
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives
 const touch = createTouch(stage, input, { screen, key: 'sonic-advance-2' });
-createSettings(stage, input, { what: { dpad: 'Up and Down: choose a language', a: 'A: keeps the language', start: 'Start: keeps the language' }, touch });
+createSettings(stage, input, { what: { dpad: 'Up and Down: choose a language. Left and Right: run', a: 'A: keeps the language', start: 'Start: keeps the language' }, touch });
 let rom = null, romBuffer = null;
 // the game's sound (sound.js): the engine the kit runs, on the player's copy
 const sound = createSound();
@@ -62,12 +66,26 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the language screen. What comes after it, the name entry, isn't ported yet, so the screen stays dark
-// there.
+// The game so far: the language screen, then, as what comes between isn't ported yet, Leaf Forest's act 1.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
-  core.main = languageScreen;
-  return { step(keys) { core.step(keys); } };
+  // ?level=<n> opens a stage straight away, which recordings use as their start point, and &x=<n>&y=<n> puts the character
+  // somewhere in it the frame before that, as &rings=<n> gives it rings, as those recordings' values do in the original
+  const search = new URLSearchParams(location.search), level = search.get('level');
+  let started = null;
+  core.main = level === null ? languageScreen : c => { started = startStage(c, Number(level)); };
+  // the original's start-up is behind it by then, and the frame a stage's title card takes in before a button leaves it
+  // isn't made, so it runs with nothing to show
+  if (level !== null) {
+    core.startUp = 1;
+    for (let i = 0; i < FRAMES_BEFORE_THE_RECORDING; i++) {
+      if (i === FRAMES_BEFORE_THE_RECORDING - 1 && search.has('rings')) started.rings = Number(search.get('rings'));
+      if (i === FRAMES_BEFORE_THE_RECORDING - 1 && search.has('x')) placePlayer(started, Number(search.get('x')), Number(search.get('y')));
+      core.step(0);
+      core.runSound();
+    }
+  }
+  return { step(keys) { core.step(keys); }, hblank: core.hblank };
 }
 
 function start() {
@@ -93,7 +111,7 @@ function start() {
       ran = true;
     }
     if (ran) {
-      video.drawFrame(pixels);
+      video.drawFrame(pixels, game.hblank);
       out.putImageData(image, 0, 0);
     }
     requestAnimationFrame(loop);

@@ -86,9 +86,11 @@ export function copyLayer(c, bg) {
     const nextBlock = (c.bgCnt[bg.flags & 3] >> 14) & 1 ? 0x800 : 0;
     let src = bg.layout, dest = bg.layoutVram;
     for (let row = 0; row < bg.targetTilesY; row++) {
-      const left = Math.min(bg.targetTilesX, 32);
+      // on a layer two blocks wide the rest of a row goes to the next block, and on any other it runs on over the next
+      // row, which that row then writes over
+      const left = nextBlock ? Math.min(bg.targetTilesX, 32) : bg.targetTilesX;
       video.vram.set(rom.bytes.subarray(src, src + left * 2), dest);
-      if (bg.targetTilesX > 32) video.vram.set(rom.bytes.subarray(src + left * 2, src + bg.targetTilesX * 2), dest + nextBlock);
+      if (nextBlock && bg.targetTilesX > 32) video.vram.set(rom.bytes.subarray(src + left * 2, src + bg.targetTilesX * 2), dest + nextBlock);
       dest += 64;
       src += bg.xTiles * 2;
     }

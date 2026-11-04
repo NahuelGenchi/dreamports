@@ -8,6 +8,7 @@
 // UpdateScreenDma, and 0x08001C90, ClearOamBufferDma).
 
 import { REG } from '../../../kit/gba/video.js';
+import { copyLayer } from './stage/map.js';
 
 // the bits of the GBA's key register
 export const KEY = { A: 0x1, B: 0x2, SELECT: 0x4, START: 0x8, RIGHT: 0x10, LEFT: 0x20, UP: 0x40, DOWN: 0x80, R: 0x100, L: 0x200 };
@@ -25,6 +26,9 @@ export function createCore(video, rom, sound) {
   const c = {
     video, rom,
     playSong: song => sound?.play(song),   // 0x0809532C, m4aSongNumStart
+    playOn: (player, song, volume, pan) => sound?.playOn(player, song, volume, pan),   // MPlayStart, on one player, with its volume and pan
+    playPitched: (song, pitch) => sound?.playPitched(song, pitch),
+    runSound: () => sound?.call('frame'),   // a frame of the sound engine, which comes with no frame of the game's
     flags: 0, flagsPreVBlank: 0,
     dispCnt: 0x80, bgCnt: new Uint16Array(4), bgScroll: new Uint16Array(8), winRegs: new Uint16Array(6), bldCnt: 0, bldAlpha: 0, bldY: 0,
     bgPalette: new Uint16Array(256), objPalette: new Uint16Array(256),
@@ -32,8 +36,10 @@ export function createCore(video, rom, sound) {
     input: 0, prevInput: 0, pressed: 0, released: 0, repeated: 0,
     repeatCounters: new Uint8Array(10), firstRepeat: new Uint8Array(10).fill(20), nextRepeat: new Uint8Array(10).fill(8),
     startUp: START_UP_FRAMES, main: null, tasks: [],
+    lineScroll: null, shownLineScroll: null,   // what the H-blank writes to layer 3's scroll, x and y for each line (FLAGS_EXECUTE_HBLANK_COPY)
   };
-  const graphics = [], backgrounds = [];
+  const graphics = [], backgrounds = [], layers = [];
+  let nextTask = null;
 
   /** 0x080025E4, TaskCreate: a task running `main(task)` each frame, after every task of the same or lower priority. */
   c.createTask = (main, data, priority = 0x100) => {
@@ -43,10 +49,16 @@ export function createCore(video, rom, sound) {
     return t;
   };
   /** 0x08002690, TaskDestroy */
-  c.destroyTask = t => { c.tasks.splice(c.tasks.indexOf(t), 1); };
+  c.destroyTask = t => {
+    const at = c.tasks.indexOf(t);
+    if (t === nextTask) nextTask = c.tasks[at + 1];
+    c.tasks.splice(at, 1);
+  };
   /** ADD_TO_GRAPHICS_QUEUE: `size` bytes from `src` in the ROM copied to `dest` in VRAM in the next V-blank. */
   c.queueGraphics = (src, dest, size) => { graphics.push({ src, dest, size }); };
   c.queueBackground = bg => { backgrounds.push(bg); };
+  /** A stage's layer for the V-blank (stage/map.js). */
+  c.queueLayer = bg => { layers.push(bg); };
 
   const copy16 = (src, dest, bytes) => video.vram.set(rom.bytes.subarray(src, src + (bytes & ~1)), dest);
   // 0x080021C4, ProcessVramGraphicsCopyQueue, COPY_CHUNK at a time in the original, which comes to the same here
@@ -142,6 +154,10 @@ export function createCore(video, rom, sound) {
     video.oam.set(c.oamBuffer);
     copyGraphics();
     copyBackgrounds();
+    for (const bg of layers) copyLayer(c, bg);
+    layers.length = 0;
+    c.shownLineScroll = c.lineScroll;
+    scrollLine(0);
     c.oamBuffer.fill(0x200);
   }
 
@@ -153,10 +169,25 @@ export function createCore(video, rom, sound) {
       c.main = null;
     }
     readKeys(held);
-    for (const t of [...c.tasks]) if (c.tasks.includes(t)) t.main(t);   // 0x08002724, TasksExec
+    // 0x08002724, TasksExec: the next task is fixed before each one runs, so a task made just after the one running waits
+    // for the next frame, and one made later in the list runs in this one
+    for (let t = c.tasks[0]; t;) {
+      nextTask = c.tasks[c.tasks.indexOf(t) + 1];
+      t.main(t);
+      t = nextTask;
+    }
     c.flagsPreVBlank = c.flags;
     vblank();
   };
+  // layer 3's scroll for line `y`, from the list the H-blank copies, if there is one
+  const scrollLine = y => {
+    const lines = c.shownLineScroll;
+    if (!lines || y * 2 >= lines.length) return;
+    video.write(REG.BG0HOFS + 12, lines[y * 2]);
+    video.write(REG.BG0HOFS + 14, lines[y * 2 + 1]);
+  };
+  /** What the H-blank does after line `y`, which the page's drawing calls. */
+  c.hblank = y => scrollLine(y + 1);
   // the screen white (forced blank) until the game shows it
   video.write(REG.DISPCNT, 0x80);
   return c;

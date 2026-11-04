@@ -7,8 +7,8 @@
 // menu (options.js), which comes back to the main menu with the title screen's layers drawn again and a fade in.
 //
 // What isn't built yet goes nowhere. The original starts a demo after 900 frames on the title screen; here the
-// title screen stays as it is. A on VS, Time Attack or Tiny Chao Garden does nothing, and Game Start goes to the
-// act, where the character select would start.
+// title screen stays as it is. A on VS, Time Attack or Tiny Chao Garden does nothing, and Game Start goes where the
+// character select would lead: the course select once the character has progress, or else the act.
 //
 // The logo, "PRESS START" and the menu's items are in the save's language, Japanese or English; the copyright line
 // is the international release's in both.
@@ -43,8 +43,8 @@ const placeLogo = (e, scale) => transformBackground(e.bgAffine[0], 0, scale, sca
 
 /**
  * CreateTitleScreen. `ctx` has the engine (engine.js), the ROM's tilemap table (`tilemaps`), the sprite tables
- * (`sprites`, rom/sprites.js), the save (`save`, for its language) and `play()`, called where the character
- * select would start. With `playMusic`, the title's music starts.
+ * (`sprites`, rom/sprites.js), the save (`save`, for its language) and `startGame()`, called where the
+ * character select would start. With `playMusic`, the title's music starts.
  */
 export function createTitleScreen(ctx, playMusic) {
   const e = ctx.engine, vram = e.video.vram, lang = ctx.save.uiLanguage;
@@ -256,7 +256,7 @@ function fadeOut(t) {
 }
 
 // Task_800DEE4: the items' tiles freed and the music stopped (a song started on its player, the player cleared
-// and the song stopped), then the character select, which isn't built, so the act; or the windows and the blend
+// and the song stopped), then the character select, which isn't built, so what it leads to; or the windows and the blend
 // off, and the Options menu
 function leaveMenu(t) {
   const menu = t.data, { ctx } = menu, e = ctx.engine, item = menu.selectedItem;
@@ -265,7 +265,7 @@ function leaveMenu(t) {
   e.playSong(SONG.BOSS_FIGHT);
   e.stopSong(SONG.BOSS_FIGHT);
   if (item === GAME_START) {
-    ctx.play();
+    ctx.startGame();
     return;
   }
   e.dispCnt &= ~0x6000;

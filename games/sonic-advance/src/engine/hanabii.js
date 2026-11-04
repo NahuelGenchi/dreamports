@@ -13,6 +13,7 @@
 import { startAnim, animate } from './objects.js';
 import { I, TILE, data, gone, s16, sonicX, sonicY, sprite } from './enemies.js';
 import { tileFloor } from './terrain.js';
+import { fixes } from './fixes.js';
 
 export const HANABII = 8;
 
@@ -39,7 +40,7 @@ export function hanabii(e, slot, anims) {
         } else if (I(q) >= (d0 + d2) * TILE) {
           if (s.flipX) { s.flipX = false; v = -STEP; }
         } else if (rest !== 0) rest--;
-        else if (s16(dx * dx) + s16(dy * dy) < NEAR) {
+        else if ((fixes.on ? dx * dx + dy * dy : s16(dx * dx) + s16(dy * dy)) < NEAR) {
           t = 0; rest = REST; startAnim(s, 'hanabiiLaunch', true); launching = true;
         }
       } else {

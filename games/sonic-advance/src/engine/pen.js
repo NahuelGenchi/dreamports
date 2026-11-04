@@ -10,6 +10,7 @@
 import { startAnim, animate } from './objects.js';
 import { I, TILE, Div, s8, s16, COS, SIN, data, gone, sonicX, sonicY, sprite, leftOutOnEasy } from './enemies.js';
 import { tileFloor, probeTile, PROBE_FLOOR } from './terrain.js';
+import { fixes } from './fixes.js';
 
 export const PEN = 20;
 
@@ -45,7 +46,7 @@ export function pen(e, slot, anims, ctx) {
         }
       } else {
         if (t === 13) ctx.add(snowball(s.flipX ? x + 4 : x - 6, y, s.flipX, ctx), SNOWBALLS);
-        dy += tileFloor(terrain, x, y, 1);
+        if (!fixes.on) dy += tileFloor(terrain, x, y, 1);
         if (t > 16) { t = 0; startAnim(s, 'penWalk', true); throwing = false; }
       }
       animate(s, ctx.anims);

@@ -7,7 +7,7 @@
 
 import { TICK_MS, CAMERA, PHYSICS, ANIMATION, SCREEN_W, SCREEN_H, RUSH_BOOST, BOOST_MODE } from './constants.js';
 import { makeAnimator, setAnim, tickAnim, frameOf, spritePalette } from './animator.js';
-import { createPlayer, stepPlayer, animatePlayer, hurt, SONIC, TAILS, KNUCKLES } from './player.js';
+import { createPlayer, stepPlayer, animatePlayer, hurt, SONIC, TAILS, AMY, KNUCKLES } from './player.js';
 import { createRushFx, startRushFx, stepRushFx } from './rushfx.js';
 import { createBoostFx, recordSonic, stepAfterimages, startBurst, stepBursts, particleAnims } from './boostmode.js';
 import { TRICK_FX_PRIORITY, createTrail, recordTrail, spinEffect, boundTrail } from './trickfx.js';
@@ -21,6 +21,7 @@ import { attackTest, projectileTest, defeatEffects } from './defeat.js';
 import { createRings } from './rings.js';
 import { createScatter } from './scatter.js';
 import { createHud, updateHud } from './hud.js';
+import { createHearts } from './amyhearts.js';
 import { createTitleCard, runTitleCard } from './titlecard.js';
 import { createResults, runResults } from './results.js';
 import { createPaletteAnimation } from './palettes.js';
@@ -45,9 +46,11 @@ import { createClock } from '../../../../kit/gba/clock.js';
 import { createPauseMenu, PAUSE_PRIORITY } from './pause.js';
 import { openSave, saveActCleared, WRITE_FRAMES } from './save.js';
 import { playerControls } from './input.js';
+import { fixes, lifeMore } from './fixes.js';
 
 const MAX_BRAKE_DUST = 20;   // the original keeps a pool of 20 brake dust clouds
 const EFFECTS = 0x4001;      // the priority of Sonic's effects' tasks, as of the item boxes' (ITEM_TASKS)
+const HEARTS = 0x3001;       // the priority of Amy's hearts' task (CreateAmyAttackHeartEffect)
 const MAX_RING_SPARKLES = 8;   // with 8 sparkles showing, a ring is still counted but makes no sparkle or sound
 const START_LIVES = 3;
 const ITEM_TIME = 1200;   // invincibility and speed shoes last 20 seconds
@@ -89,7 +92,7 @@ const NO_INPUT = { left: false, right: false, up: false, down: false, jump: fals
 const noEffects = () => ({ win0: false, win0h: 0, win0v: 0, winIn: 0, winOut: 0, bldCnt: 0, bldY: 0 });
 
 const SILENT = {
-  play() {}, playOrChange() {}, playPitched() {}, playOn() {}, playStageMusic() {}, oneUp() {}, stop() {}, fadeOut() {}, tempo() {}, invincibility() {},
+  play() {}, playOrChange() {}, playPitched() {}, playOn() {}, playStageMusic() {}, playStageMusicFadingIn() {}, oneUp() {}, stop() {}, fadeOut() {}, tempo() {}, invincibility() {},
   drowning() {}, playerState() {}, stopAll() {}, musicOff() {}, musicState() {}, playSa2() {}, pause() {}, continueAll() {},
 };
 
@@ -101,7 +104,8 @@ const SILENT = {
  * (the course select's, the level pick's); continues, the continues the player has, which it hands on;
  * onNextZone({ level, score, lives, seed, continues, frameCount }), called as the results of the last act decoded
  * end, once the save is written, to go on to the next zone's first act with what the game carries over; carry,
- * those { score, lives, seed, continues, frameCount } to start with; levelPick, set when the act is started from
+ * those { score, lives, seed, continues, frameCount } to start with; frameCount, gFrameCount on the act's first frame
+ * when the course select starts it (without it 3838); levelPick, set when the act is started from
  * the level pick (?level=N);
  * onTitle(), called when a game over sends the game back to its start (the SEGA logo), after which the act does
  * nothing more; achieve(id), called on the frame an achievement's moment comes, for the page to earn it (it
@@ -157,7 +161,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     animal: 0,   // gTrappedAnimalVariant: the next defeat's animal
     blendOff: false,   // whether a boss turned the colour blending off this frame (gBldRegs.bldCnt = 0)
     seed: 0,     // gPseudoRandom: the game's random numbers, one sequence for the whole game, from 0
-    frameCount: START_FRAME_COUNT - 1,   // gFrameCount: every frame counts, the title card's and restarts' too
+    frameCount: (options.frameCount ?? START_FRAME_COUNT) - 1,   // gFrameCount: every frame counts, the title card's and restarts' too
     palettes: palettes.map(a => a.shown),   // the frame each palette animation has loaded (palettes.js)
     objPalette: anims.objPalette,           // the sprite palette's rows as the frame ends, which the screen shows
     checkpointIndex: 0,   // gBossIndex: the number of the last checkpoint passed
@@ -167,7 +171,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
                           // rings, and the entities manager spawns nothing
     card: null,           // the title card (titlecard.js) while it holds Sonic and the clock
     results: null,        // the act's results (results.js) once Sonic is past the goal
-    cardsShown: -1,       // gFinalBossActive: the last level whose title card has ended
+    // gFinalBossActive: the last level whose title card has ended, or the level the course select starts
+    cardsShown: options.levelPick ? act.level : -1,
     cardOver: false,      // the frame the title card ended
     view: null,           // what the screen shows around the camera (camera.js viewOf); only drawing reads it
     rush: false,          // the Sonic Rush boost's setting (off unless chosen)
@@ -215,13 +220,21 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   const sparkles = new Set();   // the ring sparkles still running their animation
   let cardPad = [];   // the pad directions held on the title card's last frame
   let firstCard = true;
-  // Act 1 starts from the character select, and the acts after it from the act before. Any other act the level
-  // pick starts as the course select does: its task (0x2000) makes the act, so on that frame only the title
-  // card's task and those after it run (Sonic, the clock), not the scattered rings' (0x2001), and the next frame
-  // is spent loading; and the HUD's data holds what that leaves there (levels.js, hudFlash)
-  let madeBy = options.levelPick && stage.level !== 0 ? 0x2001 : -1;
+  // Act 1 starts from the character select, and the acts after it from the act before. An act the course select
+  // starts, or the level pick, starts this way: the course select's task (0x2000) makes the act, so on that frame only
+  // the title card's task and those after it run (Sonic, the clock), not the scattered rings' (0x2001), and the next
+  // frame is spent loading; and the HUD's data holds what that leaves there (levels.js, hudFlash)
+  let madeBy = options.levelPick ? 0x2001 : -1;
+  // what comes before the act's first picture, on which the screen stays as it was: the frame the act is made in and
+  // the one spent loading it. From the course select, whose last frame was the first of them, only the second is left
+  let unseen = !options.levelPick || options.resume ? 0 : options.frameCount === undefined ? 2 : 1;
   const hudFlash = options.levelPick ? stage.hudFlash : 1;
+  // and that first picture still has the layers where they start, before the camera's update has scrolled them
+  state.layersAtStart = !!options.levelPick && !options.resume;
   let extraLife = false, loading = false, starMusic = false;
+  // the act's music, as the course select leaves it: it starts on the frame after the act is made, and fades in, as a
+  // song the music manager starts over does (the recordings course-select-first-act and course-select-all-rows)
+  let musicStarts = false;
   let restart = null;   // what comes at the end of this frame: the act over again (restartAct, continueAct), the
                         // next act, or the game's start
   let toTitle = false;  // a game over is sending the game back to its start
@@ -436,7 +449,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     addScore(points) {
       const before = state.score;
       state.score += points;
-      if (Math.trunc(state.score / 50000) !== Math.trunc(before / 50000)) state.lives = (state.lives + 1) & 0xFF;
+      if (Math.trunc(state.score / 50000) !== Math.trunc(before / 50000)) state.lives = lifeMore(state.lives);
     },
     // a boss is beaten at (x, y): it leaves the capsule that ends the act (CreateBossCapsule)
     bossDefeated(x, y) { tasks.add(createBossCapsule(x, y, anims, state.level >> 1), 0x2000); world.bossBeaten(CAPSULE_BOSSES[state.level]); },
@@ -461,7 +474,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     // an item box's prize (Task_Itembox2)
     prize(kind) {
       switch (kind) {
-        case ONE_UP: state.lives = (state.lives + 1) & 0xFF; extraLife = true; break;
+        case ONE_UP: state.lives = lifeMore(state.lives); extraLife = true; break;
         case SHIELD: case MAGNETIC_SHIELD: {
           const shield = kind === SHIELD ? 'normal' : 'magnetic';
           player.shield = shield;
@@ -514,7 +527,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     trickScore(points) {
       const before = state.score;
       state.score += points;
-      if (Math.trunc(state.score / 50000) !== Math.trunc(before / 50000)) { state.lives = (state.lives + 1) & 0xFF; extraLife = true; }
+      if (Math.trunc(state.score / 50000) !== Math.trunc(before / 50000)) { state.lives = lifeMore(state.lives); extraLife = true; }
     },
     playSa2: song => sound.playSa2(song),
     trickEffect(kind) {
@@ -538,6 +551,9 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     spawnUppercutFlame() { spawn('swipe', 'uppercutFlame', player.x, centreY(), player.facing > 0, player.inverted); },
     // and his splash floating on water, while he floats there (Player_Knuckles_InitGfx_FloatSplash)
     spawnFloatSplash() { spawn('splash', 'floatSplash', player.x, centreY(), player.facing > 0); },
+    // Amy's hearts (CreateAmyAttackHeartEffect): the pattern `kind` of her first swing, her second, the hammer in the
+    // air and swirled down (amyhearts.js), as long as her move lasts
+    spawnHearts(kind) { if (character === AMY) tasks.add(createHearts(assets.heartPatterns[kind], player, playerAnims, draw), HEARTS); },
     marbleTails() { if (character === TAILS) { player.marbleTails = makeAnimator(); setAnim(player.marbleTails, 'marbleTrackTails'); } },
   };
 
@@ -593,7 +609,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   function addRings(n) {
     const before = state.ringCount;
     state.ringCount = (before + n) & 0xFFFF;
-    if (Math.floor(state.ringCount / 100) !== Math.floor(before / 100)) { state.lives = (state.lives + 1) & 0xFF; extraLife = true; }
+    if (Math.floor(state.ringCount / 100) !== Math.floor(before / 100)) { state.lives = lifeMore(state.lives); extraLife = true; }
     if (state.ringCount >= 100) options.achieve?.('hundred-rings');
     if (state.ringCount >= 200) options.achieve?.('two-hundred-rings');
   }
@@ -717,7 +733,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         addScore(n) {
           const before = state.score;
           state.score += n;
-          if (Math.trunc(state.score / 50000) !== Math.trunc(before / 50000)) state.lives = (state.lives + 1) & 0xFF;
+          if (Math.trunc(state.score / 50000) !== Math.trunc(before / 50000)) state.lives = lifeMore(state.lives);
         },
       });
       if (r) return true;
@@ -882,7 +898,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       state.card = null; state.clockStopped = false; state.cardsShown = state.level; state.noPause = false;
       state.cardOver = true;   // its last frame, which clears the blend it set
       if (mode) { firstCard = false; mode.cardEnd(); return; }
-      state.hud = createHud(firstCard ? hudFlash : 1);
+      state.hud = createHud(fixes.on ? 0 : firstCard ? hudFlash : 1);
       firstCard = false;
       tasks.add(hudTask, 0x2180);
     }],
@@ -1029,6 +1045,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       return;
     }
     state.frameCount = (state.frameCount + 1) >>> 0;
+    if (musicStarts) { musicStarts = false; sound.playStageMusicFadingIn(stage.music); }
     if (loading) { loading = false; return; }
     if (ended) return;
     frozen = null;
@@ -1042,7 +1059,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     endFrame();
     watchFrame();
     if (state.water) endWaterFrame(state.water);
-    if (madeBy >= 0) { madeBy = -1; loading = true; }
+    if (madeBy >= 0) { madeBy = -1; loading = options.frameCount === undefined; }
     if (restart) { const start = restart; restart = null; start(); }
     if (toTitle) { options.onTitle?.(); return; }
     if (special) options.onSpecialStage?.(handOver(state, special, { level: state.level, character, emeralds: save.chaosEmeralds, continues: state.continues }));
@@ -1054,9 +1071,15 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   const clock = createClock(TICK_MS, { snap: true });
   function loop(now) {
     let ran = false;
-    for (let n = clock.steps(now); n > 0 && !special && !toTitle; n--) { step(); ran = true; }
+    let hidden = false;
+    for (let n = clock.steps(now); n > 0 && !special && !toTitle; n--) {
+      step();
+      ran = true;
+      hidden = unseen > 0;
+      if (hidden) unseen--;
+    }
     if (special || toTitle) return;   // the special stage, or the game's start, has the screen now
-    if (ran) show();
+    if (ran && !hidden) { show(); state.layersAtStart = false; }
     frame = requestAnimationFrame(loop);
   }
 
@@ -1086,12 +1109,15 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       if (art && art !== state.trickArt) playerAnims = { ...anims, ...art.anims };
       state.trickArt = art; state.tricks = on && !!art && character === SONIC; input.setTricks?.(state.tricks);
     },
-    // the act's music starts with the act, as the stage's init does (StageInit_ZoneNActM); a multiplayer game
-    // steps its GBAs together itself (`ownLoop` false)
+    // the act's music starts with the act, as the stage's init does (StageInit_ZoneNActM), a frame of it ahead of
+    // the sounds the act's first frame starts, as the init comes before SoundMain and that frame after it; the
+    // level pick's loading frame (madeBy) gives it that frame already. A multiplayer game steps its GBAs together
+    // itself (`ownLoop` false)
     start(ownLoop = true) {
       input.enabled = true; clock.reset();
       if (ownLoop) frame = requestAnimationFrame(loop);
-      sound.playStageMusic(stage.music);
+      if (options.frameCount !== undefined) musicStarts = true;
+      else sound.playStageMusic(stage.music, !options.levelPick);
     },
     stop() { input.enabled = false; input.release(); cancelAnimationFrame(frame); sound.stopAll(); },
   });

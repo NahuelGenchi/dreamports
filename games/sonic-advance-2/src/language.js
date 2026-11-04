@@ -3,6 +3,7 @@
 // the bottom in that language. Up and Down move through them, going round at either end. A or Start keeps it and fades out,
 // and the name entry comes next, which isn't ported yet, so the screen stays dark there.
 
+import { startStage } from './stage/stage.js';
 import { KEY, FLAGS } from './core.js';
 import { createSprite, updateSprite, displaySprite } from './sprite.js';
 import { drawBackground } from './background.js';
@@ -129,9 +130,12 @@ function choose(t) {
   }
 }
 
-// 0x0806B14C, Task_LanguageScreenFadeOutAndExit: the name entry comes next, which isn't ported yet
+// 0x0806B14C, Task_LanguageScreenFadeOutAndExit: the name entry comes next, which isn't ported yet, so for now Leaf Forest does
 function fadeOut(t) {
   const screen = t.data, { c } = screen;
   if (!updateFade(c, screen.fade)) render(c, screen);
-  else c.destroyTask(t);
+  else {
+    c.destroyTask(t);
+    startStage(c, 0);
+  }
 }

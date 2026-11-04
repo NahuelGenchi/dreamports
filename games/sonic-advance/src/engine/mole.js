@@ -6,6 +6,7 @@
 
 import { startAnim, animate } from './objects.js';
 import { gone, sonicX, sprite } from './enemies.js';
+import { fixes } from './fixes.js';
 
 export const MOLE = 15;
 const WAIT = 60;   // TIME(0, 1)
@@ -20,7 +21,7 @@ export function mole(e, slot, anims) {
       if ((slot.d ?? e.d)[1] !== 0) {
         // Task_Mole, then Task_Mole_8071640 while it is up
         if (!up) {
-          if (++t >= WAIT) { t = 0; startAnim(s, 'moleUp'); s.flipX = !(x > sonicX(ctx)); up = true; }
+          if (++t >= WAIT) { t = 0; startAnim(s, 'moleUp'); if (fixes.on) s.boxes[0] = null; s.flipX = !(x > sonicX(ctx)); up = true; }
         } else {
           if (++t >= WAIT) { t = 0; startAnim(s, 'moleDown'); up = false; }
           if (ctx.attack(s, x, y)) {

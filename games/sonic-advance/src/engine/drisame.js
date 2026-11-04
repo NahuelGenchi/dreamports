@@ -11,6 +11,7 @@
 import { makeSprite, animate } from './objects.js';
 import { I, Div, COS, SIN, gone, sprite } from './enemies.js';
 import { octantAngle } from './trig.js';
+import { fixes } from './fixes.js';
 
 export const DRISAME = 18;
 
@@ -49,7 +50,7 @@ export function drisame(e, slot, anims, ctx0) {
       }
       qx += vx; qy += vy;
       const x = e.x + I(qx), y = e.y + I(qy);
-      if (gone(e.x, e.x, x, y, cam)) { slot.live = null; return false; }
+      if (gone(e.x, fixes.on ? e.y : e.x, x, y, cam)) { slot.live = null; return false; }
       if (ctx.attack(s, x, y)) { slot.gone = true; slot.live = null; return false; }
       animate(s, ctx.anims);
       ctx.draw(s, x, y);

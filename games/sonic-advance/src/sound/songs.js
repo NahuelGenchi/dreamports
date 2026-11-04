@@ -5,6 +5,7 @@ export const SONG = {
   INTRO: 1,                // MUS_INTRO
   TITLE_FANFARE: 2,        // MUS_TITLE_FANFARE
   CHARACTER_SELECTION: 3,  // MUS_CHARACTER_SELECTION: the Options menu stops it as it opens the sound test
+  COURSE_SELECTION: 4,     // MUS_COURSE_SELECTION: the course select
   VS_RECORD: 10,           // MUS_VS_RECORD: the player data's VS record
   OPTIONS: 11,             // MUS_OPTIONS: the Options menu (Scrap Brain Zone's remix)
   VS_WIN: 7,               // MUS_007: the multiplayer results screen when this player won,
@@ -41,6 +42,9 @@ export const SONG = {
   RINGS_LOST: 118,         // SE_RINGS_LOST: the rings scatter
   LIFE_LOST: 119,          // SE_LIFE_LOST: Sonic dies
   TAILS_FLYING: 120,       // SE_TAILS_PROPELLER_FLYING: Tails' flight, started again on each of its frames
+  AMY_HAMMER: 130,         // SE_AMY_SUPER_HAMMER_ATTACK: Amy's hammer in the air
+  AMY_SWIRL: 131,          // SE_AMY_HAMMER_SWIRL: and swirled down
+  AMY_GRINDING: 134,       // SE_AMY_GRINDING: on a grind rail
   TAIL_SWIPE: 121,         // SE_TAILS_TAIL_SWIPE
   SOMERSAULT: 121,         // SE_TAILS_TAIL_SWIPE, which Sonic's somersault kick reuses
   PUNCH_2: 126,            // SE_126: Knuckles' second punch
