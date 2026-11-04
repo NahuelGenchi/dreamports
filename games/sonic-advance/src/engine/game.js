@@ -7,7 +7,7 @@
 
 import { TICK_MS, CAMERA, PHYSICS, ANIMATION, SCREEN_W, SCREEN_H, RUSH_BOOST, BOOST_MODE } from './constants.js';
 import { makeAnimator, setAnim, tickAnim, frameOf, spritePalette } from './animator.js';
-import { createPlayer, stepPlayer, animatePlayer, hurt, SONIC, TAILS, KNUCKLES } from './player.js';
+import { createPlayer, stepPlayer, animatePlayer, hurt, SONIC, TAILS, AMY, KNUCKLES } from './player.js';
 import { createRushFx, startRushFx, stepRushFx } from './rushfx.js';
 import { createBoostFx, recordSonic, stepAfterimages, startBurst, stepBursts, particleAnims } from './boostmode.js';
 import { TRICK_FX_PRIORITY, createTrail, recordTrail, spinEffect, boundTrail } from './trickfx.js';
@@ -21,6 +21,7 @@ import { attackTest, projectileTest, defeatEffects } from './defeat.js';
 import { createRings } from './rings.js';
 import { createScatter } from './scatter.js';
 import { createHud, updateHud } from './hud.js';
+import { createHearts } from './amyhearts.js';
 import { createTitleCard, runTitleCard } from './titlecard.js';
 import { createResults, runResults } from './results.js';
 import { createPaletteAnimation } from './palettes.js';
@@ -45,9 +46,11 @@ import { createClock } from '../../../../kit/gba/clock.js';
 import { createPauseMenu, PAUSE_PRIORITY } from './pause.js';
 import { openSave, saveActCleared, WRITE_FRAMES } from './save.js';
 import { playerControls } from './input.js';
+import { fixes, lifeMore } from './fixes.js';
 
 const MAX_BRAKE_DUST = 20;   // the original keeps a pool of 20 brake dust clouds
 const EFFECTS = 0x4001;      // the priority of Sonic's effects' tasks, as of the item boxes' (ITEM_TASKS)
+const HEARTS = 0x3001;       // the priority of Amy's hearts' task (CreateAmyAttackHeartEffect)
 const MAX_RING_SPARKLES = 8;   // with 8 sparkles showing, a ring is still counted but makes no sparkle or sound
 const START_LIVES = 3;
 const ITEM_TIME = 1200;   // invincibility and speed shoes last 20 seconds
@@ -446,7 +449,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     addScore(points) {
       const before = state.score;
       state.score += points;
-      if (Math.trunc(state.score / 50000) !== Math.trunc(before / 50000)) state.lives = (state.lives + 1) & 0xFF;
+      if (Math.trunc(state.score / 50000) !== Math.trunc(before / 50000)) state.lives = lifeMore(state.lives);
     },
     // a boss is beaten at (x, y): it leaves the capsule that ends the act (CreateBossCapsule)
     bossDefeated(x, y) { tasks.add(createBossCapsule(x, y, anims, state.level >> 1), 0x2000); world.bossBeaten(CAPSULE_BOSSES[state.level]); },
@@ -471,7 +474,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     // an item box's prize (Task_Itembox2)
     prize(kind) {
       switch (kind) {
-        case ONE_UP: state.lives = (state.lives + 1) & 0xFF; extraLife = true; break;
+        case ONE_UP: state.lives = lifeMore(state.lives); extraLife = true; break;
         case SHIELD: case MAGNETIC_SHIELD: {
           const shield = kind === SHIELD ? 'normal' : 'magnetic';
           player.shield = shield;
@@ -524,7 +527,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     trickScore(points) {
       const before = state.score;
       state.score += points;
-      if (Math.trunc(state.score / 50000) !== Math.trunc(before / 50000)) { state.lives = (state.lives + 1) & 0xFF; extraLife = true; }
+      if (Math.trunc(state.score / 50000) !== Math.trunc(before / 50000)) { state.lives = lifeMore(state.lives); extraLife = true; }
     },
     playSa2: song => sound.playSa2(song),
     trickEffect(kind) {
@@ -548,6 +551,9 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     spawnUppercutFlame() { spawn('swipe', 'uppercutFlame', player.x, centreY(), player.facing > 0, player.inverted); },
     // and his splash floating on water, while he floats there (Player_Knuckles_InitGfx_FloatSplash)
     spawnFloatSplash() { spawn('splash', 'floatSplash', player.x, centreY(), player.facing > 0); },
+    // Amy's hearts (CreateAmyAttackHeartEffect): the pattern `kind` of her first swing, her second, the hammer in the
+    // air and swirled down (amyhearts.js), as long as her move lasts
+    spawnHearts(kind) { if (character === AMY) tasks.add(createHearts(assets.heartPatterns[kind], player, playerAnims, draw), HEARTS); },
     marbleTails() { if (character === TAILS) { player.marbleTails = makeAnimator(); setAnim(player.marbleTails, 'marbleTrackTails'); } },
   };
 
@@ -603,7 +609,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   function addRings(n) {
     const before = state.ringCount;
     state.ringCount = (before + n) & 0xFFFF;
-    if (Math.floor(state.ringCount / 100) !== Math.floor(before / 100)) { state.lives = (state.lives + 1) & 0xFF; extraLife = true; }
+    if (Math.floor(state.ringCount / 100) !== Math.floor(before / 100)) { state.lives = lifeMore(state.lives); extraLife = true; }
     if (state.ringCount >= 100) options.achieve?.('hundred-rings');
     if (state.ringCount >= 200) options.achieve?.('two-hundred-rings');
   }
@@ -727,7 +733,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         addScore(n) {
           const before = state.score;
           state.score += n;
-          if (Math.trunc(state.score / 50000) !== Math.trunc(before / 50000)) state.lives = (state.lives + 1) & 0xFF;
+          if (Math.trunc(state.score / 50000) !== Math.trunc(before / 50000)) state.lives = lifeMore(state.lives);
         },
       });
       if (r) return true;
@@ -892,7 +898,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       state.card = null; state.clockStopped = false; state.cardsShown = state.level; state.noPause = false;
       state.cardOver = true;   // its last frame, which clears the blend it set
       if (mode) { firstCard = false; mode.cardEnd(); return; }
-      state.hud = createHud(firstCard ? hudFlash : 1);
+      state.hud = createHud(fixes.on ? 0 : firstCard ? hudFlash : 1);
       firstCard = false;
       tasks.add(hudTask, 0x2180);
     }],
@@ -1103,13 +1109,15 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       if (art && art !== state.trickArt) playerAnims = { ...anims, ...art.anims };
       state.trickArt = art; state.tricks = on && !!art && character === SONIC; input.setTricks?.(state.tricks);
     },
-    // the act's music starts with the act, as the stage's init does (StageInit_ZoneNActM); a multiplayer game
-    // steps its GBAs together itself (`ownLoop` false)
+    // the act's music starts with the act, as the stage's init does (StageInit_ZoneNActM), a frame of it ahead of
+    // the sounds the act's first frame starts, as the init comes before SoundMain and that frame after it; the
+    // level pick's loading frame (madeBy) gives it that frame already. A multiplayer game steps its GBAs together
+    // itself (`ownLoop` false)
     start(ownLoop = true) {
       input.enabled = true; clock.reset();
       if (ownLoop) frame = requestAnimationFrame(loop);
       if (options.frameCount !== undefined) musicStarts = true;
-      else sound.playStageMusic(stage.music);
+      else sound.playStageMusic(stage.music, !options.levelPick);
     },
     stop() { input.enabled = false; input.release(); cancelAnimationFrame(frame); sound.stopAll(); },
   });

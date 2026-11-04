@@ -1,6 +1,5 @@
-// A stage as the original sets one up, so far Route 99's overworld with no characters: its layers, where the camera
-// starts, the fade in and the numbers. Rewritten from 0x08002988, with InitCamera at 0x0804F73C. Nothing moves the
-// camera yet, as that follows the player (UpdateCamera), who isn't ported.
+// A stage as the original sets one up, so far Route 99's overworld and its first act: its layers, where the camera
+// starts, the fade in or the title card, and the numbers. Rewritten from 0x08002988, with InitCamera at 0x0804F73C.
 
 import { backgroundFrom, drawStageBackground, animateTiles } from './map.js';
 import { createStageUi } from './ui.js';
@@ -8,12 +7,17 @@ import { createPlayer, initializePlayer, SONIC, TAILS } from './player.js';
 import { useCollision } from './collision.js';
 import { updateCamera, cameraMemory } from './camera.js';
 import { createEntities } from './entities.js';
+import { createRings } from './rings.js';
+import { createTitleCard } from './title-card.js';
 
 // gStageCameraBgTemplates, in the order the camera keeps them (0x0804F73C), and how each level's layers are numbered
 const BG_TEMPLATES = 0xD0120, BG_SIZE = 0x40;
 const tilemapOf = (level, n) => level * 4 + n;
 const CAMERA_MAX = 0xD0220, RESPAWN = 0xD13C8;
 const DISPLAY_W = 240, DISPLAY_H = 160;
+const HUB = 2, FIRST_ACT = 3;
+// 0x08002618: the songs of the first zone's overworld and its first act, the others of which aren't ported yet
+const SONG_ROUTE_99 = 0xA, SONG_ROUTE_99_ACT_1 = 0x14;
 
 /** 0x08050624 and 0x08051308, what Route 99's overworld does with the backgrounds. */
 function overworldBackgrounds(c, layers) {
@@ -38,6 +42,48 @@ function scrollOverworld(t) {
   c.bgScroll[7] = y;
 }
 
+/** 0x08050688: what Route 99's acts do with the backgrounds. */
+function actBackgrounds(c, layers) {
+  c.bgScroll[0] = 0;
+  c.bgScroll[1] = 0;
+  c.bgScroll[6] = 0;
+  c.bgScroll[7] = 0;
+  layers[3].dest = 0xC000;
+  layers[3].layoutVram = 0xE800;
+  c.bgCnt[3] = 0x1D0E;
+  layers[0].dest = 0x8000;
+  layers[0].layoutVram = 0xA000;
+  layers[0].targetTilesX = 64;
+  layers[0].targetTilesY = 64;
+  c.bgCnt[0] = 0x940A;
+}
+// 0x080D05A4: how far each row of 8 lines of the sky moves against the camera
+const SKY_ROWS = 0xD05A4;
+const SCREEN_LINES = 160;
+/** 0x080506E4 and 0x08050744: the far layer's scroll, line by line, with a shimmer low down, and the near one's. */
+function scrollAct(t) {
+  const { c, camera, timer } = t.data, { rom } = c;
+  c.bgScroll[6] = (camera.x >> 6) & 0xFF;
+  c.bgScroll[7] = camera.y >> 9;
+  c.bgScroll[0] = (camera.x << 21 >>> 23);
+  c.bgScroll[1] = Math.max(0, Math.min(0x160, camera.y >> 3));
+  const lines = new Uint16Array(SCREEN_LINES), scrollY = c.bgScroll[7];
+  let shimmer = (timer & 0x7F) >> 3;
+  for (let y = 0; y < SCREEN_LINES; y++) {
+    const line = y + scrollY;
+    let x = (camera.x >> (7 - rom.u8(SKY_ROWS + (line >> 3)))) & 0xFF;
+    if (line > 0x90) {
+      if (!(shimmer & 1)) x++;
+      shimmer = (shimmer + 1) & 0xF;
+    } else if (line > 0x80) {
+      if (!(shimmer & 2)) x++;
+      shimmer = (shimmer + 1) & 0xF;
+    }
+    lines[y] = x;
+  }
+  c.lineScroll = lines;
+}
+
 /** 0x0804F73C, InitCamera: the layers and where the camera starts. */
 function initCamera(stage) {
   const { c, level } = stage, { rom } = c;
@@ -51,8 +97,13 @@ function initCamera(stage) {
     layers[i + 1].tilemapId = tilemapOf(level, i);
     drawStageBackground(c, layers[i + 1]);
   }
-  overworldBackgrounds(c, layers);
-  c.createTask(scrollOverworld, stage, 0x1002);
+  if (stage.act === HUB) {
+    overworldBackgrounds(c, layers);
+    c.createTask(scrollOverworld, stage, 0x1002);
+  } else {
+    actBackgrounds(c, layers);
+    c.createTask(scrollAct, stage, 0x1002);
+  }
   const tilemaps = 0xD0624;
   if (rom.u32(tilemaps + tilemapOf(level, 2) * 4)) {
     layers[3].tilemapId = tilemapOf(level, 2);
@@ -183,21 +234,30 @@ function createTileHeap(start, slots) {
   };
 }
 
-/** 0x08002988: what a stage has so far, from its first frame. */
+/** 0x08002988: what a stage has so far, from its first frame. An act's song starts in the white frame before its first picture. */
 export function startStage(c, level) {
-  const stage = { c, level, warpId: 0, playerIndex: 0, timer: 0, players: [], zone: Math.trunc((level - 1) / 10), camera: { x: 0, y: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 }, state: 1, layers: null, dispBits: 0, keys: 0, lives: 2 };
+  if (level % 10 < FIRST_ACT) return buildStage(c, level);
+  c.playSong(SONG_ROUTE_99_ACT_1);
+  c.main = () => buildStage(c, level);
+}
+function buildStage(c, level) {
+  const zone = Math.trunc((level - 1) / 10);
+  const stage = { c, level, warpId: 0, playerIndex: 0, timer: 0, levelTimer: 0, rings: 0, players: [], zone, act: level - zone * 10, camera: { x: 0, y: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 }, state: 1, layers: null, dispBits: 0, keys: 0, lives: 2 };
   // 0x08003E44: the tiles sprites ask for come from here, to the end of sprite memory
   const heap = createTileHeap(0x10000 + 0x4D80, (0x8000 - 0x4D80) >> 5);
   stage.allocTiles = heap.alloc;
   stage.freeTiles = heap.free;
   createStageUi(stage, SONIC, TAILS);
-  // 0x08002618 and Task_StageMusicManager: Route 99's overworld's song, as the task's first frame starts it
-  c.createTask(t => {
-    c.playSong(0xA);
-    c.destroyTask(t);
-  }, null, 0x4000);
-  c.createTask(t => {
+  // 0x08002618 and Task_StageMusicManager: the overworld's song, as the task's first frame starts it
+  if (stage.act === HUB) {
+    c.createTask(t => {
+      c.playSong(SONG_ROUTE_99);
+      c.destroyTask(t);
+    }, null, 0x4000);
+  }
+  const build = t => {
     const entities = () => createEntities(stage);
+    if (stage.act >= FIRST_ACT) createRings(stage);
     initCamera(stage);
     // the stage draws one more of the game's numbers than the partners' two as it starts, as character-running shows,
     // though which of its functions draws it isn't known yet (notes/a-stage-draws-one-more-number.md)
@@ -207,10 +267,21 @@ export function startStage(c, level) {
     initializePlayer(c, sonic);
     initializePlayer(c, tails);
     entities();
-    createColours(stage, stage.zone + 9);
-    createFade(stage);
-    // 0x08002BBC: the frames the stage has run
-    t.main = () => { stage.timer++; };
-  }, stage, 0x100);
+    if (stage.act === HUB) {
+      createColours(stage, stage.zone + 9);
+      createFade(stage);
+    } else {
+      createColours(stage, stage.zone);
+      createTitleCard(stage);
+    }
+    // 0x08002BBC: the frames the stage has run, and the time, once a player can move
+    t.main = () => {
+      stage.timer++;
+      if (stage.state === 3) stage.levelTimer++;
+    };
+    // building an act takes the original the next frame too, so it shows its first picture twice
+    if (stage.act >= FIRST_ACT) c.slowFrames = 1;
+  };
+  c.createTask(build, stage, 0x100);
   return stage;
 }

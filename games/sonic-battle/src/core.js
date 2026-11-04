@@ -35,8 +35,8 @@ export function createCore(video, rom, sound) {
     video, rom, sound,
     // gUnknown_03002030: the screen's callback, which the main loop runs once a frame
     callback: null,
-    // gUnknown_030048e0: the keys (0x08020198)
-    keys: { held: 0, inverted: 0xFFFF, pressed: 0, released: 0, repeated: 0, timer: 0, delay: 0, interval: 0 },
+    // gUnknown_030048e0: the keys (0x08020198), with how long a held key takes to repeat, as 0x0802021c(0, 0) sets it
+    keys: { held: 0, inverted: 0xFFFF, pressed: 0, released: 0, repeated: 0, timer: 15, delay: 15, interval: 7 },
     // gUnknown_03000070 and gUnknown_030000c0: display registers queued for the next V-blank (0x0801fba0)
     queue: [],
     // gUnknown_03003178: the copies of BG0CNT to BG3CNT
@@ -54,6 +54,8 @@ export function createCore(video, rom, sound) {
     oamBuffer: new Uint16Array(512), oamBufferFull: 0,
     // gUnknown_03004900: what's queued to be copied just after the V-blank (0x0802036c)
     copies: [],
+    // gUnknown_03002170: the player's name (name-entry.js), six letters' room, and where it's kept, as the flash would
+    name: new Uint16Array(6), nameSave: null,
     // gUnknown_03005264: the choice the main menu last made (menu.js)
     menuChoice: 0,
     // gUnknown_03002110[120]: which entries of the Mini-games screen the save has opened, a bit each (mini-games.js)

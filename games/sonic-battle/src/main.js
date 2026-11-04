@@ -13,9 +13,12 @@ import { proof } from '../../../kit/gba/proof.js';
 import { createSettings } from '../../../kit/gba/ui/settings.js';
 import { createTouch } from '../../../kit/gba/ui/touch.js';
 import { createSound } from '../../../kit/gba/sound/audio.js';
+import { cartridgeSave } from '../../../kit/gba/save.js';
 import { createCore, hblank, step } from './core.js';
 import { logos } from './logos.js';
 import { intro } from './intro.js';
+import { keptName } from './name-entry.js';
+import { skills } from './skills.js';
 import { soundLayout } from './sound.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from: the USA one, whose
@@ -45,9 +48,9 @@ proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded but
 // with the controls the layout gives and what a button does so far
 const touch = createTouch(stage, input, { screen, key: 'sonic-battle' });
 createSettings(stage, input, { what: {
-  a: 'A: chooses on the main menu and the Mini-games screen',
-  b: 'B: goes back from the Mini-games screen',
-  start: 'Start: skips the SEGA and Sonic Team logos and the intro, and leaves the title screen',
+  a: 'A: adds a letter to your name, and chooses on the main menu and the Mini-games screen',
+  b: 'B: takes the last letter off your name, and goes back from the Mini-games screen',
+  start: 'Start: skips the SEGA and Sonic Team logos and the intro, leaves the title screen, and keeps your name',
 }, touch });
 let rom = null, romBuffer = null;
 
@@ -71,14 +74,25 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the logos, the intro, the title screen, the main menu and the Mini-games screen. What the rest of
-// their choices lead to isn't ported yet, so the screen stays black there. `open` in the address is what a recording's
-// start point gives the game for the entries a save has opened on the Mini-games screen.
+// The game so far: the logos, the intro, the title screen, the name entry, the main menu and the Mini-games screen, with
+// Emerl's screen's menu from a start point. What the rest of their choices lead to isn't ported yet, so the screen stays
+// black there. The proof tools keep no name between runs, as a new cartridge wouldn't have one, and `name` in the address
+// is what a recording's start point gives the game for a saved one, and `open` for the entries a save has opened on the
+// Mini-games screen.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
+  core.nameSave = cartridgeSave('sonic-battle-name', proof ? null : undefined);
+  keptName(core);
+  const saved = new URLSearchParams(location.search).get('name');
+  if (saved !== null) core.name[0] = Number(saved) & 0xFFFF;
   const open = new URLSearchParams(location.search).get('open');
   if (open !== null) core.miniGamesOpen = Number(open) & 0xFF;
   core.main = c => logos(c, intro);
+  // a recording's start point, as nothing leads to Emerl's screen yet: `skills` in the address opens it (skills.js)
+  if (new URLSearchParams(location.search).has('skills')) {
+    core.startUp = 1;
+    core.main = skills;
+  }
   return { step(keys) { step(core, keys); }, hblank(line) { hblank(core, line); } };
 }
 

@@ -1,5 +1,6 @@
 {
   "about": "The Mini-games screen on a new save, reached as mini-games-menu reaches it: up and down its list 64 times, a press every 31 frames, as the song goes on under it, down to the end of the list and back up last.",
+  "start": "name=1",
   "frames": 3234,
   "held": [
     [0,[]],

@@ -1,5 +1,6 @@
 {
   "about": "From power-on through the title screen to the main menu, as a player with a saved name reaches it, right four times to Mini-games, and A. On the Mini-games screen: down, A on a locked entry, down to the end of the list and once more, up to its top and once more, B back to the main menu, A into the screen again, and A on Soniclash, through its fade to black.",
+  "start": "name=1",
   "frames": 2038,
   "held": [
     [0,[]],

@@ -28,6 +28,7 @@ export const KNOWN_VERSIONS = [
       specialStage: 0x47FEF4,
       specialLayouts: 0x7B97F8,
       characterAnims: 0x4A6F04,
+      heartOffsets: 0x4A6924,
       specialIntro: 0x684480,
       specialClouds: 0x6B4B10,
       chaoSpawns: 0x0B8570,

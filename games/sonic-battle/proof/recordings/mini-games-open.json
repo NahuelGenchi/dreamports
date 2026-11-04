@@ -1,6 +1,6 @@
 {
   "about": "The Mini-games screen as a save with every entry opened has it, reached as mini-games-menu reaches it: down through all five, with each one's picture, name and caption, up to the first, down to the third, and A on it, through its fade to white. Both are given what the save holds: the Dreamport by its address, the original in onlyInOriginal.",
-  "start": "open=63",
+  "start": "name=1&open=63",
   "frames": 1710,
   "held": [
     [0,[]],

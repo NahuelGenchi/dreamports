@@ -2,7 +2,7 @@
 // 0x0803e1b0, and the fades 0x0803e6e8 and 0x0803e74c). It shows four background layers and six sprites over
 // them, the two largest turned by one matrix that pulses smaller every 15 frames, with the layers' scrolls
 // easing into place. Start after frame 80 fades the palette to black; left alone past frame 600 it fades out to
-// the game's attract mode. Neither screen after it is ported yet.
+// the game's attract mode, which isn't ported yet.
 //
 // The original queues its sprites and their one affine matrix for the V-blank, which copies the queue into OAM, so
 // they show a frame after the layers' scrolls, which it writes directly. Their priority, 3, puts them behind the
@@ -10,7 +10,7 @@
 
 import { REG } from '../../../kit/gba/video.js';
 import { KEY, clearSprites, copyAtVblank, copyToVram, fadeToBlack, queueRegister, setBlend } from './core.js';
-import { beforeMenu } from './menu.js';
+import { nameEntry } from './name-entry.js';
 
 const CARTRIDGE = 0x08000000, PALETTE = 0x05000000, SINE = 0x0804DF7C;
 // gSongTable: eight bytes for each song, with the number of the player it plays on at the fifth
@@ -146,7 +146,7 @@ function fadeToNext(c) {
     setBlend(c, 0, 0, 0, 0, 0, 0);
     c.video.pal.fill(0, 0, 256);
     queueRegister(c, REG.DISPCNT, 0x1F40);
-    c.callback = beforeMenu;
+    c.callback = nameEntry;
   }
 }
 

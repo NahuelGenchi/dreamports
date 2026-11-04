@@ -8,6 +8,7 @@ import { updateCamera, cameraMemory } from './camera.js';
 import { createPlayer } from './player.js';
 import { createStageUi } from './ui.js';
 import { createCountdown } from './countdown.js';
+import { createRings } from './rings.js';
 import { createSprite, updateSprite } from '../sprite.js';
 
 // gStageCameraBgTemplates, in the order the camera keeps them, and how each level's layers are numbered
@@ -21,7 +22,7 @@ const SEGMENT_TILES = 4, SEGMENT_BYTES = 32 * SEGMENT_TILES, HEAP_START = 0x1400
 const SONG_WAIT = 5;
 const FIRST_OAM_MATRIX = 4;   // gOamMatrixIndex, each frame, as those below it are the characters'
 
-// 0x08007C10, VramMalloc: sprite memory in segments of 4 tiles, the first stretch that fits each time
+// 0x08007C10, VramMalloc, and VramFree: sprite memory in segments of 4 tiles, the first stretch that fits each time
 function createTileHeap(start, slots) {
   const used = new Uint16Array(slots);
   return {
@@ -40,6 +41,9 @@ function createTileHeap(start, slots) {
         }
       }
       throw new Error('Sprite memory is full.');
+    },
+    free(tiles) {
+      used[(tiles - start) / SEGMENT_BYTES] = 0;
     },
   };
 }
@@ -165,6 +169,7 @@ export function startStage(c, level) {
   // sprite memory past what the character, the rings and the water keep for themselves
   const heap = createTileHeap(HEAP_START, 140);
   stage.allocTiles = heap.alloc;
+  stage.freeTiles = heap.free;
   // PSEUDO_RANDOM_32
   stage.random = () => {
     stage.seed = (Math.imul(stage.seed, 0x196225) + 0x3C6EF35F) | 0;
@@ -178,6 +183,10 @@ export function startStage(c, level) {
   stage.player = createPlayer(stage, level);
   c.createTask(leaveTitleCard, stage, 0x2200);
   initCamera(stage);
+  createRings(stage);
+  // 0x08008DCC, the entities manager, which isn't made, keeps its place: a ring's sparkle comes after it, and so runs in the
+  // frame the ring is taken, rather than right after the rings, which would wait for the next
+  c.createTask(() => {}, null, 0x2000);
   createColourLoader(c, ANIM_LEAF_FOREST_COLOURS);
   startSong(c);
   return stage;

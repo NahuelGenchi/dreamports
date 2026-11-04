@@ -7,8 +7,8 @@
 // The original runs this screen as a list of nodes, each a callback called once a frame in the list's order
 // (0x0801f7d0 adds one at the end, 0x0801f89c walks them), and a node added on the way runs in that same frame.
 //
-// The name entry between the title screen and this one isn't ported: the title's Start hands over here, the way the
-// original goes for a player with a saved name, which is the way the recording that proves this part goes.
+// The name entry (name-entry.js) comes before this screen, and goes straight on to it once a name is saved. It builds
+// its screen from the same list of nodes, so what they share is exported from here.
 
 import { KEY, colours, decompress, copyTileBlock, fadeToward, fadeToBlack, hideSpriteBuffer, queueCopy, queueRegister } from './core.js';
 import { miniGames } from './mini-games.js';
@@ -76,7 +76,7 @@ export function startFrame(c) {
 }
 
 /** 0x08030d20: the scrolling layer, a line every other frame. */
-function scroll(c, node) {
+export function scroll(c, node) {
   node.count = (node.count - 1) | 0;
   queueRegister(c, BG3VOFS, (node.count & 0x1FE) >> 1);
 }
@@ -273,7 +273,7 @@ export function frame(c) {
   if (!list.spritesLate) drawSprites(c);
 }
 
-/** What the original takes before the menu's first frame: the name entry's frame, going straight on with a saved name,
+/** What the original takes before the menu's first frame with a saved name: the name entry's frame, going straight on,
  *  and 0x08039e20's decompressing, which runs past a V-blank. None of it shows, as the screen is black; only how long
  *  it takes does. */
 const FRAMES_BEFORE = 2;
@@ -284,7 +284,7 @@ export function writeRegisters(c, from, count) {
   for (let i = 0; i < count; i++) c.video.write(c.rom.u16(at + i * 4), c.rom.u16(at + i * 4 + 2));
 }
 
-/** The title screen's Start hands over here, and the menu starts when that time is up. */
+/** The name entry hands over here when a name is saved, and the menu starts when that time is up. */
 export function beforeMenu(c) {
   c.menuWait = (c.menuWait ?? 0) + 1;
   if (c.menuWait > FRAMES_BEFORE) {
