@@ -71,8 +71,10 @@ createRomSetup(picker, {
 // opening, which only a start point reaches so far.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
-  // ?level=<n> opens a stage straight away, which recordings use as their start point
-  const level = new URLSearchParams(location.search).get('level');
+  // ?level=<n> opens a stage straight away, which recordings use as their start point, and ?seed=<n> sets the game's
+  // numbers that look random, as the recording's `sets` does for the original
+  const params = new URLSearchParams(location.search), level = params.get('level');
+  core.seed = Number(params.get('seed')) | 0;
   core.main = level === null ? languageScreen : c => startStage(c, Number(level));
   if (Number(level) >= FIRST_ACT) core.startUp = WHITE_BEFORE_AN_ACT;
   return { step(keys) { core.step(keys); }, hblank: core.hblank };

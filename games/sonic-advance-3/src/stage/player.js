@@ -1,13 +1,14 @@
 // The characters, written from how the original's player code behaves, as read in its decompilation. Each frame a
 // character does what its `behave` says, which moves it and works out what it stands on, and then it's drawn with the
-// animation its `pose` asks for. So far: coming out of the ring, running, stopping, standing and falling. Comments name the
-// original's functions by the decompilation's labels, which proof/names.json moves to the USA copy's addresses, or by
-// those addresses. Jumping, turning round and the partner's following aren't made yet, so Tails stands where he stops.
+// animation its `pose` asks for. So far: coming out of the ring, running, braking, turning round, standing and falling,
+// with the partner pressing its own buttons (partner.js). Comments name the original's functions by the decompilation's
+// labels, which proof/names.json moves to the USA copy's addresses, or by those addresses. Jumping isn't made yet.
 
 import { createSprite, updateSprite, displaySprite, transformSprite, SPRITE } from '../sprite.js';
 import { groundUpDown, groundSideways } from './collision.js';
 import { SINE, sin8, cos8, arcTan2 } from './trig.js';
 import { KEY } from '../core.js';
+import { createMind, partnerButtons } from './partner.js';
 
 export const SONIC = 0, TAILS = 2;
 /** What a character's `flags` say. */
@@ -15,10 +16,10 @@ export const FLAG = { FACING_LEFT: 0x1, CURLED: 0x2, IN_AIR: 0x4, ON_OBJECT: 0x2
 const { FACING_LEFT, CURLED, IN_AIR, ON_OBJECT, AT_WALL, BUTTONS_OFF } = FLAG;
 
 const FIRST_ANIMATIONS = 0xCE450, POSE_ANIMATIONS = 0xCE45A, RUN_RATES = 0xCE92A;
-const POSE = { STAND: 0, LOOK_AROUND: 6, LOOK_AROUND_PARTNER: 7, RUN: 8, SKID: 0x10, SKID_FAST: 0x11, AIR_SLOW: 0x13, AIR_FAST: 0x14, PUSH: 0x21 };
 // 0x080578E8: a sprite the title card's colour effect takes in, as it does while the card covers the stage
 const BLENDED = 0x80;
-const ANIM_FINISHED = 0x4000, SE_STOPPING = 0x73;
+export const POSE = { STAND: 0, LOOK_AROUND: 6, LOOK_AROUND_PARTNER: 7, RUN: 8, TURN: 0xC, TURN_FROM_SKID: 0xD, SKID: 0x10, SKID_FAST: 0x11, AIR_SLOW: 0x13, AIR_FAST: 0x14, PUSH: 0x21 };
+const ANIM_FINISHED = 0x4000, SE_STOPPING = 0x73, ANIM_DUST = 0x534, DUST_TILES = 4;
 
 const PX = 256;   // positions and speeds are in 1/256 of a pixel
 const GRAVITY = 42, TOP_SPEED = 7.5 * PX, SPEED_LIMIT = 9.5 * PX, FALL_LIMIT = 15 * PX, COAST = 8;
@@ -39,7 +40,7 @@ export function createPlayer(stage, id, character, isLeader) {
     stage, id, character, isLeader, behave: comeOutOfRing,
     x: stage.respawnX * PX, y: stage.respawnY * PX, velX: 0, velY: 0, groundSpeed: 0,
     flags: BUTTONS_OFF, flagsLastFrame: 0, halfWidth: HALF_WIDTH, halfHeight: STANDING_HEIGHT, layer: 1, angle: 0,
-    acceleration: 8, braking: 0x40, slipFrames: 0, idleTimer: LOOK_AROUND_AFTER,
+    acceleration: 8, braking: 0x40, slipFrames: 0, idleTimer: LOOK_AROUND_AFTER, dustClock: 0,
     pose: POSE.STAND, shownPose: -1, animation: -1, variant: -1, gait: 0,
     held: 0, pressed: 0, heldWithButtonsOff: 0,
     sprite: null, turn: { rotation: 0, scaleX: PX, scaleY: PX, x: 0, y: 0 }, tails: null,
@@ -64,6 +65,7 @@ export function initializePlayer(c, p) {
       turn: { rotation: 0, scaleX: PX, scaleY: PX, x: 0, y: 0 },
     };
   }
+  p.stage.mind = createMind(c);
   c.createTask(playFrame, p, 0x3000 + p.id);
   c.createTask(drawFrame, p, 0x3010 + p.id);
   c.createTask(t => { t.data.flagsLastFrame = t.data.flags; }, p, 0x3020 + p.id);   // 0x080050E0
@@ -77,6 +79,7 @@ function playFrame(t) {
   const speed = Math.abs(p.groundSpeed), gait = GAIT_TOPS.findIndex(top => speed <= top);
   p.gait = gait < 0 ? GAIT_TOPS.length : gait;
   if (p.isLeader) readButtons(p, c.input);
+  else partnerReadButtons(p);
   p.behave(p);
 }
 
@@ -92,6 +95,13 @@ function readButtons(p, input) {
   p.heldWithButtonsOff = 0;
   p.held = input;
   p.pressed = input & ~before;
+}
+
+// what 0x080045EC does for the partner: its own buttons, from what it decides, and which of them are new
+function partnerReadButtons(p) {
+  const { stage } = p, before = p.held;
+  p.held = partnerButtons(stage.mind, p, stage.players[stage.playerIndex]);
+  p.pressed = (before ^ p.held) & p.held;
 }
 
 // 0x08005068
@@ -182,7 +192,7 @@ function stand(p) {
   moveAlongGround(p);
   slipOffSteepGround(p);
   keepInBounds(p);
-  if (p.groundSpeed !== 0) p.behave = run;
+  if (p.groundSpeed !== 0) p.behave = startRunning;
 }
 // 0x08005528 and 0x080055B8: running, until it has been still for a moment
 function startRunning(p) {
@@ -190,6 +200,7 @@ function startRunning(p) {
   setHeight(p, STANDING_HEIGHT);
   p.halfWidth = HALF_WIDTH;
   p.pose = POSE.RUN;
+  p.dustClock = 0;
   p.idleTimer = 0;
   p.behave = run;
   run(p);
@@ -200,6 +211,7 @@ function run(p) {
   keepInBounds(p);
   moveAlongGround(p);
   slipOffSteepGround(p);
+  skidDust(p);
   if (!isFlat(p)) p.idleTimer = 0;
   else if (p.idleTimer < SETTLE_FRAMES) p.idleTimer++;
   else p.behave = startStanding;
@@ -305,9 +317,49 @@ function setOff(p) {                // sub_8005B78
   }
   p.pose = POSE.RUN;
 }
-// Turning round on the spot isn't made yet, which A character running needs: for now it goes on as it was
+// Player_800D9F4 and sub_800DA60: stopping dead to face the other way, until its animation has played
 function turning(p) {
-  p.behave = run;
+  p.flags &= ~AT_WALL;
+  p.pose = p.pose === POSE.SKID || p.pose === POSE.SKID_FAST ? POSE.TURN_FROM_SKID : POSE.TURN;
+  p.sprite.frameFlags &= ~ANIM_FINISHED;
+  p.groundSpeed = 0;
+  p.flags ^= FACING_LEFT;
+  p.behave = turn;
+  turn(p);
+}
+function turn(p) {
+  if (p.sprite.frameFlags & ANIM_FINISHED) {
+    p.behave = startStanding;
+    return;
+  }
+  keepInBounds(p);
+  alongGround(p);
+  stopAtWalls(p);
+  settle(p);
+  slipOffSteepGround(p);
+}
+
+// sub_800D7C8 and sub_8017134: braking hard it kicks up a puff of dust every fourth frame
+function skidDust(p) {
+  if (p.pose !== POSE.SKID && p.pose !== POSE.SKID_FAST) return;
+  p.dustClock = (p.dustClock + 1) % 16;
+  if ((p.dustClock & 3) === 3) createDust(p);
+}
+function createDust(p) {
+  const { stage } = p, { c } = stage, x = pixel(p.x), y = pixel(p.y) + STANDING_HEIGHT;
+  const s = createSprite({ tiles: stage.allocTiles(DUST_TILES), anim: ANIM_DUST, frameFlags: 0x1000 });
+  // Task_801952C_2C and TaskDestructor_801932C
+  c.createTask(t => {
+    if (s.frameFlags & ANIM_FINISHED) {
+      stage.freeTiles(s.tiles);
+      c.destroyTask(t);
+      return;
+    }
+    s.x = x - stage.camera.x;
+    s.y = y - stage.camera.y;
+    updateSprite(c, s);
+    displaySprite(c, s);
+  }, null, 0x3100);
 }
 
 // sub_8014E70 and sub_8011BFC: walls in the way it's going, and behind it when it's slow, stop it and push it out
@@ -358,10 +410,16 @@ function slopeSpeed(p) {
 
 // Player_801479C and sub_8016D30, then sub_8012EB8: along the ground at its speed, and on to where the ground is now
 function moveAlongGround(p) {
+  alongGround(p);
+  settle(p);
+}
+function alongGround(p) {
   p.groundSpeed = Math.max(-SPEED_LIMIT, Math.min(SPEED_LIMIT, p.groundSpeed));
   p.velX = (cos8(p.angle * 4) * p.groundSpeed) >> 8;
   p.velY = (p.flags & IN_AIR ? p.velY : 0) + ((sin8(p.angle * 4) * p.groundSpeed) >> 8);
   move(p);
+}
+function settle(p) {
   if (!(p.flags & ON_OBJECT) && settleOnGround(p)) {
     p.flags |= IN_AIR;
     p.behave = slipOff;

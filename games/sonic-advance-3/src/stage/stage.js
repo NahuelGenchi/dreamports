@@ -259,6 +259,9 @@ function buildStage(c, level) {
     const entities = () => createEntities(stage);
     if (stage.act >= FIRST_ACT) createRings(stage);
     initCamera(stage);
+    // the stage draws one more of the game's numbers than the partners' two as it starts, as character-running shows,
+    // though which of its functions draws it isn't known yet (notes/a-stage-draws-one-more-number.md)
+    c.random();
     const sonic = createPlayer(stage, 0, SONIC, true), tails = createPlayer(stage, 1, TAILS, false);
     stage.players = [sonic, tails];
     initializePlayer(c, sonic);
