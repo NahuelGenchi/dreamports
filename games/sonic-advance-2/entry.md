@@ -9,6 +9,15 @@ controls: [keyboard, controller, touch]
 issue: 396
 lead: NahuelGenchi
 kit: gba
+sources:
+  - name: SAT-R’s decompilation of Sonic Advance 2
+    href: https://github.com/SAT-R/sa2
+    license: none
+    use: guide
+  - name: Sonic Advance Dreamport
+    href: https://github.com/NahuelGenchi/dreamports/tree/main/games/sonic-advance
+    license: GPL-3.0-or-later
+    use: code
 ownCopy:
   confirm: "I own Sonic Advance 2"
   links:

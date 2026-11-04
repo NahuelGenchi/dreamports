@@ -153,8 +153,15 @@ export function createApu() {
   function run(cycles) {
     if (!(reg(0x84) & 0x80)) return;
     for (const c of sq) {
-      c.timer -= cycles;
-      while (c.timer <= 0) { c.timer += sqPeriod(c); c.pos = (c.pos + 1) & 7; }
+      // counted from the last step, at the frequency now, as mGBA's GBAudioRun does: a new frequency applies to the step
+      // already under way
+      c.timer += cycles;
+      const period = sqPeriod(c);
+      if (c.timer >= period) {
+        const steps = Math.floor(c.timer / period);
+        c.pos = (c.pos + steps) & 7;
+        c.timer -= steps * period;
+      }
     }
     if (ch3.on) {
       ch3.timer -= cycles;
