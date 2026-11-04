@@ -1,7 +1,8 @@
 // The main menu, after the title screen (the decompilation's src/unknown_08039dd8.cpp: the initializer 0x08039e20,
 // its frame wrapper 0x08039fd0 and the handlers 0x08039fe0, 0x0803a3b8, 0x0803a428, 0x0803a0f8, 0x0803a478 and
-// 0x0803a260, with the arrows' from src/unknown_08027db8.cpp). It shows the mode select: a background of layers, the
-// preview of each mode's picture fading in over them, the animated picture, and the two arrows that move the choice.
+// 0x0803a260, with the arrows' 0x08028238, 0x08028270, 0x08028388, 0x080283c0, 0x08027fb8 and 0x08028038). It shows
+// the mode select: a background of layers, the preview of each mode's picture fading in over them, the animated
+// picture, and the two arrows that move the choice.
 //
 // The original runs this screen as a list of nodes, each a callback called once a frame in the list's order
 // (0x0801f7d0 adds one at the end, 0x0801f89c walks them), and a node added on the way runs in that same frame.
@@ -13,12 +14,8 @@ import { KEY, colours, decompress, copyTileBlock, fadeToward, fadeToBlack, hideS
 
 const CARTRIDGE = 0x08000000, PALETTE = 0x05000000, VRAM = 0x06000000, SINE = 0x0804DF7C;
 
-// 0x0815f02c: the display registers the initializer writes (0x0801fbfc), each as its offset in 0x04000000 and its value
-const REGISTERS = [
-  [0x00, 0x0000], [0x08, 0x1F00], [0x10, 0x0000], [0x12, 0x0000], [0x0A, 0x1E0B], [0x14, 0x0000],
-  [0x16, 0x0000], [0x0C, 0x1D03], [0x18, 0x0000], [0x1A, 0x0000], [0x0E, 0x1C0B], [0x1C, 0x0000],
-  [0x1E, 0x0000], [0x50, 0x3F41], [0x52, 0x1000], [0x54, 0x0000],
-];
+// the cartridge's table of the display registers the initializer writes, and how many
+const REGISTERS = 0x0815F02C, REGISTER_COUNT = 16;
 const DISPCNT = 0x00, BG3VOFS = 0x1E, BLDCNT = 0x50, BLDALPHA = 0x52;
 
 // the language the save keeps (gUnknown_03002110[119]), which picks the pictures: English in the USA copy
@@ -246,9 +243,16 @@ function frame(c) {
   drawSprites(c);
 }
 
-/** What the original takes before the menu's first frame: 0x08036560's frame, and 0x08039e20's decompressing, which
- *  runs past a V-blank. None of it shows, as the screen is black; only how long it takes does. */
+/** What the original takes before the menu's first frame: the name entry's frame, going straight on with a saved name,
+ *  and 0x08039e20's decompressing, which runs past a V-blank. None of it shows, as the screen is black; only how long
+ *  it takes does. */
 const FRAMES_BEFORE = 2;
+
+/** 0x0801fbfc: display registers from the cartridge's table at `from`, each its offset in 0x04000000 and its value. */
+function writeRegisters(c, from, count) {
+  const at = from - CARTRIDGE;
+  for (let i = 0; i < count; i++) c.video.write(c.rom.u16(at + i * 4), c.rom.u16(at + i * 4 + 2));
+}
 
 /** The title screen's Start hands over here, and the menu starts when that time is up. */
 export function beforeMenu(c) {
@@ -266,7 +270,7 @@ export function beforeMenu(c) {
 function menu(c) {
   const { video } = c;
   c.menu = { nodes: [], drawn: [[], [], [], []], matrices: 0, selection: 0 };
-  for (const [offset, value] of REGISTERS) video.write(offset, value);
+  writeRegisters(c, REGISTERS, REGISTER_COUNT);
   c.queue.length = 0;              // 0x0801fb94
   hideSpriteBuffer(c);             // 0x0801ff30
   colours(c).fill(0);
