@@ -8,7 +8,7 @@
 // the blank row the sprites' tiles hold, so a row that scrolls off gives its slot to the next.
 
 import { KEY, colours, copyTileBlock, decompress, fadeToBlack, fadeToWhite, fadeToward, hideSpriteBuffer, queueRegister } from './core.js';
-import { displayOn as menuDisplayOn, fadeSongOut, LANGUAGE, addNode, draw, drawOnly, frame, menu, place, removeNode, startFrame, takeMatrix, writeRegisters } from './menu.js';
+import { displayOn as menuDisplayOn, fadeSongOut, addNode, draw, drawOnly, frame, menu, place, removeNode, startFrame, takeMatrix, writeRegisters } from './menu.js';
 
 const CARTRIDGE = 0x08000000, PALETTE = 0x05000000, VRAM = 0x06000000;
 const DISPCNT = 0, BG3VOFS = 0x1E;
@@ -67,7 +67,7 @@ function record(c, number) {
 }
 
 /** 0x08020ecc: the stretch of VRAM at `to`, `width` by `height` tiles, that the next letters go into. */
-function textInto(c, to, width, height) {
+export function textInto(c, to, width, height) {
   c.text = { to: to - VRAM, end: to - VRAM + width * height * 32, stride: height * 8, rows: height * 8, block: height * 16 };
 }
 
@@ -84,7 +84,7 @@ function putPixels(c, at, pixels, colour) {
 }
 
 /** 0x08020978: a letter into the stretch, at `x` and `y` in pixels, over as many as three columns of tiles. Its width. */
-function putGlyph(c, x, y, glyph, colour) {
+export function putGlyph(c, x, y, glyph, colour) {
   const { to, stride, rows, block } = c.text, { bytes } = c.rom;
   const shift = x & 7, source = GLYPHS - CARTRIDGE + ((glyph & 0x7FFF) << 5);
   const count = rows <= y ? 0 : Math.min(rows - y, 16);
@@ -123,7 +123,7 @@ function putText(c, x, y, text) {
 }
 
 /** The text at `number` of the list the language gives. */
-const nameAt = (c, number) => c.rom.u32(NAMES[LANGUAGE] - CARTRIDGE + number * 4);
+const nameAt = (c, number) => c.rom.u32(NAMES[c.language] - CARTRIDGE + number * 4);
 
 /** Whether the save has opened an entry. */
 const isOpen = (c, entry) => (c.miniGamesOpen & c.rom.u32(ENTRY_BITS - CARTRIDGE + entry * 4)) !== 0;
@@ -406,7 +406,7 @@ export function miniGames(c) {
   video.vram.fill(0, 0x06014000 - VRAM, 0x06014000 - VRAM + 0x1000);
   decompress(c, 0x08132544, 0x06000020);
   decompress(c, 0x08132A14, 0x06010000);
-  decompress(c, SPRITE_WORDS[LANGUAGE], 0x06012420);
+  decompress(c, SPRITE_WORDS[c.language], 0x06012420);
   video.vram.fill(0, 0x0600F800 - VRAM, 0x0600F800 - VRAM + 0x800);
   video.vram.fill(0, 0x0600F000 - VRAM, 0x0600F000 - VRAM + 0x800);
   video.vram.fill(0, 0x0600E800 - VRAM, 0x0600E800 - VRAM + 0x800);

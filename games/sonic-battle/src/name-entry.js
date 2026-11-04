@@ -10,7 +10,7 @@
 // so it isn't here.
 
 import { KEY, colours, copyTileBlock, decompress, fadeToBlack, fadeToward, hideSpriteBuffer, queueRegister } from './core.js';
-import { LANGUAGE, addNode, beforeMenu, draw, drawOnly, frame, menu, place, removeNode, scroll, startFrame, writeRegisters } from './menu.js';
+import { addNode, beforeMenu, draw, drawOnly, frame, menu, place, removeNode, scroll, startFrame, writeRegisters } from './menu.js';
 
 const CARTRIDGE = 0x08000000, PALETTE = 0x05000000, VRAM = 0x06000000;
 const DISPCNT = 0x00;
@@ -49,7 +49,7 @@ const SONG_FADE_STEP = 120 >> 4;
 const SAVING_FRAMES = 20;
 
 /** A sprite's record in the cartridge, as a place (menu.js) of its own. */
-function record(c, at) {
+export function record(c, at) {
   const { rom } = c, from = at - CARTRIDGE;
   return {
     parts: rom.u32(from), x: rom.s16(from + 4), y: rom.s16(from + 6), tile: rom.u16(from + 8),
@@ -193,8 +193,8 @@ function setUp(c) {
   decompress(c, 0x08132544, 0x0600C000);
   decompress(c, 0x08156F08, 0x06010000);
   // the language the save keeps picks the heading's picture and the row of the list the grid starts on
-  decompress(c, LANGUAGE === 0 ? 0x0815711C : 0x08157934, 0x06010C00);
-  if (LANGUAGE !== 0) c.entry.scroll = 200;
+  decompress(c, c.language === 0 ? 0x0815711C : 0x08157934, 0x06010C00);
+  if (c.language !== 0) c.entry.scroll = 200;
   video.vram.fill(0, 0x0600F800 - VRAM, 0x0600F800 - VRAM + 0x800);
   decompress(c, 0x08156EA8, 0x0600F800);
   video.vram.fill(0, 0x0600F000 - VRAM, 0x0600F000 - VRAM + 0x800);

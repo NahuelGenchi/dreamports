@@ -12,6 +12,7 @@
 
 import { KEY, colours, decompress, copyTileBlock, fadeToward, fadeToBlack, hideSpriteBuffer, queueCopy, queueRegister } from './core.js';
 import { miniGames } from './mini-games.js';
+import { options } from './options.js';
 
 const CARTRIDGE = 0x08000000, PALETTE = 0x05000000, VRAM = 0x06000000, SINE = 0x0804DF7C;
 
@@ -19,8 +20,6 @@ const CARTRIDGE = 0x08000000, PALETTE = 0x05000000, VRAM = 0x06000000, SINE = 0x
 const REGISTERS = 0x0815F02C, REGISTER_COUNT = 16;
 const DISPCNT = 0x00, BG3VOFS = 0x1E, BLDCNT = 0x50, BLDALPHA = 0x52;
 
-// the language the save keeps (gUnknown_03002110[119]), which picks the pictures: English in the USA copy
-export const LANGUAGE = 1;
 // gUnknown_08edd314 and gUnknown_08edd32c: the sprites' tiles and the previews' pictures, by language
 const SPRITE_PICTURES = [0x0815FAFC, 0x08160244, 0x08160244, 0x08160244, 0x08160244, 0x08160244];
 const PREVIEW_PICTURES = [0x081609E4, 0x081679E4, 0x081679E4, 0x081679E4, 0x081679E4, 0x081679E4];
@@ -40,7 +39,7 @@ const SONG = 1, SOUND_MOVE = 401, SOUND_MADE = 404;
 // gSongTable: eight bytes for each song, with the number of the player it plays on at the fifth
 const SONG_TABLE = 0x08BF7244;
 const SONG_FADE = 120;
-const CHOICES = 7, MINI_GAMES = 4;
+const CHOICES = 7, MINI_GAMES = 4, OPTIONS = 6;
 
 /** 0x0801f718: a song's player fades out over `frames`, a step every sixteenth of them. */
 export function fadeSongOut(c, song, frames) {
@@ -105,7 +104,7 @@ function fadeIn(c, node) {
 
 /** 0x0803a3b8: the choice's picture and palette, copied after the next V-blank, and the blend that shows them. */
 function loadPreview(c, node) {
-  queueCopy(c, 0x06007000, PREVIEW_PICTURES[LANGUAGE] + (c.menu.selection << 12), 0x1000);
+  queueCopy(c, 0x06007000, PREVIEW_PICTURES[c.language] + (c.menu.selection << 12), 0x1000);
   queueCopy(c, 0x050001A0, PREVIEW_PALETTES + (c.menu.selection << 5), 0x20);
   queueRegister(c, BLDCNT, 0x3F41);
   queueRegister(c, BLDALPHA, 0x1000);
@@ -162,10 +161,11 @@ function previewOut(c, node) {
   }
 }
 
-/** 0x0803a260: every colour fades to black, and then the chosen mode's screen starts: only the mini-games are ported, so the others stop. */
+/** 0x0803a260: every colour fades to black, and then the chosen mode's screen starts: only the mini-games and the options are ported, so the others stop. */
 function leaving(c, node) {
   if (!fadeToBlack(c, PALETTE, 512)) return;
   if (c.menu.selection === MINI_GAMES) c.callback = miniGames;
+  else if (c.menu.selection === OPTIONS) c.callback = options;
   else node.run = () => {};
 }
 
@@ -236,11 +236,12 @@ function drawSprites(c) {
   for (const group of c.menu.drawn) {
     for (let i = group.length - 1; i >= 0; i--) {
       const position = group[i];
-      for (let p = position.parts - CARTRIDGE; count < 128; p += 8) {
-        const bytes = c.rom.bytes;
+      // a sprite's parts are the cartridge's, or a copy of its own (options.js)
+      const bytes = position.ownParts ?? c.rom.bytes;
+      for (let p = position.ownParts ? 0 : position.parts - CARTRIDGE; count < 128; p += 8) {
         out[count * 4] = (((bytes[p + 2] + position.attr0) << 8) | ((s8(bytes[p + 6]) + position.y) & 0xFF)) & 0xFFFF;
         out[count * 4 + 1] = (((bytes[p + 3] + position.attr1) << 8) | ((s8(bytes[p + 5]) + position.x) & 0x1FF)) & 0xFFFF;
-        out[count * 4 + 2] = (((bytes[p + 4] + position.attr2) << 8) | (position.tile + c.rom.u16(p))) & 0xFFFF;
+        out[count * 4 + 2] = (((bytes[p + 4] + position.attr2) << 8) | (position.tile + (bytes[p] | (bytes[p + 1] << 8)))) & 0xFFFF;
         count++;
         if (!bytes[p + 7]) break;
       }
@@ -307,7 +308,7 @@ export function menu(c, playSong = true) {
   decompress(c, 0x0815F06C, VRAM);
   decompress(c, 0x0815C4B4, 0x06008000);
   decompress(c, 0x08132544, 0x0600D240);
-  decompress(c, SPRITE_PICTURES[LANGUAGE], 0x06010000);
+  decompress(c, SPRITE_PICTURES[c.language], 0x06010000);
   video.vram.fill(0, 0x0600F800 - VRAM, 0x0600F800 - VRAM + 0x800);
   copyTileBlock(c, 0x0600FA06, 0x0816EAEC, 16, 8, 0xD380);
   video.vram.fill(0, 0x0600F000 - VRAM, 0x0600F000 - VRAM + 0x800);
