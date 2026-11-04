@@ -1,22 +1,16 @@
 // The hearts Amy's hammer leaves (SAT-R decompilation, src/game/shared/stage/amy_attack_heart_effect.c): a task at
-// priority 0x3001. Each pattern gives when each heart comes, in her animation's time, and where, from where she is
-// then. The task ends when her move does, and takes its hearts with it.
+// priority 0x3001. Each pattern, read from the player's copy (sHeartOffsets, rom/extract.js), gives when each heart
+// comes, in her animation's time, and where, from where she is then. The task ends when her move does, and takes
+// its hearts with it.
 
 import { makeAnimator, setAnim, tickAnim, frameOf } from './animator.js';
 
-// sHeartOffsets: [when, x, y] for her first swing, her second, the hammer in the air and swirled down
-const PATTERNS = [
-  [[10, 0, -27], [12, 13, -22], [14, 23, -13], [16, 26, 0]],
-  [[10, 7, -27], [12, 20, -22], [14, 30, -13], [16, 33, 0]],
-  [[0, -10, -26], [4, 8, -27], [8, 22, -17], [12, 28, -1], [16, 23, 16], [20, 10, 26]],
-  [[2, 0, 4], [6, 19, 6], [10, 28, 2], [14, 19, 4], [18, 0, 6], [22, -19, 2], [26, -28, 4], [30, -19, 6]],
-];
 const MAX_HEARTS = 4;   // AMY_ATTACK_HEART_SPRITE_COUNT
 const SPEED_SCALE = 16;
 
-/** The task for the pattern `kind`, for the player `p`; `draw` puts a sprite in the frame's list. */
-export function createHearts(kind, p, playerAnims, draw) {
-  const pattern = PATTERNS[kind], state = p.state, slots = new Array(MAX_HEARTS).fill(null);
+/** The task for `pattern`, [when, x, y] for each heart, for the player `p`; `draw` puts a sprite in the frame's list. */
+export function createHearts(pattern, p, playerAnims, draw) {
+  const state = p.state, slots = new Array(MAX_HEARTS).fill(null);
   let time = 0, next = 0;
   return {
     run() {

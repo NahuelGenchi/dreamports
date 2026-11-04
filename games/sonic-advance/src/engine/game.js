@@ -550,8 +550,9 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     spawnUppercutFlame() { spawn('swipe', 'uppercutFlame', player.x, centreY(), player.facing > 0, player.inverted); },
     // and his splash floating on water, while he floats there (Player_Knuckles_InitGfx_FloatSplash)
     spawnFloatSplash() { spawn('splash', 'floatSplash', player.x, centreY(), player.facing > 0); },
-    // Amy's hearts (CreateAmyAttackHeartEffect): the pattern `kind` (amyhearts.js), as long as her move lasts
-    spawnHearts(kind) { if (character === AMY) tasks.add(createHearts(kind, player, playerAnims, draw), HEARTS); },
+    // Amy's hearts (CreateAmyAttackHeartEffect): the pattern `kind` of her first swing, her second, the hammer in the
+    // air and swirled down (amyhearts.js), as long as her move lasts
+    spawnHearts(kind) { if (character === AMY) tasks.add(createHearts(assets.heartPatterns[kind], player, playerAnims, draw), HEARTS); },
     marbleTails() { if (character === TAILS) { player.marbleTails = makeAnimator(); setAnim(player.marbleTails, 'marbleTrackTails'); } },
   };
 

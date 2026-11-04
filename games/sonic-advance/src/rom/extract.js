@@ -98,6 +98,23 @@ const AMY_GRINDS = new Set(['grind', 'grindSteep', 'railJump']);
 const OWN = { 1: TAILS_ANIMATIONS, 2: KNUCKLES_ANIMATIONS, 3: AMY_ANIMATIONS };
 
 /**
+ * Amy's hearts (sHeartOffsets), from the table at `at`: for each of its four patterns, [when, x, y] for each heart,
+ * up to the -1 that ends a pattern of fewer than eight.
+ */
+function heartPatterns(rom, at) {
+  if (at === null) return [[], [], [], []];
+  return [0, 1, 2, 3].map(pattern => {
+    const hearts = [];
+    for (let row = 0; row < 8; row++) {
+      const r = at + (pattern * 8 + row) * 6;
+      if (rom.s16(r) < 0) break;
+      hearts.push([rom.s16(r), rom.s16(r + 2), rom.s16(r + 4)]);
+    }
+    return hearts;
+  });
+}
+
+/**
  * The animations of `character` by name. The character state table (sCharStateAnimInfo) gives its first 43
  * states relative to the character's first animation, `first` (gPlayerCharacterIdleAnims), so Sonic's names
  * move by it, but his own moves; the character's own come with them.
@@ -525,6 +542,7 @@ export async function extractAssets(buffer, onProgress = () => {}, { level = 0, 
   return {
     info: { ...id.header, region: id.region, sha1: id.sha1, version: id.known?.name ?? null, offsets },
     sprites, acts, first: level, character, stage: acts[level].stage, titleCard: acts[level].titleCard, physics: { spinDashSpeeds },
+    heartPatterns: heartPatterns(rom, offsets.heartOffsets),
     hud: extractHud(rom, offsets, water, acts[level].stage.extra?.facePalette, character),
     gameOver: extractGameOver(rom, offsets, acts[level].stage.extra?.facePalette, character),
     // where the songs are; the sound engine reads them from the ROM itself

@@ -24,7 +24,7 @@ export function createMusicManager(engine) {
   let stageSong = null, oneUp = false, star = false, drown = false, starting = false, boss = 0, off = false;
   let invincible = false, speedUp = false, alive = true, paused = false, resuming = false;
   const own = {
-    stageMusic(song, ahead) { stageSong = song; starting = true; boss = 0; off = false; drown = false; engine.songStart(song); if (ahead) engine.songAhead(song); },
+    stageMusic(song, ahead) { stageSong = song; starting = true; boss = 0; off = false; drown = false; engine.songStart(song); if (ahead) engine.frame(); },
     stageMusicIn(song) { stageSong = song; starting = false; boss = 0; off = false; drown = false; engine.songStart(song); bgmParams(); },
     off() { off = true; },
     /** a boss's music state (gMusicManagerState.unk1) */

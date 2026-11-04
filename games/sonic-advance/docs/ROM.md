@@ -36,6 +36,7 @@ Offsets are file offsets in the tested USA ROM (add `0x08000000` for GBA address
 | Item boxes | `0x0B7FDC` | The table after the interactables |
 | Enemies | `0x0B8024` | The table after the item boxes |
 | Spin dash speeds | `0x4A7084` | Nine 8.8 fixed-point values from 6.0 to 9.0 in steps of 0.375 |
+| Amy's hearts | `0x4A6924` | Four patterns of eight rows of three s16, when, x and y, each when later than the last until a -1, with zeros after it (see [Amy](#amy)) |
 | UI graphics | `0x680A38` | 28-byte entries of two ROM pointers and five words; the first is the 8 × 16 font `{2, 0, 2, 1, 2}` and the sixth the HUD ring `{16, 2, 0, 4, 4}` |
 | Title card tables | `0x681274` | The pieces' texts, 56 bytes at +`0x34` that are the same in every version (see [Title card](#title-card)); the continue screen's ten voices follow at +`0x6C` |
 | Music players and songs | `0x6D767C`, `0x6D76AC` | Four music player entries (two EWRAM pointers, a track count of 1–16, a zero byte, a 16-bit field), followed at once by song entries of a ROM pointer and the player's number twice |
@@ -1226,7 +1227,7 @@ In Chrome 156 and Firefox 159 (headless, each with a new profile), `?debug&chara
 
 **Only read in the code, not checked:** turning under water; the marble track's tails (no run reached a marble track); the objects' own rules for Tails above (the item box's top in flight, the wall poles, red flags, bumpers, ice blocks and grind rails), and the 1-up's face; the goal, the tally and the results with his name; the game over and the continue screen with his face; the bosses but the Egg Hammer Tank, X Zone and the normal ending as Tails.
 
-Since #90 `tails-ice-mountain`, `tails-x-zone` and `tails-special-stage` compare him there too, with what those differ by listed under [Amy](#amy). The recording `tails-neo-green-hill` plays him from power-on with the proof tools: all of Neo Green Hill act 1, flying and with a spin dash through a loop, its goal, its results and the start of act 2, 11,500 frames, every picture the same, with frame 1709's sound differing, which is the end of the main menu's music running out next to the character select the Dreamport skips.
+Since #90 `tails-ice-mountain`, `tails-x-zone` and `tails-special-stage` compare him there too, with what those differ by listed under [Amy](#amy). The recording `tails-neo-green-hill` plays him from power-on with the proof tools: all of Neo Green Hill act 1, flying and with a spin dash through a loop, its goal, its results and the start of act 2, 11,500 frames, every frame the same, picture and sound.
 
 ### Knuckles
 
@@ -2092,7 +2093,7 @@ Read in the code only: Sonic dying while a lift or bowl holds him, one of them l
 - Egg Rocket's capsule lights, as #105 says.
 - One frame of 3 pixels at a Yukimaru in `amy-ice-mountain`.
 - Tails' HUD on its first frame after the course select, in `tails-ice-mountain` and `tails-x-zone`, by 118 pixels: the tiles there aren't the character select's, as they are for the others. What they are hasn't been found.
-- Single frames of sound, and a few short stretches, in `amy-casino-paradise`, `amy-cosmic-angel`, `tails-ice-mountain`, `tails-x-zone`, `knuckles-x-zone` and the special stages, none of them explained yet. `tails-neo-green-hill` has one on frame 1709, next to the character select it skips.
+- Single frames of sound, and a few short stretches, in `amy-casino-paradise`, `amy-cosmic-angel`, `tails-ice-mountain`, `tails-x-zone`, `knuckles-x-zone` and the special stages, none of them explained yet.
 
 **Only read in the code, not checked:** her object rules above, unless a recording happened to reach them, as no run was aimed at them; water; grind rails; a boss but the Egg Wrecker; the goal and the results with her name; the normal ending.
 
