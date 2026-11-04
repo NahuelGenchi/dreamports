@@ -55,8 +55,8 @@ const params = new URLSearchParams(location.search);
 const debug = params.has('debug'), specialTest = params.has('special');
 // `?level=N` starts the level the ROM's tables number N (2 is Secret Base Zone act 1) instead of the first
 const firstLevel = Number(params.get('level') ?? 0) | 0;
-// `?unlocked=N` puts the character's progress in the save as the game starts, N being the level after the last one
-// cleared, for the proof's recordings of the course select
+// `?unlocked=N` plays with a save of its own, kept nowhere, with the character's progress at N, the level after the
+// last one cleared, for the proof's recordings of the course select; the player's own save stays as it is
 const unlocked = params.has('unlocked') ? Number(params.get('unlocked')) & 0xFFFF : null;
 // a multiplayer stage (`?level=14`) is played by `&players=N` players, 2 to 4 (2 if not given), each on their
 // own screen; `&seed=` and `&chao=` set what the link hands the GBAs as the round starts (the shared random
@@ -189,7 +189,7 @@ achievements.onStatus((status, fromProfile) => {
   if (!fromProfile && STATUS_POPUPS[status]) queueMicrotask(() => unlockPopup.show(STATUS_POPUPS[status]));
 });
 // a game counts for them when it starts from the game's start (or is a multiplayer round, which only the level pick
-// reaches): not from ?debug, ?special or another act's ?level
+// reaches): not from ?debug, ?special, ?unlocked or another act's ?level
 let counts = false;
 const achieve = id => { if (counts) achievements.unlock(id); };
 achievementsButton.addEventListener('click', () => sheet.go('achievements'));
@@ -238,7 +238,7 @@ romFile.addEventListener('change', async () => {
 // the save (save.js), read as the GBA is switched on and kept in this browser, which the game changes and writes
 // as it goes; the continues the special stages have given, kept for this visit; and the level the game was
 // started on, the course select's (gMultiplayerCurrentLevel: the level pick's, or 0 from the start)
-const save = openSave();
+const save = unlocked === null ? openSave() : openSave(null);
 if (unlocked !== null) save.setUnlockedLevel(character, unlocked);
 let continues = 0, startLevel = 0, currentLevel = 0;   // currentLevel is gCurrentLevel, which a new start leaves as it was
 
@@ -409,7 +409,7 @@ function start(buffer, assets) {
   wideButton.disabled = rushButton.disabled = boostButton.disabled = tricksButton.disabled = multi;
   stage.classList.toggle('multi', multi);   // its players play with keyboards and controllers
   sheet.close({ now: true });
-  counts = !debug && !specialTest && (assets.first === 0 || multi);
+  counts = !debug && !specialTest && unlocked === null && (assets.first === 0 || multi);
   if (multi) { startRound(assets); return; }
   const leaving = specialTest && specialSpringStart(assets, { emeralds: save.chaosEmeralds, continues });
   if (leaving) { enterSpecialStage(assets, leaving); return; }
@@ -418,7 +418,7 @@ function start(buffer, assets) {
     front = null;
     if (level === undefined) play(assets);
     else playChosen(level, frameCount);
-  }, { character, levels: () => ({ current: currentLevel, started: startLevel }) });
+  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level') });
   fitScreen();
   screen.focus();
 }

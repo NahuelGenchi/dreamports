@@ -602,7 +602,7 @@ Turning it on or off (<kbd>V</kbd>) re-fits the view at once. It was checked on 
 
 ### The course select
 
-With a character's `unlockedLevels` above 0, the character select leads to the course select (`CreateCourseSelect`, `0x08061914`, [`src/front/courseselect.js`](../src/front/courseselect.js)) in place of act 1. Here it comes straight after Game Start, as the character select isn't built.
+With a character's `unlockedLevels` above 0, the character select leads to the course select (`CreateCourseSelect`, `0x08061914`, [`src/front/courseselect.js`](../src/front/courseselect.js)) in place of act 1. Here it comes straight after Game Start, as the character select isn't built, unless the address names a level with `?level=`, which goes straight to that act.
 
 **What it shows.** Its picture is two layers of 8-bit tiles from `0x69A6D0` in the USA ROM: the front layer's tiles and map, 256 colours, then the back layer's tiles and map, whose map doubles to 32 × 64 as the slide ends. It has one row more than `unlockedLevels + 2` allows choosing: the first, animation 724's variant 0, is never shown and has no tiles. Sonic has at most 15 rows, and 14 with `unlockedLevels` at 13, and the others at most 14. The rows are the variants of animation 724, and the zones' names beside them are animations 725 to 727, 742 to 744, 729 and 728.
 
@@ -617,7 +617,7 @@ With a character's `unlockedLevels` above 0, the character select leads to the c
 - `gFinalBossActive` starts as the level chosen, so act 2's card doesn't start as the results' band.
 - `gFrameCount` goes on from the screens before. Here it lacks the character select's frames, and nothing has compared it yet.
 
-**How it was checked.** `npm run dp -- prove sonic-advance course-select-first-act course-select-all-rows` plays both from power-on in mGBA 0.10.5 with the USA ROM, with `unlockedLevels[0]` written in the original's stretch of the character select and given to the port with `?unlocked=`. `course-select-first-act` cuts the slide short, presses A on the first frame after it, and starts act 1, then runs right. `course-select-all-rows` has all 15 rows, holds Down to the last and Up back to the first, and starts act 2. Every frame of both matches, picture and sound.
+**How it was checked.** `npm run dp -- prove sonic-advance course-select-first-act course-select-all-rows` plays both from power-on in mGBA 0.10.5 with the USA ROM, with `unlockedLevels[0]` written in the original's stretch of the character select and given to the port with `?unlocked=`, which plays with a save of its own, kept nowhere, and earns no achievements. `course-select-first-act` cuts the slide short, presses A on the first frame after it, and starts act 1, then runs right. `course-select-all-rows` has all 15 rows, holds Down to the last and Up back to the first, and starts act 2. Every frame of both matches, picture and sound.
 
 Each other act was tried once the same way, from 15 rows, for about 330 frames, through its card to the HUD's first frames, in a recording that wasn't kept. Casino Paradise act 2, Ice Mountain's acts, Angel Island's acts and Egg Rocket match on every frame. What differed:
 

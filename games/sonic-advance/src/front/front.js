@@ -41,11 +41,12 @@ export function powerOn(ctx) {
  * (engine/save.js), which the language screen and the Options menu change. `play(level, frameCount)` is called once
  * the act is to start: `level` is the course select's choice, or undefined with no choice made, and `frameCount` the
  * engine's gFrameCount. `character` is who is being played, and `levels()` gives the level last played and the one
- * the course select last started, as { current, started }.
+ * the course select last started, as { current, started }. Without `courseSelect`, as when the address names a level,
+ * Game Start goes straight to the act.
  * Returns { stop, step, draw, setView }: setView(w, h) draws a widescreen view of w × h from then on (the
  * original 240 × 160 is the default); step() and draw() are for checking, a frame at a time.
  */
-export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }) } = {}) {
+export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true } = {}) {
   const video = createVideo();
   const engine = createEngine(video, rom, sound);
   video.write(REG.DISPCNT, 0x80);   // forced blank, until the game starts
@@ -58,7 +59,7 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
     play: level => { done = true; chosen = level; },
     // Task_805AAF8: the act with nothing cleared yet, and otherwise the course select, which only the versions with
     // a known place for its picture have
-    startGame: () => { if (save.unlockedLevel(character) === 0 || !offsets.courseSelectBackground) ctx.play(); else createCourseSelect(ctx); },
+    startGame: () => { if (!courseSelect || save.unlockedLevel(character) === 0 || !offsets.courseSelectBackground) ctx.play(); else createCourseSelect(ctx); },
   };
 
   const out = canvas.getContext('2d', { alpha: false });

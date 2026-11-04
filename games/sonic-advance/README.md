@@ -333,7 +333,7 @@ The game is **Beaten** once you have the 8 marked ✓, every zone and the X Zone
 
 A no-hit achievement counts from the moment the boss's arena closes in, and starts over if you lose a life and fight it again.
 
-They count in a game started from the beginning, and in Chao Hunt. A game started with `?level`, `?debug` or `?special` earns none.
+They count in a game started from the beginning, and in Chao Hunt. A game started with `?level`, `?debug`, `?special` or `?unlocked` earns none.
 
 Your achievements are kept in this browser. On dreamports.net, sign in to a [Dreamports profile](https://dreamports.net/profile/) and they're saved there too, so you keep them on any device: the ones you earned before are added when you sign in, and each new one is saved as you earn it. The game shows the ones your profile has from your other devices too, without a popup, and an achievement you already have there isn't earned again. With nobody signed in, they stay in this browser until someone does.
 
@@ -554,7 +554,7 @@ python -m http.server 8000
 
 Then open <http://localhost:8000/games/sonic-advance/>, add your ROMs and press *Play*. To start another act, add its number in the game's level list: <http://localhost:8000/games/sonic-advance/?level=2> is Secret Base Zone act 1. Add `&character=1` to play as Tails, or `&character=2` as Knuckles.
 
-Two addresses skip ahead for testing: <http://localhost:8000/games/sonic-advance/?debug> starts the act straight away, without the logos and the intro, and <http://localhost:8000/games/sonic-advance/?special> starts Special Stage 1 as soon as the ROM is read, as if Sonic had just left act 1 on its special spring. When the stage ends, the act picks up again from that spring. With the level of another act that has a special spring it starts that act's stage instead: <http://localhost:8000/games/sonic-advance/?special&level=3> is Special Stage 2, from Secret Base Zone act 2.
+Add `?unlocked=2` to reach the course select with progress up to Secret Base Zone act 1, on a save of its own that's kept nowhere, so your own save stays as it is. Two addresses skip ahead for testing: <http://localhost:8000/games/sonic-advance/?debug> starts the act straight away, without the logos and the intro, and <http://localhost:8000/games/sonic-advance/?special> starts Special Stage 1 as soon as the ROM is read, as if Sonic had just left act 1 on its special spring. When the stage ends, the act picks up again from that spring. With the level of another act that has a special spring it starts that act's stage instead: <http://localhost:8000/games/sonic-advance/?special&level=3> is Special Stage 2, from Secret Base Zone act 2.
 
 To see everything the extractor decodes, open *Asset viewer* in the game's settings: the ROM's tables, Sonic's, the springs' and the rings' animations playing with their original timing, the sprite atlas, the act being played with its collision, and the zone's background. It opens inside the settings, over the game, which waits, with its parts on the left (<kbd>Q</kbd> <kbd>E</kbd>, or <kbd>LB</kbd> <kbd>RB</kbd>, go through them), and its back arrow, <kbd>Esc</kbd> or <kbd>B</kbd> goes back to the settings. On its own, <http://localhost:8000/games/sonic-advance/viewer.html> shows the same for the ROM kept in this browser (Neo Green Hill Zone act 1, or `?level=N`), and asks for the ROM when none is kept.
 
