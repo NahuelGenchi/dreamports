@@ -18,7 +18,7 @@ function follow(from, to, drift, step) {
 }
 
 /** What the camera keeps from frame to frame, other than where it is. */
-export const cameraMemory = () => ({ lookAhead: 0, feetOffset: -4, driftY: 0 });
+export const cameraMemory = () => ({ lookAhead: 0, feetOffset: -4, driftY: 0, catchUpX: CATCH_UP_X * 256 });
 
 /** A frame of the camera, as a task. */
 export function updateCamera(t) {
@@ -32,6 +32,7 @@ export function updateCamera(t) {
   const targetX = (leader.x >> 8) - W / 2 + (cam.lookAhead >> 5);
   const targetY = (leader.y >> 8) + (leader.camOffsetY >> 4) - H / 2 + cam.feetOffset;   // cam->shiftY, for looking up or down
   // it works from a pixel inside the far edges, so it can come back from them
-  cam.x = clamp(follow(clamp(cam.x, cam.minX, lastX - 1), targetX, DRIFT_X, CATCH_UP_X), cam.minX, lastX);
+  cam.x = clamp(follow(clamp(cam.x, cam.minX, lastX - 1), targetX, DRIFT_X, cam.catchUpX >> 8), cam.minX, lastX);
+  if (cam.catchUpX < CATCH_UP_X * 256) cam.catchUpX += 32;   // back up to speed after a boost has slowed it (qUnk8)
   cam.y = clamp(follow(clamp(cam.y, cam.minY, lastY - 1), targetY, cam.driftY, CATCH_UP_Y), cam.minY, lastY);
 }
