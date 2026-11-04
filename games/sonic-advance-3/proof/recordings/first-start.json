@@ -1,0 +1,29 @@
+{
+  "about": "From power-on with nothing saved, on the language screen: down through every language, round past the last, up again and round past the first, holding Down long enough for it to repeat, and back to English. The recording stops before A, as the name entry starts the moment it's pressed.",
+  "frames": 599,
+  "held": [
+    [0, []],
+    [60, ["DOWN"]],
+    [64, []],
+    [90, ["DOWN"]],
+    [94, []],
+    [120, ["DOWN"]],
+    [124, []],
+    [150, ["DOWN"]],
+    [154, []],
+    [180, ["DOWN"]],
+    [184, []],
+    [210, ["DOWN"]],
+    [214, []],
+    [240, ["UP"]],
+    [244, []],
+    [270, ["UP"]],
+    [274, []],
+    [300, ["UP"]],
+    [304, []],
+    [360, ["DOWN"]],
+    [420, []],
+    [480, ["UP"]],
+    [484, []]
+  ]
+}
