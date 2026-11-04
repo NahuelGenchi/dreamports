@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { REPO, LOCAL } from './paths.mjs';
 import { rememberedCopies } from './copies.mjs';
 import { looksLikeCopy } from '../gba/header.mjs';
+import { looksLikeAnyCopy } from './read-copy.mjs';
 
 /** The fork's branch GitHub Pages serves the previews from. */
 export const BRANCH = 'dreamports-previews';
@@ -111,7 +112,7 @@ function gameDataIn(files, contents) {
   const copies = new Set(Object.keys(rememberedCopies()));
   for (const file of files) {
     const bytes = contents.get(file.sha);
-    if (copies.has(createHash('sha1').update(bytes).digest('hex')) || looksLikeCopy(bytes)) problems.push(`${file.from}: this is a copy of a game.`);
+    if (copies.has(createHash('sha1').update(bytes).digest('hex')) || looksLikeCopy(bytes) || looksLikeAnyCopy(bytes)) problems.push(`${file.from}: this is a copy of a game.`);
   }
   return problems;
 }

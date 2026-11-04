@@ -16,7 +16,7 @@ import { checkStart, compress, expand, writeRecording } from './lib/recording.mj
 import { serveRepository } from './lib/server.mjs';
 import { openChrome } from './lib/chrome.mjs';
 import { openDreamport } from './lib/dreamport.mjs';
-import { KEY } from './gba/original.mjs';
+import { referenceOf } from './lib/reference.mjs';
 
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -103,7 +103,8 @@ export async function run(args) {
   if (!frames.length) throw new Error('Nothing was recorded: the game has to be started with Play.');
   // each button by the console's name where it is one of the console's, and a press shorter than a frame held for one:
   // "just pressed" stays set until the game clears it, long after the button is let go, so only its first frame counts
-  const consoleName = new Map(buttons.filter(b => b.gba in KEY).map(b => [b.name, b.gba]));
+  const { KEY } = await referenceOf(readOriginal(game).console);
+  const consoleName = new Map(buttons.filter(b => (b.console ?? b.gba) in KEY).map(b => [b.name, b.console ?? b.gba]));
   const held = frames.map((f, i) => [...new Set([...f.held, ...(f.pressed ?? []).filter(b => !frames[i - 1]?.pressed?.includes(b))])].map(b => consoleName.get(b) ?? b));
   if (start) {
     // the game held the other recording's buttons at each of its frames, and the new one keeps them as they were

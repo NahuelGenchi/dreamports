@@ -36,6 +36,7 @@ Track all meaningful work: pages, features, bugs, enhancements, docs, research, 
 | M5 | M5 — Game launcher | The site as a one-screen game launcher: a row of games to move through, filters, panels such as settings and about, and a launch animation, on phones and computers |
 | M6 | M6 — Anyone can make a Dreamport | Anyone can make or help with a Dreamport in this repository: the Dreamport standard, games played from here, proof of progress with clips and a percentage, previews on GitHub Pages that need no approval, claims and teams, and a step-by-step guide with commands for coding agents |
 | M7 | M7 — New games join the launcher on their own | A lead's entry reaches the launcher with everything wired in and a real capture of the game, with one approval from the team for the picture and a review for code |
+| M8 | M8 — Lighter tools, on any console | The proof tools and `/dreamport` take less memory, processor, graphics chip, electricity and agent tokens, go faster with the same proof, and are ready for games on other consoles |
 
 The first issue is #1 (M0). Later milestones may be created deliberately; assign them directly in GitHub.
 

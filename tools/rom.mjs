@@ -6,15 +6,16 @@
 
 import { readdirSync, statSync } from 'node:fs';
 import { join, resolve, extname, basename } from 'node:path';
-import { readCopy } from './gba/header.mjs';
+import { readAnyCopy } from './lib/read-copy.mjs';
+import { CONSOLES, consoleOf } from './consoles.mjs';
 import { proofGames, readOriginal } from './lib/proof-files.mjs';
 import { remember, rememberedCopies } from './lib/copies.mjs';
 
-const EXTENSIONS = ['.gba', '.bin', '.agb'];
-const USAGE = 'Usage: npm run dp -- rom [<file or folder>…] [--game "<name>"]';
+const EXTENSIONS = [...new Set(Object.entries(CONSOLES).flatMap(([id, machine]) => (id === 'made-up' ? [] : machine.files)))];
+const USAGE = 'Usage: npm run dp -- rom [<file or folder>…] [--game "<name>"] [--console <id>]';
 
 export async function run(args) {
-  const { paths, game } = options(args);
+  const { paths, game, said } = options(args);
   if (!paths.length) {
     if (game) throw new Error(`--game picks out a game's copies in a file or folder you give.\n${USAGE}`);
     const copies = Object.entries(rememberedCopies());
@@ -38,7 +39,7 @@ export async function run(args) {
       continue;
     }
     const kinds = { measured: 0, named: 0, other: 0, none: 0 };
-    for (const file of files) kinds[await check(file, originals, named, folder)]++;
+    for (const file of files) kinds[await check(file, originals, named, folder, said)]++;
     found += kinds.measured + kinds.named;
     if (folder) summary(arg, files.length, kinds, game);
   }
@@ -51,6 +52,8 @@ function options(args) {
     if (args[i] === '--game') {
       if (!args[i + 1] || args[i + 1].startsWith('--')) throw new Error(`--game needs the game's name, such as --game "Sonic Battle".\n${USAGE}`);
       found.game = args[++i];
+    } else if (args[i] === '--console') {
+      found.said = consoleOf(args[++i]).id;
     } else if (args[i].startsWith('--')) throw new Error(`rom has no ${args[i]}.\n${USAGE}`);
     else found.paths.push(args[i]);
   }
@@ -59,15 +62,16 @@ function options(args) {
 
 // Checks one copy and says what it is, unless it's in a folder and nothing here measures against it. Returns what it
 // found: a copy a Dreamport measures against, the game --game names, another game, or no game at all.
-async function check(file, originals, named, inFolder) {
-  const copy = await readCopy(file);
+async function check(file, originals, named, inFolder, said) {
+  const copy = await readAnyCopy(file, said);
   if (!copy) {
-    if (!inFolder) console.log(`${file}\n  Not a Game Boy Advance game.`);
+    if (!inFolder) console.log(`${file}\n  Not a game the tools can tell. If it is one, --console <id> says which console it's for: ${Object.keys(CONSOLES).filter(id => id !== 'made-up').join(', ')}.`);
     return 'none';
   }
-  const header = `its header says "${copy.title}", ${copy.code}${copy.region ? `, made for ${copy.region}` : ''}`;
+  const consoleName = CONSOLES[copy.console].name;
+  const header = `a ${consoleName} game (console ${copy.console}), which says "${copy.title}"${copy.code ? `, ${copy.code}` : ''}${copy.region ? `, made for ${copy.region}` : ''}`;
   const exact = originals.find(o => o.sha1 === copy.sha1);
-  const same = originals.find(o => o.title === copy.title && o.code.slice(0, 3) === copy.code.slice(0, 3));
+  const same = originals.find(o => o.console === copy.console && o.title === copy.title && o.code.slice(0, 3) === copy.code.slice(0, 3));
   if (exact) {
     remember(copy.sha1, { path: file, game: exact.game, name: exact.name, proof: true });
     console.log(`${file}\n  ${exact.name}, the copy games/${exact.game}'s proof uses. Remembered.`);
@@ -79,7 +83,7 @@ async function check(file, originals, named, inFolder) {
     console.log(`${file}\n  "${named.game}" by its ${named.how}, a game no Dreamport here measures against yet: ${header}, SHA-1 ${copy.sha1}.`);
     return 'named';
   } else {
-    if (!inFolder) console.log(`${file}\n  A Game Boy Advance game none of the Dreamports here measures against: ${header}, SHA-1 ${copy.sha1}.`);
+    if (!inFolder) console.log(`${file}\n  A game none of the Dreamports here measures against: ${header}, SHA-1 ${copy.sha1}.`);
     return 'other';
   }
   return 'measured';
@@ -87,11 +91,11 @@ async function check(file, originals, named, inFolder) {
 
 // One line for what a folder holds besides the copies named above.
 function summary(folder, count, kinds, game) {
-  if (!count) return console.log(`${folder}: no .gba, .agb or .bin files.`);
+  if (!count) return console.log(`${folder}: no copies of games.`);
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
   const rest = [
-    kinds.other && plural(kinds.other, 'Game Boy Advance game', 'Game Boy Advance games') + `${kinds.other === 1 ? ' that' : ''} no Dreamport here measures against`,
-    kinds.none && plural(kinds.none, "file that isn't a Game Boy Advance game", "files that aren't Game Boy Advance games"),
+    kinds.other && plural(kinds.other, 'game', 'games') + `${kinds.other === 1 ? ' that' : ''} no Dreamport here measures against`,
+    kinds.none && plural(kinds.none, "file that isn't a game the tools can tell", "files that aren't games the tools can tell"),
   ].filter(Boolean);
   if (!rest.length) return;
   const others = kinds.measured + kinds.named ? 'also ' : '';
