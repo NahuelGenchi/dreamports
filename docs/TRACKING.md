@@ -67,6 +67,8 @@ PRs inherit a missing milestone from their first valid closing issue, or, with n
 
 The job uses inline Node.js and the repository's `GITHUB_TOKEN` with only issue and PR write permissions. It has no checkout, third-party action, build, or test. PR text is parsed as data, never executed. To repair metadata after a missed run, use **Actions → Project tracking → Run workflow**.
 
+GitHub keeps only the newest waiting run in a concurrency group. Runs started by events share one group and replace one another while they wait, which saves runs, as each covers every open record. Only a full run, on a push to `main` or by hand, covers closed records, so full runs wait in a group of their own and a burst of events can't push one out.
+
 ## Enforcement
 
 The workflow does not block anything. The **main protection** branch ruleset does: every change to `main` goes through a pull request, and `main` can't be force-pushed or deleted. No approving review is required, so the owner can merge their own PRs. The ruleset was set up in #1.
