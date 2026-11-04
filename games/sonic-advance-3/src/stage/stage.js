@@ -4,13 +4,16 @@
 
 import { backgroundFrom, drawStageBackground, animateTiles } from './map.js';
 import { createStageUi } from './ui.js';
+import { createPlayer, initializePlayer, SONIC, TAILS } from './player.js';
+import { useCollision } from './collision.js';
+import { updateCamera } from './camera.js';
+import { createEntities } from './entities.js';
 
 // gStageCameraBgTemplates, in the order the camera keeps them (0x0804F73C), and how each level's layers are numbered
 const BG_TEMPLATES = 0xD0120, BG_SIZE = 0x40;
 const tilemapOf = (level, n) => level * 4 + n;
 const CAMERA_MAX = 0xD0220, RESPAWN = 0xD13C8;
 const DISPLAY_W = 240, DISPLAY_H = 160;
-const SONIC = 0, TAILS = 2;
 
 /** 0x08050624 and 0x08051308, what Route 99's overworld does with the backgrounds. */
 function overworldBackgrounds(c, layers) {
@@ -63,12 +66,15 @@ function initCamera(stage) {
   }
   const camera = stage.camera;
   const spawn = rom.u32(RESPAWN + level * 4) - 0x08000000;
-  stage.respawnX = rom.u16(spawn);
-  stage.respawnY = rom.u16(spawn + 2);
+  stage.respawnX = rom.u16(spawn + stage.warpId * 4);
+  stage.respawnY = rom.u16(spawn + stage.warpId * 4 + 2);
   camera.x = Math.max(0, stage.respawnX - DISPLAY_W / 2);
   camera.y = Math.max(0, stage.respawnY - (DISPLAY_H / 2 + 4));
   camera.maxX = rom.u16(CAMERA_MAX + level * 4);
   camera.maxY = rom.u16(CAMERA_MAX + level * 4 + 2);
+  Object.assign(camera, { qUnk8: 0x1000, unkC: 0xC, unk10: camera.x, unk14: camera.y, unk40: 0, unk44: 8, unk48: 0, unk50: 0, unk56: 0, unk64: 0xFFFC - 0x10000, shiftX: 0, shiftY: 0, dx: 0, dy: 0 });
+  useCollision(rom, level);
+  c.createTask(updateCamera, stage, 0x1000);
   c.createTask(showLayers, stage, 0x1001);
 }
 
@@ -123,9 +129,30 @@ function createFade(stage) {
   }, fade, 0x2100);
 }
 
+// 0x08066124 and 0x08065FB4: the backgrounds' colours that change on their own, by the stage's time
+function createColours(stage, which) {
+  const { c } = stage, { rom } = c, count = rom.u16(0xD4EC0 + which * 2), list = rom.u32(0xE2E91C + which * 4) - 0x08000000;
+  const steps = new Uint8Array(16), timers = new Uint32Array(16).fill(stage.timer);
+  c.createTask(() => {
+    for (let i = 0; i < count; i++) {
+      const at = list + i * 12, first = rom.u16(at), length = rom.u16(at + 2), total = rom.u16(at + 4), ptr = rom.u32(at + 8) - 0x08000000;
+      let step = steps[i], index = step * (length + 1);
+      if (((stage.timer - timers[i]) >>> 0) > rom.u16(ptr + index * 2) + 1) {
+        index += 1 + length;
+        if (step + 1 >= total) index = 0;
+        for (let k = 0; k < length; k++) c.bgPalette[(first + k) & 0xFF] = rom.u16(ptr + (index + 1 + k) * 2);
+        c.flags |= 1;
+        timers[i] = stage.timer;
+        if (++step >= total) step = 0;
+        steps[i] = step;
+      }
+    }
+  }, null, 0x2100);
+}
+
 /** 0x08002988: what a stage has so far, from its first frame. */
 export function startStage(c, level) {
-  const stage = { c, level, zone: Math.trunc((level - 1) / 10), camera: { x: 0, y: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 }, state: 1, layers: null, dispBits: 0, keys: 0, lives: 2 };
+  const stage = globalThis.__stage = { c, level, warpId: 0, playerIndex: 0, timer: 0, players: [], zone: Math.trunc((level - 1) / 10), camera: { x: 0, y: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 }, state: 1, layers: null, dispBits: 0, keys: 0, lives: 2 };
   // 0x08003E44: the tiles sprites ask for come from here, to the end of sprite memory (VramMalloc)
   let free = 0x10000 + 0x4D80;
   stage.allocTiles = count => {
@@ -134,10 +161,25 @@ export function startStage(c, level) {
     return at;
   };
   createStageUi(stage, SONIC, TAILS);
+  // 0x08002618 and Task_StageMusicManager: Route 99's overworld's song, as the task's first frame starts it
   c.createTask(t => {
-    initCamera(stage);
-    createFade(stage);
+    c.playSong(0xA);
     c.destroyTask(t);
+  }, null, 0x4000);
+  c.createTask(t => {
+    const entities = () => createEntities(stage);
+    initCamera(stage);
+    const sonic = createPlayer(stage, 0, SONIC, 1, 1), tails = createPlayer(stage, 1, TAILS, 0, 2);
+    sonic.partner = tails;
+    tails.partner = sonic;
+    stage.players = [sonic, tails];
+    initializePlayer(c, sonic);
+    initializePlayer(c, tails);
+    entities();
+    createColours(stage, stage.zone + 9);
+    createFade(stage);
+    // 0x08002BBC: the frames the stage has run
+    t.main = () => { stage.timer++; };
   }, stage, 0x100);
   return stage;
 }

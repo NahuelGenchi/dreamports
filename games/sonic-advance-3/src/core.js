@@ -158,7 +158,13 @@ export function createCore(video, rom, sound) {
       c.main = null;
     }
     readKeys(held);
-    for (const t of [...c.tasks]) if (c.tasks.includes(t)) t.main(t);
+    // in the list's order, as a task that makes another later in it runs that one in the same frame
+    for (let t = c.tasks[0]; t;) {
+      const after = c.tasks[c.tasks.indexOf(t) + 1];
+      t.main(t);
+      const at = c.tasks.indexOf(t);
+      t = at >= 0 ? c.tasks[at + 1] : after;
+    }
     c.flagsPreVBlank = c.flags;
     vblank();
   };
