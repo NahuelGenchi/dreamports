@@ -216,5 +216,5 @@ function* runCommand(c, [kind, what, argument]) {
   } else if (what === 6) {
     c.done = true;
   }
-  // 1 names the script, and 11 and 12 start music and sound (0x080342A4 and 0x0803407C), which aren't ported yet
+  // 1 names the script, and 11 and 12 start music and sound, which aren't ported yet
 }
