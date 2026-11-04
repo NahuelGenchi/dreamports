@@ -36,6 +36,7 @@ const sound = createSound({
   worklet: new URL('./sound/worklet.js', import.meta.url),
   calls: call => ({
     startSong(address, ahead = 0) { call('startSong', address, ahead); },
+    stopSong() { call('stopSong'); },
     playEffect(address) { call('playEffect', address); },
   }),
 });

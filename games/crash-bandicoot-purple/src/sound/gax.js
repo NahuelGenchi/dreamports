@@ -491,7 +491,8 @@ export function createGax(bytes, sampleRate) {
           // 0x080434F8: what the last frame made starts playing, and this frame makes the next
           [output, playingNow] = [playingNow, output];
           for (const [name, args] of queue.splice(0)) {
-            if (name === 'startSong') {
+            if (name === 'stopSong') playing = false;   // 0x08044100
+            else if (name === 'startSong') {
               startSong(args[0]);
               // a level opens some frames after its song began, while it loaded
               for (let n = args[1] ?? 0; n > 0; n--) frame();

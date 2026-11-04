@@ -260,11 +260,13 @@ const AKU_AKU = 0x082FD3CC, AKU_AKU_LEAVING = 0x082FD39C, SOUND_AKU_AKU_LEAVING 
 const HUB_CLOCK = -1, FLOAT_START = -1, RANDOM_SEED = 1;
 // How many frames the screen stays white when the hub starts again after a fall: the console's timing, as mGBA measures it
 const HUB_WHITE_FRAMES = 12;
-// 0x0800EFD0's count starts again with the level, and by the first picture it has this far to go, and the song (0x0803407C)
-// starts again too, this far along: the console's timing again, as mGBA measures it
-const FLOAT_AGAIN = 1, SONG_AHEAD_AGAIN = 7;
+// 0x0800EFD0's count starts again with the level, and by the first picture it has this far to go, and how many of those
+// white frames in the song starts again: the console's timing again, as mGBA measures it
+const FLOAT_AGAIN = 1, SONG_AGAIN_WHITE = 10;
 // How far the song has come by the first picture, as it starts at 0x0803407C while the level loads
 const SONG_AHEAD = 3;
+// the third word after the level's entry at 0x0200D2B8
+const HUB_SONG = 0x082706EC;
 
 // 0x0803874C: an actor's place is the middle of its box, wherever its animation draws it from
 function createActor(rom, { animation, x, y, flip }) {
@@ -378,8 +380,8 @@ function* hubLoop(c, again) {
   showWorld(world);
   c.screen = { left: screenLeft(world), top: screenTop(world) };
   let clock = HUB_CLOCK;
-  // 0x08015324: the level's song, the third word after its entry at 0x0200D2B8
-  c.sound?.startSong(0x082706EC, again ? SONG_AHEAD_AGAIN : SONG_AHEAD);
+  // 0x08015324: the level's song
+  if (!again) c.sound?.startSong(HUB_SONG, SONG_AHEAD);
   // 0x08015324's 0x0803FD8C: the fade back from white, after 0x0803FC9C's fade to it
   c.fade = { kind: 3, level: 64, target: 0, speed: 4 };
   let white = -1;
@@ -413,7 +415,15 @@ function* hubLoop(c, again) {
     drawWorld(world);     // 0x0802F90C
     showSprites(sprites);
     yield;                // 0x08040E5C
-    if (white >= 0 && c.fade.level === 64 && ++white > HUB_WHITE_FRAMES) return;
+    if (white >= 0 && c.fade.level === 64) {
+      white++;
+      // the song stops while the screen is white, and starts again from its beginning
+      if (white === SONG_AGAIN_WHITE) {
+        c.sound?.stopSong();
+        c.sound?.startSong(HUB_SONG);
+      }
+      if (white > HUB_WHITE_FRAMES) return;
+    }
   }
 }
 
