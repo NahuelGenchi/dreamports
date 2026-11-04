@@ -10,7 +10,7 @@
 
 import { REG } from '../../../kit/gba/video.js';
 import { KEY, clearSprites, copyAtVblank, copyToVram, fadeToBlack, queueRegister, setBlend } from './core.js';
-import { menu } from './menu.js';
+import { beforeMenu } from './menu.js';
 
 const CARTRIDGE = 0x08000000, PALETTE = 0x05000000, SINE = 0x0804DF7C;
 // gSongTable: eight bytes for each song, with the number of the player it plays on at the fifth
@@ -139,13 +139,14 @@ function queueSprites(c) {
   copyAtVblank(c);
 }
 
-/** 0x0803e6e8: the palette one step to black each frame, then the screen after it: the name entry in the original,
- *  which isn't ported, and so the main menu, where the recording skips the original's name entry. */
+/** 0x0803e6e8: the palette one step to black each frame, then the main menu. In the original 0x08036560 comes first,
+ *  the name entry, which goes straight on to the menu when a name is saved; the Dreamport has no name yet to ask for. */
 function fadeToNext(c) {
   if (fadeToBlack(c, PALETTE, 256)) {
     setBlend(c, 0, 0, 0, 0, 0, 0);
     c.video.pal.fill(0, 0, 256);
-    c.callback = menu;
+    queueRegister(c, REG.DISPCNT, 0x1F40);
+    c.callback = beforeMenu;
   }
 }
 

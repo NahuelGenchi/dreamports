@@ -49,6 +49,13 @@ export function createCore(video, rom, sound) {
     // gUnknown_030033e0 and gUnknown_03003190: the sprites queued for that copy, each the three words of its OAM
     // entry, and their rotation matrices, each its four words (0x08018004 and 0x08017f34)
     sprites: [], matrices: [],
+    // gUnknown_030044d0 and gUnknown_030048d0: the sprites as OAM will hold them, and whether the next V-blank copies
+    // them (0x0801ffa4), which the screens built from a list of nodes draw into (0x0801fda0)
+    oamBuffer: new Uint16Array(512), oamBufferFull: 0,
+    // gUnknown_03004900: what's queued to be copied just after the V-blank (0x0802036c)
+    copies: [],
+    // gUnknown_03005264: the choice the main menu last made (menu.js)
+    menuChoice: 0,
     // gUnknown_03001b08, gUnknown_030016c0 and gUnknown_03001b2c: the logos' frame count, the cross-fade's
     // target and where it is (logos.js)
     counter: 0, blendTarget: 0, blend: 0,
@@ -75,7 +82,7 @@ export function step(c, held) {
     return;
   }
   vblank(c);
-  // 0x08020244: the copies queued for VRAM; nothing queues one yet
+  runCopies(c);
   readKeys(c, held);
   // 0x080005ac: a link cable game's reset, which needs a second console
   c.callback(c);
@@ -119,7 +126,29 @@ function vblank(c) {
   // 0x0801fbd8, 0x0801fbfc
   for (const [offset, value] of c.queue) c.video.write(offset, value);
   c.queue.length = 0;
+  // 0x0801ffa4
+  if (c.oamBufferFull) c.video.oam.set(c.oamBuffer);
+  c.oamBufferFull = 0;
   c.frames++;
+}
+
+/** 0x08020244's first kind: what 0x0802036c queued, from the cartridge to the palette or VRAM. */
+function runCopies(c) {
+  for (const [to, from, bytes] of c.copies) {
+    const at = from - CARTRIDGE;
+    if (to < VRAM) {
+      const out = colours(c, to);
+      for (let i = 0; i < bytes >> 1; i++) out[i] = c.rom.u16(at + i * 2);
+    } else {
+      c.video.vram.set(c.rom.bytes.subarray(at, at + bytes), to - VRAM);
+    }
+  }
+  c.copies.length = 0;
+}
+
+/** 0x0802036c: `bytes` from the cartridge at `from` copied to `to` just after the next V-blank, at most 32 a frame. */
+export function queueCopy(c, to, from, bytes) {
+  if (c.copies.length <= 31) c.copies.push([to, from, bytes]);
 }
 
 /** 0x0801ff30's pattern over all of OAM: every sprite hidden, and every rotation matrix the identity. */
@@ -127,6 +156,14 @@ function hideSprites(c) {
   for (let i = 0; i < 32; i++) {
     c.video.oam.set([0x200, 0, 0, 0x100, 0x200, 0, 0, 0, 0x200, 0, 0, 0, 0x200, 0, 0, 0x100], i * 16);
   }
+}
+
+/** 0x0801ff30 itself: the same pattern in the buffer, which the next V-blank copies to OAM. */
+export function hideSpriteBuffer(c) {
+  for (let i = 0; i < 32; i++) {
+    c.oamBuffer.set([0x200, 0, 0, 0x100, 0x200, 0, 0, 0, 0x200, 0, 0, 0, 0x200, 0, 0, 0x100], i * 16);
+  }
+  c.oamBufferFull = 1;
 }
 
 /** 0x08017ed0: nothing queued, so the next copy leaves every sprite hidden. */
@@ -156,7 +193,8 @@ export function copyToVram(c, from, to, count) {
  * 0x0804a5b4, the BIOS's LZ77UnCompVram: a picture the cartridge keeps compressed as a byte stream (GBATEK's
  * "LZ77 UnCompressed Data"), written to VRAM at `to`. The header gives the uncompressed size; then a flag byte
  * says, its bits from the top, whether each of the next eight items is one byte as it is or two bytes: four bits
- * of length less three, and twelve bits of how far back the bytes to copy are.
+ * of length less three, and twelve bits of how far back the bytes to copy are. VRAM takes only 16 bits at a time, so
+ * a byte waits until the next one completes its halfword, and a copy from one byte back reads what VRAM held before.
  */
 export function decompress(c, from, to) {
   const bytes = c.rom.bytes, vram = c.video.vram;
@@ -164,8 +202,13 @@ export function decompress(c, from, to) {
   if (bytes[at] !== 0x10) throw new Error(`No LZ77 picture at 0x${from.toString(16)}: its first byte is ${bytes[at]}.`);
   const size = bytes[at + 1] | (bytes[at + 2] << 8) | (bytes[at + 3] << 16);
   at += 4;
-  let out = to - VRAM;
+  let out = to - VRAM, waiting = 0;
   const end = out + size;
+  const put = byte => {
+    if (out & 1) { vram[out - 1] = waiting; vram[out] = byte; }
+    else waiting = byte;
+    out++;
+  };
   while (out < end) {
     const flags = bytes[at++];
     for (let bit = 7; bit >= 0 && out < end; bit--) {
@@ -173,9 +216,9 @@ export function decompress(c, from, to) {
         const word = (bytes[at] << 8) | bytes[at + 1];
         at += 2;
         const length = (word >> 12) + 3, back = (word & 0xFFF) + 1;
-        for (let i = 0; i < length; i++, out++) vram[out] = vram[out - back];
+        for (let i = 0; i < length; i++) put(vram[out - back]);
       } else {
-        vram[out++] = bytes[at++];
+        put(bytes[at++]);
       }
     }
   }
