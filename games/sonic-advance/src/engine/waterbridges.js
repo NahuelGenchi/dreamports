@@ -17,6 +17,7 @@ import { setOffsetY } from './sensors.js';
 import { BALL_SPRITE_OFFSET_Y } from './constants.js';
 import { SINE, s8 } from './trig.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const WATER_BRIDGE = 40, WATER_BRIDGE_SPLASH = 43;
 const ARC = 32;                        // WATER_BRIDGE_DIAMETER: how far below the arc it still holds him
@@ -62,7 +63,7 @@ export function createWaterBridge(e, slot, anims) {
             p.ignoreInput = true; p.heldInput = null; p.jumpPressed = false;
             if (p === ctx.player) { ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false; }
             animate(splash, anims);
-            ctx.draw(splash, x, feet - SOX);
+            ctx.draw(splash, x, feet - (fixes.on ? p.offsetY : SOX));
             continue;
           }
         }

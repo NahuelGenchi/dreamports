@@ -10,7 +10,7 @@ import { platform, breaks, overlap, LANDED } from './collide.js';
 import { dustCloud } from './defeat.js';
 import { debris } from './boulders.js';
 import { SONG } from '../sound/songs.js';
-import { TAILS, KNUCKLES } from './player.js';
+import { TAILS, KNUCKLES, AMY } from './player.js';
 
 export const ICE_BLOCK = 95;
 
@@ -21,6 +21,8 @@ const CURLED_STATES = new Set(['spin', 'spinDash', 'spinDashRev']);
 const TAILS_STATES = new Set([...CURLED_STATES, 'fly', 'flyTurn']);
 const KNUCKLES_STATES = new Set([...CURLED_STATES, 'glide', 'glideDrop', 'dropLand', 'glideSlide', 'glideTurn0', 'glideTurn1',
   'glideTurn2', 'glideTurn3']);
+// Amy's: her hammer's moves and her dive's slam (sub_8091E88)
+const AMY_STATES = new Set(['hammer', 'hammer2', 'hammerAir', 'hammerSwirl', 'diveSlam']);
 
 /** The task for an ice block entity, or null when `e` is not one. */
 export function createIceBlock(e, slot, anims) {
@@ -34,7 +36,7 @@ export function createIceBlock(e, slot, anims) {
         if (!p.dead) {
           // landing on it curled up stands him on it first, so the landing doesn't bounce him
           const landed = p.state === 'spin' && (platform(o, hb, p, ctx.world.terrain) & LANDED) !== 0;
-          const attacks = p.character === TAILS ? TAILS_STATES : p.character === KNUCKLES ? KNUCKLES_STATES : CURLED_STATES;
+          const attacks = p.character === TAILS ? TAILS_STATES : p.character === KNUCKLES ? KNUCKLES_STATES : p.character === AMY ? AMY_STATES : CURLED_STATES;
           if (breaks(o, hb, p) || (attacks.has(p.state) && p.boxes[1] && overlap(e.x, e.y, hb, Math.floor(p.x), Math.floor(p.y), p.boxes[1])) || landed) {
             for (const q of ctx.players) if (q.onObject === o) { q.onObject = null; q.air = true; }
             ctx.add(dustCloud(e.x, e.y));

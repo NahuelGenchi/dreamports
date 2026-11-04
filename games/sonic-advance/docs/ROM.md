@@ -36,6 +36,7 @@ Offsets are file offsets in the tested USA ROM (add `0x08000000` for GBA address
 | Item boxes | `0x0B7FDC` | The table after the interactables |
 | Enemies | `0x0B8024` | The table after the item boxes |
 | Spin dash speeds | `0x4A7084` | Nine 8.8 fixed-point values from 6.0 to 9.0 in steps of 0.375 |
+| Amy's hearts | `0x4A6924` | Four patterns of eight rows of three s16, when, x and y, each when later than the last until a -1, with zeros after it (see [Amy](#amy)) |
 | UI graphics | `0x680A38` | 28-byte entries of two ROM pointers and five words; the first is the 8 × 16 font `{2, 0, 2, 1, 2}` and the sixth the HUD ring `{16, 2, 0, 4, 4}` |
 | Title card tables | `0x681274` | The pieces' texts, 56 bytes at +`0x34` that are the same in every version (see [Title card](#title-card)); the continue screen's ten voices follow at +`0x6C` |
 | Music players and songs | `0x6D767C`, `0x6D76AC` | Four music player entries (two EWRAM pointers, a track count of 1–16, a zero byte, a 16-bit field), followed at once by song entries of a ROM pointer and the player's number twice |
@@ -130,7 +131,7 @@ The spring is animation `455`. Its variants come in pairs, idle and launch: 0–
 
 The speed is `7.5, 9.0, 10.5` or `12.0` by `d0 & 3`, or `d1 × 16` (in 1/256 px) when `d0` is above 3. Rising off a spring never goes faster than 11.8125, and the jump moves are off until he lands. An up or diagonal spring plays the somersault (character state 17), or when `d0` bit 0 is set, the rise, top and fall animations (states 21, 18, 19). Act 1 has 12 springs: four up, three right, two big up-right, two small up-left and one small up-right.
 
-**Hidden springs.** Angel Island act 2 has two hidden springs, kind 108, at (7968, 1256) and (7584, 1352). One isn't drawn while it waits (`Task_Spring_Hiding`, `0x08094DCD`, priority `0x2000`). When Sonic's body touches the up spring's box (animation `455`, variant 0, in the spring's red palette), from any side, alive and not held by an object, it launches him straight up at `d1 × 64` (in 1/256 px), 8 px a frame in both of act 2's, with the somersault or, when `d0` bit 0 is set, the rise, top and fall animations, as an up spring does, and plays song 170. Then it shows the launch (variant 1) and launches him again while he touches it. On the frame the launch ends it shows the spring at rest once, and hides again. Its first launch frame shows on the frame after the touch. Amy's hammer, which launches her 1.5 times as fast, isn't built.
+**Hidden springs.** Angel Island act 2 has two hidden springs, kind 108, at (7968, 1256) and (7584, 1352). One isn't drawn while it waits (`Task_Spring_Hiding`, `0x08094DCD`, priority `0x2000`). When Sonic's body touches the up spring's box (animation `455`, variant 0, in the spring's red palette), from any side, alive and not held by an object, it launches him straight up at `d1 × 64` (in 1/256 px), 8 px a frame in both of act 2's, with the somersault or, when `d0` bit 0 is set, the rise, top and fall animations, as an up spring does, and plays song 170. Then it shows the launch (variant 1) and launches him again while he touches it. On the frame the launch ends it shows the spring at rest once, and hides again. Its first launch frame shows on the frame after the touch. Amy's hammer launches her 1.5 times as fast ([Amy](#amy)).
 
 ### Platforms
 
@@ -1136,7 +1137,7 @@ In the one-game run, the special stage's run (`run.js`, with that run's keys) al
 
 Between them, the runs meet every kind of dash pad. The steps per stage, the emeralds, the score, the lives and the continues at the end of each are the same in the engine as in mGBA in every run. In Chrome 156 and Firefox 159 (headless, each with a new profile), one game from Neo Green Hill act 1 took the seven springs in turn, with the next act started the way a zone's end starts it (`nextZone`); the same steering program played each stage in the page, and every stage took the same frames and gave the same score as in mGBA. All seven emeralds were won (`onsoku.emeralds` 127), and the zone after X Zone (`nextZone` with level 13, as X Zone's results ask for it) was then the Moon Zone, not the congratulations. Neither console showed an error from the game; Chrome's one error was the missing `/favicon.svg`, which the site serves from outside this repository.
 
-**Only read in the code, not checked:** Knuckles and Amy in the special stage (their animations are the character's first animation plus the same numbers; Tails' were checked, see [Tails](#tails)); the results after the goal's target was reached at the checkpoint (`unk0 == 2` with enough rings), which no run reached; Amy's hammer on the spring and the partner; the act again after stages 2 to 7, played in the browsers but not compared with mGBA's frames; a special stage after a real act's tally, boss or game over between two stages (the one-game run went from act to act by losing a life), which could leave other things in the memory the quirks above read.
+**Only read in the code, not checked:** the results after the goal's target was reached at the checkpoint (`unk0 == 2` with enough rings), which no run reached; the partner; the act again after stages 2 to 7, played in the browsers but not compared with mGBA's frames; a special stage after a real act's tally, boss or game over between two stages (the one-game run went from act to act by losing a life), which could leave other things in the memory the quirks above read.
 
 ### Start positions
 
@@ -1254,7 +1255,7 @@ In Chrome 156 and Firefox 159 (headless, each with a new profile), `?debug&chara
 
 **Only read in the code, not checked:** turning under water; the marble track's tails (no run reached a marble track); the objects' own rules for Tails above (the item box's top in flight, the wall poles, red flags, bumpers, ice blocks and grind rails), and the 1-up's face; the goal, the tally and the results with his name; the game over and the continue screen with his face; the bosses but the Egg Hammer Tank, X Zone and the normal ending as Tails.
 
-Since #90 the recording `tails-neo-green-hill` plays him from power-on with the proof tools: all of Neo Green Hill act 1, flying and with a spin dash through a loop, its goal, its results and the start of act 2, 11,627 frames, every picture the same, with one frame whose sound differs.
+Since #90 `tails-ice-mountain`, `tails-x-zone` and `tails-special-stage` compare him there too, with what those differ by listed under [Amy](#amy). The recording `tails-neo-green-hill` plays him from power-on with the proof tools: all of Neo Green Hill act 1, flying and with a spin dash through a loop, its goal, its results and the start of act 2, 11,627 frames.
 
 ### Knuckles
 
@@ -1321,7 +1322,7 @@ Four things were wrong in the port for every character, and Knuckles' runs found
 - **Dying** sets `itemEffect` to 0: a shield and invincibility go, as at the time-up.
 - **Ice Mountain's ice blocks** break into pieces placed as the boulder's are (above), the scale halved and rounded down first, so on an odd scale the pieces sit a pixel nearer the middle. The port multiplied by the whole scale.
 
-Since #90 the recording `knuckles-neo-green-hill` plays him from power-on with the proof tools: 8,347 frames of Neo Green Hill act 1, running, gliding and climbing, every picture the same, with two frames whose sound differs.
+Since #90 `knuckles-ice-mountain`, `knuckles-x-zone` and `knuckles-special-stage` compare him there too, with what those differ by listed under [Amy](#amy). The recording `knuckles-neo-green-hill` plays him from power-on with the proof tools: 8,347 frames of Neo Green Hill act 1, running, gliding and climbing, every frame the same, picture and sound.
 
 **Only read in the code, not checked:** the objects' own rules for Knuckles above, but the ice block's (no run reached a bumper, a wall pole, a flipper, a carousel, a run wheel, a moving spring, a skating stone, a marble track, a waterfall, the Egg Spider or the Egg Press with him); the uppercut under water; climbing with speed shoes; the float's look up; the angle a wall gives him where the wall search finds none, which the original reads from a stack byte the search leaves unset (here his angle stays as it was); the goal, the tally and the results with his name; the game over and the continue screen with his face; the bosses but the Egg Hammer Tank, X Zone and the normal ending as Knuckles.
 
@@ -2101,6 +2102,28 @@ mGBA 0.10.5 started level 8 from the character select, with `gCurrentLevel` held
 Read in the code only: Sonic dying while a lift or bowl holds him, one of them leaving while it holds him, the run wheel's hurt path, the bowls outside zone 5 (animation `486`), the lift's, bowl's and run wheel's sounds, the stale tongue box on a later shot, the animal table past level 12, the sitting and hopping animals of zones other than Neo Green Hill and Angel Island (same code, unrecorded sprites), the lava's hurting variant, songs 201 and 144 (checked as the engine's calls, not against the ROM's audio), a boulder breaking off the camera, a spawner leaving while its boulders still roll, and the swapped VRAM of the pieces, a whirlwind with `d0` set and its sounds, the down hiding spikes (none in act 1), the iron ball's other look (`510`) and its up-and-down swing, Ice Mountain's skating stones and their drop, and songs 198 and 143.
 
 ## Angel Island Zone act 2
+
+### Amy
+
+`?character=3` plays as Amy (`gSelectedCharacter` 3). Her first animation is 298, and the character state table, at `0x084A6F0C` in the USA ROM, gives her own states 85 to 93 as animations 308, 373, 348, 353, 376, 377, 374, 375 and 375 variant 1. Her moves come from `player_amy.c` and her hearts from `amy_attack_heart_effect.c` ([`player.js`](../src/engine/player.js), [`amyhearts.js`](../src/engine/amyhearts.js)).
+
+**On the ground.** She jumps uncurled (state 85), and never rolls: down on the move is a crouch that slows her as braking does. The attack button swings her hammer (87), and another press during that swing queues a second (88), 3 px a frame faster. A swing slows her by 0.375 a frame. Down and attack leap off the hammer (86) at 6 px a frame, or 3.375 under water, with no air moves until she lands. Down and jump dive (91), thrown 4 px a frame along the ground and 1.25 up, or 2.5 and 0.75 under water.
+
+**In the air.** Attack swings the hammer (89), and with down held swirls it (90), which stops her speed across. In a dive, attack is a slam (92), which on landing slides on at 2 px a frame at least, or 1.25 under water, slowing by 24/256 a frame, into a pose (93) that holds left and right for 15 frames.
+
+**Sounds and hearts.** The swings' sound comes from their animation's script. Each hammer move leaves hearts in a pattern of its own, timed by her animation's speed. They go in the first of four slots that's free, which decides which of two is in front, and last until the move ends.
+
+**Objects.** Her hammer launches her 1.5 times as fast off springs, hidden springs, moving springs and special springs, and opens a boss's capsule (`Coll_AmyHammer_Spring`), and it breaks ice blocks. A bounce block leaves her with no air moves. Swinging hooks, lifts, skating stones, spiked platforms, square platforms and waterfalls leave her uncurled (state 85) where they curl up the others. Her hammer breaks boulders too. She grinds on rails as Sonic does, with a sound of her own (song 134), and a whirlwind or an updraft leaves her with no air moves. A run wheel doesn't slow her dive or take her speed down while she crouches on it, and a tube's mouth plays no spin sound for her.
+
+**How Amy was checked.** The recording `amy-neo-green-hill` plays her from power-on with the proof tools: 8,167 frames of Neo Green Hill act 1 with the moves above, every one of them the same, picture and sound. The recordings `amy-secret-base-act-2`, `amy-casino-paradise`, `amy-ice-mountain`, `amy-angel-island`, `amy-egg-rocket`, `amy-cosmic-angel` and `amy-x-zone` go through the [course select](#the-course-select) to an act of each other zone. `amy-x-zone` plays 7,400 frames against the Egg Wrecker, with a death and the restart. `amy-special-stage` puts her above Neo Green Hill act 1's special spring and plays 3,200 frames of the stage. Of those, `amy-secret-base-act-2`, `amy-x-zone` and `amy-special-stage` match on every frame. What the others, and Tails' and Knuckles' recordings of the same kind, still differ by:
+
+- Angel Island's Leon, in `amy-angel-island`: its count between shots is memory the original never sets, and the Dreamport starts it at 0.
+- Egg Rocket's capsule lights, as #105 says.
+- One frame of 3 pixels at a Yukimaru in `amy-ice-mountain`.
+- Tails' HUD on its first frame after the course select, in `tails-ice-mountain` and `tails-x-zone`, by 118 pixels: the tiles there aren't the character select's, as they are for the others. What they are hasn't been found.
+- Single frames of sound, and a few short stretches, in `amy-casino-paradise`, `amy-cosmic-angel`, `tails-ice-mountain`, `tails-x-zone`, `knuckles-x-zone` and the special stages, none of them explained yet.
+
+**Only read in the code, not checked:** her object rules above, unless a recording happened to reach them, as no run was aimed at them; water; grind rails; a boss but the Egg Wrecker; the goal and the results with her name; the normal ending.
 
 ### Mecha Knuckles
 

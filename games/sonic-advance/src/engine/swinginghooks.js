@@ -5,7 +5,7 @@
 // catch him again for 20 frames.
 
 import { makeSprite, animate, offCam, offDisplay } from './objects.js';
-import { endAttack, curlUp } from './player.js';
+import { endAttack, curlUp, standUp, thrownState, AMY } from './player.js';
 import { SINE } from './trig.js';
 
 export const SWINGING_HOOK = 76;
@@ -42,6 +42,7 @@ function nextIndex(world) {
 function letGo(p) {
   cancel(p);
   p.carried = false; p.air = true; p.onObject = null;
+  if (p.character === AMY) { standUp(p); p.state = thrownState(p); return; }
   p.curled = true; p.state = 'spin';
   curlUp(p);
 }

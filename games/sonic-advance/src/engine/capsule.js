@@ -12,7 +12,7 @@
 import { makeSprite, startAnim, animate } from './objects.js';
 import { overlap, platform, LANDED } from './collide.js';
 import { tileFloor } from './terrain.js';
-import { knockAside } from './player.js';
+import { knockAside, hammerHits } from './player.js';
 import { SINE } from './trig.js';
 import { screenShake, SCREEN_SHAKE, SHAKE } from './screenshake.js';
 import { bossPart } from './bosses.js';
@@ -97,7 +97,7 @@ export function createBossCapsule(x, y, anims, zone) {
       if (!sonic.dead && (before < Math.floor(sonic.y) || y < Math.floor(sonic.y))) {
         p.x = x + s.boxes[0][0] - SOX; p.y = y - p.offsetY;
       }
-      if (solid(c, button, s2, p) & LANDED) pressed = true;
+      if (solid(c, button, s2, p) & LANDED || hammerHits(p, x, y, s2.boxes[0])) pressed = true;
     }
     if (pressed) {
       phase = opening;

@@ -9,6 +9,7 @@ import { overlap } from './collide.js';
 import { tileFloor } from './terrain.js';
 import { SONG } from '../sound/songs.js';
 import { SINE } from './trig.js';
+import { lifeMore } from './fixes.js';
 
 const SCORES = [100, 200, 400, 800, 1000];   // enemyDefeatScores, for each enemy in a row before landing
 // Each zone's three animals, in turn, and how each moves once freed: it sits once it has landed (0), hops away
@@ -171,7 +172,7 @@ export function defeatEffects(x, y, ctx, game, oneUp, zone = 0) {
   ctx.world.playSound(SONG.ENEMY_DEFEAT);
   const before = game.score;
   game.score += SCORES[p.chain];
-  if (Math.trunc(game.score / 50000) !== Math.trunc(before / 50000)) { game.lives = (game.lives + 1) & 0xFF; oneUp(); }
+  if (Math.trunc(game.score / 50000) !== Math.trunc(before / 50000)) { game.lives = lifeMore(game.lives); oneUp(); }
   ctx.add(scorePopup(x, y, p.chain, ctx.anims));
   if (p.chain < SCORES.length - 1) p.chain++;
 }

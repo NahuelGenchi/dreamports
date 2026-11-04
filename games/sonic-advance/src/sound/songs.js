@@ -43,6 +43,9 @@ export const SONG = {
   RINGS_LOST: 118,         // SE_RINGS_LOST: the rings scatter
   LIFE_LOST: 119,          // SE_LIFE_LOST: Sonic dies
   TAILS_FLYING: 120,       // SE_TAILS_PROPELLER_FLYING: Tails' flight, started again on each of its frames
+  AMY_HAMMER: 130,         // SE_AMY_SUPER_HAMMER_ATTACK: Amy's hammer in the air
+  AMY_SWIRL: 131,          // SE_AMY_HAMMER_SWIRL: and swirled down
+  AMY_GRINDING: 134,       // SE_AMY_GRINDING: on a grind rail
   TAIL_SWIPE: 121,         // SE_TAILS_TAIL_SWIPE
   SOMERSAULT: 121,         // SE_TAILS_TAIL_SWIPE, which Sonic's somersault kick reuses
   PUNCH_2: 126,            // SE_126: Knuckles' second punch

@@ -20,6 +20,7 @@ import { sin8, cos8 } from './trig.js';
 import { screenShake, SCREEN_SHAKE, SHAKE } from './screenshake.js';
 import { SCREEN_W, SCREEN_H } from './constants.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const MECHA_KNUCKLES = 26;
 
@@ -153,7 +154,7 @@ const DEFINE = () => [
   // it falls apart on the next explosion
   S((b, c) => {
     if (!debris(b, c)) return true;
-    for (let v = 0; v < 5; v++) c.add(part(b, v, c), 0x4001);
+    for (let v = 0; v < (fixes.on ? 6 : 5); v++) c.add(part(b, v, c), 0x4001);
     return go(b, EGGMOBILE);
   }, none, 0, 0, 0, 0, 0x78, 0, 6, 14, 'mkDefeatedEnd'),
   // EGGMOBILE: Eggman comes in from the right of the arena, which opens up to the act's end as the left edge

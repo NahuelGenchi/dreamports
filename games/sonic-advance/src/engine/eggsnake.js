@@ -15,6 +15,7 @@ import { SINE } from './trig.js';
 import { setBossCamBounds, preBossCameraPan, bossPart, bossDebris, bossExplosion, bossHit26, HIT_ENEMY, HIT_PLAYER } from './bosses.js';
 import { SONG } from '../sound/songs.js';
 import { SCREEN_W, SCREEN_H } from './constants.js';
+import { fixes } from './fixes.js';
 
 export const EGG_SNAKE = 27;
 
@@ -517,15 +518,16 @@ export function eggSnake(e, slot, anims, ctx0) {
     const s = makeSprite('eggSnakeShot', { order: 15 }), p = ctx0.player;
     let qx = (b.swayX + 16) << 8, qy = b.swayY << 8;
     const dx = s16(Math.floor(p.x) - (x0 + I(qx))), dy = s16(Math.floor(p.y) - (y0 + I(qy)));
-    const a = octant(Div(dy, 2), Div(dx, 2));
+    let a = octant(Div(dy, 2), Div(dx, 2));
+    if (fixes.on) { if (a < 0) a = b.lastAim ?? 0; b.lastAim = a; }
     // from right where Sonic is, the angle is -1, and its sine is read from the halfword before the table
     const vx = SINE[a + 256] >> 6, vy = (a < 0 ? SINE_BEFORE : SINE[a]) >> 6;
     return {
       run(ctx) {
         qx += vx; qy += vy;
         const x = s16(x0 + I(qx)), y = s16(y0 + I(qy)), sx = s16(x - ctx.cam.x), sy = s16(y - ctx.cam.y);
-        if ((sy < -32 || sy > 176) && (vx >= 0 ? sx > 256 : sx < -32)) return false;
-        const found = !b.laserGone || b.slotTaken;
+        if (fixes.on ? sy < -32 || sy > 176 || sx > 256 || sx < -32 : (sy < -32 || sy > 176) && (vx >= 0 ? sx > 256 : sx < -32)) return false;
+        const found = fixes.on || !b.laserGone || b.slotTaken;
         if (found && b.hits >= HITS) { ctx.add(bossExplosion(ctx, x << 8, y << 8)); return false; }
         if (ctx.projectile(s, x, y) && found && b.body) {
           const { name } = b.s2.anim, over = over2 ?? b.s2.anim.done;

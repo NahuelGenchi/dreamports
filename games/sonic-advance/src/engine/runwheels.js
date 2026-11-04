@@ -14,7 +14,8 @@ import { makeSprite, startAnim, animate, offCam, offDisplay } from './objects.js
 import { platform, LANDED } from './collide.js';
 import { SINE } from './trig.js';
 import { SONG } from '../sound/songs.js';
-import { climbing } from './player.js';
+import { climbing, AMY } from './player.js';
+import { fixes } from './fixes.js';
 
 export const RUN_WHEEL = 86;
 const TRAVEL = 4320;   // d2's unit of travel, in 1/256 px
@@ -78,7 +79,8 @@ export function createRunWheel(e, slot, anims) {
       count = 0;
       if (p.air) {
         p.onObject = null;
-        p.xsp = Math.min(Math.max(Math.round(p.xsp * 256), -JUMP_MAX), JUMP_MAX) / 256;
+        // Amy's dive keeps its speed
+        if (!p.dive) p.xsp = Math.min(Math.max(Math.round(p.xsp * 256), -JUMP_MAX), JUMP_MAX) / 256;
       } else if (platform(o, o.boxes[0], p, world.terrain) & LANDED) {
         p.gsp = Math.min(Math.max(Math.round(p.gsp * 256), -ATTACK_MAX), ATTACK_MAX) / 256;
       }
@@ -86,7 +88,8 @@ export function createRunWheel(e, slot, anims) {
     if (p !== ctx.player) { p.gsp = (speed > 0 ? speed >> 1 : speed) / 256; return; }
     o.anim.speed = Math.abs(Math.trunc(speed / 28));
     const gsp = Math.round(p.gsp * 256);
-    speed = gsp - 16;
+    // Amy crouching on it (charState 2) stays as she is
+    speed = p.character === AMY && p.state === 'crouch' ? gsp : gsp - 16;
     if (speed > 0) speed *= 2;
     if (speed > MAX_SPEED) speed = MAX_SPEED;
     along += speed;
@@ -116,7 +119,11 @@ export function createRunWheel(e, slot, anims) {
     run(ctx) {
       const step = Math.trunc(along / 3200);
       o.x = e.x + dx * step; o.y = e.y + dy * step;
-      if (offDisplay(e.x, e.y, ctx.cam) && offCam(o.x, o.y, ctx.cam)) { slot.live = null; return false; }
+      if (offDisplay(e.x, e.y, ctx.cam) && offCam(o.x, o.y, ctx.cam)) {
+        if (fixes.on) for (const p of ctx.players) if (p.onObject === o) { p.onObject = null; p.air = true; }
+        slot.live = null;
+        return false;
+      }
       for (const p of ctx.players) {
         if (p.onObject === o) driven(p, ctx);
         else free(p, ctx);

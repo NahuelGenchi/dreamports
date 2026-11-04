@@ -18,9 +18,10 @@
 // never set.
 
 import { makeSprite, animate, offCam } from './objects.js';
-import { endAttack, KNUCKLES, climbing } from './player.js';
+import { endAttack, KNUCKLES, climbing, thrownState } from './player.js';
 import { s8 } from './trig.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const WATERFALL = 27;
 const ANGEL_ISLAND = 4;
@@ -58,6 +59,7 @@ function angelIsland(slot, anims, splash, e, inside) {
   return {
     run(ctx) {
       if (offCam(e.x, e.y, ctx.cam)) {
+        if (fixes.on) for (const p of ctx.players) if (!p.dead && inside(p)) p.ysp /= 2;
         if (sounding) ctx.world.fadeOut(SE2, FADE);
         slot.live = null;
         return false;
@@ -72,7 +74,7 @@ function angelIsland(slot, anims, splash, e, inside) {
             // Player_TransitionCancelFlyingAndBoost
             endAttack(p); p.pushing = false; p.airLock = false;
             if (p.jumpPressed) {
-              p.state = 'spin';
+              p.state = thrownState(p);
               p.ysp = -THROW;
             } else {
               if (p.character === KNUCKLES) {

@@ -9,10 +9,12 @@
 import { makeSprite, animate, offCam, offDisplay } from './objects.js';
 import { skatingStone, platformTop, overlap, LANDED, FROM_BELOW } from './collide.js';
 import { scan, probeTile, PROBE_FLOOR, PROBE_WALL } from './terrain.js';
-import { endAttack, climbing } from './player.js';
+import { endAttack, climbing, thrownState, AMY } from './player.js';
+import { BALL_SPRITE_OFFSET_Y } from './constants.js';
 import { setOffsetY } from './sensors.js';
 import { SINE } from './trig.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const SKATING_STONE = 84;
 const ICE_MOUNTAIN = 3;   // LEVEL_TO_ZONE's ZONE_4: Ice Mountain has its own look, and its stones drop
@@ -31,7 +33,8 @@ function throwOff(p, vx) {
   p.ysp = -3; p.xsp = vx / 256; p.gsp = vx / 256;
   cancel(p);
   p.onObject = null; p.air = true;
-  p.state = 'spin';
+  p.state = thrownState(p);
+  if (fixes.on && p.character !== AMY) { p.curled = true; setOffsetY(p, BALL_SPRITE_OFFSET_Y); }
 }
 
 /** The task for a skating stone entity, or null when `e` is not one. */
@@ -76,9 +79,10 @@ export function createSkatingStone(e, slot, anims, ctx) {
         riding[i] = true;
         vx = 0; vy = 0; ox = 0; oy = 0;
         sliding = true;
+        if (fixes.on) ctx.world.playSound(SONG.SKATING_STONE);
       }
     }
-    if (offCam(sx + cam.x, sy + cam.y, cam)) { ctx.world.stopSound(SONG.SKATING_STONE); slot.live = null; return false; }
+    if (offCam(sx + cam.x, sy + cam.y, cam)) { if (!fixes.on) ctx.world.stopSound(SONG.SKATING_STONE); slot.live = null; return false; }
     ctx.draw(o, sx + cam.x, sy + cam.y);
     return true;
   }
@@ -123,7 +127,7 @@ export function createSkatingStone(e, slot, anims, ctx) {
       }
     }
     // a wall 18 px to its right, 30 px up, breaks it, whichever way it slides
-    if (probeTile(t, e.x + (ox >> 8) + 18, e.y + (oy >> 8) - 30, layer, 8, PROBE_WALL).d < 0) return breakUp(ctx);
+    if (probeTile(t, e.x + (ox >> 8) + (fixes.on && left ? -18 : 18), e.y + (oy >> 8) - 30, layer, 8, PROBE_WALL).d < 0) return breakUp(ctx);
     for (const [i, p] of ctx.players.entries()) {
       if (p.dead) continue;
       if (riding[i]) {
@@ -161,7 +165,7 @@ export function createSkatingStone(e, slot, anims, ctx) {
     }
     p.x += vx * 2 / 256;
     const ahead = (q8(p.x) + vx * 2) >> 8, py = Math.floor(p.y);
-    const knock = r => { cancel(p); p.onObject = null; p.air = true; p.state = 'spin'; riding[i] = false; p.x += r; p.xsp = 0; };
+    const knock = r => { cancel(p); p.onObject = null; p.air = true; p.state = thrownState(p); riding[i] = false; p.x += r; p.xsp = 0; };
     r = scan(t, ahead, py, p.layer, 8, PROBE_WALL).d;
     if (r < 0) knock(r);
     else {

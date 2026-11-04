@@ -9,7 +9,7 @@
 import { makeSprite, animate, offCam, offDisplay } from './objects.js';
 import { platform, overlap, LANDED, FROM_BELOW, LEFT_FACE, RIGHT_FACE } from './collide.js';
 import { scan, tileScan, PROBE_FLOOR, PROBE_WALL } from './terrain.js';
-import { endAttack } from './player.js';
+import { endAttack, thrownState } from './player.js';
 import { SINE } from './trig.js';
 
 export const SPIKED_PLATFORM = 61;
@@ -115,7 +115,7 @@ export function createSpikedPlatform(e, slot, anims, zone) {
               beside[i] = false;
               p.gsp = 0;
               endAttack(p); p.pushing = false;   // Player_TransitionCancelFlyingAndBoost
-              p.state = p.air ? 'spin' : 'walk';
+              p.state = p.air ? thrownState(p) : 'walk';
             }
           }
           // above its origin and not rising, he lands on its top as if it were 8 px higher, then is put 8 px

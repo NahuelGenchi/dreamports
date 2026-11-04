@@ -140,6 +140,10 @@ Act 1 also has its loops, springs, spikes, grind rails, speed boosters, checkpoi
 
 Choose Tails on the character select. Adding `?character=1` to the game's address starts the row on him, for example [dreamports.net/play/sonic-advance/?character=1](https://dreamports.net/play/sonic-advance/?character=1). Press jump again in a jump and he flies for eight seconds, each press lifting him, and swims the same way under water. The attack button swipes his tails on the ground. His moves, sprites, sounds, title cards, results and face on the HUD and the 1-up boxes are the original's, checked frame by frame against the original in an act of every zone, under water, against a boss and in the special stages ([docs/ROM.md](docs/ROM.md#tails)). Grind rails are Sonic's and do nothing for Tails, as on the cartridge, and so are the [extras](#extras-you-can-switch-on), which do nothing for him even when switched on. After X Zone Tails gets the normal ending: the Moon Zone is Sonic's.
 
+### Playing as Amy
+
+Add `?character=3` to play as Amy, for example [dreamports.net/play/sonic-advance/?character=3](https://dreamports.net/play/sonic-advance/?character=3). The attack button swings her hammer, and pressed again a second time. In the air it swings there, and with down held swirls it. Down and attack leap off the hammer, down and jump dive, and attack in a dive slams and slides on. Her hammer on a spring launches her 1.5 times as fast. Her moves match the original frame by frame in the first part of Neo Green Hill Zone act 1 and in a special stage, and nearly so in an act of every other zone and against a boss ([docs/ROM.md](docs/ROM.md#amy)).
+
 ### Playing as Knuckles
 
 Choose Knuckles on the character select. Adding `?character=2` to the game's address starts the row on him, for example [dreamports.net/play/sonic-advance/?character=2](https://dreamports.net/play/sonic-advance/?character=2). Hold jump again in a jump and he glides, turning with left and right; let go and he drops. Glide into a wall and he grabs it: up and down climb, up at the top pulls him onto the ledge, and jump leaps off. Under water the glide is swimming, and falling into the water he floats on it until down lets him sink. The attack button punches on the ground, and pressed again a second and a third time, the third an uppercut. His moves, sprites, sounds, title cards, results and face are the original's, checked frame by frame against the original in an act of every zone, on walls, under water, against a boss and in the special stages ([docs/ROM.md](docs/ROM.md#knuckles)). As for Tails, grind rails and the [extras](#extras-you-can-switch-on) are Sonic's, and after X Zone he gets the normal ending.
@@ -163,7 +167,11 @@ The act opens, and starts over after a lost life, with the original title card s
 
 ## Extras you can switch on
 
-Four optional additions on top of the original game. All are off until you turn them on, and with them off the game runs exactly as without them.
+Five optional additions on top of the original game. All are off until you turn them on, and with them off the game runs exactly as without them.
+
+### Bug fixes
+
+The game keeps the original's bugs, because it's checked against the original frame by frame. Turn this on to fix them: the grind rail that drops Sonic through Neo Green Hill, lives that wrap from 255 to 0, Pierrot's ball that traps a rolling Sonic, a Mecha Knuckles that falls apart one piece short, and many more. Press <kbd>N</kbd> or use the *Bug fixes* switch in the settings. A few of them change how a moment plays, so a recording made with it on won't match the original.
 
 ### Widescreen view
 
@@ -347,6 +355,9 @@ Your achievements are kept in this browser. On dreamports.net, sign in to a [Dre
 | **Mid-air dash** | Tap <kbd>←</kbd> <kbd>←</kbd> or <kbd>→</kbd> <kbd>→</kbd> in a jump | Tap left twice or right twice |
 | **Tails: fly**, or swim under water, each press lifting him | <kbd>Z</kbd> again in a jump, then again | <kbd>A</kbd> again, then again |
 | **Tails: tail swipe** | <kbd>X</kbd> on the ground | <kbd>B</kbd> or <kbd>X</kbd> |
+| **Amy: hammer**, then again; in the air too, and with <kbd>↓</kbd> swirled | <kbd>X</kbd>, <kbd>X</kbd> | <kbd>B</kbd> or <kbd>X</kbd> |
+| **Amy: leap** off the hammer | <kbd>↓</kbd> and <kbd>X</kbd> | Down and <kbd>B</kbd> or <kbd>X</kbd> |
+| **Amy: dive**, and slam in it | <kbd>↓</kbd> and <kbd>Z</kbd>, then <kbd>X</kbd> | Down and <kbd>A</kbd>, then <kbd>B</kbd> or <kbd>X</kbd> |
 | **Knuckles: glide**, or swim under water, turning with left and right | Hold <kbd>Z</kbd> again in a jump | Hold <kbd>A</kbd> again |
 | **Knuckles: climb** a wall he glides into, and leap off it | <kbd>↑</kbd> <kbd>↓</kbd>, then <kbd>Z</kbd> | Up and down, then <kbd>A</kbd> |
 | **Knuckles: punch**, again, then the uppercut | <kbd>X</kbd> on the ground, <kbd>X</kbd>, <kbd>X</kbd> | <kbd>B</kbd> or <kbd>X</kbd>, again, again |

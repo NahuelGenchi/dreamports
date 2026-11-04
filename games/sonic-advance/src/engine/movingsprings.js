@@ -12,7 +12,7 @@
 
 import { makeSprite, startAnim, animate, offCam, offDisplay } from './objects.js';
 import { platform, overlap, PUSHING, FROM_BELOW, LEFT_FACE, RIGHT_FACE } from './collide.js';
-import { endAttack, climbing } from './player.js';
+import { endAttack, climbing, hammerHits, hammerSpeed } from './player.js';
 import { scan, PROBE_FLOOR } from './terrain.js';
 import { SINE } from './trig.js';
 import { SONG } from '../sound/songs.js';
@@ -56,10 +56,13 @@ export function createMovingSpring(e, slot, anims) {
     let thrown = false;
     for (const p of ctx.players) {
       if (p.dead) continue;
-      if (p.onObject === o) {
+      // Amy's hammer launches her 1.5 times as fast, unless she stands on it
+      const hammered = hammerHits(p, o.x, o.y, o.boxes[0]);
+      if (p.onObject === o || hammered) {
+        const standing = p.onObject === o;
         p.air = true; p.pushing = false; endAttack(p);
         p.state = 'spring'; p.animRestart = true;
-        p.ysp = -SPEED;
+        p.ysp = hammered && !standing ? hammerSpeed(-SPEED) : -SPEED;
         ctx.world.playSound(SONG.SPRING);
         thrown = true;
       }

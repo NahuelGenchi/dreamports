@@ -5,7 +5,9 @@
 const TABLES = 0xF40D4;
 const OBJ_SIZES = [[8, 8], [16, 16], [32, 32], [64, 64], [16, 8], [32, 8], [32, 16], [64, 32], [8, 16], [8, 32], [16, 32], [32, 64]];
 const OBJ_VRAM = 0x10000;
-const RUNNING = 1, ANIM_CHANGED = -1, ENDED = 0, ANIM_OVER = 0x4000;
+const RUNNING = 1, ANIM_CHANGED = -1, ENDED = 0;
+/** In a sprite's `frameFlags`, once its animation has ended. */
+export const ANIM_OVER = 0x4000;
 const s16 = v => (v << 16) >> 16;
 /** What a sprite's `frameFlags` say. */
 export const SPRITE = { ROT_SCALE: 0x1F, ROT_SCALE_ENABLE: 0x20, DOUBLE_SIZE: 0x40, OBJ_MODE: 0x180, X_FLIP: 0x400, Y_FLIP: 0x800, PRIORITY: 0x3000 };
@@ -109,6 +111,7 @@ export function displaySprite(c, s) {
   for (let i = 0; i < pieces; i++) {
     const k = c.allocOam(order);
     if (k < 0) return;
+    if (i === 0) s.oamBaseIndex = k;
     const src = oamData + (oamIndex + i) * 6;
     let a0 = rom.u16(src), a1 = rom.u16(src + 2), a2 = rom.u16(src + 4);
     let sprX = a1 & 0x1FF, sprY = a0 & 0xFF;
@@ -139,4 +142,21 @@ export function displaySprite(c, s) {
     m[k * 4 + 1] = a1;
     m[k * 4 + 2] = a2;
   }
+}
+
+const inverse = scale => Math.trunc(0x10000 / scale);
+
+/** TransformSprite: `turn`'s rotation and scale into the sprite's affine slot in OAM, and where to draw it so that its anchor stays at (turn.x, turn.y). */
+export function transformSprite(c, s, turn, sine) {
+  if (s.dimensions === -1) return;
+  const { rom } = c, d = s.dimensions, slot = (s.frameFlags & SPRITE.ROT_SCALE) * 16 + 3, angle = turn.rotation & 0x3FF;
+  const cos = sine[angle + 256] >> 6, sin = sine[angle] >> 6;
+  [(cos * inverse(turn.scaleX)) >> 8, (sin * inverse(turn.scaleX)) >> 8, (-sin * inverse(turn.scaleY)) >> 8, (cos * inverse(turn.scaleY)) >> 8]
+    .forEach((value, i) => { c.oamBuffer[slot + i * 4] = value & 0xFFFF; });
+  const sizeX = Math.abs(turn.scaleX), sizeY = Math.abs(turn.scaleY), w = rom.u16(d + 4), h = rom.u16(d + 6);
+  // the anchor, from the frame's middle, turned and scaled as the picture is
+  const fromMiddleX = (turn.scaleX > 0 ? rom.s16(d + 8) : w - rom.s16(d + 8)) - (w >> 1);
+  const fromMiddleY = (turn.scaleY > 0 ? rom.s16(d + 10) : h - rom.s16(d + 10)) - (h >> 1);
+  s.x = turn.x - ((((cos * sizeX) >> 8) * fromMiddleX + ((-sin * sizeX) >> 8) * fromMiddleY + ((w >> 1) << 8)) >> 8);
+  s.y = turn.y - ((((sin * sizeY) >> 8) * fromMiddleX + ((cos * sizeY) >> 8) * fromMiddleY + ((h >> 1) << 8)) >> 8);
 }

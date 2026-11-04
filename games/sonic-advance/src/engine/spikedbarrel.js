@@ -8,6 +8,7 @@ import { makeSprite, startAnim, animate, offCam, offDisplay } from './objects.js
 import { platformTop, overlap } from './collide.js';
 import { SINE } from './trig.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const SPIKED_BARREL = 93;
 const s8 = v => (v << 24) >> 24;
@@ -30,7 +31,7 @@ export function createSpikedBarrel(e, slot, anims) {
       q = next;
       // the sprite is drawn Div(q, 256) off its point; its top is q >> 8 off
       const dx = across ? div256(q) : 0, dy = across ? 0 : div256(q);
-      const x = e.x + (across ? q >> 8 : 0), y = e.y + (across ? 0 : q >> 8);
+      const x = e.x + (fixes.on ? dx : across ? q >> 8 : 0), y = e.y + (fixes.on ? dy : across ? 0 : q >> 8);
       o.x = x;
       for (const p of ctx.players) {
         if (p.onObject === o) {

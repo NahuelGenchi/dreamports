@@ -3,6 +3,7 @@
 // breaks it: it leaves a dust cloud and four pieces that spin out and fall, and never comes back until the act
 // starts over.
 
+import { hammerHits } from './player.js';
 import { makeSprite, animate, offCam } from './objects.js';
 import { platform, breaks } from './collide.js';
 import { dustCloud } from './defeat.js';
@@ -19,7 +20,7 @@ export function createBoulder(e, slot, anims) {
     run(ctx) {
       const p = ctx.player, partner = ctx.players[1], cam = ctx.cam;
       // Sonic is tried first, and only then the CPU partner
-      const bySonic = breaks(o, o.boxes[0], p);
+      const bySonic = breaks(o, o.boxes[0], p) || hammerHits(p, e.x, e.y, o.boxes[0]);
       if (bySonic || (partner && breaks(o, o.boxes[0], partner))) {
         if (bySonic && p.boostBox) ctx.world.shake();
         ctx.add(dustCloud(e.x, e.y));

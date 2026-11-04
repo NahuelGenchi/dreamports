@@ -7,7 +7,7 @@
 
 import { makeSprite, startAnim, animate, offCam, offDisplay } from './objects.js';
 import { platform, platformTop, LANDED } from './collide.js';
-import { endAttack, standUp } from './player.js';
+import { endAttack, standUp, AMY } from './player.js';
 import { SINE } from './trig.js';
 import { SONG } from '../sound/songs.js';
 
@@ -227,6 +227,7 @@ function bounceBlock(e, slot, anims) {
     else if (p.held[0] & RIGHT) p.facing = 1;
     p.ysp = -5;
     p.state = 'bounce'; p.rotation = 0;
+    if (p.character === AMY) p.hammerJump = true;
     standUp(p);
     return true;
   }

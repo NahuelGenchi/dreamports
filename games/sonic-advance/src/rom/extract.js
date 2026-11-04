@@ -84,11 +84,35 @@ export const KNUCKLES_ANIMATIONS = {
   punch1: [249, 0], punch2: [249, 1], punch3: [250, 0], uppercut: [250, 1], waterFloat: [269, 0], waterFloatUp: [271, 0],
   uppercutFlame: [250, 3], floatSplash: [782, 0],
 };
-// Sonic's own moves: the air dash, the insta-shield, the B combo and grinding (the others' grinding animations
-// are empty), and his spin dash's rev, which Knuckles has too
+// Sonic's own moves: the air dash, the insta-shield, the B combo and grinding (Tails' and Knuckles' grinding
+// animations are empty, and Amy grinds as he does), and his spin dash's rev, which Knuckles has too
 const SONIC_ONLY = new Set(['airDash', 'instaShield', 'spinAttack', 'somersault', 'slide', 'slideEnd', 'backflip',
   'grind', 'grindSteep', 'railJump']);
-const OWN = { 1: TAILS_ANIMATIONS, 2: KNUCKLES_ANIMATIONS };
+// Amy's own (charStates 85 to 93, as the character state table has them): her jump's rise, the leap off her hammer,
+// her two swings, the hammer in the air and swirled down, her dive, its slam and the slide's end, and the hearts
+export const AMY_ANIMATIONS = {
+  hammerRise: [308, 0], hammerLeap: [373, 0], hammer: [348, 0], hammer2: [353, 0], hammerAir: [376, 0], hammerSwirl: [377, 0],
+  dive: [374, 0], diveSlam: [375, 0], diveEnd: [375, 1], heart: [759, 0],
+};
+const AMY_GRINDS = new Set(['grind', 'grindSteep', 'railJump']);
+const OWN = { 1: TAILS_ANIMATIONS, 2: KNUCKLES_ANIMATIONS, 3: AMY_ANIMATIONS };
+
+/**
+ * Amy's hearts (sHeartOffsets), from the table at `at`: for each of its four patterns, [when, x, y] for each heart,
+ * up to the -1 that ends a pattern of fewer than eight.
+ */
+function heartPatterns(rom, at) {
+  if (at === null) return [[], [], [], []];
+  return [0, 1, 2, 3].map(pattern => {
+    const hearts = [];
+    for (let row = 0; row < 8; row++) {
+      const r = at + (pattern * 8 + row) * 6;
+      if (rom.s16(r) < 0) break;
+      hearts.push([rom.s16(r), rom.s16(r + 2), rom.s16(r + 4)]);
+    }
+    return hearts;
+  });
+}
 
 /**
  * The animations of `character` by name. The character state table (sCharStateAnimInfo) gives its first 43
@@ -97,7 +121,7 @@ const OWN = { 1: TAILS_ANIMATIONS, 2: KNUCKLES_ANIMATIONS };
  */
 export function characterAnimations(character, first) {
   if (character === 0) return SONIC_ANIMATIONS;
-  const moved = Object.entries(SONIC_ANIMATIONS).filter(([name]) => !SONIC_ONLY.has(name) && (name !== 'spinDashRev' || character === 2))
+  const moved = Object.entries(SONIC_ANIMATIONS).filter(([name]) => (!SONIC_ONLY.has(name) || (character === 3 && AMY_GRINDS.has(name))) && (name !== 'spinDashRev' || character === 2))
     .map(([name, [anim, variant]]) => [name, [first + anim, variant]]);
   return { ...Object.fromEntries(moved), ...OWN[character] };
 }
@@ -404,7 +428,7 @@ export const LEVEL_BOSS_ANIMATIONS = {
     636: { mkSpin: 0 }, 637: { mkSpinDash: 0 }, 638: { mkGlide: 0 }, 640: { mkLand: 0, mkLandEnd: 1 }, 642: { mkCover: 0 },
     643: { mkPunch: 0, mkPunchEnd: 1 }, 644: { mkIdleB: 0 }, 646: { mkHitB: 0 }, 648: { mkSpinB: 0 }, 649: { mkSpinDashB: 0 },
     650: { mkGlideB: 0 }, 652: { mkLandB: 0, mkLandEndB: 1 }, 654: { mkCoverB: 0 }, 655: { mkLaunch: 0, mkLaunchEnd: 1 },
-    656: { mkRocket: 0 }, 657: { mkDefeated: 0, mkDefeatedEnd: 1 }, 658: { mkPart0: 0, mkPart1: 1, mkPart2: 2, mkPart3: 3, mkPart4: 4 },
+    656: { mkRocket: 0 }, 657: { mkDefeated: 0, mkDefeatedEnd: 1 }, 658: { mkPart0: 0, mkPart1: 1, mkPart2: 2, mkPart3: 3, mkPart4: 4, mkPart5: 5 },
     693: { eggMobile: 0, eggMobileEnd: 1 }, 694: { eggmanSeated: 3, eggmanTurn: 6, eggmanLaugh: 9 },
     611: { explosion: 0 },
   },
@@ -447,7 +471,7 @@ const ROTATED = new Set(['walk', 'run', 'bounce', 'marbleTrack', 'tailsSpin', 'm
   'stoneDebrisSmall', 'stoneDebrisLarge', 'iceStoneDebrisSmall', 'iceStoneDebrisLarge',
   'bubblesSmall', 'bubblesGroup', ...[0, 1, 2, 3, 4, 5].map(n => `drownCountdown${n}`),
   'eggSpiderPart', 'eggSpiderLeg',
-  'mkRocket', 'mkPart0', 'mkPart1', 'mkPart2', 'mkPart3', 'mkPart4', 'eggSnakeSpike',
+  'mkRocket', 'mkPart0', 'mkPart1', 'mkPart2', 'mkPart3', 'mkPart4', 'mkPart5', 'eggSnakeSpike',
   'grabbed', 'eggXHand0', 'eggXHand1', 'eggXHand2', 'eggXBall0',
   'mysteryBox', 'icon13', 'icon14', 'icon16', 'indicator', ...Object.keys(GAME_OVER_ANIMATIONS[715])]);
 // the sprite palette that fills the whole OBJ palette when an act with water starts, and that the colours
@@ -541,6 +565,7 @@ function* readAssets(rom, id, { level = 0, character = 0, partner = false } = {}
   return {
     id, info: { ...id.header, region: id.region, sha1: id.sha1, version: id.known?.name ?? null, offsets },
     sprites, acts, first: level, character, partner: !!partnerAnims, stage: acts[level].stage, titleCard: acts[level].titleCard, physics: { spinDashSpeeds },
+    heartPatterns: heartPatterns(rom, offsets.heartOffsets),
     hud: extractHud(rom, offsets, water, acts[level].stage.extra?.facePalette, character),
     gameOver: extractGameOver(rom, offsets, acts[level].stage.extra?.facePalette, character),
     // where the songs are; the sound engine reads them from the ROM itself
@@ -637,6 +662,9 @@ function extractSprites(rom, tables, water, player, partner, levelSprites = {}) 
       });
       // the frames whose commands load colours, and whether going round does (animator.js)
       anims[name] = { frames, loop: script.loop, loads: script.frames.map(f => f.loads.length > 0), loopLoads: script.loopLoads.length > 0 };
+      // the songs a frame's commands start, which Amy's hammer plays (player.js)
+      const sounds = Object.fromEntries(script.frames.map((f, i) => [i, f.sound]).filter(([, song]) => song !== null));
+      if (Object.keys(sounds).length) anims[name].sounds = sounds;
       // the sprite palette rows each frame's loads set, and those going round sets again ([row, key])
       const rowLoads = Object.fromEntries(script.frames.map((f, i) => [i, f.loads.flatMap(paletteRows)]).filter(([, l]) => l.length));
       if (Object.keys(rowLoads).length) anims[name].rows = rowLoads;
