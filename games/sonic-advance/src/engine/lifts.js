@@ -8,7 +8,7 @@
 
 import { makeSprite, animate, offCam, offDisplay } from './objects.js';
 import { overlap } from './collide.js';
-import { endAttack } from './player.js';
+import { endAttack, thrownState } from './player.js';
 import { SONG } from '../sound/songs.js';
 
 export const LIFT = 88;
@@ -77,7 +77,7 @@ export function createLift(e, slot, anims) {
           p.xsp = 0; p.gsp = 0; p.ysp = -THROW;
           endAttack(p); p.pushing = false;
           t = 0; wait = WAIT; phase = 'dropping';
-          p.state = 'spin';
+          p.state = thrownState(p);
         }
         show(ctx, HEIGHT, LINKS_TOP);
       } else {

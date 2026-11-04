@@ -130,7 +130,7 @@ The spring is animation `455`. Its variants come in pairs, idle and launch: 0–
 
 The speed is `7.5, 9.0, 10.5` or `12.0` by `d0 & 3`, or `d1 × 16` (in 1/256 px) when `d0` is above 3. Rising off a spring never goes faster than 11.8125, and the jump moves are off until he lands. An up or diagonal spring plays the somersault (character state 17), or when `d0` bit 0 is set, the rise, top and fall animations (states 21, 18, 19). Act 1 has 12 springs: four up, three right, two big up-right, two small up-left and one small up-right.
 
-**Hidden springs.** Angel Island act 2 has two hidden springs, kind 108, at (7968, 1256) and (7584, 1352). One isn't drawn while it waits (`Task_Spring_Hiding`, `0x08094DCD`, priority `0x2000`). When Sonic's body touches the up spring's box (animation `455`, variant 0, in the spring's red palette), from any side, alive and not held by an object, it launches him straight up at `d1 × 64` (in 1/256 px), 8 px a frame in both of act 2's, with the somersault or, when `d0` bit 0 is set, the rise, top and fall animations, as an up spring does, and plays song 170. Then it shows the launch (variant 1) and launches him again while he touches it. On the frame the launch ends it shows the spring at rest once, and hides again. Its first launch frame shows on the frame after the touch. Amy's hammer, which launches her 1.5 times as fast, isn't built.
+**Hidden springs.** Angel Island act 2 has two hidden springs, kind 108, at (7968, 1256) and (7584, 1352). One isn't drawn while it waits (`Task_Spring_Hiding`, `0x08094DCD`, priority `0x2000`). When Sonic's body touches the up spring's box (animation `455`, variant 0, in the spring's red palette), from any side, alive and not held by an object, it launches him straight up at `d1 × 64` (in 1/256 px), 8 px a frame in both of act 2's, with the somersault or, when `d0` bit 0 is set, the rise, top and fall animations, as an up spring does, and plays song 170. Then it shows the launch (variant 1) and launches him again while he touches it. On the frame the launch ends it shows the spring at rest once, and hides again. Its first launch frame shows on the frame after the touch. Amy's hammer launches her 1.5 times as fast ([Amy](#amy)).
 
 ### Platforms
 
@@ -2046,6 +2046,24 @@ mGBA 0.10.5 started level 8 from the character select, with `gCurrentLevel` held
 Read in the code only: Sonic dying while a lift or bowl holds him, one of them leaving while it holds him, the run wheel's hurt path, the bowls outside zone 5 (animation `486`), the lift's, bowl's and run wheel's sounds, the stale tongue box on a later shot, the animal table past level 12, the sitting and hopping animals of zones other than Neo Green Hill and Angel Island (same code, unrecorded sprites), the lava's hurting variant, songs 201 and 144 (checked as the engine's calls, not against the ROM's audio), a boulder breaking off the camera, a spawner leaving while its boulders still roll, and the swapped VRAM of the pieces, a whirlwind with `d0` set and its sounds, the down hiding spikes (none in act 1), the iron ball's other look (`510`) and its up-and-down swing, Ice Mountain's skating stones and their drop, and songs 198 and 143.
 
 ## Angel Island Zone act 2
+
+### Amy
+
+`?character=3` plays as Amy (`gSelectedCharacter` 3). Her first animation is 298, and the character state table, at `0x084A6F0C` in the USA ROM, gives her own states 85 to 93 as animations 308, 373, 348, 353, 376, 377, 374, 375 and 375 variant 1. Her moves come from `player_amy.c` and her hearts from `amy_attack_heart_effect.c` ([`player.js`](../src/engine/player.js), [`amyhearts.js`](../src/engine/amyhearts.js)).
+
+**On the ground.** She jumps uncurled (state 85), and never rolls: down on the move is a crouch that slows her as braking does. The attack button swings her hammer (87), and another press during that swing queues a second (88), 3 px a frame faster. A swing slows her by 0.375 a frame. Down and attack leap off the hammer (86) at 6 px a frame, or 3.375 under water, with no air moves until she lands. Down and jump dive (91), thrown 4 px a frame along the ground and 1.25 up, or 2.5 and 0.75 under water.
+
+**In the air.** Attack swings the hammer (89), and with down held swirls it (90), which stops her speed across. In a dive, attack is a slam (92), which on landing slides on at 2 px a frame at least, or 1.25 under water, slowing by 24/256 a frame, into a pose (93) that holds left and right for 15 frames.
+
+**Sounds and hearts.** The swings' sound comes from their animation's script. Each hammer move leaves hearts in a pattern of its own, timed by her animation's speed. They go in the first of four slots that's free, which decides which of two is in front, and last until the move ends.
+
+**Objects.** Her hammer launches her 1.5 times as fast off springs, hidden springs, moving springs and special springs, and opens a boss's capsule (`Coll_AmyHammer_Spring`), and it breaks ice blocks. A bounce block leaves her with no air moves. Swinging hooks, lifts, skating stones, spiked platforms and waterfalls leave her uncurled (state 85) where they curl up the others.
+
+**How Amy was checked.** The recording `amy-neo-green-hill` plays her from power-on with the proof tools: 8,000 frames of Neo Green Hill act 1 with the moves above, 7,991 of them the same. Frame 3917 differs by 10 pixels at the screen's right edge, and frames 4411 to 4414 and 7051 to 7054 by their sound, none of it explained yet.
+
+**Only read in the code, not built:** the square platforms' and the run wheel's rules for her, the teleport orbs' silence, breaking decorations with the hammer, and grind rails, which stay Sonic's here.
+
+**Only read in the code, not checked:** every object rule above, as no run reached one, and everything past the first half of Neo Green Hill act 1: the other zones, the bosses, the special stages, the goal and the results with her name.
 
 ### Mecha Knuckles
 

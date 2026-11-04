@@ -7,7 +7,7 @@
 
 import { TICK_MS, CAMERA, PHYSICS, ANIMATION, SCREEN_W, SCREEN_H, RUSH_BOOST, BOOST_MODE } from './constants.js';
 import { makeAnimator, setAnim, tickAnim, frameOf, spritePalette } from './animator.js';
-import { createPlayer, stepPlayer, animatePlayer, hurt, SONIC, TAILS, KNUCKLES } from './player.js';
+import { createPlayer, stepPlayer, animatePlayer, hurt, SONIC, TAILS, AMY, KNUCKLES } from './player.js';
 import { createRushFx, startRushFx, stepRushFx } from './rushfx.js';
 import { createBoostFx, recordSonic, stepAfterimages, startBurst, stepBursts, particleAnims } from './boostmode.js';
 import { TRICK_FX_PRIORITY, createTrail, recordTrail, spinEffect, boundTrail } from './trickfx.js';
@@ -21,6 +21,7 @@ import { attackTest, projectileTest, defeatEffects } from './defeat.js';
 import { createRings } from './rings.js';
 import { createScatter } from './scatter.js';
 import { createHud, updateHud } from './hud.js';
+import { createHearts } from './amyhearts.js';
 import { createTitleCard, runTitleCard } from './titlecard.js';
 import { createResults, runResults } from './results.js';
 import { createPaletteAnimation } from './palettes.js';
@@ -48,6 +49,7 @@ import { playerControls } from './input.js';
 
 const MAX_BRAKE_DUST = 20;   // the original keeps a pool of 20 brake dust clouds
 const EFFECTS = 0x4001;      // the priority of Sonic's effects' tasks, as of the item boxes' (ITEM_TASKS)
+const HEARTS = 0x3001;       // the priority of Amy's hearts' task (CreateAmyAttackHeartEffect)
 const MAX_RING_SPARKLES = 8;   // with 8 sparkles showing, a ring is still counted but makes no sparkle or sound
 const START_LIVES = 3;
 const ITEM_TIME = 1200;   // invincibility and speed shoes last 20 seconds
@@ -538,6 +540,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     spawnUppercutFlame() { spawn('swipe', 'uppercutFlame', player.x, centreY(), player.facing > 0, player.inverted); },
     // and his splash floating on water, while he floats there (Player_Knuckles_InitGfx_FloatSplash)
     spawnFloatSplash() { spawn('splash', 'floatSplash', player.x, centreY(), player.facing > 0); },
+    // Amy's hearts (CreateAmyAttackHeartEffect): the pattern `kind` (amyhearts.js), as long as her move lasts
+    spawnHearts(kind) { if (character === AMY) tasks.add(createHearts(kind, player, playerAnims, draw), HEARTS); },
     marbleTails() { if (character === TAILS) { player.marbleTails = makeAnimator(); setAnim(player.marbleTails, 'marbleTrackTails'); } },
   };
 

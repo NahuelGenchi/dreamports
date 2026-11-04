@@ -88,7 +88,13 @@ export const KNUCKLES_ANIMATIONS = {
 // are empty), and his spin dash's rev, which Knuckles has too
 const SONIC_ONLY = new Set(['airDash', 'instaShield', 'spinAttack', 'somersault', 'slide', 'slideEnd', 'backflip',
   'grind', 'grindSteep', 'railJump']);
-const OWN = { 1: TAILS_ANIMATIONS, 2: KNUCKLES_ANIMATIONS };
+// Amy's own (charStates 85 to 93, as the character state table has them): her jump's rise, the leap off her hammer,
+// her two swings, the hammer in the air and swirled down, her dive, its slam and the slide's end, and the hearts
+export const AMY_ANIMATIONS = {
+  hammerRise: [308, 0], hammerLeap: [373, 0], hammer: [348, 0], hammer2: [353, 0], hammerAir: [376, 0], hammerSwirl: [377, 0],
+  dive: [374, 0], diveSlam: [375, 0], diveEnd: [375, 1], heart: [759, 0],
+};
+const OWN = { 1: TAILS_ANIMATIONS, 2: KNUCKLES_ANIMATIONS, 3: AMY_ANIMATIONS };
 
 /**
  * The animations of `character` by name. The character state table (sCharStateAnimInfo) gives its first 43
@@ -477,7 +483,7 @@ export async function extractAssets(buffer, onProgress = () => {}, { level = 0, 
   await onProgress(id.known ? `Found ${id.known.name}.` : 'Unrecognized version, searching for the data…');
   const offsets = locateTables(rom, id.known);
 
-  await onProgress(`Decoding ${['Sonic', 'Tails', 'Knuckles'][character]}…`);
+  await onProgress(`Decoding ${['Sonic', 'Tails', 'Knuckles', 'Amy'][character]}…`);
   const tables = spriteTables(rom, offsets.spriteTables);
   // the zone's acts from `level` on, which share the zone's looks for the objects that differ by level
   // (the extra stage, the Moon Zone, is X Zone's act 2 but only ever comes on its own)
@@ -609,6 +615,9 @@ function extractSprites(rom, tables, water, player, levelSprites = {}) {
       });
       // the frames whose commands load colours, and whether going round does (animator.js)
       anims[name] = { frames, loop: script.loop, loads: script.frames.map(f => f.loads.length > 0), loopLoads: script.loopLoads.length > 0 };
+      // the songs a frame's commands start, which Amy's hammer plays (player.js)
+      const sounds = Object.fromEntries(script.frames.map((f, i) => [i, f.sound]).filter(([, song]) => song !== null));
+      if (Object.keys(sounds).length) anims[name].sounds = sounds;
       // the sprite palette rows each frame's loads set, and those going round sets again ([row, key])
       const rowLoads = Object.fromEntries(script.frames.map((f, i) => [i, f.loads.flatMap(paletteRows)]).filter(([, l]) => l.length));
       if (Object.keys(rowLoads).length) anims[name].rows = rowLoads;
