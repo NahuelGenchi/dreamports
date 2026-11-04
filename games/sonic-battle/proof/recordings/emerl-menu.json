@@ -1,0 +1,43 @@
+{
+  "about": "Emerl's screen, from a start point, as nothing leads to it yet: the original jumps to its initializer from the main menu. The fade in, the menu of five sliding in, down through the five and round, up and round, held both ways so that it repeats, B to Return to game, A on it and through its fade to black.",
+  "start": "skills=1",
+  "frames": 605,
+  "clip": { "at": 30, "frames": 300 },
+  "held": [
+    [0,[]],
+    [120,["DOWN"]],
+    [121,[]],
+    [150,["DOWN"]],
+    [151,[]],
+    [180,["DOWN"]],
+    [181,[]],
+    [210,["DOWN"]],
+    [211,[]],
+    [240,["DOWN"]],
+    [241,[]],
+    [270,["UP"]],
+    [271,[]],
+    [300,["UP"]],
+    [301,[]],
+    [360,["DOWN"]],
+    [420,[]],
+    [440,["UP"]],
+    [500,[]],
+    [520,["B"]],
+    [521,[]],
+    [550,["A"]],
+    [551,[]]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 901,
+      "held": [[0,[]],[747,["START"]],[748,[]]],
+      "sets": [
+        { "frame": 778, "address": "03002170", "bytes": 2, "value": 1 },
+        { "frame": 899, "address": "03002030", "bytes": 4, "value": 134355725 }
+      ],
+      "about": "A name already saved, as in menu, so the title's Start goes to the main menu, and then the screen's callback set to Emerl's screen's initializer, 0x08021b0c."
+    }
+  ]
+}
