@@ -2057,11 +2057,9 @@ Read in the code only: Sonic dying while a lift or bowl holds him, one of them l
 
 **Sounds and hearts.** The swings' sound comes from their animation's script. Each hammer move leaves hearts in a pattern of its own, timed by her animation's speed. They go in the first of four slots that's free, which decides which of two is in front, and last until the move ends.
 
-**Objects.** Her hammer launches her 1.5 times as fast off springs, hidden springs, moving springs and special springs, and opens a boss's capsule (`Coll_AmyHammer_Spring`), and it breaks ice blocks. A bounce block leaves her with no air moves. Swinging hooks, lifts, skating stones, spiked platforms and waterfalls leave her uncurled (state 85) where they curl up the others.
+**Objects.** Her hammer launches her 1.5 times as fast off springs, hidden springs, moving springs and special springs, and opens a boss's capsule (`Coll_AmyHammer_Spring`), and it breaks ice blocks. A bounce block leaves her with no air moves. Swinging hooks, lifts, skating stones, spiked platforms, square platforms and waterfalls leave her uncurled (state 85) where they curl up the others. Her hammer breaks boulders too. She grinds on rails as Sonic does, with a sound of her own (song 134), and a whirlwind or an updraft leaves her with no air moves. A run wheel doesn't slow her dive or take her speed down while she crouches on it, and a tube's mouth plays no spin sound for her.
 
-**How Amy was checked.** The recording `amy-neo-green-hill` plays her from power-on with the proof tools: 8,000 frames of Neo Green Hill act 1 with the moves above, 7,991 of them the same. Frame 3917 differs by 10 pixels at the screen's right edge, and frames 4411 to 4414 and 7051 to 7054 by their sound, none of it explained yet.
-
-**Only read in the code, not built:** the square platforms' and the run wheel's rules for her, the teleport orbs' silence, breaking decorations with the hammer, and grind rails, which stay Sonic's here.
+**How Amy was checked.** The recording `amy-neo-green-hill` plays her from power-on with the proof tools: 8,000 frames of Neo Green Hill act 1 with the moves above, every one of them the same, picture and sound.
 
 **Only read in the code, not checked:** every object rule above, as no run reached one, and everything past the first half of Neo Green Hill act 1: the other zones, the bosses, the special stages, the goal and the results with her name.
 

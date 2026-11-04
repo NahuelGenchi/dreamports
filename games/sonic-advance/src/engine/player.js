@@ -485,12 +485,12 @@ function tryRailJump(p, c, world) {
   if (!c.jumpPressed) return false;
   p.layer ^= 1;
   if (clearance(p, world.terrain, actAngle(p) + 0x80) < 4) { p.layer ^= 1; return false; }
-  world.stopSound(SONG.GRINDING);
-  p.air = true; p.jumped = true; p.pushing = false; p.grinding = false; p.state = 'spin';
+  world.stopSound(p.character === AMY ? SONG.AMY_GRINDING : SONG.GRINDING);
+  p.air = true; p.jumped = true; p.pushing = false; p.grinding = false; p.state = thrownState(p);
   p.ysp = ((q8(rules(p).jumpSpeed) * sin8((p.rotation - 0x40) & 0xFF)) >> 8) / 256;
   world.playSound(SONG.JUMP);
   p.front = false;
-  curl(p);
+  if (p.character !== AMY) curl(p);
   return true;
 }
 

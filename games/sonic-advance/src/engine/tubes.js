@@ -9,7 +9,7 @@
 // set and clear (0x80) only matters in multiplayer.
 
 import { offDisplay } from './objects.js';
-import { endAttack, curlUp } from './player.js';
+import { endAttack, curlUp, AMY } from './player.js';
 import { SONG } from '../sound/songs.js';
 
 export const TUBE_IN = 34, TUBE_OUT = 35;
@@ -26,7 +26,7 @@ function curl(p, ctx) {
   p.state = 'spin';
   curlUp(p);
   p.carried = false;
-  ctx.world.playSoundOrChange(SONG.SPIN);
+  if (p.character !== AMY) ctx.world.playSoundOrChange(SONG.SPIN);
 }
 
 // Task_MiniLoop_Base (0x0804D8B5): clears MOVESTATE_200, and gives back held controls with jump and attack

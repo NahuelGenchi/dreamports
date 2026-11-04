@@ -84,8 +84,8 @@ export const KNUCKLES_ANIMATIONS = {
   punch1: [249, 0], punch2: [249, 1], punch3: [250, 0], uppercut: [250, 1], waterFloat: [269, 0], waterFloatUp: [271, 0],
   uppercutFlame: [250, 3], floatSplash: [782, 0],
 };
-// Sonic's own moves: the air dash, the insta-shield, the B combo and grinding (the others' grinding animations
-// are empty), and his spin dash's rev, which Knuckles has too
+// Sonic's own moves: the air dash, the insta-shield, the B combo and grinding (Tails' and Knuckles' grinding
+// animations are empty, and Amy grinds as he does), and his spin dash's rev, which Knuckles has too
 const SONIC_ONLY = new Set(['airDash', 'instaShield', 'spinAttack', 'somersault', 'slide', 'slideEnd', 'backflip',
   'grind', 'grindSteep', 'railJump']);
 // Amy's own (charStates 85 to 93, as the character state table has them): her jump's rise, the leap off her hammer,
@@ -94,6 +94,7 @@ export const AMY_ANIMATIONS = {
   hammerRise: [308, 0], hammerLeap: [373, 0], hammer: [348, 0], hammer2: [353, 0], hammerAir: [376, 0], hammerSwirl: [377, 0],
   dive: [374, 0], diveSlam: [375, 0], diveEnd: [375, 1], heart: [759, 0],
 };
+const AMY_GRINDS = new Set(['grind', 'grindSteep', 'railJump']);
 const OWN = { 1: TAILS_ANIMATIONS, 2: KNUCKLES_ANIMATIONS, 3: AMY_ANIMATIONS };
 
 /**
@@ -103,7 +104,7 @@ const OWN = { 1: TAILS_ANIMATIONS, 2: KNUCKLES_ANIMATIONS, 3: AMY_ANIMATIONS };
  */
 export function characterAnimations(character, first) {
   if (character === 0) return SONIC_ANIMATIONS;
-  const moved = Object.entries(SONIC_ANIMATIONS).filter(([name]) => !SONIC_ONLY.has(name) && (name !== 'spinDashRev' || character === 2))
+  const moved = Object.entries(SONIC_ANIMATIONS).filter(([name]) => (!SONIC_ONLY.has(name) || (character === 3 && AMY_GRINDS.has(name))) && (name !== 'spinDashRev' || character === 2))
     .map(([name, [anim, variant]]) => [name, [first + anim, variant]]);
   return { ...Object.fromEntries(moved), ...OWN[character] };
 }

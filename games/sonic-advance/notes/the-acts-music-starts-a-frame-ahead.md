@@ -1,6 +1,6 @@
 # An act's music runs a frame ahead of the sounds its first frame starts, which decides who gets a channel.
 
-About: tails-neo-green-hill; knuckles-neo-green-hill; the whole game
+About: tails-neo-green-hill; knuckles-neo-green-hill; amy-neo-green-hill; the whole game
 
 Proof: #90; knuckles-neo-green-hill
 
