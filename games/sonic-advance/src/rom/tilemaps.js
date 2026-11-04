@@ -214,6 +214,11 @@ export function mapHoles(rom, header) {
   return holes;
 }
 
+/** A map's first `count` tile entries. */
+export function mapEntries(rom, header, count) {
+  return Uint16Array.from({ length: count }, (_, i) => rom.u16(header.map + i * 2));
+}
+
 /**
  * A plain map's colour indices (palette bank × 16 + colour) with animation frame `animFrame`'s tiles, 0 where
  * colour 0 leaves it clear, for a layer the renderer colours and blends itself.
