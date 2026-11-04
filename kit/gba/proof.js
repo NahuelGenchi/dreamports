@@ -16,6 +16,8 @@
 // - `heard`: in play mode, what the last frame sounded like: an Int16Array of its samples, left and right, at the
 //   console's mix rate (65536 a second) and in its 10-bit units around the bias, or null for a game with no sound
 // - `video`: in play mode, the video hardware (video.js) that drew the last frame, which prove compares with the original's
+// - `neverInPlay`: in play mode, why no player could ever see the last frame, as a game's code says with its own words when
+//   a start point has left it somewhere it never is in real play, or null; prove fails on it (tools/README.md, Start points)
 // - `frames`: in record mode, what the game read at every frame so far, as { held, pressed }, ready for step()
 // - `replay(frames)`: in record mode, before the game starts, frames for it to play first, each { held } with the
 //   console's names for its buttons (or the game's own), as a recording has them; the player's buttons do nothing
@@ -120,6 +122,7 @@ function createProof(mode) {
     get replaying() { return Math.max(0, replays.length - frames.length); },
     get heard() { return heard; },
     video: null,
+    neverInPlay: null,
   };
   return state;
 }
