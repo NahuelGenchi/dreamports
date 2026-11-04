@@ -16,7 +16,7 @@ export const SONIC = 0, TAILS = 2;
 export const FLAG = { FACING_LEFT: 0x1, CURLED: 0x2, IN_AIR: 0x4, NO_AIR_STEERING: 0x8, SPIN_DASHING: 0x10, ON_OBJECT: 0x20, AT_WALL: 0x40, FLYING: 0x40000, BUTTONS_OFF: 0x08000000 };
 const { FACING_LEFT, CURLED, IN_AIR, NO_AIR_STEERING, SPIN_DASHING, ON_OBJECT, AT_WALL, FLYING, BUTTONS_OFF } = FLAG;
 
-const FIRST_ANIMATIONS = 0xCE450, POSE_ANIMATIONS = 0xCE45A, RUN_RATES = 0xCE92A;
+const FIRST_ANIMATIONS = 0xCE450, POSE_ANIMATIONS = 0xCE45A, RUN_RATES = 0xCE92A, SPIN_DASH_SPEEDS = 0xCE230;   // the last is gUnknown_080CE5B8
 // 0x080578E8: a sprite the title card's colour effect takes in, as it does while the card covers the stage
 const BLENDED = 0x80;
 export const POSE = { STAND: 0, LOOK_UP: 1, CROUCH: 2, LOOK_AROUND: 6, LOOK_AROUND_PARTNER: 7, RUN: 8, SPIN_DASH: 0xA, ROLL: 0xB, TURN: 0xC, TURN_FROM_SKID: 0xD, SKID: 0x10, SKID_FAST: 0x11, AIR_SLOW: 0x13, AIR_FAST: 0x14, FALLING: 0x18, PUSH: 0x21, FLY: 0xCE, FLY_TURN: 0xCF, FLY_TIRED: 0xD0 };
@@ -29,7 +29,6 @@ const PX = 256;   // positions and speeds are in 1/256 of a pixel
 const GRAVITY = 42, FALL_LIMIT = 15 * PX, COAST = 8;
 const JUMP_SPEED = 0x4E0, SHORT_JUMP_SPEED = -3 * PX, ROLL_FRICTION = 8, ROLL_STOPS_BELOW = 0.5 * PX;
 const SPIN_DASH_START = 2 * PX, SPIN_DASH_REV = 2 * PX, SPIN_DASH_MIN_REV = 8 * PX;
-const SPIN_DASH_SPEEDS = [6, 6.375, 6.75, 7.125, 7.5, 7.875, 8.25, 8.625, 9].map(speed => speed * PX);   // gUnknown_080CE5B8
 const FLY_FRAMES = 0xF0, FLY_RISE_LIMIT = -0.75 * PX, FLY_RISE = 0x18, FLY_SINK = 8, FLY_RISE_FRAMES = 0x20;
 const LOOK_WAIT = 0x28, LOOK_STEP = 0x20, LOOK_UP_RETURN = 4, LOOK_UP_FURTHEST = -4.3125 * PX, CROUCH_FURTHEST = 0x3BF;
 const SKID_FROM = 2 * PX, STEEP_SLIP = 1.875 * PX, SLIP_FRAMES = 30, LOOK_AROUND_AFTER = 360, SETTLE_FRAMES = 10;
@@ -518,7 +517,7 @@ function spinDash(p) {
   const shown = (p.animation - firstAnimation(p.stage.c, p)) & 0xFFFF;
   if (!(p.held & KEY.DOWN)) {
     p.flags &= ~SPIN_DASHING;
-    const speed = SPIN_DASH_SPEEDS[Math.min(p.spinDashSpeed >> 8, 8)];
+    const speed = p.stage.c.rom.s16(SPIN_DASH_SPEEDS + Math.min(p.spinDashSpeed >> 8, 8) * 2);
     p.groundSpeed = p.flags & FACING_LEFT ? -speed : speed;
     p.behave = startRolling;
     if (p.id === p.stage.playerIndex) p.stage.c.playSong(SE_SPIN_RELEASE);
@@ -560,7 +559,7 @@ function createSpinDust(p) {
   }, null, 0x3100);
 }
 
-// Player_800891C and Player_80089CC: rolling, until it has all but stopped
+// Player_800891C and Player_80089CC: rolling, until it has all but stopped, with the d-pad doing nothing
 function startRolling(p) {
   newMove(p);
   p.flags |= CURLED;
