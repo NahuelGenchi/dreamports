@@ -12,6 +12,7 @@ import { createInput } from '../../../kit/gba/input.js';
 import { proof } from '../../../kit/gba/proof.js';
 import { createSettings } from '../../../kit/gba/ui/settings.js';
 import { createTouch } from '../../../kit/gba/ui/touch.js';
+import { createCore, step } from './core.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from
 const GAME = { name: 'Crash Bandicoot Purple: Ripto\'s Rampage', title: 'CRASH PURPLE', codes: { BD4E: 'USA' }, versions: [{ sha1: '35d1c8c90890bf7ce66306e6c06a3676a723dcf3' }] };
@@ -55,12 +56,11 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// the game's own code: what the original does each frame, writing the video hardware's registers, VRAM, palettes
-// and sprites as it does. To begin with, the screen's backdrop: blue, and green while a button is held.
+// The game so far: the copyright screen and the logos. What comes after them, the title screen, isn't ported yet, so
+// the screen stays black there.
 function createGame(video, rom) {
-  return {
-    step(keys) { video.pal[0] = keys ? 0x03E0 : 0x7C00; },
-  };
+  const core = createCore(video, rom);
+  return { step(keys) { step(core, keys); } };
 }
 
 function start() {
