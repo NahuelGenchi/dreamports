@@ -173,11 +173,12 @@ function arriving(p) {
     turnUpright(p);
     airCollision(p);
   }
+  // landing asks for another state, but until the fade in has ended it stays in this one, with the buttons off
   if (p.stage.state === 3) {
     p.framesInvulnerable = 0;
     p.moveState &= ~IGNORE_INPUT;
     p.callback = p.moveState & IN_AIR ? startFalling : startStanding;
-  }
+  } else p.callback = arriving;
 }
 
 // 0x08005380, Player_8005380: standing still, or running if it isn't still
@@ -363,7 +364,7 @@ function startOff(p) {           // sub_8005B78
   } else p.callback = turning;
   return 8;
 }
-// Player_800D9F4 isn't ported yet: turning round on the spot, which only A character running needs
+// Turning round on the spot isn't made yet, which A character running needs: for now it goes on as it was
 function turning(p) {
   p.callback = run;
 }

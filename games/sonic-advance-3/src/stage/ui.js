@@ -43,7 +43,7 @@ const show = (c, s, x, y) => {
   displaySprite(c, s);
 };
 
-// 0x08022854 and 0x080227D4: each frame's numbers, and how far off the screen they still are
+// 0x08022898 and 0x08022828: each frame's numbers, and how far off the screen they still are
 function slideIn(t) {
   const ui = t.data;
   if (--ui.slide === 0) t.main = showUi;

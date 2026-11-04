@@ -84,8 +84,9 @@ const active = (cam, x, y) => {   // IsWorldPtActive
   const sx = x - cam.x, sy = y - cam.y;
   return !(sx < -128 || sx > 240 + 128 || sy + 128 < 0 || sy > 160 + 128);
 };
-function leave(t, m, at, meX) {   // SET_MAP_ENTITY_NOT_INITIALIZED, and the task goes
+function leave(t, m, at, meX, s) {   // SET_MAP_ENTITY_NOT_INITIALIZED, and the task goes, with the sprite's tiles
   m.data.setUint8(at, meX);
+  if (s) m.stage.freeTiles(s.tiles);
   m.stage.c.destroyTask(t);
 }
 
@@ -94,7 +95,7 @@ function createActRing(m, at, x, y) {
   const { stage } = m, { c } = stage, meX = m.data.getUint8(at), bits = m.data.getUint8(at + 7);
   let act = 0;
   for (; act < 3; act++) if ((bits >> act) & 1) break;
-  const s = createSprite({ tiles: stage.allocTiles(64), anim: ANIM_ACT_RING, variant: act, oamFlags: 24 << 6, frameFlags: 0x1000 });
+  const s = createSprite({ tiles: stage.allocTiles(16), anim: ANIM_ACT_RING, variant: act, oamFlags: 24 << 6, frameFlags: 0x1000 });
   updateSprite(c, s);
   m.data.setInt8(at, -2);
   c.createTask(t => {
@@ -110,7 +111,7 @@ function createActRing(m, at, x, y) {
       }
     }
     if (!active(stage.camera, x, y)) {
-      leave(t, m, at, meX);
+      leave(t, m, at, meX, s);
       return;
     }
     s.x = x - stage.camera.x;
@@ -135,7 +136,7 @@ function createFactoryRing(m, at, x, y) {
       }
     }
     if (!active(stage.camera, x, y)) {
-      leave(t, m, at, meX);
+      leave(t, m, at, meX, s);
       return;
     }
     s.x = x - stage.camera.x;
@@ -153,7 +154,7 @@ function createOmochao(m, at, x, y) {
   m.data.setInt8(at, -2);
   c.createTask(t => {
     if (!active(stage.camera, x, y)) {
-      leave(t, m, at, meX);
+      leave(t, m, at, meX, s);
       return;
     }
     s.x = x - stage.camera.x;
@@ -265,7 +266,7 @@ function createBreakableWall(m, at, x, y) {
         p.moveState = (p.moveState & ~0x20) | 4;
         p.sprColliding = null;
       }
-      leave(t, m, at, meX);
+      leave(t, m, at, meX, s);
       return;
     }
     updateSprite(c, s);

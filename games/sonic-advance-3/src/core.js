@@ -56,7 +56,10 @@ export function createCore(video, rom, sound) {
   /** A stage's layer for the V-blank (stage/map.js). */
   c.queueLayer = bg => { layers.push(bg); };
 
-  const copy16 = (src, dest, bytes) => video.vram.set(rom.bytes.subarray(src, src + (bytes & ~1)), dest);
+  // what goes past the end of video memory is lost, as when the sprites' heap had no room (stage/stage.js)
+  const copy16 = (src, dest, bytes) => {
+    if (dest + bytes <= video.vram.length) video.vram.set(rom.bytes.subarray(src, src + (bytes & ~1)), dest);
+  };
   // ProcessVramGraphicsCopyQueue, COPY_CHUNK at a time in the original, which comes to the same here
   function copyGraphics() {
     for (const { src, dest, size } of graphics) {

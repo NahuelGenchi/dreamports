@@ -150,16 +150,46 @@ function createColours(stage, which) {
   }, null, 0x2100);
 }
 
+const SEGMENT_TILES = 4, SEGMENT_BYTES = 32 * SEGMENT_TILES;
+/** The answer of a heap with no room: past the end of video memory, where a copy to it shows nothing (core.js). */
+const NO_TILES = 0x18000;
+
+// 0x080C2E9C, VramMalloc, and 0x080C2F7C, VramFree: sprite memory in segments of 4 tiles, the first stretch that fits each time
+function createTileHeap(start, slots) {
+  const segments = slots >> 2, used = new Uint16Array(256);
+  return {
+    alloc(tiles) {
+      const count = (tiles + SEGMENT_TILES - 1) >> 2;
+      for (let i = 0; i < segments; i++) {
+        if (used[i] !== 0) {
+          i += used[i] - 1;
+          continue;
+        }
+        let j = 0;
+        for (; j < count; j++) {
+          if (i + j >= segments) return NO_TILES;
+          if (used[i + j] !== 0) break;
+        }
+        if (j === count) {
+          used[i] = count;
+          return start + i * SEGMENT_BYTES;
+        }
+      }
+      return NO_TILES;
+    },
+    free(at) {
+      if (at !== NO_TILES) used[(at - start) / SEGMENT_BYTES] = 0;
+    },
+  };
+}
+
 /** 0x08002988: what a stage has so far, from its first frame. */
 export function startStage(c, level) {
   const stage = { c, level, warpId: 0, playerIndex: 0, timer: 0, players: [], zone: Math.trunc((level - 1) / 10), camera: { x: 0, y: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 }, state: 1, layers: null, dispBits: 0, keys: 0, lives: 2 };
-  // 0x08003E44: the tiles sprites ask for come from here, to the end of sprite memory (VramMalloc)
-  let free = 0x10000 + 0x4D80;
-  stage.allocTiles = count => {
-    const at = free;
-    free += count * 32;
-    return at;
-  };
+  // 0x08003E44: the tiles sprites ask for come from here, to the end of sprite memory
+  const heap = createTileHeap(0x10000 + 0x4D80, (0x8000 - 0x4D80) >> 5);
+  stage.allocTiles = heap.alloc;
+  stage.freeTiles = heap.free;
   createStageUi(stage, SONIC, TAILS);
   // 0x08002618 and Task_StageMusicManager: Route 99's overworld's song, as the task's first frame starts it
   c.createTask(t => {
