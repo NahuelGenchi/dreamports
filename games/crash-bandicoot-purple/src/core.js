@@ -83,9 +83,11 @@ export function createCore(video, rom, sound) {
   return c;
 }
 
-// a command of the script: the cartridge's three words at `entry`, or the two that 0x0803C120 writes itself
+// a command of the script: the cartridge's three words at `entry`, or those that 0x0803C120 writes itself: a song from the
+// cartridge's word that names it, or the end
+const SONG_WORDS = { sound: 0x08076D54, 'first song': 0x08076D64, 'second song': 0x08076D6C };
 function command(rom, entry) {
-  if (entry === 'sound') return [5, 12, rom.u32(0x08076D54 - CARTRIDGE)];
+  if (SONG_WORDS[entry]) return [5, 12, rom.u32(SONG_WORDS[entry] - CARTRIDGE)];
   if (entry === 'end') return [5, 6, 0];
   const at = entry - CARTRIDGE;
   return [rom.u32(at), rom.u32(at + 4), rom.u32(at + 8)];
@@ -460,21 +462,20 @@ const SCENE_FONTS = {
 };
 
 // The first scene's script, 0x02000EC4's first, which the level's list at 0x0200D2B8 names as the first world's opening (0x08015ED0),
-// as 0x0803C120 builds it at 0x0200A508 from the cartridge's own commands and the songs at 0x08076D64 and 0x08076D6C
-const WAIT_FOR_PAGES = 0x08076CF0;
+// the table 0x0803C120 builds at 0x0200A508, as the cartridge's own commands
 const STORY_OPENING = [
-  [5, 1, 0x080762A4], [5, 12, 0x08271E04],
-  [7, 1, 0x0200735C], [7, 2, 0x0806FA54], [3, 0, 0x08992068], [5, 2, WAIT_FOR_PAGES], [5, 13, 4], [7, 2, 0x0806F1E0], [5, 15, 4],
-  [7, 1, 0x0200732C], [7, 2, 0x0806F324], [3, 0, 0x08994A34], [5, 2, WAIT_FOR_PAGES], [5, 13, 4], [5, 15, 4],
-  [7, 1, 0x0200735C], [7, 2, 0x0806FA58], [3, 0, 0x089971EC], [5, 2, WAIT_FOR_PAGES], [5, 13, 4], [5, 15, 4],
-  [3, 0, 0x0899A748], [7, 2, 0x0806FA5C], [5, 2, WAIT_FOR_PAGES], [5, 14, 4], [5, 12, 0x08273030], [5, 15, 4],
-  [7, 1, 0x0200735C], [7, 2, 0x0806F328], [3, 0, 0x089C763C], [5, 2, WAIT_FOR_PAGES], [5, 13, 4], [5, 15, 4],
-  [7, 1, 0x0200732C], [7, 2, 0x0806F32C], [3, 0, 0x089E821C], [5, 2, WAIT_FOR_PAGES], [5, 15, 4],
-  [3, 0, 0x089EB9FC], [5, 9, 0x08076394], [3, 0, 0x089FA13C], [7, 1, 0x0200735C], [7, 2, 0x0806F330], [5, 2, WAIT_FOR_PAGES],
-  [7, 1, 0x0200750C], [7, 2, 0x0806F334], [3, 0, 0x08A01F88], [5, 9, 0x080763F0], [3, 1, 0], [5, 10, 0x08076410],
-  [3, 0, 0x08A09758], [5, 11, 0x08085D48], [5, 9, 0x08076448],
-  [7, 1, 0x0200735C], [7, 2, 0x0806F338], [3, 0, 0x08A14FE8], [5, 2, WAIT_FOR_PAGES], [5, 13, 4], [5, 15, 4],
-  [7, 1, 0x0200732C], [7, 2, 0x0806F33C], [3, 0, 0x08A1A954], [5, 2, WAIT_FOR_PAGES], [5, 13, 4], [5, 6, 0],
+  0x080762B0, 'first song',
+  0x080762BC, 0x080762C8, 0x080762D4, 0x080762E0, 0x0807623C, 0x080762EC, 0x08076224,
+  0x080762F8, 0x08076304, 0x08076310, 0x080762E0, 0x0807623C, 0x08076224,
+  0x080762BC, 0x0807631C, 0x08076328, 0x080762E0, 0x0807623C, 0x08076224,
+  0x08076334, 0x08076340, 0x080762E0, 0x0807634C, 'second song', 0x08076224,
+  0x080762BC, 0x08076358, 0x08076364, 0x080762E0, 0x0807623C, 0x08076224,
+  0x080762F8, 0x08076370, 0x0807637C, 0x080762E0, 0x08076224,
+  0x08076388, 0x080763A8, 0x080763B4, 0x080762BC, 0x080763C0, 0x080762E0,
+  0x080763CC, 0x080763D8, 0x080763E4, 0x08076404, 0x0807628C, 0x08076424,
+  0x08076430, 0x0807643C, 0x0807645C,
+  0x080762BC, 0x08076468, 0x08076474, 0x080762E0, 0x0807623C, 0x08076224,
+  0x080762F8, 0x08076480, 0x0807648C, 0x080762E0, 0x0807623C, 0x08076298,
 ];
 
 // 0x08016A78's 0x08034214: the music's volume a game gives it from the game's data at 0x02006DE0, its [148], which a new game has at this
@@ -494,7 +495,7 @@ function* storyOpening(c) {
   c.read = c.held;
   c.hblank = null;
   c.movie = null;
-  c.stack = [{ list: STORY_OPENING, pc: 0 }];
+  c.stack = [{ list: STORY_OPENING.map(entry => command(rom, entry)), pc: 0 }];
   c.waited = 0;
   c.done = false;
   c.text = { font: null, shown: 0, next: 0 };
