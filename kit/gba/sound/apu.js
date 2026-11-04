@@ -112,6 +112,8 @@ export function createApu() {
       const b = ((reg(0x70) >> 6) & 1) ^ 1, i = (r - 0x90) * 2;
       return wave[b][(i + rot[b]) & 31] << 4 | wave[b][(i + 1 + rot[b]) & 31];
     }
+    // SOUNDCNT_X's low bits say which channels are still sounding, so a length counter that ran out shows here
+    if (r === 0x84) return (reg(0x84) & 0x80) | (sq[0].on ? 1 : 0) | (sq[1].on ? 2 : 0) | (ch3.on ? 4 : 0) | (ch4.on ? 8 : 0);
     return regs[r - 0x60];
   }
 

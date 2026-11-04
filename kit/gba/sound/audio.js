@@ -15,6 +15,10 @@ import { createApu } from './apu.js';
 const GAIN = 0.5;   // the GBA's full scale is loud next to other pages; half of it leaves headroom
 // the rate the console mixes its sound at once the sound library has started: every 256 cycles (apu.js)
 const PROOF_RATE = 65536;
+// a frame's cycles, and how far the chip's length counters have got when the count of cycles (countCycles) starts, as
+// mGBA measures it: a PSG voice's end shows in that count, and they step every 32768 cycles
+const FRAME_CYCLES = 280896;
+const COUNTER_SEQUENCER_START = 131019;
 
 // the worklet module's processor, made on the page: the module finds what an AudioWorklet gives it, registers its
 // processor, and the page talks to it as it would to the worklet's node
@@ -40,7 +44,7 @@ async function onPage(worklet) {
  */
 export function createSound({ worklet = new URL('./worklet.js', import.meta.url), calls = () => ({}), countCycles = false } = {}) {
   let ctx = null, node = null, muted = false, held = false, songPlayers = null, count = 1;
-  let counter = null;
+  let counter = null, counterApu = null;
   const counterCalls = [];
   const waiting = [], kept = new Map();
   const post = msg => (node ? node.port.postMessage(msg) : waiting.push(msg));
@@ -112,7 +116,12 @@ export function createSound({ worklet = new URL('./worklet.js', import.meta.url)
       const bytes = new Uint8Array(romBuffer);
       songPlayers = Array.from({ length: layout.songs }, (_, n) => bytes[layout.songTable + n * 8 + 4]);
       if (countCycles) {
-        counter = createM4A(bytes, layout, createApu());
+        counterApu = createApu();
+        counter = createM4A(bytes, layout, counterApu);
+        counterApu.run(COUNTER_SEQUENCER_START);
+        // two frames of the original's sound have gone by when this count starts, which sets when its envelopes step
+        counter.frame();
+        counter.frame();
         counterCalls.length = 0;
       }
       if (proof?.mode === 'play') {
@@ -151,6 +160,7 @@ export function createSound({ worklet = new URL('./worklet.js', import.meta.url)
     frameDone() {
       if (!counter) return;
       for (const [name, args] of counterCalls.splice(0)) counter[name](...args);
+      counterApu.run(FRAME_CYCLES);
       counter.frame();
     },
 
