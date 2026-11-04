@@ -8,6 +8,12 @@ export const X_ZONE = 12, THE_MOON = 13;
 export const ALL_EMERALDS = 0x7F;     // ALL_ZONE_CHAOS_EMERALDS: a bit per special stage
 export const MOON_BEATEN = 15;               // CreateExtraStageResults' unlockedLevels[0]
 
+/** theMoonOpens as the game asks it, of `save`, for the `level` being played. */
+export function moonOpensFor(save, { character, level, courseSelectLevel }) {
+  const unlockedLevels = [0, 1, 2, 3].map(c => save.unlockedLevel(c));
+  return theMoonOpens({ character, level, emeralds: save.chaosEmeralds, unlockedLevels, courseSelectLevel });
+}
+
 /**
  * Whether the extra stage opens: `character` (0 is Sonic), the `level` being played, the save's `emeralds` and
  * its four characters' `unlockedLevels`, and `courseSelectLevel` (gMultiplayerCurrentLevel, the level the course

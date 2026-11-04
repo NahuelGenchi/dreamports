@@ -1,0 +1,72 @@
+{
+  "about": "The same with the Moon Zone beaten and X Zone started from here: the row before the Moon Zone stops short.",
+  "frames": 4400,
+  "start": "unlocked=15&tails=13&knuckles=13&amy=13&emeralds=127&current=12&started=12",
+  "onlyInOriginal": [
+    {
+      "at": 3751,
+      "frames": 126,
+      "held": [
+        [69,["A"]],
+        [75,[]]
+      ],
+      "sets": [
+        {
+          "frame": 9,
+          "address": "03005168",
+          "bytes": 2,
+          "value": 15
+        },
+        {
+          "frame": 9,
+          "address": "0300516A",
+          "bytes": 2,
+          "value": 13
+        },
+        {
+          "frame": 9,
+          "address": "0300516C",
+          "bytes": 2,
+          "value": 13
+        },
+        {
+          "frame": 9,
+          "address": "0300516E",
+          "bytes": 2,
+          "value": 13
+        },
+        {
+          "frame": 9,
+          "address": "0300517C",
+          "bytes": 1,
+          "value": 127
+        },
+        {
+          "frame": 9,
+          "address": "0300514C",
+          "bytes": 1,
+          "value": 12
+        },
+        {
+          "frame": 9,
+          "address": "03005124",
+          "bytes": 1,
+          "value": 12
+        }
+      ],
+      "about": "The character select, which the Dreamport does not have yet: A picks Sonic, with the save and the levels this recording is about, which leads to the course select."
+    }
+  ],
+  "held": [
+    [0,[]],
+    [150,["A"]],
+    [156,[]],
+    [3600,["START"]],
+    [3606,[]],
+    [3700,["A"]],
+    [3706,[]],
+    [3880,["DOWN"]],
+    [4240,[]],
+    [4300,["UP"]]
+  ]
+}
