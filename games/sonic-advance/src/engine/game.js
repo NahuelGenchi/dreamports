@@ -959,13 +959,13 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         else drawSonic();
       }
     }],
-    // the CPU partner, just after him (0x3001): his effects' tasks come after his
-    [0x3001, () => {
-      if (!partner) return;
+    // the CPU partner, just after him (0x3001), only when he's there: a task here would run what Sonic's task makes at
+    // this priority on the same frame, as Amy's hearts, which first run on the next
+    ...(partner ? [[0x3001, () => {
       const held = stepPartner(partner, player, buttonHistory, partnerWorld, state.card !== null ? CARD_INPUT : null);
       animatePlayer(partner, held, partnerAnims, partnerWorld);
       drawSonic(partner, partnerAnims);
-    }],
+    }]] : []),
     // the music manager: invincibility's song and an extra life's 1-up jingle in place of the act's music
     // (synth.js runs it, with what it reads of Sonic)
     [0x4000, () => {

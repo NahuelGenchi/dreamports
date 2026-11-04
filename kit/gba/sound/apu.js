@@ -26,7 +26,7 @@ export function createApu() {
   const wave = [new Uint8Array(32), new Uint8Array(32)], rot = [0, 0];
   const sq = [0, 1].map(() => ({ on: false, len: 0, freq: 0, since: 0, pos: 0, env: envelope() }));
   const sweep = { timer: 0, on: false, shadow: 0 };
-  const ch3 = { on: false, len: 0, freq: 0, timer: 0, sample: 0, out: 0 };
+  const ch3 = { on: false, len: 0, freq: 0, timer: 0, sample: 0 };
   const ch4 = { on: false, len: 0, timer: 0, lfsr: 0x7FFF, out: 0, env: envelope() };
   let seqTimer = SEQ_PERIOD, seqStep = 0;
   regs[0x89 - 0x60] = 0x02;   // SOUNDBIAS resets to 0x200, the middle of the 10-bit range
@@ -141,15 +141,12 @@ export function createApu() {
   // the next wave sample: the one at the front of the playing bank (both banks in 64-sample mode)
   function stepWave() {
     const b = (reg(0x70) >> 6) & 1;
+    if (!(reg(0x70) & 0x20)) { ch3.sample = wave[b][rot[b]]; rot[b] = (rot[b] + 1) & 31; return; }
+    // one 64-sample ring through both banks: the front of the playing bank moves to the end of the other one
     ch3.sample = wave[b][rot[b]];
-    if (!(reg(0x70) & 0x20)) rot[b] = (rot[b] + 1) & 31;
-    else {
-      // one 64-sample ring through both banks: the front of the playing bank moves to the end of the other one
-      const carry = wave[b ^ 1][rot[b ^ 1]];
-      wave[b][rot[b]] = carry; wave[b ^ 1][rot[b ^ 1]] = ch3.sample;
-      rot[0] = (rot[0] + 1) & 31; rot[1] = (rot[1] + 1) & 31;
-    }
-    ch3.out = waveSample();
+    const carry = wave[b ^ 1][rot[b ^ 1]];
+    wave[b][rot[b]] = carry; wave[b ^ 1][rot[b ^ 1]] = ch3.sample;
+    rot[0] = (rot[0] + 1) & 31; rot[1] = (rot[1] + 1) & 31;
   }
 
   // advances every oscillator by `cycles`; the squares' duty steps run even while they are silent. As in mGBA, a square
@@ -201,8 +198,7 @@ export function createApu() {
     const on = !!(reg(0x84) & 0x80), nr51 = reg(0x81) & ~(api.muted * 0x11);
     const s1 = on && sq[0].on ? DUTY[reg(0x62) >> 6][sq[0].pos] * sq[0].env.vol : 0;
     const s2 = on && sq[1].on ? DUTY[reg(0x68) >> 6][sq[1].pos] * sq[1].env.vol : 0;
-    // as in mGBA, the wave channel holds its last sample, at the volume it had then, after it stops
-    const s3 = on ? ch3.out : 0;
+    const s3 = on && ch3.on ? waveSample() : 0;
     const s4 = on && ch4.on ? ch4.out * ch4.env.vol : 0;
     let r = (nr51 & 1 ? s1 : 0) + (nr51 & 2 ? s2 : 0) + (nr51 & 4 ? s3 : 0) + (nr51 & 8 ? s4 : 0);
     let l = (nr51 & 0x10 ? s1 : 0) + (nr51 & 0x20 ? s2 : 0) + (nr51 & 0x40 ? s3 : 0) + (nr51 & 0x80 ? s4 : 0);
