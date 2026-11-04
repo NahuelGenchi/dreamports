@@ -5,7 +5,7 @@
 const CARTRIDGE = 0x08000000, PAGE = 0xA000, PITCH = 240;
 
 // 0x0801A7F0's stream, read whole: flags a byte, then for each bit a byte as it is or a copy from up to 4096 back
-function unpack(bytes, at) {
+export function unpack(bytes, at) {
   const size = bytes[at + 1] | (bytes[at + 2] << 8) | (bytes[at + 3] << 16), out = new Uint8Array(size);
   let from = at + 4, to = 0;
   while (to < size) {

@@ -3,10 +3,12 @@
 //
 // The main loop (0x0803B8C8) runs every object's update once a frame, works out the colours through the fade,
 // waits for the V-blank, then copies the colours and runs the V-blank jobs an object asked for. The first screens
-// are a script (0x0802D35C) that plays videos (movie.js) with fades between them.
+// are a script (0x0802D35C) that plays videos (movie.js) with fades between them, and the title screen comes after.
 
 import { REG } from '../../../kit/gba/video.js';
 import { openMovie, decodeFrame } from './movie.js';
+import { createWorld, aimCamera, showWorld, moveWorld, drawWorld } from './world.js';
+import { createSprite, createSprites, stepAnimation, drawSprite, drawText, showSprites } from './sprites.js';
 
 const CARTRIDGE = 0x08000000, PAGE = 0xA000;
 
@@ -49,6 +51,11 @@ export function createCore(video, rom, sound) {
     // the script (0x0802D718): its commands, the next one, and how many frames the last has waited
     script: LOGOS.map(entry => command(rom, entry)), pc: 0, waited: 0, done: false,
     main: null,
+    // 0x02006EA4: the buttons held and just pressed
+    held: 0, pressed: 0,
+    // 0x02000E58 and what 0x08034238 looks at: the last two sounds, and which goes next
+    lastSounds: [0, 0], nextSound: 0,
+    hblank: null,
   };
   // the console after its start-up program: the screen white (forced blank) until the game shows it
   video.write(REG.DISPCNT, 0x80);
@@ -68,8 +75,13 @@ function command(rom, entry) {
 /** One frame: the V-blank's count, then the main loop, up to its next wait for a V-blank. */
 export function step(c, held) {
   c.vblanks++;
+  c.pressed = held & ~c.held;   // 0x08019750
+  c.held = held;
   c.main.next();
 }
+
+/** What a frame does between its lines, as the console's DMA does at each one's end. */
+export function hblank(c, y) { c.hblank?.(y); }
 
 // 0x0803B8C8: the main loop, which waits for the V-blank where it yields
 function* mainLoop(c) {
@@ -79,6 +91,7 @@ function* mainLoop(c) {
   for (;;) {
     if (updateDisplay(c)) yield;
     yield* updateScript(c);
+    if (c.done) break;
     stepFade(c);          // 0x0803FB48
     workOutColours(c);    // 0x0803FBA4
     yield;                // 0x08040E5C
@@ -86,6 +99,118 @@ function* mainLoop(c) {
     c.video.write(REG.DISPCNT, 0x404);   // 0x0803B1D4
     for (const job of c.jobs) job(c);   // 0x0801EE68
     c.jobs.length = 0;
+  }
+  for (let n = TITLE_LOAD_FRAMES; n > 0; n--) yield;
+  yield* titleLoop(c);
+}
+
+// The title screen, 0x08087350's next level, which 0x080155E4 makes when the first screens end
+const TITLE = 0x08087360;
+// The frames between the script's end and the title's first picture, with the screen black: the console's timing, as
+// mGBA measures it, as start-up's is. And how far the animations' clock (0x02007284) has come by that picture
+const TITLE_LOAD_FRAMES = 5, TITLE_CLOCK = -1;
+// 0x0800C34C's animations of the game's name, from the last drawn to the first, and when each makes a sound (0x0800C494)
+const NAME = [0x082AF0E0, 0x082AF0C8, 0x082AF0B0];
+const NAME_SOUNDS = [
+  [[4, 0x0808624C, 0x0808624C], [10, 0x08085D60, 0x08085D6C]],
+  [[12, 0x08085ED4, 0x08085ED4]],
+  [[22, 0x08085D6C, 0x08085D60]],
+];
+// The middle of the screen, which 0x0800C580 draws them from
+const NAME_X = 120, NAME_Y = 80;
+// 0x0200741C and 0x020074AC, the tables 0x0803C120 builds: the game's letters in the two colours Press Start blinks in,
+// with where each letter's picture is, how wide it is and the tiles it takes
+const LETTERS = { map: 0x08B54948 - CARTRIDGE, widths: 0x08B54A48 - CARTRIDGE, tiles: 0x08B54B48 - CARTRIDGE, size: 0x40, count: 2 };
+const LIT = 0x08B547A0 - CARTRIDGE, DIM = 0x08B54740 - CARTRIDGE;
+// 0x08036D68's list at 0x02007D64: its line of text, and how far down the screen
+const PRESS_START = 0x0806F208, TEXT_Y = 140;
+// 0x0802CBBC's list for 0x08001C04: how fast each band of the first layer's lines moves
+const STREAKS = 0x08069B34;
+// 0x0801C83C: the sound of a button on this screen
+const BUTTON_SOUND = 0x08085E5C;
+const KEY_A = 1, KEY_START = 8;
+
+// 0x0802AF14 and 0x0802AD48: a line of text, whose first character, 4, centres it in 0x08036348's box, as wide as the screen
+function pressStart(rom) {
+  const out = [];
+  let at = rom.u32(rom.u32(PRESS_START - CARTRIDGE) - CARTRIDGE) - CARTRIDGE;
+  if (rom.u8(at) === 4) at++;
+  for (; rom.u8(at); at++) out.push(rom.u8(at));
+  let width = 0;
+  for (const char of out) width += rom.u8(LETTERS.widths + char);
+  return { text: out, x: 120 - Math.trunc(width / 2) };
+}
+
+// 0x08034238: whether a sound is among the last two, and 0x080342A4, which keeps it there
+function soundPlaying(c, address) {
+  return c.lastSounds.includes(c.rom.u32(address - CARTRIDGE));
+}
+function playSound(c, address) {
+  c.lastSounds[c.nextSound] = c.rom.u32(address - CARTRIDGE);
+  c.nextSound ^= 1;
+  c.sound?.playEffect(address);
+}
+
+// The main loop on the title screen. In the original A or Start goes on to the load save screen, which isn't ported yet,
+// so here they only make their sound and the screen stays
+function* titleLoop(c) {
+  const { video, rom } = c, at = TITLE - CARTRIDGE;
+  c.movie = null;
+  const world = createWorld(video, rom, TITLE), sprites = createSprites(video, rom);
+  // 0x0802CBBC: the level's colours
+  c.colours.fill(0);
+  for (let i = 0; i < 256; i++) c.colours[i] = rom.u16(rom.u32(at) - CARTRIDGE + i * 2);
+  video.write(REG.BLDCNT, 0x3F40);
+  video.write(REG.BLDALPHA, 0x0808);
+  [0x100, 0, 0, 0x100].forEach((v, i) => video.write(REG.BG3PA + i * 2, v));
+  aimCamera(world, 0, 0);
+  world.layers[0].margin = 1;   // 0x0802F8A0
+  showWorld(world);
+  // 0x08001C04: where each of the lines of the first layer is, and how fast it moves
+  const lines = new Uint16Array(160), speeds = new Int32Array(160);
+  for (let y = 0, from = STREAKS - CARTRIDGE; y < 160; y++) {
+    speeds[y] = rom.view.getInt32(from + 4, true);
+    if (rom.u32(from) === y) from += 8;
+  }
+  // the frame before the first picture, which 0x080155E4's frame runs too
+  for (let y = 0; y < 160; y++) lines[y] += speeds[y];
+  let lastLine = lines[159];
+  c.hblank = y => video.write(REG.BG0HOFS, lines[y]);   // 0x08001A98
+  const { text, x: textX } = pressStart(rom);
+  const name = NAME.map(address => {
+    const sprite = createSprite(rom, address, NAME_X << 8, NAME_Y << 8);
+    sprite.next = sprite.animation.delay + 1;
+    return sprite;
+  });
+  let clock = TITLE_CLOCK, blink = 0;
+  // 0x080155E4's 0x0803FD8C: the fade back from white, after 0x0803FC9C's fade to it
+  c.fade = { kind: 3, level: 64, target: 0, speed: 4 };
+  for (;;) {
+    clock++;
+    moveWorld(world);     // 0x0802F374
+    for (let y = 0; y < 160; y++) lines[y] += speeds[y];   // 0x08001B18
+    name.forEach((sprite, n) => {   // 0x0800C494
+      for (const [frame, sound, unless] of NAME_SOUNDS[n]) {
+        if (sprite.frame === frame && !soundPlaying(c, unless)) playSound(c, sound);
+      }
+      stepAnimation(sprite, clock);
+    });
+    // 0x08036D2C and 0x0801C598: A and Start make their sound
+    if (c.pressed & (KEY_A | KEY_START)) playSound(c, BUTTON_SOUND);
+    const colours = (blink & 16) ? DIM : LIT;   // 0x0801CAD4
+    blink++;
+    stepFade(c);          // 0x0803FB48
+    // 0x0800C580: the line of text, then the name from the last animation to the first
+    drawText(sprites, { ...LETTERS, colours }, text, textX, TEXT_Y, c.colours);
+    for (const n of [2, 1, 0]) drawSprite(sprites, name[n], NAME_X, NAME_Y, c.colours);
+    workOutColours(c);    // 0x0803FBA4
+    video.pal.set(c.faded);   // 0x0803FAC4
+    video.write(REG.DISPCNT, 0x1940);   // 0x0803B1D4
+    video.write(REG.BG0HOFS, lastLine);
+    lastLine = lines[159];
+    drawWorld(world);     // 0x0802F90C
+    showSprites(sprites);
+    yield;                // 0x08040E5C
   }
 }
 
@@ -216,7 +341,7 @@ function* runCommand(c, [kind, what, argument]) {
   } else if (what === 6) {
     c.done = true;
   } else if (what === 11) {
-    c.sound?.playEffect(argument);   // 0x080342A4
+    playSound(c, argument);   // 0x080342A4
   } else if (what === 12) {
     c.sound?.startSong(argument);    // 0x0803407C
   }

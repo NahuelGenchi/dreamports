@@ -6,7 +6,7 @@
   ],
   "parts": [
     {"name": "The copyright screen and the logos", "needs": ["The sound engine"], "recording": "logos", "frames": [0, 518]},
-    {"name": "The title screen", "needs": ["The sound engine"]},
+    {"name": "The title screen", "needs": ["The sound engine"], "recording": "title-screen", "frames": [519, 1799]},
     {"name": "The load save game screen", "needs": ["The sound engine"]},
     {"name": "The main menu", "needs": ["The sound engine"]},
     {"name": "The story's opening scene", "needs": ["The sound engine"]},
