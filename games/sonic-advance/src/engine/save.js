@@ -23,7 +23,7 @@
 // - 0x42C checksum: the sum of the 32-bit words before it
 
 import { browserStorage, cartridgeSave } from '../../../../kit/gba/save.js';
-import { theMoonOpens, ALL_EMERALDS, MOON_BEATEN } from './unlock.js';
+import { moonOpensFor, ALL_EMERALDS, MOON_BEATEN, THE_MOON } from './unlock.js';
 
 const SAVE_KEY = 'onsoku.save';
 const EMERALDS_KEY = 'onsoku.emeralds';   // what came before the save: the Chaos Emeralds alone, as a number
@@ -141,9 +141,13 @@ export function openSave(storage = browserStorage()) {
  */
 export function saveActCleared(save, { level, rings, character = 0, startLevel = 0 }) {
   save.score += (rings << 16) >> 16;
-  const unlockedLevels = [0, 1, 2, 3].map(c => save.unlockedLevel(c));
-  if (theMoonOpens({ character, level, emeralds: save.chaosEmeralds, unlockedLevels, courseSelectLevel: startLevel })) return;
-  save.setUnlockedLevel(character, Math.max(level + 1, unlockedLevels[character]));
+  if (moonOpensFor(save, { character, level, courseSelectLevel: startLevel })) return;
+  save.setUnlockedLevel(character, Math.max(level + 1, save.unlockedLevel(character)));
+}
+
+/** sub_803A54C: Egg X down with the Moon Zone open, which counts as Sonic having got that far. */
+export function saveMoonOpened(save) {
+  save.setUnlockedLevel(0, Math.max(save.unlockedLevel(0), THE_MOON + 1));
 }
 
 /** CreateExtraStageResults: the Moon Zone cleared, which opens everything for Sonic. */
