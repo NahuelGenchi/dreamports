@@ -1,272 +1,275 @@
 {
-  "about": "Crash in the first world's hub with nothing pressed, for 30 seconds: he lands, stands, plays his idle animations and Aku Aku floats around him, with the hub's song. The original gets there from power-on by its own presses, then its random seed and float count are set, so anyone's replay is the same.",
-  "frames": 1800,
-  "start": "hub=1",
+  "about": "From power-on, the first screens and the title screen with Start, then Crash in the first world's hub with nothing pressed, for 30 seconds: he lands, stands, plays his idle animations and Aku Aku floats around him, with the hub's song. The original goes through the screens this doesn't have by its own presses, then its random seed and float count are set, so anyone's replay is the same.",
+  "frames": 2621,
   "held": [
     [
       0,
       []
+    ],
+    [
+      800,
+      [
+        "START"
+      ]
+    ],
+    [
+      806,
+      []
+    ],
+    [
+      821,
+      []
     ]
   ],
+  "clip": {
+    "at": 1101,
+    "frames": 300
+  },
   "onlyInOriginal": [
     {
-      "at": 0,
-      "frames": 3168,
+      "at": 821,
+      "frames": 2347,
       "held": [
         [
           0,
           []
         ],
         [
-          800,
-          [
-            "START"
-          ]
-        ],
-        [
-          806,
-          []
-        ],
-        [
-          1100,
+          279,
           [
             "A"
           ]
         ],
         [
-          1106,
+          285,
           []
         ],
         [
-          1400,
+          579,
           [
             "A"
           ]
         ],
         [
-          1406,
+          585,
           []
         ],
         [
-          2000,
+          1179,
           [
             "A"
           ]
         ],
         [
-          2004,
+          1183,
           []
         ],
         [
-          2060,
+          1239,
           [
             "A"
           ]
         ],
         [
-          2064,
+          1243,
           []
         ],
         [
-          2120,
+          1299,
           [
             "A"
           ]
         ],
         [
-          2124,
+          1303,
           []
         ],
         [
-          2180,
+          1359,
           [
             "A"
           ]
         ],
         [
-          2184,
+          1363,
           []
         ],
         [
-          2240,
+          1419,
           [
             "A"
           ]
         ],
         [
-          2244,
+          1423,
           []
         ],
         [
-          2300,
+          1479,
           [
             "A"
           ]
         ],
         [
-          2304,
+          1483,
           []
         ],
         [
-          2360,
+          1539,
           [
             "A"
           ]
         ],
         [
-          2364,
+          1543,
           []
         ],
         [
-          2420,
+          1599,
           [
             "A"
           ]
         ],
         [
-          2424,
+          1603,
           []
         ],
         [
-          2480,
+          1659,
           [
             "A"
           ]
         ],
         [
-          2484,
+          1663,
           []
         ],
         [
-          2540,
+          1719,
           [
             "A"
           ]
         ],
         [
-          2544,
+          1723,
           []
         ],
         [
-          2600,
+          1779,
           [
             "A"
           ]
         ],
         [
-          2604,
+          1783,
           []
         ],
         [
-          2660,
+          1839,
           [
             "A"
           ]
         ],
         [
-          2664,
+          1843,
           []
         ],
         [
-          2720,
+          1899,
           [
             "A"
           ]
         ],
         [
-          2724,
+          1903,
           []
         ],
         [
-          2780,
+          1959,
           [
             "A"
           ]
         ],
         [
-          2784,
+          1963,
           []
         ],
         [
-          2840,
+          2019,
           [
             "A"
           ]
         ],
         [
-          2844,
+          2023,
           []
         ],
         [
-          2900,
+          2079,
           [
             "A"
           ]
         ],
         [
-          2904,
+          2083,
           []
         ],
         [
-          2960,
+          2139,
           [
             "A"
           ]
         ],
         [
-          2964,
+          2143,
           []
         ],
         [
-          3020,
+          2199,
           [
             "A"
           ]
         ],
         [
-          3024,
+          2203,
           []
         ],
         [
-          3080,
+          2259,
           [
             "A"
           ]
         ],
         [
-          3084,
+          2263,
           []
         ],
         [
-          3140,
+          2319,
           [
             "A"
           ]
         ],
         [
-          3144,
+          2323,
           []
         ]
       ],
-      "about": "From power-on through the logos, the title screen, the save screen, the main menu and the story's opening scene to the hub's first frame, by presses.",
+      "about": "The load save screen, the main menu and the story's opening scene, by presses.",
       "sets": [
         {
-          "frame": 3167,
+          "frame": 2346,
           "address": "02000000",
           "bytes": 4,
           "value": 1
         },
         {
-          "frame": 3167,
+          "frame": 2346,
           "address": "0200762C",
           "bytes": 4,
           "value": 0
         }
       ]
     }
-  ],
-  "clip": {
-    "at": 280,
-    "frames": 300
-  }
+  ]
 }
