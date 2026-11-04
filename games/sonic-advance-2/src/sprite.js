@@ -76,7 +76,10 @@ function command(c, s, at) {
     case -6: {                                                                           // AddHitbox, all zeros taking it away
       s.animCursor += 3;
       const [left, top, right, bottom] = [8, 9, 10, 11].map(i => (rom.u8(at + i) << 24) >> 24);
-      (s.hitboxes ??= [])[rom.u32(at + 4) % 16] = left === 0 && top === 0 && right === 0 && bottom === 0 ? null : { left, top, right, bottom };
+      // a sprite that's turned has its box turned with it
+      const box = { left: s.frameFlags & SPRITE.X_FLIP ? -right : left, top: s.frameFlags & SPRITE.Y_FLIP ? -bottom : top, right: s.frameFlags & SPRITE.X_FLIP ? -left : right, bottom: s.frameFlags & SPRITE.Y_FLIP ? -top : bottom };
+      (s.boxes ??= [])[rom.u32(at + 4) % 16] = box;   // which stays as it was, for what reads it with the box switched off
+      (s.hitboxes ??= [])[rom.u32(at + 4) % 16] = left === 0 && top === 0 && right === 0 && bottom === 0 ? null : box;
       return RUNNING;
     }
     case -7: s.animCursor += 2; s.x = s16(s.x + rom.s16(at + 4)); s.y = s16(s.y + rom.s16(at + 6)); return RUNNING;
