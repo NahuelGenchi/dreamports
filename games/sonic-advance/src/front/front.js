@@ -46,7 +46,7 @@ export function powerOn(ctx) {
  * Returns { stop, step, draw, setView }: setView(w, h) draws a widescreen view of w × h from then on (the
  * original 240 × 160 is the default); step() and draw() are for checking, a frame at a time.
  */
-export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true } = {}) {
+export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true, onGameStart } = {}) {
   const video = createVideo();
   const engine = createEngine(video, rom, sound);
   video.write(REG.DISPCNT, 0x80);   // forced blank, until the game starts
@@ -59,7 +59,7 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
     play: level => { done = true; chosen = level; },
     // Task_805AAF8: the act with nothing cleared yet, and otherwise the course select, which only the versions with
     // a known place for its picture have
-    startGame: () => { if (!courseSelect || save.unlockedLevel(character) === 0 || !offsets.courseSelectBackground) ctx.play(); else createCourseSelect(ctx); },
+    startGame: () => { onGameStart?.(); if (!courseSelect || save.unlockedLevel(character) === 0 || !offsets.courseSelectBackground) ctx.play(); else createCourseSelect(ctx); },
   };
 
   const out = canvas.getContext('2d', { alpha: false });

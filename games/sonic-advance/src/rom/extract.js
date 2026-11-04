@@ -50,6 +50,8 @@ export const SONIC_ANIMATIONS = {
   halfPipeLow: [36, 0], halfPipeMid: [36, 1], halfPipeHigh: [36, 2],
   // held in Egg X's claw (charState 40)
   grabbed: [98, 0],
+  // X Zone's way to the Moon Zone (charStates 52, 50 and 51): looking up, turning into Super Sonic, flying off
+  moonGaze: [397, 0], moonTransform: [398, 0], moonFly: [399, 0],
   // running on past the goal (charState 28)
   actClearRun: [22, 0],
   // standing in his act-clear pose once the boss capsule opens (charState 29)
@@ -87,7 +89,7 @@ export const KNUCKLES_ANIMATIONS = {
 // Sonic's own moves: the air dash, the insta-shield, the B combo and grinding (Tails' and Knuckles' grinding
 // animations are empty, and Amy grinds as he does), and his spin dash's rev, which Knuckles has too
 const SONIC_ONLY = new Set(['airDash', 'instaShield', 'spinAttack', 'somersault', 'slide', 'slideEnd', 'backflip',
-  'grind', 'grindSteep', 'railJump']);
+  'grind', 'grindSteep', 'railJump', 'moonGaze', 'moonTransform', 'moonFly']);
 // Amy's own (charStates 85 to 93, as the character state table has them): her jump's rise, the leap off her hammer,
 // her two swings, the hammer in the air and swirled down, her dive, its slam and the slide's end, and the hearts
 export const AMY_ANIMATIONS = {
@@ -314,6 +316,8 @@ export const EGG_X_ANIMATIONS = {
   689: { eggXHand0: 0, eggXHand1: 1, eggXHand2: 2 },
   690: { eggXBall0: 0, eggXBall1: 1 },
   691: { eggXEggman0: 0, eggXEggman1: 1, eggXEggman2: 2, eggXEggman3: 3 },
+  // the way to the Moon Zone (xending.js): the flash as Sonic turns, and the two lights in the sky
+  398: { superFlash: 1 }, 731: { moonSparkleA: 0 }, 732: { moonSparkleB: 0 },
 };
 // Neo Green Hill's boss, the Egg Hammer Tank (boss_1_egg_hammer_tank.c): its body on its two alternating scripts and
 // without its belt, an arm segment, the hammer, Eggman (still, laughing, hurt) and the belt's four pieces
@@ -465,7 +469,7 @@ const PLAYER_PALETTE = new Set(['chaoCounter', 'indicator']);
 // the skating stones' debris, and the bubbles Sonic lets out under water and the drowning countdown's numbers,
 // which grow to full size, and in the multiplayer modes the mystery item box growing and shrinking and the
 // arrows toward the opponents, and the game over's words; their frames also keep their OAM pieces as the hardware reads them
-const ROTATED = new Set(['walk', 'run', 'bounce', 'marbleTrack', 'tailsSpin', 'marbleTrackTails', 'rockDebrisSmall', 'rockDebrisLarge', 'iceShardsSmall', 'iceShardsLarge', 'swingingHook',
+const ROTATED = new Set(['moonSparkleA', 'moonSparkleB', 'walk', 'run', 'bounce', 'marbleTrack', 'tailsSpin', 'marbleTrackTails', 'rockDebrisSmall', 'rockDebrisLarge', 'iceShardsSmall', 'iceShardsLarge', 'swingingHook',
   'hammerTankArm', 'hammerTankHammer', 'hammerTankBelt0', 'hammerTankBelt1', 'hammerTankBelt2', 'hammerTankBelt3',
   'capsuleSmall', 'capsuleShell', 'animalRobin', 'animalParrot', 'eggPressSpring', 'eggPressBase', 'eggBallStarDisc',
   'stoneDebrisSmall', 'stoneDebrisLarge', 'iceStoneDebrisSmall', 'iceStoneDebrisLarge',
@@ -543,7 +547,8 @@ export async function extractAssets(buffer, onProgress = () => {}, { level = 0, 
     info: { ...id.header, region: id.region, sha1: id.sha1, version: id.known?.name ?? null, offsets },
     sprites, acts, first: level, character, stage: acts[level].stage, titleCard: acts[level].titleCard, physics: { spinDashSpeeds },
     heartPatterns: heartPatterns(rom, offsets.heartOffsets),
-    hud: extractHud(rom, offsets, water, acts[level].stage.extra?.facePalette, character),
+    // X Zone's way to the Moon Zone turns Sonic into Super Sonic, whose colours the face takes on as in the Moon Zone
+    hud: extractHud(rom, offsets, water, acts[level].stage.extra?.facePalette ?? (level === 12 && character === 0 ? animationPalette(rom, tables, 399).slice(0, 16) : undefined), character),
     gameOver: extractGameOver(rom, offsets, acts[level].stage.extra?.facePalette, character),
     // where the songs are; the sound engine reads them from the ROM itself
     sound: soundLayout(rom, offsets.musicPlayers),

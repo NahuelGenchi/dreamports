@@ -35,7 +35,7 @@ import { ITEM_TASKS, shieldTask, starsTask, magneticRing } from './items.js';
 import { createBossCapsule } from './capsule.js';
 import { SPECIAL_SPRING } from './specialspring.js';
 import { createEggRocket, EGG_ROCKET } from './eggrocket.js';
-import { X_ZONE } from './unlock.js';
+import { X_ZONE, moonOpensFor } from './unlock.js';
 import { screenShake, SCREEN_SHAKE, SHAKE } from './screenshake.js';
 import { arcTan2 } from './trig.js';
 import { SONG } from '../sound/songs.js';
@@ -44,7 +44,7 @@ import { BOOST_MODE_SE } from '../rom/sa2boost.js';
 import { createExtraStage } from './extra.js';
 import { createClock } from '../../../../kit/gba/clock.js';
 import { createPauseMenu, PAUSE_PRIORITY } from './pause.js';
-import { openSave, saveActCleared, WRITE_FRAMES } from './save.js';
+import { openSave, saveActCleared, saveMoonOpened, WRITE_FRAMES } from './save.js';
 import { playerControls } from './input.js';
 
 const MAX_BRAKE_DUST = 20;   // the original keeps a pool of 20 brake dust clouds
@@ -80,6 +80,8 @@ const CAMERA_STOPS = { 1: 768 };
 const START_FRAME_COUNT = 3838;
 // what an act adds to the stage: its StageInit's settings on each start (init) and its background's update
 // after the camera's (background), by level
+// CreateStageResults' answer: how long after its `wait` the results last, which X Zone's way to the Moon Zone waits for
+const RESULTS_LAST = 285;
 const LEVEL_EXTRAS = { [EGG_ROCKET]: createEggRocket };
 // what Sonic reads while the title card holds him: the jump and attack buttons InitializePlayer leaves held, never pressed
 const CARD_INPUT = { left: false, right: false, up: false, down: false, jump: true, attack: true, boost: false, trick: false, jumpPressed: false, attackPressed: false, boostPressed: false, trickPressed: false };
@@ -392,8 +394,11 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     reachGoal() { state.goalReached = true; state.clockStopped = true; state.ringsStopped = true; },
     // the act's end has Sonic now (STAGE_FLAG__2: past the goal, or a beaten boss), for the optional Boost Mode
     get actOver() { return state.ringsStopped; },
-    stageResults() {
+    stageResults(rings, time, nextFrame = false) {
+      resultsWait = nextFrame;
       state.noPause = true;
+      // the Moon Zone opening is decided first: X Zone's way to it goes on behind its results, which end by themselves
+      state.moonResults = world.moonOpens();
       saveActCleared(save, { level: state.level, rings: state.ringCount, character, startLevel: options.startLevel ?? 0 });
       actCleared();
       let courseTime = state.courseTime;
@@ -401,10 +406,31 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         extras.stopBackground();
         courseTime = state.checkpointTime > EGG_ROCKET_TIME ? state.checkpointTime - EGG_ROCKET_TIME : 1;
       }
-      state.results = createResults(act.results, { rings: state.ringCount, courseTime, level: state.level });
-      sound.play(state.level & 1 ? SONG.BOSS_CLEAR : SONG.ACT_CLEAR);
+      state.results = createResults(act.results, { rings: state.ringCount, courseTime, level: state.level, longEnd: state.level === X_ZONE && !state.moonResults });
+      sound.play(state.level === X_ZONE ? SONG.FINAL_CLEAR : state.level & 1 ? SONG.BOSS_CLEAR : SONG.ACT_CLEAR);
       sound.musicOff();
       tasks.add(resultsTask, 0x2100);
+      return state.results.wait + RESULTS_LAST;
+    },
+    // the Moon Zone's rule (unlock.js), with what's in the save now
+    moonOpens: () => moonOpensFor(save, { character, level: state.level, courseSelectLevel: options.startLevel ?? 0 }),
+    // sub_803A54C: Egg X has fallen with the Moon Zone open
+    moonOpened: () => saveMoonOpened(save),
+    // GoToNextLevel from X Zone's way to the Moon Zone: every task goes, the save is written, and the Moon Zone starts
+    toTheMoon() {
+      frozen = { render, state: { ...state } };
+      tasks.stop();
+      sound.stopAll();
+      const next = () => {
+        ended = true;
+        // the screen goes black as the Moon Zone loads
+        frozen = { state, render() { const c = canvas.getContext('2d'); c.fillStyle = '#000'; c.fillRect(0, 0, canvas.width, canvas.height); } };
+        options.onNextZone?.({
+          level: state.level + 1, moon: true, score: state.score, lives: state.lives, seed: state.seed, continues: state.continues,
+          frameCount: (state.frameCount + 1) >>> 0,
+        });
+      };
+      if (save.write()) { saving = WRITE_FRAMES; afterSave = next; } else restart = next;
     },
     // past the act's loop point (sub_80232D0), Sonic and the camera go back by its distance while the camera
     // moves and follows him; the background doesn't move with them. Returns how far he goes. Everything drawn so
@@ -718,15 +744,22 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     state.clockStopped = true; state.hud.sprites = [];
   }
   const hudTask = {
-    run() { if (updateHud(state.hud, { ...state, stageTime: state.tick })) sound.play(SONG.TIMER); return true; },
+    run() {
+      if (updateHud(state.hud, { ...state, stageTime: state.tick })) sound.play(SONG.TIMER);
+      // the flash as Sonic turns loads Super Sonic's colours into the sprite palette row the face uses (xending.js)
+      if (player.superColours) state.hud.sprites = state.hud.sprites.map(h => (h[0] === 'face' ? ['faceSuper', h[1], h[2]] : h));
+      return true;
+    },
     destroy() { state.hud.sprites = []; },
   };
   // the results' task and their pieces' (0x2100 and 0x2120): the score counts up, and once they are over the
   // original destroys every task and goes on to the next act (GoToNextLevel), stopping all sound. It writes the
   // save, then starts the act (GameStageStart), whose loading takes it the whole next frame. Past the last act
   // decoded, the next zone's acts are decoded in their turn, the screen keeping this frame meanwhile.
+  let resultsWait = false;
   const resultsTask = {
     run() {
+      if (resultsWait) { resultsWait = false; return true; }
       const r = runResults(state.results, {
         player, camera: state.cam, stageTime: state.tick, playSound: song => sound.play(song),
         addScore(n) {
@@ -736,8 +769,9 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         },
       });
       if (r) return true;
-      frozen = { render, state: { ...state } };
       state.results = null;
+      if (state.moonResults) return false;   // on behind them to the Moon Zone (xending.js)
+      frozen = { render, state: { ...state } };
       tasks.stop();
       sound.stopAll();
       // the next zone's game starts on the act's first frame, so the frame the loading takes is counted here
@@ -748,7 +782,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
           frameCount: (state.frameCount + 1) >>> 0,
         });
       };
-      if (save.write()) { saving = WRITE_FRAMES; afterSave = next; } else restart = next;
+      // the normal ending after X Zone's results writes the save itself (normalending.js)
+      if (state.level !== X_ZONE && save.write()) { saving = WRITE_FRAMES; afterSave = next; } else restart = next;
       return false;
     },
   };
@@ -897,7 +932,9 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       state.card = null; state.clockStopped = false; state.cardsShown = state.level; state.noPause = false;
       state.cardOver = true;   // its last frame, which clears the blend it set
       if (mode) { firstCard = false; mode.cardEnd(); return; }
-      state.hud = createHud(firstCard ? hudFlash : 1);
+      // Sonic's first frame in X Zone from the course select shows nothing past the string, whatever the save holds
+      // (x-zone-the-moon-opens), where the other characters' show the tiles the other acts do
+      state.hud = createHud(firstCard ? hudFlash : 1, firstCard && character === SONIC && stage.level === X_ZONE ? null : 'pastTheFont');
       firstCard = false;
       tasks.add(hudTask, 0x2180);
     }],

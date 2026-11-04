@@ -56,7 +56,9 @@ const debug = params.has('debug'), specialTest = params.has('special');
 // `?level=N` starts the level the ROM's tables number N (2 is Secret Base Zone act 1) instead of the first
 const firstLevel = Number(params.get('level') ?? 0) | 0;
 // `?unlocked=N` plays with a save of its own, kept nowhere, with the character's progress at N, the level after the
-// last one cleared, for the proof's recordings of the course select; the player's own save stays as it is
+// last one cleared, for the proof's recordings of the course select; the player's own save stays as it is. In
+// that save `&sonic=N`, `&tails=N`, `&knuckles=N` and `&amy=N` are the others' progress, and `&emeralds=N` its Chaos
+// Emeralds, a bit each, for the recordings of the Moon Zone's rule (unlock.js)
 const unlocked = params.has('unlocked') ? Number(params.get('unlocked')) & 0xFFFF : null;
 // a multiplayer stage (`?level=14`) is played by `&players=N` players, 2 to 4 (2 if not given), each on their
 // own screen; `&seed=` and `&chao=` set what the link hands the GBAs as the round starts (the shared random
@@ -239,8 +241,15 @@ romFile.addEventListener('change', async () => {
 // as it goes; the continues the special stages have given, kept for this visit; and the level the game was
 // started on, the course select's (gMultiplayerCurrentLevel: the level pick's, or 0 from the start)
 const save = unlocked === null ? openSave() : openSave(null);
-if (unlocked !== null) save.setUnlockedLevel(character, unlocked);
-let continues = 0, startLevel = 0, currentLevel = 0;   // currentLevel is gCurrentLevel, which a new start leaves as it was
+// as Game Start is pressed, so that the first write is what the language screen leaves, as the proof's original has it
+const proofSave = () => {
+  if (unlocked === null) return;
+  ['sonic', 'tails', 'knuckles', 'amy'].forEach((name, c) => { if (params.has(name)) save.setUnlockedLevel(c, Number(params.get(name)) & 0xFFFF); });
+  save.setUnlockedLevel(character, unlocked);
+  if (params.has('emeralds')) save.chaosEmeralds = Number(params.get('emeralds')) & ALL_EMERALDS;
+};
+// (`&current=N` and `&started=N` give that save's course select those two as a game before it left them, for the rule)
+let continues = 0, startLevel = unlocked === null ? 0 : Number(params.get('started') ?? 0) | 0, currentLevel = unlocked === null ? 0 : Number(params.get('current') ?? 0) | 0;   // currentLevel is gCurrentLevel, which a new start leaves as it was
 
 // Sonic Rush's boost, an extra on top of the original game: off unless chosen, like the widescreen view. Its
 // effects and sound come from the player's own Sonic Rush ROM.
@@ -418,7 +427,7 @@ function start(buffer, assets) {
     front = null;
     if (level === undefined) play(assets);
     else playChosen(level, frameCount);
-  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level') });
+  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level'), onGameStart: proofSave });
   fitScreen();
   screen.focus();
 }
@@ -486,11 +495,11 @@ async function restartGame() {
 
 // the last act decoded is over: the next zone's acts, decoded from the ROM now, played on with the score, the
 // lives and the random numbers carried over (GameStageStart). Past the zones this game has, the screen stays.
-async function nextZone({ level, ...carry }) {
+async function nextZone({ level, moon = false, ...carry }) {
   continues = carry.continues ?? continues;
-  // past X Zone the Moon Zone opens for Sonic with all seven Chaos Emeralds (unlock.js; the ROM also wants every
-  // character to have cleared X Zone, which waits for the character select); otherwise the normal ending comes
-  if (level === THE_MOON && (character !== 0 || save.chaosEmeralds !== ALL_EMERALDS)) { queueMicrotask(() => endGame(playing, 'congratulations')); return; }
+  // an X Zone's results come to an end only in the normal ending; its other way on, Egg X's when the Moon Zone
+  // has opened (xending.js), comes with `moon`
+  if (level === THE_MOON && !moon) { queueMicrotask(() => endGame(playing, 'congratulations')); return; }
   const from = game;
   let assets;
   try {

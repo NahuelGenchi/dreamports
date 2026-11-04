@@ -20,7 +20,7 @@
     { "name": "Angel Island Zone act 2" },
     { "name": "Egg Rocket Zone" },
     { "name": "Cosmic Angel Zone" },
-    { "name": "X Zone" },
+    { "name": "X Zone", "recording": "x-zone-the-moon-opens", "frames": [2173, 9609] },
     { "name": "The Moon Zone" },
     { "name": "Special stage 1" },
     { "name": "Special stage 2" },
