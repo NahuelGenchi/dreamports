@@ -17,6 +17,7 @@ import { createCore, step } from './core.js';
 import { logos } from './logos.js';
 import { intro } from './intro.js';
 import { soundLayout } from './sound.js';
+import { startFight } from './fight.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from: the USA one, whose
 // addresses the code reads at
@@ -67,11 +68,17 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the logos, the intro and the title screen. What comes after the title screen, the main menu,
+// The game so far: the logos, the intro, the title screen and the main menu, with a fight's opening from a start point. What comes after the title screen, the main menu,
 // is not ported yet, so the screen stays black there.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
   core.main = c => logos(c, intro);
+  // a recording's start point, as nothing leads to a fight yet: fight=training&vblanks=<count> opens one (fight.js)
+  const asked = new URLSearchParams(location.search);
+  if (asked.get('fight') === 'training') {
+    core.startUp = 1;
+    core.main = c => startFight(c, Number(asked.get('vblanks')));
+  }
   return { step(keys) { step(core, keys); } };
 }
 
