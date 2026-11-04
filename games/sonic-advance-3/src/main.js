@@ -70,7 +70,7 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the language screen, then Route 99's overworld, as what comes between them isn't ported yet, and act 1's
+// The game so far: the language screen and the name entry, then Route 99's overworld, as what comes between them isn't ported yet, and act 1's
 // opening, which only a start point reaches so far.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
