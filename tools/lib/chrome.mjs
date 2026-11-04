@@ -72,9 +72,10 @@ const NO_CONTROLLERS = `Object.defineProperty(Navigator.prototype, 'getGamepads'
 const QUIET = ['--js-flags=--optimize-for-size', '--disable-extensions', '--disable-component-update', '--disable-background-networking', '--disable-sync', '--no-pings', '--disable-default-apps',
   '--disable-domain-reliability', '--disable-client-side-phishing-detection', '--disable-breakpad', '--metrics-recording-only',
   '--disable-features=Translate,OptimizationHints,MediaRouter,DialMediaRouteProvider,CertificateTransparencyComponentUpdater,AutofillServerCommunication,OptimizationGuideOnDeviceModel,OnDeviceModelPerformanceParams'];
-// A browser nobody sees needs no graphics chip and no process of its own for one. A window keeps them, as a person sees it
-// stutter without: drawing it on the processor saves little power, and it was 5 times as often late
-const UNSEEN = ['--headless=new', '--hide-scrollbars', '--mute-audio', '--disable-gpu', '--in-process-gpu', '--window-size=320,240', ...QUIET];
+// A browser nobody sees needs no graphics chip. A window keeps it, as a person sees it stutter without: drawing it on the
+// processor saves little power, and it was 5 times as often late. Graphics in the browser's own process (--in-process-gpu)
+// would save 18 MB, and end the browser wherever they can't start, such as on GitHub's machines or with a dead DISPLAY
+const UNSEEN = ['--headless=new', '--hide-scrollbars', '--mute-audio', '--disable-gpu', '--window-size=320,240', ...QUIET];
 
 /**
  * Opens the browser. `profile` is its own folder, emptied first when `fresh`. Resolves to a page to drive:
@@ -93,9 +94,7 @@ export async function openChrome({ profile, headless = true, fresh = true, contr
     ...(headless ? UNSEEN : QUIET),
     'about:blank',
   ];
-  // one nobody sees has no use for a screen, and with its graphics in its own process, one it can't reach ends it
-  const { DISPLAY, WAYLAND_DISPLAY, ...noScreen } = process.env;
-  const chrome = spawn(findChrome(), args, { stdio: 'ignore', env: headless ? noScreen : process.env });
+  const chrome = spawn(findChrome(), args, { stdio: 'ignore' });
   // a tool that's stopped, or ends on an error, takes with it a browser nobody could close by hand
   if (headless) {
     process.once('exit', () => chrome.kill('SIGKILL'));
