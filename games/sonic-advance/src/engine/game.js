@@ -746,8 +746,6 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   const hudTask = {
     run() {
       if (updateHud(state.hud, { ...state, stageTime: state.tick })) sound.play(SONG.TIMER);
-      // the flash as Sonic turns loads Super Sonic's colours into the sprite palette row the face uses (xending.js)
-      if (player.superColours) state.hud.sprites = state.hud.sprites.map(h => (h[0] === 'face' ? ['faceSuper', h[1], h[2]] : h));
       return true;
     },
     destroy() { state.hud.sprites = []; },
@@ -769,9 +767,10 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         },
       });
       if (r) return true;
-      state.results = null;
-      if (state.moonResults) return false;   // on behind them to the Moon Zone (xending.js)
+      // on behind them to the Moon Zone (xending.js)
+      if (state.moonResults) { state.results = null; return false; }
       frozen = { render, state: { ...state } };
+      state.results = null;
       tasks.stop();
       sound.stopAll();
       // the next zone's game starts on the act's first frame, so the frame the loading takes is counted here
@@ -952,6 +951,10 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         // in a multiplayer mode he tells the others where he is and how he looks, and is drawn as they see him
         if (mode) mode.send();
         else drawSonic();
+        // as Sonic turns into Super Sonic his animation's colours load into the sprite palette row the face uses,
+        // frame by frame (xending.js), and the screen shows the row as this frame leaves it
+        const face = player.state === 'moonTransform' ? `faceTurn${Math.max(player.anim.i, 0)}` : player.state === 'moonFly' ? 'faceSuper' : null;
+        if (face) state.hud.sprites = state.hud.sprites.map(h => (h[0] === 'face' ? [face, h[1], h[2]] : h));
       }
     }],
     // the music manager: invincibility's song and an extra life's 1-up jingle in place of the act's music

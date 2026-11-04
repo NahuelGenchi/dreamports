@@ -507,6 +507,7 @@ export async function extractAssets(buffer, onProgress = () => {}, { level = 0, 
 
   await onProgress(`Decoding ${['Sonic', 'Tails', 'Knuckles', 'Amy'][character]}…`);
   const tables = spriteTables(rom, offsets.spriteTables);
+  const turning = level === 12 && character === 0;
   // the zone's acts from `level` on, which share the zone's looks for the objects that differ by level
   // (the extra stage, the Moon Zone, is X Zone's act 2 but only ever comes on its own)
   const levels = Object.keys(LEVELS).map(Number).filter(l => l >= level && LEVELS[l].zone === info.zone && (l === level || !LEVELS[l].extra)).sort((a, b) => a - b);
@@ -548,7 +549,8 @@ export async function extractAssets(buffer, onProgress = () => {}, { level = 0, 
     sprites, acts, first: level, character, stage: acts[level].stage, titleCard: acts[level].titleCard, physics: { spinDashSpeeds },
     heartPatterns: heartPatterns(rom, offsets.heartOffsets),
     // X Zone's way to the Moon Zone turns Sonic into Super Sonic, whose colours the face takes on as in the Moon Zone
-    hud: extractHud(rom, offsets, water, acts[level].stage.extra?.facePalette ?? (level === 12 && character === 0 ? animationPalette(rom, tables, 399).slice(0, 16) : undefined), character),
+    hud: extractHud(rom, offsets, water, acts[level].stage.extra?.facePalette ?? (turning ? animationPalette(rom, tables, 399).slice(0, 16) : undefined), character,
+      turning ? animationFrames(rom, tables, 398, 0, animationPalette(rom, tables, 0)).frames.map(f => f.palette.slice(0, 16)) : []),
     gameOver: extractGameOver(rom, offsets, acts[level].stage.extra?.facePalette, character),
     // where the songs are; the sound engine reads them from the ROM itself
     sound: soundLayout(rom, offsets.musicPlayers),
@@ -907,11 +909,11 @@ function paletteVariants(base, animations, banks) {
 // The HUD and the title card, and in an act with water their sheets in its colours (`under`): the HUD's
 // palettes are the ones palette 423 has in their slots, and the card is coloured from its own while it shows.
 const CHARACTER_SELECT_GFX = 39;
-function extractHud(rom, offsets, water, facePalette, character) {
+function extractHud(rom, offsets, water, facePalette, character, faceTurns) {
   // UI graphics 39, which the character select loads into sprite VRAM from tile 1 and nothing writes over before
   // the act: its tiles 19 and 20 are the sprite VRAM's 20 and 21 the zero-ring count reads (engine/hud.js)
   const leftover = rom.requirePtr(offsets.uiGraphics + CHARACTER_SELECT_GFX * 28, 'UI graphics 39') + 19 * 32;
-  const { image, ...rects } = hudGraphics(rom, offsets.uiGraphics, facePalette, null, character, leftover);
+  const { image, ...rects } = hudGraphics(rom, offsets.uiGraphics, facePalette, null, character, leftover, faceTurns);
   return { sheet: toCanvas(image), under: water ? toCanvas(tintImage(image, water.blend)) : null, ...rects };
 }
 

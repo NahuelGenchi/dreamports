@@ -11,7 +11,6 @@ const RIGHT = { left: false, right: true, up: false, down: false, jump: false, a
 const LEFT = { ...RIGHT, right: false, left: true };
 const FADE_FROM = 3072;   // Sonic's x where the screen starts to fade to white (qWorldX > 0xBFFFF)
 const MOON_RUN_TO = 3680, MOON_FLY_TO = 3872;
-const COLOURS_AT = 5;   // the flash's frames left when its script loads Super Sonic's colours
 
 /**
  * The task the wrecked Egg X starts once it has landed (priority 0x1FFF, before the objects'): the base comes
@@ -103,7 +102,6 @@ function transformFlash() {
     run(ctx) {
       animate(s, ctx.anims);
       ctx.draw(s, Math.floor(ctx.player.x), Math.floor(ctx.player.y));
-      if (life === COLOURS_AT) ctx.player.superColours = true;
       return --life !== 0;
     },
   };
