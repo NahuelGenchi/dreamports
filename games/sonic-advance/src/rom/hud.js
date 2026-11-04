@@ -41,18 +41,19 @@ function drawTiles(rom, img, x, y, tilesAt, wide, high, palette) {
  * The HUD's images on one sheet: { image, glyphs, ring, face }. glyphs[0–10] are white '0'–'9' and ':',
  * glyphs[11–21] the red ones; each rect is [x, y, w, h] on the sheet. The digits and the ring use the font's
  * palette (the HUD loads it into OBJ palette 6), or `fontPalette` in its place, the face its own (the same as
- * the character's). The face is `character`'s (0 Sonic, 1 Tails, 2 Knuckles, 3 Amy). It shares its palette
+ * the character's). The face is `character`'s (0 Sonic, 1 Tails, 2 Knuckles, 3 Amy). `pastFont` is the two tiles a zero-ring count reads
+ * past its string (`pastTheFont`), the first frame after the course select. It shares its palette
  * with the character's sprite, so in the colours `facePalette` another sprite loads there (Super Sonic's, in the
  * Moon Zone) the sheet has it again as `faceSuper`.
  */
-export function hudGraphics(rom, tableAt, facePalette = null, fontPalette = null, character = 0) {
+export function hudGraphics(rom, tableAt, facePalette = null, fontPalette = null, character = 0, pastFont = null) {
   const entry = i => ({
     tiles: rom.requirePtr(tableAt + i * ENTRY, `UI graphics ${i}`),
     palette: readColors(rom, rom.requirePtr(tableAt + i * ENTRY + 4, `UI palette ${i}`), 16),
   });
   const font = entry(FONT), ring = entry(HUD_RING), face = entry(FACE_SONIC + character);
   if (fontPalette) font.palette = fontPalette;
-  const image = new ImageData(2 * GLYPHS_PER_SET * 8 + 32 + 32, 32);
+  const image = new ImageData(2 * GLYPHS_PER_SET * 8 + 32 + 32 + 8, 32);
   const glyphs = [];
   for (let g = 0; g < 2 * GLYPHS_PER_SET; g++) {
     const tile = (g < GLYPHS_PER_SET ? WHITE_DIGITS + 2 * g : RED_DIGITS + 2 * (g - GLYPHS_PER_SET));
@@ -63,5 +64,7 @@ export function hudGraphics(rom, tableAt, facePalette = null, fontPalette = null
   drawTiles(rom, image, ringX, 0, ring.tiles, 4, 4, font.palette);
   drawTiles(rom, image, faceX, 0, face.tiles, 2, 2, face.palette);
   if (facePalette) drawTiles(rom, image, faceX + 16, 0, face.tiles, 2, 2, facePalette);
-  return { image, glyphs, ring: [ringX, 0, 32, 32], face: [faceX, 0, 16, 16], ...(facePalette && { faceSuper: [faceX + 16, 0, 16, 16] }) };
+  const pastX = faceX + 32;
+  if (pastFont !== null) drawTiles(rom, image, pastX, 0, pastFont, 1, 2, font.palette);
+  return { image, glyphs, ring: [ringX, 0, 32, 32], face: [faceX, 0, 16, 16], pastTheFont: [pastX, 0, 8, 16], ...(facePalette && { faceSuper: [faceX + 16, 0, 16, 16] }) };
 }

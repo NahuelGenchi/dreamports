@@ -7,6 +7,7 @@
     { "name": "The title screen", "recording": "neo-green-hill-act-1", "frames": [902, 1252] },
     { "name": "The main menu", "recording": "neo-green-hill-act-1", "frames": [1253, 1650] },
     { "name": "The character select", "recording": "neo-green-hill-act-1", "frames": [1651, 1778] },
+    { "name": "The course select", "recording": "course-select-first-act", "frames": [3751, 3874] },
     { "name": "Neo Green Hill Zone act 1" },
     { "name": "Neo Green Hill Zone act 2" },
     { "name": "Secret Base Zone act 1" },

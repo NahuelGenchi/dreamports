@@ -5,8 +5,8 @@
 //
 // From the 34th frame Left and Right turn the row, with the key repeat the main menu set, 16 frames a turn. A picks
 // the character in the middle: it strikes its pose, the others leave and the screen fades to black, and the act
-// starts, or the course select once the character has cleared a level, which isn't built yet (so the act). B fades
-// the screen out and goes back to the main menu.
+// starts, or the course select (courseselect.js) once the character has cleared a level. B fades the screen out and
+// goes back to the main menu.
 //
 // CheckCPUPartnerUnlock watches the keys throughout: Up on Sonic, then Right, Down, Right, L, Right, R, Right and A,
 // and the ring sound plays as the screen ends, and Tails comes along as the CPU's partner (gTailsEnabled).
@@ -19,6 +19,7 @@ import { SONG } from '../sound/songs.js';
 import { SINE } from '../engine/trig.js';
 import { createUiTask, uiGfxStackInit, uiGraphics, loadUiGfx, drawUiText, drawUiGlyphs, glyphs, createFade, fadeStep } from './ui.js';
 import { createMainMenu } from './title.js';
+import { createCourseSelect } from './courseselect.js';
 
 const OBJ_VRAM = 0x10000;
 const ANIM_CHARACTERS = 722, ANIM_BACKDROP = 723, ANIM_BLOCK = 730;
@@ -51,7 +52,8 @@ const line = (unkA, unkC, unkE, unk10, unk12, unk8) => ({ unkA, unkC, unkE, unk1
 
 /**
  * CreateCharacterSelectionScreen. `ctx` has the engine, the sprite tables, the save, the ROM's offsets (`uiGraphics`)
- * and `play({ character, partner })`, called where the act starts. `selected` is the character the row starts on.
+ * and what leads on from it: `toCourseSelect()`, `play()`, and `character` and `partner` set to what's chosen. `selected`
+ * is the character the row starts on.
  */
 export function createCharacterSelect(ctx, selected = 0) {
   const e = ctx.engine, gfx = id => uiGraphics(e.rom, ctx.offsets.uiGraphics, id);
@@ -227,7 +229,8 @@ function pick(t) {
   t.main = leave;
 }
 
-// Task_805AAF8: after a while the screen fades to black, and then the act. The code's last key makes it the partner's
+// Task_805AAF8: after a while the screen fades to black, and then the act, or the course select. The code's last key brings
+// the partner
 function leave(t) {
   const screen = t.data, { ctx } = screen, e = ctx.engine;
   if (++screen.frames > PICK_END) {
@@ -237,10 +240,19 @@ function leave(t) {
     e.destroyTask(screen.characters);
     e.destroyTask(screen.title);
     if (partner) e.playSong(SONG.RING);
-    // the course select comes here once the character has cleared a level (unlockedLevels), which isn't built yet.
+    ctx.character = screen.picked;
+    ctx.partner = partner;
+    if (ctx.toCourseSelect()) {
+      e.destroyTask(t);
+      e.dispCnt &= 0xFFF;
+      e.bldCnt = 0;
+      e.bldY = 0;
+      createCourseSelect(ctx);
+      return;
+    }
     // Loading the act takes the GBA (mGBA) past the next V-blank, so it starts a frame later, and the windows and the
     // blend the original turns off here never reach the screen, which stays black.
-    t.main = () => { e.destroyTask(t); ctx.play({ character: screen.picked, partner }); };
+    t.main = () => { e.destroyTask(t); ctx.play(); };
   } else if (screen.frames > PICK_WAIT) fadeStep(e, screen.fade);
 }
 

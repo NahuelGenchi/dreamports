@@ -541,7 +541,7 @@ function* readAssets(rom, id, { level = 0, character = 0, partner = false } = {}
   return {
     id, info: { ...id.header, region: id.region, sha1: id.sha1, version: id.known?.name ?? null, offsets },
     sprites, acts, first: level, character, partner: !!partnerAnims, stage: acts[level].stage, titleCard: acts[level].titleCard, physics: { spinDashSpeeds },
-    hud: extractHud(rom, offsets.uiGraphics, water, acts[level].stage.extra?.facePalette, character),
+    hud: extractHud(rom, offsets, water, acts[level].stage.extra?.facePalette, character),
     gameOver: extractGameOver(rom, offsets, acts[level].stage.extra?.facePalette, character),
     // where the songs are; the sound engine reads them from the ROM itself
     sound: soundLayout(rom, offsets.musicPlayers),
@@ -901,8 +901,12 @@ function paletteVariants(base, animations, banks) {
 
 // The HUD and the title card, and in an act with water their sheets in its colours (`under`): the HUD's
 // palettes are the ones palette 423 has in their slots, and the card is coloured from its own while it shows.
-function extractHud(rom, tableAt, water, facePalette, character) {
-  const { image, ...rects } = hudGraphics(rom, tableAt, facePalette, null, character);
+const CHARACTER_SELECT_GFX = 39;
+function extractHud(rom, offsets, water, facePalette, character) {
+  // UI graphics 39, which the character select loads into sprite VRAM from tile 1 and nothing writes over before
+  // the act: its tiles 19 and 20 are the sprite VRAM's 20 and 21 the zero-ring count reads (engine/hud.js)
+  const leftover = rom.requirePtr(offsets.uiGraphics + CHARACTER_SELECT_GFX * 28, 'UI graphics 39') + 19 * 32;
+  const { image, ...rects } = hudGraphics(rom, offsets.uiGraphics, facePalette, null, character, leftover);
   return { sheet: toCanvas(image), under: water ? toCanvas(tintImage(image, water.blend)) : null, ...rects };
 }
 

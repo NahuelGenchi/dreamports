@@ -5,6 +5,7 @@ export const SONG = {
   INTRO: 1,                // MUS_INTRO
   TITLE_FANFARE: 2,        // MUS_TITLE_FANFARE
   CHARACTER_SELECTION: 3,  // MUS_CHARACTER_SELECTION: the Options menu stops it as it opens the sound test
+  COURSE_SELECTION: 4,     // MUS_COURSE_SELECTION: the course select
   VS_RECORD: 10,           // MUS_VS_RECORD: the player data's VS record
   OPTIONS: 11,             // MUS_OPTIONS: the Options menu (Scrap Brain Zone's remix)
   VS_WIN: 7,               // MUS_007: the multiplayer results screen when this player won,

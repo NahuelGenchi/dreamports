@@ -8,7 +8,7 @@
 //
 // What isn't built yet goes nowhere. The original starts a demo after 900 frames on the title screen; here the
 // title screen stays as it is. A on VS, Time Attack or Tiny Chao Garden does nothing. Game Start opens the character
-// select (charselect.js).
+// select (charselect.js), or with the address's start point for the course select goes where it leads.
 //
 // The logo, "PRESS START" and the menu's items are in the save's language, Japanese or English; the copyright line
 // is the international release's in both.
@@ -265,7 +265,8 @@ function leaveMenu(t) {
   e.playSong(SONG.BOSS_FIGHT);
   e.stopSong(SONG.BOSS_FIGHT);
   if (item === GAME_START) {
-    createCharacterSelect(ctx, ctx.character);
+    if (ctx.select) createCharacterSelect(ctx, ctx.character);
+    else ctx.startGame();
     return;
   }
   e.dispCnt &= ~0x6000;
