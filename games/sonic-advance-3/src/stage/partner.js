@@ -2,7 +2,8 @@
 // Each frame the partner works out buttons for itself, as if someone held a controller: it aims a little behind the
 // character in charge, and a game of chance, by how far off it is, picks what it does next. So far: standing, a press
 // towards its target, steering as it falls, looking up or down, and starting a jump, a spin or flying, which it can't do
-// yet. Coming back when it's left far behind, and going for rings, belong to the pieces that make those.
+// yet, and heading for an enemy while the leader's been pressing things. Coming back when it's left far behind belongs to
+// the piece that makes that.
 // The numbers it draws are the game's own (`c.random`), so a recording gets the same ones from the same start.
 // Comments name the USA copy's addresses, as this stretch sits away from the decompilation's labels by much the same.
 
@@ -20,7 +21,7 @@ const RANK = { [REST]: 0, [WAIT]: 1, [STEP]: 2, [JUMP]: 3, [LOOK_UP]: 0, [LOOK_D
 
 // 0x080B758C and 0x080B88A4: made for each character as it starts, which draws a number each time
 export function createMind(c) {
-  const mind = { c, doing: REST, act: null, frames: 0, hold: 0, input: 0, targetX: 0, targetY: 0, gapX: 0, gapY: 0, offsetX: 0, clock: 0, restless: 0 };
+  const mind = { c, doing: REST, act: null, frames: 0, hold: 0, input: 0, targetX: 0, targetY: 0, gapX: 0, gapY: 0, offsetX: 0, clock: 0, restless: 0, calm: 0, keen: false, nearest: -1, enemyX: 0, enemyY: 0 };
   doNext(mind, REST);
   return mind;
 }
@@ -103,13 +104,18 @@ function decide(mind, self, leader) {
   if ((mind.clock & 0x3F) === 0x3F && !(mind.c.random() & 0xF00)) {
     mind.offsetX = ((mind.c.random() << 15) >>> 19) - 16 * PX;
   }
-  mind.targetX = leader.x + mind.offsetX + (leader.flags & FLAG.FACING_LEFT ? FOLLOW_GAP : -FOLLOW_GAP);
-  mind.targetY = leader.y;
-  if (Math.abs(mind.targetX - self.x) < NEAR && Math.abs(mind.targetY - self.y) < NEAR) {
-    if (tryTo(mind, LOOK_UP, chanceLookUp(mind, leader))) return;
-    if (tryTo(mind, LOOK_DOWN, chanceLookDown(mind, leader))) return;
-    if (chanceWait(mind, leader)) doNext(mind, WAIT);
-    return;
+  if (mind.nearest !== -1) {   // an enemy it's noticed comes before the leader
+    mind.targetX = mind.enemyX;
+    mind.targetY = mind.enemyY;
+  } else {
+    mind.targetX = leader.x + mind.offsetX + (leader.flags & FLAG.FACING_LEFT ? FOLLOW_GAP : -FOLLOW_GAP);
+    mind.targetY = leader.y;
+    if (Math.abs(mind.targetX - self.x) < NEAR && Math.abs(mind.targetY - self.y) < NEAR) {
+      if (tryTo(mind, LOOK_UP, chanceLookUp(mind, leader))) return;
+      if (tryTo(mind, LOOK_DOWN, chanceLookDown(mind, leader))) return;
+      if (chanceWait(mind, leader)) doNext(mind, WAIT);
+      return;
+    }
   }
   mind.gapX = mind.targetX - self.x;   // 0x080B8A40
   mind.gapY = mind.targetY - self.y;
@@ -217,12 +223,30 @@ const ACTS = {
   },
 };
 
-// 0x080B74F0: how keen it is to go for what's near, which only draws a number until there's a ring to go for
-function restless(mind, leader) {
+// 0x080B74F0: it's keen while the leader has been pressing things, and not for a while after it's been hit
+function restless(mind, self, leader) {
+  if (self.invulnerable !== 0) mind.calm = ((mind.c.random() >>> 4) & 0xFF) + 30;
   let keen = mind.restless;
   if (leader.pressed & ~(KEY.UP | KEY.DOWN)) keen += 90;
   else if (leader.held & ~(KEY.UP | KEY.DOWN)) keen += 2;
-  mind.restless = Math.max(0, Math.min(((mind.c.random() >>> 4) & 0xFF) + 120, keen) - 1);
+  keen = Math.min(((mind.c.random() >>> 4) & 0xFF) + 120, keen);
+  mind.keen = keen !== 0;
+  mind.restless = Math.max(0, keen - 1);
+  if (mind.calm !== 0) {
+    mind.keen = false;
+    mind.calm--;
+  }
+}
+
+/** sub_8004D68 and 0x080B8A9C: an enemy says where it is, and while the partner's keen it keeps the nearest for its next frame. */
+export function noticeEnemy(mind, self, x, y) {
+  if (!mind.keen) return;
+  const dx = (x - self.x) >> 8, dy = (y - self.y) >> 8, distance = (dx * dx + dy * dy) >>> 0;
+  if (mind.nearest === -1 || mind.nearest >= distance) {
+    mind.enemyX = x;
+    mind.enemyY = y;
+    mind.nearest = distance;
+  }
 }
 
 /** 0x080B75E0, a frame of it: the buttons the partner holds now. */
@@ -230,7 +254,8 @@ export function partnerButtons(mind, self, leader) {
   decide(mind, self, leader);
   mind.input = mind.act(mind, self, leader);
   if (mind.frames-- < 0) doNext(mind, REST);   // 0x080B88E8
-  restless(mind, leader);
+  mind.nearest = -1;   // sub_80B8E54
+  restless(mind, self, leader);
   mind.clock++;
   return mind.input;
 }
