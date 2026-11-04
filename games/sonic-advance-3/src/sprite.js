@@ -182,7 +182,7 @@ export function displaySprite(c, s) {
 
 const INV_SCALE = v => Math.trunc(0x10000 / v);
 
-/** sprite.c's TransformSprite (0x080BF9D8's neighbours): the sprite's rotation and scale into OAM, and where to draw it. */
+/** TransformSprite: the sprite's rotation and scale into OAM, and where to draw it. */
 export function transformSprite(c, s, tf, sine) {
   if (s.frameNum === -1) return;
   const { rom } = c, d = dimensionsOf(c, s), affine = s.frameFlags & SPRITE.ROT_SCALE;

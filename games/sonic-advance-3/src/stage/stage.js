@@ -152,7 +152,7 @@ function createColours(stage, which) {
 
 /** 0x08002988: what a stage has so far, from its first frame. */
 export function startStage(c, level) {
-  const stage = globalThis.__stage = { c, level, warpId: 0, playerIndex: 0, timer: 0, players: [], zone: Math.trunc((level - 1) / 10), camera: { x: 0, y: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 }, state: 1, layers: null, dispBits: 0, keys: 0, lives: 2 };
+  const stage = { c, level, warpId: 0, playerIndex: 0, timer: 0, players: [], zone: Math.trunc((level - 1) / 10), camera: { x: 0, y: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 }, state: 1, layers: null, dispBits: 0, keys: 0, lives: 2 };
   // 0x08003E44: the tiles sprites ask for come from here, to the end of sprite memory (VramMalloc)
   let free = 0x10000 + 0x4D80;
   stage.allocTiles = count => {

@@ -1,7 +1,8 @@
 // The characters, rewritten from the original's player code: a character's state is a callback run each frame, which
 // moves it, works out what it stands on, and picks an animation. So far: arriving, running with nothing pressed or the
-// d-pad, stopping, standing and falling. The labels are the decompilation's, for the European release; the addresses
-// are the USA copy's, which `npm run dp -- read` prints. Tails's own moves and jumping aren't ported yet.
+// d-pad, stopping, standing and falling. The labels are the decompilation's, for the European release, which
+// proof/names.json moves to the USA copy's addresses. Jumping, turning round and the partner's AI aren't ported yet, so
+// Tails stands where he stops.
 
 import { createSprite, updateSprite, displaySprite, transformSprite, SPRITE } from '../sprite.js';
 import { acrossX, acrossY, findGround } from './collision.js';
@@ -232,7 +233,7 @@ function run(p) {
   } else p.idleCounter = 0;
 }
 
-// 0x0800DB84, Player_800DB30 and sub_800DF10: falling
+// Player_800DB30 and sub_800DF10: falling
 function startFalling(p) {
   p.moveState = (p.moveState & 0xDDFFFFBF) | ROLLING | IN_AIR;
   p.anim0 = abs(p.qSpeedAirX) < Q(1.25) ? 0x13 : 0x14;
@@ -260,7 +261,7 @@ function fall(p) {
   }
 }
 
-// 0x08014AF8's work, sub_8014AF8: after six seconds still, it looks around
+// sub_8014AF8: after six seconds still, it looks around
 function idleAnimation(p) {
   if (p.qSpeedGround === 0 && !((p.angle + 0x20) & 0xC0) && !(p.moveState & (IGNORE_INPUT | COLLIDING | WALL | IN_AIR | ROLLING))) {
     if (p.idleCounter > 0) p.idleCounter--;

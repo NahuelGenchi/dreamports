@@ -1,5 +1,5 @@
 // The ground under the characters, rewritten from the original's terrain_collision: every level has a collision map of
-// metatiles of 12 by 12 tiles, each tile with a height for each of its 8 columns and rows (0x0801E5.. in this copy). The
+// metatiles of 12 by 12 tiles, each tile with a height for each of its 8 columns and rows. The
 // finders look along a line, a tile at a time, for how far away the ground is, and the angle of what they find.
 
 let map = null;
@@ -17,7 +17,7 @@ export function useCollision(rom, level) {
 const clamp = (v, max) => (v < 0 ? 0 : v > max - 1 ? max - 1 : v);
 const s8 = v => (v << 24) >> 24;
 
-// sub_801EF94: the tile at (x, y) of a layer: its number, and whether it's flipped
+// 0x080522A8: the tile at (x, y) of a layer: its number, and whether it's flipped
 function tileAt(x, y, layer) {
   const { rom } = map;
   const tx = x >> 3, ty = y >> 3, mx = Math.trunc(tx / 12), my = Math.trunc(ty / 12);
@@ -27,7 +27,7 @@ function tileAt(x, y, layer) {
 
 const unflip = v => (v === 8 || v === 0 ? v : v > 0 ? v - 8 : v + 8);
 
-// sub_801ED24: along x; how far into its tile the ground starts, and its angle in out[0]
+// 0x08052038: along x; how far into its tile the ground starts, and its angle in out[0]
 export function acrossX(p0, p1, layer, out) {
   const { rom } = map;
   p0 = clamp(p0, map.pxWidth);
@@ -47,7 +47,7 @@ export function acrossX(p0, p1, layer, out) {
   return h;
 }
 
-// sub_801EE64: along y
+// 0x08052178: along y
 export function acrossY(p0, p1, layer, out) {
   const { rom } = map;
   p1 = clamp(p1, map.pxWidth);
@@ -73,7 +73,7 @@ const invNot = (p0, p3, i) => (p3 > 0 ? ~(p0 & 7) - i * 8 : (p0 & 7) - (i + 1) *
 const missedNeg = (p0, p3, i) => (p3 > 0 ? -((i - 1) * 8 + 1) - (p0 & 7) : (p0 & 7) - i * 8);
 
 /**
- * sub_801E6D4 and sub_801E4E4: from p0, in steps of p3, a tile at a time, how far the ground is along that line, negative
+ * 0x080519E8 and 0x080517F8: from p0, in steps of p3, a tile at a time, how far the ground is along that line, negative
  * if it's inside it. `steps` is how many tiles it looks ahead, 2 or 5. out[0] gets its angle.
  */
 export function findGround(steps, p0, p1, layer, p3, out, across) {

@@ -63,8 +63,7 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the language screen. What comes after it, the name entry, isn't ported yet, so the screen goes
-// white there.
+// The game so far: the language screen, then Route 99's overworld, as what comes between them isn't ported yet.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
   // ?level=<n> opens a stage straight away, which recordings use as their start point

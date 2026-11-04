@@ -1,6 +1,6 @@
 # Route 99's overworld first shows about 4,750 frames from power-on, and its labels are a few bytes off.
 
-About: A zone's arrival; Route 99's overworld; overworld-arrival
+About: Route 99's overworld; overworld-arrival
 
 Proof: #475; overworld-arrival
 
