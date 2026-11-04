@@ -2,6 +2,7 @@
   "about": "From power-on with all seven Chaos Emeralds and every character past X Zone: X Zone from the course select, its three bosses beaten, and with Egg X down the Moon Zone's way: Eggman flees, Sonic runs on, the results, Super Sonic, and the Moon Zone's start.",
   "frames": 9960,
   "start": "unlocked=13&tails=13&knuckles=13&amy=13&emeralds=127",
+  "clip": { "at": 8950, "frames": 300 },
   "onlyInOriginal": [
     {
       "at": 1701,
