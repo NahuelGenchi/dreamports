@@ -1,12 +1,13 @@
 // The language screen, which a game with nothing saved starts with (0x08000390 calls it). Six buttons, the one for the
 // language chosen in the bright colours and the rest in the dim, the title and the line along the bottom in that
 // language, over a layer that scrolls up and to the right a pixel and a half a frame. Up and Down move through the
-// languages, going round at either end. A or Start keeps it and goes on to the name entry, which isn't ported yet, so the
-// screen goes white there.
+// languages, going round at either end. A or Start keeps it and goes on to the name entry, which isn't ported yet, so
+// for now it goes straight to Route 99's overworld.
 
 import { KEY, FLAGS, defaultDisplay } from './core.js';
 import { createSprite, updateSprite, displaySprite } from './sprite.js';
 import { drawBackground } from './background.js';
+import { startStage } from './stage/stage.js';
 
 const OBJ_VRAM = 0x10000;
 const LANGUAGES = 6;
@@ -66,7 +67,9 @@ function choose(t) {
   if (c.pressed & (KEY.A | KEY.START)) {
     c.playSong(SE_SELECT);
     c.destroyTask(t);
-    c.dispCnt = 0x80;   // the name entry isn't ported yet
+    c.dispCnt = 0x80;
+    c.bgCnt.fill(0);
+    startStage(c, 2);   // the name entry and all that comes before the overworld aren't ported yet
     return;
   }
   if (c.repeated & (KEY.UP | KEY.DOWN)) {

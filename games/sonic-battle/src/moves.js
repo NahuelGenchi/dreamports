@@ -979,23 +979,11 @@ function trainingAfterWait(c) {
   fn08017c5c(c);
 }
 
-/** Not ported: 0x0801ad38, a fight other than Training after the choice of special attacks. */
-function afterChoice() {
-  notPorted('0801AD38', 'a fight other than Training');
-}
-
-/** Not ported: 0x0801b394, a fight other than Training. */
-function fightFrame() {
-  notPorted('0801B394', 'a fight other than Training');
-}
-
 export {
-  afterChoice, fightFrame, trainingFrame, forgetKeys, readAllKeys, readNextKeys, dummyKeys, padFacing, fighterThink,
+  trainingFrame, forgetKeys, readAllKeys, readNextKeys, dummyKeys, padFacing, fighterThink,
   runScript, setState, meetWalls, moveFighter, takeHits, holdHits, reachOthers, readFighterKeys, fighterAct, landOrFall,
   updateThings, followFighter, queueEffect, stepFade, endFade, nextRandom,
 };
-export { afterChoice as fn0801ad38 };
-export { fightFrame as fn0801b394 };
 export { trainingFrame as fn0801c28c };
 export { forgetKeys as fn08017964 };
 export { readAllKeys as fn080177b8 };
