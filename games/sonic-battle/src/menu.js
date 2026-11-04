@@ -7,8 +7,8 @@
 // The original runs this screen as a list of nodes, each a callback called once a frame in the list's order
 // (0x0801f7d0 adds one at the end, 0x0801f89c walks them), and a node added on the way runs in that same frame.
 //
-// The name entry between the title screen and this one isn't ported: the title's Start hands over here, the way the
-// original goes for a player with a saved name, which is the way the recording that proves this part goes.
+// The name entry (name-entry.js) comes before this screen, and goes straight on to it once a name is saved. It builds
+// its screen from the same list of nodes, so what they share is exported from here.
 
 import { KEY, colours, decompress, copyTileBlock, fadeToward, fadeToBlack, hideSpriteBuffer, queueCopy, queueRegister } from './core.js';
 
@@ -19,7 +19,7 @@ const REGISTERS = 0x0815F02C, REGISTER_COUNT = 16;
 const DISPCNT = 0x00, BG3VOFS = 0x1E, BLDCNT = 0x50, BLDALPHA = 0x52;
 
 // the language the save keeps (gUnknown_03002110[119]), which picks the pictures: English in the USA copy
-const LANGUAGE = 1;
+export const LANGUAGE = 1;
 // gUnknown_08edd314 and gUnknown_08edd32c: the sprites' tiles and the previews' pictures, by language
 const SPRITE_PICTURES = [0x0815FAFC, 0x08160244, 0x08160244, 0x08160244, 0x08160244, 0x08160244];
 const PREVIEW_PICTURES = [0x081609E4, 0x081679E4, 0x081679E4, 0x081679E4, 0x081679E4, 0x081679E4];
@@ -43,28 +43,33 @@ const SONG_FADE_STEP = 120 >> 4;
 const CHOICES = 7;
 
 /** A sprite's place (the first 16 bytes of a node's allocation): the parts it's made of, where, and what they add. */
-const place = (parts, x, y, tile, attr2 = 0) => ({ parts, x, y, tile, attr0: 0, attr1: 0, attr2, state: 0 });
+export const place = (parts, x, y, tile, attr2 = 0) => ({ parts, x, y, tile, attr0: 0, attr1: 0, attr2, state: 0 });
 
 /** 0x0801f7d0: a node added at the end of the list. */
-function addNode(c, run, position = null, extra = {}) {
+export function addNode(c, run, position = null, extra = {}) {
   const node = { run, position, ...extra };
   c.menu.nodes.push(node);
   return node;
 }
 
+/** 0x0801f8c0: a node taken off the list. Only a node after the one running is ever taken, so the walk isn't disturbed. */
+export function removeNode(c, node) {
+  c.menu.nodes.splice(c.menu.nodes.indexOf(node), 1);
+}
+
 /** 0x0801fed8: a sprite asks to be drawn this frame. */
-function draw(c, position) {
+export function draw(c, position) {
   c.menu.drawn[(position.attr2 & 0x0C) >> 2].push(position);
 }
 
 /** 0x080200f8, the list's first node: no sprite has asked yet this frame, and no matrix is taken. */
-function startFrame(c) {
+export function startFrame(c) {
   c.menu.drawn = [[], [], [], []];
   c.menu.matrices = 0;
 }
 
 /** 0x08030d20: the scrolling layer, a line every other frame. */
-function scroll(c, node) {
+export function scroll(c, node) {
   node.count = (node.count - 1) | 0;
   queueRegister(c, BG3VOFS, (node.count & 0x1FE) >> 1);
 }
@@ -77,7 +82,7 @@ function animate(c, node) {
 }
 
 /** 0x0801f9d8: a sprite that only asks to be drawn. */
-function drawOnly(c, node) {
+export function drawOnly(c, node) {
   draw(c, node.position);
 }
 
@@ -237,24 +242,24 @@ function drawSprites(c) {
 }
 
 /** 0x08039fd0: the frame wrapper. Every node, a node added on the way too, and then the sprites they asked for. */
-function frame(c) {
+export function frame(c) {
   const { nodes } = c.menu;
   for (let i = 0; i < nodes.length; i++) nodes[i].run(c, nodes[i]);
   drawSprites(c);
 }
 
-/** What the original takes before the menu's first frame: the name entry's frame, going straight on with a saved name,
+/** What the original takes before the menu's first frame with a saved name: the name entry's frame, going straight on,
  *  and 0x08039e20's decompressing, which runs past a V-blank. None of it shows, as the screen is black; only how long
  *  it takes does. */
 const FRAMES_BEFORE = 2;
 
 /** 0x0801fbfc: display registers from the cartridge's table at `from`, each its offset in 0x04000000 and its value. */
-function writeRegisters(c, from, count) {
+export function writeRegisters(c, from, count) {
   const at = from - CARTRIDGE;
   for (let i = 0; i < count; i++) c.video.write(c.rom.u16(at + i * 4), c.rom.u16(at + i * 4 + 2));
 }
 
-/** The title screen's Start hands over here, and the menu starts when that time is up. */
+/** The name entry hands over here when a name is saved, and the menu starts when that time is up. */
 export function beforeMenu(c) {
   c.menuWait = (c.menuWait ?? 0) + 1;
   if (c.menuWait > FRAMES_BEFORE) {
@@ -267,7 +272,7 @@ export function beforeMenu(c) {
  * 0x08039e20: the screen's first frame. The registers, the sprites hidden, the palette black, the pictures and maps,
  * the list's nodes, and the display queued on for the next V-blank.
  */
-function menu(c) {
+export function menu(c) {
   const { video } = c;
   c.menu = { nodes: [], drawn: [[], [], [], []], matrices: 0, selection: 0 };
   writeRegisters(c, REGISTERS, REGISTER_COUNT);
