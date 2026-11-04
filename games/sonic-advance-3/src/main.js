@@ -30,6 +30,10 @@ const LAYOUT = {
   pad: { a: [0], b: [1], l: [4], r: [5], select: [8], start: [9], up: [12], down: [13], left: [14], right: [15] },
 };
 
+// the frames an act's start point stays white, the last of those between the warp's fade and the act, by the song and the
+// first picture lining up with the original's (a note in notes/ says how)
+const FIRST_ACT = 3, WHITE_BEFORE_AN_ACT = 2;
+
 const picker = document.getElementById('picker');
 const stage = document.getElementById('stage');
 const screen = document.getElementById('screen');
@@ -63,7 +67,8 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the language screen, then Route 99's overworld, as what comes between them isn't ported yet.
+// The game so far: the language screen, then Route 99's overworld, as what comes between them isn't ported yet, and act 1's
+// opening, which only a start point reaches so far.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
   // ?level=<n> opens a stage straight away, which recordings use as their start point, and ?seed=<n> sets the game's
@@ -71,7 +76,8 @@ function createGame(video, rom, sound) {
   const params = new URLSearchParams(location.search), level = params.get('level');
   core.seed = Number(params.get('seed')) | 0;
   core.main = level === null ? languageScreen : c => startStage(c, Number(level));
-  return { step(keys) { core.step(keys); } };
+  if (Number(level) >= FIRST_ACT) core.startUp = WHITE_BEFORE_AN_ACT;
+  return { step(keys) { core.step(keys); }, hblank: core.hblank };
 }
 
 function start() {
@@ -97,7 +103,7 @@ function start() {
       ran = true;
     }
     if (ran) {
-      video.drawFrame(pixels);
+      video.drawFrame(pixels, game.hblank);
       out.putImageData(image, 0, 0);
     }
     requestAnimationFrame(loop);
