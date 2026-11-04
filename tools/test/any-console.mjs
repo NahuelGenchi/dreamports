@@ -5,9 +5,12 @@
 
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
+import { fileAt, makePreview } from '../lib/preview.mjs';
+import { serveRepository } from '../lib/server.mjs';
+import { giveFile, go, openChrome, until } from '../lib/chrome.mjs';
 import { createHash } from 'node:crypto';
 
 const GAME = 'test-made-up';
@@ -77,6 +80,43 @@ async function stopPartway(signal) {
 function tidy() {
   const kept = readdirSync(MEDIA).filter(file => file.startsWith(GAME)).map(file => join(MEDIA, file));
   for (const path of [gameFolder(GAME), WORK, RESULTS, CAPTURES, MAP, ...kept]) rmSync(path, { recursive: true, force: true });
+}
+
+// the game's preview as share makes it, from a commit no branch holds, with only what the preview holds to load: it
+// opens, takes the copy and starts, at the console's own screen. Nothing is sent anywhere
+async function startPreview(copy) {
+  // share's own commit needs a name, which GitHub's machines don't have
+  Object.assign(process.env, { GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.invalid' });
+  const git = (...args) => execFileSync('git', args, { cwd: REPO, encoding: 'utf8', env: { ...process.env, GIT_INDEX_FILE: join(WORK, 'index') } }).trim();
+  git('read-tree', 'HEAD');
+  git('add', '--', `games/${GAME}`);
+  const commit = git('commit-tree', git('write-tree'), '-p', 'HEAD', '-m', 'The test\'s game');
+  const preview = makePreview({ tip: null, commit, branch: 'test', game: GAME, title: GAME, name: 'a-preview', author: 'nobody', repository: 'nobody/dreamports', url: 'https://nobody.github.io/dreamports/', about: '', guide: '' });
+  const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
+  const server = await serveRepository({
+    answer(request, response, path) {
+      const file = path.endsWith('/') ? `${path}index.html` : path;
+      const bytes = fileAt(preview.commit, file.slice(1));
+      response.writeHead(bytes ? 200 : 404, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' });
+      response.end(bytes);
+      return true;
+    },
+  });
+  const page = await openChrome({ profile: join(WORK, 'chrome') });
+  try {
+    await go(page, `${server.url}/a-preview/play/${GAME}/`);
+    await until(page, `!!document.querySelector('.rom input[type=file]')`, 'the start screen', 10000);
+    await giveFile(page, '.rom input[type=file]', copy);
+    await until(page, `!document.querySelector('.play').disabled`, 'Play to be ready', 10000);
+    await page.evaluate(`document.querySelector('.play').click()`);
+    await until(page, `document.getElementById('screen').width === 64`, 'the game to start', 10000);
+    return '';
+  } catch (error) {
+    return error.message;
+  } finally {
+    await page.close();
+    await server.close();
+  }
 }
 
 async function main() {
@@ -168,6 +208,9 @@ async function main() {
   check(run.status === 0 && existsSync(join(MEDIA, `${GAME}-dreamport-still.webp`)), `capture keeps a moment of it from presses: ${lastLine(run)}`);
   if (run.status) console.log(run.out);
   check(readFileSync(join(gameFolder(GAME), 'entry.md'), 'utf8').includes(`/media/${GAME}-dreamport`), 'its entry names the capture');
+
+  const stopped = await startPreview(copy);
+  check(!stopped, `its preview opens with what it holds, takes the copy and starts${stopped && `: ${stopped}`}`);
 }
 
 const kept = { readme: readFileSync(README), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };

@@ -128,13 +128,13 @@ export function makePreview({ tip, commit, branch, game, title, name, author, re
   for (const file of filesAt(commit, `games/${game}`, 'kit')) {
     if (hidden(file.path)) continue;
     const [top, folder, ...rest] = file.path.split('/');
-    if (top === 'kit' && !rest.length) continue;   // kit/README.md: only the kits' folders go on the site
+    if (top === 'kit' && !rest.length && folder !== 'consoles.js') continue;   // kit/README.md: only the kits' folders go on the site, and what every console's games read about their console
     if (rest[0] === 'notes') continue;   // notes are for the people making the game (docs/NOTES.md)
     if (file.mode === '120000' || file.mode === '160000') {
       problems.push(`${file.path}: every file has to be a plain file in the folder, not a link.`);
       continue;
     }
-    const to = top === 'games' ? `${name}/play/${game}/${rest.join('/')}` : `${name}/kit/${folder}/${rest.join('/')}`;
+    const to = top === 'games' ? `${name}/play/${game}/${rest.join('/')}` : `${name}/${file.path}`;
     files.push({ ...file, from: file.path, to });
   }
   if (!files.some(f => f.to === `${name}/play/${game}/index.html`)) throw new Error(`games/${game}/index.html isn't in commit ${commit.slice(0, 7)}: a preview is made from your last commit.`);
