@@ -611,7 +611,7 @@ Game Start on the main menu opens it (`CreateCharacterSelectionScreen`, `src/fro
 
 **Not built yet.** The course select (`unlockedLevels` above 0): the act starts instead. The screen's use in Time Attack and in multiplayer.
 
-**How it was checked.** `npm run dp -- prove` plays these recordings in mGBA 0.10.5 and the port: `neo-green-hill-act-1` picks Sonic and goes on into the act, `character-select` turns the row both ways and through the key repeat and goes back with B, `pick-tails`, `pick-knuckles` and `pick-amy` pick each of the others, and `partner-code` presses the code. Every picture from the screen's first frame to its last matches on all of them. A few frames differ only by their sound, near a silence, where the song's slow wave note ends (kit note on wave notes).
+**How it was checked.** `npm run dp -- prove` plays these recordings in mGBA 0.10.5 and the port: `neo-green-hill-act-1` picks Sonic and goes on into the act, `character-select` turns the row both ways and through the key repeat and goes back with B, `pick-tails`, `pick-knuckles` and `pick-amy` pick each of the others, and `partner-code` presses the code. All the frames of the picks and of the code match, sound too. `character-select` plays the song for longer: every picture matches, and 5 frames differ only by their sound, near a silence, where its slow wave note ends (kit note on wave notes).
 
 ### The CPU partner
 
@@ -627,7 +627,7 @@ With the code on, every stage but the extra one has a second player, `gPartner` 
 
 **Restarts.** He has no checkpoints: when the act starts over he starts at the act's start and flies back to Sonic if that's far (`SetStageSpawnPos`).
 
-**How it was checked.** `partner-neo-green-hill` plays the code from power-on, then Neo Green Hill Zone act 1 as Sonic with Tails following him: spin dashes up a wall and through a bowl, Tails left behind and flying back, the goal, the results and the start of act 2. All of its 8,000 frames match in every picture. Frames 3869, 4732, 6412 and 7624 differ by their sound alone, where the music rests. Everything else that treats him differently from the first act's objects, such as the other zones' objects and the bosses, follows the decompilation by reading, and hasn't been played against the original.
+**How it was checked.** `partner-neo-green-hill` plays the code from power-on, then Neo Green Hill Zone act 1 as Sonic with Tails following him: spin dashes up a wall and through a bowl, Tails left behind and flying back, the goal, the results and the start of act 2. All of its 8,000 frames match in every picture. Frames 3869, 4732, 6412 and 7624 differ by their sound alone, where the music rests. Firefox 159 played the same recording with no errors, and its pictures at frames 2200, 5000, 6400 and 7900 are Chrome's. The other zones' objects and the bosses follow the decompilation by reading: each stage ran for 2,600 frames with him along with no errors, but only Neo Green Hill has been compared with the original.
 
 ### The language screen
 
@@ -1173,7 +1173,7 @@ Other details the engine reproduces: rolling starts from any ground speed, a jum
 
 ### Tails
 
-`?character=1` plays as Tails (`gSelectedCharacter` 1) until the character select is in; the multiplayer stages stay Sonic for everyone. The extractor then decodes his sprites in Sonic's place, his face for the HUD, the game over and the 1-up boxes, and his title cards and results ([`extract.js`](../src/rom/extract.js)). The engine is Sonic's, with Tails' own moves from `player_tails.c` ([`player.js`](../src/engine/player.js)).
+The character select picks Tails (`gSelectedCharacter` 1), and `?debug&character=1` starts him straight away; the multiplayer stages stay Sonic for everyone. The extractor then decodes his sprites in Sonic's place, his face for the HUD, the game over and the 1-up boxes, and his title cards and results ([`extract.js`](../src/rom/extract.js)). The engine is Sonic's, with Tails' own moves from `player_tails.c` ([`player.js`](../src/engine/player.js)).
 
 **His animations.** The character state table gives its first 43 states as numbers to add to the character's first animation (`gPlayerCharacterIdleAnims`, `0, 99, 199, 298`), so Tails' run is 104 where Sonic's is 5. Sonic's own moves (the spin dash's rev, the air dash, the insta-shield, the B combo and grinding) are left out: Tails' grinding animations are empty, and his spin dash revs in the spin dash's own animation. His own:
 
@@ -1228,11 +1228,11 @@ In Chrome 156 and Firefox 159 (headless, each with a new profile), `?debug&chara
 
 **Only read in the code, not checked:** turning under water; the marble track's tails (no run reached a marble track); the objects' own rules for Tails above (the item box's top in flight, the wall poles, red flags, bumpers, ice blocks and grind rails), and the 1-up's face; the goal, the tally and the results with his name; the game over and the continue screen with his face; the bosses but the Egg Hammer Tank, X Zone and the normal ending as Tails.
 
-Since #90 the recording `tails-neo-green-hill` plays him from power-on with the proof tools: all of Neo Green Hill act 1, flying and with a spin dash through a loop, its goal, its results and the start of act 2, 11,500 frames, every picture the same, with one frame whose sound differs.
+Since #90 the recording `tails-neo-green-hill` plays him from power-on with the proof tools: all of Neo Green Hill act 1, flying and with a spin dash through a loop, its goal, its results and the start of act 2, 11,627 frames, every picture the same, with one frame whose sound differs.
 
 ### Knuckles
 
-`?character=2` plays as Knuckles (`gSelectedCharacter` 2), as `?character=1` does Tails. His first animation is 199, so his run is 204, and of Sonic's own moves he keeps only the spin dash's rev. His moves come from `player_knuckles.c` ([`player.js`](../src/engine/player.js)). His own:
+The character select picks Knuckles (`gSelectedCharacter` 2), and `?debug&character=2` starts him straight away. His first animation is 199, so his run is 204, and of Sonic's own moves he keeps only the spin dash's rev. His moves come from `player_knuckles.c` ([`player.js`](../src/engine/player.js)). His own:
 
 | State | Animation |
 | :--- | ---: |
@@ -1295,7 +1295,7 @@ Four things were wrong in the port for every character, and Knuckles' runs found
 - **Dying** sets `itemEffect` to 0: a shield and invincibility go, as at the time-up.
 - **Ice Mountain's ice blocks** break into pieces placed as the boulder's are (above), the scale halved and rounded down first, so on an odd scale the pieces sit a pixel nearer the middle. The port multiplied by the whole scale.
 
-Since #90 the recording `knuckles-neo-green-hill` plays him from power-on with the proof tools: 8,200 frames of Neo Green Hill act 1, running, gliding and climbing, every picture the same, with two frames whose sound differs.
+Since #90 the recording `knuckles-neo-green-hill` plays him from power-on with the proof tools: 8,347 frames of Neo Green Hill act 1, running, gliding and climbing, every picture the same, with two frames whose sound differs.
 
 **Only read in the code, not checked:** the objects' own rules for Knuckles above, but the ice block's (no run reached a bumper, a wall pole, a flipper, a carousel, a run wheel, a moving spring, a skating stone, a marble track, a waterfall, the Egg Spider or the Egg Press with him); the uppercut under water; climbing with speed shoes; the float's look up; the angle a wall gives him where the wall search finds none, which the original reads from a stack byte the search leaves unset (here his angle stays as it was); the goal, the tally and the results with his name; the game over and the continue screen with his face; the bosses but the Egg Hammer Tank, X Zone and the normal ending as Knuckles.
 

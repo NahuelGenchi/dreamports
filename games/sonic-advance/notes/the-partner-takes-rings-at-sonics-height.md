@@ -1,6 +1,6 @@
 # The CPU partner takes rings with a box as tall as Sonic's, and what he hears comes 20 frames late.
 
-About: The character select; partner-neo-green-hill; partner-code; Task_RingsMgrMain
+About: The character select; partner-neo-green-hill; partner-code
 
 Proof: #91; partner-neo-green-hill
 
