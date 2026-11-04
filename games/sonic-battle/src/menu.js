@@ -264,7 +264,7 @@ export function menu(c) {
   c.video.pal.fill(0);
   for (const [from, to] of PICTURES) decompress(c, from, to);
   decompress(c, SPRITE_PICTURES[LANGUAGE], 0x06010000);
-  c.video.vram.fill(0, 0x0600F800 - 0x06000000, 0x0600F800 - 0x06000000 + 0x400);
+  c.video.vram.fill(0, 0x0600F800 - 0x06000000, 0x0600F800 - 0x06000000 + 0x800);
   copyTileBlock(c, PREVIEW_MAP, PREVIEW_MAP_TABLE, 16, 8, PREVIEW_MAP_TILE);
   c.video.vram.fill(0, 0x0600F000 - 0x06000000, 0x0600F000 - 0x06000000 + 0x400);
   decompress(c, 0x0815F818, 0x0600E800);
