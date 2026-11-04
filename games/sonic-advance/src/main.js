@@ -298,15 +298,16 @@ function showTricks() {
   showSetting(tricksButton, tricks, tricksArt ? null : 'Sonic Advance 2');
 }
 tricksButton.addEventListener('click', () => setTricks(!tricks));
-// The original game's bugs fixed (engine/fixes.js), another extra: off unless chosen, and always off for a proof tool,
-// which compares the game with the original. Multiplayer has some of them too, so it stays on there.
+// The original game's bugs fixed (engine/fixes.js), another extra: off unless chosen, and off for a proof tool, which
+// compares the game with the original, unless `?fixes=1` in the address asks for it, so that a clip can show a fix
+// beside the original's bug. Multiplayer has some of them too, so it stays on there.
 const FIXES_KEY = 'onsoku.fixBugs';
 function setFixes(on) {
   fixes.on = on;
   try { localStorage.setItem(FIXES_KEY, on ? '1' : '0'); } catch { /* not remembered */ }
   showSetting(fixesButton, on);
 }
-try { fixes.on = !proof && localStorage.getItem(FIXES_KEY) === '1'; } catch { /* storage blocked: the default stands */ }
+try { fixes.on = proof ? params.has('fixes') : localStorage.getItem(FIXES_KEY) === '1'; } catch { /* storage blocked: the default stands */ }
 showSetting(fixesButton, fixes.on);
 fixesButton.addEventListener('click', () => setFixes(!fixes.on));
 // what the extras from Sonic Advance 2 read from its ROM, and its sound engine's tables
