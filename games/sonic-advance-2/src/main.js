@@ -41,7 +41,7 @@ proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded but
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives
 const touch = createTouch(stage, input, { screen, key: 'sonic-advance-2' });
-createSettings(stage, input, { what: { dpad: 'Up and Down: choose a language. Left and Right: run', a: 'A: keeps the language', start: 'Start: keeps the language' }, touch });
+createSettings(stage, input, { what: { dpad: 'Choose a language or a letter. Left and Right: run', a: 'A: keeps the language, takes the letter', b: 'B: deletes a letter', l: 'L: back along the name', r: 'R: on along the name', start: 'Start: keeps the language, goes to END and keeps the name' }, touch });
 let rom = null, romBuffer = null;
 // the game's sound (sound.js): the engine the kit runs, on the player's copy
 const sound = createSound();
@@ -66,7 +66,7 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the language screen, then, as what comes between isn't ported yet, Leaf Forest's act 1.
+// The game so far: the language screen and the name entry, then, as what comes between isn't ported yet, Leaf Forest's act 1.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
   // ?level=<n> opens a stage straight away, which recordings use as their start point, and &x=<n>&y=<n> puts the character

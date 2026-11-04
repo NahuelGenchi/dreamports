@@ -18,7 +18,8 @@
 //   "clip": optional, the frames the clip shows: { "at", "frames" }
 // }
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const isFrame = n => Number.isInteger(n) && n >= 0;
 
@@ -39,6 +40,10 @@ function checkHeld(held, frames, where) {
 const START = /^[a-z][a-z0-9-]*=[A-Za-z0-9._-]+(?:&[a-z][a-z0-9-]*=[A-Za-z0-9._-]+)*$/;
 
 /** Checks a start point, what the Dreamport's address adds, and throws with what is wrong. */
+/** Whether a game's code names neverInPlay in any of its files, in the line that says what no player could see or in a comment saying why it needs none (tools/README.md, Start points). */
+export const namesNeverInPlay = folder => readdirSync(folder, { recursive: true })
+  .some(file => /\.m?js$/.test(file) && readFileSync(join(folder, file), 'utf8').includes('neverInPlay'));
+
 export function checkStart(start, where) {
   if (typeof start !== 'string' || !START.test(start) || start.split('&').some(pair => pair.startsWith('proof='))) {
     throw new Error(`${where}: a start point is what the Dreamport's address adds, as words and values such as level=2&character=1, and not proof`);
