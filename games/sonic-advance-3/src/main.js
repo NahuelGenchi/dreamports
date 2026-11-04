@@ -16,6 +16,7 @@ import { createSound } from '../../../kit/gba/sound/audio.js';
 import { createCore } from './core.js';
 import { languageScreen } from './language.js';
 import { soundLayout } from './sound.js';
+import { startStage } from './stage/stage.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from
 const GAME = { name: 'Sonic Advance 3', title: 'SONICADVANC3', codes: { B3SE: 'USA' }, versions: [{ sha1: '30db467effa5014806d42db57e2299398a51355b' }] };
@@ -66,7 +67,9 @@ createRomSetup(picker, {
 // white there.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
-  core.main = languageScreen;
+  // ?level=<n> opens a stage straight away, which recordings use as their start point
+  const level = new URLSearchParams(location.search).get('level');
+  core.main = level === null ? languageScreen : c => startStage(c, Number(level));
   return { step(keys) { core.step(keys); } };
 }
 
