@@ -5,9 +5,9 @@
 // Nothing before a fight leads here yet, so a recording's start point opens it: the address's fight=training says so,
 // and vblanks= gives how many V-blanks the console has counted by then, which the view turns with during the choice.
 
-import { newScreen, queueRegister } from './core.js';
+import { fightVblank, hideSpriteBuffer, newScreen, queueRegister } from './core.js';
 import { read8, read16, write8, write16, write32 } from './bus.js';
-import { fn08016684, fn080175d4, fn080176e4, fn08017c5c, fn08017d58, fn08017ed0, fn08017f58, fn08017f6c, fn080182ac, fn080182e4, fn08018300, fn08018318, vblankWork } from './sprites.js';
+import { fn08016684, fn080175d4, fn080176e4, fn08017c5c, fn08017d58, fn08017ed0, fn08017f58, fn08017f6c, fn080182ac, fn080182e4, fn08018300, fn08018318 } from './sprites.js';
 import { fn08000a2c, fn08000cf4, fn0800186c, fn08006ff4, fn08007e24, fn08007e9c, fn0800fd8c, fn08015f6c, fn08017964, fn0801ce70, fn0801e9ec, fn0801f024 } from './fighters.js';
 import { fn08012b98, fn08013214, fn08015498, fn0801584c } from './hud.js';
 import { fn0800f9c0, fn0800fdc8, fn0801103c, fn08011c7c } from './arena.js';
@@ -130,11 +130,10 @@ function choosing(c) {
   } else if (answer !== 0) {
     write8(c, CHOSEN, 1);
   }
-  choosingAfterWait(c);
-  c.afterWait = true;   // 0x080006d0: with its wait for the V-blank, a frame of the fight takes two of the console's
+  c.afterWait = choosingAfterWait;   // 0x080006d0
 }
 
-/** 0x0801a898 past 0x080006d0: the view moves, and the picture is queued. All of it reaches the display together. */
+/** 0x0801a898 past its wait for the V-blank: the view moves, and the picture is built for the next V-blank to show. */
 function choosingAfterWait(c) {
   fn08018318(c, 0, 0);
   fn080176e4(c, ((c.vblanks & 0xFFFF) << 19) >> 16);
@@ -163,7 +162,6 @@ function choosingAfterWait(c) {
  */
 export function startFight(c, vblanks) {
   c.vblanks = vblanks;
-  c.vblankSprites = vblankWork;
   c.video.pal.fill(0);
   write8(c, SAVE + 119, 1);   // the language the save keeps: English in the USA copy (menu.js)
   for (let i = 0; i < REGISTER_COUNT; i++) {
@@ -184,6 +182,7 @@ export function startFight(c, vblanks) {
   write8(c, SETUP + 125, 4);
   write8(c, SETUP + 0, 0);
   write32(c, PLAYER, 0);
+  hideSpriteBuffer(c);   // 0x0801ff30
   newScreen(c, 6);
   startFadeIn(c, 24);
   fn080205d0(c);
@@ -193,9 +192,7 @@ export function startFight(c, vblanks) {
   fn08012b98(c, 10);
   setUpFighters(c);
   c.sound?.play(read8(c, SONG));
-  // the loading runs past a V-blank, which applies what the fade queued, and the choice's first frame comes a frame later
-  c.queue.length = 0;
-  c.video.write(BLDCNT, 0xFF);
-  c.video.write(BLDY, 15);
-  c.callback = c => { c.callback = choosing; };
+  // the loading runs past a V-blank, which applies what the fade queued
+  fightVblank(c);
+  c.callback = choosing;
 }

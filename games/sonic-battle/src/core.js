@@ -66,8 +66,7 @@ export function createCore(video, rom, sound) {
     vblanks: 0, frames: 0,
     startUp: START_UP_FRAMES,
     main: null,
-    vblankSprites: null,
-    afterWait: null, keysRead: false,
+    fightVblank: false, afterWait: null,
   };
   // the console after its start-up program: the screen white (forced blank) until the game shows it
   video.write(REG.DISPCNT, 0x80);
@@ -87,18 +86,15 @@ export function step(c, held) {
     return;
   }
   vblank(c);
-  // a fight's callback waits for a V-blank as well as the main loop (0x080006d0), so a frame of it takes two, and the
-  // keys are read only once in those two, at the second, and what it queued is copied just after the first V-blank
+  // a fight's callback waits for a V-blank partway through (0x080006d0), so a frame of it takes two of the console's
   if (c.afterWait) {
+    const rest = c.afterWait;
     c.afterWait = null;
-    runCopies(c);
-    readKeys(c, held);
-    c.keysRead = true;
+    rest(c);
     return;
   }
   runCopies(c);
-  if (!c.keysRead) readKeys(c, held);
-  c.keysRead = false;
+  readKeys(c, held);
   // 0x080005ac: a link cable game's reset, which needs a second console
   c.callback(c);
 }
@@ -126,20 +122,18 @@ function readKeys(c, held) {
 // parameters and the sprites when gUnknown_030013a0 asks for them, the registers queued (0x0801fbd8), and the frame
 // counted. Sprites a callback queues go in here, so they show a frame after what it writes directly.
 function vblank(c) {
+  if (c.fightVblank) { fightVblank(c); return; }
   c.vblanks++;
   if (c.vblankCopies) {
     // 0x0801694c: the half of the rotation parameters just finished
     c.affine[c.affineHalf].forEach((word, i) => c.video.write(REG.BG2PA + i * 2, word));
-    if (c.vblankSprites) c.vblankSprites(c);   // the fight's queue (sprites.js)
-    else {
-      // 0x08017eec, 0x0801ff30, 0x08017690 and 0x08017fb0, then 0x0801ffa4 copying them to OAM: every sprite hidden
-      // with its rotation the identity, then the queues over them, the first sprite and the first matrix first
-      hideSprites(c);
-      const { oam } = c.video;
-      c.sprites.forEach((words, i) => oam.set(words, i * 4));
-      c.matrices.forEach((words, m) => words.forEach((word, i) => { oam[m * 16 + i * 4 + 3] = word; }));
-      c.vblankCopies = 0;
-    }
+    // 0x08017eec, 0x0801ff30, 0x08017690 and 0x08017fb0, then 0x0801ffa4 copying them to OAM: every sprite hidden
+    // with its rotation the identity, then the queues over them, the first sprite and the first matrix first
+    hideSprites(c);
+    const { oam } = c.video;
+    c.sprites.forEach((words, i) => oam.set(words, i * 4));
+    c.matrices.forEach((words, m) => words.forEach((word, i) => { oam[m * 16 + i * 4 + 3] = word; }));
+    c.vblankCopies = 0;
   }
   // 0x0801fbd8, 0x0801fbfc
   for (const [offset, value] of c.queue) c.video.write(offset, value);
@@ -147,6 +141,25 @@ function vblank(c) {
   // 0x0801ffa4
   if (c.oamBufferFull) c.video.oam.set(c.oamBuffer);
   c.oamBufferFull = 0;
+  c.frames++;
+}
+
+/**
+ * 0x08015fa4, the V-blank interrupt once 0x08016078's mode 6 has set it, as a fight's screens do: the V-blanks counted,
+ * and only when gUnknown_030013a0 asks, so that all a frame of the fight queued shows together, every sprite hidden, the
+ * half of the rotation parameters just finished, the sprites 0x08017d58 built and the registers queued.
+ */
+export function fightVblank(c) {
+  c.vblanks++;
+  if (c.vblankCopies) {
+    hideSprites(c);
+    c.affine[c.affineHalf].forEach((word, i) => c.video.write(REG.BG2PA + i * 2, word));
+    c.video.oam.set(c.oamBuffer);
+    c.oamBufferFull = 0;
+    for (const [offset, value] of c.queue) c.video.write(offset, value);
+    c.queue.length = 0;
+  }
+  c.vblankCopies = 0;
   c.frames++;
 }
 
@@ -360,7 +373,10 @@ export function newScreen(c, mode) {
   c.blendTarget = 0;
   c.counter = 0;
   // what the fight's view starts from: the sprite queues empty, the zoom and tilt at rest and the view unturned
-  if (mode === 6) write8(c, 0x030016C4, 160);
+  if (mode === 6) {
+    c.fightVblank = true;
+    write8(c, 0x030016C4, 160);
+  }
   for (const at of [0x030017CC, 0x030017C8, 0x03001388]) write8(c, at, 0);
   for (const at of [0x030033CC, 0x03003170, 0x03001B2C, 0x030016C0, 0x03001B08]) write16(c, at, 0);
   write16(c, 0x03001B04, 0x100);

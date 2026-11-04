@@ -314,19 +314,6 @@ export function matrixInBuffer(c, n, a, b, d, e) {
   c.oamBuffer[at + 15] = e;
 }
 
-/**
- * The sprites' part of the V-blank (0x080185d8): when 0x08017c5c has asked for it, 0x08017eec, 0x0801ff30, 0x08017690 and
- * 0x08017fb0, and the request answered. Whoever calls this does 0x0801694c first, since this clears the request.
- */
-export function vblankWork(c) {
-  if (!c.vblankCopies) return;
-  restartBuffer(c);
-  hideSpriteBuffer(c);
-  drawQueue(c);
-  drawMatrices(c);
-  c.vblankCopies = 0;
-}
-
 export { layersFromCamera as fn08016684, drawQueuedSprite as fn08016b30, writeNextSprite as fn080175aa };
 export { drawQueue as fn08017690, sortQueue as fn080175d4, turnCamera as fn080176e4, copyAtVblank as fn08017c5c };
 export { drawSpritesNow as fn08017d58, clearQueue as fn08017ed0, restartBuffer as fn08017eec, queueSprite as fn08017f00 };

@@ -1,6 +1,6 @@
 {
   "about": "A fight's opening, from a start point: Training with its first choices, Sonic against Sonic on Emerald Beach with the rival doing nothing, reached in the original from the main menu. The arena turning behind the choice of special attacks, three presses of A choosing them, and both fighters dropping in, until the player can move.",
-  "start": "fight=training&vblanks=1210",
+  "start": "fight=training&vblanks=1209",
   "frames": 400,
   "held": [
     [0,[]],

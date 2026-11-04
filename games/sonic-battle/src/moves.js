@@ -957,8 +957,7 @@ function trainingFrame(c) {
     readFighterKeys(c, i);
     fighterAct(c, i);
   }
-  trainingAfterWait(c);
-  c.afterWait = true;   // 0x080006d0: a frame of the fight takes two of the console's
+  c.afterWait = trainingAfterWait;   // 0x080006d0
 }
 
 // 0x0801c28c after its wait: pausing, the fade, the view, and everything drawn
