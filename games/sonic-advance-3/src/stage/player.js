@@ -100,11 +100,12 @@ export function initializePlayer(c, p) {
 // 0x080045EC, then sub_80142CC and sub_80144B4: what it can do this frame, then what it does
 function playFrame(t) {
   const p = t.data, { c } = p.stage;
-  const rate = RUN_RATES + (p.stage.rings > 10 ? 4 : 0);   // sub_8014258: with more rings Tails, whose ability it is with Sonic, speeds up faster
-  p.acceleration = c.rom.s16(rate);
-  p.braking = c.rom.s16(rate + 2);
-  p.topSpeed = (p.flags & CURLED ? 10 : 7.5) * PX;
-  p.speedLimit = (p.flags & CURLED ? 12 : 9.5) * PX;
+  const { rings } = p.stage, level = rings > 149 ? 4 : rings > 99 ? 3 : rings > 49 ? 2 : rings > 10 ? 1 : 0;   // sub_8014258: with more rings it speeds up faster
+  boost(p, c.rom.s16(BOOST_AFTER + level * 2));
+  p.acceleration = c.rom.s16(RUN_RATES + level * 4);
+  p.braking = c.rom.s16(RUN_RATES + level * 4 + 2);
+  p.topSpeed = (p.flags & CURLED || p.boosting ? 10 : 7.5) * PX;
+  p.speedLimit = (p.flags & CURLED || p.boosting ? 12 : 9.5) * PX;
   const speed = Math.abs(p.groundSpeed), gait = GAIT_TOPS.findIndex(top => speed <= top);
   p.gait = gait < 0 ? GAIT_TOPS.length : gait;
   if (p.isLeader) readButtons(p, c.input);
@@ -359,6 +360,7 @@ export function hurtPlayer(p) {
 // Player_8008CD0 and Player_800E1E4: thrown back and up, away from where it was going unless that was fast, until it lands
 function startHurt(p) {
   p.invulnerable = INVULNERABLE_FRAMES;
+  stopBoost(p);
   if (p.character === TAILS) stopFlyingSound(p);
   if (Math.abs(p.velX) <= 2.5 * PX) {
     const vx = s16(p.velX);
@@ -584,6 +586,7 @@ export function reboundFromEnemy(p) {
   p.velX >>= 1;
   if (p.velY >= 0) p.velY = HURT_RISE;
   startFalling(p);
+  stopBoost(p);
 }
 
 // sub_801480C and sub_8012E54: with the button pressed and room over its head, it's off on its next frame
@@ -647,6 +650,7 @@ function startFlyingIfPressed(p) {
 }
 // sub_801BDD8
 function startFlying(p) {
+  stopBoost(p);
   if (p.flags & CURLED) {
     p.flags &= ~CURLED;
     p.halfWidth = HALF_WIDTH;
