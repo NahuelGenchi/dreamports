@@ -107,7 +107,7 @@ There's one thing only you can do. A game's card on the site shows a few seconds
 
 You don't start from nothing. Your agent first looks at [what people already found](docs/NOTES.md) while making that game and others on its console, and when it sends a piece, it leaves a note on what it found, so the next person doesn't have to find it again.
 
-**For coding agents.** If someone asked you to set up https://dreamports.net/code, clone `https://github.com/NahuelGenchi/dreamports.git` into a folder called `dreamports` in the folder you were opened in, or use the Dreamports folder you're already in. Then read its [AGENTS.md](AGENTS.md) and follow Getting ready, under Working on a Dreamport.
+**For coding agents.** If someone asked you to set up https://dreamports.net/code, clone `https://github.com/NahuelGenchi/dreamports.git` into a folder called `dreamports` in the folder you were opened in, or use the Dreamports folder you're already in. Then read its [docs/MAKING.md](docs/MAKING.md) and follow Getting ready.
 
 Every Dreamport keeps the same rules, the [Dreamport standard](docs/STANDARD.md), and [CONTRIBUTING.md](CONTRIBUTING.md#make-a-dreamport) says what the command does behind the scenes.
 

@@ -35,6 +35,7 @@ body:
         - M5 — Game launcher
         - M6 — Anyone can make a Dreamport
         - M7 — New games join the launcher on their own
+        - M8 — Lighter tools, on any console
       default: 4
     validations:
       required: true

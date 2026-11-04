@@ -55,12 +55,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .moment { display: block; padding: 0; border: 0; background: none; box-shadow: 0 -2px var(--line), 0 2px var(--line), -2px 0 var(--line), 2px 0 var(--line); }
 .moment.at { box-shadow: 0 -4px var(--blue), 0 4px var(--blue), -4px 0 var(--blue), 4px 0 var(--blue); }
 .moment:focus { outline: 0; }
+.rests { display: none; }
+.resting .rests { display: block; }
+.resting #said { display: none; }
 </style>
 </head>
 <body>
 <main id="play" hidden>
   <canvas id="screen" class="frame" width="240" height="160" aria-label="The game"></canvas>
   <p id="said" class="quiet" role="status">Play as you like, then finish. The best moments come up to choose from.</p>
+  <p class="quiet rests" role="status">The game waits while nobody plays. Press anything to go on.</p>
   <div class="keys">
     <span><kbd>Arrows</kbd> Move</span>
     <span><kbd>Z</kbd> A</span>
@@ -75,6 +79,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 <main id="choose" hidden>
   <p>Choose a moment of play for the game's card, with no logos in it.</p>
   <div id="moments"></div>
+  <p class="quiet rests" role="status">The moments wait while nobody's here. Press anything to go on.</p>
   <button id="more" class="act plain" type="button">Keep playing <kbd>Esc</kbd></button>
 </main>
 <main id="wait" hidden>

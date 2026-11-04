@@ -39,6 +39,7 @@ export async function run(args) {
   const [game, what] = rest;
   if (!game || !what || rest.length > 2) throw new Error(USAGE);
   const original = readOriginal(game);
+  if (original.console !== 'gba') throw new Error(`read knows the Game Boy Advance's instructions, through mGBA's decoder, and no other console's yet: a disassembler on this computer reads ${original.console} code (docs/CONSOLES.md).`);
   const codeMap = readCodeMap(game);
   if (!codeMap) throw new Error(`games/${game}/proof/ has no code map yet: npm run dp -- codemap ${game} makes one.`);
   const copy = copyWith(original.sha1);

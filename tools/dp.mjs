@@ -17,14 +17,16 @@ const TOOLS = {
   team: 'The team build, the lead\'s branch with the team\'s finished pieces: start, join, send and add a piece',
   readme: 'Writes the README\'s table of Dreamports, with each one\'s numbers and lead, from their entries',
   commands: 'Writes the /dreamport command, from tools/commands/, in the form each coding agent reads',
+  ready: 'Everything a step has to pass before it goes out, in one go, printing only what\'s wrong',
+  help: 'Prints one section of the long documents, the ones whose headings have these words, or lists them',
 };
 
 const [tool, ...args] = process.argv.slice(2);
 if (!TOOLS[tool]) {
   console.log('Usage: npm run dp -- <tool> [arguments]\n');
   for (const [name, what] of Object.entries(TOOLS)) console.log(`  ${name.padEnd(8)} ${what}`);
-  console.log('\ntools/README.md explains each one.');
-  process.exit(tool && tool !== 'help' ? 1 : 0);
+  console.log('\nnpm run dp -- help <words> prints what tools/README.md says about them.');
+  process.exit(tool ? 1 : 0);
 }
 try {
   const { run } = await import(`./${tool}.mjs`);
@@ -33,3 +35,6 @@ try {
   console.error(error.message);
   process.exitCode = 1;
 }
+// done, once what it printed has gone: a connection fetch keeps open for a while would otherwise hold it here for seconds
+await Promise.all([process.stdout, process.stderr].map(stream => new Promise(resolve => stream.write('', resolve))));
+process.exit();

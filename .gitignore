@@ -1,5 +1,22 @@
 # Game files never belong in this repository: Dreamports hosts no ROMs or game data.
 *.gba
+*.agb
+*.nes
+*.sfc
+*.smc
+*.gb
+*.gbc
+*.gen
+*.smd
+*.z64
+*.n64
+*.v64
+*.iso
+*.cue
+*.chd
+*.pbp
+*.cso
+*.mu
 *.gb
 *.gbc
 *.nds

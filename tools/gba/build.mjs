@@ -9,6 +9,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSyn
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL } from '../lib/paths.mjs';
+import { buildJobs } from '../lib/jobs.mjs';
 import { windowsTools, WINDOWS_BUILD } from './windows.mjs';
 
 /** mGBA's version, the same on every computer so the original plays the same everywhere. */
@@ -82,7 +83,7 @@ function buildHere(log, windows) {
       // mGBA 0.10.5 asks for an old CMake, which CMake 4 no longer accepts without this
       '-DCMAKE_POLICY_VERSION_MINIMUM=3.5'], 'Setting up mGBA\'s build', windows?.env);
     // the library alone: on Windows the rest is text files for mGBA's installer, made with a program the compiler's differs from
-    run(cmake, ['--build', BUILD, '--parallel', '--target', 'mgba'], 'Building mGBA', windows?.env);
+    run(cmake, ['--build', BUILD, '--parallel', String(buildJobs()), '--target', 'mgba'], 'Building mGBA', windows?.env);
     [mgba, source] = [MGBA_VERSION, SOURCE];
     writeFileSync(STAMP, JSON.stringify({ mgba, source }) + '\n');
   }
