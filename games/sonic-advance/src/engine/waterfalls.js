@@ -18,7 +18,7 @@
 // never set.
 
 import { makeSprite, animate, offCam } from './objects.js';
-import { endAttack, KNUCKLES, climbing } from './player.js';
+import { endAttack, KNUCKLES, climbing, thrownState } from './player.js';
 import { s8 } from './trig.js';
 import { SONG } from '../sound/songs.js';
 
@@ -71,7 +71,7 @@ function angelIsland(slot, anims, splash, e, inside) {
           // Player_TransitionCancelFlyingAndBoost
           endAttack(p); p.pushing = false; p.airLock = false;
           if (p.jumpPressed) {
-            p.state = 'spin';
+            p.state = thrownState(p);
             p.ysp = -THROW;
           } else {
             if (p.character === KNUCKLES) {
