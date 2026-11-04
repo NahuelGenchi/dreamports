@@ -82,6 +82,13 @@ function createGame(video, rom, sound) {
   core.seed = Number(params.get('seed')) | 0;
   core.main = level === null ? languageScreen : c => startStage(c, Number(level));
   if (Number(level) >= FIRST_ACT) core.startUp = WHITE_BEFORE_AN_ACT;
+  // &screen=name-entry opens on the language screen's first frame, so that a recording's first press there opens the name
+  // entry, which recordings use as their start point
+  if (params.get('screen') === 'name-entry') {
+    core.startUp = 1;
+    core.step(0);
+    core.runSound();
+  }
   if (params.has('x')) {
     const jump = Number(params.get('jump'));
     for (let i = 0; i < FRAMES_BEFORE_A_PLACE; i++) {

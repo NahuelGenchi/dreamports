@@ -55,7 +55,7 @@
   ],
   "parts": [
     { "name": "The language screen, at the first start", "recording": "first-start", "frames": [0, 598] },
-    { "name": "The name entry, at the first start", "recording": "name-entry", "frames": [599, 5601] },
+    { "name": "The name entry, at the first start", "recording": "name-entry", "frames": [0, 5002] },
     { "name": "The SEGA and Sonic Team logos" },
     { "name": "The intro" },
     { "name": "The title screen" },
