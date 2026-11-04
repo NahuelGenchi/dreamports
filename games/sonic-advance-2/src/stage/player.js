@@ -20,7 +20,7 @@ const { FACING_LEFT, IN_AIR, CURLED, NO_AIR_STEERING, AT_WALL, JUMPED, SPIN_DASH
 /** The states an animation can be chosen by, as sCharStateAnimInfo lists them. */
 export const STATE = { STANDING: 0, CROUCH: 2, SPIN_DASH: 3, ROLLING: 4, TURN_SLOW: 5, TURN_AFTER_BRAKE: 6, BRAKE: 7, BRAKE_FAST: 8, RUNNING: 9, JUMP: 10, JUMP_FAST: 11 };
 
-const ACCELERATION = 8, BRAKING = 64;   // playerBoostPhysicsTable's, as they are with few rings
+const ACCELERATIONS = [8, 12, 14, 16, 18], BRAKING = 64;   // playerBoostPhysicsTable's, for each boostThreshold
 const TOP_SPEED = 6 * PX, SPEED_LIMIT = 9 * PX, SPEED_LIMIT_CURLED = 15 * PX, FALL_LIMIT = 15 * PX, GRAVITY = 42, COAST = 8;
 const JUMP = 4.875 * PX, JUMP_LET_GO = 3 * PX, JUMP_FAST_FROM = 1.25 * PX, SE_JUMP = 116, NEEDS_ROOM = 4;
 const SEES_GROUND_WITHIN = 32, ONE_WAY_UNDER = 3 * PX, ONE_WAY = 0x80;
@@ -47,7 +47,7 @@ export function createPlayer(stage, level) {
   const p = {
     stage, x: rom.s16(at) * PX, y: rom.s16(at + 2) * PX, velX: 0, velY: 0, groundSpeed: 0, flags: BUTTONS_OFF,
     halfWidth: HALF_WIDTH, halfHeight: HALF_HEIGHT, layer: 1, angle: 0, state: STATE.STANDING, shownState: -1, animation: -1, variant: -1, restart: false,
-    held: JUMP_BUTTONS, pressed: JUMP_BUTTONS, gait: 0, slipFrames: 0, behave: touchGround, dustLeft: DUST.most, speedLimit: SPEED_LIMIT, spinDashCharge: 0,
+    held: JUMP_BUTTONS, pressed: JUMP_BUTTONS, gait: 0, slipFrames: 0, behave: touchGround, dustLeft: DUST.most, speedLimit: SPEED_LIMIT, acceleration: ACCELERATIONS[0], spinDashCharge: 0,
     sprite: createSprite({ tiles: 0x10000, anim: 0xFFFF, variant: 0xFF, oamFlags: 16 << 6, frameFlags: 0x2000 | SPRITE.ROT_SCALE_ENABLE }),
     turn: { rotation: 0, scaleX: PX, scaleY: PX, x: 0, y: 0 },
   };
@@ -375,13 +375,13 @@ function steerOnGround(p) {
   if (p.slipFrames === 0 && (left || right)) {
     if (speed === 0) {
       if (Boolean(p.flags & FACING_LEFT) !== Boolean(right)) {
-        p.groundSpeed = p.flags & FACING_LEFT ? -ACCELERATION : ACCELERATION;
+        p.groundSpeed = p.flags & FACING_LEFT ? -p.acceleration : p.acceleration;
         state = STATE.RUNNING;
         setHeight(p, HALF_HEIGHT);
         p.halfWidth = HALF_WIDTH;
       } else p.behave = startTurning;
     } else if (speed > 0 ? right : left) {
-      if (Math.abs(speed) < TOP_SPEED) p.groundSpeed = way * Math.min(Math.abs(speed) + ACCELERATION, TOP_SPEED);
+      if (Math.abs(speed) < TOP_SPEED) p.groundSpeed = way * Math.min(Math.abs(speed) + p.acceleration, TOP_SPEED);
       p.flags = speed > 0 ? p.flags & ~FACING_LEFT : p.flags | FACING_LEFT;
     } else if (Math.abs(speed) >= BRAKES_FROM) {
       const braking = p.state === STATE.BRAKE || p.state === STATE.BRAKE_FAST;
@@ -484,7 +484,7 @@ function drag(p) {
 // Player_AirInputControls: twice what it has on the ground, up to its top speed, and it never slows down what's above that
 function steerInAir(p) {
   if (p.flags & NO_AIR_STEERING) return;
-  const step = ACCELERATION * 2;
+  const step = p.acceleration * 2;
   if (p.held & KEY.LEFT) {
     p.flags |= FACING_LEFT;
     const faster = p.velX - step;
@@ -723,9 +723,18 @@ function draw(c, p) {
   displaySprite(c, s);
 }
 
+// 0x0802989C, Player_HandleBoostThreshold: the more rings it has, the quicker it gets going
+function boostThreshold(rings) {
+  if (rings >= 150) return 4;
+  if (rings >= 100) return 3;
+  if (rings >= 50) return 2;
+  return rings > 10 ? 1 : 0;
+}
+
 // Task_PlayerMain: a frame of it
 function frame(t) {
   const p = t.data, { c } = p.stage;
+  p.acceleration = ACCELERATIONS[boostThreshold(p.stage.rings)];
   p.speedLimit = p.flags & CURLED ? SPEED_LIMIT_CURLED : SPEED_LIMIT;   // Player_ApplyBoostPhysics
   chooseGait(p);
   readButtons(p, c.input);
