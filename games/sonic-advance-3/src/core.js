@@ -43,7 +43,9 @@ export function createCore(video, rom, sound) {
     input: 0, prevInput: 0, pressed: 0, released: 0, repeated: 0,
     repeatCounters: new Uint8Array(10), firstRepeat: new Uint8Array(10).fill(20), nextRepeat: new Uint8Array(10).fill(8),
     startUp: START_UP_FRAMES, main: null, tasks: [], slowFrames: 0,
-    lineScroll: null, shownLineScroll: null,   // what the H-blank writes to layer 3's scroll across, for each line (FLAGS_EXECUTE_HBLANK_COPY)
+    lineScroll: null, shownLineScroll: null,   // what the H-blank writes for each line, and where (FLAGS_EXECUTE_HBLANK_COPY)
+    lineRegister: REG.BG0HOFS + 12, shownLineRegister: REG.BG0HOFS + 12,
+    save: { language: 1, playerName: new Array(6).fill(0xFFFF), playerId: 0 },   // the save a game with nothing saved has (0x08001DDC), kept only until the page closes for now
   };
   const graphics = [], backgrounds = [], layers = [];
   let nextTask = null;
@@ -167,6 +169,7 @@ export function createCore(video, rom, sound) {
     for (const bg of layers) copyLayer(c, bg);
     layers.length = 0;
     c.shownLineScroll = c.lineScroll;
+    c.shownLineRegister = c.lineRegister;
     scrollLine(0);
     c.oamBuffer.fill(0x200);
   }
@@ -195,10 +198,10 @@ export function createCore(video, rom, sound) {
     c.flagsPreVBlank = c.flags;
     vblank();
   };
-  // layer 3's scroll for line `y`, from the list the H-blank copies, if there is one
+  // the value for line `y`, from the list the H-blank copies, if there is one
   const scrollLine = y => {
     const lines = c.shownLineScroll;
-    if (lines && y < lines.length) video.write(REG.BG0HOFS + 12, lines[y]);
+    if (lines && y < lines.length) video.write(c.shownLineRegister, lines[y]);
   };
   /** What the H-blank does after line `y`, which the page's drawing calls. */
   c.hblank = y => scrollLine(y + 1);

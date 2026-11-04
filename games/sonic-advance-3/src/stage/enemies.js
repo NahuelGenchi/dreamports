@@ -1,5 +1,5 @@
 // The enemies of a stage, each a task that moves it, draws it and sees what touches it, as the original's are (its
-// enemies folder, with what they share in enemy_unknown_code.c). So far Akatento, the red ladybird.
+// enemies folder, with what they share in enemy_unknown_code.c). So far Akatento, the red ladybird, and Spinner.
 
 import { createSprite, updateSprite, displaySprite, SPRITE } from '../sprite.js';
 import { hurtPlayer, reboundFromEnemy } from './player.js';
@@ -9,7 +9,7 @@ import { tileUpDown } from './collision.js';
 
 const PX = 256, TILE = 8, GROUND_LAYER = 1;
 const ANIM_POOF = 1338, SE_POOF = 0x8A, POOF_ORDER = 18 << 6;
-const AKATENTO_ANIMS = 0xD1A98, AKATENTO_TILES = 16;
+const AKATENTO_ANIMS = 0xD1A98, AKATENTO_TILES = 16, ANIM_SPINNER = 1166, SPINNER_TILES = 24;
 
 const emptyBox = () => ({ index: 0, left: 0, top: 0, right: 0, bottom: 0 });
 
@@ -147,5 +147,27 @@ function createAkatento(m, at, startX, startY) {
   c.createTask(walking, null, 0x2100);
 }
 
+// CreateEntity_Spinner, Task_SpinnerMain, sub_8058DF4 and sub_8058DB0: a spinning top that stays where it is
+function createSpinner(m, at, x, y) {
+  const { stage } = m, { c } = stage, meX = m.data.getUint8(at);
+  const s = createSprite({ tiles: stage.allocTiles(SPINNER_TILES), anim: ANIM_SPINNER, oamFlags: 18 << 6, x: x - stage.camera.x, y: y - stage.camera.y, frameFlags: 0x1000, hitboxes: [{ index: -1, left: 0, top: 0, right: 0, bottom: 0 }, emptyBox()] });
+  updateSprite(c, s);
+  m.data.setInt8(at, -2);
+  c.createTask(t => {
+    const beaten = beatenBy(s, x, y, stage);
+    if (beaten) poof(stage, s.x + stage.camera.x, s.y + stage.camera.y);
+    else if (farFromCamera(stage, x, y, s)) m.data.setUint8(at, meX);
+    if (beaten || farFromCamera(stage, x, y, s)) {
+      stage.freeTiles(s.tiles);
+      c.destroyTask(t);
+      return;
+    }
+    s.x = x - stage.camera.x;
+    s.y = y - stage.camera.y;
+    updateSprite(c, s);
+    displaySprite(c, s);
+  }, null, 0x2100);
+}
+
 /** gSpriteInits_Enemies, those ported so far. */
-export const ENEMIES = { 1: createAkatento };
+export const ENEMIES = { 0: createSpinner, 1: createAkatento };

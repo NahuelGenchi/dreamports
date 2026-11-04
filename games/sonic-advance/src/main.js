@@ -490,14 +490,14 @@ function play(assets, resume = null, carry = null, chosen = null) {
 // the zone being played, whose art the ending after it reads
 let playing = null;
 
-// the ending after the last stage (normalending.js): without all seven Chaos Emeralds the congratulations after
-// X Zone's results, with them the credits after the true ending; at its end the game starts over from the
-// SEGA logo
+// the ending after the last stage (normalending.js): the congratulations after X Zone's results, or the credits after
+// the true ending, then the message to collect the Chaos Emeralds unless the save has all seven (staff_credits.c); at
+// its end the game starts over from the SEGA logo
 function endGame(assets, from) {
   const { seed, level } = game.state;
   currentLevel = level;
   game.stop();
-  game = createNormalEnding(screen, assets, input, sound, { from, emeralds: from === 'credits', seed, save, onEnd: () => queueMicrotask(restartGame) });
+  game = createNormalEnding(screen, assets, input, sound, { from, emeralds: save.chaosEmeralds === ALL_EMERALDS, seed, save, onEnd: () => queueMicrotask(restartGame) });
   fitScreen();
   game.start();
   if (debug) globalThis.onsoku = { game, assets, input, sound, save, nextZone, endGame: from => endGame(assets, from) };

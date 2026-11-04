@@ -10,8 +10,8 @@
     { "name": "The platforming", "what": "A character running and jumping through a whole stretch of an act, with every piece it needs together. Everything played in a zone builds on it.", "needs": ["Springs", "Being hit"] }
   ],
   "parts": [
-    { "name": "The language screen, at the first start", "recording": "first-start", "frames": [0, 630] },
-    { "name": "The name entry, at the first start" },
+    { "name": "The language screen, at the first start", "recording": "first-start", "frames": [0, 632] },
+    { "name": "The name entry, at the first start", "recording": "first-start", "frames": [633, 2449] },
     { "name": "The SEGA and Sonic Team logos" },
     { "name": "The intro" },
     { "name": "The title screen" },
