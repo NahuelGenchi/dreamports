@@ -13,10 +13,11 @@ import { proof } from '../../../kit/gba/proof.js';
 import { createSettings } from '../../../kit/gba/ui/settings.js';
 import { createTouch } from '../../../kit/gba/ui/touch.js';
 import { createSound } from '../../../kit/gba/sound/audio.js';
-import { createCore } from './core.js';
+import { createCore, KEY } from './core.js';
 import { languageScreen } from './language.js';
 import { soundLayout } from './sound.js';
 import { startStage } from './stage/stage.js';
+import { placeCharacters } from './stage/player.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from
 const GAME = { name: 'Sonic Advance 3', title: 'SONICADVANC3', codes: { B3SE: 'USA' }, versions: [{ sha1: '30db467effa5014806d42db57e2299398a51355b' }] };
@@ -33,6 +34,8 @@ const LAYOUT = {
 // the frames an act's start point stays white, the last of those between the warp's fade and the act, by the song and the
 // first picture lining up with the original's (a note in notes/ says how)
 const FIRST_ACT = 3, WHITE_BEFORE_AN_ACT = 2;
+// the frames &x=<n>&y=<n> runs a stage for with nothing to show: its title card has gone and a player can move
+const FRAMES_BEFORE_A_PLACE = 330;
 
 const picker = document.getElementById('picker');
 const stage = document.getElementById('stage');
@@ -72,11 +75,21 @@ createRomSetup(picker, {
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
   // ?level=<n> opens a stage straight away, which recordings use as their start point, and ?seed=<n> sets the game's
-  // numbers that look random, as the recording's `sets` does for the original
+  // numbers that look random, as the recording's `sets` does for the original, and &x=<n>&y=<n> puts the characters and the
+  // camera somewhere in a stage as its opening ends, as those recordings' values do in the original, with &jump=<n> the
+  // button held for that many frames before it, so the character is put there on its way up
   const params = new URLSearchParams(location.search), level = params.get('level');
   core.seed = Number(params.get('seed')) | 0;
   core.main = level === null ? languageScreen : c => startStage(c, Number(level));
   if (Number(level) >= FIRST_ACT) core.startUp = WHITE_BEFORE_AN_ACT;
+  if (params.has('x')) {
+    const jump = Number(params.get('jump'));
+    for (let i = 0; i < FRAMES_BEFORE_A_PLACE; i++) {
+      if (i === FRAMES_BEFORE_A_PLACE - 1) placeCharacters(core.stage, Number(params.get('x')), Number(params.get('y')));
+      core.step(i >= FRAMES_BEFORE_A_PLACE - jump ? KEY.A : 0);
+      core.runSound();
+    }
+  }
   return { step(keys) { core.step(keys); }, hblank: core.hblank };
 }
 
