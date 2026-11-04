@@ -768,6 +768,9 @@ export function createM4A(rom, layout, io) {
     },
 
     songStart(n) { const s = song(n); mplayStart(s.player, s.header); },
+    /** runs song n's player one frame ahead of the others: for a song a screen starts before its first frame, as the
+     *  console's sound library then runs once before that frame's game code, which the kit's order doesn't have */
+    songAhead(n) { playerMain(song(n).player); },
     /** song n's header address, to compare with a player's songHeader */
     songHeader(n) { return song(n).header; },
     /** the number of the music player song n plays on */

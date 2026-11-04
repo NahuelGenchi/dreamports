@@ -11,7 +11,7 @@ const calls = (call, send) => ({
   /** m4aSongNumStart on Sonic Advance 2's own engine */
   playSa2(song) { send({ type: 'sa2Call', name: 'songStart', args: [song] }); },
   /** Starts the stage's music and the music manager that brings it back after the 1-up jingle */
-  playStageMusic(song) { call('stageMusic', song); },
+  playStageMusic(song, ahead = false) { call('stageMusic', song, ahead); },
   /** The music manager's extra life: the 1-up jingle in place of the music */
   oneUp() { call('oneUp'); },
   /** The music manager's invincibility: its song in place of the music */
