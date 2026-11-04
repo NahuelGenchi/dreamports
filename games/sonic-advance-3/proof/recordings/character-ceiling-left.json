@@ -1,0 +1,205 @@
+{
+ "about": "Sonic meeting the slope going left, up the way it rises, from a start point further along it. It stops before an object that isn't made comes on the screen.",
+ "frames": 33,
+ "start": "level=2&seed=5&x=1040&y=252&jump=6",
+ "held": [
+  [
+   0,
+   [
+    "A",
+    "LEFT"
+   ]
+  ],
+  [
+   30,
+   []
+  ]
+ ],
+ "onlyInOriginal": [
+  {
+   "at": 0,
+   "frames": 5073,
+   "held": [
+    [
+     0,
+     []
+    ],
+    [
+     100,
+     [
+      "A"
+     ]
+    ],
+    [
+     106,
+     []
+    ],
+    [
+     300,
+     [
+      "A"
+     ]
+    ],
+    [
+     306,
+     []
+    ],
+    [
+     500,
+     [
+      "START"
+     ]
+    ],
+    [
+     506,
+     []
+    ],
+    [
+     700,
+     [
+      "A"
+     ]
+    ],
+    [
+     706,
+     []
+    ],
+    [
+     1000,
+     [
+      "START"
+     ]
+    ],
+    [
+     1006,
+     []
+    ],
+    [
+     1200,
+     [
+      "START"
+     ]
+    ],
+    [
+     1206,
+     []
+    ],
+    [
+     1400,
+     [
+      "START"
+     ]
+    ],
+    [
+     1406,
+     []
+    ],
+    [
+     1600,
+     [
+      "A"
+     ]
+    ],
+    [
+     1606,
+     []
+    ],
+    [
+     1750,
+     [
+      "A"
+     ]
+    ],
+    [
+     1756,
+     []
+    ],
+    [
+     1900,
+     [
+      "A"
+     ]
+    ],
+    [
+     1906,
+     []
+    ],
+    [
+     2050,
+     [
+      "A"
+     ]
+    ],
+    [
+     2056,
+     []
+    ],
+    [
+     2200,
+     [
+      "A"
+     ]
+    ],
+    [
+     2206,
+     []
+    ],
+    [
+     5067,
+     [
+      "A"
+     ]
+    ]
+   ],
+   "about": "From power-on to the overworld: the language, a name, the logos, the title, the main menu, Sonic and Tails, the story. Then the frames before a player can move, the jump button for the last of them, and the characters' and the camera's places on the last.",
+   "sets": [
+    {
+     "frame": 4700,
+     "address": "03006868",
+     "bytes": 4,
+     "value": 5
+    },
+    {
+     "frame": 5072,
+     "address": "030015D0",
+     "bytes": 4,
+     "value": 266240
+    },
+    {
+     "frame": 5072,
+     "address": "03001720",
+     "bytes": 4,
+     "value": 258560
+    },
+    {
+     "frame": 5072,
+     "address": "030015D4",
+     "bytes": 4,
+     "value": 64512
+    },
+    {
+     "frame": 5072,
+     "address": "03001724",
+     "bytes": 4,
+     "value": 64512
+    },
+    {
+     "frame": 5072,
+     "address": "03001D10",
+     "bytes": 4,
+     "value": 920
+    },
+    {
+     "frame": 5072,
+     "address": "03001D14",
+     "bytes": 4,
+     "value": 168
+    }
+   ]
+  }
+ ],
+ "clip": {
+  "at": 0,
+  "frames": 33
+ }
+}
