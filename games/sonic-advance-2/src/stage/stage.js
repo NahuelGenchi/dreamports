@@ -8,6 +8,7 @@ import { updateCamera, cameraMemory } from './camera.js';
 import { createPlayer } from './player.js';
 import { createStageUi } from './ui.js';
 import { createCountdown } from './countdown.js';
+import { createRings } from './rings.js';
 import { createSprite, updateSprite } from '../sprite.js';
 
 // gStageCameraBgTemplates, in the order the camera keeps them, and how each level's layers are numbered
@@ -178,6 +179,10 @@ export function startStage(c, level) {
   stage.player = createPlayer(stage, level);
   c.createTask(leaveTitleCard, stage, 0x2200);
   initCamera(stage);
+  createRings(stage);
+  // 0x08008DCC, the entities manager, which isn't made, keeps its place: a ring's sparkle comes after it, and so runs in the
+  // frame the ring is taken, rather than right after the rings, which would wait for the next
+  c.createTask(() => {}, null, 0x2000);
   createColourLoader(c, ANIM_LEAF_FOREST_COLOURS);
   startSong(c);
   return stage;
