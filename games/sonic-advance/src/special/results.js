@@ -13,6 +13,7 @@ import { uiSlots } from './intro.js';
 import { SINE } from '../engine/trig.js';
 import { SONG } from '../sound/songs.js';
 import { ALL_EMERALDS } from '../engine/unlock.js';
+import { fixes, lifeMore } from '../engine/fixes.js';
 
 const OBJ_VRAM = 0x10000;
 const EMERALD_BONUS = 10000, LIFE_EVERY = 50000;
@@ -23,6 +24,7 @@ const COUNT_FROM = 0xAA, END_AFTER = 615;
 const UIGFX_BAND = 16, UIGFX_WON = 51, UIGFX_NAME = 11, UIGFX_LOST = 53, UIGFX_LABELS = 52, UIGFX_EMERALDS = 54;
 const UIGFX_EMERALD_COLOURS = [56, 57, 58], UIGFX_FONT = 0;
 // the slots (ui.js)
+const CONTINUE_WIDTH = 16;   // how far a +N glyph reaches, of its picture
 const SLOT_STRIPE = 2, SLOT_LABELS = 3, SLOT_EMERALDS = 4, SLOT_COLOURS = 5, SLOT_DIGITS = 6, SLOT_BAND = 8;
 // the band's eight blank glyphs, the stripe's ten glyphs three times over, and the labels' glyphs in slot 3
 const BAND = glyphs('        ');
@@ -65,7 +67,7 @@ export function createResults(ctx, arg) {
   // which it always is here
   const before = game.score;
   game.score += bonus + rings * 100;
-  if (div(game.score, LIFE_EVERY) !== div(before, LIFE_EVERY)) game.lives = (game.lives + 1) & 0xFF;
+  if (div(game.score, LIFE_EVERY) !== div(before, LIFE_EVERY)) game.lives = lifeMore(game.lives);
   // how many frames the count takes: the larger of the rings and the bonus's hundreds
   const count = bonus > rings * 100 ? div(bonus, 100) & 0xFFFF : rings;
   uiGfxStackInit(e);
@@ -297,11 +299,19 @@ function continuesNumber(d) {
   const o = d.o, e = d.ctx.engine, keepX = o.unkA, keepY = o.unkC;
   const left = slide(d);
   const first = digitsOf(d, 3), digits = i => d.unk2B[first + i];
+  // its other digits, in the numbers' font after the row's +N, as that row has only one glyph each
+  const more = fixes.on ? Math.max(6 - first, 0) : 0;
   if (o.unk2 === 0x100) {
     o.unkC = 0x7E;
     o.unkE = 1;
-    o.unkA = s16(179 - left);
+    o.unkA = s16(179 - left - more * 8);
     drawUiText(e, digits, o);
+    if (more) {
+      const { unk10, unk12 } = o, x = o.unkA;
+      o.unk10 = SLOT_DIGITS; o.unk12 = 9; o.unkE = more; o.unkA = s16(x + CONTINUE_WIDTH);
+      drawUiText(e, i => { const c = d.unk2B[first + 1 + i]; return c >= 0x2B ? c - 0xB : c; }, o);
+      o.unk10 = unk10; o.unk12 = unk12;
+    }
   } else {
     o.unkC = s16(143 - (o.unk2 >> 4) - div(o.unk2, 25));
     o.unkE = 1;

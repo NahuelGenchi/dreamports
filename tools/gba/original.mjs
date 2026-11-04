@@ -6,6 +6,7 @@ import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { LOCAL } from '../lib/paths.mjs';
 import { ORIGINAL, isBuilt, build } from './build.mjs';
+import { STATE_BYTES } from '../lib/state.mjs';
 
 /** The Game Boy Advance's buttons, a bit each, as its KEYINPUT register and kit/gba/input.js have them. */
 export const KEY = { A: 0x1, B: 0x2, SELECT: 0x4, START: 0x8, RIGHT: 0x10, LEFT: 0x20, UP: 0x40, DOWN: 0x80, R: 0x100, L: 0x200 };
@@ -66,21 +67,22 @@ export function playOriginal(copy) {
 
 /**
  * Runs `frames` frames of the original from power-on. `buttons` holds each frame's buttons as KEY bits,
- * `functions` the code map's ({ address, size }), `pictures` the frames whose whole picture is wanted, in order, and
- * `sets` the values to write to the work RAM as a frame starts ({ frame, address, bytes, value }), in the order of their frames.
- * Resolves to { hashes, plain, ran, pictures, sound, outside }: each frame's picture hash, its one colour when every
+ * `functions` the code map's ({ address, size }), `pictures` the frames whose whole picture is wanted, in order,
+ * `sets` the values to write to the work RAM as a frame starts ({ frame, address, bytes, value }), in the order of their
+ * frames, and `states` the frames whose state is wanted, in order.
+ * Resolves to { hashes, plain, ran, pictures, states, sound, outside }: each frame's picture hash, its one colour when every
  * pixel has the same (15-bit) or else -1, the places in `functions` of those that ran in it, the pictures asked for
- * (15-bit colour, 240 x 160), with `sound` each frame's sound (an Int16Array of left and right samples, 65536 a
- * second, in the console's 10-bit units around the bias) or else null, and how many instructions ran outside every
- * function ({ cartridge, memory }).
+ * (15-bit colour, 240 x 160), the states asked for (bytes, as lib/state.mjs reads them), with `sound` each frame's sound
+ * (an Int16Array of left and right samples, 65536 a second, in the console's 10-bit units around the bias) or else null,
+ * and how many instructions ran outside every function ({ cartridge, memory }).
  */
-export async function runOriginal({ copy, frames, buttons, functions = [], pictures = [], sound = false, sets = [] }) {
+export async function runOriginal({ copy, frames, buttons, functions = [], pictures = [], sound = false, sets = [], states = [] }) {
   const folder = join(LOCAL, 'tmp');
   mkdirSync(folder, { recursive: true });
   const id = `${process.pid}-${Date.now()}`;
   const files = {
     buttons: join(folder, `buttons-${id}.bin`), functions: join(folder, `functions-${id}.bin`), pictures: join(folder, `pictures-${id}.bin`),
-    sound: join(folder, `sound-${id}.bin`), sets: join(folder, `sets-${id}.bin`),
+    sound: join(folder, `sound-${id}.bin`), sets: join(folder, `sets-${id}.bin`), states: join(folder, `states-${id}.bin`),
   };
   writeFileSync(files.buttons, new Uint8Array(Uint16Array.from(buttons).buffer));
   const list = new Uint32Array(functions.length * 2);
@@ -88,9 +90,10 @@ export async function runOriginal({ copy, frames, buttons, functions = [], pictu
   writeFileSync(files.functions, new Uint8Array(list.buffer));
   writeFileSync(files.pictures, new Uint8Array(Uint32Array.from(pictures).buffer));
   writeFileSync(files.sets, new Uint8Array(Uint32Array.from(sets.flatMap(({ frame, address, bytes, value }) => [frame, address, bytes, value])).buffer));
+  writeFileSync(files.states, new Uint8Array(Uint32Array.from(states).buffer));
   try {
     // its files by their plain names, from their folder: only the copy's path has to survive the trip whatever it's called
-    const child = spawn(ORIGINAL, [copy, String(frames), basename(files.buttons), basename(files.functions), basename(files.pictures), sound ? basename(files.sound) : '-', basename(files.sets)], { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(ORIGINAL, [copy, String(frames), basename(files.buttons), basename(files.functions), basename(files.pictures), sound ? basename(files.sound) : '-', basename(files.sets), basename(files.states)], { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'] });
     const out = [], err = [];
     child.stdout.on('data', chunk => out.push(chunk));
     child.stderr.on('data', chunk => err.push(chunk));
@@ -98,8 +101,8 @@ export async function runOriginal({ copy, frames, buttons, functions = [], pictu
     const stderr = Buffer.concat(err).toString('utf8').trim();
     if (code !== 0) throw new Error(`The original didn't run: ${stderr}`);
     const data = Buffer.concat(out);
-    const hashes = new Uint32Array(frames), plain = new Int32Array(frames), ran = new Array(frames), shown = new Map();
-    const wanted = new Set(pictures);
+    const hashes = new Uint32Array(frames), plain = new Int32Array(frames), ran = new Array(frames), shown = new Map(), held = new Map();
+    const wanted = new Set(pictures), wantedStates = new Set(states);
     let at = 0;
     for (let frame = 0; frame < frames; frame++) {
       hashes[frame] = data.readUInt32LE(at);
@@ -110,6 +113,10 @@ export async function runOriginal({ copy, frames, buttons, functions = [], pictu
       if (wanted.has(frame)) {
         shown.set(frame, new Uint16Array(data.buffer.slice(data.byteOffset + at, data.byteOffset + at + WIDTH * HEIGHT * 2)));
         at += WIDTH * HEIGHT * 2;
+      }
+      if (wantedStates.has(frame)) {
+        held.set(frame, data.subarray(at, at + STATE_BYTES));
+        at += STATE_BYTES;
       }
     }
     let heard = null;
@@ -122,7 +129,7 @@ export async function runOriginal({ copy, frames, buttons, functions = [], pictu
         at += 4 + count * 4;
       }
     }
-    return { hashes, plain, ran, pictures: shown, sound: heard, outside: JSON.parse(stderr.split('\n').pop()) };
+    return { hashes, plain, ran, pictures: shown, states: held, sound: heard, outside: JSON.parse(stderr.split('\n').pop()) };
   } finally {
     for (const file of Object.values(files)) rmSync(file, { force: true });
   }

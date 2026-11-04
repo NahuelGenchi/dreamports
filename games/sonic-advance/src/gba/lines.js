@@ -8,7 +8,7 @@ import { REG } from '../../../../kit/gba/video.js';
 const s8 = v => (v << 24) >> 24, s16 = v => (v << 16) >> 16;
 
 // a line's value, and for the widescreen view its true value, if it is more than the register keeps
-function put16(e, at, v, trueValue = NaN) {
+export function put16(e, at, v, trueValue = NaN) {
   e.hblank[at] = v & 0xFF; e.hblank[at + 1] = (v >> 8) & 0xFF;
   e.hblankTrue[at >> 1] = trueValue;
 }

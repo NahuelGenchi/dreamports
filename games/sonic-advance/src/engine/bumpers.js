@@ -30,6 +30,7 @@ import { BALL_SPRITE_OFFSET_Y } from './constants.js';
 import { endAttack, TAILS, KNUCKLES } from './player.js';
 import { SINE, s8, octantAngle } from './trig.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const BUMPER_HEXAGON = 48, BUMPER_ROUND = 49, BUMPER_CIRCLING = 50;
 export const BUMPER_TRI_H = 51, BUMPER_TRI_V = 52, BUMPER_RIGHT_ANGLE = 53, WALL_BUMPER = 71;
@@ -41,6 +42,8 @@ const POINTS = 10;
 // COS(c × 128) >> 12 and SIN(c × 128) >> 12 for shake frames 0–9 (see above)
 const SHAKE_X = [4, 2, 0, -3, -4, -3, 0, 2, 0, 0];
 const SHAKE_Y = [0, 2, 4, 2, 0, -3, -4, -3, 0, 2];
+// the same with the angle wrapped, as the last two frames mean
+const SHAKE_X_WRAPPED = [4, 2, 0, -3, -4, -3, 0, 2, 4, 2];
 const SHAKE_END = 8;
 // SIN(-1), for the angle of a touch dead on the centre: the halfword before the sine table in the ROM
 const SIN_BEFORE = 2048;
@@ -191,7 +194,7 @@ export function createBumper(e, slot, anims) {
     } else if (k === BUMPER_CIRCLING) {
       if (!touches(s, x + (qx >> 11), y + (qy >> 11), p)) return false;
       throwOff(p);
-      roundThrow(p, angle(p, x + (qx >> 8), y + (qy >> 8)), world);
+      roundThrow(p, fixes.on ? angle(p, x + (qx >> 11), y + (qy >> 11)) : angle(p, x + (qx >> 8), y + (qy >> 8)), world);
     } else if (k === BUMPER_TRI_H) {
       if (p.carried || !touches(s, x, y, p)) return false;
       throwOff(p);
@@ -230,9 +233,9 @@ export function createBumper(e, slot, anims) {
         if (test(p, ctx.world)) shaking = true;
       } else if (k === BUMPER_HEXAGON || k === BUMPER_ROUND || k === BUMPER_TRI_V) {
         test(p, ctx.world);
-        x += sideways * SHAKE_X[c]; y += SHAKE_Y[c];
+        x += sideways * (fixes.on ? SHAKE_X_WRAPPED : SHAKE_X)[c]; y += SHAKE_Y[c];
       } else {
-        x += sideways * SHAKE_X[c]; y += SHAKE_Y[c];
+        x += sideways * (fixes.on ? SHAKE_X_WRAPPED : SHAKE_X)[c]; y += SHAKE_Y[c];
         test(p, ctx.world);
       }
       if (offDisplay(e.x, e.y, ctx.cam) && offCam(x, y, ctx.cam)) { slot.live = null; return false; }

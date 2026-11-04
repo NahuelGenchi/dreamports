@@ -13,9 +13,10 @@
 // as in the waterfalls.
 
 import { offCam } from './objects.js';
-import { endAttack } from './player.js';
+import { endAttack, AMY } from './player.js';
 import { tileFloor } from './terrain.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const PLAYER_FLOAT = 90;
 const UPDRAFT = 104 / 256, MAX_RISE = 2.25;   // PLAYER_FLOATING_UPDRAFT, PLAYER_MAX_FLOATING_SPEED
@@ -30,6 +31,7 @@ export function createFloat(e, slot) {
     run(ctx) {
       const p = ctx.player;
       if (offCam(e.x, e.y, ctx.cam)) {
+        if (fixes.on && !p.dead && Math.floor(p.x) >= e.x && Math.floor(p.x) <= right && Math.floor(p.y) >= e.y && Math.floor(p.y) <= bottom) p.ysp /= 2;
         if (sounding) ctx.world.stopSound(SONG.WHIRLWIND);
         slot.live = null;
         return false;
@@ -45,6 +47,7 @@ export function createFloat(e, slot) {
         // Player_TransitionCancelFlyingAndBoost
         endAttack(p); p.pushing = false; p.airLock = false;
         p.state = whirlwind ? 'float' : 'spring';
+        if (p.character === AMY) p.hammerJump = true;
         if (tileFloor(ctx.world.terrain, x, y, p.layer) > 4) p.curled = false;
       }
       return true;

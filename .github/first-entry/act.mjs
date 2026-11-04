@@ -15,12 +15,13 @@ const shape = {
   name: value => /^[A-Za-z0-9][A-Za-z0-9 '!&.:,+-]{0,60}$/.test(value),
   issue: COUNT,
   milestone: value => value === null || COUNT(value),
+  method: value => value === 'merge' || value === 'squash',
 };
 const FIELDS = {
   say: ['pr', 'comment', 'why'],
   ask: ['pr', 'comment', 'game', 'sha', 'head', 'name'],
   wait: ['pr', 'comment', 'game', 'sha', 'head', 'name'],
-  merge: ['pr', 'comment', 'game', 'sha', 'head', 'name', 'issue', 'milestone'],
+  merge: ['pr', 'comment', 'game', 'sha', 'head', 'name', 'issue', 'milestone', 'method'],
 };
 const wanted = FIELDS[plan.kind];
 if (!wanted || Object.keys(plan).length !== wanted.length + 1 || !wanted.every(key => shape[key](plan[key]))) throw new Error('The plan isn\'t one of the fixed shapes.');
@@ -35,7 +36,7 @@ if (plan.kind === 'wait') await say(notYet(plan, WAITING));
 if (plan.kind === 'merge') {
   try {
     if (plan.milestone) await api(`/issues/${plan.pr}`, 'PATCH', { milestone: plan.milestone });
-    await api(`/pulls/${plan.pr}/merge`, 'PUT', { sha: plan.sha, merge_method: 'squash', commit_title: `feat: ${plan.name} Dreamport's first entry (#${plan.issue}) (#${plan.pr})`, commit_message: 'What npm run dp -- new and npm run dp -- capture write, with its capture looked at by the Dreamports team (docs/TEAMS.md).' });
+    await api(`/pulls/${plan.pr}/merge`, 'PUT', { sha: plan.sha, merge_method: plan.method, commit_title: `feat: ${plan.name} Dreamport's first entry (#${plan.issue}) (#${plan.pr})`, commit_message: 'What npm run dp -- new and npm run dp -- capture write, with its capture looked at by the Dreamports team (docs/TEAMS.md).' });
   } catch (error) {
     console.error(error.message);
     await say(notYet(plan, NOT_MERGED));

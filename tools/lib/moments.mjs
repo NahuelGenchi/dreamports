@@ -1,6 +1,6 @@
-// Finds the best moments in what a person played, for a game's card (tools/capture.mjs): lively, colourful stretches
-// of play, from numbers each frame gives. A person chooses among them, so this only has to put good ones in front of
-// them and leave out what never belongs on a card: logos, fades, menus, text and whatever plays with nobody playing.
+// Finds the best moments in what was played, for a game's card (tools/capture.mjs): lively, colourful stretches of play,
+// from numbers each frame gives. A person chooses among them when one is there, and otherwise the first is taken, and
+// it leaves out what never belongs on a card: logos, fades, menus, text and whatever plays with nobody playing.
 
 const PIXELS = 240 * 160;
 
@@ -82,6 +82,21 @@ export function shortlist(frames, buttons, count = 6) {
     if (chosen.length < count && chosen.every(other => Math.abs(other - from) >= WINDOW)) chosen.push(from);
   }
   return chosen;
+}
+
+/**
+ * What each stretch of what was played is like, in numbers, to say where a list of presses led with no picture: at most
+ * about forty stretches of { from, moved, colours, held }, with `held` the share of its frames buttons that play were held.
+ */
+export function stretches(frames, buttons) {
+  const size = Math.max(300, Math.ceil(frames.length / 40));
+  const out = [];
+  for (let from = 0; from < frames.length; from += size) {
+    const part = frames.slice(from, from + size);
+    const held = buttons.slice(from, from + size).filter(mask => mask & PLAYING).length;
+    out.push({ from, moved: mean(part, 'moved'), colours: mean(part, 'colours'), held: held / part.length });
+  }
+  return out;
 }
 
 // every third pixel, each way, which says enough to compare two pictures

@@ -14,8 +14,10 @@ permissions:
   issues: write
   pull-requests: write
 
+# A waiting run gives way to a newer one in its group. Event runs can, as each covers every open record,
+# but only a full run covers closed ones, so full runs wait in a group of their own.
 concurrency:
-  group: project-tracking
+  group: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'project-tracking-full' || 'project-tracking' }}
   cancel-in-progress: false
 
 jobs:
@@ -110,7 +112,10 @@ jobs:
             if (item.pull_request) {
               // Ignore examples/comments; closing references must be standalone same-repo lines.
               const prose = body.replace(/<!--[^]*?-->/g, '').replace(/```[^]*?```/g, '').replace(/~~~[^]*?~~~/g, '');
-              const numbers = [...new Set([...prose.matchAll(/^(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#([1-9]\d*)[.!]?\s*$/gim)].map(match => Number(match[1])))];
+              const references = pattern => [...new Set([...prose.matchAll(pattern)].map(match => Number(match[1])))];
+              const closing = references(/^(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#([1-9]\d*)[.!]?\s*$/gim);
+              // With no closing line, as on a draft or a game's capture, its standalone Refs lines count the same way.
+              const numbers = closing.length ? closing : references(/^refs\s+#([1-9]\d*)[.!]?\s*$/gim);
               const linked = [];
               for (const number of numbers) {
                 let issue = byNumber.get(number);
@@ -137,7 +142,8 @@ jobs:
             const additions = [...new Set(wanted.filter(label => label && !labels.has(label)))];
             if (additions.length) await api(`${path}/labels`, 'POST', { labels: additions });
             if (item.pull_request && !incomplete && labels.has('needs-tracking')) {
-              await api(`${path}/labels/needs-tracking`, 'DELETE');
+              // A full run and an event run can reach the same PR together, so it may be gone already.
+              await api(`${path}/labels/needs-tracking`, 'DELETE').catch(error => { if (error.status !== 404) throw error; });
             }
           }
           appendFileSync(process.env.GITHUB_STEP_SUMMARY,

@@ -15,6 +15,12 @@ export function namesOf(original) {
   return { name: found ? found[1] : original.name, region: found ? found[2] : 'Unknown' };
 }
 
+/** The commit message of a new game's first files, with nothing of anyone's but the game's name (`.github/first-entry/rules.mjs`). */
+export const firstFilesMessage = (name, issue) => `feat: ${name} Dreamport's first files (#${issue})`;
+
+/** The commit message of a game's capture, which goes on those first files. */
+export const captureMessage = (name, issue) => `feat: ${name} Dreamport's capture (#${issue})`;
+
 /** The files of a new game, by their paths in its folder. */
 export function startingFiles(game, original) {
   const { name, region } = namesOf(original);

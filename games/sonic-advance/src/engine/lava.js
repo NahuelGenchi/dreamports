@@ -6,6 +6,7 @@
 // that is never set).
 
 import { offCam } from './objects.js';
+import { fixes } from './fixes.js';
 
 export const LAVA = 105;
 
@@ -15,8 +16,12 @@ export function createLava(e, slot) {
   const right = e.x + e.d[2] * 8, bottom = e.y + e.d[3] * 8, kills = e.d[0] !== 0;
   return {
     run(ctx) {
-      if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       const p = ctx.player, x = Math.floor(p.x), y = Math.floor(p.y);
+      if (offCam(e.x, e.y, ctx.cam)) {
+        if (fixes.on && !p.dead && x >= e.x && x <= right && y >= e.y && y <= bottom) p.ysp /= 2;
+        slot.live = null;
+        return false;
+      }
       if (!p.carried && x >= e.x && x <= right && y >= e.y && y <= bottom && !p.dead) {
         if (!kills) ctx.world.damage();
         else p.dead = true;

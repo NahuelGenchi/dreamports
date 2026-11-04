@@ -25,6 +25,7 @@ import { beamSpan } from './spotlights.js';
 import { bgr555ToRgb, tintRgb, waterTint } from '../rom/colors.js';
 import { ICE_MOUNTAIN, iceMountainScroll } from './icemountain.js';
 import { underColors, waveOffsets } from './water.js';
+import { fixes } from './fixes.js';
 
 const mod = (a, n) => ((a % n) + n) % n;
 const HUD_ORDER = 3;   // the HUD's OAM order (Task_StageUIMain: 24 >> 3)
@@ -398,10 +399,20 @@ export function createRenderer(canvas, assets) {
 
   // the HUD's sprites have priority 0: in front of the layers and every other sprite. The lives keep to the
   // bottom of a taller view.
-  function drawHud(sprites, sheet, [left, top, , bottom] = [0, 0, W, H]) {
+  // `through` draws what comes before the HUD in OAM but has a lower priority (the points of a defeat, OAM order 0).
+  // Each HUD sprite takes those pixels' priority up to its own even where it is transparent, and then no sprite of
+  // the same priority further on in OAM can cover them: so they show in a sprite's box, in front of the ring icon,
+  // which comes after the digits in OAM, though never in front of a digit's own pixels.
+  function drawHud(sprites, sheet, [left, top, , bottom] = [0, 0, W, H], through = null) {
     for (const [what, x, y] of sprites) {
       const [sx, sy, w, h] = typeof what === 'string' ? hud[what] : hud.glyphs[what];
-      ctx.drawImage(sheet, sx, sy, w, h, left + x, y < SCREEN_H / 2 ? top + y : y + bottom - SCREEN_H, w, h);
+      const dy = y < SCREEN_H / 2 ? top + y : y + bottom - SCREEN_H;
+      if (through) {
+        ctx.save(); ctx.beginPath(); ctx.rect(left + x, dy, w, h); ctx.clip();
+        through();
+        ctx.restore();
+      }
+      ctx.drawImage(sheet, sx, sy, w, h, left + x, dy, w, h);
     }
   }
 
@@ -924,8 +935,8 @@ export function createRenderer(canvas, assets) {
   const backdrop = stage.backdrop ?? [0, 0, 0];
 
 
-  function render({ tick, rings, ringsStopped, sprites, terrain, palettes, objPalette, view, cam, hud: hudState, card: titleCard, results: actResults, gameOver, timeOver, bg, backLines, showCollision, rushFx, rushArt, shake, boostArt: art, spotlights, spriteRow, cardOver, water, display, effects2d, blendOff, pauseSign }) {
-    const stops = gameOver?.endsNext || gameOver?.saving ? SCROLL_STOPS_AT : Infinity;
+  function render({ layersAtStart, tick, rings, ringsStopped, sprites, terrain, palettes, objPalette, view, cam, hud: hudState, card: titleCard, results: actResults, gameOver, timeOver, bg, backLines, showCollision, rushFx, rushArt, shake, boostArt: art, spotlights, spriteRow, cardOver, water, display, effects2d, blendOff, pauseSign }) {
+    const stops = !fixes.on && (gameOver?.endsNext || gameOver?.saving) ? SCROLL_STOPS_AT : Infinity;
     ctx.imageSmoothingEnabled = false;
     if (art && art !== boostArt) {
       if (!boostSheets.has(art)) boostSheets.set(art, new WeakMap());
@@ -937,6 +948,8 @@ export function createRenderer(canvas, assets) {
     // on the act's first frame the camera isn't kept inside the act yet; the title card's fade has the
     // screen black then, and the view is kept inside. The boost's shake moves it, still inside the act.
     let { x: vx, y: vy } = view;
+    // the act's first picture, from the course select: the sprites go by the camera as it starts, not yet kept inside
+    if (layersAtStart) { vx = Math.floor(cam.x); vy = Math.floor(cam.y); }
     if (shake >= 0) {
       const [dx, dy] = RUSH_BOOST.shake[shake];
       vx = Math.max(0, Math.min(vx + dx, terrain.width - W));
@@ -1022,13 +1035,14 @@ export function createRenderer(canvas, assets) {
       }
     });
     drawAll(3);
-    if (ix) indexOver(ctx, 'back', vx, vy, frame, backLines);
-    else drawLayer(ctx, stage, 'back', vx, vy, W, H, frame, palettes, under);
+    const [lx, ly] = layersAtStart ? [0, 0] : [vx, vy];
+    if (ix) indexOver(ctx, 'back', lx, ly, frame, backLines);
+    else drawLayer(ctx, stage, 'back', lx, ly, W, H, frame, palettes, under);
     // the background and the back layer fill the screen, so the window turns everything drawn so far white
     const flash = whiteWindow(sprites.filter(s => s.white), vx, vy);
     if (flash) ctx.drawImage(flash, 0, 0);
     drawAll(2);
-    drawFlashedLayer(flash, c => (ix ? indexOver(c, 'front', vx, vy, frame) : drawLayer(c, stage, 'front', vx, vy, W, H, frame, palettes, under)));
+    drawFlashedLayer(flash, c => (ix ? indexOver(c, 'front', lx, ly, frame) : drawLayer(c, stage, 'front', lx, ly, W, H, frame, palettes, under)));
     drawAll(1, s => (s.prio ?? 0) >= 1);
     // the snow lies over everything but the sprites of priority 0; the title card's fade and its last frame show
     // it as it is, as do the frames a boss has turned the blending off on (`blendOff`) or flashes on. Above the
@@ -1042,7 +1056,9 @@ export function createRenderer(canvas, assets) {
     if (showCollision) drawCollision(terrain, vx, vy);
     // in a boss's arena, nothing past its walls; the HUD keeps to the corners of what is shown
     if (view.clip) blackOutside(view.clip);
-    byPart(below => drawHud(hudState.sprites, gameOver?.hudPalette ? over.hudSheet : below ? hud.under : hud.sheet, view.clip ?? undefined));
+    const before = list.filter(s => (s.prio ?? 0) >= 1 && s.order < HUD_ORDER && !s.rush && !s.affine && !s.white && !s.window);
+    const through = before.length ? () => { for (const s of before) drawSprite(s.frame, s.x - vx, s.y - vy, s.flipX, s.flipY, sheetFor(s.sheet)); } : null;
+    byPart(below => drawHud(hudState.sprites, gameOver?.hudPalette ? over.hudSheet : below ? hud.under : hud.sheet, view.clip ?? undefined, through));
     drawAll(1, s => (s.prio ?? 0) < 1 && s.order < HUD_ORDER);
     if (gameOver) drawGameOver(gameOver);
     if (timeOver) drawTimeOver(timeOver);

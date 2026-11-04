@@ -12,7 +12,7 @@
 // it clears Sonic's half-pipe flag whatever he is on.
 
 import { offDisplay } from './objects.js';
-import { endAttack, curlUp } from './player.js';
+import { endAttack, curlUp, AMY } from './player.js';
 import { SONG } from '../sound/songs.js';
 
 export const MINI_LOOP_ENTRY = 34, MINI_LOOP_BASE = 35, MINI_LOOP_START_BOOST = 36, MINI_LOOP_EXIT = 37, MINI_LOOP_ENTRANCE = 38;
@@ -32,7 +32,7 @@ const PARTS = {
     p.ignoreInput = true; p.heldInput = null; p.jumpPressed = false;
     ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false;
     p.carried = false;
-    ctx.world.playSoundOrChange(SONG.SPIN);
+    if (p.character !== AMY) ctx.world.playSoundOrChange(SONG.SPIN);
   },
   // Task_MiniLoop_Base: the forced roll ends, and his controls come back with the jump and attack buttons he
   // holds then not counting as presses

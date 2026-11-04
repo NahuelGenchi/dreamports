@@ -12,6 +12,7 @@ import { overlap } from './collide.js';
 import { SINE, vectorAngle } from './trig.js';
 import { tileEdge, PROBE_FLOOR } from './terrain.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const NO_PLAYER = 0xFF;
 const ABOVE = 16;                       // it starts this far above its place
@@ -96,6 +97,7 @@ export function createChao(mp, place, id, anims) {
         for (let pid = 0; pid < 4 && mp.players[pid]; pid++) {
           const mpp = mp.players[pid];
           if (mpp.flags & 4) continue;   // untouchable
+          if (fixes.on && !mpp.boxes[0].active) continue;
           if (!overlap(I(c.qx), I(c.qy), box(), mpp.pos.x, mpp.pos.y, mpp.boxes[0].b)) continue;
           mpp.state |= 0x10000 << c.id;
           c.playerA = c.playerB = pid;
@@ -127,7 +129,7 @@ export function createChao(mp, place, id, anims) {
     // Task_8028A1C: the landing plays out, its animation stepped twice a frame
     landing(ctx) {
       if (animate(s, anims)) phase = c.playerA !== NO_PLAYER ? 'follow' : 'free';
-      animate(s, anims);
+      if (!fixes.on) animate(s, anims);
       show(ctx);
       return true;
     },

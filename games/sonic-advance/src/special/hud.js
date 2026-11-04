@@ -5,6 +5,7 @@
 // and 16 a red one (twice as fast when both counts are 0, as they share the blink's frame count).
 
 import { uiGfxStackInit, uiGraphics, loadUiGfx, drawUiText } from '../front/ui.js';
+import { fixes } from '../engine/fixes.js';
 
 const UIGFX_FONT = 0, UIGFX_PANEL = 46;
 // the font's '0'–'9' and ':' (tiles 32 on) and its red '0' (tiles 124 on), the panel; their slots
@@ -30,7 +31,7 @@ export function createSpecialStageUi(ctx) {
   const e = ctx.engine;
   const ui = {
     ctx, digitsRings: [0, 0, 0], unk10: [0, 0, 0], unk40: 0, ringCount: 0,
-    unk48: (ctx.special.hudBlink ?? 0) & 0xFFFF, unk4C: 0, zero: zeroText(ctx),
+    unk48: fixes.on ? 0 : (ctx.special.hudBlink ?? 0) & 0xFFFF, unk4C: 0, zero: zeroText(ctx),
   };
   e.createTask(hudStep, ui, 0x1180);
   uiGfxStackInit(e);

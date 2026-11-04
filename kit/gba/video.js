@@ -678,7 +678,10 @@ export function createVideo() {
     for (let k = 0; k < 2; k++) [ref[k][0], ref[k][1]] = beforeRef[k];
     // the V-blank starts the rotating layers from their reference points again
     cur[0][0] = ref[0][0]; cur[0][1] = ref[0][1]; cur[1][0] = ref[1][0]; cur[1][1] = ref[1][1];
+    // with ?proof, what prove compares with the original's (proof.js)
+    if (globalThis.dreamportsProof) dreamportsProof.video = video;
   }
 
-  return { vram, pal, oam, io, write, drawFrame, drawLine };
+  const video = { vram, pal, oam, io, write, drawFrame, drawLine };
+  return video;
 }

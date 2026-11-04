@@ -37,6 +37,7 @@ export function parseScript(rom, tables, anim, variant = 0) {
       const box = [0, 1, 2, 3].map(k => (rom.u8(at + 8 + k) << 24) >> 24);
       steps.push({ op: 'hitbox', slot: rom.s32(at + 4) % 16, box: box.some(v => v) ? box : null, at: cur });
     }
+    else if (id === -5) steps.push({ op: 'sound', song: rom.u16(at + 4), at: cur });
     else if (id === -11) steps.push({ op: 'priority', priority: rom.s32(at + 4) & 3, at: cur });
     else if (id === -12) steps.push({ op: 'order', order: rom.s32(at + 4), at: cur });
     else if (id === -3) { steps.push({ op: 'jump', to: cur - rom.s32(at + 4), at: cur }); break; }
@@ -152,7 +153,7 @@ export function framePieces(rom, tables, anim, frame, tilesAt, palette, eightBpp
 export function animationFrames(rom, tables, anim, variant, basePalette, { skipPalette = false } = {}) {
   const steps = parseScript(rom, tables, anim, variant);
   const palette = basePalette.slice();
-  let tilesAt = null, eightBpp = false, boxes = null, loads = [], priority = null, order = null;
+  let tilesAt = null, eightBpp = false, boxes = null, loads = [], priority = null, order = null, sound = null;
   const frames = [];
   for (const s of steps) {
     if (s.op === 'tiles') {
@@ -167,11 +168,13 @@ export function animationFrames(rom, tables, anim, variant, basePalette, { skipP
       priority = s.priority;
     } else if (s.op === 'order') {
       order = s.order;
+    } else if (s.op === 'sound') {
+      sound = s.song;
     } else if (s.op === 'show') {
       frames.push(s.frame < 0 || tilesAt === null
-        ? { delay: s.delay, frame: -1, at: s.at, boxes, loads, priority, order }
-        : { delay: s.delay, frame: s.frame, tilesAt, eightBpp, palette: palette.slice(), at: s.at, boxes, loads, priority, order });
-      boxes = null; loads = []; order = null;
+        ? { delay: s.delay, frame: -1, at: s.at, boxes, loads, priority, order, sound }
+        : { delay: s.delay, frame: s.frame, tilesAt, eightBpp, palette: palette.slice(), at: s.at, boxes, loads, priority, order, sound });
+      boxes = null; loads = []; order = null; sound = null;
     }
   }
   const last = steps[steps.length - 1];
