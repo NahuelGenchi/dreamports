@@ -1,0 +1,206 @@
+{
+ "about": "Sonic thrown up by one of Leaf Forest act 1's springs, from a start point over it: he lands on it and is thrown up again, over and over, through the countdown, then steers as he falls, misses it and lands on the ground, with the camera following.",
+ "frames": 364,
+ "start": "level=0&x=4496&y=930",
+ "held": [
+  [
+   0,
+   []
+  ],
+  [
+   255,
+   [
+    "LEFT"
+   ]
+  ],
+  [
+   305,
+   []
+  ]
+ ],
+ "onlyInOriginal": [
+  {
+   "at": 0,
+   "frames": 2320,
+   "held": [
+    [
+     0,
+     []
+    ],
+    [
+     640,
+     [
+      "START"
+     ]
+    ],
+    [
+     646,
+     []
+    ],
+    [
+     760,
+     [
+      "A"
+     ]
+    ],
+    [
+     766,
+     []
+    ],
+    [
+     880,
+     [
+      "START"
+     ]
+    ],
+    [
+     886,
+     []
+    ],
+    [
+     1000,
+     [
+      "A"
+     ]
+    ],
+    [
+     1006,
+     []
+    ],
+    [
+     1120,
+     [
+      "START"
+     ]
+    ],
+    [
+     1126,
+     []
+    ],
+    [
+     1240,
+     [
+      "A"
+     ]
+    ],
+    [
+     1246,
+     []
+    ],
+    [
+     1360,
+     [
+      "START"
+     ]
+    ],
+    [
+     1366,
+     []
+    ],
+    [
+     1480,
+     [
+      "A"
+     ]
+    ],
+    [
+     1486,
+     []
+    ],
+    [
+     1600,
+     [
+      "START"
+     ]
+    ],
+    [
+     1606,
+     []
+    ],
+    [
+     1720,
+     [
+      "A"
+     ]
+    ],
+    [
+     1726,
+     []
+    ],
+    [
+     1840,
+     [
+      "START"
+     ]
+    ],
+    [
+     1846,
+     []
+    ],
+    [
+     1960,
+     [
+      "A"
+     ]
+    ],
+    [
+     1966,
+     []
+    ],
+    [
+     2080,
+     [
+      "START"
+     ]
+    ],
+    [
+     2086,
+     []
+    ],
+    [
+     2200,
+     [
+      "A"
+     ]
+    ],
+    [
+     2206,
+     []
+    ],
+    [
+     2316,
+     [
+      "A"
+     ]
+    ]
+   ],
+   "about": "From power-on to Leaf Forest act 1: the language, a name, the logos, the title, Game Start and Sonic. Then Sonic's place, beside a spring.",
+   "sets": [
+    {
+     "frame": 2319,
+     "address": "030059E8",
+     "bytes": 4,
+     "value": 1150976
+    },
+    {
+     "frame": 2319,
+     "address": "030059EC",
+     "bytes": 4,
+     "value": 238080
+    },
+    {
+     "frame": 2319,
+     "address": "03005960",
+     "bytes": 4,
+     "value": 4376
+    },
+    {
+     "frame": 2319,
+     "address": "03005964",
+     "bytes": 4,
+     "value": 850
+    }
+   ]
+  }
+ ]
+}
