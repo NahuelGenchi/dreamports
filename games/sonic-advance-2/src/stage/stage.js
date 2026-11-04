@@ -16,9 +16,10 @@ const tilemapOf = (level, n) => level * 3 + n;
 const LEVEL_SIZE = 0xD62D8, SKY_TILEMAP = 113;
 const DISPLAY_W = 240, DISPLAY_H = 160, SKY_LINES = 72, SCREEN_LINES = 159;
 const CHARACTER_COLOURS = 0xD6FF5, ANIM_LEAF_FOREST_COLOURS = 897, SONG_LEAF_FOREST_1 = 13;
-const SEGMENT_TILES = 4, SEGMENT_BYTES = 32 * SEGMENT_TILES;
+const SEGMENT_TILES = 4, SEGMENT_BYTES = 32 * SEGMENT_TILES, HEAP_START = 0x14000 - 48 * 32;   // gVramHeapStartAddr
 // how many frames into a stage its song is first heard in the original, as prove measures it
 const SONG_WAIT = 5;
+const FIRST_OAM_MATRIX = 4;   // gOamMatrixIndex, each frame, as those below it are the characters'
 
 // 0x08007C10, VramMalloc: sprite memory in segments of 4 tiles, the first stretch that fits each time
 function createTileHeap(start, slots) {
@@ -84,6 +85,7 @@ function initCamera(stage) {
 // 0x0801E0A8, then RenderMetatileLayers and Leaf Forest's backgrounds
 function cameraFrame(t) {
   const stage = t.data, { c, camera: cam } = stage;
+  stage.oamMatrix = FIRST_OAM_MATRIX;
   updateCamera(stage);
   c.bgScroll[2] = cam.x % 8;
   c.bgScroll[3] = cam.y % 8;
@@ -157,14 +159,22 @@ function startSong(c) {
 /** 0x0801A838: what a stage has so far, from its first frame. */
 export function startStage(c, level) {
   const stage = {
-    c, level, time: 0, frames: 0, rings: 0, score: 0, lives: 3,
+    c, level, time: 0, timeRuns: false, frames: 0, rings: 0, score: 0, lives: 3, oamMatrix: FIRST_OAM_MATRIX, seed: 0,
     camera: { x: 0, y: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 }, front: null, back: null, player: null, ui: null,
   };
   // sprite memory past what the character, the rings and the water keep for themselves
-  const heap = createTileHeap(0x10000 + 0x2000, (0x8000 - 0x2000) / SEGMENT_BYTES);
+  const heap = createTileHeap(HEAP_START, 140);
   stage.allocTiles = heap.alloc;
-  // 0x0801AB3C: the frames the stage has run. The time only runs once a player can move, which isn't made yet
-  c.createTask(() => { stage.frames++; }, null, 0xFF00);
+  // PSEUDO_RANDOM_32
+  stage.random = () => {
+    stage.seed = (Math.imul(stage.seed, 0x196225) + 0x3C6EF35F) | 0;
+    return stage.seed;
+  };
+  // 0x0801AB3C: the frames the stage has run, and the time, once a player can move
+  c.createTask(() => {
+    stage.frames++;
+    if (stage.timeRuns) stage.time++;
+  }, null, 0xFF00);
   stage.player = createPlayer(stage, level);
   c.createTask(leaveTitleCard, stage, 0x2200);
   initCamera(stage);

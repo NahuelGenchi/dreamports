@@ -7,6 +7,7 @@ const RED_NUMBERS = 0x7000, ICON_COLOURS = 0xD6ACE;
 const TALL = 2 << 14, WIDE = 1 << 14;   // the shapes of a sprite's first attribute
 const NUMBER_SIZE = 0, ICON_SIZE = 1 << 14, CONTAINER_SIZE = 3 << 14;   // and the sizes of its second
 const tileOf = at => ((at - 0x10000) >> 5) & 0x3FF;
+const HUNDREDTHS = 0xD6B80;
 const POWERS = [100000, 10000, 1000, 100, 10, 1];
 
 export function createStageUi(stage) {
@@ -62,19 +63,18 @@ function uiFrame(t) {
   const red = stage.rings === 0 && stage.frames & 0x10 ? RED_NUMBERS : 0;
   const hundreds = Math.trunc(stage.rings / 100), tens = Math.trunc((stage.rings - hundreds * 100) / 10);
   [hundreds, tens, stage.rings - hundreds * 100 - tens * 10].forEach((d, i) => put(c, 3, TALL, NUMBER_SIZE | (28 + i * 8), digit(d) | red));
-  // the time: minutes, seconds and hundredths, rounded as the screen shows them
+  // the time: minutes, seconds and hundredths, with each frame's two digits from gMillisRenderLUT
   put(c, 3, TALL, NUMBER_SIZE | 99, digit(10));
   put(c, 3, TALL, NUMBER_SIZE | 123, digit(10));
   const seconds = Math.trunc(stage.time / 60), minutes = Math.trunc(seconds / 60), inSecond = seconds % 60, frames = stage.time % 60;
-  const hundredths = Math.trunc(frames * 100 / 60);
   const show = (d, x) => {
     const s = ui.digits[d];
     s.x = x;
     s.y = 16;
     displaySprite(c, s);
   };
-  show(Math.trunc(hundredths / 10), 136);
-  show(hundredths % 10, 144);
+  show(c.rom.u8(HUNDREDTHS + frames * 2), 136);
+  show(c.rom.u8(HUNDREDTHS + frames * 2 + 1), 144);
   show(Math.trunc(inSecond / 10), 112);
   show(inSecond % 10, 120);
   show(minutes, 96);
