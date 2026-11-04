@@ -1,7 +1,6 @@
 // The game's start before the act, as Sonic Advance has it: the SEGA and Sonic Team logos, the intro, the title
 // screen and the main menu, run on the GBA engine (gba/engine.js) at the GBA's own frame rate and drawn into the
-// game's canvas. The character select and the screens after it aren't built yet, so the act starts where the
-// character select would: after Game Start on the main menu.
+// game's canvas. The act starts after the character select (charselect.js), which Game Start on the main menu opens.
 //
 // A new game, with no save yet, starts with the language screen (language.js), which writes the save; with a save,
 // the game starts with the logos. The Options menu (options.js) changes the save and writes it.
@@ -37,22 +36,22 @@ export function powerOn(ctx) {
 /**
  * Starts the front end on `canvas`, from power-on. `rom` is the ROM (rom.js), `offsets` where its tables are
  * (locate.js), `input` the player's buttons, `sound` the sound engine (audio.js) and `save` the save
- * (engine/save.js), which the language screen and the Options menu change. `play()` is called once the act is to
- * start.
+ * (engine/save.js), which the language screen and the Options menu change. `play({ character, partner })` is called
+ * once the act is to start, with what the character select chose; the select's row starts on `character`.
  * Returns { stop, step, draw, setView }: setView(w, h) draws a widescreen view of w × h from then on (the
  * original 240 × 160 is the default); step() and draw() are for checking, a frame at a time.
  */
-export function createFrontEnd(canvas, rom, offsets, input, sound, save, play) {
+export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, character = 0) {
   const video = createVideo();
   const engine = createEngine(video, rom, sound);
   video.write(REG.DISPCNT, 0x80);   // forced blank, until the game starts
-  let done = false, startingUp = STARTUP_FRAMES;
+  let done = null, startingUp = STARTUP_FRAMES;
   const ctx = {
-    engine, tilemaps: offsets.tilemaps, sprites: spriteTables(rom, offsets.spriteTables), offsets, save,
+    character, engine, tilemaps: offsets.tilemaps, sprites: spriteTables(rom, offsets.spriteTables), offsets, save,
     introGraphics: offsets.introGraphics, introTables: offsets.introTables,
     intro: () => createIntro(ctx),
     title: playMusic => createTitleScreen(ctx, playMusic),
-    play: () => { done = true; },
+    play: chosen => { done = chosen; },
   };
 
   const out = canvas.getContext('2d', { alpha: false });
@@ -91,7 +90,7 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play) {
     let ran = false;
     for (let n = clock.steps(now); n > 0 && !done; n--) { step(); ran = true; }
     if (ran) draw();   // a frame is drawn once, from the H-blank effects its V-blank set up
-    if (done) { stop(); play(); return; }
+    if (done) { stop(); play(done); return; }
     frame = requestAnimationFrame(loop);
   }
   function stop() { cancelAnimationFrame(frame); input.release(); sound.stopAll(); }

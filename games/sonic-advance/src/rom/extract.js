@@ -477,7 +477,7 @@ export async function extractAssets(buffer, onProgress = () => {}, { level = 0, 
   await onProgress(id.known ? `Found ${id.known.name}.` : 'Unrecognized version, searching for the data…');
   const offsets = locateTables(rom, id.known);
 
-  await onProgress(`Decoding ${['Sonic', 'Tails', 'Knuckles'][character]}…`);
+  await onProgress(`Decoding ${['Sonic', 'Tails', 'Knuckles', 'Amy'][character]}…`);
   const tables = spriteTables(rom, offsets.spriteTables);
   // the zone's acts from `level` on, which share the zone's looks for the objects that differ by level
   // (the extra stage, the Moon Zone, is X Zone's act 2 but only ever comes on its own)

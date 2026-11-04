@@ -62,9 +62,9 @@ const multiplayer = (() => { try { return levelInfo(firstLevel).multiplayer ?? f
 const players = multiplayer ? Math.min(4, Math.max(2, Number(params.get('players') ?? 2) | 0)) : 1;
 const seed = params.has('seed') ? Number(params.get('seed')) >>> 0 : DEFAULT_SEED;
 const chaoPlace = params.has('chao') ? (Number(params.get('chao')) | 0) & 7 : DEFAULT_CHAO_PLACE;
-// `?character=` plays as Sonic (0, the default), Tails (1) or Knuckles (2), until the character select is built; the
-// multiplayer stage is everyone as Sonic
-const character = multiplayer ? 0 : Math.min(2, Math.max(0, Number(params.get('character') ?? 0) | 0));
+// `?character=` is Sonic (0, the default), Tails (1) or Knuckles (2) with ?debug, and the one the character select's row
+// starts on otherwise; the multiplayer stage is everyone as Sonic
+let character = multiplayer ? 0 : Math.min(2, Math.max(0, Number(params.get('character') ?? 0) | 0));
 const screens = document.getElementById('screens');
 stage.classList.toggle('debug', debug);   // the panel shows the player's speed and state then
 
@@ -410,9 +410,25 @@ function start(buffer, assets) {
   const leaving = specialTest && specialSpringStart(assets, { emeralds: save.chaosEmeralds, continues });
   if (leaving) { enterSpecialStage(assets, leaving); return; }
   if (debug) { play(assets); return; }
-  front = createFrontEnd(screen, rom, assets.info.offsets, input, sound, save, () => { front = null; play(assets); });
+  front = createFrontEnd(screen, rom, assets.info.offsets, input, sound, save, chosen => { front = null; playAs(assets, chosen); }, character);
   fitScreen();
   screen.focus();
+}
+
+// the first act as the character the character select chose, read from the ROM again if the act was read for another
+async function playAs(assets, chosen) {
+  character = chosen.character;
+  let act = assets;
+  if (assets.character !== character) {
+    try {
+      act = await extractAssets(sa1.buffer, () => {}, { level: assets.first, character });
+    } catch (err) {
+      console.warn(err);
+      return;
+    }
+  }
+  if (stage.hidden) return;   // the player left the game meanwhile
+  play(act);
 }
 
 // the act, after the game's start, again from what the special stage hands back (`resume`), or the next zone's
