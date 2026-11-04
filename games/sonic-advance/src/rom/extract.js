@@ -6,8 +6,8 @@
 import { Rom } from '../../../../kit/gba/rom/rom.js';
 import { identify } from './identify.js';
 import { locateTables } from './locate.js';
-import { spriteTables, animationFrames, animationPalette, renderFrame, framePieces, paletteAnimation, frameLayout } from './sprites.js';
-import { tilemapHeader, renderMetatileAtlas, renderPlainMap, mapBanks, mapHoles, indexMetatiles, indexPlainMap, metatileIndices, plainMapIndices } from './tilemaps.js';
+import { spriteTables, animationFrames, animationPalette, renderFrame, framePieces, firstTiles, frameTile, paletteAnimation, frameLayout } from './sprites.js';
+import { tilemapHeader, renderMetatileAtlas, renderPlainMap, mapBanks, mapHoles, mapEntries, indexMetatiles, indexPlainMap, metatileIndices, plainMapIndices } from './tilemaps.js';
 import { readCollision, readSpawn, readLoop, readMultiplayerSpawns, readChaoSpawns } from './collision.js';
 import { readInteractables, readItemBoxes, entityRegions, readRings, layerToggles } from './entities.js';
 import { readColors, tintRgb, tintImage, bgr555ToRgb } from './colors.js';
@@ -418,9 +418,12 @@ export const EGG_SNAKE_ANIMATIONS = {
 // GAME OVER and CONTINUE? (715): each word in two halves, drawn through the rotation hardware as they turn; and
 // TIME, which the time over puts in front of GAME OVER's right half
 export const GAME_OVER_ANIMATIONS = { 715: { gameOverLeft: 0, gameOverRight: 1, continueLeft: 2, continueRight: 3, timeOverLeft: 4 } };
+const STRAY_TILE_X = 0, STRAY_TILE_Y = 40;
 // the pause menu's sign (pause.js): PAUSE (718) over its background (720); both load their colours into row 6
 // of the sprite palette
 export const PAUSE_ANIMATIONS = { 718: { pause: 0 }, 720: { pauseBackground: 0 } };
+// what a demo shows over the act (demo.js): DEMO PLAY (721) and PRESS START in each language (778, 779)
+export const DEMO_ANIMATIONS = { 721: { demoPlay: 0 }, 778: { demoPressStartJapanese: 0 }, 779: { demoPressStartEnglish: 0 } };
 // the ring all rings share (animation 707) and the sparkle left where one is collected (708); the sparkle's
 // script starts song 117 itself, which the game plays (src/engine/game.js)
 export const RING_ANIMATIONS = { ring: [707, 0], ringSparkle: [708, 0] };
@@ -622,7 +625,7 @@ function extractSprites(rom, tables, water, player, partner, levelSprites = {}) 
     { list: yellow, palette: yellowPalette, skipPalette: true, under: underYellow },
     { list: RING_ANIMATIONS, palette: animationPalette(rom, tables, RING_ANIMATIONS.ring[0]) },
     { list: SPIKE_ANIMATIONS, palette: animationPalette(rom, tables, SPIKES_ANIM) },
-    ...Object.entries(mergeAnimations(ENEMY_ANIMATIONS, ITEM_ANIMATIONS, PLATFORM_ANIMATIONS, ROCK_ANIMATIONS, ICE_MOUNTAIN_ANIMATIONS, NUTS_AND_BOLTS_ANIMATIONS, EGG_SNAKE_ANIMATIONS, EGG_WRECKER_ANIMATIONS, EGG_DRILLSTER_ANIMATIONS, EGG_X_ANIMATIONS, CONVEYOR_OBJECT_ANIMATIONS, SPIKED_BARREL_ANIMATIONS, PROPELLER_ANIMATIONS, CARRIER_ANIMATIONS, IRON_BALL_ANIMATIONS, TORCH_ANIMATIONS, UPDRAFT_ANIMATIONS, WALL_ANIMATIONS, WATER_ANIMATIONS, SLIDE_ANIMATIONS, SHRUB_ANIMATIONS, BOOSTER_ANIMATIONS, CHECKPOINT_ANIMATIONS, POLE_ANIMATIONS, GOAL_ANIMATIONS, BOSS_ANIMATIONS, EGG_HAMMER_TANK_ANIMATIONS, CAPSULE_ANIMATIONS, SPECIAL_SPRING_ANIMATIONS, STEAM_EXHAUST_ANIMATIONS, EGG_PRESS_ANIMATIONS, HOOK_RAIL_ANIMATIONS, SECURITY_GATE_ANIMATIONS, HOOK_ANIMATIONS, MARBLE_TRACK_ANIMATIONS, PIPE_ANIMATIONS, MOVING_SPRING_ANIMATIONS, STONE_ANIMATIONS, (water ? UNDERWATER_ANIMATIONS : {}), BACKGROUND_ANIMATIONS, BALLOON_ANIMATIONS, BARREL_ANIMATIONS, BOWL_ANIMATIONS, BUMPER_ANIMATIONS, CAROUSEL_ANIMATIONS, FERRIS_WHEEL_ANIMATIONS, FLIPPER_ANIMATIONS, LETTER_ANIMATIONS, PANEL_GATE_ANIMATIONS, RED_FLAG_ANIMATIONS, SHIP_SWING_ANIMATIONS, SPIKED_PLATFORM_ANIMATIONS, SQUARE_PLATFORM_ANIMATIONS, GAME_OVER_ANIMATIONS, PAUSE_ANIMATIONS)).map(([anim, variants]) => ({
+    ...Object.entries(mergeAnimations(ENEMY_ANIMATIONS, ITEM_ANIMATIONS, PLATFORM_ANIMATIONS, ROCK_ANIMATIONS, ICE_MOUNTAIN_ANIMATIONS, NUTS_AND_BOLTS_ANIMATIONS, EGG_SNAKE_ANIMATIONS, EGG_WRECKER_ANIMATIONS, EGG_DRILLSTER_ANIMATIONS, EGG_X_ANIMATIONS, CONVEYOR_OBJECT_ANIMATIONS, SPIKED_BARREL_ANIMATIONS, PROPELLER_ANIMATIONS, CARRIER_ANIMATIONS, IRON_BALL_ANIMATIONS, TORCH_ANIMATIONS, UPDRAFT_ANIMATIONS, WALL_ANIMATIONS, WATER_ANIMATIONS, SLIDE_ANIMATIONS, SHRUB_ANIMATIONS, BOOSTER_ANIMATIONS, CHECKPOINT_ANIMATIONS, POLE_ANIMATIONS, GOAL_ANIMATIONS, BOSS_ANIMATIONS, EGG_HAMMER_TANK_ANIMATIONS, CAPSULE_ANIMATIONS, SPECIAL_SPRING_ANIMATIONS, STEAM_EXHAUST_ANIMATIONS, EGG_PRESS_ANIMATIONS, HOOK_RAIL_ANIMATIONS, SECURITY_GATE_ANIMATIONS, HOOK_ANIMATIONS, MARBLE_TRACK_ANIMATIONS, PIPE_ANIMATIONS, MOVING_SPRING_ANIMATIONS, STONE_ANIMATIONS, (water ? UNDERWATER_ANIMATIONS : {}), BACKGROUND_ANIMATIONS, BALLOON_ANIMATIONS, BARREL_ANIMATIONS, BOWL_ANIMATIONS, BUMPER_ANIMATIONS, CAROUSEL_ANIMATIONS, FERRIS_WHEEL_ANIMATIONS, FLIPPER_ANIMATIONS, LETTER_ANIMATIONS, PANEL_GATE_ANIMATIONS, RED_FLAG_ANIMATIONS, SHIP_SWING_ANIMATIONS, SPIKED_PLATFORM_ANIMATIONS, SQUARE_PLATFORM_ANIMATIONS, GAME_OVER_ANIMATIONS, PAUSE_ANIMATIONS, DEMO_ANIMATIONS)).map(([anim, variants]) => ({
       list: Object.fromEntries(Object.entries(variants).map(([name, v]) => [name, [Number(anim), v]])),
       palette: animationPalette(rom, tables, Number(anim)),
     })),
@@ -727,6 +730,14 @@ function extractSprites(rom, tables, water, player, partner, levelSprites = {}) 
     frames: [...new Set(Object.keys(player).flatMap(name => anims[name].frames.map(f => f[0]).filter(i => i >= 0)))],
     colors: sonicPalette.slice(0, 16), under: under ? under.slice(0, 16) : null,
   };
+  // the moving spring's tile that a demo shows once in the player's colours (demo.js, strayTiles)
+  const spring = anims.movingSpring && images[anims.movingSpring.frames[0][0]].src;
+  sonic.strayTile = spring && frameTile(rom, spring[1], spring[2], spring[3], spring[4], spring[6], STRAY_TILE_X, STRAY_TILE_Y);
+  // where they show the first tiles of the sprites' video memory, which are the player's (demo.js)
+  sonic.firstTiles = Object.fromEntries(sonic.frames.map(i => {
+    const [, frameTables, anim, frame, tilesAt, , eightBpp] = images[i].src;
+    return [i, firstTiles(rom, frameTables, anim, frame, tilesAt, eightBpp)];
+  }));
   // The renderer reads pixels back only from the rotated pieces and from Sonic's frames in the colours they show
   // in, so those are packed first, in the atlas's top rows (`pixelRows`), and only those rows are kept as pixels
   // (`pixels`) besides the atlas itself.
@@ -856,6 +867,11 @@ function extractStage(rom, offsets, tables, info) {
     entityRegions: entityRegions(rom, offsets.interactables, level),
     paletteAnimations: animations.map(({ frames, loop }) => ({ delays: frames.map(f => f.delay), loop })),
     backgroundHoles: mapHoles(rom, background), backdrop: palette[0],
+    // its metatiles' tile entries, for what a window or a screen after a demo does to a tile (renderer.js), its background's
+    // tiles, which stay in video memory after it, and with the spotlights the background's entries
+    metatileEntries: mapEntries(rom, front, count * 144),
+    backgroundTiles: rom.bytes.subarray(background.tiles, background.tiles + background.tilesSize),
+    spotlightArt: info.spotlights ? { entries: mapEntries(rom, background, background.xTiles * background.yTiles), across: background.xTiles } : null,
     atlas: null, background: null, backgrounds: null, indexed: null,
     snow: info.snow === undefined ? null : snowLayer(rom, tilemapHeader(rom, offsets.tilemaps, info.snow), palette, animations),
     water: info.water ? waterColors(rom, info.water, background, palette, animations) : null,

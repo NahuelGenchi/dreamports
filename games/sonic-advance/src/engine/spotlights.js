@@ -188,6 +188,7 @@ export function createSpotlights(spriteRow) {
     blend: { bldY: 16, windows: false, v: [0x00A0, 0x00A0], h: [0x00F0, 0x00F0], buf: new Uint8Array(2 * TABLE), base: 0, drawn: false,
       shapes: [[null, null], [null, null]] },
     tasks: [],
+    destroy: false,   // gDestroySpotlights, as Start ends a demo (demo.js)
   };
   const { blend } = out;
   let qBlend = 2 * MIN_BLEND, fading = false;
@@ -204,7 +205,7 @@ export function createSpotlights(spriteRow) {
       if (fading) {
         // Task_801796C
         qBlend = s16(qBlend - 64);
-        if (qBlend < 0 || x > SPOTLIGHTS_GONE_X || ctx.player.dead) return gone();
+        if (qBlend < 0 || x > SPOTLIGHTS_GONE_X || ctx.player.dead || out.destroy) return gone();
         blend.bldY = qBlend >> 8;
         return true;
       }
@@ -212,7 +213,7 @@ export function createSpotlights(spriteRow) {
       qBlend = Math.max(s16(qBlend - 64), MIN_BLEND);
       blend.bldY = qBlend >> 8;
       if (x > SPOTLIGHTS_FADE_X) fading = true;
-      else if (ctx.player.dead) return gone();
+      else if (ctx.player.dead || out.destroy) return gone();
       return true;
     },
   };
