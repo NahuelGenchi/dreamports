@@ -14,9 +14,11 @@ export function createVisibilityToggle(e, slot) {
   return {
     priority: OBJECTS | e.d[3],
     run(ctx) {
-      const p = ctx.player, x = Math.floor(p.x), y = Math.floor(p.y);
-      if (p.dead) p.invisible = false;
-      else if (x >= e.x && x <= e.x + w && y >= e.y && y <= e.y + h) p.invisible = hide;
+      for (const p of ctx.players) {
+        const x = Math.floor(p.x), y = Math.floor(p.y);
+        if (p.dead) p.invisible = false;
+        else if (x >= e.x && x <= e.x + w && y >= e.y && y <= e.y + h) p.invisible = hide;
+      }
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       return true;
     },

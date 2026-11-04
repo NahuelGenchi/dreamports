@@ -14,6 +14,7 @@
 import { SINE } from './trig.js';
 import { makeSprite, startAnim, animate } from './objects.js';
 import { EXTRA_SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 const Q = v => Math.round(v * 256);
 const I = v => v >> 8;
@@ -86,7 +87,7 @@ export function createTrueEnding(anims, sound, { rings = 0, courseTime = 0, lang
   const face = task('tailsFace', 3, 0, { qx: Q(120), qy: Q(90) });
   const tornado = task('tornadoSide', 6, 1, { qx: Q(120), qy: Q(90), still: false });
   const twinkle = task('twinkle', 15, 2);
-  const clouds = CLOUDS.map(([name, x, y, dx]) => task(name, 12, 1, { qx: Q(x), qy: Q(y), dx }));
+  const clouds = CLOUDS.map(([name, x, y, dx]) => task(fixes.on && name === 'cloudM' ? 'cloudMOwn' : name, 12, 1, { qx: Q(x), qy: Q(y), dx }));
   const caption = task(language ? 'fewDaysLater' : 'fewDaysLaterJapanese', 0, 0);
   let lines = [];
   const tasks = () => [sparkle, face, tornado, twinkle, ...clouds, caption, ...lines];

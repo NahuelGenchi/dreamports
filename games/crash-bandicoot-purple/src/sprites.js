@@ -17,7 +17,7 @@ export function readAnimation(rom, address) {
 
 /** 0x08035654: something on screen playing an animation, at its place in eighths of a pixel (0x080352DC starts it). */
 export function createSprite(rom, address, x, y, flipX = false) {
-  const sprite = { rom, x, y, flipX, flipY: false, animation: null, frame: 0, next: 0, ended: false, hidden: false };
+  const sprite = { rom, x, y, flipX, flipY: false, priority: 0, animation: null, frame: 0, next: 0, ended: false, hidden: false };
   sprite.animation = readAnimation(rom, address);
   return sprite;
 }
@@ -27,6 +27,7 @@ export function playAnimation(sprite, address, clock) {
   sprite.animation = readAnimation(sprite.rom, address);
   sprite.frame = 0;
   sprite.ended = false;
+  sprite.backward = false;
   sprite.next = clock + sprite.animation.delay + 1;
 }
 
@@ -34,7 +35,11 @@ export function playAnimation(sprite, address, clock) {
 export function stepAnimation(sprite, clock) {
   if (clock < sprite.next) return;
   const { animation } = sprite;
-  if (sprite.frame === animation.count - 1) {
+  if (sprite.backward) {
+    if (sprite.frame !== 0) sprite.frame--;
+    else if (animation.loops) sprite.frame = animation.count - 1;
+    else sprite.ended = true;
+  } else if (sprite.frame === animation.count - 1) {
     if (animation.loops) sprite.frame = 0;
     else sprite.ended = true;
   } else sprite.frame++;
@@ -48,40 +53,57 @@ export function createSprites(video, rom) {
 }
 
 // 0x08069648: how many tiles each shape and size holds, and 0x080695E8 its width and height
-const TILES = [1, 4, 16, 64, 2, 4, 8, 32, 2, 4, 8, 32];
-const WIDTHS = [8, 16, 32, 64, 16, 32, 32, 64, 8, 8, 16, 32];
-const HEIGHTS = [8, 16, 32, 64, 8, 8, 16, 32, 16, 32, 32, 64];
+const TILES = 0x08069648 - CARTRIDGE, SIZES = 0x080695E8 - CARTRIDGE;
+
+// 0x0801F7A8: the place a sprite's colours have among the console's 16, given the first time they're asked for
+function colourSlot(sprites, address, colours) {
+  let slot = sprites.slots.get(address);
+  if (slot === undefined) {
+    slot = sprites.nextSlot--;
+    sprites.slots.set(address, slot);
+    for (let i = 0; i < 16; i++) colours[256 + slot * 16 + i] = sprites.rom.u16(address + i * 2);
+  }
+  return slot;
+}
 
 /** 0x080190D0 with 0x08018BD8: a sprite's frame at its place on screen: its colours, its pieces and its tiles. */
 export function drawSprite(sprites, sprite, screenX, screenY, colours) {
-  const { rom, list } = sprites, { animation } = sprite;
-  let slot = sprites.slots.get(animation.colours);
-  if (slot === undefined) {
-    slot = sprites.nextSlot--;
-    sprites.slots.set(animation.colours, slot);
-    for (let i = 0; i < 16; i++) colours[256 + slot * 16 + i] = rom.u16(animation.colours + i * 2);
-  }
+  const { rom, list } = sprites, { animation } = sprite, slot = colourSlot(sprites, animation.colours, colours);
   const frame = rom.u32(animation.sheet + 4) - CARTRIDGE + rom.u16(animation.list + sprite.frame * 2) * 44;
   const parts = rom.u32(frame) - CARTRIDGE, count = rom.u8(frame + 16);
   let offset = 0;
   for (let n = 0; n < count; n++) {
     const at = parts + n * 8, kind = rom.u8(at + 4);
     const partX = rom.view.getInt16(at, true), partY = rom.view.getInt16(at + 2, true);
-    const w = WIDTHS[kind], h = HEIGHTS[kind];
+    const w = rom.u32(SIZES + kind * 8), h = rom.u32(SIZES + kind * 8 + 4);
     const y = sprite.flipY ? screenY - partY - h : screenY + partY;
     const x = sprite.flipX ? screenX - partX - w : screenX + partX;
     if (y > -h && y <= 159 && x > -w && x <= 239) {
       list.push([
         (y & 0xFF) | ((kind & 0xC) << 12),
         (x & 0x1FF) | ((kind & 3) << 14) | (sprite.flipX ? 0x1000 : 0) | (sprite.flipY ? 0x2000 : 0),
-        (slot << 12) | (1 << 10) | (sprites.tiles + offset),   // priority 1, as 0x08019190 sets it
+        (slot << 12) | (sprite.priority << 10) | (sprites.tiles + offset),   // as 0x08019190 sets it
       ]);
     }
-    offset += TILES[kind];
+    offset += rom.u32(TILES + kind * 4);
   }
   // 0x08037B5C: the frame's tiles, which go into video memory at the V-blank, in pairs
   sprites.jobs.push([rom.u32(frame + 4) - CARTRIDGE, sprites.tiles, offset]);
   sprites.tiles += (offset + 1) & ~1;
+}
+
+/** 0x0800E1A8: a line of the game's letters, a sprite each of 8 by 16, in the colours `font.colours`. */
+export function drawText(sprites, font, text, x, y, colours) {
+  const { rom, list, jobs } = sprites, slot = colourSlot(sprites, font.colours, colours);
+  for (const char of text) {
+    const width = rom.u8(font.widths + char);
+    if (char !== 32 && x + width > 0 && x <= 239) {
+      list.push([(y & 0xFF) | 0x9000, x & 0x1FF, (slot << 12) | sprites.tiles]);
+      jobs.push([font.tiles + rom.u8(font.map + char) * font.size, sprites.tiles, font.count]);
+      sprites.tiles += font.count;
+    }
+    x += width;
+  }
 }
 
 /** At the V-blank: 0x08037B28's tiles and 0x0803FA50's list. */

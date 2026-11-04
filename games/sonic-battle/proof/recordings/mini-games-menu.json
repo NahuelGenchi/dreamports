@@ -1,0 +1,38 @@
+{
+  "about": "From power-on through the title screen to the main menu, as a player with a saved name reaches it, right four times to Mini-games, and A. On the Mini-games screen: down, A on a locked entry, down to the end of the list and once more, up to its top and once more, B back to the main menu, A into the screen again, and A on Soniclash, through its fade to black.",
+  "start": "name=1",
+  "frames": 2038,
+  "held": [
+    [0,[]],
+    [747,["START"]],[748,[]],
+    [880,["RIGHT"]],[881,[]],
+    [920,["RIGHT"]],[921,[]],
+    [960,["RIGHT"]],[961,[]],
+    [1000,["RIGHT"]],[1001,[]],
+    [1100,["A"]],[1101,[]],
+    [1240,["DOWN"]],[1241,[]],
+    [1280,["A"]],[1281,[]],
+    [1320,["DOWN"]],[1321,[]],
+    [1360,["DOWN"]],[1361,[]],
+    [1400,["DOWN"]],[1401,[]],
+    [1440,["DOWN"]],[1441,[]],
+    [1480,["UP"]],[1481,[]],
+    [1520,["UP"]],[1521,[]],
+    [1560,["UP"]],[1561,[]],
+    [1600,["UP"]],[1601,[]],
+    [1640,["UP"]],[1641,[]],
+    [1680,["B"]],[1681,[]],
+    [1830,["A"]],[1831,[]],
+    [2000,["A"]],[2001,[]]
+  ],
+  "clip": { "at": 1130, "frames": 300 },
+  "onlyInOriginal": [
+    {
+      "at": 778,
+      "frames": 1,
+      "held": [[0,[]]],
+      "sets": [{ "frame": 0, "address": "03002170", "bytes": 2, "value": 1 }],
+      "about": "A name already saved, which the name entry keeps at 0x03002170, so the title screen's Start goes straight to the menu, by way of the one frame the name entry takes to see it."
+    }
+  ]
+}

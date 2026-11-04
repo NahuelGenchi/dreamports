@@ -15,6 +15,19 @@ const stopBrowserOf = profile => spawnSync(join(process.env.SystemRoot ?? 'C:\\W
   'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:DREAMPORTS_PROFILE) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }'],
 { env: { ...process.env, DREAMPORTS_PROFILE: `--user-data-dir=${profile}` }, stdio: 'ignore' });
 
+// one nobody sees, left behind the same way elsewhere: it would go on working for nobody, and each close would wait for it.
+// A profile belongs to one folder's copy of one tool, and two runs of that can't share it anyway
+const stopUnseenBrowserOf = profile => {
+  for (const line of spawnSync('ps', ['-Awwo', 'pid=,args='], { encoding: 'utf8' }).stdout?.split('\n') ?? []) {
+    if (!line.includes(`--user-data-dir=${profile} `)) continue;
+    try {
+      process.kill(parseInt(line), 'SIGKILL');
+    } catch {
+      // gone already
+    }
+  }
+};
+
 // a browser that has just quit can hold files in its profile for a moment, which Windows won't delete, and one left
 // behind by a run that was stopped partway holds them until it's stopped
 async function emptied(profile) {
@@ -54,11 +67,23 @@ export function findChrome() {
 const NO_CONTROLLERS = `Object.defineProperty(Navigator.prototype, 'getGamepads', { value: () => [] });
   for (const type of ['gamepadconnected', 'gamepaddisconnected']) addEventListener(type, e => e.stopImmediatePropagation(), true);`;
 
+// Nothing it would fetch for itself, in a window or not (--optimize-for-size: the page's memory falls by more than a third,
+// and a frame takes no longer)
+const QUIET = ['--js-flags=--optimize-for-size', '--disable-extensions', '--disable-component-update', '--disable-background-networking', '--disable-sync', '--no-pings', '--disable-default-apps',
+  '--disable-domain-reliability', '--disable-client-side-phishing-detection', '--disable-breakpad', '--metrics-recording-only',
+  '--disable-features=Translate,OptimizationHints,MediaRouter,DialMediaRouteProvider,CertificateTransparencyComponentUpdater,AutofillServerCommunication'];
+// A browser nobody sees needs no graphics chip. A window keeps it, as a person sees it stutter without: drawing it on the
+// processor saves little power, and it was 5 times as often late. Graphics in the browser's own process (--in-process-gpu)
+// would save 18 MB, and end the browser wherever they can't start, such as on GitHub's machines or with a dead DISPLAY
+const UNSEEN = ['--headless=new', '--hide-scrollbars', '--mute-audio', '--disable-gpu', '--window-size=320,240', ...QUIET];
+
 /**
  * Opens the browser. `profile` is its own folder, emptied first when `fresh`. Resolves to a page to drive:
- * { send, evaluate, once, errors, closed, close }.
+ * { send, evaluate, once, errors, closed, close }, with `another()`, which closes this page and resolves to a new one
+ * with nothing of its own saved, in the same browser, so the next recording needn't start a browser again.
  */
 export async function openChrome({ profile, headless = true, fresh = true, controllers = !headless }) {
+  if (headless) stopUnseenBrowserOf(profile);
   if (fresh) await emptied(profile);
   mkdirSync(profile, { recursive: true });
   const portFile = join(profile, 'DevToolsActivePort');
@@ -66,10 +91,15 @@ export async function openChrome({ profile, headless = true, fresh = true, contr
   const args = [
     `--user-data-dir=${profile}`, '--remote-debugging-port=0', '--no-first-run', '--no-default-browser-check',
     '--autoplay-policy=no-user-gesture-required',
-    ...(headless ? ['--headless=new', '--hide-scrollbars', '--mute-audio'] : []),
+    ...(headless ? UNSEEN : QUIET),
     'about:blank',
   ];
   const chrome = spawn(findChrome(), args, { stdio: 'ignore' });
+  // a tool that's stopped, or ends on an error, takes with it a browser nobody could close by hand
+  if (headless) {
+    process.once('exit', () => chrome.kill('SIGKILL'));
+    for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.once(signal, () => process.exit(1));
+  }
   try {
     return await drive(chrome, portFile, profile, headless, controllers);
   } catch (error) {
@@ -106,14 +136,50 @@ async function drive(chrome, portFile, profile, headless, controllers) {
   let target;
   while (Date.now() < giveUp && !ended && !target) {
     try {
-      target = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find(t => t.type === 'page');
+      target = (await (await fetch(`http://127.0.0.1:${port}/json/list`, { headers: { connection: 'close' } })).json()).find(t => t.type === 'page');
     } catch {
       // not answering yet
     }
     if (!target) await wait(100);
   }
   if (!target) throw new Error('The browser didn\'t start.');
-  const socket = new WebSocket(target.webSocketDebuggerUrl);
+  const close = async () => {
+    await Promise.race([first.send('Browser.close').catch(() => {}), wait(3000)]);
+    first.disconnect();
+    chrome.kill();
+    await Promise.race([exited, wait(5000)]);
+    // its helpers outlive it for a moment, and the network service writes to the profile as it quits, so the folder
+    // can't be emptied for the next browser until they've gone
+    for (let i = 0; i < 100 && running(profile); i++) await wait(50);
+  };
+  // the page it opened with, then each of the others, in a context of its own with nothing saved. `close` ends the browser
+  const another = async old => {
+    const socket = await connect((await (await fetch(`http://127.0.0.1:${port}/json/version`, { headers: { connection: 'close' } })).json()).webSocketDebuggerUrl);
+    if (old.context) await socket.send('Target.disposeBrowserContext', { browserContextId: old.context });
+    const { browserContextId } = await socket.send('Target.createBrowserContext');
+    const { targetId } = await socket.send('Target.createTarget', { url: 'about:blank', browserContextId });
+    // the browser's first page goes only once there's another, as a browser with no page may end
+    if (!old.context) await socket.send('Target.closeTarget', { targetId: old.targetId });
+    old.disconnect();
+    socket.disconnect();
+    return page(await connect(`ws://127.0.0.1:${port}/devtools/page/${targetId}`), { targetId, context: browserContextId });
+  };
+  const page = async (driver, ids) => {
+    const me = { ...driver, ...ids, close, closed: Promise.race([driver.closed, exited]), another: () => another(me) };
+    await driver.send('Page.enable');
+    await driver.send('Runtime.enable');
+    await driver.send('DOM.enable');
+    if (!controllers) await driver.send('Page.addScriptToEvaluateOnNewDocument', { source: NO_CONTROLLERS });
+    first = me;
+    return me;
+  };
+  let first = null;
+  return page(await connect(target.webSocketDebuggerUrl), { targetId: target.id });
+}
+
+/** Talks to a page or the browser over the DevTools protocol. */
+async function connect(url) {
+  const socket = new WebSocket(url);
   await new Promise((resolve, reject) => {
     socket.addEventListener('open', resolve, { once: true });
     socket.addEventListener('error', reject, { once: true });
@@ -157,20 +223,7 @@ async function drive(chrome, portFile, profile, headless, controllers) {
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description ?? result.exceptionDetails.text);
     return result.result.value;
   };
-  await send('Page.enable');
-  await send('Runtime.enable');
-  await send('DOM.enable');
-  if (!controllers) await send('Page.addScriptToEvaluateOnNewDocument', { source: NO_CONTROLLERS });
-  const close = async () => {
-    await Promise.race([send('Browser.close').catch(() => {}), wait(3000)]);
-    socket.close();
-    chrome.kill();
-    await Promise.race([exited, wait(5000)]);
-    // its helpers outlive it for a moment, and the network service writes to the profile as it quits, so the folder
-    // can't be emptied for the next browser until they've gone
-    for (let i = 0; i < 100 && running(profile); i++) await wait(50);
-  };
-  return { send, evaluate, once, errors, closed: Promise.race([closed, exited]), close };
+  return { send, evaluate, once, errors, closed, disconnect: () => socket.close() };
 }
 
 /** Goes to an address and waits for the page to load. */

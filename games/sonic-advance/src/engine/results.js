@@ -3,9 +3,9 @@
 // switch the music manager off, and put up a white band with "SONIC GOT THROUGH ACT 1" scrolling along it, then
 // the time bonus and the ring bonus, each label's letters and figures growing in one by one. From the 182nd
 // frame both bonuses count down 100 a frame into the score, with a tick every fourth frame of the stage clock and
-// a chime at the end, when the camera stops and Sonic, off the right of the screen, is stopped too. A while
-// later the texts slide away and the screen fades to black, all but the band, and 45 frames into the fade the
-// next act starts.
+// a chime at the end, when the camera stops and Sonic, off the right of the screen, is stopped too, with the CPU
+// partner if he is past it too. A while later the texts slide away and the screen fades to black, all but the
+// band, and 45 frames into the fade the next act starts.
 
 import { SONG } from '../sound/songs.js';
 
@@ -17,7 +17,7 @@ const TIME = (m, s) => (m * 60 + s) * 60;
 const TIME_BONUS = [[TIME(6, 0), 0], [TIME(5, 0), 500], [TIME(4, 0), 1000], [TIME(3, 0), 2000], [TIME(2, 0), 3000],
   [TIME(1, 30), 4000], [TIME(1, 0), 5000], [TIME(0, 50), 10000], [TIME(0, 30), 50000]];
 const TOP_TIME_BONUS = 80000;
-const MATRICES_UNTIL = 135, TALLY_FROM = 181, FADE_AFTER = 240, SLIDE_AFTER = 230, NEXT_ACT_AFTER = 45;
+const MATRICES_UNTIL = 135, TALLY_FROM = 181, FADE_AFTER = 240, SLIDE_AFTER = 230, NEXT_ACT_AFTER = 45, ENDING_AFTER = 135;
 const STEP = 100;
 const LABEL = 11, BLANK = 0x2B - 32;   // a label's glyphs, then five places for the figure, leading zeros blank
 const FADE_FULL = 0x2000;
@@ -40,11 +40,11 @@ function figure(label, value) {
  * The results for an act finished with `rings` rings at course time `courseTime`, on `level` (0 is Neo Green
  * Hill act 1). `gfx` is the extractor's results: each slot's sprite size, and the texts.
  */
-export function createResults(gfx, { rings, courseTime, level }) {
+export function createResults(gfx, { rings, courseTime, level, longEnd = false }) {
   const ringBonus = STEP * rings, timeBonus = TIME_BONUS.find(([t]) => courseTime >= t)?.[1] ?? TOP_TIME_BONUS;
   const wait = div(Math.max(ringBonus, timeBonus), STEP) + 75;   // sp10
   return {
-    level, gfx, wait,
+    level, gfx, wait, longEnd,
     frame: 0,                // unk24
     ring: ringBonus,         // unk2C
     time: timeBonus,         // unk30
@@ -177,7 +177,7 @@ function fadeOut(fade) {
 
 /**
  * Runs the results' main task (Task_8057888) and then its four pieces' for one frame. `world` gives the
- * stage: { player, camera, stageTime, addScore(n), playSound(song) }. Returns false on the frame the next act
+ * stage: { player, partner, camera, stageTime, addScore(n), playSound(song) }. Returns false on the frame the next act
  * starts, with the last frame's sprites left as they were.
  */
 export function runResults(r, world) {
@@ -190,16 +190,24 @@ export function runResults(r, world) {
       if (r.ring === 0 && r.time === 0) {
         if (!(r.level & 1)) world.player.actClear = false;
         world.camera.speedX = 0; world.camera.speedY = 0;
-        r.countdown = NEXT_ACT_AFTER;
+        r.countdown = r.longEnd ? ENDING_AFTER : NEXT_ACT_AFTER;
         world.playSound(SONG.RESULTS_DONE);
       } else if (world.stageTime % 4 === 0) world.playSound(SONG.RESULTS_COUNT);
     } else {
       // the bonuses counted: the camera stays, and Sonic stops once he is off the right of the screen
       const p = world.player, cam = world.camera;
       cam.speedX = 0; cam.speedY = 0;
-      if (((Math.floor(p.x) - Math.floor(cam.x) + 64) >>> 0) > 368) { p.xsp = 0; p.gsp = 0; }
+      if (((Math.floor(p.x) - Math.floor(cam.x) + 64) >>> 0) > 368) {
+        p.xsp = 0; p.gsp = 0;
+        const q = world.partner;
+        if (q && Math.floor(q.x) - Math.floor(cam.x) > 304) {
+          q.carried = true; q.ignoreInput = true; q.heldInput = null;
+          q.jumpPressed = false; q.attackPressed = false;
+          q.xsp = 0; q.gsp = 0;
+        }
+      }
       if (k > r.wait + FADE_AFTER) {
-        fadeOut(r.fade);
+        if (r.level < 12) fadeOut(r.fade);   // IS_FINAL_OR_EXTRA_STAGE: X Zone's and the Moon's stay on the screen
         if (r.countdown === 0 || --r.countdown === 0) { r.countdown = 0; next = true; }
       }
     }

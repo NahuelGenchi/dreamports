@@ -1,13 +1,29 @@
 {
   "about": "Sonic Battle's parts, in the order a player meets them, then its other modes. Each counts the same. A part is proven when a recording plays it from its first frame to its last and every frame matches the original: \"frames\" are the first and last of the recording's frames it covers. A part may end with a press that moves the game on, the way a player leaves it, such as Start on the title screen. Where the screen is one colour between two parts, those frames go with the part before. Foundations are what many parts need but no player would call a part, and they don't count towards the parts.",
   "foundations": [
-    { "name": "The fighting", "what": "A fighter moving, jumping and attacking against another in an arena. Nothing in the game before it has fighting, and every episode of Story mode and the Battle, Challenge and Training modes build on it. It's the largest piece, so whoever takes it can open smaller tasks with the Task form once the code shows where it divides." }
+    {"name": "A fight's opening", "what": "The arena, both fighters, their health bars and gauges, and the choice of special attacks at the start, from a fight's first frame until a player can move. Nothing is pressed once the fight is on the screen. A recording can start here from a start point, so nothing before it in the game has to be ready first."},
+    {"name": "A fighter moving", "what": "Sonic running, turning, jumping and landing, with the view following and the arena's floor and walls in the way. The recording stays clear of the other fighter. Training mode lets that fighter be set up as a player likes, which may keep it still.", "needs": ["A fight's opening"]},
+    {"name": "A fighter's attacks", "what": "Sonic's attacks on the ground and in the air hitting the other fighter, which is thrown back and loses health, with the gauges filling, and guarding and healing with L.", "needs": ["A fighter moving"]},
+    {"name": "Special attacks", "what": "Sonic's Power, Shot and Set attacks hitting the other fighter, and the knockout in one hit when the Ichikoro gauge is full.", "needs": ["A fighter's attacks"]},
+    {"name": "A fight's end", "what": "A fighter's health running out, the knockout, the fighter coming back and choosing again, and the fight's result once someone has won.", "needs": ["A fighter's attacks"]},
+    {"name": "The other fighter", "what": "The computer playing the other fighter: how it chooses to move, attack, guard and use its special attacks.", "needs": ["Special attacks"]},
+    {"name": "Tails's moves", "what": "Tails's own moves, attacks and special attacks, as Sonic's are. The fighters can go in any order, and each is a task of its own.", "needs": ["Special attacks"]},
+    {"name": "Rouge's moves", "what": "Rouge's own moves, attacks and special attacks, as Sonic's are. The fighters can go in any order, and each is a task of its own.", "needs": ["Special attacks"]},
+    {"name": "Knuckles's moves", "what": "Knuckles's own moves, attacks and special attacks, as Sonic's are. The fighters can go in any order, and each is a task of its own.", "needs": ["Special attacks"]},
+    {"name": "Amy's moves", "what": "Amy's own moves, attacks and special attacks, as Sonic's are. The fighters can go in any order, and each is a task of its own.", "needs": ["Special attacks"]},
+    {"name": "Cream's moves", "what": "Cream's own moves, attacks and special attacks, as Sonic's are. The fighters can go in any order, and each is a task of its own.", "needs": ["Special attacks"]},
+    {"name": "Shadow's moves", "what": "Shadow's own moves, attacks and special attacks, as Sonic's are. The fighters can go in any order, and each is a task of its own.", "needs": ["Special attacks"]},
+    {"name": "Emerl's moves", "what": "Emerl's own moves, attacks and special attacks, as Sonic's are. The fighters can go in any order, and each is a task of its own.", "needs": ["Special attacks"]},
+    {"name": "Gamma's moves", "what": "Gamma's own moves, attacks and special attacks, as Sonic's are. The fighters can go in any order, and each is a task of its own.", "needs": ["Special attacks"]},
+    {"name": "Chaos's moves", "what": "Chaos's own moves, attacks and special attacks, as Sonic's are. The fighters can go in any order, and each is a task of its own.", "needs": ["Special attacks"]},
+    {"name": "The fighting", "what": "A whole fight from its opening to its result, played against the computer, with every piece it needs together. Every episode of Story mode and the Battle, Challenge and Training modes build on it.", "needs": ["A fight's end", "The other fighter", "Tails's moves", "Rouge's moves", "Knuckles's moves", "Amy's moves", "Cream's moves", "Shadow's moves", "Emerl's moves", "Gamma's moves", "Chaos's moves"]}
   ],
   "parts": [
     { "name": "The SEGA and Sonic Team logos", "recording": "logos", "frames": [0, 389] },
     { "name": "The intro", "recording": "logos-and-intro", "frames": [390, 546] },
     { "name": "The title screen", "recording": "title", "frames": [547, 778] },
-    { "name": "The main menu" },
+    { "name": "The name entry, at the first start", "recording": "first-start", "frames": [783, 1465] },
+    { "name": "The main menu", "recording": "first-start", "frames": [1466, 2018] },
     { "name": "Story mode: Sonic's episode", "needs": ["The fighting"] },
     { "name": "Story mode: Tails's episode", "needs": ["The fighting"] },
     { "name": "Story mode: Rouge's episode", "needs": ["The fighting"] },

@@ -7,7 +7,7 @@ import '../../../kit/gba/canvas.js';
 import { createRomSetup } from '../../../kit/gba/ui/rom-setup.js';
 import { acceptRoms } from '../../../kit/gba/ui/rom-types.js';
 import { roms, SA1_ROM, RUSH_ROM, SA2_ROM } from './ui/roms.js';
-import { extractAssets } from './rom/extract.js';
+import { extractAssets, extractAgain } from './rom/extract.js';
 import { isSonicAdvance, RomError } from './rom/identify.js';
 import { Rom } from '../../../kit/gba/rom/rom.js';
 import { createFrontEnd } from './front/front.js';
@@ -31,6 +31,7 @@ import { createAchievementsPanel } from '../../../kit/gba/achievements/panel.js'
 import * as list from './achievements/list.js';
 import { holdClocks } from '../../../kit/gba/clock.js';
 import { proof } from '../../../kit/gba/proof.js';
+import { fixes } from './engine/fixes.js';
 import { createSheet } from '../../../kit/gba/ui/sheet.js';
 import { createControlsView } from '../../../kit/gba/ui/controls-view.js';
 import { createQuitView } from '../../../kit/gba/ui/quit-view.js';
@@ -45,6 +46,7 @@ const stats = document.getElementById('stats');
 const wideButton = document.getElementById('wide');
 const rushButton = document.getElementById('rush');
 const boostButton = document.getElementById('boost-mode');
+const fixesButton = document.getElementById('fixes');
 const tricksButton = document.getElementById('tricks');
 const romFile = document.getElementById('rom-file');
 const romStatus = document.getElementById('rom-status');
@@ -55,6 +57,11 @@ const params = new URLSearchParams(location.search);
 const debug = params.has('debug'), specialTest = params.has('special');
 // `?level=N` starts the level the ROM's tables number N (2 is Secret Base Zone act 1) instead of the first
 const firstLevel = Number(params.get('level') ?? 0) | 0;
+// `?unlocked=N` plays with a save of its own, kept nowhere, with the character's progress at N, the level after the
+// last one cleared, for the proof's recordings of the course select; the player's own save stays as it is. In
+// that save `&sonic=N`, `&tails=N`, `&knuckles=N` and `&amy=N` are the others' progress, and `&emeralds=N` its Chaos
+// Emeralds, a bit each, for the recordings of the Moon Zone's rule (unlock.js)
+const unlocked = params.has('unlocked') ? Number(params.get('unlocked')) & 0xFFFF : null;
 // a multiplayer stage (`?level=14`) is played by `&players=N` players, 2 to 4 (2 if not given), each on their
 // own screen; `&seed=` and `&chao=` set what the link hands the GBAs as the round starts (the shared random
 // number and the Chao's place, 0–7)
@@ -62,9 +69,10 @@ const multiplayer = (() => { try { return levelInfo(firstLevel).multiplayer ?? f
 const players = multiplayer ? Math.min(4, Math.max(2, Number(params.get('players') ?? 2) | 0)) : 1;
 const seed = params.has('seed') ? Number(params.get('seed')) >>> 0 : DEFAULT_SEED;
 const chaoPlace = params.has('chao') ? (Number(params.get('chao')) | 0) & 7 : DEFAULT_CHAO_PLACE;
-// `?character=` plays as Sonic (0, the default), Tails (1) or Knuckles (2), until the character select is built; the
-// multiplayer stage is everyone as Sonic
-const character = multiplayer ? 0 : Math.min(2, Math.max(0, Number(params.get('character') ?? 0) | 0));
+// `?character=` is Sonic (0, the default), Tails (1), Knuckles (2) or Amy (3) with ?debug, and the one the character
+// select's row starts on otherwise; the multiplayer stage is everyone as Sonic
+let partner = false;   // gTailsEnabled: the character select's code
+let character = multiplayer ? 0 : Math.min(3, Math.max(0, Number(params.get('character') ?? 0) | 0));
 const screens = document.getElementById('screens');
 stage.classList.toggle('debug', debug);   // the panel shows the player's speed and state then
 
@@ -186,7 +194,7 @@ achievements.onStatus((status, fromProfile) => {
   if (!fromProfile && STATUS_POPUPS[status]) queueMicrotask(() => unlockPopup.show(STATUS_POPUPS[status]));
 });
 // a game counts for them when it starts from the game's start (or is a multiplayer round, which only the level pick
-// reaches): not from ?debug, ?special or another act's ?level
+// reaches): not from ?debug, ?special, ?unlocked or another act's ?level
 let counts = false;
 const achieve = id => { if (counts) achievements.unlock(id); };
 achievementsButton.addEventListener('click', () => sheet.go('achievements'));
@@ -235,8 +243,16 @@ romFile.addEventListener('change', async () => {
 // the save (save.js), read as the GBA is switched on and kept in this browser, which the game changes and writes
 // as it goes; the continues the special stages have given, kept for this visit; and the level the game was
 // started on, the course select's (gMultiplayerCurrentLevel: the level pick's, or 0 from the start)
-const save = openSave();
-let continues = 0, startLevel = 0;
+const save = unlocked === null ? openSave() : openSave(null);
+// as Game Start is pressed, so that the first write is what the language screen leaves, as the proof's original has it
+const proofSave = () => {
+  if (unlocked === null) return;
+  ['sonic', 'tails', 'knuckles', 'amy'].forEach((name, c) => { if (params.has(name)) save.setUnlockedLevel(c, Number(params.get(name)) & 0xFFFF); });
+  save.setUnlockedLevel(character, unlocked);
+  if (params.has('emeralds')) save.chaosEmeralds = Number(params.get('emeralds')) & ALL_EMERALDS;
+};
+// (`&current=N` and `&started=N` give that save's course select those two as a game before it left them, for the rule)
+let continues = 0, startLevel = unlocked === null ? 0 : Number(params.get('started') ?? 0) | 0, currentLevel = unlocked === null ? 0 : Number(params.get('current') ?? 0) | 0;   // currentLevel is gCurrentLevel, which a new start leaves as it was
 
 // Sonic Rush's boost, an extra on top of the original game: off unless chosen, like the widescreen view. Its
 // effects and sound come from the player's own Sonic Rush ROM.
@@ -292,6 +308,18 @@ function showTricks() {
   showSetting(tricksButton, tricks, tricksArt ? null : 'Sonic Advance 2');
 }
 tricksButton.addEventListener('click', () => setTricks(!tricks));
+// The original game's bugs fixed (engine/fixes.js), another extra: off unless chosen, and off for a proof tool, which
+// compares the game with the original, unless `?fixes=1` in the address asks for it, so that a clip can show a fix
+// beside the original's bug. Multiplayer has some of them too, so it stays on there.
+const FIXES_KEY = 'onsoku.fixBugs';
+function setFixes(on) {
+  fixes.on = on;
+  try { localStorage.setItem(FIXES_KEY, on ? '1' : '0'); } catch { /* not remembered */ }
+  showSetting(fixesButton, on);
+}
+try { fixes.on = proof ? params.has('fixes') : localStorage.getItem(FIXES_KEY) === '1'; } catch { /* storage blocked: the default stands */ }
+showSetting(fixesButton, fixes.on);
+fixesButton.addEventListener('click', () => setFixes(!fixes.on));
 // what the extras from Sonic Advance 2 read from its ROM, and its sound engine's tables
 function useSa2(buffer) {
   const sa2 = openSa2(buffer), boost = readBoostArt(sa2), trick = trickArt(sa2);
@@ -405,23 +433,39 @@ function start(buffer, assets) {
   wideButton.disabled = rushButton.disabled = boostButton.disabled = tricksButton.disabled = multi;
   stage.classList.toggle('multi', multi);   // its players play with keyboards and controllers
   sheet.close({ now: true });
-  counts = !debug && !specialTest && (assets.first === 0 || multi);
+  counts = !debug && !specialTest && unlocked === null && (assets.first === 0 || multi);
   if (multi) { startRound(assets); return; }
   const leaving = specialTest && specialSpringStart(assets, { emeralds: save.chaosEmeralds, continues });
   if (leaving) { enterSpecialStage(assets, leaving); return; }
   if (debug) { play(assets); return; }
-  front = createFrontEnd(screen, rom, assets.info.offsets, input, sound, save, () => { front = null; play(assets); });
+  front = createFrontEnd(screen, rom, assets.info.offsets, input, sound, save, (level, frameCount, picked) => {
+    front = null;
+    character = picked.character;
+    // the code's partner comes along with Sonic only (GameStageStart)
+    partner = picked.partner && character === 0;
+    if (level === undefined) play(assets.character === character && !!assets.partner === partner ? assets : extractAgain(sa1.buffer, assets, { level: assets.first, character, partner }));
+    else playChosen(level, frameCount);
+  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level'), select: !params.has('unlocked') || params.has('select'), onGameStart: proofSave });
   fitScreen();
   screen.focus();
 }
 
-// the act, after the game's start, again from what the special stage hands back (`resume`), or the next zone's
-// first act with what the game carries over (`carry`)
-function play(assets, resume = null, carry = null) {
-  const levelPick = assets.first !== 0 && assets.first === firstLevel && !carry;
-  if (!resume && !carry) startLevel = levelPick ? assets.first : 0;
+// the act the course select started, its zone decoded from the ROM unless it's the one the game opened with
+async function playChosen(level, frameCount) {
+  const from = sa1;
+  const same = from.assets.first === level && from.assets.character === character && !!from.assets.partner === partner;
+  const assets = same ? from.assets : await extractAssets(from.buffer, () => {}, { level, character, partner });
+  if (sa1 !== from || stage.hidden) return;   // the player left the game meanwhile
+  play(assets, null, null, { level, frameCount });
+}
+
+// the act, after the game's start, again from what the special stage hands back (`resume`), the next zone's first
+// act with what the game carries over (`carry`), or the act the course select `chosen`, { level, frameCount }
+function play(assets, resume = null, carry = null, chosen = null) {
+  const levelPick = !!chosen || (assets.first !== 0 && assets.first === firstLevel && !carry);
+  if (!resume && !carry) startLevel = chosen ? chosen.level : levelPick ? assets.first : 0;
   game = createGame(screen, assets, input, sound, {
-    resume, carry, save, startLevel, continues, levelPick,
+    resume, carry, save, startLevel, continues, levelPick, frameCount: chosen?.frameCount,
     onSpecialStage: handover => enterSpecialStage(assets, handover),
     onNextZone: next => nextZone(next),
     // a game over without a continue goes back to the start of the game, the SEGA logo
@@ -450,7 +494,8 @@ let playing = null;
 // X Zone's results, with them the credits after the true ending; at its end the game starts over from the
 // SEGA logo
 function endGame(assets, from) {
-  const { seed } = game.state;
+  const { seed, level } = game.state;
+  currentLevel = level;
   game.stop();
   game = createNormalEnding(screen, assets, input, sound, { from, emeralds: from === 'credits', seed, save, onEnd: () => queueMicrotask(restartGame) });
   fitScreen();
@@ -462,21 +507,22 @@ function endGame(assets, from) {
 // act's is loaded)
 async function restartGame() {
   continues = 0;
+  currentLevel = game?.state?.level ?? currentLevel;
   const assets = sa1.assets.first === 0 ? sa1.assets : await extractAssets(sa1.buffer, () => {}, { level: 0, character });
   start(sa1.buffer, assets);
 }
 
 // the last act decoded is over: the next zone's acts, decoded from the ROM now, played on with the score, the
 // lives and the random numbers carried over (GameStageStart). Past the zones this game has, the screen stays.
-async function nextZone({ level, ...carry }) {
+async function nextZone({ level, moon = false, ...carry }) {
   continues = carry.continues ?? continues;
-  // past X Zone the Moon Zone opens for Sonic with all seven Chaos Emeralds (unlock.js; the ROM also wants every
-  // character to have cleared X Zone, which waits for the character select); otherwise the normal ending comes
-  if (level === THE_MOON && (character !== 0 || save.chaosEmeralds !== ALL_EMERALDS)) { queueMicrotask(() => endGame(playing, 'congratulations')); return; }
+  // an X Zone's results come to an end only in the normal ending; its other way on, Egg X's when the Moon Zone
+  // has opened (xending.js), comes with `moon`
+  if (level === THE_MOON && !moon) { queueMicrotask(() => endGame(playing, 'congratulations')); return; }
   const from = game;
   let assets;
   try {
-    assets = await extractAssets(sa1.buffer, () => {}, { level, character });
+    assets = await extractAssets(sa1.buffer, () => {}, { level, character, partner });
   } catch (err) {
     console.warn(err);
     return;
@@ -559,6 +605,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyR' && !round && !stage.hidden && !e.repeat) setRush(!rush);
   if (e.code === 'KeyB' && !round && !stage.hidden && !e.repeat) setBoostMode(!boostMode);
   if (e.code === 'KeyT' && !round && !stage.hidden && !e.repeat) setTricks(!tricks);
+  if (e.code === 'KeyN' && !round && !stage.hidden && !e.repeat) setFixes(!fixes.on);
 });
 
 function showStats() {

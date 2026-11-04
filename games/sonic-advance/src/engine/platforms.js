@@ -7,7 +7,7 @@
 
 import { makeSprite, startAnim, animate, offCam, offDisplay } from './objects.js';
 import { platform, platformTop, LANDED } from './collide.js';
-import { endAttack, standUp } from './player.js';
+import { endAttack, standUp, AMY } from './player.js';
 import { SINE } from './trig.js';
 import { SONG } from '../sound/songs.js';
 
@@ -20,10 +20,10 @@ const LEFT = 1, RIGHT = 2;   // Sonic's held d-pad bits (player.js)
 // (a room event, chaohunt.js), whose own copy of it, if it is out, gives way at once (`e.changed`)
 const giveWay = (ctx, e) => ctx.mp?.sendEvent({ type: 1, x: e.rx, y: e.ry, id: e.id, action: 1 });
 
-// how far a thin or falling platform sags under Sonic: it eases down by 1/64 of a half turn a frame while he
-// stands on it, and back up when he is off it
-function sagging(o, p) {
-  o.sag = p.onObject === o ? Math.min(o.sag + 0x10, 0x100) : Math.max(o.sag - 0x10, 0);
+// how far a thin or falling platform sags under its players: it eases down by 1/64 of a half turn a frame while
+// any of them stands on it, and back up when they are off it
+function sagging(o, ...players) {
+  o.sag = players.some(p => p.onObject === o) ? Math.min(o.sag + 0x10, 0x100) : Math.max(o.sag - 0x10, 0);
   return SINE[o.sag] >> 12;
 }
 
@@ -42,18 +42,20 @@ function thin(e, slot, anims) {
   return {
     priority: 0x2010,
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam;
+      const cam = ctx.cam, inverted = ctx.player.inverted;   // the flipped gravity is the whole game's
       const next = Math.imul(reach, SINE[(4 * ((ctx.world.tick + phase) & 0xFF)) & 0x3FF]) >> 14, moved = next - q;
       q = next;
       const x = e.x + (across ? q >> 8 : 0), y = e.y + (across ? 0 : q >> 8);
       o.x = x;   // where Sonic balances at its edges
-      if (p.onObject === o) {
-        if (across) p.x += moved / 256;
-        p.y += (p.inverted ? -2 : 1) + (across ? 0 : moved / 256);
+      for (const p of ctx.players) {
+        if (p.onObject === o) {
+          if (across) p.x += moved / 256;
+          p.y += (inverted ? -2 : 1) + (across ? 0 : moved / 256);
+        }
+        platformTop(o, x, y, o.boxes[0], p);
       }
-      platformTop(o, x, y, o.boxes[0], p);
       if (offDisplay(e.x, e.y, cam) && offCam(x, y, cam)) { slot.live = null; return false; }
-      ctx.draw(o, x, y + (p.inverted ? -1 : 1) * sagging(o, p));
+      ctx.draw(o, x, y + (inverted ? -1 : 1) * sagging(o, ...ctx.players));
       return true;
     },
   };
@@ -68,27 +70,36 @@ function falling(e, slot, anims, art = 'thinPlatform') {
   const o = { ...makeSprite(art), sag: 0, x: e.x };
   animate(o, anims);
   let phase = 'still', n = 0, vy = 0, q = 0;
+  const brick = art === 'fallingBrick';
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam;
+      const cam = ctx.cam;
       if (phase !== 'falling') {
-        const hit = platformTop(o, e.x, e.y, o.boxes[0], p);
-        if (phase === 'still' && hit & LANDED) { phase = 'waiting'; n = 30; }
+        // Sonic and then the CPU partner. A still thin one stops at the first landing and gives way to either; a
+        // still brick (small_fall_block.c) tests both, and only gives way with Sonic on it
+        let hit = 0;
+        for (const p of ctx.players) {
+          hit |= platformTop(o, e.x, e.y, o.boxes[0], p);
+          if (phase === 'still' && !brick && hit & LANDED) break;
+        }
+        if (phase === 'still' && hit & LANDED && (!brick || ctx.player.onObject === o)) { phase = 'waiting'; n = 30; }
         else if (phase === 'waiting' && !e.changed && --n === 0) { phase = 'falling'; giveWay(ctx, e); }
         if (e.changed) { phase = 'falling'; n = 0; }
         if (offDisplay(e.x, e.y, cam) && offCam(e.x, e.y, cam)) { slot.live = null; return false; }
-        ctx.draw(o, e.x, e.y + sagging(o, p));
+        ctx.draw(o, e.x, e.y + sagging(o, ...ctx.players));
         return true;
       }
       vy += 42; q += vy; n++;
       const y = e.y + (q >> 8);
-      if (p.onObject === o) {
-        if (n > 32) { p.air = true; p.onObject = null; p.ysp = s16(vy) / 256; }
-        else p.y += (vy + 256) / 256;
+      for (const p of ctx.players) {
+        if (p.onObject === o) {
+          if (n > 32) { p.air = true; p.onObject = null; p.ysp = s16(vy) / 256; }
+          else p.y += (vy + 256) / 256;
+        }
+        if (n < 32) platformTop(o, e.x, y, o.boxes[0], p);
       }
-      if (n < 32) platformTop(o, e.x, y, o.boxes[0], p);
       if (offCam(e.x, y, cam)) { slot.live = null; return false; }
-      ctx.draw(o, e.x, y + sagging(o, p));
+      ctx.draw(o, e.x, y + sagging(o, ...ctx.players));
       return true;
     },
   };
@@ -113,9 +124,14 @@ function crumbling(e, slot, anims) {
   const outX = cam => e.x > cam.x + 368 || e.x < cam.x - 128;
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam;
+      const cam = ctx.cam;
       if (phase === 'whole' || phase === 'waiting') {
-        const hit = platformTop(o, e.x, e.y, o.boxes[0], p);
+        // Sonic and then the CPU partner; whole, it stops at the first landing
+        let hit = 0;
+        for (const p of ctx.players) {
+          hit |= platformTop(o, e.x, e.y, o.boxes[0], p);
+          if (phase === 'whole' && hit & LANDED) break;
+        }
         if (phase === 'whole' && hit & LANDED) { phase = 'waiting'; n = 0; }
         else if (phase === 'waiting' && !e.changed && n++ > 30) {
           phase = 'crumbling'; n = 0; ctx.world.playSound(SONG.CRUMBLING_PLATFORM);
@@ -127,7 +143,7 @@ function crumbling(e, slot, anims) {
         return true;
       }
       n++;
-      if (phase === 'crumbling') platformTop(o, e.x, e.y, o.boxes[0], p);
+      if (phase === 'crumbling') for (const p of ctx.players) platformTop(o, e.x, e.y, o.boxes[0], p);
       if (outX(cam) && offCam(e.x, e.y, cam)) { slot.live = null; return false; }
       const bottom = cam.y - e.y + 160, whole = phase === 'crumbling';
       for (let i = 0; i < 32; i++) {
@@ -135,7 +151,7 @@ function crumbling(e, slot, anims) {
         let dy = 0;
         if (t > 0) {
           if (i === 0 && t === 1 && phase === 'crumbling') {
-            if (p.onObject === o) { p.onObject = null; p.air = true; }
+            for (const p of ctx.players) if (p.onObject === o) { p.onObject = null; p.air = true; }
             phase = 'fallen';
           }
           dy = drop(t);
@@ -175,7 +191,9 @@ function trampoline(e, slot, anims) {
   }
   return {
     run(ctx) {
-      const hit = bounce(ctx.player, ctx.world.terrain);
+      // each player in turn, with the one sound however many it threw (sub_8074FB0)
+      let hit = false;
+      for (const p of ctx.players) if (bounce(p, ctx.world.terrain)) hit = true;
       if (hit) ctx.world.playSound(SONG.TRAMPOLINE);
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       if (bouncing) {
@@ -209,13 +227,16 @@ function bounceBlock(e, slot, anims) {
     else if (p.held[0] & RIGHT) p.facing = 1;
     p.ysp = -5;
     p.state = 'bounce'; p.rotation = 0;
+    if (p.character === AMY) p.hammerJump = true;
     standUp(p);
     return true;
   }
   return {
     run(ctx) {
       const dy = wobbling ? Math.trunc(SINE[wobble & 0x3FF] / 1024) : 0;
-      const hit = bounce(ctx.player, ctx.world.terrain);
+      // each player is thrown on their own; it wobbles, with its one sound, if any of them is
+      let hit = false;
+      for (const p of ctx.players) if (bounce(p, ctx.world.terrain)) hit = true;
       if (hit) { n = 30; wobble = 0; ctx.world.playSound(SONG.SPRING); }
       if (offCam(e.x, e.y + dy, ctx.cam)) { slot.live = null; return false; }
       if (wobbling) {

@@ -7,8 +7,9 @@
 
 import { makeSprite, startAnim, animate, offCam } from './objects.js';
 import { platform, LANDED } from './collide.js';
-import { land, standUp } from './player.js';
+import { land, standUp, hammerHits, hammerSpeed } from './player.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const SPECIAL_SPRING = 102;
 const LAUNCH_SPEED = 7.5;   // the throw, and how fast he rises out of the screen (Q(7.5))
@@ -29,21 +30,42 @@ export function createSpecialSpring(e, slot, anims) {
   let launching = false;
   let held = null;   // the camera when Sonic landed (camX, camY)
 
+  // in both tasks, before Sonic: the CPU partner landing on it is thrown up the same way and starts its launch over,
+  // with the spring's song, but it never holds him and the act goes on
+  function partnerThrown(ctx) {
+    const p = ctx.players[1];
+    if (!p || !(platform(o, o.boxes[0], p, ctx.world.terrain) & LANDED)) return;
+    land(p);
+    p.onObject = null; p.air = true;
+    p.ysp = -LAUNCH_SPEED;
+    p.state = 'springRise';
+    startAnim(o, 'specialSpringLaunch', true);
+    standUp(p);
+    ctx.world.playSound(SONG.SPRING);
+  }
+
   // Task_SpecialSpringMain: Sonic, if alive, landing on its top (Coll_Player_Platform's COLL_FLAG_8) is thrown
   // up at 7.5 px a frame in the spring's rising state (character state 21), uncurled, with the spring's song.
   // It doesn't start his animation over as the other springs do. With the special springs on, it also holds
   // him (MOVESTATE_IA_OVERRIDE) and stops the course clock (STAGE_FLAG__ACT_START). The launch's first frame
-  // shows on the same frame. (Amy's hammer, which also launches her 1.5 times as fast, and the partner aren't
-  // built.)
+  // shows on the same frame. Amy's hammer launches her 1.5 times as fast.
   function wait(ctx) {
     const p = ctx.player;
-    if (!p.dead && platform(o, o.boxes[0], p, ctx.world.terrain) & LANDED) {
+    // a launch the CPU partner started goes back to waiting once it's over
+    if (o.anim.name === 'specialSpringLaunch' && o.anim.done) startAnim(o, 'specialSpring', true);
+    partnerThrown(ctx);
+    const landed = !p.dead && (platform(o, o.boxes[0], p, ctx.world.terrain) & LANDED) !== 0;
+    const hammered = !p.dead && !landed && hammerHits(p, o.x, o.y, o.boxes[0]);
+    if (landed || hammered) {
       land(p);
       p.onObject = null; p.air = true;
-      p.ysp = -LAUNCH_SPEED;
+      p.ysp = hammered ? hammerSpeed(-LAUNCH_SPEED) : -LAUNCH_SPEED;
       p.state = 'springRise';
       held = { x: ctx.cam.x, y: ctx.cam.y };
-      if (!plain(p, ctx.world)) { p.carried = true; ctx.world.stopClock(); }
+      if (!plain(p, ctx.world)) {
+        p.carried = true; ctx.world.stopClock();
+        if (fixes.on) ctx.world.camera.hold = Infinity;   // before it moves, so all of the picture stays together
+      }
       startAnim(o, 'specialSpringLaunch', true);
       standUp(p);
       ctx.world.playSound(SONG.SPRING);
@@ -67,7 +89,19 @@ export function createSpecialSpring(e, slot, anims) {
   function launch(ctx) {
     const p = ctx.player;
     if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
+    partnerThrown(ctx);
     if (plain(p, ctx.world)) {
+      const landed = fixes.on && !p.dead && (platform(o, o.boxes[0], p, ctx.world.terrain) & LANDED) !== 0;
+      const hammered = fixes.on && !p.dead && !landed && hammerHits(p, o.x, o.y, o.boxes[0]);
+      if (landed || hammered) {
+        land(p);
+        p.onObject = null; p.air = true;
+        p.ysp = hammered ? hammerSpeed(-LAUNCH_SPEED) : -LAUNCH_SPEED;
+        p.state = 'springRise';
+        startAnim(o, 'specialSpringLaunch', true);
+        standUp(p);
+        ctx.world.playSound(SONG.SPRING);
+      }
       if (animate(o, anims)) { launching = false; startAnim(o, 'specialSpring', true); animate(o, anims); }
       ctx.draw(o, e.x, e.y);
       return true;

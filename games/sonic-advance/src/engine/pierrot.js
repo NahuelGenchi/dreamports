@@ -13,6 +13,7 @@ import { overlap } from './collide.js';
 import { animate } from './objects.js';
 import { I, TILE, data, gone, s16, sonicX, sonicY, sprite } from './enemies.js';
 import { tileFloor } from './terrain.js';
+import { fixes } from './fixes.js';
 
 export const PIERROT = 10;
 
@@ -30,9 +31,16 @@ export function pierrot(e, slot, anims) {
       if (!p.dead) {
         if (s.boxes[1] && p.boxes[0] && overlap(x, y, s.boxes[1], sonicX(ctx), sonicY(ctx), p.boxes[0])) {
           if (p.curled) {
+            // only while he moves into it, out on the side he came from
+            if (fixes.on) {
+              if ((p.x < x) === (p.xsp > 0)) {
+                const out = Math.max(Math.abs(p.gsp), Math.abs(p.xsp));
+                if (p.xsp > 0) { p.x -= out; p.facing = -1; } else { p.x += out; p.facing = 1; }
+                p.gsp = -p.gsp; p.xsp = -p.xsp;
+              }
             // back by his speed, the other way round
-            if (p.facing < 0) { p.x += Math.abs(p.gsp); p.facing = 1; } else { p.x -= Math.abs(p.gsp); p.facing = -1; }
-            p.gsp = -p.gsp; p.xsp = -p.xsp;
+            } else if (p.facing < 0) { p.x += Math.abs(p.gsp); p.facing = 1; } else { p.x -= Math.abs(p.gsp); p.facing = -1; }
+            if (!fixes.on) { p.gsp = -p.gsp; p.xsp = -p.xsp; }
           } else ctx.world.damage();
         }
         if (ctx.attack(s, x, y)) { slot.gone = true; slot.live = null; return false; }

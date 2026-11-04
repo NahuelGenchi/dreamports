@@ -84,7 +84,7 @@ The top of the file, between the two `---` lines, holds the details. Write them 
 
 Below the second `---` is the page itself, in Markdown. `## ` lines become headings and the "on this page" list, `- ` lines become bullet points, and `1. ` lines become numbered steps.
 
-**A game's recording** is a few seconds of the game being played, looping smoothly. For a Dreamport, `npm run dp -- capture <game>` makes all of it: you play the original on your computer and choose among the best moments ([The proof tools](tools/README.md#a-games-capture)). For another game, it's saved in [`public/media/`](public/media/) as two silent MP4 videos at 60 frames a second:
+**A game's recording** is a few seconds of the game being played, looping smoothly. For a Dreamport, `npm run dp -- capture <game>` makes all of it: you play the original on your computer and choose among the best moments, and when nobody does, the tool takes the one that ranks first ([The proof tools](tools/README.md#a-games-capture)). For another game, it's saved in [`public/media/`](public/media/) as two silent MP4 videos at 60 frames a second:
 
 - `my-port.h264.mp4`, in H.264, which every browser plays;
 - `my-port.av1.mp4`, in AV1, which is smaller. The site plays it only where the device decodes AV1 smoothly in hardware.
@@ -129,7 +129,7 @@ Then run `npm run check` and `npm run build`. If a detail is missing or misspell
    ```
 
    Name it `<type>/<issue>-<slug>`. Types are `feat`, `fix`, `enh`, `docs`, `research` and `ops`. One branch holds one issue: never reuse a merged or existing branch for new work, and never mix two features on one branch. Use focused commits such as `feat: add the Dreamports catalog page (#3)`. Do not commit directly to `main`. Delete the branch after its PR merges.
-3. **Open a linked PR.** A pull request from a fork gets no preview of its own, so share one with `npm run dp -- share` ([Previews](docs/PREVIEWS.md)) and put its link in the PR. Include a standalone `Closes #N` line for each completed, same-repository issue. Set the PR to the same milestone as its primary issue. Split cross-milestone changes into separate PRs. Use `Refs #N` for unfinished parent or related work; it does not replace a closing reference to the scoped issue.
+3. **Open a linked PR.** A pull request from a fork gets no preview of its own, so share one with `npm run dp -- share` ([Previews](docs/PREVIEWS.md)) and put its link in the PR. Include a standalone `Closes #N` line for each completed, same-repository issue. Set the PR to the same milestone as its primary issue. Split cross-milestone changes into separate PRs. Use `Refs #N` for unfinished parent or related work; it does not replace a closing reference to the scoped issue, though a PR that closes nothing, such as a draft, takes its milestone from the issue it names.
 4. **Record the outcome.** Describe exactly what changed, which checks ran, and what was not run. Close the issue only when its stated scope is complete.
 
 For non-file operations (repository settings, hosting, domains), put sanitized commands and results in the issue. When an operation produces no code change, deliver its lasting decision through a small documentation PR instead of an empty PR.

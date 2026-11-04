@@ -1,0 +1,216 @@
+{
+ "about": "Sonic walking into a spring that throws him left in Route 99 act 1. A start point stands him on the ground at x 4570, y 738, once the act's opening has ended, and he can move from frame 0. He's thrown along the slope, taking the rings on his way and leaving the ground, with the camera following. It stops the frame before something not made yet comes on the screen.",
+ "frames": 144,
+ "start": "level=3&seed=5&x=4570&y=738",
+ "held": [
+  [
+   0,
+   [
+    "RIGHT"
+   ]
+  ],
+  [
+   30,
+   []
+  ]
+ ],
+ "onlyInOriginal": [
+  {
+   "at": 0,
+   "frames": 5470,
+   "held": [
+    [
+     0,
+     []
+    ],
+    [
+     100,
+     [
+      "A"
+     ]
+    ],
+    [
+     106,
+     []
+    ],
+    [
+     300,
+     [
+      "A"
+     ]
+    ],
+    [
+     306,
+     []
+    ],
+    [
+     500,
+     [
+      "START"
+     ]
+    ],
+    [
+     506,
+     []
+    ],
+    [
+     700,
+     [
+      "A"
+     ]
+    ],
+    [
+     706,
+     []
+    ],
+    [
+     1000,
+     [
+      "START"
+     ]
+    ],
+    [
+     1006,
+     []
+    ],
+    [
+     1200,
+     [
+      "START"
+     ]
+    ],
+    [
+     1206,
+     []
+    ],
+    [
+     1400,
+     [
+      "START"
+     ]
+    ],
+    [
+     1406,
+     []
+    ],
+    [
+     1600,
+     [
+      "A"
+     ]
+    ],
+    [
+     1606,
+     []
+    ],
+    [
+     1750,
+     [
+      "A"
+     ]
+    ],
+    [
+     1756,
+     []
+    ],
+    [
+     1900,
+     [
+      "A"
+     ]
+    ],
+    [
+     1906,
+     []
+    ],
+    [
+     2050,
+     [
+      "A"
+     ]
+    ],
+    [
+     2056,
+     []
+    ],
+    [
+     2200,
+     [
+      "A"
+     ]
+    ],
+    [
+     2206,
+     []
+    ]
+   ],
+   "about": "From power-on to Route 99 act 1: the language, a name, the logos, the title, the main menu, Sonic and Tails, the story, the overworld, the warp to the act by the next map's number and both characters' next step, its opening, then the characters' and the camera's places on the last frame.",
+   "sets": [
+    {
+     "frame": 5040,
+     "address": "030008B2",
+     "bytes": 2,
+     "value": 3
+    },
+    {
+     "frame": 5040,
+     "address": "030015C0",
+     "bytes": 4,
+     "value": 134262061
+    },
+    {
+     "frame": 5040,
+     "address": "03001710",
+     "bytes": 4,
+     "value": 134262061
+    },
+    {
+     "frame": 5139,
+     "address": "03006868",
+     "bytes": 4,
+     "value": 5
+    },
+    {
+     "frame": 5469,
+     "address": "030015D0",
+     "bytes": 4,
+     "value": 1169920
+    },
+    {
+     "frame": 5469,
+     "address": "03001720",
+     "bytes": 4,
+     "value": 1162240
+    },
+    {
+     "frame": 5469,
+     "address": "030015D4",
+     "bytes": 4,
+     "value": 188928
+    },
+    {
+     "frame": 5469,
+     "address": "03001724",
+     "bytes": 4,
+     "value": 188928
+    },
+    {
+     "frame": 5469,
+     "address": "03001D10",
+     "bytes": 4,
+     "value": 4450
+    },
+    {
+     "frame": 5469,
+     "address": "03001D14",
+     "bytes": 4,
+     "value": 654
+    }
+   ]
+  }
+ ],
+ "clip": {
+  "at": 0,
+  "frames": 144
+ }
+}

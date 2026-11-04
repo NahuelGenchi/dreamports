@@ -8,6 +8,7 @@ import { makeSprite, startAnim, animate, offCam, offDisplay } from './objects.js
 import { platformTop, overlap } from './collide.js';
 import { SINE } from './trig.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const SPIKED_BARREL = 93;
 const s8 = v => (v << 24) >> 24;
@@ -25,24 +26,27 @@ export function createSpikedBarrel(e, slot, anims) {
   let q = 0, sag = 0, variant = 0, wait = SHORT;
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam, world = ctx.world;
+      const cam = ctx.cam, world = ctx.world;
       const next = Math.imul(reach, SINE[(4 * ((world.tick + phase) & 0xFF)) & 0x3FF]) >> 14, moved = next - q;
       q = next;
       // the sprite is drawn Div(q, 256) off its point; its top is q >> 8 off
       const dx = across ? div256(q) : 0, dy = across ? 0 : div256(q);
-      const x = e.x + (across ? q >> 8 : 0), y = e.y + (across ? 0 : q >> 8);
+      const x = e.x + (fixes.on ? dx : across ? q >> 8 : 0), y = e.y + (fixes.on ? dy : across ? 0 : q >> 8);
       o.x = x;
-      if (p.onObject === o) {
-        if (across) p.x += moved / 256;
-        p.y += 1 + (across ? 0 : moved / 256);
-      }
-      platformTop(o, x, y, o.boxes[0], p);
-      if ((variant === 0 || variant === 2) && o.boxes[1] && p.boxes[0]
-        && overlap(e.x + dx, e.y + dy, o.boxes[1], Math.floor(p.x), Math.floor(p.y), p.boxes[0])) {
-        if (!p.dead && world.damage()) world.playSound(SONG.SPIKES);
+      for (const p of ctx.players) {
+        if (p.onObject === o) {
+          if (across) p.x += moved / 256;
+          p.y += 1 + (across ? 0 : moved / 256);
+        }
+        platformTop(o, x, y, o.boxes[0], p);
+        if ((variant === 0 || variant === 2) && o.boxes[1] && p.boxes[0]
+          && overlap(e.x + dx, e.y + dy, o.boxes[1], Math.floor(p.x), Math.floor(p.y), p.boxes[0])) {
+          // whether Sonic is alive decides, whoever it touches
+          if (!ctx.player.dead && world.damage(p)) world.playSound(SONG.SPIKES);
+        }
       }
       if (offDisplay(e.x, e.y, cam) && offCam(e.x + dx, e.y + dy, cam)) { slot.live = null; return false; }
-      sag = p.onObject === o ? Math.min(sag + 0x10, 0x100) : Math.max(sag - 0x10, 0);
+      sag = ctx.players.some(p => p.onObject === o) ? Math.min(sag + 0x10, 0x100) : Math.max(sag - 0x10, 0);
       if (--wait === 0) {
         wait = variant === 0 || variant === 2 ? LONG : SHORT;
         variant = (variant + 1) % 4;

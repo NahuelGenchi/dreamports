@@ -7,32 +7,36 @@
 // The game's page names its screen and the player's buttons with proof.watch(screen, input), and its clocks
 // (clock.js), that player's input (input.js) and the kit's sound (sound/audio.js) do the rest. A tool reaches it on the page as `dreamportsProof`:
 // - `mode`: 'play' with ?proof, 'record' with ?proof=record
-// - `buttons`: the game's buttons, each { name, gba }, `gba` being the console's button it is (a name in KEY,
-//   input.js), or null for one of its own, such as an extra's
+// - `buttons`: the game's buttons, each { name, console }, `console` being the console's button it is (a name in KEY,
+//   input.js, or in kit/consoles.js for another console's kit, whose layout says so in `console`), or null for one of
+//   its own, such as an extra's. `gba` is the same, under the name it had first
 // - `ready`: resolves once the game runs, which in play mode means it waits for its first frame
 // - `step(frame)`: in play mode, runs one frame with the buttons in `frame.held` held and those in
 //   `frame.pressed` just pressed (without `pressed`, those held now and not at the frame before), and resolves
 //   to what the screen shows after it, as ImageData; a frame at a time
 // - `heard`: in play mode, what the last frame sounded like: an Int16Array of its samples, left and right, at the
 //   console's mix rate (65536 a second) and in its 10-bit units around the bias, or null for a game with no sound
+// - `video`: in play mode, the video hardware (video.js) that drew the last frame, which prove compares with the original's
+// - `neverInPlay`: in play mode, why no player could ever see the last frame, as a game's code says with its own words when
+//   a start point has left it somewhere it never is in real play, or null; prove fails on it (tools/README.md, Start points)
 // - `frames`: in record mode, what the game read at every frame so far, as { held, pressed }, ready for step()
 // - `replay(frames)`: in record mode, before the game starts, frames for it to play first, each { held } with the
 //   console's names for its buttons (or the game's own), as a recording has them; the player's buttons do nothing
 //   until the last of them has run, and `frames` keeps them with the player's own
 // - `replaying`: in record mode, how many of those frames are still to run
 
+// the console's clock and a frame of it (sound/apu.js)
+const CPU_HZ = 16777216, FRAME_CYCLES = 280896;
+
 const asked = new URLSearchParams(location.search).get('proof');
 
 /** The proof mode, or null: proof.mode is 'play' or 'record'. */
 export const proof = asked === null ? null : createProof(asked === 'record' ? 'record' : 'play');
 
-// the console's clock and a frame of it (sound/apu.js)
-const CPU_HZ = 16777216, FRAME_CYCLES = 280896;
-
 function createProof(mode) {
   let screen = null, wanted = null, running = null, drawn = null, started;
   // the game's sound, which fills two lists of samples at `rate` with what plays next, and what the last frame played
-  let sound = null, rate = 0, played = 0, heard = null;
+  let sound = null, rate = 0, played = 0, heard = null, frameTime = FRAME_CYCLES / CPU_HZ;
   // what the frames wait for, such as the sound engine starting (wait())
   let waiting = 0;
   const frames = [];
@@ -43,7 +47,7 @@ function createProof(mode) {
   // rate, kept in its 10-bit units (the sound's 1 is 512 of them), or null for a game with no sound
   const hear = () => {
     if (!sound) return null;
-    const step = rate * FRAME_CYCLES / CPU_HZ;
+    const step = rate * frameTime;
     const count = Math.floor((played + 1) * step) - Math.floor(played * step);
     played++;
     const left = new Float32Array(count), right = new Float32Array(count), samples = new Int16Array(count * 2);
@@ -54,7 +58,7 @@ function createProof(mode) {
   // a button by the game's name: the first of its buttons that is this one of the console's, or the name as it is
   const named = name => {
     const layout = state.input?.layout;
-    return layout?.buttons.find(b => layout.gba?.[b] === name) ?? name;
+    return layout?.buttons.find(b => (layout.console ?? layout.gba)?.[b] === name) ?? name;
   };
   const state = {
     mode,
@@ -79,8 +83,8 @@ function createProof(mode) {
       return 1;
     },
     /** In play mode, names what plays the game's sound: `play(left, right)` fills both with its next samples, at
-     *  `sampleRate` (sound/audio.js). */
-    listen(play, sampleRate) { sound = play; rate = sampleRate; },
+     *  `sampleRate` (sound/audio.js), a frame lasting `seconds` on a console that isn't the Game Boy Advance. */
+    listen(play, sampleRate, seconds = frameTime) { sound = play; rate = sampleRate; frameTime = seconds; },
     /** In play mode, holds the game's frames until `promise` settles, such as the sound engine starting. */
     wait(promise) {
       waiting++;
@@ -101,7 +105,7 @@ function createProof(mode) {
     mode,
     get buttons() {
       const layout = state.input?.layout;
-      return layout ? layout.buttons.map(name => ({ name, gba: layout.gba?.[name] ?? null })) : [];
+      return layout ? layout.buttons.map(name => ({ name, gba: layout.gba?.[name] ?? null, console: layout.console?.[name] ?? layout.gba?.[name] ?? null })) : [];
     },
     ready,
     step(frame = {}) {
@@ -118,6 +122,8 @@ function createProof(mode) {
     },
     get replaying() { return Math.max(0, replays.length - frames.length); },
     get heard() { return heard; },
+    video: null,
+    neverInPlay: null,
   };
   return state;
 }

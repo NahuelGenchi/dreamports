@@ -77,6 +77,8 @@ function createLayer(video, rom, number, tiles, def, screen) {
     // 0x0801AB30, with 0x0801A9A4's size in the eighth of a pixel it keeps: half the screen or half the layer
     halfW: 0, halfH: 0, maxX: 0, maxY: 0,
     x: 0, y: 0, x0: 0, x1: 0, y0: 0, y1: 0,
+    // 0x08002158: how many columns beyond the screen's it draws on each side, for a layer whose lines move on their own
+    margin: 0,
   };
   const pixelsW = width << 12, pixelsH = height << 12;
   layer.halfW = Math.min(pixelsW >> 1, 0x7800);
@@ -156,7 +158,7 @@ function placeLayer(layer, camera) {
   layer.x1 = blockOf(layer.x + layer.halfW - 1);
   layer.y0 = blockOf(layer.y - layer.halfH);
   layer.y1 = blockOf(layer.y + layer.halfH - 1);
-  for (let x = layer.x0; x <= layer.x1; x++) drawColumn(layer, x);
+  for (let x = layer.x0 - layer.margin; x <= layer.x1 + layer.margin; x++) drawColumn(layer, x);
 }
 
 // 0x0801A894: the layer at the camera's new place, with what leaves the screen given up (0x0801ADFC, 0x0801AE38)
@@ -193,6 +195,7 @@ export function createWorld(video, rom, def) {
   const world = { layers: [], camera: { x: 0, y: 0 } };
   for (let n = 0; n < 4; n++) {
     const layerDef = rom.u32(at + 4 + n * 4);
+    if (!layerDef) continue;   // the title screen has only the first and the last
     const usesBig = rom.u8(layerDef - CARTRIDGE + 22) !== 0;
     world.layers[n] = createLayer(video, rom, n, usesBig ? big : small, layerDef, 28 + n);
     const priority = rom.u32(layerDef - CARTRIDGE + 8) & 3;
@@ -215,18 +218,18 @@ const ORDER = [3, 0, 1, 2];
 export function showWorld(world) {
   const last = world.layers[3];
   placeLayer(last, world.camera);
-  for (const n of ORDER.slice(1)) placeLayer(world.layers[n], last);
+  for (const n of ORDER.slice(1)) if (world.layers[n]) placeLayer(world.layers[n], last);
 }
 
 /** 0x0802F374: every layer at the camera's place, before the V-blank. */
 export function moveWorld(world) {
   const last = world.layers[3];
   moveLayer(last, world.camera);
-  for (const n of ORDER.slice(1)) moveLayer(world.layers[n], last);
+  for (const n of ORDER.slice(1)) if (world.layers[n]) moveLayer(world.layers[n], last);
 }
 
 /** 0x0802F90C: every layer's picture, at the V-blank. */
-export function drawWorld(world) { for (const layer of world.layers) showLayer(layer); }
+export function drawWorld(world) { for (const layer of world.layers) if (layer) showLayer(layer); }
 
 /** 0x0802F7F0 and 0x0802F7DC: the screen's left and top on the map, in eighths of a pixel. */
 export const screenLeft = world => world.layers[3].x - 0x7800;

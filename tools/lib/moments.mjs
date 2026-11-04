@@ -1,18 +1,24 @@
-// Finds the best moments in what a person played, for a game's card (tools/capture.mjs): lively, colourful stretches
-// of play, from numbers each frame gives. A person chooses among them, so this only has to put good ones in front of
-// them and leave out what never belongs on a card: logos, fades, menus, text and whatever plays with nobody playing.
+// Finds the best moments in what was played, for a game's card (tools/capture.mjs): lively, colourful stretches of play,
+// from numbers each frame gives. A person chooses among them when one is there, and otherwise the first is taken, and
+// it leaves out what never belongs on a card: logos, fades, menus, text and whatever plays with nobody playing.
 
-const PIXELS = 240 * 160;
 
 /** How long a stretch of play is looked at, in frames. A moment is cut from it, so it's as long as one can be. */
 export const WINDOW = 360;
 const STEP = 30;                     // windows are tried this many frames apart
 const SHORTEST = 150;                // a moment lasts at least this long
 const AROUND = 300;                  // and is best at about this long
-const PLAYING = 0x3F3;               // the buttons that play, which leave out Start and Select
+let PLAYING = 0x3F3;                 // the buttons that play, which leave out Start and Select
+let WIDTH = 240;
+
+/** Says which console's pictures and buttons these are, for one that isn't the Game Boy Advance. */
+export function forConsole({ screen, keys }) {
+  WIDTH = screen[0];
+  if (keys) PLAYING = Object.entries(keys).reduce((mask, [name, bit]) => (name === 'START' || name === 'SELECT' ? mask : mask | bit), 0);
+}
 const PLAYED = 0.2;                  // the share of a window's frames some of them have to be held for
 const STILL = 0.002, STILLS = 0.25;  // a frame this little of which changes, like the one before it, is still, and a window can hold this share of those
-const FEW_COLOURS = 8;
+export const FEW_COLOURS = 8;
 
 // colours seen in this frame, marked with the frame's stamp, so they needn't be cleared each time
 const seen = new Uint32Array(32768);
@@ -26,6 +32,7 @@ let stamp = 0;
  */
 export function measure(picture, previous) {
   stamp++;
+  const PIXELS = picture.length;
   let hash = 0x811C9DC5, colours = 0, moved = 0, light = 0, rg = 0, yb = 0, rg2 = 0, yb2 = 0;
   for (let i = 0; i < PIXELS; i++) {
     const c = picture[i];
@@ -84,10 +91,25 @@ export function shortlist(frames, buttons, count = 6) {
   return chosen;
 }
 
+/**
+ * What each stretch of what was played is like, in numbers, to say where a list of presses led with no picture: at most
+ * about forty stretches of { from, moved, colours, held }, with `held` the share of its frames buttons that play were held.
+ */
+export function stretches(frames, buttons) {
+  const size = Math.max(300, Math.ceil(frames.length / 40));
+  const out = [];
+  for (let from = 0; from < frames.length; from += size) {
+    const part = frames.slice(from, from + size);
+    const held = buttons.slice(from, from + size).filter(mask => mask & PLAYING).length;
+    out.push({ from, moved: mean(part, 'moved'), colours: mean(part, 'colours'), held: held / part.length });
+  }
+  return out;
+}
+
 // every third pixel, each way, which says enough to compare two pictures
 const sample = picture => {
   const out = [];
-  for (let y = 0; y < 160; y += 3) for (let x = 0; x < 240; x += 3) out.push(picture[y * 240 + x]);
+  for (let y = 0; y < picture.length / WIDTH; y += 3) for (let x = 0; x < WIDTH; x += 3) out.push(picture[y * WIDTH + x]);
   return Uint16Array.from(out);
 };
 

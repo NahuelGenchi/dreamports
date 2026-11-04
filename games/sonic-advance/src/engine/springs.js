@@ -7,7 +7,7 @@
 import { PHYSICS as K, BOOST_MODE as B, SA2_TRICKS } from './constants.js';
 import { makeSprite, startAnim, animate, offCam } from './objects.js';
 import { platform, springSide, overlap, LANDED, FROM_BELOW, LEFT_FACE, RIGHT_FACE, PUSHING } from './collide.js';
-import { land, standUp, endAttack, enterBoostMode } from './player.js';
+import { land, standUp, endAttack, enterBoostMode, hammerHits, hammerSpeed } from './player.js';
 import { SONG } from '../sound/songs.js';
 
 // interactable kinds
@@ -52,9 +52,10 @@ function throwUp(p, o) {
 
 // up (sub_8022640): landing on it launches him straight up, keeping his X speed
 function up(o, p, { terrain: t }) {
-  if (!(platform(o, o.boxes[0], p, t) & LANDED)) return false;
+  const landed = (platform(o, o.boxes[0], p, t) & LANDED) !== 0, hammered = !landed && hammerHits(p, o.x, o.y, o.boxes[0]);
+  if (!landed && !hammered) return false;
   land(p);
-  p.ysp = -o.speed;
+  p.ysp = hammered ? hammerSpeed(-o.speed) : -o.speed;
   throwUp(p, o);
   return true;
 }
@@ -99,12 +100,14 @@ function side(o, p, world) {
 // centre is more than 20 px out on the side it points to; otherwise it is solid
 function diagonal(o, p, { terrain: t }) {
   const probe = [-12, -(p.offsetY + 1), 12, p.offsetY + 1];
-  if (!overlap(o.x, o.y, o.boxes[1], Math.floor(p.x), Math.floor(p.y), probe)) { platform(o, o.boxes[0], p, t); return false; }
+  const hammered = hammerHits(p, o.x, o.y, o.boxes[0]);
+  if (!hammered && !overlap(o.x, o.y, o.boxes[1], Math.floor(p.x), Math.floor(p.y), probe)) { platform(o, o.boxes[0], p, t); return false; }
   p.curled = false; p.airLock = false;   // even without a launch, and without standing him up
   const px = Math.floor(p.x), upLeft = o.kind === SPRING_BIG_UPLEFT || o.kind === SPRING_SMALL_UPLEFT;
-  const dir = upLeft && px < o.x - 20 ? -1 : px > o.x + 20 ? 1 : 0;
+  const dir = upLeft && (hammered || px < o.x - 20) ? -1 : hammered || px > o.x + 20 ? 1 : 0;
   if (!dir) { platform(o, o.boxes[0], p, t); return false; }
-  p.ysp = p.inverted ? o.speed : -o.speed; p.xsp = o.speed * dir;   // under flipped gravity, still world up
+  const speed = hammered ? hammerSpeed(o.speed) : o.speed;
+  p.ysp = p.inverted ? speed : -speed; p.xsp = speed * dir;   // under flipped gravity, still world up
   throwUp(p, o);
   return true;
 }
@@ -138,34 +141,38 @@ export function createSpring(e) {
  * rise-and-fall animations), with the spring's song. Then it shows its launch (animation 455 variant 1, red, in
  * OAM order 18 and BG priority 2), throwing him again and starting over while he touches it, and shows itself
  * at rest on the frame the launch ends before it hides again. It waits in Task_Spring_Hiding (`0x08094DCD` in
- * the USA ROM) and launches in Task_8095158, both at the objects' priority. (Amy's hammer, which also launches
- * her 1.5 times as fast, isn't built.)
+ * the USA ROM) and launches in Task_8095158, both at the objects' priority. Amy's hammer launches her 1.5 times as fast.
  */
 export function createHidingSpring(e, slot, anims) {
   if (e.kind !== SPRING_HIDING) return null;
   const o = { x: e.x, y: e.y, d: e.d, ...makeSprite('springUp') };
   animate(o, anims);
   let launching = false;
-  // sub_8095224 (0x08094F2C)
-  function hit(p, world) {
+  // sub_8095224 (0x08094F2C): each player in turn, with the song for each it throws
+  function hit(ctx) {
     const hb = o.boxes[0];
-    if (p.dead || p.carried || !hb || !overlap(e.x, e.y, hb, Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) return false;
-    land(p);
-    p.ysp = -(e.d[1] << 6) / 256;
-    throwUp(p, o);
-    startAnim(o, 'springUpLaunch', true);
-    world.playSound(SONG.SPRING);
-    return true;
+    let any = false;
+    for (const p of ctx.players) {
+      const hammered = !p.dead && !p.carried && hammerHits(p, e.x, e.y, hb);
+      if (!hammered && (p.dead || p.carried || !hb || !overlap(e.x, e.y, hb, Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY]))) continue;
+      land(p);
+      p.ysp = hammered ? hammerSpeed(-(e.d[1] << 6) / 256) : -(e.d[1] << 6) / 256;
+      throwUp(p, o);
+      startAnim(o, 'springUpLaunch', true);
+      ctx.world.playSound(SONG.SPRING);
+      any = true;
+    }
+    return any;
   }
   return {
     run(ctx) {
       if (!launching) {
-        launching = hit(ctx.player, ctx.world);   // its launch's first frame shows on the next one
+        launching = hit(ctx);   // its launch's first frame shows on the next one
         if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
         return true;
       }
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
-      hit(ctx.player, ctx.world);
+      hit(ctx);
       if (animate(o, anims)) { launching = false; startAnim(o, 'springUp'); animate(o, anims); }
       ctx.draw(o, e.x, e.y);
       return true;

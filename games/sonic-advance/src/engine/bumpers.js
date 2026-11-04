@@ -30,6 +30,7 @@ import { BALL_SPRITE_OFFSET_Y } from './constants.js';
 import { endAttack, TAILS, KNUCKLES } from './player.js';
 import { SINE, s8, octantAngle } from './trig.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const BUMPER_HEXAGON = 48, BUMPER_ROUND = 49, BUMPER_CIRCLING = 50;
 export const BUMPER_TRI_H = 51, BUMPER_TRI_V = 52, BUMPER_RIGHT_ANGLE = 53, WALL_BUMPER = 71;
@@ -40,6 +41,8 @@ const CORNER = 1200;              // Q(4.6875): off the right-angled one's slant
 const POINTS = 10;
 // COS(c × 128) >> 12 and SIN(c × 128) >> 12 for shake frames 0–9 (see above)
 const SHAKE_X = [4, 2, 0, -3, -4, -3, 0, 2, 0, 0];
+// the same with the angle wrapped, as the last two frames mean
+const SHAKE_X_WRAPPED = [4, 2, 0, -3, -4, -3, 0, 2, 4, 2];
 const SHAKE_Y = [0, 2, 4, 2, 0, -3, -4, -3, 0, 2];
 const SHAKE_END = 8;
 // SIN(-1), for the angle of a touch dead on the centre: the halfword before the sine table in the ROM
@@ -136,13 +139,15 @@ function wallBumper(e, slot) {
   const dir = s8(e.d[0]), w = e.d[2] * 8, h = e.d[3] * 8;
   return {
     run(ctx) {
-      const p = ctx.player, px = Math.floor(p.x), py = Math.floor(p.y);
-      if (!p.dead && px >= e.x && px <= e.x + w && py >= e.y && py <= e.y + h) {
-        ctx.world.playSound(SONG.BUMPER_B);
-        p.jumped = false; p.air = true; p.airLock = false;
-        p.xsp = dir & 1 ? 5 : -5;
-        p.ysp = dir < 3 ? -7 : 6;
-        if (stopFlying(p)) { p.curled = true; p.offsetY = BALL_SPRITE_OFFSET_Y; }
+      for (const p of ctx.players) {
+        const px = Math.floor(p.x), py = Math.floor(p.y);
+        if (!p.dead && px >= e.x && px <= e.x + w && py >= e.y && py <= e.y + h) {
+          ctx.world.playSound(SONG.BUMPER_B);
+          p.jumped = false; p.air = true; p.airLock = false;
+          p.xsp = dir & 1 ? 5 : -5;
+          p.ysp = dir < 3 ? -7 : 6;
+          if (stopFlying(p)) { p.curled = true; p.offsetY = BALL_SPRITE_OFFSET_Y; }
+        }
       }
       if (offDisplay(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       return true;
@@ -191,7 +196,7 @@ export function createBumper(e, slot, anims) {
     } else if (k === BUMPER_CIRCLING) {
       if (!touches(s, x + (qx >> 11), y + (qy >> 11), p)) return false;
       throwOff(p);
-      roundThrow(p, angle(p, x + (qx >> 8), y + (qy >> 8)), world);
+      roundThrow(p, fixes.on ? angle(p, x + (qx >> 11), y + (qy >> 11)) : angle(p, x + (qx >> 8), y + (qy >> 8)), world);
     } else if (k === BUMPER_TRI_H) {
       if (p.carried || !touches(s, x, y, p)) return false;
       throwOff(p);
@@ -210,9 +215,16 @@ export function createBumper(e, slot, anims) {
     return true;
   }
 
+  // each player in turn: true when it throws any of them, with its sound for each one thrown
+  function testAll(ctx) {
+    let hit = false;
+    for (const p of ctx.players) if (test(p, ctx.world)) hit = true;
+    return hit;
+  }
+
   return {
     run(ctx) {
-      const p = ctx.player, t = ctx.world.tick;
+      const t = ctx.world.tick;
       const inShake = shaking;
       if (shaking && ++c > SHAKE_END) shaking = false;
       if (alongX) qx = sway(e.d[2], phase, t);
@@ -227,13 +239,13 @@ export function createBumper(e, slot, anims) {
       // moves; the others after
       const sideways = flipX ? 1 : -1;
       if (!inShake) {
-        if (test(p, ctx.world)) shaking = true;
+        if (testAll(ctx)) shaking = true;
       } else if (k === BUMPER_HEXAGON || k === BUMPER_ROUND || k === BUMPER_TRI_V) {
-        test(p, ctx.world);
-        x += sideways * SHAKE_X[c]; y += SHAKE_Y[c];
+        testAll(ctx);
+        x += sideways * (fixes.on ? SHAKE_X_WRAPPED : SHAKE_X)[c]; y += SHAKE_Y[c];
       } else {
-        x += sideways * SHAKE_X[c]; y += SHAKE_Y[c];
-        test(p, ctx.world);
+        x += sideways * (fixes.on ? SHAKE_X_WRAPPED : SHAKE_X)[c]; y += SHAKE_Y[c];
+        testAll(ctx);
       }
       if (offDisplay(e.x, e.y, ctx.cam) && offCam(x, y, ctx.cam)) { slot.live = null; return false; }
       ctx.draw(s, x, y);

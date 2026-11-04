@@ -197,6 +197,8 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
     return { end, calls: calls.map(to => [to, false]), pointers, bad: false };
   }
 
+  // where the game's code starts from: what the cartridge's first branch leads to, and what a list names
+  const roots = new Set(listed.map(({ address }) => address));
   function follow() {
     while (queue.length) {
       const address = queue.shift();
@@ -209,11 +211,27 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
         continue;
       }
       f.end = traced.end;
+      f.calls = traced.calls.map(to => (Array.isArray(to) ? to[0] : to));
+      f.pointers = traced.pointers;
       for (const to of traced.calls) add(Array.isArray(to) ? to[0] : to, Array.isArray(to) ? to[1] : true, true);
       for (const to of traced.pointers) add(to, true, false);
     }
-    const lastCalled = Math.max(BASE, ...[...found].filter(([, f]) => f.called).map(([address]) => address));
-    for (const [address, f] of found) if (!f.called && address > lastCalled + NEAR_CODE) found.delete(address);
+    // the code ends at the last function the game's start leads to by a call. Calls made only by what a table points at
+    // don't count: in a big cartridge, data read as code calls more data, from there to the cartridge's end
+    const led = new Set(roots), work = [...roots];
+    let lastCalled = BASE;
+    while (work.length) {
+      const f = found.get(work.pop());
+      if (!f) continue;
+      for (const to of f.calls ?? []) lastCalled = Math.max(lastCalled, found.has(to) ? to : BASE);
+      for (const to of [...(f.calls ?? []), ...(f.pointers ?? [])]) {
+        if (!led.has(to)) {
+          led.add(to);
+          work.push(to);
+        }
+      }
+    }
+    for (const address of found.keys()) if (address > lastCalled + NEAR_CODE) found.delete(address);
   }
   // twice: a word is only known as part of the pool once what loads it has been followed, which may come after
   // something has run into it, read it as code and taken it for a call
@@ -223,6 +241,7 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
     if (size >= 4 && (u32(BASE) & 0x0F000000) === 0x0A000000) {
       found.set(BASE, { thumb: false, end: BASE + 4, called: true });
       add(BASE + 8 + ((u32(BASE) & 0xFFFFFF) << 8 >> 6), false, true);
+      roots.add(BASE + 8 + ((u32(BASE) & 0xFFFFFF) << 8 >> 6));
     }
     // the function addresses in the game's tables: those that start as functions do, and, in a table that has one of
     // those, the others that read as code

@@ -34,40 +34,47 @@ function hold(p) {
 export function createTeleportOrb(e, slot) {
   if (e.kind !== TELEPORT_ORB) return null;
   const toX = s8(e.d[0]) * 256 + e.d[2], toY = s8(e.d[1]) * 256 + e.d[3];
-  // whether it holds him, and where the camera was on its last frame
-  let held = false, camX = 0, camY = 0;
+  // whether it holds each player, and where the camera was the last time it looked at one of them, the two sharing
+  // it, so that the second to look always finds the camera still
+  const held = [false, false];
+  let camX = 0, camY = 0;
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam;
-      if (held) {
-        const px = Math.floor(p.x), py = Math.floor(p.y);
-        if (cam.x === camX && cam.y === camY && cam.x <= px && cam.x + SCREEN_W >= px && cam.y <= py && cam.y + SCREEN_H >= py) {
-          p.carried = false; p.air = true;
-          held = false;
-          p.xsp = 0; p.ysp = 0; p.gsp = 0;
-        } else hold(p);
-        if (p.dead) {
-          held = false;
-          p.carried = false;
-          p.x = cam.x + SCREEN_W / 2; p.y = cam.y + SCREEN_H / 2;
-          ctx.world.stopCamera();
-        }
-        camX = cam.x; camY = cam.y;
-      } else if (!p.dead) {
-        const px = Math.floor(p.x), py = Math.floor(p.y);
-        if (px >= e.x - REACH && px <= e.x + REACH && py >= e.y - REACH && py <= e.y + REACH) {
-          cancel(p);
-          p.curled = true; p.carried = true;
-          p.x = toX; p.y = toY;
-          p.xsp = 0; p.ysp = 0; p.gsp = 0;
-          p.state = 'spin';
-          setOffsetY(p, SPRITE_OFFSET_Y);
-          ctx.world.playSound(SONG.SPRING);
-          held = true;
+      const cam = ctx.cam;
+      for (const [i, p] of ctx.players.entries()) {
+        if (held[i]) {
+          const px = Math.floor(p.x), py = Math.floor(p.y);
+          if (cam.x === camX && cam.y === camY && cam.x <= px && cam.x + SCREEN_W >= px && cam.y <= py && cam.y + SCREEN_H >= py) {
+            p.carried = false; p.air = true;
+            held[i] = false;
+            p.xsp = 0; p.ysp = 0; p.gsp = 0;
+          } else hold(p);
+          if (p.dead) {
+            held[i] = false;
+            p.carried = false;
+            // only Sonic's death moves him and stops the camera
+            if (i === 0) {
+              p.x = cam.x + SCREEN_W / 2; p.y = cam.y + SCREEN_H / 2;
+              ctx.world.stopCamera();
+            }
+          }
           camX = cam.x; camY = cam.y;
+        } else if (!p.dead) {
+          const px = Math.floor(p.x), py = Math.floor(p.y);
+          if (px >= e.x - REACH && px <= e.x + REACH && py >= e.y - REACH && py <= e.y + REACH) {
+            cancel(p);
+            p.curled = true; p.carried = true;
+            p.x = toX; p.y = toY;
+            p.xsp = 0; p.ysp = 0; p.gsp = 0;
+            p.state = 'spin';
+            setOffsetY(p, SPRITE_OFFSET_Y);
+            ctx.world.playSound(SONG.SPRING);
+            held[i] = true;
+            camX = cam.x; camY = cam.y;
+          }
         }
       }
-      if (!held && offCam(e.x, e.y, cam)) { slot.live = null; return false; }
+      if (!held[0] && !held[1] && offCam(e.x, e.y, cam)) { slot.live = null; return false; }
       return true;
     },
   };

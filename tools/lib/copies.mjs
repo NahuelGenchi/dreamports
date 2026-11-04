@@ -7,7 +7,7 @@ import { LOCAL } from './paths.mjs';
 
 const FILE = join(LOCAL, 'copies.json');
 
-/** Every copy remembered, by the SHA-1 of the whole file: { path, game, name, proof }. */
+/** Every copy remembered, by the SHA-1 of the whole of it: { path, game, name, proof }, and a split disc's `tracks`. */
 export function rememberedCopies() {
   try {
     return JSON.parse(readFileSync(FILE, 'utf8'));

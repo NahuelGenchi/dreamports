@@ -36,46 +36,47 @@ const WAYS = [
 export function createTubeJunction(e, slot) {
   if (e.kind !== TUBE_JUNCTION) return null;
   const { up, way } = WAYS[s8(e.d[0])];
-  // whether it holds him, the frames left of leaving him alone, and his angle around it (unk40)
-  let held = false, away = 0, angle = 0;
+  // for each player: whether it holds them, the frames left of leaving them alone, and their angle around it (unk40)
+  const held = [false, false], away = [0, 0], angle = [0, 0];
   return {
     run(ctx) {
-      const p = ctx.player;
-      if (p.dead) {
-        // nothing
-      } else if (held) {
-        const out = way(p.pressedDirs);
-        angle += 4;
-        if (angle > 1024) angle -= 1024;
-        const a = (angle * 8) & 0x3FF;
-        p.x = e.x + Div(SINE[a + 256], 16) / 256;
-        p.y = e.y - up + Div(SINE[a], 16) / 256;
-        endAttack(p); p.pushing = false;   // Player_TransitionCancelFlyingAndBoost
-        p.state = 'spin';
-        setOffsetY(p, SPRITE_OFFSET_Y);
-        p.curled = true; p.air = true; p.carried = true;
-        if (out) {
-          p.x = e.x; p.y = e.y;
-          away = AWAY;
-          held = false;
-          p.carried = false;
-          p.rotation = 0;
-          [p.xsp, p.ysp] = out; p.gsp = p.xsp;
-        }
-      } else if (away > 0) away--;
-      else {
-        const px = Math.floor(p.x), py = Math.floor(p.y);
-        if (px >= e.x - REACH && px <= e.x + REACH && py >= e.y - REACH && py <= e.y + REACH) {
-          p.curled = true; p.carried = true;
-          angle = 0;
-          p.x = e.x; p.y = e.y;
-          p.xsp = 0; p.ysp = 0; p.gsp = 0;
+      ctx.players.forEach((p, i) => {
+        if (p.dead) {
+          // nothing
+        } else if (held[i]) {
+          const out = way(p.pressedDirs);
+          angle[i] += 4;
+          if (angle[i] > 1024) angle[i] -= 1024;
+          const a = (angle[i] * 8) & 0x3FF;
+          p.x = e.x + Div(SINE[a + 256], 16) / 256;
+          p.y = e.y - up + Div(SINE[a], 16) / 256;
+          endAttack(p); p.pushing = false;   // Player_TransitionCancelFlyingAndBoost
+          p.state = 'spin';
           setOffsetY(p, SPRITE_OFFSET_Y);
-          ctx.world.playSound(SONG.SPRING);
-          held = true;
+          p.curled = true; p.air = true; p.carried = true;
+          if (out) {
+            p.x = e.x; p.y = e.y;
+            away[i] = AWAY;
+            held[i] = false;
+            p.carried = false;
+            p.rotation = 0;
+            [p.xsp, p.ysp] = out; p.gsp = p.xsp;
+          }
+        } else if (away[i] > 0) away[i]--;
+        else {
+          const px = Math.floor(p.x), py = Math.floor(p.y);
+          if (px >= e.x - REACH && px <= e.x + REACH && py >= e.y - REACH && py <= e.y + REACH) {
+            p.curled = true; p.carried = true;
+            angle[i] = 0;
+            p.x = e.x; p.y = e.y;
+            p.xsp = 0; p.ysp = 0; p.gsp = 0;
+            setOffsetY(p, SPRITE_OFFSET_Y);
+            ctx.world.playSound(SONG.SPRING);
+            held[i] = true;
+          }
         }
-      }
-      if (!held && offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
+      });
+      if (!held[0] && !held[1] && offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       return true;
     },
   };

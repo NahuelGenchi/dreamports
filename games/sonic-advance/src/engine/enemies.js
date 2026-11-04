@@ -34,6 +34,7 @@ import { eggSnake, EGG_SNAKE } from './eggsnake.js';
 import { eggWrecker } from './eggwrecker.js';
 import { eggDrillster } from './eggdrillster.js';
 import { eggX } from './eggx.js';
+import { fixes } from './fixes.js';
 
 export const KIKI = 0, BUZZER = 1, GAMIGAMI = 2, RHINOTANK = 3, KEROKERO = 4, LEON = 11, WAMU = 13;
 
@@ -219,7 +220,7 @@ function buzzerShot(x0, y0, ctx) {
       const x = I(qx), y = I(qy);
       ctx.projectile(s, x, y);
       const sx = x - ctx.cam.x, sy = y - ctx.cam.y;
-      if (((sx + 40) & 0xFFFF) > 280 || sy + 40 < 0 || sy > 200) return false;
+      if (((sx + 40) & 0xFFFF) > 320 || sy + 40 < 0 || sy > 200) return false;
       animate(s, ctx.anims);
       ctx.draw(s, x, y);
       return true;
@@ -403,7 +404,10 @@ function leon(e, slot, anims, ctx0) {
             wait = 60; t = 0; startAnim(s, 'leonShoot'); state = 'shoot';
           }
         } else wait--;
-      } else if (++t === (state === 'turn' ? 14 : 31)) { startAnim(s, 'leonWalk'); state = 'walk'; }
+      } else if (++t === (state === 'turn' ? 14 : 31)) {
+        if (fixes.on && state === 'shoot') s.boxes[1] = null;
+        startAnim(s, 'leonWalk'); state = 'walk';
+      }
       animate(s, ctx.anims);
       ctx.draw(s, x, y);
       return true;

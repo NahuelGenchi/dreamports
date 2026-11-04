@@ -28,7 +28,7 @@ export const NORMAL_ENDING_SPRITES = {
   streak: [776, 0], flicky: [788, 0],
   // the four load their colours into the same palette row as they are made, cloud2's (palette 182) first and
   // cloud3's (181) last, so cloud2 shows in cloud3's
-  cloud0: [790, 0], cloud1: [791, 0], cloud2: [792, 0, 793], cloud3: [793, 0],
+  cloud0: [790, 0], cloud1: [791, 0], cloud2: [792, 0, 793], cloud3: [793, 0], cloud2Own: [792, 0],
   // and from the close-up on, which loads all 256 sprite colours each frame (palette 146), in its colours
   cloud0Late: [790, 0, 737], cloud1Late: [791, 0, 737], cloud2Late: [792, 0, 737], cloud3Late: [793, 0, 737],
   congrats0: [785, 0], congrats1: [785, 1], congrats2: [785, 2],

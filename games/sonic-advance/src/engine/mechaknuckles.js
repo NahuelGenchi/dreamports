@@ -20,6 +20,7 @@ import { sin8, cos8 } from './trig.js';
 import { screenShake, SCREEN_SHAKE, SHAKE } from './screenshake.js';
 import { SCREEN_W, SCREEN_H } from './constants.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const MECHA_KNUCKLES = 26;
 
@@ -153,7 +154,7 @@ const DEFINE = () => [
   // it falls apart on the next explosion
   S((b, c) => {
     if (!debris(b, c)) return true;
-    for (let v = 0; v < 5; v++) c.add(part(b, v, c), 0x4001);
+    for (let v = 0; v < (fixes.on ? 6 : 5); v++) c.add(part(b, v, c), 0x4001);
     return go(b, EGGMOBILE);
   }, none, 0, 0, 0, 0, 0x78, 0, 6, 14, 'mkDefeatedEnd'),
   // EGGMOBILE: Eggman comes in from the right of the arena, which opens up to the act's end as the left edge
@@ -351,8 +352,12 @@ function rocket(b, c) {
         vy = s16(vy + ((turn * sin8(a)) >> 8));
       }
       const x = I(qx), y = I(qy);
-      if (s.boxes[0] && !p.dead && p.boxes[0] && overlap(x, y, s.boxes[0], Math.floor(p.x), Math.floor(p.y), p.boxes[0])) {
-        c.world.damage();
+      // on either player's body it hurts them and goes (collPlayer | collPartner)
+      let touched = false;
+      for (const q of c.players) {
+        if (s.boxes[0] && !q.dead && q.boxes[0] && overlap(x, y, s.boxes[0], Math.floor(q.x), Math.floor(q.y), q.boxes[0])) { c.world.damage(q); touched = true; }
+      }
+      if (touched) {
         c.add(explosion(qx + ((Q(21) * cos8(a)) >> 8), qy + ((Q(21) * sin8(a)) >> 8), 20, c));
         c.world.stopSound(SONG.ROCKET);
         return false;
@@ -426,20 +431,25 @@ export function createMechaKnuckles(e, slot, anims, ctx) {
       if (!(b.flags & NO_EDGES)) edges(b);
       if (!(b.flags & NO_TERRAIN)) terrain(b, c);
 
-      // Sonic's body on its box 1 hurts him (sub_800BFEC), and only when that found nothing, and it isn't
-      // blinking, his attack box on its box 0 knocks him back (sub_800C0E0) and hits it, unless it stands
-      // guard and he is on the ground, when it covers up
-      const bx = b.spawnX + I(b.qx), by = b.spawnY + I(b.qy), px = Math.floor(p.x), py = Math.floor(p.y), s = b.s;
-      const touches = (box, pbox) => box && pbox && !p.dead && overlap(bx, by, box, px, py, pbox);
-      if (touches(s.boxes[1], p.boxes[0])) c.world.damage();
-      else if (b.blink <= 0 && touches(s.boxes[0], p.boxes[1])) {
-        p.xsp = -p.xsp; p.ysp = -p.ysp;
-        if ((b.state === IDLE_2 || b.state === COVER) && !p.air) {
-          if (b.state !== COVER) { going = false; b.next = COVER; p.xsp = -p.xsp; p.gsp = -p.gsp; }
-        } else {
-          going = false;
-          b.next = --b.lives <= 0 ? DEFEATED : HIT;
-          b.blink = 0x20;
+      // A player's body on its box 1 hurts them (sub_800BFEC), and only when that found nothing on either, and it
+      // isn't blinking, each one's attack box on its box 0 knocks them back (sub_800C0E0). Sonic's, or else the
+      // CPU partner's, hits it, unless it stands guard and that one is on the ground, when it covers up
+      const bx = b.spawnX + I(b.qx), by = b.spawnY + I(b.qy), s = b.s;
+      const touches = (q, box, pbox) => box && pbox && !q.dead && overlap(bx, by, box, Math.floor(q.x), Math.floor(q.y), pbox);
+      const hurtOnes = c.players.filter(q => touches(q, s.boxes[1], q.boxes[0]));
+      for (const q of hurtOnes) c.world.damage(q);
+      if (hurtOnes.length === 0 && b.blink <= 0) {
+        const attackers = c.players.filter(q => touches(q, s.boxes[0], q.boxes[1]));
+        for (const q of attackers) { q.xsp = -q.xsp; q.ysp = -q.ysp; }
+        const q = attackers[0];
+        if (q) {
+          if ((b.state === IDLE_2 || b.state === COVER) && !q.air) {
+            if (b.state !== COVER) { going = false; b.next = COVER; q.xsp = -q.xsp; q.gsp = -q.gsp; }
+          } else {
+            going = false;
+            b.next = --b.lives <= 0 ? DEFEATED : HIT;
+            b.blink = 0x20;
+          }
         }
       }
       // after a hit it blinks for 32 frames, 2 shown and 2 not with the stage clock, the count held while it

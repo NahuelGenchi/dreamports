@@ -12,6 +12,7 @@
 import { startAnim, animate } from './objects.js';
 import { I, s16, gone, sprite } from './enemies.js';
 import { overlap } from './collide.js';
+import { fixes } from './fixes.js';
 
 export const FIREBALL = 7;
 
@@ -38,7 +39,7 @@ function flame(e, slot, ctx0) {
     run(ctx) {
       const p = ctx.player;
       v += 64; y = s16(y + I(v));
-      if (gone(x, y0, x, y, ctx.cam)) { slot.live = null; return false; }
+      if (gone(x, y0, x, y, ctx.cam)) { if (!fixes.on) slot.live = null; return false; }
       // Coll_Player_Entity_Intersection: his body, while he is alive
       if (!p.dead && s.boxes[0] && overlap(x, y, s.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) ctx.world.damage();
       if (rising) {
@@ -61,10 +62,10 @@ function flame(e, slot, ctx0) {
 // everything; it goes on through Sonic
 function spark(x0, y0, dx, ctx0) {
   const s = sprite('fireballSpark', ctx0.anims, { order: 9 });
-  let x4 = s16(x0 * 4), vy = -2 * 256, y = y0;
+  let x4 = fixes.on ? x0 * 4 : s16(x0 * 4), vy = -2 * 256, y = y0;
   return {
     run(ctx) {
-      x4 = s16(x4 + dx);
+      x4 = fixes.on ? x4 + dx : s16(x4 + dx);
       const x = (x4 < 0 ? x4 + 3 : x4) >> 2;
       vy = s16(vy + 40); y = s16(y + I(vy));
       ctx.projectile(s, x, y);

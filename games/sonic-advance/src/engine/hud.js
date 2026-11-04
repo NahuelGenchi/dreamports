@@ -4,7 +4,10 @@
 // frame's tick, which comes last.
 
 const RED = 11, COLON = 10;            // the red glyphs follow the eleven white ones
-const FLASH = [0, RED, RED, 0];        // the zero-ring string, 8 frames per glyph: white, red, red, white
+// the zero-ring string, 8 frames per glyph: white, red, red, white; then the white zero the bytes after it make, and
+// past those a character code of 0, which is the tiles 64 before the font's, as the character select left them
+// (`pastTheFont`, rom/extract.js)
+const FLASH = [0, RED, RED, 0, 0];
 const RED_AFTER = 9 * 3600, BEEP_AFTER = 9 * 3600 + 40 * 60, TIME_LIMIT = 10 * 3600;   // in frames
 const RED_BELOW = 3600, BEEP_BELOW = 20 * 60;   // counting down (Egg Rocket): under 1:00, and the last 20 seconds
 const GLYPH_W = 8;
@@ -14,10 +17,11 @@ const digits = n => String(n).split('').map(Number);
 /**
  * `flash` is the zero-ring flash counter (unk48). The HUD's task never sets it, so it starts with whatever the
  * memory its data takes held: on a restart, and when act 1 starts, the title card's, its fade's done flag, 1;
- * when a level whose memory is laid out otherwise starts, what an earlier task left (levels.js, hudFlash).
+ * when a level whose memory is laid out otherwise starts, what an earlier task left (levels.js, hudFlash). `past` is
+ * what it shows past the string on that first frame: `pastTheFont`, or with none, nothing.
  */
-export function createHud(flash = 1) {
-  return { flash, sprites: [] };
+export function createHud(flash = 1, past = 'pastTheFont') {
+  return { flash, past, sprites: [] };
 }
 
 /**
@@ -31,9 +35,8 @@ export function updateHud(hud, { ringCount, score, lives, courseTime, stageTime,
 
   // the ring count: no leading zeros, centred on the icon, 999 at most; at zero it flashes red
   if (ringCount === 0) {
-    // from 32 up the original reads past its four glyphs and shows a tile from before the font; that frame the
-    // count is left out
-    if (hud.flash < 32) row([FLASH[hud.flash >> 3]], 9, 5);
+    // sub_8053BAC, whose counter can only start at 32 or more, as its first frame, from what it finds in memory
+    row([FLASH[hud.flash >> 3] ?? hud.past].filter(g => g !== null), 9, 5);
     hud.flash = (hud.flash + 1) & 31;
   } else {
     const d = digits(Math.min(ringCount, 999));
@@ -55,7 +58,8 @@ export function updateHud(hud, { ringCount, score, lives, courseTime, stageTime,
   // the lives digit shows one less than the count, 9 at most
   row([lives > 9 ? 9 : lives === 0 ? 0 : lives - 1], 22, 143);
 
-  hud.sprites = [...icons, ...glyphs];
+  // the digits are at OAM order 2 and the icons at 3 (Task_StageUIMain, sub_8053BAC), and the first put in is in front
+  hud.sprites = [...icons, ...glyphs.reverse()];
   if (timerReversed) return courseTime < BEEP_BELOW && courseTime % 60 === 0 && courseTime !== 0;
   return courseTime > BEEP_AFTER && courseTime < TIME_LIMIT && courseTime % 60 === 0;
 }
