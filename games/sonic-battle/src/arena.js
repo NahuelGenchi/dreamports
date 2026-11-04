@@ -444,7 +444,7 @@ const COLOURS_APART = 300;
 
 /** The colours from each `[from, to]` of `writes`, at once, or on the line the frame's work reaches them if it's late. */
 function landColours(c, writes) {
-  const counted = clock.counting, sound = c.sound?.frameCycles?.();
+  const counted = clock.counting, sound = c.sound?.frameCycles();
   clock.counting = false;
   const late = clock.cycles - WORK_BEFORE_LINE_ONE;
   if (!counted || sound == null || late < 0) {
