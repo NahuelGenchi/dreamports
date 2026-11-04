@@ -611,7 +611,7 @@ Game Start on the main menu opens it (`CreateCharacterSelectionScreen`, `src/fro
 
 **Not built yet.** The screen's use in Time Attack and in multiplayer.
 
-**How it was checked.** `npm run dp -- prove` plays these recordings in mGBA 0.10.5 and the port: `neo-green-hill-act-1` picks Sonic and goes on into the act, `character-select` turns the row both ways and through the key repeat and goes back with B, `pick-tails`, `pick-knuckles` and `pick-amy` pick each of the others, and `partner-code` presses the code. All the frames of the picks and of the code match, sound too. `character-select` plays the song for longer: every picture matches, and 5 frames differ only by their sound, near a silence, where its slow wave note ends (kit note on wave notes).
+**How it was checked.** `npm run dp -- prove` plays these recordings in mGBA 0.10.5 and the port: `neo-green-hill-act-1` picks Sonic and goes on into the act, `character-select` turns the row both ways and through the key repeat and goes back with B, `pick-tails`, `pick-knuckles` and `pick-amy` pick each of the others, `partner-code` presses the code, and `character-select-to-course` goes on to the course select, B back, and on again to act 1, with Sonic's progress given by a value written in the original and by `?unlocked=1&select=1` in the port. All the frames of the picks, of the code and of the way to the course select match, sound too. `character-select` plays the song for longer: every picture matches, and 5 frames differ only by their sound, near a silence, where its slow wave note ends (kit note on wave notes).
 
 ### The CPU partner
 

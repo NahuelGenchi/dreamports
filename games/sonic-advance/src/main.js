@@ -494,7 +494,7 @@ async function restartGame() {
 async function nextZone({ level, ...carry }) {
   continues = carry.continues ?? continues;
   // past X Zone the Moon Zone opens for Sonic with all seven Chaos Emeralds (unlock.js; the ROM also wants every
-  // character to have cleared X Zone, which waits for the character select); otherwise the normal ending comes
+  // character to have cleared X Zone, which isn't built yet); otherwise the normal ending comes
   if (level === THE_MOON && (character !== 0 || save.chaosEmeralds !== ALL_EMERALDS)) { queueMicrotask(() => endGame(playing, 'congratulations')); return; }
   const from = game;
   let assets;

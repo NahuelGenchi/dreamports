@@ -1,7 +1,7 @@
 {
   "about": "From power-on with Sonic having cleared Neo Green Hill Zone act 1: A on Sonic in the character select, the course select's slide left alone, B back to the character select, A on Sonic again, and A on act 1 and its first moments.",
   "frames": 2700,
-  "start": "unlocked=1&select",
+  "start": "unlocked=1&select=1",
   "held": [
     [0,[]],
     [150,["A"]],
