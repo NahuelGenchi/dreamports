@@ -14,6 +14,10 @@ sources:
     href: https://github.com/SAT-R/sa3
     license: none
     use: guide
+  - name: mGBA’s arctangent, by Jeffrey Pfau
+    href: https://github.com/mgba-emu/mgba/blob/0.10.5/src/gba/bios.c
+    license: MPL-2.0
+    use: code
 ownCopy:
   confirm: "I own Sonic Advance 3"
   links:

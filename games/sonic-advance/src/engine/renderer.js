@@ -934,7 +934,7 @@ export function createRenderer(canvas, assets) {
   const backdrop = stage.backdrop ?? [0, 0, 0];
 
 
-  function render({ tick, rings, ringsStopped, sprites, terrain, palettes, objPalette, view, cam, hud: hudState, card: titleCard, results: actResults, gameOver, timeOver, bg, backLines, showCollision, rushFx, rushArt, shake, boostArt: art, spotlights, spriteRow, cardOver, water, display, effects2d, blendOff, pauseSign }) {
+  function render({ layersAtStart, tick, rings, ringsStopped, sprites, terrain, palettes, objPalette, view, cam, hud: hudState, card: titleCard, results: actResults, gameOver, timeOver, bg, backLines, showCollision, rushFx, rushArt, shake, boostArt: art, spotlights, spriteRow, cardOver, water, display, effects2d, blendOff, pauseSign }) {
     const stops = gameOver?.endsNext || gameOver?.saving ? SCROLL_STOPS_AT : Infinity;
     ctx.imageSmoothingEnabled = false;
     if (art && art !== boostArt) {
@@ -947,6 +947,8 @@ export function createRenderer(canvas, assets) {
     // on the act's first frame the camera isn't kept inside the act yet; the title card's fade has the
     // screen black then, and the view is kept inside. The boost's shake moves it, still inside the act.
     let { x: vx, y: vy } = view;
+    // the act's first picture, from the course select: the sprites go by the camera as it starts, not yet kept inside
+    if (layersAtStart) { vx = Math.floor(cam.x); vy = Math.floor(cam.y); }
     if (shake >= 0) {
       const [dx, dy] = RUSH_BOOST.shake[shake];
       vx = Math.max(0, Math.min(vx + dx, terrain.width - W));
@@ -1032,13 +1034,14 @@ export function createRenderer(canvas, assets) {
       }
     });
     drawAll(3);
-    if (ix) indexOver(ctx, 'back', vx, vy, frame, backLines);
-    else drawLayer(ctx, stage, 'back', vx, vy, W, H, frame, palettes, under);
+    const [lx, ly] = layersAtStart ? [0, 0] : [vx, vy];
+    if (ix) indexOver(ctx, 'back', lx, ly, frame, backLines);
+    else drawLayer(ctx, stage, 'back', lx, ly, W, H, frame, palettes, under);
     // the background and the back layer fill the screen, so the window turns everything drawn so far white
     const flash = whiteWindow(sprites.filter(s => s.white), vx, vy);
     if (flash) ctx.drawImage(flash, 0, 0);
     drawAll(2);
-    drawFlashedLayer(flash, c => (ix ? indexOver(c, 'front', vx, vy, frame) : drawLayer(c, stage, 'front', vx, vy, W, H, frame, palettes, under)));
+    drawFlashedLayer(flash, c => (ix ? indexOver(c, 'front', lx, ly, frame) : drawLayer(c, stage, 'front', lx, ly, W, H, frame, palettes, under)));
     drawAll(1, s => (s.prio ?? 0) >= 1);
     // the snow lies over everything but the sprites of priority 0; the title card's fade and its last frame show
     // it as it is, as do the frames a boss has turned the blending off on (`blendOff`) or flashes on. Above the
