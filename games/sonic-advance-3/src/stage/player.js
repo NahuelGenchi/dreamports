@@ -1,7 +1,7 @@
 // The characters, written from how the original's player code behaves, as read in its decompilation. Each frame a
 // character does what its `behave` says, which moves it and works out what it stands on, and then it's drawn with the
 // animation its `pose` asks for. So far: coming out of the ring, running, braking, turning round, standing, falling and
-// jumping, looking up, crouching, rolling, the spin dash and Tails flying, with the partner pressing
+// jumping, meeting walls and ceilings, looking up, crouching, rolling, the spin dash and Tails flying, with the partner pressing
 // its own buttons (partner.js). Comments name the original's functions by the decompilation's labels, which
 // proof/names.json moves to the USA copy's addresses, or by those addresses.
 
@@ -34,6 +34,7 @@ const LOOK_WAIT = 0x28, LOOK_STEP = 0x20, LOOK_UP_RETURN = 4, LOOK_UP_FURTHEST =
 const SKID_FROM = 2 * PX, STEEP_SLIP = 1.875 * PX, SLIP_FRAMES = 30, LOOK_AROUND_AFTER = 360, SETTLE_FRAMES = 10;
 const GAIT_TOPS = [1.25 * PX, 2.5 * PX, 4 * PX, 7 * PX, 9 * PX];
 const STANDING_HEIGHT = 14, CURLED_HEIGHT = 9, HALF_WIDTH = 6;
+const CAMERA_LEFT_OF_PLACE = 120, CAMERA_ABOVE_PLACE = 84, PARTNER_BEHIND = 30;
 
 const pixel = v => v >> 8;
 const s16 = v => (v << 16) >> 16;
@@ -54,6 +55,16 @@ export function createPlayer(stage, id, character, isLeader) {
     held: 0, pressed: 0, heldWithButtonsOff: 0,
     sprite: null, turn: { rotation: 0, scaleX: PX, scaleY: PX, x: 0, y: 0 }, tails: null,
   };
+}
+
+/** Puts the characters and the camera somewhere in the stage, for a recording's start point (main.js). */
+export function placeCharacters(stage, x, y) {
+  for (const p of stage.players) {
+    p.x = (p.isLeader ? x : x - PARTNER_BEHIND) * PX;
+    p.y = y * PX;
+  }
+  stage.camera.x = x - CAMERA_LEFT_OF_PLACE;
+  stage.camera.y = y - CAMERA_ABOVE_PLACE;
 }
 
 const firstAnimation = (c, p) => c.rom.s16(FIRST_ANIMATIONS + p.character * 2);
