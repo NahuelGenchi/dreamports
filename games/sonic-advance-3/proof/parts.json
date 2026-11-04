@@ -2,8 +2,43 @@
   "about": "Sonic Advance 3's parts, in the order a player meets them, then its other characters and modes. Each counts the same. A part is proven when a recording plays it from its first frame to its last and every frame matches the original: \"frames\" are the first and last of the recording's frames it covers. A part may end with a press that moves the game on, the way a player leaves it, such as Start on the title screen. Where the screen is one colour between two parts, those frames go with the part before. Foundations are what many parts need but no player would call a part, and they don't count towards the parts.",
   "foundations": [
     {
+      "name": "A zone's arrival",
+      "what": "Route 99's overworld from its fade in until both characters are at rest, with nothing pressed: its layers and backgrounds, the big ring Sonic and Tails come through, their landing and running to a stop, the Omochao beside them, the camera following, the numbers and the music. A recording can start here from a start point, so nothing before it in the game has to be ready first."
+    },
+    {
+      "name": "A character running",
+      "what": "Sonic running, turning and braking both ways on the overworld's ground, with the camera following and Tails running after him.",
+      "needs": ["A zone's arrival"]
+    },
+    {
+      "name": "A character jumping",
+      "what": "Sonic jumping, falling and landing, rolling, and meeting walls and ceilings, with Tails after him.",
+      "needs": ["A character running"]
+    },
+    {
+      "name": "An act's opening",
+      "what": "Route 99 act 1 from its first frame until a player can move, with nothing pressed: its title card, its layers, its objects in view, and its time and ring numbers. A recording can start here from a start point.",
+      "needs": ["A zone's arrival"]
+    },
+    {
+      "name": "Rings",
+      "what": "Sonic running through Route 99 act 1's rings: taking them, their sound and the number going up.",
+      "needs": ["A character running", "An act's opening"]
+    },
+    {
+      "name": "Springs",
+      "what": "Sonic thrown by Route 99 act 1's springs, with the camera following, falling back to the ground.",
+      "needs": ["A character jumping", "An act's opening"]
+    },
+    {
+      "name": "Being hit",
+      "what": "Route 99 act 1's first enemies moving and hitting Sonic, his rings scattering and his blinking after it, and beating one with a jump.",
+      "needs": ["A character jumping", "Rings"]
+    },
+    {
       "name": "The platforming",
-      "what": "A character running and jumping through a zone: its layers, the ground under them, the camera, rings, springs and the screen's numbers. Everything played in a zone builds on it. It's the largest piece, so whoever takes it can open smaller tasks with the Task form once the code shows where it divides."
+      "what": "A character running and jumping through a whole stretch of an act, with every piece it needs together. Everything played in a zone builds on it.",
+      "needs": ["Springs", "Being hit"]
     },
     {
       "name": "The team partner",
