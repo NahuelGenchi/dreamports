@@ -30,10 +30,10 @@ const LOAD_FRAMES = { 0x08986718: 2, 0x08987108: 1 };
 // frame there and shows them a frame late: the console's timing again, as mGBA measures it.
 const SLOW_FRAMES = { 0x08987108: [4, 5, 6, 7, 18, 19] };
 
-/** The core's state on `video` (createVideo), reading the cartridge from `rom`. */
-export function createCore(video, rom) {
+/** The core's state on `video` (createVideo), reading the cartridge from `rom`, with the game's `sound` (sound/gax.js). */
+export function createCore(video, rom, sound) {
   const c = {
-    video, rom,
+    video, rom, sound,
     // 0x0200AF4C: the colours the objects ask for, before the fade, and 0x0200B350 after it
     colours: new Uint16Array(512), faded: new Uint16Array(512),
     // 0x0200B750 to 0x0200B75C: the fade's kind (1 to black, 3 to white), where it is out of 64, where it's going, and
@@ -215,6 +215,10 @@ function* runCommand(c, [kind, what, argument]) {
     c.fade.speed = argument;
   } else if (what === 6) {
     c.done = true;
+  } else if (what === 11) {
+    c.sound?.playEffect(argument);   // 0x080342A4
+  } else if (what === 12) {
+    c.sound?.startSong(argument);    // 0x0803407C
   }
-  // 1 names the script, and 11 and 12 start music and sound, which aren't ported yet
+  // 1 names the script
 }
