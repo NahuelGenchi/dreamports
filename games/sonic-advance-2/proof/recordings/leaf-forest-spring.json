@@ -1,20 +1,20 @@
 {
- "about": "Sonic thrown up by one of Leaf Forest act 1's springs, from a start point over it: he lands on it and is thrown up again, over and over, through the countdown, then steers as he falls, misses it and lands on the ground, with the camera following.",
- "frames": 364,
- "start": "level=0&x=4496&y=930",
+ "about": "Sonic thrown up by one of Leaf Forest act 1's springs, from a start point on the ground to its left: he waits out the countdown there, coasts into it slowly enough for its usual animation, steers back in the air, lands on the ground to its left and stands, with the camera following.",
+ "frames": 371,
+ "start": "level=0&x=4325&y=977",
  "held": [
   [
    0,
    []
   ],
   [
-   255,
+   240,
    [
     "LEFT"
    ]
   ],
   [
-   305,
+   280,
    []
   ]
  ],
@@ -180,25 +180,25 @@
      "frame": 2319,
      "address": "030059E8",
      "bytes": 4,
-     "value": 1150976
+     "value": 1107200
     },
     {
      "frame": 2319,
      "address": "030059EC",
      "bytes": 4,
-     "value": 238080
+     "value": 250112
     },
     {
      "frame": 2319,
      "address": "03005960",
      "bytes": 4,
-     "value": 4376
+     "value": 4205
     },
     {
      "frame": 2319,
      "address": "03005964",
      "bytes": 4,
-     "value": 850
+     "value": 897
     }
    ]
   }

@@ -1,11 +1,17 @@
 {
- "about": "Sonic thrown up and to the right by one of Leaf Forest act 1's diagonal springs, from a start point over it, and falling back to the ground far to its right, with the camera following.",
- "frames": 204,
- "start": "level=0&x=8368&y=1820",
+ "about": "Sonic thrown up and to the right by one of Leaf Forest act 1's diagonal springs, from a start point on the ground to its left: he waits out the countdown there, sets off as it ends with nothing pressed, runs into the spring, falls back to the ground far to its right and runs on, with the camera following.",
+ "frames": 364,
+ "start": "level=0&x=8210&y=1850",
  "held": [
   [
    0,
    []
+  ],
+  [
+   306,
+   [
+    "RIGHT"
+   ]
   ]
  ],
  "onlyInOriginal": [
@@ -170,25 +176,25 @@
      "frame": 2319,
      "address": "030059E8",
      "bytes": 4,
-     "value": 2142208
+     "value": 2101760
     },
     {
      "frame": 2319,
      "address": "030059EC",
      "bytes": 4,
-     "value": 465920
+     "value": 473600
     },
     {
      "frame": 2319,
      "address": "03005960",
      "bytes": 4,
-     "value": 8248
+     "value": 8090
     },
     {
      "frame": 2319,
      "address": "03005964",
      "bytes": 4,
-     "value": 1740
+     "value": 1770
     }
    ]
   }

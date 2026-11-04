@@ -1,7 +1,7 @@
 {
- "about": "Sonic running into one of Leaf Forest act 1's springs from a start point on the ground to its left, thrown up fast enough to take its own animation, taking rings on the way, and falling back. It stops at frame 323, before an object that isn't made comes on the screen.",
+ "about": "Sonic running into one of Leaf Forest act 1's springs, from a start point on the ground to its left: he waits out the countdown there, then runs into it fast enough to take its own animation, taking rings on the way, and falls back. It stops at frame 323, before an object that isn't made comes on the screen.",
  "frames": 324,
- "start": "level=0&x=4360&y=950",
+ "start": "level=0&x=4360&y=977",
  "held": [
   [
    0,
@@ -182,7 +182,7 @@
      "frame": 2319,
      "address": "030059EC",
      "bytes": 4,
-     "value": 243200
+     "value": 250112
     },
     {
      "frame": 2319,
@@ -194,7 +194,7 @@
      "frame": 2319,
      "address": "03005964",
      "bytes": 4,
-     "value": 870
+     "value": 897
     }
    ]
   }
