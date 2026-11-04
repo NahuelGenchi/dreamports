@@ -1,6 +1,6 @@
 // The character, written from how the original's player code behaves, as read in its decompilation. So far: Sonic where a
 // stage puts him, running, turning and braking on the ground, crouching, rolling and his spin dash, jumping, falling and
-// landing, what he meets on the way, and being thrown by a spring. What the attack and trick buttons do, and looking up, aren't made yet, nor the boost
+// landing, what he meets on the way, being thrown by a spring and being hit. What the attack and trick buttons do, and looking up, aren't made yet, nor the boost
 // that long running at his top speed brings.
 
 import { createSprite, updateSprite, displaySprite, transformSprite, ANIM_OVER, SPRITE } from '../sprite.js';
@@ -18,7 +18,7 @@ const JUMP_BUTTON = KEY.A, DPAD = KEY.UP | KEY.DOWN | KEY.LEFT | KEY.RIGHT;
 export const FLAG = { FACING_LEFT: 0x1, IN_AIR: 0x2, CURLED: 0x4, STOOD_ON: 0x8, NO_AIR_STEERING: 0x10, AT_WALL: 0x20, JUMPED: 0x100, SPIN_DASHING: 0x400, BUTTONS_OFF: 0x200000 };
 const { FACING_LEFT, IN_AIR, CURLED, STOOD_ON, NO_AIR_STEERING, AT_WALL, JUMPED, SPIN_DASHING, BUTTONS_OFF } = FLAG;
 /** The states an animation can be chosen by, as sCharStateAnimInfo lists them. */
-export const STATE = { STANDING: 0, CROUCH: 2, SPIN_DASH: 3, ROLLING: 4, TURN_SLOW: 5, TURN_AFTER_BRAKE: 6, BRAKE: 7, BRAKE_FAST: 8, RUNNING: 9, JUMP: 10, JUMP_FAST: 11, THROWN: 38, THROWN_FAST: 39 };
+export const STATE = { STANDING: 0, CROUCH: 2, SPIN_DASH: 3, ROLLING: 4, TURN_SLOW: 5, TURN_AFTER_BRAKE: 6, BRAKE: 7, BRAKE_FAST: 8, RUNNING: 9, JUMP: 10, JUMP_FAST: 11, HIT_AIR: 20, HIT_STUNNED: 21, THROWN: 38, THROWN_FAST: 39 };
 
 const ACCELERATIONS = [8, 12, 14, 16, 18], BRAKING = 64;   // playerBoostPhysicsTable's, for each boostThreshold
 const TOP_SPEED = 6 * PX, SPEED_LIMIT = 9 * PX, SPEED_LIMIT_CURLED = 15 * PX, FALL_LIMIT = 15 * PX, GRAVITY = 42, COAST = 8;
@@ -27,6 +27,7 @@ const SEES_GROUND_WITHIN = 32, ONE_WAY_UNDER = 3 * PX, ONE_WAY = 0x80;
 const ROLL_BRAKING = 24, ROLL_TURNS = 96, ROLL_COAST = 8, ROLL_STOPS_UNDER = 128, ROLLS_FROM = 128;
 const THROWN_FAST_FROM = 2.5 * PX, SPRING_SPEEDS = [7.5 * PX, 9 * PX, 10.5 * PX, 12 * PX], FACES_FROM = 1.25 * PX;
 const ANIM_THROWN = 52, ANIM_THROWN_FAST = 53;
+const HIT_THROW_X = 1.5 * PX, HIT_THROW_Y = 3 * PX, HIT_FAST_OVER = 2.5 * PX, HIT_SLOW_UNDER = 0.625 * PX, INVULNERABLE_FRAMES = 120;
 const SE_SPIN_ATTACK = 109, SE_SPIN_DASH_RELEASE = 110;
 const SPIN_DASH_FIRST = 6 * PX, SPIN_DASH_STEP = 0.375 * PX, SPIN_DASH_CHARGE = 2 * PX, SPIN_DASH_MOST = 8;
 const BRAKES_FROM = 2 * PX, SLIPS_UNDER = 1.875 * PX, SLIP_FRAMES = 30, SE_BRAKE = 115;
@@ -47,7 +48,7 @@ export const playerAnimations = c => c.rom.s16(FIRST_ANIMATIONS);
 export function createPlayer(stage, level) {
   const { c } = stage, { rom } = c, at = SPAWNS + level * 4;
   const p = {
-    stage, stoodOn: null, springThrow: -1, x: rom.s16(at) * PX, y: rom.s16(at + 2) * PX, velX: 0, velY: 0, groundSpeed: 0, flags: BUTTONS_OFF,
+    stage, stoodOn: null, springThrow: -1, hurting: false, invulnerable: 0, defeatScore: 0, x: rom.s16(at) * PX, y: rom.s16(at + 2) * PX, velX: 0, velY: 0, groundSpeed: 0, flags: BUTTONS_OFF,
     halfWidth: HALF_WIDTH, halfHeight: HALF_HEIGHT, layer: 1, angle: 0, state: STATE.STANDING, shownState: -1, animation: -1, variant: -1, restart: false,
     held: JUMP_BUTTONS, pressed: JUMP_BUTTONS, gait: 0, slipFrames: 0, behave: touchGround, dustLeft: DUST.most, speedLimit: SPEED_LIMIT, acceleration: ACCELERATIONS[0], spinDashCharge: 0,
     sprite: createSprite({ tiles: 0x10000, anim: 0xFFFF, variant: 0xFF, oamFlags: 16 << 6, frameFlags: 0x2000 | SPRITE.ROT_SCALE_ENABLE }),
@@ -100,6 +101,7 @@ const animationIs = (p, state) => p.animation - playerAnimations(p.stage.c) === 
 // Player_TouchGround: on its feet, running if it's moving
 function touchGround(p) {
   stopWhatItWasDoing(p);
+  p.defeatScore = 0;
   p.flags &= ~(IN_AIR | CURLED);
   setHeight(p, HALF_HEIGHT);
   p.halfWidth = HALF_WIDTH;
@@ -604,6 +606,41 @@ function thrown(p) {
   }
 }
 
+/** Hit by something, as the frame's transition (PLTRANS_HURT) takes it up. */
+export function hurtPlayer(p) {
+  p.invulnerable = INVULNERABLE_FRAMES;
+  p.hurting = true;
+}
+
+// Player_InitHurt: thrown back and up. Going fast it's stunned, and its blinking counts down at once, and otherwise only once it's down
+function startHurt(p) {
+  p.hurting = false;
+  p.invulnerable = INVULNERABLE_FRAMES;
+  if (Math.abs(p.velX) <= HIT_FAST_OVER) {
+    const goesBack = p.velX > HIT_SLOW_UNDER || (p.velX >= -HIT_SLOW_UNDER && !(p.flags & FACING_LEFT));
+    p.velX = goesBack ? -HIT_THROW_X : HIT_THROW_X;
+    p.state = STATE.HIT_AIR;
+  } else {
+    p.velX = p.velX >= 0 ? HIT_THROW_X : -HIT_THROW_X;
+    p.state = STATE.HIT_STUNNED;
+  }
+  p.velY = -HIT_THROW_Y;
+  stopWhatItWasDoing(p);
+  p.flags = (p.flags | IN_AIR) & ~(STOOD_ON | CURLED);
+  setHeight(p, HALF_HEIGHT);
+  p.halfWidth = HALF_WIDTH;
+  p.behave = hurt;
+  hurt(p);
+}
+
+// Player_Hurt: it falls, with nothing it can do, until it's down
+function hurt(p) {
+  keepInBounds(p);
+  p.velY += GRAVITY;
+  move(p);
+  meetGroundInAir(p);
+}
+
 // the walls on both sides of it, in sub_8021C4C and sub_8021DB8, which stop it and push it out
 function wallsBothSides(p) {
   const layer = p.velY < ONE_WAY_UNDER ? p.layer | ONE_WAY : p.layer;
@@ -757,6 +794,7 @@ function chooseAnimation(c, p) {
     s.anim = p.animation;
     s.variant = p.variant;
     s.prevVariant = 0xFF;
+    s.hitboxes = [];
   }
   p.shownState = p.state;
 }
@@ -783,7 +821,7 @@ function draw(c, p) {
     } else s.frameFlags |= SPRITE.X_FLIP;
     updateSprite(c, s);
   }
-  displaySprite(c, s);
+  if (p.invulnerable === 0 || !(p.stage.frames & 2)) displaySprite(c, s);   // it blinks while nothing can hit it
 }
 
 // 0x0802989C, Player_HandleBoostThreshold: the more rings it has, the quicker it gets going
@@ -801,8 +839,11 @@ function frame(t) {
   p.speedLimit = p.flags & CURLED ? SPEED_LIMIT_CURLED : SPEED_LIMIT;   // Player_ApplyBoostPhysics
   chooseGait(p);
   readButtons(p, c.input);
-  if (p.springThrow >= 0) p.behave = startThrown;   // CallPlayerTransition
+  // CallPlayerTransition
+  if (p.springThrow >= 0) p.behave = startThrown;
+  if (p.hurting) p.behave = startHurt;
   p.behave(p);
   chooseAnimation(c, p);
   draw(c, p);
+  if (p.state !== STATE.HIT_AIR && p.invulnerable > 0) p.invulnerable--;
 }
