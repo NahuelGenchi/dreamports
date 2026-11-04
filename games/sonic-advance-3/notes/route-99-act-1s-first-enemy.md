@@ -1,4 +1,4 @@
-# Route 99 act 1's first enemy is an Akatento, on the bridge after the platform, and right held takes Sonic into it at frame 795.
+# Route 99 act 1's first enemy is an Akatento on the bridge after the platform, and right held meets it at frame 795.
 
 About: Being hit; Route 99 act 1; Rings; being-hit; being-hit-rings-back; beating-an-enemy
 
