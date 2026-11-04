@@ -4,44 +4,97 @@
 // (lib/sound.mjs, as __makeFilter), keeps the pictures prove asks for, and draws the stills and the clip, which the
 // browser encodes as H.264. The results stay on the contributor's computer.
 (() => {
-  const WIDTH = 240, HEIGHT = 160, RING = 400;
-  // what the console holds, as lib/state.mjs reads it, kept for the last frames: enough for the two batches a frame
-  // whose picture differs can be found in
-  const IO_BYTES = 0x58, STATE_BYTES = 0x58 + 0x400 + 0x400 + 0x18000, STATE_RING = 256;
+  const [WIDTH, HEIGHT] = __console.screen, PIXELS = WIDTH * HEIGHT;
+  // the last 400 pictures, or as many as 64 MB holds of a console with a large screen
+  const RING = Math.min(400, Math.floor(0x4000000 / (PIXELS * 2)));
+  // what the console holds, as lib/state.mjs reads it
+  const IO_BYTES = 0x58, STATE_BYTES = 0x58 + 0x400 + 0x400 + 0x18000;
   const SCALE = 2, BAR = 20;
-  const FRAME_US = 1e6 * 280896 / 16777216;   // a Game Boy Advance frame, in microseconds
-  // the last pictures, and those kept for the results
-  const ring = new Map(), kept = new Map(), originals = new Map();
-  const stateRing = new Map(), keptStates = new Map();
+  const FRAME_US = 1e6 * __console.frame[0] / __console.frame[1];   // a frame of the console's, in microseconds
+  // the last pictures, in one block so that playing makes no garbage (`quick` keeps none: nothing makes a clip), and
+  // those kept for the results
+  let ring = new Uint16Array(__quick ? PIXELS : PIXELS * RING), lastPlayed = -1;
+  const kept = new Map(), originals = new Map();
+  const keptStates = new Map(), wantedStates = new Set();
   // the frames whose sound differs, which the stills and the clip mark
   const soundDiffers = new Set();
-  const filter = __makeFilter();
-  let heard = false;
+  const filter = __makeFilter(__console.sound);
+  // how many samples a frame with no sound stands for
+  const SILENCE = Math.floor(__console.sound * __console.frame[0] / __console.frame[1]);
+  let heard = false, pictureDiffered = false;
 
-  // a picture in the console's 15-bit colour, and its FNV-1a hash
-  function reduce(data) {
-    const picture = new Uint16Array(WIDTH * HEIGHT);
-    let hash = 0x811C9DC5;
-    for (let i = 0, p = 0; p < picture.length; i += 4, p++) {
-      const colour = data[i] >> 3 | (data[i + 1] >> 3) << 5 | (data[i + 2] >> 3) << 10;
-      picture[p] = colour;
-      hash = Math.imul(hash ^ colour, 0x01000193);
+  // Nobody sees this page, so nothing waits for a display. The game's loops ask for the next display frame as they do
+  // anywhere, and instead of 60 times a second those callbacks run as soon as a frame is wanted, and only then.
+  // A task runs between frames, so timers and messages go on as they do on a display.
+  const asked = new Map(), stopShowing = cancelAnimationFrame.bind(window);
+  let askedId = 2 ** 30;
+  if (!__paced) {
+    window.requestAnimationFrame = callback => { asked.set(++askedId, callback); return askedId; };
+    window.cancelAnimationFrame = id => { if (!asked.delete(id)) stopShowing(id); };
+    // and nothing draws it: the canvas keeps its pixels in memory, where the game and the tools read them
+    document.documentElement.style.display = 'none';
+  }
+  const channel = new MessageChannel();
+  let nextTask = null;
+  channel.port1.onmessage = () => nextTask?.();
+  const aTask = () => new Promise(resolve => { nextTask = resolve; channel.port2.postMessage(0); });
+
+  /** Runs the frame a tool has asked for, and resolves to what it drew. */
+  async function played(frame) {
+    if (__paced) return dreamportsProof.step(frame);
+    let image = null, ended = false, failed = null;
+    dreamportsProof.step(frame).then(drawn => { image = drawn; ended = true; }, error => { failed = error; ended = true; });
+    for (let idle = 0; !ended; idle++) {
+      const now = performance.now(), callbacks = [...asked.values()];
+      asked.clear();
+      // a display runs each callback on its own, with what it promised done before the next
+      for (const callback of callbacks) {
+        callback(now);
+        await null;
+      }
+      await aTask();
+      // the game holds its frames for what it's waiting on, such as its sound engine starting
+      if (!ended && idle > 1) await new Promise(resolve => setTimeout(resolve, 1));
     }
-    return [picture, hash >>> 0];
+    if (failed) throw failed;
+    return image;
   }
 
-  // what the video hardware that drew a frame holds after it, if the kit's did, reusing the buffer of a frame gone from the ring
-  function holdState(frame) {
-    const video = dreamportsProof.video, old = frame - STATE_RING;
-    const state = stateRing.get(old) ?? (video ? new Uint8Array(STATE_BYTES) : null);
-    stateRing.delete(old);
+  // a picture in the console's 15-bit colour, written to the ring, and its FNV-1a hash
+  function reduce({ data, width, height }, frame) {
+    const at = __quick ? 0 : (frame % RING) * PIXELS, fits = width === WIDTH && height === HEIGHT;
+    let hash = 0x811C9DC5;
+    // a screen of another size, as some consoles change theirs, is cut or filled with black to be kept
+    if (!fits) ring.fill(0, at, at + PIXELS);
+    for (let i = 0, p = at, x = 0, y = 0; i < data.length; i += 4, p++) {
+      const colour = data[i] >> 3 | (data[i + 1] >> 3) << 5 | (data[i + 2] >> 3) << 10;
+      if (fits) ring[p] = colour;
+      else {
+        if (x < WIDTH && y < HEIGHT) ring[at + y * WIDTH + x] = colour;
+        if (++x === width) { x = 0; y++; }
+      }
+      hash = Math.imul(hash ^ colour, 0x01000193);
+    }
+    lastPlayed = frame;
+    return hash >>> 0;
+  }
+  const inRing = frame => frame <= lastPlayed && frame > lastPlayed - (__quick ? 1 : RING);
+  const fromRing = frame => {
+    const at = __quick ? 0 : (frame % RING) * PIXELS;
+    return ring.slice(at, at + PIXELS);
+  };
+
+  // what the video hardware that drew a frame holds after it, if the kit's did
+  function keepState(frame) {
+    const video = dreamportsProof.video;
     if (!video) return;
+    const state = new Uint8Array(STATE_BYTES);
     const bytes = array => new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
     state.set(bytes(video.io).subarray(0, IO_BYTES), 0);
     state.set(bytes(video.pal), IO_BYTES);
     state.set(bytes(video.oam), IO_BYTES + 0x400);
     state.set(video.vram, IO_BYTES + 0x800);
-    stateRing.set(frame, state);
+    keptStates.set(frame, state);
   }
 
   const toBase64 = bytes => {
@@ -49,30 +102,34 @@
     for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
     return btoa(text);
   };
-  const fromBase64 = text => Uint8Array.from(atob(text), c => c.charCodeAt(0));
 
+  // each 15-bit colour as the browser draws it
+  const RGBA = new Uint32Array(32768);
+  for (let c = 0; c < 32768; c++) {
+    const r = c & 31, g = c >> 5 & 31, b = c >> 10 & 31;
+    RGBA[c] = (0xFF << 24 | (b << 3 | b >> 2) << 16 | (g << 3 | g >> 2) << 8 | r << 3 | r >> 2) >>> 0;
+  }
   // a 15-bit picture as the browser draws one
-  function toImage(picture) {
-    const image = new ImageData(WIDTH, HEIGHT);
-    for (let p = 0; p < picture.length; p++) {
-      const c = picture[p], r = c & 31, g = c >> 5 & 31, b = c >> 10 & 31;
-      image.data.set([r << 3 | r >> 2, g << 3 | g >> 2, b << 3 | b >> 2, 255], p * 4);
-    }
+  const images = [new ImageData(WIDTH, HEIGHT), new ImageData(WIDTH, HEIGHT), new ImageData(WIDTH, HEIGHT)];
+  function toImage(picture, slot) {
+    const image = images[slot], pixels = new Uint32Array(image.data.buffer);
+    for (let p = 0; p < PIXELS; p++) pixels[p] = RGBA[picture[p]];
     return image;
   }
   // where two pictures differ: the original dimmed, and each pixel that differs in magenta
   function differences(original, dreamport) {
-    const image = new ImageData(WIDTH, HEIGHT);
+    const image = images[2], data = image.data;
     let pixels = 0, left = WIDTH, top = HEIGHT, right = -1, bottom = -1;
-    for (let p = 0; p < original.length; p++) {
-      const x = p % WIDTH, y = p / WIDTH | 0;
+    for (let p = 0, at = 0; p < PIXELS; p++, at += 4) {
+      data[at + 3] = 255;
       if (original[p] !== dreamport[p]) {
+        const x = p % WIDTH, y = p / WIDTH | 0;
         pixels++;
         left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y);
-        image.data.set([255, 0, 255, 255], p * 4);
+        data[at] = 255; data[at + 1] = 0; data[at + 2] = 255;
       } else {
         const c = original[p], grey = ((c & 31) * 3 + (c >> 5 & 31) * 6 + (c >> 10 & 31)) * 0.8;
-        image.data.set([grey, grey, grey, 255], p * 4);
+        data[at] = grey; data[at + 1] = grey; data[at + 2] = grey;
       }
     }
     return { image, pixels, box: pixels ? [left, top, right, bottom] : null };
@@ -84,7 +141,8 @@
   function draw(canvas, frame, { difference = false, alone = false, scale = SCALE } = {}) {
     const context = canvas.getContext('2d');
     const original = alone ? null : originals.get(frame), dreamport = kept.get(frame);
-    const same = alone || original.every((c, i) => c === dreamport[i]);
+    let same = true;
+    if (!alone) for (let p = 0; p < PIXELS && same; p++) same = original[p] === dreamport[p];
     context.fillStyle = '#10141c';
     context.fillRect(0, 0, canvas.width, BAR);
     context.font = '12px sans-serif';
@@ -102,7 +160,7 @@
     }
     context.textAlign = 'left';
     context.imageSmoothingEnabled = false;
-    const pictures = alone ? [toImage(dreamport)] : [toImage(original), toImage(dreamport)];
+    const pictures = alone ? [toImage(dreamport, 0)] : [toImage(original, 0), toImage(dreamport, 1)];
     let found = null;
     if (difference) {
       found = differences(original, dreamport);
@@ -117,29 +175,38 @@
 
   window.__proof = {
     /** Plays frames from `from`, each with its buttons held, and resolves to each picture's hash and each frame's
-     *  sound, as { energies, samples }: its energy in each band of pitches and how many samples it had. */
-    async run(from, held) {
-      const hashes = [], sound = [];
+     *  sound, as { energies, samples }: its energy in each band of pitches and how many samples it had. It keeps what
+     *  the console holds at the first frame whose picture isn't the hash in `expected`, and at those `wantStates` names.
+     *  It stops after the first frame from `stopsFrom` on whose picture isn't. */
+    async run(from, held, expected, stopsFrom = Infinity) {
+      const hashes = [], sound = [], neverInPlay = [];
       for (let i = 0; i < held.length; i++) {
         const frame = from + i;
         dreamportsProof.video = null;   // a game can draw some screens with a renderer of its own
-        const image = await dreamportsProof.step({ held: held[i] });
+        dreamportsProof.neverInPlay = null;
+        const image = await played({ held: held[i] });
         if (!image) throw new Error('The game handed over no picture.');
-        if (image.width !== WIDTH || image.height !== HEIGHT) {
+        if (__console.id === 'gba' && (image.width !== WIDTH || image.height !== HEIGHT)) {
           throw new Error(`The game's screen is ${image.width} x ${image.height}, not the console's ${WIDTH} x ${HEIGHT}: proof needs it as the console had it.`);
         }
-        const [picture, hash] = reduce(image.data);
+        const hash = reduce(image, frame), first = !pictureDiffered && hash !== expected[i];
         hashes.push(hash);
-        ring.set(frame, picture);
-        ring.delete(frame - RING);
-        holdState(frame);
+        if (first) pictureDiffered = true;
+        if (first || wantedStates.has(frame)) keepState(frame);
+        // a game's own word that no player could ever see this frame
+        if (dreamportsProof.neverInPlay) neverInPlay.push({ frame, why: dreamportsProof.neverInPlay });
         // a game with no sound, or a kit from before the tools heard it, is silent
         const samples = dreamportsProof.heard ?? null, energies = new Float64Array(16);
         if (samples) { filter(samples, energies); heard = true; }
-        sound.push({ energies: Array.from(energies), samples: samples ? samples.length / 2 : 1097 });
+        sound.push({ energies: Array.from(energies), samples: samples ? samples.length / 2 : SILENCE });
+        if (first) kept.set(frame, fromRing(frame));
+        if (frame >= stopsFrom && hash !== expected[i]) break;
       }
-      return { hashes, sound };
+      return { hashes, sound, neverInPlay };
     },
+
+    /** The frames whose state to keep as they're played, besides the first whose picture differs. */
+    wantStates(frames) { for (const frame of frames) wantedStates.add(frame); },
 
     /** Whether the game has made any sound so far: false for one with no sound yet. */
     get heard() { return heard; },
@@ -149,13 +216,8 @@
 
     /** Keeps the pictures of these frames, from the last few hundred played. */
     keep(frames) {
-      for (const frame of frames) if (ring.has(frame)) kept.set(frame, ring.get(frame));
+      for (const frame of frames) if (!kept.has(frame) && inRing(frame)) kept.set(frame, fromRing(frame));
       return frames.filter(frame => kept.has(frame));
-    },
-
-    /** Keeps what the console held at these frames, from the last few played. */
-    keepStates(frames) {
-      for (const frame of frames) if (stateRing.has(frame)) keptStates.set(frame, stateRing.get(frame).slice());
     },
 
     /** What the console held at a frame kept, in base64, or null. */
@@ -164,10 +226,11 @@
       return state ? toBase64(state) : null;
     },
 
-    /** The original's picture of a frame, 15-bit colour in base64. */
-    original(frame, data) {
-      const bytes = fromBase64(data);
-      originals.set(frame, new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.length / 2));
+    /** Fetches the original's pictures of these frames, one after another in 15-bit colour, from where prove serves them. Playing is over, so the ring goes. */
+    async originals(frames, address) {
+      ring = null;
+      const all = new Uint16Array(await (await fetch(address)).arrayBuffer());
+      frames.forEach((frame, i) => originals.set(frame, all.subarray(i * PIXELS, (i + 1) * PIXELS)));
     },
 
     /** A still of one frame as a PNG in base64, with where it differs when `difference`, or of the Dreamport `alone`. */

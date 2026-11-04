@@ -14,7 +14,7 @@ import { tileFloor } from './terrain.js';
 import { SINE } from './trig.js';
 import { SCREEN_W, SCREEN_H } from './constants.js';
 import { screenShake, SCREEN_SHAKE } from './screenshake.js';
-import { preBossCameraPan, camBounds, setCamBounds, bossHit, bossShotHit, bossBodyHit, rectHit, grabTest, explosion, debris,
+import { preBossCameraPan, camBounds, setCamBounds, eachPlayer, bossHitOn, bossShotHit, bossShotHitOn, bossBodyHitOn, rectHit, grabTest, explosion, debris,
   HIT_ENEMY, HIT_PLAYER, s8, s16, I } from './xbosses.js';
 import { endAttack, standUp } from './player.js';
 import { normalEnding } from './xending.js';
@@ -145,14 +145,15 @@ export function eggX(e, slot, anims, ctx) {
     }
   }
 
-  // sub_8036E20: the flash goes, then, unless it is still flashing from the last hit, Sonic's attack on the
-  // cockpit (only while the arm isn't all the way up) and the machine's body on Sonic
+  // sub_8036E20: the flash goes, then, unless it is still flashing from the last hit, each player's attack on the
+  // cockpit (only while the arm isn't all the way up) and the machine's body on them
   function hitTest(ctx) {
     if (!ctx.player.dead) body.allWhite = false;
     if (b.flash !== 0) return;
-    let hit = 0;
-    if (!(b.arm.flags & 4)) hit = bossHit(body, b.x, b.y, ctx);
-    if (hit === 0) hit = bossBodyHit(body, b.x, b.y, ctx);
+    const hit = eachPlayer(ctx, p => {
+      const own = b.arm.flags & 4 ? 0 : bossHitOn(body, b.x, b.y, ctx, p);
+      return own === 0 ? bossBodyHitOn(body, b.x, b.y, ctx, p) : own;
+    });
     if (hit === HIT_ENEMY) {
       b.hits++;
       b.flash = 0x20;
@@ -584,14 +585,16 @@ function claw(b, ctx) {
         s.order = 23;
         return true;
       }
-      const p = ctx.player;
-      let hit = 0;
-      if (c.state <= 1) hit = bossShotHit(s, x, y, ctx);
-      else if (c.state === 2) {
-        hit = grabTest(s, x, y, ctx);
-        if (hit === HIT_PLAYER && ctx.world.ringCount === 0) { b.laugh(); ctx.world.damage(); hit = 0; }
+      const p = ctx.player, partner = ctx.players[1];
+      // sub_8036F9C: it can only grab Sonic, and the CPU partner it just hurts; Eggman laughs at either, and only
+      // what it does to Sonic goes on from here
+      let hit = 0, partnerHit = 0;
+      if (c.state <= 2) {
+        hit = c.state === 2 ? grabTest(s, x, y, ctx) : bossShotHitOn(s, x, y, ctx, p);
+        if (partner) partnerHit = bossShotHitOn(s, x, y, ctx, partner);
       }
-      if (hit === HIT_PLAYER) b.laugh();
+      if (hit === HIT_PLAYER || partnerHit === HIT_PLAYER) b.laugh();
+      if (c.state === 2 && hit === HIT_PLAYER && ctx.world.ringCount === 0) { ctx.world.damage(); hit = 0; }
       switch (c.state) {
         case 0:
           if (--c.timer === 0) {

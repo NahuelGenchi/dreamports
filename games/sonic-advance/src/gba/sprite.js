@@ -195,3 +195,38 @@ export function displaySprite(e, tables, s) {
     m[k * 4] = a0; m[k * 4 + 1] = a1; m[k * 4 + 2] = a2;
   }
 }
+
+/**
+ * DisplaySprite_BG: the sprite as a layer's map instead of OAM, on the layer its frameFlags name, scrolled so that the
+ * frame's anchor is at (x, y). In the V-blank (sub_80039E4), each piece of its frame becomes a rectangle of map
+ * entries; only a text layer and a frame that isn't flipped are ported, which is all the character select's backdrop
+ * needs.
+ */
+export function displaySpriteBackground(e, tables, s) {
+  e.bgSprites.push(() => writeSpriteMap(e, tables, s));
+  if (s.dimensions === -1) return;
+  const bg = (s.frameFlags >> 15) & 3, d = s.dimensions, rom = e.rom;
+  e.bgScroll[bg * 2] = (rom.s16(d + 8) - s.x) % 16;
+  e.bgScroll[bg * 2 + 1] = (rom.s16(d + 10) - s.y) % 8;
+}
+
+// sub_80039E4: the frame's pieces, a text layer's map entries each, the tiles laid out as OAM's are
+function writeSpriteMap(e, tables, s) {
+  if (s.dimensions === -1) return;
+  const rom = e.rom, d = s.dimensions, bg = (s.frameFlags >> 15) & 3, cnt = e.bgCnt[bg];
+  if ((rom.u8(d) & 3) || s.frameFlags & (SPRITE.X_FLIP | SPRITE.Y_FLIP) || cnt & 0x80) throw new Error('sub_80039E4: flipped frames and 256-colour layers are not ported.');
+  const map = new Uint16Array(e.video.vram.buffer), base = ((cnt & 0x1F00) << 3) >> 1;
+  const first = (s.graphics.dest - ((cnt >> 2) & 3) * 0x4000) >> 5;
+  const oamData = rom.u32(tables.oam + s.graphics.anim * 4) - 0x08000000;
+  const left = (s.x - rom.s16(d + 8)) & ~0xF, top = s.y - rom.s16(d + 10);
+  for (let i = 0; i < rom.u16(d + 2); i++) {
+    const src = oamData + (rom.u8(d + 1) + i) * 6, a0 = rom.u16(src), a1 = rom.u16(src + 2), a2 = rom.u16(src + 4);
+    const [w, h] = OBJ_SIZES[((a0 & 0xC000) >> 12) | ((a1 & 0xC000) >> 14)];
+    const column = ((a1 & 0x1FF) + left) >> 3, row = ((a0 & 0xFF) + top) >> 3;
+    const palette = ((a2 >> 12) + s.palId) << 12;
+    let tile = (a2 & 0x3FF) + first;
+    for (let y = 0; y < h >> 3; y++) {
+      for (let x = 0; x < w >> 3; x++) map[base + ((row + y) & 31) * 32 + ((column + x) & 31)] = palette | tile++;
+    }
+  }
+}

@@ -9,6 +9,8 @@ import { createPlayer } from './player.js';
 import { createStageUi } from './ui.js';
 import { createCountdown } from './countdown.js';
 import { createRings } from './rings.js';
+import { createRingsScatter } from './rings-scatter.js';
+import { createEntities } from './entities.js';
 import { createSprite, updateSprite } from '../sprite.js';
 
 // gStageCameraBgTemplates, in the order the camera keeps them, and how each level's layers are numbered
@@ -107,7 +109,8 @@ function cameraFrame(t) {
   // the sky stays still and what's below it scrolls, a line at a time
   const nearX = cam.x >> 7, nearY = cam.y >> 8;
   c.bgScroll[6] = nearX;
-  const lines = new Uint16Array(SCREEN_LINES * 2);
+  // StageBgUpdate_Zone1Acts12 writes all but the screen's last line, which stays at 0, and shows when nothing covers it
+  const lines = new Uint16Array((SCREEN_LINES + 1) * 2);
   for (let y = SKY_LINES; y < SCREEN_LINES; y++) {
     lines[y * 2] = nearX;
     lines[y * 2 + 1] = nearY;
@@ -163,7 +166,7 @@ function startSong(c) {
 /** 0x0801A838: what a stage has so far, from its first frame. */
 export function startStage(c, level) {
   const stage = {
-    c, level, time: 0, timeRuns: false, frames: 0, rings: 0, score: 0, lives: 3, oamMatrix: FIRST_OAM_MATRIX, seed: 0,
+    c, level, time: 0, timeRuns: false, frames: 0, rings: 0, score: 0, lives: 3, oamMatrix: FIRST_OAM_MATRIX, seed: 0, animalTurn: 0,
     camera: { x: 0, y: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 }, front: null, back: null, player: null, ui: null,
   };
   // sprite memory past what the character, the rings and the water keep for themselves
@@ -181,12 +184,13 @@ export function startStage(c, level) {
     if (stage.timeRuns) stage.time++;
   }, null, 0xFF00);
   stage.player = createPlayer(stage, level);
+  createRingsScatter(stage);
   c.createTask(leaveTitleCard, stage, 0x2200);
   initCamera(stage);
-  createRings(stage);
-  // 0x08008DCC, the entities manager, which isn't made, keeps its place: a ring's sparkle comes after it, and so runs in the
-  // frame the ring is taken, rather than right after the rings, which would wait for the next
-  c.createTask(() => {}, null, 0x2000);
+  stage.ringsManager = createRings(stage);
+  // the entities manager comes after the rings: a ring's sparkle comes after it, and so runs in the frame the ring is taken,
+  // rather than right after the rings, which would wait for the next
+  createEntities(stage);
   createColourLoader(c, ANIM_LEAF_FOREST_COLOURS);
   startSong(c);
   return stage;

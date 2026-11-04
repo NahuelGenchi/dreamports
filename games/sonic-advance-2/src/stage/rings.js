@@ -13,7 +13,7 @@ const SE_RING = 117, SE1 = 1, SE2 = 2, MOST_EFFECTS = 8;   // se_ring_copy, on t
 const RING_FLAGS = 0x42200;   // SPRITE_FLAG(PRIORITY, 2) | SPRITE_FLAG_MASK_18 | SPRITE_FLAG_MASK_MOSAIC
 
 // 0x08097130, RLUnCompWram: the BIOS's run-length decompression
-function unRle(rom, at) {
+export function unRle(rom, at) {
   const size = rom.u32(at) >>> 8, out = new Uint8Array(size);
   let src = at + 4, dest = 0;
   while (dest < size) {
@@ -57,7 +57,7 @@ function touching(left, top, width, height, x, y) {
 }
 
 // INCREMENT_RINGS: a life every hundred rings, though the jingle that comes with it needs the music manager, which isn't made
-function addRing(stage) {
+export function addRing(stage) {
   const before = stage.rings;
   stage.rings = (before + 1) & 0xFFFF;
   if (Math.trunc(stage.rings / 100) !== Math.trunc(before / 100)) stage.lives = Math.min(stage.lives + 1, 255);
@@ -124,7 +124,7 @@ function ringsFrame(t) {
 }
 
 // 0x0800AEA0, CreateCollectRingEffect: it stays where the ring was, and its sound takes turns between the two sides
-function createEffect(rings, x, y) {
+export function createEffect(rings, x, y) {
   if (rings.effects >= MOST_EFFECTS) return;
   const { stage } = rings, { c } = stage, odd = stage.rings & 1;
   rings.effects++;

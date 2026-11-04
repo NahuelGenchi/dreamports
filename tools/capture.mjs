@@ -24,15 +24,16 @@ import { serveRepository } from './lib/server.mjs';
 import { go, openChrome, until } from './lib/chrome.mjs';
 import { UPSTREAM, api, findFork, repositoryOf } from './lib/github.mjs';
 import { fileAt, remotes } from './lib/preview.mjs';
-import { WINDOW, loopOf, measure, shortlist, stretches } from './lib/moments.mjs';
+import { FEW_COLOURS, WINDOW, forConsole, loopOf, measure, shortlist, stretches } from './lib/moments.mjs';
 import { av1Configuration, av1Frame, mp4 } from './lib/mp4.mjs';
 import { captureMessage, firstFilesMessage, namesOf, plainWebp, withCapture } from './lib/new-game.mjs';
 import { originalButtons, readRecording } from './lib/recording.mjs';
-import { KEY, ensureOriginal, playOriginal, runOriginal } from './gba/original.mjs';
+import { referenceOf } from './lib/reference.mjs';
 
 const USAGE = 'Usage: npm run dp -- capture <game> [--choose | --open | --pick | --from <file>] [--yes] [--repo <owner/name>]';
 const CLIP_LIMIT = 1.4e6, CLIP_TARGET = 1.2e6;   // a clip's bytes: visitors download it when they select the game
-const FRAME_SECONDS = 280896 / 16777216;
+// what plays the original, for the game's console
+let machine, KEY, ensureOriginal, playOriginal, runOriginal, FRAME_SECONDS;
 const IDLE_MS = 120_000;                         // this long since their last press, and they aren't using the window
 const LONGEST_WAIT_MS = 900_000, WINDOW_MS = 60_000, CLOSING_MS = 300_000;
 const MOST_FRAMES = 216_000;                     // an hour of play is more than a list of presses needs
@@ -76,10 +77,10 @@ function playedFor({ game, copy }) {
     // the moments' pictures, which the original draws again from the presses, and a check that they're what was played
     async picturesOf(wanted) {
       const list = [...new Set(wanted.flatMap(({ from, to }) => Array.from({ length: to - from + 1 }, (_, i) => from + i)))].sort((a, b) => a - b);
-      const { hashes, pictures } = await runOriginal({ copy: copy.path, frames: list[list.length - 1] + 1, buttons: play.buttons, pictures: list });
-      play.frames.forEach((f, frame) => {
-        if (frame < hashes.length && f.hash !== hashes[frame]) throw new Error(`The original didn't draw frame ${frame} the same way again, so these moments can't be trusted.`);
-      });
+      const { pictures } = await runOriginal({ copy: copy.path, frames: list[list.length - 1] + 1, buttons: play.buttons, pictures: list });
+      for (const frame of list) {
+        if (play.frames[frame]?.hash !== measure(pictures.get(frame), null).hash) throw new Error(`The original didn't draw frame ${frame} the same way again, so these moments can't be trusted.`);
+      }
       return pictures;
     },
     async find() {
@@ -126,7 +127,7 @@ async function keepMoment(page, game, moment, choice) {
       file = mp4({
         width: video.width, height: video.height, description, av1: codec === 'av1',
         frames: codec === 'av1' ? chunks.map(c => ({ key: c.key, data: av1Frame(c.data) })) : chunks,
-        timescale: 16777216, duration: 280896,
+        timescale: machine.frame[1], duration: machine.frame[0],
       });
       if (file.length <= CLIP_LIMIT) break;
       bitrate = Math.round(bitrate * CLIP_TARGET / file.length);
@@ -356,7 +357,7 @@ async function fromPresses(session, file) {
   }
   await play.find();
   if (!play.moments.length) {
-    console.log(`Those ${masks.length} frames have no moment to show. One needs ${Math.ceil(WINDOW / 60)} seconds of play with buttons held at least a fifth of the time, something moving, and no fade or change of screen. What they led to:`);
+    console.log(`Those ${masks.length} frames have no moment to show. One needs ${Math.ceil(WINDOW / 60)} seconds of play with buttons held at least a fifth of the time, something moving, ${FEW_COLOURS} colours or more, and no fade or change of screen. What they led to:`);
     for (const { from, moved, colours, held: share } of stretches(play.frames, play.buttons)) {
       console.log(`  from frame ${from}: ${(moved * 100).toFixed(1)}% of the screen moving, ${Math.round(colours)} colours, buttons held ${Math.round(share * 100)}% of the time`);
     }
@@ -369,10 +370,13 @@ async function fromPresses(session, file) {
 // what the page asks of the tool
 function answerer({ original }, play, { live = null, choosing = false, touch = () => {}, idle = () => 0, choose = () => {}, stop = () => {} }) {
   let last = null;          // the frame before, to see what moved
+  const allButtons = Object.values(KEY).reduce((all, bit) => all | bit, 0);
   return async (request, response, path) => {
     if (!path.startsWith('/capture/')) return false;
     const step = path.slice('/capture/'.length);
-    if (step === 'about') {
+    if (step === 'console') {
+      json(response, { id: machine.id, screen: machine.screen, frame: machine.frame, sound: machine.sound, keys: KEY });
+    } else if (step === 'about') {
       json(response, { name: original.name, choosing });
     } else if (step === 'state') {
       json(response, { idle: idle() });
@@ -380,7 +384,7 @@ function answerer({ original }, play, { live = null, choosing = false, touch = (
       json(response, true);
       stop();
     } else if (step === 'frame') {
-      const mask = Number(new URL(request.url, 'http://localhost').searchParams.get('buttons')) & 0x3FF;
+      const mask = Number(new URL(request.url, 'http://localhost').searchParams.get('buttons')) & allButtons;
       try {
         const { picture, sound } = await live.frame(mask);
         if (mask !== (play.buttons[play.buttons.length - 1] ?? 0)) touch();
@@ -402,7 +406,7 @@ function answerer({ original }, play, { live = null, choosing = false, touch = (
     } else if (step.startsWith('moment/')) {
       const moment = play.moments[Number(step.slice('moment/'.length))];
       response.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-store' });
-      for (const picture of moment.pictures) response.write(Buffer.from(picture.buffer));
+      for (const picture of moment.pictures) response.write(Buffer.from(picture.buffer, picture.byteOffset, picture.byteLength));
       response.end();
     } else if (step.startsWith('choose/')) {
       json(response, true);
@@ -477,6 +481,9 @@ function options(args) {
 export async function run(args) {
   const { game, mode, file, yes, repository } = options(args);
   const original = readOriginal(game);
+  ({ machine, KEY, ensureOriginal, playOriginal, runOriginal } = await referenceOf(original.console));
+  FRAME_SECONDS = machine.frame[0] / machine.frame[1];
+  forConsole({ screen: machine.screen, keys: machine.keys });
   const copy = copyOf(game, original.sha1);
   if (!copy) throw new Error(`Show the tools your copy of ${original.name} first: npm run dp -- rom <file>.`);
   if (!existsSync(entryPath(game))) throw new Error(`games/${game}/ has no entry.md yet, which the capture is named in.`);

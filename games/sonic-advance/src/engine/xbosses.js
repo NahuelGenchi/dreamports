@@ -7,8 +7,10 @@ import { makeSprite, startAnim, animate, OBJECTS } from './objects.js';
 import { overlap } from './collide.js';
 import { SINE } from './trig.js';
 import { SCREEN_W, SCREEN_H } from './constants.js';
+import { eachPlayer } from './bosses.js';
 
-export const HIT_ENEMY = 1, HIT_PLAYER = 2;   // EHit: the boss hit, and Sonic hurt
+export const HIT_ENEMY = 1, HIT_PLAYER = 2;   // EHit: the boss hit, and a player hurt
+export { eachPlayer };
 
 export const sin = a => SINE[a], cos = a => SINE[a + 256];
 export const s16 = v => (v << 16) >> 16, s8 = v => (v << 24) >> 24;
@@ -75,11 +77,11 @@ export function setBossCamBounds(cam, minY, maxY, minX, maxX) {
 const at = p => [Math.floor(p.x), Math.floor(p.y)];
 
 /**
- * Coll_Player_Enemy, as the bosses use it: Sonic's attack box on the boss's box (slot 0) turns his air
- * speeds back (HIT_ENEMY); otherwise his body on it hurts him (HIT_PLAYER). 0 when nothing touched.
+ * Coll_Player_Enemy, as the bosses use it, on one player: their attack box on the boss's box (slot 0) turns their
+ * air speeds back (HIT_ENEMY); otherwise their body on it hurts them (HIT_PLAYER). 0 when nothing touched.
  */
-export function bossHit(s, x, y, ctx) {
-  const p = ctx.player, hb = s.boxes[0];
+export function bossHitOn(s, x, y, ctx, p) {
+  const hb = s.boxes[0];
   if (!hb || p.dead) return 0;
   const [px, py] = at(p);
   if (p.boxes[1] && overlap(x, y, hb, px, py, p.boxes[1])) {
@@ -87,29 +89,33 @@ export function bossHit(s, x, y, ctx) {
     return HIT_ENEMY;
   }
   if (p.boxes[0] && overlap(x, y, hb, px, py, p.boxes[0])) {
-    ctx.world.damage();
+    ctx.world.damage(p);
     return HIT_PLAYER;
   }
   return 0;
 }
+/** The same on Sonic and then on the CPU partner. */
+export const bossHit = (s, x, y, ctx) => eachPlayer(ctx, p => bossHitOn(s, x, y, ctx, p));
 
-/** sub_800BF10: a boss's harmful part (its box in slot 0) on Sonic's body hurts him. */
-export function bossShotHit(s, x, y, ctx) {
-  const p = ctx.player, hb = s.boxes[0];
+/** sub_800BF10, on one player: a boss's harmful part (its box in slot 0) on their body hurts them. */
+export function bossShotHitOn(s, x, y, ctx, p) {
+  const hb = s.boxes[0];
   if (!hb || p.dead || !p.boxes[0]) return 0;
   const [px, py] = at(p);
   if (!overlap(x, y, hb, px, py, p.boxes[0])) return 0;
-  ctx.world.damage();
+  ctx.world.damage(p);
   return HIT_PLAYER;
 }
+/** The same on Sonic and then on the CPU partner. */
+export const bossShotHit = (s, x, y, ctx) => eachPlayer(ctx, p => bossShotHitOn(s, x, y, ctx, p));
 
-/** sub_800BFEC: a boss's body (its box in slot 1) on Sonic's body hurts him. */
-export function bossBodyHit(s, x, y, ctx) {
-  const p = ctx.player, hb = s.boxes[1];
+/** sub_800BFEC, on one player: a boss's body (its box in slot 1) on their body hurts them. */
+export function bossBodyHitOn(s, x, y, ctx, p) {
+  const hb = s.boxes[1];
   if (!hb || p.dead || !p.boxes[0]) return 0;
   const [px, py] = at(p);
   if (!overlap(x, y, hb, px, py, p.boxes[0])) return 0;
-  ctx.world.damage();
+  ctx.world.damage(p);
   return HIT_PLAYER;
 }
 

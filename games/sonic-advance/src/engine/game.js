@@ -8,6 +8,7 @@
 import { TICK_MS, CAMERA, PHYSICS, ANIMATION, SCREEN_W, SCREEN_H, RUSH_BOOST, BOOST_MODE } from './constants.js';
 import { makeAnimator, setAnim, tickAnim, frameOf, spritePalette } from './animator.js';
 import { createPlayer, stepPlayer, animatePlayer, hurt, SONIC, TAILS, AMY, KNUCKLES } from './player.js';
+import { createButtonHistory, newPartner, stepPartner } from './partner.js';
 import { createRushFx, startRushFx, stepRushFx } from './rushfx.js';
 import { createBoostFx, recordSonic, stepAfterimages, startBurst, stepBursts, particleAnims } from './boostmode.js';
 import { TRICK_FX_PRIORITY, createTrail, recordTrail, spinEffect, boundTrail } from './trickfx.js';
@@ -144,6 +145,17 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     return p;
   };
   const player = newPlayer(mode?.start ?? stage.spawn);
+  // the CPU partner (partner.js), from the character select's code, with Sonic and on every stage but the extra one
+  // (GameStageStart); he has his own animations, read from the ROM as `partner.<name>`
+  const newTails = at => newPartner(at, spinDashSpeeds, () => sound.stop(SONG.TAILS_FLYING), () => { const a = makeAnimator(); setAnim(a, 'tailsSpin'); return a; });
+  const partner = assets.partner && character === SONIC && !mode && !stage.extra ? newTails(stage.spawn) : null;
+  const buttonHistory = createButtonHistory();
+  const players = partner ? [player, partner] : [player];   // PLAYER(i), for i below gNumSingleplayerCharacters
+  if (assets.partner) anims.tailSwipeFx ??= anims['partner.tailSwipeFx'];   // his tail swipe's effect
+  const partnerAnims = assets.partner ? {
+    ...anims,
+    ...Object.fromEntries(Object.keys(anims).filter(name => name.startsWith('partner.')).map(name => [name.slice(8), anims[name]])),
+  } : null;
   const scatter = createScatter(anims);
   rings.reset(); scatter.reset();
   const state = {
@@ -208,6 +220,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   };
   let boostAnims = null;   // the particles' animations, numbered as the renderer's boost atlas has them
   let playerAnims = anims;   // Sonic's animations, with the tricks' once their art is read
+  const currentPlayerAnims = () => playerAnims;
   let viewW = SCREEN_W, viewH = SCREEN_H;   // the original screen, or the widescreen view's size
   // the camera as InitCamera sets it up, with the act's stage init's right edge
   const newCamera = () => {
@@ -261,8 +274,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
 
   // an effect is a task of its own at 0x4001, made as it appears, so it runs after Sonic and after the item
   // tasks made before it (a shield in front of it on OAM order 8); it first runs in the frame that makes it
-  function spawn(kind, name, x, y, flipX, flipY = false) {
-    const e = { kind, anim: makeAnimator(), x, y, flipX, flipY };
+  function spawn(kind, name, x, y, flipX, flipY = false, who = player) {
+    const e = { kind, anim: makeAnimator(), x, y, flipX, flipY, who };
     setAnim(e.anim, name);
     state.effects.push(e);
     tasks.add({
@@ -276,8 +289,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     return e;
   }
   // his feet, above his centre under flipped gravity
-  const feetY = () => player.y + (player.inverted ? -player.offsetY : player.offsetY);
-  const centreY = () => player.y;
+  const feetY = (p = player) => p.y + (p.inverted ? -p.offsetY : p.offsetY);
+  const centreY = (p = player) => p.y;
 
   const world = {
     // the level's number in the ROM's tables, and its zone (0 Neo Green Hill)
@@ -321,8 +334,10 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     // a hazard touched Sonic (Coll_DamagePlayer): a shield takes the hit, or with rings he drops them all, up
     // to 48 of them scattering, and without any he dies; returns false while he is invincible or still
     // blinking from the last hit
-    damage() {
-      if (!hurt(player, terrain)) return false;
+    damage(p = player) {
+      if (!hurt(p, terrain)) return false;
+      // the CPU partner has no rings to lose, or shield, and doesn't die of a hit
+      if (p !== player) return true;
       state.hits++;
       if (player.shield) {
         sound.play(SONG.LIFE_LOST);
@@ -415,6 +430,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       const loop = stage.loop, cam = state.cam;
       if (!loop || x < loop.x || cam.speedX === 0 || cam.locked) return 0;
       cam.x += loop.shift; cam.wrapped += loop.shift; drawShift -= loop.shift;
+      if (partner) partner.x += loop.shift;
       return loop.shift;
     },
     // the special spring holds the camera (specialspring.js): it puts it back where it was after the camera's
@@ -557,6 +573,23 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     marbleTails() { if (character === TAILS) { player.marbleTails = makeAnimator(); setAnim(player.marbleTails, 'marbleTrackTails'); } },
   };
 
+  // what the CPU partner sees of it: the same game, but the camera and the music's countdown aren't his, and his
+  // effects follow him
+  const partnerWorld = !partner ? null : Object.create(world, Object.getOwnPropertyDescriptors({
+    loopBack: () => 0, freezeCamera() {}, drowningMusic() {},
+    get boostMode() { return false; }, get rush() { return false; }, get tricks() { return false; },
+    stopSound: song => { if (song !== SONG.DROWNING) sound.stop(song); },
+    drownCountdown(n) { addTask(drownCountdown(partner, ctx.cam, n)); },
+    drowned() {
+      addTask(bubble(state.water, world, Math.round(partner.x * 256), Math.round((partner.y - 12) * 256), 0, true));
+      addTask(bubblesAfterDrowning(state.water, world, partner, addTask));
+    },
+    spawnBrakeDust() { world.brakeDust(partner.x, feetY(partner)); },
+    spawnDashDust() { spawn('dash', 'dashDust', partner.x, feetY(partner), partner.facing > 0, partner.inverted, partner); },
+    spawnTailSwipe() { spawn('swipe', 'tailSwipeFx', partner.x, centreY(partner), partner.facing > 0, partner.inverted, partner); },
+    marbleTails() { partner.marbleTails = makeAnimator(); setAnim(partner.marbleTails, 'marbleTrackTails'); },
+  }));
+
   // a sprite in this frame's list: `s` has frame, flipX, flipY, order (lower is in front) and prio (the
   // background priority: 3 behind both layers, 2 behind the front layer, 0 and 1 in front of it), and `sheet`
   // when its frame is from another game's sprites than Sonic Advance's; `affine` sends it through the rotation
@@ -574,7 +607,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   }
   // what the objects' and enemies' tasks see and use
   const ctx = {
-    player, world, anims, tiles: assets.sprites.tiles, cam: { x: 0, y: 0 }, view: state.view, draw, drawOnScreen, input, get level() { return stage.level; },
+    player, players, world, anims, tiles: assets.sprites.tiles, cam: { x: 0, y: 0 }, view: state.view, draw, drawOnScreen, input, get level() { return stage.level; },
     attack: (s, x, y) => attackTest(s, x, y, ctx),
     projectile: (s, x, y) => projectileTest(s, x, y, ctx),
     add: (task, priority) => tasks.add(task, priority),
@@ -582,16 +615,17 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   };
 
   function updateEffect(e) {
+    const player = e.who;
     if (e.kind === 'dash') {
       if (!player.spinDashing) return false;
       setAnim(e.anim, player.dashAccel > PHYSICS.dashDustBigAbove ? 'dashDustBig' : 'dashDust');
-      e.x = player.x; e.y = feetY(); e.flipX = player.facing > 0; e.flipY = player.inverted;
+      e.x = player.x; e.y = feetY(player); e.flipX = player.facing > 0; e.flipY = player.inverted;
       tickAnim(e.anim, anims);
       return true;
     }
     if (e.anim.done) return false;
-    if (e.kind === 'shield') { e.x = player.x; e.y = centreY(); }
-    if (e.kind === 'swipe') { e.x = player.x; e.y = centreY(); e.flipX = player.facing > 0; e.flipY = player.inverted; }
+    if (e.kind === 'shield') { e.x = player.x; e.y = centreY(player); }
+    if (e.kind === 'swipe') { e.x = player.x; e.y = centreY(player); e.flipX = player.facing > 0; e.flipY = player.inverted; }
     // Knuckles' splash (Task_KnucklesFloatSplash): gone once he stops floating, 4 px above his centre at his sprite's
     // priority, shown while his centre is less than 6 px under the water line
     if (e.kind === 'splash') {
@@ -644,8 +678,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   // shield, those near him on screen fly at him
   function collectRings(ctx) {
     if (state.ringsStopped) return;
-    if (player.dead || (player.state === 'hurt' && player.invulnerable)) rings.update(null);
-    else for (const ring of rings.update(player)) addRing(ring);
+    const takers = players.filter(p => !p.dead && !(p.state === 'hurt' && p.invulnerable) && (p === player || p.state !== 'grabbed'));
+    for (const ring of rings.update(takers, player.offsetY)) addRing(ring);
     if (player.shield !== 'magnetic') return;
     for (const r of rings.attract(player, ctx.cam)) {
       tasks.add(magneticRing(r.x, r.y, (x, y) => addRing({ x, y }), rings.frame));
@@ -659,9 +693,9 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   // (MACRO_8024B10_PSI_UPDATE). Dying or grinding puts him in front of the front layer, and half of his swing
   // round a rope behind both.
   // the Rush boost's sprite effects go just in front of him and its trail just behind (renderer.js)
-  function drawSonic() {
+  function drawSonic(player = state.player, playerAnims = currentPlayerAnims()) {
     player.prio = anims[player.anim.name]?.prio?.[player.anim.i] ?? player.prio;
-    const prio = player.death || player.front ? 1 : player.prio, fx = state.rushFx.list.length > 0 ? { rush: 'obj', order: 16, prio, sonic: null } : null;
+    const own = player === state.player, prio = player.death || player.front ? 1 : player.prio, fx = own && state.rushFx.list.length > 0 ? { rush: 'obj', order: 16, prio, sonic: null } : null;
     const affine = player.state === 'walk' || player.state === 'bounce' || player.state === 'marbleTrack' || player.state === 'grabbed';
     if (!affine) player.drawRotation = 0;
     else if (player.state !== 'marbleTrack') player.drawRotation = player.rotation << 2;
@@ -672,21 +706,21 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         const right = (player.facing > 0) !== inv, scale = player.scale, rotation = player.drawRotation;
         draw(s, player.x - (right ? 1 : 0), player.y, { rotation: inv ? (512 - rotation) & 1023 : rotation, scaleX: right ? -scale : scale, scaleY: scale, double: false });
       } else draw(s, player.x + (player.facing < 0 ? 1 : 0), player.y);
-      if (s.frame >= 0 && character === SONIC) state.sprites[state.sprites.length - 1].sonicRow = true;   // palette row 0, his
+      if (s.frame >= 0 && own && character === SONIC) state.sprites[state.sprites.length - 1].sonicRow = true;   // palette row 0, his
       if (fx && s.frame >= 0) fx.sonic = state.sprites[state.sprites.length - 1];
     }
     if (fx) state.sprites.push({ rush: 'trail', order: 16, prio });
-    if (character === TAILS) drawTails();
+    if (player.character === TAILS) drawTails(player, playerAnims);
   }
 
   // Tails' tails (sub_8024F74): the way he moves is worked out each frame (w.tf.shift), straight ahead of him
   // when he is still. Only while he is curled up (charState 5) are they shown, as a second sprite just behind
   // him (OAM order 17) through the rotation hardware, turned that way and mirrored as his rotated frames are,
   // and only then does their animation run, at half speed under water. They blink with him.
-  function drawTails() {
+  function drawTails(player, playerAnims) {
     const vx = Math.round(player.xsp * 256), vy = Math.round(player.ysp * 256);
     player.tailsShift = vx !== 0 || vy !== 0 ? ((arcTan2((vx << 16) >> 16, (vy << 16) >> 16) >> 8) + 0x40) & 0xFF : player.facing < 0 ? 0xC0 : 0x40;
-    if (player.marbleTails) drawMarbleTails();
+    if (player.marbleTails) drawMarbleTails(player, playerAnims);
     if (player.state !== 'spin') return;
     const a = player.tailsAnim;
     a.speed = player.water ? ANIMATION.normalSpeed >> 1 : ANIMATION.normalSpeed;
@@ -699,7 +733,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
 
   // his tails in a marble track (Task_8047D04): from the entrance's 25th frame until he leaves the track, in his
   // OAM order just behind him, turned the way he moves and shrunk as he is, never mirrored
-  function drawMarbleTails() {
+  function drawMarbleTails(player, playerAnims) {
     if (player.state !== 'marbleTrack' || player.track === NO_TRACK) { player.marbleTails = null; return; }
     tickAnim(player.marbleTails, playerAnims);
     draw({ frame: frameOf(player.marbleTails, playerAnims), order: 16, prio: 2 }, player.x, player.y,
@@ -729,7 +763,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   const resultsTask = {
     run() {
       const r = runResults(state.results, {
-        player, camera: state.cam, stageTime: state.tick, playSound: song => sound.play(song),
+        player, partner, camera: state.cam, stageTime: state.tick, playSound: song => sound.play(song),
         addScore(n) {
           const before = state.score;
           state.score += n;
@@ -773,6 +807,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   function restartAct() {
     const at = state.checkpoint ?? stage.spawn;
     Object.assign(player, newPlayer(at));
+    // he has no checkpoints: from the act's start, he flies back from there (SetStageSpawnPos)
+    if (partner) Object.assign(partner, newTails(stage.spawn));
     if (state.courseTime >= MAX_COURSE_TIME && state.checkpoint) state.checkpoint.time = 0;
     state.checkpointTime = state.checkpoint?.time ?? 0; state.timerReversed = false;
     state.cam = newCamera();
@@ -834,6 +870,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     act = assets.acts[state.level]; stage = act.stage; Object.assign(anims, act.anims);
     terrain = createTerrain(stage.collision);
     Object.assign(player, newPlayer(stage.spawn));
+    if (partner) Object.assign(partner, newTails(stage.spawn));
     tasks = createTasks(); entities = createEntities(stage, anims, tasks); rings = createRings(stage.rings, anims);
     palettes = stage.paletteAnimations.map(createPaletteAnimation);
     rings.reset(); scatter.reset(); sparkles.clear();
@@ -906,6 +943,10 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     [0x3000, () => {
       if (!state.gameOver && !state.timeOver) {
         const held = state.card !== null ? CARD_INPUT : player.ignoreInput ? player.heldInput ?? NO_INPUT : mode ? mode.input(input) : input;
+        if (partner) {
+          if (state.card !== null || player.ignoreInput) buttonHistory.pushNothing();
+          else buttonHistory.push(held);
+        }
         stepPlayer(player, held, world);
         animatePlayer(player, held, playerAnims, world);
         if (!player.dead) recordSonic(state.boostFx, player);
@@ -918,6 +959,13 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         else drawSonic();
       }
     }],
+    // the CPU partner, just after him (0x3001), only when he's there: a task here would run what Sonic's task makes at
+    // this priority on the same frame, as Amy's hearts, which first run on the next
+    ...(partner ? [[0x3001, () => {
+      const held = stepPartner(partner, player, buttonHistory, partnerWorld, state.card !== null ? CARD_INPUT : null);
+      animatePlayer(partner, held, partnerAnims, partnerWorld);
+      drawSonic(partner, partnerAnims);
+    }]] : []),
     // the music manager: invincibility's song and an extra life's 1-up jingle in place of the act's music
     // (synth.js runs it, with what it reads of Sonic)
     [0x4000, () => {
@@ -946,6 +994,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     [0xFF00, () => {
       if (!mode && !state.noPause && startPressed) tasks.add(createPauseMenu({ state, anims, sound, startPressed: () => startPressed }), PAUSE_PRIORITY);
       player.wasInverted = player.inverted;
+      if (partner) partner.wasInverted = partner.inverted;
       if (mode) mode.clock();
       else if (!state.clockStopped) tickClock();
       state.tick++;
@@ -987,6 +1036,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   // passed, and the special springs are plain until the act starts over (unk99[1]). The course time, the
   // stage clock, the rings, the last checkpoint passed and the next freed animal are what they were when he
   // left; the score, the lives, the game's random numbers and the frame counter what the special stage leaves.
+  // The CPU partner has no checkpoint: he is new, at the act's start, as a restart makes him, and flies back from
+  // there (his buttons aren't handed over, as the title card holds them for longer than they last).
   function comeBack({ level, score, lives, courseTime, seed, frameCount = state.frameCount, act }) {
     while (state.level < level) startNextAct();
     Object.assign(player, newPlayer({ x: act.spring.x - 16, y: act.spring.y - 16 }));

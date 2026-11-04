@@ -63,10 +63,10 @@ These are the projects on the site so far.
 
 | | Dreamport | What it is | Code ported | Gameplay proven | Lead | Try it |
 | :---: | :--- | :--- | :--- | :--- | :--- | :--- |
-| 🌙 | **[Sonic Advance 2 Dreamport](games/sonic-advance-2/)** | Sonic Advance 2, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install. Bring your own copy of the game. | [10.69%](.github/readme/progress/sonic-advance-2.svg) | [2.27%, 1 of 44 parts](.github/readme/progress/sonic-advance-2.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance-2/) |
+| 🌙 | **[Sonic Advance 2 Dreamport](games/sonic-advance-2/)** | Sonic Advance 2, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install. Bring your own copy of the game. | [13.5%](.github/readme/progress/sonic-advance-2.svg) | [2.27%, 1 of 44 parts](.github/readme/progress/sonic-advance-2.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance-2/) |
 | 🌙 | **[Sonic Advance 3 Dreamport](games/sonic-advance-3/)** | Sonic Advance 3, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install. Bring your own copy of the game. | [12.3%](.github/readme/progress/sonic-advance-3.svg) | [1.49%, 1 of 67 parts](.github/readme/progress/sonic-advance-3.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance-3/) |
 | 🌙 | **[Sonic Battle Dreamport](games/sonic-battle/)** | Sonic Battle, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install. Bring your own copy of the game. | [37.29%](.github/readme/progress/sonic-battle.svg) | [25%, 5 of 20 parts](.github/readme/progress/sonic-battle.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-battle/) |
-| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [56.95%](.github/readme/progress/sonic-advance.svg) | [16.22%, 6 of 37 parts](.github/readme/progress/sonic-advance.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
+| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [58.56%](.github/readme/progress/sonic-advance.svg) | [18.92%, 7 of 37 parts](.github/readme/progress/sonic-advance.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
 
 <!-- End of the table of Dreamports. -->
 
@@ -107,7 +107,7 @@ There's one thing only you can do. A game's card on the site shows a few seconds
 
 You don't start from nothing. Your agent first looks at [what people already found](docs/NOTES.md) while making that game and others on its console, and when it sends a piece, it leaves a note on what it found, so the next person doesn't have to find it again.
 
-**For coding agents.** If someone asked you to set up https://dreamports.net/code, clone `https://github.com/NahuelGenchi/dreamports.git` into a folder called `dreamports` in the folder you were opened in, or use the Dreamports folder you're already in. Then read its [AGENTS.md](AGENTS.md) and follow Getting ready, under Working on a Dreamport.
+**For coding agents.** If someone asked you to set up https://dreamports.net/code, clone `https://github.com/NahuelGenchi/dreamports.git` into a folder called `dreamports` in the folder you were opened in, or use the Dreamports folder you're already in. Then read its [docs/MAKING.md](docs/MAKING.md) and follow Getting ready.
 
 Every Dreamport keeps the same rules, the [Dreamport standard](docs/STANDARD.md), and [CONTRIBUTING.md](CONTRIBUTING.md#make-a-dreamport) says what the command does behind the scenes.
 
