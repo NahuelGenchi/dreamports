@@ -24,7 +24,7 @@ import { overlap } from './collide.js';
 import { tileFloor } from './terrain.js';
 import { SINE } from './trig.js';
 import { screenShake, SCREEN_SHAKE, SHAKE } from './screenshake.js';
-import { bossPart, bossDebris, bossExplosion, eggMobileEscape, preBossCameraPan } from './bosses.js';
+import { bossPart, bossDebris, bossExplosion, eggMobileEscape, preBossCameraPan, eachPlayer } from './bosses.js';
 import { SCREEN_W, SCREEN_H } from './constants.js';
 import { SONG } from '../sound/songs.js';
 
@@ -59,26 +59,26 @@ function update(s, anims) {
   return false;
 }
 
-// Sonic's own rectangle, ±spriteOffsetX by ±spriteOffsetY (Coll_Player_Entity_Intersection)
-const sonicRect = p => [-6, -p.offsetY, 6, p.offsetY];
+// a player's own rectangle, ±spriteOffsetX by ±spriteOffsetY (Coll_Player_Entity_Intersection)
+const ownRect = p => [-6, -p.offsetY, 6, p.offsetY];
 
 // the screen shake the hammer's blows and the capsule's landing make
 const shake = ctx => ctx.add(screenShake(0x800, 0x40, 0x100, -1, SHAKE.VERTICAL), SCREEN_SHAKE);
 
 /**
- * Coll_Player_Boss_1: while Sonic attacks, the body's box 1 on his body hurts him and his attack box on its
- * box 0 hits it, sending him back the way he came (both speeds reversed); otherwise his body on box 0 hurts
- * him. A hurt counts whether or not he can be hurt then.
+ * Coll_Player_Boss_1: while a player attacks, the body's box 1 on their body hurts them and their attack box on
+ * its box 0 hits it, sending them back the way they came (both speeds reversed); otherwise their body on box 0
+ * hurts them. A hurt counts whether or not they can be hurt then.
  */
-function bossHit(s, x, y, ctx) {
-  const p = ctx.player, [b0, b1] = s.boxes, [body, attack] = p.boxes;
+function bossHit(s, x, y, ctx, p) {
+  const [b0, b1] = s.boxes, [body, attack] = p.boxes;
   if (!b0 || !b1 || p.dead) return HIT_NONE;
   const px = Math.floor(p.x), py = Math.floor(p.y);
   if (attack) {
-    if (overlap(x, y, b1, px, py, body)) { ctx.world.damage(); return HIT_PLAYER; }
+    if (overlap(x, y, b1, px, py, body)) { ctx.world.damage(p); return HIT_PLAYER; }
     if (overlap(x, y, b0, px, py, attack)) { p.xsp = -p.xsp; p.ysp = -p.ysp; return HIT_ENEMY; }
   }
-  if (body && overlap(x, y, b0, px, py, body)) { ctx.world.damage(); return HIT_PLAYER; }
+  if (body && overlap(x, y, b0, px, py, body)) { ctx.world.damage(p); return HIT_PLAYER; }
   return HIT_NONE;
 }
 
@@ -169,11 +169,11 @@ export function createEggHammerTank(e, slot, anims, ctx) {
   const arms = [];
   let hammer = null, phase = wait;
 
-  // Sonic against the body while it isn't flashing; returns the result (sub_802611C's hit test)
+  // Sonic and the CPU partner against the body while it isn't flashing; returns the result (sub_802611C's hit test)
   function hitTest(c, x, y) {
     s.white = false;
     if (flash !== 0) return HIT_NONE;
-    return bossHit(s, x, y, c);
+    return eachPlayer(c, p => bossHit(s, x, y, c, p));
   }
   // the sprites at (x, y), Eggman a pixel higher on the body's second script, white on every other pair of a
   // hit's first 15 frames, then shown on every other pair of its last 16
@@ -347,8 +347,8 @@ export function createEggHammerTank(e, slot, anims, ctx) {
   }
 
   // The hammer (CreateEHTHammer) at the arm's end, 96 px from the pivot. It keeps its first frame's box and,
-  // while the tank isn't flashing, hurts Sonic when his own rectangle touches it, Eggman laughing at him even
-  // when he can't be hurt then. Its own angle keeps it level until the arm is half way down either side
+  // while the tank isn't flashing, hurts a player whose own rectangle touches it, Eggman laughing even when they
+  // can't be hurt then. Its own angle keeps it level until the arm is half way down either side
   // (Task_EHTHammer). Flying off (Task_8027600, Task_8027714), it goes 2 px a frame toward the screen's middle,
   // from 6 px a frame up, spinning 42 steps a frame and the other way at each bounce on the floor, with an
   // explosion every 8 frames, for 181 frames.
@@ -380,11 +380,13 @@ export function createEggHammerTank(e, slot, anims, ctx) {
         const own = angle();
         const [x, y] = placed(c, HAMMER_REACH);
         if (flash === 0) {
-          const g = pivot.rotation, p = c.player;
+          const g = pivot.rotation;
           const cx = s16(pivot.x + c.cam.x + ((COS(g) * 3) >> 9)), cy = s16(pivot.y + c.cam.y + ((SIN(g) * 3) >> 9));
-          if (h.boxes[0] && !p.dead && overlap(cx, cy, h.boxes[0], Math.floor(p.x), Math.floor(p.y), sonicRect(p))) {
-            c.world.damage();
-            startAnim(s2, 'hammerTankEggmanLaugh');
+          for (const p of c.players) {
+            if (h.boxes[0] && !p.dead && overlap(cx, cy, h.boxes[0], Math.floor(p.x), Math.floor(p.y), ownRect(p))) {
+              c.world.damage(p);
+              startAnim(s2, 'hammerTankEggmanLaugh');
+            }
           }
         }
         c.draw(h, x, y, { rotation: (own + pivot.rotation) & 0x3FF, scaleX: 256, scaleY: 256, double: false, matrix: MATRIX });

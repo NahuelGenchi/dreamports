@@ -17,16 +17,18 @@ export function createRamp(e, slot) {
   const dir = e.d[0] ? 1 : -1, w = e.d[2] * 8, h = e.d[3] * 8;
   return {
     run(ctx) {
-      const p = ctx.player, x = Math.floor(p.x), y = Math.floor(p.y);
-      if (!p.dead && x >= e.x && x <= e.x + w && y >= e.y && y <= e.y + h && p.xsp * dir > FAST) {
-        p.onObject = null; p.air = true; p.jumped = false;
-        standUp(p);
-        p.ysp = -RISE;
-        p.xsp = dir * Math.min(p.xsp * dir + BOOST, MAX);
-        // Player_TransitionCancelFlyingAndBoost
-        endAttack(p); p.pushing = false; p.airLock = false;
-        p.state = 'spring';
-        ctx.world.playSound(SONG.SPRING);
+      for (const p of ctx.players) {
+        const x = Math.floor(p.x), y = Math.floor(p.y);
+        if (!p.dead && x >= e.x && x <= e.x + w && y >= e.y && y <= e.y + h && p.xsp * dir > FAST) {
+          p.onObject = null; p.air = true; p.jumped = false;
+          standUp(p);
+          p.ysp = -RISE;
+          p.xsp = dir * Math.min(p.xsp * dir + BOOST, MAX);
+          // Player_TransitionCancelFlyingAndBoost
+          endAttack(p); p.pushing = false; p.airLock = false;
+          p.state = 'spring';
+          ctx.world.playSound(SONG.SPRING);
+        }
       }
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       return true;

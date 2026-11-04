@@ -3,9 +3,9 @@
 // switch the music manager off, and put up a white band with "SONIC GOT THROUGH ACT 1" scrolling along it, then
 // the time bonus and the ring bonus, each label's letters and figures growing in one by one. From the 182nd
 // frame both bonuses count down 100 a frame into the score, with a tick every fourth frame of the stage clock and
-// a chime at the end, when the camera stops and Sonic, off the right of the screen, is stopped too. A while
-// later the texts slide away and the screen fades to black, all but the band, and 45 frames into the fade the
-// next act starts.
+// a chime at the end, when the camera stops and Sonic, off the right of the screen, is stopped too, with the CPU
+// partner if he is past it too. A while later the texts slide away and the screen fades to black, all but the
+// band, and 45 frames into the fade the next act starts.
 
 import { SONG } from '../sound/songs.js';
 
@@ -177,7 +177,7 @@ function fadeOut(fade) {
 
 /**
  * Runs the results' main task (Task_8057888) and then its four pieces' for one frame. `world` gives the
- * stage: { player, camera, stageTime, addScore(n), playSound(song) }. Returns false on the frame the next act
+ * stage: { player, partner, camera, stageTime, addScore(n), playSound(song) }. Returns false on the frame the next act
  * starts, with the last frame's sprites left as they were.
  */
 export function runResults(r, world) {
@@ -197,7 +197,15 @@ export function runResults(r, world) {
       // the bonuses counted: the camera stays, and Sonic stops once he is off the right of the screen
       const p = world.player, cam = world.camera;
       cam.speedX = 0; cam.speedY = 0;
-      if (((Math.floor(p.x) - Math.floor(cam.x) + 64) >>> 0) > 368) { p.xsp = 0; p.gsp = 0; }
+      if (((Math.floor(p.x) - Math.floor(cam.x) + 64) >>> 0) > 368) {
+        p.xsp = 0; p.gsp = 0;
+        const q = world.partner;
+        if (q && Math.floor(q.x) - Math.floor(cam.x) > 304) {
+          q.carried = true; q.ignoreInput = true; q.heldInput = null;
+          q.jumpPressed = false; q.attackPressed = false;
+          q.xsp = 0; q.gsp = 0;
+        }
+      }
       if (k > r.wait + FADE_AFTER) {
         fadeOut(r.fade);
         if (r.countdown === 0 || --r.countdown === 0) { r.countdown = 0; next = true; }

@@ -23,31 +23,37 @@ export function createHidingSpikes(e, slot, anims) {
   const down = e.kind === HIDING_SPIKES_DOWN;
   const o = { x: e.x, y: e.y, ...makeSprite(LOOKS[2], { flipY: down, order: 17 }) };
   let variant = -1;   // none yet: the sprite starts with no animation
-  let last = 0;       // movestateBuffer: what the last collision found while they were up
+  const last = [0, 0];   // movestateBuffer: what the last collision found while they were up, for each player
   const show = v => { variant = v; startAnim(o, LOOKS[v]); animate(o, anims); };
-  const hurt = world => { if (world.damage()) world.playSound(SONG.SPIKES); };
+  const hurt = (world, p) => { if (world.damage(p)) world.playSound(SONG.SPIKES); };
   return {
     run(ctx) {
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
-      const p = ctx.player, world = ctx.world, t = world.tick % 128;
-      if (t >= 64 && t < 124) {
-        if (variant !== 2) {
-          show(2);
-          const hb = o.boxes[0], px = Math.floor(p.x), py = Math.floor(p.y);
-          if (hb && !p.dead && overlap(o.x, o.y, hb, px, py, [-SOX, -p.offsetY, SOX, p.offsetY])) {
-            p.y = down ? o.y + hb[3] + p.offsetY - 1 : o.y + hb[1] - (p.offsetY - 1);
-            hurt(world);
-          } else if (!down && (platform(o, hb, p, world.terrain) & LANDED)) hurt(world);
+      const world = ctx.world, t = world.tick % 128;
+      // each player's turn steps the animation, so with the CPU partner it runs twice a frame; the frame they
+      // come up for Sonic is their first frame up for the partner too
+      let first = false;
+      for (const [i, p] of ctx.players.entries()) {
+        if (t >= 64 && t < 124) {
+          if (variant !== 2 || (i !== 0 && first)) {
+            if (i === 0) first = true;
+            show(2);
+            const hb = o.boxes[0], px = Math.floor(p.x), py = Math.floor(p.y);
+            if (hb && !p.dead && overlap(o.x, o.y, hb, px, py, [-SOX, -p.offsetY, SOX, p.offsetY])) {
+              p.y = down ? o.y + hb[3] + p.offsetY - 1 : o.y + hb[1] - (p.offsetY - 1);
+              hurt(world, p);
+            } else if (!down && (platform(o, hb, p, world.terrain) & LANDED)) hurt(world, p);
+          } else {
+            last[i] = platform(o, o.boxes[0], p, world.terrain);
+            if (last[i] & (down ? FROM_BELOW : LANDED)) hurt(world, p);
+          }
         } else {
-          last = platform(o, o.boxes[0], p, world.terrain);
-          if (last & (down ? FROM_BELOW : LANDED)) hurt(world);
+          if (p.onObject === o) { p.onObject = null; p.air = true; }
+          if (last[i] & PUSHING) { p.pushing = false; last[i] = 0; }
+          if (t >= 60) show(t < 62 || t >= 126 ? 0 : 1);
         }
-      } else {
-        if (p.onObject === o) { p.onObject = null; p.air = true; }
-        if (last & PUSHING) { p.pushing = false; last = 0; }
-        if (t < 60) return true;
-        show(t < 62 || t >= 126 ? 0 : 1);
       }
+      if (t < 60) return true;
       ctx.draw(o, o.x, o.y);
       return true;
     },

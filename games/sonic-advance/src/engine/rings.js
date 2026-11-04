@@ -33,20 +33,22 @@ export function createRings(layout, anims) {
     },
 
     /**
-     * Steps the spin and collects what Sonic touches (nothing when `player` is null). Returns the rings
-     * taken this frame, in the original's order: by region row, then column, then the region's list.
+     * Steps the spin and collects what each of `players` touches, Sonic and then the CPU partner (none when they
+     * can't take rings), both with Sonic's height, `oy`, as the original works out its box once. Returns the rings taken this frame, in the original's order: by player, then region row,
+     * then column, then the region's list.
      */
-    update(player) {
+    update(players = [], oy = 0) {
       tickAnim(anim, anims);
-      if (!player) return [];
-      const px = Math.floor(player.x), py = Math.floor(player.y), oy = player.offsetY;
       const taken = [];
-      // the search's bottom and right edges come in by a ring's height and half its width, so a ring just
-      // inside the next region down or right can be missed for a frame
-      for (let ry = lower(py - oy); ry <= upper(py + oy - 2 * TILE) && ry < regionsY; ry++) {
-        for (let rx = lower(px - HALF_WIDTH - TILE); rx <= upper(px + HALF_WIDTH - TILE) && rx < regionsX; rx++) {
-          for (const ring of regions[rx + ry * regionsX]) {
-            if (!ring.taken && touching(px, py, oy, ring.x, ring.y)) { ring.taken = true; taken.push(ring); }
+      for (const player of players) {
+        const px = Math.floor(player.x), py = Math.floor(player.y);
+        // the search's bottom and right edges come in by a ring's height and half its width, so a ring just
+        // inside the next region down or right can be missed for a frame
+        for (let ry = lower(py - oy); ry <= upper(py + oy - 2 * TILE) && ry < regionsY; ry++) {
+          for (let rx = lower(px - HALF_WIDTH - TILE); rx <= upper(px + HALF_WIDTH - TILE) && rx < regionsX; rx++) {
+            for (const ring of regions[rx + ry * regionsX]) {
+              if (!ring.taken && touching(px, py, oy, ring.x, ring.y)) { ring.taken = true; taken.push(ring); }
+            }
           }
         }
       }

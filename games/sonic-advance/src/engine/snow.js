@@ -14,9 +14,11 @@ export function createSnow(e, slot, ctx) {
   const w = e.d[2] * 8, h = e.d[3] * 8;
   return {
     run(ctx) {
-      const p = ctx.player, x = Math.floor(p.x), y = Math.floor(p.y);
-      if (!p.dead && x >= e.x && x <= e.x + w && y >= e.y && y <= e.y + h && !p.air) {
-        p.gsp = Math.trunc(Math.round(p.gsp * 256) * 95 / 100) / 256;
+      for (const p of ctx.players) {
+        const x = Math.floor(p.x), y = Math.floor(p.y);
+        if (!p.dead && x >= e.x && x <= e.x + w && y >= e.y && y <= e.y + h && !p.air) {
+          p.gsp = Math.trunc(Math.round(p.gsp * 256) * 95 / 100) / 256;
+        }
       }
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       return true;

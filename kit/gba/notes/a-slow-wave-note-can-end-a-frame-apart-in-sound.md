@@ -1,0 +1,7 @@
+# A slow wave note's last steps can fall a frame apart, so prove can mark a few frames by its sound near a silence.
+
+About: the sound hardware; kit/gba/sound/apu.js; reading a sound that differs
+
+Proof: #91; #527
+
+mGBA's wave channel keeps its last sample after the sound library stops it, where the kit's falls to silence. Doing as mGBA does in the kit took away frame 1968 of `character-select`, and made frame 2171 of Sonic Advance's three X Zone recordings differ, so it isn't in. At a slow pitch its steps are far apart: in Sonic Advance's character select song one turn of the wave takes 1.53 frames, so each step is a loud event in the low bands. The library runs about 85,000 cycles into mGBA's frame, and starts a wave note 1,300 to 3,300 cycles later than it stops one, depending on what else it does that frame. Each note's length therefore differs by a step now and then, and the wave's phase drifts from the kit's, which runs at the frame's start with notes of whole frames. Where a note ends just before a silence, one last step can land in a frame that is silent on the other side, up to 21.9 dB apart at 125 Hz. Moving the kit's engine to 85,340 cycles into its frame cut the character select's frames from 6 to 3, and made 5 frames of Neo Green Hill Zone act 1 differ that had matched, so it isn't in. Delaying the wave's first step by 1,200 to 2,324 cycles only moved them, as did playing the DirectSound samples 196,000 or 228,000 cycles after the engine runs in place of a whole frame.

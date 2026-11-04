@@ -1,0 +1,28 @@
+{
+  "about": "From power-on with Sonic having cleared Neo Green Hill Zone act 1: A on Sonic in the character select, the course select's slide left alone, B back to the character select, A on Sonic again, and A on act 1 and its first moments.",
+  "frames": 2700,
+  "start": "unlocked=1&select=1",
+  "held": [
+    [0,[]],
+    [150,["A"]],
+    [156,[]],
+    [950,["START"]],
+    [956,[]],
+    [1300,["START"]],
+    [1306,[]],
+    [1550,["START"]],
+    [1556,[]],
+    [1650,["A"]],
+    [1656,[]],
+    [1770,["A"]],
+    [1776,[]],
+    [1950,["B"]],
+    [1956,[]],
+    [2110,["A"]],
+    [2116,[]],
+    [2300,["A"]],
+    [2306,[]]
+  ],
+  "onlyInOriginal": [{"at": 1650, "frames": 240, "held": [[0, ["A"]], [6, []], [121, ["B"]], [125, []]], "sets": [{"frame": 60, "address": "03005168", "bytes": 1, "value": 1}], "about": "Game Start, the character select with Sonic's progress set, and B back to the main menu, as the original has no other way to be given progress: the Dreamport's address gives it instead."}],
+  "clip": {"at":1760,"frames":300}
+}

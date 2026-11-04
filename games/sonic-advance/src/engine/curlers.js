@@ -13,11 +13,13 @@ export function createCurler(e, slot) {
   if (e.kind !== CURLER) return null;
   return {
     run(ctx) {
-      const p = ctx.player, x = Math.floor(p.x), y = Math.floor(p.y);
-      if (!p.dead && x >= e.x - 8 && x <= e.x + 8 && y >= e.y - 8 && y <= e.y + 8) {
-        endAttack(p); p.pushing = false;
-        p.state = 'spin';
-        curlUp(p);
+      for (const p of ctx.players) {
+        const x = Math.floor(p.x), y = Math.floor(p.y);
+        if (!p.dead && x >= e.x - 8 && x <= e.x + 8 && y >= e.y - 8 && y <= e.y + 8) {
+          endAttack(p); p.pushing = false;
+          p.state = 'spin';
+          curlUp(p);
+        }
       }
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       return true;
