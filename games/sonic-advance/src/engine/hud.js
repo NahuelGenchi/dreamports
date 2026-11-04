@@ -55,7 +55,8 @@ export function updateHud(hud, { ringCount, score, lives, courseTime, stageTime,
   // the lives digit shows one less than the count, 9 at most
   row([lives > 9 ? 9 : lives === 0 ? 0 : lives - 1], 22, 143);
 
-  hud.sprites = [...icons, ...glyphs];
+  // the digits are at OAM order 2 and the icons at 3 (Task_StageUIMain, sub_8053BAC), and the first put in is in front
+  hud.sprites = [...icons, ...glyphs.reverse()];
   if (timerReversed) return courseTime < BEEP_BELOW && courseTime % 60 === 0 && courseTime !== 0;
   return courseTime > BEEP_AFTER && courseTime < TIME_LIMIT && courseTime % 60 === 0;
 }

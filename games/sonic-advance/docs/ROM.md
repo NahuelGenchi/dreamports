@@ -1228,6 +1228,8 @@ In Chrome 156 and Firefox 159 (headless, each with a new profile), `?debug&chara
 
 **Only read in the code, not checked:** turning under water; the marble track's tails (no run reached a marble track); the objects' own rules for Tails above (the item box's top in flight, the wall poles, red flags, bumpers, ice blocks and grind rails), and the 1-up's face; the goal, the tally and the results with his name; the game over and the continue screen with his face; the bosses but the Egg Hammer Tank, X Zone and the normal ending as Tails.
 
+Since #90 the recording `tails-neo-green-hill` plays him from power-on with the proof tools: all of Neo Green Hill act 1, flying and with a spin dash through a loop, its goal, its results and the start of act 2, 11,500 frames, every picture the same, with one frame whose sound differs.
+
 ### Knuckles
 
 `?character=2` plays as Knuckles (`gSelectedCharacter` 2), as `?character=1` does Tails. His first animation is 199, so his run is 204, and of Sonic's own moves he keeps only the spin dash's rev. His moves come from `player_knuckles.c` ([`player.js`](../src/engine/player.js)). His own:
@@ -1292,6 +1294,8 @@ Four things were wrong in the port for every character, and Knuckles' runs found
 - **The effects** (brake dust, the spin dash's dust, the uppercut's flame, the float's splash) are tasks of their own at `0x4001`, made as they appear, so one made after a shield runs after it and is drawn behind it in OAM order 8. The port drew them all in front.
 - **Dying** sets `itemEffect` to 0: a shield and invincibility go, as at the time-up.
 - **Ice Mountain's ice blocks** break into pieces placed as the boulder's are (above), the scale halved and rounded down first, so on an odd scale the pieces sit a pixel nearer the middle. The port multiplied by the whole scale.
+
+Since #90 the recording `knuckles-neo-green-hill` plays him from power-on with the proof tools: 8,200 frames of Neo Green Hill act 1, running, gliding and climbing, every picture the same, with two frames whose sound differs.
 
 **Only read in the code, not checked:** the objects' own rules for Knuckles above, but the ice block's (no run reached a bumper, a wall pole, a flipper, a carousel, a run wheel, a moving spring, a skating stone, a marble track, a waterfall, the Egg Spider or the Egg Press with him); the uppercut under water; climbing with speed shoes; the float's look up; the angle a wall gives him where the wall search finds none, which the original reads from a stack byte the search leaves unset (here his angle stays as it was); the goal, the tally and the results with his name; the game over and the continue screen with his face; the bosses but the Egg Hammer Tank, X Zone and the normal ending as Knuckles.
 

@@ -139,8 +139,8 @@ function queueSprites(c) {
   copyAtVblank(c);
 }
 
-/** 0x0803e6e8: the palette one step to black each frame, then the main menu. In the original 0x08036560 comes first,
- *  the name entry, which goes straight on to the menu when a name is saved; the Dreamport has no name yet to ask for. */
+/** 0x0803e6e8: the palette one step to black each frame, then the main menu. In the original the name entry comes
+ *  first, which goes straight on to the menu when a name is saved; the Dreamport has no name yet to ask for. */
 function fadeToNext(c) {
   if (fadeToBlack(c, PALETTE, 256)) {
     setBlend(c, 0, 0, 0, 0, 0, 0);
