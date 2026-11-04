@@ -142,7 +142,7 @@ Until the character select is in, add `?character=1` to the game's address to pl
 
 ### Playing as Amy
 
-Add `?character=3` to play as Amy, for example [dreamports.net/play/sonic-advance/?character=3](https://dreamports.net/play/sonic-advance/?character=3). The attack button swings her hammer, and pressed again a second time. In the air it swings there, and with down held swirls it. Down and attack leap off the hammer, down and jump dive, and attack in a dive slams and slides on. Her hammer on a spring launches her 1.5 times as fast. Her moves match the original frame by frame in the first part of Neo Green Hill Zone act 1 ([docs/ROM.md](docs/ROM.md#amy)). The other zones aren't checked yet.
+Add `?character=3` to play as Amy, for example [dreamports.net/play/sonic-advance/?character=3](https://dreamports.net/play/sonic-advance/?character=3). The attack button swings her hammer, and pressed again a second time. In the air it swings there, and with down held swirls it. Down and attack leap off the hammer, down and jump dive, and attack in a dive slams and slides on. Her hammer on a spring launches her 1.5 times as fast. Her moves match the original frame by frame in the first part of Neo Green Hill Zone act 1 and in a special stage, and nearly so in an act of every other zone and against a boss ([docs/ROM.md](docs/ROM.md#amy)).
 
 ### Playing as Knuckles
 

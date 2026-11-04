@@ -1081,7 +1081,7 @@ In the one-game run, the special stage's run (`run.js`, with that run's keys) al
 
 Between them, the runs meet every kind of dash pad. The steps per stage, the emeralds, the score, the lives and the continues at the end of each are the same in the engine as in mGBA in every run. In Chrome 156 and Firefox 159 (headless, each with a new profile), one game from Neo Green Hill act 1 took the seven springs in turn, with the next act started the way a zone's end starts it (`nextZone`); the same steering program played each stage in the page, and every stage took the same frames and gave the same score as in mGBA. All seven emeralds were won (`onsoku.emeralds` 127), and the zone after X Zone (`nextZone` with level 13, as X Zone's results ask for it) was then the Moon Zone, not the congratulations. Neither console showed an error from the game; Chrome's one error was the missing `/favicon.svg`, which the site serves from outside this repository.
 
-**Only read in the code, not checked:** Knuckles and Amy in the special stage (their animations are the character's first animation plus the same numbers; Tails' were checked, see [Tails](#tails)); the results after the goal's target was reached at the checkpoint (`unk0 == 2` with enough rings), which no run reached; Amy's hammer on the spring and the partner; the act again after stages 2 to 7, played in the browsers but not compared with mGBA's frames; a special stage after a real act's tally, boss or game over between two stages (the one-game run went from act to act by losing a life), which could leave other things in the memory the quirks above read.
+**Only read in the code, not checked:** the results after the goal's target was reached at the checkpoint (`unk0 == 2` with enough rings), which no run reached; the partner; the act again after stages 2 to 7, played in the browsers but not compared with mGBA's frames; a special stage after a real act's tally, boss or game over between two stages (the one-game run went from act to act by losing a life), which could leave other things in the memory the quirks above read.
 
 ### Start positions
 
@@ -1199,7 +1199,7 @@ In Chrome 156 and Firefox 159 (headless, each with a new profile), `?debug&chara
 
 **Only read in the code, not checked:** turning under water; the marble track's tails (no run reached a marble track); the objects' own rules for Tails above (the item box's top in flight, the wall poles, red flags, bumpers, ice blocks and grind rails), and the 1-up's face; the goal, the tally and the results with his name; the game over and the continue screen with his face; the bosses but the Egg Hammer Tank, X Zone and the normal ending as Tails.
 
-Since #90 the recording `tails-neo-green-hill` plays him from power-on with the proof tools: all of Neo Green Hill act 1, flying and with a spin dash through a loop, its goal, its results and the start of act 2, 11,500 frames, every picture the same, with frame 1709's sound differing, which is the end of the main menu's music running out next to the character select the Dreamport skips.
+Since #90 `tails-ice-mountain`, `tails-x-zone` and `tails-special-stage` compare him there too, with what those differ by listed under [Amy](#amy). The recording `tails-neo-green-hill` plays him from power-on with the proof tools: all of Neo Green Hill act 1, flying and with a spin dash through a loop, its goal, its results and the start of act 2, 11,500 frames, every picture the same, with frame 1709's sound differing, which is the end of the main menu's music running out next to the character select the Dreamport skips.
 
 ### Knuckles
 
@@ -1266,7 +1266,7 @@ Four things were wrong in the port for every character, and Knuckles' runs found
 - **Dying** sets `itemEffect` to 0: a shield and invincibility go, as at the time-up.
 - **Ice Mountain's ice blocks** break into pieces placed as the boulder's are (above), the scale halved and rounded down first, so on an odd scale the pieces sit a pixel nearer the middle. The port multiplied by the whole scale.
 
-Since #90 the recording `knuckles-neo-green-hill` plays him from power-on with the proof tools: 8,200 frames of Neo Green Hill act 1, running, gliding and climbing, every frame the same, picture and sound.
+Since #90 `knuckles-ice-mountain`, `knuckles-x-zone` and `knuckles-special-stage` compare him there too, with what those differ by listed under [Amy](#amy). The recording `knuckles-neo-green-hill` plays him from power-on with the proof tools: 8,200 frames of Neo Green Hill act 1, running, gliding and climbing, every frame the same, picture and sound.
 
 **Only read in the code, not checked:** the objects' own rules for Knuckles above, but the ice block's (no run reached a bumper, a wall pole, a flipper, a carousel, a run wheel, a moving spring, a skating stone, a marble track, a waterfall, the Egg Spider or the Egg Press with him); the uppercut under water; climbing with speed shoes; the float's look up; the angle a wall gives him where the wall search finds none, which the original reads from a stack byte the search leaves unset (here his angle stays as it was); the goal, the tally and the results with his name; the game over and the continue screen with his face; the bosses but the Egg Hammer Tank, X Zone and the normal ending as Knuckles.
 
@@ -2059,9 +2059,15 @@ Read in the code only: Sonic dying while a lift or bowl holds him, one of them l
 
 **Objects.** Her hammer launches her 1.5 times as fast off springs, hidden springs, moving springs and special springs, and opens a boss's capsule (`Coll_AmyHammer_Spring`), and it breaks ice blocks. A bounce block leaves her with no air moves. Swinging hooks, lifts, skating stones, spiked platforms, square platforms and waterfalls leave her uncurled (state 85) where they curl up the others. Her hammer breaks boulders too. She grinds on rails as Sonic does, with a sound of her own (song 134), and a whirlwind or an updraft leaves her with no air moves. A run wheel doesn't slow her dive or take her speed down while she crouches on it, and a tube's mouth plays no spin sound for her.
 
-**How Amy was checked.** The recording `amy-neo-green-hill` plays her from power-on with the proof tools: 8,000 frames of Neo Green Hill act 1 with the moves above, every one of them the same, picture and sound.
+**How Amy was checked.** The recording `amy-neo-green-hill` plays her from power-on with the proof tools: 8,000 frames of Neo Green Hill act 1 with the moves above, every one of them the same, picture and sound. The recordings `amy-secret-base-act-2`, `amy-casino-paradise`, `amy-ice-mountain`, `amy-angel-island`, `amy-egg-rocket`, `amy-cosmic-angel` and `amy-x-zone` take the original there through its course select, with the level unlocked, and `?level=` takes the Dreamport there. `amy-x-zone` plays 7,000 frames against the Egg Wrecker, with a death and the restart. `amy-special-stage` puts her above Neo Green Hill act 1's special spring and plays 3,200 frames of the stage with every frame the same. What those recordings still show:
 
-**Only read in the code, not checked:** every object rule above, as no run reached one, and everything past the first half of Neo Green Hill act 1: the other zones, the bosses, the special stages, the goal and the results with her name.
+- Every start from the course select differs by its sound for about 25 frames after it, as the main menu's music runs out where the original's course select has its own, and the HUD's first frame differs, as the original draws a tile from before the font there (see `hudFlash` in [`levels.js`](../src/rom/levels.js)).
+- A second act picked there, Secret Base act 2 and Cosmic Angel, shows its title card's band for 26 frames while the original is still black.
+- Angel Island's Leon differs from frames 2205 to 2353: its counter between shots is memory the original never sets, and the Dreamport starts it at 0.
+- Egg Rocket's capsule lights differ, as #105 says.
+- Ice Mountain's frame 2347 differs by 3 pixels at a Yukimaru, and single frames differ by sound in the zones, more often against a boss, none of them explained yet.
+
+**Only read in the code, not checked:** her object rules above, unless a recording happened to reach them, as no run was aimed at them; water; a boss but the Egg Wrecker; the goal and the results with her name; the normal ending.
 
 ### Mecha Knuckles
 
