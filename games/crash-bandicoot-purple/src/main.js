@@ -35,7 +35,7 @@ const input = createInput(LAYOUT);
 const sound = createSound({
   worklet: new URL('./sound/worklet.js', import.meta.url),
   calls: call => ({
-    startSong(address) { call('startSong', address); },
+    startSong(address, ahead = 0) { call('startSong', address, ahead); },
     playEffect(address) { call('playEffect', address); },
   }),
 });
@@ -69,7 +69,8 @@ createRomSetup(picker, {
 // The game so far: the copyright screen and the logos. What comes after them, the title screen, isn't ported yet, so
 // the screen stays black there.
 function createGame(video, rom, sound) {
-  const core = createCore(video, rom, sound);
+  // a start point (tools/README.md), which the game's own path doesn't reach yet: ?hub opens in the first world's hub
+  const core = createCore(video, rom, sound, new URLSearchParams(location.search).has('hub') ? 'hub' : null);
   return { step(keys) { step(core, keys); } };
 }
 
