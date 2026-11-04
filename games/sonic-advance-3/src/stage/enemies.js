@@ -4,6 +4,7 @@
 import { createSprite, updateSprite, displaySprite, SPRITE } from '../sprite.js';
 import { hurtPlayer, reboundFromEnemy } from './player.js';
 import { rewardRing } from './rings.js';
+import { noticeEnemy } from './partner.js';
 import { tileUpDown } from './collision.js';
 
 const PX = 256, TILE = 8, GROUND_LAYER = 1;
@@ -26,10 +27,11 @@ function touches(s, x, y, box, p, attacking) {
   return boxesTouch(x, y, own, p.x >> 8, p.y >> 8, body);
 }
 
-// sub_805C63C: whether a character has beaten it, and otherwise it hurts them. Being invincible comes with what makes them
-// so, and what sub_8004D68 keeps for the moves that aim at an enemy comes with those moves
+// sub_805C63C: whether a character has beaten it, and otherwise it hurts them, with the partner told where it is first.
+// Being invincible comes with what makes them so, and what sub_8004428 keeps for the moves that aim at an enemy with those moves
 function beatenBy(s, x, y, stage) {
   let beaten = false;
+  noticeEnemy(stage.mind, stage.players[1], x * PX, y * PX);
   for (const p of stage.players) {
     if (touches(s, x, y, 1, p, false)) {
       hurtPlayer(p);

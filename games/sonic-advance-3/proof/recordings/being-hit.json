@@ -1,6 +1,6 @@
 {
-  "about": "Sonic running right through Route 99 act 1, from a start point, over the platform and into the first Akatento, which hits him: his rings scatter, the number flashes red, and he's thrown back. He lands, lets go and blinks until it wears off, while the rings blink out, with the Akatento walking on.",
-  "frames": 1190,
+  "about": "Sonic running right through Route 99 act 1, from a start point, over the platform and into the first Akatento, which hits him: his rings scatter, the number flashes red, and he's thrown back. He lands, lets go and blinks until it wears off, while the rings blink out, with the Akatento walking on. He then waits, and the number goes up from frame 1437 while Tails catches up, as what the Akatento told him while right was held has sent him another way.",
+  "frames": 1700,
   "start": "level=3&seed=5",
   "held": [
     [
