@@ -24,6 +24,7 @@ import { setOffsetY } from './sensors.js';
 import { SPRITE_OFFSET_Y, BALL_SPRITE_OFFSET_Y } from './constants.js';
 import { s8 } from './trig.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const FLIPPER = 54, FLIPPER_STANDING = 56, FLIPPER_BLUE = 73;
 const SOX = 6;                 // Sonic's spriteOffsetX
@@ -188,7 +189,7 @@ function blue(e, slot, anims) {
       const p = ctx.player;
       if (!p.dead) {
         if (holding) {
-          if (art !== 0 && --art === 0) startAnim(o, 'flipper', true);
+          if (art !== 0 && --art === 0) startAnim(o, fixes.on ? 'blueFlipper' : 'flipper', true);
           vy += GRAVITY;
           hy += vy;
           p.y = hy; p.x = hx; p.ysp = vy; p.xsp = 0; p.gsp = 0;

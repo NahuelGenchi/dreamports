@@ -6,6 +6,7 @@ import { makeSprite, startAnim, animate, offCam } from './objects.js';
 import { overlap } from './collide.js';
 import { standUp, endAttack } from './player.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const PARTY_BALLOON = 59;
 const COLOURS = ['balloonBlue', 'balloonRed', 'balloonYellow'];
@@ -21,6 +22,7 @@ function throwUp(p) {
   standUp(p);
   p.ysp = -LIFT;
   p.state = 'springRise';
+  if (fixes.on) p.animRestart = true;
 }
 
 /** The task for a party balloon entity, or null when `e` is not one. */

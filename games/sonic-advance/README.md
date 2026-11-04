@@ -167,7 +167,11 @@ The act opens, and starts over after a lost life, with the original title card s
 
 ## Extras you can switch on
 
-Four optional additions on top of the original game. All are off until you turn them on, and with them off the game runs exactly as without them.
+Five optional additions on top of the original game. All are off until you turn them on, and with them off the game runs exactly as without them.
+
+### Bug fixes
+
+The game keeps the original's bugs, because it's checked against the original frame by frame. Turn this on to fix them: the grind rail that drops Sonic through Neo Green Hill, lives that wrap from 255 to 0, Pierrot's ball that traps a rolling Sonic, a Mecha Knuckles that falls apart one piece short, and many more. Press <kbd>N</kbd> or use the *Bug fixes* switch in the settings. A few of them change how a moment plays, so a recording made with it on won't match the original.
 
 ### Widescreen view
 
