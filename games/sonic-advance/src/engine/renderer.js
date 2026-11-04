@@ -1082,8 +1082,9 @@ export function createRenderer(canvas, assets) {
     // mGBA takes a sprite's pixels up to the priority of each later sprite whose box covers them, even where that sprite
     // is transparent, and a later sprite of that same priority can't then cover them. So a spark at priority 2 shows in
     // front of the front layer inside Sonic's box as he grinds, and anything inside a demo's words in front of Sonic too
-    // (notes/a-later-sprite-lifts-what-it-covers.md): each such sprite is drawn again, in the box, just behind the later one
-    const plain = s => !s.white && !s.window && !s.rush && !s.affine && !s.allWhite && s.frame >= 0 && sheetFor(s.sheet);
+    // (notes/a-later-sprite-lifts-what-it-covers.md): each such sprite is drawn again, in the box, just behind the later one. Boost Mode's sprites aren't the
+    // original's, and their frames are in their own sheet, so they take no part
+    const plain = s => !s.white && !s.window && !s.rush && !s.boost && !s.affine && !s.allWhite && s.frame >= 0 && sheetFor(s.sheet);
     const placeOf = s => [s.x - (s.screen ? -ox : vx), s.y - (s.screen ? -oy : vy)];
     const boxOf = s => {
       const [, , w, h, ax, ay] = sheetFor(s.sheet).frames[s.frame], [x, y] = placeOf(s);
