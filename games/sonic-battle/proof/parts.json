@@ -22,6 +22,7 @@
     { "name": "The SEGA and Sonic Team logos", "recording": "logos", "frames": [0, 389] },
     { "name": "The intro", "recording": "logos-and-intro", "frames": [390, 546] },
     { "name": "The title screen", "recording": "title", "frames": [547, 778] },
+    { "name": "The name entry, at the first start" },
     { "name": "The main menu" },
     { "name": "Story mode: Sonic's episode", "needs": ["The fighting"] },
     { "name": "Story mode: Tails's episode", "needs": ["The fighting"] },
