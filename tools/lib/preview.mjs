@@ -98,7 +98,7 @@ const fill = (text, values) => text.replace(/\{\{(\w+)\}\}/g, (_, key) => values
 const hidden = path => path.split('/').some(part => part.startsWith('.'));
 
 // what a preview must never hold: files the ignore rules keep out of the repository, such as ROMs and saves, and
-// any file that is a copy of a game, by its checksum or its cartridge header
+// any file that is a copy of a game or a track of one, by its checksum, its cartridge header or its disc's volume
 function gameDataIn(files, contents) {
   const problems = [];
   let ignored = [];
@@ -109,7 +109,7 @@ function gameDataIn(files, contents) {
     if (error.status !== 1) throw error;   // 1: none of them
   }
   for (const path of ignored) problems.push(`${path}: the ignore rules keep this kind of file out of the repository.`);
-  const copies = new Set(Object.keys(rememberedCopies()));
+  const copies = new Set(Object.entries(rememberedCopies()).flatMap(([sha1, copy]) => [sha1, ...(copy.tracks ?? [])]));
   for (const file of files) {
     const bytes = contents.get(file.sha);
     if (copies.has(createHash('sha1').update(bytes).digest('hex')) || looksLikeCopy(bytes) || looksLikeAnyCopy(bytes)) problems.push(`${file.from}: this is a copy of a game.`);

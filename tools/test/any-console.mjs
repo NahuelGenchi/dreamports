@@ -82,16 +82,20 @@ function tidy() {
   for (const path of [gameFolder(GAME), WORK, RESULTS, CAPTURES, MAP, ...kept]) rmSync(path, { recursive: true, force: true });
 }
 
-// the game's preview as share makes it, from a commit no branch holds, with only what the preview holds to load: it
-// opens, takes the copy and starts, at the console's own screen. Nothing is sent anywhere
-async function startPreview(copy) {
+// the game's preview as share makes it, from a commit no branch holds. Nothing is sent anywhere
+function makeGamePreview() {
   // share's own commit needs a name, which GitHub's machines don't have
   Object.assign(process.env, { GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.invalid', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.invalid' });
   const git = (...args) => execFileSync('git', args, { cwd: REPO, encoding: 'utf8', env: { ...process.env, GIT_INDEX_FILE: join(WORK, 'index') } }).trim();
   git('read-tree', 'HEAD');
   git('add', '--', `games/${GAME}`);
   const commit = git('commit-tree', git('write-tree'), '-p', 'HEAD', '-m', 'The test\'s game');
-  const preview = makePreview({ tip: null, commit, branch: 'test', game: GAME, title: GAME, name: 'a-preview', author: 'nobody', repository: 'nobody/dreamports', url: 'https://nobody.github.io/dreamports/', about: '', guide: '' });
+  return makePreview({ tip: null, commit, branch: 'test', game: GAME, title: GAME, name: 'a-preview', author: 'nobody', repository: 'nobody/dreamports', url: 'https://nobody.github.io/dreamports/', about: '', guide: '' });
+}
+
+// with only what the preview holds to load, it opens, takes the copy and starts, at the console's own screen
+async function startPreview(copy) {
+  const preview = makeGamePreview();
   const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
   const server = await serveRepository({
     answer(request, response, path) {
@@ -211,6 +215,21 @@ async function main() {
 
   const stopped = await startPreview(copy);
   check(!stopped, `its preview opens with what it holds, takes the copy and starts${stopped && `: ${stopped}`}`);
+
+  // a disc split into tracks, the second of which says nothing of what it is, so only what rom remembers can tell
+  writeFileSync(join(WORK, 'one.bin'), cartridge.subarray(0, 8));
+  writeFileSync(join(WORK, 'two.bin'), cartridge.subarray(8));
+  writeFileSync(join(WORK, 'disc.cue'), 'FILE "one.bin" BINARY\nFILE "two.bin" BINARY\n');
+  run = dp('rom', join(WORK, 'disc.cue'));
+  check(run.status === 0 && run.out.includes(GAME), `rom knows a disc by all its tracks: ${run.out.trim().split('\n')[1]}`);
+  writeFileSync(join(gameFolder(GAME), 'music.dat'), cartridge.subarray(8));
+  let refused = '';
+  try {
+    makeGamePreview();
+  } catch (error) {
+    refused = error.message;
+  }
+  check(refused.includes('music.dat: this is a copy of a game'), `share won't publish one of its tracks under another name: ${refused || 'it would'}`);
 }
 
 const kept = { readme: readFileSync(README), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };

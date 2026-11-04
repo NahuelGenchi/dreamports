@@ -49,6 +49,9 @@ function cartridge(bytes) {
   return null;
 }
 
+// how a disc's sectors are laid out: how long each is, and where its data starts
+const SECTORS = [[2048, 0], [2352, 24], [2352, 16]];
+
 // a disc's first volume: where its files start, and how its sectors are laid out
 async function disc(file) {
   const read = async (at, length) => {
@@ -56,7 +59,7 @@ async function disc(file) {
     const { bytesRead } = await file.read(bytes, 0, length, at);
     return bytes.subarray(0, bytesRead);
   };
-  for (const [sector, data] of [[2048, 0], [2352, 24], [2352, 16]]) {
+  for (const [sector, data] of SECTORS) {
     const volume = await read(16 * sector + data, 2048);
     if (ascii(volume, 1, 5) !== 'CD001') continue;
     const system = ascii(volume, 8, 32), title = ascii(volume, 40, 32);
@@ -86,19 +89,32 @@ const dataFiles = async path => {
   return listed.length ? listed : [path];
 };
 
+// the SHA-1 of all these files together, and of each
 async function sha1Of(files) {
-  const hash = createHash('sha1');
-  for (const file of files) for await (const piece of createReadStream(file, { highWaterMark: 0x100000 })) hash.update(piece);
-  return hash.digest('hex');
-}
-
-/** Whether these bytes look like a copy of a game on any console, for what must never leave this computer. */
-export function looksLikeAnyCopy(bytes) {
-  return !!cartridge(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+  const whole = createHash('sha1'), tracks = [];
+  for (const file of files) {
+    const hash = createHash('sha1');
+    for await (const piece of createReadStream(file, { highWaterMark: 0x100000 })) {
+      whole.update(piece);
+      hash.update(piece);
+    }
+    tracks.push(hash.digest('hex'));
+  }
+  return { sha1: whole.digest('hex'), tracks };
 }
 
 /**
- * Reads a copy: { console, title, code, region, revision, size, sha1 }, or null when it can't tell it's a game. `said` is
+ * Whether these bytes look like a copy of a game on any console, for what must never leave this computer. A disc's track
+ * of sound has nothing to tell it by: only the SHA-1s `rom` remembers know that.
+ */
+export function looksLikeAnyCopy(bytes) {
+  const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return !!cartridge(buffer) || SECTORS.some(([sector, data]) => ascii(buffer, 16 * sector + data + 1, 5) === 'CD001');
+}
+
+/**
+ * Reads a copy: { console, title, code, region, revision, size, sha1 }, and `tracks`, the SHA-1 of each file of a disc
+ * split into several, or null when it can't tell it's a game. `said` is
  * the console the person says it's for, for a kind of file that doesn't say: a compressed disc, or a console's own.
  */
 export async function readAnyCopy(path, said = null) {
@@ -129,5 +145,6 @@ export async function readAnyCopy(path, said = null) {
   if (!id) return Object.values(CONSOLES).some(({ files: kinds }) => kinds.includes(extension)) ? null : gbaIn();
   let size = 0;
   for (const data of files) size += (await stat(data)).size;
-  return { console: id, title: found?.title || basename(path, extension), code: found?.code ?? '', region: found?.region ?? null, revision: 0, size, sha1: await sha1Of(files) };
+  const { sha1, tracks } = await sha1Of(files);
+  return { console: id, title: found?.title || basename(path, extension), code: found?.code ?? '', region: found?.region ?? null, revision: 0, size, sha1, tracks: files.length > 1 ? tracks : undefined };
 }

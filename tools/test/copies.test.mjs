@@ -136,6 +136,24 @@ test('a .cue reads the file it names, for its console and its SHA-1', async () =
   assert.equal(copy.sha1, createHash('sha1').update(bytes).digest('hex'));
 });
 
+test('a disc split into tracks knows each track as well as the whole', async () => {
+  const one = disc({ system: 'PLAYSTATION', title: 'MADE UP', files: { 'SYSTEM.CNF;1': 'BOOT = cdrom:\\SLUS_000.01;1\r\n' }, sector: 2352, data: 24 });
+  const two = Buffer.alloc(2352, 0x55);
+  write('one.bin', one);
+  write('two.bin', two);
+  const copy = await readAnyCopy(write('split.cue', 'FILE "one.bin" BINARY\n  TRACK 01 MODE2/2352\nFILE "two.bin" BINARY\n  TRACK 02 AUDIO\n'));
+  const sha1 = (...pieces) => createHash('sha1').update(Buffer.concat(pieces)).digest('hex');
+  assert.equal(copy.sha1, sha1(one, two));
+  assert.deepEqual(copy.tracks, [sha1(one), sha1(two)]);
+  assert.equal((await readAnyCopy(join(folder, 'one.bin'))).tracks, undefined);
+});
+
+test('a disc looks like a copy, in every kind of sector, and a track of sound can\'t', () => {
+  const ps1 = { system: 'PLAYSTATION', title: 'MADE UP', files: {} };
+  for (const layout of [{}, { sector: 2352, data: 24 }, { sector: 2352, data: 16 }]) assert.equal(looksLikeAnyCopy(disc({ ...ps1, ...layout })), true, JSON.stringify(layout));
+  assert.equal(looksLikeAnyCopy(Buffer.alloc(2352 * 26, 0x55)), false);
+});
+
 test('a kind of file that says nothing needs its console said', async () => {
   const path = write('game.chd', Buffer.alloc(0x400));
   assert.equal(await readAnyCopy(path), null);

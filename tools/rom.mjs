@@ -73,10 +73,10 @@ async function check(file, originals, named, inFolder, said) {
   const exact = originals.find(o => o.sha1 === copy.sha1);
   const same = originals.find(o => o.console === copy.console && o.title === copy.title && o.code.slice(0, 3) === copy.code.slice(0, 3));
   if (exact) {
-    remember(copy.sha1, { path: file, game: exact.game, name: exact.name, proof: true });
+    remember(copy.sha1, { path: file, game: exact.game, name: exact.name, proof: true, tracks: copy.tracks });
     console.log(`${file}\n  ${exact.name}, the copy games/${exact.game}'s proof uses. Remembered.`);
   } else if (same) {
-    remember(copy.sha1, { path: file, game: same.game, name: `${same.name.replace(/ \(.*\)$/, '')} (${copy.region ?? copy.code}, revision ${copy.revision})`, proof: false });
+    remember(copy.sha1, { path: file, game: same.game, name: `${same.name.replace(/ \(.*\)$/, '')} (${copy.region ?? copy.code}, revision ${copy.revision})`, proof: false, tracks: copy.tracks });
     console.log(`${file}\n  The game in games/${same.game}, but not the copy its proof uses (${same.name}): ${header}, SHA-1 ${copy.sha1}.`);
     console.log('  Remembered: play opens the game with it, and prove needs the other copy.');
   } else if (named?.(copy, file)) {
