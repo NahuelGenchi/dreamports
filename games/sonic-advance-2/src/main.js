@@ -17,6 +17,7 @@ import { createCore } from './core.js';
 import { languageScreen } from './language.js';
 import { soundLayout } from './sound.js';
 import { startStage } from './stage/stage.js';
+import { placePlayer } from './stage/player.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from
 const GAME = { name: 'Sonic Advance 2', title: 'SONICADVANC2', codes: { A2NE: 'USA' }, versions: [{ sha1: '7bcd6a07af7c894746fa28073fe0c0e34408022d' }] };
@@ -68,14 +69,17 @@ createRomSetup(picker, {
 // The game so far: the language screen, then, as what comes between isn't ported yet, Leaf Forest's act 1.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
-  // ?level=<n> opens a stage straight away, which recordings use as their start point
-  const level = new URLSearchParams(location.search).get('level');
-  core.main = level === null ? languageScreen : c => startStage(c, Number(level));
+  // ?level=<n> opens a stage straight away, which recordings use as their start point, and &x=<n>&y=<n> puts the character
+  // somewhere in it the frame before that, as those recordings' values do in the original
+  const search = new URLSearchParams(location.search), level = search.get('level');
+  let started = null;
+  core.main = level === null ? languageScreen : c => { started = startStage(c, Number(level)); };
   // the original's start-up is behind it by then, and the frame a stage's title card takes in before a button leaves it
   // isn't made, so it runs with nothing to show
   if (level !== null) {
     core.startUp = 1;
     for (let i = 0; i < FRAMES_BEFORE_THE_RECORDING; i++) {
+      if (i === FRAMES_BEFORE_THE_RECORDING - 1 && search.has('x')) placePlayer(started, Number(search.get('x')), Number(search.get('y')));
       core.step(0);
       core.runSound();
     }
