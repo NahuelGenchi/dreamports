@@ -1086,12 +1086,13 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       if (art && art !== state.trickArt) playerAnims = { ...anims, ...art.anims };
       state.trickArt = art; state.tricks = on && !!art && character === SONIC; input.setTricks?.(state.tricks);
     },
-    // the act's music starts with the act, as the stage's init does (StageInit_ZoneNActM); a multiplayer game
-    // steps its GBAs together itself (`ownLoop` false)
+    // the act's music starts with the act, as the stage's init does (StageInit_ZoneNActM), a frame of it ahead of
+    // the sounds the act's first frame starts, as the init comes before SoundMain and that frame after it; a
+    // multiplayer game steps its GBAs together itself (`ownLoop` false)
     start(ownLoop = true) {
       input.enabled = true; clock.reset();
       if (ownLoop) frame = requestAnimationFrame(loop);
-      sound.playStageMusic(stage.music);
+      sound.playStageMusic(stage.music, true);
     },
     stop() { input.enabled = false; input.release(); cancelAnimationFrame(frame); sound.stopAll(); },
   });
