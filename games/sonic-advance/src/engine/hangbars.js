@@ -9,6 +9,7 @@ import { offCam } from './objects.js';
 import { endAttack } from './player.js';
 import { setOffsetY } from './sensors.js';
 import { SPRITE_OFFSET_Y } from './constants.js';
+import { fixes } from './fixes.js';
 
 export const HANG_BAR = 83;
 const s8 = v => (v << 24) >> 24;
@@ -42,7 +43,7 @@ export function createHangBar(e, slot) {
             endAttack(p); p.pushing = false;
             p.carried = false; p.curled = true;
             p.ysp = 0; p.y = e.y + DROP; p.air = true;
-            p.state = 'springPeak';   // character state 18
+            p.state = fixes.on ? 'spin' : 'springPeak';   // character state 18
             const dir = input.right ? 1 : input.left ? -1 : 0;
             if (dir < 0) p.facing = -1;
             p.gsp = p.xsp = STEP * dir;

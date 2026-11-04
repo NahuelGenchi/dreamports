@@ -9,6 +9,7 @@ import { makeSprite, startAnim, animate, offCam } from './objects.js';
 import { platform, LANDED } from './collide.js';
 import { land, standUp } from './player.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const SPECIAL_SPRING = 102;
 const LAUNCH_SPEED = 7.5;   // the throw, and how fast he rises out of the screen (Q(7.5))
@@ -43,7 +44,10 @@ export function createSpecialSpring(e, slot, anims) {
       p.ysp = -LAUNCH_SPEED;
       p.state = 'springRise';
       held = { x: ctx.cam.x, y: ctx.cam.y };
-      if (!plain(p, ctx.world)) { p.carried = true; ctx.world.stopClock(); }
+      if (!plain(p, ctx.world)) {
+        p.carried = true; ctx.world.stopClock();
+        if (fixes.on) ctx.world.camera.hold = Infinity;   // before it moves, so all of the picture stays together
+      }
       startAnim(o, 'specialSpringLaunch', true);
       standUp(p);
       ctx.world.playSound(SONG.SPRING);
@@ -68,6 +72,15 @@ export function createSpecialSpring(e, slot, anims) {
     const p = ctx.player;
     if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
     if (plain(p, ctx.world)) {
+      if (fixes.on && !p.dead && platform(o, o.boxes[0], p, ctx.world.terrain) & LANDED) {
+        land(p);
+        p.onObject = null; p.air = true;
+        p.ysp = -LAUNCH_SPEED;
+        p.state = 'springRise';
+        startAnim(o, 'specialSpringLaunch', true);
+        standUp(p);
+        ctx.world.playSound(SONG.SPRING);
+      }
       if (animate(o, anims)) { launching = false; startAnim(o, 'specialSpring', true); animate(o, anims); }
       ctx.draw(o, e.x, e.y);
       return true;

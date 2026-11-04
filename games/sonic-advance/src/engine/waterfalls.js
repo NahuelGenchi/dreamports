@@ -21,6 +21,7 @@ import { makeSprite, animate, offCam } from './objects.js';
 import { endAttack, KNUCKLES, climbing } from './player.js';
 import { s8 } from './trig.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const WATERFALL = 27;
 const ANGEL_ISLAND = 4;
@@ -59,6 +60,7 @@ function angelIsland(slot, anims, splash, e, inside) {
     run(ctx) {
       const p = ctx.player;
       if (offCam(e.x, e.y, ctx.cam)) {
+        if (fixes.on && !p.dead && inside(p)) p.ysp /= 2;
         if (sounding) ctx.world.fadeOut(SE2, FADE);
         slot.live = null;
         return false;

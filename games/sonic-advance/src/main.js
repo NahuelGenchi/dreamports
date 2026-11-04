@@ -31,6 +31,7 @@ import { createAchievementsPanel } from '../../../kit/gba/achievements/panel.js'
 import * as list from './achievements/list.js';
 import { holdClocks } from '../../../kit/gba/clock.js';
 import { proof } from '../../../kit/gba/proof.js';
+import { fixes } from './engine/fixes.js';
 import { createSheet } from '../../../kit/gba/ui/sheet.js';
 import { createControlsView } from '../../../kit/gba/ui/controls-view.js';
 import { createQuitView } from '../../../kit/gba/ui/quit-view.js';
@@ -45,6 +46,7 @@ const stats = document.getElementById('stats');
 const wideButton = document.getElementById('wide');
 const rushButton = document.getElementById('rush');
 const boostButton = document.getElementById('boost-mode');
+const fixesButton = document.getElementById('fixes');
 const tricksButton = document.getElementById('tricks');
 const romFile = document.getElementById('rom-file');
 const romStatus = document.getElementById('rom-status');
@@ -296,6 +298,17 @@ function showTricks() {
   showSetting(tricksButton, tricks, tricksArt ? null : 'Sonic Advance 2');
 }
 tricksButton.addEventListener('click', () => setTricks(!tricks));
+// The original game's bugs fixed (engine/fixes.js), another extra: off unless chosen, and always off for a proof tool,
+// which compares the game with the original. Multiplayer has some of them too, so it stays on there.
+const FIXES_KEY = 'onsoku.fixBugs';
+function setFixes(on) {
+  fixes.on = on;
+  try { localStorage.setItem(FIXES_KEY, on ? '1' : '0'); } catch { /* not remembered */ }
+  showSetting(fixesButton, on);
+}
+try { fixes.on = !proof && localStorage.getItem(FIXES_KEY) === '1'; } catch { /* storage blocked: the default stands */ }
+showSetting(fixesButton, fixes.on);
+fixesButton.addEventListener('click', () => setFixes(!fixes.on));
 // what the extras from Sonic Advance 2 read from its ROM, and its sound engine's tables
 function useSa2(buffer) {
   const sa2 = openSa2(buffer), boost = readBoostArt(sa2), trick = trickArt(sa2);
@@ -577,6 +590,7 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyR' && !round && !stage.hidden && !e.repeat) setRush(!rush);
   if (e.code === 'KeyB' && !round && !stage.hidden && !e.repeat) setBoostMode(!boostMode);
   if (e.code === 'KeyT' && !round && !stage.hidden && !e.repeat) setTricks(!tricks);
+  if (e.code === 'KeyN' && !round && !stage.hidden && !e.repeat) setFixes(!fixes.on);
 });
 
 function showStats() {

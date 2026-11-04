@@ -14,6 +14,7 @@ import { platform, LANDED } from './collide.js';
 import { SINE } from './trig.js';
 import { SONG } from '../sound/songs.js';
 import { climbing } from './player.js';
+import { fixes } from './fixes.js';
 
 export const RUN_WHEEL = 86;
 const TRAVEL = 4320;   // d2's unit of travel, in 1/256 px
@@ -111,7 +112,11 @@ export function createRunWheel(e, slot, anims) {
     run(ctx) {
       const p = ctx.player, step = Math.trunc(along / 3200);
       o.x = e.x + dx * step; o.y = e.y + dy * step;
-      if (offDisplay(e.x, e.y, ctx.cam) && offCam(o.x, o.y, ctx.cam)) { slot.live = null; return false; }
+      if (offDisplay(e.x, e.y, ctx.cam) && offCam(o.x, o.y, ctx.cam)) {
+        if (fixes.on && p.onObject === o) { p.onObject = null; p.air = true; }
+        slot.live = null;
+        return false;
+      }
       if (p.onObject === o) driven(p, ctx.world);
       else free(p, ctx.world);
       if (speed !== 0) animate(o, anims);

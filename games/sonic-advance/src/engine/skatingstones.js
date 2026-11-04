@@ -11,8 +11,10 @@ import { skatingStone, platformTop, overlap, LANDED, FROM_BELOW } from './collid
 import { scan, probeTile, PROBE_FLOOR, PROBE_WALL } from './terrain.js';
 import { endAttack, climbing } from './player.js';
 import { setOffsetY } from './sensors.js';
+import { BALL_SPRITE_OFFSET_Y } from './constants.js';
 import { SINE } from './trig.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const SKATING_STONE = 84;
 const ICE_MOUNTAIN = 3;   // LEVEL_TO_ZONE's ZONE_4: Ice Mountain has its own look, and its stones drop
@@ -32,6 +34,7 @@ function throwOff(p, vx) {
   cancel(p);
   p.onObject = null; p.air = true;
   p.state = 'spin';
+  if (fixes.on) { p.curled = true; setOffsetY(p, BALL_SPRITE_OFFSET_Y); }
 }
 
 /** The task for a skating stone entity, or null when `e` is not one. */
@@ -72,8 +75,9 @@ export function createSkatingStone(e, slot, anims, ctx) {
       riding = true;
       vx = 0; vy = 0; ox = 0; oy = 0;
       sliding = true;
+      if (fixes.on) ctx.world.playSound(SONG.SKATING_STONE);
     }
-    if (offCam(sx + cam.x, sy + cam.y, cam)) { ctx.world.stopSound(SONG.SKATING_STONE); slot.live = null; return false; }
+    if (offCam(sx + cam.x, sy + cam.y, cam)) { if (!fixes.on) ctx.world.stopSound(SONG.SKATING_STONE); slot.live = null; return false; }
     ctx.draw(o, sx + cam.x, sy + cam.y);
     return true;
   }
@@ -115,7 +119,7 @@ export function createSkatingStone(e, slot, anims, ctx) {
       }
     }
     // a wall 18 px to its right, 30 px up, breaks it, whichever way it slides
-    if (probeTile(t, e.x + (ox >> 8) + 18, e.y + (oy >> 8) - 30, layer, 8, PROBE_WALL).d < 0) return breakUp(ctx, p);
+    if (probeTile(t, e.x + (ox >> 8) + (fixes.on && left ? -18 : 18), e.y + (oy >> 8) - 30, layer, 8, PROBE_WALL).d < 0) return breakUp(ctx, p);
     if (!p.dead) {
       if (riding) {
         if (p.air) riding = false;

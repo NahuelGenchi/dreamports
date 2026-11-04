@@ -7,9 +7,12 @@
 
 import { createUiTask, uiGfxStackInit, uiGraphics, loadUiGfx, drawUiText, drawUiTextAffine, glyphs, createFade, fadeStep, fadeShow } from '../front/ui.js';
 import { uiSlots } from './intro.js';
+import { FLAGS } from '../gba/engine.js';
+import { fixes } from '../engine/fixes.js';
 
 const OBJ_VRAM = 0x10000;
 const CARD_FRAMES = 0xFF;
+const CARD_COLOURS_IN = 4;   // the frame by which its colours are in their row, before the stage writes there
 // the UI graphics the card uses: the word, the band, the stripe with a target of 1, 2 or 3 digits, the digits
 const UIGFX_WORD = 50, UIGFX_BAND = 16, UIGFX_STRIPE = [47, 48, 49], UIGFX_DIGITS = 32;
 // the slots they go in (Task_3006240's table, ui.js)
@@ -43,6 +46,7 @@ export function createTitleCard(ctx, arg) {
     const word = { ctx, unk18: 0, unk1A: 0, o: line({ unk0: 0x100, unk2: 0, unk4: 0, unk6: 0, unkA: 0x39, unkC: 0x49, unkE: 5, unk10: SLOT_WORD, unk12: PALETTE, unk16: 1, unk8: 0 }) };
     taskC = e.createTask(wordStep, word, 0x2120);
   }
+  if (fixes.on) load(ctx, UIGFX_BAND, SLOT_BAND, 0x77A0, 0x200);
   const card = { ctx, unk18: 0, unk1A: arg, task10, task14, taskC, fade: createFade(0, 1, 2, 0, 0x60, 1) };
   e.createTask(cardStep, card, 0x2100);
   if (arg) fadeShow(e, card.fade);
@@ -52,6 +56,11 @@ export function createTitleCard(ctx, arg) {
 // 105; on the second frame, the target's graphics; after 256 frames, the end
 function cardStep(t) {
   const card = t.data, { ctx } = card, e = ctx.engine;
+  // its colours stay in their row while it shows
+  if (fixes.on) {
+    if (card.unk18 === CARD_COLOURS_IN) card.colours = e.objPalette.slice(PALETTE * 16, (PALETTE + 1) * 16);
+    else if (card.colours) { e.objPalette.set(card.colours, PALETTE * 16); e.flags |= FLAGS.UPDATE_OBJ_PALETTES; }
+  }
   card.task10.data.unk18 = card.unk18;
   card.task14.data.unk18 = card.unk18;
   if (card.unk1A) {

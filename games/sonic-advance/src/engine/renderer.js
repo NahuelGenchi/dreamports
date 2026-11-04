@@ -25,6 +25,7 @@ import { beamSpan } from './spotlights.js';
 import { bgr555ToRgb, tintRgb, waterTint } from '../rom/colors.js';
 import { ICE_MOUNTAIN, iceMountainScroll } from './icemountain.js';
 import { underColors, waveOffsets } from './water.js';
+import { fixes } from './fixes.js';
 
 const mod = (a, n) => ((a % n) + n) % n;
 const HUD_ORDER = 3;   // the HUD's OAM order (Task_StageUIMain: 24 >> 3)
@@ -935,7 +936,7 @@ export function createRenderer(canvas, assets) {
 
 
   function render({ layersAtStart, tick, rings, ringsStopped, sprites, terrain, palettes, objPalette, view, cam, hud: hudState, card: titleCard, results: actResults, gameOver, timeOver, bg, backLines, showCollision, rushFx, rushArt, shake, boostArt: art, spotlights, spriteRow, cardOver, water, display, effects2d, blendOff, pauseSign }) {
-    const stops = gameOver?.endsNext || gameOver?.saving ? SCROLL_STOPS_AT : Infinity;
+    const stops = !fixes.on && (gameOver?.endsNext || gameOver?.saving) ? SCROLL_STOPS_AT : Infinity;
     ctx.imageSmoothingEnabled = false;
     if (art && art !== boostArt) {
       if (!boostSheets.has(art)) boostSheets.set(art, new WeakMap());

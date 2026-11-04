@@ -10,6 +10,7 @@ import { makeSprite, animate, offCam } from './objects.js';
 import { endAttack, SONIC } from './player.js';
 import { PHYSICS as K } from './constants.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const GRIND_RAIL_START = 19, GRIND_RAIL_END = 20;
 const END = 0x900;           // the end's priority: before the camera, so it sees the last frame's
@@ -69,6 +70,15 @@ export function createGrindRail(e, slot) {
           p.layer ^= 1;
           p.front = false;
         }
+      } else if (fixes.on && p.grinding && Math.floor(p.x) > e.x + (w >> 1) && Math.floor(p.x) <= e.x + w + 32 && Math.floor(p.y) >= e.y) {
+        // too fast for its box: off the rail all the same, back on the ground's layer
+        ctx.world.stopSound(SONG.GRINDING);
+        endAttack(p);
+        p.state = 'spring';
+        p.air = true;
+        p.grinding = false;
+        p.layer ^= 1;
+        p.front = false;
       }
       return !leaves(ctx);
     },
