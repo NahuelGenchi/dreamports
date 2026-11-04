@@ -15,6 +15,10 @@ sources:
     href: https://github.com/cypressru/SonicBattleDecomp
     license: none
     use: guide
+  - name: mGBA’s timing of instructions and of the BIOS, by Jeffrey Pfau
+    href: https://github.com/mgba-emu/mgba/tree/0.10.5/src
+    license: MPL-2.0
+    use: guide
   - name: mGBA’s arctangent, by Jeffrey Pfau
     href: https://github.com/mgba-emu/mgba/blob/0.10.5/src/gba/bios.c
     license: MPL-2.0
