@@ -400,7 +400,8 @@ function takeLetter(c, s) {
 
 const within = (value, first, last) => ((value - first) & 0xFFFF) <= last - first;
 
-// 0x08092A0C: the mark that softens a kana on the letter before the caret
+// 0x08092A0C: the mark that softens a kana on the letter before the caret. The sums go below zero on purpose, as the low
+// byte is what's kept: カ, at 0xB, less 0x19 is 0xF2, where the letters' last variants hold ガ and those after it.
 function softenLetter(s) {
   if (s.caret === 0) return;
   const sprite = s.letters[s.caret - 1], at = (sprite.variant - s.letterBase.variant) & 0xFFFF;
