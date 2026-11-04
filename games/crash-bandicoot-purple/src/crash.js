@@ -11,7 +11,7 @@ const ANIMATIONS = 0x0807768C, MOVES = 0x080777C0;
 const FALL_FIRST = 0x08076DD4, FALL_SECOND = 0x08076DD8, FALL_DOUBLE = 0x08076DDC, FALL_SPIN = 0x08076DE4;
 const KEY_A = 0x1, KEY_B = 0x2, KEY_RIGHT = 0x10, KEY_LEFT = 0x20, KEY_DOWN = 0x80;
 // the sounds he makes
-const SOUND_JUMP = 0x08085D60, SOUND_DOUBLE = 0x08085D6C, SOUND_SPIN = 0x08085D54, SOUND_LAND = 0x08085D78, SOUND_FOURTH = 0x08085D60;
+const SOUND_FALL = 0x08085D48, SOUND_JUMP = 0x08085D60, SOUND_DOUBLE = 0x08085D6C, SOUND_SPIN = 0x08085D54, SOUND_LAND = 0x08085D78, SOUND_FOURTH = 0x08085D60;
 // 0x08021E74: how long he stands before he does one of his other standing animations
 const WAIT = 0x12B;
 
@@ -27,6 +27,8 @@ export function createCrash(c, sprite, tree) {
     speedX: { speed: 0, change: 0, stop: 0 }, speedY: { speed: 0, change: 0, stop: 0 },
     last: rect, lastX: sprite.x, lastY: sprite.y, movedX: 0, movedY: 0,
     floors: 0, wallsLeft: 0, wallsRight: 0, ceilings: 0, grounded: false,
+    // 0x0803811C: the height of the map, in eighths of a pixel, and whether he's met lines and fallen past it
+    bottom: (tree.y2 - tree.y1) << 8, solid: true, fell: false, over: false,
   };
   moveAcross(c, crash, 1, leftHeld(c));
   moveDown(c, crash, 15);
@@ -208,6 +210,24 @@ function spin(c, crash, counted, clock) {
   crash.waited = counted;
 }
 
+// 0x08022F88 with 0x08022E6C: past the bottom of the map he stops meeting lines and the camera stops following him, Aku
+// Aku leaves him (0x080010A0), and he makes his sound and plays his last animation at the bottom
+function fellOff(c, crash, clock) {
+  const { sprite, bottom } = crash;
+  if (sprite.y < bottom) return false;
+  crash.solid = false;
+  play(c, crash, 23, clock);
+  sprite.y = bottom - (sprite.animation.h << 8);
+  c.playSound(SOUND_FALL);
+  const left = leftHeld(c);
+  moveAcross(c, crash, 17, left);
+  moveDown(c, crash, 17);
+  crash.state = 24;
+  crash.waited = 0;
+  crash.fell = true;
+  return true;
+}
+
 // 0x08024034: walking off an edge
 function fall(c, crash, clock) {
   play(c, crash, 12, clock);
@@ -301,6 +321,7 @@ function runState(c, crash, clock) {
   switch (crash.state) {
     case 0:   // 0x08021DD4
       if (sprite.animation.loops ? onGround(crash) : sprite.ended) stand(c, crash, 0, clock);
+      fellOff(c, crash, clock);
       break;
     case 1:
       standing(c, crash, clock);
@@ -335,6 +356,7 @@ function runState(c, crash, clock) {
       if (crash.waited === 1) c.playSound(SOUND_SPIN);
       else if (crash.waited <= 23) {
         if (onGround(crash)) spin(c, crash, crash.waited, clock);
+        fellOff(c, crash, clock);
       } else {
         if (falling < 0) { play(c, crash, 11, clock); crash.state = 5; }
         else { play(c, crash, 6, clock); crash.state = 11; }
@@ -345,6 +367,7 @@ function runState(c, crash, clock) {
     case 5:   // 0x08024624
       afterJumps(c, crash, clock);
       landed();
+      fellOff(c, crash, clock);
       break;
     case 6:   // 0x0802242C
       if (!inTheAir(c, crash, clock, FIRST_JUMP) && sprite.ended) {
@@ -393,10 +416,12 @@ function runState(c, crash, clock) {
     case 17:   // 0x08024470
       afterJumps(c, crash, clock);
       landed();
+      fellOff(c, crash, clock);
       break;
     case 18:   // 0x08022894
       inTheAir(c, crash, clock, FIRST_JUMP);
       landed();
+      fellOff(c, crash, clock);
       break;
     case 19:   // 0x08024428
       standing(c, crash, clock);
@@ -405,6 +430,7 @@ function runState(c, crash, clock) {
     case 20:   // 0x080243E4
       afterJumps(c, crash, clock);
       landed();
+      fellOff(c, crash, clock);
       break;
     case 21:   // 0x08022924
       if (!(c.held & KEY_DOWN)) getUp(c, crash, clock);
@@ -414,6 +440,10 @@ function runState(c, crash, clock) {
     case 22:   // 0x080243B4
       if (sprite.ended) stand(c, crash, 0, clock);
       if (!onGround(crash)) fall(c, crash, clock);
+      break;
+    case 24:   // 0x08024330: after two seconds the level starts again
+      if (crash.waited > 119) crash.over = true;
+      crash.waited++;
       break;
   }
 }
@@ -452,7 +482,7 @@ export function updateCrash(c, crash, clock) {
   stepSpeed(crash.speedY);
   sprite.y += crash.speedY.speed;
   crash.floors = crash.wallsLeft = crash.wallsRight = crash.ceilings = 0;
-  meetLines(crash);
+  if (crash.solid) meetLines(crash);   // 0x0800F480
   // 0x0800F480
   crash.grounded = onGround(crash);
   crash.last = rectOf(crash);

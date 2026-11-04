@@ -10,7 +10,7 @@ import { openMovie, decodeFrame } from './movie.js';
 import { createWorld, aimCamera, showWorld, moveWorld, drawWorld, screenLeft, screenTop } from './world.js';
 import { readCollision } from './collision.js';
 import { createCrash, updateCrash, cameraLook } from './crash.js';
-import { createSprite, createSprites, stepAnimation, drawSprite, drawText, showSprites } from './sprites.js';
+import { createSprite, createSprites, playAnimation, stepAnimation, drawSprite, drawText, showSprites } from './sprites.js';
 
 const CARTRIDGE = 0x08000000, PAGE = 0xA000;
 
@@ -224,7 +224,8 @@ function* titleLoop(c) {
     if (leaving && c.fade.level === 64 && ++white > WHITE_FRAMES) break;
   }
   c.hblank = null;
-  yield* hubLoop(c);
+  // the hub, and again from the start each time Crash falls off the map
+  for (let again = false; ; again = true) yield* hubLoop(c, again);
 }
 
 // 0x08000222: the game's random numbers, from a seed at 0x02000000
@@ -251,12 +252,17 @@ function readActors(rom, def) {
   return actors;
 }
 
-const AKU_AKU = 0x082FD3CC;   // 0x08000A2C
+const AKU_AKU = 0x082FD3CC, AKU_AKU_LEAVING = 0x082FD39C, SOUND_AKU_AKU_LEAVING = 0x08085E98;   // 0x08000A2C, 0x080010A0
 
 // The clock the actors' animations go by (0x02007284) at the first picture: how many frames they've run by then, as mGBA
 // measures it, and the same for the count Aku Aku floats by (0x0200762C), which the recording sets as it reaches the hub,
 // as it does the random seed, as the Dreamport has no way there yet to bring them to what the original's way does
 const HUB_CLOCK = -1, FLOAT_START = -1, RANDOM_SEED = 1;
+// How many frames the screen stays white when the hub starts again after a fall: the console's timing, as mGBA measures it
+const HUB_WHITE_FRAMES = 12;
+// 0x0800EFD0's count starts again with the level, and by the first picture it has this far to go, and the song (0x0803407C)
+// starts again too, this far along: the console's timing again, as mGBA measures it
+const FLOAT_AGAIN = 1, SONG_AHEAD_AGAIN = 7;
 // How far the song has come by the first picture, as it starts at 0x0803407C while the level loads
 const SONG_AHEAD = 3;
 
@@ -295,8 +301,16 @@ function drawActor(c, world, sprites, sprite) {
 
 // 0x08000B94, in its state 2: Aku Aku floats after where Crash was 8 frames ago, up and down and side to side by the
 // sine at 0x08047B2C, and picks another of its four pictures at random every 8 frames
-function updateAkuAku(c, aku, crash) {
-  const { rom } = c, sine = n => rom.view.getInt16(0x08047B2C - CARTRIDGE + (n & 0xFF) * 2, true);
+function updateAkuAku(c, aku, crash, clock) {
+  const { rom } = c;
+  if (aku.gone) return;
+  // 0x08000B94's state 1 and 0x080010A0: it flies off where it is, and is gone once its animation ends
+  if (aku.leaving) {
+    stepAnimation(aku.sprite, clock);
+    if (aku.sprite.ended) aku.gone = true;
+    return;
+  }
+  const sine = n => rom.view.getInt16(0x08047B2C - CARTRIDGE + (n & 0xFF) * 2, true);
   aku.history[aku.at] = [crash.x, crash.y];
   aku.at = (aku.at + 1) & 7;
   if ((c.floats & 7) === 0) aku.picture = Math.min(Math.max(aku.picture - 1 + (random(c) % 3), 0), 3);
@@ -311,16 +325,21 @@ function updateAkuAku(c, aku, crash) {
 // 0x08007914 with 0x08007B4C and 0x0800807C: the camera follows Crash, looking ahead of him by no more than so much more a
 // frame, and moving by no more than so much a frame
 function followCrash(camera, crash) {
-  const want = cameraLook(crash), { sprite } = crash;
-  camera.lookX += Math.max(-0x115, Math.min(0x115, want.x - camera.lookX));
-  camera.lookY += Math.max(-181, Math.min(181, want.y - camera.lookY));
-  const toX = sprite.x + camera.lookX, toY = sprite.y + (sprite.box.h << 7) + camera.lookY;
-  camera.x += Math.max(-0x500, Math.min(0x500, toX - camera.x));
-  camera.y += Math.max(-0x700, Math.min(0x700, toY - camera.y));
+  // once he's fallen off the map (0x0800811C) the camera goes on to where it was going, and looks no further
+  if (!crash.fell) {
+    const want = cameraLook(crash), { sprite } = crash;
+    camera.lookX += Math.max(-0x115, Math.min(0x115, want.x - camera.lookX));
+    camera.lookY += Math.max(-181, Math.min(181, want.y - camera.lookY));
+    camera.toX = sprite.x + camera.lookX;
+    camera.toY = sprite.y + (sprite.box.h << 7) + camera.lookY;
+  }
+  camera.x += Math.max(-0x500, Math.min(0x500, camera.toX - camera.x));
+  camera.y += Math.max(-0x700, Math.min(0x700, camera.toY - camera.y));
 }
 
-// The main loop in the hub, from the first frame the fade has started: the level's update, then the V-blank's work
-function* hubLoop(c) {
+// The main loop in the hub, from the first frame the fade has started: the level's update, then the V-blank's work, until
+// Crash has fallen off the map and the screen has faded to white
+function* hubLoop(c, again) {
   const { video, rom } = c;
   const hub = rom.u32(HUB_MAPS - CARTRIDGE + 4), at = hub - CARTRIDGE;
   const world = createWorld(video, rom, hub), sprites = createSprites(video, rom);
@@ -339,39 +358,52 @@ function* hubLoop(c) {
     ...actors.filter(a => a.kind === KIND_FRUIT).map(a => place(FRUIT_ANIMATION, a, false)),
     ...actors.filter(a => a.kind === KIND_COCO).map(a => place(rom.u32(COCO_ANIMATIONS - CARTRIDGE), a, (rom.u8(a.start) & 1) !== 0)),
   ];
-  c.seed = RANDOM_SEED;
-  c.floats = FLOAT_START;
+  if (!again) c.seed = RANDOM_SEED;
+  c.floats = again ? FLOAT_AGAIN : FLOAT_START;
   c.random = () => random(c);
   c.playSound = address => playSound(c, address);
   c.soundPlaying = address => soundPlaying(c, address);
   // 0x0803817C
   const crash = createCrash(c, crashSprite, readCollision(rom, rom.u32(at + 20)));
-  const aku = { sprite: createActor(rom, { animation: AKU_AKU, x: 0, y: 0, flip: false }), history: [], at: 0, picture: 0, behind: false };
+  const aku = { sprite: createActor(rom, { animation: AKU_AKU, x: 0, y: 0, flip: false }), history: [], at: 0, picture: 0, behind: false, leaving: false, gone: false };
   for (let n = 0; n < 8; n++) aku.history[n] = [0, 0];   // 0x08000A2C: nothing yet, so it's off screen for 8 frames
   // 0x08007794: the camera on Crash from the start
   const look = cameraLook(crash), camera = {
     lookX: look.x, lookY: look.y,
     x: crashSprite.x + look.x, y: crashSprite.y + (crashSprite.box.h << 7) + look.y,
   };
+  camera.toX = camera.x;
+  camera.toY = camera.y;
   aimCamera(world, camera.x, camera.y);
   showWorld(world);
   c.screen = { left: screenLeft(world), top: screenTop(world) };
   let clock = HUB_CLOCK;
   // 0x08015324: the level's song, the third word after its entry at 0x0200D2B8
-  c.sound?.startSong(0x082706EC, SONG_AHEAD);
+  c.sound?.startSong(0x082706EC, again ? SONG_AHEAD_AGAIN : SONG_AHEAD);
   // 0x08015324's 0x0803FD8C: the fade back from white, after 0x0803FC9C's fade to it
   c.fade = { kind: 3, level: 64, target: 0, speed: 4 };
+  let white = -1;
   for (;;) {
     clock++;
     c.floats++;
     followCrash(camera, crash);
     aimCamera(world, camera.x, camera.y);
     moveWorld(world);     // 0x0802F374
-    updateAkuAku(c, aku, crashSprite);   // 0x08024668
+    updateAkuAku(c, aku, crashSprite, clock);   // 0x08024668
     updateCrash(c, crash, clock);
+    if (crash.fell && !aku.leaving && !aku.gone) {
+      aku.leaving = true;
+      playAnimation(aku.sprite, AKU_AKU_LEAVING, clock);
+      playSound(c, SOUND_AKU_AKU_LEAVING);
+    }
+    // the event 0x08024330 sends: a fade to white, and the level again from the start
+    if (crash.over && white < 0) {
+      c.fade = { kind: 3, level: c.fade.level, target: 64, speed: 4 };
+      white = 0;
+    }
     for (const sprite of others) stepAnimation(sprite, clock);   // 0x08035518
     // 0x08021BD0: Aku Aku behind Crash or in front of him, as it goes round
-    const first = aku.behind ? [crashSprite, aku.sprite] : [aku.sprite, crashSprite];
+    const first = aku.gone ? [crashSprite] : aku.behind ? [crashSprite, aku.sprite] : [aku.sprite, crashSprite];
     for (const sprite of [...first, ...others]) drawActor(c, world, sprites, sprite);
     c.screen = { left: screenLeft(world), top: screenTop(world) };
     stepFade(c);          // 0x0803FB48
@@ -381,6 +413,7 @@ function* hubLoop(c) {
     drawWorld(world);     // 0x0802F90C
     showSprites(sprites);
     yield;                // 0x08040E5C
+    if (white >= 0 && c.fade.level === 64 && ++white > HUB_WHITE_FRAMES) return;
   }
 }
 
