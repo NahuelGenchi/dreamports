@@ -1,7 +1,7 @@
 {
- "about": "Sonic thrown up by a spring in Route 99 act 1, from a start point beside it: he touches it, flies up past the ledge above with the camera following, comes down and lands on the ledge, and Tails runs in after him and is thrown up too. It keeps clear of the act's rings and of the objects not made yet.",
- "frames": 300,
- "start": "level=3&seed=5&x=6264&y=2050",
+ "about": "Sonic walking into a spring that throws him up in Route 99 act 1. A start point stands him on the ground at x 6440, y 1426, 40 pixels left of the spring, once the act's opening has ended, and he can move from frame 0. He's thrown up with the camera following and falls back past it, and Tails, who starts on the slope behind him, comes after him and is thrown too. It stops the frame before Sonic reaches a rail that isn't made yet.",
+ "frames": 204,
+ "start": "level=3&seed=5&x=6440&y=1426",
  "held": [
   [
    0,
@@ -10,7 +10,7 @@
    ]
   ],
   [
-   30,
+   40,
    []
   ]
  ],
@@ -174,43 +174,43 @@
      "frame": 5469,
      "address": "030015D0",
      "bytes": 4,
-     "value": 1603584
+     "value": 1648640
     },
     {
      "frame": 5469,
      "address": "03001720",
      "bytes": 4,
-     "value": 1595904
+     "value": 1640960
     },
     {
      "frame": 5469,
      "address": "030015D4",
      "bytes": 4,
-     "value": 524800
+     "value": 365056
     },
     {
      "frame": 5469,
      "address": "03001724",
      "bytes": 4,
-     "value": 524800
+     "value": 365056
     },
     {
      "frame": 5469,
      "address": "03001D10",
      "bytes": 4,
-     "value": 6144
+     "value": 6320
     },
     {
      "frame": 5469,
      "address": "03001D14",
      "bytes": 4,
-     "value": 1966
+     "value": 1342
     }
    ]
   }
  ],
  "clip": {
   "at": 0,
-  "frames": 300
+  "frames": 204
  }
 }

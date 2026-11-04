@@ -1,7 +1,7 @@
 {
- "about": "Sonic running into a spring that throws him right in Route 99 act 1, from a start point beside it, with the camera following him along the ground and down the slope, as Tails, thrown first, takes a ring off the screen.",
+ "about": "Sonic walking into a spring that throws him right in Route 99 act 1. A start point stands him on the ground at x 3812, y 642, once the act's opening has ended, and he can move from frame 0. Tails reaches the spring first, and both are thrown, with the camera following Sonic down the slope.",
  "frames": 240,
- "start": "level=3&seed=5&x=3790&y=642",
+ "start": "level=3&seed=5&x=3812&y=642",
  "held": [
   [
    0,
@@ -170,13 +170,13 @@
      "frame": 5469,
      "address": "030015D0",
      "bytes": 4,
-     "value": 970240
+     "value": 975872
     },
     {
      "frame": 5469,
      "address": "03001720",
      "bytes": 4,
-     "value": 962560
+     "value": 968192
     },
     {
      "frame": 5469,
@@ -194,7 +194,7 @@
      "frame": 5469,
      "address": "03001D10",
      "bytes": 4,
-     "value": 3670
+     "value": 3692
     },
     {
      "frame": 5469,

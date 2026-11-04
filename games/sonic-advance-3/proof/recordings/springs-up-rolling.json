@@ -1,5 +1,5 @@
 {
- "about": "Sonic rolling into a spring in Route 99 act 1 from a spin dash, from a start point beside it, so that he's thrown fast and still as small as when curled up, and lands on the ledge above, with Tails following.",
+ "about": "Sonic rolling into a spring in Route 99 act 1 from a spin dash. A start point stands him on the ground at x 6258, y 2050, once the act's opening has ended, and he can move from frame 0. He's thrown up fast, still as small as when curled up, and lands on the ledge above, with Tails following.",
  "frames": 300,
  "start": "level=3&seed=5&x=6258&y=2050",
  "held": [

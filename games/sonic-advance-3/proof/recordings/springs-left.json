@@ -1,5 +1,5 @@
 {
- "about": "Sonic running into a spring that throws him left in Route 99 act 1, from a start point beside it, along the slope, taking the rings on his way and leaving the ground, with the camera following. It stops the frame before something not made yet comes on the screen.",
+ "about": "Sonic walking into a spring that throws him left in Route 99 act 1. A start point stands him on the ground at x 4570, y 738, once the act's opening has ended, and he can move from frame 0. He's thrown along the slope, taking the rings on his way and leaving the ground, with the camera following. It stops the frame before something not made yet comes on the screen.",
  "frames": 144,
  "start": "level=3&seed=5&x=4570&y=738",
  "held": [
