@@ -26,6 +26,7 @@ export function createCore(video, rom, sound) {
   const c = {
     video, rom,
     playSong: song => sound?.play(song),   // 0x080BA1F4, m4aSongNumStart
+    playSoundOn: (player, song, volume, pan) => sound?.playOn(player, song, volume, pan),   // MPlayStart with its controls
     continueSong: song => sound?.startOrContinue(song),   // m4aSongNumStartOrContinue
     stopSong: song => sound?.stop(song),   // m4aSongNumStop
     runSound: () => sound?.call('frame'),   // a frame of the sound engine, which comes with no frame of the game's
