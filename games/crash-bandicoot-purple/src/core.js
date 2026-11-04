@@ -89,13 +89,18 @@ function* mainLoop(c) {
     if (c.done) {
       // 0x08014B54, as the script's end leaves the game in state 20, with the screen as it is while the level loads
       for (let n = 0; n < TITLE_LOAD_FRAMES; n++) yield;
-      for (;;) {
-        yield* titleLoop(c);
-        // B on the load save game screen comes back to the title
-        if ((yield* loadSaveLoop(c)) !== 'title') break;
-        for (let n = 0; n < TITLE_LOAD_FRAMES; n++) yield;
+      // Each screen says where it goes on to. B goes back, to the title from the load save game screen and to that from the menu
+      let screen = 'title';
+      while (screen !== 'game' && screen !== 'code') {
+        if (screen === 'title') {
+          yield* titleLoop(c);
+          screen = 'save';
+        } else if (screen === 'save') {
+          screen = yield* loadSaveLoop(c);
+          if (screen === 'title') for (let n = 0; n < TITLE_LOAD_FRAMES; n++) yield;
+        } else screen = yield* mainMenuLoop(c);
       }
-      // what comes after the load save game screen isn't ported, so the screen stays white
+      // what comes after the main menu isn't ported, so the screen stays white
       for (;;) yield;
     }
     if (updateDisplay(c)) yield;
@@ -249,8 +254,9 @@ const TITLE = 0x08087360;
 // 0x0800C34C: the three animations of the logo, in the order 0x0800C580 draws them, and where it draws them from (0x0806909C)
 const LOGO = [0x082AF0B0, 0x082AF0C8, 0x082AF0E0], LOGO_X = 0x78, LOGO_Y = 0x50;
 
-// 0x0800C494: the sound each of them makes on one of its frames
-const LOGO_SOUNDS = [[[22, 0x08085D6C]], [[12, 0x08085ED4]], [[4, 0x0808624C], [10, 0x08085D60]]];
+// 0x0800C494: the sound each of them makes on one of its frames, again on every update it's on that frame, unless the second
+// sound named is the last a channel was given (0x08034238), with the last of them first as it goes through them
+const LOGO_SOUNDS = [[[22, 0x08085D6C, 0x08085D60]], [[12, 0x08085ED4, 0x08085ED4]], [[4, 0x0808624C, 0x0808624C], [10, 0x08085D60, 0x08085D6C]]];
 
 // 0x0801C83C: the sound of a press on a menu
 const MENU_SOUND = 0x08085E5C;
@@ -342,17 +348,15 @@ function* titleLoop(c) {
     clock++;
     // 0x08036D2C with 0x0801C598: Start or A goes on (0x08069198's state 21), with a sound. The update right after a V-blank
     // shows in the lines of the next picture and in the rest of the picture after it, so the press already stops the lines
-    if (c.pressed & (KEY.START | KEY.A)) {
-      c.sound?.playEffect(MENU_SOUND);
-      leaving = true;
-    } else streak();      // 0x08001B18
+    if (c.pressed & (KEY.START | KEY.A)) leaving = true;
+    else streak();        // 0x08001B18
     moveWorld(world);     // 0x0802F374
-    LOGO_SOUNDS.forEach((sounds, n) => {   // 0x0800C494
+    for (let n = logo.length - 1; n >= 0; n--) {   // 0x0800C494
       const sprite = logo[n];
-      if (sprite.last !== sprite.frame) for (const [frame, sound] of sounds) if (frame === sprite.frame) c.sound?.playEffect(sound);
-      sprite.last = sprite.frame;
+      for (const [frame, sound, unless] of LOGO_SOUNDS[n]) if (frame === sprite.frame) c.sound?.playEffect(sound, unless);
       stepAnimation(sprite, clock);
-    });
+    }
+    if (leaving) c.sound?.playEffect(MENU_SOUND);   // 0x0801C9AC's 0x08036D2C, after those
     // 0x0801CAD4's colours, and 0x080362F4's letters, then 0x0800C580's animations
     const colours = TEXT_COLOURS[(count >> 4) & 1];
     for (let i = 0; i < 16; i++) c.colours[256 + 15 * 16 + i] = rom.u16(colours - CARTRIDGE + i * 2);
@@ -414,11 +418,27 @@ const SAVE_LOAD_FRAMES = 4;
 // The frames 0x0801BE8C takes to write a new game's save, with the picture as it is: the console's timing again
 const SAVE_WRITE_FRAMES = 11;
 
+// The same for Story Mode on the main menu, as that line's save is there already: the console's timing again
+const SAVE_AGAIN_FRAMES = 2;
+
 // The menus' song (0x02007C60 in the screen's list), which 0x0801BE8C stops to write and starts again from its start
 const MENU_SONG = 0x08278CC0;
 
 // 0x0801C854 and 0x0801C824: the sounds of moving on a menu and of going back
 const MOVE_SOUND = 0x08085D30, BACK_SOUND = 0x08085EA4;
+
+// 0x08016A78's 0x080163D4: a game's save is written, with 0x0801BE8C stopping the song meanwhile and starting it again, and with 0x08001BA0
+// stopping the H-blank's DMA too, so the whole of the streaks' layer keeps the scroll of the last line, until 0x08001B84
+function* writeSave(c, frames) {
+  c.sound?.stopSong();
+  const moveLines = c.hblank;
+  c.hblank = null;
+  moveLines(159);
+  for (let n = 1; n < frames; n++) yield;
+  c.sound?.startSong(MENU_SONG);
+  yield;
+  c.hblank = moveLines;
+}
 
 // 0x080156F0's 0x0802C79C with 0x0802C8F8, and 0x08030548, which takes Erase Game away while no save holds a game (0x0801CA34),
 // as none does: this Dreamport keeps no saves yet (0x0801C0D0), so each line says New Game. The result is where it goes on to
@@ -435,7 +455,7 @@ function* loadSaveLoop(c) {
     // 0x0801C598: what the buttons do, with the lines stopping at once as they do on the title. A goes on (0x080692D0's states 8 to
     // 10), and B back (0x0806918C's state 20). Up and down skip Erase Game, as nothing can pick it (0x0801C6D0, 0x0801C784)
     let move = 0;
-    if (c.pressed & KEY.A) { c.sound?.playEffect(MENU_SOUND); leaving = 'game'; }
+    if (c.pressed & KEY.A) { c.sound?.playEffect(MENU_SOUND); leaving = 'menu'; }
     else if (c.pressed & KEY.B) { c.sound?.playEffect(BACK_SOUND); leaving = 'title'; }
     else if (c.pressed & KEY.UP) move = SAVES - 1;
     else if (c.pressed & KEY.DOWN) move = 1;
@@ -453,19 +473,63 @@ function* loadSaveLoop(c) {
     yield;                // 0x08040E5C
     if (leaving) break;
   }
-  if (leaving === 'game') {
-    // 0x08016A78's 0x080163D4: a line with no game in it starts one, and 0x0801BE8C writes its save, with the song stopped meanwhile
-    c.sound?.stopSong();
-    // 0x08001BA0: and the H-blank's DMA too, so the whole of the streaks' layer keeps the scroll of the last line, until 0x08001B84
-    const moveLines = c.hblank;
-    c.hblank = null;
-    moveLines(159);
-    for (let n = 1; n < SAVE_WRITE_FRAMES; n++) yield;
-    c.sound?.startSong(MENU_SONG);
-    yield;
-    c.hblank = moveLines;
-  }
+  if (leaving === 'menu') yield* writeSave(c, SAVE_WRITE_FRAMES);
   yield* fadeToWhite(c);  // 0x08015668's and 0x080155E4's 0x0803FC9C
+  return leaving;
+}
+
+// The main menu's list at 0x02007CB0, as 0x0801C24C reads it (0x08075E30 on): where its lines start and how far apart they are,
+// the words of Story Mode, Party Mode, Trading and Credits, and Aku Aku, 10 pixels to the left of the line he points at
+const MENU_X = 0x28, MENU_Y = 0x48, MENU_GAP = 0x0E, MENU_LINES = [0x0806F228, 0x0806F22C, 0x0806F230, 0x0806F234], MENU_POINTER_X = -10;
+
+// 0x0800C34C without the logo: its two animations, in the order 0x0800C580 draws them, from the same place as the logo's
+const MENU_PICTURES = [0x082AF050, 0x082AF038];
+const CODE_SOUND = 0x08085E80;
+
+// 0x0801C19C: the main menu. The line picked shows the colours of the font 0x0200741C for 16 frames, then 0x020074AC's, counting from when it was
+// picked (0x0801CA60, 0x0801CAD4). The result is where it goes on to
+function* mainMenuLoop(c) {
+  const { rom } = c;
+  for (let n = 0; n < SAVE_LOAD_FRAMES; n++) yield;
+  const backdrop = createBackdrop(c), { world, sprites, streak } = backdrop;
+  const starting = address => {
+    const sprite = Object.assign(createSprite(rom, address, 0, 0), { priority: 0 });
+    sprite.next = sprite.animation.delay + 2;
+    return sprite;
+  };
+  const pictures = MENU_PICTURES.map(starting), pointer = starting(POINTER);
+  let selected = 0, count = 0, clock = 0, leaving = null;
+  for (;;) {
+    clock++;
+    // 0x0800C494's animations, then 0x0801C9AC's lines and Aku Aku, then 0x0801C598's buttons. Up and down go round (0x0801C6D0, 0x0801C784)
+    for (const sprite of pictures) stepAnimation(sprite, clock);
+    stepAnimation(pointer, clock);
+    const font = (count & 16) ? YELLOW : BLUE;
+    count++;
+    let move = 0;
+    // 0x0801C148: L and R held, with nothing else, go to the screen for a code (0x080691D4's state 30), with a sound of their own
+    if (c.held === (KEY.L | KEY.R)) { c.sound?.playEffect(CODE_SOUND); leaving = 'code'; }
+    else if (c.pressed & KEY.A) { c.sound?.playEffect(MENU_SOUND); leaving = 'game'; }
+    else if (c.pressed & KEY.B) { c.sound?.playEffect(BACK_SOUND); leaving = 'save'; }
+    else if (c.pressed & KEY.UP) move = MENU_LINES.length - 1;
+    else if (c.pressed & KEY.DOWN) move = 1;
+    if (move) {
+      c.sound?.playEffect(MOVE_SOUND);
+      selected = (selected + move) % MENU_LINES.length;
+      count = 0;
+    }
+    if (!leaving) streak();   // 0x08001B18
+    moveWorld(world);     // 0x0802F374
+    MENU_LINES.forEach((entry, n) => drawText(c, sprites, n !== selected ? YELLOW : move ? BLUE : font, entry, MENU_X, MENU_Y + n * MENU_GAP));
+    drawSprite(sprites, pointer, MENU_X + MENU_POINTER_X, MENU_Y + selected * MENU_GAP, c.colours);
+    for (const sprite of pictures) drawSprite(sprites, sprite, LOGO_X, LOGO_Y, c.colours);   // 0x0800C580
+    showBackdrop(c, backdrop);
+    yield;                // 0x08040E5C
+    if (leaving) break;
+  }
+  // 0x080692B8's state 16, for Story Mode, writes the save first; the other lines' states go straight to the fade
+  if (leaving === 'game' && selected === 0) yield* writeSave(c, SAVE_AGAIN_FRAMES);
+  yield* fadeToWhite(c);  // 0x08015668's 0x0803FC9C
   return leaving;
 }
 

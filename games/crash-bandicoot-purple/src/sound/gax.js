@@ -35,6 +35,8 @@ export function createGax(bytes, sampleRate) {
   // 0x08044178: where the song is
   const state = { lastFrame: 0, pattern: -1, row: 20000, speed: 6, active: false, wait: 0, stepped: false, newPattern: false, master: 255, jump: false };
   let channels = [], effects = [];
+  // the manager's [80] and [84]: the last effect each channel was given, which stays once it has ended
+  const lastEffects = [0, 0];
 
   // 0x080454BC: a channel with nothing to play
   const channel = () => ({
@@ -79,7 +81,8 @@ export function createGax(bytes, sampleRate) {
     }
     // 0x08042A1C: every channel at the start, and 0x08044178: the song at its first frame
     channels = Array.from({ length: u8(song) }, (_, i) => Object.assign(channel(), { seq: u32(song + 32 + i * 4), chVolume: MUSIC_VOLUME }));
-    effects = Array.from({ length: EFFECT_CHANNELS }, () => channel());
+    // with nothing playing, so any sound effect can take them, however low its priority
+    effects = Array.from({ length: EFFECT_CHANNELS }, () => Object.assign(channel(), { priority: -0x80000000 }));
     Object.assign(state, { lastFrame: 0, pattern: -1, row: 20000, speed: 6, active: false, wait: 0, stepped: false, newPattern: false, master: 255, jump: false });
     frameNumber = 1;
     volume = 0;
@@ -97,10 +100,12 @@ export function createGax(bytes, sampleRate) {
   }
 
   // 0x080342A4 with 0x080438AC and 0x08044098: a sound effect, from its three words, on the next channel that's free
-  function playEffect(address) {
+  function playEffect(address, unless = 0) {
     if (!playing) return;
     const id = u32(address), priority = s32(address + 4), level = u32(address + 8);
     if (!id) return;
+    // 0x08034238: not if `unless` is the last a channel was given
+    if (unless && lastEffects.includes(u32(unless))) return;
     let at = nextEffectChannel;
     if (priority < effects[at].priority) {
       at ^= 1;
@@ -108,6 +113,7 @@ export function createGax(bytes, sampleRate) {
     }
     const ch = effects[at];
     Object.assign(ch, { fxNote: 8, fxFine: 0, fxUntie: 0, fxId: id, priority, fxVolume: 255, chVolume: Math.min(level, 255) });
+    lastEffects[at] = id;
     nextEffectChannel = at ^ 1;
   }
 

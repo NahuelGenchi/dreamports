@@ -37,7 +37,7 @@ const sound = createSound({
   calls: call => ({
     startSong(address, ahead = 0) { call('startSong', address, ahead); },
     stopSong() { call('stopSong'); },
-    playEffect(address) { call('playEffect', address); },
+    playEffect(address, unless) { call('playEffect', address, unless); },
   }),
 });
 proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
@@ -67,8 +67,8 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the copyright screen, the logos, the title screen and the load save game screen. What comes after it
-// isn't ported yet, so the screen stays white there.
+// The game so far: the copyright screen, the logos, the title screen, the load save game screen and the main menu. What
+// comes after it isn't ported yet, so the screen stays white there.
 function createGame(video, rom, sound) {
   // a start point (tools/README.md), which the game's own path doesn't reach yet: ?hub opens in the first world's hub
   const core = createCore(video, rom, sound, new URLSearchParams(location.search).has('hub') ? 'hub' : null);
