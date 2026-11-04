@@ -88,8 +88,11 @@ function putGlyph(c, x, y, glyph, colour) {
   const { to, stride, rows, block } = c.text, { bytes } = c.rom;
   const shift = x & 7, source = GLYPHS - CARTRIDGE + ((glyph & 0x7FFF) << 5);
   const count = rows <= y ? 0 : Math.min(rows - y, 16);
+  c.textCycles += 173;
   for (let i = 0; i < count; i++) {
     const at = to + ((x >> 3) * stride + y + i) * 4, first = bytes[source + i * 2], second = bytes[source + i * 2 + 1];
+    // this row's turn of the loop, and each stretch of pixels it writes, as mGBA counts 0x08020978's instructions
+    c.textCycles += 122 + ((first << shift) & 0xFF ? 62 : 0) + (((first >> (8 - shift)) | (second << shift)) & 0xFF ? 68 : 0) + ((second >> (8 - shift)) & 0xFF ? 68 : 0);
     putPixels(c, at, (first << shift) & 0xFF, colour);
     putPixels(c, at + stride * 4, ((first >> (8 - shift)) | (second << shift)) & 0xFF, colour);
     putPixels(c, at + block * 4, (second >> (8 - shift)) & 0xFF, colour);
@@ -170,20 +173,28 @@ function showPictureColours(c, entry) {
 // frame's long enough to reach the picture, at line 49. LANDING_CONSTANT is what's the same in every such frame, as
 // measured against the original: the other cycles come from what the pictures hold and what the sound engine played.
 const LANDING_CONSTANT = -95336, LINE_CYCLES = 1232, WORK_BEFORE_LINE_ONE = 80000;
-// the line past which what's left of the frame, with a new row's letters, passes the next V-blank before its scroll
-const SCROLL_LATE_LINE = 51;
+// A move can take past the next V-blank too, with the picture's unpacking, SoundMain and the new letters added up. Past
+// the first of these cycles the frame's sprites miss that V-blank, so they take the frame after and a frame of the list
+// is lost, as mGBA measures it, and past the second, with less left to do by then, its scroll misses it as well.
+const SPRITES_PASS_V_BLANK = 245000, SCROLL_PASSES_V_BLANK = 267500;
 
-/** The entry's picture on a move, and the line its colours land on, or -1 when they land at once, as the frame's work
- *  ends before line 1. */
+/** The entry's picture on a move, with its colours landing at once if the frame's work ends before line 1. */
 function showPicture(c, entry) {
   const table = at => c.rom.u32(at - CARTRIDGE + (isOpen(c, entry) ? entry : LOCKED) * 4);
   const sound = c.sound?.frameCycles();
   const work = unpackCycles(c, table(PICTURES)) + unpackCycles(c, table(PICTURE_PALETTES));
   const line = sound == null || work < WORK_BEFORE_LINE_ONE ? -1 : Math.floor((work + sound + LANDING_CONSTANT) / LINE_CYCLES);
+  c.moveCycles = work + (sound ?? 0);
   showPictureTiles(c, entry);
-  if (line < 0) { showPictureColours(c, entry); return -1; }
-  c.lineWork = { line, run: () => { showPictureColours(c, entry); c.video.updateColors(); } };
-  return line;
+  if (line < 0) showPictureColours(c, entry);
+  else c.lineWork = { line, run: () => { showPictureColours(c, entry); c.video.updateColors(); } };
+}
+
+/** What a move's cycles leave of the frame's sprites and scroll for the next V-blank. */
+function moveDone(c) {
+  const cycles = c.moveCycles + c.textCycles;
+  if (cycles >= SPRITES_PASS_V_BLANK) c.menu.spritesLate = true;
+  if (cycles >= SCROLL_PASSES_V_BLANK) c.holdQueue = true;
 }
 
 /** 0x0803268c: the caption under the picture, which an entry that isn't open doesn't have. */
@@ -234,6 +245,8 @@ function comeInRest(c, node) {
 
 /** Up: the choice moves up the list, and the list with it when it reaches the top row. */
 function moveUp(c, node) {
+  c.moveCycles = 0;
+  c.textCycles = 0;
   if (node.selected !== 0) {
     node.selected--;
     showPicture(c, node.selected);
@@ -250,15 +263,17 @@ function moveUp(c, node) {
   }
   node.arrowUp.run = arrowSlideUp;
   node.arrowUp.position.state = 0;
+  moveDone(c);
 }
 
 /** Down: the choice moves down the list, and the list with it, the once it can, when it passes the second row. */
 function moveDown(c, node) {
-  let line = -1;
+  c.moveCycles = 0;
+  c.textCycles = 0;
   if (node.selected + 1 > ENTRIES - 1) node.selected = ENTRIES - 1;
   else {
     node.selected++;
-    line = showPicture(c, node.selected);
+    showPicture(c, node.selected);
     showCaption(c, node.selected);
     c.sound?.play(SOUND_MOVE);
   }
@@ -269,16 +284,10 @@ function moveDown(c, node) {
     node.rows[2].position.player = 1;
     node.rows[3].position.player = 2;
     node.rows = [node.rows[1], node.rows[2], node.rows[3], addRow(c, ROW_BELOW, node.top + 3)];
-    // the third entry's picture is the longest to unpack, and with a row's letters the frame's sprites run past the
-    // next V-blank, as mGBA measures it, so they take the frame after it and show a frame late. With more of the
-    // sound playing, its colours and the frame's scroll run later still (showPicture)
-    if (node.selected === OWN_ENTRY && isOpen(c, OWN_ENTRY)) {
-      c.menu.spritesLate = true;
-      if (line >= SCROLL_LATE_LINE) c.holdQueue = true;
-    }
   }
   node.arrowDown.run = arrowSlideDown;
   node.arrowDown.position.state = 0;
+  moveDone(c);
 }
 
 /** 0x08031e68: A chooses an entry that's open, B goes back and up and down move the choice, with the frame pulsing. */

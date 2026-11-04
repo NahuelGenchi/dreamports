@@ -67,6 +67,8 @@ export function createCore(video, rom, sound) {
     vblanks: 0, frames: 0,
     // what a long job finishes while the screen is being drawn, and after which of its lines (hblank)
     lineWork: null,
+    // a move's cycles on the Mini-games screen, and its letters' (mini-games.js)
+    moveCycles: 0, textCycles: 0,
     startUp: START_UP_FRAMES,
     main: null,
   };
