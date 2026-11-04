@@ -2086,15 +2086,15 @@ Read in the code only: Sonic dying while a lift or bowl holds him, one of them l
 
 **Objects.** Her hammer launches her 1.5 times as fast off springs, hidden springs, moving springs and special springs, and opens a boss's capsule (`Coll_AmyHammer_Spring`), and it breaks ice blocks. A bounce block leaves her with no air moves. Swinging hooks, lifts, skating stones, spiked platforms, square platforms and waterfalls leave her uncurled (state 85) where they curl up the others. Her hammer breaks boulders too. She grinds on rails as Sonic does, with a sound of her own (song 134), and a whirlwind or an updraft leaves her with no air moves. A run wheel doesn't slow her dive or take her speed down while she crouches on it, and a tube's mouth plays no spin sound for her.
 
-**How Amy was checked.** The recording `amy-neo-green-hill` plays her from power-on with the proof tools: 8,000 frames of Neo Green Hill act 1 with the moves above, every one of them the same, picture and sound. The recordings `amy-secret-base-act-2`, `amy-casino-paradise`, `amy-ice-mountain`, `amy-angel-island`, `amy-egg-rocket`, `amy-cosmic-angel` and `amy-x-zone` take the original there through its course select, with the level unlocked, and `?level=` takes the Dreamport there. `amy-x-zone` plays 7,000 frames against the Egg Wrecker, with a death and the restart. `amy-special-stage` puts her above Neo Green Hill act 1's special spring and plays 3,200 frames of the stage with every frame the same. What those recordings still show:
+**How Amy was checked.** The recording `amy-neo-green-hill` plays her from power-on with the proof tools: 8,000 frames of Neo Green Hill act 1 with the moves above, every one of them the same, picture and sound. The recordings `amy-secret-base-act-2`, `amy-casino-paradise`, `amy-ice-mountain`, `amy-angel-island`, `amy-egg-rocket`, `amy-cosmic-angel` and `amy-x-zone` go through the [course select](#the-course-select) to an act of each other zone. `amy-x-zone` plays 7,400 frames against the Egg Wrecker, with a death and the restart. `amy-special-stage` puts her above Neo Green Hill act 1's special spring and plays 3,200 frames of the stage. Of those, `amy-secret-base-act-2`, `amy-x-zone` and `amy-special-stage` match on every frame. What the others, and Tails' and Knuckles' recordings of the same kind, still differ by:
 
-- Every start from the course select differs by its sound for about 25 frames after it, as the main menu's music runs out where the original's course select has its own, and the HUD's first frame differs, as the original draws a tile from before the font there (see `hudFlash` in [`levels.js`](../src/rom/levels.js)).
-- A second act picked there, Secret Base act 2 and Cosmic Angel, shows its title card's band for 26 frames while the original is still black.
-- Angel Island's Leon differs from frames 2205 to 2353: its counter between shots is memory the original never sets, and the Dreamport starts it at 0.
-- Egg Rocket's capsule lights differ, as #105 says.
-- Ice Mountain's frame 2347 differs by 3 pixels at a Yukimaru, and single frames differ by sound in the zones, more often against a boss, none of them explained yet.
+- Angel Island's Leon, in `amy-angel-island`: its count between shots is memory the original never sets, and the Dreamport starts it at 0.
+- Egg Rocket's capsule lights, as #105 says.
+- One frame of 3 pixels at a Yukimaru in `amy-ice-mountain`.
+- Tails' HUD on its first frame after the course select, in `tails-ice-mountain` and `tails-x-zone`, by 118 pixels: the tiles there aren't the character select's, as they are for the others. What they are hasn't been found.
+- Single frames of sound, and a few short stretches, in `amy-casino-paradise`, `amy-cosmic-angel`, `tails-ice-mountain`, `tails-x-zone`, `knuckles-x-zone` and the special stages, none of them explained yet. `tails-neo-green-hill` has one on frame 1709, next to the character select it skips.
 
-**Only read in the code, not checked:** her object rules above, unless a recording happened to reach them, as no run was aimed at them; water; a boss but the Egg Wrecker; the goal and the results with her name; the normal ending.
+**Only read in the code, not checked:** her object rules above, unless a recording happened to reach them, as no run was aimed at them; water; grind rails; a boss but the Egg Wrecker; the goal and the results with her name; the normal ending.
 
 ### Mecha Knuckles
 
