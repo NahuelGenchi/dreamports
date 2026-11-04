@@ -2,11 +2,11 @@
 // (entities_manager.c: CreateStageEntitiesManager, 0x0802B7B8, and its tasks). So far the overworld's big rings and Omochao.
 
 import { createSprite, updateSprite, displaySprite } from '../sprite.js';
-import { isArriving } from './player.js';
+import { isArriving, FLAG } from './player.js';
 
 const INTERACTABLES = 0xD0E9C;
 const ANIM_FACTORY_RING = 911, ANIM_OMOCHAO = 977, ANIM_ACT_RING = 983;
-const REGION = 256, TILE = 8, BREAKABLE_WALLS = 0xCF208;
+const REGION = 256, TILE = 8, BREAKABLE_WALLS = 0xCF208, PUSH_OUT = 0x400;
 
 // RLUnCompWram, the BIOS's run-length decompression
 function unRle(rom, at) {
@@ -102,11 +102,11 @@ function createActRing(m, at, x, y) {
     if (isArriving(stage.players[stage.playerIndex]) && stage.warpId === act + 1) {
       for (const p of stage.players) {
         if (bits >> 7) {
-          p.qSpeedAirX = -0x400;
-          p.moveState |= 1;
+          p.velX = -PUSH_OUT;
+          p.flags |= FLAG.FACING_LEFT;
         } else {
-          p.qSpeedAirX = 0x400;
-          p.moveState &= ~1;
+          p.velX = PUSH_OUT;
+          p.flags &= ~FLAG.FACING_LEFT;
         }
       }
     }
@@ -131,8 +131,8 @@ function createFactoryRing(m, at, x, y) {
   c.createTask(t => {
     if (isArriving(stage.players[stage.playerIndex]) && stage.warpId === 0) {
       for (const p of stage.players) {
-        p.qSpeedAirX = 0x400;
-        p.moveState &= ~1;
+        p.velX = PUSH_OUT;
+        p.flags &= ~FLAG.FACING_LEFT;
       }
     }
     if (!active(stage.camera, x, y)) {
@@ -164,69 +164,41 @@ function createOmochao(m, at, x, y) {
   }, null, 0x2100);
 }
 
-// sub_8020A58: whether a character's box meets the sprite's, and how far it has to go to leave it
-function meets(s, worldX, worldY, p, param6) {
-  const box = s.hitboxes?.[0];
-  const pb = { left: -p.spriteOffsetX, top: -p.spriteOffsetY, right: p.spriteOffsetX, bottom: p.spriteOffsetY };
-  const x = p.qWorldX >> 8, y = p.qWorldY >> 8;
-  const overlap = worldX + box.left <= x + pb.right && worldX + box.right >= x + pb.left && worldY + box.top <= y + pb.bottom && worldY + box.bottom >= y + pb.top;
-  if (!overlap) return 0;
-  let r = 0, dx, dy, limit;
-  if (((box.left + box.right) >> 1) + worldX <= x) {
-    dx = worldX + box.right - (pb.left + x);
-    r |= 0x40000;
-  } else {
-    dx = worldX + box.left - (pb.right + x);
-    r |= 0x80000;
-  }
-  if (worldY + ((box.top + box.bottom) >> 1) > y) {
-    dy = worldY + box.top - (y + pb.bottom);
-    limit = Math.min(dy + 5, 0);
-    r |= 0x10000;
-  } else {
-    dy = worldY + box.bottom - (y + pb.top);
-    limit = Math.max(dy + 2, 0);
-    r |= 0x20000;
-  }
-  if (Math.abs(dx) < Math.abs(limit)) r &= 0xC0000;
-  else {
-    r &= 0x30000;
-    if (r & 0x10000) {
-      if (p.qSpeedAirY < 0 && param6 === 0) return 0;
-      if (!(p.moveState & 4) && (p.angle + 0x20) & 0x40) p.qSpeedGround = 0;
-    }
-  }
-  r |= ((dx << 8) & 0xFF00) | (dy & 0xFF);
-  if (r & 0xC0000) {
-    if (!(r & 0xFF00)) r &= 0xFFF300FF;
-  } else r &= 0xFFFF00FF;
-  if (!(r & 0x30000)) r &= 0xFFFFFF00;
-  return r;
-}
-// sub_8020950: a sprite as something solid
-function solid(s, worldX, worldY, p) {
-  if (s.hitboxes?.[0] === undefined || s.hitboxes[0].index === -1 || p.moveState & 0x100) return 0;
-  let wasOn = false;
-  if (p.moveState & 0x20 && p.sprColliding === s) {
-    wasOn = true;
-    p.moveState &= ~0x20;
-    p.moveState |= 4;
-  }
-  const r = meets(s, worldX, worldY, p, 0);
-  if (r) {
-    if (r & 0x10000) {
-      p.moveState |= 0x20;
-      p.moveState &= ~4;
-      p.sprColliding = s;
-    }
-  } else if (wasOn && !(p.moveState & 0x20)) {
-    p.moveState &= ~0x40;
-    p.moveState |= 4;
-    p.sprColliding = null;
-  }
-  return r;
-}
 const s8 = v => (v << 24) >> 24;
+
+// sub_8020A58: which side of an object's box a character's body has run into, and how far to go to come out of it, or
+// null if they don't touch. The side it comes out by is the one with the least to go, by a measure that favours the top.
+function touching(box, boxX, boxY, p) {
+  const x = p.x >> 8, y = p.y >> 8, { halfWidth: w, halfHeight: h } = p;
+  if (boxX + box.left > x + w || boxX + box.right < x - w || boxY + box.top > y + h || boxY + box.bottom < y - h) return null;
+  const onRight = boxX + ((box.left + box.right) >> 1) <= x, above = boxY + ((box.top + box.bottom) >> 1) > y;
+  const pushX = onRight ? boxX + box.right - (x - w) : boxX + box.left - (x + w);
+  const pushY = above ? boxY + box.top - (y + h) : boxY + box.bottom - (y - h);
+  if (Math.abs(pushX) < Math.abs(above ? Math.min(pushY + 5, 0) : Math.max(pushY + 2, 0))) {
+    return s8(pushX) === 0 ? null : { side: onRight ? 'right' : 'left', push: s8(pushX) };
+  }
+  if (above) {
+    if (p.velY < 0) return null;
+    if (!(p.flags & FLAG.IN_AIR) && (p.angle + 0x20) & 0x40) p.groundSpeed = 0;
+  }
+  return { side: above ? 'top' : 'bottom', push: s8(pushY) };
+}
+// sub_8020950: an object a character can stand on and can't go through
+function touchSolid(s, x, y, p) {
+  const box = s.hitboxes?.[0];
+  if (box === undefined || box.index === -1) return null;
+  const wasOn = p.flags & FLAG.ON_OBJECT && p.standingOn === s;
+  if (wasOn) p.flags = (p.flags & ~FLAG.ON_OBJECT) | FLAG.IN_AIR;
+  const touch = touching(box, x, y, p);
+  if (touch?.side === 'top') {
+    p.flags = (p.flags | FLAG.ON_OBJECT) & ~FLAG.IN_AIR;
+    p.standingOn = s;
+  } else if (!touch && wasOn) {
+    p.flags = (p.flags & ~FLAG.AT_WALL) | FLAG.IN_AIR;
+    p.standingOn = null;
+  }
+  return touch;
+}
 
 // CreateEntity_BreakableWall and Task_BreakableWall: a wall that stops a character, which breaking isn't ported yet
 function createBreakableWall(m, at, x, y) {
@@ -237,34 +209,31 @@ function createBreakableWall(m, at, x, y) {
   m.data.setInt8(at, -2);
   c.createTask(t => {
     for (const p of stage.players) {
-      if (p.moveState & (0x10000000 | 0x1000000 | 0x100)) continue;
-      const r = solid(s, x, y, p);
-      if (r & 0x10000) {
-        p.qWorldY += s8(r) << 8;
-        p.qSpeedAirY = 0;
-      } else if (r & 0x20000) {
-        p.qWorldY += (s8(r) << 8) + 0x100;
-        p.qSpeedAirY = 0;
-      }
-      if (r & 0xC0000) {
-        p.qWorldX += ((r << 16) >> 24) << 8;
-        p.qSpeedAirX = 0;
-        p.qSpeedGround = 0;
-        if (r & 0x40000 && p.keyInput & 0x20) {
-          p.qWorldX -= 0x100;
-          p.moveState |= 0x40;
-        } else if (r & 0x80000 && p.keyInput & 0x10) {
-          p.qWorldX += 0x100;
-          p.moveState |= 0x40;
+      const touch = touchSolid(s, x, y, p);
+      if (touch?.side === 'top') {
+        p.y += touch.push << 8;
+        p.velY = 0;
+      } else if (touch?.side === 'bottom') {
+        p.y += (touch.push + 1) << 8;
+        p.velY = 0;
+      } else if (touch) {
+        p.x += touch.push << 8;
+        p.velX = 0;
+        p.groundSpeed = 0;
+        // still pressing against it, it keeps pushing
+        const towards = touch.side === 'right' ? 0x20 : 0x10;
+        if (p.held & towards) {
+          p.x += touch.side === 'right' ? -0x100 : 0x100;
+          p.flags |= FLAG.AT_WALL;
         }
       }
     }
     s.x = x - stage.camera.x;
     s.y = y - stage.camera.y;
     if (!active(stage.camera, x, y)) {
-      for (const p of stage.players) if (p.sprColliding === s) {
-        p.moveState = (p.moveState & ~0x20) | 4;
-        p.sprColliding = null;
+      for (const p of stage.players) if (p.standingOn === s) {
+        p.flags = (p.flags & ~FLAG.ON_OBJECT) | FLAG.IN_AIR;
+        p.standingOn = null;
       }
       leave(t, m, at, meX, s);
       return;
@@ -285,7 +254,7 @@ function layerToggle(layer) {
         return;
       }
       for (const p of stage.players) {
-        const px = p.qWorldX >> 8, py = p.qWorldY >> 8;
+        const px = p.x >> 8, py = p.y >> 8;
         if (x <= px && x + w >= px && y <= py && y + h >= py) p.layer = layer;
       }
     }, null, 0x2000);

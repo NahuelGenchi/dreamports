@@ -1,6 +1,6 @@
 {
  "about": "Route 99's overworld, from a start point: the original gets there by itself, from power-on, through its menus and the story.",
- "frames": 536,
+ "frames": 900,
  "start": "level=2",
  "held": [
   [

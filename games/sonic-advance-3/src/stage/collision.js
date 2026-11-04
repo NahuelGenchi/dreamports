@@ -1,115 +1,85 @@
-// The ground under the characters, rewritten from the original's terrain_collision: every level has a collision map of
-// metatiles of 12 by 12 tiles, each tile with a height for each of its 8 columns and rows. The
-// finders look along a line, a tile at a time, for how far away the ground is, and the angle of what they find.
+// The ground under the characters, written from how the original measures it (0x08052038, 0x08052178, 0x080522A8,
+// 0x080517F8 and 0x080519E8). Every level has a map of metatiles of 12 by 12 tiles for each of its two layers, and each
+// tile says how tall its ground is at each of its 8 columns, and how deep at each of its 8 rows, with the angle of its surface.
 
-let map = null;
+const TILE = 8, METATILE_TILES = 12, FULL = 8, ONE_WAY = 0x80;
+const X_FLIP = 0x400, Y_FLIP = 0x800;
 
-/** gRefCollision, from gCollisionTable at 0x080D0D78, for level `level`. */
+let ground = null;
+
+/** The level's collision, from the table at 0x080D0D78. */
 export function useCollision(rom, level) {
   const at = rom.u32(0xD0D78 + level * 4) - 0x08000000;
-  const ptr = o => rom.u32(at + o) - 0x08000000;
-  map = {
-    rom, heightMap: ptr(0), rotation: ptr(4), metatiles: ptr(8), layers: [ptr(12), ptr(16)], flags: ptr(20),
-    levelX: rom.u16(at + 24), levelY: rom.u16(at + 26), pxWidth: rom.u32(at + 28), pxHeight: rom.u32(at + 32),
+  const pointer = offset => rom.u32(at + offset) - 0x08000000;
+  ground = {
+    rom, heights: pointer(0), angles: pointer(4), metatiles: pointer(8), layers: [pointer(12), pointer(16)], oneWay: pointer(20),
+    metatilesWide: rom.u16(at + 24), width: rom.u32(at + 28), height: rom.u32(at + 32),
   };
 }
 
-const clamp = (v, max) => (v < 0 ? 0 : v > max - 1 ? max - 1 : v);
-const s8 = v => (v << 24) >> 24;
+const inside = (v, size) => Math.max(0, Math.min(size - 1, v));
+const mirrorHeight = h => (h === FULL || h === 0 ? h : h > 0 ? h - FULL : h + FULL);
+const flipAngleX = a => -a & 0xFF, flipAngleY = a => (-0x80 - a) & 0xFF;
 
-// 0x080522A8: the tile at (x, y) of a layer: its number, and whether it's flipped
 function tileAt(x, y, layer) {
-  const { rom } = map;
-  const tx = x >> 3, ty = y >> 3, mx = Math.trunc(tx / 12), my = Math.trunc(ty / 12);
-  const metatile = rom.u16(map.layers[layer] + (my * map.levelX + mx) * 2);
-  return rom.u16(map.metatiles + metatile * 288 + ((ty - my * 12) * 12 + (tx - mx * 12)) * 2);
+  const { rom } = ground, column = x >> 3, row = y >> 3;
+  const blockX = Math.floor(column / METATILE_TILES), blockY = Math.floor(row / METATILE_TILES);
+  const block = rom.u16(ground.layers[layer] + (blockY * ground.metatilesWide + blockX) * 2);
+  return rom.u16(ground.metatiles + block * METATILE_TILES * METATILE_TILES * 2 + ((row - blockY * METATILE_TILES) * METATILE_TILES + column - blockX * METATILE_TILES) * 2);
 }
 
-const unflip = v => (v === 8 || v === 0 ? v : v > 0 ? v - 8 : v + 8);
-
-// 0x08052038: along x; how far into its tile the ground starts, and its angle in out[0]
-export function acrossX(p0, p1, layer, out) {
-  const { rom } = map;
-  p0 = clamp(p0, map.pxWidth);
-  p1 = clamp(p1, map.pxHeight);
-  const res = tileAt(p0, p1, layer & 1), index = res & 0x3FF;
-  let row = p1 % 8;
-  if (res & 0x800) row = 7 - row;
-  let h = rom.u8(map.heightMap + index * 8 + row) & 0xF;
-  if ((h & 8) === 8) h |= ~0xF;
-  if (h === -8) h = 8;
-  if (layer & 0x80 && (rom.u16(map.flags + (index >> 3) * 2) >> ((index % 8) * 2)) & 1) h = 0;
-  if (res & 0x400) h = unflip(h);
-  let rotation = rom.u8(map.rotation + index);
-  if (res & 0x800) rotation = (-0x80 - rotation) & 0xFF;
-  if (res & 0x400 && h !== 0) rotation = -rotation & 0xFF;
-  out[0] = rotation;
-  return h;
+// How much ground the tile at (x, y) has along the way a line runs through it, up and down when `vertical`, side to
+// side when not: 0 for none, FULL for all of it, and otherwise how far from an edge it starts. `angle[0]` gets its surface's.
+function tileGround(x, y, layer, vertical, angle) {
+  const { rom } = ground;
+  const tile = tileAt(inside(x, ground.width), inside(y, ground.height), layer & 1), index = tile & 0x3FF;
+  const flipAcross = tile & (vertical ? X_FLIP : Y_FLIP), flipAlong = tile & (vertical ? Y_FLIP : X_FLIP);
+  const place = (vertical ? inside(x, ground.width) : inside(y, ground.height)) & 7;
+  const packed = rom.u8(ground.heights + index * TILE + (flipAcross ? 7 - place : place));
+  const nibble = vertical ? packed >> 4 : packed & 0xF;
+  let height = nibble >= FULL ? nibble - 16 : nibble;
+  if (height === -FULL) height = FULL;
+  if (layer & ONE_WAY && (rom.u16(ground.oneWay + (index >> 3) * 2) >> ((index & 7) * 2)) & 1) height = 0;
+  if (flipAlong) height = mirrorHeight(height);
+  let surface = rom.u8(ground.angles + index);
+  if (flipAcross) surface = vertical ? flipAngleX(surface) : flipAngleY(surface);
+  if (flipAlong && height !== 0) surface = vertical ? flipAngleY(surface) : flipAngleX(surface);
+  angle[0] = surface;
+  return height;
 }
 
-// 0x08052178: along y
-export function acrossY(p0, p1, layer, out) {
-  const { rom } = map;
-  p1 = clamp(p1, map.pxWidth);
-  p0 = clamp(p0, map.pxHeight);
-  const res = tileAt(p1, p0, layer & 1), index = res & 0x3FF;
-  let column = p1 & 7;
-  if (res & 0x400) column = 7 - column;
-  let h = s8(rom.u8(map.heightMap + index * 8 + column)) >> 4;
-  if (h === -8) h = 8;
-  if (layer & 0x80 && (rom.u16(map.flags + (index >> 3) * 2) >> ((index & 7) * 2)) & 1) h = 0;
-  if (res & 0x800) h = unflip(h);
-  let rotation = rom.u8(map.rotation + index);
-  if (res & 0x400) rotation = -rotation & 0xFF;
-  if (res & 0x800 && h !== 0) rotation = (-0x80 - rotation) & 0xFF;
-  out[0] = rotation;
-  return h;
-}
+// How far the ground is from `start`, along a line looking the way `stride` points, a tile at a time: positive when it's
+// ahead, negative when `start` is inside it. It looks `reach` tiles ahead when `start` is clear of the ground, and up to
+// two tiles back when it's in solid ground, for where that ground ends. `angle[0]`, if given, gets its surface's angle.
+function distanceToGround(start, across, layer, stride, reach, angle, vertical) {
+  const pixel = start & 7, ahead = stride > 0, seen = [0];
+  const read = tiles => (vertical ? tileGround(across, start + stride * tiles, layer, true, seen) : tileGround(start + stride * tiles, across, layer, false, seen));
+  const keep = () => { if (angle) angle[0] = seen[0]; };
+  const solidEdge = tiles => (ahead ? -1 - pixel : pixel - TILE) + tiles * TILE;
+  const slopeEdge = (height, tiles) => (height > 0 ? height - 1 - pixel : height + pixel) + tiles * TILE;
 
-const fromP3 = (p0, p3, i) => (p3 > 0 ? ~(p0 & 7) + i * 8 : (p0 & 7) + (i - 1) * 8);
-const fromRes = (p0, res, i) => (res > 0 ? res - 1 - (p0 & 7) + i * 8 : res + (p0 & 7) + i * 8);
-const missed = (p0, p3, i) => (p3 > 0 ? (i + 1) * 8 - (p0 & 7) : (p0 & 7) + i * 8 + 1);
-const invNot = (p0, p3, i) => (p3 > 0 ? ~(p0 & 7) - i * 8 : (p0 & 7) - (i + 1) * 8);
-const missedNeg = (p0, p3, i) => (p3 > 0 ? -((i - 1) * 8 + 1) - (p0 & 7) : (p0 & 7) - i * 8);
-
-/**
- * 0x080519E8 and 0x080517F8: from p0, in steps of p3, a tile at a time, how far the ground is along that line, negative
- * if it's inside it. `steps` is how many tiles it looks ahead, 2 or 5. out[0] gets its angle.
- */
-export function findGround(steps, p0, p1, layer, p3, out, across) {
-  const data = [0];
-  let res = across(p0, p1, layer, data);
-  if (res === 0) {
-    for (let i = 1; i <= steps; i++) {
-      res = across(p0 + p3 * i, p1, layer, data);
-      if (res === 0) {
-        if (i === steps) return missed(p0, p3, steps);
-        continue;
-      }
-      if (out) out[0] = data[0];
-      return res === 8 ? fromP3(p0, p3, i) : fromRes(p0, res, i);
+  let height = read(0);
+  if (height === FULL) {
+    keep();
+    for (let back = 1; back <= 2; back++) {
+      height = read(-back);
+      if (height === 0) return solidEdge(1 - back);
+      keep();
+      if (height !== FULL) return slopeEdge(height, -back);
+    }
+    return solidEdge(-2);
+  }
+  for (let tiles = 0; tiles <= reach; tiles++) {
+    if (tiles > 0) height = read(tiles);
+    if (height !== 0) {
+      keep();
+      return height === FULL ? solidEdge(tiles) : slopeEdge(height, tiles);
     }
   }
-  if (res === 8) {
-    if (out) out[0] = data[0];
-    let it = -p3;
-    res = across(p0 + it, p1, layer, data);
-    if (res === 8) {
-      if (out) out[0] = data[0];
-      it -= p3;
-      res = across(p0 + it, p1, layer, data);
-      if (res === 8) {
-        if (out) out[0] = data[0];
-        return invNot(p0, p3, 2);
-      }
-      if (res === 0) return missedNeg(p0, p3, 2);
-      if (out) out[0] = data[0];
-      return fromRes(p0, res, -2);
-    }
-    if (res === 0) return fromP3(p0, p3, 0);
-    if (out) out[0] = data[0];
-    return fromRes(p0, res, -1);
-  }
-  if (out) out[0] = data[0];
-  return res <= 0 ? res + (p0 & 7) : res - 1 - (p0 & 7);
+  return ahead ? (reach + 1) * TILE - pixel : pixel + reach * TILE + 1;
 }
+
+/** The ground above or below (`stride` -8 or 8) the point (x, fromY). */
+export const groundUpDown = (fromY, x, layer, stride, angle = null, reach = 2) => distanceToGround(fromY, x, layer, stride, reach, angle, true);
+/** The ground to the left or right (`stride` -8 or 8) of the point (fromX, y). */
+export const groundSideways = (fromX, y, layer, stride, angle = null, reach = 2) => distanceToGround(fromX, y, layer, stride, reach, angle, false);

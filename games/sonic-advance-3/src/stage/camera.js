@@ -1,48 +1,37 @@
-// The camera, rewritten from 0x0804F9.. UpdateCamera (camera.c): it follows the character in charge, a little behind.
+// The camera, written from how the original behaves (0x0804FE88, UpdateCamera, which 0x08051684 runs each frame). It keeps
+// the character in charge near the middle of the screen: it looks ahead the way they're going, lets them drift off its
+// target by a few pixels before it moves, catches up at a limited speed, and never shows past the stage's edges.
 
 const W = 240, H = 160;
-const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-const IN_AIR = 0x4;
+const DRIFT_X = 8, MAX_DRIFT_Y = 24, DRIFT_Y_STEP = 4;
+const CATCH_UP_X = 16, CATCH_UP_Y = 12;
+const FEET_STEP = 5, IN_AIR = 0x4;
 
-/** Task_8051688 (0x08051684), then UpdateCamera, once a frame. */
+const clamp = (v, low, high) => Math.max(low, Math.min(high, v));
+const towards = (from, to, step) => (from < to ? Math.min(from + step, to) : Math.max(from - step, to));
+
+// nothing while `to` is within `drift` of `from`, and then up to `step` pixels nearer, stopping at that drift
+function follow(from, to, drift, step) {
+  const gap = to - from;
+  if (Math.abs(gap) <= drift) return from;
+  return from + Math.sign(gap) * Math.min(step, Math.abs(gap) - drift);
+}
+
+/** What the camera keeps from frame to frame, other than where it is. */
+export const cameraMemory = () => ({ lookAhead: 0, feetOffset: -4, driftY: 0 });
+
+/** A frame of the camera, as a task. */
 export function updateCamera(t) {
-  const stage = t.data, cam = stage.camera, p = stage.players[stage.playerIndex];
-  if (!p || (p.moveState & 0x80000100) === 0x100) return;
-  let x = cam.x, y = cam.y;
-  cam.dx = x;
-  cam.dy = y;
-  cam.shiftX = p.qCamOffsetX >> 4;
-  cam.shiftY = p.qCamOffsetY >> 4;
-  x = clamp(x, cam.minX, cam.maxX - (W + 1));
-  y = clamp(y, cam.minY, cam.maxY - (H + 1));
-  if (cam.unk40 !== 0) cam.unk40--;
-  else {
-    const speedX = (p.qSpeedAirX << 16) >> 16;
-    cam.unk10 = (p.qWorldX >> 8) + cam.shiftX - W / 2;
-    cam.unk56 = (speedX + cam.unk56 * 15) >> 4;
-    cam.unk10 += cam.unk56 >> 5;
-    let unk64 = cam.unk64;
-    const target = p.spriteOffsetY - 4;
-    if (unk64 !== target) {
-      unk64 = unk64 < target ? Math.min(unk64 + 5, target) : Math.max(unk64 - 5, target);
-      cam.unk64 = unk64;
-    }
-    cam.unk14 = (p.qWorldY >> 8) + cam.shiftY - H / 2 + unk64;
-    const dx = cam.unk10 - x;
-    if (dx > cam.unk44) x += Math.min(cam.qUnk8 >> 8, dx - cam.unk44);
-    else if (dx < -cam.unk44) x += Math.max(-(cam.qUnk8 >> 8), dx + cam.unk44);
-    x = clamp(x, cam.minX, cam.maxX - W);
-    if (cam.qUnk8 < 0x1000) cam.qUnk8 += 0x20;
-    cam.unk48 = p.moveState & IN_AIR ? Math.min(cam.unk48 + 4, 24) : Math.max(cam.unk48 - 4, 0);
-    const dy = cam.unk14 - y;
-    if (dy > cam.unk48) y += Math.min(cam.unkC, dy - cam.unk48);
-    else if (dy < -cam.unk48) y += Math.max(-cam.unkC, dy + cam.unk48);
-    y = clamp(y, cam.minY, cam.maxY - H);
-  }
-  x = clamp(x, cam.minX, cam.maxX - W);
-  y = clamp(y, cam.minY, cam.maxY - H);
-  cam.x = x;
-  cam.y = y;
-  cam.dx -= x;
-  cam.dy -= y;
+  const stage = t.data, cam = stage.camera, leader = stage.players[stage.playerIndex];
+  const lastX = cam.maxX - W, lastY = cam.maxY - H;
+
+  cam.lookAhead = (((leader.velX << 16) >> 16) + cam.lookAhead * 15) >> 4;   // an average of its speed across the last frames
+  cam.feetOffset = towards(cam.feetOffset, leader.halfHeight - 4, FEET_STEP);
+  cam.driftY = towards(cam.driftY, leader.flags & IN_AIR ? MAX_DRIFT_Y : 0, DRIFT_Y_STEP);
+
+  const targetX = (leader.x >> 8) - W / 2 + (cam.lookAhead >> 5);
+  const targetY = (leader.y >> 8) - H / 2 + cam.feetOffset;
+  // it works from a pixel inside the far edges, so it can come back from them
+  cam.x = clamp(follow(clamp(cam.x, cam.minX, lastX - 1), targetX, DRIFT_X, CATCH_UP_X), cam.minX, lastX);
+  cam.y = clamp(follow(clamp(cam.y, cam.minY, lastY - 1), targetY, cam.driftY, CATCH_UP_Y), cam.minY, lastY);
 }

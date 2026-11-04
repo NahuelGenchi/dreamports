@@ -180,24 +180,19 @@ export function displaySprite(c, s) {
   }
 }
 
-const INV_SCALE = v => Math.trunc(0x10000 / v);
+const inverse = scale => Math.trunc(0x10000 / scale);
 
-/** TransformSprite: the sprite's rotation and scale into OAM, and where to draw it. */
-export function transformSprite(c, s, tf, sine) {
+/** TransformSprite: `turn`'s rotation and scale into the sprite's affine slot in OAM, and where to draw it so that its anchor stays at (turn.x, turn.y). */
+export function transformSprite(c, s, turn, sine) {
   if (s.frameNum === -1) return;
-  const { rom } = c, d = dimensionsOf(c, s), affine = s.frameFlags & SPRITE.ROT_SCALE;
-  const at = affine * 16 + 3, angle = tf.rotation & 0x3FF;
-  const dirX = sine[angle + 256] >> 6, dirY = sine[angle] >> 6;
-  const set = (i, v) => { c.oamBuffer[at + i * 4] = v & 0xFFFF; };
-  set(0, (dirX * INV_SCALE(tf.qScaleX)) >> 8);
-  set(1, (dirY * INV_SCALE(tf.qScaleX)) >> 8);
-  set(2, (-dirY * INV_SCALE(tf.qScaleY)) >> 8);
-  set(3, (dirX * INV_SCALE(tf.qScaleY)) >> 8);
-  const scaleX = Math.abs(tf.qScaleX), scaleY = Math.abs(tf.qScaleY);
-  const w = rom.u16(d + 4), h = rom.u16(d + 6);
-  const offX = tf.qScaleX > 0 ? rom.s16(d + 8) : w - rom.s16(d + 8);
-  const offY = tf.qScaleY > 0 ? rom.s16(d + 10) : h - rom.s16(d + 10);
-  const m00 = (dirX * scaleX) >> 8, m01 = (-dirY * scaleX) >> 8, m10 = (dirY * scaleY) >> 8, m11 = (dirX * scaleY) >> 8;
-  s.x = tf.x - ((m00 * (offX - (w >> 1)) + m01 * (offY - (h >> 1)) + ((w >> 1) << 8)) >> 8);
-  s.y = tf.y - ((m10 * (offX - (w >> 1)) + m11 * (offY - (h >> 1)) + ((h >> 1) << 8)) >> 8);
+  const { rom } = c, frame = dimensionsOf(c, s), slot = (s.frameFlags & SPRITE.ROT_SCALE) * 16 + 3, angle = turn.rotation & 0x3FF;
+  const cos = sine[angle + 256] >> 6, sin = sine[angle] >> 6;
+  [(cos * inverse(turn.scaleX)) >> 8, (sin * inverse(turn.scaleX)) >> 8, (-sin * inverse(turn.scaleY)) >> 8, (cos * inverse(turn.scaleY)) >> 8]
+    .forEach((value, i) => { c.oamBuffer[slot + i * 4] = value & 0xFFFF; });
+  const sizeX = Math.abs(turn.scaleX), sizeY = Math.abs(turn.scaleY), w = rom.u16(frame + 4), h = rom.u16(frame + 6);
+  // the anchor, from the frame's middle, turned and scaled as the picture is
+  const fromMiddleX = (turn.scaleX > 0 ? rom.s16(frame + 8) : w - rom.s16(frame + 8)) - (w >> 1);
+  const fromMiddleY = (turn.scaleY > 0 ? rom.s16(frame + 10) : h - rom.s16(frame + 10)) - (h >> 1);
+  s.x = turn.x - ((((cos * sizeX) >> 8) * fromMiddleX + ((-sin * sizeX) >> 8) * fromMiddleY + ((w >> 1) << 8)) >> 8);
+  s.y = turn.y - ((((sin * sizeY) >> 8) * fromMiddleX + ((cos * sizeY) >> 8) * fromMiddleY + ((h >> 1) << 8)) >> 8);
 }

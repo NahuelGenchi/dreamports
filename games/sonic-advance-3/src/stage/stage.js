@@ -6,7 +6,7 @@ import { backgroundFrom, drawStageBackground, animateTiles } from './map.js';
 import { createStageUi } from './ui.js';
 import { createPlayer, initializePlayer, SONIC, TAILS } from './player.js';
 import { useCollision } from './collision.js';
-import { updateCamera } from './camera.js';
+import { updateCamera, cameraMemory } from './camera.js';
 import { createEntities } from './entities.js';
 
 // gStageCameraBgTemplates, in the order the camera keeps them (0x0804F73C), and how each level's layers are numbered
@@ -72,7 +72,7 @@ function initCamera(stage) {
   camera.y = Math.max(0, stage.respawnY - (DISPLAY_H / 2 + 4));
   camera.maxX = rom.u16(CAMERA_MAX + level * 4);
   camera.maxY = rom.u16(CAMERA_MAX + level * 4 + 2);
-  Object.assign(camera, { qUnk8: 0x1000, unkC: 0xC, unk10: camera.x, unk14: camera.y, unk40: 0, unk44: 8, unk48: 0, unk50: 0, unk56: 0, unk64: 0xFFFC - 0x10000, shiftX: 0, shiftY: 0, dx: 0, dy: 0 });
+  Object.assign(camera, cameraMemory());
   useCollision(rom, level);
   c.createTask(updateCamera, stage, 0x1000);
   c.createTask(showLayers, stage, 0x1001);
@@ -199,9 +199,7 @@ export function startStage(c, level) {
   c.createTask(t => {
     const entities = () => createEntities(stage);
     initCamera(stage);
-    const sonic = createPlayer(stage, 0, SONIC, 1, 1), tails = createPlayer(stage, 1, TAILS, 0, 2);
-    sonic.partner = tails;
-    tails.partner = sonic;
+    const sonic = createPlayer(stage, 0, SONIC, true), tails = createPlayer(stage, 1, TAILS, false);
     stage.players = [sonic, tails];
     initializePlayer(c, sonic);
     initializePlayer(c, tails);
