@@ -6,8 +6,7 @@
 // repeat, and A on Game Start or Options fades the screen to black and stops the music. Options opens the Options
 // menu (options.js), which comes back to the main menu with the title screen's layers drawn again and a fade in.
 //
-// What isn't built yet goes nowhere. The original starts a demo after 900 frames on the title screen; here the
-// title screen stays as it is. A on VS, Time Attack or Tiny Chao Garden does nothing. Game Start opens the character
+// What isn't built yet goes nowhere. A on VS, Time Attack or Tiny Chao Garden does nothing. Game Start opens the character
 // select (charselect.js), or with the address's start point for the course select goes where it leads.
 //
 // The logo, "PRESS START" and the menu's items are in the save's language, Japanese or English; the copyright line
@@ -34,6 +33,7 @@ const GAME_START = 0, OPTIONS = 3;
 const ITEM_TILES = [28, 16, 28, 20, 40];
 const ITEM_VARIANTS = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5];   // by item, then language
 const BLEND_STEP = 0x55, BLEND_END = 0x1000;
+const DEMO_WAIT = 900;
 const RUNNING = 1, ENDED = 0;
 const s16 = v => (v << 16) >> 16;
 
@@ -113,8 +113,8 @@ function zoomIn(t) {
   placeLogo(e, title.unkE4);
 }
 
-// sub_800D878: after 60 frames "PRESS START" blinks and Start opens the menu. After 900 the original starts a
-// demo (Task_SwitchToDemoInit); demos aren't built, so the title screen goes on.
+// sub_800D878: after 60 frames "PRESS START" blinks and Start opens the menu, and after 900 a demo starts, on the
+// versions with a known place for its presses.
 function waitForStart(t) {
   const title = t.data, { ctx } = title, e = ctx.engine;
   title.unkE2 = (title.unkE2 + 1) & 0xFFFF;
@@ -127,6 +127,14 @@ function waitForStart(t) {
     if (!((title.unkE2 - 60) & 0x20)) displaySprite(e, ctx.sprites, title.s);
   }
   displaySprite(e, ctx.sprites, title.s2);
+  if (title.unkE2 > DEMO_WAIT && ctx.offsets.demoRecordings) t.main = toDemo;
+}
+
+// Task_SwitchToDemoInit: the act comes next, by itself (engine/demo.js)
+function toDemo(t) {
+  const { ctx } = t.data;
+  ctx.engine.destroyTask(t);
+  ctx.startDemo();
 }
 
 // Task_SwitchToMainMenu

@@ -43,27 +43,36 @@ export function powerOn(ctx) {
  * engine's gFrameCount, and the last what the character select chose. `character` is who the character select's row starts on, and `levels()` gives the level last played and the one
  * the course select last started, as { current, started }. Without `courseSelect`, as when the address names a level,
  * the character select goes straight to the act; without
- * `select`, a start point for the proof tools, Game Start goes where the character select would.
+ * `select`, a start point for the proof tools, Game Start goes where the character select would. As a demo starts
+ * `play` is called with `demo` set in its last argument. `back`, { title, frameCount, white }, starts it as a demo leaves it,
+ * with no start-up: at the title screen with its music if `title`, else at the SEGA logo, with gFrameCount at `frameCount`.
  * Returns { stop, step, draw, setView }: setView(w, h) draws a widescreen view of w × h from then on (the
  * original 240 × 160 is the default); step() and draw() are for checking, a frame at a time.
  */
-export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true, select = true, onGameStart } = {}) {
+export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true, select = true, onGameStart, back = null } = {}) {
   const video = createVideo();
   const engine = createEngine(video, rom, sound);
   video.write(REG.DISPCNT, 0x80);   // forced blank, until the game starts
-  let done = false, chosen, startingUp = STARTUP_FRAMES;
+  let done = false, chosen, demo = false, startingUp = back ? 0 : STARTUP_FRAMES;
   const ctx = {
     engine, tilemaps: offsets.tilemaps, sprites: spriteTables(rom, offsets.spriteTables), offsets, save, character, partner: false, levels, select,
     introGraphics: offsets.introGraphics, introTables: offsets.introTables,
     intro: () => createIntro(ctx),
     title: playMusic => createTitleScreen(ctx, playMusic),
     play: level => { done = true; chosen = level; },
+    startDemo: () => { done = true; demo = true; },
     // Task_805AAF8: whether the act comes next, with nothing cleared yet, or the course select, which only the versions
     // with a known place for its picture have
     onGameStart,
     toCourseSelect: () => courseSelect && save.unlockedLevel(ctx.character) !== 0 && !!offsets.courseSelectBackground,
     startGame: () => { if (ctx.toCourseSelect()) createCourseSelect(ctx); else ctx.play(); },
   };
+
+  if (back) {
+    engine.frameCount = back.frameCount;
+    if (back.title) ctx.title(true);
+    else createSegaLogo(ctx);
+  }
 
   const out = canvas.getContext('2d', { alpha: false });
   let image, pixels, view = null, drawn = false;
@@ -77,6 +86,9 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
     if (drawn) draw();   // at once, as resizing the canvas clears it
   }
   setView();
+  // the frame a demo ends on makes the next screen, whose first picture is white, from the title screen's fade or the
+  // demo's, or else black
+  if (back) { out.fillStyle = back.white ? '#FFF' : '#000'; out.fillRect(0, 0, canvas.width, canvas.height); }
 
   function step() {
     input.poll?.();
@@ -103,9 +115,11 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
     if (ran) draw();   // a frame is drawn once, from the H-blank effects its V-blank set up
     if (done) {
       // what's still sounding plays on, as the original stops nothing here: the act's music takes the place of the screen's
-      if (chosen === undefined && !select) stop();
+      // a demo's act shows black until its first picture, which can take a moment to read from the ROM
+      if (demo) { out.fillStyle = '#000'; out.fillRect(0, 0, canvas.width, canvas.height); }
+      if (chosen === undefined && !select && !demo) stop();
       else { cancelAnimationFrame(frame); input.release(); }
-      play(chosen, engine.frameCount + 1, { character: ctx.character, partner: ctx.partner });
+      play(chosen, engine.frameCount + 1, { character: ctx.character, partner: ctx.partner, demo });
       return;
     }
     frame = requestAnimationFrame(loop);

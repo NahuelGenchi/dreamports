@@ -756,6 +756,7 @@ export function createRenderer(canvas, assets) {
   // screen ('lighter' adds each channel and stops at 255, as the blend does), so the screen is never read back.
   const snowCanvas = document.createElement('canvas');
   let snowImg = null;
+  let snowDark = null;
   function drawSnow(frame, sx, sy, colors, opaque, ox, oy, end, flash) {
     if (end <= 0) return;
     if (snowImg?.width !== W || snowImg?.height !== H) { snowImg = new ImageData(W, H); snowCanvas.width = W; snowCanvas.height = H; }
@@ -935,7 +936,7 @@ export function createRenderer(canvas, assets) {
   const backdrop = stage.backdrop ?? [0, 0, 0];
 
 
-  function render({ layersAtStart, tick, rings, ringsStopped, sprites, terrain, palettes, objPalette, view, cam, hud: hudState, card: titleCard, results: actResults, gameOver, timeOver, bg, backLines, showCollision, rushFx, rushArt, shake, boostArt: art, spotlights, spriteRow, cardOver, water, display, effects2d, blendOff, pauseSign }) {
+  function render({ demoSign, layersAtStart, tick, rings, ringsStopped, sprites, terrain, palettes, objPalette, view, cam, hud: hudState, card: titleCard, results: actResults, gameOver, timeOver, bg, backLines, showCollision, rushFx, rushArt, shake, boostArt: art, spotlights, spriteRow, cardOver, water, display, effects2d, blendOff, pauseSign }) {
     const stops = !fixes.on && (gameOver?.endsNext || gameOver?.saving) ? SCROLL_STOPS_AT : Infinity;
     ctx.imageSmoothingEnabled = false;
     if (art && art !== boostArt) {
@@ -1015,11 +1016,38 @@ export function createRenderer(canvas, assets) {
     // the last transform written to each shared OAM matrix (an affine's `matrix`) this frame
     const matrices = {};
     for (const s of sprites) if (s.affine?.matrix !== undefined) matrices[s.affine.matrix] = s.affine;
+    // mGBA takes a sprite's pixels up to the priority of each later sprite whose box covers them, even where that sprite
+    // is transparent, and a later sprite of that same priority can't then cover them. So a spark at priority 2 shows in
+    // front of the front layer inside Sonic's box as he grinds, and anything inside a demo's words in front of Sonic too
+    // (notes/a-later-sprite-lifts-what-it-covers.md): each such sprite is drawn again, in the box, just behind the later one
+    const plain = s => !s.white && !s.window && !s.rush && !s.affine && !s.allWhite && s.frame >= 0 && sheetFor(s.sheet);
+    const placeOf = s => [s.x - (s.screen ? -ox : vx), s.y - (s.screen ? -oy : vy)];
+    const boxOf = s => {
+      const [, , w, h, ax, ay] = sheetFor(s.sheet).frames[s.frame], [x, y] = placeOf(s);
+      return { x: Math.floor(x) - (s.flipX ? w - ax : ax), y: Math.floor(y) - (s.flipY ? h - ay : ay), w, h };
+    };
+    const lifted = new Map();
+    for (const low of list) {
+      if ((low.prio ?? 0) < 2 || !plain(low)) continue;
+      const a = boxOf(low);
+      for (const high of list) {
+        if ((high.prio ?? 0) >= 2 || high.order <= low.order || !plain(high)) continue;
+        const b = boxOf(high);
+        if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) lifted.set(high, [...(lifted.get(high) ?? []), low]);
+      }
+    }
+    const drawLifted = high => {
+      const b = boxOf(high);
+      ctx.save(); ctx.beginPath(); ctx.rect(b.x, b.y, b.w, b.h); ctx.clip();
+      for (const low of lifted.get(high)) drawSprite(low.frame, ...placeOf(low), low.flipX, low.flipY, sheetFor(low.sheet));
+      ctx.restore();
+    };
     // the layers' priorities are 1 (front), 2 (back) and 3 (background), and a sprite goes in front of those
     // whose priority is the same as its own or lower; `shows` picks some of them
     const drawAll = (level, shows = () => true) => byPart((below, first, end) => {
       for (const s of list) {
         if (Math.min(Math.max(s.prio ?? 0, 1), 3) !== level || s.white || s.window || !shows(s)) continue;
+        if (lifted.has(s)) drawLifted(s);
         // the HUD's and the multiplayer modes' screen sprites are placed on the original screen
         const dx = s.screen ? -ox : vx, dy = s.screen ? -oy : vy;
         const sheet = s.boost ? (below ? boostUnder : boost) : sheetFor(s.sheet);
@@ -1063,7 +1091,7 @@ export function createRenderer(canvas, assets) {
     if (gameOver) drawGameOver(gameOver);
     if (timeOver) drawTimeOver(timeOver);
     if (effects2d?.darkness) darkenSpans(effects2d.darkness.y, effects2d.darkness.spans, ox, oy);
-    if (effects2d?.fade) brightenAll(effects2d.fade);
+    if (effects2d?.fade && !(titleCard && effects2d.overCard)) brightenAll(effects2d.fade);
     if (display) brighten(display);
     if (actResults) {
       // the band is semi-transparent from when the fade starts, and blending it at full weight over what's
@@ -1080,14 +1108,38 @@ export function createRenderer(canvas, assets) {
     // the pause menu's sign, in front of everything and out of any fade (pause.js), in the middle of the
     // original screen
     if (pauseSign) byPart(() => { for (const s of stack(pauseSign.map(recolour))) drawSprite(s.frame, s.x + ox, s.y + oy, s.flipX, s.flipY); });
-    if (!titleCard) return;
+    // a demo's words stay out of the fade, while the snow in front of them doesn't (`bldY`)
+    const signOverFade = (bldY = 0) => {
+      if (!demoSign) return;
+      const sign = stack(demoSign.map(recolour));
+      byPart(() => { for (const s of sign) drawSprite(s.frame, s.x + ox, s.y + oy, s.flipX, s.flipY); });
+      if (!(ice && tick > 1 && (!water || water.snow))) return;
+      const dark = snowCanvas.getContext('2d').getImageData(0, 0, W, H), d = dark.data;
+      for (let i = 0; i < d.length; i += 4) {
+        d[i] -= (d[i] * bldY) >> 4;   // as darken() has it
+        d[i + 1] = (d[i + 1] * (16 - bldY)) >> 4;
+        d[i + 2] = (d[i + 2] * (16 - bldY)) >> 4;
+      }
+      snowDark ??= document.createElement('canvas');
+      snowDark.width = W; snowDark.height = H;
+      snowDark.getContext('2d').putImageData(dark, 0, 0);
+      ctx.save(); ctx.beginPath();
+      for (const s of sign) {
+        const [, , w, h, ax, ay] = base.frames[s.frame];
+        ctx.rect(s.x + ox - ax, s.y + oy - ay, w, h);
+      }
+      ctx.clip(); ctx.drawImage(snowDark, 0, 0); ctx.restore();
+    };
+    if (!titleCard) { signOverFade(); return; }
     // the card's sprites are semi-transparent all together, and blending them at full weight over what's
     // behind keeps them out of the fade
     const semi = titleCard.sprites.length > 0 && (titleCard.sprites[0].a0 & 0xC00) === 0x400;
     const cardSprites = () => byPart(below => drawCard(titleCard.sprites, below ? card.under : card.sheet));
     if (!semi) cardSprites();
     if (!blend && titleCard.fade.bldY) darken(titleCard.fade.bldY);
+    signOverFade(titleCard.fade.bldY);
     if (semi) cardSprites();
+    if (effects2d?.overCard && effects2d.fade) brightenAll(effects2d.fade);
   }
 
   /** Draws w × h frames from now on: 240 × 160, the original screen, or the widescreen view's size. */

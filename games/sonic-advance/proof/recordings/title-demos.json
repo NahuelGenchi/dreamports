@@ -1,0 +1,13 @@
+{
+  "about": "From power-on with nothing saved: A on the language screen, then nothing pressed through the logos, the intro and the title screen, into each of the four demos in turn: Sonic in Neo Green Hill Zone, Tails in Secret Base Zone, Amy in Casino Paradise Zone and Knuckles in Ice Mountain Zone. Each ends by itself and goes back to the SEGA logo; after the second and the third, Start in the black after Sonic Team's logo skips the intro.",
+  "frames": 20600,
+  "held": [
+    [0,[]],
+    [150,["A"]],
+    [156,[]],
+    [13473,["START"]],
+    [13479,[]],
+    [17317,["START"]],
+    [17323,[]]
+  ]
+}

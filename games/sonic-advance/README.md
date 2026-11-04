@@ -443,7 +443,7 @@ Here's the road through the rest of the game. Each step has its own issue, so yo
 </tbody>
 </table>
 
-Also on the way: the title screen's demos, the course select, Amy, the menu's other modes, and the other three [Chao Hunt](#multiplayer-chao-hunt) stages.
+Also on the way: the menu's other modes, and the other three [Chao Hunt](#multiplayer-chao-hunt) stages.
 
 <details>
 <summary><b>Milestones</b></summary>
