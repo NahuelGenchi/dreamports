@@ -242,11 +242,12 @@ export function startStage(c, level) {
 }
 function buildStage(c, level) {
   const zone = Math.trunc((level - 1) / 10);
-  const stage = { c, level, warpId: 0, playerIndex: 0, timer: 0, levelTimer: 0, rings: 0, players: [], zone, act: level - zone * 10, camera: { x: 0, y: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 }, state: 1, layers: null, dispBits: 0, keys: 0, lives: 2 };
+  const stage = { c, level, warpId: 0, playerIndex: 0, timer: 0, levelTimer: 0, rings: 0, ringEffects: 0, players: [], zone, act: level - zone * 10, camera: { x: 0, y: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 }, state: 1, layers: null, dispBits: 0, keys: 0, lives: 2 };
   // 0x08003E44: the tiles sprites ask for come from here, to the end of sprite memory
   const heap = createTileHeap(0x10000 + 0x4D80, (0x8000 - 0x4D80) >> 5);
   stage.allocTiles = heap.alloc;
   stage.freeTiles = heap.free;
+  c.stage = stage;
   createStageUi(stage, SONIC, TAILS);
   // 0x08002618 and Task_StageMusicManager: the overworld's song, as the task's first frame starts it
   if (stage.act === HUB) {

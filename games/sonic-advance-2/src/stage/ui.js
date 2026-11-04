@@ -60,21 +60,22 @@ function uiFrame(t) {
   ui.ring.prevVariant = 0xFF;
   updateSprite(c, ui.ring);
   put(c, 3, 8, ICON_SIZE | 7, ui.ringTiles);
-  const red = stage.rings === 0 && stage.frames & 0x10 ? RED_NUMBERS : 0;
-  const hundreds = Math.trunc(stage.rings / 100), tens = Math.trunc((stage.rings - hundreds * 100) / 10);
-  [hundreds, tens, stage.rings - hundreds * 100 - tens * 10].forEach((d, i) => put(c, 3, TALL, NUMBER_SIZE | (28 + i * 8), digit(d) | red));
-  // the time, which shows no further than the frame before the limit: minutes, seconds and hundredths, with each frame's two
-  // digits from gMillisRenderLUT
-  put(c, 3, TALL, NUMBER_SIZE | 99, digit(10));
-  put(c, 3, TALL, NUMBER_SIZE | 123, digit(10));
-  const time = Math.min(stage.time, TIME_LIMIT - 1);
-  const seconds = Math.trunc(time / 60), minutes = Math.trunc(seconds / 60), inSecond = seconds % 60, frames = time % 60;
   const show = (d, x) => {
     const s = ui.digits[d];
     s.x = x;
     s.y = 16;
     displaySprite(c, s);
   };
+  const red = stage.rings === 0 && stage.frames & 0x10 ? RED_NUMBERS : 0;
+  const hundreds = Math.trunc(stage.rings / 100), tens = Math.trunc((stage.rings - hundreds * 100) / 10);
+  if (stage.rings > 999) [0, 1, 2].forEach(i => show(9, 32 + i * 8));   // no further than 999
+  else [hundreds, tens, stage.rings - hundreds * 100 - tens * 10].forEach((d, i) => put(c, 3, TALL, NUMBER_SIZE | (28 + i * 8), digit(d) | red));
+  // the time, which shows no further than the frame before the limit: minutes, seconds and hundredths, with each frame's two
+  // digits from gMillisRenderLUT
+  put(c, 3, TALL, NUMBER_SIZE | 99, digit(10));
+  put(c, 3, TALL, NUMBER_SIZE | 123, digit(10));
+  const time = Math.min(stage.time, TIME_LIMIT - 1);
+  const seconds = Math.trunc(time / 60), minutes = Math.trunc(seconds / 60), inSecond = seconds % 60, frames = time % 60;
   show(c.rom.u8(HUNDREDTHS + frames * 2), 136);
   show(c.rom.u8(HUNDREDTHS + frames * 2 + 1), 144);
   show(Math.trunc(inSecond / 10), 112);
