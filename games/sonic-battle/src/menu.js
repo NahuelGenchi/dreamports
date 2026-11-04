@@ -33,9 +33,9 @@ const REGISTERS = [
   [0x00, 0x0000], [0x08, 0x1F00], [0x10, 0x0000], [0x12, 0x0000], [0x0A, 0x1E0B], [0x14, 0x0000],
   [0x16, 0x0000], [0x0C, 0x1D03], [0x18, 0x0000], [0x1A, 0x0000], [0x0E, 0x1C0B], [0x1C, 0x0000],
   [0x1E, 0x0000], [0x50, 0x3F41], [0x52, 0x1000], [0x54, 0x0000],
-].map(([offset, value]) => [REG_OF[offset], value]);
+].map(([offset, value]) => [offset, value]);
 // BG3's control, which the title set and the name entry leaves as it is
-const BG3CNT = REG.BG3CNT, BG3CNT_VALUE = 0x1E01;
+const BG3CNT = REG.BG3CNT, BG3CNT_VALUE = 0x1E81;
 
 // the pictures the initializer decompresses: the 256-colour one BG3 shows, BG1's tiles, BG3's own tiles, and the
 // language's sprite tiles (0x08edd314 picks one of six)
@@ -56,8 +56,9 @@ const PREVIEW_MAP = 0x0600FA06, PREVIEW_MAP_TABLE = 0x0816EAEC, PREVIEW_MAP_TILE
 const PATTERN = 0x081327D4, PATTERN_TILE = 0xF292;
 // the animated picture's block of BG3's map: 16 frames of 12 by 17 entries from 0x0815e69c, at 0x0600f0a6
 const ANIMATION = 0x0815E69C, ANIMATION_MAP = 0x0600F0A6, ANIMATION_FRAMES = 8, ANIMATION_WORDS = 12 * 17;
-// the sprites' definition (the parts of one picture: tile, attributes, x and y offsets), which the engine reads
-const PARTS = 0x0816EACC;
+// the sprites' definition (the parts of one picture: tile, attributes, x and y offsets), which the engine reads:
+// the main sprite's at 0x0816eacc and the two arrows' at 0x0816eac4, the record just before it
+const PARTS = 0x0816EACC, PARTS_ARROWS = 0x0816EAC4;
 
 // the language byte the save keeps, which picks the pictures: English in the USA copy
 const LANGUAGE = 1;
@@ -233,6 +234,7 @@ function controller(c) {
       c.menu.arrows = true;
       c.menu.left.callback = 'settled';
       c.menu.right.callback = 'settled';
+      c.menu.sprites.push(c.menu.left, c.menu.right);
       c.menu.phase = 'preview';
     }
   } else if (c.menu.phase === 'preview') loadPreview(c);
@@ -255,7 +257,10 @@ export function menu(c) {
     },
   };
   for (const [offset, value] of REGISTERS) c.video.write(offset, value);
-  c.video.write(BG3CNT, BG3CNT_VALUE);
+  // the original's BG0 scrolls (its 0x0a and 0x0c) land on the kit's BG0 scrolls, which the table's own 0x10 and
+  // 0x12 pair reaches before them
+  c.video.write(REG.BG0HOFS, 0x1E0B);
+  c.video.write(REG.BG0HOFS + 2, 0x1D03);
   c.video.pal.fill(0);
   for (const [from, to] of PICTURES) decompress(c, from, to);
   decompress(c, SPRITE_PICTURES[LANGUAGE], 0x06010000);
@@ -272,8 +277,8 @@ export function menu(c) {
     at += 0x1C0;
   }
   firstAnimation(c);
-  const left = { baseX: 64 - 32, baseY: 146 - 32, direction: -1, position: { x: 32, y: 114, tile: 0, attr0: 0, attr1: 0, attr2: 0 }, parts: partsOf(c, PARTS), drawn: false };
-  const right = { baseX: 176 - 32, baseY: 118 - 32, direction: 1, position: { x: 144, y: 86, tile: 64, attr0: 0, attr1: 0, attr2: 0 }, parts: partsOf(c, PARTS), drawn: false };
+  const left = { baseX: 64 - 32, baseY: 146 - 32, direction: -1, position: { x: 32, y: 114, tile: 0, attr0: 0, attr1: 0, attr2: 0 }, parts: partsOf(c, PARTS_ARROWS), drawn: false };
+  const right = { baseX: 176 - 32, baseY: 118 - 32, direction: 1, position: { x: 144, y: 86, tile: 64, attr0: 0, attr1: 0, attr2: 0 }, parts: partsOf(c, PARTS_ARROWS), drawn: false };
   c.menu.left = left;
   c.menu.right = right;
   c.menu.sprites.push(c.menu.main);
