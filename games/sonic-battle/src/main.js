@@ -13,7 +13,7 @@ import { proof } from '../../../kit/gba/proof.js';
 import { createSettings } from '../../../kit/gba/ui/settings.js';
 import { createTouch } from '../../../kit/gba/ui/touch.js';
 import { createSound } from '../../../kit/gba/sound/audio.js';
-import { createCore, step } from './core.js';
+import { createCore, hblank, step } from './core.js';
 import { logos } from './logos.js';
 import { intro } from './intro.js';
 import { soundLayout } from './sound.js';
@@ -44,7 +44,11 @@ proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded but
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives and what a button does so far
 const touch = createTouch(stage, input, { screen, key: 'sonic-battle' });
-createSettings(stage, input, { what: { start: 'Start: skips the SEGA and Sonic Team logos and the intro, and leaves the title screen' }, touch });
+createSettings(stage, input, { what: {
+  a: 'A: chooses on the main menu and the Mini-games screen',
+  b: 'B: goes back from the Mini-games screen',
+  start: 'Start: skips the SEGA and Sonic Team logos and the intro, and leaves the title screen',
+}, touch });
 let rom = null, romBuffer = null;
 
 createRomSetup(picker, {
@@ -67,12 +71,15 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the logos, the intro and the title screen. What comes after the title screen, the main menu,
-// is not ported yet, so the screen stays black there.
+// The game so far: the logos, the intro, the title screen, the main menu and the Mini-games screen. What the rest of
+// their choices lead to isn't ported yet, so the screen stays black there. `open` in the address is what a recording's
+// start point gives the game for the entries a save has opened on the Mini-games screen.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
+  const open = new URLSearchParams(location.search).get('open');
+  if (open !== null) core.miniGamesOpen = Number(open) & 0xFF;
   core.main = c => logos(c, intro);
-  return { step(keys) { step(core, keys); } };
+  return { step(keys) { step(core, keys); }, hblank(line) { hblank(core, line); } };
 }
 
 function start() {
@@ -98,7 +105,7 @@ function start() {
       ran = true;
     }
     if (ran) {
-      video.drawFrame(pixels);
+      video.drawFrame(pixels, game.hblank);
       out.putImageData(image, 0, 0);
     }
     requestAnimationFrame(loop);

@@ -56,11 +56,15 @@ export function createCore(video, rom, sound) {
     copies: [],
     // gUnknown_03005264: the choice the main menu last made (menu.js)
     menuChoice: 0,
+    // gUnknown_03002110[120]: which entries of the Mini-games screen the save has opened, a bit each (mini-games.js)
+    miniGamesOpen: 1,
     // gUnknown_03001b08, gUnknown_030016c0 and gUnknown_03001b2c: the logos' frame count, the cross-fade's
     // target and where it is (logos.js)
     counter: 0, blendTarget: 0, blend: 0,
     // gUnknown_03001378 and gUnknown_03002610: V-blanks and main loop frames counted
     vblanks: 0, frames: 0,
+    // what a long job finishes while the screen is being drawn, and after which of its lines (hblank)
+    lineWork: null,
     startUp: START_UP_FRAMES,
     main: null,
   };
@@ -81,11 +85,22 @@ export function step(c, held) {
     }
     return;
   }
+  finishLineWork(c);
   vblank(c);
   runCopies(c);
   readKeys(c, held);
   // 0x080005ac: a link cable game's reset, which needs a second console
   c.callback(c);
+}
+
+/** After line `line` is drawn: what a callback's long job has finished by then, which the lines below it show. */
+export function hblank(c, line) {
+  if (c.lineWork?.line === line) finishLineWork(c);
+}
+
+function finishLineWork(c) {
+  c.lineWork?.run(c);
+  c.lineWork = null;
 }
 
 // 0x08020198: the keys held now, those just pressed and just released, and those repeating while held
@@ -195,14 +210,16 @@ export function copyToVram(c, from, to, count) {
  * says, its bits from the top, whether each of the next eight items is one byte as it is or two bytes: four bits
  * of length less three, and twelve bits of how far back the bytes to copy are. VRAM takes only 16 bits at a time, so
  * a byte waits until the next one completes its halfword, and a copy from one byte back reads what VRAM held before.
+ * The palette takes 16 bits at a time too, and a picture's colours are unpacked there the same way.
  */
 export function decompress(c, from, to) {
-  const bytes = c.rom.bytes, vram = c.video.vram;
+  const bytes = c.rom.bytes, { pal } = c.video;
+  const vram = to < VRAM ? new Uint8Array(pal.buffer, pal.byteOffset, pal.byteLength) : c.video.vram;
   let at = from - CARTRIDGE;
   if (bytes[at] !== 0x10) throw new Error(`No LZ77 picture at 0x${from.toString(16)}: its first byte is ${bytes[at]}.`);
   const size = bytes[at + 1] | (bytes[at + 2] << 8) | (bytes[at + 3] << 16);
   at += 4;
-  let out = to - VRAM, waiting = 0;
+  let out = to - (to < VRAM ? PALETTE : VRAM), waiting = 0;
   const end = out + size;
   const put = byte => {
     if (out & 1) { vram[out - 1] = waiting; vram[out] = byte; }
@@ -316,6 +333,24 @@ export function fadeToBlack(c, first, count) {
       if (v & 0x1F) v--;
       if (v & 0x3E0) v -= 0x20;
       if (v & 0x7C00) v -= 0x400;
+      out[i] = v;
+      done = false;
+    }
+  }
+  return done;
+}
+
+/** 0x080206ec: each of `count` colours from `first` one step lighter in each of red, green and blue. True once
+ *  they're all white. */
+export function fadeToWhite(c, first, count) {
+  const out = colours(c, first);
+  let done = true;
+  for (let i = 0; i < count; i++) {
+    let v = out[i];
+    if ((v & 0x7FFF) !== 0x7FFF) {
+      if ((v & 0x1F) <= 0x1E) v++;
+      if ((v & 0x3E0) <= 0x3DF) v += 0x20;
+      if ((v & 0x7C00) <= 0x7BFF) v += 0x400;
       out[i] = v;
       done = false;
     }

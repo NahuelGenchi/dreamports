@@ -1,0 +1,38 @@
+{
+  "about": "The Mini-games screen as a save with every entry opened has it, reached as mini-games-menu reaches it: down through all five, with each one's picture, name and caption, up to the first, down to the third, and A on it, through its fade to white. Both are given what the save holds: the Dreamport by its address, the original in onlyInOriginal.",
+  "start": "open=63",
+  "frames": 1710,
+  "held": [
+    [0,[]],
+    [747,["START"]],[748,[]],
+    [880,["RIGHT"]],[881,[]],
+    [920,["RIGHT"]],[921,[]],
+    [960,["RIGHT"]],[961,[]],
+    [1000,["RIGHT"]],[1001,[]],
+    [1100,["A"]],[1101,[]],
+    [1240,["DOWN"]],[1241,[]],
+    [1280,["DOWN"]],[1281,[]],
+    [1320,["DOWN"]],[1321,[]],
+    [1360,["DOWN"]],[1361,[]],
+    [1400,["UP"]],[1401,[]],
+    [1440,["UP"]],[1441,[]],
+    [1480,["UP"]],[1481,[]],
+    [1520,["UP"]],[1521,[]],
+    [1560,["DOWN"]],[1561,[]],
+    [1600,["DOWN"]],[1601,[]],
+    [1660,["A"]],[1661,[]]
+  ],
+  "clip": { "at": 1200, "frames": 300 },
+  "onlyInOriginal": [
+    {
+      "at": 778,
+      "frames": 1,
+      "held": [[0,[]]],
+      "sets": [
+        { "frame": 0, "address": "03002170", "bytes": 2, "value": 1 },
+        { "frame": 0, "address": "03002188", "bytes": 1, "value": 63 }
+      ],
+      "about": "A name already saved, as in mini-games-menu, and every entry of the Mini-games screen opened, which the save keeps at 0x03002188."
+    }
+  ]
+}

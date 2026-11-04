@@ -11,6 +11,7 @@
 // original goes for a player with a saved name, which is the way the recording that proves this part goes.
 
 import { KEY, colours, decompress, copyTileBlock, fadeToward, fadeToBlack, hideSpriteBuffer, queueCopy, queueRegister } from './core.js';
+import { miniGames } from './mini-games.js';
 
 const CARTRIDGE = 0x08000000, PALETTE = 0x05000000, VRAM = 0x06000000, SINE = 0x0804DF7C;
 
@@ -19,7 +20,7 @@ const REGISTERS = 0x0815F02C, REGISTER_COUNT = 16;
 const DISPCNT = 0x00, BG3VOFS = 0x1E, BLDCNT = 0x50, BLDALPHA = 0x52;
 
 // the language the save keeps (gUnknown_03002110[119]), which picks the pictures: English in the USA copy
-const LANGUAGE = 1;
+export const LANGUAGE = 1;
 // gUnknown_08edd314 and gUnknown_08edd32c: the sprites' tiles and the previews' pictures, by language
 const SPRITE_PICTURES = [0x0815FAFC, 0x08160244, 0x08160244, 0x08160244, 0x08160244, 0x08160244];
 const PREVIEW_PICTURES = [0x081609E4, 0x081679E4, 0x081679E4, 0x081679E4, 0x081679E4, 0x081679E4];
@@ -38,27 +39,38 @@ const PARTS = 0x0816EACC, PARTS_ARROWS = 0x0816EAC4;
 const SONG = 1, SOUND_MOVE = 401, SOUND_MADE = 404;
 // gSongTable: eight bytes for each song, with the number of the player it plays on at the fifth
 const SONG_TABLE = 0x08BF7244;
-// how many frames of the song's fade make a step: 0x0801f718(1, 120) keeps 120 >> 4
-const SONG_FADE_STEP = 120 >> 4;
-const CHOICES = 7;
+const SONG_FADE = 120;
+const CHOICES = 7, MINI_GAMES = 4;
+
+/** 0x0801f718: a song's player fades out over `frames`, a step every sixteenth of them. */
+export function fadeSongOut(c, song, frames) {
+  c.sound?.fadeOut(c.rom.bytes[SONG_TABLE - CARTRIDGE + song * 8 + 4], frames >> 4);
+}
 
 /** A sprite's place (the first 16 bytes of a node's allocation): the parts it's made of, where, and what they add. */
-const place = (parts, x, y, tile, attr2 = 0) => ({ parts, x, y, tile, attr0: 0, attr1: 0, attr2, state: 0 });
+export const place = (parts, x, y, tile, attr2 = 0) => ({ parts, x, y, tile, attr0: 0, attr1: 0, attr2, state: 0 });
 
 /** 0x0801f7d0: a node added at the end of the list. */
-function addNode(c, run, position = null, extra = {}) {
+export function addNode(c, run, position = null, extra = {}) {
   const node = { run, position, ...extra };
   c.menu.nodes.push(node);
   return node;
 }
 
+/** 0x0801f8c0: a node taken off the list, with the walk through the list going on from the next. */
+export function removeNode(c, node) {
+  const at = c.menu.nodes.indexOf(node);
+  c.menu.nodes.splice(at, 1);
+  if (at <= c.menu.walking) c.menu.walking--;
+}
+
 /** 0x0801fed8: a sprite asks to be drawn this frame. */
-function draw(c, position) {
+export function draw(c, position) {
   c.menu.drawn[(position.attr2 & 0x0C) >> 2].push(position);
 }
 
 /** 0x080200f8, the list's first node: no sprite has asked yet this frame, and no matrix is taken. */
-function startFrame(c) {
+export function startFrame(c) {
   c.menu.drawn = [[], [], [], []];
   c.menu.matrices = 0;
 }
@@ -77,7 +89,7 @@ function animate(c, node) {
 }
 
 /** 0x0801f9d8: a sprite that only asks to be drawn. */
-function drawOnly(c, node) {
+export function drawOnly(c, node) {
   draw(c, node.position);
 }
 
@@ -121,7 +133,7 @@ function choosing(c, node) {
   if (pressed & KEY.A) {
     c.menuChoice = c.menu.selection;
     node.run = leaving;
-    c.sound?.fadeOut(c.rom.bytes[SONG_TABLE - CARTRIDGE + SONG * 8 + 4], SONG_FADE_STEP);
+    fadeSongOut(c, SONG, SONG_FADE);
     c.sound?.play(SOUND_MADE);
   } else if (pressed & KEY.LEFT) {
     c.menu.selection = (c.menu.selection + CHOICES - 1) % CHOICES;
@@ -150,9 +162,11 @@ function previewOut(c, node) {
   }
 }
 
-/** 0x0803a260: every colour fades to black, and then the chosen mode's screen starts; none is ported, so it stops. */
+/** 0x0803a260: every colour fades to black, and then the chosen mode's screen starts: only the mini-games are ported, so the others stop. */
 function leaving(c, node) {
-  if (fadeToBlack(c, PALETTE, 512)) node.run = () => {};
+  if (!fadeToBlack(c, PALETTE, 512)) return;
+  if (c.menu.selection === MINI_GAMES) c.callback = miniGames;
+  else node.run = () => {};
 }
 
 /** 0x08028238 and 0x08028270: an arrow takes its place, and draws from the next frame on. */
@@ -180,7 +194,7 @@ function arrowSettled(c, node) {
  * 0x0801fd18, with no turn: a sprite matrix that scales by 256 over `scale`, and its number. It writes where the
  * original does, whose matrix after the first lands two bytes along from the one before and not in its own sprites'.
  */
-function takeMatrix(c, scale) {
+export function takeMatrix(c, scale) {
   const number = c.menu.matrices;
   if (number > 31) return 0xFF;
   const cosine = Math.trunc((c.rom.s16(SINE - CARTRIDGE + 0x800 * 2) << 3) / scale);
@@ -237,10 +251,26 @@ function drawSprites(c) {
 }
 
 /** 0x08039fd0: the frame wrapper. Every node, a node added on the way too, and then the sprites they asked for. */
-function frame(c) {
-  const { nodes } = c.menu;
-  for (let i = 0; i < nodes.length; i++) nodes[i].run(c, nodes[i]);
-  drawSprites(c);
+export function frame(c) {
+  const list = c.menu, { nodes } = list;
+  // sprites that ran past the last V-blank (mini-games.js) are all this frame has
+  if (list.spritesLate) {
+    list.spritesLate = false;
+    drawSprites(c);
+    return;
+  }
+  for (list.walking = list.resume ?? 0; list.walking < nodes.length; list.walking++) {
+    const node = nodes[list.walking];
+    node.run(c, node);
+    // a node that runs past a V-blank (mini-games.js): the list goes on, from that node, in the next frame
+    if (list.paused) {
+      list.paused = false;
+      list.resume = list.walking;
+      return;
+    }
+  }
+  list.resume = 0;
+  if (!list.spritesLate) drawSprites(c);
 }
 
 /** What the original takes before the menu's first frame: the name entry's frame, going straight on with a saved name,
@@ -249,7 +279,7 @@ function frame(c) {
 const FRAMES_BEFORE = 2;
 
 /** 0x0801fbfc: display registers from the cartridge's table at `from`, each its offset in 0x04000000 and its value. */
-function writeRegisters(c, from, count) {
+export function writeRegisters(c, from, count) {
   const at = from - CARTRIDGE;
   for (let i = 0; i < count; i++) c.video.write(c.rom.u16(at + i * 4), c.rom.u16(at + i * 4 + 2));
 }
@@ -267,7 +297,7 @@ export function beforeMenu(c) {
  * 0x08039e20: the screen's first frame. The registers, the sprites hidden, the palette black, the pictures and maps,
  * the list's nodes, and the display queued on for the next V-blank.
  */
-function menu(c) {
+export function menu(c, playSong = true) {
   const { video } = c;
   c.menu = { nodes: [], drawn: [[], [], [], []], matrices: 0, selection: 0 };
   writeRegisters(c, REGISTERS, REGISTER_COUNT);
@@ -295,12 +325,12 @@ function menu(c) {
   addNode(c, animate, null, { to: 0x0600F0A6, tile: 0xE000, timer: 0 });
   addNode(c, drawOnly, place(PARTS, 64, 32, 128));
   addNode(c, fadeIn, place(0, 0, 0, 0));
-  c.sound?.play(SONG);
+  if (playSong) c.sound?.play(SONG);
   c.callback = displayOn;
 }
 
 /** 0x08039e20's last step, a frame behind its song: it runs past a V-blank, and the display is queued for the next. */
-function displayOn(c) {
+export function displayOn(c) {
   queueRegister(c, DISPCNT, 0x1F40);
   c.callback = frame;
 }
