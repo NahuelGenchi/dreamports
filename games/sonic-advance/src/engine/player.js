@@ -1422,7 +1422,7 @@ const COUNTDOWN = { 12: 5, 10: 4, 8: 3, 6: 2, 4: 1, 2: 0 };
 // 10 frames. Under water a second goes every 60 frames: at 12, 10, 8, 6, 4 and 2 a number counts down over
 // him, at 11 the drowning music starts and below 0 he drowns; every 16th frame of the stage clock he lets a
 // bubble out, one time in four. Out of the water the count starts over and the drowning music stops.
-function handleWater(p, world) {
+export function handleWater(p, world) {
   const level = world.waterLevel;
   p.waterCrossed = false;
   if (level >= 0 && Math.floor(p.y) - 4 >= level) {

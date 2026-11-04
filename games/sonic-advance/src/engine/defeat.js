@@ -34,35 +34,43 @@ const at = p => [Math.floor(p.x), Math.floor(p.y)];
  * The optional Rush boost's box around him defeats it first. Returns true when the enemy is defeated.
  */
 export function attackTest(s, x, y, ctx) {
-  const p = ctx.player, hb = s.boxes[0];
-  if (!hb || p.dead) return false;
-  const [px, py] = at(p);
-  // the Rush boost's box destroys it without a bounce, and shakes the screen
-  if (p.boostBox && overlap(x, y, hb, px, py, p.boostBox)) {
-    ctx.world.defeat(x, y);
-    ctx.world.shake();
-    return true;
-  }
-  if (p.boxes[1] && overlap(x, y, hb, px, py, p.boxes[1])) {
-    if (p.ysp > 0) p.ysp = -p.ysp;
-    ctx.world.defeat(x, y);
-    return true;
-  }
-  if (p.boxes[0] && overlap(x, y, hb, px, py, p.boxes[0])) {
-    if (p.invincible > 0) { ctx.world.defeat(x, y); return true; }
-    ctx.world.damage();
+  const hb = s.boxes[0];
+  if (!hb) return false;
+  for (const p of ctx.players) {
+    if (p.dead) continue;
+    const [px, py] = at(p);
+    // the Rush boost's box destroys it without a bounce, and shakes the screen
+    if (p.boostBox && overlap(x, y, hb, px, py, p.boostBox)) {
+      ctx.world.defeat(x, y);
+      ctx.world.shake();
+      return true;
+    }
+    if (p.boxes[1] && overlap(x, y, hb, px, py, p.boxes[1])) {
+      if (p.ysp > 0) p.ysp = -p.ysp;
+      ctx.world.defeat(x, y);
+      return true;
+    }
+    if (p.boxes[0] && overlap(x, y, hb, px, py, p.boxes[0])) {
+      if (p.invincible > 0) { ctx.world.defeat(x, y); return true; }
+      ctx.world.damage(p);
+    }
   }
   return false;
 }
 
-/** Coll_Player_Projectile: a shot on Sonic's body hurts him. Returns true on any touch, hurt or not. */
+/** Coll_Player_Projectile: a shot on a player's body hurts them. Returns true on any touch, hurt or not. */
 export function projectileTest(s, x, y, ctx) {
-  const p = ctx.player, hb = s.boxes[0];
-  if (!hb || p.dead || !p.boxes[0]) return false;
-  const [px, py] = at(p);
-  if (!overlap(x, y, hb, px, py, p.boxes[0])) return false;
-  ctx.world.damage();
-  return true;
+  const hb = s.boxes[0];
+  if (!hb) return false;
+  let touched = false;
+  for (const p of ctx.players) {
+    if (p.dead || !p.boxes[0]) continue;
+    const [px, py] = at(p);
+    if (!overlap(x, y, hb, px, py, p.boxes[0])) continue;
+    ctx.world.damage(p);
+    touched = true;
+  }
+  return touched;
 }
 
 /** The dust cloud where an enemy or an item box was (CreateDustCloud): it runs its animation once and stays where it appeared. */

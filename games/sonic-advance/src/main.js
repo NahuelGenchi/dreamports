@@ -7,7 +7,7 @@ import '../../../kit/gba/canvas.js';
 import { createRomSetup } from '../../../kit/gba/ui/rom-setup.js';
 import { acceptRoms } from '../../../kit/gba/ui/rom-types.js';
 import { roms, SA1_ROM, RUSH_ROM, SA2_ROM } from './ui/roms.js';
-import { extractAssets } from './rom/extract.js';
+import { extractAssets, extractAgain } from './rom/extract.js';
 import { isSonicAdvance, RomError } from './rom/identify.js';
 import { Rom } from '../../../kit/gba/rom/rom.js';
 import { createFrontEnd } from './front/front.js';
@@ -64,6 +64,7 @@ const seed = params.has('seed') ? Number(params.get('seed')) >>> 0 : DEFAULT_SEE
 const chaoPlace = params.has('chao') ? (Number(params.get('chao')) | 0) & 7 : DEFAULT_CHAO_PLACE;
 // `?character=` is Sonic (0, the default), Tails (1) or Knuckles (2) with ?debug, and the one the character select's row
 // starts on otherwise; the multiplayer stage is everyone as Sonic
+let partner = false;   // gTailsEnabled: the character select's code
 let character = multiplayer ? 0 : Math.min(2, Math.max(0, Number(params.get('character') ?? 0) | 0));
 const screens = document.getElementById('screens');
 stage.classList.toggle('debug', debug);   // the panel shows the player's speed and state then
@@ -415,20 +416,12 @@ function start(buffer, assets) {
   screen.focus();
 }
 
-// the first act as the character the character select chose, read from the ROM again if the act was read for another
-async function playAs(assets, chosen) {
+// the first act as the character the character select chose, with the code's partner if it brought him (Sonic's only:
+// GameStageStart), read from the ROM again if the act was read for another
+function playAs(assets, chosen) {
   character = chosen.character;
-  let act = assets;
-  if (assets.character !== character) {
-    try {
-      act = await extractAssets(sa1.buffer, () => {}, { level: assets.first, character });
-    } catch (err) {
-      console.warn(err);
-      return;
-    }
-  }
-  if (stage.hidden) return;   // the player left the game meanwhile
-  play(act);
+  partner = chosen.partner && character === 0;
+  play(assets.character === character && !!assets.partner === partner ? assets : extractAgain(sa1.buffer, assets, { level: assets.first, character, partner }));
 }
 
 // the act, after the game's start, again from what the special stage hands back (`resume`), or the next zone's
@@ -492,7 +485,7 @@ async function nextZone({ level, ...carry }) {
   const from = game;
   let assets;
   try {
-    assets = await extractAssets(sa1.buffer, () => {}, { level, character });
+    assets = await extractAssets(sa1.buffer, () => {}, { level, character, partner });
   } catch (err) {
     console.warn(err);
     return;

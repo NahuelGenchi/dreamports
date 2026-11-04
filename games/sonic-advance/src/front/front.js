@@ -90,7 +90,8 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, c
     let ran = false;
     for (let n = clock.steps(now); n > 0 && !done; n--) { step(); ran = true; }
     if (ran) draw();   // a frame is drawn once, from the H-blank effects its V-blank set up
-    if (done) { stop(); play(done); return; }
+    // what's still sounding plays on, as the original stops nothing here: the act's music takes the place of the screen's
+    if (done) { input.release(); play(done); return; }
     frame = requestAnimationFrame(loop);
   }
   function stop() { cancelAnimationFrame(frame); input.release(); sound.stopAll(); }
