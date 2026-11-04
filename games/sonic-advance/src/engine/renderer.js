@@ -22,12 +22,16 @@ import { rasterizeStrips, objLayer as dsObjLayer, to6, out8 } from './dsdraw.js'
 import { boostAtlas } from './boostmode.js';
 import { BACKGROUND_SCROLL, BACKGROUND_DRAW } from './backgrounds.js';
 import { beamSpan } from './spotlights.js';
+import { BACKGROUND_TILES } from './demo.js';
 import { bgr555ToRgb, tintRgb, waterTint } from '../rom/colors.js';
 import { ICE_MOUNTAIN, iceMountainScroll } from './icemountain.js';
 import { underColors, waveOffsets } from './water.js';
 import { fixes } from './fixes.js';
 
 const mod = (a, n) => ((a % n) + n) % n;
+// where Secret Base act 1 has its background's map and tiles and its layers' maps in video memory (InitCamera), and how
+// much of a layer's map its first picture has
+const BACKGROUND_MAP = 0xE000, FRONT_MAP = 0xF000, BACK_MAP = 0xF800, MAP_ROWS = 21, MAP_COLUMNS = 31;
 const HUD_ORDER = 3;   // the HUD's OAM order (Task_StageUIMain: 24 >> 3)
 const s16 = v => (v << 16) >> 16;
 const div = (a, b) => Math.trunc(a / b);
@@ -574,6 +578,101 @@ export function createRenderer(canvas, assets) {
     if (end > max) { end = max; if (start > max) start = max; }
     return [start, end];
   }
+  // Where mGBA draws a line in pieces for its windows (_breakWindow, _breakWindowInner, video-software.c): each piece's
+  // end, on the original screen's `line`, empty pieces and the way it trims those it overwrites included
+  function windowPieces(blend, line) {
+    const ends = [SCREEN_W];
+    let n = 1;
+    const inner = (start, end) => {
+      if (end <= 0) return;
+      let startX = 0;
+      for (let a = 0; a < n; a++) {
+        if (start < ends[a]) {
+          const old = ends[a];
+          if (start > startX) {
+            ends.splice(a, 0, ends[a]);
+            n++;
+            ends[a] = start;
+            a++;
+          }
+          ends[a] = end;
+          if (end >= old) {
+            for (a++; n > a + 1 && end >= ends[a]; a++) { ends[a] = ends[a + 1]; n--; }
+          } else {
+            a++;
+            ends.splice(a, 0, old);
+            n++;
+          }
+          return;
+        }
+        startX = ends[a];
+      }
+    };
+    for (const w of [1, 0]) {
+      const [top, bottom] = windowRange(blend.v[w], SCREEN_H);
+      if (bottom >= top ? line < top || line >= bottom : line >= bottom && line < top) continue;
+      const at = blend.base + line * 4 + w * 2;
+      const [left, right] = windowRange(blend.drawn ? blend.buf[at] | (blend.buf[at + 1] << 8) : blend.h[w], SCREEN_W);
+      if (right < left) { inner(0, right); inner(left, SCREEN_W); } else inner(left, right);
+    }
+    return ends.slice(0, n);
+  }
+  // mGBA draws a sideways-flipped tile that a piece of a line starts partway into from the piece's end back, so a piece
+  // that also ends before the tile does shows the tile's pixels from further along, by `shift` columns (the macro
+  // DRAW_BACKGROUND_MODE_0_TILE_SUFFIX_16, software-mode0.c; the kit's notes/a-window-shifts-a-flipped-tile-it-cuts-short.md). These are the
+  // places on a layer: { x, y, w, shift }, on the canvas, where `scrollX(y)` is the layer's first column on the canvas's
+  // line y and `flipped(column, y)` whether the tile there is flipped.
+  function windowCuts(blend, sx, sy, scrollX, flipped) {
+    const cuts = [];
+    if (!blend?.windows) return cuts;
+    for (let line = 0; line < SCREEN_H; line++) {
+      const y = line + sy, first = scrollX(y) + sx;
+      let start = 0;
+      for (const end of windowPieces(blend, line)) {
+        const inTile = mod(first + start, 8), tileEnd = start + 8 - inTile;
+        if (inTile && end > start && end < tileEnd && flipped(first + start, y)) cuts.push({ x: start + sx, y, w: end - start, shift: tileEnd - end });
+        start = end;
+      }
+    }
+    return cuts;
+  }
+  // a stage layer's tile entry at world (wx, wy), or 0 past its edges
+  function entryAt(layer, wx, wy) {
+    const size = 12 * 8, mx = Math.floor(wx / size), my = Math.floor(wy / size);
+    if (mx < 0 || my < 0 || mx >= stage.levelX || my >= stage.levelY) return 0;
+    return stage.metatileEntries[stage.layers[layer][my * stage.levelX + mx] * 144 + Math.floor((wy - my * size) / 8) * 12 + Math.floor((wx - mx * size) / 8)];
+  }
+  // those of a stage layer with the view's corner at (lx, ly)
+  function layerCuts(blend, layer, lx, ly, sx, sy) {
+    return windowCuts(blend, sx, sy, () => lx, (wx, y) => (entryAt(layer, wx, ly + y) >> 10) & 1);
+  }
+  // the places on a stage layer that show its first two tiles, which the screen after a demo clears (demo.js)
+  function firstTileHoles(layer, lx, ly) {
+    const holes = [];
+    for (let y = -mod(ly, 8); y < H; y += 8) {
+      for (let x = -mod(lx, 8); x < W; x += 8) {
+        if ((entryAt(layer, lx + x, ly + y) & 0x3FF) < 2) holes.push({ x, y, w: 8, h: 8 });
+      }
+    }
+    return holes;
+  }
+  // what `draw(c, x, y, w, h)` draws of a layer (its corner at the view's (x, y), its size w × h), with those places
+  // shifted, and without the places `holes`
+  function drawCut(c, cuts, lx, ly, draw, holes = []) {
+    if (!cuts.length && !holes.length) { draw(c, lx, ly, W, H); return; }
+    c.save(); c.beginPath(); c.rect(0, 0, W, H);
+    for (const cut of cuts) c.rect(cut.x, cut.y, cut.w, 1);
+    for (const hole of holes) c.rect(hole.x, hole.y, hole.w, hole.h);
+    c.clip('evenodd');
+    draw(c, lx, ly, W, H);
+    c.restore();
+    for (const cut of cuts) {
+      c.save(); c.beginPath(); c.rect(cut.x, cut.y, cut.w, 1); c.clip();
+      c.translate(cut.x, cut.y);
+      draw(c, lx + cut.x + cut.shift, ly + cut.y, cut.w, 1);
+      c.restore();
+    }
+  }
   const NO_SHAPES = [null, null];
   function lit(blend, line, inside, ox) {
     inside.fill(0);
@@ -650,10 +749,11 @@ export function createRenderer(canvas, assets) {
 
   // The background of a level whose scroll backgrounds.js gives, line by line from the map row and column it
   // starts at; the map repeats both ways.
+  let demoBgAtStart = false;   // this frame the background is where it starts, as in a demo's first picture
   function drawScrolled(background, tick, ox, oy, cx, cy, terrain) {
     let start = 0;
     for (let line = 0; line < H; line++) {
-      const [x, y] = scroll(line - oy, tick, cx, cy, terrain), row = mod(y + line - oy, background.height);
+      const [x, y] = demoBgAtStart ? [0, 0] : scroll(line - oy, tick, cx, cy, terrain), row = mod(y + line - oy, background.height);
       bgRows[line] = row; bgOffsets[line] = mod(x - ox, bgW);
       if (bgOffsets[line] === bgOffsets[start] && row === bgRows[start] + line - start) continue;
       drawRows(background, bgOffsets[start], bgRows[start], line - start, start);
@@ -817,12 +917,12 @@ export function createRenderer(canvas, assets) {
   // The background below the water line, from screen line `first` down: its colour indices in `colors`, each
   // line from `waves` on moved by the waves (waveOffsets) from the background's scroll (bgX, bgY)
   let waterImg = null;
-  function drawUnderBackground(bgX, bgY, colors, tick, first, waves, ox, oy) {
+  function drawUnderBackground(bgX, bgY, colors, tick, first, waves, ox, oy, late = 0) {
     const { width: bw, height: bh, indices } = stage.water.background;
     if (!waterImg || waterImg.width !== W || waterImg.height !== H) waterImg = new ImageData(W, H);
     const out = new Uint32Array(waterImg.data.buffer);
     for (let line = first; line < H; line++) {
-      const [hofs, vofs] = line < waves ? [bgX, bgY] : waveOffsets(bgX, bgY, line - oy, tick);
+      const [hofs, vofs] = line < waves ? [bgX, bgY] : waveOffsets(bgX, bgY, line - oy - late, tick);
       const row = mod(vofs + line - oy, bh) * bw, o = line * W;
       for (let x = 0; x < W; x++) out[o + x] = colors[indices[row + mod(hofs + x - ox, bw)]];
     }
@@ -936,7 +1036,7 @@ export function createRenderer(canvas, assets) {
   const backdrop = stage.backdrop ?? [0, 0, 0];
 
 
-  function render({ demoSign, layersAtStart, tick, rings, ringsStopped, sprites, terrain, palettes, objPalette, view, cam, hud: hudState, card: titleCard, results: actResults, gameOver, timeOver, bg, backLines, showCollision, rushFx, rushArt, shake, boostArt: art, spotlights, spriteRow, cardOver, water, display, effects2d, blendOff, pauseSign }) {
+  function render({ demoFirst, demoSign, wavesLate, tilesGone, strayTile, layersAtStart, tick, rings, ringsStopped, sprites, terrain, palettes, objPalette, view, cam, hud: hudState, card: titleCard, results: actResults, gameOver, timeOver, bg, backLines, showCollision, rushFx, rushArt, shake, boostArt: art, spotlights, spriteRow, cardOver, water, display, effects2d, blendOff, pauseSign }) {
     const stops = !fixes.on && (gameOver?.endsNext || gameOver?.saving) ? SCROLL_STOPS_AT : Infinity;
     ctx.imageSmoothingEnabled = false;
     if (art && art !== boostArt) {
@@ -959,6 +1059,8 @@ export function createRenderer(canvas, assets) {
     // the view's lines from `line` down are under water. The VCount interrupt on the line before it loads the
     // colours under water and turns the snow off in time for that line too (`split`), and starts the waves from
     // the line itself; with the line at the top the VBlank does both for the whole screen (water.js).
+    const windowsNow = spotlights?.blend ?? null;
+    demoBgAtStart = !!(layersAtStart && demoFirst);
     const line = water ? Math.max(0, Math.min(H, water.level - vy)) : H;
     const split = line > 0 && line < H ? line - 1 : line;
     parts = [[0, split, false], [split, H, true]].filter(([first, end]) => end > first);
@@ -977,7 +1079,13 @@ export function createRenderer(canvas, assets) {
       ctx.putImageData(ixBack, 0, 0);
     } else {
       const background = backgrounds.canvases[paletteVariant(stage, backgrounds.follows, palettes)];
-      if (scroll) drawScrolled(background, tick - 1, ox, oy, cx, vy + oy, terrain);
+      if (scroll) {
+        drawScrolled(background, tick - 1, ox, oy, cx, vy + oy, terrain);
+        // the spotlights' windows cut the background's tiles as they do the layers' (windowCuts)
+        const art = stage.spotlightArt, cuts = art ? windowCuts(windowsNow, view.sx, view.sy, y => bgOffsets[y] - view.sx,
+          (column, y) => (art.entries[Math.floor(bgRows[y] / 8) * art.across + Math.floor(mod(column, bgW) / 8)] >> 10) & 1) : [];
+        for (const cut of cuts) ctx.drawImage(background, mod(bgOffsets[cut.y] + cut.x + cut.shift, bgW), bgRows[cut.y], cut.w, 1, cut.x, cut.y, cut.w, 1);
+      }
       else if (stage.clouds) drawCloudBackground(tick, palettes, ox, oy, !(titleCard?.fading || cardOver));
       else if (ice) drawWrapped(background, ice.bgX, ice.bgY - oy, split, ox);
       else {
@@ -999,7 +1107,7 @@ export function createRenderer(canvas, assets) {
         flush(H);
       }
     }
-    if (ice && under) drawUnderBackground(ice.bgX, ice.bgY, under.colors, tick, split, line, ox, oy);
+    if (ice && under) drawUnderBackground(ice.bgX, ice.bgY, under.colors, tick, split, line + (wavesLate ? 1 : 0), ox, oy, wavesLate ? 1 : 0);
     // what an invisible multiplayer player's OBJ window shows through: the background alone
     const windows = sprites.filter(s => s.window);
     const behind = windows.length && effects2d?.objWindow ? ctx.getImageData(0, 0, W, H).data : null;
@@ -1036,6 +1144,22 @@ export function createRenderer(canvas, assets) {
         if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) lifted.set(high, [...(lifted.get(high) ?? []), low]);
       }
     }
+    // the screen after a demo clears the sprites' first tiles too, if it is the title screen (demo.js)
+    const withoutFirstTiles = (sheet, s) => {
+      const tiles = tilesGone === 'title' && s.player && assets.sprites.sonic.firstTiles[s.frame];
+      if (!tiles) return sheet;
+      const [fx, fy, , , , , pieces] = frames[s.frame], width = sheet.atlas.width, copy = document.createElement('canvas');
+      copy.width = width; copy.height = sheet.atlas.height;
+      const c = copy.getContext('2d'), px = sheet.pixels.slice();
+      c.drawImage(sheet.atlas, 0, 0);
+      const clear = (x, y) => {
+        c.clearRect(x, y, 8, 8);
+        for (let row = y; row < y + 8 && (row + 1) * width * 4 <= px.length; row++) px.fill(0, (row * width + x) * 4, (row * width + x + 8) * 4);
+      };
+      for (const [x, y] of tiles.frame) clear(fx + x, fy + y);
+      tiles.pieces.forEach((list, k) => { if (pieces?.[k]) for (const [x, y] of list) clear(pieces[k][4] + x, pieces[k][5] + y); });
+      return { ...sheet, atlas: copy, pixels: px };
+    };
     const drawLifted = high => {
       const b = boxOf(high);
       ctx.save(); ctx.beginPath(); ctx.rect(b.x, b.y, b.w, b.h); ctx.clip();
@@ -1055,7 +1179,7 @@ export function createRenderer(canvas, assets) {
         else if (s.rush === 'obj') drawRushObjs(rushFx, rushArt, vx, vy, s.sonic, [first, end], below);
         else if (!sheet) continue;
         else {
-          const own = !s.sheet && s.sonicRow && spriteRow?.shown ? tint(spriteRow.shown, s.frame) : sheet;
+          const own = withoutFirstTiles(!s.sheet && s.sonicRow && spriteRow?.shown ? tint(spriteRow.shown, s.frame) : sheet, s);
           if (s.affine) drawAffine(s.frame, s.x - dx, s.y - dy, s.affine, own, matrices[s.affine.matrix]);
           else if (s.allWhite) drawAllWhite(s, dx, dy, own);
           else drawSprite(s.frame, s.x - dx, s.y - dy, s.flipX, s.flipY, own);
@@ -1065,12 +1189,12 @@ export function createRenderer(canvas, assets) {
     drawAll(3);
     const [lx, ly] = layersAtStart ? [0, 0] : [vx, vy];
     if (ix) indexOver(ctx, 'back', lx, ly, frame, backLines);
-    else drawLayer(ctx, stage, 'back', lx, ly, W, H, frame, palettes, under);
+    else drawCut(ctx, layerCuts(windowsNow, 'back', lx, ly, view.sx, view.sy), lx, ly, (c, x, y, w, h) => drawLayer(c, stage, 'back', x, y, w, h, frame, palettes, under), tilesGone ? firstTileHoles('back', lx, ly) : []);
     // the background and the back layer fill the screen, so the window turns everything drawn so far white
     const flash = whiteWindow(sprites.filter(s => s.white), vx, vy);
     if (flash) ctx.drawImage(flash, 0, 0);
     drawAll(2);
-    drawFlashedLayer(flash, c => (ix ? indexOver(c, 'front', lx, ly, frame) : drawLayer(c, stage, 'front', lx, ly, W, H, frame, palettes, under)));
+    drawFlashedLayer(flash, c => (ix ? indexOver(c, 'front', lx, ly, frame) : drawCut(c, layerCuts(windowsNow, 'front', lx, ly, view.sx, view.sy), lx, ly, (d, x, y, w, h) => drawLayer(d, stage, 'front', x, y, w, h, frame, palettes, under), tilesGone ? firstTileHoles('front', lx, ly) : [])));
     drawAll(1, s => (s.prio ?? 0) >= 1);
     // the snow lies over everything but the sprites of priority 0; the title card's fade and its last frame show
     // it as it is, as do the frames a boss has turned the blending off on (`blendOff`) or flashes on. Above the
@@ -1109,6 +1233,18 @@ export function createRenderer(canvas, assets) {
     // original screen
     if (pauseSign) byPart(() => { for (const s of stack(pauseSign.map(recolour))) drawSprite(s.frame, s.x + ox, s.y + oy, s.flipX, s.flipY); });
     // a demo's words stay out of the fade, while the snow in front of them doesn't (`bldY`)
+    // the entry a demo's frame has at the end of OAM (demo.js, strayTiles), a tile at the screen's corner in the player's
+    // colours as the water has them
+    const stray = () => {
+      const tile = strayTile && assets.sprites.sonic.strayTile;
+      if (!tile) return;
+      const colors = water && line < 8 ? assets.sprites.sonic.under : assets.sprites.sonic.colors, img = new ImageData(8, 8);
+      tile.forEach((c, k) => { if (c) img.data.set([...colors[c], 255], k * 4); });
+      const c = document.createElement('canvas');
+      c.width = c.height = 8;
+      c.getContext('2d').putImageData(img, 0, 0);
+      ctx.drawImage(c, ox, oy);
+    };
     const signOverFade = (bldY = 0) => {
       if (!demoSign) return;
       const sign = stack(demoSign.map(recolour));
@@ -1130,7 +1266,7 @@ export function createRenderer(canvas, assets) {
       }
       ctx.clip(); ctx.drawImage(snowDark, 0, 0); ctx.restore();
     };
-    if (!titleCard) { signOverFade(); return; }
+    if (!titleCard) { signOverFade(); stray(); return; }
     // the card's sprites are semi-transparent all together, and blending them at full weight over what's
     // behind keeps them out of the fade
     const semi = titleCard.sprites.length > 0 && (titleCard.sprites[0].a0 & 0xC00) === 0x400;
@@ -1142,6 +1278,44 @@ export function createRenderer(canvas, assets) {
     if (effects2d?.overCard && effects2d.fade) brightenAll(effects2d.fade);
   }
 
+  // The first picture of a demo whose act has no fade of its own on its first frame (demo.js, the spotlights'): all of it
+  // dark but the backdrop, which shows where the layers, at their start, and the background leave it clear. The
+  // background's map and tiles are still what `vram`, the video memory the screens before left, holds there.
+  render.firstPicture = vram => {
+    if (W !== SCREEN_W || H !== SCREEN_H) return;   // only the original screen shows it: the widescreen view stays black
+    const clear = layer => {
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const d = c.getContext('2d');
+      drawLayer(d, stage, layer, 0, 0, W, H, 0, []);
+      return d.getImageData(0, 0, W, H).data;
+    };
+    const front = clear('front'), back = clear('back'), img = ctx.getImageData(0, 0, W, H), d = img.data, held = vram.slice();
+    // the layers' maps come in on this frame, cleared first, which a tile number that high reads as its tile
+    held.fill(0, FRONT_MAP, BACK_MAP + 0x800);
+    [['front', FRONT_MAP], ['back', BACK_MAP]].forEach(([layer, at]) => {
+      for (let row = 0; row < MAP_ROWS; row++) {
+        for (let col = 0; col < MAP_COLUMNS; col++) {
+          const entry = entryAt(layer, col * 8, row * 8), k = at + (row * 32 + col) * 2;
+          held[k] = entry & 0xFF; held[k + 1] = entry >> 8;
+        }
+      }
+    });
+    const [r, g, b] = stage.backdrop;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = (y * W + x) * 4;
+        d[i] = d[i + 1] = d[i + 2] = 0; d[i + 3] = 255;
+        if (front[i + 3] || back[i + 3]) continue;
+        const at = BACKGROUND_MAP + ((y >> 3) * 32 + (x >> 3)) * 2, entry = held[at] | (held[at + 1] << 8);
+        const px = entry & 0x400 ? 7 - (x & 7) : x & 7, py = entry & 0x800 ? 7 - (y & 7) : y & 7;
+        const byte = held[BACKGROUND_TILES + (entry & 0x3FF) * 32 + py * 4 + (px >> 1)];
+        if (px & 1 ? byte >> 4 : byte & 15) continue;
+        d[i] = r; d[i + 1] = g; d[i + 2] = b;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+  };
   /** Draws w × h frames from now on: 240 × 160, the original screen, or the widescreen view's size. */
   // what another stage's renderer (extrarender.js) draws with: `use(c)` sends the drawing to canvas context c
   // and gives back the one it replaced

@@ -17,7 +17,7 @@ import { readBoostArt } from './rom/sa2boost.js';
 import { trickArt } from './rom/sa2tricks.js';
 import { createInput, connectedPads } from './engine/input.js';
 import { createGame, specialSpringStart } from './engine/game.js';
-import { DEMOS, readDemoTape } from './engine/demo.js';
+import { DEMOS, readDemoTape, BACKGROUND_TILES } from './engine/demo.js';
 import { createSpecialStageRun } from './special/run.js';
 import { createNormalEnding } from './engine/normalending.js';
 import { createSound } from './sound/audio.js';
@@ -441,13 +441,13 @@ function start(buffer, assets, back = null) {
   if (debug) { play(assets); return; }
   front = createFrontEnd(screen, rom, assets.info.offsets, input, sound, save, (level, frameCount, picked) => {
     front = null;
-    if (picked.demo) { playDemo(frameCount); return; }
+    if (picked.demo) { playDemo(frameCount, picked.vram); return; }
     character = picked.character;
     // the code's partner comes along with Sonic only (GameStageStart)
     partner = picked.partner && character === 0;
     if (level === undefined) play(assets.character === character && !!assets.partner === partner ? assets : extractAgain(sa1.buffer, assets, { level: assets.first, character, partner }));
     else playChosen(level, frameCount);
-  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level'), select: !params.has('unlocked') || params.has('select'), onGameStart: proofSave, back });
+  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level'), select: !params.has('unlocked') || params.has('select'), onGameStart: proofSave, prepareDemo, back });
   fitScreen();
   screen.focus();
 }
@@ -464,25 +464,46 @@ async function playChosen(level, frameCount) {
 // gDemoPlayCounter, the demo the title screen starts next, and gPseudoRandom as the last demo left it: a demo goes on
 // with the game's random numbers, and the game with what it leaves
 let demoCounter = 0, randomSeed = 0;
+// the next demo's act, read from the ROM as the title screen comes to the end of its wait, so that it can start on its
+// frame: { n, from, withPartner, assets, ready }. The code's partner comes along with Sonic (gTailsEnabled stays until
+// the character select clears it). A proof tool's frames wait for it.
+let nextDemo = null, demoVram = null;
+function prepareDemo() {
+  const n = demoCounter, from = sa1, { level, character: who } = DEMOS[n], withPartner = partner && who === 0;
+  if (nextDemo?.n === n && nextDemo.from === from && nextDemo.withPartner === withPartner) return nextDemo;
+  const same = from.assets.first === level && from.assets.character === who && !!from.assets.partner === withPartner;
+  const next = { n, from, withPartner, assets: same ? from.assets : null, ready: null };
+  if (!same) {
+    next.ready = extractAssets(from.buffer, () => {}, { level, character: who, partner: withPartner }).then(assets => { next.assets = assets; });
+    proof?.wait(next.ready);
+  }
+  return nextDemo = next;
+}
 // Task_SwitchToDemoInit: the act of the next demo, as the course select starts one. It leaves gCurrentLevel as its
-// level, while the character select's row and the level the game was started on stay as they were. The code's
-// partner comes along with Sonic (gTailsEnabled stays until the character select clears it).
-async function playDemo(frameCount) {
-  const n = demoCounter, from = sa1, { level, character: who } = DEMOS[n];
+// level, while the character select's row and the level the game was started on stay as they were.
+function playDemo(frameCount, vram) {
+  demoVram = vram;
+  const next = prepareDemo(), { n, from } = next, { level } = DEMOS[n];
   demoCounter = (n + 1) % DEMOS.length;
   currentLevel = level;
-  const withPartner = partner && who === 0;
-  const same = from.assets.first === level && from.assets.character === who && !!from.assets.partner === withPartner;
-  const assets = same ? from.assets : await extractAssets(from.buffer, () => {}, { level, character: who, partner: withPartner });
-  if (sa1 !== from || stage.hidden) return;   // the player left the game meanwhile
-  play(assets, null, null, { level, frameCount, demo: readDemoTape(rom, assets.info.offsets.demoRecordings, n) });
+  const go = () => {
+    if (sa1 !== from || stage.hidden) return;   // the player left the game meanwhile
+    nextDemo = null;
+    play(next.assets, null, null, { level, frameCount, demo: readDemoTape(rom, next.assets.info.offsets.demoRecordings, n) });
+    game.firstPicture?.(vram);
+  };
+  if (next.assets) go();
+  else next.ready.then(go);
 }
 
 // the demo is over: back to the title screen, or else the SEGA logo, on the frame it ended
 function leaveDemo(title) {
+  // what it leaves in video memory for the screens after it: its background's tiles, which they don't draw over
+  const vram = demoVram;
+  vram.set(playing.stage.backgroundTiles, BACKGROUND_TILES);
   const frameCount = game.state.frameCount + 1, white = title || !!game.state.effects2d?.fade;
   randomSeed = game.state.seed;
-  start(sa1.buffer, sa1.assets, { title, frameCount, white });
+  start(sa1.buffer, sa1.assets, { title, frameCount, white, vram });
 }
 
 // the act, after the game's start, again from what the special stage hands back (`resume`), the next zone's first

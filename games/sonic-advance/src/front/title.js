@@ -33,7 +33,7 @@ const GAME_START = 0, OPTIONS = 3;
 const ITEM_TILES = [28, 16, 28, 20, 40];
 const ITEM_VARIANTS = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5];   // by item, then language
 const BLEND_STEP = 0x55, BLEND_END = 0x1000;
-const DEMO_WAIT = 900;
+const DEMO_WAIT = 900, DEMO_READY = 60;   // and how long before it the next demo's act is read from the ROM
 const RUNNING = 1, ENDED = 0;
 const s16 = v => (v << 16) >> 16;
 
@@ -127,6 +127,7 @@ function waitForStart(t) {
     if (!((title.unkE2 - 60) & 0x20)) displaySprite(e, ctx.sprites, title.s);
   }
   displaySprite(e, ctx.sprites, title.s2);
+  if (title.unkE2 === DEMO_WAIT - DEMO_READY && ctx.offsets.demoRecordings) ctx.prepareDemo();
   if (title.unkE2 > DEMO_WAIT && ctx.offsets.demoRecordings) t.main = toDemo;
 }
 

@@ -45,7 +45,7 @@ import { BOOST_MODE_SE } from '../rom/sa2boost.js';
 import { createExtraStage } from './extra.js';
 import { createClock } from '../../../../kit/gba/clock.js';
 import { createPauseMenu, PAUSE_PRIORITY } from './pause.js';
-import { createDemoInput, createDemoManager, DEMO_MANAGER } from './demo.js';
+import { createDemoInput, createDemoManager, DEMO_MANAGER, DEMOS } from './demo.js';
 import { openSave, saveActCleared, saveMoonOpened, WRITE_FRAMES } from './save.js';
 import { playerControls } from './input.js';
 import { fixes, lifeMore } from './fixes.js';
@@ -252,6 +252,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   const hudFlash = options.levelPick && !demo ? stage.hudFlash : 1;
   // and that first picture still has the layers where they start, before the camera's update has scrolled them
   state.layersAtStart = !!options.levelPick && !options.resume;
+  state.demoFirst = !!demo;   // and in a demo so has the background (renderer.js)
   let extraLife = false, loading = false, starMusic = false;
   // the act's music, as the course select leaves it: it starts on the frame after the act is made, and fades in, as a
   // song the music manager starts over does (the recordings course-select-first-act and course-select-all-rows)
@@ -739,6 +740,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         draw(s, player.x - (right ? 1 : 0), player.y, { rotation: inv ? (512 - rotation) & 1023 : rotation, scaleX: right ? -scale : scale, scaleY: scale, double: false });
       } else draw(s, player.x + (player.facing < 0 ? 1 : 0), player.y);
       if (s.frame >= 0 && own && character === SONIC) state.sprites[state.sprites.length - 1].sonicRow = true;   // palette row 0, his
+      if (s.frame >= 0 && own) state.sprites[state.sprites.length - 1].player = true;
       if (fx && s.frame >= 0) fx.sonic = state.sprites[state.sprites.length - 1];
     }
     if (fx) state.sprites.push({ rush: 'trail', order: 16, prio });
@@ -1058,7 +1060,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   // CreateDemoManager, whose task stays as the act starts over; as it ends, TasksDestroyAll
   let demoLeftWith = false;
   if (demo) tasks.add(createDemoManager({
-    state, anims, sound, language: save.uiLanguage, snows: !!stage.snow, physicalStart: demo.physicalStart,
+    state, anims, sound, language: save.uiLanguage, snows: !!stage.snow, ...DEMOS.find(d => d.level === stage.level), physicalStart: demo.physicalStart,
     end(pressedStart) { demoLeftWith = pressedStart; toTitle = true; tasks.stop(); },
   }), DEMO_MANAGER, true);
   const makeExtras = () => LEVEL_EXTRAS[stage.level]?.({ state, world, ctx, player }) ?? null;
@@ -1183,6 +1185,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       if (hidden) unseen--;
     }
     if (special || toTitle) return;   // the special stage, or the game's start, has the screen now
+    // (the frame after a demo's first picture is dark all over)
+    if (ran && hidden && demo) { const c = canvas.getContext('2d'); c.fillStyle = '#000'; c.fillRect(0, 0, canvas.width, canvas.height); }
     if (ran && !hidden) { show(); state.layersAtStart = false; }
     frame = requestAnimationFrame(loop);
   }
@@ -1190,6 +1194,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   return Object.assign(game, {
     step,
     draw: show,
+    /** A demo's first picture, from `vram`, the screen before's video memory, where its act needs one (renderer.js). */
+    firstPicture(vram) { if (stage.spotlightArt) render.firstPicture(vram); },
     /** Sets the size of what the screen shows: 240 × 160, the original's, or wider and taller (widescreen). */
     setView(w, h) {
       if (w === viewW && h === viewH) return;

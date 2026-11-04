@@ -9,9 +9,13 @@ import { lz10 } from '../rom/nds.js';
 import { makeSprite, animate } from './objects.js';
 
 // gUnknown_080BB323 and gUnknown_080BB327: Sonic in Neo Green Hill, Tails in Secret Base, Amy in Casino Paradise and
-// Knuckles in Ice Mountain, each in act 1
-export const DEMOS = [{ level: 0, character: 0 }, { level: 2, character: 1 }, { level: 4, character: 3 }, { level: 6, character: 2 }];
+// Knuckles in Ice Mountain, each in act 1. A demo is the same presses each time, so what the console's timing does to it
+// comes on the same frames: `lateWaves`, the stage clock's values on which the water's VCount interrupt comes a line late
+// and its waves with it, and `strayTiles`, those on which the last entries of OAM hold a tile at the screen's corner that
+// is the moving spring's, in the player's colours (notes/a-demo-can-be-late-on-the-same-frames.md).
+export const DEMOS = [{ level: 0, character: 0 }, { level: 2, character: 1 }, { level: 4, character: 3 }, { level: 6, character: 2, lateWaves: [1199, 1263, 1264, 1265], strayTiles: [1786] }];
 
+export const BACKGROUND_TILES = 0x8000;   // where the demos' acts have their background's tiles in video memory (InitCamera)
 export const DEMO_MANAGER = 1;   // its task's priority, before all of the act's
 const PLAYBACK_TIME = 1800;      // DEMO_PLAYBACK_TIME: TIME(0, 30)
 const ORDER = 15, PRIO = 1;      // DEMO_OAM_ORDER, DEMO_SPRITE_PRIO
@@ -58,9 +62,10 @@ export function createDemoInput(buttons, tape) {
 
 /**
  * CreateDemoManager's task, with the act's `state`, `anims` and `sound`, the save's `language`, whether the act `snows`,
+ * its `lateWaves` and `strayTiles` as DEMOS has them,
  * `physicalStart()` as createDemoInput has it, and `end(pressedStart)`, called as the white has lasted.
  */
-export function createDemoManager({ state, anims, sound, language, snows, physicalStart, end }) {
+export function createDemoManager({ state, anims, sound, language, snows, lateWaves = [], strayTiles = [], physicalStart, end }) {
   const pressStart = makeSprite(language === 0 ? 'demoPressStartJapanese' : 'demoPressStartEnglish', { order: ORDER, prio: PRIO });
   const demoPlay = makeSprite('demoPlay', { order: ORDER, prio: PRIO });
   animate(pressStart, anims);
@@ -105,6 +110,17 @@ export function createDemoManager({ state, anims, sound, language, snows, physic
   // Task_DemoManagerEndFadeout
   function whiteOut() {
     if (++white >= WHITE_FRAMES) end(pressedStart);
+    // the next screen clears the first tiles of the backgrounds' video memory, the title screen those of the sprites' too,
+    // straight away, so that the last picture shows it where no fade hides it (CreateSegaLogo, CreateTitleScreen)
+    // and the act's music stops as its task goes (TaskDestructor_GameStage)
+    else if (white === WHITE_FRAMES - 1) { state.tilesGone = pressedStart ? 'title' : 'logo'; sound.stopAll(); }
   }
-  return { run(ctx) { step(ctx); return true; } };
+  return {
+    run(ctx) {
+      state.wavesLate = lateWaves.includes(state.checkpointTime + 1);
+      state.strayTile = strayTiles.includes(state.checkpointTime + 1);
+      step(ctx);
+      return true;
+    },
+  };
 }

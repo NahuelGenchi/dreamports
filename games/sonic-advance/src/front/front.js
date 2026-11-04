@@ -43,13 +43,14 @@ export function powerOn(ctx) {
  * engine's gFrameCount, and the last what the character select chose. `character` is who the character select's row starts on, and `levels()` gives the level last played and the one
  * the course select last started, as { current, started }. Without `courseSelect`, as when the address names a level,
  * the character select goes straight to the act; without
- * `select`, a start point for the proof tools, Game Start goes where the character select would. As a demo starts
- * `play` is called with `demo` set in its last argument. `back`, { title, frameCount, white }, starts it as a demo leaves it,
- * with no start-up: at the title screen with its music if `title`, else at the SEGA logo, with gFrameCount at `frameCount`.
+ * `select`, a start point for the proof tools, Game Start goes where the character select would. A little before a demo
+ * starts `prepareDemo()` is called, and as it starts `play`, with `demo` set in its last argument and its video memory in
+ * `vram`. `back`, { title, frameCount, white, vram }, starts it as a demo leaves it,
+ * with no start-up: at the title screen with its music if `title`, else at the SEGA logo, with gFrameCount at `frameCount` and video memory as the screens before left it.
  * Returns { stop, step, draw, setView }: setView(w, h) draws a widescreen view of w × h from then on (the
  * original 240 × 160 is the default); step() and draw() are for checking, a frame at a time.
  */
-export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true, select = true, onGameStart, back = null } = {}) {
+export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true, select = true, onGameStart, prepareDemo = () => {}, back = null } = {}) {
   const video = createVideo();
   const engine = createEngine(video, rom, sound);
   video.write(REG.DISPCNT, 0x80);   // forced blank, until the game starts
@@ -61,6 +62,7 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
     title: playMusic => createTitleScreen(ctx, playMusic),
     play: level => { done = true; chosen = level; },
     startDemo: () => { done = true; demo = true; },
+    prepareDemo,
     // Task_805AAF8: whether the act comes next, with nothing cleared yet, or the course select, which only the versions
     // with a known place for its picture have
     onGameStart,
@@ -70,6 +72,7 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
 
   if (back) {
     engine.frameCount = back.frameCount;
+    video.vram.set(back.vram);
     if (back.title) ctx.title(true);
     else createSegaLogo(ctx);
   }
@@ -119,7 +122,7 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
       if (demo) { out.fillStyle = '#000'; out.fillRect(0, 0, canvas.width, canvas.height); }
       if (chosen === undefined && !select && !demo) stop();
       else { cancelAnimationFrame(frame); input.release(); }
-      play(chosen, engine.frameCount + 1, { character: ctx.character, partner: ctx.partner, demo });
+      play(chosen, engine.frameCount + 1, { character: ctx.character, partner: ctx.partner, demo, vram: video.vram });
       return;
     }
     frame = requestAnimationFrame(loop);

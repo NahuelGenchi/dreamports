@@ -6,8 +6,8 @@
 import { Rom } from '../../../../kit/gba/rom/rom.js';
 import { identify } from './identify.js';
 import { locateTables } from './locate.js';
-import { spriteTables, animationFrames, animationPalette, renderFrame, framePieces, paletteAnimation, frameLayout } from './sprites.js';
-import { tilemapHeader, renderMetatileAtlas, renderPlainMap, mapBanks, mapHoles, indexMetatiles, indexPlainMap, metatileIndices, plainMapIndices } from './tilemaps.js';
+import { spriteTables, animationFrames, animationPalette, renderFrame, framePieces, firstTiles, frameTile, paletteAnimation, frameLayout } from './sprites.js';
+import { tilemapHeader, renderMetatileAtlas, renderPlainMap, mapBanks, mapHoles, mapEntries, indexMetatiles, indexPlainMap, metatileIndices, plainMapIndices } from './tilemaps.js';
 import { readCollision, readSpawn, readLoop, readMultiplayerSpawns, readChaoSpawns } from './collision.js';
 import { readInteractables, readItemBoxes, entityRegions, readRings, layerToggles } from './entities.js';
 import { readColors, tintRgb, tintImage, bgr555ToRgb } from './colors.js';
@@ -418,6 +418,7 @@ export const EGG_SNAKE_ANIMATIONS = {
 // GAME OVER and CONTINUE? (715): each word in two halves, drawn through the rotation hardware as they turn; and
 // TIME, which the time over puts in front of GAME OVER's right half
 export const GAME_OVER_ANIMATIONS = { 715: { gameOverLeft: 0, gameOverRight: 1, continueLeft: 2, continueRight: 3, timeOverLeft: 4 } };
+const STRAY_TILE_X = 0, STRAY_TILE_Y = 40;
 // the pause menu's sign (pause.js): PAUSE (718) over its background (720); both load their colours into row 6
 // of the sprite palette
 export const PAUSE_ANIMATIONS = { 718: { pause: 0 }, 720: { pauseBackground: 0 } };
@@ -729,6 +730,14 @@ function extractSprites(rom, tables, water, player, partner, levelSprites = {}) 
     frames: [...new Set(Object.keys(player).flatMap(name => anims[name].frames.map(f => f[0]).filter(i => i >= 0)))],
     colors: sonicPalette.slice(0, 16), under: under ? under.slice(0, 16) : null,
   };
+  // the moving spring's tile that a demo shows once in the player's colours (demo.js, strayTiles)
+  const spring = anims.movingSpring && images[anims.movingSpring.frames[0][0]].src;
+  sonic.strayTile = spring && frameTile(rom, spring[1], spring[2], spring[3], spring[4], spring[6], STRAY_TILE_X, STRAY_TILE_Y);
+  // where they show the first tiles of the sprites' video memory, which are the player's (demo.js)
+  sonic.firstTiles = Object.fromEntries(sonic.frames.map(i => {
+    const [, frameTables, anim, frame, tilesAt, , eightBpp] = images[i].src;
+    return [i, firstTiles(rom, frameTables, anim, frame, tilesAt, eightBpp)];
+  }));
   // The renderer reads pixels back only from the rotated pieces and from Sonic's frames in the colours they show
   // in, so those are packed first, in the atlas's top rows (`pixelRows`), and only those rows are kept as pixels
   // (`pixels`) besides the atlas itself.
@@ -858,6 +867,11 @@ function extractStage(rom, offsets, tables, info) {
     entityRegions: entityRegions(rom, offsets.interactables, level),
     paletteAnimations: animations.map(({ frames, loop }) => ({ delays: frames.map(f => f.delay), loop })),
     backgroundHoles: mapHoles(rom, background), backdrop: palette[0],
+    // its metatiles' tile entries, for what a window or a screen after a demo does to a tile (renderer.js), its background's
+    // tiles, which stay in video memory after it, and with the spotlights the background's entries
+    metatileEntries: mapEntries(rom, front, count * 144),
+    backgroundTiles: rom.bytes.subarray(background.tiles, background.tiles + background.tilesSize),
+    spotlightArt: info.spotlights ? { entries: mapEntries(rom, background, background.xTiles * background.yTiles), across: background.xTiles } : null,
     atlas: null, background: null, backgrounds: null, indexed: null,
     snow: info.snow === undefined ? null : snowLayer(rom, tilemapHeader(rom, offsets.tilemaps, info.snow), palette, animations),
     water: info.water ? waterColors(rom, info.water, background, palette, animations) : null,
