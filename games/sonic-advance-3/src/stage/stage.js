@@ -247,6 +247,7 @@ function buildStage(c, level) {
   const heap = createTileHeap(0x10000 + 0x4D80, (0x8000 - 0x4D80) >> 5);
   stage.allocTiles = heap.alloc;
   stage.freeTiles = heap.free;
+  c.stage = stage;
   createStageUi(stage, SONIC, TAILS);
   // 0x08002618 and Task_StageMusicManager: the overworld's song, as the task's first frame starts it
   if (stage.act === HUB) {
