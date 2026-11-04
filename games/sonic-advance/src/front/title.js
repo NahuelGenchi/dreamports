@@ -265,6 +265,7 @@ function leaveMenu(t) {
   e.playSong(SONG.BOSS_FIGHT);
   e.stopSong(SONG.BOSS_FIGHT);
   if (item === GAME_START) {
+    ctx.onGameStart?.();
     if (ctx.select) createCharacterSelect(ctx, ctx.character);
     else ctx.startGame();
     return;

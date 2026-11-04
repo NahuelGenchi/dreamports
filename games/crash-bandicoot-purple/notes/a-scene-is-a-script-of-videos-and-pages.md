@@ -1,11 +1,13 @@
-# A story scene is a script of videos and pages, and the title's first layer brings in its last column's tiles first.
+# A story scene is a script of videos and pages, played at the music's volume a game gives it.
 
-About: The story's opening scene; story-opening; 0x0801CEBC; 0x0802D3E8; 0x08036400; 0x0801AC0C
+About: The story's opening scene; story-opening; 0x0801CEBC; 0x08016A78; 0x0801AC0C
 
 Proof: #322; story-opening
 
-0x0801CEBC builds the scene: the display, the script, the text and the arrow. The script's commands of kind 7 go to the text, and a list at 0x08076CF0 waits for A, then ends or shows the next page. In `story-opening` every picture up to frame 2350 matches with each video's load time and a limit of 3,380 bytes for slow frames, both measured against mGBA. That limit is a measure, not a rule the code has, and at frame 2351 smaller frames still differ. A scene's sprites use tile 512 on, and their colour slots start from 15 again each frame.
+0x0801CEBC builds the scene: the display, the script, the text and the arrow. The script's commands of kind 7 go to the text, and a list at 0x08076CF0 waits for A, then ends or shows the next page. The buttons are read when an update starts, so a press during a frame that ran past its V-blank counts from the next update.
 
-0x0801AC0C keeps as many columns as the screen's map has blocks across, so the first layer's extra column at -1 reads the same as column 15, which brings that column's tiles into video memory first. It shows only as leftovers in the bitmap on the scene's first frame.
+A game's data holds the music's volume, 128 for a new game, and 0x08016A78 gives it to the channels at 0x08034214, which takes every song after the menus down from the 200 the game starts with. It's only 3.9 dB, inside what `prove` allows, so it showed only once the rest lined up: the song really starts 4 frames before the first picture, while the first video loads.
 
-The sound differs from frame 1338 on, at first by 11 dB around 8,000 Hz, where the original has more. Changing how a back-and-forth loop turns, or keeping sound effects over the song's start, leaves that first difference where it is. Having a one-shot wave read on past its end takes away frames 1338 to 1340 and 1356 to 1358, which follow the hits on channel 4, but the original's instructions don't read that way, so it isn't in.
+The videos' first frames and slow frames are measured against mGBA in `story-opening`, and a frame's bytes don't decide them: one of 2,722 runs past its V-blank where one of 3,378 doesn't. While every frame is slow the main loop runs at half speed, the arrow's clock too.
+
+0x0801AC0C keeps as many columns as the screen's map has blocks across, so the first layer's extra column at -1 reads the same as column 15, and 0x0802F8A0 places every layer twice from no tiles. Both show only as leftovers in the bitmap on the scene's first frame.

@@ -7,17 +7,17 @@
 // attacks it bobs, turning its arm round at random intervals; then it picks an attack by how far Sonic is and
 // whether he is in the air: bouncing balls, a laser along the floor, a claw on a chain that grabs Sonic, swings
 // him round shaking his rings out and throws him, or a charge across the arena. Eggman's cockpit takes the hits
-// while the arm is down; eight wreck it, and it falls to the floor in flames, which starts the normal ending.
+// while the arm is down; eight wreck it, and it falls to the floor in flames, which starts the normal ending or the way to the Moon Zone.
 
 import { makeSprite, startAnim, animate } from './objects.js';
 import { tileFloor } from './terrain.js';
 import { SINE } from './trig.js';
 import { SCREEN_W, SCREEN_H } from './constants.js';
 import { screenShake, SCREEN_SHAKE } from './screenshake.js';
-import { preBossCameraPan, camBounds, setCamBounds, eachPlayer, bossHitOn, bossShotHit, bossShotHitOn, bossBodyHitOn, rectHit, grabTest, explosion, debris,
+import { preBossCameraPan, camBounds, setCamBounds, eachPlayer, bossHitOn, bossShotHit, bossShotHitOn, bossBodyHitOn, rectHit, grabTest, explosion, debris, eggMobileEscape,
   HIT_ENEMY, HIT_PLAYER, s8, s16, I } from './xbosses.js';
 import { endAttack, standUp } from './player.js';
-import { normalEnding } from './xending.js';
+import { normalEnding, moonEnding } from './xending.js';
 
 const SE_BOSS_HIT = 143, SE_EXPLOSION = 144, SE_IMPACT = 145, SE_LASER = 0xAC, SE_CLAW = 0xB3;
 const MUSIC_START = 0x16, MUSIC_END = 0x36;   // gMusicManagerState.unk1: boss song 6, then its end
@@ -330,7 +330,7 @@ export function eggX(e, slot, anims, ctx) {
 
   // Task_8038154: it drops to the floor, throwing debris every 8 frames, and bounces back up a quarter as fast
   // until it lands for good; that starts the ending. 240 frames later four explosions go off round it and the
-  // act's music comes back, and it is gone (Eggman doesn't flee in the normal ending)
+  // act's music comes back, and it is gone (Eggman flees only if the Moon Zone has opened)
   function falling(ctx) {
     if (b.phase <= 1) {
       if (b.phase === 0) b.vy += 0x10;
@@ -350,13 +350,21 @@ export function eggX(e, slot, anims, ctx) {
           b.vy = (b.vy >> 2) - b.vy;
           if (b.vy > -0x100) {
             b.vy = 0; b.timer = 240; b.phase++;
-            ctx.add(normalEnding(), 0x1FFF);
+            // the Moon Zone's rule (unlock.js) chooses how the fight ends
+            if (ctx.world.moonOpens()) {
+              ctx.world.moonOpened();
+              ctx.add(moonEnding(), 0x1FFF);
+            } else ctx.add(normalEnding(), 0x1FFF);
           }
         }
         break;
       }
       case 1:
         if (--b.timer === 0) {
+          if (ctx.world.moonOpens()) {
+            const flees = eggMobileEscape(b.x, b.y - 8);
+            ctx.add(flees, flees.priority);
+          }
           ctx.world.musicState(MUSIC_END);
           ctx.world.bossBeaten('egg-x');
           for (const [dx, dy] of [[0, -24], [-16, 0], [16, 0], [0, 24]]) {

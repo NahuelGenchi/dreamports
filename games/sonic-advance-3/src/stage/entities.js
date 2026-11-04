@@ -1,13 +1,16 @@
 // What stands in a stage: its map lists objects by regions of 256 pixels, and those near the camera get a task
-// (entities_manager.c: CreateStageEntitiesManager, 0x0802B7B8, and its tasks). So far the overworld's big rings and Omochao, its breakable walls, and springs.
+// (entities_manager.c: CreateStageEntitiesManager, 0x0802B7B8, and its tasks). So far the overworld's big rings and Omochao,
+// breakable walls, springs, platforms, Chao and the enemies in enemies.js.
 
 import { createSprite, updateSprite, displaySprite } from '../sprite.js';
 import { isArriving, hitWallRebound, thrownBySpring, FLAG } from './player.js';
 import { SINE } from './trig.js';
+import { ENEMIES } from './enemies.js';
 
-const INTERACTABLES = 0xD0E9C;
+const INTERACTABLES = 0xD0E9C, ENEMY_PLACES = 0xD10E4;
 const ANIM_FACTORY_RING = 911, ANIM_OMOCHAO = 977, ANIM_ACT_RING = 983;
 const REGION = 256, TILE = 8, BREAKABLE_WALLS = 0xCF208, WALL_CRACKS = 0xCF250, WALL_DEBRIS = 0xCF2B0, PUSH_OUT = 0x400;
+const ANIM_FIRST_CHAO = 1001, PLATFORM_ANIMS = 0xCF16A, PLATFORM_ANIMS_HUB = 0xCF140;
 const FIRST_ACT = 3, BONUS_CAPSULE = 8, ANIM_SPRING = 866, ANIM_SPRING_4 = 987, ANIM_SPRING_6 = 936, SPRING_TILES = 20, SPRING_TILES_6 = 15, SE_SPRING = 0x94, X_FLIP = 0x400, Y_FLIP = 0x800;
 const SE_WALL_HOLDS = 0x25B, SE_WALL_CRACKS = 0x24B, SE_WALL_BREAKS = 0x24A;
 const DEBRIS_PIECES = 6, DEBRIS_SPEED = 0x200, DEBRIS_GRAVITY = 32, DEBRIS_FRAMES = 30, DEBRIS_ONCE = 1 << 19, WALL_GONE_AFTER = 40;
@@ -36,8 +39,9 @@ export function unRle(rom, at) {
 export function createEntities(stage) {
   const { c } = stage, { rom, } = c;
   const data = unRle(rom, rom.u32(INTERACTABLES + stage.level * 4) - 0x08000000);
+  const enemies = unRle(rom, rom.u32(ENEMY_PLACES + stage.level * 4) - 0x08000000);
   const regionsX = data.getUint32(4, true) & 0xFFFF, regionsY = data.getUint32(8, true) & 0xFFFF, table = 12;
-  const manager = { stage, data, regionsX, regionsY, table, prevX: 0, prevY: 0, first: true };
+  const manager = { stage, data, enemies, regionsX, regionsY, table, prevX: 0, prevY: 0, first: true };
   c.createTask(spawnNear, manager, 0x2000);
   stage.entities = manager;
   return manager;
@@ -69,16 +73,19 @@ function spawn(m, range) {
   const yLow = lim(range.yLow, m.regionsY), yHigh = lim(range.yHigh, m.regionsY);
   for (let ry = yLow >> 8; ry * REGION < yHigh && ry < m.regionsY; ry++) {
     for (let rx = xLow >> 8; rx * REGION < xHigh && rx < m.regionsX; rx++) {
-      const start = m.data.getUint32(m.table + (m.regionsX * ry + rx) * 4, true);
-      if (start === 0) continue;
-      for (let at = m.table + start - 8; ; at += 8) {
-        const raw = m.data.getInt8(at);
-        if (raw === -1) break;
-        if (raw < -2) continue;
-        const x = m.data.getUint8(at) * TILE + rx * REGION, y = m.data.getUint8(at + 1) * TILE + ry * REGION;
-        if (x < xLow || x > xHigh || y < yLow || y > yHigh) continue;
-        const create = OBJECTS[m.data.getUint8(at + 2)];
-        if (create) create(m, at, x, y);
+      // InitEntityBlock_Interactables, then InitEntityBlock_Enemies
+      for (const [data, kinds] of [[m.data, OBJECTS], [m.enemies, ENEMIES]]) {
+        const start = data.getUint32(m.table + (m.regionsX * ry + rx) * 4, true);
+        if (start === 0) continue;
+        for (let at = m.table + start - 8; ; at += 8) {
+          const raw = data.getInt8(at);
+          if (raw === -1) break;
+          if (raw < -2) continue;
+          const x = data.getUint8(at) * TILE + rx * REGION, y = data.getUint8(at + 1) * TILE + ry * REGION;
+          if (x < xLow || x > xHigh || y < yLow || y > yHigh) continue;
+          const create = kinds[data.getUint8(at + 2)];
+          if (create) create({ ...m, data }, at, x, y);
+        }
       }
     }
   }
@@ -169,6 +176,7 @@ function createOmochao(m, at, x, y) {
 }
 
 const s8 = v => (v << 24) >> 24;
+const s16 = v => (v << 16) >> 16;
 
 // sub_8020A58: which side of an object's box a character's body has run into, and how far to go to come out of it, or
 // null if they don't touch. The side it comes out by is the one with the least to go, by a measure that favours the top.
@@ -424,9 +432,114 @@ function layerToggle(layer) {
   };
 }
 
+// CreateEntity_ChaoInStage and sub_804E5CC: a Chao, which nothing happens to yet when a character finds it
+function createChao(m, at, x, y) {
+  const { stage } = m, { c } = stage, meX = m.data.getUint8(at), pose = m.data.getUint8(at + 7) >> 4;
+  const s = createSprite({ tiles: stage.allocTiles(20), anim: ANIM_FIRST_CHAO + pose, variant: 0, oamFlags: 24 << 6, frameFlags: 0x1000 });
+  updateSprite(c, s);
+  m.data.setInt8(at, -2);
+  c.createTask(t => {
+    if (!active(stage.camera, x, y)) {
+      leave(t, m, at, meX, s);
+      return;
+    }
+    s.x = x - stage.camera.x;
+    s.y = y - stage.camera.y;
+    updateSprite(c, s);
+    displaySprite(c, s);
+  }, null, 0x2100);
+}
+
+// sub_804DC38: where in its sway a platform starts, from where it stands in its stretch
+function swayFrom(kind, x, y, data, at) {
+  const left = data.getInt8(at + 3), top = data.getInt8(at + 4), wide = data.getUint8(at + 5), tall = data.getUint8(at + 6);
+  if (wide === 0 && tall === 0) return 0;
+  const upDown = !(tall < wide), half = (upDown ? tall : wide) * (TILE / 2);
+  const from = upDown ? y : x, start = from + (upDown ? top : left) * TILE;
+  const place = s16(Math.trunc(((from - (start + half)) << 14) / half));
+  let i;
+  if (place >= 0) {
+    for (i = 0; i < 256 && place > SINE[i];) i += 4;
+    if (kind === 0) return 512 - i;
+    if (kind === 1) return upDown ? i : 512 - i;
+    if (kind === 2) return upDown ? 512 - i : i;
+    return i;
+  }
+  for (i = 512; i < 768 && place < SINE[i];) i += 4;
+  if (kind === 0) return i;
+  if (kind === 1) return upDown ? 1536 - i : i;
+  if (kind === 2) return upDown ? i : 1536 - i;
+  return 1536 - i;
+}
+
+// CreateEntity_Platform and Task_Platform: a platform swaying along its stretch, which dips under a character on it, and
+// which can be hit from below or the side only if its map says so. Those that fall, and being crushed by one, aren't made yet
+function platform(sway) {
+  return (m, at, startX, startY) => {
+    const { stage } = m, { c } = stage, { rom } = c, data = m.data, meX = data.getUint8(at), bits = data.getUint8(at + 7);
+    let bit = 0;
+    for (; bit < 5; bit++) if ((bits >> bit) & 1) break;
+    const rate = bit + 1, solidAllRound = bits & 0x80, first = swayFrom(sway, startX, startY, data, at);
+    const halfW = data.getUint8(at + 5) * (TILE / 2) * 256, halfH = data.getUint8(at + 6) * (TILE / 2) * 256;
+    const middleX = (startX + data.getInt8(at + 3) * TILE) * 256 + halfW, middleY = (startY + data.getInt8(at + 4) * TILE) * 256 + halfH;
+    const row = (stage.act === 2 ? PLATFORM_ANIMS_HUB : PLATFORM_ANIMS) + stage.zone * 6;
+    const s = createSprite({ tiles: stage.allocTiles(rom.u16(row + 4)), anim: rom.u16(row), variant: rom.u16(row + 2), oamFlags: 24 << 6, frameFlags: 0x1000, hitboxes: [{ index: -1, left: 0, top: 0, right: 0, bottom: 0 }] });
+    let qX = startX * 256, qY = startY * 256, dip = 0;
+    data.setInt8(at, -2);
+    c.createTask(t => {
+      const beforeX = qX, beforeY = qY;
+      const theta = (first + rate * stage.timer) & 0x3FF;   // sub_804DD68
+      qX = middleX + ((halfW * SINE[theta]) >> 14);
+      qY = middleY + ((halfH * SINE[theta]) >> 14);
+      const movedX = beforeX - qX, movedY = beforeY - qY;
+      let lifted = movedY, stoodOn = 0;
+      for (const p of stage.players) {
+        if (p.flags & FLAG.ON_OBJECT && p.standingOn === s) {
+          p.x -= movedX;
+          lifted -= 0x400;
+          p.y -= lifted;
+          stoodOn = 1;
+        } else if (stoodOn === 0) stoodOn = -1;
+        const touch = touchSolid(s, qX >> 8, qY >> 8, p);
+        if (touch?.side === 'top') {
+          p.y += touch.push << 8;
+          p.velY = 0;
+          p.angle = 0;
+        } else if (!solidAllRound) continue;
+        else if (touch?.side === 'bottom') {
+          p.y += (touch.push << 8) + (stoodOn === 1 ? 6 : 4) * 256;
+          p.velY = 0;
+        }
+        if (solidAllRound && (touch?.side === 'left' || touch?.side === 'right')) {
+          p.x += touch.push << 8;
+          p.groundSpeed = 0;
+        }
+      }
+      if (stoodOn === 1 && dip < 16) dip++;
+      else if (stoodOn === -1 && dip > 0) dip--;
+      qY += SINE[dip * 16] >> 5;
+      // sub_802F1B8: where it started and where it is now both far from the camera
+      if (!active(stage.camera, startX, startY) && !active(stage.camera, qX >> 8, qY >> 8)) {
+        for (const p of stage.players) if (p.standingOn === s) {
+          p.flags = (p.flags & ~FLAG.ON_OBJECT) | FLAG.IN_AIR;
+          p.standingOn = null;
+        }
+        leave(t, m, at, meX, s);
+        return;
+      }
+      // DrawPlatformShared
+      s.x = (qX >> 8) - stage.camera.x;
+      s.y = (qY >> 8) - stage.camera.y;
+      updateSprite(c, s);
+      if (s.x > -31 && s.x < 272 && s.y > -32 && s.y < 192) displaySprite(c, s);
+    }, null, 0x2100);
+  };
+}
+
 // gSpriteInits_Interactables, those ported so far
 const OBJECTS = {
   1: layerToggle(0), 2: layerToggle(1),
   5: spring(0), 6: spring(1), 7: spring(3), 8: spring(2), 9: spring(6), 10: spring(7), 11: spring(4), 12: spring(5), 13: spring(8), 14: spring(9),
-  57: createBreakableWall, 66: createOmochao, 96: createActRing, 98: createFactoryRing,
+  16: platform(0), 17: platform(1), 18: platform(2), 19: platform(3),
+  57: createBreakableWall, 66: createOmochao, 96: createActRing, 98: createFactoryRing, 140: createChao,
 };
