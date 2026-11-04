@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { REPO, LOCAL } from './paths.mjs';
 import { rememberedCopies } from './copies.mjs';
 import { looksLikeCopy } from '../gba/header.mjs';
+import { looksLikeAnyCopy } from './read-copy.mjs';
 
 /** The fork's branch GitHub Pages serves the previews from. */
 export const BRANCH = 'dreamports-previews';
@@ -97,7 +98,7 @@ const fill = (text, values) => text.replace(/\{\{(\w+)\}\}/g, (_, key) => values
 const hidden = path => path.split('/').some(part => part.startsWith('.'));
 
 // what a preview must never hold: files the ignore rules keep out of the repository, such as ROMs and saves, and
-// any file that is a copy of a game, by its checksum or its cartridge header
+// any file that is a copy of a game or a track of one, by its checksum, its cartridge header or its disc's volume
 function gameDataIn(files, contents) {
   const problems = [];
   let ignored = [];
@@ -108,10 +109,10 @@ function gameDataIn(files, contents) {
     if (error.status !== 1) throw error;   // 1: none of them
   }
   for (const path of ignored) problems.push(`${path}: the ignore rules keep this kind of file out of the repository.`);
-  const copies = new Set(Object.keys(rememberedCopies()));
+  const copies = new Set(Object.entries(rememberedCopies()).flatMap(([sha1, copy]) => [sha1, ...(copy.tracks ?? [])]));
   for (const file of files) {
     const bytes = contents.get(file.sha);
-    if (copies.has(createHash('sha1').update(bytes).digest('hex')) || looksLikeCopy(bytes)) problems.push(`${file.from}: this is a copy of a game.`);
+    if (copies.has(createHash('sha1').update(bytes).digest('hex')) || looksLikeCopy(bytes) || looksLikeAnyCopy(bytes)) problems.push(`${file.from}: this is a copy of a game.`);
   }
   return problems;
 }
@@ -127,13 +128,13 @@ export function makePreview({ tip, commit, branch, game, title, name, author, re
   for (const file of filesAt(commit, `games/${game}`, 'kit')) {
     if (hidden(file.path)) continue;
     const [top, folder, ...rest] = file.path.split('/');
-    if (top === 'kit' && !rest.length) continue;   // kit/README.md: only the kits' folders go on the site
+    if (top === 'kit' && !rest.length && folder !== 'consoles.js') continue;   // kit/README.md: only the kits' folders go on the site, and what every console's games read about their console
     if (rest[0] === 'notes') continue;   // notes are for the people making the game (docs/NOTES.md)
     if (file.mode === '120000' || file.mode === '160000') {
       problems.push(`${file.path}: every file has to be a plain file in the folder, not a link.`);
       continue;
     }
-    const to = top === 'games' ? `${name}/play/${game}/${rest.join('/')}` : `${name}/kit/${folder}/${rest.join('/')}`;
+    const to = top === 'games' ? `${name}/play/${game}/${rest.join('/')}` : `${name}/${file.path}`;
     files.push({ ...file, from: file.path, to });
   }
   if (!files.some(f => f.to === `${name}/play/${game}/index.html`)) throw new Error(`games/${game}/index.html isn't in commit ${commit.slice(0, 7)}: a preview is made from your last commit.`);

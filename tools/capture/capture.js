@@ -3,10 +3,13 @@
 // chooses among the best moments of what they played. The tool then asks it to encode the one they chose.
 
 import { connectedPads, createInput, holdsSettingsCombo } from '../../kit/gba/input.js';
+import { layoutOf } from '../../kit/consoles.js';
 
-const WIDTH = 240, HEIGHT = 160, PICTURE = WIDTH * HEIGHT * 2, SCALE = 2;
-const FRAME_MS = 1000 * 280896 / 16777216;   // a Game Boy Advance frame
-const SOUND_RATE = 65536;
+// the game's console
+const machine = await (await fetch('/capture/console')).json();
+const [WIDTH, HEIGHT] = machine.screen, PICTURE = WIDTH * HEIGHT * 2, SCALE = WIDTH > 320 ? 1 : 2;
+const FRAME_MS = 1000 * machine.frame[0] / machine.frame[1];
+const SOUND_RATE = machine.sound;
 
 const $ = id => document.getElementById(id);
 const LAYOUT = {
@@ -15,8 +18,21 @@ const LAYOUT = {
   keys: { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', KeyZ: 'a', KeyX: 'b', KeyA: 'l', KeyS: 'r', Enter: 'start', Backspace: 'select' },
   pad: { a: [0], b: [1], l: [4], r: [5], select: [8], start: [9], up: [12], down: [13], left: [14], right: [15] },
 };
-const input = createInput(LAYOUT);
+const layout = machine.id === 'gba' ? LAYOUT : layoutOf(machine.id);
+const input = createInput(layout);
 input.enabled = true;
+// the buttons held, as the bits the tool plays the original with
+const heldBits = () => (machine.id === 'gba' ? input.gbaKeys() : layout.buttons.reduce((bits, button) => (input[button] ? bits | (machine.keys[layout.console[button]] ?? 0) : bits), 0));
+const YES = machine.keys.A ?? machine.keys.CROSS, NO = machine.keys.B ?? machine.keys.CIRCLE;
+if (machine.id !== 'gba') {
+  const named = key => key.replace(/^Key|^Arrow/, '');
+  document.querySelector('.keys').replaceChildren(...Object.entries(layout.keys).map(([key, button]) => {
+    const line = document.createElement('span'), cap = document.createElement('kbd');
+    cap.textContent = named(key);
+    line.append(cap, ` ${layout.console[button]}`);
+    return line;
+  }));
+}
 
 // each 15-bit colour as the browser draws it
 const RGBA = new Uint32Array(32768);
@@ -24,6 +40,8 @@ for (let c = 0; c < 32768; c++) {
   const r = c & 31, g = c >> 5 & 31, b = c >> 10 & 31;
   RGBA[c] = (0xFF << 24 | (b << 3 | b >> 2) << 16 | (g << 3 | g >> 2) << 8 | r << 3 | r >> 2) >>> 0;
 }
+$('screen').width = WIDTH;
+$('screen').height = HEIGHT;
 const image = new ImageData(WIDTH, HEIGHT);
 const pixels = new Uint32Array(image.data.buffer);
 function draw(context, picture, at = 0) {
@@ -95,7 +113,7 @@ async function playFrames() {
         finish();
         break;
       }
-      const response = await fetch(`/capture/frame?buttons=${input.gbaKeys()}`);
+      const response = await fetch(`/capture/frame?buttons=${heldBits()}`);
       if (!response.ok) throw new Error(await response.text());
       const bytes = await response.arrayBuffer();
       draw(screen, new Uint16Array(bytes, 0, PICTURE / 2));
@@ -174,15 +192,15 @@ function chooseFrames() {
   const frame = Math.floor((performance.now() - shownAt) / FRAME_MS);
   for (const { context, length, pictures } of moments) draw(context, pictures, frame % length * WIDTH * HEIGHT);
   input.poll();
-  const now = input.gbaKeys(), pressed = now & ~last;
+  const now = heldBits(), pressed = now & ~last;
   last = now;
   const columns = Math.min(3, moments.length), to = i => Math.max(0, Math.min(moments.length - 1, i));
-  if (pressed & 0x10) select(to(at + 1));
-  if (pressed & 0x20) select(to(at - 1));
-  if (pressed & 0x40) select(to(at - columns));
-  if (pressed & 0x80) select(to(at + columns));
-  if (pressed & (0x1 | 0x8)) pick(at);
-  if (pressed & 0x2) keepPlaying();
+  if (pressed & machine.keys.RIGHT) select(to(at + 1));
+  if (pressed & machine.keys.LEFT) select(to(at - 1));
+  if (pressed & machine.keys.UP) select(to(at - columns));
+  if (pressed & machine.keys.DOWN) select(to(at + columns));
+  if (pressed & (YES | machine.keys.START)) pick(at);
+  if (pressed & NO) keepPlaying();
 }
 
 addEventListener('keydown', e => {
@@ -191,7 +209,34 @@ addEventListener('keydown', e => {
   else keepPlaying();
 });
 
+// the window can stay open as long as a game takes to make, so with nobody playing it rests, drawing and playing nothing
+// and using next to nothing, until a button is pressed
+const RESTS_AFTER_MS = 30_000, LOOKS_EVERY_MS = 100;
+let touched = performance.now(), phaseBefore = phase, resting = false;
+const touch = () => { touched = performance.now(); };
+for (const type of ['keydown', 'pointerdown', 'pointermove', 'wheel']) addEventListener(type, touch, { passive: true, capture: true });
+
+function rest(on) {
+  if (on === resting) return;
+  resting = on;
+  document.body.classList.toggle('resting', on);
+  if (on) sound.suspend();
+  else {
+    sound.resume();
+    soundAt = 0;
+  }
+}
+
 (function tick() {
+  if (resting) input.poll();
+  // a button held down is someone playing, and a new screen hasn't been looked at yet
+  if (heldBits() || phase !== phaseBefore) touch();
+  phaseBefore = phase;
+  rest(phase !== 'wait' && performance.now() - touched > RESTS_AFTER_MS);
+  if (resting) {
+    setTimeout(tick, LOOKS_EVERY_MS);
+    return;
+  }
   requestAnimationFrame(tick);
   if (phase === 'play') playFrames();
   else if (phase === 'choose') chooseFrames();

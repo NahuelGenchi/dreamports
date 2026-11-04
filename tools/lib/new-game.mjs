@@ -4,8 +4,10 @@
 // person typed but what's in original.json.
 
 import { readFileSync } from 'node:fs';
+import { CONSOLES } from '../../kit/consoles.js';
 
 const kit = name => new URL(`../gba/new-game/${name}`, import.meta.url);
+const otherKit = name => new URL(`../libretro/new-game/${name}`, import.meta.url);
 const js = text => `'${text.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
 const html = text => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
@@ -29,7 +31,9 @@ export function startingFiles(game, original) {
   return {
     'LICENSE': readFileSync(new URL('../../kit/gba/LICENSE', import.meta.url), 'utf8'),
     'index.html': fill(readFileSync(kit('index.html.template'), 'utf8'), { NAME: html(name), TITLE: html(title) }),
-    'src/main.js': fill(readFileSync(kit('main.js.template'), 'utf8'), {
+    'src/main.js': original.console !== 'gba' ? fill(readFileSync(otherKit('main.js.template'), 'utf8'), {
+      TITLE_JS: title, NAME_JS: js(name), CONSOLE_JS: js(original.console), SHA1_JS: js(original.sha1), FOLDER_JS: js(game), TITLE_QUOTED: js(title), HOME_JS: js(`https://dreamports.net/dreamports/${game}-dreamport/`),
+    }) : fill(readFileSync(kit('main.js.template'), 'utf8'), {
       TITLE_JS: title, NAME_JS: js(name), HEADER_JS: js(original.title), CODE_JS: /^[A-Z0-9]+$/.test(original.code) ? original.code : js(original.code), REGION_JS: js(region),
       SHA1_JS: js(original.sha1), FOLDER_JS: js(game), TITLE_QUOTED: js(title), HOME_JS: js(`https://dreamports.net/dreamports/${game}-dreamport/`),
     }),
@@ -73,10 +77,10 @@ export function startingEntry(game, original, { issue, lead, added }) {
   return `---
 # ${name} Dreamport's entry. games/README.md explains every field, and its two numbers come from proof/.
 title: ${yaml(`${name} Dreamport`)}
-platform: Game Boy Advance
+platform: ${CONSOLES[original.console].name}
 added: ${added}
 summary: ${yaml(`${name}, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install.`)}
-needs: ${yaml(`A ${original.name} ROM (.gba)`)}
+needs: ${yaml(`A ${original.name} ${original.console === 'gba' ? 'ROM (.gba)' : `copy (${CONSOLES[original.console].files.join(', ')})`}`)}
 controls: [keyboard, controller, touch]
 issue: ${issue}
 lead: ${lead}

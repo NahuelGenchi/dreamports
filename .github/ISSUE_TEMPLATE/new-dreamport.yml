@@ -31,9 +31,18 @@ body:
     id: console
     attributes:
       label: Console
-      description: Each console has a kit the games on it share. Another console needs a kit of its own first.
+      description: The proof tools know these consoles, and how far each has got is in docs/CONSOLES.md. Another console has to be added first.
       options:
         - Game Boy Advance
+        - NES
+        - Super Nintendo
+        - Game Boy
+        - Game Boy Color
+        - Mega Drive
+        - PlayStation
+        - Nintendo 64
+        - PlayStation 2
+        - PlayStation Portable
         - Another console
     validations:
       required: true
