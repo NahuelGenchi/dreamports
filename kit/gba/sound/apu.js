@@ -24,7 +24,7 @@ export function createApu() {
   // two banks of 32 four-bit samples. The playing bank rotates by one sample per step, so `rot` is where its
   // first byte now starts; a retrigger does not rewind it
   const wave = [new Uint8Array(32), new Uint8Array(32)], rot = [0, 0];
-  const sq = [0, 1].map(() => ({ on: false, len: 0, freq: 0, timer: 0, pos: 0, env: envelope() }));
+  const sq = [0, 1].map(() => ({ on: false, len: 0, freq: 0, since: 0, pos: 0, env: envelope() }));
   const sweep = { timer: 0, on: false, shadow: 0 };
   const ch3 = { on: false, len: 0, freq: 0, timer: 0, sample: 0 };
   const ch4 = { on: false, len: 0, timer: 0, lfsr: 0x7FFF, out: 0, env: envelope() };
@@ -149,18 +149,17 @@ export function createApu() {
     rot[0] = (rot[0] + 1) & 31; rot[1] = (rot[1] + 1) & 31;
   }
 
-  // advances every oscillator by `cycles`; the squares' duty steps run even while they are silent
+  // advances every oscillator by `cycles`; the squares' duty steps run even while they are silent. As in mGBA, a square
+  // counts the time since its last step against the pitch it has now, so one that was silent at a slow pitch, as the
+  // sound library leaves it when it stops a note, starts its next note on time
   function run(cycles) {
     if (!(reg(0x84) & 0x80)) return;
     for (const c of sq) {
-      // counted from the last step, at the frequency now, as mGBA's GBAudioRun does: a new frequency applies to the step
-      // already under way
-      c.timer += cycles;
+      c.since += cycles;
       const period = sqPeriod(c);
-      if (c.timer >= period) {
-        const steps = Math.floor(c.timer / period);
-        c.pos = (c.pos + steps) & 7;
-        c.timer -= steps * period;
+      if (c.since >= period) {
+        c.pos = (c.pos + Math.floor(c.since / period)) & 7;
+        c.since %= period;
       }
     }
     if (ch3.on) {
