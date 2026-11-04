@@ -7,7 +7,9 @@
 
 import { REG } from '../../../kit/gba/video.js';
 import { openMovie, decodeFrame } from './movie.js';
-import { createWorld, aimCamera, showWorld, moveWorld, drawWorld } from './world.js';
+import { createWorld, aimCamera, showWorld, moveWorld, drawWorld, screenLeft, screenTop } from './world.js';
+import { readCollision } from './collision.js';
+import { createCrash, updateCrash, cameraLook } from './crash.js';
 import { createSprite, createSprites, stepAnimation, drawSprite, drawText, showSprites } from './sprites.js';
 
 const CARTRIDGE = 0x08000000, PAGE = 0xA000;
@@ -107,8 +109,9 @@ function* mainLoop(c) {
 // The title screen, 0x08087350's next level, which 0x080155E4 makes when the first screens end
 const TITLE = 0x08087360;
 // The frames between the script's end and the title's first picture, with the screen black: the console's timing, as
-// mGBA measures it, as start-up's is. And how far the animations' clock (0x02007284) has come by that picture
-const TITLE_LOAD_FRAMES = 5, TITLE_CLOCK = -1;
+// mGBA measures it, as start-up's is. How far the animations' clock (0x02007284) has come by that picture, and how many
+// frames the screen stays white after the fade, once A or Start has been pressed
+const TITLE_LOAD_FRAMES = 5, TITLE_CLOCK = -1, WHITE_FRAMES = 4;
 // 0x0800C34C's animations of the game's name, from the last drawn to the first, and when each makes a sound (0x0800C494)
 const NAME = [0x082AF0E0, 0x082AF0C8, 0x082AF0B0];
 const NAME_SOUNDS = [
@@ -151,8 +154,8 @@ function playSound(c, address) {
   c.sound?.playEffect(address);
 }
 
-// The main loop on the title screen. In the original A or Start goes on to the load save screen, which isn't ported yet,
-// so here they only make their sound and the screen stays
+// The main loop on the title screen, until A or Start fades it to white. In the original they go on to the load save
+// screen, and what comes between it and the first world's hub isn't ported yet, so here they go straight to the hub
 function* titleLoop(c) {
   const { video, rom } = c, at = TITLE - CARTRIDGE;
   c.movie = null;
@@ -182,23 +185,29 @@ function* titleLoop(c) {
     sprite.next = sprite.animation.delay + 1;
     return sprite;
   });
-  let clock = TITLE_CLOCK, blink = 0;
+  let clock = TITLE_CLOCK, blink = 0, leaving = 0, white = 0;
   // 0x080155E4's 0x0803FD8C: the fade back from white, after 0x0803FC9C's fade to it
   c.fade = { kind: 3, level: 64, target: 0, speed: 4 };
   for (;;) {
     clock++;
     moveWorld(world);     // 0x0802F374
-    for (let y = 0; y < 160; y++) lines[y] += speeds[y];   // 0x08001B18
+    // 0x08036D2C and 0x0801C598: A and Start make their sound and stop the lines, and the fade starts a frame later
+    if (!leaving && (c.pressed & (KEY_A | KEY_START))) {
+      playSound(c, BUTTON_SOUND);
+      leaving = 1;
+    } else if (leaving === 1) {
+      c.fade = { kind: 3, level: c.fade.level, target: 64, speed: 4 };   // 0x0803FC9C
+      leaving = 2;
+    }
+    if (!leaving) for (let y = 0; y < 160; y++) lines[y] += speeds[y];   // 0x08001B18
     name.forEach((sprite, n) => {   // 0x0800C494
       for (const [frame, sound, unless] of NAME_SOUNDS[n]) {
         if (sprite.frame === frame && !soundPlaying(c, unless)) playSound(c, sound);
       }
       stepAnimation(sprite, clock);
     });
-    // 0x08036D2C and 0x0801C598: A and Start make their sound
-    if (c.pressed & (KEY_A | KEY_START)) playSound(c, BUTTON_SOUND);
     const colours = (blink & 16) ? DIM : LIT;   // 0x0801CAD4
-    blink++;
+    if (!leaving) blink++;
     stepFade(c);          // 0x0803FB48
     // 0x0800C580: the line of text, then the name from the last animation to the first
     drawText(sprites, { ...LETTERS, colours }, text, textX, TEXT_Y, c.colours);
@@ -208,6 +217,152 @@ function* titleLoop(c) {
     video.write(REG.DISPCNT, 0x1940);   // 0x0803B1D4
     video.write(REG.BG0HOFS, lastLine);
     lastLine = lines[159];
+    drawWorld(world);     // 0x0802F90C
+    showSprites(sprites);
+    yield;                // 0x08040E5C
+    if (leaving && c.fade.level === 64 && ++white > WHITE_FRAMES) break;
+  }
+  c.hblank = null;
+  yield* hubLoop(c);
+}
+
+// 0x08000222: the game's random numbers, from a seed at 0x02000000
+function random(c) {
+  c.seed = (Math.imul(c.seed, 0x41C64E6D) + 0x3039) | 0;
+  return c.seed >>> 17;
+}
+
+// The first world's hub: 0x080872EC's first world's first level, whose first map is this one (0x08015324)
+const FIRST_HUB = 0x08087C28;
+
+// What the hub's start shows, from the level's list of actors at 0x08B70934: each one's animation (0x0807768C's first
+// for Crash, the one a fruit is made with and 0x08069888's first for Coco), and its place and whether it faces left, as the
+// list has them.
+const CRASH = { animation: 0x082CBDFC, x: 58, y: 388, flip: false };   // type 1, 0x08021B08
+const OTHERS = [
+  { animation: 0x082FCED4, x: 225, y: 381, flip: false },  // type 34
+  { animation: 0x082FCED4, x: 266, y: 375, flip: false },
+  { animation: 0x082FCED4, x: 310, y: 387, flip: false },
+  { animation: 0x082FCED4, x: 350, y: 399, flip: false },
+  { animation: 0x08307DB4, x: 195, y: 381, flip: true },   // type 111
+];
+const AKU_AKU = 0x082FD3CC;   // 0x08000A2C
+
+// The clock the actors' animations go by (0x02007284) at the first picture: how many frames they've run by then, as mGBA
+// measures it, and the same for the count Aku Aku floats by (0x0200762C), which the recording sets as it reaches the hub,
+// as it does the random seed, as the Dreamport has no way there yet to bring them to what the original's way does
+const HUB_CLOCK = -1, FLOAT_START = -1, RANDOM_SEED = 1;
+// How far the song has come by the first picture, as it starts at 0x0803407C while the level loads
+const SONG_AHEAD = 3;
+
+// 0x0803874C: an actor's place is the middle of its box, wherever its animation draws it from
+function createActor(rom, { animation, x, y, flip }) {
+  const sprite = createSprite(rom, animation, x << 8, y << 8, flip);
+  const a = sprite.animation, offsetX = (a.x * 256) + (a.w << 7), offsetY = (a.y * 256) + (a.h << 7);
+  sprite.x += flip ? -offsetX : offsetX;
+  sprite.y += offsetY;
+  sprite.next = a.delay + 1;
+  sprite.box = a;
+  sprite.priority = 1;   // 0x08019190
+  return sprite;
+}
+
+// 0x08038520's 0x08038F74 and 0x08004A48: whether the box of the frame it's showing is on screen
+function onScreen(c, world, sprite) {
+  const { rom } = c, { animation: a, box } = sprite;
+  const frame = rom.u32(a.sheet + 4) - CARTRIDGE + rom.u16(a.list + sprite.frame * 2) * 44 + 8;
+  const w = rom.u8(frame + 4) << 8, h = rom.u8(frame + 5) << 8;
+  let x = sprite.x + (rom.view.getInt16(frame, true) * 256) - ((box.x * 256) + (box.w << 7));
+  const y = sprite.y + (rom.view.getInt16(frame + 2, true) * 256) - ((box.y * 256) + (box.h << 7));
+  if (sprite.flipX) x = sprite.x * 2 - (x + w);
+  const { left, top } = c.screen;   // 0x0803AB4C, which is the last frame's until the actors have all run
+  return left < x + w && x < left + 0xF000 && top < y + h && y < top + 0xA000;
+}
+
+// 0x08038668: where a sprite's frame goes on screen, from its place and its box
+function drawActor(c, world, sprites, sprite) {
+  if (!onScreen(c, world, sprite)) return;
+  const { x: boxX, y: boxY, w, h } = sprite.box;
+  const offsetX = (boxX * 256) + (w << 7), offsetY = (boxY * 256) + (h << 7);
+  const x = sprite.x - screenLeft(world), y = sprite.y - screenTop(world);
+  drawSprite(sprites, sprite, (sprite.flipX ? x + offsetX : x - offsetX) >> 8, (sprite.flipY ? y + offsetY : y - offsetY) >> 8, c.colours);
+}
+
+// 0x08000B94, in its state 2: Aku Aku floats after where Crash was 8 frames ago, up and down and side to side by the
+// sine at 0x08047B2C, and picks another of its four pictures at random every 8 frames
+function updateAkuAku(c, aku, crash) {
+  const { rom } = c, sine = n => rom.view.getInt16(0x08047B2C - CARTRIDGE + (n & 0xFF) * 2, true);
+  aku.history[aku.at] = [crash.x, crash.y];
+  aku.at = (aku.at + 1) & 7;
+  if ((c.floats & 7) === 0) aku.picture = Math.min(Math.max(aku.picture - 1 + (random(c) % 3), 0), 3);
+  aku.sprite.frame = aku.picture;
+  const [x0, y0] = aku.history[aku.at];
+  const x = x0 + sine(c.floats) * 24, y = y0 + sine(c.floats >> 1) * 12 - 0x1800;
+  aku.behind = ((aku.sprite.x - x) < 0) !== crash.flipX;
+  aku.sprite.x = x;
+  aku.sprite.y = y;
+}
+
+// 0x08007914 with 0x08007B4C and 0x0800807C: the camera follows Crash, looking ahead of him by no more than so much more a
+// frame, and moving by no more than so much a frame
+function followCrash(camera, crash) {
+  const want = cameraLook(crash), { sprite } = crash;
+  camera.lookX += Math.max(-0x115, Math.min(0x115, want.x - camera.lookX));
+  camera.lookY += Math.max(-181, Math.min(181, want.y - camera.lookY));
+  const toX = sprite.x + camera.lookX, toY = sprite.y + (sprite.box.h << 7) + camera.lookY;
+  camera.x += Math.max(-0x500, Math.min(0x500, toX - camera.x));
+  camera.y += Math.max(-0x700, Math.min(0x700, toY - camera.y));
+}
+
+// The main loop in the hub, from the first frame the fade has started: the level's update, then the V-blank's work
+function* hubLoop(c) {
+  const { video, rom } = c;
+  const at = FIRST_HUB - CARTRIDGE, world = createWorld(video, rom, FIRST_HUB), sprites = createSprites(video, rom);
+  // 0x0801F85C: the level's colours
+  c.colours.fill(0);
+  for (let i = 0; i < 256; i++) c.colours[i] = rom.u16(rom.u32(at) - CARTRIDGE + i * 2);
+  video.write(REG.BLDCNT, 0x3F40);
+  video.write(REG.BLDALPHA, 0x0808);
+  const crashSprite = createActor(rom, CRASH), others = OTHERS.map(a => createActor(rom, a));
+  c.seed = RANDOM_SEED;
+  c.floats = FLOAT_START;
+  c.random = () => random(c);
+  c.playSound = address => playSound(c, address);
+  c.soundPlaying = address => soundPlaying(c, address);
+  // 0x0803817C
+  const crash = createCrash(c, crashSprite, readCollision(rom, rom.u32(at + 20)));
+  const aku = { sprite: createActor(rom, { animation: AKU_AKU, x: 0, y: 0, flip: false }), history: [], at: 0, picture: 0, behind: false };
+  for (let n = 0; n < 8; n++) aku.history[n] = [0, 0];   // 0x08000A2C: nothing yet, so it's off screen for 8 frames
+  // 0x08007794: the camera on Crash from the start
+  const look = cameraLook(crash), camera = {
+    lookX: look.x, lookY: look.y,
+    x: crashSprite.x + look.x, y: crashSprite.y + (crashSprite.box.h << 7) + look.y,
+  };
+  aimCamera(world, camera.x, camera.y);
+  showWorld(world);
+  c.screen = { left: screenLeft(world), top: screenTop(world) };
+  let clock = HUB_CLOCK;
+  // 0x08015324: the level's song, the third word after its entry at 0x0200D2B8
+  c.sound?.startSong(0x082706EC, SONG_AHEAD);
+  // 0x08015324's 0x0803FD8C: the fade back from white, after 0x0803FC9C's fade to it
+  c.fade = { kind: 3, level: 64, target: 0, speed: 4 };
+  for (;;) {
+    clock++;
+    c.floats++;
+    followCrash(camera, crash);
+    aimCamera(world, camera.x, camera.y);
+    moveWorld(world);     // 0x0802F374
+    updateAkuAku(c, aku, crashSprite);   // 0x08024668
+    updateCrash(c, crash, clock);
+    for (const sprite of others) stepAnimation(sprite, clock);   // 0x08035518
+    // 0x08021BD0: Aku Aku behind Crash or in front of him, as it goes round
+    const first = aku.behind ? [crashSprite, aku.sprite] : [aku.sprite, crashSprite];
+    for (const sprite of [...first, ...others]) drawActor(c, world, sprites, sprite);
+    c.screen = { left: screenLeft(world), top: screenTop(world) };
+    stepFade(c);          // 0x0803FB48
+    workOutColours(c);    // 0x0803FBA4
+    video.pal.set(c.faded);   // 0x0803FAC4
+    video.write(REG.DISPCNT, 0x1F40);   // 0x0803B1D4
     drawWorld(world);     // 0x0802F90C
     showSprites(sprites);
     yield;                // 0x08040E5C

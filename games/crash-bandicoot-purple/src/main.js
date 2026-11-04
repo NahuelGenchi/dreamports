@@ -35,7 +35,7 @@ const input = createInput(LAYOUT);
 const sound = createSound({
   worklet: new URL('./sound/worklet.js', import.meta.url),
   calls: call => ({
-    startSong(address) { call('startSong', address); },
+    startSong(address, ahead = 0) { call('startSong', address, ahead); },
     playEffect(address) { call('playEffect', address); },
   }),
 });
@@ -43,7 +43,7 @@ proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded but
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives
 const touch = createTouch(stage, input, { screen, key: 'crash-bandicoot-purple' });
-createSettings(stage, input, { touch });
+createSettings(stage, input, { what: { dpad: 'Left and Right: run. Down: crouch', a: 'A: jump, and again in the air', b: 'B: spin', start: 'Start: leaves the title screen' }, touch });
 let rom = null, romBuffer = null;
 
 createRomSetup(picker, {
@@ -66,8 +66,8 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the copyright screen, the logos and the title screen, which waits there as Start's next screen, the
-// load save screen, isn't ported yet.
+// The game so far: the copyright screen, the logos, the title screen and then, as what comes between isn't ported yet,
+// Crash on foot in the first world's hub.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
   return { step(keys) { step(core, keys); }, hblank(y) { hblank(core, y); } };

@@ -27,6 +27,7 @@ export function playAnimation(sprite, address, clock) {
   sprite.animation = readAnimation(sprite.rom, address);
   sprite.frame = 0;
   sprite.ended = false;
+  sprite.backward = false;
   sprite.next = clock + sprite.animation.delay + 1;
 }
 
@@ -34,7 +35,11 @@ export function playAnimation(sprite, address, clock) {
 export function stepAnimation(sprite, clock) {
   if (clock < sprite.next) return;
   const { animation } = sprite;
-  if (sprite.frame === animation.count - 1) {
+  if (sprite.backward) {
+    if (sprite.frame !== 0) sprite.frame--;
+    else if (animation.loops) sprite.frame = animation.count - 1;
+    else sprite.ended = true;
+  } else if (sprite.frame === animation.count - 1) {
     if (animation.loops) sprite.frame = 0;
     else sprite.ended = true;
   } else sprite.frame++;
