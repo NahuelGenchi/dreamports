@@ -1,6 +1,6 @@
 {
- "about": "Sonic running into a spring that throws him right in Route 99 act 1, from a start point beside it, with the camera following him along the ground. It stops the frame before Tails takes a ring off the screen.",
- "frames": 41,
+ "about": "Sonic running into a spring that throws him right in Route 99 act 1, from a start point beside it, with the camera following him along the ground and down the slope, as Tails, thrown first, takes a ring off the screen.",
+ "frames": 240,
  "start": "level=3&seed=5&x=3790&y=642",
  "held": [
   [
@@ -207,6 +207,6 @@
  ],
  "clip": {
   "at": 0,
-  "frames": 41
+  "frames": 240
  }
 }
