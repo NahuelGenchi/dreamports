@@ -344,9 +344,14 @@ function jumpFalling(p) {
   if (!startFlyingIfPressed(p)) fall(p);
 }
 
-// sub_8017058, sub_80167A4 and sub_801BDD8: Tails pressing the button again in the air
+// sub_8017058 and sub_80167A4: Tails pressing the button again in the air does nothing else this frame, and it flies from the next
 function startFlyingIfPressed(p) {
   if (p.character !== TAILS || !(p.pressed & KEY.A)) return false;
+  p.behave = startFlying;
+  return true;
+}
+// sub_801BDD8
+function startFlying(p) {
   if (p.flags & CURLED) {
     p.flags &= ~CURLED;
     p.halfWidth = HALF_WIDTH;
@@ -359,7 +364,6 @@ function startFlyingIfPressed(p) {
   p.flags = (p.flags | FLYING | IN_AIR) & ~NO_AIR_STEERING;
   p.behave = fly;
   fly(p);
-  return true;
 }
 // sub_801B2E4, sub_801B458 and sub_800E04C: each press lifts it for a while, until it tires and can only sink
 function fly(p) {
