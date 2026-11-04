@@ -4,7 +4,7 @@
 
 This folder holds what every Game Boy Advance Dreamport shares, so a new one starts with the console already working: reading and checking the player's copy, drawing and sound that work the way the console did, keyboard, controller and touch, settings and saves, achievements, the asset viewer, and what the proof tools need. It came out of [Sonic Advance Dreamport](../../games/sonic-advance/README.md), which runs on it.
 
-The kit is plain JavaScript that the browser runs as it is, with no build step, under [GPL-3.0-or-later](LICENSE). Nothing from any game is in it, and nothing only one game needs: that stays in the game's own folder. The site serves it at `dreamports.net/kit/gba/`, as [games/README.md](../../games/README.md#the-kits-games-start-from) explains.
+The kit is plain JavaScript that the browser runs as it is, with no build step, under [GPL-3.0-or-later](LICENSE). Nothing from any game is in it, and nothing only one game needs: that stays in the game's own folder. The site serves it at `dreamports.net/kit/gba/`, and each game's page gets the code it uses in the game's own minified bundle, as [games/README.md](../../games/README.md#the-kits-games-start-from) explains.
 
 ## What's in it
 

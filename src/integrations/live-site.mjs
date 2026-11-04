@@ -9,7 +9,7 @@ import { problemsWith } from '../lib/cards.mjs';
 import { dreamports } from '../../tools/readme.mjs';
 
 // what was checked out, which a Deploy Hook's build only has in its clone; Cloudflare's own word for it comes second
-function commit(root) {
+export function commit(root) {
   try {
     return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
   } catch {

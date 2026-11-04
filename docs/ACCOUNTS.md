@@ -17,7 +17,7 @@ Everything is on Cloudflare's free plan (#16):
 - Signing in is [`worker/ways.ts`](../worker/ways.ts): OAuth 2.0 with PKCE for Google, Discord and GitHub, and OpenID 2.0 for Steam, with the Worker's own `fetch` and Web Crypto and no library. Each service's sign-in is free.
 - On a computer, `npm run worker` builds the site and runs it at `http://localhost:8787` with the Worker and a local database. Steam signs in there as it is. Google, Discord and GitHub need their apps' secrets in a `.dev.vars` file next to `wrangler.jsonc` (`GOOGLE_CLIENT_SECRET=…`, one per line), which git ignores and which must never be committed.
 
-The games under `/play/` never run the Worker: the free plan serves plain files without limit but runs the Worker at most 100,000 times a day, and Sonic Advance Dreamport alone loads over 200 files each time it starts. Every copy of the site, such as a preview or `npm run worker`, plays the games in its own `games/` folder, with its own profiles.
+The games under `/play/` never run the Worker: the free plan serves plain files without limit but runs the Worker at most 100,000 times a day, and a game loads several files each time it starts. Every copy of the site, such as a preview or `npm run worker`, plays the games in its own `games/` folder, with its own profiles.
 
 ## The sign-in apps
 

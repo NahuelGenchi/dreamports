@@ -19,7 +19,8 @@
   },
   "packageManager": "npm@12.2.0",
   "dependencies": {
-    "astro": "7.4.2"
+    "astro": "7.4.2",
+    "esbuild": "0.28.2"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.12",

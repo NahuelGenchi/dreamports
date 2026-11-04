@@ -12,8 +12,8 @@
     // An address with no page shows the site's own 404 page (src/pages/404.astro).
     "not_found_handling": "404-page",
     // Only these run the Worker. The games under /play/ stay plain files: Cloudflare's free plan serves
-    // those without limit but runs the Worker at most 100,000 times a day, and Sonic Advance Dreamport
-    // alone loads over 200 files each time it starts.
+    // those without limit but runs the Worker at most 100,000 times a day, and a game
+    // loads several files each time it starts.
     "run_worker_first": ["/api/*", "/players/*"]
   },
   // The accounts' database (docs/ACCOUNTS.md). The Worker makes its tables itself the first time.
