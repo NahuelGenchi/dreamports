@@ -26,6 +26,12 @@ export function createCore(video, rom, sound) {
   const c = {
     video, rom,
     playSong: song => sound?.play(song),   // 0x080BA1F4, m4aSongNumStart
+    seed: 0,
+    /** The game's numbers that look random, each from the last (PseudoRandom32). */
+    random() {
+      c.seed = (Math.imul(c.seed, 0x196225) + 0x3C6EF35F) | 0;
+      return c.seed;
+    },
     flags: 0, flagsPreVBlank: 0,
     dispCnt: 0x80, bgCnt: new Uint16Array(4), bgScroll: new Uint16Array(8), winRegs: new Uint16Array(6), bldCnt: 0, bldAlpha: 0, bldY: 0,
     bgPalette: new Uint16Array(256), objPalette: new Uint16Array(256),
