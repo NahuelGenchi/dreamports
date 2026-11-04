@@ -63,6 +63,7 @@ These are the projects on the site so far.
 
 | | Dreamport | What it is | Code ported | Gameplay proven | Lead | Try it |
 | :---: | :--- | :--- | :--- | :--- | :--- | :--- |
+| 🌙 | **[Crash Bandicoot Purple: Ripto's Rampage Dreamport](games/crash-bandicoot-purple/)** | Crash Bandicoot Purple: Ripto's Rampage, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install. Bring your own copy of the game. | [0%](.github/readme/progress/crash-bandicoot-purple.svg) | No parts listed yet | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/crash-bandicoot-purple/) |
 | 🌙 | **[Sonic Battle Dreamport](games/sonic-battle/)** | Sonic Battle, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install. Bring your own copy of the game. | [6.57%](.github/readme/progress/sonic-battle.svg) | [15.79%, 3 of 19 parts](.github/readme/progress/sonic-battle.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-battle/) |
 | 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [40.26%](.github/readme/progress/sonic-advance.svg) | [13.89%, 5 of 36 parts](.github/readme/progress/sonic-advance.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
 
