@@ -83,3 +83,16 @@ function distanceToGround(start, across, layer, stride, reach, angle, vertical) 
 export const groundUpDown = (fromY, x, layer, stride, angle = null, reach = 2) => distanceToGround(fromY, x, layer, stride, reach, angle, true);
 /** The ground to the left or right (`stride` -8 or 8) of the point (fromX, y). */
 export const groundSideways = (fromX, y, layer, stride, angle = null, reach = 2) => distanceToGround(fromX, y, layer, stride, reach, angle, false);
+
+// 0x08052178 and 0x08051F50: how far the ground is, looking only at the tile the point is in, as enemies and scattered
+// rings do
+function inOneTile(height, start, stride) {
+  const pixel = start & 7;
+  if (height === 0) return stride > 0 ? TILE - pixel : pixel + 1;
+  if (height === FULL) return stride > 0 ? ~pixel : -TILE | start;
+  return height > 0 ? height - 1 - pixel : height + pixel;
+}
+/** The ground above or below (`stride` -8 or 8) the point (x, y), in its tile. */
+export const tileUpDown = (y, x, layer, stride) => inOneTile(tileGround(x, y, layer, true, [0]), y, stride);
+/** The ground to the left or right (`stride` -8 or 8) of the point (x, y), in its tile. */
+export const tileSideways = (x, y, layer, stride) => inOneTile(tileGround(x, y, layer, false, [0]), x, stride);
