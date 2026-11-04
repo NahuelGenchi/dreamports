@@ -575,7 +575,7 @@ Frames are counted as mGBA draws them from power-on, the first being frame 0. Wi
 
 - *The demos*, which the original starts after 900 frames on the title screen: the title screen stays as it is, and Start still opens the menu.
 - *VS, Time Attack and Tiny Chao Garden:* A on them does nothing. The original plays the select sound and fades out to them as it does for Game Start.
-- *The character select:* Game Start goes to the act, on the frame the character select would start.
+- *The character select:* Game Start goes where it would lead, on the frame it would start: the act, or the [course select](#the-course-select) once the character has progress.
 - *The soft reset:* A, B, Start and Select held together restart the original from Sonic Team's logo on; here they do nothing.
 
 **Lag.** The original skips a frame's keys and tasks when the V-blank's copies run past the V-blank. These screens never do on the recordings, so that isn't modelled. The one frame they do lose is the main menu's first when it comes back from the Options menu, where `CreateMainMenu(1)` itself runs past the V-blank (see [The Options menu](#the-options-menu)); the engine leaves that frame out (`lag`).
@@ -599,6 +599,33 @@ Turning it on or off (<kbd>V</kbd>) re-fits the view at once. It was checked on 
 - *The title screen and the menu:* every frame matches in the same way from the title screen's first to the last before the character select (1502–1950 and 3224–3500), and on the title screen left alone up to 4187, the frame before the original's demo.
 - *Skipping:* in all three runs the frames match up to the press, and the engine leaves for the title screen on the same frame as the original, the one after the press is read (722, 1502 and 2102).
 - *Sound:* two more runs dumped the sound engine's state too. The original starts SEGA's ring and the intro's music on the same frames as the engine, and on the skip at 1500 the intro's music gives way to the title screen's on the next frame, as the engine stops it. The title screen and menu runs dumped it as well: the original plays the select sound and every cursor sound, the held key's repeats included, on the same frames as the engine, and starts the character select's music (song 3) on the frame the engine leaves the menu. The boss music's start and stop come and go within that frame, so the dumps can't show them.
+
+### The course select
+
+With a character's `unlockedLevels` above 0, the character select leads to the course select (`CreateCourseSelect`, `0x08061914`, [`src/front/courseselect.js`](../src/front/courseselect.js)) in place of act 1. Here it comes straight after Game Start, as the character select isn't built, unless the address names a level with `?level=`, which goes straight to that act.
+
+**What it shows.** Its picture is two layers of 8-bit tiles from `0x69A6D0` in the USA ROM: the front layer's tiles and map, 256 colours, then the back layer's tiles and map, whose map doubles to 32 × 64 as the slide ends. It has one row more than `unlockedLevels + 2` allows choosing: the first, animation 724's variant 0, is never shown and has no tiles. Sonic has at most 15 rows, and 14 with `unlockedLevels` at 13, and the others at most 14. The rows are the variants of animation 724, and the zones' names beside them are animations 725 to 727, 742 to 744, 729 and 728.
+
+**How it runs.** It starts song 4, and fades in from black over 16 frames while the rows and the picture's bands slide in, 63 frames in all, or until A, through the H-blank DMA on layer 0's scroll: 12 lines at 20, then bands of 24 lines with `64 - frame` lines between them. Up and Down move the choice, with the key repeat and no wrapping round, and the lists scroll two rows at a time. A or B stop the song once the fade is past `0x1800`. A only does so on the first frame after the slide; after that it plays the select sound and fades out over 13 frames with the chosen row blinking. B plays song 107 and fades out the same way, to the character select in the original and to the main menu here.
+
+**The act it starts** (`ApplyGameStageSettingsAndStart`) starts differently from one the character select starts:
+
+- The frame the fade ends makes the act, so only the tasks after the scattered rings' run on it, and the next is spent loading. The screen stays black on both.
+- The first picture has the layers scrolled to (0, 0), and the sprites placed by the camera before it's kept inside the act. On the next frame all of it is where it belongs.
+- The act's music is heard from the frame after the fade ends, and fades in over about 35 frames, as the music manager's own restart of a song does. The select sound isn't cut off.
+- The HUD's zero-ring counter starts at what the screens before leave in its memory, a different number by act (`hudFlash` in [`src/rom/levels.js`](../src/rom/levels.js)). From 40 up it shows a character code of 0 on its first frame, which is tiles 20 and 21 of sprite VRAM, in the font's colours: what the character select loaded there, UI graphics 39's tiles 19 and 20. The port draws those two from the ROM.
+- `gFinalBossActive` starts as the level chosen, so act 2's card doesn't start as the results' band.
+- `gFrameCount` goes on from the screens before. Here it lacks the character select's frames, and nothing has compared it yet.
+
+**How it was checked.** `npm run dp -- prove sonic-advance course-select-first-act course-select-all-rows` plays both from power-on in mGBA 0.10.5 with the USA ROM, with `unlockedLevels[0]` written in the original's stretch of the character select and given to the port with `?unlocked=`, which plays with a save of its own, kept nowhere, and earns no achievements. `course-select-first-act` cuts the slide short, presses A on the first frame after it, and starts act 1, then runs right. `course-select-all-rows` has all 15 rows, holds Down to the last and Up back to the first, and starts act 2. Every frame of both matches, picture and sound.
+
+Each other act was tried once the same way, from 15 rows, for about 330 frames, through its card to the HUD's first frames, in a recording that wasn't kept. Casino Paradise act 2, Ice Mountain's acts, Angel Island's acts and Egg Rocket match on every frame. What differed:
+
+- *Sound alone, for a few frames:* Secret Base act 2 and X Zone on the frame the fade ends and the next, Casino Paradise act 1 on one frame, and Cosmic Angel on 7. The same happened in act 2 on one frame when A came at another time, so it goes by when the song the screen stopped had reached, and why isn't known yet.
+- *Secret Base act 1:* one frame's sound, and on 5 frames up to a few pixels along its spotlights' beams, as it does however it's reached.
+- *The Moon Zone:* from the frame before the fade ends on, its start is a frame late, as it runs on its own code (`extra.js`).
+
+B going back to the main menu and A coming in again ran with no error, though the original can't be compared there, as it goes to the character select.
 
 ### The language screen
 
