@@ -12,6 +12,10 @@ import { createInput } from '../../../kit/gba/input.js';
 import { proof } from '../../../kit/gba/proof.js';
 import { createSettings } from '../../../kit/gba/ui/settings.js';
 import { createTouch } from '../../../kit/gba/ui/touch.js';
+import { createSound } from '../../../kit/gba/sound/audio.js';
+import { createCore } from './core.js';
+import { languageScreen } from './language.js';
+import { soundLayout } from './sound.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from
 const GAME = { name: 'Sonic Advance 3', title: 'SONICADVANC3', codes: { B3SE: 'USA' }, versions: [{ sha1: '30db467effa5014806d42db57e2299398a51355b' }] };
@@ -34,7 +38,9 @@ proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded but
 // with the controls the layout gives
 const touch = createTouch(stage, input, { screen, key: 'sonic-advance-3' });
 createSettings(stage, input, { touch });
-let rom = null;
+let rom = null, romBuffer = null;
+// the game's sound (sound.js): the engine the kit runs, on the player's copy
+const sound = createSound();
 
 createRomSetup(picker, {
   brand: 'Sonic Advance 3 Dreamport',
@@ -48,25 +54,29 @@ createRomSetup(picker, {
     async read(buffer) {
       const { region, known } = await identify(new Rom(buffer), GAME);
       rom = new Rom(buffer);
+      romBuffer = buffer;
       return `${region} · ${known ? 'tested version' : 'untested version'}`;
     },
-    unload() { rom = null; },
+    unload() { rom = null; romBuffer = null; },
   }],
   onPlay: start,
 });
 
-// the game's own code: what the original does each frame, writing the video hardware's registers, VRAM, palettes
-// and sprites as it does. To begin with, the screen's backdrop: blue, and green while a button is held.
-function createGame(video, rom) {
-  return {
-    step(keys) { video.pal[0] = keys ? 0x03E0 : 0x7C00; },
-  };
+// The game so far: the language screen. What comes after it, the name entry, isn't ported yet, so the screen goes
+// white there.
+function createGame(video, rom, sound) {
+  const core = createCore(video, rom, sound);
+  core.main = languageScreen;
+  return { step(keys) { core.step(keys); } };
 }
 
 function start() {
   picker.hidden = true;
   stage.hidden = false;
-  const video = createVideo(), game = createGame(video, rom);
+  // the sound engine, started on the player's copy as the original's start-up does. The kit's proof tool waits for it,
+  // so every frame has its sound.
+  sound.load(romBuffer, soundLayout(rom));
+  const video = createVideo(), game = createGame(video, rom, sound);
   const out = screen.getContext('2d', { alpha: false });
   screen.width = SCREEN_W;
   screen.height = SCREEN_H;
