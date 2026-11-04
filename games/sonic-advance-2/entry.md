@@ -18,6 +18,10 @@ sources:
     href: https://github.com/NahuelGenchi/dreamports/tree/main/games/sonic-advance
     license: GPL-3.0-or-later
     use: code
+  - name: Sonic Advance 3 Dreamport
+    href: https://github.com/NahuelGenchi/dreamports/tree/main/games/sonic-advance-3
+    license: GPL-3.0-or-later
+    use: code
 ownCopy:
   confirm: "I own Sonic Advance 2"
   links:
