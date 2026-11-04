@@ -32,8 +32,8 @@
     },
     {
       "name": "A character meeting a ceiling",
-      "what": "Sonic jumping into a ceiling and falling back, or running along it, somewhere a spring or a button's spring can take him.",
-      "needs": ["Springs"]
+      "what": "Sonic's head meeting a ceiling on his way up and falling back, on the overworld, from a start point that has him rising under it, since no jump reaches one from the ground before a spring is made.",
+      "needs": ["A character jumping"]
     },
     {
       "name": "Being hit",
