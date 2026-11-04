@@ -14,8 +14,10 @@ permissions:
   issues: write
   pull-requests: write
 
+# A waiting run gives way to a newer one in its group. Event runs can, as each covers every open record,
+# but only a full run covers closed ones, so full runs wait in a group of their own.
 concurrency:
-  group: project-tracking
+  group: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && 'project-tracking-full' || 'project-tracking' }}
   cancel-in-progress: false
 
 jobs:
@@ -140,7 +142,8 @@ jobs:
             const additions = [...new Set(wanted.filter(label => label && !labels.has(label)))];
             if (additions.length) await api(`${path}/labels`, 'POST', { labels: additions });
             if (item.pull_request && !incomplete && labels.has('needs-tracking')) {
-              await api(`${path}/labels/needs-tracking`, 'DELETE');
+              // A full run and an event run can reach the same PR together, so it may be gone already.
+              await api(`${path}/labels/needs-tracking`, 'DELETE').catch(error => { if (error.status !== 404) throw error; });
             }
           }
           appendFileSync(process.env.GITHUB_STEP_SUMMARY,
