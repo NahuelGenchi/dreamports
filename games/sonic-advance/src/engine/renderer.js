@@ -398,10 +398,20 @@ export function createRenderer(canvas, assets) {
 
   // the HUD's sprites have priority 0: in front of the layers and every other sprite. The lives keep to the
   // bottom of a taller view.
-  function drawHud(sprites, sheet, [left, top, , bottom] = [0, 0, W, H]) {
+  // `through` draws what comes before the HUD in OAM but has a lower priority (the points of a defeat, OAM order 0).
+  // Each HUD sprite takes those pixels' priority up to its own even where it is transparent, and then no sprite of
+  // the same priority further on in OAM can cover them: so they show in a sprite's box, in front of the ring icon,
+  // which comes after the digits in OAM, though never in front of a digit's own pixels.
+  function drawHud(sprites, sheet, [left, top, , bottom] = [0, 0, W, H], through = null) {
     for (const [what, x, y] of sprites) {
       const [sx, sy, w, h] = typeof what === 'string' ? hud[what] : hud.glyphs[what];
-      ctx.drawImage(sheet, sx, sy, w, h, left + x, y < SCREEN_H / 2 ? top + y : y + bottom - SCREEN_H, w, h);
+      const dy = y < SCREEN_H / 2 ? top + y : y + bottom - SCREEN_H;
+      if (through) {
+        ctx.save(); ctx.beginPath(); ctx.rect(left + x, dy, w, h); ctx.clip();
+        through();
+        ctx.restore();
+      }
+      ctx.drawImage(sheet, sx, sy, w, h, left + x, dy, w, h);
     }
   }
 
@@ -1042,7 +1052,9 @@ export function createRenderer(canvas, assets) {
     if (showCollision) drawCollision(terrain, vx, vy);
     // in a boss's arena, nothing past its walls; the HUD keeps to the corners of what is shown
     if (view.clip) blackOutside(view.clip);
-    byPart(below => drawHud(hudState.sprites, gameOver?.hudPalette ? over.hudSheet : below ? hud.under : hud.sheet, view.clip ?? undefined));
+    const before = list.filter(s => (s.prio ?? 0) >= 1 && s.order < HUD_ORDER && !s.rush && !s.affine && !s.white && !s.window);
+    const through = before.length ? () => { for (const s of before) drawSprite(s.frame, s.x - vx, s.y - vy, s.flipX, s.flipY, sheetFor(s.sheet)); } : null;
+    byPart(below => drawHud(hudState.sprites, gameOver?.hudPalette ? over.hudSheet : below ? hud.under : hud.sheet, view.clip ?? undefined, through));
     drawAll(1, s => (s.prio ?? 0) < 1 && s.order < HUD_ORDER);
     if (gameOver) drawGameOver(gameOver);
     if (timeOver) drawTimeOver(timeOver);
