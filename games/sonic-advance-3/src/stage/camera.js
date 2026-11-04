@@ -30,7 +30,7 @@ export function updateCamera(t) {
   cam.driftY = towards(cam.driftY, leader.flags & IN_AIR ? MAX_DRIFT_Y : 0, DRIFT_Y_STEP);
 
   const targetX = (leader.x >> 8) - W / 2 + (cam.lookAhead >> 5);
-  const targetY = (leader.y >> 8) - H / 2 + cam.feetOffset;
+  const targetY = (leader.y >> 8) + (leader.camOffsetY >> 4) - H / 2 + cam.feetOffset;   // cam->shiftY, for looking up or down
   // it works from a pixel inside the far edges, so it can come back from them
   cam.x = clamp(follow(clamp(cam.x, cam.minX, lastX - 1), targetX, DRIFT_X, CATCH_UP_X), cam.minX, lastX);
   cam.y = clamp(follow(clamp(cam.y, cam.minY, lastY - 1), targetY, cam.driftY, CATCH_UP_Y), cam.minY, lastY);

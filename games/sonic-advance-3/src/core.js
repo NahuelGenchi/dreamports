@@ -27,6 +27,8 @@ export function createCore(video, rom, sound) {
     video, rom,
     playSong: song => sound?.play(song),   // 0x080BA1F4, m4aSongNumStart
     playSoundOn: (player, song, volume, pan) => sound?.playOn(player, song, volume, pan),   // MPlayStart with its controls
+    continueSong: song => sound?.startOrContinue(song),   // m4aSongNumStartOrContinue
+    stopSong: song => sound?.stop(song),   // m4aSongNumStop
     seed: 0,
     /** The game's numbers that look random, each from the last (PseudoRandom32). */
     random() {

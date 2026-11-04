@@ -6,7 +6,7 @@
 const TABLES = 0x3314F0;
 const OBJ_SIZES = [[8, 8], [16, 16], [32, 32], [64, 64], [16, 8], [32, 8], [32, 16], [64, 32], [8, 16], [8, 32], [16, 32], [32, 64]];
 const OBJ_VRAM = 0x10000;
-const RUNNING = 1, ANIM_CHANGED = -1, ENDED = 0, ANIM_OVER = 0x4000;
+const RUNNING = 1, ANIM_CHANGED = -1, ENDED = 0, ANIM_OVER = 0x4000, NO_TILES = 1 << 19;
 export const SPRITE = { ROT_SCALE: 0x1F, ROT_SCALE_ENABLE: 0x20, DOUBLE_SIZE: 0x40, X_FLIP: 0x400, Y_FLIP: 0x800, PRIORITY: 0x3000, OBJ_MODE: 0x180 };
 const PRIORITY = SPRITE.PRIORITY;
 const s16 = v => (v << 16) >> 16;
@@ -58,6 +58,7 @@ function command(c, s, at) {
     case -1: {   // GetTiles
       s.animCursor += 3;
       const index = rom.s32(at + 4), count = rom.u32(at + 8);
+      if (s.frameFlags & NO_TILES) return RUNNING;
       if (index < 0) c.queueGraphics(table(c, TILES_8BPP) + ((index * 64) >>> 0), s.tiles, (count * 64) & 0xFFFF);
       else c.queueGraphics(table(c, TILES_4BPP) + index * 32, s.tiles, (count * 32) & 0xFFFF);
       return RUNNING;

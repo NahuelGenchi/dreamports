@@ -2,11 +2,14 @@
 // (entities_manager.c: CreateStageEntitiesManager, 0x0802B7B8, and its tasks). So far the overworld's big rings and Omochao.
 
 import { createSprite, updateSprite, displaySprite } from '../sprite.js';
-import { isArriving, FLAG } from './player.js';
+import { isArriving, hitWallRebound, FLAG } from './player.js';
+import { SINE } from './trig.js';
 
 const INTERACTABLES = 0xD0E9C;
 const ANIM_FACTORY_RING = 911, ANIM_OMOCHAO = 977, ANIM_ACT_RING = 983;
-const REGION = 256, TILE = 8, BREAKABLE_WALLS = 0xCF208, PUSH_OUT = 0x400;
+const REGION = 256, TILE = 8, BREAKABLE_WALLS = 0xCF208, WALL_CRACKS = 0xCF250, WALL_DEBRIS = 0xCF2B0, PUSH_OUT = 0x400;
+const SE_WALL_HOLDS = 0x25B, SE_WALL_CRACKS = 0x24B, SE_WALL_BREAKS = 0x24A;
+const DEBRIS_PIECES = 6, DEBRIS_SPEED = 0x200, DEBRIS_GRAVITY = 32, DEBRIS_FRAMES = 30, DEBRIS_ONCE = 1 << 19, WALL_GONE_AFTER = 40;
 
 // RLUnCompWram, the BIOS's run-length decompression
 export function unRle(rom, at) {
@@ -168,17 +171,17 @@ const s8 = v => (v << 24) >> 24;
 
 // sub_8020A58: which side of an object's box a character's body has run into, and how far to go to come out of it, or
 // null if they don't touch. The side it comes out by is the one with the least to go, by a measure that favours the top.
-function touching(box, boxX, boxY, p) {
-  const x = p.x >> 8, y = p.y >> 8, { halfWidth: w, halfHeight: h } = p;
-  if (boxX + box.left > x + w || boxX + box.right < x - w || boxY + box.top > y + h || boxY + box.bottom < y - h) return null;
+function touching(box, boxX, boxY, p, body = { left: -p.halfWidth, top: -p.halfHeight, right: p.halfWidth, bottom: p.halfHeight }, evenRising = false) {
+  const x = p.x >> 8, y = p.y >> 8;
+  if (boxX + box.left > x + body.right || boxX + box.right < x + body.left || boxY + box.top > y + body.bottom || boxY + box.bottom < y + body.top) return null;
   const onRight = boxX + ((box.left + box.right) >> 1) <= x, above = boxY + ((box.top + box.bottom) >> 1) > y;
-  const pushX = onRight ? boxX + box.right - (x - w) : boxX + box.left - (x + w);
-  const pushY = above ? boxY + box.top - (y + h) : boxY + box.bottom - (y - h);
+  const pushX = onRight ? boxX + box.right - (x + body.left) : boxX + box.left - (x + body.right);
+  const pushY = above ? boxY + box.top - (y + body.bottom) : boxY + box.bottom - (y + body.top);
   if (Math.abs(pushX) < Math.abs(above ? Math.min(pushY + 5, 0) : Math.max(pushY + 2, 0))) {
     return s8(pushX) === 0 ? null : { side: onRight ? 'right' : 'left', push: s8(pushX) };
   }
   if (above) {
-    if (p.velY < 0) return null;
+    if (p.velY < 0 && !evenRising) return null;
     if (!(p.flags & FLAG.IN_AIR) && (p.angle + 0x20) & 0x40) p.groundSpeed = 0;
   }
   return { side: above ? 'top' : 'bottom', push: s8(pushY) };
@@ -200,15 +203,75 @@ function touchSolid(s, x, y, p) {
   return touch;
 }
 
-// CreateEntity_BreakableWall and Task_BreakableWall: a wall that stops a character, which breaking isn't ported yet
+// sub_8020874: a character's hitting part, which some of its animations have, touching an object
+function hitting(box, boxX, boxY, p) {
+  const body = p.sprite.hitboxes?.[1];
+  if (box === undefined || box.index === -1 || body === undefined || body.index === -1) return null;
+  return touching(box, boxX, boxY, p, body, true);
+}
+
+// CreateEntity_BreakableWall and Task_BreakableWall: a wall that stops a character, and a blow from a part of it that
+// hits throws it back, and cracks the wall or breaks it, if the wall isn't harder than that
 function createBreakableWall(m, at, x, y) {
   const { stage } = m, { c } = stage, { rom } = c, meX = m.data.getUint8(at), side = m.data.getUint8(at + 7) >> 7;
+  const hardBits = m.data.getUint8(at + 7) & 7, hardness = hardBits & 1 ? 0 : hardBits & 2 ? 1 : hardBits & 4 ? 2 : 3;
+  let strength = m.data.getInt8(at + 3), cracked = 0;
+  const showCrack = n => {   // sub_80351A8
+    const row = WALL_CRACKS + (stage.zone * 4 + side * 2 + n) * 4;
+    s.anim = rom.u16(row);
+    s.variant = rom.u16(row + 2);
+  };
+  // sub_8034A20 and sub_8034C60: how hard the character hits goes up with its moves, and none of those it has so far is above 1
+  const takeBlow = () => {
+    const force = 1;
+    if (hardness >= force) {
+      c.playSong(SE_WALL_HOLDS);
+      return;
+    }
+    const damage = force - hardness;
+    if (strength <= damage) {
+      strength = 0;
+      c.playSong(SE_WALL_BREAKS);
+      showCrack(1);
+    } else {
+      strength -= damage;
+      c.playSong(SE_WALL_CRACKS);
+      showCrack(cracked);
+      cracked = 1;
+    }
+  };
   const row = BREAKABLE_WALLS + (stage.zone * 2 + side) * 6;
   const s = createSprite({ tiles: stage.allocTiles(rom.u16(row + 4)), anim: rom.u16(row), variant: rom.u16(row + 2), oamFlags: 24 << 6, frameFlags: 0x1000 });
   updateSprite(c, s);
   m.data.setInt8(at, -2);
   c.createTask(t => {
     for (const p of stage.players) {
+      const blow = hitting(s.hitboxes?.[0], x, y, p);
+      if (blow) {
+        if (blow.side === 'top') {
+          if (side === 0) {
+            p.y += blow.push << 8;
+            p.velY = -2 * 256;
+          } else {
+            p.x -= p.velX;
+            p.velX = 0;
+          }
+        } else if (blow.side === 'bottom') {
+          if (side === 0) {
+            p.y += (blow.push + 1) << 8;
+            p.velY = 0;
+          } else {
+            p.x -= p.velX;
+            p.velX = 0;
+          }
+        } else {
+          p.x += blow.push << 8;
+          if (side !== 0) p.velY = -2 * 256;
+        }
+        takeBlow();
+        hitWallRebound(p);
+        continue;
+      }
       const touch = touchSolid(s, x, y, p);
       if (touch?.side === 'top') {
         p.y += touch.push << 8;
@@ -228,6 +291,7 @@ function createBreakableWall(m, at, x, y) {
         }
       }
     }
+    if (strength === 0) t.main = wallBreaking;
     s.x = x - stage.camera.x;
     s.y = y - stage.camera.y;
     if (!active(stage.camera, x, y)) {
@@ -239,6 +303,47 @@ function createBreakableWall(m, at, x, y) {
       return;
     }
     updateSprite(c, s);
+    displaySprite(c, s);
+  }, null, 0x2100);
+  // Task_8034E44: first its pieces fly off, and the wall is gone from then on, though its tiles stay until they've landed
+  const wallBreaking = t => {
+    if (strength === WALL_GONE_AFTER) {
+      leave(t, m, at, meX, s);
+      return;
+    }
+    if (strength === 0) {
+      for (const p of stage.players) if (p.standingOn === s) {
+        p.standingOn = null;
+        p.flags &= ~FLAG.ON_OBJECT;
+      }
+      const box = s.hitboxes[0], middleX = x + Math.trunc(box.right / 2), middleY = y + Math.trunc(box.bottom / 2);
+      for (let piece = 0; piece < DEBRIS_PIECES; piece++) createDebris(stage, middleX, middleY, c.random() & 0x1FF, piece, s.tiles);
+    }
+    strength++;
+  };
+}
+
+// CreateBreakableWallDebris and Task_Debris: a piece of a wall, thrown off at an angle, which falls for half a second.
+// The first two pieces bring the tiles of the two shapes, and the others share them
+function createDebris(stage, x, y, angle, piece, tiles) {
+  const { c } = stage, { rom } = c, shape = piece & 1, zoneRow = WALL_DEBRIS + stage.zone * 2 * 6, row = zoneRow + shape * 6;
+  const s = createSprite({
+    tiles: shape === 0 ? tiles : tiles + rom.u16(zoneRow + 4) * 32, anim: rom.u16(row), variant: rom.u16(row + 2), oamFlags: 8 << 6,
+    frameFlags: piece > 1 ? DEBRIS_ONCE : 0, hitboxes: [{ index: -1 }],
+  });
+  const speedX = (SINE[(angle & 0x3FF) + 256] * DEBRIS_SPEED) >> 14;
+  let speedY = (SINE[angle & 0x3FF] * DEBRIS_SPEED) >> 14, atX = x * 256, atY = y * 256, frames = DEBRIS_FRAMES;
+  updateSprite(c, s);
+  c.createTask(t => {
+    if (--frames === 0) {
+      c.destroyTask(t);
+      return;
+    }
+    atX += speedX;
+    speedY += DEBRIS_GRAVITY;
+    atY += speedY;
+    s.x = (atX >> 8) - stage.camera.x;
+    s.y = (atY >> 8) - stage.camera.y;
     displaySprite(c, s);
   }, null, 0x2100);
 }
