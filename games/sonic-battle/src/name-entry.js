@@ -125,18 +125,22 @@ function drawName(c) {
 
 const slotBit = (c, slot) => c.rom.u32(SLOT_BITS - CARTRIDGE + slot * 4);
 
-/** 0x08036428: a letter drawn into the first free slot, or the first slot when none is, and that slot's number. */
-function takeSlot(c, glyph) {
+/** 0x08036428's first half: the first free slot, or the first slot when none is free and nothing's to be drawn. */
+function takeSlot(c) {
   const { entry } = c;
   let slot = 0;
   while (slot < SLOTS && (entry.slots & slotBit(c, slot))) slot++;
-  if (slot >= SLOTS) return 0;
+  if (slot >= SLOTS) return -1;
   entry.slots = (entry.slots | slotBit(c, slot)) & 0xFF;
+  return slot;
+}
+
+/** 0x08036428's second half: a letter drawn into its slot. */
+function drawSlot(c, slot, glyph) {
   const to = SLOT_TILES + slot * 128;
   c.video.vram.fill(0, to - VRAM, to - VRAM + 128);
   textInto(c, to, 2, 2);
   putCentred(c, 0, 0, glyph);
-  return slot;
 }
 
 /** 0x080368c0: a slot given back. */
@@ -327,6 +331,10 @@ function squareStart(c, node) {
  */
 function square(c, node) {
   const { position } = node, { entry } = c;
+  if (node.lateLetter) {
+    node.lateLetter();
+    node.lateLetter = null;
+  }
   if (position.player === entry.cursor) {
     if (++position.state > 3) position.state = 4;
   } else if (position.state) position.state--;
@@ -342,7 +350,7 @@ function square(c, node) {
     } else if (node.scrolled !== entry.scroll) {
       node.scrolled = entry.scroll;
       freeSlot(c, node.letter.position.player);
-      showLetter(c, node);
+      showLetter(c, node, true);
     }
     node.light.position.tile = position.state * 16;
     for (const { position: over } of [node.light, node.letter]) {
@@ -364,11 +372,20 @@ function square(c, node) {
   draw(c, position);
 }
 
-/** The letter under the cursor into a slot, and the sprite over the square showing it. */
-function showLetter(c, node) {
-  const slot = takeSlot(c, letterAt(c, c.entry.scroll + c.entry.cursor));
-  node.letter.position.player = slot;
-  node.letter.position.tile = slot * 4;
+/**
+ * The letter under the cursor into a slot, and the sprite over the square showing it. When the list has just scrolled
+ * (`afterTheDisplay`), the frame's time has gone on redrawing the grid and on the sound engine, which runs from the
+ * display's second line, so the original draws the letter after the display has passed this square, and it shows from
+ * the next frame. How long all that takes depends on what the song is playing, so the original can also draw the letter
+ * in time, or partly, or lose a frame, on a scroll down from the last row above all, and none of that is here.
+ */
+function showLetter(c, node, afterTheDisplay = false) {
+  const glyph = letterAt(c, c.entry.scroll + c.entry.cursor), slot = takeSlot(c);
+  node.letter.position.player = Math.max(slot, 0);
+  node.letter.position.tile = Math.max(slot, 0) * 4;
+  if (slot < 0) return;
+  if (afterTheDisplay) node.lateLetter = () => drawSlot(c, slot, glyph);
+  else drawSlot(c, slot, glyph);
 }
 
 /** 0x08037100: the letter's sprite. */
