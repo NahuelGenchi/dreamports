@@ -227,6 +227,7 @@ int main(int argc, char** argv) {
 	}
 	core->reset(core);
 	struct ARMCore* cpu = core->cpu;
+	struct GBA* gba = core->board;
 
 	for (long frame = 0; frame < frames; frame++) {
 		core->setKeys(core, (size_t) frame < buttonsSize / 2 ? buttons[frame] : 0);
@@ -234,13 +235,14 @@ int main(int argc, char** argv) {
 			setValue(core, sets[nextSet * 4 + 1], sets[nextSet * 4 + 2], sets[nextSet * 4 + 3]);
 		}
 		uint32_t count = 0;
-		uint32_t frameCounter = core->frameCounter(core);
-		// one instruction at a time, to see each function start
-		while (core->frameCounter(core) == frameCounter) {
+		int32_t frameCounter = gba->video.frameCounter;
+		// one instruction at a time, to see each function start. A run with none to see keeps to the same steps, as the
+		// emulator's own loop ends a frame an instruction sooner, and the game's frames then come out differently
+		while (gba->video.frameCounter == frameCounter) {
 			while (cpu->cycles >= cpu->nextEvent) cpu->irqh.processEvents(cpu);
-			uint32_t pc = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
-			struct region* region = regionOf(pc);
+			struct region* region = functionCount ? regionOf(cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM)) : NULL;
 			if (region) {
+				uint32_t pc = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
 				uint32_t slot = (pc - region->base) / 2, function = region->first[slot];
 				if (function && lastRan[function - 1] != frame) {
 					lastRan[function - 1] = frame;
@@ -251,7 +253,7 @@ int main(int argc, char** argv) {
 					region->seen++;
 				}
 			}
-			core->step(core);
+			ARMRun(cpu);
 		}
 		uint32_t hash, plain;
 		draw(&hash, &plain);

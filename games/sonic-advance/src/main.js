@@ -7,7 +7,7 @@ import '../../../kit/gba/canvas.js';
 import { createRomSetup } from '../../../kit/gba/ui/rom-setup.js';
 import { acceptRoms } from '../../../kit/gba/ui/rom-types.js';
 import { roms, SA1_ROM, RUSH_ROM, SA2_ROM } from './ui/roms.js';
-import { extractAssets } from './rom/extract.js';
+import { extractAssets, extractAgain } from './rom/extract.js';
 import { isSonicAdvance, RomError } from './rom/identify.js';
 import { Rom } from '../../../kit/gba/rom/rom.js';
 import { createFrontEnd } from './front/front.js';
@@ -67,9 +67,10 @@ const multiplayer = (() => { try { return levelInfo(firstLevel).multiplayer ?? f
 const players = multiplayer ? Math.min(4, Math.max(2, Number(params.get('players') ?? 2) | 0)) : 1;
 const seed = params.has('seed') ? Number(params.get('seed')) >>> 0 : DEFAULT_SEED;
 const chaoPlace = params.has('chao') ? (Number(params.get('chao')) | 0) & 7 : DEFAULT_CHAO_PLACE;
-// `?character=` plays as Sonic (0, the default), Tails (1), Knuckles (2) or Amy (3), until the character select is built; the
-// multiplayer stage is everyone as Sonic
-const character = multiplayer ? 0 : Math.min(3, Math.max(0, Number(params.get('character') ?? 0) | 0));
+// `?character=` is Sonic (0, the default), Tails (1), Knuckles (2) or Amy (3) with ?debug, and the one the character
+// select's row starts on otherwise; the multiplayer stage is everyone as Sonic
+let partner = false;   // gTailsEnabled: the character select's code
+let character = multiplayer ? 0 : Math.min(3, Math.max(0, Number(params.get('character') ?? 0) | 0));
 const screens = document.getElementById('screens');
 stage.classList.toggle('debug', debug);   // the panel shows the player's speed and state then
 
@@ -428,11 +429,14 @@ function start(buffer, assets) {
   const leaving = specialTest && specialSpringStart(assets, { emeralds: save.chaosEmeralds, continues });
   if (leaving) { enterSpecialStage(assets, leaving); return; }
   if (debug) { play(assets); return; }
-  front = createFrontEnd(screen, rom, assets.info.offsets, input, sound, save, (level, frameCount) => {
+  front = createFrontEnd(screen, rom, assets.info.offsets, input, sound, save, (level, frameCount, picked) => {
     front = null;
-    if (level === undefined) play(assets);
+    character = picked.character;
+    // the code's partner comes along with Sonic only (GameStageStart)
+    partner = picked.partner && character === 0;
+    if (level === undefined) play(assets.character === character && !!assets.partner === partner ? assets : extractAgain(sa1.buffer, assets, { level: assets.first, character, partner }));
     else playChosen(level, frameCount);
-  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level') });
+  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level'), select: !params.has('unlocked') || params.has('select') });
   fitScreen();
   screen.focus();
 }
@@ -440,7 +444,8 @@ function start(buffer, assets) {
 // the act the course select started, its zone decoded from the ROM unless it's the one the game opened with
 async function playChosen(level, frameCount) {
   const from = sa1;
-  const assets = from.assets.first === level ? from.assets : await extractAssets(from.buffer, () => {}, { level, character });
+  const same = from.assets.first === level && from.assets.character === character && !!from.assets.partner === partner;
+  const assets = same ? from.assets : await extractAssets(from.buffer, () => {}, { level, character, partner });
   if (sa1 !== from || stage.hidden) return;   // the player left the game meanwhile
   play(assets, null, null, { level, frameCount });
 }
@@ -503,12 +508,12 @@ async function restartGame() {
 async function nextZone({ level, ...carry }) {
   continues = carry.continues ?? continues;
   // past X Zone the Moon Zone opens for Sonic with all seven Chaos Emeralds (unlock.js; the ROM also wants every
-  // character to have cleared X Zone, which waits for the character select); otherwise the normal ending comes
+  // character to have cleared X Zone, which isn't built yet); otherwise the normal ending comes
   if (level === THE_MOON && (character !== 0 || save.chaosEmeralds !== ALL_EMERALDS)) { queueMicrotask(() => endGame(playing, 'congratulations')); return; }
   const from = game;
   let assets;
   try {
-    assets = await extractAssets(sa1.buffer, () => {}, { level, character });
+    assets = await extractAssets(sa1.buffer, () => {}, { level, character, partner });
   } catch (err) {
     console.warn(err);
     return;

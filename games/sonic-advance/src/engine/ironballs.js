@@ -24,12 +24,14 @@ export function createIronBall(e, slot, anims) {
   animate(o, anims);
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam, t = ctx.world.tick;
+      const cam = ctx.cam, t = ctx.world.tick;
       const swing = Math.imul((across ? d2 : d3) << 11, SINE[(4 * ((t + phase) & 0xFF)) & 0x3FF]) >> 14 >> 8;
       o.x = across ? e.x + swing : e.x; o.y = across ? e.y : e.y + swing;
       // Coll_Player_Entity_Intersection, then Coll_DamagePlayer
-      if (!p.dead && o.boxes[0] && overlap(o.x, o.y, o.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) {
-        ctx.world.damage();
+      for (const p of ctx.players) {
+        if (!p.dead && o.boxes[0] && overlap(o.x, o.y, o.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) {
+          ctx.world.damage(p);
+        }
       }
       if (offDisplay(e.x, e.y, cam) && offCam(o.x, o.y, cam)) { slot.live = null; return false; }
       ctx.draw(o, o.x, o.y);

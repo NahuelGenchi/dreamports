@@ -36,6 +36,7 @@ export function createCraneClaw(e, slot, anims) {
   // waiting, closing on him, lifting him, carrying him, letting go, going back, going down and settling; `t`
   // counts each one's frames, `moved` the frames of its trip along
   let phase = 'waiting', t = 0, moved = 0;
+  let caught = null;   // the player it has (playerID)
 
   // it goes once its spawn point is more than 128 px off the screen and the claw out of the range around it
   const gone = (cx, cy, cam) => offDisplay(x, y, cam) && offCam(cx, cy, cam);
@@ -53,14 +54,19 @@ export function createCraneClaw(e, slot, anims) {
   }
 
   const PHASES = {
-    // Task_CraneClawMain: it tests the box its last frame set, before stepping its animation
-    waiting(ctx, p) {
-      if (claw.boxes[0] && !p.dead && overlap(x, y + DROP, claw.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) {
-        t = 0;
-        startAnim(claw, 'craneClawClose');
-        p.carried = true;
-        phase = 'closing';
-        ctx.world.playSound(SONG.LIFT);
+    // Task_CraneClawMain: it tests the box its last frame set, before stepping its animation; the first player
+    // touching it is the one it takes
+    waiting(ctx) {
+      for (const p of ctx.players) {
+        if (claw.boxes[0] && !p.dead && overlap(x, y + DROP, claw.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) {
+          t = 0;
+          startAnim(claw, 'craneClawClose');
+          p.carried = true;
+          caught = p;
+          phase = 'closing';
+          ctx.world.playSound(SONG.LIFT);
+          break;
+        }
       }
       if (gone(x, y + DROP, ctx.cam)) return false;
       hanging(ctx, DROP, 24);
@@ -126,7 +132,7 @@ export function createCraneClaw(e, slot, anims) {
 
   return {
     run(ctx) {
-      if (PHASES[phase](ctx, ctx.player)) return true;
+      if (PHASES[phase](ctx, caught)) return true;
       slot.live = null;
       return false;
     },

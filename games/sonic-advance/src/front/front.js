@@ -1,7 +1,7 @@
 // The game's start before the act, as Sonic Advance has it: the SEGA and Sonic Team logos, the intro, the title
 // screen and the main menu, run on the GBA engine (gba/engine.js) at the GBA's own frame rate and drawn into the
-// game's canvas. The character select isn't built yet, so what it leads to comes after Game Start on the main menu:
-// the act, or once the character has progress the course select (courseselect.js), and the act chosen there.
+// game's canvas. The act starts after the character select (charselect.js), which Game Start on the main menu opens, and
+// once the character has progress the course select (courseselect.js) and the act chosen there.
 //
 // A new game, with no save yet, starts with the language screen (language.js), which writes the save; with a save,
 // the game starts with the logos. The Options menu (options.js) changes the save and writes it.
@@ -38,28 +38,30 @@ export function powerOn(ctx) {
 /**
  * Starts the front end on `canvas`, from power-on. `rom` is the ROM (rom.js), `offsets` where its tables are
  * (locate.js), `input` the player's buttons, `sound` the sound engine (audio.js) and `save` the save
- * (engine/save.js), which the language screen and the Options menu change. `play(level, frameCount)` is called once
- * the act is to start: `level` is the course select's choice, or undefined with no choice made, and `frameCount` the
- * engine's gFrameCount. `character` is who is being played, and `levels()` gives the level last played and the one
+ * (engine/save.js), which the language screen and the Options menu change. `play(level, frameCount, { character, partner })` is called
+ * once the act is to start: `level` is the course select's choice, or undefined with no choice made, `frameCount` the
+ * engine's gFrameCount, and the last what the character select chose. `character` is who the character select's row starts on, and `levels()` gives the level last played and the one
  * the course select last started, as { current, started }. Without `courseSelect`, as when the address names a level,
- * Game Start goes straight to the act.
+ * the character select goes straight to the act; without
+ * `select`, a start point for the proof tools, Game Start goes where the character select would.
  * Returns { stop, step, draw, setView }: setView(w, h) draws a widescreen view of w × h from then on (the
  * original 240 × 160 is the default); step() and draw() are for checking, a frame at a time.
  */
-export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true } = {}) {
+export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true, select = true } = {}) {
   const video = createVideo();
   const engine = createEngine(video, rom, sound);
   video.write(REG.DISPCNT, 0x80);   // forced blank, until the game starts
   let done = false, chosen, startingUp = STARTUP_FRAMES;
   const ctx = {
-    engine, tilemaps: offsets.tilemaps, sprites: spriteTables(rom, offsets.spriteTables), offsets, save, character, levels,
+    engine, tilemaps: offsets.tilemaps, sprites: spriteTables(rom, offsets.spriteTables), offsets, save, character, partner: false, levels, select,
     introGraphics: offsets.introGraphics, introTables: offsets.introTables,
     intro: () => createIntro(ctx),
     title: playMusic => createTitleScreen(ctx, playMusic),
     play: level => { done = true; chosen = level; },
-    // Task_805AAF8: the act with nothing cleared yet, and otherwise the course select, which only the versions with
-    // a known place for its picture have
-    startGame: () => { if (!courseSelect || save.unlockedLevel(character) === 0 || !offsets.courseSelectBackground) ctx.play(); else createCourseSelect(ctx); },
+    // Task_805AAF8: whether the act comes next, with nothing cleared yet, or the course select, which only the versions
+    // with a known place for its picture have
+    toCourseSelect: () => courseSelect && save.unlockedLevel(ctx.character) !== 0 && !!offsets.courseSelectBackground,
+    startGame: () => { if (ctx.toCourseSelect()) createCourseSelect(ctx); else ctx.play(); },
   };
 
   const out = canvas.getContext('2d', { alpha: false });
@@ -99,10 +101,10 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
     for (let n = clock.steps(now); n > 0 && !done; n--) { step(); ran = true; }
     if (ran) draw();   // a frame is drawn once, from the H-blank effects its V-blank set up
     if (done) {
-      // the select sound plays on through the course select's last frame and into the act
-      if (chosen === undefined) stop();
+      // what's still sounding plays on, as the original stops nothing here: the act's music takes the place of the screen's
+      if (chosen === undefined && !select) stop();
       else { cancelAnimationFrame(frame); input.release(); }
-      play(chosen, engine.frameCount + 1);
+      play(chosen, engine.frameCount + 1, { character: ctx.character, partner: ctx.partner });
       return;
     }
     frame = requestAnimationFrame(loop);
