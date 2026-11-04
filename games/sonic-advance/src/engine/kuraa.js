@@ -9,6 +9,7 @@
 import { startAnim, animate } from './objects.js';
 import { I, TILE, data, gone, sprite } from './enemies.js';
 import { overlap } from './collide.js';
+import { fixes } from './fixes.js';
 
 export const KURAA = 19;
 
@@ -40,7 +41,7 @@ export function kuraa(e, slot, anims) {
       }
       const x = e.x + I(q), y = e.y;
       if (gone(e.x, e.y, x, y, ctx.cam)) { slot.live = null; return false; }
-      if (s.boxes[0] && p.boxes[0] && overlap(e.x, e.y, s.boxes[0], Math.floor(p.x), Math.floor(p.y), p.boxes[0])) ctx.world.damage();
+      if (s.boxes[0] && p.boxes[0] && overlap(fixes.on ? x : e.x, e.y, s.boxes[0], Math.floor(p.x), Math.floor(p.y), p.boxes[0])) ctx.world.damage();
       if (++t >= SNAP) { startAnim(s, 'kuraaWalk', true); snapping = false; }
       animate(s, ctx.anims);
       show(ctx, x, y);

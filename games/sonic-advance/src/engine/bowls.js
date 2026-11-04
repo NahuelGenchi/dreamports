@@ -9,6 +9,7 @@ import { overlap } from './collide.js';
 import { endAttack } from './player.js';
 import { SINE } from './trig.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const BOWL = 62;
 const SOX = 6;           // Sonic's spriteOffsetX
@@ -74,7 +75,11 @@ export function createBowl(e, slot, anims) {
       if (speed > 0x8000) speed = 0x8000;
       o.anim.speed = Math.min(Math.trunc(speed * 35 / 0xA000), 16);
       depth += speed;
-      if (offCam(e.x, e.y, ctx.cam) && offCam(e.x, y, ctx.cam)) { slot.live = null; return false; }
+      if (offCam(e.x, e.y, ctx.cam) && offCam(e.x, y, ctx.cam)) {
+        if (fixes.on && !p.dead) { p.carried = false; p.air = true; }
+        slot.live = null;
+        return false;
+      }
 
       if (depth >= BOTTOM) {
         depth = BOTTOM;
