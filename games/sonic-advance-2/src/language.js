@@ -129,7 +129,7 @@ function choose(t) {
   }
 }
 
-// 0x0806B14C, Task_LanguageScreenFadeOutAndExit: the name entry, 0x08063A00, comes next, which isn't ported yet
+// 0x0806B14C, Task_LanguageScreenFadeOutAndExit: the name entry comes next, which isn't ported yet
 function fadeOut(t) {
   const screen = t.data, { c } = screen;
   if (!updateFade(c, screen.fade)) render(c, screen);
