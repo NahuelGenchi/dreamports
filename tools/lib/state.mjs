@@ -70,16 +70,20 @@ function differentColours(theirs, ours) {
   return found;
 }
 
+const ROTATION_VALUES = ['PA', 'PB', 'PC', 'PD'];
+
 // a sprite as people read one, or null when it doesn't show
 function spriteOf(state, i) {
   const a0 = state.sprite(i, 0), a1 = state.sprite(i, 1), a2 = state.sprite(i, 2);
   if ((a0 >> 8 & 3) === 2) return null;
   const size = a1 >> 14, shape = a0 >> 14;
   const [w, h] = [[[8, 8], [16, 16], [32, 32], [64, 64]], [[16, 8], [32, 8], [32, 16], [64, 32]], [[8, 16], [8, 32], [16, 32], [32, 64]], [[8, 8], [8, 8], [8, 8], [8, 8]]][shape][size];
+  // a rotating sprite also draws with its group's four values, each in the spare attribute of one of four sprites in a row, hidden or not
+  const group = a1 >> 9 & 31, rotationValues = a0 >> 8 & 1 ? ROTATION_VALUES.map((_, k) => state.sprite(group * 4 + k, 3)) : [];
   return {
     x: a1 & 0x1FF, y: a0 & 0xFF, tile: a2 & 0x3FF, width: w, height: h, palette: a2 >> 12, priority: a2 >> 10 & 3,
-    ...(a0 >> 8 & 1 ? { rotation: a1 >> 9 & 31 } : { flipped: `${a1 >> 12 & 1 ? 'h' : ''}${a1 >> 13 & 1 ? 'v' : ''}` }),
-    attributes: [a0, a1, a2],
+    ...(a0 >> 8 & 1 ? { rotation: group, rotationValues } : { flipped: `${a1 >> 12 & 1 ? 'h' : ''}${a1 >> 13 & 1 ? 'v' : ''}` }),
+    attributes: [a0, a1, a2, ...rotationValues],
   };
 }
 
@@ -159,7 +163,7 @@ export function compareState(original, dreamport) {
 
 const bytesOf = count => `${count.toLocaleString('en')} ${count === 1 ? 'byte' : 'bytes'}`;
 const more = (list, line) => `${list.slice(0, SHOWN).map(line).join('; ')}${list.length > SHOWN ? `; and ${list.length - SHOWN} more` : ''}`;
-const spriteText = s => (s ? `x ${s.x}, y ${s.y}, tile ${s.tile}, ${s.width} x ${s.height}, palette ${s.palette}, priority ${s.priority}${s.rotation !== undefined ? `, rotation ${s.rotation}` : s.flipped ? `, flipped ${s.flipped}` : ''}` : 'hidden');
+const spriteText = s => (s ? `x ${s.x}, y ${s.y}, tile ${s.tile}, ${s.width} x ${s.height}, palette ${s.palette}, priority ${s.priority}${s.rotation !== undefined ? `, rotation ${s.rotation}, ${ROTATION_VALUES.map((name, k) => `${name} ${hex(s.rotationValues[k])}`).join(', ')}` : s.flipped ? `, flipped ${s.flipped}` : ''}` : 'hidden');
 
 /** The lines prove prints about a frame's comparison, and whether its picture differs. */
 export function describeState(frame, { registers, colours, sprites, videoMemory }, pictureDiffers) {

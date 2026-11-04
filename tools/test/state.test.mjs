@@ -63,6 +63,25 @@ test('it reads a sprite that differs, and leaves out those hidden in both', () =
   assert.match(describeState(5, found, true)[1], /sprite 3 is x 40, y 20, tile 261, 32 x 8, palette 2, priority 1 in the original, hidden in the Dreamport/);
 });
 
+test('a rotating sprite counts its group\'s four values, which hidden sprites keep', () => {
+  const rotating = b => {
+    b.writeUInt16LE(0x0114, SPRITES + 72);   // sprite 9: y 20, rotating
+    b.writeUInt16LE(0x0A28, SPRITES + 74);   // x 40, group 5
+    b.writeUInt16LE(5, SPRITES + 76);        // tile 5
+    b.writeUInt16LE(0x0100, SPRITES + 5 * 32 + 6);    // group 5's PA, kept by hidden sprite 20
+    b.writeUInt16LE(0x0100, SPRITES + 5 * 32 + 30);   // and its PD, by hidden sprite 23
+  };
+  assert.deepEqual(compareState(state(rotating), state(rotating)).sprites, []);
+  const unused = b => { rotating(b); b.writeUInt16LE(0x0080, SPRITES + 6 * 32 + 6); };   // group 6, which no sprite uses
+  assert.deepEqual(compareState(state(unused), state(rotating)).sprites, []);
+  const smaller = b => { rotating(b); b.writeUInt16LE(0x0080, SPRITES + 5 * 32 + 30); };
+  const found = compareState(state(rotating), state(smaller));
+  assert.deepEqual(found.sprites.map(s => s.sprite), [9]);
+  const line = describeState(5, found, true)[1];
+  assert.match(line, /rotation 5, PA 0x0100, PB 0x0000, PC 0x0000, PD 0x0100 in the original/);
+  assert.match(line, /rotation 5, PA 0x0100, PB 0x0000, PC 0x0000, PD 0x0080 in the Dreamport/);
+});
+
 test('video memory says what uses it, and only how a map starts, never a tile', () => {
   const memory = b => {
     b[VRAM + 0x40] = 0xAB;            // BG0's tiles
