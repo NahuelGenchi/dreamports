@@ -16,12 +16,15 @@ import { createSound } from '../../../kit/gba/sound/audio.js';
 import { createCore } from './core.js';
 import { languageScreen } from './language.js';
 import { soundLayout } from './sound.js';
+import { startStage } from './stage/stage.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from
 const GAME = { name: 'Sonic Advance 2', title: 'SONICADVANC2', codes: { A2NE: 'USA' }, versions: [{ sha1: '7bcd6a07af7c894746fa28073fe0c0e34408022d' }] };
 
 // the player's buttons: the console's own, the keys that press them, and the controller's buttons by their
 // numbers in the standard layout (0 A, 1 B, 4 LB, 5 RB, 8 View, 9 Menu, 12 to 15 the d-pad)
+const FRAMES_BEFORE_THE_RECORDING = 3;
+
 const LAYOUT = {
   buttons: ['up', 'down', 'left', 'right', 'a', 'b', 'l', 'r', 'start', 'select'],
   gba: { up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT', a: 'A', b: 'B', l: 'L', r: 'R', start: 'START', select: 'SELECT' },
@@ -62,12 +65,22 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the language screen. What comes after it, the name entry, isn't ported yet, so the screen stays dark
-// there.
+// The game so far: the language screen, then, as what comes between isn't ported yet, Leaf Forest's act 1.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
-  core.main = languageScreen;
-  return { step(keys) { core.step(keys); } };
+  // ?level=<n> opens a stage straight away, which recordings use as their start point
+  const level = new URLSearchParams(location.search).get('level');
+  core.main = level === null ? languageScreen : c => startStage(c, Number(level));
+  // the original's start-up is behind it by then, and the frame a stage's title card takes in before a button leaves it
+  // isn't made, so it runs with nothing to show
+  if (level !== null) {
+    core.startUp = 1;
+    for (let i = 0; i < FRAMES_BEFORE_THE_RECORDING; i++) {
+      core.step(0);
+      core.runSound();
+    }
+  }
+  return { step(keys) { core.step(keys); }, hblank: core.hblank };
 }
 
 function start() {
@@ -93,7 +106,7 @@ function start() {
       ran = true;
     }
     if (ran) {
-      video.drawFrame(pixels);
+      video.drawFrame(pixels, game.hblank);
       out.putImageData(image, 0, 0);
     }
     requestAnimationFrame(loop);
