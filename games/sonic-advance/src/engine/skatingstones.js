@@ -41,13 +41,16 @@ export function createSkatingStone(e, slot, anims, ctx) {
   const o = { ...makeSprite(ice ? 'iceStone' : 'skatingStone'), x: e.x, y: e.y };
   animate(o, anims);
   const left = e.d[1] !== 0;
-  let hops = e.d[0], sliding = false, riding = false, falling = false;
+  const riding = [false, false];   // unkB2: each player on it
+  let hops = e.d[0], sliding = false, falling = false;
   let vx = 0, vy = 0, ox = 0, oy = 0;   // its speed and its offset from the spawn point, in 1/256 px (qUnkA0 … qUnkAC)
   let sx = 0, sy = 0;                   // its sprite's screen position, as the original keeps it
 
-  // the stone breaks: Sonic goes up in the air, it plays SE_BOSS_HIT and its pieces fly
-  function breakUp(ctx, p) {
-    if (riding && !p.dead) { throwOff(p, vx); riding = false; }
+  // the stone breaks: whoever is on it goes up in the air, it plays SE_BOSS_HIT and its pieces fly
+  function breakUp(ctx) {
+    for (const [i, p] of ctx.players.entries()) {
+      if (riding[i] && !p.dead) { throwOff(p, vx); riding[i] = false; }
+    }
     ctx.world.stopSound(SONG.SKATING_STONE);
     ctx.add(debris(sx, sy, e.x + (ox >> 8) - sx, e.y + (oy >> 8) - 20 - sy, ice, anims));
     ctx.world.playSound(SONG.BOSS_HIT);
@@ -56,22 +59,24 @@ export function createSkatingStone(e, slot, anims, ctx) {
   }
 
   function wait(ctx) {
-    const p = ctx.player, cam = ctx.cam;
+    const cam = ctx.cam;
     sx = s16(e.x - cam.x); sy = s16(e.y - cam.y);
-    if (!p.dead && climbing(p)) {
-      // Knuckles climbing: below its point it is solid unless he climbs down, and stops him 6 px under it; above,
-      // unless he climbs up
-      if (p.y > e.y) {
-        if (p.state !== 'climbDown' && skatingStone(o, o.boxes[0], p) & FROM_BELOW) p.y = e.y + 6;
-      } else if (p.state !== 'climbUp') skatingStone(o, o.boxes[0], p);
-    } else if (!p.dead && (skatingStone(o, o.boxes[0], p) & LANDED)) {
-      // he is put in the air 44 px above its spawn point, standing; he lands on it as it slides
-      p.onObject = null; p.air = true; p.jumped = false; p.curled = false; p.airLock = false;
-      setOffsetY(p, 14);
-      p.y = e.y - 44;
-      riding = true;
-      vx = 0; vy = 0; ox = 0; oy = 0;
-      sliding = true;
+    for (const [i, p] of ctx.players.entries()) {
+      if (!p.dead && climbing(p)) {
+        // Knuckles climbing: below its point it is solid unless he climbs down, and stops him 6 px under it; above,
+        // unless he climbs up
+        if (p.y > e.y) {
+          if (p.state !== 'climbDown' && skatingStone(o, o.boxes[0], p) & FROM_BELOW) p.y = e.y + 6;
+        } else if (p.state !== 'climbUp') skatingStone(o, o.boxes[0], p);
+      } else if (!p.dead && (skatingStone(o, o.boxes[0], p) & LANDED)) {
+        // he is put in the air 44 px above its spawn point, standing; he lands on it as it slides
+        p.onObject = null; p.air = true; p.jumped = false; p.curled = false; p.airLock = false;
+        setOffsetY(p, 14);
+        p.y = e.y - 44;
+        riding[i] = true;
+        vx = 0; vy = 0; ox = 0; oy = 0;
+        sliding = true;
+      }
     }
     if (offCam(sx + cam.x, sy + cam.y, cam)) { ctx.world.stopSound(SONG.SKATING_STONE); slot.live = null; return false; }
     ctx.draw(o, sx + cam.x, sy + cam.y);
@@ -79,7 +84,7 @@ export function createSkatingStone(e, slot, anims, ctx) {
   }
 
   function slide(ctx) {
-    const p = ctx.player, cam = ctx.cam, t = ctx.world.terrain;
+    const cam = ctx.cam, t = ctx.world.terrain;
     oy += vy;
     sy = s16((oy >> 8) + e.y - cam.y);
     if (offDisplay(e.x, e.y, cam) && offCam(sx + cam.x, sy + cam.y, cam)) {
@@ -87,17 +92,18 @@ export function createSkatingStone(e, slot, anims, ctx) {
       slot.live = null;
       return false;
     }
-    let layer = 0;
-    if (!p.dead) {
-      layer = p.layer;
-      if (riding) p.y = (e.y * 256 + oy - (p.spinDashing || p.curled ? 42 : 46) * 256) / 256;
+    let layer = 0;   // Sonic's: the stone follows the ground on his layer
+    for (const [i, p] of ctx.players.entries()) {
+      if (p.dead) continue;
+      if (i === 0) layer = p.layer;
+      if (riding[i]) p.y = (e.y * 256 + oy - (p.spinDashing || p.curled ? 42 : 46) * 256) / 256;
     }
     const x = e.x + (ox >> 8), y = e.y + (oy >> 8);
     if (falling) {
       if (probeTile(t, y, x, layer, 8, PROBE_FLOOR).d >= 0) vy += 32;
       else {
         vy = 0; falling = false;
-        if (hops === 0) return breakUp(ctx, p);
+        if (hops === 0) return breakUp(ctx);
         ctx.world.playSound(SONG.SKATING_STONE);
         hops--;
       }
@@ -109,20 +115,23 @@ export function createSkatingStone(e, slot, anims, ctx) {
         falling = true;
       } else {
         const c = COS(rot * 4);
-        if (riding && !p.dead) p.x += (left ? Div(c, 6070) : -Div(c, 6070)) / 256;
+        for (const [i, p] of ctx.players.entries()) {
+          if (riding[i] && !p.dead) p.x += (left ? Div(c, 6070) : -Div(c, 6070)) / 256;
+        }
         vx += left ? -Div(c, 1440) : Div(c, 1440);
         oy += (d + 3) * 256;
       }
     }
     // a wall 18 px to its right, 30 px up, breaks it, whichever way it slides
-    if (probeTile(t, e.x + (ox >> 8) + 18, e.y + (oy >> 8) - 30, layer, 8, PROBE_WALL).d < 0) return breakUp(ctx, p);
-    if (!p.dead) {
-      if (riding) {
-        if (p.air) riding = false;
-        else ride(p, cam, t);
+    if (probeTile(t, e.x + (ox >> 8) + 18, e.y + (oy >> 8) - 30, layer, 8, PROBE_WALL).d < 0) return breakUp(ctx);
+    for (const [i, p] of ctx.players.entries()) {
+      if (p.dead) continue;
+      if (riding[i]) {
+        if (p.air) riding[i] = false;
+        else ride(p, i, cam, t);
       } else if (platformTop(o, e.x + (ox >> 8), e.y + (oy >> 8), o.boxes[0], p) & LANDED) {
         p.y += 1;
-        riding = true;
+        riding[i] = true;
         cancel(p);
         p.air = false; p.jumped = false; p.airLock = false; p.curled = false;
         p.state = 'walk';
@@ -139,19 +148,20 @@ export function createSkatingStone(e, slot, anims, ctx) {
 
   // Sonic standing on it: walls to either side of his centre push him off it; while his body touches its box
   // 12 px up it carries him, and drops him where that would take him into a wall; it is drawn under his feet
-  function ride(p, cam, t) {
+  // (the last player's on it, with the CPU partner there too)
+  function ride(p, i, cam, t) {
     p.air = false; p.jumped = false; p.airLock = false;
     let r = probeTile(t, Math.floor(p.x), Math.floor(p.y), p.layer, 8, PROBE_WALL).d;
-    if (r < 0) { p.onObject = null; p.air = true; riding = false; p.x += r; }
+    if (r < 0) { p.onObject = null; p.air = true; riding[i] = false; p.x += r; }
     r = probeTile(t, Math.floor(p.x), Math.floor(p.y), p.layer, -8, PROBE_WALL).d;
-    if (r < 0) { p.onObject = null; p.air = true; riding = false; p.x -= r; }
+    if (r < 0) { p.onObject = null; p.air = true; riding[i] = false; p.x -= r; }
     if (!overlap(e.x + (ox >> 8), e.y + (oy >> 8) - 12, o.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) {
-      cancel(p); p.onObject = null; p.air = true; riding = false;
+      cancel(p); p.onObject = null; p.air = true; riding[i] = false;
       return;
     }
     p.x += vx * 2 / 256;
     const ahead = (q8(p.x) + vx * 2) >> 8, py = Math.floor(p.y);
-    const knock = r => { cancel(p); p.onObject = null; p.air = true; p.state = 'spin'; riding = false; p.x += r; p.xsp = 0; };
+    const knock = r => { cancel(p); p.onObject = null; p.air = true; p.state = 'spin'; riding[i] = false; p.x += r; p.xsp = 0; };
     r = scan(t, ahead, py, p.layer, 8, PROBE_WALL).d;
     if (r < 0) knock(r);
     else {

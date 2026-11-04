@@ -605,14 +605,29 @@ Game Start on the main menu opens it (`CreateCharacterSelectionScreen`, `src/fro
 
 **Choosing.** Keys count from the 34th frame after the fade. Left and Right turn the row with the shift sound (song 103), 16 frames a turn, on the main menu's key repeat, with the name shaking and the bars closing and the new name's tiles and colours coming halfway through. A plays the select sound: the character takes its pose, the others leave, the title and strip turn solid and the strip slows, and the screen fades to black from the 39th frame, the act starting on the 57th. Loading the act takes the original past the next V-blank, so the screen stays black for one frame more. B plays the return sound and fades the screen out over 21 frames, the tasks going on the 16th with three layers' maps cleared, and the main menu comes back with its fade in.
 
-**The partner code.** `CheckCPUPartnerUnlock` watches the keys: Up on Sonic, then Right, Down, Right, L, Right, R, Right and A, each a press with nothing else between them. It plays the ring sound (song 117) as the screen ends, and the original turns on `gTailsEnabled`, so Tails follows Sonic as the CPU's partner.
+**The partner code.** `CheckCPUPartnerUnlock` watches the keys: Up on Sonic, then Right, Down, Right, L, Right, R, Right and A, each a press with nothing else between them. It plays the ring sound (song 117) as the screen ends, and the original turns on `gTailsEnabled`, so Tails follows Sonic as the [CPU's partner](#the-cpu-partner). With another character picked, the code does nothing but play the sound.
 
 **All four are offered from the start.** With nothing saved the row has Sonic, Tails, Knuckles and Amy, and A picks any of them. Amy's act loads with her sprites, title card and face on the HUD; her own moves wait for #90.
 
-**Not built yet.** The partner itself: the code is read and its sound plays, and the act has Sonic alone. The course select (`unlockedLevels` above 0): the act starts instead. The screen's use in Time Attack and in multiplayer.
+**Not built yet.** The course select (`unlockedLevels` above 0): the act starts instead. The screen's use in Time Attack and in multiplayer.
 
-**How it was checked.** `npm run dp -- prove` plays these recordings in mGBA 0.10.5 and the port: `neo-green-hill-act-1` picks Sonic and goes on into the act, `character-select` turns the row both ways and through the key repeat and goes back with B, `pick-tails`, `pick-knuckles` and `pick-amy` pick each of the others, and `partner-code` presses the code. Every picture from the screen's first frame to its last matches on all of them. A few frames differ only by their sound, near a silence, where the song's slow wave note ends (kit note on wave notes), and on the screen's last frame in the three picks and in the code's, where the music stops as the act loads.
+**How it was checked.** `npm run dp -- prove` plays these recordings in mGBA 0.10.5 and the port: `neo-green-hill-act-1` picks Sonic and goes on into the act, `character-select` turns the row both ways and through the key repeat and goes back with B, `pick-tails`, `pick-knuckles` and `pick-amy` pick each of the others, and `partner-code` presses the code. Every picture from the screen's first frame to its last matches on all of them. A few frames differ only by their sound, near a silence, where the song's slow wave note ends (kit note on wave notes).
 
+### The CPU partner
+
+With the code on, every stage but the extra one has a second player, `gPartner` (`src/engine/partner.js`), Tails with all his moves, whose task runs right after Sonic's (`0x3001`, `Task_8045B38`).
+
+**His buttons** are Sonic's of 20 frames ago (`gUnknown_030060F0[20]`, nothing for the frames Sonic's controls are held), with the CPU's touches (`sub_8045DF0`). On level ground he goes right or left while more than 16 px from Sonic, unless he's holding Down, and lets go within them. Standing still with nothing held, he turns to face as Sonic faces. He jumps when he's on the ground more than 80 px below Sonic. In the air, once he's less than 16 px above Sonic's height, he holds jump while he's rising with no mid-air move, and otherwise presses it if he's below Sonic, which starts and keeps up his flight.
+
+**What he shares.** His sounds play as Sonic's do, his sprite is in the same OAM order just behind Sonic's, in his own colours, and his moves make the same effects, which follow him. The camera, the drowning music and the extras know only Sonic. The rings he takes count as Sonic's, tested with Sonic's height, as the ring manager works out its box once for both (`Task_RingsMgrMain`). Enemies and their shots test Sonic and then him.
+
+**A hit** knocks him back and makes him blink, with no rings or shield to lose, and it can't kill him (`Coll_DamagePlayer`). Falling off the bottom or drowning can: he falls through everything until he's a screen's width below the camera's top (`Task_804597C`).
+
+**Coming back.** Dead, or 256 px past the screen on any side (`Task_8045B38`), he comes back flying, through everything (`Task_8045AD8`, `Player_Tails_804571C`): at 2 px a frame across and 1 down or up to 48 px over Sonic's head, within 256 px of the screen, and on Sonic's layer. Within 32 px of there with ground not in the way, he lands in the air with everything cleared and goes on with his buttons. For each frame of the way back that Sonic is on a grind rail, the original also swaps Sonic's layer.
+
+**Restarts.** He has no checkpoints: when the act starts over he starts at the act's start and flies back to Sonic if that's far (`SetStageSpawnPos`).
+
+**How it was checked.** `partner-neo-green-hill` plays the code from power-on, then Neo Green Hill Zone act 1 as Sonic with Tails following him: spin dashes up a wall and through a bowl, Tails left behind and flying back, the goal, the results and the start of act 2. All of its 8,000 frames match in every picture. Frames 3869, 4732, 6412 and 7624 differ by their sound alone, where the music rests. Everything else that treats him differently from the first act's objects, such as the other zones' objects and the bosses, follows the decompilation by reading, and hasn't been played against the original.
 
 ### The language screen
 

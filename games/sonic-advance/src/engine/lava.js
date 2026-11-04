@@ -16,10 +16,12 @@ export function createLava(e, slot) {
   return {
     run(ctx) {
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
-      const p = ctx.player, x = Math.floor(p.x), y = Math.floor(p.y);
-      if (!p.carried && x >= e.x && x <= right && y >= e.y && y <= bottom && !p.dead) {
-        if (!kills) ctx.world.damage();
-        else p.dead = true;
+      for (const p of ctx.players) {
+        const x = Math.floor(p.x), y = Math.floor(p.y);
+        if (!p.carried && x >= e.x && x <= right && y >= e.y && y <= bottom && !p.dead) {
+          if (!kills) ctx.world.damage(p);
+          else p.dead = true;
+        }
       }
       return true;
     },

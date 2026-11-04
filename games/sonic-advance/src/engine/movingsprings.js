@@ -34,14 +34,14 @@ export function createMovingSpring(e, slot, anims) {
   let launching = false, n = 0;
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam, t = ctx.world.tick;
+      const cam = ctx.cam, t = ctx.world.tick;
       const swing = Math.imul((across ? d2 : d3) << 11, SINE[(4 * ((t + phase) & 0xFF)) & 0x3FF]) >> 14 >> 8;
       o.x = across ? e.x + swing : e.x; o.y = across ? e.y : e.y + swing;
       if (!launching) {
-        if (collide(ctx, p)) { n = 0; launching = true; startAnim(o, 'movingSpringLaunch', true); }
+        if (collide(ctx)) { n = 0; launching = true; startAnim(o, 'movingSpringLaunch', true); }
       } else {
         // a throw while it plays keeps the animation going and counts its 12 frames again
-        if (collide(ctx, p)) n = 0;
+        if (collide(ctx)) n = 0;
         if (++n > LAUNCH_FRAMES) { launching = false; startAnim(o, 'movingSpring', true); }
       }
       if (offDisplay(e.x, e.y, cam) && offCam(o.x, o.y, cam)) { slot.live = null; return false; }
@@ -51,24 +51,26 @@ export function createMovingSpring(e, slot, anims) {
     },
   };
 
-  // sub_808B7A0: true when it throws him
-  function collide(ctx, p) {
-    if (p.dead) return false;
+  // sub_808B7A0: true when it throws anyone
+  function collide(ctx) {
     let thrown = false;
-    if (p.onObject === o) {
-      p.air = true; p.pushing = false; endAttack(p);
-      p.state = 'spring'; p.animRestart = true;
-      p.ysp = -SPEED;
-      ctx.world.playSound(SONG.SPRING);
-      thrown = true;
+    for (const p of ctx.players) {
+      if (p.dead) continue;
+      if (p.onObject === o) {
+        p.air = true; p.pushing = false; endAttack(p);
+        p.state = 'spring'; p.animRestart = true;
+        p.ysp = -SPEED;
+        ctx.world.playSound(SONG.SPRING);
+        thrown = true;
+      }
+      const x = p.x;
+      side(p, ctx.world.terrain);
+      const r = platform(o, o.boxes[0], p, ctx.world.terrain);
+      if (p.state === 'spring') p.x = x;
+      // Knuckles climbing into it from below or a side lets go of the wall, curled up in the air
+      if (r & (FROM_BELOW | LEFT_FACE | RIGHT_FACE) && climbing(p)) { endAttack(p); p.state = 'spin'; p.curled = true; p.air = true; }
+      if (!(r & PUSHING) && p.pushing) { p.pushing = false; endAttack(p); p.state = 'walk'; }
     }
-    const x = p.x;
-    side(p, ctx.world.terrain);
-    const r = platform(o, o.boxes[0], p, ctx.world.terrain);
-    if (p.state === 'spring') p.x = x;
-    // Knuckles climbing into it from below or a side lets go of the wall, curled up in the air
-    if (r & (FROM_BELOW | LEFT_FACE | RIGHT_FACE) && climbing(p)) { endAttack(p); p.state = 'spin'; p.curled = true; p.air = true; }
-    if (!(r & PUSHING) && p.pushing) { p.pushing = false; endAttack(p); p.state = 'walk'; }
     return thrown;
   }
 

@@ -136,13 +136,15 @@ function wallBumper(e, slot) {
   const dir = s8(e.d[0]), w = e.d[2] * 8, h = e.d[3] * 8;
   return {
     run(ctx) {
-      const p = ctx.player, px = Math.floor(p.x), py = Math.floor(p.y);
-      if (!p.dead && px >= e.x && px <= e.x + w && py >= e.y && py <= e.y + h) {
-        ctx.world.playSound(SONG.BUMPER_B);
-        p.jumped = false; p.air = true; p.airLock = false;
-        p.xsp = dir & 1 ? 5 : -5;
-        p.ysp = dir < 3 ? -7 : 6;
-        if (stopFlying(p)) { p.curled = true; p.offsetY = BALL_SPRITE_OFFSET_Y; }
+      for (const p of ctx.players) {
+        const px = Math.floor(p.x), py = Math.floor(p.y);
+        if (!p.dead && px >= e.x && px <= e.x + w && py >= e.y && py <= e.y + h) {
+          ctx.world.playSound(SONG.BUMPER_B);
+          p.jumped = false; p.air = true; p.airLock = false;
+          p.xsp = dir & 1 ? 5 : -5;
+          p.ysp = dir < 3 ? -7 : 6;
+          if (stopFlying(p)) { p.curled = true; p.offsetY = BALL_SPRITE_OFFSET_Y; }
+        }
       }
       if (offDisplay(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       return true;
@@ -210,9 +212,16 @@ export function createBumper(e, slot, anims) {
     return true;
   }
 
+  // each player in turn: true when it throws any of them, with its sound for each one thrown
+  function testAll(ctx) {
+    let hit = false;
+    for (const p of ctx.players) if (test(p, ctx.world)) hit = true;
+    return hit;
+  }
+
   return {
     run(ctx) {
-      const p = ctx.player, t = ctx.world.tick;
+      const t = ctx.world.tick;
       const inShake = shaking;
       if (shaking && ++c > SHAKE_END) shaking = false;
       if (alongX) qx = sway(e.d[2], phase, t);
@@ -227,13 +236,13 @@ export function createBumper(e, slot, anims) {
       // moves; the others after
       const sideways = flipX ? 1 : -1;
       if (!inShake) {
-        if (test(p, ctx.world)) shaking = true;
+        if (testAll(ctx)) shaking = true;
       } else if (k === BUMPER_HEXAGON || k === BUMPER_ROUND || k === BUMPER_TRI_V) {
-        test(p, ctx.world);
+        testAll(ctx);
         x += sideways * SHAKE_X[c]; y += SHAKE_Y[c];
       } else {
         x += sideways * SHAKE_X[c]; y += SHAKE_Y[c];
-        test(p, ctx.world);
+        testAll(ctx);
       }
       if (offDisplay(e.x, e.y, ctx.cam) && offCam(x, y, ctx.cam)) { slot.live = null; return false; }
       ctx.draw(s, x, y);

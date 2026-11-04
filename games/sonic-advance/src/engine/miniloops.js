@@ -19,29 +19,32 @@ export const MINI_LOOP_ENTRY = 34, MINI_LOOP_BASE = 35, MINI_LOOP_START_BOOST = 
 
 const s8 = v => (v << 24) >> 24;
 
-// what each part does to Sonic while his centre is in its box; returns nothing
+// what each part does to a player while their centre is in its box; true when they are dead, which ends its
+// frame there, before the next player is looked at
 const PARTS = {
   // Task_Interactable034: Player_TransitionCancelFlyingAndBoost, then the forced roll, with no input at all
   // and the spin attack's sound (m4aSongNumStartOrChange, so it doesn't start over while it plays). The
-  // teleport bit it also sets only matters in a multiplayer game.
+  // teleport bit it also sets only matters in a multiplayer game. The hold it lets go of is always Sonic's,
+  // whoever is in its box.
   [MINI_LOOP_ENTRY](p, ctx) {
-    if (p.dead) return;
+    if (p.dead) return true;
     endAttack(p); p.pushing = false; p.airLock = false;
     p.forcedRoll = true;
     curlUp(p); p.state = 'spin';
     p.ignoreInput = true; p.heldInput = null; p.jumpPressed = false;
-    ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false;
-    p.carried = false;
+    if (p === ctx.player) { ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false; }
+    ctx.player.carried = false;
     ctx.world.playSoundOrChange(SONG.SPIN);
   },
   // Task_MiniLoop_Base: the forced roll ends, and his controls come back with the jump and attack buttons he
-  // holds then not counting as presses
+  // holds then not counting as presses (the CPU partner's are his last buttons)
   [MINI_LOOP_BASE](p, ctx) {
-    if (p.dead) return;
+    if (p.dead) return true;
     p.forcedRoll = false;
     if (p.ignoreInput) {
       p.ignoreInput = false;
-      ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false;
+      if (p === ctx.player) { ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false; }
+      else p.lastInput = { ...p.lastInput, jump: true, attack: true };
     }
   },
   // Task_MiniLoop_StartBoost, which doesn't look whether he is alive
@@ -50,12 +53,12 @@ const PARTS = {
   },
   // Task_MiniLoop_Exit
   [MINI_LOOP_EXIT](p) {
-    if (p.dead) return;
+    if (p.dead) return true;
     if (!p.air) p.gsp = -7.25;
   },
   // Task_MiniLoop_Entrance
   [MINI_LOOP_ENTRANCE](p) {
-    if (p.dead) return;
+    if (p.dead) return true;
     p.rotation = 0x80;
     if (!p.air) p.gsp = -p.gsp;
   },
@@ -69,9 +72,11 @@ export function createMiniLoop(e, slot) {
   const right = left + e.d[2] * 8, bottom = top + e.d[3] * 8;
   return {
     run(ctx) {
-      const p = ctx.player, x = Math.floor(p.x), y = Math.floor(p.y);
-      if (offDisplay(e.x, e.y, ctx.cam)) { p.halfPipe = false; slot.live = null; return false; }
-      if (x >= left && x < right && y >= top && y < bottom) part(p, ctx);
+      for (const p of ctx.players) {
+        const x = Math.floor(p.x), y = Math.floor(p.y);
+        if (offDisplay(e.x, e.y, ctx.cam)) { p.halfPipe = false; slot.live = null; return false; }
+        if (x >= left && x < right && y >= top && y < bottom && part(p, ctx)) return true;
+      }
       return true;
     },
   };

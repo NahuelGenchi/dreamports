@@ -5,7 +5,9 @@
 // stop, he loses his controls and walks off to whichever side of the screen he is on, the shell flies off in
 // two halves and the zone's animals jump out, two kinds hopping about and two birds circling. Once he
 // stands in his act-clear pose, a second after it plays through (or four seconds after he stops), the act's
-// results start. Positions are whole pixels in the act and speeds 1/256 px a frame, as the original keeps them.
+// results start. The CPU partner does all this as Sonic does, a little nearer the screen's middle, but only Sonic's
+// pose starts the results. Positions are whole pixels in the act and speeds 1/256 px a frame, as the original
+// keeps them.
 
 import { makeSprite, startAnim, animate } from './objects.js';
 import { overlap, platform, LANDED } from './collide.js';
@@ -45,7 +47,7 @@ export function createBossCapsule(x, y, anims, zone) {
     return true;
   }
   // Task_801623C: dropping in the middle of the screen until it meets the floor; there it shakes the screen and
-  // knocks Sonic aside if it lands on him
+  // knocks aside whoever it lands on
   function drop(c) {
     const sy = y - c.cam.y - rise, cx = c.cam.x + CENTRE;
     if (sy >= 0) {
@@ -61,47 +63,51 @@ export function createBossCapsule(x, y, anims, zone) {
     phase = closed;
     c.add(screenShake(0x800, 0x40, 0x100, -1, SHAKE.VERTICAL), SCREEN_SHAKE);
     c.world.playSound(SONG.CAPSULE_LANDS);
-    const p = c.player;
-    if (touches(s, p) || touches(s2, p)) {
-      const left = Math.floor(p.x) < c.cam.x + CENTRE;
-      knockAside(p, left ? -2 : 2, -0x4E0 / 256);
-      const side = left ? x + s.boxes[0][0] - SOX : x + s.boxes[0][2] + SOX;
-      if (left ? Math.floor(p.x) > side : Math.floor(p.x) < side) p.x = side;
+    for (const p of c.players) {
+      if (touches(s, p) || touches(s2, p)) {
+        const left = Math.floor(p.x) < c.cam.x + CENTRE;
+        knockAside(p, left ? -2 : 2, -0x4E0 / 256);
+        const side = left ? x + s.boxes[0][0] - SOX : x + s.boxes[0][2] + SOX;
+        if (left ? Math.floor(p.x) > side : Math.floor(p.x) < side) p.x = side;
+      }
     }
     return true;
   }
-  // Coll_Player_Entity_Intersection: Sonic's own rectangle on the sprite's box at the capsule
+  // Coll_Player_Entity_Intersection: a player's own rectangle on the sprite's box at the capsule
   function touches(sp, p) {
     return !!sp.boxes[0] && !p.dead && overlap(x, y, sp.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY]);
   }
   // the capsule and its switch as solid objects, at (x, y) and (x, y + dy), with their sprites' boxes
   const body = { x: 0, y: 0, boxes: s.boxes }, button = { x: 0, y: 0, boxes: s2.boxes };
-  function solid(c, o, sp, dy = 0) {
+  function solid(c, o, sp, p, dy = 0) {
     o.x = x; o.y = y + dy;
-    return platform(o, sp.boxes[0], c.player, c.world.terrain);
+    return platform(o, sp.boxes[0], p, c.world.terrain);
   }
-  // Task_BossCapsuleUpdate: shut, until Sonic lands on the switch. Pushed down by the capsule or below its
-  // bottom, he is put at its bottom left corner.
+  // Task_BossCapsuleUpdate: shut, until either player lands on the switch. Pushed down by the capsule or below its
+  // bottom, a player is put at its bottom left corner; the original goes by Sonic's height for both.
   function closed(c) {
     animate(s, anims); animate(s2, anims);
     c.draw(s, x, y); c.draw(s2, x, y);
-    const p = c.player;
+    const sonic = c.player;
     let pressed = false;
-    if (p.state !== 'hurt') {
-      const before = Math.floor(p.y);
-      solid(c, body, s);
-      if (!p.dead && (before < Math.floor(p.y) || y < Math.floor(p.y))) {
+    for (const p of c.players) {
+      if (p.state === 'hurt') continue;
+      const before = Math.floor(sonic.y);
+      solid(c, body, s, p);
+      if (!sonic.dead && (before < Math.floor(sonic.y) || y < Math.floor(sonic.y))) {
         p.x = x + s.boxes[0][0] - SOX; p.y = y - p.offsetY;
       }
-      if (solid(c, button, s2) & LANDED) pressed = true;
+      if (solid(c, button, s2, p) & LANDED) pressed = true;
     }
     if (pressed) {
       phase = opening;
       c.world.stopStage();
       startAnim(s, 'capsuleOpening');
       c.world.playSound(SONG.CAPSULE_OPENS);
-      p.gsp = 0; p.ignoreInput = true; p.heldInput = null;
-      c.add(walkOff(p), OBJECTS);
+      c.players.forEach((p, id) => {
+        p.gsp = 0; p.ignoreInput = true; p.heldInput = null;
+        c.add(walkOff(p, id), OBJECTS);
+      });
     }
     return true;
   }
@@ -110,11 +116,10 @@ export function createBossCapsule(x, y, anims, zone) {
   function opening(c) {
     const ended = animate(s, anims);
     animate(s2, anims);
-    const p = c.player;
-    if (p.state !== 'hurt') { solid(c, body, s); solid(c, button, s2, 4); }
+    for (const p of c.players) if (p.state !== 'hurt') { solid(c, body, s, p); solid(c, button, s2, p, 4); }
     c.draw(s, x, y); c.draw(s2, x, y + 4);
     if (!ended) return true;
-    if (p.onObject === button) { p.onObject = null; p.air = true; }
+    for (const p of c.players) if (p.onObject === button) { p.onObject = null; p.air = true; }
     phase = open;
     startAnim(s, 'capsuleOpen');
     c.add(bossPart(x, y, 'capsuleShell', anims, { vx: -256, vy: -512, spin: 4, grow: 0, frames: 60 }));
@@ -122,32 +127,33 @@ export function createBossCapsule(x, y, anims, zone) {
     c.add(animals(x, y, HOPPERS[zone], anims));
     return true;
   }
-  // Task_801685C: open, a ledge Sonic can stand on
+  // Task_801685C: open, a ledge the players can stand on
   function open(c) {
     animate(s, anims);
-    if (c.player.state !== 'hurt') solid(c, body, s);
+    for (const p of c.players) if (p.state !== 'hurt') solid(c, body, s, p);
     c.draw(s, x, y);
     return true;
   }
   return { run: c => phase(c) };
 }
 
-// sub_801766C: Sonic walks off to the side of the screen he is on, 200 px or 40 px from its left, and stands in
-// his act-clear pose facing left; the results come a second after it plays through (Task_8017400), or four
-// seconds after he stops if it never does
-function walkOff(p) {
+// sub_801766C: a player walks off to the side of the screen they are on, 200 px or 40 px from its left (8 px less
+// far for the CPU partner, player `id` 1), and stands in the act-clear pose facing left; the results come a second
+// after Sonic's plays through (Task_8017400), or four seconds after he stops if it never does
+function walkOff(p, id) {
   let posing = false, after = 0, waited = 0;
   return {
     run(c) {
       if (posing) {
         if (!p.air) p.state = 'actClearPose';
+        if (id !== 0) return true;
         if (p.anim.done && after++ > 60) { c.world.stageResults(); return false; }
         if (after === 0 && waited++ > 240) { c.world.stageResults(); return false; }
         return true;
       }
       const sx = Math.floor(p.x) - c.cam.x, right = sx > CENTRE;
       p.ignoreInput = true; p.heldInput = HOLD(right ? 1 : -1);
-      if (right ? sx > 200 : sx < 40) {
+      if (right ? sx > 200 - id * 8 : sx < 40 + id * 8) {
         p.gsp = 0; p.xsp = 0; p.heldInput = null; p.facing = -1;
         p.state = 'actClearPose'; p.actClear = true;
         posing = true;

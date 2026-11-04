@@ -53,13 +53,14 @@ export function createSwingingHook(e, slot, anims) {
   const hook = makeSprite('swingingHook'), link = makeSprite('hookLink'), anchor = makeSprite('hookAnchor');
   animate(anchor, anims); animate(link, anims);
   const phase = e.d[0] !== 0 ? 0x100 : 0;
-  let holding = false, wait = 0;
+  // for each player: whether it holds them (unkB4), and the frames before it can catch them again (unkB0)
+  const holding = [false, false], wait = [0, 0];
 
   return {
     run(ctx) {
-      const p = ctx.player, { sin, cos, rotation } = swing(ctx.world.tick, phase);
+      const { sin, cos, rotation } = swing(ctx.world.tick, phase);
       if (offDisplay(x, y, ctx.cam) && offCam(x, y, ctx.cam)) {
-        if (p.onObject === hook) { letGo(p); p.xsp = p.gsp = p.ysp = 0; }
+        for (const p of ctx.players) if (p.onObject === hook) { letGo(p); p.xsp = p.gsp = p.ysp = 0; }
         slot.live = null;
         return false;
       }
@@ -71,32 +72,34 @@ export function createSwingingHook(e, slot, anims) {
       }
       dx += Div(sin * 110, 100); dy += Div(cos * 110, 100);
 
-      if (p.dead) {
-        if (holding) { p.carried = false; wait = WAIT; holding = false; }
-      } else if (holding) {
-        p.x = x + Div(dx, 780) - 4 + (p.facing < 0 ? 10 : 0);
-        p.y = y + Div(dy, 680) + 2;
-        p.rotation = 0;
-        if (p.jumpPressed) {
-          letGo(p);
-          p.jumped = true;
-          p.ysp = -JUMP;
-          const held = p.held[0];
-          if (held & (LEFT | RIGHT)) {
-            p.facing = held & LEFT ? -1 : 1;
-            p.xsp = p.gsp = JUMP_X * p.facing;
-          } else p.xsp = p.gsp = 0;
-          wait = WAIT; holding = false;
-        } else p.ysp = 0;
-      } else if (wait) wait--;
-      else {
-        const hx = x + Div(dx, 950), hy = y + Div(dy, 950), px = Math.floor(p.x), py = Math.floor(p.y);
-        if (hx - 16 <= px && hx + 16 >= px && hy - 16 <= py && hy + 16 >= py) {
-          holding = true;
-          cancel(p);
-          p.onObject = hook; p.carried = true;
-          p.xsp = p.gsp = p.ysp = 0;
-          p.state = 'hook';
+      for (const [i, p] of ctx.players.entries()) {
+        if (p.dead) {
+          if (holding[i]) { p.carried = false; wait[i] = WAIT; holding[i] = false; }
+        } else if (holding[i]) {
+          p.x = x + Div(dx, 780) - 4 + (p.facing < 0 ? 10 : 0);
+          p.y = y + Div(dy, 680) + 2;
+          p.rotation = 0;
+          if (p.jumpPressed) {
+            letGo(p);
+            p.jumped = true;
+            p.ysp = -JUMP;
+            const held = p.held[0];
+            if (held & (LEFT | RIGHT)) {
+              p.facing = held & LEFT ? -1 : 1;
+              p.xsp = p.gsp = JUMP_X * p.facing;
+            } else p.xsp = p.gsp = 0;
+            wait[i] = WAIT; holding[i] = false;
+          } else p.ysp = 0;
+        } else if (wait[i]) wait[i]--;
+        else {
+          const hx = x + Div(dx, 950), hy = y + Div(dy, 950), px = Math.floor(p.x), py = Math.floor(p.y);
+          if (hx - 16 <= px && hx + 16 >= px && hy - 16 <= py && hy + 16 >= py) {
+            holding[i] = true;
+            cancel(p);
+            p.onObject = hook; p.carried = true;
+            p.xsp = p.gsp = p.ysp = 0;
+            p.state = 'hook';
+          }
         }
       }
 

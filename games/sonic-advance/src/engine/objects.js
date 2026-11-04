@@ -169,8 +169,13 @@ function objectTask(def, slot, anims) {
   animate(o, anims);
   return {
     run(ctx) {
-      const hit = o.collide(o, ctx.player, ctx.world);
-      if (hit && o.sound) ctx.world.playSound(o.sound);
+      // each player in turn, whatever the last one did, and a spring's sound for each it throws
+      let hit = false;
+      for (const p of ctx.players) {
+        if (!o.collide(o, p, ctx.world)) continue;
+        hit = true;
+        if (o.sound) ctx.world.playSound(o.sound);
+      }
       if (offCam(o.x, o.y, ctx.cam)) { slot.live = null; return false; }
       if (o.launching) {
         // a hit during the launch restarts it, except on the diagonal springs
@@ -186,15 +191,17 @@ function objectTask(def, slot, anims) {
   };
 }
 
-// layer toggles (toggle_player_layer.c): while Sonic's centre is inside one, the front one puts him on the
-// front layer and the back one on the back layer; it sees where he was at the end of the last frame
+// layer toggles (toggle_player_layer.c): while a player's centre is inside one, the front one puts them on the
+// front layer and the back one on the back layer; it sees where they were at the end of the last frame
 const TOGGLE_FRONT = 17, TOGGLE_BACK = 18;
 function toggle(e, slot) {
   const w = e.d[2] * 8, h = e.d[3] * 8;
   return {
     run(ctx) {
-      const p = ctx.player, x = Math.floor(p.x), y = Math.floor(p.y);
-      if (x >= e.x && x <= e.x + w && y >= e.y && y <= e.y + h) p.layer = e.kind === TOGGLE_FRONT ? 0 : 1;
+      for (const p of ctx.players) {
+        const x = Math.floor(p.x), y = Math.floor(p.y);
+        if (x >= e.x && x <= e.x + w && y >= e.y && y <= e.y + h) p.layer = e.kind === TOGGLE_FRONT ? 0 : 1;
+      }
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       return true;
     },
@@ -218,7 +225,7 @@ function interactable(e, slot, anims, ctx, level, zone) {
   const def = createSpring(e) ?? createSpikes(e);
   return def ? objectTask(def, slot, anims) : createHidingSpikes(e, slot, anims) ?? createPlatform(e, slot, anims) ?? createBoulder(e, slot, anims) ?? createIceBlock(e, slot, anims) ?? createBreakableWall(e, slot, anims) ?? createMovingSpring(e, slot, anims) ?? createSquarePlatform(e, slot, anims) ?? createSlowPlatform(e, slot, anims) ?? createFerrisWheel(e, slot, anims) ?? createLavaPlatform(e, slot, anims) ?? createWaterfall(e, slot, anims, ctx)
     ?? createBooster(e, slot, anims) ?? createCheckpoint(e, slot, anims, ctx) ?? createWallPole(e, slot, anims) ?? createGrindRail(e, slot)
-    ?? createRamp(e, slot) ?? createHalfPipe(e, slot) ?? createSlide(e, anims, zone) ?? createMiniLoop(e, slot)
+    ?? createRamp(e, slot) ?? createHalfPipe(e, slot) ?? createSlide(e, anims, zone, slot) ?? createMiniLoop(e, slot)
     ?? createWaterBridge(e, slot, anims) ?? createBridgeSplash(e, slot, anims) ?? createShrub(e, slot, anims)
     ?? createSpecialSpring(e, slot, anims) ?? createHookRail(e, slot, anims) ?? createSecurityGate(e, slot, anims)
     ?? createConveyor(e, slot, ctx) ?? createSteamExhaust(e, slot, anims) ?? createSwingingHook(e, slot, anims)

@@ -22,10 +22,10 @@ function curl(p, ctx) {
   endAttack(p); p.pushing = false;
   p.forcedRoll = true;
   p.ignoreInput = true; p.jumpPressed = false;
-  ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false;
+  if (p === ctx.player) { ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false; }
   p.state = 'spin';
   curlUp(p);
-  p.carried = false;
+  ctx.player.carried = false;   // the original's gPlayer, whoever is in its box
   ctx.world.playSoundOrChange(SONG.SPIN);
 }
 
@@ -35,7 +35,8 @@ function release(p, ctx) {
   p.forcedRoll = false;
   if (!p.ignoreInput) return;
   p.ignoreInput = false;
-  ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false;
+  if (p === ctx.player) { ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false; }
+  else p.lastInput = { ...p.lastInput, jump: true, attack: true };
 }
 
 /** The task for a tube's end, or null when `e` is not one. Both run at the objects' priority. */
@@ -45,9 +46,15 @@ export function createTube(e, slot) {
   const act = e.kind === TUBE_IN ? curl : release;
   return {
     run(ctx) {
-      const p = ctx.player, x = Math.floor(p.x), y = Math.floor(p.y);
-      if (offDisplay(e.x, e.y, ctx.cam)) { p.halfPipe = false; slot.live = null; return false; }
-      if (x >= left && x < right && y >= top && y < bottom && !p.dead) act(p, ctx);
+      // the range is looked at for Sonic first, so leaving only clears his flag
+      if (offDisplay(e.x, e.y, ctx.cam)) { ctx.player.halfPipe = false; slot.live = null; return false; }
+      for (const p of ctx.players) {
+        const x = Math.floor(p.x), y = Math.floor(p.y);
+        if (x >= left && x < right && y >= top && y < bottom) {
+          if (p.dead) return true;   // and the frame's look ends there
+          act(p, ctx);
+        }
+      }
       return true;
     },
   };

@@ -747,7 +747,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   const resultsTask = {
     run() {
       const r = runResults(state.results, {
-        player, camera: state.cam, stageTime: state.tick, playSound: song => sound.play(song),
+        player, partner, camera: state.cam, stageTime: state.tick, playSound: song => sound.play(song),
         addScore(n) {
           const before = state.score;
           state.score += n;
@@ -978,6 +978,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     [0xFF00, () => {
       if (!mode && !state.noPause && startPressed) tasks.add(createPauseMenu({ state, anims, sound, startPressed: () => startPressed }), PAUSE_PRIORITY);
       player.wasInverted = player.inverted;
+      if (partner) partner.wasInverted = partner.inverted;
       if (mode) mode.clock();
       else if (!state.clockStopped) tickClock();
       state.tick++;
@@ -1019,6 +1020,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   // passed, and the special springs are plain until the act starts over (unk99[1]). The course time, the
   // stage clock, the rings, the last checkpoint passed and the next freed animal are what they were when he
   // left; the score, the lives, the game's random numbers and the frame counter what the special stage leaves.
+  // The CPU partner has no checkpoint: he is new, at the act's start, as a restart makes him, and flies back from
+  // there (his buttons aren't handed over, as the title card holds them for longer than they last).
   function comeBack({ level, score, lives, courseTime, seed, frameCount = state.frameCount, act }) {
     while (state.level < level) startNextAct();
     Object.assign(player, newPlayer({ x: act.spring.x - 16, y: act.spring.y - 16 }));

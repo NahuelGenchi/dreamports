@@ -112,7 +112,7 @@ export function eggSpider(e, slot, anims, ctx0) {
       const p = ctx.player;
       boss.qx += boss.qvx; boss.qy += boss.qvy;
       const [x, y] = pos();
-      // sub_80308A4: the blending off while Sonic is alive, and Sonic against it while it isn't flashing
+      // sub_80308A4: the blending off while Sonic is alive, and Sonic and the CPU partner against it while it isn't flashing
       if (!p.dead) ctx.world.blendOff();
       if (boss.flash === 0) {
         const hit = bossHit(s, x, y, ctx);
@@ -227,7 +227,8 @@ export function eggSpider(e, slot, anims, ctx0) {
 // CreateIciclePlatform and sub_8031AB4: an icicle from 32 px above the spawn point, 10 to 310 px left of it in
 // steps of 20, falling faster by 10 to 25/256 px a frame each frame, an eighth as fast under the water while the
 // boss is whole. Under the water Sonic can land on it and is taken down with it, a pixel a frame faster, until it
-// is more than 196 px down; its point hurts him while the boss is whole. It goes 208 px down.
+// is more than 196 px down, and the CPU partner can above the water too; its point hurts them while the boss is
+// whole. It goes 208 px down.
 function icicle(ctx0, x0, y0, boss, anims) {
   const random = ctx0.world.random;
   const qx = -((((random() >>> 1) & 0xF) * 20) + 10) * 256;
@@ -237,7 +238,7 @@ function icicle(ctx0, x0, y0, boss, anims) {
   let qy = -32 * 256, vy = 0;
   return {
     run(ctx) {
-      const p = ctx.player, w = ctx.world.water, level = w ? w.level : -1;
+      const p = ctx.player, partner = ctx.players[1], w = ctx.world.water, level = w ? w.level : -1;
       let under = false, moved;
       if (y0 + I(qy) - 17 < level) {
         vy += accel; qy += vy; moved = vy;
@@ -250,12 +251,23 @@ function icicle(ctx0, x0, y0, boss, anims) {
       if (qy > 208 * 256) return false;
       const x = x0 + I(qx), y = y0 + I(qy);
       animate(s, anims);
-      // sub_800BFEC: its point (box 1) on Sonic's body hurts him
-      if (boss.hits < HITS && !p.dead && s.boxes[1] && p.boxes[0] && overlap(x, y, s.boxes[1], Math.floor(p.x), Math.floor(p.y), p.boxes[0])) ctx.world.damage();
+      // sub_800BFEC: its point (box 1) on a player's body hurts them
+      if (boss.hits < HITS) {
+        for (const q of ctx.players) {
+          if (!q.dead && s.boxes[1] && q.boxes[0] && overlap(x, y, s.boxes[1], Math.floor(q.x), Math.floor(q.y), q.boxes[0])) ctx.world.damage(q);
+        }
+      }
       if (under) platformTop(s, x, y, s.boxes[0], p);
       if (p.onObject === s) {
         if (qy > 196 * 256) p.onObject = null;
         else p.y += (256 + moved) / 256;
+      }
+      if (partner) {
+        platformTop(s, x, y, s.boxes[0], partner);
+        if (partner.onObject === s) {
+          if (qy > 196 * 256) partner.onObject = null;
+          else partner.y += (256 + moved) / 256;
+        }
       }
       ctx.draw(s, x, y);
       return true;

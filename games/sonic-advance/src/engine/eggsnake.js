@@ -99,8 +99,8 @@ export function eggSnake(e, slot, anims, ctx0) {
     draw(ctx, s);
     if (b.eggman === 0) draw(ctx, s2);
   }
-  // Sonic against the head: hitting Eggman in it from the air counts while it isn't flashing, and Eggman
-  // laughs when it hurts him (sub_8031D88)
+  // Sonic and the CPU partner against the head: hitting Eggman in it from the air counts while it isn't flashing,
+  // and Eggman laughs when it hurts them (sub_8031D88)
   function collide(ctx, x, y) {
     const { s, s2 } = b;
     s.white = false;
@@ -352,8 +352,9 @@ export function eggSnake(e, slot, anims, ctx0) {
   // he had on the frame before) bounces it down by that speed, to 8 px at the ends and 32 between, and back
   // up past where it was by half that, the two either side following by thirds; otherwise the segment he
   // stands on sinks 1 px a frame (2 while above its place), to 8 px at the ends and 16 between, and the others
-  // ease 1 px a frame toward a slope down to it, settling back once he is off. Once the boss is gone they
-  // hold nobody, and the manager goes when Sonic is on the ground.
+  // ease 1 px a frame toward a slope down to it, settling back once he is off. The CPU partner stands on the first
+  // segment he touches too, moving nothing and carried by nothing. Once the boss is gone they hold nobody, and the
+  // manager goes when Sonic is on the ground.
   function manager() {
     const ms = makeSprite('eggSnakeSegment', { order: 23 }), segs = [];
     const bumps = b.bumps;
@@ -449,6 +450,12 @@ export function eggSnake(e, slot, anims, ctx0) {
           slope(k, true);
         }
         before = { air: p.air, ysp: q8(p.ysp) };
+        if (ctx.players[1] && m.after === 0) {
+          for (let i = 0; i < SEGMENTS; i++) {
+            const g = segs[i];
+            if (platformTop(g, s16(g.x), s16(g.y + bumps[i]), g.boxes[0], ctx.players[1])) break;
+          }
+        }
         return !done;
       },
     };

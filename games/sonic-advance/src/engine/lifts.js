@@ -26,6 +26,7 @@ export function createLift(e, slot, anims) {
   // waiting (Task_LiftMain), rising with Sonic (Task_Lift2), holding him at the top (Task_Lift3) or going back
   // down (Task_Lift4)
   let phase = 'waiting', t = 0, wait = 0;
+  let caught = null;   // the player it has (playerID)
 
   function catches(p) {
     if (p.dead || !overlap(e.x, e.y, handle.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) return false;
@@ -46,11 +47,16 @@ export function createLift(e, slot, anims) {
 
   return {
     run(ctx) {
-      const p = ctx.player;
+      const p = caught;
       if (phase === 'waiting') {
-        if (catches(p)) {
-          ctx.world.playSound(SONG.LIFT);
-          phase = 'rising'; t = 0;
+        // the first player touching it is the one it takes
+        for (const q of ctx.players) {
+          if (catches(q)) {
+            caught = q;
+            ctx.world.playSound(SONG.LIFT);
+            phase = 'rising'; t = 0;
+            break;
+          }
         }
         if (gone(ctx, 0)) { slot.live = null; return false; }
         show(ctx, 0, LINKS);

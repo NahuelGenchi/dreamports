@@ -91,6 +91,7 @@ function comeBack(p, sonic, world) {
   const target = inv ? sy + OVER_HEAD : sy - OVER_HEAD;
   if (px - BESIDE < sx && px + BESIDE > sx && py - BESIDE < target && py + BESIDE > target && clearance(p, world.terrain, 0) >= 0) {
     p.pushing = false; p.onObject = null; p.spinDashing = false; p.halfPipe = false; p.forcedRoll = false; p.actClear = false;
+    p.jumped = false; p.airLock = false;
     p.midAir = 0; p.attack = 0; p.attackNext = 0; p.curled = false; p.invisible = false; p.dead = false; p.ignoreInput = false; p.carried = false;
     p.gsp = 0; p.xsp = 0; p.ysp = 0;
     p.stopPropeller();

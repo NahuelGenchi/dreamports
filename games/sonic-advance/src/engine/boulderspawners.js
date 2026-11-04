@@ -51,11 +51,13 @@ function boulder(x0, y0, landings, anims) {
   let vx = 64, vy = 0, dx = 0, dy = 0, falling = false;
   return {
     run(ctx) {
-      const cam = ctx.cam, p = ctx.player, t = ctx.world.terrain;
+      const cam = ctx.cam, t = ctx.world.terrain;
       const x = x0 + (dx >> 8), y = y0 + (dy >> 8);
       if (screenOff(x0, y0) && screenOff(x - cam.x, y - cam.y)) return false;
-      if (!p.dead && s.boxes[0] && overlap(x, y, s.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) {
-        ctx.world.damage();
+      for (const p of ctx.players) {
+        if (!p.dead && s.boxes[0] && overlap(x, y, s.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) {
+          ctx.world.damage(p);
+        }
       }
       const d = tileFloor(t, x, y, LAYER);
       if (falling) {

@@ -157,7 +157,7 @@ The goal is a game that behaves *exactly* like the original, not one that looks 
 - **The game's own sound.** The music and sound effects are played by a rebuilt copy of the cartridge's sound engine, whose output matches the original's byte for byte.
 - **Sharp pixels.** The game draws at the Game Boy Advance's own 240 × 160 and scales up in whole steps, so every pixel stays crisp on any screen.
 
-The game opens as the original does: the first time, with the language screen, where you choose Japanese or English for the menus and the game's messages; then with the SEGA and Sonic Team logos, the intro timed to its music, the title screen and the main menu. Game Start opens the character select, where Left and Right turn the row, A picks and B goes back. Options opens the original Options menu: the difficulty, the time limit, the language and the button layout, kept in the save, Delete Game Data, the sound test, where Amy dances to the game's music and jingles, and the player data, where you enter your name on the original's character grid and see your VS record. Easy works as in the original: six kinds of enemy stay out of one zone each, and every boss needs 2 fewer hits. The main menu's other modes are next.
+The game opens as the original does: the first time, with the language screen, where you choose Japanese or English for the menus and the game's messages; then with the SEGA and Sonic Team logos, the intro timed to its music, the title screen and the main menu. Game Start opens the character select, where Left and Right turn the row, A picks and B goes back. On Sonic, Up, then Right, Down, Right, L, Right, R, Right and A bring Tails along as the CPU's partner, following Sonic through the acts as in the original. Options opens the original Options menu: the difficulty, the time limit, the language and the button layout, kept in the save, Delete Game Data, the sound test, where Amy dances to the game's music and jingles, and the player data, where you enter your name on the original's character grid and see your VS record. Easy works as in the original: six kinds of enemy stay out of one zone each, and every boss needs 2 fewer hits. The main menu's other modes are next.
 
 The act opens, and starts over after a lost life, with the original title card sliding in as the screen fades up from black. The original on-screen counters show your rings, score, time and lives. Let the clock reach 10:00 and Sonic is out of time: he loses a life, *TIME OVER* slides in and the act starts over (Egg Rocket's five-minute countdown runs out the same way). Lose your last life and it's **game over**; with a continue left, the continue screen counts down from 9: press jump to play the act again with three lives, or attack to count down faster.
 
@@ -432,7 +432,7 @@ Here's the road through the rest of the game. Each step has its own issue, so yo
 </tbody>
 </table>
 
-Also on the way: the title screen's demos, the CPU Tails partner, the course select, Amy, the menu's other modes, and the other three [Chao Hunt](#multiplayer-chao-hunt) stages.
+Also on the way: the title screen's demos, the course select, Amy, the menu's other modes, and the other three [Chao Hunt](#multiplayer-chao-hunt) stages.
 
 <details>
 <summary><b>Milestones</b></summary>

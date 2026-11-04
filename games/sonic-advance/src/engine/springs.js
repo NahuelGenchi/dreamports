@@ -146,26 +146,30 @@ export function createHidingSpring(e, slot, anims) {
   const o = { x: e.x, y: e.y, d: e.d, ...makeSprite('springUp') };
   animate(o, anims);
   let launching = false;
-  // sub_8095224 (0x08094F2C)
-  function hit(p, world) {
+  // sub_8095224 (0x08094F2C): each player in turn, with the song for each it throws
+  function hit(ctx) {
     const hb = o.boxes[0];
-    if (p.dead || p.carried || !hb || !overlap(e.x, e.y, hb, Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) return false;
-    land(p);
-    p.ysp = -(e.d[1] << 6) / 256;
-    throwUp(p, o);
-    startAnim(o, 'springUpLaunch', true);
-    world.playSound(SONG.SPRING);
-    return true;
+    let any = false;
+    for (const p of ctx.players) {
+      if (p.dead || p.carried || !hb || !overlap(e.x, e.y, hb, Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) continue;
+      land(p);
+      p.ysp = -(e.d[1] << 6) / 256;
+      throwUp(p, o);
+      startAnim(o, 'springUpLaunch', true);
+      ctx.world.playSound(SONG.SPRING);
+      any = true;
+    }
+    return any;
   }
   return {
     run(ctx) {
       if (!launching) {
-        launching = hit(ctx.player, ctx.world);   // its launch's first frame shows on the next one
+        launching = hit(ctx);   // its launch's first frame shows on the next one
         if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
         return true;
       }
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
-      hit(ctx.player, ctx.world);
+      hit(ctx);
       if (animate(o, anims)) { launching = false; startAnim(o, 'springUp'); animate(o, anims); }
       ctx.draw(o, e.x, e.y);
       return true;

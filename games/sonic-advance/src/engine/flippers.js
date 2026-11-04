@@ -39,8 +39,11 @@ function touches(s, x, y, p) {
 }
 // Player_TransitionCancelFlyingAndBoost
 function cancel(p) { endAttack(p); p.pushing = false; }
-// the buttons he holds don't count as presses (heldInput)
-function noPresses(input) { input.jumpPressed = false; input.attackPressed = false; input.boostPressed = false; }
+// the buttons he holds don't count as presses (heldInput): for the CPU partner, those of his last buttons
+function noPresses(p, ctx) {
+  if (p === ctx.player) { const input = ctx.input; input.jumpPressed = false; input.attackPressed = false; input.boostPressed = false; }
+  else p.lastInput = { ...p.lastInput, jump: true, attack: true };
+}
 
 // the lying flipper (Task_Flipper_Horizontal, and Task_Flipper_Horizontal_2 while `flipping`); it only updates
 // its animation while flipping
@@ -48,10 +51,11 @@ function lying(e, slot, anims) {
   const left = e.d[0] === 0;
   const o = { x: e.x, y: e.y, ...makeSprite('flipper', { flipX: left }) };
   animate(o, anims);
-  let holding = false, flipping = 0;
+  const holding = [false, false];
+  let flipping = 0;
   return {
     run(ctx) {
-      const p = ctx.player, input = ctx.input;
+      const input = ctx.input;
       if (flipping) {
         if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
         if (--flipping === 0) startAnim(o, 'flipper', true);
@@ -59,69 +63,73 @@ function lying(e, slot, anims) {
         ctx.draw(o, e.x, e.y);
         return true;
       }
-      // how far out from the pivot he is, and the height it holds him at there
-      const out = s16(left ? e.x - Math.floor(p.x) : Math.floor(p.x) - e.x);
-      const top = e.y + (out >> 1) - 17;
-      // held: curled up on the slope, rolling out, his presses dropped (heldInput and frameInput cleared)
-      const hold = () => {
-        p.y = top + 1 / 256; p.ysp = 0; p.xsp = left ? -ROLL : ROLL;
-        p.jumpPressed = false; noPresses(input);
-        p.ignoreInput = true;
-      };
-      if (touches(o, e.x, e.y, p) && climbing(p)) {
-        // climbing into it: it is only solid, unless he climbs down, and standing on it curls him up in the air
-        if (p.state !== 'climbDown') {
-          platform(o, o.boxes[0], p, ctx.world.terrain);
-          if (p.onObject === o) {
-            cancel(p);
-            p.state = 'spin'; p.curled = true;
-            p.onObject = null; p.air = true;
-            p.facing = left ? -1 : 1;
+      // a flip goes by the pad's own press and d-pad, for the CPU partner too (gPressedKeys, gInput)
+      const jumpPressed = input.jumpPressed;
+      ctx.players.forEach((p, i) => {
+        // how far out from the pivot he is, and the height it holds him at there
+        const out = s16(left ? e.x - Math.floor(p.x) : Math.floor(p.x) - e.x);
+        const top = e.y + (out >> 1) - 17;
+        // held: curled up on the slope, rolling out, his presses dropped (heldInput and frameInput cleared)
+        const hold = () => {
+          p.y = top + 1 / 256; p.ysp = 0; p.xsp = left ? -ROLL : ROLL;
+          p.jumpPressed = false; noPresses(p, ctx);
+          p.ignoreInput = true;
+        };
+        if (touches(o, e.x, e.y, p) && climbing(p)) {
+          // climbing into it: it is only solid, unless he climbs down, and standing on it curls him up in the air
+          if (p.state !== 'climbDown') {
+            platform(o, o.boxes[0], p, ctx.world.terrain);
+            if (p.onObject === o) {
+              cancel(p);
+              p.state = 'spin'; p.curled = true;
+              p.onObject = null; p.air = true;
+              p.facing = left ? -1 : 1;
+            }
           }
+        } else if (touches(o, e.x, e.y, p)) {
+          if (p.ysp >= 0 && p.y < e.y + 19 && p.air) {
+            if (jumpPressed && holding[i]) {
+              holding[i] = false;
+              p.onObject = null; p.air = true; p.jumped = false; p.curled = true; p.airLock = false;
+              if (input.left) p.facing = -1;
+              else if (input.right) p.facing = 1;
+              p.ysp = (-0x7C0 - out * 16) / 256;
+              p.xsp = (left ? -out : out) * 32 / 256; p.gsp = p.xsp;
+              cancel(p);
+              p.state = 'spin';
+              flipping = FLIP_FRAMES;
+              setOffsetY(p, BALL_SPRITE_OFFSET_Y);
+              p.ignoreInput = false; noPresses(p, ctx);
+              startAnim(o, 'flipperFlip', true);
+              ctx.world.playSound(SONG.BUMPER_A);
+            } else if (p.y > top) {
+              // caught: his height changes after he is put on the slope, so he lands lower by it
+              hold();
+              holding[i] = true;
+              p.rotation = 0;
+              cancel(p);
+              p.curled = true;
+              setOffsetY(p, BALL_SPRITE_OFFSET_Y);
+              p.state = 'spin';
+            } else if (holding[i]) {
+              cancel(p);
+              p.air = true; p.jumped = false; p.curled = true; p.airLock = false;
+              p.state = 'spin';
+              setOffsetY(p, BALL_SPRITE_OFFSET_Y);
+              hold();
+            } else {
+              p.ignoreInput = false; noPresses(p, ctx);
+            }
+          } else if (p.y <= e.y) p.air = true;
+          else if (p.y < e.y + 24) { p.y = e.y + 24; p.ysp = 10 / 256; p.xsp = 0; p.gsp = 0; }
+        } else {
+          // off its end
+          if (holding[i]) { p.ignoreInput = false; noPresses(p, ctx); p.xsp = left ? -1 : 1; }
+          holding[i] = false;
         }
-      } else if (touches(o, e.x, e.y, p)) {
-        if (p.ysp >= 0 && p.y < e.y + 19 && p.air) {
-          if (input.jumpPressed && holding) {
-            holding = false;
-            p.onObject = null; p.air = true; p.jumped = false; p.curled = true; p.airLock = false;
-            if (input.left) p.facing = -1;
-            else if (input.right) p.facing = 1;
-            p.ysp = (-0x7C0 - out * 16) / 256;
-            p.xsp = (left ? -out : out) * 32 / 256; p.gsp = p.xsp;
-            cancel(p);
-            p.state = 'spin';
-            flipping = FLIP_FRAMES;
-            setOffsetY(p, BALL_SPRITE_OFFSET_Y);
-            p.ignoreInput = false; noPresses(input);
-            startAnim(o, 'flipperFlip', true);
-            ctx.world.playSound(SONG.BUMPER_A);
-          } else if (p.y > top) {
-            // caught: his height changes after he is put on the slope, so he lands lower by it
-            hold();
-            holding = true;
-            p.rotation = 0;
-            cancel(p);
-            p.curled = true;
-            setOffsetY(p, BALL_SPRITE_OFFSET_Y);
-            p.state = 'spin';
-          } else if (holding) {
-            cancel(p);
-            p.air = true; p.jumped = false; p.curled = true; p.airLock = false;
-            p.state = 'spin';
-            setOffsetY(p, BALL_SPRITE_OFFSET_Y);
-            hold();
-          } else {
-            p.ignoreInput = false; noPresses(input);
-          }
-        } else if (p.y <= e.y) p.air = true;
-        else if (p.y < e.y + 24) { p.y = e.y + 24; p.ysp = 10 / 256; p.xsp = 0; p.gsp = 0; }
-      } else {
-        // off its end
-        if (holding) { p.ignoreInput = false; noPresses(input); p.xsp = left ? -1 : 1; }
-        holding = false;
-      }
+      });
       if (offCam(e.x, e.y, ctx.cam)) {
-        if (holding) { p.ignoreInput = false; noPresses(input); }
+        ctx.players.forEach((p, i) => { if (holding[i]) { p.ignoreInput = false; noPresses(p, ctx); } });
         slot.live = null;
         return false;
       }
@@ -135,7 +143,8 @@ function lying(e, slot, anims) {
 // frame, and with it its hitbox, comes with its first run's animation update, after its collision
 function standing(e, slot, anims) {
   const o = { x: e.x, y: e.y, ...makeSprite('flipperStanding') };
-  let on = false, flipping = 0;
+  const on = [false, false];
+  let flipping = 0;
   // it bats him toward `dir`, turning that way
   function bat(p, dir, world) {
     p.facing = dir;
@@ -147,7 +156,6 @@ function standing(e, slot, anims) {
   }
   return {
     run(ctx) {
-      const p = ctx.player;
       if (flipping) {
         if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
         if (--flipping === 0) startAnim(o, 'flipperStanding', true);
@@ -155,18 +163,20 @@ function standing(e, slot, anims) {
         ctx.draw(o, e.x, e.y);
         return true;
       }
-      if (p.dead) {
-        if (on) { on = false; p.onObject = null; }
-      } else if (p.air || on) {
-        if (platform(o, o.boxes[0], p, ctx.world.terrain) & LANDED) {
-          on = true;
-          // on its top but not touching its box: he slips off
-          if (!touches(o, e.x, e.y, p) && p.onObject === o) p.onObject = null;
-        } else if (on) { on = false; p.onObject = null; }
-      } else if (e.y < p.y) {
-        if (e.x > p.x) { if (touches(o, e.x - 6, e.y, p)) bat(p, -1, ctx.world); }
-        else if (touches(o, e.x + 7, e.y, p)) bat(p, 1, ctx.world);
-      }
+      ctx.players.forEach((p, i) => {
+        if (p.dead) {
+          if (on[i]) { on[i] = false; p.onObject = null; }
+        } else if (p.air || on[i]) {
+          if (platform(o, o.boxes[0], p, ctx.world.terrain) & LANDED) {
+            on[i] = true;
+            // on its top but not touching its box: he slips off
+            if (!touches(o, e.x, e.y, p) && p.onObject === o) p.onObject = null;
+          } else if (on[i]) { on[i] = false; p.onObject = null; }
+        } else if (e.y < p.y) {
+          if (e.x > p.x) { if (touches(o, e.x - 6, e.y, p)) bat(p, -1, ctx.world); }
+          else if (touches(o, e.x + 7, e.y, p)) bat(p, 1, ctx.world);
+        }
+      });
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       animate(o, anims);
       ctx.draw(o, e.x, e.y);
@@ -175,51 +185,51 @@ function standing(e, slot, anims) {
   };
 }
 
-// the small blue flipper (Task_Flipper_SmallBlue), mirrored when d2 is set: (hx, hy) is where it holds him,
-// `vy` his speed up, `n` the frames it has thrown him for, `art` the frames until its art changes
+// the small blue flipper (Task_Flipper_SmallBlue), mirrored when d2 is set; for each player, (hx, hy) is where it
+// holds them, `vy` their speed up, `n` the frames it has thrown them for, `art` the frames until its art changes
 function blue(e, slot, anims) {
   const frames = e.d[0], step = e.d[1];
   const o = makeSprite('blueFlipper', { flipX: e.d[2] !== 0 });
   animate(o, anims);
-  let holding = false, n = 0, vy = 0, hx = 0, hy = 0, art = 0;
+  const holding = [false, false], n = [0, 0], vy = [0, 0], hx = [0, 0], hy = [0, 0], art = [0, 0];
   return {
     priority: 0x2000 + s8(e.d[1]),
     run(ctx) {
-      const p = ctx.player;
-      if (!p.dead) {
-        if (holding) {
-          if (art !== 0 && --art === 0) startAnim(o, 'flipper', true);
-          vy += GRAVITY;
-          hy += vy;
-          p.y = hy; p.x = hx; p.ysp = vy; p.xsp = 0; p.gsp = 0;
-          if (++n >= frames) {
+      ctx.players.forEach((p, i) => {
+        if (p.dead) return;
+        if (holding[i]) {
+          if (art[i] !== 0 && --art[i] === 0) startAnim(o, 'flipper', true);
+          vy[i] += GRAVITY;
+          hy[i] += vy[i];
+          p.y = hy[i]; p.x = hx[i]; p.ysp = vy[i]; p.xsp = 0; p.gsp = 0;
+          if (++n[i] >= frames) {
             if (p.track === step) p.carried = false;
-            holding = false;
-            art = 0;
+            holding[i] = false;
+            art[i] = 0;
           } else {
             cancel(p);
             p.carried = true;
             p.state = 'marbleTrack';
             setOffsetY(p, SPRITE_OFFSET_Y);
           }
-        } else if (art !== 0) {
-          if (--art === 0) startAnim(o, 'blueFlipper', true);
+        } else if (art[i] !== 0) {
+          if (--art[i] === 0) startAnim(o, 'blueFlipper', true);
         } else if (p.carried && p.track < step && touches(o, e.x, e.y, p)) {
-          n = 0;
+          n[i] = 0;
           cancel(p);
           p.curled = true; p.carried = true;
           p.track = step;
-          hy = p.y; hx = p.x; vy = BLUE_THROW;
+          hy[i] = p.y; hx[i] = p.x; vy[i] = BLUE_THROW;
           p.ysp = 0; p.xsp = 0; p.gsp = 0;
           p.state = 'marbleTrack';
           setOffsetY(p, SPRITE_OFFSET_Y);
           ctx.world.playSound(SONG.BUMPER_A);
-          holding = true;
-          art = BLUE_ART;
+          holding[i] = true;
+          art[i] = BLUE_ART;
           startAnim(o, 'blueFlipperFlip', true);
         }
-      }
-      if (!holding && offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
+      });
+      if (!holding[0] && !holding[1] && offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       animate(o, anims);
       ctx.draw(o, e.x, e.y);
       return true;

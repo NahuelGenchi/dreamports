@@ -55,76 +55,80 @@ export function createSpikedPlatform(e, slot, anims, zone) {
   const across = e.d[2] > e.d[3];
   const phase = s8(across ? e.d[0] : e.d[1]) < 0 ? 0x80 : 0, reach = (across ? e.d[2] : e.d[3]) << 11;
   let q = 0;              // the offset, in 1/256 px
-  let riding = false;     // he stands on its top (unk4E)
-  let beside = false;     // he touched its sides or bottom (unk4F)
+  // for each player:
+  const riding = [false, false];   // he stands on its top (unk4E)
+  const beside = [false, false];   // he touched its sides or bottom (unk4F)
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam, t = ctx.world.terrain;
+      const cam = ctx.cam, t = ctx.world.terrain;
       const next = Math.imul(reach, SINE[(4 * ((ctx.world.tick + phase) & 0xFF)) & 0x3FF]) >> 14, moved = next - q;
       q = next;
       const x = e.x + (across ? q >> 8 : 0), y = e.y + (across ? 0 : q >> 8), hb = o.boxes[0];
       o.x = x; o.y = y;
-      if (!p.dead && !p.carried) {
-        const prevX = p.x;
-        if (riding) {
-          // it carries him by what it moved, plus 1 px down, which its top then puts him back from; the
-          // terrain at his centre puts him out on the side it moves him to, and the ceiling over it crushes
-          // him while it moves up and down
-          if (across) p.x += moved / 256;
-          p.y += 1 + (across ? 0 : moved / 256);
-          const dx = across ? moved : 0;
-          if (dx > 0) {
-            const d = tileScan(t, Math.floor(p.x) + 4, Math.floor(p.y), p.layer, 8, PROBE_WALL);
-            if (d < 0) p.x += d;
+      for (let i = 0; i < ctx.players.length; i++) {
+        const p = ctx.players[i];
+        if (!p.dead && !p.carried) {
+          const prevX = p.x;
+          if (riding[i]) {
+            // it carries him by what it moved, plus 1 px down, which its top then puts him back from; the
+            // terrain at his centre puts him out on the side it moves him to, and the ceiling over it crushes
+            // him while it moves up and down
+            if (across) p.x += moved / 256;
+            p.y += 1 + (across ? 0 : moved / 256);
+            const dx = across ? moved : 0;
+            if (dx > 0) {
+              const d = tileScan(t, Math.floor(p.x) + 4, Math.floor(p.y), p.layer, 8, PROBE_WALL);
+              if (d < 0) p.x += d;
+            } else {
+              const d = tileScan(t, Math.floor(p.x), Math.floor(p.y), p.layer, -8, PROBE_WALL);
+              if (d < 0) p.x -= d;
+            }
+            if (tileScan(t, Math.floor(p.y) - 5, Math.floor(p.x), p.layer, -8, PROBE_FLOOR) < 0) {
+              if (!across) { p.x = prevX; crush(p); }
+            } else if (!overlap(x, y, hb, Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) riding[i] = false;
           } else {
-            const d = tileScan(t, Math.floor(p.x), Math.floor(p.y), p.layer, -8, PROBE_WALL);
-            if (d < 0) p.x -= d;
+            pushOut(o, hb, p, t);
+            const px = p.x, py = p.y;
+            const flags = platform(o, hb, p, t);
+            if (flags & (FROM_BELOW | LEFT_FACE | RIGHT_FACE)) {
+              beside[i] = true;
+              if (flags & RIGHT_FACE) {
+                // at a side of one that moves across, holding toward it on the ground moves him 2 px into it, and
+                // with his centre in a wall he is crushed; what's held is the pad (gInput), for either player
+                if (across) {
+                  if (ctx.input.left && !p.air) { p.x -= 2; p.pushing = true; }
+                  if (tileScan(t, Math.floor(p.x), Math.floor(p.y), p.layer, -8, PROBE_WALL) < 0) crush(p);
+                }
+              } else if (flags & LEFT_FACE) {
+                if (across) {
+                  if (ctx.input.right && !p.air) { p.x += 2; p.pushing = true; }
+                  if (tileScan(t, Math.floor(p.x), Math.floor(p.y), p.layer, 8, PROBE_WALL) < 0) crush(p);
+                }
+              } else if (!across) {
+                // under one that moves up and down, on the ground he is crushed, and in the air its spikes hurt
+                p.x = px;
+                if (!p.air) { p.y = py; crush(p); }
+                else if (!up) ctx.world.damage(p);
+              } else if (!up) ctx.world.damage(p);
+            } else if (beside[i] && p.state === 'push') {
+              // off its side, he stops pushing (character state 14) and walks, or rolls in the air
+              beside[i] = false;
+              p.gsp = 0;
+              endAttack(p); p.pushing = false;   // Player_TransitionCancelFlyingAndBoost
+              p.state = p.air ? 'spin' : 'walk';
+            }
           }
-          if (tileScan(t, Math.floor(p.y) - 5, Math.floor(p.x), p.layer, -8, PROBE_FLOOR) < 0) {
-            if (!across) { p.x = prevX; crush(p); }
-          } else if (!overlap(x, y, hb, Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) riding = false;
-        } else {
-          pushOut(o, hb, p, t);
-          const px = p.x, py = p.y;
-          const flags = platform(o, hb, p, t);
-          if (flags & (FROM_BELOW | LEFT_FACE | RIGHT_FACE)) {
-            beside = true;
-            if (flags & RIGHT_FACE) {
-              // at a side of one that moves across, holding toward it on the ground moves him 2 px into it, and
-              // with his centre in a wall he is crushed
-              if (across) {
-                if (ctx.input.left && !p.air) { p.x -= 2; p.pushing = true; }
-                if (tileScan(t, Math.floor(p.x), Math.floor(p.y), p.layer, -8, PROBE_WALL) < 0) crush(p);
-              }
-            } else if (flags & LEFT_FACE) {
-              if (across) {
-                if (ctx.input.right && !p.air) { p.x += 2; p.pushing = true; }
-                if (tileScan(t, Math.floor(p.x), Math.floor(p.y), p.layer, 8, PROBE_WALL) < 0) crush(p);
-              }
-            } else if (!across) {
-              // under one that moves up and down, on the ground he is crushed, and in the air its spikes hurt
-              p.x = px;
-              if (!p.air) { p.y = py; crush(p); }
-              else if (!up) ctx.world.damage();
-            } else if (!up) ctx.world.damage();
-          } else if (beside && p.state === 'push') {
-            // off its side, he stops pushing (character state 14) and walks, or rolls in the air
-            beside = false;
-            p.gsp = 0;
-            endAttack(p); p.pushing = false;   // Player_TransitionCancelFlyingAndBoost
-            p.state = p.air ? 'spin' : 'walk';
-          }
-        }
-        // above its origin and not rising, he lands on its top as if it were 8 px higher, then is put 8 px
-        // down onto it: onto its spikes, he is hurt, and otherwise it carries him
-        if (!p.dead && p.ysp >= 0 && y > Math.floor(p.y)) {
-          pushOut(o, hb, p, t);
-          o.y = y - 8;
-          const flags = platform(o, hb, p, t);
-          o.y = y;
-          if (flags & LANDED) {
-            if (up) ctx.world.damage();
-            else { riding = true; p.y += 8; }
+          // above its origin and not rising, he lands on its top as if it were 8 px higher, then is put 8 px
+          // down onto it: onto its spikes, he is hurt, and otherwise it carries him
+          if (!p.dead && p.ysp >= 0 && y > Math.floor(p.y)) {
+            pushOut(o, hb, p, t);
+            o.y = y - 8;
+            const flags = platform(o, hb, p, t);
+            o.y = y;
+            if (flags & LANDED) {
+              if (up) ctx.world.damage(p);
+              else { riding[i] = true; p.y += 8; }
+            }
           }
         }
       }
