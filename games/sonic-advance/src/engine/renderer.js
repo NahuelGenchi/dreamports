@@ -22,6 +22,7 @@ import { rasterizeStrips, objLayer as dsObjLayer, to6, out8 } from './dsdraw.js'
 import { boostAtlas } from './boostmode.js';
 import { BACKGROUND_SCROLL, BACKGROUND_DRAW } from './backgrounds.js';
 import { beamSpan } from './spotlights.js';
+import { windowRange, windowPieces } from './windows.js';
 import { BACKGROUND_TILES } from './demo.js';
 import { bgr555ToRgb, tintRgb, waterTint } from '../rom/colors.js';
 import { ICE_MOUNTAIN, iceMountainScroll } from './icemountain.js';
@@ -567,56 +568,10 @@ export function createRenderer(canvas, assets) {
 
   // Secret Base act 1's spotlights (spotlights.js): the brightness decrease by bldY sixteenths on every pixel
   // outside windows 0 and 1 but the backdrop's. Each window's lines and edges as mGBA 0.10.5 reads its
-  // registers (src/gba/renderers/video-software.c): a start past the screen's end and past its own end counts
-  // as 0, and a window whose end comes before its start wraps round the screen. Past the original screen, the
+  // registers (windows.js), and a window whose end comes before its start wraps round the screen. Past the original screen, the
   // widescreen view shows each beam's whole wedge, its sides carried on along their own lines (beamSpan); a
   // window no beam drew carries an edge at the original screen's left or right edge on to its own, and keeps the
   // lines above and below the original screen's to its first and last line's windows.
-  function windowRange(value, max) {
-    let start = value >> 8, end = value & 0xFF;
-    if (start > max && start > end) start = 0;
-    if (end > max) { end = max; if (start > max) start = max; }
-    return [start, end];
-  }
-  // Where mGBA draws a line in pieces for its windows (_breakWindow, _breakWindowInner, video-software.c): each piece's
-  // end, on the original screen's `line`, empty pieces and the way it trims those it overwrites included
-  function windowPieces(blend, line) {
-    const ends = [SCREEN_W];
-    let n = 1;
-    const inner = (start, end) => {
-      if (end <= 0) return;
-      let startX = 0;
-      for (let a = 0; a < n; a++) {
-        if (start < ends[a]) {
-          const old = ends[a];
-          if (start > startX) {
-            ends.splice(a, 0, ends[a]);
-            n++;
-            ends[a] = start;
-            a++;
-          }
-          ends[a] = end;
-          if (end >= old) {
-            for (a++; n > a + 1 && end >= ends[a]; a++) { ends[a] = ends[a + 1]; n--; }
-          } else {
-            a++;
-            ends.splice(a, 0, old);
-            n++;
-          }
-          return;
-        }
-        startX = ends[a];
-      }
-    };
-    for (const w of [1, 0]) {
-      const [top, bottom] = windowRange(blend.v[w], SCREEN_H);
-      if (bottom >= top ? line < top || line >= bottom : line >= bottom && line < top) continue;
-      const at = blend.base + line * 4 + w * 2;
-      const [left, right] = windowRange(blend.drawn ? blend.buf[at] | (blend.buf[at + 1] << 8) : blend.h[w], SCREEN_W);
-      if (right < left) { inner(0, right); inner(left, SCREEN_W); } else inner(left, right);
-    }
-    return ends.slice(0, n);
-  }
   // mGBA draws a sideways-flipped tile that a piece of a line starts partway into from the piece's end back, so a piece
   // that also ends before the tile does shows the tile's pixels from further along, by `shift` columns (the macro
   // DRAW_BACKGROUND_MODE_0_TILE_SUFFIX_16, software-mode0.c; the kit's notes/a-window-shifts-a-flipped-tile-it-cuts-short.md). These are the

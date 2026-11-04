@@ -582,6 +582,7 @@ Contributions to the game are accepted under its license, [GPL-3.0-or-later](LIC
 ## Thanks
 
 - The [SAT-R](https://github.com/SAT-R) decompilation of Sonic Advance, the reference for the game's data formats, physics and camera behavior. None of its code or data is copied into this repository.
+- [mGBA](https://mgba.io) by Jeffrey Pfau, whose way of drawing a line in pieces for the windows `src/engine/windows.js` follows, under the Mozilla Public License 2.0, with its notice at the top of that file.
 - [Monocraft](https://github.com/IdreesInc/Monocraft) by Idrees Hassan, the pixel font of the start screen. A subset of it is bundled with the Game Boy Advance kit under the SIL Open Font License 1.1 ([kit/gba/styles/fonts/Monocraft-OFL.txt](../../kit/gba/styles/fonts/Monocraft-OFL.txt)).
 - Palmaris, the author's RetroAchievements project for the Nintendo DSi, whose unlock popup's trophy and 5×7 pixel font the achievement popup uses.
 - [Pixelarticons](https://github.com/halfmage/pixelarticons) by Gerrit Halfmann, whose gamepad icon is the start screen's controller badge, bundled with the Game Boy Advance kit under the MIT License ([kit/gba/styles/icons/pixelarticons-LICENSE.txt](../../kit/gba/styles/icons/pixelarticons-LICENSE.txt)).
