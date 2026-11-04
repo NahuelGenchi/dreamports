@@ -9,7 +9,7 @@
 import { makeSprite, animate, offCam, offDisplay } from './objects.js';
 import { skatingStone, platformTop, overlap, LANDED, FROM_BELOW } from './collide.js';
 import { scan, probeTile, PROBE_FLOOR, PROBE_WALL } from './terrain.js';
-import { endAttack, climbing } from './player.js';
+import { endAttack, climbing, thrownState, AMY } from './player.js';
 import { setOffsetY } from './sensors.js';
 import { BALL_SPRITE_OFFSET_Y } from './constants.js';
 import { SINE } from './trig.js';
@@ -33,8 +33,8 @@ function throwOff(p, vx) {
   p.ysp = -3; p.xsp = vx / 256; p.gsp = vx / 256;
   cancel(p);
   p.onObject = null; p.air = true;
-  p.state = 'spin';
-  if (fixes.on) { p.curled = true; setOffsetY(p, BALL_SPRITE_OFFSET_Y); }
+  p.state = thrownState(p);
+  if (fixes.on && p.character !== AMY) { p.curled = true; setOffsetY(p, BALL_SPRITE_OFFSET_Y); }
 }
 
 /** The task for a skating stone entity, or null when `e` is not one. */
@@ -155,7 +155,7 @@ export function createSkatingStone(e, slot, anims, ctx) {
     }
     p.x += vx * 2 / 256;
     const ahead = (q8(p.x) + vx * 2) >> 8, py = Math.floor(p.y);
-    const knock = r => { cancel(p); p.onObject = null; p.air = true; p.state = 'spin'; riding = false; p.x += r; p.xsp = 0; };
+    const knock = r => { cancel(p); p.onObject = null; p.air = true; p.state = thrownState(p); riding = false; p.x += r; p.xsp = 0; };
     r = scan(t, ahead, py, p.layer, 8, PROBE_WALL).d;
     if (r < 0) knock(r);
     else {

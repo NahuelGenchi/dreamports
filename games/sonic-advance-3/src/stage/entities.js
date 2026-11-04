@@ -9,7 +9,7 @@ const ANIM_FACTORY_RING = 911, ANIM_OMOCHAO = 977, ANIM_ACT_RING = 983;
 const REGION = 256, TILE = 8, BREAKABLE_WALLS = 0xCF208, PUSH_OUT = 0x400;
 
 // RLUnCompWram, the BIOS's run-length decompression
-function unRle(rom, at) {
+export function unRle(rom, at) {
   const size = rom.u32(at) >>> 8, out = new Uint8Array(size);
   let src = at + 4, dest = 0;
   while (dest < size) {

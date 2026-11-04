@@ -13,7 +13,7 @@ import { makeSprite, startAnim, animate, offCam, offDisplay } from './objects.js
 import { platform, LANDED } from './collide.js';
 import { SINE } from './trig.js';
 import { SONG } from '../sound/songs.js';
-import { climbing } from './player.js';
+import { climbing, AMY } from './player.js';
 import { fixes } from './fixes.js';
 
 export const RUN_WHEEL = 86;
@@ -75,14 +75,16 @@ export function createRunWheel(e, slot, anims) {
       count = 0;
       if (p.air) {
         p.onObject = null;
-        p.xsp = Math.min(Math.max(Math.round(p.xsp * 256), -JUMP_MAX), JUMP_MAX) / 256;
+        // Amy's dive keeps its speed
+        if (!p.dive) p.xsp = Math.min(Math.max(Math.round(p.xsp * 256), -JUMP_MAX), JUMP_MAX) / 256;
       } else if (platform(o, o.boxes[0], p, world.terrain) & LANDED) {
         p.gsp = Math.min(Math.max(Math.round(p.gsp * 256), -ATTACK_MAX), ATTACK_MAX) / 256;
       }
     } else p.x = o.x - p.xsp;
     o.anim.speed = Math.abs(Math.trunc(speed / 28));
     const gsp = Math.round(p.gsp * 256);
-    speed = gsp - 16;
+    // Amy crouching on it (charState 2) stays as she is
+    speed = p.character === AMY && p.state === 'crouch' ? gsp : gsp - 16;
     if (speed > 0) speed *= 2;
     if (speed > MAX_SPEED) speed = MAX_SPEED;
     along += speed;

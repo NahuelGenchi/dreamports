@@ -6,6 +6,7 @@
 import { makeSprite, animate, offCam } from './objects.js';
 import { platform, breaks } from './collide.js';
 import { dustCloud } from './defeat.js';
+import { hammerHits } from './player.js';
 import { SONG } from '../sound/songs.js';
 
 export const DECORATION = 16;
@@ -18,7 +19,7 @@ export function createBoulder(e, slot, anims) {
   return {
     run(ctx) {
       const p = ctx.player, cam = ctx.cam;
-      if (breaks(o, o.boxes[0], p)) {
+      if (breaks(o, o.boxes[0], p) || hammerHits(p, e.x, e.y, o.boxes[0])) {
         if (p.boostBox) ctx.world.shake();
         ctx.add(dustCloud(e.x, e.y));
         if (p.onObject === o) { p.onObject = null; p.air = true; }

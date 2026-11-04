@@ -7,7 +7,7 @@
 
 import { TICK_MS, CAMERA, PHYSICS, ANIMATION, SCREEN_W, SCREEN_H, RUSH_BOOST, BOOST_MODE } from './constants.js';
 import { makeAnimator, setAnim, tickAnim, frameOf, spritePalette } from './animator.js';
-import { createPlayer, stepPlayer, animatePlayer, hurt, SONIC, TAILS, KNUCKLES } from './player.js';
+import { createPlayer, stepPlayer, animatePlayer, hurt, SONIC, TAILS, AMY, KNUCKLES } from './player.js';
 import { createRushFx, startRushFx, stepRushFx } from './rushfx.js';
 import { createBoostFx, recordSonic, stepAfterimages, startBurst, stepBursts, particleAnims } from './boostmode.js';
 import { TRICK_FX_PRIORITY, createTrail, recordTrail, spinEffect, boundTrail } from './trickfx.js';
@@ -21,6 +21,7 @@ import { attackTest, projectileTest, defeatEffects } from './defeat.js';
 import { createRings } from './rings.js';
 import { createScatter } from './scatter.js';
 import { createHud, updateHud } from './hud.js';
+import { createHearts } from './amyhearts.js';
 import { createTitleCard, runTitleCard } from './titlecard.js';
 import { createResults, runResults } from './results.js';
 import { createPaletteAnimation } from './palettes.js';
@@ -49,6 +50,7 @@ import { fixes, lifeMore } from './fixes.js';
 
 const MAX_BRAKE_DUST = 20;   // the original keeps a pool of 20 brake dust clouds
 const EFFECTS = 0x4001;      // the priority of Sonic's effects' tasks, as of the item boxes' (ITEM_TASKS)
+const HEARTS = 0x3001;       // the priority of Amy's hearts' task (CreateAmyAttackHeartEffect)
 const MAX_RING_SPARKLES = 8;   // with 8 sparkles showing, a ring is still counted but makes no sparkle or sound
 const START_LIVES = 3;
 const ITEM_TIME = 1200;   // invincibility and speed shoes last 20 seconds
@@ -549,6 +551,9 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     spawnUppercutFlame() { spawn('swipe', 'uppercutFlame', player.x, centreY(), player.facing > 0, player.inverted); },
     // and his splash floating on water, while he floats there (Player_Knuckles_InitGfx_FloatSplash)
     spawnFloatSplash() { spawn('splash', 'floatSplash', player.x, centreY(), player.facing > 0); },
+    // Amy's hearts (CreateAmyAttackHeartEffect): the pattern `kind` of her first swing, her second, the hammer in the
+    // air and swirled down (amyhearts.js), as long as her move lasts
+    spawnHearts(kind) { if (character === AMY) tasks.add(createHearts(assets.heartPatterns[kind], player, playerAnims, draw), HEARTS); },
     marbleTails() { if (character === TAILS) { player.marbleTails = makeAnimator(); setAnim(player.marbleTails, 'marbleTrackTails'); } },
   };
 
@@ -1104,13 +1109,15 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       if (art && art !== state.trickArt) playerAnims = { ...anims, ...art.anims };
       state.trickArt = art; state.tricks = on && !!art && character === SONIC; input.setTricks?.(state.tricks);
     },
-    // the act's music starts with the act, as the stage's init does (StageInit_ZoneNActM); a multiplayer game
-    // steps its GBAs together itself (`ownLoop` false)
+    // the act's music starts with the act, as the stage's init does (StageInit_ZoneNActM), a frame of it ahead of
+    // the sounds the act's first frame starts, as the init comes before SoundMain and that frame after it; the
+    // level pick's loading frame (madeBy) gives it that frame already. A multiplayer game steps its GBAs together
+    // itself (`ownLoop` false)
     start(ownLoop = true) {
       input.enabled = true; clock.reset();
       if (ownLoop) frame = requestAnimationFrame(loop);
       if (options.frameCount !== undefined) musicStarts = true;
-      else sound.playStageMusic(stage.music);
+      else sound.playStageMusic(stage.music, !options.levelPick);
     },
     stop() { input.enabled = false; input.release(); cancelAnimationFrame(frame); sound.stopAll(); },
   });
