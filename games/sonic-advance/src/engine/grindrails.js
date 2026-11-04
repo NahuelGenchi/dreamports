@@ -3,13 +3,14 @@
 // layer from the ground around them. Kind 19, at a rail's top end, puts Sonic on that layer when his centre
 // is in its box while he moves right and isn't rising; he then grinds down it (player.js). Kind 20, at its
 // bottom end, throws him off: up as high as a jump from its right half, or higher, at 7 px a frame, from its
-// left half while jump is held. Neither checks its box's d0 and d1. They are Sonic's: with another character
-// their tasks do nothing, and stay.
+// left half while jump is held. Neither checks its box's d0 and d1. They are Sonic's and Amy's, who has a sound of
+// her own: with Tails or Knuckles their tasks do nothing, and stay.
 
 import { makeSprite, animate, offCam } from './objects.js';
-import { endAttack, SONIC } from './player.js';
+import { endAttack, TAILS, KNUCKLES, AMY } from './player.js';
 import { PHYSICS as K } from './constants.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const GRIND_RAIL_START = 19, GRIND_RAIL_END = 20;
 const END = 0x900;           // the end's priority: before the camera, so it sees the last frame's
@@ -36,13 +37,13 @@ export function createGrindRail(e, slot) {
   if (e.kind === GRIND_RAIL_START) return {
     run(ctx) {
       const p = ctx.player;
-      if (p.character !== SONIC || p.dead) return true;
+      if (p.character === TAILS || p.character === KNUCKLES || p.dead) return true;
       if (inside(p) && !p.grinding && p.ysp >= 0 && p.xsp > 0) {
         p.xsp = Math.max(MIN_SPEED, p.xsp);
         p.grinding = true;
         p.layer ^= 1;
         p.front = true;
-        ctx.world.playSound(SONG.GRINDING);
+        ctx.world.playSound(p.character === AMY ? SONG.AMY_GRINDING : SONG.GRINDING);
         ctx.add(sparks(), SPARKS);
       }
       return !leaves(ctx);
@@ -54,12 +55,12 @@ export function createGrindRail(e, slot) {
     priority: END,
     run(ctx) {
       const p = ctx.player;
-      if (p.character !== SONIC || p.dead) return true;
+      if (p.character === TAILS || p.character === KNUCKLES || p.dead) return true;
       if (inside(p) && p.grinding) {
         const far = Math.floor(p.x) > e.x + (w >> 1);
         if (far || ctx.input.jump) {
           p.ysp = far ? -K.jumpSpeed : -EXTRA_JUMP;
-          ctx.world.stopSound(SONG.GRINDING);
+          ctx.world.stopSound(p.character === AMY ? SONG.AMY_GRINDING : SONG.GRINDING);
           ctx.world.playSound(SONG.JUMP);
           endAttack(p);
           // the somersault (charState 17) or the jump off the rail (20); he stays uncurled
@@ -69,6 +70,15 @@ export function createGrindRail(e, slot) {
           p.layer ^= 1;
           p.front = false;
         }
+      } else if (fixes.on && p.grinding && Math.floor(p.x) > e.x + (w >> 1) && Math.floor(p.x) <= e.x + w + 32 && Math.floor(p.y) >= e.y) {
+        // too fast for its box: off the rail all the same, back on the ground's layer
+        ctx.world.stopSound(p.character === AMY ? SONG.AMY_GRINDING : SONG.GRINDING);
+        endAttack(p);
+        p.state = 'spring';
+        p.air = true;
+        p.grinding = false;
+        p.layer ^= 1;
+        p.front = false;
       }
       return !leaves(ctx);
     },

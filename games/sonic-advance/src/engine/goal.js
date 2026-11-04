@@ -48,7 +48,10 @@ export function createGoal(e, slot, anims) {
   // Task_StageGoal2
   function end(ctx) {
     const p = ctx.player, cam = ctx.world.camera, rocket = ctx.world.level === EGG_ROCKET;
-    if (rocket) p.carried = true;
+    if (rocket) {
+      p.carried = true;
+      if (ctx.players[1]) ctx.world.stopSound(SONG.TAILS_FLYING);   // the CPU partner's propeller stays quiet
+    }
     else {
       p.ignoreInput = true; p.heldInput = HOLD_RIGHT;
       if (cam.shiftY > SHIFT_Y) cam.shiftY--;

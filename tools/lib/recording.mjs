@@ -91,6 +91,27 @@ export function expand(held = [], frames) {
   return out;
 }
 
+/**
+ * The buttons the original is given at every frame, with the stretches only it has in their places, for what a list of
+ * presses leads to. It's for real play, so it stops at values written to the original's memory.
+ */
+export function originalButtons({ frames, held, onlyInOriginal = [] }) {
+  const out = [], own = expand(held, frames);
+  let gap = 0;
+  const addStretches = frame => {
+    for (; gap < onlyInOriginal.length && onlyInOriginal[gap].at === frame; gap++) {
+      if (onlyInOriginal[gap].sets?.length) throw new Error('This list of presses writes values to the original\'s memory, and a game\'s card shows only real play.');
+      out.push(...expand(onlyInOriginal[gap].held, onlyInOriginal[gap].frames));
+    }
+  };
+  for (let frame = 0; frame < frames; frame++) {
+    addStretches(frame);
+    out.push(own[frame]);
+  }
+  addStretches(frames);
+  return out;
+}
+
 /** The list of changes for the buttons held at every frame. */
 export function compress(perFrame) {
   const held = [];

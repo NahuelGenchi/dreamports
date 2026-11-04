@@ -202,7 +202,7 @@ export function eggBall(e, slot, anims, ctx0) {
     ctx.world.playSound(SONG.EXPLOSION);
     boss.ball.blow();
     ctx.removeTasks(...THIN_PLATFORMS);
-    ctx.player.onObject = null;
+    for (const p of ctx.players) p.onObject = null;
     const cam = ctx.world.camera, { minY, maxY } = cam;
     cam.minX = cam.maxX = Math.floor(cam.x);
     ctx.add(preBossCameraPan(cam, minY + 40, maxY + SCREEN_H));
@@ -299,7 +299,7 @@ function pipe(i, x0, y0, boss) {
         ox -= Math.sign(ox); oy -= Math.sign(oy);
       }
       s.x = x0 + dx + ox; s.y = y0 + dy + oy;
-      if (!(6 & i)) platform(s, s.boxes[0], ctx.player, ctx.world.terrain);
+      if (!(6 & i)) for (const p of ctx.players) platform(s, s.boxes[0], p, ctx.world.terrain);
       animate(s, ctx.anims);
       ctx.draw(s, s.x, s.y);
       return true;

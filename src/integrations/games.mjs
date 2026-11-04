@@ -45,6 +45,8 @@ export default function games() {
           for (const name of names) await copy(join(folder, name), join(site, kind.address, name));
           logger.info(names.length ? `Copied to /${kind.address}/: ${names.join(', ')}` : `No ${kind.what}s in ${kind.folder}/`);
         }
+        // what every console's games read about their console (kit/consoles.js)
+        await copyFile(join(root, 'kit', 'consoles.js'), join(site, 'kit', 'consoles.js'));
 
         const { files } = await walk(site, true);
         const largest = files.reduce((most, file) => Math.max(most, file.size), 0);

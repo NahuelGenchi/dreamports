@@ -35,56 +35,60 @@ export function createSwingRope(e, slot) {
   if (e.kind !== SWING_ROPE) return null;
   const { x, y } = e;
   const left = x + s8(e.d[0]) * 8, right = left + e.d[2] * 8, top = y + s8(e.d[1]) * 8, bottom = top + e.d[3] * 8;
-  // his speed along it (1/256 px a frame), the frames of his swing, and the frames before it takes him again
-  let holding = false, speed = 0, turn = 0, wait = 0;
+  // for each player: whether it holds them, their speed along it (1/256 px a frame), the frames of their swing, and
+  // the frames before it takes them again
+  const riders = [0, 1].map(() => ({ holding: false, speed: 0, turn: 0, wait: 0 }));
 
   return {
     run(ctx) {
-      const p = ctx.player;
-      if (p.dead) {
-        if (holding) { p.carried = false; holding = false; }
-      } else if (holding) {
-        if (speed < SLOWEST) speed += GAIN;
-        if (speed > FASTEST) speed = FASTEST;
-        p.y = y + 1;
-        if (left <= Math.floor(p.x) && right >= Math.floor(p.x)) {
-          p.x += speed / 256;
-          if (p.held[0] & RIGHT) speed += PUSH;
-          else if ((p.held[0] & LEFT) && speed > SLOWEST) speed -= PUSH;
-          const d = wallLeft(ctx.world.terrain, Math.floor(p.x) - 8, Math.floor(p.y), p.layer);
-          if (d < 0) p.x -= d;
-        }
-        p.ysp = 0;
-        if (p.jumpPressed) {
-          cancel(p);
-          p.ignoreInput = false; p.carried = false; p.curled = true; p.air = true; p.airLock = false; p.jumped = false;
-          // it counts jump and attack as held, so a press of either on this frame isn't one
-          ctx.input.jumpPressed = false; ctx.input.attackPressed = false;
-          const held = p.held[0];
-          if (held & (UP | DOWN)) p.ysp = held & UP ? -THROW : THROW;
-          else p.ysp = Div(turn, TURN / 2) !== 0 ? THROW : -THROW;
-          p.state = 'spin';
-          curlUp(p);
-          p.y = y + 9;
-          p.gsp = 0; p.xsp = 0;
-          holding = false; turn = 0; wait = WAIT;
-          p.front = false; p.prio = 2;
-        }
-        turn = (turn + 1) % TURN;
-      } else if (wait > 0) wait--;
-      else {
-        const px = Math.floor(p.x), py = Math.floor(p.y);
-        if (left <= px && right >= px && top <= py && bottom >= py) {
-          speed = Math.max(0, Math.round(p.gsp * 256) >> 1);
-          cancel(p);
-          p.carried = true; p.air = false; p.jumped = false;
-          holding = true;
-          p.state = 'swingRope';
-          standUp(p);
-          turn = 0;
+      for (const [i, p] of ctx.players.entries()) {
+        const r = riders[i];
+        if (p.dead) {
+          if (r.holding) { p.carried = false; r.holding = false; }
+        } else if (r.holding) {
+          if (r.speed < SLOWEST) r.speed += GAIN;
+          if (r.speed > FASTEST) r.speed = FASTEST;
+          p.y = y + 1;
+          if (left <= Math.floor(p.x) && right >= Math.floor(p.x)) {
+            p.x += r.speed / 256;
+            if (p.held[0] & RIGHT) r.speed += PUSH;
+            else if ((p.held[0] & LEFT) && r.speed > SLOWEST) r.speed -= PUSH;
+            const d = wallLeft(ctx.world.terrain, Math.floor(p.x) - 8, Math.floor(p.y), p.layer);
+            if (d < 0) p.x -= d;
+          }
+          p.ysp = 0;
+          if (p.jumpPressed) {
+            cancel(p);
+            p.ignoreInput = false; p.carried = false; p.curled = true; p.air = true; p.airLock = false; p.jumped = false;
+            // it counts jump and attack as held, so a press of either on this frame isn't one
+            if (i === 0) { ctx.input.jumpPressed = false; ctx.input.attackPressed = false; }
+            else p.lastInput = { ...p.lastInput, jump: true, attack: true };
+            const held = p.held[0];
+            if (held & (UP | DOWN)) p.ysp = held & UP ? -THROW : THROW;
+            else p.ysp = Div(r.turn, TURN / 2) !== 0 ? THROW : -THROW;
+            p.state = 'spin';
+            curlUp(p);
+            p.y = y + 9;
+            p.gsp = 0; p.xsp = 0;
+            r.holding = false; r.turn = 0; r.wait = WAIT;
+            p.front = false; p.prio = 2;
+          }
+          r.turn = (r.turn + 1) % TURN;
+        } else if (r.wait > 0) r.wait--;
+        else {
+          const px = Math.floor(p.x), py = Math.floor(p.y);
+          if (left <= px && right >= px && top <= py && bottom >= py) {
+            r.speed = Math.max(0, Math.round(p.gsp * 256) >> 1);
+            cancel(p);
+            p.carried = true; p.air = false; p.jumped = false;
+            r.holding = true;
+            p.state = 'swingRope';
+            standUp(p);
+            r.turn = 0;
+          }
         }
       }
-      if (!holding && offCam(x, y, ctx.cam)) { slot.live = null; return false; }
+      if (!riders[0].holding && !riders[1].holding && offCam(x, y, ctx.cam)) { slot.live = null; return false; }
       return true;
     },
   };

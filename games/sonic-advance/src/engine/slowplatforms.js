@@ -33,23 +33,26 @@ function sinking(e, slot, anims) {
   let q = 0;   // how far it has sunk, in 1/256 px
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam, terrain = ctx.world.terrain, y = e.y + (q >> 8);
-      let on = false;
-      if (p.onObject === o) {
-        const room = tileFloor(terrain, e.x, y + 22, p.layer);
-        if (!touching(o, e.x, y - 4, p)) p.onObject = null;
-        else {
+      const cam = ctx.cam, terrain = ctx.world.terrain, y = e.y + (q >> 8);
+      let on = false;   // anyone on it
+      for (const p of ctx.players) {
+        if (p.onObject === o) {
+          const room = tileFloor(terrain, e.x, y + 22, p.layer);
+          if (!touching(o, e.x, y - 4, p)) p.onObject = null;
+          else {
+            on = true;
+            if (room >= 0) p.y += STEP / 256;
+            // out of the floor under his feet, and off it
+            const d = tileFloor(terrain, Math.floor(p.x), Math.floor(p.y) + 16, p.layer);
+            if (d < 0) { p.y += d; p.onObject = null; }
+          }
+        } else if (platformTop(o, e.x, y, o.boxes[0], p) & LANDED) {
+          if (!p.spinDashing) p.y -= 2;
           on = true;
-          if (room >= 0) p.y += STEP / 256;
-          // out of the floor under his feet, and off it
-          const d = tileFloor(terrain, Math.floor(p.x), Math.floor(p.y) + 16, p.layer);
-          if (d < 0) { p.y += d; p.onObject = null; }
         }
-      } else if (platformTop(o, e.x, y, o.boxes[0], p) & LANDED) {
-        if (!p.spinDashing) p.y -= 2;
-        on = true;
       }
-      if (on) { if (tileFloor(terrain, e.x, y + 22, p.layer) >= 0) q += STEP; }
+      // the terrain under it, on Sonic's layer
+      if (on) { if (tileFloor(terrain, e.x, y + 22, ctx.player.layer) >= 0) q += STEP; }
       else if (q !== 0) q -= STEP;
       const at = e.y + (q >> 8);
       if (offDisplay(e.x, e.y, cam) && offCam(e.x, at, cam)) { slot.live = null; return false; }
@@ -67,16 +70,18 @@ function rising(e, slot, anims) {
   let q = 0;   // how far it has risen, in 1/256 px
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam, y = e.y - (q >> 8);
-      let on = false, off = false;
-      if (p.onObject === o) {
-        on = true;
-        if (!touching(o, e.x, y - 4, p)) p.onObject = null;
-        else {
-          p.y -= STEP / 256;
-          if (q >> 8 > top) { p.onObject = null; p.dead = true; }
-        }
-      } else if (!(platformTop(o, e.x, y, o.boxes[0], p) & LANDED)) off = true;
+      const cam = ctx.cam, y = e.y - (q >> 8);
+      let on = false, off = false;   // anyone stood on it, and anyone not landing on it
+      for (const p of ctx.players) {
+        if (p.onObject === o) {
+          on = true;
+          if (!touching(o, e.x, y - 4, p)) p.onObject = null;
+          else {
+            p.y -= STEP / 256;
+            if (q >> 8 > top) { p.onObject = null; p.dead = true; }
+          }
+        } else if (!(platformTop(o, e.x, y, o.boxes[0], p) & LANDED)) off = true;
+      }
       if (on) q += STEP;
       else if (off && q !== 0) q -= STEP;
       if (offDisplay(e.x, e.y, cam) && offCam(e.x, y, cam)) { slot.live = null; return false; }

@@ -12,7 +12,7 @@
 
 import { makeSprite, animate, offCam, offDisplay } from './objects.js';
 import { platform, overlap, LANDED, FROM_BELOW, LEFT_FACE, RIGHT_FACE } from './collide.js';
-import { endAttack } from './player.js';
+import { endAttack, thrownState } from './player.js';
 import { scan, PROBE_FLOOR, PROBE_WALL } from './terrain.js';
 import { SINE } from './trig.js';
 
@@ -31,14 +31,18 @@ export function createSquarePlatform(e, slot, anims) {
   const long = (across ? d1 : d0) !== 0 && anims.squarePlatformLong ? 'squarePlatformLong' : 'squarePlatform';
   const o = { ...makeSprite(long), x: e.x, y: e.y };
   animate(o, anims);
-  let q = 0, riding = false, touched = false;   // its offset in 1/256 px; Sonic on it; Sonic against its side
+  let q = 0;   // its offset in 1/256 px
+  const riding = [false, false], touched = [false, false];   // for each player, on it and against its side
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam, terrain = ctx.world.terrain;
+      const cam = ctx.cam, terrain = ctx.world.terrain;
       const next = Math.imul(reach, SINE[(4 * ((ctx.world.tick + phase) & 0xFF)) & 0x3FF]) >> 14, moved = next - q;
       q = next;
       o.x = e.x + (across ? q >> 8 : 0); o.y = e.y + (across ? 0 : q >> 8);
-      if (!p.dead && !p.carried) collide(p, terrain, across ? moved : 0, across ? 0 : moved);
+      for (let i = 0; i < ctx.players.length; i++) {
+        const p = ctx.players[i];
+        if (!p.dead && !p.carried) collide(p, i, terrain, across ? moved : 0, across ? 0 : moved);
+      }
       if (offDisplay(e.x, e.y, cam) && offCam(o.x, o.y, cam)) { slot.live = null; return false; }
       animate(o, anims);
       ctx.draw(o, o.x, o.y);
@@ -46,10 +50,10 @@ export function createSquarePlatform(e, slot, anims) {
     },
   };
 
-  function collide(p, terrain, dx, dy) {
+  function collide(p, i, terrain, dx, dy) {
     const hb = o.boxes[0];
     let prevX = p.x, r = 0;
-    if (riding) {
+    if (riding[i]) {
       p.x += dx / 256; p.y += dy / 256 + 1;
       // out of a wall the way it carries him (standing still counts as to the left)
       const side = dx > 0 ? SOX + 2 : -(SOX + 2), step = dx > 0 ? 8 : -8;
@@ -58,13 +62,13 @@ export function createSquarePlatform(e, slot, anims) {
       if (d < 0) p.x += dx > 0 ? d : -d;
       if (ceiling(p, terrain) < 0) {
         if (!across) { p.x = prevX; crush(p); }
-      } else if (!overlap(o.x, o.y, hb, Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) riding = false;
+      } else if (!overlap(o.x, o.y, hb, Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) riding[i] = false;
     } else {
       const prevY = p.y;
       if (ceiling(p, terrain) < 0) side(p, terrain);
       else r = platform(o, hb, p, terrain);
       if (r & (FROM_BELOW | LEFT_FACE | RIGHT_FACE)) {
-        touched = true;
+        touched[i] = true;
         if (r & RIGHT_FACE) {
           if (across) {
             if (scan(terrain, Math.floor(p.x) + SOX, Math.floor(p.y), p.layer, 8, PROBE_WALL).d <= 0) crush(p);
@@ -85,11 +89,11 @@ export function createSquarePlatform(e, slot, anims) {
           }
         }
         // (a fourth case, for a flag only the multiplayer test sets, never runs here)
-      } else if (touched && p.state === 'push') {
-        touched = false;
+      } else if (touched[i] && p.state === 'push') {
+        touched[i] = false;
         p.gsp = 0;
         endAttack(p); p.pushing = false;
-        p.state = p.air ? 'spin' : 'walk';
+        p.state = p.air ? thrownState(p) : 'walk';
       }
     }
     // a second test while he is above its middle and not rising, which lands him on it
@@ -97,7 +101,7 @@ export function createSquarePlatform(e, slot, anims) {
       side(p, terrain);
       prevX = p.x;
       r = platform(o, hb, p, terrain);
-      if (r & LANDED) { riding = true; p.y += 1; }
+      if (r & LANDED) { riding[i] = true; p.y += 1; }
       else if (r & FROM_BELOW) p.x = prevX;
     }
   }

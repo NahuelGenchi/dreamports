@@ -4,15 +4,16 @@
 // starts, the water line it starts with, and the extra background layers its zone draws. `zone` counts from 0
 // (Neo Green Hill), as the original's ZONE_1 does. The level's index is the one the ROM's per-level tables use
 // (14 single-player levels, then the four multiplayer stages). `sprites` { name: [anim, variant] } are the
-// level's own looks for objects whose animation the ROM picks from a per-level table.
+// level's own looks for objects whose animation the ROM picks from a per-level table. `hudFlash` is what the HUD's
+// zero-ring counter finds in memory when the course select starts the level, measured against the original.
 
 import { EXTRA_SPRITES } from './extra.js';
 import { NORMAL_ENDING_SPRITES, CREDITS_SPRITES } from './credits.js';
 
 export const LEVELS = {
-  0: { name: 'Neo Green Hill Zone act 1', zone: 0, act: 0, paletteAnimations: [814, 815], music: 12 },
+  0: { name: 'Neo Green Hill Zone act 1', zone: 0, act: 0, paletteAnimations: [814, 815], music: 12, hudFlash: 90 },
   // StageInit_Zone1Act2: act 1's two and 820, which steps rows 13 and 12 every 2 frames ([animation, variant])
-  1: { name: 'Neo Green Hill Zone act 2', zone: 0, act: 1, paletteAnimations: [814, 815, [820, 1], [820, 0]], music: 13 },
+  1: { name: 'Neo Green Hill Zone act 2', zone: 0, act: 1, paletteAnimations: [814, 815, [820, 1], [820, 0]], music: 13, hudFlash: 90 },
   // StageInit_Zone2Act1 (0x0803DD45 in the USA ROM): palette animations 819, 845 and 849 and MUS_SECRET_BASE.
   // StageBgUpdate_Zone2Act1 scrolls the background (backgrounds.js); the spotlights are made after the init (acts.js).
   // Picked from the course select, the HUD's data holds 56 (at 0x03002794) when it is made. The zone's platforms
@@ -33,7 +34,7 @@ export const LEVELS = {
   // then MUS_CASINO_PARADISE__ACT_1. Its thin and falling platforms are zone 3's (sPlatformThinAnims), and its
   // wall poles are red flags lying on their side (SA1_ANIM_RED_FLAG_H, outside zone 1).
   4: {
-    name: 'Casino Paradise Zone act 1', zone: 2, act: 0, paletteAnimations: [816, 817, 818, 824, 825, 827, 827, 828, 843, 844, 826],
+    name: 'Casino Paradise Zone act 1', hudFlash: 20, zone: 2, act: 0, paletteAnimations: [816, 817, 818, 824, 825, 827, 827, 828, 843, 844, 826],
     music: 16, backgroundScroll: 'casinoParadise',
     sprites: { thinPlatform: [495, 0], wallPole: [470, 0], wallPoleSwing: [470, 1] },
   },
@@ -44,7 +45,7 @@ export const LEVELS = {
   // (gUnknown_086CEE2C, 0x086C8D48 in the USA ROM); its wall poles are red flags lying on their side
   // (SA1_ANIM_RED_FLAG_H, outside zone 1).
   5: {
-    name: 'Casino Paradise Zone act 2', zone: 2, act: 1, paletteAnimations: [816, 817, 818, 824, 825, 827, 827, 828, 843, 844, 826],
+    name: 'Casino Paradise Zone act 2', hudFlash: 52, zone: 2, act: 1, paletteAnimations: [816, 817, 818, 824, 825, 827, 827, 828, 843, 844, 826],
     music: 17, backgroundScroll: 'casinoParadise',
     sprites: { thinPlatform: [495, 0], ferrisSeat: [495, 0], wallPole: [470, 0], wallPoleSwing: [470, 1] },
   },
@@ -56,7 +57,7 @@ export const LEVELS = {
   // platform 527 (sPlatformCrumblingAnims), its bounce block 543 (sBounceBlockAnims) and its slides' splash 562
   // (gAnimSlideSplashes)
   6: {
-    name: 'Ice Mountain Zone act 1', zone: 3, act: 0, paletteAnimations: [822, 821], music: 18, water: { level: 1546, blend: 0x7F207F20 }, snow: 71,
+    name: 'Ice Mountain Zone act 1', hudFlash: 90, zone: 3, act: 0, paletteAnimations: [822, 821], music: 18, water: { level: 1546, blend: 0x7F207F20 }, snow: 71,
     sprites: {
       thinPlatform: [523, 0], sinkingPlatform: [528, 0], squarePlatform: [524, 0], ferrisSeat: [523, 0], breakableWall: [594, 0],
       movingSpring: [526, 1], movingSpringLaunch: [526, 0], hookRail: [569, 0],
@@ -65,7 +66,7 @@ export const LEVELS = {
   },
   // StageInit_Zone4Act2 (0x0803DE11): the same, with the water line at 1664 and act 2's song
   7: {
-    name: 'Ice Mountain Zone act 2', zone: 3, act: 1, paletteAnimations: [822, 821], music: 19, water: { level: 1664, blend: 0x7F207F20 }, snow: 71,
+    name: 'Ice Mountain Zone act 2', hudFlash: 90, zone: 3, act: 1, paletteAnimations: [822, 821], music: 19, water: { level: 1664, blend: 0x7F207F20 }, snow: 71,
     sprites: {
       thinPlatform: [523, 0], sinkingPlatform: [528, 0], squarePlatform: [524, 0], ferrisSeat: [523, 0], breakableWall: [594, 0],
       movingSpring: [526, 1], movingSpringLaunch: [526, 0], hookRail: [569, 0],
@@ -78,7 +79,7 @@ export const LEVELS = {
   // splash (gUnknown_086CED28), sinking platforms (gUnknown_086CEDC0), square platforms (CreateEntity_Platform_Square:
   // 536, or 537 when long) and breakable wall (595) are zone 5's own; its moving springs keep the default 540.
   8: {
-    name: 'Angel Island Zone act 1', zone: 4, act: 0, paletteAnimations: [823], music: 20, clouds: 72,
+    name: 'Angel Island Zone act 1', hudFlash: 90, zone: 4, act: 0, paletteAnimations: [823], music: 20, clouds: 72,
     sprites: {
       thinPlatform: [535, 0], bounceBlock: [543, 0], waterSplash: [552, 0], sinkingPlatform: [544, 0], squarePlatform: [536, 0],
       squarePlatformLong: [537, 0], breakableWall: [595, 0], ironBall: [541, 0], bowl: [546, 0],
@@ -91,17 +92,17 @@ export const LEVELS = {
   // StageInit_Zone5Act2 (0x0803DE75): the same, with act 2's song; its mud slides' splash (gAnimSlideSplashes) is
   // zone 5's own too. Its boss, Mecha Knuckles, is the act's enemy 26 (`boss` names its animations in extract.js).
   9: {
-    name: 'Angel Island Zone act 2', zone: 4, act: 1, paletteAnimations: [823], music: 21, clouds: 72,
+    name: 'Angel Island Zone act 2', hudFlash: 20, zone: 4, act: 1, paletteAnimations: [823], music: 21, clouds: 72,
     sprites: { thinPlatform: [535, 0], bounceBlock: [543, 0], waterSplash: [552, 0], slideSplash: [568, 0] },
     boss: 'mechaKnuckles',
   },
   // StageInit_Zone6Act1 (0x0803D9C5): 839 and 842 both step row 13 of the stage palette, 840 row 12 and 841 row
   // 10; the act's only, so its zone keeps act 1's index. Its background and its launch and stage separations
-  // are eggrocket.js's. Picked from the course select, the HUD's task data lands on memory holding 0 (hud.js). The breakable wall is 596 (gUnknown_080BB544); zone 6 act 1's square
+  // are eggrocket.js's. Picked from the course select, the HUD's task data lands on memory holding 4 (hud.js). The breakable wall is 596 (gUnknown_080BB544); zone 6 act 1's square
   // platforms are 518 and, long, 519, and zone 6's moving spring 582 (their CreateEntity_). Its thin platform (sPlatformThinAnims), crumbling platform (sPlatformCrumblingAnims) and
   // bounce block (sBounceBlockAnims) are its own, its ferris wheels' seats are its thin platform (gUnknown_086CEE2C), and so is its trampoline (505, CreateEntity_Trampoline)
   10: { name: 'Egg Rocket Zone', zone: 5, act: 0, paletteAnimations: [839, 840, 841, 842], music: 22,
-    backgroundScroll: 'eggRocket', hudFlash: 0,
+    backgroundScroll: 'eggRocket', hudFlash: 4,
     sprites: {
       thinPlatform: [517, 0], crumblingPlatform: [513, 0], bounceBlock: [507, 0], ferrisSeat: [517, 0], trampoline: [505, 0], trampolineBounce: [505, 1],
       breakableWall: [596, 0], squarePlatform: [518, 0], squarePlatformLong: [519, 0], movingSpring: [582, 1], movingSpringLaunch: [582, 0],

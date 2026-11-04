@@ -103,6 +103,29 @@ export function findSpinDashSpeeds(rom) {
   return null;
 }
 
+// how many hearts each of Amy's four patterns has (sHeartOffsets)
+const HEARTS_IN_PATTERN = [4, 4, 6, 8];
+
+/**
+ * Amy's hearts: four patterns of eight rows of three s16, [when, x, y], each `when` later than the one before, until
+ * a -1 that ends the pattern, with only zeros after it. Null when nothing looks like them.
+ */
+export function findHeartOffsets(rom) {
+  const fits = (at, hearts) => {
+    for (let row = 0; row < 8; row++) {
+      const r = at + row * 6, when = rom.s16(r);
+      if (row < hearts ? when < 0 || (row > 0 && when <= rom.s16(r - 6)) : when !== (row === hearts ? -1 : 0)) return false;
+      if (row > hearts && (rom.s16(r + 2) !== 0 || rom.s16(r + 4) !== 0)) return false;
+    }
+    return true;
+  };
+  const size = HEARTS_IN_PATTERN.length * 48;
+  for (let at = 0; at + size <= rom.size; at += 4) {
+    if (HEARTS_IN_PATTERN.every((hearts, i) => fits(at + i * 48, hearts))) return at;
+  }
+  return null;
+}
+
 /**
  * The Chao's places in the multiplayer stages (sChaoSpawnPositions): eight (x, y) pairs of s16 for each of the
  * four stages, each inside a stage of at most 2048 × 2048 px. A table of such pairs ends where they stop;
@@ -281,6 +304,8 @@ export function locateTables(rom, known) {
   const missing = Object.entries(offsets).filter(([, v]) => v === null).map(([k]) => k);
   // only the multiplayer stages need it
   offsets.chaoSpawns = findChaoSpawns(rom);
+  // only Amy needs it
+  offsets.heartOffsets = findHeartOffsets(rom);
   // only the language screen needs it, which the European ROM replaces with one for its six languages
   offsets.languageBackground = findLanguageBackground(rom);
   if (missing.length) {

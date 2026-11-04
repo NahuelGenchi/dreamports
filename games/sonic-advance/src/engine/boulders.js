@@ -3,6 +3,7 @@
 // breaks it: it leaves a dust cloud and four pieces that spin out and fall, and never comes back until the act
 // starts over.
 
+import { hammerHits } from './player.js';
 import { makeSprite, animate, offCam } from './objects.js';
 import { platform, breaks } from './collide.js';
 import { dustCloud } from './defeat.js';
@@ -17,17 +18,19 @@ export function createBoulder(e, slot, anims) {
   animate(o, anims);
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam;
-      if (breaks(o, o.boxes[0], p)) {
-        if (p.boostBox) ctx.world.shake();
+      const p = ctx.player, partner = ctx.players[1], cam = ctx.cam;
+      // Sonic is tried first, and only then the CPU partner
+      const bySonic = breaks(o, o.boxes[0], p) || hammerHits(p, e.x, e.y, o.boxes[0]);
+      if (bySonic || (partner && breaks(o, o.boxes[0], partner))) {
+        if (bySonic && p.boostBox) ctx.world.shake();
         ctx.add(dustCloud(e.x, e.y));
-        if (p.onObject === o) { p.onObject = null; p.air = true; }
+        for (const q of ctx.players) if (q.onObject === o) { q.onObject = null; q.air = true; }
         ctx.world.playSound(SONG.ITEM_BOX_BREAK);
         ctx.add(debris(e.x - cam.x, e.y - cam.y, cam.x, cam.y - 16, anims));
         slot.gone = true;
         return false;
       }
-      platform(o, o.boxes[0], p, ctx.world.terrain);
+      for (const q of ctx.players) platform(o, o.boxes[0], q, ctx.world.terrain);
       if (offCam(e.x, e.y, cam)) { slot.live = null; return false; }
       ctx.draw(o, e.x, e.y);
       return true;

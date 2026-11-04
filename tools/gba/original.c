@@ -3,7 +3,7 @@
 // sounds like and which of the game's functions ran in it. `npm run dp -- setup` builds it against mGBA's library
 // (build.mjs).
 //
-// original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS
+// original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS STATES
 //   ROM        the contributor's copy, only ever read
 //   FRAMES     how many frames to run
 //   BUTTONS    a file with the buttons held at each frame: 16 bits each, a bit per button as KEYINPUT has them
@@ -12,11 +12,14 @@
 //   SOUND      a file to write each frame's sound to, or -
 //   SETS       a file with values to write to the work RAM as each frame starts, in the order of their frames, or -: each
 //              its frame, its address, how many bytes and its value (32 bits each)
+//   STATES     a file with the frames whose state to write (32 bits each, in order), or -
 //
 // For each frame it writes to stdout: a hash of the picture (FNV-1a over each pixel's 15-bit colour, as the
 // console has it), the picture's one colour if every pixel has it or else 0xFFFFFFFF, the number of functions that
 // ran in the frame and their places in FUNCTIONS (32 bits each), then the picture itself if PICTURES names the
-// frame (240 x 160 pixels of 16 bits, the console's 15-bit colour).
+// frame (240 x 160 pixels of 16 bits, the console's 15-bit colour), then what the console held as it drew the frame if
+// STATES names it: the display registers (0x58 bytes), the colours (0x400), the sprites (0x400) and the video memory
+// (0x18000), as lib/state.mjs reads them.
 // For each frame it writes to SOUND how many samples of the console's sound the frame made, then each sample, left
 // and right (16 bits each): the mix of the four Game Boy channels and the two DirectSound FIFOs, as offsets around the
 // bias in the console's 10-bit units, 65536 a second (every 256 cycles), the rate the sound library sets as it
@@ -145,6 +148,14 @@ static void draw(uint32_t* hash, uint32_t* plain) {
 	}
 }
 
+// what the console holds as a frame ends, before its V-blank starts: what it has just drawn the frame from
+static void writeState(struct GBA* gba) {
+	fwrite(gba->memory.io, 1, 0x58, stdout);
+	fwrite(gba->video.palette, 1, 0x400, stdout);
+	fwrite(gba->video.oam.raw, 1, 0x400, stdout);
+	fwrite(gba->video.vram, 1, 0x18000, stdout);
+}
+
 static int playAlong(const char* path) {
 	struct mCore* core = openCopy(path);
 	hearSound(core);
@@ -174,17 +185,19 @@ static int playAlong(const char* path) {
 int main(int argc, char** argv) {
 	onWindows(&argv);
 	if (argc == 3 && !strcmp(argv[2], "live")) return playAlong(argv[1]);
-	if (argc != 8) {
-		fprintf(stderr, "Usage: original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS\n       original ROM live\n");
+	if (argc != 9) {
+		fprintf(stderr, "Usage: original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS STATES\n       original ROM live\n");
 		return 2;
 	}
 	long frames = atol(argv[2]);
-	size_t buttonsSize, functionsSize, picturesSize, setsSize;
+	size_t buttonsSize, functionsSize, picturesSize, setsSize, statesSize;
 	uint16_t* buttons = readAll(argv[3], &buttonsSize);
 	uint32_t* functions = readAll(argv[4], &functionsSize);
 	uint32_t* pictures = readAll(argv[5], &picturesSize);
 	uint32_t* sets = readAll(argv[7], &setsSize);
+	uint32_t* states = readAll(argv[8], &statesSize);
 	size_t functionCount = functionsSize / 8, pictureCount = picturesSize / 4, nextPicture = 0, setCount = setsSize / 16, nextSet = 0;
+	size_t stateCount = statesSize / 4, nextState = 0;
 
 	// where each function starts (its place + 1), which addresses are inside one, and code seen outside them all
 	for (size_t i = 0; i < REGIONS; i++) {
@@ -214,6 +227,7 @@ int main(int argc, char** argv) {
 	}
 	core->reset(core);
 	struct ARMCore* cpu = core->cpu;
+	struct GBA* gba = core->board;
 
 	for (long frame = 0; frame < frames; frame++) {
 		core->setKeys(core, (size_t) frame < buttonsSize / 2 ? buttons[frame] : 0);
@@ -221,13 +235,14 @@ int main(int argc, char** argv) {
 			setValue(core, sets[nextSet * 4 + 1], sets[nextSet * 4 + 2], sets[nextSet * 4 + 3]);
 		}
 		uint32_t count = 0;
-		uint32_t frameCounter = core->frameCounter(core);
-		// one instruction at a time, to see each function start
-		while (core->frameCounter(core) == frameCounter) {
+		int32_t frameCounter = gba->video.frameCounter;
+		// one instruction at a time, to see each function start. A run with none to see keeps to the same steps, as the
+		// emulator's own loop ends a frame an instruction sooner, and the game's frames then come out differently
+		while (gba->video.frameCounter == frameCounter) {
 			while (cpu->cycles >= cpu->nextEvent) cpu->irqh.processEvents(cpu);
-			uint32_t pc = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
-			struct region* region = regionOf(pc);
+			struct region* region = functionCount ? regionOf(cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM)) : NULL;
 			if (region) {
+				uint32_t pc = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
 				uint32_t slot = (pc - region->base) / 2, function = region->first[slot];
 				if (function && lastRan[function - 1] != frame) {
 					lastRan[function - 1] = frame;
@@ -238,7 +253,7 @@ int main(int argc, char** argv) {
 					region->seen++;
 				}
 			}
-			core->step(core);
+			ARMRun(cpu);
 		}
 		uint32_t hash, plain;
 		draw(&hash, &plain);
@@ -248,6 +263,8 @@ int main(int argc, char** argv) {
 		fwrite(ran, 4, count, stdout);
 		while (nextPicture < pictureCount && pictures[nextPicture] < (uint32_t) frame) nextPicture++;
 		if (nextPicture < pictureCount && pictures[nextPicture] == (uint32_t) frame) fwrite(picture, 2, WIDTH * HEIGHT, stdout);
+		while (nextState < stateCount && states[nextState] < (uint32_t) frame) nextState++;
+		if (nextState < stateCount && states[nextState] == (uint32_t) frame) writeState(core->board);
 		if (soundFile) {
 			uint32_t samples = sound.count / 2;
 			fwrite(&samples, 4, 1, soundFile);

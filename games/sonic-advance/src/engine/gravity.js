@@ -30,7 +30,9 @@ export function createToggleGravity(e, slot, ctx) {
         const from = across ? e.x + s8(e.d[0]) * 8 : e.y + s8(e.d[1]) * 8, to = from + (across ? e.d[2] : e.d[3]) * 8;
         const at = Math.floor(across ? p.x : p.y);
         if (from <= at && to >= at && ((last > line && now < line) || (last < line && now > line))) {
+          // the flag is the game's, so the CPU partner turns over with him
           p.inverted = what === turn ? !p.inverted : what !== normal;
+          for (const q of ctx.players) q.inverted = p.inverted;
         }
         last = now;
       }

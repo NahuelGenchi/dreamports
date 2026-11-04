@@ -7,8 +7,8 @@
 // menu (options.js), which comes back to the main menu with the title screen's layers drawn again and a fade in.
 //
 // What isn't built yet goes nowhere. The original starts a demo after 900 frames on the title screen; here the
-// title screen stays as it is. A on VS, Time Attack or Tiny Chao Garden does nothing, and Game Start goes to the
-// act, where the character select would start.
+// title screen stays as it is. A on VS, Time Attack or Tiny Chao Garden does nothing. Game Start opens the character
+// select (charselect.js), or with the address's start point for the course select goes where it leads.
 //
 // The logo, "PRESS START" and the menu's items are in the save's language, Japanese or English; the copyright line
 // is the international release's in both.
@@ -19,6 +19,7 @@ import { FLAGS, KEY } from '../gba/engine.js';
 import { SONG } from '../sound/songs.js';
 import { createFade, fadeStep } from './ui.js';
 import { createOptionsMenu } from './options.js';
+import { createCharacterSelect } from './charselect.js';
 
 // by the save's language (0 Japanese, 1 English): the logo's tilemap, and "PRESS START"'s and the items' animation
 const TM_TITLE_LOGO = [73, 74], TM_TITLE_BG = 75;
@@ -43,8 +44,8 @@ const placeLogo = (e, scale) => transformBackground(e.bgAffine[0], 0, scale, sca
 
 /**
  * CreateTitleScreen. `ctx` has the engine (engine.js), the ROM's tilemap table (`tilemaps`), the sprite tables
- * (`sprites`, rom/sprites.js), the save (`save`, for its language) and `play()`, called where the character
- * select would start. With `playMusic`, the title's music starts.
+ * (`sprites`, rom/sprites.js), the save (`save`, for its language) and the rest the character select takes. With
+ * `playMusic`, the title's music starts.
  */
 export function createTitleScreen(ctx, playMusic) {
   const e = ctx.engine, vram = e.video.vram, lang = ctx.save.uiLanguage;
@@ -256,8 +257,7 @@ function fadeOut(t) {
 }
 
 // Task_800DEE4: the items' tiles freed and the music stopped (a song started on its player, the player cleared
-// and the song stopped), then the character select, which isn't built, so the act; or the windows and the blend
-// off, and the Options menu
+// and the song stopped), then the character select; or the windows and the blend off, and the Options menu
 function leaveMenu(t) {
   const menu = t.data, { ctx } = menu, e = ctx.engine, item = menu.selectedItem;
   for (const s of menu.items) e.vramFree(s.graphics.dest);
@@ -265,7 +265,8 @@ function leaveMenu(t) {
   e.playSong(SONG.BOSS_FIGHT);
   e.stopSong(SONG.BOSS_FIGHT);
   if (item === GAME_START) {
-    ctx.play();
+    if (ctx.select) createCharacterSelect(ctx, ctx.character);
+    else ctx.startGame();
     return;
   }
   e.dispCnt &= ~0x6000;
