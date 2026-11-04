@@ -6,7 +6,7 @@
 // and vblanks= gives how many V-blanks the console has counted by then, which the view turns with during the choice.
 
 import { fightVblank, hideSpriteBuffer, newScreen, queueRegister } from './core.js';
-import { read8, read16, write8, write16, write32 } from './bus.js';
+import { clock, read8, read16, write8, write16, write32 } from './bus.js';
 import { fn08016684, fn080175d4, fn080176e4, fn08017c5c, fn08017d58, fn08017ed0, fn08017f58, fn08017f6c, fn080182ac, fn080182e4, fn08018300, fn08018318 } from './sprites.js';
 import { fn08000a2c, fn08000cf4, fn0800186c, fn08006ff4, fn08007e24, fn08007e9c, fn0800fd8c, fn08015f6c, fn08017964, fn0801ce70, fn0801e9ec, fn0801f024 } from './fighters.js';
 import { fn08012b98, fn08013214, fn08015498, fn0801584c } from './hud.js';
@@ -135,6 +135,8 @@ function choosing(c) {
 
 /** 0x0801a898 past its wait for the V-blank: the view moves, and the picture is built for the next V-blank to show. */
 function choosingAfterWait(c) {
+  clock.cycles = 0;
+  clock.counting = true;
   fn08018318(c, 0, 0);
   fn080176e4(c, ((c.vblanks & 0xFFFF) << 19) >> 16);
   fn080182e4(c, 0x100);

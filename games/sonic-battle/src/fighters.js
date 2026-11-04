@@ -5,7 +5,7 @@
 // Everything is in work RAM at the original's addresses (bus.js). The cartridge's tables stay there, read by address.
 
 import { queueCopy } from './core.js';
-import { read8, read16, reads8, reads16, read32, write8, write16, write32, copy16, s16, u16 } from './bus.js';
+import { clock, read8, read16, reads8, reads16, read32, write8, write16, write32, copy16, s16, u16 } from './bus.js';
 import { fn08017f00, fn0801816c, fn08018204, fn08018390 } from './sprites.js';
 import { arcTan2 } from './arctan.js';
 
@@ -380,6 +380,7 @@ export function stepAnimation(c, set, id, loops, tiles, player) {
     if (read16(c, ANIM_CURSOR + two) > 254) return 255;
   }
   if ((word() & 0xFFFF) !== reads16(c, ANIM_COUNT + two)) return counted();
+  clock.cycles += 430;   // this step of the script over a frame with none, with its picture asked for
   write16(c, ANIM_CURSOR + two, read16(c, ANIM_CURSOR + two) + 1);
   if (word() >>> 16 === MARKER) return counted();
   for (;;) {

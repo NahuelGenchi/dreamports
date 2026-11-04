@@ -112,12 +112,13 @@ export function step(c, held) {
 
 /** After line `line` is drawn: what a callback's long job has finished by then, which the lines below it show. */
 export function hblank(c, line) {
-  if (c.lineWork?.line === line) finishLineWork(c);
+  while (c.lineWork && c.lineWork.line <= line) finishLineWork(c);
 }
 
 function finishLineWork(c) {
-  c.lineWork?.run(c);
+  const work = c.lineWork;
   c.lineWork = null;
+  work?.run(c);
 }
 
 // 0x08020198: the keys held now, those just pressed and just released, and those repeating while held

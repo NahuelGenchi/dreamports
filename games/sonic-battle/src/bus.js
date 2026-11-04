@@ -76,4 +76,14 @@ export const u16 = v => v & 0xFFFF;
 export const s8 = v => (v << 24) >> 24;
 export const s16 = v => (v << 16) >> 16;
 /** The BIOS's division (DivArm, 0x0804a5a0): the numerator over the denominator, rounded toward zero, as a 32-bit number. */
-export const divArm = (denominator, numerator) => Math.trunc(numerator / denominator) | 0;
+export function divArm(denominator, numerator) {
+  clock.cycles += 76 + 13 * Math.max(1, Math.clz32(denominator) - Math.clz32(numerator));
+  return Math.trunc(numerator / denominator) | 0;
+}
+
+/**
+ * How many of the console's cycles the part of a frame being counted has taken, as mGBA counts its instructions with
+ * WAITCNT at 0x4014: arena.js says what it's for. A division is the BIOS's, by way of mGBA's swi: what the swi itself
+ * takes, and 13 for each bit the quotient can have.
+ */
+export const clock = { cycles: 0, counting: false };

@@ -385,31 +385,56 @@ export function createM4A(rom, layout, io) {
     T.flags &= 0xF0;
   }
 
+  // how many of the console's cycles this frame's SoundMain takes, as mGBA counts its instructions (WAITCNT 0x4014)
+  let cycles = 0;
+  const mulWait = rs => {
+    rs >>>= 0;
+    if (!(rs & 0xFFFFFF00) || (rs & 0xFFFFFF00) >>> 0 === 0xFFFFFF00) return 1;
+    if (!(rs & 0xFFFF0000) || (rs & 0xFFFF0000) >>> 0 === 0xFFFF0000) return 2;
+    if (!(rs & 0xFF000000) || (rs & 0xFF000000) >>> 0 === 0xFF000000) return 3;
+    return 4;
+  };
+
   // ---- the sequencer ----
 
   function tickTrack(P, T) {
+    cycles += 26 + (T.chan ? 0 : 6) + 8 + (T.flags & TRACK_START ? 180 : 6) + 6;
     for (let C = T.chan; C; C = C.next) {
+      cycles += 14;
       if (C.status & ON) {
-        if (C.gateTime && --C.gateTime === 0) C.status |= STOP;
-      } else clearChain(C);
+        cycles += 6;
+        if (C.gateTime) {
+          cycles += 6;
+          if (--C.gateTime === 0) { C.status |= STOP; cycles += 8; } else cycles += 6;
+        } else cycles += 6;
+      } else { clearChain(C); cycles += 48; }
+      if (C.next) cycles += 6;
     }
     if (T.flags & TRACK_START) clearTrack(T);
     while (T.wait === 0) {
       const b = r8(T.cmdPtr);
       let cmd = b;
-      if (b < 0x80) cmd = T.runningStatus;
-      else { T.cmdPtr++; if (b >= 0xBD) T.runningStatus = b; }
-      if (cmd >= 0xCF) plynote(cmd - 0xCF, P, T);
+      cycles += 21;
+      if (b < 0x80) { cmd = T.runningStatus; cycles += 10; }
+      else { T.cmdPtr++; cycles += 18; if (b >= 0xBD) T.runningStatus = b; }
+      if (cmd >= 0xCF) { cycles += 688; plynote(cmd - 0xCF, P, T); }
       else if (cmd >= 0xB1) {
         P.cmd = cmd - 0xB1;
+        cycles += 94;
         COMMANDS[cmd - 0xB1](P, T);
         if (T.flags === 0) return;
-      } else T.wait = CLOCK[cmd - 0x80];
+      } else { cycles += 40; T.wait = CLOCK[cmd - 0x80]; }
+      cycles += 6;
     }
     T.wait--;
+    cycles += 12;
     // the vibrato/tremolo LFO: a triangle, stepped on ticks only
+    if (!T.lfoSpeed) cycles += 6;
+    else if (!T.modDepth) cycles += 12;
     if (T.lfoSpeed && T.modDepth) {
-      if (T.lfoDelayCounter) { T.lfoDelayCounter--; return; }
+      cycles += 12;
+      if (T.lfoDelayCounter) { T.lfoDelayCounter--; cycles += 14; return; }
+      cycles += 50;
       const sum = T.lfoSpeedCounter + T.lfoSpeed;
       T.lfoSpeedCounter = u8(sum);
       // the falling half uses the sum before it wraps, as the original does
@@ -442,32 +467,47 @@ export function createM4A(rom, layout, io) {
   }
 
   function playerMain(P) {
-    if (P.status & PAUSE) return;
+    if (P.status & PAUSE) { cycles += 96; return; }
+    cycles += 142;
     fadeOutBody(P);
     if (P.status & PAUSE) return;
     let t = P.tempoC + P.tempoI;
     for (;;) {
       P.tempoC = t & 0xFFFF;
+      cycles += 12;
       if (t < 150) break;
+      cycles += 16;
       let mask = 0;
-      P.tracks.forEach((T, i) => { if (T.flags & EXIST) { mask |= 1 << i; tickTrack(P, T); } });
+      P.tracks.forEach((T, i) => {
+        if (T.flags & EXIST) { mask |= 1 << i; tickTrack(P, T); cycles += 4; } else cycles += 16;
+        cycles += i < P.tracks.length - 1 ? 18 : 10;
+      });
+      cycles += 18;
       P.clock = (P.clock + 1) >>> 0;
       if (!mask) { P.status = PAUSE; return; }
       P.status = mask;
       t = P.tempoC - 150;
     }
+    cycles += 31;
     for (const T of P.tracks) {
-      if (!(T.flags & EXIST) || !(T.flags & 0x0F)) continue;
+      cycles += 26;
+      if (!(T.flags & EXIST)) { cycles += 6; continue; }
+      if (!(T.flags & 0x0F)) { cycles += 12; continue; }
+      cycles += 18 + 22 + 100;
       trkVolPitSet(T);
       for (let C = T.chan; C; C = C.next) {
-        if (!(C.status & ON)) { clearChain(C); continue; }
+        cycles += 12 + (C.next ? 6 : 0);
+        if (!(C.status & ON)) { clearChain(C); cycles += 50; continue; }
         const cgb = C.type & 7;
+        cycles += 36;
         if (T.flags & VOLCHG) {
           chnVolSet(C, T);
+          cycles += 58;
           if (cgb) C.cgbStatus |= MO_VOL;
-        }
+        } else cycles += 6;
         if (T.flags & PITCHG) {
           const key = Math.max(0, C.key + T.keyShiftCalc);
+          cycles += 270;   // with 0x08048f0c's two calls of umul3232H32, in ARM from the cartridge
           if (cgb) { C.freq = midiKeyToCgbFreq(cgb, key, T.pitchCalc); C.cgbStatus |= MO_PIT; }
           else C.freq = midiKeyToFreq(C.wav, key, T.pitchCalc);
         }
@@ -620,32 +660,40 @@ export function createM4A(rom, layout, io) {
     let st = C.status, env;
     const wav = C.wav - ROM_BASE;
     if (st & START) {
-      if (st & STOP) { C.status = 0; return false; }
+      if (st & STOP) { C.status = 0; cycles += 24; return false; }
       st = 3; C.current = C.wav + 16; C.count = u32(wav + 12); env = 0; C.fw = 0;
-      if (rom[wav + 3] & 0xC0) st |= LOOP;
+      cycles += 41;
+      if (rom[wav + 3] & 0xC0) { st |= LOOP; cycles += 7; } else cycles += 3;
       C.status = st;
       env += C.attack;
-      if (env >= 255) { env = 255; C.status = --st; }
+      cycles += 8;
+      if (env >= 255) { env = 255; C.status = --st; cycles += 2; }
     } else {
       env = C.envVol;
       let echo = false;
+      cycles += 8;
       if (st & IEC) {
         const old = C.echoLen;
         C.echoLen = u8(old - 1);
-        if (old <= 1) { C.status = 0; return false; }
+        cycles += 9;
+        if (old <= 1) { C.status = 0; cycles += 8; return false; }
+        cycles += 2;
       } else if (st & STOP) {
         env = (env * C.release) >> 8;
+        cycles += 18;
         if (env <= C.echoVol) echo = true;
       } else if ((st & ENV) === 2) {
         env = (env * C.decay) >> 8;
+        cycles += 22;
         if (env <= C.sustain) {
           env = C.sustain;
           if (env === 0) echo = true; else C.status = --st;
         }
       } else if ((st & ENV) === 3) {
         env += C.attack;
-        if (env >= 255) { env = 255; C.status = --st; }
-      }
+        cycles += 15;
+        if (env >= 255) { env = 255; C.status = --st; cycles += 2; }
+      } else cycles += 14;
       if (echo) {
         env = C.echoVol;
         if (env === 0) { C.status = 0; return false; }
@@ -663,11 +711,14 @@ export function createM4A(rom, layout, io) {
     const pcm = info.pcm, wav = C.wav - ROM_BASE, data = wav + 16;
     const size = u32(wav + 12), loopStart = u32(wav + 8);
     const loopLen = C.status & LOOP ? size - loopStart : 0;
+    // 0x048528 to the sample loop, with the volumes worked out
+    cycles += 62 + (loopLen ? 24 : 3);
     // with the music muted, its notes still play out, unheard
     const quiet = muted.music && C.music, vr = quiet ? 0 : C.envR, vl = quiet ? 0 : C.envL;
     let cur = C.current - C.wav - 16, count = C.count;
     if (C.type & 0x08) {
       // fixed rate: one sample in per sample out
+      cycles += 1 + 18 * SAMPLES + 12 * (SAMPLES >> 2);
       for (let i = 0; i < SAMPLES; i++) {
         const s = s8(rom[data + cur++]);
         pcm[base + i] += (s * vr) >> 8;
@@ -683,6 +734,7 @@ export function createM4A(rom, layout, io) {
     // resampled with linear interpolation; the step is a 23-bit fraction, and the sample after the last one is
     // read from the byte that follows the data
     const step = Math.imul(DIV_FREQ, C.freq) >>> 0;
+    cycles += 3 + 4 + 6 + 3 + mulWait(C.freq) + 13 + 20 * SAMPLES + 12 * (SAMPLES >> 2) + 18;
     let fw = C.fw, s0 = s8(rom[data + cur]), d = s8(rom[data + cur + 1]) - s0;
     for (let i = 0; i < SAMPLES; i++) {
       const s = s0 + (Math.imul(fw, d) >> 23);
@@ -691,6 +743,7 @@ export function createM4A(rom, layout, io) {
       fw = (fw + step) >>> 0;
       const n = fw >>> 23;
       if (n === 0) continue;
+      cycles += n === 1 ? 15 : 20;   // with a read or two of the sample from the cartridge
       fw = (fw & ~0x3F800000) >>> 0;
       count -= n;
       if (count <= 0) {
@@ -721,7 +774,11 @@ export function createM4A(rom, layout, io) {
       pcm.fill(0, base, base + SAMPLES);
       pcm.fill(0, HALF + base, HALF + base + SAMPLES);
     }
-    for (const C of chans) if ((C.status & ON) && envelope(C)) mixChannel(C, base);
+    for (const C of chans) {
+      cycles += C.status & ON ? 29 : 30;
+      if ((C.status & ON) && envelope(C)) mixChannel(C, base);
+    }
+    info.frameCycles = cycles;
     return base;
   }
 
@@ -757,11 +814,15 @@ export function createM4A(rom, layout, io) {
     /** the samples mixed per side each frame */
     samples: SAMPLES,
 
+    /** How many of the console's cycles the last frame's SoundMain took, which a game's frame can run late by. */
+    get frameCycles() { return info.frameCycles; },
+
     /** One GBA frame: the V-blank's DMA bookkeeping, then SoundMain. Returns the offset of the samples just
      *  mixed into info.pcm (right side; the left side is HALF bytes later). */
     frame() {
       const dc = u8(info.dmaCounter - 1);
       info.dmaCounter = s8(dc) > 0 ? dc : FRAMES_PER_DMA;
+      cycles = 0;
       for (const P of players) playerMain(P);
       cgbSound();
       return mix();

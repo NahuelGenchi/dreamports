@@ -5,7 +5,7 @@
 // stays in the cartridge: this file only says where they are.
 
 import { clearLayer, layerBits, layerCharBase, layerScreenBase } from './core.js';
-import { read8, read16, reads16, write8, write16, copy16, divArm } from './bus.js';
+import { clock, read8, read16, reads16, write8, write16, copy16, divArm } from './bus.js';
 import { fn0801816c, fn08018204, fn08017f00, fn08017f34 } from './sprites.js';
 
 const ARENA = 0x03002CB4;                      // which arena this is
@@ -365,6 +365,7 @@ function drawWalls(c) {
   const sprite = { x: 0, y: 0, height: 0, depth: 0, tile: 0, byte10: 0, matrix: 0, colours: 0, shape: 0, byte14: 0, flip: 8 };
   for (let i = 0; i < read8(c, POINT_COUNT); i = (i + 2) & 0xFF) {
     const x = SCREEN_POINTS + i * 2, y = SCREEN_POINTS + (i + 1) * 2;
+    clock.cycles += 395;   // this point's turn of the loop, with 0x0801816c and 0x08018204
     fn0801816c(c, x, y, reads16(c, POINTS + i * 2), reads16(c, POINTS + (i + 1) * 2));
     fn08018204(c, x, y, reads16(c, x), reads16(c, y));
   }
@@ -377,10 +378,16 @@ function drawWalls(c) {
     const y = middleY - (((height << 16) >> 17) + 32);
     sprite.x = middleX - 32;
     sprite.y = y & 0xFFFF;
-    if ((((middleX + 32) << 16) >>> 0) > 0x01300000) continue;
+    clock.cycles += 35 + 135;
+    if ((((middleX + 32) << 16) >>> 0) > 0x01300000) { clock.cycles += 8; continue; }
+    clock.cycles += 6 + 21;
     const top = (y << 16) >> 16;
-    if (top > read8(c, SCREEN_BOTTOM) || top < read8(c, SCREEN_TOP) - 64) continue;
-    if (reads16(c, screenX(a)) >= reads16(c, screenX(b))) continue;
+    if (top > read8(c, SCREEN_BOTTOM)) { clock.cycles += 8; continue; }
+    clock.cycles += 6 + 19;
+    if (top < read8(c, SCREEN_TOP) - 64) { clock.cycles += 8; continue; }
+    clock.cycles += 6 + 24;
+    if (reads16(c, screenX(a)) >= reads16(c, screenX(b))) { clock.cycles += 8; continue; }
+    clock.cycles += 6 + 118 + 455;   // with 0x08017f00 and its CpuFastSet, and 0x08017f34
     sprite.shape = 0;
     sprite.depth = (y + height) & 0xFFFF;
     sprite.matrix = read8(c, MATRIX_COUNT);
@@ -392,6 +399,7 @@ function drawWalls(c) {
     let down = (read16(c, screenX(b + 1)) - read16(c, screenX(a + 1))) & 0xFFFF;
     const wide = (difference << 16) >> 16;
     // a short wall takes a smaller sprite, its picture further on
+    clock.cycles += wide <= 15 ? 62 : wide <= 31 ? 64 : 36;
     if (wide <= 15) {
       sprite.x = middleX - 8;
       across = (wide << 2) & 0xFFFF;
@@ -423,6 +431,41 @@ function colourRun(c, to, at, table, from, count, step = 1) {
 /** * The second half of 0x08011C7C, which goes on in 0x080120C8, 0x080122DC and 0x08012468: this arena's moving colours,
  * a step each frame.
  */
+// When a frame of the choice ends, the moving colours are its last writes before the next V-blank's work, and they land
+// while the display runs. Its work starts as the V-blank's ends, and with nothing to interrupt it the writes land before
+// the picture's first line. If that work takes past WORK_BEFORE_LINE_ONE cycles, the interrupt at line 1 (0x080185cc)
+// comes first, and SoundMain (0x0801f600) takes the console's cycles until it ends, so the writes land that many cycles
+// later, and the lines drawn by then keep the old colours. The two constants are what's the same in every frame, as
+// measured against the original: all the other cycles come from what the frame did and what the sound engine played.
+// Only Emerald Beach's colours land this way so far, the one arena measured, and only in the choice's frames (fight.js).
+const WORK_BEFORE_LINE_ONE = 81796, LINE_CYCLES = 1232, LINE_ONE_CONSTANT = -2100;
+// from the first CpuSet's writes to the second's, as the BIOS's CpuSet of 16 colours and the call between them take
+const COLOURS_APART = 300;
+
+/** The colours from each `[from, to]` of `writes`, at once, or on the line the frame's work reaches them if it's late. */
+function landColours(c, writes) {
+  const counted = clock.counting, sound = c.sound?.frameCycles?.();
+  clock.counting = false;
+  const late = clock.cycles - WORK_BEFORE_LINE_ONE;
+  if (!counted || sound == null || late < 0) {
+    for (const [from, to] of writes) copy16(c, from, to, 16);
+    return;
+  }
+  const land = i => {
+    if (i === writes.length) return;
+    const [from, to] = writes[i];
+    const line = Math.floor((late + sound + LINE_ONE_CONSTANT + i * COLOURS_APART) / LINE_CYCLES);
+    const write = () => {
+      copy16(c, from, to, 16);
+      c.video.updateColors();
+      land(i + 1);
+    };
+    if (c.lineWork || line > 158) write();
+    else c.lineWork = { line, run: write };
+  };
+  land(0);
+}
+
 function moveColours(c) {
   if (read8(c, COLOURS_MOVE) === 0) return;
   const arena = read8(c, ARENA);
@@ -438,8 +481,7 @@ function moveColours(c) {
       for (let i = 0; i < 12; i++) {
         write16(c, COLOURS_B + (12 - i) * 2, read16(c, 0x08071102 + ((frame >> 2) + i) * 2));
       }
-      copy16(c, COLOURS_A, PALETTE_1A0, 16);
-      copy16(c, COLOURS_B, PALETTE_1C0, 16);
+      landColours(c, [[COLOURS_A, PALETTE_1A0], [COLOURS_B, PALETTE_1C0]]);
       break;
     case 1:
       colourRun(c, COLOURS_A, 0, 0x0807104A, frame >> 1, 12);

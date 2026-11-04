@@ -7,7 +7,7 @@
 // too. Every picture and colour is read from the cartridge by its address as the original reads it.
 
 import { decompress, queueCopy } from './core.js';
-import { read8, read16, read32, reads16, write8, write16, copy16, copy32 } from './bus.js';
+import { clock, read8, read16, read32, reads16, write8, write16, copy16, copy32 } from './bus.js';
 import { fn08015924 } from './fighters.js';
 
 // gUnknown_030030d0: the HUD's state
@@ -79,6 +79,7 @@ function ease(c, at, goal, shift) {
  * entry, which the next sprite writes over and nothing reads.
  */
 export function queueHudSprite(c, x, y, third, tile, palette, sixth, shape, eighth, ninth) {
+  clock.cycles += 327;   // 0x08018004 with its CpuFastSet, and what its callers set up for it
   const count = read8(c, SPRITE_COUNT);
   const at = SPRITE_QUEUE + count * 16;
   write16(c, at, x);
