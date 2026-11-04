@@ -132,6 +132,10 @@ export function createSound({ worklet = new URL('./worklet.js', import.meta.url)
      *  such as the data an extra's sounds need; one of the same `type` takes the place of the last. */
     keep(message) { kept.set(message.type, message); node?.port.postMessage(message); },
 
+    /** While a proof tool plays the game, how many of the console's cycles the last frame's SoundMain took; or else
+     *  null, as the audio thread keeps it to itself. */
+    frameCycles() { return node?.processor?.synths[0]?.engine.frameCycles ?? null; },
+
     get muted() { return muted; },
     set muted(value) { muted = value; post({ type: 'gain', value: muted ? 0 : GAIN }); },
     /** Stops the sound where it is while the game is held (its settings are open), and goes on with it after */

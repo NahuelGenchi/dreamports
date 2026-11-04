@@ -7,7 +7,7 @@
 // The rows' names and the caption are drawn into VRAM's tiles, a row in each of six slots (0x080211d8), over a copy of
 // the blank row the sprites' tiles hold, so a row that scrolls off gives its slot to the next.
 
-import { KEY, colours, copyTileBlock, decompress, fadeToBlack, fadeToWhite, fadeToward, hideSpriteBuffer, queueRegister } from './core.js';
+import { KEY, colours, copyTileBlock, decompress, fadeToBlack, fadeToWhite, fadeToward, hideSpriteBuffer, queueRegister, unpackCycles } from './core.js';
 import { displayOn as menuDisplayOn, fadeSongOut, LANGUAGE, addNode, draw, drawOnly, frame, menu, place, removeNode, startFrame, takeMatrix, writeRegisters } from './menu.js';
 
 const CARTRIDGE = 0x08000000, PALETTE = 0x05000000, VRAM = 0x06000000;
@@ -164,9 +164,26 @@ function showPictureTiles(c, entry) {
 function showPictureColours(c, entry) {
   decompress(c, c.rom.u32(PICTURE_PALETTES - CARTRIDGE + (isOpen(c, entry) ? entry : LOCKED) * 4), PICTURE_COLOURS);
 }
+
+// Unpacking a long picture on a move takes past the interrupt at line 1 (0x08018654), so SoundMain takes the console's
+// cycles first, and the colours land that much later: the lines drawn by then keep the old ones, which shows when the
+// frame's long enough to reach the picture, at line 49. LANDING_CONSTANT is what's the same in every such frame, as
+// measured against the original: the other cycles come from what the pictures hold and what the sound engine played.
+const LANDING_CONSTANT = -95336, LINE_CYCLES = 1232, WORK_BEFORE_LINE_ONE = 80000;
+// the line past which what's left of the frame, with a new row's letters, passes the next V-blank before its scroll
+const SCROLL_LATE_LINE = 51;
+
+/** The entry's picture on a move, and the line its colours land on, or -1 when they land at once: when the frame's
+ *  work ends before line 1, and in a player's browser, which keeps the sound's cycles on its audio thread. */
 function showPicture(c, entry) {
+  const table = at => c.rom.u32(at - CARTRIDGE + (isOpen(c, entry) ? entry : LOCKED) * 4);
+  const sound = c.sound?.frameCycles?.();
+  const work = unpackCycles(c, table(PICTURES)) + unpackCycles(c, table(PICTURE_PALETTES));
+  const line = sound == null || work < WORK_BEFORE_LINE_ONE ? -1 : Math.floor((work + sound + LANDING_CONSTANT) / LINE_CYCLES);
   showPictureTiles(c, entry);
-  showPictureColours(c, entry);
+  if (line < 0) { showPictureColours(c, entry); return -1; }
+  c.lineWork = { line, run: () => { showPictureColours(c, entry); c.video.updateColors(); } };
+  return line;
 }
 
 /** 0x0803268c: the caption under the picture, which an entry that isn't open doesn't have. */
@@ -237,10 +254,11 @@ function moveUp(c, node) {
 
 /** Down: the choice moves down the list, and the list with it, the once it can, when it passes the second row. */
 function moveDown(c, node) {
+  let line = -1;
   if (node.selected + 1 > ENTRIES - 1) node.selected = ENTRIES - 1;
   else {
     node.selected++;
-    showPicture(c, node.selected);
+    line = showPicture(c, node.selected);
     showCaption(c, node.selected);
     c.sound?.play(SOUND_MOVE);
   }
@@ -253,9 +271,11 @@ function moveDown(c, node) {
     node.rows = [node.rows[1], node.rows[2], node.rows[3], addRow(c, ROW_BELOW, node.top + 3)];
     // the third entry's picture is the longest to unpack, and with a row's letters the frame's sprites run past the
     // next V-blank, as mGBA measures it, so they take the frame after it and show a frame late. With more of the
-    // sound playing, its colours and the frame's scroll run later still in the original, which isn't here
-    // (notes/a-pictures-colours-can-land-while-the-screen-is-drawn.md)
-    if (node.selected === OWN_ENTRY && isOpen(c, OWN_ENTRY)) c.menu.spritesLate = true;
+    // sound playing, its colours and the frame's scroll run later still (showPicture)
+    if (node.selected === OWN_ENTRY && isOpen(c, OWN_ENTRY)) {
+      c.menu.spritesLate = true;
+      if (line >= SCROLL_LATE_LINE) c.holdQueue = true;
+    }
   }
   node.arrowDown.run = arrowSlideDown;
   node.arrowDown.position.state = 0;
