@@ -12,7 +12,7 @@
     },
     {
       "name": "A character jumping",
-      "what": "Sonic jumping, falling and landing, rolling, and meeting walls and ceilings, with Tails after him.",
+      "what": "Sonic jumping, falling and landing, rolling, crouching, looking up and the spin dash, meeting walls and breaking the overworld's wall, with Tails after him and flying.",
       "needs": ["A character running"]
     },
     {
@@ -31,6 +31,11 @@
       "needs": ["A character jumping", "An act's opening"]
     },
     {
+      "name": "A character meeting a ceiling",
+      "what": "Sonic jumping into a ceiling and falling back, or running along it, somewhere a spring or a button's spring can take him.",
+      "needs": ["Springs"]
+    },
+    {
       "name": "Being hit",
       "what": "Route 99 act 1's first enemies moving and hitting Sonic, his rings scattering and his blinking after it, and beating one with a jump.",
       "needs": ["A character jumping", "Rings"]
@@ -38,7 +43,7 @@
     {
       "name": "The platforming",
       "what": "A character running and jumping through a whole stretch of an act, with every piece it needs together. Everything played in a zone builds on it.",
-      "needs": ["Springs", "Being hit"]
+      "needs": ["Springs", "A character meeting a ceiling", "Being hit"]
     },
     {
       "name": "The team partner",
