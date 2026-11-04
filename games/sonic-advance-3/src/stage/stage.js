@@ -7,7 +7,7 @@ import { createPlayer, initializePlayer, SONIC, TAILS } from './player.js';
 import { useCollision } from './collision.js';
 import { updateCamera, cameraMemory } from './camera.js';
 import { createEntities } from './entities.js';
-import { createRings } from './rings.js';
+import { createRings, createLooseRings } from './rings.js';
 import { createTitleCard } from './title-card.js';
 
 // gStageCameraBgTemplates, in the order the camera keeps them (0x0804F73C), and how each level's layers are numbered
@@ -248,7 +248,9 @@ function buildStage(c, level) {
   stage.allocTiles = heap.alloc;
   stage.freeTiles = heap.free;
   c.stage = stage;
+  // 0x080026BC: these are made before the stage's first frame runs
   createStageUi(stage, SONIC, TAILS);
+  createLooseRings(stage);
   // 0x08002618 and Task_StageMusicManager: the overworld's song, as the task's first frame starts it
   if (stage.act === HUB) {
     c.createTask(t => {
