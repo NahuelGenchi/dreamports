@@ -70,7 +70,7 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the language screen, then Route 99's overworld, as what comes between them isn't ported yet, and act 1's
+// The game so far: the language screen and the name entry, then Route 99's overworld, as what comes between them isn't ported yet, and act 1's
 // opening, which only a start point reaches so far.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
@@ -82,6 +82,13 @@ function createGame(video, rom, sound) {
   core.seed = Number(params.get('seed')) | 0;
   core.main = level === null ? languageScreen : c => startStage(c, Number(level));
   if (Number(level) >= FIRST_ACT) core.startUp = WHITE_BEFORE_AN_ACT;
+  // &screen=name-entry opens on the language screen's first frame, so that a recording's first press there opens the name
+  // entry, which recordings use as their start point
+  if (params.get('screen') === 'name-entry') {
+    core.startUp = 1;
+    core.step(0);
+    core.runSound();
+  }
   if (params.has('x')) {
     const jump = Number(params.get('jump'));
     for (let i = 0; i < FRAMES_BEFORE_A_PLACE; i++) {
