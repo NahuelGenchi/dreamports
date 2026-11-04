@@ -74,6 +74,14 @@ Write the presses and values that take the original to the part's first frame as
 
 It's still all compared: every frame of the part, against the original, the same as any other. A part proven this way counts towards gameplay proven, and `prove`, `find`, the game's page and its progress map mark it as proven from a start point, as it could still differ once the game's real path reaches it. Once that path exists, a recording with no `start` or `sets` proves it again from power-on, and the mark goes.
 
+**A start point only skips the way there.** What it plays has to be what a player could see at that place, and a match can't tell you that: the original does the same as the Dreamport when it's given the same values, so every frame can be the same in a recording nobody could ever play. Sonic Advance 2's first spring recordings left Sonic in the air as a stage opened, so its countdown ran while he fell and bounced, with its crouch on him in mid-air, its machine and its numbers following him, and on one spring the crouch covered his whole flight. So:
+
+- The character starts where a player could have them: on the ground, unless the game's opening has gone and they're in the middle of something a player could be doing, such as a jump. To find the ground, try a height and see where they land.
+- The game's own opening ends before they meet what the recording proves. That's anything that holds the buttons or sets an animation, such as a countdown or a title card.
+- Look at it the way a player would, with `--stills` every second or so, before you call it done.
+
+The tools hold a game to this where it can say so. In a frame no player could ever see, a game's code writes why to `dreamportsProof.neverInPlay`, as Sonic Advance 2's countdown does for a character a start point has left in the air. `prove` names those frames and fails, however they compare, it keeps them in `progress.json`, and `npm run check` and the build stop until the recording is played again without them, so a pull request with one can't pass its checks. Only a game's own code knows what its opening does, so a game whose opening holds its character adds this line itself ([the kit's README](../kit/gba/README.md#for-the-proof-tools) shows how). Keep it to what a start point can cause, as a real start must never be flagged.
+
 A recording's start point is only words and numbers, so it goes in a commit and anyone can replay it. Save states stay out of this: they hold the game's memory, so they can't go in a commit, and nobody else could replay them.
 
 ## A game's capture
@@ -100,7 +108,7 @@ Of video memory it prints only where it differs and how each stretch of a map st
 
 Its results go in `.dreamports/results/<game>/<recording>/`:
 
-- `report.json`: everything it found, with what it heard under `sound`: whether the Dreamport made any, the stretches whose sound differs, and the first of them.
+- `report.json`: everything it found, with what it heard under `sound`: whether the Dreamport made any, the stretches whose sound differs, and the first of them, and under `neverInPlay` any frames no player could ever see, as [Start points](#start-points) says.
 - `first-difference.png`: the first frame that differs, as the original, the Dreamport, and the original in grey with every pixel that differs in magenta. When it's only the frame's sound that differs, the pictures are the same.
 - `first-picture-difference.png`: the same, for the first frame whose picture differs, when a frame before it differs only by its sound.
 - `first-new-difference.png`: the same, for the first frame that differs where it matched last time.
