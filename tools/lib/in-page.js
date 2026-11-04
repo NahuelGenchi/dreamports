@@ -5,10 +5,14 @@
 // browser encodes as H.264. The results stay on the contributor's computer.
 (() => {
   const WIDTH = 240, HEIGHT = 160, RING = 400;
+  // what the console holds, as lib/state.mjs reads it, kept for the last frames: enough for the two batches a frame
+  // whose picture differs can be found in
+  const IO_BYTES = 0x58, STATE_BYTES = 0x58 + 0x400 + 0x400 + 0x18000, STATE_RING = 256;
   const SCALE = 2, BAR = 20;
   const FRAME_US = 1e6 * 280896 / 16777216;   // a Game Boy Advance frame, in microseconds
   // the last pictures, and those kept for the results
   const ring = new Map(), kept = new Map(), originals = new Map();
+  const stateRing = new Map(), keptStates = new Map();
   // the frames whose sound differs, which the stills and the clip mark
   const soundDiffers = new Set();
   const filter = __makeFilter();
@@ -24,6 +28,20 @@
       hash = Math.imul(hash ^ colour, 0x01000193);
     }
     return [picture, hash >>> 0];
+  }
+
+  // what the video hardware that drew a frame holds after it, if the kit's did, reusing the buffer of a frame gone from the ring
+  function holdState(frame) {
+    const video = dreamportsProof.video, old = frame - STATE_RING;
+    const state = stateRing.get(old) ?? (video ? new Uint8Array(STATE_BYTES) : null);
+    stateRing.delete(old);
+    if (!video) return;
+    const bytes = array => new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
+    state.set(bytes(video.io).subarray(0, IO_BYTES), 0);
+    state.set(bytes(video.pal), IO_BYTES);
+    state.set(bytes(video.oam), IO_BYTES + 0x400);
+    state.set(video.vram, IO_BYTES + 0x800);
+    stateRing.set(frame, state);
   }
 
   const toBase64 = bytes => {
@@ -104,6 +122,7 @@
       const hashes = [], sound = [];
       for (let i = 0; i < held.length; i++) {
         const frame = from + i;
+        dreamportsProof.video = null;   // a game can draw some screens with a renderer of its own
         const image = await dreamportsProof.step({ held: held[i] });
         if (!image) throw new Error('The game handed over no picture.');
         if (image.width !== WIDTH || image.height !== HEIGHT) {
@@ -113,6 +132,7 @@
         hashes.push(hash);
         ring.set(frame, picture);
         ring.delete(frame - RING);
+        holdState(frame);
         // a game with no sound, or a kit from before the tools heard it, is silent
         const samples = dreamportsProof.heard ?? null, energies = new Float64Array(16);
         if (samples) { filter(samples, energies); heard = true; }
@@ -131,6 +151,17 @@
     keep(frames) {
       for (const frame of frames) if (ring.has(frame)) kept.set(frame, ring.get(frame));
       return frames.filter(frame => kept.has(frame));
+    },
+
+    /** Keeps what the console held at these frames, from the last few played. */
+    keepStates(frames) {
+      for (const frame of frames) if (stateRing.has(frame)) keptStates.set(frame, stateRing.get(frame).slice());
+    },
+
+    /** What the console held at a frame kept, in base64, or null. */
+    state(frame) {
+      const state = keptStates.get(frame);
+      return state ? toBase64(state) : null;
     },
 
     /** The original's picture of a frame, 15-bit colour in base64. */
