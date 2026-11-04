@@ -70,7 +70,7 @@ createRomSetup(picker, {
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
   // ?level=<n> opens a stage straight away, which recordings use as their start point, and &x=<n>&y=<n> puts the character
-  // somewhere in it the frame before that, as those recordings' values do in the original
+  // somewhere in it the frame before that, as &rings=<n> gives it rings, as those recordings' values do in the original
   const search = new URLSearchParams(location.search), level = search.get('level');
   let started = null;
   core.main = level === null ? languageScreen : c => { started = startStage(c, Number(level)); };
@@ -79,6 +79,7 @@ function createGame(video, rom, sound) {
   if (level !== null) {
     core.startUp = 1;
     for (let i = 0; i < FRAMES_BEFORE_THE_RECORDING; i++) {
+      if (i === FRAMES_BEFORE_THE_RECORDING - 1 && search.has('rings')) started.rings = Number(search.get('rings'));
       if (i === FRAMES_BEFORE_THE_RECORDING - 1 && search.has('x')) placePlayer(started, Number(search.get('x')), Number(search.get('y')));
       core.step(0);
       core.runSound();
