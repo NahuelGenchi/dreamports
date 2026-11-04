@@ -252,7 +252,9 @@ function moveDown(c, node) {
     node.rows[3].position.player = 2;
     node.rows = [node.rows[1], node.rows[2], node.rows[3], addRow(c, ROW_BELOW, node.top + 3)];
     // the third entry's picture is the longest to unpack, and with a row's letters the frame's sprites run past the
-    // next V-blank, as mGBA measures it, so they take the frame after it and show a frame late
+    // next V-blank, as mGBA measures it, so they take the frame after it and show a frame late. With more of the
+    // sound playing, its colours and the frame's scroll run later still in the original, which isn't here
+    // (notes/a-pictures-colours-can-land-while-the-screen-is-drawn.md)
     if (node.selected === OWN_ENTRY && isOpen(c, OWN_ENTRY)) c.menu.spritesLate = true;
   }
   node.arrowDown.run = arrowSlideDown;
