@@ -173,11 +173,11 @@ const LANDING_CONSTANT = -95336, LINE_CYCLES = 1232, WORK_BEFORE_LINE_ONE = 8000
 // the line past which what's left of the frame, with a new row's letters, passes the next V-blank before its scroll
 const SCROLL_LATE_LINE = 51;
 
-/** The entry's picture on a move, and the line its colours land on, or -1 when they land at once: when the frame's
- *  work ends before line 1, and in a player's browser, which keeps the sound's cycles on its audio thread. */
+/** The entry's picture on a move, and the line its colours land on, or -1 when they land at once, as the frame's work
+ *  ends before line 1. */
 function showPicture(c, entry) {
   const table = at => c.rom.u32(at - CARTRIDGE + (isOpen(c, entry) ? entry : LOCKED) * 4);
-  const sound = c.sound?.frameCycles?.();
+  const sound = c.sound?.frameCycles();
   const work = unpackCycles(c, table(PICTURES)) + unpackCycles(c, table(PICTURE_PALETTES));
   const line = sound == null || work < WORK_BEFORE_LINE_ONE ? -1 : Math.floor((work + sound + LANDING_CONSTANT) / LINE_CYCLES);
   showPictureTiles(c, entry);
