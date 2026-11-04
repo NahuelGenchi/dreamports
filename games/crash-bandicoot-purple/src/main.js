@@ -37,6 +37,7 @@ const sound = createSound({
   calls: call => ({
     startSong(address, ahead = 0) { call('startSong', address, ahead); },
     stopSong() { call('stopSong'); },
+    setMusicVolume(volume) { call('setMusicVolume', volume); },
     playEffect(address) { call('playEffect', address); },
   }),
 });
@@ -67,8 +68,8 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the copyright screen, the logos, the title screen and then, as what comes between isn't ported yet,
-// Crash on foot in the first world's hub.
+// The game so far: the copyright screen, the logos, the title screen and then, as what comes between isn't ported yet, the
+// story's opening scene and Crash on foot in the first world's hub.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
   return { step(keys) { step(core, keys); }, hblank(y) { hblank(core, y); } };
