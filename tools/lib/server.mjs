@@ -17,16 +17,17 @@ const TYPES = {
 
 /**
  * Starts the server on a free port of 127.0.0.1: { url, close() }. A tool that talks to its page gives `answer`, which
- * sees each request first, as (request, response, path), and resolves to true if it answered.
+ * sees each request first, as (request, response, path), and resolves to true if it answered. `over` is a folder laid
+ * out like the repository, whose files go first (built.mjs).
  */
-export async function serveRepository({ answer } = {}) {
+export async function serveRepository({ answer, over } = {}) {
   const server = createServer(async (request, response) => {
     const path = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
     if (await answer?.(request, response, path)) return;
     // nothing outside the repository, and none of its hidden folders, such as .git or .dreamports
     const parts = normalize(path).split(/[\\/]/).filter(Boolean);
     if (parts.some(p => p.startsWith('.'))) return notFound(response);
-    for (const root of [REPO, join(REPO, 'public')]) {
+    for (const root of [...(over ? [over] : []), REPO, join(REPO, 'public')]) {
       let file = join(root, ...parts);
       if (!file.startsWith(root.endsWith(sep) ? root : root + sep) && file !== root) continue;
       try {

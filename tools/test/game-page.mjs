@@ -2,15 +2,17 @@
 // stand-in controller, so a change that breaks what every new Dreamport starts with is seen before it reaches anyone:
 // the start screen and its way back to the launcher, the game's frames, keys, a controller, the settings and the
 // touch screen. It tries the page `npm run dp -- new` writes, in a folder of its own that it removes after, and every game in
-// games/ that is still only that. It needs nothing from any game and no account, so it runs on any pull request.
+// games/ that is still only that, with its scripts bundled as players get them (lib/built.mjs). Then it opens every game's
+// bundled pages as far as they go with no copy. It needs nothing from any game and no account, so it runs on any pull request.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { LOCAL, REPO, gameFolder } from '../lib/paths.mjs';
 import { serveRepository } from '../lib/server.mjs';
+import { buildGame } from '../lib/built.mjs';
 import { openChrome, go, until } from '../lib/chrome.mjs';
 import { openDreamport } from '../lib/dreamport.mjs';
-import { startingFiles } from '../lib/new-game.mjs';
+import { startingEntry, startingFiles } from '../lib/new-game.mjs';
 import { madeUpGame } from './made-up-game.mjs';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -150,24 +152,56 @@ async function tryGame(page, server, game, rom) {
   page.errors.length = 0;
 }
 
+// a game's bundled pages, as far as they go with no copy, which is all there is to see of a real game on a pull request:
+// its start screen, its asset viewer's question, and its audio thread starting, from its bundles and none of the plain files
+async function openBundles(page, game) {
+  console.log(`games/${game}/, with no copy`);
+  const server = await serveRepository({ over: await buildGame(game) });
+  try {
+    await go(page, `${server.url}/games/${game}/`);
+    await until(page, `document.querySelector('.setup')?.dataset.restored === 'true'`, 'the start screen', 15000);
+    check(true, 'its start screen opens');
+    const plain = `performance.getEntriesByType('resource').filter(e => /\\/kit\\/.*[.]js$/.test(e.name)).length`;
+    check(await page.evaluate(plain) === 0, 'from its bundle, with none of the kit\'s plain scripts');
+    check(await page.evaluate(`new AudioContext().audioWorklet.addModule('src/worklet.js').then(() => true, () => false)`), 'and its audio thread starts');
+    if (existsSync(join(REPO, 'games', game, 'viewer.html'))) {
+      await go(page, `${server.url}/games/${game}/viewer.html`);
+      await until(page, `!!document.querySelector('#assets input[type=file]')`, 'the asset viewer', 15000);
+      check(await page.evaluate(plain) === 0, 'its asset viewer opens, from its bundle');
+    }
+    check(!page.errors.length, `the page reported no errors${page.errors.length ? `: ${page.errors.join(' | ')}` : ''}`);
+    page.errors.length = 0;
+  } finally {
+    await server.close();
+  }
+}
+
 const TEST = 'made-up-game';
 const folder = gameFolder(TEST);
 const temporary = join(LOCAL, 'tmp', 'test-game');
 mkdirSync(temporary, { recursive: true });
 if (existsSync(folder)) throw new Error(`games/${TEST}/ is already there, and this test makes and removes a folder of that name.`);
-const server = await serveRepository();
 let page;
+// plays a game with its scripts bundled, as players get them
+const tryBuilt = async (game, rom) => {
+  const server = await serveRepository({ over: await buildGame(game) });
+  try {
+    await tryGame(page, server, game, rom);
+  } finally {
+    await server.close();
+  }
+};
 try {
   const { rom, sha1 } = madeUpGame();
   const original = { console: 'gba', name: 'Made Up Game (USA)', title: 'MADE UP GAME', code: 'MADE', sha1 };
-  for (const [file, text] of Object.entries(startingFiles(TEST, original))) {
+  for (const [file, text] of Object.entries({ ...startingFiles(TEST, original), 'entry.md': startingEntry(TEST, original, { issue: 1, lead: 'made-up', added: '2026-01-01' }) })) {
     mkdirSync(dirname(join(folder, file)), { recursive: true });
     writeFileSync(join(folder, file), text);
   }
   writeFileSync(join(temporary, 'made-up.gba'), rom);
   page = await openChrome({ profile: join(LOCAL, 'chrome', 'test-game'), headless: true, controllers: true });
   await page.send('Page.addScriptToEvaluateOnNewDocument', { source: STAND_IN });
-  await tryGame(page, server, TEST, join(temporary, 'made-up.gba'));
+  await tryBuilt(TEST, join(temporary, 'made-up.gba'));
 
   // the games that are still only what new wrote
   for (const game of readdirSync(join(REPO, 'games'))) {
@@ -178,12 +212,16 @@ try {
     if (!same) continue;
     const made = madeUpGame({ title: theirs.title, code: theirs.code });
     writeFileSync(join(temporary, `${game}.gba`), made.rom);
-    await tryGame(page, server, game, join(temporary, `${game}.gba`));
+    await tryBuilt(game, join(temporary, `${game}.gba`));
+  }
+
+  for (const game of readdirSync(join(REPO, 'games'))) {
+    if (existsSync(join(REPO, 'games', game, 'index.html'))) await openBundles(page, game);
   }
 } finally {
   await page?.close();
-  await server.close();
   rmSync(folder, { recursive: true, force: true });
+  rmSync(join(LOCAL, 'built', TEST), { recursive: true, force: true });
   rmSync(temporary, { recursive: true, force: true });
 }
 if (failures.length) {

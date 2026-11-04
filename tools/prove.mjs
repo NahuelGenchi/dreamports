@@ -17,6 +17,7 @@ import { readOriginal, readRecordings, readCodeMap, readProgress, writeProgress,
 import { copyWith } from './lib/copies.mjs';
 import { expand } from './lib/recording.mjs';
 import { serveRepository } from './lib/server.mjs';
+import { buildGame } from './lib/built.mjs';
 import { openChrome } from './lib/chrome.mjs';
 import { openDreamport } from './lib/dreamport.mjs';
 import { mp4 } from './lib/mp4.mjs';
@@ -52,7 +53,7 @@ export async function run(args) {
   ensureOriginal(console.log);
 
   const progress = readProgress(game), parts = readParts(game);
-  const server = await serveRepository();
+  const server = await serveRepository({ over: await buildGame(game) });
   let failed = false;
   try {
     for (const recording of recordings) {

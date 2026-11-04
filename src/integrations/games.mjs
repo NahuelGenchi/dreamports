@@ -2,14 +2,14 @@
 // `astro build`, each folder in games/ is copied as it is to dist/play/<game>/, and each in kit/ to
 // dist/kit/<console>/, which Cloudflare serves at /play/<game>/ and /kit/<console>/ as plain files, all but
 // their notes, which are for the people making them (docs/NOTES.md). Then each script a game's page starts from
-// is bundled and minified where it is, so a player's browser fetches a few files rather than hundreds (#89). The
+// is bundled and minified where it is, so a player's browser fetches a few files rather than hundreds (src/lib/bundle.mjs). The
 // build stops and names every problem if a folder breaks one of the rules in games/README.md, if a note breaks the
 // rules for notes, if a bundle wouldn't find what it loads, or if the site grows past what Cloudflare's free plan
 // takes.
-import { copyFile, lstat, mkdir, readFile, readdir } from 'node:fs/promises';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { copyFile, lstat, mkdir, readdir } from 'node:fs/promises';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { build } from 'esbuild';
+import { bundleGame } from '../lib/bundle.mjs';
 import { ENTRY } from '../lib/entries.mjs';
 import { checkNotes, kitOf } from '../lib/notes.mjs';
 import { commit } from './live-site.mjs';
@@ -23,7 +23,6 @@ const MOST_BYTES = 25 * 1024 * 1024;
 // the two kinds of folders: games, each with a page of its own, and the kits they share, one for each console
 const GAMES = { folder: 'games', address: 'play', what: 'game', example: 'sonic-advance', page: true };
 const KITS = { folder: 'kit', address: 'kit', what: 'kit', example: 'gba', page: false };
-const SOURCE = 'https://github.com/NahuelGenchi/dreamports';
 
 /** @returns {import('astro').AstroIntegration} */
 export default function games() {
@@ -51,7 +50,7 @@ export default function games() {
           logger.info(names.length ? `Copied to /${kind.address}/: ${names.join(', ')}` : `No ${kind.what}s in ${kind.folder}/`);
         }
         const { names } = found[0];
-        for (const name of names) await bundle(site, root, name);
+        for (const name of names) await bundleGame(join(site, GAMES.address, name), site, kitOf(root, name), commit(root));
         logger.info(`Bundled the scripts of: ${names.join(', ')}`);
 
         const { files } = await walk(site, true);
@@ -117,54 +116,6 @@ async function copy(from, to) {
     await mkdir(dirname(target), { recursive: true });
     await copyFile(file.path, target);
   }
-}
-
-// Replaces each script a game's pages load with one minified file of everything it imports, source map beside it,
-// and puts the audio thread's bundle in src/, where the page's bundle now looks for it: the game's own audio thread,
-// or else its kit's. It bundles the copies in dist/, whose imports reach the kit as they do on the site, so the maps
-// name files by their addresses and nothing of this computer. The other files stay at their addresses, as a game's
-// achievements list is loaded from its own (src/lib/players.ts).
-async function bundle(site, root, game) {
-  const folder = join(site, GAMES.address, game);
-  const pages = (await readdir(folder)).filter((file) => file.endsWith('.html'));
-  const scripts = (await Promise.all(pages.map((page) => readFile(join(folder, page), 'utf8'))))
-    .flatMap((html) => [...html.matchAll(/<script type="module" src="([^"]+)\.js"/g)].map((script) => script[1]));
-  const kit = kitOf(root, game);
-  const audio = ['src/sound/worklet.js', ...(kit ? [`../../${KITS.address}/${kit}/sound/worklet.js`] : [])];
-  const worklet = (await Promise.all(audio.map((path) => exists(join(folder, path))))).indexOf(true);
-  const entryPoints = [...new Set(scripts)].map((script) => ({ in: `${script}.js`, out: script }));
-  if (worklet >= 0) entryPoints.push({ in: audio[worklet], out: 'src/worklet' });
-
-  const { metafile } = await build({
-    absWorkingDir: folder,
-    entryPoints,
-    outdir: '.',
-    allowOverwrite: true,
-    bundle: true,
-    format: 'esm',
-    target: 'es2022',
-    minify: true,
-    charset: 'utf8',
-    legalComments: 'none',
-    sourcemap: true,
-    metafile: true,
-    logLevel: 'error',
-    banner: { js: `// GPL-3.0-or-later. Source: ${SOURCE}/tree/${commit(root) ?? 'main'}/${GAMES.folder}/${game}` },
-  });
-
-  const at = `${GAMES.folder}/${game}/`;
-  const problems = Object.keys(metafile.inputs)
-    .filter((input) => !resolve(folder, input).startsWith(site))
-    .map((input) => `${at}: It imports ${input}, which the site doesn’t serve.`);
-  for (const output of Object.keys(metafile.outputs).filter((path) => path.endsWith('.js'))) {
-    const code = await readFile(join(folder, output), 'utf8');
-    const loads = [...code.matchAll(/new URL\("([^"]+)",import\.meta\.url\)/g)];
-    if (loads.length !== code.split('import.meta.url').length - 1) problems.push(`${at}${output}: It uses import.meta.url for something other than a file’s address, which a bundle moves.`);
-    for (const [, path] of loads) {
-      if (!(await exists(join(folder, dirname(output), path)))) problems.push(`${at}${output}: It loads ${path}, which isn’t beside it.`);
-    }
-  }
-  stopIf('These games’ bundles wouldn’t work', problems);
 }
 
 // every file in a folder and the folders inside it, with its size, and anything else found there, such
