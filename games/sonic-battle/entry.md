@@ -15,10 +15,10 @@ sources:
     href: https://github.com/cypressru/SonicBattleDecomp
     license: none
     use: guide
-  - name: mGBA's stand-in for the console's ArcTan2
-    href: https://github.com/mgba-emu/mgba
+  - name: mGBA’s arctangent, by Jeffrey Pfau
+    href: https://github.com/mgba-emu/mgba/blob/0.10.5/src/gba/bios.c
     license: MPL-2.0
-    use: guide
+    use: code
 ownCopy:
   confirm: I own Sonic Battle
   links:

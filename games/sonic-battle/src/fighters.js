@@ -7,6 +7,7 @@
 import { queueCopy } from './core.js';
 import { read8, read16, reads8, reads16, read32, write8, write16, write32, copy16, s16, u16 } from './bus.js';
 import { fn08017f00, fn0801816c, fn08018204, fn08018390 } from './sprites.js';
+import { arcTan2 } from './arctan.js';
 
 // the fight's setup: each fighter's character and whether it wears its other colours
 const SETUP = 0x03001620, CHARACTER = SETUP + 20, OTHER_COLOURS = SETUP + 24;
@@ -564,27 +565,6 @@ export function restartBrain(c, i) {
   const number = random(c), base = read16(c, 0x08071250 + read8(c, LEVEL) * 2);
   write16(c, brain(i & 0xFF) + 10, base + (((number & 0xFFF) * base) >>> 12));
   resetBrain(c, i);
-}
-
-// the BIOS's ArcTan and ArcTan2 (swi 10, called through 0x0804a590), as a 16-bit angle
-function arcTan(i) {
-  const a = -(Math.imul(i, i) >> 14);
-  let b = (Math.imul(0xA9, a) >> 14) + 0x390;
-  for (const next of [0x91C, 0xFB6, 0x16AA, 0x2081, 0x3651, 0xA2F9]) b = (Math.imul(b, a) >> 14) + next;
-  return Math.imul(i, b) >> 16;
-}
-function arcTan2(x, y) {
-  if (y === 0) return x >= 0 ? 0 : 0x8000;
-  if (x === 0) return y >= 0 ? 0x4000 : 0xC000;
-  const over = (n, d) => Math.trunc((n << 14) / d);
-  if (y >= 0) {
-    if (x >= 0) { if (x >= y) return arcTan(over(y, x)) & 0xFFFF; }
-    else if (-x >= y) return (arcTan(over(y, x)) + 0x8000) & 0xFFFF;
-    return (0x4000 - arcTan(over(x, y))) & 0xFFFF;
-  }
-  if (x <= 0) { if (-x > -y) return (arcTan(over(y, x)) + 0x8000) & 0xFFFF; }
-  else if (x >= -y) return arcTan(over(y, x)) & 0xFFFF;
-  return (0xC000 - arcTan(over(x, y))) & 0xFFFF;
 }
 
 /** 0x0801e99c: which way a computer player's target lies, one of the 16 in the cartridge's table at 0x08ed8ad4. */
