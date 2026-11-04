@@ -428,7 +428,7 @@ export const LEVEL_BOSS_ANIMATIONS = {
     636: { mkSpin: 0 }, 637: { mkSpinDash: 0 }, 638: { mkGlide: 0 }, 640: { mkLand: 0, mkLandEnd: 1 }, 642: { mkCover: 0 },
     643: { mkPunch: 0, mkPunchEnd: 1 }, 644: { mkIdleB: 0 }, 646: { mkHitB: 0 }, 648: { mkSpinB: 0 }, 649: { mkSpinDashB: 0 },
     650: { mkGlideB: 0 }, 652: { mkLandB: 0, mkLandEndB: 1 }, 654: { mkCoverB: 0 }, 655: { mkLaunch: 0, mkLaunchEnd: 1 },
-    656: { mkRocket: 0 }, 657: { mkDefeated: 0, mkDefeatedEnd: 1 }, 658: { mkPart0: 0, mkPart1: 1, mkPart2: 2, mkPart3: 3, mkPart4: 4 },
+    656: { mkRocket: 0 }, 657: { mkDefeated: 0, mkDefeatedEnd: 1 }, 658: { mkPart0: 0, mkPart1: 1, mkPart2: 2, mkPart3: 3, mkPart4: 4, mkPart5: 5 },
     693: { eggMobile: 0, eggMobileEnd: 1 }, 694: { eggmanSeated: 3, eggmanTurn: 6, eggmanLaugh: 9 },
     611: { explosion: 0 },
   },
@@ -471,7 +471,7 @@ const ROTATED = new Set(['walk', 'run', 'bounce', 'marbleTrack', 'tailsSpin', 'm
   'stoneDebrisSmall', 'stoneDebrisLarge', 'iceStoneDebrisSmall', 'iceStoneDebrisLarge',
   'bubblesSmall', 'bubblesGroup', ...[0, 1, 2, 3, 4, 5].map(n => `drownCountdown${n}`),
   'eggSpiderPart', 'eggSpiderLeg',
-  'mkRocket', 'mkPart0', 'mkPart1', 'mkPart2', 'mkPart3', 'mkPart4', 'eggSnakeSpike',
+  'mkRocket', 'mkPart0', 'mkPart1', 'mkPart2', 'mkPart3', 'mkPart4', 'mkPart5', 'eggSnakeSpike',
   'grabbed', 'eggXHand0', 'eggXHand1', 'eggXHand2', 'eggXBall0',
   'mysteryBox', 'icon13', 'icon14', 'icon16', 'indicator', ...Object.keys(GAME_OVER_ANIMATIONS[715])]);
 // the sprite palette that fills the whole OBJ palette when an act with water starts, and that the colours

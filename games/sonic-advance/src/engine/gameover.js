@@ -18,6 +18,7 @@
 // - saving: it has ended, and the save is being written (WriteSaveGame): the screen keeps the last frame it showed
 
 import { SINE } from './trig.js';
+import { fixes } from './fixes.js';
 
 const cos = angle => SINE[angle + 256] >> 6;   // COS_24_8, on 1024 steps a turn
 const s16 = v => (v << 16) >> 16, u16 = v => v & 0xFFFF;
@@ -34,7 +35,7 @@ export function createGameOver(art, withContinue) {
     takeContinue: false,   // the screen's unk80: A was pressed on the countdown
     songAge: 0,            // frames since the game over's song started, with the screen
     stopped: false,        // the music was stopped (m4aMPlayAllStop)
-    words: [], bandX: null, glyph: null, bldY: 0, black: false, hudPalette: true,
+    words: [], bandX: null, glyph: null, bldY: 0, black: false, hudPalette: !fixes.on,
     endsNext: false,       // it ends on the next frame, whose code starts while this one is drawn (renderer.js)
   };
 }
