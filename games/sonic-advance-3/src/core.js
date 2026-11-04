@@ -8,6 +8,7 @@
 // ClearOamBufferDma).
 
 import { REG } from '../../../kit/gba/video.js';
+import { copyLayer } from './stage/map.js';
 
 // the bits of the GBA's key register
 export const KEY = { A: 0x1, B: 0x2, SELECT: 0x4, START: 0x8, RIGHT: 0x10, LEFT: 0x20, UP: 0x40, DOWN: 0x80, R: 0x100, L: 0x200 };
@@ -33,7 +34,8 @@ export function createCore(video, rom, sound) {
     repeatCounters: new Uint8Array(10), firstRepeat: new Uint8Array(10).fill(20), nextRepeat: new Uint8Array(10).fill(8),
     startUp: START_UP_FRAMES, main: null, tasks: [],
   };
-  const graphics = [], backgrounds = [];
+  const graphics = [], backgrounds = [], layers = [];
+  let nextTask = null;
 
   /** 0x080BCB6C, TaskCreate: a task running `main(task)` each frame, after every task of the same or lower priority. */
   c.createTask = (main, data, priority = 0x100) => {
@@ -43,12 +45,21 @@ export function createCore(video, rom, sound) {
     return t;
   };
   /** 0x080BCC04, TaskDestroy */
-  c.destroyTask = t => { c.tasks.splice(c.tasks.indexOf(t), 1); };
+  c.destroyTask = t => {
+    const at = c.tasks.indexOf(t);
+    if (t === nextTask) nextTask = c.tasks[at + 1];
+    c.tasks.splice(at, 1);
+  };
   /** ADD_TO_GRAPHICS_QUEUE: `size` bytes from `src` in the ROM copied to `dest` in VRAM in the next V-blank. */
   c.queueGraphics = (src, dest, size) => { graphics.push({ src, dest, size }); };
   c.queueBackground = bg => { backgrounds.push(bg); };
+  /** A stage's layer for the V-blank (stage/map.js). */
+  c.queueLayer = bg => { layers.push(bg); };
 
-  const copy16 = (src, dest, bytes) => video.vram.set(rom.bytes.subarray(src, src + (bytes & ~1)), dest);
+  // what goes past the end of video memory is lost, as when the sprites' heap had no room (stage/stage.js)
+  const copy16 = (src, dest, bytes) => {
+    if (dest + bytes <= video.vram.length) video.vram.set(rom.bytes.subarray(src, src + (bytes & ~1)), dest);
+  };
   // ProcessVramGraphicsCopyQueue, COPY_CHUNK at a time in the original, which comes to the same here
   function copyGraphics() {
     for (const { src, dest, size } of graphics) {
@@ -142,6 +153,8 @@ export function createCore(video, rom, sound) {
     video.oam.set(c.oamBuffer);
     copyGraphics();
     copyBackgrounds();
+    for (const bg of layers) copyLayer(c, bg);
+    layers.length = 0;
     c.oamBuffer.fill(0x200);
   }
 
@@ -153,7 +166,13 @@ export function createCore(video, rom, sound) {
       c.main = null;
     }
     readKeys(held);
-    for (const t of [...c.tasks]) if (c.tasks.includes(t)) t.main(t);
+    // TasksExec: the next task is fixed before each one runs, so a task made just after the one running waits for the
+    // next frame, and one made later in the list runs in this one
+    for (let t = c.tasks[0]; t;) {
+      nextTask = c.tasks[c.tasks.indexOf(t) + 1];
+      t.main(t);
+      t = nextTask;
+    }
     c.flagsPreVBlank = c.flags;
     vblank();
   };
