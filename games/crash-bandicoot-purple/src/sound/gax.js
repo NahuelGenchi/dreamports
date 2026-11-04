@@ -10,7 +10,7 @@ const CARTRIDGE = 0x08000000;
 const FRAME_CYCLES = 280896, NO_NOTE = -30000;
 // 0x08F50B3C: the mix rates and the cycles between samples, and 0x08F50FC0: the steps for a note, an octave of 384
 const RATES = 0x08F50B3C, STEPS = 0x08F50FC0, VIBRATO = 0x08F515C0;
-// 0x0803B8FC: the music's volume, which the game's start-up gives every channel
+// the music's volume, which the game's main function (0x0803B8C8) gives every channel
 const MUSIC_VOLUME = 200;
 // 0x0803407C: the sound effects' data, and how many channels they get
 const EFFECTS = 0x0820445C, EFFECT_CHANNELS = 2;
