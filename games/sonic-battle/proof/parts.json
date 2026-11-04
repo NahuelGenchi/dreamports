@@ -23,7 +23,7 @@
     { "name": "The intro", "recording": "logos-and-intro", "frames": [390, 546] },
     { "name": "The title screen", "recording": "title", "frames": [547, 778] },
     { "name": "The name entry, at the first start" },
-    { "name": "The main menu" },
+    { "name": "The main menu", "recording": "menu", "frames": [784, 1354] },
     { "name": "Story mode: Sonic's episode", "needs": ["The fighting"] },
     { "name": "Story mode: Tails's episode", "needs": ["The fighting"] },
     { "name": "Story mode: Rouge's episode", "needs": ["The fighting"] },
