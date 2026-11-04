@@ -1278,6 +1278,8 @@ function chooseAnimation(c, p) {
     s.prevVariant = 0xFF;
     if (s.hitboxes) for (const box of s.hitboxes) if (box) box.index = -1;
   }
+  // sub_801409C: its first frame in any other pose stops the grinding sound, as it falls off a rail and lands
+  if (p.shownPose === POSE.GRIND && p.pose !== POSE.GRIND) stopGrindingSound(p);
   p.shownPose = p.pose;
 }
 
