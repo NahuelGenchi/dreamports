@@ -83,3 +83,10 @@ function distanceToGround(start, across, layer, stride, reach, angle, vertical) 
 export const groundUpDown = (fromY, x, layer, stride, angle = null, reach = 2) => distanceToGround(fromY, x, layer, stride, reach, angle, true);
 /** The ground to the left or right (`stride` -8 or 8) of the point (fromX, y). */
 export const groundSideways = (fromX, y, layer, stride, angle = null, reach = 2) => distanceToGround(fromX, y, layer, stride, reach, angle, false);
+/** 0x0801F07C and 0x0801F100: the ground up or down from a point, looking in its own tile and no further. */
+export function groundInTile(fromY, x, layer, stride) {
+  const height = tileGround(x, fromY, layer, true, [0]), pixel = fromY & 7;
+  if (height === 0) return stride > 0 ? TILE - pixel : pixel + 1;
+  if (height === FULL) return stride > 0 ? ~pixel : pixel - TILE;
+  return height > 0 ? height - 1 - pixel : height + pixel;
+}

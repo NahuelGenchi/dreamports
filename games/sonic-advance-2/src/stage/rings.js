@@ -57,7 +57,7 @@ function touching(left, top, width, height, x, y) {
 }
 
 // INCREMENT_RINGS: a life every hundred rings, though the jingle that comes with it needs the music manager, which isn't made
-function addRing(stage) {
+export function addRing(stage) {
   const before = stage.rings;
   stage.rings = (before + 1) & 0xFFFF;
   if (Math.trunc(stage.rings / 100) !== Math.trunc(before / 100)) stage.lives = Math.min(stage.lives + 1, 255);
@@ -124,7 +124,7 @@ function ringsFrame(t) {
 }
 
 // 0x0800AEA0, CreateCollectRingEffect: it stays where the ring was, and its sound takes turns between the two sides
-function createEffect(rings, x, y) {
+export function createEffect(rings, x, y) {
   if (rings.effects >= MOST_EFFECTS) return;
   const { stage } = rings, { c } = stage, odd = stage.rings & 1;
   rings.effects++;

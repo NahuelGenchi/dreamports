@@ -9,6 +9,7 @@ import { createPlayer } from './player.js';
 import { createStageUi } from './ui.js';
 import { createCountdown } from './countdown.js';
 import { createRings } from './rings.js';
+import { createRingsScatter } from './rings-scatter.js';
 import { createEntities } from './entities.js';
 import { createSprite, updateSprite } from '../sprite.js';
 
@@ -165,7 +166,7 @@ function startSong(c) {
 /** 0x0801A838: what a stage has so far, from its first frame. */
 export function startStage(c, level) {
   const stage = {
-    c, level, time: 0, timeRuns: false, frames: 0, rings: 0, score: 0, lives: 3, oamMatrix: FIRST_OAM_MATRIX, seed: 0,
+    c, level, time: 0, timeRuns: false, frames: 0, rings: 0, score: 0, lives: 3, oamMatrix: FIRST_OAM_MATRIX, seed: 0, animalTurn: 0,
     camera: { x: 0, y: 0, minX: 0, minY: 0, maxX: 0, maxY: 0 }, front: null, back: null, player: null, ui: null,
   };
   // sprite memory past what the character, the rings and the water keep for themselves
@@ -183,9 +184,10 @@ export function startStage(c, level) {
     if (stage.timeRuns) stage.time++;
   }, null, 0xFF00);
   stage.player = createPlayer(stage, level);
+  createRingsScatter(stage);
   c.createTask(leaveTitleCard, stage, 0x2200);
   initCamera(stage);
-  createRings(stage);
+  stage.ringsManager = createRings(stage);
   // the entities manager comes after the rings: a ring's sparkle comes after it, and so runs in the frame the ring is taken,
   // rather than right after the rings, which would wait for the next
   createEntities(stage);
