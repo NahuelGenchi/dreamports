@@ -20,6 +20,11 @@ ownCopy:
     - label: Play
       href: https://dreamports.net/play/sonic-advance-3/
       icon: play
+screen:
+  clip: /media/sonic-advance-3-dreamport
+  still: /media/sonic-advance-3-dreamport-still.webp
+  pixelated: true
+share: /media/sonic-advance-3-dreamport-share.png
 ---
 
 ## Credits
