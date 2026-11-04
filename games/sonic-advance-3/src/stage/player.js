@@ -312,6 +312,11 @@ export function startFalling(p) {
 }
 function slipOff(p) {
   p.flags = (p.flags & ~AT_WALL) | IN_AIR;
+  if (p.flags & CHARGED) {   // the USA copy's Player_800DAF4 goes straight to the move's frame, keeping the pose it had
+    p.behave = chargedAir;
+    chargedAir(p);
+    return;
+  }
   p.behave = fall;
   fall(p);
 }
@@ -431,11 +436,17 @@ function chargedCurl(p) {
   else if (p.variant === 1 && p.sprite.frameFlags & ANIM_FINISHED) p.variant = 2;
 }
 
-// sub_800E880: Tails on the spot after the move has been made, standing up when its pose has played twice
+// sub_800E880: Tails on the spot after the move has been made, standing up when its pose has played twice. On an object
+// the original's frames show it up on the fourth, for a reason not found yet
 export function tailsStands(p) {
-  if (++p.waitFrames > 3) {
-    startStanding(p);
-    return;
+  if (p.flags & ON_OBJECT) {
+    if (++p.waitFrames > 3) {
+      startStanding(p);
+      return;
+    }
+  } else if (p.sprite.frameFlags & ANIM_FINISHED) {
+    if (p.variant === 1) p.behave = startStanding;
+    else p.variant++;
   }
   slopeSpeed(p);
   keepInBounds(p);
@@ -477,7 +488,7 @@ export function throwing(p) {
 // sub_8017004: come down on an object
 function afterAir(p) {
   if ((p.flags & (ON_OBJECT | IN_AIR)) === ON_OBJECT) {
-    p.behave = startStanding;
+    p.behave = p.flags & CHARGED ? startChargedOnGround : startStanding;
     p.groundSpeed = p.velX;
     p.angle = 0;
   }
@@ -1225,7 +1236,7 @@ function stopAtWall(p, direction, first) {
     default:
       p.x += byte(direction + 0x20) >> 6 === 1 ? -gap : gap;
       if (first) {
-        p.flags |= AT_WALL;
+        if (!(p.flags & CHARGED)) p.flags |= AT_WALL;
         p.velX = p.groundSpeed = 0;
       }
   }
