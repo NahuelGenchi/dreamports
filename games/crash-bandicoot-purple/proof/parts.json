@@ -1,0 +1,32 @@
+{
+  "about": "Crash Bandicoot Purple's parts, in the order a player meets them, then its other modes. Each counts the same. A part is proven when a recording plays it from its first frame to its last and every frame matches the original: \"frames\" are the first and last of the recording's frames it covers. A part may end with a press that moves the game on, the way a player leaves it, such as Start on the title screen. Where the screen is one colour between two parts, those frames go with the part before. Foundations are what many parts need but no player would call a part, and they don't count towards the parts. The worlds go by their order here until someone has played far enough to name them, and each world's mini-games can be split into a task each once they're known.",
+  "foundations": [
+    { "name": "Crash on foot", "what": "Crash running, jumping and spinning through a world's hub, with its camera, enemies, crates and portals. All five hubs build on it. It's the largest piece, so whoever takes it can open smaller tasks with the Task form once the code shows where it divides." }
+  ],
+  "parts": [
+    { "name": "The copyright screen and the logos" },
+    { "name": "The title screen" },
+    { "name": "The load save game screen" },
+    { "name": "The main menu" },
+    { "name": "The story's opening scene" },
+    { "name": "The first world's hub", "needs": ["Crash on foot"] },
+    { "name": "The first world's mini-games" },
+    { "name": "The first world's boss" },
+    { "name": "The second world's hub", "needs": ["Crash on foot"] },
+    { "name": "The second world's mini-games" },
+    { "name": "The second world's boss" },
+    { "name": "The third world's hub", "needs": ["Crash on foot"] },
+    { "name": "The third world's mini-games" },
+    { "name": "The third world's boss" },
+    { "name": "The fourth world's hub", "needs": ["Crash on foot"] },
+    { "name": "The fourth world's mini-games" },
+    { "name": "The fourth world's boss" },
+    { "name": "The fifth world's hub", "needs": ["Crash on foot"] },
+    { "name": "The fifth world's mini-games" },
+    { "name": "The last fight against Cortex and Ripto" },
+    { "name": "The ending" },
+    { "name": "Party mode" },
+    { "name": "Trading cards" },
+    { "name": "The credits" }
+  ]
+}
