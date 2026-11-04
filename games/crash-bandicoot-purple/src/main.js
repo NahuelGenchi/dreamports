@@ -36,6 +36,7 @@ const sound = createSound({
   worklet: new URL('./sound/worklet.js', import.meta.url),
   calls: call => ({
     startSong(address, ahead = 0) { call('startSong', address, ahead); },
+    stopSong() { call('stopSong'); },
     playEffect(address) { call('playEffect', address); },
   }),
 });
@@ -66,7 +67,7 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the copyright screen, the logos and the title screen. What comes after it, the load save game screen,
+// The game so far: the copyright screen, the logos, the title screen and the load save game screen. What comes after it
 // isn't ported yet, so the screen stays white there.
 function createGame(video, rom, sound) {
   // a start point (tools/README.md), which the game's own path doesn't reach yet: ?hub opens in the first world's hub

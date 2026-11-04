@@ -52,15 +52,21 @@ const TILES = [1, 4, 16, 64, 2, 4, 8, 32, 2, 4, 8, 32];
 const WIDTHS = [8, 16, 32, 64, 16, 32, 32, 64, 8, 8, 16, 32];
 const HEIGHTS = [8, 16, 32, 64, 8, 8, 16, 32, 16, 32, 32, 64];
 
+/** 0x0801F7A8: the sprites' colours held at `at` in the cartridge, in a slot of their own from the first time they're asked for. */
+export function colourSlot(sprites, at, colours) {
+  let slot = sprites.slots.get(at);
+  if (slot === undefined) {
+    slot = sprites.nextSlot--;
+    sprites.slots.set(at, slot);
+    for (let i = 0; i < 16; i++) colours[256 + slot * 16 + i] = sprites.rom.u16(at + i * 2);
+  }
+  return slot;
+}
+
 /** 0x080190D0 with 0x08018BD8: a sprite's frame at its place on screen: its colours, its pieces and its tiles. */
 export function drawSprite(sprites, sprite, screenX, screenY, colours) {
   const { rom, list } = sprites, { animation } = sprite;
-  let slot = sprites.slots.get(animation.colours);
-  if (slot === undefined) {
-    slot = sprites.nextSlot--;
-    sprites.slots.set(animation.colours, slot);
-    for (let i = 0; i < 16; i++) colours[256 + slot * 16 + i] = rom.u16(animation.colours + i * 2);
-  }
+  const slot = colourSlot(sprites, animation.colours, colours);
   const frame = rom.u32(animation.sheet + 4) - CARTRIDGE + rom.u16(animation.list + sprite.frame * 2) * 44;
   const parts = rom.u32(frame) - CARTRIDGE, count = rom.u8(frame + 16);
   let offset = 0;
@@ -84,11 +90,11 @@ export function drawSprite(sprites, sprite, screenX, screenY, colours) {
   sprites.tiles += (offset + 1) & ~1;
 }
 
-/** 0x0802AF14: a letter of 8 by 16 from the font's tiles at `from`, with the font's 0x9000: tall, with mosaic set, at priority 0. */
-export function drawLetter(sprites, from, x, y, slot) {
-  sprites.list.push([(y & 0xFF) | 0x9000, x & 0x1FF, (slot << 12) | sprites.tiles]);
-  sprites.jobs.push([from, sprites.tiles, 2]);
-  sprites.tiles += 2;
+/** 0x0800E1A8: a letter from the font's tiles at `from`, at priority 0, of the shape its `attributes` give: by default 8 by 16, tall, with mosaic set. */
+export function drawLetter(sprites, from, x, y, slot, { shape = 0x9000, size = 0, tiles = 2 } = {}) {
+  sprites.list.push([(y & 0xFF) | shape, (x & 0x1FF) | size, (slot << 12) | sprites.tiles]);
+  sprites.jobs.push([from, sprites.tiles, tiles]);
+  sprites.tiles += (tiles + 1) & ~1;
 }
 
 /** At the V-blank: 0x08037B28's tiles and 0x0803FA50's list. */

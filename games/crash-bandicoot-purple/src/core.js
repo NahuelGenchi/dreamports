@@ -9,7 +9,7 @@ import { REG } from '../../../kit/gba/video.js';
 import { KEY } from '../../../kit/gba/input.js';
 import { openMovie, decodeFrame } from './movie.js';
 import { createWorld, aimCamera, showWorld, moveWorld, drawWorld, screenLeft, screenTop } from './world.js';
-import { createSprite, createSprites, playAnimation, stepAnimation, drawSprite, drawLetter, showSprites } from './sprites.js';
+import { createSprite, createSprites, playAnimation, stepAnimation, drawSprite, drawLetter, colourSlot, showSprites } from './sprites.js';
 
 const CARTRIDGE = 0x08000000, PAGE = 0xA000;
 
@@ -89,8 +89,14 @@ function* mainLoop(c) {
     if (c.done) {
       // 0x08014B54, as the script's end leaves the game in state 20, with the screen as it is while the level loads
       for (let n = 0; n < TITLE_LOAD_FRAMES; n++) yield;
-      yield* titleLoop(c);
-      return;
+      for (;;) {
+        yield* titleLoop(c);
+        // B on the load save game screen comes back to the title
+        if ((yield* loadSaveLoop(c)) !== 'title') break;
+        for (let n = 0; n < TITLE_LOAD_FRAMES; n++) yield;
+      }
+      // what comes after the load save game screen isn't ported, so the screen stays white
+      for (;;) yield;
     }
     if (updateDisplay(c)) yield;
     yield* updateScript(c);
@@ -273,8 +279,9 @@ function readText(rom, address) {
   return letters;
 }
 
-// 0x08015084's title: the level's update, the title's update, the V-blank's work
-function* titleLoop(c) {
+// The level behind the title and the load save game screen, with its colours and first picture and its streaks one
+// update ahead, and the fade back from white started (0x080155E4, 0x080156F0)
+function createBackdrop(c) {
   const { video, rom } = c;
   const world = createWorld(video, rom, TITLE), sprites = createSprites(video, rom);
   // 0x0801F85C: the level's colours
@@ -283,6 +290,43 @@ function* titleLoop(c) {
   video.write(REG.BLDALPHA, 0x0808);
   aimCamera(world, 0, 0);
   showWorld(world);
+  // 0x08001B18: each line's scroll, which the H-blank's DMA copies line by line (0x08001A98)
+  const speeds = lineSpeeds(rom), lines = new Uint16Array(160);
+  c.hblank = y => video.write(REG.BG0HOFS, lines[y] & 0x1FF);
+  const streak = () => { for (let line = 0; line < 160; line++) lines[line] += speeds[line]; };
+  streak();   // the update before the first picture
+  // 0x0803FD8C: the fade back from white
+  c.fade = { kind: 3, level: 64, target: 0, speed: 4 };
+  return { world, sprites, streak };
+}
+
+// A frame of a screen on the level, once its objects have asked for their sprites: the fade, then the V-blank's work
+function showBackdrop(c, { world, sprites }) {
+  stepFade(c);            // 0x0803FB48
+  workOutColours(c);      // 0x0803FBA4
+  c.video.pal.set(c.faded);   // 0x0803FAC4
+  c.video.write(REG.DISPCNT, 0x1940);   // 0x0803B1D4
+  drawWorld(world);       // 0x0802F90C
+  showSprites(sprites);
+}
+
+// 0x0803FC9C: the fade to white that the main loop waits for, before the next screen
+function* fadeToWhite(c) {
+  c.fade.target = 64;
+  c.fade.speed = 4;
+  c.fade.kind = 3;
+  while (c.fade.level !== 64) {
+    stepFade(c);
+    workOutColours(c);
+    c.video.pal.set(c.faded);
+    yield;
+  }
+}
+
+// 0x08015084's title: the level's update, the title's update, the V-blank's work
+function* titleLoop(c) {
+  const { rom } = c;
+  const backdrop = createBackdrop(c), { world, sprites, streak } = backdrop;
   // 0x08019254: its animations, at priority 0, once the text has its colours, with each one's next frame a frame after its
   // delay would say, as the clock (0x02007284) doesn't move on the frame the level loads: the console's timing, as mGBA measures it
   sprites.nextSlot = 14;
@@ -293,12 +337,6 @@ function* titleLoop(c) {
   });
   const letters = readText(rom, TEXT);
   const textX = LOGO_X - (letters.reduce((sum, { width }) => sum + width, 0) >> 1);
-  // 0x08001B18: each line's scroll, which the H-blank's DMA copies line by line (0x08001A98)
-  const speeds = lineSpeeds(rom), lines = new Uint16Array(160);
-  c.hblank = y => video.write(REG.BG0HOFS, lines[y] & 0x1FF);
-  for (let line = 0; line < 160; line++) lines[line] += speeds[line];   // the update before the first picture
-  // 0x080155E4's 0x0803FD8C: the fade back from white
-  c.fade = { kind: 3, level: 64, target: 0, speed: 4 };
   let clock = 0, count = 0, leaving = false;
   for (;;) {
     clock++;
@@ -307,7 +345,7 @@ function* titleLoop(c) {
     if (c.pressed & (KEY.START | KEY.A)) {
       c.sound?.playEffect(MENU_SOUND);
       leaving = true;
-    } else for (let line = 0; line < 160; line++) lines[line] += speeds[line];   // 0x08001B18
+    } else streak();      // 0x08001B18
     moveWorld(world);     // 0x0802F374
     LOGO_SOUNDS.forEach((sounds, n) => {   // 0x0800C494
       const sprite = logo[n];
@@ -325,26 +363,110 @@ function* titleLoop(c) {
       x += width;
     }
     for (const sprite of logo) drawSprite(sprites, sprite, LOGO_X, LOGO_Y, c.colours);
-    stepFade(c);          // 0x0803FB48
-    workOutColours(c);    // 0x0803FBA4
-    video.pal.set(c.faded);   // 0x0803FAC4
-    video.write(REG.DISPCNT, 0x1940);   // 0x0803B1D4
-    drawWorld(world);     // 0x0802F90C
-    showSprites(sprites);
+    showBackdrop(c, backdrop);
     yield;                // 0x08040E5C
     if (leaving) break;
   }
   // 0x080156F0's 0x0803FC9C: the fade to white that the main loop waits for, before the load save game screen
-  c.fade.target = 64;
-  c.fade.speed = 4;
-  c.fade.kind = 3;
-  while (c.fade.level !== 64) {
-    stepFade(c);
-    workOutColours(c);
-    video.pal.set(c.faded);
-    yield;
+  yield* fadeToWhite(c);
+}
+
+// The fonts, the structures at 0x020074AC, 0x0200741C, 0x020073EC, 0x0200750C and 0x0200753C: a font's letters, their widths,
+// its tiles and its colours, in the cartridge, and how many tiles a letter takes and what shape they make on the console
+const fontOf = (letters, pictures, colours, attributes) => ({ letters, widths: letters + 0x100, pictures, colours, ...attributes });
+const LETTERS = { shape: 0x9000, size: 0, tiles: 2 };
+const YELLOW = fontOf(0x08B54948, 0x08B54B48, 0x08B54740, LETTERS);
+const BLUE = fontOf(0x08B54948, 0x08B54B48, 0x08B547A0, LETTERS);
+const GREY = fontOf(0x08B54948, 0x08B54B48, 0x08B547C0, LETTERS);
+const HEADING = fontOf(0x08B51540, 0x08B51740, 0x08B51338, { shape: 0x1000, size: 0x4000, tiles: 4 });
+const SMALL = fontOf(0x08B50458, 0x08B50658, 0x08B50250, { shape: 0x1000, size: 0, tiles: 1 });
+
+// 0x0802AF14 with 0x0802AD48 and 0x0800E1A8: a line of a text from the table of words, by the words at `entry`: 3 and 4 in it
+// mean left and in the middle of the screen, as a screen's text starts with its own (0x080697F0, 0x0806ACE8), and any other
+// byte under 13 draws nothing
+function drawText(c, sprites, font, entry, x, y, align = 3) {
+  const { rom } = c;
+  const letters = [];
+  for (let at = rom.u32(rom.u32(entry - CARTRIDGE) - CARTRIDGE) - CARTRIDGE, ch = rom.u8(at); ch; ch = rom.u8(++at)) {
+    if (ch === 3 || ch === 4) align = ch;
+    else if (ch >= 13) letters.push(ch);
   }
-  for (;;) yield;
+  const widthOf = ch => rom.u8(font.widths - CARTRIDGE + ch);
+  if (align === 4) x -= letters.reduce((sum, ch) => sum + widthOf(ch), 0) >> 1;
+  const slot = colourSlot(sprites, font.colours - CARTRIDGE, c.colours);
+  const size = font.tiles * 32;
+  for (const ch of letters) {
+    if (ch !== 32) drawLetter(sprites, font.pictures - CARTRIDGE + rom.u8(font.letters - CARTRIDGE + ch) * size, x, y, slot, font);
+    x += widthOf(ch);
+  }
+}
+
+// The load save game screen's list at 0x02007BC0, as 0x0801C24C reads it: where its lines start and how far apart they are,
+// the words of its heading, its Erase Game, its New Game and its two hints with where they go, and Aku Aku, who points at a line
+const SAVE_X = 18, SAVE_Y = 0x30, SAVE_GAP = 0x1A, SAVES = 3;
+const LOAD_HEADING = 0x0806F20C, LOAD_HEADING_Y = 0x0C, ERASE_GAME = 0x0806F21C, NEW_GAME = 0x0806F220;
+const HINTS = [[0x0806F9A8, 4, 0x94], [0x0806F9AC, 0xAC, 0x94]];
+const POINTER = 0x08307EA4, POINTER_X = 10;
+
+// The frames the console takes to load the screen, with the screen white: the console's timing, as mGBA measures it, as start-up's is
+const SAVE_LOAD_FRAMES = 4;
+
+// The frames 0x0801BE8C takes to write a new game's save, with the picture as it is: the console's timing again
+const SAVE_WRITE_FRAMES = 11;
+
+// The menus' song (0x02007C60 in the screen's list), which 0x0801BE8C stops to write and starts again from its start
+const MENU_SONG = 0x08278CC0;
+
+// 0x0801C854 and 0x0801C824: the sounds of moving on a menu and of going back
+const MOVE_SOUND = 0x08085D30, BACK_SOUND = 0x08085EA4;
+
+// 0x080156F0's 0x0802C79C with 0x0802C8F8, and 0x08030548, which takes Erase Game away while no save holds a game (0x0801CA34),
+// as none does: this Dreamport keeps no saves yet (0x0801C0D0), so each line says New Game. The result is where it goes on to
+function* loadSaveLoop(c) {
+  const { rom } = c;
+  for (let n = 0; n < SAVE_LOAD_FRAMES; n++) yield;
+  const backdrop = createBackdrop(c), { world, sprites, streak } = backdrop;
+  // 0x08035654: Aku Aku, whose next frame comes a frame later as the logo's does
+  const pointer = Object.assign(createSprite(rom, POINTER, 0, 0), { priority: 0 });
+  pointer.next = pointer.animation.delay + 2;
+  let selected = 0, clock = 0, leaving = null;
+  for (;;) {
+    clock++;
+    // 0x0801C598: what the buttons do, with the lines stopping at once as they do on the title. A goes on (0x080692D0's states 8 to
+    // 10), and B back (0x0806918C's state 20). Up and down skip Erase Game, as nothing can pick it (0x0801C6D0, 0x0801C784)
+    let move = 0;
+    if (c.pressed & KEY.A) { c.sound?.playEffect(MENU_SOUND); leaving = 'game'; }
+    else if (c.pressed & KEY.B) { c.sound?.playEffect(BACK_SOUND); leaving = 'title'; }
+    else if (c.pressed & KEY.UP) move = SAVES - 1;
+    else if (c.pressed & KEY.DOWN) move = 1;
+    if (move) { c.sound?.playEffect(MOVE_SOUND); selected = (selected + move) % SAVES; }
+    if (!leaving) streak();   // 0x08001B18
+    moveWorld(world);     // 0x0802F374
+    stepAnimation(pointer, clock);   // 0x0802CB28's 0x0801EF38 with 0x08035518
+    // 0x0802C8F8: each line, then the list's Erase Game, the heading, Aku Aku at the line (0x0801C648 and 0x080355E8) and the hints
+    for (let n = 0; n < SAVES; n++) drawText(c, sprites, n === selected ? BLUE : YELLOW, NEW_GAME, SAVE_X, SAVE_Y + n * SAVE_GAP);
+    drawText(c, sprites, GREY, ERASE_GAME, 0x78, SAVE_Y + SAVES * SAVE_GAP);
+    drawText(c, sprites, HEADING, LOAD_HEADING, 0x78, LOAD_HEADING_Y, 4);
+    drawSprite(sprites, pointer, POINTER_X, SAVE_Y + selected * SAVE_GAP, c.colours);
+    for (const [entry, x, y] of HINTS) drawText(c, sprites, SMALL, entry, x, y);
+    showBackdrop(c, backdrop);
+    yield;                // 0x08040E5C
+    if (leaving) break;
+  }
+  if (leaving === 'game') {
+    // 0x08016A78's 0x080163D4: a line with no game in it starts one, and 0x0801BE8C writes its save, with the song stopped meanwhile
+    c.sound?.stopSong();
+    // 0x08001BA0: and the H-blank's DMA too, so the whole of the streaks' layer keeps the scroll of the last line, until 0x08001B84
+    const moveLines = c.hblank;
+    c.hblank = null;
+    moveLines(159);
+    for (let n = 1; n < SAVE_WRITE_FRAMES; n++) yield;
+    c.sound?.startSong(MENU_SONG);
+    yield;
+    c.hblank = moveLines;
+  }
+  yield* fadeToWhite(c);  // 0x08015668's and 0x080155E4's 0x0803FC9C
+  return leaving;
 }
 
 // 0x0803FB48: the fade a step nearer where it's going, and over once it's back at nothing

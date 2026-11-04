@@ -89,6 +89,13 @@ export function createGax(bytes, sampleRate) {
     playing = true;
   }
 
+  // 0x08034378 with 0x08044100: the song stopped, and the DMA that plays what's mixed with it, so nothing plays until the next song
+  function stopSong() {
+    playing = false;
+    output.fill(0);
+    playingNow.fill(0);
+  }
+
   // 0x080342A4 with 0x080438AC and 0x08044098: a sound effect, from its three words, on the next channel that's free
   function playEffect(address) {
     if (!playing) return;
@@ -496,6 +503,7 @@ export function createGax(bytes, sampleRate) {
               // a start point opens a level some frames after its song began, while it loaded
               for (let n = args[1] ?? 0; n > 0; n--) frame();
             }
+            else if (name === 'stopSong') stopSong();
             else if (name === 'playEffect') playEffect(...args);
           }
           frame();
