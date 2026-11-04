@@ -98,7 +98,7 @@ export const LEVELS = {
   },
   // StageInit_Zone6Act1 (0x0803D9C5): 839 and 842 both step row 13 of the stage palette, 840 row 12 and 841 row
   // 10; the act's only, so its zone keeps act 1's index. Its background and its launch and stage separations
-  // are eggrocket.js's. Picked from the course select, the HUD's task data lands on memory holding 0 (hud.js). The breakable wall is 596 (gUnknown_080BB544); zone 6 act 1's square
+  // are eggrocket.js's. Picked from the course select, the HUD's task data lands on memory holding 4 (hud.js). The breakable wall is 596 (gUnknown_080BB544); zone 6 act 1's square
   // platforms are 518 and, long, 519, and zone 6's moving spring 582 (their CreateEntity_). Its thin platform (sPlatformThinAnims), crumbling platform (sPlatformCrumblingAnims) and
   // bounce block (sBounceBlockAnims) are its own, its ferris wheels' seats are its thin platform (gUnknown_086CEE2C), and so is its trampoline (505, CreateEntity_Trampoline)
   10: { name: 'Egg Rocket Zone', zone: 5, act: 0, paletteAnimations: [839, 840, 841, 842], music: 22,

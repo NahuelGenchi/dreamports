@@ -12,7 +12,7 @@
 
 import { makeSprite, animate, offCam, offDisplay } from './objects.js';
 import { platform, overlap, LANDED, FROM_BELOW, LEFT_FACE, RIGHT_FACE } from './collide.js';
-import { endAttack } from './player.js';
+import { endAttack, thrownState } from './player.js';
 import { scan, PROBE_FLOOR, PROBE_WALL } from './terrain.js';
 import { SINE } from './trig.js';
 
@@ -89,7 +89,7 @@ export function createSquarePlatform(e, slot, anims) {
         touched = false;
         p.gsp = 0;
         endAttack(p); p.pushing = false;
-        p.state = p.air ? 'spin' : 'walk';
+        p.state = p.air ? thrownState(p) : 'walk';
       }
     }
     // a second test while he is above its middle and not rising, which lands him on it
