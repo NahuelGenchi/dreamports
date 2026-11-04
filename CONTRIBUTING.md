@@ -84,7 +84,7 @@ The top of the file, between the two `---` lines, holds the details. Write them 
 
 Below the second `---` is the page itself, in Markdown. `## ` lines become headings and the "on this page" list, `- ` lines become bullet points, and `1. ` lines become numbered steps.
 
-**A game's recording** is a few seconds of the game being played, looping smoothly. For a Dreamport, `npm run dp -- capture <game>` makes all of it: you play the original on your computer and choose among the best moments ([The proof tools](tools/README.md#a-games-capture)). For another game, it's saved in [`public/media/`](public/media/) as two silent MP4 videos at 60 frames a second:
+**A game's recording** is a few seconds of the game being played, looping smoothly. For a Dreamport, `npm run dp -- capture <game>` makes all of it: you play the original on your computer and choose among the best moments, and when nobody does, the tool takes the one that ranks first ([The proof tools](tools/README.md#a-games-capture)). For another game, it's saved in [`public/media/`](public/media/) as two silent MP4 videos at 60 frames a second:
 
 - `my-port.h264.mp4`, in H.264, which every browser plays;
 - `my-port.av1.mp4`, in AV1, which is smaller. The site plays it only where the device decodes AV1 smoothly in hardware.

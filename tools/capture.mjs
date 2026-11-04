@@ -1,98 +1,391 @@
-// npm run dp -- capture <game> [--choose]: a real moment of the game for its card in the launcher. It opens a window
-// where the person plays their own copy of the original, on this computer, from power-on. When they finish it shows the
-// best moments of what they played, moving, and they press the one they want, which is written as public/media/
-// <game>-dreamport.h264.mp4, .av1.mp4, -still.webp and -share.png and named in the game's entry. Their presses stay in
-// .dreamports/captures/<game>/, so that --choose can show the same moments again with no more playing, or if the window
-// closed before they chose. Nothing is sent anywhere.
+// npm run dp -- capture <game> [--choose | --open | --pick | --from <file>] [--yes] [--repo <owner/name>]: a real moment
+// of the game for its card in the launcher. It opens a window where the person plays their own copy of the original, on
+// this computer, from power-on. When they finish it shows the best moments of what they played, moving, and they press
+// the one they want, which is written as public/media/<game>-dreamport.h264.mp4, .av1.mp4, -still.webp and -share.png and
+// named in the game's entry. Their presses stay in .dreamports/captures/<game>/, so that --choose can show the same
+// moments again with no more playing, or if the window closed before they chose.
+//
+// Making a Dreamport never waits for any of this. --open starts the window and returns at once. --pick, when the work is
+// done, closes it once nobody is using it and, if they played and didn't choose, takes the moment that ranks first.
+// --from plays a list of presses, as a recording writes them, when nobody played at all, and takes the moment that ranks
+// first of those, or says in numbers what the presses led to. Neither shows anyone a picture.
+//
+// --yes is the person's yes to sending what's kept, as a pull request of its own: for a game not on main yet that's its
+// first entry (docs/TEAMS.md#a-games-first-entry). Nothing else is sent anywhere, and --repo sends it to another copy of
+// the repository, such as a fork that tries the first entry workflow.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { execFileSync, spawn } from 'node:child_process';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { LOCAL, REPO, gameFolder } from './lib/paths.mjs';
 import { readOriginal } from './lib/proof-files.mjs';
 import { copyOf } from './lib/copies.mjs';
 import { serveRepository } from './lib/server.mjs';
-import { go, openChrome } from './lib/chrome.mjs';
-import { WINDOW, loopOf, measure, shortlist } from './lib/moments.mjs';
+import { go, openChrome, until } from './lib/chrome.mjs';
+import { UPSTREAM, api, findFork, repositoryOf } from './lib/github.mjs';
+import { fileAt, remotes } from './lib/preview.mjs';
+import { WINDOW, loopOf, measure, shortlist, stretches } from './lib/moments.mjs';
 import { av1Configuration, av1Frame, mp4 } from './lib/mp4.mjs';
-import { plainWebp, withCapture } from './lib/new-game.mjs';
-import { ensureOriginal, playOriginal, runOriginal } from './gba/original.mjs';
+import { captureMessage, firstFilesMessage, namesOf, plainWebp, withCapture } from './lib/new-game.mjs';
+import { originalButtons, readRecording } from './lib/recording.mjs';
+import { KEY, ensureOriginal, playOriginal, runOriginal } from './gba/original.mjs';
 
+const USAGE = 'Usage: npm run dp -- capture <game> [--choose | --open | --pick | --from <file>] [--yes] [--repo <owner/name>]';
 const CLIP_LIMIT = 1.4e6, CLIP_TARGET = 1.2e6;   // a clip's bytes: visitors download it when they select the game
 const FRAME_SECONDS = 280896 / 16777216;
+const IDLE_MS = 120_000;                         // this long since their last press, and they aren't using the window
+const LONGEST_WAIT_MS = 900_000, WINDOW_MS = 60_000, CLOSING_MS = 300_000;
+const MOST_FRAMES = 216_000;                     // an hour of play is more than a list of presses needs
+const MEDIA = ['.h264.mp4', '.av1.mp4', '-still.webp', '-share.png'];
 
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+const git = (args, options = {}) => execFileSync('git', args, { cwd: REPO, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...options }).trim();
 const json = (response, value) => {
   response.writeHead(200, { 'content-type': 'application/json' });
   response.end(JSON.stringify(value));
 };
 
+const mediaPath = (game, name) => `public/media/${game}-dreamport${name}`;
+const entryPath = game => join(gameFolder(game), 'entry.md');
+const entryOf = game => readFileSync(entryPath(game), 'utf8');
+const issueOf = game => Number(/^issue: (\d+)$/m.exec(entryOf(game))?.[1]);
+const hasCapture = game => /^screen:/m.test(entryOf(game));
+const captureBranch = game => `feat/${issueOf(game)}-capture`;
+const keptIn = game => join(LOCAL, 'captures', game);
+const windowFile = game => join(keptIn(game), 'window.json');
+
 /** Names the capture in the game's entry, in place of any it had. */
 function nameInEntry(game) {
-  const file = join(gameFolder(game), 'entry.md');
-  writeFileSync(file, withCapture(readFileSync(file, 'utf8'), game));
+  writeFileSync(entryPath(game), withCapture(entryOf(game), game));
 }
 
-export async function run(args) {
-  const game = args.find(a => !a.startsWith('--'));
-  const again = args.includes('--choose');
-  if (!game) throw new Error('Usage: npm run dp -- capture <game> [--choose]');
-  const original = readOriginal(game);
-  const copy = copyOf(game, original.sha1);
-  if (!copy) throw new Error(`Show the tools your copy of ${original.name} first: npm run dp -- rom <file>.`);
-  if (!existsSync(join(gameFolder(game), 'entry.md'))) throw new Error(`games/${game}/ has no entry.md yet, which the capture is named in.`);
-  ensureOriginal(console.log);
-
-  const kept = join(LOCAL, 'captures', game);
-  const playFile = join(kept, 'play.json');
-  const buttons = [];       // the buttons held at each frame, as KEY bits
-  const frames = [];        // what measure says of each frame
-  let moments = [];         // { from, to, pictures }: the frames to choose among, the last of them not shown
-  let last = null;          // the frame before, to see what moved
-  let live = null;
-  let choose;
-  const chosen = new Promise(resolve => { choose = resolve; });
-
-  // the presses as a list of changes, which is all that has to be kept to see the same frames again
-  const keepPlay = () => {
-    const held = [];
-    buttons.forEach((mask, frame) => { if (!frame || mask !== buttons[frame - 1]) held.push([frame, mask]); });
-    mkdirSync(kept, { recursive: true });
-    writeFileSync(playFile, `${JSON.stringify({ sha1: copy.sha1, frames: buttons.length, held, moments: moments.map(({ from, to }) => ({ from, to })) })}\n`);
-  };
-
-  // the moments' pictures, which the original draws again from the presses, and a check that they're what was played
-  const picturesOf = async wanted => {
-    const list = [...new Set(wanted.flatMap(({ from, to }) => Array.from({ length: to - from + 1 }, (_, i) => from + i)))].sort((a, b) => a - b);
-    const { hashes, pictures } = await runOriginal({ copy: copy.path, frames: list[list.length - 1] + 1, buttons, pictures: list });
-    frames.forEach((f, frame) => {
-      if (frame < hashes.length && f.hash !== hashes[frame]) throw new Error(`The original didn't draw frame ${frame} the same way again, so these moments can't be trusted.`);
-    });
-    return pictures;
-  };
-
-  const findMoments = async () => {
-    const starts = shortlist(frames, buttons);
-    moments = [];
-    if (starts.length) {
-      const pictures = await picturesOf(starts.map(from => ({ from, to: from + WINDOW - 1 })));
-      moments = starts.map(start => {
-        const { from, to } = loopOf(frame => pictures.get(frame), start);
-        return { from, to, pictures: Array.from({ length: to - from }, (_, i) => pictures.get(from + i)) };
+// what was played: the buttons held at each frame as KEY bits, what `measure` says of each, and the moments found in them
+function playedFor({ game, copy }) {
+  const playFile = join(keptIn(game), 'play.json');
+  const play = {
+    buttons: [], frames: [],
+    moments: [],            // { from, to, pictures }: the frames to choose among, the last of them not shown
+    chosen: null,           // which of them the person pressed, if they did
+    // the presses as a list of changes, which is all that has to be kept to see the same frames again
+    keep() {
+      const held = [];
+      play.buttons.forEach((mask, frame) => { if (!frame || mask !== play.buttons[frame - 1]) held.push([frame, mask]); });
+      mkdirSync(keptIn(game), { recursive: true });
+      writeFileSync(playFile, `${JSON.stringify({ sha1: copy.sha1, frames: play.buttons.length, held, moments: play.moments.map(({ from, to }) => ({ from, to })), chosen: play.chosen })}\n`);
+    },
+    // the moments' pictures, which the original draws again from the presses, and a check that they're what was played
+    async picturesOf(wanted) {
+      const list = [...new Set(wanted.flatMap(({ from, to }) => Array.from({ length: to - from + 1 }, (_, i) => from + i)))].sort((a, b) => a - b);
+      const { hashes, pictures } = await runOriginal({ copy: copy.path, frames: list[list.length - 1] + 1, buttons: play.buttons, pictures: list });
+      play.frames.forEach((f, frame) => {
+        if (frame < hashes.length && f.hash !== hashes[frame]) throw new Error(`The original didn't draw frame ${frame} the same way again, so these moments can't be trusted.`);
       });
-    }
-    keepPlay();
+      return pictures;
+    },
+    async find() {
+      const starts = shortlist(play.frames, play.buttons);
+      play.moments = [];
+      if (starts.length) {
+        const pictures = await play.picturesOf(starts.map(from => ({ from, to: from + WINDOW - 1 })));
+        play.moments = starts.map(start => {
+          const { from, to } = loopOf(frame => pictures.get(frame), start);
+          return { from, to, pictures: Array.from({ length: to - from }, (_, i) => pictures.get(from + i)) };
+        });
+      }
+      play.keep();
+    },
+    /** Reads what was kept and draws its moments again, and says whether there's anything to choose from. */
+    async read() {
+      if (!existsSync(playFile)) return false;
+      const kept = JSON.parse(readFileSync(playFile, 'utf8'));
+      if (kept.sha1 !== copy.sha1 || !kept.moments.length) return false;
+      let at = 0, mask = 0;
+      for (let frame = 0; frame < kept.frames; frame++) {
+        if (kept.held[at]?.[0] === frame) mask = kept.held[at++][1];
+        play.buttons.push(mask);
+      }
+      const pictures = await play.picturesOf(kept.moments);
+      play.moments = kept.moments.map(({ from, to }) => ({ from, to, pictures: Array.from({ length: to - from }, (_, i) => pictures.get(from + i)) }));
+      play.chosen = kept.chosen ?? null;
+      return true;
+    },
   };
+  return play;
+}
 
-  const answer = async (request, response, path) => {
+// the moment encoded and written where the site reads it, by the page that holds its pictures
+async function keepMoment(page, game, moment, choice) {
+  const encode = async codec => {
+    const seconds = moment.pictures.length * FRAME_SECONDS;
+    let bitrate = Math.round(Math.min(1_800_000, CLIP_TARGET * 8 / seconds) * (codec === 'av1' ? 0.75 : 1)), file;
+    for (let tries = 0; tries < 4; tries++) {
+      const video = await page.evaluate(`__capture.encode(${choice}, '${codec}', ${bitrate})`);
+      const chunks = video.frames.map(f => ({ key: f.key, data: Buffer.from(f.data, 'base64') }));
+      const description = codec === 'h264' ? Buffer.from(video.description, 'base64')
+        : video.description ? Buffer.from(video.description, 'base64') : av1Configuration(chunks[0].data);
+      file = mp4({
+        width: video.width, height: video.height, description, av1: codec === 'av1',
+        frames: codec === 'av1' ? chunks.map(c => ({ key: c.key, data: av1Frame(c.data) })) : chunks,
+        timescale: 16777216, duration: 280896,
+      });
+      if (file.length <= CLIP_LIMIT) break;
+      bitrate = Math.round(bitrate * CLIP_TARGET / file.length);
+    }
+    return file;
+  };
+  const out = name => join(REPO, mediaPath(game, name));
+  const h264 = await encode('h264'), av1 = await encode('av1');
+  const still = plainWebp(Buffer.from(await page.evaluate(`__capture.still(${choice})`), 'base64'));
+  const share = Buffer.from(await page.evaluate(`__capture.share(${choice})`), 'base64');
+  writeFileSync(out('.h264.mp4'), h264);
+  writeFileSync(out('.av1.mp4'), av1);
+  writeFileSync(out('-still.webp'), still);
+  writeFileSync(out('-share.png'), share);
+  nameInEntry(game);
+  console.log(`Kept ${(moment.pictures.length * FRAME_SECONDS).toFixed(1)} seconds, ${(h264.length / 1e6).toFixed(2)} MB, in public/media/${game}-dreamport.*, and games/${game}/entry.md names it.`);
+}
+
+// where a capture's pull request comes from: this repository's own remote for someone who can push to it, or their fork
+function pushesTo(repository) {
+  const all = remotes();
+  const own = all.find(({ url }) => repositoryOf(url)?.toLowerCase() === repository.toLowerCase());
+  if (own && api(`repos/${repository}`)?.permissions?.push) return { remote: own.name, owner: repository.split('/')[0], source: own.name };
+  const fork = findFork(all);
+  return { remote: fork.remote, owner: fork.owner, source: own?.name ?? `https://github.com/${repository}.git` };
+}
+
+// what starts a capture's commit: main, for a game that's there, or for one that isn't, the commit of its first files
+function startOf(game, name, issue, main) {
+  const path = `games/${game}/entry.md`;
+  const onMain = fileAt(main, path);
+  if (onMain) return { base: main, entry: onMain.toString('utf8'), first: false };
+  const added = git(['log', `${main}..HEAD`, '--diff-filter=A', '--format=%H', '--', path]).split('\n').filter(Boolean).pop();
+  if (!added || git(['log', '-1', '--format=%B', added]) !== firstFilesMessage(name, issue)) return null;
+  try {
+    git(['merge-base', '--is-ancestor', `${added}^`, main]);
+  } catch {
+    return null;
+  }
+  return { base: added, entry: fileAt(added, path).toString('utf8'), first: true };
+}
+
+const HOW = {
+  chose: 'A person played their own copy of the original and chose this moment.',
+  played: 'A person played their own copy of the original and didn\'t choose, so this is the moment the tool ranked first of what they played. Nobody has seen it yet.',
+  agent: 'Nobody played, so a coding agent wrote the presses, and this is the moment the tool ranked first of what they led to. Nobody has seen it yet.',
+};
+
+// the capture as a pull request of its own, in a commit made beside the branch being worked on, which stays as it is
+function sendCapture({ game, original, repository }, how) {
+  const issue = issueOf(game), { name } = namesOf(original), branch = captureBranch(game);
+  try {
+    const { remote, owner, source } = pushesTo(repository);
+    const into = api(`repos/${repository}`).default_branch;
+    git(['fetch', '--quiet', '--no-tags', source, `+refs/heads/${into}:refs/dreamports/main`]);
+    const main = git(['rev-parse', 'refs/dreamports/main']);
+    const start = startOf(game, name, issue, main);
+    if (!start) {
+      console.log('It goes in with this branch\'s pull request, as this branch doesn\'t start from the first files alone.');
+      return;
+    }
+    const index = join(keptIn(game), 'send.index'), env = { ...process.env, GIT_INDEX_FILE: index };
+    rmSync(index, { force: true });
+    git(['read-tree', start.base], { env });
+    const add = (path, sha) => git(['update-index', '--add', '--cacheinfo', `100644,${sha},${path}`], { env });
+    for (const media of MEDIA) add(mediaPath(game, media), git(['hash-object', '-w', join(REPO, mediaPath(game, media))]));
+    add(`games/${game}/entry.md`, git(['hash-object', '-w', '--stdin'], { input: withCapture(start.entry, game) }));
+    const commit = git(['commit-tree', git(['write-tree'], { env }), '-p', start.base, '-m', captureMessage(name, issue)]);
+    rmSync(index, { force: true });
+    git(['push', '--quiet', remote, `${commit}:refs/heads/${branch}`]);
+    const milestone = api(`repos/${repository}/issues/${issue}`)?.milestone;
+    const pull = api(`repos/${repository}/pulls`, {
+      method: 'POST',
+      body: {
+        title: captureMessage(name, issue), head: `${owner}:${branch}`, base: into, maintainer_can_modify: true,
+        body: [
+          '## Tracking', '', `Refs #${issue}`, `Milestone: ${milestone?.title ?? 'none'}`, `Branch: ${branch}, ${start.first ? 'from the game\'s first files' : 'from the latest main'}`, '',
+          '## Changes', '', `${name} Dreamport's capture, for its card in the launcher, written by \`npm run dp -- capture\`. ${HOW[how]}`, '',
+          '## Delivery record', '', 'Site build: not run', 'Browser checks: none', 'Preview: none', 'Source/diff review: what the tool wrote', 'Private data: none committed (no ROMs, game files, extracted game assets, private email addresses, or credentials)', '',
+          '## Limitations and follow-up', '', `Someone who runs this repository looks at the capture before it appears, and a person can always replace it with one they choose.${start.first ? ' This is the game\'s first entry, so it\'s the only thing to look at here.' : ''}`,
+        ].join('\n'),
+      },
+    });
+    console.log(`Sent as ${start.first ? 'the game\'s first entry' : 'a pull request of its own'}: ${pull.html_url}`);
+  } catch (error) {
+    console.log(`It goes in with this branch's pull request, as it couldn't go by itself: ${error.message}`);
+  }
+}
+
+// a pull request with this game's capture that's waiting already, which means there's nothing more to do for it here
+function waitingPull({ game, repository }) {
+  try {
+    return (api(`repos/${repository}/pulls?state=open&per_page=100`) ?? []).find(pull => pull.head.ref === captureBranch(game))?.html_url ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// what the window answers, if it's open
+async function windowState(game) {
+  if (!existsSync(windowFile(game))) return null;
+  try {
+    const { url } = JSON.parse(readFileSync(windowFile(game), 'utf8'));
+    const response = await fetch(`${url}/capture/state`, { signal: AbortSignal.timeout(5000) });
+    return response.ok ? { url, ...(await response.json()) } : null;
+  } catch {
+    return null;
+  }
+}
+
+// the window in a process of its own, so that whoever started it goes on with their work
+async function openWindow(session) {
+  const { game, yes, repository } = session;
+  if (hasCapture(game)) {
+    console.log(`${game} has its capture already.`);
+    return 0;
+  }
+  const waiting = waitingPull(session);
+  if (waiting) {
+    console.log(`${game}'s capture is waiting for its review: ${waiting}`);
+    return 0;
+  }
+  if (await windowState(game)) {
+    console.log('The window is open already.');
+    return 0;
+  }
+  mkdirSync(keptIn(game), { recursive: true });
+  const logFile = join(keptIn(game), 'window.log'), log = openSync(logFile, 'w');
+  const child = spawn(process.execPath, [join(REPO, 'tools', 'dp.mjs'), 'capture', game, ...(yes ? ['--yes'] : []), ...(repository === UPSTREAM ? [] : ['--repo', repository])], {
+    cwd: REPO, detached: true, stdio: ['ignore', log, log], windowsHide: true,
+  });
+  closeSync(log);
+  let ended = false;
+  child.once('exit', () => { ended = true; });
+  child.unref();
+  for (const giveUp = Date.now() + WINDOW_MS; Date.now() < giveUp && !ended; await wait(250)) {
+    if (await windowState(game)) {
+      console.log(`The window is open, and nothing waits for it. npm run dp -- capture ${game} --pick${yes ? ' --yes' : ''} ends it when the work is done.`);
+      return 0;
+    }
+  }
+  const why = readFileSync(logFile, 'utf8').trim().split('\n').pop();
+  console.log(`No window could open here, which is fine: carry on. ${why}`);
+  return 0;
+}
+
+// ends the window once nobody is using it
+async function closeWindow(game) {
+  let state = await windowState(game);
+  if (!state) return;
+  const giveUp = Date.now() + LONGEST_WAIT_MS;
+  let said = false;
+  while (state && state.idle < IDLE_MS && Date.now() < giveUp) {
+    if (!said) console.log(`The window is open, so this waits until nobody has pressed anything for ${IDLE_MS / 60000} minutes.`);
+    said = true;
+    await wait(5000);
+    state = await windowState(game);
+  }
+  if (!state) return;
+  await fetch(`${state.url}/capture/stop`, { method: 'POST', signal: AbortSignal.timeout(5000) }).catch(() => {});
+  const closed = Date.now() + CLOSING_MS;
+  while (existsSync(windowFile(game)) && Date.now() < closed) await wait(500);
+}
+
+// the first moment kept in a browser nobody sees, which has what encoding needs, and then sent
+async function keepRanked(session, play, how) {
+  const { game } = session;
+  const choice = play.chosen ?? 0;
+  const server = await serveRepository({ answer: answerer(session, play, { choosing: true }) });
+  let page;
+  try {
+    page = await openChrome({ profile: join(LOCAL, 'chrome', 'capture-hidden'), headless: true });
+    await go(page, `${server.url}/tools/capture/index.html`);
+    await until(page, 'window.__capture?.loaded === true', 'the moments', 180_000);
+    await keepMoment(page, game, play.moments[choice], choice);
+  } finally {
+    await page?.close();
+    await server.close();
+  }
+  if (session.yes) sendCapture(session, how);
+}
+
+// when the work is done: what the person chose, or else the moment that ranks first of what they played
+async function pick(session) {
+  const { game } = session;
+  await closeWindow(game);
+  if (hasCapture(game)) {
+    console.log(`${game} has its capture, as files in this folder until they're committed: public/media/${game}-dreamport.* and games/${game}/entry.md.`);
+    return 0;
+  }
+  const waiting = waitingPull(session);
+  if (waiting) {
+    console.log(`${game}'s capture is waiting for its review: ${waiting}`);
+    return 0;
+  }
+  const play = playedFor(session);
+  if (!(await play.read())) {
+    console.log(`Nobody played, or not enough to show, so there's nothing to pick from. Write presses that reach real play to ${relative(REPO, join(keptIn(game), 'presses.json'))}, as a recording has them, and run npm run dp -- capture ${game} --from that file.`);
+    return 0;
+  }
+  await keepRanked(session, play, play.chosen === null ? 'played' : 'chose');
+  return 0;
+}
+
+// when nobody played: the moment that ranks first of what a list of presses leads to, or that in numbers
+async function fromPresses(session, file) {
+  const { game, copy } = session;
+  if (await windowState(game)) throw new Error(`The window is still open: npm run dp -- capture ${game} --pick ends it, and keeps what was played there.`);
+  const recording = readRecording(file);
+  const held = originalButtons(recording);
+  if (held.length > MOST_FRAMES) throw new Error(`${file}: that's ${held.length} frames, and a few minutes of play is enough.`);
+  const masks = held.map(names => names.reduce((mask, button) => {
+    if (!KEY[button]) throw new Error(`${file}: "${button}" isn't one of the console's buttons, which are ${Object.keys(KEY).join(', ')}.`);
+    return mask | KEY[button];
+  }, 0));
+  const play = playedFor(session), live = playOriginal(copy.path);
+  try {
+    let last = null;
+    for (const mask of masks) {
+      const { picture } = await live.frame(mask);
+      play.buttons.push(mask);
+      play.frames.push(measure(picture, last));
+      last = picture;
+    }
+  } finally {
+    live.end();
+  }
+  await play.find();
+  if (!play.moments.length) {
+    console.log(`Those ${masks.length} frames have no moment to show. One needs ${Math.ceil(WINDOW / 60)} seconds of play with buttons held at least a fifth of the time, something moving, and no fade or change of screen. What they led to:`);
+    for (const { from, moved, colours, held: share } of stretches(play.frames, play.buttons)) {
+      console.log(`  from frame ${from}: ${(moved * 100).toFixed(1)}% of the screen moving, ${Math.round(colours)} colours, buttons held ${Math.round(share * 100)}% of the time`);
+    }
+    return 0;
+  }
+  await keepRanked(session, play, 'agent');
+  return 0;
+}
+
+// what the page asks of the tool
+function answerer({ original }, play, { live = null, choosing = false, touch = () => {}, idle = () => 0, choose = () => {}, stop = () => {} }) {
+  let last = null;          // the frame before, to see what moved
+  return async (request, response, path) => {
     if (!path.startsWith('/capture/')) return false;
     const step = path.slice('/capture/'.length);
     if (step === 'about') {
-      json(response, { name: original.name, choosing: again });
+      json(response, { name: original.name, choosing });
+    } else if (step === 'state') {
+      json(response, { idle: idle() });
+    } else if (step === 'stop') {
+      json(response, true);
+      stop();
     } else if (step === 'frame') {
       const mask = Number(new URL(request.url, 'http://localhost').searchParams.get('buttons')) & 0x3FF;
       try {
         const { picture, sound } = await live.frame(mask);
-        buttons.push(mask);
-        frames.push(measure(picture, last));
+        if (mask !== (play.buttons[play.buttons.length - 1] ?? 0)) touch();
+        play.buttons.push(mask);
+        play.frames.push(measure(picture, last));
         last = picture;
         response.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-store' });
         response.end(Buffer.concat([Buffer.from(picture.buffer), sound]));
@@ -101,12 +394,13 @@ export async function run(args) {
         response.end(error.message);
       }
     } else if (step === 'finish') {
-      await findMoments();
-      json(response, moments.map(m => m.pictures.length));
+      touch();
+      await play.find();
+      json(response, play.moments.map(m => m.pictures.length));
     } else if (step === 'moments') {
-      json(response, moments.map(m => m.pictures.length));
+      json(response, play.moments.map(m => m.pictures.length));
     } else if (step.startsWith('moment/')) {
-      const moment = moments[Number(step.slice('moment/'.length))];
+      const moment = play.moments[Number(step.slice('moment/'.length))];
       response.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-store' });
       for (const picture of moment.pictures) response.write(Buffer.from(picture.buffer));
       response.end();
@@ -118,74 +412,78 @@ export async function run(args) {
     }
     return true;
   };
+}
 
-  if (again) {
-    if (!existsSync(playFile)) throw new Error(`Nothing played yet: npm run dp -- capture ${game} plays it first.`);
-    const play = JSON.parse(readFileSync(playFile, 'utf8'));
-    if (play.sha1 !== copy.sha1) throw new Error(`What was played used another copy of the game, so its moments can't be drawn again: npm run dp -- capture ${game} plays it again.`);
-    let at = 0, mask = 0;
-    for (let frame = 0; frame < play.frames; frame++) {
-      if (play.held[at]?.[0] === frame) mask = play.held[at++][1];
-      buttons.push(mask);
-    }
-    if (!play.moments.length) throw new Error(`What was played has no moments to choose from: npm run dp -- capture ${game} plays it again.`);
-    const pictures = await picturesOf(play.moments);
-    moments = play.moments.map(({ from, to }) => ({ from, to, pictures: Array.from({ length: to - from }, (_, i) => pictures.get(from + i)) }));
-  } else {
-    live = playOriginal(copy.path);
-  }
-
-  const server = await serveRepository({ answer });
-  let page, choice = null;
+// the window: the person plays and chooses, or with --choose only chooses
+async function inWindow(session, again) {
+  const { game, copy, original, yes } = session;
+  const play = playedFor(session);
+  if (again && !(await play.read())) throw new Error(`Nothing played yet to choose from: npm run dp -- capture ${game} plays it first.`);
+  const live = again ? null : playOriginal(copy.path);
+  let touched = Date.now(), choose, stop;
+  const chosen = new Promise(resolve => { choose = resolve; });
+  const stopped = new Promise(resolve => { stop = () => resolve(null); });
+  const server = await serveRepository({
+    answer: answerer(session, play, { live, choosing: again, choose, stop, touch: () => { touched = Date.now(); }, idle: () => Date.now() - touched }),
+  });
+  let page;
   try {
     page = await openChrome({ profile: join(LOCAL, 'chrome', 'capture'), headless: false, controllers: true });
     await go(page, `${server.url}/tools/capture/index.html`);
+    mkdirSync(keptIn(game), { recursive: true });
+    writeFileSync(windowFile(game), `${JSON.stringify({ url: server.url })}\n`);
     console.log(again ? 'Choose the moment you want in the browser window.'
       : `Play ${original.name} in the browser window, then press Finish. The best moments come up for you to choose from. No picture leaves this computer unless you send it.`);
-    choice = await Promise.race([chosen, page.closed.then(() => null)]);
+    const choice = await Promise.race([chosen, page.closed.then(() => null), stopped]);
     if (choice === null) {
-      if (!again && buttons.length) {
-        await findMoments();
-        console.log(moments.length ? `The window closed before you chose. npm run dp -- capture ${game} --choose shows the same moments again.`
+      await page.close();
+      if (!again && play.buttons.length) {
+        await play.find();
+        console.log(play.moments.length ? `The window closed before you chose. npm run dp -- capture ${game} --choose shows the same moments again.`
           : `The window closed with no moments to choose from yet. Move around more next time, for at least ${Math.ceil(WINDOW / 60)} seconds of play.`);
       } else console.log('The window closed before you chose, so nothing changed.');
       return 0;
     }
-    const moment = moments[choice];
-    const encode = async codec => {
-      const seconds = moment.pictures.length * FRAME_SECONDS;
-      let bitrate = Math.round(Math.min(1_800_000, CLIP_TARGET * 8 / seconds) * (codec === 'av1' ? 0.75 : 1)), file;
-      for (let tries = 0; tries < 4; tries++) {
-        const video = await page.evaluate(`__capture.encode(${choice}, '${codec}', ${bitrate})`);
-        const chunks = video.frames.map(f => ({ key: f.key, data: Buffer.from(f.data, 'base64') }));
-        const description = codec === 'h264' ? Buffer.from(video.description, 'base64')
-          : video.description ? Buffer.from(video.description, 'base64') : av1Configuration(chunks[0].data);
-        file = mp4({
-          width: video.width, height: video.height, description, av1: codec === 'av1',
-          frames: codec === 'av1' ? chunks.map(c => ({ key: c.key, data: av1Frame(c.data) })) : chunks,
-          timescale: 16777216, duration: 280896,
-        });
-        if (file.length <= CLIP_LIMIT) break;
-        bitrate = Math.round(bitrate * CLIP_TARGET / file.length);
-      }
-      return file;
-    };
-    const out = name => join(REPO, 'public', 'media', `${game}-dreamport${name}`);
-    const h264 = await encode('h264'), av1 = await encode('av1');
-    const still = plainWebp(Buffer.from(await page.evaluate(`__capture.still(${choice})`), 'base64'));
-    const share = Buffer.from(await page.evaluate(`__capture.share(${choice})`), 'base64');
-    writeFileSync(out('.h264.mp4'), h264);
-    writeFileSync(out('.av1.mp4'), av1);
-    writeFileSync(out('-still.webp'), still);
-    writeFileSync(out('-share.png'), share);
-    nameInEntry(game);
-    console.log(`Kept ${(moment.pictures.length * FRAME_SECONDS).toFixed(1)} seconds, ${(h264.length / 1e6).toFixed(2)} MB, in public/media/${game}-dreamport.*, and games/${game}/entry.md names it.`);
+    play.chosen = choice;
+    play.keep();
+    await keepMoment(page, game, play.moments[choice], choice);
     await page.evaluate('__capture.kept()');
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await wait(1500);
+    if (yes) sendCapture(session, 'chose');
     return 0;
   } finally {
+    rmSync(windowFile(game), { force: true });
     live?.end();
     await page?.close();
     await server.close();
   }
+}
+
+function options(args) {
+  const found = { repository: UPSTREAM, yes: false, mode: 'window', file: null, game: null };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--repo') found.repository = args[++i];
+    else if (arg === '--from') { found.mode = 'from'; found.file = args[++i]; }
+    else if (arg === '--yes') found.yes = true;
+    else if (arg === '--choose' || arg === '--open' || arg === '--pick') found.mode = arg.slice(2);
+    else if (arg.startsWith('--') || found.game) throw new Error(USAGE);
+    else found.game = arg;
+  }
+  if (!found.game || !found.repository || (found.mode === 'from' && !found.file)) throw new Error(USAGE);
+  return found;
+}
+
+export async function run(args) {
+  const { game, mode, file, yes, repository } = options(args);
+  const original = readOriginal(game);
+  const copy = copyOf(game, original.sha1);
+  if (!copy) throw new Error(`Show the tools your copy of ${original.name} first: npm run dp -- rom <file>.`);
+  if (!existsSync(entryPath(game))) throw new Error(`games/${game}/ has no entry.md yet, which the capture is named in.`);
+  ensureOriginal(console.log);
+  const session = { game, original, copy, yes, repository };
+  if (mode === 'open') return openWindow(session);
+  if (mode === 'pick') return pick(session);
+  if (mode === 'from') return fromPresses(session, file);
+  return inWindow(session, mode === 'choose');
 }
