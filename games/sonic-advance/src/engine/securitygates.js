@@ -28,7 +28,7 @@ export function createSecurityGate(e, slot, anims) {
         }
       } else if (phase === 'shut') {
         o.y = y;
-        gate(o, o.boxes[0], p, ctx.world.terrain, false);
+        for (const q of ctx.players) gate(o, o.boxes[0], q, ctx.world.terrain, false);
       }
       if (offDisplay(e.x, e.y, cam) && offCam(e.x, y, cam)) { slot.live = null; return false; }
       if (was === 'dropping') {

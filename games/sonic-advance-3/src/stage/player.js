@@ -1,8 +1,8 @@
 // The characters, written from how the original's player code behaves, as read in its decompilation. Each frame a
 // character does what its `behave` says, which moves it and works out what it stands on, and then it's drawn with the
 // animation its `pose` asks for. So far: coming out of the ring, running, braking, turning round, standing, falling and
-// jumping, meeting walls and ceilings, looking up, crouching, rolling, the spin dash, Tails flying and being hit, with the
-// partner pressing its own buttons (partner.js). Comments name the original's functions by the decompilation's labels, which
+// jumping, meeting walls and ceilings, thrown by springs, looking up, crouching, rolling, the spin dash, Tails flying and being
+// hit, with the partner pressing its own buttons (partner.js). Comments name the original's functions by the decompilation's labels, which
 // proof/names.json moves to the USA copy's addresses, or by those addresses.
 
 import { createSprite, updateSprite, displaySprite, transformSprite, SPRITE } from '../sprite.js';
@@ -34,6 +34,8 @@ const FLY_FRAMES = 0xF0, FLY_RISE_LIMIT = -0.75 * PX, FLY_RISE = 0x18, FLY_SINK 
 const LOOK_WAIT = 0x28, LOOK_STEP = 0x20, LOOK_UP_RETURN = 4, LOOK_UP_FURTHEST = -4.3125 * PX, CROUCH_FURTHEST = 0x3BF;
 const SKID_FROM = 2 * PX, STEEP_SLIP = 1.875 * PX, SLIP_FRAMES = 30, LOOK_AROUND_AFTER = 360, SETTLE_FRAMES = 10;
 const GAIT_TOPS = [1.25 * PX, 2.5 * PX, 4 * PX, 7 * PX, 9 * PX];
+const SPRING_SPEEDS = 0xCF0E8, SPRING_STRENGTHS = 0xCF0E0, THROWN = 0x6C, THROWN_FAST = 0x6D, THROWN_FROM = 640;
+const SPRING_CLEARS = 0x23AEF45E | 0x18000000;
 const STANDING_HEIGHT = 14, CURLED_HEIGHT = 9, HALF_WIDTH = 6;
 const HURT_SPEED = 1.5 * PX, HURT_RISE = -3 * PX, INVULNERABLE_FRAMES = 120;
 const CAMERA_LEFT_OF_PLACE = 120, CAMERA_ABOVE_PLACE = 84, PARTNER_BEHIND = 30;
@@ -348,6 +350,44 @@ function hurtFalling(p) {
   p.velY += GRAVITY;
   move(p);
   stopAtWalls(p);
+  collideInAir(p);
+  afterAir(p);
+}
+
+/** Task_SpringMain: a spring sets its throw going, which the character's next move carries out. */
+export function thrownBySpring(p, direction, strength) {
+  const downwards = direction === 1 || direction === 5 || direction === 7, fast = !downwards && p.velX > THROWN_FROM;
+  p.behave = () => throwBySpring(p, direction, strength, downwards ? POSE.FALLING : fast ? THROWN_FAST : THROWN, downwards || fast ? fall : thrownUp);
+}
+// Player_800EA0C, Player_8009B4C and Player_8009BF0, and sub_8009D74: its speeds from the spring's way and strength. It
+// keeps its height, even curled up, until it lands
+function throwBySpring(p, direction, strength, pose, then) {
+  const { rom } = p.stage.c;
+  p.flags = (p.flags & ~SPRING_CLEARS) | IN_AIR;
+  p.camOffsetY = 0;
+  const speedX = rom.s16(SPRING_SPEEDS + direction * 4), speedY = rom.s16(SPRING_SPEEDS + direction * 4 + 2), by = rom.u8(SPRING_STRENGTHS + strength);
+  if (speedX !== 0) {
+    p.velX = s16((speedX * by) >> 4);
+    if (p.velX < 0) p.flags |= FACING_LEFT;
+    else if (p.velX > 0) p.flags &= ~FACING_LEFT;
+  }
+  if (speedY !== 0) p.velY = s16((speedY * by) >> 4);
+  p.sprite.frameFlags &= ~ANIM_FINISHED;
+  p.variant = 0;
+  p.pose = pose;
+  p.behave = then;
+  then(p);
+}
+// Player_8006C70: thrown up or sideways, what it shows changes as it starts to come down
+function thrownUp(p) {
+  if (p.variant === 0 && p.velY >= 0) p.variant = 1;
+  else if (p.variant === 1 && p.sprite.frameFlags & ANIM_FINISHED) {
+    p.sprite.frameFlags &= ~ANIM_FINISHED;
+    p.variant = 2;
+  }
+  steerInAir(p);
+  keepInBounds(p);
+  gravityAndMove(p);
   collideInAir(p);
   afterAir(p);
 }

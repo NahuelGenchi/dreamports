@@ -46,22 +46,24 @@ export function createHalfPipe(e, slot) {
   const left = e.x + s8(e.d[0]) * 8, top = e.y + s8(e.d[1]) * 8, right = left + e.d[2] * 8, bottom = top + e.d[3] * 8;
   // Task_HalfPipeStart sees further back and Task_HalfPipeEnd further ahead
   const out = cam => e.x > cam.x + (start ? 368 : 1040) || e.x < cam.x - (start ? 800 : 128) || e.y > cam.y + 288 || e.y < cam.y - 128;
-  let feet = 0;   // qOffsetY: where his feet were when he ran in
+  let feet = 0;   // qOffsetY: where the feet were of whoever ran in last
   return {
     run(ctx) {
-      const p = ctx.player;
-      if (out(ctx.cam)) { p.halfPipe = false; slot.live = null; return false; }
-      const x = Math.floor(p.x), y = Math.floor(p.y);
-      if (x >= left && x < right && y >= top && y < bottom) {
-        p.halfPipe = q8(p.xsp) * dir > MIN_SPEED && !p.air && p.attack === 0;
-        if (p.halfPipe) feet = q8(p.y) + (s8(p.offsetY) << 8);
-      } else if (p.halfPipe && (start ? x >= right : x < left)) {
-        if (p.dead) return true;
-        const v = s16(q8(p.xsp) + MIN_SPEED - 1);
-        if ((v >= 0 && v < 2 * MIN_SPEED - 1) || p.jumpPressed) {
-          p.halfPipe = false;
-          if (p.state.startsWith('halfPipe')) p.state = 'walk';
-        } else if (q8(p.xsp) * dir >= MIN_SPEED) lift(p, start ? x - right : x - left + WIDTH, feet);
+      // the range is looked at for Sonic first, so leaving only clears his flag
+      if (out(ctx.cam)) { ctx.player.halfPipe = false; slot.live = null; return false; }
+      for (const p of ctx.players) {
+        const x = Math.floor(p.x), y = Math.floor(p.y);
+        if (x >= left && x < right && y >= top && y < bottom) {
+          p.halfPipe = q8(p.xsp) * dir > MIN_SPEED && !p.air && p.attack === 0;
+          if (p.halfPipe) feet = q8(p.y) + (s8(p.offsetY) << 8);
+        } else if (p.halfPipe && (start ? x >= right : x < left)) {
+          if (p.dead) return true;   // and the frame's look ends there
+          const v = s16(q8(p.xsp) + MIN_SPEED - 1);
+          if ((v >= 0 && v < 2 * MIN_SPEED - 1) || p.jumpPressed) {
+            p.halfPipe = false;
+            if (p.state.startsWith('halfPipe')) p.state = 'walk';
+          } else if (q8(p.xsp) * dir >= MIN_SPEED) lift(p, start ? x - right : x - left + WIDTH, feet);
+        }
       }
       return true;
     },

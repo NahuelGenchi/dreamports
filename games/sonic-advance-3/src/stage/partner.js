@@ -104,7 +104,7 @@ function decide(mind, self, leader) {
   if ((mind.clock & 0x3F) === 0x3F && !(mind.c.random() & 0xF00)) {
     mind.offsetX = ((mind.c.random() << 15) >>> 19) - 16 * PX;
   }
-  if (mind.nearest !== -1) {   // sub_80B75E4: an enemy it's noticed comes before the leader
+  if (mind.nearest !== -1) {   // an enemy it's noticed comes before the leader
     mind.targetX = mind.enemyX;
     mind.targetY = mind.enemyY;
   } else {
@@ -223,7 +223,7 @@ const ACTS = {
   },
 };
 
-// sub_80B7878: it's keen while the leader has been pressing things, and not for a while after it's been hit
+// 0x080B74F0: it's keen while the leader has been pressing things, and not for a while after it's been hit
 function restless(mind, self, leader) {
   if (self.invulnerable !== 0) mind.calm = ((mind.c.random() >>> 4) & 0xFF) + 30;
   let keen = mind.restless;
@@ -238,7 +238,7 @@ function restless(mind, self, leader) {
   }
 }
 
-/** sub_8004D68 and sub_80B8E24: an enemy says where it is, and while the partner's keen it keeps the nearest for its next frame. */
+/** sub_8004D68 and 0x080B8A9C: an enemy says where it is, and while the partner's keen it keeps the nearest for its next frame. */
 export function noticeEnemy(mind, self, x, y) {
   if (!mind.keen) return;
   const dx = (x - self.x) >> 8, dy = (y - self.y) >> 8, distance = (dx * dx + dy * dy) >>> 0;

@@ -119,7 +119,7 @@ export function eggWrecker(e, slot) {
     }
   }
 
-  // sub_80342A0: Sonic against the ship, unless it is still flashing from the last hit
+  // sub_80342A0: Sonic and the CPU partner against the ship, unless it is still flashing from the last hit
   function hitTest(ctx, x, y) {
     if (b.flash !== 0) return;
     const hit = bossHit(ship, x, y, ctx);

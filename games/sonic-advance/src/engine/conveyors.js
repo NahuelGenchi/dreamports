@@ -25,15 +25,18 @@ export function createConveyor(e, slot, ctx) {
   const w = e.d[2] * 8, h = e.d[3] * 8, right = e.d[0] !== 0;
   return {
     run(ctx) {
-      const p = ctx.player, terrain = ctx.world.terrain, x = Math.floor(p.x), y = Math.floor(p.y);
-      if (!p.dead && x >= e.x && x <= e.x + w && y >= e.y && y <= e.y + h && !p.air) {
-        if (right) {
-          p.x += SPEED;
-          const d = wallDistance(terrain, Math.floor(p.x) + 8, y, p.layer, 8);
-          if (d < 0) p.x += d;
-        } else p.x -= SPEED;
-        const d = wallDistance(terrain, Math.floor(p.x) - 8, y, p.layer, -8);
-        if (d < 0) p.x -= d;
+      const terrain = ctx.world.terrain;
+      for (const p of ctx.players) {
+        const x = Math.floor(p.x), y = Math.floor(p.y);
+        if (!p.dead && x >= e.x && x <= e.x + w && y >= e.y && y <= e.y + h && !p.air) {
+          if (right) {
+            p.x += SPEED;
+            const d = wallDistance(terrain, Math.floor(p.x) + 8, y, p.layer, 8);
+            if (d < 0) p.x += d;
+          } else p.x -= SPEED;
+          const d = wallDistance(terrain, Math.floor(p.x) - 8, y, p.layer, -8);
+          if (d < 0) p.x -= d;
+        }
       }
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       return true;

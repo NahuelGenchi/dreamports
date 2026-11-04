@@ -82,6 +82,8 @@ export function createEngine(video, rom, sound) {
   let gfxCursor = 0, gfxIndex = 0, bgCursor = 0, bgIndex = 0;
   // gBgSprites_Unknown1 and 2: a rectangle of a layer's map to fill in the next V-blank
   e.mapFill = [0, 1, 2, 3].map(() => ({ value: 0, rect: new Uint8Array(4) }));
+  // gBgSprites: what writes each sprite shown as a layer's map (sprite.js) in the next V-blank
+  e.bgSprites = [];
 
   // --- tasks (task.c): a fixed pool of 128, the first two the list's ends --------------------------------------
   const pool = Array.from({ length: MAX_TASKS }, () => ({ main: null, dtor: null, priority: 0, flags: 0, data: null, parent: null, prev: null, next: null }));
@@ -374,6 +376,8 @@ export function createEngine(video, rom, sound) {
     e.wideOam = [];
     copyGraphics();
     fillMaps();
+    for (const write of e.bgSprites) write();
+    e.bgSprites.length = 0;
     copyBackgrounds();
 
     // ClearOamBufferDma, which the original skips while the game is paused

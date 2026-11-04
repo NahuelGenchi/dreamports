@@ -1,9 +1,9 @@
 // What stands in a stage: its map lists objects by regions of 256 pixels, and those near the camera get a task
 // (entities_manager.c: CreateStageEntitiesManager, 0x0802B7B8, and its tasks). So far the overworld's big rings and Omochao,
-// breakable walls, platforms, Chao and the enemies in enemies.js.
+// breakable walls, springs, platforms, Chao and the enemies in enemies.js.
 
 import { createSprite, updateSprite, displaySprite } from '../sprite.js';
-import { isArriving, hitWallRebound, FLAG } from './player.js';
+import { isArriving, hitWallRebound, thrownBySpring, FLAG } from './player.js';
 import { SINE } from './trig.js';
 import { ENEMIES } from './enemies.js';
 
@@ -11,6 +11,7 @@ const INTERACTABLES = 0xD0E9C, ENEMY_PLACES = 0xD10E4;
 const ANIM_FACTORY_RING = 911, ANIM_OMOCHAO = 977, ANIM_ACT_RING = 983;
 const REGION = 256, TILE = 8, BREAKABLE_WALLS = 0xCF208, WALL_CRACKS = 0xCF250, WALL_DEBRIS = 0xCF2B0, PUSH_OUT = 0x400;
 const ANIM_FIRST_CHAO = 1001, PLATFORM_ANIMS = 0xCF16A, PLATFORM_ANIMS_HUB = 0xCF140;
+const FIRST_ACT = 3, BONUS_CAPSULE = 8, ANIM_SPRING = 866, ANIM_SPRING_4 = 987, ANIM_SPRING_6 = 936, SPRING_TILES = 20, SPRING_TILES_6 = 15, SE_SPRING = 0x94, X_FLIP = 0x400, Y_FLIP = 0x800;
 const SE_WALL_HOLDS = 0x25B, SE_WALL_CRACKS = 0x24B, SE_WALL_BREAKS = 0x24A;
 const DEBRIS_PIECES = 6, DEBRIS_SPEED = 0x200, DEBRIS_GRAVITY = 32, DEBRIS_FRAMES = 30, DEBRIS_ONCE = 1 << 19, WALL_GONE_AFTER = 40;
 
@@ -356,6 +357,63 @@ function createDebris(stage, x, y, angle, piece, tiles) {
   }, null, 0x2100);
 }
 
+// sub_8020700: whether a character's body touches an object's box, on any side
+function touchesBody(box, boxX, boxY, p) {
+  if (box === undefined || box.index === -1 || p.sprite.hitboxes?.[0] === undefined || p.sprite.hitboxes[0].index === -1) return false;
+  const x = p.x >> 8, y = p.y >> 8, overlap = (a0, a1, b0, b1) => (a0 <= b0 && a1 >= b0) || (a0 >= b0 && b1 >= a0);
+  return overlap(boxX + box.left, boxX + box.right, x - p.halfWidth, x + p.halfWidth) && overlap(boxY + box.top, boxY + box.bottom, y - p.halfHeight, y + p.halfHeight);
+}
+
+// CreateEntity_Spring, sub_802DFC8, Task_SpringMain and sub_802E0D8: a spring, which throws a character that touches it its
+// own way, plays its sound once each time it's touched, and shows its other variant until that has played
+function spring(direction) {
+  return (m, at, x, y) => {
+    const { stage } = m, { c } = stage, meX = m.data.getUint8(at);
+    const strength = [0, 1, 2, 3, 4, 5, 6, 7].find(bit => (m.data.getUint8(at + 7) >> bit) & 1) ?? 0;
+    let variant = 0, flips = 0;
+    if (direction & 8) {
+      variant = 6;
+      if (direction & 1) flips = X_FLIP;
+    } else if (direction & 4) {
+      variant = 4;
+      if (direction & 2) flips = X_FLIP;
+      if (direction & 1) flips |= Y_FLIP;
+    } else if (direction & 2) {
+      variant = 2;
+      if (direction & 1) flips = X_FLIP;
+    } else if (direction & 1) flips = Y_FLIP;
+    const zone = stage.act >= FIRST_ACT && stage.act <= BONUS_CAPSULE ? stage.zone : -1;
+    const s = createSprite({
+      tiles: stage.allocTiles(zone === 6 ? SPRING_TILES_6 : SPRING_TILES), anim: zone === 6 ? ANIM_SPRING_6 : zone === 4 ? ANIM_SPRING_4 : ANIM_SPRING,
+      variant, oamFlags: 24 << 6, frameFlags: flips | 0x1000, hitboxes: [{ index: -1 }],
+    });
+    let touched = 0;
+    m.data.setInt8(at, -2);
+    c.createTask(t => {
+      stage.players.forEach((p, i) => {
+        if (!touchesBody(s.hitboxes[0], x, y, p)) {
+          touched &= ~(1 << i);
+          return;
+        }
+        if (!(touched & (1 << i))) {
+          touched |= 1 << i;
+          if (p.id === stage.playerIndex) c.playSong(SE_SPRING);
+        }
+        if (!(s.variant & 1)) s.variant++;
+        thrownBySpring(p, direction, strength);
+      });
+      if (!active(stage.camera, x, y)) {
+        leave(t, m, at, meX, s);
+        return;
+      }
+      s.x = x - stage.camera.x;
+      s.y = y - stage.camera.y;
+      if (updateSprite(c, s) === 0 && s.variant & 1) s.variant--;
+      displaySprite(c, s);
+    }, null, 0x2100);
+  };
+}
+
 // CreateEntity_Toggle_PlayerLayer: an area that puts a character on the front layer of the ground, or the back
 function layerToggle(layer) {
   return (m, at, x, y) => {
@@ -479,4 +537,9 @@ function platform(sway) {
 }
 
 // gSpriteInits_Interactables, those ported so far
-const OBJECTS = { 1: layerToggle(0), 2: layerToggle(1), 16: platform(0), 17: platform(1), 18: platform(2), 19: platform(3), 57: createBreakableWall, 66: createOmochao, 96: createActRing, 98: createFactoryRing, 140: createChao };
+const OBJECTS = {
+  1: layerToggle(0), 2: layerToggle(1),
+  5: spring(0), 6: spring(1), 7: spring(3), 8: spring(2), 9: spring(6), 10: spring(7), 11: spring(4), 12: spring(5), 13: spring(8), 14: spring(9),
+  16: platform(0), 17: platform(1), 18: platform(2), 19: platform(3),
+  57: createBreakableWall, 66: createOmochao, 96: createActRing, 98: createFactoryRing, 140: createChao,
+};
