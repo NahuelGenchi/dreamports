@@ -66,12 +66,12 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the copyright screen and the logos. What comes after them, the title screen, isn't ported yet, so
-// the screen stays black there.
+// The game so far: the copyright screen, the logos and the title screen. What comes after it, the load save game screen,
+// isn't ported yet, so the screen stays white there.
 function createGame(video, rom, sound) {
   // a start point (tools/README.md), which the game's own path doesn't reach yet: ?hub opens in the first world's hub
   const core = createCore(video, rom, sound, new URLSearchParams(location.search).has('hub') ? 'hub' : null);
-  return { step(keys) { step(core, keys); } };
+  return { step(keys) { step(core, keys); }, hblank(y) { core.hblank?.(y); } };
 }
 
 function start() {
@@ -97,7 +97,7 @@ function start() {
       ran = true;
     }
     if (ran) {
-      video.drawFrame(pixels);
+      video.drawFrame(pixels, game.hblank);
       out.putImageData(image, 0, 0);
     }
     requestAnimationFrame(loop);

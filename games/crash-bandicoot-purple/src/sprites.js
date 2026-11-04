@@ -74,7 +74,7 @@ export function drawSprite(sprites, sprite, screenX, screenY, colours) {
       list.push([
         (y & 0xFF) | ((kind & 0xC) << 12),
         (x & 0x1FF) | ((kind & 3) << 14) | (sprite.flipX ? 0x1000 : 0) | (sprite.flipY ? 0x2000 : 0),
-        (slot << 12) | (1 << 10) | (sprites.tiles + offset),   // priority 1, as 0x08019190 sets it
+        (slot << 12) | ((sprite.priority ?? 1) << 10) | (sprites.tiles + offset),   // [52], which 0x08019190 sets to 1 in a level and 0x08019254 starts at 0
       ]);
     }
     offset += TILES[kind];
@@ -82,6 +82,13 @@ export function drawSprite(sprites, sprite, screenX, screenY, colours) {
   // 0x08037B5C: the frame's tiles, which go into video memory at the V-blank, in pairs
   sprites.jobs.push([rom.u32(frame + 4) - CARTRIDGE, sprites.tiles, offset]);
   sprites.tiles += (offset + 1) & ~1;
+}
+
+/** 0x0802AF14: a letter of 8 by 16 from the font's tiles at `from`, with the font's 0x9000: tall, with mosaic set, at priority 0. */
+export function drawLetter(sprites, from, x, y, slot) {
+  sprites.list.push([(y & 0xFF) | 0x9000, x & 0x1FF, (slot << 12) | sprites.tiles]);
+  sprites.jobs.push([from, sprites.tiles, 2]);
+  sprites.tiles += 2;
 }
 
 /** At the V-blank: 0x08037B28's tiles and 0x0803FA50's list. */

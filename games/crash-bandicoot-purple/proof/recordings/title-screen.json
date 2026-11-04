@@ -1,0 +1,24 @@
+{
+  "about": "From power-on, the copyright screen and the logos, then the title screen left alone for about 25 seconds, with Start pressed to go on, through its fade to white to the start of the load save game screen.",
+  "frames": 2030,
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      2000,
+      [
+        "START"
+      ]
+    ],
+    [
+      2006,
+      []
+    ]
+  ],
+  "clip": {
+    "at": 515,
+    "frames": 300
+  }
+}
