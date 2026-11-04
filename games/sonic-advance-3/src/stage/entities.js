@@ -12,7 +12,7 @@ const SE_WALL_HOLDS = 0x25B, SE_WALL_CRACKS = 0x24B, SE_WALL_BREAKS = 0x24A;
 const DEBRIS_PIECES = 6, DEBRIS_SPEED = 0x200, DEBRIS_GRAVITY = 32, DEBRIS_FRAMES = 30, DEBRIS_ONCE = 1 << 19, WALL_GONE_AFTER = 40;
 
 // RLUnCompWram, the BIOS's run-length decompression
-function unRle(rom, at) {
+export function unRle(rom, at) {
   const size = rom.u32(at) >>> 8, out = new Uint8Array(size);
   let src = at + 4, dest = 0;
   while (dest < size) {

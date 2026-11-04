@@ -219,7 +219,7 @@ function buzzerShot(x0, y0, ctx) {
       const x = I(qx), y = I(qy);
       ctx.projectile(s, x, y);
       const sx = x - ctx.cam.x, sy = y - ctx.cam.y;
-      if (((sx + 40) & 0xFFFF) > 280 || sy + 40 < 0 || sy > 200) return false;
+      if (((sx + 40) & 0xFFFF) > 320 || sy + 40 < 0 || sy > 200) return false;
       animate(s, ctx.anims);
       ctx.draw(s, x, y);
       return true;

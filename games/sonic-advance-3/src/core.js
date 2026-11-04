@@ -40,7 +40,8 @@ export function createCore(video, rom, sound) {
     oamBuffer: new Uint16Array(OAM_ENTRIES * 4).fill(0x200),
     input: 0, prevInput: 0, pressed: 0, released: 0, repeated: 0,
     repeatCounters: new Uint8Array(10), firstRepeat: new Uint8Array(10).fill(20), nextRepeat: new Uint8Array(10).fill(8),
-    startUp: START_UP_FRAMES, main: null, tasks: [],
+    startUp: START_UP_FRAMES, main: null, tasks: [], slowFrames: 0,
+    lineScroll: null, shownLineScroll: null,   // what the H-blank writes to layer 3's scroll across, for each line (FLAGS_EXECUTE_HBLANK_COPY)
   };
   const graphics = [], backgrounds = [], layers = [];
   let nextTask = null;
@@ -163,15 +164,23 @@ export function createCore(video, rom, sound) {
     copyBackgrounds();
     for (const bg of layers) copyLayer(c, bg);
     layers.length = 0;
+    c.shownLineScroll = c.lineScroll;
+    scrollLine(0);
     c.oamBuffer.fill(0x200);
   }
 
   /** One frame, with `held` the keys down: the start-up, then the keys, the tasks and the V-blank. */
   c.step = held => {
     if (c.startUp > 0 && --c.startUp > 0) return;
+    // a frame whose work took too long for its V-blank: the screen stays as it was, with nothing new
+    if (c.slowFrames > 0) {
+      c.slowFrames--;
+      return;
+    }
     if (c.main) {
-      c.main(c);
+      const main = c.main;
       c.main = null;
+      main(c);
     }
     readKeys(held);
     // TasksExec: the next task is fixed before each one runs, so a task made just after the one running waits for the
@@ -184,6 +193,13 @@ export function createCore(video, rom, sound) {
     c.flagsPreVBlank = c.flags;
     vblank();
   };
+  // layer 3's scroll for line `y`, from the list the H-blank copies, if there is one
+  const scrollLine = y => {
+    const lines = c.shownLineScroll;
+    if (lines && y < lines.length) video.write(REG.BG0HOFS + 12, lines[y]);
+  };
+  /** What the H-blank does after line `y`, which the page's drawing calls. */
+  c.hblank = y => scrollLine(y + 1);
   // the screen white (forced blank) until the game shows it
   video.write(REG.DISPCNT, 0x80);
   return c;

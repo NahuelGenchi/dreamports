@@ -133,6 +133,7 @@ export function displaySprite(c, s) {
   for (let i = 0; i < pieces; i++) {
     const k = c.allocOam(order);
     if (k < 0) return;
+    if (i === 0) s.oamBaseIndex = k;
     const src = oamData + ((oamIndex & 0x3FFF) + i) * 6;
     let a0 = rom.u16(src), a1 = rom.u16(src + 2), a2 = rom.u16(src + 4);
     let sprX = a1 & 0x1FF, sprY = a0 & 0xFF;

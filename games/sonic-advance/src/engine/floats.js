@@ -13,7 +13,7 @@
 // as in the waterfalls.
 
 import { offCam } from './objects.js';
-import { endAttack } from './player.js';
+import { endAttack, AMY } from './player.js';
 import { tileFloor } from './terrain.js';
 import { SONG } from '../sound/songs.js';
 
@@ -45,6 +45,7 @@ export function createFloat(e, slot) {
         // Player_TransitionCancelFlyingAndBoost
         endAttack(p); p.pushing = false; p.airLock = false;
         p.state = whirlwind ? 'float' : 'spring';
+        if (p.character === AMY) p.hammerJump = true;
         if (tileFloor(ctx.world.terrain, x, y, p.layer) > 4) p.curled = false;
       }
       return true;

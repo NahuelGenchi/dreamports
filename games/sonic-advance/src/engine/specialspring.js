@@ -7,7 +7,7 @@
 
 import { makeSprite, startAnim, animate, offCam } from './objects.js';
 import { platform, LANDED } from './collide.js';
-import { land, standUp } from './player.js';
+import { land, standUp, hammerHits, hammerSpeed } from './player.js';
 import { SONG } from '../sound/songs.js';
 
 export const SPECIAL_SPRING = 102;
@@ -33,14 +33,15 @@ export function createSpecialSpring(e, slot, anims) {
   // up at 7.5 px a frame in the spring's rising state (character state 21), uncurled, with the spring's song.
   // It doesn't start his animation over as the other springs do. With the special springs on, it also holds
   // him (MOVESTATE_IA_OVERRIDE) and stops the course clock (STAGE_FLAG__ACT_START). The launch's first frame
-  // shows on the same frame. (Amy's hammer, which also launches her 1.5 times as fast, and the partner aren't
-  // built.)
+  // shows on the same frame. Amy's hammer launches her 1.5 times as fast. (The partner isn't built.)
   function wait(ctx) {
     const p = ctx.player;
-    if (!p.dead && platform(o, o.boxes[0], p, ctx.world.terrain) & LANDED) {
+    const landed = !p.dead && (platform(o, o.boxes[0], p, ctx.world.terrain) & LANDED) !== 0;
+    const hammered = !p.dead && !landed && hammerHits(p, o.x, o.y, o.boxes[0]);
+    if (landed || hammered) {
       land(p);
       p.onObject = null; p.air = true;
-      p.ysp = -LAUNCH_SPEED;
+      p.ysp = hammered ? hammerSpeed(-LAUNCH_SPEED) : -LAUNCH_SPEED;
       p.state = 'springRise';
       held = { x: ctx.cam.x, y: ctx.cam.y };
       if (!plain(p, ctx.world)) { p.carried = true; ctx.world.stopClock(); }
