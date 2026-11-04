@@ -16,6 +16,8 @@ const { FACING_LEFT, CURLED, IN_AIR, ON_OBJECT, AT_WALL, BUTTONS_OFF } = FLAG;
 
 const FIRST_ANIMATIONS = 0xCE450, POSE_ANIMATIONS = 0xCE45A, RUN_RATES = 0xCE92A;
 const POSE = { STAND: 0, LOOK_AROUND: 6, LOOK_AROUND_PARTNER: 7, RUN: 8, SKID: 0x10, SKID_FAST: 0x11, AIR_SLOW: 0x13, AIR_FAST: 0x14, PUSH: 0x21 };
+// 0x080578E8: a sprite the title card's colour effect takes in, as it does while the card covers the stage
+const BLENDED = 0x80;
 const ANIM_FINISHED = 0x4000, SE_STOPPING = 0x73;
 
 const PX = 256;   // positions and speeds are in 1/256 of a pixel
@@ -120,13 +122,19 @@ const curlUpBody = p => {   // Player_8012FF0
 /** Whether it's still coming out of a ring, which is when the rings push it. */
 export const isArriving = p => p.behave === comeOutOfRing || p.behave === arriving;
 
-// 0x0800522C: its first frame, in the air and curled up, with the buttons off
+// 0x0800522C: its first frame, with the buttons off: in an overworld in the air and curled up, and in an act standing
 function comeOutOfRing(p) {
-  p.flags |= BUTTONS_OFF | CURLED | IN_AIR;
-  p.velX = 0;
-  p.velY = 0;
-  setHeight(p, CURLED_HEIGHT);
-  p.pose = POSE.AIR_SLOW;
+  p.flags |= BUTTONS_OFF;
+  if (p.stage.act === 2) {
+    p.flags |= CURLED | IN_AIR;
+    p.velX = 0;
+    p.velY = 0;
+    setHeight(p, CURLED_HEIGHT);
+    p.pose = POSE.AIR_SLOW;
+  } else {
+    setHeight(p, STANDING_HEIGHT);
+    p.pose = POSE.STAND;
+  }
   arriving(p);
 }
 // 0x080052C8: until the fade in has ended it keeps to this, on the ground or not, whatever landing asked for
@@ -556,6 +564,7 @@ function chooseAnimation(c, p) {
 // Player_AnimateAndDisplay: running it tilts with the ground, and otherwise it only faces left or right
 function drawBody(c, p) {
   const s = p.sprite, cam = p.stage.camera;
+  s.frameFlags = (s.frameFlags & ~SPRITE.OBJ_MODE) | (p.stage.cardCover ? BLENDED : 0);
   s.x = pixel(p.x) - cam.x;
   s.y = pixel(p.y) - cam.y;
   s.frameFlags = (s.frameFlags & ~SPRITE.PRIORITY) | 0x1000;
@@ -573,7 +582,7 @@ function drawBody(c, p) {
     } else s.frameFlags |= SPRITE.X_FLIP;
     updateSprite(c, s);
   }
-  displaySprite(c, s);
+  if (!p.stage.cardHides) displaySprite(c, s);
 }
 function faceAndTurn(p, turn, rotation, x, y) {
   turn.rotation = rotation;
@@ -598,5 +607,6 @@ function drawTails(c, p) {
   faceAndTurn(p, turn, pointing * 4, pixel(p.x) - cam.x, pixel(p.y) - cam.y);
   updateSprite(c, s);
   transformSprite(c, s, turn, SINE);
-  displaySprite(c, s);
+  s.frameFlags = (s.frameFlags & ~SPRITE.OBJ_MODE) | (p.stage.cardCover ? BLENDED : 0);
+  if (!p.stage.cardHides) displaySprite(c, s);
 }
