@@ -11,7 +11,7 @@ import { arcTan2 } from './arctan.js';
 
 // the fight's setup: each fighter's character and whether it wears its other colours
 const SETUP = 0x03001620, CHARACTER = SETUP + 20, OTHER_COLOURS = SETUP + 24;
-const THE_PLAYER = 0x03001380, LINKED = 0x0300138C, VBLANKS = 0x03001378, FACING = 0x03001370;
+const THE_PLAYER = 0x03001380, LINKED = 0x0300138C, FACING = 0x03001370;
 
 // the fighters' records, each 252 bytes, with a copy of its 16 colours inside
 const FIGHTERS = 0x03001C40, FIGHTER_SIZE = 252, COLOURS = 0x03001D0C;
@@ -101,7 +101,7 @@ export function showColours(c, i, character, flash) {
   const f = fighter(i), to = SPRITE_PALETTES + i * 32;
   write8(c, f + 196, character);
   const state = read16(c, f + 20);
-  if ((flash & 0xFF) !== 0 && (read16(c, VBLANKS) & 4) !== 0 && state !== 254 && state !== 255) {
+  if ((flash & 0xFF) !== 0 && (c.vblanks & 4) !== 0 && state !== 254 && state !== 255) {
     write16(c, to, 0);
     for (let n = 1; n <= 15; n++) {
       const v = read16(c, coloursOf(i) + n * 2);
