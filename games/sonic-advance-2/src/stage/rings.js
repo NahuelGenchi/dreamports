@@ -13,7 +13,7 @@ const SE_RING = 117, SE1 = 1, SE2 = 2, MOST_EFFECTS = 8;   // se_ring_copy, on t
 const RING_FLAGS = 0x42200;   // SPRITE_FLAG(PRIORITY, 2) | SPRITE_FLAG_MASK_18 | SPRITE_FLAG_MASK_MOSAIC
 
 // 0x08097130, RLUnCompWram: the BIOS's run-length decompression
-function unRle(rom, at) {
+export function unRle(rom, at) {
   const size = rom.u32(at) >>> 8, out = new Uint8Array(size);
   let src = at + 4, dest = 0;
   while (dest < size) {
