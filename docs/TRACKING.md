@@ -57,13 +57,13 @@ Issue and PR titles may start with a type prefix (`feat:`, `fix:`, `enh:`, `docs
 Closes #123
 ```
 
-Use one closing line per completed issue and `Refs #123` for unfinished parent or related work. Keep closing issues within the PR's milestone.
+Use one closing line per completed issue and `Refs #123` for unfinished parent or related work. Keep closing issues within the PR's milestone. A PR that must not close anything, such as a draft or a game's capture, has only its `Refs` lines, and those count in its closing lines' place.
 
 ## Metadata-only automation
 
 [`.github/workflows/project-tracking.yml`](../.github/workflows/project-tracking.yml) manages metadata, not software quality. It creates the milestones and tracking labels idempotently, processes issues before PRs, and fills missing milestones. An issue's explicit GitHub milestone wins; otherwise the form or `Milestone:` line is used, and unclassified issues fall back to M4. Issues with a *Game folder*, from the New Dreamport and Task forms, are left to [`claims.yml`](../.github/workflows/claims.yml), which puts them in their game's milestone.
 
-PRs inherit a missing milestone from their first valid closing issue. PRs without a valid closing issue, or with a milestone mismatch, get the `needs-tracking` label; fix the body or milestone to clear it. The workflow does not comment.
+PRs inherit a missing milestone from their first valid closing issue, or, with no closing line, from the first issue a standalone `Refs` line names. PRs with no valid issue either way, or with a milestone mismatch, get the `needs-tracking` label; fix the body or milestone to clear it. A milestone a PR already has stays, so a PR in a different milestone from its issue stays marked until someone changes it. The workflow does not comment.
 
 The job uses inline Node.js and the repository's `GITHUB_TOKEN` with only issue and PR write permissions. It has no checkout, third-party action, build, or test. PR text is parsed as data, never executed. To repair metadata after a missed run, use **Actions → Project tracking → Run workflow**.
 
