@@ -1,0 +1,33 @@
+{
+  "about": "Crash Bandicoot Purple's parts, in the order a player meets them, then its other modes. Each counts the same. A part is proven when a recording plays it from its first frame to its last and every frame matches the original: \"frames\" are the first and last of the recording's frames it covers. A part may end with a press that moves the game on, the way a player leaves it, such as Start on the title screen. Where the screen is one colour between two parts, those frames go with the part before. Foundations are what many parts need but no player would call a part, and they don't count towards the parts. The worlds go by their order here until someone has played far enough to name them, and each world's mini-games can be split into a task each once they're known.",
+  "foundations": [
+    {"name": "The sound engine", "what": "The game's own mixer and song format, rewritten so its music and sound effects play. It isn't the kit's sound engine, and every part has sound that prove compares, so every part needs it. The game's notes say where it starts.", "done": "prove finds the sound of the copyright screen and the logos the same as the original's, on every frame of the logos recording."},
+    {"name": "Crash on foot", "what": "Crash running, jumping and spinning through a world's hub, with its camera, enemies, crates and portals. All five hubs build on it. It's the largest piece, so whoever takes it can open smaller tasks with the Task form once the code shows where it divides."}
+  ],
+  "parts": [
+    {"name": "The copyright screen and the logos", "needs": ["The sound engine"], "recording": "logos", "frames": [0, 518]},
+    {"name": "The title screen", "needs": ["The sound engine"], "recording": "title-screen", "frames": [519, 1799]},
+    {"name": "The load save game screen", "needs": ["The sound engine"]},
+    {"name": "The main menu", "needs": ["The sound engine"]},
+    {"name": "The story's opening scene", "needs": ["The sound engine"]},
+    {"name": "The first world's hub", "needs": ["The sound engine", "Crash on foot"]},
+    {"name": "The first world's mini-games", "needs": ["The sound engine"]},
+    {"name": "The first world's boss", "needs": ["The sound engine"]},
+    {"name": "The second world's hub", "needs": ["The sound engine", "Crash on foot"]},
+    {"name": "The second world's mini-games", "needs": ["The sound engine"]},
+    {"name": "The second world's boss", "needs": ["The sound engine"]},
+    {"name": "The third world's hub", "needs": ["The sound engine", "Crash on foot"]},
+    {"name": "The third world's mini-games", "needs": ["The sound engine"]},
+    {"name": "The third world's boss", "needs": ["The sound engine"]},
+    {"name": "The fourth world's hub", "needs": ["The sound engine", "Crash on foot"]},
+    {"name": "The fourth world's mini-games", "needs": ["The sound engine"]},
+    {"name": "The fourth world's boss", "needs": ["The sound engine"]},
+    {"name": "The fifth world's hub", "needs": ["The sound engine", "Crash on foot"]},
+    {"name": "The fifth world's mini-games", "needs": ["The sound engine"]},
+    {"name": "The last fight against Cortex and Ripto", "needs": ["The sound engine"]},
+    {"name": "The ending", "needs": ["The sound engine"]},
+    {"name": "Party mode", "needs": ["The sound engine"]},
+    {"name": "Trading cards", "needs": ["The sound engine"]},
+    {"name": "The credits", "needs": ["The sound engine"]}
+  ]
+}
