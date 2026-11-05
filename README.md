@@ -144,7 +144,7 @@ From cartridges or discs you own. You copy the game to your computer with a read
 <summary><b>Is it legal?</b></summary>
 <br>
 
-Dreamports never hosts game files, and every game asks for your own copy. The rules about copying games you own differ from country to country, so check the ones where you live. This isn't legal advice. Rights holders can reach the Dreamports team at hello@dreamports.net, as [docs/RIGHTS.md](docs/RIGHTS.md) explains.
+Dreamports never hosts game files, and every game asks for your own copy. The rules about copying games you own differ from country to country, so check the ones where you live. This isn't legal advice. Rights holders can reach the Dreamports team at hello@dreamports.net, as [docs/RIGHTS.md](docs/RIGHTS.md) explains, and can also make their game's Dreamport with the team, under their license, as [docs/PUBLISHERS.md](docs/PUBLISHERS.md) explains.
 
 </details>
 

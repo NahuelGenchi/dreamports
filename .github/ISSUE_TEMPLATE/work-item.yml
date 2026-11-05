@@ -36,6 +36,7 @@ body:
         - M6 — Anyone can make a Dreamport
         - M7 — New games join the launcher on their own
         - M8 — Lighter tools, on any console
+        - M9 — Dreamports made with publishers
       default: 4
     validations:
       required: true

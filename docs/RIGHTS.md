@@ -6,6 +6,8 @@
 
 Dreamports never hosts games, but the games it rebuilds belong to the people who made them. If a game's rights holder asks for something to be taken down, the Dreamports team takes it down quickly, quietly and completely. Each game lives in a folder of its own, so one change removes it from dreamports.net and from the source code, usually within one business day.
 
+If you'd rather keep your game here and make it with the team, under your license, [Working with publishers](PUBLISHERS.md) says how.
+
 ## Where notices arrive
 
 **By email**, at [hello@dreamports.net](mailto:hello@dreamports.net?subject=Rights%20notice), ideally with "Rights notice" in the subject. The [About page](https://dreamports.net/about/#rights) asks for the game, what to remove, who sends it or whom they act for, and how to reach them. The address forwards to the Dreamports team.
