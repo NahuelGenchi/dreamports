@@ -1,8 +1,8 @@
 // npm run dp -- prove <game> [recording…]: plays each recording, from power-on, in the original (in the reference
 // emulator) and in the Dreamport (in a headless browser), compares every frame, its picture and its sound
 // (lib/sound.mjs), notes which of the original's functions ran in the frames that matched, updates the game's progress.json, which its code ported and its gameplay
-// proven are measured with (docs/STANDARD.md#how-progress-is-measured), and the README's table of Dreamports with it
-// (readme.mjs), and makes a clip and stills of both side by side, with a clip and a still of the
+// proven are measured with (docs/STANDARD.md#how-progress-is-measured),
+// and makes a clip and stills of both side by side, with a clip and a still of the
 // Dreamport on its own. To help find where each of the game's parts starts and ends, it lists the frames where the
 // original's screen is one colour, as between one screen and the next, and with --stills <frames> keeps pictures of
 // those frames, as it does of each part's first and last, and it names any notes people left on what differs
@@ -25,7 +25,7 @@ import { mp4 } from './lib/mp4.mjs';
 import { makeFilter, soundOf, NEAR } from './lib/sound.mjs';
 import { compareState, describeState } from './lib/state.mjs';
 import { fromStartPoint, measure, percentText } from '../src/lib/entries.mjs';
-import { writeReadme, readProof } from './readme.mjs';
+import { readProof } from './readme.mjs';
 import { referenceOf } from './lib/reference.mjs';
 import { checkSizes, firstOtherSize } from './lib/screens.mjs';
 import { notesAbout } from './notes.mjs';
@@ -99,12 +99,6 @@ export async function run(args) {
     console.log(`\nNo code map yet, so no code ported: npm run dp -- codemap ${game} makes one.`);
   }
   writeProgress(game, { ...totals, recordings: progress.recordings });
-  // the README's table of Dreamports shows the new numbers
-  try {
-    writeReadme();
-  } catch (error) {
-    console.log(`README.md's table of Dreamports wasn't written: ${error.message}`);
-  }
   // the two numbers the game shows now
   try {
     const { ported, gameplay } = readProof(game) ?? {};

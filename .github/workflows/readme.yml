@@ -1,0 +1,40 @@
+name: Readme
+
+# Writes the README's table of Dreamports and each game's progress map from main's own files, so pull requests leave
+# them alone and can't conflict over them (docs/TRACKING.md). main only takes pull requests, so this opens one with only
+# those files and merges it. It runs only main's code and asks no model. It runs on a schedule, not on each merge, as
+# each commit it makes starts two builds at Cloudflare, whose free minutes are limited, and several merges share one.
+on:
+  schedule:
+    - cron: '7 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: readme
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Put the table and maps on main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node tools/dp.mjs readme
+      - name: Open and merge the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/readme/publish.mjs
