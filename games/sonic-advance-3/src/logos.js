@@ -79,6 +79,7 @@ function init(t) {
 function skipped(t) {
   const s = t.data, { c } = s;
   if (!s.skippable || !(c.pressed & KEY.START)) return false;
+  stopLines(c);   // the task's destructor (0x080A2974), which Start's destroying it runs as well
   c.destroyTask(t);
   leaveForTheTitle(c);
   return true;

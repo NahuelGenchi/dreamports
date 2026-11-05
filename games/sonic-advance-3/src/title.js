@@ -67,9 +67,11 @@ function makeTheScreen(t) {
 /** 0x08089ED4, CreateTitleScreen. */
 export function createTitleScreen(c, fade) {
   c.dispCnt = 0x1041;
+  // the screen's state: the fade (its level in 1/256ths and how fast it moves), the frame of the shake, the 3's size, the
+  // step of the alpha its landing blends with, the blink's count, and the waits for the announcer, Start and the corner
   const s = {
-    c, fade, language: c.save.language, qUnkE: fade === FADE_IN ? 0x40 : 0x100,
-    unk1: 0, unk4: 0xB4, unk6: 0, unk8: 0, unkA: 0, unk10: 0, unk1E: 0x1E, unk24: 0,
+    c, fade, language: c.save.language, fadeSpeed: fade === FADE_IN ? 0x40 : 0x100,
+    shakeFrame: 0, cornerFrames: 0xB4, timer: 0, wait: 0, fadeLevel: 0, landingStep: 0, blink: 0x1E, logoScale: 0,
     x: 0x7800, y: 0x6400, cornerX: 0xF000, cornerY: 0x700, copyrightX: 0, copyrightY: 0x8200,
     tiles: OBJ_VRAM,
   };
@@ -156,7 +158,7 @@ function showCopyright(c, s) {
 }
 // 0x0808AEDC: the "3" at the size it has
 function placeThree(c, s) {
-  const scale = s.unk24 >> 8;
+  const scale = s.logoScale >> 8;
   transformBackground(c, 0, scale, scale, 0x20, 0x28, 0xB4, 0x30);
 }
 
@@ -172,25 +174,25 @@ function withFade(t) {
     c.bldCnt = s.fade === NO_FADE ? 0x3FFF : 0x3FBF;
     c.bldY = 0x10;
     s.fade = FADING;
-    s.unkA = 0x1000;
-    s.unk24 = FIRST_SCALE;
+    s.fadeLevel = 0x1000;
+    s.logoScale = FIRST_SCALE;
   }
   placeThree(c, s);
   if (c.bldY) {
-    c.bldY = s.unkA >> 8;
-    s.unkA = u16(s.unkA - s.qUnkE);
+    c.bldY = s.fadeLevel >> 8;
+    s.fadeLevel = u16(s.fadeLevel - s.fadeSpeed);
     if (c.pressed & KEY.START) {
       c.bldY = 0;
-      s.qUnkE = 0x100;
+      s.fadeSpeed = 0x100;
       t.main = fadeless;
     }
   } else {
     c.bldY = 0;
-    if (s.qUnkE > 0xFF) t.main = idle;
+    if (s.fadeSpeed > 0xFF) t.main = idle;
     else {
       c.winRegs[4] = 0x26;
       c.bldCnt = 0x2244;
-      s.unk10 = 0;
+      s.landingStep = 0;
       c.bldAlpha = c.rom.u16(ALPHAS);
       t.main = landing;
     }
@@ -201,25 +203,25 @@ function withFade(t) {
 function landing(t) {
   const s = t.data, { c } = s;
   let done = 0;
-  s.unk24 -= LANDING_SPEED;
-  if (s.unk24 < LAST_SCALE) {
-    s.unk24 = LAST_SCALE;
+  s.logoScale -= LANDING_SPEED;
+  if (s.logoScale < LAST_SCALE) {
+    s.logoScale = LAST_SCALE;
     done = 1;
   }
-  if ((s.unk10 >> 8) > 0xF) {
-    s.unk10 = 0x1000;
+  if ((s.landingStep >> 8) > 0xF) {
+    s.landingStep = 0x1000;
     done++;
   } else {
-    s.unk10 += 0x100;
-    if ((s.unk10 >> 8) > 0x10) {
-      s.unk10 = 0x1000;
+    s.landingStep += 0x100;
+    if ((s.landingStep >> 8) > 0x10) {
+      s.landingStep = 0x1000;
       done++;
     }
   }
-  c.bldAlpha = c.rom.u16(ALPHAS + (s.unk10 >> 8) * 2);
+  c.bldAlpha = c.rom.u16(ALPHAS + (s.landingStep >> 8) * 2);
   placeThree(c, s);
   if (done > 1) {
-    s.unk1 = 0;
+    s.shakeFrame = 0;
     t.main = shake;
   }
 }
@@ -227,12 +229,12 @@ function landing(t) {
 // 0x0808A55C, Task_808A8E4: the logo and the "3" moved together for ten frames
 function shake(t) {
   const s = t.data, { c } = s, { rom } = c;
-  const x = s8(rom.u8(SHAKE_X + s.unk1)), y = s8(rom.u8(SHAKE_Y + s.unk1));
+  const x = s8(rom.u8(SHAKE_X + s.shakeFrame)), y = s8(rom.u8(SHAKE_Y + s.shakeFrame));
   c.bgScroll[2] = u16(-20 - x);
   c.bgScroll[3] = u16(-8 - y);
-  const scale = s16((s.unk24 << 8) >> 16);
+  const scale = s16((s.logoScale << 8) >> 16);
   transformBackground(c, 0, scale, scale, 0x20, 0x28, s16(x + 0xB4), s16(y + 0x30));
-  if (++s.unk1 > SHAKE_FRAMES - 1) {
+  if (++s.shakeFrame > SHAKE_FRAMES - 1) {
     c.dispCnt |= 0x2000;
     c.winRegs[0] = 240;
     c.winRegs[2] = 160;
@@ -240,8 +242,8 @@ function shake(t) {
     c.bldCnt = 0x3FBF;
     c.bldY = 0;
     s.fade = FADING;
-    s.unkA = 0;
-    s.qUnkE = 0x200;
+    s.fadeLevel = 0;
+    s.fadeSpeed = 0x200;
     t.main = flash;
   }
 }
@@ -251,12 +253,12 @@ function flash(t) {
   const s = t.data, { c } = s;
   placeThree(c, s);
   if (c.bldY <= 0xE) {
-    c.bldY = s.unkA >> 8;
-    s.unkA = u16(s.unkA + s.qUnkE);
+    c.bldY = s.fadeLevel >> 8;
+    s.fadeLevel = u16(s.fadeLevel + s.fadeSpeed);
     return;
   }
   c.bldY = 0xF;
-  s.unkA = 0xF00;
+  s.fadeLevel = 0xF00;
   c.winRegs[4] |= 0x33;
   t.main = fadeless;
 }
@@ -276,7 +278,7 @@ function fadeless(t) {
   c.winRegs[4] |= 0x26;
   c.bldCnt = 0x3FBF;
   c.bldY = 0xF;
-  s.unkA = 0xF00;
+  s.fadeLevel = 0xF00;
   c.winRegs[4] |= 0x33;
   t.main = announcer;
 }
@@ -284,19 +286,19 @@ function fadeless(t) {
 // 0x0808A7BC, Task_TitleAnnouncer: the white clearing, then the announcer says the name
 function announcer(t) {
   const s = t.data, { c } = s;
-  if (s.qUnkE > 0xFF) showCopyright(c, s);
+  if (s.fadeSpeed > 0xFF) showCopyright(c, s);
   if (c.bldY === 0) {
-    s.unk8 = ANNOUNCER_WAIT;
+    s.wait = ANNOUNCER_WAIT;
     s.fade = FADE_FROM_COLOURS;
     t.main = waitForTheName;
     c.playSong(ANNOUNCER);
     return;
   }
-  c.bldY = s.unkA >> 8;
-  s.unkA = u16(s.unkA - s.qUnkE);
-  if (s.unkA > 0xF00) s.unkA = 0;
+  c.bldY = s.fadeLevel >> 8;
+  s.fadeLevel = u16(s.fadeLevel - s.fadeSpeed);
+  if (s.fadeLevel > 0xF00) s.fadeLevel = 0;
   if (c.pressed & KEY.START) {
-    s.unk8 = ANNOUNCER_WAIT;
+    s.wait = ANNOUNCER_WAIT;
     s.fade = FADE_FROM_COLOURS;
     t.main = waitForTheName;
   }
@@ -307,11 +309,11 @@ function waitForTheName(t) {
   const s = t.data, { c } = s;
   showCopyright(c, s);
   if (s.fade === FADE_FROM_COLOURS && c.bldY !== 0) {
-    c.bldY = s.unkA >> 8;
-    s.unkA = u16(s.unkA - 0x100);
+    c.bldY = s.fadeLevel >> 8;
+    s.fadeLevel = u16(s.fadeLevel - 0x100);
   }
-  if (s.unk8 !== 0) {
-    s.unk8 = u16(s.unk8 - 1);
+  if (s.wait !== 0) {
+    s.wait = u16(s.wait - 1);
     return;
   }
   t.main = idle;
@@ -321,22 +323,22 @@ function waitForTheName(t) {
 function idle(t) {
   const s = t.data, { c } = s;
   showCopyright(c, s);
-  if (s16(s.unk1E) > PRESS_START_BLINK) s.unk1E = 0;
-  if (s16(s.unk1E) > PRESS_START_ON_AT) showPressStart(c, s);
+  if (s16(s.blink) > PRESS_START_BLINK) s.blink = 0;
+  if (s16(s.blink) > PRESS_START_ON_AT) showPressStart(c, s);
   showCopyright(c, s);
   if (c.pressed & KEY.START) {
     c.playSong(SE_SELECT);
-    s.unk6 = WAIT_FOR_START;
-    s.unk1E = 2;
+    s.timer = WAIT_FOR_START;
+    s.blink = 2;
     t.main = flashing;
     return;
   }
-  if (s.unk4 <= 0xB3) {
+  if (s.cornerFrames <= 0xB3) {
     showCorner(c, s);
-    s.unk4++;
+    s.cornerFrames++;
   }
-  s.unk6++;
-  s.unk1E++;
+  s.timer++;
+  s.blink++;
 }
 
 // 0x0808A938, sub_808ACC0: the corner's sprite, which shows for the first 180 frames
@@ -352,11 +354,11 @@ function showCorner(c, s) {
 function flashing(t) {
   const s = t.data, { c } = s;
   showCopyright(c, s);
-  if (s16(s.unk1E) > FLASH_BLINK) s.unk1E = 0;
-  if (s16(s.unk1E) > FLASH_ON_AT) showPressStart(c, s);
-  s.unk6 = u16(s.unk6 - 1);
-  s.unk1E = u16(s.unk1E + 1);
-  if (s.unk6 === 0) {
+  if (s16(s.blink) > FLASH_BLINK) s.blink = 0;
+  if (s16(s.blink) > FLASH_ON_AT) showPressStart(c, s);
+  s.timer = u16(s.timer - 1);
+  s.blink = u16(s.blink + 1);
+  if (s.timer === 0) {
     s.fade = FADE_FROM_COLOURS;
     t.main = fadeOut;
   }
@@ -369,16 +371,16 @@ function fadeOut(t) {
   if (s.fade === FADE_FROM_COLOURS) {
     c.bldY = 0;
     s.fade = FADE_IN;
-    s.unkA = 0;
+    s.fadeLevel = 0;
   }
-  if (s16(s.unk1E) > FLASH_BLINK) s.unk1E = 0;
-  if (s16(s.unk1E) > FLASH_ON_AT) showPressStart(c, s);
+  if (s16(s.blink) > FLASH_BLINK) s.blink = 0;
+  if (s16(s.blink) > FLASH_ON_AT) showPressStart(c, s);
   showCopyright(c, s);
-  s.unk8 = u16(s.unk8 - 1);
-  s.unk1E = u16(s.unk1E + 1);
+  s.wait = u16(s.wait - 1);
+  s.blink = u16(s.blink + 1);
   if (c.bldY < 0xF) {
-    c.bldY = s.unkA >> 8;
-    s.unkA = u16(s.unkA + 0x100);
+    c.bldY = s.fadeLevel >> 8;
+    s.fadeLevel = u16(s.fadeLevel + 0x100);
   } else {
     c.destroyTask(t);
     // LaunchChaoMenu makes the menu's task, which first runs in the next frame, with the screen faded all the way, as the
