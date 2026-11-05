@@ -87,7 +87,9 @@ function chooseMode(t) {
     if (++screen.mode >= PAK_COUNT) screen.mode = MULTI_PAK;
     screen.qBand = 0;
   }
-  if (e.pressed & KEY.A) {
+  // A on Single-Pak does nothing for now: its waiting screen needs the multiboot transfer, which isn't built, and
+  // there is nothing to go on to
+  if ((e.pressed & KEY.A) && screen.mode === MULTI_PAK) {
     screen.leaving = 0;
     e.playSong(SONG.SELECT);
     e.bldCnt = 0xFF;
@@ -137,7 +139,7 @@ function fadeOut(t) {
       e.destroyTask(t);
       createMainMenu(ctx, true);
     } else {
-      t.main = screen.mode === MULTI_PAK ? initMultiPak : initSinglePak;
+      t.main = initMultiPak;
     }
   } else {
     e.bldY = screen.qFade >> 8;
@@ -206,6 +208,3 @@ function waitMultiPak(t) {
     displaySprite(e, ctx.sprites, s);
   }
 }
-
-// ModeSelect_InitSinglePak needs the multiboot transfer, which isn't built: it stays on the black screen
-function initSinglePak() {}
