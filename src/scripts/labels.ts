@@ -1,10 +1,12 @@
 // The rows of labels behind the launcher (docs/LABELS.md): flush rows of 240 x 60 places from the bottom of the
 // screen to the top, each drifting slowly the other way from the one below it. A label someone asked for takes a
 // place, the rows furthest from the game first, and every other place shows one of the site's own pixel-art scenes
-// (label-scenes/), each one different, so the rows are always full and nothing on the screen repeats.
+// (label-scenes/), each one different, so the rows are always full and nothing on the screen repeats. A few places
+// hold the site's own invitation instead, saying they could hold someone's art or brand.
 
 import { SCENE_H, drawScene } from './label-scenes/index.mjs';
-import { PLACE as W, kindOf, placesFor, seedOf } from './label-rows.mjs';
+import { drawInvite } from './label-scenes/invite.mjs';
+import { PLACE as W, kindOf, layout, seedOf } from './label-rows.mjs';
 
 interface Label {
   src: string;
@@ -70,19 +72,13 @@ function run(box: HTMLElement, launcher: HTMLElement) {
     const mine = ++job;
     let slice = performance.now();
 
-    // rows counted from the bottom, ordered by how far they stand from the middle, where the game is
-    const order = [...Array(rows).keys()].sort((a, b) => {
-      const far = (r: number) => Math.abs(height - (r + 0.5) * H - height / 2);
-      return far(b) - far(a) || a - b;
-    });
-    const held: Label[][] = Array.from({ length: rows }, () => []);
-    labels.forEach((label, i) => held[order[i % rows]].push(label));
+    // rows counted from the bottom: their places, their labels and where an invitation goes
+    const plan = layout(width, height, labels.length, H);
 
     const made: HTMLElement[] = [];
     const fresh: string[] = [];
     for (let r = 0; r < rows; r++) {
-      const list = held[r];
-      const places = placesFor(width, list.length);
+      const { places, invite } = plan[r];
       const lefts = places.map((_, k) => places.slice(0, k).reduce((a, b) => a + b, 0));
       // Half the track is the row's places and the other half repeats them, so the row never ends.
       const half = lefts[places.length - 1] + places[places.length - 1];
@@ -94,13 +90,11 @@ function run(box: HTMLElement, launcher: HTMLElement) {
       const track = document.createElement('div');
       track.className = 'label-track ' + (r % 2 === 0 ? 'go-left' : 'go-right');
       track.style.width = half * 2 + 'px';
+      track.dataset.half = String(half);
       track.style.animationDuration = seconds.toFixed(2) + 's';
       track.style.animationDelay = (-((r * 29) % seconds)).toFixed(2) + 's';
 
-      // the labels spread evenly over the places of their size
-      const sized = places.flatMap((w, k) => (w === W ? [k] : []));
-      const taken = new Map<number, Label>();
-      list.forEach((label, j) => taken.set(sized[Math.floor(((j + 0.5) * sized.length) / list.length)], label));
+      const taken = new Map<number, Label>(plan[r].labels.map(({ index, place }) => [place, labels[index]]));
 
       // every place without a label, drawn once into one picture for the whole row
       const canvas = document.createElement('canvas');
@@ -111,7 +105,9 @@ function run(box: HTMLElement, launcher: HTMLElement) {
         for (let k = 0; k < places.length; k++) {
           if (taken.has(k)) continue;
           const image = ctx.createImageData(places[k], H);
-          image.data.set(drawScene(places[k], kindOf(r, k), seedOf(r, k)));
+          image.data.set(
+            invite?.place === k ? drawInvite(invite.words, seedOf(r, k)) : drawScene(places[k], kindOf(r, k), seedOf(r, k)),
+          );
           ctx.putImageData(image, lefts[k], 0);
           if (performance.now() - slice > SLICE) {
             await pause();
@@ -179,11 +175,32 @@ function run(box: HTMLElement, launcher: HTMLElement) {
       return;
     }
     rowsEl!.replaceChildren(...made);
+    pace();
     urls.forEach((url) => URL.revokeObjectURL(url));
     urls = fresh;
     box.classList.add('is-ready');
     launcher.classList.add('has-labels');
   }
+
+  // The rows move a whole screen pixel at a time, the way handheld games scroll: between pixels, the screen would
+  // blend each pixel with its neighbour, and fine details like stars and dithered skies would seem to flicker.
+  function pace() {
+    const density = window.devicePixelRatio || 1;
+    for (const track of rowsEl!.querySelectorAll<HTMLElement>('.label-track')) {
+      track.style.animationTimingFunction = `steps(${Math.max(1, Math.round(Number(track.dataset.half) * density))})`;
+    }
+  }
+  // a window moved to a screen of another density keeps whole pixels
+  const watchDensity = () =>
+    matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener(
+      'change',
+      () => {
+        pace();
+        watchDensity();
+      },
+      { once: true },
+    );
+  watchDensity();
 
   build().catch((error) => {
     box.remove();
