@@ -4,4 +4,4 @@ About: Crash on foot; first-hub-standing; 0x0803874C; 0x08038668; 0x08021E74; 0x
 
 Proof: #493; first-hub-standing
 
-0x0803874C moves an actor from the list's place to the middle of its animation's box, and 0x08038668 draws from it with the box the actor kept, not the one of the animation playing. After 300 frames of standing, at the start of his animation, 0x08021E74 calls 0x08022B50 with a random number, whose lowest two bits pick one of his four standing animations. On the first world's hub, that comes at frame 1141 of `first-hub-standing`.
+0x0803874C moves an actor from the list's place to the middle of its animation's box, and 0x08038668 draws from it with the box the actor kept, not the one of the animation playing. After 300 frames of standing, at the start of his animation, 0x08021E74 calls 0x08022B50 with a random number, whose lowest two bits pick one of his four standing animations.
