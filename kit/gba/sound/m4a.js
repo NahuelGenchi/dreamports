@@ -571,8 +571,8 @@ export function createM4A(rom, layout, io) {
           C.envelopeCtr = C.attack;
           if (s8(C.attack)) { C.envelopeVol = 0; at = 'stepDone'; } else at = 'decayStart';
         }
-      } else if ((C.status & IEC) || !(io.read(SOUNDCNT_X) >> (ch - 1) & 1)) {
-        // an echo counting down, or a voice the chip's length counter has already ended
+      } else if ((C.status & IEC) || (layout.voicesEndOnChip && !(io.read(SOUNDCNT_X) >> (ch - 1) & 1))) {
+        // an echo counting down, or, in a game whose library checks, a voice the chip's length counter has ended
         cycles += 5;
         C.echoLen = u8(C.echoLen - 1);
         at = s8(C.echoLen) <= 0 ? 'off' : 'done';
