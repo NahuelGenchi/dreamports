@@ -10,7 +10,7 @@ import { openMovie, decodeFrame } from './movie.js';
 import { createWorld, aimCamera, showWorld, moveWorld, drawWorld, screenLeft, screenTop } from './world.js';
 import { readCollision } from './collision.js';
 import { createCrash, updateCrash, cameraLook } from './crash.js';
-import { createSprite, createSprites, playAnimation, stepAnimation, drawSprite, drawText, showSprites } from './sprites.js';
+import { createSprite, createSprites, playAnimation, stepAnimation, drawSprite, drawText, drawLetter, colourSlot, showSprites } from './sprites.js';
 
 const CARTRIDGE = 0x08000000, PAGE = 0xA000;
 
@@ -27,12 +27,24 @@ const LOGOS = [
 ];
 
 // The frames the console takes to unpack a video's first frame, by the video's address, while the screen stays as it
-// is: the console's timing, as mGBA measures it, as start-up's is.
-const LOAD_FRAMES = { 0x08986718: 2, 0x08987108: 1 };
+// is: the console's timing, as mGBA measures it, as start-up's is. Those in LOAD_FRAMES_AFTER come after the video's clock has started
+// and the commands that follow it have run.
+const LOAD_FRAMES_AFTER = { 0x08992068: 1, 0x089EB9FC: 1, 0x08A01F88: 2, 0x08A09758: 2 };
+const LOAD_FRAMES = { 0x08986718: 2, 0x08987108: 1, 0x08992068: 6, 0x08994A34: 4, 0x089971EC: 5, 0x0899A748: 5, 0x089C763C: 7, 0x089E821C: 5, 0x089EB9FC: 6, 0x089FA13C: 9, 0x08A01F88: 6, 0x08A09758: 7, 0x08A14FE8: 7, 0x08A1A954: 6 };
 
-// The frames of a video, by its address, that take the console past the V-blank to unpack, so the main loop loses a
-// frame there and shows them a frame late: the console's timing again, as mGBA measures it.
-const SLOW_FRAMES = { 0x08987108: [4, 5, 6, 7, 18, 19] };
+// The frames of a video that take the console past the V-blank to unpack, so the main loop loses a frame there and shows the one
+// before them a frame late, by the video's address and as runs of how many it has asked for, with a frame in two runs losing two: the
+// console's timing again, as mGBA measures it. How long these take depends on the sound too, so a video can be slow for a while and not after.
+const SLOW_FRAMES = {
+  0x08987108: [[4, 7], [18, 19]],
+  0x0899A748: [[35, 65]],
+  0x089C763C: [[1, 93]],
+  0x089EB9FC: [[1, 2], [1, 2], [7, 11]],
+  0x089FA13C: [[1, 47], [49, 56], [58, 65], [67, 73], [77, 82], [85, 91], [95, 100]],
+  0x08A01F88: [[1, 2], [2, 2]],
+  0x08A09758: [[2, 7]],
+  0x08A14FE8: [[1, 1]],
+};
 
 /** The core's state on `video` (createVideo), reading the cartridge from `rom`, with the game's `sound` (sound/gax.js). */
 export function createCore(video, rom, sound) {
@@ -50,8 +62,13 @@ export function createCore(video, rom, sound) {
     // the display object (0x0800DE44): the video, how many frames were asked for and shown, when the next one is due,
     // in milliseconds, its colours, and the frames played
     movie: null, wanted: 0, asked: 0, due: 0, movieColours: new Uint16Array(256), played: 0, paused: false,
-    // the script (0x0802D718): its commands, the next one, and how many frames the last has waited
-    script: LOGOS.map(entry => command(rom, entry)), pc: 0, waited: 0, done: false,
+    // the script (0x0802D718): the lists it's in, innermost last, each with its next command, and how many frames the last
+    // has waited
+    stack: [{ list: LOGOS.map(entry => command(rom, entry)), pc: 0 }], waited: 0, done: false,
+    // the screen's text (0x080365B0): its font, the page shown and the next one
+    text: { font: null, shown: 0, next: 0 },
+    // the frames left of a video's load, once the commands that follow it have run
+    stall: 0,
     main: null,
     // 0x02006EA4: the buttons held and just pressed
     held: 0, pressed: 0,
@@ -66,9 +83,11 @@ export function createCore(video, rom, sound) {
   return c;
 }
 
-// a command of the script: the cartridge's three words at `entry`, or the two that 0x0803C120 writes itself
+// a command of the script: the cartridge's three words at `entry`, or those that 0x0803C120 writes itself: a song from the
+// cartridge's word that names it, or the end
+const SONG_WORDS = { sound: 0x08076D54, 'first song': 0x08076D64, 'second song': 0x08076D6C };
 function command(rom, entry) {
-  if (entry === 'sound') return [5, 12, rom.u32(0x08076D54 - CARTRIDGE)];
+  if (SONG_WORDS[entry]) return [5, 12, rom.u32(SONG_WORDS[entry] - CARTRIDGE)];
   if (entry === 'end') return [5, 6, 0];
   const at = entry - CARTRIDGE;
   return [rom.u32(at), rom.u32(at + 4), rom.u32(at + 8)];
@@ -91,7 +110,7 @@ function* mainLoop(c) {
   // 0x0801686C: a fade to white before a screen, which ends while the screen is still blank
   c.fade = { kind: 3, level: 64, target: 64, speed: 4 };
   for (;;) {
-    if (updateDisplay(c)) yield;
+    for (let n = updateDisplay(c); n > 0; n--) yield;
     yield* updateScript(c);
     if (c.done) break;
     stepFade(c);          // 0x0803FB48
@@ -155,7 +174,7 @@ function playSound(c, address) {
 }
 
 // The main loop on the title screen, until A or Start fades it to white. In the original they go on to the load save
-// screen, and what comes between it and the first world's hub isn't ported yet, so here they go straight to the hub
+// screen and the main menu, which aren't ported yet, so here they go straight to the story's opening scene
 function* titleLoop(c) {
   const { video, rom } = c, title = rom.u32(TITLE_MAPS - CARTRIDGE + 4), at = title - CARTRIDGE;
   const nameX = rom.u32(NAME_PLACE - CARTRIDGE), nameY = rom.u32(NAME_PLACE - CARTRIDGE + 4);
@@ -168,8 +187,7 @@ function* titleLoop(c) {
   video.write(REG.BLDALPHA, 0x0808);
   [0x100, 0, 0, 0x100].forEach((v, i) => video.write(REG.BG3PA + i * 2, v));
   aimCamera(world, 0, 0);
-  world.layers[0].margin = 1;   // 0x0802F8A0
-  showWorld(world);
+  showWorld(world, 1);   // 0x0802F8A0
   // 0x08001C04: where each of the lines of the first layer is, and how fast it moves
   const lines = new Uint16Array(160), speeds = new Int32Array(160);
   for (let y = 0, from = STREAKS - CARTRIDGE; y < 160; y++) {
@@ -224,6 +242,8 @@ function* titleLoop(c) {
     if (leaving && c.fade.level === 64 && ++white > WHITE_FRAMES) break;
   }
   c.hblank = null;
+  yield* storyOpening(c);
+  for (let n = HUB_LOAD_FRAMES; n > 0; n--) yield;
   // the hub, and again from the start each time Crash falls off the map
   for (let again = false; ; again = true) yield* hubLoop(c, again);
 }
@@ -255,9 +275,10 @@ function readActors(rom, def) {
 const AKU_AKU = 0x082FD3CC, AKU_AKU_LEAVING = 0x082FD39C, SOUND_AKU_AKU_LEAVING = 0x08085E98;   // 0x08000A2C, 0x080010A0
 
 // The clock the actors' animations go by (0x02007284) at the first picture: how many frames they've run by then, as mGBA
-// measures it, and the same for the count Aku Aku floats by (0x0200762C), which the recording sets as it reaches the hub,
-// as it does the random seed, as the Dreamport has no way there yet to bring them to what the original's way does
-const HUB_CLOCK = -1, FLOAT_START = -1, RANDOM_SEED = 1;
+// measures it, where the count Aku Aku floats by (0x0200762C) starts, and the random seed (0x02000000). 0x08015324 seeds it from that count
+// as the level loads, which depends on the screens before it, and those aren't all ported, so this is what the count comes to in
+// the recordings that reach the hub
+const HUB_CLOCK = -1, FLOAT_START = 0, RANDOM_SEED = 0xF33;
 // How many frames the screen stays white when the hub starts again after a fall: the console's timing, as mGBA measures it
 const HUB_WHITE_FRAMES = 12;
 // 0x0800EFD0's count starts again with the level, and by the first picture it has this far to go, and how many of those
@@ -338,6 +359,9 @@ function followCrash(camera, crash) {
   camera.x += Math.max(-0x500, Math.min(0x500, camera.toX - camera.x));
   camera.y += Math.max(-0x700, Math.min(0x700, camera.toY - camera.y));
 }
+
+// The frames after the story's opening scene while the hub loads, with the screen black, as mGBA measures them
+const HUB_LOAD_FRAMES = 13;
 
 // The main loop in the hub, from the first frame the fade has started: the level's update, then the V-blank's work, until
 // Crash has fallen off the map and the screen has faded to white
@@ -427,6 +451,128 @@ function* hubLoop(c, again) {
   }
 }
 
+// The fonts of a scene's script, by the structures it names them by, 0x0200735C, 0x0200732C and 0x0200750C: a font's letters, their widths, its tiles and
+// its colours, in the cartridge, how far apart its lines are, and how many tiles a letter takes and what shape they make on the console
+const fontOf = (letters, pictures, colours, attributes) => ({ letters, widths: letters + 0x100, pictures, colours, ...attributes });
+const STORY_LETTERS = { shape: 0x1000, size: 0, tiles: 1, height: 0x0B };
+const SCENE_FONTS = {
+  0x0200735C: fontOf(0x08B57478, 0x08B57678, 0x08B57270, STORY_LETTERS),
+  0x0200732C: fontOf(0x08B57478, 0x08B57678, 0x08B57290, STORY_LETTERS),
+  0x0200750C: fontOf(0x08B51540, 0x08B51740, 0x08B51338, { shape: 0x1000, size: 0x4000, tiles: 4, height: 0x10 }),
+};
+
+// The first scene's script, 0x02000EC4's first, which the level's list at 0x0200D2B8 names as the first world's opening (0x08015ED0),
+// the table 0x0803C120 builds at 0x0200A508, as the cartridge's own commands
+const STORY_OPENING = [
+  0x080762B0, 'first song',
+  0x080762BC, 0x080762C8, 0x080762D4, 0x080762E0, 0x0807623C, 0x080762EC, 0x08076224,
+  0x080762F8, 0x08076304, 0x08076310, 0x080762E0, 0x0807623C, 0x08076224,
+  0x080762BC, 0x0807631C, 0x08076328, 0x080762E0, 0x0807623C, 0x08076224,
+  0x08076334, 0x08076340, 0x080762E0, 0x0807634C, 'second song', 0x08076224,
+  0x080762BC, 0x08076358, 0x08076364, 0x080762E0, 0x0807623C, 0x08076224,
+  0x080762F8, 0x08076370, 0x0807637C, 0x080762E0, 0x08076224,
+  0x08076388, 0x080763A8, 0x080763B4, 0x080762BC, 0x080763C0, 0x080762E0,
+  0x080763CC, 0x080763D8, 0x080763E4, 0x08076404, 0x0807628C, 0x08076424,
+  0x08076430, 0x0807643C, 0x0807645C,
+  0x080762BC, 0x08076468, 0x08076474, 0x080762E0, 0x0807623C, 0x08076224,
+  0x080762F8, 0x08076480, 0x0807648C, 0x080762E0, 0x0807623C, 0x08076298,
+];
+
+// 0x08016A78's 0x08034214: the music's volume a game gives it from the game's data at 0x02006DE0, its [148], which a new game has at this
+const GAME_MUSIC_VOLUME = 128;
+
+// 0x020071D8: where a scene's text goes, and 0x082AEB28 with 0x0806981C the arrow that says there's more
+const SCENE_TEXT = { x: 0, y: 0x7C, w: 0xE2, h: 0x24 };
+const MORE_ARROW = 0x082AEB28, MORE_X = 0xEA, MORE_Y = 0x94;
+
+// 0x0801CEBC: a scene with a story's text: the video, the script, the text and the arrow, on mode 4, whose sprites' tiles start at 512
+// (0x08037C54), and 0x08015ED0's fade back from white
+function* storyOpening(c) {
+  const { video, rom } = c;
+  c.sound?.setMusicVolume(GAME_MUSIC_VOLUME);
+  // from here the V-blank's work comes in the picture of that frame's buttons, as an update comes right after the V-blank before
+  c.scene = true;
+  c.read = c.held;
+  c.hblank = null;
+  c.movie = null;
+  c.stack = [{ list: STORY_OPENING.map(entry => command(rom, entry)), pc: 0 }];
+  c.waited = 0;
+  c.done = false;
+  c.text = { font: null, shown: 0, next: 0 };
+  const sprites = createSprites(video, rom, 0x200);
+  const arrow = Object.assign(createSprite(rom, MORE_ARROW, 0, 0), { priority: 0 });
+  arrow.next = arrow.animation.delay + 2;
+  c.fade.target = 0;
+  c.fade.speed = 4;   // 0x0803FD8C
+  let clock = 0;
+  while (!c.done) {
+    // 0x08019750: the buttons as they are when an update starts, which one that runs past the V-blank doesn't read again
+    c.keys = c.held & ~c.read;
+    c.read = c.held;
+    for (let n = updateDisplay(c); n > 0; n--) yield;
+    yield* updateScript(c);
+    if (c.done) break;
+    stepAnimation(arrow, ++clock);   // 0x08035518
+    // 0x080364E8's text, then 0x080355E8's arrow
+    if (c.text.shown) layoutPage(c, sprites, c.text.shown);
+    drawSprite(sprites, arrow, MORE_X, MORE_Y, c.colours);
+    stepFade(c);          // 0x0803FB48
+    workOutColours(c);    // 0x0803FBA4
+    video.pal.set(c.faded);        // 0x0803FAC4
+    video.write(REG.DISPCNT, 0x1444);   // 0x0803B1D4
+    for (const job of c.jobs) job(c);   // 0x0801EE68
+    c.jobs.length = 0;
+    showSprites(sprites);
+    sprites.slots.clear();
+    sprites.nextSlot = 15;
+    yield;                // 0x08040E5C
+  }
+}
+
+// 0x0802AE1C and 0x0802AF14, which walk a page alike: its lines from `at`, each as far as fits in the text's box and back to its last
+// space, with the second drawing them. The result is where the next page starts. Bytes under 13 aren't letters: 3, 4 and 5 align what
+// comes after left, in the middle and right, 10 ends a line and 12 the page
+function layoutPage(c, sprites, at) {
+  const { rom } = c, { font } = c.text, box = SCENE_TEXT, bottom = box.y + box.h;
+  const widthOf = ch => rom.u8(font.widths - CARTRIDGE + ch);
+  const isControl = ch => ch >= 1 && ch <= 12 && ch !== 8 && ch !== 9;
+  const slot = sprites && colourSlot(sprites, font.colours - CARTRIDGE, c.colours), size = font.tiles * 32;
+  let y = box.y, align = 0;
+  while (rom.u8(at - CARTRIDGE) && y + font.height < bottom) {
+    let end = at - CARTRIDGE, width = 0, space = 0, atSpace = 0;
+    for (;; end++) {
+      const ch = rom.u8(end);
+      if (ch === 0 || ch === 10 || ch === 12) break;
+      if (ch === 32) { space = end; atSpace = width; }
+      if (ch === 3) align = 0;
+      else if (ch === 4) align = 2;
+      else if (ch === 5) align = 1;
+      if (isControl(ch)) continue;
+      width += widthOf(ch);
+      if (width >= box.w) {
+        if (space) { end = space; width = atSpace; }
+        break;
+      }
+    }
+    if (sprites) {
+      let x = align === 1 ? box.x + box.w - width : align === 2 ? box.x + (box.w >> 1) - (width >> 1) : box.x;
+      for (let from = at - CARTRIDGE; from < end; from++) {
+        const ch = rom.u8(from);
+        if (isControl(ch)) continue;
+        if (ch !== 32 && x + widthOf(ch) > 0 && x <= 239) {
+          drawLetter(sprites, font.pictures - CARTRIDGE + rom.u8(font.letters - CARTRIDGE + ch) * size, x, y, slot, font);
+        }
+        x += widthOf(ch);
+      }
+    }
+    const ch = rom.u8(end);
+    if (ch === 0) return end + CARTRIDGE;
+    y = ch === 12 ? bottom : y + font.height;
+    at = end + 1 + CARTRIDGE;
+  }
+  return at;
+}
+
 // 0x0803FB48: the fade a step nearer where it's going, and over once it's back at nothing
 function stepFade(c) {
   const f = c.fade;
@@ -459,6 +605,20 @@ function* fadeToBlack(c, speed) {
   while (c.fade.level !== 64) {
     stepFade(c);
     workOutColours(c);
+    if (c.scene) c.video.pal.set(c.faded);
+    yield;
+    if (!c.scene) c.video.pal.set(c.faded);
+  }
+}
+
+// 0x0803FC9C from a script, whose first frame shows a frame after a fade to black's does
+function* fadeToWhiteInScript(c, speed) {
+  c.fade.target = 64;
+  c.fade.speed = speed;
+  c.fade.kind = 3;
+  while (c.fade.level !== 64) {
+    stepFade(c);
+    workOutColours(c);
     yield;
     c.video.pal.set(c.faded);
   }
@@ -484,13 +644,13 @@ function loadMovie(c, address) {
 }
 
 // 0x0800DD7C: the display object's update. Once the next frame is due it asks the V-blank to show it, and once that's
-// asked it draws the one after, in the hidden page. True when that takes past the V-blank
+// asked it draws the one after, in the hidden page. The result is the frames that takes past the V-blank
 function updateDisplay(c) {
-  if (!c.movie) return false;
-  let slow = false;
+  if (!c.movie) return 0;
+  let slow = 0;
   const waiting = c.paused || c.due > now(c);   // 0x0800DB28
   if (!waiting && c.asked !== c.wanted) {
-    slow = c.movie.slow.includes(c.wanted);
+    slow = c.movie.slow.filter(([first, last]) => first <= c.wanted && c.wanted <= last).length;
     c.jobs.push(showMovieFrame);
     c.asked = c.wanted;
   }
@@ -521,38 +681,80 @@ function showMovieFrame(c) {
 // 0x0802D35C: the script's commands, up to one that waits, which runs again next frame
 function* updateScript(c) {
   while (!c.done) {
-    const at = c.pc++;
-    yield* runCommand(c, c.script[at]);
+    const list = c.stack.at(-1), at = list.pc++;
+    yield* runCommand(c, commandAt(c.rom, list.list, at), list);
     if (c.done) return;
-    if (c.pc === at) { c.waited++; return; }
+    if (c.stack.at(-1) === list && list.pc === at) {
+      c.waited++;
+      for (; c.stall > 0; c.stall--) yield;
+      return;
+    }
     c.waited = 0;
   }
 }
 
-// 0x0802D3E8 for the script's own commands, and 0x0800DC0C for the display's
-function* runCommand(c, [kind, what, argument]) {
+// a command of a list: one of the game's own, or from the cartridge when the script gives its address
+function commandAt(rom, list, n) {
+  if (Array.isArray(list)) return list[n];
+  const at = list - CARTRIDGE + n * 12;
+  return [rom.u32(at), rom.u32(at + 4), rom.u32(at + 8)];
+}
+
+// 0x0802D55C: what a condition asks, of the display (0x0800DC0C), the buttons (0x0802D2E4) or the text (0x08036400), against its value
+function test(c, address) {
+  const at = address - CARTRIDGE, kind = c.rom.u32(at), what = c.rom.u32(at + 4), how = c.rom.u32(at + 12), value = c.rom.u32(at + 16);
+  let asked = 0;
+  if (kind === 3 && what === 4) asked = c.asked;
+  else if (kind === 4 && what === 1) asked = c.keys;
+  else if (kind === 7 && what === 5) asked = c.rom.u8(c.text.next - CARTRIDGE) === 0 ? 1 : 0;
+  return [asked > value, asked < value, asked === value, asked !== value, (asked & value) === value][how];
+}
+
+// 0x0802D3E8 for the script's own commands, 0x0800DC0C for the display's and 0x08036400 for the text's
+function* runCommand(c, [kind, what, argument], list) {
   if (kind === 3) {
     if (what === 0) {
       loadMovie(c, argument);
-      for (let n = LOAD_FRAMES[argument] ?? 0; n > 0; n--) yield;
+      const after = LOAD_FRAMES_AFTER[argument] ?? 0;
+      for (let n = (LOAD_FRAMES[argument] ?? 0) - after; n > 0; n--) yield;
       c.due = now(c);   // once the first frame is drawn
+      c.stall = after;
     }
-    else if (what === 1) c.paused = true;   // 0x0800D9A4
+    else if (what === 1) { c.paused = true; c.pausedAt = c.vblanks; }   // 0x0800D9A4
+    else if (what === 2) { c.paused = false; c.due += Math.trunc(((c.vblanks - c.pausedAt) * 1000) / 60); }   // 0x0800D96C
+  } else if (kind === 7) {
+    const { text } = c;
+    if (what === 1) text.font = SCENE_FONTS[argument];   // 0x0802B2C4
+    else if (what === 2 || what === 3) {   // 0x08036530, and its own lines for the next page
+      if (what === 2) text.next = c.rom.u32(c.rom.u32(argument - CARTRIDGE) - CARTRIDGE);   // 0x0803B8C0
+      text.shown = text.next;
+      text.next = layoutPage(c, null, text.next);
+    }
+    else if (what === 4) text.shown = 0;
+  } else if (what === 2) {
+    c.stack.push({ list: argument, pc: 0 });   // 0x0802D648
+  } else if (what === 3) {
+    if (!test(c, argument)) list.pc++;
+  } else if (what === 5) {
+    list.pc = 0;
   } else if (what === 8) {
-    if (c.waited < argument) c.pc--;
+    if (c.waited < argument) list.pc--;
   } else if (what === 9) {
-    // 0x0802D55C: on until the video has shown as many frames as the condition says: its words are what to ask the
-    // display, how to compare and with what
-    const at = argument - CARTRIDGE, value = c.rom.u32(at + 16);
-    if (!(c.asked >= value)) c.pc--;
+    if (test(c, argument)) list.pc--;   // on while the condition holds
+  } else if (what === 10) {
+    if (!test(c, argument)) list.pc--;  // on until it does
   } else if (what === 13) {
     yield* fadeToBlack(c, argument);
+  } else if (what === 14) {
+    yield* fadeToWhiteInScript(c, argument);
   } else if (what === 15) {
     // 0x0803FD8C: the fade back to nothing, without waiting
     c.fade.target = 0;
     c.fade.speed = argument;
   } else if (what === 6) {
-    c.done = true;
+    // 0x0802D634: back to the list that called this one, and over when there's none
+    c.stack.pop();
+    if (!c.stack.length) c.done = true;
   } else if (what === 11) {
     playSound(c, argument);   // 0x080342A4
   } else if (what === 12) {

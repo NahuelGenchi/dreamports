@@ -11,16 +11,18 @@ import { SINE, sin8, cos8, arcTan2 } from './trig.js';
 import { KEY } from '../core.js';
 import { createMind, partnerButtons } from './partner.js';
 import { dropRings } from './rings.js';
+import { tagAction, tagActionFrame } from './tag-action.js';
 
 export const SONIC = 0, TAILS = 2;
 /** What a character's `flags` say. */
-export const FLAG = { FACING_LEFT: 0x1, CURLED: 0x2, IN_AIR: 0x4, NO_AIR_STEERING: 0x8, SPIN_DASHING: 0x10, ON_OBJECT: 0x20, AT_WALL: 0x40, GRINDING: 0x20000, FLYING: 0x40000, BUTTONS_OFF: 0x08000000 };
+export const FLAG = { FACING_LEFT: 0x1, CURLED: 0x2, IN_AIR: 0x4, NO_AIR_STEERING: 0x8, SPIN_DASHING: 0x10, ON_OBJECT: 0x20, AT_WALL: 0x40, GRINDING: 0x20000, FLYING: 0x40000, BUTTONS_OFF: 0x08000000, DEAD: 0x100, TAG_ACTION_CHARGING: 0x400000, TAG_ACTION_CHARGED: 0x800000, TAG_ACTION_PARTNER_JOINED: 0x1000000, TEAM_MOVE: 0x2000000 };
 const { FACING_LEFT, CURLED, IN_AIR, NO_AIR_STEERING, SPIN_DASHING, ON_OBJECT, AT_WALL, GRINDING, FLYING, BUTTONS_OFF } = FLAG;
+const CHARGED = FLAG.TAG_ACTION_CHARGED;
 
 const FIRST_ANIMATIONS = 0xCE450, POSE_ANIMATIONS = 0xCE45A, RUN_RATES = 0xCE92A, SPIN_DASH_SPEEDS = 0xCE230;   // the last is gUnknown_080CE5B8
 // 0x080578E8: a sprite the title card's colour effect takes in, as it does while the card covers the stage
 const BLENDED = 0x80;
-export const POSE = { STAND: 0, LOOK_UP: 1, CROUCH: 2, LOOK_AROUND: 6, LOOK_AROUND_PARTNER: 7, RUN: 8, SPIN_DASH: 0xA, ROLL: 0xB, TURN: 0xC, TURN_FROM_SKID: 0xD, SKID: 0x10, SKID_FAST: 0x11, AIR_SLOW: 0x13, AIR_FAST: 0x14, FALLING: 0x18, PUSH: 0x21, HURT: 0x66, GRIND: 0x6F, FLY: 0xCE, FLY_TURN: 0xCF, FLY_TIRED: 0xD0 };
+export const POSE = { STAND: 0, LOOK_UP: 1, CROUCH: 2, CHARGED_STAND: 3, LOOK_AROUND: 6, LOOK_AROUND_PARTNER: 7, RUN: 8, CHARGED_RUN: 9, SPIN_DASH: 0xA, ROLL: 0xB, TURN: 0xC, TURN_FROM_SKID: 0xD, CHARGED_TURN: 0xE, SKID: 0x10, SKID_FAST: 0x11, CHARGED_SKID: 0x12, AIR_SLOW: 0x13, AIR_FAST: 0x14, CHARGED_AIR: 0x15, FALLING: 0x18, PUSH: 0x21, HURT: 0x66, GRIND: 0x6F, FLY: 0xCE, FLY_TURN: 0xCF, FLY_TIRED: 0xD0 };
 const OWN_ANIMATIONS = 0xA5;   // from this pose on, a pose's animation is the same for every character
 const ANIM_FINISHED = 0x4000, SE_STOPPING = 0x73, ANIM_DUST = 0x534, DUST_TILES = 4;
 const SE_SPIN_ATTACK = 0x6D, SE_SPIN_RELEASE = 0x6E, SE_GRINDING = 0x72, SE_JUMP = 0x74, SE_FLYING = 0x78;
@@ -29,6 +31,7 @@ const ANIM_SPIN_DUST_SMALL = 0x532, ANIM_SPIN_DUST = 0x533, SPIN_DUST_TILES = 0x
 
 const PX = 256;   // positions and speeds are in 1/256 of a pixel
 const GRAVITY = 42, FALL_LIMIT = 15 * PX, COAST = 8;
+const GRAVITY_SWITCHED = 0x10000;
 const JUMP_SPEED = 0x4E0, SHORT_JUMP_SPEED = -3 * PX, ROLL_FRICTION = 8, ROLL_STOPS_BELOW = 0.5 * PX;
 const SPIN_DASH_START = 2 * PX, SPIN_DASH_REV = 2 * PX, SPIN_DASH_MIN_REV = 8 * PX;
 const FLY_FRAMES = 0xF0, FLY_RISE_LIMIT = -0.75 * PX, FLY_RISE = 0x18, FLY_SINK = 8, FLY_RISE_FRAMES = 0x20;
@@ -58,7 +61,7 @@ export function createPlayer(stage, id, character, isLeader) {
     acceleration: 8, braking: 0x40, topSpeed: 7.5 * PX, speedLimit: 9.5 * PX, slipFrames: 0, idleTimer: LOOK_AROUND_AFTER, dustClock: 0,
     camOffsetY: 0, invulnerable: 0, spinDashSpeed: 0, flyFrames: 0, flyLift: 0, restartAnimation: false, rail: 0, nextRail: 0, boosting: false, boostCounter: 0,
     pose: POSE.STAND, shownPose: -1, animation: -1, variant: -1, gait: 0,
-    held: 0, pressed: 0, heldWithButtonsOff: 0,
+    held: 0, pressed: 0, heldWithButtonsOff: 0, tagActionDelay: 0, tagActionCharge: 0, tagActionTask: null, silhouetteTask: null, joinFrames: 0, joinX: 0, joinY: 0, joinFromY: 0,
     sprite: null, turn: { rotation: 0, scaleX: PX, scaleY: PX, x: 0, y: 0 }, tails: null,
   };
 }
@@ -111,6 +114,7 @@ function playFrame(t) {
   if (p.isLeader) readButtons(p, c.input);
   else partnerReadButtons(p);
   p.behave(p);
+  tagActionFrame(p);
 }
 
 // sub_80143E0: holding its top speed on the ground for long enough, more rings sooner, it goes faster until it slows down
@@ -130,7 +134,7 @@ function boost(p, after) {
     }
   }
 }
-function stopBoost(p) {   // Player_BoostModeDisengage
+export function stopBoost(p) {   // Player_BoostModeDisengage
   p.boosting = false;
   p.boostCounter = 0;
 }
@@ -151,7 +155,22 @@ function readButtons(p, input) {
 
 // what 0x080045EC does for the partner: its own buttons, from what it decides, and which of them are new
 function partnerReadButtons(p) {
-  const { stage } = p, before = p.held;
+  const { stage } = p, before = p.held, leader = stage.players[stage.playerIndex];
+  if (p.flags & FLAG.TAG_ACTION_PARTNER_JOINED) {
+    // it has joined the one charging, which it's beside from the thirty-first frame, and has no buttons of its own
+    if (p.joinFrames > 30) {
+      p.x = leader.x + (leader.sprite.frameFlags & SPRITE.X_FLIP ? 10 : -10) * PX;
+      p.y = leader.y;
+      p.flags = (p.flags & ~GRAVITY_SWITCHED) | (leader.flags & GRAVITY_SWITCHED);
+    }
+    p.held = p.pressed = 0;
+    return;
+  }
+  if (p.flags & FLAG.TEAM_MOVE) {
+    p.held = leader.held;
+    p.pressed = leader.pressed;
+    return;
+  }
   p.held = partnerButtons(stage.mind, p, stage.players[stage.playerIndex]);
   p.pressed = (before ^ p.held) & p.held;
 }
@@ -229,8 +248,9 @@ function newMove(p) {
 }
 
 // 0x08005380 and 0x08005434: standing still, or if it's moving, running
-function startStanding(p) {
+export function startStanding(p) {
   newMove(p);
+  p.flags &= ~(0x20000000 | FLAG.TEAM_MOVE | FLAG.TAG_ACTION_PARTNER_JOINED | CHARGED);
   p.rail = 0;
   setHeight(p, STANDING_HEIGHT);
   p.halfWidth = HALF_WIDTH;
@@ -245,7 +265,7 @@ function startStanding(p) {
   stand(p);
 }
 function stand(p) {
-  if (startCrouching(p) || startLookingUp(p)) return;
+  if (tagAction(p) || startCrouching(p) || startLookingUp(p)) return;
   steerOnGround(p);
   if (startJumpIfPressed(p)) return;
   slopeSpeed(p);
@@ -269,7 +289,7 @@ function startRunning(p) {
   run(p);
 }
 function run(p) {
-  if (startCrouching(p)) return;
+  if (tagAction(p) || startCrouching(p)) return;
   steerOnGround(p);
   if (startJumpIfPressed(p)) return;
   slopeSpeed(p);
@@ -283,7 +303,7 @@ function run(p) {
 }
 
 // Player_800DB30, Player_800DAF4 and sub_800DF10: in the air, curled up if it left the ground by itself, or just falling
-function startFalling(p) {
+export function startFalling(p) {
   p.flags = (p.flags & ~AT_WALL) | CURLED | IN_AIR;
   p.pose = Math.abs(p.velX) < 1.25 * PX ? POSE.AIR_SLOW : POSE.AIR_FAST;
   curlUpBody(p);
@@ -292,10 +312,18 @@ function startFalling(p) {
 }
 function slipOff(p) {
   p.flags = (p.flags & ~AT_WALL) | IN_AIR;
+  if (p.flags & CHARGED) {   // the USA copy's Player_800DAF4 goes straight to the move's frame, keeping the pose it had
+    p.behave = chargedAir;
+    chargedAir(p);
+    return;
+  }
   p.behave = fall;
   fall(p);
 }
 function fall(p) {
+  if (!tagAction(p)) airborne(p);
+}
+function airborne(p) {
   curlAnimation(p);
   steerInAir(p);
   keepInBounds(p);
@@ -303,10 +331,164 @@ function fall(p) {
   collideInAir(p);
   afterAir(p);
 }
+
+// The moves it makes while charged, with the other character at its side. They are the ones it makes otherwise with a pose
+// of their own, and are over, with the others' ways in, as soon as the button is let go (sub_8014BC4, which only goes on
+// with the move while it's still held).
+
+// Player_80077CC and Player_8007898: standing or running
+export function startChargedOnGround(p) {
+  p.flags &= ~(CURLED | NO_AIR_STEERING | SPIN_DASHING | AT_WALL | GRINDING | FLYING);
+  p.camOffsetY = 0;
+  p.flags |= CHARGED;
+  setHeight(p, STANDING_HEIGHT);
+  p.pose = p.groundSpeed !== 0 ? POSE.CHARGED_RUN : POSE.CHARGED_STAND;
+  p.behave = chargedOnGround;
+  chargedOnGround(p);
+}
+function chargedOnGround(p) {
+  if (!tagAction(p) || chargedOnSlope(p) || startCrouching(p) || startLookingUp(p)) return;
+  steerOnGround(p);
+  slopeSpeed(p);
+  alongGround(p);
+  stopAtWalls(p);
+  if (startJumpIfPressed(p)) return;
+  settle(p);
+  slipOffSteepGround(p);
+  keepInBounds(p);
+  skidDust(p);
+}
+// sub_8014D70: on a slope too steep to stand on, the move is over
+function chargedOnSlope(p) {
+  if (!(p.flags & CHARGED) || !steep(p.angle)) return false;
+  const back = { [POSE.CHARGED_RUN]: POSE.RUN, [POSE.RUN]: POSE.RUN, [POSE.CHARGED_SKID]: POSE.SKID, [POSE.CHARGED_STAND]: POSE.STAND, [POSE.CHARGED_TURN]: POSE.STAND, [POSE.STAND]: POSE.STAND }[p.pose];
+  if (back !== undefined) {
+    p.pose = back;
+    p.behave = startStanding;
+    p.stage.players[1 - p.id].flags &= ~(CHARGED | FLAG.TAG_ACTION_PARTNER_JOINED);
+    p.flags &= ~(CHARGED | FLAG.TAG_ACTION_PARTNER_JOINED);
+  }
+  return false;
+}
+// Player_800E084 and sub_800E0CC: turning round, with the moves it has charged
+function startChargedTurn(p) {
+  p.flags = ((p.flags & ~(FLAG.TEAM_MOVE | AT_WALL)) | CHARGED) ^ FACING_LEFT;
+  p.pose = POSE.CHARGED_TURN;
+  p.sprite.frameFlags &= ~ANIM_FINISHED;
+  p.groundSpeed = 0;
+  p.behave = chargedTurn;
+  chargedTurn(p);
+}
+function chargedTurn(p) {
+  if (!tagAction(p) || startCrouching(p) || startLookingUp(p)) return;
+  if (p.sprite.frameFlags & ANIM_FINISHED) p.behave = startChargedOnGround;
+  slopeSpeed(p);
+  keepInBounds(p);
+  alongGround(p);
+  stopAtWalls(p);
+  if (startJumpIfPressed(p)) return;
+  settle(p);
+  slipOffSteepGround(p);
+}
+// sub_800E150 and sub_800E198, and Player_8007EAC with Player_8007F4C and sub_800EEC4: in the air
+export function startChargedAir(p) {
+  p.flags = (p.flags & ~(FLAG.TEAM_MOVE | CURLED)) | CHARGED;
+  p.pose = POSE.CHARGED_AIR;
+  setHeight(p, STANDING_HEIGHT);
+  p.sprite.frameFlags &= ~ANIM_FINISHED;
+  p.behave = chargedAir;
+  chargedAir(p);
+}
+function chargedAir(p) {
+  if (tagAction(p)) chargedAirborne(p);
+}
+function chargedAirborne(p) {
+  chargedCurl(p);
+  steerInAir(p);
+  keepInBounds(p);
+  gravityAndMove(p);
+  collideInAir(p);
+  afterAir(p);
+}
+function startChargedJump(p) {
+  p.flags = (p.flags & ~(CURLED | NO_AIR_STEERING | SPIN_DASHING | AT_WALL | GRINDING | FLYING | FLAG.TEAM_MOVE)) | CHARGED | IN_AIR;
+  p.camOffsetY = 0;
+  p.pose = POSE.CHARGED_AIR;
+  setHeight(p, STANDING_HEIGHT);
+  jumpImpulse(p);
+  p.behave = chargedJumpRising;
+  chargedJumpRising(p);
+}
+function chargedJumpRising(p) {
+  if (!tagAction(p)) return;
+  if (p.velY < SHORT_JUMP_SPEED && !(p.held & KEY.A)) {
+    p.velY = SHORT_JUMP_SPEED;
+    p.behave = chargedAir;
+  } else if (p.velY > 0) p.behave = chargedAir;
+  chargedAirborne(p);
+}
+// sub_801350C, for the pose it has in the air while charged: its animation's three parts, one after the other
+function chargedCurl(p) {
+  if (p.pose !== POSE.CHARGED_AIR || p.velY <= 0) return;
+  const shown = (p.animation - firstAnimation(p.stage.c, p)) & 0xFFFF;
+  if (shown !== POSE.CHARGED_AIR) return;
+  if (p.variant === 0) p.variant = 1;
+  else if (p.variant === 1 && p.sprite.frameFlags & ANIM_FINISHED) p.variant = 2;
+}
+
+// sub_800E880: Tails on the spot after the move has been made, standing up when its pose has played twice. On an object
+// the original's frames show it up on the fourth, for a reason not found yet
+export function tailsStands(p) {
+  if (p.flags & ON_OBJECT) {
+    if (++p.waitFrames > 3) {
+      startStanding(p);
+      return;
+    }
+  } else if (p.sprite.frameFlags & ANIM_FINISHED) {
+    if (p.variant === 1) p.behave = startStanding;
+    else p.variant++;
+  }
+  slopeSpeed(p);
+  keepInBounds(p);
+  alongGround(p);
+  stopAtWalls(p);
+  settle(p);
+  slipOffSteepGround(p);
+}
+// sub_800CBE8 and Player_800E808: the throw, which leaves the ground when its pose has played, goes up and comes down curled
+export function throwing(p) {
+  p.flags = (p.flags & ~GRAVITY_SWITCHED) | (p.stage.players[1 - p.id].flags & GRAVITY_SWITCHED);
+  if (p.flags & IN_AIR) {
+    if (p.velY >= 0 && p.variant === 1) p.variant = 2;
+    if (p.sprite.frameFlags & ANIM_FINISHED && p.variant === 2) {
+      p.variant = 3;
+      p.behave = fall;
+    }
+    curlAnimation(p);
+    steerInAir(p);
+    keepInBounds(p);
+    gravityAndMove(p);
+    collideInAir(p);
+    afterAir(p);
+    return;
+  }
+  if (p.sprite.frameFlags & ANIM_FINISHED) {
+    const toRight = p.sprite.frameFlags & SPRITE.X_FLIP;
+    p.velX = (toRight ? 2 : -2) * PX;
+    p.x += (toRight ? 5 : -5) * PX;
+    p.velY = -11 * PX;
+    p.y += (p.flags & GRAVITY_SWITCHED ? 5 : -5) * PX;
+    p.flags |= IN_AIR;
+    p.variant++;
+    if (p.id === p.stage.playerIndex) p.stage.c.playSong(SE_JUMP);
+  }
+  stopAtWalls(p);
+}
+
 // sub_8017004: come down on an object
 function afterAir(p) {
   if ((p.flags & (ON_OBJECT | IN_AIR)) === ON_OBJECT) {
-    p.behave = startStanding;
+    p.behave = p.flags & CHARGED ? startChargedOnGround : startStanding;
     p.groundSpeed = p.velX;
     p.angle = 0;
   }
@@ -595,7 +777,7 @@ function startJumpIfPressed(p) {
   const ramp = onRamp(p);
   if (ramp === 2 || roomOverHead(p) <= 3) return false;
   if (ramp !== 0) p.y -= 2 * PX;
-  p.behave = startJump;
+  p.behave = p.flags & CHARGED ? startChargedJump : startJump;
   p.flags &= ~ON_OBJECT;
   p.standingOn = null;
   return true;
@@ -621,30 +803,34 @@ function startJump(p) {
   p.flags &= ~ON_OBJECT;
   curlUpBody(p);
   p.pose = Math.abs(p.velX) < 0x140 ? POSE.AIR_SLOW : POSE.AIR_FAST;
+  jumpImpulse(p);
+  p.behave = jumpRising;
+  jumpRising(p);
+}
+// sub_80063B4: away from the ground, with the sound
+function jumpImpulse(p) {
   const away = byte(p.angle - 0x40) * 4;
   p.velX += (JUMP_SPEED * cos8(away)) >> 8;
   p.velY += (JUMP_SPEED * sin8(away)) >> 8;
   if (p.id === p.stage.playerIndex) p.stage.c.continueSong(SE_JUMP);
   p.sprite.frameFlags &= ~ANIM_FINISHED;
-  p.behave = jumpRising;
-  jumpRising(p);
 }
 // sub_800EDC8 and sub_800EE38: letting go of the button on the way up cuts it short
 function jumpRising(p) {
-  if (startFlyingIfPressed(p)) return;
+  if (startFlyingIfPressed(p) || tagAction(p)) return;
   if (p.velY < SHORT_JUMP_SPEED && !(p.held & KEY.A)) {
     p.velY = SHORT_JUMP_SPEED;
     p.behave = jumpFalling;
   } else if (p.velY > 0) p.behave = jumpFalling;
-  fall(p);
+  airborne(p);
 }
 function jumpFalling(p) {
-  if (!startFlyingIfPressed(p)) fall(p);
+  if (!startFlyingIfPressed(p) && !tagAction(p)) airborne(p);
 }
 
 // sub_8017058 and sub_80167A4: Tails pressing the button again in the air does nothing else this frame, and it flies from the next
 function startFlyingIfPressed(p) {
-  if (p.character !== TAILS || !(p.pressed & KEY.A)) return false;
+  if (p.character !== TAILS || !(p.pressed & KEY.A) || p.flags & CHARGED) return false;
   p.behave = startFlying;
   return true;
 }
@@ -890,7 +1076,7 @@ function roll(p) {
 
 // sub_8014AF8: six seconds still, and it looks around
 function lookAround(p) {
-  if (!isFlat(p) || p.flags & (BUTTONS_OFF | AT_WALL | IN_AIR | CURLED)) p.idleTimer = LOOK_AROUND_AFTER;
+  if (!isFlat(p) || p.held & KEY.R || p.flags & (BUTTONS_OFF | AT_WALL | IN_AIR | CURLED | FLAG.TAG_ACTION_CHARGED)) p.idleTimer = LOOK_AROUND_AFTER;
   else if (p.idleTimer > 0) p.idleTimer--;
   else p.pose = p.id === 0 ? POSE.LOOK_AROUND : POSE.LOOK_AROUND_PARTNER;
 }
@@ -906,6 +1092,17 @@ function keepInBounds(p) {
   p.y = y;
 }
 
+const CHARGED_POSES = [POSE.CHARGED_STAND, POSE.CHARGED_TURN, 0xF, POSE.CHARGED_SKID];
+// the end of sub_8005800 while charged: it never goes faster than the fourth step of its run, and every pose is its charged one
+function chargedPose(p) {
+  if (p.gait > 3) {
+    p.groundSpeed = p.flags & FACING_LEFT ? -7 * PX : 7 * PX;
+    p.gait = 3;
+  }
+  const charged = { [POSE.SKID]: POSE.CHARGED_SKID, [POSE.SKID_FAST]: POSE.CHARGED_SKID, [POSE.STAND]: POSE.CHARGED_STAND, [POSE.RUN]: POSE.CHARGED_RUN };
+  p.pose = charged[p.pose] ?? p.pose;
+}
+
 // sub_8005800: what the d-pad does on the ground, and the pose that goes with it
 function steerOnGround(p) {
   const left = p.held & KEY.LEFT, right = p.held & KEY.RIGHT;
@@ -913,11 +1110,13 @@ function steerOnGround(p) {
   else if (p.groundSpeed === 0) setOff(p);
   else if (p.groundSpeed > 0 ? right : left) speedUp(p, p.groundSpeed < 0);
   else brake(p);
+  const charged = p.flags & CHARGED;
+  if (charged) chargedPose(p);
   stopAtWalls(p);
   if ((p.flags & (IN_AIR | AT_WALL)) === AT_WALL && !steep(p.angle)) {
     const stillPushing = (right && !(p.pressed & KEY.RIGHT)) || (left && !(p.pressed & KEY.LEFT));
-    p.pose = stillPushing ? POSE.PUSH : POSE.STAND;
-  } else if (![POSE.STAND, POSE.SKID, POSE.SKID_FAST].includes(p.pose)) p.pose = POSE.RUN;
+    p.pose = stillPushing ? (charged ? p.pose : POSE.PUSH) : POSE.STAND;
+  } else if (![POSE.STAND, POSE.SKID, POSE.SKID_FAST, ...(charged ? CHARGED_POSES : [])].includes(p.pose)) p.pose = charged ? POSE.CHARGED_RUN : POSE.RUN;
   if (p.flagsLastFrame & AT_WALL) p.flags &= ~AT_WALL;
 }
 function speedUp(p, toLeft) {       // sub_80059A0
@@ -926,7 +1125,7 @@ function speedUp(p, toLeft) {       // sub_80059A0
   const faster = speed < p.topSpeed ? Math.min(speed + p.acceleration, p.topSpeed) : speed;
   p.groundSpeed = toLeft ? -faster : faster;
   p.flags = toLeft ? p.flags | FACING_LEFT : p.flags & ~FACING_LEFT;
-  p.pose = POSE.RUN;
+  p.pose = p.flags & CHARGED ? POSE.CHARGED_RUN : POSE.RUN;
 }
 function coast(p) {                 // sub_8005B04
   if (isFlat(p)) {
@@ -944,18 +1143,18 @@ function coast(p) {                 // sub_8005B04
   p.pose = POSE.RUN;
 }
 function brake(p) {                 // sub_8005A24
-  const slower = Math.abs(p.groundSpeed) - p.braking, skidding = p.pose === POSE.SKID || p.pose === POSE.SKID_FAST;
+  const slower = Math.abs(p.groundSpeed) - p.braking, skidding = p.pose === POSE.SKID || p.pose === POSE.SKID_FAST || p.pose === POSE.CHARGED_SKID;
   if (!skidding && slower >= SKID_FROM) {
-    p.pose = p.gait > 3 ? POSE.SKID_FAST : POSE.SKID;
+    p.pose = p.gait > 3 ? POSE.SKID_FAST : p.flags & CHARGED ? POSE.CHARGED_SKID : POSE.SKID;
     if (p.id === p.stage.playerIndex) p.stage.c.continueSong(SE_STOPPING);
   }
   const movingForward = p.groundSpeed < 0 ? p.flags & FACING_LEFT : !(p.flags & FACING_LEFT);
-  if (slower > 0 && slower < SKID_FROM && movingForward) p.behave = turning;
+  if (slower > 0 && slower < SKID_FROM && movingForward) p.behave = p.flags & CHARGED ? startChargedTurn : turning;
   p.groundSpeed = s16(p.groundSpeed < 0 ? -slower : slower);
 }
 function setOff(p) {                // sub_8005B78
   const facingLeft = p.flags & FACING_LEFT;
-  if (facingLeft ? p.held & KEY.RIGHT : !(p.held & KEY.RIGHT)) p.behave = turning;
+  if (facingLeft ? p.held & KEY.RIGHT : !(p.held & KEY.RIGHT)) p.behave = p.flags & CHARGED ? startChargedTurn : turning;
   else {
     p.groundSpeed += facingLeft ? -p.acceleration : p.acceleration;
     setHeight(p, STANDING_HEIGHT);
@@ -1037,7 +1236,7 @@ function stopAtWall(p, direction, first) {
     default:
       p.x += byte(direction + 0x20) >> 6 === 1 ? -gap : gap;
       if (first) {
-        p.flags |= AT_WALL;
+        if (!(p.flags & CHARGED)) p.flags |= AT_WALL;
         p.velX = p.groundSpeed = 0;
       }
   }
@@ -1184,7 +1383,7 @@ function wallInTheAir(p, side) {
 // sub_8012F10: back on the ground
 function land(p, angle) {
   p.angle = angle;
-  p.behave = startStanding;
+  p.behave = p.flags & CHARGED ? startChargedOnGround : startStanding;
   if (p.flags & CURLED) {
     p.flags &= ~CURLED;
     setHeight(p, STANDING_HEIGHT);
@@ -1266,9 +1465,9 @@ function chooseAnimation(c, p) {
     s.animSpeed = 0x10;
   }
   p.animation = (p.pose < OWN_ANIMATIONS ? firstAnimation(c, p) : 0) + c.rom.s16(entry);
-  if (p.pose === POSE.RUN) {
-    p.animation = firstAnimation(c, p) + POSE.RUN;
-    p.variant = p.gait;
+  if (p.pose === POSE.RUN || p.pose === POSE.CHARGED_RUN) {
+    p.animation = firstAnimation(c, p) + p.pose;
+    p.variant = p.pose === POSE.RUN ? p.gait : Math.min(3, p.gait);
     s.animSpeed = Math.max(8, Math.min(0x80, Math.abs((p.groundSpeed >> 5) + (p.groundSpeed >> 6))));   // the faster, the quicker its legs
   }
   if (p.restartAnimation || s.anim !== (p.animation & 0xFFFF) || s.variant !== byte(p.variant)) {
@@ -1319,7 +1518,7 @@ function faceAndTurn(p, turn, rotation, x, y) {
 // Player_RollingAnimateAndDisplayLimbs: Tails's tails, which show on their own while he's curled up, and point away from
 // the way he's going
 function drawTails(c, p) {
-  if (!p.tails) return;
+  if (!p.tails || p.flags & FLAG.TAG_ACTION_PARTNER_JOINED) return;
   const { sprite: s, turn } = p.tails, cam = p.stage.camera;
   s.animSpeed = 0x10;
   const shown = (p.animation - firstAnimation(c, p)) & 0xFFFF;

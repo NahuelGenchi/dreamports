@@ -48,15 +48,15 @@ export function stepAnimation(sprite, clock) {
 }
 
 /** The console's sprites as a frame's objects ask for them: 0x08037C54's tile memory, 0x0801F7A8's colours and 0x0200A820's list. */
-export function createSprites(video, rom) {
-  return { video, rom, list: [], tiles: 0, jobs: [], slots: new Map(), nextSlot: 15 };
+export function createSprites(video, rom, firstTile = 0) {
+  return { video, rom, list: [], firstTile, tiles: firstTile, jobs: [], slots: new Map(), nextSlot: 15 };
 }
 
 // 0x08069648: how many tiles each shape and size holds, and 0x080695E8 its width and height
 const TILES = 0x08069648 - CARTRIDGE, SIZES = 0x080695E8 - CARTRIDGE;
 
 // 0x0801F7A8: the place a sprite's colours have among the console's 16, given the first time they're asked for
-function colourSlot(sprites, address, colours) {
+export function colourSlot(sprites, address, colours) {
   let slot = sprites.slots.get(address);
   if (slot === undefined) {
     slot = sprites.nextSlot--;
@@ -106,6 +106,13 @@ export function drawText(sprites, font, text, x, y, colours) {
   }
 }
 
+/** 0x0800E1A8: a letter from the font's tiles at `from`, at priority 0, of the shape and size its font gives. */
+export function drawLetter(sprites, from, x, y, slot, { shape, size, tiles }) {
+  sprites.list.push([(y & 0xFF) | shape, (x & 0x1FF) | size, (slot << 12) | sprites.tiles]);
+  sprites.jobs.push([from, sprites.tiles, tiles]);
+  sprites.tiles += (tiles + 1) & ~1;
+}
+
 /** At the V-blank: 0x08037B28's tiles and 0x0803FA50's list. */
 export function showSprites(sprites) {
   const { video, rom, list, jobs } = sprites;
@@ -119,5 +126,5 @@ export function showSprites(sprites) {
   }
   list.length = 0;
   jobs.length = 0;
-  sprites.tiles = 0;
+  sprites.tiles = sprites.firstTile;
 }
