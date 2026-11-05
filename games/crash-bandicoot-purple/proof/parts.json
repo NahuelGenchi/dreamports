@@ -9,7 +9,7 @@
     {"name": "The title screen", "needs": ["The sound engine"], "recording": "title-screen", "frames": [519, 2020]},
     {"name": "The load save game screen", "needs": ["The sound engine"], "recording": "load-save", "frames": [561, 1131]},
     {"name": "The main menu", "needs": ["The sound engine"], "recording": "main-menu", "frames": [1132, 1721]},
-    {"name": "The story's opening scene", "needs": ["The sound engine"]},
+    {"name": "The story's opening scene", "needs": ["The sound engine"], "recording": "story-opening", "frames": [1419, 4476]},
     {"name": "The first world's hub", "needs": ["The sound engine", "Crash on foot"]},
     {"name": "The first world's mini-games", "needs": ["The sound engine"]},
     {"name": "The first world's boss", "needs": ["The sound engine"]},

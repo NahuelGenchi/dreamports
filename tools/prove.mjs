@@ -8,7 +8,7 @@
 // those frames, as it does of each part's first and last, and it names any notes people left on what differs
 // (docs/NOTES.md). At the first picture that differs, and with --state <frames> at others, it says what the console
 // holds that differs (lib/state.mjs). A recording fails if the game says no player could ever see a frame of it
-// (tools/README.md, Start points). With --quick it stops at the first frame that differs, and says what differs
+// (tools/README.md, Start points), and it reminds a game whose code never can say so when a start point plays. With --quick it stops at the first frame that differs, and says what differs
 // there, with no clip and nothing written to progress.json: a round of work, with the plain prove to finish it. The
 // pictures and the clips stay in .dreamports/results/ on this computer: they show the game, so they never go in a commit.
 
@@ -17,7 +17,7 @@ import { join, relative } from 'node:path';
 import { REPO, LOCAL, resultFolder } from './lib/paths.mjs';
 import { readOriginal, readRecordings, readCodeMap, readProgress, writeProgress, readParts, hex } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
-import { expand } from './lib/recording.mjs';
+import { expand, namesNeverInPlay } from './lib/recording.mjs';
 import { serveRepository } from './lib/server.mjs';
 import { openChrome } from './lib/chrome.mjs';
 import { openDreamport } from './lib/dreamport.mjs';
@@ -78,6 +78,11 @@ export async function run(args) {
   } finally {
     await page?.close();
     await server.close();
+  }
+
+  // only a game's own code knows what its opening does, so the tools can only remind it
+  if (recordings.some(recording => fromStartPoint(recording, Infinity)) && !namesNeverInPlay(join(REPO, 'games', game, 'src'))) {
+    console.log("\nA start point played here, and this game's code never names dreamportsProof.neverInPlay. If the game's opening holds its character, such as a countdown, add the line that makes prove stop a recording no player could ever see (npm run dp -- help start points). If it has no such opening, a comment naming neverInPlay that says why ends this reminder.");
   }
 
   if (quick) return failed ? 1 : 0;
@@ -429,6 +434,11 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       console.log(`  Pixels that differ in the frames asked for: ${askedPixels.slice(0, 12).map(s => `${s.frame}, ${s.pixels ? `${s.pixels.toLocaleString('en')}, from ${s.box[0]},${s.box[1]} to ${s.box[2]},${s.box[3]}` : 'none'}`).join('; ')}${askedPixels.length > 12 ? `; and ${askedPixels.length - 12} more in report.json` : ''}.`);
     }
     if (pictureDifferent.length && soundDifferent.length) console.log(`  Frames whose picture differs: ${listed(stretchesOf(pictureDifferent))}.`);
+    // an emulator can crop what it shows, and some consoles change their screen, so it isn't wrong in itself
+    const { width: originalWidth, height: originalHeight } = first.outside;
+    if (pictureDifferent.length && originalWidth && (originalWidth !== machine.screen[0] || originalHeight !== machine.screen[1])) {
+      console.log(`  The original's screen ended this recording at ${originalWidth} by ${originalHeight}, and kit/consoles.js says ${machine.screen.join(' by ')}, so a picture of that size can't match. Its emulator's settings in tools/consoles.mjs may be cropping it (docs/CONSOLES.md).`);
+    }
     if (soundDifferent.length) {
       const { frame, side, band, original: theirs, dreamport: ours, dB, silent } = firstSound;
       const where = `around ${band.toLocaleString('en')} Hz, on the ${side}`;

@@ -101,6 +101,7 @@ export function createPlayer({ x, y, spinDashSpeeds, character = SONIC, stopProp
     track: 0x7F,       // unk99[0]: the step of the track carrying him, 0x7F none (marbletrack.js)
     scale: 0x100,      // unk80 and unk82: his size through the rotation hardware (8.8), smaller in a marble track
     drawRotation: 0,   // the rotation his sprite was last drawn with, which a marble track keeps
+    override: false,   // MOVESTATE_IA_OVERRIDE: an object moves him, as X Zone's way to the Moon Zone does (xending.js)
     scripted: false,   // MOVESTATE_800000: an object sets his state, which walking, standing and landing leave alone
     jumpPressed: false, // the jump press his last frame read (frameInput), which objects look at on the next
     attackPressed: false, // and its attack press
@@ -1547,6 +1548,8 @@ export function stepPlayer(p, input, world) {
   else if (p.boost) stopBoost(p);
 
   if (p.dead) { deadStep(p, world); return; }
+  // MOVESTATE_IA_OVERRIDE: an object moves him and sets his state, and his own code doesn't run
+  if (p.override) return;
   handleWater(p, world);
   if (p.carried) return;
   if (p.trick) trickStep(p, c, world);
@@ -1626,6 +1629,7 @@ function chooseAnimation(p, input) {
 function pickAnimation(p, input) {
   const a = p.anim, speed = Math.abs(p.gsp);
   a.speed = ANIMATION.normalSpeed;
+  if (p.override) return p.state;
   if (p.gsp !== 0 || input.left || input.right || input.up || input.down || input.jump || input.attack || input.boost || input.trick) p.idleT = K.boredDelay;
   if (p.pushing) p.state = 'push';
   switch (p.state) {

@@ -20,7 +20,7 @@ export const LEVELS = {
   // (sPlatformThinAnims 0x080B8504, sPlatformCrumblingAnims 0x080B8528), trampoline and bounce block
   // (sBounceBlockAnims 0x086C8C20)
   2: {
-    name: 'Secret Base Zone act 1', zone: 1, act: 0, paletteAnimations: [819, 845, 849], music: 14, backgroundScroll: 'secretBase1', hudFlash: 56,
+    name: 'Secret Base Zone act 1', zone: 1, act: 0, paletteAnimations: [819, 845, 849], music: 14, backgroundScroll: 'secretBase1', hudFlash: 56, spotlights: true,
     sprites: { thinPlatform: [506, 0], crumblingPlatform: [502, 0], trampoline: [505, 0], trampolineBounce: [505, 1], bounceBlock: [499, 0] },
   },
   // StageInit_Zone2Act2 (0x0803DD89): act 1's three palette animations and MUS_SECRET_BASE__ACT_2; StageBgUpdate_Zone2Act2

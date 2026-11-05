@@ -1,0 +1,25 @@
+{
+  "about": "From power-on with nothing saved: German on the language screen, then the name entry in German, with two letters, up and round to the last page and down and round to the first, Start to the end button and A on it, which fades the screen out. It stops as the fade ends, before the title screen, which isn't ported yet.",
+  "frames": 316,
+  "held": [
+    [0, []],
+    [60, ["DOWN"]],
+    [64, []],
+    [120, ["A"]],
+    [124, []],
+    [200, ["A"]],
+    [204, []],
+    [214, ["RIGHT"]],
+    [218, []],
+    [228, ["A"]],
+    [232, []],
+    [242, ["UP"]],
+    [246, []],
+    [256, ["DOWN"]],
+    [260, []],
+    [270, ["START"]],
+    [274, []],
+    [284, ["A"]],
+    [288, []]
+  ]
+}

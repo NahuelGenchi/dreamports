@@ -4,10 +4,10 @@
 
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkStart, originalButtons, readRecording, writeRecording } from '../lib/recording.mjs';
+import { checkStart, namesNeverInPlay, originalButtons, readRecording, writeRecording } from '../lib/recording.mjs';
 import { fromStartPoint, proofOf } from '../../src/lib/entries.mjs';
 
 const folder = mkdtempSync(join(tmpdir(), 'recording-'));
@@ -105,6 +105,20 @@ test('frames no player could ever see stop the proof, however they compared', ()
     () => proofOf('made-up', measured({ neverInPlay: [{ from: 0, to: 16, why: 'Sonic is in the air during the countdown' }] })),
     /recordings\/placed\.json plays what no player could ever see at frames 0 to 16: Sonic is in the air during the countdown\..*Start points/,
   );
+});
+
+test('a game\'s code can name what no player could see in any of its files, and only its code counts', () => {
+  const folder = mkdtempSync(join(tmpdir(), 'dreamports-never-'));
+  try {
+    mkdirSync(join(folder, 'stage'));
+    writeFileSync(join(folder, 'main.js'), 'export const game = 1;\n');
+    writeFileSync(join(folder, 'stage', 'plan.txt'), 'neverInPlay\n');
+    assert.equal(namesNeverInPlay(folder), false);
+    writeFileSync(join(folder, 'stage', 'countdown.js'), "dreamportsProof.neverInPlay = 'He is in the air during the countdown';\n");
+    assert.equal(namesNeverInPlay(folder), true);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
 });
 
 test('a list of presses gives the original every frame, with the stretches only it has in their places', () => {

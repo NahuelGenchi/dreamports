@@ -34,7 +34,7 @@ export function createGax(bytes, sampleRate) {
   let mixed = new Uint16Array(0), output = new Int8Array(264), playingNow = new Int8Array(264);
   // 0x08044178: where the song is
   const state = { lastFrame: 0, pattern: -1, row: 20000, speed: 6, active: false, wait: 0, stepped: false, newPattern: false, master: 255, jump: false };
-  let channels = [], effects = [];
+  let channels = [], effects = [], musicVolume = MUSIC_VOLUME;
   // the manager's [80] and [84]: the last effect each channel was given, which stays once it has ended
   const lastEffects = [0, 0];
 
@@ -80,7 +80,7 @@ export function createGax(bytes, sampleRate) {
       }
     }
     // 0x08042A1C: every channel at the start, and 0x08044178: the song at its first frame
-    channels = Array.from({ length: u8(song) }, (_, i) => Object.assign(channel(), { seq: u32(song + 32 + i * 4), chVolume: MUSIC_VOLUME }));
+    channels = Array.from({ length: u8(song) }, (_, i) => Object.assign(channel(), { seq: u32(song + 32 + i * 4), chVolume: musicVolume }));
     // with nothing playing, so any sound effect can take them, however low its priority
     effects = Array.from({ length: EFFECT_CHANNELS }, () => Object.assign(channel(), { priority: -0x80000000 }));
     Object.assign(state, { lastFrame: 0, pattern: -1, row: 20000, speed: 6, active: false, wait: 0, stepped: false, newPattern: false, master: 255, jump: false });
@@ -504,12 +504,16 @@ export function createGax(bytes, sampleRate) {
           // 0x080434F8: what the last frame made starts playing, and this frame makes the next
           [output, playingNow] = [playingNow, output];
           for (const [name, args] of queue.splice(0)) {
-            if (name === 'startSong') {
+            if (name === 'stopSong') stopSong();
+            else if (name === 'startSong') {
               startSong(args[0]);
-              // a start point opens a level some frames after its song began, while it loaded
+              // a level opens some frames after its song began, while it loaded
               for (let n = args[1] ?? 0; n > 0; n--) frame();
             }
-            else if (name === 'stopSong') stopSong();
+            else if (name === 'setMusicVolume') {   // 0x08034214 with 0x08043AA0
+              musicVolume = args[0];
+              for (const ch of channels) ch.chVolume = musicVolume;
+            }
             else if (name === 'playEffect') playEffect(...args);
           }
           frame();

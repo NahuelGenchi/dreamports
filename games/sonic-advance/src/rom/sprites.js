@@ -90,7 +90,7 @@ function decodePieces(rom, tables, anim, f, tilesAt, eightBpp) {
         indices[py * w + px] = c && c + bank * 16;
       }
     }
-    return { x: a1 & 0x1FF, y: a0 & 0xFF, w, h, hflip: (a1 >> 12) & 1, vflip: (a1 >> 13) & 1, indices };
+    return { x: a1 & 0x1FF, y: a0 & 0xFF, w, h, hflip: (a1 >> 12) & 1, vflip: (a1 >> 13) & 1, indices, tile: tile0 };
   });
 }
 
@@ -140,6 +140,46 @@ export function framePieces(rom, tables, anim, frame, tilesAt, palette, eightBpp
     for (let k = 0; k < p.indices.length; k++) if (p.indices[k]) out[k] = colors[p.indices[k]];
     return { x: p.x, y: p.y, img };
   });
+}
+
+/** The 8 × 8 tile at (x, y) in a frame as renderFrame draws it: its colour numbers in its palette row, row by row. */
+export function frameTile(rom, tables, anim, frame, tilesAt, eightBpp, x, y) {
+  const f = frameLayout(rom, tables, anim, frame), tile = new Uint8Array(64);
+  for (const p of oamPieces(rom, tables, anim, f, tilesAt, eightBpp)) {
+    let { x: px, y: py, hflip, vflip } = p;
+    if (f.flip & 2) { vflip ^= 1; py = f.height - p.h - py; }
+    if (f.flip & 1) { hflip ^= 1; px = f.width - p.w - px; }
+    for (let row = 0; row < p.h; row++) {
+      for (let col = 0; col < p.w; col++) {
+        const dx = px + (hflip ? p.w - 1 - col : col) - x, dy = py + (vflip ? p.h - 1 - row : row) - y;
+        if (dx >= 0 && dx < 8 && dy >= 0 && dy < 8 && p.indices[row * p.w + col]) tile[dy * 8 + dx] = p.indices[row * p.w + col] & 15;
+      }
+    }
+  }
+  return tile;
+}
+
+/**
+ * Where a frame shows the first `count` tiles of its sprite's video memory, in the order of their number: `frame`, each
+ * tile's top left corner in the frame as renderFrame draws it, and `pieces`, by OAM piece as framePieces gives them.
+ */
+export function firstTiles(rom, tables, anim, frame, tilesAt, eightBpp, count = 2) {
+  const f = frameLayout(rom, tables, anim, frame), found = { frame: [], pieces: [] };
+  oamPieces(rom, tables, anim, f, tilesAt, eightBpp).forEach((p, k) => {
+    found.pieces[k] = [];
+    const across = p.w >> 3, tiles = across * (p.h >> 3);
+    for (let n = 0; n < count; n++) {
+      const i = n - p.tile;
+      if (i < 0 || i >= tiles) continue;
+      const lx = (i % across) * 8, ly = Math.floor(i / across) * 8;
+      let { x, y, hflip, vflip } = p;
+      if (f.flip & 2) { vflip ^= 1; y = f.height - p.h - y; }
+      if (f.flip & 1) { hflip ^= 1; x = f.width - p.w - x; }
+      found.frame.push([x + (hflip ? p.w - 8 - lx : lx), y + (vflip ? p.h - 8 - ly : ly)]);
+      found.pieces[k].push([lx, ly]);
+    }
+  });
+  return found;
 }
 
 /**

@@ -6,8 +6,8 @@
 import { Rom } from '../../../../kit/gba/rom/rom.js';
 import { identify } from './identify.js';
 import { locateTables } from './locate.js';
-import { spriteTables, animationFrames, animationPalette, renderFrame, framePieces, paletteAnimation, frameLayout } from './sprites.js';
-import { tilemapHeader, renderMetatileAtlas, renderPlainMap, mapBanks, mapHoles, indexMetatiles, indexPlainMap, metatileIndices, plainMapIndices } from './tilemaps.js';
+import { spriteTables, animationFrames, animationPalette, renderFrame, framePieces, firstTiles, frameTile, paletteAnimation, frameLayout } from './sprites.js';
+import { tilemapHeader, renderMetatileAtlas, renderPlainMap, mapBanks, mapHoles, mapEntries, indexMetatiles, indexPlainMap, metatileIndices, plainMapIndices } from './tilemaps.js';
 import { readCollision, readSpawn, readLoop, readMultiplayerSpawns, readChaoSpawns } from './collision.js';
 import { readInteractables, readItemBoxes, entityRegions, readRings, layerToggles } from './entities.js';
 import { readColors, tintRgb, tintImage, bgr555ToRgb } from './colors.js';
@@ -50,6 +50,8 @@ export const SONIC_ANIMATIONS = {
   halfPipeLow: [36, 0], halfPipeMid: [36, 1], halfPipeHigh: [36, 2],
   // held in Egg X's claw (charState 40)
   grabbed: [98, 0],
+  // X Zone's way to the Moon Zone (charStates 52, 50 and 51): looking up, turning into Super Sonic, flying off
+  moonGaze: [397, 0], moonTransform: [398, 0], moonFly: [399, 0],
   // running on past the goal (charState 28)
   actClearRun: [22, 0],
   // standing in his act-clear pose once the boss capsule opens (charState 29)
@@ -72,6 +74,7 @@ export const SONIC_ANIMATIONS = {
 // and as a marble track does
 export const TAILS_ANIMATIONS = {
   fly: [155, 0], flyTurn: [156, 0], flyTired: [157, 0], flyLand: [158, 0], swim: [145, 0], swimTurn: [146, 0],
+  moonWatch: [198, 0],   // watching Sonic turn, on X Zone's way to the Moon Zone (charState 61)
   tailSwipe: [149, 0], tailSwipeFx: [777, 0], tailsSpin: [107, 1], marbleTrackTails: [138, 1],
 };
 // Knuckles' own (charStates 62 to 84): gliding, turning round in a glide, gliding under water, dropping from it
@@ -87,7 +90,7 @@ export const KNUCKLES_ANIMATIONS = {
 // Sonic's own moves: the air dash, the insta-shield, the B combo and grinding (Tails' and Knuckles' grinding
 // animations are empty, and Amy grinds as he does), and his spin dash's rev, which Knuckles has too
 const SONIC_ONLY = new Set(['airDash', 'instaShield', 'spinAttack', 'somersault', 'slide', 'slideEnd', 'backflip',
-  'grind', 'grindSteep', 'railJump']);
+  'grind', 'grindSteep', 'railJump', 'moonGaze', 'moonTransform', 'moonFly']);
 // Amy's own (charStates 85 to 93, as the character state table has them): her jump's rise, the leap off her hammer,
 // her two swings, the hammer in the air and swirled down, her dive, its slam and the slide's end, and the hearts
 export const AMY_ANIMATIONS = {
@@ -314,6 +317,8 @@ export const EGG_X_ANIMATIONS = {
   689: { eggXHand0: 0, eggXHand1: 1, eggXHand2: 2 },
   690: { eggXBall0: 0, eggXBall1: 1 },
   691: { eggXEggman0: 0, eggXEggman1: 1, eggXEggman2: 2, eggXEggman3: 3 },
+  // the way to the Moon Zone (xending.js): the flash as Sonic turns, and the two lights in the sky
+  398: { superFlash: 1 }, 731: { moonSparkleA: 0 }, 732: { moonSparkleB: 0 },
 };
 // Neo Green Hill's boss, the Egg Hammer Tank (boss_1_egg_hammer_tank.c): its body on its two alternating scripts and
 // without its belt, an arm segment, the hammer, Eggman (still, laughing, hurt) and the belt's four pieces
@@ -413,9 +418,12 @@ export const EGG_SNAKE_ANIMATIONS = {
 // GAME OVER and CONTINUE? (715): each word in two halves, drawn through the rotation hardware as they turn; and
 // TIME, which the time over puts in front of GAME OVER's right half
 export const GAME_OVER_ANIMATIONS = { 715: { gameOverLeft: 0, gameOverRight: 1, continueLeft: 2, continueRight: 3, timeOverLeft: 4 } };
+const STRAY_TILE_X = 0, STRAY_TILE_Y = 40;
 // the pause menu's sign (pause.js): PAUSE (718) over its background (720); both load their colours into row 6
 // of the sprite palette
 export const PAUSE_ANIMATIONS = { 718: { pause: 0 }, 720: { pauseBackground: 0 } };
+// what a demo shows over the act (demo.js): DEMO PLAY (721) and PRESS START in each language (778, 779)
+export const DEMO_ANIMATIONS = { 721: { demoPlay: 0 }, 778: { demoPressStartJapanese: 0 }, 779: { demoPressStartEnglish: 0 } };
 // the ring all rings share (animation 707) and the sparkle left where one is collected (708); the sparkle's
 // script starts song 117 itself, which the game plays (src/engine/game.js)
 export const RING_ANIMATIONS = { ring: [707, 0], ringSparkle: [708, 0] };
@@ -465,7 +473,7 @@ const PLAYER_PALETTE = new Set(['chaoCounter', 'indicator']);
 // the skating stones' debris, and the bubbles Sonic lets out under water and the drowning countdown's numbers,
 // which grow to full size, and in the multiplayer modes the mystery item box growing and shrinking and the
 // arrows toward the opponents, and the game over's words; their frames also keep their OAM pieces as the hardware reads them
-const ROTATED = new Set(['walk', 'run', 'bounce', 'marbleTrack', 'tailsSpin', 'marbleTrackTails', 'rockDebrisSmall', 'rockDebrisLarge', 'iceShardsSmall', 'iceShardsLarge', 'swingingHook',
+const ROTATED = new Set(['moonSparkleA', 'moonSparkleB', 'walk', 'run', 'bounce', 'marbleTrack', 'tailsSpin', 'marbleTrackTails', 'rockDebrisSmall', 'rockDebrisLarge', 'iceShardsSmall', 'iceShardsLarge', 'swingingHook',
   'hammerTankArm', 'hammerTankHammer', 'hammerTankBelt0', 'hammerTankBelt1', 'hammerTankBelt2', 'hammerTankBelt3',
   'capsuleSmall', 'capsuleShell', 'animalRobin', 'animalParrot', 'eggPressSpring', 'eggPressBase', 'eggBallStarDisc',
   'stoneDebrisSmall', 'stoneDebrisLarge', 'iceStoneDebrisSmall', 'iceStoneDebrisLarge',
@@ -524,6 +532,7 @@ function* readAssets(rom, id, { level = 0, character = 0, partner = false } = {}
 
   yield `Decoding ${['Sonic', 'Tails', 'Knuckles', 'Amy'][character]}…`;
   const tables = spriteTables(rom, offsets.spriteTables);
+  const turning = level === 12 && character === 0;
   // the zone's acts from `level` on, which share the zone's looks for the objects that differ by level
   // (the extra stage, the Moon Zone, is X Zone's act 2 but only ever comes on its own)
   const levels = Object.keys(LEVELS).map(Number).filter(l => l >= level && LEVELS[l].zone === info.zone && (l === level || !LEVELS[l].extra)).sort((a, b) => a - b);
@@ -566,7 +575,9 @@ function* readAssets(rom, id, { level = 0, character = 0, partner = false } = {}
     id, info: { ...id.header, region: id.region, sha1: id.sha1, version: id.known?.name ?? null, offsets },
     sprites, acts, first: level, character, partner: !!partnerAnims, stage: acts[level].stage, titleCard: acts[level].titleCard, physics: { spinDashSpeeds },
     heartPatterns: heartPatterns(rom, offsets.heartOffsets),
-    hud: extractHud(rom, offsets, water, acts[level].stage.extra?.facePalette, character),
+    // X Zone's way to the Moon Zone turns Sonic into Super Sonic, whose colours the face takes on as in the Moon Zone
+    hud: extractHud(rom, offsets, water, acts[level].stage.extra?.facePalette ?? (turning ? animationPalette(rom, tables, 399).slice(0, 16) : undefined), character,
+      turning ? animationFrames(rom, tables, 398, 0, animationPalette(rom, tables, 0)).frames.map(f => f.palette.slice(0, 16)) : []),
     gameOver: extractGameOver(rom, offsets, acts[level].stage.extra?.facePalette, character),
     // where the songs are; the sound engine reads them from the ROM itself
     sound: soundLayout(rom, offsets.musicPlayers),
@@ -614,7 +625,7 @@ function extractSprites(rom, tables, water, player, partner, levelSprites = {}) 
     { list: yellow, palette: yellowPalette, skipPalette: true, under: underYellow },
     { list: RING_ANIMATIONS, palette: animationPalette(rom, tables, RING_ANIMATIONS.ring[0]) },
     { list: SPIKE_ANIMATIONS, palette: animationPalette(rom, tables, SPIKES_ANIM) },
-    ...Object.entries(mergeAnimations(ENEMY_ANIMATIONS, ITEM_ANIMATIONS, PLATFORM_ANIMATIONS, ROCK_ANIMATIONS, ICE_MOUNTAIN_ANIMATIONS, NUTS_AND_BOLTS_ANIMATIONS, EGG_SNAKE_ANIMATIONS, EGG_WRECKER_ANIMATIONS, EGG_DRILLSTER_ANIMATIONS, EGG_X_ANIMATIONS, CONVEYOR_OBJECT_ANIMATIONS, SPIKED_BARREL_ANIMATIONS, PROPELLER_ANIMATIONS, CARRIER_ANIMATIONS, IRON_BALL_ANIMATIONS, TORCH_ANIMATIONS, UPDRAFT_ANIMATIONS, WALL_ANIMATIONS, WATER_ANIMATIONS, SLIDE_ANIMATIONS, SHRUB_ANIMATIONS, BOOSTER_ANIMATIONS, CHECKPOINT_ANIMATIONS, POLE_ANIMATIONS, GOAL_ANIMATIONS, BOSS_ANIMATIONS, EGG_HAMMER_TANK_ANIMATIONS, CAPSULE_ANIMATIONS, SPECIAL_SPRING_ANIMATIONS, STEAM_EXHAUST_ANIMATIONS, EGG_PRESS_ANIMATIONS, HOOK_RAIL_ANIMATIONS, SECURITY_GATE_ANIMATIONS, HOOK_ANIMATIONS, MARBLE_TRACK_ANIMATIONS, PIPE_ANIMATIONS, MOVING_SPRING_ANIMATIONS, STONE_ANIMATIONS, (water ? UNDERWATER_ANIMATIONS : {}), BACKGROUND_ANIMATIONS, BALLOON_ANIMATIONS, BARREL_ANIMATIONS, BOWL_ANIMATIONS, BUMPER_ANIMATIONS, CAROUSEL_ANIMATIONS, FERRIS_WHEEL_ANIMATIONS, FLIPPER_ANIMATIONS, LETTER_ANIMATIONS, PANEL_GATE_ANIMATIONS, RED_FLAG_ANIMATIONS, SHIP_SWING_ANIMATIONS, SPIKED_PLATFORM_ANIMATIONS, SQUARE_PLATFORM_ANIMATIONS, GAME_OVER_ANIMATIONS, PAUSE_ANIMATIONS)).map(([anim, variants]) => ({
+    ...Object.entries(mergeAnimations(ENEMY_ANIMATIONS, ITEM_ANIMATIONS, PLATFORM_ANIMATIONS, ROCK_ANIMATIONS, ICE_MOUNTAIN_ANIMATIONS, NUTS_AND_BOLTS_ANIMATIONS, EGG_SNAKE_ANIMATIONS, EGG_WRECKER_ANIMATIONS, EGG_DRILLSTER_ANIMATIONS, EGG_X_ANIMATIONS, CONVEYOR_OBJECT_ANIMATIONS, SPIKED_BARREL_ANIMATIONS, PROPELLER_ANIMATIONS, CARRIER_ANIMATIONS, IRON_BALL_ANIMATIONS, TORCH_ANIMATIONS, UPDRAFT_ANIMATIONS, WALL_ANIMATIONS, WATER_ANIMATIONS, SLIDE_ANIMATIONS, SHRUB_ANIMATIONS, BOOSTER_ANIMATIONS, CHECKPOINT_ANIMATIONS, POLE_ANIMATIONS, GOAL_ANIMATIONS, BOSS_ANIMATIONS, EGG_HAMMER_TANK_ANIMATIONS, CAPSULE_ANIMATIONS, SPECIAL_SPRING_ANIMATIONS, STEAM_EXHAUST_ANIMATIONS, EGG_PRESS_ANIMATIONS, HOOK_RAIL_ANIMATIONS, SECURITY_GATE_ANIMATIONS, HOOK_ANIMATIONS, MARBLE_TRACK_ANIMATIONS, PIPE_ANIMATIONS, MOVING_SPRING_ANIMATIONS, STONE_ANIMATIONS, (water ? UNDERWATER_ANIMATIONS : {}), BACKGROUND_ANIMATIONS, BALLOON_ANIMATIONS, BARREL_ANIMATIONS, BOWL_ANIMATIONS, BUMPER_ANIMATIONS, CAROUSEL_ANIMATIONS, FERRIS_WHEEL_ANIMATIONS, FLIPPER_ANIMATIONS, LETTER_ANIMATIONS, PANEL_GATE_ANIMATIONS, RED_FLAG_ANIMATIONS, SHIP_SWING_ANIMATIONS, SPIKED_PLATFORM_ANIMATIONS, SQUARE_PLATFORM_ANIMATIONS, GAME_OVER_ANIMATIONS, PAUSE_ANIMATIONS, DEMO_ANIMATIONS)).map(([anim, variants]) => ({
       list: Object.fromEntries(Object.entries(variants).map(([name, v]) => [name, [Number(anim), v]])),
       palette: animationPalette(rom, tables, Number(anim)),
     })),
@@ -719,6 +730,14 @@ function extractSprites(rom, tables, water, player, partner, levelSprites = {}) 
     frames: [...new Set(Object.keys(player).flatMap(name => anims[name].frames.map(f => f[0]).filter(i => i >= 0)))],
     colors: sonicPalette.slice(0, 16), under: under ? under.slice(0, 16) : null,
   };
+  // the moving spring's tile that a demo shows once in the player's colours (demo.js, strayTiles)
+  const spring = anims.movingSpring && images[anims.movingSpring.frames[0][0]].src;
+  sonic.strayTile = spring && frameTile(rom, spring[1], spring[2], spring[3], spring[4], spring[6], STRAY_TILE_X, STRAY_TILE_Y);
+  // where they show the first tiles of the sprites' video memory, which are the player's (demo.js)
+  sonic.firstTiles = Object.fromEntries(sonic.frames.map(i => {
+    const [, frameTables, anim, frame, tilesAt, , eightBpp] = images[i].src;
+    return [i, firstTiles(rom, frameTables, anim, frame, tilesAt, eightBpp)];
+  }));
   // The renderer reads pixels back only from the rotated pieces and from Sonic's frames in the colours they show
   // in, so those are packed first, in the atlas's top rows (`pixelRows`), and only those rows are kept as pixels
   // (`pixels`) besides the atlas itself.
@@ -848,6 +867,11 @@ function extractStage(rom, offsets, tables, info) {
     entityRegions: entityRegions(rom, offsets.interactables, level),
     paletteAnimations: animations.map(({ frames, loop }) => ({ delays: frames.map(f => f.delay), loop })),
     backgroundHoles: mapHoles(rom, background), backdrop: palette[0],
+    // its metatiles' tile entries, for what a window or a screen after a demo does to a tile (renderer.js), its background's
+    // tiles, which stay in video memory after it, and with the spotlights the background's entries
+    metatileEntries: mapEntries(rom, front, count * 144),
+    backgroundTiles: rom.bytes.subarray(background.tiles, background.tiles + background.tilesSize),
+    spotlightArt: info.spotlights ? { entries: mapEntries(rom, background, background.xTiles * background.yTiles), across: background.xTiles } : null,
     atlas: null, background: null, backgrounds: null, indexed: null,
     snow: info.snow === undefined ? null : snowLayer(rom, tilemapHeader(rom, offsets.tilemaps, info.snow), palette, animations),
     water: info.water ? waterColors(rom, info.water, background, palette, animations) : null,
@@ -930,11 +954,11 @@ function paletteVariants(base, animations, banks) {
 // The HUD and the title card, and in an act with water their sheets in its colours (`under`): the HUD's
 // palettes are the ones palette 423 has in their slots, and the card is coloured from its own while it shows.
 const CHARACTER_SELECT_GFX = 39;
-function extractHud(rom, offsets, water, facePalette, character) {
+function extractHud(rom, offsets, water, facePalette, character, faceTurns) {
   // UI graphics 39, which the character select loads into sprite VRAM from tile 1 and nothing writes over before
   // the act: its tiles 19 and 20 are the sprite VRAM's 20 and 21 the zero-ring count reads (engine/hud.js)
   const leftover = rom.requirePtr(offsets.uiGraphics + CHARACTER_SELECT_GFX * 28, 'UI graphics 39') + 19 * 32;
-  const { image, ...rects } = hudGraphics(rom, offsets.uiGraphics, facePalette, null, character, leftover);
+  const { image, ...rects } = hudGraphics(rom, offsets.uiGraphics, facePalette, null, character, leftover, faceTurns);
   return { sheet: toCanvas(image), under: water ? toCanvas(tintImage(image, water.blend)) : null, ...rects };
 }
 

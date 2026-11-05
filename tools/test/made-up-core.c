@@ -3,7 +3,7 @@
 // text MADEUP, then a colour for each button. Each frame fills its 64 x 48 screen with shades of the cartridge's colour for
 // the button held, draws a bar that moves a pixel a frame, and plays a square wave while a button is held. Like a real console,
 // what it works out in a frame shows and sounds in the next. It counts frames in its work memory, which a recording's
-// start point can set.
+// start point can set. Right halves its sound's rate, and Left puts it back, as a Nintendo 64's game chooses its own.
 
 #include <math.h>
 #include <stdbool.h>
@@ -30,6 +30,7 @@ static uint16_t colours[8];
 static uint16_t screen[WIDTH * HEIGHT];
 static uint32_t memory[16];   // [0], the frame count
 static uint32_t phase;
+static unsigned rate = RATE;
 static int16_t sound[(RATE / FPS) * 2];
 
 void retro_set_environment(bool (*callback)(unsigned, void*)) { environment = callback; }
@@ -67,7 +68,15 @@ size_t retro_get_memory_size(unsigned id) { return id == 2 ? sizeof memory : 0; 
 void retro_run(void) {
 	inputPoll();
 	videoRefresh(screen, WIDTH, HEIGHT, WIDTH * 2);
-	audioBatch(sound, RATE / FPS);
+	audioBatch(sound, rate / FPS);
+	// libretro's Right and Left, by their numbers there. Only this notice says so: asked again, it answers as it did at first
+	unsigned wanted = inputState(0, 1, 0, 7) ? RATE / 2 : inputState(0, 1, 0, 6) ? RATE : rate;
+	if (wanted != rate) {
+		struct av_info info;
+		retro_get_system_av_info(&info);
+		info.sampleRate = rate = wanted;
+		environment(32, &info);
+	}
 	int pressed = -1;
 	// libretro's A, B and START, by their numbers there
 	if (inputState(0, 1, 0, 8)) pressed = 1;
@@ -76,9 +85,9 @@ void retro_run(void) {
 	uint16_t colour = colours[pressed < 0 ? 0 : pressed];
 	uint32_t bar = memory[0] % WIDTH;
 	for (int y = 0; y < HEIGHT; y++) for (int x = 0; x < WIDTH; x++) screen[y * WIDTH + x] = (uint32_t) x == bar ? colours[4] : colour ^ (y % 12);
-	for (int i = 0; i < RATE / FPS; i++) {
+	for (unsigned i = 0; i < rate / FPS; i++) {
 		// 440 Hz, half as loud as the mix goes
-		int16_t value = pressed < 0 ? 0 : (phase * 440 * 2 / RATE) % 2 ? 16384 : -16384;
+		int16_t value = pressed < 0 ? 0 : (phase * 440 * 2 / rate) % 2 ? 16384 : -16384;
 		sound[i * 2] = sound[i * 2 + 1] = value;
 		phase++;
 	}
