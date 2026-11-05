@@ -576,7 +576,8 @@ Frames are counted as mGBA draws them from power-on, the first being frame 0. Wi
 
 **Not built yet.** These are still to come, so the game goes on where they would start:
 
-- *VS, Time Attack and Tiny Chao Garden:* A on them does nothing. The original plays the select sound and fades out to them as it does for Game Start.
+- *VS and Tiny Chao Garden:* A on them does nothing. The original plays the select sound and fades out to them as it does for Game Start.
+- *Time Attack:* A opens [its menu](#the-time-attack-menu), fading out as it does for Game Start. On a copy of another version where its picture can't be found, A does nothing here, and the rest of the game still plays.
 - *The soft reset:* A, B, Start and Select held together restart the original from Sonic Team's logo on; here they do nothing.
 
 **Lag.** The original skips a frame's keys and tasks when the V-blank's copies run past the V-blank. These screens never do on the recordings, so that isn't modelled. The one frame they do lose is the main menu's first when it comes back from the Options menu, where `CreateMainMenu(1)` itself runs past the V-blank (see [The Options menu](#the-options-menu)); the engine leaves that frame out (`lag`).
@@ -656,6 +657,16 @@ Each other act was tried once the same way, from 15 rows, for about 330 frames, 
 - *The Moon Zone:* from the frame before the fade ends on, its start is a frame late, as it runs on its own code (`extra.js`).
 
 B going back to the main menu and A coming in again ran with no error, though the original can't be compared there, as it goes to the character select.
+
+### The Time Attack menu
+
+Time Attack on the main menu opens `CreateTimeAttackMenu` (`0x08010078` in the USA ROM, [`src/front/timeattack.js`](../src/front/timeattack.js)), with its tasks `Task_TimeAttackMenu` (`0x08010278`) and `Task_80103C4` (`0x08010394`) and `sub_8010580` (`0x08010550`). The screens its two entries lead to aren't built, so A there does nothing, where the original plays the select sound and fades out to them.
+
+**What it shows.** Its picture is one layer of 8-bit tiles in the save's language, from `0x6959D0` in the USA ROM (found by its two maps' shape in other versions): the Japanese colours, 113 tiles and a 32 × 20 map, then the English ones with 131 tiles. Over it are two sprites. The choice bar is animation 880 (Japanese) or 879 (English), which the decompilation's European ROM numbers 882 and 881, with variant 1 on START and 0 on RECORD, drawn again every 128 pixels while it slides left half a pixel a frame. The frame round the chosen entry is animation 860, eight copies 32 pixels apart.
+
+**How it runs.** It starts the character select's song and fades in from black over 16 frames. Up and Down move between the two entries, wrapping round, with the main menu's key repeat, playing the cursor sound and starting the bar's slide again. B plays the return sound and fades out over 16 frames; then the main menu opens again (`CreateMainMenu(1)`) and the song stops. That clears the first 64 bytes of the sprites' tiles, as its fill runs past the end of a layer's tiles, and the original's picture already shows them cleared on the fade's last frame but one, so the bar's first tile changes there.
+
+**How it was checked.** `npm run dp -- prove sonic-advance time-attack-menu` plays both from power-on in mGBA 0.10.5 with the USA ROM: Down to Time Attack and A, the menu left alone, Down to RECORD and Up back, Down held until it repeats, and B back to the main menu. Every frame matches, picture and sound. The song's sound differs on a few frames about 310 frames in, so B at some other frames shows a difference of sound alone: the note on the character select's song has which.
 
 ### The language screen
 

@@ -3,11 +3,12 @@
 // then the logo zooms in from four times its size over 13, slowing as it comes. A second after the copyright line
 // shows, "PRESS START" blinks above it, on and off every 32 frames, and Start opens the main menu: the five items
 // where "PRESS START" was, the chosen one lit. Up and Down move through them, wrapping round, with the key
-// repeat, and A on Game Start or Options fades the screen to black and stops the music. Options opens the Options
+// repeat, and A on Game Start, Time Attack or Options fades the screen to black and stops the music. Options opens the Options
 // menu (options.js), which comes back to the main menu with the title screen's layers drawn again and a fade in.
 //
-// What isn't built yet goes nowhere. A on VS, Time Attack or Tiny Chao Garden does nothing. Game Start opens the character
-// select (charselect.js), or with the address's start point for the course select goes where it leads.
+// What isn't built yet goes nowhere. A on VS or Tiny Chao Garden does nothing. Game Start opens the character
+// select (charselect.js), or with the address's start point for the course select goes where it leads, and Time
+// Attack its menu (timeattack.js).
 //
 // The logo, "PRESS START" and the menu's items are in the save's language, Japanese or English; the copyright line
 // is the international release's in both.
@@ -18,6 +19,7 @@ import { FLAGS, KEY } from '../gba/engine.js';
 import { SONG } from '../sound/songs.js';
 import { createFade, fadeStep } from './ui.js';
 import { createOptionsMenu } from './options.js';
+import { createTimeAttackMenu } from './timeattack.js';
 import { createCharacterSelect } from './charselect.js';
 
 // by the save's language (0 Japanese, 1 English): the logo's tilemap, and "PRESS START"'s and the items' animation
@@ -29,7 +31,7 @@ const COPYRIGHT_VARIANT = 1;
 // the tiles the original gives each sprite: "PRESS START"'s are the Japanese one's, the bigger of the two
 const PRESS_START_TILES = 23 * 2, COPYRIGHT_TILES = 3 * 30;
 const MENU_ITEMS = 5, MENU_TOP = 93, MENU_SPACE = 14;
-const GAME_START = 0, OPTIONS = 3;
+const GAME_START = 0, TIME_ATTACK = 2, OPTIONS = 3;
 const ITEM_TILES = [28, 16, 28, 20, 40];
 const ITEM_VARIANTS = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5];   // by item, then language
 const BLEND_STEP = 0x55, BLEND_END = 0x1000;
@@ -237,9 +239,8 @@ function chooseItem(t) {
     updateSprite(e, ctx.sprites, item);
     displaySprite(e, ctx.sprites, item);
   });
-  // VS's, Time Attack's and Tiny Chao Garden's screens aren't built: A on them does nothing (the original fades
-  // out to them too)
-  if (e.pressed & KEY.A && (menu.selectedItem === GAME_START || menu.selectedItem === OPTIONS)) {
+  // VS's and Tiny Chao Garden's screens aren't built: A on them does nothing (the original fades out to them too)
+  if (e.pressed & KEY.A && (menu.selectedItem === GAME_START || (menu.selectedItem === TIME_ATTACK && ctx.offsets.timeAttackMenu) || menu.selectedItem === OPTIONS)) {
     e.playSong(SONG.SELECT);
     t.main = fadeOut;
     menu.unk1B0 = 0;
@@ -266,7 +267,8 @@ function fadeOut(t) {
 }
 
 // Task_800DEE4: the items' tiles freed and the music stopped (a song started on its player, the player cleared
-// and the song stopped), then the character select; or the windows and the blend off, and the Options menu
+// and the song stopped), then the character select; or the windows and the blend off, and the Time Attack or
+// Options menu
 function leaveMenu(t) {
   const menu = t.data, { ctx } = menu, e = ctx.engine, item = menu.selectedItem;
   for (const s of menu.items) e.vramFree(s.graphics.dest);
@@ -282,5 +284,6 @@ function leaveMenu(t) {
   e.dispCnt &= ~0x6000;
   e.bldCnt = 0;
   e.bldY = 0;
-  createOptionsMenu(ctx);
+  if (item === TIME_ATTACK) createTimeAttackMenu(ctx);
+  else createOptionsMenu(ctx);
 }
