@@ -13,7 +13,7 @@ import {
   fn08018300, fn08018318,
 } from './sprites.js';
 import { fn08013214 } from './hud.js';
-import { fn0800673c, fn08006e64, fn08006ff4, fn0800b098 } from './fighters.js';
+import { clearEffect, fn0800673c, fn08006e64, fn08006ff4, fn0800b098 } from './fighters.js';
 import { fn0800f9c0, fn08011c7c } from './arena.js';
 
 const FIGHTERS = 0x03001C40, RECORD = 252;
@@ -199,6 +199,22 @@ function dummyKeys(c) {
   } else if (mode === 6) {
     every(40, read8(c, dummy + 17) === 0 ? 18 : 34);
   }
+}
+
+/**
+ * 0x080180f0: whether any of `mask` was pressed in `count` of a fighter's last ten frames of keys, starting `back`
+ * frames before this one.
+ */
+function pressedBefore(c, i, back, count, mask) {
+  const at = KEYS + i * KEYS_PER_FIGHTER;
+  let place = read8(c, at + KEYS_NOW) - Math.min(back, 9);
+  if (place < 0) place += 10;
+  for (let n = 0; n < count; n++) {
+    if (read16(c, at + KEYS_PRESSED + place * 2) & mask) return true;
+    // a place past the ninth reads on into the released keys, as the original's does
+    place = place > 9 ? 0 : place + 1;
+  }
+  return false;
 }
 
 /** 0x080034f0: the way the pad's direction faces, by the fighter's camera. */
@@ -492,7 +508,7 @@ function setState(c, i, state) {
     case 8: case 52: case 71:
       clearFlags(c, rec, FLAG_LANDED);
       break;
-    case 1: case 2: case 3: case 5: case 6: case 261:
+    case 1: case 2: case 3: case 4: case 5: case 6: case 7: case 261:
       break;
     default:
       notPorted('08001B0C', `state ${state}`);
@@ -757,10 +773,23 @@ function reachOthers(c, i) {
   if (read16(c, rec + 104) !== 0) notPorted('08006134', 'an attack');
 }
 
-/** 0x08005310: the moves a fighter's keys ask for, and its short timers. Partly: nothing is pressed in the opening. */
+/**
+ * 0x08005310: the moves a fighter's keys ask for, and its short timers. Partly: a press of the pad, which marks the way
+ * it points and a second press close behind; not B or R.
+ */
 function readFighterKeys(c, i) {
   const rec = record(i), asks = read8(c, rec + 138), state = read16(c, rec + STATE);
-  if (!(asks & 0xF8) && state !== 4 && (pressed(c, i) & 0x1F2)) notPorted('08005310', 'a key pressed');
+  if (!(asks & 0xF8) && state !== 4) {
+    const keys = pressed(c, i), side = read8(c, rec + 16);
+    if (((keys & 0x20) && side === 1) || ((keys & 0x10) && side === 0)) write8(c, rec + 109, 4);
+    const camera = DIRECTIONS + read8(c, rec + CAMERA) * 10;
+    if (keys & 0x20) write8(c, rec + 108, read8(c, camera + 4));
+    else if (keys & 0x10) write8(c, rec + 108, read8(c, camera + 6));
+    else if (keys & 0x40) write8(c, rec + 108, read8(c, camera + 8));
+    else if (keys & 0x80) write8(c, rec + 108, read8(c, camera + 2));
+    if (keys & 2) notPorted('08005310', 'B pressed');
+    else if (keys & 0x100) notPorted('08005310', 'R pressed');
+  }
   const character = read8(c, rec + CHARACTER_NOW);
   if (state === 13 || (state === 15 && (character === 2 || character === 5))
     || (state === 21 && (character === 2 || character === 4))) {
@@ -784,6 +813,10 @@ const KEEPS_ITS_STATE_IN_THE_AIR = new Set([
 ]);
 const STANDS = new Set([0, 1, 2, 3, 5, 10, 11, 12, 13, 14, 52, 0x105, 0x135]);
 const PAD = 0xF0;
+// the states a second press of the pad doesn't start a dash from
+const NO_DASH = new Set([
+  4, 19, 20, 21, 22, 23, 24, 0x113, 0x114, 0x115, 0x116, 0x117, 0x118, 0x213, 0x214, 0x215, 0x216, 0x217, 0x218,
+]);
 
 /** 0x0800486c: a fighter's next state, by where it stands and its keys. Partly: with nothing pressed, and no hits. */
 function fighterAct(c, i) {
@@ -801,12 +834,15 @@ function fighterAct(c, i) {
   const keys = pressed(c, i);
   if (read16(c, rec + STATE) === 4 && (keys & 2)) notPorted('0800486C', 'a charge held');
   if (flags & FLAG_GROUNDED) {
-    if (keys & PAD) notPorted('0800486C', 'a dash');
+    if ((keys & PAD) && pressedBefore(c, i, 5, 5, keys) && !(flags & 0x40000) && !NO_DASH.has(read16(c, rec + STATE))) {
+      setState(c, i, 4);
+    }
     let state = read16(c, rec + STATE);
     if (!STANDS.has(state)) return;
-    if (keys & 1) notPorted('0800486C', 'a jump');
-    if (keys & 0x200) notPorted('0800486C', 'a guard');
-    if (read8(c, rec + 17) !== read8(c, rec + 18)) {
+    if (keys & 1) {
+      if (!(flags & 0x40000)) setState(c, i, 7);
+    } else if (keys & 0x200) notPorted('0800486C', 'a guard');
+    else if (read8(c, rec + 17) !== read8(c, rec + 18)) {
       if (state === 2 || state === 3 || state === 5) setState(c, i, 5);
       else if (state === 0 || state === 0x105 || state === 1) setState(c, i, 0x105);
     } else if (state === 0 && (held(c, i) & PAD)) {
@@ -888,15 +924,82 @@ function landOrFall(c, i) {
 
 // --------------------------------------------------------------------------------------------- The things of a fight
 
-/** 0x0800c728: the things of a fight for a frame, and the screen's shake. Partly: only things waiting to appear. */
+/** The script of each kind of thing, as the cartridge's per-kind cases of 0x0800c728 give it. */
+const THING_SCRIPTS = new Map([[31, 0x0806BB08]]);
+const THING_MARK = 0xFFF00000;
+// the fields a script's words set, by the word's first half
+const THING_FIELDS = new Map([
+  [0x3500, 34], [0x3700, 36], [0x3900, 38], [0x3B00, 40], [0x3600, 42], [0x3800, 44], [0x3A00, 46], [0x3C00, 48],
+]);
+const THING_PICTURE_WORDS = new Map([[0x3100, 0], [0x3200, 1], [0x3300, 2], [0x3400, 3]]);
+const THINGS_WITH_SHAPES = new Set([35, 37, 38, 39, 43, 44, 158, 160]);
+
+/** 0x0800bb88: a thing's script for a frame, the words that come at the frame it is on. */
+function runThingScript(c, k, script) {
+  const thing = 0x030017D0 + k * 68, kind = read16(c, thing + 56);
+  const word = () => read32(c, script + read16(c, thing + 22) * 4);
+  const marked = () => (word() & 0xFFFF0000) >>> 0 === THING_MARK;
+  while (!marked()) write16(c, thing + 22, read16(c, thing + 22) + 1);
+  if ((word() & 0xFFFF) === read8(c, thing + 24)) {
+    write16(c, thing + 22, read16(c, thing + 22) + 1);
+    if (!marked()) {
+      for (;;) {
+        const w = word() >>> 0, op = w >>> 16;
+        if (THING_FIELDS.has(op)) write16(c, thing + THING_FIELDS.get(op), w);
+        else if (THING_PICTURE_WORDS.has(op)) {
+          if (THINGS_WITH_SHAPES.has(kind)) notPorted('0800BB88', `a picture of a thing of kind ${kind}`);
+          write16(c, thing + 26 + THING_PICTURE_WORDS.get(op) * 2, w);
+        } else if (op === 0xFFFF) {
+          clearEffect(c, k);
+          write16(c, thing + 22, 0xFFFF);
+          write8(c, thing + 24, 255);
+          write16(c, thing + 56, 0);
+        } else if (op === 0x1300) write8(c, thing + 4, w);
+        else if (op === 0x1400) write8(c, thing + 4, 255);
+        else if (op === 0x1500) write8(c, thing + 4, 254);
+        else if (op === 0x1600) write8(c, thing + 52, w);
+        else if (op === 0x3F00) write8(c, thing + 6, 1);
+        else if (op === 0x3000) write8(c, 0x030016CC, w);
+        else if (op === 0xFFFE) {
+          write16(c, thing + 22, 0xFFFF);
+          write8(c, thing + 24, 255);
+        } else notPorted('0800BB88', `a word of a thing's script, ${w.toString(16)}`);
+        write16(c, thing + 22, read16(c, thing + 22) + 1);
+        if (marked()) break;
+      }
+    }
+  }
+  write8(c, thing + 24, read8(c, thing + 24) + 1);
+}
+
+/**
+ * 0x0800c728: the things of a fight for a frame, and the screen's shake. A thing waiting to appear counts down; one that
+ * has appeared runs its script (0x0800bb88) and moves (0x0800cec8). Partly: only the kinds in THING_SCRIPTS, and none
+ * of the kinds whose own steps come after the move.
+ */
 function updateThings(c) {
   for (let i = 0; i < 4; i++) write16(c, record(i) + 174, 0);
   for (let k = 0; k < 12; k++) {
-    const thing = 0x030017D0 + k * 68;
-    if (read16(c, thing + 56) === 0) continue;
+    const thing = 0x030017D0 + k * 68, kind = read16(c, thing + 56);
+    if (kind === 0) continue;
     const wait = read8(c, thing + 54);
-    if (wait === 0) notPorted('0800CEC8', `a thing of kind ${read16(c, thing + 56)}`);
-    write8(c, thing + 54, wait - 1);
+    if (wait !== 0) {
+      write8(c, thing + 54, wait - 1);
+      continue;
+    }
+    if (!THING_SCRIPTS.has(kind)) notPorted('0800C728', `a thing of kind ${kind}`);
+    runThingScript(c, k, THING_SCRIPTS.get(kind));
+    // 0x0800cec8: it follows its owner, or moves on its own
+    if (read8(c, thing + 51) === 1) {
+      const owner = record(read8(c, thing + 53));
+      write16(c, thing + 58, read16(c, owner));
+      write16(c, thing + 60, read16(c, owner + 2));
+      write16(c, thing + 62, read16(c, owner + 4));
+    } else {
+      write16(c, thing + 58, read16(c, thing + 58) + read16(c, thing + 8));
+      write16(c, thing + 60, read16(c, thing + 60) + read16(c, thing + 10));
+      write16(c, thing + 62, read16(c, thing + 62) + read16(c, thing + 12));
+    }
   }
   const shake = read8(c, 0x030016CC);
   if (shake === 0) {
