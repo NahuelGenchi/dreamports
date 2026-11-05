@@ -35,6 +35,9 @@ const PALETTES = 0xE2EAD4, LOCKED_PALETTE = 0xE2EB74;
 const T_BACKDROP = 0, T_TURNING = 5, T_NAMES = 10, T_OK = 15, T_LOCKED = 16;
 // the pictures of the pairs' poses: where each is listed, and how many each has
 const TEAM_LISTS = 0xD9078, TEAM_COUNTS_SONIC = 0xD90B2, TEAM_COUNTS_OTHERS = 0xD90B5, TEAM_COUNTS_CREAM = 0xD90B8;
+// the poses the screen and its characters are in that the code tells apart: the pair shown after both choices, the announcer
+// speaking, the screen going white at the end, and what the characters' task makes of it as the character leaves
+const PAIR_SHOWN = 22, ANNOUNCING = 23, LEAVING = 29, LEFT_ON_THE_RIGHT = 36, GONE = 37;
 // WININ and WINOUT as the screen sets them each time it fades
 const FADE_IN = 0x3FFF, FADE_OUT_AFTER = 0x3FBF;
 
@@ -77,7 +80,7 @@ function whiteOut(c, blend = FADE_IN) {
 // 0x08098024, SetupPositions: where everything starts, in 1/256ths of a pixel
 function setUpPositions(cs) {
   Object.assign(cs, {
-    unk2: 0, shown: 0, target: 0, listIndex: [0, 2], unkB: 0, unkE: 1, wait: 0, fade: 0, spin: 0, slide: 0, sideways: 0,
+    shown: 0, target: 0, listIndex: [0, 2], pose: 0, firstFrame: true, wait: 0, fade: 0, spin: 0, slide: 0, sideways: 0,
     titleScale: Q(16), teamTextX: Q(120), teamTextY: Q(17), headerX: Q(120), headerY: Q(17), scrollX: 0, scrollY: 0,
     nameX: Q(120), nameY: Q(85), backdropX: Q(201), backdropY: Q(22), charX: Q(120), charY: Q(80),
     chosenX: Q(120), chosenY: Q(80), tagPos: [{ x: Q(120), y: Q(145) }, { x: Q(300), y: Q(145) }],
@@ -198,7 +201,7 @@ function scrollAllLayers(cs) {
 
 // 0x0809AD74: the two arrows at the sides, which move in and out
 function showArrows(cs) {
-  const s = cs.arrow, middle = cs.unkB > 13 ? 180 : 120;
+  const s = cs.arrow, middle = cs.pose > 13 ? 180 : 120;
   for (let i = 0; i < 2; i++) {
     s.x = i !== 0 ? -40 + middle - I(cs.slide) : 40 + middle + I(cs.slide);
     s.y = I(cs.arrowY);
@@ -417,17 +420,17 @@ function showChosenName(cs, character) {
   const { c } = cs;
   c.dispCnt |= 0x200;
   drawBackground(c, { id: tilemap(c, T_NAMES + character), dest: 0xC000, layoutVram: 0x1800, targetTilesX: 16, targetTilesY: 16, flags: 1 });
-  cs.unkB = 3;
+  cs.pose = 3;
 }
 
-// 0x08098BC8, Task_CharSelect_FadeIn: the screen coming out of white
+// 0x08098BC8: the screen coming out of white
 function fadeIn(t) {
   const cs = t.data, { c } = cs;
-  if (cs.unkE) {
+  if (cs.firstFrame) {
     whiteOut(c);
     c.bldY = 0x10;
     cs.fade = Q(16);
-    cs.unkE = 0;
+    cs.firstFrame = false;
   }
   turn(cs);
   moveArrows(cs);
@@ -440,35 +443,31 @@ function fadeIn(t) {
     c.bldY = I(cs.fade);
     cs.fade -= Q(1);
   } else {
-    cs.unkE = 1;
+    cs.firstFrame = true;
     c.bldY = 0;
     t.main = choosing;
   }
 }
 
-// 0x08098CAC, Task_CharSelect_FadeOut: the screen going to white. `unk2` says where it goes after: 2 is on with the story,
-// 3 back to the main menu.
+// 0x08098CAC: the screen going to white, from B or the announcement
 function fadeOut(t) {
   const cs = t.data, { c } = cs;
-  if (cs.unkE) {
+  if (cs.firstFrame) {
     whiteOut(c);
-    cs.unkE = 0;
+    cs.firstFrame = false;
     cs.fade = 0;
   }
   showHeader(cs);
   transformBackground(cs);
-  if (cs.unkB > 19) showPair(cs);
+  if (cs.pose > 19) showPair(cs);
   else showTagOfMain(cs);
-  if (cs.unkB === 1) showArrows(cs);
-  if (cs.unkB === 5) { lowerTag(cs, 0); slideOutCharacter(cs); }
-  else if (cs.unkB === 8) { raiseTag(cs, 0); slideInCharacter(cs); }
   if (c.bldY < 16) {
     c.bldY = I(cs.fade);
     cs.fade += Q(1);
   } else {
     c.bldY = 0x10;
     cs.charX = cs.chosenX = Q(310);
-    cs.unkB = 29;
+    cs.pose = LEAVING;
     // the way on from here isn't ported: the screen stays white
     t.main = leaving;
   }
@@ -476,7 +475,7 @@ function fadeOut(t) {
 
 function leaving() { }
 
-// 0x08098DE4, Task_8098DE4: waiting for the main character's choice
+// 0x08098DE4: waiting for the main character's choice
 function choosing(t) {
   const cs = t.data, { c } = cs;
   turn(cs);
@@ -489,8 +488,7 @@ function choosing(t) {
   c.dispCnt &= ~0x200;
   if (c.pressed & KEY.B) {
     c.playSong(SE_ABORT);
-    cs.unk2 = 3;
-    cs.unkB = 2;
+    cs.pose = 2;
     t.main = fadeOut;
   } else if (c.repeated & (KEY.LEFT | KEY.RIGHT)) {
     c.playSong(SE_CHARSELECT_SLIDE);
@@ -514,16 +512,16 @@ function chooseNext(cs, partner) {
   if (c.repeated & KEY.RIGHT) {
     do cs.target = cs.target >= 4 ? 0 : cs.target + 1; while (cs.target === skip);
     cs.sideways = 0;
-    cs.unkB = partner ? 15 : 6;
+    cs.pose = partner ? 15 : 6;
   }
   if (c.repeated & KEY.LEFT) {
     do cs.target = cs.target === 0 ? 4 : cs.target - 1; while (cs.target === skip);
     cs.sideways = 1;
-    cs.unkB = partner ? 16 : 7;
+    cs.pose = partner ? 16 : 7;
   }
 }
 
-// 0x08098FF0, Task_8098FF0: the character sliding out and the next sliding in
+// 0x08098FF0: the character sliding out and the next sliding in
 function sliding(t) {
   const cs = t.data;
   let done = false;
@@ -542,7 +540,7 @@ function sliding(t) {
     cs.listIndex[0] = cs.shown;
   }
   if (done) {
-    cs.unkB = 4;
+    cs.pose = 4;
     const character = displayed(cs.c, cs.listIndex[0]);
     drawTurningName(cs, character);
     cs.charY = Q(80);
@@ -551,7 +549,7 @@ function sliding(t) {
   }
 }
 
-// 0x08099200, Task_8099200: the next character coming in
+// 0x08099200: the next character coming in
 function arriving(t) {
   const cs = t.data;
   turn(cs);
@@ -566,7 +564,7 @@ function arriving(t) {
   }
 }
 
-// 0x08099300, Task_8099300: the choice made: the character stays on the left, and the partner's choice begins
+// 0x08099300: the choice made: the character stays on the left, and the partner's choice begins
 function chosen(t) {
   const cs = t.data, { c } = cs;
   showHeader(cs);
@@ -574,18 +572,16 @@ function chosen(t) {
   showTagOfPartner(cs);
   scrollLayers(cs);
   transformBackground(cs);
-  if (cs.unkB < 13) {
+  if (cs.pose < 13) {
     c.dispCnt |= 0x200;
-    if (cs.unkB <= 12) {
-      cs.unkB = 12;
-      cs.chosenX = cs.charX;
-      cs.chosenY = cs.charY;
-      cs.listIndex[0] = cs.shown;
-      createCharacterTask(cs, { who: () => cs.listIndex[0], x: 'chosenX', y: 'chosenY' }, cs.tiles[1]);
-      cs.nameX = Q(300);
-    }
+    cs.pose = 12;
+    cs.chosenX = cs.charX;
+    cs.chosenY = cs.charY;
+    cs.listIndex[0] = cs.shown;
+    createCharacterTask(cs, { who: () => cs.listIndex[0], x: 'chosenX', y: 'chosenY' }, cs.tiles[1]);
+    cs.nameX = Q(300);
   }
-  const e = entry(c.rom, TEAM_TEXT, u8(cs.unkB - 11) + cs.language * 8);
+  const e = entry(c.rom, TEAM_TEXT, u8(cs.pose - 11) + cs.language * 8);
   cs.team.anim = e.anim;
   cs.team.variant = e.variant;
   updateSprite(c, cs.team);
@@ -593,7 +589,7 @@ function chosen(t) {
   t.main = partnerSetUp;
 }
 
-// 0x08099344, Task_SetupPartnerCharIndices: the partner's choice begins on the first character who isn't the main one
+// 0x08099344: the partner's choice begins on the first character who isn't the main one
 function partnerSetUp(t) {
   const cs = t.data, { c } = cs;
   showHeader(cs);
@@ -618,11 +614,11 @@ function partnerSetUp(t) {
   t.main = partnerComes;
 }
 
-// 0x08099680, Task_8099680: the main character moving to the left and the partner's choice coming in from the right
+// 0x08099680: the main character moving to the left and the partner's choice coming in from the right
 function partnerComes(t) {
   const cs = t.data;
   let count = 0;
-  cs.unkB = 12;
+  cs.pose = 12;
   if (moveChosen(cs)) count++;
   if (slidePartnerIn(cs, false)) count++;
   if (moveTag(cs)) count++;
@@ -634,12 +630,12 @@ function partnerComes(t) {
   scrollLayers(cs);
   transformBackground(cs);
   if (count === 3) {
-    cs.unkB = 14;
+    cs.pose = 14;
     t.main = choosingPartner;
   }
 }
 
-// 0x08099758, Task_8099758: waiting for the partner's choice. B, which goes back to the main character's, isn't ported.
+// 0x08099758: waiting for the partner's choice. B, which goes back to the main character's, isn't ported.
 function choosingPartner(t) {
   const cs = t.data, { c } = cs;
   turn(cs);
@@ -658,13 +654,13 @@ function choosingPartner(t) {
     const character = displayed(c, cs.listIndex[1]);
     if (!isLocked(c, character)) {
       c.playSong(c.rom.u16(VOICES + cs.listIndex[1] * 2));
-      cs.unkB = 20;
+      cs.pose = 20;
       t.main = pairShown;
     }
   }
 }
 
-// 0x08099968, Task_8099968: the partner sliding out of sight, and the next one set to come in
+// 0x08099968: the partner sliding out of sight, and the next one set to come in
 function partnerSliding(t) {
   const cs = t.data, { c } = cs;
   let count = 0;
@@ -681,17 +677,17 @@ function partnerSliding(t) {
     cs.charX = Q(330);
     cs.listIndex[1] = cs.shown;
     cs.charY = Q(80);
-    cs.unkB = 4;
+    cs.pose = 4;
     cs.nameX = Q(320);
     const character = displayed(c, cs.listIndex[1]);
     colour(c, 0x70, character);
-    cs.unkB = 14;
+    cs.pose = 14;
     drawTurningName(cs, character);
     t.main = partnerArriving;
   }
 }
 
-// 0x08099B78, Task_8099B78: the next partner coming in
+// 0x08099B78: the next partner coming in
 function partnerArriving(t) {
   const cs = t.data;
   let count = 0;
@@ -705,12 +701,12 @@ function partnerArriving(t) {
   transformBackground(cs);
   if (count === 2) {
     cs.slide = 0;
-    cs.unkB = 14;
+    cs.pose = 14;
     t.main = choosingPartner;
   }
 }
 
-// 0x08099C9C, Task_8099C9C: the pair chosen: the partner's name becomes the text layer, and the screen is set up to bring
+// 0x08099C9C: the pair chosen: the partner's name becomes the text layer, and the screen is set up to bring
 // the pair together
 function pairShown(t) {
   const cs = t.data, { c } = cs;
@@ -734,13 +730,13 @@ function pairShown(t) {
   t.main = pairComesIn;
 }
 
-// 0x08099EC8, Task_8099EC8: the two characters and their tags moving in beside each other, as the screen fades
+// 0x08099EC8: the two characters and their tags moving in beside each other, as the screen fades
 function pairComesIn(t) {
   const cs = t.data, { c } = cs;
-  if (cs.unkE) {
+  if (cs.firstFrame) {
     whiteOut(c, FADE_OUT_AFTER);
     cs.fade = 0;
-    cs.unkE = 0;
+    cs.firstFrame = false;
   }
   let count = 0;
   if (slideChosenIn(cs)) count++;
@@ -756,7 +752,7 @@ function pairComesIn(t) {
     cs.fade += Q(1);
   } else if (count === 4) {
     c.bldY = 0x10;
-    cs.unkB = 22;
+    cs.pose = PAIR_SHOWN;
     showOk(cs);
     describePair(cs);
     cs.backdropY = 0xE00;
@@ -793,14 +789,14 @@ function describePair(cs) {
   setUp(c, cs.tagBack, entry(c.rom, TAG_BACK_PAIR, 0), cs.tagBack.tiles, I(cs.tagPos[0].x), I(cs.tagPos[0].y), 0x40);
 }
 
-// 0x0809A018, Task_809A018: the pair coming out of white
+// 0x0809A018: the pair coming out of white
 function pairFadesIn(t) {
   const cs = t.data, { c } = cs;
-  if (cs.unkE) {
+  if (cs.firstFrame) {
     whiteOut(c, FADE_OUT_AFTER);
     c.bldY = 0x10;
     cs.fade = Q(16);
-    cs.unkE = 0;
+    cs.firstFrame = false;
   }
   turn(cs);
   showHeader(cs);
@@ -811,13 +807,13 @@ function pairFadesIn(t) {
     c.bldY = I(cs.fade);
     cs.fade -= Q(1);
   } else {
-    cs.unkE = 1;
+    cs.firstFrame = true;
     c.bldY = 0;
     t.main = announcing;
   }
 }
 
-// 0x0809A1C4, Task_809A1C4: the announcer says the pair's names, and a press or two seconds go on
+// 0x0809A1C4: the announcer says the pair's names, and a press or two seconds go on
 function announcing(t) {
   const cs = t.data, { c } = cs, { rom } = c;
   turn(cs);
@@ -830,16 +826,15 @@ function announcing(t) {
   else if (cs.wait === 90) c.playSong(rom.u16(ANNOUNCER_SECOND + cs.listIndex[1] * 2));
   cs.wait++;
   if (c.pressed & (KEY.A | KEY.START) || cs.wait > 120) {
-    cs.unk2 = 2;
-    cs.unkB = 23;
+    cs.pose = ANNOUNCING;
     t.main = fadeOut;
   }
 }
 
-// The characters, which slide across the screen on a task of their own (CreateSomeTask_809BF3C, 0x0809BF3C): their pictures
-// by the pose `unkB` names. `refs` says which of the screen's values are this one's character, place across and place down.
+// The characters, which slide across the screen on a task of their own (0x0809BF3C): their pictures
+// by the pose the screen is in (`pose`: a number for what the characters are doing, set by each step of the screen). `refs` says which of the screen's values are this one's character, place across and place down.
 function createCharacterTask(cs, refs, tiles) {
-  const k = { cs, c: cs.c, refs, tiles, unk9: 0, first: [], cheese: [] };
+  const k = { cs, c: cs.c, refs, tiles, teamPose: 0, first: [], cheese: [] };
   loadCharacters(k);
   k.task = cs.c.createTask(characterMain, k, 0xFF);
   return k.tiles;
@@ -849,7 +844,7 @@ const characterOf = k => displayed(k.c, k.refs.who());
 
 // 0x0809B3E8, LoadCharacterSelectSprites: the pictures of the character and of Cheese in the tiles one after another
 function loadCharacters(k) {
-  const { c, cs } = k, { rom } = c, stopped = cs.unkB > 0x15;
+  const { c, cs } = k, { rom } = c, stopped = cs.pose > 0x15;
   let tiles = k.tiles;
   const load = (sprites, who) => {
     const { count, list } = picturesOf(rom, stopped, who);
@@ -864,26 +859,26 @@ function loadCharacters(k) {
   k.tiles += 0xD40;
 }
 
-// 0x0809B540, Task_270_809B8C8: the character's pictures, and when it has gone off to the right, what comes next
+// 0x0809B540: the character's pictures, and when it has gone off to the right, what comes next
 function characterMain(t) {
   const k = t.data, { cs } = k;
   showCharacter(k);
-  if (cs.unkB >= 22 && cs.unkB <= 28) choosePose(k);
+  if (cs.pose === PAIR_SHOWN || cs.pose === ANNOUNCING) choosePose(k);
   if (((cs[k.refs.x] + 0x3C00) >>> 0) > 0x16800) {
-    switch (cs.unkB) {
-      case 29: cs.unkB = 36; k.c.destroyTask(t); return;
-      case 36: cs.unkB = 37; k.c.destroyTask(t); return;
+    switch (cs.pose) {
+      case LEAVING: cs.pose = LEFT_ON_THE_RIGHT; k.c.destroyTask(t); return;
+      case LEFT_ON_THE_RIGHT: cs.pose = GONE; k.c.destroyTask(t); return;
       case 4: t.main = arrived; return;
     }
   }
 }
 
-// 0x0809BF9C, Task_270_809BF9C: a character who has come in from the right takes the pose of arriving (8) for the main
+// 0x0809BF9C: a character who has come in from the right takes the pose of arriving (8) for the main
 // character, or of waiting (14) for the partner
 function arrived(t) {
   const k = t.data, { cs } = k;
-  if (cs.unkB === 4) cs.unkB = 8;
-  else cs.unkB = 14;
+  if (cs.pose === 4) cs.pose = 8;
+  else cs.pose = 14;
   showCharacter(k);
   t.main = characterMain;
 }
@@ -900,15 +895,16 @@ function choosePose(k) {
     else pose = 1;
   } else if ((a === 4 && b === 1) || (a === 1 && b === 4)) pose = 5;
   else pose = 1;
-  k.unk9 = pose;
+  k.teamPose = pose;
 }
 
-// 0x0809BA58, sub_809BA58: the character's pictures where it is, each frame, for the list of its pose, turned to face the
+// 0x0809BA58: the character's pictures where it is, each frame, for the list of its pose, turned to face the
 // middle when it is on the right of it or is the partner
 function showCharacter(k) {
-  const { c, cs } = k, { rom } = c, who = characterOf(k), pose = cs.unkB;
-  let flip = false, count = 0, cheeseCount = 0, list = 0, cheeseList = 0;
-  if ((u8(pose - 0xC) < 8 && I(cs[k.refs.x]) > 0x78) || (pose > 0x13 && pose !== 0x1C && who !== cs.players[0])) flip = true;
+  const { c, cs } = k, { rom } = c, who = characterOf(k), pose = cs.pose;
+  const paired = pose === PAIR_SHOWN || pose === ANNOUNCING;
+  let count = 0, cheeseCount = 0, list = 0, cheeseList = 0;
+  const flip = (pose >= 12 && pose < 20 && I(cs[k.refs.x]) > 0x78) || (pose > 19 && who !== cs.players[0]);
   const lists = i => rom.u32(TEAM_LISTS + i * 4) - 0x08000000;
   const middle = () => { cs[k.refs.x] = Q(120); cs[k.refs.y] = Q(80); };
   const own = stopped => {
@@ -918,52 +914,34 @@ function showCharacter(k) {
     cheeseCount = b.count;
     cheeseList = b.list;
   };
-  if (pose >= 0x16 && pose <= 0x1C) {
-    if (!(pose >= 0x19 && pose <= 0x1B)) {
-      if (k.unk9 !== 1) {
-        switch (k.unk9) {
-          case 2:
-            count = rom.u8((who === 0 ? TEAM_COUNTS_SONIC : TEAM_COUNTS_OTHERS) + 0);
-            list = lists(who === 0 ? 0 : 1);
-            middle();
-            break;
-          case 3:
-            count = rom.u8((who === 0 ? TEAM_COUNTS_SONIC : TEAM_COUNTS_OTHERS) + 1);
-            list = lists(who === 0 ? 4 : 5);
-            middle();
-            break;
-          case 4:
-            count = rom.u8((who === 0 ? TEAM_COUNTS_SONIC : TEAM_COUNTS_OTHERS) + 2);
-            list = lists(who === 0 ? 2 : 3);
-            middle();
-            break;
-          case 5:
-            if (who === CREAM) {
-              count = rom.u8(TEAM_COUNTS_CREAM);
-              cheeseCount = rom.u8(TEAM_COUNTS_CREAM + 2);
-              list = lists(7);
-              cheeseList = lists(8);
-            } else {
-              count = rom.u8(TEAM_COUNTS_CREAM + 1);
-              list = lists(6);
-            }
-            middle();
-            break;
+  // the pair's pose, by who they are: the lists of Sonic's and the others' pictures for 2 to 4, Cream's and Cheese's for 5
+  const counts = who === 0 ? TEAM_COUNTS_SONIC : TEAM_COUNTS_OTHERS;
+  if (paired && k.teamPose !== 1) {
+    switch (k.teamPose) {
+      case 2:
+      case 3:
+      case 4:
+        count = rom.u8(counts + k.teamPose - 2);
+        list = lists(who === 0 ? [0, 4, 2][k.teamPose - 2] : [1, 5, 3][k.teamPose - 2]);
+        middle();
+        break;
+      case 5:
+        if (who === CREAM) {
+          count = rom.u8(TEAM_COUNTS_CREAM);
+          cheeseCount = rom.u8(TEAM_COUNTS_CREAM + 2);
+          list = lists(7);
+          cheeseList = lists(8);
+        } else {
+          count = rom.u8(TEAM_COUNTS_CREAM + 1);
+          list = lists(6);
         }
-      } else own(true);
-    } else {
-      flip = false;
-      k.unk9 = pose === 0x1B ? 1 : 0;
-      own(k.unk9 === 1);
+        middle();
+        break;
     }
-  } else if (pose >= 0x19 && pose <= 0x1B) {
-    flip = false;
-    k.unk9 = pose === 0x1B ? 1 : 0;
-    own(k.unk9 === 1);
-  } else {
-    if (pose === 0x1C) { flip = false; k.unk9 = 1; }
-    if (k.unk9 === 1) own(true);
-    else { own(false); k.unk9 = 0; }
+  } else if (k.teamPose === 1) own(true);
+  else {
+    own(false);
+    k.teamPose = 0;
   }
   let tiles = k.first[0].tiles;
   const order = who !== cs.players[0] ? 0x80 : 0x40;
@@ -980,7 +958,7 @@ function showCharacter(k) {
     }
   };
   draw(k.first, count, list);
-  const locked = isLocked(c, who) && u8(pose - 0x19) > 2;
+  const locked = isLocked(c, who);
   if (who === CREAM) {
     draw(k.cheese, cheeseCount, cheeseList);
     if (locked) grey(c, 5);
