@@ -315,7 +315,7 @@ kbd {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* The rows of labels behind it all (Labels.astro, docs/LABELS.md), the site's own designs in every place nobody
+/* The rows of labels behind it all (Labels.astro, docs/LABELS.md), the site's own scenes in every place nobody
    has asked for: quiet, tinted the site's blue, fainter around the game, out of the way of every press, and gone in
    the full-screen views and while a game opens. Only the rows move, each as one layer, so nothing is drawn again as
    they drift. */
@@ -411,12 +411,9 @@ kbd {
   filter: url(#label-tint);
 }
 
+/* a label; a row's scenes are one picture as wide as the row, with its width set as it's made */
 .label-track img {
   width: 240px;
-}
-
-.label-track canvas {
-  left: 0;
 }
 
 @media (prefers-color-scheme: dark) {
