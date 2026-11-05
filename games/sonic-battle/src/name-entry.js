@@ -229,6 +229,7 @@ function setUp(c) {
 /** 0x08036560's last step: it runs past a V-blank, and the display and the song come as it ends. */
 function displayOn(c) {
   queueRegister(c, DISPCNT, 8000);
+  c.sound?.call('waveAt', c.restarted ? 136311 : 163059);   // where the song's start comes in its frame, as mGBA measures it
   c.sound?.play(SONG);
   c.callback = frame;               // 0x08036888
 }
@@ -274,14 +275,14 @@ function entering(c, node) {
       c.sound?.play(SOUND_BACK);
     }
   } else if (repeated & KEY.UP) {
-    if (entry.cursor > 19) entry.cursor -= 10;
+    if (entry.cursor > 19) { entry.cursor -= 10; c.sound?.call('beforeSoundMain', SOUND_MOVE); }
     else {
       entry.scroll = entry.scroll > 9 ? entry.scroll - 10 : entry.scroll + LETTER_COUNT - 10;
       drawGrid(c);
     }
     c.sound?.play(SOUND_MOVE);
   } else if (repeated & KEY.DOWN) {
-    if (entry.cursor < 40) entry.cursor += 10;
+    if (entry.cursor < 40) { entry.cursor += 10; c.sound?.call('beforeSoundMain', SOUND_MOVE); }
     else {
       entry.scroll += 10;
       if (entry.scroll > LETTER_COUNT - 1) entry.scroll -= LETTER_COUNT;
@@ -292,11 +293,13 @@ function entering(c, node) {
     const before = row();
     entry.cursor = (entry.cursor - 1) & 0xFFFF;
     if (row() !== before) entry.cursor = (entry.cursor + 10) & 0xFFFF;
+    c.sound?.call('beforeSoundMain', SOUND_MOVE);
     c.sound?.play(SOUND_MOVE);
   } else if (repeated & KEY.RIGHT) {
     const before = row();
     entry.cursor++;
     if (row() !== before) entry.cursor -= 10;
+    c.sound?.call('beforeSoundMain', SOUND_MOVE);
     c.sound?.play(SOUND_MOVE);
   }
 }

@@ -5,6 +5,7 @@
 // the PWM rate the sound library sets as it starts (SoundInit, m4a.js).
 
 export const CPU_HZ = 16777216, TICK = 256;
+const WAVE_START = 24;       // as mGBA has a wave note's first step, past its period
 const SEQ_PERIOD = 32768;   // the frame sequencer steps at 512 Hz
 const DUTY = [[0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 1, 1, 1], [0, 1, 1, 1, 1, 1, 1, 0]];
 
@@ -61,7 +62,7 @@ export function createApu() {
     } else if (ch === 2) {
       ch3.on = !!(reg(0x70) & 0x80);
       if (!ch3.len) ch3.len = 256;
-      ch3.timer = wavePeriod();
+      ch3.timer = wavePeriod() + (api.at === null ? 0 : WAVE_START);
     } else {
       ch4.on = (reg(0x79) & 0xF8) !== 0;
       if (!ch4.len) ch4.len = 64;
@@ -70,7 +71,18 @@ export function createApu() {
     }
   }
 
+  // with `at` set (soundMainAt in m4a.js), the wave voice's writes wait for their place in the console's frame, counted from
+  // the start of this chip's: the wave's phase lasts from note to note, and each note's length in cycles decides how far it moves
+  const waveWrites = [];
+  const isWave = r => (r >= 0x70 && r <= 0x75) || (r >= 0x90 && r < 0xA0);
   function write(r, v) {
+    if (api.at === null || !isWave(r)) return writeNow(r, v);
+    let i = waveWrites.length;
+    while (i && waveWrites[i - 1].in > api.at) i--;
+    waveWrites.splice(i, 0, { in: api.at, r, v });
+  }
+
+  function writeNow(r, v) {
     v &= 0xFF;
     if (r >= 0x90 && r < 0xA0) {
       // the CPU sees the bank that is not playing
@@ -112,8 +124,9 @@ export function createApu() {
       const b = ((reg(0x70) >> 6) & 1) ^ 1, i = (r - 0x90) * 2;
       return wave[b][(i + rot[b]) & 31] << 4 | wave[b][(i + 1 + rot[b]) & 31];
     }
-    // SOUNDCNT_X's low bits say which channels are still sounding, so a length counter that ran out shows here
-    if (r === 0x84) return (reg(0x84) & 0x80) | (sq[0].on ? 1 : 0) | (sq[1].on ? 2 : 0) | (ch3.on ? 4 : 0) | (ch4.on ? 8 : 0);
+    // SOUNDCNT_X's low bits say which channels are still sounding, so a length counter that ran out shows here; a wave
+    // note still waiting for its place in the frame is already sounding, for the sound library that started it
+    if (r === 0x84) return (reg(0x84) & 0x80) | (sq[0].on ? 1 : 0) | (sq[1].on ? 2 : 0) | (ch3.on || waveWrites.some(w => w.r === 0x75 && w.v & 0x80) ? 4 : 0) | (ch4.on ? 8 : 0);
     return regs[r - 0x60];
   }
 
@@ -155,6 +168,18 @@ export function createApu() {
   // counts the time since its last step against the pitch it has now, so one that was silent at a slow pitch, as the
   // sound library leaves it when it stops a note, starts its next note on time
   function run(cycles) {
+    while (waveWrites.length && waveWrites[0].in <= cycles) {
+      const { in: wait, r, v } = waveWrites.shift();
+      runChip(wait);
+      cycles -= wait;
+      for (const w of waveWrites) w.in -= wait;
+      writeNow(r, v);
+    }
+    for (const w of waveWrites) w.in -= cycles;
+    runChip(cycles);
+  }
+
+  function runChip(cycles) {
     if (!(reg(0x84) & 0x80)) return;
     for (const c of sq) {
       c.since += cycles;
@@ -219,6 +244,8 @@ export function createApu() {
   }
 
   // `muted`: channels 1–4 (bits 0–3) left out of the mix, as m4a.js mutes the music's
-  const api = { read, write, run, mix, regs, muted: 0 };
+  const api = { read, write, run, mix, regs, muted: 0, at: null,
+    /** Moves the wave's waiting writes `cycles` later, for a frame found to have taken that much longer. */
+    waveLater(cycles) { for (const w of waveWrites) w.in += cycles; } };
   return api;
 }

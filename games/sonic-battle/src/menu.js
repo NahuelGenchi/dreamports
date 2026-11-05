@@ -336,6 +336,7 @@ export function menu(c, playSong = true) {
 
 /** The song starts a frame after the screen is built, as the original's building runs past a V-blank. */
 function songAndDisplay(c) {
+  c.sound?.call('waveAt', 31815);   // where the song's start comes in its frame, as mGBA measures it
   c.sound?.play(SONG);
   displayOn(c);
 }

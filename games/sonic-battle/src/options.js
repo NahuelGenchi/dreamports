@@ -193,6 +193,7 @@ function fadeIn(c, node) {
 
 /** A song or sound played alone, as the tests and the moves do: 0x0801f638 stops all the others. */
 function playAlone(c, song) {
+  c.sound?.call('waveAt', 283596);   // where the stop comes in its frame, as mGBA measures it, a frame after this one
   c.sound?.stopAll();
   c.sound?.play(song);
 }
@@ -350,6 +351,7 @@ function leaveDeleting(c) {
   c.miniGamesOpen = 1;
   c.frames = 1;
   c.savingFrames = SAVING_FRAMES;
+  c.restarted = true;
   c.callback = restarting;
 }
 

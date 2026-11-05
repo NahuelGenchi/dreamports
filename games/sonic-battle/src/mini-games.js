@@ -345,6 +345,7 @@ function menuAfterFade(c) {
 function menuAgain(c) {
   menu(c, false);
   c.callback = () => {
+    c.sound?.call('waveAt', 39422);   // where the song's start comes in its frame, as mGBA measures it after the menu's fade
     c.sound?.play(SONG);
     menuDisplayOn(c);
   };
