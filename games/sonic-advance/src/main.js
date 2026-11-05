@@ -244,7 +244,10 @@ romFile.addEventListener('change', async () => {
 // the save (save.js), read as the GBA is switched on and kept in this browser, which the game changes and writes
 // as it goes; the continues the special stages have given, kept for this visit; and the level the game was
 // started on, the course select's (gMultiplayerCurrentLevel: the level pick's, or 0 from the start)
-const save = unlocked === null ? openSave() : openSave(null);
+// The special stage's start point (`?special`) plays with a save kept nowhere too, as the language screen the
+// original's way there passes leaves it, so a soft reset from it starts again at the title screen as the original does
+const save = unlocked === null && !specialTest ? openSave() : openSave(null);
+if (specialTest) save.write();
 // as Game Start is pressed, so that the first write is what the language screen leaves, as the proof's original has it
 const proofSave = () => {
   if (unlocked === null) return;
@@ -436,7 +439,8 @@ function start(buffer, assets, back = null, afterReset = false) {
   sheet.close({ now: true });
   counts = !debug && !specialTest && unlocked === null && (assets.first === 0 || multi);
   if (multi) { startRound(assets); return; }
-  const leaving = specialTest && specialSpringStart(assets, { emeralds: save.chaosEmeralds, continues });
+  // a start point is where the game opens, and a soft reset starts it again as the original does
+  const leaving = specialTest && !afterReset && specialSpringStart(assets, { emeralds: save.chaosEmeralds, continues });
   if (leaving) { enterSpecialStage(assets, leaving); return; }
   if (debug) { play(assets); return; }
   front = createFrontEnd(screen, rom, assets.info.offsets, input, sound, save, (level, frameCount, picked) => {
