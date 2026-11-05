@@ -901,7 +901,7 @@ function buttonsBack(t) {
 
 const PAGES = [pageFirstChoices, opening, opening, opening, pageTwoChoices, pageSpecialChoices];
 
-// 0x08089E28, sub_808A1B0: the Chao's message, a task of its own that ends when the choice it is about is made
+// 0x08089E28: the Chao's message, a task of its own that ends when the choice it is about is made
 function createChaoMessage(c, m, kind, tiles, x, y) {
   const message = { c, menu: m, language: c.save.language, kind, x: x << 8, y: y << 8, frame: createSprite({}), text: createSprite({}), tail: createSprite({}) };
   c.createTask(showMessage, message, 0x100);
