@@ -614,7 +614,7 @@ function leaveTimeAttack(t) {
   leaveForTheNext(c, t);
 }
 
-// 0x080879CC, Task_TransitionToSelectedMode: the screen the button leads to, none of which is ported yet
+// A stand-in for the original's Task_TransitionToSelectedMode, which opens the screen the button leads to, none of which is ported yet
 function goToSelectedScreen(t) {
   leaveForTheNext(t.data.c, t);
 }
