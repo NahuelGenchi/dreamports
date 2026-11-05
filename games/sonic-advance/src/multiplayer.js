@@ -13,6 +13,10 @@ import { createClock } from '../../../kit/gba/clock.js';
 // what the link hands every GBA as the round starts, by default as in the link recordings (docs/ROM.md):
 // the shared random number and the Chao's place among the stage's eight
 export const DEFAULT_SEED = 0x16AF, DEFAULT_CHAO_PLACE = 2;
+// each GBA's own random numbers (gPseudoRandom), where they stand when the stage's first firework check runs on
+// linked cores: five steps from 0, one before the stage and four as it starts. Casino Paradise's fireworks
+// (Chao Hunt C) draw from them
+const GAME_RANDOM = 0x35AF159E;
 
 /**
  * Starts a round for `count` players on `assets`' multiplayer stage, a screen for each in `container`. Every
@@ -44,7 +48,7 @@ export function startMultiplayer({ container, assets, count, sound, seed = DEFAU
     });
     // the round starts as an act does (ApplyGameStageSettingsAndStart), so the stage reads jump and attack as the
     // save's button setting has them; the results screen reads A as it is
-    gba.game = createGame(canvas, assets, playerControls(input, btnConfig), gbaSound, { mode });
+    gba.game = createGame(canvas, assets, playerControls(input, btnConfig), gbaSound, { mode, seed: GAME_RANDOM });
     gba.mode = mode;
     gba.screen = gba.game;
     gbas.push(gba);

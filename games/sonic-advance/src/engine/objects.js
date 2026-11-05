@@ -83,6 +83,8 @@ import { createPropeller } from './propeller.js';
 import { createToggleGravity } from './gravity.js';
 import { createMysteryBox } from './mysterybox.js';
 
+const CHAO_HUNT_C = 16;
+
 export const OBJECTS = 0x2000;   // the priority of the entities and of most tasks they make
 
 /**
@@ -234,7 +236,7 @@ function interactable(e, slot, anims, ctx, level, zone) {
     ?? createPartyBalloon(e, slot, anims) ?? createBumper(e, slot, anims) ?? createFlipper(e, slot, anims)
     ?? createSegaSonicLetter(e, slot, anims) ?? createTeleportOrb(e, slot) ?? createTubeJunction(e, slot)
     ?? createBarrelOfDoomMini(e, slot, anims) ?? createRedFlag(e, slot, anims) ?? createShipSwing(e, slot, anims)
-    ?? createSpikedPlatform(e, slot, anims, zone) ?? createBowl(e, slot, anims) ?? createPanelGate(e, slot, anims)
+    ?? createSpikedPlatform(e, slot, anims, zone === 2 || level === CHAO_HUNT_C) ?? createBowl(e, slot, anims) ?? createPanelGate(e, slot, anims)
     ?? createCarousel(e, slot, anims) ?? createSnow(e, slot, ctx) ?? createAirBubbles(e, slot, anims) ?? createSkatingStone(e, slot, anims, ctx)
     ?? createTorch(e, slot, ctx.world) ?? createBoulderSpawner(e, slot, anims) ?? createFloat(e, slot) ?? createLift(e, slot, anims)
     ?? createRunWheel(e, slot, anims) ?? createUpdraft(e, slot, anims) ?? createIronBall(e, slot, anims)
