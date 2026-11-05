@@ -15,7 +15,7 @@ Branch: <type>/<issue>-<slug>, new from the latest main and used only for this i
 <!-- For a change to a game in games/ or a kit in kit/. Delete this part for anything else. -->
 
 Clips: <the clips npm run dp -- prove made, the original next to the Dreamport, as the lines npm run dp -- share printed for each; only if you don't want to share them or can't, drag them here; each a few seconds of H.264 MP4 under about 2 MB>
-Code ported: <before, from main's README> → <after, from this branch's>
+Code ported: <before, from find on main or the game's page> → <after, as ready printed it>
 Gameplay proven: <before, with its parts> → <after, with its parts>
 Sources: <every source used, such as a decompilation or a port made elsewhere, with its license and whether code came in from it>
 Start points: <for each new recording with one, where the character starts and the frame they can first move, after the game's own opening, or none (tools/README.md#start-points)>

@@ -1,8 +1,8 @@
 // npm run dp -- readme [--check]: writes the table of Dreamports in README.md from each Dreamport's entry,
 // games/<game>/entry.md, with its code ported and gameplay proven from its proof/ folder, and its lead, and each
-// Dreamport's progress map, in .github/readme/progress/<game>.svg, which the table links. `prove` and `portmap` write
-// them too, after they change a game's numbers, so nobody types them. With --check it changes nothing and fails when
-// the table or a map is out of date, or when an entry doesn't agree with its folder, which `npm run check` uses.
+// Dreamport's progress map, in .github/readme/progress/<game>.svg, which the table links. .github/workflows/readme.yml
+// runs it on main, so pull requests leave them alone and can't conflict over them. With --check it changes nothing and
+// fails when an entry doesn't agree with its folder, which `npm run check` uses.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -16,12 +16,21 @@ const START = '<!-- The proof tools write this table from each Dreamport\'s entr
 const END = '<!-- End of the table of Dreamports. -->';
 
 export async function run(args) {
-  const check = args.includes('--check');
-  const { changed, files } = writeReadme({ check });
-  if (check && changed) throw new Error(`Out of date: ${files.join(', ')}. npm run dp -- readme writes them again.`);
-  console.log(check ? 'README.md\'s table of Dreamports and the progress maps are up to date.'
-    : changed ? `Updated: ${files.join(', ')}.` : 'README.md\'s table of Dreamports and the progress maps were already up to date.');
+  if (args.includes('--check')) {
+    // only main's have to be up to date, so this asks only that they can be written
+    writeReadme({ check: true });
+    console.log('Every Dreamport\'s entry agrees with its folder.');
+    return 0;
+  }
+  const { changed, files } = writeReadme();
+  console.log(changed ? `Updated: ${files.join(', ')}.` : 'README.md\'s table of Dreamports and the progress maps were already up to date.');
   return 0;
+}
+
+/** README.md in three: what's before the table, the table with the lines that mark it, and what's after. Null when it has lost them. */
+export function splitTable(text) {
+  const start = text.indexOf(START), end = text.indexOf(END);
+  return start < 0 || end < start ? null : { before: text.slice(0, start), table: text.slice(start, end + END.length), after: text.slice(end + END.length) };
 }
 
 /**

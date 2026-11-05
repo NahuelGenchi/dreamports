@@ -18,6 +18,7 @@ const TOOLS = {
   readme: 'Writes the README\'s table of Dreamports, with each one\'s numbers and lead, from their entries',
   commands: 'Writes the /dreamport command, from tools/commands/, in the form each coding agent reads',
   ready: 'Everything a step has to pass before it goes out, in one go, printing only what\'s wrong',
+  update: 'Brings a branch up to date with main: merges it, settles conflicts in files the tools write, runs ready and commits',
   help: 'Prints one section of the long documents, the ones whose headings have these words, or lists them',
 };
 

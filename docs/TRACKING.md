@@ -52,7 +52,7 @@ The work-item form requires a work type, milestone, scope, completion criteria, 
 Milestone: M4 — Sonic Advance Dreamport on dreamports.net
 ```
 
-Issue and PR titles may start with a type prefix (`feat:`, `fix:`, `enh:`, `docs:`, `research:`, `ops:`), which the workflow turns into a label. Every work item gets its own new branch created from the latest `origin/main`, named `<type>/<issue>-<slug>`. One branch holds one issue; branches are not reused after merge and are deleted once their PR merges. Every PR must include a standalone closing reference to its scoped issue:
+Issue and PR titles may start with a type prefix (`feat:`, `fix:`, `enh:`, `docs:`, `research:`, `ops:`), which the workflow turns into a label. Every work item gets its own new branch created from the latest `origin/main`, named `<type>/<issue>-<slug>`, and `npm run dp -- update <game>` brings a game's branch up to date when `main` moves. The Readme workflow is the one exception to all of this: every three hours it writes the README's table and the progress maps from `main`, in a small pull request of its own on `ops/readme-table`, which it merges itself and which has no issue of its own or checks, as it only holds what the tools wrote. One branch holds one issue; branches are not reused after merge and are deleted once their PR merges. Every PR must include a standalone closing reference to its scoped issue:
 
 ```text
 Closes #123
