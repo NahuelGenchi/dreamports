@@ -34,7 +34,7 @@ export function createGax(bytes, sampleRate) {
   let mixed = new Uint16Array(0), output = new Int8Array(264), playingNow = new Int8Array(264);
   // 0x08044178: where the song is
   const state = { lastFrame: 0, pattern: -1, row: 20000, speed: 6, active: false, wait: 0, stepped: false, newPattern: false, master: 255, jump: false };
-  let channels = [], effects = [];
+  let channels = [], effects = [], musicVolume = MUSIC_VOLUME;
 
   // 0x080454BC: a channel with nothing to play
   const channel = () => ({
@@ -78,7 +78,7 @@ export function createGax(bytes, sampleRate) {
       }
     }
     // 0x08042A1C: every channel at the start, and 0x08044178: the song at its first frame
-    channels = Array.from({ length: u8(song) }, (_, i) => Object.assign(channel(), { seq: u32(song + 32 + i * 4), chVolume: MUSIC_VOLUME }));
+    channels = Array.from({ length: u8(song) }, (_, i) => Object.assign(channel(), { seq: u32(song + 32 + i * 4), chVolume: musicVolume }));
     effects = Array.from({ length: EFFECT_CHANNELS }, () => channel());
     Object.assign(state, { lastFrame: 0, pattern: -1, row: 20000, speed: 6, active: false, wait: 0, stepped: false, newPattern: false, master: 255, jump: false });
     frameNumber = 1;
@@ -496,6 +496,10 @@ export function createGax(bytes, sampleRate) {
               startSong(args[0]);
               // a level opens some frames after its song began, while it loaded
               for (let n = args[1] ?? 0; n > 0; n--) frame();
+            }
+            else if (name === 'setMusicVolume') {   // 0x08034214 with 0x08043AA0
+              musicVolume = args[0];
+              for (const ch of channels) ch.chVolume = musicVolume;
             }
             else if (name === 'playEffect') playEffect(...args);
           }

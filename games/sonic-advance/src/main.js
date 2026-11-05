@@ -17,6 +17,7 @@ import { readBoostArt } from './rom/sa2boost.js';
 import { trickArt } from './rom/sa2tricks.js';
 import { createInput, connectedPads } from './engine/input.js';
 import { createGame, specialSpringStart } from './engine/game.js';
+import { DEMOS, readDemoTape, BACKGROUND_TILES } from './engine/demo.js';
 import { createSpecialStageRun } from './special/run.js';
 import { createNormalEnding } from './engine/normalending.js';
 import { createSound } from './sound/audio.js';
@@ -423,7 +424,7 @@ function stopAll() {
   clearInterval(statsTimer);
 }
 
-function start(buffer, assets) {
+function start(buffer, assets, back = null) {
   stopAll();
   rom = new Rom(buffer);
   picker.hidden = true;
@@ -440,12 +441,13 @@ function start(buffer, assets) {
   if (debug) { play(assets); return; }
   front = createFrontEnd(screen, rom, assets.info.offsets, input, sound, save, (level, frameCount, picked) => {
     front = null;
+    if (picked.demo) { playDemo(frameCount, picked.vram); return; }
     character = picked.character;
     // the code's partner comes along with Sonic only (GameStageStart)
     partner = picked.partner && character === 0;
     if (level === undefined) play(assets.character === character && !!assets.partner === partner ? assets : extractAgain(sa1.buffer, assets, { level: assets.first, character, partner }));
     else playChosen(level, frameCount);
-  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level'), select: !params.has('unlocked') || params.has('select'), onGameStart: proofSave });
+  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level'), select: !params.has('unlocked') || params.has('select'), onGameStart: proofSave, prepareDemo, back });
   fitScreen();
   screen.focus();
 }
@@ -459,21 +461,67 @@ async function playChosen(level, frameCount) {
   play(assets, null, null, { level, frameCount });
 }
 
+// gDemoPlayCounter, the demo the title screen starts next, and gPseudoRandom as the last demo left it: a demo goes on
+// with the game's random numbers, and the game with what it leaves
+let demoCounter = 0, randomSeed = 0;
+// the next demo's act, read from the ROM as the title screen comes to the end of its wait, so that it can start on its
+// frame: { n, from, withPartner, assets, ready }. The code's partner comes along with Sonic (gTailsEnabled stays until
+// the character select clears it). A proof tool's frames wait for it.
+let nextDemo = null, demoVram = null;
+function prepareDemo() {
+  const n = demoCounter, from = sa1, { level, character: who } = DEMOS[n], withPartner = partner && who === 0;
+  if (nextDemo?.n === n && nextDemo.from === from && nextDemo.withPartner === withPartner) return nextDemo;
+  const same = from.assets.first === level && from.assets.character === who && !!from.assets.partner === withPartner;
+  const next = { n, from, withPartner, assets: same ? from.assets : null, ready: null };
+  if (!same) {
+    next.ready = extractAssets(from.buffer, () => {}, { level, character: who, partner: withPartner }).then(assets => { next.assets = assets; });
+    proof?.wait(next.ready);
+  }
+  return nextDemo = next;
+}
+// Task_SwitchToDemoInit: the act of the next demo, as the course select starts one. It leaves gCurrentLevel as its
+// level, while the character select's row and the level the game was started on stay as they were.
+function playDemo(frameCount, vram) {
+  demoVram = vram;
+  const next = prepareDemo(), { n, from } = next, { level } = DEMOS[n];
+  demoCounter = (n + 1) % DEMOS.length;
+  currentLevel = level;
+  const go = () => {
+    if (sa1 !== from || stage.hidden) return;   // the player left the game meanwhile
+    nextDemo = null;
+    play(next.assets, null, null, { level, frameCount, demo: readDemoTape(rom, next.assets.info.offsets.demoRecordings, n) });
+    game.firstPicture?.(vram);
+  };
+  if (next.assets) go();
+  else next.ready.then(go);
+}
+
+// the demo is over: back to the title screen, or else the SEGA logo, on the frame it ended
+function leaveDemo(title) {
+  // what it leaves in video memory for the screens after it: its background's tiles, which they don't draw over
+  const vram = demoVram;
+  vram.set(playing.stage.backgroundTiles, BACKGROUND_TILES);
+  const frameCount = game.state.frameCount + 1, white = title || !!game.state.effects2d?.fade;
+  randomSeed = game.state.seed;
+  start(sa1.buffer, sa1.assets, { title, frameCount, white, vram });
+}
+
 // the act, after the game's start, again from what the special stage hands back (`resume`), the next zone's first
 // act with what the game carries over (`carry`), or the act the course select `chosen`, { level, frameCount }
 function play(assets, resume = null, carry = null, chosen = null) {
   const levelPick = !!chosen || (assets.first !== 0 && assets.first === firstLevel && !carry);
-  if (!resume && !carry) startLevel = chosen ? chosen.level : levelPick ? assets.first : 0;
+  const demo = chosen?.demo;
+  if (!resume && !carry && !demo) startLevel = chosen ? chosen.level : levelPick ? assets.first : 0;
   game = createGame(screen, assets, input, sound, {
-    resume, carry, save, startLevel, continues, levelPick, frameCount: chosen?.frameCount,
+    resume, carry, save, startLevel, continues, levelPick, frameCount: chosen?.frameCount, demo, seed: randomSeed,
     onSpecialStage: handover => enterSpecialStage(assets, handover),
     onNextZone: next => nextZone(next),
     // a game over without a continue goes back to the start of the game, the SEGA logo
-    onTitle: () => queueMicrotask(restartGame),
+    onTitle: demo ? leaveDemo : () => queueMicrotask(restartGame),
     // after the true ending, the staff credits; called from inside a step, so the game changes once that
     // frame is over
     onCredits: () => queueMicrotask(() => endGame(assets, 'credits')),
-    achieve,
+    achieve: demo ? undefined : achieve,
   });
   playing = assets;
   fitScreen();
@@ -490,14 +538,14 @@ function play(assets, resume = null, carry = null, chosen = null) {
 // the zone being played, whose art the ending after it reads
 let playing = null;
 
-// the ending after the last stage (normalending.js): without all seven Chaos Emeralds the congratulations after
-// X Zone's results, with them the credits after the true ending; at its end the game starts over from the
-// SEGA logo
+// the ending after the last stage (normalending.js): the congratulations after X Zone's results, or the credits after
+// the true ending, then the message to collect the Chaos Emeralds unless the save has all seven (staff_credits.c); at
+// its end the game starts over from the SEGA logo
 function endGame(assets, from) {
   const { seed, level } = game.state;
   currentLevel = level;
   game.stop();
-  game = createNormalEnding(screen, assets, input, sound, { from, emeralds: from === 'credits', seed, save, onEnd: () => queueMicrotask(restartGame) });
+  game = createNormalEnding(screen, assets, input, sound, { from, emeralds: save.chaosEmeralds === ALL_EMERALDS, seed, save, onEnd: () => queueMicrotask(restartGame) });
   fitScreen();
   game.start();
   if (debug) globalThis.onsoku = { game, assets, input, sound, save, nextZone, endGame: from => endGame(assets, from) };

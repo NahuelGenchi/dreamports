@@ -12,6 +12,9 @@
 // writes each frame's sample count and its samples, left and right, in the same 10-bit units as the Game Boy Advance's.
 // `live` plays along with a person: each frame's buttons come in on stdin, and out goes its picture, its sample count
 // and its samples. Its last line on stderr says what the core runs at, as JSON. What the core prints goes nowhere.
+//
+// On a console whose games choose their own sound's rate, as a Nintendo 64's do, the core says when it changes, and the
+// environment's DP_SOUND_RATE gives the one rate the tools hear it at.
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -93,6 +96,9 @@ static size_t variableCount;
 static const char* systemFolder;
 static const char* saveFolder;
 static bool needsGraphics;
+static struct av_info av;   // what the core runs at, the last it said
+static double wantedRate, soundAt;   // the rate the tools hear at, or 0 for the core's own, and how far between two samples
+static int16_t soundBefore[2];
 
 static void* readAll(const char* path, size_t* size) {
 	*size = 0;
@@ -162,7 +168,7 @@ static bool environment(unsigned command, void* data) {
 		return false;
 	}
 	case ENV_SET_HW_RENDER: needsGraphics = true; return false;
-	case ENV_SET_SYSTEM_AV_INFO:
+	case ENV_SET_SYSTEM_AV_INFO: av = *(struct av_info*) data; return true;
 	case ENV_SET_GEOMETRY: return true;
 	default: return false;
 	}
@@ -190,7 +196,7 @@ static void videoRefresh(const void* data, unsigned width, unsigned height, size
 	}
 }
 
-static size_t audioBatch(const int16_t* data, size_t frames) {
+static void keepSamples(const int16_t* data, size_t frames) {
 	if (sampleCount + frames * 2 > sampleRoom) {
 		sampleRoom = (sampleCount + frames * 2) * 2;
 		samples = realloc(samples, sampleRoom * 2);
@@ -198,6 +204,24 @@ static size_t audioBatch(const int16_t* data, size_t frames) {
 	// 10-bit units, 512 being as loud as the mix goes, so that "quieter than one step" means the same on every console
 	for (size_t i = 0; i < frames * 2; i++) samples[sampleCount + i] = data[i] >> 6;
 	sampleCount += frames * 2;
+}
+
+static size_t audioBatch(const int16_t* data, size_t frames) {
+	if (!wantedRate || av.sampleRate == wantedRate) {
+		keepSamples(data, frames);
+	} else {
+		// at the rate the tools hear at, on a straight line between each two of the core's samples
+		double step = av.sampleRate / wantedRate;
+		for (size_t i = 0; i < frames; i++) {
+			const int16_t* now = data + i * 2;
+			for (; soundAt < 1; soundAt += step) {
+				int16_t pair[2] = { soundBefore[0] + (now[0] - soundBefore[0]) * soundAt, soundBefore[1] + (now[1] - soundBefore[1]) * soundAt };
+				keepSamples(pair, 1);
+			}
+			soundAt -= 1;
+			memcpy(soundBefore, now, sizeof soundBefore);
+		}
+	}
 	return frames;
 }
 
@@ -318,9 +342,8 @@ int main(int argc, char** argv) {
 		return 2;
 	}
 	retro_set_controller_port_device(0, DEVICE_JOYPAD);
-	struct av_info av;
-	memset(&av, 0, sizeof av);
 	retro_get_system_av_info(&av);
+	wantedRate = getenv("DP_SOUND_RATE") ? atof(getenv("DP_SOUND_RATE")) : 0;
 
 	if (live) {
 		uint32_t buttons;
@@ -372,7 +395,7 @@ int main(int argc, char** argv) {
 	}
 	if (soundFile) fclose(soundFile);
 	fflush(out);
-	fprintf(err, "{\"cartridge\":0,\"memory\":0,\"rate\":%g,\"fps\":%g,\"width\":%u,\"height\":%u}\n", av.sampleRate, av.fps, screenW, screenH);
+	fprintf(err, "{\"cartridge\":0,\"memory\":0,\"rate\":%g,\"fps\":%g,\"width\":%u,\"height\":%u}\n", wantedRate ? wantedRate : av.sampleRate, av.fps, screenW, screenH);
 	fflush(err);
 	return 0;
 }

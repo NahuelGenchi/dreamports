@@ -1,11 +1,12 @@
 // The language screen, which a game with nothing saved starts with (0x0801A51C, GameInit, calls it). The six languages,
 // the one chosen in the bright colours with an outline around it and the rest in the dim, with the title and the line along
 // the bottom in that language. Up and Down move through them, going round at either end. A or Start keeps it and fades out,
-// and the name entry comes next, which isn't ported yet, so the screen stays dark there.
+// and the name entry comes next.
 
-import { startStage } from './stage/stage.js';
-import { KEY, FLAGS } from './core.js';
-import { createSprite, updateSprite, displaySprite } from './sprite.js';
+import { nameEntry } from './name-entry.js';
+import { KEY } from './core.js';
+import { updateSprite, displaySprite } from './sprite.js';
+import { entry, place as placeSprite } from './menu.js';
 import { drawBackground } from './background.js';
 import { createFade, updateFade } from './fade.js';
 
@@ -15,16 +16,14 @@ const FIRST_LANGUAGE = 1;
 const SE_SELECT = 106, SE_MENU_CURSOR_MOVE = 108;
 const TILEMAP = 134;
 const PRIORITY_LOW = 0x3000;
-const OBJ_VRAM = 0x10000;
 // the tables the sprites come from, each entry of animation, variant and how many tiles it takes
 const TITLES = 0xD9A80, CONTROLS = 0xD9AE0, OPTIONS = 0xD9B10;
 const OUTLINE = 0x3BD, OUTLINE_VARIANT = 5, OUTLINE_TILES = 0x3F;
-const entry = (rom, table, i) => ({ anim: rom.u16(table + i * 8), variant: rom.u8(table + i * 8 + 2), tiles: rom.u16(table + i * 8 + 4) });
 const optionY = i => 40 + i * 15;
 
 /** 0x08063940, CreateNewProfileScreen: the screen's task, its layer, its fade and its sprites. */
 export function languageScreen(c) {
-  const screen = { c, choice: FIRST_LANGUAGE, nextTiles: OBJ_VRAM };
+  const screen = { c, choice: FIRST_LANGUAGE };
   initRegisters(c, screen);
   // 0x0806B0AC, LanguageScreenCreateBackgroundsUI, with 0x0806B854, OptionsInitBackground
   drawBackground(c, { id: TILEMAP, dest: 0, layoutVram: 0x3800, targetTilesX: 30, targetTilesY: 20, flags: 0 });
@@ -43,13 +42,7 @@ function initRegisters(c, screen) {
   updateFade(c, screen.fade);
 }
 
-// 0x0806A568, sub_806A568: a sprite whose tiles come next in video memory, and its animation started
-function place(c, screen, tiles, anim, x, y, order, variant) {
-  const s = createSprite({ tiles: screen.nextTiles, anim, variant, x, y, oamFlags: order << 6, frameFlags: PRIORITY_LOW });
-  screen.nextTiles += tiles * 32;
-  updateSprite(c, s);
-  return s;
-}
+const place = (c, screen, tiles, anim, x, y, order, variant) => placeSprite(c, screen, tiles, anim, x, y, order, variant, PRIORITY_LOW);
 
 // 0x0806B8D4, MaxSpriteSize: the most tiles any language's entry takes
 const mostTiles = (rom, table) => {
@@ -130,12 +123,12 @@ function choose(t) {
   }
 }
 
-// 0x0806B14C, Task_LanguageScreenFadeOutAndExit: the name entry comes next, which isn't ported yet, so for now Leaf Forest does
+// 0x0806B14C, Task_LanguageScreenFadeOutAndExit: the name entry comes next (0x08063A00, CreateNewProfileNameScreen)
 function fadeOut(t) {
   const screen = t.data, { c } = screen;
   if (!updateFade(c, screen.fade)) render(c, screen);
   else {
+    nameEntry(c, screen.choice);
     c.destroyTask(t);
-    startStage(c, 0);
   }
 }
