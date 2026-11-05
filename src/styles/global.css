@@ -315,6 +315,140 @@ kbd {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* The rows of labels behind it all (Labels.astro, docs/LABELS.md), the site's own scenes in every place nobody
+   has asked for: quiet, tinted the site's blue, fainter around the game, out of the way of every press, and gone in
+   the full-screen views and while a game opens. Only the rows move, each as one layer, so nothing is drawn again as
+   they drift. */
+.labels {
+  --labels-o: 0.32;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+.labels * {
+  pointer-events: none;
+}
+
+.labels.is-ready {
+  opacity: 1;
+}
+
+.launcher[data-view] .labels,
+.launcher.is-launching .labels {
+  opacity: 0;
+  transition-duration: 0.3s;
+}
+
+.label-tints {
+  position: absolute;
+}
+
+.label-rows {
+  position: absolute;
+  inset: 0;
+}
+
+.label-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 60px;
+}
+
+.label-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 60px;
+  opacity: var(--labels-o);
+  animation: labels-left linear infinite;
+  will-change: transform;
+}
+
+.label-track.go-right {
+  animation-name: labels-right;
+}
+
+.launcher[data-view] .label-track {
+  animation-play-state: paused;
+}
+
+:root[data-motion='calm'] .label-track {
+  animation: none;
+}
+
+@keyframes labels-left {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@keyframes labels-right {
+  from {
+    transform: translate3d(-50%, 0, 0);
+  }
+
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.label-track :is(img, canvas) {
+  position: absolute;
+  top: 0;
+  height: 60px;
+  max-width: none;
+  image-rendering: pixelated;
+  filter: url(#label-tint);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .labels {
+    --labels-o: 0.3;
+  }
+
+  :root:not([data-theme='light']) .label-track :is(img, canvas) {
+    filter: url(#label-tint-dark);
+  }
+}
+
+:root[data-theme='dark'] .labels {
+  --labels-o: 0.3;
+}
+
+:root[data-theme='dark'] .label-track :is(img, canvas) {
+  filter: url(#label-tint-dark);
+}
+
+/* around the game the rows fade to a third: the page's own background over them, more of it nearer the game. Its
+   width follows the game's, which is a third of a computer's screen and two thirds of a phone's. Browsers take no
+   max() in a gradient's size, and a gradient they don't take would hide the rows altogether. */
+.label-clear {
+  --clear: radial-gradient(calc(var(--s) * 1.6) 53% at 50% var(--row-y), rgba(0, 0, 0, 0.65) 55%, transparent 100%);
+  position: absolute;
+  inset: 0;
+  background: var(--page-glow), var(--page);
+  -webkit-mask-image: var(--clear);
+  mask-image: var(--clear);
+}
+
+/* the games beside the chosen one are faded, and the rows don't show through them */
+.launcher.has-labels:not([data-view]) .slot::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--page);
+}
+
 /* top bar */
 .topbar {
   position: absolute;

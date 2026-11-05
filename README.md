@@ -156,7 +156,15 @@ Dreamports never hosts game files, and every game asks for your own copy. The ru
 <summary><b>Does the site track me?</b></summary>
 <br>
 
-No. There are no ads, and nothing follows you around the web. The site's [privacy section](https://dreamports.net/about/#privacy) has the details.
+No. Nothing follows you around the web, and the labels behind the menu are free pictures people asked for, not tracking ads. The site's [privacy section](https://dreamports.net/about/#privacy) has the details.
+
+</details>
+
+<details>
+<summary><b>Can I put my art or brand behind the menu?</b></summary>
+<br>
+
+Yes, for free. Labels are faint pictures of 240 by 60 pixels that drift behind the menu for 30 days, and a person checks each one first. The site's [Labels section](https://dreamports.net/about/#labels) says how to ask.
 
 </details>
 

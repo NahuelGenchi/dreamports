@@ -43,13 +43,14 @@ function pushOut(o, hb, p, terrain) {
 function crush(p) { p.pushing = false; p.dead = true; }
 
 /**
- * The task for a spiked platform entity in `zone` (0 for Neo Green Hill), or null when `e` is not one.
+ * The task for a spiked platform entity, or null when `e` is not one. `casino` is set in Casino Paradise (zone 3) and in
+ * Chao Hunt C (CreateEntity_Platform_Spiked).
  * Animation 521 in Casino Paradise, else 538 (spikes up) or 539 (spikes down), in OAM order 18 and BG priority 2; its box is set once, as it is made. It runs in
  * Task_Platform_Spiked (`0x0807F835` in the USA ROM) at the objects' priority.
  */
-export function createSpikedPlatform(e, slot, anims, zone) {
+export function createSpikedPlatform(e, slot, anims, casino) {
   if (e.kind !== SPIKED_PLATFORM) return null;
-  const casino = zone === 2, up = casino || e.d[0] === 0;
+  const up = casino || e.d[0] === 0;
   const o = makeSprite(casino ? 'spikedPlatform' : up ? 'spikedPlatformUp' : 'spikedPlatformDown');
   animate(o, anims);
   const across = e.d[2] > e.d[3];

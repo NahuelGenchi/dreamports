@@ -21,6 +21,7 @@ import { SONG } from '../sound/songs.js';
 
 export const TRACK = 106, PIPE_ENTRANCE = 110, PIPE_EXIT = 111, TRACK_AIR_CORNER = 112;
 const COSMIC_ANGEL = 11, EGG_ROCKET = 10;   // zone 6's acts, whose pipes have their own looks
+const CHAO_HUNT_D = 17;   // draws zone 6's second act's pipes (the level checks of CreateEntity_Pipe)
 const NEAR = 10;        // how close to a track's start Sonic must be for it to take him
 const PULL = 90, PULL_SOUND = 45, PULL_SPEED = 384;   // the entrance's pull: frames, when it sounds, 1.5 px a frame
 const ENTRANCE_STEPS = 20, EXIT_FRAMES = 15;
@@ -115,9 +116,12 @@ function createAirCorner(e, slot, anims) {
   };
 }
 
+// zone 6's second act's pipes (SA1_ANIM_PIPE_ENTER_6_2_V, the odd levels of zone 6 and Chao Hunt D)
+const secondActLook = level => level === COSMIC_ANGEL || level === CHAO_HUNT_D;
+
 // the look of a pipe end, by zone 6's two acts and the other levels: [vertical, across] animation names
 function pipeSprite(level, exit, vertical) {
-  const zone = level === COSMIC_ANGEL ? 'Cosmic' : level === EGG_ROCKET ? 'Rocket' : '';
+  const zone = secondActLook(level) ? 'Cosmic' : level === EGG_ROCKET ? 'Rocket' : '';
   return `pipe${exit ? 'Exit' : ''}${vertical ? 'V' : 'H'}${zone}`;
 }
 
@@ -128,7 +132,7 @@ function pipeSprite(level, exit, vertical) {
 function createPipeEntrance(e, slot, anims, level, who = 0) {
   const face = e.d[2], step = e.d[3], dx = s8(e.d[0]) * 8, dy = s8(e.d[1]) * 8;
   const vertical = face === 0 || face === 1, cosmic = level === COSMIC_ANGEL;
-  const flipY = vertical && (cosmic ? face === 0 : face !== 0);
+  const flipY = vertical && (secondActLook(level) ? face === 0 : face !== 0);
   const o = Object.assign(makeSprite(pipeSprite(level, false, vertical), { flipX: !vertical && (face & 1) !== 0, flipY, order: 5, prio: 0 }), { x: e.x, y: e.y });
   animate(o, anims);
   const c = { k: 0, prevX: 0, prevY: 0 };
