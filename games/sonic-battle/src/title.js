@@ -88,7 +88,7 @@ function firstFrame(c) {
   c.video.write(REG.BG1CNT, 0x170B);
   c.video.write(REG.BG2CNT, 0x1F0F);
   c.video.write(REG.BG3CNT, 0x1E81);
-  const tiles = TILE_SETS[c.language];
+  const tiles = TILE_SETS[c.language ? 1 : 0];
   copyToVram(c, tiles.tiles, 0x06000000, tiles.words);
   copyToVram(c, tiles.map, 0x0600F000, 0x400);
   for (const [from, to, words] of LAYERS) copyToVram(c, from, to, words);

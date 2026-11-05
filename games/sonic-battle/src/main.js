@@ -87,6 +87,12 @@ function createGame(video, rom, sound) {
   core.language = core.savedLanguage = core.languageSave.read()?.[0] ?? core.language;
   const saved = new URLSearchParams(location.search).get('name');
   if (saved !== null) core.name[0] = Number(saved) & 0xFFFF;
+  // a recording's start point for a saved language: the original is given it 40 frames in, past where it reads its save, and plays those alone
+  const language = new URLSearchParams(location.search).get('language');
+  if (language !== null) {
+    core.language = core.savedLanguage = Number(language) & 0xFF;
+    core.startUp -= 40;
+  }
   const open = new URLSearchParams(location.search).get('open');
   if (open !== null) core.miniGamesOpen = Number(open) & 0xFF;
   core.main = c => logos(c, intro);

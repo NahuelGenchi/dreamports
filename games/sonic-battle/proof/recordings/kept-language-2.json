@@ -1,0 +1,81 @@
+{
+  "about": "A save that keeps language 2, as the page finds it after a reload: the logos, the intro, the title screen with its tiles for every language but 0, the main menu, left to Options, and A, whose texts show the language was kept. Both are given what the save holds: the Dreamport by its address, the original in onlyInOriginal.",
+  "start": "name=1&language=2",
+  "frames": 1250,
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      747,
+      [
+        "START"
+      ]
+    ],
+    [
+      748,
+      []
+    ],
+    [
+      880,
+      [
+        "LEFT"
+      ]
+    ],
+    [
+      881,
+      []
+    ],
+    [
+      1000,
+      [
+        "A"
+      ]
+    ],
+    [
+      1001,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 40,
+      "held": [
+        [
+          0,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 39,
+          "address": "03002187",
+          "bytes": 1,
+          "value": 2
+        }
+      ],
+      "about": "The white of the start-up, and the language the save keeps, at 0x03002187, written once the original has read its save."
+    },
+    {
+      "at": 778,
+      "frames": 1,
+      "held": [
+        [
+          0,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 0,
+          "address": "03002170",
+          "bytes": 2,
+          "value": 1
+        }
+      ],
+      "about": "A name already saved, as in menu."
+    }
+  ]
+}
