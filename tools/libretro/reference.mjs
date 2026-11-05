@@ -69,11 +69,11 @@ export function libretroReference(machine) {
       let frame = 0;
       return {
         ...live,
-        // said at once, before anyone plays for nothing: a size the game doesn't say would reach its card with a band of
-        // black. Like prove, this looks past a console's first frame, which nothing compares
+        // said at once, before anyone plays for nothing: a picture larger than the game says would lose its edges. One that
+        // fits is cut to its own size for the card (capture.mjs). Like prove, this looks past a console's first frame
         async frame(buttons) {
           const shown = await live.frame(buttons);
-          if (frame && shown.size[0]) checkSizes([[frame, ...shown.size]], machine, [frame]);
+          if (frame && (shown.size[0] > width || shown.size[1] > height)) checkSizes([[frame, ...shown.size]], machine, [frame]);
           frame++;
           return shown;
         },

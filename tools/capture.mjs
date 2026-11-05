@@ -29,6 +29,7 @@ import { av1Configuration, av1Frame, mp4 } from './lib/mp4.mjs';
 import { captureMessage, firstFilesMessage, namesOf, plainWebp, withCapture } from './lib/new-game.mjs';
 import { originalButtons, readRecording } from './lib/recording.mjs';
 import { referenceOf } from './lib/reference.mjs';
+import { roomFor } from './lib/screens.mjs';
 
 const USAGE = 'Usage: npm run dp -- capture <game> [--choose | --open | --pick | --from <file>] [--yes] [--repo <owner/name>]';
 const CLIP_LIMIT = 1.4e6, CLIP_TARGET = 1.2e6;   // a clip's bytes: visitors download it when they select the game
@@ -65,7 +66,7 @@ function playedFor({ game, copy }) {
   const playFile = join(keptIn(game), 'play.json');
   const play = {
     buttons: [], frames: [],
-    moments: [],            // { from, to, pictures }: the frames to choose among, the last of them not shown
+    moments: [],            // { from, to, size, pictures }: the frames to choose among, the last of them not shown, and the size they show
     chosen: null,           // which of them the person pressed, if they did
     // the presses as a list of changes, which is all that has to be kept to see the same frames again
     keep() {
@@ -77,21 +78,24 @@ function playedFor({ game, copy }) {
     // the moments' pictures, which the original draws again from the presses, and a check that they're what was played
     async picturesOf(wanted) {
       const list = [...new Set(wanted.flatMap(({ from, to }) => Array.from({ length: to - from + 1 }, (_, i) => from + i)))].sort((a, b) => a - b);
-      const { pictures } = await runOriginal({ copy: copy.path, frames: list[list.length - 1] + 1, buttons: play.buttons, pictures: list });
+      const { pictures, outside } = await runOriginal({ copy: copy.path, frames: list[list.length - 1] + 1, buttons: play.buttons, pictures: list });
+      play.sizes = outside.sizes ?? null;
       for (const frame of list) {
         if (play.frames[frame]?.hash !== measure(pictures.get(frame), null).hash) throw new Error(`The original didn't draw frame ${frame} the same way again, so these moments can't be trusted.`);
       }
       return pictures;
+    },
+    // a moment as it's kept, at the size it shows: a game that lists a larger size for another part keeps its pictures with
+    // room for that one, and no band of black reaches its card
+    momentOf({ from, to }, pictures) {
+      return { from, to, size: (play.sizes && roomFor(play.sizes, from, to)) ?? machine.screen, pictures: Array.from({ length: to - from }, (_, i) => pictures.get(from + i)) };
     },
     async find() {
       const starts = shortlist(play.frames, play.buttons);
       play.moments = [];
       if (starts.length) {
         const pictures = await play.picturesOf(starts.map(from => ({ from, to: from + WINDOW - 1 })));
-        play.moments = starts.map(start => {
-          const { from, to } = loopOf(frame => pictures.get(frame), start);
-          return { from, to, pictures: Array.from({ length: to - from }, (_, i) => pictures.get(from + i)) };
-        });
+        play.moments = starts.map(start => play.momentOf(loopOf(frame => pictures.get(frame), start), pictures));
       }
       play.keep();
     },
@@ -106,7 +110,7 @@ function playedFor({ game, copy }) {
         play.buttons.push(mask);
       }
       const pictures = await play.picturesOf(kept.moments);
-      play.moments = kept.moments.map(({ from, to }) => ({ from, to, pictures: Array.from({ length: to - from }, (_, i) => pictures.get(from + i)) }));
+      play.moments = kept.moments.map(moment => play.momentOf(moment, pictures));
       play.chosen = kept.chosen ?? null;
       return true;
     },
@@ -400,9 +404,9 @@ function answerer({ original }, play, { live = null, choosing = false, touch = (
     } else if (step === 'finish') {
       touch();
       await play.find();
-      json(response, play.moments.map(m => m.pictures.length));
+      json(response, play.moments.map(m => ({ frames: m.pictures.length, size: m.size })));
     } else if (step === 'moments') {
-      json(response, play.moments.map(m => m.pictures.length));
+      json(response, play.moments.map(m => ({ frames: m.pictures.length, size: m.size })));
     } else if (step.startsWith('moment/')) {
       const moment = play.moments[Number(step.slice('moment/'.length))];
       response.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-store' });

@@ -327,16 +327,36 @@ async function ownScreen(cartridge) {
   check(run.status === 0, `a size only in the frames only the original has needs no saying, as they aren't compared: ${lastLine(run)}`);
   if (run.status) console.log(run.out);
 
-  // its capture
-  const presses = join(WORK, 'chooses-presses.json');
-  writeFileSync(presses, `${JSON.stringify({ frames: 500, held: [[0, []], [30, ['A']]] }, null, 2)}\n`);
-  run = dp('capture', GAME, '--from', presses);
-  const card = sizeOfWebp(readFileSync(join(MEDIA, `${GAME}-dreamport-still.webp`)));
-  check(run.status === 0 && card[0] === 80 && card[1] === 60, `capture keeps it at its size: ${card.join(' by ')}`);
+  // its capture, on its card at the size that moment shows, whatever else the game lists
+  const clipSize = () => {
+    const file = readFileSync(join(MEDIA, `${GAME}-dreamport.h264.mp4`)), at = file.indexOf('tkhd');
+    return [file.readUInt32BE(at + 80) >> 16, file.readUInt32BE(at + 84) >> 16];
+  };
+  const cardSize = () => [sizeOfWebp(readFileSync(join(MEDIA, `${GAME}-dreamport-still.webp`))).join(' by '), clipSize().join(' by ')].join(', ');
+  const capture = (presses, name = 'chooses-presses') => {
+    const file = join(WORK, `${name}.json`);
+    writeFileSync(file, `${JSON.stringify({ frames: 500, held: presses }, null, 2)}\n`);
+    return dp('capture', GAME, '--from', file);
+  };
+  const playing = [[0, []], [30, ['A']]];
+  said([40, 30]);
+  run = capture(playing);
+  check(run.status === 0 && cardSize() === '80 by 60, 80 by 60', `capture keeps it at its size: ${cardSize()}`);
+  if (run.status) console.log(run.out);
+  said([[64, 48], [40, 30]]);
+  run = capture(playing);
+  check(run.status === 0 && cardSize() === '80 by 60, 80 by 60', `a moment at the smaller of the sizes a game lists has no band of black: ${cardSize()}`);
+  if (run.status) console.log(run.out);
+  run = capture([[0, []], [5, ['UP']], [6, []], [30, ['A']]]);
+  check(run.status === 0 && cardSize() === '128 by 96, 128 by 96', `and one at the larger is that size: ${cardSize()}`);
   if (run.status) console.log(run.out);
   said(null);
-  run = dp('capture', GAME, '--from', presses);
-  check(run.status !== 0 && run.out.includes('"screen": [40,30]'), 'and stops when the size is wrong, so a band of black can\'t reach a card');
+  run = capture(playing);
+  check(run.status === 0 && cardSize() === '80 by 60, 80 by 60', `a game that hasn't said its size yet can still be played for its card, as the picture fits: ${cardSize()}`);
+  if (run.status) console.log(run.out);
+  said([32, 24]);
+  run = capture(playing);
+  check(run.status !== 0 && run.out.includes('"screen": [40,30]'), 'a picture too large for the size it says stops at once, as it would lose its edges');
 }
 
 const kept = { readme: readFileSync(README), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };

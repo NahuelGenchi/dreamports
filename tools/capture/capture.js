@@ -7,7 +7,9 @@ import { layoutOf } from '../../kit/consoles.js';
 
 // the game's console
 const machine = await (await fetch('/capture/console')).json();
-const [WIDTH, HEIGHT] = machine.screen, PICTURE = WIDTH * HEIGHT * 2, SCALE = WIDTH > 320 ? 1 : 2;
+const [WIDTH, HEIGHT] = machine.screen, PICTURE = WIDTH * HEIGHT * 2;
+// how many times its size a moment is kept
+const scaleOf = moment => (moment.width > 320 ? 1 : 2);
 const FRAME_MS = 1000 * machine.frame[0] / machine.frame[1];
 const SOUND_RATE = machine.sound;
 
@@ -65,11 +67,13 @@ function fit() {
     $('screen').style.height = `${HEIGHT * scale}px`;
   } else if (phase === 'choose' && moments.length) {
     const columns = Math.min(3, moments.length), rows = Math.ceil(moments.length / columns);
-    const width = Math.floor(Math.min((innerWidth - 40 - (columns - 1) * 14) / columns, ((innerHeight - 170 - (rows - 1) * 14) / rows) * WIDTH / HEIGHT));
+    // each is its own size, so the tallest for its width decides
+    const tallest = Math.max(...moments.map(({ canvas }) => canvas.height / canvas.width));
+    const width = Math.floor(Math.min((innerWidth - 40 - (columns - 1) * 14) / columns, ((innerHeight - 170 - (rows - 1) * 14) / rows) / tallest));
     $('moments').style.gridTemplateColumns = `repeat(${columns}, ${width}px)`;
     for (const { canvas } of moments) {
       canvas.style.width = `${width}px`;
-      canvas.style.height = `${Math.round(width * HEIGHT / WIDTH)}px`;
+      canvas.style.height = `${Math.round(width * canvas.height / canvas.width)}px`;
     }
   }
 }
@@ -139,29 +143,31 @@ $('finish').addEventListener('click', finish);
 
 let moments = [], at = 0, shownAt = 0, last = 0;
 
-async function showMoments(lengths) {
+// each moment's frames and size. Its pictures have room for the game's largest, and its canvas shows only its own
+async function showMoments(found) {
   $('moments').replaceChildren();
   moments = [];
-  if (!lengths.length) {
+  if (!found.length) {
     $('said').textContent = 'Nothing to choose from yet. Play longer, moving around, then finish again.';
     next = performance.now();
     show('play');
     return;
   }
   show('wait', 'Getting them ready…');
-  for (let i = 0; i < lengths.length; i++) {
+  for (let i = 0; i < found.length; i++) {
+    const { frames: length, size: [width, height] } = found[i];
     const button = document.createElement('button'), canvas = document.createElement('canvas');
     button.className = 'moment';
     button.type = 'button';
-    button.setAttribute('aria-label', `Moment ${i + 1}, ${(lengths[i] * FRAME_MS / 1000).toFixed(1)} seconds`);
-    canvas.width = WIDTH;
-    canvas.height = HEIGHT;
+    button.setAttribute('aria-label', `Moment ${i + 1}, ${(length * FRAME_MS / 1000).toFixed(1)} seconds`);
+    canvas.width = width;
+    canvas.height = height;
     button.append(canvas);
     button.addEventListener('click', () => pick(i));
     button.addEventListener('pointerenter', () => select(i));
     $('moments').append(button);
     const bytes = await (await fetch(`/capture/moment/${i}`)).arrayBuffer();
-    moments.push({ button, canvas, context: canvas.getContext('2d'), length: lengths[i], pictures: new Uint16Array(bytes) });
+    moments.push({ button, canvas, context: canvas.getContext('2d'), length, width, height, pictures: new Uint16Array(bytes) });
   }
   shownAt = performance.now();
   select(0);
@@ -256,7 +262,7 @@ function paint(canvas, moment, frame, x, y, scale) {
   draw(smallContext, moment.pictures, frame * WIDTH * HEIGHT);
   const context = canvas.getContext('2d');
   context.imageSmoothingEnabled = false;
-  context.drawImage(small, x, y, WIDTH * scale, HEIGHT * scale);
+  context.drawImage(small, 0, 0, moment.width, moment.height, x, y, moment.width * scale, moment.height * scale);
 }
 const blobBase64 = async blob => toBase64(new Uint8Array(await blob.arrayBuffer()));
 
@@ -268,8 +274,8 @@ const CODECS = {
 window.__capture = {
   /** The moment encoded: { width, height, description, frames: [{ key, data }] }, in base64. */
   async encode(i, codec, bitrate) {
-    const moment = moments[i];
-    const canvas = new OffscreenCanvas(WIDTH * SCALE, HEIGHT * SCALE);
+    const moment = moments[i], scale = scaleOf(moment);
+    const canvas = new OffscreenCanvas(moment.width * scale, moment.height * scale);
     const chunks = [];
     let description = null, failure = null;
     const encoder = new VideoEncoder({
@@ -286,7 +292,7 @@ window.__capture = {
     if (!(await VideoEncoder.isConfigSupported(config)).supported) throw new Error(`This browser can't encode ${codec === 'av1' ? 'AV1' : 'H.264'} video, which the site needs: Chrome can.`);
     encoder.configure(config);
     for (let f = 0; f < moment.length && !failure; f++) {
-      paint(canvas, moment, f, 0, 0, SCALE);
+      paint(canvas, moment, f, 0, 0, scale);
       const frame = new VideoFrame(canvas, { timestamp: Math.round(f * FRAME_MS * 1000), duration: Math.round(FRAME_MS * 1000) });
       encoder.encode(frame, { keyFrame: f % 120 === 0 });
       frame.close();
@@ -300,8 +306,9 @@ window.__capture = {
 
   /** The moment's first frame as a WebP picture, in base64. */
   async still(i) {
-    const canvas = new OffscreenCanvas(WIDTH * SCALE, HEIGHT * SCALE);
-    paint(canvas, moments[i], 0, 0, 0, SCALE);
+    const moment = moments[i], scale = scaleOf(moment);
+    const canvas = new OffscreenCanvas(moment.width * scale, moment.height * scale);
+    paint(canvas, moment, 0, 0, 0, scale);
     return blobBase64(await canvas.convertToBlob({ type: 'image/webp', quality: 1 }));
   },
 
@@ -311,7 +318,7 @@ window.__capture = {
     const context = canvas.getContext('2d');
     context.fillStyle = '#050a24';
     context.fillRect(0, 0, canvas.width, canvas.height);
-    paint(canvas, moments[i], 0, (canvas.width - WIDTH * 3) / 2, (canvas.height - HEIGHT * 3) / 2, 3);
+    paint(canvas, moments[i], 0, (canvas.width - moments[i].width * 3) / 2, (canvas.height - moments[i].height * 3) / 2, 3);
     return blobBase64(await canvas.convertToBlob({ type: 'image/png' }));
   },
 

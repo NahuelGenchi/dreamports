@@ -27,6 +27,12 @@ export function sizeAt(changes, frame) {
   return change ? change.slice(1) : null;
 }
 
+/** Room for what frames from `from` up to `to` show, from a list of changes, or null when they show nothing. */
+export function roomFor(changes, from, to) {
+  const shown = changes.filter(([start], i) => start < to && (changes[i + 1]?.[0] ?? Infinity) > from);
+  return shown.length ? [Math.max(...shown.map(c => c[1])), Math.max(...shown.map(c => c[2]))] : null;
+}
+
 /** Stops when the original shows a size the game doesn't say it has at any of `frames`, from the list of changes `outside.sizes` holds, and says what to write. */
 export function checkSizes(changes, machine, frames, frameName = frame => frame) {
   if (!changes) return;   // mGBA's screen never changes, and it doesn't say

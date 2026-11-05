@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkSizes, firstOtherSize, forGame, sizeAt, sizesIn } from '../lib/screens.mjs';
+import { checkSizes, firstOtherSize, forGame, roomFor, sizeAt, sizesIn } from '../lib/screens.mjs';
 
 const CONSOLE = { name: 'Some Console', screen: [320, 224], core: {} };
 
@@ -33,6 +33,14 @@ test('the size at a frame, from the changes', () => {
   assert.deepEqual(sizeAt(changes, 3), [320, 224]);
   assert.deepEqual(sizeAt(changes, 9), [320, 224]);
   assert.deepEqual(sizeAt(changes, 10), [256, 224]);
+});
+
+test('room for what some frames show', () => {
+  const changes = [[3, 320, 224], [10, 256, 240]];
+  assert.equal(roomFor(changes, 0, 3), null);
+  assert.deepEqual(roomFor(changes, 3, 10), [320, 224]);
+  assert.deepEqual(roomFor(changes, 10, 20), [256, 240]);
+  assert.deepEqual(roomFor(changes, 9, 11), [320, 240]);
 });
 
 test('a size the game does not list stops it, with what to write', () => {
