@@ -14,8 +14,7 @@
 //
 // The name is kept as the bar's tiles, two rows of two a character, which go into layer 1's map every frame, in
 // the rows above the grid that the scroll has taken out of view. The original goes to the multiplayer menu
-// instead of the player data menu when the game is in its mode 2, which only the multiplayer menu sets; that menu
-// isn't built.
+// (modeselect.js) instead of the player data menu when the game is in its mode 2, which only that menu sets.
 
 import { KEY } from '../gba/engine.js';
 import { SONG } from '../sound/songs.js';
@@ -23,8 +22,10 @@ import { WRITE_FRAMES } from '../engine/save.js';
 import { SINE } from '../engine/trig.js';
 import { createUiTask, uiGfxStackInit, uiGraphics, loadUiGfx, drawUiGlyphs, drawUiTextRotated, createFade, fadeStep } from './ui.js';
 import { createPlayerDataMenu, NAME_LENGTH } from './playerdata.js';
+import { createModeSelect } from './modeselect.js';
 
 const OBJ_VRAM = 0x10000;
+const MULTI_PLAYER_MENU = 2;   // gGameMode, which only the multiplayer menu sets
 const PICTURE_GFX = 0x23, GRID_GFX = 0x24, GLOW_GFX = 0x25, CURSORS_GFX = 0x26;
 // from offsets.nameInputMaps: the picture's map, the grid's and the grid with its cells lit
 const PICTURE_MAP = 0, GRID_MAP = 0x1000, LIT_MAP = 0x1800;
@@ -294,7 +295,8 @@ function closeInput(t) {
     e.destroyTask(t);
     // layers 1 and 2's maps cleared in the next V-blank
     for (const fill of [e.mapFill[1], e.mapFill[2]]) { fill.value = 0; fill.rect.set([0, 0, 0xFF, 0x20]); }
-    createPlayerDataMenu(ctx);
+    if (ctx.gameMode === MULTI_PLAYER_MENU) createModeSelect(ctx);
+    else createPlayerDataMenu(ctx);
   };
   if (changed) {
     save.unk4 = e.frameCount;
