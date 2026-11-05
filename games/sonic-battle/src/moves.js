@@ -13,7 +13,7 @@ import {
   fn08018300, fn08018318,
 } from './sprites.js';
 import { fn08013214 } from './hud.js';
-import { clearEffect, fn0800673c, fn08006e64, fn08006ff4, fn0800b098 } from './fighters.js';
+import { clearEffect, fn0800673c, fn08006e64, fn08006ff4, fn0800b098, fn0800c1c8 } from './fighters.js';
 import { fn0800f9c0, fn08011c7c } from './arena.js';
 
 const FIGHTERS = 0x03001C40, RECORD = 252;
@@ -25,6 +25,7 @@ const SCRIPTS = 0x08ED68A8, SCRIPTS_PER_CHARACTER = 280;
 const DIRECTIONS = 0x0806B2D4;               // ten bytes per camera angle: the way each direction of the pad faces
 const CAMERA_TURN = 0x0300204C;
 const RANDOM = 0x0300019C;
+const VIEW_FACING = 0x03001370;   // which way the camera faces, 0 to 3
 const LIMIT_RIGHT = 0x03002B74, LIMIT_LEFT = 0x03002BD0, LIMIT_DOWN = 0x03002B80, LIMIT_UP = 0x03002B70;
 const WALL_COUNT = 0x03002B84, WALLS = 0x03002B90, FLOOR = 0x03001384;
 
@@ -482,9 +483,15 @@ function playAtFighter(c, rec, sound) {
   queueEffect(c, sound, place > 127 ? 127 : (place < -127 ? -127 : place));
 }
 
+/** The way each character guards, as the cartridge's two 11-byte tables at 0x0806B3FC and 0x0806B407 give it. */
+const guardFrames = (c, character, table) => read8(c, table + (character & 0xFF));
+
+/** The way an attack's kind knocks its victim about: the flag that picks the hit state (0x080036dc's own switch). */
+const KIND_REACTION = [0, 0x8, 0x10, 0x20, 0x40, 0, 0x100, 0x200, 0x400, 0x800, 0x1000, 0x2000, 0x4000, 0x8000, 0x10000, 0x20000];
+
 /**
- * 0x08001b0c: a fighter takes a state, and its script starts next. Partly: the states a fighter dropping in, landing
- * and standing takes. The others do more here, and throw.
+ * 0x08001b0c: a fighter takes a state, and its script starts next. The states of its attacks, its guard and the hits it
+ * takes set what their own scripts start from here.
  */
 function setState(c, i, state) {
   const rec = record(i);
@@ -499,6 +506,12 @@ function setState(c, i, state) {
     write8(c, rec + CHARACTER_NOW, read8(c, 0x030013B0 + (fn0800b098(c, state) & 0xFF) + i * 156));
   }
   if (read8(c, rec + 199) <= 4) write8(c, rec + 199, 5);
+  // the direction a guard or an aimed attack turns to, from the way the character looks
+  const faceCamera = () => {
+    if (read8(c, rec + 36) !== 0) return;
+    const camera = DIRECTIONS + read8(c, rec + CAMERA) * 10;
+    write8(c, rec + 36, read8(c, camera + (read8(c, rec + 16) === 0 ? 4 : 6)));
+  };
   switch (state) {
     case 0:
       write8(c, rec + 138, 0);
@@ -508,10 +521,55 @@ function setState(c, i, state) {
     case 8: case 52: case 71:
       clearFlags(c, rec, FLAG_LANDED);
       break;
-    case 1: case 2: case 3: case 4: case 5: case 6: case 7: case 261:
+    case 9:
+      if (read8(c, rec + CHARACTER_NOW) !== 3 && read8(c, rec + CHARACTER_NOW) !== 10) write8(c, rec + 184, 1);
+      break;
+    case 53:
+      // the guard starts slowly, and turns to the way its character looks
+      write8(c, rec + 188, 99);
+      write8(c, rec + 189, 99);
+      write8(c, rec + 190, 0);
+      faceCamera();
+      break;
+    case 55:
+      // the guard itself: two rates, one for health and one for the power gauge, and it lets go when L does
+      write8(c, rec + 188, guardFrames(c, read8(c, rec + CHARACTER_NOW), 0x0806B3FC));
+      write8(c, rec + 189, guardFrames(c, read8(c, rec + CHARACTER_NOW), 0x0806B407));
+      if ((held(c, i) & 0x200) === 0) setState(c, i, 56);
+      write8(c, rec + 36, 0);
+      break;
+    case 54: case 65: case 66: case 67: case 68: case 69: case 80: case 81: case 82: case 83: case 84: case 85: case 0x145:
+      // a hit's state keeps itself for what comes after it, and the frame it was hit on
+      write16(c, rec + 238, state);
+      write8(c, rec + 184, 1);
+      break;
+    case 70:
+      write8(c, rec + 30, 1);
+      write8(c, rec + 28, 5);
+      break;
+    case 0x135:
+      write8(c, rec + 126, 0);
+      write8(c, rec + 125, 255);
+      write32(c, rec + ATTACKS, 0);
+      if (held(c, i) & 0x200) setState(c, i, 0x137);
       break;
     default:
-      notPorted('08001B0C', `state ${state}`);
+      if (state >= 10 && state <= 24 && state !== 16) {
+        // an attack: the hits it has already made go, and it turns to face where the camera has it
+        if (state >= 19) {
+          write8(c, rec + 149, read8(c, rec + 149) | 2);
+          write8(c, rec + 138, 0);
+          write8(c, rec + 184, 0);
+        }
+        if (read32(c, rec + FLAGS) & FLAG_NEW_STATE) {
+          write8(c, rec + 126, 0);
+          write8(c, rec + 125, 255);
+          clearFlags(c, rec, FLAG_CHAIN);
+        }
+        faceCamera();
+      } else {
+        // the states with nothing of their own here
+      }
   }
 }
 
@@ -716,28 +774,98 @@ function pushApart(c, i, j) {
 
 // ------------------------------------------------------------------------------------- Hits, keys and state changes
 
-/** 0x080036dc and 0x080040fa: what hit a fighter, and the gauges after. Partly: nothing hits it in the opening. */
+// the flags a hit's kind leaves on its victim, and the state each picks when the hit settles (0x080040fa)
+const REACTION_FLAGS = 0x800 | 0x80 | 0x20 | 0x40 | 0x10 | 0x8 | 0x200 | 0x100 | 0x400 | 0x1000 | 0x2000 | 0x4000 | 0x8000
+  | 0x10000 | 0x20000;
+
+/**
+ * 0x080036dc, from its hit loop to 0x080040fa: the attacks that reached a fighter this frame. An attack's flags say how
+ * hard it hit: its kind picks the reaction, its high bits the way the victim is thrown, and its low byte the damage.
+ */
 function takeHits(c, i) {
   const rec = record(i), state = read16(c, rec + STATE);
-  if (state >= 252 && state <= 255) return;
-  if (read8(c, rec + PAUSE) !== 0 && read8(c, rec + PAUSE_NEXT) !== 0) return;
+  if ((state >= 252 && state <= 253) || state === 254 || state === 255) return;
+  if (read8(c, rec + PAUSE) !== 0 && read8(c, rec + PAUSE_NEXT) !== 0) { settleHits(c, i); return; }
   const bit = 0x2000 << i;
   for (let j = 0; j < 4; j++) {
     if (j === i || !isActive(c, j)) continue;
-    if (read32(c, record(j) + ATTACKS) & bit) notPorted('080036DC', 'being hit');
-    const thrown = read16(c, record(j) + 174);
-    if (thrown === 0) clearFlags(c, rec, 0x40000);
-    else if (((thrown & 0x1800) >> 11) === i) notPorted('080036DC', 'being hit by a thing');
+    const attacker = record(j), attacks = read32(c, attacker + ATTACKS);
+    if (!(attacks & bit)) continue;
+    const kind = (attacks >> 8) & 0x1F, guard = read8(c, rec + 141) & 0x30;
+    // a fighter already knocked away, or guarding the right way, takes nothing from it
+    if (read16(c, rec + STATE) === 53 || read16(c, rec + STATE) === 0x135) continue;
+    if (read8(c, rec + 151) !== 0) continue;
+    if ((kind === 10 || kind === 11 || kind === 12) && guard === 0x20) continue;
+    if ((kind === 13 || kind === 14) && guard === 0x10) continue;
+    if (kind === 15 && guard === 0x30) continue;
+    clearFlags(c, rec, 0x40000);
+    if (KIND_REACTION[kind] !== 0) addFlags(c, rec, KIND_REACTION[kind]);
+    // the way the attacker's flags threw it: the four directions its record can face
+    const way = (attacks >>> (24 + i * 2)) & 15;
+    if (way <= 3) {
+      const facing = way === 0 ? 8 : way === 1 ? 6 : way === 2 ? 4 : 2;
+      write8(c, rec + 36, facing);
+      write8(c, rec + 37, facing);
+    }
+    write8(c, rec + 124, j);
+    write8(c, rec + 127, kind > 9 ? 255 : 15);
+    // the damage: the attack's low byte, lighter or heavier by the victim's size against the attacker's own
+    const power = attacks & 0xFF;
+    if (kind === 9) {
+      write16(c, rec + 240, 0);
+      write16(c, rec + 242, 0);
+    } else if (power === 63) {
+      write16(c, rec + 240, read8(c, rec + HEALTH));
+      write8(c, rec + 192, 1);
+    } else {
+      const weight = (read8(c, SETUP + 20 + i) >> 1) - read8(c, SETUP + 12 + j);
+      let damage = s16(power) - ((s16(power) * weight) >> 4);
+      if (damage <= 0) damage = 1;
+      write16(c, rec + 240, damage);
+      let gained = (damage << 16) >> 19;
+      if (gained <= 0) gained = 1;
+      if (read8(c, rec + 155) === 9) gained <<= 1;
+      write16(c, rec + 242, gained);
+    }
+    write8(c, rec + PAUSE_NEXT, (attacks >>> 17) & 0x7F);
   }
+  settleHits(c, i);
+}
+
+/** 0x0800410c and 0x08004382: the hit's reaction, and then the health and the gauges. */
+function settleHits(c, i) {
+  const rec = record(i);
   if (read8(c, rec + PAUSE) !== 0) return;
-  if (read32(c, rec + FLAGS) & 0x3FFF8) notPorted('080040FA', 'being knocked back');
-  const taken = read16(c, rec + 240), damage = SETUP + 98 + i * 2;
-  write16(c, damage, read16(c, damage) + taken);
+  let flags = read32(c, rec + FLAGS);
+  if (flags & REACTION_FLAGS) {
+    write8(c, rec + 184, 1);
+    if (read8(c, rec + 36) === 0) write8(c, rec + 36, read8(c, rec + 37));
+    if (flags & 0x80) setState(c, i, 68);
+    else if (flags & 0x800) setState(c, i, 54);
+    else if (flags & 0x200) setState(c, i, 0x145);
+    else if (flags & 0x400) setState(c, i, 0x147);
+    else if (flags & 0x1000) setState(c, i, 80);
+    else if (flags & 0x2000) setState(c, i, 81);
+    else if (flags & 0x4000) setState(c, i, 82);
+    else if (flags & 0x8000) setState(c, i, 83);
+    else if (flags & 0x10000) setState(c, i, 84);
+    else if (flags & 0x20000) setState(c, i, 85);
+    else if (flags & 0x20) setState(c, i, 67);
+    else if (flags & 0x40) setState(c, i, 0x143);
+    else if (flags & 0x10) setState(c, i, 66);
+    else if (flags & (0x8 | 0x100)) setState(c, i, flags & 4 ? 69 : 65);
+    // the reaction happened: its flags go, and the hit's frame shows
+    flags = (read32(c, rec + FLAGS) | 0x100000) & ~(REACTION_FLAGS | 0x200 | 0x400 | 0x800 | 0x1000 | 0x2000 | 0x4000
+      | 0x8000 | 0x10000 | 0x20000);
+    write32(c, rec + FLAGS, flags);
+  }
+  const damage = read16(c, rec + 240), taken = SETUP + 98 + i * 2;
+  write16(c, taken, read16(c, taken) + damage);
   const health = read8(c, rec + HEALTH);
-  if (taken > health) {
+  if (damage > health) {
     write16(c, rec + 240, health);
     write8(c, rec + HEALTH, 0);
-  } else write8(c, rec + HEALTH, health - taken);
+  } else write8(c, rec + HEALTH, health - damage);
   const most = read16(c, 0x03001B28);
   if (read8(c, rec + HEALTH) > most) write8(c, rec + HEALTH, most);
   const power = (read8(c, rec + 242) + read8(c, rec + 147)) & 0xFF;
@@ -761,48 +889,193 @@ function holdHits(c) {
   }
 }
 
-/** 0x08006134: a fighter's attack reaches the others. Partly: nobody attacks in the opening. */
+/**
+ * 0x08006134: a fighter's attack reaches the others. Its script gave it a point ahead of it (rec+96, 98 and 100), a
+ * radius (rec+104 and 102) and how far it goes (rec+107); every other fighter whose own body is inside takes the hit,
+ * which marks the attack's flags on the attacker's record for 0x080036dc to settle.
+ */
 function reachOthers(c, i) {
-  const rec = record(i);
-  if (read32(c, rec + FLAGS) & 0x40000) return;
+  const rec = record(i), flags = read32(c, rec + FLAGS);
+  if (flags & 0x40000) return;
   const state = read16(c, rec + STATE);
   if (state === 0x145 || state === 54) return;
   if ((read32(c, rec + ATTACKS) & 0x1F00) === 0x900) return;
   write32(c, rec + ATTACKS, 0);
-  if (read8(c, rec + 106) & 2) notPorted('08006134', 'an attack aimed by the pad');
-  if (read16(c, rec + 104) !== 0) notPorted('08006134', 'an attack');
+  // an attack the pad aims moves its point 16 the way the pad points
+  const aimed = read8(c, rec + 106);
+  if (aimed & 2) {
+    const way = read8(c, rec + 108);
+    if (way === 4) write16(c, rec + 96, read16(c, rec + 96) - 16);
+    else if (way === 6) write16(c, rec + 96, read16(c, rec + 96) + 16);
+    else if (way === 2) write16(c, rec + 98, read16(c, rec + 98) + 16);
+    else if (way === 8) write16(c, rec + 98, read16(c, rec + 98) - 16);
+  }
+  if (read16(c, rec + 104) === 0) return;
+  const view = read8(c, VIEW_FACING);
+  const x = reads16(c, rec), y = reads16(c, rec + 2), z = reads16(c, rec + 4);
+  const ox = reads16(c, rec + 96), oy = reads16(c, rec + 98);
+  const front = read8(c, rec + 16) === 1;
+  let hitX, hitY;
+  if (view === 0) { hitX = front ? x + ox : x - ox; hitY = y + oy; }
+  else if (view === 1) { hitX = front ? x - ox : x + ox; hitY = y + oy; }
+  else if (view === 2) { hitX = x + oy; hitY = front ? y - ox : y + ox; }
+  else { hitX = x + oy; hitY = front ? y + ox : y - ox; }
+  const hitZ = z + read16(c, rec + 100);
+  let reach = read8(c, rec + 107);
+  if (reach === 63) reach = 62;
+  else if (reach > 100) reach = 100;
+  let nearest = -1;
+  for (let j = 0; j < 4; j++) {
+    if (j === i) continue;
+    const other = record(j);
+    if (read8(c, other + 187) === 0) continue;
+    if ((read8(c, rec + 126) >> j) & 1) continue;
+    if (read8(c, SETUP + 20 + j) === 255) continue;
+    // teammates don't hit each other, when the fight has teams
+    if (read8(c, SETUP + 8) !== 0 && read8(c, SETUP + 9) !== 1
+      && read8(c, SETUP + 32 + j) === read8(c, SETUP + 32 + i)) continue;
+    const dx = s16(hitX) - reads16(c, other), dy = s16(hitY) - reads16(c, other + 2);
+    const radius = read16(c, rec + 104) + read8(c, other + 187);
+    const high = (read8(c, rec + 102) + read8(c, other + 186)) >> 1;
+    if (Math.abs(s16(hitZ) - reads16(c, other + 4)) >= high) continue;
+    if (dx * dx + dy * dy >= radius * radius) continue;
+    let attacks = read32(c, rec + ATTACKS);
+    if (attacks === 0) {
+      attacks = read8(c, rec + 106) << 8;
+      let pause;
+      if (read8(c, rec + 149) === 3) { attacks |= 63; pause = 10; }
+      else { attacks |= reach; pause = read8(c, rec + 113); }
+      write8(c, rec + 29, pause);
+      attacks |= pause << 17;
+    }
+    write16(c, SETUP + 90 + i * 2, read16(c, SETUP + 90 + i * 2) + reach);
+    attacks |= 0x2000 << j;
+    write8(c, rec + 126, read8(c, rec + 126) | (1 << j));
+    const distance = dx * dx + dy * dy;
+    if (nearest < 0 || nearest > distance) { write8(c, rec + 125, j); nearest = distance; }
+    if (read8(c, rec + 106) === 3) write8(c, rec + 112, 24);
+    if (read8(c, rec + 106) === 2) {
+      write8(c, rec + 110, 24);
+      addFlags(c, rec, 0x4000000);
+    }
+    // the direction the victim is thrown: the way the attack faces, or the way the aim points
+    let direction = -1;
+    if (read8(c, rec + 106) === 2 || (read8(c, rec + 106) >= 10 && read8(c, rec + 106) <= 15)) {
+      const mode = read8(c, rec + 36);
+      if (mode === 4) direction = 1;
+      else if (mode === 6) direction = 2;
+      else if (mode === 8) direction = 3;
+    }
+    if (direction < 0) {
+      const camera = DIRECTIONS + read8(c, rec + CAMERA) * 10;
+      const side = read8(c, rec + 16) === 0 ? 4 : 6;
+      const way = read8(c, camera + side);
+      if (way === 4) direction = 1;
+      else if (way === 6) direction = 2;
+      else if (way === 8) direction = 3;
+    }
+    if (direction > 0) attacks |= direction * (0x1000000 << (j * 2));
+    write32(c, rec + 120, attacks);
+    write32(c, rec + ATTACKS, attacks);
+    write16(c, rec + 176, 0);
+    const hits = SETUP + 66 + i * 2;
+    write16(c, hits, read16(c, hits) + 1);
+    if (read8(c, SETUP + 137 + i) === 1) {
+      const count = SETUP + 74 + i * 2;
+      write16(c, count, read16(c, count) + 1);
+      write8(c, SETUP + 137 + i, 2);
+    }
+  }
 }
 
 /**
- * 0x08005310: the moves a fighter's keys ask for, and its short timers. Partly: a press of the pad, which marks the way
- * it points and a second press close behind; not B or R.
+ * 0x08005310: the moves a fighter's keys ask for, and its short timers. B asks for the next of its combo, or with the pad
+ * close behind for a dash attack, and R for the special its slot picks; the pad's way is kept for a dash attack to face.
+ * A guard (L) heals while it holds: its state counts frames, and its two rates say how often health and power go up.
  */
 function readFighterKeys(c, i) {
-  const rec = record(i), asks = read8(c, rec + 138), state = read16(c, rec + STATE);
-  if (!(asks & 0xF8) && state !== 4) {
+  const rec = record(i), stateNow = read16(c, rec + STATE);
+  let asks = read8(c, rec + 138);
+  if (!(asks & 0xF8) && stateNow !== 4) {
     const keys = pressed(c, i), side = read8(c, rec + 16);
+    // a press of the pad against the way it's facing turns it, or starts a dash
     if (((keys & 0x20) && side === 1) || ((keys & 0x10) && side === 0)) write8(c, rec + 109, 4);
     const camera = DIRECTIONS + read8(c, rec + CAMERA) * 10;
     if (keys & 0x20) write8(c, rec + 108, read8(c, camera + 4));
     else if (keys & 0x10) write8(c, rec + 108, read8(c, camera + 6));
     else if (keys & 0x40) write8(c, rec + 108, read8(c, camera + 8));
     else if (keys & 0x80) write8(c, rec + 108, read8(c, camera + 2));
-    if (keys & 2) notPorted('08005310', 'B pressed');
-    else if (keys & 0x100) notPorted('08005310', 'R pressed');
+    if (keys & 2) {
+      // B: with a direction pressed close behind, the dash attack that way, or else the combo's next
+      if (pressedBefore(c, i, 4, 6, 0xF0)) {
+        if (pressedBefore(c, i, 4, 6, 0x10) && side === 0) asks |= 0x10;
+        else if (pressedBefore(c, i, 4, 6, 0x20) && side === 1) asks |= 0x10;
+        else asks |= 8;
+      } else if (asks & 4) asks |= 8;
+      else if (asks & 2) asks |= 4;
+      else if (asks & 1) asks |= 2;
+      else {
+        asks |= 1;
+        write8(c, rec + 108, 0);
+      }
+      write8(c, rec + 138, asks);
+    } else if (keys & 0x100) {
+      // R: the special the fighter's slot picks, one of three
+      const slot = read8(c, rec + 141) & 3;
+      if (slot === 1) write8(c, rec + 138, asks | 0x40);
+      else if (slot === 2) write8(c, rec + 138, asks | 0x20);
+      else if (slot === 3) write8(c, rec + 138, asks | 0x80);
+    }
   }
-  const character = read8(c, rec + CHARACTER_NOW);
+  const state = read16(c, rec + STATE), character = read8(c, rec + CHARACTER_NOW);
+  // an attack the pad aims: while the pad still points the way it was aimed, it goes on turning that way
   if (state === 13 || (state === 15 && (character === 2 || character === 5))
     || (state === 21 && (character === 2 || character === 4))) {
-    notPorted('08005310', `state ${state}`);
+    const camera = DIRECTIONS + read8(c, rec + CAMERA) * 10, way = read8(c, rec + 108);
+    const heldKeys = held(c, i);
+    const pointing = (at, key) => way === read8(c, camera + at) && (heldKeys & key) !== 0;
+    if (pointing(4, 0x20) || pointing(6, 0x10) || pointing(8, 0x40) || pointing(2, 0x80)) {
+      addFlags(c, rec, 0x40000000);
+    } else {
+      clearFlags(c, rec, 0x800000 | 0x4000000 | 0x2000000);
+    }
+  } else {
+    clearFlags(c, rec, 0x800000 | 0x4000000 | 0x2000000);
   }
-  clearFlags(c, rec, 0x800000 | 0x4000000 | 0x2000000);
-  if (state === 66) notPorted('08005310', 'state 66');
+  // state 66 keeps whether the pad points the way it last faced, for the guard's turn
+  if (state === 66) {
+    const camera = DIRECTIONS + read8(c, rec + CAMERA) * 10, facing = read8(c, rec + 37);
+    const heldKeys = held(c, i);
+    const pointing = (at, key) => facing === read8(c, camera + at) && (heldKeys & key) !== 0;
+    write8(c, rec + 185, pointing(4, 0x20) || pointing(6, 0x10) || pointing(8, 0x40) || pointing(2, 0x80) ? 1 : 0);
+  }
   for (const timer of [109, 110, 112]) {
     const left = read8(c, rec + timer);
     if (left !== 0) write8(c, rec + timer, left - 1);
   }
-  if (state === 55) notPorted('08005310', 'state 55');
-  if (read8(c, rec + 145) !== 0 || read8(c, rec + 146) !== 0) notPorted('08005310', 'a poison timer');
+  if (state === 55) {
+    // the guard heals: its frame count over each rate is the frame that rate takes
+    const clock = (read8(c, rec + 190) + 1) & 0xFF;
+    write8(c, rec + 190, clock);
+    if (clock % read8(c, rec + 188) === 0 && read8(c, rec + HEALTH) < read16(c, 0x03001B28)) {
+      write8(c, rec + HEALTH, read8(c, rec + HEALTH) + 1);
+    }
+    if (clock % read8(c, rec + 189) === 0 && read8(c, rec + 147) <= 71) {
+      write8(c, rec + 147, read8(c, rec + 147) + 1);
+    }
+  }
+  for (const timer of [145, 146]) {
+    const left = read8(c, rec + timer);
+    if (left === 0) continue;
+    if (left === 1) {
+      setState(c, i, timer === 145 ? 0x215 : 0x216);
+      write8(c, rec + timer, 0);
+      continue;
+    }
+    const rate = left > 149 ? 30 : left > 59 ? 15 : 0;
+    if (rate !== 0 && left % rate === 0 && i === read32(c, PLAYER)) c.sound?.play(timer === 145 ? 0x338 : 0x338);
+    write8(c, rec + timer, left - 1);
+  }
 }
 
 // what 0x0800486c leaves alone in the air, instead of letting a fighter fall
@@ -821,8 +1094,16 @@ const NO_DASH = new Set([
 /** 0x0800486c: a fighter's next state, by where it stands and its keys. Partly: with nothing pressed, and no hits. */
 function fighterAct(c, i) {
   const rec = record(i);
+  // a hit this fighter landed: its victim says so for one frame, and the fighter's own count keeps the combo
   for (let j = 0; j < 4; j++) {
-    if (j !== i && isActive(c, j) && (read8(c, record(j) + 127) & 15) === i) notPorted('0800486C', 'a hit landed');
+    if (j === i) continue;
+    const victim = record(j);
+    if ((read8(c, victim + 127) & 15) !== i || !isActive(c, j)) continue;
+    if (read8(c, SETUP + 20 + j) === 255) continue;
+    if (read8(c, SETUP + 8) !== 0 && read8(c, SETUP + 32 + j) === read8(c, SETUP + 32 + i)) continue;
+    write8(c, SETUP + 47 + j, Math.min(read8(c, SETUP + 47 + j) + 1, 3));
+    if (read8(c, victim + 127) & 0xF0) write8(c, SETUP + 11 + i, read8(c, SETUP + 11 + i) + 1);
+    write8(c, victim + 127, 15);
   }
   if (read8(c, rec + 157) !== 0 || read8(c, rec + 156) !== 0) notPorted('0800486C', 'a super attack');
   landOrFall(c, i);
@@ -841,8 +1122,11 @@ function fighterAct(c, i) {
     if (!STANDS.has(state)) return;
     if (keys & 1) {
       if (!(flags & 0x40000)) setState(c, i, 7);
-    } else if (keys & 0x200) notPorted('0800486C', 'a guard');
-    else if (read8(c, rec + 17) !== read8(c, rec + 18)) {
+    } else if (keys & 0x200) {
+      // L guards, unless the fighter is busy with something else and not yet able to leave it
+      if (!(flags & FLAG_LOCKED)) setState(c, i, 53);
+      else if (state !== 52 || reads16(c, rec + SCRIPT_FRAME) > 12) setState(c, i, 53);
+    } else if (read8(c, rec + 17) !== read8(c, rec + 18)) {
       if (state === 2 || state === 3 || state === 5) setState(c, i, 5);
       else if (state === 0 || state === 0x105 || state === 1) setState(c, i, 0x105);
     } else if (state === 0 && (held(c, i) & PAD)) {
@@ -852,20 +1136,79 @@ function fighterAct(c, i) {
       if (state === 2 || (state === 1 && reads16(c, rec + SCRIPT_AT) > 11)) setState(c, i, 3);
       else if (state === 1) setState(c, i, 0);
     }
-    flags = read32(c, rec + FLAGS);
-    if (flags & FLAG_CHAIN) notPorted('0800486C', 'an attack chained');
-    if (flags & FLAG_LOCKED) return;
-    if (read8(c, rec + 138) & 0xF9) notPorted('0800486C', 'an attack asked for');
+    attackAsked(c, i);
     return;
   }
   if (!(flags & FLAG_IN_AIR)) return;
   const state = read16(c, rec + STATE);
   if (state === 6 || state === 7 || state === 9) {
     if (flags & FLAG_LOCKED) return;
-    if (keys & 0x103) notPorted('0800486C', 'a key pressed in the air');
+    if (keys & 2) {
+      // B in the air: a fresh jump attack, unless the fighter is just touching down
+      const character = read8(c, rec + CHARACTER_NOW);
+      const copied = character === 9 && read8(c, 0x030013B0 + i * 156 + 10) === 4;
+      if (read8(c, rec + 184) === 2 || character === 4 || copied) {
+        write8(c, rec + 36, read8(c, rec + 37));
+        setState(c, i, 9);
+      } else setState(c, i, 18);
+      return;
+    }
+    if (keys & 0x100 && read8(c, rec + 184) !== 0) {
+      const slot = read8(c, rec + 141) & 12;
+      if (slot === 4) setState(c, i, 20);
+      else if (slot === 8) setState(c, i, 22);
+      else if (slot === 12) setState(c, i, 24);
+    }
     return;
   }
   if (!KEEPS_ITS_STATE_IN_THE_AIR.has(state)) setState(c, i, 6);
+}
+
+/** 0x0800486c's end: the attack the fighter's keys asked for, chaining its combo while one is still going. */
+function attackAsked(c, i) {
+  const rec = record(i), flags = read32(c, rec + FLAGS);
+  if (!(flags & FLAG_CHAIN)) {
+    if (flags & FLAG_LOCKED) return;
+    const asks = read8(c, rec + 138);
+    if (asks & 0x10) { turnForAttack(c, rec); setState(c, i, 14); return; }
+    if (asks & 0x8) { setState(c, i, 13); return; }
+    if (asks & 0x20) { setState(c, i, 21); return; }
+    if (asks & 0x40) { setState(c, i, 19); return; }
+    if (asks & 0x80) { setState(c, i, 23); return; }
+    if (asks & 1) { setState(c, i, 10); return; }
+    return;
+  }
+  // a chain: the combo goes on, and bits 1 and 2 are its next two hits
+  let asks = read8(c, rec + 138);
+  const state = read16(c, rec + STATE);
+  if (state === 10) asks &= 0xFE;
+  else if (state === 11) asks &= 0xFD;
+  else if (state === 12) asks &= 0xFB;
+  write8(c, rec + 138, asks);
+  if (asks & 2) { setState(c, i, 11); return; }
+  if (asks & 4) { setState(c, i, 12); return; }
+  if (asks & 0x10) { turnForAttack(c, rec); setState(c, i, 14); return; }
+  if (asks & 0x8) {
+    // a dash attack: the way it faces decides whether it goes on or back
+    const camera = DIRECTIONS + read8(c, rec + CAMERA) * 10, way = read8(c, rec + 108);
+    const front = read8(c, rec + 16) === 1;
+    const forward = (way === read8(c, camera + 4) && front) || (way === read8(c, camera + 6) && !front);
+    setState(c, i, forward ? 14 : 13);
+    return;
+  }
+  if (asks & 0x20) { setState(c, i, 21); return; }
+  if (asks & 0x40) { setState(c, i, 19); return; }
+  if (asks & 0x80) { setState(c, i, 23); return; }
+  if (asks & 1) { setState(c, i, 10); }
+}
+
+/** The turn an aimed attack takes before it starts: its facing mode becomes the way the pad points. */
+function turnForAttack(c, rec) {
+  const mode = read8(c, rec + 36);
+  if (mode === 4) write8(c, rec + 36, 6);
+  else if (mode === 6) write8(c, rec + 36, 4);
+  else if (mode === 8) write8(c, rec + 36, 2);
+  else if (mode === 2) write8(c, rec + 36, 8);
 }
 
 /** 0x0800444c: a fighter touching the ground or leaving it. Partly: not a bounce off a wall, nor falling out of a fight. */
@@ -925,7 +1268,11 @@ function landOrFall(c, i) {
 // --------------------------------------------------------------------------------------------- The things of a fight
 
 /** The script of each kind of thing, as the cartridge's per-kind cases of 0x0800c728 give it. */
-const THING_SCRIPTS = new Map([[31, 0x0806BB08]]);
+const THING_SCRIPTS = new Map([
+  [3, 0x0806B514], [4, 0x0806B54C], [5, 0x0806B594], [8, 0x0806B630], [10, 0x0806B6B4], [11, 0x0806B7B0],
+  [12, 0x0806B8CC], [13, 0x0806B940], [14, 0x0806B804], [15, 0x0806B9D4], [16, 0x0806BB08], [31, 0x0806BB08],
+  [32, 0x0806BBA0], [34, 0x0806BBF4],
+]);
 const THING_MARK = 0xFFF00000;
 // the fields a script's words set, by the word's first half
 const THING_FIELDS = new Map([
@@ -960,6 +1307,32 @@ function runThingScript(c, k, script) {
         else if (op === 0x1600) write8(c, thing + 52, w);
         else if (op === 0x3F00) write8(c, thing + 6, 1);
         else if (op === 0x3000) write8(c, 0x030016CC, w);
+        else if (op === 0x0001) {
+          // a speed the way the thing faces: the diagonals are shorter by 11/16
+          const speed = s16(w), diagonal = (Math.imul(speed, 11) << 12) >>> 16;
+          switch (read8(c, thing + 64)) {
+            case 1: write16(c, thing + 8, -diagonal); write16(c, thing + 10, diagonal); break;
+            case 2: write16(c, thing + 10, s16(w)); break;
+            case 3: write16(c, thing + 8, diagonal); write16(c, thing + 10, diagonal); break;
+            case 4: write16(c, thing + 8, -s16(w)); break;
+            case 6: write16(c, thing + 8, s16(w)); break;
+            case 7: write16(c, thing + 8, -diagonal); write16(c, thing + 10, -diagonal); break;
+            case 8: write16(c, thing + 10, -s16(w)); break;
+            case 9: write16(c, thing + 8, diagonal); write16(c, thing + 10, -diagonal); break;
+            default:
+          }
+        } else if (op === 0x0002) write16(c, thing + 12, w);
+        else if (op === 0x0012) write16(c, thing + 14, w);
+        else if (op === 0x2800) {
+          // a sound, panned by where the thing is across the screen
+          const place = Math.max(-127, Math.min(127, ((read16(c, thing + 18) - 88) << 17) >> 16));
+          queueEffect(c, s16(w), place);
+        } else if (op === 0x2300) {
+          // another effect of its own kind, at its place, with the same speeds and owner
+          fn0800c1c8(c, s16(w), read8(c, thing + 64), read16(c, thing + 58), read16(c, thing + 60),
+            read16(c, thing + 62), reads16(c, thing + 8), reads16(c, thing + 10), reads16(c, thing + 12),
+            read8(c, thing + 51), read8(c, thing + 53), read8(c, thing + 65));
+        }
         else if (op === 0xFFFE) {
           write16(c, thing + 22, 0xFFFF);
           write8(c, thing + 24, 255);
