@@ -307,7 +307,7 @@ export function findNameInputChars(rom) {
 export function locateTables(rom, known) {
   if (known) return { ...known.offsets, searched: false };
   const tilemaps = findTilemaps(rom), collision = findCollision(rom, tilemaps), interactables = findInteractables(rom);
-  const soundTest = findSoundTest(rom), optionsBackground = findOptionsBackground(rom), timeAttackMenu = findTimeAttackMenu(rom);
+  const soundTest = findSoundTest(rom), optionsBackground = findOptionsBackground(rom);
   const offsets = {
     spriteTables: findSpriteTables(rom),
     tilemaps, collision,
@@ -333,7 +333,6 @@ export function locateTables(rom, known) {
     specialIntro: findSpecialIntro(rom),
     specialClouds: findSpecialClouds(rom),
     optionsBackground,
-    timeAttackMenu,
     // the player data menu's picture follows the Options menu's
     playerDataBackground: optionsBackground === null ? null : optionsBackground + OPTIONS_BACKGROUND_SIZE,
     soundTestSongs: soundTest.songs,
@@ -349,6 +348,8 @@ export function locateTables(rom, known) {
   offsets.heartOffsets = findHeartOffsets(rom);
   // only the language screen needs it, which the European ROM replaces with one for its six languages
   offsets.languageBackground = findLanguageBackground(rom);
+  // only the Time Attack menu needs it
+  offsets.timeAttackMenu = findTimeAttackMenu(rom);
   if (missing.length) {
     throw new RomError(`This Sonic Advance ROM version is not supported yet (could not find: ${missing.join(', ')}).`);
   }

@@ -577,7 +577,7 @@ Frames are counted as mGBA draws them from power-on, the first being frame 0. Wi
 **Not built yet.** These are still to come, so the game goes on where they would start:
 
 - *VS and Tiny Chao Garden:* A on them does nothing. The original plays the select sound and fades out to them as it does for Game Start.
-- *Time Attack:* A opens [its menu](#the-time-attack-menu), fading out as it does for Game Start.
+- *Time Attack:* A opens [its menu](#the-time-attack-menu), fading out as it does for Game Start. On a copy of another version where its picture can't be found, A does nothing here, and the rest of the game still plays.
 - *The soft reset:* A, B, Start and Select held together restart the original from Sonic Team's logo on; here they do nothing.
 
 **Lag.** The original skips a frame's keys and tasks when the V-blank's copies run past the V-blank. These screens never do on the recordings, so that isn't modelled. The one frame they do lose is the main menu's first when it comes back from the Options menu, where `CreateMainMenu(1)` itself runs past the V-blank (see [The Options menu](#the-options-menu)); the engine leaves that frame out (`lag`).

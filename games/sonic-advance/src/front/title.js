@@ -240,7 +240,7 @@ function chooseItem(t) {
     displaySprite(e, ctx.sprites, item);
   });
   // VS's and Tiny Chao Garden's screens aren't built: A on them does nothing (the original fades out to them too)
-  if (e.pressed & KEY.A && (menu.selectedItem === GAME_START || menu.selectedItem === TIME_ATTACK || menu.selectedItem === OPTIONS)) {
+  if (e.pressed & KEY.A && (menu.selectedItem === GAME_START || (menu.selectedItem === TIME_ATTACK && ctx.offsets.timeAttackMenu) || menu.selectedItem === OPTIONS)) {
     e.playSong(SONG.SELECT);
     t.main = fadeOut;
     menu.unk1B0 = 0;
