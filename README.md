@@ -161,7 +161,7 @@ No. Nothing follows you around the web, and the labels behind the menu are free 
 </details>
 
 <details>
-<summary><b>Can I put my art behind the menu?</b></summary>
+<summary><b>Can I put my art or brand behind the menu?</b></summary>
 <br>
 
 Yes, for free. Labels are faint pictures of 240 by 60 pixels that drift behind the menu for 30 days, and a person checks each one first. The site's [Labels section](https://dreamports.net/about/#labels) says how to ask.
