@@ -24,9 +24,9 @@ interface Props {
 
 const { game, open = false } = Astro.props;
 const { title, kind, glow, ownCopy, extras, screen } = game.data;
-// a Dreamport's details come from its entry and its proof/ folder (src/lib/dreamports.ts)
-const dreamport = game.data.kind === 'dreamport' ? await dreamportView(game.data) : null;
-const facts = game.data.kind === 'dreamport' ? (dreamport?.game ?? []) : game.data.facts;
+// its details come from its entry and its proof/ folder (src/lib/dreamports.ts)
+const dreamport = await dreamportView(game.data);
+const facts = dreamport.game;
 const { confirm, links } = ownCopy;
 const id = game.id;
 const Title = open ? 'h1' : 'h2';
@@ -129,28 +129,24 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
           </section>
         )
       }
-      {game.data.kind === 'dreamport' && dreamport && <Achievements game={game.data.game} id={id} href={achievementsUrl(game)} list={dreamport.achievements} />}
+      <Achievements game={game.data.game} id={id} href={achievementsUrl(game)} list={dreamport.achievements} />
       {facts.length > 0 && <Facts facts={facts} id={`facts-${id}`} heading="The game" />}
-      {
-        dreamport && (
-          <Facts facts={dreamport.progress} id={`progress-${id}`} heading="Progress">
-            <Meter measure={dreamport.ported} />
-            <Parts measure={dreamport.gameplay} parts={dreamport.parts} evidence={dreamport.evidence} />
-            <details class="parts" slot="end">
-              <summary>Built with</summary>
-              <ul class="fact-items">
-                {dreamport.built.map((item) => (
-                  <li>
-                    <a href={item.href}>{item.value}</a>
-                    {item.note && <span class="fact-note">{item.note}</span>}
-                  </li>
-                ))}
-              </ul>
-              <p class="parts-links"><a href={dreamport.source}>Source code ↗</a></p>
-            </details>
-          </Facts>
-        )
-      }
+      <Facts facts={dreamport.progress} id={`progress-${id}`} heading="Progress">
+        <Meter measure={dreamport.ported} />
+        <Parts measure={dreamport.gameplay} parts={dreamport.parts} evidence={dreamport.evidence} />
+        <details class="parts" slot="end">
+          <summary>Built with</summary>
+          <ul class="fact-items">
+            {dreamport.built.map((item) => (
+              <li>
+                <a href={item.href}>{item.value}</a>
+                {item.note && <span class="fact-note">{item.note}</span>}
+              </li>
+            ))}
+          </ul>
+          <p class="parts-links"><a href={dreamport.source}>Source code ↗</a></p>
+        </details>
+      </Facts>
       <div class="prose" set:html={body} />
     </div>
   </div>

@@ -2,7 +2,7 @@
 
 ## The project
 
-Dreamports is the source code for dreamports.net, a home for enhanced fan ports of classic games. A Dreamport is "the port fans always dreamed of: the game you remember, with the extras you wished it had"; use that wording rather than "dream means fan". The site lists the owner's own Dreamports, external ports made by other people (links and credits only), and other fan games that aren't ports. Every Dreamport keeps the rules in `docs/STANDARD.md`, whoever makes it, and every game made here lives in `games/`, on its console's kit in `kit/`.
+Dreamports is the source code for dreamports.net, a home for enhanced fan ports of classic games. A Dreamport is "the port fans always dreamed of: the game you remember, with the extras you wished it had"; use that wording rather than "dream means fan". Every Dreamport keeps the rules in `docs/STANDARD.md`, whoever makes it, and every game made here lives in `games/`, on its console's kit in `kit/`.
 
 This file is read on every request, so it stays short. Why things are as they are is in `docs/HISTORY.md`, one line per decision: before changing how something behaves, search it for a word, and don't read all of it. `npm run dp -- help <words>` prints one section of the long documents, such as `tools/README.md`, which take thousands of tokens to read whole.
 
@@ -19,7 +19,7 @@ Never describe something as working or complete unless a recorded check establis
 | `games/` | The games made here, one folder each, with `entry.md`, served at `/play/<game>/` (`games/README.md`) |
 | `kit/` | What the games on one console share, one folder per console, served at `/kit/<console>/` |
 | `tools/` | The proof tools, run on the contributor's computer only (`tools/README.md`) |
-| `src/` | The Astro site: pages, launcher (`src/scripts/launcher.ts`), styles, what it reads from `proof/` (`src/lib/`), and content for other fan games |
+| `src/` | The Astro site: pages, launcher (`src/scripts/launcher.ts`), styles, and what it reads from `proof/` (`src/lib/`) |
 | `worker/` | The Worker: accounts, profiles and achievements |
 | `public/` | Files served as they are, with the games' recordings in `public/media/` |
 
