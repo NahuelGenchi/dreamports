@@ -170,21 +170,35 @@ function showPictureColours(c, entry) {
 
 // Unpacking a long picture on a move takes past the interrupt at line 1 (0x08018654), so SoundMain takes the console's
 // cycles first, and the colours land that much later: the lines drawn by then keep the old ones, which shows when the
-// frame's long enough to reach the picture, at line 49. LANDING_CONSTANT is what's the same in every such frame, as
-// measured against the original: the other cycles come from what the pictures hold and what the sound engine played.
-const LANDING_CONSTANT = -95336, LINE_CYCLES = 1232, WORK_BEFORE_LINE_ONE = 80000;
+// frame's long enough to reach the picture, at line 49. These are the cycles from the V-blank's start, as mGBA measures
+// them: to the tiles' unpacking, which going down takes longer to reach, from it to the colours' unpacking, to line 0's
+// being drawn, and when the sound chip's DMA takes its turn, the same in every frame.
+const BEFORE_TILES_UP = 2169, BEFORE_TILES_DOWN = 2189, TILES_TO_COLOURS = 250, LINE_ONE = 85000;
+const LINE_ZERO_DRAWN = 84777, LINE_CYCLES = 1232;
+const DMA_FIRST = 775, DMA_EVERY = 25536, DMA_CYCLES = 18;
 // A move can take past the next V-blank too, with the picture's unpacking, SoundMain and the new letters added up. Past
-// the first of these cycles the frame's sprites miss that V-blank, so they take the frame after and a frame of the list
-// is lost, as mGBA measures it, and past the second, with less left to do by then, its scroll misses it as well.
-const SPRITES_PASS_V_BLANK = 245000, SCROLL_PASSES_V_BLANK = 267500;
+// the first of these cycles a frame of the list is lost, as mGBA measures it, past the second the frame's sprites miss
+// that V-blank too, so they take the frame after, and past the third, with less left to do by then, its scroll does.
+const FRAME_PASSES_V_BLANK = 245000, SPRITES_PASS_V_BLANK = 246600, SCROLL_PASSES_V_BLANK = 267500;
 
-/** The entry's picture on a move, with its colours landing at once if the frame's work ends before line 1. */
-function showPicture(c, entry) {
+/** The cycles the sound chip's DMA has added by the time this much work is done. */
+function withDma(work) {
+  let at = work;
+  for (let last = -1; at !== last;) {
+    last = at;
+    at = work + DMA_CYCLES * (Math.floor((last - DMA_FIRST) / DMA_EVERY) + 1);
+  }
+  return at;
+}
+
+/** The entry's picture on a move, with its colours landing at once if the tiles are done before line 1. */
+function showPicture(c, entry, beforeTiles) {
   const table = at => c.rom.u32(at - CARTRIDGE + (isOpen(c, entry) ? entry : LOCKED) * 4);
   const sound = c.sound?.frameCycles();
-  const work = unpackCycles(c, table(PICTURES)) + unpackCycles(c, table(PICTURE_PALETTES));
-  const line = sound == null || work < WORK_BEFORE_LINE_ONE ? -1 : Math.floor((work + sound + LANDING_CONSTANT) / LINE_CYCLES);
-  c.moveCycles = work + (sound ?? 0);
+  const tiles = unpackCycles(c, table(PICTURES));
+  const toColours = beforeTiles + tiles + TILES_TO_COLOURS;
+  const line = sound == null || toColours < LINE_ONE ? -1 : Math.floor((withDma(toColours + sound) - LINE_ZERO_DRAWN) / LINE_CYCLES);
+  c.moveCycles = tiles + unpackCycles(c, table(PICTURE_PALETTES)) + (sound ?? 0);
   showPictureTiles(c, entry);
   if (line < 0) showPictureColours(c, entry);
   else c.lineWork = { line, run: () => { showPictureColours(c, entry); c.video.updateColors(); } };
@@ -194,6 +208,7 @@ function showPicture(c, entry) {
 function moveDone(c) {
   const cycles = c.moveCycles + c.textCycles;
   if (cycles >= SPRITES_PASS_V_BLANK) c.menu.spritesLate = true;
+  else if (cycles >= FRAME_PASSES_V_BLANK) c.menu.frameLost = true;
   if (cycles >= SCROLL_PASSES_V_BLANK) c.holdQueue = true;
 }
 
@@ -249,7 +264,7 @@ function moveUp(c, node) {
   c.textCycles = 0;
   if (node.selected !== 0) {
     node.selected--;
-    showPicture(c, node.selected);
+    showPicture(c, node.selected, BEFORE_TILES_UP);
     showCaption(c, node.selected);
     c.sound?.play(SOUND_MOVE);
   }
@@ -273,7 +288,7 @@ function moveDown(c, node) {
   if (node.selected + 1 > ENTRIES - 1) node.selected = ENTRIES - 1;
   else {
     node.selected++;
-    showPicture(c, node.selected);
+    showPicture(c, node.selected, BEFORE_TILES_DOWN);
     showCaption(c, node.selected);
     c.sound?.play(SOUND_MOVE);
   }

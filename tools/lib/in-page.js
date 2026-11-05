@@ -21,7 +21,7 @@
   const filter = __makeFilter(__console.sound);
   // how many samples a frame with no sound stands for
   const SILENCE = Math.floor(__console.sound * __console.frame[0] / __console.frame[1]);
-  let heard = false, pictureDiffered = false;
+  let heard = false, pictureDiffered = false, ownWidth = 0, ownHeight = 0;
 
   // Nobody sees this page, so nothing waits for a display. The game's loops ask for the next display frame as they do
   // anywhere, and instead of 60 times a second those callbacks run as soon as a frame is wanted, and only then.
@@ -75,6 +75,8 @@
       }
       hash = Math.imul(hash ^ colour, 0x01000193);
     }
+    // the same pixels in another shape are another picture, on a console whose games choose their size (libretro/host.c)
+    if (__console.id !== 'gba') hash = Math.imul(Math.imul(hash ^ width, 0x01000193) ^ height, 0x01000193);
     lastPlayed = frame;
     return hash >>> 0;
   }
@@ -177,9 +179,9 @@
     /** Plays frames from `from`, each with its buttons held, and resolves to each picture's hash and each frame's
      *  sound, as { energies, samples }: its energy in each band of pitches and how many samples it had. It keeps what
      *  the console holds at the first frame whose picture isn't the hash in `expected`, and at those `wantStates` names.
-     *  It stops after the first frame from `stopsFrom` on whose picture isn't. */
+     *  It stops after the first frame from `stopsFrom` on whose picture isn't. Each size the pictures changed to comes too, as [frame, width, height]. */
     async run(from, held, expected, stopsFrom = Infinity) {
-      const hashes = [], sound = [], neverInPlay = [];
+      const hashes = [], sound = [], neverInPlay = [], sizes = [];
       for (let i = 0; i < held.length; i++) {
         const frame = from + i;
         dreamportsProof.video = null;   // a game can draw some screens with a renderer of its own
@@ -188,6 +190,10 @@
         if (!image) throw new Error('The game handed over no picture.');
         if (__console.id === 'gba' && (image.width !== WIDTH || image.height !== HEIGHT)) {
           throw new Error(`The game's screen is ${image.width} x ${image.height}, not the console's ${WIDTH} x ${HEIGHT}: proof needs it as the console had it.`);
+        }
+        if (image.width !== ownWidth || image.height !== ownHeight) {
+          [ownWidth, ownHeight] = [image.width, image.height];
+          sizes.push([frame, ownWidth, ownHeight]);
         }
         const hash = reduce(image, frame), first = !pictureDiffered && hash !== expected[i];
         hashes.push(hash);
@@ -202,7 +208,7 @@
         if (first) kept.set(frame, fromRing(frame));
         if (frame >= stopsFrom && hash !== expected[i]) break;
       }
-      return { hashes, sound, neverInPlay };
+      return { hashes, sound, neverInPlay, sizes };
     },
 
     /** The frames whose state to keep as they're played, besides the first whose picture differs. */

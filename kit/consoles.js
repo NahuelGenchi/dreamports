@@ -1,5 +1,5 @@
 // The consoles Dreamports knows, as the kits' games and the proof tools both read them (docs/CONSOLES.md). Each has its
-// name, the screen a game shows (`screen`, width and height), how long a frame lasts (`frame`, that many ticks of a
+// name, the screen a game shows unless its original.json says another (`screen`, width and height), how long a frame lasts (`frame`, that many ticks of a
 // clock of that many a second), how many sound samples it mixes a second (`sound`, as the tools' reference for it does),
 // the files a copy of one of its games comes in (`files`), how large one can be in bytes (`largest`), and its buttons.
 

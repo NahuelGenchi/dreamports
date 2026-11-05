@@ -5,6 +5,7 @@
 
 import { readFileSync } from 'node:fs';
 import { CONSOLES } from '../../kit/consoles.js';
+import { sizesIn } from './screens.mjs';
 
 const kit = name => new URL(`../gba/new-game/${name}`, import.meta.url);
 const otherKit = name => new URL(`../libretro/new-game/${name}`, import.meta.url);
@@ -33,6 +34,7 @@ export function startingFiles(game, original) {
     'index.html': fill(readFileSync(kit('index.html.template'), 'utf8'), { NAME: html(name), TITLE: html(title) }),
     'src/main.js': original.console !== 'gba' ? fill(readFileSync(otherKit('main.js.template'), 'utf8'), {
       TITLE_JS: title, NAME_JS: js(name), CONSOLE_JS: js(original.console), SHA1_JS: js(original.sha1), FOLDER_JS: js(game), TITLE_QUOTED: js(title), HOME_JS: js(`https://dreamports.net/dreamports/${game}-dreamport/`),
+      SCREEN_JS: JSON.stringify(sizesIn(original.screen)?.[0] ?? CONSOLES[original.console].screen),
     }) : fill(readFileSync(kit('main.js.template'), 'utf8'), {
       TITLE_JS: title, NAME_JS: js(name), HEADER_JS: js(original.title), CODE_JS: /^[A-Z0-9]+$/.test(original.code) ? original.code : js(original.code), REGION_JS: js(region),
       SHA1_JS: js(original.sha1), FOLDER_JS: js(game), TITLE_QUOTED: js(title), HOME_JS: js(`https://dreamports.net/dreamports/${game}-dreamport/`),
