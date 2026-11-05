@@ -1,6 +1,6 @@
 # A thing's script sets its words only on the frame its marker names, and a thing ends with a word of 0xFFFF.
 
-About: 0x0800BB88, 0x0800C728
+About: 0x0800BB88
 
 Proof: #448
 
