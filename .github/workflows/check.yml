@@ -1,8 +1,10 @@
 name: Check
 
 # Every pull request gets the checks anyone can run: npm run check, the site's build, and npm run test:game, which tries
-# what every new game starts with in a real browser, with a made-up cartridge, so nothing from any game is needed. A
-# pull request's code runs here, with a token that can only read and no secrets.
+# what every new game starts with in a real browser, with a made-up cartridge, so nothing from any game is needed, and
+# npm run test:consoles and test:real-console, which do the same on a made-up console and on a real NES emulator, built
+# from its makers' source, with a small program of the project's own. A pull request's code runs here, with a token that
+# can only read and no secrets.
 on:
   pull_request:
 
@@ -27,3 +29,5 @@ jobs:
       - run: npm run check
       - run: npm run build
       - run: npm run test:game
+      - run: npm run test:consoles
+      - run: npm run test:real-console

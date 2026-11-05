@@ -4,7 +4,7 @@ title: Sonic Battle Dreamport
 platform: Game Boy Advance
 year: 2003
 added: 2026-10-31
-summary: Sonic Battle, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install.
+summary: Plays in your browser. No emulator, nothing to install.
 needs: A Sonic Battle (USA) ROM (.gba)
 controls: [keyboard, controller, touch]
 issue: 123
@@ -15,6 +15,14 @@ sources:
     href: https://github.com/cypressru/SonicBattleDecomp
     license: none
     use: guide
+  - name: mGBA’s timing of instructions and of the BIOS, by Jeffrey Pfau
+    href: https://github.com/mgba-emu/mgba/tree/0.10.5/src
+    license: MPL-2.0
+    use: guide
+  - name: mGBA’s arctangent, by Jeffrey Pfau
+    href: https://github.com/mgba-emu/mgba/blob/0.10.5/src/gba/bios.c
+    license: MPL-2.0
+    use: code
 ownCopy:
   confirm: I own Sonic Battle
   links:

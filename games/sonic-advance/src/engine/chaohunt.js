@@ -18,6 +18,7 @@ import { createMultiplayerPlayer, animationIds, FLAG } from './mpplayer.js';
 import { createChao } from './chao.js';
 import { hudTask, indicatorTask, confusionTask, darknessTask, finishTask } from './mphud.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const ROUND_TIME = 3 * 3600;    // TIME(3, 0)
 const KIND_STAGE = 0x1000;              // a packet's kind in a stage
@@ -89,7 +90,7 @@ export function createChaoHunt({ link, id, count, stage, anims, seed, chaoPlace,
           player.itemEffect |= CONFUSED;
           player.confusion = CONFUSION_TIME;
           // the bubble goes to the player numbered as this GBA's character, not to this player
-          mp.confusionBubble(0);
+          mp.confusionBubble(fixes.on ? id : 0);
         } else if (ev[1] === 1) {
           let rings = 0;
           for (let i = 0; i < 4 && mp.players[i]; i++) rings += mp.charRings[i];

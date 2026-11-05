@@ -20,8 +20,8 @@ interface Props {
 
 const { game, index, make = false, start = false, free } = Astro.props;
 const detail = game && !make ? [game.data.platform, game.data.year].filter(Boolean).join(' · ') : '';
-const numbers = make && game?.data.kind === 'dreamport' ? numbersOf(game.data) : undefined;
-const href = game && (make && game.data.kind === 'dreamport' ? makeUrl(game.data.game) : gameUrl(game));
+const numbers = make && game ? numbersOf(game.data) : undefined;
+const href = game && (make ? makeUrl(game.data.game) : gameUrl(game));
 const START = {
   title: 'Start a Dreamport',
   help: 'Pick a game you own, then paste one sentence into a coding agent. It sets everything up and makes the first piece for you.',

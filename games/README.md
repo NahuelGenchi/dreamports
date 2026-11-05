@@ -16,7 +16,7 @@ Nothing from the original game ever goes here: no ROM, no game files, and no mus
 
 ## The entry
 
-Every Dreamport has one entry, `entry.md` in its folder, which says everything about it: the game and the exact copy it needs, who makes it, what it's built with, and where to follow it. The site makes the game's page from it, at `dreamports.net/dreamports/<game>-dreamport/`, where `<game>` is the folder's name, and its page in the Make row, at `dreamports.net/make/<game>/`, for the people making it, until every part of it is proven. Its page, its place in the Make row and the README's table of Dreamports show its two numbers, code ported and gameplay proven, and the table shows its lead too. [Sonic Advance Dreamport's entry](sonic-advance/entry.md) is an example.
+Every Dreamport has one entry, `entry.md` in its folder, which says everything about it: the game and the exact copy it needs, who makes it, what it's built with, and where to follow it. The site makes the game's page from it, at `dreamports.net/dreamports/<game>-dreamport/`, where `<game>` is the folder's name, and its page in the Make row, at `dreamports.net/make/<game>/`, for the people making it, until every part of it is proven. Its page, its place in the Make row and `docs/STATUS.md` show its two numbers, code ported and gameplay proven, and the table shows its lead too. [Sonic Advance Dreamport's entry](sonic-advance/entry.md) is an example.
 
 A game's [capture](../docs/STANDARD.md#a-games-capture) gives it a place in the Make row, and only there at first, as what `npm run dp -- new` writes has no code of the original's yet. With no `screen`, or once it's taken down, it has none, and its files still build. Its place in the Dreamports row and its own page, for players, come with its first reviewed step that names code of the original, when its code ported rises above 0.
 
@@ -28,11 +28,11 @@ A game's [capture](../docs/STANDARD.md#a-games-capture) gives it a place in the 
 | `platform` | The console, such as `Game Boy Advance`, shown under the name in the menu |
 | `year` | Optional: the year the original came out |
 | `added` | The day the Dreamport was added, written as `2026-10-27` |
-| `summary` | One sentence about it, shown in the README's table and when its page is shared |
+| `summary` | A few words on what it is, up to 80 characters and without the game's name, shown under that name when its page is shared |
 | `needs` | The exact copy players need, such as `A Sonic Advance (USA) ROM (.gba)`. It names the same copy as `proof/original.json` |
 | `controls` | The ways to play: any of `keyboard`, `controller` and `touch` |
 | `issue` | The number of its game's issue, the [New Dreamport](../docs/TEAMS.md#start-a-dreamport) issue that claimed it, such as `123` for Sonic Battle Dreamport's. Every piece of the game is a sub-issue of it, and it's where people talk about the game |
-| `lead` | The GitHub account of whoever leads the work on it, such as `NahuelGenchi`, shown in the README's table. A new game's lead is whoever claimed it with a [New Dreamport](../docs/TEAMS.md#start-a-dreamport) issue |
+| `lead` | The GitHub account of whoever leads the work on it, such as `NahuelGenchi`, shown in `docs/STATUS.md`. A new game's lead is whoever claimed it with a [New Dreamport](../docs/TEAMS.md#start-a-dreamport) issue |
 | `team` | Optional: the GitHub accounts of everyone else working on it |
 | `kit` | Its console's kit, a folder in [`kit/`](../kit/), such as `gba` |
 | `sources` | Every source of its code, each with a `name`, an `href`, its `license` (such as `MIT`, or `none`) and its `use`: `code` when code came in from it, or `guide` when it was only read. Code brought in without a license that allows it also needs `agreement`, a link to its authors' agreement, as [the standard](../docs/STANDARD.md#fair-to-everyone-who-helped) asks |
@@ -48,9 +48,9 @@ The rest of the game's page comes from its folder, not from the entry:
 - **The achievements** come from the game's list, if it keeps them on players' profiles ([Profiles and achievements](../docs/ACCOUNTS.md#for-a-game-dreamportsjs)): how many the visitor has earned, and a row of trophies that opens the game's Achievements page, with every one. Until it keeps some, the page says none yet.
 - **The source code** is the folder itself, on GitHub.
 
-The game's tasks are the sub-issues of its game's issue, each also with the game's label, which is its folder's name. One person works on a task at a time, and a comment saying `/claim` takes a free one, as [Claims and teams](../docs/TEAMS.md) explains. `npm run dp -- find <game>` lists who has which, and what's still free.
+The game's tasks are the sub-issues of its game's issue, each also with the game's label, which is its folder's name. One person works on a task at a time, and a comment saying `/claim` takes a free one, as [Claims and teams](../docs/TEAMS.md) explains. `npm run dp -- find <game>` lists who has which, what's free to start, and what the others wait on.
 
-The README's table of Dreamports comes from the entries too, with each Dreamport's **progress map**, which its numbers link: a picture of both, with a rectangle for each function in `proof/code-map.json`, green when it counts toward code ported, and a block for each part, green once it's proven ([How progress is measured](../docs/STANDARD.md#how-progress-is-measured)). The map is kept in `.github/readme/progress/<game>.svg` and shown only on GitHub, never on the site. `npm run dp -- prove` and `npm run dp -- portmap` write the table and the maps whenever they change a game's numbers, and `npm run dp -- readme` writes them after an entry or a list of parts changes. `npm run check` says when one of them or a port map is out of date.
+The table of Dreamports in `docs/STATUS.md` comes from the entries too, with each Dreamport's **progress map**, which its numbers link: a picture of both, with a rectangle for each function in `proof/code-map.json`, green when it counts toward code ported, and a block for each part, green once it's proven ([How progress is measured](../docs/STANDARD.md#how-progress-is-measured)). The map is kept in `.github/readme/progress/<game>.svg` and shown only on GitHub, never on the site. Pull requests leave the table and the maps alone, so they can't conflict over them: the Readme workflow writes them on `main` from what's merged, every three hours, with `npm run dp -- readme`, which also shows them on your computer. A new game's first entry is the exception, and brings its own row and map. `npm run check` says when a port map is out of date.
 
 ## The kits games start from
 
@@ -66,4 +66,4 @@ The build stops and says what's wrong if a game's or a kit's folder breaks one o
 
 ## Removing a game
 
-A game comes off the site in one commit: delete its folder, entry included, any recordings of it in `public/media/`, and write the README's table again with `npm run dp -- readme`, which also removes the game's progress map. It's how a rights holder's notice is answered, as [Notices from rights holders](../docs/RIGHTS.md) says.
+A game comes off the site in one commit: delete its folder, entry included, any recordings of it in `public/media/`, any picture of it in `.github/readme/`, and write the table in `docs/STATUS.md` again with `npm run dp -- readme`, which also removes the game's progress map. It's how a rights holder's notice is answered, as [Notices from rights holders](../docs/RIGHTS.md) says.

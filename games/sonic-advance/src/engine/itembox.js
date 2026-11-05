@@ -34,7 +34,7 @@ export function createItemBox(e, slot, anims, character = 0) {
   let dy = 0, vy = 0, hopping = false, phase = 'whole', n = 0;
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam;
+      const p = ctx.player, partner = ctx.players[1], cam = ctx.cam;
       if (phase === 'rising') {
         dy--;
         if (++n >= RISE) { ctx.world.prize(e.kind); phase = 'held'; n = 0; }
@@ -55,13 +55,15 @@ export function createItemBox(e, slot, anims, character = 0) {
       // standing on it, or without his attack box, it is only solid: he can stand on it or bump it from
       // below, but not break it (the original checks slot 1 here, where the decompiled C reads slot 0)
       // the optional Rush boost's box breaks it, shaking the screen
+      // the CPU partner only ever stands on it or bumps it, and does so first (his bump doesn't count)
+      if (partner) platform(box, box.boxes[0], partner, ctx.world.terrain);
       const boosted = !!p.boostBox && !p.dead && overlap(box.x, box.y, box.boxes[0], Math.floor(p.x), Math.floor(p.y), p.boostBox);
       const solid = !boosted && (p.onObject === box || !p.boxes[1]);
       const res = boosted ? 0 : solid ? platform(box, box.boxes[0], p, ctx.world.terrain) : boxTest(box, box.boxes[0], p, ctx.world.terrain);
       if (boosted) ctx.world.shake();
       if (res & FROM_BELOW) { vy = HOP_SPEED; hopping = true; }
       else if (!solid && (boosted || res & (LANDED | PUSHING))) {
-        if (p.onObject === box) { p.onObject = null; p.air = true; }
+        for (const q of ctx.players) if (q.onObject === box) { q.onObject = null; q.pushing = false; q.air = true; }
         ctx.world.playSound(SONG.ITEM_BOX_BREAK);
         ctx.add(dustCloud(e.x, e.y + dy));
         phase = 'rising'; n = 0; slot.gone = true;

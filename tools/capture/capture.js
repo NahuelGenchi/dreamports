@@ -3,10 +3,15 @@
 // chooses among the best moments of what they played. The tool then asks it to encode the one they chose.
 
 import { connectedPads, createInput, holdsSettingsCombo } from '../../kit/gba/input.js';
+import { layoutOf } from '../../kit/consoles.js';
 
-const WIDTH = 240, HEIGHT = 160, PICTURE = WIDTH * HEIGHT * 2, SCALE = 2;
-const FRAME_MS = 1000 * 280896 / 16777216;   // a Game Boy Advance frame
-const SOUND_RATE = 65536;
+// the game's console
+const machine = await (await fetch('/capture/console')).json();
+const [WIDTH, HEIGHT] = machine.screen, PICTURE = WIDTH * HEIGHT * 2;
+// how many times its size a moment is kept
+const scaleOf = moment => (moment.width > 320 ? 1 : 2);
+const FRAME_MS = 1000 * machine.frame[0] / machine.frame[1];
+const SOUND_RATE = machine.sound;
 
 const $ = id => document.getElementById(id);
 const LAYOUT = {
@@ -15,8 +20,21 @@ const LAYOUT = {
   keys: { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', KeyZ: 'a', KeyX: 'b', KeyA: 'l', KeyS: 'r', Enter: 'start', Backspace: 'select' },
   pad: { a: [0], b: [1], l: [4], r: [5], select: [8], start: [9], up: [12], down: [13], left: [14], right: [15] },
 };
-const input = createInput(LAYOUT);
+const layout = machine.id === 'gba' ? LAYOUT : layoutOf(machine.id);
+const input = createInput(layout);
 input.enabled = true;
+// the buttons held, as the bits the tool plays the original with
+const heldBits = () => (machine.id === 'gba' ? input.gbaKeys() : layout.buttons.reduce((bits, button) => (input[button] ? bits | (machine.keys[layout.console[button]] ?? 0) : bits), 0));
+const YES = machine.keys.A ?? machine.keys.CROSS, NO = machine.keys.B ?? machine.keys.CIRCLE;
+if (machine.id !== 'gba') {
+  const named = key => key.replace(/^Key|^Arrow/, '');
+  document.querySelector('.keys').replaceChildren(...Object.entries(layout.keys).map(([key, button]) => {
+    const line = document.createElement('span'), cap = document.createElement('kbd');
+    cap.textContent = named(key);
+    line.append(cap, ` ${layout.console[button]}`);
+    return line;
+  }));
+}
 
 // each 15-bit colour as the browser draws it
 const RGBA = new Uint32Array(32768);
@@ -24,6 +42,8 @@ for (let c = 0; c < 32768; c++) {
   const r = c & 31, g = c >> 5 & 31, b = c >> 10 & 31;
   RGBA[c] = (0xFF << 24 | (b << 3 | b >> 2) << 16 | (g << 3 | g >> 2) << 8 | r << 3 | r >> 2) >>> 0;
 }
+$('screen').width = WIDTH;
+$('screen').height = HEIGHT;
 const image = new ImageData(WIDTH, HEIGHT);
 const pixels = new Uint32Array(image.data.buffer);
 function draw(context, picture, at = 0) {
@@ -47,11 +67,13 @@ function fit() {
     $('screen').style.height = `${HEIGHT * scale}px`;
   } else if (phase === 'choose' && moments.length) {
     const columns = Math.min(3, moments.length), rows = Math.ceil(moments.length / columns);
-    const width = Math.floor(Math.min((innerWidth - 40 - (columns - 1) * 14) / columns, ((innerHeight - 170 - (rows - 1) * 14) / rows) * WIDTH / HEIGHT));
+    // each is its own size, so the tallest for its width decides
+    const tallest = Math.max(...moments.map(({ canvas }) => canvas.height / canvas.width));
+    const width = Math.floor(Math.min((innerWidth - 40 - (columns - 1) * 14) / columns, ((innerHeight - 170 - (rows - 1) * 14) / rows) / tallest));
     $('moments').style.gridTemplateColumns = `repeat(${columns}, ${width}px)`;
     for (const { canvas } of moments) {
       canvas.style.width = `${width}px`;
-      canvas.style.height = `${Math.round(width * HEIGHT / WIDTH)}px`;
+      canvas.style.height = `${Math.round(width * canvas.height / canvas.width)}px`;
     }
   }
 }
@@ -95,7 +117,7 @@ async function playFrames() {
         finish();
         break;
       }
-      const response = await fetch(`/capture/frame?buttons=${input.gbaKeys()}`);
+      const response = await fetch(`/capture/frame?buttons=${heldBits()}`);
       if (!response.ok) throw new Error(await response.text());
       const bytes = await response.arrayBuffer();
       draw(screen, new Uint16Array(bytes, 0, PICTURE / 2));
@@ -121,29 +143,31 @@ $('finish').addEventListener('click', finish);
 
 let moments = [], at = 0, shownAt = 0, last = 0;
 
-async function showMoments(lengths) {
+// each moment's frames and size. Its pictures have room for the game's largest, and its canvas shows only its own
+async function showMoments(found) {
   $('moments').replaceChildren();
   moments = [];
-  if (!lengths.length) {
+  if (!found.length) {
     $('said').textContent = 'Nothing to choose from yet. Play longer, moving around, then finish again.';
     next = performance.now();
     show('play');
     return;
   }
   show('wait', 'Getting them ready…');
-  for (let i = 0; i < lengths.length; i++) {
+  for (let i = 0; i < found.length; i++) {
+    const { frames: length, size: [width, height] } = found[i];
     const button = document.createElement('button'), canvas = document.createElement('canvas');
     button.className = 'moment';
     button.type = 'button';
-    button.setAttribute('aria-label', `Moment ${i + 1}, ${(lengths[i] * FRAME_MS / 1000).toFixed(1)} seconds`);
-    canvas.width = WIDTH;
-    canvas.height = HEIGHT;
+    button.setAttribute('aria-label', `Moment ${i + 1}, ${(length * FRAME_MS / 1000).toFixed(1)} seconds`);
+    canvas.width = width;
+    canvas.height = height;
     button.append(canvas);
     button.addEventListener('click', () => pick(i));
     button.addEventListener('pointerenter', () => select(i));
     $('moments').append(button);
     const bytes = await (await fetch(`/capture/moment/${i}`)).arrayBuffer();
-    moments.push({ button, canvas, context: canvas.getContext('2d'), length: lengths[i], pictures: new Uint16Array(bytes) });
+    moments.push({ button, canvas, context: canvas.getContext('2d'), length, width, height, pictures: new Uint16Array(bytes) });
   }
   shownAt = performance.now();
   select(0);
@@ -174,15 +198,15 @@ function chooseFrames() {
   const frame = Math.floor((performance.now() - shownAt) / FRAME_MS);
   for (const { context, length, pictures } of moments) draw(context, pictures, frame % length * WIDTH * HEIGHT);
   input.poll();
-  const now = input.gbaKeys(), pressed = now & ~last;
+  const now = heldBits(), pressed = now & ~last;
   last = now;
   const columns = Math.min(3, moments.length), to = i => Math.max(0, Math.min(moments.length - 1, i));
-  if (pressed & 0x10) select(to(at + 1));
-  if (pressed & 0x20) select(to(at - 1));
-  if (pressed & 0x40) select(to(at - columns));
-  if (pressed & 0x80) select(to(at + columns));
-  if (pressed & (0x1 | 0x8)) pick(at);
-  if (pressed & 0x2) keepPlaying();
+  if (pressed & machine.keys.RIGHT) select(to(at + 1));
+  if (pressed & machine.keys.LEFT) select(to(at - 1));
+  if (pressed & machine.keys.UP) select(to(at - columns));
+  if (pressed & machine.keys.DOWN) select(to(at + columns));
+  if (pressed & (YES | machine.keys.START)) pick(at);
+  if (pressed & NO) keepPlaying();
 }
 
 addEventListener('keydown', e => {
@@ -191,7 +215,34 @@ addEventListener('keydown', e => {
   else keepPlaying();
 });
 
+// the window can stay open as long as a game takes to make, so with nobody playing it rests, drawing and playing nothing
+// and using next to nothing, until a button is pressed
+const RESTS_AFTER_MS = 30_000, LOOKS_EVERY_MS = 100;
+let touched = performance.now(), phaseBefore = phase, resting = false;
+const touch = () => { touched = performance.now(); };
+for (const type of ['keydown', 'pointerdown', 'pointermove', 'wheel']) addEventListener(type, touch, { passive: true, capture: true });
+
+function rest(on) {
+  if (on === resting) return;
+  resting = on;
+  document.body.classList.toggle('resting', on);
+  if (on) sound.suspend();
+  else {
+    sound.resume();
+    soundAt = 0;
+  }
+}
+
 (function tick() {
+  if (resting) input.poll();
+  // a button held down is someone playing, and a new screen hasn't been looked at yet
+  if (heldBits() || phase !== phaseBefore) touch();
+  phaseBefore = phase;
+  rest(phase !== 'wait' && performance.now() - touched > RESTS_AFTER_MS);
+  if (resting) {
+    setTimeout(tick, LOOKS_EVERY_MS);
+    return;
+  }
   requestAnimationFrame(tick);
   if (phase === 'play') playFrames();
   else if (phase === 'choose') chooseFrames();
@@ -211,7 +262,7 @@ function paint(canvas, moment, frame, x, y, scale) {
   draw(smallContext, moment.pictures, frame * WIDTH * HEIGHT);
   const context = canvas.getContext('2d');
   context.imageSmoothingEnabled = false;
-  context.drawImage(small, x, y, WIDTH * scale, HEIGHT * scale);
+  context.drawImage(small, 0, 0, moment.width, moment.height, x, y, moment.width * scale, moment.height * scale);
 }
 const blobBase64 = async blob => toBase64(new Uint8Array(await blob.arrayBuffer()));
 
@@ -223,8 +274,8 @@ const CODECS = {
 window.__capture = {
   /** The moment encoded: { width, height, description, frames: [{ key, data }] }, in base64. */
   async encode(i, codec, bitrate) {
-    const moment = moments[i];
-    const canvas = new OffscreenCanvas(WIDTH * SCALE, HEIGHT * SCALE);
+    const moment = moments[i], scale = scaleOf(moment);
+    const canvas = new OffscreenCanvas(moment.width * scale, moment.height * scale);
     const chunks = [];
     let description = null, failure = null;
     const encoder = new VideoEncoder({
@@ -241,7 +292,7 @@ window.__capture = {
     if (!(await VideoEncoder.isConfigSupported(config)).supported) throw new Error(`This browser can't encode ${codec === 'av1' ? 'AV1' : 'H.264'} video, which the site needs: Chrome can.`);
     encoder.configure(config);
     for (let f = 0; f < moment.length && !failure; f++) {
-      paint(canvas, moment, f, 0, 0, SCALE);
+      paint(canvas, moment, f, 0, 0, scale);
       const frame = new VideoFrame(canvas, { timestamp: Math.round(f * FRAME_MS * 1000), duration: Math.round(FRAME_MS * 1000) });
       encoder.encode(frame, { keyFrame: f % 120 === 0 });
       frame.close();
@@ -255,8 +306,9 @@ window.__capture = {
 
   /** The moment's first frame as a WebP picture, in base64. */
   async still(i) {
-    const canvas = new OffscreenCanvas(WIDTH * SCALE, HEIGHT * SCALE);
-    paint(canvas, moments[i], 0, 0, 0, SCALE);
+    const moment = moments[i], scale = scaleOf(moment);
+    const canvas = new OffscreenCanvas(moment.width * scale, moment.height * scale);
+    paint(canvas, moment, 0, 0, 0, scale);
     return blobBase64(await canvas.convertToBlob({ type: 'image/webp', quality: 1 }));
   },
 
@@ -266,7 +318,7 @@ window.__capture = {
     const context = canvas.getContext('2d');
     context.fillStyle = '#050a24';
     context.fillRect(0, 0, canvas.width, canvas.height);
-    paint(canvas, moments[i], 0, (canvas.width - WIDTH * 3) / 2, (canvas.height - HEIGHT * 3) / 2, 3);
+    paint(canvas, moments[i], 0, (canvas.width - moments[i].width * 3) / 2, (canvas.height - moments[i].height * 3) / 2, 3);
     return blobBase64(await canvas.convertToBlob({ type: 'image/png' }));
   },
 
@@ -279,6 +331,7 @@ document.title = `Capture ${about.name}`;
 if (about.choosing) {
   $('more').hidden = true;
   await showMoments(await (await fetch('/capture/moments')).json());
+  window.__capture.loaded = true;
 } else {
   show('play');
 }

@@ -49,6 +49,7 @@ export const CONTROLS = [
     { keys: ['B'], pad: null, what: "Boost Mode: Sonic Advance 2's Boost Mode and its afterimages (with your Sonic Advance 2 ROM). Keep running at top speed to enter it" },
     { keys: ['T'], pad: null, what: "SA2 tricks: Sonic Advance 2's mid-air tricks (with your Sonic Advance 2 ROM)" },
     { keys: ['E', 'I'], pad: ['RB'], what: 'With the SA2 tricks on, once in the air: trick · with ↑ Hop Jump, ↓ Bound, forward Humming Top, alone or back Back Star' },
+    { keys: ['N'], pad: null, what: "Bug fixes: the original game's bugs fixed" },
     { keys: ['C'], pad: null, what: 'Show the collision' },
     { keys: ['M'], pad: null, what: 'Sound on or off' },
   ] },

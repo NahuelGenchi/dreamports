@@ -4,8 +4,11 @@
 // person typed but what's in original.json.
 
 import { readFileSync } from 'node:fs';
+import { CONSOLES } from '../../kit/consoles.js';
+import { sizesIn } from './screens.mjs';
 
 const kit = name => new URL(`../gba/new-game/${name}`, import.meta.url);
+const otherKit = name => new URL(`../libretro/new-game/${name}`, import.meta.url);
 const js = text => `'${text.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
 const html = text => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
@@ -15,6 +18,12 @@ export function namesOf(original) {
   return { name: found ? found[1] : original.name, region: found ? found[2] : 'Unknown' };
 }
 
+/** The commit message of a new game's first files, with nothing of anyone's but the game's name (`.github/first-entry/rules.mjs`). */
+export const firstFilesMessage = (name, issue) => `feat: ${name} Dreamport's first files (#${issue})`;
+
+/** The commit message of a game's capture, which goes on those first files. */
+export const captureMessage = (name, issue) => `feat: ${name} Dreamport's capture (#${issue})`;
+
 /** The files of a new game, by their paths in its folder. */
 export function startingFiles(game, original) {
   const { name, region } = namesOf(original);
@@ -23,7 +32,10 @@ export function startingFiles(game, original) {
   return {
     'LICENSE': readFileSync(new URL('../../kit/gba/LICENSE', import.meta.url), 'utf8'),
     'index.html': fill(readFileSync(kit('index.html.template'), 'utf8'), { NAME: html(name), TITLE: html(title) }),
-    'src/main.js': fill(readFileSync(kit('main.js.template'), 'utf8'), {
+    'src/main.js': original.console !== 'gba' ? fill(readFileSync(otherKit('main.js.template'), 'utf8'), {
+      TITLE_JS: title, NAME_JS: js(name), CONSOLE_JS: js(original.console), SHA1_JS: js(original.sha1), FOLDER_JS: js(game), TITLE_QUOTED: js(title), HOME_JS: js(`https://dreamports.net/dreamports/${game}-dreamport/`),
+      SCREEN_JS: JSON.stringify(sizesIn(original.screen)?.[0] ?? CONSOLES[original.console].screen),
+    }) : fill(readFileSync(kit('main.js.template'), 'utf8'), {
       TITLE_JS: title, NAME_JS: js(name), HEADER_JS: js(original.title), CODE_JS: /^[A-Z0-9]+$/.test(original.code) ? original.code : js(original.code), REGION_JS: js(region),
       SHA1_JS: js(original.sha1), FOLDER_JS: js(game), TITLE_QUOTED: js(title), HOME_JS: js(`https://dreamports.net/dreamports/${game}-dreamport/`),
     }),
@@ -67,10 +79,10 @@ export function startingEntry(game, original, { issue, lead, added }) {
   return `---
 # ${name} Dreamport's entry. games/README.md explains every field, and its two numbers come from proof/.
 title: ${yaml(`${name} Dreamport`)}
-platform: Game Boy Advance
+platform: ${CONSOLES[original.console].name}
 added: ${added}
-summary: ${yaml(`${name}, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install.`)}
-needs: ${yaml(`A ${original.name} ROM (.gba)`)}
+summary: ${yaml('Plays in your browser. No emulator, nothing to install.')}
+needs: ${yaml(`A ${original.name} ${original.console === 'gba' ? 'ROM (.gba)' : `copy (${CONSOLES[original.console].files.join(', ')})`}`)}
 controls: [keyboard, controller, touch]
 issue: ${issue}
 lead: ${lead}

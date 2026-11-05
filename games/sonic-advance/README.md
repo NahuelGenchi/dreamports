@@ -138,11 +138,15 @@ Act 1 also has its loops, springs, spikes, grind rails, speed boosters, checkpoi
 
 ### Playing as Tails
 
-Until the character select is in, add `?character=1` to the game's address to play as Tails, for example [dreamports.net/play/sonic-advance/?character=1](https://dreamports.net/play/sonic-advance/?character=1). Press jump again in a jump and he flies for eight seconds, each press lifting him, and swims the same way under water. The attack button swipes his tails on the ground. His moves, sprites, sounds, title cards, results and face on the HUD and the 1-up boxes are the original's, checked frame by frame against the original in an act of every zone, under water, against a boss and in the special stages ([docs/ROM.md](docs/ROM.md#tails)). Grind rails are Sonic's and do nothing for Tails, as on the cartridge, and so are the [extras](#extras-you-can-switch-on), which do nothing for him even when switched on. After X Zone Tails gets the normal ending: the Moon Zone is Sonic's.
+Choose Tails on the character select. Adding `?character=1` to the game's address starts the row on him, for example [dreamports.net/play/sonic-advance/?character=1](https://dreamports.net/play/sonic-advance/?character=1). Press jump again in a jump and he flies for eight seconds, each press lifting him, and swims the same way under water. The attack button swipes his tails on the ground. His moves, sprites, sounds, title cards, results and face on the HUD and the 1-up boxes are the original's, checked frame by frame against the original in an act of every zone, under water, against a boss and in the special stages ([docs/ROM.md](docs/ROM.md#tails)). Grind rails are Sonic's and do nothing for Tails, as on the cartridge, and so are the [extras](#extras-you-can-switch-on), which do nothing for him even when switched on. After X Zone Tails gets the normal ending: the Moon Zone is Sonic's.
+
+### Playing as Amy
+
+Add `?character=3` to play as Amy, for example [dreamports.net/play/sonic-advance/?character=3](https://dreamports.net/play/sonic-advance/?character=3). The attack button swings her hammer, and pressed again a second time. In the air it swings there, and with down held swirls it. Down and attack leap off the hammer, down and jump dive, and attack in a dive slams and slides on. Her hammer on a spring launches her 1.5 times as fast. Her moves match the original frame by frame in the first part of Neo Green Hill Zone act 1 and in a special stage, and nearly so in an act of every other zone and against a boss ([docs/ROM.md](docs/ROM.md#amy)).
 
 ### Playing as Knuckles
 
-Add `?character=2` to play as Knuckles, for example [dreamports.net/play/sonic-advance/?character=2](https://dreamports.net/play/sonic-advance/?character=2). Hold jump again in a jump and he glides, turning with left and right; let go and he drops. Glide into a wall and he grabs it: up and down climb, up at the top pulls him onto the ledge, and jump leaps off. Under water the glide is swimming, and falling into the water he floats on it until down lets him sink. The attack button punches on the ground, and pressed again a second and a third time, the third an uppercut. His moves, sprites, sounds, title cards, results and face are the original's, checked frame by frame against the original in an act of every zone, on walls, under water, against a boss and in the special stages ([docs/ROM.md](docs/ROM.md#knuckles)). As for Tails, grind rails and the [extras](#extras-you-can-switch-on) are Sonic's, and after X Zone he gets the normal ending.
+Choose Knuckles on the character select. Adding `?character=2` to the game's address starts the row on him, for example [dreamports.net/play/sonic-advance/?character=2](https://dreamports.net/play/sonic-advance/?character=2). Hold jump again in a jump and he glides, turning with left and right; let go and he drops. Glide into a wall and he grabs it: up and down climb, up at the top pulls him onto the ledge, and jump leaps off. Under water the glide is swimming, and falling into the water he floats on it until down lets him sink. The attack button punches on the ground, and pressed again a second and a third time, the third an uppercut. His moves, sprites, sounds, title cards, results and face are the original's, checked frame by frame against the original in an act of every zone, on walls, under water, against a boss and in the special stages ([docs/ROM.md](docs/ROM.md#knuckles)). As for Tails, grind rails and the [extras](#extras-you-can-switch-on) are Sonic's, and after X Zone he gets the normal ending.
 
 ## True to the cartridge
 
@@ -157,13 +161,17 @@ The goal is a game that behaves *exactly* like the original, not one that looks 
 - **The game's own sound.** The music and sound effects are played by a rebuilt copy of the cartridge's sound engine, whose output matches the original's byte for byte.
 - **Sharp pixels.** The game draws at the Game Boy Advance's own 240 × 160 and scales up in whole steps, so every pixel stays crisp on any screen.
 
-The game opens as the original does: the first time, with the language screen, where you choose Japanese or English for the menus and the game's messages; then with the SEGA and Sonic Team logos, the intro timed to its music, the title screen and the main menu. Game Start goes straight to the act, where the character select would start. Options opens the original Options menu: the difficulty, the time limit, the language and the button layout, kept in the save, Delete Game Data, the sound test, where Amy dances to the game's music and jingles, and the player data, where you enter your name on the original's character grid and see your VS record. Easy works as in the original: six kinds of enemy stay out of one zone each, and every boss needs 2 fewer hits. The main menu's other modes are next.
+The game opens as the original does: the first time, with the language screen, where you choose Japanese or English for the menus and the game's messages; then with the SEGA and Sonic Team logos, the intro timed to its music, the title screen and the main menu. Game Start opens the character select, where Left and Right turn the row, A picks and B goes back. Once a character has cleared an act, A goes on to the original course select, where you pick any act that character has reached with Up, Down and A, the same on a keyboard, a touch screen and an Xbox controller, and B goes back to the character select. On Sonic, Up, then Right, Down, Right, L, Right, R, Right and A bring Tails along as the CPU's partner, following Sonic through the acts as in the original. Options opens the original Options menu: the difficulty, the time limit, the language and the button layout, kept in the save, Delete Game Data, the sound test, where Amy dances to the game's music and jingles, and the player data, where you enter your name on the original's character grid and see your VS record. Easy works as in the original: six kinds of enemy stay out of one zone each, and every boss needs 2 fewer hits. The main menu's other modes are next.
 
 The act opens, and starts over after a lost life, with the original title card sliding in as the screen fades up from black. The original on-screen counters show your rings, score, time and lives. Let the clock reach 10:00 and Sonic is out of time: he loses a life, *TIME OVER* slides in and the act starts over (Egg Rocket's five-minute countdown runs out the same way). Lose your last life and it's **game over**; with a continue left, the continue screen counts down from 9: press jump to play the act again with three lives, or attack to count down faster.
 
 ## Extras you can switch on
 
-Four optional additions on top of the original game. All are off until you turn them on, and with them off the game runs exactly as without them.
+Five optional additions on top of the original game. All are off until you turn them on, and with them off the game runs exactly as without them.
+
+### Bug fixes
+
+The game keeps the original's bugs, because it's checked against the original frame by frame. Turn this on to fix them: the grind rail that drops Sonic through Neo Green Hill, lives that wrap from 255 to 0, Pierrot's ball that traps a rolling Sonic, a Mecha Knuckles that falls apart one piece short, and many more. Press <kbd>N</kbd> or use the *Bug fixes* switch in the settings. A few of them change how a moment plays, so a recording made with it on won't match the original.
 
 ### Widescreen view
 
@@ -333,7 +341,7 @@ The game is **Beaten** once you have the 8 marked ✓, every zone and the X Zone
 
 A no-hit achievement counts from the moment the boss's arena closes in, and starts over if you lose a life and fight it again.
 
-They count in a game started from the beginning, and in Chao Hunt. A game started with `?level`, `?debug` or `?special` earns none.
+They count in a game started from the beginning, and in Chao Hunt. A game started with `?level`, `?debug`, `?special` or `?unlocked` earns none.
 
 Your achievements are kept in this browser. On dreamports.net, sign in to a [Dreamports profile](https://dreamports.net/profile/) and they're saved there too, so you keep them on any device: the ones you earned before are added when you sign in, and each new one is saved as you earn it. The game shows the ones your profile has from your other devices too, without a popup, and an achievement you already have there isn't earned again. With nobody signed in, they stay in this browser until someone does.
 
@@ -347,6 +355,9 @@ Your achievements are kept in this browser. On dreamports.net, sign in to a [Dre
 | **Mid-air dash** | Tap <kbd>←</kbd> <kbd>←</kbd> or <kbd>→</kbd> <kbd>→</kbd> in a jump | Tap left twice or right twice |
 | **Tails: fly**, or swim under water, each press lifting him | <kbd>Z</kbd> again in a jump, then again | <kbd>A</kbd> again, then again |
 | **Tails: tail swipe** | <kbd>X</kbd> on the ground | <kbd>B</kbd> or <kbd>X</kbd> |
+| **Amy: hammer**, then again; in the air too, and with <kbd>↓</kbd> swirled | <kbd>X</kbd>, <kbd>X</kbd> | <kbd>B</kbd> or <kbd>X</kbd> |
+| **Amy: leap** off the hammer | <kbd>↓</kbd> and <kbd>X</kbd> | Down and <kbd>B</kbd> or <kbd>X</kbd> |
+| **Amy: dive**, and slam in it | <kbd>↓</kbd> and <kbd>Z</kbd>, then <kbd>X</kbd> | Down and <kbd>A</kbd>, then <kbd>B</kbd> or <kbd>X</kbd> |
 | **Knuckles: glide**, or swim under water, turning with left and right | Hold <kbd>Z</kbd> again in a jump | Hold <kbd>A</kbd> again |
 | **Knuckles: climb** a wall he glides into, and leap off it | <kbd>↑</kbd> <kbd>↓</kbd>, then <kbd>Z</kbd> | Up and down, then <kbd>A</kbd> |
 | **Knuckles: punch**, again, then the uppercut | <kbd>X</kbd> on the ground, <kbd>X</kbd>, <kbd>X</kbd> | <kbd>B</kbd> or <kbd>X</kbd>, again, again |
@@ -433,7 +444,7 @@ Here's the road through the rest of the game. Each step has its own issue, so yo
 </tbody>
 </table>
 
-Also on the way: the title screen's demos, the character select, Amy (Tails is in, at `?character=1`, and Knuckles at `?character=2`), the menu's other modes, and the other three [Chao Hunt](#multiplayer-chao-hunt) stages.
+Also on the way: the menu's other modes, and the other three [Chao Hunt](#multiplayer-chao-hunt) stages.
 
 <details>
 <summary><b>Milestones</b></summary>
@@ -555,7 +566,7 @@ python -m http.server 8000
 
 Then open <http://localhost:8000/games/sonic-advance/>, add your ROMs and press *Play*. To start another act, add its number in the game's level list: <http://localhost:8000/games/sonic-advance/?level=2> is Secret Base Zone act 1. Add `&character=1` to play as Tails, or `&character=2` as Knuckles.
 
-Two addresses skip ahead for testing: <http://localhost:8000/games/sonic-advance/?debug> starts the act straight away, without the logos and the intro, and <http://localhost:8000/games/sonic-advance/?special> starts Special Stage 1 as soon as the ROM is read, as if Sonic had just left act 1 on its special spring. When the stage ends, the act picks up again from that spring. With the level of another act that has a special spring it starts that act's stage instead: <http://localhost:8000/games/sonic-advance/?special&level=3> is Special Stage 2, from Secret Base Zone act 2.
+Add `?unlocked=2` to reach the course select with progress up to Secret Base Zone act 1, on a save of its own that's kept nowhere, so your own save stays as it is. Two addresses skip ahead for testing: <http://localhost:8000/games/sonic-advance/?debug> starts the act straight away, without the logos and the intro, and <http://localhost:8000/games/sonic-advance/?special> starts Special Stage 1 as soon as the ROM is read, as if Sonic had just left act 1 on its special spring. When the stage ends, the act picks up again from that spring. With the level of another act that has a special spring it starts that act's stage instead: <http://localhost:8000/games/sonic-advance/?special&level=3> is Special Stage 2, from Secret Base Zone act 2.
 
 To see everything the extractor decodes, open *Asset viewer* in the game's settings: the ROM's tables, Sonic's, the springs' and the rings' animations playing with their original timing, the sprite atlas, the act being played with its collision, and the zone's background. It opens inside the settings, over the game, which waits, with its parts on the left (<kbd>Q</kbd> <kbd>E</kbd>, or <kbd>LB</kbd> <kbd>RB</kbd>, go through them), and its back arrow, <kbd>Esc</kbd> or <kbd>B</kbd> goes back to the settings. On its own, <http://localhost:8000/games/sonic-advance/viewer.html> shows the same for the ROM kept in this browser (Neo Green Hill Zone act 1, or `?level=N`), and asks for the ROM when none is kept.
 
@@ -572,6 +583,7 @@ Contributions to the game are accepted under its license, [GPL-3.0-or-later](LIC
 ## Thanks
 
 - The [SAT-R](https://github.com/SAT-R) decompilation of Sonic Advance, the reference for the game's data formats, physics and camera behavior. None of its code or data is copied into this repository.
+- [mGBA](https://mgba.io) by Jeffrey Pfau, whose way of drawing a line in pieces for the windows `src/engine/windows.js` follows, under the Mozilla Public License 2.0, with its notice at the top of that file.
 - [Monocraft](https://github.com/IdreesInc/Monocraft) by Idrees Hassan, the pixel font of the start screen. A subset of it is bundled with the Game Boy Advance kit under the SIL Open Font License 1.1 ([kit/gba/styles/fonts/Monocraft-OFL.txt](../../kit/gba/styles/fonts/Monocraft-OFL.txt)).
 - Palmaris, the author's RetroAchievements project for the Nintendo DSi, whose unlock popup's trophy and 5×7 pixel font the achievement popup uses.
 - [Pixelarticons](https://github.com/halfmage/pixelarticons) by Gerrit Halfmann, whose gamepad icon is the start screen's controller badge, bundled with the Game Boy Advance kit under the MIT License ([kit/gba/styles/icons/pixelarticons-LICENSE.txt](../../kit/gba/styles/icons/pixelarticons-LICENSE.txt)).

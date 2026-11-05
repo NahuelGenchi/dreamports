@@ -164,54 +164,73 @@ export function eggMobileEscape(x, y, anims) {
   };
 }
 
-// EHit: nothing touched, Sonic hit the boss, or the boss hurt Sonic
+// EHit: nothing touched, a player hit the boss, or the boss hurt a player
 export const HIT_NONE = 0, HIT_ENEMY = 1, HIT_PLAYER = 2;
 
 /**
- * Coll_Player_Bosses_2_6: Sonic's attack box on the boss's box 0 while he is in the air hits it and sends him
- * back the way he came (both speeds reversed); otherwise his body on either of its boxes hurts him, even
- * when he can't be hurt then. `s` is the boss's sprite at (x, y).
+ * A test on Sonic and then on the CPU partner (collPlayer and collPartner): what either found, a hit on the boss
+ * before a hurt.
  */
-export function bossHit26(s, x, y, ctx) {
-  const p = ctx.player, [b0, b1] = s.boxes, [body, attack] = p.boxes;
-  if (p.dead) return HIT_NONE;
-  const px = Math.floor(p.x), py = Math.floor(p.y);
-  if (attack && b0 && p.air && overlap(x, y, b0, px, py, attack)) {
-    p.xsp = -p.xsp; p.ysp = -p.ysp;
-    return HIT_ENEMY;
+export function eachPlayer(ctx, test) {
+  let result = HIT_NONE;
+  for (const p of ctx.players) {
+    const r = test(p);
+    if (r === HIT_ENEMY || (r === HIT_PLAYER && result === HIT_NONE)) result = r;
   }
-  if (body && ((b0 && overlap(x, y, b0, px, py, body)) || (b1 && overlap(x, y, b1, px, py, body)))) {
-    ctx.world.damage();
-    return HIT_PLAYER;
-  }
-  return HIT_NONE;
+  return result;
 }
 
 /**
- * Coll_Player_Enemy, as the Egg Ball uses it: Sonic's attack box on the boss's box 0 hits it and sends him back
- * the way he came (both speeds reversed), in the air or not; otherwise his body on that box hurts him, even when
- * he can't be hurt then.
+ * Coll_Player_Bosses_2_6: a player's attack box on the boss's box 0 while in the air hits it and sends them
+ * back the way they came (both speeds reversed); otherwise their body on either of its boxes hurts them, even
+ * when they can't be hurt then. `s` is the boss's sprite at (x, y).
  */
-export function bossHit(s, x, y, ctx) {
-  const p = ctx.player, b0 = s.boxes[0], [body, attack] = p.boxes;
-  if (!b0 || p.dead) return HIT_NONE;
-  const px = Math.floor(p.x), py = Math.floor(p.y);
-  if (attack && overlap(x, y, b0, px, py, attack)) {
-    p.xsp = -p.xsp; p.ysp = -p.ysp;
-    return HIT_ENEMY;
-  }
-  if (body && overlap(x, y, b0, px, py, body)) {
-    ctx.world.damage();
-    return HIT_PLAYER;
-  }
-  return HIT_NONE;
+export function bossHit26(s, x, y, ctx) {
+  return eachPlayer(ctx, p => {
+    const [b0, b1] = s.boxes, [body, attack] = p.boxes;
+    if (p.dead) return HIT_NONE;
+    const px = Math.floor(p.x), py = Math.floor(p.y);
+    if (attack && b0 && p.air && overlap(x, y, b0, px, py, attack)) {
+      p.xsp = -p.xsp; p.ysp = -p.ysp;
+      return HIT_ENEMY;
+    }
+    if (body && ((b0 && overlap(x, y, b0, px, py, body)) || (b1 && overlap(x, y, b1, px, py, body)))) {
+      ctx.world.damage(p);
+      return HIT_PLAYER;
+    }
+    return HIT_NONE;
+  });
 }
 
-/** sub_800BF10: a boss's harmful part (its box 0) on Sonic's body hurts him. */
+/**
+ * Coll_Player_Enemy, as the Egg Ball uses it: a player's attack box on the boss's box 0 hits it and sends them back
+ * the way they came (both speeds reversed), in the air or not; otherwise their body on that box hurts them, even when
+ * they can't be hurt then.
+ */
+export function bossHit(s, x, y, ctx) {
+  return eachPlayer(ctx, p => {
+    const b0 = s.boxes[0], [body, attack] = p.boxes;
+    if (!b0 || p.dead) return HIT_NONE;
+    const px = Math.floor(p.x), py = Math.floor(p.y);
+    if (attack && overlap(x, y, b0, px, py, attack)) {
+      p.xsp = -p.xsp; p.ysp = -p.ysp;
+      return HIT_ENEMY;
+    }
+    if (body && overlap(x, y, b0, px, py, body)) {
+      ctx.world.damage(p);
+      return HIT_PLAYER;
+    }
+    return HIT_NONE;
+  });
+}
+
+/** sub_800BF10: a boss's harmful part (its box 0) on a player's body hurts them. */
 export function bossShotHit(s, x, y, ctx) {
-  const p = ctx.player, b0 = s.boxes[0], body = p.boxes[0];
-  if (!b0 || p.dead || !body) return HIT_NONE;
-  if (!overlap(x, y, b0, Math.floor(p.x), Math.floor(p.y), body)) return HIT_NONE;
-  ctx.world.damage();
-  return HIT_PLAYER;
+  return eachPlayer(ctx, p => {
+    const b0 = s.boxes[0], body = p.boxes[0];
+    if (!b0 || p.dead || !body) return HIT_NONE;
+    if (!overlap(x, y, b0, Math.floor(p.x), Math.floor(p.y), body)) return HIT_NONE;
+    ctx.world.damage(p);
+    return HIT_PLAYER;
+  });
 }

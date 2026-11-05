@@ -13,9 +13,10 @@
 // as in the waterfalls.
 
 import { offCam } from './objects.js';
-import { endAttack } from './player.js';
+import { endAttack, AMY } from './player.js';
 import { tileFloor } from './terrain.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const PLAYER_FLOAT = 90;
 const UPDRAFT = 104 / 256, MAX_RISE = 2.25;   // PLAYER_FLOATING_UPDRAFT, PLAYER_MAX_FLOATING_SPEED
@@ -28,24 +29,28 @@ export function createFloat(e, slot) {
   let sounding = false;   // unk3D: SE_200 has started
   return {
     run(ctx) {
-      const p = ctx.player;
       if (offCam(e.x, e.y, ctx.cam)) {
+        if (fixes.on) for (const p of ctx.players) if (!p.dead && Math.floor(p.x) >= e.x && Math.floor(p.x) <= right && Math.floor(p.y) >= e.y && Math.floor(p.y) <= bottom) p.ysp /= 2;
         if (sounding) ctx.world.stopSound(SONG.WHIRLWIND);
         slot.live = null;
         return false;
       }
-      if (p.state !== 'float' && sounding) { ctx.world.fadeOut(SE2, FADE); sounding = false; }
-      if (p.dead) return true;
-      const x = Math.floor(p.x), y = Math.floor(p.y);
-      if (x >= e.x && x <= right && y >= e.y && y <= bottom) {
-        if (!sounding && p.state !== 'float' && whirlwind) { sounding = true; ctx.world.playSound(SONG.WHIRLWIND); }
-        p.ysp -= UPDRAFT;
-        if (p.ysp < -MAX_RISE) p.ysp = -MAX_RISE;
-        p.air = true;
-        // Player_TransitionCancelFlyingAndBoost
-        endAttack(p); p.pushing = false; p.airLock = false;
-        p.state = whirlwind ? 'float' : 'spring';
-        if (tileFloor(ctx.world.terrain, x, y, p.layer) > 4) p.curled = false;
+      // the two share the sound: either one not spinning fades it out
+      for (const p of ctx.players) {
+        if (p.state !== 'float' && sounding) { ctx.world.fadeOut(SE2, FADE); sounding = false; }
+        if (p.dead) continue;
+        const x = Math.floor(p.x), y = Math.floor(p.y);
+        if (x >= e.x && x <= right && y >= e.y && y <= bottom) {
+          if (!sounding && p.state !== 'float' && whirlwind) { sounding = true; ctx.world.playSound(SONG.WHIRLWIND); }
+          p.ysp -= UPDRAFT;
+          if (p.ysp < -MAX_RISE) p.ysp = -MAX_RISE;
+          p.air = true;
+          // Player_TransitionCancelFlyingAndBoost
+          endAttack(p); p.pushing = false; p.airLock = false;
+          p.state = whirlwind ? 'float' : 'spring';
+          if (p.character === AMY) p.hammerJump = true;
+          if (tileFloor(ctx.world.terrain, x, y, p.layer) > 4) p.curled = false;
+        }
       }
       return true;
     },

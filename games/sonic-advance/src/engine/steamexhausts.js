@@ -31,19 +31,22 @@ export function createSteamExhaust(e, slot, anims) {
   // neither sprite has run its script yet, so they are not solid on their first frame
   const vent = { ...makeSprite('steamExhaust'), x, y };
   const lid = { ...makeSprite('steamExhaustLid', { order: 17 }), x, y };
-  let blowing = false, riding = false, vel = 0, off = 0, bounces = 0, steam = 0;
+  const riding = [false, false];   // unk74: each player on the lid
+  let blowing = false, vel = 0, off = 0, bounces = 0, steam = 0;
 
   function rest(ctx) {
-    const p = ctx.player, terrain = ctx.world.terrain;
-    if (platform(lid, lid.boxes[0], p, terrain) & LANDED) p.y += 1;
-    // the original checks for the vent twice where it meant the vent or the lid
-    else if (p.onObject === vent) {
-      if (p.jumpPressed) p.onObject = null;
-      unstick(p, terrain);
-    } else if (platform(vent, vent.boxes[0], p, terrain)) unstick(p, terrain);
+    const terrain = ctx.world.terrain;
+    for (const p of ctx.players) {
+      if (platform(lid, lid.boxes[0], p, terrain) & LANDED) p.y += 1;
+      // the original checks for the vent twice where it meant the vent or the lid
+      else if (p.onObject === vent) {
+        if (p.jumpPressed) p.onObject = null;
+        unstick(p, terrain);
+      } else if (platform(vent, vent.boxes[0], p, terrain)) unstick(p, terrain);
+    }
     if (offDisplay(x, y, ctx.cam) && offCam(x, y, ctx.cam)) { slot.live = null; return false; }
     if (ctx.world.tick % PERIOD === 0) {
-      steam = STEAM; riding = false; vel = LAUNCH; off = 0; bounces = BOUNCES;
+      steam = STEAM; riding.fill(false); vel = LAUNCH; off = 0; bounces = BOUNCES;
       startAnim(vent, 'steamExhaustBlow', true);
       ctx.world.playSound(SONG.STEAM_EXHAUST);
       blowing = true;
@@ -55,27 +58,31 @@ export function createSteamExhaust(e, slot, anims) {
 
   // while it blows, it stays even off screen
   function blow(ctx) {
-    const p = ctx.player, terrain = ctx.world.terrain;
+    const terrain = ctx.world.terrain;
     vel += GRAVITY; off += vel;
     const ly = y + (off >> 8);
-    if (riding) {
-      p.y += vel / 256;
-      if (p.air) riding = false;
-      const [px, py] = [Math.floor(p.x), Math.floor(p.y)];
-      if (!lid.boxes[0] || p.dead || !overlap(x, ly, lid.boxes[0], px, py, [-SOX, -p.offsetY, SOX, p.offsetY])) riding = false;
+    for (const [i, p] of ctx.players.entries()) {
+      if (riding[i]) {
+        p.y += vel / 256;
+        if (p.air) riding[i] = false;
+        const [px, py] = [Math.floor(p.x), Math.floor(p.y)];
+        if (!lid.boxes[0] || p.dead || !overlap(x, ly, lid.boxes[0], px, py, [-SOX, -p.offsetY, SOX, p.offsetY])) riding[i] = false;
+      }
+      if (platformTop(lid, x, ly, lid.boxes[0], p)) { riding[i] = true; p.y += 1; }
+      platform(vent, vent.boxes[0], p, terrain);
     }
-    if (platformTop(lid, x, ly, lid.boxes[0], p)) { riding = true; p.y += 1; }
-    platform(vent, vent.boxes[0], p, terrain);
     if (off >= 0) {
-      if (--bounces !== 0) { vel = -Div(vel * 2, 5); riding = false; off = 0; }
+      if (--bounces !== 0) { vel = -Div(vel * 2, 5); riding.fill(false); off = 0; }
       else { startAnim(vent, 'steamExhaust', true); blowing = false; }
     }
     if (--steam === 48) {
       startAnim(vent, 'steamExhaustBlowEnd', true);
       animate(vent, ctx.anims);
     } else if (steam + 1 >= 50 && steam + 1 < 97) {
-      const [px, py] = [Math.floor(p.x), Math.floor(p.y)];
-      if (p.boxes[0] && vent.boxes[1] && overlap(x, y, vent.boxes[1], px, py, p.boxes[0]) && !p.dead) ctx.world.damage();
+      for (const p of ctx.players) {
+        const [px, py] = [Math.floor(p.x), Math.floor(p.y)];
+        if (p.boxes[0] && vent.boxes[1] && overlap(x, y, vent.boxes[1], px, py, p.boxes[0]) && !p.dead) ctx.world.damage(p);
+      }
       animate(vent, ctx.anims);
     } else if (steam < 48) {
       // UpdateSpriteAnimation keeps returning ACMD_RESULT__ENDED once the script has ended, and here it runs

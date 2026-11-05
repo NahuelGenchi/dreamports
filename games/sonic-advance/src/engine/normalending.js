@@ -12,9 +12,9 @@ import { createStaffCredits } from './credits.js';
 import { openSave, WRITE_FRAMES } from './save.js';
 
 // CreateCongratulationsAnimation writes the save game with interrupts off before its first frame, and the
-// screen goes on showing the last frame meanwhile. The frames this takes are the Moon Zone's (extra.js), the
-// write's (WRITE_FRAMES) only when the save has changed since it was last written.
-const SAVE_FRAMES = 16;
+// screen goes on showing the last frame meanwhile: the write's frames (WRITE_FRAMES), only when the save has changed
+// since it was last written, and one more.
+const SAVE_FRAMES = 15;
 
 const SILENT = { play() {}, stopAll() {} };
 
@@ -57,7 +57,9 @@ export function createNormalEnding(canvas, assets, input, sound = SILENT, { from
     if (state.ended) return;
     if (state.saving > 0) {
       if (--state.saving === 0) congratulations();
-    } else state.scene.step();
+    }
+    // the congratulations' main task runs on the frame the save's wait ends
+    if (state.saving === 0) state.scene.step();
     if (!stalled && onSoftReset && holdsSoftReset(input)) { state.reset = true; onSoftReset(); }
   }
   function draw() {

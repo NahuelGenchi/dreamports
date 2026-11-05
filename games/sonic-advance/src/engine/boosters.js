@@ -28,17 +28,19 @@ export function createBooster(e, slot, anims) {
   const o = makeSprite(look, { flipX: dir < 0 });
   return {
     run(ctx) {
-      const p = ctx.player;
       // it tests the box its last animation frame set, before stepping the animation; none yet on its first frame
-      const probe = [-(SOX + 5), 1 - p.offsetY, SOX + 5, p.offsetY - 1];
-      if (!p.dead && !p.air && o.boxes[0] && overlap(e.x, e.y, o.boxes[0], Math.floor(p.x), Math.floor(p.y), probe)) {
-        // Player_TransitionCancelFlyingAndBoost
-        endAttack(p); p.pushing = false;
-        ctx.world.playSound(SONG.BOOSTER);
-        if (!KEPT.has(p.state)) p.state = 'walk';
-        p.facing = dir;
-        if (p.gsp * dir < BOOSTED) p.gsp = p.xsp = BOOST * dir;
-        if (ctx.world.boostMode && !ctx.world.actOver) enterBoostMode(p);
+      for (const p of ctx.players) {
+        const probe = [-(SOX + 5), 1 - p.offsetY, SOX + 5, p.offsetY - 1];
+        if (!p.dead && !p.air && o.boxes[0] && overlap(e.x, e.y, o.boxes[0], Math.floor(p.x), Math.floor(p.y), probe)) {
+          // Player_TransitionCancelFlyingAndBoost
+          endAttack(p); p.pushing = false;
+          ctx.world.playSound(SONG.BOOSTER);
+          if (!KEPT.has(p.state)) p.state = 'walk';
+          p.facing = dir;
+          if (p.gsp * dir < BOOSTED) p.gsp = p.xsp = BOOST * dir;
+          // Boost Mode is Sonic's alone, an extra the CPU partner never has
+          if (p === ctx.player && ctx.world.boostMode && !ctx.world.actOver) enterBoostMode(p);
+        }
       }
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       animate(o, anims);

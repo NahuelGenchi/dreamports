@@ -1,7 +1,7 @@
 // The game's start before the act, as Sonic Advance has it: the SEGA and Sonic Team logos, the intro, the title
 // screen and the main menu, run on the GBA engine (gba/engine.js) at the GBA's own frame rate and drawn into the
-// game's canvas. The character select and the screens after it aren't built yet, so the act starts where the
-// character select would: after Game Start on the main menu.
+// game's canvas. The act starts after the character select (charselect.js), which Game Start on the main menu opens, and
+// once the character has progress the course select (courseselect.js) and the act chosen there.
 //
 // A new game, with no save yet, starts with the language screen (language.js), which writes the save; with a save,
 // the game starts with the logos. The Options menu (options.js) changes the save and writes it.
@@ -13,6 +13,7 @@ import { createSegaLogo } from './logos.js';
 import { createLanguageScreen, hasLanguageScreen } from './language.js';
 import { createIntro } from './intro.js';
 import { createTitleScreen } from './title.js';
+import { createCourseSelect } from './courseselect.js';
 import { createClock, GBA_FRAME_MS } from '../../../../kit/gba/clock.js';
 
 /**
@@ -49,27 +50,48 @@ export function powerOn(ctx, skipIntro = false) {
 /**
  * Starts the front end on `canvas`, from power-on. `rom` is the ROM (rom.js), `offsets` where its tables are
  * (locate.js), `input` the player's buttons, `sound` the sound engine (audio.js) and `save` the save
- * (engine/save.js), which the language screen and the Options menu change. `play()` is called once the act is to
- * start. `options.softReset()` is called when A, B, Start and Select are held together (VBlankIntr), and
- * `options.afterReset` starts the front end as the game starts again from that: the screen blank and then the title
- * screen, with no logos.
+ * (engine/save.js), which the language screen and the Options menu change. `play(level, frameCount, { character, partner })` is called
+ * once the act is to start: `level` is the course select's choice, or undefined with no choice made, `frameCount` the
+ * engine's gFrameCount, and the last what the character select chose. `character` is who the character select's row starts on, and `levels()` gives the level last played and the one
+ * the course select last started, as { current, started }. Without `courseSelect`, as when the address names a level,
+ * the character select goes straight to the act; without
+ * `select`, a start point for the proof tools, Game Start goes where the character select would. A little before a demo
+ * starts `prepareDemo()` is called, and as it starts `play`, with `demo` set in its last argument and its video memory in
+ * `vram`. `back`, { title, frameCount, white, vram }, starts it as a demo leaves it,
+ * with no start-up: at the title screen with its music if `title`, else at the SEGA logo, with gFrameCount at `frameCount` and video memory as the screens before left it.
+ * `softReset()` is called when A, B, Start and Select are held together (VBlankIntr), and `afterReset` starts the
+ * front end as the game starts again from that: the screen blank and then the title screen, with no logos.
  * Returns { stop, step, draw, setView }: setView(w, h) draws a widescreen view of w × h from then on (the
  * original 240 × 160 is the default); step() and draw() are for checking, a frame at a time.
  */
-export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { softReset, afterReset = false } = {}) {
+export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true, select = true, onGameStart, prepareDemo = () => {}, back = null, softReset, afterReset = false } = {}) {
   const video = createVideo();
   const engine = createEngine(video, rom, sound);
   video.write(REG.DISPCNT, 0x80);   // forced blank, until the game starts
-  let done = false, resetting = false, startingUp = afterReset ? RESET_FRAMES : STARTUP_FRAMES;
+  let done = false, resetting = false, chosen, demo = false, startingUp = back ? 0 : afterReset ? RESET_FRAMES : STARTUP_FRAMES;
   engine.onSoftReset = softReset && (() => { resetting = true; });
   const ctx = {
-    engine, tilemaps: offsets.tilemaps, sprites: spriteTables(rom, offsets.spriteTables), offsets, save,
+    engine, tilemaps: offsets.tilemaps, sprites: spriteTables(rom, offsets.spriteTables), offsets, save, character, partner: false, gameMode: 0, levels, select,
     introGraphics: offsets.introGraphics, introTables: offsets.introTables,
     afterReset,
     intro: () => createIntro(ctx),
     title: playMusic => createTitleScreen(ctx, playMusic),
-    play: () => { done = true; },
+    play: level => { done = true; chosen = level; },
+    startDemo: () => { done = true; demo = true; },
+    prepareDemo,
+    // Task_805AAF8: whether the act comes next, with nothing cleared yet, or the course select, which only the versions
+    // with a known place for its picture have
+    onGameStart,
+    toCourseSelect: () => courseSelect && save.unlockedLevel(ctx.character) !== 0 && !!offsets.courseSelectBackground,
+    startGame: () => { if (ctx.toCourseSelect()) createCourseSelect(ctx); else ctx.play(); },
   };
+
+  if (back) {
+    engine.frameCount = back.frameCount;
+    video.vram.set(back.vram);
+    if (back.title) ctx.title(true);
+    else createSegaLogo(ctx);
+  }
 
   const out = canvas.getContext('2d', { alpha: false });
   let image, pixels, view = null, drawn = false;
@@ -83,6 +105,9 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
     if (drawn) draw();   // at once, as resizing the canvas clears it
   }
   setView();
+  // the frame a demo ends on makes the next screen, whose first picture is white, from the title screen's fade or the
+  // demo's, or else black
+  if (back) { out.fillStyle = back.white ? '#FFF' : '#000'; out.fillRect(0, 0, canvas.width, canvas.height); }
 
   function step() {
     input.poll?.();
@@ -109,7 +134,15 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
     for (let n = clock.steps(now); n > 0 && !done && !resetting; n--) { step(); ran = true; }
     if (resetting) { stop(); softReset(); return; }   // the frame the reset is in is drawn by the game that starts again
     if (ran) draw();   // a frame is drawn once, from the H-blank effects its V-blank set up
-    if (done) { stop(); play(); return; }
+    if (done) {
+      // what's still sounding plays on, as the original stops nothing here: the act's music takes the place of the screen's
+      // a demo's act shows black until its first picture, which can take a moment to read from the ROM
+      if (demo) { out.fillStyle = '#000'; out.fillRect(0, 0, canvas.width, canvas.height); }
+      if (chosen === undefined && !select && !demo) stop();
+      else { cancelAnimationFrame(frame); input.release(); }
+      play(chosen, engine.frameCount + 1, { character: ctx.character, partner: ctx.partner, demo, vram: video.vram });
+      return;
+    }
     frame = requestAnimationFrame(loop);
   }
   function stop() { cancelAnimationFrame(frame); input.release(); sound.stopAll(); }

@@ -4,7 +4,7 @@ title: Sonic Advance Dreamport
 platform: Game Boy Advance
 year: 2001
 added: 2026-10-27
-summary: Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install.
+summary: Plays in your browser. No emulator, nothing to install.
 needs: A Sonic Advance (USA) ROM (.gba)
 controls: [keyboard, controller, touch]
 issue: 146
@@ -15,6 +15,10 @@ sources:
     href: https://github.com/SAT-R/sa2
     license: none
     use: guide
+  - name: mGBA’s window drawing, by Jeffrey Pfau
+    href: https://github.com/mgba-emu/mgba/blob/0.10.5/src/gba/renderers/video-software.c
+    license: MPL-2.0
+    use: code
 ownCopy:
   confirm: I own Sonic Advance
   links:
@@ -49,6 +53,9 @@ extras:
     screen:
       clip: /media/sonic-tricks
       still: /media/sonic-tricks-still.webp
+  - name: Bug fixes
+    icon: sparkles
+    text: The bugs the original game shipped with, fixed. Off, it plays exactly like the cartridge, bugs included.
 facts:
   - label: Article
     href: https://nahuelgenchi.com/gaming/onsoku-advance/

@@ -1,0 +1,226 @@
+{
+ "about": "Sonic running into a Mon in Leaf Forest act 1, from a start point on the ground to its left with 12 rings: Mon jumps as he comes near and comes down on him, his rings scatter and fall, he's thrown on, and he blinks as he turns back and takes some of them again.",
+ "frames": 347,
+ "start": "level=0&x=3640&y=1470&rings=12",
+ "held": [
+  [
+   0,
+   []
+  ],
+  [
+   177,
+   [
+    "RIGHT"
+   ]
+  ],
+  [
+   190,
+   []
+  ],
+  [
+   225,
+   [
+    "LEFT"
+   ]
+  ],
+  [
+   270,
+   []
+  ]
+ ],
+ "onlyInOriginal": [
+  {
+   "at": 0,
+   "frames": 2320,
+   "held": [
+    [
+     0,
+     []
+    ],
+    [
+     640,
+     [
+      "START"
+     ]
+    ],
+    [
+     646,
+     []
+    ],
+    [
+     760,
+     [
+      "A"
+     ]
+    ],
+    [
+     766,
+     []
+    ],
+    [
+     880,
+     [
+      "START"
+     ]
+    ],
+    [
+     886,
+     []
+    ],
+    [
+     1000,
+     [
+      "A"
+     ]
+    ],
+    [
+     1006,
+     []
+    ],
+    [
+     1120,
+     [
+      "START"
+     ]
+    ],
+    [
+     1126,
+     []
+    ],
+    [
+     1240,
+     [
+      "A"
+     ]
+    ],
+    [
+     1246,
+     []
+    ],
+    [
+     1360,
+     [
+      "START"
+     ]
+    ],
+    [
+     1366,
+     []
+    ],
+    [
+     1480,
+     [
+      "A"
+     ]
+    ],
+    [
+     1486,
+     []
+    ],
+    [
+     1600,
+     [
+      "START"
+     ]
+    ],
+    [
+     1606,
+     []
+    ],
+    [
+     1720,
+     [
+      "A"
+     ]
+    ],
+    [
+     1726,
+     []
+    ],
+    [
+     1840,
+     [
+      "START"
+     ]
+    ],
+    [
+     1846,
+     []
+    ],
+    [
+     1960,
+     [
+      "A"
+     ]
+    ],
+    [
+     1966,
+     []
+    ],
+    [
+     2080,
+     [
+      "START"
+     ]
+    ],
+    [
+     2086,
+     []
+    ],
+    [
+     2200,
+     [
+      "A"
+     ]
+    ],
+    [
+     2206,
+     []
+    ],
+    [
+     2316,
+     [
+      "A"
+     ]
+    ]
+   ],
+   "about": "From power-on to Leaf Forest act 1: the language, a name, the logos, the title, Game Start and Sonic. Then Sonic's place, beside a spring.",
+   "sets": [
+    {
+     "frame": 2319,
+     "address": "030059E8",
+     "bytes": 4,
+     "value": 931840
+    },
+    {
+     "frame": 2319,
+     "address": "030059EC",
+     "bytes": 4,
+     "value": 376320
+    },
+    {
+     "frame": 2319,
+     "address": "03005960",
+     "bytes": 4,
+     "value": 3520
+    },
+    {
+     "frame": 2319,
+     "address": "03005964",
+     "bytes": 4,
+     "value": 1390
+    },
+    {
+     "frame": 2319,
+     "address": "030053F0",
+     "bytes": 2,
+     "value": 12
+    }
+   ]
+  }
+ ],
+ "clip": {
+  "at": 175,
+  "frames": 172
+ }
+}

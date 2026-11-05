@@ -32,26 +32,27 @@ export function createBarrelOfDoomMini(e, slot, anims) {
   let speed = 0, at = 0;
   return {
     run(ctx) {
-      const p = ctx.player;
       if (at !== 0) speed += at < 0 ? PULL : -PULL;
       const y = e.y + (at >> 8);
       o.y = y;
-      const fall = p.ysp * 256;
-      if (p.onObject === o) {
-        p.ysp = 0;
-        p.y += speed / 256;
-        if (p.attackPressed && p.heldDirs & DOWN) {
-          // Amy's
-        } else if (p.jumpPressed && p.heldDirs & DOWN) setOffsetY(p, BALL_SPRITE_OFFSET_Y);
-        else if (p.jumpPressed) {
-          p.ysp = ((speed >> 1) - JUMP) / 256;
-          p.onObject = null;
-        } else {
-          p.y += GLUE; p.ysp = 1 / 256;
-          if (!platformTop(o, e.x, y, o.boxes[0], p)) { p.onObject = null; p.y -= GLUE; }
+      for (const p of ctx.players) {
+        const fall = p.ysp * 256;
+        if (p.onObject === o) {
           p.ysp = 0;
-        }
-      } else if (platformTop(o, e.x, y, o.boxes[0], p) & LANDED) speed += Div(fall * 6, 10);
+          p.y += speed / 256;
+          if (p.attackPressed && p.heldDirs & DOWN) {
+            // Amy's
+          } else if (p.jumpPressed && p.heldDirs & DOWN) setOffsetY(p, BALL_SPRITE_OFFSET_Y);
+          else if (p.jumpPressed) {
+            p.ysp = ((speed >> 1) - JUMP) / 256;
+            p.onObject = null;
+          } else {
+            p.y += GLUE; p.ysp = 1 / 256;
+            if (!platformTop(o, e.x, y, o.boxes[0], p)) { p.onObject = null; p.y -= GLUE; }
+            p.ysp = 0;
+          }
+        } else if (platformTop(o, e.x, y, o.boxes[0], p) & LANDED) speed += Div(fall * 6, 10);
+      }
       speed = Div(speed * 9900, 10000);
       if (speed > -REST_SPEED && speed < REST_SPEED && at > -REST_RANGE && at < REST_RANGE) speed = 0;
       at += speed;

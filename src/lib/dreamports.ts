@@ -29,6 +29,9 @@ const proofLink = (game: string, path: string) => `${SOURCE_URL}/blob/main/games
 
 type Proof = NonNullable<ReturnType<typeof proofOf>>;
 
+/** A game's parts.json as it is, for what its pieces need (src/lib/pieces.mjs), or undefined without one. */
+export const partsFile = (game: string): unknown => PROOF[`/games/${game}/proof/parts.json`];
+
 // what the proof tools measured for a game, checked as the site is built
 function proofFor(game: string): Proof | null {
   const prefix = `/games/${game}/proof/recordings/`;
@@ -111,7 +114,7 @@ function partsOf(game: string, gameplay: Proof['gameplay']): PartView[] {
     return {
       name: part.name,
       proven: part.proven,
-      note: part.proven ? null : `Frames ${from} to ${to} of ${part.recording}, ${found}`,
+      note: part.proven ? (part.fromStart ? 'Proven from a start point, not yet from power-on' : null) : `Frames ${from} to ${to} of ${part.recording}, ${found}`,
       href: proofLink(game, `recordings/${part.recording}.json`),
     };
   });
@@ -126,8 +129,8 @@ export const beingMade = (data: Dreamport): boolean => isBeingMade(data, proofFo
 // whether a Dreamport has code of the original's
 const hasCode = (data: Dreamport): boolean => codeIn(proofFor(data.game));
 
-/** Whether a game has its place in its row and its own page, for players. Until a Dreamport has code, it's only in the Make row. */
-export const released = ({ data }: Game): boolean => data.kind !== 'dreamport' || hasCode(data);
+/** Whether a Dreamport has its place in its row and its own page, for players. Until it has code, it's only in the Make row. */
+export const released = ({ data }: Game): boolean => hasCode(data);
 
 // What a Dreamport's page in the Make row shows besides its two bars (#142): one line on where it stands, the sentence
 // that gets a newcomer's coding agent ready to help (#141), and its game's issue, where it's talked about; and from

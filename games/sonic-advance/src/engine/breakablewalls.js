@@ -25,15 +25,19 @@ export function createBreakableWall(e, slot, anims) {
   let broken = false, n = 0, v = 0;
   return {
     run(ctx) {
-      const p = ctx.player, cam = ctx.cam;
+      const cam = ctx.cam;
       if (broken) return fall(ctx);
-      if (gate(o, o.boxes[0], p, ctx.world.terrain) & LANDED) {
-        if (p.boostBox) ctx.world.shake();
-        ctx.world.playSound(SONG.CRUMBLING_PLATFORM);
-        broken = true;
-        // half his speed across, or a pixel a frame away from him when he wasn't moving across
-        v = s16(Math.round(p.xsp * 256)) >> 1 || (e.x < Math.floor(p.x) ? -256 : 256);
-        if (p.onObject === o) { p.onObject = null; p.air = true; }
+      // the first player to break it stops the search; it lets go of them and of the CPU partner
+      for (const p of ctx.players) {
+        if (gate(o, o.boxes[0], p, ctx.world.terrain) & LANDED) {
+          if (p.boostBox) ctx.world.shake();
+          ctx.world.playSound(SONG.CRUMBLING_PLATFORM);
+          broken = true;
+          // half his speed across, or a pixel a frame away from him when he wasn't moving across
+          v = s16(Math.round(p.xsp * 256)) >> 1 || (e.x < Math.floor(p.x) ? -256 : 256);
+          for (const q of [p, ctx.players[1]]) if (q?.onObject === o) { q.onObject = null; q.air = true; }
+          break;
+        }
       }
       if (offDisplay(e.x, e.y, cam) && offCam(e.x, e.y, cam)) { slot.live = null; return false; }
       ctx.draw(o, e.x, e.y);

@@ -7,6 +7,8 @@
 // its own d3, and a track or exit only takes him while it is below theirs; the exit and the player's start set
 // it to 0x7F, which no track takes. Each piece's task has priority 0x2000 plus its step, so along a chain they
 // run in order within the frame, and a track whose start he reaches is the next to move him that same frame.
+// A pipe end has a task of its own for each player, with its own sprite and phase: the first's shows it, and only
+// the first's leaving lets the entity come back.
 // Positions here are worked in 1/256 px, as the original's Q24.8.
 
 import { makeSprite, animate, offCam, OBJECTS } from './objects.js';
@@ -64,31 +66,33 @@ function pull(p, x, y) {
 // holds him). It leaves him in the air at its end; it only goes off screen while it holds no one.
 function createTrack(e, slot) {
   const dx = s8(e.d[0]) * 8, dy = s8(e.d[1]) * 8, steps = e.d[2], step = e.d[3];
-  const c = { k: 0, prevX: 0, prevY: 0 };
-  let held = false;
+  // each player's own carry along it, and whether it holds them
+  const carries = [0, 1].map(() => ({ k: 0, prevX: 0, prevY: 0 })), held = [false, false];
   return {
     priority: OBJECTS | step,
     run(ctx) {
-      const p = ctx.player;
-      if (p.dead) p.invisible = false;   // dead, it shows him, held or not (visibility.js)
-      if (held) {
-        if (p.dead) { p.carried = false; held = false; }
-        else if (p.track !== step) held = false;   // the next step has him
-        else if (carry(p, c, e.x, e.y, dx, dy, steps)) { p.carried = false; p.air = true; held = false; }
-        else { cancel(p); p.facing = 1; hold(p); }
-      } else if (!p.dead && (p.track < step || step === 0)
-        && Math.abs(Math.floor(p.x) - e.x) <= NEAR && Math.abs(Math.floor(p.y) - e.y) <= NEAR) {
-        c.k = 0;
-        cancel(p);
-        p.curled = true;
-        p.x = e.x; p.y = e.y;
-        p.xsp = p.ysp = p.gsp = 0;
-        hold(p);
-        ctx.world.playSound(SONG.TUBE);
-        held = true;
-        p.track = step;
+      for (const [i, p] of ctx.players.entries()) {
+        const c = carries[i];
+        if (p.dead) p.invisible = false;   // dead, it shows him, held or not (visibility.js)
+        if (held[i]) {
+          if (p.dead) { p.carried = false; held[i] = false; }
+          else if (p.track !== step) held[i] = false;   // the next step has him
+          else if (carry(p, c, e.x, e.y, dx, dy, steps)) { p.carried = false; p.air = true; held[i] = false; }
+          else { cancel(p); p.facing = 1; hold(p); }
+        } else if (!p.dead && (p.track < step || step === 0)
+          && Math.abs(Math.floor(p.x) - e.x) <= NEAR && Math.abs(Math.floor(p.y) - e.y) <= NEAR) {
+          c.k = 0;
+          cancel(p);
+          p.curled = true;
+          p.x = e.x; p.y = e.y;
+          p.xsp = p.ysp = p.gsp = 0;
+          hold(p);
+          ctx.world.playSound(SONG.TUBE);
+          held[i] = true;
+          p.track = step;
+        }
       }
-      if (!held && offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
+      if (!held[0] && !held[1] && offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       return true;
     },
   };
@@ -101,8 +105,9 @@ function createAirCorner(e, slot, anims) {
   animate(o, anims);
   return {
     run(ctx) {
-      const p = ctx.player;
-      if (!p.dead && !p.carried && (platformTop(o, e.x, e.y, o.boxes[0], p) & LANDED)) p.y += 2;
+      for (const p of ctx.players) {
+        if (!p.dead && !p.carried && (platformTop(o, e.x, e.y, o.boxes[0], p) & LANDED)) p.y += 2;
+      }
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       ctx.draw(o, e.x, e.y);
       return true;
@@ -120,14 +125,15 @@ function pipeSprite(level, exit, vertical) {
 // up and down (which is which depends on the level and the gravity), 2 and 3 across, taking Sonic as he runs
 // into its right or left side. It is solid otherwise. Once it takes him it pulls him to its point for 90 frames,
 // then carries him d0, d1 tiles in 20 frames if no track took him on the way.
-function createPipeEntrance(e, slot, anims, level) {
+function createPipeEntrance(e, slot, anims, level, who = 0) {
   const face = e.d[2], step = e.d[3], dx = s8(e.d[0]) * 8, dy = s8(e.d[1]) * 8;
   const vertical = face === 0 || face === 1, cosmic = level === COSMIC_ANGEL;
   const flipY = vertical && (cosmic ? face === 0 : face !== 0);
   const o = Object.assign(makeSprite(pipeSprite(level, false, vertical), { flipX: !vertical && (face & 1) !== 0, flipY, order: 5, prio: 0 }), { x: e.x, y: e.y });
   animate(o, anims);
   const c = { k: 0, prevX: 0, prevY: 0 };
-  let phase = 'waiting', t = 0, carrying = false;
+  let phase = 'waiting', t = 0, carrying = false, made = who !== 0;
+  const leave = () => { if (who === 0) slot.live = null; return false; };
 
   // the side that takes him, as a Coll_Player_Platform result: landing on it (0x100008 in one player) or
   // bumping it from below (0x10000)
@@ -151,14 +157,15 @@ function createPipeEntrance(e, slot, anims, level) {
   return {
     priority: OBJECTS | step,
     run(ctx) {
-      const p = ctx.player;
+      if (!made) { made = true; if (ctx.players[1]) ctx.add(createPipeEntrance(e, slot, anims, level, 1), OBJECTS | step); }
+      const p = ctx.players[who];
       if (phase === 'waiting') {
-        // dead, it sets what Sonic's own death step sets
+        // dead, it sets what his own death step sets
         if (!p.dead) {
           const x = p.x, y = p.y, hit = platform(o, o.boxes[0], p, ctx.world.terrain);
-          if (vertical ? hit & mouth(p) : (hit & RIGHT_FACE && face === 2) || (hit & LEFT_FACE && face === 3)) take(p, x, y, !vertical);
+          if (vertical ? hit & mouth(ctx.player) : (hit & RIGHT_FACE && face === 2) || (hit & LEFT_FACE && face === 3)) take(p, x, y, !vertical);
         }
-        if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
+        if (offCam(e.x, e.y, ctx.cam)) return leave();
       } else if (phase === 'pulling') {
         if (!p.dead) {
           if (t !== 0) {
@@ -178,10 +185,10 @@ function createPipeEntrance(e, slot, anims, level) {
         else { cancel(p); hold(p); }
       } else {
         phase = 'waiting';
-        if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
+        if (offCam(e.x, e.y, ctx.cam)) return leave();
       }
       animate(o, anims);
-      ctx.draw(o, e.x, e.y);
+      if (who === 0) ctx.draw(o, e.x, e.y);
       return true;
     },
   };
@@ -191,18 +198,20 @@ function createPipeEntrance(e, slot, anims, level) {
 // 2 right, 3 left, at d1 / 4 px a frame. It takes Sonic when a tube holds him on a step below its d3 and his
 // body touches it, and is solid to him otherwise. On the next frame it gives him his speed, then moves him for
 // 15 frames and lets him go, curled up in the air; a jump or attack pressed on that last frame doesn't count.
-function createPipeExit(e, slot, anims, level) {
+function createPipeExit(e, slot, anims, level, who = 0) {
   const face = e.d[2], step = e.d[3], speed = s8(e.d[1]) * 64 / 256;
   const vertical = face === 0 || face === 1;
   const o = Object.assign(makeSprite(pipeSprite(level, true, vertical), { flipX: !vertical && (face & 1) !== 0, flipY: vertical && face !== 0, order: 5, prio: 0 }), { x: e.x, y: e.y });
   animate(o, anims);
-  let phase = 'waiting', t = 0;
+  let phase = 'waiting', t = 0, made = who !== 0;
+  const leave = () => { if (who === 0) slot.live = null; return false; };
   return {
     priority: OBJECTS | step,
     run(ctx) {
-      const p = ctx.player;
+      if (!made) { made = true; if (ctx.players[1]) ctx.add(createPipeExit(e, slot, anims, level, 1), OBJECTS | step); }
+      const p = ctx.players[who];
       if (phase === 'waiting') {
-        if (p.dead) { /* it sets what Sonic's own death step sets */ }
+        if (p.dead) { /* it sets what his own death step sets */ }
         else if (!p.carried) platform(o, o.boxes[0], p, ctx.world.terrain);
         else if (p.track < step && o.boxes[0] && overlap(e.x, e.y, o.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) {
           // its pull toward its point (unk3E) never runs: it puts him there and zeroes the count
@@ -217,7 +226,7 @@ function createPipeExit(e, slot, anims, level) {
           hold(p);
           phase = 'holding';
         }
-        if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
+        if (offCam(e.x, e.y, ctx.cam)) return leave();
       } else if (phase === 'holding') {
         if (!p.dead) {
           const v = face & 1 ? -speed : speed;
@@ -235,17 +244,18 @@ function createPipeExit(e, slot, anims, level) {
           if (t === 0) {
             // heldInput |= jump | attack: what he holds then isn't a press on this frame
             p.ignoreInput = false;
-            ctx.input.jumpPressed = false; ctx.input.attackPressed = false;
+            if (who === 0) { ctx.input.jumpPressed = false; ctx.input.attackPressed = false; }
+            else p.lastInput = { ...p.lastInput, jump: true, attack: true };
             p.track = 0x7F;
             p.carried = false;
           }
         }
       } else {
         phase = 'waiting';
-        if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
+        if (offCam(e.x, e.y, ctx.cam)) return leave();
       }
       animate(o, anims);
-      ctx.draw(o, e.x, e.y);
+      if (who === 0) ctx.draw(o, e.x, e.y);
       return true;
     },
   };

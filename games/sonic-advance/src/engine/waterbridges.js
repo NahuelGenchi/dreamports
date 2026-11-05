@@ -17,6 +17,7 @@ import { setOffsetY } from './sensors.js';
 import { BALL_SPRITE_OFFSET_Y } from './constants.js';
 import { SINE, s8 } from './trig.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const WATER_BRIDGE = 40, WATER_BRIDGE_SPLASH = 43;
 const ARC = 32;                        // WATER_BRIDGE_DIAMETER: how far below the arc it still holds him
@@ -31,40 +32,44 @@ export function createWaterBridge(e, slot, anims) {
   const left = e.x + s8(e.d[0]) * 8, top = e.y + s8(e.d[1]) * 8, right = left + w, bottom = top + h;
   const splash = makeSprite('slideSplash', { order: 15, prio: 1 });
 
-  // his controls back, with no fresh press of jump or attack
-  const release = ctx => {
-    ctx.player.ignoreInput = false;
+  // no fresh press of jump or attack: the CPU partner's own buttons (partner.js) count them as held instead
+  const noPresses = (ctx, p) => {
+    if (p !== ctx.player) { p.lastInput = { ...p.lastInput, jump: true, attack: true }; return; }
     ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false;
   };
 
   return {
     run(ctx) {
-      const p = ctx.player, x = Math.floor(p.x), feet = Math.floor(p.y) + p.offsetY;
-      if (offDisplay(e.x, e.y, ctx.cam)) { p.halfPipe = false; slot.live = null; return false; }
-      if (x >= left && x < right && feet >= top && feet <= bottom) {
-        if (p.dead) return true;
-        // where the arc is above his centre's column: half a turn of the sine table across the box
-        const theta = Math.min(0x1FF, Math.max(0, Math.trunc(((x - left) << 9) / w)));
-        const y = ((bottom << 8) - (SINE[theta] >> 6) * h) >> 8;
-        if (feet >= y && feet <= y + ARC) {
-          const cos = SINE[theta + 256] >> 6;
-          if (!p.halfPipe) { ctx.world.playSoundOrChange(SONG.WATER_BRIDGE_SPLASH); p.halfPipe = true; }
-          const v = clamp(Math.round((p.air ? p.xsp : p.gsp) * 256) + PUSH);
-          p.gsp = p.xsp = v / 256;
-          p.ysp = clamp(((-h * cos * v) >> 16) - FALL) / 256;
-          // Player_TransitionCancelFlyingAndBoost
-          endAttack(p); p.pushing = false; p.airLock = false;
-          p.state = 'hurt';
-          p.curled = false; setOffsetY(p, BALL_SPRITE_OFFSET_Y);
-          p.ignoreInput = true; p.heldInput = null; p.jumpPressed = false;
-          ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false;
-          animate(splash, anims);
-          ctx.draw(splash, x, feet - SOX);
-          return true;
+      // the range is first looked at on Sonic's turn, so only he gets his flag cleared as it leaves
+      if (offDisplay(e.x, e.y, ctx.cam)) { ctx.player.halfPipe = false; slot.live = null; return false; }
+      for (const p of ctx.players) {
+        const x = Math.floor(p.x), feet = Math.floor(p.y) + p.offsetY;
+        if (x >= left && x < right && feet >= top && feet <= bottom) {
+          // a dead player in the box ends the loop
+          if (p.dead) return true;
+          // where the arc is above his centre's column: half a turn of the sine table across the box
+          const theta = Math.min(0x1FF, Math.max(0, Math.trunc(((x - left) << 9) / w)));
+          const y = ((bottom << 8) - (SINE[theta] >> 6) * h) >> 8;
+          if (feet >= y && feet <= y + ARC) {
+            const cos = SINE[theta + 256] >> 6;
+            if (!p.halfPipe) { ctx.world.playSoundOrChange(SONG.WATER_BRIDGE_SPLASH); p.halfPipe = true; }
+            const v = clamp(Math.round((p.air ? p.xsp : p.gsp) * 256) + PUSH);
+            p.gsp = p.xsp = v / 256;
+            p.ysp = clamp(((-h * cos * v) >> 16) - FALL) / 256;
+            // Player_TransitionCancelFlyingAndBoost
+            endAttack(p); p.pushing = false; p.airLock = false;
+            p.state = 'hurt';
+            p.curled = false; setOffsetY(p, BALL_SPRITE_OFFSET_Y);
+            p.ignoreInput = true; p.heldInput = null; p.jumpPressed = false;
+            if (p === ctx.player) { ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false; }
+            animate(splash, anims);
+            ctx.draw(splash, x, feet - (fixes.on ? p.offsetY : SOX));
+            continue;
+          }
         }
+        if (p.ignoreInput) { p.ignoreInput = false; noPresses(ctx, p); }
+        p.halfPipe = false;
       }
-      if (p.ignoreInput) release(ctx);
-      p.halfPipe = false;
       return true;
     },
   };

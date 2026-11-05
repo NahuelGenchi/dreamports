@@ -6,7 +6,8 @@ name: Claims
 # a game with no entry yet, the open one that claims it. A Task issue goes under its game's issue as a sub-issue, and
 # claims its task for its author when they tick the box. On any open issue of a game, a comment starting with /claim
 # takes it while nobody has it, and /release gives it back. Each answer is a comment, and the daily run releases every
-# claim whose holder has done nothing on the game's issues or pull requests for 14 days. Each run only
+# claim whose holder has done nothing on the game's issues or pull requests for 14 days, or 7 for a foundation, which
+# other pieces wait on. It lists a game's free pieces as src/lib/pieces.mjs has them. Each run only
 # reads the issues' text and the repository's files, through the API, and runs nothing from them. Runs on one issue
 # wait for each other, and each answers every command on its issue that has no answer yet, since GitHub cancels all
 # but the newest waiting run of a concurrency group. A run that gives, takes back or adds a piece builds dreamports.net
@@ -96,7 +97,10 @@ jobs:
           const DAY = 86400000;
           const days = Number(process.env.DAYS);
           if (!(days > 0)) throw new Error(`A claim is released after a number of days above 0, not "${process.env.DAYS}".`);
-          const period = days === 1 ? '1 day' : `${days} days`;
+          // a foundation is what other pieces wait on, so a quiet claim on one is released in half the time
+          const isFoundation = issue => field(issue.body, 'Kind') === 'Foundation';
+          const daysOf = issue => (isFoundation(issue) ? days / 2 : days);
+          const periodOf = issue => (daysOf(issue) === 1 ? '1 day' : `${daysOf(issue)} days`);
           const form = template => `https://github.com/${repository}/issues/new?template=${template}`;
           const guide = `https://github.com/${repository}/blob/main/docs/TEAMS.md`;
           const same = (a, b) => a.toLowerCase() === b.toLowerCase();
@@ -214,10 +218,41 @@ jobs:
             await api(`/issues/${issue.number}`, 'PATCH', { state: 'closed', state_reason: reason });
           }
 
+          // what a game's parts.json lists, foundations first, each with what it needs: read once for each game
+          const plans = new Map();
+          function planOf(game) {
+            if (!plans.has(game)) plans.set(game, (async () => {
+              const file = await api(`/contents/games/${game}/proof/parts.json`);
+              try {
+                const { foundations, parts } = JSON.parse(Buffer.from(file?.content ?? '', 'base64').toString('utf8'));
+                return [...(foundations ?? []).map(f => ({ ...f, foundation: true })), ...(parts ?? [])];
+              } catch {
+                return [];
+              }
+            })());
+            return plans.get(game);
+          }
+          const nameOf = title => title.replace(/^Task:\s*/i, '').trim();
+          const sameName = (a, b) => same(String(a ?? '').trim(), String(b ?? '').trim());
+          // what a piece is still waiting on, each as a name, with its number when it has an issue: what parts.json says
+          // it needs, unless that issue is closed, or for a part with no issue, unless parts.json names its recording
+          function waitingOn(piece, pieces, plan) {
+            const needs = plan.find(p => sameName(p.name, nameOf(piece.title)))?.needs;
+            return (Array.isArray(needs) ? needs : []).flatMap(need => {
+              const found = pieces.find(p => sameName(nameOf(p.title), need));
+              if (found) return found.state === 'open' ? [`#${found.number} ${nameOf(found.title)}`] : [];
+              return plan.find(p => sameName(p.name, need))?.recording ? [] : [need];
+            });
+          }
+
           // what's still free in a game: its lead, when nobody leads it, and the pieces under its game's issue nobody has
+          // and that wait on nothing, foundations first
           async function free(game, title, except) {
             const home = await gameIssueOf(game);
-            const tasks = home ? (await piecesOf(home)).filter(i => i.state === 'open' && !i.assignees.length && i.number !== except) : [];
+            const pieces = home ? await piecesOf(home) : [], plan = await planOf(game);
+            const foundation = piece => plan.find(p => sameName(p.name, nameOf(piece.title)))?.foundation === true;
+            const startable = pieces.filter(i => i.state === 'open' && !i.assignees.length && i.number !== except && !waitingOn(i, pieces, plan).length);
+            const tasks = [...startable.filter(foundation), ...startable.filter(i => !foundation(i))];
             const lines = [];
             if (home?.state === 'open' && !home.assignees.length && home.number !== except) lines.push(`- #${home.number}: leading ${title}`);
             lines.push(...tasks.slice(0, 10).map(t => `- #${t.number}: ${t.title.replace(/^Task:\s*/i, '')}`));
@@ -246,10 +281,13 @@ jobs:
               return answer(issue, about, `@${user}, GitHub didn't let me assign this to you, so it's still free. Say so here, and the Dreamports team will look into it.`);
             }
             changed = true;
-            const help = `A claim with no activity on ${title}'s issues or pull requests for ${period} is released, and \`/release\` gives it back sooner. [Claims and teams](${guide}) says what comes next.`;
+            const help = `A claim with no activity on ${title}'s issues or pull requests for ${periodOf(issue)} is released, and \`/release\` gives it back sooner. [Claims and teams](${guide}) says what comes next.`;
+            const home = lead ? null : await gameIssueOf(game);
+            const waits = home ? waitingOn(issue, await piecesOf(home), await planOf(game)) : [];
+            const waiting = waits.length ? ` It needs ${waits.join(' and ')} first, which ${waits.length === 1 ? 'isn\'t' : 'aren\'t'} finished, so it can't be finished before then.` : '';
             return answer(issue, about, lead
               ? `@${user}, ${title} is yours to lead. This is its game's issue, where it's talked about: the tasks you open for it with [the Task form](${form('task.yml')}) land under it, with the label \`${game}\`, and anyone can claim them. ${help}`
-              : `@${user}, this task is yours, and nobody else can claim it while you have it. ${help}`,
+              : `@${user}, this task is yours, and nobody else can claim it while you have it.${waiting} ${help}`,
             `granted=${user}`);
           }
 
@@ -381,20 +419,21 @@ jobs:
           // who did anything on a game since a moment: on its issues and pull requests
           const active = new Map();
           async function activeOn(game, since) {
-            if (active.has(game)) return active.get(game);
+            const asked = `${game} ${since}`;
+            if (active.has(asked)) return active.get(asked);
             const people = new Set();
             const seen = (who, when) => { if (who && when && Date.parse(when) >= since) people.add(who.toLowerCase()); };
             for (const item of await list(`/issues?state=all&labels=${encodeURIComponent(game)}&since=${new Date(since).toISOString()}`)) {
               seen(item.user.login, item.created_at);
               for (const e of await list(`/issues/${item.number}/timeline`)) seen(e.actor?.login ?? e.user?.login, e.created_at ?? e.submitted_at);
             }
-            active.set(game, people);
+            active.set(asked, people);
             return people;
           }
 
           // the daily run: answers what a run missed, then releases the claims nobody has worked on
           async function releaseQuiet() {
-            const since = Date.now() - days * DAY;
+            const now = Date.now();
             const open = (await list('/issues?state=open&sort=created&direction=asc')).filter(i => !i.pull_request);
             // an issue changed in the last minutes has its own run
             for (const issue of open) if (Date.parse(issue.updated_at) < Date.now() - 600000) await handle(issue.number);
@@ -412,13 +451,13 @@ jobs:
                 else held.delete(found[3].toLowerCase());
               }
               for (const { login } of issue.assignees) {
-                if (!held.has(login.toLowerCase()) || (await activeOn(game, since)).has(login.toLowerCase())) continue;
+                if (!held.has(login.toLowerCase()) || (await activeOn(game, now - daysOf(issue) * DAY)).has(login.toLowerCase())) continue;
                 const title = await titleOf(game);
                 await api(`/issues/${issue.number}/assignees`, 'DELETE', { assignees: [login] });
                 changed = true;
                 await answer(issue, 'quiet', isNewDreamport(issue)
-                  ? `@${login}, there's been no news from you on ${title} for ${period}, so leading it is free again. Nothing is lost: your work and your team build stay where they are, for the next lead to start from, and \`/claim\` here takes it back, you included, while it's still free.`
-                  : `@${login}, there's been no news on this task for ${period}, so it's free again for anyone to take. Nothing is lost: your work and your preview stay where they are, and \`/claim\` takes it back, you included, while it's still free.`,
+                  ? `@${login}, there's been no news from you on ${title} for ${periodOf(issue)}, so leading it is free again. Nothing is lost: your work and your team build stay where they are, for the next lead to start from, and \`/claim\` here takes it back, you included, while it's still free.`
+                  : `@${login}, there's been no news on this task for ${periodOf(issue)}, so it's free again for anyone to take. Nothing is lost: your work and your preview stay where they are, and \`/claim\` takes it back, you included, while it's still free.`,
                 `released=${login}`);
               }
             }

@@ -16,7 +16,6 @@ interface Props {
 }
 
 const { game, open = false } = Astro.props;
-if (game.data.kind !== 'dreamport') throw new Error(`${game.id} has no Achievements page: only Dreamports keep achievements.`);
 const { data } = game;
 const { achievements: list } = await dreamportView(data);
 const id = game.id;

@@ -20,7 +20,6 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { gameFolder, proofFolder } from './lib/paths.mjs';
 import { hex, proofGames, readCodeMap, readOriginal } from './lib/proof-files.mjs';
-import { writeReadme } from './readme.mjs';
 
 // a label's word and its address, or a number's
 const NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_0?|0x0?)(8[0-9A-Fa-f]{6})\b/g;
@@ -51,11 +50,6 @@ export async function run(args) {
     if (stale.length) throw new Error(stale.map(game => `games/${game}/proof/port-map.json is out of date: npm run dp -- portmap ${game} writes it again.`).join('\n'));
     console.log(`The port map${games.length === 1 ? ' is' : 's are'} up to date.`);
     return 0;
-  }
-  try {
-    if (writeReadme().changed) console.log('Written: README.md\'s table of Dreamports and the progress maps, with the new numbers.');
-  } catch (error) {
-    console.log(`README.md's table of Dreamports wasn't written: ${error.message}`);
   }
   return 0;
 }

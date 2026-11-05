@@ -7,9 +7,9 @@ import { filterFor, getGames, sectionFor, type Game } from '../../../lib/site';
 import { keepsAchievements, released } from '../../../lib/dreamports';
 
 export const getStaticPaths = (async () => {
-  const games = await getGames('dreamport');
+  const games = await getGames();
   return games.flatMap((game) =>
-    game.data.kind === 'dreamport' && released(game) && keepsAchievements(game.data.game)
+    released(game) && keepsAchievements(game.data.game)
       ? [{ params: { section: sectionFor(game.data.kind).path, slug: game.id }, props: { game } }]
       : [],
   );

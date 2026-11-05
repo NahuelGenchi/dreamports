@@ -1,0 +1,27 @@
+---
+# Crash Bandicoot Purple: Ripto's Rampage Dreamport's entry. games/README.md explains every field, and its two numbers come from proof/.
+title: "Crash Bandicoot Purple: Ripto's Rampage Dreamport"
+platform: Game Boy Advance
+added: 2026-11-04
+summary: Plays in your browser. No emulator, nothing to install.
+needs: "A Crash Bandicoot Purple: Ripto's Rampage (USA) ROM (.gba)"
+controls: [keyboard, controller, touch]
+issue: 296
+lead: NahuelGenchi
+kit: gba
+ownCopy:
+  confirm: "I own Crash Bandicoot Purple: Ripto's Rampage"
+  links:
+    - label: Play
+      href: https://dreamports.net/play/crash-bandicoot-purple/
+      icon: play
+screen:
+  clip: /media/crash-bandicoot-purple-dreamport
+  still: /media/crash-bandicoot-purple-dreamport-still.webp
+  pixelated: true
+share: /media/crash-bandicoot-purple-dreamport-share.png
+---
+
+## Credits
+
+Made by NahuelGenchi.

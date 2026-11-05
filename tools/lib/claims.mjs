@@ -97,6 +97,22 @@ export function teamBuildOf(lead, game, named) {
   return null;
 }
 
+/**
+ * The numbers of the tasks a team build has gathered: those its merged pull requests name, as `team send` writes them
+ * (tools/team.mjs). Pieces waiting on one of them can start from the team build.
+ */
+export function gatheredIn(build) {
+  const found = new Set();
+  for (let page = 1; ; page++) {
+    const batch = api(`repos/${build.repository}/pulls?state=closed&base=${encodeURIComponent(build.branch)}&per_page=100&page=${page}`) ?? [];
+    for (const pull of batch) {
+      const task = pull.merged_at && /^\*\*Task:\*\* \S+#(\d+)\s*$/m.exec(pull.body ?? '');
+      if (task) found.add(Number(task[1]));
+    }
+    if (batch.length < 100) return found;
+  }
+}
+
 // the repositories of the network an account can hold a team build in: its forks, and the repository itself if it's theirs
 function forksOf(owner) {
   const found = UPSTREAM.split('/')[0].toLowerCase() === owner.toLowerCase() ? [UPSTREAM] : [];

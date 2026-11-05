@@ -27,21 +27,21 @@ export function createPanelGate(e, slot, anims) {
   // Coll_Player_Entity_Intersection with its box moved
   const touches = (p, x, y) => overlap(x, y, o.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY]);
 
-  function opens(ctx) {
+  function opens(ctx, p) {
     open = OPEN;
     startAnim(o, spin);
-    setOffsetY(ctx.player, SPRITE_OFFSET_Y);   // PLAYERFN_CHANGE_SHIFT_OFFSETS(6, 14)
+    setOffsetY(p, SPRITE_OFFSET_Y);   // PLAYERFN_CHANGE_SHIFT_OFFSETS(6, 14)
     ctx.world.playSound(SONG.PANEL_GATE);
   }
 
   // sub_8081C04: run through from the open side, or pushed out of it
-  function upright(ctx) {
-    const p = ctx.player, t = ctx.world.terrain, px = Math.floor(p.x), py = Math.floor(p.y), y = p.y;
+  function upright(ctx, p) {
+    const t = ctx.world.terrain, px = Math.floor(p.x), py = Math.floor(p.y), y = p.y;
     if (py >= e.y - 40 && py <= e.y + 40) {
       const [from, to] = flip ? [e.x, e.x + 32] : [e.x - 32, e.x + 16];
       if (px >= from && px <= to) {
         if (flip || px <= e.x) {
-          if (flip ? p.xsp < 0 : p.xsp > 0) opens(ctx);
+          if (flip ? p.xsp < 0 : p.xsp > 0) opens(ctx, p);
           else gate(o, o.boxes[0], p, t, false);
         } else if (p.xsp < 0) {
           gate(o, o.boxes[0], p, t, false);
@@ -53,26 +53,31 @@ export function createPanelGate(e, slot, anims) {
   }
 
   // sub_8081F50: fallen through from the open side, or solid
-  function lying(ctx) {
-    const p = ctx.player, t = ctx.world.terrain, px = Math.floor(p.x), py = Math.floor(p.y);
+  function lying(ctx, p) {
+    const t = ctx.world.terrain, px = Math.floor(p.x), py = Math.floor(p.y);
     const [from, to] = flip ? [e.y, e.y + 28] : [e.y - 28, e.y];
-    if (px >= e.x && px <= e.x + 32 && py >= from && py <= to && (flip ? p.ysp < 0 : p.ysp > 0)) opens(ctx);
+    if (px >= e.x && px <= e.x + 32 && py >= from && py <= to && (flip ? p.ysp < 0 : p.ysp > 0)) opens(ctx, p);
     else platform(o, o.boxes[0], p, t);
   }
 
   return {
     run(ctx) {
-      const p = ctx.player, t = ctx.world.terrain;
+      const t = ctx.world.terrain;
       if (!open) {
-        // opening it switches to Task_PanelGate_*2 from the next frame
-        if (!p.dead) flat ? lying(ctx) : upright(ctx);
+        // opening it switches to Task_PanelGate_*2 from the next frame. The original's task goes through every
+        // player, dead or not, once for each player alive, so with both alive each is tested twice
+        for (const alive of ctx.players) {
+          if (alive.dead) continue;
+          for (const p of ctx.players) flat ? lying(ctx, p) : upright(ctx, p);
+        }
         if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
         ctx.draw(o, e.x, e.y);
         return true;
       }
 
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
-      if (!p.dead) {
+      for (const p of ctx.players) {
+        if (p.dead) continue;
         // only coming back is stopped
         if (flat) {
           if (touches(p, e.x, flip ? e.y + 5 : e.y - 5) && (flip ? p.ysp > 0 : p.ysp < 0)) platform(o, o.boxes[0], p, t);

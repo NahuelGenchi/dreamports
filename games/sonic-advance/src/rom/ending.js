@@ -15,7 +15,7 @@ export const ENDING_SPRITES = {
   twinkle: [731, 0], skySparkle: [732, 0], tailsFace: [805, 1], tailsTurn: [191, 0], tailsTurned: [191, 1],
   tornadoSide: [736, 0], tornadoFront: [735, 0],
   // (the four clouds share a sprite palette row, and the last of them loads 790's colours over 792's)
-  cloudXS: [790, 0], cloudS: [791, 0], cloudM: [792, 0, 790], cloudL: [793, 0],
+  cloudXS: [790, 0], cloudS: [791, 0], cloudM: [792, 0, 790], cloudL: [793, 0], cloudMOwn: [792, 0],
   fewDaysLater: [783, 0], fewDaysLaterJapanese: [786, 0],
   // the last pictures (733, 734) and the three congratulation lines over the last (785)
   artA0: [733, 0], artA1: [733, 1], artB0: [734, 0], artB1: [734, 1],

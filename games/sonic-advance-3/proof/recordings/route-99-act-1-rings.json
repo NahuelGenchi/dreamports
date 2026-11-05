@@ -1,0 +1,180 @@
+{
+ "about": "Sonic running through Route 99 act 1's first four rings, from a start point: he takes them, each with its sparkle and sound, and the number goes up, with Tails running after him. It stops the frame before a Chao, which isn't made, comes on the screen.",
+ "frames": 622,
+ "start": "level=3&seed=5",
+ "held": [
+  [
+   0,
+   []
+  ],
+  [
+   330,
+   [
+    "RIGHT"
+   ]
+  ]
+ ],
+ "onlyInOriginal": [
+  {
+   "at": 0,
+   "frames": 5140,
+   "held": [
+    [
+     0,
+     []
+    ],
+    [
+     100,
+     [
+      "A"
+     ]
+    ],
+    [
+     106,
+     []
+    ],
+    [
+     300,
+     [
+      "A"
+     ]
+    ],
+    [
+     306,
+     []
+    ],
+    [
+     500,
+     [
+      "START"
+     ]
+    ],
+    [
+     506,
+     []
+    ],
+    [
+     700,
+     [
+      "A"
+     ]
+    ],
+    [
+     706,
+     []
+    ],
+    [
+     1000,
+     [
+      "START"
+     ]
+    ],
+    [
+     1006,
+     []
+    ],
+    [
+     1200,
+     [
+      "START"
+     ]
+    ],
+    [
+     1206,
+     []
+    ],
+    [
+     1400,
+     [
+      "START"
+     ]
+    ],
+    [
+     1406,
+     []
+    ],
+    [
+     1600,
+     [
+      "A"
+     ]
+    ],
+    [
+     1606,
+     []
+    ],
+    [
+     1750,
+     [
+      "A"
+     ]
+    ],
+    [
+     1756,
+     []
+    ],
+    [
+     1900,
+     [
+      "A"
+     ]
+    ],
+    [
+     1906,
+     []
+    ],
+    [
+     2050,
+     [
+      "A"
+     ]
+    ],
+    [
+     2056,
+     []
+    ],
+    [
+     2200,
+     [
+      "A"
+     ]
+    ],
+    [
+     2206,
+     []
+    ]
+   ],
+   "about": "From power-on to Route 99 act 1: the language, a name, the logos, the title, the main menu, Sonic and Tails, the story, the overworld, then the warp to the act: the next map's number and both characters' next step, the one the act's ring gives them.",
+   "sets": [
+    {
+     "frame": 5040,
+     "address": "030008B2",
+     "bytes": 2,
+     "value": 3
+    },
+    {
+     "frame": 5040,
+     "address": "030015C0",
+     "bytes": 4,
+     "value": 134262061
+    },
+    {
+     "frame": 5040,
+     "address": "03001710",
+     "bytes": 4,
+     "value": 134262061
+    },
+    {
+     "frame": 5139,
+     "address": "03006868",
+     "bytes": 4,
+     "value": 5
+    }
+   ]
+  }
+ ],
+ "clip": {
+  "at": 320,
+  "frames": 302
+ }
+}

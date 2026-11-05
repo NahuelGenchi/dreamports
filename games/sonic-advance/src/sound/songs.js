@@ -4,7 +4,9 @@
 export const SONG = {
   INTRO: 1,                // MUS_INTRO
   TITLE_FANFARE: 2,        // MUS_TITLE_FANFARE
+  VS_PLEASE_WAIT: 5,       // MUS_VS_PLEASE_WAIT: the VS menu's waiting screens
   CHARACTER_SELECTION: 3,  // MUS_CHARACTER_SELECTION: the Options menu stops it as it opens the sound test
+  COURSE_SELECTION: 4,     // MUS_COURSE_SELECTION: the course select
   VS_RECORD: 10,           // MUS_VS_RECORD: the player data's VS record
   OPTIONS: 11,             // MUS_OPTIONS: the Options menu (Scrap Brain Zone's remix)
   VS_WIN: 7,               // MUS_007: the multiplayer results screen when this player won,
@@ -15,6 +17,7 @@ export const SONG = {
   DROWNING: 27,            // MUS_DROWNING: the countdown music under water
   INVINCIBILITY: 28,       // MUS_INVINCIBILITY
   BOSS_FIGHT: 29,          // MUS_BOSS_FIGHT: also started and stopped at once to stop the menu's music
+  FINAL_CLEAR: 35, // MUS_FINAL_CLEAR: X Zone's results
   ACT_CLEAR: 33,           // MUS_ACT_CLEAR: the results of an act without a boss
   BOSS_CLEAR: 34,          // MUS_BOSS_CLEAR: the results of a zone's second act, after its boss
   SPECIAL_STAGE_INTRO: 41, // MUS_SPECIAL_STAGE_INTRO: the fall into the special stage
@@ -26,6 +29,7 @@ export const SONG = {
   SPECIAL_STAGE_WIN: 47,   // MUS_047: the results with it
   PLAYER_DATA: 48,         // MUS_PLAYER_DATA: the player data menu and the name input
   SEGA_RING: 102,          // SE_RING: Sonic Team's logo
+  SHIFT: 103,              // SE_SHIFT: the character select's row turning
   SELECT: 106,             // SE_SELECT: Start on the title screen, a choice in the menu
   RETURN: 107,             // SE_RETURN: back out of a choice in the Options menu
   MENU_CURSOR: 108,        // SE_MENU_CURSOR_MOVE
@@ -41,6 +45,9 @@ export const SONG = {
   RINGS_LOST: 118,         // SE_RINGS_LOST: the rings scatter
   LIFE_LOST: 119,          // SE_LIFE_LOST: Sonic dies
   TAILS_FLYING: 120,       // SE_TAILS_PROPELLER_FLYING: Tails' flight, started again on each of its frames
+  AMY_HAMMER: 130,         // SE_AMY_SUPER_HAMMER_ATTACK: Amy's hammer in the air
+  AMY_SWIRL: 131,          // SE_AMY_HAMMER_SWIRL: and swirled down
+  AMY_GRINDING: 134,       // SE_AMY_GRINDING: on a grind rail
   TAIL_SWIPE: 121,         // SE_TAILS_TAIL_SWIPE
   SOMERSAULT: 121,         // SE_TAILS_TAIL_SWIPE, which Sonic's somersault kick reuses
   PUNCH_2: 126,            // SE_126: Knuckles' second punch

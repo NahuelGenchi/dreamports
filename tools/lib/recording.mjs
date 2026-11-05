@@ -7,13 +7,19 @@
 //   "held": [[frame, [buttons]], ...]: from each of these frames on, the buttons held, until the next change. A button
 //     the console has goes by the console's name (on the Game Boy Advance: A, B, SELECT, START, RIGHT, LEFT, UP,
 //     DOWN, R and L); one only the Dreamport has, such as an extra's, by the game's name for it.
-//   "onlyInOriginal": optional, screens the Dreamport doesn't have yet: [{ "at", "frames", "held", "about" }]. Before
-//     the Dreamport's frame `at`, the original runs `frames` frames of its own, with `held` counted from the first
-//     of them. Those frames aren't compared, and the code that runs in them doesn't count towards the %.
+//   "onlyInOriginal": optional, screens the Dreamport doesn't have yet: [{ "at", "frames", "held", "sets", "about" }].
+//     Before the Dreamport's frame `at`, the original runs `frames` frames of its own, with `held` counted from the first
+//     of them. Those frames aren't compared, and the code that runs in them doesn't count towards the %. `sets`, also
+//     optional, writes values to the original's work RAM as those frames run, which is how it gets to a part with no
+//     need to play everything before it: [{ "frame", "address", "bytes", "value", "about" }], with `frame` counted the
+//     same way, `address` in hexadecimal as the code map has it, and `bytes` 1, 2 or 4.
+//   "start": optional, a start point: what the Dreamport's address adds, such as "level=2&character=1", so it opens at
+//     the part this recording plays. tools/README.md, Start points.
 //   "clip": optional, the frames the clip shows: { "at", "frames" }
 // }
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const isFrame = n => Number.isInteger(n) && n >= 0;
 
@@ -30,11 +36,39 @@ function checkHeld(held, frames, where) {
   }
 }
 
+// what a start point can add to the Dreamport's address: words and values with nothing the address would read as more
+const START = /^[a-z][a-z0-9-]*=[A-Za-z0-9._-]+(?:&[a-z][a-z0-9-]*=[A-Za-z0-9._-]+)*$/;
+
+/** Checks a start point, what the Dreamport's address adds, and throws with what is wrong. */
+/** Whether a game's code names neverInPlay in any of its files, in the line that says what no player could see or in a comment saying why it needs none (tools/README.md, Start points). */
+export const namesNeverInPlay = folder => readdirSync(folder, { recursive: true })
+  .some(file => /\.m?js$/.test(file) && readFileSync(join(folder, file), 'utf8').includes('neverInPlay'));
+
+export function checkStart(start, where) {
+  if (typeof start !== 'string' || !START.test(start) || start.split('&').some(pair => pair.startsWith('proof='))) {
+    throw new Error(`${where}: a start point is what the Dreamport's address adds, as words and values such as level=2&character=1, and not proof`);
+  }
+}
+
+/** Checks the values a stretch only the original has writes to its memory, and throws with what is wrong. */
+function checkSets(sets, frames, where) {
+  if (!Array.isArray(sets)) throw new Error(`${where}: "sets" is a list of { frame, address, bytes, value }`);
+  for (const set of sets) {
+    const { frame, address, bytes, value } = set ?? {};
+    const aligned = typeof address === 'string' && /^[0-9A-Fa-f]{8}$/.test(address) && parseInt(address, 16) % bytes === 0;
+    const fits = Number.isInteger(value) && value >= 0 && value < 2 ** (8 * bytes);
+    if (!isFrame(frame) || frame >= frames || ![1, 2, 4].includes(bytes) || !aligned || !fits) {
+      throw new Error(`${where}: ${JSON.stringify(set)} isn't a frame of the stretch, an address of eight hexadecimal digits at a multiple of its bytes, 1, 2 or 4 of them, and a value that fits them`);
+    }
+  }
+}
+
 /** Reads and checks a recording. */
 export function readRecording(file) {
   const recording = JSON.parse(readFileSync(file, 'utf8'));
-  const { frames, held, onlyInOriginal = [], clip } = recording;
+  const { frames, held, onlyInOriginal = [], clip, start } = recording;
   if (!Number.isInteger(frames) || frames < 1) throw new Error(`${file}: "frames" is how many frames it runs`);
+  if (start !== undefined) checkStart(start, file);
   checkHeld(held, frames, file);
   let last = -1;
   for (const gap of onlyInOriginal) {
@@ -42,6 +76,7 @@ export function readRecording(file) {
       throw new Error(`${file}: each of "onlyInOriginal" has "at", a frame from 0 to ${frames} after the one before, and "frames", one or more`);
     }
     checkHeld(gap.held ?? [], gap.frames, `${file}, "onlyInOriginal" at ${gap.at}`);
+    if (gap.sets !== undefined) checkSets(gap.sets, gap.frames, `${file}, "onlyInOriginal" at ${gap.at}`);
     last = gap.at;
   }
   if (clip && (!isFrame(clip.at) || !Number.isInteger(clip.frames) || clip.frames < 1 || clip.at + clip.frames > frames)) {
@@ -61,6 +96,27 @@ export function expand(held = [], frames) {
   return out;
 }
 
+/**
+ * The buttons the original is given at every frame, with the stretches only it has in their places, for what a list of
+ * presses leads to. It's for real play, so it stops at values written to the original's memory.
+ */
+export function originalButtons({ frames, held, onlyInOriginal = [] }) {
+  const out = [], own = expand(held, frames);
+  let gap = 0;
+  const addStretches = frame => {
+    for (; gap < onlyInOriginal.length && onlyInOriginal[gap].at === frame; gap++) {
+      if (onlyInOriginal[gap].sets?.length) throw new Error('This list of presses writes values to the original\'s memory, and a game\'s card shows only real play.');
+      out.push(...expand(onlyInOriginal[gap].held, onlyInOriginal[gap].frames));
+    }
+  };
+  for (let frame = 0; frame < frames; frame++) {
+    addStretches(frame);
+    out.push(own[frame]);
+  }
+  addStretches(frames);
+  return out;
+}
+
 /** The list of changes for the buttons held at every frame. */
 export function compress(perFrame) {
   const held = [];
@@ -74,9 +130,9 @@ export function compress(perFrame) {
 }
 
 /** Writes a recording, a change of buttons to a line, so a change to it reads well in a diff. */
-export function writeRecording(file, { about, frames, held, onlyInOriginal = [], clip }) {
+export function writeRecording(file, { about, frames, held, onlyInOriginal = [], clip, start }) {
   const lines = held.map(change => '    ' + JSON.stringify(change));
-  const parts = [`  "about": ${JSON.stringify(about)}`, `  "frames": ${frames}`, `  "held": [\n${lines.join(',\n')}\n  ]`];
+  const parts = [`  "about": ${JSON.stringify(about)}`, ...(start ? [`  "start": ${JSON.stringify(start)}`] : []), `  "frames": ${frames}`, `  "held": [\n${lines.join(',\n')}\n  ]`];
   if (onlyInOriginal.length) parts.push(`  "onlyInOriginal": ${JSON.stringify(onlyInOriginal)}`);
   if (clip) parts.push(`  "clip": ${JSON.stringify(clip)}`);
   writeFileSync(file, `{\n${parts.join(',\n')}\n}\n`);

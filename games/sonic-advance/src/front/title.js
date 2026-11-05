@@ -3,12 +3,12 @@
 // then the logo zooms in from four times its size over 13, slowing as it comes. A second after the copyright line
 // shows, "PRESS START" blinks above it, on and off every 32 frames, and Start opens the main menu: the five items
 // where "PRESS START" was, the chosen one lit. Up and Down move through them, wrapping round, with the key
-// repeat, and A on Game Start or Options fades the screen to black and stops the music. Options opens the Options
+// repeat, and A on Game Start, VS, Time Attack or Options fades the screen to black and stops the music. Options opens the Options
 // menu (options.js), which comes back to the main menu with the title screen's layers drawn again and a fade in.
 //
-// What isn't built yet goes nowhere. The original starts a demo after 900 frames on the title screen; here the
-// title screen stays as it is. A on VS, Time Attack or Tiny Chao Garden does nothing, and Game Start goes to the
-// act, where the character select would start.
+// What isn't built yet goes nowhere. A on Tiny Chao Garden does nothing. Game Start opens the character
+// select (charselect.js), or with the address's start point for the course select goes where it leads, Time
+// Attack its menu (timeattack.js) and VS the mode select (modeselect.js).
 //
 // The logo, "PRESS START" and the menu's items are in the save's language, Japanese or English; the copyright line
 // is the international release's in both.
@@ -19,6 +19,9 @@ import { FLAGS, KEY } from '../gba/engine.js';
 import { SONG } from '../sound/songs.js';
 import { createFade, fadeStep } from './ui.js';
 import { createOptionsMenu } from './options.js';
+import { createTimeAttackMenu } from './timeattack.js';
+import { createCharacterSelect } from './charselect.js';
+import { createModeSelect } from './modeselect.js';
 
 // by the save's language (0 Japanese, 1 English): the logo's tilemap, and "PRESS START"'s and the items' animation
 const TM_TITLE_LOGO = [73, 74], TM_TITLE_BG = 75;
@@ -29,11 +32,13 @@ const COPYRIGHT_VARIANT = 1;
 // the tiles the original gives each sprite: "PRESS START"'s are the Japanese one's, the bigger of the two
 const PRESS_START_TILES = 23 * 2, COPYRIGHT_TILES = 3 * 30;
 const MENU_ITEMS = 5, MENU_TOP = 93, MENU_SPACE = 14;
-const GAME_START = 0, OPTIONS = 3;
+const GAME_START = 0, VS = 1, TIME_ATTACK = 2, OPTIONS = 3;
 const ITEM_TILES = [28, 16, 28, 20, 40];
 const ITEM_VARIANTS = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5];   // by item, then language
 const BLEND_STEP = 0x55, BLEND_END = 0x1000;
+const DEMO_WAIT = 900, DEMO_READY = 60;   // and how long before it the next demo's act is read from the ROM
 const RUNNING = 1, ENDED = 0;
+const SINGLE_PLAYER = 0;   // gGameMode
 const s16 = v => (v << 16) >> 16;
 
 // a sprite of the title screen or the menu: its animation from the start, at normal speed
@@ -43,8 +48,8 @@ const placeLogo = (e, scale) => transformBackground(e.bgAffine[0], 0, scale, sca
 
 /**
  * CreateTitleScreen. `ctx` has the engine (engine.js), the ROM's tilemap table (`tilemaps`), the sprite tables
- * (`sprites`, rom/sprites.js), the save (`save`, for its language) and `play()`, called where the character
- * select would start. With `playMusic`, the title's music starts.
+ * (`sprites`, rom/sprites.js), the save (`save`, for its language) and the rest the character select takes. With
+ * `playMusic`, the title's music starts.
  */
 export function createTitleScreen(ctx, playMusic) {
   const e = ctx.engine, vram = e.video.vram, lang = ctx.save.uiLanguage;
@@ -118,8 +123,8 @@ function zoomIn(t) {
   placeLogo(e, title.unkE4);
 }
 
-// sub_800D878: after 60 frames "PRESS START" blinks and Start opens the menu. After 900 the original starts a
-// demo (Task_SwitchToDemoInit); demos aren't built, so the title screen goes on.
+// sub_800D878: after 60 frames "PRESS START" blinks and Start opens the menu, and after 900 a demo starts, on the
+// versions with a known place for its presses.
 function waitForStart(t) {
   const title = t.data, { ctx } = title, e = ctx.engine;
   title.unkE2 = (title.unkE2 + 1) & 0xFFFF;
@@ -132,6 +137,15 @@ function waitForStart(t) {
     if (!((title.unkE2 - 60) & 0x20)) displaySprite(e, ctx.sprites, title.s);
   }
   displaySprite(e, ctx.sprites, title.s2);
+  if (title.unkE2 === DEMO_WAIT - DEMO_READY && ctx.offsets.demoRecordings) ctx.prepareDemo();
+  if (title.unkE2 > DEMO_WAIT && ctx.offsets.demoRecordings) t.main = toDemo;
+}
+
+// Task_SwitchToDemoInit: the act comes next, by itself (engine/demo.js)
+function toDemo(t) {
+  const { ctx } = t.data;
+  ctx.engine.destroyTask(t);
+  ctx.startDemo();
 }
 
 // Task_SwitchToMainMenu
@@ -233,9 +247,8 @@ function chooseItem(t) {
     updateSprite(e, ctx.sprites, item);
     displaySprite(e, ctx.sprites, item);
   });
-  // VS's, Time Attack's and Tiny Chao Garden's screens aren't built: A on them does nothing (the original fades
-  // out to them too)
-  if (e.pressed & KEY.A && (menu.selectedItem === GAME_START || menu.selectedItem === OPTIONS)) {
+  // Tiny Chao Garden's screen isn't built: A on it does nothing (the original fades out to it too)
+  if (e.pressed & KEY.A && (menu.selectedItem === GAME_START || menu.selectedItem === VS || (menu.selectedItem === TIME_ATTACK && ctx.offsets.timeAttackMenu) || menu.selectedItem === OPTIONS)) {
     e.playSong(SONG.SELECT);
     t.main = fadeOut;
     menu.unk1B0 = 0;
@@ -262,8 +275,8 @@ function fadeOut(t) {
 }
 
 // Task_800DEE4: the items' tiles freed and the music stopped (a song started on its player, the player cleared
-// and the song stopped), then the character select, which isn't built, so the act; or the windows and the blend
-// off, and the Options menu
+// and the song stopped), then the character select; or the windows and the blend off, and the Time Attack or
+// Options menu
 function leaveMenu(t) {
   const menu = t.data, { ctx } = menu, e = ctx.engine, item = menu.selectedItem;
   for (const s of menu.items) e.vramFree(s.graphics.dest);
@@ -271,11 +284,16 @@ function leaveMenu(t) {
   e.playSong(SONG.BOSS_FIGHT);
   e.stopSong(SONG.BOSS_FIGHT);
   if (item === GAME_START) {
-    ctx.play();
+    ctx.gameMode = SINGLE_PLAYER;
+    ctx.onGameStart?.();
+    if (ctx.select) createCharacterSelect(ctx, ctx.character);
+    else ctx.startGame();
     return;
   }
   e.dispCnt &= ~0x6000;
   e.bldCnt = 0;
   e.bldY = 0;
-  createOptionsMenu(ctx);
+  if (item === TIME_ATTACK) createTimeAttackMenu(ctx);
+  else if (item === VS) createModeSelect(ctx);
+  else createOptionsMenu(ctx);
 }

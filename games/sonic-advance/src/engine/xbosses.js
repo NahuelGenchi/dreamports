@@ -3,12 +3,15 @@
 // against a boss and its shots, the explosions, the flying debris and Eggman's escape. Positions are in the
 // original's units: whole pixels for the camera, 1/256 px for what moves.
 
+import { SONG } from '../sound/songs.js';
 import { makeSprite, startAnim, animate, OBJECTS } from './objects.js';
 import { overlap } from './collide.js';
 import { SINE } from './trig.js';
 import { SCREEN_W, SCREEN_H } from './constants.js';
+import { eachPlayer } from './bosses.js';
 
-export const HIT_ENEMY = 1, HIT_PLAYER = 2;   // EHit: the boss hit, and Sonic hurt
+export const HIT_ENEMY = 1, HIT_PLAYER = 2;   // EHit: the boss hit, and a player hurt
+export { eachPlayer };
 
 export const sin = a => SINE[a], cos = a => SINE[a + 256];
 export const s16 = v => (v << 16) >> 16, s8 = v => (v << 24) >> 24;
@@ -75,11 +78,11 @@ export function setBossCamBounds(cam, minY, maxY, minX, maxX) {
 const at = p => [Math.floor(p.x), Math.floor(p.y)];
 
 /**
- * Coll_Player_Enemy, as the bosses use it: Sonic's attack box on the boss's box (slot 0) turns his air
- * speeds back (HIT_ENEMY); otherwise his body on it hurts him (HIT_PLAYER). 0 when nothing touched.
+ * Coll_Player_Enemy, as the bosses use it, on one player: their attack box on the boss's box (slot 0) turns their
+ * air speeds back (HIT_ENEMY); otherwise their body on it hurts them (HIT_PLAYER). 0 when nothing touched.
  */
-export function bossHit(s, x, y, ctx) {
-  const p = ctx.player, hb = s.boxes[0];
+export function bossHitOn(s, x, y, ctx, p) {
+  const hb = s.boxes[0];
   if (!hb || p.dead) return 0;
   const [px, py] = at(p);
   if (p.boxes[1] && overlap(x, y, hb, px, py, p.boxes[1])) {
@@ -87,29 +90,33 @@ export function bossHit(s, x, y, ctx) {
     return HIT_ENEMY;
   }
   if (p.boxes[0] && overlap(x, y, hb, px, py, p.boxes[0])) {
-    ctx.world.damage();
+    ctx.world.damage(p);
     return HIT_PLAYER;
   }
   return 0;
 }
+/** The same on Sonic and then on the CPU partner. */
+export const bossHit = (s, x, y, ctx) => eachPlayer(ctx, p => bossHitOn(s, x, y, ctx, p));
 
-/** sub_800BF10: a boss's harmful part (its box in slot 0) on Sonic's body hurts him. */
-export function bossShotHit(s, x, y, ctx) {
-  const p = ctx.player, hb = s.boxes[0];
+/** sub_800BF10, on one player: a boss's harmful part (its box in slot 0) on their body hurts them. */
+export function bossShotHitOn(s, x, y, ctx, p) {
+  const hb = s.boxes[0];
   if (!hb || p.dead || !p.boxes[0]) return 0;
   const [px, py] = at(p);
   if (!overlap(x, y, hb, px, py, p.boxes[0])) return 0;
-  ctx.world.damage();
+  ctx.world.damage(p);
   return HIT_PLAYER;
 }
+/** The same on Sonic and then on the CPU partner. */
+export const bossShotHit = (s, x, y, ctx) => eachPlayer(ctx, p => bossShotHitOn(s, x, y, ctx, p));
 
-/** sub_800BFEC: a boss's body (its box in slot 1) on Sonic's body hurts him. */
-export function bossBodyHit(s, x, y, ctx) {
-  const p = ctx.player, hb = s.boxes[1];
+/** sub_800BFEC, on one player: a boss's body (its box in slot 1) on their body hurts them. */
+export function bossBodyHitOn(s, x, y, ctx, p) {
+  const hb = s.boxes[1];
   if (!hb || p.dead || !p.boxes[0]) return 0;
   const [px, py] = at(p);
   if (!overlap(x, y, hb, px, py, p.boxes[0])) return 0;
-  ctx.world.damage();
+  ctx.world.damage(p);
   return HIT_PLAYER;
 }
 
@@ -134,9 +141,10 @@ export function grabTest(s, x, y, ctx) {
 /**
  * The nuts-and-bolts task (Task_NutsAndBolts): a sprite at (qx, qy) moving by (vx, vy) and falling by
  * (gx, gy) a frame, in 1/256 px. It goes once it is off the screen's sides or below it, or once its
- * animation has ended and `minFrames` (counting down a frame at a time) is used up.
+ * animation has ended and `minFrames` (counting down a frame at a time) is used up. `sound` is a song its
+ * animation's script starts before its first frame.
  */
-export function nutsAndBolts(s, qx, qy, { vx = 0, vy = 0, gx = 0, gy = 0, minFrames = 0 } = {}) {
+export function nutsAndBolts(s, qx, qy, { vx = 0, vy = 0, gx = 0, gy = 0, minFrames = 0, sound = 0 } = {}) {
   return {
     priority: OBJECTS,
     run(ctx) {
@@ -145,6 +153,7 @@ export function nutsAndBolts(s, qx, qy, { vx = 0, vy = 0, gx = 0, gy = 0, minFra
       const x = I(qx), y = I(qy), sx = x - ctx.cam.x, sy = y - ctx.cam.y;
       if (minFrames !== 0) minFrames--;
       if (sx < -32 || sx > SCREEN_W + 32 || sy - 32 > SCREEN_H) return false;
+      if (sound && s.anim.i < 0) ctx.world.playSound(sound);
       // UpdateSpriteAnimation keeps answering "ended" on every frame after a one-shot animation's end
       animate(s, ctx.anims);
       if (s.anim.done && minFrames === 0) return false;
@@ -155,13 +164,13 @@ export function nutsAndBolts(s, qx, qy, { vx = 0, vy = 0, gx = 0, gy = 0, minFra
 }
 
 /**
- * sub_8017540: an explosion at (qx, qy), mirrored either way at random (OAM order 20). Returns its task, which
- * the caller adds.
+ * sub_8017540: an explosion at (qx, qy), mirrored either way at random (OAM order 20), whose animation's script
+ * starts its sound as it first shows. Returns its task, which the caller adds.
  */
 export function explosion(ctx, qx, qy) {
   const r = ctx.world.random();
   const s = makeSprite('bossExplosion', { order: 20, flipX: (r & 0x400) !== 0, flipY: (r & 0x800) !== 0 });
-  return nutsAndBolts(s, qx, qy);
+  return nutsAndBolts(s, qx, qy, { sound: SONG.EXPLOSION });
 }
 
 // the pieces a wrecked machine throws (gUnknown_080BB41C and gUnknown_080BB42C: animations 697, 695 and 696)

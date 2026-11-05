@@ -3,9 +3,10 @@
 // and compared byte by byte, and what can't be, its proof files and capture, is checked against the strict shapes the
 // tools write, so that no words and no code of anyone's can come along. It reads the files as data and runs none of them.
 import { checkRules } from '../moderation/rules.mjs';
-import { namesOf, startingEntry, startingFiles, withCapture } from '../../tools/lib/new-game.mjs';
+import { captureMessage, firstFilesMessage, namesOf, startingEntry, startingFiles, withCapture } from '../../tools/lib/new-game.mjs';
 
 const GAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const PERSON = /^[\p{L}\p{N}][\p{L}\p{N} .'_-]{0,59}$/u;   // a person's name on a commit, which has room for no link
 const MOST_CLIP = 1_468_006, MOST_STILL = 262_144, MOST_SHARE = 1_048_576, MOST_MAP = 4_194_304;
 
 /** The most each file can be, by where it is, for reading no more than that. */
@@ -17,7 +18,7 @@ export function gameOf(files) {
   return found.length === 1 && GAME.test(found[0]) ? found[0] : null;
 }
 
-/** Every file of a game's first entry, but README.md, which it changes. */
+/** Every file of a game's first entry, but docs/STATUS.md, which it changes. */
 export function pathsOf(game) {
   const media = `public/media/${game}-dreamport`;
   return [
@@ -108,20 +109,42 @@ export function isShare(bytes) {
   return ended && at === bytes.length;
 }
 
+/**
+ * Whether a first entry that passed can keep its commits, which is what leaves the pull request of the game's first task
+ * clean once it merges, as that task's branch starts from the same first files. Merging puts every commit on main for
+ * good, so it has to be only the two the tools make, in the tools' words and nobody else's: the game's first files, as
+ * `new` writes them, and its capture, with nothing else changed between them, since `checkFirstEntry` has seen what they
+ * come to. `commits` are as GitHub lists them, `between` the files that differ between the two, and `firstEntry` the entry
+ * in the first. Anything else is squashed, which keeps nothing but what was checked.
+ */
+export function plainHistory({ commits, between, firstEntry, game, original, issue, author, added }) {
+  if (commits.length !== 2) return false;
+  const [first, second] = commits, { name } = namesOf(original);
+  if (first.parents.length !== 1 || second.parents.length !== 1 || second.parents[0].sha !== first.sha) return false;
+  const said = commit => commit.commit.message.replace(/\n+$/, '');
+  if (said(first) !== firstFilesMessage(name, issue) || said(second) !== captureMessage(name, issue)) return false;
+  const people = commits.flatMap(({ commit }) => [commit.author?.name, commit.committer?.name]);
+  if (people.some(person => typeof person !== 'string' || !PERSON.test(person) || checkRules(person, { spam: false }).rule)) return false;
+  const media = `public/media/${game}-dreamport`;
+  const expected = new Map([...['.h264.mp4', '.av1.mp4', '-still.webp', '-share.png'].map(end => [`${media}${end}`, 'added']), [`games/${game}/entry.md`, 'modified']]);
+  if (between.length !== expected.size || !between.every(f => expected.get(f.filename) === f.status)) return false;
+  return firstEntry === startingEntry(game, original, { issue, lead: author, added });
+}
+
 const letters = text => text.toLowerCase().replace(/[^a-z0-9]/g, '');
 
 /**
  * Checks a pull request's files as a game's first entry. `files` are as GitHub lists them, `modes` each file's mode and
  * `read(path)` its bytes; `claim` is what the game's New Dreamport issue says, { number, lead, game }, or null; and
  * `author` wrote the pull request. Answers { why }, a key of REASONS, or { original, name, added, row }, with the
- * README's new row, which only the tools can write again (`read.mjs`).
+ * new row in docs/STATUS.md, which only the tools can write again (`read.mjs`).
  */
 export function checkFirstEntry({ game, files, modes, read, claim, author, onSite, today = new Date() }) {
   const paths = pathsOf(game);
   const changed = new Map(files.map(f => [f.filename, f]));
-  const readme = changed.get('README.md');
+  const readme = changed.get('docs/STATUS.md');
   if (changed.size !== paths.length + 1 || !paths.every(path => changed.get(path)?.status === 'added') || readme?.status !== 'modified') return { why: 'files' };
-  if (![...paths, 'README.md'].every(path => modes.get(path) === '100644')) return { why: 'files' };
+  if (![...paths, 'docs/STATUS.md'].every(path => modes.get(path) === '100644')) return { why: 'files' };
   if (onSite) return { why: 'game' };
   if (!claim || claim.lead !== author) return { why: 'claim' };
 
