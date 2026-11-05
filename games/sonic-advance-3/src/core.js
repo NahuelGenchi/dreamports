@@ -42,6 +42,7 @@ export function createCore(video, rom, sound) {
     },
     flags: 0, flagsPreVBlank: 0,
     dispCnt: 0x80, bgCnt: new Uint16Array(4), bgScroll: new Uint16Array(8), winRegs: new Uint16Array(6), bldCnt: 0, bldAlpha: 0, bldY: 0,
+    bgAffine: null,   // the rotating layer's registers, once a screen sets them (menu.js)
     bgPalette: new Uint16Array(256), objPalette: new Uint16Array(256),
     oamBuffer: new Uint16Array(OAM_ENTRIES * 4).fill(0x200),
     input: 0, prevInput: 0, pressed: 0, released: 0, repeated: 0,
@@ -198,6 +199,10 @@ export function createCore(video, rom, sound) {
     video.write(REG.BLDALPHA, c.bldAlpha);
     video.write(REG.BLDY, c.bldY);
     for (let i = 0; i < 8; i++) video.write(REG.BG0HOFS + i * 2, c.bgScroll[i]);
+    if (c.bgAffine) {   // gBgAffineRegs, the registers of layer 2 when it rotates
+      const { pa, pb, pc, pd, x, y } = c.bgAffine;
+      [pa, pb, pc, pd, x & 0xFFFF, x >> 16, y & 0xFFFF, y >> 16].forEach((value, i) => video.write(REG.BG2PA + i * 2, value & 0xFFFF));
+    }
     processOam();
     video.oam.set(c.oamBuffer);
     copyGraphics();
