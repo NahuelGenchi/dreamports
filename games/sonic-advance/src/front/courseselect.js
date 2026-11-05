@@ -13,7 +13,7 @@ import { createSprite, updateSprite, displaySprite, SPRITE } from '../gba/sprite
 import { KEY } from '../gba/engine.js';
 import { REG } from '../../../../kit/gba/video.js';
 import { SONG } from '../sound/songs.js';
-import { theMoonOpens } from '../engine/unlock.js';
+import { moonOpensFor } from '../engine/unlock.js';
 import { createUiTask, uiGfxStackInit, uiGraphics, loadUiGfx, createFade, fadeStep } from './ui.js';
 import { createMainMenu } from './title.js';
 import { createCharacterSelect } from './charselect.js';
@@ -170,7 +170,7 @@ function chooseAct(t) {
   }
   if (state.level > div(state.scrollTo, 24) + 5) {
     const { save, character } = ctx, { current, started } = ctx.levels();
-    const moon = theMoonOpens({ character, level: current, emeralds: save.chaosEmeralds, unlockedLevels: [0, 1, 2, 3].map(c => save.unlockedLevel(c)), courseSelectLevel: started });
+    const moon = moonOpensFor(save, { character, level: current, courseSelectLevel: started });
     // the last row before the Moon Zone's stops short, as nothing comes after it unless the Moon has opened
     if (!moon && rows > 13 && state.level === 13) state.scrollTo = (state.level - 5) * 24 - 8;
     else state.scrollTo = (((state.level - 5) & 0x1E) + 1) * 24 - 8;

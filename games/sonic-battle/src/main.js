@@ -42,7 +42,7 @@ const stage = document.getElementById('stage');
 const screen = document.getElementById('screen');
 const input = createInput(LAYOUT);
 // the game's sound (sound.js): the engine the kit runs, on the player's copy
-const sound = createSound();
+const sound = createSound({ countCycles: true });
 proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives and what a button does so far
@@ -95,7 +95,13 @@ function createGame(video, rom, sound) {
     core.startUp = 1;
     core.main = skills;
   }
-  return { step(keys) { step(core, keys); }, hblank(line) { hblank(core, line); } };
+  return {
+    step(keys) {
+      step(core, keys);
+      sound.frameDone();
+    },
+    hblank(line) { hblank(core, line); },
+  };
 }
 
 function start() {

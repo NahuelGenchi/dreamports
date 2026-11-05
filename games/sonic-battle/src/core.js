@@ -72,6 +72,8 @@ export function createCore(video, rom, sound) {
     lineWork: null,
     // gUnknown_03003150[1]: what a screen adds to the V-blank (options.js)
     vblankWork: null,
+    // a move's cycles on the Mini-games screen, and its letters' (mini-games.js)
+    moveCycles: 0, textCycles: 0,
     startUp: START_UP_FRAMES,
     main: null,
   };
@@ -106,8 +108,9 @@ export function hblank(c, line) {
 }
 
 function finishLineWork(c) {
-  c.lineWork?.run(c);
+  const work = c.lineWork;
   c.lineWork = null;
+  work?.run(c);
 }
 
 // 0x08020198: the keys held now, those just pressed and just released, and those repeating while held
@@ -146,9 +149,12 @@ function vblank(c) {
     c.matrices.forEach((words, m) => words.forEach((word, i) => { oam[m * 16 + i * 4 + 3] = word; }));
     c.vblankCopies = 0;
   }
-  // 0x0801fbd8, 0x0801fbfc
-  for (const [offset, value] of c.queue) c.video.write(offset, value);
-  c.queue.length = 0;
+  // 0x0801fbd8, 0x0801fbfc: unless what queued them is still running, as it can be on a long frame (mini-games.js)
+  if (c.holdQueue) c.holdQueue = false;
+  else {
+    for (const [offset, value] of c.queue) c.video.write(offset, value);
+    c.queue.length = 0;
+  }
   // 0x0801ffa4
   if (c.oamBufferFull) c.video.oam.set(c.oamBuffer);
   c.oamBufferFull = 0;
@@ -256,6 +262,36 @@ export function decompress(c, from, to) {
       }
     }
   }
+}
+
+/**
+ * How many of the console's cycles 0x0804a5b4 takes on the picture at `from`, as mGBA counts its stand-in for the BIOS's
+ * LZ77UnCompVram and the swi that calls it, without unpacking it.
+ */
+export function unpackCycles(c, from) {
+  const bytes = c.rom.bytes, at = from - CARTRIDGE;
+  return unpackWalk(bytes, at + 4, bytes[at + 1] | (bytes[at + 2] << 8) | (bytes[at + 3] << 16));
+}
+function unpackWalk(bytes, at, size) {
+  let out = 0, cycles = 76 + 20 + 7;
+  while (out < size) {
+    const flags = bytes[at++];
+    cycles += 19;
+    for (let bit = 7; bit >= 0 && out < size; bit--) {
+      cycles += 32;
+      if (flags & (1 << bit)) {
+        const length = (((bytes[at] << 8) | bytes[at + 1]) >> 12) + 3;
+        at += 2;
+        cycles += 10;
+        for (let i = 0; i < length; i++, out++) cycles += 12 - (out & 1 ? 2 : 0);
+      } else {
+        at++;
+        cycles += 5 - (out & 1 ? 2 : 0);
+        out++;
+      }
+    }
+  }
+  return cycles;
 }
 
 /**

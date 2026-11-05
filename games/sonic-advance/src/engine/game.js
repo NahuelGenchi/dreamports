@@ -36,7 +36,7 @@ import { ITEM_TASKS, shieldTask, starsTask, magneticRing } from './items.js';
 import { createBossCapsule } from './capsule.js';
 import { SPECIAL_SPRING } from './specialspring.js';
 import { createEggRocket, EGG_ROCKET } from './eggrocket.js';
-import { X_ZONE } from './unlock.js';
+import { X_ZONE, moonOpensFor } from './unlock.js';
 import { screenShake, SCREEN_SHAKE, SHAKE } from './screenshake.js';
 import { arcTan2 } from './trig.js';
 import { SONG } from '../sound/songs.js';
@@ -45,7 +45,8 @@ import { BOOST_MODE_SE } from '../rom/sa2boost.js';
 import { createExtraStage } from './extra.js';
 import { createClock } from '../../../../kit/gba/clock.js';
 import { createPauseMenu, PAUSE_PRIORITY } from './pause.js';
-import { openSave, saveActCleared, WRITE_FRAMES } from './save.js';
+import { createDemoInput, createDemoManager, DEMO_MANAGER, DEMOS } from './demo.js';
+import { openSave, saveActCleared, saveMoonOpened, WRITE_FRAMES } from './save.js';
 import { playerControls } from './input.js';
 import { fixes, lifeMore } from './fixes.js';
 
@@ -82,6 +83,8 @@ const CAMERA_STOPS = { 1: 768 };
 const START_FRAME_COUNT = 3838;
 // what an act adds to the stage: its StageInit's settings on each start (init) and its background's update
 // after the camera's (background), by level
+// CreateStageResults' answer: how long after its `wait` the results last, which X Zone's way to the Moon Zone waits for
+const RESULTS_LAST = 285;
 const LEVEL_EXTRAS = { [EGG_ROCKET]: createEggRocket };
 // what Sonic reads while the title card holds him: the jump and attack buttons InitializePlayer leaves held, never pressed
 const CARD_INPUT = { left: false, right: false, up: false, down: false, jump: true, attack: true, boost: false, trick: false, jumpPressed: false, attackPressed: false, boostPressed: false, trickPressed: false };
@@ -109,7 +112,8 @@ const SILENT = {
  * when the course select starts it (without it 3838); levelPick, set when the act is started from
  * the level pick (?level=N);
  * onTitle(), called when a game over sends the game back to its start (the SEGA logo), after which the act does
- * nothing more; achieve(id), called on the frame an achievement's moment comes, for the page to earn it (it
+ * nothing more; demo, the presses a demo plays (demo.js), after which onTitle(pressedStart) says how it ended; seed,
+ * the game's random numbers to go on from; achieve(id), called on the frame an achievement's moment comes, for the page to earn it (it
  * changes nothing in the game).
  *
  * `options.mode` makes it one GBA's game in a multiplayer mode (chaohunt.js): where Sonic starts (`start`), its
@@ -125,7 +129,9 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   const save = options.save ?? openSave(null);
   // the jump and attack buttons as the save's button setting has them (ApplyGameStageSettingsAndStart); the
   // continue screen reads A and B themselves
-  const input = playerControls(buttons, save.btnConfig);
+  // (a demo plays its own presses, with the buttons as they start)
+  const demo = options.demo ? createDemoInput(buttons, options.demo) : null;
+  const input = demo ?? playerControls(buttons, save.btnConfig);
   const timeLimit = !save.timeLimitDisabled;
   // the animations, and which colours their palette loads last left in each row of the sprite palette (animator.js)
   const anims = { ...assets.sprites.anims, objPalette: new Array(16).fill(-1) };
@@ -172,7 +178,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     backLines: null,      // the back layer split at a world row (an Egg Rocket stage separation): { y, shift }
     animal: 0,   // gTrappedAnimalVariant: the next defeat's animal
     blendOff: false,   // whether a boss turned the colour blending off this frame (gBldRegs.bldCnt = 0)
-    seed: 0,     // gPseudoRandom: the game's random numbers, one sequence for the whole game, from 0
+    seed: options.seed ?? 0,   // gPseudoRandom: the game's random numbers, one sequence for the whole game, from 0
     frameCount: (options.frameCount ?? START_FRAME_COUNT) - 1,   // gFrameCount: every frame counts, the title card's and restarts' too
     palettes: palettes.map(a => a.shown),   // the frame each palette animation has loaded (palettes.js)
     objPalette: anims.objPalette,           // the sprite palette's rows as the frame ends, which the screen shows
@@ -217,6 +223,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     paused: false,        // the game is paused (FLAGS_800, set from it at the end of each frame): only the pause
                           // menu's task runs, and the screen keeps the act as it was
     pauseSign: null,      // the pause menu's sign on the frames it shows it; only drawing reads it
+    demoSign: null,       // what a demo shows out of the screen's fade (demo.js), on the frames it does; only drawing reads it
   };
   let boostAnims = null;   // the particles' animations, numbered as the renderer's boost atlas has them
   let playerAnims = anims;   // Sonic's animations, with the tricks' once their art is read
@@ -237,13 +244,15 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   // starts, or the level pick, starts this way: the course select's task (0x2000) makes the act, so on that frame only
   // the title card's task and those after it run (Sonic, the clock), not the scattered rings' (0x2001), and the next
   // frame is spent loading; and the HUD's data holds what that leaves there (levels.js, hudFlash)
-  let madeBy = options.levelPick ? 0x2001 : -1;
+  // A demo's act is made by a task that has just destroyed itself, and no task runs after it on that frame (0xFFFF).
+  let madeBy = demo ? 0xFFFF : options.levelPick ? 0x2001 : -1;
   // what comes before the act's first picture, on which the screen stays as it was: the frame the act is made in and
   // the one spent loading it. From the course select, whose last frame was the first of them, only the second is left
   let unseen = !options.levelPick || options.resume ? 0 : options.frameCount === undefined ? 2 : 1;
-  const hudFlash = options.levelPick ? stage.hudFlash : 1;
+  const hudFlash = options.levelPick && !demo ? stage.hudFlash : 1;
   // and that first picture still has the layers where they start, before the camera's update has scrolled them
   state.layersAtStart = !!options.levelPick && !options.resume;
+  state.demoFirst = !!demo;   // and in a demo so has the background (renderer.js)
   let extraLife = false, loading = false, starMusic = false;
   // the act's music, as the course select leaves it: it starts on the frame after the act is made, and fades in, as a
   // song the music manager starts over does (the recordings course-select-first-act and course-select-all-rows)
@@ -297,7 +306,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     get level() { return stage.level; }, get zone() { return stage.zone; },
     // the save's difficulty (0 normal, 1 easy), which each enemy and boss reads as it is made; Chao Hunt keeps the
     // save's (ApplyGameStageSettingsAndStart), but its stage has nothing that reads it, so it plays normal
-    get difficulty() { return mode ? 0 : save.difficultyLevel; },
+    get difficulty() { return mode || demo ? 0 : save.difficultyLevel; },
     get tick() { return state.tick; },
     get cameraY() { return Math.floor(state.cam.y); },
     // the camera and its bounds, which a boss's arena changes (bosses.js) and Sonic's edges follow
@@ -408,8 +417,11 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     reachGoal() { state.goalReached = true; state.clockStopped = true; state.ringsStopped = true; },
     // the act's end has Sonic now (STAGE_FLAG__2: past the goal, or a beaten boss), for the optional Boost Mode
     get actOver() { return state.ringsStopped; },
-    stageResults() {
+    stageResults(rings, time, nextFrame = false) {
+      resultsWait = nextFrame;
       state.noPause = true;
+      // the Moon Zone opening is decided first: X Zone's way to it goes on behind its results, which end by themselves
+      state.moonResults = world.moonOpens();
       saveActCleared(save, { level: state.level, rings: state.ringCount, character, startLevel: options.startLevel ?? 0 });
       actCleared();
       let courseTime = state.courseTime;
@@ -417,10 +429,31 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         extras.stopBackground();
         courseTime = state.checkpointTime > EGG_ROCKET_TIME ? state.checkpointTime - EGG_ROCKET_TIME : 1;
       }
-      state.results = createResults(act.results, { rings: state.ringCount, courseTime, level: state.level });
-      sound.play(state.level & 1 ? SONG.BOSS_CLEAR : SONG.ACT_CLEAR);
+      state.results = createResults(act.results, { rings: state.ringCount, courseTime, level: state.level, longEnd: state.level === X_ZONE && !state.moonResults });
+      sound.play(state.level === X_ZONE ? SONG.FINAL_CLEAR : state.level & 1 ? SONG.BOSS_CLEAR : SONG.ACT_CLEAR);
       sound.musicOff();
       tasks.add(resultsTask, 0x2100);
+      return state.results.wait + RESULTS_LAST;
+    },
+    // the Moon Zone's rule (unlock.js), with what's in the save now
+    moonOpens: () => moonOpensFor(save, { character, level: state.level, courseSelectLevel: options.startLevel ?? 0 }),
+    // sub_803A54C: Egg X has fallen with the Moon Zone open
+    moonOpened: () => saveMoonOpened(save),
+    // GoToNextLevel from X Zone's way to the Moon Zone: every task goes, the save is written, and the Moon Zone starts
+    toTheMoon() {
+      frozen = { render, state: { ...state } };
+      tasks.stop();
+      sound.stopAll();
+      const next = () => {
+        ended = true;
+        // the screen goes black as the Moon Zone loads
+        frozen = { state, render() { const c = canvas.getContext('2d'); c.fillStyle = '#000'; c.fillRect(0, 0, canvas.width, canvas.height); } };
+        options.onNextZone?.({
+          level: state.level + 1, moon: true, score: state.score, lives: state.lives, seed: state.seed, continues: state.continues,
+          frameCount: (state.frameCount + 1) >>> 0,
+        });
+      };
+      if (save.write()) { saving = WRITE_FRAMES; afterSave = next; } else restart = next;
     },
     // past the act's loop point (sub_80232D0), Sonic and the camera go back by its distance while the camera
     // moves and follows him; the background doesn't move with them. Returns how far he goes. Everything drawn so
@@ -707,6 +740,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         draw(s, player.x - (right ? 1 : 0), player.y, { rotation: inv ? (512 - rotation) & 1023 : rotation, scaleX: right ? -scale : scale, scaleY: scale, double: false });
       } else draw(s, player.x + (player.facing < 0 ? 1 : 0), player.y);
       if (s.frame >= 0 && own && character === SONIC) state.sprites[state.sprites.length - 1].sonicRow = true;   // palette row 0, his
+      if (s.frame >= 0 && own) state.sprites[state.sprites.length - 1].player = true;
       if (fx && s.frame >= 0) fx.sonic = state.sprites[state.sprites.length - 1];
     }
     if (fx) state.sprites.push({ rush: 'trail', order: 16, prio });
@@ -753,15 +787,20 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     state.clockStopped = true; state.hud.sprites = [];
   }
   const hudTask = {
-    run() { if (updateHud(state.hud, { ...state, stageTime: state.tick })) sound.play(SONG.TIMER); return true; },
+    run() {
+      if (updateHud(state.hud, { ...state, stageTime: state.tick })) sound.play(SONG.TIMER);
+      return true;
+    },
     destroy() { state.hud.sprites = []; },
   };
   // the results' task and their pieces' (0x2100 and 0x2120): the score counts up, and once they are over the
   // original destroys every task and goes on to the next act (GoToNextLevel), stopping all sound. It writes the
   // save, then starts the act (GameStageStart), whose loading takes it the whole next frame. Past the last act
   // decoded, the next zone's acts are decoded in their turn, the screen keeping this frame meanwhile.
+  let resultsWait = false;
   const resultsTask = {
     run() {
+      if (resultsWait) { resultsWait = false; return true; }
       const r = runResults(state.results, {
         player, partner, camera: state.cam, stageTime: state.tick, playSound: song => sound.play(song),
         addScore(n) {
@@ -771,6 +810,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         },
       });
       if (r) return true;
+      // on behind them to the Moon Zone (xending.js)
+      if (state.moonResults) { state.results = null; return false; }
       frozen = { render, state: { ...state } };
       state.results = null;
       tasks.stop();
@@ -783,7 +824,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
           frameCount: (state.frameCount + 1) >>> 0,
         });
       };
-      if (save.write()) { saving = WRITE_FRAMES; afterSave = next; } else restart = next;
+      // the normal ending after X Zone's results writes the save itself (normalending.js)
+      if (state.level !== X_ZONE && save.write()) { saving = WRITE_FRAMES; afterSave = next; } else restart = next;
       return false;
     },
   };
@@ -933,9 +975,12 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       // only the single-player game's card can be cut short
       if (runTitleCard(state.card, pressed && !mode)) return;
       state.card = null; state.clockStopped = false; state.cardsShown = state.level; state.noPause = false;
+      if (demo) player.ignoreInput = false;   // whatever Start in a demo had set
       state.cardOver = true;   // its last frame, which clears the blend it set
       if (mode) { firstCard = false; mode.cardEnd(); return; }
-      state.hud = createHud(fixes.on ? 0 : firstCard ? hudFlash : 1);
+      // Sonic's first frame in X Zone from the course select shows nothing past the string, whatever the save holds
+      // (x-zone-the-moon-opens), where the other characters' show the tiles the other acts do
+      state.hud = createHud(fixes.on ? 0 : firstCard ? hudFlash : 1, firstCard && character === SONIC && stage.level === X_ZONE ? null : 'pastTheFont');
       firstCard = false;
       tasks.add(hudTask, 0x2180);
     }],
@@ -957,6 +1002,10 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
         // in a multiplayer mode he tells the others where he is and how he looks, and is drawn as they see him
         if (mode) mode.send();
         else drawSonic();
+        // as Sonic turns into Super Sonic his animation's colours load into the sprite palette row the face uses,
+        // frame by frame (xending.js), and the screen shows the row as this frame leaves it
+        const face = player.state === 'moonTransform' ? `faceTurn${Math.max(player.anim.i, 0)}` : player.state === 'moonFly' ? 'faceSuper' : null;
+        if (face) state.hud.sprites = state.hud.sprites.map(h => (h[0] === 'face' ? [face, h[1], h[2]] : h));
       }
     }],
     // the CPU partner, just after him (0x3001), only when he's there: a task here would run what Sonic's task makes at
@@ -992,7 +1041,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     // game Start opens the pause menu (pause.js) from when the title card ends until a life is lost or the results
     // start
     [0xFF00, () => {
-      if (!mode && !state.noPause && startPressed) tasks.add(createPauseMenu({ state, anims, sound, startPressed: () => startPressed }), PAUSE_PRIORITY);
+      if (!mode && !demo && !state.noPause && startPressed) tasks.add(createPauseMenu({ state, anims, sound, startPressed: () => startPressed }), PAUSE_PRIORITY);
       player.wasInverted = player.inverted;
       if (partner) partner.wasInverted = partner.inverted;
       if (mode) mode.clock();
@@ -1008,6 +1057,12 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   if (options.carry) Object.assign(state, options.carry);
   addStageTasks();
   startCard();
+  // CreateDemoManager, whose task stays as the act starts over; as it ends, TasksDestroyAll
+  let demoLeftWith = false;
+  if (demo) tasks.add(createDemoManager({
+    state, anims, sound, language: save.uiLanguage, snows: !!stage.snow, ...DEMOS.find(d => d.level === stage.level), physicalStart: demo.physicalStart,
+    end(pressedStart) { demoLeftWith = pressedStart; toTitle = true; tasks.stop(); },
+  }), DEMO_MANAGER, true);
   const makeExtras = () => LEVEL_EXTRAS[stage.level]?.({ state, world, ctx, player }) ?? null;
   let extras = makeExtras();
   extras?.init();
@@ -1103,7 +1158,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     // paused, the sprites stay as the last frame left them, and no task reads the buttons pressed
     const paused = state.paused;
     if (!paused) { state.sprites = []; state.blendOff = false; }
-    drawShift = 0; shiftX = 0; shiftY = 0; state.pauseSign = null;
+    drawShift = 0; shiftX = 0; shiftY = 0; state.pauseSign = null; state.demoSign = null;
     tasks.run(ctx, madeBy, paused);
     if (paused) input.jumpPressed = input.attackPressed = input.boostPressed = input.trickPressed = false;
     state.paused = state.pauseGame;
@@ -1112,7 +1167,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     if (state.water) endWaterFrame(state.water);
     if (madeBy >= 0) { madeBy = -1; loading = options.frameCount === undefined; }
     if (restart) { const start = restart; restart = null; start(); }
-    if (toTitle) { options.onTitle?.(); return; }
+    if (toTitle) { options.onTitle?.(demoLeftWith); return; }
     if (special) options.onSpecialStage?.(handOver(state, special, { level: state.level, character, emeralds: save.chaosEmeralds, continues: state.continues }));
   }
 
@@ -1130,6 +1185,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       if (hidden) unseen--;
     }
     if (special || toTitle) return;   // the special stage, or the game's start, has the screen now
+    // (the frame after a demo's first picture is dark all over)
+    if (ran && hidden && demo) { const c = canvas.getContext('2d'); c.fillStyle = '#000'; c.fillRect(0, 0, canvas.width, canvas.height); }
     if (ran && !hidden) { show(); state.layersAtStart = false; }
     frame = requestAnimationFrame(loop);
   }
@@ -1137,6 +1194,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   return Object.assign(game, {
     step,
     draw: show,
+    /** A demo's first picture, from `vram`, the screen before's video memory, where its act needs one (renderer.js). */
+    firstPicture(vram) { if (stage.spotlightArt) render.firstPicture(vram); },
     /** Sets the size of what the screen shows: 240 × 160, the original's, or wider and taller (widescreen). */
     setView(w, h) {
       if (w === viewW && h === viewH) return;
@@ -1147,18 +1206,18 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     },
     /** Turns the Sonic Rush boost on (with `art`, what rush.js read from the Sonic Rush ROM) or off; the extras are
      *  Sonic's, and stay off for the other characters. */
-    setRushBoost(on, art = state.rushArt) { state.rushArt = art; state.rush = on && !!art && character === SONIC; input.setRush?.(state.rush); },
+    setRushBoost(on, art = state.rushArt) { state.rushArt = art; state.rush = on && !!art && character === SONIC && !demo; input.setRush?.(state.rush); },
     /** Turns Boost Mode on (with `art`, what sa2boost.js read from the Sonic Advance 2 ROM) or off. */
     setBoostMode(on, art = state.boostArt) {
       if (art !== state.boostArt) boostAnims = art && particleAnims(art, assets.sprites.frames.length);
-      state.boostArt = art; state.boostMode = on && !!art && character === SONIC;
+      state.boostArt = art; state.boostMode = on && !!art && character === SONIC && !demo;
       if (!state.boostMode) state.boostFx.bursts = [];
     },
     /** Turns Sonic Advance 2's tricks on (with `art`, what sa2tricks.js read from the Sonic Advance 2 ROM) or off.
      *  A trick under way plays out. */
     setSa2Tricks(on, art = state.trickArt) {
       if (art && art !== state.trickArt) playerAnims = { ...anims, ...art.anims };
-      state.trickArt = art; state.tricks = on && !!art && character === SONIC; input.setTricks?.(state.tricks);
+      state.trickArt = art; state.tricks = on && !!art && character === SONIC && !demo; input.setTricks?.(state.tricks);
     },
     // the act's music starts with the act, as the stage's init does (StageInit_ZoneNActM), a frame of it ahead of
     // the sounds the act's first frame starts, as the init comes before SoundMain and that frame after it; the
@@ -1167,7 +1226,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     start(ownLoop = true) {
       input.enabled = true; clock.reset();
       if (ownLoop) frame = requestAnimationFrame(loop);
-      if (options.frameCount !== undefined) musicStarts = true;
+      if (options.frameCount !== undefined && !demo) musicStarts = true;
       else sound.playStageMusic(stage.music, !options.levelPick);
     },
     stop() { input.enabled = false; input.release(); cancelAnimationFrame(frame); sound.stopAll(); },

@@ -172,6 +172,10 @@ async function main() {
   run = dp('prove', GAME, 'later');
   check(run.status === 0 && report('later').matched === 40, `a start point writes to the core's work memory, and matches from there: ${report('later').matched} of ${report('later').frames}`);
   if (run.status) console.log(run.out);
+  writeFileSync(join(proofFolder(GAME), 'recordings', 'rates.json'), `${JSON.stringify({ about: 'The game chooses another sound rate, and back.', frames: 120, held: [[0, []], [10, ['RIGHT']], [11, []], [20, ['A']], [60, []], [70, ['LEFT']], [71, []], [80, ['A']], [110, []]] }, null, 2)}\n`);
+  run = dp('prove', GAME, 'rates');
+  check(run.status === 0 && report('rates').matched === 120 && report('rates').sound.heard, `a game that chooses its own sound rate is heard at the one the tools compare at: ${report('rates').matched} of ${report('rates').frames}`);
+  if (run.status) console.log(run.out);
   run = dpWith({ DISPLAY: ':99', WAYLAND_DISPLAY: 'nowhere' }, 'prove', GAME, 'later', '--quick');
   check(run.status === 0, `a browser nobody sees doesn't mind a screen it can't reach: ${lastLine(run)}`);
   if (process.platform !== 'win32') {
