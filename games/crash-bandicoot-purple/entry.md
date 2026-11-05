@@ -15,6 +15,11 @@ ownCopy:
     - label: Play
       href: https://dreamports.net/play/crash-bandicoot-purple/
       icon: play
+screen:
+  clip: /media/crash-bandicoot-purple-dreamport
+  still: /media/crash-bandicoot-purple-dreamport-still.webp
+  pixelated: true
+share: /media/crash-bandicoot-purple-dreamport-share.png
 ---
 
 ## Credits
