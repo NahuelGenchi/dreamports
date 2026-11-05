@@ -548,9 +548,13 @@ function setState(c, i, state) {
       write8(c, rec + 28, 5);
       break;
     case 0x135:
+      // a blocked hit: the guard's own marks of what it hit go
       write8(c, rec + 126, 0);
       write8(c, rec + 125, 255);
       write32(c, rec + ATTACKS, 0);
+      break;
+    case 565:
+      // the guard's end: with L still held, it turns to healing (0x137, then 55)
       if (held(c, i) & 0x200) setState(c, i, 0x137);
       break;
     default:
@@ -775,6 +779,8 @@ function pushApart(c, i, j) {
 // ------------------------------------------------------------------------------------- Hits, keys and state changes
 
 // the flags a hit's kind leaves on its victim, and the state each picks when the hit settles (0x080040fa)
+// the kinds of hit that turn the victim the way it's thrown (0x0800399a); a blocked hit's kick back (9) doesn't
+const THROWN_KINDS = new Set([1, 2, 3, 4, 6, 8, 10, 11, 12, 13, 14, 15]);
 const REACTION_FLAGS = 0x800 | 0x80 | 0x20 | 0x40 | 0x10 | 0x8 | 0x200 | 0x100 | 0x400 | 0x1000 | 0x2000 | 0x4000 | 0x8000
   | 0x10000 | 0x20000;
 
@@ -792,17 +798,19 @@ function takeHits(c, i) {
     const attacker = record(j), attacks = read32(c, attacker + ATTACKS);
     if (!(attacks & bit)) continue;
     const kind = (attacks >> 8) & 0x1F, guard = read8(c, rec + 141) & 0x30;
-    // a fighter already knocked away, or guarding the right way, takes nothing from it
-    if (read16(c, rec + STATE) === 53 || read16(c, rec + STATE) === 0x135) continue;
-    if (read8(c, rec + 151) !== 0) continue;
-    if ((kind === 10 || kind === 11 || kind === 12) && guard === 0x20) continue;
-    if ((kind === 13 || kind === 14) && guard === 0x10) continue;
-    if (kind === 15 && guard === 0x30) continue;
+    // a fighter guarding, still shielded, or guarding the right way against this kind, blocks it
+    const now = read16(c, rec + STATE);
+    if (now === 53 || now === 0x135 || read8(c, rec + 151) !== 0
+      || ((kind === 10 || kind === 11 || kind === 12) && guard === 0x20)
+      || ((kind === 13 || kind === 14) && guard === 0x10) || (kind === 15 && guard === 0x30)) {
+      guardHit(c, i, j);
+      break;
+    }
     clearFlags(c, rec, 0x40000);
     if (KIND_REACTION[kind] !== 0) addFlags(c, rec, KIND_REACTION[kind]);
-    // the way the attacker's flags threw it: the four directions its record can face
+    // the way the attacker's flags threw it: the four directions its record can face, for the kinds that throw
     const way = (attacks >>> (24 + i * 2)) & 15;
-    if (way <= 3) {
+    if (THROWN_KINDS.has(kind) && way <= 3) {
       const facing = way === 0 ? 8 : way === 1 ? 6 : way === 2 ? 4 : 2;
       write8(c, rec + 36, facing);
       write8(c, rec + 37, facing);
@@ -830,6 +838,44 @@ function takeHits(c, i) {
     write8(c, rec + PAUSE_NEXT, (attacks >>> 17) & 0x7F);
   }
   settleHits(c, i);
+}
+
+/**
+ * 0x080036dc's guard, from 0x08003bd4: a blocked hit. The guard holds as state 0x135, for as long as the attack would
+ * have stopped it, and the attacker is marked as hit back, with nothing taken (kind 9), while half the attack's
+ * strength goes to the guard's power gauge. A blocked hit ends the fighter's look at the others' attacks this frame.
+ */
+function guardHit(c, i, j) {
+  const rec = record(i), attacker = record(j);
+  if ((read8(c, rec + 126) >> j) & 1) return;
+  if (read8(c, rec + 151) === 5) return;
+  addFlags(c, rec, 0x40000);
+  write8(c, rec + 151, 6);
+  if (read8(c, rec + PAUSE) === 0) {
+    setState(c, i, 0x135);
+    write8(c, rec + PAUSE_DONE, 1);
+    write8(c, rec + PAUSE, (read32(c, attacker + ATTACKS) & 0xFE0000) >>> 17);
+  }
+  write32(c, rec + ATTACKS, read32(c, rec + ATTACKS) | 0x40000);
+  // linked play counts it only for the player, or the player's partner when it counts
+  if (read8(c, 0x0300138C) !== 0 && i !== read32(c, PLAYER)) {
+    if (i !== read32(c, PLAYER) + 2 || read8(c, SETUP + 28 + i) === 0) return;
+  }
+  write8(c, rec + 126, read8(c, rec + 126) | ((read32(c, rec + ATTACKS) >>> 13) & 15));
+  write32(c, rec + ATTACKS, 0x900 | (0x2000 << j));
+  if (read8(c, rec + 125) === 255) write8(c, rec + 125, j);
+  write32(c, rec + 120, read32(c, rec + ATTACKS));
+  write16(c, rec + 176, 0);
+  const power = read8(c, attacker + ATTACKS);
+  if (power === 63) {
+    write8(c, rec + 147, 72);
+    write16(c, rec + 242, 0);
+    return;
+  }
+  let gained = power >> 1;
+  if (gained === 0) gained = 1;
+  if (read8(c, rec + 155) === 9) gained <<= 1;
+  write16(c, rec + 242, gained);
 }
 
 /** 0x0800410c and 0x08004382: the hit's reaction, and then the health and the gauges. */
@@ -1143,14 +1189,20 @@ function fighterAct(c, i) {
   const state = read16(c, rec + STATE);
   if (state === 6 || state === 7 || state === 9) {
     if (flags & FLAG_LOCKED) return;
-    if (keys & 2) {
-      // B in the air: a fresh jump attack, unless the fighter is just touching down
-      const character = read8(c, rec + CHARACTER_NOW);
+    if (keys & 1) {
+      // A in the air: a second jump (9), where the fighter has one: after a hit threw it (184 at 2), or for the one
+      // character that always has it, or Emerl with its moves, once in a jump
+      const character = read8(c, SETUP + 20 + i), now = read16(c, rec + STATE);
       const copied = character === 9 && read8(c, 0x030013B0 + i * 156 + 10) === 4;
-      if (read8(c, rec + 184) === 2 || character === 4 || copied) {
+      if (read8(c, rec + 184) === 2 || ((character === 4 || copied) && now !== 9)) {
         write8(c, rec + 36, read8(c, rec + 37));
         setState(c, i, 9);
-      } else setState(c, i, 18);
+        return;
+      }
+    }
+    if (keys & 2) {
+      // B in the air: the jump attack
+      setState(c, i, 18);
       return;
     }
     if (keys & 0x100 && read8(c, rec + 184) !== 0) {

@@ -162,7 +162,7 @@ function choosingAfterWait(c) {
  * and 0x0801c8a4, with 0x08019ed8, which load everything and start the song. In the original these take from the
  * Training screen's fade to the fight's first picture, with the screen black all along.
  */
-export function startFight(c, vblanks) {
+export function startFight(c, vblanks, action = 0) {
   c.vblanks = vblanks;
   c.lineOne = fn0801fc60;
   c.video.pal.fill(0);
@@ -181,7 +181,7 @@ export function startFight(c, vblanks) {
   write8(c, SETUP + 1, 0);
   write8(c, SETUP + 2, 1);
   write8(c, SETUP + 3, 0);    // Emerald Beach, Training's first map
-  write8(c, SETUP + 38, 0);   // the rival does nothing
+  write8(c, SETUP + 38, action);   // the Rival's Action, Do Nothing first
   write8(c, SETUP + 125, 4);
   write8(c, SETUP + 0, 0);
   write32(c, PLAYER, 0);
