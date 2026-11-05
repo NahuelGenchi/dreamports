@@ -60,7 +60,7 @@
     { "name": "The intro", "recording": "intro", "frames": [700, 2353] },
     { "name": "The title screen" },
     { "name": "The main menu" },
-    { "name": "The character select" },
+    { "name": "The character select", "recording": "character-select", "frames": [0, 979] },
     { "name": "The story before the first zone" },
     { "name": "Route 99's overworld", "needs": ["The platforming", "The team partner"] },
     { "name": "Route 99 act 1", "needs": ["The platforming", "The team partner"] },
