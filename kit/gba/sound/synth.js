@@ -34,6 +34,7 @@ export function createSynth(rom, layout, rate, manager = runCalls) {
   function frame() {
     [playing, pending] = [pending, playing];
     calls.frame(queue.splice(0));
+    if (engine.locked) { playing.fill(0); pending.fill(0); return; }
     const base = engine.frame(), pcm = engine.info.pcm;
     pending.set(pcm.subarray(base, base + n), 0);
     pending.set(pcm.subarray(HALF + base, HALF + base + n), n);

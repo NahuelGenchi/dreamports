@@ -59,6 +59,9 @@ export function createCore(video, rom, sound) {
     copies: [],
     // gUnknown_03002170: the player's name (name-entry.js), six letters' room, and where it's kept, as the flash would
     name: new Uint16Array(6), nameSave: null,
+    // gUnknown_03002110[119]: the language the save keeps, which picks the pictures and texts (options.js). A new save's
+    // is 1, English in the USA copy (0x080215a8), and where it's kept, as the flash would
+    language: 1, savedLanguage: 1, languageSave: null,
     // gUnknown_03005264: the choice the main menu last made (menu.js)
     menuChoice: 0,
     // gUnknown_03002110[120]: which entries of the Mini-games screen the save has opened, a bit each (mini-games.js)
@@ -70,6 +73,8 @@ export function createCore(video, rom, sound) {
     vblanks: 0, frames: 0,
     // what a long job finishes while the screen is being drawn, and after which of its lines (hblank)
     lineWork: null,
+    // gUnknown_03003150[1]: what a screen adds to the V-blank (options.js)
+    vblankWork: null,
     // a move's cycles on the Mini-games screen, and its letters' (mini-games.js)
     moveCycles: 0, textCycles: 0,
     startUp: START_UP_FRAMES,
@@ -146,6 +151,7 @@ function readKeys(c, held) {
 // parameters and the sprites when gUnknown_030013a0 asks for them, the registers queued (0x0801fbd8), and the frame
 // counted. Sprites a callback queues go in here, so they show a frame after what it writes directly.
 function vblank(c) {
+  c.vblankWork?.(c);
   if (c.fightVblank) { fightVblank(c); return; }
   c.vblanks++;
   if (c.vblankCopies) {
@@ -190,9 +196,13 @@ export function fightVblank(c) {
   c.frames++;
 }
 
-/** 0x08020244's first kind: what 0x0802036c queued, from the cartridge to the palette or VRAM. */
+/** 0x08020244's first and third kinds: what 0x0802036c queued, from the cartridge to the palette or VRAM, and what 0x08020408 queued to unpack. */
 function runCopies(c) {
   for (const [to, from, bytes] of c.copies) {
+    if (bytes === null) {
+      decompress(c, from, to);
+      continue;
+    }
     const at = from - CARTRIDGE;
     if (to < VRAM) {
       const out = colours(c, to);
@@ -207,6 +217,11 @@ function runCopies(c) {
 /** 0x0802036c: `bytes` from the cartridge at `from` copied to `to` just after the next V-blank, at most 32 a frame. */
 export function queueCopy(c, to, from, bytes) {
   if (c.copies.length <= 31) c.copies.push([to, from, bytes]);
+}
+
+/** 0x08020408: a picture the cartridge keeps compressed, unpacked to `to` just after the next V-blank. */
+export function queueDecompress(c, to, from) {
+  if (c.copies.length <= 31) c.copies.push([to, from, null]);
 }
 
 /** 0x0801ff30's pattern over all of OAM: every sprite hidden, and every rotation matrix the identity. */

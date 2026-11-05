@@ -111,6 +111,8 @@ function newChannel() {
  *   and counts (tables.js), and the game's sound mode (soundMode)
  * @param {{read(reg: number): number, write(reg: number, value: number): void}} io the sound registers
  */
+const FRAME_CYCLES = 280896;
+
 export function createM4A(rom, layout, io) {
   const u32 = at => (rom[at] | rom[at + 1] << 8 | rom[at + 2] << 16 | rom[at + 3] << 24) >>> 0;
   const r8 = addr => rom[addr - ROM_BASE];
@@ -198,8 +200,12 @@ export function createM4A(rom, layout, io) {
     C.track = null;
   }
 
+  // with `soundMainAt`, when the wave voice's next write lands, counted from the start of the chip's frame: in the console's
+  // next one, at SoundMain's place plus what it has counted so far, or for a call the game makes, where its own code has reached
+  function waveAt() { if (layout.soundMainAt) io.at = inFrame ? FRAME_CYCLES + layout.soundMainAt + cycles - earlyCost : callAt; }
+
   function cgbOscOff(ch) {
-    if (ch === 3) { io.write(NR30, 0); return; }
+    if (ch === 3) { waveAt(); io.write(NR30, 0); return; }
     const [, , nr2, , nr4] = CGB_REGS[ch - 1];
     io.write(nr2, 0x08); io.write(nr4, 0x80);
   }
@@ -395,8 +401,12 @@ export function createM4A(rom, layout, io) {
 
   // how many of the console's cycles this frame's SoundMain takes, as mGBA counts its instructions (WAITCNT 0x4014)
   let cycles = 0;
+  // about what a player takes in a frame it starts nothing
+  const IDLE_PLAYER = 400;
+  let inFrame = false, callAt = FRAME_CYCLES, earlyCost = 0, earlyPlayer = null;
   // what these commands take over the others', 0xB1 up
   const COMMAND_CYCLES = { 0xB1: 8, 0xB2: 12, 0xB3: 28, 0xB4: -48, 0xBB: -5, 0xBC: 81, 0xBD: 81, 0xBE: -245, 0xBF: 229, 0xCE: -114 };
+  let locked = false;   // m4aSoundVSyncOff's lock: SoundMain does nothing until m4aSoundVSyncOn
   const mulWait = rs => {
     rs >>>= 0;
     if (!(rs & 0xFFFFFF00) || (rs & 0xFFFFFF00) >>> 0 === 0xFFFFFF00) return 1;
@@ -555,11 +565,12 @@ export function createM4A(rom, layout, io) {
           cgbModVol(C);
           if (ch === 3) {
             if (C.wav !== C.current) {
+              waveAt();
               io.write(NR30, 0x40);
               for (let i = 0; i < 16; i++) io.write(WAVE_RAM + i, r8(C.wav + i));
               C.current = C.wav;
             }
-            io.write(NR30, 0); io.write(nr1, C.length);
+            waveAt(); io.write(NR30, 0); io.write(nr1, C.length);
             C.nrx4 = C.length ? 0xC0 : 0x80;
           } else {
             if (ch === 1) io.write(nr0, C.sweep);
@@ -654,6 +665,7 @@ export function createM4A(rom, layout, io) {
           if (bias < 0x40) C.freq = (C.freq + 2) & 0x7FC;
           else if (bias < 0x80) C.freq = (C.freq + 1) & 0x7FE;
         }
+        if (ch === 3) waveAt();
         io.write(nr3, ch === 4 ? (io.read(nr3) & 0x08) | C.freq : u8(C.freq));
         C.nrx4 = u8((C.nrx4 & 0xC0) + (C.freq >> 8));
         io.write(nr4, C.nrx4);
@@ -662,6 +674,7 @@ export function createM4A(rom, layout, io) {
         if (ch === 3) cycles += 69;
         io.write(NR51, (io.read(NR51) & ~C.panMask) | C.pan);
         if (ch === 3) {
+          waveAt();
           io.write(NR32, CGB3_VOL[C.envelopeVol]);
           if (C.nrx4 & 0x80) { io.write(NR30, 0x80); io.write(NR34, C.nrx4); C.nrx4 &= 0x7F; }
         } else {
@@ -838,6 +851,8 @@ export function createM4A(rom, layout, io) {
 
   return {
     info, chans, cgbChans, players, muted,
+    /** whether m4aSoundVSyncOff holds the mixing */
+    get locked() { return locked; },
     /** the samples mixed per side each frame */
     samples: SAMPLES,
 
@@ -847,15 +862,28 @@ export function createM4A(rom, layout, io) {
     /** One GBA frame: the V-blank's DMA bookkeeping, then SoundMain. Returns the offset of the samples just
      *  mixed into info.pcm (right side; the left side is HALF bytes later). */
     frame() {
+      if (locked) return 0;
       const dc = u8(info.dmaCounter - 1);
       info.dmaCounter = s8(dc) > 0 ? dc : FRAMES_PER_DMA;
       // SoundMain's way in, to the first player, and its way from the PSG to the channels and out, and 0x08049744's
       // restarting the DMA in the V-blank before it, on the frames it takes
       cycles = 344 + (s8(dc) > 0 ? 0 : 110);
-      for (const P of players) playerMain(P);
+      inFrame = true;
+      for (const P of players) {
+        const before = cycles;
+        playerMain(P);
+        if (P === earlyPlayer) { earlyCost = cycles - before - IDLE_PLAYER; io.waveLater?.(earlyCost); earlyPlayer = null; }
+      }
       cgbSound();
+      inFrame = false;
+      callAt = FRAME_CYCLES; earlyCost = 0;
       return mix();
     },
+
+    /** m4aSoundVSyncOff: what is mixed is cleared and nothing is mixed until vsyncOn. */
+    vsyncOff() { if (!locked) { locked = true; info.pcm.fill(0); } },
+    /** m4aSoundVSyncOn: mixing starts again from the first part of the buffer. */
+    vsyncOn() { if (locked) { locked = false; } },
 
     songStart(n) { const s = song(n); mplayStart(s.player, s.header); },
     /** song n's header address, to compare with a player's songHeader */
@@ -878,6 +906,11 @@ export function createM4A(rom, layout, io) {
       const s = song(n), P = s.player;
       if (P.songHeader !== s.header || (P.status & 0xFFFF) === 0 || (P.status & PAUSE)) mplayStart(P, s.header);
     },
+    /** With `soundMainAt`, the cycle the game's next calls come at, counted from the start of the chip's frame */
+    waveAt(at) { callAt = at; },
+    /** Song n, started next, comes before SoundMain in the original's frame, which is too late here: this frame's SoundMain
+     *  takes what the song's first frame costs off its wave writes, and the last frame's, which it belongs to, adds it. */
+    beforeSoundMain(n) { earlyPlayer = song(n).player; },
     allStop() { for (const P of players) mplayStop(P); },
     /** m4aMPlayAllContinue: every player that MPlayStop stopped goes on from where it was */
     allContinue() { for (const P of players) P.status = (P.status & ~PAUSE) >>> 0; },
