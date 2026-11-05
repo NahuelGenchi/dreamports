@@ -1,0 +1,40 @@
+---
+// The quiet rows of labels behind the launcher (docs/LABELS.md). Labels someone asked for take their places, and the
+// script fills every other place with one of the site's own pixel-art scenes, each one different, as it builds the
+// rows.
+import { readLabels } from '../lib/labels.mjs';
+
+const labels = readLabels();
+---
+
+<div class="labels" aria-hidden="true" data-labels={JSON.stringify(labels)}>
+  {/*
+    Each label and scene is tinted the site's blue once, as it's drawn, so the moving rows cost a phone nothing
+    more: its contrast is softened and it's lifted towards white, then half of it takes the sky blue's colour,
+    keeping its own lightness. In dark mode it's lowered towards the night blue instead.
+  */}
+  <svg class="label-tints" width="0" height="0" focusable="false">
+    <filter id="label-tint" color-interpolation-filters="sRGB" x="0" y="0" width="1" height="1">
+      <feComponentTransfer>
+        <feFuncR type="linear" slope="0.63" intercept="0.385" />
+        <feFuncG type="linear" slope="0.63" intercept="0.385" />
+        <feFuncB type="linear" slope="0.63" intercept="0.385" />
+      </feComponentTransfer>
+      <feColorMatrix type="matrix" values="0.65 0.295 0.055 0 -0.1005  0.15 0.795 0.055 0 0.0289  0.15 0.295 0.555 0 0.1191  0 0 0 1 0" />
+    </filter>
+    <filter id="label-tint-dark" color-interpolation-filters="sRGB" x="0" y="0" width="1" height="1">
+      <feComponentTransfer>
+        <feFuncR type="linear" slope="0.45" intercept="0.1" />
+        <feFuncG type="linear" slope="0.45" intercept="0.1" />
+        <feFuncB type="linear" slope="0.45" intercept="0.1" />
+      </feComponentTransfer>
+      <feColorMatrix type="matrix" values="0.65 0.295 0.055 0 -0.1005  0.15 0.795 0.055 0 0.0289  0.15 0.295 0.555 0 0.1191  0 0 0 1 0" />
+    </filter>
+  </svg>
+  <div class="label-rows"></div>
+  <div class="label-clear"></div>
+</div>
+
+<script>
+  import '../scripts/labels';
+</script>

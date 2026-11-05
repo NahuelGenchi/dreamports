@@ -21,7 +21,7 @@ Never describe something as working or complete unless a recorded check establis
 | `tools/` | The proof tools, run on the contributor's computer only (`tools/README.md`) |
 | `src/` | The Astro site: pages, launcher (`src/scripts/launcher.ts`), styles, and what it reads from `proof/` (`src/lib/`) |
 | `worker/` | The Worker: accounts, profiles and achievements |
-| `public/` | Files served as they are, with the games' recordings in `public/media/` |
+| `public/` | Files served as they are, with the games' recordings in `public/media/` and the labels behind the launcher in `public/labels/` (`docs/LABELS.md`) |
 
 Commands: `npm run dev`, `npm run test:game`, `npm run check`, `npm run build`, `npm run preview`, `npm run worker`, and `npm run dp -- <tool>`, which lists the proof tools with no tool named. Site text uses normal capitals: sentences and labels start with one, and names keep theirs; key hints are written as on a keyboard (`Esc`, `Enter`). Play and download links live only in a game's `ownCopy.links`, behind the own-copy tick on the game's page.
 

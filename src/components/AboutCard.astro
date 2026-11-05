@@ -1,6 +1,6 @@
 ---
 // About, as a full screen in the menu's place: what Dreamports is, the rules, how rights holders reach the Dreamports
-// team, privacy and credits.
+// team, how to ask for a label, privacy and credits.
 import OwnGameSteps from './OwnGameSteps.astro';
 import ViewBar from './ViewBar.astro';
 import { MINIMUM_AGE } from '../lib/players';
@@ -20,6 +20,7 @@ const sections = [
   { id: 'legal', label: 'Not affiliated' },
   { id: 'rights', label: 'For rights holders' },
   { id: 'publishers', label: 'For publishers' },
+  { id: 'labels', label: 'Labels' },
   { id: 'privacy', label: 'Your privacy' },
   { id: 'credits', label: 'Credits' },
   { id: 'contact', label: 'Get in touch' },
@@ -115,10 +116,33 @@ const sections = [
         </p>
       </section>
 
+      <section id="labels">
+        <Sec>Labels</Sec>
+        <p>
+          Labels are the faint pictures that drift behind the menu. Anyone can ask for one, for free: a picture of
+          exactly 240 by 60 pixels, filled with anything you like that’s fit for everyone to see, such as your art,
+          your studio or a project you love. It stays up for 30 days.
+        </p>
+        <p>
+          To ask, write to <a href={`mailto:${CONTACT_EMAIL}?subject=Label`}>{CONTACT_EMAIL}</a> with “Label” in the
+          subject, and attach your picture as a PNG. A person from the Dreamports team looks at every label before it
+          goes up, and turns down anything hateful, sexual, violent or misleading, anything that isn’t yours to share,
+          and any game art, publishers’ logos or characters. A label is a still picture and never a link, and the team
+          never makes your email address public.
+        </p>
+        <p>
+          A label appears only because someone asked for it. Every other place shows a small pixel-art scene the site
+          draws itself, such as whales at sea, a castle or a rocket launch, each one different, and a few invite you to
+          put your own art or brand there. The rows stand still when you pick calm motion in Settings.
+        </p>
+      </section>
+
       <section id="privacy">
         <Sec>Your privacy</Sec>
         <p>
-          There are no ads and nothing follows you around the web. The site keeps a few small notes in your own
+          Nothing follows you around the web. The pictures behind the menu are free labels people asked for and the
+          site’s own scenes, not paid ads: they come from dreamports.net itself, know nothing about you and aren’t
+          links. The site keeps a few small notes in your own
           browser: whether you switched on menu sounds, which look and motion you picked, and, until you close the
           tab, which games you’ve confirmed you own. Those notes never leave your device, and “Forget my choices” in
           Settings clears your menu choices at any time.
