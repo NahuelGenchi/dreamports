@@ -6,6 +6,7 @@
 
 import { SCENE_H, drawScene } from './label-scenes/index.mjs';
 import { drawInvite } from './label-scenes/invite.mjs';
+import { steady } from './label-scenes/steady.mjs';
 import { PLACE as W, kindOf, layout, seedOf } from './label-rows.mjs';
 
 interface Label {
@@ -67,8 +68,11 @@ function run(box: HTMLElement, launcher: HTMLElement) {
     const width = launcher.clientWidth;
     const height = launcher.clientHeight;
     const rows = Math.ceil(height / H);
-    if (!rows || !width || built === `${rows} ${width}`) return;
-    built = `${rows} ${width}`;
+    const density = window.devicePixelRatio || 1;
+    if (!rows || !width || built === `${rows} ${width} ${density}`) return;
+    built = `${rows} ${width} ${density}`;
+    // where a scene's pixel is less than two of the screen's, its flickering details are softened as it's drawn
+    const settle = density < 2;
     const mine = ++job;
     let slice = performance.now();
 
@@ -90,7 +94,6 @@ function run(box: HTMLElement, launcher: HTMLElement) {
       const track = document.createElement('div');
       track.className = 'label-track ' + (r % 2 === 0 ? 'go-left' : 'go-right');
       track.style.width = half * 2 + 'px';
-      track.dataset.half = String(half);
       track.style.animationDuration = seconds.toFixed(2) + 's';
       track.style.animationDelay = (-((r * 29) % seconds)).toFixed(2) + 's';
 
@@ -105,9 +108,8 @@ function run(box: HTMLElement, launcher: HTMLElement) {
         for (let k = 0; k < places.length; k++) {
           if (taken.has(k)) continue;
           const image = ctx.createImageData(places[k], H);
-          image.data.set(
-            invite?.place === k ? drawInvite(invite.words, seedOf(r, k)) : drawScene(places[k], kindOf(r, k), seedOf(r, k)),
-          );
+          const pixels = invite?.place === k ? drawInvite(invite.words, seedOf(r, k)) : drawScene(places[k], kindOf(r, k), seedOf(r, k));
+          image.data.set(settle ? steady(pixels, places[k]) : pixels);
           ctx.putImageData(image, lefts[k], 0);
           if (performance.now() - slice > SLICE) {
             await pause();
@@ -175,27 +177,18 @@ function run(box: HTMLElement, launcher: HTMLElement) {
       return;
     }
     rowsEl!.replaceChildren(...made);
-    pace();
     urls.forEach((url) => URL.revokeObjectURL(url));
     urls = fresh;
     box.classList.add('is-ready');
     launcher.classList.add('has-labels');
   }
 
-  // The rows move a whole screen pixel at a time, the way handheld games scroll: between pixels, the screen would
-  // blend each pixel with its neighbour, and fine details like stars and dithered skies would seem to flicker.
-  function pace() {
-    const density = window.devicePixelRatio || 1;
-    for (const track of rowsEl!.querySelectorAll<HTMLElement>('.label-track')) {
-      track.style.animationTimingFunction = `steps(${Math.max(1, Math.round(Number(track.dataset.half) * density))})`;
-    }
-  }
-  // a window moved to a screen of another density keeps whole pixels
+  // a window moved to a screen of another density draws its rows again for it
   const watchDensity = () =>
     matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener(
       'change',
       () => {
-        pace();
+        build().catch((error) => console.error(error));
         watchDensity();
       },
       { once: true },
