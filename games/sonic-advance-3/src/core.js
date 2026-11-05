@@ -29,6 +29,7 @@ export function createCore(video, rom, sound) {
     playSoundOn: (player, song, volume, pan) => sound?.playOn(player, song, volume, pan),   // MPlayStart with its controls
     continueSong: song => sound?.startOrContinue(song),   // m4aSongNumStartOrContinue
     stopSong: song => sound?.stop(song),   // m4aSongNumStop
+    stopAllSongs: () => sound?.stopAll(),   // m4aMPlayAllStop
     runSound: () => sound?.call('frame'),   // a frame of the sound engine, which comes with no frame of the game's
     seed: 0,
     /** The game's numbers that look random, each from the last (PseudoRandom32). */
@@ -45,9 +46,13 @@ export function createCore(video, rom, sound) {
     startUp: START_UP_FRAMES, main: null, tasks: [], slowFrames: 0,
     lineScroll: null, shownLineScroll: null,   // what the H-blank writes for each line, and where (FLAGS_EXECUTE_HBLANK_COPY)
     lineRegister: REG.BG0HOFS + 12, shownLineRegister: REG.BG0HOFS + 12,
+    lineSize: 1, shownLineSize: 1,   // the half-words the H-blank writes for each line
+    lineScrollNext: null, shownLineScrollNext: null, lineTornAt: 0, shownLineTornAt: 0,   // what the next frame's work has written by the time the drawing reaches line `lineTornAt`
     save: { language: 1, playerName: new Array(6).fill(0xFFFF), playerId: 0 },   // the save a game with nothing saved has (0x08001DDC), kept only until the page closes for now
   };
   const graphics = [], backgrounds = [], layers = [];
+  // gBgSprites_Unknown1 and 2: a rectangle of a layer's map to fill in the next V-blank
+  c.mapFill = [0, 1, 2, 3].map(() => ({ value: 0, rect: new Uint8Array(4) }));
   let nextTask = null;
 
   /** 0x080BCB6C, TaskCreate: a task running `main(task)` each frame, after every task of the same or lower priority. */
@@ -80,10 +85,37 @@ export function createCore(video, rom, sound) {
     }
     graphics.length = 0;
   }
-  // sa2__sub_8002B20, for a text layer's map: each row of the map's rectangle to the layer's map; on a layer two
-  // blocks wide the part of a row past column 32 goes to the next block
+  // sa2__sub_8004010: a rectangle of a layer's map filled with one entry, [first column, first row, last column, last
+  // row]; a last column of 0xFF fills whole rows up to the last row, not including it (on a text layer, 32 entries a row,
+  // or 64 on a layer two blocks tall), a last row of 0xFF does the same on a rotating layer
+  function fillMaps() {
+    const vram16 = new Uint16Array(video.vram.buffer);
+    for (let bg = 0; bg < 4; bg++) {
+      const { value, rect } = c.mapFill[bg];
+      if (rect[1] === rect[3] && rect[0] === rect[2]) continue;
+      const cnt = c.bgCnt[bg], base = (cnt & 0x1F00) << 3;
+      if (bg > 1 && (c.dispCnt & 3)) {
+        const rowBytes = (0x100000 << (cnt >> 14)) >>> 16, at = base + rect[0];
+        const fill = (to, halfwords) => { for (let i = 0; i < halfwords; i++) vram16[((to >> 1) + i) & 0xFFFF] = value | (value << 8); };
+        if (rect[3] === 0xFF) fill(at + rowBytes * rect[1], Math.trunc((rect[3] - rect[1]) * rowBytes / 2));
+        else for (let r = rect[1]; r <= rect[3]; r++) fill(at + rowBytes * r, ((rect[2] - rect[0] + 1) >> 1) >> 1);
+      } else {
+        const at = base + rect[0] * 2, tile = (((cnt >> 14) - 2) & 0xFF) <= 1 ? 64 : 32;
+        const fill = (to, halfwords) => { for (let i = 0; i < halfwords; i++) vram16[((to >> 1) + i) & 0xFFFF] = value; };
+        if (rect[2] === 0xFF) fill(at + tile * 2 * rect[1], (rect[3] - rect[1]) * tile);
+        else for (let r = rect[1]; r <= rect[3]; r++) fill(at + tile * 2 * r, rect[2] - rect[0] + 1);
+      }
+      rect.fill(0);
+    }
+  }
+  // sa2__sub_8002B20: each row of the map's rectangle to the layer's map. On a text layer two blocks wide the part of a
+  // row past column 32 goes to the next block, and a rotating layer's map has a byte for each tile
   function copyBackgrounds() {
     for (const bg of backgrounds) {
+      if ((bg.flags & 3) >= 2 && c.dispCnt & 3) {
+        for (let row = 0; row < bg.targetTilesY; row++) copy16(bg.layout + row * bg.xTiles, bg.layoutVram + row * (0x10 << (c.bgCnt[bg.flags & 3] >> 14)), bg.targetTilesX);
+        continue;
+      }
       const size = c.bgCnt[bg.flags & 3] >> 14, nextBlock = size === 1 || size === 3 ? 0x800 : 0;
       const w = bg.targetTilesX;
       let src = bg.layout, dest = bg.layoutVram;
@@ -165,11 +197,15 @@ export function createCore(video, rom, sound) {
     processOam();
     video.oam.set(c.oamBuffer);
     copyGraphics();
+    fillMaps();
     copyBackgrounds();
     for (const bg of layers) copyLayer(c, bg);
     layers.length = 0;
     c.shownLineScroll = c.lineScroll;
     c.shownLineRegister = c.lineRegister;
+    c.shownLineSize = c.lineSize;
+    c.shownLineScrollNext = c.lineScrollNext;
+    c.shownLineTornAt = c.lineTornAt;
     scrollLine(0);
     c.oamBuffer.fill(0x200);
   }
@@ -200,8 +236,9 @@ export function createCore(video, rom, sound) {
   };
   // the value for line `y`, from the list the H-blank copies, if there is one
   const scrollLine = y => {
-    const lines = c.shownLineScroll;
-    if (lines && y < lines.length) video.write(c.shownLineRegister, lines[y]);
+    const lines = c.shownLineScrollNext && y >= c.shownLineTornAt ? c.shownLineScrollNext : c.shownLineScroll, size = c.shownLineSize;
+    if (!lines || y * size >= lines.length) return;
+    for (let i = 0; i < size; i++) video.write(c.shownLineRegister + i * 2, lines[y * size + i]);
   };
   /** What the H-blank does after line `y`, which the page's drawing calls. */
   c.hblank = y => scrollLine(y + 1);
