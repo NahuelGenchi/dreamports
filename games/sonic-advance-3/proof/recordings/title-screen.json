@@ -1,6 +1,6 @@
 {
   "about": "The title screen, from a start point, with nothing pressed until Start is pressed once the Press Start sign blinks, then the fade to the main menu's first frame.",
-  "frames": 443,
+  "frames": 800,
   "start": "screen=title",
   "held": [
     [

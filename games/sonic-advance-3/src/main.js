@@ -19,6 +19,7 @@ import { leaveForTheTitle } from './title.js';
 import { soundLayout } from './sound.js';
 import { startStage } from './stage/stage.js';
 import { placeCharacters } from './stage/player.js';
+import { leaveForTheMainMenu } from './menu.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from
 const GAME = { name: 'Sonic Advance 3', title: 'SONICADVANC3', codes: { B3SE: 'USA' }, versions: [{ sha1: '30db467effa5014806d42db57e2299398a51355b' }] };
@@ -97,6 +98,19 @@ function createGame(video, rom, sound) {
     core.startUp = 1;
     core.main = null;
     leaveForTheTitle(core);
+  }
+  // &screen=menu opens on the main menu's first frame, as the title screen leaves it, which recordings use as their start
+  // point. No dreamportsProof.neverInPlay here: the screen holds no character or countdown, so every frame of it is one a
+  // player can see
+  if (params.get('screen') === 'menu') {
+    core.startUp = 1;
+    core.main = null;
+    // what the title screen leaves in the registers the menu doesn't set before its first frame is drawn
+    core.bgAffine = { pa: 0x100, pb: 0, pc: 0, pd: 0x100, x: -0x9400, y: -0x800 };
+    core.winRegs[1] = core.winRegs[3] = 0xFF;
+    core.winRegs[4] = 0x37;
+    core.bldAlpha = 0x1F;
+    leaveForTheMainMenu(core);
   }
   if (params.has('x')) {
     const jump = Number(params.get('jump'));

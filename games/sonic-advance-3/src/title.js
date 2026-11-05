@@ -2,16 +2,14 @@
 // goes black for a frame, then "Sonic Advance" fades in from white over a ring of squares that moves in from the left,
 // the "3" drops onto it from a size four times its own and shakes it, a flash of white shows the whole logo with the
 // announcer's voice, and "Press Start" blinks under it with the copyright lines along the bottom. Start makes the
-// button flash for 25 frames, fades to black and leaves for the main menu, which isn't ported yet, so for now the game goes
-// straight to Route 99's overworld.
+// button flash for 25 frames, fades to black and leaves for the main menu.
 // Not ported yet: R changing the colour setting, and the demo that plays after ten seconds with nothing pressed.
 
 import { KEY, FLAGS } from './core.js';
 import { createSprite, updateSprite, displaySprite } from './sprite.js';
 import { drawBackground } from './background.js';
 import { SINE } from './stage/trig.js';
-import { startStage } from './stage/stage.js';
-import { REG } from '../../../kit/gba/video.js';
+import { leaveForTheMainMenu } from './menu.js';
 
 const OBJ_VRAM = 0x10000;
 const MUS_TITLE_SCREEN = 1, SE_SELECT = 0x6A, ANNOUNCER = 0x1F4;
@@ -383,27 +381,6 @@ function fadeOut(t) {
     s.fadeLevel = u16(s.fadeLevel + 0x100);
   } else {
     c.destroyTask(t);
-    // LaunchChaoMenu makes the menu's task, which first runs in the next frame, with the screen faded all the way, as the
-    // menu starts
-    c.bldY = 0x10;
-    c.createTask(leaveForTheMainMenu, { c }, 0);
+    leaveForTheMainMenu(c);
   }
-}
-
-// What comes next, the main menu (CreateMainMenu), isn't ported yet, so the game goes straight to Route 99's overworld.
-function leaveForTheMainMenu(t) {
-  const { c } = t.data;
-  c.destroyTask(t);
-  c.bgAffine = null;
-  c.lineScroll = null;
-  c.lineScrollNext = null;
-  c.lineSize = 1;
-  c.lineRegister = REG.BG0HOFS + 12;
-  c.dispCnt = 0x80;
-  c.bgCnt.fill(0);
-  c.bgScroll.fill(0);
-  c.winRegs.fill(0);
-  c.bldCnt = 0;
-  c.bldY = 0;
-  startStage(c, 2);
 }
