@@ -578,11 +578,8 @@ function start(launcher: HTMLElement) {
     setTimeout(() => b.classList.remove('is-pressed'), 130);
   }
 
-  // a filter's place on the top bar's ring: the one showing is at 0, in the middle, with the others round it
-  const ringAt = (i: number) => {
-    const half = FILTERS.length >> 1;
-    return ((i - state.filter + half + FILTERS.length) % FILTERS.length) - half;
-  };
+  // a filter's place on the top bar: the one showing is at 0, in the middle, with the other on its own side
+  const ringAt = (i: number) => i - state.filter;
   // dir is the way the ring turned, for the filters to glide there. A value it takes past one edge comes back in at the
   // other, while something that looks like it goes on out of sight. With no dir they go straight to their places.
   let turning = 0;
@@ -633,7 +630,7 @@ function start(launcher: HTMLElement) {
   // have every word typed. L and R still switch rows, and the search goes along. What is typed
   // stays on the page.
 
-  // capitals, accents and punctuation don't count, so "kirbys" finds "Kirby’s Dead Land"
+  // capitals, accents and punctuation don't count, so "sonic-advance" finds "Sonic Advance"
   const plain = (text: string) =>
     text
       .normalize('NFD')

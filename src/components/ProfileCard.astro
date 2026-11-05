@@ -18,8 +18,8 @@ const Title = open ? 'h1' : 'h2';
 const ways = Object.entries(WAYS) as [Way, string][];
 // each game that keeps achievements: its name and page, by the name in its address under /play/
 const games: Record<string, { title: string; href: string }> = {};
-for (const game of await getGames('dreamport')) {
-  if (game.data.kind === 'dreamport' && released(game) && keepsAchievements(game.data.game)) games[game.data.game] = { title: game.data.title, href: gameUrl(game) };
+for (const game of await getGames()) {
+  if (released(game) && keepsAchievements(game.data.game)) games[game.data.game] = { title: game.data.title, href: gameUrl(game) };
 }
 ---
 

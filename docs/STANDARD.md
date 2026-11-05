@@ -90,15 +90,9 @@ Players need their own copy, made from their own cartridge or disc. Each Dreampo
 
 A port someone already made elsewhere is a head start, not a reason to stop. It becomes a Dreamport once its code comes into this repository, which needs its license to allow it or its authors to agree. Its code is rewritten as readable JavaScript on its console's kit, with no emulator and no game files, and then checked against the original. Only what's played and matches counts as proven, every difference becomes a task, and its authors are credited on the game's page and invited to lead it.
 
-Until someone brings it in, it can be listed in the Mash-ups row as an external port, with a link to its own page and credit to the people who made it.
-
 ## Licenses
 
 The site, which is everything outside the games and their kits, stays under the [MIT License](../LICENSE). Each console's kit and every new Dreamport use GPL-3.0-or-later, like Sonic Advance Dreamport. Code brought in keeps its own license, which has to let it be part of a GPL-3.0-or-later game, as MIT, BSD, Apache-2.0 and GPL-3.0 do. Each game keeps its license file in its own folder.
-
-## The Mash-ups row
-
-The Mash-ups row on dreamports.net stays as it is: for fan games that aren't ports, like Kirby's Dead Land, and for ports made elsewhere that nobody has brought in yet.
 
 ## Not done yet
 

@@ -1,5 +1,5 @@
 name: Work item
-description: Suggest a port, report a problem, or track a feature, improvement, document, research decision, or repository task.
+description: Report a problem, or track a feature, improvement, document, research decision, or repository task.
 body:
   - type: markdown
     attributes:
@@ -11,7 +11,7 @@ body:
     id: work-type
     attributes:
       label: Work type
-      description: "Not sure? Pick bug for something broken, enhancement for an idea or a port suggestion."
+      description: "Not sure? Pick bug for something broken, enhancement for an idea."
       options:
         - implementation
         - bug
@@ -59,7 +59,7 @@ body:
     id: constraints
     attributes:
       label: Dependencies, evidence, and constraints
-      description: Links to related issues, screenshots of the problem, or sources. For a port suggestion, link the port's own page and say who made it.
+      description: Links to related issues, screenshots of the problem, or sources.
       placeholder: "Dependencies: none known. Evidence: ... Constraints: ..."
     validations:
       required: true

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src=".github/readme/launcher.webp" width="100%" alt="The Dreamports launcher: a row of games, each playing a short recording of itself, while the top bar turns between Dreamports, Mash-ups and Make.">
+<img src=".github/readme/launcher.webp" width="100%" alt="The Dreamports launcher: a row of games, each playing a short recording of itself, while the top bar turns between Dreamports and Make.">
 
 <br>
 
@@ -26,19 +26,13 @@ The site works like the menu of a game console. It's one screen with a row of ga
 
 <table>
 <tr>
-<td width="33%" valign="top">
+<td width="50%" valign="top">
 
 🌙 **Dreamports**<br>
 Enhanced ports, each named after the game it brings back, such as *Sonic Advance Dreamport*.
 
 </td>
-<td width="33%" valign="top">
-
-✨ **Mash-ups**<br>
-Great ports made by other fans, with a link to their own page and full credit to the people who made them, and fan games that aren't ports, such as *Kirby's Dead Land*.
-
-</td>
-<td width="33%" valign="top">
+<td width="50%" valign="top">
 
 🛠️ **Make**<br>
 Every Dreamport being made, where it stands and what's left to make, with the one sentence that gets you ready to help.
@@ -70,13 +64,6 @@ These are the projects on the site so far.
 | 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [68.26%](.github/readme/progress/sonic-advance.svg) | [21.62%, 8 of 37 parts](.github/readme/progress/sonic-advance.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
 
 <!-- End of the table of Dreamports. -->
-
-**Mash-ups** are fan projects with repositories of their own.
-
-| | Mash-up | What it is | Try it |
-| :---: | :--- | :--- | :--- |
-| ✨ | **[Kirby's Dead Land](https://github.com/NahuelGenchi/kirbys-dead-land)** | A mod that lets you play as Kirby inside Dead Cells, with his moves and copy abilities. For Linux; Windows is in testing. | [⬇&nbsp;Download](https://github.com/NahuelGenchi/kirbys-dead-land/releases/latest) |
-| ✨ | **Your favorite fan port?** | Ports made by other fans are on their way to the mash-ups. Know a great one? | [💡&nbsp;Suggest](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml) |
 
 ## Make a Dreamport
 
@@ -148,19 +135,13 @@ The work is split into seven steps, called *milestones*. The counts update by th
 
 <table>
 <tr>
-<td width="33%" valign="top">
-
-💡 **Suggest a port**<br>
-Know a great fan port that asks players to bring their own game? [Tell us about it](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml).
-
-</td>
-<td width="33%" valign="top">
+<td width="50%" valign="top">
 
 🐞 **Report a problem**<br>
 A broken link, a typo, a page that looks wrong on your phone? [Let us know](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml).
 
 </td>
-<td width="33%" valign="top">
+<td width="50%" valign="top">
 
 ⭐ **Follow along**<br>
 Press **Star** at the top of this page to keep Dreamports on your radar, and see each game grow on its page in the [Make tab](https://dreamports.net/make/).
@@ -204,14 +185,6 @@ The rules about copying games you own differ from country to country, so check t
 <br>
 
 A Dreamport is the port fans always dreamed of: the game you remember, with the extras you wished it had.
-
-</details>
-
-<details>
-<summary><b>Can my port be listed?</b></summary>
-<br>
-
-Yes, if it asks players to bring their own legal copy and doesn't include game files. [Suggest it here](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml), with a link to its page and who made it.
 
 </details>
 
