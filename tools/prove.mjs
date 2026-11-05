@@ -434,6 +434,11 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       console.log(`  Pixels that differ in the frames asked for: ${askedPixels.slice(0, 12).map(s => `${s.frame}, ${s.pixels ? `${s.pixels.toLocaleString('en')}, from ${s.box[0]},${s.box[1]} to ${s.box[2]},${s.box[3]}` : 'none'}`).join('; ')}${askedPixels.length > 12 ? `; and ${askedPixels.length - 12} more in report.json` : ''}.`);
     }
     if (pictureDifferent.length && soundDifferent.length) console.log(`  Frames whose picture differs: ${listed(stretchesOf(pictureDifferent))}.`);
+    // an emulator can crop what it shows, and some consoles change their screen, so it isn't wrong in itself
+    const { width: originalWidth, height: originalHeight } = first.outside;
+    if (pictureDifferent.length && originalWidth && (originalWidth !== machine.screen[0] || originalHeight !== machine.screen[1])) {
+      console.log(`  The original's screen ended this recording at ${originalWidth} by ${originalHeight}, and kit/consoles.js says ${machine.screen.join(' by ')}, so a picture of that size can't match. Its emulator's settings in tools/consoles.mjs may be cropping it (docs/CONSOLES.md).`);
+    }
     if (soundDifferent.length) {
       const { frame, side, band, original: theirs, dreamport: ours, dB, silent } = firstSound;
       const where = `around ${band.toLocaleString('en')} Hz, on the ${side}`;

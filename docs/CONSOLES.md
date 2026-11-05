@@ -14,7 +14,7 @@ A game's `proof/original.json` names its console, and everything follows from th
 
 The Game Boy Advance runs in mGBA, as it always has ([Getting ready](../tools/README.md#getting-ready)). Every other console runs in a libretro core, a small emulator with one way of being driven, through [`tools/libretro/host.c`](../tools/libretro/host.c), a program of the tools' own that gives them the same pictures, sound and memory that mGBA's does.
 
-The first time a game on a console needs its core, the tools fetch it from its makers' source, at a fixed commit, and build it on the contributor's computer, once. So everyone gets the same pictures, and the project publishes no programs of its own. Each runs with the settings that keep it the same for everyone, in `tools/consoles.mjs`, and with nothing saved from one run to the next. A console that needs a BIOS finds one a person has from their own console in `.dreamports/libretro/system/<console>/`, and nothing in the project helps get one.
+The first time a game on a console needs its core, the tools fetch it from its makers' source, at a fixed commit, and build it on the contributor's computer, once. So everyone gets the same pictures, and the project publishes no programs of its own. Each runs with the settings that keep it the same for everyone, in `tools/consoles.mjs`, and with nothing saved from one run to the next. A console that can't start without a BIOS would find one a person has from their own console in `.dreamports/libretro/system/<console>/`, and nothing in the project helps get one. Gambatte and PCSX ReARMed are set to go without, so that a person's BIOS doesn't change what they show. A made-up file there does change Gambatte's frames when that setting is off. PCSX ReARMed's setting comes from reading its source, as no real BIOS has been tried.
 
 ## How far each console has got
 
@@ -22,10 +22,38 @@ The first time a game on a console needs its core, the tools fetch it from its m
 | :--- | :--- | :--- |
 | Game Boy Advance | mGBA | Used for real games |
 | A made-up console | [`tools/test/made-up-core.c`](../tools/test/made-up-core.c) | `npm run test:consoles` plays a whole game on it, on every pull request |
-| NES, Super Nintendo, Game Boy, Game Boy Color, Mega Drive, PlayStation, Nintendo 64 | FCEUmm, Snes9x, Gambatte, Genesis Plus GX, PCSX ReARMed, Parallel N64 | Chosen and fixed at a commit, and not run yet: their screen, frame and sound numbers in `kit/consoles.js` still have to be checked against the emulators |
+| NES | FCEUmm | `npm run test:real-console` builds the real emulator and proves a small program of the project's own on it, every frame of picture and sound, from presses written out and from a recording made with `play`, the same each time, on every pull request. No real game yet |
+| Super Nintendo, Game Boy, Game Boy Color, Mega Drive, PlayStation, Nintendo 64 | Snes9x, Gambatte, Genesis Plus GX, PCSX ReARMed, Parallel N64 | Each built and run with a small program, twice, the same both times, its numbers checked against `kit/consoles.js`. `prove` hasn't compared anything on them yet |
 | PlayStation 2, PlayStation Portable | None yet | Their emulators draw with a graphics context, which `host.c` doesn't offer yet, and the tools say so |
 
-The first game on a console is what proves it. When a console's numbers are wrong the tools say which, such as an emulator mixing another number of samples a second than `kit/consoles.js` says.
+The first game on a console is what proves it. When a console's numbers are wrong the tools say which, such as an emulator mixing another number of samples a second than `kit/consoles.js` says, or running at another speed.
+
+## What the real emulators showed
+
+These are the numbers each emulator gave for a small program, once it had set up its screen.
+
+| Console | Frames a second | Sound samples a second | Screen | Save state | Work memory |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| NES | 60.0998 | 48,000 | 256 by 240 | 14 KB | 2 KB |
+| Game Boy, Game Boy Color | 59.7275 | 32,768 | 160 by 144 | 27 KB | 8 KB |
+| Super Nintendo | 60.0988 | 32,040 | 256 by 224 | 823 KB | 128 KB |
+| Mega Drive | 59.9227 | 44,100 | 320 by 224 | 1 MB | 64 KB |
+| PlayStation | 60 | 44,100 | 320 by 240 | 4.5 MB | 2 MB |
+| Nintendo 64 | 60.02 | The game's choice, heard at 44,100 | 640 by 240 | 17 MB | 8 MB |
+
+**Screens.** An emulator may not show the whole screen unless told to, as FCEUmm cuts the NES's to 224 lines, which is why it has settings for that. A game can also choose its own size: a Mega Drive game can use 256 or 320 across, a PlayStation game many sizes, and a Nintendo 64 game can show twice the lines. The kit knows one size for each console, so such a game can't match yet, and `prove` says when the sizes are why a picture differs.
+
+**Names and regions.** FCEUmm reads a copy's region from words anywhere in its path, so `Games (a)/program (E).nes` ran as a European copy, at 50 frames a second. The tools now give an emulator the copy under a plain name of their own, except a disc's `.cue`, which names its tracks from where it is. A copy that really is for another region's consoles stops with a sentence saying so, as `prove` knows a region only by a frame's length.
+
+**Sound.** A real console's sound isn't a clean wave. The NES's waves only ever go up from zero, and FCEUmm's filter then makes a thump in the lowest bands when a note stops, loud enough for `prove` to notice, so a Dreamport has to make that sound too. A Nintendo 64 game chooses its own rate, so `host.c` follows the emulator's notice of it and hears the sound at the kit's rate, on a straight line between samples. `prove` compares loudness by bands, so that's near enough, though the highest band loses a little.
+
+**Frames.** On FCEUmm a game's frame shows in the next one, as `prove` assumes, and so does its sound. The others ran only a program that does nothing to show it.
+
+**Save states and work memory.** Nothing in the tools uses a save state, and `prove --state` says it can't compare on these consoles, so their sizes don't matter yet. A start point writes to work memory as the emulator keeps it. Going by their source, Genesis Plus GX keeps it in pairs of bytes swapped and Parallel N64 in fours, so a whole word lands as it should and a lone byte needs its address changed. Only the NES has tried a start point.
+
+**Buttons.** The NES's were pressed in a recording. The Mega Drive's and Nintendo 64's agree with their emulators' source, and the rest are still only as chosen.
+
+**Building.** Each builds with a compiler and `make` alone. Parallel N64 is built with no recompiler and no OpenGL, so it needs no assembler or graphics libraries, and runs on its interpreter.
 
 ## What's different from the Game Boy Advance
 

@@ -70,8 +70,9 @@ export async function runReference({ program, args, env, width, height, stateByt
       else out.push(chunk);
     });
     child.stderr.on('data', chunk => err.push(chunk));
-    const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', resolve); });
+    const { code, signal } = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', (code, signal) => resolve({ code, signal })); });
     const stderr = Buffer.concat(err).toString('utf8').trim();
+    if (signal) throw new Error(`The original's emulator stopped partway, with ${signal}, as one can on a copy it can't run.`);
     if (code !== 0) throw new Error(`The original didn't run: ${stderr}`);
     const data = size ? whole : Buffer.concat(out);
     out.length = 0;
@@ -107,8 +108,8 @@ export async function runReference({ program, args, env, width, height, stateByt
  * samples, as `runReference` gives them too. `end()` stops it. The same buttons at the same frames give `runReference`
  * the same pictures.
  */
-export function playReference({ program, args, env, width, height, buttonBytes = 2 }) {
-  const child = spawn(program, args, { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } });
+export function playReference({ program, args, cwd, env, width, height, buttonBytes = 2 }) {
+  const child = spawn(program, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } });
   const PICTURE = width * height * 2;
   let data = Buffer.alloc(0), waiting = null, ended = null, stderr = '';
   const settle = () => {
