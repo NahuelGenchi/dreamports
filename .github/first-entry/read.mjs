@@ -65,6 +65,7 @@ function writtenAgain(game, bytes) {
   }
   const { GITHUB_TOKEN, GH_TOKEN, ...env } = process.env;
   execFileSync('node', ['tools/dp.mjs', 'portmap', game], { cwd: REPO, env, stdio: 'inherit' });
+  execFileSync('node', ['tools/dp.mjs', 'readme'], { cwd: REPO, env, stdio: 'inherit' });
   return {
     portMap: readFileSync(join(REPO, `games/${game}/proof/port-map.json`)),
     map: readFileSync(join(REPO, `.github/readme/progress/${game}.svg`)),

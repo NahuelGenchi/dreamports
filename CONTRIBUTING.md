@@ -49,7 +49,7 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 | Command | What it does |
 | :--- | :--- |
 | `npm run dev` | Runs the site on your computer while you work on it |
-| `npm run check` | Looks for mistakes in the pages, the game files and the Dreamports' entries, checks that the README's table of Dreamports is up to date, and tests the moderation bot's rules |
+| `npm run check` | Looks for mistakes in the pages, the game files and the Dreamports' entries, and tests the moderation bot's rules |
 | `npm run build` | Makes the finished site in the `dist/` folder |
 | `npm run test:game` | Tries what every new game starts with in a real browser, with a made-up game: its start screen, frames, keyboard, controller, settings, touch screen and way back to the launcher. Every pull request runs this, `npm run check`, `npm run build` and the two below |
 | `npm run test:consoles` | Tries everything the proof tools do on a console that was never made, with a small emulator of it written here |

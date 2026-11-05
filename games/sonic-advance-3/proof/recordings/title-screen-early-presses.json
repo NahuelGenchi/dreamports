@@ -1,0 +1,114 @@
+{
+  "about": "The title screen, with Start pressed while the 3 lands, while the logo shakes, as the screen flashes white and during the second after the announcer, none of which does anything, and then nothing.",
+  "frames": 420,
+  "start": "screen=title",
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      70,
+      [
+        "START"
+      ]
+    ],
+    [
+      72,
+      []
+    ],
+    [
+      80,
+      [
+        "START"
+      ]
+    ],
+    [
+      82,
+      []
+    ],
+    [
+      95,
+      [
+        "START"
+      ]
+    ],
+    [
+      97,
+      []
+    ],
+    [
+      102,
+      [
+        "START"
+      ]
+    ],
+    [
+      104,
+      []
+    ],
+    [
+      150,
+      [
+        "START"
+      ]
+    ],
+    [
+      152,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 2954,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          600,
+          [
+            "A"
+          ]
+        ],
+        [
+          604,
+          []
+        ],
+        [
+          701,
+          [
+            "A"
+          ]
+        ],
+        [
+          705,
+          []
+        ],
+        [
+          721,
+          [
+            "START"
+          ]
+        ],
+        [
+          725,
+          []
+        ],
+        [
+          761,
+          [
+            "A"
+          ]
+        ],
+        [
+          765,
+          []
+        ]
+      ],
+      "about": "Power-on with nothing saved, the language screen, a letter written and the name kept, then the logos and the intro with nothing pressed, up to the title screen."
+    }
+  ]
+}
