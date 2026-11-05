@@ -13,6 +13,7 @@
 // reads from at the address the original reads.
 
 import { REG } from '../../../kit/gba/video.js';
+import { createRam, write8, write16 } from './bus.js';
 
 // the GBA's buttons, a bit each, as KEYINPUT has them
 export const KEY = { A: 0x1, B: 0x2, SELECT: 0x4, START: 0x8, RIGHT: 0x10, LEFT: 0x20, UP: 0x40, DOWN: 0x80, R: 0x100, L: 0x200 };
@@ -33,6 +34,8 @@ const START_UP_FRAMES = 45;
 export function createCore(video, rom, sound) {
   const c = {
     video, rom, sound,
+    // the work RAM, where the fight's functions keep their state at the original's addresses (bus.js)
+    ram: createRam(),
     // gUnknown_03002030: the screen's callback, which the main loop runs once a frame
     callback: null,
     // gUnknown_030048e0: the keys (0x08020198), with how long a held key takes to repeat, as 0x0802021c(0, 0) sets it
@@ -71,6 +74,9 @@ export function createCore(video, rom, sound) {
     moveCycles: 0, textCycles: 0,
     startUp: START_UP_FRAMES,
     main: null,
+    fightVblank: false, afterWait: null,
+    // what the interrupt at the display's line 1 does in a fight, which comes after the frame's work starts (fight.js)
+    lineOne: null,
   };
   // the console after its start-up program: the screen white (forced blank) until the game shows it
   video.write(REG.DISPCNT, 0x80);
@@ -91,15 +97,24 @@ export function step(c, held) {
   }
   finishLineWork(c);
   vblank(c);
+  // a fight's callback waits for a V-blank partway through (0x080006d0), so a frame of it takes two of the console's
+  if (c.afterWait) {
+    const rest = c.afterWait;
+    c.afterWait = null;
+    rest(c);
+    c.lineOne?.(c);
+    return;
+  }
   runCopies(c);
   readKeys(c, held);
   // 0x080005ac: a link cable game's reset, which needs a second console
   c.callback(c);
+  c.lineOne?.(c);
 }
 
 /** After line `line` is drawn: what a callback's long job has finished by then, which the lines below it show. */
 export function hblank(c, line) {
-  if (c.lineWork?.line === line) finishLineWork(c);
+  while (c.lineWork && c.lineWork.line <= line) finishLineWork(c);
 }
 
 function finishLineWork(c) {
@@ -131,6 +146,7 @@ function readKeys(c, held) {
 // parameters and the sprites when gUnknown_030013a0 asks for them, the registers queued (0x0801fbd8), and the frame
 // counted. Sprites a callback queues go in here, so they show a frame after what it writes directly.
 function vblank(c) {
+  if (c.fightVblank) { fightVblank(c); return; }
   c.vblanks++;
   if (c.vblankCopies) {
     // 0x0801694c: the half of the rotation parameters just finished
@@ -152,6 +168,25 @@ function vblank(c) {
   // 0x0801ffa4
   if (c.oamBufferFull) c.video.oam.set(c.oamBuffer);
   c.oamBufferFull = 0;
+  c.frames++;
+}
+
+/**
+ * 0x08015fa4, the V-blank interrupt once 0x08016078's mode 6 has set it, as a fight's screens do: the V-blanks counted,
+ * and only when gUnknown_030013a0 asks, so that all a frame of the fight queued shows together, every sprite hidden, the
+ * half of the rotation parameters just finished, the sprites 0x08017d58 built and the registers queued.
+ */
+export function fightVblank(c) {
+  c.vblanks++;
+  if (c.vblankCopies) {
+    hideSprites(c);
+    c.affine[c.affineHalf].forEach((word, i) => c.video.write(REG.BG2PA + i * 2, word));
+    c.video.oam.set(c.oamBuffer);
+    c.oamBufferFull = 0;
+    for (const [offset, value] of c.queue) c.video.write(offset, value);
+    c.queue.length = 0;
+  }
+  c.vblankCopies = 0;
   c.frames++;
 }
 
@@ -414,4 +449,13 @@ export function newScreen(c, mode) {
   c.blend = 0;
   c.blendTarget = 0;
   c.counter = 0;
+  // what the fight's view starts from: the sprite queues empty, the zoom and tilt at rest and the view unturned
+  if (mode === 6) {
+    c.fightVblank = true;
+    write8(c, 0x030016C4, 160);
+  }
+  for (const at of [0x030017CC, 0x030017C8, 0x03001388]) write8(c, at, 0);
+  for (const at of [0x030033CC, 0x03003170, 0x03001B2C, 0x030016C0, 0x03001B08]) write16(c, at, 0);
+  write16(c, 0x03001B04, 0x100);
+  write16(c, 0x030016C8, 0x200);
 }

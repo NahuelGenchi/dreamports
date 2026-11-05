@@ -21,6 +21,8 @@ const START_UP_FRAMES = 8;
 
 const OAM_ENTRIES = 128, OAM_ORDERS = 32;
 const COPY_CHUNK = 1024;
+// a line of the list the H-blank copies has these half-words that differ from one frame to the next, in the order they are written
+const FIELDS = [0, 4, 6];
 
 export function createCore(video, rom, sound) {
   const c = {
@@ -29,6 +31,7 @@ export function createCore(video, rom, sound) {
     playSoundOn: (player, song, volume, pan) => sound?.playOn(player, song, volume, pan),   // MPlayStart with its controls
     continueSong: song => sound?.startOrContinue(song),   // m4aSongNumStartOrContinue
     stopSong: song => sound?.stop(song),   // m4aSongNumStop
+    fadeOutPlayer: (player, speed) => sound?.fadeOut(player, speed),   // m4aMPlayFadeOut
     stopAllSongs: () => sound?.stopAll(),   // m4aMPlayAllStop
     runSound: () => sound?.call('frame'),   // a frame of the sound engine, which comes with no frame of the game's
     seed: 0,
@@ -49,7 +52,8 @@ export function createCore(video, rom, sound) {
     lineRegister: REG.BG0HOFS + 12, shownLineRegister: REG.BG0HOFS + 12,
     lineSize: 1, shownLineSize: 1,   // the half-words the H-blank writes for each line
     lineScrollNext: null, shownLineScrollNext: null, lineTornAt: 0, shownLineTornAt: 0,   // what the next frame's work has written by the time the drawing reaches line `lineTornAt`
-    save: { language: 1, playerName: new Array(6).fill(0xFFFF), playerId: 0 },   // the save a game with nothing saved has (0x08001DDC), kept only until the page closes for now
+    lineTornFields: 3, shownLineTornFields: 3,   // of the three entries the work writes for a line (the first, fifth and seventh half-words), how many it has by then
+    save: { language: 1, playerName: new Array(6).fill(0xFFFF), playerId: 0, unlockedCharacters: 0xF },   // the save a game with nothing saved has (0x08001DDC), kept only until the page closes for now
   };
   const graphics = [], backgrounds = [], layers = [];
   // gBgSprites_Unknown1 and 2: a rectangle of a layer's map to fill in the next V-blank
@@ -211,6 +215,7 @@ export function createCore(video, rom, sound) {
     c.shownLineSize = c.lineSize;
     c.shownLineScrollNext = c.lineScrollNext;
     c.shownLineTornAt = c.lineTornAt;
+    c.shownLineTornFields = c.lineTornFields;
     scrollLine(0);
     c.oamBuffer.fill(0x200);
   }
@@ -243,6 +248,11 @@ export function createCore(video, rom, sound) {
   const scrollLine = y => {
     const lines = c.shownLineScrollNext && y >= c.shownLineTornAt ? c.shownLineScrollNext : c.shownLineScroll, size = c.shownLineSize;
     if (!lines || y * size >= lines.length) return;
+    if (c.shownLineScrollNext && y === c.shownLineTornAt && c.shownLineTornFields < 3) {
+      const written = FIELDS.slice(0, c.shownLineTornFields);
+      for (let i = 0; i < size; i++) video.write(c.shownLineRegister + i * 2, (written.includes(i) ? c.shownLineScrollNext : c.shownLineScroll)[y * size + i]);
+      return;
+    }
     for (let i = 0; i < size; i++) video.write(c.shownLineRegister + i * 2, lines[y * size + i]);
   };
   /** What the H-blank does after line `y`, which the page's drawing calls. */

@@ -279,7 +279,7 @@ function standing(c, crash, clock) {
     return;
   }
   // the fourth makes a sound partway through (0x08034238 keeps it from starting again while it plays)
-  if (playing === animation(c, 3) && sprite.frame === 14 && !c.soundPlaying(SOUND_FOURTH)) c.playSound(SOUND_FOURTH);
+  if (playing === animation(c, 3) && sprite.frame === 14) c.playSound(SOUND_FOURTH, SOUND_FOURTH);
   if (sprite.ended) stand(c, crash, 0, clock);
 }
 
