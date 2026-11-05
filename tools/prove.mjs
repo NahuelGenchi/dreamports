@@ -233,7 +233,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       const count = Math.min(BATCH, frames - from);
       say(`frame ${from + count} of ${frames}`);
       const batch = held.slice(from, from + count).map(list => list.map(b => named.get(b)));
-      const played = await page.evaluate(`__proof.run(${from}, ${JSON.stringify(batch)}, ${JSON.stringify(expected.slice(from, from + count))}, ${quick ? lastAsked : Infinity})`);
+      const after = from + count < frames ? held[from + count].map(b => named.get(b)) : null;
+      const played = await page.evaluate(`__proof.run(${from}, ${JSON.stringify(batch)}, ${JSON.stringify(expected.slice(from, from + count))}, ${quick ? lastAsked : Infinity}, ${JSON.stringify(after)})`);
       hashes.push(...played.hashes);
       heard.push(...played.sound);
       neverInPlay.push(...played.neverInPlay);

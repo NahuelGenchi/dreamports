@@ -25,6 +25,8 @@ export const FLAGS = {
 export const TASK = { INACTIVE: 0x1, DESTROY_DISABLED: 0x2, RUNS_PAUSED: 0x4 };
 // the bits of the GBA's key register
 export const KEY = { A: 0x1, B: 0x2, SELECT: 0x4, START: 0x8, RIGHT: 0x10, LEFT: 0x20, UP: 0x40, DOWN: 0x80, R: 0x100, L: 0x200 };
+// the four buttons held together that restart the game (VBlankIntr)
+export const SOFT_RESET_KEYS = KEY.A | KEY.B | KEY.SELECT | KEY.START;
 
 const MAX_TASKS = 128, GFX_QUEUE = 32, BG_QUEUE = 16, OAM_ENTRIES = 128, OAM_ORDERS = 32;
 const COPY_CHUNK = 1024;
@@ -70,7 +72,9 @@ export function createEngine(video, rom, sound) {
     input: 0, prevInput: 0, pressed: 0, released: 0, repeated: 0,
     repeatCounters: new Uint8Array(10), firstRepeat: new Uint8Array(10).fill(20), nextRepeat: new Uint8Array(10).fill(8),
     keys: 0,   // what the player holds, as KEY bits
+    nextKeys: null,   // what the V-blank at the end of the frame finds held, when it isn't what the frame read (vblank)
     curTask: null,
+    onSoftReset: null,   // what the owner does when the V-blank sees the soft reset's buttons (see vblank)
     // for the widescreen view (video.js): how each layer goes on past the screen's edges, as the screens set it
     // with their layers (null: wrapping, as the hardware does); every sprite piece DisplaySprite puts out, where
     // it really is; a window effect's true shape, for each half of the H-blank buffer and each window; and the
@@ -146,14 +150,16 @@ export function createEngine(video, rom, sound) {
    */
   e.stall = (frames, then) => { stall = { frames, then, task: e.curTask, next: null }; };
   // frames the next screen update takes up, on top of its own
-  let lagging = 0;
+  let lagging = 0, copiesLate = false;
   /**
    * The screen update at the end of this frame (its V-blank's copies, as the main loop makes them after
    * VBlankIntrWait) is too much for one frame: the next `frames` frames do nothing but count (VBlankIntr still
    * runs), and the tasks run again after them. The engine doesn't count the CPU's time, so a screen that takes it
-   * this way says so.
+   * this way says so. With `late`, the copy of the backgrounds' maps is what takes the time: the registers,
+   * palettes and graphics of this frame's V-blank are written and shown, and the maps come in the last of the
+   * frames after it.
    */
-  e.lag = frames => { lagging = frames; };
+  e.lag = (frames, late = false) => { lagging = frames; copiesLate = late; };
   /** The tasks in the list's order, for checking. */
   e.tasks = () => {
     const list = [];
@@ -341,6 +347,12 @@ export function createEngine(video, rom, sound) {
 
   // --- the V-blank (VBlankIntr, UpdateScreenDma, ClearOamBufferDma) ---------------------------------------------
   function vblank() {
+    // VBlankIntr: unless a screen has turned it off (FLAGS_8000), A, B, Start and Select held together restart the
+    // game, and the V-blank goes no further
+    if (e.onSoftReset && !(e.flagsPreVBlank & FLAGS.NO_RESET) && ((e.nextKeys ?? e.keys) & SOFT_RESET_KEYS) === SOFT_RESET_KEYS) {
+      e.onSoftReset();
+      return;
+    }
     hdma = null;
     if (e.flagsPreVBlank & FLAGS.HBLANK_COPY) {
       copyHBlankEntry(e.primary);
@@ -380,7 +392,7 @@ export function createEngine(video, rom, sound) {
     fillMaps();
     for (const write of e.bgSprites) write();
     e.bgSprites.length = 0;
-    copyBackgrounds();
+    if (!copiesLate) copyBackgrounds();
 
     // ClearOamBufferDma, which the original skips while the game is paused
     if (!(e.flags & FLAGS.PAUSE_GAME)) {
@@ -397,6 +409,7 @@ export function createEngine(video, rom, sound) {
     if (lagging) {
       lagging--;
       e.frameCount++;
+      if (!lagging && copiesLate) { copiesLate = false; copyBackgrounds(); }
       return;
     }
     if (stall) {

@@ -34,6 +34,7 @@ export const CONTROLS = [
     { keys: ['Enter'], pad: ['Menu'], what: 'Start: skips the intro, opens the menu on the title screen, jumps to END in the name input, and pauses the act and the special stage, then goes on again' },
     { keys: ['{pick}', '{back}'], pad: ['A', 'B'], what: 'Skip the intro, as Start does' },
     { keys: ['Backspace'], pad: ['View'], what: 'Select' },
+    { keys: ['{jump}', '+', '{attack}', '+', 'Enter', '+', 'Backspace'], pad: ['A', '+', 'B', '+', 'Menu', '+', 'View'], what: 'Held together, the soft reset: the game starts again at the title screen, with your save as it is' },
     { keys: ['Q', 'E'], pad: ['LB', 'RB'], what: 'L and R · in the name input, move along the name' },
     { keys: ['↑', '↓'], what: 'In the menu, choose · {pick} picks' },
     { keys: ['←', '→'], what: 'In Options, change the setting picked · {back} goes back' },

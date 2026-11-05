@@ -22,8 +22,9 @@ const runCalls = engine => ({ frame(calls) { for (const [name, args] of calls) e
  */
 export function createSynth(rom, layout, rate, manager = runCalls) {
   const apu = createApu();
-  const engine = createM4A(rom, layout, apu);
-  const queue = [], calls = manager(engine);
+  let engine = createM4A(rom, layout, apu);
+  const queue = [];
+  let calls = manager(engine);
   const n = engine.samples, SAMPLE_CYCLES = FRAME_CYCLES / n;   // 1596 cycles per DirectSound sample at 10512 Hz
   let playing = new Int8Array(2 * n), pending = new Int8Array(2 * n);
   let cycle = 0, frameStart = 0, nextFrame = 0;
@@ -52,7 +53,20 @@ export function createSynth(rom, layout, rate, manager = runCalls) {
   }
 
   return {
-    engine,
+    get engine() { return engine; },
+    /**
+     * The engine starts again from nothing, as m4aSoundInit does after a soft reset: every player, channel and
+     * effect clean, and the DirectSound samples playing silent. The sound chip isn't reset, so what its four
+     * channels were doing goes on under the new engine's first notes, as it does in the console.
+     */
+    restart() {
+      const { music } = engine.muted;
+      engine = createM4A(rom, layout, apu);
+      engine.muted.music = music;
+      calls = manager(engine);
+      queue.length = 0;
+      playing = new Int8Array(2 * n); pending = new Int8Array(2 * n);
+    },
     /** Queues an engine call (songStart, pitchControl, …), or one for the game's music manager, for the start
      *  of the next frame. */
     call(name, ...args) { queue.push([name, args]); },

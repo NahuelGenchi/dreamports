@@ -23,16 +23,28 @@ import { createClock, GBA_FRAME_MS } from '../../../../kit/gba/clock.js';
 export const STARTUP_FRAMES = 6;
 
 // what the player holds (engine/input.js), as the GBA's buttons
-export function keysOf(input) {
-  return (input.jump ? KEY.A : 0) | (input.attack ? KEY.B : 0) | (input.start ? KEY.START : 0) | (input.select ? KEY.SELECT : 0)
-    | (input.right ? KEY.RIGHT : 0) | (input.left ? KEY.LEFT : 0) | (input.up ? KEY.UP : 0) | (input.down ? KEY.DOWN : 0)
-    | (input.r ? KEY.R : 0) | (input.l ? KEY.L : 0);
+// or, with `held`, a set of the game's button names (input.nextHeld), what it holds then
+export function keysOf(input, held = null) {
+  const has = name => (held ? held.has(name) : input[name]);
+  return (has('jump') ? KEY.A : 0) | (has('attack') ? KEY.B : 0) | (has('start') ? KEY.START : 0) | (has('select') ? KEY.SELECT : 0)
+    | (has('right') ? KEY.RIGHT : 0) | (has('left') ? KEY.LEFT : 0) | (has('up') ? KEY.UP : 0) | (has('down') ? KEY.DOWN : 0)
+    | (has('r') ? KEY.R : 0) | (has('l') ? KEY.L : 0);
 }
 
-/** GameStart: the language screen when there is no save (a new game), else the logos. */
-export function powerOn(ctx) {
-  if (ctx.save.exists || !hasLanguageScreen(ctx.offsets)) createSegaLogo(ctx);
-  else createLanguageScreen(ctx, true);
+/**
+ * The frames from the soft reset's V-blank to the first screen: the BIOS forces the screen blank at once, and the
+ * game's start (EngineInit, GameInit) runs before the next frames show anything.
+ */
+export const RESET_FRAMES = 6;
+
+/**
+ * GameInit: the language screen when there is no save (a new game), else the logos, or, after a soft reset, which
+ * sets FLAGS_SKIP_INTRO, the title screen with its music.
+ */
+export function powerOn(ctx, skipIntro = false) {
+  if (!ctx.save.exists && hasLanguageScreen(ctx.offsets)) createLanguageScreen(ctx, true);
+  else if (skipIntro) ctx.title(true);
+  else createSegaLogo(ctx);
 }
 
 /**
@@ -47,17 +59,21 @@ export function powerOn(ctx) {
  * starts `prepareDemo()` is called, and as it starts `play`, with `demo` set in its last argument and its video memory in
  * `vram`. `back`, { title, frameCount, white, vram }, starts it as a demo leaves it,
  * with no start-up: at the title screen with its music if `title`, else at the SEGA logo, with gFrameCount at `frameCount` and video memory as the screens before left it.
+ * `softReset()` is called when A, B, Start and Select are held together (VBlankIntr), and `afterReset` starts the
+ * front end as the game starts again from that: the screen blank and then the title screen, with no logos.
  * Returns { stop, step, draw, setView }: setView(w, h) draws a widescreen view of w × h from then on (the
  * original 240 × 160 is the default); step() and draw() are for checking, a frame at a time.
  */
-export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true, select = true, onGameStart, prepareDemo = () => {}, back = null } = {}) {
+export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true, select = true, onGameStart, prepareDemo = () => {}, back = null, softReset, afterReset = false } = {}) {
   const video = createVideo();
   const engine = createEngine(video, rom, sound);
   video.write(REG.DISPCNT, 0x80);   // forced blank, until the game starts
-  let done = false, chosen, demo = false, startingUp = back ? 0 : STARTUP_FRAMES;
+  let done = false, resetting = false, chosen, demo = false, startingUp = back ? 0 : afterReset ? RESET_FRAMES : STARTUP_FRAMES;
+  engine.onSoftReset = softReset && (() => { resetting = true; });
   const ctx = {
     engine, tilemaps: offsets.tilemaps, sprites: spriteTables(rom, offsets.spriteTables), offsets, save, character, partner: false, gameMode: 0, levels, select,
     introGraphics: offsets.introGraphics, introTables: offsets.introTables,
+    afterReset,
     intro: () => createIntro(ctx),
     title: playMusic => createTitleScreen(ctx, playMusic),
     play: level => { done = true; chosen = level; },
@@ -96,10 +112,11 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
   function step() {
     input.poll?.();
     if (startingUp > 0) {
-      if (--startingUp === 0) powerOn(ctx);
+      if (--startingUp === 0) powerOn(ctx, afterReset);
       return;
     }
     engine.keys = keysOf(input);
+    engine.nextKeys = keysOf(input, input.nextHeld());
     engine.run();
   }
   function draw() {
@@ -114,7 +131,8 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
   clock.reset();
   function loop(now) {
     let ran = false;
-    for (let n = clock.steps(now); n > 0 && !done; n--) { step(); ran = true; }
+    for (let n = clock.steps(now); n > 0 && !done && !resetting; n--) { step(); ran = true; }
+    if (resetting) { stop(); softReset(); return; }   // the frame the reset is in is drawn by the game that starts again
     if (ran) draw();   // a frame is drawn once, from the H-blank effects its V-blank set up
     if (done) {
       // what's still sounding plays on, as the original stops nothing here: the act's music takes the place of the screen's
@@ -130,6 +148,7 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
   function stop() { cancelAnimationFrame(frame); input.release(); sound.stopAll(); }
 
   input.enabled = true;
+  if (afterReset) draw();   // the screen the BIOS blanked, white
   frame = requestAnimationFrame(loop);
   return { stop, step, draw, setView, engine };
 }

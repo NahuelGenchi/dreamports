@@ -13,7 +13,8 @@
 // - `ready`: resolves once the game runs, which in play mode means it waits for its first frame
 // - `step(frame)`: in play mode, runs one frame with the buttons in `frame.held` held and those in
 //   `frame.pressed` just pressed (without `pressed`, those held now and not at the frame before), and resolves
-//   to what the screen shows after it, as ImageData; a frame at a time
+//   to what the screen shows after it, as ImageData; a frame at a time. `frame.next`, if given, is what the
+//   next frame holds, for a game that reads its buttons in the V-blank at the end of this one (input.js nextHeld)
 // - `heard`: in play mode, what the last frame sounded like: an Int16Array of its samples, left and right, at the
 //   console's mix rate (65536 a second) and in its 10-bit units around the bias, or null for a game with no sound
 // - `video`: in play mode, the video hardware (video.js) that drew the last frame, which prove compares with the original's
@@ -98,6 +99,8 @@ function createProof(mode) {
       const next = replays[frames.length];
       return next ? { held: next.held.map(named) } : null;
     },
+    /** In play mode, what the next frame holds when the tool says (`step`'s `next`), or null. */
+    get next() { return mode === 'play' ? running?.next ?? null : null; },
     /** In record mode, keeps what the game read at a frame (input.js). */
     record(frame) { if (mode === 'record') { frames.push(frame); started(); } },
   };
@@ -111,7 +114,7 @@ function createProof(mode) {
     step(frame = {}) {
       if (mode !== 'play') return Promise.reject(new Error('step() runs a frame with ?proof in the address, not ?proof=record.'));
       if (wanted || drawn) return Promise.reject(new Error('A frame is already running: wait for it before the next.'));
-      wanted = { held: [...(frame.held ?? [])], ...(frame.pressed ? { pressed: [...frame.pressed] } : {}) };
+      wanted = { held: [...(frame.held ?? [])], ...(frame.pressed ? { pressed: [...frame.pressed] } : {}), ...(frame.next ? { next: [...frame.next] } : {}) };
       return new Promise(resolve => { drawn = resolve; });
     },
     frames,

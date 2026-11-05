@@ -179,14 +179,15 @@
     /** Plays frames from `from`, each with its buttons held, and resolves to each picture's hash and each frame's
      *  sound, as { energies, samples }: its energy in each band of pitches and how many samples it had. It keeps what
      *  the console holds at the first frame whose picture isn't the hash in `expected`, and at those `wantStates` names.
-     *  It stops after the first frame from `stopsFrom` on whose picture isn't. Each size the pictures changed to comes too, as [frame, width, height]. */
-    async run(from, held, expected, stopsFrom = Infinity) {
+     *  It stops after the first frame from `stopsFrom` on whose picture isn't. `after` is what the frame after the last holds. Each size the pictures changed to comes too, as [frame, width, height]. */
+    async run(from, held, expected, stopsFrom = Infinity, after = null) {
       const hashes = [], sound = [], neverInPlay = [], sizes = [];
       for (let i = 0; i < held.length; i++) {
         const frame = from + i;
         dreamportsProof.video = null;   // a game can draw some screens with a renderer of its own
         dreamportsProof.neverInPlay = null;
-        const image = await played({ held: held[i] });
+        // `next`: what the frame after holds, which a V-blank that reads the buttons finds held (kit/gba/proof.js)
+        const image = await played({ held: held[i], next: held[i + 1] ?? after ?? undefined });
         if (!image) throw new Error('The game handed over no picture.');
         if (__console.id === 'gba' && (image.width !== WIDTH || image.height !== HEIGHT)) {
           throw new Error(`The game's screen is ${image.width} x ${image.height}, not the console's ${WIDTH} x ${HEIGHT}: proof needs it as the console had it.`);

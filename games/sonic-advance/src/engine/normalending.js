@@ -4,6 +4,7 @@
 
 import { TICK_MS } from './constants.js';
 import { createClock } from '../../../../kit/gba/clock.js';
+import { holdsSoftReset } from './softreset.js';
 import { createRenderer } from './renderer.js';
 import { createEndingRenderer } from './endingrender.js';
 import { createCongratulations } from './congratulations.js';
@@ -23,7 +24,7 @@ const SILENT = { play() {}, stopAll() {} };
  * logo would come up. `state.seed` is the game's random numbers (gPseudoRandom), which the congratulations'
  * streaks use. `save` is the save (save.js), which the congratulations write.
  */
-export function createNormalEnding(canvas, assets, input, sound = SILENT, { from = 'congratulations', emeralds = false, seed = 0, save = openSave(null), onEnd = () => {} } = {}) {
+export function createNormalEnding(canvas, assets, input, sound = SILENT, { from = 'congratulations', emeralds = false, seed = 0, save = openSave(null), onEnd = () => {}, onSoftReset = null } = {}) {
   const { anims } = assets.sprites, art = assets.stage.normalEnding;
   // what the screen showed, held while the save is written
   const held = document.createElement('canvas');
@@ -31,7 +32,7 @@ export function createNormalEnding(canvas, assets, input, sound = SILENT, { from
   held.getContext('2d').drawImage(canvas, 0, 0);
   const render = createRenderer(canvas, assets);
   const renderEnding = createEndingRenderer(render.parts, art);
-  const state = { seed, saving: 0, scene: null, ended: false };
+  const state = { seed, saving: 0, scene: null, ended: false, reset: false };
   const random = () => (state.seed = (Math.imul(state.seed, 0x196225) + 0x3C6EF35F) >>> 0);
 
   const credits = () => {
@@ -51,12 +52,15 @@ export function createNormalEnding(canvas, assets, input, sound = SILENT, { from
 
   function step() {
     input.poll?.();
+    // the flash write that keeps the CPU busy for a few frames has the interrupts off: no V-blank sees the buttons
+    const stalled = state.saving > 1;
     if (state.ended) return;
     if (state.saving > 0) {
-      if (--state.saving > 0) return;
-      congratulations();
+      if (--state.saving === 0) congratulations();
     }
-    state.scene.step();
+    // the congratulations' main task runs on the frame the save's wait ends
+    if (state.saving === 0) state.scene.step();
+    if (!stalled && onSoftReset && holdsSoftReset(input)) { state.reset = true; onSoftReset(); }
   }
   function draw() {
     const ctx = render.parts.ctx;
@@ -69,7 +73,8 @@ export function createNormalEnding(canvas, assets, input, sound = SILENT, { from
   const clock = createClock(TICK_MS, { snap: true });
   function loop(now) {
     const n = clock.steps(now);
-    for (let i = 0; i < n; i++) step();
+    for (let i = 0; i < n && !state.reset; i++) step();
+    if (state.reset) return;   // the game starts again from the soft reset, and has the screen now
     if (n) draw();
     frame = requestAnimationFrame(loop);
   }
