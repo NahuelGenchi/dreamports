@@ -1,4 +1,4 @@
-# The character select's song differs in sound about 310 frames in, wherever it plays, so where a press falls can show it or not.
+# The character select's song differs in sound about 310 frames in, so where a press falls can show it or not.
 
 About: Time Attack; The character select; time-attack-menu; character-select
 
