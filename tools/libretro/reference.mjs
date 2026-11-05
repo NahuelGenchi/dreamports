@@ -4,6 +4,7 @@ import { linkSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
 import { LOCAL } from '../lib/paths.mjs';
 import { playReference, runReference } from '../lib/run-reference.mjs';
+import { checkSizes } from '../lib/screens.mjs';
 import { HOST, buildReference, coreFile } from './build.mjs';
 
 const FROM = join(LOCAL, 'tmp');
@@ -64,8 +65,20 @@ export function libretroReference(machine) {
     },
     playOriginal(copy) {
       const named = plainlyNamed(copy);
-      const live = playReference({ program: HOST, cwd: FROM, env: hostEnv(), width, height, buttonBytes: 4, args: [coreFile(core), named.path, 'live', String(width), String(height), ...options] });
-      return { ...live, end() { live.end(); named.done(); } };
+      const live = playReference({ program: HOST, cwd: FROM, env: hostEnv(), width, height, buttonBytes: 4, sized: true, args: [coreFile(core), named.path, 'live', String(width), String(height), ...options] });
+      let frame = 0;
+      return {
+        ...live,
+        // said at once, before anyone plays for nothing: a picture larger than the game says would lose its edges. One that
+        // fits is cut to its own size for the card (capture.mjs). Like prove, this looks past a console's first frame
+        async frame(buttons) {
+          const shown = await live.frame(buttons);
+          if (frame && (shown.size[0] > width || shown.size[1] > height)) checkSizes([[frame, ...shown.size]], machine, [frame]);
+          frame++;
+          return shown;
+        },
+        end() { live.end(); named.done(); },
+      };
     },
   };
 }
