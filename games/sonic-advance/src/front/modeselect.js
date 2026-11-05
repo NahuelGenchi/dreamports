@@ -142,6 +142,13 @@ function fadeOut(t) {
   } else {
     e.bldY = screen.qFade >> 8;
     drawMode(screen);
+    // CreateMainMenu's DmaFill32 over the first layer's and the sprites' first tiles already shows in the original's
+    // picture on the frame before the main menu is made, as it does leaving the Time Attack menu. The 64 pixels
+    // of the first four lines above the first tile still differ in the picture; why isn't known
+    if (screen.leaving && screen.qFade + 0x80 >= 0x1000) {
+      e.video.vram.fill(0, 0, 0x40);
+      e.video.vram.fill(0, OBJ_VRAM, OBJ_VRAM + 0x40);
+    }
   }
 }
 

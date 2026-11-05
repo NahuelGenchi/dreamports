@@ -397,6 +397,7 @@ export function createM4A(rom, layout, io) {
   let cycles = 0;
   // what these commands take over the others', 0xB1 up
   const COMMAND_CYCLES = { 0xB1: 8, 0xB2: 12, 0xB3: 28, 0xB4: -48, 0xBB: -5, 0xBC: 81, 0xBD: 81, 0xBE: -245, 0xBF: 229, 0xCE: -114 };
+  let locked = false;   // m4aSoundVSyncOff's lock: SoundMain does nothing until m4aSoundVSyncOn
   const mulWait = rs => {
     rs >>>= 0;
     if (!(rs & 0xFFFFFF00) || (rs & 0xFFFFFF00) >>> 0 === 0xFFFFFF00) return 1;
@@ -838,6 +839,8 @@ export function createM4A(rom, layout, io) {
 
   return {
     info, chans, cgbChans, players, muted,
+    /** whether m4aSoundVSyncOff holds the mixing */
+    get locked() { return locked; },
     /** the samples mixed per side each frame */
     samples: SAMPLES,
 
@@ -847,6 +850,7 @@ export function createM4A(rom, layout, io) {
     /** One GBA frame: the V-blank's DMA bookkeeping, then SoundMain. Returns the offset of the samples just
      *  mixed into info.pcm (right side; the left side is HALF bytes later). */
     frame() {
+      if (locked) return 0;
       const dc = u8(info.dmaCounter - 1);
       info.dmaCounter = s8(dc) > 0 ? dc : FRAMES_PER_DMA;
       // SoundMain's way in, to the first player, and its way from the PSG to the channels and out, and 0x08049744's
@@ -856,6 +860,11 @@ export function createM4A(rom, layout, io) {
       cgbSound();
       return mix();
     },
+
+    /** m4aSoundVSyncOff: what is mixed is cleared and nothing is mixed until vsyncOn. */
+    vsyncOff() { if (!locked) { locked = true; info.pcm.fill(0); } },
+    /** m4aSoundVSyncOn: mixing starts again from the first part of the buffer. */
+    vsyncOn() { if (locked) { locked = false; } },
 
     songStart(n) { const s = song(n); mplayStart(s.player, s.header); },
     /** song n's header address, to compare with a player's songHeader */

@@ -275,7 +275,8 @@ function nameLoop(t) {
 }
 
 // Task_80595DC: the fade out; on the 61st frame after END the name into the save from the bar, the save written
-// if it changed (with the music stopped and the time it changed as the player's id), and the player data menu
+// if it changed (with the music stopped, the sound's buffer cleared while it writes, and the time it changed as the
+// player's id), and the player data menu
 function closeInput(t) {
   const input = t.data, { ctx } = input, e = ctx.engine, { save } = ctx;
   fadeStep(e, input.fade);
@@ -301,10 +302,12 @@ function closeInput(t) {
   if (changed) {
     save.unk4 = e.frameCount;
     e.stopAllSongs();
+    e.soundVSyncOff();
     if (save.write()) {
-      e.stall(WRITE_FRAMES, after);
+      e.stall(WRITE_FRAMES, () => { e.soundVSyncOn(); after(); });
       return;
     }
+    e.soundVSyncOn();
   }
   after();
 }

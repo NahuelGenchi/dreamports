@@ -96,6 +96,10 @@ export function createSound({ worklet = new URL('./worklet.js', import.meta.url)
       stopAll() { call('allStop'); },
       /** m4aMPlayAllContinue: every music player goes on from where it stopped */
       continueAll() { call('allContinue'); },
+      /** m4aSoundVSyncOff: the sound buffer cleared and the mixing held until vsyncOn, as a game does around a flash write */
+      vsyncOff() { call('vsyncOff'); },
+      /** m4aSoundVSyncOn */
+      vsyncOn() { call('vsyncOn'); },
       /** Queues any call for this GBA's engine, or for the game's music manager */
       call,
       ...calls(call, post),

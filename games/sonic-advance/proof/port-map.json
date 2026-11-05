@@ -607,10 +607,10 @@
     ["0809642C","src/engine/pipes.js:197"]
   ],
   "unmatched": [
-    ["sub_8002B20","src/gba/engine.js:209"],
+    ["sub_8002B20","src/gba/engine.js:211"],
     ["sub_80039E4","src/engine/extrarender.js:35"],
     ["sub_8003EE4","src/engine/extrarender.js:41"],
-    ["sub_8004010","src/gba/engine.js:186"],
+    ["sub_8004010","src/gba/engine.js:188"],
     ["sub_8004418","src/engine/bumpers.js:78"],
     ["sub_80047A0","src/engine/renderer.js:457"],
     ["sub_8006228","src/engine/spotlights.js:44"],

@@ -52,6 +52,8 @@ export function createEngine(video, rom, sound) {
     pauseSongs: song => sound?.pause?.(song),   // the pause menu's start (Task_PauseMenuInit)
     continueSongs: () => sound?.continueAll?.(),   // m4aMPlayAllContinue
     stopAllSongs: () => sound?.stopAll?.(),   // m4aMPlayAllStop
+    soundVSyncOff: () => sound?.vsyncOff?.(),   // m4aSoundVSyncOff, around a save's write
+    soundVSyncOn: () => sound?.vsyncOn?.(),   // m4aSoundVSyncOn
     fadeOutPlayer: (player, speed) => sound?.fadeOut?.(player, speed),   // m4aMPlayFadeOut
     continuePlayer: player => sound?.continuePlayer?.(player),   // m4aMPlayContinue
     flags: 0, flagsPreVBlank: 0, frameCount: 0,
