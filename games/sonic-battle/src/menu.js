@@ -331,11 +331,16 @@ export function menu(c, playSong = true) {
   addNode(c, animate, null, { to: 0x0600F0A6, tile: 0xE000, timer: 0 });
   addNode(c, drawOnly, place(PARTS, 64, 32, 128));
   addNode(c, fadeIn, place(0, 0, 0, 0));
-  if (playSong) c.sound?.play(SONG);
-  c.callback = displayOn;
+  c.callback = playSong ? songAndDisplay : displayOn;
 }
 
-/** 0x08039e20's last step, a frame behind its song: it runs past a V-blank, and the display is queued for the next. */
+/** The song starts a frame after the screen is built, as the original's building runs past a V-blank. */
+function songAndDisplay(c) {
+  c.sound?.play(SONG);
+  displayOn(c);
+}
+
+/** 0x08039e20's last step: it runs past a V-blank, and the display is queued for the next. */
 export function displayOn(c) {
   queueRegister(c, DISPCNT, 0x1F40);
   c.callback = frame;
