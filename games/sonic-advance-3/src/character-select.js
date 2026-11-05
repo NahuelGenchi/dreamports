@@ -1,4 +1,4 @@
-// The character select (CreateCharacterSelect, 0x08097F68 in the code map), which the main menu opens for a new story. The
+// The character select (CreateCharacterSelect, 0x080978CC in the code map), which the main menu opens for a new story. The
 // screen fades in on a header, the name of the character chosen turning behind it, with that character beside its name tag
 // at the bottom. Left and Right slide the next character in, and A chooses one, who slides to the left while the partner's
 // choice comes from the right. A on the partner shows the pair under a team description with both names, then a fade to
@@ -41,7 +41,7 @@ const PAIR_SHOWN = 22, ANNOUNCING = 23, LEAVING = 29, LEFT_ON_THE_RIGHT = 36, GO
 // WININ and WINOUT as the screen sets them each time it fades
 const FADE_IN = 0x3FFF, FADE_OUT_AFTER = 0x3FBF;
 
-/** 0x08097F68, CreateCharacterSelect: the screen's task, its layers and sprites, and its music. */
+/** 0x080978CC, CreateCharacterSelect: the screen's task, its layers and sprites, and its music. */
 export function createCharacterSelect(c) {
   c.dispCnt = 0x1541;
   const cs = { c, language: c.save.language, players: [0, 0] };
@@ -77,7 +77,7 @@ function whiteOut(c, blend = FADE_IN) {
   c.bldCnt = blend;
 }
 
-// 0x08098024, SetupPositions: where everything starts, in 1/256ths of a pixel
+// 0x08097A08, SetupPositions: where everything starts, in 1/256ths of a pixel
 function setUpPositions(cs) {
   Object.assign(cs, {
     shown: 0, target: 0, listIndex: [0, 2], pose: 0, firstFrame: true, wait: 0, fade: 0, spin: 0, slide: 0, sideways: 0,
@@ -100,7 +100,7 @@ function setUp(c, s, e, tiles, x, y, oamFlags) {
 
 const nameEntry = (cs, who) => entry(cs.c.rom, NAMES, who + (cs.language === 0 ? 0 : 1) * 8);
 
-// 0x08098220, InitSprites
+// 0x08097AD4, InitSprites
 function setUpSprites(cs) {
   const { c } = cs, { rom } = c;
   let vram = OBJ_VRAM;
@@ -125,7 +125,7 @@ function setUpSprites(cs) {
 
 const tilemap = (c, i) => c.rom.u16(TILEMAPS + i * 2);
 
-// 0x080985C0, InitBackgrounds: the backdrop, the name of the character as text and the same name turning
+// 0x08097CF8, InitBackgrounds: the backdrop, the name of the character as text and the same name turning
 function setUpBackgrounds(cs) {
   const { c } = cs;
   c.bgCnt[0] = 0x4E07;
@@ -164,10 +164,10 @@ function init(t) {
   t.main = fadeIn;
 }
 
-// 0x0809B13C: the name behind turns
+// 0x0809ADB4: the name behind turns
 const turn = cs => { cs.spin = u16(cs.spin + 0xC0); };
 
-// 0x0809B6C0: the turning name's layer, turned and scaled round the name's place
+// 0x0809B338: the turning name's layer, turned and scaled round the name's place
 function transformBackground(cs) {
   const { c } = cs, angle = u16(cs.spin) >> 6, scaleX = s16(cs.titleScale) >> 4, scaleY = 0x100;
   const cx = (cs.nameX << 8) >> 16, cy = (cs.nameY << 8) >> 16;
@@ -182,7 +182,7 @@ function transformBackground(cs) {
   a.y = (a.pc * s16(-cx) + a.pd * s16(-cy) + 0x40 * 256) | 0;
 }
 
-// 0x0809B69C: the backdrop's and the text name's scrolls
+// 0x0809B314: the backdrop's and the text name's scrolls
 function scrollLayers(cs) {
   const { c } = cs;
   c.bgScroll[0] = I(cs.scrollX);
@@ -191,7 +191,7 @@ function scrollLayers(cs) {
   c.bgScroll[3] = -I(cs.backdropY);
 }
 
-// 0x0809B094: the same, with the turning name's scroll
+// 0x0809AD0C: the same, with the turning name's scroll
 function scrollAllLayers(cs) {
   const { c } = cs;
   scrollLayers(cs);
@@ -199,7 +199,7 @@ function scrollAllLayers(cs) {
   c.bgScroll[5] = -I(cs.nameY);
 }
 
-// 0x0809AD74: the two arrows at the sides, which move in and out
+// 0x0809A9EC: the two arrows at the sides, which move in and out
 function showArrows(cs) {
   const s = cs.arrow, middle = cs.pose > 13 ? 180 : 120;
   for (let i = 0; i < 2; i++) {
@@ -210,13 +210,13 @@ function showArrows(cs) {
   }
 }
 
-// 0x0809B284: the arrows' movement
+// 0x0809AEFC: the arrows' movement
 function moveArrows(cs) {
   cs.slide = cs.slide < Q(5) ? cs.slide + Q(0.25) : 0;
   cs.arrowY = Q(90);
 }
 
-// 0x0809ADF0: the header, drawn twice, mirrored, and the description under it
+// 0x0809AA68: the header, drawn twice, mirrored, and the description under it
 function showHeader(cs) {
   const { c } = cs, s = cs.header;
   for (let i = 0; i < 2; i++) {
@@ -250,11 +250,11 @@ function showTag(cs, which, name, palId) {
   displaySprite(c, name);
 }
 
-// 0x0809AE50 and 0x0809AF08: the name tag of the main character and the partner's
+// 0x0809AAC8 and 0x0809AB80: the name tag of the main character and the partner's
 const showTagOfMain = cs => showTag(cs, 0, cs.name, 0);
 const showTagOfPartner = cs => showTag(cs, 1, cs.partnerName, 1);
 
-// 0x0809AFC0: the two tags together, with "and" between, as the pair's screen shows them
+// 0x0809AC38: the two tags together, with "and" between, as the pair's screen shows them
 function showPair(cs) {
   const { c } = cs, { rom } = c, back = cs.tagBack;
   const row = (cs.listIndex[0] * 8 + cs.listIndex[1]) * 3 + (cs.language !== 0 ? TAGS_OTHER : TAGS_JAPANESE);
@@ -270,7 +270,7 @@ function showPair(cs) {
   place(cs.partnerName, 2, cs.tagPos[1].y);
 }
 
-// 0x0809B148: the character sliding to the middle, 1 once there
+// 0x0809ADC0: the character sliding to the middle, 1 once there
 function slideInCharacter(cs) {
   if (cs.sideways === 0) {
     cs.charX -= Q(14);
@@ -282,7 +282,7 @@ function slideInCharacter(cs) {
   return false;
 }
 
-// 0x0809B184 and 0x0809B1B4: the tags rising to their row
+// 0x0809ADFC and 0x0809AE2C: the tags rising to their row
 function raiseTag(cs, which) {
   const pos = cs.tagPos[which];
   if (pos.y <= Q(145)) { pos.y = Q(145); return true; }
@@ -291,7 +291,7 @@ function raiseTag(cs, which) {
   return false;
 }
 
-// 0x0809B1E4: the character sliding off, 1 once gone, and set at the far side to come in
+// 0x0809AE5C: the character sliding off, 1 once gone, and set at the far side to come in
 function slideOutCharacter(cs) {
   if (cs.sideways === 0) {
     cs.charX -= Q(14);
@@ -303,7 +303,7 @@ function slideOutCharacter(cs) {
   return false;
 }
 
-// 0x0809B234 and 0x0809B25C: the tags sinking
+// 0x0809AEAC and 0x0809AED4: the tags sinking
 function lowerTag(cs, which) {
   const pos = cs.tagPos[which];
   if (pos.y < Q(180)) { pos.y += Q(6); return false; }
@@ -311,7 +311,7 @@ function lowerTag(cs, which) {
   return true;
 }
 
-// 0x0809B2AC: the turning name sliding to the middle
+// 0x0809AF24: the turning name sliding to the middle
 function slideInName(cs) {
   if (cs.sideways === 0) {
     cs.nameX -= Q(14);
@@ -322,7 +322,7 @@ function slideInName(cs) {
   }
 }
 
-// 0x0809B2E4: the turning name sliding off, and set at the far side to come in
+// 0x0809AF5C: the turning name sliding off, and set at the far side to come in
 function slideOutName(cs) {
   if (cs.sideways === 0) {
     cs.nameX -= Q(14);
@@ -333,7 +333,7 @@ function slideOutName(cs) {
   }
 }
 
-// 0x0809B32C: the partner's character, and the turning name, sliding in from the right to their places (to the side if
+// 0x0809AFA4: the partner's character, and the turning name, sliding in from the right to their places (to the side if
 // `away`), 1 once there
 function slidePartnerIn(cs, away) {
   if (away) {
@@ -352,7 +352,7 @@ function slidePartnerIn(cs, away) {
   return false;
 }
 
-// 0x0809B3C4: the main character's tag moving along
+// 0x0809B03C: the main character's tag moving along
 function moveTag(cs) {
   const pos = cs.tagPos[0];
   if (pos.x > Q(60)) { pos.x -= Q(6.0625); return false; }
@@ -360,12 +360,12 @@ function moveTag(cs) {
   return true;
 }
 
-// 0x0809B41C: the partner's tag following the partner
+// 0x0809B094: the partner's tag following the partner
 function followPartner(cs) {
   cs.tagPos[1].x = cs.charX;
 }
 
-// 0x0809AC44: the main character, after choosing, moving to the left
+// 0x0809A8BC: the main character, after choosing, moving to the left
 function moveChosen(cs) {
   let count = 0;
   if (I(cs.chosenX) > 60) {
@@ -386,7 +386,7 @@ function moveChosen(cs) {
   return count === 2;
 }
 
-// the four movements of the pair's screen coming in (0x0809B424, 0x0809B470, 0x0809B4BC and 0x0809B548)
+// the four movements of the pair's screen coming in (0x0809B09C, 0x0809B0E8, 0x0809B134 and 0x0809B1C0)
 function slideChosenIn(cs) {
   if (cs.chosenX < Q(90)) { cs.chosenX += Q(3); return false; }
   cs.chosenX = Q(90);
@@ -415,7 +415,7 @@ function slidePartnerTagAcross(cs) {
   return count === 2;
 }
 
-// 0x0809B5D0: the chosen character's name as text, in front
+// 0x0809B248: the chosen character's name as text, in front
 function showChosenName(cs, character) {
   const { c } = cs;
   c.dispCnt |= 0x200;
@@ -423,7 +423,7 @@ function showChosenName(cs, character) {
   cs.pose = 3;
 }
 
-// 0x08098BC8: the screen coming out of white
+// 0x08098060: the screen coming out of white
 function fadeIn(t) {
   const cs = t.data, { c } = cs;
   if (cs.firstFrame) {
@@ -449,7 +449,7 @@ function fadeIn(t) {
   }
 }
 
-// 0x08098CAC: the screen going to white, from B or the announcement
+// 0x08098180: the screen going to white, from B or the announcement
 function fadeOut(t) {
   const cs = t.data, { c } = cs;
   if (cs.firstFrame) {
@@ -475,7 +475,7 @@ function fadeOut(t) {
 
 function leaving() { }
 
-// 0x08098DE4: waiting for the main character's choice
+// 0x08098A5C: waiting for the main character's choice
 function choosing(t) {
   const cs = t.data, { c } = cs;
   turn(cs);
@@ -504,7 +504,7 @@ function choosing(t) {
   }
 }
 
-// 0x080992A8 and 0x08099C34: the next character on the list, to the right or the left, skipping the main character's for
+// 0x08098F20 and 0x080998AC: the next character on the list, to the right or the left, skipping the main character's for
 // the partner
 function chooseNext(cs, partner) {
   const { c } = cs, skip = partner ? cs.listIndex[0] : -1;
@@ -521,7 +521,7 @@ function chooseNext(cs, partner) {
   }
 }
 
-// 0x08098FF0: the character sliding out and the next sliding in
+// 0x08098C68: the character sliding out and the next sliding in
 function sliding(t) {
   const cs = t.data;
   let done = false;
@@ -549,7 +549,7 @@ function sliding(t) {
   }
 }
 
-// 0x08099200: the next character coming in
+// 0x08098E78: the next character coming in
 function arriving(t) {
   const cs = t.data;
   turn(cs);
@@ -564,7 +564,7 @@ function arriving(t) {
   }
 }
 
-// 0x08099300: the choice made: the character stays on the left, and the partner's choice begins
+// 0x08098F78: the choice made: the character stays on the left, and the partner's choice begins
 function chosen(t) {
   const cs = t.data, { c } = cs;
   showHeader(cs);
@@ -589,7 +589,7 @@ function chosen(t) {
   t.main = partnerSetUp;
 }
 
-// 0x08099344: the partner's choice begins on the first character who isn't the main one
+// 0x080990F4: the partner's choice begins on the first character who isn't the main one
 function partnerSetUp(t) {
   const cs = t.data, { c } = cs;
   showHeader(cs);
@@ -614,7 +614,7 @@ function partnerSetUp(t) {
   t.main = partnerComes;
 }
 
-// 0x08099680: the main character moving to the left and the partner's choice coming in from the right
+// 0x080992F8: the main character moving to the left and the partner's choice coming in from the right
 function partnerComes(t) {
   const cs = t.data;
   let count = 0;
@@ -635,7 +635,7 @@ function partnerComes(t) {
   }
 }
 
-// 0x08099758: waiting for the partner's choice. B, which goes back to the main character's, isn't ported.
+// 0x080993D0: waiting for the partner's choice. B, which goes back to the main character's, isn't ported.
 function choosingPartner(t) {
   const cs = t.data, { c } = cs;
   turn(cs);
@@ -660,7 +660,7 @@ function choosingPartner(t) {
   }
 }
 
-// 0x08099968: the partner sliding out of sight, and the next one set to come in
+// 0x080995E0: the partner sliding out of sight, and the next one set to come in
 function partnerSliding(t) {
   const cs = t.data, { c } = cs;
   let count = 0;
@@ -687,7 +687,7 @@ function partnerSliding(t) {
   }
 }
 
-// 0x08099B78: the next partner coming in
+// 0x080997F0: the next partner coming in
 function partnerArriving(t) {
   const cs = t.data;
   let count = 0;
@@ -706,7 +706,7 @@ function partnerArriving(t) {
   }
 }
 
-// 0x08099C9C: the pair chosen: the partner's name becomes the text layer, and the screen is set up to bring
+// 0x08099914: the pair chosen: the partner's name becomes the text layer, and the screen is set up to bring
 // the pair together
 function pairShown(t) {
   const cs = t.data, { c } = cs;
@@ -730,7 +730,7 @@ function pairShown(t) {
   t.main = pairComesIn;
 }
 
-// 0x08099EC8: the two characters and their tags moving in beside each other, as the screen fades
+// 0x08099B40: the two characters and their tags moving in beside each other, as the screen fades
 function pairComesIn(t) {
   const cs = t.data, { c } = cs;
   if (cs.firstFrame) {
@@ -760,7 +760,7 @@ function pairComesIn(t) {
   }
 }
 
-// 0x0809A9A0: "OK" turning behind the pair
+// 0x0809A618: "OK" turning behind the pair
 function showOk(cs) {
   const { c } = cs;
   c.dispCnt = 0x1541;
@@ -771,7 +771,7 @@ function showOk(cs) {
   drawBackground(c, { id: tilemap(c, T_OK), dest: 0x8000, layoutVram: 0xD800, targetTilesX: 16, targetTilesY: 16, flags: 6 });
 }
 
-// 0x0809A808: the description of the pair, and the one backdrop for both their tags
+// 0x0809A480: the description of the pair, and the one backdrop for both their tags
 function describePair(cs) {
   const { c } = cs, a = displayed(c, cs.listIndex[0]), b = displayed(c, cs.listIndex[1]);
   let which;
@@ -789,7 +789,7 @@ function describePair(cs) {
   setUp(c, cs.tagBack, entry(c.rom, TAG_BACK_PAIR, 0), cs.tagBack.tiles, I(cs.tagPos[0].x), I(cs.tagPos[0].y), 0x40);
 }
 
-// 0x0809A018: the pair coming out of white
+// 0x08099C90: the pair coming out of white
 function pairFadesIn(t) {
   const cs = t.data, { c } = cs;
   if (cs.firstFrame) {
@@ -813,7 +813,7 @@ function pairFadesIn(t) {
   }
 }
 
-// 0x0809A1C4: the announcer says the pair's names, and a press or two seconds go on
+// 0x08099E3C: the announcer says the pair's names, and a press or two seconds go on
 function announcing(t) {
   const cs = t.data, { c } = cs, { rom } = c;
   turn(cs);
@@ -831,7 +831,7 @@ function announcing(t) {
   }
 }
 
-// The characters, which slide across the screen on a task of their own (0x0809BF3C): their pictures
+// The characters, which slide across the screen on a task of their own (0x0809BBB4): their pictures
 // by the pose the screen is in (`pose`: a number for what the characters are doing, set by each step of the screen). `refs` says which of the screen's values are this one's character, place across and place down.
 function createCharacterTask(cs, refs, tiles) {
   const k = { cs, c: cs.c, refs, tiles, teamPose: 0, first: [], cheese: [] };
@@ -873,7 +873,7 @@ function characterMain(t) {
   }
 }
 
-// 0x0809BF9C: a character who has come in from the right takes the pose of arriving (8) for the main
+// 0x0809BC14: a character who has come in from the right takes the pose of arriving (8) for the main
 // character, or of waiting (14) for the partner
 function arrived(t) {
   const k = t.data, { cs } = k;
@@ -883,7 +883,7 @@ function arrived(t) {
   t.main = characterMain;
 }
 
-// 0x0809B970: the pose of the pair by who they are, once they are chosen: 1 for any, 2 to 4 for Sonic with Tails, Knuckles
+// 0x0809B5E8: the pose of the pair by who they are, once they are chosen: 1 for any, 2 to 4 for Sonic with Tails, Knuckles
 // or Amy, and 5 for Cream with Amy
 function choosePose(k) {
   const [a, b] = k.cs.players;
@@ -898,7 +898,7 @@ function choosePose(k) {
   k.teamPose = pose;
 }
 
-// 0x0809BA58: the character's pictures where it is, each frame, for the list of its pose, turned to face the
+// 0x0809B6D0: the character's pictures where it is, each frame, for the list of its pose, turned to face the
 // middle when it is on the right of it or is the partner
 function showCharacter(k) {
   const { c, cs } = k, { rom } = c, who = characterOf(k), pose = cs.pose;
