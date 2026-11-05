@@ -20,7 +20,7 @@ function github({ main = 'head', branch = false, open = null, refuse = 0 } = {})
   };
   return { api, calls };
 }
-const go = (stand, changed = [{ path: 'README.md', text: 'new' }, { path: '.github/readme/progress/gone.svg', text: null }]) => publish({ api: stand.api, changed, head: 'head', owner: 'o', sleep: async () => {} });
+const go = (stand, changed = [{ path: 'docs/STATUS.md', text: 'new' }, { path: '.github/readme/progress/gone.svg', text: null }]) => publish({ api: stand.api, changed, head: 'head', owner: 'o', sleep: async () => {} });
 
 test('nothing changed asks GitHub nothing', async () => {
   const stand = github();
@@ -39,7 +39,7 @@ test('a pull request with only those files, merged at that very commit', async (
   assert.equal(await go(stand), 9);
   const tree = stand.calls.find(call => call.path === '/git/trees').body;
   assert.equal(tree.base_tree, 'tree');
-  assert.deepEqual(tree.tree.map(file => [file.path, file.sha]), [['README.md', 'blob'], ['.github/readme/progress/gone.svg', null]]);
+  assert.deepEqual(tree.tree.map(file => [file.path, file.sha]), [['docs/STATUS.md', 'blob'], ['.github/readme/progress/gone.svg', null]]);
   assert.deepEqual(stand.calls.find(call => call.path === '/git/refs').body, { ref: `refs/heads/${BRANCH}`, sha: 'commit' });
   const merged = stand.calls.find(call => call.path === '/pulls/9/merge');
   assert.equal(merged.body.sha, 'commit');

@@ -3,7 +3,7 @@
 title: "Sonic Advance 3 Dreamport"
 platform: Game Boy Advance
 added: 2026-11-04
-summary: "Sonic Advance 3, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install."
+summary: Plays in your browser. No emulator, nothing to install.
 needs: "A Sonic Advance 3 (USA) ROM (.gba)"
 controls: [keyboard, controller, touch]
 issue: 295

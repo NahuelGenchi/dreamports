@@ -1,161 +1,131 @@
 <div align="center">
 
-<img src=".github/readme/launcher.webp" width="760" alt="The Dreamports launcher: a row of games, each playing a short recording of itself, opening a game's page from Dreamports and from Make.">
+<img src=".github/readme/launcher.webp" width="640" alt="The Dreamports launcher: a row of games with Sonic Advance 3 Dreamport in the middle, showing real play, under the Dreamports and Make tabs.">
 
 <br>
 
-### Classic games, brought back by fans, with the extras fans dream of.
+### Every game ever made, in modern code, on every system.
 
 Free · Bring your own copy of the game · Live at **[dreamports.net](https://dreamports.net)**
 
-<br>
-
-[What is it?](#what-is-dreamports) &nbsp;·&nbsp; [What's inside](#whats-inside) &nbsp;·&nbsp; [Make a Dreamport](#make-a-dreamport) &nbsp;·&nbsp; [Bring your own game](#the-golden-rule-bring-your-own-game) &nbsp;·&nbsp; [Progress](#progress) &nbsp;·&nbsp; [Help out](#help-out) &nbsp;·&nbsp; [Questions](#questions)
+**[Make a Dreamport](#make-a-dreamport)**
 
 </div>
 
 <br>
 
-## What is Dreamports?
-
-Dreamports is a website, at **[dreamports.net](https://dreamports.net)**, that gathers fan-made ports of classic games in one place. This repository holds its source code.
-
-A **port** is a game brought somewhere new to play: your web browser, your computer, or a newer console. A **Dreamport** is the port fans always dreamed of: the game you remember, with the extras you wished it had. Widescreen, smoother motion, new ways to play: every extra is optional, and every Dreamport is made by a fan, for fans.
-
-The site works like the menu of a game console. It's one screen with a row of games, and you move along it with the arrow keys, a game controller, a click or a swipe. The game you're on wakes up and plays a short recording of itself. The bar at the top turns like a carousel between three rows, with the one you're on in the middle:
-
-<table>
-<tr>
-<td width="50%" valign="top">
-
-🌙 **Dreamports**<br>
-Enhanced ports, each named after the game it brings back, such as *Sonic Advance Dreamport*.
-
-</td>
-<td width="50%" valign="top">
-
-🛠️ **Make**<br>
-Every Dreamport being made, where it stands and what's left to make, with the one sentence that gets you ready to help.
-
-</td>
-</tr>
-</table>
-
-To find a game by its name, press the magnifier at the bottom right (or the / key) and type. The row then shows only the games whose names match.
-
-**Profile**, at the bottom right (or the P key), keeps the achievements you earn in Sonic Advance Dreamport on any device. You sign in with an account you already have (Google, Discord, Steam or GitHub), and the site keeps only that account's id: no password, no email. Your profile is private unless you make it public.
-
-On a phone or tablet, you can add dreamports to your Home Screen: in Safari, tap Share, then **Add to Home Screen**; in Chrome on Android, open the ⋮ menu and choose **Add to Home screen**. It then opens like an app, without the browser's bars, and so do the games you play from it.
-
-## What's inside
-
-These are the projects on the site so far.
-
-**Dreamports** are made in this repository, in [`games/`](games/README.md), each in a folder of its own with an entry that says where it stands. Each one shows two numbers, as [the Dreamport standard](docs/STANDARD.md#how-progress-is-measured) explains. **Code ported** is how much of the original game's code has been rebuilt. **Gameplay proven** is how much of the game has been played next to the original, from start to end of each part, with every frame matching. A game can be far along in code and still have little proven, until someone records it. Each number opens the game's progress map, a picture for the people making it, with every piece of the original game's code and every part of the game, green once it's done. The lead is who leads the work on it. The proof tools fill in this table from each Dreamport's entry, so nobody types its numbers.
-
-<!-- The proof tools write this table from each Dreamport's entry: npm run dp -- readme. -->
-
-| | Dreamport | What it is | Code ported | Gameplay proven | Lead | Try it |
-| :---: | :--- | :--- | :--- | :--- | :--- | :--- |
-| 🌙 | **[Crash Bandicoot Purple: Ripto's Rampage Dreamport](games/crash-bandicoot-purple/)** | Crash Bandicoot Purple: Ripto's Rampage, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install. Bring your own copy of the game. | [41.77%](.github/readme/progress/crash-bandicoot-purple.svg) | [20.83%, 5 of 24 parts](.github/readme/progress/crash-bandicoot-purple.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/crash-bandicoot-purple/) |
-| 🌙 | **[Sonic Advance 2 Dreamport](games/sonic-advance-2/)** | Sonic Advance 2, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install. Bring your own copy of the game. | [14.21%](.github/readme/progress/sonic-advance-2.svg) | [4.55%, 2 of 44 parts](.github/readme/progress/sonic-advance-2.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance-2/) |
-| 🌙 | **[Sonic Advance 3 Dreamport](games/sonic-advance-3/)** | Sonic Advance 3, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install. Bring your own copy of the game. | [21.3%](.github/readme/progress/sonic-advance-3.svg) | [10.45%, 7 of 67 parts](.github/readme/progress/sonic-advance-3.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance-3/) |
-| 🌙 | **[Sonic Battle Dreamport](games/sonic-battle/)** | Sonic Battle, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install. Bring your own copy of the game. | [42.75%](.github/readme/progress/sonic-battle.svg) | [30%, 6 of 20 parts](.github/readme/progress/sonic-battle.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-battle/) |
-| 🌙 | **[Sonic Advance Dreamport](games/sonic-advance/)** | Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install. Bring your own copy of the game. | [68.26%](.github/readme/progress/sonic-advance.svg) | [21.62%, 8 of 37 parts](.github/readme/progress/sonic-advance.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
-
-<!-- End of the table of Dreamports. -->
+Dreamports rebuilds games in modern programming languages, piece by piece, and plays them all from one launcher. A **Dreamport** is the port fans always dreamed of: the game you remember, with the extras you wished it had.
 
 ## Make a Dreamport
 
-**No coding needed.** Your coding agent does all the work. You bring the game, and it hands you back a finished piece of the Dreamport, with every frame matching the original.
+**No coding needed.** You bring the game, and your coding agent does the work.
 
-You need three things: your own copy of the game as a file, a free GitHub account, and a coding agent that works on your computer, such as Claude Code, Codex, Cursor, Gemini CLI or Antigravity CLI. For a Game Boy Advance game, your copy is a `.gba` file made from your cartridge. The file never leaves your computer. When your agent needs to see how one of the game's functions works, it reads just that function, and that part goes to the company that runs your agent's model, as everything an agent reads does.
+You need your own copy of the game as a file, a free GitHub account, and a coding agent on your computer, such as Claude Code, Codex, Cursor, Gemini CLI or Antigravity CLI.
 
-**Step 1: paste one sentence.** Make a new, empty folder, open your coding agent in it, and paste this, with your game's name in it. Every Dreamport being made has a page in the Make tab on [dreamports.net](https://dreamports.net/make/), with its sentence ready to copy, how many of its pieces are free to take and its latest steps:
+**1. Paste one sentence.** Open your agent in a new, empty folder and paste this, with your game's name in it:
 
 ```text
 Set up https://dreamports.net/code and help me make Sonic Battle Dreamport.
 ```
 
-To start a Dreamport of a game you haven't picked yet, paste this instead, and your agent asks which game:
+Or, to start a game nobody has picked yet:
 
 ```text
 Set up https://dreamports.net/code and help me start a Dreamport.
 ```
 
-**Step 2: tell your agent where your game is.** It gets the Dreamports folder from GitHub, as a folder called dreamports, and checks the programs its tools need. Before it installs one, it tells you what it is and that it's free, and waits for your yes. If you aren't signed in to GitHub on your computer, it gives you a code to type on GitHub's own page. Then it asks where your copy of the game is, and that's the last thing it asks.
+**2. Say where your copy of the game is.** Your agent gets everything ready, and asks before it installs anything.
 
-**Step 3: wait for your pull request.** Your agent works alone from here. It makes your fork, your own copy of Dreamports on your GitHub account, and takes the first free piece of the game. If nobody is making that game yet, it makes you its lead and opens its tasks first. It makes the piece, checks every frame against the original, puts a preview and a clip online, and opens a pull request, which asks the Dreamports team or the game's lead to take your piece in. It ends by telling you which task is done and where that pull request is. If it can't get every frame to match, it says so, and opens a draft pull request that says what still differs and why.
+**3. Wait for your pull request.** Your agent takes a free piece of the game, makes it, checks every frame against the original, and sends it to the Dreamports team or the game's lead. If a frame still differs, it says what and why.
 
-All of that is public and in your name on GitHub. Pasting the sentence, or typing the command, is your yes to it, and your agent says so before it starts.
+**Next time,** open your agent in the `dreamports` folder and type `/dreamport <game>` (`$dreamport` in Codex).
 
-**Next time, open your agent in the dreamports folder and type `/dreamport <game>`,** such as `/dreamport sonic battle`, which takes the next piece, or carries on with one that isn't finished. It's the only command there is, and in Codex it's `$dreamport`. In a terminal, type `cd dreamports`, then start your agent again, such as `claude` or `codex`. In an app, open the dreamports folder the way you'd open any folder. If you made the folder a while ago, paste the sentence again, and your agent brings it up to date.
+**Good to know.** Your copy of the game stays on your computer. The only part of it that leaves is any function your agent reads, which goes to the company that runs its model. What your agent sends is public and in your name on GitHub, and pasting the sentence is your yes to that. If the game has no card on the site yet, a window opens where you can play and pick the moment it shows.
 
-There's one thing only you can do. A game's card on the site shows a few seconds of real play that a person chose, so a new game's card waits for you. Ask your agent when you want to do it, and it opens a window where you play your copy and press the moment you like.
-
-You don't start from nothing. Your agent first looks at [what people already found](docs/NOTES.md) while making that game and others on its console, and when it sends a piece, it leaves a note on what it found, so the next person doesn't have to find it again.
+Every game being made is in the [Make tab](https://dreamports.net/make/), with its sentence ready to copy. Every Dreamport keeps the same rules, the [Dreamport standard](docs/STANDARD.md), and [CONTRIBUTING.md](CONTRIBUTING.md#make-a-dreamport) says what happens behind the scenes.
 
 **For coding agents.** If someone asked you to set up https://dreamports.net/code, clone `https://github.com/NahuelGenchi/dreamports.git` into a folder called `dreamports` in the folder you were opened in, or use the Dreamports folder you're already in. Then read its [docs/MAKING.md](docs/MAKING.md) and follow Getting ready.
 
-Every Dreamport keeps the same rules, the [Dreamport standard](docs/STANDARD.md), and [CONTRIBUTING.md](CONTRIBUTING.md#make-a-dreamport) says what the command does behind the scenes.
+## What a finished Dreamport can bring
+
+The game you remember, matching the original on every frame, plus:
+
+- **Extras:** new stages, mechanics and other content, each one optional.
+- **Online multiplayer:** play with friends anywhere.
+- **Achievements:** earn them and keep them on your profile, on any device.
+- **The launcher:** starts and works like every other game in it.
+- **Xbox controller:** plays fully with your controller.
+- **Better performance:** higher frame rates and smoother play.
+
+### The best example so far: Sonic Advance Dreamport
+
+It isn't finished yet, but it already has extras, achievements, the launcher and Xbox controller support. Online multiplayer and better performance are still to come. [Play it](https://dreamports.net/play/sonic-advance/) or [read more about it](games/sonic-advance/README.md).
+
+<table>
+  <tr>
+    <td width="33%"><img src=".github/readme/sonic-advance/widescreen.webp" alt="Sonic on a grind rail in the optional widescreen view, with an outline marking the original screen inside the wider picture"></td>
+    <td width="33%"><img src=".github/readme/sonic-advance/rush-boost.webp" alt="Sonic blasting along a beach with the optional Sonic Rush boost, wrapped in a blue aura and trail"></td>
+    <td width="33%"><img src=".github/readme/sonic-advance/achievements.webp" alt="The game's Achievements page in the launcher, with 32 to earn and a trophy beside each"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Extra:</b>&nbsp;widescreen&nbsp;view</sub></td>
+    <td align="center"><sub><b>Extra:</b>&nbsp;Sonic&nbsp;Rush&nbsp;boost</sub></td>
+    <td align="center"><sub><b>Achievements:</b>&nbsp;32&nbsp;to&nbsp;earn</sub></td>
+  </tr>
+  <tr>
+    <td><img src=".github/readme/sonic-advance/launcher.webp" alt="The game's page in the launcher, with its recording, the Play button and its five extras"></td>
+    <td><img src=".github/readme/sonic-advance/controller.webp" alt="The launcher with a controller connected: a controller icon at the top, and the hints showing the controller's buttons"></td>
+    <td><img src=".github/readme/sonic-advance/own-copy.webp" alt="The game's Insert cartridge screen, which says your ROMs stay on this device, and lists the required and the optional copies"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>The&nbsp;launcher:</b>&nbsp;its&nbsp;own&nbsp;page</sub></td>
+    <td align="center"><sub><b>Xbox&nbsp;controller:</b>&nbsp;matching&nbsp;hints</sub></td>
+    <td align="center"><sub><b>Your&nbsp;copy:</b>&nbsp;stays&nbsp;on&nbsp;your&nbsp;device</sub></td>
+  </tr>
+</table>
+
+## The goal
+
+Port every game that has ever existed to modern programming languages, and make the Dreamports launcher the place with the most games, in the most languages, on the most platforms.
+
+| | Today | The plan |
+| :--- | :--- | :--- |
+| **Languages** | JavaScript | Games already in JavaScript ported again, to Rust and others |
+| **Platforms** | The web, at dreamports.net | Apps for Android, Linux, Windows and macOS, and for older systems such as Nintendo 3DS, PSP and PS Vita, among many others |
+
+Every platform should fully support the launcher's features and every game its hardware can run.
+
+## Why it matters
+
+**Games stop depending on old machines.** Today, an old game lives on as long as its console or an emulator does. Rebuilt in modern code, it can run wherever that code runs, and be fixed and improved for as long as people care.
+
+**One launcher, everywhere.** The same launcher on a new phone or an old PSP, with every game that device can run.
+
+**Anyone can help.** Porting a game used to take rare skills and years. Here anyone with a game and a coding agent can move it forward a piece at a time, and every piece is checked against the original, frame by frame.
+
+**Every port makes the next one easier.** What people find on one game is written down for the next, and a game in readable JavaScript is a head start for Rust.
+
+If this works, no game ever has to disappear again, and the gaming industry changes forever.
+
+## Where it stands
+
+See the [status of every Dreamport](docs/STATUS.md): how much of each game is ported and proven, who leads it and where to play it.
+
+The work on Dreamports itself is tracked in [milestones](https://github.com/NahuelGenchi/dreamports/milestones).
 
 ## The golden rule: bring your own game
 
 > [!IMPORTANT]
-> **Dreamports never hosts game files.** No ROMs, no game data, and nothing taken from a game, ever. Every project on the site asks you to use **your own legal copy** of the original game.
-
-Not sure what that means? Here's how it works:
-
-1. **You own the game,** on a cartridge or disc.
-2. **You make your own copy** of it on your computer, called a *ROM* or a *game dump*. Each project explains which copy it needs.
-3. **The port reads your copy on your device.** Your copy is never uploaded anywhere.
-
-Before you play or download anything, the site asks you to confirm that you're using your own legal copy.
-
-## Progress
-
-The work is split into seven steps, called *milestones*. The counts update by themselves as tasks are finished.
-
-| Step | What it means | Progress |
-| :--- | :--- | :--- |
-| **[M0 — Project foundation](https://github.com/NahuelGenchi/dreamports/milestone/1)** | This repository: its look, its rules and how work is tracked | ![M0 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/1?style=flat-square&label=tasks%20done&color=8b5cf6) |
-| **[M1 — First version of the site](https://github.com/NahuelGenchi/dreamports/milestone/2)** | The website itself: the home page, every section, and the about page | ![M1 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/2?style=flat-square&label=tasks%20done&color=8b5cf6) |
-| **[M2 — Live on dreamports.net](https://github.com/NahuelGenchi/dreamports/milestone/3)** | The site online at its own address, updated automatically | ![M2 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/3?style=flat-square&label=tasks%20done&color=8b5cf6) |
-| **[M3 — Growth](https://github.com/NahuelGenchi/dreamports/milestone/4)** | More entries, plus search, filters and news. On hold for now | ![M3 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/4?style=flat-square&label=tasks%20done&color=8b5cf6) |
-| **[M4 — Sonic Advance Dreamport on dreamports.net](https://github.com/NahuelGenchi/dreamports/milestone/5)** | Sonic Advance Dreamport played right here on the site, with accounts, achievements and leaderboards | ![M4 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/5?style=flat-square&label=tasks%20done&color=8b5cf6) |
-| **[M5 — Game launcher](https://github.com/NahuelGenchi/dreamports/milestone/6)** | The site redesigned as a one-screen game launcher: a row of games to move through, filters, panels such as settings and about, and a launch animation, on phones and computers | ![M5 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/6?style=flat-square&label=tasks%20done&color=8b5cf6) |
-| **[M6 — Anyone can make a Dreamport](https://github.com/NahuelGenchi/dreamports/milestone/7)** | Opening Dreamports to everyone: anyone can make a Dreamport or help with one, with clear rules, a step-by-step guide, and proof that every step plays like the original | ![M6 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/7?style=flat-square&label=tasks%20done&color=8b5cf6) |
-| **[M7 — New games join the launcher on their own](https://github.com/NahuelGenchi/dreamports/milestone/9)** | A new Dreamport reaches the launcher with everything wired in and a real capture of the game, with one approval for the picture | ![M7 progress](https://img.shields.io/github/milestones/progress/NahuelGenchi/dreamports/9?style=flat-square&label=tasks%20done&color=8b5cf6) |
-
-✅ The site is live at **[dreamports.net](https://dreamports.net)**.
+> **Dreamports never hosts game files.** No ROMs, no game data, and nothing taken from a game, ever. Every game needs **your own legal copy** of the original, which stays on your device.
 
 ## Help out
 
-**No coding needed.** All you need is a free GitHub account.
-
-<table>
-<tr>
-<td width="50%" valign="top">
-
-🐞 **Report a problem**<br>
-A broken link, a typo, a page that looks wrong on your phone? [Let us know](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml).
-
-</td>
-<td width="50%" valign="top">
-
-⭐ **Follow along**<br>
-Press **Star** at the top of this page to keep Dreamports on your radar, and see each game grow on its page in the [Make tab](https://dreamports.net/make/).
-
-</td>
-</tr>
-</table>
-
-**Developers:** every change follows the same trail, 📝 issue → 🌿 branch → 🎯 milestone → 🔀 pull request, so anything on the site can be traced back to why it was made. Start with [CONTRIBUTING.md](CONTRIBUTING.md); the full rules are in [docs/TRACKING.md](docs/TRACKING.md). The site is built with [Astro](https://astro.build/) and hosted on [Cloudflare](https://www.cloudflare.com/); every change merged here goes live by itself. Adding a game takes one Markdown file: CONTRIBUTING.md shows how.
+Press **Star** at the top of this page to follow along, or [report a problem](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml). Developers can start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Questions
 
 <details>
-<summary><b>Is Dreamports free?</b></summary>
+<summary><b>Is it free?</b></summary>
 <br>
 
 Yes. The site and every Dreamport are free.
@@ -166,33 +136,15 @@ Yes. The site and every Dreamport are free.
 <summary><b>Where do I get the games?</b></summary>
 <br>
 
-From cartridges or discs you own. You copy the game to your computer with a reader or a dumping tool, and each project's page explains which copy it needs. Dreamports can't give you games or tell you where to download them.
+From cartridges or discs you own. You copy the game to your computer with a reader or a dumping tool. Dreamports can't give you games or tell you where to download them.
 
 </details>
 
 <details>
-<summary><b>Is this legal?</b></summary>
+<summary><b>Is it legal?</b></summary>
 <br>
 
-Dreamports never hosts game files, and it only lists projects that ask you to use your own copy. Game names and trademarks belong to their owners, and rights holders can reach the Dreamports team at hello@dreamports.net, as [docs/RIGHTS.md](docs/RIGHTS.md) explains. Dreamports is an unofficial fan project, not affiliated with or endorsed by Sega, Nintendo, or any other publisher.
-
-The rules about copying games you own differ from country to country, so check the ones where you live. This isn't legal advice.
-
-</details>
-
-<details>
-<summary><b>Why "Dream"?</b></summary>
-<br>
-
-A Dreamport is the port fans always dreamed of: the game you remember, with the extras you wished it had.
-
-</details>
-
-<details>
-<summary><b>Where is the website?</b></summary>
-<br>
-
-At **[dreamports.net](https://dreamports.net)**. It updates by itself whenever a change is accepted here.
+Dreamports never hosts game files, and every game asks for your own copy. The rules about copying games you own differ from country to country, so check the ones where you live. This isn't legal advice. Rights holders can reach the Dreamports team at hello@dreamports.net, as [docs/RIGHTS.md](docs/RIGHTS.md) explains.
 
 </details>
 
@@ -200,9 +152,7 @@ At **[dreamports.net](https://dreamports.net)**. It updates by itself whenever a
 <summary><b>Does the site track me?</b></summary>
 <br>
 
-No. There are no ads, and nothing follows you around the web. The site keeps a few small notes in your own browser, such as whether you switched on the menu's sounds and whether you picked light or dark. They never leave your device, and **forget my choices** in the site's settings clears them. To see which pages people read, the site counts visits with [Cloudflare Web Analytics](https://www.cloudflare.com/web-analytics/), which stores nothing in your browser and doesn't keep your IP address.
-
-A **profile** is optional. It keeps your achievements from Sonic Advance Dreamport on any device, under a name you pick. You sign in with Google, Discord, Steam or GitHub, and the site keeps only the id that service gives your account: never its email address or password. One cookie keeps you signed in. Your profile stays private unless you make it public, and you can download it or delete it at any time. The site's [privacy section](https://dreamports.net/about/#privacy) has the details.
+No. There are no ads, and nothing follows you around the web. The site's [privacy section](https://dreamports.net/about/#privacy) has the details.
 
 </details>
 
@@ -216,20 +166,11 @@ Privately, please, through the **Security** tab. [SECURITY.md](SECURITY.md) expl
 
 ## License and credits
 
-The code is free and open source under the [MIT License](LICENSE).
+The code is free and open source under the [MIT License](LICENSE). These aren't covered by it:
 
-The banner and the social preview are original pixel art made for Dreamports, set in [Monocraft](https://github.com/IdreesInc/Monocraft) by Idrees Hassan, under the SIL Open Font License. Their source, [`.github/readme/banner.html`](.github/readme/banner.html), can redraw them.
+- The pictures on this page and the recordings in [`public/media/`](public/media/) are captures of play, and show the games they come from.
+- The small stars are the [Pixel Art Animated Star](https://soulofkiran.itch.io/pixel-art-animated-star) by Narik, recolored and used under Narik's terms. Thank you, Narik!
 
-The website is set in Monocraft too. It carries a smaller copy with only the letters it uses; the license is in [`src/assets/fonts/OFL.txt`](src/assets/fonts/OFL.txt) and [`public/licenses/`](public/licenses/).
+The site and the social preview are set in [Monocraft](https://github.com/IdreesInc/Monocraft) by Idrees Hassan, under the SIL Open Font License, in [`src/assets/fonts/OFL.txt`](src/assets/fonts/OFL.txt).
 
-The small stars are the [Pixel Art Animated Star](https://soulofkiran.itch.io/pixel-art-animated-star) by Narik, recolored to match. They're used under Narik's terms, which allow personal and commercial use and edits, so [`.github/readme/star.png`](.github/readme/star.png) and the website's copy, [`public/images/star.png`](public/images/star.png), aren't covered by the MIT License. Thank you, Narik!
-
-The recordings of the games, in [`public/media/`](public/media/), are captures of play by the people who make each project. They show the games those projects work with, so they aren't covered by the MIT License either. The menu's sounds are made for Dreamports: your browser creates them as it plays them, so there are no sound files.
-
-Game names and trademarks belong to their owners. Dreamports is not affiliated with or endorsed by Sega, Nintendo, or any other publisher.
-
-<br>
-
-<div align="center">
-<sub>Made by a fan, for fans · <a href="https://github.com/NahuelGenchi">Nahuel Genchi</a></sub>
-</div>
+Game names and trademarks belong to their owners. Dreamports is an unofficial fan project, not affiliated with or endorsed by Sega, Nintendo, or any other publisher.

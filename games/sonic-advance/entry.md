@@ -4,7 +4,7 @@ title: Sonic Advance Dreamport
 platform: Game Boy Advance
 year: 2001
 added: 2026-10-27
-summary: Sonic Advance, rebuilt to play in your web browser. No emulator, nothing to install.
+summary: Plays in your browser. No emulator, nothing to install.
 needs: A Sonic Advance (USA) ROM (.gba)
 controls: [keyboard, controller, touch]
 issue: 146

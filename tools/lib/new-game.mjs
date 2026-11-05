@@ -81,7 +81,7 @@ export function startingEntry(game, original, { issue, lead, added }) {
 title: ${yaml(`${name} Dreamport`)}
 platform: ${CONSOLES[original.console].name}
 added: ${added}
-summary: ${yaml(`${name}, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install.`)}
+summary: ${yaml('Plays in your browser. No emulator, nothing to install.')}
 needs: ${yaml(`A ${original.name} ${original.console === 'gba' ? 'ROM (.gba)' : `copy (${CONSOLES[original.console].files.join(', ')})`}`)}
 controls: [keyboard, controller, touch]
 issue: ${issue}

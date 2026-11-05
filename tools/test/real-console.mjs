@@ -17,7 +17,7 @@ const WORK = join(LOCAL, 'test-real-console');
 const RESULTS = join(LOCAL, 'results', GAME);
 const CAPTURES = join(LOCAL, 'captures', GAME);
 const COPIES = join(LOCAL, 'copies.json');
-const README = join(REPO, 'README.md');
+const STATUS = join(REPO, 'docs', 'STATUS.md');
 const MAP = join(REPO, '.github', 'readme', 'progress', `${GAME}.svg`);
 const MEDIA = join(REPO, 'public', 'media');
 const PROGRESS = join(proofFolder(GAME), 'progress.json');
@@ -266,14 +266,14 @@ async function main() {
   check(run.status !== 0 && /frames a second/.test(run.out), `a European copy, which runs at another speed, is told apart: ${run.out.trim().split('\n').find(line => line.includes('frames a second'))?.trim()}`);
 }
 
-const kept = { readme: readFileSync(README), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };
-const untouched = () => execFileSync('git', ['status', '--porcelain', '--', 'README.md', '.github/readme/progress', 'public/media', 'games'], { cwd: REPO, encoding: 'utf8' });
+const kept = { status: readFileSync(STATUS), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };
+const untouched = () => execFileSync('git', ['status', '--porcelain', '--', 'docs/STATUS.md', '.github/readme/progress', 'public/media', 'games'], { cwd: REPO, encoding: 'utf8' });
 const dirtyBefore = untouched();
 try {
   await main();
 } finally {
   tidy();
-  writeFileSync(README, kept.readme);
+  writeFileSync(STATUS, kept.status);
   if (kept.copies) writeFileSync(COPIES, kept.copies);
   else rmSync(COPIES, { force: true });
 }

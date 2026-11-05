@@ -10,7 +10,7 @@
 //     build and runs prove, and only if nothing that matched the original before differs now, it pushes the team
 //     build, which closes the pull request as merged, and updates the team preview with share.
 // The tools run on the lead's computer, so add stops before a piece that changes anything outside its game's folder,
-// the kits, the README's table and the game's progress map, until the lead has read it and passes --all. Members' code only runs in the
+// the kits, the table in docs/STATUS.md and the game's progress map, until the lead has read it and passes --all. Members' code only runs in the
 // browser prove opens. It also stops before a piece with a note that breaks the rules for notes, whatever else it's
 // passed, and shows the lead the title of each note a piece brings, since the bot hasn't seen them yet. --team names the fork with the lead's team build when it isn't the lead's own, such as one of
 // an organisation's. send and add ask first; --yes answers yes, once the person has said yes.
@@ -25,7 +25,7 @@ import { UPSTREAM, api, signedInAs, findFork, pagesOf } from './lib/github.mjs';
 import { readClaims, leadOf, teamBuildOf, teamBranch } from './lib/claims.mjs';
 import { readProgress, readCodeMap } from './lib/proof-files.mjs';
 import { mapOf, percentText } from '../src/lib/entries.mjs';
-import { dreamports, readProof } from './readme.mjs';
+import { STATUS, dreamports, readProof } from './readme.mjs';
 // loaded now, before a piece is merged, so add runs the lead's own tools whatever the piece holds
 import { run as prove } from './prove.mjs';
 import { run as portmap } from './portmap.mjs';
@@ -251,7 +251,7 @@ async function add(game, rest, { fork: wanted, all = false, yes = false }) {
   const piece = git(['rev-parse', 'FETCH_HEAD']);
   const changed = git(['diff', '--name-only', `HEAD...${piece}`]).split('\n').filter(Boolean);
   if (!changed.length) throw new Error(`${pull.html_url} changes nothing the team build doesn't have already.`);
-  const outside = changed.filter(p => !p.startsWith(`games/${game}/`) && !p.startsWith('kit/') && p !== 'README.md' && p !== mapOf(game));
+  const outside = changed.filter(p => !p.startsWith(`games/${game}/`) && !p.startsWith('kit/') && p !== STATUS && p !== mapOf(game));
   if (outside.length && !all) {
     throw new Error(`${pull.html_url} also changes files outside games/${game}/ and the kits:\n${outside.slice(0, 12).map(p => `  ${p}`).join('\n')}${outside.length > 12 ? `\n  and ${outside.length - 12} more` : ''}\n`
       + 'add runs the tools on your computer, so read those changes first. If they belong in the piece, run it again with --all.');
@@ -269,7 +269,7 @@ async function add(game, rest, { fork: wanted, all = false, yes = false }) {
   }
 
   const before = { proof: readProof(game), progress: readProgress(game) };
-  const generated = new Set([`games/${game}/proof/progress.json`, `games/${game}/proof/port-map.json`, 'README.md', mapOf(game)]);
+  const generated = new Set([`games/${game}/proof/progress.json`, `games/${game}/proof/port-map.json`, STATUS, mapOf(game)]);
   if (git(['merge', '--no-ff', '--no-commit', piece], { quiet: true }) === null) {
     const clashes = git(['diff', '--name-only', '--diff-filter=U']).split('\n').filter(Boolean);
     const real = clashes.filter(f => !generated.has(f));
@@ -277,7 +277,7 @@ async function add(game, rest, { fork: wanted, all = false, yes = false }) {
       undo();
       throw new Error(`#${number} clashes with the team build in:\n${real.map(f => `  ${f}`).join('\n')}\nMerge it by hand (git merge ${piece.slice(0, 7)}), or ask @${pull.user.login} in ${pull.html_url} to bring the branch up to date.`);
     }
-    // the proof files, the README's table and the progress map are written again below, so the team build's stand for now
+    // the proof files, the table in docs/STATUS.md and the progress map are written again below, so the team build's stand for now
     for (const file of clashes) git(['checkout', '--ours', '--', file]);
     git(['add', '--', ...clashes]);
   }
