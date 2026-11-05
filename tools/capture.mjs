@@ -481,7 +481,7 @@ function options(args) {
 export async function run(args) {
   const { game, mode, file, yes, repository } = options(args);
   const original = readOriginal(game);
-  ({ machine, KEY, ensureOriginal, playOriginal, runOriginal } = await referenceOf(original.console));
+  ({ machine, KEY, ensureOriginal, playOriginal, runOriginal } = await referenceOf(original));
   FRAME_SECONDS = machine.frame[0] / machine.frame[1];
   forConsole({ screen: machine.screen, keys: machine.keys });
   const copy = copyOf(game, original.sha1);

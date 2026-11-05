@@ -6,12 +6,13 @@
 //
 // BUTTONS holds each frame's buttons, 32 bits each, PICTURES the frames whose picture is wanted, SETS the values to write
 // to the console's work memory ({ frame, address, bytes, value }, 32 bits each) and KEY=VALUE the core's settings. For
-// each frame it writes to stdout: a hash of the picture (FNV-1a over each pixel's 15-bit colour, as lib/in-page.js hashes
-// the Dreamport's), its one colour if it has only one or else -1, a 0, as no functions are seen through a core, and the
-// picture if it's wanted, WIDTH x HEIGHT, cut or filled with black when the core's screen is another size. To SOUND it
-// writes each frame's sample count and its samples, left and right, in the same 10-bit units as the Game Boy Advance's.
-// `live` plays along with a person: each frame's buttons come in on stdin, and out goes its picture, its sample count
-// and its samples. Its last line on stderr says what the core runs at, as JSON. What the core prints goes nowhere.
+// each frame it writes to stdout: a hash of the picture (FNV-1a over each pixel's 15-bit colour, then its width and height,
+// as lib/in-page.js hashes the Dreamport's), its one colour if it has only one or else -1, a 0, as no functions are seen
+// through a core, and the picture if it's wanted, WIDTH x HEIGHT, cut or filled with black when the core's screen is another
+// size. To SOUND it writes each frame's sample count and its samples, left and right, in the same 10-bit units as the Game
+// Boy Advance's. `live` plays along with a person: each frame's buttons come in on stdin, and out goes its picture, the size
+// the core's picture really has, its sample count and its samples. Its last line on stderr says what the core runs at and
+// each size its picture had, from which frame, as JSON. What the core prints goes nowhere.
 //
 // On a console whose games choose their own sound's rate, as a Nintendo 64's do, the core says when it changes, and the
 // environment's DP_SOUND_RATE gives the one rate the tools hear it at.
@@ -99,6 +100,8 @@ static bool needsGraphics;
 static struct av_info av;   // what the core runs at, the last it said
 static double wantedRate, soundAt;   // the rate the tools hear at, or 0 for the core's own, and how far between two samples
 static int16_t soundBefore[2];
+static uint32_t* sizes;   // each size the picture had: the frame it started at, its width and its height
+static size_t sizeCount, sizeRoom;
 
 static void* readAll(const char* path, size_t* size) {
 	*size = 0;
@@ -254,6 +257,23 @@ static void hashOf(uint32_t* hash, uint32_t* plain) {
 		*hash = (*hash ^ screen[p]) * 0x01000193;
 		if (screen[p] != *plain) *plain = 0xFFFFFFFF;
 	}
+	// the same pixels in another shape are another picture
+	*hash = (*hash ^ screenW) * 0x01000193;
+	*hash = (*hash ^ screenH) * 0x01000193;
+}
+
+// keeps the picture's size if it has just changed
+static void noteSize(long frame) {
+	if (sizeCount && sizes[(sizeCount - 1) * 3 + 1] == screenW && sizes[(sizeCount - 1) * 3 + 2] == screenH) return;
+	if (!sizeCount && !screenW) return;   // nothing shown yet
+	if (sizeCount == sizeRoom) {
+		sizeRoom = sizeRoom ? sizeRoom * 2 : 16;
+		sizes = realloc(sizes, sizeRoom * 3 * 4);
+	}
+	sizes[sizeCount * 3] = frame;
+	sizes[sizeCount * 3 + 1] = screenW;
+	sizes[sizeCount * 3 + 2] = screenH;
+	sizeCount++;
 }
 
 // the picture at the console's size, whatever size the core's is
@@ -352,6 +372,8 @@ int main(int argc, char** argv) {
 			sampleCount = 0;
 			retro_run();
 			writePicture();
+			uint32_t size[2] = { screenW, screenH };
+			fwrite(size, 4, 2, out);
 			uint32_t count = sampleCount / 2;
 			fwrite(&count, 4, 1, out);
 			fwrite(samples, 2, sampleCount, out);
@@ -378,6 +400,7 @@ int main(int argc, char** argv) {
 		}
 		sampleCount = 0;
 		retro_run();
+		noteSize(frame);
 		uint32_t hash, plain, none = 0;
 		hashOf(&hash, &plain);
 		fwrite(&hash, 4, 1, out);
@@ -395,7 +418,9 @@ int main(int argc, char** argv) {
 	}
 	if (soundFile) fclose(soundFile);
 	fflush(out);
-	fprintf(err, "{\"cartridge\":0,\"memory\":0,\"rate\":%g,\"fps\":%g,\"width\":%u,\"height\":%u}\n", wantedRate ? wantedRate : av.sampleRate, av.fps, screenW, screenH);
+	fprintf(err, "{\"cartridge\":0,\"memory\":0,\"rate\":%g,\"fps\":%g,\"sizes\":[", wantedRate ? wantedRate : av.sampleRate, av.fps);
+	for (size_t i = 0; i < sizeCount; i++) fprintf(err, "%s[%u,%u,%u]", i ? "," : "", sizes[i * 3], sizes[i * 3 + 1], sizes[i * 3 + 2]);
+	fprintf(err, "]}\n");
 	fflush(err);
 	return 0;
 }

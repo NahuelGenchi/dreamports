@@ -226,7 +226,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 
 | File | What it holds |
 | :--- | :--- |
-| `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum, and `keysAfterVBlank` for a game that reads its buttons just after the V-blank |
+| `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum, `keysAfterVBlank` for a game that reads its buttons just after the V-blank, and `screen` for a game on another console that [chooses its own size](../docs/CONSOLES.md#how-a-console-is-known) |
 | `recordings/` | Recorded play, one file per recording |
 | `code-map.json` | The code map |
 | `progress.json` | Each recording's results and the code that ran in matching play, written by `prove` |

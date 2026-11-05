@@ -103,7 +103,7 @@ export async function run(args) {
   if (!frames.length) throw new Error('Nothing was recorded: the game has to be started with Play.');
   // each button by the console's name where it is one of the console's, and a press shorter than a frame held for one:
   // "just pressed" stays set until the game clears it, long after the button is let go, so only its first frame counts
-  const { KEY } = await referenceOf(readOriginal(game).console);
+  const { KEY } = await referenceOf(readOriginal(game));
   const consoleName = new Map(buttons.filter(b => (b.console ?? b.gba) in KEY).map(b => [b.name, b.console ?? b.gba]));
   const held = frames.map((f, i) => [...new Set([...f.held, ...(f.pressed ?? []).filter(b => !frames[i - 1]?.pressed?.includes(b))])].map(b => consoleName.get(b) ?? b));
   if (start) {
