@@ -2298,6 +2298,14 @@ The first multiplayer stage is level 14 in the ROM's per-level tables (the four 
 
 Stage B uses Secret Base's platforms, trampoline and bounce block, and its wall poles are red flags lying on their side. Stage C's spiked platforms, square platforms and ferris wheels are Casino Paradise's, its thin and falling platforms and bounce block too, and the fireworks in its sky are Casino Paradise's: they draw from the GBA's own random numbers (`gPseudoRandom`), which stand five steps from 0 when the stage's first firework check runs on linked cores. Stage D's torches, moving springs, pipes, trampolines and square platforms are Cosmic Angel's second act's, and it takes that act's thin, falling and ferris wheel platforms, bounce block and breakable wall, and Egg Rocket's sinking platform. Its Chao places 5 to 7 are on the ceiling: the Chao starts upside down, 16 px below the place instead of above it.
 
+That is what the objects' code gives each stage. The stages' own object lists place only some of them, so the rest never show in play, and the port keeps them as the code has them:
+
+| Level | What its object list places |
+| :--- | :--- |
+| 15 | Springs (up, sideways, big), thin and falling platforms, trampolines, bounce blocks, conveyor belts, a hook rail, tracks with two pipe entrances and two pipe exits (in the usual look, as the stage is neither zone 6 nor stage D), mystery item boxes |
+| 16 | Springs, thin platforms, red flags, wall poles, bumpers, flippers, marble tracks, wall bumpers, a teleport orb, mystery item boxes: no spiked or square platforms and no ferris wheels |
+| 17 | Springs (up, down, small), thin platforms, boosters, moving springs, a float toggle, ferris wheels, a propeller, gravity toggles, mystery item boxes: no pipes, torches, trampolines or square platforms |
+
 **The link.** Each GBA runs the whole stage for itself and sees the others only through 20-byte packets (`gMultiSioSend`, `gMultiSioRecv`). A packet sent in frame f is what every GBA reads in frame f + 2, its own included; the recordings show this for every player and every frame checked. In a stage a packet is:
 
 | Bytes | Contents |

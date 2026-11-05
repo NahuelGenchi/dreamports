@@ -157,7 +157,7 @@ export const LEVELS = {
   // StageInit_PinballChaoGarden, stage C: Casino Paradise's palette animations without 826 ("Regular Casino
   // Paradise loads palette anim 826 here") and act 1's song; StageBgUpdate_Zone3Acts12 scrolls the background.
   // CreateEntity_Platform_Spiked, CreateEntity_Platform_Square and CreateEntity_FerrisWheel treat it as zone 3,
-  // and its platforms and bounce block are Casino Paradise's
+  // and its platforms and bounce block are Casino Paradise's. Its object list places none of the first three
   16: {
     name: 'Pinball Chao Garden', zone: 7, act: 0, paletteAnimations: [816, 817, 818, 824, 825, 827, 827, 828, 843, 844], music: 16,
     backgroundScroll: 'casinoParadise', multiplayer: true,
@@ -168,7 +168,8 @@ export const LEVELS = {
   // StageInit_SpaceChaoGarden, stage D: Cosmic Angel's eight palette animations and song; StageBgUpdate_Zone6Act2
   // scrolls the background. Its torches, moving springs, pipes, trampolines and square platforms are zone 6's
   // second act's (they name stage D), and the tables give it that act's thin, crumbling and ferris wheel
-  // platforms, bounce block and breakable wall, and Egg Rocket's sinking platform
+  // platforms, bounce block and breakable wall, and Egg Rocket's sinking platform. Its object list places only the
+  // moving springs, thin platforms and ferris wheels of these: no pipes, torches, trampolines or square platforms
   17: {
     name: 'Space Chao Garden', zone: 7, act: 1, paletteAnimations: [829, 830, 831, 850, 851, 848, 846, 847], music: 23, backgroundScroll: 'cosmicAngel', multiplayer: true,
     sprites: {
