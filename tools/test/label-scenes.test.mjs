@@ -3,7 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { KINDS, NAMES, SCENE_H, drawScene } from '../../src/scripts/label-scenes/index.mjs';
-import { PLACE, kindOf, placesFor, seedOf } from '../../src/scripts/label-rows.mjs';
+import { INVITES, drawInvite } from '../../src/scripts/label-scenes/invite.mjs';
+import { PLACE, invitesFor, kindOf, layout, placesFor, rowOrder, seedOf } from '../../src/scripts/label-rows.mjs';
 
 test('there are 30 kinds of scene, each with its own name', () => {
   assert.equal(KINDS, 30);
@@ -75,4 +76,66 @@ test('no two places in a screenful of rows share a number', () => {
   const seen = new Set();
   for (let row = 0; row < 60; row++) for (let place = 0; place < 40; place++) seen.add(seedOf(row, place));
   assert.equal(seen.size, 60 * 40);
+});
+
+test('every invitation fills its place, the same from the same number, with a sky of its own', () => {
+  for (const words of INVITES) {
+    const first = drawInvite(words, seedOf(0, 2));
+    assert.equal(first.length, PLACE * SCENE_H * 4);
+    for (let i = 3; i < first.length; i += 4) assert.equal(first[i], 255, `${words} leaves a pixel open`);
+    assert.deepEqual(drawInvite(words, seedOf(0, 2)), first, words);
+    assert.notDeepEqual(drawInvite(words, seedOf(13, 4)), first, words);
+  }
+  assert.throws(() => drawInvite('YOUR GAME HERE', 1), /No invitation says YOUR GAME HERE/);
+});
+
+test('rows furthest from the game take labels first, and a row mostly off the screen takes them last', () => {
+  assert.deepEqual(rowOrder(15, 900).slice(0, 4), [0, 14, 1, 13]);
+  // 844 high: the top row shows only 4 pixels
+  const phone = rowOrder(15, 844);
+  assert.equal(phone.at(-1), 14);
+  assert.deepEqual(phone.slice(0, 3), [0, 13, 1]);
+  assert.deepEqual(rowOrder(12, 720).slice(0, 2), [0, 11]);
+});
+
+test('a few rows hold an invitation, apart from each other, of both kinds', () => {
+  const rowsOf = (width, height, labels = 0) =>
+    layout(width, height, labels).flatMap((row, r) => (row.invite ? [r] : []));
+  assert.deepEqual(rowsOf(1440, 900), [0, 2, 13]);
+  assert.deepEqual(rowsOf(1280, 720), [0, 10]);
+  assert.deepEqual(rowsOf(390, 844), [0, 2, 12]);
+  assert.equal(rowsOf(2560, 1800).length, 6);
+  assert.equal(invitesFor(rowOrder(2, 120)).length, 1);
+  const words = layout(1440, 900, 0).flatMap((row) => (row.invite ? [row.invite.words] : []));
+  assert.deepEqual(new Set(words), new Set(INVITES));
+});
+
+test('labels fill the rows furthest from the game first, each in its own place of 240', () => {
+  const rows = layout(1440, 900, 24);
+  assert.equal(rows.reduce((n, row) => n + row.labels.length, 0), 24);
+  assert.deepEqual(new Set(rows.flatMap((row) => row.labels.map((label) => label.index))).size, 24);
+  for (const row of rows) {
+    const places = row.labels.map((label) => label.place);
+    assert.equal(new Set(places).size, places.length);
+    for (const k of places) assert.equal(row.places[k], PLACE);
+  }
+  assert.equal(rows[0].labels.length, 2);
+  assert.equal(rows[7].labels.length, 1);
+});
+
+test('an invitation never takes a label\'s place, and moves to the next row along when its own is full', () => {
+  for (const [width, height] of [[1440, 900], [1280, 720], [390, 844], [800, 600]]) {
+    for (let labels = 0; labels <= 60; labels++) {
+      for (const row of layout(width, height, labels)) {
+        if (!row.invite) continue;
+        assert.equal(row.places[row.invite.place], PLACE);
+        assert.ok(!row.labels.some((label) => label.place === row.invite.place), `${width} x ${height} with ${labels}`);
+      }
+    }
+  }
+  // 24 labels on a phone fill the rows the invitations would take, so they move on to rows with room
+  const phone = layout(390, 844, 24);
+  assert.equal(phone.filter((row) => row.invite).length, 3);
+  // a screen with no room left holds none
+  assert.equal(layout(390, 844, 30).filter((row) => row.invite).length, 0);
 });
