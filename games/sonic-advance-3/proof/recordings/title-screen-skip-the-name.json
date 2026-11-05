@@ -1,0 +1,74 @@
+{
+  "about": "The title screen, with Start pressed while the screen clears from the white flash, and then nothing.",
+  "frames": 420,
+  "start": "screen=title",
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      112,
+      [
+        "START"
+      ]
+    ],
+    [
+      116,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 2954,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          600,
+          [
+            "A"
+          ]
+        ],
+        [
+          604,
+          []
+        ],
+        [
+          701,
+          [
+            "A"
+          ]
+        ],
+        [
+          705,
+          []
+        ],
+        [
+          721,
+          [
+            "START"
+          ]
+        ],
+        [
+          725,
+          []
+        ],
+        [
+          761,
+          [
+            "A"
+          ]
+        ],
+        [
+          765,
+          []
+        ]
+      ],
+      "about": "Power-on with nothing saved, the language screen, a letter written and the name kept, then the logos and the intro with nothing pressed, up to the title screen."
+    }
+  ]
+}
