@@ -1,6 +1,7 @@
 ---
 // The quiet rows of labels behind the launcher (docs/LABELS.md). Labels someone asked for take their places, and the
-// script fills every other place with one of the site's own designs, each one different, as it builds the rows.
+// script fills every other place with one of the site's own pixel-art scenes, each one different, as it builds the
+// rows.
 import { readLabels } from '../lib/labels.mjs';
 
 const labels = readLabels();
@@ -8,7 +9,7 @@ const labels = readLabels();
 
 <div class="labels" aria-hidden="true" data-labels={JSON.stringify(labels)}>
   {/*
-    Each label and design is tinted the site's blue once, as it's drawn, so the moving rows cost a phone nothing
+    Each label and scene is tinted the site's blue once, as it's drawn, so the moving rows cost a phone nothing
     more: its contrast is softened and it's lifted towards white, then half of it takes the sky blue's colour,
     keeping its own lightness. In dark mode it's lowered towards the night blue instead.
   */}
