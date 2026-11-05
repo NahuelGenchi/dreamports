@@ -139,6 +139,45 @@ export const LEVELS = {
   // (StageBgUpdate_Zone1Acts12) and its objects look like Neo Green Hill's. It is played only in the multiplayer
   // modes (`multiplayer`), each player starting from their own place in the table after the start positions.
   14: { name: 'Forest Chao Garden', zone: 7, act: 0, paletteAnimations: [814, 815, [820, 1], [820, 0]], music: 12, multiplayer: true },
+  // StageInit_FactoryChaoGarden, Chao Hunt's stage B: Secret Base's three palette animations and act 1's song;
+  // StageBgUpdate_Zone2Act2 scrolls the background (backgrounds.js). The multiplayer stages are zone 7 to
+  // LEVEL_TO_ZONE, so the objects that look at the zone draw as in Neo Green Hill, and the ones that name the
+  // stage (CreateEntity_Trampoline, CreateEntity_Platform_Square and the rest) are told apart in their own
+  // code. The tables indexed by the level give this stage Secret Base's platforms (sPlatformThinAnims,
+  // sPlatformCrumblingAnims, gUnknown_086CEDC0, gUnknown_086CEE2C), trampoline and bounce block
+  // (sBounceBlockAnims); its wall poles are red flags lying on their side (SA1_ANIM_RED_FLAG_H, outside zone 1
+  // and stage A)
+  15: {
+    name: 'Factory Chao Garden', zone: 7, act: 1, paletteAnimations: [819, 845, 849], music: 14, backgroundScroll: 'secretBase2', multiplayer: true,
+    sprites: {
+      thinPlatform: [506, 0], sinkingPlatform: [506, 0], ferrisSeat: [506, 0], crumblingPlatform: [502, 0], trampoline: [505, 0], trampolineBounce: [505, 1],
+      bounceBlock: [499, 0], wallPole: [470, 0], wallPoleSwing: [470, 1],
+    },
+  },
+  // StageInit_PinballChaoGarden, stage C: Casino Paradise's palette animations without 826 ("Regular Casino
+  // Paradise loads palette anim 826 here") and act 1's song; StageBgUpdate_Zone3Acts12 scrolls the background.
+  // CreateEntity_Platform_Spiked, CreateEntity_Platform_Square and CreateEntity_FerrisWheel treat it as zone 3,
+  // and its platforms and bounce block are Casino Paradise's. Its object list places none of the first three
+  16: {
+    name: 'Pinball Chao Garden', zone: 7, act: 0, paletteAnimations: [816, 817, 818, 824, 825, 827, 827, 828, 843, 844], music: 16,
+    backgroundScroll: 'casinoParadise', multiplayer: true,
+    sprites: {
+      thinPlatform: [495, 0], sinkingPlatform: [495, 0], ferrisSeat: [495, 0], crumblingPlatform: [502, 0], bounceBlock: [543, 0], wallPole: [470, 0], wallPoleSwing: [470, 1],
+    },
+  },
+  // StageInit_SpaceChaoGarden, stage D: Cosmic Angel's eight palette animations and song; StageBgUpdate_Zone6Act2
+  // scrolls the background. Its torches, moving springs, pipes, trampolines and square platforms are zone 6's
+  // second act's (they name stage D), and the tables give it that act's thin, crumbling and ferris wheel
+  // platforms, bounce block and breakable wall, and Egg Rocket's sinking platform. Its object list places only the
+  // moving springs, thin platforms and ferris wheels of these: no pipes, torches, trampolines or square platforms
+  17: {
+    name: 'Space Chao Garden', zone: 7, act: 1, paletteAnimations: [829, 830, 831, 850, 851, 848, 846, 847], music: 23, backgroundScroll: 'cosmicAngel', multiplayer: true,
+    sprites: {
+      thinPlatform: [598, 0], ferrisSeat: [598, 0], crumblingPlatform: [602, 0], bounceBlock: [601, 0], sinkingPlatform: [517, 0], breakableWall: [596, 0],
+      squarePlatform: [599, 0], squarePlatformLong: [600, 0], movingSpring: [582, 1], movingSpringLaunch: [582, 0],
+      trampoline: [505, 0], trampolineBounce: [505, 1], wallPole: [470, 0], wallPoleSwing: [470, 1],
+    },
+  },
 };
 
 /** The entry of `level`, or an error for one this game can't load yet. */

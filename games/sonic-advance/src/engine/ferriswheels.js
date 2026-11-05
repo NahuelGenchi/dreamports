@@ -14,6 +14,8 @@ import { SINE } from './trig.js';
 
 export const FERRIS_WHEEL = 91;
 
+const CHAO_HUNT_C = 16;
+
 const s8 = v => (v << 24) >> 24;
 
 /** The task for a ferris wheel seat entity, or null when `e` is not one. */
@@ -51,7 +53,7 @@ export function createFerrisWheel(e, slot, anims) {
       });
       if (offDisplay(e.x, e.y, cam) && offCam(o.x, o.y, cam)) { slot.live = null; return false; }
       ctx.draw(o, o.x, o.y + Div(SINE[sag], 2500));
-      if (ctx.world.zone !== 2) {   // not in zone 3 (nor in Chao Hunt C)
+      if (ctx.world.zone !== 2 && ctx.world.level !== CHAO_HUNT_C) {   // not in zone 3 (nor in Chao Hunt C)
         ctx.draw(centre, e.x, e.y);
         const da = Div(a, 3), db = Div(b, 3);
         for (let k = 1; k <= 2; k++) ctx.draw(spoke, e.x + ((da * k) >> 11), e.y + ((db * k) >> 11));

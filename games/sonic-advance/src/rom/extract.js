@@ -535,7 +535,9 @@ function* readAssets(rom, id, { level = 0, character = 0, partner = false } = {}
   const turning = level === 12 && character === 0;
   // the zone's acts from `level` on, which share the zone's looks for the objects that differ by level
   // (the extra stage, the Moon Zone, is X Zone's act 2 but only ever comes on its own)
-  const levels = Object.keys(LEVELS).map(Number).filter(l => l >= level && LEVELS[l].zone === info.zone && (l === level || !LEVELS[l].extra)).sort((a, b) => a - b);
+  // (a multiplayer stage is played alone, so it has its own tables for what the stages draw differently)
+  const levels = info.multiplayer ? [level]
+    : Object.keys(LEVELS).map(Number).filter(l => l >= level && LEVELS[l].zone === info.zone && (l === level || !LEVELS[l].extra)).sort((a, b) => a - b);
   // the zone's water, which its acts share
   const water = levels.map(l => LEVELS[l].water).find(Boolean);
   // the acts' sprites; one the zone's acts draw differently (Egg Rocket's square platforms and Cosmic Angel's)

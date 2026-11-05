@@ -24,11 +24,13 @@ const ZERO_BOX = [0, 0, 0, 0];
 
 /**
  * Chao `id` (CreateMultiplayerChao) at `place` of the stage's spawn table. `mp` is the mode's shared state
- * (its players' tasks); the Chao's `playerA` is whom it goes to, and `playerB` whom it is with.
+ * (its players' tasks); `ceiling` is set for places 5 to 7 of Chao Hunt D; the Chao's `playerA` is whom it goes to, and `playerB` whom it is with.
  */
-export function createChao(mp, place, id, anims) {
+export function createChao(mp, place, id, anims, ceiling = false) {
   const s = makeSprite('chaoSitting', { order: 16 - id });
-  const c = { id, playerA: NO_PLAYER, playerB: NO_PLAYER, qx: place.x << 8, qy: (place.y - ABOVE) << 8, vx: 0, vy: 0, s };
+  // on Chao Hunt D's ceiling places it starts upside down, below its place
+  if (ceiling) s.flipY = true;
+  const c = { id, playerA: NO_PLAYER, playerB: NO_PLAYER, qx: place.x << 8, qy: (ceiling ? place.y + ABOVE : place.y - ABOVE) << 8, vx: 0, vy: 0, s };
   let phase = 'free';
   const box = () => s.boxes[0] ?? ZERO_BOX;
   const player = () => mp.players[c.playerA];

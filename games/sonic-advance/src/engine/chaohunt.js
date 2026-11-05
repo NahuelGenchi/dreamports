@@ -30,6 +30,7 @@ const PLAYERS_PRIORITY = 0x2000, INDICATOR_PRIORITY = 0x2001, CONFUSION_PRIORITY
 const RECEIVE_PRIORITY = 1, SEND_PRIORITY = 0xFFFE;
 // the items' bits in itemEffect, as the packets carry them
 const SHIELD = 1, INVINCIBLE = 2, SPEED_UP = 4, MAGNETIC = 8, INVISIBLE = 0x20, CONFUSED = 0x40, TELEPORT = 0x80;
+const CHAO_HUNT_D = 17;
 const ROOM_EVENT = { PLATFORM: 1, MYSTERY_BOX: 5, ITEM: 6, CHAO: 9 };
 
 /**
@@ -197,7 +198,7 @@ export function createChaoHunt({ link, id, count, stage, anims, seed, chaoPlace,
         g.tasks.add(m.task, PLAYERS_PRIORITY);
         if (i !== id) g.tasks.add(indicatorTask(mp, i, anims), INDICATOR_PRIORITY);
       }
-      const chao = createChao(mp, stage.chaoSpawns[chaoPlace], 0, anims);
+      const chao = createChao(mp, stage.chaoSpawns[chaoPlace], 0, anims, stage.level === CHAO_HUNT_D && chaoPlace > 4);
       mp.chao[0] = chao;
       g.tasks.add(chao.task, PLAYERS_PRIORITY);
       player.itemEffect |= TELEPORT;
