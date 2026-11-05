@@ -1,26 +1,20 @@
 // The SEGA and Sonic Team logos, which come after the name entry and, on later starts, after the start-up: the game's
 // intro (CreateGameIntroState) from its first state. Sonic and Tails run over a sky and a meadow, with each line of the sky
 // and the meadow scaled for its distance, as "Presented by SEGA" fades in and out. A hand reaches over an emerald in a
-// strip of the screen, then the two run on with "Created by Sonic Team". What comes next, the intro's characters, isn't
-// ported yet, so for now the game goes straight to Route 99's overworld. The states the intro's other parts open with
-// aren't ported either, nor are its demos, with the colour settings of 0x080C4884, which the game never turns on here.
+// strip of the screen, then the two run on with "Created by Sonic Team". What comes next is the intro's characters
+// (intro.js). The states the intro's other parts open with aren't ported, nor are its demos, with the colour settings of
+// 0x080C4884, which the game never turns on here.
 
-import { REG } from '../../../kit/gba/video.js';
-import { createSprite, updateSprite, displaySprite, transformSprite } from './sprite.js';
 import { drawBackground } from './background.js';
 import { KEY } from './core.js';
-import { SINE } from './stage/trig.js';
-import { startStage } from './stage/stage.js';
+import { TORN_AT, LINES, HALVES_A_LINE, createRunners, showRunners, setLines, stopLines } from './runners.js';
+import { openingCharacters } from './intro.js';
+import { leaveForTheTitle } from './title.js';
 
 const SEGA = 1, SONIC_TEAM = 2;
 const MUS_INTRO = 0;
-const OBJ_VRAM = 0x10000, LINES = 160, HALVES_A_LINE = 8;
-// each character has this many animations, running towards the camera being the 161st, with Tails the third character
-const ANIMS_A_CHARACTER = 163, PERSPECTIVE_RUN = 161, TAILS = 2;
-// the line the sky and the meadow meet on, and how fast the meadow comes towards the camera, in 1/16ths of a line
-const HORIZON = 0x8C, MEADOW_X = -240, MEADOW_SPEED = -48;
-// the line the next frame's work catches the drawing on, and how often the runners' pictures change
-const TORN_AT = 6, FRAMES_A_PICTURE = 3;
+// how often the runners' pictures change
+const FRAMES_A_PICTURE = 3;
 // The frames, counted from each logo's first, on which it doesn't. How long the work takes is the console's timing with
 // the sound engine's on top, as mGBA measures it, so these come from comparing with the original, by state.
 const NOT_LATER = {
@@ -29,8 +23,6 @@ const NOT_LATER = {
 };
 // the frames before a logo shows, its fade in and out, and the frames after it
 const BEFORE_A_LOGO = 10, LOGO = 150, AFTER_SEGA = 10, AFTER_SONIC_TEAM = 0x78;
-// how far each line's scale goes, by its distance from the horizon
-const SCALES = Uint32Array.from({ length: 256 }, (_, i) => Math.trunc(0x100000 / (i * 0x10 + 0x400)));
 
 /** 0x080A1D14, CreateGameIntroState. */
 export function gameIntro(c, state) {
@@ -58,45 +50,11 @@ function drawLayers(c, s) {
   drawBackground(c, { id: s.state === SEGA ? 425 : 426, dest: 0xC000, layoutVram: 0xF800, targetTilesX: 32, targetTilesY: 32, flags: 0 });
 }
 
-// 0x080A1F58: Sonic and Tails
-function createRunners(s) {
-  s.sonic = createSprite({ tiles: OBJ_VRAM, frameFlags: 0x1020, anim: PERSPECTIVE_RUN, variant: 3, palId: 0, x: 130, y: 140, oamFlags: 17 << 6 });
-  s.sonicTurn = { rotation: 0, scaleX: -0xE0, scaleY: 0xE0, x: 130, y: 140 };
-  s.tails = createSprite({ tiles: OBJ_VRAM + 64 * 32, frameFlags: 0x1021, anim: TAILS * ANIMS_A_CHARACTER + PERSPECTIVE_RUN, variant: 4, palId: 1, x: 100, y: 140, oamFlags: 16 << 6 });
-  s.tailsTurn = { rotation: 0, scaleX: -0x100, scaleY: 0x100, x: 100, y: 140 };
-}
-
-// 0x080A201C: what the H-blank writes to layer 2's registers for each line, so that the lines further from the horizon
-// are drawn larger, with the meadow moving
-function writeLines(lines, meadowScroll) {
-  for (let y = 0; y < LINES; y++) {
-    const from = Math.abs(y - HORIZON), scale = SCALES[from], at = y * HALVES_A_LINE;
-    let v = (Math.imul(scale, from * 2) + meadowScroll * 0x10) & 0xFFFF;
-    if (y < HORIZON) {
-      if (v & 0x8000) v = (v - 0x8000) & 0xFFFF;
-    } else if (!(v & 0x8000)) v = (v + 0x8000) & 0xFFFF;
-    lines[at] = scale >>> 2;
-    lines[at + 3] = 0x100;
-    lines[at + 4] = Math.imul(scale, MEADOW_X) >>> 2;
-    lines[at + 6] = v;
-  }
-}
-
-// The original has one list, which the task rewrites just after the V-blank, while the screen is being drawn: the lines
-// above the one its work catches the drawing on show this frame's list, and the rest already show the next frame's. So
-// each frame here gets both, with the next one as this one if the next frame writes none.
+// each frame has the list for the lines and the one for the next frame's, as runners.js writes them
 function meadowLines(c, s, nextWrites = true) {
-  s.meadowScroll = (s.meadowScroll + MEADOW_SPEED) & 0x7FF;
-  [s.lines, s.nextLines] = [s.nextLines, s.lines];
-  writeLines(s.lines, s.meadowScroll);
-  writeLines(s.nextLines, nextWrites ? (s.meadowScroll + MEADOW_SPEED) & 0x7FF : s.meadowScroll);
-  c.lineScroll = s.lines;
-  c.lineScrollNext = s.nextLines;
-  // the next frame's work takes a line longer when the runners' pictures change on it, but for those frames
-  c.lineTornAt = s.shown % FRAMES_A_PICTURE === FRAMES_A_PICTURE - 1 && !NOT_LATER[s.state].includes(s.shown) ? TORN_AT + 1 : TORN_AT;
+  const late = s.shown % FRAMES_A_PICTURE === FRAMES_A_PICTURE - 1 && !NOT_LATER[s.state].includes(s.shown);
+  setLines(c, s, nextWrites, late ? TORN_AT + 1 : TORN_AT);
   s.shown++;
-  c.lineSize = HALVES_A_LINE;
-  c.lineRegister = REG.BG2PA;
 }
 
 // 0x080A21AC: the intro's first frame
@@ -117,21 +75,12 @@ function init(t) {
   t.main = beforeTheLogo;
 }
 
-// 0x080A29F8: the two running, on the sprites' scale
-function showRunners(c, s) {
-  updateSprite(c, s.sonic);
-  transformSprite(c, s.sonic, s.sonicTurn, SINE);
-  displaySprite(c, s.sonic);
-  updateSprite(c, s.tails);
-  transformSprite(c, s.tails, s.tailsTurn, SINE);
-  displaySprite(c, s.tails);
-}
-
 // 0x080A2A50: Start, once the logos have been seen, leaves for what comes after them
 function skipped(t) {
   const s = t.data, { c } = s;
   if (!s.skippable || !(c.pressed & KEY.START)) return false;
-  afterTheLogos(t);
+  c.destroyTask(t);
+  leaveForTheTitle(c);
   return true;
 }
 
@@ -191,14 +140,14 @@ function afterTheLogo(t) {
   c.bldCnt = 0xFF;
   c.bldAlpha = 0;
   c.bldY = 0x10;
-  // 0x080A2974, the task's destructor: the H-blank's copies stop
-  c.lineScroll = null;
-  c.lineScrollNext = null;
-  c.lineSize = 1;
+  stopLines(c);
   if (s.state === SEGA) {
     theHand(c);
     c.destroyTask(t);
-  } else t.main = afterTheLogos;
+  } else {
+    openingCharacters(c);
+    c.destroyTask(t);
+  }
 }
 
 // 0x080A2AB0 and 0x080A2B84: the hand and the emerald, on two layers
@@ -260,22 +209,4 @@ function theHandMoves(t) {
   if (!done) return;
   gameIntro(c, SONIC_TEAM);
   c.destroyTask(t);
-}
-
-// What comes after the logos isn't ported yet, so the game goes straight to Route 99's overworld, a frame after the
-// screen goes black when they've run their time, as the original's next part starts then.
-function afterTheLogos(t) {
-  const { c } = t.data;
-  c.destroyTask(t);
-  c.lineScroll = null;
-  c.lineScrollNext = null;
-  c.lineSize = 1;
-  c.lineRegister = REG.BG0HOFS + 12;
-  c.dispCnt = 0x80;
-  c.bgCnt.fill(0);
-  c.bgScroll.fill(0);
-  c.winRegs.fill(0);
-  c.bldCnt = 0;
-  c.bldY = 0;
-  startStage(c, 2);
 }
