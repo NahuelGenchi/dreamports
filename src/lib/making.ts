@@ -98,7 +98,7 @@ async function fromGitHub(games: { game: string; title: string; issue: number }[
 
 async function load(): Promise<MakingData | null> {
   const games = (await getGames()).flatMap((game) =>
-    game.data.kind === 'dreamport' && beingMade(game.data)
+    beingMade(game.data)
       ? [{ game: game.data.game, title: game.data.title, issue: game.data.issue }]
       : [],
   );

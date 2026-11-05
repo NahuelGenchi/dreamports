@@ -18,7 +18,7 @@ export function gameOf(files) {
   return found.length === 1 && GAME.test(found[0]) ? found[0] : null;
 }
 
-/** Every file of a game's first entry, but README.md, which it changes. */
+/** Every file of a game's first entry, but docs/STATUS.md, which it changes. */
 export function pathsOf(game) {
   const media = `public/media/${game}-dreamport`;
   return [
@@ -137,14 +137,14 @@ const letters = text => text.toLowerCase().replace(/[^a-z0-9]/g, '');
  * Checks a pull request's files as a game's first entry. `files` are as GitHub lists them, `modes` each file's mode and
  * `read(path)` its bytes; `claim` is what the game's New Dreamport issue says, { number, lead, game }, or null; and
  * `author` wrote the pull request. Answers { why }, a key of REASONS, or { original, name, added, row }, with the
- * README's new row, which only the tools can write again (`read.mjs`).
+ * new row in docs/STATUS.md, which only the tools can write again (`read.mjs`).
  */
 export function checkFirstEntry({ game, files, modes, read, claim, author, onSite, today = new Date() }) {
   const paths = pathsOf(game);
   const changed = new Map(files.map(f => [f.filename, f]));
-  const readme = changed.get('README.md');
+  const readme = changed.get('docs/STATUS.md');
   if (changed.size !== paths.length + 1 || !paths.every(path => changed.get(path)?.status === 'added') || readme?.status !== 'modified') return { why: 'files' };
-  if (![...paths, 'README.md'].every(path => modes.get(path) === '100644')) return { why: 'files' };
+  if (![...paths, 'docs/STATUS.md'].every(path => modes.get(path) === '100644')) return { why: 'files' };
   if (onSite) return { why: 'game' };
   if (!claim || claim.lead !== author) return { why: 'claim' };
 

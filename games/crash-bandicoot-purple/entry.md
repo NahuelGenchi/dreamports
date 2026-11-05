@@ -3,7 +3,7 @@
 title: "Crash Bandicoot Purple: Ripto's Rampage Dreamport"
 platform: Game Boy Advance
 added: 2026-11-04
-summary: "Crash Bandicoot Purple: Ripto's Rampage, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install."
+summary: Plays in your browser. No emulator, nothing to install.
 needs: "A Crash Bandicoot Purple: Ripto's Rampage (USA) ROM (.gba)"
 controls: [keyboard, controller, touch]
 issue: 296

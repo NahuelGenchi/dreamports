@@ -12,7 +12,7 @@ export const REASONS = {
   entry: 'its entry isn\'t what `npm run dp -- new` and `npm run dp -- capture` write',
   proof: 'its `original.json` or code map aren\'t as the proof tools write them',
   capture: 'its capture isn\'t as `npm run dp -- capture` writes it',
-  readme: 'its port map, progress map or row in the README\'s table aren\'t what the proof tools write',
+  readme: 'its port map, progress map or row in the table in `docs/STATUS.md` aren\'t what the proof tools write',
   claim: 'its author isn\'t the lead of the open New Dreamport issue that claims this game',
   game: 'this game is already on the site',
   words: 'the game\'s name or the code map\'s source breaks the rules on what can be written here',

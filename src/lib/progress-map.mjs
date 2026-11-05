@@ -4,7 +4,7 @@
 // toward code ported and grey when it doesn't. Then a smaller panel for gameplay proven, with one equal block for each
 // of the game's parts, green once it's proven. It's measured by the same code as the two numbers (entries.mjs), so it
 // can't disagree with them. It's for the people making the game, so it's only shown on GitHub, never on the site: the
-// proof tools keep it in the repository with the README's table (tools/readme.mjs), which links it. It holds addresses
+// proof tools keep it in the repository with the table in docs/STATUS.md (tools/readme.mjs), which links it. It holds addresses
 // and sizes only, as the code map does, and nothing of the game.
 
 import { measure, percentText, portedFunctions, proofOf } from './entries.mjs';

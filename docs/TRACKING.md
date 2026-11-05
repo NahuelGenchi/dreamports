@@ -37,6 +37,7 @@ Track all meaningful work: pages, features, bugs, enhancements, docs, research, 
 | M6 | M6 — Anyone can make a Dreamport | Anyone can make or help with a Dreamport in this repository: the Dreamport standard, games played from here, proof of progress with clips and a percentage, previews on GitHub Pages that need no approval, claims and teams, and a step-by-step guide with commands for coding agents |
 | M7 | M7 — New games join the launcher on their own | A lead's entry reaches the launcher with everything wired in and a real capture of the game, with one approval from the team for the picture and a review for code |
 | M8 | M8 — Lighter tools, on any console | The proof tools and `/dreamport` take less memory, processor, graphics chip, electricity and agent tokens, go faster with the same proof, and are ready for games on other consoles |
+| M9 | M9 — Dreamports made with publishers | Rights holders can work with the Dreamports team instead of only asking for takedowns: a way to get in touch, a written offer, and Dreamports made under their license and approval |
 
 The first issue is #1 (M0). Later milestones may be created deliberately; assign them directly in GitHub.
 
@@ -52,7 +53,7 @@ The work-item form requires a work type, milestone, scope, completion criteria, 
 Milestone: M4 — Sonic Advance Dreamport on dreamports.net
 ```
 
-Issue and PR titles may start with a type prefix (`feat:`, `fix:`, `enh:`, `docs:`, `research:`, `ops:`), which the workflow turns into a label. Every work item gets its own new branch created from the latest `origin/main`, named `<type>/<issue>-<slug>`, and `npm run dp -- update <game>` brings a game's branch up to date when `main` moves. The Readme workflow is the one exception to all of this: every three hours it writes the README's table and the progress maps from `main`, in a small pull request of its own on `ops/readme-table`, which it merges itself and which has no issue of its own or checks, as it only holds what the tools wrote. One branch holds one issue; branches are not reused after merge and are deleted once their PR merges. Every PR must include a standalone closing reference to its scoped issue:
+Issue and PR titles may start with a type prefix (`feat:`, `fix:`, `enh:`, `docs:`, `research:`, `ops:`), which the workflow turns into a label. Every work item gets its own new branch created from the latest `origin/main`, named `<type>/<issue>-<slug>`, and `npm run dp -- update <game>` brings a game's branch up to date when `main` moves. The Readme workflow is the one exception to all of this: every three hours it writes the table in `docs/STATUS.md` and the progress maps from `main`, in a small pull request of its own on `ops/readme-table`, which it merges itself and which has no issue of its own or checks, as it only holds what the tools wrote. One branch holds one issue; branches are not reused after merge and are deleted once their PR merges. Every PR must include a standalone closing reference to its scoped issue:
 
 ```text
 Closes #123

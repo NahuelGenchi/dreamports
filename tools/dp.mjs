@@ -15,7 +15,7 @@ const TOOLS = {
   tasks: 'Opens a Task issue for each of a game\'s foundations and parts that has none yet, foundations first',
   notes: 'Shows what people found while making a game or its console\'s kit, so nobody has to find it again',
   team: 'The team build, the lead\'s branch with the team\'s finished pieces: start, join, send and add a piece',
-  readme: 'Writes the README\'s table of Dreamports, with each one\'s numbers and lead, from their entries',
+  readme: 'Writes the table of Dreamports in docs/STATUS.md, with each one\'s numbers and lead, from their entries',
   commands: 'Writes the /dreamport command, from tools/commands/, in the form each coding agent reads',
   ready: 'Everything a step has to pass before it goes out, in one go, printing only what\'s wrong',
   update: 'Brings a branch up to date with main: merges it, settles conflicts in files the tools write, runs ready and commits',

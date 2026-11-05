@@ -1,4 +1,4 @@
-// Puts the README's table and the progress maps on main (.github/workflows/readme.yml). `npm run dp -- readme` has just
+// Puts the table in docs/STATUS.md and the progress maps on main (.github/workflows/readme.yml). `npm run dp -- readme` has just
 // written them from main's own files, and main only takes pull requests, so this opens one with only those files and
 // merges it. It asks no model, runs nothing from a pull request, and does nothing when they haven't changed.
 import { execFileSync } from 'node:child_process';
@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const BRANCH = 'ops/readme-table';
-export const TITLE = 'ops: the README\'s table and progress maps (#566)';
+export const TITLE = 'ops: the table of Dreamports and progress maps (#566)';
 const BODY = 'Written by the Readme workflow from the proof files on `main`, with nothing else in it. Refs #566';
 const TRIES = 5;
 
@@ -40,7 +40,7 @@ export async function publish({ api, changed, head, owner, sleep = ms => new Pro
 
 /** What `npm run dp -- readme` changed in the folder, from git. */
 export function changedFiles(folder) {
-  const names = execFileSync('git', ['status', '--porcelain', '--no-renames', '-z', '--', 'README.md', '.github/readme/progress'], { cwd: folder, encoding: 'utf8' }).split('\0').filter(Boolean);
+  const names = execFileSync('git', ['status', '--porcelain', '--no-renames', '-z', '--', 'docs/STATUS.md', '.github/readme/progress'], { cwd: folder, encoding: 'utf8' }).split('\0').filter(Boolean);
   return names.map(row => ({ path: row.slice(3), text: row.slice(0, 2).includes('D') ? null : readFileSync(join(folder, row.slice(3)), 'utf8') }));
 }
 

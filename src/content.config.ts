@@ -5,8 +5,7 @@ import { ICON_NAMES } from './lib/icons';
 import { ENTRY, GITHUB_NAME, pageOf } from './lib/entries.mjs';
 
 // Every game on the site. A Dreamport's page comes from its entry, games/<game>/entry.md, which
-// games/README.md explains field by field; every other game's from one Markdown file in
-// src/content/games/, which CONTRIBUTING.md explains.
+// games/README.md explains field by field.
 const mediaFile = z.string().regex(/^\/media\/[a-z0-9-]+\.webp$/, 'a .webp file in public/media/, such as /media/my-port-still.webp');
 // A recording, named without its ending: /media/my-port stands for my-port.h264.mp4 and my-port.av1.mp4.
 const clipFile = z.string().regex(/^\/media\/[a-z0-9-]+$/, 'a recording in public/media/ without its ending, such as /media/my-port');
@@ -114,25 +113,13 @@ const dreamport = z.object({
   facts: z.array(z.object(fact).refine((f) => f.value || f.href, 'a value or an href')).default([]),
 });
 
-// Every other game: an external port, or a fan game that isn't a port.
-const other = z.object({
-  ...page,
-  kind: z.enum(['external', 'other']),
-  facts: z
-    .array(z.object({ ...fact, controls: controls.optional() }).refine((f) => f.value || f.href || f.controls, 'a value, an href or controls'))
-    .default([]),
-});
-
-// Both kinds of page, from games/*/entry.md and src/content/games/*.md. An entry's kind and folder are set
-// here, from where it is, so the entry itself doesn't write them.
+// Every page comes from games/*/entry.md. An entry's kind and folder are set here, from where it is, so the
+// entry itself doesn't write them.
 function games(): Loader {
   const files = glob({
-    pattern: [`games/*/${ENTRY}`, 'src/content/games/*.md'],
+    pattern: `games/*/${ENTRY}`,
     base: '.',
-    generateId: ({ entry }) => {
-      const dreamport = /^games\/([^/]+)\//.exec(entry);
-      return dreamport ? pageOf(dreamport[1]) : entry.replace(/^.*\//, '').replace(/\.md$/, '');
-    },
+    generateId: ({ entry }) => pageOf(/^games\/([^/]+)\//.exec(entry)![1]),
   });
   return {
     name: 'dreamports-games',
@@ -142,22 +129,16 @@ function games(): Loader {
         parseData: (async (props: Parameters<typeof context.parseData>[0]) => {
           const file = (props.filePath ?? '').replaceAll('\\', '/');
           const data = props.data as Record<string, unknown>;
-          const game = new RegExp(`/games/([^/]+)/${ENTRY.replace('.', '\\.')}$`).exec(file)?.[1];
-          if (game) {
-            for (const key of ['kind', 'game'] as const) {
-              if (key in data) throw new Error(`games/${game}/${ENTRY}: "${key}" comes from where the entry is, so leave it out.`);
-            }
-            return context.parseData({ ...props, data: { ...data, kind: 'dreamport', game } });
+          const game = new RegExp(`/games/([^/]+)/${ENTRY.replace('.', '\\.')}$`).exec(file)![1];
+          for (const key of ['kind', 'game'] as const) {
+            if (key in data) throw new Error(`games/${game}/${ENTRY}: "${key}" comes from where the entry is, so leave it out.`);
           }
-          if (data.kind === 'dreamport') {
-            throw new Error(`src/content/games/${file.replace(/^.*\//, '')}: a Dreamport’s page comes from its entry, games/<game>/${ENTRY}, as games/README.md explains.`);
-          }
-          return context.parseData(props);
+          return context.parseData({ ...props, data: { ...data, kind: 'dreamport', game } });
         }) as typeof context.parseData,
       }),
   };
 }
 
 export const collections = {
-  games: defineCollection({ loader: games(), schema: z.discriminatedUnion('kind', [dreamport, other]) }),
+  games: defineCollection({ loader: games(), schema: dreamport }),
 };

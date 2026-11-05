@@ -4,7 +4,7 @@ title: Sonic Battle Dreamport
 platform: Game Boy Advance
 year: 2003
 added: 2026-10-31
-summary: Sonic Battle, rebuilt to play in your web browser, a piece at a time. No emulator, nothing to install.
+summary: Plays in your browser. No emulator, nothing to install.
 needs: A Sonic Battle (USA) ROM (.gba)
 controls: [keyboard, controller, touch]
 issue: 123

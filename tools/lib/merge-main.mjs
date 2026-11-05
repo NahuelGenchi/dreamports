@@ -5,7 +5,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { splitTable } from '../readme.mjs';
+import { STATUS, splitTable } from '../readme.mjs';
 
 const MAPS = '.github/readme/progress';
 const MAP = /^\.github\/readme\/progress\/[^/]+\.svg$/;
@@ -45,8 +45,8 @@ function bothProgress(ours, theirs) {
   return `${JSON.stringify({ ...main, recordings }, null, 2)}\n`;
 }
 
-/** README.md with main's table and whichever side changed the words around it, or null when both did. */
-function bothReadme(base, ours, theirs) {
+/** docs/STATUS.md with main's table and whichever side changed the words around it, or null when both did. */
+function bothStatus(base, ours, theirs) {
   const [was, mine, main] = [base, ours, theirs].map(text => (text === null ? null : splitTable(text)));
   if (!was || !mine || !main) return null;
   const same = (a, b) => a.before === b.before && a.after === b.after;
@@ -65,7 +65,7 @@ function settled(cwd, file) {
       return undefined;
     }
   }
-  if (file === 'README.md') return bothReadme(base, ours, theirs) ?? undefined;
+  if (file === STATUS) return bothStatus(base, ours, theirs) ?? undefined;
   return undefined;
 }
 
@@ -104,7 +104,7 @@ export function newGames(cwd) {
 }
 
 /**
- * The README's table and the progress maps are main's own, written after each merge by .github/workflows/readme.yml,
+ * The table in docs/STATUS.md and the progress maps are main's own, written after each merge by .github/workflows/readme.yml,
  * so a branch carries main's and the next merge has nothing to conflict over. A new game keeps its row, its map and
  * nothing else, as a first entry has to have them, with the table just written with its row.
  */
@@ -116,9 +116,9 @@ export function keepMainsTable(cwd, games = []) {
   }
   for (const file of onMain) if (!existsSync(join(cwd, file))) git(cwd, ['checkout', 'MERGE_HEAD', '--', file]);
   if (games.length) return;
-  const mine = splitTable(readFileSync(join(cwd, 'README.md'), 'utf8'));
-  const main = splitTable(git(cwd, ['show', 'MERGE_HEAD:README.md']));
-  if (mine && main) writeFileSync(join(cwd, 'README.md'), `${mine.before}${main.table}${mine.after}`);
+  const mine = splitTable(readFileSync(join(cwd, STATUS), 'utf8'));
+  const main = splitTable(git(cwd, ['show', `MERGE_HEAD:${STATUS}`]));
+  if (mine && main) writeFileSync(join(cwd, STATUS), `${mine.before}${main.table}${mine.after}`);
 }
 
 /** Commits the merge, with what the tools wrote for `games`. */

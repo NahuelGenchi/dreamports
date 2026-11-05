@@ -1,6 +1,6 @@
 name: Readme
 
-# Writes the README's table of Dreamports and each game's progress map from main's own files, so pull requests leave
+# Writes the table of Dreamports in docs/STATUS.md and each game's progress map from main's own files, so pull requests leave
 # them alone and can't conflict over them (docs/TRACKING.md). main only takes pull requests, so this opens one with only
 # those files and merges it. It runs only main's code and asks no model. It runs on a schedule, not on each merge, as
 # each commit it makes starts two builds at Cloudflare, whose free minutes are limited, and several merges share one.

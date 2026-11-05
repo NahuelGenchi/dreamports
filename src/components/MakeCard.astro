@@ -25,7 +25,6 @@ interface Props {
 }
 
 const { game, open = false, github } = Astro.props;
-if (game.data.kind !== 'dreamport') throw new Error(`${game.id} has no page in the Make row: only Dreamports are made here.`);
 const { data } = game;
 const view = makeView(data, github);
 const progress = await dreamportView(data);

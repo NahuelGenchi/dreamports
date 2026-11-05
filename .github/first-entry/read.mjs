@@ -40,7 +40,7 @@ async function readHead(head, sha, paths) {
     const item = inTree.get(path);
     if (!item) continue;
     modes.set(path, item.mode);
-    if (path === 'README.md') continue;
+    if (path === 'docs/STATUS.md') continue;
     if (item.size > mostFor(path)) return null;
     bytes.set(path, await readFile(head, sha, path));
   }
@@ -57,7 +57,7 @@ async function howToMerge({ head, game, verdict, issue, author }) {
   return plainHistory({ commits, between: compared?.files ?? [], firstEntry, game, original: verdict.original, issue, author, added: verdict.added }) ? 'merge' : 'squash';
 }
 
-// this repository's own tools write the port map, the progress map and the README's row from what passed, to compare
+// this repository's own tools write the port map, the progress map and the row in docs/STATUS.md from what passed, to compare
 function writtenAgain(game, bytes) {
   for (const path of [`games/${game}/proof/original.json`, `games/${game}/proof/code-map.json`, `games/${game}/entry.md`, `games/${game}/index.html`, `games/${game}/src/main.js`, `games/${game}/LICENSE`]) {
     mkdirSync(dirname(join(REPO, path)), { recursive: true });
@@ -69,7 +69,7 @@ function writtenAgain(game, bytes) {
   return {
     portMap: readFileSync(join(REPO, `games/${game}/proof/port-map.json`)),
     map: readFileSync(join(REPO, `.github/readme/progress/${game}.svg`)),
-    row: readFileSync(join(REPO, 'README.md'), 'utf8').split('\n').find(line => line.includes(`(games/${game}/)`)),
+    row: readFileSync(join(REPO, 'docs/STATUS.md'), 'utf8').split('\n').find(line => line.includes(`(../games/${game}/)`)),
   };
 }
 
@@ -97,7 +97,7 @@ if (!game) {
   answer(files && asked ? { kind: 'say', why: 'files', ...common } : { kind: 'none' });
 } else {
   const sha = pr.head.sha, head = pr.head.repo.full_name;
-  const paths = [...pathsOf(game), 'README.md'];
+  const paths = [...pathsOf(game), 'docs/STATUS.md'];
   const found = paths.every(path => files.some(f => f.filename === path)) && files.length === paths.length ? await readHead(head, sha, paths) : null;
   let claim = null;
   const issue = readClaims(repository).leads.get(game);

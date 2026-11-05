@@ -1,17 +1,13 @@
 // npm run dp -- find [<game>] [--repo <owner/name>] [--team <owner/name>]: where a game stands, so nobody does the
 // same work twice: its lead, its game's issue, its two numbers, its Make page, its team build and team preview,
 // and its pieces, the issues under its game's issue, with who has claimed which, the ones free to start and what the
-// others wait on (docs/TEAMS.md), and how many notes people have left on it (docs/NOTES.md). <game> is a game's folder or a few words of its name, and a
-// name also finds the site's other games, such as a port made elsewhere. With no game it lists every Dreamport and every game
+// others wait on (docs/TEAMS.md), and how many notes people have left on it (docs/NOTES.md). <game> is a game's folder or a few words of its name.
+// With no game it lists every Dreamport and every game
 // claimed with a New Dreamport issue. The numbers come from games/ in this folder, and the claims and pieces from the
 // repository's issues, through the GitHub CLI. --repo reads the claims of another copy of the repository, such as a
 // fork that tries the claims workflow, and --team names the fork with the lead's team build when it isn't the
 // lead's own, such as one of an organisation's.
 
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { parse } from 'yaml';
-import { REPO } from './lib/paths.mjs';
 import { UPSTREAM, pagesOf } from './lib/github.mjs';
 import { readClaims, leadOf, teamBuildOf, gatheredIn } from './lib/claims.mjs';
 import { readPartsFile } from './lib/proof-files.mjs';
@@ -21,7 +17,6 @@ import { pageOf, percentText } from '../src/lib/entries.mjs';
 import { pieceName, whatCanStart } from '../src/lib/pieces.mjs';
 
 const USAGE = 'Usage: npm run dp -- find [<game>] [--repo <owner/name>] [--team <owner/name>]';
-const SECTIONS = { external: ['external-ports', 'a port made elsewhere'], other: ['other-games', 'another fan game'] };
 
 export async function run(args) {
   const { rest, repo = UPSTREAM, team } = options(args);
@@ -42,13 +37,11 @@ export async function run(args) {
     ...[...here.values()].filter(d => key(d.entry.title).includes(words) || key(d.game).includes(words)).map(d => d.game),
     ...claimed.filter(g => key(claims.nameOf(g)).includes(words) || key(g).includes(words)),
   ])];
-  const others = otherGames().filter(g => key(g.title).includes(words));
   if (found.length === 1) show(found[0], here.get(found[0]), claims, team);
   else if (found.length) console.log(`More than one Dreamport goes by "${rest.join(' ')}": ${found.join(', ')}. npm run dp -- find <folder> shows one.`);
   else {
     console.log(`Nobody makes a Dreamport of "${rest.join(' ')}" yet${claims ? '' : ' in this folder'}. /dreamport starts it for you, as its lead, and so does the New Dreamport form: https://github.com/${repo}/issues/new?template=new-dreamport.yml`);
   }
-  for (const other of others) console.log(`\n${other.title} is on the site as ${SECTIONS[other.kind][1]}: https://dreamports.net/${SECTIONS[other.kind][0]}/${other.id}/`);
   return 0;
 }
 
@@ -146,12 +139,3 @@ function show(game, local, claims, team) {
   }
 }
 
-// the site's other games, such as ports made elsewhere: [{ id, title, kind }]
-function otherGames() {
-  const folder = join(REPO, 'src', 'content', 'games');
-  return readdirSync(folder).filter(f => f.endsWith('.md')).map(f => {
-    const front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(join(folder, f), 'utf8'));
-    const data = front ? parse(front[1]) : {};
-    return { id: f.slice(0, -3), title: data.title ?? f, kind: data.kind };
-  }).filter(g => SECTIONS[g.kind]);
-}
