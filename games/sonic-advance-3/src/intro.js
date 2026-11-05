@@ -108,6 +108,16 @@ function opening(t) {
   t.main = comingIn;
 }
 
+// Start leaves for the title, with the character's task as well as the tag's, which would go on drawing them
+function skipped(t) {
+  const s = t.data, { c } = s;
+  if (!(c.pressed & KEY.START)) return false;
+  if (c.tasks.includes(s.characterTask)) c.destroyTask(s.characterTask);
+  c.destroyTask(t);
+  leaveForTheTitle(c);
+  return true;
+}
+
 // 0x080A3E24: a tag coming in, with its character on the move once it has begun
 function comingIn(t) {
   const s = t.data, { c } = s;
@@ -119,11 +129,7 @@ function comingIn(t) {
     t.main = stopping;
     return;
   }
-  if (c.pressed & KEY.START) {
-    c.destroyTask(t);
-    leaveForTheTitle(c);
-    return;
-  }
+  if (skipped(t)) return;
   s.count++;
 }
 
@@ -138,11 +144,7 @@ function stopping(t) {
     t.main = next;
     return;
   }
-  if (c.pressed & KEY.START) {
-    c.destroyTask(t);
-    leaveForTheTitle(c);
-    return;
-  }
+  if (skipped(t)) return;
   s.count++;
 }
 
@@ -265,7 +267,7 @@ function createCharacters(s) {
   s.stopped = false;
   s.groups = [[], []];
   loadCharacters(s);
-  c.createTask(characterTask, s, 0xFF);
+  s.characterTask = c.createTask(characterTask, s, 0xFF);
 }
 
 // a pose's lists: how many pictures each character has and where they are, of the character coming in or the one stopped
