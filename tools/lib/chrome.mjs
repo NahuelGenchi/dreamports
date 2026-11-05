@@ -178,7 +178,7 @@ async function drive(chrome, portFile, profile, headless, controllers) {
 }
 
 /** Talks to a page or the browser over the DevTools protocol. */
-async function connect(url) {
+export async function connect(url) {
   const socket = new WebSocket(url);
   await new Promise((resolve, reject) => {
     socket.addEventListener('open', resolve, { once: true });
