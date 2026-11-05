@@ -122,6 +122,10 @@ The work on Dreamports itself is tracked in [milestones](https://github.com/Nahu
 
 Press **Star** at the top of this page to follow along, or [report a problem](https://github.com/NahuelGenchi/dreamports/issues/new?template=work-item.yml). Developers can start with [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## For publishers
+
+If you hold the rights to a classic game, the Dreamports team would like to make its Dreamport with you: rebuilt to run on every device strong enough for it, proven to play like the original, and released only under your license and with your approval. Write to [hello@dreamports.net](mailto:hello@dreamports.net?subject=Working%20together) with "Working together" in the subject. [Working with publishers](docs/PUBLISHERS.md) says what the team offers and how it goes.
+
 ## Questions
 
 <details>
