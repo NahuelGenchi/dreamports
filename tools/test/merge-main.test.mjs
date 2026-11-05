@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
+import { optionsOf } from '../update.mjs';
 import { finishMerge, keepMainsTable, merging, newGames, provedOnBothSides, startMerge } from '../lib/merge-main.mjs';
 
 const START = '<!-- The proof tools write this table from each Dreamport\'s entry: npm run dp -- readme. -->';
@@ -140,4 +141,12 @@ test('a branch with no progress.json of main\'s leaves nothing to prove twice', 
   both({ 'games/one/code.js': 'a\nb\nc\nd\n' }, { [PROGRESS]: progress({ a: { matched: 6 } }) });
   startMerge(cwd, 'main');
   assert.deepEqual(provedOnBothSides(cwd), []);
+});
+
+test('the command\'s words, in any order', () => {
+  assert.deepEqual(optionsOf(['one']), { game: 'one', base: 'main' });
+  assert.deepEqual(optionsOf(['one', '--base', 'other']), { game: 'one', base: 'other' });
+  assert.deepEqual(optionsOf(['--base', 'other', 'one']), { game: 'one', base: 'other' });
+  assert.equal(optionsOf(['--base', 'other']).game, undefined);
+  assert.equal(optionsOf(['one', '--base']).base, undefined);
 });

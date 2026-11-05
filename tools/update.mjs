@@ -13,10 +13,15 @@ import { finishMerge, keepMainsTable, newGames, provedOnBothSides, startMerge } 
 // a new process each, as the merge may have just changed the tools themselves
 const tool = (...args) => spawnSync(process.execPath, [join(REPO, 'tools', 'dp.mjs'), ...args], { cwd: REPO, stdio: 'inherit' }).status === 0;
 
+/** The game and the branch to merge, from the command's words. */
+export function optionsOf(args) {
+  const at = args.indexOf('--base');
+  const words = at < 0 ? args : args.filter((_, index) => index !== at && index !== at + 1);
+  return { game: words.find(word => !word.startsWith('--')), base: at < 0 ? 'main' : args[at + 1] };
+}
+
 export async function run(args) {
-  const baseAt = args.indexOf('--base');
-  const base = baseAt < 0 ? 'main' : args[baseAt + 1];
-  const [game] = args.filter((arg, at) => !arg.startsWith('--') && at !== baseAt + 1);
+  const { game, base } = optionsOf(args);
   if (!game || !base) throw new Error('Usage: npm run dp -- update <game> [--base <branch>]');
 
   const names = remotes().map(remote => remote.name);
