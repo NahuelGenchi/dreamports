@@ -194,6 +194,9 @@ export function startFight(c, vblanks) {
   write8(c, SONG, ARENA_SONGS[setup(c, 3 + setup(c, 1))]);
   fn08012b98(c, 10);
   setUpFighters(c);
+  // the sound engine has run a frame for each V-blank by now, which sets when its envelopes step and the two the count
+  // starts with are among them, though no song plays in them
+  c.sound?.framesGoneBy(vblanks - 2);
   c.sound?.play(read8(c, SONG));
   // the loading runs past a V-blank, which applies what the fade queued
   fightVblank(c);

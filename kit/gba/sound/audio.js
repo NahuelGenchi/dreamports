@@ -164,6 +164,12 @@ export function createSound({ worklet = new URL('./worklet.js', import.meta.url)
       counter.frame();
     },
 
+    /** With `countCycles`, `frames` frames of SoundMain with nothing playing, for a start point that leaves out what led to it. */
+    framesGoneBy(frames) {
+      if (!counter) return;
+      for (let i = 0; i < frames; i++) { counterApu.run(FRAME_CYCLES); counter.frame(); }
+    },
+
     get muted() { return muted; },
     set muted(value) { muted = value; post({ type: 'gain', value: muted ? 0 : GAIN }); },
     /** Stops the sound where it is while the game is held (its settings are open), and goes on with it after */

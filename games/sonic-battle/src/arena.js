@@ -438,7 +438,7 @@ function colourRun(c, to, at, table, from, count, step = 1) {
 // later, and the lines drawn by then keep the old colours. The two constants are what's the same in every frame, as
 // measured against the original: all the other cycles come from what the frame did and what the sound engine played.
 // Only Emerald Beach's colours land this way so far, the one arena measured, and only in the choice's frames (fight.js).
-const WORK_BEFORE_LINE_ONE = 81796, LINE_CYCLES = 1232, LINE_ONE_CONSTANT = -2100;
+const WORK_BEFORE_LINE_ONE = 81796, LINE_CYCLES = 1232, LINE_ONE_CONSTANT = 90;
 // from the first CpuSet's writes to the second's, as the BIOS's CpuSet of 16 colours and the call between them take
 const COLOURS_APART = 300;
 
