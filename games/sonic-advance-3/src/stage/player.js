@@ -311,7 +311,7 @@ export function startFalling(p) {
   fall(p);
 }
 function slipOff(p) {
-  p.flags = (p.flags & ~AT_WALL) | IN_AIR;
+  p.flags = (p.flags & ~(AT_WALL | FLAG.TEAM_MOVE | 0x20000000)) | IN_AIR;
   if (p.flags & CHARGED) {   // the USA copy's Player_800DAF4 goes straight to the move's frame, keeping the pose it had
     p.behave = chargedAir;
     chargedAir(p);
