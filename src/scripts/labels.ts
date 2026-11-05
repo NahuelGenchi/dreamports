@@ -21,6 +21,10 @@ const SPEED = 6;
 const DAY = 24 * 60 * 60 * 1000;
 // how long the scenes may draw before the page gets a turn, in milliseconds
 const SLICE = 8;
+// Each copy of a row's picture starts with one column of the row's end, so the second copy lies over the first's last
+// column. Some browsers, Firefox among them, draw the two copies apart, and where they meet between two screen
+// pixels the page showed through as a thin light line that came and went as the row moved.
+const OVERLAP = 1;
 
 const box = document.querySelector<HTMLElement>('.launcher > .labels');
 const launcher = box?.closest<HTMLElement>('.launcher');
@@ -124,9 +128,10 @@ function run(box: HTMLElement, launcher: HTMLElement) {
 
       const taken = new Map<number, Label>(plan[r].labels.map(({ index, place }) => [place, labels[index]]));
 
-      // every place, its label or its scene, drawn once into one picture for the whole row
+      // every place, its label or its scene, drawn once into one picture for the whole row, after one column of the
+      // row's end (see below)
       const canvas = document.createElement('canvas');
-      canvas.width = half;
+      canvas.width = half + OVERLAP;
       canvas.height = H;
       const ctx = canvas.getContext('2d');
       if (ctx) {
@@ -134,24 +139,25 @@ function run(box: HTMLElement, launcher: HTMLElement) {
           const label = taken.get(k);
           const shown = label ? await load(label.src) : null;
           if (mine !== job) return;
-          if (shown) ctx.drawImage(shown, lefts[k], 0, W, H);
+          if (shown) ctx.drawImage(shown, OVERLAP + lefts[k], 0, W, H);
           else {
             const image = ctx.createImageData(places[k], H);
             image.data.set(invite?.place === k ? drawInvite(invite.words, seedOf(r, k)) : drawScene(places[k], kindOf(r, k), seedOf(r, k)));
-            ctx.putImageData(image, lefts[k], 0);
+            ctx.putImageData(image, OVERLAP + lefts[k], 0);
           }
           if (!(await turn())) return;
         }
         if (settle) {
           try {
-            const all = ctx.getImageData(0, 0, half, H);
+            const all = ctx.getImageData(OVERLAP, 0, half, H);
             all.data.set(steady(all.data, half, lefts));
-            ctx.putImageData(all, 0, 0);
+            ctx.putImageData(all, OVERLAP, 0);
           } catch {
             // a picture the page may not read shows as it was drawn
           }
           if (!(await turn())) return;
         }
+        ctx.drawImage(canvas, half, 0, OVERLAP, H, 0, 0, OVERLAP, H);
       }
       const url = ctx ? await picture(canvas) : '';
       if (mine !== job) {
@@ -171,14 +177,14 @@ function run(box: HTMLElement, launcher: HTMLElement) {
           // no image: the canvas itself, and a copy of it for the repeat
           scenes = left ? document.createElement('canvas') : canvas;
           if (left && ctx) {
-            (scenes as HTMLCanvasElement).width = half;
+            (scenes as HTMLCanvasElement).width = half + OVERLAP;
             (scenes as HTMLCanvasElement).height = H;
             (scenes as HTMLCanvasElement).getContext('2d')?.drawImage(canvas, 0, 0);
           }
         }
         scenes.className = 'label-scenes';
-        scenes.style.left = left + 'px';
-        scenes.style.width = half + 'px';
+        scenes.style.left = left - OVERLAP + 'px';
+        scenes.style.width = half + OVERLAP + 'px';
         track.append(scenes);
       }
       if (url) {
