@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src=".github/readme/banner.webp" width="100%" alt="Dreamports: enhanced fan ports of classic games, at dreamports.net. A black pixel-art doorway opens onto a night sky with a golden sparkle, with small golden stars around the name.">
+<img src=".github/readme/launcher.webp" width="100%" alt="The Dreamports launcher: a row of games, each playing a short recording of itself, while the top bar turns between Dreamports, Mash-ups and Make.">
 
 <br>
 
