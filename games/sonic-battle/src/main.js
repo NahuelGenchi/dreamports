@@ -49,9 +49,9 @@ proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded but
 // with the controls the layout gives and what a button does so far
 const touch = createTouch(stage, input, { screen, key: 'sonic-battle' });
 createSettings(stage, input, { what: {
-  a: 'A: adds a letter to your name, and chooses on the main menu and the Mini-games screen',
-  b: 'B: takes the last letter off your name, and goes back from the Mini-games screen',
-  start: 'Start: skips the SEGA and Sonic Team logos and the intro, leaves the title screen, and keeps your name',
+  a: 'A: adds a letter to your name, chooses on the main menu and the Mini-games screen, and plays a song or sound in the options',
+  b: 'B: takes the last letter off your name, and goes back from the Mini-games screen and the options',
+  start: 'Start: skips the SEGA and Sonic Team logos and the intro, leaves the title screen, keeps your name, and goes back from the options',
 }, touch });
 let rom = null, romBuffer = null;
 
@@ -75,8 +75,8 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the logos, the intro, the title screen, the name entry, the main menu and the Mini-games screen, with
-// Emerl's screen's menu and a fight's opening from start points. What the rest of their choices lead to isn't ported
+// The game so far: the logos, the intro, the title screen, the name entry, the main menu, the Mini-games screen and the options,
+// with Emerl's screen's menu and a fight's opening from start points. What the rest of their choices lead to isn't ported
 // yet, so the screen stays black there. The proof tools keep no name between runs, as a new cartridge wouldn't have one,
 // and `name` in the address is what a recording's start point gives the game for a saved one, and `open` for the entries
 // a save has opened on the Mini-games screen.
@@ -84,8 +84,16 @@ function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
   core.nameSave = cartridgeSave('sonic-battle-name', proof ? null : undefined);
   keptName(core);
+  core.languageSave = cartridgeSave('sonic-battle-language', proof ? null : undefined);
+  core.language = core.savedLanguage = core.languageSave.read()?.[0] ?? core.language;
   const saved = new URLSearchParams(location.search).get('name');
   if (saved !== null) core.name[0] = Number(saved) & 0xFFFF;
+  // a recording's start point for a saved language: the original is given it 40 frames in, past where it reads its save, and plays those alone
+  const language = new URLSearchParams(location.search).get('language');
+  if (language !== null) {
+    core.language = core.savedLanguage = Number(language) & 0xFF;
+    core.startUp -= 40;
+  }
   const open = new URLSearchParams(location.search).get('open');
   if (open !== null) core.miniGamesOpen = Number(open) & 0xFF;
   core.main = c => logos(c, intro);

@@ -20,12 +20,7 @@ const BG0VOFS = REG.BG0HOFS + 2, BG1HOFS = REG.BG0HOFS + 4, BG1VOFS = REG.BG0HOF
 const BG2HOFS = REG.BG0HOFS + 8, BG2VOFS = REG.BG0HOFS + 10, BG2PC = REG.BG2PA + 4, BG2PD = REG.BG2PA + 6;
 const BG3HOFS = REG.BG2PA - 4, BG3VOFS = REG.BG2PA - 2;
 
-// The language byte the save holds on a first start. The original's start-up, finding no valid save, writes a
-// default one (0x080215a8), whose byte 119 is 1: English in the USA copy. The title picks one of two tile sets
-// by it, and 0 would pick the other.
-const LANGUAGE = 1;
-
-// The two choices of background tiles: the map goes to the same place either way.
+// The two choices of background tiles, by the language byte (0 picks the other): the map goes to the same place either way.
 const TILE_SETS = [
   { tiles: 0x0841A418, words: 0x1BE0, map: 0x0841DBD8 },
   { tiles: 0x0841E5D8, words: 0x1CA0, map: 0x08421F18 },
@@ -93,7 +88,7 @@ function firstFrame(c) {
   c.video.write(REG.BG1CNT, 0x170B);
   c.video.write(REG.BG2CNT, 0x1F0F);
   c.video.write(REG.BG3CNT, 0x1E81);
-  const tiles = TILE_SETS[LANGUAGE];
+  const tiles = TILE_SETS[c.language ? 1 : 0];
   copyToVram(c, tiles.tiles, 0x06000000, tiles.words);
   copyToVram(c, tiles.map, 0x0600F000, 0x400);
   for (const [from, to, words] of LAYERS) copyToVram(c, from, to, words);
