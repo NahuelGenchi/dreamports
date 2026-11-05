@@ -14,6 +14,7 @@ import { UPSTREAM } from './lib/github.mjs';
 import { readClaims } from './lib/claims.mjs';
 import { firstFilesMessage, namesOf, startingEntry, startingFiles } from './lib/new-game.mjs';
 import { run as portmap } from './portmap.mjs';
+import { writeReadme } from './readme.mjs';
 import { consoleOf } from './consoles.mjs';
 import { forGame } from './lib/screens.mjs';
 
@@ -40,6 +41,8 @@ export async function run(args) {
     writeFileSync(join(folder, file), text);
   }
   await portmap([game]);
+  // a first entry brings its own row and map, as nothing else has them until it's on main
+  writeReadme();
   if (args.includes('--commit')) {
     const paths = [`games/${game}`, 'README.md', `.github/readme/progress/${game}.svg`];
     execFileSync('git', ['add', '--', ...paths], { cwd: REPO, stdio: 'pipe' });

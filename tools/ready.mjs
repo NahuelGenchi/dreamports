@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO, LOCAL } from './lib/paths.mjs';
+import { merging } from './lib/merge-main.mjs';
 
 const KEPT_LINES = 30;
 
@@ -34,5 +35,8 @@ export async function run(args) {
   step('check', npm('check'));
   step('build', npm('build'));
   console.log(failed.length ? `Not ready: ${failed.join(', ')}.` : 'Ready.');
+  // only a note, as a piece of a team build is built on that and not on main, and this may be run with no network
+  const onMain = ['upstream', 'origin'].map(remote => spawnSync('git', ['rev-list', '--count', `HEAD..${remote}/main`], { cwd: REPO, encoding: 'utf8' })).find(({ status }) => status === 0);
+  if (!failed.length && !merging(REPO) && Number(onMain?.stdout) > 0) console.log(`main has ${Number(onMain.stdout)} newer commits as far as this computer knows: npm run dp -- update ${game} brings them in before it goes out.`);
   return failed.length ? 1 : 0;
 }
