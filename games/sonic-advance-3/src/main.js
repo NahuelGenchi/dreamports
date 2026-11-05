@@ -15,6 +15,7 @@ import { createTouch } from '../../../kit/gba/ui/touch.js';
 import { createSound } from '../../../kit/gba/sound/audio.js';
 import { createCore, KEY } from './core.js';
 import { languageScreen } from './language.js';
+import { leaveForTheTitle } from './title.js';
 import { soundLayout } from './sound.js';
 import { startStage } from './stage/stage.js';
 import { placeCharacters } from './stage/player.js';
@@ -88,6 +89,14 @@ function createGame(video, rom, sound) {
     core.startUp = 1;
     core.step(0);
     core.runSound();
+  }
+  // &screen=title opens on the black frame the title screen starts with, as the intro leaves it, which recordings use as their
+  // start point. No dreamportsProof.neverInPlay here: the screen holds no character or countdown, so every frame of it is
+  // one a player can see
+  if (params.get('screen') === 'title') {
+    core.startUp = 1;
+    core.main = null;
+    leaveForTheTitle(core);
   }
   if (params.has('x')) {
     const jump = Number(params.get('jump'));

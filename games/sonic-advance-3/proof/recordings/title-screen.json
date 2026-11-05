@@ -1,0 +1,74 @@
+{
+  "about": "The title screen, from a start point, with nothing pressed until Start is pressed once the Press Start sign blinks, then the fade to the main menu's first frame.",
+  "frames": 443,
+  "start": "screen=title",
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      400,
+      [
+        "START"
+      ]
+    ],
+    [
+      404,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 2954,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          600,
+          [
+            "A"
+          ]
+        ],
+        [
+          604,
+          []
+        ],
+        [
+          701,
+          [
+            "A"
+          ]
+        ],
+        [
+          705,
+          []
+        ],
+        [
+          721,
+          [
+            "START"
+          ]
+        ],
+        [
+          725,
+          []
+        ],
+        [
+          761,
+          [
+            "A"
+          ]
+        ],
+        [
+          765,
+          []
+        ]
+      ],
+      "about": "Power-on with nothing saved, the language screen, a letter written and the name kept, then the logos and the intro with nothing pressed, up to the title screen."
+    }
+  ]
+}

@@ -58,7 +58,7 @@
     { "name": "The name entry, at the first start", "recording": "name-entry", "frames": [0, 8934] },
     { "name": "The SEGA and Sonic Team logos", "recording": "logos", "frames": [204, 699] },
     { "name": "The intro" },
-    { "name": "The title screen" },
+    { "name": "The title screen", "recording": "title-screen", "frames": [0, 442] },
     { "name": "The main menu" },
     { "name": "The character select" },
     { "name": "The story before the first zone" },
