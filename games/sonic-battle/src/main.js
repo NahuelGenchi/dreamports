@@ -20,6 +20,7 @@ import { intro } from './intro.js';
 import { keptName } from './name-entry.js';
 import { skills } from './skills.js';
 import { soundLayout } from './sound.js';
+import { startFight } from './fight.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from: the USA one, whose
 // addresses the code reads at
@@ -74,11 +75,11 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the logos, the intro, the title screen, the name entry, the main menu, the Mini-games screen and the options, with
-// Emerl's screen's menu from a start point. What the rest of their choices lead to isn't ported yet, so the screen stays
-// black there. The proof tools keep no name between runs, as a new cartridge wouldn't have one, and `name` in the address
-// is what a recording's start point gives the game for a saved one, and `open` for the entries a save has opened on the
-// Mini-games screen.
+// The game so far: the logos, the intro, the title screen, the name entry, the main menu, the Mini-games screen and the options,
+// with Emerl's screen's menu and a fight's opening from start points. What the rest of their choices lead to isn't ported
+// yet, so the screen stays black there. The proof tools keep no name between runs, as a new cartridge wouldn't have one,
+// and `name` in the address is what a recording's start point gives the game for a saved one, and `open` for the entries
+// a save has opened on the Mini-games screen.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
   core.nameSave = cartridgeSave('sonic-battle-name', proof ? null : undefined);
@@ -100,6 +101,13 @@ function createGame(video, rom, sound) {
   if (new URLSearchParams(location.search).has('skills')) {
     core.startUp = 1;
     core.main = skills;
+  }
+  // a recording's start point, as nothing leads to a fight yet: fight=training&vblanks=<count> opens one (fight.js).
+  // It places no fighter: the fight's own opening drops them in, and it's what's proven, so no neverInPlay is needed
+  const asked = new URLSearchParams(location.search);
+  if (asked.get('fight') === 'training') {
+    core.startUp = 1;
+    core.main = c => startFight(c, Number(asked.get('vblanks')));
   }
   return {
     step(keys) {
