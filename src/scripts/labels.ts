@@ -1,6 +1,9 @@
-// The rows of labels behind the launcher (docs/LABELS.md): flush rows of 240 x 60 pictures from the bottom of the
-// screen to the top, each drifting slowly the other way from the one below it. Only labels someone asked for are
-// here; a place with no label is left empty. The rows that stand furthest from the game take labels first.
+// The rows of labels behind the launcher (docs/LABELS.md): flush rows of 240 x 60 places from the bottom of the
+// screen to the top, each drifting slowly the other way from the one below it. A label someone asked for takes a
+// place, the rows furthest from the game first, and every other place shows one of the site's own designs
+// (label-designs.ts), each one different, so the rows are always full and nothing on the screen repeats.
+
+import { DH, DW, KINDS, drawDesign } from './label-designs';
 
 interface Label {
   src: string;
@@ -13,6 +16,11 @@ const DAYS = 30;
 // pixels a second
 const SPEED = 6;
 const DAY = 24 * 60 * 60 * 1000;
+
+// a design's own number, from its place
+const seedOf = (row: number, place: number) => (Math.imul(row + 1, 73856093) ^ Math.imul(place + 1, 19349663)) >>> 0;
+// which picture it is: neighbours in a row, and the places above and below, are never the same kind
+const kindOf = (row: number, place: number) => (row * 7 + place * 3) % KINDS;
 
 const box = document.querySelector<HTMLElement>('.launcher > .labels');
 const launcher = box?.closest<HTMLElement>('.launcher');
@@ -34,7 +42,7 @@ function run(box: HTMLElement, launcher: HTMLElement) {
     return from <= now && now < from + DAYS * DAY;
   });
   const rowsEl = box.querySelector<HTMLElement>('.label-rows');
-  if (!labels.length || !rowsEl) {
+  if (!rowsEl) {
     box.remove();
     return;
   }
@@ -61,9 +69,9 @@ function run(box: HTMLElement, launcher: HTMLElement) {
       const row = document.createElement('div');
       row.className = 'label-row';
       row.style.bottom = r * H + 'px';
-      if (!list.length) return row;
-      // half the track is at least the screen's width, and the other half repeats it, so the row never ends
-      const places = Math.max(across, list.length);
+      // Half the track is a place wider than the screen, and the other half repeats it, so the row never ends and
+      // a place and its repeat are never on the screen at once.
+      const places = Math.max(across + 1, list.length);
       const half = places * W;
       const seconds = Math.round(half / SPEED);
       const track = document.createElement('div');
@@ -71,9 +79,28 @@ function run(box: HTMLElement, launcher: HTMLElement) {
       track.style.width = half * 2 + 'px';
       track.style.animationDuration = seconds + 's';
       track.style.animationDelay = -((r * 29) % seconds) + 's';
-      list.forEach((label, j) => {
-        const at = Math.floor(((j + 0.5) * places) / list.length) * W;
-        for (const left of [at, at + half]) {
+
+      const taken = new Map<number, Label>();
+      list.forEach((label, j) => taken.set(Math.floor(((j + 0.5) * places) / list.length), label));
+
+      // every place without a label, drawn once into one picture for the whole row
+      const canvas = document.createElement('canvas');
+      canvas.className = 'label-designs';
+      canvas.width = places * 2 * DW;
+      canvas.height = DH;
+      canvas.style.width = half * 2 + 'px';
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        for (let k = 0; k < places; k++) {
+          if (taken.has(k)) continue;
+          ctx.putImageData(drawDesign(ctx.createImageData(DW, DH), kindOf(r, k), seedOf(r, k)), k * DW, 0);
+        }
+        ctx.drawImage(canvas, 0, 0, places * DW, DH, places * DW, 0, places * DW, DH);
+      }
+      track.append(canvas);
+
+      for (const [k, label] of taken) {
+        for (const left of [k * W, k * W + half]) {
           const img = document.createElement('img');
           img.src = label.src;
           img.alt = '';
@@ -84,7 +111,7 @@ function run(box: HTMLElement, launcher: HTMLElement) {
           img.style.left = left + 'px';
           track.append(img);
         }
-      });
+      }
       row.append(track);
       return row;
     });

@@ -315,9 +315,10 @@ kbd {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* The rows of labels behind it all, when someone has asked for one (Labels.astro, docs/LABELS.md): quiet, tinted
-   the site's blue, fainter around the game, out of the way of every press, and gone in the full-screen views and
-   while a game opens. Only the rows move, each as one layer, so nothing is drawn again as they drift. */
+/* The rows of labels behind it all (Labels.astro, docs/LABELS.md), the site's own designs in every place nobody
+   has asked for: quiet, tinted the site's blue, fainter around the game, out of the way of every press, and gone in
+   the full-screen views and while a game opens. Only the rows move, each as one layer, so nothing is drawn again as
+   they drift. */
 .labels {
   --labels-o: 0.32;
   position: absolute;
@@ -401,14 +402,21 @@ kbd {
   }
 }
 
-.label-track img {
+.label-track :is(img, canvas) {
   position: absolute;
   top: 0;
-  width: 240px;
   height: 60px;
   max-width: none;
   image-rendering: pixelated;
   filter: url(#label-tint);
+}
+
+.label-track img {
+  width: 240px;
+}
+
+.label-track canvas {
+  left: 0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -416,7 +424,7 @@ kbd {
     --labels-o: 0.3;
   }
 
-  :root:not([data-theme='light']) .label-track img {
+  :root:not([data-theme='light']) .label-track :is(img, canvas) {
     filter: url(#label-tint-dark);
   }
 }
@@ -425,7 +433,7 @@ kbd {
   --labels-o: 0.3;
 }
 
-:root[data-theme='dark'] .label-track img {
+:root[data-theme='dark'] .label-track :is(img, canvas) {
   filter: url(#label-tint-dark);
 }
 
