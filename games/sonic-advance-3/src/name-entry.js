@@ -2,15 +2,14 @@
 // from its middle, and the title comes in from the left with a little bounce. A cursor moves over a grid of letters on a
 // layer that scrolls: A writes one of up to six letters, B takes one away, L and R move along them, L and R together
 // with the d-pad jump through the grid, and Start or the grid's edge goes to the menu beside it, whose first button
-// keeps the name. Then the panel closes and the screen fades out, on to the logos, which aren't ported yet, so for now it
-// goes straight to Route 99's overworld. The other ways in, from the options and the link games, aren't ported yet either.
+// keeps the name. Then the panel closes and the screen fades out, on to the logos. The other ways in, from the options and the link games, aren't ported yet either.
 
 import { KEY } from './core.js';
 import { REG } from '../../../kit/gba/video.js';
 import { createSprite, updateSprite, displaySprite, transformSprite } from './sprite.js';
 import { drawBackground } from './background.js';
 import { SINE } from './stage/trig.js';
-import { startStage } from './stage/stage.js';
+import { gameIntro } from './logos.js';
 
 const OBJ_VRAM = 0x10000;
 const SE_SELECT = 0x6A, SE_ABORT = 0x6B, SE_DPAD_SELECT = 0x6C;
@@ -25,7 +24,7 @@ const LEFT_X = 0x1A, RIGHT_X = 0xBA, TOP_Y = 0x34, BOTTOM_Y = 0x84, SCROLL_END =
 const OPEN_H = 0x6C00, OPEN_TOP = 0x2A00, SHUT_TOP = 0x6000, GROW = 0x1000, RISE = 0x800;
 const TITLE_REACH = 0xA00;
 // the frames the screen stays black after the fade out, as the original's does until its logos start to show
-const BLACK_BEFORE_THE_LOGOS = 16;
+const BLACK_BEFORE_THE_LOGOS = 14;
 // the first button of the menu, the one that keeps the name, and its L and R below it
 const MENU_KEEP = 0, MENU_L = 1, MENU_R = 2;
 // the letter that's a space, which a name of nothing but can't be kept
@@ -174,19 +173,17 @@ function fadeOut(t) {
   t.main = beforeTheLogos;
 }
 
-// The black the logos start from. They and all that comes before the overworld aren't ported yet, nor is writing the save
-// (0x08001E58), so after it the game goes straight to Route 99's overworld.
+// The black the logos start from. Writing the save (0x08001E58) isn't ported yet.
 function beforeTheLogos(t) {
   const s = t.data, { c } = s;
   if (--s.black > 0) return;
   c.destroyTask(t);
   c.lineScroll = null;
   c.lineRegister = REG.BG0HOFS + 12;
-  c.dispCnt = 0x80;
   c.bgCnt.fill(0);
   c.bldCnt = 0;
   c.bldY = 0;
-  startStage(c, 2);
+  gameIntro(c, 1);
 }
 
 // 0x0809227C: the panel opening and the title coming in
