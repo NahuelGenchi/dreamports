@@ -42,7 +42,7 @@ export function createCore(video, rom, sound) {
     },
     flags: 0, flagsPreVBlank: 0,
     dispCnt: 0x80, bgCnt: new Uint16Array(4), bgScroll: new Uint16Array(8), winRegs: new Uint16Array(6), bldCnt: 0, bldAlpha: 0, bldY: 0,
-    bgAffine: null,   // the rotating layer's registers, once a screen sets them (menu.js)
+    bgAffine: null,   // the rotating layer's registers, once a screen sets them (title.js, menu.js)
     bgPalette: new Uint16Array(256), objPalette: new Uint16Array(256),
     oamBuffer: new Uint16Array(OAM_ENTRIES * 4).fill(0x200),
     input: 0, prevInput: 0, pressed: 0, released: 0, repeated: 0,
