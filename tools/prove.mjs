@@ -27,6 +27,7 @@ import { compareState, describeState } from './lib/state.mjs';
 import { fromStartPoint, measure, percentText } from '../src/lib/entries.mjs';
 import { writeReadme, readProof } from './readme.mjs';
 import { referenceOf } from './lib/reference.mjs';
+import { checkSizes, firstOtherSize } from './lib/screens.mjs';
 import { notesAbout } from './notes.mjs';
 
 const BATCH = 120;
@@ -45,7 +46,7 @@ export async function run(args) {
   if (!game) throw new Error('Usage: npm run dp -- prove <game> [recording…] [--quick] [--stills <frames>] [--state <frames>]');
   const quick = args.includes('--quick');
   const original = readOriginal(game);
-  const reference = await referenceOf(original.console);
+  const reference = await referenceOf(original);
   const recordings = readRecordings(game, names);
   if (!recordings.length) throw new Error(`games/${game}/proof/recordings/ has no recordings yet: make one with npm run dp -- play ${game} --record <name>.`);
   const copy = copyWith(original.sha1);
@@ -207,6 +208,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     say('playing the original…');
     const functions = codeMap?.functions ?? [];
     const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, sound: true, sets });
+    checkSizes(first.outside.sizes, machine, Array.from(originalOf, g => g + 1), (_, frame) => frame);
     const expected = Array.from(originalOf, g => first.hashes[g + 1]);
     const compareSound = soundOf(first.sound, machine), heardOf = Array.from(originalOf, g => g + 1);
     // the frames next to a stretch only the original has, whose sound isn't compared: the original's runs into or out
@@ -226,7 +228,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // --quick goes on no further than the first difference and what's asked for
     const lastAsked = Math.max(-1, ...asked, ...askedState);
     // each frame's picture hash, and how its sound differs, or null when it's the same
-    const hashes = [], heard = [], sounds = [], keptFrames = new Set(), neverInPlay = [];
+    const hashes = [], heard = [], sounds = [], keptFrames = new Set(), neverInPlay = [], ownSizes = [];
     const differs = f => hashes[f] !== expected[f] || sounds[f] !== null;
     let firstDifference = -1, firstNew = -1, firstPicture = -1;
     // the frames whose state to compare: those asked for, and the first picture that differs
@@ -241,6 +243,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       hashes.push(...played.hashes);
       heard.push(...played.sound);
       neverInPlay.push(...played.neverInPlay);
+      ownSizes.push(...played.sizes);
       // a frame's sound is measured with the frame after it, so the batch's last waits for the next batch, unless it's the last
       const known = from + count === frames || played.hashes.length < count ? hashes.length : from + count - 1;
       for (let f = sounds.length; f < known; f++) sounds.push(unheard.has(f) ? null : compareSound(heard, heardOf, f));
@@ -434,11 +437,9 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       console.log(`  Pixels that differ in the frames asked for: ${askedPixels.slice(0, 12).map(s => `${s.frame}, ${s.pixels ? `${s.pixels.toLocaleString('en')}, from ${s.box[0]},${s.box[1]} to ${s.box[2]},${s.box[3]}` : 'none'}`).join('; ')}${askedPixels.length > 12 ? `; and ${askedPixels.length - 12} more in report.json` : ''}.`);
     }
     if (pictureDifferent.length && soundDifferent.length) console.log(`  Frames whose picture differs: ${listed(stretchesOf(pictureDifferent))}.`);
-    // an emulator can crop what it shows, and some consoles change their screen, so it isn't wrong in itself
-    const { width: originalWidth, height: originalHeight } = first.outside;
-    if (pictureDifferent.length && originalWidth && (originalWidth !== machine.screen[0] || originalHeight !== machine.screen[1])) {
-      console.log(`  The original's screen ended this recording at ${originalWidth} by ${originalHeight}, and kit/consoles.js says ${machine.screen.join(' by ')}, so a picture of that size can't match. Its emulator's settings in tools/consoles.mjs may be cropping it (docs/CONSOLES.md).`);
-    }
+    // a picture of another size can't match, whatever its pixels are
+    const otherSize = first.outside.sizes && firstOtherSize(first.outside.sizes, ownSizes, hashes.length, f => originalOf[f] + 1);
+    if (otherSize) console.log(`  At frame ${otherSize.frame} the original's picture is ${otherSize.original.join(' by ')} and the Dreamport's ${otherSize.dreamport.join(' by ')}, so they can't match.`);
     if (soundDifferent.length) {
       const { frame, side, band, original: theirs, dreamport: ours, dB, silent } = firstSound;
       const where = `around ${band.toLocaleString('en')} Hz, on the ${side}`;

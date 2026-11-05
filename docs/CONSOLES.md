@@ -8,7 +8,9 @@ A Dreamport can be of a game on any console, and the proof tools work the same w
 
 [`kit/consoles.js`](../kit/consoles.js) lists each console: its name, the size of its screen, how long a frame lasts, how many sound samples a second it mixes, the kinds of file a copy comes in, and its buttons. Games read it in the browser, and the tools read it too. [`tools/consoles.mjs`](../tools/consoles.mjs) adds what only the tools need: which emulator runs the original, and which of that emulator's buttons is each of the console's.
 
-A game's `proof/original.json` names its console, and everything follows from that: `rom` tells a copy by what it holds, whichever console it's for, `prove` compares at that console's size, rate and frame time, `capture` opens a window with its buttons, and `new` starts a game on it.
+A game's `proof/original.json` names its console, and everything follows from that: `rom` tells a copy by what it holds, whichever console it's for, `prove` compares at that console's rate and frame time, and at the game's screen, `capture` opens a window with its buttons, and `new` starts a game on it.
+
+A game that chooses its own screen says so in the same file, as `"screen": [256, 224]`, or as a list when it changes partway, `"screen": [[320, 224], [256, 224]]`, the size it starts at first. With none it's the console's size in `kit/consoles.js`. A Game Boy Advance game has no say, as its screen never changes.
 
 ## What runs the original
 
@@ -41,7 +43,7 @@ These are the numbers each emulator gave for a small program, once it had set up
 | PlayStation | 60 | 44,100 | 320 by 240 | 4.5 MB | 2 MB |
 | Nintendo 64 | 60.02 | The game's choice, heard at 44,100 | 640 by 240 | 17 MB | 8 MB |
 
-**Screens.** An emulator may not show the whole screen unless told to, as FCEUmm cuts the NES's to 224 lines, which is why it has settings for that. A game can also choose its own size: a Mega Drive game can use 256 or 320 across, a PlayStation game many sizes, and a Nintendo 64 game can show twice the lines. The kit knows one size for each console, so such a game can't match yet, and `prove` says when the sizes are why a picture differs.
+**Screens.** An emulator may not show the whole screen unless told to, as FCEUmm cuts the NES's to 224 lines, which is why it has settings for that. A game can also choose its own size: a Mega Drive game can use 256 or 320 across, a PlayStation game many sizes, and a Nintendo 64 game can show twice the lines. Such a game lists its sizes in its `proof/original.json`. Each frame is compared at the size it has, so it can change partway, and the same pixels in another shape are another picture. `prove` stops when the original shows a size the game doesn't list, and gives the line to write, leaving out frames only the original has, as nothing compares them. When the Dreamport's picture is another size than the original's, `prove` says at which frame. The stills and clips `prove` makes have room for the largest width and height listed, with a smaller picture filled with black on the right and below. A capture is cut to the size its moment shows, so no band of black reaches a game's card, and `capture` stops only at a picture too large for what the game lists, which would lose its edges. Genesis Plus GX showed a small program at 256 by 224 and then 320 by 224 as it chose, with 256 by 192 on its very first frame, which nothing compares. So far only the made-up console has proved a game at its own size.
 
 **Names and regions.** FCEUmm reads a copy's region from words anywhere in its path, so `Games (a)/program (E).nes` ran as a European copy, at 50 frames a second. The tools now give an emulator the copy under a plain name of their own, except a disc's `.cue`, which names its tracks from where it is. A copy that really is for another region's consoles stops with a sentence saying so, as `prove` knows a region only by a frame's length.
 
@@ -63,7 +65,7 @@ Code ported counts only the port map's names on another console, as a libretro c
 
 The code map comes from a list, with `codemap --from`, a decompilation's symbols or a disassembler's list of functions, as the tools find functions only in Game Boy Advance code. `read` knows only the Game Boy Advance's instructions, and on another console a disassembler on the person's own computer does that job. What it prints stays there, by the same rules as `read`. `prove --state` compares what the console holds through the kit's video, so on another console it says that it can't, and the picture and sound are still compared.
 
-There's no kit of its own for another console yet. A game starts on what's general in `kit/gba/`, its start screen, input, clock, settings and touch screen, as `npm run dp -- new` writes it, drawing its own picture at its console's size and giving `proof?.listen` how long its frame lasts. What a second game on a console turns out to share becomes that console's kit, `kit/<console>/`. A copy larger than a browser can hold in memory, as a disc can be, would need its own way of being read, which nobody has written.
+There's no kit of its own for another console yet. A game starts on what's general in `kit/gba/`, its start screen, input, clock, settings and touch screen, as `npm run dp -- new` writes it, drawing its own picture at the game's size, which `createGame` can change by giving `size`, and giving `proof?.listen` how long its frame lasts. What a second game on a console turns out to share becomes that console's kit, `kit/<console>/`. A copy larger than a browser can hold in memory, as a disc can be, would need its own way of being read, which nobody has written.
 
 ## Adding a console
 

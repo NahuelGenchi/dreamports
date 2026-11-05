@@ -73,10 +73,15 @@ async function tryGame(page, server, game, rom) {
   const open = `!document.getElementById('sheet-wrap').hidden`;
   await page.evaluate(`document.querySelector('.settings-open').click()`);
   check(await until(page, open, 'the settings', 5000).then(() => true, () => false), 'the settings button opens the settings');
-  await page.evaluate(`__press(0, true)`);
+  // held until the settings have read it, two frames on
+  await page.evaluate(`__press(0, true); new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))`);
   await wait(200);
   check(await page.evaluate(`${COLOUR} === 'blue'`), 'the game waits while they\'re open');
+  // A acts as it's let go, on what's picked, and the settings open with Back to the game picked
   await page.evaluate(`__press(0, false)`);
+  check(await until(page, `!(${open})`, 'the settings to close', 5000).then(() => true, () => false), 'letting go of A presses Back to the game');
+  await page.evaluate(`document.querySelector('.settings-open').click()`);
+  await until(page, open, 'the settings', 5000);
   await page.evaluate(`document.querySelector('[data-controls]').click()`);
   await until(page, `[...document.querySelectorAll('.view')].some(v => !v.hidden && /Controls/.test(v.textContent) && /Start/.test(v.textContent))`, 'the controls', 5000);
   check(true, 'the settings list the game\'s controls');
