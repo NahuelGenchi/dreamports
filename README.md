@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src=".github/readme/launcher.webp" width="100%" alt="The Dreamports launcher: a row of games, each playing a short recording of itself, while the top bar turns between Dreamports and Make.">
+<img src=".github/readme/launcher.webp" width="760" alt="The Dreamports launcher: a row of games, each playing a short recording of itself, opening a game's page from Dreamports and from Make.">
 
 <br>
 
