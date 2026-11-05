@@ -15,6 +15,7 @@ import { readClaims } from './lib/claims.mjs';
 import { firstFilesMessage, namesOf, startingEntry, startingFiles } from './lib/new-game.mjs';
 import { run as portmap } from './portmap.mjs';
 import { consoleOf } from './consoles.mjs';
+import { forGame } from './lib/screens.mjs';
 
 const USAGE = 'Usage: npm run dp -- new <game> [--commit] [--repo <owner/name>]';
 
@@ -25,7 +26,7 @@ export async function run(args) {
   if (!game || !repository) throw new Error(USAGE);
   const original = readOriginal(game);
   if (!readCodeMap(game)) throw new Error(`games/${game}/ has no code map yet, and the whole game is mapped first: npm run dp -- codemap ${game}.`);
-  consoleOf(original.console);
+  forGame(consoleOf(original.console), original);
   const issue = readClaims(repository).gameIssueOf(game);
   if (!issue) throw new Error(`Nobody has claimed ${game} with a New Dreamport issue in ${repository} yet, which comes first: /dreamport does it, and so does the New Dreamport form.`);
   const lead = issue.assignees[0]?.login ?? issue.user.login;

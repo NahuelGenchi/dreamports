@@ -38,7 +38,7 @@ const sound = createSound({
     startSong(address, ahead = 0) { call('startSong', address, ahead); },
     stopSong() { call('stopSong'); },
     setMusicVolume(volume) { call('setMusicVolume', volume); },
-    playEffect(address) { call('playEffect', address); },
+    playEffect(address, unless) { call('playEffect', address, unless); },
   }),
 });
 proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
@@ -68,8 +68,8 @@ createRomSetup(picker, {
   onPlay: start,
 });
 
-// The game so far: the copyright screen, the logos, the title screen and then, as what comes between isn't ported yet, the
-// story's opening scene and Crash on foot in the first world's hub.
+// The game so far: the copyright screen, the logos, the title screen, the load save game screen, the main menu and, from its
+// Story Mode, the story's opening scene and Crash on foot in the first world's hub. The menu's other lines end on a white screen.
 function createGame(video, rom, sound) {
   const core = createCore(video, rom, sound);
   return { step(keys) { step(core, keys); }, hblank(y) { hblank(core, y); } };

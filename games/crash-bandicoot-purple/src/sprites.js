@@ -92,20 +92,6 @@ export function drawSprite(sprites, sprite, screenX, screenY, colours) {
   sprites.tiles += (offset + 1) & ~1;
 }
 
-/** 0x0800E1A8: a line of the game's letters, a sprite each of 8 by 16, in the colours `font.colours`. */
-export function drawText(sprites, font, text, x, y, colours) {
-  const { rom, list, jobs } = sprites, slot = colourSlot(sprites, font.colours, colours);
-  for (const char of text) {
-    const width = rom.u8(font.widths + char);
-    if (char !== 32 && x + width > 0 && x <= 239) {
-      list.push([(y & 0xFF) | 0x9000, x & 0x1FF, (slot << 12) | sprites.tiles]);
-      jobs.push([font.tiles + rom.u8(font.map + char) * font.size, sprites.tiles, font.count]);
-      sprites.tiles += font.count;
-    }
-    x += width;
-  }
-}
-
 /** 0x0800E1A8: a letter from the font's tiles at `from`, at priority 0, of the shape and size its font gives. */
 export function drawLetter(sprites, from, x, y, slot, { shape, size, tiles }) {
   sprites.list.push([(y & 0xFF) | shape, (x & 0x1FF) | size, (slot << 12) | sprites.tiles]);

@@ -1,6 +1,6 @@
 {
-  "about": "The title screen left by pressing A rather than Start, while the name is still arriving, through the same fade to white, up to the last frame before the load save game screen, which is not ported.",
-  "frames": 561,
+  "about": "The title screen left by pressing A rather than Start, while the logo is still arriving, through the same fade to white.",
+  "frames": 570,
   "held": [
     [
       0,

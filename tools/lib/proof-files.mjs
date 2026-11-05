@@ -1,5 +1,6 @@
 // A game's proof files, in games/<game>/proof/:
-// - original.json: the copy of the original the proof is measured on, { console, name, title, code, sha1 }
+// - original.json: the copy of the original the proof is measured on, { console, name, title, code, sha1 }, and for a game
+//   that chooses its own screen, `screen` (lib/screens.mjs)
 // - code-map.json: every function in that copy, its address and size, and nothing of its code
 // - recordings/<name>.json: recorded play (recording.mjs)
 // - progress.json: what prove found, recording by recording, and the % it makes

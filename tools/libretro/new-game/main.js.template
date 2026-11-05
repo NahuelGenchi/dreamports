@@ -1,5 +1,5 @@
 // @TITLE_JS@: the player's copy, checked and kept in this browser, then the game a frame at a time, on what the kits
-// share (kit/gba/, docs/CONSOLES.md), at the console's own screen, rate and buttons (kit/consoles.js).
+// share (kit/gba/, docs/CONSOLES.md), at the game's screen and the console's own rate and buttons (kit/consoles.js).
 
 import '../../../kit/gba/canvas.js';
 import { createRomSetup } from '../../../kit/gba/ui/rom-setup.js';
@@ -44,7 +44,7 @@ createRomSetup(picker, {
 });
 
 // the game's own code: what the original does each frame, then its picture. To begin with, one colour: blue, and green
-// while a button is held
+// while a button is held. A game that changes its screen's size partway, as its original does, gives it as `size`
 function createGame() {
   return {
     step() { this.held = MACHINE.buttons.some(name => input[name.toLowerCase()]); },
@@ -57,8 +57,14 @@ function start() {
   stage.hidden = false;
   const game = createGame();
   const out = screen.getContext('2d', { alpha: false });
-  [screen.width, screen.height] = MACHINE.screen;
-  const image = out.createImageData(screen.width, screen.height), pixels = new Uint32Array(image.data.buffer);
+  let image, pixels;
+  const sizeTo = ([width, height]) => {
+    if (image && width === screen.width && height === screen.height) return;
+    [screen.width, screen.height] = [width, height];
+    image = out.createImageData(width, height);
+    pixels = new Uint32Array(image.data.buffer);
+  };
+  sizeTo(@SCREEN_JS@);
   // at the console's own rate: each of the display's frames runs the game's frames that are due, then draws
   const clock = createClock(1000 * MACHINE.frame[0] / MACHINE.frame[1]);
   clock.reset();
@@ -71,6 +77,7 @@ function start() {
       ran = true;
     }
     if (ran) {
+      if (game.size) sizeTo(game.size);
       game.draw(pixels);
       out.putImageData(image, 0, 0);
     }

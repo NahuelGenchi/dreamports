@@ -105,22 +105,23 @@ export async function runReference({ program, args, env, width, height, stateByt
 /**
  * Runs the original along with a person, from power-on: `frame(buttons)` plays one frame with those bits held and
  * resolves to { picture, sound }, its picture as `runReference` gives one and its sound as bytes of left and right
- * samples, as `runReference` gives them too. `end()` stops it. The same buttons at the same frames give `runReference`
- * the same pictures.
+ * samples, as `runReference` gives them too, and with `sized`, for a program that writes each picture's own width and
+ * height after it, `size`. `end()` stops it. The same buttons at the same frames give `runReference` the same pictures.
  */
-export function playReference({ program, args, cwd, env, width, height, buttonBytes = 2 }) {
+export function playReference({ program, args, cwd, env, width, height, buttonBytes = 2, sized = false }) {
   const child = spawn(program, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } });
-  const PICTURE = width * height * 2;
+  const PICTURE = width * height * 2, COUNT = PICTURE + (sized ? 8 : 0);
   let data = Buffer.alloc(0), waiting = null, ended = null, stderr = '';
   const settle = () => {
-    if (!waiting || data.length < PICTURE + 4) return;
-    const whole = PICTURE + 4 + data.readUInt32LE(PICTURE) * 4;
+    if (!waiting || data.length < COUNT + 4) return;
+    const whole = COUNT + 4 + data.readUInt32LE(COUNT) * 4;
     if (data.length < whole) return;
     const { resolve } = waiting;
     waiting = null;
     resolve({
       picture: new Uint16Array(data.buffer.slice(data.byteOffset, data.byteOffset + PICTURE)),
-      sound: data.subarray(PICTURE + 4, whole),
+      sound: data.subarray(COUNT + 4, whole),
+      ...(sized ? { size: [data.readUInt32LE(PICTURE), data.readUInt32LE(PICTURE + 4)] } : {}),
     });
     data = data.subarray(whole);
   };
