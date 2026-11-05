@@ -1,7 +1,15 @@
 # A Mini-games picture's colours can land while the screen is drawn, and how far down depends on the sound playing.
 
-About: The mini-games; mini-games-open; mini-games-locked; 0x08031e68
+About: The mini-games; mini-games-open; mini-games-locked; mini-games-long; 0x08031e68
 
-Proof: #508; mini-games-open; mini-games-locked
+Proof: #508; #545; mini-games-open; mini-games-locked; mini-games-long
 
-With every entry open, 0x08031e68 unpacks the tiles and then the palette of the entry's picture past the interrupt at line 1, so SoundMain's cycles come before its colours land, and the top lines of the picture, from line 49, keep the old ones for a frame. Counting the unpacking's cycles as mGBA does and adding SoundMain's gives every frame of `mini-games-open`, whose colours land after line 49 at frame 1360 and line 55 at frame 1600. With the new letters' cycles too, the same total says when a move passes the next V-blank: in a run of 176 moves, 128 of them compared and with no late frames in the Dreamport, the lost frames showed in BG3VOFS, those with a known total at 251,244 cycles or more and every kept one at 239,677 or fewer. That's not only the third entry: moving up to the second with a new row can lose one too when much of the sound plays. Past about 267,500 the frame's scroll misses it as well, as at frame 1601. That run still had 47 of its 8,822 frames differing, nearly all a row or two of the picture, as the sound's count is close but not exact. On a new save the pictures are short and land at once: `mini-games-locked` plays 64 presses with every frame the same.
+With every entry open, 0x08031e68 unpacks the tiles and then the palette of the entry's picture past the interrupt at line 1, so SoundMain's cycles come before its colours land, and the lines drawn by then, from line 49 of the picture, keep the old ones for a frame. On a new save the pictures are short and land at once.
+
+#545 measured SoundMain (0x0804834C) in mGBA over 176 moves. The colours land after the cycles to the tiles' unpacking (20 more going down than up), the unpacking, 250 more, SoundMain's, and the sound chip's DMA: 18 cycles every 25,536. The first line with the new colours is the first drawn after that, each line being drawn 1,008 cycles into it.
+
+A landing a line off shows, so the count had to be right to a few cycles, with no line or frame written down. It took counting CgbSound (0x08049C20), 253 to 1,445 cycles, with its SOUNDCNT_X check and the chip's sequencer behind it; and two more sound frames at the start, for the envelope's step and for 0x08049744's restart of the DMA, 110 cycles every ninth frame.
+
+A move past the next V-blank loses a frame of the list. Past 245,000 cycles of work (243,988 kept, 245,880 lost) the sprites stay in time, past 246,600 (247,361 late) they take the frame after, and past 267,500 the scroll does too.
+
+A second run of 176 other moves, not kept, had all 9,977 frames the same. PSG voices 1 and 2 don't sound on this screen, so their costs are voice 4's, unmeasured.

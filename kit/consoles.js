@@ -1,5 +1,5 @@
 // The consoles Dreamports knows, as the kits' games and the proof tools both read them (docs/CONSOLES.md). Each has its
-// name, the screen a game shows (`screen`, width and height), how long a frame lasts (`frame`, that many ticks of a
+// name, the screen a game shows unless its original.json says another (`screen`, width and height), how long a frame lasts (`frame`, that many ticks of a
 // clock of that many a second), how many sound samples it mixes a second (`sound`, as the tools' reference for it does),
 // the files a copy of one of its games comes in (`files`), how large one can be in bytes (`largest`), and its buttons.
 
@@ -13,9 +13,9 @@ export const CONSOLES = {
   snes: { name: 'Super Nintendo', screen: [256, 224], frame: [357366, 21477272], sound: 32040, files: ['.sfc', '.smc'], largest: 12 * MB, buttons: ['A', 'B', 'X', 'Y', 'L', 'R', 'SELECT', 'START', ...PAD] },
   gb: { name: 'Game Boy', screen: [160, 144], frame: [70224, 4194304], sound: 32768, files: ['.gb'], largest: 8 * MB, buttons: ['A', 'B', 'SELECT', 'START', ...PAD] },
   gbc: { name: 'Game Boy Color', screen: [160, 144], frame: [70224, 4194304], sound: 32768, files: ['.gbc'], largest: 8 * MB, buttons: ['A', 'B', 'SELECT', 'START', ...PAD] },
-  md: { name: 'Mega Drive', screen: [320, 224], frame: [127840, 7670454], sound: 44100, files: ['.md', '.gen', '.smd', '.bin'], largest: 8 * MB, buttons: ['A', 'B', 'C', 'X', 'Y', 'Z', 'MODE', 'START', ...PAD] },
-  n64: { name: 'Nintendo 64', screen: [320, 240], frame: [1001, 60000], sound: 44100, files: ['.z64', '.n64', '.v64'], largest: 64 * MB, buttons: ['A', 'B', 'Z', 'L', 'R', 'START', 'C_UP', 'C_DOWN', 'C_LEFT', 'C_RIGHT', ...PAD, ...STICK] },
-  ps1: { name: 'PlayStation', screen: [320, 240], frame: [1001, 59940], sound: 44100, files: ['.cue', '.bin', '.iso', '.chd', '.pbp', '.exe'], largest: 800 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L1', 'R1', 'L2', 'R2', 'L3', 'R3', 'SELECT', 'START', ...PAD, ...STICK] },
+  md: { name: 'Mega Drive', screen: [320, 224], frame: [128006, 7670454], sound: 44100, files: ['.md', '.gen', '.smd', '.bin'], largest: 8 * MB, buttons: ['A', 'B', 'C', 'X', 'Y', 'Z', 'MODE', 'START', ...PAD] },
+  n64: { name: 'Nintendo 64', screen: [640, 240], frame: [811125, 48681812], sound: 44100, files: ['.z64', '.n64', '.v64'], largest: 64 * MB, buttons: ['A', 'B', 'Z', 'L', 'R', 'START', 'C_UP', 'C_DOWN', 'C_LEFT', 'C_RIGHT', ...PAD, ...STICK] },
+  ps1: { name: 'PlayStation', screen: [320, 240], frame: [1, 60], sound: 44100, files: ['.cue', '.bin', '.iso', '.chd', '.pbp', '.exe'], largest: 800 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L1', 'R1', 'L2', 'R2', 'L3', 'R3', 'SELECT', 'START', ...PAD, ...STICK] },
   ps2: { name: 'PlayStation 2', screen: [640, 448], frame: [1001, 59940], sound: 48000, files: ['.iso', '.chd', '.cso', '.bin', '.cue'], largest: 9000 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L1', 'R1', 'L2', 'R2', 'L3', 'R3', 'SELECT', 'START', ...PAD, ...STICK] },
   psp: { name: 'PlayStation Portable', screen: [480, 272], frame: [1001, 59940], sound: 44100, files: ['.iso', '.cso', '.chd', '.pbp', '.elf'], largest: 1800 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L', 'R', 'SELECT', 'START', ...PAD, ...STICK] },
   // a console that was never made, whose emulator is tools/test/made-up-core.c: the tools' own test of everything here, on any computer

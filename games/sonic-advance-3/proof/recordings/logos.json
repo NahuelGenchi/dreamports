@@ -1,0 +1,27 @@
+{
+  "about": "Opening from a start point, with A just pressed on the language screen. One letter written and the name kept, then the black, Presented by SEGA, the hand and the emerald, and Created by Sonic Team, up to the black the intro starts from.",
+  "frames": 700,
+  "start": "screen=name-entry",
+  "clip": {
+    "at": 204,
+    "frames": 300
+  },
+  "held": [
+    [0, ["A"]],
+    [4, []],
+    [101, ["A"]],
+    [105, []],
+    [121, ["START"]],
+    [125, []],
+    [161, ["A"]],
+    [165, []]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 600,
+      "held": [[0, []]],
+      "about": "Power-on with nothing saved, up to the language screen, with nothing pressed: its A is the recording's first frame."
+    }
+  ]
+}

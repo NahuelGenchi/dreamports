@@ -259,6 +259,11 @@ export function frame(c) {
     drawSprites(c);
     return;
   }
+  // and a frame that ran past it with them done is a frame of the list lost, and no more
+  if (list.frameLost) {
+    list.frameLost = false;
+    return;
+  }
   for (list.walking = list.resume ?? 0; list.walking < nodes.length; list.walking++) {
     const node = nodes[list.walking];
     node.run(c, node);

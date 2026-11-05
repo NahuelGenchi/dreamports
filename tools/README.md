@@ -185,7 +185,7 @@ A line such as `08001234:  4801  ldr r0, =0x03000010  @ 0x0800123C`, made up for
 
 ## Proving a part
 
-A part, such as a game's logos or one of its acts, is proven by a recording that plays the whole of it, from its first frame to its last, so a recording that skips any of it with Start doesn't prove it. It may end with a press that moves the game on, the way a player leaves it: Sonic Advance Dreamport's title screen is frames 902 to 1252 of `neo-green-hill-act-1`, which ends it with Start, as left alone it would move on to a demo the Dreamport doesn't have yet. These steps prove one:
+A part, such as a game's logos or one of its acts, is proven by a recording that plays the whole of it, from its first frame to its last, so a recording that skips any of it with Start doesn't prove it. It may end with a press that moves the game on, the way a player leaves it: Sonic Advance Dreamport's title screen is frames 902 to 1252 of `neo-green-hill-act-1`, which ends it with Start. These steps prove one:
 
 1. Make a recording that plays the whole part and a little of what comes after it, with `play --record`, with `play --record --from` to start where another recording reaches the part, or by hand.
 2. Run `npm run dp -- prove <game> <recording>` and read the stretches where the original's screen is one colour. A part usually starts as one of them ends and ends as the next one does. Where the screen is one colour between two parts, as when one fades out and the next fades in, those frames go with the part before, so the next part starts on the first frame that isn't one colour.
@@ -226,7 +226,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 
 | File | What it holds |
 | :--- | :--- |
-| `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum, and `keysAfterVBlank` for a game that reads its buttons just after the V-blank |
+| `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum, `keysAfterVBlank` for a game that reads its buttons just after the V-blank, and `screen` for a game on another console that [chooses its own size](../docs/CONSOLES.md#how-a-console-is-known) |
 | `recordings/` | Recorded play, one file per recording |
 | `code-map.json` | The code map |
 | `progress.json` | Each recording's results and the code that ran in matching play, written by `prove` |

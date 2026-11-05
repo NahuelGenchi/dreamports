@@ -35,6 +35,7 @@ export const KNOWN_VERSIONS = [
       credits: 0x6815B4,
       emeraldMessage: 0x6C5650,
       optionsBackground: 0x6C5650,
+      timeAttackMenu: 0x6959D0,
       courseSelectBackground: 0x69A6D0,
       playerDataBackground: 0x6C5C10,
       vsRecordBackgrounds: 0x6847B0,
@@ -43,6 +44,7 @@ export const KNOWN_VERSIONS = [
       soundTestSongs: 0x683F74,
       soundTestBackground: 0x67CF38,
       languageBackground: 0x6C7BD0,
+      demoRecordings: 0x7B97E8,
     },
   },
 ];

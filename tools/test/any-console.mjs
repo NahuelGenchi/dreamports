@@ -40,21 +40,27 @@ const report = recording => JSON.parse(readFileSync(join(resultFolder(GAME, reco
 const lastLine = ({ out }) => out.trim().split('\n').at(-1);
 
 // the game's own code, which does what the made-up console's cartridge says, as a Dreamport does what its original does.
-// `change` makes a game that differs from it somewhere
-const GAME_CODE = ({ colourB = 'colours[2]', loud = '0.5', unseen = false } = {}) => `function createGame() {
+// `change` makes a game that differs from it somewhere. `size` is the screen it works out, and `shape` the size it says that
+// picture has, when it says another. `upAndDown` changes the screen as the cartridge's Up and Down do
+const GAME_CODE = ({ colourB = 'colours[2]', loud = '0.5', unseen = false, size = [64, 48], shape = null, upAndDown = false } = {}) => `function createGame() {
   const colours = Array.from(new Uint16Array(rom.buffer.slice(6, 22)));
-  let frame = Number(new URLSearchParams(location.search).get('later')), pressed = -1, phase = 0;
+  let frame = Number(new URLSearchParams(location.search).get('later')), pressed = -1, phase = 0, [width, height] = ${JSON.stringify(size)};
   proof?.listen((left, right) => {
     for (let i = 0; i < left.length; i++, phase++) left[i] = right[i] = pressed < 0 ? 0 : Math.floor(phase * 880 / 44100) % 2 ? ${loud} : -(${loud});
   }, 44100, 1 / 50);
   const paint = colour => 0xFF000000 | (colour & 31) << 19 | (colour >> 6 & 31) << 11 | (colour >> 11 & 31) << 3;
   return {
-    step() { pressed = input.a ? 1 : input.b ? 2 : input.start ? 3 : -1;${unseen ? " if (globalThis.dreamportsProof) dreamportsProof.neverInPlay = 'it says so';" : ''} },
+    size: ${JSON.stringify(shape ?? size)},
+    step() {
+      pressed = input.a ? 1 : input.b ? 2 : input.start ? 3 : -1;${unseen ? " if (globalThis.dreamportsProof) dreamportsProof.neverInPlay = 'it says so';" : ''}
+      ${upAndDown ? `if (input.up) [width, height] = [64, 48]; else if (input.down) [width, height] = ${JSON.stringify(size)};
+      this.size = [width, height];` : ''}
+    },
     draw(pixels) {
       const bar = paint(colours[4]);
       const shown = pressed === 2 ? ${colourB} : colours[pressed < 0 ? 0 : pressed];
-      for (let y = 0; y < 48; y++) pixels.fill(paint(shown ^ y % 12), y * 64, (y + 1) * 64);
-      for (let y = 0; y < 48; y++) pixels[y * 64 + frame % 64] = bar;
+      for (let y = 0; y < height; y++) pixels.fill(paint(shown ^ y % 12), y * width, (y + 1) * width);
+      for (let y = 0; y < height; y++) pixels[y * width + frame % width] = bar;
       frame++;
     },
   };
@@ -172,6 +178,10 @@ async function main() {
   run = dp('prove', GAME, 'later');
   check(run.status === 0 && report('later').matched === 40, `a start point writes to the core's work memory, and matches from there: ${report('later').matched} of ${report('later').frames}`);
   if (run.status) console.log(run.out);
+  writeFileSync(join(proofFolder(GAME), 'recordings', 'rates.json'), `${JSON.stringify({ about: 'The game chooses another sound rate, and back.', frames: 120, held: [[0, []], [10, ['RIGHT']], [11, []], [20, ['A']], [60, []], [70, ['LEFT']], [71, []], [80, ['A']], [110, []]] }, null, 2)}\n`);
+  run = dp('prove', GAME, 'rates');
+  check(run.status === 0 && report('rates').matched === 120 && report('rates').sound.heard, `a game that chooses its own sound rate is heard at the one the tools compare at: ${report('rates').matched} of ${report('rates').frames}`);
+  if (run.status) console.log(run.out);
   run = dpWith({ DISPLAY: ':99', WAYLAND_DISPLAY: 'nowhere' }, 'prove', GAME, 'later', '--quick');
   check(run.status === 0, `a browser nobody sees doesn't mind a screen it can't reach: ${lastLine(run)}`);
   if (process.platform !== 'win32') {
@@ -230,6 +240,123 @@ async function main() {
     refused = error.message;
   }
   check(refused.includes('music.dat: this is a copy of a game'), `share won't publish one of its tracks under another name: ${refused || 'it would'}`);
+
+  await ownScreen(cartridge);
+}
+
+// a picture's size, from its file: a PNG's, or a WebP's as a browser writes one, lossy or not
+const sizeOfPng = bytes => [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
+function sizeOfWebp(bytes) {
+  if (bytes.toString('latin1', 12, 16) === 'VP8 ') return [bytes.readUInt16LE(26) & 0x3FFF, bytes.readUInt16LE(28) & 0x3FFF];
+  const bits = bytes.readUInt32LE(21);
+  return [(bits & 0x3FFF) + 1, (bits >> 14 & 0x3FFF) + 1];
+}
+
+// a game that chooses its own screen, from the cartridge's first frame and then partway through
+async function ownScreen(cartridge) {
+  console.log('A game that chooses its own screen, on a console that has one size');
+  const chosen = Buffer.concat([cartridge, Buffer.from(new Uint16Array([40, 30]).buffer)]);
+  const copy = join(WORK, 'chooses.mu');
+  writeFileSync(copy, chosen);
+  const original = { console: 'made-up', name: 'Test Made Up (World)', title: 'MADEUP', code: 'MU', sha1: createHash('sha1').update(chosen).digest('hex') };
+  const said = screen => writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify({ ...original, ...(screen ? { screen } : {}) }, null, 2)}\n`);
+  const PROGRESS = join(proofFolder(GAME), 'progress.json');
+  rmSync(proofFolder(GAME), { recursive: true, force: true });
+  mkdirSync(join(proofFolder(GAME), 'recordings'), { recursive: true });
+  said(null);
+  writeFileSync(join(proofFolder(GAME), 'recordings', 'buttons.json'), `${JSON.stringify({ about: 'Each button, then none.', frames: 100, held: [[0, []], [30, ['A']], [50, []]] }, null, 2)}\n`);
+  writeFileSync(join(proofFolder(GAME), 'recordings', 'changes.json'), `${JSON.stringify({ about: 'The game changes its screen, and back.', frames: 100, held: [[0, []], [20, ['UP']], [21, []], [60, ['DOWN']], [61, []]] }, null, 2)}\n`);
+  let run = dp('rom', copy);
+  check(run.status === 0 && run.out.includes(GAME), 'rom knows the copy');
+
+  // a game that doesn't say so
+  writeGame(GAME_CODE({ size: [40, 30] }));
+  run = dp('prove', GAME, 'buttons');
+  check(run.status !== 0 && run.out.includes('"screen": [40,30]') && !existsSync(PROGRESS), `a game that doesn't say the size it shows fails, however its frames compare, and is told what to write: ${lastLine(run)}`);
+  said([64, 48]);
+  run = dp('prove', GAME, 'buttons');
+  check(run.status !== 0 && run.out.includes('its original.json says 64 by 48') && run.out.includes('"screen": [40,30]'), 'nor does saying the wrong one pass');
+  said([40]);
+  run = dp('prove', GAME, 'buttons');
+  check(run.status !== 0 && run.out.includes('"screen" in original.json is a width and a height'), `a size that isn't one is refused: ${lastLine(run)}`);
+
+  // what new writes
+  said([40, 30]);
+  const files = startingFiles(GAME, { ...original, screen: [40, 30] });
+  check(files['src/main.js'].includes('sizeTo([40,30])'), 'what new writes starts at the size the game says');
+  check(startingFiles(GAME, { ...original, screen: [[40, 30], [64, 48]] })['src/main.js'].includes('sizeTo([40,30])'), 'and at the first it lists');
+  check(startingFiles(GAME, original)['src/main.js'].includes('sizeTo([64,48])'), 'and at the console\'s when it says none');
+  writeFileSync(join(gameFolder(GAME), 'src', 'main.js'), files['src/main.js']);
+
+  // the game at its size
+  writeGame(GAME_CODE({ size: [40, 30] }));
+  run = dp('prove', GAME, 'buttons');
+  const same = report('buttons');
+  check(run.status === 0 && same.matched === 100 && same.sound.heard, `every frame of a game at the size it says matches: ${same.matched} of ${same.frames}`);
+  if (run.status) console.log(run.out);
+  const still = sizeOfPng(readFileSync(join(resultFolder(GAME, 'buttons'), 'dreamport.png')));
+  check(still[0] === 80 && still[1] === 80, `its stills are its size, twice over, under the bar: ${still.join(' by ')}`);
+
+  // a Dreamport that doesn't draw it
+  writeGame(GAME_CODE());
+  run = dp('prove', GAME, 'buttons');
+  check(run.status !== 0 && report('buttons').firstDifference?.frame === 0 && run.out.includes("At frame 0 the original's picture is 40 by 30 and the Dreamport's 64 by 48"), 'a Dreamport at another size differs at once, and prove says that\'s why');
+  writeGame(GAME_CODE({ size: [40, 30], shape: [30, 40] }));
+  run = dp('prove', GAME, 'buttons');
+  check(run.status !== 0 && report('buttons').matched === 0 && run.out.includes("the Dreamport's 30 by 40"), `the same pixels in another shape don't match: ${report('buttons').matched} of 100`);
+
+  // a screen that changes partway
+  writeGame(GAME_CODE({ size: [40, 30], upAndDown: true }));
+  run = dp('prove', GAME, 'changes');
+  check(run.status !== 0 && run.out.includes('64 by 48 at frame 20') && run.out.includes('"screen": [[40,30],[64,48]]'), `a game that changes to a size it doesn't list fails, and is told what to write: ${lastLine(run)}`);
+  said([[40, 30], [64, 48]]);
+  run = dp('prove', GAME, 'changes');
+  const changing = report('changes');
+  check(run.status === 0 && changing.matched === 100, `a game that lists both matches through the change and back: ${changing.matched} of ${changing.frames}`);
+  if (run.status) console.log(run.out);
+  const roomy = sizeOfPng(readFileSync(join(resultFolder(GAME, 'changes'), 'dreamport.png')));
+  check(roomy[0] === 128 && roomy[1] === 116, `its stills have room for the larger: ${roomy.join(' by ')}`);
+  run = dp('prove', GAME, 'buttons');
+  check(run.status === 0 && report('buttons').matched === 100, 'a recording that shows only one of them matches too');
+  writeGame(GAME_CODE({ size: [40, 30] }));
+  run = dp('prove', GAME, 'changes');
+  check(run.status !== 0 && report('changes').firstDifference?.frame === 20 && run.out.includes("At frame 20 the original's picture is 64 by 48 and the Dreamport's 40 by 30"), 'a Dreamport that doesn\'t change with it differs where it changes');
+  writeFileSync(join(proofFolder(GAME), 'recordings', 'skips.json'), `${JSON.stringify({ about: 'The original alone shows the other size, on its way to where this starts.', frames: 60, held: [[0, []]], onlyInOriginal: [{ at: 0, frames: 30, held: [[0, ['UP']], [1, []], [20, ['DOWN']], [21, []]] }], start: 'later=30' }, null, 2)}\n`);
+  said([40, 30]);
+  run = dp('prove', GAME, 'skips');
+  check(run.status === 0, `a size only in the frames only the original has needs no saying, as they aren't compared: ${lastLine(run)}`);
+  if (run.status) console.log(run.out);
+
+  // its capture, on its card at the size that moment shows, whatever else the game lists
+  const clipSize = () => {
+    const file = readFileSync(join(MEDIA, `${GAME}-dreamport.h264.mp4`)), at = file.indexOf('tkhd');
+    return [file.readUInt32BE(at + 80) >> 16, file.readUInt32BE(at + 84) >> 16];
+  };
+  const cardSize = () => [sizeOfWebp(readFileSync(join(MEDIA, `${GAME}-dreamport-still.webp`))).join(' by '), clipSize().join(' by ')].join(', ');
+  const capture = (presses, name = 'chooses-presses') => {
+    const file = join(WORK, `${name}.json`);
+    writeFileSync(file, `${JSON.stringify({ frames: 500, held: presses }, null, 2)}\n`);
+    return dp('capture', GAME, '--from', file);
+  };
+  const playing = [[0, []], [30, ['A']]];
+  said([40, 30]);
+  run = capture(playing);
+  check(run.status === 0 && cardSize() === '80 by 60, 80 by 60', `capture keeps it at its size: ${cardSize()}`);
+  if (run.status) console.log(run.out);
+  said([[64, 48], [40, 30]]);
+  run = capture(playing);
+  check(run.status === 0 && cardSize() === '80 by 60, 80 by 60', `a moment at the smaller of the sizes a game lists has no band of black: ${cardSize()}`);
+  if (run.status) console.log(run.out);
+  run = capture([[0, []], [5, ['UP']], [6, []], [30, ['A']]]);
+  check(run.status === 0 && cardSize() === '128 by 96, 128 by 96', `and one at the larger is that size: ${cardSize()}`);
+  if (run.status) console.log(run.out);
+  said(null);
+  run = capture(playing);
+  check(run.status === 0 && cardSize() === '80 by 60, 80 by 60', `a game that hasn't said its size yet can still be played for its card, as the picture fits: ${cardSize()}`);
+  if (run.status) console.log(run.out);
+  said([32, 24]);
+  run = capture(playing);
+  check(run.status !== 0 && run.out.includes('"screen": [40,30]'), 'a picture too large for the size it says stops at once, as it would lose its edges');
 }
 
 const kept = { readme: readFileSync(README), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };
