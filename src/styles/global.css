@@ -411,11 +411,6 @@ kbd {
   filter: url(#label-tint);
 }
 
-/* a label; a row's scenes are one picture as wide as the row, with its width set as it's made */
-.label-track img {
-  width: 240px;
-}
-
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) .labels {
     --labels-o: 0.3;

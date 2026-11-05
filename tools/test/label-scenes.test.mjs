@@ -168,7 +168,7 @@ function flicker(pixels, w) {
   return worst;
 }
 
-test('softened for a gliding row, no scene flickers much, and nearly every pixel stays as drawn', () => {
+test('softened for a gliding row, no scene flickers much, and most pixels stay as drawn', () => {
   let before = 0, after = 0, touched = 0, total = 0;
   for (let kind = 0; kind < KINDS; kind++) {
     const pixels = drawScene(240, kind, seedOf(1, kind));
@@ -182,10 +182,62 @@ test('softened for a gliding row, no scene flickers much, and nearly every pixel
     before = Math.max(before, flicker(pixels, 240));
     after = Math.max(after, flicker(calm, 240));
   }
-  assert.ok(after <= 11, `the worst flicker is ${after.toFixed(1)}`);
-  assert.ok(after < before * 0.7, `from ${before.toFixed(1)} to ${after.toFixed(1)}`);
-  assert.ok(touched / total < 0.06, `${((100 * touched) / total).toFixed(1)}% of pixels changed`);
+  assert.ok(after <= 8, `the worst flicker is ${after.toFixed(1)}`);
+  assert.ok(after < before * 0.45, `from ${before.toFixed(1)} to ${after.toFixed(1)}`);
+  assert.ok(touched / total < 0.3, `${((100 * touched) / total).toFixed(1)}% of pixels changed`);
   // a flat picture, or one with only gentle steps, is left exactly as it is
   const flat = new Uint8ClampedArray(240 * SCENE_H * 4).fill(200);
   assert.deepEqual(steady(flat, 240), flat);
+});
+
+// How much a long upright edge's sharpness swings as a row glides, in a spot 6 wide and the whole place tall.
+function edgeFlicker(pixels, w, x0) {
+  const Y = new Float32Array(w * SCENE_H);
+  for (let i = 0; i < Y.length; i++) Y[i] = 0.2126 * pixels[i * 4] + 0.7152 * pixels[i * 4 + 1] + 0.0722 * pixels[i * 4 + 2];
+  const [sharp, soft] = [0, 0.5].map((f) => {
+    let a = 0;
+    for (let y = 0; y < SCENE_H; y++)
+      for (let x = x0; x < x0 + 6; x++) {
+        const at = (q) => (1 - f) * Y[y * w + q] + f * Y[y * w + q + 1];
+        a += (at(x + 1) - at(x)) ** 2;
+      }
+    return Math.sqrt(a / (6 * SCENE_H));
+  });
+  return Math.abs(sharp - soft);
+}
+
+test('the line where two places meet, and long upright edges, soften the most', () => {
+  // a night sky beside a sunny street, which flickered most where they met
+  const row = new Uint8ClampedArray(480 * SCENE_H * 4);
+  const night = drawScene(240, NAMES.indexOf('space'), 7);
+  const day = drawScene(240, NAMES.indexOf('plaza'), 8);
+  for (let y = 0; y < SCENE_H; y++) {
+    row.set(night.subarray(y * 960, (y + 1) * 960), y * 1920);
+    row.set(day.subarray(y * 960, (y + 1) * 960), y * 1920 + 960);
+  }
+  const calm = steady(row, 480, [0, 240]);
+  const before = edgeFlicker(row, 480, 237);
+  const after = edgeFlicker(calm, 480, 237);
+  assert.ok(after < before * 0.4, `where they meet, from ${before.toFixed(1)} to ${after.toFixed(1)}`);
+  // without being told where places meet, the same long edge still softens, if less
+  const unseen = edgeFlicker(steady(row, 480), 480, 237);
+  assert.ok(unseen < before * 0.7, `an unmarked long edge, from ${before.toFixed(1)} to ${unseen.toFixed(1)}`);
+  // a line one pixel tall and as sharp doesn't run upright, so it's left as drawn
+  const dash = new Uint8ClampedArray(240 * SCENE_H * 4).fill(255);
+  for (let x = 100; x < 140; x++) dash.set([0, 0, 0], (30 * 240 + x) * 4);
+  assert.deepEqual(steady(dash, 240).subarray(30 * 960 + 105 * 4, 30 * 960 + 135 * 4), dash.subarray(30 * 960 + 105 * 4, 30 * 960 + 135 * 4));
+});
+
+test('a label with clear parts never darkens where it meets them', () => {
+  // clear on the left, an orange label on the right
+  const pixels = new Uint8ClampedArray(240 * SCENE_H * 4);
+  for (let y = 0; y < SCENE_H; y++) for (let x = 120; x < 240; x++) pixels.set([200, 100, 50, 255], (y * 240 + x) * 4);
+  const calm = steady(pixels, 240, [0, 120]);
+  for (let y = 0; y < SCENE_H; y++)
+    for (const x of [119, 120, 239, 0]) {
+      const i = (y * 240 + x) * 4;
+      if (calm[i + 3]) assert.deepEqual([...calm.subarray(i, i + 3)], [200, 100, 50], `colour at ${x}, ${y}`);
+    }
+  // the edge softens by fading, not by turning dark
+  assert.ok(calm[(10 * 240 + 120) * 4 + 3] < 255 && calm[(10 * 240 + 119) * 4 + 3] > 0);
 });

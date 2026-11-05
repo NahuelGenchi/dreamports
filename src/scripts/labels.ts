@@ -54,7 +54,24 @@ function run(box: HTMLElement, launcher: HTMLElement) {
   // gives the page a turn between slices of drawing, so it never stutters while the rows are made
   const pause = () => new Promise<void>((done) => setTimeout(done, 0));
 
-  // one picture of a row's scenes, shown twice: as an image when the browser can make one, so its pixels are kept once
+  // each label's picture, loaded once and drawn into its row's picture
+  const loaded = new Map<string, Promise<HTMLImageElement | null>>();
+  const load = (src: string) => {
+    let got = loaded.get(src);
+    if (!got) {
+      const img = new Image();
+      img.src = src;
+      got = Promise.race([img.decode().then(() => img), new Promise<never>((_, fail) => setTimeout(fail, 4000))]).catch(() => {
+        // a label that didn't come leaves its place to a scene, and is tried again when the rows are next made
+        loaded.delete(src);
+        return null;
+      });
+      loaded.set(src, got);
+    }
+    return got;
+  };
+
+  // one picture of a row, shown twice: as an image when the browser can make one, so its pixels are kept once
   const picture = (canvas: HTMLCanvasElement) =>
     new Promise<string>((done) => {
       try {
@@ -71,10 +88,18 @@ function run(box: HTMLElement, launcher: HTMLElement) {
     const density = window.devicePixelRatio || 1;
     if (!rows || !width || built === `${rows} ${width} ${density}`) return;
     built = `${rows} ${width} ${density}`;
-    // where a scene's pixel is less than two of the screen's, its flickering details are softened as it's drawn
+    // where a picture's pixel is less than two of the screen's, its flickering details are softened once it's drawn
     const settle = density < 2;
     const mine = ++job;
     let slice = performance.now();
+    labels.forEach((label) => load(label.src));
+    const turn = async () => {
+      if (performance.now() - slice <= SLICE) return true;
+      await pause();
+      slice = performance.now();
+      // a newer size started over
+      return mine === job;
+    };
 
     // rows counted from the bottom: their places, their labels and where an invitation goes
     const plan = layout(width, height, labels.length, H);
@@ -99,24 +124,33 @@ function run(box: HTMLElement, launcher: HTMLElement) {
 
       const taken = new Map<number, Label>(plan[r].labels.map(({ index, place }) => [place, labels[index]]));
 
-      // every place without a label, drawn once into one picture for the whole row
+      // every place, its label or its scene, drawn once into one picture for the whole row
       const canvas = document.createElement('canvas');
       canvas.width = half;
       canvas.height = H;
       const ctx = canvas.getContext('2d');
       if (ctx) {
         for (let k = 0; k < places.length; k++) {
-          if (taken.has(k)) continue;
-          const image = ctx.createImageData(places[k], H);
-          const pixels = invite?.place === k ? drawInvite(invite.words, seedOf(r, k)) : drawScene(places[k], kindOf(r, k), seedOf(r, k));
-          image.data.set(settle ? steady(pixels, places[k]) : pixels);
-          ctx.putImageData(image, lefts[k], 0);
-          if (performance.now() - slice > SLICE) {
-            await pause();
-            // a newer size started over
-            if (mine !== job) return;
-            slice = performance.now();
+          const label = taken.get(k);
+          const shown = label ? await load(label.src) : null;
+          if (mine !== job) return;
+          if (shown) ctx.drawImage(shown, lefts[k], 0, W, H);
+          else {
+            const image = ctx.createImageData(places[k], H);
+            image.data.set(invite?.place === k ? drawInvite(invite.words, seedOf(r, k)) : drawScene(places[k], kindOf(r, k), seedOf(r, k)));
+            ctx.putImageData(image, lefts[k], 0);
           }
+          if (!(await turn())) return;
+        }
+        if (settle) {
+          try {
+            const all = ctx.getImageData(0, 0, half, H);
+            all.data.set(steady(all.data, half, lefts));
+            ctx.putImageData(all, 0, 0);
+          } catch {
+            // a picture the page may not read shows as it was drawn
+          }
+          if (!(await turn())) return;
         }
       }
       const url = ctx ? await picture(canvas) : '';
@@ -150,20 +184,6 @@ function run(box: HTMLElement, launcher: HTMLElement) {
       if (url) {
         fresh.push(url);
         canvas.width = canvas.height = 0;
-      }
-
-      for (const [k, label] of taken) {
-        for (const left of [lefts[k], lefts[k] + half]) {
-          const img = document.createElement('img');
-          img.src = label.src;
-          img.alt = '';
-          img.width = W;
-          img.height = H;
-          img.decoding = 'async';
-          img.draggable = false;
-          img.style.left = left + 'px';
-          track.append(img);
-        }
       }
       row.append(track);
       made.push(row);
