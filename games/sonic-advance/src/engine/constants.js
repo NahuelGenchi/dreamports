@@ -55,6 +55,13 @@ export const PHYSICS = {
 // sinks by 8/256 a frame
 export const TAILS = { flyTime: 240, flyLift: 24 / 256, flyFall: 8 / 256, flyLiftFrames: 32, flyRiseMax: 0.75 };
 
+// Amy's moves (player_amy.c, Player_TryJump): her leap off the hammer (down and attack), her dive (down and jump) along
+// the ground and up, the slide after it at least this fast, the second swing's kick, and how a swing slows her
+export const AMY = {
+  leapSpeed: 6, leapWaterSpeed: 3.375, diveSpeed: 4, diveWaterSpeed: 2.5, diveRise: 1.25, diveWaterRise: 0.75,
+  slideSpeed: 2, slideWaterSpeed: 1.25, slideLock: 15, swing2Speed: 3, swingFriction: 0.375,
+};
+
 // Knuckles' moves (player_knuckles.c). The glide starts at 3 (1.5 under water), slowing his fall by 1.5; it
 // speeds up by 6/256 a frame up to 3, then by 3/256 (9/256 with speed shoes) up to 18 while he glides straight,
 // and under water slows by 9/256 (12/256) a frame down to 3; his fall eases toward 0.5 by 24/256 a frame. Letting

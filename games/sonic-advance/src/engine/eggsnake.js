@@ -15,6 +15,7 @@ import { SINE } from './trig.js';
 import { setBossCamBounds, preBossCameraPan, bossPart, bossDebris, bossExplosion, bossHit26, HIT_ENEMY, HIT_PLAYER } from './bosses.js';
 import { SONG } from '../sound/songs.js';
 import { SCREEN_W, SCREEN_H } from './constants.js';
+import { fixes } from './fixes.js';
 
 export const EGG_SNAKE = 27;
 
@@ -99,8 +100,8 @@ export function eggSnake(e, slot, anims, ctx0) {
     draw(ctx, s);
     if (b.eggman === 0) draw(ctx, s2);
   }
-  // Sonic against the head: hitting Eggman in it from the air counts while it isn't flashing, and Eggman
-  // laughs when it hurts him (sub_8031D88)
+  // Sonic and the CPU partner against the head: hitting Eggman in it from the air counts while it isn't flashing,
+  // and Eggman laughs when it hurts them (sub_8031D88)
   function collide(ctx, x, y) {
     const { s, s2 } = b;
     s.white = false;
@@ -352,8 +353,9 @@ export function eggSnake(e, slot, anims, ctx0) {
   // he had on the frame before) bounces it down by that speed, to 8 px at the ends and 32 between, and back
   // up past where it was by half that, the two either side following by thirds; otherwise the segment he
   // stands on sinks 1 px a frame (2 while above its place), to 8 px at the ends and 16 between, and the others
-  // ease 1 px a frame toward a slope down to it, settling back once he is off. Once the boss is gone they
-  // hold nobody, and the manager goes when Sonic is on the ground.
+  // ease 1 px a frame toward a slope down to it, settling back once he is off. The CPU partner stands on the first
+  // segment he touches too, moving nothing and carried by nothing. Once the boss is gone they hold nobody, and the
+  // manager goes when Sonic is on the ground.
   function manager() {
     const ms = makeSprite('eggSnakeSegment', { order: 23 }), segs = [];
     const bumps = b.bumps;
@@ -449,6 +451,12 @@ export function eggSnake(e, slot, anims, ctx0) {
           slope(k, true);
         }
         before = { air: p.air, ysp: q8(p.ysp) };
+        if (ctx.players[1] && m.after === 0) {
+          for (let i = 0; i < SEGMENTS; i++) {
+            const g = segs[i];
+            if (platformTop(g, s16(g.x), s16(g.y + bumps[i]), g.boxes[0], ctx.players[1])) break;
+          }
+        }
         return !done;
       },
     };
@@ -510,15 +518,16 @@ export function eggSnake(e, slot, anims, ctx0) {
     const s = makeSprite('eggSnakeShot', { order: 15 }), p = ctx0.player;
     let qx = (b.swayX + 16) << 8, qy = b.swayY << 8;
     const dx = s16(Math.floor(p.x) - (x0 + I(qx))), dy = s16(Math.floor(p.y) - (y0 + I(qy)));
-    const a = octant(Div(dy, 2), Div(dx, 2));
+    let a = octant(Div(dy, 2), Div(dx, 2));
+    if (fixes.on) { if (a < 0) a = b.lastAim ?? 0; b.lastAim = a; }
     // from right where Sonic is, the angle is -1, and its sine is read from the halfword before the table
     const vx = SINE[a + 256] >> 6, vy = (a < 0 ? SINE_BEFORE : SINE[a]) >> 6;
     return {
       run(ctx) {
         qx += vx; qy += vy;
         const x = s16(x0 + I(qx)), y = s16(y0 + I(qy)), sx = s16(x - ctx.cam.x), sy = s16(y - ctx.cam.y);
-        if ((sy < -32 || sy > 176) && (vx >= 0 ? sx > 256 : sx < -32)) return false;
-        const found = !b.laserGone || b.slotTaken;
+        if (fixes.on ? sy < -32 || sy > 176 || sx > 256 || sx < -32 : (sy < -32 || sy > 176) && (vx >= 0 ? sx > 256 : sx < -32)) return false;
+        const found = fixes.on || !b.laserGone || b.slotTaken;
         if (found && b.hits >= HITS) { ctx.add(bossExplosion(ctx, x << 8, y << 8)); return false; }
         if (ctx.projectile(s, x, y) && found && b.body) {
           const { name } = b.s2.anim, over = over2 ?? b.s2.anim.done;

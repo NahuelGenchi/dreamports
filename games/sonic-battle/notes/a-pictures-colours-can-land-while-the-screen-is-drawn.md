@@ -1,0 +1,7 @@
+# A Mini-games picture's colours can land while the screen is drawn, and how far down depends on the sound playing.
+
+About: The mini-games; mini-games-open; mini-games-locked; 0x08031e68
+
+Proof: #508; mini-games-open; mini-games-locked
+
+With every entry open, 0x08031e68 unpacks the tiles and then the palette of the entry's picture past the interrupt at line 1, so SoundMain's cycles come before its colours land, and the top lines of the picture, from line 49, keep the old ones for a frame. Counting the unpacking's cycles as mGBA does and adding SoundMain's gives every frame of `mini-games-open`, whose colours land after line 49 at frame 1360 and line 55 at frame 1600. With the new letters' cycles too, the same total says when a move passes the next V-blank: in a run of 176 moves, 128 of them compared and with no late frames in the Dreamport, the lost frames showed in BG3VOFS, those with a known total at 251,244 cycles or more and every kept one at 239,677 or fewer. That's not only the third entry: moving up to the second with a new row can lose one too when much of the sound plays. Past about 267,500 the frame's scroll misses it as well, as at frame 1601. That run still had 47 of its 8,822 frames differing, nearly all a row or two of the picture, as the sound's count is close but not exact. On a new save the pictures are short and land at once: `mini-games-locked` plays 64 presses with every frame the same.

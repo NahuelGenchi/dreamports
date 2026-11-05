@@ -640,7 +640,8 @@ export function createVideo() {
 
   /**
    * Draws a frame into `out` (240 × 160 RGBA words, as an ImageData's buffer holds them). `hblank(y)` runs
-   * after line y is drawn, as the H-blank does, and may write registers for the next line. With `wide`, a
+   * after line y is drawn, as the H-blank does, and may write registers for the next line, and colours if it calls
+   * `updateColors()` after them. With `wide`, a
    * widescreen view of { w, h } (even numbers no smaller than the screen) instead, w × h words, with the scene's
    * `layers`, `sprites` and `windows` past the screen's edges (see drawTextWide, drawSprite and inWindow).
    * The registers are as they were before it afterwards, so a frame can be drawn again; the V-blank sets every
@@ -678,7 +679,10 @@ export function createVideo() {
     for (let k = 0; k < 2; k++) [ref[k][0], ref[k][1]] = beforeRef[k];
     // the V-blank starts the rotating layers from their reference points again
     cur[0][0] = ref[0][0]; cur[0][1] = ref[0][1]; cur[1][0] = ref[1][0]; cur[1][1] = ref[1][1];
+    // with ?proof, what prove compares with the original's (proof.js)
+    if (globalThis.dreamportsProof) dreamportsProof.video = video;
   }
 
-  return { vram, pal, oam, io, write, drawFrame, drawLine };
+  const video = { vram, pal, oam, io, write, drawFrame, drawLine, updateColors };
+  return video;
 }

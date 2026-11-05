@@ -29,21 +29,24 @@ function leaves(x, y, anims) {
 export function createShrub(e, slot, anims) {
   if (e.kind !== SHRUBBERY) return null;
   const right = e.x + e.d[2] * 8, bottom = e.y + e.d[3] * 8;
-  let inside = false;   // Sonic was in it on the last frame it looked
+  const inside = [false, false];   // each player was in it on the last frame it looked
   return {
     run(ctx) {
-      const p = ctx.player, x = Math.floor(p.x), y = Math.floor(p.y), world = ctx.world;
-      if (x >= e.x && x <= right && y >= e.y && y <= bottom) {
-        if (!p.dead) {
-          if (!inside) {
-            const lx = x + ((world.random() & 0x1F00) >>> 8) - 16;
-            const ly = y + ((world.random() & 0x0F00) >>> 8) - 8;
-            ctx.add(leaves(lx, ly, anims), 0x3000);
-            world.playSound(SONG.SHRUBBERY);
+      const world = ctx.world;
+      for (const [i, p] of ctx.players.entries()) {
+        const x = Math.floor(p.x), y = Math.floor(p.y);
+        if (x >= e.x && x <= right && y >= e.y && y <= bottom) {
+          if (!p.dead) {
+            if (!inside[i]) {
+              const lx = x + ((world.random() & 0x1F00) >>> 8) - 16;
+              const ly = y + ((world.random() & 0x0F00) >>> 8) - 8;
+              ctx.add(leaves(lx, ly, anims), 0x3000);
+              world.playSound(SONG.SHRUBBERY);
+            }
+            inside[i] = true;
           }
-          inside = true;
-        }
-      } else inside = false;
+        } else inside[i] = false;
+      }
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       return true;
     },

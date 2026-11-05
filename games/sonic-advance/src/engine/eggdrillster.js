@@ -106,7 +106,7 @@ export function eggDrillster(e, slot, anims, ctx) {
     }
   }
 
-  // sub_803596C: the flash's window goes, then Sonic against the car, unless it is still flashing from the
+  // sub_803596C: the flash's window goes, then Sonic and the CPU partner against the car, unless it is still flashing from the
   // last hit
   function hitTest(ctx, x, y) {
     b.window = false;

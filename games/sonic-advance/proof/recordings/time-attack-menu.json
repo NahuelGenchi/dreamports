@@ -1,0 +1,31 @@
+{
+  "about": "From power-on with nothing saved, to the main menu, Down to Time Attack and A, then its menu left alone for a while, Down to Records and Up back to Start, Down held long enough to repeat, and B back to the main menu, which is left alone again.",
+  "frames": 2200,
+  "held": [
+    [0,[]],
+    [150,["A"]],
+    [156,[]],
+    [950,["START"]],
+    [956,[]],
+    [1300,["START"]],
+    [1306,[]],
+    [1550,["START"]],
+    [1556,[]],
+    [1650,["DOWN"]],
+    [1654,[]],
+    [1680,["DOWN"]],
+    [1684,[]],
+    [1730,["A"]],
+    [1736,[]],
+    [1830,["DOWN"]],
+    [1834,[]],
+    [1880,["UP"]],
+    [1884,[]],
+    [1920,["DOWN"]],
+    [1975,[]],
+    [2000,["UP"]],
+    [2004,[]],
+    [2021,["B"]],
+    [2025,[]]
+  ]
+}

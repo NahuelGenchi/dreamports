@@ -35,8 +35,8 @@ export function createCore(video, rom, sound) {
     video, rom, sound,
     // gUnknown_03002030: the screen's callback, which the main loop runs once a frame
     callback: null,
-    // gUnknown_030048e0: the keys (0x08020198)
-    keys: { held: 0, inverted: 0xFFFF, pressed: 0, released: 0, repeated: 0, timer: 0, delay: 0, interval: 0 },
+    // gUnknown_030048e0: the keys (0x08020198), with how long a held key takes to repeat, as 0x0802021c(0, 0) sets it
+    keys: { held: 0, inverted: 0xFFFF, pressed: 0, released: 0, repeated: 0, timer: 15, delay: 15, interval: 7 },
     // gUnknown_03000070 and gUnknown_030000c0: display registers queued for the next V-blank (0x0801fba0)
     queue: [],
     // gUnknown_03003178: the copies of BG0CNT to BG3CNT
@@ -49,11 +49,26 @@ export function createCore(video, rom, sound) {
     // gUnknown_030033e0 and gUnknown_03003190: the sprites queued for that copy, each the three words of its OAM
     // entry, and their rotation matrices, each its four words (0x08018004 and 0x08017f34)
     sprites: [], matrices: [],
+    // gUnknown_030044d0 and gUnknown_030048d0: the sprites as OAM will hold them, and whether the next V-blank copies
+    // them (0x0801ffa4), which the screens built from a list of nodes draw into (0x0801fda0)
+    oamBuffer: new Uint16Array(512), oamBufferFull: 0,
+    // gUnknown_03004900: what's queued to be copied just after the V-blank (0x0802036c)
+    copies: [],
+    // gUnknown_03002170: the player's name (name-entry.js), six letters' room, and where it's kept, as the flash would
+    name: new Uint16Array(6), nameSave: null,
+    // gUnknown_03005264: the choice the main menu last made (menu.js)
+    menuChoice: 0,
+    // gUnknown_03002110[120]: which entries of the Mini-games screen the save has opened, a bit each (mini-games.js)
+    miniGamesOpen: 1,
     // gUnknown_03001b08, gUnknown_030016c0 and gUnknown_03001b2c: the logos' frame count, the cross-fade's
     // target and where it is (logos.js)
     counter: 0, blendTarget: 0, blend: 0,
     // gUnknown_03001378 and gUnknown_03002610: V-blanks and main loop frames counted
     vblanks: 0, frames: 0,
+    // what a long job finishes while the screen is being drawn, and after which of its lines (hblank)
+    lineWork: null,
+    // a move's cycles on the Mini-games screen, and its letters' (mini-games.js)
+    moveCycles: 0, textCycles: 0,
     startUp: START_UP_FRAMES,
     main: null,
   };
@@ -74,11 +89,23 @@ export function step(c, held) {
     }
     return;
   }
+  finishLineWork(c);
   vblank(c);
-  // 0x08020244: the copies queued for VRAM; nothing queues one yet
+  runCopies(c);
   readKeys(c, held);
   // 0x080005ac: a link cable game's reset, which needs a second console
   c.callback(c);
+}
+
+/** After line `line` is drawn: what a callback's long job has finished by then, which the lines below it show. */
+export function hblank(c, line) {
+  if (c.lineWork?.line === line) finishLineWork(c);
+}
+
+function finishLineWork(c) {
+  const work = c.lineWork;
+  c.lineWork = null;
+  work?.run(c);
 }
 
 // 0x08020198: the keys held now, those just pressed and just released, and those repeating while held
@@ -116,10 +143,35 @@ function vblank(c) {
     c.matrices.forEach((words, m) => words.forEach((word, i) => { oam[m * 16 + i * 4 + 3] = word; }));
     c.vblankCopies = 0;
   }
-  // 0x0801fbd8, 0x0801fbfc
-  for (const [offset, value] of c.queue) c.video.write(offset, value);
-  c.queue.length = 0;
+  // 0x0801fbd8, 0x0801fbfc: unless what queued them is still running, as it can be on a long frame (mini-games.js)
+  if (c.holdQueue) c.holdQueue = false;
+  else {
+    for (const [offset, value] of c.queue) c.video.write(offset, value);
+    c.queue.length = 0;
+  }
+  // 0x0801ffa4
+  if (c.oamBufferFull) c.video.oam.set(c.oamBuffer);
+  c.oamBufferFull = 0;
   c.frames++;
+}
+
+/** 0x08020244's first kind: what 0x0802036c queued, from the cartridge to the palette or VRAM. */
+function runCopies(c) {
+  for (const [to, from, bytes] of c.copies) {
+    const at = from - CARTRIDGE;
+    if (to < VRAM) {
+      const out = colours(c, to);
+      for (let i = 0; i < bytes >> 1; i++) out[i] = c.rom.u16(at + i * 2);
+    } else {
+      c.video.vram.set(c.rom.bytes.subarray(at, at + bytes), to - VRAM);
+    }
+  }
+  c.copies.length = 0;
+}
+
+/** 0x0802036c: `bytes` from the cartridge at `from` copied to `to` just after the next V-blank, at most 32 a frame. */
+export function queueCopy(c, to, from, bytes) {
+  if (c.copies.length <= 31) c.copies.push([to, from, bytes]);
 }
 
 /** 0x0801ff30's pattern over all of OAM: every sprite hidden, and every rotation matrix the identity. */
@@ -127,6 +179,14 @@ function hideSprites(c) {
   for (let i = 0; i < 32; i++) {
     c.video.oam.set([0x200, 0, 0, 0x100, 0x200, 0, 0, 0, 0x200, 0, 0, 0, 0x200, 0, 0, 0x100], i * 16);
   }
+}
+
+/** 0x0801ff30 itself: the same pattern in the buffer, which the next V-blank copies to OAM. */
+export function hideSpriteBuffer(c) {
+  for (let i = 0; i < 32; i++) {
+    c.oamBuffer.set([0x200, 0, 0, 0x100, 0x200, 0, 0, 0, 0x200, 0, 0, 0, 0x200, 0, 0, 0x100], i * 16);
+  }
+  c.oamBufferFull = 1;
 }
 
 /** 0x08017ed0: nothing queued, so the next copy leaves every sprite hidden. */
@@ -150,6 +210,90 @@ export function queueRegister(c, offset, value) {
 export function copyToVram(c, from, to, count) {
   const at = from - CARTRIDGE;
   c.video.vram.set(c.rom.bytes.subarray(at, at + count * 2), to - VRAM);
+}
+
+/**
+ * 0x0804a5b4, the BIOS's LZ77UnCompVram: a picture the cartridge keeps compressed as a byte stream (GBATEK's
+ * "LZ77 UnCompressed Data"), written to VRAM at `to`. The header gives the uncompressed size; then a flag byte
+ * says, its bits from the top, whether each of the next eight items is one byte as it is or two bytes: four bits
+ * of length less three, and twelve bits of how far back the bytes to copy are. VRAM takes only 16 bits at a time, so
+ * a byte waits until the next one completes its halfword, and a copy from one byte back reads what VRAM held before.
+ * The palette takes 16 bits at a time too, and a picture's colours are unpacked there the same way.
+ */
+export function decompress(c, from, to) {
+  const bytes = c.rom.bytes, { pal } = c.video;
+  const vram = to < VRAM ? new Uint8Array(pal.buffer, pal.byteOffset, pal.byteLength) : c.video.vram;
+  let at = from - CARTRIDGE;
+  if (bytes[at] !== 0x10) throw new Error(`No LZ77 picture at 0x${from.toString(16)}: its first byte is ${bytes[at]}.`);
+  const size = bytes[at + 1] | (bytes[at + 2] << 8) | (bytes[at + 3] << 16);
+  at += 4;
+  let out = to - (to < VRAM ? PALETTE : VRAM), waiting = 0;
+  const end = out + size;
+  const put = byte => {
+    if (out & 1) { vram[out - 1] = waiting; vram[out] = byte; }
+    else waiting = byte;
+    out++;
+  };
+  while (out < end) {
+    const flags = bytes[at++];
+    for (let bit = 7; bit >= 0 && out < end; bit--) {
+      if (flags & (1 << bit)) {
+        const word = (bytes[at] << 8) | bytes[at + 1];
+        at += 2;
+        const length = (word >> 12) + 3, back = (word & 0xFFF) + 1;
+        for (let i = 0; i < length; i++) put(vram[out - back]);
+      } else {
+        put(bytes[at++]);
+      }
+    }
+  }
+}
+
+/**
+ * How many of the console's cycles 0x0804a5b4 takes on the picture at `from`, as mGBA counts its stand-in for the BIOS's
+ * LZ77UnCompVram and the swi that calls it, without unpacking it.
+ */
+export function unpackCycles(c, from) {
+  const bytes = c.rom.bytes, at = from - CARTRIDGE;
+  return unpackWalk(bytes, at + 4, bytes[at + 1] | (bytes[at + 2] << 8) | (bytes[at + 3] << 16));
+}
+function unpackWalk(bytes, at, size) {
+  let out = 0, cycles = 76 + 20 + 7;
+  while (out < size) {
+    const flags = bytes[at++];
+    cycles += 19;
+    for (let bit = 7; bit >= 0 && out < size; bit--) {
+      cycles += 32;
+      if (flags & (1 << bit)) {
+        const length = (((bytes[at] << 8) | bytes[at + 1]) >> 12) + 3;
+        at += 2;
+        cycles += 10;
+        for (let i = 0; i < length; i++, out++) cycles += 12 - (out & 1 ? 2 : 0);
+      } else {
+        at++;
+        cycles += 5 - (out & 1 ? 2 : 0);
+        out++;
+      }
+    }
+  }
+  return cycles;
+}
+
+/**
+ * 0x08021000: a `columns` by `rows` block of a tilemap at `to`, each entry `base` plus the tile number the
+ * cartridge's table at `from` gives for it, the map's rows 32 entries apart.
+ */
+export function copyTileBlock(c, to, from, columns, rows, base) {
+  const at = from - CARTRIDGE, vram = c.video.vram;
+  let out = (to - VRAM) >> 1;
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < columns; x++, out++) {
+      const tile = c.rom.u16(at + (y * columns + x) * 2);
+      vram[out * 2] = (base + tile) & 0xFF;
+      vram[out * 2 + 1] = ((base + tile) >> 8) & 0xFF;
+    }
+    out += 32 - columns;
+  }
 }
 
 /** The palette's colours from `first`, as 16-bit words, the way the original reads and writes 0x05000000 on. */
@@ -227,6 +371,24 @@ export function fadeToBlack(c, first, count) {
       if (v & 0x1F) v--;
       if (v & 0x3E0) v -= 0x20;
       if (v & 0x7C00) v -= 0x400;
+      out[i] = v;
+      done = false;
+    }
+  }
+  return done;
+}
+
+/** 0x080206ec: each of `count` colours from `first` one step lighter in each of red, green and blue. True once
+ *  they're all white. */
+export function fadeToWhite(c, first, count) {
+  const out = colours(c, first);
+  let done = true;
+  for (let i = 0; i < count; i++) {
+    let v = out[i];
+    if ((v & 0x7FFF) !== 0x7FFF) {
+      if ((v & 0x1F) <= 0x1E) v++;
+      if ((v & 0x3E0) <= 0x3DF) v += 0x20;
+      if ((v & 0x7C00) <= 0x7BFF) v += 0x400;
       out[i] = v;
       done = false;
     }

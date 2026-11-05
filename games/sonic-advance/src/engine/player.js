@@ -5,20 +5,22 @@
 // their own: Sonic's mid-air moves and B combo (player_sonic.c), Tails' flight and tail swipe (player_tails.c),
 // Knuckles' glide, climb, punches and float (player_knuckles.c).
 
-import { PHYSICS as K, TAILS as F, KNUCKLES as N, ANIMATION, SPRITE_OFFSET_Y, BALL_SPRITE_OFFSET_Y, RUSH_BOOST as R, BOOST_MODE as B, SA2_TRICKS as T, SCREEN_W, SCREEN_H } from './constants.js';
+import { overlap } from './collide.js';
+import { PHYSICS as K, TAILS as F, KNUCKLES as N, AMY as H, ANIMATION, SPRITE_OFFSET_Y, BALL_SPRITE_OFFSET_Y, RUSH_BOOST as R, BOOST_MODE as B, SA2_TRICKS as T, SCREEN_W, SCREEN_H } from './constants.js';
 import { makeAnimator, setAnim, tickAnim } from './animator.js';
 import { groundSensors, wallPush, airCollision, glideCollision, clearance, setOffsetY, actAngle, floorUnder, actFloor, actCeiling, wallBeside } from './sensors.js';
 import { LAYER_BACK, scan, PROBE_FLOOR, PROBE_WALL } from './terrain.js';
 import { sin8, cos8, s8 } from './trig.js';
 import { SONG } from '../sound/songs.js';
 import { SA2_SE } from '../rom/sa2tricks.js';
+import { fixes } from './fixes.js';
 
 // d-pad bits for the input history the mid-air dash reads
 export const LEFT = 1, RIGHT = 2, UP = 4, DOWN = 8;
 const HISTORY = 16;
 const SOX = 6;   // spriteOffsetX, half his width
 // the characters (CHARACTER_SONIC, CHARACTER_TAILS and CHARACTER_KNUCKLES)
-export const SONIC = 0, TAILS = 1, KNUCKLES = 2;
+export const SONIC = 0, TAILS = 1, KNUCKLES = 2, AMY = 3;
 // the tail swipe's frame whose commands play its sound (animCmd_PlaySoundEffect)
 const SWIPE_SOUND_FRAME = 2;
 
@@ -49,6 +51,8 @@ export function createPlayer({ x, y, spinDashSpeeds, character = SONIC, stopProp
     rotation: 0,       // angle of the surface he is on, decaying toward 0 in the air
     rotA: 0, rotB: 0,  // the last angles the two ground sensors saw (the original's unk28/unk29)
     layer: LAYER_BACK, // which of the act's two collision layers he touches
+    hammerJump: false, // Amy, MOVESTATE_2000000: in the air with no hammer and no jump cap (her hammer's leap, a bounce)
+    dive: false,       // Amy, MOVESTATE_4000000: her dive, with its slide (sub_80495F0)
     lock: 0,           // frames of control lock left after slipping off a wall (unk2A)
     air: false,        // MOVESTATE_IN_AIR
     onObject: null,    // the object he stands on (MOVESTATE_STOOD_ON_OBJ and stoodObj)
@@ -97,6 +101,7 @@ export function createPlayer({ x, y, spinDashSpeeds, character = SONIC, stopProp
     track: 0x7F,       // unk99[0]: the step of the track carrying him, 0x7F none (marbletrack.js)
     scale: 0x100,      // unk80 and unk82: his size through the rotation hardware (8.8), smaller in a marble track
     drawRotation: 0,   // the rotation his sprite was last drawn with, which a marble track keeps
+    override: false,   // MOVESTATE_IA_OVERRIDE: an object moves him, as X Zone's way to the Moon Zone does (xending.js)
     scripted: false,   // MOVESTATE_800000: an object sets his state, which walking, standing and landing leave alone
     jumpPressed: false, // the jump press his last frame read (frameInput), which objects look at on the next
     attackPressed: false, // and its attack press
@@ -221,13 +226,28 @@ function doubleTap(p) {
 function tryJump(p, c, world) {
   if (!c.jumpPressed || clearance(p, world.terrain, actAngle(p) + 0x80) < 4) return false;
   p.air = true; p.jumped = true; p.pushing = false; p.grinding = false; p.state = 'spin';
-  const a = (p.rotation - 0x40) & 0xFF, jump = q8(rules(p).jumpSpeed);
+  let up = rules(p).jumpSpeed;
+  if (p.character === AMY) up = amyJump(p, c);
+  const a = (p.rotation - 0x40) & 0xFF, jump = q8(up);
   p.xsp = (q8(p.xsp) + ((jump * cos8(a)) >> 8)) / 256;
   p.ysp = (q8(p.ysp) + ((jump * sin8(a)) >> 8)) / 256;
-  if (p.curled) p.airLock = true;   // jumping out of a roll keeps the roll's momentum
-  else curl(p);
+  if (p.character !== AMY) {
+    if (p.curled) p.airLock = true;   // jumping out of a roll keeps the roll's momentum
+    else curl(p);
+  }
   world.playSound(SONG.JUMP);
   return true;
+}
+
+// Amy's jump (Player_TryJump): she stays uncurled (charState 85), and with down held she dives (91), thrown along
+// the ground as well as up. Returns how fast she leaves the ground.
+function amyJump(p, c) {
+  if (!c.down) { p.state = 'hammerRise'; return rules(p).jumpSpeed; }
+  p.state = 'dive'; p.hammerJump = false; p.dive = true; p.jumped = false; p.glideFlags = 2;
+  const along = q8(p.water ? H.diveWaterSpeed : H.diveSpeed), rot = p.rotation & 0xFF, dir = p.facing < 0 ? -1 : 1;
+  p.xsp = ((dir * along * cos8(rot)) >> 8) / 256;
+  p.ysp = ((dir * along * sin8(rot)) >> 8) / 256;
+  return p.water ? H.diveWaterRise : H.diveRise;
 }
 
 // spin dash: starts from a crouch with jump, revs with jump, releases when down is let go; only Sonic has a
@@ -327,6 +347,8 @@ function walkInput(p, c, world) {
       else if (p.state !== 'crouchEnd' && p.state !== 'lookUpEnd') p.state = 'idle';
       standHeight(p);
     }
+    // Amy crouches on the move, with no roll, slowing as she would braking
+    if (p.character === AMY && p.state === 'crouch') p.gsp = toward0(p.gsp, rules(p).deceleration * pace(p));
   }
   // standing still on level ground stops the push, and at an edge he balances; not in his act-clear pose
   if (!((p.rotation + 0x20) & 0xC0) && p.gsp === 0) {
@@ -345,7 +367,7 @@ function lookInput(p, c, world) {
   if (c.up && !c.down) { if (p.gsp === 0) p.state = 'lookUp'; }
   else if (c.down && !c.up) {
     p.state = 'crouch';
-    if (p.gsp !== 0) { curl(p); p.state = 'spin'; world.playSound(SONG.SPIN); }
+    if (p.gsp !== 0 && p.character !== AMY) { curl(p); p.state = 'spin'; world.playSound(SONG.SPIN); }
   } else if (!c.up && !c.down) {
     if (p.state === 'crouch') p.state = 'crouchEnd';
     else if (p.state === 'lookUp') p.state = 'lookUpEnd';
@@ -440,6 +462,7 @@ function attackStep(p, c, world) {
 export function endAttack(p, keepPropeller = false) {
   p.attack = 0; p.attackNext = 0; p.midAir = 0; p.jumped = false; p.spinDashing = false; p.halfPipe = false; p.trick = null;
   if (p.character === TAILS && !keepPropeller) p.stopPropeller();
+  if (p.character === AMY) { p.hammerJump = false; p.dive = false; }
 }
 
 // Tails' tail swipe on the ground (sub_80480C4): as Sonic's combo, not while he revs a spin dash, pushes, or
@@ -464,12 +487,12 @@ function tryRailJump(p, c, world) {
   if (!c.jumpPressed) return false;
   p.layer ^= 1;
   if (clearance(p, world.terrain, actAngle(p) + 0x80) < 4) { p.layer ^= 1; return false; }
-  world.stopSound(SONG.GRINDING);
-  p.air = true; p.jumped = true; p.pushing = false; p.grinding = false; p.state = 'spin';
+  world.stopSound(p.character === AMY ? SONG.AMY_GRINDING : SONG.GRINDING);
+  p.air = true; p.jumped = true; p.pushing = false; p.grinding = false; p.state = thrownState(p);
   p.ysp = ((q8(rules(p).jumpSpeed) * sin8((p.rotation - 0x40) & 0xFF)) >> 8) / 256;
   world.playSound(SONG.JUMP);
   p.front = false;
-  curl(p);
+  if (p.character !== AMY) curl(p);
   return true;
 }
 
@@ -634,6 +657,8 @@ function groundStep(p, c, world, input) {
     const started = knucklesGround(p, c, world);
     if (started === 'jump') return;
     if (started === 'spinDash') { bounds(p, world); followGround(p, t); return; }
+  } else if (p.character === AMY) {
+    if (amyGround(p, c, world)) return;
   } else if (p.attack !== 0) {
     slope(p);
     if (p.character === TAILS) swipeStep(p);
@@ -652,6 +677,123 @@ function groundStep(p, c, world, input) {
   fallOff(p);
 }
 
+// what Amy's hammer hits, and what launches her off a spring 1.5 times as fast (Coll_AmyHammer_Spring): the moves
+// that swing it, while their animation has its box out, on the object's box
+const HAMMER_STATES = new Set(['hammer', 'hammer2', 'hammerAir', 'hammerSwirl']);
+export const hammerHits = (p, x, y, box) => p.character === AMY && HAMMER_STATES.has(p.state) && !!p.boxes[1] && !!box
+  && overlap(x, y, box, Math.floor(p.x), Math.floor(p.y), p.boxes[1]);
+/** A speed 1.5 times as fast, as the original works it out in 1/256 px. */
+export const hammerSpeed = v => { const q = Math.round(v * 256); return (q + (q >> 1)) / 256; };
+/** The state an object leaves her in the air with, where it curls up the others (charState 85 for 5). */
+export const thrownState = p => (p.character === AMY ? 'hammerRise' : 'spin');
+
+// Amy on the ground (sub_80494E8): with no swing going, her hammer, her jump or a walk. A swing slows her by
+// 0.375 a frame, and a press during the first one queues the second. True if it took the whole frame.
+function amyGround(p, c, world) {
+  const floor = (p.rotation + 0x40) & 0xFF, level = !p.pushing && floor !== 0 && floor < 0x80;
+  if (p.attack === 0) {
+    if (tryHammer(p, c, level, world)) return true;
+    if (tryJump(p, c, world)) return true;
+    slope(p);
+    walkStep(p, c, world);
+    return false;
+  }
+  if (p.attack === 1 && level && p.attackNext === 0 && c.attackPressed) p.attackNext = 1;
+  slope(p);
+  p.gsp = toward0(p.gsp, H.swingFriction);
+  alongSurface(p);
+  wallPush(p, world.terrain, true);
+  return false;
+}
+
+// her hammer on the ground (sub_8049370): a swing where the ground allows it, or with down held and at least
+// 4 px of room above her, a leap away from the surface with the jump's sound
+function tryHammer(p, c, level, world) {
+  if (!c.attackPressed) return false;
+  if (!c.down) {
+    if (!level) return false;
+    p.attack = 1; p.state = 'hammer';
+    world.spawnHearts(0);
+    return true;
+  }
+  if (clearance(p, world.terrain, actAngle(p) + 0x80) < 4) return false;
+  p.state = 'hammerLeap';
+  const speed = q8(p.water ? H.leapWaterSpeed : H.leapSpeed), a = (p.rotation - 0x40) & 0xFF;
+  p.xsp = (q8(p.xsp) + ((speed * cos8(a)) >> 8)) / 256;
+  p.ysp = (q8(p.ysp) + ((speed * sin8(a)) >> 8)) / 256;
+  p.air = true; p.pushing = false; p.jumped = true; p.dive = false; p.hammerJump = true;
+  world.playSound(SONG.JUMP);
+  return true;
+}
+
+// Amy in the air (sub_80497AC): her dive, or as anyone jumps, with her hammer unless she leapt or bounced
+function amyAir(p, c, world) {
+  if (p.dive) { diveStep(p, c, world); return; }
+  if (!p.hammerJump) {
+    if (p.attack === 0 && c.attackPressed) {   // sub_804948C
+      p.attack = 1;
+      const swirl = c.down;
+      world.playSound(swirl ? SONG.AMY_SWIRL : SONG.AMY_HAMMER);
+      if (swirl) p.xsp = 0;
+      p.state = swirl ? 'hammerSwirl' : 'hammerAir';
+      world.spawnHearts(swirl ? 3 : 2);
+    }
+    // the jump cap (Player_8044670): she has no move of her own to start once the rise has slowed
+    if (p.jumped) {
+      const cap = rules(p).jumpReleaseCap;
+      if (p.ysp < -cap) { if (!c.jump) p.ysp = -cap; }
+      else if (p.midAir === 0 && c.jumpPressed) { p.airLock = false; p.midAir = 1; }
+    } else if (!p.forcedRoll && p.ysp < -K.riseCap) p.ysp = -K.riseCap;
+  }
+  airControl(p, c, p.state !== 'bounce');
+  if (p.ysp < 0) airDrag(p);
+  bounds(p, world);
+  move(p);
+  p.ysp += rules(p).gravity;
+  tumble(p);
+  airCollision(p, world.terrain, () => land(p));
+}
+
+// her dive (sub_80495F0): no control in the air. A press turns it into a slam (charState 92) that slides on
+// from where it lands, at 2 px a frame at least (1.25 under water), slowing by 24/256 with dust every 4th frame, into a
+// short pose that holds left and right for 15 frames; off the edge of what it slides on she carries on falling
+function diveStep(p, c, world) {
+  const t = world.terrain;
+  bounds(p, world);
+  move(p);
+  p.ysp += rules(p).gravity;
+  tumble(p);
+  if (p.attack === 0) {
+    if (c.attackPressed) { p.state = 'diveSlam'; p.attack = 1; }
+    airCollision(p, t, () => land(p));
+    return;
+  }
+  glideCollision(p, t);
+  if (p.attack === 1) {
+    if (p.glideFlags & 2) return;
+    const least = q8(p.water ? H.slideWaterSpeed : H.slideSpeed), now = q8(p.xsp);
+    p.xsp = (p.facing < 0 ? -Math.max(least, -now) : Math.max(least, now)) / 256;
+    p.gsp = p.xsp;
+    p.attack = 2;
+    world.playSound(SONG.SLIDE);
+    return;
+  }
+  if (!(p.glideFlags & 2)) {
+    const going = p.xsp <= 0 ? (p.xsp += N.slideFriction) < 0 : (p.xsp -= N.slideFriction) > 0;
+    if (!going) {
+      p.gsp = 0; p.xsp = 0; p.ysp = 0;
+      standFromGlide(p);
+      p.dive = false; p.lock = H.slideLock; p.state = 'diveEnd';
+      return;
+    }
+  }
+  if (world.tick % 4 === 0) world.brakeDust(Math.floor(p.x), Math.floor(p.y) + (p.inverted ? -p.offsetY : p.offsetY));
+  glideCollision(p, t);
+  const f = floorUnder(p, t);
+  if (f.d < 7) { p.y += p.inverted ? -f.d : f.d; p.rotation = f.rot; }
+  else if (!p.onObject) { p.attack = 1; p.glideFlags |= 2; }
+}
+
 function airStep(p, c, world) {
   if (p.character === KNUCKLES) { knucklesAir(p, c, world); return; }
   // knocked back, he flies on as he was thrown: no moves, no control and no drag (Player_AirInputControls), but
@@ -664,6 +806,7 @@ function airStep(p, c, world) {
     airCollision(p, world.terrain, () => land(p));
     return;
   }
+  if (p.character === AMY) { amyAir(p, c, world); return; }
 
   // Sonic's double-tap dash, only while curled up (sub_8047714)
   if (p.character === SONIC && p.curled && p.jumped && p.midAir === 0) {
@@ -757,7 +900,8 @@ function flightState(p, world) {
 function swimBubbles(p, world) {
   if (world.tick % 8 !== 0 || (world.random() & 0x300) !== 0) return;
   const dx = (world.random() & 0xF00) >> 8, dy = ((world.random() & 0xF00) >> 8) - 8;
-  world.airBubble(q8(p.x) - (p.facing > 0 ? -dx : dx), q8(p.y) - dy, q8(p.xsp), (world.random() & 0x100) !== 0);
+  const k = fixes.on ? 256 : 1;
+  world.airBubble(q8(p.x) - (p.facing > 0 ? -dx : dx) * k, q8(p.y) - dy * k, q8(p.xsp), (world.random() & 0x100) !== 0);
 }
 
 // Knuckles' states (charState 62 and up), which standing up from a glide ends (sub_8022318)
@@ -1404,6 +1548,8 @@ export function stepPlayer(p, input, world) {
   else if (p.boost) stopBoost(p);
 
   if (p.dead) { deadStep(p, world); return; }
+  // MOVESTATE_IA_OVERRIDE: an object moves him and sets his state, and his own code doesn't run
+  if (p.override) return;
   handleWater(p, world);
   if (p.carried) return;
   if (p.trick) trickStep(p, c, world);
@@ -1422,7 +1568,7 @@ const COUNTDOWN = { 12: 5, 10: 4, 8: 3, 6: 2, 4: 1, 2: 0 };
 // 10 frames. Under water a second goes every 60 frames: at 12, 10, 8, 6, 4 and 2 a number counts down over
 // him, at 11 the drowning music starts and below 0 he drowns; every 16th frame of the stage clock he lets a
 // bubble out, one time in four. Out of the water the count starts over and the drowning music stops.
-function handleWater(p, world) {
+export function handleWater(p, world) {
   const level = world.waterLevel;
   p.waterCrossed = false;
   if (level >= 0 && Math.floor(p.y) - 4 >= level) {
@@ -1483,6 +1629,7 @@ function chooseAnimation(p, input) {
 function pickAnimation(p, input) {
   const a = p.anim, speed = Math.abs(p.gsp);
   a.speed = ANIMATION.normalSpeed;
+  if (p.override) return p.state;
   if (p.gsp !== 0 || input.left || input.right || input.up || input.down || input.jump || input.attack || input.boost || input.trick) p.idleT = K.boredDelay;
   if (p.pushing) p.state = 'push';
   switch (p.state) {
@@ -1504,6 +1651,9 @@ function pickAnimation(p, input) {
       if (!((p.rotation + 0x20) & 0xC0)) return 'grind';
       p.facing = 1;
       return 'grindSteep';
+    case 'hammerRise':
+      if (p.ysp >= -K.springPeakSpeed) p.state = 'springPeak';
+      return 'hammerRise';
     case 'springRise':
       // the animation was picked before the state changes, so the top-out one starts on the next frame
       if (p.ysp >= -K.springPeakSpeed) p.state = 'springPeak';
@@ -1519,6 +1669,17 @@ function afterAnimation(p, world) {
     case 'crouchEnd': p.state = p.gsp !== 0 ? 'walk' : 'idle'; break;
     case 'lookUpEnd': p.state = 'idle'; break;
     case 'turn': case 'breathe': p.state = 'walk'; break;
+    // Amy's swings: another queued goes on to the second, 3 faster with its hearts, and otherwise she walks on or
+    // stands; the end of a dive's slide takes her chain too
+    case 'hammer':
+      if (p.attackNext !== 0) {
+        p.attackNext = 0; p.attack++; p.state = 'hammer2';
+        p.gsp += H.swing2Speed * sign(p);
+        world.spawnHearts(1);
+      } else { p.attack = 0; p.state = p.gsp !== 0 ? 'walk' : 'idle'; }
+      break;
+    case 'hammer2': p.attack = 0; p.state = p.gsp !== 0 ? 'walk' : 'idle'; break;
+    case 'diveEnd': p.attack = 0; p.attackNext = 0; p.state = 'idle'; p.chain = 0; break;
     case 'flyTurn': p.state = 'fly'; break;
     case 'swimTurn': p.state = 'swim'; break;
     case 'tailSwipe':
@@ -1590,6 +1751,7 @@ function stepAnim(p, anims, world) {
   const i = p.anim.i, ended = tickAnim(p.anim, anims);
   const f = p.anim.i !== i && anims[p.anim.name].frames[p.anim.i];
   if (f && p.anim.name === 'tailSwipe' && p.anim.i === SWIPE_SOUND_FRAME) world.playSound(SONG.TAIL_SWIPE);
+  if (f && p.character === AMY && anims[p.anim.name].sounds?.[p.anim.i] !== undefined) world.playSound(anims[p.anim.name].sounds[p.anim.i]);
   if (f?.[2]) for (const [slot, box] of Object.entries(f[2])) if (slot < 2) p.boxes[slot] = flipBox(box, p.facing > 0, p.inverted);
   // it keeps the order a frame sets (animCmd_SetOamOrder) after the animation
   if (f?.[3] !== undefined) p.order = f[3];

@@ -19,12 +19,12 @@ export function createShipSwing(e, slot, anims) {
   // the sprites' only frames, whose boxes they keep: the task never steps them again
   for (const s of [ship, hook, link]) animate(s, anims);
   hook.x = e.x; hook.y = e.y;
-  let onHook = false, onShip = false, wait = 0, lastX = 0;
+  // for each player: on the hook, on the ship, the frames before the ship takes them again, the ship's last x
+  const seats = [0, 1].map(() => ({ onHook: false, onShip: false, wait: 0, lastX: 0 }));
 
   return {
     priority: 0x7000,
     run(ctx) {
-      const p = ctx.player;
       // the swing: an angle from the timer, and a lift at either end of it
       let t = (ctx.world.tick * 2) % 0x200, lift;
       if (t > 0x100) { t = 0x200 - t; lift = SINE[t * 2] >> 8; }
@@ -44,17 +44,19 @@ export function createShipSwing(e, slot, anims) {
       const sx = e.x + (dx >> 10), sy = e.y + (dy >> 10);
       ship.x = sx; ship.y = sy;
 
-      if (!p.dead) {
+      for (const [i, p] of ctx.players.entries()) {
+        if (p.dead) continue;
+        const seat = seats[i];
         if (e.y - 4 > p.y) {
-          if (platformTop(hook, e.x, e.y, hook.boxes[0], p) & LANDED) onHook = true;
-          else if (onHook) { onHook = false; p.onObject = null; p.pushing = false; }
+          if (platformTop(hook, e.x, e.y, hook.boxes[0], p) & LANDED) seat.onHook = true;
+          else if (seat.onHook) { seat.onHook = false; p.onObject = null; p.pushing = false; }
         }
-        if (wait > 0) wait--;
+        if (seat.wait > 0) seat.wait--;
         else if (platformTop(ship, sx, sy, ship.boxes[0], p) & LANDED) {
-          if (!onShip) onShip = true;
-          else { p.x += sx - lastX; p.y = sy - 5; }
-          lastX = sx;
-        } else if (onShip) { onShip = false; wait = 5; p.onObject = null; p.pushing = false; }
+          if (!seat.onShip) seat.onShip = true;
+          else { p.x += sx - seat.lastX; p.y = sy - 5; }
+          seat.lastX = sx;
+        } else if (seat.onShip) { seat.onShip = false; seat.wait = 5; p.onObject = null; p.pushing = false; }
       }
 
       ship.flipX = false; ctx.draw(ship, sx, sy);

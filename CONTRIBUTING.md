@@ -51,7 +51,9 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 | `npm run dev` | Runs the site on your computer while you work on it |
 | `npm run check` | Looks for mistakes in the pages, the game files and the Dreamports' entries, checks that the README's table of Dreamports is up to date, and tests the moderation bot's rules |
 | `npm run build` | Makes the finished site in the `dist/` folder |
-| `npm run test:game` | Tries what every new game starts with in a real browser, with a made-up game: its start screen, frames, keyboard, controller, settings, touch screen and way back to the launcher. Every pull request runs this, `npm run check` and `npm run build` |
+| `npm run test:game` | Tries what every new game starts with in a real browser, with a made-up game: its start screen, frames, keyboard, controller, settings, touch screen and way back to the launcher. Every pull request runs this, `npm run check`, `npm run build` and the two below |
+| `npm run test:consoles` | Tries everything the proof tools do on a console that was never made, with a small emulator of it written here |
+| `npm run test:real-console` | Tries them on a real NES emulator, built from its makers' source at a fixed commit, with a small program of the project's own, so no game copy is needed |
 | `npm run preview` | Opens that finished site, to check it before it goes online |
 | `npm run worker` | Makes the finished site and opens it with its profiles, at <http://localhost:8787>, with a database on your computer. Profiles only work here, not with `npm run dev` |
 | `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame, picture and sound, `portmap`, which lists the original's functions your code names, `share`, which puts a preview of your work online for anyone to try, `readme`, which writes the README's table of Dreamports from their entries, and `commands`, which writes the `/dreamport` commands for each coding agent. [`tools/README.md`](tools/README.md) explains them |
@@ -84,7 +86,7 @@ The top of the file, between the two `---` lines, holds the details. Write them 
 
 Below the second `---` is the page itself, in Markdown. `## ` lines become headings and the "on this page" list, `- ` lines become bullet points, and `1. ` lines become numbered steps.
 
-**A game's recording** is a few seconds of the game being played, looping smoothly. For a Dreamport, `npm run dp -- capture <game>` makes all of it: you play the original on your computer and choose among the best moments ([The proof tools](tools/README.md#a-games-capture)). For another game, it's saved in [`public/media/`](public/media/) as two silent MP4 videos at 60 frames a second:
+**A game's recording** is a few seconds of the game being played, looping smoothly. For a Dreamport, `npm run dp -- capture <game>` makes all of it: you play the original on your computer and choose among the best moments, and when nobody does, the tool takes the one that ranks first ([The proof tools](tools/README.md#a-games-capture)). For another game, it's saved in [`public/media/`](public/media/) as two silent MP4 videos at 60 frames a second:
 
 - `my-port.h264.mp4`, in H.264, which every browser plays;
 - `my-port.av1.mp4`, in AV1, which is smaller. The site plays it only where the device decodes AV1 smoothly in hardware.
@@ -129,7 +131,7 @@ Then run `npm run check` and `npm run build`. If a detail is missing or misspell
    ```
 
    Name it `<type>/<issue>-<slug>`. Types are `feat`, `fix`, `enh`, `docs`, `research` and `ops`. One branch holds one issue: never reuse a merged or existing branch for new work, and never mix two features on one branch. Use focused commits such as `feat: add the Dreamports catalog page (#3)`. Do not commit directly to `main`. Delete the branch after its PR merges.
-3. **Open a linked PR.** A pull request from a fork gets no preview of its own, so share one with `npm run dp -- share` ([Previews](docs/PREVIEWS.md)) and put its link in the PR. Include a standalone `Closes #N` line for each completed, same-repository issue. Set the PR to the same milestone as its primary issue. Split cross-milestone changes into separate PRs. Use `Refs #N` for unfinished parent or related work; it does not replace a closing reference to the scoped issue.
+3. **Open a linked PR.** A pull request from a fork gets no preview of its own, so share one with `npm run dp -- share` ([Previews](docs/PREVIEWS.md)) and put its link in the PR. Include a standalone `Closes #N` line for each completed, same-repository issue. Set the PR to the same milestone as its primary issue. Split cross-milestone changes into separate PRs. Use `Refs #N` for unfinished parent or related work; it does not replace a closing reference to the scoped issue, though a PR that closes nothing, such as a draft, takes its milestone from the issue it names.
 4. **Record the outcome.** Describe exactly what changed, which checks ran, and what was not run. Close the issue only when its stated scope is complete.
 
 For non-file operations (repository settings, hosting, domains), put sanitized commands and results in the issue. When an operation produces no code change, deliver its lasting decision through a small documentation PR instead of an empty PR.

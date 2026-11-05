@@ -103,6 +103,29 @@ export function findSpinDashSpeeds(rom) {
   return null;
 }
 
+// how many hearts each of Amy's four patterns has (sHeartOffsets)
+const HEARTS_IN_PATTERN = [4, 4, 6, 8];
+
+/**
+ * Amy's hearts: four patterns of eight rows of three s16, [when, x, y], each `when` later than the one before, until
+ * a -1 that ends the pattern, with only zeros after it. Null when nothing looks like them.
+ */
+export function findHeartOffsets(rom) {
+  const fits = (at, hearts) => {
+    for (let row = 0; row < 8; row++) {
+      const r = at + row * 6, when = rom.s16(r);
+      if (row < hearts ? when < 0 || (row > 0 && when <= rom.s16(r - 6)) : when !== (row === hearts ? -1 : 0)) return false;
+      if (row > hearts && (rom.s16(r + 2) !== 0 || rom.s16(r + 4) !== 0)) return false;
+    }
+    return true;
+  };
+  const size = HEARTS_IN_PATTERN.length * 48;
+  for (let at = 0; at + size <= rom.size; at += 4) {
+    if (HEARTS_IN_PATTERN.every((hearts, i) => fits(at + i * 48, hearts))) return at;
+  }
+  return null;
+}
+
 /**
  * The Chao's places in the multiplayer stages (sChaoSpawnPositions): eight (x, y) pairs of s16 for each of the
  * four stages, each inside a stage of at most 2048 × 2048 px. A table of such pairs ends where they stop;
@@ -137,6 +160,46 @@ export function findOptionsBackground(rom) {
       ok = (v & 0xF3FF) < OPTIONS_TILE_COUNT;
     }
     if (ok) return at;
+  }
+  return null;
+}
+
+// the Time Attack menu's pictures, in one block: the Japanese one's 256 colours, 113 tiles of 8 bits a pixel and 32 × 20
+// map, then the English one's with 131 tiles; both maps use their tiles alone, in palette row 0
+const TIME_ATTACK_COLOURS = 0x200, TIME_ATTACK_MAP_ENTRIES = 32 * 20;
+const TIME_ATTACK_JAPANESE_TILES = 113, TIME_ATTACK_ENGLISH_TILES = 131;
+const TIME_ATTACK_JAPANESE_MAP = TIME_ATTACK_COLOURS + TIME_ATTACK_JAPANESE_TILES * 64;
+const TIME_ATTACK_ENGLISH = TIME_ATTACK_JAPANESE_MAP + TIME_ATTACK_MAP_ENTRIES * 2;
+const TIME_ATTACK_ENGLISH_MAP = TIME_ATTACK_ENGLISH + TIME_ATTACK_COLOURS + TIME_ATTACK_ENGLISH_TILES * 64;
+const TIME_ATTACK_BLOCK_SIZE = TIME_ATTACK_ENGLISH_MAP + TIME_ATTACK_MAP_ENTRIES * 2;
+
+// a map that uses most of its tiles, none past the last, in palette row 0
+function timeAttackMapFits(rom, map, tiles) {
+  const used = new Set();
+  for (let i = 0; i < TIME_ATTACK_MAP_ENTRIES; i++) {
+    const v = rom.u16(map + i * 2);
+    if ((v & 0xF000) !== 0 || (v & 0x3FF) >= tiles) return false;
+    used.add(v & 0x3FF);
+  }
+  return used.size >= tiles * 0.8;
+}
+
+// 256 colours, not mostly black
+function timeAttackColoursFit(rom, at) {
+  let lit = 0;
+  for (let i = 0; i < TIME_ATTACK_COLOURS / 2; i++) {
+    const v = rom.u16(at + i * 2);
+    if (v) lit++;
+  }
+  return lit > 3;
+}
+
+/** The Time Attack menu's pictures: where the Japanese one's colours start, the English one's after them. */
+export function findTimeAttackMenu(rom) {
+  for (let at = 0; at + TIME_ATTACK_BLOCK_SIZE <= rom.size; at += 4) {
+    if (timeAttackMapFits(rom, at + TIME_ATTACK_ENGLISH_MAP, TIME_ATTACK_ENGLISH_TILES)
+      && timeAttackMapFits(rom, at + TIME_ATTACK_JAPANESE_MAP, TIME_ATTACK_JAPANESE_TILES)
+      && timeAttackColoursFit(rom, at) && timeAttackColoursFit(rom, at + TIME_ATTACK_ENGLISH)) return at;
   }
   return null;
 }
@@ -281,8 +344,12 @@ export function locateTables(rom, known) {
   const missing = Object.entries(offsets).filter(([, v]) => v === null).map(([k]) => k);
   // only the multiplayer stages need it
   offsets.chaoSpawns = findChaoSpawns(rom);
+  // only Amy needs it
+  offsets.heartOffsets = findHeartOffsets(rom);
   // only the language screen needs it, which the European ROM replaces with one for its six languages
   offsets.languageBackground = findLanguageBackground(rom);
+  // only the Time Attack menu needs it
+  offsets.timeAttackMenu = findTimeAttackMenu(rom);
   if (missing.length) {
     throw new RomError(`This Sonic Advance ROM version is not supported yet (could not find: ${missing.join(', ')}).`);
   }

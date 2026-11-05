@@ -30,7 +30,6 @@ export function createSegaSonicLetter(e, slot, anims) {
   return {
     run(ctx) {
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
-      const p = ctx.player;
       // Mod(gStageTime - delay, length), compared unsigned
       const r = (((ctx.world.tick - delay) | 0) % length) >>> 0;
       let solid = true;
@@ -44,11 +43,13 @@ export function createSegaSonicLetter(e, slot, anims) {
         solid = false;
         if (r === length - h) startAnim(o, look(2), true);
         // Coll_Player_Entity_Intersection, then MOVESTATE_STOOD_ON_OBJ cleared
-        if (!p.dead && o.boxes[0] && overlap(e.x, e.y, o.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) {
-          p.onObject = null;
+        for (const p of ctx.players) {
+          if (!p.dead && o.boxes[0] && overlap(e.x, e.y, o.boxes[0], Math.floor(p.x), Math.floor(p.y), [-SOX, -p.offsetY, SOX, p.offsetY])) {
+            p.onObject = null;
+          }
         }
       }
-      if (solid) platform(o, o.boxes[0], p, ctx.world.terrain);
+      if (solid) for (const p of ctx.players) platform(o, o.boxes[0], p, ctx.world.terrain);
       animate(o, anims);
       ctx.draw(o, e.x, e.y);
       return true;

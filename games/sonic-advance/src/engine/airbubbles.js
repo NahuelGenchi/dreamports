@@ -51,7 +51,7 @@ function bigBubble(x, y, anims) {
   animate(s, anims);
   return {
     run(ctx) {
-      const { player: p, world } = ctx, w = world.water;
+      const { world } = ctx, w = world.water;
       const bx = x + sway(t), by = y - (t >> 1);
       if (offCam(bx, by, ctx.cam) || !w || w.level < 0 || by < w.level) return false;
       if (after >= 0) {
@@ -62,11 +62,16 @@ function bigBubble(x, y, anims) {
       }
       t++;
       animate(s, anims);
-      if (t >= 80 && !p.dead && s.boxes[0] && overlap(bx, by, s.boxes[0], Math.floor(p.x), Math.floor(p.y), [-6, -p.offsetY, 6, p.offsetY])) {
-        breathe(p);
-        world.stopSound(SONG.DROWNING);
-        world.playSound(SONG.AIR_BUBBLE);
-        after = 16;
+      if (t >= 80) {
+        for (const p of ctx.players) {
+          if (!p.dead && s.boxes[0] && overlap(bx, by, s.boxes[0], Math.floor(p.x), Math.floor(p.y), [-6, -p.offsetY, 6, p.offsetY])) {
+            breathe(p);
+            // the drowning music is Sonic's; the sound plays for each of them that breathes
+            if (p === ctx.player) world.stopSound(SONG.DROWNING);
+            world.playSound(SONG.AIR_BUBBLE);
+            after = 16;
+          }
+        }
       }
       ctx.draw(s, bx, by);
       return true;

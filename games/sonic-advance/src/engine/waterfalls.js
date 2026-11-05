@@ -18,9 +18,10 @@
 // never set.
 
 import { makeSprite, animate, offCam } from './objects.js';
-import { endAttack, KNUCKLES, climbing } from './player.js';
+import { endAttack, KNUCKLES, climbing, thrownState } from './player.js';
 import { s8 } from './trig.js';
 import { SONG } from '../sound/songs.js';
+import { fixes } from './fixes.js';
 
 export const WATERFALL = 27;
 const ANGEL_ISLAND = 4;
@@ -40,9 +41,9 @@ export function createWaterfall(e, slot, anims, ctx) {
   if (ctx.world.zone === ANGEL_ISLAND) return angelIsland(slot, anims, splash, e, inside);
   return {
     run(ctx) {
-      const p = ctx.player;
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
-      if (!p.dead && inside(p)) {
+      for (const p of ctx.players) {
+        if (p.dead || !inside(p)) continue;
         if (!climbing(p)) p.ysp += 16 / 256;
         // the splash animates only while it is drawn
         animate(splash, anims);
@@ -57,44 +58,47 @@ function angelIsland(slot, anims, splash, e, inside) {
   let sounding = false;   // unk3D: SE_201 has started
   return {
     run(ctx) {
-      const p = ctx.player;
       if (offCam(e.x, e.y, ctx.cam)) {
+        if (fixes.on) for (const p of ctx.players) if (!p.dead && inside(p)) p.ysp /= 2;
         if (sounding) ctx.world.fadeOut(SE2, FADE);
         slot.live = null;
         return false;
       }
       animate(splash, anims);
-      if (p.dead) return true;
-      if (inside(p)) {
-        if (p.ysp >= 0) {
-          if (!sounding) { sounding = true; ctx.world.playSound(SONG.WATERFALL); }
-          // Player_TransitionCancelFlyingAndBoost
-          endAttack(p); p.pushing = false; p.airLock = false;
-          if (p.jumpPressed) {
-            p.state = 'spin';
-            p.ysp = -THROW;
-          } else {
-            if (p.character === KNUCKLES) {
-              // a glide stops dead, and of his move state only the way he faces is left
-              if (p.state === 'glide') {
-                p.state = 'walk'; p.gsp = 0; p.xsp = 0;
-                p.air = false; p.onObject = null; p.curled = false; p.jumped = false;
+      // the two share the sound: either one alive and out of the area fades it out
+      for (const p of ctx.players) {
+        if (p.dead) continue;
+        if (inside(p)) {
+          if (p.ysp >= 0) {
+            if (!sounding) { sounding = true; ctx.world.playSound(SONG.WATERFALL); }
+            // Player_TransitionCancelFlyingAndBoost
+            endAttack(p); p.pushing = false; p.airLock = false;
+            if (p.jumpPressed) {
+              p.state = thrownState(p);
+              p.ysp = -THROW;
+            } else {
+              if (p.character === KNUCKLES) {
+                // a glide stops dead, and of his move state only the way he faces is left
+                if (p.state === 'glide') {
+                  p.state = 'walk'; p.gsp = 0; p.xsp = 0;
+                  p.air = false; p.onObject = null; p.curled = false; p.jumped = false;
+                }
+                if (p.air && p.attackPressed) { p.gsp = 0; p.xsp = 0; }
               }
-              if (p.air && p.attackPressed) { p.gsp = 0; p.xsp = 0; }
+              p.air = false; p.curled = false;   // his hitbox keeps its height
+              p.state = 'walk';
+              p.y += SINK;
+              if (p.ysp > 0) p.ysp = 0;
+              if (p.held[0] & LEFT) p.gsp += PUSH;
+              else if (p.held[0] & RIGHT) p.gsp -= PUSH;
+              else p.gsp -= Math.trunc(Math.round(p.gsp * 256) / 20) / 256;
             }
-            p.air = false; p.curled = false;   // his hitbox keeps its height
-            p.state = 'walk';
-            p.y += SINK;
-            if (p.ysp > 0) p.ysp = 0;
-            if (p.held[0] & LEFT) p.gsp += PUSH;
-            else if (p.held[0] & RIGHT) p.gsp -= PUSH;
-            else p.gsp -= Math.trunc(Math.round(p.gsp * 256) / 20) / 256;
           }
+          ctx.draw(splash, Math.floor(p.x), Math.floor(p.y) + 10);
+        } else if (sounding) {
+          ctx.world.fadeOut(SE2, FADE);
+          sounding = false;
         }
-        ctx.draw(splash, Math.floor(p.x), Math.floor(p.y) + 10);
-      } else if (sounding) {
-        ctx.world.fadeOut(SE2, FADE);
-        sounding = false;
       }
       return true;
     },

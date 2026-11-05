@@ -12,8 +12,6 @@ const CARTRIDGE = 0x08000000, FREE = 0x1000, VRAM_PAGE = 0x4000, MAP_PAGE = 0x80
 function createTiles(video, rom, page, count, size, from) {
   const held = new Uint16Array(4096).fill(FREE), uses = new Uint16Array(count), free = new Uint16Array(count);
   const tiles = { held, uses, free, nextFree: 0 };
-  // 0x080369CC: all free, with the first one first, and the cartridge's tile 0 in the first
-  for (let i = 0; i < count; i++) free[i] = i;
   const start = page * VRAM_PAGE;
   // 0x080368CC: a block's tile as a layer's map holds it: a place in video memory for its number, and its flips and
   // colours as they are
@@ -37,7 +35,15 @@ function createTiles(video, rom, page, count, size, from) {
       held[number] = FREE;
     }
   };
-  tiles.use(0);
+  // 0x080369CC with 0x0802F2E0's 0x080368CC: all free, with the first one first, and the cartridge's tile 0 in the first
+  tiles.reset = () => {
+    held.fill(FREE);
+    uses.fill(0);
+    for (let i = 0; i < count; i++) free[i] = i;
+    tiles.nextFree = 0;
+    tiles.use(0);
+  };
+  tiles.reset();
   return tiles;
 }
 
@@ -77,7 +83,7 @@ function createLayer(video, rom, number, tiles, def, screen) {
     // 0x0801AB30, with 0x0801A9A4's size in the eighth of a pixel it keeps: half the screen or half the layer
     halfW: 0, halfH: 0, maxX: 0, maxY: 0,
     x: 0, y: 0, x0: 0, x1: 0, y0: 0, y1: 0,
-    // [112], the columns it keeps past each side of the screen, for lines the H-blank moves (0x08002158)
+    // 0x08002158: how many columns beyond the screen's it draws on each side, for a layer whose lines move on their own
     margin: 0,
   };
   const pixelsW = width << 12, pixelsH = height << 12;
@@ -116,8 +122,11 @@ const blockAt = (layer, x, y) => columnAt(layer, x)[layer.wrapY ? ((y % layer.he
 
 // 0x08001F40: a column of blocks on the screen's map, and 0x0800201C a row of them
 function setBlock(layer, x, y) {
-  const { video, tiles } = layer, block = blockAt(layer, x, y), map = new Uint16Array(video.vram.buffer, layer.map, 1024);
+  const { video, tiles } = layer, map = new Uint16Array(video.vram.buffer, layer.map, 1024);
   const col = (x * 2) & 31, row = (y * 2) & 31, right = (col + 1) & 31, down = (row + 1) & 31;
+  // the layer keeps as many columns as the screen's map has blocks across, each at its number's remainder (0x0801AC0C), so the column
+  // before the first reads the same as the last one kept, which is what brings that column's tiles in first
+  const block = blockAt(layer, x < 0 ? x + 16 : x, y);
   if (block === 0) {
     map[row * 32 + col] = map[row * 32 + right] = map[down * 32 + col] = map[down * 32 + right] = 0;
     return;
@@ -192,11 +201,10 @@ export function createWorld(video, rom, def) {
   const at = def - CARTRIDGE, tileSets = rom.u32(at + 28) - CARTRIDGE;
   const big = createTiles(video, rom, 0, 512, 64, rom.u32(tileSets) - CARTRIDGE + 4);
   const small = createTiles(video, rom, 2, 752, 32, rom.u32(tileSets + 4) - CARTRIDGE + 4);
-  const world = { layers: [], camera: { x: 0, y: 0 } };
+  const world = { layers: [], camera: { x: 0, y: 0 }, tiles: [big, small] };
   for (let n = 0; n < 4; n++) {
     const layerDef = rom.u32(at + 4 + n * 4);
-    world.layers[n] = null;
-    if (!layerDef) continue;   // 0x0802F460: a level needn't use all four
+    if (!layerDef) continue;   // the title screen has only the first and the last
     const usesBig = rom.u8(layerDef - CARTRIDGE + 22) !== 0;
     world.layers[n] = createLayer(video, rom, n, usesBig ? big : small, layerDef, 28 + n);
     const priority = rom.u32(layerDef - CARTRIDGE + 8) & 3;
@@ -216,11 +224,20 @@ export function aimCamera(world, x, y) {
 const ORDER = [3, 0, 1, 2];
 
 /** 0x0802F2E0: every layer's first picture. */
-export function showWorld(world) {
+export function showWorld(world, margin = 0) {
   const last = world.layers[3];
-  if (world.layers[0]) world.layers[0].margin = 1;   // 0x0802F8A0, for the first layer
-  placeLayer(last, world.camera);
-  for (const n of ORDER.slice(1)) if (world.layers[n]) placeLayer(world.layers[n], last);
+  const place = () => {
+    placeLayer(last, world.camera);
+    for (const n of ORDER.slice(1)) if (world.layers[n]) placeLayer(world.layers[n], last);
+  };
+  place();
+  // 0x0802F8A0, for the first layer: a column more on each side, and every layer's picture again from no tiles, which leaves the first
+  // picture's tiles in video memory past those the second one uses
+  if (margin) {
+    world.layers[0].margin = margin;
+    for (const tiles of world.tiles) tiles.reset();
+    place();
+  }
 }
 
 /** 0x0802F374: every layer at the camera's place, before the V-blank. */

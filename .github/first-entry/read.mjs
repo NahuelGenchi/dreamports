@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { field, readClaims } from '../../tools/lib/claims.mjs';
 import { BOT, api, graphql, list, name, owner, repository } from '../moderation/github.mjs';
-import { checkFirstEntry, gameOf, mostFor, pathsOf } from './rules.mjs';
+import { checkFirstEntry, gameOf, mostFor, pathsOf, plainHistory } from './rules.mjs';
 import { MARK } from './text.mjs';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
@@ -19,6 +19,15 @@ const number = event.pull_request?.number ?? event.issue?.number;
 function answer(plan) {
   console.log(`Plan: ${JSON.stringify(plan)}`);
   appendFileSync(process.env.GITHUB_OUTPUT, `plan=${JSON.stringify(plan)}\n`);
+}
+
+// a file of a commit, through the API
+async function readFile(head, sha, path) {
+  const response = await fetch(`https://api.github.com/repos/${head}/contents/${path}?ref=${sha}`, {
+    headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github.raw+json' }, signal: AbortSignal.timeout(60000),
+  });
+  if (!response.ok) throw new Error(`GitHub answered ${response.status} to ${path}`);
+  return Buffer.from(await response.arrayBuffer());
 }
 
 // its head's files through the API, each no bigger than it can be: their modes and sizes, and their bytes
@@ -33,13 +42,19 @@ async function readHead(head, sha, paths) {
     modes.set(path, item.mode);
     if (path === 'README.md') continue;
     if (item.size > mostFor(path)) return null;
-    const response = await fetch(`https://api.github.com/repos/${head}/contents/${path}?ref=${sha}`, {
-      headers: { Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, Accept: 'application/vnd.github.raw+json' }, signal: AbortSignal.timeout(60000),
-    });
-    if (!response.ok) throw new Error(`GitHub answered ${response.status} to ${path}`);
-    bytes.set(path, Buffer.from(await response.arrayBuffer()));
+    bytes.set(path, await readFile(head, sha, path));
   }
   return { modes, bytes };
+}
+
+// whether its commits can go on main as they are, or it's squashed (rules.mjs)
+async function howToMerge({ head, game, verdict, issue, author }) {
+  const commits = await list(`/pulls/${number}/commits`, 3);
+  if (commits.length !== 2) return 'squash';
+  const compared = await api(`https://api.github.com/repos/${head}/compare/${commits[0].sha}...${commits[1].sha}`);
+  const path = `games/${game}/entry.md`;
+  const firstEntry = (await readFile(head, commits[0].sha, path)).toString('utf8');
+  return plainHistory({ commits, between: compared?.files ?? [], firstEntry, game, original: verdict.original, issue, author, added: verdict.added }) ? 'merge' : 'squash';
 }
 
 // this repository's own tools write the port map, the progress map and the README's row from what passed, to compare
@@ -112,6 +127,6 @@ if (!game) {
     const ticked = fresh?.user?.login === BOT && MARK.exec(fresh.body ?? '')?.[1] === sha && /^- \[[xX]\] /m.test(fresh.body);
     if (!ticked || who?.permission !== 'admin') answer({ kind: 'none' });
     else if (!(await moderationDone(pr, sha))) answer({ kind: 'wait', ...plan });
-    else answer({ kind: 'merge', issue: issue.number, milestone: issue.milestone?.number ?? null, ...plan });
+    else answer({ kind: 'merge', issue: issue.number, milestone: issue.milestone?.number ?? null, method: await howToMerge({ head, game, verdict, issue: issue.number, author: pr.user.login }), ...plan });
   }
 }

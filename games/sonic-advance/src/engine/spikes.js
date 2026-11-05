@@ -12,20 +12,20 @@ export const SPIKES_UP = 1, SPIKES_DOWN = 2, SPIKES_LEFT = 3, SPIKES_RIGHT = 4;
 const SOX = 6;   // Sonic's spriteOffsetX
 
 // Coll_DamagePlayer, with the spikes' sound when it hurts
-function hurt(world) {
-  if (world.damage()) world.playSound(SONG.SPIKES);
+function hurt(world, p) {
+  if (world.damage(p)) world.playSound(SONG.SPIKES);
 }
 
 // sub_8020D44: landing on them hurts
 function landing(o, p, world) {
-  if (platform(o, o.boxes[0], p, world.terrain) & LANDED) hurt(world);
+  if (platform(o, o.boxes[0], p, world.terrain) & LANDED) hurt(world, p);
   return false;
 }
 
 // sub_8020E98: hitting them from below hurts; not while an object carries Sonic
 function bumping(o, p, world) {
   if (p.carried) return false;
-  if (platform(o, o.boxes[0], p, world.terrain) & FROM_BELOW) hurt(world);
+  if (platform(o, o.boxes[0], p, world.terrain) & FROM_BELOW) hurt(world, p);
   return false;
 }
 
@@ -41,10 +41,10 @@ function side(o, p, world) {
   const hb = o.boxes[0], r = platform(o, hb, p, world.terrain);
   if (r & (LANDED | FROM_BELOW)) return false;
   if (r & LEFT_FACE) {
-    if (o.kind === SPIKES_LEFT) hurt(world);
+    if (o.kind === SPIKES_LEFT) hurt(world, p);
     else p.x = o.x + hb[2] + (SOX + 5) + 1;
   } else if (r & RIGHT_FACE) {
-    if (o.kind === SPIKES_RIGHT) hurt(world);
+    if (o.kind === SPIKES_RIGHT) hurt(world, p);
     else p.x = o.x + hb[0] - (SOX + 5) - 1;
   }
   return false;

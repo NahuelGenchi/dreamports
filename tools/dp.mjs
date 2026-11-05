@@ -4,8 +4,8 @@ const TOOLS = {
   setup: 'Builds the reference emulator the original runs in, on this computer',
   rom: 'Checks a copy of a game, says which game and version it is, and remembers where it is',
   play: 'Opens a game in a browser with your copy, and with --record keeps what you play as a recording (--from: after another\'s presses; --start: at a start point)',
-  prove: 'Plays each recording in the original and in the Dreamport, compares every frame, and updates the numbers (--stills: pictures of frames)',
-  capture: 'Lets you play the original in a window and keep a real moment of it for the game\'s card',
+  prove: 'Plays each recording in the original and in the Dreamport, compares every frame, and updates the numbers (--stills: pictures of frames; --state: what the console holds at them)',
+  capture: 'Lets you play the original in a window and keep a real moment of it for the game\'s card (--open: in the background; --pick: takes the best of what was played; --from: of a list of presses)',
   codemap: 'Makes the code map: every function in the original, with its address and size',
   new: 'Writes a claimed game\'s first files: its page, its code on the kit with everything wired in, its license and its entry',
   portmap: 'Makes the port map: each function of the original the Dreamport\'s code names, and where',
@@ -17,14 +17,16 @@ const TOOLS = {
   team: 'The team build, the lead\'s branch with the team\'s finished pieces: start, join, send and add a piece',
   readme: 'Writes the README\'s table of Dreamports, with each one\'s numbers and lead, from their entries',
   commands: 'Writes the /dreamport command, from tools/commands/, in the form each coding agent reads',
+  ready: 'Everything a step has to pass before it goes out, in one go, printing only what\'s wrong',
+  help: 'Prints one section of the long documents, the ones whose headings have these words, or lists them',
 };
 
 const [tool, ...args] = process.argv.slice(2);
 if (!TOOLS[tool]) {
   console.log('Usage: npm run dp -- <tool> [arguments]\n');
   for (const [name, what] of Object.entries(TOOLS)) console.log(`  ${name.padEnd(8)} ${what}`);
-  console.log('\ntools/README.md explains each one.');
-  process.exit(tool && tool !== 'help' ? 1 : 0);
+  console.log('\nnpm run dp -- help <words> prints what tools/README.md says about them.');
+  process.exit(tool ? 1 : 0);
 }
 try {
   const { run } = await import(`./${tool}.mjs`);
@@ -33,3 +35,6 @@ try {
   console.error(error.message);
   process.exitCode = 1;
 }
+// done, once what it printed has gone: a connection fetch keeps open for a while would otherwise hold it here for seconds
+await Promise.all([process.stdout, process.stderr].map(stream => new Promise(resolve => stream.write('', resolve))));
+process.exit();

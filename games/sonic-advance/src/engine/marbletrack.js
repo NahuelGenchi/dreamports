@@ -20,9 +20,10 @@
 // The entrance runs at priority 0x1900 + d3, the points at 0x2000 + d3, the drop at 0x2000 + d1 and the exit at
 // 0x2100 + d1, so a chain's objects run in its order. On the entrance's 25th frame Tails gets his tails as a
 // sprite of their own, kept until he is off the track (game.js). The ROM's teleport flag, which only
-// multiplayer reads, isn't kept.
+// multiplayer reads, isn't kept. Each object holds each player on his own, Sonic first.
 
 import { makeSprite, animate, offCam } from './objects.js';
+import { makeAnimator, setAnim } from './animator.js';
 import { platform, LANDED, FROM_BELOW } from './collide.js';
 import { endAttack, climbing } from './player.js';
 import { setOffsetY } from './sensors.js';
@@ -44,13 +45,17 @@ const s16 = v => (v << 16) >> 16;
 function cancel(p) { endAttack(p); p.pushing = false; }
 // PLAYERFN_CHANGE_SHIFT_OFFSETS(6, 14): his standing height, curled up or not
 const fullHeight = p => setOffsetY(p, SPRITE_OFFSET_Y);
-// the jump and attack buttons he holds don't count as presses (heldInput, frameInput)
-function noPresses(input) { input.jumpPressed = false; input.attackPressed = false; input.boostPressed = false; }
+// the jump and attack buttons he holds don't count as presses (heldInput, frameInput): for the CPU partner, his
+// presses go by the buttons he held last
+function noPresses(p, ctx) {
+  if (p === ctx.player) { ctx.input.jumpPressed = false; ctx.input.attackPressed = false; ctx.input.boostPressed = false; }
+  else p.lastInput = { ...p.lastInput, jump: true, attack: true };
+}
 // taken in: curled up, carried, standing still
-function takeIn(p, input) {
+function takeIn(p, ctx) {
   p.curled = true; p.carried = true;
   p.xsp = 0; p.ysp = 0; p.gsp = 0;
-  noPresses(input);
+  noPresses(p, ctx);
   fullHeight(p);
 }
 
@@ -59,20 +64,24 @@ function entrance(e, slot, anims) {
   const frames = e.d[0], across = s8(e.d[1]), depth = e.d[2], step = e.d[3];
   const o = { x: e.x, y: e.y, ...makeSprite('marbleTrackExit') };
   animate(o, anims);
-  let held = false, n = 0, dropped = 0;
+  const holds = [0, 1].map(() => ({ held: false, n: 0, dropped: 0 }));   // one for each player
   return {
     priority: 0x1900 + step,
     run(ctx) {
-      const p = ctx.player;
-      if (!p.dead) {
-        if (held) {
+      for (let i = 0; i < ctx.players.length; i++) {
+        const p = ctx.players[i], h = holds[i];
+        if (p.dead) continue;
+        if (h.held) {
           p.ysp += GRAVITY;
           p.y += p.ysp;
-          dropped += p.ysp;
-          p.x = e.x + Div(across * n, frames);
+          h.dropped += p.ysp;
+          p.x = e.x + Div(across * h.n, frames);
           p.scale = Math.min(p.scale + GROW, FULL);
-          if (n === TAILS_FRAME) ctx.world.marbleTails();
-          if (++n >= frames || Math.floor(dropped) > depth || (p.track !== NO_TRACK && p.track > step)) held = false;
+          if (h.n === TAILS_FRAME) {
+            if (i === 0) ctx.world.marbleTails();
+            else { p.marbleTails = makeAnimator(); setAnim(p.marbleTails, 'marbleTrackTails'); }
+          }
+          if (++h.n >= frames || Math.floor(h.dropped) > depth || (p.track !== NO_TRACK && p.track > step)) h.held = false;
           else {
             cancel(p);
             p.carried = true; p.xsp = 0; p.gsp = 0;
@@ -85,20 +94,20 @@ function entrance(e, slot, anims) {
             // Knuckles climbing up past it: more than 12 px below its point it is solid, stopping him 23 px under
             if (p.y > e.y + 12 && platform(o, o.boxes[0], p, ctx.world.terrain) & FROM_BELOW) p.y = e.y + 23;
           } else if (p.track === NO_TRACK && platform(o, o.boxes[0], p, ctx.world.terrain) & LANDED) {
-            n = 0; dropped = 0;
+            h.n = 0; h.dropped = 0;
             cancel(p);
             p.onObject = null;
             p.track = step;
-            takeIn(p, ctx.input);
+            takeIn(p, ctx);
             p.state = 'marbleTrack';
             p.scale = SMALL;
             ctx.world.playSound(SONG.SPRING);
-            held = true;
+            h.held = true;
             p.x = x;
           }
         }
       }
-      if (!held && offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
+      if (!holds[0].held && !holds[1].held && offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       animate(o, anims);
       ctx.draw(o, e.x, e.y);
       return true;
@@ -110,46 +119,47 @@ function entrance(e, slot, anims) {
 // from which his speeds are worked out, wrapping as the original's 16-bit speeds do; they start at 0
 function direction(e, slot) {
   const dx = s8(e.d[0]) * 8, dy = s8(e.d[1]) * 8, frames = e.d[2], step = e.d[3];
-  let held = false, n = 0, x0 = 0, y0 = 0, lastX = 0, lastY = 0;
+  const holds = [0, 1].map(() => ({ held: false, n: 0, x0: 0, y0: 0, lastX: 0, lastY: 0 }));   // one for each player
   return {
     priority: 0x2000 | step,
     run(ctx) {
-      const p = ctx.player;
-      if (!p.dead) {
-        if (held) {
+      for (let i = 0; i < ctx.players.length; i++) {
+        const p = ctx.players[i], h = holds[i];
+        if (p.dead) continue;
+        if (h.held) {
           if (p.track === step) {
-            p.x = x0 + Div(dx * n, frames);
-            p.y = y0 + Div(dy * n, frames);
-            p.xsp = s16(p.x * 256 - lastX) / 256;
-            p.ysp = s16(p.y * 256 - lastY) / 256;
-            n = (n + 1) & 0xFF;
-            if (n >= frames) {
+            p.x = h.x0 + Div(dx * h.n, frames);
+            p.y = h.y0 + Div(dy * h.n, frames);
+            p.xsp = s16(p.x * 256 - h.lastX) / 256;
+            p.ysp = s16(p.y * 256 - h.lastY) / 256;
+            h.n = (h.n + 1) & 0xFF;
+            if (h.n >= frames) {
               // the last step lets him go, still
-              p.ignoreInput = false; noPresses(ctx.input);
+              p.ignoreInput = false; noPresses(p, ctx);
               p.carried = false;
               p.xsp = 0; p.ysp = 0; p.gsp = 0;
-              held = false;
+              h.held = false;
             } else {
               p.ignoreInput = true; p.carried = true; p.gsp = 0;
-              noPresses(ctx.input);
+              noPresses(p, ctx);
               fullHeight(p);
             }
-            lastX = p.x * 256; lastY = p.y * 256;
-          } else held = false;
+            h.lastX = p.x * 256; h.lastY = p.y * 256;
+          } else h.held = false;
         } else if ((p.carried && p.track < step) || step === 0) {
           const px = Math.floor(p.x), py = Math.floor(p.y);
           if (px >= e.x - 8 && px <= e.x + 8 && py >= e.y - 10 && py <= e.y + 10) {
-            n = 0;
+            h.n = 0;
             p.ignoreInput = true;
-            x0 = px; y0 = py;
-            takeIn(p, ctx.input);
+            h.x0 = px; h.y0 = py;
+            takeIn(p, ctx);
             ctx.world.playSound(SONG.SPRING);
-            held = true;
+            h.held = true;
             p.track = step;
           }
         }
       }
-      if (!held && offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
+      if (!holds[0].held && !holds[1].held && offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       return true;
     },
   };
@@ -159,38 +169,40 @@ function direction(e, slot) {
 // him across to it, half a pixel a frame
 function drop(e, slot, centre) {
   const depth = s8(e.d[0]) * 8, step = e.d[1], frames = e.d[2] * 3;
-  let held = false, n = 0, dropped = 0;
+  const holds = [0, 1].map(() => ({ held: false, n: 0, dropped: 0 }));   // one for each player
   return {
     priority: 0x2000 + s8(e.d[1]),
     run(ctx) {
-      const p = ctx.player;
-      if (!p.dead) {
-        if (held) {
-          p.ysp += GRAVITY;
-          p.y += p.ysp;
-          dropped += p.ysp;
-          if (centre) p.x = p.x < e.x ? Math.min(p.x + 0.5, e.x) : Math.max(p.x - 0.5, e.x);
-          if (p.track > step || ++n >= frames || Math.floor(dropped) > depth) {
-            if (p.track === step) { p.track = NO_TRACK; p.carried = false; }
-            held = false;
-          } else {
-            p.carried = true; p.xsp = 0; p.gsp = 0;
-            fullHeight(p);
+      for (let i = 0; i < ctx.players.length; i++) {
+        const p = ctx.players[i], h = holds[i];
+        if (!p.dead) {
+          if (h.held) {
+            p.ysp += GRAVITY;
+            p.y += p.ysp;
+            h.dropped += p.ysp;
+            if (centre) p.x = p.x < e.x ? Math.min(p.x + 0.5, e.x) : Math.max(p.x - 0.5, e.x);
+            if (p.track > step || ++h.n >= frames || Math.floor(h.dropped) > depth) {
+              if (p.track === step) { p.track = NO_TRACK; p.carried = false; }
+              h.held = false;
+            } else {
+              p.carried = true; p.xsp = 0; p.gsp = 0;
+              fullHeight(p);
+            }
+          } else if ((p.carried && p.track < step) || step === 0) {
+            const px = Math.floor(p.x), py = Math.floor(p.y);
+            if (px >= e.x - 12 && px <= e.x + 12 && py >= e.y - 12 && py <= e.y + 12) {
+              h.n = 0; h.dropped = 0;
+              p.curled = true; p.carried = true;
+              p.xsp = 0; p.ysp = 0; p.gsp = 0;
+              fullHeight(p);
+              ctx.world.playSound(SONG.SPRING);
+              h.held = true;
+              p.track = step;
+            }
           }
-        } else if ((p.carried && p.track < step) || step === 0) {
-          const px = Math.floor(p.x), py = Math.floor(p.y);
-          if (px >= e.x - 12 && px <= e.x + 12 && py >= e.y - 12 && py <= e.y + 12) {
-            n = 0; dropped = 0;
-            p.curled = true; p.carried = true;
-            p.xsp = 0; p.ysp = 0; p.gsp = 0;
-            fullHeight(p);
-            ctx.world.playSound(SONG.SPRING);
-            held = true;
-            p.track = step;
-          }
-        }
-      } else if (held) { held = false; p.carried = false; }
-      if (!held && offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
+        } else if (h.held) { h.held = false; p.carried = false; }
+      }
+      if (!holds[0].held && !holds[1].held && offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       return true;
     },
   };
@@ -201,44 +213,49 @@ function exit(e, slot, anims) {
   const left = e.d[2] !== 0 ? -24 : 0;
   const o = { x: e.x, y: e.y, ...makeSprite('marbleTrackExit') };
   animate(o, anims);
-  let held = false, hx = 0, hy = 0;
+  const holds = [0, 1].map(() => ({ held: false, hx: 0, hy: 0 }));   // one for each player
   return {
     priority: 0x2100 + s8(e.d[1]),
     run(ctx) {
-      const p = ctx.player;
-      if (!p.dead) {
-        if (held) {
+      for (let i = 0; i < ctx.players.length; i++) {
+        const p = ctx.players[i], h = holds[i];
+        if (p.dead) continue;
+        if (h.held) {
           p.ysp += GRAVITY;
-          hy += p.ysp;
-          p.y = hy; p.x = hx;
+          h.hy += p.ysp;
+          p.y = h.hy; p.x = h.hx;
           p.scale = Math.max(p.scale - GROW, SMALL);
           p.ignoreInput = true; p.carried = true;
           if (p.ysp > 0) {
             cancel(p);
             p.state = 'spin';
-            p.ignoreInput = false; noPresses(ctx.input);
+            p.ignoreInput = false; noPresses(p, ctx);
             p.carried = false;
-            held = false;
+            h.held = false;
             p.scale = FULL;
           }
         } else {
           const px = Math.floor(p.x), py = Math.floor(p.y);
           if (p.track !== NO_TRACK && px >= e.x + left && px <= e.x + left + 24 && py >= e.y - 24 && py <= e.y + 24) {
-            hx = p.x; hy = p.y;
+            h.hx = p.x; h.hy = p.y;
             cancel(p);
             p.airLock = true;   // MOVESTATE_FLIP_WITH_MOVE_DIR: no steering until he lands
             p.air = true; p.ignoreInput = true;
-            takeIn(p, ctx.input);
+            takeIn(p, ctx);
             p.ysp = -LAUNCH;
             ctx.world.playSound(SONG.SPRING);
             p.track = NO_TRACK;
-            held = true;
+            h.held = true;
           }
           if (!p.ignoreInput) platform(o, o.boxes[0], p, ctx.world.terrain);
         }
       }
       if (offCam(e.x, e.y, ctx.cam)) {
-        if (held) { p.ignoreInput = false; noPresses(ctx.input); p.carried = false; }
+        for (let i = 0; i < ctx.players.length; i++) {
+          if (!holds[i].held) continue;
+          const p = ctx.players[i];
+          p.ignoreInput = false; noPresses(p, ctx); p.carried = false;
+        }
         slot.live = null;
         return false;
       }

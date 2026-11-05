@@ -8,6 +8,7 @@
 import { SINE } from './trig.js';
 import { makeSprite, startAnim, animate } from './objects.js';
 import { createFade, applyFade, runFade, plainDisplay, FROM_WHITE, TO_BLACK } from './screenfade.js';
+import { fixes } from './fixes.js';
 
 export const TORNADO_RESCUE_SONG = 38;   // MUS_CUTSCENE_TORNADO_RESCUE
 
@@ -98,7 +99,8 @@ export function createCongratulations(anims, sound, { random, onCredits = () => 
   const cloudShow = c => {
     animate(c.s, anims);
     animate(c.late, anims);
-    show(lateColours ? c.late : c.s, I(c.x), I(c.y));
+    if (fixes.on) { if (c.own) animate(c.own, anims); show(c.own ?? c.s, I(c.x), I(c.y)); }
+    else show(lateColours ? c.late : c.s, I(c.x), I(c.y));
   };
   const cloudRise = c => {
     c.y += c.dy;
@@ -272,6 +274,7 @@ export function createCongratulations(anims, sound, { random, onCredits = () => 
       if (n === 0xB4) {
         clouds = CLOUDS.map(([name, order, x, dx, dy]) => {
           const c = task(name, order, 180, 80, { x, y: Q(200), dx, dy, late: (l => (animate(l, anims), l))(makeSprite(`${name}Late`, { order, prio: 1 })) });
+          if (name === 'cloud2') { c.own = makeSprite('cloud2Own', { order, prio: 1 }); animate(c.own, anims); }
           c.run = cloudRise;
           return c;
         });

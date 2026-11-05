@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { hex, readCodeMap, readOriginal, writeCodeMap } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
-import { readCopy } from './gba/header.mjs';
+import { readAnyCopy } from './lib/read-copy.mjs';
 import { fillFunctions, findFunctions, startsInData } from './gba/functions.mjs';
 
 // where code runs on the Game Boy Advance: the cartridge and the two work RAMs
@@ -26,11 +26,15 @@ export async function run(args) {
   const original = readOriginal(game);
   const copy = copyWith(original.sha1);
   if (!copy) throw new Error(`The code map is of ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
-  const read = await readCopy(copy.path);
+  const read = await readAnyCopy(copy.path, original.console);
   if (read?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
-  const theCopy = readFileSync(copy.path);
+  // the tools find functions only in a Game Boy Advance game's code, and take another console's from a disassembler's list
+  const gba = original.console === 'gba';
+  if (!gba && !list && !fill) throw new Error(`The tools can't find the functions in ${original.console} code themselves: --from <list> takes them from a decompilation or a disassembler.`);
+  const theCopy = gba ? readFileSync(copy.path) : null;
   const FOUND = 'the proof tools (tools/gba/functions.mjs)';
   const filled = listed => {
+    if (!gba) return listed;
     const inData = startsInData(theCopy, listed);
     if (inData.length) console.log(`Left out ${inData.length} of the functions listed, which start in the data of the code before them: ${inData.map(f => `0x${hex(f.address)}`).join(', ')}.`);
     const real = listed.filter(f => !inData.includes(f));
@@ -38,8 +42,8 @@ export async function run(args) {
   };
   let functions, from;
   if (list) {
-    functions = filled(readList(readFileSync(list, 'utf8')));
-    from = `The functions in ${basename(list)}, with what ${FOUND} found in the copy beyond them`;
+    functions = filled(readList(readFileSync(list, 'utf8'), gba ? isCode : () => true));
+    from = `The functions in ${basename(list)}, ${gba ? `with what ${FOUND} found in the copy beyond them` : 'as they are'}`;
   } else if (fill) {
     const map = readCodeMap(game);
     if (!map) throw new Error(`games/${game}/proof/ has no code map yet: npm run dp -- codemap ${game} makes one.`);
@@ -58,7 +62,7 @@ export async function run(args) {
 
 /** The functions in a list: `nm -S` lines, or a CSV with a header naming its address column, and its size or end
  *  column if it has one. */
-export function readList(text) {
+export function readList(text, inCode = isCode) {
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   // an address is hexadecimal, with or without 0x or a memory's name before it (ram:08000204); a size is decimal
   // unless it starts with 0x
@@ -91,7 +95,7 @@ export function readList(text) {
   }
   // only code, each function once, and those listed without a size as long as the gap to the next
   const byAddress = new Map();
-  for (const f of out) if (isCode(f.address) && !byAddress.has(f.address)) byAddress.set(f.address, f);
+  for (const f of out) if (inCode(f.address) && !byAddress.has(f.address)) byAddress.set(f.address, f);
   const sorted = [...byAddress.values()].sort((a, b) => a.address - b.address);
   return sorted.map((f, i) => {
     const next = sorted[i + 1]?.address;

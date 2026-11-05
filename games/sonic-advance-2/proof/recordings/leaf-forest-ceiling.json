@@ -1,0 +1,216 @@
+{
+ "about": "Sonic meeting a ceiling, from a start point on the ground in Leaf Forest act 1's cave: the character and the camera are put there as the stage opens, so the rings and the enemies on the way, which aren't made, don't show. He waits out the countdown there, sets off as it ends, brakes and jumps straight up into the low ceiling with the button held, and comes back down.",
+ "frames": 269,
+ "start": "level=0&x=3560&y=1665",
+ "held": [
+  [
+   0,
+   []
+  ],
+  [
+   177,
+   [
+    "LEFT"
+   ]
+  ],
+  [
+   192,
+   []
+  ],
+  [
+   205,
+   [
+    "A"
+   ]
+  ],
+  [
+   245,
+   []
+  ]
+ ],
+ "onlyInOriginal": [
+  {
+   "at": 0,
+   "frames": 2320,
+   "held": [
+    [
+     0,
+     []
+    ],
+    [
+     640,
+     [
+      "START"
+     ]
+    ],
+    [
+     646,
+     []
+    ],
+    [
+     760,
+     [
+      "A"
+     ]
+    ],
+    [
+     766,
+     []
+    ],
+    [
+     880,
+     [
+      "START"
+     ]
+    ],
+    [
+     886,
+     []
+    ],
+    [
+     1000,
+     [
+      "A"
+     ]
+    ],
+    [
+     1006,
+     []
+    ],
+    [
+     1120,
+     [
+      "START"
+     ]
+    ],
+    [
+     1126,
+     []
+    ],
+    [
+     1240,
+     [
+      "A"
+     ]
+    ],
+    [
+     1246,
+     []
+    ],
+    [
+     1360,
+     [
+      "START"
+     ]
+    ],
+    [
+     1366,
+     []
+    ],
+    [
+     1480,
+     [
+      "A"
+     ]
+    ],
+    [
+     1486,
+     []
+    ],
+    [
+     1600,
+     [
+      "START"
+     ]
+    ],
+    [
+     1606,
+     []
+    ],
+    [
+     1720,
+     [
+      "A"
+     ]
+    ],
+    [
+     1726,
+     []
+    ],
+    [
+     1840,
+     [
+      "START"
+     ]
+    ],
+    [
+     1846,
+     []
+    ],
+    [
+     1960,
+     [
+      "A"
+     ]
+    ],
+    [
+     1966,
+     []
+    ],
+    [
+     2080,
+     [
+      "START"
+     ]
+    ],
+    [
+     2086,
+     []
+    ],
+    [
+     2200,
+     [
+      "A"
+     ]
+    ],
+    [
+     2206,
+     []
+    ],
+    [
+     2316,
+     [
+      "A"
+     ]
+    ]
+   ],
+   "about": "From power-on to Leaf Forest act 1: the language, a name, the logos, the title, Game Start and Sonic. Then Sonic's place, in the cave a little further on.",
+   "sets": [
+    {
+     "frame": 2319,
+     "address": "030059E8",
+     "bytes": 4,
+     "value": 911360
+    },
+    {
+     "frame": 2319,
+     "address": "030059EC",
+     "bytes": 4,
+     "value": 426240
+    },
+    {
+     "frame": 2319,
+     "address": "03005960",
+     "bytes": 4,
+     "value": 3440
+    },
+    {
+     "frame": 2319,
+     "address": "03005964",
+     "bytes": 4,
+     "value": 1585
+    }
+   ]
+  }
+ ]
+}

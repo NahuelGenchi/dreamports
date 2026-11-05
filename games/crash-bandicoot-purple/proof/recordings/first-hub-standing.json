@@ -1,272 +1,261 @@
 {
-  "about": "Crash in the first world's hub with nothing pressed, for 30 seconds: he lands, stands, plays his idle animations and Aku Aku floats around him, with the hub's song. The original gets there from power-on by its own presses, then its random seed and float count are set, so anyone's replay is the same.",
-  "frames": 1800,
-  "start": "hub=1",
+  "about": "From power-on, the first screens, the title screen with Start and the story's opening scene, then Crash in the first world's hub with nothing pressed, for 30 seconds: he stands, plays his idle animations and Aku Aku floats around him, with the hub's song. The original gets to the scene by its own presses, through the load save screen and the main menu, which the Dreamport doesn't have yet.",
+  "frames": 5679,
   "held": [
     [
       0,
       []
+    ],
+    [
+      800,
+      [
+        "START"
+      ]
+    ],
+    [
+      806,
+      []
+    ],
+    [
+      1000,
+      [
+        "A"
+      ]
+    ],
+    [
+      1004,
+      []
+    ],
+    [
+      1150,
+      [
+        "A"
+      ]
+    ],
+    [
+      1154,
+      []
+    ],
+    [
+      1300,
+      [
+        "A"
+      ]
+    ],
+    [
+      1304,
+      []
+    ],
+    [
+      1450,
+      [
+        "A"
+      ]
+    ],
+    [
+      1454,
+      []
+    ],
+    [
+      1600,
+      [
+        "A"
+      ]
+    ],
+    [
+      1604,
+      []
+    ],
+    [
+      1750,
+      [
+        "A"
+      ]
+    ],
+    [
+      1754,
+      []
+    ],
+    [
+      1900,
+      [
+        "A"
+      ]
+    ],
+    [
+      1904,
+      []
+    ],
+    [
+      2050,
+      [
+        "A"
+      ]
+    ],
+    [
+      2054,
+      []
+    ],
+    [
+      2200,
+      [
+        "A"
+      ]
+    ],
+    [
+      2204,
+      []
+    ],
+    [
+      2350,
+      [
+        "A"
+      ]
+    ],
+    [
+      2354,
+      []
+    ],
+    [
+      2500,
+      [
+        "A"
+      ]
+    ],
+    [
+      2504,
+      []
+    ],
+    [
+      2650,
+      [
+        "A"
+      ]
+    ],
+    [
+      2654,
+      []
+    ],
+    [
+      2800,
+      [
+        "A"
+      ]
+    ],
+    [
+      2804,
+      []
+    ],
+    [
+      2950,
+      [
+        "A"
+      ]
+    ],
+    [
+      2954,
+      []
+    ],
+    [
+      3100,
+      [
+        "A"
+      ]
+    ],
+    [
+      3104,
+      []
+    ],
+    [
+      3250,
+      [
+        "A"
+      ]
+    ],
+    [
+      3254,
+      []
+    ],
+    [
+      3400,
+      [
+        "A"
+      ]
+    ],
+    [
+      3404,
+      []
+    ],
+    [
+      3550,
+      [
+        "A"
+      ]
+    ],
+    [
+      3554,
+      []
+    ],
+    [
+      3700,
+      [
+        "A"
+      ]
+    ],
+    [
+      3704,
+      []
+    ],
+    [
+      3850,
+      [
+        "A"
+      ]
+    ],
+    [
+      3854,
+      []
+    ],
+    [
+      3879,
+      []
     ]
   ],
+  "clip": {
+    "at": 4159,
+    "frames": 300
+  },
   "onlyInOriginal": [
     {
-      "at": 0,
-      "frames": 3168,
+      "at": 821,
+      "frames": 598,
       "held": [
         [
           0,
           []
         ],
         [
-          800,
-          [
-            "START"
-          ]
-        ],
-        [
-          806,
-          []
-        ],
-        [
-          1100,
+          279,
           [
             "A"
           ]
         ],
         [
-          1106,
+          285,
           []
         ],
         [
-          1400,
+          579,
           [
             "A"
           ]
         ],
         [
-          1406,
-          []
-        ],
-        [
-          2000,
-          [
-            "A"
-          ]
-        ],
-        [
-          2004,
-          []
-        ],
-        [
-          2060,
-          [
-            "A"
-          ]
-        ],
-        [
-          2064,
-          []
-        ],
-        [
-          2120,
-          [
-            "A"
-          ]
-        ],
-        [
-          2124,
-          []
-        ],
-        [
-          2180,
-          [
-            "A"
-          ]
-        ],
-        [
-          2184,
-          []
-        ],
-        [
-          2240,
-          [
-            "A"
-          ]
-        ],
-        [
-          2244,
-          []
-        ],
-        [
-          2300,
-          [
-            "A"
-          ]
-        ],
-        [
-          2304,
-          []
-        ],
-        [
-          2360,
-          [
-            "A"
-          ]
-        ],
-        [
-          2364,
-          []
-        ],
-        [
-          2420,
-          [
-            "A"
-          ]
-        ],
-        [
-          2424,
-          []
-        ],
-        [
-          2480,
-          [
-            "A"
-          ]
-        ],
-        [
-          2484,
-          []
-        ],
-        [
-          2540,
-          [
-            "A"
-          ]
-        ],
-        [
-          2544,
-          []
-        ],
-        [
-          2600,
-          [
-            "A"
-          ]
-        ],
-        [
-          2604,
-          []
-        ],
-        [
-          2660,
-          [
-            "A"
-          ]
-        ],
-        [
-          2664,
-          []
-        ],
-        [
-          2720,
-          [
-            "A"
-          ]
-        ],
-        [
-          2724,
-          []
-        ],
-        [
-          2780,
-          [
-            "A"
-          ]
-        ],
-        [
-          2784,
-          []
-        ],
-        [
-          2840,
-          [
-            "A"
-          ]
-        ],
-        [
-          2844,
-          []
-        ],
-        [
-          2900,
-          [
-            "A"
-          ]
-        ],
-        [
-          2904,
-          []
-        ],
-        [
-          2960,
-          [
-            "A"
-          ]
-        ],
-        [
-          2964,
-          []
-        ],
-        [
-          3020,
-          [
-            "A"
-          ]
-        ],
-        [
-          3024,
-          []
-        ],
-        [
-          3080,
-          [
-            "A"
-          ]
-        ],
-        [
-          3084,
-          []
-        ],
-        [
-          3140,
-          [
-            "A"
-          ]
-        ],
-        [
-          3144,
+          585,
           []
         ]
       ],
-      "about": "From power-on through the logos, the title screen, the save screen, the main menu and the story's opening scene to the hub's first frame, by presses.",
-      "sets": [
-        {
-          "frame": 3167,
-          "address": "02000000",
-          "bytes": 4,
-          "value": 1
-        },
-        {
-          "frame": 3167,
-          "address": "0200762C",
-          "bytes": 4,
-          "value": 0
-        }
-      ]
+      "about": "The load save screen and the main menu, by presses, with A on New Game and on Story Mode."
     }
-  ],
-  "clip": {
-    "at": 280,
-    "frames": 300
-  }
+  ]
 }

@@ -1,0 +1,22 @@
+{
+  "about": "From power-on with nothing saved: A on the language screen, Start in the black after Sonic Team's logo, then nothing on the title screen until the first demo starts. Start while its title card holds ends it, back at the title screen with its music. The second demo is ended by Start under its spotlights, the third after its first seconds and the fourth on its title card, and Start on the title screen after that opens the menu.",
+  "frames": 7600,
+  "held": [
+    [0,[]],
+    [150,["A"]],
+    [156,[]],
+    [931,["START"]],
+    [937,[]],
+    [2076,["START"]],
+    [2082,[]],
+    [3700,["START"]],
+    [3706,[]],
+    [5500,["START"]],
+    [5506,[]],
+    [6800,["START"]],
+    [6806,[]],
+    [7300,["START"]],
+    [7306,[]]
+  ],
+  "clip": {"at":3620,"frames":200}
+}

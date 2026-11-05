@@ -80,7 +80,7 @@ function opening(name, typed, after, pasted, codex = false) {
     '',
     after,
     '',
-    'Work in the Dreamports repository\'s folder, as its `AGENTS.md` says under Working on a Dreamport. The person may never have written code. Everything you say to them is ultra concise, in natural, easy words, divided into a few short sections, with no lists, em dashes or emojis.'
+    'Work in the Dreamports repository\'s folder, as its `docs/MAKING.md` says. The person may never have written code. Everything you say to them is ultra concise, in natural, easy words, divided into a few short sections, with no lists, em dashes or emojis.'
       + (codex ? ' In Codex the command starts with `$` instead of `/`, as in `$dreamport`.' : ''),
     '',
     '',

@@ -16,12 +16,19 @@ const TYPES = {
 };
 
 /**
- * Starts the server on a free port of 127.0.0.1: { url, close() }. A tool that talks to its page gives `answer`, which
- * sees each request first, as (request, response, path), and resolves to true if it answered.
+ * Starts the server on a free port of 127.0.0.1: { url, serve(path, bytes), close() }. A tool that talks to its page
+ * gives `answer`, which sees each request first, as (request, response, path), and resolves to true if it answered,
+ * and `serve` holds bytes for the page to fetch, until it's given null for them.
  */
 export async function serveRepository({ answer } = {}) {
+  const held = new Map();
   const server = createServer(async (request, response) => {
     const path = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
+    if (held.has(path)) {
+      response.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-store' });
+      response.end(held.get(path));
+      return;
+    }
     if (await answer?.(request, response, path)) return;
     // nothing outside the repository, and none of its hidden folders, such as .git or .dreamports
     const parts = normalize(path).split(/[\\/]/).filter(Boolean);
@@ -49,6 +56,7 @@ export async function serveRepository({ answer } = {}) {
   const { port } = server.address();
   return {
     url: `http://127.0.0.1:${port}`,
+    serve: (path, bytes) => { if (bytes) held.set(path, bytes); else held.delete(path); },
     close: () => new Promise(resolve => { server.closeAllConnections?.(); server.close(resolve); }),
   };
 }

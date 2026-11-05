@@ -36,6 +36,7 @@ Track all meaningful work: pages, features, bugs, enhancements, docs, research, 
 | M5 | M5 — Game launcher | The site as a one-screen game launcher: a row of games to move through, filters, panels such as settings and about, and a launch animation, on phones and computers |
 | M6 | M6 — Anyone can make a Dreamport | Anyone can make or help with a Dreamport in this repository: the Dreamport standard, games played from here, proof of progress with clips and a percentage, previews on GitHub Pages that need no approval, claims and teams, and a step-by-step guide with commands for coding agents |
 | M7 | M7 — New games join the launcher on their own | A lead's entry reaches the launcher with everything wired in and a real capture of the game, with one approval from the team for the picture and a review for code |
+| M8 | M8 — Lighter tools, on any console | The proof tools and `/dreamport` take less memory, processor, graphics chip, electricity and agent tokens, go faster with the same proof, and are ready for games on other consoles |
 
 The first issue is #1 (M0). Later milestones may be created deliberately; assign them directly in GitHub.
 
@@ -57,15 +58,17 @@ Issue and PR titles may start with a type prefix (`feat:`, `fix:`, `enh:`, `docs
 Closes #123
 ```
 
-Use one closing line per completed issue and `Refs #123` for unfinished parent or related work. Keep closing issues within the PR's milestone.
+Use one closing line per completed issue and `Refs #123` for unfinished parent or related work. Keep closing issues within the PR's milestone. A PR that must not close anything, such as a draft or a game's capture, has only its `Refs` lines, and those count in its closing lines' place.
 
 ## Metadata-only automation
 
 [`.github/workflows/project-tracking.yml`](../.github/workflows/project-tracking.yml) manages metadata, not software quality. It creates the milestones and tracking labels idempotently, processes issues before PRs, and fills missing milestones. An issue's explicit GitHub milestone wins; otherwise the form or `Milestone:` line is used, and unclassified issues fall back to M4. Issues with a *Game folder*, from the New Dreamport and Task forms, are left to [`claims.yml`](../.github/workflows/claims.yml), which puts them in their game's milestone.
 
-PRs inherit a missing milestone from their first valid closing issue. PRs without a valid closing issue, or with a milestone mismatch, get the `needs-tracking` label; fix the body or milestone to clear it. The workflow does not comment.
+PRs inherit a missing milestone from their first valid closing issue, or, with no closing line, from the first issue a standalone `Refs` line names. PRs with no valid issue either way, or with a milestone mismatch, get the `needs-tracking` label; fix the body or milestone to clear it. A milestone a PR already has stays, so a PR in a different milestone from its issue stays marked until someone changes it. The workflow does not comment.
 
 The job uses inline Node.js and the repository's `GITHUB_TOKEN` with only issue and PR write permissions. It has no checkout, third-party action, build, or test. PR text is parsed as data, never executed. To repair metadata after a missed run, use **Actions → Project tracking → Run workflow**.
+
+GitHub keeps only the newest waiting run in a concurrency group. Runs started by events share one group and replace one another while they wait, which saves runs, as each covers every open record. Only a full run, on a push to `main` or by hand, covers closed records, so full runs wait in a group of their own and a burst of events can't push one out.
 
 ## Enforcement
 
