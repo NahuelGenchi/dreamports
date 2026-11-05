@@ -56,7 +56,7 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
   video.write(REG.DISPCNT, 0x80);   // forced blank, until the game starts
   let done = false, chosen, demo = false, startingUp = back ? 0 : STARTUP_FRAMES;
   const ctx = {
-    engine, tilemaps: offsets.tilemaps, sprites: spriteTables(rom, offsets.spriteTables), offsets, save, character, partner: false, levels, select,
+    engine, tilemaps: offsets.tilemaps, sprites: spriteTables(rom, offsets.spriteTables), offsets, save, character, partner: false, gameMode: 0, levels, select,
     introGraphics: offsets.introGraphics, introTables: offsets.introTables,
     intro: () => createIntro(ctx),
     title: playMusic => createTitleScreen(ctx, playMusic),

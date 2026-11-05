@@ -4,6 +4,7 @@
 export const SONG = {
   INTRO: 1,                // MUS_INTRO
   TITLE_FANFARE: 2,        // MUS_TITLE_FANFARE
+  VS_PLEASE_WAIT: 5,       // MUS_VS_PLEASE_WAIT: the VS menu's waiting screens
   CHARACTER_SELECTION: 3,  // MUS_CHARACTER_SELECTION: the Options menu stops it as it opens the sound test
   COURSE_SELECTION: 4,     // MUS_COURSE_SELECTION: the course select
   VS_RECORD: 10,           // MUS_VS_RECORD: the player data's VS record
