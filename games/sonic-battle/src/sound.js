@@ -19,5 +19,6 @@ const PLAYERS = 6;
 // eight DirectSound channels, master volume 14, 10,512 Hz (m4a.js's soundMode)
 const MODE = { channels: 8, volume: 14, rate: 10512 };
 
-/** The layout the engine needs: both tables, how many songs there are, and the sound mode. */
-export const soundLayout = rom => layoutAt(rom, MPLAY_TABLE, { players: PLAYERS, mode: MODE });
+/** The layout the engine needs: both tables, how many songs there are, and the sound mode. CgbSound reads SOUNDCNT_X
+ *  at 0x08049DFE, as the Sonic Advance games' and Crash's don't. */
+export const soundLayout = rom => layoutAt(rom, MPLAY_TABLE, { players: PLAYERS, mode: MODE, voicesEndOnChip: true });
