@@ -33,7 +33,7 @@ beforeEach(() => {
   git('init', '-q', '-b', 'main');
   git('config', 'user.name', 'Test');
   git('config', 'user.email', 'test@example.com');
-  put({ 'README.md': readme('table 0'), [MAP]: 'map 0', [PORT]: 'port 0', [PROGRESS]: progress({ a: { matched: 5 } }), 'games/one/code.js': 'a\nb\nc\n' });
+  put({ 'docs/STATUS.md': readme('table 0'), [MAP]: 'map 0', [PORT]: 'port 0', [PROGRESS]: progress({ a: { matched: 5 } }), 'games/one/code.js': 'a\nb\nc\n' });
   git('switch', '-qc', 'work');
 });
 afterEach(() => rmSync(cwd, { recursive: true, force: true }));
@@ -62,26 +62,26 @@ test('refuses with changes not committed, and touches nothing', () => {
 });
 
 test('conflicts in every file the tools write settle by themselves', () => {
-  both({ 'README.md': readme('table mine'), [MAP]: 'map mine', [PORT]: 'port mine', [PROGRESS]: progress({ a: { matched: 5 }, b: { matched: 7 } }) },
-    { 'README.md': readme('table main'), [MAP]: 'map main', [PORT]: 'port main', [PROGRESS]: progress({ a: { matched: 9 }, c: { matched: 3 } }) });
+  both({ 'docs/STATUS.md': readme('table mine'), [MAP]: 'map mine', [PORT]: 'port mine', [PROGRESS]: progress({ a: { matched: 5 }, b: { matched: 7 } }) },
+    { 'docs/STATUS.md': readme('table main'), [MAP]: 'map main', [PORT]: 'port main', [PROGRESS]: progress({ a: { matched: 9 }, c: { matched: 3 } }) });
   assert.deepEqual(startMerge(cwd, 'main').conflicts, []);
   assert.equal(git('diff', '--name-only', '--diff-filter=U'), '');
-  assert.equal(read('README.md'), readme('table main'));
+  assert.equal(read('docs/STATUS.md'), readme('table main'));
   assert.equal(read(MAP), 'map main');
   assert.equal(read(PORT), 'port main');
   assert.deepEqual(JSON.parse(read(PROGRESS)).recordings, { a: { matched: 9 }, b: { matched: 7 }, c: { matched: 3 } });
   assert.deepEqual(provedOnBothSides(cwd), ['one']);
 });
 
-test('the README\'s words on the branch stay when only main changed the table', () => {
-  both({ 'README.md': readme('table mine', 'My words.') }, { 'README.md': readme('table main') });
+test('the status doc\'s words on the branch stay when only main changed the table', () => {
+  both({ 'docs/STATUS.md': readme('table mine', 'My words.') }, { 'docs/STATUS.md': readme('table main') });
   assert.deepEqual(startMerge(cwd, 'main').conflicts, []);
-  assert.equal(read('README.md'), readme('table main', 'My words.'));
+  assert.equal(read('docs/STATUS.md'), readme('table main', 'My words.'));
 });
 
 test('words both sides changed are for a person', () => {
-  both({ 'README.md': readme('table 0', 'My words.') }, { 'README.md': readme('table 0', 'Their words.') });
-  assert.deepEqual(startMerge(cwd, 'main').conflicts, ['README.md']);
+  both({ 'docs/STATUS.md': readme('table 0', 'My words.') }, { 'docs/STATUS.md': readme('table 0', 'Their words.') });
+  assert.deepEqual(startMerge(cwd, 'main').conflicts, ['docs/STATUS.md']);
   assert.equal(merging(cwd), true);
 });
 
@@ -109,7 +109,7 @@ test('a progress.json that isn\'t JSON is for a person', () => {
 });
 
 test('with no conflict, the table and maps still end up as main\'s, so the branch stops changing them', () => {
-  both({ 'README.md': readme('table mine'), [MAP]: 'map mine', '.github/readme/progress/stray.svg': 'stray' }, { 'other.txt': 'x' });
+  both({ 'docs/STATUS.md': readme('table mine'), [MAP]: 'map mine', '.github/readme/progress/stray.svg': 'stray' }, { 'other.txt': 'x' });
   assert.deepEqual(startMerge(cwd, 'main').conflicts, []);
   keepMainsTable(cwd);
   finishMerge(cwd, [], 'Merge main');
@@ -127,14 +127,14 @@ test('main having removed a map takes it off the branch, as a conflict', () => {
 });
 
 test('a new game keeps its own map and the table written for it', () => {
-  both({ 'games/two/entry.md': 'new', '.github/readme/progress/two.svg': 'two', [MAP]: 'map mine', 'README.md': readme('table with two') }, { 'other.txt': 'x' });
+  both({ 'games/two/entry.md': 'new', '.github/readme/progress/two.svg': 'two', [MAP]: 'map mine', 'docs/STATUS.md': readme('table with two') }, { 'other.txt': 'x' });
   startMerge(cwd, 'main');
   assert.deepEqual(newGames(cwd), ['two']);
   keepMainsTable(cwd, ['two']);
   finishMerge(cwd, [], 'Merge main');
   assert.equal(read('.github/readme/progress/two.svg'), 'two');
   assert.equal(read(MAP), 'map 0');
-  assert.equal(read('README.md'), readme('table with two'));
+  assert.equal(read('docs/STATUS.md'), readme('table with two'));
 });
 
 test('a branch with no progress.json of main\'s leaves nothing to prove twice', () => {

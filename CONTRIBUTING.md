@@ -55,7 +55,7 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 | `npm run test:real-console` | Tries them on a real NES emulator, built from its makers' source at a fixed commit, with a small program of the project's own, so no game copy is needed |
 | `npm run preview` | Opens that finished site, to check it before it goes online |
 | `npm run worker` | Makes the finished site and opens it with its profiles, at <http://localhost:8787>, with a database on your computer. Profiles only work here, not with `npm run dev` |
-| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame, picture and sound, `portmap`, which lists the original's functions your code names, `share`, which puts a preview of your work online for anyone to try, `readme`, which writes the README's table of Dreamports from their entries, and `commands`, which writes the `/dreamport` commands for each coding agent. [`tools/README.md`](tools/README.md) explains them |
+| `npm run dp -- <tool>` | The proof tools, which play the same button presses in the original game and in a Dreamport and compare every frame, picture and sound, `portmap`, which lists the original's functions your code names, `share`, which puts a preview of your work online for anyone to try, `readme`, which writes the table of Dreamports in `docs/STATUS.md` from their entries, and `commands`, which writes the `/dreamport` commands for each coding agent. [`tools/README.md`](tools/README.md) explains them |
 
 ## Add a game
 

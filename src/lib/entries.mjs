@@ -1,4 +1,4 @@
-// What a Dreamport's folder in games/ says about it, read the same way by the site, the README's table of
+// What a Dreamport's folder in games/ says about it, read the same way by the site, the table in docs/STATUS.md of
 // Dreamports (tools/readme.mjs) and the proof tools. Each Dreamport has one entry, games/<game>/entry.md, which
 // games/README.md describes, and its two numbers, code ported and gameplay proven, come only from its proof/ folder,
 // which the proof tools write and docs/STANDARD.md#how-progress-is-measured explains.

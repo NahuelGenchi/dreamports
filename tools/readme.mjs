@@ -1,4 +1,4 @@
-// npm run dp -- readme [--check]: writes the table of Dreamports in README.md from each Dreamport's entry,
+// npm run dp -- readme [--check]: writes the table of Dreamports in docs/STATUS.md from each Dreamport's entry,
 // games/<game>/entry.md, with its code ported and gameplay proven from its proof/ folder, and its lead, and each
 // Dreamport's progress map, in .github/readme/progress/<game>.svg, which the table links. .github/workflows/readme.yml
 // runs it on main, so pull requests leave them alone and can't conflict over them. With --check it changes nothing and
@@ -11,9 +11,11 @@ import { REPO } from './lib/paths.mjs';
 import { ENTRY, mapOf, percentText, proofOf } from '../src/lib/entries.mjs';
 import { progressMap } from '../src/lib/progress-map.mjs';
 
-const README = join(REPO, 'README.md');
+export const STATUS = 'docs/STATUS.md';
+const STATUS_FILE = join(REPO, STATUS);
 const START = '<!-- The proof tools write this table from each Dreamport\'s entry: npm run dp -- readme. -->';
 const END = '<!-- End of the table of Dreamports. -->';
+const SUMMARY_MOST = 80;
 
 export async function run(args) {
   if (args.includes('--check')) {
@@ -23,27 +25,27 @@ export async function run(args) {
     return 0;
   }
   const { changed, files } = writeReadme();
-  console.log(changed ? `Updated: ${files.join(', ')}.` : 'README.md\'s table of Dreamports and the progress maps were already up to date.');
+  console.log(changed ? `Updated: ${files.join(', ')}.` : `${STATUS}'s table of Dreamports and the progress maps were already up to date.`);
   return 0;
 }
 
-/** README.md in three: what's before the table, the table with the lines that mark it, and what's after. Null when it has lost them. */
+/** docs/STATUS.md in three: what's before the table, the table with the lines that mark it, and what's after. Null when it has lost them. */
 export function splitTable(text) {
   const start = text.indexOf(START), end = text.indexOf(END);
   return start < 0 || end < start ? null : { before: text.slice(0, start), table: text.slice(start, end + END.length), after: text.slice(end + END.length) };
 }
 
 /**
- * Writes the table in README.md and each Dreamport's progress map, and removes the map of a game that's gone, or only
+ * Writes the table in docs/STATUS.md and each Dreamport's progress map, and removes the map of a game that's gone, or only
  * compares them with `check`: { changed, files }, with the files that changed, or would.
  */
 export function writeReadme({ check = false } = {}) {
   const list = dreamports();
-  const text = readFileSync(README, 'utf8');
+  const text = readFileSync(STATUS_FILE, 'utf8');
   const start = text.indexOf(START), end = text.indexOf(END);
-  if (start < 0 || end < start) throw new Error(`README.md has lost the lines that mark its table of Dreamports:\n${START}\n${END}`);
+  if (start < 0 || end < start) throw new Error(`${STATUS} has lost the lines that mark its table of Dreamports:\n${START}\n${END}`);
   // blank lines around the table, so GitHub doesn't read the lines that mark it as part of it
-  const files = new Map([[README, `${text.slice(0, start + START.length)}\n\n${table(list)}\n\n${text.slice(end)}`]]);
+  const files = new Map([[STATUS_FILE, `${text.slice(0, start + START.length)}\n\n${table(list)}\n\n${text.slice(end)}`]]);
   for (const { game, entry } of list) files.set(join(REPO, mapOf(game)), progressMap(game, readProofFiles(game), entry.title).svg);
   const changed = [];
   for (const [file, next] of files) {
@@ -106,12 +108,22 @@ function readProofFiles(game) {
   };
 }
 
+/** Why a Dreamport's summary won't do, or null: a shared page shows it right under the game's name, so it says something new, in few words. */
+export function summaryProblem(title, summary) {
+  const name = String(title).replace(/\s+Dreamport$/i, '').toLowerCase();
+  if (String(summary).toLowerCase().includes(name)) return `repeats the game's name, which is shown right above it`;
+  if (String(summary).length > SUMMARY_MOST) return `is longer than ${SUMMARY_MOST} characters`;
+  return null;
+}
+
 // what the site also checks as it's built (src/lib/dreamports.ts), so `npm run check` finds it first
 function checkEntry(game, entry, proof) {
   const at = `games/${game}/${ENTRY}`;
   for (const key of ['title', 'summary', 'needs', 'issue', 'lead', 'kit', 'added', 'ownCopy']) {
     if (!entry?.[key]) throw new Error(`${at} needs "${key}", as games/README.md explains.`);
   }
+  const problem = summaryProblem(entry.title, entry.summary);
+  if (problem) throw new Error(`${at}'s summary ${problem}.`);
   if (!Number.isInteger(entry.issue) || entry.issue < 1) throw new Error(`${at} names its game's issue by its number, such as "issue: 123", not "${entry.issue}".`);
   if (!existsSync(join(REPO, 'kit', entry.kit, 'README.md'))) throw new Error(`${at} names the kit "${entry.kit}", but kit/${entry.kit}/ has no README.md.`);
   if (proof && !entry.needs.includes(proof.copy)) throw new Error(`${at} needs ${entry.needs}, but its proof uses ${proof.copy}: "needs" names the same copy.`);
@@ -121,7 +133,7 @@ function checkEntry(game, entry, proof) {
   }
 }
 
-// one row for each Dreamport: its name, what it is, its two numbers, each a link to its progress map, its lead and
+// one row for each Dreamport: its name, its two numbers, each a link to its progress map, its lead and
 // team, and where to play it
 function table(list) {
   const profile = name => `[${name}](https://github.com/${name})`;
@@ -129,15 +141,15 @@ function table(list) {
   const rows = list.map(({ game, entry, proof }) => {
     const link = entry.ownCopy.links[0];
     const team = entry.team?.length ? `, with ${entry.team.map(profile).join(', ')}` : '';
-    const map = text => `[${text}](${mapOf(game)})`;
+    const map = text => `[${text}](../${mapOf(game)})`;
     const ported = map(percentText(proof.ported.percent));
     const { gameplay } = proof;
     const proven = gameplay ? map(`${percentText(gameplay.percent)}, ${gameplay.proven} of ${gameplay.total} parts`) : 'No parts listed yet';
-    return `| 🌙 | **[${cell(entry.title)}](games/${game}/)** | ${cell(entry.summary)} Bring your own copy of the game. | ${ported} | ${proven} | ${profile(entry.lead)}${team} | [${link.icon === 'download' ? '⬇' : '▶'}&nbsp;${cell(link.label)}](${link.href}) |`;
+    return `| **[${cell(entry.title)}](../games/${game}/)** | ${ported} | ${proven} | ${profile(entry.lead)}${team} | [${link.icon === 'download' ? '⬇' : '▶'}&nbsp;${cell(link.label)}](${link.href}) |`;
   });
   return [
-    '| | Dreamport | What it is | Code ported | Gameplay proven | Lead | Try it |',
-    '| :---: | :--- | :--- | :--- | :--- | :--- | :--- |',
+    '| Dreamport | Code ported | Gameplay proven | Lead | Try it |',
+    '| :--- | :--- | :--- | :--- | :--- |',
     ...rows,
   ].join('\n');
 }
