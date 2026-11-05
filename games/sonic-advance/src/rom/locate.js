@@ -164,6 +164,46 @@ export function findOptionsBackground(rom) {
   return null;
 }
 
+// the Time Attack menu's pictures, in one block: the Japanese one's 256 colours, 113 tiles of 8 bits a pixel and 32 × 20
+// map, then the English one's with 131 tiles; both maps use their tiles alone, in palette row 0
+const TIME_ATTACK_COLOURS = 0x200, TIME_ATTACK_MAP_ENTRIES = 32 * 20;
+const TIME_ATTACK_JAPANESE_TILES = 113, TIME_ATTACK_ENGLISH_TILES = 131;
+const TIME_ATTACK_JAPANESE_MAP = TIME_ATTACK_COLOURS + TIME_ATTACK_JAPANESE_TILES * 64;
+const TIME_ATTACK_ENGLISH = TIME_ATTACK_JAPANESE_MAP + TIME_ATTACK_MAP_ENTRIES * 2;
+const TIME_ATTACK_ENGLISH_MAP = TIME_ATTACK_ENGLISH + TIME_ATTACK_COLOURS + TIME_ATTACK_ENGLISH_TILES * 64;
+const TIME_ATTACK_BLOCK_SIZE = TIME_ATTACK_ENGLISH_MAP + TIME_ATTACK_MAP_ENTRIES * 2;
+
+// a map that uses most of its tiles, none past the last, in palette row 0
+function timeAttackMapFits(rom, map, tiles) {
+  const used = new Set();
+  for (let i = 0; i < TIME_ATTACK_MAP_ENTRIES; i++) {
+    const v = rom.u16(map + i * 2);
+    if ((v & 0xF000) !== 0 || (v & 0x3FF) >= tiles) return false;
+    used.add(v & 0x3FF);
+  }
+  return used.size >= tiles * 0.8;
+}
+
+// 256 colours, not mostly black
+function timeAttackColoursFit(rom, at) {
+  let lit = 0;
+  for (let i = 0; i < TIME_ATTACK_COLOURS / 2; i++) {
+    const v = rom.u16(at + i * 2);
+    if (v) lit++;
+  }
+  return lit > 3;
+}
+
+/** The Time Attack menu's pictures: where the Japanese one's colours start, the English one's after them. */
+export function findTimeAttackMenu(rom) {
+  for (let at = 0; at + TIME_ATTACK_BLOCK_SIZE <= rom.size; at += 4) {
+    if (timeAttackMapFits(rom, at + TIME_ATTACK_ENGLISH_MAP, TIME_ATTACK_ENGLISH_TILES)
+      && timeAttackMapFits(rom, at + TIME_ATTACK_JAPANESE_MAP, TIME_ATTACK_JAPANESE_TILES)
+      && timeAttackColoursFit(rom, at) && timeAttackColoursFit(rom, at + TIME_ATTACK_ENGLISH)) return at;
+  }
+  return null;
+}
+
 // the language screen's picture: its 256 colours, its 37 tiles of 8 bits a pixel and its 32 × 20 map, one after the
 // other; the map uses those tiles alone, the last of them too, unflipped or flipped, and every row ends with tile 1
 // twice
@@ -267,7 +307,7 @@ export function findNameInputChars(rom) {
 export function locateTables(rom, known) {
   if (known) return { ...known.offsets, searched: false };
   const tilemaps = findTilemaps(rom), collision = findCollision(rom, tilemaps), interactables = findInteractables(rom);
-  const soundTest = findSoundTest(rom), optionsBackground = findOptionsBackground(rom);
+  const soundTest = findSoundTest(rom), optionsBackground = findOptionsBackground(rom), timeAttackMenu = findTimeAttackMenu(rom);
   const offsets = {
     spriteTables: findSpriteTables(rom),
     tilemaps, collision,
@@ -293,6 +333,7 @@ export function locateTables(rom, known) {
     specialIntro: findSpecialIntro(rom),
     specialClouds: findSpecialClouds(rom),
     optionsBackground,
+    timeAttackMenu,
     // the player data menu's picture follows the Options menu's
     playerDataBackground: optionsBackground === null ? null : optionsBackground + OPTIONS_BACKGROUND_SIZE,
     soundTestSongs: soundTest.songs,
