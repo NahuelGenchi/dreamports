@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { KINDS, NAMES, SCENE_H, drawScene } from '../../src/scripts/label-scenes/index.mjs';
 import { INVITES, drawInvite } from '../../src/scripts/label-scenes/invite.mjs';
+import { steady } from '../../src/scripts/label-scenes/steady.mjs';
 import { PLACE, invitesFor, kindOf, layout, placesFor, rowOrder, seedOf } from '../../src/scripts/label-rows.mjs';
 
 test('there are 30 kinds of scene, each with its own name', () => {
@@ -138,4 +139,53 @@ test('an invitation never takes a label\'s place, and moves to the next row alon
   assert.equal(phone.filter((row) => row.invite).length, 3);
   // a screen with no room left holds none
   assert.equal(layout(390, 844, 30).filter((row) => row.invite).length, 0);
+});
+
+// How much a picture's sharpness swings as a row glides across a pixel, at its worst 8 x 4 spot, on the screen's own
+// values: the light tint and the rows' 32% over white, with the screen blending neighbours between pixels.
+const MATRIX = [0.65, 0.295, 0.055, -0.1005, 0.15, 0.795, 0.055, 0.0289, 0.15, 0.295, 0.555, 0.1191];
+function flicker(pixels, w) {
+  const Y = new Float32Array(w * SCENE_H);
+  for (let i = 0; i < Y.length; i++) {
+    const c = [0, 1, 2].map((k) => (pixels[i * 4 + k] / 255) * 0.63 + 0.385);
+    const t = [0, 1, 2].map((r) => Math.min(1, Math.max(0, MATRIX[r * 4] * c[0] + MATRIX[r * 4 + 1] * c[1] + MATRIX[r * 4 + 2] * c[2] + MATRIX[r * 4 + 3])));
+    Y[i] = (0.2126 * (0.32 * t[0] + 0.68) + 0.7152 * (0.32 * t[1] + 0.68) + 0.0722 * (0.32 * t[2] + 0.68)) * 255;
+  }
+  let worst = 0;
+  for (let y0 = 0; y0 + 4 <= SCENE_H; y0 += 2)
+    for (let x0 = 2; x0 + 10 <= w; x0 += 4) {
+      const sharp = [0, 0.25, 0.5].map((f) => {
+        let a = 0;
+        for (let y = y0; y < y0 + 4; y++)
+          for (let x = x0; x < x0 + 8; x++) {
+            const at = (q) => (1 - f) * Y[y * w + q] + f * Y[y * w + q + 1];
+            a += (at(x + 1) - at(x)) ** 2;
+          }
+        return Math.sqrt(a / 32);
+      });
+      worst = Math.max(worst, Math.max(...sharp) - Math.min(...sharp));
+    }
+  return worst;
+}
+
+test('softened for a gliding row, no scene flickers much, and nearly every pixel stays as drawn', () => {
+  let before = 0, after = 0, touched = 0, total = 0;
+  for (let kind = 0; kind < KINDS; kind++) {
+    const pixels = drawScene(240, kind, seedOf(1, kind));
+    const calm = steady(pixels, 240);
+    assert.equal(calm.length, pixels.length);
+    for (let i = 0; i < pixels.length; i += 4) {
+      total++;
+      if (pixels[i] !== calm[i] || pixels[i + 1] !== calm[i + 1] || pixels[i + 2] !== calm[i + 2]) touched++;
+      assert.equal(calm[i + 3], 255);
+    }
+    before = Math.max(before, flicker(pixels, 240));
+    after = Math.max(after, flicker(calm, 240));
+  }
+  assert.ok(after <= 11, `the worst flicker is ${after.toFixed(1)}`);
+  assert.ok(after < before * 0.7, `from ${before.toFixed(1)} to ${after.toFixed(1)}`);
+  assert.ok(touched / total < 0.06, `${((100 * touched) / total).toFixed(1)}% of pixels changed`);
+  // a flat picture, or one with only gentle steps, is left exactly as it is
+  const flat = new Uint8ClampedArray(240 * SCENE_H * 4).fill(200);
+  assert.deepEqual(steady(flat, 240), flat);
 });

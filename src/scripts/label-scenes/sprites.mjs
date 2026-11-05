@@ -303,7 +303,7 @@ export const ART = {
   telescope: ['.......w', '.....ww.', '....ww..', '...ww...', '...k....', '..k.k...', '.k...k..', 'k.....k.'],
 };
 
-const SKIN = ['#ffdcbc', '#f3c39c', '#dca074', '#b57a50', '#8c5a38', '#603c26'];
+const SKIN = ['#ffe3cc', '#ffdcbc', '#f7d0b0', '#f3c39c'];
 const HAIR = ['#2b1e1a', '#5a3a22', '#8a5a2a', '#e8b850', '#c4482a', '#1c1c2c', '#e8e4dc', '#3a2a4a'];
 const SHIRT = ['#e84a4a', '#4a8ae8', '#f2c23e', '#46c27a', '#a25ad8', '#ff8a3a', '#f272aa', '#f4f4f4', '#3ac2ca', '#2f5fb8'];
 const PANTS = ['#36467a', '#2a2a3a', '#6a4a2a', '#4a6a8a', '#7a3a3a', '#3a5a3a'];
