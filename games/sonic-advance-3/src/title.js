@@ -35,7 +35,7 @@ const u16 = v => v & 0xFFFF;
 const index = s => (s.language === JAPANESE ? 0 : 1);
 
 /**
- * 0x0808AAC4, sub_808ADF0: the way to the title screen from another one, with `fade` as it is made: the tasks end, the
+ * 0x0808AA68: the way to the title screen from another one, with `fade` as it is made: the tasks end, the
  * screen's colour is set to black and a task that waits a frame, then makes the screen (0x08001D58).
  */
 export function leaveForTheTitle(c, fade = FADE_IN) {
@@ -199,7 +199,7 @@ function withFade(t) {
   }
 }
 
-// 0x0808A4CC, Task_808A854: the "3" coming down to its size as the alpha steps along, until both have finished
+// 0x0808A4CC: the "3" coming down to its size as the alpha steps along, until both have finished
 function landing(t) {
   const s = t.data, { c } = s;
   let done = 0;
@@ -226,7 +226,7 @@ function landing(t) {
   }
 }
 
-// 0x0808A55C, Task_808A8E4: the logo and the "3" moved together for ten frames
+// 0x0808A55C: the logo and the "3" moved together for ten frames
 function shake(t) {
   const s = t.data, { c } = s, { rom } = c;
   const x = s8(rom.u8(SHAKE_X + s.shakeFrame)), y = s8(rom.u8(SHAKE_Y + s.shakeFrame));
@@ -248,7 +248,7 @@ function shake(t) {
   }
 }
 
-// 0x0808A650, Task_808A9D8: the screen goes white
+// 0x0808A650: the screen goes white
 function flash(t) {
   const s = t.data, { c } = s;
   placeThree(c, s);
@@ -304,7 +304,7 @@ function announcer(t) {
   }
 }
 
-// 0x0808A468, Task_808A7F0: a second with only the copyright lines, and the rest of a fade that Start cut short
+// 0x0808A468: a second with only the copyright lines, and the rest of a fade that Start cut short
 function waitForTheName(t) {
   const s = t.data, { c } = s;
   showCopyright(c, s);
@@ -319,7 +319,7 @@ function waitForTheName(t) {
   t.main = idle;
 }
 
-// 0x0808A848, Task_808ABD0: the screen waiting, "Press Start" blinking
+// 0x0808A848: the screen waiting, "Press Start" blinking
 function idle(t) {
   const s = t.data, { c } = s;
   showCopyright(c, s);
@@ -341,7 +341,7 @@ function idle(t) {
   s.blink++;
 }
 
-// 0x0808A938, sub_808ACC0: the corner's sprite, which shows for the first 180 frames
+// 0x0808A938: the corner's sprite, which shows for the first 180 frames
 function showCorner(c, s) {
   const sprite = s.corner;
   sprite.x = s.cornerX >> 8;
@@ -350,7 +350,7 @@ function showCorner(c, s) {
   displaySprite(c, sprite);
 }
 
-// 0x0808AAC4, Task_808AE4C: "Press Start" flashing quickly once Start is pressed
+// 0x0808AAC4: "Press Start" flashing quickly once Start is pressed
 function flashing(t) {
   const s = t.data, { c } = s;
   showCopyright(c, s);
@@ -364,7 +364,7 @@ function flashing(t) {
   }
 }
 
-// 0x0808A3E0, Task_808A768: the screen fades to white, and the main menu comes
+// 0x0808A3E0: the screen fades to white, and the main menu comes
 function fadeOut(t) {
   const s = t.data, { c } = s;
   c.bldCnt = 0x3FFF;

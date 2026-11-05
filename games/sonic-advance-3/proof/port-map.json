@@ -238,13 +238,11 @@
     ["0808A55C","src/title.js:229"],
     ["0808A650","src/title.js:251"],
     ["0808A6AC","src/title.js:266"],
-    ["0808A7BC","src/title.js:202"],
+    ["0808A7BC","src/title.js:286"],
     ["0808A848","src/title.js:322"],
-    ["0808A938","src/title.js:307"],
-    ["0808A98C","src/title.js:251"],
-    ["0808AAC4","src/title.js:38"],
-    ["0808AB84","src/title.js:38"],
-    ["0808AD1C","src/title.js:353"],
+    ["0808A938","src/title.js:344"],
+    ["0808AA68","src/title.js:38"],
+    ["0808AAC4","src/title.js:353"],
     ["0808F82C","src/language.js:23"],
     ["0808F96C","src/language.js:49"],
     ["0808FA44","src/language.js:19"],
@@ -397,8 +395,6 @@
     ["0x080A3DAC","src/intro.js:688"],
     ["0x080A3E90","src/intro.js:474"],
     ["CreateSomeTask_809BF3C","src/intro.js:263"],
-    ["sub_808ACC0","src/title.js:344"],
-    ["sub_809BA58","src/intro.js:302"],
-    ["Task_808A8E4","src/title.js:229"]
+    ["sub_809BA58","src/intro.js:302"]
   ]
 }
