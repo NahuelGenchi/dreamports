@@ -19,6 +19,7 @@ import { leaveForTheTitle } from './title.js';
 import { soundLayout } from './sound.js';
 import { startStage } from './stage/stage.js';
 import { placeCharacters } from './stage/player.js';
+import { createCharacterSelect } from './character-select.js';
 import { leaveForTheMainMenu } from './menu.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from
@@ -90,6 +91,19 @@ function createGame(video, rom, sound) {
     core.startUp = 1;
     core.step(0);
     core.runSound();
+  }
+  // &screen=character-select opens on the character select's first frame, as the main menu leaves it, which recordings use as
+  // their start point. No dreamportsProof.neverInPlay here either: every frame of the screen is one a player can see
+  if (params.get('screen') === 'character-select') {
+    core.startUp = 1;
+    // a new game's save, which has Sonic and Tails and no one else
+    core.save.unlockedCharacters = 0x5;
+    // what the main menu leaves in the registers the screen doesn't set before its first frame is drawn
+    core.bgCnt[2] = 0x188A;
+    core.winRegs[1] = core.winRegs[3] = 0xFF;
+    core.bldAlpha = 0x1F;
+    // made by a task, as the main menu's makes it, so that the screen's own task first runs in the second frame
+    core.main = c => c.createTask(task => { createCharacterSelect(c); c.destroyTask(task); }, null, 0x100);
   }
   // &screen=title opens on the black frame the title screen starts with, as the intro leaves it, which recordings use as their
   // start point. No dreamportsProof.neverInPlay here: the screen holds no character or countdown, so every frame of it is

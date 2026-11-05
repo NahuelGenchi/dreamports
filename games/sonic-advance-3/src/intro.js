@@ -19,14 +19,15 @@ const I = v => v >> 8;
 // the tables the characters' pictures come from, by their ROM offsets: the order the characters come in, how many pictures
 // each pose has and where they are listed (two poses of six lists each, one for each character and one for Cheese), the
 // name tags, and the picture that a locked character is greyed to
-const DISPLAY_ORDER = 0xD8B8C, PICTURES_A = 0xD90A6, PICTURES_B = 0xD90AC, LISTS_A = 0xD9048, LISTS_B = 0xD9060;
-const EGGMAN = 0xD95F4, NAME_TAGS = 0xD961C, GREY = 0xD90BC, GREY_PALETTE = 0xD90DC, UNLOCKED_MASKS = 0xD90E1;
-const CREAM = 1, CHEESE = 5;
+export const DISPLAY_ORDER = 0xD8B8C, PICTURES_A = 0xD90A6, PICTURES_B = 0xD90AC, LISTS_A = 0xD9048, LISTS_B = 0xD9060;
+const EGGMAN = 0xD95F4, NAME_TAGS = 0xD961C;
+export const GREY = 0xD90BC, GREY_PALETTE = 0xD90DC, UNLOCKED_MASKS = 0xD90E1;
+export const CREAM = 1, CHEESE = 5;
 // the characters' poses, as the character select names them by number: coming in, stopping, and going off
 const COMING_IN = 0x19, STOPPED = 0x1B, GOING = 0x1D;
 
 // a name tag's or a character's picture from its list's entry: its animation, its variant and how many tiles it takes
-const entry = (rom, list, i) => ({ anim: rom.u16(list + i * 8), variant: rom.u8(list + i * 8 + 2), numTiles: rom.u32(list + i * 8 + 4) });
+export const entry = (rom, list, i) => ({ anim: rom.u16(list + i * 8), variant: rom.u8(list + i * 8 + 2), numTiles: rom.u32(list + i * 8 + 4) });
 const sprite = (c, e, tiles, x, y, oamFlags) => createSprite({ tiles, anim: e.anim, variant: e.variant, prevVariant: 0xFF, x, y, oamFlags });
 
 /** 0x080A3B90, CreateOpeningStrc94_B: the characters' name tags, one after the other. */
@@ -271,7 +272,7 @@ function createCharacters(s) {
 }
 
 // a pose's lists: how many pictures each character has and where they are, of the character coming in or the one stopped
-const picturesOf = (rom, stopped, character) => {
+export const picturesOf = (rom, stopped, character) => {
   const counts = stopped ? PICTURES_B : PICTURES_A, lists = stopped ? LISTS_B : LISTS_A;
   return { count: rom.u8(counts + character), list: rom.u32(lists + character * 4) - 0x08000000 };
 };
