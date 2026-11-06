@@ -70,7 +70,7 @@ const unlocked = params.has('unlocked') ? Number(params.get('unlocked')) & 0xFFF
 // number and the Chao's place, 0–7)
 const multiplayer = (() => { try { return levelInfo(firstLevel).multiplayer ?? false; } catch { return false; } })();
 // `?vs=N` starts the game as N linked GBAs, 2 to 4, each on its own screen from power-on, with the VS menus between them
-// (front/vsfront.js)
+// (front/vsfront.js). It has no dreamportsProof.neverInPlay: the menus open with no countdown, and every frame of them is one a player sees.
 const vsCount = !multiplayer && params.has('vs') ? Math.min(4, Math.max(2, Number(params.get('vs')) | 0)) : 0;
 let players = multiplayer ? Math.min(4, Math.max(2, Number(params.get('players') ?? 2) | 0)) : Math.max(1, vsCount);
 const seed = params.has('seed') ? Number(params.get('seed')) >>> 0 : DEFAULT_SEED;

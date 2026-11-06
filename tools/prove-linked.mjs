@@ -10,8 +10,11 @@ import { expand } from './lib/recording.mjs';
 import { openDreamport } from './lib/dreamport.mjs';
 import { runLinked } from './gba/linked.mjs';
 import { png, fromColours } from './lib/png.mjs';
+import { mp4 } from './lib/mp4.mjs';
 
 const BATCH = 60;
+const CLIP_LIMIT = 2_000_000, CLIP_TARGET = 1_700_000, CLIP_RATE = 2_000_000;
+const FRAME = [280896, 16777216];   // a Game Boy Advance frame, in ticks of its clock
 const IN_PAGE = readFileSync(new URL('./lib/in-page-linked.js', import.meta.url), 'utf8');
 const KEYS = { A: 1, B: 2, SELECT: 4, START: 8, RIGHT: 16, LEFT: 32, UP: 64, DOWN: 128, R: 256, L: 512 };
 const NAMES = { jump: 'A', attack: 'B', start: 'START', select: 'SELECT', right: 'RIGHT', left: 'LEFT', up: 'UP', down: 'DOWN', r: 'R', l: 'L' };
@@ -34,7 +37,9 @@ export async function proveLinked({ page, game, recording, copy, server, quick, 
   say('playing the original…');
   // the page's frame f is the original's frame f + 1: what a frame shows is what the one before worked out (prove.mjs)
   const keepAt = [...new Set(asked)].filter(f => f >= 0 && f < frames);
-  const first = await runLinked({ copy, players, frames: frames + 1, buttons: bits, pictures: keepAt.map(f => f + 1) });
+  // the clip: the recording's, or the last four seconds, with the Dreamport's screens above and the original's below
+  const clipAt = quick ? [] : Array.from({ length: Math.min(frames, recording.clip?.frames ?? 240) }, (_, i) => (recording.clip?.at ?? Math.max(0, frames - 240)) + i).filter(f => f < frames);
+  const first = await runLinked({ copy, players, frames: frames + 1, buttons: bits, pictures: [...new Set([...keepAt, ...clipAt])].map(f => f + 1) });
   const expected = Array.from({ length: frames }, (_, f) => Array.from({ length: players }, (_, p) => first.hashes[(f + 1) * players + p]));
 
   say('starting the Dreamport…');
@@ -48,7 +53,7 @@ export async function proveLinked({ page, game, recording, copy, server, quick, 
     say(`frame ${from + count} of ${frames}`);
     const batch = Array.from({ length: count }, (_, i) => ({ players: lists.map(list => ({ held: buttonsOf(list[from + i]), ...(from + i + 1 < frames ? { next: buttonsOf(list[from + i + 1]) } : {}) })) }));
     const wanted = keepAt.filter(f => f >= from && f < from + count);
-    const played = await page.evaluate(`__linked.run(${from}, ${JSON.stringify(batch)}, ${JSON.stringify(expected.slice(from, from + count))}, ${JSON.stringify(wanted)})`);
+    const played = await page.evaluate(`__linked.run(${from}, ${JSON.stringify(batch)}, ${JSON.stringify(expected.slice(from, from + count))}, ${JSON.stringify(wanted)}, ${JSON.stringify(clipAt.filter(f => f >= from && f < from + count))})`);
     for (let i = 0; i < played.length; i++) {
       const f = from + i;
       hashes.push(played[i]);
@@ -77,6 +82,7 @@ export async function proveLinked({ page, game, recording, copy, server, quick, 
     sheet(kept.pictures, first.pictures.has(`${kept.frame + 1}:0`) ? Array.from({ length: players }, (_, p) => first.pictures.get(`${kept.frame + 1}:${p}`)) : null, `first-difference-${kept.frame}.png`);
   }
   for (const [frame, pictures] of Object.entries(shown)) {
+    if (!keepAt.includes(+frame)) continue;
     sheet(pictures, Array.from({ length: players }, (_, p) => first.pictures.get(`${+frame + 1}:${p}`)), `frame-${frame}.png`);
   }
   // the original's alone, at the first difference, when it wasn't asked for
@@ -85,6 +91,23 @@ export async function proveLinked({ page, game, recording, copy, server, quick, 
     sheet(kept.pictures, Array.from({ length: players }, (_, p) => again.pictures.get(`${kept.frame + 1}:${p}`)), `first-difference-${kept.frame}.png`);
   }
 
+  let clipFile = null;
+  if (clipAt.length && hashes.length >= frames) {
+    say('making the clip…');
+    const all = new Uint16Array(clipAt.length * players * 240 * 160);
+    clipAt.forEach((f, i) => { for (let p = 0; p < players; p++) all.set(first.pictures.get(`${f + 1}:${p}`), (i * players + p) * 240 * 160); });
+    server.serve('/proof/originals', Buffer.from(all.buffer));
+    const length = clipAt.length * FRAME[0] / FRAME[1];
+    let bitrate = Math.round(Math.min(CLIP_RATE, CLIP_TARGET * 8 / length));
+    for (let tries = 0; tries < 5; tries++) {
+      const video = await page.evaluate(`__linked.video(${JSON.stringify(clipAt)}, '/proof/originals', ${bitrate})`);
+      clipFile = mp4({ width: video.width, height: video.height, description: Buffer.from(video.description, 'base64'), frames: video.frames.map(f => ({ key: f.key, data: Buffer.from(f.data, 'base64') })), timescale: FRAME[1], duration: FRAME[0] });
+      if (clipFile.length <= CLIP_LIMIT) break;
+      bitrate = Math.round(bitrate * CLIP_TARGET / clipFile.length);
+    }
+    server.serve('/proof/originals', null);
+    writeFileSync(join(out, 'clip.mp4'), clipFile);
+  }
   writeFileSync(join(out, 'hashes.json'), JSON.stringify({ ours: hashes, original: expected.slice(0, hashes.length) }));
   const matched = hashes.length - differ.length;
   const stretches = [];
@@ -95,6 +118,7 @@ export async function proveLinked({ page, game, recording, copy, server, quick, 
   }
   const per = Array.from({ length: players }, (_, p) => hashes.filter((h, f) => h[p] !== expected[f][p]).length);
   console.log(`\n${name}: ${players} players, ${matched} of ${hashes.length} frames played match${firstDifference >= 0 ? `; the first that differs is ${firstDifference}, and each player differs in ${per.join(', ')} frames` : ''}. Pictures: ${out}`);
+  if (clipFile) console.log(`  Clip, ${(clipFile.length / 1e6).toFixed(2)} MB, frames ${clipAt[0]} to ${clipAt.at(-1)}: ${out}/clip.mp4 (the Dreamport's screens above, the original's below)`);
   return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], functions: [] };
 }
 
