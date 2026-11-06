@@ -36,6 +36,10 @@ export const KNOWN_VERSIONS = [
       emeraldMessage: 0x6C5650,
       optionsBackground: 0x6C5650,
       timeAttackMenu: 0x6959D0,
+      timeAttackCards: 0x684670,
+      timeAttackLobby: { tables: 0x684580, picture: 0x6C71D0 },
+      // the records screen: its tables, and by character the back of its card (tiles and map)
+      timeAttackRecord: { tables: 0x683FD0, backs: [[0x6901D0, 0x691AD0], [0x693890, 0x6954D0], [0x689450, 0x68AC50], [0x68C850, 0x68E0D0]] },
       courseSelectBackground: 0x69A6D0,
       playerDataBackground: 0x6C5C10,
       vsRecordBackgrounds: 0x6847B0,

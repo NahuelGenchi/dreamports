@@ -331,6 +331,25 @@ export function createVideo() {
     return 1;
   }
 
+  // a picture put behind everything the scene draws (video.underlay: 240 × 160 words of colour, in the same layout as
+  // the frame): for a scene drawn over a picture the video doesn't draw, such as another game's screen. It is a
+  // background of the lowest priority (BG3), so the colour effects treat it as any layer: darkened with the rest,
+  // and a semi-transparent sprite over it takes the brightness effect when BG3 isn't a second target
+  const underlayBg = { index: 3, priority: 3, target1: false, target2: false };
+  function drawUnderlay(bldcnt, y, start, end, ctl) {
+    if (!(ctl & 8)) return;
+    underlayBg.target1 = (bldcnt & 8) !== 0;
+    underlayBg.target2 = (bldcnt & 0x800) !== 0;
+    const [flags, colors] = bgFlags(underlayBg, ctl), blend = (flags & TARGET_2) !== 0, lit = colors === variant;
+    const picture = video.underlay;
+    for (let x = start; x < end; x++) {
+      let c = picture[y * SCREEN_W + x] & 0xFFFFFF;
+      if (lit) c = effect === DARKEN ? darken(c, bldy) : brighten(c, bldy);
+      if (blend) blendInto(x, (c | flags) >>> 0);
+      else layInto(x, (c | flags) >>> 0);
+    }
+  }
+
   // the sprites of priority `priority` over the run [start, end)
   function compositeSprites(priority, start, end, ctl) {
     if (!(ctl & 0x10)) return;
@@ -585,6 +604,7 @@ export function createVideo() {
           } else if (affine && !marginLine) drawAffine(bg, start - ox, end - ox, ctl);
           else if (bg.index === 2 && mode === 4 && !marginLine) drawBitmap(bg, start - ox, end - ox, ctl);
         }
+        if (p === 3 && video.underlay && !margin && !marginLine && !ox) drawUnderlay(bldcnt, y, start, end, ctl);
       }
     }
 
@@ -683,6 +703,6 @@ export function createVideo() {
     if (globalThis.dreamportsProof) dreamportsProof.video = video;
   }
 
-  const video = { vram, pal, oam, io, write, drawFrame, drawLine, updateColors };
+  const video = { vram, pal, oam, io, write, drawFrame, drawLine, updateColors, underlay: null };
   return video;
 }

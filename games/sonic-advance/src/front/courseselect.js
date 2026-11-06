@@ -6,8 +6,9 @@
 // choice blinking and starts that act, and B goes back.
 //
 // With the address's start point, which leaves out the character select, B goes to the main menu, where the character
-// select would go back to (CreateMainMenu(1)). Time Attack's and the link play's ways through this screen aren't built
-// yet (their own tasks; arg0 and the multiplayer checks).
+// select would go back to (CreateMainMenu(1)). In Time Attack mode (gGameMode 1) A on an act shows the card before the
+// run (timeattackcard.js), or the records screen (timeattackrecord.js) when the Time Attack menu asked for the records,
+// and B goes back to the character select or the menu. The link play's way through this screen isn't built yet.
 
 import { createSprite, updateSprite, displaySprite, SPRITE } from '../gba/sprite.js';
 import { KEY } from '../gba/engine.js';
@@ -17,6 +18,9 @@ import { moonOpensFor } from '../engine/unlock.js';
 import { createUiTask, uiGfxStackInit, uiGraphics, loadUiGfx, createFade, fadeStep } from './ui.js';
 import { createMainMenu } from './title.js';
 import { createCharacterSelect } from './charselect.js';
+import { createTimeAttackMenu } from './timeattack.js';
+import { createTimeAttackCard } from './timeattackcard.js';
+import { createTimeAttackRecord } from './timeattackrecord.js';
 import { put16 } from '../gba/lines.js';
 
 const OBJ_VRAM = 0x10000;
@@ -38,6 +42,7 @@ const BACKGROUND = {
 const ROW_3_GFX = 62;
 const SLIDE_END = 0x3F;   // the slide's last frame, when the picture's map doubles to its full height
 const CHOSEN = 1, BACK = 2;   // unk57
+const TIME_ATTACK = 1;   // gGameMode
 const s16 = v => (v << 16) >> 16;
 const div = (a, b) => Math.trunc(a / b);
 
@@ -45,7 +50,8 @@ const div = (a, b) => Math.trunc(a / b);
 const sprite = (anim, dest, fields) => createSprite({ graphics: { src: 0, dest, size: 0, anim }, prevVariant: 0xFF, animSpeed: 0x10, ...fields });
 
 // how many rows the character has (the first of them is never shown, so one more than they can choose)
-function courseRows(save, character) {
+function courseRows(save, character, records, gameMode) {
+  if (records) return 13;   // arg0: every act, for the records
   const unlocked = save.unlockedLevel(character);
   let rows = (unlocked + 2) & 0xFF;
   if (rows === 0) rows = 1;
@@ -53,6 +59,7 @@ function courseRows(save, character) {
     if (rows > 15) rows = 15;
     else if (unlocked === 13) rows = 14;
   } else if (rows > 14) rows = 14;
+  if (gameMode !== 0 && rows > 13) rows = 13;   // Time Attack has no Moon Zone
   return rows;
 }
 
@@ -81,8 +88,8 @@ function loadRow3(e, offsets) {
  * being played, `play(level)`, which starts an act, and `levels()`, the level last played (gCurrentLevel) and the one
  * the course select last started (gMultiplayerCurrentLevel).
  */
-export function createCourseSelect(ctx) {
-  const e = ctx.engine, rows = courseRows(ctx.save, ctx.character);
+export function createCourseSelect(ctx, records = false) {
+  const e = ctx.engine, rows = courseRows(ctx.save, ctx.character, records, ctx.gameMode);
   e.playSong(SONG.COURSE_SELECTION);
   createUiTask(e);
   uiGfxStackInit(e);
@@ -95,10 +102,10 @@ export function createCourseSelect(ctx) {
 
   // `ending` is unk57, and `shown` what the acts' list has of it, as it hears a frame later
   const state = {
-    ctx, rows, frame: 0, ending: 0, shown: 0, scroll: 0x14, scrollTo: 0x14, level: 1,   // unk4C, unk50, unk52
+    ctx, rows, records, frame: 0, ending: 0, shown: 0, scroll: 0x14, scrollTo: 0x14, level: 1,   // unk4C, unk50, unk52
     fade: createFade(0, 1, 2, 0, 0x200, 1),
   };
-  e.createTask(slideIn, state, 0x2000);
+  const main = e.createTask(slideIn, state, 0x2000);
   const arrow = sprite(ANIM_ARROW_UP, OBJ_VRAM + ARROW_TILES_AT, { oamFlags: 0 });
   state.tasks = [e.createTask(showArrows, state, 0x2030)];
   updateSprite(e, ctx.sprites, arrow);
@@ -117,6 +124,16 @@ export function createCourseSelect(ctx) {
     return s;
   });
   state.tasks.push(e.createTask(slideZones, state, 0x2030));
+  // the records come with the slide done: the picture whole and the lists where they stay
+  if (records) {
+    e.bgScroll[1] = 0x14;
+    e.bgCnt[0] = 0x9D83;
+    state.frame = SLIDE_END;
+    main.main = chooseAct;
+    state.tasks[1].main = showActs;
+    state.tasks[2].main = showZones;
+    loadRow3(e, ctx.offsets);
+  }
   fadeStep(e, state.fade);
 }
 
@@ -184,7 +201,8 @@ function chooseAct(t) {
   fadeStep(e, fade);
   if (fade.unk6 > 0x1800 && fade.unk4 === 2) {
     if (e.pressed & KEY.A) {
-      e.stopSong(SONG.COURSE_SELECTION);
+      // the song goes on into Time Attack's records of the act
+      if (ctx.gameMode !== TIME_ATTACK) e.stopSong(SONG.COURSE_SELECTION);
       if (frame > 64) leave(t, CHOSEN, SONG.SELECT);
     } else if (e.pressed & KEY.B) {
       e.stopSong(SONG.COURSE_SELECTION);
@@ -220,7 +238,13 @@ function fadeOut(t) {
     e.bgCnt[1] = 0x1806;
     for (const task of state.tasks) e.destroyTask(task);
     e.destroyTask(t);
-    if (state.ending === CHOSEN) ctx.play(state.level - 1);
+    if (state.ending === CHOSEN && state.records) {
+      createTimeAttackRecord(ctx, state.level - 1);
+    } else if (state.ending === CHOSEN && ctx.gameMode === TIME_ATTACK) {
+      ctx.level = state.level - 1;
+      createTimeAttackCard(ctx);
+    } else if (state.ending === CHOSEN) ctx.play(state.level - 1);
+    else if (state.records) createTimeAttackMenu(ctx);
     else if (ctx.select) createCharacterSelect(ctx);
     else createMainMenu(ctx, true);
     return;

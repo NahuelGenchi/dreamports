@@ -1,0 +1,32 @@
+{
+  "about": "From power-on with nothing saved, to the main menu, Down to Time Attack and A, then in its menu A on Start for the character select, B back to the menu, Down and A on Records for the course select with every act, and B back to the menu.",
+  "frames": 2700,
+  "held": [
+    [0,[]],
+    [150,["A"]],
+    [156,[]],
+    [950,["START"]],
+    [956,[]],
+    [1300,["START"]],
+    [1306,[]],
+    [1550,["START"]],
+    [1556,[]],
+    [1650,["DOWN"]],
+    [1654,[]],
+    [1680,["DOWN"]],
+    [1684,[]],
+    [1730,["A"]],
+    [1736,[]],
+    [1830,["A"]],
+    [1836,[]],
+    [2000,["B"]],
+    [2004,[]],
+    [2150,["DOWN"]],
+    [2154,[]],
+    [2250,["A"]],
+    [2251,[]],
+    [2420,["B"]],
+    [2424,[]],
+    [2600,[]]
+  ]
+}

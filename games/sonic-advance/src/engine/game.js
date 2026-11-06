@@ -134,13 +134,15 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   const demo = options.demo ? createDemoInput(buttons, options.demo) : null;
   const input = demo ?? playerControls(buttons, save.btnConfig);
   const timeLimit = !save.timeLimitDisabled;
+  // Time Attack (GAME_MODE_TIME_ATTACK): normal difficulty, no 1-UPs or special springs, no lives, and a run ends in the lobby (options.onTimeAttackEnd)
+  const timeAttack = !!options.timeAttack;
   // the animations, and which colours their palette loads last left in each row of the sprite palette (animator.js)
   const anims = { ...assets.sprites.anims, objPalette: new Array(16).fill(-1) };
   // the act being played (assets.acts, by level), and what is its own: its map, its objects and their tasks,
   // its rings and its palette animations, and a renderer for its art
   let act = assets.acts[assets.first ?? 0], stage = act.stage, terrain = createTerrain(stage.collision);
   Object.assign(anims, act.anims);   // the act's own look for sprites its zone's acts draw differently
-  let tasks = createTasks(), entities = createEntities(stage, anims, tasks), rings = createRings(stage.rings, anims);
+  let tasks = createTasks(), entities = createEntities(stage, anims, tasks, { timeAttack }), rings = createRings(stage.rings, anims);
   let palettes = stage.paletteAnimations.map(createPaletteAnimation);
   // the character the act was decoded for (gSelectedCharacter); the multiplayer modes play as Sonic
   const character = mode ? SONIC : assets.character ?? SONIC;
@@ -237,6 +239,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     return cam;
   };
   state.cam = newCamera();
+  // the camera's task also runs once on the frame the card makes the act, which counts the animated tiles a step ahead
+  if (options.timeAttack && options.levelPick) state.cam.tiles.delay = 1;
   state.view = viewOf(state.cam, viewW, viewH);
   const sparkles = new Set();   // the ring sparkles still running their animation
   let cardPad = [];   // the pad directions held on the title card's last frame
@@ -246,15 +250,15 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   // the title card's task and those after it run (Sonic, the clock), not the scattered rings' (0x2001), and the next
   // frame is spent loading; and the HUD's data holds what that leaves there (levels.js, hudFlash)
   // A demo's act is made by a task that has just destroyed itself, and no task runs after it on that frame (0xFFFF).
-  let madeBy = demo ? 0xFFFF : options.levelPick ? 0x2001 : -1;
+  let madeBy = demo ? 0xFFFF : options.timeAttack && options.levelPick ? 0x1FFF : options.levelPick ? 0x2001 : -1;
   // what comes before the act's first picture, on which the screen stays as it was: the frame the act is made in and
   // the one spent loading it. From the course select, whose last frame was the first of them, only the second is left
   let unseen = !options.levelPick || options.resume ? 0 : options.frameCount === undefined ? 2 : 1;
-  const hudFlash = options.levelPick && !demo ? stage.hudFlash : 1;
+  const hudFlash = options.levelPick && !demo && !options.timeAttack ? stage.hudFlash : 1;
   // and that first picture still has the layers where they start, before the camera's update has scrolled them
   state.layersAtStart = !!options.levelPick && !options.resume;
   state.demoFirst = !!demo;   // and in a demo so has the background (renderer.js)
-  let extraLife = false, loading = false, starMusic = false;
+  let extraLife = false, loading = false, lagging = false, starMusic = false;
   // the act's music, as the course select leaves it: it starts on the frame after the act is made, and fades in, as a
   // song the music manager starts over does (the recordings course-select-first-act and course-select-all-rows)
   let musicStarts = false;
@@ -307,7 +311,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     get level() { return stage.level; }, get zone() { return stage.zone; },
     // the save's difficulty (0 normal, 1 easy), which each enemy and boss reads as it is made; Chao Hunt keeps the
     // save's (ApplyGameStageSettingsAndStart), but its stage has nothing that reads it, so it plays normal
-    get difficulty() { return mode || demo ? 0 : save.difficultyLevel; },
+    get difficulty() { return mode || demo || timeAttack ? 0 : save.difficultyLevel; },
     get tick() { return state.tick; },
     get cameraY() { return Math.floor(state.cam.y); },
     // the camera and its bounds, which a boss's arena changes (bosses.js) and Sonic's edges follow
@@ -390,6 +394,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     lifeLost() {
       state.noPause = true;
       if (mode) { mode.lifeLost(); return; }
+      // Time Attack: every task goes and the lobby comes, with no life lost (HandleLifeLost, HandleDeath)
+      if (timeAttack) { leaveForLobby(); return; }
       state.hits++;
       const timeUp = timeLimit && (state.courseTime > MAX_COURSE_TIME || (state.timerReversed && state.courseTime === 0));
       if (!timeUp) state.ringCount = 0;
@@ -421,6 +427,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     stageResults(rings, time, nextFrame = false) {
       resultsWait = nextFrame;
       state.noPause = true;
+      if (timeAttack) return timeAttackResults();
       // the Moon Zone opening is decided first: X Zone's way to it goes on behind its results, which end by themselves
       state.moonResults = world.moonOpens();
       saveActCleared(save, { level: state.level, rings: state.ringCount, character, startLevel: options.startLevel ?? 0 });
@@ -789,7 +796,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   }
   const hudTask = {
     run() {
-      if (updateHud(state.hud, { ...state, stageTime: state.tick })) sound.play(SONG.TIMER);
+      if (updateHud(state.hud, { ...state, stageTime: state.tick, timeAttack })) sound.play(SONG.TIMER);
       return true;
     },
     destroy() { state.hud.sprites = []; },
@@ -798,6 +805,43 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   // original destroys every task and goes on to the next act (GoToNextLevel), stopping all sound. It writes the
   // save, then starts the act (GameStageStart), whose loading takes it the whole next frame. Past the last act
   // decoded, the next zone's acts are decoded in their turn, the screen keeping this frame meanwhile.
+  // Time Attack's lifeLost, pause menu and results end the run the same way: every task goes, and the lobby comes
+  // (CreateTimeAttackLobbyScreen)
+  function leaveForLobby() {
+    // the frame every task goes on is black
+    frozen = { render: () => { const g = canvas.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, canvas.width, canvas.height); }, state: { ...state } };
+    tasks.stop();
+    restart = () => { ended = true; options.onTimeAttackEnd?.(); };
+  }
+  // CreateStageResults in Time Attack: the act's rings to the save's ring bank, and in place of the results the Time
+  // Attack result over the act (timeattackresult.js), whose end is GoToNextLevel: every task goes, all sound stops,
+  // the save is written, and the lobby comes. Nothing is unlocked and the act's music goes.
+  let overlay = null, overlayDone = false;
+  function timeAttackResults() {
+    save.score += (state.ringCount << 16) >> 16;
+    let courseTime = state.courseTime;
+    if (state.level === EGG_ROCKET) {
+      extras.stopBackground();
+      courseTime = state.checkpointTime > EGG_ROCKET_TIME ? state.checkpointTime - EGG_ROCKET_TIME : 1;
+    }
+    overlay = options.createTimeAttackResult({ character, level: state.level, record: courseTime, done: () => { overlayDone = true; } });
+    sound.musicOff();
+    tasks.add({
+      run() {
+        overlay.step();
+        if (!overlayDone) return true;
+        overlay = null;
+        // the screen is black while the save is written and the lobby comes
+        frozen = { render: () => { const g = canvas.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, canvas.width, canvas.height); }, state };
+        tasks.stop();
+        sound.stopAll();
+        const next = () => { ended = true; options.onTimeAttackEnd?.(); };
+        if (save.write()) { saving = WRITE_FRAMES; afterSave = next; } else restart = next;
+        return false;
+      },
+    }, 0x2100);
+    return 0;
+  }
   let resultsWait = false;
   const resultsTask = {
     run() {
@@ -914,7 +958,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     terrain = createTerrain(stage.collision);
     Object.assign(player, newPlayer(stage.spawn));
     if (partner) Object.assign(partner, newTails(stage.spawn));
-    tasks = createTasks(); entities = createEntities(stage, anims, tasks); rings = createRings(stage.rings, anims);
+    tasks = createTasks(); entities = createEntities(stage, anims, tasks, { timeAttack }); rings = createRings(stage.rings, anims);
     palettes = stage.paletteAnimations.map(createPaletteAnimation);
     rings.reset(); scatter.reset(); sparkles.clear();
     Object.assign(state, {
@@ -1042,7 +1086,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     // game Start opens the pause menu (pause.js) from when the title card ends until a life is lost or the results
     // start
     [0xFF00, () => {
-      if (!mode && !demo && !state.noPause && startPressed) tasks.add(createPauseMenu({ state, anims, sound, startPressed: () => startPressed }), PAUSE_PRIORITY);
+      if (!mode && !demo && !state.noPause && startPressed) tasks.add(createPauseMenu({ state, anims, sound, startPressed: () => startPressed, timeAttack, language: save.uiLanguage !== 0 ? 1 : 0, aPressed: () => input.jumpPressed, toLobby: leaveForLobby }), PAUSE_PRIORITY);
       player.wasInverted = player.inverted;
       if (partner) partner.wasInverted = partner.inverted;
       if (mode) mode.clock();
@@ -1076,7 +1120,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     state.checkpointTime++;
     if (state.timerReversed ? --state.courseTime > 0 : ++state.courseTime <= MAX_COURSE_TIME) return;
     state.clockStopped = true;
-    if (!timeLimit) return;
+    // the countdown keeps the save's setting; the count up kills in Time Attack whatever it is (stage.c)
+    if (!timeLimit && !(timeAttack && !state.timerReversed)) return;
     player.shield = null; player.invincible = 0; player.speedUp = 0;
     player.ysp = -(player.water ? PHYSICS.water.jumpSpeed : PHYSICS.jumpSpeed);
     if (state.timerReversed && stage.level === EGG_ROCKET) tasks.add(screenShake(0x800, 8, 16, -1, SHAKE.VERTICAL | SHAKE.HORIZONTAL | SHAKE.RANDOM), SCREEN_SHAKE);
@@ -1159,8 +1204,10 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       if (toTitle) options.onTitle?.();
       return;
     }
+    // the frame the Time Attack card's act takes two V-blanks to load: a black frame the game's frame counter doesn't count
+    if (lagging) { lagging = false; return; }
     state.frameCount = (state.frameCount + 1) >>> 0;
-    if (musicStarts) { musicStarts = false; sound.playStageMusicFadingIn(stage.music); }
+    if (musicStarts) { musicStarts = false; if (timeAttack) sound.playStageMusic(stage.music); else sound.playStageMusicFadingIn(stage.music); }
     if (loading) { loading = false; return; }
     if (ended) return;
     frozen = null;
@@ -1174,13 +1221,19 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     endFrame();
     watchFrame();
     if (state.water) endWaterFrame(state.water);
-    if (madeBy >= 0) { madeBy = -1; loading = options.frameCount === undefined; }
+    if (madeBy >= 0) { madeBy = -1; loading = options.frameCount === undefined; lagging = !!options.timeAttack; }
     if (restart) { const start = restart; restart = null; start(); }
     if (toTitle) { options.onTitle?.(demoLeftWith); return; }
     if (special) options.onSpecialStage?.(handOver(state, special, { level: state.level, character, emeralds: save.chaosEmeralds, continues: state.continues }));
   }
 
-  const show = () => { drawn = true; return frozen ? frozen.render(frozen.state) : render(state); };
+  const show = () => {
+    drawn = true;
+    const picture = frozen ? frozen.render(frozen.state) : render(state);
+    // the Time Attack result is drawn over the act's picture
+    if (overlay && !frozen) overlay.draw(canvas.getContext('2d'), canvas.width, canvas.height);
+    return picture;
+  };
   // a frame is drawn once, after its step: a display faster than 60 Hz draws nothing new in between
   let frame = 0, drawn = false;
   const clock = createClock(TICK_MS, { snap: true });

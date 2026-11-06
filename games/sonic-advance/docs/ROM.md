@@ -580,7 +580,7 @@ Frames are counted as mGBA draws them from power-on, the first being frame 0. Wi
 
 - *Tiny Chao Garden:* A on it does nothing. The original plays the select sound and fades out to it as it does for Game Start.
 - *VS past its first screens:* see [The VS menu](#the-vs-menu).
-- *Time Attack:* A opens [its menu](#the-time-attack-menu), fading out as it does for Game Start. On a copy of another version where its picture can't be found, A does nothing here, and the rest of the game still plays.
+- *Time Attack:* A opens [its menu](#time-attack), fading out as it does for Game Start. On a copy of another version where one of Time Attack's pictures can't be found, A does nothing here, and the rest of the game still plays.
 
 **The soft reset.** `VBlankIntr` reads the buttons at each V-blank, and when A, B, Start and Select are all held and `FLAGS_8000` is clear it stops the sound and the copies and restarts the game (`SoftReset`), keeping the save. The screen goes white (forced blank), and `GameInit` runs again with the four buttons in `gInput`, so `EngineInit` sets `FLAGS_SKIP_INTRO` and the game starts on the title screen with its music, or on the language screen when nothing is saved. The V-blank at the end of a frame sees the next frame's buttons, so the original is white one frame before the press shows in the recording. The title screen's first frame after a reset shows its tile graphics with the maps not yet copied (its copies overrun the V-blank), and the tasks skip the frame after it (`lag`). The reset does nothing while `FLAGS_8000` is set: from the SEGA logo until its wipe ends, and around save writes. Sonic Advance Dreamport restarts with A, B, Start and Select together (on a controller, View and Menu with A and B).
 
@@ -616,7 +616,7 @@ Game Start on the main menu opens it (`CreateCharacterSelectionScreen`, `src/fro
 
 **All four are offered from the start.** With nothing saved the row has Sonic, Tails, Knuckles and Amy, and A picks any of them. Amy's act loads with her sprites, title card and face on the HUD; her own moves wait for #90.
 
-**Not built yet.** The screen's use in Time Attack and in multiplayer.
+**Not built yet.** The screen's use in multiplayer. In Time Attack (`gGameMode` 1) it is the same screen: the Start entry of [Time Attack's menu](#time-attack) leads here, A goes on to the course select and B goes back to that menu in place of the main menu.
 
 **How it was checked.** `npm run dp -- prove` plays these recordings in mGBA 0.10.5 and the port: `neo-green-hill-act-1` picks Sonic and goes on into the act, `character-select` turns the row both ways and through the key repeat and goes back with B, `pick-tails`, `pick-knuckles` and `pick-amy` pick each of the others, `partner-code` presses the code, and `character-select-to-course` goes on to the course select, B back, and on again to act 1, with Sonic's progress given by a value written in the original and by `?unlocked=1&select=1` in the port. All the frames of the picks and of the way to the course select match, sound too. `character-select` and `partner-code` play the song for longer: every picture matches, and 6 frames of the first and frame 1968 of the second differ only by their sound, near a silence, where its slow wave note ends (kit note on wave notes, and #527).
 
@@ -662,15 +662,53 @@ Each other act was tried once the same way, from 15 rows, for about 330 frames, 
 
 B going back to the main menu and A coming in again ran with no error, though the original can't be compared there, as it goes to the character select.
 
-### The Time Attack menu
+### Time Attack
 
-Time Attack on the main menu opens `CreateTimeAttackMenu` (`0x08010078` in the USA ROM, [`src/front/timeattack.js`](../src/front/timeattack.js)), with its tasks `Task_TimeAttackMenu` (`0x08010278`) and `Task_80103C4` (`0x08010394`) and `sub_8010580` (`0x08010550`). The screens its two entries lead to aren't built, so A there does nothing, where the original plays the select sound and fades out to them.
+The Time Attack menu, its screens and its acts ([#95](https://github.com/NahuelGenchi/dreamports/issues/95)).
+
+#### The menu
+
+Time Attack on the main menu opens `CreateTimeAttackMenu` (`0x08010078` in the USA ROM, [`src/front/timeattack.js`](../src/front/timeattack.js)), with its tasks `Task_TimeAttackMenu` (`0x08010278`) and `Task_80103C4` (`0x08010394`) and `sub_8010580` (`0x08010550`). A on an entry plays the select sound and fades out to the [character select](#the-character-select) (START) or the [course select](#the-course-select) (RECORD), the song going on.
 
 **What it shows.** Its picture is one layer of 8-bit tiles in the save's language, from `0x6959D0` in the USA ROM (found by its two maps' shape in other versions): the Japanese colours, 113 tiles and a 32 × 20 map, then the English ones with 131 tiles. Over it are two sprites. The choice bar is animation 880 (Japanese) or 879 (English), which the decompilation's European ROM numbers 882 and 881, with variant 1 on START and 0 on RECORD, drawn again every 128 pixels while it slides left half a pixel a frame. The frame round the chosen entry is animation 860, eight copies 32 pixels apart.
 
 **How it runs.** It starts the character select's song and fades in from black over 16 frames. Up and Down move between the two entries, wrapping round, with the main menu's key repeat, playing the cursor sound and starting the bar's slide again. B plays the return sound and fades out over 16 frames; then the main menu opens again (`CreateMainMenu(1)`) and the song stops. That clears the first 64 bytes of the sprites' tiles, as its fill runs past the end of a layer's tiles, and the original's picture already shows them cleared on the fade's last frame but one, so the bar's first tile changes there.
 
 **How it was checked.** `npm run dp -- prove sonic-advance time-attack-menu` plays both from power-on in mGBA 0.10.5 with the USA ROM: Down to Time Attack and A, the menu left alone, Down to RECORD and Up back, Down held until it repeats, and B back to the main menu. Every frame matches, picture and sound. The song's sound differs on a few frames about 310 frames in, so B at some other frames shows a difference of sound alone: the note on the character select's song has which.
+
+#### The course select and the records
+
+In Time Attack (`gGameMode` 1) the course select has no Moon Zone, so at most 13 rows, and doesn't stop its song as A fades it out. From START, A on a row shows [the card](#the-card) and then starts the act; from RECORD it shows the records screen for that act (`CreateTimeAttackRecord`, [`src/front/timeattackrecord.js`](../src/front/timeattackrecord.js)): the character's card over bands that slide to and fro (24 lines each way round, by the frame count), the zone's name and the act's, the course's name (animation 882 in the USA ROM, 884 in the decompilation's European one), a cursor either side that wobbles through eight offsets, and the character's three best times there. Left and Right turn to the next character, wrapping round the four, with the cursor sound and the key repeat; B plays the return sound and fades out to the course select. The back layer's tiles and map of each character are at a different address in each ROM version, so a copy where they can't be found has no records screen.
+
+#### The card
+
+A on an act in the course select starts `CreateTimeAttackRecords` ([`src/front/timeattackcard.js`](../src/front/timeattackcard.js)): the same card and bands with the character's three best times, for 240 frames with the course select's song going on, A or B cutting it short to the frame before it fades out. The act starts as it ends. The USA ROM's addresses for its blobs are the European ROM's less `0x7124`, and its animations from about 884 on are numbered two lower.
+
+#### The act
+
+The act runs with `gGameMode` `GAME_MODE_TIME_ATTACK` (the `timeAttack` option of [`src/engine/game.js`](../src/engine/game.js)), and differs from a single-player act in these ways:
+
+- The difficulty is normal, whatever the save says, and the time counts up from 0 with no limit on the player's side. The HUD has no lives, and there are no 1UP boxes or special springs.
+- It starts as the card's task (`0x2000`) makes it, so the tasks at `0x2000` (the rings, the entities, the palette animations) run on that frame as well as the ones after them: the rings' spin and the sea's shimmer start a frame earlier than after the course select's. The camera's counter of the animated tiles starts at 1, and the HUD's zero-ring flash starts at 1 in place of the course select's leftover number.
+- It loads in two V-blanks, the second of which the frame counter doesn't count, and the screen is black for 4 frames (2503 to 2506 in `time-attack-card`). The act's music isn't faded in; it starts at once.
+- The pause menu has the Time Attack sign, and A there plays the select sound, destroys every task and opens the lobby. The frame it does is black.
+- A life lost (a hit with no rings, a pit, or the clock past 10:00) destroys every task and opens the lobby, with no life taken.
+- The goal opens [the result](#the-result) in place of the stage results: the act's rings go to the save's ring bank (`save.score += ringCount`), nothing is unlocked and the act's music goes.
+
+#### The result
+
+`CreateTimeAttackResult` ([`src/front/timeattackresult.js`](../src/front/timeattackresult.js)) is drawn over the act: bands in the act's colours slide in, the run's time shows in the UI font from the 61st frame with TIME, and, if the run is the best on the course (`RegisterTimeRecord`, three times kept by character and level, the slower ones moving down a place), NEW RECORD with its own jingle (song `0x131`; `0x132` without a record). It lasts 330 frames, 600 with a record, the last 60 of them fading out. Then `GoToNextLevel` destroys every task, stops all the sound and writes the save while the screen is black, and the lobby opens. The original draws it as sprites over the act, which the act's engine here doesn't carry, so it runs in an engine of the front end's kind (`createTimeAttackOverlay`) drawn over the act's picture.
+
+#### The lobby
+
+`CreateTimeAttackLobbyScreen` ([`src/front/timeattacklobby.js`](../src/front/timeattacklobby.js)) is where a run ends, with its own song (155 in the USA ROM): four choices in the save's language over a picture, a marker beside the chosen one and the character beside them. Up and Down move the marker, wrapping round, with the cursor sound and a key repeat of 20 frames and then 8. A plays the select sound and the character runs off to the right, faster and faster (not on the title screen), then the screen fades out and the choice comes: Retry starts the same act again, with no card; the character select, the course select and the title screen follow.
+
+**How it was checked.** `npm run dp -- prove sonic-advance` plays these from power-on in mGBA 0.10.5 with the USA ROM: `time-attack-menu` and `time-attack-start` (the menu, the character select and the course select in Time Attack mode, and the records screen's way in), `time-attack-record` (the records screen, Left and Right through all four characters, B), `time-attack-card` (the card and the act's first frames as Tails), `time-attack-result` (Neo Green Hill act 1 as Tails flown to the goal, the result with a new record and the lobby), `time-attack-pause`, `time-attack-lobby-course` and `time-attack-lobby-title` (the pause menu, A in it, and each lobby choice), and `time-attack-death` (Tails pushing against a fence until the clock passes 10:00, which ends the run: the lobby, and the character select from it). The pictures match on every frame compared except the ones in the list below. Firefox 159 played `time-attack-card` (1,200 frames), `time-attack-start` and `time-attack-lobby-course` with no console errors, and every one of its pictures is Chrome's.
+
+- *Sound alone, few frames:* 2041 and 2048 to 2049 in every recording that passes through the character select (the character select's song, as on the [note](../notes/the-character-select-song-differs-about-310-frames-in.md)), and the same kind of frame about 230 to 310 frames into a later visit (3532 of `time-attack-pause`, 3862 of `time-attack-lobby-course`, 40032 of `time-attack-death`); frame 2582 of `time-attack-start`, 3262 of `time-attack-record`, and 7019, 8356, 11777 and 12373 of `time-attack-result`; and the three frames from A in the pause menu to the lobby's first (2899 to 2901), whose cause isn't known yet.
+- *The lobby's last frame before the title screen:* frame 3331 of `time-attack-lobby-title` differs by 528 pixels in two strips at the screen's edges, as the original has loaded the title screen's colours and tiles before it draws the lobby's last picture. The rest of that recording, and the title screen from the next frame, match.
+- *B from the character select after a run:* the original's first 7 frames of the Time Attack menu show what the act left in the palettes and the tiles, which the front end's video doesn't carry, so they aren't built. B from the character select without a run matches.
+- *Records screen:* the original's cursor keeps animation 857 in the USA ROM, where the decompilation's numbering would give 855.
 
 ### The language screen
 
@@ -990,7 +1028,7 @@ These runs also showed where the USA ROM keeps the settings and the emeralds. Th
 - **Its task** runs at `0xFFFE`, after every task but the ones already at that priority. On the frame Start opens it in an act it runs only if such a task comes after the stage clock's (Ice Mountain's water); otherwise the act runs one more frame, and the menu starts on the next. Its first frame (`Task_PauseMenuInit`) stops every music player but the pause sound's (song 142, player 3), plays it and sets `FLAGS_PAUSE_GAME`.
 - **The sign.** PAUSE (animation 718) over its background (720), both at (120, 80) with OAM order 1 and priority 0, in front of everything. They are made with the task; their animations load sprite palette 68 into OBJ row 6 at once, and nothing loads that row's own colours back after the menu closes. In an act row 6 already holds palette 68, the HUD font's. From its second frame on, the task shows them each frame (`Task_PauseMenuUpdate`), semi-transparent while `gBldRegs.bldY` is above 0: a fade's brightness change then leaves them alone.
 - **Paused.** At each VBlank `FLAGS_800` follows `FLAGS_PAUSE_GAME`, and while it is set only the tasks flagged `TASK_x0004` run, the menu's alone. With `FLAGS_PAUSE_GAME` set the VBlank doesn't clear the OAM buffer: on the first frame the entries move to its end, behind the sign that comes first from then on, so the screen keeps the act's sprites as the last frame left them. It doesn't swap the two buffers of per-line offsets either, so what the HBlank interrupt reads from the second one is from the frame before the last one that ran: the Moon Zone's ground scroll, and the waves below Ice Mountain's water line. What the HBlank DMA copies from the first (the backgrounds' parallax, the spotlights) is the last frame's.
-- **Going on.** Start again clears `FLAGS_PAUSE_GAME`, continues every music player from where it stopped (`m4aMPlayAllContinue`) and ends the task. That frame stays paused, with the act's sprites and without the sign; the act runs again from the next. In Time Attack the sign is the Time Attack one and A leaves for the Time Attack lobby ([#95](https://github.com/NahuelGenchi/dreamports/issues/95)).
+- **Going on.** Start again clears `FLAGS_PAUSE_GAME`, continues every music player from where it stopped (`m4aMPlayAllContinue`) and ends the task. That frame stays paused, with the act's sprites and without the sign; the act runs again from the next. In Time Attack the sign is the Time Attack one, and A plays the select sound and leaves for the [Time Attack lobby](#the-lobby).
 
 **How it was checked.** mGBA 0.10.5 recorded each run from the character select (the level set in IWRAM) or from the act's special spring, with the screen, IWRAM, VRAM, OAM, the palettes and the sound's EWRAM dumped every frame; the port played the same keys.
 

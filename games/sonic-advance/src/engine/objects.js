@@ -16,7 +16,7 @@ import { makeAnimator, setAnim, tickAnim, frameOf } from './animator.js';
 import { createSpring, createHidingSpring } from './springs.js';
 import { createSpikes } from './spikes.js';
 import { ENEMIES } from './enemies.js';
-import { createItemBox } from './itembox.js';
+import { createItemBox, ONE_UP } from './itembox.js';
 import { createPlatform } from './platforms.js';
 import { createBoulder } from './boulders.js';
 import { createIceBlock } from './iceblocks.js';
@@ -38,7 +38,7 @@ import { createMiniLoop } from './miniloops.js';
 import { createWaterBridge, createBridgeSplash } from './waterbridges.js';
 import { createShrub } from './shrubs.js';
 import { createGoal, STAGE_GOAL } from './goal.js';
-import { createSpecialSpring } from './specialspring.js';
+import { createSpecialSpring, SPECIAL_SPRING } from './specialspring.js';
 import { createHookRail } from './hookrails.js';
 import { createSecurityGate } from './securitygates.js';
 import { createConveyor } from './conveyors.js';
@@ -258,7 +258,7 @@ function interactable(e, slot, anims, ctx, level, zone) {
  * `stage` has interactables, itemBoxes, enemies and entityRegions; `tasks` is the list it adds to. Each game
  * keeps its own copy of the entities' data, which some objects change (the mystery item boxes' counts).
  */
-export function createEntities(stage, anims, tasks) {
+export function createEntities(stage, anims, tasks, { timeAttack = false } = {}) {
   const { x: regionsX, y: regionsY } = stage.entityRegions;
   const regions = Array.from({ length: regionsX * regionsY }, () => []);
   const slot = (e, spawn) => ({ e: { ...e, d: e.d.slice() }, live: null, gone: false, d: null, spawn });
@@ -270,7 +270,11 @@ export function createEntities(stage, anims, tasks) {
     [stage.enemies, (s, ctx) => (ENEMIES[s.e.kind] ?? standIn)(s.e, s, anims, ctx)],
   ]) {
     // each region keeps its interactables, then its item boxes, then its enemies
-    for (const e of list) regions[e.rx + e.ry * regionsX].push(slot(e, spawn));
+    for (const e of list) {
+      // Time Attack makes neither 1-UP item boxes nor the special spring (CreateEntity_ItemBox, CreateEntity_SpecialSpring)
+      if (timeAttack && (list === stage.itemBoxes && e.kind === ONE_UP || list === stage.interactables && e.kind === SPECIAL_SPRING)) continue;
+      regions[e.rx + e.ry * regionsX].push(slot(e, spawn));
+    }
   }
   const width = regionsX * 256, height = regionsY * 256;
   let prev = null;   // the camera the last scan saw; null spawns everything in range

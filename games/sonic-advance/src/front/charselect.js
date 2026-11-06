@@ -19,6 +19,7 @@ import { SONG } from '../sound/songs.js';
 import { SINE } from '../engine/trig.js';
 import { createUiTask, uiGfxStackInit, uiGraphics, loadUiGfx, drawUiText, drawUiGlyphs, glyphs, createFade, fadeStep } from './ui.js';
 import { createMainMenu } from './title.js';
+import { createTimeAttackMenu } from './timeattack.js';
 import { createCourseSelect } from './courseselect.js';
 
 const OBJ_VRAM = 0x10000;
@@ -37,6 +38,7 @@ const ROW_AFTER = [[0, 1, 3], [1, 2, 0]];
 // the frames after a pick before the fade out starts (Task_805AAF8's array, 38 for each character)
 const PICK_WAIT = 38, PICK_END = 0x38, BACK_CLEAR = 0x10;
 const READY = 0x21;
+const SINGLE_PLAYER = 0, TIME_ATTACK = 1;   // gGameMode
 const PARTNER_READY = 8, NO_CODE = 0xFF;
 // CheckCPUPartnerUnlock's keys, after Up on Sonic
 const PARTNER_KEYS = [KEY.RIGHT, KEY.DOWN, KEY.RIGHT, KEY.L, KEY.RIGHT, KEY.R, KEY.RIGHT, KEY.A, 0, 0];
@@ -108,7 +110,7 @@ export function createCharacterSelect(ctx, selected = 0) {
 
   e.mapFill[1].value = 0;
   e.mapFill[1].rect.set([0, 0, 0xFF, 0x20]);
-  e.playSong(SONG.CHARACTER_SELECTION);   // m4aSongNumStartOrContinue: nothing plays as the main menu leaves
+  e.playSongOrContinue(SONG.CHARACTER_SELECTION);   // m4aSongNumStartOrContinue: nothing plays as the main menu leaves, and the song of the Time Attack menu goes on
   fadeStep(e, screen.fade);
 }
 
@@ -234,7 +236,8 @@ function pick(t) {
 function leave(t) {
   const screen = t.data, { ctx } = screen, e = ctx.engine;
   if (++screen.frames > PICK_END) {
-    const partner = screen.code === PARTNER_READY;
+    // the code's partner is for the single-player game only (gGameMode)
+    const partner = ctx.gameMode === SINGLE_PLAYER && screen.code === PARTNER_READY;
     e.destroyTask(screen.name);
     e.destroyTask(screen.bars);
     e.destroyTask(screen.characters);
@@ -268,7 +271,8 @@ function goBack(t) {
     e.bldCnt = 0;
     e.bldY = 0;
     e.destroyTask(t);
-    createMainMenu(ctx, true);
+    if (ctx.gameMode === TIME_ATTACK) createTimeAttackMenu(ctx);
+    else createMainMenu(ctx, true);
   } else if (screen.frames === BACK_CLEAR) {
     for (const task of [screen.name, screen.bars, screen.characters, screen.title, screen.arrows, screen.backdrop]) e.destroyTask(task);
     for (const bg of [0, 1, 2]) {
