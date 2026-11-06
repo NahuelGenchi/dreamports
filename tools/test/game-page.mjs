@@ -1,8 +1,8 @@
 // npm run test:game: tries a new game's page in a real browser, with a made-up cartridge (made-up-game.mjs) and a
 // stand-in controller, so a change that breaks what every new Dreamport starts with is seen before it reaches anyone:
 // the start screen and its way back to the launcher, the game's frames, keys, a controller, the settings and the
-// touch screen. It tries the page `npm run dp -- new` writes, in a folder of its own that it removes after, and every game in
-// games/ that is still only that. It needs nothing from any game and no account, so it runs on any pull request.
+// touch screen. It tries the page `npm run dp -- new` writes, in a folder of its own that it removes after, the same page
+// with the game's code in C (kit/gba/c/), and every game in games/ that is still only that. It needs nothing from any game and no account, so it runs on any pull request.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -12,6 +12,7 @@ import { openChrome, go, until } from '../lib/chrome.mjs';
 import { openDreamport } from '../lib/dreamport.mjs';
 import { startingFiles } from '../lib/new-game.mjs';
 import { madeUpGame } from './made-up-game.mjs';
+import { buildGame } from '../gba/c.mjs';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const BLUE = 'blue', GREEN = 'green';
@@ -155,29 +156,35 @@ async function tryGame(page, server, game, rom) {
   page.errors.length = 0;
 }
 
-const TEST = 'made-up-game';
-const folder = gameFolder(TEST);
+const TEST = 'made-up-game', TEST_C = 'made-up-game-c';
+const folder = gameFolder(TEST), folderC = gameFolder(TEST_C);
 const temporary = join(LOCAL, 'tmp', 'test-game');
 mkdirSync(temporary, { recursive: true });
-if (existsSync(folder)) throw new Error(`games/${TEST}/ is already there, and this test makes and removes a folder of that name.`);
+for (const [game, place] of [[TEST, folder], [TEST_C, folderC]]) {
+  if (existsSync(place)) throw new Error(`games/${game}/ is already there, and this test makes and removes a folder of that name.`);
+}
 const server = await serveRepository();
 let page;
 try {
   const { rom, sha1 } = madeUpGame();
   const original = { console: 'gba', name: 'Made Up Game (USA)', title: 'MADE UP GAME', code: 'MADE', sha1 };
-  for (const [file, text] of Object.entries(startingFiles(TEST, original))) {
-    mkdirSync(dirname(join(folder, file)), { recursive: true });
-    writeFileSync(join(folder, file), text);
+  for (const [game, place, language] of [[TEST, folder, 'js'], [TEST_C, folderC, 'c']]) {
+    for (const [file, text] of Object.entries(startingFiles(game, original, { language }))) {
+      mkdirSync(dirname(join(place, file)), { recursive: true });
+      writeFileSync(join(place, file), text);
+    }
   }
+  await buildGame(folderC);
   writeFileSync(join(temporary, 'made-up.gba'), rom);
   page = await openChrome({ profile: join(LOCAL, 'chrome', 'test-game'), headless: true, controllers: true });
   await page.send('Page.addScriptToEvaluateOnNewDocument', { source: STAND_IN });
   await tryGame(page, server, TEST, join(temporary, 'made-up.gba'));
+  await tryGame(page, server, TEST_C, join(temporary, 'made-up.gba'));
 
   // the games that are still only what new wrote
   for (const game of readdirSync(join(REPO, 'games'))) {
     const file = join(REPO, 'games', game, 'proof', 'original.json');
-    if (game === TEST || !existsSync(file)) continue;
+    if (game === TEST || game === TEST_C || !existsSync(file)) continue;
     const theirs = JSON.parse(readFileSync(file, 'utf8'));
     const same = Object.entries(startingFiles(game, theirs)).every(([path, text]) => existsSync(join(REPO, 'games', game, path)) && readFileSync(join(REPO, 'games', game, path), 'utf8') === text);
     if (!same) continue;
@@ -189,6 +196,7 @@ try {
   await page?.close();
   await server.close();
   rmSync(folder, { recursive: true, force: true });
+  rmSync(folderC, { recursive: true, force: true });
   rmSync(temporary, { recursive: true, force: true });
 }
 if (failures.length) {

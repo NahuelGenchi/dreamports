@@ -65,6 +65,7 @@ assets-extracted/
 
 # Build output, caches and dependencies
 dist/
+games/*/src/game.wasm
 .astro/
 .wrangler/
 node_modules/

@@ -24,11 +24,24 @@ export const firstFilesMessage = (name, issue) => `feat: ${name} Dreamport's fir
 /** The commit message of a game's capture, which goes on those first files. */
 export const captureMessage = (name, issue) => `feat: ${name} Dreamport's capture (#${issue})`;
 
-/** The files of a new game, by their paths in its folder. */
-export function startingFiles(game, original) {
+/** The files of a new game, by their paths in its folder: its code in JavaScript, or with `language` 'c' in C, on the
+ *  Game Boy Advance kit in C (kit/gba/c/), whose src/game.wasm is built from src/main.c. */
+export function startingFiles(game, original, { language = 'js' } = {}) {
   const { name, region } = namesOf(original);
   const title = `${name} Dreamport`;
   const fill = (text, values) => text.replace(/@([A-Z0-9_]+)@/g, (_, key) => values[key]);
+  if (language === 'c') {
+    if (original.console !== 'gba') throw new Error('Only the Game Boy Advance has a kit in C yet.');
+    return {
+      'LICENSE': readFileSync(new URL('../../kit/gba/LICENSE', import.meta.url), 'utf8'),
+      'index.html': fill(readFileSync(kit('index.html.template'), 'utf8'), { NAME: html(name), TITLE: html(title) }),
+      'src/main.c': fill(readFileSync(kit('c/main.c.template'), 'utf8'), { TITLE_C: title }),
+      'src/main.js': fill(readFileSync(kit('c/main.js.template'), 'utf8'), {
+        TITLE_JS: title, NAME_JS: js(name), HEADER_JS: js(original.title), CODE_JS: /^[A-Z0-9]+$/.test(original.code) ? original.code : js(original.code), REGION_JS: js(region),
+        SHA1_JS: js(original.sha1), FOLDER_JS: js(game), TITLE_QUOTED: js(title), HOME_JS: js(`https://dreamports.net/dreamports/${game}-dreamport/`), SAVE_JS: js(`${game}-save`),
+      }),
+    };
+  }
   return {
     'LICENSE': readFileSync(new URL('../../kit/gba/LICENSE', import.meta.url), 'utf8'),
     'index.html': fill(readFileSync(kit('index.html.template'), 'utf8'), { NAME: html(name), TITLE: html(title) }),
