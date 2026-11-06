@@ -9,9 +9,10 @@ import { cartridgeSave } from '../save.js';
 
 /**
  * Loads the game's WebAssembly from `url` and starts it with `rom` (rom/rom.js), its save memory kept in the browser
- * under `save` (save.js), and returns { video, step(keys) }.
+ * under `save` (save.js), and the words of the page's address in `query`, which gba_start_point reads (a recording's
+ * start point under the proof tools, such as ?proof&unlocked=1), and returns { video, step(keys) }.
  */
-export async function loadGame(url, rom, { save = null } = {}) {
+export async function loadGame(url, rom, { save = null, query = globalThis.location?.search ?? '' } = {}) {
   // the proof tools play a game as a player who has never saved, as JavaScript games do
   const kept = save ? cartridgeSave(save, proof ? null : undefined) : null;
   let memory = null;
@@ -49,6 +50,8 @@ export async function loadGame(url, rom, { save = null } = {}) {
   // room for the copy first, as making it can grow the memory, which leaves an earlier view of it empty
   const at = game.dp_rom(rom.size);
   new Uint8Array(memory.buffer, at, rom.size).set(rom.bytes);
+  const words = new TextEncoder().encode(query);
+  new Uint8Array(memory.buffer, game.dp_start_point(words.length), words.length).set(words);
   game.dp_start();
 
   const video = {
