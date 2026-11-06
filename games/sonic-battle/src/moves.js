@@ -575,6 +575,36 @@ function setState(c, i, state) {
         // the states with nothing of their own here
       }
   }
+  // (0x08002762) what the special attacks' states do with their things
+  if (state === 21) {
+    if (read8(c, rec + 23) !== 0) return;
+    for (let k = 0; k < 12; k++) {
+      const thing = 0x030017D0 + k * 68;
+      if (read8(c, thing + 53) === i && read16(c, thing + 56) === 35) notPorted('08002780', 'a fighter that flies to its ring');
+    }
+  } else if (state === 22) {
+    if (read8(c, rec + 23) === 8) write16(c, rec + SPEED_Z, 256 - (read16(c, rec + Z) - read16(c, rec + 52)));
+  } else if (state === 23 || state === 24) {
+    leaveThings(c, i);
+    write8(c, rec + 236, 0);
+  }
+}
+
+// 0x0800f5bc: a fighter's things that wait for it go off, each turned into its blast at its place
+const THING_BLASTS = [[40, 41], [45, 41], [60, 62], [61, 62], [80, 82], [81, 82], [100, 102], [101, 102], [120, 122],
+  [121, 122], [140, 142], [141, 142], [161, 165], [162, 165], [163, 166], [164, 166], [200, 201]];
+const BLAST_OF = new Map(THING_BLASTS);
+function leaveThings(c, i) {
+  for (let k = 0; k < 12; k++) {
+    const thing = 0x030017D0 + k * 68;
+    if (read8(c, thing + 53) !== i) continue;
+    const blast = BLAST_OF.get(read16(c, thing + 56));
+    if (blast === undefined) continue;
+    const facing = read8(c, thing + 64), x = read16(c, thing + 58), y = read16(c, thing + 60), z = read16(c, thing + 62);
+    const full = read8(c, thing + 65);
+    clearEffect(c, k);
+    fn0800c1c8(c, blast, facing, x, y, z, 0, 0, 0, 0, i, full);
+  }
 }
 
 // ------------------------------------------------------------------------------------------------ Moving a fighter
@@ -773,7 +803,8 @@ function moveFighter(c, i) {
     write16(c, rec + X, read16(c, rec + X) - u16(met.edgeX));
     write16(c, rec + Y, read16(c, rec + Y) - u16(met.edgeY));
   }
-  if (read8(c, rec + 236) !== 0) notPorted('0800F5BC', 'a fighter that leaves its things behind');
+  // a fighter whose mine has felt someone sets its things off (0x08006106)
+  if (read8(c, rec + 236) !== 0) leaveThings(c, i);
 }
 
 // the middle of 0x0800597c: how far another fighter is, and how a solid one pushes this one
@@ -1384,8 +1415,8 @@ function landOrFall(c, i) {
 const THING_SCRIPTS = new Map([
   [3, 0x0806B514], [4, 0x0806B54C], [5, 0x0806B594], [8, 0x0806B630], [10, 0x0806B6B4], [11, 0x0806B7B0],
   [12, 0x0806B8CC], [13, 0x0806B940], [14, 0x0806B804], [15, 0x0806B9D4], [16, 0x0806BB08], [31, 0x0806BB08],
-  [32, 0x0806BBA0], [34, 0x0806BBF4], [35, 0x0806BC54], [37, 0x0806C07C], [38, 0x0806C1AC], [39, 0x0806C448],
-  [43, 0x0806C60C], [44, 0x0806C67C], [158, 0x0806E520], [160, 0x0806E5F0],
+  [32, 0x0806BBA0], [34, 0x0806BBF4], [35, 0x0806BC54], [40, 0x0806C6EC], [37, 0x0806C07C], [38, 0x0806C1AC], [39, 0x0806C448],
+  [43, 0x0806C60C], [44, 0x0806C67C], [45, 0x0806C8F4], [41, 0x0806C790], [46, 0x0806C944], [158, 0x0806E520], [160, 0x0806E5F0],
 ]);
 const THING_MARK = 0xFFF00000;
 // the fields a script's words set, by the word's first half
@@ -1501,35 +1532,115 @@ function runThingScript(c, k, script) {
   write8(c, thing + 24, read8(c, thing + 24) + 1);
 }
 
+// 0x0800eaec's kinds of things that hit, each with what it hands 0x0800f0ac: its reach, its height, its damage, the
+// frames the hit holds, its kind of hit (bits 6 to 10 of the record), whether it may hit the same fighter again, and
+// the first and last frames of its own it hits in
+const THING_HITS = new Map([
+  [38, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [41, [0x280, 4, 20, 2, 0x3C0, 0, 0, 22]], [43, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
+  [39, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [44, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
+]);
+// the kinds 0x0800eaec has hits for that aren't ported yet
+const THING_HITS_LATER = new Set([54, 57, 62, 63, 78, 79, 82, 94, 97, 102, 117, 122, 137, 138, 142, 154, 158, 160,
+  165, 166, 174, 175, 177, 178, 179, 185, 191, 194, 197, 201, 241, 245]);
+
+// the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet
+const THING_STEPS_LATER = new Set([39, 61, 79, 101, 121, 141]);
+
 /**
- * 0x0800eaec with 0x0800f0ac, for a thing of kind 38: its shot reaches every fighter inside its box, and the one it
- * reaches is kept on its owner's record for 0x080036dc to settle. A full Ichikoro gauge turns the hit into a knockout.
+ * 0x0800d818: a kind 40 mine feels the first fighter that comes near it, other than its owner, and tells its owner,
+ * at the owner's +236.
  */
-function thingHitsFighters(c, k) {
+function mineFeelsFighters(c, thing) {
+  const owner = read8(c, thing + 53);
+  for (let i = 0; i < 4; i++) {
+    if (i === owner) continue;
+    const rec = record(i);
+    if (read8(c, rec + 187) === 0 || read8(c, SETUP + 20 + i) === 255) continue;
+    if (read8(c, SETUP + 8) !== 0 && read8(c, SETUP + 9) !== 1
+      && read8(c, SETUP + 32 + owner) === read8(c, SETUP + 32 + i)) continue;
+    const dx = reads16(c, thing + 58) - reads16(c, rec), dy = reads16(c, thing + 60) - reads16(c, rec + 2);
+    const dz = reads16(c, thing + 62) - reads16(c, rec + 4);
+    if (Math.abs(dx) > 0x23F || Math.abs(dy) > 0x23F || Math.abs(dz) > 9) continue;
+    if (read8(c, 0x0300138C) !== 0) {
+      const player = read32(c, PLAYER);
+      if (owner !== player && (owner !== player + 2 || read8(c, SETUP + 28 + owner) === 0)) continue;
+    }
+    write8(c, record(owner) + 236, 1);
+    break;
+  }
+}
+
+// the ways a thing faces that fly at each side: right, left, down and up the arena
+const FACES_RIGHT = [3, 6, 9], FACES_LEFT = [1, 4, 7], FACES_DOWN = [1, 2, 3], FACES_UP = [7, 8, 9];
+
+/**
+ * 0x0800d3be: whether a kind 38 shot bursts, as it meets an edge of the arena it is flying at, or the side of a wall
+ * it is flying at below the wall's top.
+ */
+function shotMeetsWall(c, thing) {
+  const bits = read8(c, thing + 16), facing = read8(c, thing + 64);
+  const low = reads16(c, thing + 62) < reads16(c, FLOOR);
+  if ((bits & 16) && FACES_RIGHT.includes(facing)) return true;
+  if ((bits & 32) && FACES_LEFT.includes(facing)) return true;
+  if ((bits & 64) && FACES_DOWN.includes(facing)) return true;
+  if ((bits & 128) && FACES_UP.includes(facing)) return true;
+  if ((bits & 1) && FACES_RIGHT.includes(facing) && low) return true;
+  if ((bits & 2) && FACES_LEFT.includes(facing) && low) return true;
+  if ((bits & 4) && FACES_DOWN.includes(facing) && low) return true;
+  return (bits & 8) !== 0 && FACES_UP.includes(facing) && low;
+}
+
+/** 0x0800eaec: a thing's hit, for the kinds that have one. */
+function thingHit(c, k, kind) {
+  if (THING_HITS.has(kind)) thingHitsFighters(c, k, ...THING_HITS.get(kind));
+  else if (THING_HITS_LATER.has(kind)) notPorted('0800EAEC', `the hit of a thing of kind ${kind}`);
+}
+
+/**
+ * 0x0800f0ac: a thing reaches the first fighter inside its reach that isn't its owner, and the hit is kept on its
+ * owner's record (+174) for 0x080036dc to settle. A full Ichikoro gauge turns the hit into a knockout.
+ */
+function thingHitsFighters(c, k, reach, height, damage, hold, hitKind, again, first, last) {
   const thing = 0x030017D0 + k * 68, owner = read8(c, thing + 53), ownerRecord = record(owner);
+  if (read8(c, 0x0300138C) !== 0) {
+    const player = read32(c, PLAYER);
+    if (owner !== player && (owner !== player + 2 || read8(c, SETUP + 28 + owner) === 0)) return;
+  }
+  const lift = read16(c, thing + 56) === 194 ? -64 : 0;
   const frame = read8(c, thing + 24);
-  if (frame < 1) return;
-  if (read16(c, ownerRecord + 174) !== 0) return;
+  if (frame < first || frame > last) return;
+  damage = Math.min(damage, 62);
   const x = reads16(c, thing + 58), y = reads16(c, thing + 60), z = reads16(c, thing + 62);
   for (let i = 0; i < 4; i++) {
+    if (i === owner) continue;
     const rec = record(i);
     if (read8(c, rec + 187) === 0 || read8(c, rec + 28) !== 0) continue;
     if (read8(c, SETUP + 20 + i) === 255) continue;
     if (read8(c, SETUP + 8) !== 0 && read8(c, SETUP + 9) !== 1
-      && read8(c, SETUP + 32 + i) === read8(c, SETUP + 32 + owner)) continue;
+      && read8(c, SETUP + 32 + owner) === read8(c, SETUP + 32 + i)) continue;
+    const dx = x - reads16(c, rec), dy = y - reads16(c, rec + 2), far = s16(reach) + read8(c, rec + 187);
+    if (Math.abs(z + lift - reads16(c, rec + 4)) >= s16(height) + read8(c, rec + 186)) continue;
+    if (Math.imul(dx, dx) + Math.imul(dy, dy) >= Math.imul(far, far)) continue;
     if ((read8(c, thing + 55) >> i) & 1) continue;
-    const dx = s16(x - reads16(c, rec)), dy = s16(y - reads16(c, rec + 2));
-    const reach = 0x160 + read8(c, rec + 187);
-    if (Math.abs(s16(z - reads16(c, rec + 4))) >= ((6 + read8(c, rec + 186)) >> 1)) continue;
-    if (dx * dx + dy * dy >= reach * reach) continue;
-    const knockout = (read8(c, thing + 65) & 1) !== 0;
-    const damage = knockout ? 63 : 20;
-    const raw = (((2 << 13) | ((i & 3) << 11) | 0x380 | damage) & 0xFFFF);
-    write16(c, ownerRecord + 174, raw);
-    write8(c, thing + 55, read8(c, thing + 55) | (1 << i));
-    write8(c, thing + 54, 2);
+    if (read16(c, ownerRecord + 174) === 0) {
+      if ((read8(c, thing + 65) & 1) && hitKind > 0x27F) write16(c, ownerRecord + 174, ((i & 3) << 11) | 0xE000 | hitKind | 63);
+      else write16(c, ownerRecord + 174, ((hold & 15) << 13) | ((i & 3) << 11) | hitKind | damage);
+    }
     const total = SETUP + 90 + owner * 2;
     write16(c, total, read16(c, total) + damage);
+    const kept = read16(c, ownerRecord + 174);
+    if (kept !== 0) {
+      write16(c, ownerRecord + 176, kept);
+      write32(c, ownerRecord + 120, 0);
+    }
+    if (again === 0) write8(c, thing + 55, read8(c, thing + 55) | (1 << i));
+    write8(c, thing + 54, hold);
+    if ([94, 174, 191, 194].includes(read16(c, thing + 56))) write8(c, ownerRecord + 28, hold);
+    write16(c, SETUP + 66 + owner * 2, read16(c, SETUP + 66 + owner * 2) + 1);
+    if (read8(c, thing + 66) === 0) {
+      write8(c, thing + 66, 1);
+      write16(c, SETUP + 74 + owner * 2, read16(c, SETUP + 74 + owner * 2) + 1);
+    }
     break;
   }
 }
@@ -1563,18 +1674,26 @@ function updateThings(c) {
       write16(c, thing + 62, read16(c, thing + 62) + read16(c, thing + 12));
     }
     // 0x0800cec8's per-kind steps: walls and the arena's edges push a thing back, and it falls until its floor
+    // (0x0800d260, the same for kinds 35, 38, 39 and 40): a wall it is inside pushes it out unless it is above the
+    // wall's top, where it stands on it instead, and the arena's edges push it back in
     if (kind === 35 || kind === 38 || kind === 39 || kind === 40) {
       const met = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
-      if (kind !== 35) {
-        let now = met;
-        write8(c, thing + 16, now.bits);
-        if (now.bits & 0xF0) {
-          write16(c, thing + 58, read16(c, thing + 58) - u16(now.edgeX));
-          write16(c, thing + 60, read16(c, thing + 60) - u16(now.edgeY));
-          now = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
-          write8(c, thing + 16, now.bits);
+      write8(c, thing + 16, met.bits);
+      if (met.bits & 0xF) {
+        const top = reads16(c, FLOOR);
+        if (reads16(c, thing + 62) >= top + reads16(c, thing + 12)) {
+          write8(c, thing + 16, met.bits & 0xF0);
+          write8(c, thing + 17, top);
+          if (reads16(c, thing + 62) < top) write16(c, thing + 62, top);
+        } else {
+          write16(c, thing + 58, read16(c, thing + 58) - u16(met.wallX));
+          write16(c, thing + 60, read16(c, thing + 60) - u16(met.wallY));
+          write8(c, thing + 17, 0);
         }
-        if (read8(c, thing + 16) !== 0) write16(c, thing + 62, read16(c, 0x03001384));
+      } else write8(c, thing + 17, 0);
+      if (read8(c, thing + 16) & 0xF0) {
+        write16(c, thing + 58, read16(c, thing + 58) - u16(met.edgeX));
+        write16(c, thing + 60, read16(c, thing + 60) - u16(met.edgeY));
       }
       const height = reads16(c, thing + 62), floor = read8(c, thing + 17);
       if (height <= floor) {
@@ -1582,7 +1701,21 @@ function updateThings(c) {
         write16(c, thing + 62, floor);
       } else write16(c, thing + 12, read16(c, thing + 12) - read16(c, thing + 14));
     }
-    if (kind === 38) thingHitsFighters(c, k);
+    if (kind === 38 && shotMeetsWall(c, thing)) {
+      // (0x0800d516) a shot that meets a wall or an edge it's flying at bursts: kind 43 at its place
+      const facing = read8(c, thing + 64), x = read16(c, thing + 58), y = read16(c, thing + 60), z = read16(c, thing + 62);
+      const follows = read8(c, thing + 51), owner = read8(c, thing + 53), full = read8(c, thing + 65);
+      clearEffect(c, k);
+      fn0800c1c8(c, 43, facing, x, y, z, 0, 0, 0, follows, owner, full);
+    }
+    // (0x0800d954) the ring goes once its owner is knocked out or has none of its health left
+    if (kind === 35) {
+      const owner = record(read8(c, thing + 53));
+      if (read16(c, owner + STATE) === 0x115 || read8(c, owner + HEALTH) === 0) clearEffect(c, k);
+    }
+    if (kind === 40) mineFeelsFighters(c, thing);
+    if (THING_STEPS_LATER.has(kind)) notPorted('0800CEC8', `the steps of a thing of kind ${kind} after it moves`);
+    thingHit(c, k, read16(c, thing + 56));
   }
   const shake = read8(c, 0x030016CC);
   if (shake === 0) {
