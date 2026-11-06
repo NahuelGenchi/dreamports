@@ -26,6 +26,7 @@
     ["08020198","src/game.h:53"],
     ["0802036C","src/game.h:60"],
     ["08020840","src/fight.c:27"],
+    ["0804A5A0","src/bus.c:80"],
     ["0804A5B4","src/core.c:19"]
   ],
   "unmatched": [

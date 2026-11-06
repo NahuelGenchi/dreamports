@@ -137,4 +137,7 @@ void m4a_tempo_control(M4a *m, int p, int tempo);
 void m4a_wave_at(M4a *m, int at);
 void m4a_before_sound_main(M4a *m, int n);
 
+/** The end of one of the game's frames, which the kit calls after game_step: the cycle counter's frame. */
+void gba_sound_frame_done(void);
+
 #endif

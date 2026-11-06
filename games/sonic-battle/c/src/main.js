@@ -32,6 +32,8 @@ const stage = document.getElementById('stage');
 const screen = document.getElementById('screen');
 const input = createInput(LAYOUT);
 proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
+// A start point opens the fight's own opening (main.c), which drops the fighters in and is what's proven, so no screen
+// before it holds them and no dreamportsProof.neverInPlay is needed.
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives
 const touch = createTouch(stage, input, { screen, key: 'sonic-battle' });

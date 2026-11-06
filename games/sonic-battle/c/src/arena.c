@@ -225,7 +225,7 @@ static void landColours(const ColourWrite *writes, int count) {
   int counted = g.counting, sound = (int)g.sound_cycles;
   g.counting = 0;
   int late = g.cycles - WORK_BEFORE_LINE_ONE;
-  if (!counted || late < 0) {
+  if (!counted || sound < 0 || late < 0) {
     for (int i = 0; i < count; i++) copy16(writes[i].from, writes[i].to, 16);
     return;
   }

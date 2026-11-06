@@ -84,10 +84,15 @@ int gba_sound_start(int players, int channels, int volume, int rate, int reverb)
  *  `voicesEndOnChip` for a game whose voices end on the chip, and `soundMainAt` where SoundMain's wave write lands. */
 int gba_sound_start_layout(uint32_t playerTable, int players, int channels, int volume, int rate, int reverb,
                            int voicesEndOnChip, int soundMainAt);
-/** How many of the console's cycles the last sound frame's SoundMain took, as the JavaScript kit's frameCycles(). */
+/** After gba_sound_start, for a game whose picture depends on how long the console's sound work takes, as the
+ *  JavaScript kit's countCycles: a silent engine of its own runs a frame as each of the game's frames ends, so what
+ *  gba_sound_frame_cycles says is the same in a player's browser as under the proof tools. */
+int gba_sound_count_cycles(void);
+/** With gba_sound_count_cycles, how many of the console's cycles the last frame's SoundMain took, as the JavaScript
+ *  kit's frameCycles(), or -1 without it. */
 int gba_sound_frame_cycles(void);
-/** `frames` frames of SoundMain with nothing playing, for a start point that leaves out what led to it, as the
- *  JavaScript kit's framesGoneBy(). */
+/** With gba_sound_count_cycles, `frames` frames of SoundMain with nothing playing, for a start point that leaves out
+ *  what led to it, as the JavaScript kit's framesGoneBy(). */
 void gba_sound_frames_gone_by(int frames);
 /** m4aSoundInit after a soft reset: the engine starts again from nothing, with the sound chip as it was. */
 void gba_sound_reset(void);

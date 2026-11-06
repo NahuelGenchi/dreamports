@@ -75,6 +75,14 @@ void fill32(uint32_t to, uint32_t value, uint32_t count) {
   for (uint32_t i = 0; i < count; i++) write32(to + i * 4, value);
 }
 
+static inline int clz32(int32_t v) { return v == 0 ? 32 : __builtin_clz((uint32_t)v); }
+
+// The BIOS's division (DivArm, 0x0804a5a0), with its cycles counted as bus.js counts them: what mGBA's swi takes, and
+// 13 for each bit the quotient can have.
 int32_t divArm(int32_t denominator, int32_t numerator) {
-  return denominator == 0 ? 0 : numerator / denominator;
+  int bits = clz32(denominator) - clz32(numerator);
+  g.cycles += 76 + 13 * (bits > 1 ? bits : 1);
+  if (denominator == 0) return 0;
+  if (denominator == -1) return (int32_t)(0u - (uint32_t)numerator);
+  return numerator / denominator;
 }

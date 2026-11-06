@@ -27,6 +27,8 @@ void game_start(void) {
   g.callback = startFightFromPoint;
   gba_on_hblank(hblank);
   gba_sound_start_layout(0xBF71FC, 6, 8, 14, 10512, 0, 1, 84800);
+  // the arena's moving colours land where the frame's work and SoundMain's take them (arena.c), as main.js's countCycles
+  gba_sound_count_cycles();
 }
 
 // what the original does each frame, writing the video hardware's registers, VRAM, colours and sprites as it does
