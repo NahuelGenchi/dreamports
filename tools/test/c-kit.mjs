@@ -1,4 +1,5 @@
-// npm run test:c-kit: tries the Game Boy Advance kit in C (kit/gba/c/) against the JavaScript kit it was written from.
+// npm run test:c-kit: tries the Game Boy Advance kit in C (kit/gba/c/) against the JavaScript kit it was written from,
+// and the base every console's kit in C shares (kit/c/) on a console with no kit of its own.
 // It draws hundreds of made-up scenes, every mode, layer, window, colour effect and kind of sprite, with H-blanks that
 // change registers and colours between lines, with the C as WebAssembly and built for this computer, and with
 // kit/gba/video.js, and fails on any pixel that differs. Then it builds a new game's starting point in C and runs it
@@ -6,7 +7,8 @@
 // play it a frame at a time as they play the JavaScript starting point, and fails on any frame whose picture or video
 // hardware differs. It checks that a game in C reads a recording's start point, the words of the page's address, as
 // the page's URLSearchParams and Number read them. It needs nothing from any game and no account, so it runs on any
-// pull request.
+// pull request. Last it builds a game for the made-up console (made-up-game.c) and the starting point there, for this
+// computer and as WebAssembly, and fails on any frame or sound sample that differs between the two.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -18,7 +20,8 @@ import { openChrome, until } from '../lib/chrome.mjs';
 import { openDreamport } from '../lib/dreamport.mjs';
 import { startingFiles } from '../lib/new-game.mjs';
 import { createVideo, color555 } from '../../kit/gba/video.js';
-import { C_KIT, KIT_SOURCES, NATIVE_MAIN, buildGame, buildNative, buildWasm } from '../gba/c.mjs';
+import { C_BASE, buildGame, buildNative, buildWasm, cKit } from '../lib/c.mjs';
+import { CONSOLES } from '../../kit/consoles.js';
 import { madeUpGame } from './made-up-game.mjs';
 import { madeUpSongs, playBoth, randomCall } from './c-kit/songs.mjs';
 import { copyOf } from '../lib/copies.mjs';
@@ -28,6 +31,8 @@ const SCENES = Number(process.env.SCENES || 400);
 const SEED = Number(process.env.SEED || 0x5EED);
 const W = 240, H = 160, IO_BYTES = 0x58;
 const HERE = fileURLToPath(new URL('./c-kit/', import.meta.url));
+// the Game Boy Advance's kit in C, on the base every console's shares
+const GBA = cKit('gba'), C_KIT = GBA.folders[1], KIT_SOURCES = GBA.sources;
 const exe = name => join(work, process.platform === 'win32' ? `${name}.exe` : name);
 const work = join(LOCAL, 'tmp', 'c-kit');
 rmSync(work, { recursive: true, force: true });
@@ -164,13 +169,13 @@ const file = join(work, 'scenes.bin');
 writeFileSync(file, Buffer.concat(scenes.map(sceneBytes)));
 
 // built for this computer
-const native = buildNative([join(HERE, 'scene.c'), join(C_KIT, 'video.c')], exe('scene'));
+const native = buildNative([join(HERE, 'scene.c'), join(C_KIT, 'video.c')], exe('scene'), GBA);
 execFileSync(native, [file, join(work, 'native.out')]);
 const nativeFrames = readFileSync(join(work, 'native.out'));
 compare('built for this computer', n => new Uint32Array(nativeFrames.buffer, nativeFrames.byteOffset + n * W * H * 4, W * H), expected);
 
 // as WebAssembly
-const wasm = await buildWasm([join(HERE, 'scene.c'), join(C_KIT, 'video.c'), join(C_KIT, 'libc.c')], join(work, 'scene.wasm'));
+const wasm = await buildWasm([join(HERE, 'scene.c'), join(C_KIT, 'video.c'), join(C_BASE, 'libc.c')], join(work, 'scene.wasm'), GBA);
 const { instance } = await WebAssembly.instantiate(readFileSync(wasm), {});
 const memory = instance.exports.memory;
 const input = instance.exports.input();
@@ -185,7 +190,7 @@ compare('as WebAssembly', n => wasmFrames[n], expected);
 // sample of the console's mix has to be the same. Made-up songs on every pull request, and with a copy of a game here
 // whose sound the kit plays, every one of its songs, its copy read where it is and nothing from it kept
 console.log('\nThe C kit\'s sound');
-const soundModule = new WebAssembly.Module(readFileSync(await buildWasm([join(HERE, 'sound.c'), ...KIT_SOURCES], join(work, 'sound.wasm'))));
+const soundModule = new WebAssembly.Module(readFileSync(await buildWasm([join(HERE, 'sound.c'), ...KIT_SOURCES], join(work, 'sound.wasm'), GBA)));
 const withCopy = bytes => {
   const nothing = () => {};
   const { exports } = new WebAssembly.Instance(soundModule, { dreamports: { save_read: nothing, save_write: nothing } });
@@ -282,6 +287,9 @@ function readsStart(frame) {
 let server = null, page = null;
 try {
   for (const [game, language] of [[JS_GAME, 'js'], [C_GAME, 'c'], [SAVES, 'c'], [START, 'c']]) {
+    // the game's proof/original.json, which says its console, and so the kit in C it's built on
+    mkdirSync(join(gameFolder(game.split('/')[0]), 'proof'), { recursive: true });
+    writeFileSync(join(gameFolder(game.split('/')[0]), 'proof', 'original.json'), JSON.stringify(original));
     for (const [path, text] of Object.entries(startingFiles(game.split('/')[0], original, { language }))) {
       mkdirSync(dirname(join(gameFolder(game), path)), { recursive: true });
       writeFileSync(join(gameFolder(game), path), text);
@@ -298,7 +306,7 @@ try {
   const red = count => color555(count) & 0xFF;
 
   // built for this computer: the backdrop blue, and green while a button is held
-  const program = buildNative([join(gameFolder(C_GAME), 'src', 'main.c'), ...KIT_SOURCES.filter(f => !f.endsWith('libc.c')), NATIVE_MAIN], exe('game'));
+  const program = buildNative([join(gameFolder(C_GAME), 'src', 'main.c'), ...GBA.native], exe('game'), GBA);
   writeFileSync(join(work, 'buttons'), frames.map(held => held.reduce((bits, b) => bits | BITS[b], 0)).join('\n') + '\n');
   execFileSync(program, [copy, join(work, 'buttons'), join(work, 'game.out')]);
   const out = readFileSync(join(work, 'game.out'));
@@ -308,7 +316,7 @@ try {
   });
   check(out.length === frames.length * W * H * 4 && wrong < 0, `built for this computer, it plays all ${frames.length} frames as it should${wrong < 0 ? '' : `, but not frame ${wrong}`}`);
 
-  const counter = buildNative([join(gameFolder(SAVES), 'src', 'main.c'), ...KIT_SOURCES.filter(f => !f.endsWith('libc.c')), NATIVE_MAIN], exe('saves'));
+  const counter = buildNative([join(gameFolder(SAVES), 'src', 'main.c'), ...GBA.native], exe('saves'), GBA);
   writeFileSync(join(work, 'one'), '0\n');
   const counts = [1, 2].map(() => {
     execFileSync(counter, [copy, join(work, 'one'), join(work, 'saves.out')]);
@@ -316,7 +324,7 @@ try {
   });
   check(counts[0] === red(1) && counts[1] === red(2), 'built for this computer, its save memory is kept in a file from one run to the next');
 
-  const starter = buildNative([join(gameFolder(START), 'src', 'main.c'), ...KIT_SOURCES.filter(f => !f.endsWith('libc.c')), NATIVE_MAIN], exe('start'));
+  const starter = buildNative([join(gameFolder(START), 'src', 'main.c'), ...GBA.native], exe('start'), GBA);
   execFileSync(starter, [copy, join(work, 'one'), join(work, 'start.out'), START_POINT]);
   const startFrame = readFileSync(join(work, 'start.out'));
   check(readsStart(new Uint32Array(startFrame.buffer, startFrame.byteOffset, W * H)), 'built for this computer, it reads the start point as the page reads it');
@@ -365,6 +373,66 @@ try {
   await page?.close();
   await server?.close();
   for (const game of FOLDERS) rmSync(gameFolder(game), { recursive: true, force: true });
+}
+
+// a game on a console with no kit in C of its own, on the base alone: the made-up console's test game (made-up-game.c)
+// and the starting point there, built for this computer and as WebAssembly, run in Node as the page runs it, a frame
+// at a time with the same buttons and a start point, and every frame's picture and every sound sample the same
+console.log('\nA game in C on a console with no kit of its own');
+{
+  const MADE_UP = cKit('made-up'), machine = CONSOLES['made-up'];
+  const game = fileURLToPath(new URL('./made-up-game.c', import.meta.url)), start = join(work, 'start-made-up.c');
+  writeFileSync(start, startingFiles('made-up', { console: 'made-up', name: 'Made Up (World)', title: 'MADEUP', code: 'MU', sha1: '' }, { language: 'c' })['src/main.c']);
+  const cartridge = Buffer.concat([Buffer.from('MADEUP'), Buffer.from(new Uint16Array([0x001F, 0x07E0, 0xF800, 0xFFFF, 0x0000, 0, 0, 0]).buffer)]);
+  writeFileSync(join(work, 'made-up.mu'), cartridge);
+  const r = random(SEED + 3), words = 'proof&later=37';
+  const held = Array.from({ length: 200 }, () => (r.chance(0.5) ? 0 : 1 << r.int(machine.buttons.length)));
+  writeFileSync(join(work, 'made-up-buttons'), `${held.join('\n')}\n`);
+  const step = machine.sound * (machine.frame[0] / machine.frame[1]);
+  for (const [what, source] of [['the made-up console\'s test game', game], ['the starting point', start]]) {
+    const name = what === 'the starting point' ? 'start-made-up' : 'made-up';
+    const program = buildNative([source, ...MADE_UP.native], exe(name), MADE_UP);
+    execFileSync(program, [join(work, 'made-up.mu'), join(work, 'made-up-buttons'), join(work, `${name}.out`), words, join(work, `${name}.sound`)]);
+    const frames = readFileSync(join(work, `${name}.out`)), heard = readFileSync(join(work, `${name}.sound`));
+    const module = new WebAssembly.Module(readFileSync(await buildWasm([source, ...MADE_UP.sources], join(work, `${name}.wasm`), MADE_UP)));
+    const nothing = () => {};
+    const { exports: wasm } = new WebAssembly.Instance(module, { dreamports: { save_read: nothing, save_write: nothing } });
+    const at = wasm.dp_rom(cartridge.length);
+    new Uint8Array(wasm.memory.buffer, at, cartridge.length).set(cartridge);
+    const text = new TextEncoder().encode(words);
+    new Uint8Array(wasm.memory.buffer, wasm.dp_start_point(text.length), text.length).set(text);
+    wasm.dp_start();
+    let frameAt = 0, soundAt = 0, wrongFrame = -1, wrongSound = -1, sizes = new Set();
+    const max = wasm.dp_sound_render_max();
+    held.forEach((buttons, n) => {
+      wasm.dp_step(buttons);
+      const count = Math.floor((n + 1) * step) - Math.floor(n * step), first = wasm.dp_sound_render(count) >> 2, samples = new Float32Array(wasm.memory.buffer);
+      for (let i = 0; i < count; i++) {
+        for (const side of [0, 1]) {
+          if (heard.readInt16LE(soundAt) !== Math.round(samples[first + side * max + i] * 512) && wrongSound < 0) wrongSound = n;
+          soundAt += 2;
+        }
+      }
+      const pixels = wasm.dp_draw(), width = wasm.dp_width(), height = wasm.dp_height();
+      sizes.add(`${width} by ${height}`);
+      const theirs = new Uint32Array(wasm.memory.buffer, pixels, width * height);
+      if (frames.readUInt32LE(frameAt) !== width || frames.readUInt32LE(frameAt + 4) !== height) wrongFrame = wrongFrame < 0 ? n : wrongFrame;
+      for (let i = 0; i < width * height && wrongFrame < 0; i++) if (frames.readUInt32LE(frameAt + 8 + i * 4) !== theirs[i]) wrongFrame = n;
+      frameAt += 8 + width * height * 4;
+    });
+    check(wrongFrame < 0 && frameAt === frames.length, `${what}: its ${held.length} frames are the same built for this computer and as WebAssembly${wrongFrame < 0 ? '' : `, but not frame ${wrongFrame}`}`);
+    check(wrongSound < 0 && soundAt === heard.length, `${what}: and so is every sound sample, ${soundAt / 4} of them${wrongSound < 0 ? '' : `, but not at frame ${wrongSound}`}`);
+    check(sizes.size === 1 && sizes.has(machine.screen.join(' by ')), `${what}: at the console's screen, ${[...sizes].join(', ')}`);
+    if (source === game) {
+      // the bar starts where the start point's word says, 37 pixels across, and moves a pixel a frame
+      const bar = frames.readUInt32LE(8 + 37 * 4), next = frames.readUInt32LE(8 + machine.screen[0] * machine.screen[1] * 4 + 8 + 38 * 4);
+      check(bar === next && bar === (0xFF000000 >>> 0), `${what}: reads the start point's word, as its bar starts at 37`);
+    } else {
+      const BLUE_WORD = 0xFFFF0000, GREEN_WORD = 0xFF00FF00;
+      const wrong = held.findIndex((buttons, n) => frames.readUInt32LE(n * (8 + machine.screen[0] * machine.screen[1] * 4) + 8) !== (buttons ? GREEN_WORD : BLUE_WORD));
+      check(wrong < 0, `${what}: blue, and green while a button is held${wrong < 0 ? '' : `, but not frame ${wrong}`}`);
+    }
+  }
 }
 
 rmSync(work, { recursive: true, force: true });

@@ -109,14 +109,16 @@ async function ask(question, yes) {
   }
 }
 
-// A game in C runs as WebAssembly, which the site builds from its C and no commit holds (kit/gba/c/README.md), so a
+// A game in C runs as WebAssembly, which the site builds from its C and no commit holds (kit/c/README.md), so a
 // preview of one is built here, from the C as it is in the commit: [{ path, bytes }], or [] for a game in JavaScript.
 async function builtFrom(game, left) {
   const src = join(gameFolder(game), 'src');
   if (!existsSync(src) || !readdirSync(src).some(name => name.endsWith('.c'))) return [];
-  const changed = left.map(line => line.slice(3)).filter(path => path.startsWith(`games/${game}/src/`) || path.startsWith('kit/gba/c/'));
+  const { buildGame, consoleOfFolder, kitPaths } = await import('./lib/c.mjs');
+  // the game's C, and its console's kit in C (kit/c/, and kit/gba/c/ on the Game Boy Advance)
+  const kits = kitPaths(consoleOfFolder(gameFolder(game)));
+  const changed = left.map(line => line.slice(3)).filter(path => path.startsWith(`games/${game}/src/`) || kits.some(kit => path.startsWith(kit)) || path === 'kit/consoles.js');
   if (changed.length) throw new Error(`Commit the C first, as the preview's game is built from it: ${changed.slice(0, 4).join(', ')}${changed.length > 4 ? ', …' : ''}.`);
-  const { buildGame } = await import('./gba/c.mjs');
   mkdirSync(join(LOCAL, 'share'), { recursive: true });
   const out = join(LOCAL, 'share', 'game.wasm');
   await buildGame(gameFolder(game), out);

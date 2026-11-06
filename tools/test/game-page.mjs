@@ -2,7 +2,8 @@
 // stand-in controller, so a change that breaks what every new Dreamport starts with is seen before it reaches anyone:
 // the start screen and its way back to the launcher, the game's frames, keys, a controller, the settings and the
 // touch screen. It tries the page `npm run dp -- new` writes, in a folder of its own that it removes after, the same page
-// with the game's code in C (kit/gba/c/), and every game in games/ that is still only that. It needs nothing from any game and no account, so it runs on any pull request.
+// with the game's code in C (kit/gba/c/), the page in C it writes for a game on every other console in kit/consoles.js
+// (kit/c/), and every game in games/ that is still only that. It needs nothing from any game and no account, so it runs on any pull request.
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -12,7 +13,8 @@ import { openChrome, go, until } from '../lib/chrome.mjs';
 import { openDreamport } from '../lib/dreamport.mjs';
 import { startingFiles } from '../lib/new-game.mjs';
 import { madeUpGame } from './made-up-game.mjs';
-import { buildGame } from '../gba/c.mjs';
+import { buildGame } from '../lib/c.mjs';
+import { CONSOLES } from '../../kit/consoles.js';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const BLUE = 'blue', GREEN = 'green';
@@ -34,8 +36,8 @@ const check = (ok, what) => {
   if (!ok) failures.push(what);
 };
 
-async function tryGame(page, server, game, rom) {
-  console.log(`games/${game}/`);
+async function tryGame(page, server, game, rom, machine = 'gba') {
+  console.log(`games/${game}/${machine === 'gba' ? '' : ` (${CONSOLES[machine].name})`}`);
   // each time as a new visitor, as a copy the browser has kept would stand in for the one given
   const start = async () => {
     await go(page, `${server.url}/favicon.svg`);
@@ -50,11 +52,15 @@ async function tryGame(page, server, game, rom) {
   check((await brand()).endsWith('Dreamport'), 'the start screen names the game');
   check(await page.evaluate(`!document.querySelector('.play').disabled`), 'it takes the player\'s copy, and Play can be pressed');
   await openDreamport(page, server, game, rom, { start: false }).then(() => check(true, 'it takes the copy again over the one it kept'), error => check(false, error.message));
-  const other = join(dirname(rom), 'other.gba');
-  writeFileSync(other, madeUpGame({ title: 'SOMETHING', code: 'ELSE' }).rom);
-  const refused = await openDreamport(page, server, game, other, { start: false }).then(() => '', error => error.message);
-  check(refused.startsWith('The game didn\'t take the copy'), `another game's copy is refused, and it says so`);
-  rmSync(other, { force: true });
+  // a Game Boy Advance copy says which game it is in its header. On another console a copy is known only by its SHA-1,
+  // and one the game wasn't tested with still plays
+  if (machine === 'gba') {
+    const other = join(dirname(rom), 'other.gba');
+    writeFileSync(other, madeUpGame({ title: 'SOMETHING', code: 'ELSE' }).rom);
+    const refused = await openDreamport(page, server, game, other, { start: false }).then(() => '', error => error.message);
+    check(refused.startsWith('The game didn\'t take the copy'), `another game's copy is refused, and it says so`);
+    rmSync(other, { force: true });
+  }
   await start();
 
   await page.evaluate(`document.querySelector('.play').click()`);
@@ -84,7 +90,8 @@ async function tryGame(page, server, game, rom) {
   await page.evaluate(`document.querySelector('.settings-open').click()`);
   await until(page, open, 'the settings', 5000);
   await page.evaluate(`document.querySelector('[data-controls]').click()`);
-  await until(page, `[...document.querySelectorAll('.view')].some(v => !v.hidden && /Controls/.test(v.textContent) && /Start/.test(v.textContent))`, 'the controls', 5000);
+  // on another console the shared settings name a button by the layout's name for it, as 'start'
+  await until(page, `[...document.querySelectorAll('.view')].some(v => !v.hidden && /Controls/.test(v.textContent) && /${machine === 'gba' ? 'Start' : 'start'}/.test(v.textContent))`, 'the controls', 5000);
   check(true, 'the settings list the game\'s controls');
   await page.evaluate(`document.querySelector('.view:not([hidden]) [data-back]')?.click()`);
   await wait(500);
@@ -158,29 +165,42 @@ async function tryGame(page, server, game, rom) {
 }
 
 const TEST = 'made-up-game', TEST_C = 'made-up-game/c';
+// a game in C on each of the other consoles, each in a folder of its own
+const OTHERS = Object.keys(CONSOLES).filter(id => id !== 'gba').map(id => ({ id, game: `made-up-c-${id}` }));
 const folder = gameFolder(TEST), folderC = gameFolder(TEST_C);
 const temporary = join(LOCAL, 'tmp', 'test-game');
 mkdirSync(temporary, { recursive: true });
-for (const [game, place] of [[TEST, folder], [TEST_C, folderC]]) {
-  if (existsSync(place)) throw new Error(`games/${game}/ is already there, and this test makes and removes a folder of that name.`);
+for (const game of [TEST, ...OTHERS.map(other => other.game)]) {
+  if (existsSync(gameFolder(game))) throw new Error(`games/${game}/ is already there, and this test makes and removes a folder of that name.`);
 }
+const write = (place, files) => {
+  for (const [file, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(place, file)), { recursive: true });
+    writeFileSync(join(place, file), text);
+  }
+};
 const server = await serveRepository();
 let page;
 try {
   const { rom, sha1 } = madeUpGame();
   const original = { console: 'gba', name: 'Made Up Game (USA)', title: 'MADE UP GAME', code: 'MADE', sha1 };
-  for (const [game, place, language] of [[TEST, folder, 'js'], [TEST_C, folderC, 'c']]) {
-    for (const [file, text] of Object.entries(startingFiles(TEST, original, { language }))) {
-      mkdirSync(dirname(join(place, file)), { recursive: true });
-      writeFileSync(join(place, file), text);
-    }
-  }
+  // the game's proof/original.json, which says its console, and so the kit in C it's built on
+  write(folder, { 'proof/original.json': JSON.stringify(original) });
+  write(folder, startingFiles(TEST, original));
+  write(folderC, startingFiles(TEST, original, { language: 'c' }));
   await buildGame(folderC);
   writeFileSync(join(temporary, 'made-up.gba'), rom);
+  for (const { id, game } of OTHERS) {
+    const theirs = { console: id, name: 'Made Up Game (World)', title: 'MADE UP GAME', code: 'MADE', sha1 };
+    write(gameFolder(game), { 'proof/original.json': JSON.stringify(theirs) });
+    write(gameFolder(`${game}/c`), startingFiles(game, theirs, { language: 'c' }));
+    writeFileSync(join(temporary, `made-up-${id}${CONSOLES[id].files[0]}`), rom);
+  }
   page = await openChrome({ profile: join(LOCAL, 'chrome', 'test-game'), headless: true, controllers: true });
   await page.send('Page.addScriptToEvaluateOnNewDocument', { source: STAND_IN });
   await tryGame(page, server, TEST, join(temporary, 'made-up.gba'));
   await tryGame(page, server, TEST_C, join(temporary, 'made-up.gba'));
+  for (const { id, game } of OTHERS) await tryGame(page, server, `${game}/c`, join(temporary, `made-up-${id}${CONSOLES[id].files[0]}`), id);
 
   // the games that are still only what new wrote
   for (const game of readdirSync(join(REPO, 'games'))) {
@@ -197,7 +217,7 @@ try {
   await page?.close();
   await server.close();
   rmSync(folder, { recursive: true, force: true });
-  rmSync(folderC, { recursive: true, force: true });
+  for (const { game } of OTHERS) rmSync(gameFolder(game), { recursive: true, force: true });
   rmSync(temporary, { recursive: true, force: true });
 }
 if (failures.length) {

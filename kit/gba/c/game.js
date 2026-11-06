@@ -1,8 +1,9 @@
 // A game written in C, built to WebAssembly, on the JavaScript kit's page: it hands the game the player's copy, runs
 // its frames with the buttons held, and draws them, while the page around it (the start screen, settings, touch
-// controller, achievements and the proof tools' part, proof.js) stays the JavaScript kit's. What it gives back is what
-// a JavaScript game's page has: `video`, the video hardware as video.js's (its VRAM, colours, OAM and registers, which
-// the proof tools compare with the original's) with `drawFrame`, `step(keys)`, the game's frame, and `sound`.
+// controller, achievements and the proof tools' part, proof.js) stays the JavaScript kit's. Loading the game and its
+// audio thread are what every console's kit in C shares (kit/c/game.js). What it gives back is what a JavaScript game's
+// page has: `video`, the video hardware as video.js's (its VRAM, colours, OAM and registers, which the proof tools
+// compare with the original's) with `drawFrame`, `step(keys)`, the game's frame, and `sound`.
 //
 // The game's sound (sound.c) plays as the JavaScript kit's does (sound/audio.js). For a player, the game hands its calls
 // over after each frame, and a second copy of the same WebAssembly plays them on an audio thread of its own
@@ -11,9 +12,8 @@
 // filter the speakers get.
 
 import { proof } from '../proof.js';
-import { cartridgeSave } from '../save.js';
+import { createAudio, openGame } from '../../c/game.js';
 
-const GAIN = 0.5;   // the GBA's full scale is loud next to other pages; half of it leaves headroom
 const PROOF_RATE = 65536;   // the rate the console mixes its sound at once the sound library has started
 const CALL_WORDS = 5;
 
@@ -23,24 +23,8 @@ const CALL_WORDS = 5;
  * start point under the proof tools, such as ?proof&unlocked=1), and returns { video, step(keys) }.
  */
 export async function loadGame(url, rom, { save = null, query = globalThis.location?.search ?? '' } = {}) {
-  // the proof tools play a game as a player who has never saved, as JavaScript games do
-  const kept = save ? cartridgeSave(save, proof ? null : undefined) : null;
-  let memory = null;
-  const imports = {
-    dreamports: {
-      save_read(at, size) {
-        const bytes = kept?.read();
-        if (bytes) new Uint8Array(memory.buffer, at, size).set(bytes.subarray(0, size));
-      },
-      save_write(at, size) { kept?.write(new Uint8Array(memory.buffer, at, size).slice()); },
-    },
-  };
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`The game's code isn't there (${response.status}).`);
-  const code = await response.arrayBuffer();
-  const { instance } = await WebAssembly.instantiate(code, imports);
-  const game = instance.exports;
-  memory = game.memory;
+  const { game, code } = await openGame(url, rom.bytes, { save, query });
+  const memory = game.memory;
 
   // the views onto the game's memory, made again whenever it grows, which leaves the old ones empty
   let views = null;
@@ -58,11 +42,6 @@ export async function loadGame(url, rom, { save = null, query = globalThis.locat
     return views;
   };
 
-  // room for the copy first, as making it can grow the memory, which leaves an earlier view of it empty
-  const at = game.dp_rom(rom.size);
-  new Uint8Array(memory.buffer, at, rom.size).set(rom.bytes);
-  const words = new TextEncoder().encode(query);
-  new Uint8Array(memory.buffer, game.dp_start_point(words.length), words.length).set(words);
   const sound = createSound(game, code, rom);
   game.dp_start();
   sound.started();
@@ -83,8 +62,7 @@ export async function loadGame(url, rom, { save = null, query = globalThis.locat
   return { video, sound, step: keys => { game.dp_step(keys); sound.frameDone(); } };
 }
 
-// The game's sound: on the page for the proof tools, or handed over to the audio thread. Browsers keep audio paused
-// until the page has been interacted with; choosing the copy counts, and any later key press or tap resumes it too.
+// The game's sound: on the page for the proof tools, or handed over to the audio thread.
 function createSound(game, code, rom) {
   const memory = () => game.memory.buffer;
   if (proof?.mode === 'play') {
@@ -105,48 +83,28 @@ function createSound(game, code, rom) {
   }
 
   game.dp_sound_hand_over(1);
-  let ctx = null, node = null, muted = false, held = false;
-  const waiting = [];
-  const post = message => (node ? node.port.postMessage(message) : waiting.push(message));
-  const resume = () => { if (ctx?.state === 'suspended' && !held) ctx.resume().catch(() => {}); };
+  const audio = createAudio({ module: new URL('./worklet.js', import.meta.url), processor: 'gba-c-sound', first: gain => ({ type: 'start', code, rom: rom.bytes.slice().buffer, gain }) });
   const calls = () => {
     const count = game.dp_sound_taken_count();
     return count ? Array.from(new Int32Array(memory(), game.dp_sound_taken(), count * CALL_WORDS)) : null;
   };
-  async function start() {
-    const c = new AudioContext({ latencyHint: 'interactive' });
-    ctx = c;
-    await c.audioWorklet.addModule(new URL('./worklet.js', import.meta.url));
-    node = new AudioWorkletNode(c, 'gba-c-sound', { numberOfInputs: 0, outputChannelCount: [2] });
-    node.connect(c.destination);
-    node.port.onmessage = ({ data }) => { if (data.type === 'error') console.warn('No sound:', data.message); };
-    node.port.postMessage({ type: 'start', code, rom: rom.bytes.slice().buffer, gain: muted ? 0 : GAIN });
-    for (const message of waiting.splice(0)) node.port.postMessage(message);
-    resume();
-  }
-  addEventListener('pointerdown', resume);
-  addEventListener('keydown', resume);
   return {
     /** Once the game has started: its sound starts too, if it has any and the browser plays sound. */
     started() {
       const first = calls();
       if (!game.dp_sound_running() || !globalThis.AudioWorkletNode) return;
-      if (first) post({ type: 'calls', calls: first });
-      start().catch(err => console.warn('No sound:', err));
+      if (first) audio.post({ type: 'calls', calls: first });
+      audio.open();
     },
     /** After each of the game's frames: the calls it made go to the audio thread. */
     frameDone() {
       const made = calls();
-      if (made && game.dp_sound_running()) post({ type: 'calls', calls: made });
+      if (made && game.dp_sound_running()) audio.post({ type: 'calls', calls: made });
     },
-    get muted() { return muted; },
-    set muted(value) { muted = value; post({ type: 'gain', value: muted ? 0 : GAIN }); },
+    get muted() { return audio.muted; },
+    set muted(value) { audio.muted = value; },
     /** Stops the sound where it is while the game is held (its settings are open), and goes on with it after */
-    get held() { return held; },
-    set held(value) {
-      if (value === held) return;
-      held = value;
-      if (held) ctx?.suspend().catch(() => {}); else resume();
-    },
+    get held() { return audio.held; },
+    set held(value) { audio.held = value; },
   };
 }

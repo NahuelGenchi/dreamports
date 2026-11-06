@@ -1,7 +1,8 @@
 // npm run test:consoles: everything the proof tools do on a console that isn't the Game Boy Advance, from showing them a
-// copy to keeping a game's capture. It runs on a console that was never made, with a small emulator of it written here
-// (made-up-core.c) that the tools drive as they drive any libretro core, and a game made for it in a folder of its own
-// that it removes after, so it needs nothing from any game and nothing from anyone else, and runs on any pull request.
+// copy to keeping a game's capture, with the game in JavaScript and in C (kit/c/). It runs on a console that was never
+// made, with a small emulator of it written here (made-up-core.c) that the tools drive as they drive any libretro core,
+// and a game made for it in a folder of its own that it removes after, so it needs nothing from any game and nothing
+// from anyone else, and runs on any pull request.
 
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -36,7 +37,7 @@ const dpWith = (env, ...args) => {
   return { status, out: stdout + stderr };
 };
 const dp = (...args) => dpWith({}, ...args);
-const report = recording => JSON.parse(readFileSync(join(resultFolder(GAME, recording), 'report.json'), 'utf8'));
+const report = (recording, game = GAME) => JSON.parse(readFileSync(join(resultFolder(game, recording), 'report.json'), 'utf8'));
 const lastLine = ({ out }) => out.trim().split('\n').at(-1);
 
 // the game's own code, which does what the made-up console's cartridge says, as a Dreamport does what its original does.
@@ -182,6 +183,7 @@ async function main() {
   run = dp('prove', GAME, 'rates');
   check(run.status === 0 && report('rates').matched === 120 && report('rates').sound.heard, `a game that chooses its own sound rate is heard at the one the tools compare at: ${report('rates').matched} of ${report('rates').frames}`);
   if (run.status) console.log(run.out);
+  await inC(original);
   run = dpWith({ DISPLAY: ':99', WAYLAND_DISPLAY: 'nowhere' }, 'prove', GAME, 'later', '--quick');
   check(run.status === 0, `a browser nobody sees doesn't mind a screen it can't reach: ${lastLine(run)}`);
   if (process.platform !== 'win32') {
@@ -242,6 +244,39 @@ async function main() {
   check(refused.includes('music.dat: this is a copy of a game'), `share won't publish one of its tracks under another name: ${refused || 'it would'}`);
 
   await ownScreen(cartridge);
+}
+
+// the same game written in C, on the base every console's kit in C shares (kit/c/), built to WebAssembly by the tools
+// and proved as the JavaScript one is: every frame, picture and sound, from power-on and from a start point
+async function inC(original) {
+  console.log('The same game in C');
+  const C = `${GAME}/c`;
+  for (const [file, text] of Object.entries(startingFiles(GAME, original, { language: 'c' }))) {
+    mkdirSync(join(gameFolder(C), file, '..'), { recursive: true });
+    writeFileSync(join(gameFolder(C), file), text);
+  }
+  let run = dp('prove', C, 'buttons');
+  check(run.status !== 0 && report('buttons', C).firstDifference?.frame === 0, `what new writes in C builds, opens and plays, and differs at once, being only one colour: ${JSON.stringify(report('buttons', C).firstDifference)}`);
+  const main = join(gameFolder(C), 'src', 'main.c'), game = readFileSync(join(REPO, 'tools', 'test', 'made-up-game.c'), 'utf8');
+  writeFileSync(main, game);
+  run = dp('prove', C, 'buttons');
+  const same = report('buttons', C);
+  check(run.status === 0 && same.matched === 260 && same.sound.heard, `in C, every frame of the picture and the sound matches: ${same.matched} of ${same.frames}`);
+  if (run.status) console.log(run.out);
+  run = dp('prove', C, 'later');
+  check(run.status === 0 && report('later', C).matched === 40, `in C, a start point's words reach the game, and it matches from there: ${report('later', C).matched} of ${report('later', C).frames}`);
+  if (run.status) console.log(run.out);
+  run = dp('prove', C, 'rates');
+  check(run.status === 0 && report('rates', C).matched === 120 && report('rates', C).sound.heard, `in C, its sound is heard at the console's rate while the original chooses another: ${report('rates', C).matched} of ${report('rates', C).frames}`);
+  if (run.status) console.log(run.out);
+  writeFileSync(main, game.replace('? 0.5f : -0.5f', '? 0.0f : -0.0f'));
+  run = dp('prove', C, 'buttons');
+  const silent = report('buttons', C);
+  check(run.status !== 0 && !silent.firstPictureDifference && Math.abs(silent.sound.firstDifference?.frame - 60) <= 16, `in C, a wrong sound with the right picture is found near frame 60: ${silent.sound.firstDifference?.frame}`);
+  writeFileSync(main, game.replace('colours[pressed < 0 ? 0 : pressed]', '(pressed == 2 ? 0x001F : colours[pressed < 0 ? 0 : pressed])'));
+  run = dp('prove', C, 'buttons');
+  check(run.status !== 0 && report('buttons', C).firstDifference?.frame === 120, `in C, a wrong colour is found where it first shows, at frame 120: ${report('buttons', C).firstDifference?.frame}`);
+  rmSync(gameFolder(C), { recursive: true, force: true });
 }
 
 // a picture's size, from its file: a PNG's, or a WebP's as a browser writes one, lossy or not

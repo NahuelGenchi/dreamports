@@ -1,7 +1,9 @@
 // The Game Boy Advance kit in C: what a game written in C sees of the console. It is the same hardware layer as the
 // JavaScript kit's (kit/gba/video.js, input.js, save.js, sound/), drawn the same way to the pixel and sounding the same
-// to the sample, so a game moves between the two languages with nothing else changing. The page around the game, its start screen, settings, controller
-// and achievements, stays the JavaScript kit's, which game.js joins to the C (kit/gba/c/README.md).
+// to the sample, so a game moves between the two languages with nothing else changing. It builds on what every
+// console's kit in C shares (kit/c/kit.h): the copy, the save memory, the start point's words and memory, which it
+// gives a game under the names below too. The page around the game, its start screen, settings, controller and
+// achievements, stays the JavaScript kit's, which game.js joins to the C (kit/gba/c/README.md).
 //
 // A game defines two functions, which the kit calls:
 //   void game_start(void)          once, with the player's copy in gba_rom
@@ -14,6 +16,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "kit.h"
 
 #define SCREEN_W 240
 #define SCREEN_H 160
@@ -57,30 +60,17 @@ uint32_t gba_color555(uint16_t c);
  */
 void gba_draw_frame(uint32_t *out);
 
-// The player's copy of the game, which game.js checked against the versions the game supports.
-extern const uint8_t *gba_rom;
-extern uint32_t gba_rom_size;
-
-/**
- * The cartridge's save memory, `size` bytes, with what the browser kept of it, or zeros the first time. It is the
- * same memory every call. What its bytes mean is the game's, which calls gba_save_write when the original writes it.
- */
-uint8_t *gba_save(uint32_t size);
-/** Keeps the save memory's bytes, as the original writes them to the cartridge. */
-void gba_save_write(void);
-
-/**
- * The words the page's address gives the game, such as unlocked=1 in ?proof&unlocked=1, which is how the proof tools
- * open a game at a recording's start point (tools/README.md, Start points). The value of the word `name`, read as the
- * page's URLSearchParams reads it: the first one of that name, with + and %XX decoded, "" for a word with no value,
- * and NULL for one that isn't there. It can be read from game_start on.
- */
-const char *gba_start_point(const char *name);
-/**
- * The value of the word `name` as a whole number, as JavaScript's Number(value) | 0 reads it: decimal, or hexadecimal
- * after 0x, with what follows a decimal point dropped and anything else 0. `absent` when the word isn't there.
- */
-int32_t gba_start_number(const char *name, int32_t absent);
+// The player's copy of the game, which game.js checked against the versions the game supports, its save memory, the
+// words of the page's address and memory for the game, as every console's kit in C has them (kit/c/kit.h), under the
+// Game Boy Advance's names: gba_save(size) and gba_save_write() for the cartridge's save memory, gba_start_point(name)
+// and gba_start_number(name, absent) for a recording's start point, and gba_alloc(size).
+#define gba_rom kit_copy
+#define gba_rom_size kit_copy_size
+#define gba_save kit_save
+#define gba_save_write kit_save_write
+#define gba_start_point kit_start_point
+#define gba_start_number kit_start_number
+#define gba_alloc kit_alloc
 
 // The sound: Nintendo's sound engine (MusicPlayer2000, or "m4a") and the sound hardware, playing the songs and
 // sounds in the player's copy, as the JavaScript kit's sound/ does to the sample. gba_sound_start finds the engine's
@@ -126,9 +116,6 @@ void gba_sound_continue_all(void);
 /** m4aSoundVSyncOff and m4aSoundVSyncOn: the mixing cleared and held, as a game does around a flash write */
 void gba_sound_vsync_off(void);
 void gba_sound_vsync_on(void);
-
-/** Memory for the game, zeroed, which lasts as long as the page. */
-void *gba_alloc(size_t size);
 
 // what a game defines
 void game_start(void);
