@@ -10,7 +10,7 @@
 // page's text in the row's place.
 import AboutCard from './AboutCard.astro';
 import AchievementsCard from './AchievementsCard.astro';
-import Doorway from './Doorway.astro';
+import Mark from './Mark.astro';
 import InspectCard from './InspectCard.astro';
 import Key from './Key.astro';
 import Labels from './Labels.astro';
@@ -71,7 +71,7 @@ const pathsFor = (f: Filter) =>
   <Labels />
   <header class="topbar">
     <div class="side">
-      <Doorway />
+      <Mark alone />
     </div>
     <div class="filters">
       <button type="button" class="shoulder" id="btn-l" aria-label="Previous filter" aria-keyshortcuts="L Q">L</button>
@@ -155,7 +155,7 @@ const pathsFor = (f: Filter) =>
   </main>
 
   <div class="target" id="target" aria-hidden="true">
-    <div class="t-door"><Doorway /><span class="t-door-mouth"></span><span class="t-glow"></span></div>
+    <div class="t-mark"><Mark id="mark-launch" /><span class="t-mark-mouth"></span><span class="t-glow"></span></div>
   </div>
 
   <nav class="corners" aria-label="Menu">
@@ -217,7 +217,7 @@ const pathsFor = (f: Filter) =>
 
 <div class="blackout" id="blackout" hidden>
   <div class="bo-inner">
-    <Doorway />
+    <Mark id="mark-open" />
     <p class="bo-line">Opening <span id="bo-name"></span><span class="bo-dots"></span></p>
     <button type="button" class="bo-back" id="bo-back" aria-label="Back" hidden>
       <Key label="Esc" pad="B" round />

@@ -1503,7 +1503,7 @@ function start(launcher: HTMLElement) {
 
   let irisAnim: Animation | null = null;
   function irisCenter() {
-    const mouth = $('.t-door-mouth', target).getBoundingClientRect();
+    const mouth = $('.t-mark-mouth', target).getBoundingClientRect();
     const b = launcher.getBoundingClientRect();
     return { x: mouth.left + mouth.width / 2 - b.left, y: mouth.top + mouth.height / 2 - b.top };
   }
@@ -1523,10 +1523,10 @@ function start(launcher: HTMLElement) {
     return irisAnim.finished;
   }
 
-  // the selected game rises, drops through the doorway, and the screen closes into it
+  // the selected game rises, drops through the ring, and the screen closes into it
   let launchRun = 0;
   let leaving = false;
-  // what goes through the doorway: the game in the row, or the picture on the game's page
+  // what goes through the ring: the game in the row, or the picture on the game's page
   let flyer: HTMLElement | null = null;
   async function launch(dlg: HTMLDialogElement, link: string) {
     if (state.launching) return;
@@ -1565,10 +1565,10 @@ function start(launcher: HTMLElement) {
     await lift
       .animate([{ transform: 'none' }, { transform: up }], { duration: 320, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'forwards' })
       .finished.catch(() => {});
-    // the doorway has finished rising by now, so its opening can be measured
+    // the mark has finished rising by now, so its ring can be measured
     await wait(150);
     if (!still()) return;
-    const mouth = $('.t-door-mouth', target).getBoundingClientRect();
+    const mouth = $('.t-mark-mouth', target).getBoundingClientRect();
     const dx = mouth.left + mouth.width / 2 - (box.left + box.width / 2);
     const dy = mouth.top + mouth.height / 2 - (box.top + box.height / 2);
     const k = (mouth.width / size) * 0.95;

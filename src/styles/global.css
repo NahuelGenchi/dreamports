@@ -40,8 +40,9 @@
   --on-act: #ffffff;
   --hollow: #eef7ff;
   --glow-o: 0.62;
-  --door-k: #0a1738;
-  --door-o: transparent;
+  --mk-dol: #0a3a78;
+  --mk-ring: #17b0c8;
+  --mk-rip: #8fdde8;
   --discord: #5865f2;
 
   --font: 'Monocraft', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
@@ -68,8 +69,8 @@
     --on-act: #0a1738;
     --hollow: rgba(127, 180, 255, 0.05);
     --glow-o: 0.34;
-    --door-k: #000000;
-    --door-o: #3552b8;
+    --mk-dol: #8fd1ff;
+    --mk-rip: #1a7f99;
     --discord: #8c95ff;
 
     color-scheme: dark;
@@ -93,8 +94,8 @@
   --on-act: #0a1738;
   --hollow: rgba(127, 180, 255, 0.05);
   --glow-o: 0.34;
-  --door-k: #000000;
-  --door-o: #3552b8;
+  --mk-dol: #8fd1ff;
+  --mk-rip: #1a7f99;
   --discord: #8c95ff;
 
   color-scheme: dark;
@@ -282,16 +283,15 @@ kbd {
   font: 400 0.78em var(--font);
 }
 
-.door {
+/* the Dreamports mark (Mark.astro). In the dark theme the dolphin takes the sky's blue, as the navy would vanish there */
+.mark {
   display: block;
   flex: none;
 }
 
-.door-k { fill: var(--door-k); }
-.door-g { fill: #f5b800; }
-.door-d { fill: #c98a00; }
-.door-w { fill: #ffffff; }
-.door-o { fill: var(--door-o); }
+.mk-dol { fill: var(--mk-dol); }
+.mk-ring { fill: var(--mk-ring); }
+.mk-rip { fill: var(--mk-rip); }
 
 /* ---------- The launcher: one screen ---------- */
 
@@ -479,7 +479,9 @@ kbd {
 }
 
 /* in line with the frames of the corner buttons below it */
-.side > .door {
+.side > .mark {
+  width: 26px;
+  height: 26px;
   margin-left: 2px;
 }
 
@@ -1271,7 +1273,7 @@ kbd {
   fill: currentColor;
 }
 
-/* the doorway the game goes through when it launches */
+/* the mark the game goes through when it launches, dropping through its ring */
 .target {
   position: absolute;
   z-index: 0;
@@ -1281,38 +1283,40 @@ kbd {
   pointer-events: none;
 }
 
-.t-door {
+.t-mark {
   position: relative;
-  width: calc(var(--cell) * 17);
+  width: calc(var(--cell) * 20);
   height: calc(var(--cell) * 20);
   transform: translateY(104%);
   transition: transform 0.45s cubic-bezier(0.3, 1.3, 0.5, 1);
 }
 
-.t-door .door {
+.t-mark .mark {
   width: 100%;
   height: 100%;
 }
 
-.target.is-up .t-door {
+.target.is-up .t-mark {
   transform: translateY(calc(var(--cell) * -2));
 }
 
-.t-door-mouth {
+/* inside the ring, around its middle */
+.t-mark-mouth {
   position: absolute;
-  left: 22%;
-  right: 22%;
-  top: 30%;
-  bottom: 28%;
+  left: 30%;
+  right: 28%;
+  top: 23%;
+  bottom: 35%;
 }
 
 .t-glow {
   position: absolute;
-  left: 50%;
-  top: 52%;
+  left: 51%;
+  top: 44%;
   width: 14%;
   height: 12%;
   translate: -50% -50%;
+  border-radius: 50%;
   background: #8fd1ff;
   opacity: 0;
   box-shadow: 0 0 calc(var(--cell) * 7) calc(var(--cell) * 3) #8fd1ff;
@@ -1372,9 +1376,9 @@ kbd {
   max-width: 32em;
 }
 
-.bo-inner .door {
-  width: 34px;
-  height: 40px;
+.bo-inner .mark {
+  width: 64px;
+  height: 64px;
 }
 
 .bo-line {
@@ -2423,6 +2427,11 @@ dialog.card[open] {
   text-align: center;
 }
 
+.lost .mark {
+  width: 104px;
+  height: 104px;
+}
+
 .lost h1 {
   margin: 14px 0 0;
   font: 400 clamp(22px, 3vw, 30px) / 1.3 var(--font);
@@ -2622,7 +2631,7 @@ dialog.card[open] {
   }
 }
 
-/* a phone keeps room in the top bar for the door and the speaker: the side values can be pressed themselves, so L and
+/* a phone keeps room in the top bar for the dolphin and the speaker: the side values can be pressed themselves, so L and
    R go */
 @media (max-width: 509px) {
   .shoulder {
@@ -2657,7 +2666,7 @@ dialog.card[open] {
 }
 
 /* under 360 px, as on a 320 px iPhone SE, the bar's edges narrow too, and the search field reaches a little past the
-   ring, so it keeps "Search Dreamports" with its focus ring clear of the door and the speaker */
+   ring, so it keeps "Search Dreamports" with its focus ring clear of the dolphin and the speaker */
 @media (max-width: 359px) {
   .topbar {
     gap: 6px;
@@ -2715,7 +2724,7 @@ dialog.card[open] {
 }
 
 :root[data-motion='calm'] .row,
-:root[data-motion='calm'] .t-door,
+:root[data-motion='calm'] .t-mark,
 :root[data-motion='calm'] .switch-knob {
   transition: none;
 }
