@@ -16,6 +16,15 @@ import { createTitleScreen } from './title.js';
 import { createCourseSelect } from './courseselect.js';
 import { createTimeAttackLobby } from './timeattacklobby.js';
 import { createClock, GBA_FRAME_MS } from '../../../../kit/gba/clock.js';
+import { createLink } from '../engine/link.js';
+import { createMultipackOutcome, createLinkError } from './outcome.js';
+import { createLobby } from './lobby.js';
+import { createContinueScreen } from './continuescreen.js';
+import { createGameSelect } from './gameselect.js';
+import { createCharacterSelect } from './charselect.js';
+import { createVsOverview } from './vsoverview.js';
+import { createVsChaoSelect } from './vschao.js';
+import { createVsTeams } from './vsteams.js';
 
 /**
  * The frames after power-on before the game starts: the GBA (mGBA) is still starting up, the screen white (forced
@@ -62,19 +71,41 @@ export function powerOn(ctx, skipIntro = false) {
  * with no start-up: at the title screen with its music if `title`, at the Time Attack lobby for `lobby` ({ character, level }), else at the SEGA logo, with gFrameCount at `frameCount` and video memory as the screens before left it.
  * `softReset()` is called when A, B, Start and Select are held together (VBlankIntr), and `afterReset` starts the
  * front end as the game starts again from that: the screen blank and then the title screen, with no logos.
+ * With `link` (engine/link.js) the GBA is one of `count` on a link, number `id`, and with `driven` its frames are stepped by the
+ * page, which steps every GBA of the link and then the link (vsfront.js), rather than by a clock of its own. `vs` is what the
+ * VS menus tell the page: `vs.round(settings)` once every GBA's menus have chosen the round. With `resume`, { vsLink, gameMode, seed },
+ * the front end starts at the VS continue screen, as after a round.
  * Returns { stop, step, draw, setView }: setView(w, h) draws a widescreen view of w × h from then on (the
  * original 240 × 160 is the default); step() and draw() are for checking, a frame at a time.
  */
-export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true, select = true, onGameStart, prepareDemo = () => {}, back = null, softReset, afterReset = false } = {}) {
+export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true, select = true, onGameStart, prepareDemo = () => {}, back = null, softReset, afterReset = false, link = null, id = 0, count = 1, driven = false, vs = null, resume = null } = {}) {
   const video = createVideo();
   const engine = createEngine(video, rom, sound);
   video.write(REG.DISPCNT, 0x80);   // forced blank, until the game starts
-  let done = false, resetting = false, chosen, demo = false, startingUp = back ? 0 : afterReset ? RESET_FRAMES : STARTUP_FRAMES;
+  let done = false, resetting = false, chosen, demo = false, startingUp = back || resume ? 0 : afterReset ? RESET_FRAMES : STARTUP_FRAMES;
   engine.onSoftReset = softReset && (() => { resetting = true; });
   const ctx = {
     engine, tilemaps: offsets.tilemaps, sprites: spriteTables(rom, offsets.spriteTables), offsets, save, character, partner: false, gameMode: 0, level: 0, levels, select,
     introGraphics: offsets.introGraphics, introTables: offsets.introTables,
-    afterReset,
+    afterReset, link: link ?? createLink(1), id, count, vs,
+    // gMultiplayerMissingHeartbeats: the frames each GBA of the link hasn't been heard from
+    missing: [0, 0, 0, 0],
+    multipackOutcome: outcome => createMultipackOutcome(ctx, outcome),
+    linkError: () => createLinkError(ctx),
+    lobby: mode => createLobby(ctx, mode),
+    continueScreen: () => createContinueScreen(ctx),
+    gameSelect: () => createGameSelect(ctx),
+    // PSEUDO_RANDOM_32, the game's random numbers: none are drawn before the VS menus
+    random: () => { ctx.seed = (Math.imul(ctx.seed, 0x196225) + 0x3C6EF35F) | 0; return ctx.seed >>> 0; },
+    seed: 0,
+    vsCharacterSelect: () => {
+      // CreateCharacterSelectionScreen((PSEUDO_RANDOM_32() + id) % 4)
+      ctx.vsLink.characters = [0, 0, 0, 0];
+      createCharacterSelect(ctx, (ctx.random() + id) % 4);
+    },
+    vsOverview: () => createVsOverview(ctx),
+    vsChaoSelect: () => createVsChaoSelect(ctx),
+    vsTeams: () => createVsTeams(ctx),
     intro: () => createIntro(ctx),
     title: playMusic => createTitleScreen(ctx, playMusic),
     play: level => { done = true; chosen = level; },
@@ -87,7 +118,15 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
     startGame: () => { if (ctx.toCourseSelect()) createCourseSelect(ctx); else ctx.play(); },
   };
 
-  if (back) {
+  if (resume) {
+    // a VS round is over: the GBAs are still linked, with who plays, and the continue screen comes after the results' white
+    startingUp = 0;
+    ctx.link.enable(id, true);
+    ctx.vsLink = resume.vsLink;
+    ctx.gameMode = resume.gameMode;
+    ctx.seed = resume.seed;
+    createContinueScreen(ctx);
+  } else if (back) {
     engine.frameCount = back.frameCount;
     if (back.vram) video.vram.set(back.vram);
     if (back.lobby) {
@@ -114,7 +153,7 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
   setView();
   // the frame a demo ends on makes the next screen, whose first picture is white, from the title screen's fade or the
   // demo's, or else black
-  if (back) { out.fillStyle = back.white ? '#FFF' : '#000'; out.fillRect(0, 0, canvas.width, canvas.height); }
+  if (back || resume) { out.fillStyle = back?.white || resume ? '#FFF' : '#000'; out.fillRect(0, 0, canvas.width, canvas.height); }
 
   function step() {
     input.poll?.();
@@ -125,6 +164,7 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
     engine.keys = keysOf(input);
     engine.nextKeys = keysOf(input, input.nextHeld());
     engine.run();
+    if (!link) ctx.link.endFrame();   // a GBA with no cable has a link of its own, with nothing on it
   }
   function draw() {
     engine.draw(pixels, null, view);
@@ -156,6 +196,6 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
 
   input.enabled = true;
   if (afterReset) draw();   // the screen the BIOS blanked, white
-  frame = requestAnimationFrame(loop);
-  return { stop, step, draw, setView, engine };
+  if (!driven) frame = requestAnimationFrame(loop);
+  return { stop, step, draw, setView, engine, ctx };
 }

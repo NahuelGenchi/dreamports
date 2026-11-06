@@ -177,34 +177,197 @@ function initMultiPak(t) {
   drawBackground(e, ctx.tilemaps, createBackground({ layoutVram: 0xF000, tilemapId: TM_CONTINUE_SCREEN, targetTilesX: 30, targetTilesY: 20 }));
   screen.unk206 = 0;
   screen.checked = 0;   // unk218
+  ctx.link.enable(ctx.id, true);
   t.main = waitMultiPak;
 }
 
-// Task_MultiPak, for a GBA with no cable: it is the only player, and B goes back
+// what the GBA says on the link (mp_mode_select.c): the waiting screen's packet kinds
+const HELLO = 0x10, START = 0x11, ACK = 0x12;
+const HEARTBEATS = 0xB5;   // frames a GBA may be missing from the link
+
+// a packet to send: its kind, the GBA ids taking part, the save's id, the player's name and the frame count
+function say(ctx, kind, mask, frameCount) {
+  const packet = ctx.link.send(ctx.id), v = new DataView(packet.bytes.buffer, packet.bytes.byteOffset, packet.bytes.length);
+  packet.kind = kind;
+  if (kind !== HELLO) v.setUint16(2, mask, true);
+  v.setUint32(4, ctx.save.unk4, true);
+  packet.bytes.set(ctx.save.playerName, 8);
+  if (frameCount !== undefined) v.setUint32(0x10, frameCount, true);
+}
+const kindOf = packet => packet?.kind ?? 0;
+const u32At = (packet, at) => new DataView(packet.bytes.buffer, packet.bytes.byteOffset, packet.bytes.length).getUint32(at, true);
+const maskOf = packet => new DataView(packet.bytes.buffer, packet.bytes.byteOffset, packet.bytes.length).getUint16(2, true);
+
+// sub_800FD9C: the player whose packet this is goes to the front of the save's ten records of players, which move down a
+// place. A record is the same when its id and its name, from the second byte of the id, are those of the packet; that one
+// moves to the front as it is. Otherwise the id and name are copied to a new first record, with no wins, losses or draws.
+// Returns the place `place`
+function registerPlayer(save, packet, place) {
+  const scores = save.multiplayerScores;
+  for (let i = 0; i < 10; i++) {
+    let same = scores[i * 16] === packet[4];
+    for (let c = 1; same && c < 12; c++) if (packet[4 + c] !== scores[i * 16 + c]) same = false;
+    if (same) {
+      const own = scores.slice(i * 16, i * 16 + 16);
+      scores.copyWithin(16, 0, i * 16);
+      scores.set(own, 0);
+      return place;
+    }
+  }
+  scores.copyWithin(16, 0, 9 * 16);
+  scores.set(packet.subarray(4, 16), 0);
+  scores.fill(0, 12, 15);
+  return place;
+}
+
+// MultiSioStop, MultiSioInit(0) and the packet sent cleared: the GBA leaves the link
+function leaveLink(ctx) {
+  ctx.link.enable(ctx.id, false);
+  ctx.link.send(ctx.id).kind = 0;
+}
+
+// the link was lost (LinkCommunicationError)
+function linkLost(ctx, t) {
+  leaveLink(ctx);
+  ctx.engine.destroyTask(t);
+  ctx.linkError();
+}
+
+// back to the modes, as B does from the waiting screens
+function backToModes(ctx, t) {
+  const e = ctx.engine;
+  leaveLink(ctx);
+  e.stopSong(SONG.CHARACTER_SELECTION);
+  e.playSong(SONG.RETURN);
+  clearMap(e);
+  e.destroyTask(t);
+  createModeSelect(ctx);
+}
+
+// the frames' fade and the count of the screen's sprites, as every waiting task has them
+function showWaiting(screen, count, extra) {
+  const { ctx } = screen, e = ctx.engine;
+  screen.s[2].variant = count + 3;
+  for (let i = 0; i < 3; i++) { updateSprite(e, ctx.sprites, screen.s[i]); displaySprite(e, ctx.sprites, screen.s[i]); }
+  extra?.();
+}
+
+// Task_MultiPak: who is on the link, and the first GBA's Start, which sends the others to Task_800F058
 function waitMultiPak(t) {
-  const screen = t.data, { ctx } = screen, e = ctx.engine;
+  const screen = t.data, { ctx } = screen, e = ctx.engine, { id, link } = ctx;
+  const view = link.view(id), flags = view.flags, missing = ctx.missing;
+  if (flags & 0x81) {
+    if (!(flags & (1 << id))) {
+      if (missing[id]++ >= HEARTBEATS) return linkLost(ctx, t);
+    } else missing[id] = 0;
+  }
   screen.qFade = s16(screen.qFade - 0x80);
   if (screen.qFade < 0) screen.qFade = 0;
   e.bldY = screen.qFade >> 8;
+
+  let present = 0, seen = 0, mask = 0, gap = 0, notReady = 0, steady = 1;
   const joined = screen.joined;
   for (let i = 0; i < PLAYERS_MAX; i++) {
     joined[0][i] = (joined[0][i] << 1) & 0xFF;
     joined[1][i] = (joined[1][i] << 1) & 0xFF;
+    const there = view.slot(i);
+    if (i === id || (flags & (1 << i) && kindOf(there) >= HELLO)) {
+      joined[0][i] |= 1;
+      present++;
+      mask |= 1 << i;
+      if (gap) notReady = 1;
+    } else {
+      gap = 1;
+      if (!(flags & (1 << i)) && view.data(i) === 0) {
+        notReady = 1;
+        joined[1][i] |= 1;
+        if (joined[0][i] === 0) steady = 0;
+      } else if (joined[1][i] !== 0) {
+        notReady = 1;
+        steady = 0;
+      } else if ((flags & (1 << i)) && kindOf(there) < HELLO) {
+        notReady = 1;
+        steady = 0;
+      }
+    }
+    if (joined[0][i] !== 0) seen++;
   }
-  joined[0][0] |= 1;   // this GBA, whose id is 0
-  let players = 1;
-  screen.checked = 1;
-  if (e.pressed & KEY.B) {
-    e.stopSong(SONG.CHARACTER_SELECTION);
-    e.playSong(SONG.RETURN);
-    clearMap(e);
-    e.destroyTask(t);
-    createModeSelect(ctx);
+  if (seen === 0) seen = 1;
+
+  const parent = kindOf(view.slot(0));
+  if (!screen.checked) {
+    if ((flags & 0x81) === 1 && parent > HELLO) return linkLost(ctx, t);
+    screen.checked = 1;
+  }
+  if (!notReady && parent === START && screen.checked) {
+    // the parent's Start: the seed and who is playing come with it, and the GBAs answer
+    ctx.vsLink = { seed: u32At(view.slot(0), 0x10), connections: maskOf(view.slot(0)), records: [0xFF, 0xFF, 0xFF, 0xFF] };
+    // each of the other GBAs goes to the front of the save's records of players, and keeps its place there (from 2 down)
+    for (let i = 3, place = 2; i >= 0; i--) {
+      if (i !== id && (flags & (1 << i))) ctx.vsLink.records[i] = registerPlayer(ctx.save, view.slot(i).bytes, place--);
+      else if (i !== id) place--;
+    }
+    screen.unk206 = 0;
+    for (let i = 0; i < 4; i++) missing[i] = 0;
+    screen.unk219 = 0;
+    t.main = startAnswer;
+    startAnswer(t);
     return;
   }
-  screen.s[2].variant = players + 3;
-  for (const s of screen.s) {
-    updateSprite(e, ctx.sprites, s);
-    displaySprite(e, ctx.sprites, s);
+  if (parent > ACK) return linkLost(ctx, t);
+  if (e.pressed & KEY.B) {
+    backToModes(ctx, t);
+    return;
   }
+  showWaiting(screen, seen);
+  if (flags & 0x80) {
+    if (seen > 1 && steady) { updateSprite(e, ctx.sprites, screen.pressStart); displaySprite(e, ctx.sprites, screen.pressStart); }
+    if ((!notReady && present > 1 && (e.pressed & KEY.START)) || (screen.unk206 && !notReady && present > 1)) {
+      say(ctx, START, mask, screen.frameCount);
+      screen.unk206 = 1;
+      return;
+    }
+  }
+  screen.unk206 = 0;
+  say(ctx, HELLO);
+}
+
+// Task_800F058: the GBAs have each other's Start; the parent waits for them all to answer, and then everyone goes on
+function startAnswer(t) {
+  const screen = t.data, { ctx } = screen, e = ctx.engine, { id, link } = ctx;
+  const view = link.view(id), flags = view.flags, missing = ctx.missing, joined = screen.joined;
+  const connections = ctx.vsLink.connections;
+  for (let i = 0; i < 4; i++) {
+    if (!(connections >> i & 1)) break;
+    if (!(flags & (1 << i))) {
+      if (missing[i]++ >= HEARTBEATS) return linkLost(ctx, t);
+    } else missing[i] = 0;
+  }
+  const parent = kindOf(view.slot(0));
+  if (parent === ACK) {
+    ctx.gameMode = 2;   // GAME_MODE_RACE
+    e.destroyTask(t);
+    ctx.multipackOutcome(0);
+    return;
+  }
+  if (parent === HELLO) { backToModes(ctx, t); return; }
+  if (flags & 0x80) {
+    if (e.pressed & KEY.B) { backToModes(ctx, t); return; }
+    if (screen.unk219++ > 60) return linkLost(ctx, t);
+  }
+  let seen = 0, mask = 0;
+  for (let i = 0; i < PLAYERS_MAX; i++) {
+    joined[0][i] = (joined[0][i] << 1) & 0xFF;
+    if (id === i || kindOf(view.slot(i)) > HELLO) mask |= 1 << i;
+    if (joined[0][i] !== 0) seen++;
+  }
+  if (seen === 0) seen = 1;
+  showWaiting(screen, seen);
+  if (flags & 0x80) {
+    say(ctx, ACK, mask);
+    for (let i = 1; i < 4; i++) {
+      if (!(connections >> i & 1)) continue;
+      if (!(flags & (1 << i)) || kindOf(view.slot(i)) !== START) { say(ctx, START, mask); return; }
+    }
+  } else say(ctx, START, mask);
 }
