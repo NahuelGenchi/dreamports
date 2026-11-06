@@ -90,8 +90,7 @@ async function tryGame(page, server, game, rom, machine = 'gba') {
   await page.evaluate(`document.querySelector('.settings-open').click()`);
   await until(page, open, 'the settings', 5000);
   await page.evaluate(`document.querySelector('[data-controls]').click()`);
-  // on another console the shared settings name a button by the layout's name for it, as 'start'
-  await until(page, `[...document.querySelectorAll('.view')].some(v => !v.hidden && /Controls/.test(v.textContent) && /${machine === 'gba' ? 'Start' : 'start'}/.test(v.textContent))`, 'the controls', 5000);
+  await until(page, `[...document.querySelectorAll('.view')].some(v => !v.hidden && /Controls/.test(v.textContent) && /The console's Start/.test(v.textContent) && !/\\b(start|select|cross|circle|square|triangle|mode)\\b/.test(v.textContent))`, 'the controls', 5000);
   check(true, 'the settings list the game\'s controls');
   await page.evaluate(`document.querySelector('.view:not([hidden]) [data-back]')?.click()`);
   await wait(500);
