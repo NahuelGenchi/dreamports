@@ -31,6 +31,7 @@ enum {
   OFFSET_SPRITE_TABLES = 0x0D868C, OFFSET_TILEMAPS = 0x4A6C40, OFFSET_UI_GRAPHICS = 0x680A38,
   OFFSET_INTRO_GRAPHICS = 0x69EC10, OFFSET_INTRO_TABLES = 0x684178, OFFSET_LANGUAGE_BACKGROUND = 0x6C7BD0,
   OFFSET_COURSE_SELECT_BACKGROUND = 0x69A6D0, OFFSET_OPTIONS_BACKGROUND = 0x6C5650,
+  OFFSET_NAME_INPUT_MAPS = 0x67DC38, OFFSET_NAME_INPUT_CHARS = 0x681340,
 };
 
 // --- the original's sine table (engine/trig.js), 1.25 turns of 1024 steps in Q2.14 -------------------------------
@@ -124,7 +125,13 @@ void stop_song(int song);
 void stop_all_songs(void);
 enum { SONG_INTRO = 1, SONG_TITLE_FANFARE = 2, SONG_CHARACTER_SELECTION = 3, SONG_SEGA_RING = 102, SONG_SELECT = 106,
   SONG_RETURN = 107, SONG_MENU_CURSOR = 108, SONG_BOSS_FIGHT = 29,
-  SONG_SHIFT = 103, SONG_RING = 117 };
+  SONG_SHIFT = 103, SONG_RING = 117,
+  SONG_COURSE_SELECTION = 4, SONG_VS_PLEASE_WAIT = 5, SONG_VS_LOBBY = 6, SONG_PLAYER_DATA = 48,
+  SONG_VS_LOBBY_HELLO = 156, SONG_VS_LOBBY_CLOSED = 160,
+  SONG_CONNECTION_SUCCESS = 301, SONG_CONNECTION_ERROR = 302, SONG_CONNECTION_CLOSED = 303 };
+void play_song_or_change(int song);
+void sound_vsync_off(void);
+void sound_vsync_on(void);
 
 /** The BIOS's Div: rounded toward 0; a division by 0 gives ±1, as mGBA's BIOS does. */
 static inline int32_t bios_div(int32_t a, int32_t b) { return b == 0 ? (a < 0 ? -1 : 1) : a / b; }
@@ -204,6 +211,7 @@ void fade_show(Fade *f);
 void set_ui_affine(int angle, int sx, int sy, int index);
 void draw_ui_text(const char *text, const UiText *o, int solid);
 void draw_ui_glyphs(const char *text, const UiText *o, int behind);
+void draw_ui_text_rotated(const char *text, const UiText *o);
 
 // --- a spotlight's beam (front/spotlight.js) ---------------------------------------------------------------------
 typedef struct { int32_t unk0, unk2, unk4, unk6, unk8, bg, unkB; } Beam;
@@ -217,12 +225,50 @@ extern Save save;
 void save_open(void);
 int save_write(void);
 #define SAVE_UI_LANGUAGE (save.bytes[0x19])
+#define SAVE_PLAYER_NAME (save.bytes + 0x10)            // six characters of the UI font, and two unused
+#define SAVE_MULTIPLAYER_SCORES (save.bytes + 0x380)    // ten of a player id, a name, wins, losses and draws
+#define NAME_LENGTH 6
+uint32_t save_player_id(void);                          // unk4: the frame count when the name was last changed
+void save_set_player_id(uint32_t id);
 uint16_t save_unlocked_level(int character);
 
+// --- the link cable between GBAs on one page (link.c) -------------------------------------------------------------
+#define PACKET_SIZE 20
+#define PLAYERS_MAX 4
+int link_id(void);
+int link_count(void);
+uint8_t *link_send(void);
+void link_enable(int on);
+const uint8_t *link_slot(int n);
+int link_flags(void);
+int link_data(int n);
+int packet_kind(const uint8_t *packet);
+void link_frame_done(void);
+// a packet's or the save's little-endian halfwords and words
+static inline uint32_t le16(const uint8_t *b, int at) { return b[at] | b[at + 1] << 8; }
+static inline uint32_t le32(const uint8_t *b, int at) { return le16(b, at) | le16(b, at + 2) << 16; }
+static inline void set_le16(uint8_t *b, int at, uint32_t v) { b[at] = (uint8_t)v; b[at + 1] = (uint8_t)(v >> 8); }
+static inline void set_le32(uint8_t *b, int at, uint32_t v) { set_le16(b, at, v); set_le16(b, at + 2, v >> 16); }
+static inline void set_kind(uint8_t *packet, int kind) { set_le16(packet, 0, (uint32_t)kind); }
+
 // --- the screens before the act (front/) --------------------------------------------------------------------------
+/** What the VS menus share once the GBAs are linked (ctx.vsLink): the round's seed, who is playing, where each other
+ *  player is in the save's records, the characters they picked, and how far the furthest of them has got. */
+typedef struct {
+  int set;
+  uint32_t seed;
+  uint16_t connections;
+  uint8_t records[PLAYERS_MAX], characters[PLAYERS_MAX], furthest;
+} VsLink;
+
 typedef struct {
   int character, partner, gameMode, level;
   int done;   // the front end has handed over to what isn't in C yet
+  VsLink vsLink;
+  int missing[PLAYERS_MAX];   // gMultiplayerMissingHeartbeats: the frames each GBA of the link hasn't been heard from
+  uint32_t seed;              // the game's random numbers (PSEUDO_RANDOM_32)
+  // the round the VS menus chose, once they have: its level, its seed and the Chao's place
+  int roundLevel, roundChao;
 } Front;
 extern Front ctx;
 
@@ -236,5 +282,31 @@ void create_intro(void);
 void create_title_screen(int playMusic);
 void front_play(int level);
 void front_start_demo(void);
+uint32_t front_random(void);
+void create_main_menu(int back);
+
+// --- the VS menus (vs.c and the screens after it) ------------------------------------------------------------------
+enum { GAME_MODE_SINGLE_PLAYER = 0, GAME_MODE_TIME_ATTACK = 1, GAME_MODE_RACE = 2, GAME_MODE_CHAO_HUNT = 4 };
+void vs_sprite(Sprite *s, uint16_t anim, uint32_t dest, int x, int y, uint16_t oamFlags, int variant, uint32_t frameFlags);
+void vs_background(Background *bg, uint16_t tilemapId, uint32_t layoutVram, uint16_t w, uint16_t h);
+void vs_clear_map(int bg, uint8_t lastRow);
+int vs_connections(void);
+int vs_link_lost(void);
+void vs_leave_link(void);
+const uint8_t *vs_record(int i);
+const uint8_t *vs_name(int i);
+void vs_reset_missing(void);
+void create_mode_select(void);
+void create_name_input(void);
+void create_multipack_outcome(int outcome);
+void create_link_error(void);
+void create_lobby(int mode);
+void create_game_select(void);
+void create_character_select(int selected);
+void create_vs_character_select(void);
+void create_vs_overview(void);
+void create_vs_teams(void);
+void create_vs_chao_select(void);
+void front_vs_round(int level, int chao);
 
 #endif
