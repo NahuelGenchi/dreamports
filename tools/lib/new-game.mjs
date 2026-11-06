@@ -9,6 +9,8 @@ import { sizesIn } from './screens.mjs';
 
 const kit = name => new URL(`../gba/new-game/${name}`, import.meta.url);
 const otherKit = name => new URL(`../libretro/new-game/${name}`, import.meta.url);
+// the consoles with a kit in C of their own besides the Game Boy Advance, whose starting point in C is on it
+const OWN_C_START = { nes: 'c/nes.c.template' };
 const js = text => `'${text.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
 const html = text => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
@@ -36,13 +38,14 @@ export function startingFiles(game, original, { language = 'js' } = {}) {
     // version's (FOLDER_JS), and its save memory apart, as an unfinished version could write what the other can't read
     const page = fill(readFileSync(kit('index.html.template'), 'utf8'), { NAME: html(name), TITLE: html(`${title} in C`) }).replaceAll('"../../kit/', '"../../../kit/');
     if (original.console !== 'gba') {
-      // on a console with no kit in C of its own: the base every console's shares, kit/c/, at the game's screen
+      // on a console with no kit in C of its own: the base every console's shares, kit/c/, at the game's screen. On the
+      // NES, its own kit (kit/nes/c/)
       const machine = CONSOLES[original.console];
       if (!machine) throw new Error(`proof/original.json names a console kit/consoles.js doesn't know: ${original.console}.`);
       const [width, height] = sizesIn(original.screen)?.[0] ?? machine.screen;
       return {
         'index.html': page,
-        'src/main.c': fill(readFileSync(otherKit('c/main.c.template'), 'utf8'), { TITLE_C: title, CONSOLE_NAME: machine.name, WIDTH: width, HEIGHT: height }),
+        'src/main.c': fill(readFileSync(otherKit(OWN_C_START[original.console] ?? 'c/main.c.template'), 'utf8'), { TITLE_C: title, CONSOLE_NAME: machine.name, WIDTH: width, HEIGHT: height }),
         'src/main.js': fill(readFileSync(otherKit('c/main.js.template'), 'utf8'), {
           TITLE_JS: title, NAME_JS: js(name), CONSOLE_JS: js(original.console), SHA1_JS: js(original.sha1), FOLDER_JS: js(game), TITLE_QUOTED: js(title),
           HOME_JS: js(`https://dreamports.net/dreamports/${game}-dreamport/`), SAVE_JS: js(`${game}-c-save`), SCREEN_JS: JSON.stringify([width, height]),
