@@ -1,7 +1,7 @@
 // Builds a game written in C on its console's kit in C (kit/c/README.md): to WebAssembly, which its page runs, and for
 // this computer, which runs the same C with no browser. Every console's kit is the base every console shares, kit/c/,
-// with the console's own on top where it has one, as the Game Boy Advance has kit/gba/c/, and with console.h, made
-// here from kit/consoles.js, where it has none. WebAssembly is built with Clang and its linker as WebAssembly themselves,
+// with the console's own on top where it has one, as the Game Boy Advance has kit/gba/c/ and the NES kit/nes/c/, and
+// with console.h, made here from kit/consoles.js, on every console but the Game Boy Advance. WebAssembly is built with Clang and its linker as WebAssembly themselves,
 // from npm (@yowasp/clang), so it needs nothing installed beyond `npm ci`, the same on every computer. A build for this
 // computer needs its own C compiler, the one the proof tools already need (tools/README.md).
 
@@ -16,9 +16,11 @@ import { LOCAL, REPO } from './paths.mjs';
  *  the picture, and what a console with no kit of its own runs on (console.c, native.c). */
 export const C_BASE = fileURLToPath(new URL('../../kit/c/', import.meta.url));
 
-// the consoles with a kit in C of their own, on top of the base: its folder, its sources and its program for a computer
+// the consoles with a kit in C of their own, on top of the base: its folder and its sources. One with `header` also has
+// console.h, and runs on a computer with the base's program for one (native.c), as a console with no kit of its own does
 const OWN = {
   gba: { folder: fileURLToPath(new URL('../../kit/gba/c/', import.meta.url)), sources: ['gba.c', 'video.c', 'apu.c', 'm4a.c', 'sound.c'] },
+  nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
 };
 
 const ident = name => name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
@@ -72,7 +74,7 @@ export function cKit(id) {
   if (!CONSOLES[id]) throw new Error(`There's no console called ${id} in kit/consoles.js, so there's no kit in C for it.`);
   const own = OWN[id];
   const base = name => join(C_BASE, name);
-  if (own) {
+  if (own && !own.header) {
     const sources = [base('kit.c'), base('libc.c'), ...own.sources.map(name => join(own.folder, name))];
     return { id, own: true, folders: [C_BASE, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), join(own.folder, 'native.c')] };
   }
@@ -82,6 +84,10 @@ export function cKit(id) {
   if (!existsSync(header) || readFileSync(header, 'utf8') !== text) {
     mkdirSync(made, { recursive: true });
     writeFileSync(header, text);
+  }
+  if (own) {
+    const sources = [base('kit.c'), base('libc.c'), ...own.sources.map(name => join(own.folder, name))];
+    return { id, own: true, folders: [C_BASE, made, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')] };
   }
   const sources = [base('kit.c'), base('libc.c'), base('console.c')];
   return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('console.c'), base('native.c')] };

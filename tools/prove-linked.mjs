@@ -17,7 +17,6 @@ const CLIP_LIMIT = 2_000_000, CLIP_TARGET = 1_700_000, CLIP_RATE = 2_000_000;
 const FRAME = [280896, 16777216];   // a Game Boy Advance frame, in ticks of its clock
 const IN_PAGE = readFileSync(new URL('./lib/in-page-linked.js', import.meta.url), 'utf8');
 const KEYS = { A: 1, B: 2, SELECT: 4, START: 8, RIGHT: 16, LEFT: 32, UP: 64, DOWN: 128, R: 256, L: 512 };
-const NAMES = { jump: 'A', attack: 'B', start: 'START', select: 'SELECT', right: 'RIGHT', left: 'LEFT', up: 'UP', down: 'DOWN', r: 'R', l: 'L' };
 
 /** Every player's held lists, the first's from `held`, the others' from `others`. */
 export const heldOf = recording => [recording.held, ...(recording.others ?? [])];
@@ -45,7 +44,15 @@ export async function proveLinked({ page, game, recording, copy, server, quick, 
   say('starting the Dreamport…');
   await openDreamport(page, server, game, copy, { query: `?proof&${recording.start ?? `vs=${players}`}` });
   await page.evaluate(IN_PAGE);
-  const buttonsOf = list => list.map(b => NAMES_BY_KEY[b]);
+  // the recording's buttons as the Dreamport names them: the first of its buttons that is each of the console's (prove.mjs)
+  const named = new Map();
+  for (const b of await page.evaluate('dreamportsProof.buttons')) {
+    const own = b.console ?? b.gba;
+    if (own && !named.has(own)) named.set(own, b.name);
+  }
+  const missing = Object.keys(KEYS).filter(k => lists.flat(2).includes(k) && !named.has(k));
+  if (missing.length) throw new Error(`${name}: holds ${missing.join(', ')}, which the Dreamport has no button for.`);
+  const buttonsOf = list => list.map(b => named.get(b));
   const hashes = [], differ = [];
   let firstDifference = -1;
   for (let from = 0; from < frames && !(quick && firstDifference >= 0 && from > Math.max(-1, ...keepAt)); from += BATCH) {
@@ -121,5 +128,3 @@ export async function proveLinked({ page, game, recording, copy, server, quick, 
   if (clipFile) console.log(`  Clip, ${(clipFile.length / 1e6).toFixed(2)} MB, frames ${clipAt[0]} to ${clipAt.at(-1)}: ${out}/clip.mp4 (the Dreamport's screens above, the original's below)`);
   return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], functions: [] };
 }
-
-const NAMES_BY_KEY = Object.fromEntries(Object.entries(NAMES).map(([game, key]) => [key, game]));

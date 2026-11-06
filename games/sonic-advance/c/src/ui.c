@@ -153,6 +153,23 @@ void draw_ui_glyphs(const char *text, const UiText *o, int behind) {
 }
 
 /**
+ * front/ui.js's drawUiTextRotated: `o->unkE` glyphs of `text` side by side from (o->unkA, o->unkC), each a rotating sprite
+ * twice its size on affine parameters `o->unk6`, which `o->unk4` (the angle) and the scales `o->unk0` and `o->unk2` set.
+ */
+void draw_ui_text_rotated(const char *text, const UiText *o) {
+  const UiSlot *slot = &ui.slots[o->unk10];
+  set_ui_affine(o->unk4, s16(o->unk0), s16(o->unk2), o->unk6);
+  uint32_t index = o->unk6, order = (o->unk8 >> 3) & 0xFF;
+  uint32_t a0 = (slot->unk9 << 14) | 0x300 | (o->unkC & 0xFF);
+  uint32_t a2 = ((uint32_t)o->unk12 << 12) | (slot->unk0 & 0x3FF);
+  for (int i = 0; i < s16(o->unkE); i++) {
+    uint32_t a1 = (slot->unk8 << 14) | (index << 9) | ((((uint32_t)(slot->unkA * i) << 3) + o->unkA) & 0x1FF);
+    uint32_t c = (a2 + (text_at(text, i) - GLYPH_BASE) * slot->unk4) & 0xFFFF;
+    if (!put_glyph(order, a0, a1, c)) break;
+  }
+}
+
+/**
  * sub_80047A0: affine parameters `index` of OAM for `angle` (0–1023) and the scales `sx` and `sy` (8.8), written
  * straight into the OAM buffer, where the V-blank's copy of the sprites leaves them.
  */

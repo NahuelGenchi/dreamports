@@ -1,0 +1,18 @@
+{
+  "about": "Mega Man's parts, in the order a player meets them. Each counts the same. A part is proven when a recording plays it from its first frame to its last and every frame matches the original: \"frames\" are the first and last of the recording's frames it covers. Where the screen is one colour between two parts, those frames go with the part before. Start on the title screen makes its words blink at once, which goes with the stage select.",
+  "parts": [
+    { "name": "The title screen", "recording": "title-start", "frames": [0, 399] },
+    { "name": "The stage select" },
+    { "name": "Cut Man's stage" },
+    { "name": "Guts Man's stage" },
+    { "name": "Ice Man's stage" },
+    { "name": "Bomb Man's stage" },
+    { "name": "Fire Man's stage" },
+    { "name": "Elec Man's stage" },
+    { "name": "Dr. Wily's stage 1" },
+    { "name": "Dr. Wily's stage 2" },
+    { "name": "Dr. Wily's stage 3" },
+    { "name": "Dr. Wily's stage 4" },
+    { "name": "The ending" }
+  ]
+}
