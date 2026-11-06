@@ -3,12 +3,14 @@
 // reads a game's first pull request can write them again and compare (docs/TEAMS.md), and so these files hold nothing a
 // person typed but what's in original.json.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { CONSOLES } from '../../kit/consoles.js';
 import { sizesIn } from './screens.mjs';
 
 const kit = name => new URL(`../gba/new-game/${name}`, import.meta.url);
 const otherKit = name => new URL(`../libretro/new-game/${name}`, import.meta.url);
+// the consoles with a kit in C of their own besides the Game Boy Advance, whose starting point in C is on it
+const OWN_C_START = { nes: 'c/nes.c.template' };
 const js = text => `'${text.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
 const html = text => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
@@ -36,13 +38,14 @@ export function startingFiles(game, original, { language = 'js' } = {}) {
     // version's (FOLDER_JS), and its save memory apart, as an unfinished version could write what the other can't read
     const page = fill(readFileSync(kit('index.html.template'), 'utf8'), { NAME: html(name), TITLE: html(`${title} in C`) }).replaceAll('"../../kit/', '"../../../kit/');
     if (original.console !== 'gba') {
-      // on a console with no kit in C of its own: the base every console's shares, kit/c/, at the game's screen
+      // on a console with no kit in C of its own: the base every console's shares, kit/c/, at the game's screen. On the
+      // NES, its own kit (kit/nes/c/)
       const machine = CONSOLES[original.console];
       if (!machine) throw new Error(`proof/original.json names a console kit/consoles.js doesn't know: ${original.console}.`);
       const [width, height] = sizesIn(original.screen)?.[0] ?? machine.screen;
       return {
         'index.html': page,
-        'src/main.c': fill(readFileSync(otherKit('c/main.c.template'), 'utf8'), { TITLE_C: title, CONSOLE_NAME: machine.name, WIDTH: width, HEIGHT: height }),
+        'src/main.c': fill(readFileSync(otherKit(OWN_C_START[original.console] ?? 'c/main.c.template'), 'utf8'), { TITLE_C: title, CONSOLE_NAME: machine.name, WIDTH: width, HEIGHT: height }),
         'src/main.js': fill(readFileSync(otherKit('c/main.js.template'), 'utf8'), {
           TITLE_JS: title, NAME_JS: js(name), CONSOLE_JS: js(original.console), SHA1_JS: js(original.sha1), FOLDER_JS: js(game), TITLE_QUOTED: js(title),
           HOME_JS: js(`https://dreamports.net/dreamports/${game}-dreamport/`), SAVE_JS: js(`${game}-c-save`), SCREEN_JS: JSON.stringify([width, height]),
@@ -114,6 +117,9 @@ export function withCapture(entry, game) {
 
 const yaml = text => JSON.stringify(text);
 
+// the kit an entry names: its console's, or the kits in C for a console whose kit is only in C, such as the NES's
+const kitOf = id => (existsSync(new URL(`../../kit/${id}/README.md`, import.meta.url)) ? id : 'c');
+
 /** The game's entry, which says the same for now whoever writes it, and which its lead fills in as the game grows. */
 export function startingEntry(game, original, { issue, lead, added }) {
   const { name } = namesOf(original);
@@ -127,7 +133,7 @@ needs: ${yaml(`A ${original.name} ${original.console === 'gba' ? 'ROM (.gba)' : 
 controls: [keyboard, controller, touch]
 issue: ${issue}
 lead: ${lead}
-kit: gba
+kit: ${kitOf(original.console)}
 ownCopy:
   confirm: ${yaml(`I own ${name}`)}
   links:

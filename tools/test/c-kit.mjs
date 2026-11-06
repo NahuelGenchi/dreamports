@@ -7,8 +7,9 @@
 // play it a frame at a time as they play the JavaScript starting point, and fails on any frame whose picture or video
 // hardware differs. It checks that a game in C reads a recording's start point, the words of the page's address, as
 // the page's URLSearchParams and Number read them. It needs nothing from any game and no account, so it runs on any
-// pull request. Last it builds a game for the made-up console (made-up-game.c) and the starting point there, for this
-// computer and as WebAssembly, and fails on any frame or sound sample that differs between the two.
+// pull request. Last it builds a game for the made-up console (made-up-game.c) and the starting point there, and on the
+// NES kit in C the made-up NES program's Dreamport (made-up-nes.c) and the NES's starting point, for this computer and as
+// WebAssembly, and fails on any frame or sound sample that differs between the two.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -23,6 +24,7 @@ import { createVideo, color555 } from '../../kit/gba/video.js';
 import { C_BASE, buildGame, buildNative, buildWasm, cKit } from '../lib/c.mjs';
 import { CONSOLES } from '../../kit/consoles.js';
 import { madeUpGame } from './made-up-game.mjs';
+import { PALETTE_AT, RAM, START as NES_START, TIMER, madeUpNes } from './made-up-nes.mjs';
 import { madeUpSongs, playBoth, randomCall } from './c-kit/songs.mjs';
 import { copyOf } from '../lib/copies.mjs';
 import { Rom } from '../../kit/gba/rom/rom.js';
@@ -375,54 +377,64 @@ try {
   for (const game of FOLDERS) rmSync(gameFolder(game), { recursive: true, force: true });
 }
 
+// a game built for this computer and as WebAssembly, run in Node as the page runs it, a frame at a time with the same
+// buttons and start point: every frame's picture and every sound sample the same. Gives each frame's first word
+async function bothWays({ what, name, source, kit, machine, cartridge, words, held }) {
+  const step = machine.sound * (machine.frame[0] / machine.frame[1]);
+  writeFileSync(join(work, `${name}.copy`), cartridge);
+  writeFileSync(join(work, `${name}-buttons`), `${held.join('\n')}\n`);
+  const program = buildNative([source, ...kit.native], exe(name), kit);
+  execFileSync(program, [join(work, `${name}.copy`), join(work, `${name}-buttons`), join(work, `${name}.out`), words, join(work, `${name}.sound`)]);
+  const frames = readFileSync(join(work, `${name}.out`)), heard = readFileSync(join(work, `${name}.sound`));
+  const module = new WebAssembly.Module(readFileSync(await buildWasm([source, ...kit.sources], join(work, `${name}.wasm`), kit)));
+  const nothing = () => {};
+  const { exports: wasm } = new WebAssembly.Instance(module, { dreamports: { save_read: nothing, save_write: nothing } });
+  const at = wasm.dp_rom(cartridge.length);
+  new Uint8Array(wasm.memory.buffer, at, cartridge.length).set(cartridge);
+  const text = new TextEncoder().encode(words);
+  new Uint8Array(wasm.memory.buffer, wasm.dp_start_point(text.length), text.length).set(text);
+  wasm.dp_start();
+  let frameAt = 0, soundAt = 0, wrongFrame = -1, wrongSound = -1, loudest = 0;
+  const sizes = new Set(), firsts = [];
+  const max = wasm.dp_sound_render_max();
+  held.forEach((buttons, n) => {
+    wasm.dp_step(buttons);
+    const count = Math.floor((n + 1) * step) - Math.floor(n * step), first = wasm.dp_sound_render(count) >> 2, samples = new Float32Array(wasm.memory.buffer);
+    for (let i = 0; i < count; i++) {
+      for (const side of [0, 1]) {
+        const sample = heard.readInt16LE(soundAt);
+        loudest = Math.max(loudest, Math.abs(sample));
+        if (sample !== Math.round(samples[first + side * max + i] * 512) && wrongSound < 0) wrongSound = n;
+        soundAt += 2;
+      }
+    }
+    const pixels = wasm.dp_draw(), width = wasm.dp_width(), height = wasm.dp_height();
+    sizes.add(`${width} by ${height}`);
+    const theirs = new Uint32Array(wasm.memory.buffer, pixels, width * height);
+    if (frames.readUInt32LE(frameAt) !== width || frames.readUInt32LE(frameAt + 4) !== height) wrongFrame = wrongFrame < 0 ? n : wrongFrame;
+    for (let i = 0; i < width * height && wrongFrame < 0; i++) if (frames.readUInt32LE(frameAt + 8 + i * 4) !== theirs[i]) wrongFrame = n;
+    firsts.push(frames.readUInt32LE(frameAt + 8));
+    frameAt += 8 + width * height * 4;
+  });
+  check(wrongFrame < 0 && frameAt === frames.length, `${what}: its ${held.length} frames are the same built for this computer and as WebAssembly${wrongFrame < 0 ? '' : `, but not frame ${wrongFrame}`}`);
+  check(wrongSound < 0 && soundAt === heard.length, `${what}: and so is every sound sample, ${soundAt / 4} of them${wrongSound < 0 ? '' : `, but not at frame ${wrongSound}`}`);
+  check(sizes.size === 1 && sizes.has(machine.screen.join(' by ')), `${what}: at the console's screen, ${[...sizes].join(', ')}`);
+  return { frames, firsts, loudest };
+}
+
 // a game on a console with no kit in C of its own, on the base alone: the made-up console's test game (made-up-game.c)
-// and the starting point there, built for this computer and as WebAssembly, run in Node as the page runs it, a frame
-// at a time with the same buttons and a start point, and every frame's picture and every sound sample the same
+// and the starting point there
 console.log('\nA game in C on a console with no kit of its own');
 {
   const MADE_UP = cKit('made-up'), machine = CONSOLES['made-up'];
   const game = fileURLToPath(new URL('./made-up-game.c', import.meta.url)), start = join(work, 'start-made-up.c');
   writeFileSync(start, startingFiles('made-up', { console: 'made-up', name: 'Made Up (World)', title: 'MADEUP', code: 'MU', sha1: '' }, { language: 'c' })['src/main.c']);
   const cartridge = Buffer.concat([Buffer.from('MADEUP'), Buffer.from(new Uint16Array([0x001F, 0x07E0, 0xF800, 0xFFFF, 0x0000, 0, 0, 0]).buffer)]);
-  writeFileSync(join(work, 'made-up.mu'), cartridge);
   const r = random(SEED + 3), words = 'proof&later=37';
   const held = Array.from({ length: 200 }, () => (r.chance(0.5) ? 0 : 1 << r.int(machine.buttons.length)));
-  writeFileSync(join(work, 'made-up-buttons'), `${held.join('\n')}\n`);
-  const step = machine.sound * (machine.frame[0] / machine.frame[1]);
   for (const [what, source] of [['the made-up console\'s test game', game], ['the starting point', start]]) {
     const name = what === 'the starting point' ? 'start-made-up' : 'made-up';
-    const program = buildNative([source, ...MADE_UP.native], exe(name), MADE_UP);
-    execFileSync(program, [join(work, 'made-up.mu'), join(work, 'made-up-buttons'), join(work, `${name}.out`), words, join(work, `${name}.sound`)]);
-    const frames = readFileSync(join(work, `${name}.out`)), heard = readFileSync(join(work, `${name}.sound`));
-    const module = new WebAssembly.Module(readFileSync(await buildWasm([source, ...MADE_UP.sources], join(work, `${name}.wasm`), MADE_UP)));
-    const nothing = () => {};
-    const { exports: wasm } = new WebAssembly.Instance(module, { dreamports: { save_read: nothing, save_write: nothing } });
-    const at = wasm.dp_rom(cartridge.length);
-    new Uint8Array(wasm.memory.buffer, at, cartridge.length).set(cartridge);
-    const text = new TextEncoder().encode(words);
-    new Uint8Array(wasm.memory.buffer, wasm.dp_start_point(text.length), text.length).set(text);
-    wasm.dp_start();
-    let frameAt = 0, soundAt = 0, wrongFrame = -1, wrongSound = -1, sizes = new Set();
-    const max = wasm.dp_sound_render_max();
-    held.forEach((buttons, n) => {
-      wasm.dp_step(buttons);
-      const count = Math.floor((n + 1) * step) - Math.floor(n * step), first = wasm.dp_sound_render(count) >> 2, samples = new Float32Array(wasm.memory.buffer);
-      for (let i = 0; i < count; i++) {
-        for (const side of [0, 1]) {
-          if (heard.readInt16LE(soundAt) !== Math.round(samples[first + side * max + i] * 512) && wrongSound < 0) wrongSound = n;
-          soundAt += 2;
-        }
-      }
-      const pixels = wasm.dp_draw(), width = wasm.dp_width(), height = wasm.dp_height();
-      sizes.add(`${width} by ${height}`);
-      const theirs = new Uint32Array(wasm.memory.buffer, pixels, width * height);
-      if (frames.readUInt32LE(frameAt) !== width || frames.readUInt32LE(frameAt + 4) !== height) wrongFrame = wrongFrame < 0 ? n : wrongFrame;
-      for (let i = 0; i < width * height && wrongFrame < 0; i++) if (frames.readUInt32LE(frameAt + 8 + i * 4) !== theirs[i]) wrongFrame = n;
-      frameAt += 8 + width * height * 4;
-    });
-    check(wrongFrame < 0 && frameAt === frames.length, `${what}: its ${held.length} frames are the same built for this computer and as WebAssembly${wrongFrame < 0 ? '' : `, but not frame ${wrongFrame}`}`);
-    check(wrongSound < 0 && soundAt === heard.length, `${what}: and so is every sound sample, ${soundAt / 4} of them${wrongSound < 0 ? '' : `, but not at frame ${wrongSound}`}`);
-    check(sizes.size === 1 && sizes.has(machine.screen.join(' by ')), `${what}: at the console's screen, ${[...sizes].join(', ')}`);
+    const { frames } = await bothWays({ what, name, source, kit: MADE_UP, machine, cartridge, words, held });
     if (source === game) {
       // the bar starts where the start point's word says, 37 pixels across, and moves a pixel a frame
       const bar = frames.readUInt32LE(8 + 37 * 4), next = frames.readUInt32LE(8 + machine.screen[0] * machine.screen[1] * 4 + 8 + 38 * 4);
@@ -433,6 +445,34 @@ console.log('\nA game in C on a console with no kit of its own');
       check(wrong < 0, `${what}: blue, and green while a button is held${wrong < 0 ? '' : `, but not frame ${wrong}`}`);
     }
   }
+}
+
+// the NES kit in C (kit/nes/c/): the made-up NES program's Dreamport (made-up-nes.c), which test:real-console proves on
+// the real emulator, and the starting point there, each the same both ways, from power-on and from a start point
+console.log('\nThe NES kit in C');
+{
+  const NES = cKit('nes'), machine = CONSOLES.nes;
+  const { rom } = madeUpNes();
+  const numbers = { SCROLL: RAM.scroll, X: RAM.x, Y: RAM.y, BACKDROP: RAM.backdrop, START_X: NES_START.x, START_Y: NES_START.y, START_BACKDROP: NES_START.backdrop, PRESSED_BACKDROP: NES_START.pressedBackdrop, SPRITE: NES_START.sprite, TIMER, PALETTE_AT, MOVED: 1 };
+  const program = join(work, 'made-up-nes.c'), start = join(work, 'start-nes.c');
+  writeFileSync(program, readFileSync(fileURLToPath(new URL('./made-up-nes.c', import.meta.url)), 'utf8').replace(/@([A-Z_]+)@/g, (_, key) => numbers[key]));
+  writeFileSync(start, startingFiles('test-nes', { console: 'nes', name: 'Test NES (World)', title: 'TEST', code: '', sha1: '' }, { language: 'c' })['src/main.c']);
+  const r = random(SEED + 4);
+  const held = Array.from({ length: 240 }, () => (r.chance(0.5) ? 0 : 1 << r.int(machine.buttons.length)));
+  // a colour as the proof tools see the emulator show it, five bits each, red lowest, as the kit's words
+  const eight = five => five << 3 | five >> 2;
+  const word = c => (0xFF000000 | eight(c >> 10 & 31) << 16 | eight(c >> 5 & 31) << 8 | eight(c & 31)) >>> 0;
+  const GREY = word(0x39CE), BLUE = word(0x74E4), GREEN = word(0x02A0);
+  for (const words of ['proof', 'proof&scroll=50']) {
+    const { firsts, loudest } = await bothWays({ what: `the made-up NES program${words === 'proof' ? '' : ' from a start point'}`, name: 'made-up-nes', source: program, kit: NES, machine, cartridge: rom, words, held });
+    if (words === 'proof') {
+      check(firsts[0] === GREY && firsts[3] !== GREY, 'the made-up NES program: grey while the PPU warms up, then its picture');
+      check(loudest > 20, `the made-up NES program: its pulse and triangle sound, as loud as ${loudest} of the console's steps`);
+    } else check(firsts[0] !== GREY, 'the made-up NES program from a start point: playing at once, with no warm-up');
+  }
+  const { firsts } = await bothWays({ what: 'the NES starting point', name: 'start-nes', source: start, kit: NES, machine, cartridge: rom, words: 'proof', held });
+  const wrong = held.findIndex((buttons, n) => firsts[n] !== (n === 0 ? GREY : buttons ? GREEN : BLUE));
+  check(wrong < 0, `the NES starting point: grey as the PPU warms up, then blue, and green while a button is held${wrong < 0 ? '' : `, but not frame ${wrong}`}`);
 }
 
 rmSync(work, { recursive: true, force: true });
