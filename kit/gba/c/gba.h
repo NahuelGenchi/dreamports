@@ -69,6 +69,19 @@ uint8_t *gba_save(uint32_t size);
 /** Keeps the save memory's bytes, as the original writes them to the cartridge. */
 void gba_save_write(void);
 
+/**
+ * The words the page's address gives the game, such as unlocked=1 in ?proof&unlocked=1, which is how the proof tools
+ * open a game at a recording's start point (tools/README.md, Start points). The value of the word `name`, read as the
+ * page's URLSearchParams reads it: the first one of that name, with + and %XX decoded, "" for a word with no value,
+ * and NULL for one that isn't there. It can be read from game_start on.
+ */
+const char *gba_start_point(const char *name);
+/**
+ * The value of the word `name` as a whole number, as JavaScript's Number(value) | 0 reads it: decimal, or hexadecimal
+ * after 0x, with what follows a decimal point dropped and anything else 0. `absent` when the word isn't there.
+ */
+int32_t gba_start_number(const char *name, int32_t absent);
+
 /** Memory for the game, zeroed, which lasts as long as the page. */
 void *gba_alloc(size_t size);
 

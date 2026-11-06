@@ -4,7 +4,9 @@
 // kit/gba/video.js, and fails on any pixel that differs. Then it builds a new game's starting point in C and runs it
 // with a made-up cartridge (made-up-game.mjs), built for this computer and in a real browser, where the proof tools
 // play it a frame at a time as they play the JavaScript starting point, and fails on any frame whose picture or video
-// hardware differs. It needs nothing from any game and no account, so it runs on any pull request.
+// hardware differs. It checks that a game in C reads a recording's start point, the words of the page's address, as
+// the page's URLSearchParams and Number read them. It needs nothing from any game and no account, so it runs on any
+// pull request.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -179,8 +181,8 @@ compare('as WebAssembly', n => wasmFrames[n], expected);
 // a new game's starting point in JavaScript, and its version in C in the game's c/, with a second game in C that keeps
 // a save, in folders of their own that the test removes after
 console.log('A new game\'s starting point in C');
-const JS_GAME = 'made-up-game', C_GAME = 'made-up-game/c', SAVES = 'made-up-saves/c';
-const FOLDERS = [JS_GAME, 'made-up-saves'];
+const JS_GAME = 'made-up-game', C_GAME = 'made-up-game/c', SAVES = 'made-up-saves/c', START = 'made-up-start/c';
+const FOLDERS = [JS_GAME, 'made-up-saves', 'made-up-start'];
 for (const game of FOLDERS) {
   if (existsSync(gameFolder(game))) throw new Error(`games/${game}/ is already there, and this test makes and removes a folder of that name.`);
 }
@@ -195,9 +197,30 @@ const BITS = { a: 0x1, b: 0x2, select: 0x4, start: 0x8, right: 0x10, left: 0x20,
 const presses = random(SEED + 1);
 const frames = Array.from({ length: 240 }, () => presses.chance(0.4) ? [] : NAMES.filter(() => presses.chance(0.2)));
 const BLUE = color555(0x7C00), GREEN = color555(0x03E0);
+// a start point with every kind of word: numbers of each kind, words with no value or none at all, the same word twice,
+// and + and %XX to decode. c-kit/start.c shows what it reads of NUMBERS and WORDS, and readsStart checks it.
+const START_POINT = 'proof&unlocked=1&level=-3&name=a%20b+c%C3%A9&x=0x1F&d=5&d=6&f=2.9&bad=abc&e=1.5e2&big=5000000000&small=-7.9e-1&empty=&sp=+7+&o=0o17&b=0b101&&pct=%zz%4';
+const NUMBERS = ['unlocked', 'level', 'x', 'd', 'f', 'bad', 'e', 'big', 'small', 'missing', 'empty', 'proof', 'sp', 'o', 'b'];
+const WORDS = ['name', 'proof', 'empty', 'pct', 'missing'];
+function readsStart(frame) {
+  const params = new URLSearchParams(START_POINT), want = [];
+  for (const name of NUMBERS) {
+    const value = params.has(name) ? Number(params.get(name)) | 0 : 0x1234;
+    want.push(value & 0x7FFF, (value >>> 15) & 0x7FFF, value >>> 30);
+  }
+  for (const name of WORDS) {
+    if (!params.has(name)) { want.push(0x7FFF); continue; }
+    const bytes = new TextEncoder().encode(params.get(name));
+    want.push(bytes.length, ...bytes);
+  }
+  const wrong = want.findIndex((c, i) => (frame[i] >>> 0) !== ((color555(c) | 0xFF000000) >>> 0));
+  if (wrong >= 0) console.log(`    pixel ${wrong} shows 0x${(frame[wrong] >>> 0).toString(16)} for 0x${((color555(want[wrong]) | 0xFF000000) >>> 0).toString(16)}`);
+  return wrong < 0;
+}
+
 let server = null, page = null;
 try {
-  for (const [game, language] of [[JS_GAME, 'js'], [C_GAME, 'c'], [SAVES, 'c']]) {
+  for (const [game, language] of [[JS_GAME, 'js'], [C_GAME, 'c'], [SAVES, 'c'], [START, 'c']]) {
     for (const [path, text] of Object.entries(startingFiles(game.split('/')[0], original, { language }))) {
       mkdirSync(dirname(join(gameFolder(game), path)), { recursive: true });
       writeFileSync(join(gameFolder(game), path), text);
@@ -208,6 +231,9 @@ try {
   // a game that counts its starts in its save memory
   writeFileSync(join(gameFolder(SAVES), 'src', 'main.c'), readFileSync(join(HERE, 'saves.c')));
   await buildGame(gameFolder(SAVES));
+  // a game that shows the start point it reads (c-kit/start.c)
+  writeFileSync(join(gameFolder(START), 'src', 'main.c'), readFileSync(join(HERE, 'start.c')));
+  await buildGame(gameFolder(START));
   const red = count => color555(count) & 0xFF;
 
   // built for this computer: the backdrop blue, and green while a button is held
@@ -228,6 +254,11 @@ try {
     return readFileSync(join(work, 'saves.out'))[0];
   });
   check(counts[0] === red(1) && counts[1] === red(2), 'built for this computer, its save memory is kept in a file from one run to the next');
+
+  const starter = buildNative([join(gameFolder(START), 'src', 'main.c'), ...KIT_SOURCES.filter(f => !f.endsWith('libc.c')), NATIVE_MAIN], exe('start'));
+  execFileSync(starter, [copy, join(work, 'one'), join(work, 'start.out'), START_POINT]);
+  const startFrame = readFileSync(join(work, 'start.out'));
+  check(readsStart(new Uint32Array(startFrame.buffer, startFrame.byteOffset, W * H)), 'built for this computer, it reads the start point as the page reads it');
 
   // in the browser, a frame at a time as the proof tools play it: each frame's picture, and what the video hardware
   // holds, as the proof tools compare them with the original's (lib/in-page.js)
@@ -258,6 +289,10 @@ try {
     return until(page, `(() => { const s = document.getElementById('screen'); return !document.getElementById('stage').hidden && s.width && s.getContext('2d').getImageData(0, 0, 1, 1).data[0] === ${red(count)}; })()`, `the backdrop to show ${count}`, 5000).then(() => true, () => false);
   };
   check(await shows(1) && await shows(2), 'in the browser, its save memory is kept from one visit to the next');
+  // and the start point, under the proof tools, as prove opens a recording with one
+  await openDreamport(page, server, START, copy, { query: `?${START_POINT}` });
+  const startPicture = await page.evaluate(`dreamportsProof.step({ held: [] }).then(p => [...new Uint32Array(p.data.buffer, p.data.byteOffset, ${W * H})])`);
+  check(readsStart(startPicture), 'in the browser, under the proof tools, it reads the start point as the page reads it');
   const [js, c] = [played[JS_GAME], played[C_GAME]];
   const first = js.findIndex((f, n) => f.picture !== c[n]?.picture);
   check(first < 0, `under the proof tools its ${frames.length} frames show the same pictures as the JavaScript starting point's${first < 0 ? '' : `, but not frame ${first}`}`);
