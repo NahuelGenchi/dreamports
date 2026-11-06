@@ -1,0 +1,9 @@
+{
+  "about": "From power-on to the title screen, then Start, which leaves it.",
+  "frames": 500,
+  "held": [
+    [0,[]],
+    [400,["START"]],
+    [406,[]]
+  ]
+}
