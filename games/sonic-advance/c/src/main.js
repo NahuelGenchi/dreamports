@@ -1,6 +1,6 @@
-// Sonic Advance Dreamport: the player's copy, checked and kept in this browser, then the game a frame at a time, on the Game Boy
-// Advance kit (kit/gba/). The game's own code is in C, in main.c, which runs here built to WebAssembly (game.wasm), on
-// the kit in C (kit/gba/c/).
+// Sonic Advance Dreamport: the player's copy, checked and kept in this browser, then the game a frame at a time, with its
+// sound, on the Game Boy Advance kit (kit/gba/). The game's own code is in C, in main.c, which runs here built to
+// WebAssembly (game.wasm), on the kit in C (kit/gba/c/).
 
 import '../../../../kit/gba/canvas.js';
 import { createRomSetup } from '../../../../kit/gba/ui/rom-setup.js';
@@ -35,7 +35,7 @@ proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded but
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives
 const touch = createTouch(stage, input, { screen, key: 'sonic-advance' });
-createSettings(stage, input, { touch });
+const sheet = createSettings(stage, input, { touch });
 let rom = null;
 
 createRomSetup(picker, {
@@ -71,6 +71,8 @@ async function start() {
   clock.reset();
   input.enabled = true;
   requestAnimationFrame(function loop(now) {
+    // while the settings are open the game waits (clock.js), and its sound stops where it is
+    game.sound.held = sheet.isOpen;
     let ran = false;
     for (let n = clock.steps(now); n > 0; n--) {
       input.poll();

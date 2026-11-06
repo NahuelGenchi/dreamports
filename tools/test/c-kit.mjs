@@ -20,6 +20,9 @@ import { startingFiles } from '../lib/new-game.mjs';
 import { createVideo, color555 } from '../../kit/gba/video.js';
 import { C_KIT, KIT_SOURCES, NATIVE_MAIN, buildGame, buildNative, buildWasm } from '../gba/c.mjs';
 import { madeUpGame } from './made-up-game.mjs';
+import { madeUpSongs, playBoth, randomCall } from './c-kit/songs.mjs';
+import { copyOf } from '../lib/copies.mjs';
+import { Rom } from '../../kit/gba/rom/rom.js';
 
 const SCENES = Number(process.env.SCENES || 400);
 const SEED = Number(process.env.SEED || 0x5EED);
@@ -177,6 +180,64 @@ const wasmFrames = bytes.map(b => {
   return new Uint32Array(memory.buffer, instance.exports.draw(), W * H).slice();
 });
 compare('as WebAssembly', n => wasmFrames[n], expected);
+
+// the sound: the C engine and the JavaScript one play the same songs with the same calls, a frame at a time, and every
+// sample of the console's mix has to be the same. Made-up songs on every pull request, and with a copy of a game here
+// whose sound the kit plays, every one of its songs, its copy read where it is and nothing from it kept
+console.log('\nThe C kit\'s sound');
+const soundModule = new WebAssembly.Module(readFileSync(await buildWasm([join(HERE, 'sound.c'), ...KIT_SOURCES], join(work, 'sound.wasm'))));
+const withCopy = bytes => {
+  const nothing = () => {};
+  const { exports } = new WebAssembly.Instance(soundModule, { dreamports: { save_read: nothing, save_write: nothing } });
+  // room for the copy first, as making it grows the memory, which leaves an earlier view of it empty
+  const at = exports.dp_rom(bytes.length);
+  new Uint8Array(exports.memory.buffer, at, bytes.length).set(bytes);
+  return exports;
+};
+const SONG_RUNS = Number(process.env.SONG_RUNS || 8), SONG_FRAMES = 900;
+const playEach = (bytes, layout, frames, what) => {
+  for (let n = 0; n < layout.songs; n++) {
+    const at = playBoth(bytes, layout, withCopy(bytes), frames, f => (f === 0 ? [['songStart', n]] : []));
+    if (at >= 0) { check(false, `${what}: song ${n} sounds different from frame ${at}`); return; }
+  }
+  check(true, `${what}: each of its ${layout.songs} songs, ${frames} frames of it, sounds the same to the sample`);
+};
+const playWithCalls = (bytes, layout, runs, what) => {
+  for (let k = 0; k < runs; k++) {
+    const r = random(SEED + 200 + k);
+    const at = playBoth(bytes, layout, withCopy(bytes), SONG_FRAMES, f => (f === 0 ? [['songStart', k % layout.songs]] : r.chance(0.06) ? [randomCall(r, layout)] : []));
+    if (at >= 0) { check(false, `${what}: with a game's calls, run ${k} sounds different from frame ${at}`); return; }
+  }
+  check(true, `${what}: ${runs} runs of ${SONG_FRAMES} frames with a game's calls between them sound the same to the sample`);
+};
+for (let k = 0; k < SONG_RUNS; k++) {
+  const { rom: songs, layout } = madeUpSongs(random(SEED + 100 + k));
+  const bytes = new Uint8Array(songs);
+  const at = playBoth(bytes, layout, withCopy(bytes), SONG_FRAMES, f => (f === 0 ? [['songStart', k % layout.songs]] : []));
+  if (at >= 0) { check(false, `made-up songs, cartridge ${k}: sounds different from frame ${at}`); break; }
+  if (k === SONG_RUNS - 1) check(true, `made-up songs: ${SONG_RUNS} cartridges of them, ${SONG_FRAMES} frames each, sound the same to the sample`);
+}
+{
+  const { rom: songs, layout } = madeUpSongs(random(SEED + 99));
+  const bytes = new Uint8Array(songs);
+  playEach(bytes, layout, 600, 'made-up songs');
+  playWithCalls(bytes, layout, SONG_RUNS, 'made-up songs');
+}
+// the games whose sound layout the test knows, with the copy their proof uses
+const GAMES_WITH_SOUND = {
+  'sonic-advance': { sha1: 'd842afa7dd1e84de08addb94a51506f1bcafd551', async layout(rom) {
+    const sound = await import('../../games/sonic-advance/src/rom/sound.js');
+    return sound.soundLayout(rom, sound.findMusicPlayers(rom));
+  } },
+};
+for (const [game, { sha1, layout: layoutOf }] of Object.entries(GAMES_WITH_SOUND)) {
+  const copy = copyOf(game, sha1);
+  if (!copy) { console.log(`  (no copy of ${game} here: its songs aren't tried)`); continue; }
+  const bytes = new Uint8Array(readFileSync(copy.path));
+  const layout = await layoutOf(new Rom(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length)));
+  playEach(bytes, layout, Number(process.env.COPY_FRAMES || 240), game);
+  playWithCalls(bytes, layout, SONG_RUNS, game);
+}
 
 // a new game's starting point in JavaScript, and its version in C in the game's c/, with a second game in C that keeps
 // a save, in folders of their own that the test removes after

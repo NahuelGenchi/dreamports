@@ -117,7 +117,7 @@ void set_hblank_copy(uint32_t target, uint32_t size);
 void engine_run(void);
 void engine_draw_setup(void);
 
-// the sound the screens start (m4aSongNumStart and the rest): the kit in C has no sound yet (#604)
+// the sound the screens start (m4aSongNumStart and the rest), on the kit's sound engine (front.c)
 void play_song(int song);
 void play_song_or_continue(int song);
 void stop_song(int song);
