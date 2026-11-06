@@ -10,17 +10,22 @@
 
 import { UPSTREAM, pagesOf } from './lib/github.mjs';
 import { readClaims, leadOf, teamBuildOf, gatheredIn } from './lib/claims.mjs';
-import { readPartsFile } from './lib/proof-files.mjs';
+import { readOriginal, readPartsFile } from './lib/proof-files.mjs';
 import { dreamports } from './readme.mjs';
 import { notesOfGame } from './notes.mjs';
 import { pageOf, percentText } from '../src/lib/entries.mjs';
-import { pieceName, whatCanStart } from '../src/lib/pieces.mjs';
-import { LANGUAGES } from '../src/lib/languages.mjs';
+import { pieceName, pieceOf, whatCanStart } from '../src/lib/pieces.mjs';
+import { LANGUAGES, OTHER_LANGUAGES, playOrder, versionOf } from '../src/lib/languages.mjs';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { REPO } from './lib/paths.mjs';
 
 const USAGE = 'Usage: npm run dp -- find [<game>] [--repo <owner/name>] [--team <owner/name>]';
 
 export async function run(args) {
-  const { rest, repo = UPSTREAM, team } = options(args);
+  const { rest: words0, repo = UPSTREAM, team } = options(args);
+  // a version in another language is found as its game, as in sonic-battle/c
+  const rest = words0.map(word => (word.includes('/') ? (() => { try { return versionOf(word).game; } catch { return word; } })() : word));
   const here = new Map(dreamports().map(d => [d.game, d]));
   let claims = null;
   try {
@@ -57,6 +62,15 @@ function options(args) {
     else found.rest.push(arg);
   }
   return found;
+}
+
+// the console a game here is on, or null
+function consoleOf(game) {
+  try {
+    return readOriginal(game).console;
+  } catch {
+    return null;
+  }
 }
 
 // a game's open pieces nobody has claimed: those that can start now, and those waiting on something (src/lib/pieces.mjs)
@@ -132,9 +146,19 @@ function show(game, local, claims, team) {
       return isFoundation(t) ? `, a foundation${count ? `, which ${count} ${count === 1 ? 'piece needs' : 'pieces need'}` : ''}` : '';
     };
     row(`Claimed (${taken.length})`, taken.length ? taken.map(t => `${name(t)}: @${t.assignees.map(a => a.login).join(', @')}`) : 'nothing');
-    row(`Free (${free.length})`, free.length ? free.map(t => `${name(t)}${foundation(t)}`)
-      : waiting.length ? 'nothing until what the waiting pieces need is finished'
-        : `nothing: npm run dp -- tasks ${game} opens one for each part that has none, and the Task form suggests a new one`);
+    // the free pieces in each language, the default's first (src/lib/languages.mjs): a game whose console has a kit in
+    // another language lists them apart, even with none, so it shows where a version in that language stands
+    const inOthers = OTHER_LANGUAGES.filter(language => versions.some(v => v.language === language)
+      || pieces.some(t => pieceOf(t).language === language) || existsSync(join(REPO, 'kit', consoleOf(game) ?? '-', LANGUAGES[language].folder)));
+    for (const language of inOthers.length ? playOrder(inOthers) : ['js']) {
+      const theirs = free.filter(t => pieceOf(t).language === language);
+      const version = language === 'js' ? game : `${game}/${LANGUAGES[language].folder}`;
+      const has = language === 'js' || versions.some(v => v.language === language);
+      row(`Free${inOthers.length ? ` in ${LANGUAGES[language].name}` : ''} (${theirs.length})`, theirs.length ? theirs.map(t => `${name(t)}${foundation(t)}`)
+        : !has ? `nothing: it has no version in ${LANGUAGES[language].name} yet, which npm run dp -- new ${version} starts, and npm run dp -- tasks ${version} then opens its tasks`
+          : waiting.some(w => pieceOf(w.piece).language === language) ? 'nothing until what the waiting pieces need is finished'
+            : `nothing: npm run dp -- tasks ${version} opens one for each part that has none, and the Task form suggests a new one`);
+    }
     if (waiting.length) row(`Waiting (${waiting.length})`, waiting.map(({ piece, on }) => `${name(piece)}: needs ${on.map(need => (need.number ? `#${need.number} ${need.name}` : need.name)).join(' and ')}`));
     if (done) row(`Done (${done})`, 'listed in its game\'s issue');
   }

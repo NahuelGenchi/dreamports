@@ -119,22 +119,26 @@ function gameDataIn(files, contents) {
 
 /**
  * Makes the next commit of the previews branch, from `tip` (or none yet), with the game as it is in `commit`, as
- * the preview `name`, and any `clips` ([{ path, file }]) under clips/. `about` is what changed, or ''. Resolves to
- * { commit, files, bytes, made } for the preview, or throws with every problem found.
+ * the preview `name`, and any `clips` ([{ path, file }]) under clips/. `about` is what changed, or ''. `built` is
+ * what share built from the commit that no commit holds, [{ path, bytes }] with paths in the game's folder, such as a
+ * version in C's src/game.wasm. Resolves to { commit, files, bytes, made } for the preview, or throws with every
+ * problem found.
  */
-export function makePreview({ tip, commit, branch, game, title, name, author, repository, linked = true, url, about, guide, clips = [] }) {
+export function makePreview({ tip, commit, branch, game, title, name, author, repository, linked = true, url, about, guide, clips = [], built = [] }) {
   const problems = [];
   const files = [];
   for (const file of filesAt(commit, `games/${game}`, 'kit')) {
     if (hidden(file.path)) continue;
     const [top, folder, ...rest] = file.path.split('/');
     if (top === 'kit' && !rest.length && folder !== 'consoles.js') continue;   // kit/README.md: only the kits' folders go on the site, and what every console's games read about their console
-    if (rest[0] === 'notes') continue;   // notes are for the people making the game (docs/NOTES.md)
+    // a path in the game's folder, which for a version in another language, such as sonic-battle/c, is a folder further in
+    const inGame = top === 'games' ? file.path.slice(`games/${game}/`.length) : '';
+    if (inGame.split('/')[0] === 'notes') continue;   // notes are for the people making the game (docs/NOTES.md)
     if (file.mode === '120000' || file.mode === '160000') {
       problems.push(`${file.path}: every file has to be a plain file in the folder, not a link.`);
       continue;
     }
-    const to = top === 'games' ? `${name}/play/${game}/${rest.join('/')}` : `${name}/${file.path}`;
+    const to = top === 'games' ? `${name}/play/${game}/${inGame}` : `${name}/${file.path}`;
     files.push({ ...file, from: file.path, to });
   }
   if (!files.some(f => f.to === `${name}/play/${game}/index.html`)) throw new Error(`games/${game}/index.html isn't in commit ${commit.slice(0, 7)}: a preview is made from your last commit.`);
@@ -161,6 +165,12 @@ export function makePreview({ tip, commit, branch, game, title, name, author, re
   for (const [path, file] of extra) files.push({ ...file, from: file.path, to: `${name}/${path}` });
   for (const [sha, bytes] of contentsOf([...extra.values()].map(f => f.sha))) contents.set(sha, bytes);
   problems.push(...gameDataIn(files, contents));
+  // the ignore rules keep a built file out of the repository, as it's made again from what is, but not out of a preview
+  for (const { path, bytes } of built) {
+    const sha = store(bytes);
+    contents.set(sha, bytes);
+    files.push({ mode: '100644', sha, from: `games/${game}/${path}`, to: `${name}/play/${game}/${path}` });
+  }
   if (problems.length) throw new Error(`The preview can't be published:\n${problems.map(p => `- ${p}`).join('\n')}`);
 
   const made = new Date().toISOString();
