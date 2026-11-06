@@ -83,6 +83,12 @@ const Heading = open ? 'h2' : 'h3';
       <Facts facts={[]} id={`mk-progress-${id}`} heading="Progress">
         <Meter measure={progress.ported} />
         <Parts measure={progress.gameplay} parts={progress.parts} evidence={progress.evidence} />
+        {progress.versions.map((version) => (
+          <>
+            <Meter measure={version.ported} />
+            <Parts measure={version.gameplay} parts={version.parts} evidence={version.evidence} />
+          </>
+        ))}
         <p class="mk-next" slot="end">{view.summary}</p>
       </Facts>
       {

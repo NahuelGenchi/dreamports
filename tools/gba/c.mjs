@@ -68,10 +68,11 @@ export function buildNative(sources, out) {
   return out;
 }
 
-/** A game's own C, every .c file in games/<game>/src/, built with the kit to games/<game>/src/game.wasm. */
-export async function buildGame(folder) {
+/** A game's own C, every .c file in its folder's src/, such as games/<game>/c/src/, built with the kit to src/game.wasm
+ *  there, or to `out`. */
+export async function buildGame(folder, out = join(folder, 'src', 'game.wasm')) {
   const src = join(folder, 'src');
   const own = readdirSync(src).filter(name => name.endsWith('.c')).map(name => join(src, name));
   if (!own.length) throw new Error(`${relative(REPO, src)} has no C.`);
-  return buildWasm([...own, ...KIT_SOURCES], join(src, 'game.wasm'));
+  return buildWasm([...own, ...KIT_SOURCES], out);
 }

@@ -9,7 +9,7 @@
 
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { LOCAL, proofFolder } from './lib/paths.mjs';
+import { LOCAL, sharedProofFolder } from './lib/paths.mjs';
 import { readOriginal, readRecordings } from './lib/proof-files.mjs';
 import { copyOf } from './lib/copies.mjs';
 import { checkStart, compress, expand, writeRecording } from './lib/recording.mjs';
@@ -33,7 +33,7 @@ export async function run(args) {
   const original = readOriginal(game);
   const copy = copyOf(game, original.sha1);
   if (!copy) throw new Error(`Show the tools your copy of ${original.name} first: npm run dp -- rom <file>.`);
-  const file = name && join(proofFolder(game), 'recordings', `${name}.json`);
+  const file = name && join(sharedProofFolder(game), 'recordings', `${name}.json`);
   if (file && existsSync(file)) throw new Error(`games/${game}/proof/recordings/${name}.json is already there: choose another name, or delete it first.`);
   if (name && copy.sha1 !== original.sha1) console.log(`This copy isn't ${original.name}, the one prove compares against: the recording may not play the same there.`);
   // the presses to play first, with --from: another recording's, up to a frame or to its end
@@ -117,7 +117,7 @@ export async function run(args) {
     }
     held.splice(0, start.until, ...start.held);
   }
-  mkdirSync(join(proofFolder(game), 'recordings'), { recursive: true });
+  mkdirSync(join(sharedProofFolder(game), 'recordings'), { recursive: true });
   writeRecording(file, {
     about: start ? `Plays ${start.source}'s presses up to frame ${start.until}, then: what this recording plays, in a sentence or two.` : 'What this recording plays, in a sentence or two.',
     frames: held.length, held: compress(held), onlyInOriginal: start?.onlyInOriginal ?? [], start: startPoint ?? undefined,

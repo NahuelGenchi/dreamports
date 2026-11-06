@@ -1,13 +1,15 @@
 // Puts the games in this repository on the site (#74), and the kits they start from (#76). After
 // `astro build`, each folder in games/ is copied as it is to dist/play/<game>/, and each in kit/ to
 // dist/kit/<console>/, which Cloudflare serves at /play/<game>/ and /kit/<console>/ as plain files, all but
-// their notes, which are for the people making them (docs/NOTES.md). The build stops and names every problem
+// their notes, which are for the people making them (docs/NOTES.md). A game's version in C, games/<game>/c/, is built
+// to WebAssembly as it's copied, to /play/<game>/c/src/game.wasm (kit/gba/c/README.md). The build stops and names every problem
 // if a folder breaks one of the rules in games/README.md, if a note breaks the rules for notes, or if the
 // site grows past what Cloudflare's free plan takes.
 import { copyFile, lstat, mkdir, readdir } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ENTRY } from '../lib/entries.mjs';
+import { LANGUAGES, OTHER_LANGUAGES } from '../lib/languages.mjs';
 import { checkNotes } from '../lib/notes.mjs';
 
 // a game's folder name is its address: lowercase letters and numbers, with single dashes between them
@@ -45,6 +47,17 @@ export default function games() {
           for (const name of names) await copy(join(folder, name), join(site, kind.address, name));
           logger.info(names.length ? `Copied to /${kind.address}/: ${names.join(', ')}` : `No ${kind.what}s in ${kind.folder}/`);
         }
+        // each version in C, built from its source rather than from a game.wasm someone left in it
+        const built = [];
+        const C = LANGUAGES.c.folder;
+        for (const name of found.find(({ kind }) => kind === GAMES).names) {
+          const version = join(root, 'games', name, C);
+          if (!(await exists(join(version, 'index.html')))) continue;
+          const { buildGame } = await import('../../tools/gba/c.mjs');
+          await buildGame(version, join(site, 'play', name, C, 'src', 'game.wasm'));
+          built.push(`${name}/${C}`);
+        }
+        if (built.length) logger.info(`Built to WebAssembly: ${built.join(', ')}`);
         // what every console's games read about their console (kit/consoles.js)
         await copyFile(join(root, 'kit', 'consoles.js'), join(site, 'kit', 'consoles.js'));
 
@@ -91,6 +104,15 @@ async function problemsWith(kind, folder, name, site) {
   const paths = new Set(files.map((file) => relative(join(folder, name), file.path)));
   if (kind.page && !paths.has('index.html')) problems.push(`${at}: It needs an index.html, the page the game starts from.`);
   if (kind.page && !paths.has(ENTRY)) problems.push(`${at}: It needs its entry, ${ENTRY}, which says everything about it and makes its page on the site.`);
+  // a version in another language is a page of its own, in the folder named after its language
+  for (const language of kind.page ? OTHER_LANGUAGES : []) {
+    const own = LANGUAGES[language].folder;
+    if (![...paths].some((path) => path.startsWith(`${own}${sep}`))) continue;
+    if (!paths.has(join(own, 'index.html'))) problems.push(`${at}${own}/: Its version in ${LANGUAGES[language].name} needs an index.html, the page it starts from.`);
+    if (language === 'c' && ![...paths].some((path) => path.startsWith(join(own, 'src') + sep) && path.endsWith('.c'))) {
+      problems.push(`${at}${own}/: Its version in C needs its C in src/, which the site builds to src/game.wasm.`);
+    }
+  }
   if (!LICENSES.some((license) => paths.has(license))) {
     problems.push(`${at}: It needs a license for its code, in a file named LICENSE or COPYING.`);
   }

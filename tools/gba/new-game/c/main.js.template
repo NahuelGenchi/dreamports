@@ -2,18 +2,18 @@
 // Advance kit (kit/gba/). The game's own code is in C, in main.c, which runs here built to WebAssembly (game.wasm), on
 // the kit in C (kit/gba/c/).
 
-import '../../../kit/gba/canvas.js';
-import { createRomSetup } from '../../../kit/gba/ui/rom-setup.js';
-import { createRomStore } from '../../../kit/gba/rom/store.js';
-import { Rom } from '../../../kit/gba/rom/rom.js';
-import { identify, namesGame } from '../../../kit/gba/rom/identify.js';
-import { SCREEN_W, SCREEN_H } from '../../../kit/gba/video.js';
-import { loadGame } from '../../../kit/gba/c/game.js';
-import { createClock, GBA_FRAME_MS } from '../../../kit/gba/clock.js';
-import { createInput } from '../../../kit/gba/input.js';
-import { proof } from '../../../kit/gba/proof.js';
-import { createSettings } from '../../../kit/gba/ui/settings.js';
-import { createTouch } from '../../../kit/gba/ui/touch.js';
+import '../../../../kit/gba/canvas.js';
+import { createRomSetup } from '../../../../kit/gba/ui/rom-setup.js';
+import { createRomStore } from '../../../../kit/gba/rom/store.js';
+import { Rom } from '../../../../kit/gba/rom/rom.js';
+import { identify, namesGame } from '../../../../kit/gba/rom/identify.js';
+import { SCREEN_W, SCREEN_H } from '../../../../kit/gba/video.js';
+import { loadGame } from '../../../../kit/gba/c/game.js';
+import { createClock, GBA_FRAME_MS } from '../../../../kit/gba/clock.js';
+import { createInput } from '../../../../kit/gba/input.js';
+import { proof } from '../../../../kit/gba/proof.js';
+import { createSettings } from '../../../../kit/gba/ui/settings.js';
+import { createTouch } from '../../../../kit/gba/ui/touch.js';
 
 // the game as its cartridge's header names it, and the version the Dreamport is built from
 const GAME = { name: @NAME_JS@, title: @HEADER_JS@, codes: { @CODE_JS@: @REGION_JS@ }, versions: [{ sha1: @SHA1_JS@ }] };

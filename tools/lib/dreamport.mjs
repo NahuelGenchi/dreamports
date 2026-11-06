@@ -1,11 +1,25 @@
 // Opens a Dreamport's page in the browser with the contributor's copy, as a player would: the kit's start screen
 // takes the copy, and Play starts the game. With ?proof in the address, the kit's proof mode then waits for a tool
-// to run each frame (kit/gba/proof.js).
+// to run each frame (kit/gba/proof.js). A version whose code is in C is built to WebAssembly first, so the page runs
+// the C as it is now (kit/gba/c/README.md).
 
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { go, until, giveFile } from './chrome.mjs';
+import { gameFolder } from './paths.mjs';
 
-/** Loads games/<game>/ with `query`, gives it the copy and, when `start`, presses Play and waits for the game. */
+/** Builds the game's or version's C, if its src/ has any, to src/game.wasm. */
+export async function buildIfC(game) {
+  const src = join(gameFolder(game), 'src');
+  if (!existsSync(src) || !readdirSync(src).some(name => name.endsWith('.c'))) return;
+  const { buildGame } = await import('../gba/c.mjs');
+  await buildGame(gameFolder(game));
+}
+
+/** Loads games/<game>/ with `query`, gives it the copy and, when `start`, presses Play and waits for the game. `game`
+ *  can be a version in another language, such as sonic-battle/c (src/lib/languages.mjs). */
 export async function openDreamport(page, server, game, copy, { query = '', start = true } = {}) {
+  await buildIfC(game);
   await go(page, `${server.url}/games/${game}/${query}`);
   await until(page, `document.querySelector('.setup')?.dataset.restored === 'true' && !!document.querySelector('.rom input[type=file]')`, 'the game\'s start screen, where it takes the copy');
   // what it says about this copy: a page that kept one from last time has read that by now, and has Play ready before it starts reading this

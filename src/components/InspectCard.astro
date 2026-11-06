@@ -134,6 +134,12 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
       <Facts facts={dreamport.progress} id={`progress-${id}`} heading="Progress">
         <Meter measure={dreamport.ported} />
         <Parts measure={dreamport.gameplay} parts={dreamport.parts} evidence={dreamport.evidence} />
+        {dreamport.versions.map((version) => (
+          <>
+            <Meter measure={version.ported} />
+            <Parts measure={version.gameplay} parts={version.parts} evidence={version.evidence} />
+          </>
+        ))}
         <details class="parts" slot="end">
           <summary>Built with</summary>
           <ul class="fact-items">

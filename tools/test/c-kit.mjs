@@ -176,13 +176,16 @@ const wasmFrames = bytes.map(b => {
 });
 compare('as WebAssembly', n => wasmFrames[n], expected);
 
-// a new game's starting point in JavaScript and in C, in folders of their own that the test removes after
+// a new game's starting point in JavaScript, and its version in C in the game's c/, with a second game in C that keeps
+// a save, in folders of their own that the test removes after
 console.log('A new game\'s starting point in C');
-const JS_GAME = 'made-up-game', C_GAME = 'made-up-game-c', SAVES = 'made-up-game-saves';
-for (const game of [JS_GAME, C_GAME, SAVES]) {
+const JS_GAME = 'made-up-game', C_GAME = 'made-up-game/c', SAVES = 'made-up-saves/c';
+const FOLDERS = [JS_GAME, 'made-up-saves'];
+for (const game of FOLDERS) {
   if (existsSync(gameFolder(game))) throw new Error(`games/${game}/ is already there, and this test makes and removes a folder of that name.`);
 }
-const { rom, sha1 } = madeUpGame();
+// as big as a real cartridge, as a copy that makes the game's memory grow is what a real game has
+const { rom, sha1 } = madeUpGame({ size: 8 << 20 });
 const original = { console: 'gba', name: 'Made Up Game (USA)', title: 'MADE UP GAME', code: 'MADE', sha1 };
 const copy = join(work, 'made-up.gba');
 writeFileSync(copy, rom);
@@ -195,7 +198,7 @@ const BLUE = color555(0x7C00), GREEN = color555(0x03E0);
 let server = null, page = null;
 try {
   for (const [game, language] of [[JS_GAME, 'js'], [C_GAME, 'c'], [SAVES, 'c']]) {
-    for (const [path, text] of Object.entries(startingFiles(game, original, { language }))) {
+    for (const [path, text] of Object.entries(startingFiles(game.split('/')[0], original, { language }))) {
       mkdirSync(dirname(join(gameFolder(game), path)), { recursive: true });
       writeFileSync(join(gameFolder(game), path), text);
     }
@@ -265,7 +268,7 @@ try {
 } finally {
   await page?.close();
   await server?.close();
-  for (const game of [JS_GAME, C_GAME, SAVES]) rmSync(gameFolder(game), { recursive: true, force: true });
+  for (const game of FOLDERS) rmSync(gameFolder(game), { recursive: true, force: true });
 }
 
 rmSync(work, { recursive: true, force: true });

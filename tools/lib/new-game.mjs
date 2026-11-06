@@ -24,21 +24,24 @@ export const firstFilesMessage = (name, issue) => `feat: ${name} Dreamport's fir
 /** The commit message of a game's capture, which goes on those first files. */
 export const captureMessage = (name, issue) => `feat: ${name} Dreamport's capture (#${issue})`;
 
-/** The files of a new game, by their paths in its folder: its code in JavaScript, or with `language` 'c' in C, on the
- *  Game Boy Advance kit in C (kit/gba/c/), whose src/game.wasm is built from src/main.c. */
+/** The files of a new game, by their paths in its folder, or with `language` 'c' those of its version in C, by their
+ *  paths in the version's folder, games/<game>/c/ (src/lib/languages.mjs): its page, and its code on the Game Boy
+ *  Advance kit in C (kit/gba/c/), whose src/game.wasm is built from src/main.c. */
 export function startingFiles(game, original, { language = 'js' } = {}) {
   const { name, region } = namesOf(original);
   const title = `${name} Dreamport`;
   const fill = (text, values) => text.replace(/@([A-Z0-9_]+)@/g, (_, key) => values[key]);
   if (language === 'c') {
     if (original.console !== 'gba') throw new Error('Only the Game Boy Advance has a kit in C yet.');
+    // a folder further in than the game's own page. It keeps the player's copy and touch layout with the JavaScript
+    // version's (FOLDER_JS), and its save memory apart, as an unfinished version could write what the other can't read
+    const page = fill(readFileSync(kit('index.html.template'), 'utf8'), { NAME: html(name), TITLE: html(`${title} in C`) }).replaceAll('"../../kit/', '"../../../kit/');
     return {
-      'LICENSE': readFileSync(new URL('../../kit/gba/LICENSE', import.meta.url), 'utf8'),
-      'index.html': fill(readFileSync(kit('index.html.template'), 'utf8'), { NAME: html(name), TITLE: html(title) }),
+      'index.html': page,
       'src/main.c': fill(readFileSync(kit('c/main.c.template'), 'utf8'), { TITLE_C: title }),
       'src/main.js': fill(readFileSync(kit('c/main.js.template'), 'utf8'), {
         TITLE_JS: title, NAME_JS: js(name), HEADER_JS: js(original.title), CODE_JS: /^[A-Z0-9]+$/.test(original.code) ? original.code : js(original.code), REGION_JS: js(region),
-        SHA1_JS: js(original.sha1), FOLDER_JS: js(game), TITLE_QUOTED: js(title), HOME_JS: js(`https://dreamports.net/dreamports/${game}-dreamport/`), SAVE_JS: js(`${game}-save`),
+        SHA1_JS: js(original.sha1), FOLDER_JS: js(game), TITLE_QUOTED: js(title), HOME_JS: js(`https://dreamports.net/dreamports/${game}-dreamport/`), SAVE_JS: js(`${game}-c-save`),
       }),
     };
   }

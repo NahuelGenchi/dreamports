@@ -159,6 +159,8 @@ Code ported is the size of the functions the port map names and those `prove` fo
 
 `npm run dp -- new <game>` starts a Dreamport that someone has claimed and mapped: it needs its [New Dreamport](../docs/TEAMS.md#start-a-dreamport) issue, `proof/original.json` and its code map. It writes `index.html`, `src/main.js`, `LICENSE` and `entry.md` in its folder, then its port map and the table in `docs/STATUS.md`. Its [capture](#a-games-capture) then gives it its place in the Make row. The game's code starts as the kit's start for its console, [`gba/new-game/`](gba/new-game/), with the controller, the touch screen, the settings and the start screen already working, and it shows only a blue screen until someone writes the game. The first three files say the same for anyone with the same `original.json`, so nothing has to be reviewed in them. `new` writes over nothing. A pull request of only these, with a [capture](#a-games-capture), comes in with no review of its code ([A game's first entry](../docs/TEAMS.md#a-games-first-entry)).
 
+`npm run dp -- new <game>/c` starts the game's [version in C](../games/README.md#versions-in-other-languages) once the game has started, on the Game Boy Advance only so far: `index.html`, `src/main.c` and `src/main.js` in `games/<game>/c/`, which show the same blue screen, then its port map. Every tool takes a version by that name, as in `prove <game>/c` and `play <game>/c`. A version's recordings are the game's, and it keeps only its own `progress.json` and `port-map.json`. The tools build its `src/game.wasm` before they open it, and so does the site.
+
 ## Reading the original's instructions
 
 A Dreamport rewrites each of the original's functions from how the original does it, usually from its decompilation's C. When a function has none, because the decompilation hasn't reached it or its C doesn't match, or the game has no decompilation, `npm run dp -- read <game> <function>` prints the function's own instructions, the machine code the console runs, from your copy. The function is an address, such as `0x08016078`, a name in the code map, such as `FUN_08016078`, or a label of the release the game's labels come from, such as `Task_803775C`, which `names.json` moves to the copy's address as it does for `portmap`. It prints the whole function, as the code map has it. When a label doesn't land where a function starts, it says so first, since `names.json` may not say how far that label moved, and it may be the wrong function.
@@ -231,7 +233,7 @@ Every copy starts the same way: it tells the agent to do nothing unless the pers
 
 ## A game's proof folder
 
-What the tools keep in the repository is in the game's `proof/` folder, and it's all JSON. The ignore rules keep anything else out of it.
+What the tools keep in the repository is in the game's `proof/` folder, and it's all JSON. The ignore rules keep anything else out of it. A version in another language keeps only its `progress.json` and `port-map.json` in its own, such as `games/sonic-battle/c/proof/`.
 
 | File | What it holds |
 | :--- | :--- |

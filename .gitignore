@@ -49,6 +49,10 @@ saves/
 games/*/proof/**
 !games/*/proof/**/
 !games/*/proof/**/*.json
+# and so does a version's in another language, such as games/sonic-battle/c/proof/
+games/*/*/proof/**
+!games/*/*/proof/**/
+!games/*/*/proof/**/*.json
 
 # Assets extracted from a game stay on the machine that extracted them.
 extracted/
@@ -66,6 +70,7 @@ assets-extracted/
 # Build output, caches and dependencies
 dist/
 games/*/src/game.wasm
+games/*/*/src/game.wasm
 .astro/
 .wrangler/
 node_modules/

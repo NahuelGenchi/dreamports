@@ -9,8 +9,9 @@ import { STATUS, splitTable } from '../readme.mjs';
 
 const MAPS = '.github/readme/progress';
 const MAP = /^\.github\/readme\/progress\/[^/]+\.svg$/;
-const PORT_MAP = /^games\/[^/]+\/proof\/port-map\.json$/;
-const PROGRESS = /^games\/([^/]+)\/proof\/progress\.json$/;
+// a game's, or its version's in another language, such as games/sonic-battle/c/proof/ (src/lib/languages.mjs)
+const PORT_MAP = /^games\/[^/]+(?:\/[^/]+)?\/proof\/port-map\.json$/;
+const PROGRESS = /^games\/([^/]+(?:\/[^/]+)?)\/proof\/progress\.json$/;
 const ENTRY = /^games\/([^/]+)\/entry\.md$/;
 
 const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 2 ** 28, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -90,7 +91,8 @@ export function startMerge(cwd, main) {
   return { upToDate: false, conflicts };
 }
 
-/** The games the branch and main both proved, as their progress.json has to be measured again for each of them. */
+/** The games the branch and main both proved, as their progress.json has to be measured again for each of them, with a
+ *  version by its name, such as sonic-battle/c (git's * takes in the /). */
 export function provedOnBothSides(cwd) {
   const parted = git(cwd, ['merge-base', 'HEAD', 'MERGE_HEAD']);
   const games = range => lines(git(cwd, ['diff', '--name-only', parted, range, '--', 'games/*/proof/progress.json'])).map(file => PROGRESS.exec(file)?.[1]).filter(Boolean);
