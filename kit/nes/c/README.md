@@ -4,7 +4,7 @@
 
 This folder is the NES's kit for games written in C, on what [every console's kit in C](../../c/README.md) shares. It's the console's picture and sound hardware, the PPU and the APU, with the cartridge and the controller, written from how the console is documented to behave, so a game in C draws and sounds as the console does by writing the hardware as its original does. A game in C runs in the browser with nothing to install: it's built to WebAssembly, and its page is the one every console's games share, with the same start screen, settings, controller drawn on touch screens and proof mode. The same C also builds for a computer, with no browser.
 
-Like the rest of the kits it's under [GPL-3.0-or-later](../../c/LICENSE), and nothing from any game is in it.
+Like the rest of the kits it's under [GPL-3.0-or-later](../LICENSE), and nothing from any game is in it.
 
 ## What's in it
 
