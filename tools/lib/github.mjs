@@ -2,6 +2,7 @@
 // repository and its GitHub Pages site. Everything it publishes goes out under the contributor's own account.
 
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 /** The repository Dreamports are made in. */
 export const UPSTREAM = 'NahuelGenchi/dreamports';
@@ -45,13 +46,19 @@ export function repositoryOf(url) {
   return found ? `${found[1]}/${found[2]}` : null;
 }
 
-/** The contributor's fork among the remotes ([{ name, url }]), or the one named: { remote, repository, owner, name }. */
-export function findFork(remotes, wanted) {
+/**
+ * The contributor's fork: the first of the folder's remotes ([{ name, url }]) that is one, or the one named `wanted`; or,
+ * when none of them is, a fork of the repository on GitHub that they can push to, theirs before an organization's, which
+ * it adds to the folder as a remote, so a folder cloned from the repository itself finds a fork made elsewhere. Returns
+ * { remote, repository, owner, name }, or throws with what to run when they have none. `github` is what it asks GitHub
+ * and the folder, for tests: { repository(name), forks(), login(), addRemote(name, url) }.
+ */
+export function findFork(remotes, wanted, github = FROM_GITHUB) {
   const tried = [];
   for (const { name: remote, url } of remotes) {
     const repository = repositoryOf(url);
     if (!repository || (wanted && repository.toLowerCase() !== wanted.toLowerCase())) continue;
-    const found = api(`repos/${repository}`);
+    const found = github.repository(repository);
     if (!found) continue;
     const forkOf = found.parent?.full_name ?? found.source?.full_name;
     if (found.full_name.toLowerCase() === UPSTREAM.toLowerCase()) {
@@ -64,12 +71,49 @@ export function findFork(remotes, wanted) {
       return { remote, repository: found.full_name, owner: found.owner.login, name: found.name };
     }
   }
+
+  // none of the remotes is: a fork on GitHub they can push to, which becomes one
+  const login = github.login();
+  const mine = github.forks()
+    .filter(f => f.permissions?.push && (!wanted || f.full_name.toLowerCase() === wanted.toLowerCase()))
+    .sort((a, b) => (b.owner.login === login) - (a.owner.login === login));
+  if (mine.length) {
+    const found = mine[0];
+    const taken = new Set(remotes.map(r => r.name));
+    let remote = 'fork';
+    for (let n = 2; taken.has(remote); n++) remote = `fork-${n}`;
+    github.addRemote(remote, found.clone_url);
+    console.log(`Your fork ${found.full_name} isn't one of this folder's remotes, so it is now, as ${remote}.`);
+    return { remote, repository: found.full_name, owner: found.owner.login, name: found.name };
+  }
+
   const why = tried.length ? ` (${tried.join('; ')})` : '';
-  throw new Error(wanted
-    ? `${wanted} isn't one of this folder's remotes, or isn't your fork of ${UPSTREAM}${why}.`
-    : `share publishes previews on your own fork of ${UPSTREAM}, and none of this folder's remotes is one${why}. `
-      + 'gh repo fork --remote makes one and adds it.');
+  if (wanted) throw new Error(`${wanted} isn't a fork of ${UPSTREAM} you can push to${why}.`);
+  // GitHub doesn't let someone who can push to the repository itself fork it to their own account, only to an organization
+  const canPush = github.repository(UPSTREAM)?.permissions?.push;
+  throw new Error(`This needs your own fork of ${UPSTREAM}, and you have none yet${why}. `
+    + (canPush
+      ? `You can push to ${UPSTREAM} itself, so GitHub only lets you fork it to an organization: make one at https://github.com/organizations/plan if you have none, then, in this folder, run gh repo fork --org <the organization> --remote --remote-name fork, and run this again.`
+      : 'Run gh repo fork --remote, which makes it and adds it to this folder, and run this again.'));
 }
+
+// GitHub as the GitHub CLI sees it, and this folder's git
+const FROM_GITHUB = {
+  repository: name => api(`repos/${name}`),
+  forks() {
+    const all = [];
+    for (let page = 1; page <= 10; page++) {
+      const some = api(`repos/${UPSTREAM}/forks?per_page=100&page=${page}`) ?? [];
+      all.push(...some);
+      if (some.length < 100) break;
+    }
+    return all;
+  },
+  login: () => signedInAs(),
+  addRemote(name, url) {
+    execFileSync('git', ['remote', 'add', name, url], { cwd: fileURLToPath(new URL('../../', import.meta.url)), stdio: ['ignore', 'pipe', 'pipe'] });
+  },
+};
 
 /** Whether GitHub has a commit in a repository, so a link to it there works: a commit that was never pushed has none. */
 export function hasCommit(repository, commit) {

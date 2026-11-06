@@ -13,7 +13,7 @@
     "test:c-kit": "node tools/test/c-kit.mjs",
     "test:consoles": "node tools/test/any-console.mjs",
     "test:real-console": "node tools/test/real-console.mjs",
-    "check": "astro check --minimumSeverity warning && tsc -p worker && node tools/dp.mjs portmap --check && node tools/dp.mjs readme --check && node tools/dp.mjs commands --check && node tools/dp.mjs notes --check && node --test --test-reporter=dot .github/moderation/test.mjs .github/first-entry/test.mjs .github/live-site/test.mjs .github/issue-maps/test.mjs .github/readme/test.mjs tools/test/merge-main.test.mjs tools/test/summary.test.mjs tools/test/moments.test.mjs tools/test/share-clips.test.mjs tools/test/copies.test.mjs tools/test/tasks.test.mjs tools/test/pieces.test.mjs tools/test/recording.test.mjs tools/test/state.test.mjs tools/test/screens.test.mjs tools/test/labels.test.mjs tools/test/label-scenes.test.mjs",
+    "check": "astro check --minimumSeverity warning && tsc -p worker && node tools/dp.mjs portmap --check && node tools/dp.mjs readme --check && node tools/dp.mjs commands --check && node tools/dp.mjs notes --check && node --test --test-reporter=dot .github/moderation/test.mjs .github/first-entry/test.mjs .github/live-site/test.mjs .github/issue-maps/test.mjs .github/readme/test.mjs tools/test/merge-main.test.mjs tools/test/summary.test.mjs tools/test/moments.test.mjs tools/test/share-clips.test.mjs tools/test/find-fork.test.mjs tools/test/copies.test.mjs tools/test/tasks.test.mjs tools/test/pieces.test.mjs tools/test/recording.test.mjs tools/test/state.test.mjs tools/test/screens.test.mjs tools/test/labels.test.mjs tools/test/label-scenes.test.mjs",
     "worker": "astro build && wrangler dev --local-upstream localhost:8787",
     "dp": "node tools/dp.mjs"
   },
