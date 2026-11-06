@@ -1,5 +1,5 @@
 // npm run dp -- find [<game>] [--repo <owner/name>] [--team <owner/name>]: where a game stands, so nobody does the
-// same work twice: its lead, its game's issue, its two numbers, its Make page, its team build and team preview,
+// same work twice: its lead, its game's issue, its two numbers and its versions' in other languages, its Make page, its team build and team preview,
 // and its pieces, the issues under its game's issue, with who has claimed which, the ones free to start and what the
 // others wait on (docs/TEAMS.md), and how many notes people have left on it (docs/NOTES.md). <game> is a game's folder or a few words of its name.
 // With no game it lists every Dreamport and every game
@@ -15,6 +15,7 @@ import { dreamports } from './readme.mjs';
 import { notesOfGame } from './notes.mjs';
 import { pageOf, percentText } from '../src/lib/entries.mjs';
 import { pieceName, whatCanStart } from '../src/lib/pieces.mjs';
+import { LANGUAGES } from '../src/lib/languages.mjs';
 
 const USAGE = 'Usage: npm run dp -- find [<game>] [--repo <owner/name>] [--team <owner/name>]';
 
@@ -67,10 +68,11 @@ const freeText = (game, claims, entry) => {
 
 // every Dreamport here and every game claimed, one line each
 function list(here, claims) {
-  const rows = [...here.values()].map(({ game, entry, proof }) => [
+  const rows = [...here.values()].map(({ game, entry, proof, versions }) => [
     game, entry.title, leadOf(game, claims, entry), [
       proof?.ported && `code ported ${percentText(proof.ported.percent)}`,
       proof?.gameplay && `gameplay proven ${percentText(proof.gameplay.percent)}`,
+      ...versions.map(v => v.proof?.ported && `in ${LANGUAGES[v.language].name} ${percentText(v.proof.ported.percent)}`),
       freeText(game, claims, entry),
     ].filter(Boolean).join(', '),
   ]);
@@ -88,7 +90,7 @@ function list(here, claims) {
 
 // one game in full
 function show(game, local, claims, team) {
-  const { entry, proof } = local ?? {};
+  const { entry, proof, versions = [] } = local ?? {};
   const home = claims ? claims.gameIssueOf(game, entry) : null;
   // without the claims, the issue the entry names, in the repository Dreamports are made in
   const homeUrl = home?.html_url ?? (!claims && entry?.issue ? `https://github.com/${UPSTREAM}/issues/${entry.issue}` : null);
@@ -100,6 +102,11 @@ function show(game, local, claims, team) {
   row('Game issue', homeUrl ? `${homeUrl}, which lists its pieces, and where it's talked about` : 'none yet');
   row('Code ported', proof?.ported ? percentText(proof.ported.percent) : local ? 'not measured yet: it needs a code map' : 'not measured yet');
   row('Gameplay proven', proof?.gameplay ? `${percentText(proof.gameplay.percent)}, ${proof.gameplay.proven} of ${proof.gameplay.total} parts` : local ? 'not measured yet: it needs a list of its parts' : 'not measured yet');
+  for (const { name, language, proof: theirs } of versions) {
+    const called = LANGUAGES[language].name;
+    row(`Code ported in ${called}`, theirs?.ported ? `${percentText(theirs.ported.percent)}, in games/${name}/` : 'not measured yet');
+    row(`Gameplay proven in ${called}`, theirs?.gameplay ? `${percentText(theirs.gameplay.percent)}, ${theirs.gameplay.proven} of ${theirs.gameplay.total} parts` : 'not measured yet');
+  }
   const fromStart = (proof?.gameplay?.parts ?? []).filter(part => part.proven && part.fromStart);
   if (fromStart.length) row('From a start point', fromStart.map(part => part.name), 'each proven again from power-on once the game reaches it');
   if (entry) row('Its page', `https://dreamports.net/dreamports/${pageOf(game)}/`);

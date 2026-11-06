@@ -100,7 +100,8 @@ async function tryGame(page, server, game, rom) {
   await page.evaluate(`__press(8, false); __press(9, false)`);
 
   // what a press leads to, the game's page in the launcher. That address is answered here, and never reached
-  const home = `https://dreamports.net/dreamports/${game}-dreamport/`;
+  // a version in another language leads back to its game's page
+  const home = `https://dreamports.net/dreamports/${game.split('/')[0]}-dreamport/`;
   const leadsHome = async press => {
     await page.send('Fetch.enable', { patterns: [{ urlPattern: 'https://dreamports.net/*', requestStage: 'Request' }] });
     const paused = page.once('Fetch.requestPaused');
@@ -156,7 +157,7 @@ async function tryGame(page, server, game, rom) {
   page.errors.length = 0;
 }
 
-const TEST = 'made-up-game', TEST_C = 'made-up-game-c';
+const TEST = 'made-up-game', TEST_C = 'made-up-game/c';
 const folder = gameFolder(TEST), folderC = gameFolder(TEST_C);
 const temporary = join(LOCAL, 'tmp', 'test-game');
 mkdirSync(temporary, { recursive: true });
@@ -169,7 +170,7 @@ try {
   const { rom, sha1 } = madeUpGame();
   const original = { console: 'gba', name: 'Made Up Game (USA)', title: 'MADE UP GAME', code: 'MADE', sha1 };
   for (const [game, place, language] of [[TEST, folder, 'js'], [TEST_C, folderC, 'c']]) {
-    for (const [file, text] of Object.entries(startingFiles(game, original, { language }))) {
+    for (const [file, text] of Object.entries(startingFiles(TEST, original, { language }))) {
       mkdirSync(dirname(join(place, file)), { recursive: true });
       writeFileSync(join(place, file), text);
     }

@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { needsProblems, planOf, whatCanStart } from '../../src/lib/pieces.mjs';
+import { needsProblems, pieceOf, planOf, taskTitle, whatCanStart } from '../../src/lib/pieces.mjs';
 import { proofOf } from '../../src/lib/entries.mjs';
 
 const file = {
@@ -85,4 +85,31 @@ test('says how many unfinished pieces need a piece', () => {
   assert.equal(needing(pieces[4]), 2, 'Story and Battle need the fighting');
   assert.equal(isFoundation(pieces[4]), true);
   assert.equal(isFoundation(pieces[0]), false);
+});
+
+test('a task in another language is the same part with the language\'s name after it', () => {
+  assert.deepEqual(pieceOf(piece(1, 'Task: The menu in C')), { name: 'The menu', language: 'c' });
+  assert.deepEqual(pieceOf(piece(1, 'Task: The menu')), { name: 'The menu', language: 'js' });
+  assert.deepEqual(pieceOf(piece(1, 'Task: in C')), { name: 'in C', language: 'js' });
+  assert.equal(taskTitle('The menu', 'c'), 'Task: The menu in C');
+  assert.equal(taskTitle('The menu'), 'Task: The menu');
+});
+
+test('a piece in C waits for the same piece in JavaScript, and for what it needs in C', () => {
+  const inC = [
+    piece(11, 'Task: The menu in C'), piece(12, 'Task: Options in C'), piece(13, 'Task: The arena in C'), piece(14, 'Task: The fighting in C'),
+    piece(15, 'Task: The logos in C'),
+  ];
+  // Options and the arena are finished in JavaScript; the menu and the fighting aren't
+  const js = pieces.map(p => (p.number === 4 || p.number === 6 ? { ...p, state: 'closed' } : p));
+  const { free, waiting } = whatCanStart([...js, ...inC], file);
+  assert.deepEqual(numbers(free).filter(n => n > 10), [13, 12, 15], 'the arena first, as a foundation, then Options and the logos, which parts.json proves in JavaScript');
+  const on = Object.fromEntries(waiting.map(w => [w.piece.number, w.on]));
+  assert.deepEqual(on[11], [{ name: 'The menu', number: 1 }, { name: 'The logos in C', number: 15 }]);
+  assert.deepEqual(on[14], [{ name: 'The fighting', number: 5 }, { name: 'The arena in C', number: 13 }]);
+  // a need with no task in C yet isn't finished, though parts.json proves it in JavaScript
+  const alone = whatCanStart([...pieces, { ...piece(1, 'Task: The menu'), state: 'closed' }, piece(21, 'Task: The menu in C')].filter(p => p.number !== 1 || p.state === 'closed'), file);
+  assert.deepEqual(alone.waiting.find(w => w.piece.number === 21).on, [{ name: 'The logos in C' }]);
+  // and the JavaScript pieces are free as they were
+  assert.deepEqual(numbers(free).filter(n => n < 10), numbers(whatCanStart(js, file).free));
 });

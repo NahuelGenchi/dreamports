@@ -11,8 +11,9 @@ export const ENTRY = 'entry.md';
 /** The id of a Dreamport's page, which is at /dreamports/<id>/: its folder's name, then "-dreamport". */
 export const pageOf = game => `${game}-dreamport`;
 
-/** Where a Dreamport's progress map is kept in the repository, next to the README's pictures (progress-map.mjs). */
-export const mapOf = game => `.github/readme/progress/${game}.svg`;
+/** Where a Dreamport's progress map is kept in the repository, next to the README's pictures (progress-map.mjs), and
+ *  a version's in another language, such as sonic-battle-c.svg for 'sonic-battle/c' (languages.mjs). */
+export const mapOf = game => `.github/readme/progress/${game.replaceAll('/', '-')}.svg`;
 
 /** A GitHub account's name, as a lead or a member of a team writes it. */
 export const GITHUB_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
@@ -69,20 +70,22 @@ export const portedFunctions = (portMap, progress) => new Set([
  * @returns {Proof | null}
  */
 export function proofOf(game, { original, map, progress, portMap, parts, recordings: recorded = {} }) {
-  const at = `games/${game}/proof/`;
+  // a version in another language, such as sonic-battle/c, keeps its own progress.json and port-map.json, and shares
+  // the rest with the game (src/lib/languages.mjs)
+  const at = `games/${game}/proof/`, shared = `games/${game.split('/')[0]}/proof/`;
   if (!original) {
-    if (map || progress || portMap || parts) throw new Error(`${at}: it has proof files but no original.json, which names the copy they're measured on.`);
+    if (map || progress || portMap || parts) throw new Error(`${shared}: it has proof files but no original.json, which names the copy they're measured on.`);
     return null;
   }
   const problems = [];
-  if (map && map.original !== original.sha1) problems.push(`${at}code-map.json is for another copy than original.json names.`);
+  if (map && map.original !== original.sha1) problems.push(`${shared}code-map.json is for another copy than original.json names.`);
   if (progress && progress.original !== original.sha1) problems.push(`${at}progress.json is for another copy than original.json names.`);
   if (portMap && portMap.original !== original.sha1) problems.push(`${at}port-map.json is for another copy than original.json names.`);
   const recordings = Object.entries(progress?.recordings ?? {});
   // a game's own word that no player could ever see these frames, which no match with the original makes up for
   for (const [name, { neverInPlay = [] }] of recordings) {
     for (const { from, to, why } of neverInPlay) {
-      problems.push(`${at}recordings/${name}.json plays what no player could ever see at frames ${from} to ${to}: ${why}. A start point only skips the way there (tools/README.md, Start points), so change the recording and prove it again.`);
+      problems.push(`${shared}recordings/${name}.json plays what no player could ever see at frames ${from} to ${to}: ${why}. A start point only skips the way there (tools/README.md, Start points), so change the recording and prove it again.`);
     }
   }
   /** @type {Proof} */
@@ -117,9 +120,9 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
       unmatched: portMap?.unmatched?.length ?? 0,
     };
   } else if (progress?.percent !== undefined || portMap) {
-    problems.push(`${at}${portMap ? 'port-map.json' : 'progress.json'} needs a code-map.json to be measured against.`);
+    problems.push(`${at}${portMap ? 'port-map.json' : 'progress.json'} needs a ${shared}code-map.json to be measured against.`);
   }
-  if (parts) result.gameplay = gameplayOf(at, parts, progress?.recordings ?? {}, recorded, problems);
+  if (parts) result.gameplay = gameplayOf(shared, parts, progress?.recordings ?? {}, recorded, problems, at !== shared);
   if (problems.length) throw new Error(`${game}'s proof doesn't add up:\n${problems.map(p => `- ${p}`).join('\n')}`);
   return result;
 }
@@ -134,7 +137,7 @@ export const fromStartPoint = (recording, frame) => Boolean(recording.start) || 
 // gameplay proven: each part parts.json lists, proven when a measured recording plays it, from the first frame of
 // it to the last, with no frame that differs and none the original has and the Dreamport lacks
 /** @returns {Gameplay | null} */
-function gameplayOf(at, file, measured, recorded, problems) {
+function gameplayOf(at, file, measured, recorded, problems, version = false) {
   const { parts } = file;
   if (!Array.isArray(parts) || !parts.length) {
     problems.push(`${at}parts.json needs "parts": the game's parts, each with its "name".`);
@@ -152,6 +155,8 @@ function gameplayOf(at, file, measured, recorded, problems) {
     if (part?.recording === undefined && part?.frames === undefined) return view;
     const result = measured[part.recording], recording = recorded[part.recording];
     const [from, to] = Array.isArray(part.frames) ? part.frames : [];
+    // a version in another language starts with none of the game's recordings measured, each a part not proven yet
+    if (version && recording && !result) return view;
     if (!result || !recording) {
       problems.push(`${where} is proven by the recording ${part.recording}, which ${recording ? 'npm run dp -- prove hasn\'t measured yet' : 'isn\'t in recordings/'}.`);
       return view;

@@ -6,13 +6,21 @@ Every Dreamport made in this repository lives in this folder, one folder per gam
 
 ## What a game's folder holds
 
-A game is plain HTML, CSS and JavaScript that runs in the browser as it is, with no build step. When the site is built, each game's folder is copied to `/play/<game>/` exactly as it is, but for its notes, so the files in the folder are the files players get. On dreamports.net they are served as plain files, like the site's own pages, without running the site's Worker.
+A game is plain HTML, CSS and JavaScript that runs in the browser as it is, with no build step, and its [version in C](#versions-in-other-languages), if it has one, is the only thing built. When the site is built, each game's folder is copied to `/play/<game>/` exactly as it is, but for its notes, so the files in the folder are the files players get. On dreamports.net they are served as plain files, like the site's own pages, without running the site's Worker.
 
 Every folder needs three files at its top: `index.html`, the page the game starts from; `entry.md`, the game's [entry](#the-entry); and the license for the game's code, in a file named `LICENSE` or `COPYING` (it may end in `.md` or `.txt`). Dreamports use GPL-3.0-or-later, as [the standard explains](../docs/STANDARD.md#licenses). The rest of the game can be in any files and folders it needs. Its pages load them with addresses relative to the page, such as `src/main.js`, and load the site's own files, such as [`/dreamports.js`](../docs/ACCOUNTS.md#for-a-game-dreamportsjs) for achievements, from the site's root. A Dreamport's `proof/` folder holds what the [proof tools](../tools/README.md) measure it with: which copy of the original it's compared with, its recorded play, its code map and its progress, all as JSON. Its `notes/` folder holds what people found while making it, one small file each, for the next person, as [Notes](../docs/NOTES.md) explains: the site's build leaves it out, and stops on a note that breaks the rules for notes.
 
 The folder's name is the game's address, so it has only lowercase letters, numbers and single dashes, such as `sonic-advance`. Files and folders whose names start with a dot stay out of the site, and links to files somewhere else (symlinks) aren't allowed.
 
 Nothing from the original game ever goes here: no ROM, no game files, and no music, pictures or data taken from them. Players bring their own copy, and the game reads it on their device.
+
+## Versions in other languages
+
+A Dreamport can be written in more than one language, each version with its own progress, and its JavaScript version stays where it always was, in the game's folder. A version in another language is a page of its own in a folder named after the language, so Sonic Battle Dreamport in C is `games/sonic-battle/c/`, played at `dreamports.net/play/sonic-battle/c/`. C is the only other language so far, on the [Game Boy Advance kit in C](../kit/gba/c/README.md).
+
+A version's folder holds its `index.html`, its code in `src/`, with its C in `.c` files that the site builds to `src/game.wasm` as it copies the games, and its own `proof/`, with only its `progress.json` and `port-map.json`. Everything else is the game's and stays in the game's folder: its entry, its license, its notes, and in its `proof/` the copy, the code map, the parts and the recordings, which are the same in every language. A version's numbers come from its own files measured against the game's, so the game's page and its page in the Make row show **Code ported in C** and **Gameplay proven in C** under the game's own two, and `docs/STATUS.md` has a row and a progress map for it, `.github/readme/progress/<game>-c.svg`.
+
+The proof tools name a version by its folder, as in `npm run dp -- prove sonic-battle/c`. `npm run dp -- new sonic-battle/c` starts one in a game that has started, and `npm run dp -- tasks sonic-battle/c` opens its tasks, each named after the part with the language after it, as *Task: Title screen in C*. A version is written from the game's JavaScript, so its task for a part waits for the same part in JavaScript ([What a task needs](../docs/TEAMS.md#what-a-task-needs)). It keeps the player's copy and touch layout with the JavaScript version's, and its saves apart.
 
 ## The entry
 

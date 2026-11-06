@@ -234,13 +234,27 @@ jobs:
           }
           const nameOf = title => title.replace(/^Task:\s*/i, '').trim();
           const sameName = (a, b) => same(String(a ?? '').trim(), String(b ?? '').trim());
+          // a piece's part and language: "Task: Title screen in C" is a part of the game's version in C (src/lib/languages.mjs)
+          const LANGUAGES = { c: 'C' };
+          function partOf(title) {
+            const name = nameOf(title);
+            for (const [language, called] of Object.entries(LANGUAGES)) {
+              const suffix = ` in ${called}`;
+              if (name.length > suffix.length && same(name.slice(-suffix.length), suffix)) return { name: name.slice(0, -suffix.length).trim(), language };
+            }
+            return { name, language: 'js' };
+          }
           // what a piece is still waiting on, each as a name, with its number when it has an issue: what parts.json says
-          // it needs, unless that issue is closed, or for a part with no issue, unless parts.json names its recording
+          // it needs, unless that issue is closed, or for a part with no issue, unless parts.json names its recording. A
+          // piece in another language needs what it needs in that language, and the same piece in JavaScript first
           function waitingOn(piece, pieces, plan) {
-            const needs = plan.find(p => sameName(p.name, nameOf(piece.title)))?.needs;
-            return (Array.isArray(needs) ? needs : []).flatMap(need => {
-              const found = pieces.find(p => sameName(nameOf(p.title), need));
+            const { name, language } = partOf(piece.title);
+            const needs = plan.find(p => sameName(p.name, name))?.needs;
+            const all = [...(language === 'js' ? [] : [[name, 'js']]), ...(Array.isArray(needs) ? needs : []).map(need => [need, language])];
+            return all.flatMap(([need, lang]) => {
+              const found = pieces.find(p => sameName(partOf(p.title).name, need) && partOf(p.title).language === lang);
               if (found) return found.state === 'open' ? [`#${found.number} ${nameOf(found.title)}`] : [];
+              if (lang !== 'js') return [`${need} in ${LANGUAGES[lang]}`];
               return plan.find(p => sameName(p.name, need))?.recording ? [] : [need];
             });
           }
@@ -250,7 +264,7 @@ jobs:
           async function free(game, title, except) {
             const home = await gameIssueOf(game);
             const pieces = home ? await piecesOf(home) : [], plan = await planOf(game);
-            const foundation = piece => plan.find(p => sameName(p.name, nameOf(piece.title)))?.foundation === true;
+            const foundation = piece => plan.find(p => sameName(p.name, partOf(piece.title).name))?.foundation === true;
             const startable = pieces.filter(i => i.state === 'open' && !i.assignees.length && i.number !== except && !waitingOn(i, pieces, plan).length);
             const tasks = [...startable.filter(foundation), ...startable.filter(i => !foundation(i))];
             const lines = [];

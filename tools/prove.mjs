@@ -29,6 +29,7 @@ import { readProof } from './readme.mjs';
 import { referenceOf } from './lib/reference.mjs';
 import { checkSizes, firstOtherSize } from './lib/screens.mjs';
 import { notesAbout } from './notes.mjs';
+import { versionOf } from '../src/lib/languages.mjs';
 
 const BATCH = 120;
 const STILLS = 600, STATES = 20;
@@ -461,8 +462,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     }
     // what people already found about what differs here (docs/NOTES.md)
     const unproven = partsFound.filter(part => !part.proven).map(part => part.name);
-    for (const note of notesAbout(game, about => unproven.includes(about) || (firstDifference >= 0 && about === name))) {
-      console.log(`  A note on this: ${note.title} npm run dp -- notes ${game} ${note.name} prints it.`);
+    for (const note of notesAbout(versionOf(game).game, about => unproven.includes(about) || (firstDifference >= 0 && about === name))) {
+      console.log(`  A note on this: ${note.title} npm run dp -- notes ${versionOf(game).game} ${note.name} prints it.`);
     }
     const outOfReach = asked.filter(f => f >= frames);
     if (outOfReach.length) console.log(`  --stills names frames past the recording's last, ${frames - 1}: ${outOfReach.slice(0, 8).join(', ')}${outOfReach.length > 8 ? '…' : ''}.`);

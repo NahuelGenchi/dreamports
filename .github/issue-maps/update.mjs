@@ -1,4 +1,5 @@
-// Keeps each game's progress map at the top of its game's issue (docs/TEAMS.md#how-the-bot-works), from
+// Keeps each game's progress map at the top of its game's issue, with its versions' in other languages under it
+// (src/lib/languages.mjs) (docs/TEAMS.md#how-the-bot-works), from
 // .github/workflows/issue-maps.yml. The proof tools draw the map and npm run check holds it to the game's proof/ folder,
 // so nothing here draws anything: it only puts that picture in the issue. An issue shows a game's map only when the
 // game's entry names that issue, and an issue's text is only read as data. The picture's address holds the commit that
@@ -7,12 +8,19 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { field, isNewDreamport } from '../../tools/lib/claims.mjs';
+import { LANGUAGES, OTHER_LANGUAGES } from '../../src/lib/languages.mjs';
 
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const START = '<!-- dreamports-map -->', END = '<!-- /dreamports-map -->';
 const BLOCK = /<!-- dreamports-map -->[\s\S]*?<!-- \/dreamports-map -->\s*/g;
 
-export const mapOf = game => `.github/readme/progress/${game}.svg`;
+/** A game's map, or with a version's name, such as sonic-battle/c, that version's (src/lib/entries.mjs). */
+export const mapOf = game => `.github/readme/progress/${game.replaceAll('/', '-')}.svg`;
+
+// the game and each of its versions with a page and a map, as the maps are named
+const versionsOf = (folder, game) => [game, ...OTHER_LANGUAGES.map(language => `${game}/${LANGUAGES[language].folder}`)
+  .filter(version => existsSync(join(folder, 'games', version, 'index.html')))]
+  .filter(version => existsSync(join(folder, mapOf(version))));
 
 /** An issue's text with no map in it. */
 export const withoutMap = body => body.replace(BLOCK, '');
@@ -44,7 +52,9 @@ export async function update({ folder, repository, head, api }) {
       if (issue.pull_request || !isNewDreamport(issue)) continue;
       const game = field(issue.body, 'Game folder').replace(/`/g, '').trim();
       const shows = NAME.test(game) && issueNamedBy(folder, game) === issue.number && existsSync(join(folder, mapOf(game)));
-      const body = shows ? withMap(issue.body, await pictureOf(game, { folder, repository, head, api })) : withoutMap(issue.body);
+      const pictures = [];
+      for (const version of shows ? versionsOf(folder, game) : []) pictures.push(await pictureOf(version, { folder, repository, head, api }));
+      const body = shows ? withMap(issue.body, pictures.join('\n\n')) : withoutMap(issue.body);
       if (body === issue.body) continue;
       await api(`/issues/${issue.number}`, 'PATCH', { body });
       edited.push(issue.number);

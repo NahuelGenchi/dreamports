@@ -46,7 +46,9 @@ export async function loadGame(url, rom, { save = null } = {}) {
     return views;
   };
 
-  new Uint8Array(memory.buffer, game.dp_rom(rom.size), rom.size).set(rom.bytes);
+  // room for the copy first, as making it can grow the memory, which leaves an earlier view of it empty
+  const at = game.dp_rom(rom.size);
+  new Uint8Array(memory.buffer, at, rom.size).set(rom.bytes);
   game.dp_start();
 
   const video = {

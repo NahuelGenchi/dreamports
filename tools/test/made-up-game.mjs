@@ -3,9 +3,9 @@
 
 import { createHash } from 'node:crypto';
 
-/** The cartridge's bytes, with the title and code in its header, and its SHA-1, as original.json would have it. */
-export function madeUpGame({ title = 'MADE UP GAME', code = 'MADE' } = {}) {
-  const rom = Buffer.alloc(0x400);
+/** The cartridge's bytes, with the title and code in its header, and its SHA-1, as original.json would have it: `size` bytes, the rest of them 0. */
+export function madeUpGame({ title = 'MADE UP GAME', code = 'MADE', size = 0x400 } = {}) {
+  const rom = Buffer.alloc(size);
   rom.writeUInt32LE(0xEA00002E, 0);    // b 0xC0
   rom.write(title.slice(0, 12), 0xA0, 'latin1');
   rom.write(code.slice(0, 4), 0xAC, 'latin1');

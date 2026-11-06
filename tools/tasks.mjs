@@ -3,30 +3,37 @@
 // player meets them (docs/TEAMS.md). Each waits for the claims workflow to put it under the game's issue before the next,
 // which keeps them in that order. A part that names its recording, or whose name a piece has already, is left out, so
 // running it again opens only what's new. It only lists them, unless --yes says the person has said yes. --repo reads
-// and opens them in another copy of the repository, such as a fork that tries the claims workflow.
+// and opens them in another copy of the repository, such as a fork that tries the claims workflow. With a version's
+// name, such as sonic-battle/c, it opens the tasks of the game's version in that language, "Task: Title screen in C",
+// one for every foundation and part the version hasn't proven, as a version proves each part again (src/lib/pieces.mjs).
 
 import { readPartsFile } from './lib/proof-files.mjs';
-import { nameKey, pieceName, planOf } from '../src/lib/pieces.mjs';
+import { nameKey, pieceOf, planOf, taskTitle } from '../src/lib/pieces.mjs';
+import { LANGUAGES, versionOf } from '../src/lib/languages.mjs';
 import { UPSTREAM, api } from './lib/github.mjs';
 import { readClaims } from './lib/claims.mjs';
 import { dreamports } from './readme.mjs';
 
-const USAGE = 'Usage: npm run dp -- tasks <game> [--repo <owner/name>] [--yes]';
+const USAGE = 'Usage: npm run dp -- tasks <game>[/c] [--repo <owner/name>] [--yes]';
 const WAIT_MS = 90_000, EVERY_MS = 5_000;
 
 export async function run(args) {
-  const { game, repo = UPSTREAM, yes = false } = options(args);
+  const { game: version, repo = UPSTREAM, yes = false } = options(args);
+  const { game, language } = versionOf(version);
   const file = readPartsFile(game), parts = file.parts ?? [];
   if (!parts.length) throw new Error(`games/${game}/proof/parts.json lists no parts yet, and each task is one of them.`);
   const claims = readClaims(repo);
-  const entry = dreamports().find(d => d.game === game)?.entry;
+  const dreamport = dreamports().find(d => d.game === game), entry = dreamport?.entry;
   const home = claims.gameIssueOf(game, entry);
   if (!home) throw new Error(`Nobody has claimed ${game} with a New Dreamport issue in ${repo} yet, and its tasks go under that issue.`);
+  const inVersion = language === 'js' ? null : dreamport?.versions.find(v => v.language === language);
+  if (language !== 'js' && !inVersion) throw new Error(`${game} has no version in ${LANGUAGES[language].name} yet: npm run dp -- new ${version} starts one.`);
 
   const pieces = claims.piecesOf(game, entry);
-  const wanted = missingParts(planOf(file), pieces);
+  const proven = new Set((inVersion?.proof?.gameplay?.parts ?? []).filter(p => p.proven).map(p => nameKey(p.name)));
+  const wanted = missingParts(planOf(file), pieces, language, proven);
   if (!wanted.length) {
-    console.log(`Every foundation and part of ${game} has its task already, under #${home.number}.`);
+    console.log(`Every foundation and part of ${version} has its task already, under #${home.number}.`);
     return 0;
   }
   if (!yes) {
@@ -34,11 +41,12 @@ export async function run(args) {
     console.log('\nNothing was opened: --yes opens them, once you have said yes.');
     return 0;
   }
-  const numbers = new Map(pieces.map(p => [nameKey(pieceName(p)), p.number]));
-  const named = name => ({ name, number: numbers.get(nameKey(name)) });
+  // the pieces in this language by their parts' names, as each task names what comes before it and what it needs
+  const numbers = new Map(pieces.filter(p => pieceOf(p).language === language).map(p => [nameKey(pieceOf(p).name), p.number]));
+  const named = name => ({ name: language === 'js' ? name : `${name} in ${LANGUAGES[language].name}`, number: numbers.get(nameKey(name)) });
   for (const part of wanted) {
     const before = part.foundation ? null : parts[parts.findIndex(p => p.name === part.name) - 1];
-    const issue = api(`repos/${repo}/issues`, { method: 'POST', body: { title: `Task: ${part.name}`, body: taskText(game, part, before && named(before.name), part.needs.map(named)) } });
+    const issue = api(`repos/${repo}/issues`, { method: 'POST', body: { title: taskTitle(part.name, language), body: taskText(version, part, before && named(before.name), part.needs.map(named)) } });
     numbers.set(nameKey(part.name), issue.number);
     console.log(`#${issue.number} ${part.name}${await underItsGame(repo, issue.number) ? '' : `: the bot hasn't put it under #${home.number} yet, and will`}`);
   }
@@ -61,19 +69,25 @@ function options(args) {
   return { ...found, game: found.rest[0] };
 }
 
-/** The foundations and parts that still need a task: no recording proves them, and no piece, open or closed, has their name. */
-export function missingParts(parts, pieces) {
-  const named = new Set(pieces.map(p => nameKey(pieceName(p))));
-  return parts.filter(part => !part.recording && !named.has(nameKey(part.name)));
+/**
+ * The foundations and parts that still need a task: no recording proves them, and no piece, open or closed, has their
+ * name. In another language, those with no piece in that language that the version hasn't proven, the names in `proven`.
+ */
+export function missingParts(parts, pieces, language = 'js', proven = new Set()) {
+  const named = new Set(pieces.filter(p => pieceOf(p).language === language).map(p => nameKey(pieceOf(p).name)));
+  return parts.filter(part => !named.has(nameKey(part.name)) && (language === 'js' ? !part.recording : !proven.has(nameKey(part.name))));
 }
 
 const titled = ({ name, number }) => `${name}${number ? ` (#${number})` : ''}`;
 
 /**
  * A foundation's or a part's Task issue, under the headings of the Task form, which is how the claims workflow reads it.
- * `before` is the part a player meets just before it, and `needs` what it needs, each { name, number }.
+ * `before` is the part a player meets just before it, and `needs` what it needs, each { name, number }. `game` can be a
+ * version, such as sonic-battle/c, whose task is written from the JavaScript and proven again in its language.
  */
-export function taskText(game, part, before, needs = []) {
+export function taskText(version, part, before, needs = []) {
+  const { game, language } = versionOf(version);
+  if (language !== 'js') return versionTaskText(version, part, before, needs);
   const after = before ? `It comes right after ${titled(before)}.` : 'It\'s where a player starts.';
   const needing = needs.length ? ` It needs ${needs.map(titled).join(' and ')} first.` : '';
   const what = part.foundation ? `${part.name}, which other pieces of the game need.${part.what ? ` ${part.what}` : ''}` : `${part.name}, one of the game's parts. ${after}`;
@@ -85,6 +99,21 @@ export function taskText(game, part, before, needs = []) {
     '### Kind', '', part.foundation ? 'Foundation' : 'Something else', '',
     '### What it is', '', `${what}${needing}`, '',
     '### Done when', '', done, '',
+    '### Taking it', '', '- [ ] I\'m taking this task myself.',
+  ].join('\n');
+}
+
+// a task of a version in another language: the same part, written from the game's JavaScript, which it needs first
+function versionTaskText(version, part, before, needs) {
+  const { game, language } = versionOf(version), called = LANGUAGES[language].name;
+  const after = before ? `It comes right after ${titled(before)}.` : 'It\'s where a player starts.';
+  const needing = needs.length ? ` It needs ${needs.map(titled).join(' and ')} first.` : '';
+  const what = part.foundation ? `${part.name} in ${called}, which other pieces of the game's version in ${called} need.` : `${part.name} in ${called}, one of the game's parts, in its version in ${called}. ${after}`;
+  return [
+    '### Game folder', '', game, '',
+    '### Kind', '', part.foundation ? 'Foundation' : 'Something else', '',
+    '### What it is', '', `${what}${needing} It's written in \`games/${version}/\` from the game's JavaScript, which is finished for it first.`, '',
+    '### Done when', '', `The recordings that prove ${part.name} in JavaScript play the same in ${called}, every frame matching the original in picture and sound, and \`npm run dp -- prove ${version}\` shows ${part.foundation ? 'no frame that differs' : 'the part as proven'}.`, '',
     '### Taking it', '', '- [ ] I\'m taking this task myself.',
   ].join('\n');
 }

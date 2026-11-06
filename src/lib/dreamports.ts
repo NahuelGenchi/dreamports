@@ -3,6 +3,7 @@
 // what it's built with; and what its page in the Make row shows, for the people making it. games/README.md describes
 // the entry.
 import { hasCode as codeIn, isBeingMade, numbersText, proofOf, shortPercent } from './entries.mjs';
+import { LANGUAGES, OTHER_LANGUAGES, versionName } from './languages.mjs';
 import { SOURCE_URL, makeUrl, type Game } from './site';
 import type { Making, Step } from './making';
 
@@ -20,11 +21,14 @@ export interface Fact {
 
 // Read as the site is built, so the page always shows what's in the folders.
 const PROOF = import.meta.glob<unknown>('/games/*/proof/{original,code-map,progress,port-map,parts}.json', { eager: true, import: 'default' });
+// what a version in another language keeps of its own, its numbers (src/lib/languages.mjs)
+const VERSIONS = import.meta.glob<unknown>('/games/*/*/proof/{progress,port-map}.json', { eager: true, import: 'default' });
 const RECORDINGS = import.meta.glob<unknown>('/games/*/proof/recordings/*.json', { eager: true, import: 'default' });
 const KITS = import.meta.glob<string>('/kit/*/README.md', { eager: true, query: '?raw', import: 'default' });
 const LISTS = import.meta.glob<readonly AchievementView[]>('/games/*/src/achievements/list.js', { import: 'ACHIEVEMENTS' });
 
 const proofFile = (game: string, name: string) => PROOF[`/games/${game}/proof/${name}.json`] as never;
+const versionFile = (version: string, name: string) => VERSIONS[`/games/${version}/proof/${name}.json`] as never;
 const proofLink = (game: string, path: string) => `${SOURCE_URL}/blob/main/games/${game}/proof/${path}`;
 
 type Proof = NonNullable<ReturnType<typeof proofOf>>;
@@ -32,23 +36,28 @@ type Proof = NonNullable<ReturnType<typeof proofOf>>;
 /** A game's parts.json as it is, for what its pieces need (src/lib/pieces.mjs), or undefined without one. */
 export const partsFile = (game: string): unknown => PROOF[`/games/${game}/proof/parts.json`];
 
-// what the proof tools measured for a game, checked as the site is built
-function proofFor(game: string): Proof | null {
+// what the proof tools measured for a game, checked as the site is built, or with `language`, for its version in it
+function proofFor(game: string, language = 'js'): Proof | null {
+  const version = versionName(game, language), own = language === 'js' ? proofFile : versionFile;
   const prefix = `/games/${game}/proof/recordings/`;
   const recordings = Object.fromEntries(
     Object.entries(RECORDINGS)
       .filter(([path]) => path.startsWith(prefix))
       .map(([path, recording]) => [path.slice(prefix.length, -'.json'.length), recording]),
   );
-  return proofOf(game, {
+  return proofOf(version, {
     original: proofFile(game, 'original'),
     map: proofFile(game, 'code-map'),
-    progress: proofFile(game, 'progress'),
-    portMap: proofFile(game, 'port-map'),
+    progress: own(version, 'progress'),
+    portMap: own(version, 'port-map'),
     parts: proofFile(game, 'parts'),
     recordings: recordings as never,
   });
 }
+
+// the languages a game has a version in besides JavaScript, those with numbers of their own
+const versionsOf = (game: string) => OTHER_LANGUAGES.filter((language) =>
+  ['progress', 'port-map'].some((name) => versionFile(versionName(game, language), name) !== undefined));
 
 /** A Dreamport's two numbers as text, such as "Code ported 38% · Gameplay proven 3%", for its place in the Make row. */
 export const numbersOf = (data: Dreamport): string => numbersText(proofFor(data.game));
@@ -90,14 +99,20 @@ export interface PartView {
   href: string | null;
 }
 
-export interface DreamportView {
-  game: Fact[];
-  achievements: readonly AchievementView[];
+// A version's two numbers, its parts and its evidence, as a game's are.
+export interface ProgressView {
   ported: Measure;
   gameplay: Measure;
   // the game's parts and where the evidence for both numbers is, folded away in gameplay proven's line
   parts: PartView[];
   evidence: { value: string; href: string }[];
+}
+
+export interface DreamportView extends ProgressView {
+  game: Fact[];
+  achievements: readonly AchievementView[];
+  // its versions in other languages, such as C, with numbers of their own, named in their labels
+  versions: ProgressView[];
   // the links under the numbers: where to help make it, and the lead's team preview
   progress: Fact[];
   // what it's built with, every source of its code, and its source code, folded away at the end (docs/STANDARD.md)
@@ -177,6 +192,23 @@ export function makeView(data: Dreamport, github?: Making): MakeView {
   };
 }
 
+// a game's two numbers, or with `language`, its version's, whose labels name the language, as in "Code ported in C"
+function progressView(game: string, proof: Proof | null, language = 'js'): ProgressView {
+  const { ported = null, gameplay = null } = proof ?? {};
+  const named = (label: string) => (language === 'js' ? label : `${label} in ${LANGUAGES[language as keyof typeof LANGUAGES].name}`);
+  const version = versionName(game, language);
+  return {
+    ported: { label: named('Code ported'), percent: ported?.percent ?? null, text: shortPercent(ported?.percent) },
+    gameplay: { label: named('Gameplay proven'), percent: gameplay?.percent ?? null, text: shortPercent(gameplay?.percent) },
+    parts: partsOf(game, gameplay),
+    evidence: [
+      ...(ported ? [{ value: 'The port map', href: `${SOURCE_URL}/blob/main/games/${version}/proof/port-map.json` }] : []),
+      ...(gameplay ? [{ value: 'The recordings', href: `${SOURCE_URL}/tree/main/games/${game}/proof/recordings` }] : []),
+      { value: 'How it’s measured', href: `${SOURCE_URL}/blob/main/docs/STANDARD.md#how-progress-is-measured` },
+    ],
+  };
+}
+
 export async function dreamportView(data: Dreamport): Promise<DreamportView> {
   const { game } = data;
   const proof = proofFor(game);
@@ -189,7 +221,6 @@ export async function dreamportView(data: Dreamport): Promise<DreamportView> {
     throw new Error(`games/${game}/proof/ has no code map yet. A Dreamport maps every function of the original first, `
       + `with npm run dp -- codemap ${game}, so its progress map shows the whole game from the start (docs/STANDARD.md#how-progress-is-measured).`);
   }
-  const { ported, gameplay } = proof;
   return {
     game: [
       { label: 'Original', value: [data.platform, data.year].filter(Boolean).join(', ') },
@@ -198,14 +229,8 @@ export async function dreamportView(data: Dreamport): Promise<DreamportView> {
       ...data.facts,
     ],
     achievements,
-    ported: { label: 'Code ported', percent: ported?.percent ?? null, text: shortPercent(ported?.percent) },
-    gameplay: { label: 'Gameplay proven', percent: gameplay?.percent ?? null, text: shortPercent(gameplay?.percent) },
-    parts: partsOf(game, gameplay),
-    evidence: [
-      ...(ported ? [{ value: 'The port map', href: proofLink(game, 'port-map.json') }] : []),
-      ...(gameplay ? [{ value: 'The recordings', href: `${SOURCE_URL}/tree/main/games/${game}/proof/recordings` }] : []),
-      { value: 'How it’s measured', href: `${SOURCE_URL}/blob/main/docs/STANDARD.md#how-progress-is-measured` },
-    ],
+    ...progressView(game, proof),
+    versions: versionsOf(game).map((language) => progressView(game, proofFor(game, language), language)),
     progress: [
       // where to help make it, while it's being made: its page in the Make row, with its steps and free pieces
       ...(beingMade(data) ? [{ label: 'Help make it', href: makeUrl(data.game) }] : []),

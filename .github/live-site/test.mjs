@@ -55,6 +55,18 @@ test('a place in the Make row with old numbers, or none, is found', async () => 
   assert.match((await problemsWith([one], reader({ ...PAGES, '/make/': '' })))[0], /has no numbers in the Make row/);
 });
 
+test('a version in another language has its own numbers on the card, named by the language', async () => {
+  const both = { ...one, versions: [{ language: 'c', proof: { ported: { percent: 2 }, gameplay: { percent: 0 } } }] };
+  const withC = (ported, gameplay) => meter('Code ported in C', ...ported) + `<details><summary>${meter('Gameplay proven in C', ...gameplay)}</summary></details>`;
+  const pages = Object.fromEntries(Object.entries(PAGES).map(([path, html]) => [path, html.replaceAll('</dialog>', `${withC(['2%', 2], ['0%', 0])}</dialog>`)]));
+  assert.deepEqual(await problemsWith([both], reader(pages)), []);
+  assert.match((await problemsWith([both], reader()))[0], /^\/dreamports\/one-dreamport\/: .* has no Code ported in C\.$/);
+  const stale = { ...pages, '/make/one/': card('make-one-dreamport', ['5%', 5.35], ['11%', 10.53]).replace('</dialog>', `${withC(['1%', 1], ['0%', 0])}</dialog>`) };
+  const [problem, ...rest] = await problemsWith([both], reader(stale));
+  assert.match(problem, /in the Make row shows Code ported in C 1% .*makes 2% \(2%\)/);
+  assert.deepEqual(rest, []);
+});
+
 test('a missing page or a card that isn\'t on it is found', async () => {
   const { '/make/one/': _, ...gone } = PAGES;
   assert.match((await problemsWith([one], reader(gone)))[0], /^\/make\/one\/: .* has no page/);
