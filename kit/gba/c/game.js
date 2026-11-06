@@ -3,7 +3,8 @@
 // controller, achievements and the proof tools' part, proof.js) stays the JavaScript kit's. Loading the game and its
 // audio thread are what every console's kit in C shares (kit/c/game.js). What it gives back is what a JavaScript game's
 // page has: `video`, the video hardware as video.js's (its VRAM, colours, OAM and registers, which the proof tools
-// compare with the original's) with `drawFrame`, `step(keys)`, the game's frame, and `sound`.
+// compare with the original's) with `drawFrame`, `step(keys)`, the game's frame, and `sound`, and `game`, what its
+// WebAssembly exports, for what is the game's own, such as a link cable between several GBAs on one page.
 //
 // The game's sound (sound.c) plays as the JavaScript kit's does (sound/audio.js). For a player, the game hands its calls
 // over after each frame, and a second copy of the same WebAssembly plays them on an audio thread of its own
@@ -20,9 +21,10 @@ const CALL_WORDS = 5;
 /**
  * Loads the game's WebAssembly from `url` and starts it with `rom` (rom/rom.js), its save memory kept in the browser
  * under `save` (save.js), and the words of the page's address in `query`, which gba_start_point reads (a recording's
- * start point under the proof tools, such as ?proof&unlocked=1), and returns { video, step(keys) }.
+ * start point under the proof tools, such as ?proof&unlocked=1), and returns { video, step(keys) }. With `heard` false the
+ * game plays no sound, as each GBA after the first of a page with several does: only the first one's is heard.
  */
-export async function loadGame(url, rom, { save = null, query = globalThis.location?.search ?? '' } = {}) {
+export async function loadGame(url, rom, { save = null, query = globalThis.location?.search ?? '', heard = true } = {}) {
   const { game, code } = await openGame(url, rom.bytes, { save, query });
   const memory = game.memory;
 
@@ -42,7 +44,7 @@ export async function loadGame(url, rom, { save = null, query = globalThis.locat
     return views;
   };
 
-  const sound = createSound(game, code, rom);
+  const sound = heard ? createSound(game, code, rom) : SILENT;
   game.dp_start();
   sound.started();
 
@@ -59,8 +61,11 @@ export async function loadGame(url, rom, { save = null, query = globalThis.locat
       if (globalThis.dreamportsProof) dreamportsProof.video = video;
     },
   };
-  return { video, sound, step: keys => { game.dp_step(keys); sound.frameDone(); } };
+  return { game, video, sound, step: keys => { game.dp_step(keys); sound.frameDone(); } };
 }
+
+// a game that plays no sound: its calls stay with it, and nothing hears them
+const SILENT = { started() {}, frameDone() {}, muted: false, held: false };
 
 // The game's sound: on the page for the proof tools, or handed over to the audio thread.
 function createSound(game, code, rom) {
