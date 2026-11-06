@@ -75,6 +75,16 @@ test('a version in another language has its map under the game\'s, once it has i
   assert.match(one.body, /progress\/one\.svg\)\n\n!\[[^\]]*\]\([^)]*progress\/one-c\.svg\)\n\n<!-- \/dreamports-map -->/);
 });
 
+test('a game that started in C shows its version in C\'s map alone', async () => {
+  const one = issue(7, 'one');
+  const { api } = github([one]);
+  const folder = repo({ one: 7 }, ['one/c']);
+  mkdirSync(join(folder, 'games/one/c'), { recursive: true });
+  writeFileSync(join(folder, 'games/one/c/index.html'), '');
+  await run(folder, api);
+  assert.match(one.body, /<!-- dreamports-map -->\n\n!\[[^\]]*\]\([^)]*progress\/one-c\.svg\)\n\n<!-- \/dreamports-map -->/);
+});
+
 test('a second run changes nothing', async () => {
   const one = issue(7, 'one');
   const { api, patched } = github([one]);

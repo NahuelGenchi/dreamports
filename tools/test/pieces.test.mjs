@@ -113,3 +113,19 @@ test('a piece in C waits for the same piece in JavaScript, and for what it needs
   // and the JavaScript pieces are free as they were
   assert.deepEqual(numbers(free).filter(n => n < 10), numbers(whatCanStart(js, file).free));
 });
+
+test('a game that started in C has its pieces in C alone, which wait on nothing in JavaScript', () => {
+  const inC = [
+    piece(11, 'Task: The menu in C'), piece(12, 'Task: Options in C'), piece(13, 'Task: The arena in C'), piece(14, 'Task: The fighting in C'),
+    piece(16, 'Task: Story in C'),
+  ];
+  const { free, waiting } = whatCanStart(inC, file, new Set(), { main: 'c' });
+  // the logos have no task, and parts.json names their recording, proven in C as the game has no other version
+  assert.deepEqual(numbers(free), [13, 11, 12]);
+  const on = Object.fromEntries(waiting.map(w => [w.piece.number, w.on]));
+  assert.deepEqual(on[14], [{ name: 'The arena in C', number: 13 }]);
+  assert.deepEqual(on[16], [{ name: 'The fighting in C', number: 14 }]);
+  // a JavaScript version added later waits for the same part in C, as it's written from it
+  const later = whatCanStart([...inC, piece(21, 'Task: Options')], file, new Set(), { main: 'c' });
+  assert.deepEqual(later.waiting.find(w => w.piece.number === 21).on, [{ name: 'Options in C', number: 12 }]);
+});

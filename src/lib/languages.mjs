@@ -1,6 +1,7 @@
-// The languages a Dreamport can be written in, and its versions in them. Every Dreamport has its JavaScript version
-// in its folder, games/<game>/, as it always had. A version in another language is a page of its own in a folder named
-// after the language, such as games/<game>/c/, played at /play/<game>/c/. It shares the game's proof/ (the copy, the
+// The languages a Dreamport can be written in, and its versions in them. A game's JavaScript version is in its folder,
+// games/<game>/, as it always was, and a version in another language is a page of its own in a folder named after the
+// language, such as games/<game>/c/, played at /play/<game>/c/. A new game starts in C, with no JavaScript version,
+// and one can be added later. It shares the game's proof/ (the copy, the
 // code map, the parts and the recordings, which are the original's and the same in every language), and keeps only
 // its own numbers, in its own proof/ (progress.json and port-map.json). The tools name a version by its folder, as in
 // `npm run dp -- prove sonic-battle/c`, and a task for it ends with the language's name, as in "Task: Title screen in
@@ -21,6 +22,16 @@ export const DEFAULT_LANGUAGE = 'c';
 /** The languages a version can be in besides JavaScript, whose folders are versions of a game's. */
 export const OTHER_LANGUAGES = Object.keys(LANGUAGES).filter(key => LANGUAGES[key].folder);
 
+/**
+ * A game's main version, from the languages it has a version in: its JavaScript one, when it has one, which is the
+ * game's own and was there first, or else its first in another language, as a game that started in C has. Its numbers
+ * are the game's first, and the others' come under them, and in a game with a JavaScript version, a task in another
+ * language waits for the same part in JavaScript, as it's written from it (pieces.mjs).
+ * @param {(keyof typeof LANGUAGES)[]} languages
+ * @returns {keyof typeof LANGUAGES}
+ */
+export const mainLanguage = languages => (languages.includes('js') || !languages.length ? 'js' : OTHER_LANGUAGES.find(key => languages.includes(key)));
+
 /** A version as the tools name it, such as 'sonic-battle/c', as { game, language }; a game alone is its JavaScript one. */
 export function versionOf(name) {
   const [game, folder, ...rest] = String(name).split('/');
@@ -38,11 +49,12 @@ export const versionName = (game, language) => (LANGUAGES[language].folder ? `${
 export const versionTitle = (title, language) => (language === 'js' ? title : `${title} in ${LANGUAGES[language].name}`);
 
 /**
- * The languages a game is played in, from its versions' (as ['c']), the default first and JavaScript, its own, last.
+ * The languages a game is played in, from those it has a version in (as ['js', 'c']), the default first and
+ * JavaScript last.
  * @param {(keyof typeof LANGUAGES)[]} languages
  * @returns {(keyof typeof LANGUAGES)[]}
  */
-export const playOrder = languages => [...new Set([...languages, 'js'])].sort((a, b) => (b === DEFAULT_LANGUAGE) - (a === DEFAULT_LANGUAGE) || (a === 'js') - (b === 'js'));
+export const playOrder = languages => [...new Set(languages.length ? languages : ['js'])].sort((a, b) => (b === DEFAULT_LANGUAGE) - (a === DEFAULT_LANGUAGE) || (a === 'js') - (b === 'js'));
 
 /**
  * Where a version plays, from the game's play link: https://dreamports.net/play/sonic-advance/c/ for C.

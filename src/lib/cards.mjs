@@ -26,7 +26,8 @@ function meterProblem(meters, label, percent) {
 
 /**
  * Everything wrong with what the pages show, as sentences, none when they show what each Dreamport's proof makes.
- * `dreamports` is [{ game, entry, proof, versions }], as tools/readme.mjs reads them, with `versions` as [{ language, proof }], and `read` gives a page's text from its
+ * `dreamports` is [{ game, entry, language, proof, versions }], as tools/readme.mjs reads them, with `language` and `proof` its main
+ * version's and `versions` as [{ language, proof }], and `read` gives a page's text from its
  * address, or null when there's no such page.
  */
 export async function problemsWith(dreamports, read) {
@@ -36,7 +37,7 @@ export async function problemsWith(dreamports, read) {
     return pages.get(path);
   };
   const problems = [];
-  for (const { game, entry, proof, versions = [] } of dreamports) {
+  for (const { game, entry, language = 'js', proof, versions = [] } of dreamports) {
     const id = pageOf(game);
     const making = isBeingMade(entry, proof);
     const cards = [
@@ -48,7 +49,7 @@ export async function problemsWith(dreamports, read) {
       const meters = html && metersIn(html, card);
       const wrong = !html ? ['has no page']
         : !meters ? ['isn\'t on its page']
-          : [[proof, ''], ...versions.map(version => [version.proof, ` in ${LANGUAGES[version.language].name}`])]
+          : [{ language, proof }, ...versions].map(version => [version.proof, version.language === 'js' ? '' : ` in ${LANGUAGES[version.language].name}`])
             .flatMap(([measured, named]) => [meterProblem(meters, CODE + named, measured?.ported?.percent), meterProblem(meters, GAMEPLAY + named, measured?.gameplay?.percent)])
             .filter(Boolean);
       problems.push(...wrong.map(what => `${path}: ${entry.title}'s card ${where} ${what}.`));

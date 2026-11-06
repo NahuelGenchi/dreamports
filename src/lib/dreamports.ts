@@ -3,7 +3,7 @@
 // what it's built with; and what its page in the Make row shows, for the people making it. games/README.md describes
 // the entry.
 import { hasCode as codeIn, isBeingMade, numbersText, proofOf, shortPercent } from './entries.mjs';
-import { LANGUAGES, OTHER_LANGUAGES, versionName } from './languages.mjs';
+import { LANGUAGES, OTHER_LANGUAGES, mainLanguage, versionName } from './languages.mjs';
 import { SOURCE_URL, makeUrl, type Game } from './site';
 import type { Making, Step } from './making';
 
@@ -55,12 +55,23 @@ function proofFor(game: string, language = 'js'): Proof | null {
   });
 }
 
-// the languages a game has a version in besides JavaScript, those with numbers of their own
-const versionsOf = (game: string) => OTHER_LANGUAGES.filter((language) =>
-  ['progress', 'port-map'].some((name) => versionFile(versionName(game, language), name) !== undefined));
+// the languages a game has a version in, those with numbers of their own, its main one first (src/lib/languages.mjs):
+// JavaScript when it has one, or the first other, as C in a game that started in C
+function languagesOf(game: string): (keyof typeof LANGUAGES)[] {
+  const has = (['js', ...OTHER_LANGUAGES] as (keyof typeof LANGUAGES)[]).filter((language) =>
+    ['progress', 'port-map'].some((name) => (language === 'js' ? proofFile(game, name) : versionFile(versionName(game, language), name)) !== undefined));
+  const main = mainLanguage(has);
+  return [main, ...has.filter((language) => language !== main)];
+}
+
+/** A game's main version's language: JavaScript, or C in a game that started in C, whose pieces wait on nothing in another language (src/lib/pieces.mjs). */
+export const mainLanguageOf = (game: string): keyof typeof LANGUAGES => languagesOf(game)[0];
+
+// what the proof tools measured for a game's main version
+const mainProof = (game: string) => proofFor(game, mainLanguageOf(game));
 
 /** A Dreamport's two numbers as text, such as "Code ported 38% · Gameplay proven 3%", for its place in the Make row. */
-export const numbersOf = (data: Dreamport): string => numbersText(proofFor(data.game));
+export const numbersOf = (data: Dreamport): string => numbersText(mainProof(data.game));
 
 // the kit's name, from its guide's heading, such as "Game Boy Advance kit"
 function kitName(kit: string): string {
@@ -141,10 +152,10 @@ function partsOf(game: string, gameplay: Proof['gameplay']): PartView[] {
 const CODE_URL = 'https://dreamports.net/code';
 
 /** Whether a Dreamport has a place in the Make row: once it has a real capture for its card, until every part of it is proven. */
-export const beingMade = (data: Dreamport): boolean => isBeingMade(data, proofFor(data.game));
+export const beingMade = (data: Dreamport): boolean => isBeingMade(data, mainProof(data.game));
 
 // whether a Dreamport has code of the original's
-const hasCode = (data: Dreamport): boolean => codeIn(proofFor(data.game));
+const hasCode = (data: Dreamport): boolean => codeIn(mainProof(data.game));
 
 /** Whether a Dreamport has its place in its row and its own page, for players. Until it has code, it's only in the Make row. */
 export const released = ({ data }: Game): boolean => hasCode(data);
@@ -169,7 +180,7 @@ const dayOf = (iso: string) => {
 };
 
 export function makeView(data: Dreamport, github?: Making): MakeView {
-  const parts = proofFor(data.game)?.gameplay?.parts ?? [];
+  const parts = mainProof(data.game)?.gameplay?.parts ?? [];
   const proven = parts.filter((part) => part.proven).length;
   const next = parts.find((part) => !part.proven);
   const summary = [
@@ -214,7 +225,8 @@ function progressView(game: string, proof: Proof | null, language = 'js'): Progr
 
 export async function dreamportView(data: Dreamport): Promise<DreamportView> {
   const { game } = data;
-  const proof = proofFor(game);
+  const [main, ...others] = languagesOf(game);
+  const proof = proofFor(game, main);
   if (proof && !data.needs.includes(proof.copy)) {
     throw new Error(`games/${game}/entry.md needs ${data.needs}, but its proof uses ${proof.copy}: "needs" names the same copy.`);
   }
@@ -232,8 +244,8 @@ export async function dreamportView(data: Dreamport): Promise<DreamportView> {
       ...data.facts,
     ],
     achievements,
-    ...progressView(game, proof),
-    versions: versionsOf(game).map((language) => progressView(game, proofFor(game, language), language)),
+    ...progressView(game, proof, main),
+    versions: others.map((language) => progressView(game, proofFor(game, language), language)),
     progress: [
       // where to help make it, while it's being made: its page in the Make row, with its steps and free pieces
       ...(beingMade(data) ? [{ label: 'Help make it', href: makeUrl(data.game) }] : []),

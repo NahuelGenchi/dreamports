@@ -71,6 +71,18 @@ export function startingFiles(game, original, { language = 'js' } = {}) {
   };
 }
 
+/**
+ * Every file of a whole new game, by its path in the game's folder: its entry and license, and its first version's
+ * page and code, in JavaScript in the game's folder itself, or with `language` 'c', in C in games/<game>/c/, as a new
+ * game starts in C (src/lib/languages.mjs). What `npm run dp -- new` writes, and the first-entry bot writes again.
+ */
+export function firstFiles(game, original, { language = 'js', issue, lead, added }) {
+  const entry = startingEntry(game, original, { issue, lead, added });
+  if (language === 'js') return { ...startingFiles(game, original), 'entry.md': entry };
+  const version = Object.fromEntries(Object.entries(startingFiles(game, original, { language })).map(([file, text]) => [`${language}/${file}`, text]));
+  return { 'LICENSE': readFileSync(new URL('../../kit/gba/LICENSE', import.meta.url), 'utf8'), 'entry.md': entry, ...version };
+}
+
 /** A WebP with only its picture, in the one part that holds it. A browser's canvas adds a colour profile, room a first entry's check couldn't read (.github/first-entry/rules.mjs). */
 export function plainWebp(bytes) {
   for (let at = 12; at + 8 <= bytes.length;) {

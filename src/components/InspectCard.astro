@@ -33,7 +33,7 @@ const id = game.id;
 const Title = open ? 'h1' : 'h2';
 // the languages it plays in, C first when it has a C version (src/lib/languages.mjs): with more than one, a choice
 // beside the box to tick, which sends its Play button to that version's page
-const languages = playOrder(dreamport.versions.map((version) => version.language));
+const languages = playOrder([dreamport.language, ...dreamport.versions.map((version) => version.language)]);
 const playIn = languages[0];
 // Every page holds every game's card, so each game's headings get ids of their own.
 const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$1 id="${id}-$2"`);

@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { dirname, join, relative } from 'node:path';
 import { parse } from 'yaml';
 import { REPO } from './lib/paths.mjs';
-import { otherVersions } from './lib/proof-files.mjs';
+import { versionsOf } from './lib/proof-files.mjs';
 import { versionOf, versionTitle } from '../src/lib/languages.mjs';
 import { ENTRY, mapOf, percentText, proofOf } from '../src/lib/entries.mjs';
 import { progressMap } from '../src/lib/progress-map.mjs';
@@ -49,8 +49,8 @@ export function writeReadme({ check = false } = {}) {
   if (start < 0 || end < start) throw new Error(`${STATUS} has lost the lines that mark its table of Dreamports:\n${START}\n${END}`);
   // blank lines around the table, so GitHub doesn't read the lines that mark it as part of it
   const files = new Map([[STATUS_FILE, `${text.slice(0, start + START.length)}\n\n${table(list)}\n\n${text.slice(end)}`]]);
-  for (const { game, entry, versions } of list) {
-    files.set(join(REPO, mapOf(game)), progressMap(game, readProofFiles(game), entry.title).svg);
+  for (const { name: main, language: mainIn, entry, versions } of list) {
+    files.set(join(REPO, mapOf(main)), progressMap(main, readProofFiles(main), versionTitle(entry.title, mainIn)).svg);
     for (const { name, language } of versions) files.set(join(REPO, mapOf(name)), progressMap(name, readProofFiles(name), versionTitle(entry.title, language)).svg);
   }
   const changed = [];
@@ -72,17 +72,21 @@ export function writeReadme({ check = false } = {}) {
   return { changed: changed.length > 0, files: changed.map(file => relative(REPO, file)) };
 }
 
-/** Every Dreamport's entry and what its proof measures, newest first, as the site lists them, with `versions`, each of
- *  its versions in other languages as { name, language, proof }. */
+/** Every Dreamport's entry and what its proof measures, newest first, as the site lists them: `name`, `language` and
+ *  `proof` are its main version's (src/lib/languages.mjs), its JavaScript one, or its version in C in a game that
+ *  started in C, and `versions` each of its others as { name, language, proof }. */
 export function dreamports() {
   const games = join(REPO, 'games');
   const found = readdirSync(games, { withFileTypes: true })
     .filter(d => d.isDirectory() && !d.name.startsWith('.') && existsSync(join(games, d.name, ENTRY)))
     .map(d => d.name);
-  return found.map(game => ({
-    game, entry: readEntry(game), proof: readProof(game),
-    versions: otherVersions(game).map(name => ({ name, language: versionOf(name).language, proof: readProof(name) })),
-  }))
+  return found.map(game => {
+    const [main, ...others] = versionsOf(game);
+    return {
+      game, entry: readEntry(game), name: main, language: versionOf(main).language, proof: readProof(main),
+      versions: others.map(name => ({ name, language: versionOf(name).language, proof: readProof(name) })),
+    };
+  })
     .map(dreamport => (checkEntry(dreamport.game, dreamport.entry, dreamport.proof), dreamport))
     .sort((a, b) => new Date(b.entry.added) - new Date(a.entry.added));
 }
@@ -157,11 +161,11 @@ function table(list) {
     return [map(percentText(proof.ported.percent)), gameplay ? map(`${percentText(gameplay.percent)}, ${gameplay.proven} of ${gameplay.total} parts`) : 'No parts listed yet'];
   };
   // a version in another language has a row of its own under the game's, with no way to play it from here yet
-  const rows = list.flatMap(({ game, entry, proof, versions }) => {
+  const rows = list.flatMap(({ entry, name: main, language: mainIn, proof, versions }) => {
     const link = entry.ownCopy.links[0];
     const team = entry.team?.length ? `, with ${entry.team.map(profile).join(', ')}` : '';
     return [
-      `| **[${cell(entry.title)}](../games/${game}/)** | ${numbers(game, proof).join(' | ')} | ${profile(entry.lead)}${team} | [${link.icon === 'download' ? '⬇' : '▶'}&nbsp;${cell(link.label)}](${link.href}) |`,
+      `| **[${cell(versionTitle(entry.title, mainIn))}](../games/${main}/)** | ${numbers(main, proof).join(' | ')} | ${profile(entry.lead)}${team} | [${link.icon === 'download' ? '⬇' : '▶'}&nbsp;${cell(link.label)}](${link.href}) |`,
       ...versions.map(({ name, language, proof: theirs }) => `| [${cell(versionTitle(entry.title, language))}](../games/${name}/) | ${numbers(name, theirs).join(' | ')} | ${profile(entry.lead)}${team} | Not yet |`),
     ];
   });
