@@ -12,7 +12,7 @@ import { REPO } from '../lib/paths.mjs';
 /** The C kit's folder, with gba.h and the kit's own sources. */
 export const C_KIT = fileURLToPath(new URL('../../kit/gba/c/', import.meta.url));
 /** The kit's sources a game is built with, besides its own: native.c only for this computer. */
-export const KIT_SOURCES = ['video.c', 'kit.c', 'libc.c'].map(file => join(C_KIT, file));
+export const KIT_SOURCES = ['video.c', 'kit.c', 'libc.c', 'apu.c', 'm4a.c', 'sound.c'].map(file => join(C_KIT, file));
 export const NATIVE_MAIN = join(C_KIT, 'native.c');
 
 // what both builds ask of the C: C11, warnings that catch a slip, and the same arithmetic everywhere

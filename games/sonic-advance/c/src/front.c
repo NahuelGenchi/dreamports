@@ -53,8 +53,8 @@ void front_step(uint16_t keys) {
 void front_play(int level) { (void)level; ctx.done = 1; }
 void front_start_demo(void) { ctx.done = 1; }
 
-// the sound the screens start: the kit in C has no sound yet (#604), so each is left out, where it would play
-void play_song(int song) { (void)song; }
-void play_song_or_continue(int song) { (void)song; }
-void stop_song(int song) { (void)song; }
-void stop_all_songs(void) {}
+// the sound the screens start, on the kit's sound engine (gba/engine.js's playSong and the rest)
+void play_song(int song) { gba_sound_play(song); }                            // m4aSongNumStart
+void play_song_or_continue(int song) { gba_sound_start_or_continue(song); }  // m4aSongNumStartOrContinue
+void stop_song(int song) { gba_sound_stop(song); }                            // m4aSongNumStop
+void stop_all_songs(void) { gba_sound_stop_all(); }                           // m4aMPlayAllStop

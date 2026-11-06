@@ -4,8 +4,11 @@
 
 #include "sa.h"
 
-// once, with the player's copy in gba_rom: the save the cartridge keeps, then the console's power-on
+// once, with the player's copy in gba_rom: the sound engine, the save the cartridge keeps, then the console's power-on.
+// Sonic Advance builds the engine with four music players, the music's and three for sound effects, and its sound mode
+// (rom/sound.js): 5 DirectSound channels, master volume 15, 10512 Hz and no reverb
 void game_start(void) {
+  gba_sound_start(4, 5, 15, 10512, 0);
   save_open();
   front_start();
 }
