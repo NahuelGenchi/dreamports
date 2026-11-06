@@ -115,7 +115,7 @@ async function builtFrom(game, left) {
   const src = join(gameFolder(game), 'src');
   if (!existsSync(src) || !readdirSync(src).some(name => name.endsWith('.c'))) return [];
   const { buildGame, consoleOfFolder, kitPaths } = await import('./lib/c.mjs');
-  // the game's C, and its console's kit in C (kit/c/, and kit/gba/c/ on the Game Boy Advance)
+  // the game's C, and its console's kit in C (kit/c/, with kit/gba/c/ on the Game Boy Advance and kit/nes/c/ on the NES)
   const kits = kitPaths(consoleOfFolder(gameFolder(game)));
   const changed = left.map(line => line.slice(3)).filter(path => path.startsWith(`games/${game}/src/`) || kits.some(kit => path.startsWith(kit)) || path === 'kit/consoles.js');
   if (changed.length) throw new Error(`Commit the C first, as the preview's game is built from it: ${changed.slice(0, 4).join(', ')}${changed.length > 4 ? ', …' : ''}.`);

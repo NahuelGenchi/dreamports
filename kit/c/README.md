@@ -4,7 +4,7 @@
 
 This folder is what every console's kit in C shares, so a game can be written in C on any console in [`kit/consoles.js`](../consoles.js). A game in C runs in the browser with nothing to install: it's built to WebAssembly, and its page is the one every console's games share, with the same start screen, settings, controller drawn on touch screens and proof mode. The same C also builds for a computer, with no browser.
 
-A console with a kit in C of its own builds on this one, as the Game Boy Advance's does in [`kit/gba/c/`](../gba/c/README.md), which draws and plays as the console's hardware does. A game on any other console stands on this alone, and draws its own picture at its own size, and makes its own sound, as a JavaScript game on such a console does ([Other consoles](../../docs/CONSOLES.md)).
+A console with a kit in C of its own builds on this one, as the Game Boy Advance's does in [`kit/gba/c/`](../gba/c/README.md) and the NES's in [`kit/nes/c/`](../nes/c/README.md), which draw and play as the console's hardware does. A game on any other console stands on this alone, and draws its own picture at its own size, and makes its own sound, as a JavaScript game on such a console does ([Other consoles](../../docs/CONSOLES.md)).
 
 Like the rest of the kits it's under [GPL-3.0-or-later](LICENSE), and nothing from any game is in it.
 

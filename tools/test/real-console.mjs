@@ -109,6 +109,15 @@ const GAME_CODE = ({ moved = 1, loud = 1 } = {}) => `function createGame() {
   };
 }`;
 
+// the same Dreamport in C, on the NES kit in C (kit/nes/c/): made-up-nes.c, with the program's numbers filled in
+const C_GAME = `${GAME}/c`;
+function writeGameInC({ moved = 1 } = {}) {
+  const numbers = { SCROLL: RAM.scroll, X: RAM.x, Y: RAM.y, BACKDROP: RAM.backdrop, START_X: START.x, START_Y: START.y, START_BACKDROP: START.backdrop, PRESSED_BACKDROP: START.pressedBackdrop, SPRITE: START.sprite, TIMER, PALETTE_AT, MOVED: moved };
+  const code = readFileSync(join(REPO, 'tools', 'test', 'made-up-nes.c'), 'utf8').replace(/@([A-Z_]+)@/g, (_, key) => numbers[key]);
+  writeFileSync(join(gameFolder(C_GAME), 'src', 'main.c'), code);
+}
+const reportInC = recording => JSON.parse(readFileSync(join(resultFolder(C_GAME, recording), 'report.json'), 'utf8'));
+
 function writeGame(code) {
   const path = join(gameFolder(GAME), 'src', 'main.js');
   writeFileSync(path, readFileSync(path, 'utf8').replace(/function createGame\(\) \{[^]*?\n\}\n/, `${code}\n`));
@@ -215,6 +224,26 @@ async function main() {
 
   run = dp('prove', GAME, 'later', '--quick', '--state', '10');
   check(run.status === 0 && run.out.includes("can't be compared"), 'prove --state says it can\'t compare what this console holds, and still compares the rest');
+
+  console.log('The same program in C, on the NES kit in C');
+  for (const [file, text] of Object.entries(startingFiles(GAME, original, { language: 'c' }))) {
+    mkdirSync(join(gameFolder(C_GAME), file, '..'), { recursive: true });
+    writeFileSync(join(gameFolder(C_GAME), file), text);
+  }
+  run = dp('prove', C_GAME, 'buttons');
+  check(run.status !== 0 && reportInC('buttons').firstDifference?.frame === 1, `what new writes in C draws on the kit's PPU, the console's grey first frame and then its blue backdrop, and differs at frame 1: ${JSON.stringify(reportInC('buttons').firstDifference)}`);
+  writeGameInC();
+  run = dp('prove', C_GAME, 'buttons');
+  const inC = reportInC('buttons');
+  check(run.status === 0 && inC.matched === 240 && inC.sound.heard, `the PPU and the APU in C match the emulator on every frame, picture and sound: ${inC.matched} of ${inC.frames}, ${JSON.stringify(inC.firstDifference)}, ${JSON.stringify(inC.sound.firstDifference)}`);
+  if (run.status) console.log(run.out);
+  run = dp('prove', C_GAME, 'later');
+  check(run.status === 0 && reportInC('later').matched === 60, `and from a start point: ${reportInC('later').matched} of ${reportInC('later').frames}`);
+  if (run.status) console.log(run.out);
+  writeGameInC({ moved: 2 });
+  run = dp('prove', C_GAME, 'buttons');
+  check(run.status !== 0 && reportInC('buttons').firstDifference?.frame === 140, `a sprite in C that moves too far is found at frame 140: ${JSON.stringify(reportInC('buttons').firstDifference)}`);
+  writeGameInC();
 
   writeGame(GAME_CODE({ moved: 2 }));
   run = dp('prove', GAME, 'buttons');
