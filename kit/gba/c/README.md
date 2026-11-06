@@ -2,7 +2,7 @@
 
 [Back to the kit](../README.md) · [The Dreamport standard](../../../docs/STANDARD.md) · [Written in: #595](https://github.com/NahuelGenchi/dreamports/issues/595)
 
-This folder is the [Game Boy Advance kit](../README.md) for games written in C. It holds the same hardware layer as the JavaScript kit, and draws every frame to the same pixel, so a game can move between the two languages with nothing else changing. A game in C still runs in the browser with nothing to install: it's built to WebAssembly, and its page is the JavaScript kit's, with the same start screen, settings, controller drawn on touch screens, achievements and proof mode. The same C also builds for a computer, with no browser.
+This folder is the [Game Boy Advance kit](../README.md) for games written in C, on what [every console's kit in C](../../c/README.md) shares. It holds the same hardware layer as the JavaScript kit, and draws every frame to the same pixel, so a game can move between the two languages with nothing else changing. A game in C still runs in the browser with nothing to install: it's built to WebAssembly, and its page is the JavaScript kit's, with the same start screen, settings, controller drawn on touch screens, achievements and proof mode. The same C also builds for a computer, with no browser.
 
 Like the rest of the kit it's under [GPL-3.0-or-later](../LICENSE), and nothing from any game is in it.
 
@@ -10,11 +10,10 @@ Like the rest of the kit it's under [GPL-3.0-or-later](../LICENSE), and nothing 
 
 | File | What it does |
 | :--- | :--- |
-| `gba.h` | What a game sees of the console: VRAM, the colours, OAM and the display registers, the buttons, the player's copy, the save memory and memory of its own |
+| `gba.h` | What a game sees of the console: VRAM, the colours, OAM and the display registers, the buttons, and, from [`kit/c/kit.h`](../../c/kit.h), the player's copy, the save memory, the start point's words and memory of its own |
 | `video.c` | The video hardware's drawing, written from [`video.js`](../video.js) a function at a time, so it draws as mGBA does too |
-| `kit.c` | The player's copy, the save memory, the words of the page's address, memory for the game, and what the page calls to run it |
-| `libc.c` | The few C library functions the compiler calls on its own, as WebAssembly has no C library |
-| `game.js` | The page's side: it loads the game's WebAssembly, hands it the copy and the buttons, and gives the page the `video` and `step` a JavaScript game gives it |
+| `gba.c` | What the page calls to run the game: its start, its frames, their drawing, and where the video hardware is for the proof tools |
+| `game.js` | The page's side: on [`kit/c/game.js`](../../c/game.js), which loads the game's WebAssembly and hands it the copy, it hands it the buttons and gives the page the `video` and `step` a JavaScript game gives it |
 | `apu.c` | The sound hardware: the four Game Boy channels, the two DirectSound FIFOs and the mix, written from [`sound/apu.js`](../sound/apu.js) |
 | `m4a.c`, `sound.h` | Nintendo's sound engine (MusicPlayer2000, or "m4a"), written from [`sound/m4a.js`](../sound/m4a.js) |
 | `sound.c` | The engine and the hardware on one clock, from [`sound/synth.js`](../sound/synth.js), the game's sound calls, and what the page calls to play them |
@@ -31,7 +30,7 @@ A game defines two functions. `game_start()` runs once, with the player's copy i
 
 Its folder, `games/<game>/c/`, holds its page and its code, with its C in `src/`: `src/main.c` and any other `.c` files there, which include the kit as `"gba.h"`. `src/main.js` is the page's script, which is the JavaScript starting point's with `loadGame()` from `game.js` in place of the game's own code, and it runs `src/game.wasm`. `npm run dp -- new <game>/c` writes that starting point, from `startingFiles(game, original, { language: 'c' })` in [`tools/lib/new-game.mjs`](../../../tools/lib/new-game.mjs), whose `main.c` paints the backdrop blue, and green while a button is held, as the JavaScript one does.
 
-`buildGame(folder)` in [`tools/gba/c.mjs`](../../../tools/gba/c.mjs) builds `src/game.wasm` from the game's C and the kit's. It uses Clang and its linker built as WebAssembly themselves, from npm ([`@yowasp/clang`](https://yowasp.org)), so `npm ci` is all it needs, the same on every computer. `buildNative()` builds the same C for the computer it runs on, with that computer's C compiler, the one the proof tools already need. `game.wasm` isn't kept in the repository: the site builds it as it copies the games, and the proof tools before they open one. A game's C is its [version in C](../../../games/README.md#versions-in-other-languages), in `games/<game>/c/`, beside its JavaScript, which `npm run dp -- new <game>/c` starts.
+`buildGame(folder)` in [`tools/lib/c.mjs`](../../../tools/lib/c.mjs) builds `src/game.wasm` from the game's C and the kit's, this folder and [`kit/c/`](../../c/README.md), as the game's `proof/original.json` names the Game Boy Advance. It uses Clang and its linker built as WebAssembly themselves, from npm ([`@yowasp/clang`](https://yowasp.org)), so `npm ci` is all it needs, the same on every computer. `buildNative()` builds the same C for the computer it runs on, with that computer's C compiler, the one the proof tools already need. `game.wasm` isn't kept in the repository: the site builds it as it copies the games, and the proof tools before they open one. A game's C is its [version in C](../../../games/README.md#versions-in-other-languages), in `games/<game>/c/`, beside its JavaScript, which `npm run dp -- new <game>/c` starts.
 
 ## How it's checked
 

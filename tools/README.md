@@ -38,7 +38,7 @@ On Windows you need only [git](https://git-scm.com), and the Edge that comes wit
 
 You can also run the tools on Windows inside WSL 2 (Windows Subsystem for Linux), which `wsl --install` sets up, with everything above installed inside it, as on Linux, and Chrome from Google's own package. `play`'s window opens through WSL's own display. Keep the folder in Linux's home: under `/mnt/c` the tools work too, but installing and building take several times as long. WSL 1 can't run the browser.
 
-A game written in C needs nothing more: `npm ci` brings a compiler that builds it to WebAssembly, the same on every computer, and `npm run test:c-kit` also builds it for your computer with its own C compiler ([the kit in C](../kit/gba/c/README.md)).
+A game written in C needs nothing more: `npm ci` brings a compiler that builds it to WebAssembly, the same on every computer, and `npm run test:c-kit` also builds it for your computer with its own C compiler ([the kits in C](../kit/c/README.md)).
 
 And you need your own copy of the game, made from your own cartridge: the version the Dreamport is built from, such as the USA version.
 
@@ -159,7 +159,7 @@ Code ported is the size of the functions the port map names and those `prove` fo
 
 `npm run dp -- new <game>` starts a Dreamport that someone has claimed and mapped: it needs its [New Dreamport](../docs/TEAMS.md#start-a-dreamport) issue, `proof/original.json` and its code map. It writes `index.html`, `src/main.js`, `LICENSE` and `entry.md` in its folder, then its port map and the table in `docs/STATUS.md`. Its [capture](#a-games-capture) then gives it its place in the Make row. The game's code starts as the kit's start for its console, [`gba/new-game/`](gba/new-game/), with the controller, the touch screen, the settings and the start screen already working, and it shows only a blue screen until someone writes the game. The first three files say the same for anyone with the same `original.json`, so nothing has to be reviewed in them. `new` writes over nothing. A pull request of only these, with a [capture](#a-games-capture), comes in with no review of its code ([A game's first entry](../docs/TEAMS.md#a-games-first-entry)).
 
-`npm run dp -- new <game>/c` starts the game's [version in C](../games/README.md#versions-in-other-languages) once the game has started, on the Game Boy Advance only so far: `index.html`, `src/main.c` and `src/main.js` in `games/<game>/c/`, which show the same blue screen, then its port map. Every tool takes a version by that name, as in `prove <game>/c` and `play <game>/c`. A version's recordings are the game's, and it keeps only its own `progress.json` and `port-map.json`. The tools build its `src/game.wasm` before they open it, and so does the site.
+`npm run dp -- new <game>/c` starts the game's [version in C](../games/README.md#versions-in-other-languages) once the game has started, on any console: `index.html`, `src/main.c` and `src/main.js` in `games/<game>/c/`, which show the same blue screen, then its port map. Its C stands on its console's [kit in C](../kit/c/README.md), the Game Boy Advance's own or, on any other console, what every console's shares. Every tool takes a version by that name, as in `prove <game>/c` and `play <game>/c`. A version's recordings are the game's, and it keeps only its own `progress.json` and `port-map.json`. The tools build its `src/game.wasm` before they open it, and so does the site.
 
 ## Reading the original's instructions
 

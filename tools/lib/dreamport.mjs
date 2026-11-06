@@ -1,7 +1,7 @@
 // Opens a Dreamport's page in the browser with the contributor's copy, as a player would: the kit's start screen
 // takes the copy, and Play starts the game. With ?proof in the address, the kit's proof mode then waits for a tool
 // to run each frame (kit/gba/proof.js). A version whose code is in C is built to WebAssembly first, so the page runs
-// the C as it is now (kit/gba/c/README.md).
+// the C as it is now, on its console's kit in C (kit/c/README.md).
 
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -12,7 +12,7 @@ import { gameFolder } from './paths.mjs';
 export async function buildIfC(game) {
   const src = join(gameFolder(game), 'src');
   if (!existsSync(src) || !readdirSync(src).some(name => name.endsWith('.c'))) return;
-  const { buildGame } = await import('../gba/c.mjs');
+  const { buildGame } = await import('./c.mjs');
   await buildGame(gameFolder(game));
 }
 

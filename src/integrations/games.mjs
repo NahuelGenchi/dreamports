@@ -2,9 +2,9 @@
 // `astro build`, each folder in games/ is copied as it is to dist/play/<game>/, and each in kit/ to
 // dist/kit/<console>/, which Cloudflare serves at /play/<game>/ and /kit/<console>/ as plain files, all but
 // their notes, which are for the people making them (docs/NOTES.md). A game's version in C, games/<game>/c/, is built
-// to WebAssembly as it's copied, to /play/<game>/c/src/game.wasm (kit/gba/c/README.md). The build stops and names every problem
-// if a folder breaks one of the rules in games/README.md, if a note breaks the rules for notes, or if the
-// site grows past what Cloudflare's free plan takes.
+// to WebAssembly as it's copied, to /play/<game>/c/src/game.wasm, on the kit in C of the console its proof/original.json
+// names (kit/c/README.md). The build stops and names every problem if a folder breaks one of the rules in
+// games/README.md, if a note breaks the rules for notes, or if the site grows past what Cloudflare's free plan takes.
 import { copyFile, lstat, mkdir, readdir } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,7 +53,7 @@ export default function games() {
         for (const name of found.find(({ kind }) => kind === GAMES).names) {
           const version = join(root, 'games', name, C);
           if (!(await exists(join(version, 'index.html')))) continue;
-          const { buildGame } = await import('../../tools/gba/c.mjs');
+          const { buildGame } = await import('../../tools/lib/c.mjs');
           await buildGame(version, join(site, 'play', name, C, 'src', 'game.wasm'));
           built.push(`${name}/${C}`);
         }

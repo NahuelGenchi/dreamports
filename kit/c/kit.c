@@ -1,23 +1,18 @@
-// The rest of the C kit: the player's copy, the save memory, the words of the page's address, memory for the game, and
-// the few functions the page calls, by name, to run the game (game.js as WebAssembly, native.c on a computer).
+// What every console's kit in C shares: the player's copy, the save memory, the words of the page's address, memory for
+// the game, the picture the page shows, and the functions the page calls, by name, to give it the copy and the words.
+// Starting the game, its frames and its drawing are the console's (console.c, or a kit's own, such as kit/gba/c/gba.c).
 
-#include "gba.h"
+#include "kit.h"
+#include "page.h"
 
-const uint8_t *gba_rom;
-uint32_t gba_rom_size;
+const uint8_t *kit_copy;
+uint32_t kit_copy_size;
 
 #ifdef __wasm__
-#define EXPORT(name) __attribute__((export_name(name)))
-#define IMPORT(name) __attribute__((import_module("dreamports"), import_name(name)))
-
-// what the page gives: the save memory's bytes it kept, and a place to keep them
-IMPORT("save_read") void host_save_read(uint8_t *bytes, uint32_t size);
-IMPORT("save_write") void host_save_write(const uint8_t *bytes, uint32_t size);
-
 // memory past what the program takes, given out in turn and never taken back, as a game's memory lasts for the page
 extern unsigned char __heap_base;
 static uintptr_t heap_top;
-void *gba_alloc(size_t size) {
+void *kit_alloc(size_t size) {
   if (!heap_top) heap_top = (uintptr_t)&__heap_base;
   uintptr_t at = (heap_top + 15) & ~(uintptr_t)15, end = at + size;
   size_t have = __builtin_wasm_memory_size(0) * 65536;
@@ -27,10 +22,7 @@ void *gba_alloc(size_t size) {
 }
 #else
 #include <stdlib.h>
-#define EXPORT(name)
-void host_save_read(uint8_t *bytes, uint32_t size);
-void host_save_write(const uint8_t *bytes, uint32_t size);
-void *gba_alloc(size_t size) {
+void *kit_alloc(size_t size) {
   void *at = calloc(1, size ? size : 1);
   if (!at) abort();
   return at;
@@ -39,19 +31,34 @@ void *gba_alloc(size_t size) {
 
 static uint8_t *save_bytes;
 static uint32_t save_size;
-uint8_t *gba_save(uint32_t size) {
+uint8_t *kit_save(uint32_t size) {
   if (!save_bytes) {
-    save_bytes = gba_alloc(size);
+    save_bytes = kit_alloc(size);
     save_size = size;
     host_save_read(save_bytes, size);
   }
   return save_bytes;
 }
-void gba_save_write(void) {
+void kit_save_write(void) {
   if (save_bytes) host_save_write(save_bytes, save_size);
 }
 
-// The words of the page's address, such as proof&unlocked=1, as the page gave them, and as gba_start_point reads them:
+// the picture, made again only when it needs more room than it has
+static uint32_t *screen;
+static int screen_width, screen_height;
+static size_t screen_room;
+uint32_t *kit_screen(int width, int height) {
+  size_t words = (size_t)(width > 0 ? width : 0) * (size_t)(height > 0 ? height : 0);
+  if (!screen || words > screen_room) {
+    screen = kit_alloc(words ? words * 4 : 4);
+    screen_room = words;
+  }
+  screen_width = width;
+  screen_height = height;
+  return screen;
+}
+
+// The words of the page's address, such as proof&unlocked=1, as the page gave them, and as kit_start_point reads them:
 // each word's name and value, decoded, with a zero after each, made the first time one is read.
 static char *start_text, *start_words, *start_words_end;
 static uint32_t start_size;
@@ -76,7 +83,7 @@ static char *decode_word(char *out, const char *from, const char *to) {
 }
 static void read_start_words(void) {
   // each word takes at most two bytes more than it had, and the & before it
-  char *out = start_words = gba_alloc(start_size * 2 + 2);
+  char *out = start_words = kit_alloc(start_size * 2 + 2);
   const char *p = start_text, *end = start_text + start_size;
   if (p < end && *p == '?') p++;
   while (p < end) {
@@ -94,7 +101,7 @@ static void read_start_words(void) {
   start_words_end = out;
 }
 
-const char *gba_start_point(const char *name) {
+const char *kit_start_point(const char *name) {
   if (!start_text) return NULL;
   if (!start_words) read_start_words();
   for (const char *word = start_words; word < start_words_end;) {
@@ -117,8 +124,8 @@ static int32_t to_int32(double d) {
   int64_t high = (int64_t)(d / 0x1p32);
   return (int32_t)(uint32_t)(int64_t)(d - (double)high * 0x1p32);
 }
-int32_t gba_start_number(const char *name, int32_t absent) {
-  const char *s = gba_start_point(name), *end;
+int32_t kit_start_number(const char *name, int32_t absent) {
+  const char *s = kit_start_point(name), *end;
   if (!s) return absent;
   while (is_space(*s)) s++;
   for (end = s; *end; end++) {}
@@ -159,36 +166,20 @@ int32_t gba_start_number(const char *name, int32_t absent) {
 }
 
 // what the page calls
-static uint32_t *screen;
-
 /** A place for the player's copy, `size` bytes, which the page fills before it calls dp_start. */
 EXPORT("dp_rom") uint8_t *dp_rom(uint32_t size) {
-  uint8_t *at = gba_alloc(size);
-  gba_rom = at;
-  gba_rom_size = size;
+  uint8_t *at = kit_alloc(size);
+  kit_copy = at;
+  kit_copy_size = size;
   return at;
 }
 /** A place for the words of the page's address, `size` bytes, which the page fills before it calls dp_start. */
 EXPORT("dp_start_point") char *dp_start_point(uint32_t size) {
-  start_text = gba_alloc(size + 1);
+  start_text = kit_alloc(size + 1);
   start_size = size;
   start_words = NULL;
   return start_text;
 }
-/** Starts the game. */
-EXPORT("dp_start") void dp_start(void) {
-  if (!screen) screen = gba_alloc(SCREEN_W * SCREEN_H * 4);
-  game_start();
-}
-/** Runs one frame with the buttons in `keys` held. */
-EXPORT("dp_step") void dp_step(uint32_t keys) { game_step((uint16_t)keys); }
-/** Draws the frame, and gives where its 240 × 160 words are. */
-EXPORT("dp_draw") uint32_t *dp_draw(void) {
-  gba_draw_frame(screen);
-  return screen;
-}
-/** Where the video hardware is, for the page to show the proof tools what it holds (proof.js `video`). */
-EXPORT("dp_vram") uint8_t *dp_vram(void) { return gba_vram; }
-EXPORT("dp_pal") uint16_t *dp_pal(void) { return gba_pal; }
-EXPORT("dp_oam") uint16_t *dp_oam(void) { return gba_oam; }
-EXPORT("dp_io") uint16_t *dp_io(void) { return gba_io; }
+/** The picture's size as the game last gave it to kit_screen, for the page to show it at that size. */
+EXPORT("dp_width") int dp_width(void) { return screen_width; }
+EXPORT("dp_height") int dp_height(void) { return screen_height; }

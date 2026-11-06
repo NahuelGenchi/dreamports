@@ -25,17 +25,30 @@ export const firstFilesMessage = (name, issue) => `feat: ${name} Dreamport's fir
 export const captureMessage = (name, issue) => `feat: ${name} Dreamport's capture (#${issue})`;
 
 /** The files of a new game, by their paths in its folder, or with `language` 'c' those of its version in C, by their
- *  paths in the version's folder, games/<game>/c/ (src/lib/languages.mjs): its page, and its code on the Game Boy
- *  Advance kit in C (kit/gba/c/), whose src/game.wasm is built from src/main.c. */
+ *  paths in the version's folder, games/<game>/c/ (src/lib/languages.mjs): its page, and its code on its console's kit in
+ *  C (kit/c/README.md), whose src/game.wasm is built from src/main.c. */
 export function startingFiles(game, original, { language = 'js' } = {}) {
   const { name, region } = namesOf(original);
   const title = `${name} Dreamport`;
   const fill = (text, values) => text.replace(/@([A-Z0-9_]+)@/g, (_, key) => values[key]);
   if (language === 'c') {
-    if (original.console !== 'gba') throw new Error('Only the Game Boy Advance has a kit in C yet.');
     // a folder further in than the game's own page. It keeps the player's copy and touch layout with the JavaScript
     // version's (FOLDER_JS), and its save memory apart, as an unfinished version could write what the other can't read
     const page = fill(readFileSync(kit('index.html.template'), 'utf8'), { NAME: html(name), TITLE: html(`${title} in C`) }).replaceAll('"../../kit/', '"../../../kit/');
+    if (original.console !== 'gba') {
+      // on a console with no kit in C of its own: the base every console's shares, kit/c/, at the game's screen
+      const machine = CONSOLES[original.console];
+      if (!machine) throw new Error(`proof/original.json names a console kit/consoles.js doesn't know: ${original.console}.`);
+      const [width, height] = sizesIn(original.screen)?.[0] ?? machine.screen;
+      return {
+        'index.html': page,
+        'src/main.c': fill(readFileSync(otherKit('c/main.c.template'), 'utf8'), { TITLE_C: title, CONSOLE_NAME: machine.name, WIDTH: width, HEIGHT: height }),
+        'src/main.js': fill(readFileSync(otherKit('c/main.js.template'), 'utf8'), {
+          TITLE_JS: title, NAME_JS: js(name), CONSOLE_JS: js(original.console), SHA1_JS: js(original.sha1), FOLDER_JS: js(game), TITLE_QUOTED: js(title),
+          HOME_JS: js(`https://dreamports.net/dreamports/${game}-dreamport/`), SAVE_JS: js(`${game}-c-save`), SCREEN_JS: JSON.stringify([width, height]),
+        }),
+      };
+    }
     return {
       'index.html': page,
       'src/main.c': fill(readFileSync(kit('c/main.c.template'), 'utf8'), { TITLE_C: title }),

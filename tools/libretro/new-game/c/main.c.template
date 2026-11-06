@@ -1,0 +1,26 @@
+// @TITLE_C@: the game's own code, in C, on what every console's kit in C shares (kit/c/kit.h), with the @CONSOLE_NAME@'s
+// screen, frame, sound and buttons in console.h, which the build makes from kit/consoles.js. src/main.js runs it on the
+// page, built to WebAssembly as src/game.wasm (kit/c/README.md).
+
+#include "console.h"
+
+// the screen the game shows, as its original.json says, or the console's
+#define WIDTH @WIDTH@
+#define HEIGHT @HEIGHT@
+
+static int held;
+
+// once, with the player's copy in kit_copy
+void game_start(void) {}
+
+// what the original does each frame. To begin with, whether a button is held
+void game_step(uint32_t buttons) { held = buttons != 0; }
+
+// its picture, at its size: blue, and green while a button is held
+void game_draw(void) {
+  uint32_t *pixels = kit_screen(WIDTH, HEIGHT);
+  for (int i = 0; i < WIDTH * HEIGHT; i++) pixels[i] = held ? 0xFF00FF00u : 0xFFFF0000u;
+}
+
+// its sound, CONSOLE_SOUND_RATE samples a second, which starts as silence
+void game_sound(float *left, float *right, int count) {}
