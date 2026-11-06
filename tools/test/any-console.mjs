@@ -146,7 +146,7 @@ async function main() {
   let run = dp('rom', copy);
   check(run.status === 0 && run.out.includes(GAME), `rom knows the copy by what it holds, with no word about its console: ${run.out.trim().split('\n')[0]}`);
   run = dp('codemap', GAME);
-  check(run.status !== 0 && run.out.includes('--from'), 'codemap asks for a list of functions, as it can only find them in Game Boy Advance code');
+  check(run.status !== 0 && run.out.includes('--from'), 'codemap asks for a list of functions, as it can only find them in Game Boy Advance and NES code');
   const list = join(WORK, 'functions.csv');
   writeFileSync(list, 'Address,Size\n0x1000,64\n0x1040,32\n');
   run = dp('codemap', GAME, '--from', list);

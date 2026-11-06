@@ -11,6 +11,7 @@ import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
 import { connect, findChrome, until } from '../lib/chrome.mjs';
 import { CHR_AT, PALETTE, PALETTE_AT, RAM, START, TIMER, madeUpNes } from './made-up-nes.mjs';
+import { readCodeMap } from '../lib/proof-files.mjs';
 
 const GAME = 'test-real-nes';
 const WORK = join(LOCAL, 'test-real-console');
@@ -186,10 +187,13 @@ async function main() {
   let run = dp('rom', copy);
   check(run.status === 0 && run.out.includes(GAME), `rom knows the copy by its header: ${run.out.trim().split('\n')[1]?.trim()}`);
 
+  run = dp('codemap', GAME);
+  const mapped = readCodeMap(GAME)?.functions ?? [];
+  check(run.status === 0 && mapped[0]?.address === 0 && mapped.length >= 2, `codemap finds the program's functions, from its reset at the start of its program: ${lastLine(run)}`);
   const list = join(WORK, 'functions.csv');
-  writeFileSync(list, 'Address,Size\n0xC000,64\n0xC040,32\n');
+  writeFileSync(list, 'Address,Size\nsub_C000,64\n');
   run = dp('codemap', GAME, '--from', list);
-  check(run.status === 0 && run.out.includes('2 functions'), `codemap takes a list: ${lastLine(run)}`);
+  check(run.status === 0 && readCodeMap(GAME)?.functions[0]?.address === 0 && readCodeMap(GAME).from.includes('functions.csv'), `codemap takes a list, with addresses as the game's code names them: ${lastLine(run)}`);
 
   const files = { ...startingFiles(GAME, original), 'entry.md': startingEntry(GAME, original, { issue: 1, lead: 'nobody', added: '2026-01-01' }) };
   for (const [file, text] of Object.entries(files)) {

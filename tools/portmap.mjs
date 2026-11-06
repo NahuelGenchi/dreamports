@@ -17,17 +17,33 @@
 //   "shifts": [{ "from": "0801C130", "to": "0803AB60", "by": 48 }, ...]: a label from `from` to `to` names the
 //     function `by` bytes earlier in the copy
 // }
+//
+// On the NES, where the program is in banks the cartridge switches, a name is a label with the bank in it: sub_04_923F
+// is $923F with bank 4 switched in at $8000, and sub_C39C, with no bank, is in the last bank, always at $C000. The code
+// map numbers each by its offset in the program (nes/functions.mjs).
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { gameFolder, proofFolder, sharedProofFolder } from './lib/paths.mjs';
 import { hex, proofVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { LANGUAGES, OTHER_LANGUAGES, versionOf } from '../src/lib/languages.mjs';
+import { nesNames } from './nes/functions.mjs';
 
 // a label's word and its address, or a number's
 const NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_0?|0x0?)(8[0-9A-Fa-f]{6})\b/g;
 // the cartridge's first address, which code uses as the base of every address in it, not as a function
 const BASE = 0x08000000;
+
+// the names in a line of a game's code, as [name, address, whether it's a label] for each console's code map. A Game
+// Boy Advance address is the cartridge's; an NES one is the offset in the program, from a label such as sub_04_923F
+// (nes/functions.mjs), in a program of as many banks as the code map reaches, as its last bank always has code.
+function namer(console, codeMap) {
+  if (console === 'nes') {
+    const banks = Math.floor(Math.max(...codeMap.functions.map(f => f.address)) / 0x4000) + 1;
+    return line => nesNames(line, banks).map(([name, offset]) => [name, offset, true]);
+  }
+  return line => [...line.matchAll(NAME)].map(([name, label, digits]) => [name, (parseInt(digits, 16) | BASE) & ~1, Boolean(label)]).filter(([, address]) => address !== BASE);
+}
 
 export async function run(args) {
   const check = args.includes('--check');
@@ -76,13 +92,12 @@ export function portMap(game) {
     return false;
   };
   const shifts = readShifts(game);
+  const names = namer(original.console, codeMap);
   const functions = new Map(), unmatched = new Map();
   for (const file of codeFiles(gameFolder(game), versionOf(game).language)) {
     const where = relative(gameFolder(game), file).split(sep).join('/');
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
-      for (const [name, label, digits] of line.matchAll(NAME)) {
-        let address = (parseInt(digits, 16) | BASE) & ~1;
-        if (address === BASE) continue;
+      for (let [name, address, label] of names(line)) {
         if (label) address -= shifts.find(s => address >= s.from && address <= s.to)?.by ?? 0;
         const found = starts.has(address);
         if (!found && !inside(address)) continue;
