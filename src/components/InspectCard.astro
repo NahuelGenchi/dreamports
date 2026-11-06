@@ -15,6 +15,7 @@ import Tile from './Tile.astro';
 import ViewBar from './ViewBar.astro';
 import { achievementsUrl, filterFor, gameUrl, pageTitle, type Game } from '../lib/site';
 import { dreamportView } from '../lib/dreamports';
+import { LANGUAGES, playHref, playOrder } from '../lib/languages.mjs';
 
 interface Props {
   game: Game;
@@ -30,6 +31,10 @@ const facts = dreamport.game;
 const { confirm, links } = ownCopy;
 const id = game.id;
 const Title = open ? 'h1' : 'h2';
+// the languages it plays in, C first when it has a C version (src/lib/languages.mjs): with more than one, a choice
+// beside the box to tick, which sends its Play button to that version's page
+const languages = playOrder(dreamport.versions.map((version) => version.language));
+const playIn = languages[0];
 // Every page holds every game's card, so each game's headings get ids of their own.
 const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$1 id="${id}-$2"`);
 ---
@@ -58,10 +63,32 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
         action={links[0].href}
         data-nudge-note="Tick the box first."
       >
-        <label class="check" for={`own-${id}`}>
-          <input type="checkbox" id={`own-${id}`} required autofocus />
-          <span>{confirm}</span>
-        </label>
+        <div class="gate-own">
+          <label class="check" for={`own-${id}`}>
+            <input type="checkbox" id={`own-${id}`} required autofocus />
+            <span>{confirm}</span>
+          </label>
+          {
+            languages.length > 1 && (
+              <div class="seg gate-langs" role="radiogroup" aria-label="Language">
+                {/* the choice belongs to a form of its own, so playing never sends it */}
+                {languages.map((language) => (
+                  <>
+                    <input
+                      type="radio"
+                      form={`langs-${id}`}
+                      name={`lang-${id}`}
+                      id={`lang-${id}-${language}`}
+                      value={language}
+                      checked={language === playIn}
+                    />
+                    <label for={`lang-${id}-${language}`}>{LANGUAGES[language].name}</label>
+                  </>
+                ))}
+              </div>
+            )
+          }
+        </div>
         <div class="gate-actions">
           <div class="gate-buttons">
             {
@@ -69,7 +96,8 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
                 <button
                   type="submit"
                   class:list={['btn', index > 0 && 'btn--alt']}
-                  formaction={link.href}
+                  formaction={link.icon === 'play' ? playHref(link.href, playIn) : link.href}
+                  data-play={link.icon === 'play' && languages.length > 1 ? link.href : undefined}
                   formtarget={link.icon === 'download' ? '_blank' : undefined}
                   data-icon={link.icon}
                   aria-describedby={`gate-note-${id}`}
@@ -91,6 +119,7 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
           </p>
         </div>
       </form>
+      {languages.length > 1 && <form id={`langs-${id}`} hidden></form>}
     </div>
     <div class="ins-text" tabindex="0">
       <Title class="ins-title" id={`ins-title-${id}`}><GameTitle title={title} /></Title>

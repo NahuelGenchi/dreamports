@@ -2903,6 +2903,20 @@ dialog.card[open] {
   margin: 0 2px;
 }
 
+/* a game with versions in more than one language: the choice sits on the box's line, at its end, and drops
+   below it when the two don't fit */
+.gate-own {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 16px;
+}
+
+.gate-langs label {
+  padding: 8px 14px;
+}
+
 .view .gate-actions {
   display: grid;
   gap: 8px;

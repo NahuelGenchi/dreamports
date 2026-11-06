@@ -101,6 +101,8 @@ export interface PartView {
 
 // A version's two numbers, its parts and its evidence, as a game's are.
 export interface ProgressView {
+  // the language it's in, a key of LANGUAGES (src/lib/languages.mjs)
+  language: keyof typeof LANGUAGES;
   ported: Measure;
   gameplay: Measure;
   // the game's parts and where the evidence for both numbers is, folded away in gameplay proven's line
@@ -198,6 +200,7 @@ function progressView(game: string, proof: Proof | null, language = 'js'): Progr
   const named = (label: string) => (language === 'js' ? label : `${label} in ${LANGUAGES[language as keyof typeof LANGUAGES].name}`);
   const version = versionName(game, language);
   return {
+    language: language as keyof typeof LANGUAGES,
     ported: { label: named('Code ported'), percent: ported?.percent ?? null, text: shortPercent(ported?.percent) },
     gameplay: { label: named('Gameplay proven'), percent: gameplay?.percent ?? null, text: shortPercent(gameplay?.percent) },
     parts: partsOf(game, gameplay),

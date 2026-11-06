@@ -12,6 +12,12 @@ export const LANGUAGES = {
   c: { name: 'C', folder: 'c' },
 };
 
+/**
+ * The language a Dreamport is played and made in wherever it has a version in it: C. A game's card plays its C version
+ * first, and the player can choose another, which it keeps; a game with no C version plays its JavaScript one.
+ */
+export const DEFAULT_LANGUAGE = 'c';
+
 /** The languages a version can be in besides JavaScript, whose folders are versions of a game's. */
 export const OTHER_LANGUAGES = Object.keys(LANGUAGES).filter(key => LANGUAGES[key].folder);
 
@@ -30,3 +36,17 @@ export const versionName = (game, language) => (LANGUAGES[language].folder ? `${
 
 /** A version's name as people read it: 'Sonic Battle Dreamport' for JavaScript, 'Sonic Battle Dreamport in C'. */
 export const versionTitle = (title, language) => (language === 'js' ? title : `${title} in ${LANGUAGES[language].name}`);
+
+/**
+ * The languages a game is played in, from its versions' (as ['c']), the default first and JavaScript, its own, last.
+ * @param {(keyof typeof LANGUAGES)[]} languages
+ * @returns {(keyof typeof LANGUAGES)[]}
+ */
+export const playOrder = languages => [...new Set([...languages, 'js'])].sort((a, b) => (b === DEFAULT_LANGUAGE) - (a === DEFAULT_LANGUAGE) || (a === 'js') - (b === 'js'));
+
+/**
+ * Where a version plays, from the game's play link: https://dreamports.net/play/sonic-advance/c/ for C.
+ * @param {string} href
+ * @param {keyof typeof LANGUAGES} language
+ */
+export const playHref = (href, language) => (LANGUAGES[language].folder ? new URL(`${LANGUAGES[language].folder}/`, href).href : href);
