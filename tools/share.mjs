@@ -6,10 +6,11 @@
 // it publishes and before it switches Pages on; --yes answers yes, once the contributor has said yes.
 
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve, extname, basename, dirname, sep } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { LOCAL } from './lib/paths.mjs';
+import { LOCAL, gameFolder } from './lib/paths.mjs';
+import { versionOf, versionTitle } from '../src/lib/languages.mjs';
 import { head, uncommitted, remotes, fileAt, fetchPreviews, pushPreviews, makePreview, BRANCH, CLIPS } from './lib/preview.mjs';
 import { UPSTREAM, api, signedInAs, findFork, hasCommit, pagesOf, turnOnPages, lastBuild, buildPages } from './lib/github.mjs';
 
@@ -27,9 +28,12 @@ export async function run(args) {
   // the commit and the game in it
   const { commit, branch } = head();
   if (!fileAt(commit, `games/${game}/index.html`)) throw new Error(`games/${game}/index.html isn't in your last commit: a preview is made from it.`);
-  const title = titleOf(commit, game);
+  // a version in another language, such as sonic-battle/c, has the game's entry, and its title names the language
+  const { game: own, language } = versionOf(game);
+  const title = versionTitle(titleOf(commit, own), language);
   const left = uncommitted(game);
   if (left.length) console.log(`${left.length} changes in games/${game}/, kit/ or public/ aren't committed, so the preview leaves them out:\n${left.slice(0, 6).map(l => `  ${l}`).join('\n')}${left.length > 6 ? '\n  …' : ''}\n`);
+  const built = await builtFrom(game, left);
 
   // the fork, and the address its Pages site has or will have
   const login = signedInAs();
@@ -49,7 +53,7 @@ export async function run(args) {
   const clips = clip ? clipFiles(game, commit, clip) : [];
 
   const tip = fetchPreviews(fork.remote);
-  const preview = makePreview({ tip, commit, branch, game, title, name, author: login, repository: fork.repository, linked, url, about, guide: GUIDE, clips });
+  const preview = makePreview({ tip, commit, branch, game, title, name, author: login, repository: fork.repository, linked, url, about, guide: GUIDE, clips, built });
 
   console.log(`A preview of ${title}, from commit ${commit.slice(0, 7)} on ${branch}:\n  ${address}`);
   console.log(`It holds ${preview.files} files, ${(preview.bytes / 1e6).toFixed(1)} MB, and only code: the game, its console's kit and the preview's own pages.`);
@@ -103,6 +107,20 @@ async function ask(question, yes) {
   } finally {
     prompt.close();
   }
+}
+
+// A game in C runs as WebAssembly, which the site builds from its C and no commit holds (kit/gba/c/README.md), so a
+// preview of one is built here, from the C as it is in the commit: [{ path, bytes }], or [] for a game in JavaScript.
+async function builtFrom(game, left) {
+  const src = join(gameFolder(game), 'src');
+  if (!existsSync(src) || !readdirSync(src).some(name => name.endsWith('.c'))) return [];
+  const changed = left.map(line => line.slice(3)).filter(path => path.startsWith(`games/${game}/src/`) || path.startsWith('kit/gba/c/'));
+  if (changed.length) throw new Error(`Commit the C first, as the preview's game is built from it: ${changed.slice(0, 4).join(', ')}${changed.length > 4 ? ', …' : ''}.`);
+  const { buildGame } = await import('./gba/c.mjs');
+  mkdirSync(join(LOCAL, 'share'), { recursive: true });
+  const out = join(LOCAL, 'share', 'game.wasm');
+  await buildGame(gameFolder(game), out);
+  return [{ path: 'src/game.wasm', bytes: readFileSync(out) }];
 }
 
 // the game's name on the site: the title in its entry, games/<game>/entry.md
