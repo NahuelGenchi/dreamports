@@ -1,0 +1,36 @@
+{
+  "original": "8cf4fbbe73f6b1907ab9997caab4c4e7d9708937",
+  "from": "The original's functions that games/sonic-battle/c/ names, found by npm run dp -- portmap sonic-battle/c",
+  "functions": [
+    ["08000778","src/core.c:1"],
+    ["080007FC","src/fighters.c:2"],
+    ["0800F3C4","src/arena.c:2"],
+    ["0800F9C0","src/arena.c:2"],
+    ["0800FDC8","src/arena.c:2"],
+    ["0801103C","src/arena.c:2"],
+    ["08011C7C","src/arena.c:2"],
+    ["08012B98","src/hud.c:4"],
+    ["08013214","src/hud.c:4"],
+    ["08016684","src/sprites.c:3"],
+    ["08017C5C","src/sprites.c:2"],
+    ["08018004","src/game.h:64"],
+    ["0801816C","src/sprites.c:3"],
+    ["08018204","src/sprites.c:3"],
+    ["080198B0","src/fight.c:37"],
+    ["08019B5C","src/fight.c:92"],
+    ["08019ED8","src/fight.c:114"],
+    ["0801A898","src/fight.c:117"],
+    ["0801C82C","src/fight.c:160"],
+    ["0801C8A4","src/fight.c:161"],
+    ["0801FBA0","src/game.h:56"],
+    ["08020198","src/game.h:53"],
+    ["0802036C","src/game.h:60"],
+    ["08020840","src/fight.c:27"],
+    ["0804A5B4","src/core.c:19"]
+  ],
+  "unmatched": [
+    ["0x0800B0BC","src/fighters.c:412"],
+    ["0x0800C3C4","src/fighters.c:484"],
+    ["0x0800C704","src/fighters.c:483"]
+  ]
+}

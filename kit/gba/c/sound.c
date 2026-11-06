@@ -140,11 +140,26 @@ static int find_music_players(int players, uint32_t *found) {
   return 0;
 }
 
+int gba_sound_start_layout(uint32_t playerTable, int players, int channels, int volume, int rate, int reverb,
+                           int voicesEndOnChip, int soundMainAt) {
+  if (!gba_rom || players < 1 || players > M4A_PLAYERS) return 0;
+  if (playerTable + (uint32_t)players * 12 + 16 > gba_rom_size) return 0;
+  take(OP_SETUP, (int)playerTable, players | channels << 8 | volume << 16 | (reverb & 0x7F) << 24,
+    rate | (voicesEndOnChip ? 1 << 16 : 0), soundMainAt);
+  return 1;
+}
+
 int gba_sound_start(int players, int channels, int volume, int rate, int reverb) {
   uint32_t at;
   if (!gba_rom || players < 1 || players > M4A_PLAYERS || !find_music_players(players, &at)) return 0;
-  take(OP_SETUP, (int)at, players | channels << 8 | volume << 16 | (reverb & 0x7F) << 24, rate, 0);
-  return 1;
+  return gba_sound_start_layout(at, players, channels, volume, rate, reverb, 0, 0);
+}
+
+int gba_sound_frame_cycles(void) { return engine.frameCycles; }
+
+void gba_sound_frames_gone_by(int frames) {
+  if (!running) return;
+  for (int i = 0; i < frames; i++) { apu_run(&apu, FRAME_CYCLES); m4a_frame(&engine); }
 }
 void gba_sound_reset(void) { take(OP_RESET, 0, 0, 0, 0); }
 void gba_sound_play(int song) { take(OP_START, song, 0, 0, 0); }
