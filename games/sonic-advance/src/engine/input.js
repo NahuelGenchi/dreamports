@@ -31,10 +31,11 @@ const LAYOUT = {
 };
 
 // the multiplayer modes' two players on one keyboard: the first on WASD with F to jump and G to attack, the
-// second on the arrows with . to jump and / to attack; the players after them play with controllers
+// second on the arrows with . to jump and / to attack; the players after them play with controllers. Start and Select, for
+// the menus, are E and Q for the first and Enter and Backspace for the second
 export const PLAYER_KEYS = [
-  { KeyA: 'left', KeyD: 'right', KeyW: 'up', KeyS: 'down', KeyF: 'jump', KeyG: 'attack' },
-  { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', Period: 'jump', Slash: 'attack' },
+  { KeyA: 'left', KeyD: 'right', KeyW: 'up', KeyS: 'down', KeyF: 'jump', KeyG: 'attack', KeyE: 'start', KeyQ: 'select' },
+  { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', Period: 'jump', Slash: 'attack', Enter: 'start', Backspace: 'select' },
   {}, {},
 ];
 

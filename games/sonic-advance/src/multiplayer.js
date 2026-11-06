@@ -21,9 +21,10 @@ const GAME_RANDOM = 0x35AF159E;
 /**
  * Starts a round for `count` players on `assets`' multiplayer stage, a screen for each in `container`. Every
  * GBA's save has this page's `language` (uiLanguage: 0 Japanese, 1 English) and `btnConfig` (1: A and B
- * swapped). A player's win calls `achieve(id)`, the page's, for the achievements. Returns { gbas, link, stop }.
+ * swapped). A player's win calls `achieve(id)`, the page's, for the achievements. `onResultsDone()` is called once every GBA's results screen is over
+ * (the white they end on), where the VS menus' continue screen comes next. Returns { gbas, link, stop }.
  */
-export function startMultiplayer({ container, assets, count, sound, seed = DEFAULT_SEED, chaoPlace = DEFAULT_CHAO_PLACE, language = 1, btnConfig = 0, achieve = () => {} }) {
+export function startMultiplayer({ container, assets, count, sound, seed = DEFAULT_SEED, chaoPlace = DEFAULT_CHAO_PLACE, language = 1, btnConfig = 0, achieve = () => {}, onResultsDone = null }) {
   const link = createLink(count);
   const gbas = [];
   container.replaceChildren();
@@ -43,7 +44,7 @@ export function startMultiplayer({ container, assets, count, sound, seed = DEFAU
       // 4) earns Chao Hunter
       onResults(mp) {
         if (mp.ranks[id] === 0) achieve('chao-hunt');
-        gba.screen = createResultsScreen({ canvas, assets, link, id, count, ranks: mp.ranks.slice(), sound: gbaSound, input, language });
+        gba.screen = createResultsScreen({ canvas, assets, link, id, count, ranks: mp.ranks.slice(), sound: gbaSound, input, language, onDone: () => { gba.over = true; if (onResultsDone && gbas.every(g => g.over)) onResultsDone(); } });
       },
     });
     // the round starts as an act does (ApplyGameStageSettingsAndStart), so the stage reads jump and attack as the
@@ -56,14 +57,15 @@ export function startMultiplayer({ container, assets, count, sound, seed = DEFAU
 
   // every GBA steps its frame, then the link carries what each sent
   // and a frame is drawn once, after its step (clock.js)
-  let frame = 0;
+  let frame = 0, stopped = false;
   const clock = createClock(TICK_MS, { snap: true });
   function loop(now) {
     const n = clock.steps(now);
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n && !stopped; i++) {
       for (const g of gbas) g.screen.step();
       link.endFrame();
     }
+    if (stopped) return;   // the results were over, and the VS menus have taken the screens
     if (n) for (const g of gbas) g.screen.draw();
     frame = requestAnimationFrame(loop);
   }
@@ -75,6 +77,7 @@ export function startMultiplayer({ container, assets, count, sound, seed = DEFAU
   return {
     gbas, link,
     stop() {
+      stopped = true;
       cancelAnimationFrame(frame);
       for (const g of gbas) g.game.stop();
       container.replaceChildren();

@@ -15,6 +15,8 @@
 //     same way, `address` in hexadecimal as the code map has it, and `bytes` 1, 2 or 4.
 //   "start": optional, a start point: what the Dreamport's address adds, such as "level=2&character=1", so it opens at
 //     the part this recording plays. tools/README.md, Start points.
+//   "players": optional, 2 to 4: the recording is of that many GBAs on one link, each from power-on with the Dreamport's page at
+//     "start" (default vs=<players>); "held" is the first player's, and "others" the rest's, a list of such lists.
 //   "clip": optional, the frames the clip shows: { "at", "frames" }
 // }
 
@@ -70,6 +72,11 @@ export function readRecording(file) {
   if (!Number.isInteger(frames) || frames < 1) throw new Error(`${file}: "frames" is how many frames it runs`);
   if (start !== undefined) checkStart(start, file);
   checkHeld(held, frames, file);
+  if (recording.players !== undefined) {
+    const { players, others } = recording;
+    if (![2, 3, 4].includes(players) || !Array.isArray(others) || others.length !== players - 1) throw new Error(`${file}: "players" is 2 to 4, and "others" the held lists of the players after the first`);
+    others.forEach(list => checkHeld(list, frames, `${file}, "others"`));
+  }
   let last = -1;
   for (const gap of onlyInOriginal) {
     if (!isFrame(gap.at) || gap.at < last || gap.at > frames || !Number.isInteger(gap.frames) || gap.frames < 1) {

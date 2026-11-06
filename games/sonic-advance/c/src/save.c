@@ -65,3 +65,5 @@ int save_write(void) {
 }
 
 uint16_t save_unlocked_level(int character) { return (uint16_t)(save.bytes[0x08 + character * 2] | save.bytes[0x09 + character * 2] << 8); }
+uint32_t save_player_id(void) { return get32(save.bytes, 0x04); }
+void save_set_player_id(uint32_t id) { set32(save.bytes, 0x04, id); }

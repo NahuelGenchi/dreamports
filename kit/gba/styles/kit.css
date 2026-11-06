@@ -592,6 +592,7 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 .row-text { display: grid; min-width: 0; }
 .row-hint { color: var(--dim); font-size: 13.5px; line-height: 20px; }
 .row-end { display: flex; align-items: center; gap: 10px; }
+.players-count { min-width: 1ch; color: var(--sky); font: inherit; text-align: right; }
 .row:disabled { cursor: default; opacity: .45; }
 /* the launcher's switch */
 .track { --frame: var(--line); position: relative; flex: none; width: 32px; height: 16px; margin: 2px; background: var(--line); }

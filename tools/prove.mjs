@@ -29,6 +29,7 @@ import { readProof } from './readme.mjs';
 import { referenceOf } from './lib/reference.mjs';
 import { checkSizes, firstOtherSize } from './lib/screens.mjs';
 import { notesAbout } from './notes.mjs';
+import { proveLinked } from './prove-linked.mjs';
 import { versionOf } from '../src/lib/languages.mjs';
 
 const BATCH = 120;
@@ -64,7 +65,7 @@ export async function run(args) {
       const own = parts.filter(p => p.recording === recording.name && Array.isArray(p.frames) && p.frames.length === 2 && p.frames.every(Number.isInteger));
       // one browser for all of them, with each recording's page starting from nothing
       page = page ? await page.another() : await openChrome({ profile: join(LOCAL, 'chrome', 'prove'), headless: true });
-      const result = await prove({ page, reference, game, recording, copy: copy.path, server, codeMap, before: progress.recordings[recording.name], asked, askedState, parts: own, keysLate: original.keysAfterVBlank === true, paced: args.includes('--paced'), quick });
+      const result = recording.players ? await proveLinked({ page, game, recording, copy: copy.path, server, quick, asked }) : await prove({ page, reference, game, recording, copy: copy.path, server, codeMap, before: progress.recordings[recording.name], asked, askedState, parts: own, keysLate: original.keysAfterVBlank === true, paced: args.includes('--paced'), quick });
       failed ||= result.matched < result.frames || result.neverInPlay.length > 0;
       if (quick) continue;
       progress.recordings[recording.name] = {
