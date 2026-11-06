@@ -10,6 +10,9 @@
 //
 // CheckCPUPartnerUnlock watches the keys throughout: Up on Sonic, then Right, Down, Right, L, Right, R, Right and A,
 // and the ring sound plays as the screen ends, and Tails comes along as the CPU's partner (gTailsEnabled).
+//
+// In the VS menus (game mode 2 or more) the GBAs choose together over the link (the packets 0x20 to 0x23) and the screen
+// goes on to the players' overview (vsoverview.c).
 
 #include "sa.h"
 
@@ -29,6 +32,14 @@ static const uint8_t ROW_AFTER[2][3] = { { 0, 1, 3 }, { 1, 2, 0 } };
 enum { PICK_WAIT = 38, PICK_END = 0x38, BACK_CLEAR = 0x10, READY = 0x21 };
 enum { SINGLE_PLAYER = 0, TIME_ATTACK = 1 };   // gGameMode
 enum { PARTNER_READY = 8, NO_CODE = 0xFF };
+// the link's packets while the GBAs choose: still choosing, picked (and waiting for the others), all picked, and the
+// parent's answer with each one's character
+enum { CHOOSING = 0x20, PICKED = 0x21, ALL_PICKED = 0x22, ANSWER = 0x23 };
+// The original lets no two players take the same character: a character another GBA has picked can't be picked, and the
+// row turns past it. Every player is Sonic in this build whatever the row says, so the rule is left out, which is this
+// screen's one difference from the original, as in the JavaScript version.
+#define SAME_CHARACTER_ALLOWED 1
+static int multi_player(void) { return ctx.gameMode > TIME_ATTACK; }
 // CheckCPUPartnerUnlock's keys, after Up on Sonic
 static const uint16_t PARTNER_KEYS[10] = { KEY_RIGHT, KEY_DOWN, KEY_RIGHT, KEY_L, KEY_RIGHT, KEY_R, KEY_RIGHT, KEY_A, 0, 0 };
 #define TEXT_ROW " !\"#$%&'"
@@ -62,7 +73,7 @@ static Characters characters;
 static Backdrop backdrop;
 static struct {
   Fade fade;
-  int32_t turn, shown, wanted, turning, wasTurning, turnFrames, frames, code, picked;
+  int32_t turn, shown, wanted, turning, wasTurning, turnFrames, frames, code, picked, taken;
   Task *name, *bars, *arrows, *title, *backdrop, *characters;
 } screen;
 
@@ -87,6 +98,8 @@ static void character(Sprite *s, uint32_t dest, int x, int variant, uint16_t oam
 
 /** CreateCharacterSelectionScreen: `selected` is the character the row starts on. */
 void create_character_select(int selected) {
+  vs_reset_missing();
+  screen.taken = 0;
   create_ui_task();
   ui_gfx_stack_init();
   e.dispCnt = 0x1240;
@@ -194,20 +207,42 @@ static void start_turn(int way) {
 static void go_back(Task *t);
 static void pick(Task *t);
 
+// the characters the other GBAs have picked, a bit for each (unk2F): any packet after "still choosing" names its character
+static int taken_by(void) {
+  int taken = 0, connections = vs_connections();
+  for (int i = 0; i < PLAYERS_MAX; i++) {
+    const uint8_t *packet = link_slot(i);
+    if (i != link_id() && connections >> i & 1 && packet && packet_kind(packet) > CHOOSING) taken |= 1 << packet[2];
+  }
+  return SAME_CHARACTER_ALLOWED ? 0 : taken;
+}
+
+static void wait_for_others(Task *t);
+
 // Task_805A060, as one player has it
 static void choose(Task *t) {
+  int multi = multi_player();
+  if (multi) {
+    if (vs_link_lost()) return;
+    screen.taken = taken_by();
+  }
   int wanted = screen.wanted;
   int ready = (uint32_t)screen.frames > READY;
   watch_code(e.pressed);
-  if (e.repeated & KEY_B && ready && wanted == screen.shown) {
+  int taken = screen.taken & 1 << (wanted & 3);
+  if (e.repeated & KEY_B && ready && wanted == screen.shown && !multi) {
     play_song(SONG_RETURN);
     // sub_805B858
     screen.frames = 0;
     e.bldY = 0;
     t->main = go_back;
-  } else if (e.repeated & KEY_A && wanted == screen.shown && ready) {
+  } else if (e.repeated & KEY_A && wanted == screen.shown && ready && !taken) {
     play_song(SONG_SELECT);
-    pick(t);
+    if (!multi) pick(t);
+    else {
+      screen.arrows->flags |= TASK_INACTIVE;
+      t->main = wait_for_others;
+    }
   } else if (e.repeated & KEY_LEFT && ready) {
     wanted--;
     start_turn(2);
@@ -216,6 +251,11 @@ static void choose(Task *t) {
     start_turn(1);
   } else if (wanted > screen.shown) start_turn(1);
   else if (wanted < screen.shown) start_turn(2);
+  else if (screen.taken & 1 << (wanted & 3) && ready) {
+    // the character in the middle was picked by another GBA: on to the next one, the way the row was going
+    if (screen.wasTurning) wanted += screen.wasTurning & 1 ? 1 : -1;
+    else start_turn(1);
+  }
 
   screen.wasTurning = screen.turning;
   if (screen.turning && screen.turnFrames) {
@@ -243,6 +283,104 @@ static void choose(Task *t) {
   characters.turning = screen.turning;
   if (screen.backdrop && screen.backdrop->data == &backdrop) backdrop.angle = angle;   // gone after a pick
   title.frames = ++screen.frames;
+  if (multi) {
+    uint8_t *send = link_send();
+    set_kind(send, CHOOSING);
+    send[2] = (uint8_t)((angle & 0x300) >> 8);
+  }
+}
+
+// the character in the middle of the row
+static int character_of(void) { return (screen.turn & 0x300) >> 8; }
+static void back_to_choosing(Task *t) { screen.arrows->flags &= ~TASK_INACTIVE; t->main = choose; }
+static void wait_for_answer(Task *t);
+
+// Task_805A54C: picked; the parent waits for every GBA to say so, and tells them all
+static void wait_for_others(Task *t) {
+  if (vs_link_lost()) return;
+  int id = link_id(), connections = ctx.vsLink.connections, mine = character_of();
+  uint8_t *send = link_send();
+  if (e.pressed & KEY_B) { back_to_choosing(t); return; }
+  if (packet_kind(link_slot(0)) == ALL_PICKED) {
+    for (int i = 0; i < PLAYERS_MAX; i++) {
+      if (connections >> i & 1) ctx.vsLink.characters[i] = link_slot(i) ? link_slot(i)[2] : 0;
+    }
+    t->main = wait_for_answer;
+    return;
+  }
+  for (int i = 0; i < PLAYERS_MAX; i++) {
+    const uint8_t *packet = link_slot(i);
+    // a GBA before this one that picked the same character has it
+    if (!SAME_CHARACTER_ALLOWED && connections >> i & 1 && i != id && packet_kind(packet) == PICKED && packet[2] == mine && i < id) back_to_choosing(t);
+  }
+  if (link_flags() & 0x80) {
+    uint8_t picked[4] = { 0 };
+    set_kind(send, ALL_PICKED);
+    send[2] = (uint8_t)mine;
+    for (int i = 0; i < PLAYERS_MAX; i++) {
+      if (!(connections >> i & 1)) continue;
+      const uint8_t *packet = link_slot(i);
+      if (packet_kind(packet) != PICKED || (!SAME_CHARACTER_ALLOWED && ++picked[packet[2] & 3] > 1)) {
+        set_kind(send, PICKED);
+        break;
+      }
+    }
+  } else {
+    set_kind(send, PICKED);
+    send[2] = (uint8_t)mine;
+  }
+}
+
+// Task_805A798: everyone has picked; the parent sends each one's character and how far the characters have got, and the
+// GBAs pick together
+static void wait_for_answer(Task *t) {
+  if (vs_link_lost()) return;
+  int flags = link_flags(), connections = ctx.vsLink.connections, mine = character_of();
+  uint8_t *send = link_send();
+  int parent = packet_kind(link_slot(0));
+  if (parent == ANSWER) {
+    int furthest = 0;
+    for (int i = 0; i < PLAYERS_MAX; i++) {
+      if (!(connections >> i & 1)) continue;
+      const uint8_t *packet = link_slot(i);
+      if (packet && packet[3] > furthest) furthest = packet[3];
+      if (!(flags & 0x80)) ctx.vsLink.characters[i] = packet ? packet[2] : 0;
+    }
+    ctx.vsLink.furthest = (uint8_t)furthest;   // gUnknown_03005140
+    pick(t);
+    return;
+  }
+  if (parent == PICKED) {
+    set_kind(send, CHOOSING);
+    back_to_choosing(t);
+    return;
+  }
+  int unlocked = save_unlocked_level(mine) & 0xFF;
+  if (flags & 0x80) {
+    set_kind(send, ANSWER);
+    send[2] = (uint8_t)mine;
+    send[3] = (uint8_t)unlocked;
+    for (int i = 1; i < PLAYERS_MAX; i++) {
+      if (!(connections >> i & 1)) continue;
+      const uint8_t *packet = link_slot(i);
+      ctx.vsLink.characters[i] = packet ? packet[2] : 0;
+      if (packet_kind(packet) != ALL_PICKED) {
+        set_kind(send, ALL_PICKED);
+        if (e.pressed & KEY_B) set_kind(send, PICKED);
+        break;
+      }
+    }
+  } else {
+    set_kind(send, ALL_PICKED);
+    send[2] = (uint8_t)mine;
+    send[3] = (uint8_t)unlocked;
+  }
+}
+
+/** The VS menus' character select: every GBA starts on a character of its own (CreateCharacterSelectionScreen((PSEUDO_RANDOM_32() + id) % 4)). */
+void create_vs_character_select(void) {
+  memset(ctx.vsLink.characters, 0, sizeof ctx.vsLink.characters);
+  create_character_select((int)((front_random() + (uint32_t)link_id()) % 4));
 }
 
 static void title_picked(Task *t);
@@ -276,6 +414,17 @@ static void to_act(Task *t) { destroy_task(t); front_play(-1); }
 // brings the partner
 static void leave(Task *t) {
   if (++screen.frames > PICK_END) {
+    if (multi_player()) {
+      // the screen shows who each GBA picked (sub_801C9D8)
+      Task *tasks[4] = { screen.name, screen.bars, screen.characters, screen.title };
+      for (int i = 0; i < 4; i++) destroy_task(tasks[i]);
+      destroy_task(t);
+      e.dispCnt &= 0xFFF;
+      e.bldCnt = 0;
+      e.bldY = 0;
+      create_vs_overview();
+      return;
+    }
     // the code's partner is for the single-player game only (gGameMode)
     int partner = ctx.gameMode == SINGLE_PLAYER && screen.code == PARTNER_READY;
     destroy_task(screen.name);
