@@ -8,7 +8,7 @@
 
 import { SINE } from '../engine/trig.js';
 
-const UI_TASK_PRIORITY = 0x1800, UI_GFX_SLOTS = 16, UI_GLYPH_SLOTS = 10;
+const UI_TASK_PRIORITY = 0x1800, UI_GFX_SLOTS = 16, UI_GLYPH_SLOTS = 30;
 const OBJ_VRAM = 0x10000;
 // a glyph's character code: glyph 0 is ' ' (UI_DIGIT(0)), glyph 1 '!' and so on
 const GLYPH_BASE = 0x20;

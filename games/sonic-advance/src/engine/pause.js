@@ -21,14 +21,15 @@ const ORDER = 1;                          // SPRITE_OAM_ORDER(1), in front of th
 /**
  * CreatePauseMenu: the menu's task, to run at PAUSE_PRIORITY, with the act's `state`, `anims` and `sound`, and
  * `startPressed()`, whether Start was pressed this frame. `state.pauseGame` is FLAGS_PAUSE_GAME, and
- * `state.pauseSign` the sign's sprites on the frames it shows them.
+ * `state.pauseSign` the sign's sprites on the frames it shows them. In Time Attack (`timeAttack`) the sign is
+ * the Time Attack one: its own background, and PAUSE taking turns each second with its Time Attack variant in
+ * the save's `language`; and A (`aPressed()`) sends the run to the lobby (`toLobby()`).
  */
-export function createPauseMenu({ state, anims, sound, startPressed }) {
-  // in Time Attack the sign is the Time Attack one (#138): its background (809) and PAUSE taking turns with
-  // its Time Attack variant (810) each second
-  const sign = [makeSprite('pause', { order: ORDER, prio: 0 }), makeSprite('pauseBackground', { order: ORDER, prio: 0 })];
-  for (const s of sign) animate(s, anims);
-  let started = false;
+export function createPauseMenu({ state, anims, sound, startPressed, timeAttack = false, language = 1, aPressed = () => false, toLobby = () => {} }) {
+  const sign = [makeSprite('pause', { order: ORDER, prio: 0 }), makeSprite(timeAttack ? 'pauseBackgroundTA' : 'pauseBackground', { order: ORDER, prio: 0 })];
+  const words = [sign[0], makeSprite(language ? 'pauseTAEnglish' : 'pauseTAJapanese', { order: ORDER, prio: 0 })];
+  for (const s of [...sign, words[1]]) animate(s, anims);
+  let started = false, frames = 0;
   return {
     runsPaused: true,   // TASK_x0004
     run() {
@@ -45,7 +46,17 @@ export function createPauseMenu({ state, anims, sound, startPressed }) {
         sound.continueAll();
         return false;
       }
-      // in Time Attack, A leaves for the Time Attack lobby here (#138)
+      // in Time Attack, A leaves for the Time Attack lobby
+      if (timeAttack && aPressed()) {
+        state.pauseGame = false;
+        sound.play(SONG.SELECT);
+        toLobby();
+        return false;
+      }
+      if (timeAttack && ++frames >= 60) {
+        frames = 0;
+        sign[0] = sign[0] === words[0] ? words[1] : words[0];
+      }
       state.pauseSign = sign.map(s => ({ frame: s.frame, x: SIGN_X, y: SIGN_Y, flipX: false, flipY: false, order: s.order, prio: s.prio, screen: true }));
       return true;
     },

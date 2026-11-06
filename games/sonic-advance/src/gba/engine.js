@@ -49,6 +49,7 @@ export function createEngine(video, rom, sound) {
   const e = {
     rom, video,
     playSong: song => sound?.play(song),   // m4aSongNumStart
+    playSongOrContinue: song => (sound?.startOrContinue ? sound.startOrContinue(song) : sound?.play(song)),   // m4aSongNumStartOrContinue
     playSongOrChange: song => sound?.playOrChange?.(song),   // m4aSongNumStartOrChange
     stopSong: song => sound?.stop(song),   // m4aSongNumStop
     pauseSongs: song => sound?.pause?.(song),   // the pause menu's start (Task_PauseMenuInit)

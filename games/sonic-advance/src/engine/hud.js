@@ -28,8 +28,9 @@ export function createHud(flash = 1, past = 'pastTheFont') {
  * Lays out this frame's HUD sprites as [what, x, y], back to front, where `what` is 'ring', 'face' or a
  * glyph number. Returns true on the frames the timer warning beeps.
  */
-export function updateHud(hud, { ringCount, score, lives, courseTime, stageTime, timerReversed }) {
-  const icons = [['ring', -2, -1], ['face', 2, 144]];
+export function updateHud(hud, { ringCount, score, lives, courseTime, stageTime, timerReversed, timeAttack = false }) {
+  // Time Attack has no lives: neither the character's face nor the digit
+  const icons = timeAttack ? [['ring', -2, -1]] : [['ring', -2, -1], ['face', 2, 144]];
   const glyphs = [];
   const row = (list, x, y) => list.forEach((g, i) => glyphs.push([g, x + i * GLYPH_W, y]));
 
@@ -56,7 +57,7 @@ export function updateHud(hud, { ringCount, score, lives, courseTime, stageTime,
   row(time.map(g => g + red), 25, 12);
 
   // the lives digit shows one less than the count, 9 at most
-  row([lives > 9 ? 9 : lives === 0 ? 0 : lives - 1], 22, 143);
+  if (!timeAttack) row([lives > 9 ? 9 : lives === 0 ? 0 : lives - 1], 22, 143);
 
   // the digits are at OAM order 2 and the icons at 3 (Task_StageUIMain, sub_8053BAC), and the first put in is in front
   hud.sprites = [...icons, ...glyphs.reverse()];

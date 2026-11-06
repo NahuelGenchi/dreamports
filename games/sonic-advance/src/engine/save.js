@@ -30,6 +30,7 @@ const EMERALDS_KEY = 'onsoku.emeralds';   // what came before the save: the Chao
 const SIZE = 0x430, CHECKSUM = 0x42C;
 const SECURITY = 0x4F524950;
 const MAX_COURSE_TIME = 10 * 3600;
+const TIME_RECORDS = 0x20, LEVELS = 18, RECORDS_PER_COURSE = 3;
 
 /** The frames a write takes mGBA (the reference), in which nothing else runs and gFrameCount doesn't count. */
 export const WRITE_FRAMES = 14;
@@ -108,6 +109,27 @@ export function openSave(storage = browserStorage()) {
     get unk427() { return bytes[0x427]; },
     get score() { return view.getUint32(0x428, true); },
     set score(v) { view.setUint32(0x428, v >>> 0, true); },
+    /** The `rank`th best time (frames) of `character` in `level`, 10:00 when there is none. */
+    timeRecord: (character, level, rank) => view.getUint32(TIME_RECORDS + ((character * LEVELS + level) * RECORDS_PER_COURSE + rank) * 4, true),
+    /**
+     * RegisterTimeRecord: `time` among the three best of `character` in `level`, the slower ones moving down a place.
+     * True when it is the best.
+     */
+    registerTimeRecord(character, level, time) {
+      const at = rank => TIME_RECORDS + ((character * LEVELS + level) * RECORDS_PER_COURSE + rank) * 4;
+      for (let rank = 0; rank < RECORDS_PER_COURSE; rank++) {
+        let record = view.getUint32(at(rank), true);
+        if (time >= record) continue;
+        view.setUint32(at(rank), time, true);
+        for (let next = rank + 1; next < RECORDS_PER_COURSE; next++) {
+          const slower = view.getUint32(at(next), true);
+          view.setUint32(at(next), record, true);
+          record = slower;
+        }
+        return rank === 0;
+      }
+      return false;
+    },
     unlockedLevel: character => view.getUint16(0x08 + character * 2, true),
     setUnlockedLevel(character, level) { view.setUint16(0x08 + character * 2, level, true); },
     /** sub_8012F6C: the flash erased, so the browser keeps no save until the next write. */

@@ -248,7 +248,7 @@ function chooseItem(t) {
     displaySprite(e, ctx.sprites, item);
   });
   // Tiny Chao Garden's screen isn't built: A on it does nothing (the original fades out to it too)
-  if (e.pressed & KEY.A && (menu.selectedItem === GAME_START || menu.selectedItem === VS || (menu.selectedItem === TIME_ATTACK && ctx.offsets.timeAttackMenu) || menu.selectedItem === OPTIONS)) {
+  if (e.pressed & KEY.A && (menu.selectedItem === GAME_START || menu.selectedItem === VS || (menu.selectedItem === TIME_ATTACK && ctx.offsets.timeAttackMenu && ctx.offsets.timeAttackCards && ctx.offsets.timeAttackLobby && ctx.offsets.timeAttackRecord) || menu.selectedItem === OPTIONS)) {
     e.playSong(SONG.SELECT);
     t.main = fadeOut;
     menu.unk1B0 = 0;

@@ -14,6 +14,7 @@ import { createLanguageScreen, hasLanguageScreen } from './language.js';
 import { createIntro } from './intro.js';
 import { createTitleScreen } from './title.js';
 import { createCourseSelect } from './courseselect.js';
+import { createTimeAttackLobby } from './timeattacklobby.js';
 import { createClock, GBA_FRAME_MS } from '../../../../kit/gba/clock.js';
 
 /**
@@ -57,8 +58,8 @@ export function powerOn(ctx, skipIntro = false) {
  * the character select goes straight to the act; without
  * `select`, a start point for the proof tools, Game Start goes where the character select would. A little before a demo
  * starts `prepareDemo()` is called, and as it starts `play`, with `demo` set in its last argument and its video memory in
- * `vram`. `back`, { title, frameCount, white, vram }, starts it as a demo leaves it,
- * with no start-up: at the title screen with its music if `title`, else at the SEGA logo, with gFrameCount at `frameCount` and video memory as the screens before left it.
+ * `vram`. `back`, { title, lobby, frameCount, white, vram }, starts it as a demo leaves it,
+ * with no start-up: at the title screen with its music if `title`, at the Time Attack lobby for `lobby` ({ character, level }), else at the SEGA logo, with gFrameCount at `frameCount` and video memory as the screens before left it.
  * `softReset()` is called when A, B, Start and Select are held together (VBlankIntr), and `afterReset` starts the
  * front end as the game starts again from that: the screen blank and then the title screen, with no logos.
  * Returns { stop, step, draw, setView }: setView(w, h) draws a widescreen view of w × h from then on (the
@@ -71,7 +72,7 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
   let done = false, resetting = false, chosen, demo = false, startingUp = back ? 0 : afterReset ? RESET_FRAMES : STARTUP_FRAMES;
   engine.onSoftReset = softReset && (() => { resetting = true; });
   const ctx = {
-    engine, tilemaps: offsets.tilemaps, sprites: spriteTables(rom, offsets.spriteTables), offsets, save, character, partner: false, gameMode: 0, levels, select,
+    engine, tilemaps: offsets.tilemaps, sprites: spriteTables(rom, offsets.spriteTables), offsets, save, character, partner: false, gameMode: 0, level: 0, levels, select,
     introGraphics: offsets.introGraphics, introTables: offsets.introTables,
     afterReset,
     intro: () => createIntro(ctx),
@@ -82,14 +83,20 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
     // Task_805AAF8: whether the act comes next, with nothing cleared yet, or the course select, which only the versions
     // with a known place for its picture have
     onGameStart,
-    toCourseSelect: () => courseSelect && save.unlockedLevel(ctx.character) !== 0 && !!offsets.courseSelectBackground,
+    toCourseSelect: () => courseSelect && (ctx.gameMode === 1 || save.unlockedLevel(ctx.character) !== 0) && !!offsets.courseSelectBackground,
     startGame: () => { if (ctx.toCourseSelect()) createCourseSelect(ctx); else ctx.play(); },
   };
 
   if (back) {
     engine.frameCount = back.frameCount;
-    video.vram.set(back.vram);
-    if (back.title) ctx.title(true);
+    if (back.vram) video.vram.set(back.vram);
+    if (back.lobby) {
+      // a Time Attack run is over: the lobby, for the character and the act that was played
+      ctx.gameMode = 1;
+      ctx.character = back.lobby.character;
+      ctx.level = back.lobby.level;
+      createTimeAttackLobby(ctx);
+    } else if (back.title) ctx.title(true);
     else createSegaLogo(ctx);
   }
 
@@ -137,10 +144,10 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
     if (done) {
       // what's still sounding plays on, as the original stops nothing here: the act's music takes the place of the screen's
       // a demo's act shows black until its first picture, which can take a moment to read from the ROM
-      if (demo) { out.fillStyle = '#000'; out.fillRect(0, 0, canvas.width, canvas.height); }
+      if (demo || chosen !== undefined) { out.fillStyle = '#000'; out.fillRect(0, 0, canvas.width, canvas.height); }
       if (chosen === undefined && !select && !demo) stop();
       else { cancelAnimationFrame(frame); input.release(); }
-      play(chosen, engine.frameCount + 1, { character: ctx.character, partner: ctx.partner, demo, vram: video.vram });
+      play(chosen, engine.frameCount + 1, { character: ctx.character, partner: ctx.partner, demo, vram: video.vram, timeAttack: ctx.gameMode === 1 });
       return;
     }
     frame = requestAnimationFrame(loop);

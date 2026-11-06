@@ -31,6 +31,7 @@ export const SONG = {
   SEGA_RING: 102,          // SE_RING: Sonic Team's logo
   SHIFT: 103,              // SE_SHIFT: the character select's row turning
   SELECT: 106,             // SE_SELECT: Start on the title screen, a choice in the menu
+  TIME_ATTACK_LOBBY: 155, // SE_155: the Time Attack lobby's music, which plays until a choice is made
   RETURN: 107,             // SE_RETURN: back out of a choice in the Options menu
   MENU_CURSOR: 108,        // SE_MENU_CURSOR_MOVE
   SPIN: 109,               // SE_SPIN_ATTACK: spin dash start and revs, rolling, the combo's first hit

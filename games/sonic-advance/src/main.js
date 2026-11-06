@@ -11,6 +11,7 @@ import { extractAssets, extractAgain } from './rom/extract.js';
 import { isSonicAdvance, RomError } from './rom/identify.js';
 import { Rom } from '../../../kit/gba/rom/rom.js';
 import { createFrontEnd } from './front/front.js';
+import { createTimeAttackOverlay } from './front/timeattackresult.js';
 import { extractRush, isRush } from './rom/rush.js';
 import { openSa2, isSa2 } from './rom/sa2.js';
 import { readBoostArt } from './rom/sa2boost.js';
@@ -73,6 +74,7 @@ const chaoPlace = params.has('chao') ? (Number(params.get('chao')) | 0) & 7 : DE
 // `?character=` is Sonic (0, the default), Tails (1), Knuckles (2) or Amy (3) with ?debug, and the one the character
 // select's row starts on otherwise; the multiplayer stage is everyone as Sonic
 let partner = false;   // gTailsEnabled: the character select's code
+let timeAttack = false;   // gGameMode is GAME_MODE_TIME_ATTACK: the acts run for a record, and end in the lobby
 let character = multiplayer ? 0 : Math.min(3, Math.max(0, Number(params.get('character') ?? 0) | 0));
 const screens = document.getElementById('screens');
 stage.classList.toggle('debug', debug);   // the panel shows the player's speed and state then
@@ -447,6 +449,7 @@ function start(buffer, assets, back = null, afterReset = false) {
     front = null;
     if (picked.demo) { playDemo(frameCount, picked.vram); return; }
     character = picked.character;
+    timeAttack = !!picked.timeAttack;
     // the code's partner comes along with Sonic only (GameStageStart)
     partner = picked.partner && character === 0;
     if (level === undefined) play(assets.character === character && !!assets.partner === partner ? assets : extractAgain(sa1.buffer, assets, { level: assets.first, character, partner }));
@@ -462,7 +465,7 @@ async function playChosen(level, frameCount) {
   const same = from.assets.first === level && from.assets.character === character && !!from.assets.partner === partner;
   const assets = same ? from.assets : await extractAssets(from.buffer, () => {}, { level, character, partner });
   if (sa1 !== from || stage.hidden) return;   // the player left the game meanwhile
-  play(assets, null, null, { level, frameCount });
+  play(assets, null, null, { level, frameCount, timeAttack });
 }
 
 // gDemoPlayCounter, the demo the title screen starts next, and gPseudoRandom as the last demo left it: a demo goes on
@@ -510,6 +513,14 @@ function leaveDemo(title) {
   start(sa1.buffer, sa1.assets, { title, frameCount, white, vram });
 }
 
+// the Time Attack lobby (CreateTimeAttackLobbyScreen), from the act that ended the run
+function toLobby() {
+  const { level, seed } = game.state, frameCount = game.state.frameCount + 1;
+  currentLevel = level;
+  randomSeed = seed;
+  start(sa1.buffer, sa1.assets, { lobby: { character, level }, frameCount, white: false });
+}
+
 // the act, after the game's start, again from what the special stage hands back (`resume`), the next zone's first
 // act with what the game carries over (`carry`), or the act the course select `chosen`, { level, frameCount }
 function play(assets, resume = null, carry = null, chosen = null) {
@@ -520,6 +531,10 @@ function play(assets, resume = null, carry = null, chosen = null) {
     resume, carry, save, startLevel, continues, levelPick, frameCount: chosen?.frameCount, demo, seed: randomSeed,
     onSpecialStage: handover => enterSpecialStage(assets, handover),
     onNextZone: next => nextZone(next),
+    timeAttack: chosen?.timeAttack,
+    createTimeAttackResult: result => createTimeAttackOverlay({ rom, offsets: assets.info.offsets, sound, save, ...result }),
+    // a Time Attack run is over (results, a life lost or A in the pause menu): the lobby, on the frame after
+    onTimeAttackEnd: () => queueMicrotask(() => toLobby()),
     // a game over without a continue goes back to the start of the game, the SEGA logo
     onTitle: demo ? leaveDemo : () => queueMicrotask(restartGame),
     onSoftReset: softReset,
