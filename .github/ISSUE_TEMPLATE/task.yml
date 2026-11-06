@@ -8,6 +8,8 @@ body:
       value: |
         A task lands under its game's issue, which lists every piece of the game and who has it. One person works on a task at a time. To take a free task, comment `/claim` on it, and `/release` gives it back. The Dreamports bot answers in a few seconds, and if someone was faster, it lists the tasks that are still free.
 
+        A task for a game's version in another language ends its title with the language, as in *Task: Title screen in C*, and keeps the game's own folder.
+
         A claim with no activity for 14 days is released, or 7 for a foundation, which other pieces wait on, and nothing done so far is lost. [Claims and teams](https://github.com/NahuelGenchi/dreamports/blob/main/docs/TEAMS.md) explains the rest.
 
         Never include ROMs, game files, saves, pictures taken from the game, private email addresses or passwords.

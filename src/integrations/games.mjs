@@ -1,13 +1,16 @@
 // Puts the games in this repository on the site (#74), and the kits they start from (#76). After
 // `astro build`, each folder in games/ is copied as it is to dist/play/<game>/, and each in kit/ to
 // dist/kit/<console>/, which Cloudflare serves at /play/<game>/ and /kit/<console>/ as plain files, all but
-// their notes, which are for the people making them (docs/NOTES.md). The build stops and names every problem
-// if a folder breaks one of the rules in games/README.md, if a note breaks the rules for notes, or if the
-// site grows past what Cloudflare's free plan takes.
-import { copyFile, lstat, mkdir, readdir } from 'node:fs/promises';
+// their notes, which are for the people making them (docs/NOTES.md). A game's version in C, games/<game>/c/, is built
+// to WebAssembly as it's copied, to /play/<game>/c/src/game.wasm, on the kit in C of the console its proof/original.json
+// names (kit/c/README.md). A game that started in C, with no JavaScript version, has no page of its own, so its address,
+// /play/<game>/, gets one that sends players on to its version's, /play/<game>/c/. The build stops and names every problem if a folder breaks one of the rules in
+// games/README.md, if a note breaks the rules for notes, or if the site grows past what Cloudflare's free plan takes.
+import { copyFile, lstat, mkdir, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ENTRY } from '../lib/entries.mjs';
+import { LANGUAGES, OTHER_LANGUAGES } from '../lib/languages.mjs';
 import { checkNotes } from '../lib/notes.mjs';
 
 // a game's folder name is its address: lowercase letters and numbers, with single dashes between them
@@ -45,6 +48,27 @@ export default function games() {
           for (const name of names) await copy(join(folder, name), join(site, kind.address, name));
           logger.info(names.length ? `Copied to /${kind.address}/: ${names.join(', ')}` : `No ${kind.what}s in ${kind.folder}/`);
         }
+        // each version in C, built from its source rather than from a game.wasm someone left in it
+        const built = [];
+        const C = LANGUAGES.c.folder;
+        for (const name of found.find(({ kind }) => kind === GAMES).names) {
+          const version = join(root, 'games', name, C);
+          if (!(await exists(join(version, 'index.html')))) continue;
+          const { buildGame } = await import('../../tools/lib/c.mjs');
+          await buildGame(version, join(site, 'play', name, C, 'src', 'game.wasm'));
+          built.push(`${name}/${C}`);
+        }
+        if (built.length) logger.info(`Built to WebAssembly: ${built.join(', ')}`);
+        // a game with no JavaScript version plays at its own address all the same, in its version in another language
+        const sent = [];
+        for (const name of found.find(({ kind }) => kind === GAMES).names) {
+          if (await exists(join(root, 'games', name, 'index.html'))) continue;
+          const language = OTHER_LANGUAGES.find((key) => built.includes(`${name}/${LANGUAGES[key].folder}`));
+          if (!language) continue;
+          await writeFile(join(site, 'play', name, 'index.html'), sendOn(`${LANGUAGES[language].folder}/`));
+          sent.push(`${name} to ${name}/${LANGUAGES[language].folder}`);
+        }
+        if (sent.length) logger.info(`Sent on: ${sent.join(', ')}`);
         // what every console's games read about their console (kit/consoles.js)
         await copyFile(join(root, 'kit', 'consoles.js'), join(site, 'kit', 'consoles.js'));
 
@@ -89,8 +113,19 @@ async function problemsWith(kind, folder, name, site) {
   }
   const { files, others } = await walk(join(folder, name), false);
   const paths = new Set(files.map((file) => relative(join(folder, name), file.path)));
-  if (kind.page && !paths.has('index.html')) problems.push(`${at}: It needs an index.html, the page the game starts from.`);
+  // a game that started in another language, as new games start in C, has its page in that language's folder alone
+  const elsewhere = kind.page && OTHER_LANGUAGES.some((language) => paths.has(join(LANGUAGES[language].folder, 'index.html')));
+  if (kind.page && !paths.has('index.html') && !elsewhere) problems.push(`${at}: It needs an index.html, the page the game starts from, or its version in C's, c/index.html.`);
   if (kind.page && !paths.has(ENTRY)) problems.push(`${at}: It needs its entry, ${ENTRY}, which says everything about it and makes its page on the site.`);
+  // a version in another language is a page of its own, in the folder named after its language
+  for (const language of kind.page ? OTHER_LANGUAGES : []) {
+    const own = LANGUAGES[language].folder;
+    if (![...paths].some((path) => path.startsWith(`${own}${sep}`))) continue;
+    if (!paths.has(join(own, 'index.html'))) problems.push(`${at}${own}/: Its version in ${LANGUAGES[language].name} needs an index.html, the page it starts from.`);
+    if (language === 'c' && ![...paths].some((path) => path.startsWith(join(own, 'src') + sep) && path.endsWith('.c'))) {
+      problems.push(`${at}${own}/: Its version in C needs its C in src/, which the site builds to src/game.wasm.`);
+    }
+  }
   if (!LICENSES.some((license) => paths.has(license))) {
     problems.push(`${at}: It needs a license for its code, in a file named LICENSE or COPYING.`);
   }
@@ -102,6 +137,23 @@ async function problemsWith(kind, folder, name, site) {
   }
   return problems;
 }
+
+// the page at a game's own address when it has no JavaScript version: it sends the player on to `to`, with what was after
+// the address, such as ?proof, kept
+const sendOn = (to) => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Dreamports</title>
+<script>location.replace(${JSON.stringify(to)} + location.search + location.hash)</script>
+<noscript><meta http-equiv="refresh" content="0; url=${to}"></noscript>
+<style>html { background: #000; }</style>
+</head>
+<body><a href="${to}" style="color: #fff">Play</a></body>
+</html>
+`;
 
 // copies a game's or a kit's files, leaving out names starting with a dot and its notes
 async function copy(from, to) {

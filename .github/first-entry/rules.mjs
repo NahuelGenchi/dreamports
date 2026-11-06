@@ -3,7 +3,7 @@
 // and compared byte by byte, and what can't be, its proof files and capture, is checked against the strict shapes the
 // tools write, so that no words and no code of anyone's can come along. It reads the files as data and runs none of them.
 import { checkRules } from '../moderation/rules.mjs';
-import { captureMessage, firstFilesMessage, namesOf, startingEntry, startingFiles, withCapture } from '../../tools/lib/new-game.mjs';
+import { captureMessage, firstFiles, firstFilesMessage, namesOf, startingEntry, withCapture } from '../../tools/lib/new-game.mjs';
 
 const GAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const PERSON = /^[\p{L}\p{N}][\p{L}\p{N} .'_-]{0,59}$/u;   // a person's name on a commit, which has room for no link
@@ -18,12 +18,20 @@ export function gameOf(files) {
   return found.length === 1 && GAME.test(found[0]) ? found[0] : null;
 }
 
-/** Every file of a game's first entry, but docs/STATUS.md, which it changes. */
-export function pathsOf(game) {
+/** The language a first entry's game starts in, from its files: C when it brings games/<game>/c/index.html, as new
+ *  games start in C, or else JavaScript (src/lib/languages.mjs). */
+export const languageOf = (game, files) => (files.some(f => f.filename === `games/${game}/c/index.html`) ? 'c' : 'js');
+
+/** Where a first entry's version is, in its game's folder: '' for JavaScript, 'c/' for C. */
+const versionAt = language => (language === 'js' ? '' : `${language}/`);
+
+/** Every file of a game's first entry, but docs/STATUS.md, which it changes: in JavaScript, or with `language` 'c', in C. */
+export function pathsOf(game, language = 'js') {
   const media = `public/media/${game}-dreamport`;
+  const code = language === 'js' ? ['index.html', 'src/main.js'] : ['c/index.html', 'c/src/main.c', 'c/src/main.js'];
   return [
-    ...['LICENSE', 'index.html', 'src/main.js', 'entry.md', 'proof/original.json', 'proof/code-map.json', 'proof/port-map.json'].map(f => `games/${game}/${f}`),
-    `${media}.h264.mp4`, `${media}.av1.mp4`, `${media}-still.webp`, `${media}-share.png`, `.github/readme/progress/${game}.svg`,
+    ...['LICENSE', ...code, 'entry.md', 'proof/original.json', 'proof/code-map.json', `${versionAt(language)}proof/port-map.json`].map(f => `games/${game}/${f}`),
+    `${media}.h264.mp4`, `${media}.av1.mp4`, `${media}-still.webp`, `${media}-share.png`, `.github/readme/progress/${game}${language === 'js' ? '' : `-${language}`}.svg`,
   ];
 }
 
@@ -140,7 +148,8 @@ const letters = text => text.toLowerCase().replace(/[^a-z0-9]/g, '');
  * new row in docs/STATUS.md, which only the tools can write again (`read.mjs`).
  */
 export function checkFirstEntry({ game, files, modes, read, claim, author, onSite, today = new Date() }) {
-  const paths = pathsOf(game);
+  const language = languageOf(game, files);
+  const paths = pathsOf(game, language);
   const changed = new Map(files.map(f => [f.filename, f]));
   const readme = changed.get('docs/STATUS.md');
   if (changed.size !== paths.length + 1 || !paths.every(path => changed.get(path)?.status === 'added') || readme?.status !== 'modified') return { why: 'files' };
@@ -160,15 +169,16 @@ export function checkFirstEntry({ game, files, modes, read, claim, author, onSit
   if (!isClip(read(`${media}.h264.mp4`), 'avc1') || !isClip(read(`${media}.av1.mp4`), 'av01')
     || !isStill(read(`${media}-still.webp`)) || !isShare(read(`${media}-share.png`))) return { why: 'capture' };
 
-  for (const [file, expected] of Object.entries(startingFiles(game, original))) {
-    if (text(`games/${game}/${file}`) !== expected) return { why: 'template' };
-  }
   const entry = text(`games/${game}/entry.md`);
   const added = /^added: (\d{4}-\d{2}-\d{2})$/m.exec(entry)?.[1];
+  // its code and license as `new` writes them; the entry, which also has its capture by now, is compared just below
+  for (const [file, expected] of Object.entries(firstFiles(game, original, { language, issue: claim.number, lead: author, added }))) {
+    if (file !== 'entry.md' && text(`games/${game}/${file}`) !== expected) return { why: 'template' };
+  }
   const age = added ? (today - new Date(`${added}T00:00:00Z`)) / 86_400_000 : NaN;
   if (!(age >= -1 && age <= 365) || entry !== withCapture(startingEntry(game, original, { issue: claim.number, lead: author, added }), game)) return { why: 'entry' };
 
   const row = (readme.patch ?? '').split('\n').filter(line => /^[-+]/.test(line) && !/^(---|\+\+\+) /.test(line));
   if (readme.additions !== 1 || readme.deletions !== 0 || row.length !== 1 || !row[0].startsWith('+')) return { why: 'readme' };
-  return { original, name, added, row: row[0].slice(1) };
+  return { original, name, added, language, row: row[0].slice(1) };
 }

@@ -30,6 +30,7 @@ import { referenceOf } from './lib/reference.mjs';
 import { checkSizes, firstOtherSize } from './lib/screens.mjs';
 import { notesAbout } from './notes.mjs';
 import { proveLinked } from './prove-linked.mjs';
+import { versionOf } from '../src/lib/languages.mjs';
 
 const BATCH = 120;
 const STILLS = 600, STATES = 20;
@@ -462,8 +463,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     }
     // what people already found about what differs here (docs/NOTES.md)
     const unproven = partsFound.filter(part => !part.proven).map(part => part.name);
-    for (const note of notesAbout(game, about => unproven.includes(about) || (firstDifference >= 0 && about === name))) {
-      console.log(`  A note on this: ${note.title} npm run dp -- notes ${game} ${note.name} prints it.`);
+    for (const note of notesAbout(versionOf(game).game, about => unproven.includes(about) || (firstDifference >= 0 && about === name))) {
+      console.log(`  A note on this: ${note.title} npm run dp -- notes ${versionOf(game).game} ${note.name} prints it.`);
     }
     const outOfReach = asked.filter(f => f >= frames);
     if (outOfReach.length) console.log(`  --stills names frames past the recording's last, ${frames - 1}: ${outOfReach.slice(0, 8).join(', ')}${outOfReach.length > 8 ? '…' : ''}.`);
@@ -471,7 +472,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (fixed.length) console.log(`  Matches where it differed when last proven: ${listed(fixed)}.`);
     if (page.errors.length) console.log(`  The page reported ${page.errors.length} errors; ${where}/report.json lists them.`);
     if (codeMap && first.outside.cartridge) {
-      console.log(`  Instructions that ran in the cartridge outside every function of the code map: ${first.outside.cartridge}. npm run dp -- codemap ${game} --fill adds what the map is missing.`);
+      console.log(`  Instructions that ran in the cartridge outside every function of the code map: ${first.outside.cartridge}. npm run dp -- codemap ${versionOf(game).game} --fill adds what the map is missing.`);
     }
     if (!quick) console.log(`  Clip, ${(file.length / 1e6).toFixed(2)} MB, frames ${clip[0]} to ${clip[1]}: ${where}/clip.mp4`);
     if (!quick && file.length > CLIP_LIMIT) console.log('  The clip is still over 2 MB: a shorter "clip" in the recording makes it lighter.');

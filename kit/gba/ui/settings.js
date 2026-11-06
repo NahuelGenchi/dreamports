@@ -112,6 +112,9 @@ const CONSOLE = {
   A: 'A button', B: 'B button', L: 'L button', R: 'R button', START: 'Start', SELECT: 'Select',
   UP: 'd-pad up', DOWN: 'd-pad down', LEFT: 'd-pad left', RIGHT: 'd-pad right',
 };
+// another console's button, by its name in kit/consoles.js: Start, Cross button, C up button, stick, left
+const consoleButton = name => CONSOLE[name]
+  ?? (name.startsWith('STICK_') ? `stick, ${name.slice(6).toLowerCase()}` : `${name[0]}${name.slice(1).toLowerCase().replaceAll('_', ' ')} button`);
 const DIRECTIONS = ['up', 'down', 'left', 'right'];
 
 /**
@@ -124,7 +127,9 @@ export function layoutControls(layout, what = {}) {
   const keysOf = button => Object.entries(layout.keys)
     .filter(([, b]) => (Array.isArray(b) ? b.includes(button) : b === button)).map(([code]) => keyName(code));
   const padOf = button => (layout.pad[button] ?? []).map(i => PAD_NAMES[i] ?? `Button ${i}`);
-  const dpad = DIRECTIONS.every((b, i) => layout.gba?.[b] === b.toUpperCase() && keysOf(b).join() === '↑↓←→'[i]
+  // the console's name for each of the game's buttons: a Game Boy Advance game's in `gba`, another console's in `console`
+  const named = layout.gba ?? layout.console;
+  const dpad = DIRECTIONS.every((b, i) => named?.[b] === b.toUpperCase() && keysOf(b).join() === '↑↓←→'[i]
     && padOf(b).join() === PAD_NAMES[12 + i]);
   const rows = [];
   for (const b of layout.buttons) {
@@ -132,8 +137,8 @@ export function layoutControls(layout, what = {}) {
       if (!rows.some(r => r.dpad)) rows.push({ dpad: true, keys: ['↑↓←→'], pad: ['D-pad', 'L stick'], what: what.dpad ?? "The console's d-pad" });
       continue;
     }
-    const gba = layout.gba?.[b];
-    rows.push({ keys: keysOf(b), pad: padOf(b), what: what[b] ?? (gba ? `The console's ${CONSOLE[gba]}` : b) });
+    const name = named?.[b];
+    rows.push({ keys: keysOf(b), pad: padOf(b), what: what[b] ?? (name ? `The console's ${consoleButton(name)}` : b) });
   }
   return { name: 'Buttons', rows };
 }

@@ -23,7 +23,8 @@ import { REPO } from './lib/paths.mjs';
 import { head, remotes } from './lib/preview.mjs';
 import { UPSTREAM, api, signedInAs, findFork, pagesOf } from './lib/github.mjs';
 import { readClaims, leadOf, teamBuildOf, teamBranch } from './lib/claims.mjs';
-import { readProgress, readCodeMap } from './lib/proof-files.mjs';
+import { versionsOf, readProgress, readCodeMap } from './lib/proof-files.mjs';
+import { LANGUAGES, versionOf } from '../src/lib/languages.mjs';
 import { mapOf, percentText } from '../src/lib/entries.mjs';
 import { STATUS, dreamports, readProof } from './readme.mjs';
 // loaded now, before a piece is merged, so add runs the lead's own tools whatever the piece holds
@@ -268,8 +269,12 @@ async function add(game, rest, { fork: wanted, all = false, yes = false }) {
     return 0;
   }
 
-  const before = { proof: readProof(game), progress: readProgress(game) };
-  const generated = new Set([`games/${game}/proof/progress.json`, `games/${game}/proof/port-map.json`, STATUS, mapOf(game)]);
+  // the game and its versions in other languages already in the team build, each with its own numbers, proven again
+  // alike (src/lib/languages.mjs)
+  const versions = versionsOf(game);
+  const measured = () => Object.fromEntries(versions.map(v => [v, { proof: readProof(v), progress: readProgress(v) }]));
+  const before = measured();
+  const generated = new Set([STATUS, ...versions.flatMap(v => [`games/${v}/proof/progress.json`, `games/${v}/proof/port-map.json`, mapOf(v)])]);
   if (git(['merge', '--no-ff', '--no-commit', piece], { quiet: true }) === null) {
     const clashes = git(['diff', '--name-only', '--diff-filter=U']).split('\n').filter(Boolean);
     const real = clashes.filter(f => !generated.has(f));
@@ -283,11 +288,11 @@ async function add(game, rest, { fork: wanted, all = false, yes = false }) {
   }
   let after, worse;
   try {
-    if (readCodeMap(game)) await portmap([game]);
+    if (readCodeMap(game)) await portmap(versions);
     console.log('');
-    await prove([game]);
-    after = { proof: readProof(game), progress: readProgress(game) };
-    worse = worseThan(before, after);
+    for (const v of versions) await prove([v]);
+    after = measured();
+    worse = versions.flatMap(v => worseThan(before[v], after[v]).map(what => (v === game ? what : `in ${LANGUAGES[versionOf(v).language].name}, ${what}`)));
   } catch (error) {
     undo();
     throw new Error(`${error.message}\nNothing was added: the team build is as it was.`);
@@ -306,10 +311,14 @@ async function add(game, rest, { fork: wanted, all = false, yes = false }) {
   console.log(`\nAdded to ${branch} on ${fork.repository}: ${merged ? `${pull.html_url} shows as merged` : `${pull.html_url} should show as merged in a moment`}.`);
   const ported = p => (p?.ported ? percentText(p.ported.percent) : 'not measured');
   const parts = p => (p?.gameplay ? `${p.gameplay.proven} of ${p.gameplay.total} parts` : 'not measured');
-  console.log(`Code ported: ${ported(before.proof)} before, ${ported(after.proof)} now. Gameplay proven: ${parts(before.proof)} before, ${parts(after.proof)} now.\n`);
+  for (const v of versions) {
+    const was = before[v]?.proof, now = after[v].proof, called = v === game ? '' : ` in ${LANGUAGES[versionOf(v).language].name}`;
+    console.log(`Code ported${called}: ${ported(was)} before, ${ported(now)} now. Gameplay proven${called}: ${parts(was)} before, ${parts(now)} now.`);
+  }
+  console.log('');
 
   // the team preview is the team build's
-  await share([game, '--fork', fork.repository, '--yes']);
+  await share([versions[0], '--as', game, '--fork', fork.repository, '--yes']);
   return 0;
 }
 

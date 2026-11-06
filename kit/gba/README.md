@@ -21,6 +21,7 @@ The kit is plain JavaScript that the browser runs as it is, with no build step, 
 | Notes | `notes/` | What people found about the console while making games on it, for the next person ([Notes](../../docs/NOTES.md)), which the site leaves out |
 | Look | `styles/` | The pages' look, light or dark like the dreamports.net launcher, with its font and icon |
 | Proof | `proof.js` | Runs the game a frame at a time from recorded button presses, for the proof tools |
+| In C | `c/` | The same hardware layer for a game written in C, built to WebAssembly, on this kit's page and on what [every console's kit in C](../c/README.md) shares ([its README](c/README.md)) |
 
 ## Start a new game
 

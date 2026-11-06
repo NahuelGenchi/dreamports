@@ -62,6 +62,29 @@ test('a game\'s map goes at the top of its issue, and every field can still be r
   assert.equal(field(one.body, 'Where it starts'), 'The logos.');
 });
 
+test('a version in another language has its map under the game\'s, once it has its page', async () => {
+  const one = issue(7, 'one');
+  const { api } = github([one]);
+  const folder = repo({ one: 7 }, ['one', 'one/c']);
+  assert.ok(one.body === form('one'));
+  await run(folder, api);
+  assert.ok(!one.body.includes('one-c.svg'), 'a map with no page for its version is left out');
+  mkdirSync(join(folder, 'games/one/c'), { recursive: true });
+  writeFileSync(join(folder, 'games/one/c/index.html'), '');
+  await run(folder, api);
+  assert.match(one.body, /progress\/one\.svg\)\n\n!\[[^\]]*\]\([^)]*progress\/one-c\.svg\)\n\n<!-- \/dreamports-map -->/);
+});
+
+test('a game that started in C shows its version in C\'s map alone', async () => {
+  const one = issue(7, 'one');
+  const { api } = github([one]);
+  const folder = repo({ one: 7 }, ['one/c']);
+  mkdirSync(join(folder, 'games/one/c'), { recursive: true });
+  writeFileSync(join(folder, 'games/one/c/index.html'), '');
+  await run(folder, api);
+  assert.match(one.body, /<!-- dreamports-map -->\n\n!\[[^\]]*\]\([^)]*progress\/one-c\.svg\)\n\n<!-- \/dreamports-map -->/);
+});
+
 test('a second run changes nothing', async () => {
   const one = issue(7, 'one');
   const { api, patched } = github([one]);

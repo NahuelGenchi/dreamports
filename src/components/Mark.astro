@@ -1,0 +1,22 @@
+---
+// The Dreamports mark (src/lib/mark.ts): the dolphin leaping through its ring, or with `alone` the dolphin by itself.
+// Each whole mark on a page needs its own `id`, as its masks are found by id.
+import { DOLPHIN, MARK } from '../lib/mark';
+
+interface Props {
+  id?: string;
+  alone?: boolean;
+  class?: string;
+}
+
+const { id = 'mark', alone = false, class: className } = Astro.props;
+const art = alone ? DOLPHIN : MARK;
+---
+
+<svg
+  class:list={['mark', className]}
+  viewBox={art.viewBox}
+  aria-hidden="true"
+  focusable="false"
+  set:html={alone ? art.svg : art.svg.replaceAll('ID-', `${id}-`)}
+/>

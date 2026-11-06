@@ -7,7 +7,7 @@
 // Cloudflare stops, so dreamports.net keeps the pages it has, and a build on a contributor's computer goes on without
 // steps or pieces.
 import { SOURCE_URL, getGames } from './site';
-import { beingMade, partsFile } from './dreamports';
+import { beingMade, mainLanguageOf, partsFile } from './dreamports';
 import { whatCanStart } from './pieces.mjs';
 
 export interface Step {
@@ -90,7 +90,7 @@ async function fromGitHub(games: { game: string; title: string; issue: number }[
     );
     data[game] = {
       steps: [...steps.values()].sort((a, b) => b.merged.localeCompare(a.merged)),
-      free: whatCanStart(pieces, partsFile(game)).free.length,
+      free: whatCanStart(pieces, partsFile(game), new Set(), { main: mainLanguageOf(game) }).free.length,
     };
   }
   return data;
