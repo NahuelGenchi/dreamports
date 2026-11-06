@@ -1,7 +1,7 @@
 {
   "original": "2f88381557339a14c20428455f6991c1eb902c99",
   "percent": 0,
-  "codeMap": {"functions":167,"bytes":15214},
+  "codeMap": {"functions":483,"bytes":27489},
   "proven": {"functions":0,"bytes":0},
   "recordings": {
     "power-on": {

@@ -1,9 +1,10 @@
 // Mega Man Dreamport: the game in C, on the NES kit in C (kit/nes/c/).
 //
-// Each part of it does what the original's code at the address in its comment does, written from what that code does
-// on the console. It keeps its variables in the console's work memory where the original keeps them, and reads its
-// tiles, screens and colours from the player's copy as it runs. So far it has the power-on and the title screen, which
-// waits for Start.
+// Each part of it does what the original's code at the address in its comment does, written from what that code does on
+// the console. Each names the original's function as the port map reads it: sub_ and the address, for one in the last
+// bank, which is always at $C000, or sub_, the bank switched in at $8000 as two digits, _ and the address. It keeps its
+// variables in the console's work memory where the original keeps them, and reads its tiles, screens and colours from
+// the player's copy as it runs. So far it has the power-on and the title screen, which waits for Start.
 //
 // The original times its own code: it waits for V-blank by reading $2002, and loads its tiles with the picture off
 // for frames on end, so when each write lands depends on how many of the CPU's cycles the code before it takes. The C
@@ -88,7 +89,7 @@ static int vblank(void) {
   return on;
 }
 
-// $C39C: switches to the stage's bank of program, and keeps it in $42. The stages from 6 on, and the title screen,
+// sub_C39C: switches to the stage's bank of program, and keeps it in $42. The stages from 6 on, and the title screen,
 // use bank n - 6.
 static void stage_bank(void) {
   RUN(6 + 3 + 3 + 2 + 3 + 3 + 2);   // jsr, php, pha, txa, pha, lda $31, cmp #6
@@ -104,7 +105,7 @@ static void stage_bank(void) {
   RUN(4 + 2 + 4 + 4 + 6);           // pla, tax, pla, plp, rts
 }
 
-// $C3B3: switches back to bank 5, where the main code is.
+// sub_C3B3: switches back to bank 5, where the main code is.
 static void main_bank(void) {
   RUN(3 + 3 + 2);                   // php, pha, lda #5
   RAM(BANK) = 5;
@@ -113,7 +114,7 @@ static void main_bank(void) {
   RUN(4 + 4 + 6);                   // pla, plp, rts
 }
 
-// $C7AE: points $04-$05 at the tiles a byte of the tile list names, and switches to their bank: the top six bits are
+// sub_C7AE: points $04-$05 at the tiles a byte of the tile list names, and switches to their bank: the top six bits are
 // the page in $8000-$BFFF, the bottom two the bank.
 static void tiles_at(uint8_t where) {
   RUN(6 + 3 + 2 + 2 + 2 + 2);       // jsr, pha, and #$FC, lsr, lsr, ora #$80
@@ -127,7 +128,7 @@ static void tiles_at(uint8_t where) {
   RUN(6);                           // rts
 }
 
-// $D647: writes `count` of the colours at ($35) to the PPU's palette, from the start (or from the sprites' colours,
+// sub_D647: writes `count` of the colours at ($35) to the PPU's palette, from the start (or from the sprites' colours,
 // with bit 3 set), and points the PPU back at $3F00 and then $0000.
 static void write_colours(uint8_t count) {
   RUN(6 + 3 + 2 + 2 + 2);                   // jsr, pha, and #$F0, tax, lda #$3F
@@ -151,7 +152,7 @@ static void write_colours(uint8_t count) {
   RUN(3 + 6);                               // stx $34, rts
 }
 
-// $D478: hides `count` sprites from `first`, by putting them below the screen.
+// sub_D478: hides `count` sprites from `first`, by putting them below the screen.
 static void hide_sprites(int first, int count) {
   RUN(6 + 2);                               // jsr, lda #$F8
   for (int y = first; count > 0; count--, y += 4) {
@@ -161,7 +162,7 @@ static void hide_sprites(int first, int count) {
   RUN(6);                                   // rts
 }
 
-// $D58D: reads both controllers, the second first, a bit at a time, into $14-$15. A bit counts from either of the
+// sub_D58D: reads both controllers, the second first, a bit at a time, into $14-$15. A bit counts from either of the
 // two lines a Famicom's expansion port adds.
 static void read_controllers(void) {
   RUN(6 + 2);                               // jsr, ldx #1
@@ -184,7 +185,7 @@ static void read_controllers(void) {
   RUN(6);                                   // rts
 }
 
-// $C01B, up to its wait: keeps the buttons held, and clears $1F for the V-blank interrupt to set.
+// sub_C01B, up to its wait: keeps the buttons held, and clears $1F for the V-blank interrupt to set.
 static void frame_wait(void) {
   RUN(6 + 3 + 2);                           // jsr, lda $95, bne
   RAM(BEFORE) = RAM(HELD);
@@ -208,7 +209,7 @@ static void frame_waited(void) {
   RUN(6);                                   // rts
 }
 
-// $922A: quiets channel `channel`, 4 down to 1, by writing 0 to its timer's two registers at `reg`. For the last it
+// sub_04_922A: quiets channel `channel`, 4 down to 1, by writing 0 to its timer's two registers at `reg`. For the last it
 // turns the pulses and the triangle on at $4015 instead.
 static void quiet(int channel, uint16_t reg) {
   RUN(6 + 2);                               // jsr, cpy #1
@@ -225,7 +226,7 @@ static void quiet(int channel, uint16_t reg) {
   RUN(6);                                   // rts
 }
 
-// $923F, the sound driver in bank 4, which the interrupt runs each frame. On the title screen nothing plays: each
+// sub_04_923F, the sound driver in bank 4, which the interrupt runs each frame. On the title screen nothing plays: each
 // channel's two timers count on, and it's kept quiet. Gives the carry its last shift leaves, which the interrupt's
 // random number takes.
 static int sound(void) {
@@ -273,7 +274,7 @@ static int sound(void) {
   return carry;
 }
 
-// $D4A8, the V-blank interrupt: with the picture off, copies the sprites to the PPU, sets the scroll and turns the
+// sub_D4A8, the V-blank interrupt: with the picture off, copies the sprites to the PPU, sets the scroll and turns the
 // picture on, sets $1F for the main loop, runs the sound driver and makes the next random number.
 static void vblank_interrupt(void) {
   RUN(3 + 2 + 3 + 2 + 3 + 3 + 3);           // pha, txa, pha, tya, pha, lda $1F, beq: the main loop had finished
@@ -356,7 +357,7 @@ static int resume;
     TIME(1);                        \
   } while (0)
 
-// From $9000 in bank 5, where the reset goes: waits for the PPU, clears the work memory, loads the title screen's
+// sub_05_9000, where the reset goes, in bank 5: waits for the PPU, clears the work memory, loads the title screen's
 // tiles, colours and screen, and turns the V-blank interrupt on.
 static void start_up(void) {
   static int waits, on, pages, left, rows, x, y;
@@ -390,7 +391,7 @@ static void start_up(void) {
       RAM(STAGE) = 10;
       TIME(2 + 3 + 2 + 3 + 3 + 3 + 2 + 3);  // $FF = $10, $FE = 6, $AC = $31, $31 = 10
 
-      // $C75B: loads the stage's tiles into the cartridge's tile memory, from the list at $8D20: its first byte is
+      // sub_C75B: loads the stage's tiles into the cartridge's tile memory, from the list at $8D20: its first byte is
       // how many runs it has, and each run is where it starts (tiles_at) and how many pages
       TIME(6);                              // jsr $C75B
       stage_bank();
@@ -427,7 +428,7 @@ static void start_up(void) {
       TIME(3);                              // jmp $C3B3
       main_bank();
 
-      // $C483: the stage's colours, from $8CD0 for the title screen: to the PPU, and 48 bytes to $03D0
+      // sub_C483: the stage's colours, from $8CD0 for the title screen: to the PPU, and 48 bytes to $03D0
       TIME(6);                              // jsr $C483
       stage_bank();
       TIME(3 + 2 + 2 + 2);                  // lda $31, cmp #6, bcc, lda #$D0
@@ -456,7 +457,7 @@ static void start_up(void) {
       TIME(3);                              // jmp $C3B3
       main_bank();
 
-      // $F956: the title screen. Its background tile everywhere, the attributes from $8EC7, the logo's seven rows of
+      // sub_F956: the title screen. Its background tile everywhere, the attributes from $8EC7, the logo's seven rows of
       // tiles in order, two tiles on their own, and four lines of words from the list at $8EE4
       TIME(6);                              // jsr $F956
       stage_bank();
@@ -548,7 +549,7 @@ static void start_up(void) {
 }
 
 void game_start(void) {
-  // $C008, the reset, 7 cycles after power-on: the interrupt off, the picture off, and on to $9000 in bank 5
+  // sub_C008, the reset, 7 cycles after power-on: the interrupt off, the picture off, and on to $9000 in bank 5
   clock = 21;
   RUN(2 + 2);                               // sei, lda #1
   store(4, 0x2000, 0x01);
