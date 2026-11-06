@@ -471,7 +471,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (fixed.length) console.log(`  Matches where it differed when last proven: ${listed(fixed)}.`);
     if (page.errors.length) console.log(`  The page reported ${page.errors.length} errors; ${where}/report.json lists them.`);
     if (codeMap && first.outside.cartridge) {
-      console.log(`  Instructions that ran in the cartridge outside every function of the code map: ${first.outside.cartridge}. npm run dp -- codemap ${game} --fill adds what the map is missing.`);
+      console.log(`  Instructions that ran in the cartridge outside every function of the code map: ${first.outside.cartridge}. npm run dp -- codemap ${versionOf(game).game} --fill adds what the map is missing.`);
     }
     if (!quick) console.log(`  Clip, ${(file.length / 1e6).toFixed(2)} MB, frames ${clip[0]} to ${clip[1]}: ${where}/clip.mp4`);
     if (!quick && file.length > CLIP_LIMIT) console.log('  The clip is still over 2 MB: a shorter "clip" in the recording makes it lighter.');

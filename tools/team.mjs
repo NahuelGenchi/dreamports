@@ -23,7 +23,7 @@ import { REPO } from './lib/paths.mjs';
 import { head, remotes } from './lib/preview.mjs';
 import { UPSTREAM, api, signedInAs, findFork, pagesOf } from './lib/github.mjs';
 import { readClaims, leadOf, teamBuildOf, teamBranch } from './lib/claims.mjs';
-import { otherVersions, readProgress, readCodeMap } from './lib/proof-files.mjs';
+import { versionsOf, readProgress, readCodeMap } from './lib/proof-files.mjs';
 import { LANGUAGES, versionOf } from '../src/lib/languages.mjs';
 import { mapOf, percentText } from '../src/lib/entries.mjs';
 import { STATUS, dreamports, readProof } from './readme.mjs';
@@ -271,7 +271,7 @@ async function add(game, rest, { fork: wanted, all = false, yes = false }) {
 
   // the game and its versions in other languages already in the team build, each with its own numbers, proven again
   // alike (src/lib/languages.mjs)
-  const versions = [game, ...otherVersions(game)];
+  const versions = versionsOf(game);
   const measured = () => Object.fromEntries(versions.map(v => [v, { proof: readProof(v), progress: readProgress(v) }]));
   const before = measured();
   const generated = new Set([STATUS, ...versions.flatMap(v => [`games/${v}/proof/progress.json`, `games/${v}/proof/port-map.json`, mapOf(v)])]);
@@ -318,7 +318,7 @@ async function add(game, rest, { fork: wanted, all = false, yes = false }) {
   console.log('');
 
   // the team preview is the team build's
-  await share([game, '--fork', fork.repository, '--yes']);
+  await share([versions[0], '--as', game, '--fork', fork.repository, '--yes']);
   return 0;
 }
 

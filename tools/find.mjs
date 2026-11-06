@@ -15,7 +15,7 @@ import { dreamports } from './readme.mjs';
 import { notesOfGame } from './notes.mjs';
 import { pageOf, percentText } from '../src/lib/entries.mjs';
 import { pieceName, pieceOf, whatCanStart } from '../src/lib/pieces.mjs';
-import { LANGUAGES, OTHER_LANGUAGES, playOrder, versionOf } from '../src/lib/languages.mjs';
+import { LANGUAGES, OTHER_LANGUAGES, mainLanguage, playOrder, versionOf } from '../src/lib/languages.mjs';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO } from './lib/paths.mjs';
@@ -73,21 +73,32 @@ function consoleOf(game) {
   }
 }
 
+// the language of a game's main version (src/lib/languages.mjs): the one here, or for a game not in this folder, JavaScript
+// when it has a piece in it, or else the language its pieces are in, as a game that started in C has them in C alone
+function mainOf(local, pieces) {
+  if (local) return local.language ?? 'js';
+  const languages = [...new Set(pieces.map(t => pieceOf(t).language))];
+  return languages.length ? mainLanguage(languages) : 'js';
+}
+
 // a game's open pieces nobody has claimed: those that can start now, and those waiting on something (src/lib/pieces.mjs)
-const startable = (game, claims, entry, gathered) => whatCanStart(claims.piecesOf(game, entry), readPartsFile(game), gathered);
-const freeText = (game, claims, entry) => {
-  const count = claims && startable(game, claims, entry).free.length;
+const startable = (game, claims, entry, gathered, local) => {
+  const pieces = claims.piecesOf(game, entry);
+  return whatCanStart(pieces, readPartsFile(game), gathered, { main: mainOf(local, pieces) });
+};
+const freeText = (game, claims, entry, local) => {
+  const count = claims && startable(game, claims, entry, new Set(), local).free.length;
   return claims ? `${count} free piece${count === 1 ? '' : 's'}` : null;
 };
 
 // every Dreamport here and every game claimed, one line each
 function list(here, claims) {
-  const rows = [...here.values()].map(({ game, entry, proof, versions }) => [
-    game, entry.title, leadOf(game, claims, entry), [
-      proof?.ported && `code ported ${percentText(proof.ported.percent)}`,
-      proof?.gameplay && `gameplay proven ${percentText(proof.gameplay.percent)}`,
-      ...versions.map(v => v.proof?.ported && `in ${LANGUAGES[v.language].name} ${percentText(v.proof.ported.percent)}`),
-      freeText(game, claims, entry),
+  const rows = [...here.values()].map(local => [
+    local.game, local.entry.title, leadOf(local.game, claims, local.entry), [
+      local.proof?.ported && `code ported${inName(local.language)} ${percentText(local.proof.ported.percent)}`,
+      local.proof?.gameplay && `gameplay proven${inName(local.language)} ${percentText(local.proof.gameplay.percent)}`,
+      ...local.versions.map(v => v.proof?.ported && `in ${LANGUAGES[v.language].name} ${percentText(v.proof.ported.percent)}`),
+      freeText(local.game, claims, local.entry, local),
     ].filter(Boolean).join(', '),
   ]);
   for (const [game, issue] of claims?.leads ?? []) {
@@ -102,9 +113,13 @@ function list(here, claims) {
   return 0;
 }
 
+// " in C" after a number of a version in another language than JavaScript, and nothing after JavaScript's
+const inName = language => (!language || language === 'js' ? '' : ` in ${LANGUAGES[language].name}`);
+
 // one game in full
 function show(game, local, claims, team) {
   const { entry, proof, versions = [] } = local ?? {};
+  const named = inName(local?.language);
   const home = claims ? claims.gameIssueOf(game, entry) : null;
   // without the claims, the issue the entry names, in the repository Dreamports are made in
   const homeUrl = home?.html_url ?? (!claims && entry?.issue ? `https://github.com/${UPSTREAM}/issues/${entry.issue}` : null);
@@ -114,8 +129,8 @@ function show(game, local, claims, team) {
   const row = (label, ...values) => rows.push([label, values.flat().filter(Boolean)]);
   row('Lead', lead ? `@${lead}` : `nobody${home ? ': /claim on its game\'s issue makes you its lead' : ''}`);
   row('Game issue', homeUrl ? `${homeUrl}, which lists its pieces, and where it's talked about` : 'none yet');
-  row('Code ported', proof?.ported ? percentText(proof.ported.percent) : local ? 'not measured yet: it needs a code map' : 'not measured yet');
-  row('Gameplay proven', proof?.gameplay ? `${percentText(proof.gameplay.percent)}, ${proof.gameplay.proven} of ${proof.gameplay.total} parts` : local ? 'not measured yet: it needs a list of its parts' : 'not measured yet');
+  row(`Code ported${named}`, proof?.ported ? percentText(proof.ported.percent) : local ? 'not measured yet: it needs a code map' : 'not measured yet');
+  row(`Gameplay proven${named}`, proof?.gameplay ? `${percentText(proof.gameplay.percent)}, ${proof.gameplay.proven} of ${proof.gameplay.total} parts` : local ? 'not measured yet: it needs a list of its parts' : 'not measured yet');
   for (const { name, language, proof: theirs } of versions) {
     const called = LANGUAGES[language].name;
     row(`Code ported in ${called}`, theirs?.ported ? `${percentText(theirs.ported.percent)}, in games/${name}/` : 'not measured yet');
@@ -139,7 +154,7 @@ function show(game, local, claims, team) {
     const name = t => `#${t.number} ${pieceName(t)}`;
     const taken = pieces.filter(t => t.state === 'open' && t.assignees.length);
     const gathered = build ? gatheredIn(build) : new Set();
-    const { free, waiting, needing, isFoundation } = startable(game, claims, entry, gathered);
+    const { free, waiting, needing, isFoundation } = startable(game, claims, entry, gathered, local);
     const done = pieces.filter(t => t.state !== 'open').length;
     const foundation = t => {
       const count = needing(t);
@@ -147,14 +162,18 @@ function show(game, local, claims, team) {
     };
     row(`Claimed (${taken.length})`, taken.length ? taken.map(t => `${name(t)}: @${t.assignees.map(a => a.login).join(', @')}`) : 'nothing');
     // the free pieces in each language, the default's first (src/lib/languages.mjs): a game whose console has a kit in
-    // another language lists them apart, even with none, so it shows where a version in that language stands
-    const inOthers = OTHER_LANGUAGES.filter(language => versions.some(v => v.language === language)
+    // another language lists them apart, even with none, so it shows where a version in that language stands. A game
+    // that started in C has no JavaScript version, and lists JavaScript only once it has a piece in it
+    const main = mainOf(local, pieces);
+    const inOthers = OTHER_LANGUAGES.filter(language => language === main || versions.some(v => v.language === language)
       || pieces.some(t => pieceOf(t).language === language) || existsSync(join(REPO, 'kit', consoleOf(game) ?? '-', LANGUAGES[language].folder)));
-    for (const language of inOthers.length ? playOrder(inOthers) : ['js']) {
+    const languages = playOrder([...(main === 'js' || pieces.some(t => pieceOf(t).language === 'js') ? ['js'] : []), ...inOthers]);
+    const apart = languages.length > 1 || languages[0] !== 'js';
+    for (const language of languages) {
       const theirs = free.filter(t => pieceOf(t).language === language);
       const version = language === 'js' ? game : `${game}/${LANGUAGES[language].folder}`;
-      const has = language === 'js' || versions.some(v => v.language === language);
-      row(`Free${inOthers.length ? ` in ${LANGUAGES[language].name}` : ''} (${theirs.length})`, theirs.length ? theirs.map(t => `${name(t)}${foundation(t)}`)
+      const has = language === main || versions.some(v => v.language === language);
+      row(`Free${apart ? ` in ${LANGUAGES[language].name}` : ''} (${theirs.length})`, theirs.length ? theirs.map(t => `${name(t)}${foundation(t)}`)
         : !has ? `nothing: it has no version in ${LANGUAGES[language].name} yet, which npm run dp -- new ${version} starts, and npm run dp -- tasks ${version} then opens its tasks`
           : waiting.some(w => pieceOf(w.piece).language === language) ? 'nothing until what the waiting pieces need is finished'
             : `nothing: npm run dp -- tasks ${version} opens one for each part that has none, and the Task form suggests a new one`);
@@ -162,7 +181,7 @@ function show(game, local, claims, team) {
     if (waiting.length) row(`Waiting (${waiting.length})`, waiting.map(({ piece, on }) => `${name(piece)}: needs ${on.map(need => (need.number ? `#${need.number} ${need.name}` : need.name)).join(' and ')}`));
     if (done) row(`Done (${done})`, 'listed in its game\'s issue');
   }
-  console.log(`${title}, in games/${game}/${local ? '' : ', not in this folder yet'}\n`);
+  console.log(`${title}, in games/${local?.name ?? game}/${local ? '' : ', not in this folder yet'}\n`);
   const width = Math.max(...rows.map(r => r[0].length)) + 2;
   for (const [label, values] of rows) values.forEach((value, i) => console.log(`  ${(i ? '' : `${label}:`).padEnd(width)}${value}`));
   if (claims) {

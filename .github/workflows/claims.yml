@@ -232,6 +232,15 @@ jobs:
             })());
             return plans.get(game);
           }
+          // the language of a game's main version (src/lib/languages.mjs): JavaScript when the game's folder has its page, or
+          // C in a game that started in C, with only games/<game>/c/index.html, whose pieces wait on nothing in JavaScript
+          const mains = new Map();
+          function mainOf(game) {
+            if (!mains.has(game)) mains.set(game, (async () => (
+              await api(`/contents/games/${game}/index.html`) || !await api(`/contents/games/${game}/c/index.html`) ? 'js' : 'c'
+            ))());
+            return mains.get(game);
+          }
           const nameOf = title => title.replace(/^Task:\s*/i, '').trim();
           const sameName = (a, b) => same(String(a ?? '').trim(), String(b ?? '').trim());
           // a piece's part and language: "Task: Title screen in C" is a part of the game's version in C (src/lib/languages.mjs)
@@ -245,16 +254,17 @@ jobs:
             return { name, language: 'js' };
           }
           // what a piece is still waiting on, each as a name, with its number when it has an issue: what parts.json says
-          // it needs, unless that issue is closed, or for a part with no issue, unless parts.json names its recording. A
-          // piece in another language needs what it needs in that language, and the same piece in JavaScript first
-          function waitingOn(piece, pieces, plan) {
+          // it needs, unless that issue is closed, or for a part with no issue in the main language, unless parts.json names
+          // its recording. A piece in another language needs what it needs in that language, and the same piece in the
+          // main language first
+          function waitingOn(piece, pieces, plan, main = 'js') {
             const { name, language } = partOf(piece.title);
             const needs = plan.find(p => sameName(p.name, name))?.needs;
-            const all = [...(language === 'js' ? [] : [[name, 'js']]), ...(Array.isArray(needs) ? needs : []).map(need => [need, language])];
+            const all = [...(language === main ? [] : [[name, main]]), ...(Array.isArray(needs) ? needs : []).map(need => [need, language])];
             return all.flatMap(([need, lang]) => {
               const found = pieces.find(p => sameName(partOf(p.title).name, need) && partOf(p.title).language === lang);
               if (found) return found.state === 'open' ? [`#${found.number} ${nameOf(found.title)}`] : [];
-              if (lang !== 'js') return [`${need} in ${LANGUAGES[lang]}`];
+              if (lang !== main) return [lang === 'js' ? need : `${need} in ${LANGUAGES[lang]}`];
               return plan.find(p => sameName(p.name, need))?.recording ? [] : [need];
             });
           }
@@ -263,9 +273,9 @@ jobs:
           // and that wait on nothing, foundations first
           async function free(game, title, except) {
             const home = await gameIssueOf(game);
-            const pieces = home ? await piecesOf(home) : [], plan = await planOf(game);
+            const pieces = home ? await piecesOf(home) : [], plan = await planOf(game), main = await mainOf(game);
             const foundation = piece => plan.find(p => sameName(p.name, partOf(piece.title).name))?.foundation === true;
-            const startable = pieces.filter(i => i.state === 'open' && !i.assignees.length && i.number !== except && !waitingOn(i, pieces, plan).length);
+            const startable = pieces.filter(i => i.state === 'open' && !i.assignees.length && i.number !== except && !waitingOn(i, pieces, plan, main).length);
             const tasks = [...startable.filter(foundation), ...startable.filter(i => !foundation(i))];
             const lines = [];
             if (home?.state === 'open' && !home.assignees.length && home.number !== except) lines.push(`- #${home.number}: leading ${title}`);
@@ -297,7 +307,7 @@ jobs:
             changed = true;
             const help = `A claim with no activity on ${title}'s issues or pull requests for ${periodOf(issue)} is released, and \`/release\` gives it back sooner. [Claims and teams](${guide}) says what comes next.`;
             const home = lead ? null : await gameIssueOf(game);
-            const waits = home ? waitingOn(issue, await piecesOf(home), await planOf(game)) : [];
+            const waits = home ? waitingOn(issue, await piecesOf(home), await planOf(game), await mainOf(game)) : [];
             const waiting = waits.length ? ` It needs ${waits.join(' and ')} first, which ${waits.length === 1 ? 'isn\'t' : 'aren\'t'} finished, so it can't be finished before then.` : '';
             return answer(issue, about, lead
               ? `@${user}, ${title} is yours to lead. This is its game's issue, where it's talked about: the tasks you open for it with [the Task form](${form('task.yml')}) land under it, with the label \`${game}\`, and anyone can claim them. ${help}`

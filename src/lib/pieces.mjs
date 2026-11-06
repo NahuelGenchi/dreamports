@@ -2,8 +2,9 @@
 // parts build on but no player would call a part, such as its fighting, and each can say what it needs. A piece is
 // the issue under the game's issue that goes by the same name, or for the game's version in another language, by the
 // name with the language's after it, as in "Task: Title screen in C" (src/lib/languages.mjs). It's free when it's
-// open, nobody has claimed it and everything it needs is finished: in another language, that's also the same piece in
-// JavaScript, as a version is written from the JavaScript. The site's Make pages, find and tasks read this, and the claims workflow has its
+// open, nobody has claimed it and everything it needs is finished: in a game with a JavaScript version, a piece in
+// another language also needs the same piece in JavaScript, as it's written from the JavaScript. A game that started
+// in C, with no JavaScript version, has its pieces in C alone, which wait on nothing in another language. The site's Make pages, find and tasks read this, and the claims workflow has its
 // own short copy of it, as it runs nothing from the repository.
 
 import { LANGUAGES, OTHER_LANGUAGES } from './languages.mjs';
@@ -80,32 +81,34 @@ export function needsProblems(file, at = '') {
 /**
  * Which of a game's pieces nobody has claimed can start now, from its pieces, open and closed, and its parts.json. What a
  * piece needs is finished when its issue is closed, or its number is in `gathered`, as a piece in the team build's is. A
- * part with no issue is finished once parts.json names its recording. A piece in another language needs what it needs
- * in that language, and the same piece in JavaScript, finished as above; a need with no issue in that language isn't. `free` has foundations first, then the pieces in
+ * part with no issue is finished, in the game's `main` language (languages.mjs), once parts.json names its recording. A
+ * piece in another language needs what it needs in that language, and the same piece in the main language, finished as
+ * above; a need with no issue in a language other than the main one isn't. `free` has foundations first, then the pieces in
  * their order. `waiting` has each of the others, with what it's waiting `on`, each { name, number }, with no number
  * while it has no issue yet.
  * @template {{ number: number, title: string, state: string, assignees?: unknown[] }} Piece
  * @param {Piece[]} pieces
  * @param {unknown} file
  * @param {Set<number>} [gathered]
+ * @param {{ main?: keyof typeof LANGUAGES }} [options]
  * @returns {{ free: Piece[], waiting: { piece: Piece, on: { name: string, number?: number }[] }[], needing: (piece: Piece) => number, isFoundation: (piece: Piece) => boolean }}
  */
-export function whatCanStart(pieces, file, gathered = new Set()) {
+export function whatCanStart(pieces, file, gathered = new Set(), { main = 'js' } = {}) {
   const plan = planOf(file);
   const planned = new Map(plan.map(p => [nameKey(p.name), p]));
   // each piece by its part's name and its language
   const keyOf = (name, language) => `${language}:${nameKey(name)}`;
   const byName = new Map(pieces.map(p => [keyOf(pieceOf(p).name, pieceOf(p).language), p]));
-  const finished = (need, language = 'js') => {
+  const finished = (need, language = main) => {
     const piece = byName.get(keyOf(need, language));
     if (piece) return piece.state !== 'open' || gathered.has(piece.number);
-    return language === 'js' && Boolean(planned.get(nameKey(need))?.recording);
+    return language === main && Boolean(planned.get(nameKey(need))?.recording);
   };
   const isFoundation = piece => planned.get(nameKey(pieceOf(piece).name))?.foundation === true;
   const open = pieces.filter(p => p.state === 'open' && !p.assignees?.length && !gathered.has(p.number));
   const waiting = open.flatMap(piece => {
     const { name, language } = pieceOf(piece);
-    const needs = [...(language === 'js' ? [] : [[name, 'js']]), ...(planned.get(nameKey(name))?.needs ?? []).map(need => [need, language])];
+    const needs = [...(language === main ? [] : [[name, main]]), ...(planned.get(nameKey(name))?.needs ?? []).map(need => [need, language])];
     const on = needs.filter(([need, lang]) => !finished(need, lang)).map(([need, lang]) => {
       const found = byName.get(keyOf(need, lang));
       return found ? { name: pieceName(found), number: found.number } : { name: lang === 'js' ? need : `${need} in ${LANGUAGES[lang].name}` };

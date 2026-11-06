@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { field, readClaims } from '../../tools/lib/claims.mjs';
 import { BOT, api, graphql, list, name, owner, repository } from '../moderation/github.mjs';
-import { checkFirstEntry, gameOf, mostFor, pathsOf, plainHistory } from './rules.mjs';
+import { checkFirstEntry, gameOf, languageOf, mostFor, pathsOf, plainHistory } from './rules.mjs';
 import { MARK } from './text.mjs';
 
 const REPO = fileURLToPath(new URL('../..', import.meta.url));
@@ -57,19 +57,21 @@ async function howToMerge({ head, game, verdict, issue, author }) {
   return plainHistory({ commits, between: compared?.files ?? [], firstEntry, game, original: verdict.original, issue, author, added: verdict.added }) ? 'merge' : 'squash';
 }
 
-// this repository's own tools write the port map, the progress map and the row in docs/STATUS.md from what passed, to compare
-function writtenAgain(game, bytes) {
-  for (const path of [`games/${game}/proof/original.json`, `games/${game}/proof/code-map.json`, `games/${game}/entry.md`, `games/${game}/index.html`, `games/${game}/src/main.js`, `games/${game}/LICENSE`]) {
+// this repository's own tools write the port map, the progress map and the row in docs/STATUS.md from what passed, to
+// compare: of its version in JavaScript, or in C in a game that starts in C (src/lib/languages.mjs)
+function writtenAgain(game, language, bytes) {
+  const [portMap, map] = pathsOf(game, language).filter(path => path.endsWith('port-map.json') || path.endsWith('.svg'));
+  for (const path of pathsOf(game, language).filter(path => path.startsWith('games/') && path !== portMap)) {
     mkdirSync(dirname(join(REPO, path)), { recursive: true });
     writeFileSync(join(REPO, path), bytes.get(path));
   }
+  const version = language === 'js' ? game : `${game}/${language}`;
   const { GITHUB_TOKEN, GH_TOKEN, ...env } = process.env;
-  execFileSync('node', ['tools/dp.mjs', 'portmap', game], { cwd: REPO, env, stdio: 'inherit' });
+  execFileSync('node', ['tools/dp.mjs', 'portmap', version], { cwd: REPO, env, stdio: 'inherit' });
   execFileSync('node', ['tools/dp.mjs', 'readme'], { cwd: REPO, env, stdio: 'inherit' });
   return {
-    portMap: readFileSync(join(REPO, `games/${game}/proof/port-map.json`)),
-    map: readFileSync(join(REPO, `.github/readme/progress/${game}.svg`)),
-    row: readFileSync(join(REPO, 'docs/STATUS.md'), 'utf8').split('\n').find(line => line.includes(`(../games/${game}/)`)),
+    portMap: readFileSync(join(REPO, portMap)), map: readFileSync(join(REPO, map)), mapAt: map, portMapAt: portMap,
+    row: readFileSync(join(REPO, 'docs/STATUS.md'), 'utf8').split('\n').find(line => line.includes(`(../games/${version}/)`)),
   };
 }
 
@@ -97,7 +99,7 @@ if (!game) {
   answer(files && asked ? { kind: 'say', why: 'files', ...common } : { kind: 'none' });
 } else {
   const sha = pr.head.sha, head = pr.head.repo.full_name;
-  const paths = [...pathsOf(game), 'docs/STATUS.md'];
+  const paths = [...pathsOf(game, languageOf(game, files)), 'docs/STATUS.md'];
   const found = paths.every(path => files.some(f => f.filename === path)) && files.length === paths.length ? await readHead(head, sha, paths) : null;
   let claim = null;
   const issue = readClaims(repository).leads.get(game);
@@ -108,8 +110,8 @@ if (!game) {
   if (!verdict.why) {
     let same = false;
     try {
-      const again = writtenAgain(game, found.bytes);
-      same = again.portMap.equals(found.bytes.get(`games/${game}/proof/port-map.json`)) && again.map.equals(found.bytes.get(`.github/readme/progress/${game}.svg`)) && again.row === verdict.row;
+      const again = writtenAgain(game, verdict.language, found.bytes);
+      same = again.portMap.equals(found.bytes.get(again.portMapAt)) && again.map.equals(found.bytes.get(again.mapAt)) && again.row === verdict.row;
     } catch (error) {
       console.error(error.message);
     }

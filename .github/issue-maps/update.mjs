@@ -17,10 +17,10 @@ const BLOCK = /<!-- dreamports-map -->[\s\S]*?<!-- \/dreamports-map -->\s*/g;
 /** A game's map, or with a version's name, such as sonic-battle/c, that version's (src/lib/entries.mjs). */
 export const mapOf = game => `.github/readme/progress/${game.replaceAll('/', '-')}.svg`;
 
-// the game and each of its versions with a page and a map, as the maps are named
-const versionsOf = (folder, game) => [game, ...OTHER_LANGUAGES.map(language => `${game}/${LANGUAGES[language].folder}`)
-  .filter(version => existsSync(join(folder, 'games', version, 'index.html')))]
-  .filter(version => existsSync(join(folder, mapOf(version))));
+// the game and each of its versions with a page and a map, as the maps are named: a game that started in C, with no
+// JavaScript version, has only its version in C's
+const versionsOf = (folder, game) => [game, ...OTHER_LANGUAGES.map(language => `${game}/${LANGUAGES[language].folder}`)]
+  .filter(version => (version === game || existsSync(join(folder, 'games', version, 'index.html'))) && existsSync(join(folder, mapOf(version))));
 
 /** An issue's text with no map in it. */
 export const withoutMap = body => body.replace(BLOCK, '');
@@ -51,9 +51,10 @@ export async function update({ folder, repository, head, api }) {
     for (const issue of issues) {
       if (issue.pull_request || !isNewDreamport(issue)) continue;
       const game = field(issue.body, 'Game folder').replace(/`/g, '').trim();
-      const shows = NAME.test(game) && issueNamedBy(folder, game) === issue.number && existsSync(join(folder, mapOf(game)));
+      const versions = NAME.test(game) && issueNamedBy(folder, game) === issue.number ? versionsOf(folder, game) : [];
+      const shows = versions.length > 0;
       const pictures = [];
-      for (const version of shows ? versionsOf(folder, game) : []) pictures.push(await pictureOf(version, { folder, repository, head, api }));
+      for (const version of versions) pictures.push(await pictureOf(version, { folder, repository, head, api }));
       const body = shows ? withMap(issue.body, pictures.join('\n\n')) : withoutMap(issue.body);
       if (body === issue.body) continue;
       await api(`/issues/${issue.number}`, 'PATCH', { body });

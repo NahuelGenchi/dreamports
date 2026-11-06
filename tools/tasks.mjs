@@ -6,6 +6,8 @@
 // and opens them in another copy of the repository, such as a fork that tries the claims workflow. With a version's
 // name, such as sonic-battle/c, it opens the tasks of the game's version in that language, "Task: Title screen in C",
 // one for every foundation and part the version hasn't proven, as a version proves each part again (src/lib/pieces.mjs).
+// In a game that started in C, with no JavaScript version, its version in C is its main one, whose tasks are opened as a
+// JavaScript version's are, written from the original and waiting on nothing in another language.
 
 import { readPartsFile } from './lib/proof-files.mjs';
 import { nameKey, pieceOf, planOf, taskTitle } from '../src/lib/pieces.mjs';
@@ -26,12 +28,14 @@ export async function run(args) {
   const dreamport = dreamports().find(d => d.game === game), entry = dreamport?.entry;
   const home = claims.gameIssueOf(game, entry);
   if (!home) throw new Error(`Nobody has claimed ${game} with a New Dreamport issue in ${repo} yet, and its tasks go under that issue.`);
-  const inVersion = language === 'js' ? null : dreamport?.versions.find(v => v.language === language);
-  if (language !== 'js' && !inVersion) throw new Error(`${game} has no version in ${LANGUAGES[language].name} yet: npm run dp -- new ${version} starts one.`);
+  // the game's main version, its JavaScript one, or its version in C in a game that started in C (src/lib/languages.mjs)
+  const main = dreamport?.language ?? 'js';
+  const inVersion = language === main ? null : dreamport?.versions.find(v => v.language === language);
+  if (language !== main && !inVersion) throw new Error(`${game} has no version in ${LANGUAGES[language].name} yet: npm run dp -- new ${version} starts one.`);
 
   const pieces = claims.piecesOf(game, entry);
   const proven = new Set((inVersion?.proof?.gameplay?.parts ?? []).filter(p => p.proven).map(p => nameKey(p.name)));
-  const wanted = missingParts(planOf(file), pieces, language, proven);
+  const wanted = missingParts(planOf(file), pieces, language, proven, main);
   if (!wanted.length) {
     console.log(`Every foundation and part of ${version} has its task already, under #${home.number}.`);
     return 0;
@@ -46,7 +50,7 @@ export async function run(args) {
   const named = name => ({ name: language === 'js' ? name : `${name} in ${LANGUAGES[language].name}`, number: numbers.get(nameKey(name)) });
   for (const part of wanted) {
     const before = part.foundation ? null : parts[parts.findIndex(p => p.name === part.name) - 1];
-    const issue = api(`repos/${repo}/issues`, { method: 'POST', body: { title: taskTitle(part.name, language), body: taskText(version, part, before && named(before.name), part.needs.map(named)) } });
+    const issue = api(`repos/${repo}/issues`, { method: 'POST', body: { title: taskTitle(part.name, language), body: taskText(version, part, before && named(before.name), part.needs.map(named), main) } });
     numbers.set(nameKey(part.name), issue.number);
     console.log(`#${issue.number} ${part.name}${await underItsGame(repo, issue.number) ? '' : `: the bot hasn't put it under #${home.number} yet, and will`}`);
   }
@@ -71,11 +75,12 @@ function options(args) {
 
 /**
  * The foundations and parts that still need a task: no recording proves them, and no piece, open or closed, has their
- * name. In another language, those with no piece in that language that the version hasn't proven, the names in `proven`.
+ * name. In another language than the game's `main` one, those with no piece in that language that the version hasn't
+ * proven, the names in `proven`.
  */
-export function missingParts(parts, pieces, language = 'js', proven = new Set()) {
+export function missingParts(parts, pieces, language = 'js', proven = new Set(), main = 'js') {
   const named = new Set(pieces.filter(p => pieceOf(p).language === language).map(p => nameKey(pieceOf(p).name)));
-  return parts.filter(part => !named.has(nameKey(part.name)) && (language === 'js' ? !part.recording : !proven.has(nameKey(part.name))));
+  return parts.filter(part => !named.has(nameKey(part.name)) && (language === main ? !part.recording : !proven.has(nameKey(part.name))));
 }
 
 const titled = ({ name, number }) => `${name}${number ? ` (#${number})` : ''}`;
@@ -83,37 +88,40 @@ const titled = ({ name, number }) => `${name}${number ? ` (#${number})` : ''}`;
 /**
  * A foundation's or a part's Task issue, under the headings of the Task form, which is how the claims workflow reads it.
  * `before` is the part a player meets just before it, and `needs` what it needs, each { name, number }. `game` can be a
- * version, such as sonic-battle/c, whose task is written from the JavaScript and proven again in its language.
+ * version, such as sonic-battle/c, whose task is written from the game's `main` version, its JavaScript, and proven again
+ * in its language. In a game that started in C, its version in C is the main one, written from the original.
  */
-export function taskText(version, part, before, needs = []) {
+export function taskText(version, part, before, needs = [], main = 'js') {
   const { game, language } = versionOf(version);
-  if (language !== 'js') return versionTaskText(version, part, before, needs);
+  if (language !== main) return versionTaskText(version, part, before, needs, main);
   const after = before ? `It comes right after ${titled(before)}.` : 'It\'s where a player starts.';
   const needing = needs.length ? ` It needs ${needs.map(titled).join(' and ')} first.` : '';
+  const where = language === 'js' ? '' : ` It's written in \`games/${version}/\` from the original.`;
   const what = part.foundation ? `${part.name}, which other pieces of the game need.${part.what ? ` ${part.what}` : ''}` : `${part.name}, one of the game's parts. ${after}`;
   const done = part.foundation
-    ? part.done ?? `A recording shows ${part.name} at work, every frame matches the original in picture and sound, and \`npm run dp -- prove ${game}\` finds no frame that differs, so the pieces that need it can start.`
-    : `A recording plays *${part.name}* from its first frame to its last, every frame matches the original in picture and sound, and \`npm run dp -- prove ${game}\` shows the part as proven. Its place in \`games/${game}/proof/parts.json\` names the recording and those frames.`;
+    ? part.done ?? `A recording shows ${part.name} at work, every frame matches the original in picture and sound, and \`npm run dp -- prove ${version}\` finds no frame that differs, so the pieces that need it can start.`
+    : `A recording plays *${part.name}* from its first frame to its last, every frame matches the original in picture and sound, and \`npm run dp -- prove ${version}\` shows the part as proven. Its place in \`games/${game}/proof/parts.json\` names the recording and those frames.`;
   return [
     '### Game folder', '', game, '',
     '### Kind', '', part.foundation ? 'Foundation' : 'Something else', '',
-    '### What it is', '', `${what}${needing}`, '',
+    '### What it is', '', `${what}${needing}${where}`, '',
     '### Done when', '', done, '',
     '### Taking it', '', '- [ ] I\'m taking this task myself.',
   ].join('\n');
 }
 
-// a task of a version in another language: the same part, written from the game's JavaScript, which it needs first
-function versionTaskText(version, part, before, needs) {
-  const { game, language } = versionOf(version), called = LANGUAGES[language].name;
+// a task of a version in another language: the same part, written from the game's main version, its JavaScript, which it
+// needs first
+function versionTaskText(version, part, before, needs, main = 'js') {
+  const { game, language } = versionOf(version), called = LANGUAGES[language].name, from = LANGUAGES[main].name;
   const after = before ? `It comes right after ${titled(before)}.` : 'It\'s where a player starts.';
   const needing = needs.length ? ` It needs ${needs.map(titled).join(' and ')} first.` : '';
   const what = part.foundation ? `${part.name} in ${called}, which other pieces of the game's version in ${called} need.` : `${part.name} in ${called}, one of the game's parts, in its version in ${called}. ${after}`;
   return [
     '### Game folder', '', game, '',
     '### Kind', '', part.foundation ? 'Foundation' : 'Something else', '',
-    '### What it is', '', `${what}${needing} It's written in \`games/${version}/\` from the game's JavaScript, which is finished for it first.`, '',
-    '### Done when', '', `The recordings that prove ${part.name} in JavaScript play the same in ${called}, every frame matching the original in picture and sound, and \`npm run dp -- prove ${version}\` shows ${part.foundation ? 'no frame that differs' : 'the part as proven'}.`, '',
+    '### What it is', '', `${what}${needing} It's written in \`games/${version}/\` from the game's ${from}, which is finished for it first.`, '',
+    '### Done when', '', `The recordings that prove ${part.name} in ${from} play the same in ${called}, every frame matching the original in picture and sound, and \`npm run dp -- prove ${version}\` shows ${part.foundation ? 'no frame that differs' : 'the part as proven'}.`, '',
     '### Taking it', '', '- [ ] I\'m taking this task myself.',
   ].join('\n');
 }

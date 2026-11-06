@@ -28,8 +28,19 @@ export function proofGames() {
 export const otherVersions = game => OTHER_LANGUAGES.filter(language => existsSync(join(gameFolder(game), LANGUAGES[language].folder, 'index.html')))
   .map(language => versionName(game, language));
 
-/** Every game with proof files and each of its versions in other languages. */
-export const proofVersions = () => proofGames().flatMap(game => [game, ...otherVersions(game)]);
+/** Every version of a game, by the tools' names for them, its main one first (src/lib/languages.mjs): its JavaScript
+ *  one, games/<game>/, when that has a page, or when nothing has one yet, as in a game that's only mapped, and each
+ *  in another language whose folder has a page, so a game that started in C is only 'game/c'. */
+export function versionsOf(game) {
+  const others = otherVersions(game);
+  return existsSync(join(gameFolder(game), 'index.html')) || !others.length ? [game, ...others] : others;
+}
+
+/** A game's main version: its JavaScript one, or the first in another language when it has none, as 'game/c'. */
+export const mainVersion = game => versionsOf(game)[0];
+
+/** Every game with proof files and each of its versions. */
+export const proofVersions = () => proofGames().flatMap(versionsOf);
 
 /** The copy of the original a game's proof uses. */
 export function readOriginal(game) {

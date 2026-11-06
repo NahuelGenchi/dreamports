@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { deflateSync } from 'node:zlib';
 import { mp4 } from '../../tools/lib/mp4.mjs';
-import { captureMessage, firstFilesMessage, plainWebp, startingEntry, startingFiles, withCapture } from '../../tools/lib/new-game.mjs';
+import { captureMessage, firstFiles, firstFilesMessage, plainWebp, startingEntry, startingFiles, withCapture } from '../../tools/lib/new-game.mjs';
 import { checkFirstEntry, gameOf, isClip, isShare, isStill, pathsOf, plainHistory, readCodeMap, readOriginal } from './rules.mjs';
 import { MARK, REASONS, askFor, markOf, normalReview } from './text.mjs';
 
@@ -41,18 +41,19 @@ const webp = (type = 'VP8 ') => {
   return Buffer.concat([head, body]);
 };
 
-// a first entry as the tools write it, which each test changes in one way
-function entry(change = () => {}) {
-  const bytes = new Map(Object.entries(startingFiles(GAME, original)).map(([file, text]) => [`games/${GAME}/${file}`, Buffer.from(text)]));
+// a first entry as the tools write it, in JavaScript or with `language` 'c', in C, which each test changes in one way
+function entry(change = () => {}, language = 'js') {
+  const code = language === 'js' ? startingFiles(GAME, original) : firstFiles(GAME, original, { language, issue: 7, lead: LEAD, added: '2026-11-02' });
+  const bytes = new Map(Object.entries(code).filter(([file]) => file !== 'entry.md').map(([file, text]) => [`games/${GAME}/${file}`, Buffer.from(text)]));
   bytes.set(`games/${GAME}/entry.md`, Buffer.from(withCapture(startingEntry(GAME, original, { issue: 7, lead: LEAD, added: '2026-11-02' }), GAME)));
   bytes.set(`games/${GAME}/proof/original.json`, Buffer.from(`${JSON.stringify(original, null, 2)}\n`));
   bytes.set(`games/${GAME}/proof/code-map.json`, Buffer.from(`{"original":"${SHA1}","from":"Found in the copy by the proof tools (tools/gba/functions.mjs)","functions":[["08000000",4],["080000C0",200]]}\n`));
-  bytes.set(`games/${GAME}/proof/port-map.json`, Buffer.from('{}\n'));
+  bytes.set(`games/${GAME}/${language === 'js' ? '' : 'c/'}proof/port-map.json`, Buffer.from('{}\n'));
   bytes.set(`${media}.h264.mp4`, clip());
   bytes.set(`${media}.av1.mp4`, clip(300, true));
   bytes.set(`${media}-still.webp`, webp());
   bytes.set(`${media}-share.png`, png());
-  bytes.set(`.github/readme/progress/${GAME}.svg`, Buffer.from('<svg/>'));
+  bytes.set(`.github/readme/progress/${GAME}${language === 'js' ? '' : '-c'}.svg`, Buffer.from('<svg/>'));
   const state = {
     bytes, game: GAME, today, author: LEAD, onSite: false,
     claim: { number: 7, lead: LEAD, game: 'Made Up' },
@@ -70,6 +71,20 @@ test('what the tools write comes in', () => {
   assert.equal(verdict.why, undefined);
   assert.equal(verdict.name, 'Made Up');
   assert.equal(verdict.row, ROW);
+});
+
+test('a game that starts in C comes in with its version in C, as the tools write it, and nothing else', () => {
+  const verdict = entry(() => {}, 'c');
+  assert.equal(verdict.why, undefined);
+  assert.equal(verdict.language, 'c');
+  assert.equal(pathsOf(GAME, 'c').length, 13);
+  assert.ok(pathsOf(GAME, 'c').includes(file('c/src/main.c')) && !pathsOf(GAME, 'c').includes(file('index.html')));
+  for (const name of ['c/index.html', 'c/src/main.c', 'c/src/main.js', 'LICENSE']) {
+    assert.equal(entry(edit(file(name), text => `${text} `), 'c').why, 'template', name);
+  }
+  assert.equal(entry(s => s.files.push({ filename: file('index.html'), status: 'added' }), 'c').why, 'files');
+  assert.equal(entry(s => s.files.push({ filename: file('c/src/more.c'), status: 'added' }), 'c').why, 'files');
+  assert.equal(entry(edit(file('entry.md'), text => `${text}\nMore words here.\n`), 'c').why, 'entry');
 });
 
 test('it is only a first entry with one new entry, in a plain folder', () => {

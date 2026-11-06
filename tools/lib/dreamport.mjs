@@ -7,6 +7,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { go, until, giveFile } from './chrome.mjs';
 import { gameFolder } from './paths.mjs';
+import { otherVersions } from './proof-files.mjs';
 
 /** Builds the game's or version's C, if its src/ has any, to src/game.wasm. */
 export async function buildIfC(game) {
@@ -19,6 +20,12 @@ export async function buildIfC(game) {
 /** Loads games/<game>/ with `query`, gives it the copy and, when `start`, presses Play and waits for the game. `game`
  *  can be a version in another language, such as sonic-battle/c (src/lib/languages.mjs). */
 export async function openDreamport(page, server, game, copy, { query = '', start = true } = {}) {
+  if (!existsSync(join(gameFolder(game), 'index.html'))) {
+    // a game that started in C has no JavaScript version, and the tools name its version in C (src/lib/languages.mjs)
+    const others = otherVersions(game);
+    throw new Error(others.length ? `${game} has no version in JavaScript, as it started in C: the tools name it ${others[0]}, as in npm run dp -- prove ${others[0]}.`
+      : `games/${game}/ has no index.html, the page the game starts from.`);
+  }
   await buildIfC(game);
   await go(page, `${server.url}/games/${game}/${query}`);
   await until(page, `document.querySelector('.setup')?.dataset.restored === 'true' && !!document.querySelector('.rom input[type=file]')`, 'the game\'s start screen, where it takes the copy');
