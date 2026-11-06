@@ -1,0 +1,21 @@
+{
+  "original": "8cf4fbbe73f6b1907ab9997caab4c4e7d9708937",
+  "from": "The original's functions that games/sonic-battle/c/ names, found by npm run dp -- portmap sonic-battle/c",
+  "functions": [
+    ["08000210","src/main.c:6"],
+    ["080003A8","src/main.c:7"],
+    ["080006EC","src/main.c:6"],
+    ["08000724","src/main.c:7"],
+    ["08016078","src/main.c:7"],
+    ["080163C0","src/main.c:8"],
+    ["08016438","src/main.c:8"],
+    ["08017D78","src/main.c:8"],
+    ["08017ED0","src/main.c:7"],
+    ["080183D0","src/main.c:8"],
+    ["08020500","src/main.c:9"],
+    ["0802067C","src/main.c:9"]
+  ],
+  "unmatched": [
+
+  ]
+}
