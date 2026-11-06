@@ -6,6 +6,7 @@
 
 import { showTitle } from '../lib/title';
 import { hrefOf } from './controls';
+import { DEFAULT_LANGUAGE, playHref } from '../lib/languages.mjs';
 
 type Input = 'keys' | 'pad' | 'touch';
 type Motion = 'auto' | 'full' | 'calm';
@@ -75,10 +76,20 @@ function start(launcher: HTMLElement) {
         localStorage.removeItem('dreamports:' + key);
       } catch {}
     },
+    // the keys kept under a start, such as 'version:' for the language each game is played in
+    keys(start: string) {
+      try {
+        return Object.keys(localStorage).filter((key) => key.startsWith('dreamports:' + start)).map((key) => key.slice('dreamports:'.length));
+      } catch {
+        return [];
+      }
+    },
   };
   const reducedMQ = matchMedia('(prefers-reduced-motion: reduce)');
   const darkMQ = matchMedia('(prefers-color-scheme: dark)');
 
+  // each game card's version choice, which sets itself again from what's kept, as when the choices are forgotten
+  const versionPicks: (() => void)[] = [];
   const storedTheme = store.get('theme');
   const storedMotion = store.get('motion');
 
@@ -1160,6 +1171,8 @@ function start(launcher: HTMLElement) {
     if (store.get('sound')) kept.push('menu sounds on');
     if (store.get('theme')) kept.push(store.get('theme') + ' look');
     if (store.get('motion')) kept.push(store.get('motion') + ' motion');
+    const versions = store.keys('version:').length;
+    if (versions) kept.push(versions === 1 ? 'the language you play a game in' : `the languages you play ${versions} games in`);
     $('#memory-note', settingsCard).textContent = kept.length
       ? `This browser remembers: ${kept.join(', ')}. It never leaves your device.`
       : 'What you change here stays in this browser.';
@@ -1199,7 +1212,8 @@ function start(launcher: HTMLElement) {
     });
   }
   $('#btn-forget', settingsCard).addEventListener('click', () => {
-    for (const key of ['sound', 'theme', 'motion']) store.del(key);
+    for (const key of ['sound', 'theme', 'motion', ...store.keys('version:')]) store.del(key);
+    for (const pick of versionPicks) pick();
     state.sound = false;
     state.theme = null;
     state.motion = 'auto';
@@ -1311,6 +1325,27 @@ function start(launcher: HTMLElement) {
       blocked = '';
       openNote.textContent = '';
     };
+    // with more than one version, the language it's played in: C unless the player picked another, which is kept
+    const langs = $$<HTMLInputElement>('.gate-langs input', dlg);
+    if (langs.length) {
+      const pick = () => {
+        const kept = store.get(`version:${game}`);
+        const language = (langs.some((input) => input.value === kept) ? kept : DEFAULT_LANGUAGE) as Parameters<typeof playHref>[1];
+        for (const input of langs) input.checked = input.value === language;
+        for (const button of buttons) if (button.dataset.play) button.formAction = playHref(button.dataset.play, language);
+      };
+      pick();
+      versionPicks.push(pick);
+      for (const input of langs) {
+        input.addEventListener('change', () => {
+          if (input.value === DEFAULT_LANGUAGE) store.del(`version:${game}`);
+          else store.set(`version:${game}`, input.value);
+          pick();
+          syncSettings();
+          sound.play('tick');
+        });
+      }
+    }
     const key = `dreamports:own:${game}`;
     const sync = () => {
       for (const button of buttons) button.setAttribute('aria-disabled', String(!box.checked));

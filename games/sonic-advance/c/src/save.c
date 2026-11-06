@@ -2,8 +2,8 @@
 // Sonic Advance's one save, struct SaveGame, the 0x430 bytes the cartridge's flash memory keeps, which the kit's save
 // memory holds here (gba_save). At power-on the game reads the save (SaveGameExists), or starts an empty one
 // (CreateEmptySaveGame) and the language screen; then it changes the save in memory as it goes, and writes it at set
-// moments (WriteSaveGame). engine/save.js lists its fields. The C version keeps its saves apart from the JavaScript
-// version's.
+// moments (WriteSaveGame). engine/save.js lists its fields. The save's bytes are the same as the JavaScript version's,
+// so the two share it (main.js), and a player keeps their save whichever they play.
 
 #include "sa.h"
 

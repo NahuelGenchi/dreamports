@@ -41,11 +41,13 @@ let rom = null;
 createRomSetup(picker, {
   brand: 'Sonic Advance Dreamport',
   home: 'https://dreamports.net/dreamports/sonic-advance-dreamport/',
-  roms: createRomStore('sonic-advance'),
+  // the JavaScript version's ROM store and save, under the names it has always had (src/ui/roms.js, engine/save.js), so
+  // a player moves between the two with the copy they added and their save
+  roms: createRomStore('onsoku-advance'),
   heading: 'Insert cartridge',
   intro: 'Your ROM stays on this device.',
   slots: [{
-    key: 'game', store: 'rom', title: GAME.name, required: true, accept: '.gba',
+    key: 'game', store: 'current', title: GAME.name, required: true, accept: '.gba',
     claims: buffer => namesGame(buffer, GAME.title),
     async read(buffer) {
       const { region, known } = await identify(new Rom(buffer), GAME);
@@ -59,7 +61,7 @@ createRomSetup(picker, {
 
 async function start() {
   // the game's own code (main.c), with its save memory kept in this browser
-  const game = await loadGame(new URL('./game.wasm', import.meta.url), rom, { save: 'sonic-advance-c-save' }), video = game.video;
+  const game = await loadGame(new URL('./game.wasm', import.meta.url), rom, { save: 'onsoku.save' }), video = game.video;
   picker.hidden = true;
   stage.hidden = false;
   const out = screen.getContext('2d', { alpha: false });
