@@ -246,7 +246,7 @@ void nes_ppu_frame_start(uint32_t frame) {
   // frame before worked out: the emulator's first two frames, the kit's frame 0 and the one before it, are dead
   dead = frame < 1;
   // and once the PPU is warm, every other frame is a dot short
-  frame_length = dead ? nes_frame_dots : nes_frame_dots - (int)((frame - 1) & 1);
+  frame_length = nes_frame_length((int)frame);
   done = 0;
   hit_at = -1;
   line_drawn = 0;
@@ -263,6 +263,8 @@ void nes_ppu_frame_end(void) {
 }
 
 int nes_ppu_frame_length(void) { return frame_length; }
+
+int nes_frame_length(int frame) { return frame < 1 ? nes_frame_dots : nes_frame_dots - ((frame - 1) & 1); }
 
 void nes_ppu_write(uint16_t address, uint8_t value) {
   run_to(now);

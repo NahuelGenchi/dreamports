@@ -66,6 +66,16 @@ void nes_wait_line(int line);
 int nes_wait_sprite0(void);
 /** Where the frame is: the PPU's dot, 341 to a line, counted from the start of the frame's V-blank. */
 int nes_now(void);
+/** The dot $2002's top bit goes on at, in a frame whose V-blank starts: a game that times its own code by the CPU's
+ *  cycles, as one that waits for V-blank by reading $2002 does, can't have read it on before then. */
+#define NES_VBLANK_DOT 341
+/** The dot the PPU asks for the V-blank interrupt at, when $2000's top bit is on. The CPU takes it once it finishes the
+ *  instruction it's in, and 7 cycles later the interrupt's code starts: at NES_NMI_DOT + 21 at the soonest, where a
+ *  step starts. */
+#define NES_NMI_DOT 353
+/** How many dots frame `frame` lasts, as nes_frame counts them: frames -1 and 0, the emulator's first two, before the
+ *  PPU is warm, and then every other frame a dot shorter. A game that times its own code across frames needs it. */
+int nes_frame_length(int frame);
 /** How many frames have run before this one, counted from power-on as the proof tools count them: frame 0 is the
  *  console's second, and it shows a grey screen, as the PPU warms up and V-blank never starts until frame 1. */
 uint32_t nes_frame(void);

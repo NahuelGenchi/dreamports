@@ -3,7 +3,7 @@
 // reads a game's first pull request can write them again and compare (docs/TEAMS.md), and so these files hold nothing a
 // person typed but what's in original.json.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { CONSOLES } from '../../kit/consoles.js';
 import { sizesIn } from './screens.mjs';
 
@@ -117,6 +117,9 @@ export function withCapture(entry, game) {
 
 const yaml = text => JSON.stringify(text);
 
+// the kit an entry names: its console's, or the kits in C for a console whose kit is only in C, such as the NES's
+const kitOf = id => (existsSync(new URL(`../../kit/${id}/README.md`, import.meta.url)) ? id : 'c');
+
 /** The game's entry, which says the same for now whoever writes it, and which its lead fills in as the game grows. */
 export function startingEntry(game, original, { issue, lead, added }) {
   const { name } = namesOf(original);
@@ -130,7 +133,7 @@ needs: ${yaml(`A ${original.name} ${original.console === 'gba' ? 'ROM (.gba)' : 
 controls: [keyboard, controller, touch]
 issue: ${issue}
 lead: ${lead}
-kit: gba
+kit: ${kitOf(original.console)}
 ownCopy:
   confirm: ${yaml(`I own ${name}`)}
   links:

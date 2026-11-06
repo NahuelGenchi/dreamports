@@ -114,7 +114,7 @@ void nes_start_at(uint32_t later) {
   // other one
   frame = later;
   frame_start = (uint64_t)nes_frame_dots;
-  for (uint32_t f = 0; f < later; f++) frame_start += (uint64_t)(f == 0 ? nes_frame_dots : nes_frame_dots - (int)((f - 1) & 1));
+  for (uint32_t f = 0; f < later; f++) frame_start += (uint64_t)nes_frame_length((int)f);
   nes_apu_run_to(frame_start);
 }
 uint32_t nes_buttons(void) { return held; }

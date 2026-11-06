@@ -42,7 +42,7 @@ export async function run(args) {
   };
   let functions, from;
   if (list) {
-    functions = filled(readList(readFileSync(list, 'utf8'), gba ? isCode : () => true));
+    functions = filled(readList(readFileSync(list, 'utf8'), gba ? isCode : () => true, gba));
     from = `The functions in ${basename(list)}, ${gba ? `with what ${FOUND} found in the copy beyond them` : 'as they are'}`;
   } else if (fill) {
     const map = readCodeMap(game);
@@ -61,8 +61,10 @@ export async function run(args) {
 }
 
 /** The functions in a list: `nm -S` lines, or a CSV with a header naming its address column, and its size or end
- *  column if it has one. */
-export function readList(text, inCode = isCode) {
+ *  column if it has one. On the Game Boy Advance, an address's lowest bit only says the code is Thumb, so it's
+ *  dropped; another console's code can start at any byte. */
+export function readList(text, inCode = isCode, thumb = true) {
+  const start = address => (thumb ? address & ~1 : address);
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   // an address is hexadecimal, with or without 0x or a memory's name before it (ram:08000204); a size is decimal
   // unless it starts with 0x
@@ -74,7 +76,7 @@ export function readList(text, inCode = isCode) {
   if (lines.some(l => nm.test(l))) {
     for (const line of lines) {
       const m = line.match(nm);
-      if (m) out.push({ address: parseInt(m[1], 16) & ~1, size: parseInt(m[2], 16), name: m[4] });
+      if (m) out.push({ address: start(parseInt(m[1], 16)), size: parseInt(m[2], 16), name: m[4] });
     }
   } else {
     const split = line => line.match(/("[^"]*"|[^,\t]+)/g)?.map(c => c.replace(/^"|"$/g, '').trim()) ?? [];
@@ -88,9 +90,9 @@ export function readList(text, inCode = isCode) {
     if (at < 0) throw new Error('The list needs a column for the address, named in its first line, or nm -S lines.');
     for (const line of lines.slice(1)) {
       const cells = split(line);
-      const start = address(cells[at]);
-      const bytes = length >= 0 ? size(cells[length]) : end >= 0 ? address(cells[end]) - start : NaN;
-      if (Number.isFinite(start)) out.push({ address: start & ~1, size: Number.isFinite(bytes) ? bytes : 0, name: label >= 0 ? cells[label] : undefined });
+      const first = address(cells[at]);
+      const bytes = length >= 0 ? size(cells[length]) : end >= 0 ? address(cells[end]) - first : NaN;
+      if (Number.isFinite(first)) out.push({ address: start(first), size: Number.isFinite(bytes) ? bytes : 0, name: label >= 0 ? cells[label] : undefined });
     }
   }
   // only code, each function once, and those listed without a size as long as the gap to the next
