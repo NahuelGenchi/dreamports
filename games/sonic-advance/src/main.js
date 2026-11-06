@@ -27,6 +27,7 @@ import { THE_MOON, ALL_EMERALDS } from './engine/unlock.js';
 import { openSave } from './engine/save.js';
 import { levelInfo } from './rom/levels.js';
 import { startMultiplayer, DEFAULT_SEED, DEFAULT_CHAO_PLACE } from './multiplayer.js';
+import { startVsFront } from './front/vsfront.js';
 import { openAchievements } from '../../../kit/gba/achievements/store.js';
 import { createUnlockPopup } from '../../../kit/gba/achievements/popup.js';
 import { createAchievementsPanel } from '../../../kit/gba/achievements/panel.js';
@@ -68,7 +69,10 @@ const unlocked = params.has('unlocked') ? Number(params.get('unlocked')) & 0xFFF
 // own screen; `&seed=` and `&chao=` set what the link hands the GBAs as the round starts (the shared random
 // number and the Chao's place, 0–7)
 const multiplayer = (() => { try { return levelInfo(firstLevel).multiplayer ?? false; } catch { return false; } })();
-const players = multiplayer ? Math.min(4, Math.max(2, Number(params.get('players') ?? 2) | 0)) : 1;
+// `?vs=N` starts the game as N linked GBAs, 2 to 4, each on its own screen from power-on, with the VS menus between them
+// (front/vsfront.js)
+const vsCount = !multiplayer && params.has('vs') ? Math.min(4, Math.max(2, Number(params.get('vs')) | 0)) : 0;
+let players = multiplayer ? Math.min(4, Math.max(2, Number(params.get('players') ?? 2) | 0)) : Math.max(1, vsCount);
 const seed = params.has('seed') ? Number(params.get('seed')) >>> 0 : DEFAULT_SEED;
 const chaoPlace = params.has('chao') ? (Number(params.get('chao')) | 0) & 7 : DEFAULT_CHAO_PLACE;
 // `?character=` is Sonic (0, the default), Tails (1), Knuckles (2) or Amy (3) with ?debug, and the one the character
@@ -113,7 +117,7 @@ sheet.view('settings', { el: settingsView, show: () => { romStatus.textContent =
 // held is let go, so it goes on from the same frame once they close. Its keys wait too, so the page's own work as
 // they do on any page.
 let holding = false, keysWere = false;
-const running = () => !!(front || game || specialStage || round);
+const running = () => !!(front || game || specialStage || round || vsRun);
 function holdGame() {
   const on = !stage.hidden && sheet.isOpen;
   if (on === holding) return;
@@ -213,7 +217,7 @@ document.getElementById('quit-open').addEventListener('click', () => sheet.go('q
 // the sound, also M on a keyboard
 function showSound() { soundButton.setAttribute('aria-checked', String(!sound.muted)); }
 soundButton.addEventListener('click', () => { sound.muted = !sound.muted; showSound(); });
-let game = null, front = null, specialStage = null, round = null, rom = null, statsTimer = 0;
+let game = null, front = null, specialStage = null, round = null, vsRun = null, rom = null, statsTimer = 0;
 
 // the widescreen view: off unless chosen, as the original screen is what the game is checked against
 const WIDE_KEY = 'onsoku.widescreen';
@@ -225,6 +229,19 @@ function setWide(on) {
   fitScreen();
 }
 wideButton.addEventListener('click', () => setWide(!wide));
+
+// The players (1 to 4): 2 to 4 start the game as that many linked GBAs on the page (`?vs=N`, front/vsfront.js), which the main
+// menu's VS then joins into a game; the game starts again with the new number
+const playersButton = document.getElementById('players');
+playersButton.querySelector('.players-count').textContent = String(Math.max(1, vsCount));
+function setPlayers(count) {
+  const url = new URL(location.href);
+  url.searchParams.delete('players');
+  if (count > 1) url.searchParams.set('vs', String(count)); else url.searchParams.delete('vs');
+  location.href = url.href;
+}
+playersButton.addEventListener('click', () => setPlayers(Math.max(1, vsCount) % 4 + 1));
+playersButton.disabled = multiplayer;
 
 // An extra turned on in the game without its ROM asks for the ROM there, and is turned on once it is read.
 let asked = null;
@@ -426,6 +443,7 @@ function stopAll() {
   specialStage?.stop(); specialStage = null;
   game?.stop(); game = null;
   round?.stop(); round = null;
+  vsRun?.stop(); vsRun = null;
   clearInterval(statsTimer);
 }
 
@@ -436,11 +454,12 @@ function start(buffer, assets, back = null, afterReset = false) {
   stage.hidden = false;
   // the extras are single-player options
   const multi = !!assets.stage.multiplayerSpawns;
-  wideButton.disabled = rushButton.disabled = boostButton.disabled = tricksButton.disabled = multi;
+  wideButton.disabled = rushButton.disabled = boostButton.disabled = tricksButton.disabled = multi || vsCount > 0;
   stage.classList.toggle('multi', multi);   // its players play with keyboards and controllers
   sheet.close({ now: true });
   counts = !debug && !specialTest && unlocked === null && (assets.first === 0 || multi);
   if (multi) { startRound(assets); return; }
+  if (vsCount) { startVs(assets); return; }
   // a start point is where the game opens, and a soft reset starts it again as the original does
   const leaving = specialTest && !afterReset && specialSpringStart(assets, { emeralds: save.chaosEmeralds, continues });
   if (leaving) { enterSpecialStage(assets, leaving); return; }
@@ -620,12 +639,34 @@ function enterSpecialStage(assets, handover) {
   if (debug) globalThis.onsoku = { special: specialStage, assets, input, sound };
 }
 
-// the multiplayer stage's round, on a screen for each player
-function startRound(assets) {
+// the VS menus, on a GBA for each player, which start the round their players chose
+function startVs(assets, resume = null) {
   game = null;
   screen.hidden = true;
   screens.hidden = false;
-  round = startMultiplayer({ container: screens, assets, count: players, sound, seed, chaoPlace, language: save.uiLanguage, btnConfig: save.btnConfig, achieve });
+  stage.classList.add('multi');
+  const from = sa1;
+  vsRun = startVsFront({
+    container: screens, rom, offsets: assets.info.offsets, count: vsCount, sound, save, softReset, resume,
+    onRound: async ({ level, seed: roundSeed, chaoPlace: place, resume: kept }) => {
+      vsRun = null;
+      const next = await extractAssets(from.buffer, () => {}, { level, character: 0 });
+      if (sa1 !== from || stage.hidden) return;   // the player left the game meanwhile
+      // once the results are over the players are back at the VS menus, at the continue screen
+      startRound(next, roundSeed, place, () => { round?.stop(); round = null; startVs(assets, kept); });
+    },
+  });
+  fitScreen();
+  clearInterval(statsTimer);
+  if (debug) globalThis.onsoku = { vs: vsRun, assets, sound };
+}
+
+// the multiplayer stage's round, on a screen for each player
+function startRound(assets, roundSeed = seed, place = chaoPlace, onResultsDone = null) {
+  game = null;
+  screen.hidden = true;
+  screens.hidden = false;
+  round = startMultiplayer({ container: screens, assets, count: players, sound, seed: roundSeed, chaoPlace: place, language: save.uiLanguage, btnConfig: save.btnConfig, achieve, onResultsDone });
   fitScreen();
   clearInterval(statsTimer);
   if (debug) globalThis.onsoku = { round, assets, sound };
@@ -669,15 +710,17 @@ document.getElementById('assets-open').addEventListener('click', e => {
 
 addEventListener('keydown', e => {
   if (e.code === 'KeyH' && !stage.hidden && !e.repeat) { if (sheet.isOpen) sheet.close(); else sheet.open(); }
+  // P changes the players, as the sheet's row does
+  if (e.code === 'KeyP' && !playersButton.disabled && !stage.hidden && !e.repeat && !round && !vsRun) setPlayers(Math.max(1, vsCount) % 4 + 1);
   // C shows the terrain collision over the stage, for checking it against the art
   if (e.code === 'KeyC' && game && !stage.hidden && !e.repeat) game.state.showCollision = !game.state.showCollision;
   if (e.code === 'KeyM' && !stage.hidden && !e.repeat) { sound.muted = !sound.muted; showSound(); }
   // the widescreen view and the extras are single-player options
-  if (e.code === 'KeyV' && !round && !stage.hidden && !e.repeat) setWide(!wide);
-  if (e.code === 'KeyR' && !round && !stage.hidden && !e.repeat) setRush(!rush);
-  if (e.code === 'KeyB' && !round && !stage.hidden && !e.repeat) setBoostMode(!boostMode);
-  if (e.code === 'KeyT' && !round && !stage.hidden && !e.repeat) setTricks(!tricks);
-  if (e.code === 'KeyN' && !round && !stage.hidden && !e.repeat) setFixes(!fixes.on);
+  if (e.code === 'KeyV' && !round && !vsRun && !stage.hidden && !e.repeat) setWide(!wide);
+  if (e.code === 'KeyR' && !round && !vsRun && !stage.hidden && !e.repeat) setRush(!rush);
+  if (e.code === 'KeyB' && !round && !vsRun && !stage.hidden && !e.repeat) setBoostMode(!boostMode);
+  if (e.code === 'KeyT' && !round && !vsRun && !stage.hidden && !e.repeat) setTricks(!tricks);
+  if (e.code === 'KeyN' && !round && !vsRun && !stage.hidden && !e.repeat) setFixes(!fixes.on);
 });
 
 function showStats() {
@@ -698,7 +741,7 @@ function pixelScale(fit) {
 // and the drawn buttons below the game, with how much is left under it (`below`)
 function gameRoom() {
   const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
-  if (!portrait.matches || stage.hidden || round || touch.hidden) return { vw, vh, below: 0 };
+  if (!portrait.matches || stage.hidden || round || vsRun || touch.hidden) return { vw, vh, below: 0 };
   const top = parseFloat(getComputedStyle(stage).paddingTop) || 0;
   const bottom = touch.querySelector('.shoulders').getBoundingClientRect().top - 16;
   return { vw, vh: Math.max(SCREEN_H, bottom - top), below: Math.max(0, vh - bottom) };
@@ -716,7 +759,7 @@ function fitScreen() {
   game?.setView(w, h);
   screen.style.width = `${w * scale}px`;
   screen.style.height = `${h * scale}px`;
-  if (round) fitScreens();
+  if (round || vsRun) fitScreens();
   showSetting(wideButton, wide);
   markCovers();
 }

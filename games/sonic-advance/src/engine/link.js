@@ -10,7 +10,10 @@
 // from 0xE, the room event being sent (mp_event_mgr.c).
 
 export const PACKET_SIZE = 20;
-const DELAY = 2;   // frames from a packet's send to its reception
+const DELAY = 2;   // frames from a packet's send to its reception. Every packet is read 2 frames after it was sent, but the last GBA's, the one
+// the transfer ends with, reaches the GBAs before it only 3 frames after, as the linked cores show for 2, 3 and 4 GBAs
+const delayFrom = (count, receiver, sender) => (sender === count - 1 && receiver < sender ? DELAY + 1 : DELAY);
+const KEEP = 4;
 
 /** A packet's fields, read and written as the original lays them out. */
 export function packetView(bytes) {
@@ -35,17 +38,43 @@ export function packetView(bytes) {
  * The link between `count` GBAs. `send(i)` is GBA i's own packet, which its tasks write; `recv(i)` the packet
  * GBA i sent DELAY frames ago, or null while the link has carried nothing yet; `endFrame()` closes a frame of
  * every GBA.
+ *
+ * The VS menus read it as the original's MultiSio library gives it (`view(i)`): a GBA takes part once its tasks
+ * switch it on (`enable(i, on)`, MultiSioStart and MultiSioStop), the link's status flags say whose packet it
+ * holds (bit n for GBA n, 0x80 for the parent, the GBA with id 0, once another is on), and each GBA's `slot(n)`
+ * is the packet it holds of GBA n, or null.
  */
 export function createLink(count) {
   const send = Array.from({ length: count }, () => packetView(new Uint8Array(PACKET_SIZE)));
-  const sent = [];   // the packets at the end of each of the last DELAY frames, oldest first
+  const on = new Array(count).fill(false);
+  const sent = [];   // what the GBAs sent and which were on at the end of each of the last DELAY frames, oldest first
+  const snapshot = delay => sent[sent.length - delay] ?? null;
   return {
     count,
     send: i => send[i],
-    recv: i => (sent.length === DELAY ? sent[0][i] : null),
+    recv: i => (sent.length >= DELAY ? sent[sent.length - DELAY].packets[i] : null),
+    enable(i, value) { on[i] = value; },
+    isOn: i => on[i],
     endFrame() {
-      sent.push(send.map(p => packetView(p.bytes.slice())));
-      if (sent.length > DELAY) sent.shift();
+      sent.push({ packets: send.map(p => packetView(p.bytes.slice())), on: on.slice() });
+      if (sent.length > KEEP) sent.shift();
+    },
+    /** What GBA `id` reads from the library: { flags, slot(n), data(n), id }. */
+    view(id) {
+      const delayOf = n => delayFrom(count, id, n);
+      const slot = n => {
+        const shot = snapshot(delayOf(n));
+        return shot?.on[n] && shot.on[id] ? shot.packets[n] : null;
+      };
+      let flags = 0;
+      for (let n = 0; n < count; n++) if (slot(n)) flags |= 1 << n;
+      const shot = snapshot(DELAY);
+      if (id === 0 && shot?.on[0] && shot.on.some((v, n) => n !== 0 && v)) flags |= 0x80;
+      return {
+        id, flags, slot,
+        // SIODATA32's halves: 0 until a transfer has happened, 0xFFFF for a GBA that answered nothing
+        data: n => (snapshot(DELAY) ? (slot(n) ? 1 : 0xFFFF) : 0),
+      };
     },
   };
 }

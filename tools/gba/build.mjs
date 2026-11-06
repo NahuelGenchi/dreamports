@@ -24,9 +24,12 @@ const SOURCE = process.env.MGBA_SOURCE || join(WORK, 'mgba');
 const BUILD = join(WORK, 'mgba-build');
 const HARNESS = fileURLToPath(new URL('./original.c', import.meta.url));
 const READER_SOURCE = fileURLToPath(new URL('./read.c', import.meta.url));
+const LINKED_SOURCE = fileURLToPath(new URL('./linked.c', import.meta.url));
 const ON_WINDOWS = fileURLToPath(new URL('./on-windows.h', import.meta.url));
 /** The program that runs the original (original.c). */
 export const ORIGINAL = join(FOLDER, process.platform === 'win32' ? 'original.exe' : 'original');
+/** The program that runs two to four linked copies of the original (linked.c). */
+export const LINKED = join(FOLDER, process.platform === 'win32' ? 'linked.exe' : 'linked');
 /** The program that prints the original's instructions (read.c). */
 export const READER = join(FOLDER, process.platform === 'win32' ? 'read.exe' : 'read');
 const STAMP = join(FOLDER, 'built.json');
@@ -34,6 +37,7 @@ const STAMP = join(FOLDER, 'built.json');
 const sha1 = (...files) => files.reduce((hash, file) => hash.update(readFileSync(file)), createHash('sha1')).digest('hex');
 const harness = () => sha1(HARNESS, ON_WINDOWS);
 const reader = () => sha1(READER_SOURCE, ON_WINDOWS);
+const linked = () => sha1(LINKED_SOURCE, ON_WINDOWS);
 const built = () => {
   try { return JSON.parse(readFileSync(STAMP, 'utf8')); } catch { return {}; }
 };
@@ -41,7 +45,7 @@ const built = () => {
 /** Whether the reference emulator is built, from this version of mGBA, of original.c and of read.c. */
 export function isBuilt() {
   const stamp = built();
-  return existsSync(ORIGINAL) && existsSync(READER) && stamp.mgba === MGBA_VERSION && stamp.program === harness() && stamp.reader === reader();
+  return existsSync(ORIGINAL) && existsSync(READER) && existsSync(LINKED) && stamp.mgba === MGBA_VERSION && stamp.program === harness() && stamp.reader === reader() && stamp.linked === linked();
 }
 
 function run(command, args, what, env) {
@@ -110,9 +114,12 @@ function buildHere(log, windows) {
   const decoder = join(WORK, 'decoder.o');
   run(compiler, ['-O2', '-c', '-DUSE_DEBUGGERS', ...(process.platform === 'darwin' ? ['-DHAVE_STRLCPY'] : []), '-o', decoder, join(source, 'src', 'arm', 'decoder.c'), ...headers], 'Building mGBA\'s decoder', windows?.env);
   run(compiler, ['-O2', '-o', made(READER), beside(READER_SOURCE), decoder, ...headers, ...library], 'Building the program that prints the original\'s instructions', windows?.env);
+  log('Building the program that runs linked copies of the original…');
+  run(compiler, ['-O2', '-o', made(LINKED), beside(LINKED_SOURCE), ...headers, ...library], 'Building the program that runs linked copies of the original', windows?.env);
   if (windows) {
     copyFileSync(made(ORIGINAL), ORIGINAL);
     copyFileSync(made(READER), READER);
+    copyFileSync(made(LINKED), LINKED);
   }
-  writeFileSync(STAMP, JSON.stringify({ mgba, source, program: harness(), reader: reader() }) + '\n');
+  writeFileSync(STAMP, JSON.stringify({ mgba, source, program: harness(), reader: reader(), linked: linked() }) + '\n');
 }

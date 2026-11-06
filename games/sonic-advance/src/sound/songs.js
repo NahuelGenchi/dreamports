@@ -4,6 +4,13 @@
 export const SONG = {
   INTRO: 1,                // MUS_INTRO
   TITLE_FANFARE: 2,        // MUS_TITLE_FANFARE
+  CONNECTION_SUCCESS: 301, // SE_301: the Multi-Pak outcome screen when the GBAs are linked,
+  CONNECTION_ERROR: 302,   // SE_302: or when the link failed
+  CONNECTION_CLOSED: 303,  // SE_VS_MULTIPAK_CONN_CLOSE: the link was closed
+  VS_LOBBY_HELLO: 156,     // SE_156: 45 frames into the lobby
+  VS_LOBBY_CLOSED: 160,    // SE_160: and when the link was closed
+  VS_CONTINUE: 155,        // MUS_155: the VS continue screen, after a round
+  VS_LOBBY: 6,             // MUS_006: the VS lobby, where the linked players' names slide in
   VS_PLEASE_WAIT: 5,       // MUS_VS_PLEASE_WAIT: the VS menu's waiting screens
   CHARACTER_SELECTION: 3,  // MUS_CHARACTER_SELECTION: the Options menu stops it as it opens the sound test
   COURSE_SELECTION: 4,     // MUS_COURSE_SELECTION: the course select

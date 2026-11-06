@@ -71,8 +71,8 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
   const waiting = {};                   // Start or Select just pressed alone: the steps left before the game sees it
   // a proof tool runs the game on this player's buttons (proof.js): in play mode its frames hold them, and in record
   // mode what the game read at each frame is kept, after any frames it gave to replay first, which hold them too
-  const proofs = () => proof?.input === input;
-  const played = () => proofs() && (proof.mode === 'play' || !!proof.frame);
+  const proofs = () => proof?.slotOf(input) >= 0;
+  const played = () => proofs() && (proof.mode === 'play' || !!proof.frameOf(input));
   let replayed = false;                 // a proof tool's frame held the buttons at the last step
 
   function set(button, quiet) {
@@ -110,7 +110,8 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
    * sees, as its frames are counted from the V-blank before them (proof.js `next`).
    */
   input.nextHeld = () => {
-    if (proofs() && proof.mode === 'play' && proof.next) return new Set(proof.next);
+    const next = proofs() && proof.mode === 'play' && proof.nextOf(input);
+    if (next) return new Set(next);
     return new Set(buttons.filter(b => input[b]));
   };
 
@@ -154,7 +155,7 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
    *  A controller plugged in mid-game is read from then on; one unplugged lets go of its buttons. */
   input.poll = () => {
     if (played()) {
-      play(proof.frame ?? undefined);
+      play(proof.frameOf(input) ?? undefined);
       replayed = true;
     } else {
       // the tool's frames are over and the player takes over, with the buttons they hold now
@@ -162,7 +163,7 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
       replayed = false;
       read();
     }
-    if (proofs()) proof.record(seen());
+    if (proofs() && proof.input === input) proof.record(seen());
   };
   function read() {
     if (!input.enabled) return;

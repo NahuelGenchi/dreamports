@@ -11,14 +11,15 @@
 // CheckCPUPartnerUnlock watches the keys throughout: Up on Sonic, then Right, Down, Right, L, Right, R, Right and A,
 // and the ring sound plays as the screen ends, and Tails comes along as the CPU's partner (gTailsEnabled).
 //
-// The original's own use of this screen in Time Attack and in multiplayer isn't built yet.
+// In the VS menus (`ctx.gameMode` 2 or more) the GBAs choose together over the link (the packets 0x20 to 0x23) and the screen goes on to the players' overview.
 
 import { createSprite, updateSprite, displaySprite, displaySpriteBackground } from '../gba/sprite.js';
-import { KEY } from '../gba/engine.js';
+import { KEY, TASK } from '../gba/engine.js';
 import { SONG } from '../sound/songs.js';
 import { SINE } from '../engine/trig.js';
 import { createUiTask, uiGfxStackInit, uiGraphics, loadUiGfx, drawUiText, drawUiGlyphs, glyphs, createFade, fadeStep } from './ui.js';
 import { createMainMenu } from './title.js';
+import { linkLost } from './heartbeat.js';
 import { createTimeAttackMenu } from './timeattack.js';
 import { createCourseSelect } from './courseselect.js';
 
@@ -39,6 +40,15 @@ const ROW_AFTER = [[0, 1, 3], [1, 2, 0]];
 const PICK_WAIT = 38, PICK_END = 0x38, BACK_CLEAR = 0x10;
 const READY = 0x21;
 const SINGLE_PLAYER = 0, TIME_ATTACK = 1;   // gGameMode
+const PLAYERS_MAX = 4;
+// the link's packets while the GBAs choose: still choosing, picked (and waiting for the others), all picked, and the parent's
+// answer with each one's character
+const CHOOSING = 0x20, PICKED = 0x21, ALL_PICKED = 0x22, ANSWER = 0x23;
+// The original lets no two players take the same character: a character another GBA has picked can't be picked, and the
+// row turns past it. Every player is Sonic in this build whatever the row says (characters arrive with
+// sonic-advance-dreamport#129), so the rule is left out, which is this screen's one difference from the original.
+const SAME_CHARACTER_ALLOWED = true;
+const isMultiPlayer = ctx => ctx.gameMode > TIME_ATTACK;
 const PARTNER_READY = 8, NO_CODE = 0xFF;
 // CheckCPUPartnerUnlock's keys, after Up on Sonic
 const PARTNER_KEYS = [KEY.RIGHT, KEY.DOWN, KEY.RIGHT, KEY.L, KEY.RIGHT, KEY.R, KEY.RIGHT, KEY.A, 0, 0];
@@ -59,6 +69,7 @@ const line = (unkA, unkC, unkE, unk10, unk12, unk8) => ({ unkA, unkC, unkE, unk1
  */
 export function createCharacterSelect(ctx, selected = 0) {
   const e = ctx.engine, gfx = id => uiGraphics(e.rom, ctx.offsets.uiGraphics, id);
+  ctx.missing.fill(0);
   const shared = { engine: e, offsets: ctx.offsets };
   createUiTask(e);
   uiGfxStackInit(e);
@@ -153,9 +164,24 @@ function watchCode(screen, pressed) {
   screen.code = pressed & PARTNER_KEYS[screen.code] ? screen.code + 1 : NO_CODE;
 }
 
+// the characters the other GBAs have picked, a bit for each (unk2F): any packet after "still choosing" names its character
+function takenBy(screen) {
+  const { ctx } = screen, view = ctx.link.view(ctx.id), connections = ctx.vsLink.connections;
+  let taken = 0;
+  for (let i = 0; i < PLAYERS_MAX; i++) {
+    const packet = view.slot(i);
+    if (i !== ctx.id && connections >> i & 1 && packet && packet.kind > CHOOSING) taken |= 1 << packet.bytes[2];
+  }
+  return SAME_CHARACTER_ALLOWED ? 0 : taken;
+}
+
 // Task_805A060, as one player has it
 function choose(t) {
-  const screen = t.data, { ctx } = screen, e = ctx.engine;
+  const screen = t.data, { ctx } = screen, e = ctx.engine, multi = isMultiPlayer(ctx);
+  if (multi) {
+    if (linkLost(ctx)) return;
+    screen.taken = takenBy(screen);
+  }
   let wanted = screen.wanted;
   const ready = screen.frames >>> 0 > READY;
   const startTurn = way => {
@@ -165,15 +191,20 @@ function choose(t) {
     e.playSong(SONG.SHIFT);
   };
   watchCode(screen, e.pressed);
-  if (e.repeated & KEY.B && ready && wanted === screen.shown) {
+  const taken = screen.taken & 1 << (wanted & 3);
+  if (e.repeated & KEY.B && ready && wanted === screen.shown && !multi) {
     e.playSong(SONG.RETURN);
     // sub_805B858
     screen.frames = 0;
     e.bldY = 0;
     t.main = goBack;
-  } else if (e.repeated & KEY.A && wanted === screen.shown && ready) {
+  } else if (e.repeated & KEY.A && wanted === screen.shown && ready && !taken) {
     e.playSong(SONG.SELECT);
-    pick(t);
+    if (!multi) pick(t);
+    else {
+      screen.arrows.flags |= TASK.INACTIVE;
+      t.main = waitForOthers;
+    }
   } else if (e.repeated & KEY.LEFT && ready) {
     wanted--;
     startTurn(2);
@@ -182,6 +213,11 @@ function choose(t) {
     startTurn(1);
   } else if (wanted > screen.shown) startTurn(1);
   else if (wanted < screen.shown) startTurn(2);
+  else if (screen.taken & 1 << (wanted & 3) && ready) {
+    // the character in the middle was picked by another GBA: on to the next one, the way the row was going
+    if (screen.wasTurning) wanted += screen.wasTurning & 1 ? 1 : -1;
+    else startTurn(1);
+  }
 
   screen.wasTurning = screen.turning;
   if (screen.turning && screen.turnFrames) {
@@ -207,8 +243,99 @@ function choose(t) {
   screen.bars.data.angle = angle;
   screen.characters.data.angle = angle;
   screen.characters.data.turning = screen.turning;
+  screen.characters.data.taken = screen.taken;
   if (screen.backdrop.data) screen.backdrop.data.angle = angle;   // gone after a pick
   screen.title.data.frames = ++screen.frames;
+  if (multi) {
+    const send = ctx.link.send(ctx.id);
+    send.kind = CHOOSING;
+    send.bytes[2] = (angle & 0x300) >> 8;
+  }
+}
+
+// the character in the middle of the row
+const characterOf = screen => (screen.turn & 0x300) >> 8;
+
+// Task_805A54C: picked; the parent waits for every GBA to say so, and tells them all
+function waitForOthers(t) {
+  const screen = t.data, { ctx } = screen, e = ctx.engine, { id, link } = ctx;
+  if (linkLost(ctx)) return;
+  const view = link.view(id), connections = ctx.vsLink.connections, send = link.send(id), mine = characterOf(screen);
+  const back = () => { screen.arrows.flags &= ~TASK.INACTIVE; t.main = choose; };
+  if (e.pressed & KEY.B) { back(); return; }
+  const parent = view.slot(0);
+  if (parent?.kind === ALL_PICKED) {
+    for (let i = 0; i < PLAYERS_MAX; i++) if (connections >> i & 1) ctx.vsLink.characters[i] = view.slot(i)?.bytes[2] ?? 0;
+    t.main = waitForAnswer;
+    return;
+  }
+  for (let i = 0; i < PLAYERS_MAX; i++) {
+    const packet = view.slot(i);
+    // a GBA before this one that picked the same character has it
+    if (!SAME_CHARACTER_ALLOWED && connections >> i & 1 && i !== id && packet?.kind === PICKED && packet.bytes[2] === mine && i < id) back();
+  }
+  if (view.flags & 0x80) {
+    const picked = new Uint8Array(4);
+    send.kind = ALL_PICKED;
+    send.bytes[2] = mine;
+    for (let i = 0; i < PLAYERS_MAX; i++) {
+      if (!(connections >> i & 1)) continue;
+      const packet = view.slot(i);
+      if (packet?.kind !== PICKED || (!SAME_CHARACTER_ALLOWED && ++picked[packet.bytes[2]] > 1)) {
+        send.kind = PICKED;
+        break;
+      }
+    }
+  } else {
+    send.kind = PICKED;
+    send.bytes[2] = mine;
+  }
+}
+
+// Task_805A798: everyone has picked; the parent sends each one's character and how far the characters have got, and the GBAs
+// pick together
+function waitForAnswer(t) {
+  const screen = t.data, { ctx } = screen, e = ctx.engine, { id, link } = ctx;
+  if (linkLost(ctx)) return;
+  const view = link.view(id), connections = ctx.vsLink.connections, send = link.send(id), mine = characterOf(screen);
+  const parent = view.slot(0);
+  if (parent?.kind === ANSWER) {
+    let furthest = 0;
+    for (let i = 0; i < PLAYERS_MAX; i++) {
+      if (!(connections >> i & 1)) continue;
+      furthest = Math.max(furthest, view.slot(i)?.bytes[3] ?? 0);
+      if (!(view.flags & 0x80)) ctx.vsLink.characters[i] = view.slot(i)?.bytes[2] ?? 0;
+    }
+    ctx.vsLink.furthest = furthest;   // gUnknown_03005140
+    pick(t);
+    return;
+  }
+  if (parent?.kind === PICKED) {
+    send.kind = CHOOSING;
+    screen.arrows.flags &= ~TASK.INACTIVE;
+    t.main = choose;
+    return;
+  }
+  const unlocked = ctx.save.unlockedLevel(mine) & 0xFF;
+  if (view.flags & 0x80) {
+    send.kind = ANSWER;
+    send.bytes[2] = mine;
+    send.bytes[3] = unlocked;
+    for (let i = 1; i < PLAYERS_MAX; i++) {
+      if (!(connections >> i & 1)) continue;
+      const packet = view.slot(i);
+      ctx.vsLink.characters[i] = packet?.bytes[2] ?? 0;
+      if (packet?.kind !== ALL_PICKED) {
+        send.kind = ALL_PICKED;
+        if (e.pressed & KEY.B) send.kind = PICKED;
+        break;
+      }
+    }
+  } else {
+    send.kind = ALL_PICKED;
+    send.bytes[2] = mine;
+    send.bytes[3] = unlocked;
+  }
 }
 
 // sub_805A9A4: the character is picked. Its pose takes the middle, the arrows and the backdrop's task go, and the strip
@@ -236,6 +363,15 @@ function pick(t) {
 function leave(t) {
   const screen = t.data, { ctx } = screen, e = ctx.engine;
   if (++screen.frames > PICK_END) {
+    if (isMultiPlayer(ctx)) {
+      // the screen shows who each GBA picked (sub_801C9D8)
+      for (const task of [screen.name, screen.bars, screen.characters, screen.title, t]) e.destroyTask(task);
+      e.dispCnt &= 0xFFF;
+      e.bldCnt = 0;
+      e.bldY = 0;
+      ctx.vsOverview();
+      return;
+    }
     // the code's partner is for the single-player game only (gGameMode)
     const partner = ctx.gameMode === SINGLE_PLAYER && screen.code === PARTNER_READY;
     e.destroyTask(screen.name);
