@@ -1,0 +1,18 @@
+// @TITLE_C@: the game's own code, in C, on the NES kit in C (kit/nes/c/nes.h), with the console's screen, frame,
+// sound and buttons in console.h, which the build makes from kit/consoles.js. src/main.js runs it on the page, built to
+// WebAssembly as src/game.wasm (kit/nes/c/README.md).
+
+#include "nes.h"
+
+// once, with the player's copy in kit_copy and the cartridge in nes_prg and nes_chr
+void game_start(void) {}
+
+// what the original does each frame, from its V-blank on, writing the PPU's and the APU's registers as it does. To
+// begin with, the screen's backdrop, the first colour: blue, and green while a button is held
+void game_step(uint32_t buttons) {
+  nes_write(0x2006, 0x3F);
+  nes_write(0x2006, 0x00);
+  nes_write(0x2007, buttons ? 0x1A : 0x12);
+  nes_write(0x2006, 0x00);
+  nes_write(0x2006, 0x00);
+}
