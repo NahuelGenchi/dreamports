@@ -6,9 +6,7 @@
 
 ### Every game ever made, in modern code, on every system.
 
-Free · Bring your own copy of the game · Live at **[dreamports.net](https://dreamports.net)**
-
-**[Make a Dreamport](#make-a-dreamport)**
+Bring your own copy of the game · **[dreamports.net](https://dreamports.net)**
 
 </div>
 
