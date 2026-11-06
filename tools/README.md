@@ -38,6 +38,8 @@ On Windows you need only [git](https://git-scm.com), and the Edge that comes wit
 
 You can also run the tools on Windows inside WSL 2 (Windows Subsystem for Linux), which `wsl --install` sets up, with everything above installed inside it, as on Linux, and Chrome from Google's own package. `play`'s window opens through WSL's own display. Keep the folder in Linux's home: under `/mnt/c` the tools work too, but installing and building take several times as long. WSL 1 can't run the browser.
 
+A game written in C needs nothing more: `npm ci` brings a compiler that builds it to WebAssembly, the same on every computer, and `npm run test:c-kit` also builds it for your computer with its own C compiler ([the kit in C](../kit/gba/c/README.md)).
+
 And you need your own copy of the game, made from your own cartridge: the version the Dreamport is built from, such as the USA version.
 
 ## Getting ready
