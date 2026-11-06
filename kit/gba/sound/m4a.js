@@ -132,7 +132,8 @@ export function createM4A(rom, layout, io) {
   for (let i = 0; i < layout.players; i++) {
     const at = layout.playerTable + i * 12, tracks = u32(at + 4), count = rom[at + 8];
     players.push({
-      addr: u32(at), songHeader: 0, status: 0, priority: 0, cmd: 0, clock: 0, tempoD: 0, tempoU: 0, tempoI: 0,
+      // the player table's own byte (unk_A, MPlayOpen's unk_B): when set, a song doesn't take the player from a higher one
+      addr: u32(at), guarded: rom[at + 10] !== 0, songHeader: 0, status: 0, priority: 0, cmd: 0, clock: 0, tempoD: 0, tempoU: 0, tempoI: 0,
       tempoC: 0, fadeInterval: 0, fadeCounter: 0, fadeOV: 0, voicegroup: 0,
       tracks: Array.from({ length: count }, (_, t) => newTrack(tracks + 0x50 * t)),
     });
@@ -831,6 +832,11 @@ export function createM4A(rom, layout, io) {
 
   function mplayStart(P, header) {
     const h = header - ROM_BASE, trackCount = rom[h];
+    // MPlayStart: on a guarded player, a song still playing, or about to start, keeps it from one of lower priority
+    if (P.guarded && P.priority > rom[h + 2]) {
+      const starting = P.songHeader !== 0 && P.tracks[0] && (P.tracks[0].flags & TRACK_START);
+      if (starting || ((P.status & 0xFFFF) !== 0 && !(P.status & PAUSE))) return;
+    }
     P.status = 0; P.songHeader = header; P.voicegroup = u32(h + 4); P.priority = rom[h + 2]; P.clock = 0;
     P.tempoD = 150; P.tempoI = 150; P.tempoU = 0x100; P.tempoC = 0; P.fadeInterval = 0;
     P.tracks.forEach((T, i) => {
