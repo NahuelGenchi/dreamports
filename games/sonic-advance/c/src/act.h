@@ -22,12 +22,20 @@ typedef struct {
 } Collision;
 
 typedef struct {
-  int level, zone, act, music, hudFlash;
+  int level, zone, act, music, hudFlash, cameraStop;
   Tilemap front, back, background;
   Collision collision;
   int32_t spawnX, spawnY;
   int width, height;
+  uint32_t bgMapBase;   // where BG3's map sits in VRAM, and the register that names it
+  uint16_t bgCnt;
+  int animFrame, animCounter;   // the front layer's animated tiles (UpdateBgAnimationTiles)
 } Stage;
+
+/** A palette animation the act's stage init makes (CreatePaletteLoaderTask): a sprite whose colours-only script
+ *  runs, for the acts that have one. */
+typedef struct { Sprite sprite; int anim, variant; } PaletteAnimation;
+#define PALETTE_ANIMATIONS_MAX 8
 
 typedef struct {
   double x, y, gsp, xsp, ysp;

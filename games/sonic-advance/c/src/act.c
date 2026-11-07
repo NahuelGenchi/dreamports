@@ -10,9 +10,21 @@ enum {
   LAYER_FRONT = 0, LAYER_BACK = 1, IGNORE_PLATFORMS = 0x80,
   SCREEN_W_ = 240, SCREEN_H_ = 160,
 };
+
+// what each act's StageInit sets besides its music (rom/levels.js): its zone and act, the song, the zero-ring
+// flash the HUD starts with, how far short of its right edge the camera stops, and its palette animations
+typedef struct { int zone, act, music, hudFlash, cameraStop; int palette[PALETTE_ANIMATIONS_MAX][2]; int paletteCount; } LevelInfo;
+static const LevelInfo LEVELS[] = {
+  { 0, 0, 12, 90, 0,   { { 814, 0 }, { 815, 0 } }, 2 },                                    // Neo Green Hill act 1
+  { 0, 1, 13, 90, 768, { { 814, 0 }, { 815, 0 }, { 820, 1 }, { 820, 0 } }, 4 },              // Neo Green Hill act 2
+};
+// X Zone's stage init, which the act engine's first piece was written for
+static const LevelInfo X_ZONE_INFO = { 6, 0, 24, 90, 0, { { 0, 0 } }, 0 };
 enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD };
 enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6 };
-enum { HUD_GLYPHS = 11, HUD_WHITE = 0, HUD_RED = 22, HUD_RING = 44, HUD_FACE = 60 };
+// the HUD's graphics sit at the reserved addresses sub_80538BC copies them to (vram_hardcoded.h): the white
+// digits at 0xD40, the red at 0xA80, the ring at 0x880 and the character's face at 0x800
+enum { HUD_GLYPHS = 11, HUD_WHITE_TILE = 84, HUD_RED_TILE = 106, HUD_RING_TILE = 68, HUD_FACE_TILE = 64 };
 enum { OBJ_8x8 = 0, OBJ_16x16 = 1, OBJ_32x32 = 2, OBJ_8x16 = 8 };
 enum { ORDER_DIGITS = 2, ORDER_ICONS = 3, ORDER_SONIC = 16 };
 
@@ -32,7 +44,9 @@ enum { ORDER_DIGITS = 2, ORDER_ICONS = 3, ORDER_SONIC = 16 };
 
 Act act;
 static Sprite sonic;
-static uint32_t sonicVram, hudVram, hudTile;
+static uint32_t sonicVram;
+static PaletteAnimation paletteAnims[PALETTE_ANIMATIONS_MAX];
+static int paletteCount;
 
 // --- the copy's data (rom/tilemaps.js, rom/collision.js, rom/entities.js, rom/levels.js) -------------------------
 static Tilemap read_tilemap(int index) {
@@ -163,9 +177,17 @@ static void load_stage(int level) {
   s->spawnX = rom_s16(OFFSET_SPAWNS + level * 4);
   s->spawnY = rom_s16(OFFSET_SPAWNS + level * 4 + 2);
   s->width = s->collision.width; s->height = s->collision.height;
-  s->zone = 6; s->act = 0; s->music = 24; s->hudFlash = 90;
-  // the front layer's tiles, in the first character block, and the stage's 256 colours (extractStage's palette)
-  copy_rom(s->front.tiles, 0, s->front.tilesSize);
+  const LevelInfo *info = level >= 0 && level < (int)(sizeof LEVELS / sizeof LEVELS[0]) ? &LEVELS[level] : &X_ZONE_INFO;
+  s->zone = info->zone; s->act = info->act; s->music = info->music; s->hudFlash = info->hudFlash;
+  s->cameraStop = info->cameraStop;
+  // BG3's map and size: Neo Green Hill's 32 × 32 at 0xE800 in 256 × 256, X Zone's 37 × 23 at 0xE000 in 512 × 256
+  s->bgMapBase = s->zone == 0 ? 0xE800 : 0xE000;
+  s->bgCnt = s->zone == 0 ? 0x1D0B : 0x5C0B;
+  paletteCount = info->paletteCount;
+  for (int i = 0; i < paletteCount; i++) { paletteAnims[i].anim = info->palette[i][0]; paletteAnims[i].variant = info->palette[i][1]; }
+  // the front layer's tiles, in the first character block, and the stage's 256 colours (extractStage's palette).
+  // The tiles go straight in: the queue also feeds the animation frame's copy over their start, in order.
+  if (s->front.tiles + s->front.tilesSize <= gba_rom_size) memcpy(gba_vram, gba_rom + s->front.tiles, s->front.tilesSize);
   for (int i = 0; i < 256; i++) e.bgPalette[i] = (uint16_t)rom_u16(s->front.palette + i * 2);
   e.flags |= FLAGS_UPDATE_BG_PALETTES;
   // the background's tiles at the second character block, and its 37 × 23 map at 0xE000: a 512-wide text layer
@@ -174,7 +196,7 @@ static void load_stage(int level) {
   for (int row = 0; row < s->background.yTiles; row++) {
     for (int col = 0; col < s->background.xTiles; col++) {
       uint16_t entry = (uint16_t)rom_u16(s->background.map + (row * s->background.xTiles + col) * 2);
-      uint32_t at = (col < 32 ? 0xE000 + (uint32_t)col * 2u : 0xE800 + (uint32_t)(col - 32) * 2u) + (uint32_t)row * 64u;
+      uint32_t at = s->bgMapBase + (col < 32 ? (uint32_t)col * 2u : 0x800u + (uint32_t)(col - 32) * 2u) + (uint32_t)row * 64u;
       gba_vram[at] = (uint8_t)entry; gba_vram[at + 1] = (uint8_t)(entry >> 8);
     }
   }
@@ -182,7 +204,7 @@ static void load_stage(int level) {
   e.dispCnt = 0x304E;           // OBJ on, window 0 on, BG1, BG2 and BG3 on, 1D OAM
   e.bgCnt[1] = 0x1E01;          // 256 × 256, priority 1, map 30 (0xF000), character base 0
   e.bgCnt[2] = 0x1F02;          // 256 × 256, priority 2, map 31 (0xF800), character base 0
-  e.bgCnt[3] = 0x5C0B;          // 512 × 256, priority 3, map 28 (0xE000), character base 2 (0x8000)
+  e.bgCnt[3] = s->bgCnt;        // the background's size, priority, map and character base (xZone: 512 × 256 at 0xE000)
 }
 
 // a stage layer's visible tile entries around the camera (DrawBackground's level-map path)
@@ -212,7 +234,8 @@ static void create_camera(Camera *c, const Player *p) {
   c->targetX = c->x; c->targetY = c->y;
   c->offsetY = p->offsetY - 4;
   c->minX = 0; c->minY = 0;
-  c->maxX = act.stage.width - SCREEN_W_; c->maxY = act.stage.height - SCREEN_H_;
+  c->maxX = act.stage.width - (act.stage.cameraStop ? act.stage.cameraStop : SCREEN_W_);
+  c->maxY = act.stage.height - SCREEN_H_;
   c->speedX = 16; c->speedY = 12;
   c->width = act.stage.width; c->height = act.stage.height;
   c->lookDelay = 120;
@@ -387,7 +410,7 @@ static int digits_of(int n, int *out) {
   return k;
 }
 static void hud_glyph(int g, int x, int y) {
-  int tile = g < HUD_GLYPHS ? (int)hudTile + g * 2 : (int)hudTile + HUD_RED + (g - HUD_GLYPHS) * 2;
+  int tile = g < HUD_GLYPHS ? HUD_WHITE_TILE + g * 2 : HUD_RED_TILE + (g - HUD_GLYPHS) * 2;
   put_oam(ORDER_DIGITS, x, y, OBJ_8x16, tile, 6, 0);
 }
 static void hud_update(int draw) {
@@ -395,8 +418,8 @@ static void hud_update(int draw) {
   if (!h->active) return;
   if (draw) {
     // the icons: the ring over the ring count and the character's face by the lives, at OAM order 3
-    put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, (int)hudTile + HUD_RING, 6, 0);
-    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, (int)hudTile + HUD_FACE, 0, 0);
+    put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, HUD_RING_TILE, 6, 0);
+    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, HUD_FACE_TILE, 0, 0);
     if (act.ringCount == 0) {
       static const int FLASH[5] = { 0, 11, 11, 0, 0 };
       int f = h->flash >> 3, g = f < 5 ? FLASH[f] : -1;
@@ -434,6 +457,52 @@ static void card_update(int pressed) {
   }
 }
 
+// --- the palette animations (engine/palettes.js, CreatePaletteLoaderTask) ------------------------------------------
+static void step_palettes(void) {
+  for (int i = 0; i < paletteCount; i++) update_sprite(&paletteAnims[i].sprite, 1);
+}
+
+// --- the front layer's animated tiles (background.c UpdateBgAnimationTiles) --------------------------------------
+static void update_stage_animations(int queue) {
+  Tilemap *t = &act.stage.front;
+  if (t->animFrameCount == 0) return;
+  if (++act.stage.animCounter < t->animDelay) return;
+  act.stage.animCounter = 0;
+  if (++act.stage.animFrame >= t->animFrameCount) act.stage.animFrame = 0;
+  if (!queue || act.stage.animFrame == 0) return;
+  uint32_t src = t->tiles + t->tilesSize + (uint32_t)(act.stage.animFrame - 1) * t->animTileSize;
+  if (src + t->animTileSize <= gba_rom_size) memcpy(gba_vram, gba_rom + src, t->animTileSize);
+}
+/** Queues the frame the animation has reached, for a stage that ran its card without drawing. */
+static void queue_stage_animation_frame(void) {
+  Tilemap *t = &act.stage.front;
+  if (t->animFrameCount == 0 || act.stage.animFrame == 0) return;
+  uint32_t src = t->tiles + t->tilesSize + (uint32_t)(act.stage.animFrame - 1) * t->animTileSize;
+  if (src + t->animTileSize <= gba_rom_size) memcpy(gba_vram, gba_rom + src, t->animTileSize);
+}
+
+// Neo Green Hill's background (renderer.js's backgroundOffset and STILL): three cloud bands drift with the stage's
+// clock, the big clouds and islands stay still, and the sea scrolls faster toward the bottom of the screen. Each
+// line's scroll goes in through the H-blank, as the original's StageBgUpdate_Zone1Acts12 does.
+static void draw_neo_background(int camX, int camY) {
+  (void)camY;
+  int bgHeight = act.stage.background.yTiles * 8;
+  // gStageTime counts the frames drawn before this one, as the camera's task reads it
+  int time = act.tick ? act.tick - 1 : 0;
+  set_hblank_copy(REG_BG0HOFS + 3 * 4, 4);
+  for (int y = 0; y < SCREEN_H_; y++) {
+    int line = y < bgHeight ? y : bgHeight - 1;
+    int off;
+    if (line < 8) off = (time >> 4) & 0xFF;
+    else if (line < 24) off = (time >> 5) & 0xFF;
+    else if (line < 40) off = (time >> 6) & 0xFF;
+    else if (line < 88) off = 0;
+    else off = ((line - 86) * camX) >> 8;
+    put16(e.primary + (uint32_t)y * 4, (uint32_t)(off & 0x1FF));
+    put16(e.primary + (uint32_t)y * 4 + 2, 0);
+  }
+}
+
 // --- the frame (engine/game.js) ----------------------------------------------------------------------------------
 static void draw_frame(void) {
   int camX = (int)act.cam.x, camY = (int)act.cam.y;
@@ -447,11 +516,17 @@ static void draw_frame(void) {
   e.bgScroll[4] = (uint16_t)(camX & 7); e.bgScroll[5] = (uint16_t)(camY & 7);
   fill_layer(0xF000, LAYER_FRONT, camX, camY);
   fill_layer(0xF800, LAYER_BACK, camX, camY);
-  // StageBgUpdate_Zone7Act1: the 37 × 23 background scrolls as a whole. Its first frame keeps the course
-  // select's scroll, which the original shows before the act's own update lands.
-  int bgX = (int)(((double)camX * 56.0) / (act.stage.width - SCREEN_W_));
-  int bgY = (int)(((double)camY * 24.0) / (act.stage.height - SCREEN_H_));
-  e.bgScroll[6] = (uint16_t)bgX; e.bgScroll[7] = (uint16_t)bgY;
+  if (act.stage.zone == 0) {
+    // Neo Green Hill's own line-by-line scroll, which StageBgUpdate_Zone1Acts12 sets through the H-blank
+    e.bgScroll[6] = e.bgScroll[7] = 0;
+    draw_neo_background(camX, camY);
+  } else {
+    // StageBgUpdate_Zone7Act1: the 37 × 23 background scrolls as a whole. Its first frame keeps the course
+    // select's scroll, which the original shows before the act's own update lands.
+    int bgX = (int)(((double)camX * 56.0) / (act.stage.width - SCREEN_W_));
+    int bgY = (int)(((double)camY * 24.0) / (act.stage.height - SCREEN_H_));
+    e.bgScroll[6] = (uint16_t)bgX; e.bgScroll[7] = (uint16_t)bgY;
+  }
 
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
   int right = act.player.facing > 0;
@@ -474,7 +549,9 @@ static void draw_frame(void) {
 }
 
 static void act_frame(void) {
+  step_palettes();
   camera_update(&act.cam, &act.player);
+  update_stage_animations(act.started);
   act.cam.bgUpdates++;
   int left = (e.input & KEY_LEFT) != 0, right = (e.input & KEY_RIGHT) != 0;
   int up = (e.input & KEY_UP) != 0, down = (e.input & KEY_DOWN) != 0;
@@ -517,13 +594,17 @@ static void pre_run(int cardSkip, int preFrames) {
   int after = 0;
   while (!act.cardDone || after < preFrames) {
     int wasDone = act.cardDone;
+    step_palettes();
     camera_update(&act.cam, &act.player);
+    update_stage_animations(0);
     if (!act.cardDone) card_update(cardSkip == act.tick);
-    int r = act.cardDone;
-    step_player(&act.player, 0, r, 0, 0, !act.cardDone, 0, !act.cardDone, 0);
+    // the card holds the player, so his animation runs while nothing moves him; the recording's first frame
+    // starts the play
+    step_player(&act.player, 0, 0, 0, 0, 0, 0, 0, 0);
     animate_player(&act.player);
     if (wasDone) { hud_update(0); after++; }
-    if (!act.clockStopped) act.courseTime++;
+    // the course clock starts on the frame after the card ends, not on the one it ends
+    if (wasDone && !act.clockStopped) act.courseTime++;
     act.tick++;
   }
 }
@@ -532,6 +613,14 @@ void act_start(int level, int cardSkip, int preFrames) {
   memset(&act, 0, sizeof act);
   copyCount = 0;
   load_stage(level);
+  for (int i = 0; i < paletteCount; i++) {
+    Sprite *s = &paletteAnims[i].sprite;
+    sprite_init(s);
+    s->graphics.anim = (uint16_t)paletteAnims[i].anim;
+    s->variant = (uint8_t)paletteAnims[i].variant;
+    s->animSpeed = ANIM_NORMAL;
+    s->palId = 0;
+  }
   create_player(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);
   act.lives = 3; act.score = 0; act.ringCount = 0;
@@ -551,23 +640,22 @@ void act_start(int level, int cardSkip, int preFrames) {
   sonic.palId = 0; sonic.oamFlags = ORDER_SONIC << 6; sonic.frameFlags = 2 << 12;
 
   // the HUD's tiles and colours (hudGraphics): the white and red digits, the ring and the face
-  hudVram = vram_malloc(64);
-  hudTile = (hudVram - OBJ_VRAM) >> 5;
   uint32_t fontTiles, fontPalette, faceTiles, facePalette, ringTiles, ringPalette;
   UiSlot layout;
   ui_graphics(0, &fontTiles, &fontPalette, &layout);
   ui_graphics(1, &faceTiles, &facePalette, &layout);
   ui_graphics(5, &ringTiles, &ringPalette, &layout);
-  copy_rom(fontTiles + 32 * 32, hudVram + HUD_WHITE * 32, 22 * 32);
-  copy_rom(fontTiles + 224 * 32, hudVram + HUD_RED * 32, 22 * 32);
-  copy_rom(ringTiles, hudVram + HUD_RING * 32, 16 * 32);
-  copy_rom(faceTiles, hudVram + HUD_FACE * 32, 4 * 32);
+  copy_rom(fontTiles + 32 * 32, OBJ_VRAM + 0xA80, 22 * 32);    // the white digits
+  copy_rom(fontTiles + 224 * 32, OBJ_VRAM + 0xD40, 22 * 32);   // the red ones
+  copy_rom(ringTiles, OBJ_VRAM + 0x880, 16 * 32);
+  copy_rom(faceTiles, OBJ_VRAM + 0x800, 4 * 32);
   for (int i = 0; i < 16; i++) e.objPalette[6 * 16 + i] = (uint16_t)rom_u16(fontPalette + i * 2);
   for (int i = 0; i < 16; i++) e.objPalette[i] = (uint16_t)rom_u16(facePalette + i * 2);
   e.flags |= FLAGS_UPDATE_OBJ_PALETTES;
 
   // the frames before the recording starts: the title card to its end, then its few frames after it
   pre_run(cardSkip, preFrames);
+  queue_stage_animation_frame();
   play_song(act.stage.music);
   gba_sound_frames_gone_by(118);
   act.hud.active = 1;
