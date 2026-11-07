@@ -1,0 +1,165 @@
+{
+  "about": "Shadow's guard, from Training with Shadow chosen and the Rival's Action on Light Attack: the opening's three presses of A, Shadow walking up to the rival, L held as the rival's attack comes, which guards it, and L pressed again, which guards and then heals until the next hit.",
+  "start": "fight=training&vblanks=1209&you=6&action=4",
+  "frames": 760,
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      70,
+      [
+        "A"
+      ]
+    ],
+    [
+      72,
+      []
+    ],
+    [
+      100,
+      [
+        "A"
+      ]
+    ],
+    [
+      102,
+      []
+    ],
+    [
+      130,
+      [
+        "A"
+      ]
+    ],
+    [
+      132,
+      []
+    ],
+    [
+      400,
+      [
+        "RIGHT",
+        "DOWN"
+      ]
+    ],
+    [
+      420,
+      []
+    ],
+    [
+      482,
+      [
+        "L"
+      ]
+    ],
+    [
+      500,
+      []
+    ],
+    [
+      504,
+      [
+        "L"
+      ]
+    ],
+    [
+      700,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 1254,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          747,
+          [
+            "START"
+          ]
+        ],
+        [
+          748,
+          []
+        ],
+        [
+          881,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          882,
+          []
+        ],
+        [
+          921,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          922,
+          []
+        ],
+        [
+          961,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          962,
+          []
+        ],
+        [
+          1001,
+          [
+            "A"
+          ]
+        ],
+        [
+          1002,
+          []
+        ],
+        [
+          1201,
+          [
+            "START"
+          ]
+        ],
+        [
+          1202,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 778,
+          "address": "03002170",
+          "bytes": 2,
+          "value": 1
+        },
+        {
+          "frame": 1253,
+          "address": "03001646",
+          "bytes": 1,
+          "value": 4
+        },
+        {
+          "frame": 1180,
+          "address": "030053F8",
+          "bytes": 1,
+          "value": 6
+        }
+      ],
+      "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, and Start on its first choices with Shadow chosen."
+    }
+  ]
+}
