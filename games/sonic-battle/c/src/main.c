@@ -2,16 +2,17 @@
 // from the JavaScript version in games/sonic-battle/src/. src/main.js runs it on the page, built to WebAssembly as
 // src/game.wasm (kit/gba/c/README.md).
 //
-// The SEGA and Sonic Team logos are written from logos.js. The intro, the title screen and the name entry in C come in
-// their own tasks (#643, #644 and #645), and here only the way the original takes through them is, so a recording from
-// power-on reaches the main menu: the intro's pictures, the title's layers and the name entry's grid aren't drawn, and
-// their frames differ in C until their tasks are done. The main menu is written from menu.js (menu.c).
+// The SEGA and Sonic Team logos are written from logos.js. The intro and the title screen in C come in their own tasks
+// (#643 and #644), and here only the way the original takes through them is, so a recording from power-on reaches the
+// name entry: the intro's pictures and the title's layers aren't drawn, and their frames differ in C until their tasks
+// are done. The name entry is written from name-entry.js (nameentry.c), and the main menu from menu.js (menu.c).
 //
 // What comes after a screen is what it hands over to: the logos' fade hands over to the intro, its last animation frame
 // to the title, the title's Start to the name entry, and Start there to the main menu. A recording's start point opens
 // the fight's own opening (fight.c), as its own recording does.
 
 #include "game.h"
+#include "nameentry.h"
 
 #define CARTRIDGE 0x08000000u
 #define PALETTE 0x05000000u
@@ -20,8 +21,6 @@
 // the colour effect: alpha blending (1) of layer 2 (4) over layer 3 (8)
 enum { ALPHA = 1, LAYER_2 = 4, LAYER_3 = 8 };
 
-static int savingFrames;
-static int nameLength;
 static int introTimer, introScene;
 static int titleCounter;
 
@@ -34,10 +33,6 @@ static void introPictures(void);
 static void introAnimation(void);
 static void titleFrame(void);
 static void nameEntry(void);
-static void nameDisplayOn(void);
-static void nameEntering(void);
-static void nameFadeOut(void);
-static void nameSaving(void);
 
 static inline uint16_t rom16(uint32_t at) { return (uint16_t)(gba_rom[at - CARTRIDGE] | (gba_rom[at - CARTRIDGE + 1] << 8)); }
 static inline uint8_t rom8(uint32_t at) { return gba_rom[at - CARTRIDGE]; }
@@ -242,11 +237,9 @@ static void titleFadeToNext(void) {
   g.callback = nameEntry;
 }
 
-static void nameSetUp(void);
-
 /**
- * The name entry, whose grid and letters are its own task (#645): here its palettes, its keys and its way out are, so
- * Start keeps the name and the main menu begins on the frame the original's does. 0x08036560, 0x080368dc, 0x08036ce4.
+ * 0x08036560: the name entry's first frame, or, with a name saved, straight on to the main menu. Its grid and letters
+ * are nameentry.c's; this is the hand-over the title screen's fade makes.
  */
 static void nameEntry(void) {
   if (g.name[0] != 0) {
@@ -255,58 +248,7 @@ static void nameEntry(void) {
     menuBeforeMenu();
     return;
   }
-  g.callback = nameSetUp;
-}
-
-static void nameSetUp(void) {
-  for (int i = 0; i < 512; i++) gba_pal[i] = 0;
-  // the palettes 0x08036d90 fades toward: the grid's, the name's and the mark's
-  copyPalette(0x08156CD0, PALETTE, 32);
-  copyPalette(0x08132754, 0x050001E0, 16);
-  copyPalette(0x08158194, 0x05000200, 48);
-  for (int i = 0; i < 0x18000; i++) gba_vram[i] = 0;
-  nameLength = 0;
-  g.callback = nameDisplayOn;
-}
-
-/** 0x08036560's last step: it runs past a V-blank, and the display and the song come as it ends. */
-static void nameDisplayOn(void) {
-  queueRegister(REG_DISPCNT, 8000);
-  gba_sound_wave_at(163059);   // where the song's start comes in its frame, as mGBA measures it
-  gba_sound_play(4);
-  g.callback = nameEntering;
-}
-
-/** 0x080368dc: one key a frame, Start first: Start keeps the name, A and B change it. */
-static void nameEntering(void) {
-  uint16_t pressed = g.keys.pressed;
-  if (pressed & KEY_START) {
-    if (!nameLength) {
-      gba_sound_play(419);
-      return;
-    }
-    for (int i = 0; i < nameLength; i++) g.name[i] = (uint16_t)(0x41 + i);
-    g.name[nameLength] = 0xFFFE;
-    g.callback = nameFadeOut;
-    gba_sound_fade_out(rom8(SONG_TABLE + 4 * 8 + 4), 7);
-    gba_sound_play(404);
-  } else if (pressed & KEY_A) {
-    if (nameLength < 5) nameLength++;
-  } else if (pressed & KEY_B) {
-    if (nameLength) nameLength--;
-  }
-}
-
-/** 0x08036ce4: every colour fades to black, and then the main menu starts. */
-static void nameFadeOut(void) {
-  if (!fadeToBlack(PALETTE, 512)) return;
-  savingFrames = 20;
-  g.callback = nameSaving;
-}
-
-/** The time 0x080217d0 takes, with the screen black. */
-static void nameSaving(void) {
-  if (--savingFrames <= 0) showMenu(1);
+  nameEntryScreen();
 }
 
 void startFightFromPoint(void) {
