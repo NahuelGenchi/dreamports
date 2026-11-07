@@ -1,0 +1,80 @@
+name: Builds on
+
+# A piece can start on top of a pull request in review, with that pull request merged into its branch (docs/TEAMS.md,
+# Building on a piece in review). Its own pull request then carries the other's commits, so it must not merge first, or
+# it would take code nobody has reviewed into main. This fails a pull request while one it builds on hasn't merged: an
+# older open pull request whose commits it carries, or one its text names in a line "Builds on #<number>". Once that one
+# merges, updating the branch, or running this again, passes it. It reads only pull requests through the API, and runs
+# nothing from them.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: builds-on-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  builds-on:
+    name: Builds on
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Wait for what it builds on
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const root = `https://api.github.com/repos/${process.env.GITHUB_REPOSITORY}`;
+          const pull = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8')).pull_request;
+          const headers = { Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
+          async function api(path) {
+            const response = await fetch(root + path, { headers, signal: AbortSignal.timeout(30000) });
+            if (response.status === 404) return null;
+            if (!response.ok) throw new Error(`GitHub API GET ${path}: HTTP ${response.status} ${await response.text()}`);
+            return response.json();
+          }
+          async function list(path) {
+            const result = [];
+            for (let page = 1; ; page++) {
+              const batch = await api(`${path}${path.includes('?') ? '&' : '?'}per_page=100&page=${page}`) ?? [];
+              result.push(...batch);
+              if (batch.length < 100) return result;
+            }
+          }
+
+          // what it builds on: each older open pull request it shares a commit with, as a piece on top of one starts
+          // after it, and each one its text names
+          const own = new Set((await list(`/pulls/${pull.number}/commits`)).map(commit => commit.sha));
+          const bases = new Map();
+          for (const other of await list('/pulls?state=open')) {
+            if (other.number >= pull.number) continue;
+            if ((await list(`/pulls/${other.number}/commits`)).some(commit => own.has(commit.sha))) bases.set(other.number, other);
+          }
+          for (const [, number] of String(pull.body ?? '').matchAll(/^\s*builds on #(\d+)\b/gim)) {
+            const named = Number(number);
+            if (named !== pull.number && !bases.has(named)) {
+              const other = await api(`/pulls/${named}`);
+              if (other) bases.set(named, other);
+            }
+          }
+
+          const problems = [...bases.values()].sort((a, b) => a.number - b.number).flatMap(other => {
+            if (other.merged_at) return [];
+            return other.state === 'open'
+              ? [`It builds on #${other.number}, which hasn't merged yet, so it merges after it. Once #${other.number} merges, update this branch, or run this check again.`]
+              : [`It builds on #${other.number}, which was closed without merging, so it carries code that never reached main. Start it again from the latest main, or from what replaced #${other.number}.`];
+          });
+          if (!problems.length) {
+            console.log(bases.size ? `What it builds on has merged: ${[...bases.keys()].map(n => `#${n}`).join(', ')}.` : 'It builds on no other pull request.');
+            process.exit(0);
+          }
+          for (const problem of problems) console.log(`::error title=Builds on::${problem}`);
+          process.exit(1);
+          NODE

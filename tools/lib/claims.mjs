@@ -1,9 +1,10 @@
 // What find and team read of the claims (docs/TEAMS.md), through the GitHub CLI: the repository's open issues, where
 // a New Dreamport issue claims a game for its lead; each game's issue, which lists the game's pieces as its sub-issues,
-// each one claimed by whoever it's assigned to; and the lead's team build, a branch of their fork that gathers the
-// team's finished pieces.
+// each one claimed by whoever it's assigned to; the tasks open pull requests have in review; and the lead's team
+// build, a branch of their fork that gathers the team's finished pieces.
 
 import { UPSTREAM, api } from './github.mjs';
+import { inReview } from '../../src/lib/pieces.mjs';
 
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -40,6 +41,7 @@ export function readClaims(repository = UPSTREAM) {
     if (NAME.test(game) && !leads.has(game)) leads.set(game, issue);
   }
   const homes = new Map(), pieces = new Map();
+  let reviewing = null;
   /**
    * A game's issue, which lists its pieces: the New Dreamport issue its entry names, or else the first open one that
    * claims it, which is also what a copy of the repository finds, where the entry's number is another issue. null
@@ -72,6 +74,22 @@ export function readClaims(repository = UPSTREAM) {
         pieces.set(home.number, found);
       }
       return pieces.get(home.number);
+    },
+    /**
+     * The tasks in review, Map(task → pull request), from the repository's open pull requests that aren't drafts
+     * (src/lib/pieces.mjs): a piece that needs one can start on top of its pull request. Read once.
+     */
+    reviewing: () => {
+      if (!reviewing) {
+        const pulls = [];
+        for (let page = 1; ; page++) {
+          const batch = api(`repos/${repository}/pulls?state=open&per_page=100&page=${page}`) ?? [];
+          pulls.push(...batch);
+          if (batch.length < 100) break;
+        }
+        reviewing = inReview(pulls, repository);
+      }
+      return reviewing;
     },
     /** The game's name in its New Dreamport issue, such as Sonic Battle, or null. */
     nameOf: game => field(leads.get(game)?.body, 'Game')?.replace(/\s+Dreamport$/i, '') ?? null,

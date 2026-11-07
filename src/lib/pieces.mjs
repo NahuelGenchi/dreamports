@@ -4,8 +4,9 @@
 // name with the language's after it, as in "Task: Title screen in C" (src/lib/languages.mjs). It's free when it's
 // open, nobody has claimed it and everything it needs is finished: in a game with a JavaScript version, a piece in
 // another language also needs the same piece in JavaScript, as it's written from the JavaScript. A game that started
-// in C, with no JavaScript version, has its pieces in C alone, which wait on nothing in another language. The site's Make pages, find, tasks
-// and the claims workflow all read this, so none keeps a copy.
+// in C, with no JavaScript version, has its pieces in C alone, which wait on nothing in another language. A need whose
+// task has an open pull request that isn't a draft is in review, and a piece can start on top of it (#714), so nobody
+// waits for a review or a merge. The site's Make pages, find, tasks and the claims workflow all read this, so none keeps a copy.
 
 import { LANGUAGES, OTHER_LANGUAGES, playOrder } from './languages.mjs';
 
@@ -27,6 +28,29 @@ export function pieceOf(piece) {
 
 /** The title of the task for a part, or a foundation, in `language`: "Task: Title screen", or "Task: Title screen in C". */
 export const taskTitle = (name, language = 'js') => `Task: ${name}${language === 'js' ? '' : ` in ${LANGUAGES[language].name}`}`;
+
+// GitHub's closing keywords, as in "Closes #12": a pull request with one closes that issue when it merges
+const CLOSING = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s*:?\s+(?:([\w.-]+\/[\w.-]+))?#(\d+)\b/gi;
+
+/**
+ * The tasks in review: Map(task's number → the number of the pull request that closes it), from a repository's open pull
+ * requests as GitHub's API lists them, leaving out drafts, as a draft isn't finished. A pull request closes the issues
+ * its text names after a closing keyword, as in "Closes #12", or "Closes owner/name#12" with `repository`'s name.
+ * @param {{ number: number, draft?: boolean, state?: string, body?: string | null }[]} pulls
+ * @param {string} [repository]
+ * @returns {Map<number, number>}
+ */
+export function inReview(pulls, repository = '') {
+  const found = new Map();
+  for (const pull of [...(pulls ?? [])].sort((a, b) => a.number - b.number)) {
+    if (pull.draft || (pull.state && pull.state !== 'open')) continue;
+    for (const [, where, number] of String(pull.body ?? '').matchAll(CLOSING)) {
+      if (where && where.toLowerCase() !== repository.toLowerCase()) continue;
+      if (!found.has(Number(number))) found.set(Number(number), pull.number);
+    }
+  }
+  return found;
+}
 
 /**
  * What a parts.json plans: its foundations, then its parts, each with its `needs`.
@@ -127,18 +151,20 @@ export function freeOrder(pieces, plan) {
  * piece needs is finished when its issue is closed, or its number is in `gathered`, as a piece in the team build's is. A
  * part with no issue is finished, in the game's `main` language (languages.mjs), once parts.json names its recording. A
  * piece in another language needs what it needs in that language, and the same piece in the main language, finished as
- * above; a need with no issue in a language other than the main one isn't. `free` is in the order work should go in
+ * above; a need with no issue in a language other than the main one isn't. A need whose task is in `reviewing`
+ * (`inReview`) isn't finished, but a piece can build on it: one whose unfinished needs are all in review is free, and
+ * `buildsOn` says which pull requests its branch starts from. `free` is in the order work should go in
  * (`playOrder`): the default language's first, C, and in each language in the order a player meets the parts, each
  * foundation just before the first part that needs it (`freeOrder`). `waiting` has each of the others, with what it's waiting `on`, each { name, number }, with no number
- * while it has no issue yet.
+ * while it has no issue yet, and the `pull` that has it in review when one does.
  * @template {{ number: number, title: string, state: string, assignees?: unknown[] }} Piece
  * @param {Piece[]} pieces
  * @param {unknown} file
  * @param {Set<number>} [gathered]
- * @param {{ main?: keyof typeof LANGUAGES }} [options]
- * @returns {{ free: Piece[], waiting: { piece: Piece, on: { name: string, number?: number }[] }[], needing: (piece: Piece) => number, isFoundation: (piece: Piece) => boolean }}
+ * @param {{ main?: keyof typeof LANGUAGES, reviewing?: Map<number, number> }} [options]
+ * @returns {{ free: Piece[], waiting: { piece: Piece, on: { name: string, number?: number, pull?: number }[] }[], buildsOn: (piece: Piece) => { name: string, number: number, pull: number }[], needing: (piece: Piece) => number, isFoundation: (piece: Piece) => boolean }}
  */
-export function whatCanStart(pieces, file, gathered = new Set(), { main = 'js' } = {}) {
+export function whatCanStart(pieces, file, gathered = new Set(), { main = 'js', reviewing = new Map() } = {}) {
   const plan = planOf(file);
   const planned = new Map(plan.map(p => [nameKey(p.name), p]));
   // each piece by its part's name and its language
@@ -150,13 +176,26 @@ export function whatCanStart(pieces, file, gathered = new Set(), { main = 'js' }
     return language === main && Boolean(planned.get(nameKey(need))?.recording);
   };
   const isFoundation = piece => planned.get(nameKey(pieceOf(piece).name))?.foundation === true;
-  const open = pieces.filter(p => p.state === 'open' && !p.assignees?.length && !gathered.has(p.number));
+  // a task in review is done, waiting for its review, whoever it's assigned to
+  const open = pieces.filter(p => p.state === 'open' && !p.assignees?.length && !gathered.has(p.number) && !reviewing.has(p.number));
+  // the task of an unfinished need that's in review, which a piece can start on top of
+  const reviewed = (need, language) => {
+    const piece = byName.get(keyOf(need, language));
+    return piece && reviewing.has(piece.number) ? { name: pieceName(piece), number: piece.number, pull: reviewing.get(piece.number) } : null;
+  };
+  const stacked = new Map();
   const waiting = open.flatMap(piece => {
     const { name, language } = pieceOf(piece);
     const needs = [...(language === main ? [] : [[name, main]]), ...(planned.get(nameKey(name))?.needs ?? []).map(need => [need, language])];
-    const on = needs.filter(([need, lang]) => !finished(need, lang)).map(([need, lang]) => {
+    const unfinished = needs.filter(([need, lang]) => !finished(need, lang));
+    const under = unfinished.map(([need, lang]) => reviewed(need, lang));
+    if (unfinished.length && under.every(Boolean)) {
+      stacked.set(piece, under);
+      return [];
+    }
+    const on = unfinished.map(([need, lang], index) => {
       const found = byName.get(keyOf(need, lang));
-      return found ? { name: pieceName(found), number: found.number } : { name: lang === 'js' ? need : `${need} in ${LANGUAGES[lang].name}` };
+      return under[index] ?? (found ? { name: pieceName(found), number: found.number } : { name: lang === 'js' ? need : `${need} in ${LANGUAGES[lang].name}` });
     });
     return on.length ? [{ piece, on }] : [];
   });
@@ -165,6 +204,8 @@ export function whatCanStart(pieces, file, gathered = new Set(), { main = 'js' }
   return {
     free: freeOrder(free, plan),
     waiting,
+    /** The pull requests in review a free piece starts on top of, each with the task it closes: [] for one that needs none. */
+    buildsOn: piece => stacked.get(piece) ?? [],
     /** How many of the pieces not yet finished need this one. */
     needing: piece => {
       const { name, language } = pieceOf(piece);
