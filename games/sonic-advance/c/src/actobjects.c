@@ -1073,8 +1073,13 @@ static int obj_update_itembox(ObjLive *l, ObjEntity *ent) {
     int px = obj_floor(p->x), py = obj_floor(p->y);
     ObjBox body = obj_body(p);
     int mid = ent->y + l->dy + ((hb.t + hb.b) >> 1);
-    int attack = p->curled && obj_overlap(ent->x, ent->y + l->dy, hb, px, py, body);
-    int falling = p->air && p->ysp > 0 && obj_overlap(ent->x, ent->y + l->dy, hb, px, py, body) && py <= mid;
+    // the ROM reads his attack box (slot 1) here; the decompiled C's body box breaks too much
+    int al, at, ar, ab, attack = 0;
+    if (act_player_attack_box(&al, &at, &ar, &ab)) {
+      ObjBox abox = obj_box_of(al, at, ar, ab);
+      attack = obj_overlap(ent->x, ent->y + l->dy, hb, px, py, abox);
+    }
+    int falling = attack && p->air && p->ysp > 0 && obj_overlap(ent->x, ent->y + l->dy, hb, px, py, body) && py <= mid;
     if (attack || falling) obj_break_box(l, ent);
     else {
       int flags;

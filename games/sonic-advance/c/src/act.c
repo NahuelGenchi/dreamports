@@ -44,6 +44,21 @@ static int hudTile = HUD_TILE;
 // --- the act's palette animations (engine/palettes.js, UpdateSpriteAnimation_BG) ---------------------------------
 // Neo Green Hill's 814 and 815 cycle the waterfalls' colours one place every frame and the background's every
 // 16 frames; they are the sprite tables' own animation scripts, run with their colours going to the background
+/** Sonic's attack box (sprite hitbox slot 1) from his animation, relative to his centre; 0 when it is off. */
+int act_player_attack_box(int *l, int *t, int *r, int *b) {
+  if (sonic.hitboxes[1].index < 0) return 0;
+  *l = sonic.hitboxes[1].left; *t = sonic.hitboxes[1].top;
+  *r = sonic.hitboxes[1].right; *b = sonic.hitboxes[1].bottom;
+  return 1;
+}
+/** Sonic's body box (slot 0), relative to his centre; 0 when it is off. */
+int act_player_body_box(int *l, int *t, int *r, int *b) {
+  if (sonic.hitboxes[0].index < 0) return 0;
+  *l = sonic.hitboxes[0].left; *t = sonic.hitboxes[0].top;
+  *r = sonic.hitboxes[0].right; *b = sonic.hitboxes[0].bottom;
+  return 1;
+}
+
 static void palettes_init(void) {
   for (int i = 0; i < 2; i++) {
     sprite_init(&palAnim[i]);
@@ -870,6 +885,9 @@ void act_start(int level, int cardSkip, int preFrames) {
   load_stage(level);
   animFrame = 0; animDelayCount = 0;
   rings_init(level);
+  // the title card's pictures and colours (LoadStageIntroGraphics), right after the player's sprites, before the
+  // objects' graphics take the rest of the sprite heap
+  card_create(level, 0, 0, 0);
   objects_init(level);
   enemies_init(level);
   palettes_init();
@@ -890,9 +908,6 @@ void act_start(int level, int cardSkip, int preFrames) {
   sonic.graphics.dest = sonicVram;
   sonic.graphics.anim = SONIC_IDLE; sonic.variant = 0; sonic.animSpeed = ANIM_NORMAL;
   sonic.palId = 0; sonic.oamFlags = ORDER_SONIC << 6; sonic.frameFlags = 2 << 12;
-
-  // the title card's pictures and colours (LoadStageIntroGraphics), right after the player's sprites
-  card_create(level, 0, 0, 0);
 
   // the frames before a recording that opens after the title card: the card to its end, then its few frames after
   // it; a start point that opens at the act's first frame, and the course select, run the card as part of the act

@@ -81,6 +81,9 @@ extern Act act;
 extern int act_active;
 extern int actHudFlash;   // 1 from the character select, -1 for the stage's own (a course select or start point)
 
+// Sonic's sprite hitboxes as his animation script last set them (0 when the slot is off): relative to him
+int act_player_attack_box(int *l, int *t, int *r, int *b);
+int act_player_body_box(int *l, int *t, int *r, int *b);
 void rings_init(int level);
 void rings_reset(void);
 void rings_update(int px, int py, int oy);
