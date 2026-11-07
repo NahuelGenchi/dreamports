@@ -863,6 +863,73 @@ static void entities_update(void) {
   for (int i = 0; i < springCount; i++) if (springs[i].active) update_sprite(&springs[i].s, 0);
   for (int i = 0; i < spikeCount; i++) if (spikes[i].active) update_sprite(&spikes[i].s, 0);
 }
+// --- act 2's other interactables (platforms.js, boosters.js, checkpoints.js, goal.js, shrubs.js) -----------------
+typedef struct { int kind, x, y, d[4], active, anim, variant; Sprite s; } Prop;
+static Prop props[64]; static int propCount;
+static int prop_look(int kind, int d0, int *variant) {
+  *variant = 0;
+  switch (kind) {
+    case 0: return 453; case 7: return 452;
+    case 21: case 22: return 463; case 23: return 461; case 24: return 904; case 25: return 462;
+    case 30: return 467; case 44: case 45: return 468;
+    case 31: return 471; case 32: *variant = 2; return 471; case 33: *variant = 1; return 471;
+    case 47: return 472; case 100: return 571; case 101: return 570;
+    default: return -1;
+  }
+}
+static void load_props(int level) {
+  static uint8_t data[32768];
+  propCount = 0;
+  int n = read_grid(OFFSET_INTERACTABLES, level, data, sizeof data);
+  if (n < 12) return;
+  uint32_t rx = data32(data, 4), ry = data32(data, 8);
+  for (uint32_t r = 0; r < rx * ry && r < 4096; r++) {
+    uint32_t off = data32(data, 12 + r * 4); if (!off) continue;
+    for (int at = 4 + (int)off; at + 6 < n && data[at] != 0xFF && propCount < 64; at += 7) {
+      int kind = data[at + 2], v;
+      int anim = prop_look(kind, data[at + 3], &v);
+      if (anim < 0) continue;
+      Prop *o = &props[propCount++];
+      o->kind = kind; o->x = data[at] * 8 + (int)(r % rx) * 256; o->y = data[at + 1] * 8 + (int)(r / rx) * 256;
+      o->active = 0; o->anim = anim; o->variant = v;
+      for (int i = 0; i < 4; i++) o->d[i] = (int8_t)data[at + 3 + i];
+    }
+  }
+}
+static void props_init(void) {
+  for (int i = 0; i < propCount; i++) entity_sprite(&props[i].s, props[i].anim, props[i].variant, 16, 18);
+}
+static void props_step(Player *p) {
+  for (int i = 0; i < propCount; i++) {
+    Prop *o = &props[i];
+    o->active = ent_active(o->x, o->y);
+    if (!o->active) continue;
+    const Hitbox *hb = &o->s.hitboxes[0];
+    int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y), body[4]; body_rect(p, body);
+    if (hb->index >= 0 && hits(o->x, o->y, hb, px, py, body)) {
+      if (o->kind == 21 || o->kind == 22 || o->kind == 24 || o->kind == 25) {
+        int top = o->y + hb->top;
+        if (p->ysp >= 0 && py <= top + 8) { p->y = top - p->offsetY + (p->y - py); p->ysp = 0; p->gsp = p->xsp; p->air = 0; p->state = PS_WALK; }
+      } else if (o->kind == 23) {
+        p->ysp = -9; p->air = 1; p->state = PS_SPRING; play_song(170);
+      } else if (o->kind >= 31 && o->kind <= 33) {
+        p->xsp = p->gsp = 6.0 * (p->facing >= 0 ? 1 : -1); p->state = PS_WALK;
+      } else if (o->kind == 0 && o->d[1] && p->x > o->x) {
+        act.goalReached = 1; act.clockStopped = 1; act.ringsStopped = 1;
+        p->ignoreInput = 1; p->xsp = p->gsp = 4.5; if (act.cam.shiftY > -56) act.cam.shiftY--;
+        play_song(135);
+      }
+    }
+    if (o->kind == 7 && !act.goalReached && p->x > o->x) { o->variant = 2; play_song(169); }
+  }
+}
+static void props_update(void) { for (int i = 0; i < propCount; i++) if (props[i].active) update_sprite(&props[i].s, 0); }
+static void props_draw(int camX, int camY) {
+  for (int i = 0; i < propCount; i++) {
+    Prop *o = &props[i]; if (!o->active) continue;
+    o->s.x = (int16_t)(o->x - camX); o->s.y = (int16_t)(o->y - camY); display_sprite(&o->s);
+  }
+}
 // --- the HUD (engine/hud.js) -------------------------------------------------------------------------------------
 static void put_oam(int order, int x, int y, int index, int tile, int pal, int prio) {
   int k = alloc_oam((uint32_t)order);
@@ -1023,6 +1090,7 @@ static void draw_frame(void) {
 
   rings_draw(camX, camY);
   entities_draw(camX, camY);
+  props_draw(camX, camY);
 
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
   int right = act.player.facing > 0;
@@ -1059,6 +1127,8 @@ static void act_frame(void) {
   rings_collect(&act.player);
   entities_update();
   entities_step(&act.player);
+  props_update();
+  props_step(&act.player);
   act.cam.bgUpdates++;
   int left = (e.input & KEY_LEFT) != 0, right = (e.input & KEY_RIGHT) != 0;
   int up = (e.input & KEY_UP) != 0, down = (e.input & KEY_DOWN) != 0;
@@ -1127,6 +1197,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   load_stage(level);
   load_rings(level);
   load_entities(level);
+  load_props(level);
   for (int i = 0; i < paletteCount; i++) {
     Sprite *s = &paletteAnims[i].sprite;
     sprite_init(s);
@@ -1138,6 +1209,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   }
   rings_init();
   entities_init();
+  props_init();
   create_player(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);
   act.lives = 3; act.score = 0; act.ringCount = 0;
