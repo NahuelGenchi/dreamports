@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { freeOrder, inReview, needsProblems, pieceOf, planOf, taskTitle, whatCanStart } from '../../src/lib/pieces.mjs';
+import { freeOrder, inReview, languageIssueText, languageIssueTitle, languageOfIssue, needsProblems, pieceOf, planOf, taskTitle, whatCanStart } from '../../src/lib/pieces.mjs';
 import { proofOf } from '../../src/lib/entries.mjs';
 
 const file = {
@@ -180,4 +180,14 @@ test('a foundation needed through another comes before it, and needs that go rou
   const plan = planOf({ foundations: [{ name: 'Top', needs: ['Middle'] }, { name: 'Middle', needs: ['Bottom'] }, { name: 'Bottom' }, { name: 'Loop', needs: ['Loop 2'] }, { name: 'Loop 2', needs: ['Loop'] }], parts: [{ name: 'Part', needs: ['Top'] }] });
   const ordered = freeOrder(['Task: Top', 'Task: Part', 'Task: Middle', 'Task: Loop', 'Task: Bottom', 'Task: Loop 2'].map((title, number) => piece(number, title)), plan).map(p => p.title.replace('Task: ', ''));
   assert.deepEqual(ordered, ['Bottom', 'Middle', 'Top', 'Part', 'Loop', 'Loop 2']);
+});
+
+test('a version\'s issue holds its tasks in another language, and is known by its text, not a task\'s or a game\'s (#905)', () => {
+  assert.equal(languageIssueTitle('Sonic Battle Dreamport', 'c'), 'Sonic Battle Dreamport in C');
+  assert.equal(languageIssueTitle('Sonic Battle Dreamport in C', 'c'), 'Sonic Battle Dreamport in C');
+  assert.equal(languageOfIssue({ body: languageIssueText('sonic-battle', 'c') }), 'c');
+  assert.equal(languageOfIssue({ body: '### Game folder\n\nsonic-battle\n\n### Language\n\nC\n\n### Done when\n\nIt matches.' }), null, 'a task');
+  assert.equal(languageOfIssue({ body: '### Game folder\n\nsonic-battle\n\n### Where it starts\n\nHere.' }), null, 'a game\'s issue');
+  assert.equal(languageOfIssue({ body: '### Game folder\n\nsonic-battle\n\n### Language\n\nRust' }), null, 'a language there is no version in');
+  assert.equal(languageOfIssue({ body: null }), null);
 });
