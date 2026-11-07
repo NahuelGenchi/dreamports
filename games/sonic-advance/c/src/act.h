@@ -5,6 +5,7 @@
 #define SA_ACT_H
 
 #include "sa.h"
+#include "player.h"
 
 #define ACT_LEVEL_X_ZONE 12
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
@@ -31,17 +32,6 @@ typedef struct {
   int32_t spawnX, spawnY;
   int width, height;
 } Stage;
-
-typedef struct {
-  double x, y, gsp, xsp, ysp;
-  int facing, state, air, curled, pushing, jumped, airLock, spinDashing;
-  uint8_t rotation, rotA, rotB;
-  int layer, offsetY, idleT;
-  int anim, variant, animSpeed;
-  int pos;              // the sprite's graphics, kept by the animation
-  int dead, invulnerable, hidden, inverted, wasInverted;
-  int heldDirs, pressedDirs;
-} Player;
 
 typedef struct {
   double x, y, targetX, targetY, offsetY, deadY;
@@ -84,6 +74,14 @@ typedef struct {
 
 extern Act act;
 extern int act_active;
+
+// what the act does for Sonic's moves: the effects they start, the camera they hold still, and his death
+void act_brake_dust(void);
+void act_dash_dust(void);
+void act_insta_shield(void);
+void act_freeze_camera(void);
+void act_player_died(void);
+void act_life_lost(void);
 
 void titlecard_start(int level, int character);
 int titlecard_run(int pressed);

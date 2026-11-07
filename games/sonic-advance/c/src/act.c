@@ -5,34 +5,13 @@
 
 #include "act.h"
 
-enum {
-  OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC,
-  LAYER_FRONT = 0, LAYER_BACK = 1, IGNORE_PLATFORMS = 0x80,
-  SCREEN_W_ = 240, SCREEN_H_ = 160,
-};
-enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD };
-enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6 };
+enum { OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC, SCREEN_W_ = 240, SCREEN_H_ = 160 };
 enum { HUD_GLYPHS = 11, HUD_WHITE = 0, HUD_RED = 22, HUD_RING = 44, HUD_FACE = 60 };
 enum { OBJ_8x8 = 0, OBJ_16x16 = 1, OBJ_32x32 = 2, OBJ_8x16 = 8 };
-enum { ORDER_DIGITS = 2, ORDER_ICONS = 3, ORDER_SONIC = 16 };
-
-// physics and animation (engine/constants.js)
-#define Q8 256.0
-#define SPRITE_OFFSET_Y 14
-#define FRICTION (8.0 / 256)
-#define ACCELERATION (8.0 / 256)
-#define DECELERATION (96.0 / 256)
-#define MAX_RUN_SPEED 4.5
-#define RUN_ANIM_SPEED 4.5
-#define REVERSE_KICK (96.0 / 256)
-#define BRAKE_MIN_SPEED 3.0
-#define BORED_DELAY 360
-#define ANIM_NORMAL 0x10
-#define ANIM_MIN_WALK 0x08
+enum { ORDER_DIGITS = 2, ORDER_ICONS = 3 };
 
 Act act;
-static Sprite sonic;
-static uint32_t sonicVram, hudVram, hudTile;
+static uint32_t hudVram, hudTile;
 
 // --- the copy's data (rom/tilemaps.js, rom/collision.js, rom/entities.js, rom/levels.js) -------------------------
 static Tilemap read_tilemap(int index) {
@@ -62,85 +41,6 @@ static Collision read_collision(int level) {
 
 static int fdiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 static int clamp(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
-static int js_round(double v) { return (int)__builtin_floor(v + 0.5); }
-static int q8(double v) { return js_round(v * Q8); }
-static int toward0(int v, int step) { return v > 0 ? (v - step > 0 ? v - step : 0) : v < 0 ? (v + step < 0 ? v + step : 0) : 0; }
-static int sin8(int angle) { return SINE[(angle & 0xFF) * 4] >> 6; }
-static int cos8(int angle) { return SINE[(angle & 0xFF) * 4 + 256] >> 6; }
-
-// tileAt, columnHeight, rowWidth and angle (engine/terrain.js)
-static uint16_t tile_entry(int layer, int tx, int ty) {
-  const Collision *c = &act.stage.collision;
-  int mx = fdiv(tx, 12), my = fdiv(ty, 12), lx = tx - mx * 12, ly = ty - my * 12;
-  if (mx < 0 || my < 0 || mx >= c->levelX || my >= c->levelY) return 0;
-  uint32_t id = rom_u8(c->layers[layer & 1] + my * c->levelX + mx);
-  return (uint16_t)rom_u16(c->metatiles + (id * 144u + (uint32_t)ly * 12u + (uint32_t)lx) * 2u);
-}
-static int signed4(int v) { return v & 8 ? v - 16 : v; }
-static int flip_height(int v) { return v == 0 || v == 8 ? v : v > 0 ? v - 8 : v + 8; }
-static int platform_tile(int tile) { return (rom_u16(act.stage.collision.flags + (uint32_t)(tile >> 3) * 2u) >> ((tile & 7) * 2)) & 1; }
-static int column_height(int px, int py, int layer) {
-  const Collision *c = &act.stage.collision;
-  px = clamp(px, 0, c->width - 1); py = clamp(py, 0, c->height - 1);
-  uint16_t entry = tile_entry(layer, px >> 3, py >> 3), tile = entry & 0x3FF;
-  int col = px & 7;
-  if (entry & 0x400) col = 7 - col;
-  int v = signed4(rom_u8(c->heights + (uint32_t)tile * 8u + (uint32_t)col) >> 4);
-  if (v == -8) v = 8;
-  if ((layer & IGNORE_PLATFORMS) && platform_tile(tile)) v = 0;
-  return entry & 0x800 ? flip_height(v) : v;
-}
-static int row_width(int px, int py, int layer) {
-  const Collision *c = &act.stage.collision;
-  px = clamp(px, 0, c->width - 1); py = clamp(py, 0, c->height - 1);
-  uint16_t entry = tile_entry(layer, px >> 3, py >> 3), tile = entry & 0x3FF;
-  int row = py & 7;
-  if (entry & 0x800) row = 7 - row;
-  int v = signed4(rom_u8(c->heights + (uint32_t)tile * 8u + (uint32_t)row) & 15);
-  if (v == -8) v = 8;
-  if ((layer & IGNORE_PLATFORMS) && platform_tile(tile)) v = 0;
-  return entry & 0x400 ? flip_height(v) : v;
-}
-static int surface_angle(int px, int py, int layer) {
-  const Collision *c = &act.stage.collision;
-  uint16_t entry = tile_entry(layer, clamp(px, 0, c->width - 1) >> 3, clamp(py, 0, c->height - 1) >> 3);
-  int a = rom_u8(c->angles + (entry & 0x3FF));
-  if (entry & 0x400) a = -a;
-  if (entry & 0x800) a = 0x80 - a;
-  return a & 0xFF;
-}
-
-typedef struct { int v, rot, hasRot; } Probe;
-static Probe probe_floor(int p0, int p1, int layer) { Probe p; p.v = column_height(p1, p0, layer); p.rot = surface_angle(p1, p0, layer); p.hasRot = 1; return p; }
-static Probe probe_wall(int p0, int p1, int layer) { Probe p; p.v = row_width(p1, p0, layer); p.rot = surface_angle(p1, p0, layer); p.hasRot = 1; return p; }
-
-typedef struct { int d, rot, hasRot; } Scan;
-// sub_801E4E4: the original's terrain scan
-static Scan scan(int floor, int p0, int p1, int layer, int step) {
-  int fwd = step > 0, r = p0 & 7;
-  Probe t0 = floor ? probe_floor(p0, p1, layer) : probe_wall(p0, p1, layer);
-  Scan out;
-  out.hasRot = 1;
-  if (t0.v != 0 && t0.v != 8) {
-    out.d = t0.v > 0 ? t0.v - 1 - r : t0.v + r; out.rot = t0.rot; return out;
-  }
-  if (t0.v == 0) {
-    Probe t1 = floor ? probe_floor(p0 + step, p1, layer) : probe_wall(p0 + step, p1, layer);
-    if (t1.v == 8) { out.d = fwd ? 7 - r : r; out.rot = t1.rot; return out; }
-    if (t1.v != 0) { out.d = (t1.v > 0 ? t1.v - 1 - r : t1.v + r) + 8; out.rot = t1.rot; return out; }
-    Probe t2 = floor ? probe_floor(p0 + 2 * step, p1, layer) : probe_wall(p0 + 2 * step, p1, layer);
-    if (t2.v == 8) { out.d = fwd ? 15 - r : r + 8; out.rot = t2.rot; return out; }
-    if (t2.v != 0) { out.d = (t2.v > 0 ? t2.v - 1 - r : t2.v + r) + 16; out.rot = t2.rot; return out; }
-    out.d = fwd ? 24 - r : r + 17; out.hasRot = 0; out.rot = 0; return out;
-  }
-  Probe b1 = floor ? probe_floor(p0 - step, p1, layer) : probe_wall(p0 - step, p1, layer);
-  if (b1.v == 0) { out.d = fwd ? -1 - r : r - 8; out.rot = t0.rot; return out; }
-  if (b1.v != 8) { out.d = (b1.v > 0 ? b1.v - 1 - r : b1.v + r) - 8; out.rot = b1.rot; return out; }
-  Probe b2 = floor ? probe_floor(p0 - 2 * step, p1, layer) : probe_wall(p0 - 2 * step, p1, layer);
-  if (b2.v == 0) { out.d = fwd ? -9 - r : r - 16; out.rot = b1.rot; return out; }
-  if (b2.v != 8) { out.d = (b2.v > 0 ? b2.v - 1 - r : b2.v + r) - 16; out.rot = b2.rot; return out; }
-  out.d = fwd ? -17 - r : r - 24; out.rot = b2.rot; return out;
-}
 
 // --- the stage (rom/extract.js extractStage, engine/stage.js) -----------------------------------------------------
 // The copies stay in memory until the V-blank takes them: the queue keeps the pointers, not copies (engine.c). Each
@@ -279,7 +179,9 @@ static void fill_layer(uint32_t dest, int layer, int camX, int camY) {
   }
 }
 
-// --- the camera (engine/camera.js createCamera and updateCamera) ---------------------------------------------------
+// --- the camera (engine/camera.js createCamera and updateCamera) -----------------------------------------------
+// how far and how fast holding up or down pans the view, and the wait before it does
+enum { LOOK_STEP = 2, LOOK_UP = 72, LOOK_DOWN = 60, LOOK_DELAY = 120 };
 static void create_camera(Camera *c, const Player *p) {
   memset(c, 0, sizeof *c);
   c->x = (int)__builtin_floor(p->x) - SCREEN_W_ / 2;
@@ -290,14 +192,28 @@ static void create_camera(Camera *c, const Player *p) {
   c->maxX = act.stage.width - SCREEN_W_; c->maxY = act.stage.height - SCREEN_H_;
   c->speedX = 16; c->speedY = 12;
   c->width = act.stage.width; c->height = act.stage.height;
-  c->lookDelay = 120;
+  c->lookDelay = LOOK_DELAY;
+}
+// updateLook: holding up or down with his feet still pans the view after a delay, 2 px a frame, and it eases back
+// otherwise
+static void ease_look_back(Camera *c) {
+  int step = c->look < 0 ? -c->look : c->look;
+  if (step > LOOK_STEP) step = LOOK_STEP;
+  c->look -= c->look > 0 ? step : c->look < 0 ? -step : 0;
+}
+static void update_look(Camera *c, const Player *p) {
+  int looking = (p->state == PS_LOOK_UP ? -LOOK_UP : p->state == PS_CROUCH && p->gsp == 0 ? LOOK_DOWN : 0) * (p->inverted ? -1 : 1);
+  if (!looking) { c->lookDelay = LOOK_DELAY; ease_look_back(c); }
+  else if (c->lookDelay == 0 || --c->lookDelay == 0) {
+    if (looking < 0 && c->look + c->shiftY > looking) c->look -= LOOK_STEP;
+    if (looking > 0 && c->look + c->shiftY < looking) c->look += LOOK_STEP;
+  } else ease_look_back(c);
 }
 static int camera_update(Camera *c, const Player *p) {
   if (!c->started) { c->started = 1; return 0; }
   c->x = clamp((int)c->x, c->minX, c->maxX - 1);
   c->y = clamp((int)c->y, c->minY, c->maxY - 1);
-  if (c->look > 0) c->look = c->look > 2 ? c->look - 2 : 0;
-  else if (c->look < 0) c->look = c->look < -2 ? c->look + 2 : 0;
+  update_look(c, p);
   if (c->freeze > 0) c->freeze--;
   else if (!c->locked) {
     c->targetX = (int)__builtin_floor(p->x) + c->shiftX - SCREEN_W_ / 2;
@@ -318,132 +234,6 @@ static int camera_update(Camera *c, const Player *p) {
   c->y = clamp((int)c->y, c->minY, c->maxY);
   c->x += c->shakeX; c->y += c->shakeY;
   return 1;
-}
-
-// --- Sonic (engine/player.js, the ground movement this piece needs) ----------------------------------------------
-static void set_offset_y(Player *p, int soy) {
-  int dlt = soy - p->offsetY;
-  if (!dlt) return;
-  int mode = (((p->rotation & 0xFF) + 0x20) & 0xC0) >> 6;
-  if (mode == 0) p->y -= dlt; else if (mode == 1) p->x += dlt; else if (mode == 2) p->y += dlt; else p->x -= dlt;
-  p->offsetY = soy;
-}
-static void create_player(Player *p, int x, int y) {
-  memset(p, 0, sizeof *p);
-  p->x = x; p->y = y; p->facing = 1; p->state = PS_IDLE;
-  p->layer = LAYER_BACK; p->offsetY = SPRITE_OFFSET_Y; p->idleT = BORED_DELAY;
-  p->anim = SONIC_IDLE; p->variant = 0; p->animSpeed = ANIM_NORMAL;
-}
-static void along_surface(Player *p) {
-  int g = q8(p->gsp);
-  p->xsp = ((g * cos8(p->rotation)) >> 8) / Q8;
-  p->ysp = ((g * sin8(p->rotation)) >> 8) / Q8;
-}
-static void slope(Player *p) {
-  if (((p->rotation + 0x60) & 0xFF) >= 0xC0 || p->gsp == 0) return;
-  p->gsp = (q8(p->gsp) + ((sin8(p->rotation) * 3) >> 5)) / Q8;
-}
-static void walk(Player *p, int dir) {
-  if (p->gsp * dir >= 0) {
-    if (p->facing != dir) { p->state = PS_TURN; p->pushing = 0; set_offset_y(p, SPRITE_OFFSET_Y); }
-    p->facing = dir;
-    double g = p->gsp + ACCELERATION * dir;
-    if (g * dir > MAX_RUN_SPEED) {
-      g -= ACCELERATION * dir;
-      if (g * dir < MAX_RUN_SPEED) g = MAX_RUN_SPEED * dir;
-    }
-    p->gsp = g;
-    if (p->state != PS_TURN && !p->curled) { p->state = PS_WALK; set_offset_y(p, SPRITE_OFFSET_Y); }
-  } else {
-    double g = p->gsp + DECELERATION * dir;
-    if (g * dir > 0) g = REVERSE_KICK * dir;
-    p->gsp = g;
-    if (g * dir <= -BRAKE_MIN_SPEED) { p->state = PS_BRAKE; set_offset_y(p, SPRITE_OFFSET_Y); }
-  }
-}
-static void walk_input(Player *p, int dir, int sideways) {
-  if (dir) walk(p, dir);
-  else if (!sideways) {
-    if (p->gsp != 0) {
-      if (p->state == PS_BRAKE || p->state == PS_IDLE) p->state = PS_WALK;
-    } else if (p->state == PS_CROUCH) p->state = PS_WALK;
-    else if (p->state == PS_LOOKUP) p->state = PS_WALK;
-    else p->state = PS_IDLE;
-  }
-  if (dir || sideways) p->idleT = BORED_DELAY;
-  if (!((p->rotation + 0x20) & 0xC0) && p->gsp == 0) {
-    p->pushing = 0;
-    if (p->state != PS_CROUCH) p->state = PS_IDLE;
-  }
-}
-static void ground_sensors(Player *p) {
-  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y), soy = p->offsetY;
-  int mode = (((p->rotation & 0xFF) + 0x20) & 0xC0) >> 6;
-  Scan a, b; double speed;
-  if (mode == 0) { a = scan(1, y + soy, x - 8, p->layer, 8); b = scan(1, y + soy, x + 8, p->layer, 8); speed = p->xsp; }
-  else if (mode == 1) { a = scan(1, x - soy, y - 8, p->layer, -8); b = scan(1, x - soy, y + 8, p->layer, -8); speed = p->ysp; }
-  else if (mode == 2) { a = scan(1, y - soy, x + 8, p->layer, -8); b = scan(1, y - soy, x - 8, p->layer, -8); speed = p->xsp; }
-  else { a = scan(1, x + soy, y + 8, p->layer, 8); b = scan(1, x + soy, y - 8, p->layer, 8); speed = p->ysp; }
-  if (a.hasRot) p->rotA = (uint8_t)a.rot;
-  if (b.hasRot) p->rotB = (uint8_t)b.rot;
-  int val = a.d < b.d ? a.d : b.d, rot = a.d < b.d ? p->rotA : p->rotB;
-  if (val < -11) return;
-  int limit = (int)__builtin_floor(__builtin_fabs(speed)) + 3;
-  if (limit > 11) limit = 11;
-  if (val > 0 && val > limit) { p->air = 1; p->pushing = 0; return; }
-  if (mode == 0) p->y += val; else if (mode == 1) p->x -= val; else if (mode == 2) p->y -= val; else p->x += val;
-  if (!(rot & 1)) p->rotation = p->inverted ? (uint8_t)(-0x80 - rot) : (uint8_t)rot;
-}
-static void follow_ground(Player *p) { ground_sensors(p); }
-static void move_player(Player *p) {
-  p->x += p->xsp;
-  if (p->inverted != p->wasInverted) p->ysp = -p->ysp;
-  p->y += p->inverted ? -p->ysp : p->ysp;
-}
-static void bounds(Player *p) {
-  double maxX = act.cam.maxX + SCREEN_W_ - 1.0 / Q8, maxY = act.cam.maxY + SCREEN_H_ - 1.0 / Q8;
-  if (!p->dead && (p->inverted ? p->y <= act.cam.minY : p->y >= maxY)) { p->dead = 1; p->ysp = -4.875; p->y = p->inverted ? act.cam.minY : maxY; }
-  if (p->x < act.cam.minX || p->x > maxX) { p->x = p->x < act.cam.minX ? act.cam.minX : maxX; p->xsp = 0; p->gsp = 0; }
-  if (p->y < act.cam.minY) { p->y = act.cam.minY; p->ysp = 0; p->gsp = 0; }
-  if (p->inverted && p->y > maxY) { p->y = maxY; p->ysp = 0; p->gsp = 0; }
-}
-static void step_player(Player *p, int left, int right, int up, int down, int jump, int jumpPressed, int attack, int attackPressed) {
-  int sideways = left || right;
-  int dir = left && !right ? -1 : right && !left ? 1 : 0;
-  (void)up; (void)down; (void)jump; (void)jumpPressed; (void)attack; (void)attackPressed;
-  if (p->dead) return;
-  if (!p->air) {
-    slope(p);
-    walk_input(p, dir, sideways);
-    if (!sideways) p->gsp = toward0(q8(p->gsp), q8(FRICTION)) / Q8;
-    along_surface(p);
-  }
-  bounds(p);
-  move_player(p);
-  follow_ground(p);
-}
-
-// chooseAnimation and tickAnim (engine/player.js, engine/animator.js)
-static void choose_animation(Player *p) {
-  int speed = (int)__builtin_fabs(p->gsp);
-  int anim = SONIC_IDLE, variant = 0, speedAnim = ANIM_NORMAL;
-  if (p->state == PS_WALK) {
-    if (speed >= RUN_ANIM_SPEED) { anim = SONIC_RUN; variant = 0; }
-    else {
-      anim = SONIC_WALK; variant = 0;
-      int s = (int)((q8(p->gsp) >> 4) & 0xFFFF);
-      speedAnim = s < 9 ? 9 : s > ANIM_NORMAL ? ANIM_NORMAL : s;
-    }
-  } else if (p->state == PS_TURN || p->state == PS_BRAKE) { anim = SONIC_TURN; variant = 0; }
-  if (p->idleT && p->state == PS_IDLE) p->idleT--;
-  p->anim = anim; p->variant = variant; p->animSpeed = speedAnim;
-}
-static void animate_player(Player *p) {
-  choose_animation(p);
-  sonic.graphics.anim = (uint16_t)p->anim;
-  sonic.variant = (uint8_t)p->variant;
-  sonic.animSpeed = (uint8_t)p->animSpeed;
-  update_sprite(&sonic, 0);
 }
 
 // --- the HUD (engine/hud.js) -------------------------------------------------------------------------------------
@@ -541,24 +331,7 @@ static void draw_frame(void) {
     e.bgScroll[6] = (uint16_t)bgX; e.bgScroll[7] = (uint16_t)bgY;
   }
 
-  // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
-  int right = act.player.facing > 0;
-  int sx = (int)__builtin_floor(act.player.x) - camX, sy = (int)__builtin_floor(act.player.y) - camY;
-  sonic.oamFlags = ORDER_SONIC << 6;
-  sonic.palId = 0;
-  sonic.frameFlags = (uint16_t)((sonic.frameFlags & ~(SPRITE_PRIORITY | SPRITE_X_FLIP | SPRITE_Y_FLIP | SPRITE_ROT_SCALE | SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE)) | (2 << 12));
-  if (act.player.state == PS_WALK) {
-    sonic.frameFlags |= SPRITE_ROT_SCALE_ENABLE;
-    Transform tf;
-    tf.rotation = 0; tf.qScaleX = (int16_t)(right ? -256 : 256); tf.qScaleY = 256;
-    tf.x = (int16_t)(sx - (right ? 1 : 0)); tf.y = (int16_t)sy;
-    transform_sprite(&sonic, &tf);
-  } else {
-    if (act.player.facing > 0) sonic.frameFlags |= SPRITE_X_FLIP;
-    sonic.x = (int16_t)(sx + (act.player.facing < 0 ? 1 : 0));
-    sonic.y = (int16_t)sy;
-  }
-  display_sprite(&sonic);
+  player_draw(&act.player, camX, camY);
 }
 
 // UpdateBgAnimationTiles: the front layer's first tiles change every animDelay camera runs; frame 0 is the tileset,
@@ -599,6 +372,25 @@ typedef struct { Sprite s; int x, y, done, ended; } Firework;
 static Firework fireworks[FIREWORKS];
 
 static uint32_t act_random(void) { return act.seed = act.seed * 0x196225u + 0x3C6EF35Fu; }
+
+// --- what Sonic's moves ask of the act (the world's hooks in engine/game.js) --------------------------------------------
+enum { SE_LIFE_LOST = 119, SPIN_DASH_FREEZE = 10 };
+
+// brake dust stays where it appeared, flipped by the game's random numbers (CreateBrakingDustEffect): the effect itself
+// isn't here yet, but its draw moves the sequence the fireworks' positions come from on
+void act_brake_dust(void) { act_random(); }
+void act_dash_dust(void) {}
+void act_insta_shield(void) {}
+// the camera's target stays put after a spin dash is released
+void act_freeze_camera(void) { act.cam.freeze = SPIN_DASH_FREEZE; }
+// the frame Sonic dies the camera's target and the clock stop
+void act_player_died(void) {
+  act.cam.locked = 1;
+  act.clockStopped = 1;
+  play_song(SE_LIFE_LOST);
+}
+// the act starting over with a life less is not here yet
+void act_life_lost(void) {}
 
 static void firework_task(Task *t) {
   Firework *f = (Firework *)t->data;
@@ -657,20 +449,25 @@ static void act_frame(void) {
   // the clock; its pieces and fade go over the act, and it sets the display while it shows, after draw_frame
   int cardShows = !act.cardDone;
   if (cardShows) card_update((e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
-  int left = (e.input & KEY_LEFT) != 0, right = (e.input & KEY_RIGHT) != 0;
-  int up = (e.input & KEY_UP) != 0, down = (e.input & KEY_DOWN) != 0;
-  int jump = (e.input & KEY_A) != 0, attack = (e.input & KEY_B) != 0;
-  int jumpPressed = (e.pressed & KEY_A) != 0, attackPressed = (e.pressed & KEY_B) != 0;
+  PlayerInput in = {
+    .left = (e.input & KEY_LEFT) != 0, .right = (e.input & KEY_RIGHT) != 0,
+    .up = (e.input & KEY_UP) != 0, .down = (e.input & KEY_DOWN) != 0,
+    .jump = (e.input & KEY_A) != 0, .attack = (e.input & KEY_B) != 0,
+    .jumpPressed = (e.pressed & KEY_A) != 0, .attackPressed = (e.pressed & KEY_B) != 0,
+  };
   // the title card holds Sonic with jump and attack held, never pressed, and ignores the pad
-  if (!act.cardDone) { left = right = up = down = 0; jump = attack = 1; }
+  if (!act.cardDone) { in.left = in.right = in.up = in.down = 0; in.jump = in.attack = 1; }
   // the buttons held on the card's last frame, when Sonic takes the controls, aren't presses
-  if (cardShows) jumpPressed = attackPressed = 0;
+  if (cardShows) in.jumpPressed = in.attackPressed = 0;
   // the start point's first frame reads the right and A the original has held there, never pressed
-  if (act.firstFrame) { left = 0; right = 1; jump = 1; attack = 0; jumpPressed = 0; attackPressed = 0; act.firstFrame = 0; }
+  if (act.firstFrame) {
+    in.left = 0; in.right = 1; in.jump = 1; in.attack = 0; in.jumpPressed = 0; in.attackPressed = 0;
+    act.firstFrame = 0;
+  }
   // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180)
   if (act.cardDone) hud_update(1);
-  step_player(&act.player, left, right, up, down, jump, jumpPressed, attack, attackPressed);
-  animate_player(&act.player);
+  player_step(&act.player, &in);
+  player_animate(&act.player, &in);
   // the stage clock's task (0xFF00): the course time counts once the card has ended, the stage's tick every frame
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
@@ -738,9 +535,9 @@ static void pre_run(int cardSkip, int preFrames) {
     if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
     animate_stage_tiles();
     if (!act.cardDone) card_update(cardSkip == act.tick);
-    int r = act.cardDone;
-    step_player(&act.player, 0, r, 0, 0, !act.cardDone, 0, !act.cardDone, 0);
-    animate_player(&act.player);
+    PlayerInput in = { .right = act.cardDone, .jump = !act.cardDone, .attack = !act.cardDone };
+    player_step(&act.player, &in);
+    player_animate(&act.player, &in);
     if (wasDone) { hud_update(0); after++; }
     if (!act.clockStopped) act.courseTime++;
     act.tick++;
@@ -754,7 +551,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   copyCount = 0;
   load_stage(level);
   act.bgAnimFrame = 0; act.bgAnimShown = 0; act.bgAnimDelay = 0;
-  create_player(&act.player, act.stage.spawnX, act.stage.spawnY);
+  player_init(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);
   act.startCamX = (int)act.cam.x; act.startCamY = (int)act.cam.y;
   act.lives = 3; act.score = 0; act.ringCount = 0;
@@ -765,15 +562,6 @@ void act_start(int level, int cardSkip, int preFrames) {
   e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
   e.winRegs[0] = e.winRegs[1] = e.winRegs[2] = e.winRegs[3] = 0;
   e.winRegs[4] = 0x3F3F; e.winRegs[5] = 0x1F;
-
-  // Sonic's sprite: the player's tiles, colours and animation, at its own OAM order
-  sprite_init(&sonic);
-  sonicVram = OBJ_VRAM;   // the player sprite's tiles are the first ones, as the original keeps them
-  sonic.graphics.dest = sonicVram;
-  sonic.graphics.anim = SONIC_IDLE; sonic.variant = 0; sonic.animSpeed = ANIM_NORMAL;
-  sonic.palId = 0; sonic.oamFlags = ORDER_SONIC << 6; sonic.frameFlags = 2 << 12;
-
-
 
   // the title card's graphics. An act a start point opens runs the card to its end and its few frames after it with
   // no picture, as its recording starts there; one the course select opens shows the card from its first frame

@@ -37,6 +37,10 @@ enum {
 
 // --- the original's sine table (engine/trig.js), 1.25 turns of 1024 steps in Q2.14 -------------------------------
 extern const int16_t SINE[1280];
+/** sin and cos of a 0-255 angle as 8.8 fixed point (-256 ... 256), like SIN_24_8 and COS_24_8. */
+static inline int sin8(int angle) { return SINE[(angle & 0xFF) * 4] >> 6; }
+static inline int cos8(int angle) { return SINE[(angle & 0xFF) * 4 + 256] >> 6; }
+int arc_tan2(int x, int y);
 
 // --- the engine (gba/engine.js) ---------------------------------------------------------------------------------
 enum {
