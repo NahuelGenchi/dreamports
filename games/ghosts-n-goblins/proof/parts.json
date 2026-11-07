@@ -32,7 +32,12 @@
   ],
   "parts": [
     {
-      "name": "The title screen"
+      "name": "The title screen",
+      "recording": "title",
+      "frames": [
+        0,
+        119
+      ]
     },
     {
       "name": "The demonstration",

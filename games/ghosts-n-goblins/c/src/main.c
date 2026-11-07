@@ -63,8 +63,12 @@ static void draw_title_top(void) {
   for (int i = 0; i < 7; i++) ppu_byte(0);
   ppu_address(0x206C);
   for (int i = 0; i < 7; i++) ppu_byte(0);
+  // $A2 is on for the title screen, so the second player's score and its words are drawn too.
+  ppu_address(0x2076);
+  for (int i = 0; i < 7; i++) ppu_byte(0);
   copy_row(0xC86C, 0x2044, 3);
   copy_row(0xC872, 0x204E, 3);
+  copy_row(0xC86F, 0x2058, 3);
 }
 
 // sub_C753: the words in the middle of the title screen, from the last bank's lists.
@@ -110,20 +114,20 @@ static void load_tiles(void) {
 static void draw_title_sprites(void) {
   nes_write(0x2003, 0);
   for (int sprite = 0; sprite < 64; sprite++) {
-    nes_write(0x2004, 0xF8);
-    nes_write(0x2004, 0);
-    nes_write(0x2004, 0);
-    nes_write(0x2004, 0);
+    nes_write(0x2004, 0xFF);
+    nes_write(0x2004, 0xFF);
+    nes_write(0x2004, 0xFF);
+    nes_write(0x2004, 0xFF);
   }
   nes_write(0x2003, 0);
-  nes_write(0x2004, 0x93);
+  nes_write(0x2004, 0x8A);
   nes_write(0x2004, 0xCE);
   nes_write(0x2004, 0x01);
   nes_write(0x2004, 0x58);
-  nes_write(0x2004, 0x93);
+  nes_write(0x2004, 0x92);
   nes_write(0x2004, 0xCF);
   nes_write(0x2004, 0x01);
-  nes_write(0x2004, 0x54);
+  nes_write(0x2004, 0x58);
 }
 
 // once, with the player's copy in kit_copy and the cartridge in nes_prg and nes_chr
@@ -149,10 +153,11 @@ void game_step(uint32_t buttons) {
   // $ED97, the original's clear of the APU's registers: once as it starts, and once when the title screen is drawn.
   if (frame == 1) {
     nes_write(0x4015, 0x0F);
-    for (int i = 0; i < 0x10; i++) nes_write((uint16_t)(0x4000 + i), 0);
+    for (int i = 0x0F; i >= 0; i--) nes_write((uint16_t)(0x4000 + i), 0);
   }
-  if (frame == 5) {
-    for (int i = 0; i < 0x10; i++) nes_write((uint16_t)(0x4000 + i), 0);
+  if (frame == 4) {
+    // sub_ED97, as the original writes it: $400F down to $4000, one register at a time.
+    for (int i = 0x0F; i >= 0; i--) nes_write((uint16_t)(0x4000 + i), 0);
   }
   if (frame == 6) draw_title_palette();
   if (frame == 22) {

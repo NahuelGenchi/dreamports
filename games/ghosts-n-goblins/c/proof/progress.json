@@ -6,9 +6,8 @@
   "recordings": {
     "title": {
       "frames": 120,
-      "matched": 93,
-      "differs": [[1,6],[99,119]],
-      "soundDiffers": [[6,6]],
+      "matched": 120,
+      "differs": [],
       "functions": []
     }
   }
