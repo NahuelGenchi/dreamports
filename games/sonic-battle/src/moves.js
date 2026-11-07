@@ -1360,7 +1360,20 @@ function landOrFall(c, i) {
   const rec = record(i);
   if (read8(c, rec + PAUSE) !== 0) return;
   const state = read16(c, rec + STATE);
-  if (read8(c, rec + BUMPED) !== 0 && (state === 66 || state === 81)) notPorted('0800444C', 'a bounce off a wall');
+  if (read8(c, rec + BUMPED) !== 0 && (state === 66 || state === 81)) {
+    // 0x0800444c: a wall it ran into the way it faces throws it back, or turns it to its bounce state
+    const bumped = read8(c, rec + BUMPED), facing = read8(c, rec + LAST_FACING);
+    const bounced = ((bumped & 1) && facing === 4) || ((bumped & 2) && facing === 6)
+      || ((bumped & 4) && facing === 8) || ((bumped & 8) && facing === 2)
+      || ((bumped & 16) && facing === 4) || ((bumped & 32) && facing === 6)
+      || ((bumped & 64) && facing === 8) || ((bumped & 128) && facing === 2);
+    if (bounced) {
+      if (read8(c, rec + 185) === 1) {
+        write8(c, rec + 125, read8(c, rec + 124));
+        setState(c, i, 96);
+      } else addFlags(c, rec, 0x80);
+    }
+  }
   const inAir = () => {
     write32(c, rec + FLAGS, (read32(c, rec + FLAGS) & ~(FLAG_GROUNDED | FLAG_LANDED)) | FLAG_IN_AIR);
     write8(c, rec + 244, 0);
@@ -1417,6 +1430,7 @@ const THING_SCRIPTS = new Map([
   [12, 0x0806B8CC], [13, 0x0806B940], [14, 0x0806B804], [15, 0x0806B9D4], [16, 0x0806BB08], [31, 0x0806BB08],
   [32, 0x0806BBA0], [34, 0x0806BBF4], [35, 0x0806BC54], [40, 0x0806C6EC], [37, 0x0806C07C], [38, 0x0806C1AC], [39, 0x0806C448],
   [43, 0x0806C60C], [44, 0x0806C67C], [45, 0x0806C8F4], [41, 0x0806C790], [46, 0x0806C944], [158, 0x0806E520], [160, 0x0806E5F0],
+  [114, 0x0806DB48], [117, 0x0806DC00], [118, 0x0806DC60], [120, 0x0806DCBC], [121, 0x0806DD04],
 ]);
 const THING_MARK = 0xFFF00000;
 // the fields a script's words set, by the word's first half
@@ -1538,13 +1552,14 @@ function runThingScript(c, k, script) {
 const THING_HITS = new Map([
   [38, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [41, [0x280, 4, 20, 2, 0x3C0, 0, 0, 22]], [43, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
   [39, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [44, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
+  [117, [0x140, 6, 15, 2, 0x380, 0, 0, 255]],
 ]);
 // the kinds 0x0800eaec has hits for that aren't ported yet
-const THING_HITS_LATER = new Set([54, 57, 62, 63, 78, 79, 82, 94, 97, 102, 117, 122, 137, 138, 142, 154, 158, 160,
+const THING_HITS_LATER = new Set([54, 57, 62, 63, 78, 79, 82, 94, 97, 102, 122, 137, 138, 142, 154, 158, 160,
   165, 166, 174, 175, 177, 178, 179, 185, 191, 194, 197, 201, 241, 245]);
 
 // the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet
-const THING_STEPS_LATER = new Set([39, 61, 79, 101, 121, 141]);
+const THING_STEPS_LATER = new Set([39, 61, 79, 101, 141]);
 
 /**
  * 0x0800d818: a kind 40 mine feels the first fighter that comes near it, other than its owner, and tells its owner,
@@ -1674,9 +1689,9 @@ function updateThings(c) {
       write16(c, thing + 62, read16(c, thing + 62) + read16(c, thing + 12));
     }
     // 0x0800cec8's per-kind steps: walls and the arena's edges push a thing back, and it falls until its floor
-    // (0x0800d260, the same for kinds 35, 38, 39 and 40): a wall it is inside pushes it out unless it is above the
-    // wall's top, where it stands on it instead, and the arena's edges push it back in
-    if (kind === 35 || kind === 38 || kind === 39 || kind === 40) {
+    // (0x0800d260, the same for kinds 35, 38, 39, 40, 117, 118, 120 and 121): a wall it is inside pushes it out
+    // unless it is above the wall's top, where it stands on it instead, and the arena's edges push it back in
+    if (kind === 35 || kind === 38 || kind === 39 || kind === 40 || kind === 117 || kind === 118 || kind === 120 || kind === 121) {
       const met = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
       write8(c, thing + 16, met.bits);
       if (met.bits & 0xF) {
