@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { clipFiles, clipLines } from '../share.mjs';
+import { clipFiles, clipLines, keepClip, missingLines, savedLines } from '../share.mjs';
 
 const COMMIT = 'a68edcf'.padEnd(40, '0');
 const SITE = 'https://someone.github.io/dreamports/';
@@ -71,5 +71,28 @@ test('a clip from elsewhere has no recording to name', () => {
   withClips(clip => {
     const made = clip('a.mp4', 'first', null);
     assert.match(clipLines(TITLE, made, clipFiles('a-game', COMMIT, made, '2026-11-03'), SITE), /\[Watch the clip\]\(https:/);
+  });
+});
+
+test('a step\'s clips are kept for its branch, one per recording, and another branch starts again', () => {
+  let saved = keepClip(null, 'feat/1-a', 'logos', 'first');
+  saved = keepClip(saved, 'feat/1-a', 'menu', 'second');
+  saved = keepClip(saved, 'feat/1-a', 'logos', 'first again');
+  assert.deepEqual(saved.clips.map(c => c.lines), ['second', 'first again']);
+  assert.equal(savedLines(saved), 'second\n\nfirst again');
+  assert.deepEqual(keepClip(saved, 'feat/2-b', 'menu', 'other').clips, [{ key: 'menu', lines: 'other' }]);
+});
+
+test('a text with a clip\'s link and no frame is missing the frame', () => {
+  withClips(clip => {
+    const still = clip('clip-middle.png', 'a frame', null).file;
+    const made = { ...clip('clip.mp4', 'first', 'amy-moves'), still };
+    const lines = clipLines(TITLE, made, clipFiles('a-game', COMMIT, made, '2026-11-07'), SITE);
+    const saved = keepClip(null, 'feat/1-a', 'amy-moves', lines);
+    const [frame, , link] = lines.split('\n');
+    assert.match(frame, /^\[!\[A Game Dreamport, amy-moves: a frame of the clip\]\(https:.*-still\.png\)\]\(https:.*\.mp4\)$/);
+    assert.deepEqual(missingLines(`Clips:\n${link}\n`, saved), [{ key: 'amy-moves', lines: [frame] }]);
+    assert.deepEqual(missingLines(`Clips:\n\n${savedLines(saved)}\n\nCode ported: …`, saved), []);
+    assert.deepEqual(missingLines(`Clips:\n  ${frame}\n\n  ${link}\n`, saved), []);
   });
 });
