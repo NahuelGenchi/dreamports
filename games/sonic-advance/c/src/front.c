@@ -60,6 +60,8 @@ static void apply_start_point(void) {
 void front_start_game(void) {
   if (ctx.select) { create_character_select(ctx.character); return; }
   apply_start_point();
+  // a start point that names a level opens that act at once, as the JavaScript page's does
+  if (gba_start_point("level")) { front_play((int)gba_start_number("level", 0)); return; }
   if (ctx.gameMode == GAME_MODE_TIME_ATTACK || save_unlocked_level(ctx.character) != 0) create_course_select();
   else front_play(-1);
 }
@@ -128,13 +130,15 @@ EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 // its pictures; the course select opens the act it chose.
 void front_play(int level) {
   act_active = 1;
+  destroy_tasks(0x2000, 0x3000);
   int startLevel = (int)gba_start_number("level", -1);
   if (startLevel >= 0) {
-    destroy_tasks(0x2000, 0x3000);
     act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
+    act_frame_now();
     return;
   }
   act_start(level < 0 ? 0 : level, -1, 0);
+  act_frame_now();
 }
 void front_start_demo(void) { ctx.done = 1; }
 

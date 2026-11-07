@@ -23,6 +23,9 @@ typedef struct {
 
 typedef struct {
   int level, zone, act, music, hudFlash;
+  int backgroundScroll;   // 0 still, 1 Casino Paradise's bands, 2 X Zone
+  int paletteCount;
+  const int *paletteAnimations;
   Tilemap front, back, background;
   Collision collision;
   int32_t spawnX, spawnY;
@@ -44,24 +47,48 @@ typedef struct {
   double x, y, targetX, targetY, offsetY, deadY;
   int minX, minY, maxX, maxY, started, speedX, speedY, shiftX, shiftY;
   int width, height, freeze, locked, look, lookDelay, shakeX, shakeY, bgUpdates;
+  int bgX, bgY;
 } Camera;
 
 typedef struct {
   int flash, active;
 } Hud;
 
+typedef struct PaletteAnim PaletteAnim;
+struct PaletteAnim {
+  int frame, wait, shown, count, loop;
+  int delays[64], at[64];
+  int loadCount[64];
+  struct { int entry, count, insert; } loads[64][8];
+};
+
 typedef struct {
   Stage stage;
   Player player;
   Camera cam;
   Hud hud;
-  int tick, courseTime, ringCount, lives, score;
+  int tick, frames, courseTime, ringCount, lives, score;
+  uint32_t seed;
   int clockStopped, cardFrame, cardDone, firstCard, started, preFrames, firstFrame, drawn;
+  // the stage's animated tiles (UpdateBgAnimationTiles), and its palette animations' sprites
+  int bgAnimFrame, bgAnimShown, bgAnimDelay;
+  int startCamX, startCamY;
+  Task *task;
+  int stallLoad, musicStarts;
+  int palCount;
+  struct PaletteAnim *pal;
+  // the title card's graphics and state (titlecard.c), and where its pieces are
+  int cardGraphic;
+  int cardX[6], cardY[6], cardCount[6], cardMark[6];
 } Act;
 
 extern Act act;
 extern int act_active;
 
+void titlecard_start(int level, int character);
+int titlecard_run(int pressed);
+void titlecard_display(void);
+void act_frame_now(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_frame_now(void);
