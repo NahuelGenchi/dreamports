@@ -118,6 +118,8 @@ int sprite_tiles(int anim, int first, int last);
 // --- effects and what the prizes put around Sonic (effects.c, items.c) -------------------------------------------------------
 /** The puff of smoke a broken item box or a defeated enemy leaves, at a world point. */
 void dust_cloud(int x, int y);
+/** Sonic's effects start over with the act: no brake dust on screen. */
+void effects_start(void);
 void items_shield(int shield);
 void items_stars(void);
 

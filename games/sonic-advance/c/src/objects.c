@@ -198,6 +198,7 @@ void objects_start(int level) {
   memset(tasks, 0, sizeof tasks);
   memset(blocks, 0, sizeof blocks);
   drawing = 1;
+  effects_start();
   entities_load(level);
   rings_load(level);
   rings_start();

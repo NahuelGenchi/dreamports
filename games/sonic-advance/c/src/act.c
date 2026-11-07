@@ -378,9 +378,6 @@ enum { SE_LIFE_LOST = 119, SPIN_DASH_FREEZE = 10 };
 
 // brake dust stays where it appeared, flipped by the game's random numbers (CreateBrakingDustEffect): the effect itself
 // isn't here yet, but its draw moves the sequence the fireworks' positions come from on
-void act_brake_dust(void) { act_random(); }
-void act_dash_dust(void) {}
-void act_insta_shield(void) {}
 // the camera's target stays put after a spin dash is released
 void act_freeze_camera(void) { act.cam.freeze = SPIN_DASH_FREEZE; }
 // the frame Sonic dies the camera's target and the clock stop
@@ -479,8 +476,8 @@ static void act_frame(void) {
   if (cardShows) titlecard_display();
 }
 
-// the act's music, as the course select leaves it: it starts on the frame after the act is made, and fades in, as a
-// song the music manager starts over does (MusManager_UpdateBgmParams)
+// the act's music, as the course select leaves it: the stage music manager (Task_StageMusicManager, priority 0x4000)
+// starts it on the frame the act is made, as no song plays, and fades it in (MusManager_UpdateBgmParams)
 static void start_music(void) {
   if (!act.musicStarts) return;
   act.musicStarts = 0;
@@ -512,6 +509,7 @@ void act_task(Task *t) {
  *  frame has no V-blank, so the screen keeps the course select's black while the act loads. */
 void act_frame_now(void) {
   act_frame();
+  start_music();
   if (act.task) destroy_task(act.task);
   act.task = create_task(act_task, NULL, 0x0F00, 0, NULL);
   act.stallLoad = 1;
