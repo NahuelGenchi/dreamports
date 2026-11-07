@@ -103,12 +103,15 @@ function createGame(video, rom, sound) {
     core.main = skills;
   }
   // a recording's start point, as nothing leads to a fight yet: fight=training&vblanks=<count> opens one (fight.js),
-  // with &action=<n> for the Rival's Action Training's screen offers, 0 (Do Nothing) unless it says.
+  // with &action=<n> for the Rival's Action Training's screen offers, 0 (Do Nothing) unless it says, and
+  // &player=<n>, &rival=<n> and &stage=<n> for the three values the setup screen picks, its first choices unless it says.
   // It places no fighter: the fight's own opening drops them in, and it's what's proven, so no neverInPlay is needed
   const asked = new URLSearchParams(location.search);
   if (asked.get('fight') === 'training') {
     core.startUp = 1;
-    core.main = c => startFight(c, Number(asked.get('vblanks')), Number(asked.get('action') ?? 0) & 0xFF);
+    core.main = c => startFight(c, Number(asked.get('vblanks')), Number(asked.get('action') ?? 0) & 0xFF,
+      Number(asked.get('player') ?? 0) & 0xFF, Number(asked.get('rival') ?? 0) & 0xFF,
+      Number(asked.get('stage') ?? 0) & 0xFF);
   }
   return {
     step(keys) {
