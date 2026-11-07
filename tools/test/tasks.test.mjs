@@ -111,3 +111,11 @@ test('another game\'s task of the same title isn\'t this game\'s, and a label na
   assert.equal(taskTitled(issues, 'Task: Time Attack in C', 'sonic-advance')?.number, 6);
   assert.equal(taskTitled(issues, 'Task: Time Attack', 'sonic-advance-2')?.number, 7);
 });
+
+test('a task in C is written from the original and waits for nothing in JavaScript (#965)', () => {
+  const text = taskText('sonic-battle/c', { name: 'The menu', needs: [] }, { name: 'The logos in C', number: 15 }, [], 'js');
+  assert.match(text, /from the original, as every version is/);
+  assert.match(text, /never waiting for it/);
+  assert.doesNotMatch(text, /finished for it first/);
+  assert.match(text, /shows the part as proven in C/);
+});
