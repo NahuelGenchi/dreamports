@@ -1217,8 +1217,8 @@ function readFighterKeys(c, i) {
       write8(c, rec + timer, 0);
       continue;
     }
-    const rate = left > 149 ? 30 : left > 59 ? 15 : 0;
-    if (rate !== 0 && left % rate === 0 && i === read32(c, PLAYER)) c.sound?.play(timer === 145 ? 0x338 : 0x338);
+    // 0x08005888 asks for song 0x338 at this timer's steps, but the original never sounds it: Sonic's
+    // specials-power and Cream's air Power show only the special's own sound while the timer runs down.
     write8(c, rec + timer, left - 1);
   }
 }
