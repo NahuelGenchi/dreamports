@@ -467,7 +467,7 @@ function start(buffer, assets, back = null, afterReset = false) {
   stage.classList.toggle('multi', multi);   // its players play with keyboards and controllers
   sheet.close({ now: true });
   counts = !debug && !specialTest && unlocked === null && (assets.first === 0 || multi);
-  if (multi) { startRound(assets, seed, chaoPlace, null, teamPlay ? [chaoPlace, chaoPlace, chaoPlace] : null, roundMode, roundConnections); return; }
+  if (multi) { startRound(assets, seed, chaoPlace, null, teamPlay ? [chaoPlace, (chaoPlace + 1) & 7, (chaoPlace + 2) & 7] : null, roundMode, roundConnections); return; }
   if (vsCount) { startVs(assets); return; }
   // a start point is where the game opens, and a soft reset starts it again as the original does
   const leaving = specialTest && !afterReset && specialSpringStart(assets, { emeralds: save.chaosEmeralds, continues });

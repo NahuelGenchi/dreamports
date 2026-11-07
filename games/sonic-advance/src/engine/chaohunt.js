@@ -33,7 +33,7 @@ const RECEIVE_PRIORITY = 1, SEND_PRIORITY = 0xFFFE;
 // the items' bits in itemEffect, as the packets carry them
 const SHIELD = 1, INVINCIBLE = 2, SPEED_UP = 4, MAGNETIC = 8, INVISIBLE = 0x20, CONFUSED = 0x40, TELEPORT = 0x80;
 const CHAO_HUNT_D = 17;
-const ROOM_EVENT = { PLATFORM: 1, MYSTERY_BOX: 5, ITEM: 6, CHAO: 9 };
+const ROOM_EVENT = { PLATFORM: 1, MYSTERY_BOX: 5, ITEM: 6, GOAL: 7, CHAO: 9 };
 
 /**
  * The mode for GBA `id` of the `count` on `link`. `seed` is the shared random number the link hands every
@@ -43,7 +43,10 @@ const ROOM_EVENT = { PLATFORM: 1, MYSTERY_BOX: 5, ITEM: 6, CHAO: 9 };
 export function createChaoHunt({ link, id, count, stage, anims, seed, chaoPlace, chaoPlaces = null, gameMode = GAME_MODE_CHAO_HUNT, connections = 0, onResults }) {
   const teamPlay = gameMode === GAME_MODE_TEAM_PLAY;
   const teams = [0, 1, 2, 3].map(i => (connections >> (4 + i)) & 1);
-  const places = teamPlay ? [chaoPlace, chaoPlace, chaoPlace] : [chaoPlace];
+  // the stage choice draws three different places for team play; the single Chao Hunt uses one
+  const places = teamPlay
+    ? (Array.isArray(chaoPlaces) && chaoPlaces.length >= 3 ? chaoPlaces.slice(0, 3).map(p => (p | 0) & 7) : [chaoPlace, chaoPlace, chaoPlace])
+    : [chaoPlace];
   // the start place of player `i`: in team play both players of a team share their team's place, 24 px apart
   function spawnOf(i) {
     if (!teamPlay) return stage.multiplayerSpawns[i];
@@ -80,6 +83,25 @@ export function createChaoHunt({ link, id, count, stage, anims, seed, chaoPlace,
   // before it in the slot
   const queue = Array.from({ length: QUEUE }, () => new Uint8Array(8));
   let write = 0, sent = 0;
+
+  // a player reached a goal: the original's room event 7; every GBA marks the player and, in a team round, the team
+  // that has all its players there ends the round on all of them
+  function goal(playerId) {
+    const m = mp.players[playerId];
+    if (!m || mp.ranks[playerId] !== -1) return;
+    m.state |= 1;
+    if (teamPlay) {
+      const team = mp.teams[playerId];
+      let all = true;
+      for (let i = 0; i < count; i++) if (mp.teams[i] === team && !(mp.players[i].state & 1)) all = false;
+      if (all && mp.goalWinner === undefined) {
+        mp.goalWinner = team;
+        for (let i = 0; i < count; i++) mp.ranks[i] = mp.teams[i] === team ? 0 : 1;
+        mp.finish?.();
+      }
+    } else mp.finish?.();
+  }
+  mp.goal = goal;
 
   function sendEvent(e) {
     const slot = queue[write];
@@ -119,6 +141,9 @@ export function createChaoHunt({ link, id, count, stage, anims, seed, chaoPlace,
             game.state.effects2d = { ...game.state.effects2d, objWindowLayers: 0 };
           }
         }
+        break;
+      case ROOM_EVENT.GOAL:
+        goal(from);
         break;
       case ROOM_EVENT.CHAO: {
         const chao = mp.chao[ev[1]];

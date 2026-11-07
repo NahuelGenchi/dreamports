@@ -90,23 +90,11 @@ export function createGoal(e, slot, anims, ctx = null) {
         startAnim(o, 'goalSpin');
         const mp = ctx.mp;
         if (mp) {
-          // a team's round ends when all its players have reached a goal; the team that does it first wins.
-          // Chao Hunt's goal ends the round with the Chao its players hold.
-          if (mp.teamPlay) {
-            mp.players[mp.id].state |= 1;
-            const team = mp.teams[mp.id];
-            let all = true;
-            for (let i = 0; i < mp.count; i++) if (mp.teams[i] === team && !(mp.players[i].state & 1)) all = false;
-            if (all && mp.goalWinner === undefined) {
-              mp.goalWinner = team;
-              for (let i = 0; i < mp.count; i++) mp.ranks[i] = mp.teams[i] === team ? 0 : 1;
-              if (ctx.world.level !== EGG_ROCKET) ctx.world.playSound(SONG.GOAL);
-              mp.finish?.();
-            }
-          } else {
-            if (ctx.world.level !== EGG_ROCKET) ctx.world.playSound(SONG.GOAL);
-            mp.finish?.();
-          }
+          // the other GBAs learn it through the original's room event 7, and a team round ends on all of them once
+          // every player of one team has reached a goal
+          mp.sendEvent({ type: 7 });
+          mp.goal?.(mp.id);
+          if (ctx.world.level !== EGG_ROCKET) ctx.world.playSound(SONG.GOAL);
           phase = 'passed';
           return passed(ctx);
         }
