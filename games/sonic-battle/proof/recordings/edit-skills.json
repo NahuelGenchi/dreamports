@@ -1,0 +1,31 @@
+{
+  "about": "Emerl's screen, from a start point, as nothing leads to it yet: the original jumps to its initializer from the main menu. A on Edit skills, the MOVE rows sliding in, down twice and up once, and B, which slides it off to the right.",
+  "start": "skills=1",
+  "frames": 311,
+  "clip": { "at": 120, "frames": 180 },
+  "held": [
+    [0,[]],
+    [120,["A"]],
+    [121,[]],
+    [160,["DOWN"]],
+    [161,[]],
+    [180,["DOWN"]],
+    [181,[]],
+    [200,["UP"]],
+    [201,[]],
+    [300,["B"]],
+    [301,[]]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 901,
+      "held": [[0,[]],[747,["START"]],[748,[]]],
+      "sets": [
+        { "frame": 778, "address": "03002170", "bytes": 2, "value": 1 },
+        { "frame": 899, "address": "03002030", "bytes": 4, "value": 134355725 }
+      ],
+      "about": "A name already saved, as in menu, so the title's Start goes to the main menu, and then the screen's callback set to Emerl's screen's initializer, 0x08021b0c."
+    }
+  ]
+}
