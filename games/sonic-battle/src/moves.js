@@ -578,6 +578,11 @@ function setState(c, i, state) {
       }
   }
   // (0x08002762) what the special attacks' states do with their things
+  if (state === 21 || state === 22) {
+    // the state's own timer, which counts the special down and sounds while it runs
+    const timer = 145 + (state - 21);
+    if (read8(c, rec + timer) === 0) { write8(c, rec + timer, 240); return; }
+  }
   if (state === 21) {
     if (read8(c, rec + 23) !== 0) return;
     for (let k = 0; k < 12; k++) {
@@ -1361,8 +1366,20 @@ function turnForAttack(c, rec) {
 function landOrFall(c, i) {
   const rec = record(i);
   if (read8(c, rec + PAUSE) !== 0) return;
-  const state = read16(c, rec + STATE);
-  if (read8(c, rec + BUMPED) !== 0 && (state === 66 || state === 81)) notPorted('0800444C', 'a bounce off a wall');
+  let state = read16(c, rec + STATE);
+  // a fighter thrown at a wall it was facing bounces off it
+  const bumped = read8(c, rec + BUMPED);
+  if (bumped !== 0 && (state === 66 || state === 81)) {
+    const last = read8(c, rec + LAST_FACING);
+    if (((bumped & 1) && last === 4) || ((bumped & 2) && last === 6)
+      || ((bumped & 4) && last === 8) || ((bumped & 8) && last === 2)) {
+      if (read8(c, rec + 185) === 1) {
+        write8(c, rec + 125, read8(c, rec + 124));
+        setState(c, i, 96);
+      } else addFlags(c, rec, 0x80);
+      state = read16(c, rec + STATE);
+    }
+  }
   const inAir = () => {
     write32(c, rec + FLAGS, (read32(c, rec + FLAGS) & ~(FLAG_GROUNDED | FLAG_LANDED)) | FLAG_IN_AIR);
     write8(c, rec + 244, 0);
