@@ -1,0 +1,290 @@
+{
+  "about": "X Zone's first nine frames after its title card, with the HUD, from the menu hand-over.",
+  "start": "unlocked=13&tails=13&knuckles=13&amy=13&emeralds=127&level=12&card=107&pre=1&power=2&at=1701&first=1",
+  "frames": 1710,
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      150,
+      [
+        "A"
+      ]
+    ],
+    [
+      156,
+      []
+    ],
+    [
+      950,
+      [
+        "START"
+      ]
+    ],
+    [
+      956,
+      []
+    ],
+    [
+      1300,
+      [
+        "START"
+      ]
+    ],
+    [
+      1306,
+      []
+    ],
+    [
+      1550,
+      [
+        "START"
+      ]
+    ],
+    [
+      1556,
+      []
+    ],
+    [
+      1650,
+      [
+        "A"
+      ]
+    ],
+    [
+      1656,
+      []
+    ],
+    [
+      1701,
+      [
+        "A",
+        "RIGHT"
+      ]
+    ],
+    [
+      1703,
+      [
+        "RIGHT"
+      ]
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 1701,
+      "frames": 126,
+      "held": [
+        [
+          69,
+          [
+            "A"
+          ]
+        ],
+        [
+          75,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 9,
+          "address": "03005168",
+          "bytes": 2,
+          "value": 13
+        },
+        {
+          "frame": 9,
+          "address": "0300516A",
+          "bytes": 2,
+          "value": 13
+        },
+        {
+          "frame": 9,
+          "address": "0300516C",
+          "bytes": 2,
+          "value": 13
+        },
+        {
+          "frame": 9,
+          "address": "0300516E",
+          "bytes": 2,
+          "value": 13
+        },
+        {
+          "frame": 9,
+          "address": "0300517C",
+          "bytes": 1,
+          "value": 127
+        }
+      ],
+      "about": "The character select, which the Dreamport does not have yet: A picks Sonic, with the save the recording is about, which leads to the course select."
+    },
+    {
+      "at": 1701,
+      "frames": 591,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          129,
+          [
+            "DOWN"
+          ]
+        ],
+        [
+          135,
+          []
+        ],
+        [
+          153,
+          [
+            "DOWN"
+          ]
+        ],
+        [
+          159,
+          []
+        ],
+        [
+          177,
+          [
+            "DOWN"
+          ]
+        ],
+        [
+          183,
+          []
+        ],
+        [
+          201,
+          [
+            "DOWN"
+          ]
+        ],
+        [
+          207,
+          []
+        ],
+        [
+          225,
+          [
+            "DOWN"
+          ]
+        ],
+        [
+          231,
+          []
+        ],
+        [
+          249,
+          [
+            "DOWN"
+          ]
+        ],
+        [
+          255,
+          []
+        ],
+        [
+          273,
+          [
+            "DOWN"
+          ]
+        ],
+        [
+          279,
+          []
+        ],
+        [
+          297,
+          [
+            "DOWN"
+          ]
+        ],
+        [
+          303,
+          []
+        ],
+        [
+          321,
+          [
+            "DOWN"
+          ]
+        ],
+        [
+          327,
+          []
+        ],
+        [
+          345,
+          [
+            "DOWN"
+          ]
+        ],
+        [
+          351,
+          []
+        ],
+        [
+          369,
+          [
+            "DOWN"
+          ]
+        ],
+        [
+          375,
+          []
+        ],
+        [
+          393,
+          [
+            "DOWN"
+          ]
+        ],
+        [
+          399,
+          []
+        ],
+        [
+          457,
+          [
+            "A"
+          ]
+        ],
+        [
+          463,
+          []
+        ],
+        [
+          472,
+          [
+            "A",
+            "RIGHT"
+          ]
+        ],
+        [
+          473,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          579,
+          [
+            "A",
+            "RIGHT"
+          ]
+        ]
+      ],
+      "about": "The course select and X Zone's title card."
+    }
+  ],
+  "clip": {
+    "at": 1701,
+    "frames": 9
+  }
+}
