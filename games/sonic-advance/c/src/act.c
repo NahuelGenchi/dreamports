@@ -10,8 +10,8 @@ enum {
   LAYER_FRONT = 0, LAYER_BACK = 1, IGNORE_PLATFORMS = 0x80,
   SCREEN_W_ = 240, SCREEN_H_ = 160,
 };
-enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD };
-enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6 };
+enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD, PS_PUSH, PS_CROUCH_END, PS_LOOKUP_END, PS_BOUNCE };
+enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6, SONIC_PUSH = 12 };
 // the HUD's tiles at the addresses the original reserves (vram_hardcoded.h): the face at tile 64, the ring at 68,
 // the white digits at 84 and the red ones at 106
 enum { HUD_GLYPHS = 11, HUD_WHITE = 0, HUD_RED = 22, HUD_RING = -16, HUD_FACE = -20, HUD_TILE = 84 };
@@ -147,7 +147,7 @@ static int surface_angle(int px, int py, int layer) {
 
 typedef struct { int v, rot, hasRot; } Probe;
 static Probe probe_floor(int p0, int p1, int layer) { Probe p; p.v = column_height(p1, p0, layer); p.rot = surface_angle(p1, p0, layer); p.hasRot = 1; return p; }
-static Probe probe_wall(int p0, int p1, int layer) { Probe p; p.v = row_width(p1, p0, layer); p.rot = surface_angle(p1, p0, layer); p.hasRot = 1; return p; }
+static Probe probe_wall(int p0, int p1, int layer) { Probe p; p.v = row_width(p0, p1, layer); p.rot = surface_angle(p0, p1, layer); p.hasRot = 1; return p; }
 
 typedef struct { int d, rot, hasRot; } Scan;
 // sub_801E4E4: the original's terrain scan
@@ -336,14 +336,54 @@ static void walk_input(Player *p, int dir, int sideways) {
   else if (!sideways) {
     if (p->gsp != 0) {
       if (p->state == PS_BRAKE || p->state == PS_IDLE) p->state = PS_WALK;
-    } else if (p->state == PS_CROUCH) p->state = PS_WALK;
-    else if (p->state == PS_LOOKUP) p->state = PS_WALK;
-    else p->state = PS_IDLE;
+    } else {
+      if (p->state == PS_CROUCH) p->state = PS_CROUCH_END;
+      else if (p->state == PS_LOOKUP) p->state = PS_LOOKUP_END;
+      else if (p->state != PS_CROUCH_END && p->state != PS_LOOKUP_END) p->state = PS_IDLE;
+    }
   }
   if (dir || sideways) p->idleT = BORED_DELAY;
   if (!((p->rotation + 0x20) & 0xC0) && p->gsp == 0) {
     p->pushing = 0;
-    if (p->state != PS_CROUCH) p->state = PS_IDLE;
+    if (p->state != PS_CROUCH_END && p->state != PS_LOOKUP_END) p->state = PS_IDLE;
+  }
+}
+
+// Player_HandleInputs' look: up looks up, and down crouches, or curls him into a roll while he moves
+static void look_input(Player *p, int up, int down) {
+  if (p->state == PS_CROUCH || p->state == PS_CROUCH_END) {
+    if (!down) p->state = PS_CROUCH_END;
+  }
+  if (up && !down) { if (p->gsp == 0) p->state = PS_LOOKUP; }
+  else if (down && !up) {
+    p->state = PS_CROUCH;
+    if (p->gsp != 0) { p->curled = 1; p->state = PS_SPIN; play_song(109); }
+  } else if (!up && !down) {
+    if (p->state == PS_CROUCH) p->state = PS_CROUCH_END;
+    else if (p->state == PS_LOOKUP) p->state = PS_LOOKUP_END;
+  }
+}
+
+#define REACH 8
+// wallPush (engine/sensors.js): the scan against the wall he moves into, putting him back out of it, and the push
+// state when it stops him
+static int wall_push(Player *p, int rolling) {
+  if (p->gsp == 0) return 0;
+  int a = (p->rotation + (p->gsp >= 0 ? -0x40 : 0x40)) & 0xFF;
+  p->rotA = p->rotB = (uint8_t)a;
+  int sa = s8(a), up = ((a + 0x20) & 0xFF) >= 0x01 && ((a + 0x20) & 0xFF) <= 0x7F;
+  int q = ((a + (up == (sa <= 0) ? 0x20 : 0x1F)) & 0xFF) >> 6;
+  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y);
+  int d = q == 0 ? scan(1, y + REACH, x, p->layer, 8).d
+        : q == 1 ? scan(0, x - REACH, y, p->layer, -8).d
+        : q == 2 ? scan(1, y - REACH, x, p->layer, -8).d
+        : scan(0, x + REACH, y, p->layer, 8).d;
+  if (d > 0) return 0;
+  switch (((a + 0x20) & 0xC0) >> 6) {
+    case 0: p->y += d; p->ysp = 0; return 0;
+    case 1: p->x -= d; p->xsp = 0; p->gsp = 0; p->pushing |= !rolling; return 1;
+    case 2: p->y -= d; p->ysp = 0; p->air = 1; return 0;
+    default: p->x += d; p->xsp = 0; p->gsp = 0; p->pushing |= !rolling; return 1;
   }
 }
 static void ground_sensors(Player *p) {
@@ -370,6 +410,175 @@ static void move_player(Player *p) {
   if (p->inverted != p->wasInverted) p->ysp = -p->ysp;
   p->y += p->inverted ? -p->ysp : p->ysp;
 }
+
+// --- Sonic in the air (engine/player.js airStep, engine/sensors.js) ------------------------------------------------
+static void bounds(Player *p);
+static void move_player(Player *p);
+static void follow_ground(Player *p);
+#define AIR_ACCEL (16.0 / 256)
+#define GRAVITY (42.0 / 256)
+#define JUMP_SPEED 4.875
+#define JUMP_RELEASE_CAP 3.0
+#define RISE_CAP 11.8125
+#define AIR_DRAG_SHIFT 5
+
+static int s8v(int a) { return (int)(int8_t)a; }
+static int arc_tan(int i) {
+  int a = -((i * i) >> 14), b = ((0xA9 * a) >> 14) + 0x390;
+  b = ((b * a) >> 14) + 0x91C; b = ((b * a) >> 14) + 0xFB6; b = ((b * a) >> 14) + 0x16AA;
+  b = ((b * a) >> 14) + 0x2081; b = ((b * a) >> 14) + 0x3651; b = ((b * a) >> 14) + 0xA2F9;
+  return (i * b) >> 16;
+}
+// the GBA BIOS's ArcTan2, as mGBA reimplements it: x and y are s16, 65536 steps a turn
+static int arc_tan2(int x, int y) {
+  int r;
+  if (!y) r = x >= 0 ? 0 : 0x8000;
+  else if (!x) r = y >= 0 ? 0x4000 : 0xC000;
+  else if (y >= 0) {
+    if (x >= 0 && x >= y) r = arc_tan(y * 16384 / x);
+    else if (x < 0 && -x >= y) r = arc_tan(y * 16384 / x) + 0x8000;
+    else r = 0x4000 - arc_tan(x * 16384 / y);
+  } else {
+    if (x <= 0 && -x > -y) r = arc_tan(y * 16384 / x) + 0x8000;
+    else if (x > 0 && x >= -y) r = arc_tan(y * 16384 / x) + 0x10000;
+    else r = 0xC000 - arc_tan(x * 16384 / y);
+  }
+  return r & 0xFFFF;
+}
+
+typedef struct { int d, rot, out, hasRot; } Pair;
+static Pair pair_of(Scan a, Scan b) {
+  Pair r;
+  if (a.d < b.d) { r.d = a.d; r.rot = a.rot; r.hasRot = a.hasRot; r.out = b.d; }
+  else { r.d = b.d; r.rot = b.rot; r.hasRot = b.hasRot; r.out = a.d; }
+  return r;
+}
+static Pair floor_pair(const Player *p) {
+  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y) + p->offsetY;
+  int m = p->layer | (p->ysp < 0 ? IGNORE_PLATFORMS : 0);
+  return pair_of(scan(1, y, x - REACH, m, 8), scan(1, y, x + REACH, m, 8));
+}
+static Pair ceiling_pair(const Player *p) {
+  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y) - p->offsetY;
+  int m = p->layer | (p->ysp < 3 ? IGNORE_PLATFORMS : 0);
+  return pair_of(scan(1, y, x - REACH, m, -8), scan(1, y, x + REACH, m, -8));
+}
+static Pair left_pair(const Player *p) {
+  int x = (int)__builtin_floor(p->x) - REACH, y = (int)__builtin_floor(p->y);
+  int m = p->layer | (p->ysp < 3 ? IGNORE_PLATFORMS : 0);
+  return pair_of(scan(0, x, y - p->offsetY, m, -8), scan(0, x, y + p->offsetY, m, -8));
+}
+static Pair right_pair(const Player *p) {
+  int x = (int)__builtin_floor(p->x) + REACH, y = (int)__builtin_floor(p->y);
+  int m = p->layer | (p->ysp < 3 ? IGNORE_PLATFORMS : 0);
+  return pair_of(scan(0, x, y - p->offsetY, m, 8), scan(0, x, y + p->offsetY, m, 8));
+}
+static int sensed_rot(Pair p) { return p.hasRot && (p.rot & 1) ? 0 : p.rot; }
+static int clearance(const Player *p, int angle) {
+  int q = ((angle + 0x20) & 0xC0) >> 6;
+  Pair r = q == 0 ? floor_pair(p) : q == 1 ? left_pair(p) : q == 2 ? ceiling_pair(p) : right_pair(p);
+  return r.d;
+}
+static int air_wall(Player *p, int dir) {
+  int m = p->layer | (p->ysp < 3 ? IGNORE_PLATFORMS : 0);
+  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y);
+  Scan s = scan(0, x + dir * (3 + 6), y, m, 8 * dir);
+  if (s.d > 0) return 0;
+  p->x += dir * s.d; p->xsp = 0;
+  return 1;
+}
+static void landing_speed(Player *p, int rot) {
+  int sign = s8v(rot) < 0 ? -1 : 1;
+  if ((rot + 0x20) & 0x40) { p->xsp = 0; if (p->ysp > 11.8125) p->ysp = 11.8125; p->gsp = __builtin_fabs(p->ysp) * sign; }
+  else if (!((rot + 0x10) & 0x20)) { p->ysp = 0; p->gsp = p->xsp; }
+  else { p->ysp = __builtin_floor(p->ysp * 128) / 256; p->gsp = __builtin_fabs(p->ysp) * sign; }
+}
+static void land(Player *p) {
+  p->air = 0; p->pushing = 0; p->state = PS_WALK;
+  if (p->curled) { p->curled = 0; set_offset_y(p, SPRITE_OFFSET_Y); }
+  p->offsetY = SPRITE_OFFSET_Y; p->airLock = 0; p->chain = 0;
+}
+static void upright(Player *p) {
+  int r = s8v(p->rotation);
+  p->rotation = (uint8_t)((r > 0 ? (r > 2 ? r - 2 : 0) : (r < -2 ? r + 2 : 0)) & 0xFF);
+}
+static void air_collision(Player *p) {
+  int vx = (int)js_round(p->xsp * 256), vy = (int)js_round(p->ysp * 256);
+  int a = (vx || vy) ? arc_tan2(s16(vx), s16(vy)) >> 8 : 0;
+  switch (((a - 0x20) & 0xC0) >> 6) {
+    case 0: {
+      air_wall(p, -1); air_wall(p, 1);
+      Pair f = floor_pair(p);
+      if (f.d >= 0 || f.out < -((int)__builtin_floor(p->ysp) + 6)) return;
+      p->rotation = (uint8_t)sensed_rot(f); p->y += f.d;
+      land(p); landing_speed(p, sensed_rot(f));
+      return;
+    }
+    case 2: {
+      air_wall(p, -1); air_wall(p, 1);
+      Pair c = ceiling_pair(p);
+      if (c.d > 0) return;
+      p->y -= c.d;
+      int rot = sensed_rot(c);
+      if (((rot + 0x20) & 0x40) && s8v(rot) > 0x40) { p->rotation = (uint8_t)rot; land(p); p->gsp = __builtin_fabs(p->ysp); return; }
+      p->ysp = 0;
+      return;
+    }
+    default: {
+      int dir = a >= 0x60 && a < 0xA0 ? -1 : 1;
+      if (air_wall(p, dir)) p->gsp = p->ysp;
+      Pair c = ceiling_pair(p);
+      if (c.d <= 0) {
+        p->y -= c.d;
+        if (p->ysp < 0) p->ysp = 0;
+      } else if (p->ysp >= 0) {
+        Pair f = floor_pair(p);
+        if (f.d > 0) return;
+        p->y += f.d; p->rotation = (uint8_t)sensed_rot(f);
+        land(p); p->ysp = 0; p->gsp = p->xsp;
+      }
+    }
+  }
+}
+static void air_control(Player *p, int dir, int turn) {
+  if (p->airLock || !dir) return;
+  if (turn) p->facing = dir;
+  double v = p->xsp + AIR_ACCEL * dir;
+  if (v * dir > MAX_RUN_SPEED) {
+    v -= AIR_ACCEL * dir;
+    if (v * dir < MAX_RUN_SPEED) v = MAX_RUN_SPEED * dir;
+  }
+  p->xsp = v;
+}
+static void air_drag(Player *p) {
+  double drag = __builtin_floor(p->xsp * 256 / 32) / 256;
+  p->xsp = p->xsp > 0 ? (p->xsp - drag > 0 ? p->xsp - drag : 0) : p->xsp < 0 ? (p->xsp - drag < 0 ? p->xsp - drag : 0) : 0;
+}
+static int try_jump(Player *p, int jumpPressed) {
+  if (!jumpPressed || clearance(p, (p->rotation + 0x80) & 0xFF) < 4) return 0;
+  p->air = 1; p->jumped = 1; p->pushing = 0; p->state = PS_SPIN;
+  int a = (p->rotation - 0x40) & 0xFF, jump = q8(JUMP_SPEED);
+  p->xsp = (q8(p->xsp) + ((jump * cos8(a)) >> 8)) / Q8;
+  p->ysp = (q8(p->ysp) + ((jump * sin8(a)) >> 8)) / Q8;
+  if (p->curled) p->airLock = 1;
+  else { p->curled = 1; set_offset_y(p, 9); }
+  play_song(116);
+  return 1;
+}
+static void air_step(Player *p, int dir, int jump, int jumpPressed) {
+  if (p->jumped) {
+    if (p->ysp < -JUMP_RELEASE_CAP) { if (!jump) p->ysp = -JUMP_RELEASE_CAP; }
+    else if (p->midAir == 0 && jumpPressed) { p->airLock = 0; p->midAir = 1; p->state = PS_SPIN; play_song(113); }
+  } else if (!p->forcedRoll && p->ysp < -RISE_CAP) p->ysp = -RISE_CAP;
+  air_control(p, dir, p->state != PS_BOUNCE);
+  if (p->ysp < 0) air_drag(p);
+  bounds(p);
+  move_player(p);
+  p->ysp += GRAVITY;
+  upright(p);
+  air_collision(p);
+}
+
 static void bounds(Player *p) {
   double maxX = act.cam.maxX + SCREEN_W_ - 1.0 / Q8, maxY = act.cam.maxY + SCREEN_H_ - 1.0 / Q8;
   if (!p->dead && (p->inverted ? p->y <= act.cam.minY : p->y >= maxY)) { p->dead = 1; p->ysp = -4.875; p->y = p->inverted ? act.cam.minY : maxY; }
@@ -380,14 +589,16 @@ static void bounds(Player *p) {
 static void step_player(Player *p, int left, int right, int up, int down, int jump, int jumpPressed, int attack, int attackPressed) {
   int sideways = left || right;
   int dir = left && !right ? -1 : right && !left ? 1 : 0;
-  (void)up; (void)down; (void)jump; (void)jumpPressed; (void)attack; (void)attackPressed;
+  (void)attack; (void)attackPressed;
   if (p->dead) return;
-  if (!p->air) {
-    slope(p);
-    walk_input(p, dir, sideways);
-    if (!sideways) p->gsp = toward0(q8(p->gsp), q8(FRICTION)) / Q8;
-    along_surface(p);
-  }
+  if (p->air) { air_step(p, dir, jump, jumpPressed); return; }
+  if (try_jump(p, jumpPressed)) return;
+  slope(p);
+  walk_input(p, dir, sideways);
+  look_input(p, up && !sideways, down && !sideways);
+  if (!sideways) p->gsp = toward0(q8(p->gsp), q8(FRICTION)) / Q8;
+  along_surface(p);
+  wall_push(p, 0);
   bounds(p);
   move_player(p);
   follow_ground(p);
@@ -397,7 +608,11 @@ static void step_player(Player *p, int left, int right, int up, int down, int ju
 static void choose_animation(Player *p) {
   int speed = (int)__builtin_fabs(p->gsp);
   int anim = SONIC_IDLE, variant = 0, speedAnim = ANIM_NORMAL;
-  if (p->state == PS_WALK) {
+  if (p->pushing) anim = SONIC_PUSH;
+  else if (p->state == PS_CROUCH || p->state == PS_CROUCH_END) anim = 3;
+  else if (p->state == PS_LOOKUP || p->state == PS_LOOKUP_END) anim = 2;
+  else if (p->state == PS_SPIN) anim = 8;
+  else if (p->state == PS_WALK) {
     if (speed >= RUN_ANIM_SPEED) { anim = SONIC_RUN; variant = 0; }
     else {
       anim = SONIC_WALK; variant = 0;
@@ -536,6 +751,8 @@ static void draw_frame(void) {
       put16(e.primary + (uint32_t)line * 4 + 2, 0);
     }
     e.bgScroll[6] = 0; e.bgScroll[7] = 0;
+    // the rings, behind the objects and Sonic
+    rings_draw(camX, camY);
   }
 
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
@@ -547,7 +764,9 @@ static void draw_frame(void) {
   if (act.player.state == PS_WALK) {
     sonic.frameFlags |= SPRITE_ROT_SCALE_ENABLE;
     Transform tf;
-    tf.rotation = 0; tf.qScaleX = (int16_t)(right ? -256 : 256); tf.qScaleY = 256;
+    // his ground angle, through the rotation hardware (drawSonic: drawRotation = rotation << 2)
+    tf.rotation = (uint16_t)((act.player.rotation << 2) & 1023);
+    tf.qScaleX = (int16_t)(right ? -256 : 256); tf.qScaleY = 256;
     tf.x = (int16_t)(sx - (right ? 1 : 0)); tf.y = (int16_t)sy;
     transform_sprite(&sonic, &tf);
   } else {
@@ -565,6 +784,8 @@ static void act_frame(void) {
   animate_stage_tiles();
   act.cam.bgUpdates++;
   palettes_run();
+  // the ring manager runs after the camera and before the objects and Sonic
+  rings_update((int)__builtin_floor(act.player.x), (int)__builtin_floor(act.player.y), act.player.offsetY);
   int left = (e.input & KEY_LEFT) != 0, right = (e.input & KEY_RIGHT) != 0;
   int up = (e.input & KEY_UP) != 0, down = (e.input & KEY_DOWN) != 0;
   int jump = (e.input & KEY_A) != 0, attack = (e.input & KEY_B) != 0;
@@ -630,6 +851,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   copyCount = 0;
   load_stage(level);
   animFrame = 0; animDelayCount = 0;
+  rings_init(level);
   palettes_init();
   create_player(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);

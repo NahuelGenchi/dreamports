@@ -31,7 +31,7 @@ typedef struct {
 
 typedef struct {
   double x, y, gsp, xsp, ysp;
-  int facing, state, air, curled, pushing, jumped, airLock, spinDashing;
+  int facing, state, air, curled, pushing, jumped, airLock, spinDashing, midAir, chain, forcedRoll;
   uint8_t rotation, rotA, rotB;
   int layer, offsetY, idleT;
   int anim, variant, animSpeed;
@@ -81,6 +81,10 @@ extern Act act;
 extern int act_active;
 extern int actHudFlash;   // 1 from the character select, -1 for the stage's own (a course select or start point)
 
+void rings_init(int level);
+void rings_reset(void);
+void rings_update(int px, int py, int oy);
+void rings_draw(int cx, int cy);
 void card_create(int level, int character, int fromResults, int blank);
 int card_run(int pressed);
 void card_draw(void);
