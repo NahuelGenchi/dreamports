@@ -143,9 +143,14 @@ static Scan scan(int floor, int p0, int p1, int layer, int step) {
 }
 
 // --- the stage (rom/extract.js extractStage, engine/stage.js) -----------------------------------------------------
+// The copies stay in memory until the V-blank takes them: the queue keeps the pointers, not copies (engine.c).
+static Graphics copies[8];
+static int copyCount;
 static void copy_rom(uint32_t src, uint32_t dest, uint32_t size) {
-  Graphics g = { src, dest, size & 0xFFFF, 0, NULL };
-  queue_graphics(&g);
+  if (copyCount >= 8) return;
+  Graphics *g = &copies[copyCount++];
+  g->src = src; g->dest = dest; g->size = size & 0xFFFF; g->anim = 0; g->ram = NULL;
+  queue_graphics(g);
 }
 static void load_stage(int level) {
   Stage *s = &act.stage;
@@ -163,11 +168,15 @@ static void load_stage(int level) {
   copy_rom(s->front.tiles, 0, s->front.tilesSize);
   for (int i = 0; i < 256; i++) e.bgPalette[i] = (uint16_t)rom_u16(s->front.palette + i * 2);
   e.flags |= FLAGS_UPDATE_BG_PALETTES;
-  // the background's tiles at the second character block, and its 37 × 23 map at 0xE000 (InitCamera)
+  // the background's tiles at the second character block, and its 37 × 23 map at 0xE000: a 512-wide text layer
+  // is two 32-tile blocks, so columns 32–36 go to the block at 0xE800 (DrawBackground, copy_backgrounds)
   copy_rom(s->background.tiles, 0x8000, s->background.tilesSize);
-  for (int i = 0; i < s->background.xTiles * s->background.yTiles; i++) {
-    uint16_t entry = (uint16_t)rom_u16(s->background.map + i * 2);
-    gba_vram[0xE000 + i * 2] = (uint8_t)entry; gba_vram[0xE000 + i * 2 + 1] = (uint8_t)(entry >> 8);
+  for (int row = 0; row < s->background.yTiles; row++) {
+    for (int col = 0; col < s->background.xTiles; col++) {
+      uint16_t entry = (uint16_t)rom_u16(s->background.map + (row * s->background.xTiles + col) * 2);
+      uint32_t at = (col < 32 ? 0xE000 + (uint32_t)col * 2u : 0xE800 + (uint32_t)(col - 32) * 2u) + (uint32_t)row * 64u;
+      gba_vram[at] = (uint8_t)entry; gba_vram[at + 1] = (uint8_t)(entry >> 8);
+    }
   }
   // InitCamera's registers: BG1 the front layer, BG2 the back one, BG3 the background, all 16 colours
   e.dispCnt = 0x304E;           // OBJ on, window 0 on, BG1, BG2 and BG3 on, 1D OAM
@@ -182,7 +191,7 @@ static uint16_t stage_entry(int layer, int tx, int ty) {
   int mx = fdiv(tx, 12), my = fdiv(ty, 12), lx = tx - mx * 12, ly = ty - my * 12;
   if (mx < 0 || my < 0 || mx >= c->levelX || my >= c->levelY) return 0;
   uint32_t id = rom_u8(c->layers[layer & 1] + my * c->levelX + mx);
-  return (uint16_t)rom_u16(c->metatiles + (id * 144u + (uint32_t)ly * 12u + (uint32_t)lx) * 2u);
+  return (uint16_t)rom_u16(act.stage.front.map + (id * 144u + (uint32_t)ly * 12u + (uint32_t)lx) * 2u);
 }
 static void fill_layer(uint32_t dest, int layer, int camX, int camY) {
   int tx0 = camX >> 3, ty0 = camY >> 3;
@@ -428,18 +437,25 @@ static void card_update(int pressed) {
 // --- the frame (engine/game.js) ----------------------------------------------------------------------------------
 static void draw_frame(void) {
   int camX = (int)act.cam.x, camY = (int)act.cam.y;
+  // the act has no blend, and its first frames keep the course select's display, as the original does
+  e.bldCnt = 0; e.bldAlpha = 0x0010; e.bldY = 0;
+  e.dispCnt = 0x1E40;
+  e.winRegs[0] = e.winRegs[1] = 0x00F0; e.winRegs[2] = e.winRegs[3] = 0x00A0;
+  act.drawn++;
   // RenderMetatileLayers: BG1 and BG2 scroll by the camera's sub-tile part, their maps filled from the metatiles
   e.bgScroll[2] = (uint16_t)(camX & 7); e.bgScroll[3] = (uint16_t)(camY & 7);
   e.bgScroll[4] = (uint16_t)(camX & 7); e.bgScroll[5] = (uint16_t)(camY & 7);
   fill_layer(0xF000, LAYER_FRONT, camX, camY);
   fill_layer(0xF800, LAYER_BACK, camX, camY);
-  // StageBgUpdate_Zone7Act1: the 37 × 23 background scrolls as a whole
+  // StageBgUpdate_Zone7Act1: the 37 × 23 background scrolls as a whole. Its first frame keeps the course
+  // select's scroll, which the original shows before the act's own update lands.
   int bgX = (int)(((double)camX * 56.0) / (act.stage.width - SCREEN_W_));
   int bgY = (int)(((double)camY * 24.0) / (act.stage.height - SCREEN_H_));
   e.bgScroll[6] = (uint16_t)bgX; e.bgScroll[7] = (uint16_t)bgY;
 
-  // Sonic's sprite, at OAM order 16: the walk goes through the rotation hardware, as the original draws it
+  // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
   int right = act.player.facing > 0;
+  int sx = js_round(act.player.x) - camX, sy = js_round(act.player.y) - camY;
   sonic.oamFlags = ORDER_SONIC << 6;
   sonic.palId = 0;
   sonic.frameFlags = (uint16_t)((sonic.frameFlags & ~(SPRITE_PRIORITY | SPRITE_X_FLIP | SPRITE_Y_FLIP | SPRITE_ROT_SCALE | SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE)) | (2 << 12));
@@ -447,15 +463,14 @@ static void draw_frame(void) {
     sonic.frameFlags |= SPRITE_ROT_SCALE_ENABLE;
     Transform tf;
     tf.rotation = 0; tf.qScaleX = (int16_t)(right ? -256 : 256); tf.qScaleY = 256;
-    tf.x = (int16_t)(js_round(act.player.x) - (right ? 1 : 0)); tf.y = (int16_t)js_round(act.player.y);
+    tf.x = (int16_t)(sx - (right ? 1 : 0)); tf.y = (int16_t)sy;
     transform_sprite(&sonic, &tf);
   } else {
     if (act.player.facing > 0) sonic.frameFlags |= SPRITE_X_FLIP;
-    sonic.x = (int16_t)(js_round(act.player.x) + (act.player.facing < 0 ? 1 : 0));
-    sonic.y = (int16_t)js_round(act.player.y);
+    sonic.x = (int16_t)(sx + (act.player.facing < 0 ? 1 : 0));
+    sonic.y = (int16_t)sy;
   }
   display_sprite(&sonic);
-  hud_update(1);
 }
 
 static void act_frame(void) {
@@ -467,7 +482,8 @@ static void act_frame(void) {
   int jumpPressed = (e.pressed & KEY_A) != 0, attackPressed = (e.pressed & KEY_B) != 0;
   // the start point's first frame reads the right and A the original has held there, never pressed
   if (act.firstFrame) { left = 0; right = 1; jump = 1; attack = 0; jumpPressed = 0; attackPressed = 0; act.firstFrame = 0; }
-  if (act.cardDone) hud_update(0);
+  // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180)
+  if (act.cardDone) hud_update(1);
   step_player(&act.player, left, right, up, down, jump, jumpPressed, attack, attackPressed);
   animate_player(&act.player);
   if (!act.clockStopped) act.courseTime++;
@@ -514,14 +530,18 @@ static void pre_run(int cardSkip, int preFrames) {
 
 void act_start(int level, int cardSkip, int preFrames) {
   memset(&act, 0, sizeof act);
+  copyCount = 0;
   load_stage(level);
   create_player(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);
   act.lives = 3; act.score = 0; act.ringCount = 0;
   act.clockStopped = 1; act.firstCard = 1; act.cardFrame = 0;
   act.hud.active = 0; act.hud.flash = 1;
-  act.started = 0;
+  act.started = 0; act.drawn = 0;
   act.firstFrame = (int)gba_start_number("first", 0);
+  e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
+  e.winRegs[0] = e.winRegs[1] = e.winRegs[2] = e.winRegs[3] = 0;
+  e.winRegs[4] = 0x3F3F; e.winRegs[5] = 0x1F;
 
   // Sonic's sprite: the player's tiles, colours and animation, at its own OAM order
   sprite_init(&sonic);
