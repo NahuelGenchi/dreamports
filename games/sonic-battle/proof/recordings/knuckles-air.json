@@ -1,0 +1,194 @@
+{
+  "about": "Knuckles's air moves, from the same start point as the fight's opening, with Knuckles as the player: Training with its first choices, the opening's three presses of A, Knuckles running up to the other fighter, a jump, his air attack, and his air special as he comes down.",
+  "start": "fight=training&vblanks=1209&character=2",
+  "frames": 800,
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      70,
+      [
+        "A"
+      ]
+    ],
+    [
+      72,
+      []
+    ],
+    [
+      100,
+      [
+        "A"
+      ]
+    ],
+    [
+      102,
+      []
+    ],
+    [
+      130,
+      [
+        "A"
+      ]
+    ],
+    [
+      132,
+      []
+    ],
+    [
+      400,
+      [
+        "RIGHT",
+        "DOWN"
+      ]
+    ],
+    [
+      426,
+      []
+    ],
+    [
+      450,
+      [
+        "A"
+      ]
+    ],
+    [
+      452,
+      []
+    ],
+    [
+      454,
+      [
+        "RIGHT",
+        "DOWN"
+      ]
+    ],
+    [
+      466,
+      []
+    ],
+    [
+      480,
+      [
+        "B"
+      ]
+    ],
+    [
+      482,
+      []
+    ],
+    [
+      560,
+      []
+    ],
+    [
+      600,
+      [
+        "A"
+      ]
+    ],
+    [
+      602,
+      []
+    ],
+    [
+      610,
+      [
+        "R"
+      ]
+    ],
+    [
+      612,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 1254,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          747,
+          [
+            "START"
+          ]
+        ],
+        [
+          748,
+          []
+        ],
+        [
+          881,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          882,
+          []
+        ],
+        [
+          921,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          922,
+          []
+        ],
+        [
+          961,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          962,
+          []
+        ],
+        [
+          1001,
+          [
+            "A"
+          ]
+        ],
+        [
+          1002,
+          []
+        ],
+        [
+          1201,
+          [
+            "START"
+          ]
+        ],
+        [
+          1202,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 778,
+          "address": "03002170",
+          "bytes": 2,
+          "value": 1
+        },
+        {
+          "frame": 1253,
+          "address": "03001634",
+          "bytes": 1,
+          "value": 2
+        }
+      ],
+      "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, and Start on its first choices, with Knuckles as the player."
+    }
+  ]
+}

@@ -1416,7 +1416,9 @@ const THING_SCRIPTS = new Map([
   [3, 0x0806B514], [4, 0x0806B54C], [5, 0x0806B594], [8, 0x0806B630], [10, 0x0806B6B4], [11, 0x0806B7B0],
   [12, 0x0806B8CC], [13, 0x0806B940], [14, 0x0806B804], [15, 0x0806B9D4], [16, 0x0806BB08], [31, 0x0806BB08],
   [32, 0x0806BBA0], [34, 0x0806BBF4], [35, 0x0806BC54], [40, 0x0806C6EC], [37, 0x0806C07C], [38, 0x0806C1AC], [39, 0x0806C448],
-  [43, 0x0806C60C], [44, 0x0806C67C], [45, 0x0806C8F4], [41, 0x0806C790], [46, 0x0806C944], [158, 0x0806E520], [160, 0x0806E5F0],
+  [43, 0x0806C60C], [44, 0x0806C67C], [45, 0x0806C8F4], [41, 0x0806C790], [46, 0x0806C944], [73, 0x0806CE18],
+  [75, 0x0806CE98],
+  [77, 0x0806CFBC], [79, 0x0806D29C], [80, 0x0806D2EC], [81, 0x0806D378], [158, 0x0806E520], [160, 0x0806E5F0],
 ]);
 const THING_MARK = 0xFFF00000;
 // the fields a script's words set, by the word's first half
@@ -1538,13 +1540,14 @@ function runThingScript(c, k, script) {
 const THING_HITS = new Map([
   [38, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [41, [0x280, 4, 20, 2, 0x3C0, 0, 0, 22]], [43, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
   [39, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [44, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
+  [79, [0x180, 12, 30, 3, 0x380, 0, 0, 255]],
 ]);
 // the kinds 0x0800eaec has hits for that aren't ported yet
-const THING_HITS_LATER = new Set([54, 57, 62, 63, 78, 79, 82, 94, 97, 102, 117, 122, 137, 138, 142, 154, 158, 160,
+const THING_HITS_LATER = new Set([54, 57, 62, 63, 78, 82, 94, 97, 102, 117, 122, 137, 138, 142, 154, 158, 160,
   165, 166, 174, 175, 177, 178, 179, 185, 191, 194, 197, 201, 241, 245]);
 
 // the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet
-const THING_STEPS_LATER = new Set([39, 61, 79, 101, 121, 141]);
+const THING_STEPS_LATER = new Set([39, 61, 101, 121, 141]);
 
 /**
  * 0x0800d818: a kind 40 mine feels the first fighter that comes near it, other than its owner, and tells its owner,
@@ -1674,9 +1677,9 @@ function updateThings(c) {
       write16(c, thing + 62, read16(c, thing + 62) + read16(c, thing + 12));
     }
     // 0x0800cec8's per-kind steps: walls and the arena's edges push a thing back, and it falls until its floor
-    // (0x0800d260, the same for kinds 35, 38, 39 and 40): a wall it is inside pushes it out unless it is above the
+    // (0x0800d260, the same for kinds 35, 38, 39, 40, 79, 80 and 81): a wall it is inside pushes it out unless it is above the
     // wall's top, where it stands on it instead, and the arena's edges push it back in
-    if (kind === 35 || kind === 38 || kind === 39 || kind === 40) {
+    if (kind === 35 || kind === 38 || kind === 39 || kind === 40 || kind === 79 || kind === 80 || kind === 81) {
       const met = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
       write8(c, thing + 16, met.bits);
       if (met.bits & 0xF) {
