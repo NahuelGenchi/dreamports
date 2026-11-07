@@ -5,6 +5,7 @@
 // run before Sonic, so they test where he was at the end of the last frame.
 
 #include "act.h"
+#include "actenemies.h"
 
 #define OBJ_REGION 256
 #define OBJ_GRID_MAX 0x8000
@@ -77,6 +78,7 @@ typedef struct {
   uint32_t slotBase;
   uint32_t debrisBase;
   int vramAllocated;
+  int prevX, prevY, hasPrev; // the camera the last scan saw (the entities manager's strip scan)
   void *standingOn;          // the object Sonic stands on (p.onObject)
   int hurtFrame;
   int shield, invincible, speedUp;
@@ -103,6 +105,15 @@ static int obj_overlap(int x0, int y0, ObjBox a, int x1, int y1, ObjBox b) {
   int al = x0 + a.l, ar = x0 + a.r, at = y0 + a.t, ab = y0 + a.b;
   int bl = x1 + b.l, br = x1 + b.r, bt = y1 + b.t, bb = y1 + b.b;
   return al <= br && ar >= bl && at <= bb && ab >= bt;
+}
+
+// HB_COLLISION (rect.h): the boxes touch when an edge of either lies within the other. The original's tests use
+// this, not a full overlap, and a break can come a frame earlier because of it.
+static int obj_hb_touch(int x0, int y0, ObjBox a, int x1, int y1, ObjBox b) {
+  int al = x0 + a.l, ar = x0 + a.r, at = y0 + a.t, ab = y0 + a.b;
+  int bl = x1 + b.l, br = x1 + b.r, bt = y1 + b.t, bb = y1 + b.b;
+  return ((al <= bl && ar >= bl) || (al >= bl && br >= al))
+    && ((at <= bt && ab >= bt) || (at >= bt && bb >= at));
 }
 
 // Sonic's body and the wider, shorter box that finds the objects beside him (engine/collide.js)
@@ -426,14 +437,21 @@ static int obj_spring_side(ObjLive *l, ObjBox hb, int *flags) {
   return *flags;
 }
 
-// sub_800C394: curled up and falling onto it, its side probe touching the box, breaks it
+// sub_800C394: curled up and falling onto it, its side probe touching the box, or his attack box while he isn't
+// curled, breaks it
 static int obj_breaks(ObjLive *l, int ox, int oy, ObjBox hb) {
   Player *p = &act.player;
   if (p->dead) return 0;
   ObjBox probe = obj_box_of(-11, -(p->offsetY + 1), 11, p->offsetY + 1);
   int px = obj_floor(p->x), py = obj_floor(p->y);
-  if (p->curled && p->ysp > 0 && obj_overlap(ox, oy, hb, px, py, probe)) {
+  if (p->curled && p->ysp > 0 && obj_hb_touch(ox, oy, hb, px, py, probe)) {
     p->ysp = -p->ysp;
+    return 1;
+  }
+  int al, at, ar, ab;
+  if (!p->curled && act_player_attack_box(&al, &at, &ar, &ab)
+    && obj_hb_touch(ox, oy, hb, px, py, obj_box_of(al, at, ar, ab))) {
+    if (p->ysp > 0) p->ysp = -p->ysp;
     return 1;
   }
   return 0;
@@ -705,10 +723,19 @@ static int obj_update_spring(ObjLive *l, ObjEntity *ent) {
       if (flags & OBJ_HIT_PUSH) { p->pushing = 1; p->xsp = p->gsp = 0; obj_stand_up(p); }
     }
   } else if (has) {
-    // diagonal (Task_Spring_Diagonal): its second box triggers once his centre is more than 20 px out its way
+    // diagonal (Task_Spring_Diagonal): its second hitbox is the trigger, once his centre is more than 20 px out
+    // on the side it points to; otherwise it is solid
     int upLeft = kind == 12 || kind == 14;
     int px = obj_floor(p->x);
-    int trigger = upLeft ? px < ent->x - 20 : px > ent->x + 20;
+    ObjBox probe = obj_box_of(-12, -(p->offsetY + 1), 12, p->offsetY + 1);
+    ObjBox triggerBox;
+    int touched = 0;
+    if (l->hasSprite && l->sprite.hitboxes[1].index >= 0) {
+      triggerBox = obj_box_of(l->sprite.hitboxes[1].left, l->sprite.hitboxes[1].top,
+        l->sprite.hitboxes[1].right, l->sprite.hitboxes[1].bottom);
+      touched = obj_overlap(ent->x, ent->y, triggerBox, px, obj_floor(p->y), probe);
+    }
+    int trigger = touched && (upLeft ? px < ent->x - 20 : px > ent->x + 20);
     if (!trigger) {
       int flags;
       obj_platform(l, ent->x, ent->y, hb, &flags);
@@ -792,7 +819,7 @@ static void obj_spawn_debris(ObjLive *l, ObjEntity *ent, int camX, int camY) {
     d->sprite.variant = 0;
     d->sprite.animSpeed = 0x10;
     d->sprite.oamFlags = 8 << 6;
-    d->sprite.frameFlags = SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE | 1;   // matrix 1, double size, BG priority 0
+    d->sprite.frameFlags = SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE | (uint32_t)(4 + i);   // matrices 4–7, as the original
     if (objects.debrisBase == HEAP_END) d->sprite.frameFlags |= SPRITE_KEEP_TILES | SPRITE_KEEP_PALETTE;
     update_sprite(&d->sprite, 0);
   }
@@ -805,6 +832,7 @@ static int obj_update_boulder(ObjLive *l, ObjEntity *ent, int camX, int camY) {
     if (obj_breaks(l, ent->x, ent->y, hb)) {
       if (objects.standingOn == l) { objects.standingOn = NULL; p->air = 1; }
       play_song(167);
+      en_add_dust(ent->x, ent->y);
       obj_spawn_debris(l, ent, camX, camY);
       ent->gone = 1;
       return 0;
@@ -1036,6 +1064,7 @@ static int obj_update_bounce_block(ObjLive *l, ObjEntity *ent) {
 static void obj_break_box(ObjLive *l, ObjEntity *ent) {
   Player *p = &act.player;
   play_song(167);
+  en_add_dust(ent->x, ent->y + l->dy);
   if (objects.standingOn == l) { objects.standingOn = NULL; p->air = 1; p->pushing = 0; }
   if (p->air && p->ysp > 0) p->ysp = -p->ysp;
   l->phase = 1;
@@ -1339,6 +1368,20 @@ static void obj_update_debris(void) {
 }
 
 // --- the frame's objects ------------------------------------------------------------------------------------------
+// SpawnMapEntities' scan: the entities in the rectangle, region by region, each region's interactables then its
+// item boxes
+static void obj_scan(int x0, int x1, int y0, int y1) {
+  if (objects.width <= 0 || objects.height <= 0) return;
+  x0 = obj_clamp(x0, 0, objects.width - 1); x1 = obj_clamp(x1, 0, objects.width - 1);
+  y0 = obj_clamp(y0, 0, objects.height - 1); y1 = obj_clamp(y1, 0, objects.height - 1);
+  for (int r = 0; r < objects.regionsX * objects.regionsY; r++) {
+    for (int i = objects.intStart[r]; i < objects.intStart[r] + objects.intN[r]; i++)
+      obj_spawn(OBJ_ENTITY_INTERACTABLE, i, x0, x1, y0, y1);
+    for (int i = objects.boxStart[r]; i < objects.boxStart[r] + objects.boxN[r]; i++)
+      obj_spawn(OBJ_ENTITY_ITEMBOX, i, x0, x1, y0, y1);
+  }
+}
+
 void objects_update(int camX, int camY) {
   objects.hurtFrame = 0;
   if (!objects.loaded) return;
@@ -1348,18 +1391,19 @@ void objects_update(int camX, int camY) {
   if (p->invulnerable > 0) p->invulnerable--;
   p->hidden = p->invulnerable > 0 && (act.tick & 3) < 2;
 
-  // SpawnMapEntities: the regions whose spawn points are in the range around the camera, in the list's order,
-  // with each region's interactables and then its item boxes
-  if (objects.width > 0 && objects.height > 0) {
-    int x0 = obj_clamp(camX - 128, 0, objects.width - 1), x1 = obj_clamp(camX + 368, 0, objects.width - 1);
-    int y0 = obj_clamp(camY - 128, 0, objects.height - 1), y1 = obj_clamp(camY + 288, 0, objects.height - 1);
-    for (int r = 0; r < objects.regionsX * objects.regionsY; r++) {
-      for (int i = objects.intStart[r]; i < objects.intStart[r] + objects.intN[r]; i++)
-        obj_spawn(OBJ_ENTITY_INTERACTABLE, i, x0, x1, y0, y1);
-      for (int i = objects.boxStart[r]; i < objects.boxStart[r] + objects.boxN[r]; i++)
-        obj_spawn(OBJ_ENTITY_ITEMBOX, i, x0, x1, y0, y1);
-    }
+  // SpawnMapEntities: the first frame, and a jump of more than 248 px across or 208 down, scan everything in
+  // range; otherwise only the strips the camera has just uncovered, so an object that left isn't made again
+  // while its place stays in view
+  int x0 = camX - 128, x1 = camX + 368, y0 = camY - 128, y1 = camY + 288;
+  if (!objects.hasPrev || camX - objects.prevX > 248 || objects.prevX - camX > 248 || camY - objects.prevY > 208 || objects.prevY - camY > 208) {
+    obj_scan(x0, x1, y0, y1);
+  } else {
+    if (camX > objects.prevX) obj_scan(objects.prevX + 368, camX + 368, y0, y1);
+    else if (camX < objects.prevX) obj_scan(camX - 128, objects.prevX - 128, y0, y1);
+    if (camY > objects.prevY) obj_scan(x0, x1, objects.prevY + 288, camY + 288);
+    else if (camY < objects.prevY) obj_scan(x0, x1, camY - 128, objects.prevY - 128);
   }
+  objects.prevX = camX; objects.prevY = camY; objects.hasPrev = 1;
 
   // the objects' tasks: the thin platform runs at 0x2010, after the other objects
   for (int pass = 0; pass < 2; pass++) {
@@ -1392,8 +1436,8 @@ static void obj_draw_debris(int camX, int camY) {
     tf.qScaleX = (int16_t)d->scale;
     tf.qScaleY = (int16_t)d->scale;
     tf.x = (int16_t)x; tf.y = (int16_t)y;
-    d->sprite.frameFlags = (d->sprite.frameFlags & ~(SPRITE_ROT_SCALE | SPRITE_X_FLIP | SPRITE_Y_FLIP))
-      | 1 | SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE;
+    d->sprite.frameFlags = (d->sprite.frameFlags & ~(SPRITE_X_FLIP | SPRITE_Y_FLIP))
+      | (uint32_t)(4 + i) | SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE;
     transform_sprite(&d->sprite, &tf);
     display_sprite(&d->sprite);
   }
@@ -1451,6 +1495,7 @@ void objects_reset(void) {
   for (int i = 0; i < OBJ_DEBRIS_COUNT; i++) debris[i].active = 0;
   objects.standingOn = NULL;
   objects.hurtFrame = 0;
+  objects.hasPrev = 0;
   objects.shield = 0; objects.invincible = 0; objects.speedUp = 0;
   objects.halfPipe = 0; objects.halfPipeFeet = 0; objects.grinding = 0; objects.goalReached = 0;
   act.player.invulnerable = 0;
@@ -1495,12 +1540,15 @@ void objects_init(int level) {
     objects.itemBoxCount = 0;
   }
 
-  if (!objects.vramAllocated) {
-    objects.slotBase = vram_malloc(OBJ_SLOT_COUNT * OBJ_SLOT_TILES);
-    objects.debrisBase = vram_malloc(OBJ_DEBRIS_COUNT * OBJ_DEBRIS_TILES);
-    objects.vramAllocated = 1;
-  }
   objects.loaded = 1;
+}
+
+/** The objects' graphics, taken once the title card has given its tiles back, as the original's first spawn does. */
+void objects_alloc_vram(void) {
+  if (objects.vramAllocated) return;
+  objects.slotBase = vram_malloc(OBJ_SLOT_COUNT * OBJ_SLOT_TILES);
+  objects.debrisBase = vram_malloc(OBJ_DEBRIS_COUNT * OBJ_DEBRIS_TILES);
+  objects.vramAllocated = 1;
 }
 
 int objects_player_hit(void) { return objects.hurtFrame; }

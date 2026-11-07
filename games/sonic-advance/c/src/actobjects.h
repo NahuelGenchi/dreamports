@@ -8,6 +8,9 @@
 // The entities manager: reads `level`'s interactable and item box grids, and spawns the objects whose spawn
 // point is in the range around the camera, in the original's order.
 void objects_init(int level);
+// The objects' graphics, taken once the title card has given its tiles back (LoadStageIntroGraphics' heap as the
+// original has it when the first object spawns).
+void objects_alloc_vram(void);
 // Puts every object back as the act starts over, keeping the checkpoint that was passed.
 void objects_reset(void);
 // Spawns what the camera now covers, and runs every live object once. It sees Sonic where he was at the end of

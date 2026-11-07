@@ -58,8 +58,9 @@ static void card_load_tiles(void) {
   UiSlot layout;
   int perGlyph, size, shape, wide, high;
   // LoadStageIntroGraphics puts the card's tiles right after the player's sprites, at tile 400: the zigzag's two
-  // glyphs, then the act number, the bar, the Japanese name, the character's name and the zone's name
-  uint32_t base = vram_malloc(196);
+  // glyphs, then the act number, the bar, the Japanese name, the character's name and the zone's name. The six
+  // pieces take 132 tiles (32 + 12 + 16 + 16 + 56), and the card frees them all when it ends (TaskDestructor_8055C38).
+  uint32_t base = vram_malloc(132);
 
   // zigzag: the zone's band, two 32 × 32 glyphs
   ui_entry(ZIGZAG + act.card.character, &tiles, &palette, &layout); slot_from(&layout, &perGlyph, &size, &shape, &wide, &high);

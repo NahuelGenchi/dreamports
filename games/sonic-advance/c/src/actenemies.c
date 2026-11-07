@@ -81,6 +81,7 @@ typedef struct {
 
 static Enemy en_list[ENEMY_MAX];
 static int en_count;
+static int en_prevX, en_prevY, en_hasPrev;   // the camera the last strip scan saw
 static Effect en_effects[EFFECT_MAX];
 static uint8_t en_rl[ENEMY_RL_MAX];
 static int en_hit, en_attack_hit;
@@ -106,9 +107,6 @@ static int en_off_cam(int sx, int sy) {
 }
 static int en_gone(const Enemy *e, int x, int y, int camX, int camY) {
   return en_off_display(e->spawnX, e->spawnY, camX, camY) && en_off_cam(x - camX, y - camY);
-}
-static int en_in_range(int x, int y, int camX, int camY) {
-  return !en_off_display(x, y, camX, camY);
 }
 
 // --- the tiles an animation loads (the GetTiles command) ---------------------------------------------------------
@@ -273,7 +271,7 @@ static int en_box_on(const Hitbox *hb) {
 }
 static int en_box_touch(int x, int y, const Hitbox *hb, int l, int t, int r, int b) {
   int l0 = x + hb->left, r0 = x + hb->right, t0 = y + hb->top, b0 = y + hb->bottom;
-  return ((l0 <= l && r0 >= l) || (l0 >= l && r <= l0)) && ((t0 <= t && b0 >= t) || (t0 >= t && b <= t0));
+  return ((l0 <= l && r0 >= l) || (l0 >= l && r >= l0)) && ((t0 <= t && b0 >= t) || (t0 >= t && b >= t0));
 }
 
 static int en_player_attacking(void) {
@@ -288,7 +286,7 @@ static void en_player_box(int *l, int *t, int *r, int *b) {
 }
 
 static void en_effect_free(Effect *f);
-static void en_add_dust(int x, int y);
+void en_add_dust(int x, int y);
 static void en_add_animal(int x, int y);
 static void en_add_score(int x, int y, int chain);
 
@@ -298,14 +296,16 @@ static int en_attack_test(Enemy *e, int x, int y) {
   Hitbox *hb = &e->s.hitboxes[0];
   if (!en_box_on(hb) || act.player.dead) return 0;
   int l, t, r, b;
-  en_player_box(&l, &t, &r, &b);
   if (en_player_attacking()) {
+    // Coll_Player_Enemy_Attack reads the sprite's attack box (slot 1), not the body
+    if (!act_player_attack_box(&l, &t, &r, &b)) return 0;
     if (!en_box_touch(x, y, hb, l, t, r, b)) return 0;
     en_attack_hit = 1;
-  } else if (en_box_touch(x, y, hb, l, t, r, b)) {
-    if (act.player.invulnerable <= 0) { en_hit = 1; return 0; }
   } else {
-    return 0;
+    en_player_box(&l, &t, &r, &b);
+    if (!en_box_touch(x, y, hb, l, t, r, b)) return 0;
+    // his body is hurt, unless he is invincible, which destroys the enemy instead
+    if (act.player.invulnerable <= 0) { en_hit = 1; return 0; }
   }
   e->live = 0;
   e->gone = 1;
@@ -424,7 +424,7 @@ static void en_add_gami_shot(int x4, int dx, int y) {
 }
 
 // CreateDustCloud: it runs its animation once and stays where it appeared
-static void en_add_dust(int x, int y) {
+void en_add_dust(int x, int y) {
   Effect *f = en_effect_new(EFFECT_DUST);
   if (!f) return;
   f->x = x;
@@ -831,8 +831,17 @@ void enemies_reset(void) {
   en_chain = 0;
   en_animal = 0;
   en_was_air = 0;
+  en_hasPrev = 0;
   en_hit = 0;
   en_attack_hit = 0;
+}
+
+// the enemies in the rectangle, as SpawnMapEntities scans their region's enemies after its item boxes
+static void en_scan(int x0, int x1, int y0, int y1) {
+  for (int i = 0; i < en_count; i++) {
+    Enemy *e = &en_list[i];
+    if (!e->live && !e->gone && e->spawnX >= x0 && e->spawnX <= x1 && e->spawnY >= y0 && e->spawnY <= y1) en_spawn(e);
+  }
 }
 
 void enemies_update(int camX, int camY) {
@@ -841,11 +850,18 @@ void enemies_update(int camX, int camY) {
   // p.chain clears on landing (player.js land), which the points count from
   if (en_was_air && !act.player.air) en_chain = 0;
   en_was_air = act.player.air;
-  // spawn the ones the camera's range now holds
-  for (int i = 0; i < en_count; i++) {
-    Enemy *e = &en_list[i];
-    if (!e->live && !e->gone && en_in_range(e->spawnX, e->spawnY, camX, camY)) en_spawn(e);
+  // the same strip scan as the objects: everything in range on the first frame or after a jump, else only what
+  // the camera has just uncovered
+  int x0 = camX - 128, x1 = camX + 368, y0 = camY - 128, y1 = camY + 288;
+  if (!en_hasPrev || camX - en_prevX > 248 || en_prevX - camX > 248 || camY - en_prevY > 208 || en_prevY - camY > 208) {
+    en_scan(x0, x1, y0, y1);
+  } else {
+    if (camX > en_prevX) en_scan(en_prevX + 368, camX + 368, y0, y1);
+    else if (camX < en_prevX) en_scan(camX - 128, en_prevX - 128, y0, y1);
+    if (camY > en_prevY) en_scan(x0, x1, en_prevY + 288, camY + 288);
+    else if (camY < en_prevY) en_scan(x0, x1, camY - 128, en_prevY - 128);
   }
+  en_prevX = camX; en_prevY = camY; en_hasPrev = 1;
   // then run every live one, then its shots and the effects
   for (int i = 0; i < en_count; i++) if (en_list[i].live) en_run(&en_list[i], camX, camY);
   for (int i = 0; i < EFFECT_MAX; i++) if (en_effects[i].active) en_update_effect(&en_effects[i], camX, camY);

@@ -8,16 +8,19 @@
 #define RING_MAX 400
 #define RING_REGIONS 512
 
-// the sparkles a taken ring leaves (CreateCollectRingEffect): animation 708, OAM order 15, 32 frames
+// the sparkles a taken ring leaves (CreateCollectRingEffect): animation 708 at the reserved effect tiles
+// (RESERVED_RING_EFFECT_TILES_VRAM, tile 248), OAM order 15. Every effect shares those tiles, as the original's do,
+// and the last one its tasks update is the frame all of them show.
 #define SPARKLE_MAX 8
+#define SPARKLE_TILES 248
 static struct {
   int regionsX, regionsY, count;
   struct { int x, y, region; uint8_t taken; } rings[RING_MAX];
   int start[RING_REGIONS], n[RING_REGIONS];
   Sprite anim;
   int loaded;
-  struct { int x, y, done, active; Sprite anim; } sparkles[SPARKLE_MAX];
-  int sparkleCount, nextSparkle;
+  struct { int x, y, seq, active; Sprite anim; } sparkles[SPARKLE_MAX];
+  int sparkleCount, nextSparkle, sparkleSeq;
 } rings;
 
 static uint8_t rl[0x4000];
@@ -82,7 +85,7 @@ void rings_init(int level) {
 }
 
 void rings_reset(void) {
-  rings.sparkleCount = 0; rings.nextSparkle = 0;
+  rings.sparkleCount = 0; rings.nextSparkle = 0; rings.sparkleSeq = 0;
   for (int i = 0; i < SPARKLE_MAX; i++) rings.sparkles[i].active = 0;
   for (int i = 0; i < rings.count; i++) rings.rings[i].taken = 0;
   if (rings.loaded) { rings.anim.graphics.anim = 707; rings.anim.prevAnim = 0xFFFF; rings.anim.animCursor = 0; rings.anim.qAnimDelay = 0; }
@@ -110,24 +113,26 @@ void rings_update(int px, int py, int oy) {
         if (rings.rings[i].taken || !touching(px, py, oy, rings.rings[i].x, rings.rings[i].y)) continue;
         rings.rings[i].taken = 1;
         act.ringCount++;
+        // CreateCollectRingEffect gives up before the sound when eight effects are already running; the ring is
+        // still counted
+        if (rings.sparkleCount >= SPARKLE_MAX) continue;
         play_ring(act.ringCount & 1);
-        // CreateCollectRingEffect, up to eight at once; each takes the next sprite slot the original's allocator gives
-        if (rings.sparkleCount < SPARKLE_MAX) {
-          int k = rings.nextSparkle;
-          for (int tries = 0; tries < SPARKLE_MAX && rings.sparkles[k].active; tries++) k = (k + 1) % SPARKLE_MAX;
-          if (rings.sparkles[k].active) break;
-          rings.nextSparkle = (k + 1) % SPARKLE_MAX;
-          rings.sparkleCount++;
-          rings.sparkles[k].x = rings.rings[i].x; rings.sparkles[k].y = rings.rings[i].y; rings.sparkles[k].done = 0; rings.sparkles[k].active = 1;
-          sprite_init(&rings.sparkles[k].anim);
-          rings.sparkles[k].anim.graphics.dest = OBJ_VRAM + (244 + k * 4) * 32;
-          rings.sparkles[k].anim.graphics.anim = 708;
-          rings.sparkles[k].anim.variant = 0;
-          rings.sparkles[k].anim.animSpeed = 0x10;
-          rings.sparkles[k].anim.palId = 0;
-          rings.sparkles[k].anim.oamFlags = 15 << 6;
-          rings.sparkles[k].anim.frameFlags = 2 << 12;
-        }
+        int k = rings.nextSparkle;
+        for (int tries = 0; tries < SPARKLE_MAX && rings.sparkles[k].active; tries++) k = (k + 1) % SPARKLE_MAX;
+        if (rings.sparkles[k].active) continue;
+        rings.nextSparkle = (k + 1) % SPARKLE_MAX;
+        rings.sparkleCount++;
+        rings.sparkles[k].x = rings.rings[i].x; rings.sparkles[k].y = rings.rings[i].y;
+        rings.sparkles[k].seq = rings.sparkleSeq; rings.sparkleSeq++;
+        rings.sparkles[k].active = 1;
+        sprite_init(&rings.sparkles[k].anim);
+        rings.sparkles[k].anim.graphics.dest = OBJ_VRAM + SPARKLE_TILES * 32;
+        rings.sparkles[k].anim.graphics.anim = 708;
+        rings.sparkles[k].anim.variant = 0;
+        rings.sparkles[k].anim.animSpeed = 0x10;
+        rings.sparkles[k].anim.palId = 0;
+        rings.sparkles[k].anim.oamFlags = 15 << 6;
+        rings.sparkles[k].anim.frameFlags = 2 << 12;
       }
     }
   }
@@ -148,9 +153,17 @@ void rings_draw(int cx, int cy) {
       }
     }
   }
-  // the sparkles, in front of Sonic at OAM order 15
-  for (int k = 0; k < SPARKLE_MAX; k++) {
-    if (!rings.sparkles[k].active) continue;
+  // the sparkles, in front of Sonic at OAM order 15, in the order their tasks were made: the last one updated is
+  // the frame they all show, as they share the effect tiles
+  int last = -1;
+  for (int pass = 0; pass < SPARKLE_MAX; pass++) {
+    int k = -1;
+    for (int i = 0; i < SPARKLE_MAX; i++) {
+      if (!rings.sparkles[i].active || rings.sparkles[i].seq <= last) continue;
+      if (k < 0 || rings.sparkles[i].seq < rings.sparkles[k].seq) k = i;
+    }
+    if (k < 0) break;
+    last = rings.sparkles[k].seq;
     int more = update_sprite(&rings.sparkles[k].anim, 0);
     rings.sparkles[k].anim.x = (int16_t)(rings.sparkles[k].x - cx);
     rings.sparkles[k].anim.y = (int16_t)(rings.sparkles[k].y - cy);

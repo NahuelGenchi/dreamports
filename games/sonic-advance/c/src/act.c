@@ -12,7 +12,7 @@ enum {
   LAYER_FRONT = 0, LAYER_BACK = 1, IGNORE_PLATFORMS = 0x80,
   SCREEN_W_ = 240, SCREEN_H_ = 160,
 };
-enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD, PS_PUSH, PS_CROUCH_END, PS_LOOKUP_END, PS_BOUNCE };
+enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD, PS_PUSH, PS_CROUCH_END, PS_LOOKUP_END, PS_BOUNCE, PS_INSTA };
 enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6, SONIC_PUSH = 12 };
 // the HUD's tiles at the addresses the original reserves (vram_hardcoded.h): the face at tile 64, the ring at 68,
 // the white digits at 84 and the red ones at 106
@@ -40,6 +40,38 @@ static Sprite sonic;
 static Sprite palAnim[2];
 static uint32_t sonicVram;
 static int hudTile = HUD_TILE;
+// the insta-shield's flash (game.js spawnInstaShield): animation 50 variant 1, OAM order 8, following Sonic
+static Sprite instaFlash;
+static int instaFlashActive, instaFlashSlot;
+
+static void insta_flash_spawn(void) {
+  if (instaFlashActive) { vram_free((uint32_t)instaFlashSlot); instaFlashActive = 0; }
+  instaFlashSlot = (int)vram_malloc(16);
+  if ((uint32_t)instaFlashSlot == HEAP_END) { instaFlashSlot = -1; return; }
+  sprite_init(&instaFlash);
+  instaFlash.graphics.dest = (uint32_t)instaFlashSlot;
+  instaFlash.graphics.anim = 50;
+  instaFlash.variant = 1;
+  instaFlash.animSpeed = 0x10;
+  instaFlash.oamFlags = 8 << 6;
+  instaFlash.frameFlags = (uint32_t)(2 << 12) | (act.player.facing > 0 ? SPRITE_X_FLIP : 0);
+  instaFlashActive = 1;   // its first update, later this frame, shows the first frame as the original's task does
+}
+static void insta_flash_update(void) {
+  if (!instaFlashActive) return;
+  // 2: its last frame was shown last frame, as the original's task draws the frame its animation ends on
+  if (instaFlashActive == 2) {
+    vram_free((uint32_t)instaFlashSlot);
+    instaFlashSlot = -1;
+    instaFlashActive = 0;
+    return;
+  }
+  int more = update_sprite(&instaFlash, 0);
+  instaFlash.x = (int16_t)((int)__builtin_floor(act.player.x) - (int)act.cam.x);
+  instaFlash.y = (int16_t)((int)__builtin_floor(act.player.y) - (int)act.cam.y);
+  if (!more) instaFlashActive = 2;
+}
+static void insta_flash_draw(void) { if (instaFlashActive) display_sprite(&instaFlash); }
 
 // --- the act's palette animations (engine/palettes.js, UpdateSpriteAnimation_BG) ---------------------------------
 // Neo Green Hill's 814 and 815 cycle the waterfalls' colours one place every frame and the background's every
@@ -585,7 +617,12 @@ static int try_jump(Player *p, int jumpPressed) {
 static void air_step(Player *p, int dir, int jump, int jumpPressed) {
   if (p->jumped) {
     if (p->ysp < -JUMP_RELEASE_CAP) { if (!jump) p->ysp = -JUMP_RELEASE_CAP; }
-    else if (p->midAir == 0 && jumpPressed) { p->airLock = 0; p->midAir = 1; p->state = PS_SPIN; play_song(113); }
+    else if (p->midAir == 0 && jumpPressed) {
+      // Player_8044670: the insta-shield, its flash starting this frame and following him
+      p->airLock = 0; p->midAir = 1; p->state = PS_INSTA;
+      play_song(113);
+      insta_flash_spawn();
+    }
   } else if (!p->forcedRoll && p->ysp < -RISE_CAP) p->ysp = -RISE_CAP;
   air_control(p, dir, p->state != PS_BOUNCE);
   if (p->ysp < 0) air_drag(p);
@@ -623,12 +660,13 @@ static void step_player(Player *p, int left, int right, int up, int down, int ju
 
 // chooseAnimation and tickAnim (engine/player.js, engine/animator.js)
 static void choose_animation(Player *p) {
-  int speed = (int)__builtin_fabs(p->gsp);
+  double speed = __builtin_fabs(p->gsp);
   int anim = SONIC_IDLE, variant = 0, speedAnim = ANIM_NORMAL;
   if (p->pushing) anim = SONIC_PUSH;
   else if (p->state == PS_CROUCH || p->state == PS_CROUCH_END) anim = 3;
   else if (p->state == PS_LOOKUP || p->state == PS_LOOKUP_END) anim = 2;
   else if (p->state == PS_SPIN) anim = 8;
+  else if (p->state == PS_INSTA) anim = 50;   // the insta-shield's own pose, until he lands
   else if (p->state == PS_WALK) {
     if (speed >= RUN_ANIM_SPEED) { anim = SONIC_RUN; variant = 0; }
     else {
@@ -722,6 +760,9 @@ static void card_update(int pressed) {
   if (!card_run(pressed)) {
     act.cardDone = 1;
     act.clockStopped = 0;
+    // TaskDestructor_8055C38 gives the card's tiles back at once, so the act's objects take the heap from tile 400
+    vram_free(act.card.slots[0].vram);   // the zigzag's slot, where the card's heap tiles start
+    objects_alloc_vram();                // the objects take the heap from tile 400 now that the card has given it back
     // CreateStageUI on the card's last frame: its tiles load in this frame's V-blank and its task first runs on
     // the next frame, so this frame shows no HUD
     hud_load_graphics();
@@ -774,6 +815,8 @@ static void draw_frame(void) {
     enemies_draw(camX, camY);
   }
 
+  // the insta-shield's flash, at OAM order 8, before Sonic
+  insta_flash_draw();
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
   int right = act.player.facing > 0;
   int sx = (int)__builtin_floor(act.player.x) - camX, sy = (int)__builtin_floor(act.player.y) - camY;
@@ -834,6 +877,7 @@ static void act_frame(void) {
   else if (act.hud.active == 2) { act.hud.active = 1; hud_update(1); }
   else if (act.hud.active) hud_update(1);
   step_player(&act.player, left, right, up, down, jump, jumpPressed, attack, attackPressed);
+  insta_flash_update();
   animate_player(&act.player);
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
@@ -844,6 +888,8 @@ void act_task(Task *t) {
   (void)t;
   act_frame();
 }
+
+
 
 /** Draws the act's first frame now, for a screen that hands over inside its own task. */
 void act_frame_now(void) { act_frame(); }
@@ -884,6 +930,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   copyCount = 0;
   load_stage(level);
   animFrame = 0; animDelayCount = 0;
+  instaFlashActive = 0; instaFlashSlot = -1;
   rings_init(level);
   // the title card's pictures and colours (LoadStageIntroGraphics), right after the player's sprites, before the
   // objects' graphics take the rest of the sprite heap
@@ -912,6 +959,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   // the frames before a recording that opens after the title card: the card to its end, then its few frames after
   // it; a start point that opens at the act's first frame, and the course select, run the card as part of the act
   if (cardSkip >= 0 || preFrames > 0) pre_run(cardSkip, preFrames);
+  if (act.cardDone) objects_alloc_vram();
   play_song(act.stage.music);
   gba_sound_frames_gone_by(118);
   act.hud.active = 0;
