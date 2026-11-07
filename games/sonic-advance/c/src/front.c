@@ -29,17 +29,6 @@ static void power_on(int skipIntro) {
   else create_sega_logo();
 }
 
-static void watch_start_frame(Task *t) {
-  int level = (int)gba_start_number("level", -1);
-  if (level < 0 || gba_start_number("power", 0) != 3) return;
-  if (front_frame() < (uint32_t)gba_start_number("at", 0)) return;
-  act_active = 1;
-  act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
-  act_frame_now();
-  destroy_tasks(0x2000, 0x3000);
-  destroy_task(t);
-}
-
 /** The front end from power-on: the screen forced blank until the game starts. */
 void front_start(void) {
   memset(&ctx, 0, sizeof ctx);
@@ -52,7 +41,6 @@ void front_start(void) {
   sprites.tiles8 = rom_ptr(OFFSET_SPRITE_TABLES + 20);
   gba_write(REG_DISPCNT, 0x80);
   startingUp = STARTUP_FRAMES;
-  create_task(watch_start_frame, NULL, 0x0500, 0, NULL);
 }
 
 /** A frame, with the buttons in `keys` held. */

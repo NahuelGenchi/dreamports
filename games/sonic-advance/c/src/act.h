@@ -56,7 +56,7 @@ typedef struct {
   Camera cam;
   Hud hud;
   int tick, courseTime, ringCount, lives, score;
-  int clockStopped, cardFrame, cardDone, firstCard, started, preFrames;
+  int clockStopped, cardFrame, cardDone, firstCard, started, preFrames, firstFrame;
 } Act;
 
 extern Act act;

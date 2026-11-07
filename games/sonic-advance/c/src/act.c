@@ -147,10 +147,6 @@ static void copy_rom(uint32_t src, uint32_t dest, uint32_t size) {
   Graphics g = { src, dest, size & 0xFFFF, 0, NULL };
   queue_graphics(&g);
 }
-// DrawBackground's palette load: the header's colours, at its offset in the backgrounds' palette
-static void load_palette(const Tilemap *t) {
-  for (uint32_t i = 0; i < t->paletteLength; i++) e.bgPalette[(t->paletteOffset + i) & 0xFF] = (uint16_t)rom_u16(t->palette + i * 2);
-}
 static void load_stage(int level) {
   Stage *s = &act.stage;
   memset(s, 0, sizeof *s);
@@ -163,11 +159,9 @@ static void load_stage(int level) {
   s->spawnY = rom_s16(OFFSET_SPAWNS + level * 4 + 2);
   s->width = s->collision.width; s->height = s->collision.height;
   s->zone = 6; s->act = 0; s->music = 24; s->hudFlash = 90;
-  // the front layer's tiles, in the first character block, and each layer's colours at its offset (InitCamera)
+  // the front layer's tiles, in the first character block, and the stage's 256 colours (extractStage's palette)
   copy_rom(s->front.tiles, 0, s->front.tilesSize);
-  load_palette(&s->front);
-  load_palette(&s->back);
-  load_palette(&s->background);
+  for (int i = 0; i < 256; i++) e.bgPalette[i] = (uint16_t)rom_u16(s->front.palette + i * 2);
   e.flags |= FLAGS_UPDATE_BG_PALETTES;
   // the background's tiles at the second character block, and its 37 × 23 map at 0xE000 (InitCamera)
   copy_rom(s->background.tiles, 0x8000, s->background.tilesSize);
@@ -188,7 +182,7 @@ static uint16_t stage_entry(int layer, int tx, int ty) {
   int mx = fdiv(tx, 12), my = fdiv(ty, 12), lx = tx - mx * 12, ly = ty - my * 12;
   if (mx < 0 || my < 0 || mx >= c->levelX || my >= c->levelY) return 0;
   uint32_t id = rom_u8(c->layers[layer & 1] + my * c->levelX + mx);
-  return (uint16_t)rom_u16(act.stage.front.map + (id * 144u + (uint32_t)ly * 12u + (uint32_t)lx) * 2u);
+  return (uint16_t)rom_u16(c->metatiles + (id * 144u + (uint32_t)ly * 12u + (uint32_t)lx) * 2u);
 }
 static void fill_layer(uint32_t dest, int layer, int camX, int camY) {
   int tx0 = camX >> 3, ty0 = camY >> 3;
@@ -471,6 +465,8 @@ static void act_frame(void) {
   int up = (e.input & KEY_UP) != 0, down = (e.input & KEY_DOWN) != 0;
   int jump = (e.input & KEY_A) != 0, attack = (e.input & KEY_B) != 0;
   int jumpPressed = (e.pressed & KEY_A) != 0, attackPressed = (e.pressed & KEY_B) != 0;
+  // the start point's first frame reads the right and A the original has held there, never pressed
+  if (act.firstFrame) { left = 0; right = 1; jump = 1; attack = 0; jumpPressed = 0; attackPressed = 0; act.firstFrame = 0; }
   if (act.cardDone) hud_update(0);
   step_player(&act.player, left, right, up, down, jump, jumpPressed, attack, attackPressed);
   animate_player(&act.player);
@@ -525,6 +521,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   act.clockStopped = 1; act.firstCard = 1; act.cardFrame = 0;
   act.hud.active = 0; act.hud.flash = 1;
   act.started = 0;
+  act.firstFrame = (int)gba_start_number("first", 0);
 
   // Sonic's sprite: the player's tiles, colours and animation, at its own OAM order
   sprite_init(&sonic);
