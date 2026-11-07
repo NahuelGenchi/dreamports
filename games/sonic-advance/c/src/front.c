@@ -5,6 +5,7 @@
 
 #include "sa.h"
 #include "page.h"
+#include "act.h"
 
 // the frames after power-on before the game starts: the console is still starting up, the screen white (forced blank),
 // and gFrameCount isn't counted yet (VBlankIntr, which counts it, starts with GameInit)
@@ -12,6 +13,11 @@
 
 Front ctx;
 static int startingUp;
+int act_active;
+static uint32_t pageFrame;
+
+/** The page's frame since power-on, as a recording counts them. */
+uint32_t front_frame(void) { return pageFrame ? pageFrame - 1 : 0; }
 
 /**
  * GameInit: the language screen when there is no save (a new game), else the logos, or, after a soft reset, which sets
@@ -21,6 +27,17 @@ static void power_on(int skipIntro) {
   if (!save.exists) create_language_screen(1);
   else if (skipIntro) create_title_screen(1);
   else create_sega_logo();
+}
+
+static void watch_start_frame(Task *t) {
+  int level = (int)gba_start_number("level", -1);
+  if (level < 0 || gba_start_number("power", 0) != 3) return;
+  if (front_frame() < (uint32_t)gba_start_number("at", 0)) return;
+  act_active = 1;
+  act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
+  act_frame_now();
+  destroy_tasks(0x2000, 0x3000);
+  destroy_task(t);
 }
 
 /** The front end from power-on: the screen forced blank until the game starts. */
@@ -35,11 +52,17 @@ void front_start(void) {
   sprites.tiles8 = rom_ptr(OFFSET_SPRITE_TABLES + 20);
   gba_write(REG_DISPCNT, 0x80);
   startingUp = STARTUP_FRAMES;
+  create_task(watch_start_frame, NULL, 0x0500, 0, NULL);
 }
 
 /** A frame, with the buttons in `keys` held. */
 void front_step(uint16_t keys) {
-  if (startingUp > 0) {
+  pageFrame++;
+  if (act_active) {
+    e.keys = keys;
+    engine_run();
+    link_frame_done();
+  } else if (startingUp > 0) {
     if (--startingUp == 0) power_on(0);
   } else if (!ctx.done) {
     e.keys = keys;
@@ -67,10 +90,17 @@ void front_vs_round(int level, int chao) {
 /** The round the VS menus chose, for the page: its level, or 0 while they are still choosing. */
 EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 
-// what comes after the screens that are in C so far: the game stops there, the screen as it was. No act is in C yet, and
-// the C version takes no start point, so it has no opening that holds the character and names no neverInPlay: the
-// JavaScript version's acts, in games/sonic-advance/src/, show where it goes once they come over.
-void front_play(int level) { (void)level; ctx.done = 1; }
+// The acts in C so far: X Zone opens from a start point (level=12), its title card's state run without its pictures.
+void front_play(int level) {
+  act_active = 1;
+  int startLevel = (int)gba_start_number("level", -1);
+  if (startLevel >= 0) {
+    destroy_tasks(0x2000, 0x3000);
+    act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
+    return;
+  }
+  act_start(level, -1, 0);
+}
 void front_start_demo(void) { ctx.done = 1; }
 
 // the sound the screens start, on the kit's sound engine (gba/engine.js's playSong and the rest)
