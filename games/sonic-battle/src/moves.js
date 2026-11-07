@@ -19,6 +19,7 @@ import { fn0800f9c0, fn08011c7c } from './arena.js';
 const FIGHTERS = 0x03001C40, RECORD = 252;
 const SETUP = 0x03001620;                    // gUnknown_03001620: what the fight is
 const SLOTS = 0x03001634;                    // who stands in each of the four places, 255 for nobody
+const CHOICES = 0x030013B0, CHOICE_SIZE = 156;   // each player's skill for each of Emerl's states
 const PLAYER = 0x03001380;                   // the place the person plays
 const KEYS = 0x03001B30, KEYS_PER_FIGHTER = 64, KEYS_PRESSED = 20, KEYS_RELEASED = 40, KEYS_NOW = 60;
 const SCRIPTS = 0x08ED68A8, SCRIPTS_PER_CHARACTER = 280;
@@ -246,7 +247,7 @@ const SCRIPT_OF = new Map([
   [535, 35], [536, 38], [565, 59],
 ]);
 
-/** 0x08007ec8: a new state starts its script from the top, and the state's script runs a frame. Partly: not Emerl's. */
+/** 0x08007ec8: a new state starts its script from the top, and the state's script runs a frame. */
 function fighterThink(c, i) {
   const rec = record(i);
   const next = read8(c, rec + PAUSE_NEXT);
@@ -266,10 +267,11 @@ function fighterThink(c, i) {
     clearFlags(c, rec, FLAG_NEW_STATE);
   }
   const character = read8(c, rec + CHARACTER);
-  if (character === 9) notPorted('0800964C', 'the character 9');
   const slot = SCRIPT_OF.get(read16(c, rec + STATE));
   if (slot === undefined) return;
-  runScript(c, read32(c, SCRIPTS + character * SCRIPTS_PER_CHARACTER + slot * 4), i);
+  // 0x0800964C: Emerl runs the script and animation of the character its skill slot has, and the frame ends there
+  const chosen = character === 9 ? read8(c, CHOICES + i * CHOICE_SIZE + slot) : character;
+  runScript(c, read32(c, SCRIPTS + chosen * SCRIPTS_PER_CHARACTER + slot * 4), i);
   write8(c, rec + ANIMATION, slot);
 }
 
