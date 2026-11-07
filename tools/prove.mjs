@@ -8,7 +8,9 @@
 // those frames, as it does of each part's first and last, and it names any notes people left on what differs
 // (docs/NOTES.md). At the first picture that differs, and with --state <frames> at others, it says what the console
 // holds that differs (lib/state.mjs). A recording fails if the game says no player could ever see a frame of it
-// (tools/README.md, Start points), and it reminds a game whose code never can say so when a start point plays. With --quick it stops at the first frame that differs, and says what differs
+// (tools/README.md, Start points), and it reminds a game whose code never can say so when a start point plays. A
+// recording also fails when its name names a character, or anything else original.json lists under `shows`, that the
+// original's own memory says it doesn't show as it ends (src/lib/shows.mjs). With --quick it stops at the first frame that differs, and says what differs
 // there, with no clip and nothing written to progress.json: a round of work, with the plain prove to finish it. The
 // pictures and the clips stay in .dreamports/results/ on this computer: they show the game, so they never go in a commit.
 
@@ -31,6 +33,7 @@ import { checkSizes, firstOtherSize } from './lib/screens.mjs';
 import { notesAbout } from './notes.mjs';
 import { proveLinked } from './prove-linked.mjs';
 import { versionOf } from '../src/lib/languages.mjs';
+import { kindsOf, shownOf, showsProblems } from '../src/lib/shows.mjs';
 
 const BATCH = 120;
 const STILLS = 600, STATES = 20;
@@ -48,6 +51,7 @@ export async function run(args) {
   if (!game) throw new Error('Usage: npm run dp -- prove <game> [recording…] [--quick] [--stills <frames>] [--state <frames>]');
   const quick = args.includes('--quick');
   const original = readOriginal(game);
+  const kinds = kindsOf(original, `games/${versionOf(game).game}/proof/original.json`);
   const reference = await referenceOf(original);
   const recordings = readRecordings(game, names);
   if (!recordings.length) throw new Error(`games/${game}/proof/recordings/ has no recordings yet: make one with npm run dp -- play ${game} --record <name>.`);
@@ -65,8 +69,12 @@ export async function run(args) {
       const own = parts.filter(p => p.recording === recording.name && Array.isArray(p.frames) && p.frames.length === 2 && p.frames.every(Number.isInteger));
       // one browser for all of them, with each recording's page starting from nothing
       page = page ? await page.another() : await openChrome({ profile: join(LOCAL, 'chrome', 'prove'), headless: true });
-      const result = recording.players ? await proveLinked({ page, game, recording, copy: copy.path, server, quick, asked }) : await prove({ page, reference, game, recording, copy: copy.path, server, codeMap, before: progress.recordings[recording.name], asked, askedState, parts: own, keysLate: original.keysAfterVBlank === true, paced: args.includes('--paced'), quick });
-      failed ||= result.matched < result.frames || result.neverInPlay.length > 0;
+      const result = recording.players ? await proveLinked({ page, game, recording, copy: copy.path, server, quick, asked }) : await prove({ page, reference, game, recording, copy: copy.path, server, codeMap, before: progress.recordings[recording.name], asked, askedState, parts: own, kinds, keysLate: original.keysAfterVBlank === true, paced: args.includes('--paced'), quick });
+      // what the original shows is checked however the frames compare, and a linked recording, played by more than one
+      // console, isn't read
+      const wrong = showsProblems(recording.name, result.shows, recording.players ? [] : kinds);
+      for (const problem of wrong) console.log(`  ${problem}`);
+      failed ||= result.matched < result.frames || result.neverInPlay.length > 0 || wrong.length > 0;
       if (quick) continue;
       progress.recordings[recording.name] = {
         frames: result.frames,
@@ -75,6 +83,7 @@ export async function run(args) {
         ...(result.soundDiffers.length ? { soundDiffers: result.soundDiffers } : {}),
         ...(result.onlyInOriginal ? { onlyInOriginal: result.onlyInOriginal } : {}),
         ...(result.neverInPlay.length ? { neverInPlay: result.neverInPlay } : {}),
+        ...(result.shows ? { shows: result.shows } : {}),
         functions: result.functions,
       };
     }
@@ -149,7 +158,7 @@ const stretchesOf = frames => {
 const listed = stretches => stretches.slice(0, 8).map(([a, b]) => (a === b ? `${a}` : `${a} to ${b}`)).join(', ')
   + (stretches.length > 8 ? `, and ${stretches.length - 8} more stretches` : '');
 
-async function prove({ page, reference, game, recording, copy, server, codeMap, before, asked, askedState, parts, keysLate, paced, quick }) {
+async function prove({ page, reference, game, recording, copy, server, codeMap, before, asked, askedState, parts, kinds, keysLate, paced, quick }) {
   const { name, frames } = recording;
   const { machine, KEY, runOriginal } = reference;
   const out = resultFolder(game, name);
@@ -203,7 +212,11 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // buttons, and the Dreamport's frame f is the original's frame originalOf[f] + 1. Its sound lines up the same way
     say('playing the original…');
     const functions = codeMap?.functions ?? [];
-    const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, sound: true, sets });
+    // and what it holds of each kind original.json lists under `shows`, such as who is playing, as its last frame ends
+    const reads = kinds.map(({ address, bytes }) => ({ frame: originalHeld.length, address, bytes }));
+    const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, sound: true, sets, reads });
+    if (kinds.length && first.outside.reads?.length !== kinds.length) throw new Error("The program that runs the original read nothing of its memory: npm run dp -- setup builds it again.");
+    const showing = kinds.length ? shownOf(kinds, first.outside.reads) : null;
     checkSizes(first.outside.sizes, machine, Array.from(originalOf, g => g + 1), (_, frame) => frame);
     const expected = Array.from(originalOf, g => first.hashes[g + 1]);
     const compareSound = soundOf(first.sound, machine), heardOf = Array.from(originalOf, g => g + 1);
@@ -420,6 +433,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       sound: { heard: madeSound, differs: soundDiffers, firstDifference: firstSound, ...(unheard.size ? { notCompared: stretchesOf([...unheard].sort((a, b) => a - b)) } : {}) },
       ...(wasDifferent ? { sinceLastProven: { differs: newly, firstDifference: newDifference, matches: fixed } } : {}),
       clip: { from: clip[0], to: clip[1], frames: clipFrames.length, bytes: file.length, bitrate, dreamport: { bytes: own.file.length, bitrate: own.bitrate } },
+      ...(showing ? { shows: showing } : {}),
       seconds, errors: page.errors,
       ...(codeMap ? { functions: proven.size, outsideCodeMap: outside } : {}),
     };
@@ -496,7 +510,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     }
     if (!quick) console.log(`  Clip, ${(file.length / 1e6).toFixed(2)} MB, frames ${clip[0]} to ${clip[1]}: ${where}/clip.mp4`);
     if (!quick && file.length > CLIP_LIMIT) console.log('  The clip is still over 2 MB: a shorter "clip" in the recording makes it lighter.');
-    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };
+    if (showing) console.log(`  What the original shows as it ends: ${Object.entries(showing).map(([kind, value]) => `its ${kind} is ${typeof value === 'number' ? `${value}, which original.json gives no name` : value}`).join('; ')}.`);
+    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(showing ? { shows: showing } : {}), functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };
     }
   }
 }

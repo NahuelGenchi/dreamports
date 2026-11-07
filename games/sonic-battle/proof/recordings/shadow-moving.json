@@ -1,6 +1,6 @@
 {
   "about": "Shadow's moving, from Training with Shadow chosen: Emerald Beach with the other fighter standing still. The opening's three presses of A, then Shadow walking, turning, running on the pad's four sides and diagonals, dashing, and jumping, standing and running, and landing.",
-  "start": "fight=training&vblanks=1209&you=6",
+  "start": "fight=training&vblanks=1209&you=3",
   "frames": 1500,
   "held": [
     [
@@ -252,7 +252,7 @@
           "frame": 1180,
           "address": "030053F8",
           "bytes": 1,
-          "value": 6
+          "value": 3
         }
       ],
       "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, and Start on its first choices with Shadow chosen."

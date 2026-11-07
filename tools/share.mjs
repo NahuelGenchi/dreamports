@@ -184,7 +184,13 @@ function chooseClip(game, file) {
   const sideBySide = file.startsWith(join(LOCAL, 'results') + sep) && /^clip(-[a-z]+)?\.(mp4|png)$/.test(basename(file));
   // the recording it plays, which tells a step's clips apart in its pull request
   const recording = file.startsWith(results + sep) ? file.slice(results.length + 1).split(sep)[0] : null;
-  return { file, bytes, still: still ?? null, sideBySide, recording };
+  // and who the original's own memory says it plays, which a reviewer who doesn't see the pictures can read
+  // (src/lib/shows.mjs)
+  let shows = null;
+  try {
+    if (recording) shows = JSON.parse(readFileSync(join(results, recording, 'report.json'), 'utf8')).shows ?? null;
+  } catch { /* a clip prove didn't make, or one from before it read the original's memory */ }
+  return { file, bytes, still: still ?? null, sideBySide, recording, shows };
 }
 
 // where a clip and its frame go on the previews site. What's in the clip names it too, so a step's second clip, from
@@ -200,7 +206,8 @@ export function clipFiles(game, commit, clip, day = new Date().toISOString().sli
 // the clip as the pull request shows it: a frame that links the video, or the picture
 export function clipLines(title, clip, clips, siteUrl) {
   const video = `${siteUrl}${clips[0].path}`;
-  const what = clip.sideBySide ? ', the original on the left and the Dreamport on the right, with the same button presses' : '';
+  const who = Object.entries(clip.shows ?? {}).map(([kind, value]) => `, and the original's ${kind} is ${typeof value === 'number' ? `${value}, which its original.json gives no name` : value}`).join('');
+  const what = clip.sideBySide ? `, the original on the left and the Dreamport on the right, with the same button presses${who}` : '';
   const name = clip.recording ? `${title}, ${clip.recording}` : title;
   if (extname(clip.file) === '.png') return `![${name}${what}](${video})`;
   return [

@@ -14,6 +14,10 @@
 //              its frame, its address, how many bytes and its value (32 bits each)
 //   STATES     a file with the frames whose state to write (32 bits each, in order), or -
 //
+// The environment's DP_READS, when it's set, names a file of values to read from the work RAM as a frame ends, in the
+// order of their frames: each its frame, its address and how many bytes (32 bits each). The JSON on stderr then has
+// them, in that order, under "reads", which is how the tools learn what the original holds, such as who is playing.
+//
 // For each frame it writes to stdout: a hash of the picture (FNV-1a over each pixel's 15-bit colour, as the
 // console has it), the picture's one colour if every pixel has it or else 0xFFFFFFFF, the number of functions that
 // ran in the frame and their places in FUNCTIONS (32 bits each), then the picture itself if PICTURES names the
@@ -25,7 +29,7 @@
 // bias in the console's 10-bit units, 65536 a second (every 256 cycles), the rate the sound library sets as it
 // starts. Before that the console mixes every 512 cycles, and each of those samples is written twice.
 // At the end it writes to stderr, as JSON, how many instructions ran outside every function of the code map: in the
-// cartridge, and in the work RAM games copy code into.
+// cartridge, and in the work RAM games copy code into, and the values DP_READS asked for.
 //
 // original ROM live
 //   Plays along with a person, for capture: for each frame it reads the buttons held from stdin (16 bits, as in
@@ -94,6 +98,18 @@ static void setValue(struct mCore* core, uint32_t address, uint32_t bytes, uint3
 	if (bytes == 1) core->rawWrite8(core, address, -1, value);
 	else if (bytes == 2) core->rawWrite16(core, address, -1, value);
 	else core->rawWrite32(core, address, -1, value);
+}
+
+// a value the tools read from the work RAM, and only from there, so nothing of the cartridge comes out
+static uint32_t readValue(struct mCore* core, uint32_t address, uint32_t bytes) {
+	struct region* region = regionOf(address);
+	if (!region || region == &regions[0] || address - region->base + bytes > region->size) {
+		fprintf(stderr, "The tools can only read the work RAM, and 0x%08X isn't in it\n", address);
+		exit(2);
+	}
+	if (bytes == 1) return core->rawRead8(core, address, -1);
+	if (bytes == 2) return core->rawRead16(core, address, -1);
+	return core->rawRead32(core, address, -1);
 }
 
 static void* readAll(const char* path, size_t* size) {
@@ -198,6 +214,10 @@ int main(int argc, char** argv) {
 	uint32_t* states = readAll(argv[8], &statesSize);
 	size_t functionCount = functionsSize / 8, pictureCount = picturesSize / 4, nextPicture = 0, setCount = setsSize / 16, nextSet = 0;
 	size_t stateCount = statesSize / 4, nextState = 0;
+	size_t readsSize = 0;
+	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
+	size_t readCount = readsSize / 12, nextRead = 0;
+	uint32_t* readValues = calloc(readCount ? readCount : 1, sizeof(uint32_t));
 
 	// where each function starts (its place + 1), which addresses are inside one, and code seen outside them all
 	for (size_t i = 0; i < REGIONS; i++) {
@@ -255,6 +275,9 @@ int main(int argc, char** argv) {
 			}
 			ARMRun(cpu);
 		}
+		for (; nextRead < readCount && reads[nextRead * 3] == (uint32_t) frame; nextRead++) {
+			readValues[nextRead] = readValue(core, reads[nextRead * 3 + 1], reads[nextRead * 3 + 2]);
+		}
 		uint32_t hash, plain;
 		draw(&hash, &plain);
 		fwrite(&hash, 4, 1, stdout);
@@ -274,7 +297,9 @@ int main(int argc, char** argv) {
 	}
 	fflush(stdout);
 	if (soundFile) fclose(soundFile);
-	fprintf(stderr, "{\"cartridge\":%ld,\"memory\":%ld}\n", regions[0].seen, regions[1].seen + regions[2].seen);
+	fprintf(stderr, "{\"cartridge\":%ld,\"memory\":%ld,\"reads\":[", regions[0].seen, regions[1].seen + regions[2].seen);
+	for (size_t i = 0; i < readCount; i++) fprintf(stderr, "%s%u", i ? "," : "", readValues[i]);
+	fprintf(stderr, "]}\n");
 	core->deinit(core);
 	return 0;
 }
