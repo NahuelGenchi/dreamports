@@ -11,6 +11,7 @@
 // the international release's in both.
 
 #include "sa.h"
+#include "act.h"
 
 // by the save's language (0 Japanese, 1 English): the logo's tilemap, and "PRESS START"'s and the items' animation
 static const uint16_t TM_TITLE_LOGO[2] = { 73, 74 };
@@ -252,6 +253,16 @@ static void choose_item(Task *t) {
     else item->palId = i != 0 ? 0 : 255;
     update_sprite(item, 0);
     display_sprite(item);
+  }
+  // A start point at X Zone opens it here, as the menu hands over to the character select: the act's title card runs
+  // without its pictures and its first frame is drawn on the next one, as x-zone-opening does.
+  int startLevel = (int)gba_start_number("level", -1);
+  if ((e.pressed & KEY_A) && startLevel >= 0 && gba_start_number("power", 0) == 1) {
+    act_active = 1;
+    act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
+    act_frame_now();
+    destroy_task(t);
+    return;
   }
   // Tiny Chao Garden's screen isn't built: A on it does nothing (the original fades out to it too)
   if (e.pressed & KEY_A && menu.selectedItem <= OPTIONS) {
