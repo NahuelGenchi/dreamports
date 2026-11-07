@@ -2,6 +2,7 @@
   "about": "From power-on: the logos, the intro and the title screen, Start there, then the main menu as a player with a saved name reaches it, with no name entry: right through all seven choices, left twice, and A, through its fade to black. Both are given a saved name: the Dreamport by its address, the original in onlyInOriginal.",
   "start": "name=1",
   "frames": 1355,
+  "clip": { "at": 1000, "frames": 300 },
   "held": [
     [0,[]],
     [747,["START"]],

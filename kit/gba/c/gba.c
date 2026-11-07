@@ -5,6 +5,7 @@
 
 #include "gba.h"
 #include "page.h"
+#include "sound.h"
 
 /** Starts the game. */
 EXPORT("dp_start") void dp_start(void) {
@@ -12,7 +13,10 @@ EXPORT("dp_start") void dp_start(void) {
   game_start();
 }
 /** Runs one frame with the buttons in `keys` held. */
-EXPORT("dp_step") void dp_step(uint32_t keys) { game_step((uint16_t)keys); }
+EXPORT("dp_step") void dp_step(uint32_t keys) {
+  game_step((uint16_t)keys);
+  gba_sound_frame_done();
+}
 /** Draws the frame, and gives where its 240 × 160 words are. */
 EXPORT("dp_draw") uint32_t *dp_draw(void) {
   uint32_t *screen = kit_screen(SCREEN_W, SCREEN_H);

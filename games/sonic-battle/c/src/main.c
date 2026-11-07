@@ -1,25 +1,26 @@
-// Sonic Battle Dreamport in C: the game's opening, the SEGA and Sonic Team logos, the intro and the title screen.
-// Written from games/sonic-battle/src/logos.js, intro.js and title.js and the screen functions their core.js gives
-// them, a function at a time. The rest of the game follows it.
+// Sonic Battle Dreamport in C: the game's own code, on the Game Boy Advance kit in C (kit/gba/c/gba.h), translated
+// from the JavaScript version in games/sonic-battle/src/. src/main.js runs it on the page, built to WebAssembly as
+// src/game.wasm (kit/gba/c/README.md).
 //
-// The original's functions: 0x08000210 the logos' screen, 0x080006ec the colours from the first picture,
-// 0x080003a8 the frame count, 0x08000724 the fade to black, 0x0803d748 the intro's start, 0x0803d860 its five
-// pictures, 0x0803dd14 its looping animation, 0x0803e1b0 the title screen, 0x0803e6e8 its fade to the main menu,
-// 0x0803e74c its fade to the attract mode, 0x08016078 the new screen, 0x08017ed0 the sprites hidden,
-// 0x080163c0 and 0x08017d78 the layers, 0x080183d0 the colour effect, 0x08016438 the rotation,
-// 0x08020500 the colours toward the first picture and 0x0802067c the colours to black, 0x0801f618 a song or sound,
-// 0x0801f638 every song stopped, 0x0801f718 a song faded out, 0x08018004 the sprites queued, 0x08017f34 their
-// matrix, 0x08017690 their priority, and 0x08017c5c the V-blank's copy of both.
+// The SEGA and Sonic Team logos, the intro and the title screen are written from logos.js, intro.js and title.js and the
+// screen functions their core.js gives them. After the title, the name entry isn't drawn yet (its own task, #645): only
+// its palettes, its keys and its way out are here, so Start keeps the name and the main menu begins on the frame the
+// original's does. The main menu is written from menu.js (menu.c), on the core (core.c), which also runs a fight's
+// opening from its recording's start point (fight.c).
+//
+// A recording's start point can open a screen straight away: fight=training&vblanks=... opens the fight's opening
+// (main.c's startFightFromPoint), and name=1 opens the screens that follow the title with a saved name.
 
-#include "gba.h"
+#include "game.h"
+
+#define PALETTE 0x05000000u
+#define SONG_TABLE 0x08BF7244u
 
 #define ROM(addr) (gba_rom + ((addr) - 0x08000000u))
 
 // the colour effect: alpha blending (1) of layer 2 (4) over layer 3 (8)
 enum { ALPHA = 1, LAYER_2 = 4, LAYER_3 = 8 };
 
-// the layers' control registers, and the rotating layers' parameters
-static const unsigned BGCNT[4] = { REG_BG0CNT, REG_BG1CNT, REG_BG2CNT, REG_BG3CNT };
 // the display registers the kit's REG doesn't name: BG0VOFS through BG2VOFS, BG2PC and BG2PD, and BG3's scroll
 enum {
   BG0VOFS = REG_BG0HOFS + 2, BG1HOFS = REG_BG0HOFS + 4, BG1VOFS = REG_BG0HOFS + 6,
@@ -52,6 +53,9 @@ static int16_t titleCounter, titlePulse, titleX, titleY, titleScale;
 static int16_t titleTargetX, titleTargetY, titleScaleTarget;
 static int titlePulseCount;
 static int language = 1;
+static int usingCore;             // from the name entry on, the core runs the screens
+static int savingFrames;
+static int nameLength;
 
 // the title's queued sprites: six OAM entries of three words each, their one matrix, and whether the next V-blank
 // copies them (0x08017ed0, 0x08018004, 0x08017f34 and 0x08017c5c)
@@ -92,24 +96,10 @@ static uint16_t rom16(uint32_t address) {
   const uint8_t *at = ROM(address);
   return (uint16_t)(at[0] | (at[1] << 8));
 }
-static int16_t s16(int32_t value) { return (int16_t)value; }
 
 /** The BIOS's division (DivArm, 0x0804a5a0), rounded toward zero, and 0 for a zero denominator, as the original's. */
 static int32_t divide(int32_t denominator, int32_t numerator) {
   return denominator ? numerator / denominator : 0;
-}
-
-/** 0x080163c0 and 0x08017d78: a layer's control cleared, or given more bits. */
-static void clearLayer(int layer) { gba_write(BGCNT[layer], 0); }
-static void layerBits(int layer, uint16_t bits) { gba_write(BGCNT[layer], gba_io[BGCNT[layer] >> 1] | bits); }
-static void layerCharBase(int layer, int base) { layerBits(layer, (uint16_t)(base << 2)); }
-static void layerScreenBase(int layer, int base) { layerBits(layer, (uint16_t)(base << 8)); }
-
-/** 0x080183d0: the colour effect, BLDCNT, BLDALPHA and BLDY. */
-static void setBlend(int effect, int first, int second, int a, int b, int y) {
-  gba_write(REG_BLDCNT, (uint16_t)(first | (second << 8) | (effect << 6)));
-  gba_write(REG_BLDALPHA, (uint16_t)(a | (b << 8)));
-  gba_write(REG_BLDY, (uint16_t)y);
 }
 
 /** 0x08016438: setRotation(c, 0, 0, 0x100, 0x100, 1, 1, 0, layer), the identity, kept until the next V-blank. */
@@ -120,45 +110,8 @@ static void setIdentityRotation(int layer) {
   affineDirty = 1;
 }
 
-/** 0x08020500: each colour one step nearer the cartridge's colours at `from`. */
-static int fadeToward(uint16_t *out, uint32_t from, int count) {
-  const uint8_t *wantAt = ROM(from);
-  int done = 1;
-  for (int i = 0; i < count; i++) {
-    uint16_t want = (uint16_t)(wantAt[i * 2] | (wantAt[i * 2 + 1] << 8));
-    uint16_t v = out[i];
-    if ((v & 0x7FFF) != (want & 0x7FFF)) {
-      if ((v & 0x1F) > (want & 0x1F)) v--;
-      if ((v & 0x1F) < (want & 0x1F)) v++;
-      if ((v & 0x3E0) > (want & 0x3E0)) v -= 0x20;
-      if ((v & 0x3E0) < (want & 0x3E0)) v += 0x20;
-      if ((v & 0x7C00) > (want & 0x7C00)) v -= 0x400;
-      if ((v & 0x7C00) < (want & 0x7C00)) v += 0x400;
-      out[i] = v;
-      done = 0;
-    }
-  }
-  return done;
-}
-
-/** 0x0802067c: each colour one step darker in each of red, green and blue. */
-static int fadeToBlack(uint16_t *out, int count) {
-  int done = 1;
-  for (int i = 0; i < count; i++) {
-    uint16_t v = out[i];
-    if (v & 0x7FFF) {
-      if (v & 0x1F) v--;
-      if (v & 0x3E0) v -= 0x20;
-      if (v & 0x7C00) v -= 0x400;
-      out[i] = v;
-      done = 0;
-    }
-  }
-  return done;
-}
-
-/** 0x08016078: newScreen(c, 1), the palette filled with its first colour, VRAM cleared, sprites hidden, DISPCNT queued. */
-static void newScreen(void) {
+/** 0x08016078: the palette filled with its first colour, VRAM cleared, sprites hidden, DISPCNT queued. */
+static void resetScreen(void) {
   for (int i = 1; i < 512; i++) gba_pal[i] = gba_pal[0];
   for (int i = 0; i < 0x18000; i++) gba_vram[i] = 0;
   hideSprites();
@@ -172,7 +125,7 @@ static void newScreen(void) {
 
 /** 0x080006ec: the colours from the first picture, then the logos. */
 static void fadeIn(void) {
-  if (fadeToward(gba_pal, 0x083270B4, 0x100)) {
+  if (fadeToward(PALETTE, 0x083270B4, 0x100)) {
     blendTarget = 0x10;
     state = LOGOS;
   }
@@ -226,7 +179,7 @@ static void showLogos(uint16_t keys) {
 
 /** 0x08000724: every colour to black, then no colour effect, the palette cleared, and the intro. */
 static void fadeOut(void) {
-  if (fadeToBlack(gba_pal, 0x100)) {
+  if (fadeToBlack(PALETTE, 0x100)) {
     setBlend(0, 0, 0, 0, 0, 0);
     for (int i = 0; i < 512; i++) gba_pal[i] = 0;
     state = INTRO_START;
@@ -292,7 +245,7 @@ static void toTitle(void) {
 
 /** 0x0803d748: the intro's start. */
 static void introSetup(void) {
-  newScreen();                 // 0x08016078
+  resetScreen();                 // 0x08016078
   for (int i = 0; i < 0x18000; i++) gba_vram[i] = 0;   // 0x08017cb0
   for (int i = 1; i < 512; i++) gba_pal[i] = gba_pal[0];   // 0x08017cd8
   pendingDispcnt = 0x541;
@@ -524,20 +477,38 @@ static void titleClearSprites(void) {
   titleSpriteCount = 0;
 }
 
-/** 0x0803e6e8: the palette one step to black each frame, then the main menu. In the original the name entry comes
- *  first, which goes straight on to the menu when a name is saved; the Dreamport has no name yet to ask for. */
+static void nameEntry(void);
+static void nameSetUp(void);
+static void nameDisplayOn(void);
+static void nameEntering(void);
+static void nameFadeOut(void);
+static void nameSaving(void);
+
+/** 0x0803e6e8: the palette one step to black each frame, then the name entry, which leads on to the main menu. The
+ *  core runs them from here: the name entry starts the frame after this fade ends, as the original's does. */
 static void titleFadeToNext(void) {
-  if (fadeToBlack(gba_pal, 0x100)) {
-    setBlend(0, 0, 0, 0, 0, 0);
-    for (int i = 0; i < 256; i++) gba_pal[i] = 0;
-    pendingDispcnt = 0x1F40;
-    state = TITLE_BLACK;
-  }
+  if (!fadeToBlack(PALETTE, 0x100)) return;
+  setBlend(0, 0, 0, 0, 0, 0);
+  for (int i = 0; i < 256; i++) gba_pal[i] = 0;
+  queueRegister(REG_DISPCNT, 0x1F40);
+  // the core reads the keys from here on, with none of this screen's presses counted again
+  g.keys.held = previousKeys;
+  g.keys.inverted = (uint16_t)((~previousKeys & 0x3FF) | 0xFC00);
+  g.keys.pressed = 0;
+  g.keys.released = 0;
+  g.keys.repeated = 0;
+  g.keys.timer = 15;
+  g.keys.delay = 15;
+  g.keys.interval = 7;
+  g.start_up = 0;
+  g.language = language;
+  usingCore = 1;
+  g.callback = nameEntry;
 }
 
 /** 0x0803e74c: the same fade when the title screen is left alone, out to the attract mode. */
 static void titleFadeToAttract(void) {
-  if (fadeToBlack(gba_pal, 0x100)) {
+  if (fadeToBlack(PALETTE, 0x100)) {
     setBlend(0, 0, 0, 0, 0, 0);
     for (int i = 0; i < 256; i++) gba_pal[i] = 0;
     pendingDispcnt = 0x1F40;
@@ -636,7 +607,7 @@ static void vblank(void) {
 
 /** 0x08000210: the logos' screen, its two layers and the first picture. */
 static void logosSetup(void) {
-  newScreen();
+  resetScreen();
   // the first picture in layer 2 (tiles at 0x06000000, map at 0x06007000), and an empty one in layer 3
   copyVram(0x08328C74, 0x06000000, 0x10A0);
   copyVram(0x0832ADB4, 0x06007000, 0x200);
@@ -658,6 +629,84 @@ static void logosSetup(void) {
   state = LOGOS_FADE_IN;
 }
 
+/** One song's music player, from gSongTable: eight bytes for each song, its player at the fifth. */
+static uint8_t rom8(uint32_t at) { return gba_rom[at - 0x08000000u]; }
+
+/**
+ * The name entry, whose grid and letters are its own task (#645): here its palettes, its keys and its way out are, so
+ * Start keeps the name and the main menu begins on the frame the original's does. Its screen isn't drawn, so it isn't
+ * named and doesn't count as ported until its task is done.
+ */
+static void nameEntry(void) {
+  if (g.name[0] != 0) {
+    // with a name saved, the screen goes straight on to the menu
+    g.callback = menuBeforeMenu;
+    menuBeforeMenu();
+    return;
+  }
+  g.callback = nameSetUp;
+}
+
+static void nameSetUp(void) {
+  for (int i = 0; i < 512; i++) gba_pal[i] = 0;
+  // the palettes the name entry's fade comes to: the grid's, the name's and the mark's
+  copyPalette(0x08156CD0, PALETTE, 32);
+  copyPalette(0x08132754, 0x050001E0, 16);
+  copyPalette(0x08158194, 0x05000200, 48);
+  for (int i = 0; i < 0x18000; i++) gba_vram[i] = 0;
+  nameLength = 0;
+  g.callback = nameDisplayOn;
+}
+
+/** The name entry's last step: it runs past a V-blank, and the display and the song come as it ends. */
+static void nameDisplayOn(void) {
+  queueRegister(REG_DISPCNT, 8000);
+  gba_sound_wave_at(163059);   // where the song's start comes in its frame, as mGBA measures it
+  gba_sound_play(4);
+  g.callback = nameEntering;
+}
+
+/** One key a frame, Start first: Start keeps the name, A and B change it. */
+static void nameEntering(void) {
+  uint16_t pressed = g.keys.pressed;
+  if (pressed & KEY_START) {
+    if (!nameLength) {
+      gba_sound_play(419);
+      return;
+    }
+    for (int i = 0; i < nameLength; i++) g.name[i] = (uint16_t)(0x41 + i);
+    g.name[nameLength] = 0xFFFE;
+    g.callback = nameFadeOut;
+    gba_sound_fade_out(rom8(SONG_TABLE + 4 * 8 + 4), 7);
+    gba_sound_play(404);
+  } else if (pressed & KEY_A) {
+    if (nameLength < 5) nameLength++;
+  } else if (pressed & KEY_B) {
+    if (nameLength) nameLength--;
+  }
+}
+
+/** Every colour fades to black, and then the main menu starts. */
+static void nameFadeOut(void) {
+  if (!fadeToBlack(PALETTE, 512)) return;
+  savingFrames = 20;
+  g.callback = nameSaving;
+}
+
+/** The time the original's flash write takes, with the screen black. */
+static void nameSaving(void) {
+  if (--savingFrames <= 0) showMenu(1);
+}
+
+void startFightFromPoint(void) {
+  int vblanks = (int)gba_start_number("vblanks", 0);
+  int action = (int)gba_start_number("action", 0) & 0xFF;
+  startFight(vblanks, action);
+}
+
+// once, with the player's copy in gba_rom: the sound engine, then the console's power-on. Sonic Battle's sound is six
+// music players, eight DirectSound channels, master volume 14, 10,512 Hz and no reverb, with its wave voice's write
+// 84,800 cycles into the frame (sound.js), and the cycle count the fight's moving colours need (core.c, arena.c).
 void game_start(void) {
   // the console after its start-up program: the screen white (forced blank) until the game shows it, and the rotating
   // layers at rest
@@ -672,16 +721,28 @@ void game_start(void) {
   titleSpriteCount = 0;
   startUp = 45;
   language = (int)gba_start_number("language", 1);
-  // the sound engine, as the original's start-up does: six players, eight channels, master volume 14, 10,512 Hz. Its
-  // player table is at 0x08BF71FC and its players point into IWRAM, which gba_sound_start's finder doesn't take, so the
-  // game sets the same layout through the kit's own setup call (sound.c's OP_SETUP), as sound.js's soundLayout does.
-  if (!gba_sound_start(6, 8, 14, 10512, 0)) {
-    void dp_sound_call(int op, int a, int b, int c, int d);
-    dp_sound_call(1, 0xBF71FC, 0x000E0806, 10512 | (1 << 16), 84800);
+  g.language = language;
+  g.keys.timer = 15;
+  g.keys.delay = 15;
+  g.keys.interval = 7;
+  gba_on_hblank(hblank);
+  gba_sound_start_layout(0xBF71FC, 6, 8, 14, 10512, 0, 1, 84800);
+  gba_sound_count_cycles();
+  int name = (int)gba_start_number("name", 0);
+  if (name) g.name[0] = (uint16_t)name;
+  // a recording's start point: the fight's opening, which the core runs
+  if (gba_start_point("fight")) {
+    usingCore = 1;
+    g.start_up = 1;
+    g.callback = startFightFromPoint;
   }
 }
 
 void game_step(uint16_t keys) {
+  if (usingCore) {
+    step(keys);
+    return;
+  }
   if (startUp > 0) {
     if (--startUp == 0) {
       for (int i = 0; i < 512; i++) gba_pal[i] = 0x7FFF;

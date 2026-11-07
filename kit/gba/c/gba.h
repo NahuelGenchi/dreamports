@@ -80,6 +80,20 @@ void gba_draw_frame(uint32_t *out);
 // plays at the start of the next sound frame, as the original's calls during a frame are sequenced on the next, and
 // each is named for the sound library's function it stands for.
 int gba_sound_start(int players, int channels, int volume, int rate, int reverb);
+/** The same with the music players' table at `playerTable` in the copy, as the JavaScript kit's soundLayout takes it:
+ *  `voicesEndOnChip` for a game whose voices end on the chip, and `soundMainAt` where SoundMain's wave write lands. */
+int gba_sound_start_layout(uint32_t playerTable, int players, int channels, int volume, int rate, int reverb,
+                           int voicesEndOnChip, int soundMainAt);
+/** After gba_sound_start, for a game whose picture depends on how long the console's sound work takes, as the
+ *  JavaScript kit's countCycles: a silent engine of its own runs a frame as each of the game's frames ends, so what
+ *  gba_sound_frame_cycles says is the same in a player's browser as under the proof tools. */
+int gba_sound_count_cycles(void);
+/** With gba_sound_count_cycles, how many of the console's cycles the last frame's SoundMain took, as the JavaScript
+ *  kit's frameCycles(), or -1 without it. */
+int gba_sound_frame_cycles(void);
+/** With gba_sound_count_cycles, `frames` frames of SoundMain with nothing playing, for a start point that leaves out
+ *  what led to it, as the JavaScript kit's framesGoneBy(). */
+void gba_sound_frames_gone_by(int frames);
 /** m4aSoundInit after a soft reset: the engine starts again from nothing, with the sound chip as it was. */
 void gba_sound_reset(void);
 /** m4aSongNumStart */
@@ -108,6 +122,9 @@ void gba_sound_pan(int player, int bits, int pan);
 /** m4aMPlayFadeIn and m4aMPlayFadeOut on music player `player`, a step every `speed` frames */
 void gba_sound_fade_in(int player, int speed);
 void gba_sound_fade_out(int player, int speed);
+/** Where in the frame the next song's wave write lands, in cycles, as mGBA measures it, and as the JavaScript kit's
+ *  sound call 'waveAt' does (m4a.js): a song's first wave note begins at another place in its wave without it. */
+void gba_sound_wave_at(int at);
 /** m4aMPlayTempoControl on the music (0x100 is normal speed) */
 void gba_sound_tempo(int tempo);
 /** m4aMPlayAllStop and m4aMPlayAllContinue: every music player stops, or goes on from where it stopped */

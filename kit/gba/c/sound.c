@@ -14,7 +14,7 @@
 enum {
   OP_SETUP = 1, OP_RESET, OP_START, OP_START_OR_CHANGE, OP_START_OR_CONTINUE, OP_STOP, OP_PLAYER_START, OP_PLAYER_STOP,
   OP_PLAYER_CONTINUE, OP_IMM_INIT, OP_PITCH, OP_VOLUME, OP_PANPOT, OP_FADE_IN, OP_FADE_OUT, OP_TEMPO, OP_ALL_STOP,
-  OP_ALL_CONTINUE, OP_VSYNC_OFF, OP_VSYNC_ON,
+  OP_ALL_CONTINUE, OP_VSYNC_OFF, OP_VSYNC_ON, OP_WAVE_AT,
 };
 
 typedef struct { int32_t op, a, b, c, d; } SoundCall;
@@ -39,10 +39,20 @@ static double ticksPerSample = 1, gain = 1;
 static int dcBlock = 0;
 static float rendered[2 * RENDER_MAX];
 
+// with gba_sound_count_cycles, a silent engine of its own that runs a frame as each of the game's ends, as the
+// JavaScript kit's countCycles does (sound/audio.js), so its cycles are the same in a player's browser, where the audio
+// thread plays the sound, as under the proof tools. How far the chip's length counters have got when it starts, as
+// mGBA measures it: a PSG voice's end shows in the count, and they step every 32768 cycles
+#define COUNTER_SEQUENCER_START 131019
+static Apu counterApu;
+static M4a counter;
+static int counting;
+static SoundCall counterQueue[CALLS];
+static int counterQueued;
+
 // ---- the game's calls ----
 
-static void apply(const SoundCall *c) {
-  M4a *m = &engine;
+static void apply(M4a *m, const SoundCall *c) {
   switch (c->op) {
     case OP_START: m4a_song_start(m, c->a); break;
     case OP_START_OR_CHANGE: m4a_song_start_or_change(m, c->a); break;
@@ -62,6 +72,7 @@ static void apply(const SoundCall *c) {
     case OP_ALL_CONTINUE: m4a_all_continue(m); break;
     case OP_VSYNC_OFF: m4a_vsync_off(m); break;
     case OP_VSYNC_ON: m4a_vsync_on(m); break;
+    case OP_WAVE_AT: m4a_wave_at(m, c->a); break;
   }
 }
 
@@ -92,6 +103,8 @@ static void setup(int a, int b, int c, int d) {
 
 static void take(int op, int a, int b, int c, int d) {
   SoundCall call = { op, a, b, c, d };
+  // the counter has every call but these two, which the JavaScript kit doesn't send it either
+  if (counting && op != OP_SETUP && op != OP_RESET && counterQueued < CALLS) counterQueue[counterQueued++] = call;
   if (op == OP_SETUP) setup(a, b, c, d);
   if (handOver) {
     if (takenCount < CALLS) taken[takenCount++] = call;
@@ -140,11 +153,47 @@ static int find_music_players(int players, uint32_t *found) {
   return 0;
 }
 
+int gba_sound_start_layout(uint32_t playerTable, int players, int channels, int volume, int rate, int reverb,
+                           int voicesEndOnChip, int soundMainAt) {
+  if (!gba_rom || players < 1 || players > M4A_PLAYERS) return 0;
+  if (playerTable + (uint32_t)players * 12 + 16 > gba_rom_size) return 0;
+  take(OP_SETUP, (int)playerTable, players | channels << 8 | volume << 16 | (reverb & 0x7F) << 24,
+    rate | (voicesEndOnChip ? 1 << 16 : 0), soundMainAt);
+  return 1;
+}
+
 int gba_sound_start(int players, int channels, int volume, int rate, int reverb) {
   uint32_t at;
   if (!gba_rom || players < 1 || players > M4A_PLAYERS || !find_music_players(players, &at)) return 0;
-  take(OP_SETUP, (int)at, players | channels << 8 | volume << 16 | (reverb & 0x7F) << 24, rate, 0);
+  return gba_sound_start_layout(at, players, channels, volume, rate, reverb, 0, 0);
+}
+
+int gba_sound_count_cycles(void) {
+  if (!running) return 0;
+  apu_init(&counterApu);
+  m4a_init(&counter, gba_rom, gba_rom_size, &layout, &counterApu);
+  apu_run(&counterApu, COUNTER_SEQUENCER_START);
+  // two frames of the original's sound have gone by when this count starts, which sets when its envelopes step
+  m4a_frame(&counter);
+  m4a_frame(&counter);
+  counterQueued = 0;
+  counting = 1;
   return 1;
+}
+
+int gba_sound_frame_cycles(void) { return counting ? counter.frameCycles : -1; }
+
+void gba_sound_frames_gone_by(int frames) {
+  if (!counting) return;
+  for (int i = 0; i < frames; i++) { apu_run(&counterApu, FRAME_CYCLES); m4a_frame(&counter); }
+}
+
+void gba_sound_frame_done(void) {
+  if (!counting) return;
+  for (int i = 0; i < counterQueued; i++) apply(&counter, &counterQueue[i]);
+  counterQueued = 0;
+  apu_run(&counterApu, FRAME_CYCLES);
+  m4a_frame(&counter);
 }
 void gba_sound_reset(void) { take(OP_RESET, 0, 0, 0, 0); }
 void gba_sound_play(int song) { take(OP_START, song, 0, 0, 0); }
@@ -164,6 +213,7 @@ void gba_sound_pitch(int player, int bits, int pitch) { take(OP_PITCH, player, b
 void gba_sound_volume(int player, int bits, int volume) { take(OP_VOLUME, player, bits, volume, 0); }
 void gba_sound_pan(int player, int bits, int pan) { take(OP_PANPOT, player, bits, pan, 0); }
 void gba_sound_imm_init(int player) { take(OP_IMM_INIT, player, 0, 0, 0); }
+void gba_sound_wave_at(int at) { take(OP_WAVE_AT, at, 0, 0, 0); }
 void gba_sound_fade_in(int player, int speed) { take(OP_FADE_IN, player, speed, 0, 0); }
 void gba_sound_fade_out(int player, int speed) { take(OP_FADE_OUT, player, speed, 0, 0); }
 void gba_sound_tempo(int tempo) { take(OP_TEMPO, 0, tempo, 0, 0); }
@@ -177,7 +227,7 @@ void gba_sound_vsync_on(void) { take(OP_VSYNC_ON, 0, 0, 0, 0); }
 static void frame(void) {
   int8_t *was = playing;
   playing = pending; pending = was;
-  for (int i = 0; i < queued; i++) apply(&queue[i]);
+  for (int i = 0; i < queued; i++) apply(&engine, &queue[i]);
   queued = 0;
   int n = engine.samples;
   if (engine.locked) { __builtin_memset(playing, 0, 2 * n); __builtin_memset(pending, 0, 2 * n); return; }
