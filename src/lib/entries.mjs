@@ -4,6 +4,7 @@
 // which the proof tools write and docs/STANDARD.md#how-progress-is-measured explains.
 
 import { needsProblems } from './pieces.mjs';
+import { kindsOf, showsProblems } from './shows.mjs';
 
 /** A Dreamport's entry, in its folder in games/. */
 export const ENTRY = 'entry.md';
@@ -87,6 +88,16 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
     for (const { from, to, why } of neverInPlay) {
       problems.push(`${shared}recordings/${name}.json plays what no player could ever see at frames ${from} to ${to}: ${why}. A start point only skips the way there (tools/README.md, Start points), so change the recording and prove it again.`);
     }
+  }
+  // a recording named for a character, or anything else original.json lists under `shows`, has to show it, as the
+  // original's own memory said when it was proven (src/lib/shows.mjs)
+  try {
+    const kinds = kindsOf(original, `${shared}original.json`);
+    for (const [name, { shows }] of recordings) {
+      for (const problem of showsProblems(name, shows, kinds)) problems.push(`${at}progress.json: ${problem}`);
+    }
+  } catch (error) {
+    problems.push(/** @type {Error} */ (error).message);
   }
   /** @type {Proof} */
   const result = { copy: original.name, percent: null, recordings: recordings.length, codeMap: null, proven: null, ported: null, gameplay: null };
