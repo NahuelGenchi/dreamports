@@ -128,13 +128,17 @@ EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 // point's `level` opens the act at once; the course select hands the act its own level.
 void front_play(int level) {
   act_active = 1;
+  // a new game's act comes from the character select, whose HUD's zero-ring flash starts at 1; a course select
+  // or a start point starts it from the stage's own value (levels.js hudFlash)
+  actHudFlash = level < 0 ? 1 : -1;
   int startLevel = (int)gba_start_number("level", -1);
   if (startLevel >= 0) {
     destroy_tasks(0x2000, 0x3000);
     act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
     return;
   }
-  act_start(level, -1, 0);
+  // Game Start after the character select hands the act the level the game was started on (0 for a new game)
+  act_start(level >= 0 ? level : ctx.startLevel, -1, 0);
 }
 void front_start_demo(void) { ctx.done = 1; }
 

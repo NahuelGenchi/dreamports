@@ -50,18 +50,40 @@ typedef struct {
   int flash, active;
 } Hud;
 
+// the title card (engine/titlecard.js): the pieces' state, the fade and the sprites each frame
+#define CARD_PIECES 6
+#define CARD_SPRITES 128
+typedef struct { int slot, glyph, a0, a1, order; } CardSprite;
+typedef struct {
+  int slot, x, y, count, order, rows, grid, mark, drops;
+  int text[32];
+} CardPiece;
+typedef struct {
+  int frame, done, fading, blank, level, character;
+  int fadeLevel, fadeSpeed, fadeBldY;
+  CardPiece pieces[CARD_PIECES];
+  CardSprite sprites[CARD_SPRITES];
+  int spriteCount;
+  struct { uint32_t vram; int shape, size, w, h, perGlyph, glyphs; int palette; } slots[CARD_PIECES];
+} TitleCard;
+
 typedef struct {
   Stage stage;
   Player player;
   Camera cam;
   Hud hud;
+  TitleCard card;
   int tick, courseTime, ringCount, lives, score;
   int clockStopped, cardFrame, cardDone, firstCard, started, preFrames, firstFrame, drawn;
 } Act;
 
 extern Act act;
 extern int act_active;
+extern int actHudFlash;   // 1 from the character select, -1 for the stage's own (a course select or start point)
 
+void card_create(int level, int character, int fromResults, int blank);
+int card_run(int pressed);
+void card_draw(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_frame_now(void);
