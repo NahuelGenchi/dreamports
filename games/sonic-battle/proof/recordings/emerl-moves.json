@@ -1,6 +1,6 @@
 {
   "about": "Emerl's moves, from a start point: Training with Emerl as the player, a Sonic that does nothing, and the seventh stage. The opening's three presses of A choose the specials, Emerl runs up to the other fighter, jumps, comes down with B, lands with the ground combo, and uses R for his special.",
-  "start": "fight=training&vblanks=1209&player=9&stage=6",
+  "start": "fight=training&vblanks=1209&you=9&arena=6",
   "frames": 900,
   "held": [
     [

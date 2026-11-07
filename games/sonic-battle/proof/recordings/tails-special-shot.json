@@ -1,0 +1,153 @@
+{
+  "about": "Tails's ground Shot special, from the same start point as the fight's opening: Training with Tails as the player and a Sonic that does nothing as the rival.",
+  "start": "fight=training&vblanks=1206&you=1",
+  "frames": 620,
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      70,
+      [
+        "A"
+      ]
+    ],
+    [
+      72,
+      []
+    ],
+    [
+      100,
+      [
+        "A"
+      ]
+    ],
+    [
+      102,
+      []
+    ],
+    [
+      130,
+      [
+        "A"
+      ]
+    ],
+    [
+      132,
+      []
+    ],
+    [
+      400,
+      [
+        "RIGHT",
+        "DOWN"
+      ]
+    ],
+    [
+      426,
+      []
+    ],
+    [
+      450,
+      [
+        "R"
+      ]
+    ],
+    [
+      452,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 1251,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          747,
+          [
+            "START"
+          ]
+        ],
+        [
+          748,
+          []
+        ],
+        [
+          881,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          882,
+          []
+        ],
+        [
+          921,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          922,
+          []
+        ],
+        [
+          961,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          962,
+          []
+        ],
+        [
+          1001,
+          [
+            "A"
+          ]
+        ],
+        [
+          1002,
+          []
+        ],
+        [
+          1150,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          1152,
+          []
+        ],
+        [
+          1198,
+          [
+            "START"
+          ]
+        ],
+        [
+          1199,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 778,
+          "address": "03002170",
+          "bytes": 2,
+          "value": 1
+        }
+      ],
+      "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, one move right on the Character row to Tails, and Start on its first choices, three frames sooner."
+    }
+  ]
+}

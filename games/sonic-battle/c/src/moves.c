@@ -688,7 +688,7 @@ static void pushApart(int i, int j) {
   int push = ((near - (uint32_t)distance) >> 16) << ((read32(rec + FLAGS) & 1) ? 7 : 5);
   if ((dx < 0 ? -dx : dx) < (dy < 0 ? -dy : dy)) {
     write16(rec + SPEED_X, (uint16_t)(read16(rec + SPEED_X) + (x > reads16(other + X) ? push : -push)));
-  } else write16(rec + SPEED_Y, (uint16_t)(read16(rec + Y) + (y > reads16(other + Y) ? push : -push)));
+  } else write16(rec + SPEED_Y, (uint16_t)(read16(rec + SPEED_Y) + (y > reads16(other + Y) ? push : -push)));
 }
 
 static const uint32_t REACTION_FLAGS = 0x800u | 0x80u | 0x20u | 0x40u | 0x10u | 0x8u | 0x200u | 0x100u | 0x400u

@@ -197,7 +197,7 @@ function choosingAfterWait(c) {
  * and 0x0801c8a4, with 0x08019ed8, which load everything and start the song. In the original these take from the
  * Training screen's fade to the fight's first picture, with the screen black all along.
  */
-export function startFight(c, vblanks, action = 0, player = 0, rival = 0, stage = 0) {
+export function startFight(c, vblanks, action = 0, you = 0, rival = 0, arena = 0) {
   c.vblanks = vblanks;
   c.lineOne = fn0801fc60;
   c.video.pal.fill(0);
@@ -209,13 +209,13 @@ export function startFight(c, vblanks, action = 0, player = 0, rival = 0, stage 
   write8(c, SETUP + 5, 10);
   for (const at of [6, 7, 8, 9, 10, 11]) write8(c, SETUP + at, 0);
   write8(c, SETUP + 36, 2);
-  write8(c, SETUP + 20, player);   // the setup screen's first choice, the player
+  write8(c, SETUP + 20, you);   // Training's first choice, Sonic, unless the start point picks another
   write8(c, SETUP + 21, NO_FIGHTER);
   write8(c, SETUP + 22, NO_FIGHTER);
-  write8(c, SETUP + 23, rival);    // and its second, the rival
+  write8(c, SETUP + 23, rival);
   write8(c, SETUP + 1, 0);
   write8(c, SETUP + 2, 1);
-  write8(c, SETUP + 3, stage);   // Emerald Beach, Training's first map, unless the start point says
+  write8(c, SETUP + 3, arena);   // the arena, Emerald Beach (0) unless a start point picks another of Training's maps
   write8(c, SETUP + 38, action);   // the Rival's Action, Do Nothing first
   write8(c, SETUP + 125, 4);
   write8(c, SETUP + 0, 0);

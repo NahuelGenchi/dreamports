@@ -2,11 +2,13 @@
 // publishes a preview of the game as it is in the last commit, on GitHub Pages from the contributor's own fork, at
 // <owner>.github.io/<fork>/<preview>/. A preview holds only code: the player gives it their own copy, as on
 // dreamports.net. Beside it, apart from it, goes the newest clip prove made of the original next to the Dreamport,
-// which only the step's pull request shows (docs/STANDARD.md#clips): share prints the lines for it. share asks before
-// it publishes and before it switches Pages on; --yes answers yes, once the contributor has said yes.
+// which only the step's pull request shows (docs/STANDARD.md#clips): share prints the lines for it, a frame that links
+// the video and a link, and keeps every clip's lines for the branch in .dreamports/share/clips.md, to paste as they are.
+// share asks before it publishes and before it switches Pages on; --yes answers yes, once the contributor has said yes.
+// npm run dp -- share --check <file>: refuses the pull request's text in <file> when a clip's frame or link is missing.
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve, extname, basename, dirname, sep } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { LOCAL, gameFolder } from './lib/paths.mjs';
@@ -18,10 +20,15 @@ const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 // what the standard asks of a clip: an MP4 video or a PNG picture, under about 2 MB
 const CLIP_LIMIT = 2_000_000;
 const GUIDE = `https://github.com/${UPSTREAM}/blob/main/docs/PREVIEWS.md`;
-const USAGE = 'Usage: npm run dp -- share <game> [--as <preview>] [--about "<what changed>"] [--clip <file>] [--fork <owner/name>] [--yes]';
+const USAGE = 'Usage: npm run dp -- share <game> [--as <preview>] [--about "<what changed>"] [--clip <file>] [--fork <owner/name>] [--yes]\n'
+  + '       npm run dp -- share --check <the pull request\'s text>';
+// every clip shared from the branch, with its lines for the pull request: { branch, clips: [{ key, lines }] }
+const SAVED = join(LOCAL, 'share', 'clips.json');
+const SAVED_LINES = join(LOCAL, 'share', 'clips.md');
 
 export async function run(args) {
-  const { game, as: name = game, about = '', clip: clipFile, fork: wanted, yes = false } = options(args);
+  const { game, as: name = game, about = '', clip: clipFile, fork: wanted, yes = false, check } = options(args);
+  if (check) return checkText(check);
   if (!game) throw new Error(USAGE);
   if (!NAME.test(name) || name === CLIPS) throw new Error(`A preview's name is lowercase letters, numbers and single dashes, such as ${game}-springs, and isn't "${CLIPS}".`);
 
@@ -76,7 +83,18 @@ export async function run(args) {
   const siteUrl = pages?.url ?? url;
   await waitUntilOnline(fork.repository, preview.commit, `${siteUrl}${name}/preview.json`, preview.made);
   console.log(`\nOnline: ${siteUrl}${name}/`);
-  if (clip) console.log(`\nFor the step's pull request, the clip, under Clips:\n\n${clipLines(title, clip, clips, siteUrl).replace(/^/gm, '  ')}`);
+  // a share with no clip still says so for the branch, which --check reads
+  const saved = clip ? keepClip(readSaved(), branch, clip.recording ?? clips[0].path, clipLines(title, clip, clips, siteUrl)) : keepNone(readSaved(), branch);
+  mkdirSync(dirname(SAVED), { recursive: true });
+  writeFileSync(SAVED, `${JSON.stringify(saved, null, 2)}\n`);
+  writeFileSync(SAVED_LINES, `${savedLines(saved)}\n`);
+  if (clip) {
+    const lines = saved.clips.at(-1).lines;
+    console.log(`\nFor the step's pull request, the clip, under Clips:\n\n${lines.replace(/^/gm, '  ')}`);
+    console.log(`\n${saved.clips.length === 1 ? 'Its lines are' : `The lines of all ${saved.clips.length} clips shared from ${branch} are`} in .dreamports/share/clips.md. `
+      + 'Paste that file under Clips as it is, frames and links, and check the text with npm run dp -- share --check <the filled-in template> '
+      + 'before the pull request goes out or its text changes.');
+  }
   return 0;
 }
 
@@ -84,7 +102,7 @@ function options(args) {
   const found = { rest: [] };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (['--as', '--about', '--clip', '--fork'].includes(arg)) {
+    if (['--as', '--about', '--clip', '--fork', '--check'].includes(arg)) {
       if (args[i + 1] === undefined) throw new Error(`${arg} needs a value.\n${USAGE}`);
       found[arg.slice(2)] = args[++i];
     } else if (arg === '--yes') found.yes = true;
@@ -160,6 +178,9 @@ function chooseClip(game, file) {
   // a frame for the pull request: prove keeps dreamport.png beside dreamport.mp4, and clip-middle.png beside clip.mp4
   const base = extname(file) === '.mp4' ? join(dirname(file), basename(file, '.mp4')) : null;
   const still = base && [`${base}.png`, `${base}-middle.png`].find(existsSync);
+  // the frame is what the pull request shows of a video, so a video never goes without one
+  if (base && !still) throw new Error(`${basename(file)} has no frame beside it, ${basename(base)}.png or ${basename(base)}-middle.png, for the pull request to show: `
+    + 'the clips prove makes have one.');
   const sideBySide = file.startsWith(join(LOCAL, 'results') + sep) && /^clip(-[a-z]+)?\.(mp4|png)$/.test(basename(file));
   // the recording it plays, which tells a step's clips apart in its pull request
   const recording = file.startsWith(results + sep) ? file.slice(results.length + 1).split(sep)[0] : null;
@@ -186,6 +207,56 @@ export function clipLines(title, clip, clips, siteUrl) {
     ...(clips[1] ? [`[![${name}: a frame of the clip](${siteUrl}${clips[1].path})](${video})`, ''] : []),
     `[Watch the clip${clip.recording ? ` of ${clip.recording}` : ''}](${video}) (MP4, ${(clip.bytes / 1e6).toFixed(1)} MB${what})`,
   ].join('\n');
+}
+
+function readSaved() {
+  try {
+    return JSON.parse(readFileSync(SAVED, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+// the branch's clips with this one added, or put in place of the one that played the same recording; another
+// branch's clips are another step's, and are left out
+export function keepClip(saved, branch, key, lines) {
+  const clips = saved?.branch === branch ? saved.clips.filter(c => c.key !== key) : [];
+  return { branch, clips: [...clips, { key, lines }] };
+}
+
+export function keepNone(saved, branch) {
+  return saved?.branch === branch ? saved : { branch, clips: [] };
+}
+
+export function savedLines(saved) {
+  return saved.clips.map(c => c.lines).join('\n\n');
+}
+
+// the lines of each saved clip the text leaves out: [{ key, lines: [the lines missing] }]
+export function missingLines(text, saved) {
+  const has = new Set(text.split('\n').map(line => line.trim()).filter(Boolean));
+  return saved.clips
+    .map(c => ({ key: c.key, lines: c.lines.split('\n').map(line => line.trim()).filter(line => line && !has.has(line)) }))
+    .filter(c => c.lines.length);
+}
+
+// share --check: the pull request's text has every clip shared from this branch, each with its frame and link
+function checkText(file) {
+  if (!existsSync(file)) throw new Error(`${file} isn't there: give the pull request's text, filled in from .github/pull_request_template.md.`);
+  const { branch } = head();
+  const saved = readSaved();
+  if (saved?.branch !== branch) throw new Error(`Nothing has been shared from ${branch} yet, and a Dreamport's pull request shows its clips: run npm run dp -- share <game> first.`);
+  if (!saved.clips.length) {
+    console.log(`share found no clip to publish from ${branch}, so the text has none to show.`);
+    return 0;
+  }
+  const missing = missingLines(readFileSync(file, 'utf8'), saved);
+  if (missing.length) {
+    throw new Error(`The text leaves out ${missing.length === 1 ? 'a clip\'s lines' : `${missing.length} clips' lines`}. Paste .dreamports/share/clips.md under Clips as it is, `
+      + `or put these clips' lines there in place of theirs:\n\n${saved.clips.filter(c => missing.some(m => m.key === c.key)).map(c => c.lines).join('\n\n')}`);
+  }
+  console.log(`All ${saved.clips.length === 1 ? 'the clip\'s lines are' : `${saved.clips.length} clips' lines are`} in it, each frame with its link.`);
+  return 0;
 }
 
 // waits for GitHub to build the Pages site with the new commit, then for the preview's address to serve it

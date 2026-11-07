@@ -81,7 +81,7 @@ export function scroll(c, node) {
 }
 
 /** 0x08039dd8: the animated picture's block of the map, a new picture of the eight every four frames. */
-function animate(c, node) {
+export function animate(c, node) {
   node.timer++;
   if (node.timer > 23) node.timer = 0;
   copyTileBlock(c, node.to, ANIMATION + ((node.timer >> 2) & 7) * ANIMATION_WORDS * 2, 12, 17, node.tile);
