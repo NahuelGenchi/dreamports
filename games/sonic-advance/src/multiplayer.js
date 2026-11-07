@@ -8,7 +8,9 @@ import { createChaoHunt } from './engine/chaohunt.js';
 import { createResultsScreen } from './engine/mpresults.js';
 import { createInput, playerControls, PLAYER_KEYS, playerPads } from './engine/input.js';
 import { TICK_MS } from './engine/constants.js';
+import { openSave } from './engine/save.js';
 import { createClock } from '../../../kit/gba/clock.js';
+import { proof } from '../../../kit/gba/proof.js';
 
 // what the link hands every GBA as the round starts, by default as in the link recordings (docs/ROM.md):
 // the shared random number and the Chao's place among the stage's eight
@@ -16,15 +18,19 @@ export const DEFAULT_SEED = 0x16AF, DEFAULT_CHAO_PLACE = 2;
 // each GBA's own random numbers (gPseudoRandom), where they stand when the stage's first firework check runs on
 // linked cores: five steps from 0, one before the stage and four as it starts. Casino Paradise's fireworks
 // (Chao Hunt C) draw from them
-const GAME_RANDOM = 0x35AF159E;
+export const GAME_RANDOM = 0x35AF159E;
 
 /**
- * Starts a round for `count` players on `assets`' multiplayer stage, a screen for each in `container`. Every
- * GBA's save has this page's `language` (uiLanguage: 0 Japanese, 1 English) and `btnConfig` (1: A and B
- * swapped). A player's win calls `achieve(id)`, the page's, for the achievements. `onResultsDone()` is called once every GBA's results screen is over
- * (the white they end on), where the VS menus' continue screen comes next. Returns { gbas, link, stop }.
+ * Starts a round for `count` players on `assets`' multiplayer stage, a screen for each in `container`.
+ * `saves` are the GBAs' saves (the page's own, then the others' in memory), and `records[i]` the places in
+ * GBA `i`'s save of the players it has met (gUnknown_03005008), which its results screen uses for the names
+ * and the VS record. Every GBA's save has this page's `language` (uiLanguage: 0 Japanese, 1 English) and
+ * `btnConfig` (1: A and B swapped). `watch` names each screen's buttons for a proof tool, which the VS menus
+ * have done already when they start the round. A player's win calls `achieve(id)`, the page's, for the
+ * achievements. `onResultsDone()` is called once every GBA's results screen is over (the white they end on,
+ * after the save is written), where the VS menus' continue screen comes next. Returns { gbas, link, stop }.
  */
-export function startMultiplayer({ container, assets, count, sound, seed = DEFAULT_SEED, chaoPlace = DEFAULT_CHAO_PLACE, chaoPlaces = null, gameMode = 4, connections = 0, language = 1, btnConfig = 0, achieve = () => {}, onResultsDone = null }) {
+export function startMultiplayer({ container, assets, count, sound, seed = DEFAULT_SEED, chaoPlace = DEFAULT_CHAO_PLACE, chaoPlaces = null, gameMode = 4, connections = 0, language = 1, btnConfig = 0, saves = null, records = null, watch = true, achieve = () => {}, onResultsDone = null }) {
   const link = createLink(count);
   const gbas = [];
   container.replaceChildren();
@@ -36,15 +42,18 @@ export function startMultiplayer({ container, assets, count, sound, seed = DEFAU
     canvas.setAttribute('aria-label', `Player ${id + 1}'s screen`);
     container.append(canvas);
     const input = createInput({ keys: PLAYER_KEYS[id], pads: playerPads(id, count) });
+    // the VS menus' own screens are already watched (vsfront.js); a round started from the address watches its own
+    if (watch) proof?.watch(canvas, input, id);
     const gbaSound = sound.forGba(id);
-    const gba = { id, canvas, input, sound: gbaSound, screen: null };
+    const gbaSave = saves?.[id] ?? openSave(null);
+    const gba = { id, canvas, input, sound: gbaSound, save: gbaSave, screen: null };
     const mode = createChaoHunt({
       link, id, count, stage: assets.stage, anims: assets.sprites.anims, seed, chaoPlace, chaoPlaces, gameMode, connections,
       // the round over, the results screen takes the place of the stage; a player who won (rank 0, not a draw's
       // 4) earns Chao Hunter
       onResults(mp) {
         if (mp.ranks[id] === 0) achieve('chao-hunt');
-        gba.screen = createResultsScreen({ canvas, assets, link, id, count, ranks: mp.ranks.slice(), sound: gbaSound, input, language, teamPlay: mp.teamPlay, onDone: () => { gba.over = true; if (onResultsDone && gbas.every(g => g.over)) onResultsDone(); } });
+        gba.screen = createResultsScreen({ canvas, assets, link, id, count, ranks: mp.ranks.slice(), sound: gbaSound, input, save: gbaSave, records: records?.[id] ?? null, language, teamPlay: mp.teamPlay, onDone: () => { gba.over = true; if (onResultsDone && gbas.every(g => g.over)) onResultsDone(); } });
       },
     });
     // the round starts as an act does (ApplyGameStageSettingsAndStart), so the stage reads jump and attack as the

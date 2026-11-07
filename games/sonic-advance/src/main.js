@@ -26,7 +26,7 @@ import { SCREEN_W, SCREEN_H, VIEW_MAX_W, VIEW_MAX_H } from './engine/constants.j
 import { THE_MOON, ALL_EMERALDS } from './engine/unlock.js';
 import { openSave } from './engine/save.js';
 import { levelInfo } from './rom/levels.js';
-import { startMultiplayer, DEFAULT_SEED, DEFAULT_CHAO_PLACE } from './multiplayer.js';
+import { startMultiplayer, DEFAULT_SEED, DEFAULT_CHAO_PLACE, GAME_RANDOM } from './multiplayer.js';
 import { startVsFront } from './front/vsfront.js';
 import { openAchievements } from '../../../kit/gba/achievements/store.js';
 import { createUnlockPopup } from '../../../kit/gba/achievements/popup.js';
@@ -648,21 +648,22 @@ function enterSpecialStage(assets, handover) {
   if (debug) globalThis.onsoku = { special: specialStage, assets, input, sound };
 }
 
-// the VS menus, on a GBA for each player, which start the round their players chose
-function startVs(assets, resume = null) {
+// the VS menus, on a GBA for each player, which start the round their players chose. With `resume` they open at
+// the continue screen, after a round; `count` is how many screens that round had.
+function startVs(assets, resume = null, count = vsCount) {
   game = null;
   screen.hidden = true;
   screens.hidden = false;
   stage.classList.add('multi');
   const from = sa1;
   vsRun = startVsFront({
-    container: screens, rom, offsets: assets.info.offsets, count: vsCount, sound, save, softReset, resume,
+    container: screens, rom, offsets: assets.info.offsets, count, sound, save, softReset, resume,
     onRound: async ({ level, seed: roundSeed, chaoPlace: place, chaoPlaces, gameMode, connections, resume: kept }) => {
       vsRun = null;
       const next = await extractAssets(from.buffer, () => {}, { level, character: 0 });
       if (sa1 !== from || stage.hidden) return;   // the player left the game meanwhile
       // once the results are over the players are back at the VS menus, at the continue screen
-      startRound(next, roundSeed, place, () => { round?.stop(); round = null; startVs(assets, kept); }, chaoPlaces, gameMode, connections);
+      startRound(next, roundSeed, place, () => { round?.stop(); round = null; startVs(assets, kept); }, chaoPlaces, gameMode, connections, kept);
     },
   });
   fitScreen();
@@ -670,12 +671,29 @@ function startVs(assets, resume = null) {
   if (debug) globalThis.onsoku = { vs: vsRun, assets, sound };
 }
 
-// the multiplayer stage's round, on a screen for each player
-function startRound(assets, roundSeed = seed, place = chaoPlace, onResultsDone = null, chaoPlaces = null, gameMode = 4, connections = 0) {
+// The multiplayer stage's round, on a screen for each player. `resume`, when the round comes from the VS menus,
+// has the GBAs' saves and each one's link state (its records of the other players); without it the page's own
+// save is the first GBA's and the others keep theirs in memory.
+function startRound(assets, roundSeed = seed, place = chaoPlace, onResultsDone = null, chaoPlaces = null, gameMode = 4, connections = 0, resume = null) {
   game = null;
   screen.hidden = true;
   screens.hidden = false;
-  round = startMultiplayer({ container: screens, assets, count: players, sound, seed: roundSeed, chaoPlace: place, chaoPlaces, gameMode, connections, language: save.uiLanguage, btnConfig: save.btnConfig, achieve, onResultsDone, watchProof });
+  const gbaSaves = resume?.saves ?? [save, ...Array.from({ length: players - 1 }, () => openSave(null))];
+  const records = resume?.gbas.map(gba => gba.vsLink?.records ?? null) ?? null;
+  // a round started from the address has no VS menus behind it: once its results are over, the continue screen
+  // opens the menus again, from what the round left, as after a round the menus started
+  onResultsDone ??= () => {
+    const after = {
+      saves: gbaSaves,
+      gbas: gbaSaves.map(() => ({
+        vsLink: { connections: ((1 << players) - 1) | connections, records: [0xFF, 0xFF, 0xFF, 0xFF], characters: [0, 0, 0, 0], seed: roundSeed },
+        gameMode, seed: GAME_RANDOM,
+      })),
+    };
+    round?.stop(); round = null;
+    startVs(assets, after, players);
+  };
+  round = startMultiplayer({ container: screens, assets, count: players, sound, seed: roundSeed, chaoPlace: place, chaoPlaces, gameMode, connections, language: save.uiLanguage, btnConfig: save.btnConfig, saves: gbaSaves, records, watch: !resume, achieve, onResultsDone });
   fitScreen();
   clearInterval(statsTimer);
   if (debug) globalThis.onsoku = { round, assets, sound };
