@@ -1,6 +1,6 @@
 {
   "about": "Amy's ground Set special, from the same start point: the opening's choice, two moves on it to put Set on the ground, Amy running up to the other fighter, R for the set, and the blast it turns into.",
-  "start": "fight=training&vblanks=1209&character=4&arena=6",
+  "start": "fight=training&vblanks=1209&you=4&arena=6",
   "frames": 620,
   "held": [
     [

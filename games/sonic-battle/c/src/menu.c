@@ -8,6 +8,7 @@
 // (0x0801f7d0 adds one at the end, 0x0801f89c walks them), and a node added on the way runs in that same frame.
 
 #include "game.h"
+#include "menu.h"
 
 #define CARTRIDGE 0x08000000u
 #define PALETTE 0x05000000u
@@ -40,30 +41,18 @@ static const uint32_t FADES[4][2] = {
 #define PARTS_ARROWS 0x0816EAC4u
 
 #define MENU_SONG 1
+// 0x08039e20's unpacking runs past a V-blank and starts the menu's song 31,815 cycles into the next frame, as mGBA measures it
+#define MENU_SONG_START_CYCLE 31815
 #define SOUND_MOVE 401
 #define SOUND_MADE 404
 // gSongTable: eight bytes for each song, with the number of the player it plays on at the fifth
 #define SONG_TABLE 0x08BF7244u
 #define SONG_FADE 120
 #define CHOICES 7
+#define OPTIONS 6
 
-/** A sprite's place (the first 16 bytes of a node's allocation): the parts it's made of, where, and what they add. */
-typedef struct { uint32_t parts; int x, y, tile, attr0, attr1, attr2, state; } Place;
-
-typedef struct Node Node;
-
-/** A node of the screen's list: what it runs, the sprite it draws, and the counters its handlers keep. */
-struct Node {
-  void (*run)(Node *node);
-  Place place;
-  int count, to, tile, timer;
-  int base_x, base_y;
-  Node *left, *right;
-  int scrolled;
-};
-
-#define MAX_NODES 32
-#define MAX_DRAWN 8
+#define MAX_NODES 64
+#define MAX_DRAWN 32
 static Node nodes[MAX_NODES];
 static int node_count;
 static Place drawn[4][MAX_DRAWN];
@@ -71,8 +60,7 @@ static int drawn_count[4];
 static int matrices;
 static int selection, choice;
 
-static void frame(void);
-static void startFrame(Node *node);
+static void startFrameNode(Node *node);
 static void scroll(Node *node);
 static void animate(Node *node);
 static void drawOnly(Node *node);
@@ -95,13 +83,22 @@ static inline uint16_t rom16(uint32_t at) { return (uint16_t)(gba_rom[at - CARTR
 static inline uint8_t rom8(uint32_t at) { return gba_rom[at - CARTRIDGE]; }
 
 /** menu.js's place(): a sprite's parts, where, and what they add. */
-static Place placeOf(uint32_t parts, int x, int y, int tile, int attr2) {
-  Place p = {parts, x, y, tile, 0, 0, attr2, 0};
+Place menuPlace(uint32_t parts, int x, int y, int tile, int attr2) {
+  Place p = {parts, x, y, tile, 0, 0, attr2, 0, 0, {0}};
+  return p;
+}
+
+/** menu.js's record(): a sprite's record in the cartridge, as a place of its own. */
+Place menuRecord(uint32_t at) {
+  Place p = {
+    read32(at), reads16(at + 4), reads16(at + 6), read16(at + 8),
+    read8(at + 10), read8(at + 11), read8(at + 12), 0, 0, {0},
+  };
   return p;
 }
 
 /** 0x0801f7d0: a node added at the end of the list. */
-static Node *addNode(void (*run)(Node *), Place place, int hasPlace) {
+Node *menuAddNode(void (*run)(Node *), Place place, int hasPlace) {
   if (node_count >= MAX_NODES) return &nodes[MAX_NODES - 1];
   Node *node = &nodes[node_count++];
   node->run = run;
@@ -115,16 +112,23 @@ static Node *addNode(void (*run)(Node *), Place place, int hasPlace) {
 }
 
 /** 0x0801fed8: a sprite asks to be drawn this frame. */
-static void draw(Place position) {
+void menuDraw(Place position) {
   int group = (position.attr2 & 0x0C) >> 2;
   if (drawn_count[group] < MAX_DRAWN) drawn[group][drawn_count[group]++] = position;
 }
 
 /** 0x080200f8, the list's first node: no sprite has asked yet this frame, and no matrix is taken. */
-static void startFrame(Node *node) {
-  (void)node;
+void menuStartFrame(void) {
   for (int g = 0; g < 4; g++) drawn_count[g] = 0;
   matrices = 0;
+}
+
+static void startFrameNode(Node *node) { (void)node; menuStartFrame(); }
+
+/** The list emptied, as a screen's first frame does. */
+void menuReset(void) {
+  node_count = 0;
+  menuStartFrame();
 }
 
 /** 0x08030d20: the scrolling layer, a line every other frame. */
@@ -141,7 +145,7 @@ static void animate(Node *node) {
 }
 
 /** 0x0801f9d8: a sprite that only asks to be drawn. */
-static void drawOnly(Node *node) { draw(node->place); }
+static void drawOnly(Node *node) { menuDraw(node->place); }
 
 /** A node that does nothing, as menu.js's leaving leaves an unported mode's screen black. */
 static void nothing(Node *node) { (void)node; }
@@ -169,17 +173,19 @@ static void drawSprites(void) {
   int count = 0;
   for (int group = 0; group < 4; group++) {
     for (int i = drawn_count[group] - 1; i >= 0; i--) {
-      Place position = drawn[group][i];
-      uint32_t p = position.parts - CARTRIDGE;
+      const Place *position = &drawn[group][i];
+      // a sprite's parts are the cartridge's, or a copy of its own (options.js's chosen text)
+      const uint8_t *bytes = position->own ? position->own_parts : gba_rom;
+      uint32_t p = position->own ? 0 : position->parts - CARTRIDGE;
       for (; count < 128; p += 8) {
-        out[count * 4] = (uint16_t)((((rom8(CARTRIDGE + p + 2) + position.attr0) << 8)
-          | ((s8(rom8(CARTRIDGE + p + 6)) + position.y) & 0xFF)) & 0xFFFF);
-        out[count * 4 + 1] = (uint16_t)((((rom8(CARTRIDGE + p + 3) + position.attr1) << 8)
-          | ((s8(rom8(CARTRIDGE + p + 5)) + position.x) & 0x1FF)) & 0xFFFF);
-        out[count * 4 + 2] = (uint16_t)((((rom8(CARTRIDGE + p + 4) + position.attr2) << 8)
-          | (position.tile + (rom8(CARTRIDGE + p) | (rom8(CARTRIDGE + p + 1) << 8)))) & 0xFFFF);
+        out[count * 4] = (uint16_t)((((bytes[p + 2] + position->attr0) << 8)
+          | ((s8((int32_t)bytes[p + 6]) + position->y) & 0xFF)) & 0xFFFF);
+        out[count * 4 + 1] = (uint16_t)((((bytes[p + 3] + position->attr1) << 8)
+          | ((s8((int32_t)bytes[p + 5]) + position->x) & 0x1FF)) & 0xFFFF);
+        out[count * 4 + 2] = (uint16_t)((((bytes[p + 4] + position->attr2) << 8)
+          | (position->tile + (bytes[p] | (bytes[p + 1] << 8)))) & 0xFFFF);
         count++;
-        if (!rom8(CARTRIDGE + p + 7)) break;
+        if (!bytes[p + 7]) break;
       }
     }
   }
@@ -188,7 +194,7 @@ static void drawSprites(void) {
 }
 
 /** 0x08039fd0: the frame wrapper. Every node, a node added on the way too, and then the sprites they asked for. */
-static void frame(void) {
+void menuFrame(void) {
   for (int walking = 0; walking < node_count; walking++) nodes[walking].run(&nodes[walking]);
   drawSprites();
 }
@@ -250,7 +256,8 @@ static void previewOut(Node *node) {
  *  options aren't ported in C yet, so the screen stays black. */
 static void leaving(Node *node) {
   if (!fadeToBlack(PALETTE, 512)) return;
-  node->run = nothing;
+  if (selection == OPTIONS) g.callback = startOptions;
+  else node->run = nothing;
 }
 
 /** 0x08028238 and 0x08028270: an arrow takes its place, and draws from the next frame on. */
@@ -263,7 +270,7 @@ static void arrowSettle(Node *node) {
 
 static void arrowSettled(Node *node) {
   arrowSettle(node);
-  draw(node->place);
+  menuDraw(node->place);
   node->place.state = (node->place.state + 4) & 0xFF;
 }
 
@@ -284,7 +291,7 @@ static void arrowSlide(Node *node, void (*settled)(Node *), int left) {
   node->place.y = node->base_y - 64;
   node->place.attr0 = 3;
   node->place.attr1 = takeMatrix(value * 16 + 256) * 2;
-  draw(node->place);
+  menuDraw(node->place);
   node->place.state = (node->place.state + 1) & 0xFF;
 }
 
@@ -305,10 +312,10 @@ static void fadeIn(Node *node) {
   int arrived = 1;
   for (int i = 0; i < 4; i++) if (!fadeToward(FADES[i][0], FADES[i][1], 16)) arrived = 0;
   if (!arrived) return;
-  node->left = addNode(arrowStart, placeOf(PARTS_ARROWS, 0, 0, 0, 4), 1);
+  node->left = menuAddNode(arrowStart, menuPlace(PARTS_ARROWS, 0, 0, 0, 4), 1);
   node->left->base_x = 64;
   node->left->base_y = 146;
-  node->right = addNode(arrowStart, placeOf(PARTS_ARROWS, 0, 0, 64, 4), 1);
+  node->right = menuAddNode(arrowStart, menuPlace(PARTS_ARROWS, 0, 0, 64, 4), 1);
   node->right->base_x = 176;
   node->right->base_y = 118;
   selection = choice;
@@ -337,12 +344,12 @@ static void writeRegisters(uint32_t from, int count) {
 /** 0x08039e20's last step: it runs past a V-blank, and the display is queued for the next. */
 static void displayOn(void) {
   queueRegister(DISPCNT, 0x1F40);
-  g.callback = frame;
+  g.callback = menuFrame;
 }
 
 /** The song starts a frame after the screen is built, as the original's building runs past a V-blank. */
 static void songAndDisplay(void) {
-  gba_sound_wave_at(31815);   // where the song's start comes in its frame, as mGBA measures it
+  gba_sound_wave_at(MENU_SONG_START_CYCLE);
   gba_sound_play(MENU_SONG);
   displayOn();
 }
@@ -352,9 +359,7 @@ static void songAndDisplay(void) {
  * the list's nodes, and the display queued on for the next V-blank.
  */
 void showMenu(int playSong) {
-  node_count = 0;
-  for (int g = 0; g < 4; g++) drawn_count[g] = 0;
-  matrices = 0;
+  menuReset();
   selection = 0;
   writeRegisters(REGISTERS, REGISTER_COUNT);
   g.queue_count = 0;              // 0x0801fb94
@@ -376,15 +381,15 @@ void showMenu(int playSong) {
     }
     to += 0x1C0;
   }
-  addNode(startFrame, placeOf(0, 0, 0, 0, 0), 0);
-  addNode(scroll, placeOf(0, 0, 0, 0, 0), 0);
+  menuAddNode(startFrameNode, menuPlace(0, 0, 0, 0, 0), 0);
+  menuAddNode(scroll, menuPlace(0, 0, 0, 0, 0), 0);
   {
-    Node *node = addNode(animate, placeOf(0, 0, 0, 0, 0), 0);
+    Node *node = menuAddNode(animate, menuPlace(0, 0, 0, 0, 0), 0);
     node->to = 0x0600F0A6;
     node->tile = 0xE000;
     node->timer = 0;
   }
-  addNode(drawOnly, placeOf(PARTS, 64, 32, 128, 0), 1);
-  addNode(fadeIn, placeOf(0, 0, 0, 0, 0), 1);
+  menuAddNode(drawOnly, menuPlace(PARTS, 64, 32, 128, 0), 1);
+  menuAddNode(fadeIn, menuPlace(0, 0, 0, 0, 0), 1);
   g.callback = playSong ? songAndDisplay : displayOn;
 }

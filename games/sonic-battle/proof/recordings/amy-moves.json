@@ -1,6 +1,6 @@
 {
   "about": "Amy's moves and attacks, from the same start point as the fight's opening: the opening's three presses of A, then running, jumping, the ground combo that throws the other fighter back and fills the gauges, and the air attacks.",
-  "start": "fight=training&vblanks=1209&character=4&arena=6",
+  "start": "fight=training&vblanks=1209&you=4&arena=6",
   "frames": 760,
   "held": [
     [

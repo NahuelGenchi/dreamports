@@ -1,6 +1,6 @@
 {
   "about": "Amy's ground Shot special, from the same start point: the opening's choice, Amy running up to the other fighter, and R for her shot.",
-  "start": "fight=training&vblanks=1209&character=4&arena=6",
+  "start": "fight=training&vblanks=1209&you=4&arena=6",
   "frames": 620,
   "held": [
     [
