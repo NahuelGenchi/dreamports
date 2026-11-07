@@ -20,7 +20,7 @@ import { LOCAL } from './lib/paths.mjs';
 import { nameKey, pieceOf, planOf, taskTitle } from '../src/lib/pieces.mjs';
 import { LANGUAGES, playOrder, versionName, versionOf } from '../src/lib/languages.mjs';
 import { UPSTREAM, api } from './lib/github.mjs';
-import { readClaims } from './lib/claims.mjs';
+import { field, readClaims } from './lib/claims.mjs';
 import { dreamports } from './readme.mjs';
 
 const USAGE = 'Usage: npm run dp -- tasks <game>[/c] [--repo <owner/name>] [--yes]';
@@ -75,7 +75,7 @@ async function openTasks(version, repo, yes) {
     for (const part of wanted) {
       const before = part.foundation ? null : parts[parts.findIndex(p => p.name === part.name) - 1];
       const title = taskTitle(part.name, language);
-      const already = taskTitled(api(`repos/${repo}/issues?state=open&sort=created&direction=desc&per_page=100`) ?? [], title);
+      const already = taskTitled(api(`repos/${repo}/issues?state=open&sort=created&direction=desc&per_page=100`) ?? [], title, game);
       if (already) {
         numbers.set(nameKey(part.name), already.number);
         console.log(`#${already.number} ${part.name}: open already, so it wasn't opened again`);
@@ -126,10 +126,14 @@ function running(pid) {
   }
 }
 
-/** The open issue among `issues` titled `title`, whatever its capitals and spaces at its ends, leaving pull requests out. */
-export function taskTitled(issues, title) {
+/**
+ * The open issue among `issues` titled `title`, whatever its capitals and spaces at its ends, leaving pull requests out,
+ * that's `game`'s: its form's Game folder or its label names it, as two games can have a part of the same name (#837).
+ */
+export function taskTitled(issues, title, game) {
   const key = title.trim().toLowerCase();
-  return issues.find(issue => !issue.pull_request && issue.state !== 'closed' && issue.title.trim().toLowerCase() === key);
+  const ours = issue => field(issue.body, 'Game folder')?.replace(/`/g, '').trim() === game || (issue.labels ?? []).some(label => (label.name ?? label) === game);
+  return issues.find(issue => !issue.pull_request && issue.state !== 'closed' && issue.title.trim().toLowerCase() === key && ours(issue));
 }
 
 function options(args) {
