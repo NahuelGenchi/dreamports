@@ -226,7 +226,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // each frame's picture hash, and how its sound differs, or null when it's the same
     const hashes = [], heard = [], sounds = [], keptFrames = new Set(), neverInPlay = [], ownSizes = [];
     const differs = f => hashes[f] !== expected[f] || sounds[f] !== null;
-    let firstDifference = -1, firstNew = -1, firstPicture = -1;
+    let firstDifference = -1, firstNew = -1, firstPicture = -1, stopped = null;
     // the frames whose state to compare: those asked for, and the first picture that differs
     const stateFrames = new Set(askedState);
     await page.evaluate(`__proof.wantStates(${JSON.stringify(askedState)})`);
@@ -241,6 +241,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       heard.push(...played.sound);
       neverInPlay.push(...played.neverInPlay);
       ownSizes.push(...played.sizes);
+      if (played.stopped) stopped = { frame: hashes.length, error: played.stopped };
       // a frame's sound is measured with the frame after it, so the batch's last waits for the next batch, unless it's the last
       const known = from + count === frames || played.hashes.length < count ? hashes.length : from + count - 1;
       for (let f = sounds.length; f < known; f++) sounds.push(unheard.has(f) ? null : compareSound(heard, heardOf, f));
@@ -265,6 +266,23 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       }
       const keep = [...wanted].filter(f => f < known && !keptFrames.has(f));
       for (const f of await page.evaluate(`__proof.keep(${JSON.stringify(keep)})`)) keptFrames.add(f);
+      if (stopped) break;
+    }
+    // a game that stopped drew nothing more: the frame it stopped at and every one after differ
+    const reached = hashes.length;
+    if (stopped) {
+      for (let f = reached; f < frames; f++) { hashes.push(null); sounds.push(null); }
+      if (firstPicture < 0) firstPicture = stopped.frame;
+      if (firstDifference < 0) {
+        firstDifference = stopped.frame;
+        // the clip shows the four seconds before it, as the game drew nothing more
+        if (!clipAt && !quick) {
+          const before = [];
+          for (let f = Math.max(0, reached - 240); f < reached; f++) before.push(f);
+          for (const f of await page.evaluate(`__proof.keep(${JSON.stringify(before)})`)) keptFrames.add(f);
+        }
+      }
+      if (firstNew < 0 && wasDifferent && !wasDifferent.has(stopped.frame)) firstNew = stopped.frame;
     }
     const seconds = (Date.now() - started) / 1000;
 
@@ -332,8 +350,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const kept = [...keptFrames].sort((a, b) => a - b);
     const statesOf = [...stateFrames].filter(f => f < frames).sort((a, b) => a - b);
     // the original only as far as the last frame wanted, as nothing else comes of the rest
-    const wantedOriginal = [...kept, ...statesOf.filter(f => f < hashes.length)].map(f => originalOf[f] + 1);
-    const statesWanted = statesOf.filter(f => f < hashes.length);
+    const wantedOriginal = [...kept, ...statesOf.filter(f => f < reached)].map(f => originalOf[f] + 1);
+    const statesWanted = statesOf.filter(f => f < reached);
     const shown = !wantedOriginal.length ? null : await runOriginal({ copy, frames: Math.max(...wantedOriginal) + 1, buttons: masks, pictures: kept.map(f => originalOf[f] + 1), sets, states: statesWanted.map(f => originalOf[f] + 1) });
     // they reach the page as they are, from this computer's own server, with no copies along the way
     if (kept.length) {
@@ -357,7 +375,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const pictureDifference = firstPicture >= 0 && firstPicture !== firstDifference ? await still(firstPicture, 'first-picture-difference.png', true) : null;
     if (stills.length) mkdirSync(join(out, 'stills'), { recursive: true });
     const stillsFound = [];
-    for (const f of stills.filter(f => f < hashes.length)) stillsFound.push(await still(f, join('stills', `frame-${f}.png`), hashes[f] !== expected[f]));
+    for (const f of stills.filter(f => f < reached)) stillsFound.push(await still(f, join('stills', `frame-${f}.png`), hashes[f] !== expected[f]));
     // what the console held, in the original and the Dreamport
     const states = [], notDrawn = [];
     for (const frame of statesWanted) {
@@ -398,7 +416,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
 
     const outside = first.outside;
     const report = {
-      recording: name, frames, matched, differs: differing, neverInPlay: neverSeen, firstDifference: difference, ...(pictureDifference ? { firstPictureDifference: pictureDifference } : {}), onlyInOriginal, oneColour, parts: partsFound, stills, pixels: stillsFound, states,
+      recording: name, frames, matched, ...(stopped ? { stopped } : {}), differs: differing, neverInPlay: neverSeen, firstDifference: difference, ...(pictureDifference ? { firstPictureDifference: pictureDifference } : {}), onlyInOriginal, oneColour, parts: partsFound, stills, pixels: stillsFound, states,
       sound: { heard: madeSound, differs: soundDiffers, firstDifference: firstSound, ...(unheard.size ? { notCompared: stretchesOf([...unheard].sort((a, b) => a - b)) } : {}) },
       ...(wasDifferent ? { sinceLastProven: { differs: newly, firstDifference: newDifference, matches: fixed } } : {}),
       clip: { from: clip[0], to: clip[1], frames: clipFrames.length, bytes: file.length, bitrate, dreamport: { bytes: own.file.length, bitrate: own.bitrate } },
@@ -412,7 +430,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     first.sound.close();
     if (process.stdout.isTTY) process.stdout.write(`\r${''.padEnd(70)}\r`);
     const where = relative(REPO, out);
-    const at = d => (d.pixels || hashes[d.frame] !== expected[d.frame]
+    const at = d => (stopped && d.frame >= stopped.frame ? `frame ${d.frame}, where the Dreamport stopped`
+      : d.pixels || hashes[d.frame] !== expected[d.frame]
       ? `frame ${d.frame}: ${d.pixels} pixels${d.box ? `, from ${d.box[0]},${d.box[1]} to ${d.box[2]},${d.box[3]}` : ''}`
       : `frame ${d.frame}, by its sound`);
     if (firstDifference < 0) console.log(`${name}: all ${frames} frames the same in both, pictures and sound${onlyInOriginal ? ` (and ${onlyInOriginal} only the original has)` : ''}.`);
@@ -424,6 +443,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       console.log(`${name}: ${matched} of ${frames} frames the same, pictures and sound. The first that differs is ${at(difference)}${picture}.`);
       console.log(`  Frames that differ: ${listed(differing)}.`);
     }
+    if (stopped) console.log(`  The Dreamport stopped at frame ${stopped.frame}, throwing ${stopped.error}, so it and every frame after differ. A path the game hasn't ported yet says so this way.`);
     for (const { from, to, why } of neverSeen) {
       console.log(`  No player could ever see frames ${listed([[from, to]])}: ${why}. So this recording fails, however its frames compare: a start point only skips the way there, as tools/README.md says under Start points.`);
     }
