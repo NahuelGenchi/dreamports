@@ -36,9 +36,10 @@ function showResults(player) {
 }
 
 /** The task for a goal entity, or null when `e` is not one or doesn't spawn. */
-export function createGoal(e, slot, anims) {
+export function createGoal(e, slot, anims, ctx = null) {
   if (e.kind !== STAGE_GOAL) return null;
-  if (e.d[1] === 0) return null;
+  // in a multiplayer mode even the hidden goals spawn, as the teammates' finish checks need them
+  if (e.d[1] === 0 && !ctx?.mp) return null;
   const o = makeSprite('goal');
   animate(o, anims);
   const shows = e.d[0] !== 0;
@@ -87,6 +88,28 @@ export function createGoal(e, slot, anims) {
       if (phase === 'passed') return passed(ctx);
       if (reached(ctx)) {
         startAnim(o, 'goalSpin');
+        const mp = ctx.mp;
+        if (mp) {
+          // a team's round ends when all its players have reached a goal; the team that does it first wins.
+          // Chao Hunt's goal ends the round with the Chao its players hold.
+          if (mp.teamPlay) {
+            mp.players[mp.id].state |= 1;
+            const team = mp.teams[mp.id];
+            let all = true;
+            for (let i = 0; i < mp.count; i++) if (mp.teams[i] === team && !(mp.players[i].state & 1)) all = false;
+            if (all && mp.goalWinner === undefined) {
+              mp.goalWinner = team;
+              for (let i = 0; i < mp.count; i++) mp.ranks[i] = mp.teams[i] === team ? 0 : 1;
+              if (ctx.world.level !== EGG_ROCKET) ctx.world.playSound(SONG.GOAL);
+              mp.finish?.();
+            }
+          } else {
+            if (ctx.world.level !== EGG_ROCKET) ctx.world.playSound(SONG.GOAL);
+            mp.finish?.();
+          }
+          phase = 'passed';
+          return passed(ctx);
+        }
         if (ctx.world.goalReached) { phase = 'passed'; return passed(ctx); }
         ctx.world.reachGoal();
         if (ctx.world.level !== EGG_ROCKET) ctx.world.playSound(SONG.GOAL);

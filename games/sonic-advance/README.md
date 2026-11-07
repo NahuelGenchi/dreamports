@@ -404,17 +404,17 @@ The start screen works with the controller too: the d-pad or left stick moves be
 
 ## Multiplayer: Chao Hunt
 
-The original game's Chao Hunt, on all four of its multiplayer stages, for 2 to 4 players on one computer. Each player gets their own Game Boy Advance screen on the page. Three minutes on the clock, one Chao hidden in the stage: grab it, and knock whoever has it to take it from them. Whoever holds it when time runs out wins.
+The original game's Chao Hunt, on all four of its multiplayer stages, for 2 to 4 players on one computer. Each player gets their own Game Boy Advance screen on the page. Three minutes on the clock, one Chao hidden in the stage: grab it, and knock whoever has it to take it from them. Whoever holds it when time runs out wins. Three or four players can also play in two teams: five minutes, three Chao, and the team holding the most when the clock runs out wins.
 
 ### From the main menu
 
 Choose **Players** in the settings (<kbd>P</kbd>) for 2, 3 or 4 screens; the game restarts with one Game Boy Advance screen for each player. On the main menu, **VS** opens the original's way in: Multi-Pak, the waiting screen (the first player presses Start once everyone is there), the lobby, the game choice, the character select, for 3 and 4 players whether to play against each other, the Chao Hunt stage choice and the round. After the results, the continue screen asks whether to play another round. The first player picks on the game, stage and continue screens and the others wait, as on the cartridges. Two players share the keyboard (the first on <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> with <kbd>F</kbd> for A and <kbd>E</kbd> for Start, the second on the arrows with <kbd>.</kbd> for A and <kbd>Enter</kbd> for Start); the third and fourth use Xbox controllers, which work on every new screen as on the menus before.
 
-Everyone plays Sonic until the other characters arrive, so unlike the original two players can pick the same one. Race, Single-Pak (which sends the game itself over the cable) and playing in teams aren't in yet: their rows do nothing. [docs/ROM.md](docs/ROM.md#the-vs-menus) has the details and how each screen was checked against the original on linked emulators.
+Everyone plays Sonic until the other characters arrive, so unlike the original two players can pick the same one. After the all-or-teams screen, three and four players can choose teams: each player picks a side with Left and Right and A, B takes the choice back, and both sides need someone before the stage choice opens. Race and Single-Pak (which sends the game itself over the cable) aren't in yet: their rows do nothing. [docs/ROM.md](docs/ROM.md#the-vs-menus) has the details and how each screen was checked against the original on linked emulators.
 
 ### From the address
 
-To play, add `?level=14` to the game's address, for example [dreamports.net/play/sonic-advance/?level=14](https://dreamports.net/play/sonic-advance/?level=14), and `&players=3` or `&players=4` for more than two. Level 14 is Forest Chao Garden, 15 Factory Chao Garden, 16 Pinball Chao Garden and 17 Space Chao Garden. The rules, the stage and its objects, the mystery item boxes, the music and the results screen are the original's, checked against the original running on linked emulators ([docs/ROM.md](docs/ROM.md#multiplayer-chao-hunt) has the details).
+To play, add `?level=14` to the game's address, for example [dreamports.net/play/sonic-advance/?level=14](https://dreamports.net/play/sonic-advance/?level=14), and `&players=3` or `&players=4` for more than two. Level 14 is Forest Chao Garden, 15 Factory Chao Garden, 16 Pinball Chao Garden and 17 Space Chao Garden. The rules, the stage and its objects, the mystery item boxes, the music and the results screen are the original's, checked against the original running on linked emulators ([docs/ROM.md](docs/ROM.md#multiplayer-chao-hunt) has the details). For a team round, add `&mode=team`, and `&teams=` with a 0 or 1 for each player to pick the sides (for example `&teams=0101`); the address skips the team screen.
 
 | | Player 1 | Player 2 | Players 3 and 4 |
 | :--- | :--- | :--- | :--- |
@@ -426,7 +426,7 @@ With *BUTTON CONFIG.* on *REVERSE*, every player's jump and attack swap in the s
 
 Players 1 and 2 share the keyboard. Controllers go to the players without keys first: with 3 or 4 players, the first controller is player 3's and the second player 4's, and any more go to players 1 and 2. With 2 players, the first controller is player 1's and the second player 2's. <kbd>H</kbd> and <kbd>M</kbd> work as usual; the widescreen view and the Rush boost are for single player only.
 
-For now everyone plays Sonic, which the original doesn't allow. The results screen leaves out the players' names, which the original takes from each cartridge's save. The screen after the results and the original's menus for setting up a game, where you would pick the stage, aren't built yet. For testing, `&seed=` sets the random number the players share at the start and `&chao=` (0 to 7) which of the stage's eight places the Chao starts at.
+For now everyone plays Sonic, which the original doesn't allow. A team round's screens have not been proven frame by frame against the original yet: the original's players choose different characters, and the port draws everyone as Sonic, so the team round's title card and players differ until the other characters arrive ([issue #90](https://github.com/NahuelGenchi/dreamports/issues/90)). The results screen leaves out the players' names, which the original takes from each cartridge's save. The screen after the results and the original's menus for setting up a game, where you would pick the stage, aren't built yet. For testing, `&seed=` sets the random number the players share at the start and `&chao=` (0 to 7) which of the stage's eight places the Chao starts at.
 
 ## Where it's at
 

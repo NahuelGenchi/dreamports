@@ -17,10 +17,10 @@ const KIND_DONE = 0xB0;
 const s16 = v => (v << 16) >> 16;
 
 // the Chao's and the message's variants for each player, and how this GBA's player did (sub_803AB60)
-function outcome(ranks, count, id) {
+function outcome(ranks, count, id, teamPlay) {
   const chao = [], msg = [];
   let result;
-  if (count === 2) {
+  if (count === 2 || teamPlay) {
     for (let i = 0; i < count; i++) chao[i] = msg[i] = ranks[i] === 0 ? 2 : ranks[i] === 4 ? 4 : 3;
     result = ranks[id] === 0 ? 0 : ranks[id] === 4 ? 2 : 1;
   } else {
@@ -39,12 +39,12 @@ function outcome(ranks, count, id) {
  * GBA `id`'s results screen, drawn on `canvas`. `ranks` are the round's (gMultiplayerRanks), `input` this
  * GBA's buttons and `language` its save's (uiLanguage: 0 Japanese, 1 English).
  */
-export function createResultsScreen({ canvas, assets, link, id, count, ranks, sound, input, language = 1, onDone }) {
+export function createResultsScreen({ canvas, assets, link, id, count, ranks, sound, input, language = 1, teamPlay = false, onDone }) {
   const { atlas, frames, anims } = assets.sprites, { background, backdrop } = assets.results;
   const g = canvas.getContext('2d');
   const top = count === 2 ? 40 : count === 3 ? 20 : 0;      // unk50
   const slide = [-240, 240, -240, 240];                      // unk48: each strip's x
-  const { chao, msg, result } = outcome(ranks, count, id);
+  const { chao, msg, result } = outcome(ranks, count, id, teamPlay);
   const sprites = [];
   for (let i = 0; i < count; i++) {
     const c = makeSprite(`resultChao${chao[i]}`, { order: 16, prio: 3 });

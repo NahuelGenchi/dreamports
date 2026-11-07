@@ -75,6 +75,15 @@ const vsCount = !multiplayer && params.has('vs') ? Math.min(4, Math.max(2, Numbe
 let players = multiplayer ? Math.min(4, Math.max(2, Number(params.get('players') ?? 2) | 0)) : Math.max(1, vsCount);
 const seed = params.has('seed') ? Number(params.get('seed')) >>> 0 : DEFAULT_SEED;
 const chaoPlace = params.has('chao') ? (Number(params.get('chao')) | 0) & 7 : DEFAULT_CHAO_PLACE;
+// `&mode=team` (or `&teams=0101`) plays a team round from a level pick, with the teams in `teams` by player (0 left,
+// 1 right), alternating by default; the VS menus reach it through their own team choice for 3 and 4 players
+const teamPlay = multiplayer && (params.get('mode') === 'team' || params.has('teams'));
+const teamBits = (() => {
+  const t = params.get('teams');
+  return [0, 1, 2, 3].reduce((bits, i) => (bits | (((t ? Number(t[i]) || 0 : i & 1) & 1) << (4 + i))), 0);
+})();
+const roundMode = teamPlay ? 5 : 4;
+const roundConnections = multiplayer ? ((1 << players) - 1) | teamBits : 0;
 // `?character=` is Sonic (0, the default), Tails (1), Knuckles (2) or Amy (3) with ?debug, and the one the character
 // select's row starts on otherwise; the multiplayer stage is everyone as Sonic
 let partner = false;   // gTailsEnabled: the character select's code
@@ -458,7 +467,7 @@ function start(buffer, assets, back = null, afterReset = false) {
   stage.classList.toggle('multi', multi);   // its players play with keyboards and controllers
   sheet.close({ now: true });
   counts = !debug && !specialTest && unlocked === null && (assets.first === 0 || multi);
-  if (multi) { startRound(assets); return; }
+  if (multi) { startRound(assets, seed, chaoPlace, null, teamPlay ? [chaoPlace, chaoPlace, chaoPlace] : null, roundMode, roundConnections); return; }
   if (vsCount) { startVs(assets); return; }
   // a start point is where the game opens, and a soft reset starts it again as the original does
   const leaving = specialTest && !afterReset && specialSpringStart(assets, { emeralds: save.chaosEmeralds, continues });
@@ -648,12 +657,12 @@ function startVs(assets, resume = null) {
   const from = sa1;
   vsRun = startVsFront({
     container: screens, rom, offsets: assets.info.offsets, count: vsCount, sound, save, softReset, resume,
-    onRound: async ({ level, seed: roundSeed, chaoPlace: place, resume: kept }) => {
+    onRound: async ({ level, seed: roundSeed, chaoPlace: place, chaoPlaces, gameMode, connections, resume: kept }) => {
       vsRun = null;
       const next = await extractAssets(from.buffer, () => {}, { level, character: 0 });
       if (sa1 !== from || stage.hidden) return;   // the player left the game meanwhile
       // once the results are over the players are back at the VS menus, at the continue screen
-      startRound(next, roundSeed, place, () => { round?.stop(); round = null; startVs(assets, kept); });
+      startRound(next, roundSeed, place, () => { round?.stop(); round = null; startVs(assets, kept); }, chaoPlaces, gameMode, connections);
     },
   });
   fitScreen();
@@ -662,11 +671,11 @@ function startVs(assets, resume = null) {
 }
 
 // the multiplayer stage's round, on a screen for each player
-function startRound(assets, roundSeed = seed, place = chaoPlace, onResultsDone = null) {
+function startRound(assets, roundSeed = seed, place = chaoPlace, onResultsDone = null, chaoPlaces = null, gameMode = 4, connections = 0) {
   game = null;
   screen.hidden = true;
   screens.hidden = false;
-  round = startMultiplayer({ container: screens, assets, count: players, sound, seed: roundSeed, chaoPlace: place, language: save.uiLanguage, btnConfig: save.btnConfig, achieve, onResultsDone });
+  round = startMultiplayer({ container: screens, assets, count: players, sound, seed: roundSeed, chaoPlace: place, chaoPlaces, gameMode, connections, language: save.uiLanguage, btnConfig: save.btnConfig, achieve, onResultsDone, watchProof });
   fitScreen();
   clearInterval(statsTimer);
   if (debug) globalThis.onsoku = { round, assets, sound };

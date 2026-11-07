@@ -66,12 +66,23 @@ export function createChao(mp, place, id, anims, ceiling = false) {
   function follow(ctx) {
     if (c.playerA !== c.playerB) { c.playerB = c.playerA; return jumpOff(); }
     const mpp = player(), angle = (ctx.world.tick * 16) >>> 0;
+    // Chao 0 sits 20 px behind and 28 px up; Chao 1 sits by the body's top or bottom; the others are 16 px up
+    const high = c.id === 0 ? HEAD : c.id === 1 ? 0 : 16;
     let y, theta;
-    if (mpp.flipY) { s.flipY = true; y = mpp.pos.y + HEAD; theta = (angle + 0x200) & 0x3FF; }
-    else { s.flipY = false; y = mpp.pos.y - HEAD; theta = angle & 0x3FF; }
-    const x = (mpp.flipX ? mpp.pos.x - BEHIND : mpp.pos.x + BEHIND) << 16 >> 16;
-    // caught up with a bored player it turns to the front; otherwise it faces the way it goes
-    if (x === I(c.qx)) startAnim(s, mpp.animId === 1 ? 'chaoTurn' : 'chaoDiagonalR');
+    if (mpp.flipY) {
+      s.flipY = true;
+      y = c.id === 1 ? mpp.pos.y + mpp.boxes[0].b[3] + 16 : mpp.pos.y + high;
+      theta = (angle + 0x200) & 0x3FF;
+    } else {
+      s.flipY = false;
+      y = c.id === 1 ? mpp.pos.y + mpp.boxes[0].b[1] - 16 : mpp.pos.y - high;
+      theta = angle & 0x3FF;
+    }
+    const x = (c.id === 1 ? mpp.pos.x : mpp.flipX ? mpp.pos.x - BEHIND : mpp.pos.x + BEHIND) << 16 >> 16;
+    // caught up with a bored player it turns to the front; otherwise it faces the way it goes. The third Chao
+    // sits only when the first one is with the same player.
+    const same = c.id < 2 || !mp.chao[0] || mp.chao[0].playerA === c.playerA;
+    if (x === I(c.qx) && same) startAnim(s, mpp.animId === 1 ? 'chaoTurn' : 'chaoDiagonalR');
     else startAnim(s, 'chaoHover');
     moveTo(x, y);
     animate(s, anims);

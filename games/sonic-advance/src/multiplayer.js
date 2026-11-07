@@ -24,7 +24,7 @@ const GAME_RANDOM = 0x35AF159E;
  * swapped). A player's win calls `achieve(id)`, the page's, for the achievements. `onResultsDone()` is called once every GBA's results screen is over
  * (the white they end on), where the VS menus' continue screen comes next. Returns { gbas, link, stop }.
  */
-export function startMultiplayer({ container, assets, count, sound, seed = DEFAULT_SEED, chaoPlace = DEFAULT_CHAO_PLACE, language = 1, btnConfig = 0, achieve = () => {}, onResultsDone = null }) {
+export function startMultiplayer({ container, assets, count, sound, seed = DEFAULT_SEED, chaoPlace = DEFAULT_CHAO_PLACE, chaoPlaces = null, gameMode = 4, connections = 0, language = 1, btnConfig = 0, achieve = () => {}, onResultsDone = null }) {
   const link = createLink(count);
   const gbas = [];
   container.replaceChildren();
@@ -39,12 +39,12 @@ export function startMultiplayer({ container, assets, count, sound, seed = DEFAU
     const gbaSound = sound.forGba(id);
     const gba = { id, canvas, input, sound: gbaSound, screen: null };
     const mode = createChaoHunt({
-      link, id, count, stage: assets.stage, anims: assets.sprites.anims, seed, chaoPlace,
+      link, id, count, stage: assets.stage, anims: assets.sprites.anims, seed, chaoPlace, chaoPlaces, gameMode, connections,
       // the round over, the results screen takes the place of the stage; a player who won (rank 0, not a draw's
       // 4) earns Chao Hunter
       onResults(mp) {
         if (mp.ranks[id] === 0) achieve('chao-hunt');
-        gba.screen = createResultsScreen({ canvas, assets, link, id, count, ranks: mp.ranks.slice(), sound: gbaSound, input, language, onDone: () => { gba.over = true; if (onResultsDone && gbas.every(g => g.over)) onResultsDone(); } });
+        gba.screen = createResultsScreen({ canvas, assets, link, id, count, ranks: mp.ranks.slice(), sound: gbaSound, input, language, teamPlay: mp.teamPlay, onDone: () => { gba.over = true; if (onResultsDone && gbas.every(g => g.over)) onResultsDone(); } });
       },
     });
     // the round starts as an act does (ApplyGameStageSettingsAndStart), so the stage reads jump and attack as the
