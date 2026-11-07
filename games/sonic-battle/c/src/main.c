@@ -146,8 +146,8 @@ static void logosFadeOut(void) {
 
 /**
  * The intro, whose pictures and animation are their own task (#643): here only its time and its song are, so the title
- * starts on the frame the original's does. 0x0803d748's start, its five pictures (0x0803d860) and its animation
- * (0x0803dd14).
+ * starts on the frame the original's does. Its start, its five pictures and its animation are timed but not drawn, so
+ * they aren't named and don't count as ported until their task is done.
  */
 static void introStart(void) {
   newScreen(1);
@@ -206,7 +206,8 @@ static void introAnimation(void) {
 
 /**
  * The title screen, whose layers and logo are its own task (#644): here its counters, its palettes and Start are, which
- * is what decides when the name entry begins. 0x0803e1b0, 0x0803e6e8.
+ * is what decides when the name entry begins. Its screen isn't drawn, so it isn't named and doesn't count as ported
+ * until its task is done.
  */
 static void titleFadeToNext(void);
 
@@ -233,7 +234,7 @@ static void titleFrame(void) {
   }
 }
 
-/** 0x0803e6e8: the palette one step to black each frame, then the name entry. */
+/** The palette one step to black each frame, then the name entry. */
 static void titleFadeToNext(void) {
   if (!fadeToBlack(PALETTE, 0x100)) return;
   setBlend(0, 0, 0, 0, 0, 0);
@@ -246,11 +247,12 @@ static void nameSetUp(void);
 
 /**
  * The name entry, whose grid and letters are its own task (#645): here its palettes, its keys and its way out are, so
- * Start keeps the name and the main menu begins on the frame the original's does. 0x08036560, 0x080368dc, 0x08036ce4.
+ * Start keeps the name and the main menu begins on the frame the original's does. Its screen isn't drawn, so it isn't
+ * named and doesn't count as ported until its task is done.
  */
 static void nameEntry(void) {
   if (g.name[0] != 0) {
-    // with a name saved, the screen goes straight on to the menu (0x08036560)
+    // with a name saved, the screen goes straight on to the menu
     g.callback = menuBeforeMenu;
     menuBeforeMenu();
     return;
@@ -260,7 +262,7 @@ static void nameEntry(void) {
 
 static void nameSetUp(void) {
   for (int i = 0; i < 512; i++) gba_pal[i] = 0;
-  // the palettes 0x08036d90 fades toward: the grid's, the name's and the mark's
+  // the palettes the name entry's fade comes to: the grid's, the name's and the mark's
   copyPalette(0x08156CD0, PALETTE, 32);
   copyPalette(0x08132754, 0x050001E0, 16);
   copyPalette(0x08158194, 0x05000200, 48);
@@ -269,7 +271,7 @@ static void nameSetUp(void) {
   g.callback = nameDisplayOn;
 }
 
-/** 0x08036560's last step: it runs past a V-blank, and the display and the song come as it ends. */
+/** The name entry's last step: it runs past a V-blank, and the display and the song come as it ends. */
 static void nameDisplayOn(void) {
   queueRegister(REG_DISPCNT, 8000);
   gba_sound_wave_at(163059);   // where the song's start comes in its frame, as mGBA measures it
@@ -277,7 +279,7 @@ static void nameDisplayOn(void) {
   g.callback = nameEntering;
 }
 
-/** 0x080368dc: one key a frame, Start first: Start keeps the name, A and B change it. */
+/** One key a frame, Start first: Start keeps the name, A and B change it. */
 static void nameEntering(void) {
   uint16_t pressed = g.keys.pressed;
   if (pressed & KEY_START) {
@@ -297,14 +299,14 @@ static void nameEntering(void) {
   }
 }
 
-/** 0x08036ce4: every colour fades to black, and then the main menu starts. */
+/** Every colour fades to black, and then the main menu starts. */
 static void nameFadeOut(void) {
   if (!fadeToBlack(PALETTE, 512)) return;
   savingFrames = 20;
   g.callback = nameSaving;
 }
 
-/** The time 0x080217d0 takes, with the screen black. */
+/** The time the original's flash write takes, with the screen black. */
 static void nameSaving(void) {
   if (--savingFrames <= 0) showMenu(1);
 }
