@@ -94,7 +94,7 @@ void entities_load(int level);
 int entities_manager(ActTask *t);
 ActTask *entity_spawn(Slot *slot);
 
-void objects_start(int level);
+void objects_start(int level, int paletteAnimations);
 /** The tasks that run before Sonic's, and after him. */
 void objects_run_early(void);
 void objects_run_late(void);

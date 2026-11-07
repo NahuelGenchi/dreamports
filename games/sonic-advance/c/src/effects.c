@@ -37,7 +37,9 @@ typedef struct { Object o; int kind, x, y; } Effect;
 static int brakeDust;   // the brake dust clouds on screen
 
 // his feet, above his centre under flipped gravity
-static int feet_y(const Player *p) { return (int)(p->y + (p->inverted ? -p->offsetY : p->offsetY)); }
+// whole pixels as the original takes them (I(), an arithmetic shift), so rounding down above the level's top too
+static int whole(double v) { return (int)__builtin_floor(v); }
+static int feet_y(const Player *p) { return whole(p->y + (p->inverted ? -p->offsetY : p->offsetY)); }
 
 static int effect_run(ActTask *t) {
   Effect *e = (Effect *)t->data;
@@ -48,14 +50,14 @@ static int effect_run(ActTask *t) {
     if (!p->spinDashing) return 0;
     int anim = p->dashAccel > DASH_DUST_BIG_ABOVE ? ANIM_DASH_DUST_BIG : ANIM_DASH_DUST;
     if (s->graphics.anim != anim) { s->graphics.anim = (uint16_t)anim; sprite_start(s, 0); }
-    e->x = (int)p->x; e->y = feet_y(p);
+    e->x = whole(p->x); e->y = feet_y(p);
     s->frameFlags = (s->frameFlags & ~(uint32_t)(SPRITE_X_FLIP | SPRITE_Y_FLIP)) | (p->facing > 0 ? SPRITE_X_FLIP : 0) | (p->inverted ? SPRITE_Y_FLIP : 0);
     sprite_step(s);
     object_draw(s, e->x, e->y);
     return 1;
   }
   // the insta-shield's flash follows his centre; the brake dust stays where it appeared
-  if (e->kind == EFFECT_SHIELD) { e->x = (int)p->x; e->y = (int)p->y; }
+  if (e->kind == EFFECT_SHIELD) { e->x = whole(p->x); e->y = whole(p->y); }
   int ended = sprite_step(s);
   object_draw(s, e->x, e->y);
   if (ended && e->kind == EFFECT_BRAKE) brakeDust--;
@@ -84,14 +86,14 @@ void act_brake_dust(void) {
   if (brakeDust >= MAX_BRAKE_DUST) return;
   uint32_t r = act_random();
   const Player *p = &act.player;
-  effect_make(EFFECT_BRAKE, ANIM_BRAKE_DUST, 0, (int)p->x, feet_y(p), (r & 0x400) != 0, (r & 0x800) != 0);
+  effect_make(EFFECT_BRAKE, ANIM_BRAKE_DUST, 0, whole(p->x), feet_y(p), (r & 0x400) != 0, (r & 0x800) != 0);
 }
 void act_dash_dust(void) {
   const Player *p = &act.player;
-  effect_make(EFFECT_DASH, ANIM_DASH_DUST, 0, (int)p->x, feet_y(p), p->facing > 0, p->inverted);
+  effect_make(EFFECT_DASH, ANIM_DASH_DUST, 0, whole(p->x), feet_y(p), p->facing > 0, p->inverted);
 }
 // the insta-shield's flash, facing the way he faced when it started
 void act_insta_shield(void) {
   const Player *p = &act.player;
-  effect_make(EFFECT_SHIELD, ANIM_INSTA_SHIELD, VARIANT_INSTA_SHIELD, (int)p->x, (int)p->y, p->facing > 0, 0);
+  effect_make(EFFECT_SHIELD, ANIM_INSTA_SHIELD, VARIANT_INSTA_SHIELD, whole(p->x), whole(p->y), p->facing > 0, 0);
 }

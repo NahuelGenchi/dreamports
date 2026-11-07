@@ -227,7 +227,13 @@ ActTask *entity_spawn(Slot *slot) {
 }
 
 // --- the act's objects, in the order the tasks make them ---------------------------------------------------------------
-void objects_start(int level) {
+// the place of the stage's palette animations in the original's task list (CreatePaletteLoaderTask, 0x2000), made
+// just after the entities manager: as the task after it, it lets what the manager spawns, put after the last task of
+// its priority, run on the same frame, even on the frame it spawns everything in range. The animations themselves
+// run as the engine's tasks (act.c)
+static int palette_place(ActTask *t) { (void)t; return 1; }
+
+void objects_start(int level, int paletteAnimations) {
   first = following = NULL;
   memset(tasks, 0, sizeof tasks);
   memset(blocks, 0, sizeof blocks);
@@ -239,6 +245,7 @@ void objects_start(int level) {
   rings_start();
   act_task_add(rings_task, NULL, NULL, PRIORITY_OBJECTS);
   act_task_add(entities_manager, NULL, NULL, PRIORITY_OBJECTS);
+  if (paletteAnimations) act_task_add(palette_place, NULL, NULL, PRIORITY_OBJECTS);
   act_task_add(scatter_task, NULL, NULL, PRIORITY_SCATTER);
 }
 

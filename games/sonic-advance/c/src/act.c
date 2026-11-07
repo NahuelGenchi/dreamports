@@ -95,6 +95,9 @@ static void load_stage(int level) {
   e.dispCnt = 0x304E;           // OBJ on, window 0 on, BG1, BG2 and BG3 on, 1D OAM
   e.bgCnt[1] = 0x1E01;          // 256 × 256, priority 1, map 30 (0xF000), character base 0
   e.bgCnt[2] = 0x1F02;          // 256 × 256, priority 2, map 31 (0xF800), character base 0
+  // and their maps cleared to entry 0 (gBgSprites_Unknown2[1] and [2], whole 32-row maps), so the column and rows the
+  // layers never fill hold nothing of the screen before; done here at once, as the act writes its maps straight to VRAM
+  memset(gba_vram + 0xF000, 0, 0x1000);
   e.bgCnt[3] = level == 4 ? 0x1D0B   // 256 × 256, priority 3, map 29 (0xE800), character base 2 (0x8000)
                           : 0x5C0B;  // 512 × 256, priority 3, map 28 (0xE000), character base 2 (0x8000)
 }
@@ -594,7 +597,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   // the title card's graphics. An act a start point opens runs the card to its end and its few frames after it with
   // no picture, as its recording starts there; one the course select opens shows the card from its first frame
   titlecard_start(level, 0);
-  objects_start(level);
+  objects_start(level, act.stage.paletteCount > 0);
   if (gba_start_point("level")) {
     pre_run(cardSkip, preFrames);
     play_song(act.stage.music);

@@ -8,6 +8,7 @@ enum {
   ANIM_BLUE = 479, ANIM_RED = 480, ANIM_YELLOW = 481, COLOURS = 3,
   VARIANT_WHOLE = 0, VARIANT_POP = 1,
   ORDER_BALLOON = 18, PRIORITY_FRONT = 2,
+  BLUE_TILES = (24 / 8) * (48 / 8),
   SE_BALLOON_POP = 189,
   BURST_FRAMES = 33,   // frames from the pop to the balloon going (unk40)
 };
@@ -55,7 +56,9 @@ ActTask *balloon_spawn(Slot *slot) {
   int colour = en->d[0] < COLOURS ? en->d[0] : 0;
   b->o.slot = slot;
   b->o.x = en->x;
-  object_sprite(&b->o.sprite, ANIM_BLUE + colour, VARIANT_WHOLE, VARIANT_POP, ORDER_BALLOON, PRIORITY_FRONT, 0, 0);
+  // room for the blue balloon's whole size whatever the colour (ALLOC_TILES(SA1_ANIM_BALLOON_BLUE), 24 by 48 pixels),
+  // which is less than its pop takes, so the pop spills into the tiles after it as in the original
+  object_sprite_at(&b->o.sprite, vram_malloc(BLUE_TILES), ANIM_BLUE + colour, VARIANT_WHOLE, ORDER_BALLOON, PRIORITY_FRONT, 0, 0);
   sprite_step(&b->o.sprite);
   return object_task(&b->o, balloon_run, PRIORITY_OBJECTS);
 }
