@@ -14,7 +14,7 @@ import { createSettings } from '../../../kit/gba/ui/settings.js';
 import { createTouch } from '../../../kit/gba/ui/touch.js';
 import { createSound } from '../../../kit/gba/sound/audio.js';
 import { cartridgeSave } from '../../../kit/gba/save.js';
-import { createCore, hblank, step } from './core.js';
+import { createCore, hblank, step, KEY } from './core.js';
 import { logos } from './logos.js';
 import { intro } from './intro.js';
 import { keptName } from './name-entry.js';
@@ -104,7 +104,9 @@ function createGame(video, rom, sound) {
   }
   // a recording's start point, as nothing leads to a fight yet: fight=training&vblanks=<count> opens one (fight.js),
   // with &action=<n> for the Rival's Action Training's screen offers, 0 (Do Nothing) unless it says, &character=<n>
-  // for the fighter the player picks, and &rival=<n> for the other, both Sonic unless it says.
+  // for the fighter the player picks, and &rival=<n> for the other, both Sonic unless it says. &opening=<n> plays the
+  // opening's first n frames before the recording starts, with &choice=<1 or 2> for the Right presses that pick a
+  // ground special other than the first, so a part after the opening needs no start point of its own.
   // It places no fighter: the fight's own opening drops them in, and it's what's proven, so no neverInPlay is needed
   const asked = new URLSearchParams(location.search);
   if (asked.get('fight') === 'training') {
@@ -112,10 +114,27 @@ function createGame(video, rom, sound) {
     core.main = c => startFight(c, Number(asked.get('vblanks')), Number(asked.get('action') ?? 0) & 0xFF,
       Number(asked.get('character') ?? 0) & 0xFF, Number(asked.get('rival') ?? 0) & 0xFF);
   }
+  const opening = Number(asked.get('opening') ?? 0) & 0xFFFF;
+  const choice = Number(asked.get('choice') ?? 0) & 0xFF;
+  let opened = false;
   return {
     step(keys) {
       step(core, keys);
       sound.frameDone();
+      if (opening > 0 && !opened) {
+        // the start-up has just made the fight, so the opening's own presses run now, as a player makes them: the
+        // special's choice, then the three presses of A. Its sound runs on, as a start point's does.
+        opened = true;
+        for (let f = 0; f < opening; f++) {
+          let held = 0;
+          if (choice >= 1 && f === 60) held |= KEY.RIGHT;
+          if (choice >= 2 && f === 66) held |= KEY.RIGHT;
+          if (f === 70 || f === 100 || f === 130) held |= KEY.A;
+          step(core, held);
+          sound.frameDone();
+          sound.skipFrames(1);
+        }
+      }
     },
     hblank(line) { hblank(core, line); },
   };

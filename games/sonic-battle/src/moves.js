@@ -393,8 +393,8 @@ function runScriptWord(c, rec, i, word) {
     case 0x10000000: setFrame(c, rec, value); break;
     case 0x11000000: write16(c, rec + 160, value); break;
     case 0x12000000: write16(c, rec + 162, value); break;
-    case 0x20000000: write16(c, rec + 166, value); break;
-    case 0x22000000: write16(c, rec + 168, value); break;
+    case 0x20000000: write16(c, rec + 166, value); break;  // the effect's reach ahead of the fighter
+    case 0x22000000: write16(c, rec + 168, value); break;  // the effect's height above it
     case 0x23000000: setVoice(c, rec, value); break;
     case 0x24000000: write8(c, rec + 172, 1); break;
     case 0x28000000: playAtFighter(c, rec, value); break;
@@ -565,6 +565,8 @@ function setState(c, i, state) {
           write8(c, rec + 138, 0);
           write8(c, rec + 184, 0);
         }
+        // the states 19 and 20 let their charge go, as the original's own cases do
+        if (state === 19 || state === 20) write8(c, rec + 143, 0);
         if (read32(c, rec + FLAGS) & FLAG_NEW_STATE) {
           write8(c, rec + 126, 0);
           write8(c, rec + 125, 255);
@@ -1417,6 +1419,7 @@ const THING_SCRIPTS = new Map([
   [12, 0x0806B8CC], [13, 0x0806B940], [14, 0x0806B804], [15, 0x0806B9D4], [16, 0x0806BB08], [31, 0x0806BB08],
   [32, 0x0806BBA0], [34, 0x0806BBF4], [35, 0x0806BC54], [40, 0x0806C6EC], [37, 0x0806C07C], [38, 0x0806C1AC], [39, 0x0806C448],
   [43, 0x0806C60C], [44, 0x0806C67C], [45, 0x0806C8F4], [41, 0x0806C790], [46, 0x0806C944], [158, 0x0806E520], [160, 0x0806E5F0],
+  [117, 0x0806DC00], [118, 0x0806DC60], [120, 0x0806DCBC], [121, 0x0806DD04], [122, 0x0806DDA4],
 ]);
 const THING_MARK = 0xFFF00000;
 // the fields a script's words set, by the word's first half
@@ -1494,7 +1497,7 @@ function runThingScript(c, k, script) {
         else if (op === 0x1600) write8(c, thing + 52, w);
         else if (op === 0x3F00) write8(c, thing + 6, 1);
         else if (op === 0x3000) write8(c, 0x030016CC, w);
-        else if (op === 0x0001) {
+        else if (op === 0x0001 || (w >>> 24) === 1) {
           // a speed the way the thing faces: the diagonals are shorter by 11/16
           const speed = s16(w), diagonal = (Math.imul(speed, 11) << 12) >>> 16;
           switch (read8(c, thing + 64)) {
@@ -1509,7 +1512,7 @@ function runThingScript(c, k, script) {
             default:
           }
         } else if (op === 0x0002) write16(c, thing + 12, w);
-        else if (op === 0x0012) write16(c, thing + 14, w);
+        else if (op === 0x0012 || (w >>> 24) === 0x12) write16(c, thing + 14, w);
         else if (op === 0x2800) {
           // a sound, panned by where the thing is across the screen
           const place = Math.max(-127, Math.min(127, ((read16(c, thing + 18) - 88) << 17) >> 16));
@@ -1538,13 +1541,15 @@ function runThingScript(c, k, script) {
 const THING_HITS = new Map([
   [38, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [41, [0x280, 4, 20, 2, 0x3C0, 0, 0, 22]], [43, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
   [39, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [44, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
+  [117, [0x140, 6, 15, 2, 0x380, 0, 0, 255]],
+  [122, [0x240, 20, 15, 2, 0x3C0, 0, 0, 22]],
 ]);
 // the kinds 0x0800eaec has hits for that aren't ported yet
-const THING_HITS_LATER = new Set([54, 57, 62, 63, 78, 79, 82, 94, 97, 102, 117, 122, 137, 138, 142, 154, 158, 160,
+const THING_HITS_LATER = new Set([54, 57, 62, 63, 78, 79, 82, 94, 97, 102, 137, 138, 142, 154, 158, 160,
   165, 166, 174, 175, 177, 178, 179, 185, 191, 194, 197, 201, 241, 245]);
 
 // the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet
-const THING_STEPS_LATER = new Set([39, 61, 79, 101, 121, 141]);
+const THING_STEPS_LATER = new Set([39, 61, 79, 101, 141]);
 
 /**
  * 0x0800d818: a kind 40 mine feels the first fighter that comes near it, other than its owner, and tells its owner,
@@ -1646,6 +1651,49 @@ function thingHitsFighters(c, k, reach, height, damage, hold, hitKind, again, fi
 }
 
 /**
+ * 0x0800cec8's kind 121: a shot that turns to the nearest fighter, within its reach, and follows it. When it comes
+ * close enough its owner's mine flag is set, which sets the shot off as kind 122.
+ */
+function homingThing(c, thing) {
+  const owner = read8(c, thing + 53);
+  const x = reads16(c, thing + 58), y = reads16(c, thing + 60), z = reads16(c, thing + 62);
+  let nearest = 255, best = 0xFFFF;
+  for (let j = 0; j < 4; j++) {
+    if (j === owner) continue;
+    const rec = record(j);
+    if (read8(c, rec + 187) === 0 || read8(c, SETUP + 20 + j) === 255) continue;
+    if (read8(c, SETUP + 8) !== 0 && read8(c, SETUP + 9) !== 1
+      && read8(c, SETUP + 32 + j) === read8(c, SETUP + 32 + owner)) continue;
+    const dx = s16(x - reads16(c, rec)), dy = s16(y - reads16(c, rec + 2));
+    const away = Math.abs(dx) + Math.abs(dy);
+    if (away < best) { best = away; nearest = j; }
+    const dz = s16(z - reads16(c, rec + 4));
+    if (Math.abs(dx) > 0x21F || Math.abs(dy) > 0x21F || Math.abs(dz) > 19) continue;
+    if (read8(c, 0x0300138C) !== 0) {
+      const player = read32(c, PLAYER);
+      if (owner !== player && (owner !== player + 2 || read8(c, SETUP + 28 + owner) === 0)) continue;
+    }
+    if (Math.abs(s16(z - reads16(c, rec + 4))) > 23) continue;
+    write8(c, record(owner) + 236, 1);
+    nearest = 255;
+    break;
+  }
+  if (nearest === 255) return;
+  const rec = record(nearest);
+  const toward = (speedAt, positionAt, target) => {
+    const speed = reads16(c, speedAt) + (reads16(c, positionAt) < reads16(c, target) ? 4 : -4);
+    write16(c, speedAt, speed > 64 ? 64 : speed < -64 ? -64 : speed);
+  };
+  toward(thing + 8, thing + 58, rec);
+  toward(thing + 10, thing + 60, rec + 2);
+  const targetZ = s16(reads16(c, rec + 4) + 52);
+  if (z < targetZ) write16(c, thing + 62, z + 1);
+  else if (z > targetZ) write16(c, thing + 62, z - 1);
+  write16(c, thing + 12, 0);
+  write8(c, thing + 64, reads16(c, thing + 8) > 0 ? 4 : 6);
+}
+
+/**
  * 0x0800c728: the things of a fight for a frame, and the screen's shake. A thing waiting to appear counts down; one that
  * has appeared runs its script (0x0800bb88) and moves (0x0800cec8). Partly: only the kinds in THING_SCRIPTS, and none
  * of the kinds whose own steps come after the move.
@@ -1660,8 +1708,11 @@ function updateThings(c) {
       write8(c, thing + 54, wait - 1);
       continue;
     }
-    if (!THING_SCRIPTS.has(kind)) notPorted('0800C728', `a thing of kind ${kind}`);
-    runThingScript(c, k, THING_SCRIPTS.get(kind));
+    // the switch at 0x0800c7dc sends a kind with no script to 0x0800cec8, which runs only its own steps
+    if (read32(c, 0x0800C7DC + ((u16(kind) - 3) & 0xFFFF) * 4) !== 0x0800CEC8) {
+      if (!THING_SCRIPTS.has(kind)) notPorted('0800C728', `a thing of kind ${kind}`);
+      runThingScript(c, k, THING_SCRIPTS.get(kind));
+    }
     // 0x0800cec8: it follows its owner, or moves on its own
     if (read8(c, thing + 51) === 1) {
       const owner = record(read8(c, thing + 53));
@@ -1714,6 +1765,7 @@ function updateThings(c) {
       if (read16(c, owner + STATE) === 0x115 || read8(c, owner + HEALTH) === 0) clearEffect(c, k);
     }
     if (kind === 40) mineFeelsFighters(c, thing);
+    if (kind === 121) homingThing(c, thing);
     if (THING_STEPS_LATER.has(kind)) notPorted('0800CEC8', `the steps of a thing of kind ${kind} after it moves`);
     thingHit(c, k, read16(c, thing + 56));
   }

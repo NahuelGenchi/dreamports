@@ -1,0 +1,161 @@
+{
+  "about": "Cream's guard, from Training's start with the Rival's Action on Light Attack: Cream as the player. Cream walks up to the rival, holds L as its attack comes, which guards it, and presses L again, which heals until the next hit.",
+  "start": "fight=training&vblanks=1209&character=4&opening=400&action=4",
+  "frames": 360,
+  "held": [
+    [
+      0,
+      [
+        "RIGHT",
+        "DOWN"
+      ]
+    ],
+    [
+      20,
+      []
+    ],
+    [
+      82,
+      [
+        "L"
+      ]
+    ],
+    [
+      100,
+      []
+    ],
+    [
+      104,
+      [
+        "L"
+      ]
+    ],
+    [
+      300,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 1654,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          747,
+          [
+            "START"
+          ]
+        ],
+        [
+          748,
+          []
+        ],
+        [
+          881,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          882,
+          []
+        ],
+        [
+          921,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          922,
+          []
+        ],
+        [
+          961,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          962,
+          []
+        ],
+        [
+          1001,
+          [
+            "A"
+          ]
+        ],
+        [
+          1002,
+          []
+        ],
+        [
+          1201,
+          [
+            "START"
+          ]
+        ],
+        [
+          1202,
+          []
+        ],
+        [
+          1324,
+          [
+            "A"
+          ]
+        ],
+        [
+          1326,
+          []
+        ],
+        [
+          1354,
+          [
+            "A"
+          ]
+        ],
+        [
+          1356,
+          []
+        ],
+        [
+          1384,
+          [
+            "A"
+          ]
+        ],
+        [
+          1386,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 778,
+          "address": "03002170",
+          "bytes": 2,
+          "value": 1
+        },
+        {
+          "frame": 1253,
+          "address": "03001634",
+          "bytes": 1,
+          "value": 4
+        },
+        {
+          "frame": 1253,
+          "address": "03001646",
+          "bytes": 1,
+          "value": 4
+        }
+      ],
+      "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, and Start on its first choices, with Cream as the player. Then the opening's choice and three presses of A."
+    }
+  ]
+}
