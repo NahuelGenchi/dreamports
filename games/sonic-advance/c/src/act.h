@@ -6,6 +6,7 @@
 
 #include "sa.h"
 
+#define ACT_LEVEL_CASINO_2 5
 #define ACT_LEVEL_X_ZONE 12
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
 #define ACT_LEVEL_BLOCKS 8192   // the largest layer, in 96 × 96 px blocks
@@ -44,6 +45,7 @@ typedef struct {
   double x, y, targetX, targetY, offsetY, deadY;
   int minX, minY, maxX, maxY, started, speedX, speedY, shiftX, shiftY;
   int width, height, freeze, locked, look, lookDelay, shakeX, shakeY, bgUpdates;
+  int bgX, bgY;   // where the background's map top left is, for Casino Paradise's fireworks
 } Camera;
 
 typedef struct {

@@ -175,10 +175,12 @@ static void watch_start_point(Task *t) {
   int level = (int)gba_start_number("level", -1);
   if (level < 0 || gba_start_number("power", 0) != 2) return;
   if (front_frame() < (uint32_t)gba_start_number("at", 0)) return;
+  // the screens that led here go before the act starts, so its own tasks (the palette animations among them)
+  // are the only ones left to run after it
+  destroy_tasks(0x2000, 0x3000);
   act_active = 1;
   act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
   act_frame_now();
-  destroy_tasks(0x2000, 0x3000);
   destroy_task(t);
 }
 

@@ -4,8 +4,8 @@
 // copyright line shows, "PRESS START" blinks above it, on and off every 32 frames, and Start opens the main menu: the
 // five items where "PRESS START" was, the chosen one lit. Up and Down move through them, wrapping round, with the key
 // repeat, and A on Game Start, VS, Time Attack or Options fades the screen to black and stops the music. Game Start
-// opens the character select; the rest, and the title screen's demos, aren't in C yet. A on Tiny Chao Garden does
-// nothing.
+// opens the character select, or the course select once the character has progress in the save; the rest, and the
+// title screen's demos, aren't in C yet. A on Tiny Chao Garden does nothing.
 //
 // The logo, "PRESS START" and the menu's items are in the save's language, Japanese or English; the copyright line is
 // the international release's in both.
@@ -291,7 +291,8 @@ static void fade_out(Task *t) {
 }
 
 // Task_800DEE4: the items' tiles freed and the music stopped (a song started on its player, the player cleared and the
-// song stopped), then the character select; or the windows and the blend off, and the Time Attack or Options menu
+// song stopped), then Game Start's way on: the character select, or the course select once the character has progress;
+// or the windows and the blend off, and the Time Attack or Options menu
 static void leave_menu(Task *t) {
   int item = menu.selectedItem;
   for (int i = 0; i < MENU_ITEMS; i++) vram_free(menu.items[i].graphics.dest);
@@ -300,7 +301,7 @@ static void leave_menu(Task *t) {
   stop_song(SONG_BOSS_FIGHT);
   if (item == GAME_START) {
     ctx.gameMode = SINGLE_PLAYER;
-    create_character_select(ctx.character);
+    front_start_game();
     return;
   }
   e.dispCnt &= ~0x6000;
