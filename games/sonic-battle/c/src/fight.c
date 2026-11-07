@@ -10,6 +10,7 @@
 #define SETUP_ SETUP
 #define PLAYER_ PLAYER
 #define SAVE_ SAVE
+#define CHOICES_ 0x030013B0u
 #define CHOSEN_ CHOSEN
 #define SONG_ SONG
 #define FADE_LEVEL 0x03004B00u
@@ -21,6 +22,13 @@
 #define BLDCNT 0x50
 #define BLDY 0x54
 #define NO_FIGHTER 255
+// the six starter decks a new save holds, and the catalogue each halfword is looked up in
+#define STARTER_DECKS (SAVE_ + 0x322u)
+#define DECK_BYTES 0x38u
+#define STARTER_IDS 0x0810B2F4u
+#define STARTER_COUNT 0x1B
+#define CATALOGUE 0x0810B32Cu
+#define CATALOGUE_BYTES 8u
 
 static int setup(int at) { return read8(SETUP_ + (uint32_t)at); }
 
@@ -32,6 +40,39 @@ static void startFadeIn(int frames) {
   write16(FADE_LEVEL, 0x8000);
   int step = 0x7FFF / (frames ? frames : 1);
   write16(FADE_STEP, (uint16_t)(step ? step : 1));
+}
+
+/**
+ * 0x080215a8, partly: the starter decks a brand new save holds, each of its six the same 27 skills, as the game lays
+ * them down when it finds no save. The rest of the block stays as a new one has it for what a fight reads.
+ */
+static void starterDecks(void) {
+  for (int deck = 0; deck < 6; deck++) {
+    for (int n = 0; n < STARTER_COUNT; n++) {
+      write16(STARTER_DECKS + (uint32_t)deck * DECK_BYTES + (uint32_t)n * 2,
+        read16(STARTER_IDS + (uint32_t)n * 2));
+    }
+  }
+}
+
+/** 0x08029cfc: one player's stats and outfit, looked up from the save's three rows of skills in the catalogue. */
+static void loadProfile(int i) {
+  uint32_t record = CHOICES_ + (uint32_t)i * 156;
+  write8(record + 0x96, read8(SAVE_ + 0x320));
+  for (int row = 0; row < 3; row++) {
+    for (int n = 0; n < 27; n++) {
+      uint16_t id = read16(STARTER_DECKS + (uint32_t)row * DECK_BYTES + (uint32_t)n * 2);
+      write8(record + 0x45 + (uint32_t)row * 27 + (uint32_t)n,
+        read8(CATALOGUE + (uint32_t)id * CATALOGUE_BYTES + 4));
+    }
+  }
+}
+
+/** The save and the four players' profiles as the mode-select screen leaves them for a fight: 0x080215a8's decks,
+ *  then 0x08029cfc for each player. */
+static void loadProfiles(void) {
+  starterDecks();
+  for (int i = 0; i < 4; i++) loadProfile(i);
 }
 
 /** 0x080198b0: the fight's counters cleared, the fighters' colours, the arena and the fighters set up. */
@@ -161,7 +202,7 @@ void choosingAfterWait(void) {
  * screen and its fade, and 0x0801c8a4, with 0x08019ed8, which load everything and start the song. In the original these
  * take from the Training screen's fade to the fight's first picture, with the screen black all along.
  */
-void startFight(int vblanks, int action) {
+void startFight(int vblanks, int action, int you, int rival, int arena, int colour) {
   g.vblanks = vblanks;
   g.line_one = playQueuedEffects;
   for (int i = 0; i < 512; i++) gba_pal[i] = 0;
@@ -173,22 +214,28 @@ void startFight(int vblanks, int action) {
   write8(SETUP_ + 5, 10);
   for (int at = 6; at <= 11; at++) write8(SETUP_ + (uint32_t)at, 0);
   write8(SETUP_ + 36, 2);
-  write8(SETUP_ + 20, 0);
+  write8(SETUP_ + 20, (uint8_t)you);
   write8(SETUP_ + 21, NO_FIGHTER);
   write8(SETUP_ + 22, NO_FIGHTER);
-  write8(SETUP_ + 23, 0);
+  write8(SETUP_ + 23, (uint8_t)rival);
   write8(SETUP_ + 1, 0);
   write8(SETUP_ + 2, 1);
-  write8(SETUP_ + 3, 0);
+  write8(SETUP_ + 3, (uint8_t)arena);
   write8(SETUP_ + 38, (uint8_t)action);
   write8(SETUP_ + 125, 4);
   write8(SETUP_ + 0, 0);
   write32(PLAYER_, 0);
+  loadProfiles();
   hideSpriteBuffer();
   newScreen(6);
   startFadeIn(24);
   stepFade();
   g.vblank_copies = 1;
+  // the colour rows the Training screen copies into the player's choices for a character whose colours come from
+  // them (loadColours), such as Chaos: byte 93 picks colours 3 to 6, 94 picks 7 to 10, and 95 picks 11 to 13
+  if (colour != 255) {
+    for (int at = 93; at <= 95; at++) write8(CHOICES_ + (uint32_t)at, (uint8_t)colour);
+  }
   setUpFight();
   write8(SONG_, (uint8_t)ARENA_SONGS[setup(3 + setup(1))]);
   startHud(10);
