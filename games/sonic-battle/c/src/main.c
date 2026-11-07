@@ -532,7 +532,7 @@ void startFightFromPoint(void) {
   int you = (int)gba_start_number("you", 0) & 0xFF;
   int rival = (int)gba_start_number("rival", 0) & 0xFF;
   int arena = (int)gba_start_number("arena", 0) & 0xFF;
-  int colour = (int)gba_start_number("colour", 255) & 0xFF;
+  int colour = gba_start_number("colour", -1) >= 0 ? (int)gba_start_number("colour", 255) & 0xFF : 255;
   startFight(vblanks, action, you, rival, arena, colour);
 }
 
