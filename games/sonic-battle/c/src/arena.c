@@ -1,7 +1,6 @@
 // arena.js in C: the arena of a fight, its pictures and shape loaded, its walls and the things standing in it drawn
 // each frame, and the colours that move (the original's 0x0800FDC8, 0x0801103C, 0x08011C7C, 0x0800F9C0 and 0x0800F3C4).
-// Only Emerald Beach, the arena a fight's opening uses, is here so far; the other arenas' loads are the same kind of
-// table.
+// Each of the original's switch's cases is an entry of ARENAS and of SHAPES, for every one of Training's twelve maps.
 
 #include "game.h"
 
@@ -67,22 +66,271 @@ static const int PICTURE_BYTES[5] = {256, 512, 512, 1024, 64};
 #define PALETTE_060 0x05000060u
 
 typedef struct { uint32_t from, to; int count; } ArenaCopy;
+typedef struct { const ArenaCopy *copies; int count, layout; } ArenaCopyList;
+typedef struct {
+  int16_t limits[4];
+  uint8_t counts[3];
+  uint32_t points, walls, looks, floors;
+  uint8_t done;
+} ArenaShape;
 static const ArenaCopy ARENA_0[] = {
-  {0x0846DD38, 0x06000000, 0xDA0}, {0x0846F878, 0x0600E000, 0x800}, {0x08468B78, 0x06004000, 0x1FE0},
-  {0x0846CB38, 0x0600F000, 0x800}, {0x08468978, 0x05000000, 0x100}, {0x08467E78, 0x05000340, 0x10},
-  {0x08467E98, 0x05000360, 0x10}, {0x08467EB8, 0x05000380, 0x10}, {0x08467ED8, 0x050003A0, 0x10},
-  {0x08467EF8, 0x06014D00, 0x100}, {0x084680F8, 0x06014F00, 0x80}, {0x084681F8, 0x06015000, 0x40},
-  {0x08468278, 0x06015080, 0x100}, {0x08468478, 0x06015280, 0x80}, {0x08468578, 0x06015380, 0x40},
-  {0x084685F8, 0x06015400, 0x100}, {0x084687F8, 0x06015600, 0x80}, {0x084688F8, 0x06015700, 0x40},
+  {0x0846DD38, 0x06000000, 3488},
+  {0x0846F878, 0x0600E000, 2048},
+  {0x08468B78, 0x06004000, 8160},
+  {0x0846CB38, 0x0600F000, 2048},
+  {0x08468978, 0x05000000, 256},
+  {0x08467E78, 0x05000340, 16},
+  {0x08467E98, 0x05000360, 16},
+  {0x08467EB8, 0x05000380, 16},
+  {0x08467ED8, 0x050003A0, 16},
+  {0x08467EF8, 0x06014D00, 256},
+  {0x084680F8, 0x06014F00, 128},
+  {0x084681F8, 0x06015000, 64},
+  {0x08468278, 0x06015080, 256},
+  {0x08468478, 0x06015280, 128},
+  {0x08468578, 0x06015380, 64},
+  {0x084685F8, 0x06015400, 256},
+  {0x084687F8, 0x06015600, 128},
+  {0x084688F8, 0x06015700, 64},
+};
+static const ArenaCopy ARENA_1[] = {
+  {0x0844A738, 0x06000000, 544},
+  {0x0844AB78, 0x0600E000, 2048},
+  {0x08445578, 0x06004000, 8160},
+  {0x08449538, 0x0600F000, 2048},
+  {0x08445378, 0x05000000, 256},
+  {0x08444898, 0x05000340, 16},
+  {0x084448B8, 0x05000360, 16},
+  {0x084448D8, 0x05000380, 16},
+  {0x084448F8, 0x06014D00, 256},
+  {0x08444AF8, 0x06014F00, 128},
+  {0x08444BF8, 0x06015000, 64},
+  {0x08444C78, 0x06015080, 256},
+  {0x08444E78, 0x06015280, 128},
+  {0x08444F78, 0x06015380, 64},
+  {0x08444FF8, 0x06015400, 256},
+  {0x084451F8, 0x06015600, 128},
+  {0x084452F8, 0x06015700, 64},
+};
+static const ArenaCopy ARENA_2[] = {
+  {0x0842BA98, 0x06000000, 1056},
+  {0x0842C2D8, 0x0600E000, 2048},
+  {0x08428898, 0x06004000, 4096},
+  {0x0842A898, 0x0600F000, 2048},
+  {0x08428698, 0x05000000, 256},
+  {0x08427858, 0x05000340, 16},
+  {0x08427878, 0x05000360, 16},
+  {0x08427898, 0x06014D00, 256},
+  {0x08427A98, 0x06014F00, 128},
+  {0x08427B98, 0x06015000, 64},
+  {0x08427C18, 0x06015080, 256},
+  {0x08427E18, 0x06015280, 128},
+  {0x08427F18, 0x06015380, 64},
+  {0x08427F98, 0x06015400, 256},
+  {0x08428198, 0x06015600, 128},
+  {0x08428298, 0x06015700, 64},
+  {0x08428318, 0x06015780, 256},
+  {0x08428518, 0x06015980, 128},
+  {0x08428618, 0x06015A80, 64},
+};
+static const ArenaCopy ARENA_3[] = {
+  {0x0843B498, 0x06000000, 1056},
+  {0x0843BCD8, 0x0600E000, 2048},
+  {0x08436318, 0x06004000, 8128},
+  {0x0843A298, 0x0600F000, 2048},
+  {0x08436118, 0x05000000, 256},
+  {0x08435298, 0x05000340, 16},
+  {0x084352B8, 0x05000360, 16},
+  {0x084352D8, 0x05000380, 16},
+  {0x084352F8, 0x050003A0, 16},
+  {0x08435318, 0x06014D00, 256},
+  {0x08435518, 0x06014F00, 128},
+  {0x08435618, 0x06015000, 64},
+  {0x08435698, 0x06015080, 256},
+  {0x08435898, 0x06015280, 128},
+  {0x08435998, 0x06015380, 64},
+  {0x08435A18, 0x06015400, 256},
+  {0x08435C18, 0x06015600, 128},
+  {0x08435D18, 0x06015700, 64},
+  {0x08435D98, 0x06015780, 256},
+  {0x08435F98, 0x06015980, 128},
+  {0x08436098, 0x06015A80, 64},
+};
+static const ArenaCopy ARENA_4[] = {
+  {0x08442F58, 0x06000000, 1184},
+  {0x08443898, 0x0600E000, 2048},
+  {0x0843DD58, 0x06004000, 8192},
+  {0x08441D58, 0x0600F000, 2048},
+  {0x0843DB58, 0x05000000, 256},
+  {0x0843CCD8, 0x05000340, 16},
+  {0x0843CCF8, 0x05000360, 16},
+  {0x0843CD18, 0x05000380, 16},
+  {0x0843CD38, 0x050003A0, 16},
+  {0x0843CD58, 0x06014D00, 256},
+  {0x0843CF58, 0x06014F00, 128},
+  {0x0843D058, 0x06015000, 64},
+  {0x0843D0D8, 0x06015080, 256},
+  {0x0843D2D8, 0x06015280, 128},
+  {0x0843D3D8, 0x06015380, 64},
+  {0x0843D458, 0x06015400, 256},
+  {0x0843D658, 0x06015600, 128},
+  {0x0843D758, 0x06015700, 64},
+  {0x0843D7D8, 0x06015780, 256},
+  {0x0843D9D8, 0x06015980, 128},
+  {0x0843DAD8, 0x06015A80, 64},
+};
+static const ArenaCopy ARENA_5[] = {
+  {0x08451A38, 0x06000000, 4128},
+  {0x08453A78, 0x0600E000, 2048},
+  {0x0844C878, 0x06004000, 8160},
+  {0x08450838, 0x0600F000, 2048},
+  {0x0844C678, 0x05000000, 256},
+  {0x0844BB78, 0x05000340, 16},
+  {0x0844BB98, 0x05000360, 16},
+  {0x0844BBB8, 0x05000380, 16},
+  {0x0844BBD8, 0x050003A0, 16},
+  {0x0844BBF8, 0x06014D00, 256},
+  {0x0844BDF8, 0x06014F00, 128},
+  {0x0844BEF8, 0x06015000, 64},
+  {0x0844BF78, 0x06015080, 256},
+  {0x0844C178, 0x06015280, 128},
+  {0x0844C278, 0x06015380, 64},
+  {0x0844C2F8, 0x06015400, 256},
+  {0x0844C4F8, 0x06015600, 128},
+  {0x0844C5F8, 0x06015700, 64},
+};
+static const ArenaCopy ARENA_6[] = {
+  {0x084795D8, 0x06000000, 544},
+  {0x08479A18, 0x0600E000, 2048},
+  {0x08474658, 0x06004000, 7872},
+  {0x084783D8, 0x0600F000, 2048},
+  {0x08474458, 0x05000000, 256},
+  {0x08473898, 0x05000340, 16},
+  {0x084738B8, 0x05000360, 16},
+  {0x084738D8, 0x05000380, 16},
+  {0x084738F8, 0x050003A0, 16},
+  {0x08473918, 0x06014D00, 256},
+  {0x08473B38, 0x06014F00, 128},
+  {0x08473C58, 0x06015000, 64},
+  {0x08473CD8, 0x06015080, 256},
+  {0x08473EF8, 0x06015280, 128},
+  {0x08474018, 0x06015380, 64},
+  {0x08474098, 0x06015400, 256},
+  {0x084742B8, 0x06015600, 128},
+  {0x084743D8, 0x06015700, 64},
+};
+static const ArenaCopy ARENA_7[] = {
+  {0x08432ED8, 0x06000000, 2528},
+  {0x08434298, 0x0600E000, 2048},
+  {0x0842E318, 0x06004000, 7744},
+  {0x08431CD8, 0x0600F000, 2048},
+  {0x0842E118, 0x05000000, 256},
+  {0x0842D2F8, 0x05000340, 16},
+  {0x0842D2D8, 0x05000360, 16},
+  {0x0842D318, 0x06014D00, 256},
+  {0x0842D518, 0x06014F00, 128},
+  {0x0842D618, 0x06015000, 64},
+  {0x0842D698, 0x06015080, 256},
+  {0x0842D898, 0x06015280, 128},
+  {0x0842D998, 0x06015380, 64},
+  {0x0842DA18, 0x06015400, 256},
+  {0x0842DC18, 0x06015600, 128},
+  {0x0842DD18, 0x06015700, 64},
+  {0x0842DD98, 0x06015780, 256},
+  {0x0842DF98, 0x06015980, 128},
+  {0x0842E098, 0x06015A80, 64},
+};
+static const ArenaCopy ARENA_8[] = {
+  {0x08457078, 0x06000000, 8192},
+  {0x0845B078, 0x0600E000, 2048},
+  {0x08455738, 0x06004000, 928},
+  {0x08455E78, 0x0600F000, 2048},
+  {0x08455538, 0x05000000, 256},
+  {0x08454A78, 0x05000340, 16},
+  {0x08454A98, 0x05000360, 16},
+  {0x08454AB8, 0x06014D00, 256},
+  {0x08454CB8, 0x06014F00, 128},
+  {0x08454DB8, 0x06015000, 64},
+  {0x08454E38, 0x06015080, 256},
+  {0x08455038, 0x06015280, 128},
+  {0x08455138, 0x06015380, 64},
+  {0x084551B8, 0x06015400, 256},
+  {0x084553B8, 0x06015600, 128},
+  {0x084554B8, 0x06015700, 64},
+};
+static const ArenaCopy ARENA_9[] = {
+  {0x08472278, 0x06000000, 288},
+  {0x084724B8, 0x0600E000, 2048},
+  {0x08470A78, 0x06004000, 768},
+  {0x08471078, 0x0600F000, 2048},
+  {0x08470878, 0x05000000, 256},
+  {0x084734B8, 0x05000340, 16},
+  {0x084734D8, 0x06014D00, 256},
+  {0x084736F8, 0x06014F00, 128},
+  {0x08473818, 0x06015000, 64},
+};
+static const ArenaCopy ARENA_10[] = {
+  {0x08465AF8, 0x06000000, 2496},
+  {0x08466E78, 0x0600E000, 2048},
+  {0x08461EF8, 0x06004000, 5376},
+  {0x084648F8, 0x0600F000, 2048},
+  {0x08461CF8, 0x05000000, 256},
+  {0x08461238, 0x05000340, 16},
+  {0x08461258, 0x05000360, 16},
+  {0x08461278, 0x06014D00, 256},
+  {0x08461478, 0x06014F00, 128},
+  {0x08461578, 0x06015000, 64},
+  {0x084615F8, 0x06015080, 256},
+  {0x084617F8, 0x06015280, 128},
+  {0x084618F8, 0x06015380, 64},
+  {0x08461978, 0x06015400, 256},
+  {0x08461B78, 0x06015600, 128},
+  {0x08461C78, 0x06015700, 64},
+};
+static const ArenaCopy ARENA_11[] = {
+  {0x0845C278, 0x06004000, 8160},
+  {0x08460238, 0x0600F000, 2048},
+  {0x0845C078, 0x05000000, 256},
+};
+
+static const ArenaCopyList ARENAS[12] = {
+  {ARENA_0, 18, 9},
+  {ARENA_1, 17, 4},
+  {ARENA_2, 19, 0},
+  {ARENA_3, 21, 2},
+  {ARENA_4, 21, 3},
+  {ARENA_5, 18, 5},
+  {ARENA_6, 18, 11},
+  {ARENA_7, 19, 1},
+  {ARENA_8, 16, 6},
+  {ARENA_9, 9, 10},
+  {ARENA_10, 16, 8},
+  {ARENA_11, 3, 7},
+};
+
+static const ArenaShape SHAPES[12] = {
+  {{(int16_t)4864, (int16_t)-4864, (int16_t)4864, (int16_t)-4864}, {70, 70, 24}, 0x08070B62, 0x08070BEE, 0x08070C34, 0x08070CC2, 3},
+  {{(int16_t)3328, (int16_t)-3328, (int16_t)3328, (int16_t)-3328}, {56, 56, 8}, 0x0807062A, 0x0807069A, 0x080706D2, 0x08070744, 3},
+  {{(int16_t)3840, (int16_t)-3840, (int16_t)3840, (int16_t)-3840}, {64, 64, 24}, 0x0806FFBA, 0x0807003A, 0x0807007A, 0x080700FC, 3},
+  {{(int16_t)3840, (int16_t)-3840, (int16_t)3840, (int16_t)-3840}, {72, 72, 32}, 0x080702C2, 0x08070352, 0x0807039A, 0x0807042C, 3},
+  {{(int16_t)4864, (int16_t)-4864, (int16_t)4864, (int16_t)-4864}, {80, 80, 20}, 0x0807046E, 0x0807050E, 0x0807055E, 0x08070600, 3},
+  {{(int16_t)6144, (int16_t)-6144, (int16_t)3072, (int16_t)-3072}, {64, 64, 32}, 0x08070756, 0x080707D6, 0x08070816, 0x08070898, 3},
+  {{(int16_t)3072, (int16_t)-3072, (int16_t)3072, (int16_t)-3072}, {32, 32, 16}, 0x08070E58, 0x08070E98, 0x08070EB8, 0x08070EFA, 3},
+  {{(int16_t)7936, (int16_t)-7936, (int16_t)1792, (int16_t)-1792}, {72, 72, 20}, 0x0807012E, 0x080701BE, 0x08070206, 0x08070298, 4},
+  {{(int16_t)4352, (int16_t)-4352, (int16_t)4352, (int16_t)-4352}, {40, 40, 28}, 0x080708DA, 0x0807092A, 0x08070952, 0x080709A4, 3},
+  {{(int16_t)4096, (int16_t)-4096, (int16_t)4096, (int16_t)-4096}, {64, 64, 16}, 0x08070CF4, 0x08070D74, 0x08070DB4, 0x08070E36, 3},
+  {{(int16_t)7936, (int16_t)-7936, (int16_t)1792, (int16_t)-1792}, {68, 68, 20}, 0x080709E2, 0x08070A6A, 0x08070AAE, 0x08070B38, 4},
+  {{(int16_t)4864, (int16_t)-4864, (int16_t)4864, (int16_t)-4864}, {0, 0, 0}, 0, 0, 0x080709DE, 0x080709E0, 3},
 };
 
 void loadArena(int arena) {
   arena &= 0xFF;
   write8(ARENA, (uint8_t)arena);
-  if (arena == 0) {
-    for (unsigned i = 0; i < sizeof ARENA_0 / sizeof ARENA_0[0]; i++)
-      copy16(ARENA_0[i].from, ARENA_0[i].to, (uint32_t)ARENA_0[i].count);
-    write8(ARENA_LAYOUT, 9);
+  if (arena <= 11) {
+    const ArenaCopyList *list = &ARENAS[arena];
+    for (int i = 0; i < list->count; i++)
+      copy16(list->copies[i].from, list->copies[i].to, (uint32_t)list->copies[i].count);
+    write8(ARENA_LAYOUT, (uint8_t)list->layout);
   }
   setArenaLayers();
 }
@@ -102,19 +350,20 @@ void setArenaLayers(void) {
 
 void loadArenaShape(int arena) {
   arena &= 0xFF;
-  if (arena != 0) return;
-  write16(LIMIT_A_HIGH, 0x1300);
-  write16(LIMIT_A_LOW, (uint16_t)-0x1300);
-  write16(LIMIT_B_HIGH, 0x1300);
-  write16(LIMIT_B_LOW, (uint16_t)-0x1300);
-  write8(POINT_COUNT, 70);
-  write8(WALL_COUNT, 70);
-  write8(FLOOR_COUNT, 24);
-  for (int i = 0; i < 70; i++) write16(POINTS + (uint32_t)i * 2, read16(0x08070B62 + (uint32_t)i * 2));
-  for (int i = 0; i < 70; i++) write8(WALL_POINTS + i, read8(0x08070BEE + (uint32_t)i));
-  for (int i = 0; i < 70; i++) write16(WALL_LOOKS + (uint32_t)i * 2, read16(0x08070C34 + (uint32_t)i * 2));
-  for (int i = 0; i < 24; i++) write16(FLOORS + (uint32_t)i * 2, read16(0x08070CC2 + (uint32_t)i * 2));
-  write8(SHAPE_DONE, 3);
+  if (arena > 11) return;
+  const ArenaShape *shape = &SHAPES[arena];
+  write16(LIMIT_A_HIGH, (uint16_t)shape->limits[0]);
+  write16(LIMIT_A_LOW, (uint16_t)shape->limits[1]);
+  write16(LIMIT_B_HIGH, (uint16_t)shape->limits[2]);
+  write16(LIMIT_B_LOW, (uint16_t)shape->limits[3]);
+  write8(POINT_COUNT, shape->counts[0]);
+  write8(WALL_COUNT, shape->counts[1]);
+  write8(FLOOR_COUNT, shape->counts[2]);
+  for (int i = 0; i < shape->counts[0]; i++) write16(POINTS + (uint32_t)i * 2, read16(shape->points + (uint32_t)i * 2));
+  for (int i = 0; i < shape->counts[1]; i++) write8(WALL_POINTS + i, read8(shape->walls + (uint32_t)i));
+  for (int i = 0; i < shape->counts[1]; i++) write16(WALL_LOOKS + (uint32_t)i * 2, read16(shape->looks + (uint32_t)i * 2));
+  for (int i = 0; i < shape->counts[2]; i++) write16(FLOORS + (uint32_t)i * 2, read16(shape->floors + (uint32_t)i * 2));
+  write8(SHAPE_DONE, shape->done);
 }
 
 typedef struct {
@@ -238,17 +487,63 @@ static void landColours(const ColourWrite *writes, int count) {
   landSchedule();
 }
 
+/** `count` 16-bit colours from `table`, starting at its entry `from` and `step` entries apart, into the buffer `to` from its place `at`. */
+static void colourRun(uint32_t to, int at, uint32_t table, int from, int count, int step) {
+  for (int i = 0; i < count; i++) write16(to + (uint32_t)(at + i) * 2, read16(table + (uint32_t)(from + i * step) * 2));
+}
+
 static void moveColours(void) {
   if (read8(COLOURS_MOVE) == 0) return;
   int arena = read8(ARENA);
   write8(COLOUR_FRAME, read8(COLOUR_FRAME) + 1);
   if (read8(COLOUR_FRAME) >= read8(COLOUR_FRAMES + (uint32_t)arena)) write8(COLOUR_FRAME, 0);
   int frame = read8(COLOUR_FRAME);
-  if (arena == 0) {
-    for (int i = 0; i < 12; i++) write16(COLOURS_A + (uint32_t)(12 - i) * 2, read16(0x080710D2 + (uint32_t)((frame >> 2) + i) * 2));
-    for (int i = 0; i < 12; i++) write16(COLOURS_B + (uint32_t)(12 - i) * 2, read16(0x08071102 + (uint32_t)((frame >> 2) + i) * 2));
-    ColourWrite writes[2] = {{COLOURS_A, PALETTE_1A0}, {COLOURS_B, PALETTE_1C0}};
-    landColours(writes, 2);
+  switch (arena) {
+    case 0: {
+      // the two tables run backward, from the 13th colour down to the second
+      for (int i = 0; i < 12; i++) write16(COLOURS_A + (uint32_t)(12 - i) * 2, read16(0x080710D2 + (uint32_t)((frame >> 2) + i) * 2));
+      for (int i = 0; i < 12; i++) write16(COLOURS_B + (uint32_t)(12 - i) * 2, read16(0x08071102 + (uint32_t)((frame >> 2) + i) * 2));
+      ColourWrite writes[2] = {{COLOURS_A, PALETTE_1A0}, {COLOURS_B, PALETTE_1C0}};
+      landColours(writes, 2);
+      break;
+    }
+    case 1:
+      colourRun(COLOURS_A, 0, 0x0807104A, frame >> 1, 12, 1);
+      colourRun(COLOURS_A, 12, 0x0807107A, frame >> 1, 4, 2);
+      copy16(COLOURS_A, PALETTE_1C0, 16);
+      break;
+    case 3:
+      colourRun(COLOURS_A, 0, 0x08070F66, frame, 16, 1);
+      colourRun(COLOURS_B, 0, 0x08070FA6, frame, 16, 1);
+      copy16(COLOURS_A, PALETTE_1A0, 16);
+      copy16(COLOURS_B, PALETTE_1C0, 16);
+      break;
+    case 4:
+      colourRun(COLOURS_A, 0, 0x08070FE6, frame >> 2, 5, 1);
+      colourRun(COLOURS_A, 5, 0x08070FFA, frame >> 2, 5, 1);
+      colourRun(COLOURS_A, 10, 0x0807100E, frame >> 4, 2, 1);
+      colourRun(COLOURS_A, 12, 0x08071022, frame >> 3, 2, 1);
+      colourRun(COLOURS_A, 14, 0x08071036, frame >> 4, 2, 1);
+      copy16(COLOURS_A, PALETTE_1C0, 16);
+      break;
+    case 6:
+    case 7:
+      colourRun(COLOURS_A, 0, 0x08070F26, frame >> 1, 16, 1);
+      copy16(COLOURS_A, PALETTE_1C0, 16);
+      break;
+    case 9:
+      write16(COLOURS_A, 0);
+      colourRun(COLOURS_A, 1, 0x08071132, frame >> 1, 15, 1);
+      copy16(COLOURS_A, PALETTE_002, 16);
+      break;
+    case 11:
+      write16(COLOURS_A, 0);
+      colourRun(COLOURS_A, 1, 0x080710BA, frame >> 2, 6, 1);
+      for (int i = 7; i < 16; i++) write16(COLOURS_A + (uint32_t)i * 2, 0);
+      copy16(COLOURS_A, PALETTE_060, 16);
+      break;
+    default:
+      break;
   }
 }
 
