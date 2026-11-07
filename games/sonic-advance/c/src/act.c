@@ -668,7 +668,7 @@ static void rings_init(void) {
   uint32_t dest = vram_malloc(16);
   ringSprite.graphics.dest = dest == HEAP_END ? OBJ_VRAM + 0x1000 : dest;
   ringSprite.graphics.anim = 707; ringSprite.variant = 0; ringSprite.animSpeed = ANIM_NORMAL;
-  ringSprite.palId = 1; ringSprite.oamFlags = 20 << 6; ringSprite.frameFlags = 2 << 12;   // its colours in row 7, away from the HUD's row 6
+  ringSprite.palId = 0; ringSprite.oamFlags = 20 << 6; ringSprite.frameFlags = 2 << 12;   // its colours in row 7, away from the HUD's row 6
 }
 // addRing (game.js): the count, and the ring song on the second sound player for odd ones and the first for even
 static void ring_take(const Ring *g) {
