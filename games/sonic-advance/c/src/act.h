@@ -30,6 +30,7 @@ typedef struct {
   Tilemap front, back, background;
   Collision collision;
   int32_t spawnX, spawnY;
+  int loopX, loopShift;   // past x loopX Sonic and the camera go back by loopShift (gUnknown_084ADF78), loopX < 0 for none
   int width, height;
 } Stage;
 
@@ -38,6 +39,7 @@ typedef struct {
   int minX, minY, maxX, maxY, started, speedX, speedY, shiftX, shiftY;
   int width, height, freeze, locked, look, lookDelay, shakeX, shakeY, bgUpdates;
   int bgX, bgY;
+  int wrapped;   // how far the act's loop point has moved the camera, which the background leaves out (unk20)
 } Camera;
 
 typedef struct {
@@ -103,7 +105,7 @@ void titlecard_display(void);
 void act_frame_now(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
-void act_frame_now(void);
+void act_song_playing(void);
 void act_task(Task *t);
 uint32_t front_frame(void);
 

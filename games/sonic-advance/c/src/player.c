@@ -114,7 +114,12 @@ static void along_surface(Player *p) {
 // the camera's bounds (sub_80232D0): Sonic stops at the sides and the top, and falling out of the bottom kills him,
 // thrown up as high as a jump; under flipped gravity he stops at the bottom and dies out of the top
 static void bounds(Player *p) {
-  const Camera *c = &act.cam;
+  Camera *c = &act.cam;
+  // past the act's loop point (sub_80232D0), Sonic and the camera go back by its distance while the camera moves and
+  // follows him; the background leaves it out
+  if (act.stage.loopX >= 0 && p->x >= act.stage.loopX && c->speedX != 0 && !c->locked) {
+    p->x += act.stage.loopShift; c->x += act.stage.loopShift; c->wrapped += act.stage.loopShift;
+  }
   double maxX = c->maxX + 240 - 1.0 / 256, maxY = c->maxY + 160 - 1.0 / 256;
   if (!p->dead && (p->inverted ? p->y <= c->minY : p->y >= maxY)) {
     p->dead = 1; p->ysp = -JUMP_SPEED; p->y = p->inverted ? c->minY : maxY;

@@ -4,8 +4,9 @@
 // function at a time; every comment names the original's function where one is rewritten.
 
 #include "objects.h"
+#include "results.h"
 
-enum { OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC, SCREEN_W_ = 240, SCREEN_H_ = 160 };
+enum { OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC, OFFSET_LOOP_POINTS = 0x4A6E74, OFFSET_LOOP_SHIFTS = 0x4A6EBC, SCREEN_W_ = 240, SCREEN_H_ = 160 };
 // the HUD's tiles sit at fixed places below the sprites' heap (VRAM_RESERVED_UI_DIGITS_A to _D): the face, the ring, then the
 // white and the red digits
 enum { HUD_GLYPHS = 11, HUD_FACE = 0x800 / 32, HUD_RING = 0x880 / 32, HUD_WHITE = 0xA80 / 32, HUD_RED = 0xD40 / 32 };
@@ -64,6 +65,8 @@ static void load_stage(int level) {
   s->collision = read_collision(level);
   s->spawnX = rom_s16(OFFSET_SPAWNS + level * 4);
   s->spawnY = rom_s16(OFFSET_SPAWNS + level * 4 + 2);
+  s->loopX = rom_s16(OFFSET_LOOP_POINTS + level * 4);
+  s->loopShift = rom_s16(OFFSET_LOOP_SHIFTS + level * 4);
   s->width = s->collision.width; s->height = s->collision.height;
   // each act's stage init (levels.js): Casino Paradise act 1 is level 4, X Zone level 12
   s->zone = 6; s->act = 0; s->music = 24; s->hudFlash = 90; s->backgroundScroll = 2;
@@ -227,13 +230,14 @@ static int camera_update(Camera *c, const Player *p) {
     c->targetY = (int)__builtin_floor(p->y) + c->shiftY - SCREEN_H_ / 2 + c->look + c->offsetY;
   }
   int dx = (int)c->targetX - (int)c->x;
-  if (dx > 8) c->x += dx - 8 > 16 ? 16 : dx - 8;
-  else if (dx < -8) c->x += dx + 8 < -16 ? -16 : dx + 8;
+  // at most its speed a frame, which the results set to 0 to hold it
+  if (dx > 8) c->x += dx - 8 > c->speedX ? c->speedX : dx - 8;
+  else if (dx < -8) c->x += dx + 8 < -c->speedX ? -c->speedX : dx + 8;
   int air = p->air;
   c->deadY = air ? (c->deadY + 4 < 24 ? c->deadY + 4 : 24) : (c->deadY - 4 > 0 ? c->deadY - 4 : 0);
   int dy = (int)c->targetY - (int)c->y;
-  if (dy > c->deadY) c->y += dy - c->deadY > 12 ? 12 : dy - c->deadY;
-  else if (dy < -c->deadY) c->y += dy + c->deadY < -12 ? -12 : dy + c->deadY;
+  if (dy > c->deadY) c->y += dy - c->deadY > c->speedY ? c->speedY : dy - c->deadY;
+  else if (dy < -c->deadY) c->y += dy + c->deadY < -c->speedY ? -c->speedY : dy + c->deadY;
   c->x = clamp((int)c->x, c->minX, c->maxX);
   c->y = clamp((int)c->y, c->minY, c->maxY);
   c->x += c->shakeX; c->y += c->shakeY;
@@ -323,7 +327,7 @@ static void draw_frame(void) {
     set_hblank_copy(REG_BG0HOFS + 3 * 4, 4);
     for (int line = 0; line < SCREEN_H_; line++) {
       int row = bgY + line, x = bgX;
-      for (int b = 4; b >= 0; b--) if (row >= BANDS[b] && row < BANDS[b + 1]) { x = (bgX + (camX >> SHIFT[b])) & 0xFF; break; }
+      for (int b = 4; b >= 0; b--) if (row >= BANDS[b] && row < BANDS[b + 1]) { x = (bgX + ((camX - act.cam.wrapped) >> SHIFT[b])) & 0xFF; break; }
       put16(e.primary + (uint32_t)line * 4, (uint32_t)(x & 0x1FF));
       put16(e.primary + (uint32_t)line * 4 + 2, (uint32_t)(bgY & 0x1FF));
     }
@@ -390,8 +394,33 @@ void act_player_died(void) {
 }
 // the act starting over with a life less is not here yet
 void act_life_lost(void) {}
-// TEMPORARY until results.c lands
-void act_stage_results(void) {}
+// CreateStageResults, as the goal hands over: the act's rings into the save's ring bank and the next level unlocked
+// (X Zone's way to the Moon Zone decides that itself, and isn't here yet), then the results' tasks, which first run
+// this frame, after the goal's
+void act_stage_results(void) {
+  int level = act.stage.level;
+  save_add_ring_bank(act.ringCount);
+  if (level != ACT_LEVEL_X_ZONE && save_unlocked_level(0) < level + 1) save_set_unlocked_level(0, (uint16_t)(level + 1));
+  results_start(level, act.ringCount, act.courseTime, level == ACT_LEVEL_X_ZONE, 0);
+}
+
+// GoToNextLevel, once the save is written: the next act, made inside the task as the course select makes one
+static int nextLevel;
+static void next_act(void) {
+  act_start(nextLevel, -1, 0);
+  act_frame_now();
+}
+// GoToNextLevel: every task goes, the queues stop, the music stops, and the save is written (the screen keeping its
+// frame while the flash takes it), before the next act starts
+static void go_to_next_level(void) {
+  nextLevel = act.stage.level + 1;
+  destroy_tasks(0, 0xFFFF);
+  act.task = NULL;
+  clear_queues();
+  stop_all_songs();
+  if (save_write()) engine_stall(WRITE_FRAMES, next_act);
+  else next_act();
+}
 
 int act_goal_passed(void) { return act.goalReached; }
 // past the goal post the clock stops and the rings manager neither takes nor draws rings
@@ -440,7 +469,8 @@ static void create_firework(int x, int y, int small) {
 // BACKGROUND_UPDATE.casinoParadise: on every 4th frame of the stage clock, a draw of the game's random numbers with
 // bits 8-10 clear sets a firework off at x - 8 … 247 and y - 32 … 95 in the background map
 static void casino_background_update(void) {
-  act.cam.bgX = fdiv((int)act.cam.x << 4, act.stage.width - SCREEN_W_);
+  int camX = (int)act.cam.x - act.cam.wrapped;
+  act.cam.bgX = fdiv(camX << 4, act.stage.width - SCREEN_W_);
   act.cam.bgY = fdiv(((int)act.cam.y << 6) + ((int)act.cam.y << 5), act.stage.height - SCREEN_H_);
   if ((act.tick & 3) != 0 || (act_random() & 0x700) != 0) return;
   int x = (int)((act_random() & 0xFF00) >> 8) - 8;
@@ -470,6 +500,8 @@ static void act_frame(void) {
   // the clock; its pieces and fade go over the act, and it sets the display while it shows, after draw_frame
   int cardShows = !act.cardDone;
   if (cardShows) card_update((e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
+  // the results' task (0x2100) and its pieces' (0x2120); the frame they end, the next act takes over
+  if (results_active() && !results_run()) { go_to_next_level(); return; }
   PlayerInput in = {
     .left = (e.input & KEY_LEFT) != 0, .right = (e.input & KEY_RIGHT) != 0,
     .up = (e.input & KEY_UP) != 0, .down = (e.input & KEY_DOWN) != 0,
@@ -499,6 +531,7 @@ static void act_frame(void) {
   act.frames++;
   draw_frame();
   if (cardShows) titlecard_display();
+  results_display();
 }
 
 // the act's music, as the course select leaves it: the stage music manager (Task_StageMusicManager, priority 0x4000)
@@ -575,6 +608,11 @@ static void pre_run(int cardSkip, int preFrames) {
   objects_set_drawing(1);
 }
 
+// the stage music manager starts the act's song only while the music player plays none: the character select's leave
+// starts it itself, as the stage init does, and the manager leaves it be
+static int songPlaying;
+void act_song_playing(void) { songPlaying = 1; }
+
 void act_start(int level, int cardSkip, int preFrames) {
   memset(&act, 0, sizeof act);
   act.seed = 0;   // gPseudoRandom starts from 0, as the JavaScript page starts the act
@@ -602,7 +640,8 @@ void act_start(int level, int cardSkip, int preFrames) {
     pre_run(cardSkip, preFrames);
     play_song(act.stage.music);
     gba_sound_frames_gone_by(118);
-  } else act.musicStarts = 1;
+  } else act.musicStarts = !songPlaying;
+  songPlaying = 0;
   act.hud.active = act.cardDone ? 1 : 0;
   if (act.cardDone) hud_load();
   act.started = 1;

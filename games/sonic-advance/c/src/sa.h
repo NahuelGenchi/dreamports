@@ -234,6 +234,7 @@ extern Save save;
 void save_open(void);
 int save_write(void);
 void save_set_unlocked_level(int character, uint16_t level);
+void save_add_ring_bank(int rings);
 #define SAVE_UI_LANGUAGE (save.bytes[0x19])
 #define SAVE_CHAOS_EMERALDS (save.bytes[0x1C])
 #define SAVE_PLAYER_NAME (save.bytes + 0x10)            // six characters of the UI font, and two unused
