@@ -156,10 +156,15 @@ void game_start(void) {
   draw_title_sprites();
 }
 
+// The frame Start was pressed on the title screen, or -1 before then. The original turns its picture off three frames
+// after Start, while its player select runs, and the first of those black frames is 103.
+static int start_frame = -1;
+
 // what the original does each frame, from its V-blank on, writing the PPU's and the APU's registers as it does
 void game_step(uint32_t buttons) {
-  (void)buttons;  // the controllers are read through $4016
   uint32_t frame = nes_frame();
+  if (start_frame < 0 && frame >= TITLE_SCREEN_FRAME && (buttons & BUTTON_START)) start_frame = (int)frame;
+  if (start_frame >= 0 && frame == (uint32_t)(start_frame + 3)) nes_write(0x2001, 0);
   // $ED97, the original's clear of the APU's registers: once as it starts, and once when the title screen is drawn.
   if (frame == 1) {
     nes_write(0x4015, 0x0F);

@@ -6,8 +6,8 @@
   "recordings": {
     "game-start": {
       "frames": 500,
-      "matched": 103,
-      "differs": [[103,499]],
+      "matched": 305,
+      "differs": [[133,224],[397,499]],
       "soundDiffers": [[397,499]],
       "functions": []
     },
