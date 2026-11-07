@@ -9,14 +9,16 @@
 // In a game that started in C, with no JavaScript version, its version in C is its main one, whose tasks are opened as a
 // JavaScript version's are, written from the original and waiting on nothing in another language. One run opens a game's
 // tasks at a time on this computer, as a run takes minutes and a second one started meanwhile would open each again, and
-// a task already open under its title is used as it is (#679).
+// a task already open under its title is used as it is (#679). With a game's name alone, it opens the tasks of every
+// version the game has, C's first, as it's the default language, so no part gets a task in one language and not the
+// other (#757).
 
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { readPartsFile } from './lib/proof-files.mjs';
 import { LOCAL } from './lib/paths.mjs';
 import { nameKey, pieceOf, planOf, taskTitle } from '../src/lib/pieces.mjs';
-import { LANGUAGES, versionOf } from '../src/lib/languages.mjs';
+import { LANGUAGES, playOrder, versionName, versionOf } from '../src/lib/languages.mjs';
 import { UPSTREAM, api } from './lib/github.mjs';
 import { readClaims } from './lib/claims.mjs';
 import { dreamports } from './readme.mjs';
@@ -25,7 +27,21 @@ const USAGE = 'Usage: npm run dp -- tasks <game>[/c] [--repo <owner/name>] [--ye
 const WAIT_MS = 90_000, EVERY_MS = 5_000;
 
 export async function run(args) {
-  const { game: version, repo = UPSTREAM, yes = false } = options(args);
+  const { game: name, repo = UPSTREAM, yes = false } = options(args);
+  if (name.includes('/')) return openTasks(name, repo, yes);
+  // a game alone: each of its versions, C's first (src/lib/languages.mjs)
+  const { game } = versionOf(name);
+  const dreamport = dreamports().find(d => d.game === game);
+  const languages = dreamport ? playOrder([dreamport.language ?? 'js', ...dreamport.versions.map(v => v.language)]) : ['js'];
+  for (const [index, language] of languages.entries()) {
+    if (index) console.log('');
+    await openTasks(versionName(game, language), repo, yes);
+  }
+  return 0;
+}
+
+// the tasks of one version, as the start of this file says
+async function openTasks(version, repo, yes) {
   const { game, language } = versionOf(version);
   const file = readPartsFile(game), parts = file.parts ?? [];
   if (!parts.length) throw new Error(`games/${game}/proof/parts.json lists no parts yet, and each task is one of them.`);
