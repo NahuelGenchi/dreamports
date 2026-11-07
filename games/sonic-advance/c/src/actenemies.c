@@ -81,7 +81,6 @@ typedef struct {
 
 static Enemy en_list[ENEMY_MAX];
 static int en_count;
-static int en_prevX, en_prevY, en_hasPrev;   // the camera the last strip scan saw
 static Effect en_effects[EFFECT_MAX];
 static uint8_t en_rl[ENEMY_RL_MAX];
 static int en_hit, en_attack_hit;
@@ -831,7 +830,6 @@ void enemies_reset(void) {
   en_chain = 0;
   en_animal = 0;
   en_was_air = 0;
-  en_hasPrev = 0;
   en_hit = 0;
   en_attack_hit = 0;
 }
@@ -850,18 +848,8 @@ void enemies_update(int camX, int camY) {
   // p.chain clears on landing (player.js land), which the points count from
   if (en_was_air && !act.player.air) en_chain = 0;
   en_was_air = act.player.air;
-  // the same strip scan as the objects: everything in range on the first frame or after a jump, else only what
-  // the camera has just uncovered
-  int x0 = camX - 128, x1 = camX + 368, y0 = camY - 128, y1 = camY + 288;
-  if (!en_hasPrev || camX - en_prevX > 248 || en_prevX - camX > 248 || camY - en_prevY > 208 || en_prevY - camY > 208) {
-    en_scan(x0, x1, y0, y1);
-  } else {
-    if (camX > en_prevX) en_scan(en_prevX + 368, camX + 368, y0, y1);
-    else if (camX < en_prevX) en_scan(camX - 128, en_prevX - 128, y0, y1);
-    if (camY > en_prevY) en_scan(x0, x1, en_prevY + 288, camY + 288);
-    else if (camY < en_prevY) en_scan(x0, x1, camY - 128, en_prevY - 128);
-  }
-  en_prevX = camX; en_prevY = camY; en_hasPrev = 1;
+  // spawn the ones whose spawn point the camera's range now holds
+  en_scan(camX - 128, camX + 368, camY - 128, camY + 288);
   // then run every live one, then its shots and the effects
   for (int i = 0; i < en_count; i++) if (en_list[i].live) en_run(&en_list[i], camX, camY);
   for (int i = 0; i < EFFECT_MAX; i++) if (en_effects[i].active) en_update_effect(&en_effects[i], camX, camY);

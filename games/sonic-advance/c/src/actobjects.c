@@ -1391,20 +1391,9 @@ void objects_update(int camX, int camY) {
   if (p->invulnerable > 0) p->invulnerable--;
   p->hidden = p->invulnerable > 0 && (act.tick & 3) < 2;
 
-  // SpawnMapEntities: the first frame, and a jump of more than 248 px across or 208 down, scan everything in
-  // range; otherwise only the strips the camera has just uncovered, so an object that left isn't made again
-  // while its place stays in view
-  int x0 = camX - 128, x1 = camX + 368, y0 = camY - 128, y1 = camY + 288;
-  if (!objects.hasPrev || camX - objects.prevX > 248 || objects.prevX - camX > 248 || camY - objects.prevY > 208 || objects.prevY - camY > 208) {
-    obj_scan(x0, x1, y0, y1);
-  } else {
-    if (camX > objects.prevX) obj_scan(objects.prevX + 368, camX + 368, y0, y1);
-    else if (camX < objects.prevX) obj_scan(camX - 128, objects.prevX - 128, y0, y1);
-    if (camY > objects.prevY) obj_scan(x0, x1, objects.prevY + 288, camY + 288);
-    else if (camY < objects.prevY) obj_scan(x0, x1, camY - 128, objects.prevY - 128);
-  }
-  objects.prevX = camX; objects.prevY = camY; objects.hasPrev = 1;
-
+  // SpawnMapEntities: everything whose spawn point is in range around the camera, in the list's order, with each
+  // region's interactables and then its item boxes
+  obj_scan(camX - 128, camX + 368, camY - 128, camY + 288);
   // the objects' tasks: the thin platform runs at 0x2010, after the other objects
   for (int pass = 0; pass < 2; pass++) {
     for (int k = 0; k < OBJ_LIVE_MAX; k++) {

@@ -114,7 +114,7 @@
     ["sub_80039E4","src/sprite.c:205"],
     ["sub_8003EE4","src/background.c:35"],
     ["sub_8004010","src/engine.c:169"],
-    ["sub_8004418","src/actenemies.c:387"],
+    ["sub_8004418","src/actenemies.c:386"],
     ["sub_80047A0","src/ui.c:173"],
     ["sub_8006228","src/lines.c:53"],
     ["sub_80064A8","src/lines.c:53"],
