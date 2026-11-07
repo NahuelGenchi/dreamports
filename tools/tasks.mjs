@@ -57,12 +57,14 @@ async function openTasks(version, repo, yes) {
   const pieces = claims.piecesOf(game, entry);
   const proven = new Set((inVersion?.proof?.gameplay?.parts ?? []).filter(p => p.proven).map(p => nameKey(p.name)));
   const wanted = missingParts(planOf(file), pieces, language, proven, main);
+  // a version in another language than the game's main one keeps its tasks under an issue of its own (#905)
+  const where = language === main ? `#${home.number}` : `its issue for ${LANGUAGES[language].name}, under #${home.number}`;
   if (!wanted.length) {
-    console.log(`Every foundation and part of ${version} has its task already, under #${home.number}.`);
+    console.log(`Every foundation and part of ${version} has its task already, under ${where}.`);
     return 0;
   }
   if (!yes) {
-    console.log(`A task for each of these ${wanted.length} would go under #${home.number} in ${repo}, public and in your name:\n${wanted.map(p => `  ${p.name}`).join('\n')}`);
+    console.log(`A task for each of these ${wanted.length} would go under ${where} in ${repo}, public and in your name:\n${wanted.map(p => `  ${p.name}`).join('\n')}`);
     console.log('\nNothing was opened: --yes opens them, once you have said yes.');
     return 0;
   }
@@ -84,12 +86,12 @@ async function openTasks(version, repo, yes) {
       const issue = api(`repos/${repo}/issues`, { method: 'POST', body: { title, body: taskText(version, part, before && named(before.name), part.needs.map(named), main) } });
       numbers.set(nameKey(part.name), issue.number);
       opened++;
-      console.log(`#${issue.number} ${part.name}${await underItsGame(repo, issue.number) ? '' : `: the bot hasn't put it under #${home.number} yet, and will`}`);
+      console.log(`#${issue.number} ${part.name}${await underItsGame(repo, issue.number) ? '' : `: the bot hasn't put it under ${where} yet, and will`}`);
     }
   } finally {
     release();
   }
-  console.log(`\nOpened ${opened} task${opened === 1 ? '' : 's'} under #${home.number}.`);
+  console.log(`\nOpened ${opened} task${opened === 1 ? '' : 's'} under ${where}.`);
   return 0;
 }
 
