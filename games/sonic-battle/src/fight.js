@@ -16,6 +16,10 @@ import { fn0801c28c, fn0801fc60, fn080177b8, fn080205d0, fn08020944 } from './mo
 const SETUP = 0x03001620;     // gUnknown_03001620: what the fight is
 const PLAYER = 0x03001380;    // gUnknown_03001380: which fighter the player is
 const SAVE = 0x03002110;      // gUnknown_03002110: the save
+const CHOICES = 0x030013B0;   // each player's skills, stats and outfit, 156 bytes each
+// the six starter decks a new save holds, and the catalogue each halfword is looked up in
+const STARTER_DECKS = SAVE + 0x322, DECK_BYTES = 0x38, STARTER_IDS = 0x0810B2F4, STARTER_COUNT = 0x1B;
+const CATALOGUE = 0x0810B32C, CATALOGUE_BYTES = 8;
 const CHOSEN = 0x03003D98, SONG = 0x03003D94;
 const FADE_LEVEL = 0x03004B00, FADE_KIND = 0x03004B04, FADE_STEP = 0x03004B08;
 const VIEW = 0x03002040;
@@ -32,6 +36,37 @@ function startFadeIn(c, frames) {
   write16(c, FADE_KIND, 2);
   write16(c, FADE_LEVEL, 0x8000);
   write16(c, FADE_STEP, Math.trunc(0x7FFF / (frames || 1)) || 1);
+}
+
+/**
+ * 0x080215a8, partly: the starter decks a brand new save holds, each of its six the same 27 skills, as the game lays
+ * them down when it finds no save. The rest of the block stays as a new one has it for what a fight reads.
+ */
+function starterDecks(c) {
+  for (let deck = 0; deck < 6; deck++) {
+    for (let n = 0; n < STARTER_COUNT; n++) {
+      write16(c, STARTER_DECKS + deck * DECK_BYTES + n * 2, read16(c, STARTER_IDS + n * 2));
+    }
+  }
+}
+
+/** 0x08029cfc: one player's stats and outfit, looked up from the save's three rows of skills in the catalogue. */
+function loadProfile(c, i) {
+  const record = CHOICES + i * 156;
+  write8(c, record + 0x96, read8(c, SAVE + 0x320));
+  for (let row = 0; row < 3; row++) {
+    for (let n = 0; n < 27; n++) {
+      const id = read16(c, STARTER_DECKS + row * DECK_BYTES + n * 2);
+      write8(c, record + 0x45 + row * 27 + n, read8(c, CATALOGUE + id * CATALOGUE_BYTES + 4));
+    }
+  }
+}
+
+/** The save and the four players' profiles as the mode-select screen leaves them for a fight: 0x080215a8's decks,
+ *  then 0x08029cfc for each player. */
+function loadProfiles(c) {
+  starterDecks(c);
+  for (let i = 0; i < 4; i++) loadProfile(c, i);
 }
 
 /** 0x080198b0: the fight's counters cleared, the fighters' colours, the arena and the fighters set up. */
@@ -185,6 +220,7 @@ export function startFight(c, vblanks, action = 0, you = 0, rival = 0, arena = 0
   write8(c, SETUP + 125, 4);
   write8(c, SETUP + 0, 0);
   write32(c, PLAYER, 0);
+  loadProfiles(c);   // 0x080215a8 and 0x08029cfc, as the mode-select screen leaves them
   hideSpriteBuffer(c);   // 0x0801ff30
   newScreen(c, 6);
   startFadeIn(c, 24);
