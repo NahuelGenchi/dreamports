@@ -220,11 +220,16 @@ Task *create_spotlight_beam(Beam *beam);
 // --- the save (engine/save.js) ---------------------------------------------------------------------------------
 #define SAVE_SIZE 0x430
 #define WRITE_FRAMES 14
-typedef struct { uint8_t bytes[SAVE_SIZE]; int exists; } Save;
+// ALL_ZONE_CHAOS_EMERALDS and MOON_BEATEN, and the Moon Zone's own level and X Zone's (engine/unlock.js)
+#define ALL_EMERALDS 0x7F
+#define MOON_BEATEN 15
+typedef struct { uint8_t bytes[SAVE_SIZE]; int exists, keep; } Save;
 extern Save save;
 void save_open(void);
 int save_write(void);
+void save_set_unlocked_level(int character, uint16_t level);
 #define SAVE_UI_LANGUAGE (save.bytes[0x19])
+#define SAVE_CHAOS_EMERALDS (save.bytes[0x1C])
 #define SAVE_PLAYER_NAME (save.bytes + 0x10)            // six characters of the UI font, and two unused
 #define SAVE_MULTIPLAYER_SCORES (save.bytes + 0x380)    // ten of a player id, a name, wins, losses and draws
 #define NAME_LENGTH 6
@@ -263,6 +268,8 @@ typedef struct {
 
 typedef struct {
   int character, partner, gameMode, level;
+  int select;   // the main menu's Game Start opens the character select, unless a start point leaves it out
+  int currentLevel, startLevel;   // gCurrentLevel and gMultiplayerCurrentLevel, for the Moon Zone's rule
   int done;   // the front end has handed over to what isn't in C yet
   VsLink vsLink;
   int missing[PLAYERS_MAX];   // gMultiplayerMissingHeartbeats: the frames each GBA of the link hasn't been heard from
@@ -283,7 +290,10 @@ void create_title_screen(int playMusic);
 void front_play(int level);
 void front_start_demo(void);
 uint32_t front_random(void);
+void front_start_game(void);   // the main menu's Game Start: the course select once the character has progress
 void create_main_menu(int back);
+void create_character_select(int character);
+void create_course_select(void);
 
 // --- the VS menus (vs.c and the screens after it) ------------------------------------------------------------------
 enum { GAME_MODE_SINGLE_PLAYER = 0, GAME_MODE_TIME_ATTACK = 1, GAME_MODE_RACE = 2, GAME_MODE_CHAO_HUNT = 4 };

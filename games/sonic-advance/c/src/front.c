@@ -12,6 +12,49 @@
 
 Front ctx;
 static int startingUp;
+// the start point's words (tools/README.md): a recording opens the game at a part with them, and the original gets
+// there by its own presses. `unlocked` gives the game a save of its own, kept nowhere, with the character's progress
+// at its value and, when they are there, the others' and the Chaos Emeralds', as main.js's proofSave does at Game Start.
+static struct {
+  int unlocked, unlockedGiven;
+  int levels[4];      // sonic, tails, knuckles and amy; -1 when the word isn't there
+  int emeralds;       // -1 when the word isn't there
+} startPoint;
+static const char *const START_CHARACTERS[4] = { "sonic", "tails", "knuckles", "amy" };
+
+/** The page's address's start point, read once the engine has started. */
+static void read_start_point(void) {
+  const char *unlocked = gba_start_point("unlocked");
+  startPoint.unlockedGiven = unlocked != NULL;
+  startPoint.unlocked = startPoint.unlockedGiven ? (int)gba_start_number("unlocked", 0) & 0xFFFF : 0;
+  for (int c = 0; c < 4; c++) startPoint.levels[c] = (int)gba_start_number(START_CHARACTERS[c], -1);
+  startPoint.emeralds = (int)gba_start_number("emeralds", -1);
+  ctx.character = (int)gba_start_number("character", 0);
+  if (ctx.character < 0) ctx.character = 0;
+  if (ctx.character > 3) ctx.character = 3;
+  ctx.select = !startPoint.unlockedGiven || gba_start_point("select") != NULL;
+  ctx.currentLevel = startPoint.unlockedGiven ? (int)gba_start_number("current", 0) : 0;
+  ctx.startLevel = startPoint.unlockedGiven ? (int)gba_start_number("started", 0) : 0;
+}
+
+/**
+ * The progress a start point gives the save as Game Start is pressed, as the JavaScript version's page does: the
+ * characters' levels, then the level being played's own, which wins, and the Chaos Emeralds.
+ */
+static void apply_start_point(void) {
+  if (!startPoint.unlockedGiven) return;
+  for (int c = 0; c < 4; c++) if (startPoint.levels[c] >= 0) save_set_unlocked_level(c, (uint16_t)startPoint.levels[c]);
+  save_set_unlocked_level(ctx.character, (uint16_t)startPoint.unlocked);
+  if (startPoint.emeralds >= 0) SAVE_CHAOS_EMERALDS = (uint8_t)(startPoint.emeralds & ALL_EMERALDS);
+}
+
+/** Game Start: the course select once the character has progress, or the act. */
+void front_start_game(void) {
+  apply_start_point();
+  if (ctx.gameMode == GAME_MODE_TIME_ATTACK || save_unlocked_level(ctx.character) != 0) create_course_select();
+  else front_play(-1);
+}
+
 
 /**
  * GameInit: the language screen when there is no save (a new game), else the logos, or, after a soft reset, which sets
@@ -27,6 +70,7 @@ static void power_on(int skipIntro) {
 void front_start(void) {
   memset(&ctx, 0, sizeof ctx);
   engine_init();
+  read_start_point();
   sprites.anims = rom_ptr(OFFSET_SPRITE_TABLES);
   sprites.dims = rom_ptr(OFFSET_SPRITE_TABLES + 4);
   sprites.oam = rom_ptr(OFFSET_SPRITE_TABLES + 8);
@@ -67,9 +111,9 @@ void front_vs_round(int level, int chao) {
 /** The round the VS menus chose, for the page: its level, or 0 while they are still choosing. */
 EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 
-// what comes after the screens that are in C so far: the game stops there, the screen as it was. No act is in C yet, and
-// the C version takes no start point, so it has no opening that holds the character and names no neverInPlay: the
-// JavaScript version's acts, in games/sonic-advance/src/, show where it goes once they come over.
+// what comes after the screens that are in C so far: the game stops there, the screen as it was. No act is in C yet,
+// so the C version's start point only opens the screens it has: the JavaScript version's acts, in
+// games/sonic-advance/src/, show where it goes once they come over.
 void front_play(int level) { (void)level; ctx.done = 1; }
 void front_start_demo(void) { ctx.done = 1; }
 
