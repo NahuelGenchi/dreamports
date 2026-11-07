@@ -102,12 +102,12 @@ test('a piece whose unfinished needs are all in review is free, on top of their 
   assert.deepEqual(both.buildsOn(claimed[2]).map(b => b.pull), [30, 31]);
 });
 
-test('a piece in C starts on top of the same piece in JavaScript while that one is in review', () => {
-  const twins = [piece(1, 'Task: Options'), piece(2, 'Task: Options in C')];
-  assert.deepEqual(numbers(whatCanStart(twins, file).free), [1]);
-  const { free, buildsOn } = whatCanStart(twins, file, new Set(), { reviewing: new Map([[1, 40]]) });
+test('a piece in C starts on top of what it needs in C while that one is in review', () => {
+  const inC = [piece(1, 'Task: The arena in C', 'open', [{ login: 'someone' }]), piece(2, 'Task: The fighting in C')];
+  assert.deepEqual(numbers(whatCanStart(inC, file).free), []);
+  const { free, buildsOn } = whatCanStart(inC, file, new Set(), { reviewing: new Map([[1, 40]]) });
   assert.deepEqual(numbers(free), [2]);
-  assert.deepEqual(buildsOn(twins[1]), [{ name: 'Options', number: 1, pull: 40 }]);
+  assert.deepEqual(buildsOn(inC[1]), [{ name: 'The arena in C', number: 1, pull: 40 }]);
 });
 
 test('a piece parts.json doesn\'t list waits on nothing, and no parts.json leaves every piece free', () => {
@@ -130,24 +130,23 @@ test('a task in another language is the same part with the language\'s name afte
   assert.equal(taskTitle('The menu'), 'Task: The menu');
 });
 
-test('a piece in C waits for the same piece in JavaScript, and for what it needs in C', () => {
+test('a piece in C waits only for what it needs in C, never for the same piece in JavaScript (#965)', () => {
   const inC = [
     piece(11, 'Task: The menu in C'), piece(12, 'Task: Options in C'), piece(13, 'Task: The arena in C'), piece(14, 'Task: The fighting in C'),
     piece(15, 'Task: The logos in C'),
   ];
-  // Options and the arena are finished in JavaScript; the menu and the fighting aren't
-  const js = pieces.map(p => (p.number === 4 || p.number === 6 ? { ...p, state: 'closed' } : p));
-  const { free, waiting } = whatCanStart([...js, ...inC], file);
-  assert.deepEqual(numbers(free).filter(n => n > 10), [15, 13, 12], 'the logos, which parts.json proves in JavaScript, then the arena, which Story needs, then Options');
+  // nothing is finished in JavaScript but the logos, which parts.json proves there
+  const { free, waiting } = whatCanStart([...pieces, ...inC], file);
+  assert.deepEqual(numbers(free).filter(n => n > 10), [15, 13, 12], 'the logos, then the arena, which Story needs, then Options, all in C');
   assert.ok(numbers(free).findIndex(n => n < 10) > numbers(free).findLastIndex(n => n > 10), 'C, the default language, comes first');
   const on = Object.fromEntries(waiting.map(w => [w.piece.number, w.on]));
-  assert.deepEqual(on[11], [{ name: 'The menu', number: 1 }, { name: 'The logos in C', number: 15 }]);
-  assert.deepEqual(on[14], [{ name: 'The fighting', number: 5 }, { name: 'The arena in C', number: 13 }]);
-  // a need with no task in C yet isn't finished, though parts.json proves it in JavaScript
-  const alone = whatCanStart([...pieces, { ...piece(1, 'Task: The menu'), state: 'closed' }, piece(21, 'Task: The menu in C')].filter(p => p.number !== 1 || p.state === 'closed'), file);
-  assert.deepEqual(alone.waiting.find(w => w.piece.number === 21).on, [{ name: 'The logos in C' }]);
+  assert.deepEqual(on[11], [{ name: 'The logos in C', number: 15 }], 'the menu waits on the logos in C, not on the menu in JavaScript');
+  assert.deepEqual(on[14], [{ name: 'The arena in C', number: 13 }]);
+  // a need with no task in C is one the version has proven, as tasks opens one for every part it hasn't
+  const alone = whatCanStart([piece(21, 'Task: The menu in C')], file);
+  assert.deepEqual(numbers(alone.free), [21]);
   // and the JavaScript pieces are free as they were
-  assert.deepEqual(numbers(free).filter(n => n < 10), numbers(whatCanStart(js, file).free));
+  assert.deepEqual(numbers(free).filter(n => n < 10), numbers(whatCanStart(pieces, file).free));
 });
 
 test('a game that started in C has its pieces in C alone, which wait on nothing in JavaScript', () => {
@@ -161,9 +160,9 @@ test('a game that started in C has its pieces in C alone, which wait on nothing 
   const on = Object.fromEntries(waiting.map(w => [w.piece.number, w.on]));
   assert.deepEqual(on[14], [{ name: 'The arena in C', number: 13 }]);
   assert.deepEqual(on[16], [{ name: 'The fighting in C', number: 14 }]);
-  // a JavaScript version added later waits for the same part in C, as it's written from it
+  // a JavaScript version added later is written from the original too, so it waits on nothing in C
   const later = whatCanStart([...inC, piece(21, 'Task: Options')], file, new Set(), { main: 'c' });
-  assert.deepEqual(later.waiting.find(w => w.piece.number === 21).on, [{ name: 'Options in C', number: 12 }]);
+  assert.ok(numbers(later.free).includes(21));
 });
 
 test('work goes in the order a player meets it, C first, each foundation just before the first part that needs it', () => {
