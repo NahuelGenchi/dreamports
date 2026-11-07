@@ -2,9 +2,11 @@
   "original": "3430811ecc007fa469f5b74db277f872679266dd",
   "from": "The original's functions that games/ghosts-n-goblins/c/ names, found by npm run dp -- portmap ghosts-n-goblins/c",
   "functions": [
-    ["0001C0C9","src/main.c:104"]
+    ["0001C0C9","src/main.c:111"],
+    ["0001F171","src/main.c:104"],
+    ["0001F17A","src/main.c:108"]
   ],
   "unmatched": [
-    ["sub_ED97","src/main.c:159"]
+    ["sub_ED97","src/main.c:169"]
   ]
 }

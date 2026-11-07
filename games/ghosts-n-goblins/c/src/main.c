@@ -101,6 +101,13 @@ static void clear_screen(void) {
   for (int i = 0; i < 960; i++) ppu_byte(0xFF);
 }
 
+// sub_F171: clears the background and sprites from the picture's mask, $39, which the original then hands to its scheduler.
+// The Dreamport has one task, so the handoff is the end of the step.
+static void sub_F171(void) { nes_ram[0x39] &= 0xE7; }
+
+// sub_F17A: sets the background and sprites again in the mask, $39, as the original does once its tiles are in.
+static void sub_F17A(void) { nes_ram[0x39] |= 0x18; }
+
 // sub_C0C9: the tiles, 8 KB from the copy's bank 0 at $8000, to the PPU's pattern tables at $0000. The original waits for
 // each 32 bytes to go in V-blank, with the picture off, over 64 frames.
 static void load_tiles(void) {
@@ -136,7 +143,10 @@ void game_start(void) {
   nes_write(0x2001, 0x00);  // the picture off while the title screen goes in
   nes_write(0x2005, 0);
   nes_write(0x2005, 0);
+  nes_ram[0x39] = 0x1E;     // the original's mask shadow at reset
+  sub_F171();
   load_tiles();
+  sub_F17A();
   clear_screen();
   draw_title_attributes();
   draw_title_logo();
@@ -167,6 +177,6 @@ void game_step(uint32_t buttons) {
     nes_write(0x2000, 0x90);
     nes_write(0x2005, 0);
     nes_write(0x2005, 0);
-    nes_write(0x2001, 0x1E);
+    nes_write(0x2001, nes_ram[0x39]);
   }
 }
