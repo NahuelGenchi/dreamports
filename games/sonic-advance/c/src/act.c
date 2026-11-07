@@ -388,6 +388,23 @@ void act_player_died(void) {
 }
 // the act starting over with a life less is not here yet
 void act_life_lost(void) {}
+// TEMPORARY until results.c lands
+void act_stage_results(void) {}
+
+int act_goal_passed(void) { return act.goalReached; }
+// past the goal post the clock stops and the rings manager neither takes nor draws rings
+void act_goal_reached(void) { act.goalReached = 1; act.clockStopped = 1; act.ringsStopped = 1; }
+int act_checkpoint_index(void) { return act.checkpointIndex; }
+// Sonic passed checkpoint `index`: the act would start over with his centre at (x, y) and the clock at this time
+void act_checkpoint_pass(int index, int x, int y) {
+  act.checkpointIndex = index; act.checkpointX = x; act.checkpointY = y; act.checkpointTime = act.courseTime;
+}
+// the C version has no special stages yet, so a special spring is a plain spring, as the JavaScript version's is without
+// one; act_special_stage is then never reached
+int act_special_stages(void) { return 0; }
+void act_special_stage(int x, int y) { (void)x; (void)y; }
+// the special spring holds the camera where it was, so what is drawn after it this frame is placed from there
+void act_hold_camera(int x, int y) { act.cam.x = x; act.cam.y = y; }
 
 static void firework_task(Task *t) {
   Firework *f = (Firework *)t->data;
@@ -463,6 +480,9 @@ static void act_frame(void) {
     in.left = 0; in.right = 1; in.jump = 1; in.attack = 0; in.jumpPressed = 0; in.attackPressed = 0;
     act.firstFrame = 0;
   }
+  // an object holding him takes the pad from him: he reads nothing held or pressed, or only right held as the goal post
+  // gives him to run off (HOLD_RIGHT)
+  if (act.player.ignoreInput) in = act.player.heldRight ? (PlayerInput){ .right = 1 } : (PlayerInput){0};
   // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180)
   if (act.cardDone) hud_update(1);
   player_step(&act.player, &in);

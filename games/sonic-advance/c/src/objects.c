@@ -3,6 +3,7 @@
 // makeSprite, startAnim, animate, toggle, standIn and interactable).
 
 #include "objects.h"
+#include "enemies.h"
 
 // --- the task list (createTasks) -----------------------------------------------------------------------------------
 enum { MAX_ACT_TASKS = 192 };
@@ -172,10 +173,39 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { TOGGLE_FRONT, TOGGLE_BACK, toggle_spawn },
   { 21, 22, platform_spawn },
   { 104, 104, platform_spawn },
+  { 48, 53, bumper_spawn },
+  { 54, 54, flipper_spawn },
+  { 56, 56, flipper_spawn },
+  { 65, 68, marble_track_spawn },
+  { 71, 71, bumper_spawn },
+  { 72, 72, teleport_orb_spawn },
+  { 73, 73, flipper_blue_spawn },
+  { 106, 106, tube_track_spawn },
+  { 107, 107, tube_junction_spawn },
+  { 0, 0, goal_spawn },
+  { 7, 7, checkpoint_spawn },
+  { 42, 42, red_flag_spawn },
+  { 44, 45, wall_pole_spawn },
+  { 55, 55, square_platform_spawn },
+  { 57, 57, barrel_spawn },
+  { 58, 58, sega_letter_spawn },
+  { 59, 59, balloon_spawn },
+  { 60, 60, ship_swing_spawn },
+  { 61, 61, spiked_platform_spawn },
+  { 62, 62, bowl_spawn },
+  { 63, 64, panel_gate_spawn },
+  { 69, 69, conveyor_spawn },
+  { 70, 70, visibility_spawn },
+  { 74, 74, carousel_spawn },
+  { 102, 102, special_spring_spawn },
 };
 
-// the enemies by their kind numbers (the ENEMIES table): none built yet
-static const struct { int kind; Spawn spawn; } ENEMIES[] = { { -1, NULL } };
+// the enemies by their kind numbers (the ENEMIES table)
+static const struct { int kind; Spawn spawn; } ENEMIES[] = {
+  { 8, hanabii_spawn },
+  { 9, slot_machine_spawn },
+  { 10, pierrot_spawn },
+};
 
 ActTask *entity_spawn(Slot *slot) {
   int kind = slot->e.kind;
@@ -199,6 +229,7 @@ void objects_start(int level) {
   memset(blocks, 0, sizeof blocks);
   drawing = 1;
   effects_start();
+  enemies_start();
   entities_load(level);
   rings_load(level);
   rings_start();

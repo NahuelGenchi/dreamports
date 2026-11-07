@@ -52,7 +52,7 @@ static int height_value(int px, int py, int layer, int row) {
 }
 
 // the surface angle of the tile at (px, py), 0-255 for a full turn, mirrored for flipped tiles
-static int surface_angle(int px, int py, int layer) {
+int terrain_angle(int px, int py, int layer) {
   const Collision *c = &act.stage.collision;
   uint16_t entry = tile_entry(layer, clamp(px, 0, c->width - 1) >> 3, clamp(py, 0, c->height - 1) >> 3);
   int a = rom_u8(c->angles + (entry & TILE_NUMBER));
@@ -66,8 +66,8 @@ static int surface_angle(int px, int py, int layer) {
 typedef struct { int v, rot; } Probe;
 static Probe probe(int kind, int p0, int p1, int layer) {
   Probe r;
-  if (kind == PROBE_FLOOR) { r.v = height_value(p1, p0, layer, 0); r.rot = surface_angle(p1, p0, layer); }
-  else { r.v = height_value(p0, p1, layer, 1); r.rot = surface_angle(p0, p1, layer); }
+  if (kind == PROBE_FLOOR) { r.v = height_value(p1, p0, layer, 0); r.rot = terrain_angle(p1, p0, layer); }
+  else { r.v = height_value(p0, p1, layer, 1); r.rot = terrain_angle(p0, p1, layer); }
   return r;
 }
 
@@ -97,12 +97,7 @@ Scan terrain_scan(int kind, int p0, int p1, int layer, int step) {
   out.d = fwd ? -17 - r : r - 24; out.rot = b2.rot; return out;
 }
 
-int terrain_tile_floor(int x, int y, int layer, int step) {
-  int v = probe(PROBE_FLOOR, y, x, layer).v, r = y & 7;
-  if (v == 0) return step > 0 ? 8 - r : r + 1;
-  if (v == 8) return step > 0 ? -1 - r : r - 8;
-  return v > 0 ? v - 1 - r : v + r;
-}
+int terrain_tile_floor(int x, int y, int layer, int step) { return terrain_tile_scan(PROBE_FLOOR, y, x, layer, step); }
 
 // --- Sonic's sensors (engine/sensors.js) ---------------------------------------------------------------------------------
 // With gravity flipped (Cosmic Angel's toggles), his speeds and angles stay as he sees them: his floor is the act's
@@ -292,4 +287,11 @@ void sensors_set_offset_y(Player *p, int offsetY) {
     default: p->x -= delta;
   }
   p->offsetY = offsetY;
+}
+
+int terrain_tile_scan(int kind, int p0, int p1, int layer, int step) {
+  int v = probe(kind, p0, p1, layer).v, r = p0 & 7;
+  if (v == 0) return step > 0 ? 8 - r : r + 1;
+  if (v == 8) return step > 0 ? -1 - r : r - 8;
+  return partial(v, r);
 }

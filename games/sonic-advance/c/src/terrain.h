@@ -18,6 +18,10 @@ Scan terrain_scan(int probe, int p0, int p1, int layer, int step);
 /** The one-tile floor probe (sub_801F100): the distance from (x, y) to the floor within the tile holding y, 0 or less at or
  *  inside it. An empty tile sends it on to the next one along `step` (+8 or -8), a full one to the tile before. */
 int terrain_tile_floor(int x, int y, int layer, int step);
+/** The same probe along either axis (the JavaScript version's tileScan): `kind` and the coordinates as terrain_scan takes them. */
+int terrain_tile_scan(int kind, int p0, int p1, int layer, int step);
+/** The surface angle of the tile at (px, py), 0-255 a turn, mirrored for flipped tiles. */
+int terrain_angle(int px, int py, int layer);
 
 /** sub_8022D6C: keeps a grounded Sonic on the surface, follows its angle, or lets him fall off. */
 void sensors_ground(Player *p);

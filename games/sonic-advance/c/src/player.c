@@ -75,6 +75,7 @@ void player_init(Player *p, int x, int y) {
   p->x = x; p->y = y; p->facing = 1;
   p->state = p->prevState = p->animName = PS_IDLE;
   p->layer = LAYER_BACK; p->offsetY = SPRITE_OFFSET_Y; p->idleT = BORED_DELAY; p->prio = DEFAULT_PRIORITY;
+  p->track = NO_TRACK; p->scale = FULL_SCALE;
   sprite_init(&p->sprite);
   p->sprite.palId = 0;
   p->sprite.oamFlags = (uint16_t)(PLAYER_ORDER << 6);
@@ -550,6 +551,8 @@ static const uint8_t ANIMATIONS[PA_COUNT][2] = {
   [PS_BALANCE_BACK] = {14, 0}, [PS_SPIN_DASH] = {18, 0}, [PS_SPIN_DASH_REV] = {18, 1}, [PS_HURT] = {19, 0},
   [PS_DEAD] = {21, 0}, [PS_AIR_DASH] = {49, 0}, [PS_INSTA_SHIELD] = {50, 0}, [PS_SPIN_ATTACK] = {51, 0},
   [PS_SOMERSAULT] = {52, 0}, [PS_SLIDE] = {53, 0}, [PS_SLIDE_END] = {53, 1}, [PS_BACKFLIP] = {55, 0}, [PS_BOUNCE] = {4, 0},
+  [PS_MARBLE_TRACK] = {39, 0}, [PS_POLE] = {38, 0}, [PS_FLAG_SWING] = {37, 0}, [PS_ACT_CLEAR_RUN] = {22, 0},
+  [PS_CAROUSEL_RIDE] = {40, 0},
 };
 
 // the walk cycle plays at his speed, never slower than half
@@ -640,7 +643,7 @@ void player_animate(Player *p, const PlayerInput *in) {
   }
   p->prio = (int)((s->frameFlags & SPRITE_PRIORITY) >> 12);
   p->prevState = p->state;
-  p->hidden = !p->dead && p->invulnerable > 0 && (act.tick & 2);
+  p->hidden = !p->dead && (p->invisible || (p->invulnerable > 0 && (act.tick & 2)));
   // dead, the timers count down only on the frame he dies: the tasks that take over from then on leave them
   if (p->dead && p->invulnerable == 1) return;
   if (p->state != PS_HURT && p->invulnerable > 0) p->invulnerable--;
@@ -657,17 +660,21 @@ void player_animate(Player *p, const PlayerInput *in) {
 void player_draw(Player *p, int camX, int camY) {
   if (p->hidden) return;
   Sprite *s = &p->sprite;
-  int rotated = p->state == PS_WALK || p->state == PS_BOUNCE;
+  // walking, bouncing and in a marble track he is drawn through the rotation hardware: at his surface's angle, or in a
+  // track at the angle the track turned him to, and at his scale
+  int rotated = p->state == PS_WALK || p->state == PS_BOUNCE || p->state == PS_MARBLE_TRACK;
+  if (!rotated) p->drawRotation = 0;
+  else if (p->state != PS_MARBLE_TRACK) p->drawRotation = p->rotation << 2;
   int sx = (int)__builtin_floor(p->x) - camX, sy = (int)__builtin_floor(p->y) - camY;
   int priority = p->death != PLAYER_ALIVE ? 1 : p->prio;
   s->frameFlags &= ~(SPRITE_PRIORITY | SPRITE_X_FLIP | SPRITE_Y_FLIP | SPRITE_ROT_SCALE | SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE);
   s->frameFlags |= (uint32_t)priority << 12;
   if (rotated) {
     int right = (p->facing > 0) != (p->inverted != 0);
-    int rotation = p->rotation << 2;
+    int rotation = p->drawRotation;
     Transform tf;
     tf.rotation = (uint16_t)(p->inverted ? (512 - rotation) & 1023 : rotation);
-    tf.qScaleX = (int16_t)(right ? -256 : 256); tf.qScaleY = 256;
+    tf.qScaleX = (int16_t)(right ? -p->scale : p->scale); tf.qScaleY = (int16_t)p->scale;
     tf.x = (int16_t)(sx - (right ? 1 : 0)); tf.y = (int16_t)sy;
     s->frameFlags |= SPRITE_ROT_SCALE_ENABLE;
     transform_sprite(s, &tf);

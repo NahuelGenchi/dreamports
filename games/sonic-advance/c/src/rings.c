@@ -183,7 +183,7 @@ int rings_task(ActTask *t) {
   update_sprite(&ringSprite, 0);
   const Player *p = &act.player;
   // the rings can't be taken while Sonic is knocked back and blinking, or dead
-  if (p->dead == 0 && !(p->state == PS_HURT && p->invulnerable)) collect_rings(p);
+  if (!act.ringsStopped && p->dead == 0 && !(p->state == PS_HURT && p->invulnerable)) collect_rings(p);
   draw_rings();
   return 1;
 }

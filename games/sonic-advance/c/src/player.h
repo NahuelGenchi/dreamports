@@ -19,7 +19,8 @@ typedef enum {
   PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_CROUCH_END, PS_LOOK_UP, PS_LOOK_UP_END, PS_SPIN_DASH,
   PS_SPIN_DASH_REV, PS_SPIN, PS_INSTA_SHIELD, PS_AIR_DASH, PS_SPIN_ATTACK, PS_SOMERSAULT, PS_SLIDE, PS_SLIDE_END,
   PS_BACKFLIP, PS_SPRING, PS_SPRING_RISE, PS_SPRING_PEAK, PS_SPRING_FALL, PS_BOUNCE, PS_PUSH, PS_BALANCE_FORWARD,
-  PS_BALANCE_BACK, PS_HURT, PS_DEAD,
+  PS_BALANCE_BACK, PS_HURT, PS_DEAD, PS_MARBLE_TRACK,
+  PS_POLE, PS_FLAG_SWING, PS_ACT_CLEAR_RUN, PS_CAROUSEL_RIDE,   // on a wall pole, swinging round a red flag, running off past the goal, riding a carousel
   PA_BORED, PA_RUN, PA_BRAKE_TURN,   // bored of waiting, running, and turning round after a skid
   PA_COUNT
 } PlayerAnim;
@@ -57,6 +58,12 @@ typedef struct {
   const void *onObject;         // the solid object he stands on, if any
   int animRestart;              // an object asked for his animation to start over
   int forcedRoll, scripted, actClear, halfPipe, ignoreInput, carried, override;
+  int track;                    // the step of the marble track or tube holding him (unk99[0]), NO_TRACK when none does
+  int scale;                    // his size through the rotation hardware (8.8), smaller inside a marble track
+  int drawRotation;             // the angle he is drawn at through the rotation hardware (1024 a turn)
+  int invisible;                // hidden by an object that holds him out of sight
+  int heldRight;                // while an object holds the pad, it gives him right held (the goal's run off)
+  int plainSprings;             // back from a special stage: the special springs are plain springs
   int heldDirs, pressedDirs;    // the d-pad his last frame read, and what it found newly pressed
   int jumpPressed, attackPressed;
   int held[DPAD_HISTORY], pressed[DPAD_HISTORY];
@@ -64,6 +71,7 @@ typedef struct {
 } Player;
 
 enum { PLAYER_ALIVE = 0, PLAYER_FALLING, PLAYER_GONE };
+enum { NO_TRACK = 0x7F, FULL_SCALE = 0x100 };
 
 void player_init(Player *p, int x, int y);
 /** One frame of his movement, before his animation. */

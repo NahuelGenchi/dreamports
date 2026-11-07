@@ -59,6 +59,8 @@ typedef struct {
   Hud hud;
   int tick, frames, courseTime, ringCount, lives, score;
   uint32_t seed;
+  int goalReached, ringsStopped;   // past the goal; past the goal or a beaten boss, the rings manager neither takes nor draws
+  int checkpointIndex, checkpointX, checkpointY, checkpointTime;   // the last checkpoint passed (gBossIndex), where and when
   int clockStopped, cardFrame, cardDone, firstCard, started, preFrames, firstFrame, drawn;
   // the stage's animated tiles (UpdateBgAnimationTiles), and its palette animations' sprites
   int bgAnimFrame, bgAnimShown, bgAnimDelay;
@@ -82,6 +84,16 @@ void act_insta_shield(void);
 void act_freeze_camera(void);
 void act_player_died(void);
 void act_life_lost(void);
+// what the objects hand to the act: the goal post, the checkpoints and the special springs (goal.c, checkpoints.c,
+// specialspring.c)
+int act_goal_passed(void);
+void act_goal_reached(void);
+void act_stage_results(void);
+int act_checkpoint_index(void);
+void act_checkpoint_pass(int index, int x, int y);
+int act_special_stages(void);
+void act_hold_camera(int x, int y);
+void act_special_stage(int x, int y);
 /** The game's random numbers (gPseudoRandom): the next, which also moves the sequence on. */
 uint32_t act_random(void);
 
