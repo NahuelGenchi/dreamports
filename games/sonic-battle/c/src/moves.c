@@ -1250,7 +1250,26 @@ void landOrFall(int i) {
   } else IN_AIR();
   #undef IN_AIR
   if (read8(SETUP_ + 125) == 4) for (int j = 0; j < 4; j++) write8(record(j) + HEALTH, 100);
-  if (read8(rec + HEALTH) == 0) notPorted("0800444C");
+  if (read8(rec + HEALTH) == 0) {
+    // 0x0800444c: a fighter out of health. On the ground its opponent gains a point and it takes state 253; in the air
+    // it takes state 252 and flies back. Either state's script ends it in 254, lying down.
+    int current = read16(rec + STATE);
+    if ((uint16_t)(current - 254) <= 1) return;
+    if (current != 253 && (read32(rec + FLAGS) & 1)) {
+      write8(SETUP_ + 51 + i, (uint8_t)(read8(SETUP_ + 51 + i) + 1));
+      write8(SETUP_ + 47 + i, 0);
+      setState(i, 253);
+      write8(rec + 28, 0);
+      write8(rec + 29, 0);
+      return;
+    }
+    if ((uint16_t)(current - 252) <= 1) return;
+    if (!(read32(rec + FLAGS) & 4)) return;
+    setState(i, 252);
+    write8(rec + 28, 0);
+    write8(rec + 29, 0);
+    return;
+  }
   uint32_t flags = read32(rec + FLAGS);
   int now = read16(rec + STATE);
   if (flags & FLAG_LANDED) {
@@ -1845,7 +1864,31 @@ void followFighter(int i) {
   zoomCamera(0x200);
 }
 
+static int fight_end_vblank = -1;
+
+/** A start point may turn a Training fight into a Battle one at a chosen frame, so the fight's end can be proven. */
+void setFightEndAt(int vblank) { fight_end_vblank = vblank; }
+
 void trainingFrame(void) {
+  if (fight_end_vblank >= 0 && g.vblanks == fight_end_vblank) {
+    // 0x0801c28c hands over to 0x0801b394 at the frame the start point names: Battle's rule, a full Ichikoro gauge,
+    // a rival out of health, and the point that ends the fight.
+    fight_end_vblank = -1;
+    write8(SETUP_ + 125, 1);
+    write8(SETUP_ + 4, 2);
+    write8(SETUP_ + 6, 1);
+    write8(SETUP_ + 51, 1);
+    write8(FIGHTERS + 147, 72);
+    write8(FIGHTERS + 149, 1);
+    write8(FIGHTERS + RECORD + HEALTH, 0);
+    write16(FIGHTERS + RECORD + STATE, 253);
+    battleFrame();
+    return;
+  }
+  if (read8(SETUP_ + 125) != 4) {   // Battle's frame keeps Training's callback timing, so the drawing stays lined up
+    battleFrame();
+    return;
+  }
   dummyKeys();
   int player = (int)read32(PLAYER_);
   readAllKeys(player);

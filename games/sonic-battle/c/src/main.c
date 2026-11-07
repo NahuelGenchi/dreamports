@@ -533,7 +533,9 @@ void startFightFromPoint(void) {
   int rival = (int)gba_start_number("rival", 0) & 0xFF;
   int arena = (int)gba_start_number("arena", 0) & 0xFF;
   int colour = gba_start_number("colour", -1) >= 0 ? (int)gba_start_number("colour", 255) & 0xFF : 255;
-  startFight(vblanks, action, you, rival, arena, colour);
+  const char *fight = gba_start_point("fight");
+  int battle = fight != 0 && fight[0] == 'b';
+  startFight(vblanks, action, you, rival, arena, colour, battle);
 }
 
 /** The game starts again from the logos, as Delete data in the options does (0x08000210): a new save's name and

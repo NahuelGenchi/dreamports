@@ -263,9 +263,21 @@ void updateThings(void);
 void followFighter(int i);
 void trainingFrame(void);
 void trainingAfterWait(void);
+void setFightEndAt(int vblank);
+int fightWinner(int mode);
+void selectWinner(int mode);
+void battleReadyFrame(void);
+void battleReadyAfterWait(void);
+void battleFrame(void);
+void battleAfterWait(void);
+void endingFrame(void);
+void endingAfterWait(void);
+void resultTransition(void);
+void resultTransitionAfterWait(void);
+void resultScreen(void);
 
 // fight.js
-void startFight(int vblanks, int action, int you, int rival, int arena, int colour);
+void startFight(int vblanks, int action, int you, int rival, int arena, int colour, int battle);
 void choosing(void);
 void choosingAfterWait(void);
 

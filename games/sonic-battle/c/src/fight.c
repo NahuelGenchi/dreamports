@@ -167,8 +167,11 @@ void choosing(void) {
   if (chosen > 8) {
     write8(CHOSEN_, 0);
     for (int i = 0; i < 4; i++) forgetKeys(i);
-    if (setup(125) != 4) __builtin_trap();
-    g.callback = trainingFrame;
+    if (setup(125) == 4) g.callback = trainingFrame;
+    else {
+      startHud(20);
+      g.callback = battleReadyFrame;
+    }
   } else if (chosen != 0) write8(CHOSEN_, chosen + 1);
   else if (answer != 0) write8(CHOSEN_, 1);
   g.after_wait = choosingAfterWait;
@@ -206,15 +209,17 @@ void choosingAfterWait(void) {
  * A start point's `you`, `rival`, `arena` and `colour` are what Training's screen would have picked: the player's
  * character, the rival's, the map, and the colour rows a character whose colours come from its choices wears.
  */
-void startFight(int vblanks, int action, int you, int rival, int arena, int colour) {
+void startFight(int vblanks, int action, int you, int rival, int arena, int colour, int battle) {
   g.vblanks = vblanks;
+  int end = (int)gba_start_number("end", -1);
+  setFightEndAt(end >= 0 ? vblanks + end + 2 : -1);   // the two V-blanks startFight and the first step count
   g.line_one = playQueuedEffects;
   for (int i = 0; i < 512; i++) gba_pal[i] = 0;
   write8(SAVE_ + 119, 1);   // the language the save keeps: English in the USA copy (menu.c)
   for (int i = 0; i < REGISTER_COUNT; i++) {
     write16(IO + read16(REGISTERS + (uint32_t)i * 4), read16(REGISTERS + (uint32_t)i * 4 + 2));
   }
-  write8(SETUP_ + 4, 0);
+  write8(SETUP_ + 4, 0);   // the choice screen copies a tile by this, as Training's screen leaves it
   write8(SETUP_ + 5, 10);
   for (int at = 6; at <= 11; at++) write8(SETUP_ + (uint32_t)at, 0);
   write8(SETUP_ + 36, 2);
@@ -226,7 +231,7 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
   write8(SETUP_ + 2, 1);
   write8(SETUP_ + 3, (uint8_t)arena);   // the arena, Emerald Beach (0) unless a start point picks another of Training's maps
   write8(SETUP_ + 38, (uint8_t)action);   // the Rival's Action, Do Nothing first
-  write8(SETUP_ + 125, 4);
+  write8(SETUP_ + 125, 4);   // the screen the choice of specials starts after, as Training leaves it
   write8(SETUP_ + 0, 0);
   write32(PLAYER_, 0);
   loadProfiles();   // 0x080215a8 and 0x08029cfc, as the mode-select screen leaves them
@@ -245,6 +250,15 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
   write8(SONG_, (uint8_t)ARENA_SONGS[setup(3 + setup(1))]);
   startHud(10);
   setUpFighters();
+  if (battle) {
+    // the rule and score Battle's screen leaves, and a full Ichikoro gauge for the player, as a start point may give
+    write8(SETUP_ + 4, 2);
+    write8(SETUP_ + 6, 1);
+    write8(SETUP_ + 125, 1);
+    for (int i = 0; i < 4; i++) write8(SETUP_ + 51 + i, 0);
+    write8(FIGHTERS + 147, 72);
+    write8(FIGHTERS + 149, 1);
+  }
   gba_sound_frames_gone_by(vblanks - 2);
   gba_sound_play(read8(SONG_));
   fightVblank();
