@@ -3,8 +3,9 @@ name: Claims
 # One lead per game and one person per task (docs/TEAMS.md). A New Dreamport issue claims a whole game for the
 # person who opens it, unless the game already has a Dreamport or an earlier open New Dreamport issue, and becomes the
 # game's issue, which lists every piece of the game. A game's issue is the New Dreamport issue its entry names, or for
-# a game with no entry yet, the open one that claims it. A Task issue goes under its game's issue as a sub-issue, and
-# claims its task for its author when they tick the box. On any open issue of a game, a comment starting with /claim
+# a game with no entry yet, the open one that claims it. A Task issue goes under its game's issue as a sub-issue, or a
+# task in another language than the game's main one under its version's issue there, which the bot opens when the game
+# has none, as one issue holds at most 100 (#905), and claims its task for its author when they tick the box. On any open issue of a game, a comment starting with /claim
 # takes it while nobody has it, and /release gives it back. Each answer is a comment, and the daily run releases every
 # claim whose holder has done nothing on the game's issues or pull requests for 14 days, or 7 for a foundation, which
 # other pieces wait on. It lists a game's free pieces, and says what a piece waits on, by src/lib/pieces.mjs itself,
@@ -161,8 +162,35 @@ jobs:
             })());
             return homes.get(game);
           }
-          // a game's pieces: the issues of this repository under its game's issue, open and closed
-          const piecesOf = async home => (await list(`/issues/${home.number}/sub_issues`)).filter(i => i.repository_url?.toLowerCase() === root.toLowerCase());
+          // a game's pieces: the issues of this repository under its game's issue, open and closed, and those under each of
+          // its versions' issues there, which hold its tasks in another language (#905)
+          const under = async number => (await list(`/issues/${number}/sub_issues`)).filter(i => i.repository_url?.toLowerCase() === root.toLowerCase());
+          const piecesOf = async home => {
+            const direct = await under(home.number);
+            const versions = direct.filter(i => rules.languageOfIssue(i));
+            return [...direct.filter(i => !rules.languageOfIssue(i)), ...(await Promise.all(versions.map(v => under(v.number)))).flat()];
+          };
+          // the issue under a game's issue that holds its tasks in a language, opened and put there when it has none
+          const versionHomes = new Map();
+          function versionHomeOf(game, home, language) {
+            const key = `${game}:${language}`;
+            if (!versionHomes.has(key)) versionHomes.set(key, (async () => {
+              const found = (await under(home.number)).find(i => rules.languageOfIssue(i) === language)
+                ?? (await list(`/issues?state=open&labels=${encodeURIComponent(game)}`)).find(i => !i.pull_request && rules.languageOfIssue(i) === language && folderIn(i) === game);
+              const issue = found ?? await api('/issues', 'POST', {
+                title: rules.languageIssueTitle(await titleOf(game), language),
+                body: rules.languageIssueText(game, language),
+                labels: [game],
+                ...(home.milestone ? { milestone: home.milestone.number } : {}),
+              });
+              if (!issue.parent_issue_url) {
+                await api(`/issues/${home.number}/sub_issues`, 'POST', { sub_issue_id: issue.id });
+                done.push(`#${issue.number}: under #${home.number}, for its tasks in another language`);
+              }
+              return issue;
+            })());
+            return versionHomes.get(key);
+          }
           // the game an issue is for: its form's folder, a game's label, or the game's issue it's under
           async function gameOf(issue) {
             const named = folderIn(issue);
@@ -368,20 +396,24 @@ jobs:
             await claim(issue, user, 'issue', game, title);
           }
 
-          // a task goes under its game's issue, unless it's under an issue already
+          // a task goes under its game's issue, or one in another language than the game's main one under its version's
+          // issue there, unless it's under an issue already
           async function attach(issue, game) {
             if (issue.parent_issue_url) return;
             const home = await gameIssueOf(game);
             if (!home || home.number === issue.number) return;
+            const language = rules.pieceOf(issue).language;
+            let target = home;
             try {
-              await api(`/issues/${home.number}/sub_issues`, 'POST', { sub_issue_id: issue.id });
-              issue.parent_issue_url = home.url;
+              if (language !== await mainOf(game)) target = await versionHomeOf(game, home, language);
+              await api(`/issues/${target.number}/sub_issues`, 'POST', { sub_issue_id: issue.id });
+              issue.parent_issue_url = target.url;
               changed = true;
-              done.push(`#${issue.number}: under #${home.number}`);
+              done.push(`#${issue.number}: under #${target.number}`);
             } catch (error) {
               // under one already, put there at the same moment, or past GitHub's 100 sub-issues: it can still be claimed
               if (error.status !== 422) throw error;
-              done.push(`#${issue.number}: not put under #${home.number}, ${error.message}`);
+              done.push(`#${issue.number}: not put under #${target.number}, ${error.message}`);
             }
           }
           // a task nobody took at first is done once it has its game's label, its kind and its milestone, and is under
@@ -423,6 +455,10 @@ jobs:
               const user = comment.user.login, about = String(comment.id);
               if (issue.state !== 'open') {
                 await answer(issue, about, `@${user}, this issue is closed, so there's nothing to ${verb}.`);
+                continue;
+              }
+              if (rules.languageOfIssue(issue)) {
+                await answer(issue, about, `@${user}, this issue holds a version's tasks, each under it, and isn't a task itself, so it can't be claimed: \`/claim\` on one of them takes it.`);
                 continue;
               }
               const game = await gameOf(issue);

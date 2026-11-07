@@ -203,6 +203,9 @@ void choosingAfterWait(void) {
  * The fight's first frame: the values Start on Training's screen leaves with its first choices, 0x0801c82c, the new
  * screen and its fade, and 0x0801c8a4, with 0x08019ed8, which load everything and start the song. In the original these
  * take from the Training screen's fade to the fight's first picture, with the screen black all along.
+ *
+ * A start point's `you`, `rival`, `arena` and `colour` are what Training's screen would have picked: the player's
+ * character, the rival's, the map, and the colour rows a character whose colours come from its choices wears.
  */
 void startFight(int vblanks, int action, int you, int rival, int arena, int colour) {
   g.vblanks = vblanks;
@@ -222,7 +225,7 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
   write8(SETUP_ + 23, (uint8_t)rival);
   write8(SETUP_ + 1, 0);
   write8(SETUP_ + 2, 1);
-  write8(SETUP_ + 3, (uint8_t)arena);   // the arena, Emerald Beach (0) unless a start point picks another
+  write8(SETUP_ + 3, (uint8_t)arena);   // the arena, Emerald Beach (0) unless a start point picks another of Training's maps
   write8(SETUP_ + 38, (uint8_t)action);
   write8(SETUP_ + 125, 4);
   write8(SETUP_ + 0, 0);
