@@ -1472,7 +1472,11 @@ const THING_SCRIPTS = new Map([
   [75, 0x0806CE98], [77, 0x0806CFBC], [79, 0x0806D29C], [80, 0x0806D2EC], [81, 0x0806D378],
   [54, 0x0806C984], [57, 0x0806CA14], [60, 0x0806CD14], [61, 0x0806CD68],
   [117, 0x0806DC00], [118, 0x0806DC60], [114, 0x0806DB48], [120, 0x0806DCBC], [121, 0x0806DD04], [122, 0x0806DDA4],
-  [158, 0x0806E520], [160, 0x0806E5F0],
+  [158, 0x0806E520], [160, 0x0806E5F0], [154, 0x0806E268], [157, 0x0806E4DC], [161, 0x0806E680],
+  [162, 0x0806E6E0], [163, 0x0806E70C], [164, 0x0806E76C], [165, 0x0806E82C], [166, 0x0806E8EC],
+  [210, 0x0806F724], [211, 0x0806F7E4], [212, 0x0806F8A4], [213, 0x0806F924], [214, 0x0806F9C8],
+  [215, 0x0806FA90], [216, 0x0806FBA8], [230, 0x0806FC60], [231, 0x0806FD88], [240, 0x0806FCB0],
+  [241, 0x0806FCF0], [245, 0x0806FE2C],
   [174, 0x0806E9AC], [175, 0x0806EB10], [177, 0x0806EC74], [178, 0x0806ED0C], [179, 0x0806EDA4],
   [180, 0x0806EE3C], [181, 0x0806EEE8],
 ]);
@@ -1601,13 +1605,18 @@ const THING_HITS = new Map([
   [117, [0x140, 6, 15, 2, 0x380, 0, 0, 255]], [122, [0x240, 20, 15, 2, 0x3C0, 0, 0, 22]],
   [177, [0x140, 8, 20, 2, 0x380, 0, 0, 255]], [178, [0x140, 8, 40, 4, 0x380, 0, 0, 255]],
   [179, [0x140, 8, 60, 6, 0x380, 0, 0, 255]],
+  [154, [0x120, 24, 30, 3, 0x2C0, 0, 4, 34]],
+  [158, [0x120, 10, 30, 3, 0x380, 0, 0, 255]], [160, [0x120, 10, 30, 3, 0x380, 0, 0, 255]],
 ]);
 // the kinds 0x0800eaec has hits for that aren't ported yet
-const THING_HITS_LATER = new Set([62, 63, 78, 82, 94, 97, 102, 137, 138, 142, 154, 158, 160,
+const THING_HITS_LATER = new Set([62, 63, 78, 82, 94, 97, 102, 137, 138, 142,
   165, 166, 174, 175, 185, 191, 194, 197, 201, 241, 245]);
 
 // the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet
 const THING_STEPS_LATER = new Set([39, 101, 141]);
+// the kinds 0x0800cec8 sends to 0x0800d260, its steps of walls and the arena's edges for a thing that moves
+const THINGS_WITH_FLOOR_STEPS = new Set([35, 38, 39, 40, 57, 58, 60, 61, 63, 79, 80, 81, 100, 101, 117, 118, 120,
+  121, 137, 138, 140, 141, 157, 158, 159, 160, 161, 162, 163, 164, 180, 181, 182, 190, 197, 200, 201, 230, 231]);
 
 /**
  * 0x0800d818: a kind 40 mine feels the first fighter that comes near it, other than its owner, and tells its owner,
@@ -1785,7 +1794,7 @@ function updateThings(c) {
       write16(c, thing + 62, read16(c, thing + 62) + read16(c, thing + 12));
     }
     // 0x0800cec8's per-kind steps: walls and the arena's edges push a thing back, and it falls until its floor
-    // (0x0800d260, the same for kinds 35, 38, 39, 40, 57, 60, 61, 79, 80 and 81): a wall it is inside pushes it out
+    // (0x0800d260, which the cartridge's switch sends these kinds to): a wall it is inside pushes it out
     // unless it is above the wall's top, where it stands on it instead, and the arena's edges push it back in
     if (kind === 54) {
       // 0x0800d33a: the arena's edges push it back and it sits on the floor, or at nothing when it meets no edge
@@ -1798,8 +1807,7 @@ function updateThings(c) {
         write8(c, thing + 16, met.bits);
       }
       write16(c, thing + 62, read8(c, thing + 16) !== 0 ? reads16(c, FLOOR) : 0);
-    } else if (kind === 35 || kind === 38 || kind === 39 || kind === 40 || kind === 57 || kind === 60 || kind === 61
-      || kind === 79 || kind === 80 || kind === 81) {
+    } else if (THINGS_WITH_FLOOR_STEPS.has(kind)) {
       const met = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
       write8(c, thing + 16, met.bits);
       if (met.bits & 0xF) {
@@ -1940,7 +1948,13 @@ function trainingFrame(c) {
     else if (keys & 16) write16(c, CAMERA_TURN, read16(c, CAMERA_TURN) + 128);
     else write16(c, CAMERA_TURN, 0);
   } else if (state === 53) {
-    if (pressed(c, player) & 0x200) notPorted('0801C28C', 'turning the camera');
+    if (pressed(c, player) & 0x200) {
+      // 0x0801c28c: L turns the view to its other side, and every fighter's facing turns with it
+      const rec = record(player), camera = read8(c, rec + CAMERA);
+      write8(c, rec + CAMERA, camera === 0 ? 1 : camera === 1 ? 0 : camera === 2 ? 3 : camera === 3 ? 2 : camera);
+      for (let i = 0; i < 4; i++) write8(c, record(i) + 18, read8(c, record(i) + 16) ^ 1);
+      write8(c, rec + FACING, 0);
+    }
   } else write16(c, CAMERA_TURN, 0);
   fn08006e64(c);
   updateThings(c);
