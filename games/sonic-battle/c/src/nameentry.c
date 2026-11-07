@@ -91,7 +91,7 @@ typedef struct Node Node;
 struct Node {
   void (*run)(Node *);
   Position *position;
-  int active;
+  int active, previous, next; // the list is linked, so a removed node's room is used again in order
   int count;                  // 0x08030d20's scroll counter
   Node *light, *letter;       // the cursor's two sprites
   int scrolled;               // the list's row the light's letter was drawn for
@@ -102,15 +102,27 @@ struct Node {
 #define MAX_NODES 512
 #define MAX_DRAWN 160
 static Node nodes[MAX_NODES];
-static int nodeCount, walking;
+static int nodeCount, head, tail, freeNode;
 static Position positions[MAX_NODES];
-static int positionCount;
+static int positionCount, freePositionAt, positionNext[MAX_NODES];
 static Position *drawn[4][MAX_DRAWN];
 static int drawnCount[4];
 
 static Position *newPosition(void) {
+  if (freePositionAt >= 0) {
+    int at = freePositionAt;
+    freePositionAt = positionNext[at];
+    return &positions[at];
+  }
   if (positionCount >= MAX_NODES) return &positions[0];
   return &positions[positionCount++];
+}
+
+static void freePosition(Position *position) {
+  int at = (int)(position - positions);
+  if (at < 0 || at >= positionCount) return;
+  positionNext[at] = freePositionAt;
+  freePositionAt = at;
 }
 
 /** A sprite's record in the cartridge, as a place of its own. */
@@ -133,18 +145,36 @@ static Position *place(uint32_t parts, int x, int y, int tile, int attr2) {
   return p;
 }
 
-/** 0x0801f7d0: a node added at the end of the list. */
+/** 0x0801f7d0: a node added at the end of the list, in a removed node's room when there is one. */
 static Node *addNode(void (*run)(Node *), Position *position) {
-  if (nodeCount >= MAX_NODES) return &nodes[MAX_NODES - 1];
-  Node *node = &nodes[nodeCount++];
+  int at;
+  if (freeNode >= 0) { at = freeNode; freeNode = nodes[at].next; }
+  else {
+    if (nodeCount >= MAX_NODES) return &nodes[MAX_NODES - 1];
+    at = nodeCount++;
+  }
+  Node *node = &nodes[at];
   node->run = run; node->position = position; node->active = 1;
+  node->previous = tail; node->next = -1;
+  if (tail >= 0) nodes[tail].next = at; else head = at;
+  tail = at;
   node->count = 0; node->light = node->letter = 0; node->scrolled = 0;
   node->lateDraw = 0; node->lateSlot = 0; node->lateGlyph = 0;
   return node;
 }
 
-/** 0x0801f8c0: a node taken off the list, with the walk through the list going on from the next. */
-static void removeNode(Node *node) { node->active = 0; }
+/** 0x0801f8c0: a node taken off the list, with the walk through the list going on from the next. Its sprite's room
+ *  is freed too, so a cursor that moves for ever keeps only the sprites the screen shows. */
+static void removeNode(Node *node) {
+  int at = (int)(node - nodes);
+  if (at < 0 || at >= nodeCount || !node->active) return;
+  if (node->previous >= 0) nodes[node->previous].next = node->next; else head = node->next;
+  if (node->next >= 0) nodes[node->next].previous = node->previous; else tail = node->previous;
+  node->active = 0;
+  if (node->position) { freePosition(node->position); node->position = 0; }
+  node->next = freeNode;
+  freeNode = at;
+}
 
 /** 0x0801fed8: a sprite asks to be drawn this frame. */
 static void draw(Position *position) {
@@ -345,7 +375,8 @@ static void nameSetUpScreen(void) {
   // 0x0801fb94: the queue is empty; 0x0801ff30: every sprite hidden
   g.queue_count = 0;
   hideSpriteBuffer();
-  nodeCount = 0; walking = 0; positionCount = 0;
+  nodeCount = 0; head = tail = freeNode = -1;
+  positionCount = 0; freePositionAt = -1;
   for (int gr = 0; gr < 4; gr++) drawnCount[gr] = 0;
   for (int i = 0; i < 512; i++) gba_pal[i] = 0;
   decompress(0x08156D10, VRAM);
@@ -561,11 +592,13 @@ static void nameSquare(Node *node) {
   draw(p);
 }
 
-/** 0x08036888: the frame wrapper, every node in the list's order and then the sprites they asked for. */
+/** 0x08036888: the frame wrapper, every node in the list's order and then the sprites they asked for. A node added on
+ *  the way runs in this frame too; one taken off is gone from the list before it would. */
 static void nameFrameScreen(void) {
-  for (walking = 0; walking < nodeCount; walking++) {
-    Node *at = &nodes[walking];
-    if (at->active) at->run(at);
+  for (int at = head; at >= 0; ) {
+    Node *node = &nodes[at];
+    node->run(node);
+    at = node->next;
   }
   drawSprites();
 }
