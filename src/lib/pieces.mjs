@@ -26,6 +26,33 @@ export function pieceOf(piece) {
   return { name, language: 'js' };
 }
 
+// a field of an issue form: the text under its "### <label>" heading, or null when it's empty
+const fieldOf = (body, label) => {
+  const text = new RegExp(`^###\\s*${label}[ \\t]*\\r?\\n([\\s\\S]*?)(?=^###\\s|(?![\\s\\S]))`, 'm').exec(body ?? '')?.[1].trim();
+  return text && text !== '_No response_' ? text : null;
+};
+
+/**
+ * A game's version in a language other than its main one keeps its tasks under an issue of its own, itself under the
+ * game's issue, as GitHub holds at most 100 issues under one (#905): its title, as "Sonic Battle Dreamport in C", from
+ * the game's, as "Sonic Battle Dreamport".
+ */
+export const languageIssueTitle = (title, language) => `${String(title).replace(/\s+in\s+\w+$/i, '')} in ${LANGUAGES[language].name}`;
+
+/** The text of a version's issue, which names its game and its language, so the tools and the bot know it. */
+export const languageIssueText = (game, language) => [
+  '### Game folder', '', game, '',
+  '### Language', '', LANGUAGES[language].name, '',
+  `This issue holds the tasks of the game's version in ${LANGUAGES[language].name}, each under it as on the game's issue, as one issue holds at most 100. Its tasks are claimed on their own issues, and this one is nobody's (docs/TEAMS.md).`,
+].join('\n');
+
+/** The language of a version's issue, as 'c', or null for any other issue. */
+export function languageOfIssue(issue) {
+  if (!fieldOf(issue?.body, 'Game folder') || fieldOf(issue?.body, 'Done when')) return null;
+  const named = fieldOf(issue.body, 'Language')?.split('\n')[0].trim().toLowerCase();
+  return OTHER_LANGUAGES.find(language => LANGUAGES[language].name.toLowerCase() === named) ?? null;
+}
+
 /** The title of the task for a part, or a foundation, in `language`: "Task: Title screen", or "Task: Title screen in C". */
 export const taskTitle = (name, language = 'js') => `Task: ${name}${language === 'js' ? '' : ` in ${LANGUAGES[language].name}`}`;
 
