@@ -665,8 +665,8 @@ static int ring_touches(int px, int py, int oy, int rx, int ry) {
 static void rings_init(void) {
   for (int i = 0; i < ringTotal; i++) rings[i].taken = 0;
   sprite_init(&ringSprite);
-  uint32_t dest = vram_malloc(16);
-  ringSprite.graphics.dest = dest == HEAP_END ? OBJ_VRAM + 0x1000 : dest;
+  // the original keeps the collectible ring's tiles at OBJ VRAM tile 240 (0x1E00), the base its OAM entries name
+  ringSprite.graphics.dest = OBJ_VRAM + 0x1E00;
   ringSprite.graphics.anim = 707; ringSprite.variant = 0; ringSprite.animSpeed = ANIM_NORMAL;
   ringSprite.palId = 0; ringSprite.oamFlags = 20 << 6; ringSprite.frameFlags = 2 << 12;   // its colours in row 7, away from the HUD's row 6
 }
