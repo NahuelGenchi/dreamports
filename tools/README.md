@@ -90,6 +90,22 @@ The tools hold a game to this where it can say so. In a frame no player could ev
 
 A recording's start point is only words and numbers, so it goes in a commit and anyone can replay it. Save states stay out of this: they hold the game's memory, so they can't go in a commit, and nobody else could replay them.
 
+## What a recording shows
+
+A recording named for a character has to play that character, and a match can't tell you that either: the original plays whoever its values pick, and the Dreamport does the same, so every frame can be the same in a recording of the wrong one. Sonic Battle's first recordings of Shadow, Amy and Chaos played Cream, Rouge and another fighter, as their start points gave numbers someone had guessed, and nothing looked at who was playing.
+
+So the original's own memory says who it is. A game whose recordings can be named for a character, or for anything else a value in the original picks, lists it in its `original.json` under `shows`: for each kind, the work RAM's address where the original keeps it, how many bytes, and the name of each value.
+
+```json
+"shows": {
+  "fighter": { "address": "03001634", "bytes": 1, "names": { "0": "Sonic", "3": "Shadow", "6": "Cream" } }
+}
+```
+
+`prove` reads each kind from the original as a recording's last frame ends, says what it found, and keeps the name in `progress.json`. A recording whose name names one of a kind's names, as a whole word, such as `shadow` in `shadow-moving` or `amy` in `amy-x-zone`, fails unless the original shows that one, however its frames compare, and `npm run check` and the build stop on it too, so a pull request with one can't pass its checks. Name a recording for what it shows, and leave a name out of it when it shows someone else, as Sonic Advance's `x-zone-the-normal-ending` plays Sonic in the zone Amy hasn't reached yet.
+
+Each name in the list is checked once by a person against the original's pictures, with a recording that picks that value, before it goes in: a guessed name would only move the mistake into the list. A value the list doesn't name fails any recording named for that kind. Sonic Battle lists its fighters and Sonic Advance its characters.
+
 ## A game's capture
 
 Every game's card in the launcher shows a few seconds of real play. `npm run dp -- capture <game>` makes a Dreamport's from the original, so a game can have one before its Dreamport has anything to play. It opens a window where you play your own copy, from power-on, with the keyboard or a controller, and hear it as you go. `/dreamport` opens it for you as soon as it starts on a game with no capture, and you can also ask your agent, so you run nothing yourself.
@@ -240,7 +256,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 
 | File | What it holds |
 | :--- | :--- |
-| `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum, `keysAfterVBlank` for a game that reads its buttons just after the V-blank, and `screen` for a game on another console that [chooses its own size](../docs/CONSOLES.md#how-a-console-is-known) |
+| `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum, `keysAfterVBlank` for a game that reads its buttons just after the V-blank, `screen` for a game on another console that [chooses its own size](../docs/CONSOLES.md#how-a-console-is-known), and `shows` for what a recording can be named for, as [What a recording shows](#what-a-recording-shows) says |
 | `recordings/` | Recorded play, one file per recording |
 | `code-map.json` | The code map |
 | `progress.json` | Each recording's results and the code that ran in matching play, written by `prove` |

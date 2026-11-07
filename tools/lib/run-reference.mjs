@@ -33,21 +33,24 @@ function soundIn(file, frames) {
  * Runs `frames` frames of the original from power-on. `buttons` holds each frame's buttons as bits, `functions` the code
  * map's ({ address, size }), `pictures` the frames whose whole picture is wanted, in order, `sets` the values to write to
  * the work RAM as a frame starts ({ frame, address, bytes, value }), in the order of their frames, and `states` the
- * frames whose state is wanted, in order. `program` and `args(files)` say what to run, and `width`, `height`,
+ * frames whose state is wanted, in order, and `reads` the values to read from the work RAM as a frame ends
+ * ({ frame, address, bytes }), in the order of their frames. `program` and `args(files)` say what to run, and `width`, `height`,
  * `stateBytes` and `buttonBytes` what it writes and reads.
  * Resolves to { hashes, plain, ran, pictures, states, sound, outside }: each frame's picture hash, its one colour when every
  * pixel has the same (15-bit) or else -1, the places in `functions` of those that ran in it, the pictures asked for
  * (15-bit colour, width x height), the states asked for (bytes), with `sound` { lengths, read(frame), close() }, each
  * frame's sound as it's needed (an Int16Array, overwritten by the next, of left and right samples, in 10-bit units
- * around the bias) or else null, and the last line the program wrote to stderr, as JSON.
+ * around the bias) or else null, and the last line the program wrote to stderr, as JSON, with the values `reads` asked
+ * for under `reads`, in its order.
  */
-export async function runReference({ program, args, env, width, height, stateBytes = 0, buttonBytes = 2, frames, buttons, functions = [], pictures = [], sound = false, sets = [], states = [] }) {
+export async function runReference({ program, args, env, width, height, stateBytes = 0, buttonBytes = 2, frames, buttons, functions = [], pictures = [], sound = false, sets = [], states = [], reads = [] }) {
   const folder = join(LOCAL, 'tmp');
   mkdirSync(folder, { recursive: true });
   const id = `${process.pid}-${Date.now()}`;
   const files = {
     buttons: join(folder, `buttons-${id}.bin`), functions: join(folder, `functions-${id}.bin`), pictures: join(folder, `pictures-${id}.bin`),
     sound: join(folder, `sound-${id}.bin`), sets: join(folder, `sets-${id}.bin`), states: join(folder, `states-${id}.bin`),
+    reads: join(folder, `reads-${id}.bin`),
   };
   writeFileSync(files.buttons, new Uint8Array((buttonBytes === 4 ? Uint32Array : Uint16Array).from(buttons).buffer));
   const list = new Uint32Array(functions.length * 2);
@@ -56,11 +59,12 @@ export async function runReference({ program, args, env, width, height, stateByt
   writeFileSync(files.pictures, new Uint8Array(Uint32Array.from(pictures).buffer));
   writeFileSync(files.sets, new Uint8Array(Uint32Array.from(sets.flatMap(({ frame, address, bytes, value }) => [frame, address, bytes, value])).buffer));
   writeFileSync(files.states, new Uint8Array(Uint32Array.from(states).buffer));
+  writeFileSync(files.reads, new Uint8Array(Uint32Array.from(reads.flatMap(({ frame, address, bytes }) => [frame, address, bytes])).buffer));
   try {
     // its files by their plain names, from their folder: only the copy's path has to survive the trip whatever it's called
     const names = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, basename(file)]));
     if (!sound) names.sound = '-';
-    const child = spawn(program, args(names), { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env } });
+    const child = spawn(program, args(names), { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env, ...(reads.length ? { DP_READS: names.reads } : {}) } });
     // with no functions, its size is known, and it needs no second copy of itself to end up in one piece
     const size = functions.length ? 0 : frames * 12 + pictures.length * width * height * 2 + states.length * stateBytes;
     const out = [], err = [], whole = Buffer.allocUnsafeSlow(size);

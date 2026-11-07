@@ -234,7 +234,7 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
   stepFade();
   g.vblank_copies = 1;
   // the colour rows the Training screen copies into the player's choices for a character whose colours come from
-  // them (loadColours), such as Chaos: byte 93 picks colours 3 to 6, 94 picks 7 to 10, and 95 picks 11 to 13
+  // them (loadColours), such as fighter 10: byte 93 picks colours 3 to 6, 94 picks 7 to 10, and 95 picks 11 to 13
   if (colour != 255) {
     static const int rows[3] = {93, 94, 95};
     for (int i = 0; i < 3; i++) write8(CHOICES_ + (uint32_t)rows[i], (uint8_t)colour);

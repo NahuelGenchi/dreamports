@@ -4,5 +4,12 @@
   "title": "SONICBATTLE",
   "code": "BSBE",
   "sha1": "8cf4fbbe73f6b1907ab9997caab4c4e7d9708937",
-  "keysAfterVBlank": true
+  "keysAfterVBlank": true,
+  "shows": {
+    "fighter": {
+      "address": "03001634",
+      "bytes": 1,
+      "names": { "0": "Sonic", "1": "Tails", "2": "Knuckles", "3": "Shadow", "4": "Rouge", "5": "Amy", "6": "Cream", "7": "Gamma", "8": "Chaos", "9": "Emerl" }
+    }
+  }
 }

@@ -106,7 +106,7 @@ function createGame(video, rom, sound) {
   // with &action=<n> for the Rival's Action Training's screen offers, 0 (Do Nothing) unless it says, &you=<n> and
   // &rival=<n> for the characters Training's screen picks, Sonic (0) unless it says, &arena=<n> for the Training
   // map, Emerald Beach (0) unless it says, and &colour=<n> for the colour rows Training's screen gives a character
-  // whose colours come from its choices, such as Chaos. It places no fighter: the fight's own opening drops them in,
+  // whose colours come from its choices, such as fighter 10. It places no fighter: the fight's own opening drops them in,
   // and it's what's proven, so no neverInPlay is needed.
   const asked = new URLSearchParams(location.search);
   if (asked.get('fight') === 'training') {

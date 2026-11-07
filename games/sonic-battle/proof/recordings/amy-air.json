@@ -1,6 +1,6 @@
 {
   "about": "Amy's air special, from the same start point: the opening's choice, Amy running up to the other fighter, a jump, and R in the air.",
-  "start": "fight=training&vblanks=1209&you=4&arena=6",
+  "start": "fight=training&vblanks=1209&you=5&arena=6",
   "frames": 640,
   "held": [
     [
@@ -161,7 +161,7 @@
           "frame": 1201,
           "address": "030053f8",
           "bytes": 1,
-          "value": 4
+          "value": 5
         },
         {
           "frame": 1201,

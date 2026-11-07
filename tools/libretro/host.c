@@ -14,6 +14,10 @@
 // the core's picture really has, its sample count and its samples. Its last line on stderr says what the core runs at and
 // each size its picture had, from which frame, as JSON. What the core prints goes nowhere.
 //
+// The environment's DP_READS, when it's set, names a file of values to read from the console's work memory as a frame
+// ends, in the order of their frames: each its frame, its address and how many bytes (32 bits each), little-endian. The
+// JSON on stderr then has them, in that order, under "reads", which is how the tools learn what the original holds.
+//
 // On a console whose games choose their own sound's rate, as a Nintendo 64's do, the core says when it changes, and the
 // environment's DP_SOUND_RATE gives the one rate the tools hear it at.
 
@@ -391,6 +395,10 @@ int main(int argc, char** argv) {
 	FILE* soundFile = strcmp(argv[7], "-") ? fopen(argv[7], "wb") : NULL;
 	uint8_t* memory = retro_get_memory_data(MEMORY_SYSTEM_RAM);
 	size_t memorySize = retro_get_memory_size(MEMORY_SYSTEM_RAM);
+	size_t readsSize = 0;
+	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
+	size_t readCount = readsSize / 12, nextRead = 0;
+	uint32_t* readValues = calloc(readCount ? readCount : 1, sizeof(uint32_t));
 
 	for (long frame = 0; frame < frames; frame++) {
 		held = (size_t) frame < buttonsSize / 4 ? buttons[frame] : 0;
@@ -401,6 +409,15 @@ int main(int argc, char** argv) {
 		sampleCount = 0;
 		retro_run();
 		noteSize(frame);
+		for (; nextRead < readCount && reads[nextRead * 3] == (uint32_t) frame; nextRead++) {
+			uint32_t address = reads[nextRead * 3 + 1], bytes = reads[nextRead * 3 + 2], value = 0;
+			if (!memory || address + bytes > memorySize) {
+				fprintf(err, "The tools can only read the console's work memory, and 0x%X isn't in it\n", address);
+				return 2;
+			}
+			for (uint32_t i = 0; i < bytes; i++) value |= (uint32_t) memory[address + i] << (i * 8);
+			readValues[nextRead] = value;
+		}
 		uint32_t hash, plain, none = 0;
 		hashOf(&hash, &plain);
 		fwrite(&hash, 4, 1, out);
@@ -420,6 +437,8 @@ int main(int argc, char** argv) {
 	fflush(out);
 	fprintf(err, "{\"cartridge\":0,\"memory\":0,\"rate\":%g,\"fps\":%g,\"sizes\":[", wantedRate ? wantedRate : av.sampleRate, av.fps);
 	for (size_t i = 0; i < sizeCount; i++) fprintf(err, "%s[%u,%u,%u]", i ? "," : "", sizes[i * 3], sizes[i * 3 + 1], sizes[i * 3 + 2]);
+	fprintf(err, "],\"reads\":[");
+	for (size_t i = 0; i < readCount; i++) fprintf(err, "%s%u", i ? "," : "", readValues[i]);
 	fprintf(err, "]}\n");
 	fflush(err);
 	return 0;
