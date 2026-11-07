@@ -1,0 +1,162 @@
+{
+  "about": "Tails's ground Set special, from the same start point as the fight's opening: Training with Tails as the player and a Sonic that does nothing as the rival. Two moves right on the choice of specials put Set on the ground, then the opening's three presses of A and R for the mine, which Tails places where he stands.",
+  "start": "fight=training&vblanks=1208&you=1",
+  "frames": 500,
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      60,
+      [
+        "RIGHT"
+      ]
+    ],
+    [
+      62,
+      []
+    ],
+    [
+      66,
+      [
+        "RIGHT"
+      ]
+    ],
+    [
+      68,
+      []
+    ],
+    [
+      70,
+      [
+        "A"
+      ]
+    ],
+    [
+      72,
+      []
+    ],
+    [
+      100,
+      [
+        "A"
+      ]
+    ],
+    [
+      102,
+      []
+    ],
+    [
+      130,
+      [
+        "A"
+      ]
+    ],
+    [
+      132,
+      []
+    ],
+    [
+      450,
+      [
+        "R"
+      ]
+    ],
+    [
+      452,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 1253,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          747,
+          [
+            "START"
+          ]
+        ],
+        [
+          748,
+          []
+        ],
+        [
+          881,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          882,
+          []
+        ],
+        [
+          921,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          922,
+          []
+        ],
+        [
+          961,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          962,
+          []
+        ],
+        [
+          1001,
+          [
+            "A"
+          ]
+        ],
+        [
+          1002,
+          []
+        ],
+        [
+          1150,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          1152,
+          []
+        ],
+        [
+          1200,
+          [
+            "START"
+          ]
+        ],
+        [
+          1201,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 778,
+          "address": "03002170",
+          "bytes": 2,
+          "value": 1
+        }
+      ],
+      "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, one move right on the Character row to Tails, and Start on its first choices, three frames sooner."
+    }
+  ]
+}
