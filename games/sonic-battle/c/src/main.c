@@ -12,9 +12,9 @@
 // (main.c's startFightFromPoint), and name=1 opens the screens that follow the title with a saved name.
 
 #include "game.h"
+#include "nameentry.h"
 
 #define PALETTE 0x05000000u
-#define SONG_TABLE 0x08BF7244u
 
 #define ROM(addr) (gba_rom + ((addr) - 0x08000000u))
 
@@ -54,8 +54,6 @@ static int16_t titleTargetX, titleTargetY, titleScaleTarget;
 static int titlePulseCount;
 static int language = 1;
 static int usingCore;             // from the name entry on, the core runs the screens
-static int savingFrames;
-static int nameLength;
 
 // the title's queued sprites: six OAM entries of three words each, their one matrix, and whether the next V-blank
 // copies them (0x08017ed0, 0x08018004, 0x08017f34 and 0x08017c5c)
@@ -478,11 +476,6 @@ static void titleClearSprites(void) {
 }
 
 static void nameEntry(void);
-static void nameSetUp(void);
-static void nameDisplayOn(void);
-static void nameEntering(void);
-static void nameFadeOut(void);
-static void nameSaving(void);
 
 /** 0x0803e6e8: the palette one step to black each frame, then the name entry, which leads on to the main menu. The
  *  core runs them from here: the name entry starts the frame after this fade ends, as the original's does. */
@@ -629,13 +622,9 @@ static void logosSetup(void) {
   state = LOGOS_FADE_IN;
 }
 
-/** One song's music player, from gSongTable: eight bytes for each song, its player at the fifth. */
-static uint8_t rom8(uint32_t at) { return gba_rom[at - 0x08000000u]; }
-
 /**
- * The name entry, whose grid and letters are its own task (#645): here its palettes, its keys and its way out are, so
- * Start keeps the name and the main menu begins on the frame the original's does. Its screen isn't drawn, so it isn't
- * named and doesn't count as ported until its task is done.
+ * 0x08036560: the name entry's first frame, or, with a name saved, straight on to the main menu. Its grid and letters
+ * are nameentry.c's; this is the hand-over the title screen's fade makes.
  */
 static void nameEntry(void) {
   if (g.name[0] != 0) {
@@ -644,58 +633,7 @@ static void nameEntry(void) {
     menuBeforeMenu();
     return;
   }
-  g.callback = nameSetUp;
-}
-
-static void nameSetUp(void) {
-  for (int i = 0; i < 512; i++) gba_pal[i] = 0;
-  // the palettes the name entry's fade comes to: the grid's, the name's and the mark's
-  copyPalette(0x08156CD0, PALETTE, 32);
-  copyPalette(0x08132754, 0x050001E0, 16);
-  copyPalette(0x08158194, 0x05000200, 48);
-  for (int i = 0; i < 0x18000; i++) gba_vram[i] = 0;
-  nameLength = 0;
-  g.callback = nameDisplayOn;
-}
-
-/** The name entry's last step: it runs past a V-blank, and the display and the song come as it ends. */
-static void nameDisplayOn(void) {
-  queueRegister(REG_DISPCNT, 8000);
-  gba_sound_wave_at(163059);   // where the song's start comes in its frame, as mGBA measures it
-  gba_sound_play(4);
-  g.callback = nameEntering;
-}
-
-/** One key a frame, Start first: Start keeps the name, A and B change it. */
-static void nameEntering(void) {
-  uint16_t pressed = g.keys.pressed;
-  if (pressed & KEY_START) {
-    if (!nameLength) {
-      gba_sound_play(419);
-      return;
-    }
-    for (int i = 0; i < nameLength; i++) g.name[i] = (uint16_t)(0x41 + i);
-    g.name[nameLength] = 0xFFFE;
-    g.callback = nameFadeOut;
-    gba_sound_fade_out(rom8(SONG_TABLE + 4 * 8 + 4), 7);
-    gba_sound_play(404);
-  } else if (pressed & KEY_A) {
-    if (nameLength < 5) nameLength++;
-  } else if (pressed & KEY_B) {
-    if (nameLength) nameLength--;
-  }
-}
-
-/** Every colour fades to black, and then the main menu starts. */
-static void nameFadeOut(void) {
-  if (!fadeToBlack(PALETTE, 512)) return;
-  savingFrames = 20;
-  g.callback = nameSaving;
-}
-
-/** The time the original's flash write takes, with the screen black. */
-static void nameSaving(void) {
-  if (--savingFrames <= 0) showMenu(1);
+  nameEntryScreen();
 }
 
 void startFightFromPoint(void) {
