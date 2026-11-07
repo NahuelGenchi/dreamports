@@ -9,6 +9,7 @@
 
 import { KEY, colours, copyTileBlock, decompress, fadeToBlack, fadeToWhite, fadeToward, hideSpriteBuffer, queueRegister, unpackCycles } from './core.js';
 import { displayOn as menuDisplayOn, fadeSongOut, addNode, draw, drawOnly, frame, menu, place, removeNode, startFrame, takeMatrix, writeRegisters } from './menu.js';
+import { lobby } from './lobby.js';
 
 const CARTRIDGE = 0x08000000, PALETTE = 0x05000000, VRAM = 0x06000000;
 const DISPCNT = 0, BG3VOFS = 0x1E;
@@ -351,9 +352,12 @@ function menuAgain(c) {
   };
 }
 
-/** 0x080325f0: every colour fades to black, and then 0x080284b4 starts the entry, which isn't ported, so it stops. */
+/** 0x080325f0: every colour fades to black, and then 0x080284b4 starts the entry's waiting screen. The original's
+ *  fade reaches black three frames after the Dreamport's, and its screen stays black until the first frame there. */
 function leaveToEntry(c, node) {
-  if (fadeToBlack(c, PALETTE, 512)) node.run = () => {};
+  if (!fadeToBlack(c, PALETTE, 512)) return;
+  node.wait = (node.wait ?? 0) + 1;
+  if (node.wait > 3) c.callback = lobby;
 }
 
 /**
