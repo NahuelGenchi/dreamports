@@ -380,7 +380,7 @@ export function stepAnimation(c, set, id, loops, tiles, player) {
     if (read16(c, ANIM_CURSOR + two) > 254) return 255;
   }
   if ((word() & 0xFFFF) !== reads16(c, ANIM_COUNT + two)) return counted();
-  clock.cycles += 430;   // this step of the script over a frame with none, with its picture asked for
+  clock.cycles += 160;   // this step of the script, and its picture another 270
   write16(c, ANIM_CURSOR + two, read16(c, ANIM_CURSOR + two) + 1);
   if (word() >>> 16 === MARKER) return counted();
   for (;;) {
@@ -393,6 +393,7 @@ export function stepAnimation(c, set, id, loops, tiles, player) {
       write16(c, ANIM_COUNT + two, 1 - (loops & 0xFF));
       return restarted ? 0 : 255;
     } else if (kind === 0x1000) {
+      clock.cycles += 270;   // this step's picture asked for
       const other = read8(c, OTHER_COLOURS + player) !== 0 || copying;
       let sheet = 0;
       const row = character >= 20 ? character - 20 : character;
