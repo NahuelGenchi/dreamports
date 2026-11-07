@@ -94,10 +94,20 @@ test('one run opens a game\'s tasks at a time, and takes over from a run that ha
 
 test('finds a task already open under its title, and leaves closed ones and pull requests out', () => {
   const issues = [
-    { number: 3, title: 'Task: The intro in C', state: 'closed' },
-    { number: 4, title: 'Task: The intro in C', pull_request: {} },
-    { number: 5, title: 'task: the intro in c ', state: 'open' },
+    { number: 3, title: 'Task: The intro in C', state: 'closed', body: '### Game folder\n\nsonic-battle' },
+    { number: 4, title: 'Task: The intro in C', pull_request: {}, body: '### Game folder\n\nsonic-battle' },
+    { number: 5, title: 'task: the intro in c ', state: 'open', body: '### Game folder\n\nsonic-battle\n\n### Kind\n\nPart' },
   ];
-  assert.equal(taskTitled(issues, 'Task: The intro in C')?.number, 5);
-  assert.equal(taskTitled(issues, 'Task: The intro'), undefined);
+  assert.equal(taskTitled(issues, 'Task: The intro in C', 'sonic-battle')?.number, 5);
+  assert.equal(taskTitled(issues, 'Task: The intro', 'sonic-battle'), undefined);
+});
+
+test('another game\'s task of the same title isn\'t this game\'s, and a label names the game too (#837)', () => {
+  const issues = [
+    { number: 6, title: 'Task: Time Attack in C', state: 'open', body: '### Game folder\n\nsonic-advance\n\n### Kind\n\nPart', labels: [{ name: 'sonic-advance' }] },
+    { number: 7, title: 'Task: Time Attack', state: 'open', body: 'Made before the forms.', labels: [{ name: 'sonic-advance-2' }] },
+  ];
+  assert.equal(taskTitled(issues, 'Task: Time Attack in C', 'sonic-advance-2'), undefined);
+  assert.equal(taskTitled(issues, 'Task: Time Attack in C', 'sonic-advance')?.number, 6);
+  assert.equal(taskTitled(issues, 'Task: Time Attack', 'sonic-advance-2')?.number, 7);
 });
