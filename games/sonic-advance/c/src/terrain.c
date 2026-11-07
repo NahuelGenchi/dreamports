@@ -97,6 +97,13 @@ Scan terrain_scan(int kind, int p0, int p1, int layer, int step) {
   out.d = fwd ? -17 - r : r - 24; out.rot = b2.rot; return out;
 }
 
+int terrain_tile_floor(int x, int y, int layer, int step) {
+  int v = probe(PROBE_FLOOR, y, x, layer).v, r = y & 7;
+  if (v == 0) return step > 0 ? 8 - r : r + 1;
+  if (v == 8) return step > 0 ? -1 - r : r - 8;
+  return v > 0 ? v - 1 - r : v + r;
+}
+
 // --- Sonic's sensors (engine/sensors.js) ---------------------------------------------------------------------------------
 // With gravity flipped (Cosmic Angel's toggles), his speeds and angles stay as he sees them: his floor is the act's
 // ceiling, a Y speed down moves him up the act, and an angle a is the act's -0x80 - a.

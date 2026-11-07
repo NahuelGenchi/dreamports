@@ -3,7 +3,7 @@
 // doubles of pixels a frame, as there; the original does its arithmetic on 8.8 integers, so q8 turns a speed into one
 // where it matters. The other characters, the water, the boost modes and the Sonic Advance 2 tricks are left out.
 
-#include "act.h"
+#include "objects.h"
 #include "terrain.h"
 
 // Sonic's sound effects (sound/songs.js)
@@ -276,6 +276,20 @@ static void balance_on_terrain(Player *p) {
   else if (left == 0 && right > 8) balance(p, 1);
 }
 
+// at the side of the object he stands on (Player_8044D74): his centre more than a pixel past the side of its box, less his
+// half-width; a side at 0 never counts. Once balancing, he keeps on a pixel further in.
+static void balance_on_object(Player *p) {
+  const Object *o = p->onObject;
+  const Hitbox *hb = object_box(&o->sprite, 0);
+  if (!hb) return;
+  int l = hb->left, r = hb->right;
+  if (l != 0 && p->x < o->x + l - HALF_WIDTH + 1) { balance(p, -1); return; }
+  if (r != 0 && p->x > o->x + r + HALF_WIDTH - 2) { balance(p, 1); return; }
+  if ((p->x < o->x + l - HALF_WIDTH + 2 || p->x > o->x + r + HALF_WIDTH - 3) && (p->prevState == PS_BALANCE_FORWARD || p->prevState == PS_BALANCE_BACK)) {
+    p->state = p->prevState;
+  }
+}
+
 static void walk_input(Player *p, const Control *c) {
   if (c->dir) walk(p, c->dir);
   else if (!c->sideways) {
@@ -293,7 +307,8 @@ static void walk_input(Player *p, const Control *c) {
     p->pushing = 0;
     if (p->actClear || p->scripted) return;
     if (p->state != PS_CROUCH_END && p->state != PS_LOOK_UP_END) p->state = PS_IDLE;
-    balance_on_terrain(p);
+    if (p->onObject) balance_on_object(p);
+    else balance_on_terrain(p);
   }
 }
 
@@ -340,6 +355,12 @@ static void roll_step(Player *p, const Control *c) {
 
 // on a frame a jump or a B move starts nothing else runs; while revving a spin dash Sonic stays put but still follows the
 // ground (Player_Sonic_80473AC)
+// standing on an object, the object holds him up and the ground sensors rest (sub_8022D6C)
+static void follow_ground(Player *p) {
+  if (p->onObject) { p->rotA = p->rotB = 0; return; }
+  sensors_ground(p);
+}
+
 static void ground_step(Player *p, const Control *c) {
   if (p->curled) {
     if (try_jump(p, c)) return;
@@ -351,14 +372,14 @@ static void ground_step(Player *p, const Control *c) {
     sensors_wall_push(p, 1);   // the rolling check: a wall stops the combo's moves without starting a push
   } else {
     if (attack_step(p, c)) return;
-    if (try_spin_dash(p, c)) { bounds(p); sensors_ground(p); return; }
+    if (try_spin_dash(p, c)) { bounds(p); follow_ground(p); return; }
     if (try_jump(p, c)) return;
     slope(p);
     walk_step(p, c);
   }
   bounds(p);
   move(p);
-  sensors_ground(p);
+  follow_ground(p);
   fall_off(p);
 }
 
@@ -460,6 +481,7 @@ void player_knock_aside(Player *p, double xsp, double ysp) {
   p->air = 1; p->pushing = 0;
   player_end_attack(p);
   p->airLock = 0;
+  p->onObject = NULL;
   p->state = PS_HURT;
   uncurl(p);   // the feet stay put
 }
@@ -471,6 +493,7 @@ static void dead_step(Player *p) {
   if (p->death == PLAYER_ALIVE) {
     p->death = PLAYER_FALLING; p->state = PS_DEAD;
     p->xsp = 0; p->invulnerable = 2; p->pushing = 0; p->invincible = 0;
+    p->onObject = NULL; p->shield = SHIELD_NONE;
     player_end_attack(p);
     act_player_died();
     return;
@@ -586,7 +609,7 @@ static void after_animation(Player *p) {
 
 // shows the animation `name` names; a new one clears his hitboxes until its script sets them (sub_802486C). Only a new
 // animation or variant restarts the sprite, so bouncing and walking, which share one, carry on where the cycle was.
-static void choose(Player *p, int name) {
+static void choose(Player *p, int name, int restart) {
   Sprite *s = &p->sprite;
   uint16_t anim = ANIMATIONS[name][0];
   uint8_t variant = ANIMATIONS[name][1];
@@ -596,13 +619,15 @@ static void choose(Player *p, int name) {
     s->hitboxes[1].left = s->hitboxes[1].top = s->hitboxes[1].right = s->hitboxes[1].bottom = 0;
   }
   s->graphics.anim = anim; s->variant = variant;
+  if (restart) s->prevVariant = 0xFF;
   p->animName = name;
 }
 
 void player_animate(Player *p, const PlayerInput *in) {
   Sprite *s = &p->sprite;
   if (p->death == PLAYER_GONE) return;
-  choose(p, pick_animation(p, in));
+  choose(p, pick_animation(p, in), p->animRestart);
+  p->animRestart = 0;
   if (p->state == PS_BRAKE && act.tick % 4 == 0) act_brake_dust();
   // a hitbox a frame sets is turned with him, as the sprite system applies its flips when it sets one
   s->frameFlags = (s->frameFlags & ~(SPRITE_X_FLIP | SPRITE_Y_FLIP)) | (p->facing > 0 ? SPRITE_X_FLIP : 0) | (p->inverted ? SPRITE_Y_FLIP : 0);
@@ -611,7 +636,7 @@ void player_animate(Player *p, const PlayerInput *in) {
     int before = p->state;
     after_animation(p);
     if (p->state == before) break;
-    choose(p, pick_animation(p, in));
+    choose(p, pick_animation(p, in), 0);
   }
   p->prio = (int)((s->frameFlags & SPRITE_PRIORITY) >> 12);
   p->prevState = p->state;

@@ -8,6 +8,7 @@
 #include "sa.h"
 
 enum { LAYER_FRONT = 0, LAYER_BACK = 1 };
+enum { SHIELD_NONE, SHIELD_NORMAL, SHIELD_MAGNETIC };
 
 // the d-pad bits of the input history (the mid-air dash reads it)
 enum { DPAD_LEFT = 1, DPAD_RIGHT = 2, DPAD_UP = 4, DPAD_DOWN = 8, DPAD_HISTORY = 16 };
@@ -52,6 +53,9 @@ typedef struct {
   int chain;                    // enemies defeated since he last touched the ground
   int inverted, wasInverted;    // gravity flipped, now and when the stage clock last ran
   // what the objects set
+  int shield;                   // the shield an item box gave him (SHIELD_*)
+  const void *onObject;         // the solid object he stands on, if any
+  int animRestart;              // an object asked for his animation to start over
   int forcedRoll, scripted, actClear, halfPipe, ignoreInput, carried, override;
   int heldDirs, pressedDirs;    // the d-pad his last frame read, and what it found newly pressed
   int jumpPressed, attackPressed;

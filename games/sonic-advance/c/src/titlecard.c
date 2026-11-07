@@ -62,8 +62,13 @@ static CardGfx card_gfx(int id) {
 }
 
 /** LoadStageIntroGraphics and the card's tables: the pieces' tiles in video memory, their colours, and their texts. */
+// the card's tiles, 400 to 531 of the sprites' graphics, kept from the heap while it shows
+enum { CARD_HEAP_TILES = 132 };
+static uint32_t cardHeap;
+
 void titlecard_start(int level, int character) {
   memset(&card, 0, sizeof card);
+  cardHeap = vram_malloc(CARD_HEAP_TILES);
   card.levelIndex = level;
   cardCopyCount = 0;
   uint32_t cardAt = OFFSET_TITLE_CARD;
@@ -248,7 +253,7 @@ int titlecard_run(int pressed) {
   act.cardDone = 0;
   // the frame it ends draws nothing
   card.display = 0;
-  if (++card.frame > CARD_FRAMES) { act.cardFrame = card.frame; act.cardDone = 1; return 0; }
+  if (++card.frame > CARD_FRAMES) { act.cardFrame = card.frame; act.cardDone = 1; vram_free(cardHeap); return 0; }
   int semi = k <= 105 || !done || card.blank;
   card_tasks(k, semi);
   card.display = card.fading || card.bldY;

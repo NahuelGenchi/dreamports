@@ -3,7 +3,7 @@
 // engine/player.js, engine/camera.js, engine/terrain.js, engine/stage.js, engine/hud.js and rom/extract.js, a
 // function at a time; every comment names the original's function where one is rewritten.
 
-#include "act.h"
+#include "objects.h"
 
 enum { OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC, SCREEN_W_ = 240, SCREEN_H_ = 160 };
 enum { HUD_GLYPHS = 11, HUD_WHITE = 0, HUD_RED = 22, HUD_RING = 44, HUD_FACE = 60 };
@@ -371,7 +371,7 @@ enum { FIREWORK_PRIORITY = 0x4001, FIREWORKS = 12 };
 typedef struct { Sprite s; int x, y, done, ended; } Firework;
 static Firework fireworks[FIREWORKS];
 
-static uint32_t act_random(void) { return act.seed = act.seed * 0x196225u + 0x3C6EF35Fu; }
+uint32_t act_random(void) { return act.seed = act.seed * 0x196225u + 0x3C6EF35Fu; }
 
 // --- what Sonic's moves ask of the act (the world's hooks in engine/game.js) --------------------------------------------
 enum { SE_LIFE_LOST = 119, SPIN_DASH_FREEZE = 10 };
@@ -395,7 +395,7 @@ void act_life_lost(void) {}
 static void firework_task(Task *t) {
   Firework *f = (Firework *)t->data;
   // it goes on the frame after its animation ends, drawing its last picture on the frame it ends
-  if (f->ended) { f->done = 1; destroy_task(t); return; }
+  if (f->ended) { f->done = 1; vram_free(f->s.graphics.dest); destroy_task(t); return; }
   if (!update_sprite(&f->s, 0)) f->ended = 1;
   f->s.x = (int16_t)(f->x - act.cam.bgX);
   f->s.y = (int16_t)(f->y - act.cam.bgY);
@@ -414,7 +414,7 @@ static void create_firework(int x, int y, int small) {
     f->done = 0; f->ended = 0; f->x = x; f->y = y;
     sprite_init(&f->s);
     f->s.graphics.anim = (uint16_t)(small ? 483 : 482);
-    f->s.graphics.dest = OBJ_VRAM + (uint32_t)(552 + i * 9) * 32;   // each its own tiles, after the card's, as in the original
+    f->s.graphics.dest = vram_malloc((uint32_t)sprite_tiles(small ? 483 : 482, 0, 0));   // each its own tiles
     f->s.variant = 0; f->s.animSpeed = 0x10; f->s.palId = 0;
     create_task(firework_task, f, FIREWORK_PRIORITY, 0, NULL);
     return;
@@ -445,6 +445,8 @@ static void act_frame(void) {
   if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
   if (act.stage.backgroundScroll == 1 && act.cam.bgUpdates > 0) casino_background_update();
   animate_stage_tiles();
+  // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts
+  if (act.frames > 0) objects_run_early();
   // the title card's task (0x2100) runs before Sonic's and the clock's, so the frame it ends frees the pad and starts
   // the clock; its pieces and fade go over the act, and it sets the display while it shows, after draw_frame
   int cardShows = !act.cardDone;
@@ -468,6 +470,7 @@ static void act_frame(void) {
   if (act.cardDone) hud_update(1);
   player_step(&act.player, &in);
   player_animate(&act.player, &in);
+  if (act.frames > 0) objects_run_late();
   // the stage clock's task (0xFF00): the course time counts once the card has ended, the stage's tick every frame
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
@@ -530,18 +533,22 @@ void act_queue(int level, int cardSkip, int preFrames) {
 /** The title card's frames before the first one the recording compares, run with no picture. */
 static void pre_run(int cardSkip, int preFrames) {
   int after = 0;
+  objects_set_drawing(0);
   while (!act.cardDone || after < preFrames) {
     int wasDone = act.cardDone;
     if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
     animate_stage_tiles();
+    objects_run_early();
     if (!act.cardDone) card_update(cardSkip == act.tick);
     PlayerInput in = { .right = act.cardDone, .jump = !act.cardDone, .attack = !act.cardDone };
     player_step(&act.player, &in);
     player_animate(&act.player, &in);
+    objects_run_late();
     if (wasDone) { hud_update(0); after++; }
     if (!act.clockStopped) act.courseTime++;
     act.tick++;
   }
+  objects_set_drawing(1);
 }
 
 void act_start(int level, int cardSkip, int preFrames) {
@@ -566,6 +573,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   // the title card's graphics. An act a start point opens runs the card to its end and its few frames after it with
   // no picture, as its recording starts there; one the course select opens shows the card from its first frame
   titlecard_start(level, 0);
+  objects_start(level);
   if (gba_start_point("level")) {
     pre_run(cardSkip, preFrames);
     play_song(act.stage.music);

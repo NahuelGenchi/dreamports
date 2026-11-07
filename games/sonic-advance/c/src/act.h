@@ -82,6 +82,8 @@ void act_insta_shield(void);
 void act_freeze_camera(void);
 void act_player_died(void);
 void act_life_lost(void);
+/** The game's random numbers (gPseudoRandom): the next, which also moves the sequence on. */
+uint32_t act_random(void);
 
 void titlecard_start(int level, int character);
 int titlecard_run(int pressed);
