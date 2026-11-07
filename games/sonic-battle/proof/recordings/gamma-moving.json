@@ -1,0 +1,54 @@
+{
+  "about": "Gamma moving, from the same start point as the fight's opening: Training with Gamma as the player and a Sonic that does nothing as the rival. The opening's three presses of A, then Gamma walking, turning, running on the pad's four sides and diagonals, dashing, and jumping, standing and running, and landing.",
+  "start": "fight=training&vblanks=1209&you=7&arena=6",
+  "frames": 1500,
+  "held": [
+    [0, []],
+    [70, ["A"]],
+    [72, []],
+    [100, ["A"]],
+    [102, []],
+    [130, ["A"]],
+    [132, []],
+    [400, ["RIGHT"]],
+    [450, []],
+    [470, ["LEFT"]],
+    [510, []],
+    [540, ["A"]],
+    [546, []],
+    [620, ["UP"]],
+    [680, []],
+    [710, ["DOWN"]],
+    [770, []],
+    [800, ["LEFT"]],
+    [804, []],
+    [808, ["LEFT"]],
+    [858, []],
+    [900, ["A", "RIGHT"]],
+    [930, []],
+    [980, ["UP", "RIGHT"]],
+    [1050, []],
+    [1080, ["DOWN", "LEFT"]],
+    [1150, []],
+    [1180, ["RIGHT"]],
+    [1184, []],
+    [1188, ["RIGHT"]],
+    [1268, []],
+    [1300, ["A"]],
+    [1306, []]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 1254,
+      "held": [[0,[]],[747,["START"]],[748,[]],[881,["RIGHT"]],[882,[]],[921,["RIGHT"]],[922,[]],[961,["RIGHT"]],[962,[]],[1001,["A"]],[1002,[]],[1201,["START"]],[1202,[]]],
+      "sets": [
+        { "frame": 778, "address": "03002170", "bytes": 2, "value": 1 },
+        { "frame": 900, "address": "03002189", "bytes": 1, "value": 4 },
+        { "frame": 1200, "address": "030053f8", "bytes": 1, "value": 7 },
+        { "frame": 1200, "address": "030053e0", "bytes": 1, "value": 6 }
+      ],
+      "about": "A name already saved, the save flag for character 7, the main menu's third move right, A for Training, the character row set to 7 and the seventh map, and Start."
+    }
+  ]
+}

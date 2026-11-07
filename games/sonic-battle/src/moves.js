@@ -575,6 +575,43 @@ function setState(c, i, state) {
         // the states with nothing of their own here
       }
   }
+  // 0x08001b0c's charge and release for the special attacks: a held R keeps the charge going, and letting go fires
+  if (state === 19 || state === 20 || state === 23 || state === 24) {
+    write8(c, rec + 143, 0);
+  } else if (state === 0x113) {
+    const charge = Math.min(read8(c, rec + 143) + 1, 12);
+    write8(c, rec + 143, charge);
+    if (charge === 5) write16(c, rec + 164, 215);
+    else if (charge === 12) write16(c, rec + 164, 216);
+    if ((held(c, i) & 0x100) === 0) setState(c, i, 0x213);
+  } else if (state === 0x114) {
+    // the air special's charge, up to three: its sound plays as it builds
+    const charge = Math.min(read8(c, rec + 143) + 1, 3);
+    write8(c, rec + 143, charge);
+    c.sound?.play(0x323);
+    if ((held(c, i) & 0x100) === 0) setState(c, i, 0x214);
+  } else if (state === 0x117) {
+    // the third special's charge, up to five
+    const charge = Math.min(read8(c, rec + 143) + 1, 5);
+    write8(c, rec + 143, charge);
+    c.sound?.play(0x338);
+    if ((held(c, i) & 0x100) === 0) setState(c, i, 0x217);
+  } else if (state === 0x115) {
+    if ((held(c, i) & 0x100) === 0) setState(c, i, 0x215);
+  } else if (state === 0x213) {
+    const charge = read8(c, rec + 143);
+    write16(c, rec + 166, charge <= 4 ? 0xFE00 : charge <= 11 ? 0xFC00 : 0xF880);
+    write16(c, rec + 168, 24);
+  } else if (state === 0x214) {
+    write16(c, rec + 168, 20);
+  } else if (state === 0x217) {
+    write16(c, rec + 168, 24);
+  } else if (state === 0x218) {
+    write16(c, rec + 168, 20);
+  } else if (state === 0x116) {
+    write16(c, rec + Z, read16(c, rec + GROUND));
+    write32(c, rec + FLAGS, read32(c, rec + FLAGS) | 1);
+  }
   // (0x08002762) what the special attacks' states do with their things
   if (state === 21) {
     if (read8(c, rec + 23) !== 0) return;
@@ -1432,6 +1469,8 @@ const THING_SCRIPTS = new Map([
   [43, 0x0806C60C], [44, 0x0806C67C], [45, 0x0806C8F4], [41, 0x0806C790], [46, 0x0806C944], [158, 0x0806E520], [160, 0x0806E5F0],
   [54, 0x0806C984], [57, 0x0806CA14], [60, 0x0806CD14], [61, 0x0806CD68],
   [117, 0x0806DC00], [118, 0x0806DC60], [114, 0x0806DB48], [120, 0x0806DCBC], [121, 0x0806DD04], [122, 0x0806DDA4],
+  [174, 0x0806E9AC], [175, 0x0806EB10], [177, 0x0806EC74], [178, 0x0806ED0C], [179, 0x0806EDA4],
+  [180, 0x0806EE3C], [181, 0x0806EEE8],
 ]);
 const THING_MARK = 0xFFF00000;
 // the fields a script's words set, by the word's first half
@@ -1555,10 +1594,12 @@ const THING_HITS = new Map([
   [39, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [44, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
   [54, [0x100, 16, 30, 2, 0x280, 0, 11, 16]], [57, [0x120, 4, 5, 2, 0x340, 1, 0, 255]],
   [117, [0x140, 6, 15, 2, 0x380, 0, 0, 255]], [122, [0x240, 20, 15, 2, 0x3C0, 0, 0, 22]],
+  [177, [0x140, 8, 20, 2, 0x380, 0, 0, 255]], [178, [0x140, 8, 40, 4, 0x380, 0, 0, 255]],
+  [179, [0x140, 8, 60, 6, 0x380, 0, 0, 255]],
 ]);
 // the kinds 0x0800eaec has hits for that aren't ported yet
 const THING_HITS_LATER = new Set([62, 63, 78, 79, 82, 94, 97, 102, 137, 138, 142, 154, 158, 160,
-  165, 166, 174, 175, 177, 178, 179, 185, 191, 194, 197, 201, 241, 245]);
+  165, 166, 174, 175, 185, 191, 194, 197, 201, 241, 245]);
 
 // the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet
 const THING_STEPS_LATER = new Set([39, 79, 101, 141]);
