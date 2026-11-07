@@ -160,8 +160,11 @@ void choosingAfterWait(void) {
  * The fight's first frame: the values Start on Training's screen leaves with its first choices, 0x0801c82c, the new
  * screen and its fade, and 0x0801c8a4, with 0x08019ed8, which load everything and start the song. In the original these
  * take from the Training screen's fade to the fight's first picture, with the screen black all along.
+ *
+ * A start point's `you`, `rival`, `arena` and `colour` are what Training's screen would have picked: the player's
+ * character, the rival's, the map, and the colour rows a character whose colours come from its choices wears.
  */
-void startFight(int vblanks, int action) {
+void startFight(int vblanks, int action, int you, int rival, int arena, int colour) {
   g.vblanks = vblanks;
   g.line_one = playQueuedEffects;
   for (int i = 0; i < 512; i++) gba_pal[i] = 0;
@@ -173,13 +176,13 @@ void startFight(int vblanks, int action) {
   write8(SETUP_ + 5, 10);
   for (int at = 6; at <= 11; at++) write8(SETUP_ + (uint32_t)at, 0);
   write8(SETUP_ + 36, 2);
-  write8(SETUP_ + 20, 0);
+  write8(SETUP_ + 20, (uint8_t)you);   // Training's first choice, Sonic, unless the start point picks another
   write8(SETUP_ + 21, NO_FIGHTER);
   write8(SETUP_ + 22, NO_FIGHTER);
-  write8(SETUP_ + 23, 0);
+  write8(SETUP_ + 23, (uint8_t)rival);
   write8(SETUP_ + 1, 0);
   write8(SETUP_ + 2, 1);
-  write8(SETUP_ + 3, 0);
+  write8(SETUP_ + 3, (uint8_t)arena);   // the arena, Emerald Beach (0) unless a start point picks another of Training's maps
   write8(SETUP_ + 38, (uint8_t)action);
   write8(SETUP_ + 125, 4);
   write8(SETUP_ + 0, 0);
@@ -189,6 +192,11 @@ void startFight(int vblanks, int action) {
   startFadeIn(24);
   stepFade();
   g.vblank_copies = 1;
+  // the colour rows the Training screen copies into the player's choices for a character whose colours come from
+  // them (loadColours), such as Chaos: byte 93 picks colours 3 to 6, 94 picks 7 to 10, and 95 picks 11 to 13
+  if (colour != 255) {
+    for (int at = 93; at <= 95; at++) write8(0x030013B0 + (uint32_t)at, (uint8_t)colour);
+  }
   setUpFight();
   write8(SONG_, (uint8_t)ARENA_SONGS[setup(3 + setup(1))]);
   startHud(10);
