@@ -282,5 +282,9 @@
       ],
       "about": "The course select and X Zone's title card."
     }
-  ]
+  ],
+  "clip": {
+    "at": 1701,
+    "frames": 9
+  }
 }
