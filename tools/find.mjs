@@ -81,10 +81,11 @@ function mainOf(local, pieces) {
   return languages.length ? mainLanguage(languages) : 'js';
 }
 
-// a game's open pieces nobody has claimed: those that can start now, and those waiting on something (src/lib/pieces.mjs)
+// a game's open pieces nobody has claimed: those that can start now, some on top of a pull request in review, and those
+// waiting on something (src/lib/pieces.mjs)
 const startable = (game, claims, entry, gathered, local) => {
   const pieces = claims.piecesOf(game, entry);
-  return whatCanStart(pieces, readPartsFile(game), gathered, { main: mainOf(local, pieces) });
+  return whatCanStart(pieces, readPartsFile(game), gathered, { main: mainOf(local, pieces), reviewing: claims.reviewing() });
 };
 const freeText = (game, claims, entry, local) => {
   const count = claims && startable(game, claims, entry, new Set(), local).free.length;
@@ -127,6 +128,7 @@ function show(game, local, claims, team) {
   const lead = leadOf(game, claims, entry);
   const rows = [];
   const row = (label, ...values) => rows.push([label, values.flat().filter(Boolean)]);
+  let stacked = false;
   row('Lead', lead ? `@${lead}` : `nobody${home ? ': /claim on its game\'s issue makes you its lead' : ''}`);
   row('Game issue', homeUrl ? `${homeUrl}, which lists its pieces, and where it's talked about` : 'none yet');
   row(`Code ported${named}`, proof?.ported ? percentText(proof.ported.percent) : local ? 'not measured yet: it needs a code map' : 'not measured yet');
@@ -154,13 +156,16 @@ function show(game, local, claims, team) {
     const name = t => `#${t.number} ${pieceName(t)}`;
     const taken = pieces.filter(t => t.state === 'open' && t.assignees.length);
     const gathered = build ? gatheredIn(build) : new Set();
-    const { free, waiting, needing, isFoundation } = startable(game, claims, entry, gathered, local);
+    const { free, waiting, buildsOn, needing, isFoundation } = startable(game, claims, entry, gathered, local);
+    const reviewing = claims.reviewing();
+    // a free piece on top of pull requests in review, which its branch starts from
+    const onTop = t => (buildsOn(t).length ? `, on top of ${buildsOn(t).map(b => `#${b.pull}, which has #${b.number} ${b.name} in review`).join(' and ')}` : '');
     const done = pieces.filter(t => t.state !== 'open').length;
     const foundation = t => {
       const count = needing(t);
       return isFoundation(t) ? `, a foundation${count ? `, which ${count} ${count === 1 ? 'piece needs' : 'pieces need'}` : ''}` : '';
     };
-    row(`Claimed (${taken.length})`, taken.length ? taken.map(t => `${name(t)}: @${t.assignees.map(a => a.login).join(', @')}`) : 'nothing');
+    row(`Claimed (${taken.length})`, taken.length ? taken.map(t => `${name(t)}: @${t.assignees.map(a => a.login).join(', @')}${reviewing.has(t.number) ? `, in review in #${reviewing.get(t.number)}` : ''}`) : 'nothing');
     // the free pieces in each language, the default's first (src/lib/languages.mjs): a game whose console has a kit in
     // another language lists them apart, even with none, so it shows where a version in that language stands. A game
     // that started in C has no JavaScript version, and lists JavaScript only once it has a piece in it
@@ -173,12 +178,13 @@ function show(game, local, claims, team) {
       const theirs = free.filter(t => pieceOf(t).language === language);
       const version = language === 'js' ? game : `${game}/${LANGUAGES[language].folder}`;
       const has = language === main || versions.some(v => v.language === language);
-      row(`Free${apart ? ` in ${LANGUAGES[language].name}` : ''} (${theirs.length})`, theirs.length ? theirs.map(t => `${name(t)}${foundation(t)}`)
+      row(`Free${apart ? ` in ${LANGUAGES[language].name}` : ''} (${theirs.length})`, theirs.length ? theirs.map(t => `${name(t)}${foundation(t)}${onTop(t)}`)
         : !has ? `nothing: it has no version in ${LANGUAGES[language].name} yet, which npm run dp -- new ${version} starts, and npm run dp -- tasks ${version} then opens its tasks`
           : waiting.some(w => pieceOf(w.piece).language === language) ? 'nothing until what the waiting pieces need is finished'
             : `nothing: npm run dp -- tasks ${version} opens one for each part that has none, and the Task form suggests a new one`);
     }
-    if (waiting.length) row(`Waiting (${waiting.length})`, waiting.map(({ piece, on }) => `${name(piece)}: needs ${on.map(need => (need.number ? `#${need.number} ${need.name}` : need.name)).join(' and ')}`));
+    if (waiting.length) row(`Waiting (${waiting.length})`, waiting.map(({ piece, on }) => `${name(piece)}: needs ${on.map(need => `${need.number ? `#${need.number} ${need.name}` : need.name}${need.pull ? ` (in review in #${need.pull})` : ''}`).join(' and ')}`));
+    stacked = free.some(t => buildsOn(t).length);
     if (done) row(`Done (${done})`, 'listed in its game\'s issue');
   }
   console.log(`${title}, in games/${local?.name ?? game}/${local ? '' : ', not in this folder yet'}\n`);
@@ -186,6 +192,7 @@ function show(game, local, claims, team) {
   for (const [label, values] of rows) values.forEach((value, i) => console.log(`  ${(i ? '' : `${label}:`).padEnd(width)}${value}`));
   if (claims) {
     console.log(`\n/claim in a comment on a free task's issue takes it, and /release gives it back. New tasks: https://github.com/${claims.repository}/issues/new?template=task.yml`);
+    if (stacked) console.log('A piece on top of a pull request starts from the latest main with that pull request merged in, and its own pull request merges after it (docs/TEAMS.md, Building on a piece in review).');
   }
 }
 
