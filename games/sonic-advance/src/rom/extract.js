@@ -13,7 +13,7 @@ import { readInteractables, readItemBoxes, entityRegions, readRings, layerToggle
 import { readColors, tintRgb, tintImage, bgr555ToRgb } from './colors.js';
 import { soundLayout } from './sound.js';
 import { hudGraphics } from './hud.js';
-import { titleCardGraphics } from './titlecard.js';
+import { titleCardGraphics, paint } from './titlecard.js';
 import { resultsGraphics } from './results.js';
 import { levelInfo, LEVELS } from './levels.js';
 import { extraStageArt, EXTRA_SPRITES } from './extra.js';
@@ -590,15 +590,27 @@ function* readAssets(rom, id, { level = 0, character = 0, partner = false } = {}
 }
 
 // the multiplayer round's results screen (CreateMultiplayerResultsScreen): its background, tilemap 88, a
-// strip for each player, over a light blue backdrop (CM_BACKGROUND_COLOR)
+// strip for each player, over a light blue backdrop (CM_BACKGROUND_COLOR), and the UI font the players' names
+// are drawn with (UI graphics 0, which the names' task loads)
 const RESULTS_MAP = 88, RESULTS_BACKDROP = 0 | (27 << 5) | (30 << 10);
+const RESULTS_FONT = 0, RESULTS_COLOURS = 60, RESULTS_GLYPHS = 0x6A, RESULTS_ENTRY = 28, RESULTS_TILE = 32;
 function extractResults(rom, offsets) {
   const header = tilemapHeader(rom, offsets.tilemaps, RESULTS_MAP);
   const palette = new Array(256).fill([0, 0, 0]);
   readColors(rom, header.palette, header.paletteLength).forEach((c, i) => { palette[header.paletteOffset + i] = c; });
   // colour 0 of every bank is see-through, onto the backdrop: the only layer on that screen is this one
   for (let bank = 0; bank < 16; bank++) palette[bank * 16] = bgr555ToRgb(RESULTS_BACKDROP);
-  return { background: toCanvas(renderPlainMap(rom, header, palette)), backdrop: palette[0] };
+  return { background: toCanvas(renderPlainMap(rom, header, palette)), backdrop: palette[0], names: resultFont(rom, offsets.uiGraphics) };
+}
+
+// the UI font's glyphs, ' ' (0x20) to its last lowercase letter (0x89), on one sheet: { sheet, width, height }
+function resultFont(rom, uiAt) {
+  const at = uiAt + RESULTS_FONT * RESULTS_ENTRY, colours = uiAt + RESULTS_COLOURS * RESULTS_ENTRY;
+  const tiles = rom.requirePtr(at, 'UI graphics 0'), palette = readColors(rom, rom.requirePtr(colours + 4, 'UI palette 60'), 16);
+  const perGlyph = rom.u32(at + 8), wide = rom.u32(at + 20), high = rom.u32(at + 24);
+  const width = wide * 8, height = high * 8, font = rom.bytes.subarray(tiles), image = new ImageData(RESULTS_GLYPHS * width, height);
+  for (let g = 0; g < RESULTS_GLYPHS; g++) paint(image, g * width, 0, font, g * perGlyph, wide, high, palette);
+  return { sheet: toCanvas(image), width, height };
 }
 
 /**

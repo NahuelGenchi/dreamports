@@ -20,7 +20,7 @@ import { LOCAL } from './lib/paths.mjs';
 import { nameKey, pieceOf, planOf, taskTitle } from '../src/lib/pieces.mjs';
 import { LANGUAGES, playOrder, versionName, versionOf } from '../src/lib/languages.mjs';
 import { UPSTREAM, api } from './lib/github.mjs';
-import { readClaims } from './lib/claims.mjs';
+import { field, readClaims } from './lib/claims.mjs';
 import { dreamports } from './readme.mjs';
 
 const USAGE = 'Usage: npm run dp -- tasks <game>[/c] [--repo <owner/name>] [--yes]';
@@ -57,12 +57,14 @@ async function openTasks(version, repo, yes) {
   const pieces = claims.piecesOf(game, entry);
   const proven = new Set((inVersion?.proof?.gameplay?.parts ?? []).filter(p => p.proven).map(p => nameKey(p.name)));
   const wanted = missingParts(planOf(file), pieces, language, proven, main);
+  // a version in another language than the game's main one keeps its tasks under an issue of its own (#905)
+  const where = language === main ? `#${home.number}` : `its issue for ${LANGUAGES[language].name}, under #${home.number}`;
   if (!wanted.length) {
-    console.log(`Every foundation and part of ${version} has its task already, under #${home.number}.`);
+    console.log(`Every foundation and part of ${version} has its task already, under ${where}.`);
     return 0;
   }
   if (!yes) {
-    console.log(`A task for each of these ${wanted.length} would go under #${home.number} in ${repo}, public and in your name:\n${wanted.map(p => `  ${p.name}`).join('\n')}`);
+    console.log(`A task for each of these ${wanted.length} would go under ${where} in ${repo}, public and in your name:\n${wanted.map(p => `  ${p.name}`).join('\n')}`);
     console.log('\nNothing was opened: --yes opens them, once you have said yes.');
     return 0;
   }
@@ -75,7 +77,7 @@ async function openTasks(version, repo, yes) {
     for (const part of wanted) {
       const before = part.foundation ? null : parts[parts.findIndex(p => p.name === part.name) - 1];
       const title = taskTitle(part.name, language);
-      const already = taskTitled(api(`repos/${repo}/issues?state=open&sort=created&direction=desc&per_page=100`) ?? [], title);
+      const already = taskTitled(api(`repos/${repo}/issues?state=open&sort=created&direction=desc&per_page=100`) ?? [], title, game);
       if (already) {
         numbers.set(nameKey(part.name), already.number);
         console.log(`#${already.number} ${part.name}: open already, so it wasn't opened again`);
@@ -84,12 +86,12 @@ async function openTasks(version, repo, yes) {
       const issue = api(`repos/${repo}/issues`, { method: 'POST', body: { title, body: taskText(version, part, before && named(before.name), part.needs.map(named), main) } });
       numbers.set(nameKey(part.name), issue.number);
       opened++;
-      console.log(`#${issue.number} ${part.name}${await underItsGame(repo, issue.number) ? '' : `: the bot hasn't put it under #${home.number} yet, and will`}`);
+      console.log(`#${issue.number} ${part.name}${await underItsGame(repo, issue.number) ? '' : `: the bot hasn't put it under ${where} yet, and will`}`);
     }
   } finally {
     release();
   }
-  console.log(`\nOpened ${opened} task${opened === 1 ? '' : 's'} under #${home.number}.`);
+  console.log(`\nOpened ${opened} task${opened === 1 ? '' : 's'} under ${where}.`);
   return 0;
 }
 
@@ -126,10 +128,14 @@ function running(pid) {
   }
 }
 
-/** The open issue among `issues` titled `title`, whatever its capitals and spaces at its ends, leaving pull requests out. */
-export function taskTitled(issues, title) {
+/**
+ * The open issue among `issues` titled `title`, whatever its capitals and spaces at its ends, leaving pull requests out,
+ * that's `game`'s: its form's Game folder or its label names it, as two games can have a part of the same name (#837).
+ */
+export function taskTitled(issues, title, game) {
   const key = title.trim().toLowerCase();
-  return issues.find(issue => !issue.pull_request && issue.state !== 'closed' && issue.title.trim().toLowerCase() === key);
+  const ours = issue => field(issue.body, 'Game folder')?.replace(/`/g, '').trim() === game || (issue.labels ?? []).some(label => (label.name ?? label) === game);
+  return issues.find(issue => !issue.pull_request && issue.state !== 'closed' && issue.title.trim().toLowerCase() === key && ours(issue));
 }
 
 function options(args) {

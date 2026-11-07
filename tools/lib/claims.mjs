@@ -4,7 +4,7 @@
 // build, a branch of their fork that gathers the team's finished pieces.
 
 import { UPSTREAM, api } from './github.mjs';
-import { inReview } from '../../src/lib/pieces.mjs';
+import { inReview, languageOfIssue } from '../../src/lib/pieces.mjs';
 
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -60,20 +60,38 @@ export function readClaims(repository = UPSTREAM) {
     /** The New Dreamport issue of each game claimed with one: Map(game → issue). */
     leads,
     gameIssueOf,
-    /** A game's pieces, open and closed: the repository's issues under its game's issue, in its order, or [] without one. */
+    /**
+     * A game's pieces, open and closed: the repository's issues under its game's issue, in its order, then those under
+     * each of its versions' issues there, which hold its tasks in another language (#905), or [] without one.
+     */
     piecesOf: (game, entry) => {
       const home = gameIssueOf(game, entry);
       if (!home) return [];
       if (!pieces.has(home.number)) {
-        const found = [];
-        for (let page = 1; ; page++) {
-          const batch = api(`repos/${repository}/issues/${home.number}/sub_issues?per_page=100&page=${page}`) ?? [];
-          found.push(...batch.filter(i => i.repository_url?.toLowerCase() === home.repository_url?.toLowerCase()));
-          if (batch.length < 100) break;
-        }
-        pieces.set(home.number, found);
+        const under = issue => {
+          const found = [];
+          for (let page = 1; ; page++) {
+            const batch = api(`repos/${repository}/issues/${issue.number}/sub_issues?per_page=100&page=${page}`) ?? [];
+            found.push(...batch.filter(i => i.repository_url?.toLowerCase() === home.repository_url?.toLowerCase()));
+            if (batch.length < 100) return found;
+          }
+        };
+        const direct = under(home);
+        const versions = direct.filter(languageOfIssue);
+        pieces.set(home.number, [...direct.filter(i => !languageOfIssue(i)), ...versions.flatMap(under)]);
       }
       return pieces.get(home.number);
+    },
+    /** The issue under a game's issue that holds its tasks in `language`, such as 'c', or null while it has none. */
+    languageIssueOf: (game, entry, language) => {
+      const home = gameIssueOf(game, entry);
+      if (!home) return null;
+      for (let page = 1; ; page++) {
+        const batch = api(`repos/${repository}/issues/${home.number}/sub_issues?per_page=100&page=${page}`) ?? [];
+        const found = batch.find(i => languageOfIssue(i) === language);
+        if (found) return found;
+        if (batch.length < 100) return null;
+      }
     },
     /**
      * The tasks in review, Map(task → pull request), from the repository's open pull requests that aren't drafts
