@@ -6,7 +6,7 @@
 #include "act.h"
 
 enum {
-  OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC,
+  OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC, OFFSET_CHARACTER_ANIMS = 0x4A6F04,
   LAYER_FRONT = 0, LAYER_BACK = 1, IGNORE_PLATFORMS = 0x80,
   SCREEN_W_ = 240, SCREEN_H_ = 160,
 };
@@ -32,7 +32,34 @@ enum { ORDER_DIGITS = 2, ORDER_ICONS = 3, ORDER_SONIC = 16 };
 
 Act act;
 static Sprite sonic;
-static uint32_t sonicVram, hudVram, hudTile;
+static uint32_t sonicVram, hudVram;
+static int hudGlyphTile, hudRingTile, hudFaceTile;
+
+// What each stage init sets that the ROM keeps in code (rom/levels.js): the fields the acts in C use. The
+// palette animations and the HUD's first flash are the act's; its background update is one of backgrounds.js's.
+static const uint16_t PALETTE_SECRET_BASE[] = { 819, 845, 849 };
+typedef struct {
+  uint8_t zone, act, music, hudFlash, backgroundScroll, spotlights;
+  // where the course select leaves the HUD's graphics in the sprites' video memory: its white glyphs, the ring
+  // above the ring count and the face by the lives (the red glyphs follow the white ones)
+  uint16_t hudGlyphTile, hudRingTile, hudFaceTile;
+  const uint16_t *paletteAnimations;
+  uint8_t paletteAnimationCount;
+} LevelInfo;
+static const LevelInfo LEVEL_INFO[18] = {
+  [ACT_LEVEL_SECRET_BASE_1] = { 1, 0, 14, 56, BG_SCROLL_SECRET_BASE_1, 1, 84, 68, 64, PALETTE_SECRET_BASE, 3 },
+  [3] = { 1, 1, 15, 64, BG_SCROLL_SECRET_BASE_2, 0, 84, 68, 64, PALETTE_SECRET_BASE, 3 },
+  [ACT_LEVEL_X_ZONE] = { 6, 0, 24, 90, BG_SCROLL_X_ZONE, 0, 400, 444, 460, NULL, 0 },
+};
+
+// the act's palette animations (engine/palettes.js): UpdateSpriteAnimation_BG steps each, loading its colours
+// into the backgrounds' palette, and `sprite.c` does the commands
+static Sprite paletteAnimations[8];
+static int paletteAnimationCount;
+
+// Secret Base act 1's spotlights (engine/spotlights.js), in actspot.c
+void spotlights_start(void);
+void spotlights_frame(void);
 
 // --- the copy's data (rom/tilemaps.js, rom/collision.js, rom/entities.js, rom/levels.js) -------------------------
 static Tilemap read_tilemap(int index) {
@@ -143,14 +170,13 @@ static Scan scan(int floor, int p0, int p1, int layer, int step) {
 }
 
 // --- the stage (rom/extract.js extractStage, engine/stage.js) -----------------------------------------------------
-// The copies stay in memory until the V-blank takes them: the queue keeps the pointers, not copies (engine.c).
-static Graphics copies[8];
-static int copyCount;
+// The start point opens after the original's own stage load, so the tiles are copied as the act starts rather
+// than queued for a V-blank the first compared frame would come before.
 static void copy_rom(uint32_t src, uint32_t dest, uint32_t size) {
-  if (copyCount >= 8) return;
-  Graphics *g = &copies[copyCount++];
-  g->src = src; g->dest = dest; g->size = size & 0xFFFF; g->anim = 0; g->ram = NULL;
-  queue_graphics(g);
+  if (src >= gba_rom_size || dest >= 0x18000) return;
+  if (src + size > gba_rom_size) size = gba_rom_size - src;
+  if (dest + size > 0x18000) size = 0x18000 - dest;
+  memcpy(gba_vram + dest, gba_rom + src, size);
 }
 static void load_stage(int level) {
   Stage *s = &act.stage;
@@ -163,7 +189,10 @@ static void load_stage(int level) {
   s->spawnX = rom_s16(OFFSET_SPAWNS + level * 4);
   s->spawnY = rom_s16(OFFSET_SPAWNS + level * 4 + 2);
   s->width = s->collision.width; s->height = s->collision.height;
-  s->zone = 6; s->act = 0; s->music = 24; s->hudFlash = 90;
+  const LevelInfo *info = &LEVEL_INFO[level % 18];
+  s->zone = info->zone; s->act = info->act; s->music = info->music; s->hudFlash = info->hudFlash;
+  s->backgroundScroll = info->backgroundScroll; s->spotlights = info->spotlights;
+  s->paletteAnimations = info->paletteAnimations; s->paletteAnimationCount = info->paletteAnimationCount;
   // the front layer's tiles, in the first character block, and the stage's 256 colours (extractStage's palette)
   copy_rom(s->front.tiles, 0, s->front.tilesSize);
   for (int i = 0; i < 256; i++) e.bgPalette[i] = (uint16_t)rom_u16(s->front.palette + i * 2);
@@ -182,7 +211,8 @@ static void load_stage(int level) {
   e.dispCnt = 0x304E;           // OBJ on, window 0 on, BG1, BG2 and BG3 on, 1D OAM
   e.bgCnt[1] = 0x1E01;          // 256 × 256, priority 1, map 30 (0xF000), character base 0
   e.bgCnt[2] = 0x1F02;          // 256 × 256, priority 2, map 31 (0xF800), character base 0
-  e.bgCnt[3] = 0x5C0B;          // 512 × 256, priority 3, map 28 (0xE000), character base 2 (0x8000)
+  // the background's size, as its map has it: 256 × 512 for Secret Base act 1, 512 × 256 for X Zone
+  e.bgCnt[3] = (uint16_t)(0x1C0B | (s->background.xTiles > 32 ? 0x4000 : 0) | (s->background.yTiles > 32 ? 0x8000 : 0));
 }
 
 // a stage layer's visible tile entries around the camera (DrawBackground's level-map path)
@@ -202,6 +232,40 @@ static void fill_layer(uint32_t dest, int layer, int camX, int camY) {
       gba_vram[at] = (uint8_t)entry; gba_vram[at + 1] = (uint8_t)(entry >> 8);
     }
   }
+}
+
+// --- the stage's animated tiles (background.c UpdateBgAnimationTiles) -----------------------------------------------
+// a step every animDelay frames, counted from when the camera starts. A step's tiles are queued and copied as the
+// next frame starts, so the screen shows each step a frame late (stage.js animateStageTiles)
+static int animDelayCounter, animFrameCounter, animQueued = -1;
+static void update_bg_animation_tiles(void) {
+  const Tilemap *t = &act.stage.front;
+  if (t->animFrameCount == 0) return;
+  if (animQueued >= 0) {
+    // frame 0 is the tileset itself; frame k is the k-th block stored after it
+    uint32_t src = t->tiles + (animQueued == 0 ? 0 : t->tilesSize + (uint32_t)(animQueued - 1) * t->animTileSize);
+    if (src + t->animTileSize <= gba_rom_size) memcpy(gba_vram, gba_rom + src, t->animTileSize);
+    animQueued = -1;
+  }
+  if (++animDelayCounter < t->animDelay) return;
+  animDelayCounter = 0;
+  if (++animFrameCounter >= t->animFrameCount) animFrameCounter = 0;
+  animQueued = animFrameCounter;
+}
+
+// --- the act's palette animations (engine/palettes.js, UpdateSpriteAnimation_BG) ------------------------------------
+static void start_palette_animations(void) {
+  paletteAnimationCount = act.stage.paletteAnimationCount;
+  for (int i = 0; i < paletteAnimationCount; i++) {
+    Sprite *s = &paletteAnimations[i];
+    sprite_init(s);
+    s->frameFlags = SPRITE_KEEP_TILES;
+    s->graphics.anim = act.stage.paletteAnimations[i];
+    s->variant = 0; s->animSpeed = ANIM_NORMAL; s->palId = 0;
+  }
+}
+static void step_palette_animations(void) {
+  for (int i = 0; i < paletteAnimationCount; i++) update_sprite(&paletteAnimations[i], 1);
 }
 
 // --- the camera (engine/camera.js createCamera and updateCamera) ---------------------------------------------------
@@ -387,7 +451,7 @@ static int digits_of(int n, int *out) {
   return k;
 }
 static void hud_glyph(int g, int x, int y) {
-  int tile = g < HUD_GLYPHS ? (int)hudTile + g * 2 : (int)hudTile + HUD_RED + (g - HUD_GLYPHS) * 2;
+  int tile = g < HUD_GLYPHS ? hudGlyphTile + g * 2 : hudGlyphTile + HUD_RED + (g - HUD_GLYPHS) * 2;
   put_oam(ORDER_DIGITS, x, y, OBJ_8x16, tile, 6, 0);
 }
 static void hud_update(int draw) {
@@ -395,8 +459,8 @@ static void hud_update(int draw) {
   if (!h->active) return;
   if (draw) {
     // the icons: the ring over the ring count and the character's face by the lives, at OAM order 3
-    put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, (int)hudTile + HUD_RING, 6, 0);
-    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, (int)hudTile + HUD_FACE, 0, 0);
+    put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, hudRingTile, 6, 0);
+    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, hudFaceTile, 0, 0);
     if (act.ringCount == 0) {
       static const int FLASH[5] = { 0, 11, 11, 0, 0 };
       int f = h->flash >> 3, g = f < 5 ? FLASH[f] : -1;
@@ -437,7 +501,8 @@ static void card_update(int pressed) {
 // --- the frame (engine/game.js) ----------------------------------------------------------------------------------
 static void draw_frame(void) {
   int camX = (int)act.cam.x, camY = (int)act.cam.y;
-  // the act has no blend, and its first frames keep the course select's display, as the original does
+  // the act has no blend of its own, and its first frames keep the course select's display, as the original
+  // does; Secret Base's spotlights set their own after this
   e.bldCnt = 0; e.bldAlpha = 0x0010; e.bldY = 0;
   e.dispCnt = 0x1E40;
   e.winRegs[0] = e.winRegs[1] = 0x00F0; e.winRegs[2] = e.winRegs[3] = 0x00A0;
@@ -447,10 +512,23 @@ static void draw_frame(void) {
   e.bgScroll[4] = (uint16_t)(camX & 7); e.bgScroll[5] = (uint16_t)(camY & 7);
   fill_layer(0xF000, LAYER_FRONT, camX, camY);
   fill_layer(0xF800, LAYER_BACK, camX, camY);
-  // StageBgUpdate_Zone7Act1: the 37 × 23 background scrolls as a whole. Its first frame keeps the course
-  // select's scroll, which the original shows before the act's own update lands.
-  int bgX = (int)(((double)camX * 56.0) / (act.stage.width - SCREEN_W_));
-  int bgY = (int)(((double)camY * 24.0) / (act.stage.height - SCREEN_H_));
+  // the background's update (backgrounds.js): Secret Base act 1's outside scrolls as a whole, and X Zone's
+  // 37 × 23 map does too; its first frame keeps the course select's scroll, which the original shows before the
+  // act's own update lands
+  int bgX = 0, bgY = 0;
+  switch (act.stage.backgroundScroll) {
+    case BG_SCROLL_SECRET_BASE_1:
+      // StageBgUpdate_Zone2Act1, outside the base (before x 1488): the map's bottom 160 rows, moving across
+      // a 78th of the camera's way
+      bgX = (camX * 16) / (78 * 16); bgY = 512 - 160;
+      break;
+    case BG_SCROLL_X_ZONE:
+      // StageBgUpdate_Zone7Act1
+      bgX = (int)(((double)camX * 56.0) / (act.stage.width - SCREEN_W_));
+      bgY = (int)(((double)camY * 24.0) / (act.stage.height - SCREEN_H_));
+      break;
+    default: break;
+  }
   e.bgScroll[6] = (uint16_t)bgX; e.bgScroll[7] = (uint16_t)bgY;
 
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
@@ -474,8 +552,11 @@ static void draw_frame(void) {
 }
 
 static void act_frame(void) {
+  int camStarted = act.cam.started;
   camera_update(&act.cam, &act.player);
   act.cam.bgUpdates++;
+  if (camStarted) update_bg_animation_tiles();
+  step_palette_animations();
   int left = (e.input & KEY_LEFT) != 0, right = (e.input & KEY_RIGHT) != 0;
   int up = (e.input & KEY_UP) != 0, down = (e.input & KEY_DOWN) != 0;
   int jump = (e.input & KEY_A) != 0, attack = (e.input & KEY_B) != 0;
@@ -489,6 +570,9 @@ static void act_frame(void) {
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
   draw_frame();
+  // the spotlights' tasks run after the objects and before the screen is drawn, and write the windows and the
+  // brightness decrease into this frame's registers and H-blank table
+  if (act.stage.spotlights) spotlights_frame();
 }
 
 void act_task(Task *t) {
@@ -517,23 +601,32 @@ static void pre_run(int cardSkip, int preFrames) {
   int after = 0;
   while (!act.cardDone || after < preFrames) {
     int wasDone = act.cardDone;
+    int camStarted = act.cam.started;
     camera_update(&act.cam, &act.player);
+    if (camStarted) update_bg_animation_tiles();
     if (!act.cardDone) card_update(cardSkip == act.tick);
-    int r = act.cardDone;
+    int r = act.cardDone && act.firstFrame;
     step_player(&act.player, 0, r, 0, 0, !act.cardDone, 0, !act.cardDone, 0);
     animate_player(&act.player);
+    // the stage's palette animations are the tasks made after it, and the first are made a frame after the act
+    if (act.tick > 0) step_palette_animations();
+    if (act.stage.spotlights) spotlights_frame();
     if (wasDone) { hud_update(0); after++; }
     if (!act.clockStopped) act.courseTime++;
     act.tick++;
+    // each of these frames ends with the V-blank's ClearOamBufferDma, which swaps the two H-blank tables: the
+    // first frame shown gets the one the spotlights wrote on the frame before it
+    if (!(e.flags & FLAGS_KEEP_HBLANK_BUFFER)) e.primary ^= HBLANK_BUFFER;
   }
 }
 
 void act_start(int level, int cardSkip, int preFrames) {
   memset(&act, 0, sizeof act);
-  copyCount = 0;
   load_stage(level);
+  animDelayCounter = animFrameCounter = 0; animQueued = -1;
   create_player(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);
+  start_palette_animations();
   act.lives = 3; act.score = 0; act.ringCount = 0;
   act.clockStopped = 1; act.firstCard = 1; act.cardFrame = 0;
   act.hud.active = 0; act.hud.flash = act.stage.hudFlash;
@@ -542,6 +635,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
   e.winRegs[0] = e.winRegs[1] = e.winRegs[2] = e.winRegs[3] = 0;
   e.winRegs[4] = 0x3F3F; e.winRegs[5] = 0x1F;
+  if (act.stage.spotlights) spotlights_start();
 
   // Sonic's sprite: the player's tiles, colours and animation, at its own OAM order
   sprite_init(&sonic);
@@ -550,9 +644,11 @@ void act_start(int level, int cardSkip, int preFrames) {
   sonic.graphics.anim = SONIC_IDLE; sonic.variant = 0; sonic.animSpeed = ANIM_NORMAL;
   sonic.palId = 0; sonic.oamFlags = ORDER_SONIC << 6; sonic.frameFlags = 2 << 12;
 
-  // the HUD's tiles and colours (hudGraphics): the white and red digits, the ring and the face
-  hudVram = vram_malloc(64);
-  hudTile = (hudVram - OBJ_VRAM) >> 5;
+  // the HUD's tiles and colours (hudGraphics): the white and red digits, the ring and the face. The course select
+  // leaves them at the level's places in the sprites' video memory, which the original keeps (LevelInfo).
+  const LevelInfo *levelInfo = &LEVEL_INFO[level % 18];
+  hudGlyphTile = levelInfo->hudGlyphTile; hudRingTile = levelInfo->hudRingTile; hudFaceTile = levelInfo->hudFaceTile;
+  hudVram = OBJ_VRAM + hudGlyphTile * 32;
   uint32_t fontTiles, fontPalette, faceTiles, facePalette, ringTiles, ringPalette;
   UiSlot layout;
   ui_graphics(0, &fontTiles, &fontPalette, &layout);
@@ -560,15 +656,20 @@ void act_start(int level, int cardSkip, int preFrames) {
   ui_graphics(5, &ringTiles, &ringPalette, &layout);
   copy_rom(fontTiles + 32 * 32, hudVram + HUD_WHITE * 32, 22 * 32);
   copy_rom(fontTiles + 224 * 32, hudVram + HUD_RED * 32, 22 * 32);
-  copy_rom(ringTiles, hudVram + HUD_RING * 32, 16 * 32);
-  copy_rom(faceTiles, hudVram + HUD_FACE * 32, 4 * 32);
+  copy_rom(ringTiles, OBJ_VRAM + hudRingTile * 32, 16 * 32);
+  copy_rom(faceTiles, OBJ_VRAM + hudFaceTile * 32, 4 * 32);
   for (int i = 0; i < 16; i++) e.objPalette[6 * 16 + i] = (uint16_t)rom_u16(fontPalette + i * 2);
   for (int i = 0; i < 16; i++) e.objPalette[i] = (uint16_t)rom_u16(facePalette + i * 2);
   e.flags |= FLAGS_UPDATE_OBJ_PALETTES;
 
   // the frames before the recording starts: the title card to its end, then its few frames after it
   pre_run(cardSkip, preFrames);
+  // the act's music, as the course select leaves it: the music manager finds its player stopped on the title card's
+  // first frame and starts the stage's song, fading in from 1/64 (MusManager_UpdateBgmParams, music.js stageMusicIn).
+  // By now it has played through the title card and the frames after it
   play_song(act.stage.music);
+  gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4);
+  gba_sound_played_for(act.tick);
   gba_sound_frames_gone_by(118);
   act.hud.active = 1;
   act.started = 1;

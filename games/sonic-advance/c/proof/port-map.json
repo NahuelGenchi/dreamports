@@ -15,6 +15,7 @@
     ["0800E648","src/modeselect.c:97"],
     ["0800E798","src/modeselect.c:62"],
     ["0800E868","src/modeselect.c:123"],
+    ["08017920","src/actspot.c:96"],
     ["080184EC","src/gameselect.c:1"],
     ["08018700","src/gameselect.c:2"],
     ["08018A94","src/vsteams.c:2"],
@@ -106,7 +107,7 @@
     ["sub_80078D4","src/lines.c:25"],
     ["sub_8007958","src/lines.c:32"],
     ["sub_800FD9C","src/modeselect.c:185"],
-    ["sub_801E4E4","src/act.c:118"],
+    ["sub_801E4E4","src/act.c:145"],
     ["Task_800F058","src/modeselect.c:313"]
   ]
 }

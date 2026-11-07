@@ -356,6 +356,18 @@ static void composite_sprites(int priority, int start, int end, int ctl) {
   }
 }
 
+// mGBA draws a run's first tile on its own when the run starts partway into it (software-mode0.c,
+// DRAW_BACKGROUND_MODE_0_TILE_SUFFIX_16 and _256), and not quite as the console does when the run also ends inside
+// it: a flipped tile goes from the run's last pixel back, from the tile's first column, and a 256-colour one in two
+// halves of 4 pixels, the second from the tile's fifth column. The column of the tile's row that x shows, from the
+// run [start, end) inside the tile and the run's start in it, `mod8`, or 8 or more for none.
+static int first_tile_column(int x, int start, int end, int mod8, int is256, int hflip) {
+  if (hflip) return end - 1 - x;
+  if (!is256) return mod8 + x - start;
+  if (end - 4 > start) return x < end - 4 ? mod8 + x - start : 4 + x - (end - 4);
+  return 4 + (mod8 & 3) + x - start;
+}
+
 // a text background over [start, end) of line y
 static void draw_text(const Bg *bg, int y, int start, int end, int ctl) {
   if (!(ctl & (1 << bg->index))) return;
@@ -370,6 +382,9 @@ static void draw_text(const Bg *bg, int y, int start, int end, int ctl) {
   if (size == 2) y_base += in_y & 0x100;
   else if (size == 3) y_base += (in_y & 0x100) << 1;
   y_base = (screen_base >> 1) + (y_base << 2);
+  // the run's first tile, when it starts partway into one, ends at first_end
+  int mod8 = (start + hofs) & 7, first_end = mod8 ? start + 8 - mod8 : start;
+  if (first_end > end) first_end = end;
   for (int x = start; x < end; x++) {
     int local_x = (x + hofs) & 0x1FF;
     int x_base = local_x & 0xF8;
@@ -377,7 +392,9 @@ static void draw_text(const Bg *bg, int y, int start, int end, int ctl) {
     uint16_t map = vram16((uint32_t)(y_base + (x_base >> 3)) & 0xFFFF);
     int ty = in_y & 7, tx = local_x & 7;
     if (map & 0x800) ty = 7 - ty;
-    if (map & 0x400) tx = 7 - tx;
+    if (x < first_end) tx = first_tile_column(x, start, first_end, mod8, is256, map & 0x400);
+    else if (map & 0x400) tx = 7 - tx;
+    if (tx > 7) continue;
     int pixel;
     uint32_t color;
     if (is256) {

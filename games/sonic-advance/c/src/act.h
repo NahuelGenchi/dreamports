@@ -6,6 +6,7 @@
 
 #include "sa.h"
 
+#define ACT_LEVEL_SECRET_BASE_1 2
 #define ACT_LEVEL_X_ZONE 12
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
 #define ACT_LEVEL_BLOCKS 8192   // the largest layer, in 96 × 96 px blocks
@@ -21,8 +22,15 @@ typedef struct {
   uint16_t levelX, levelY, width, height;
 } Collision;
 
+// where the background scrolls, as backgrounds.js names each zone's update: only the ones the acts in C use
+enum { BG_SCROLL_NONE, BG_SCROLL_SECRET_BASE_1, BG_SCROLL_SECRET_BASE_2, BG_SCROLL_X_ZONE };
+
 typedef struct {
   int level, zone, act, music, hudFlash;
+  int backgroundScroll;      // BG_SCROLL_*
+  int spotlights;            // Secret Base act 1's, made after the stage init (engine/acts.js)
+  const uint16_t *paletteAnimations;
+  int paletteAnimationCount;
   Tilemap front, back, background;
   Collision collision;
   int32_t spawnX, spawnY;

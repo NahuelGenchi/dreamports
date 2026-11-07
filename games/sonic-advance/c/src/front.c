@@ -78,16 +78,15 @@ void front_vs_round(int level, int chao) {
 /** The round the VS menus chose, for the page: its level, or 0 while they are still choosing. */
 EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 
-// The acts in C so far: X Zone opens from a start point (level=12), its title card's state run without its pictures.
+// The acts in C so far open from a start point (level=...), their title card's state run without its pictures. No
+// title card is in C yet, so any other act stops the game there, the screen as it was, as before any act was in C.
 void front_play(int level) {
-  act_active = 1;
+  (void)level;
   int startLevel = (int)gba_start_number("level", -1);
-  if (startLevel >= 0) {
-    destroy_tasks(0x2000, 0x3000);
-    act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
-    return;
-  }
-  act_start(level, -1, 0);
+  if (startLevel < 0) { ctx.done = 1; return; }
+  act_active = 1;
+  destroy_tasks(0x2000, 0x3000);
+  act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
 }
 void front_start_demo(void) { ctx.done = 1; }
 

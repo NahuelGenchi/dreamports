@@ -385,6 +385,18 @@ export function createVideo() {
     return [flags >>> 0, useVariant ? variant : normal];
   }
 
+  // mGBA draws a run's first tile on its own when the run starts partway into it (software-mode0.c,
+  // DRAW_BACKGROUND_MODE_0_TILE_SUFFIX_16 and _256), and not quite as the console does when the run also ends
+  // inside it: a flipped tile goes from the run's last pixel back, from the tile's first column, and a 256-colour
+  // one in two halves of 4 pixels, the second from the tile's fifth column. The column of the tile's row that x
+  // shows, from the run [start, end) inside the tile and the run's start in it, `mod8`, or 8 or more for none.
+  function firstTileColumn(x, start, end, mod8, is256, hflip) {
+    if (hflip) return end - 1 - x;
+    if (!is256) return mod8 + x - start;
+    if (end - 4 > start) return x < end - 4 ? mod8 + x - start : 4 + x - (end - 4);
+    return 4 + (mod8 & 3) + x - start;
+  }
+
   // a text background over [start, end) of line y
   function drawText(bg, y, start, end, ctl) {
     if (!(ctl & (1 << bg.index))) return;
@@ -397,6 +409,9 @@ export function createVideo() {
     if (size === 2) yBase += inY & 0x100;
     else if (size === 3) yBase += (inY & 0x100) << 1;
     yBase = (screenBase >> 1) + (yBase << 2);
+    // the run's first tile, when it starts partway into one, ends at firstEnd
+    const mod8 = (start + hofs) & 7;
+    const firstEnd = Math.min(mod8 ? start + 8 - mod8 : start, end);
     for (let x = start; x < end; x++) {
       const localX = (x + hofs) & 0x1FF;
       let xBase = localX & 0xF8;
@@ -404,7 +419,9 @@ export function createVideo() {
       const map = vram16[(yBase + (xBase >> 3)) & 0xFFFF];
       let ty = inY & 7, tx = localX & 7;
       if (map & 0x800) ty = 7 - ty;
-      if (map & 0x400) tx = 7 - tx;
+      if (x < firstEnd) tx = firstTileColumn(x, start, firstEnd, mod8, is256, map & 0x400);
+      else if (map & 0x400) tx = 7 - tx;
+      if (tx > 7) continue;
       let pixel, color;
       if (is256) {
         pixel = vram[(charBase + ((map & 0x3FF) << 6) + (ty << 3) + tx) % 0x18000];
