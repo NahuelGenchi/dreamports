@@ -48,8 +48,10 @@ static void apply_start_point(void) {
   if (startPoint.emeralds >= 0) SAVE_CHAOS_EMERALDS = (uint8_t)(startPoint.emeralds & ALL_EMERALDS);
 }
 
-/** Game Start: the course select once the character has progress, or the act. */
+/** Game Start: the character select, unless a start point leaves it out, and then the course select once the
+ *  character has progress, or the act. */
 void front_start_game(void) {
+  if (ctx.select) { create_character_select(ctx.character); return; }
   apply_start_point();
   if (ctx.gameMode == GAME_MODE_TIME_ATTACK || save_unlocked_level(ctx.character) != 0) create_course_select();
   else front_play(-1);
