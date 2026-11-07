@@ -3,5 +3,12 @@
   "name": "Sonic Advance (USA)",
   "title": "SONICADVANCE",
   "code": "ASOE",
-  "sha1": "d842afa7dd1e84de08addb94a51506f1bcafd551"
+  "sha1": "d842afa7dd1e84de08addb94a51506f1bcafd551",
+  "shows": {
+    "character": {
+      "address": "03005084",
+      "bytes": 1,
+      "names": { "0": "Sonic", "1": "Tails", "2": "Knuckles", "3": "Amy" }
+    }
+  }
 }

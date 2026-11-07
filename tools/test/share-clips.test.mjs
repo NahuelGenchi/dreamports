@@ -67,6 +67,13 @@ test('each clip\'s lines say which recording it plays', () => {
   });
 });
 
+test('a clip\'s line says who the original\'s memory says it plays', () => {
+  withClips(clip => {
+    const made = { ...clip('a.mp4', 'first', 'shadow-moving'), shows: { fighter: 'Shadow' } };
+    assert.match(clipLines(TITLE, made, clipFiles('a-game', COMMIT, made, '2026-11-03'), SITE), /same button presses, and the original's fighter is Shadow\)/);
+  });
+});
+
 test('a clip from elsewhere has no recording to name', () => {
   withClips(clip => {
     const made = clip('a.mp4', 'first', null);
