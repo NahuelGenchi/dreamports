@@ -207,8 +207,8 @@ static void fill_layer(uint32_t dest, int layer, int camX, int camY) {
 // --- the camera (engine/camera.js createCamera and updateCamera) ---------------------------------------------------
 static void create_camera(Camera *c, const Player *p) {
   memset(c, 0, sizeof *c);
-  c->x = js_round(p->x) - SCREEN_W_ / 2;
-  c->y = js_round(p->y) - (SCREEN_H_ / 2 + 4);
+  c->x = (int)__builtin_floor(p->x) - SCREEN_W_ / 2;
+  c->y = (int)__builtin_floor(p->y) - (SCREEN_H_ / 2 + 4);
   c->targetX = c->x; c->targetY = c->y;
   c->offsetY = p->offsetY - 4;
   c->minX = 0; c->minY = 0;
@@ -225,11 +225,11 @@ static void camera_update(Camera *c, const Player *p) {
   else if (c->look < 0) c->look = c->look < -2 ? c->look + 2 : 0;
   if (c->freeze > 0) c->freeze--;
   else if (!c->locked) {
-    c->targetX = js_round(p->x) + c->shiftX - SCREEN_W_ / 2;
+    c->targetX = (int)__builtin_floor(p->x) + c->shiftX - SCREEN_W_ / 2;
     int want = (p->offsetY - 4) * (p->inverted ? -1 : 1);
     if (c->offsetY < want) c->offsetY = c->offsetY + 5 < want ? c->offsetY + 5 : want;
     else if (c->offsetY > want) c->offsetY = c->offsetY - 5 > want ? c->offsetY - 5 : want;
-    c->targetY = js_round(p->y) + c->shiftY - SCREEN_H_ / 2 + c->look + c->offsetY;
+    c->targetY = (int)__builtin_floor(p->y) + c->shiftY - SCREEN_H_ / 2 + c->look + c->offsetY;
   }
   int dx = (int)c->targetX - (int)c->x;
   if (dx > 8) c->x += dx - 8 > 16 ? 16 : dx - 8;
@@ -301,7 +301,7 @@ static void walk_input(Player *p, int dir, int sideways) {
   }
 }
 static void ground_sensors(Player *p) {
-  int x = js_round(p->x), y = js_round(p->y), soy = p->offsetY;
+  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y), soy = p->offsetY;
   int mode = (((p->rotation & 0xFF) + 0x20) & 0xC0) >> 6;
   Scan a, b; double speed;
   if (mode == 0) { a = scan(1, y + soy, x - 8, p->layer, 8); b = scan(1, y + soy, x + 8, p->layer, 8); speed = p->xsp; }
@@ -356,7 +356,7 @@ static void choose_animation(Player *p) {
     else {
       anim = SONIC_WALK; variant = 0;
       int s = (int)((q8(p->gsp) >> 4) & 0xFFFF);
-      speedAnim = s < ANIM_MIN_WALK ? ANIM_MIN_WALK : s > ANIM_NORMAL ? ANIM_NORMAL : s;
+      speedAnim = s < 9 ? 9 : s > ANIM_NORMAL ? ANIM_NORMAL : s;
     }
   } else if (p->state == PS_TURN || p->state == PS_BRAKE) { anim = SONIC_TURN; variant = 0; }
   if (p->idleT && p->state == PS_IDLE) p->idleT--;
@@ -430,7 +430,7 @@ static void card_update(int pressed) {
     act.cardDone = 1;
     act.clockStopped = 0;
     act.hud.active = 1;
-    act.hud.flash = 1;
+    act.hud.flash = act.stage.hudFlash;
   }
 }
 
@@ -455,7 +455,7 @@ static void draw_frame(void) {
 
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
   int right = act.player.facing > 0;
-  int sx = js_round(act.player.x) - camX, sy = js_round(act.player.y) - camY;
+  int sx = (int)__builtin_floor(act.player.x) - camX, sy = (int)__builtin_floor(act.player.y) - camY;
   sonic.oamFlags = ORDER_SONIC << 6;
   sonic.palId = 0;
   sonic.frameFlags = (uint16_t)((sonic.frameFlags & ~(SPRITE_PRIORITY | SPRITE_X_FLIP | SPRITE_Y_FLIP | SPRITE_ROT_SCALE | SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE)) | (2 << 12));
@@ -536,7 +536,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   create_camera(&act.cam, &act.player);
   act.lives = 3; act.score = 0; act.ringCount = 0;
   act.clockStopped = 1; act.firstCard = 1; act.cardFrame = 0;
-  act.hud.active = 0; act.hud.flash = 1;
+  act.hud.active = 0; act.hud.flash = act.stage.hudFlash;
   act.started = 0; act.drawn = 0;
   act.firstFrame = (int)gba_start_number("first", 0);
   e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
@@ -545,7 +545,7 @@ void act_start(int level, int cardSkip, int preFrames) {
 
   // Sonic's sprite: the player's tiles, colours and animation, at its own OAM order
   sprite_init(&sonic);
-  sonicVram = vram_malloc(256);
+  sonicVram = OBJ_VRAM;   // the player sprite's tiles are the first ones, as the original keeps them
   sonic.graphics.dest = sonicVram;
   sonic.graphics.anim = SONIC_IDLE; sonic.variant = 0; sonic.animSpeed = ANIM_NORMAL;
   sonic.palId = 0; sonic.oamFlags = ORDER_SONIC << 6; sonic.frameFlags = 2 << 12;
@@ -568,6 +568,8 @@ void act_start(int level, int cardSkip, int preFrames) {
 
   // the frames before the recording starts: the title card to its end, then its few frames after it
   pre_run(cardSkip, preFrames);
+  play_song(act.stage.music);
+  gba_sound_frames_gone_by(118);
   act.hud.active = 1;
   act.started = 1;
   create_task(act_task, NULL, 0x0F00, 0, NULL);

@@ -10,6 +10,7 @@
 // (rom/sound.js): 5 DirectSound channels, master volume 15, 10512 Hz and no reverb
 void game_start(void) {
   gba_sound_start(4, 5, 15, 10512, 0);
+  gba_sound_count_cycles();
   save_open();
   front_start();
   int level = (int)gba_start_number("level", -1);
