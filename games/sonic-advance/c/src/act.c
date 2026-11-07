@@ -10,7 +10,7 @@
 float *dp_sound_render(int count);
 
 enum {
-  OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC,
+  OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC, OFFSET_RINGS = 0x0B7F4C,
   LAYER_FRONT = 0, LAYER_BACK = 1, IGNORE_PLATFORMS = 0x80,
   SCREEN_W_ = 240, SCREEN_H_ = 160,
 };
@@ -24,8 +24,13 @@ static const LevelInfo LEVELS[] = {
 };
 // X Zone's stage init, which the act engine's first piece was written for
 static const LevelInfo X_ZONE_INFO = { 6, 0, 24, 90, 0, { { 0, 0 } }, 0 };
-enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD };
-enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6 };
+enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD,
+  PS_SPIN_ATTACK, PS_SOMERSAULT, PS_SLIDE, PS_SLIDE_END, PS_SPRING, PS_SPRING_RISE, PS_SPRING_PEAK, PS_SPRING_FALL,
+  PS_ACT_CLEAR_RUN, PS_BALANCE_FORWARD, PS_BALANCE_BACK, PS_PUSH };
+enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6, SONIC_BRAKE_TURN = 7, SONIC_SPIN = 8,
+  SONIC_BRAKE = 9, SONIC_SPRING = 11, SONIC_SPRING_RISE = 10, SONIC_SPRING_PEAK = 10, SONIC_SPRING_FALL = 10,
+  SONIC_SPIN_ATTACK = 51, SONIC_SOMERSAULT = 52, SONIC_SLIDE = 53, SONIC_SLIDE_END = 53, SONIC_PUSH = 12,
+  SONIC_HURT = 19, SONIC_DEAD = 21, SONIC_ACT_CLEAR_RUN = 22, SONIC_BALANCE_FORWARD = 13, SONIC_BALANCE_BACK = 14 };
 // the HUD's graphics sit at the reserved addresses sub_80538BC copies them to (vram_hardcoded.h): the white
 // digits at 0xD40, the red at 0xA80, the ring at 0x880 and the character's face at 0x800
 enum { HUD_GLYPHS = 11, HUD_WHITE_TILE = 84, HUD_RED_TILE = 106, HUD_RING_TILE = 68, HUD_FACE_TILE = 64 };
@@ -45,6 +50,30 @@ enum { ORDER_DIGITS = 2, ORDER_ICONS = 3, ORDER_SONIC = 16 };
 #define BORED_DELAY 360
 #define ANIM_NORMAL 0x10
 #define ANIM_MIN_WALK 0x08
+#define BALL_OFFSET_Y 9
+#define JUMP_SPEED 4.875
+#define GRAVITY (42.0 / 256)
+#define AIR_ACCELERATION (16.0 / 256)
+#define JUMP_RELEASE_CAP 3.0
+#define RISE_CAP 11.8125
+#define ROLL_FRICTION (4.0 / 256)
+#define ROLL_DECELERATION (24.0 / 256)
+#define SPIN_ATTACK_SPEED 2.0
+#define SOMERSAULT_SPEED 3.0
+#define SLIDE_SPEED 4.0
+#define ATTACK_FRICTION (8.0 / 256)
+#define SLIDE_FRICTION (32.0 / 256)
+#define WALL_MIN_SPEED 1.875
+#define SLIP_LOCK 30
+#define HURT_SPEED_X 2.0
+#define HURT_SPEED_Y 4.0
+#define INVULNERABLE_FRAMES 120
+#define DEAD_RESTART 61
+#define SONG_JUMP 116
+#define SONG_SPIN 109
+#define SONG_RING 117
+#define SONG_SPRING 170
+#define SONG_SPIKES 171
 
 Act act;
 /** Whether this is Neo Green Hill act 2, whose frame timing this engine worked out first; the acts before it keep
@@ -88,6 +117,11 @@ static int q8(double v) { return js_round(v * Q8); }
 static int toward0(int v, int step) { return v > 0 ? (v - step > 0 ? v - step : 0) : v < 0 ? (v + step < 0 ? v + step : 0) : 0; }
 static int sin8(int angle) { return SINE[(angle & 0xFF) * 4] >> 6; }
 static int cos8(int angle) { return SINE[(angle & 0xFF) * 4 + 256] >> 6; }
+static int ground_mode(int rot) {
+  int r = (int8_t)rot;
+  return ((r + (r > -0x20 && r <= 0 ? 0x20 : 0x1F)) & 0xFF) >> 6;
+}
+static int act_angle(const Player *p) { return p->inverted ? (-0x80 - p->rotation) & 0xFF : p->rotation; }
 
 // tileAt, columnHeight, rowWidth and angle (engine/terrain.js)
 static uint16_t tile_entry(int layer, int tx, int ty) {
@@ -280,7 +314,7 @@ static void camera_update(Camera *c, const Player *p) {
 static void set_offset_y(Player *p, int soy) {
   int dlt = soy - p->offsetY;
   if (!dlt) return;
-  int mode = (((p->rotation & 0xFF) + 0x20) & 0xC0) >> 6;
+  int mode = ground_mode(act_angle(p));
   if (mode == 0) p->y -= dlt; else if (mode == 1) p->x += dlt; else if (mode == 2) p->y += dlt; else p->x -= dlt;
   p->offsetY = soy;
 }
@@ -334,7 +368,7 @@ static void walk_input(Player *p, int dir, int sideways) {
 }
 static void ground_sensors(Player *p) {
   int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y), soy = p->offsetY;
-  int mode = (((p->rotation & 0xFF) + 0x20) & 0xC0) >> 6;
+  int mode = ground_mode(act_angle(p));
   Scan a, b; double speed;
   if (mode == 0) { a = scan(1, y + soy, x - 8, p->layer, 8); b = scan(1, y + soy, x + 8, p->layer, 8); speed = p->xsp; }
   else if (mode == 1) { a = scan(1, x - soy, y - 8, p->layer, -8); b = scan(1, x - soy, y + 8, p->layer, -8); speed = p->ysp; }
@@ -344,9 +378,11 @@ static void ground_sensors(Player *p) {
   if (b.hasRot) p->rotB = (uint8_t)b.rot;
   int val = a.d < b.d ? a.d : b.d, rot = a.d < b.d ? p->rotA : p->rotB;
   if (val < -11) return;
-  int limit = (int)__builtin_floor(__builtin_fabs(speed)) + 3;
-  if (limit > 11) limit = 11;
-  if (val > 0 && val > limit) { p->air = 1; p->pushing = 0; return; }
+  if (val > 0) {
+    int limit = (int)__builtin_floor(__builtin_fabs(speed)) + 3;
+    if (limit > 11) limit = 11;
+    if (val > limit) { p->air = 1; p->pushing = 0; return; }
+  }
   if (mode == 0) p->y += val; else if (mode == 1) p->x -= val; else if (mode == 2) p->y -= val; else p->x += val;
   if (!(rot & 1)) p->rotation = p->inverted ? (uint8_t)(-0x80 - rot) : (uint8_t)rot;
 }
@@ -363,45 +399,307 @@ static void bounds(Player *p) {
   if (p->y < act.cam.minY) { p->y = act.cam.minY; p->ysp = 0; p->gsp = 0; }
   if (p->inverted && p->y > maxY) { p->y = maxY; p->ysp = 0; p->gsp = 0; }
 }
+// --- Sonic's moves (engine/player.js, player_sonic.c and player.c) ----------------------------------------------
+static void curl(Player *p) { p->curled = 1; set_offset_y(p, BALL_OFFSET_Y); }
+static void uncurl(Player *p) { p->curled = 0; set_offset_y(p, SPRITE_OFFSET_Y); }
+static void upright(Player *p) {
+  int r = (int8_t)p->rotation;
+  p->rotation = (uint8_t)(r > 0 ? (r > 2 ? r - 2 : 0) : r < -2 ? r + 2 : 0);
+}
+static void tumble(Player *p) { upright(p); }
+static void roll_slope(Player *p) {
+  if (((p->rotation + 0x60) & 0xFF) >= 0xC0 || p->gsp == 0) return;
+  int acc = (sin8(p->rotation) * 60) >> 8;
+  if ((p->gsp > 0 && acc <= 0) || (p->gsp < 0 && acc >= 0)) acc >>= 2;
+  p->gsp = (q8(p->gsp) + acc) / Q8;
+}
+static void air_control(Player *p, int dir) {
+  if (p->airLock || !dir) return;
+  p->facing = dir;
+  double v = p->xsp + AIR_ACCELERATION * 2 * dir;
+  if (v * dir > MAX_RUN_SPEED) {
+    v -= AIR_ACCELERATION * 2 * dir;
+    if (v * dir < MAX_RUN_SPEED) v = MAX_RUN_SPEED * dir;
+  }
+  p->xsp = v;
+}
+static void air_drag(Player *p) {
+  double drag = (int)__builtin_floor(p->xsp * 256 / 32) / 256.0;
+  p->xsp = p->xsp > 0 ? (p->xsp - drag > 0 ? p->xsp - drag : 0) : p->xsp < 0 ? (p->xsp - drag < 0 ? p->xsp - drag : 0) : 0;
+}
+static int try_jump(Player *p, int jumpPressed) {
+  if (!jumpPressed) return 0;
+  p->air = 1; p->jumped = 1; p->pushing = 0; p->state = PS_SPIN;
+  int a = (p->rotation - 0x40) & 0xFF, jump = q8(JUMP_SPEED);
+  p->xsp = (q8(p->xsp) + ((jump * cos8(a)) >> 8)) / Q8;
+  p->ysp = (q8(p->ysp) + ((jump * sin8(a)) >> 8)) / Q8;
+  if (p->curled) p->airLock = 1; else curl(p);
+  play_song(SONG_JUMP);
+  return 1;
+}
+static void landing_speed(Player *p, int rot) {
+  int sign = (int8_t)rot < 0 ? -1 : 1;
+  if ((rot + 0x20) & 0x40) {
+    p->xsp = 0; p->ysp = p->ysp < 11.8125 ? p->ysp : 11.8125; p->gsp = __builtin_fabs(p->ysp) * sign;
+  } else if (!((rot + 0x10) & 0x20)) { p->ysp = 0; p->gsp = p->xsp; }
+  else { p->ysp = (int)(p->ysp * 128) / 256.0; p->gsp = __builtin_fabs(p->ysp) * sign; }
+}
+static void land(Player *p) {
+  p->air = 0; p->pushing = 0;
+  if (!p->actClear) p->state = PS_WALK;
+  if (p->curled) uncurl(p);
+  p->offsetY = SPRITE_OFFSET_Y;
+  p->airLock = 0;
+  p->attack = 0; p->attackNext = 0; p->midAir = 0; p->jumped = 0; p->spinDashing = 0;
+}
+static void dead_step(Player *p) {
+  if (!p->death) {
+    p->death = 1; p->state = PS_DEAD; p->xsp = 0; p->invulnerable = 2; p->pushing = 0;
+    p->attack = 0; p->attackNext = 0; p->midAir = 0; p->jumped = 0; p->spinDashing = 0;
+    act.clockStopped = 1;
+    return;
+  }
+  if (p->death == 1) {
+    double gone = act.cam.y + 160 + 80;
+    if (p->y >= gone) { p->death = 2; p->countdown = DEAD_RESTART; p->hidden = 1; return; }
+    move_player(p); p->ysp += GRAVITY;
+    return;
+  }
+  if (p->countdown) p->countdown--;
+}
+// a solid surface under him while falling, and the walls beside him (sub_8022190's cases that Sonic meets)
+static void air_collision(Player *p) {
+  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y), down = p->inverted ? -1 : 1;
+  if (p->ysp >= 0) {
+    Scan a = scan(1, y + p->offsetY, x - 8, p->layer, 8), b = scan(1, y + p->offsetY, x + 8, p->layer, 8);
+    int d = a.d < b.d ? a.d : b.d, rot = a.d < b.d ? (a.hasRot ? a.rot : p->rotA) : (b.hasRot ? b.rot : p->rotB);
+    if (d >= 0) return;
+    p->rotation = (uint8_t)rot; p->y += down * d; land(p); landing_speed(p, rot);
+  } else {
+    Scan a = scan(1, y - p->offsetY, x - 8, p->layer, -8), b = scan(1, y - p->offsetY, x + 8, p->layer, -8);
+    int d = a.d < b.d ? a.d : b.d;
+    if (d > 0) return;
+    p->y -= down * d; p->ysp = 0;
+  }
+}
+static void attack_step(Player *p, int attackPressed) {
+  switch (p->attack) {
+    case 0:
+      if (p->spinDashing || p->pushing || !attackPressed) return;
+      p->gsp = SPIN_ATTACK_SPEED * p->facing; p->xsp = 0; p->attack = 1; p->state = PS_SPIN_ATTACK;
+      play_song(SONG_SPIN);
+      return;
+    case 1:
+      p->gsp = toward0(q8(p->gsp), q8(ATTACK_FRICTION)) / Q8; along_surface(p);
+      if (p->gsp == 0) { p->state = PS_IDLE; p->attack = 0; }
+      if (attackPressed) { p->gsp = SOMERSAULT_SPEED * p->facing; p->attack = 2; p->attackNext = 0; p->state = PS_SOMERSAULT; play_song(SONG_SPIN); }
+      return;
+    case 2:
+      p->gsp = toward0(q8(p->gsp), q8(ATTACK_FRICTION)) / Q8; along_surface(p);
+      if (p->attackNext == 0 && attackPressed) p->attackNext = 1;
+      return;
+    case 3:
+      p->gsp = toward0(q8(p->gsp), q8(SLIDE_FRICTION)) / Q8; along_surface(p);
+      if (p->gsp == 0) { p->state = PS_SLIDE_END; p->attack = 4; }
+      return;
+  }
+}
+static void roll_step(Player *p, int dir) {
+  if (dir && !p->lock) {
+    if (p->gsp * dir >= 0) p->facing = dir;
+    else { p->gsp += ROLL_DECELERATION * dir; if (p->gsp * dir > 0) p->gsp = REVERSE_KICK * dir; }
+  }
+  p->gsp = toward0(q8(p->gsp), q8(ACCELERATION / 2)) / Q8;
+  if (p->gsp == 0) { uncurl(p); p->state = dir ? PS_WALK : PS_IDLE; }
+  along_surface(p);
+}
+static void hurt(Player *p) {
+  if (p->invulnerable || p->dead) return;
+  p->invulnerable = INVULNERABLE_FRAMES;
+  p->xsp = p->xsp < 0 || (p->xsp == 0 && p->facing < 0) ? HURT_SPEED_X : -HURT_SPEED_X;
+  p->ysp = -HURT_SPEED_Y;
+  p->air = 1; p->pushing = 0; p->airLock = 0; p->state = PS_HURT; uncurl(p);
+  p->attack = 0; p->attackNext = 0; p->midAir = 0; p->jumped = 0; p->spinDashing = 0;
+}
 static void step_player(Player *p, int left, int right, int up, int down, int jump, int jumpPressed, int attack, int attackPressed) {
   int sideways = left || right;
   int dir = left && !right ? -1 : right && !left ? 1 : 0;
-  (void)up; (void)down; (void)jump; (void)jumpPressed; (void)attack; (void)attackPressed;
-  if (p->dead) return;
+  (void)up; (void)down; (void)attack;
+  p->jumpPressed = jumpPressed; p->attackPressed = attackPressed;
+  if (p->dead) { dead_step(p); return; }
+  if (p->invulnerable > 1) p->invulnerable--;
   if (!p->air) {
-    slope(p);
-    walk_input(p, dir, sideways);
-    if (!sideways) p->gsp = toward0(q8(p->gsp), q8(FRICTION)) / Q8;
-    along_surface(p);
+    if (p->curled) {
+      if (try_jump(p, jumpPressed)) return;
+      roll_slope(p); roll_step(p, dir);
+    } else if (p->attack != 0) {
+      slope(p); attack_step(p, attackPressed);
+    } else {
+      if (attackPressed) { attack_step(p, attackPressed); if (p->attack) return; }
+      if (try_jump(p, jumpPressed)) return;
+      slope(p);
+      walk_input(p, dir, sideways);
+      if (!sideways) p->gsp = toward0(q8(p->gsp), q8(FRICTION)) / Q8;
+      along_surface(p);
+    }
+    bounds(p); move_player(p); follow_ground(p);
+  } else {
+    if (p->state == PS_HURT) {
+      bounds(p); move_player(p); p->ysp += GRAVITY; tumble(p); air_collision(p); return;
+    }
+    if (p->jumped) {
+      if (p->ysp < -JUMP_RELEASE_CAP) { if (!jump) p->ysp = -JUMP_RELEASE_CAP; }
+      else if (p->midAir == 0 && jumpPressed) { p->airLock = 0; p->midAir = 1; }
+    } else if (!p->forcedRoll && p->ysp < -RISE_CAP) p->ysp = -RISE_CAP;
+    air_control(p, dir);
+    if (p->ysp < 0) air_drag(p);
+    bounds(p); move_player(p); p->ysp += GRAVITY; tumble(p); air_collision(p);
   }
-  bounds(p);
-  move_player(p);
-  follow_ground(p);
 }
 
 // chooseAnimation and tickAnim (engine/player.js, engine/animator.js)
 static void choose_animation(Player *p) {
   int speed = (int)__builtin_fabs(p->gsp);
   int anim = SONIC_IDLE, variant = 0, speedAnim = ANIM_NORMAL;
-  if (p->state == PS_WALK) {
-    if (speed >= RUN_ANIM_SPEED) { anim = SONIC_RUN; variant = 0; }
-    else {
-      anim = SONIC_WALK; variant = 0;
-      int s = (int)((q8(p->gsp) >> 4) & 0xFFFF);
-      speedAnim = s < 9 ? 9 : s > ANIM_NORMAL ? ANIM_NORMAL : s;
-    }
-  } else if (p->state == PS_TURN || p->state == PS_BRAKE) { anim = SONIC_TURN; variant = 0; }
+  switch (p->state) {
+    case PS_WALK:
+      if (speed >= RUN_ANIM_SPEED) anim = SONIC_RUN;
+      else {
+        anim = SONIC_WALK;
+        int s = (int)((q8(p->gsp) >> 4) & 0xFFFF);
+        speedAnim = s < 8 ? 8 : s > ANIM_NORMAL ? ANIM_NORMAL : s;
+      }
+      break;
+    case PS_TURN: anim = SONIC_TURN; break;
+    case PS_BRAKE: anim = speed < BRAKE_MIN_SPEED ? SONIC_BRAKE_TURN : SONIC_BRAKE; break;
+    case PS_SPIN: anim = SONIC_SPIN; break;
+    case PS_SPIN_ATTACK: anim = SONIC_SPIN_ATTACK; break;
+    case PS_SOMERSAULT: anim = SONIC_SOMERSAULT; break;
+    case PS_SLIDE: anim = SONIC_SLIDE; break;
+    case PS_SLIDE_END: anim = SONIC_SLIDE_END; variant = 1; break;
+    case PS_HURT: anim = SONIC_HURT; break;
+    case PS_DEAD: anim = SONIC_DEAD; break;
+    case PS_PUSH: anim = SONIC_PUSH; break;
+    case PS_BALANCE_FORWARD: anim = SONIC_BALANCE_FORWARD; break;
+    case PS_BALANCE_BACK: anim = SONIC_BALANCE_BACK; break;
+    case PS_ACT_CLEAR_RUN: anim = SONIC_ACT_CLEAR_RUN; break;
+    case PS_SPRING: anim = SONIC_SPRING; break;
+    case PS_SPRING_RISE: anim = SONIC_SPRING_RISE; break;
+    case PS_SPRING_PEAK: anim = SONIC_SPRING_PEAK; variant = 1; break;
+    case PS_SPRING_FALL: anim = SONIC_SPRING_FALL; variant = 2; break;
+    default:
+      if (p->idleT == 0) anim = 1;   // bored
+      break;
+  }
   if (p->idleT && p->state == PS_IDLE) p->idleT--;
   p->anim = anim; p->variant = variant; p->animSpeed = speedAnim;
+}
+static void after_animation(Player *p) {
+  switch (p->state) {
+    case PS_SPIN_ATTACK:
+    case PS_SLIDE_END: p->attack = 0; p->state = p->gsp != 0 ? PS_WALK : PS_IDLE; break;
+    case PS_SOMERSAULT:
+      if (p->attackNext == 1) { p->gsp = SLIDE_SPEED * p->facing; p->attack = 3; p->attackNext = 0; p->state = PS_SLIDE; }
+      else { p->attack = 0; p->state = PS_IDLE; p->gsp = 0; }
+      break;
+    case PS_SPRING:
+    case PS_SPRING_PEAK: p->state = PS_SPRING_FALL; break;
+    case PS_SPRING_FALL: p->state = PS_WALK; break;
+  }
 }
 static void animate_player(Player *p) {
   choose_animation(p);
   sonic.graphics.anim = (uint16_t)p->anim;
   sonic.variant = (uint8_t)p->variant;
   sonic.animSpeed = (uint8_t)p->animSpeed;
-  update_sprite(&sonic, 0);
+  if (update_sprite(&sonic, 0) == 0) after_animation(p);
 }
 
+// --- the act's rings (engine/rings.js, rings_manager.c) ---------------------------------------------------------
+#define RING_MAX 512
+typedef struct { int x, y, taken; } Ring;
+static Ring rings[RING_MAX];
+static int ringTotal;
+static uint8_t ringData[32768];
+static Sprite ringSprite;
+
+static int rl_decompress(uint32_t at, uint8_t *out, int cap) {
+  uint32_t header = rom_u32(at);
+  if ((header & 0xFF) != 0x30) return 0;
+  int size = (int)(header >> 8), i = (int)at + 4, n = 0;
+  while (n < size && n < cap) {
+    uint8_t flag = (uint8_t)rom_u8(i++);
+    if (flag & 0x80) { uint8_t b = (uint8_t)rom_u8(i++); for (int k = (flag & 0x7F) + 3; k > 0 && n < size && n < cap; k--) out[n++] = b; }
+    else for (int k = (flag & 0x7F) + 1; k > 0 && n < size && n < cap; k--) out[n++] = (uint8_t)rom_u8(i++);
+  }
+  return n;
+}
+static uint32_t data32(const uint8_t *d, int at) { return d[at] | d[at + 1] << 8 | d[at + 2] << 16 | (uint32_t)d[at + 3] << 24; }
+static void load_rings(int level) {
+  ringTotal = 0;
+  uint32_t raw = rom_u32(OFFSET_RINGS + level * 4);
+  if (raw < ROM_BASE || raw >= ROM_BASE + gba_rom_size) return;
+  uint32_t table = raw - ROM_BASE;
+  int n = rl_decompress(table, ringData, sizeof ringData);
+  if (n < 12) return;
+  uint32_t rx = data32(ringData, 4), ry = data32(ringData, 8);
+  if (rx * ry > 4096) return;
+  for (uint32_t r = 0; r < rx * ry; r++) {
+    uint32_t off = data32(ringData, 12 + r * 4);
+    if (!off) continue;
+    for (int at = 4 + (int)off; at + 1 < n && ringData[at] != 0xFF; at += 2) {
+      if (ringTotal >= RING_MAX) return;
+      Ring *g = &rings[ringTotal++];
+      g->x = ringData[at] * 8 + (int)(r % rx) * 256;
+      g->y = ringData[at + 1] * 8 + (int)(r / rx) * 256;
+      g->taken = 0;
+    }
+  }
+}
+// a ring covers 16 × 16 px above its point (engine/rings.js touching)
+static int ring_touches(int px, int py, int oy, int rx, int ry) {
+  int l = px - 6, r = px + 6, t = py - oy, b = py + oy;
+  return ((rx - 8 <= l && rx + 8 >= l) || (rx - 8 >= l && r >= rx - 8))
+    && ((ry - 16 <= t && ry >= t) || (ry - 16 >= t && b >= ry - 16));
+}
+static void rings_init(void) {
+  for (int i = 0; i < ringTotal; i++) rings[i].taken = 0;
+  sprite_init(&ringSprite);
+  uint32_t dest = vram_malloc(16);
+  ringSprite.graphics.dest = dest == HEAP_END ? OBJ_VRAM + 0x1000 : dest;
+  ringSprite.graphics.anim = 707; ringSprite.variant = 0; ringSprite.animSpeed = ANIM_NORMAL;
+  ringSprite.palId = 1; ringSprite.oamFlags = 20 << 6; ringSprite.frameFlags = 2 << 12;   // its colours in row 7, away from the HUD's row 6
+}
+// addRing (game.js): the count, and the ring song on the second sound player for odd ones and the first for even
+static void ring_take(const Ring *g) {
+  act.ringCount++;
+  int odd = act.ringCount & 1, p = odd ? 2 : 1;
+  gba_sound_start_on(p, SONG_RING);
+  gba_sound_volume(p, 0xFF, 128);
+  gba_sound_pan(p, 0xFF, odd ? -64 : 64);
+  (void)g;
+}
+static void rings_collect(Player *p) {
+  if (!p || p->dead) return;
+  int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
+  for (int i = 0; i < ringTotal; i++) {
+    Ring *g = &rings[i];
+    if (g->taken) continue;
+    if (ring_touches(px, py, p->offsetY, g->x, g->y)) { g->taken = 1; ring_take(g); }
+  }
+}
+static void rings_update(void) { update_sprite(&ringSprite, 0); }
+static void rings_draw(int camX, int camY) {
+  for (int i = 0; i < ringTotal; i++) {
+    Ring *g = &rings[i];
+    if (g->taken) continue;
+    int sx = g->x - camX, sy = g->y - camY;
+    if (sx < -16 || sx > 256 || sy < 0 || sy - 16 > 160) continue;
+    ringSprite.x = (int16_t)(sx); ringSprite.y = (int16_t)(sy);
+    ringSprite.frameFlags = (ringSprite.frameFlags & ~(SPRITE_X_FLIP | SPRITE_Y_FLIP | SPRITE_PRIORITY)) | (2 << 12);
+    display_sprite(&ringSprite);
+  }
+}
 // --- the HUD (engine/hud.js) -------------------------------------------------------------------------------------
 static void put_oam(int order, int x, int y, int index, int tile, int pal, int prio) {
   int k = alloc_oam((uint32_t)order);
@@ -560,6 +858,8 @@ static void draw_frame(void) {
     e.bgScroll[6] = (uint16_t)bgX; e.bgScroll[7] = (uint16_t)bgY;
   }
 
+  rings_draw(camX, camY);
+
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
   int right = act.player.facing > 0;
   int sx = (int)__builtin_floor(act.player.x) - camX, sy = (int)__builtin_floor(act.player.y) - camY;
@@ -591,6 +891,8 @@ static void act_frame(void) {
   step_palettes();
   camera_update(&act.cam, &act.player);
   update_stage_animations(act.started);
+  rings_update();
+  rings_collect(&act.player);
   act.cam.bgUpdates++;
   int left = (e.input & KEY_LEFT) != 0, right = (e.input & KEY_RIGHT) != 0;
   int up = (e.input & KEY_UP) != 0, down = (e.input & KEY_DOWN) != 0;
@@ -638,6 +940,7 @@ static void pre_run(int cardSkip, int preFrames) {
     // stage's: the card's first frames run before their first step (CreatePaletteLoaderTask)
     if (!act2() || act.tick >= 16) step_palettes();
     camera_update(&act.cam, &act.player);
+    rings_update();
     if (!act2() || act.tick >= 17) update_stage_animations(0);
     if (!act.cardDone) card_update(cardSkip == act.tick);
     // the card holds the player, so his animation runs while nothing moves him; the recording's first frame
@@ -656,6 +959,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   memset(&act, 0, sizeof act);
   copyCount = 0;
   load_stage(level);
+  load_rings(level);
   for (int i = 0; i < paletteCount; i++) {
     Sprite *s = &paletteAnims[i].sprite;
     sprite_init(s);
@@ -665,6 +969,7 @@ void act_start(int level, int cardSkip, int preFrames) {
     s->palId = 0;
     if (act2()) s->frameFlags |= SPRITE_KEEP_TILES;   // 820's tiles command would write over Sonic's in OBJ VRAM
   }
+  rings_init();
   create_player(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);
   act.lives = 3; act.score = 0; act.ringCount = 0;

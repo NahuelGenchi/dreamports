@@ -47,6 +47,10 @@ typedef struct {
   int pos;              // the sprite's graphics, kept by the animation
   int dead, invulnerable, hidden, inverted, wasInverted;
   int heldDirs, pressedDirs;
+  int attack, attackNext, midAir, death, countdown;
+  int jumpPressed, attackPressed;
+  int actClear, forcedRoll, ignoreInput, lock;
+  int held[16], pressed[16];
 } Player;
 
 typedef struct {
@@ -66,6 +70,7 @@ typedef struct {
   Hud hud;
   int tick, courseTime, ringCount, lives, score;
   int clockStopped, cardFrame, cardDone, firstCard, started, preFrames, firstFrame, drawn;
+  int goalReached, actClear, livesLost, ringsStopped;
 } Act;
 
 extern Act act;
