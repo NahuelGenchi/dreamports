@@ -1,0 +1,23 @@
+{
+  "about": "Neo Green Hill Zone act 2 from its first frame after the title card, with Sonic running right to the act's first item box.",
+  "start": "level=1&card=80&pre=270&first=0&run=1",
+  "frames": 300,
+  "held": [
+    [0, ["RIGHT"]]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 4480,
+      "held": [
+        [150, ["A"]], [156, []], [3600, ["START"]], [3606, []], [3700, ["A"]], [3706, []],
+        [3790, ["A"]], [3796, []], [3860, ["A"]], [3866, []], [4060, ["DOWN"]], [4066, []],
+        [4120, ["A"]], [4126, []], [4200, ["A"]], [4206, []], [4210, ["RIGHT"]]
+      ],
+      "sets": [
+        { "frame": 3760, "address": "03005168", "bytes": 1, "value": 1 }
+      ],
+      "about": "From power-on with nothing saved: the language screen, the intro, the title and its menu, Sonic in the character select, the course select with act 1 cleared and act 2 chosen, act 2's title card, and Sonic running right."
+    }
+  ]
+}

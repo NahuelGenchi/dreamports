@@ -70,7 +70,7 @@ typedef struct {
   Hud hud;
   int tick, courseTime, ringCount, lives, score;
   int clockStopped, cardFrame, cardDone, firstCard, started, preFrames, firstFrame, drawn;
-  int goalReached, actClear, livesLost, ringsStopped;
+  int goalReached, actClear, livesLost, ringsStopped, preRight;
 } Act;
 
 extern Act act;

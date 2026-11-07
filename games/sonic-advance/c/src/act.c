@@ -10,7 +10,7 @@
 float *dp_sound_render(int count);
 
 enum {
-  OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC, OFFSET_RINGS = 0x0B7F4C,
+  OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC, OFFSET_RINGS = 0x0B7F4C, OFFSET_INTERACTABLES = 0x0B7F94, OFFSET_ITEMBOXES = 0x0B7FDC,
   LAYER_FRONT = 0, LAYER_BACK = 1, IGNORE_PLATFORMS = 0x80,
   SCREEN_W_ = 240, SCREEN_H_ = 160,
 };
@@ -700,6 +700,169 @@ static void rings_draw(int camX, int camY) {
     display_sprite(&ringSprite);
   }
 }
+// --- item boxes, springs and spikes (engine/itembox.js, springs.js, spikes.js) ----------------------------------
+#define ENT_MAX 32
+typedef struct { int kind, x, y, d[4], active, live, dy, vy, hopping, phase, n; Sprite box, icon; } Box;
+typedef struct { int kind, x, y, d[4], active, launching; Sprite s; } Obj;
+static Box boxes[ENT_MAX]; static int boxCount;
+static Obj springs[ENT_MAX], spikes[ENT_MAX]; static int springCount, spikeCount;
+
+static int read_grid(uint32_t table, int level, uint8_t *out, int cap) {
+  uint32_t raw = rom_u32(table + level * 4);
+  if (raw < ROM_BASE || raw >= ROM_BASE + gba_rom_size) return 0;
+  return rl_decompress(raw - ROM_BASE, out, cap);
+}
+static void load_entities(int level) {
+  static uint8_t data[32768];
+  boxCount = springCount = spikeCount = 0;
+  int n = read_grid(OFFSET_ITEMBOXES, level, data, sizeof data);
+  if (n >= 12) {
+    uint32_t rx = data32(data, 4), ry = data32(data, 8);
+    for (uint32_t r = 0; r < rx * ry && r < 4096; r++) {
+      uint32_t off = data32(data, 12 + r * 4); if (!off) continue;
+      for (int at = 4 + (int)off; at + 2 < n && data[at] != 0xFF && boxCount < ENT_MAX; at += 3) {
+        Box *b = &boxes[boxCount++];
+        b->kind = data[at + 2]; b->x = data[at] * 8 + (int)(r % rx) * 256; b->y = data[at + 1] * 8 + (int)(r / rx) * 256;
+        b->active = 0; b->live = 1; b->dy = b->vy = b->hopping = b->phase = b->n = 0;
+      }
+    }
+  }
+  n = read_grid(OFFSET_INTERACTABLES, level, data, sizeof data);
+  if (n >= 12) {
+    uint32_t rx = data32(data, 4), ry = data32(data, 8);
+    for (uint32_t r = 0; r < rx * ry && r < 4096; r++) {
+      uint32_t off = data32(data, 12 + r * 4); if (!off) continue;
+      for (int at = 4 + (int)off; at + 6 < n && data[at] != 0xFF; at += 7) {
+        int kind = data[at + 2], x = data[at] * 8 + (int)(r % rx) * 256, y = data[at + 1] * 8 + (int)(r / rx) * 256;
+        Obj *o = NULL;
+        if (kind >= 1 && kind <= 4 && spikeCount < ENT_MAX) o = &spikes[spikeCount++];
+        else if ((kind >= 8 && kind <= 15) || kind == 108) { if (springCount < ENT_MAX) o = &springs[springCount++]; }
+        if (!o) continue;
+        o->kind = kind; o->x = x; o->y = y; o->active = o->launching = 0;
+        for (int i = 0; i < 4; i++) o->d[i] = (int8_t)data[at + 3 + i];
+      }
+    }
+  }
+}
+static void entity_sprite(Sprite *sp, int anim, int variant, uint32_t tiles, int order) {
+  sprite_init(sp);
+  uint32_t dest = vram_malloc(tiles);
+  sp->graphics.dest = dest == HEAP_END ? OBJ_VRAM + 0x2000 : dest;
+  sp->graphics.anim = (uint16_t)anim; sp->variant = (uint8_t)variant; sp->animSpeed = ANIM_NORMAL;
+  sp->palId = 0; sp->oamFlags = (uint16_t)(order << 6); sp->frameFlags = 2 << 12;
+}
+static const int SPRING_ANIM[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 4, 4, 6, 6 };
+static void entities_init(void) {
+  for (int i = 0; i < boxCount; i++) {
+    Box *b = &boxes[i];
+    entity_sprite(&b->box, 705, 0, 16, 18);
+    entity_sprite(&b->icon, 706, b->kind == 0 ? 0 : b->kind == 5 ? 8 : b->kind + 4, 4, 19);
+  }
+  for (int i = 0; i < springCount; i++) {
+    Obj *o = &springs[i];
+    int v = o->kind >= 8 && o->kind <= 15 ? SPRING_ANIM[o->kind] : 0;
+    entity_sprite(&o->s, 455, v, 8, 18);
+  }
+  for (int i = 0; i < spikeCount; i++) {
+    Obj *o = &spikes[i];
+    int v = o->kind == 1 || o->kind == 2 ? 2 : 3;
+    entity_sprite(&o->s, 454, v, 8, 17);
+  }
+}
+static int ent_active(int x, int y) {
+  return x >= act.cam.x - 128 && x <= act.cam.x + 368 && y >= act.cam.y - 128 && y <= act.cam.y + 288;
+}
+static int hits(int x0, int y0, const Hitbox *b, int px, int py, const int *r) {
+  if (!b || b->index < 0) return 0;
+  int l0 = x0 + b->left, r0 = x0 + b->right, t0 = y0 + b->top, b0 = y0 + b->bottom;
+  int l1 = px + r[0], r1 = px + r[2], t1 = py + r[1], b1 = py + r[3];
+  return ((l0 <= l1 && r0 >= l1) || (l0 >= l1 && r1 >= l0)) && ((t0 <= t1 && b0 >= t1) || (t0 >= t1 && b1 >= t0));
+}
+static void body_rect(const Player *p, int *r) { r[0] = -6; r[1] = -p->offsetY; r[2] = 6; r[3] = p->offsetY; }
+static void attack_rect(const Player *p, int *r) { r[0] = sonic.hitboxes[1].left; r[1] = sonic.hitboxes[1].top; r[2] = sonic.hitboxes[1].right; r[3] = sonic.hitboxes[1].bottom; }
+static void break_box(Box *b) { b->phase = 1; b->n = 0; b->live = 0; play_song(167); }
+static void boxes_step(Player *p) {
+  int body[4], attack[4]; body_rect(p, body);
+  int hasAttack = sonic.hitboxes[1].index >= 0; if (hasAttack) attack_rect(p, attack);
+  for (int i = 0; i < boxCount; i++) {
+    Box *b = &boxes[i];
+    b->active = ent_active(b->x, b->y);
+    if (!b->active) continue;
+    if (b->phase == 1) {
+      b->dy--;
+      if (++b->n > 60) b->phase = 2;
+      continue;
+    } else if (b->phase == 2) {
+      if (++b->n > 90) b->live = 0;
+      continue;
+    }
+    if (b->live && hasAttack && hits(b->x, b->y + b->dy, &b->box.hitboxes[0], (int)__builtin_floor(p->x), (int)__builtin_floor(p->y), attack)) {
+      break_box(b); continue;
+    }
+    int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
+    const Hitbox *hb = &b->box.hitboxes[0];
+    if (hb->index >= 0 && hits(b->x, b->y + b->dy, hb, px, py, body)) {
+      int top = b->y + b->dy + hb->top, bottom = b->y + b->dy + hb->bottom;
+      if (!p->air && p->ysp >= 0 && py - p->offsetY < top) {
+        p->y = top - p->offsetY + (p->y - py); p->ysp = 0; p->gsp = p->xsp; p->air = 0; p->state = PS_WALK;
+      } else if (p->air && p->ysp >= 0 && py <= top + 8) {
+        p->y = top - p->offsetY + (p->y - py); p->ysp = 0; p->gsp = p->xsp; p->air = 0; p->state = PS_WALK;
+      } else {
+        int left = b->x + hb->left, right = b->x + hb->right;
+        if (px < b->x) p->x = left - 7; else p->x = right + 7;
+        p->xsp = 0; p->gsp = 0;
+      }
+    }
+  }
+}
+static void springs_step(Player *p) {
+  int body[4]; body_rect(p, body);
+  for (int i = 0; i < springCount; i++) {
+    Obj *o = &springs[i];
+    o->active = ent_active(o->x, o->y);
+    if (!o->active) continue;
+    const Hitbox *hb = &o->s.hitboxes[0];
+    int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
+    if (!hits(o->x, o->y, hb, px, py, body)) continue;
+    int speed = o->d[0] >= 0 && o->d[0] <= 3 ? (int)((double[]){7.5, 9, 10.5, 12}[o->d[0]]) : (o->d[1] << 4) / 256;
+    if (o->kind == 8 || o->kind == 12 || o->kind == 13 || o->kind == 14 || o->kind == 15) {
+      if (o->kind == 12 || o->kind == 13 || o->kind == 14 || o->kind == 15) {
+        int dir = (o->kind == 12 || o->kind == 14) ? -1 : 1;
+        p->xsp = speed * dir; p->ysp = -speed; p->air = 1; p->state = PS_SPRING;
+      } else { p->ysp = -speed; p->air = 1; p->state = PS_SPRING; }
+      play_song(170);
+    } else if (o->kind == 10 || o->kind == 11) {
+      int dir = o->kind == 10 ? -1 : 1;
+      p->xsp = p->gsp = speed * dir; p->facing = dir; p->air = 0; p->state = PS_WALK; play_song(170);
+    }
+  }
+}
+static void spikes_step(Player *p) {
+  int body[4]; body_rect(p, body);
+  for (int i = 0; i < spikeCount; i++) {
+    Obj *o = &spikes[i];
+    o->active = ent_active(o->x, o->y);
+    if (!o->active || p->invulnerable || p->dead) continue;
+    if (hits(o->x, o->y, &o->s.hitboxes[0], (int)__builtin_floor(p->x), (int)__builtin_floor(p->y), body)) {
+      hurt(p); play_song(171);
+    }
+  }
+}
+static void entities_step(Player *p) { boxes_step(p); springs_step(p); spikes_step(p); }
+static void entities_draw(int camX, int camY) {
+  for (int i = 0; i < boxCount; i++) {
+    Box *b = &boxes[i]; if (!b->active) continue;
+    if (b->phase != 2) { b->box.x = (int16_t)(b->x - camX); b->box.y = (int16_t)(b->y + b->dy - camY); display_sprite(&b->box); }
+    if (b->phase == 1 || b->phase == 2) { b->icon.x = (int16_t)(b->x - camX); b->icon.y = (int16_t)(b->y + b->dy - camY); display_sprite(&b->icon); }
+  }
+  for (int i = 0; i < springCount; i++) { Obj *o = &springs[i]; if (!o->active) continue; o->s.x = (int16_t)(o->x - camX); o->s.y = (int16_t)(o->y - camY); display_sprite(&o->s); }
+  for (int i = 0; i < spikeCount; i++) { Obj *o = &spikes[i]; if (!o->active) continue; o->s.x = (int16_t)(o->x - camX); o->s.y = (int16_t)(o->y - camY); display_sprite(&o->s); }
+}
+static void entities_update(void) {
+  for (int i = 0; i < boxCount; i++) if (boxes[i].active) { update_sprite(&boxes[i].box, 0); update_sprite(&boxes[i].icon, 0); }
+  for (int i = 0; i < springCount; i++) if (springs[i].active) update_sprite(&springs[i].s, 0);
+  for (int i = 0; i < spikeCount; i++) if (spikes[i].active) update_sprite(&spikes[i].s, 0);
+}
 // --- the HUD (engine/hud.js) -------------------------------------------------------------------------------------
 static void put_oam(int order, int x, int y, int index, int tile, int pal, int prio) {
   int k = alloc_oam((uint32_t)order);
@@ -859,6 +1022,7 @@ static void draw_frame(void) {
   }
 
   rings_draw(camX, camY);
+  entities_draw(camX, camY);
 
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
   int right = act.player.facing > 0;
@@ -893,6 +1057,8 @@ static void act_frame(void) {
   update_stage_animations(act.started);
   rings_update();
   rings_collect(&act.player);
+  entities_update();
+  entities_step(&act.player);
   act.cam.bgUpdates++;
   int left = (e.input & KEY_LEFT) != 0, right = (e.input & KEY_RIGHT) != 0;
   int up = (e.input & KEY_UP) != 0, down = (e.input & KEY_DOWN) != 0;
@@ -946,7 +1112,7 @@ static void pre_run(int cardSkip, int preFrames) {
     // the card holds the player, so his animation runs while nothing moves him; the recording's first frame
     // starts the play. He is made a moment into the card, as the stage's loading ends (InitializePlayer), so his
     // animation is not stepped on its first frames.
-    step_player(&act.player, 0, 0, 0, 0, 0, 0, 0, 0);
+    step_player(&act.player, 0, act.preRight && act.cardDone ? 1 : 0, 0, 0, 0, 0, 0, 0);
     if (!act2() || act.tick >= 15) animate_player(&act.player);
     if (wasDone) { hud_update(0); after++; }
     // the course clock starts on the frame after the card ends, not on the one it ends
@@ -960,6 +1126,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   copyCount = 0;
   load_stage(level);
   load_rings(level);
+  load_entities(level);
   for (int i = 0; i < paletteCount; i++) {
     Sprite *s = &paletteAnims[i].sprite;
     sprite_init(s);
@@ -970,6 +1137,7 @@ void act_start(int level, int cardSkip, int preFrames) {
     if (act2()) s->frameFlags |= SPRITE_KEEP_TILES;   // 820's tiles command would write over Sonic's in OBJ VRAM
   }
   rings_init();
+  entities_init();
   create_player(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);
   act.lives = 3; act.score = 0; act.ringCount = 0;
@@ -977,6 +1145,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   act.hud.active = 0; act.hud.flash = act2() ? (act.stage.hudFlash + 7) & 31 : act.stage.hudFlash;
   act.started = 0; act.drawn = 0;
   act.firstFrame = (int)gba_start_number("first", 0);
+  act.preRight = (int)gba_start_number("run", 0);
   e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
   e.winRegs[0] = e.winRegs[1] = e.winRegs[2] = e.winRegs[3] = 0;
   e.winRegs[4] = 0x3F3F; e.winRegs[5] = 0x1F;
