@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { freeOrder, needsProblems, pieceOf, planOf, taskTitle, whatCanStart } from '../../src/lib/pieces.mjs';
+import { freeOrder, inReview, needsProblems, pieceOf, planOf, taskTitle, whatCanStart } from '../../src/lib/pieces.mjs';
 import { proofOf } from '../../src/lib/entries.mjs';
 
 const file = {
@@ -73,6 +73,41 @@ test('a closed issue finishes what needs it, and so does a piece the team build 
   assert.deepEqual(numbers(whatCanStart(closed, file).free), [1, 2, 4]);
   const { free } = whatCanStart(closed, file, new Set([1]));
   assert.deepEqual(numbers(free), [2, 3, 4], 'the menu is in the team build, so Battle can start, and the menu is nobody\'s to take');
+});
+
+test('a pull request that isn\'t a draft has the tasks it closes in review', () => {
+  const pulls = [
+    { number: 20, draft: false, body: 'Closes #5\n\nAlso fixes: #6, and refs #1.' },
+    { number: 21, draft: true, body: 'Closes #4' },
+    { number: 22, draft: false, body: 'Resolves NahuelGenchi/dreamports#3 and closes other/repo#2' },
+    { number: 19, draft: false, body: 'closes #5' },
+    { number: 23, draft: false, state: 'closed', body: 'Closes #7' },
+    { number: 24, draft: false, body: null },
+  ];
+  assert.deepEqual([...inReview(pulls, 'NahuelGenchi/dreamports')], [[5, 19], [6, 20], [3, 22]], 'the first pull request for a task, no draft, no other repository, no "refs"');
+});
+
+test('a piece whose unfinished needs are all in review is free, on top of their pull requests', () => {
+  const claimed = pieces.map(p => (p.number === 6 ? { ...p, state: 'closed' } : p.number === 5 ? { ...p, assignees: [{ login: 'someone' }] } : p));
+  const before = whatCanStart(claimed, file);
+  assert.deepEqual(numbers(before.free), [1, 4], 'the fighting is claimed, so Story waits');
+  const reviewing = new Map([[5, 30]]);
+  const { free, waiting, buildsOn } = whatCanStart(claimed, file, new Set(), { reviewing });
+  assert.deepEqual(numbers(free), [1, 2, 4], 'Story starts on top of the fighting\'s pull request');
+  assert.deepEqual(buildsOn(claimed[1]), [{ name: 'The fighting', number: 5, pull: 30 }]);
+  assert.deepEqual(buildsOn(claimed[0]), [], 'the menu needs nothing unfinished');
+  assert.deepEqual(waiting.map(w => [w.piece.number, w.on]), [[3, [{ name: 'The fighting', number: 5, pull: 30 }, { name: 'The menu', number: 1 }]]], 'Battle also needs the menu, which nobody has finished');
+  const both = whatCanStart(claimed, file, new Set(), { reviewing: new Map([[5, 30], [1, 31]]) });
+  assert.deepEqual(numbers(both.free), [2, 3, 4], 'with the menu in review too, Battle starts on both, and the menu is nobody\'s to take');
+  assert.deepEqual(both.buildsOn(claimed[2]).map(b => b.pull), [30, 31]);
+});
+
+test('a piece in C starts on top of the same piece in JavaScript while that one is in review', () => {
+  const twins = [piece(1, 'Task: Options'), piece(2, 'Task: Options in C')];
+  assert.deepEqual(numbers(whatCanStart(twins, file).free), [1]);
+  const { free, buildsOn } = whatCanStart(twins, file, new Set(), { reviewing: new Map([[1, 40]]) });
+  assert.deepEqual(numbers(free), [2]);
+  assert.deepEqual(buildsOn(twins[1]), [{ name: 'Options', number: 1, pull: 40 }]);
 });
 
 test('a piece parts.json doesn\'t list waits on nothing, and no parts.json leaves every piece free', () => {

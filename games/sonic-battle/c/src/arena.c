@@ -268,11 +268,11 @@ void drawArenaThings(void) {
     screenFromView(vx, vy, &vx, &vy);
     int left = (uint16_t)vx, top = (uint16_t)vy;
     switch (read8(thing + THING_SIZE_KIND)) {
-      case 0: left -= 8; top -= 8; depth = (top - 1) & 0xFFFF; break;
-      case 1: left -= 16; top -= 8; depth = (top - 1) & 0xFFFF; break;
-      case 2: left -= 8; top -= 16; depth = (top - 2) & 0xFFFF; break;
-      case 3: left -= 16; top -= 16; depth = (top - 2) & 0xFFFF; break;
-      case 4: left -= 4; top -= 4; depth = top; break;
+      case 0: depth = (top - 1) & 0xFFFF; left -= 8; top -= 8; break;
+      case 1: depth = (top - 1) & 0xFFFF; left -= 16; top -= 8; break;
+      case 2: depth = (top - 2) & 0xFFFF; left -= 8; top -= 16; break;
+      case 3: depth = (top - 2) & 0xFFFF; left -= 16; top -= 16; break;
+      case 4: depth = top; left -= 4; top -= 4; break;
       default: break;
     }
     write16(thing + THING_X, (uint16_t)left);

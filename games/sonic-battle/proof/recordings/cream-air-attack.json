@@ -1,6 +1,6 @@
 {
   "about": "Cream's air attack, from a start point at Training's first frame a player can move: Cream as the player and a Sonic that does nothing. Cream runs up to the other fighter, jumps, and B in the air comes down on it.",
-  "start": "fight=training&vblanks=1209&character=4&opening=400",
+  "start": "fight=training&vblanks=1209&you=4&opening=400",
   "frames": 240,
   "held": [
     [

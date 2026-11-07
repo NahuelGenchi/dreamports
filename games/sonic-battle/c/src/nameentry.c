@@ -11,6 +11,7 @@
 
 #include "game.h"
 #include "nameentry.h"
+#include "text.h"
 
 #define ROM(addr) (gba_rom + ((addr) - CARTRIDGE))
 
@@ -18,12 +19,6 @@
 #define REGISTERS 0x08156C70u
 #define REGISTER_COUNT 16
 
-// the font: 32 bytes of pixels for each letter, each one's width, and for each byte of pixels, what it keeps of a word
-// of VRAM and which of its nibbles it sets
-#define GLYPHS 0x08071B7Cu
-#define WIDTHS 0x0807173Cu
-#define KEEP 0x0807A37Cu
-#define SPREAD 0x0807A77Cu
 #define TEXT_COLOUR 2
 #define LETTER_ROOM 16
 
@@ -50,6 +45,8 @@
 #define SQUARE 0x081581F4u
 
 #define NAME_SONG 4
+// 0x08036560's unpacking runs past a V-blank and starts the screen's song 163,059 cycles into the next frame, as mGBA measures it
+#define NAME_SONG_START_CYCLE 163059
 #define SOUND_MOVE 401
 #define SOUND_LETTER 402
 #define SOUND_BACK 403
@@ -230,7 +227,6 @@ typedef struct {
 
 static Entry entry;
 static int savingFrames;
-static int textTo, textEnd, textStride, textRows, textBlock;
 
 static void fadeIn(Node *node);
 static void entering(Node *node);
@@ -245,43 +241,6 @@ static void nameFrameScreen(void);
 static void nameSavingScreen(void);
 static void nameDisplayOnScreen(void);
 static void nameSetUpScreen(void);
-
-/** 0x08020f64: a letter's width. */
-static int glyphWidth(uint16_t glyph) { return gba_rom[WIDTHS - CARTRIDGE + (glyph & 0x7FFF)]; }
-
-/** A byte of a letter's pixels into a word of VRAM, with `colour` where the byte's bits are set. */
-static void putPixels(uint32_t at, uint8_t pixels, int colour) {
-  if (!pixels || at >= (uint32_t)textEnd) return;
-  uint32_t word = (uint32_t)gba_vram[at] | ((uint32_t)gba_vram[at + 1] << 8) |
-                  ((uint32_t)gba_vram[at + 2] << 16) | ((uint32_t)gba_vram[at + 3] << 24);
-  const uint8_t *keep = ROM(KEEP + (uint32_t)pixels * 4), *spread = ROM(SPREAD + (uint32_t)pixels * 4);
-  uint32_t keepWord = (uint32_t)keep[0] | ((uint32_t)keep[1] << 8) | ((uint32_t)keep[2] << 16) | ((uint32_t)keep[3] << 24);
-  uint32_t spreadWord = (uint32_t)spread[0] | ((uint32_t)spread[1] << 8) | ((uint32_t)spread[2] << 16) | ((uint32_t)spread[3] << 24);
-  uint32_t out = (word & keepWord) | (spreadWord * (uint32_t)colour);
-  gba_vram[at] = out & 0xFF; gba_vram[at + 1] = (out >> 8) & 0xFF;
-  gba_vram[at + 2] = (out >> 16) & 0xFF; gba_vram[at + 3] = out >> 24;
-}
-
-/** 0x08020ecc: the stretch of VRAM at `to`, `width` by `height` tiles, that the next letters go into. */
-static void textInto(uint32_t to, int width, int height) {
-  textTo = (int)(to - VRAM); textEnd = textTo + width * height * 32;
-  textStride = height * 8; textRows = height * 8; textBlock = height * 16;
-}
-
-/** 0x08020978: a letter into the stretch, at `x` and `y` in pixels, over as many as three columns of tiles. */
-static void putGlyph(int x, int y, uint16_t glyph, int colour) {
-  const uint8_t *bytes = gba_rom;
-  int shift = x & 7;
-  uint32_t source = GLYPHS - CARTRIDGE + ((uint32_t)(glyph & 0x7FFF) << 5);
-  int count = textRows <= y ? 0 : textRows - y < 16 ? textRows - y : 16;
-  for (int i = 0; i < count; i++) {
-    uint32_t at = (uint32_t)textTo + (uint32_t)(((x >> 3) * textStride + y + i) * 4);
-    uint8_t first = bytes[source + i * 2], second = bytes[source + i * 2 + 1];
-    putPixels(at, (uint8_t)((first << shift) & 0xFF), colour);
-    putPixels(at + (uint32_t)textStride * 4, (uint8_t)(((first >> (8 - shift)) | (second << shift)) & 0xFF), colour);
-    putPixels(at + (uint32_t)textBlock * 4, (uint8_t)((second >> (8 - shift)) & 0xFF), colour);
-  }
-}
 
 /** A letter in the middle of the 16 pixels it has. */
 static void putCentred(int x, int y, uint16_t glyph) {
@@ -425,7 +384,7 @@ static void nameSetUpScreen(void) {
 /** 0x08036560's last step: it runs past a V-blank, and the display and the song come as it ends. */
 static void nameDisplayOnScreen(void) {
   queueRegister(REG_DISPCNT, DISPCNT_ON);
-  gba_sound_wave_at(163059);   // where the song's start comes in its frame, as mGBA measures it
+  gba_sound_wave_at(g.restarted ? 136311 : NAME_SONG_START_CYCLE);
   gba_sound_play(NAME_SONG);
   g.callback = nameFrameScreen;
 }

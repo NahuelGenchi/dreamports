@@ -1,6 +1,6 @@
 {
   "about": "Cream's air Power special, from a start point at Training's first frame a player can move: Cream as the player, with Power as the second special so the air one is Power. Cream jumps where she stands and R in the air for the Power attack.",
-  "start": "fight=training&vblanks=1209&character=4&opening=400",
+  "start": "fight=training&vblanks=1209&you=4&opening=400",
   "frames": 240,
   "held": [
     [

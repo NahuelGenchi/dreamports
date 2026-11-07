@@ -1,0 +1,211 @@
+{
+  "about": "Chaos's moves and attacks, from a start point: Training's seventh character replaced by Chaos, as Battle mode's unlocked fighters have him, on the seventh map. The opening's three presses of A, then running, jumping, the ground combo that throws the other fighter back and fills the gauges, and the air attacks.",
+  "start": "fight=training&vblanks=1209&you=10&arena=6&colour=9",
+  "frames": 760,
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      70,
+      [
+        "A"
+      ]
+    ],
+    [
+      72,
+      []
+    ],
+    [
+      100,
+      [
+        "A"
+      ]
+    ],
+    [
+      102,
+      []
+    ],
+    [
+      130,
+      [
+        "A"
+      ]
+    ],
+    [
+      132,
+      []
+    ],
+    [
+      400,
+      [
+        "RIGHT",
+        "DOWN"
+      ]
+    ],
+    [
+      426,
+      []
+    ],
+    [
+      450,
+      [
+        "A"
+      ]
+    ],
+    [
+      452,
+      []
+    ],
+    [
+      526,
+      [
+        "B"
+      ]
+    ],
+    [
+      528,
+      []
+    ],
+    [
+      530,
+      [
+        "B"
+      ]
+    ],
+    [
+      532,
+      []
+    ],
+    [
+      600,
+      [
+        "B"
+      ]
+    ],
+    [
+      602,
+      []
+    ],
+    [
+      612,
+      [
+        "B"
+      ]
+    ],
+    [
+      614,
+      []
+    ],
+    [
+      624,
+      [
+        "B"
+      ]
+    ],
+    [
+      626,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 1254,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          747,
+          [
+            "START"
+          ]
+        ],
+        [
+          748,
+          []
+        ],
+        [
+          881,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          882,
+          []
+        ],
+        [
+          921,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          922,
+          []
+        ],
+        [
+          961,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          962,
+          []
+        ],
+        [
+          1001,
+          [
+            "A"
+          ]
+        ],
+        [
+          1002,
+          []
+        ],
+        [
+          1201,
+          [
+            "START"
+          ]
+        ],
+        [
+          1202,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 778,
+          "address": "03002170",
+          "bytes": 2,
+          "value": 1
+        },
+        {
+          "frame": 1201,
+          "address": "030053f8",
+          "bytes": 1,
+          "value": 7
+        },
+        {
+          "frame": 1201,
+          "address": "030053e0",
+          "bytes": 1,
+          "value": 6
+        },
+        {
+          "frame": 1201,
+          "address": "030052d7",
+          "bytes": 1,
+          "value": 10
+        }
+      ],
+      "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, Start on its first choices with Training's seventh character replaced by Chaos and the seventh map."
+    }
+  ]
+}

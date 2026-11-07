@@ -1,7 +1,9 @@
-// moves.js in C: the fight's frame in Training mode and the fighters' state machines, as far as a fight's opening
-// reaches: both fighters drop from above, land and stand, with nothing pressed. Each fighter's record is 252 bytes in
-// work RAM, and what's not reached yet says so when it is: a trap, naming the original's function, in place of each path
-// left out.
+// moves.js in C: the fight's frame in Training mode and the fighters' state machines. A fighter's frame reads its keys
+// (0x08005310), runs the script of its state (0x08007ec8 and 0x0800290c), moves (0x0800597c and 0x080127d0), takes the
+// hits that reached it (0x080036dc and 0x080040fa), reaches others with its attacks (0x08006134 and 0x080066d8) and
+// takes its next state (0x0800486c, 0x0800444c and 0x08001b0c), with the way the pad faces (0x080034f0) turning an
+// aimed attack. Each fighter's record is 252 bytes in work RAM, and what's not reached yet says so when it is: a trap,
+// naming the original's function, in place of each path left out.
 
 #include "game.h"
 
@@ -639,20 +641,20 @@ void moveFighter(int i) {
   Meeting met = meetWalls(reads16(rec + X), reads16(rec + Y), reads16(rec + OLD_X), reads16(rec + OLD_Y));
   write8(rec + BUMPED, (uint8_t)met.bits);
   if (met.bits & 15) {
-    if (reads16(rec + Z) >= reads16(rec + FLOOR)) { met.wallX = 0; met.wallY = 0; }
+    if (reads16(rec + Z) >= reads16(FLOOR)) { met.wallX = 0; met.wallY = 0; }
     if (met.wallX == 0 && met.wallY == 0) {
       write8(rec + BUMPED, read8(rec + BUMPED) & 0xF0);
-      uint16_t floor = read16(rec + FLOOR);
+      uint16_t floor = read16(FLOOR);
       write16(rec + GROUND, floor);
       if (reads16(rec + Z) < s16(floor)) write16(rec + Z, floor);
     } else if (read16(rec + STATE) == 255) {
       write8(rec + BUMPED, read8(rec + BUMPED) & 0xF0);
-      write16(rec + GROUND, read16(rec + FLOOR));
+      write16(rec + GROUND, read16(FLOOR));
     } else write16(rec + GROUND, 0);
   } else write16(rec + GROUND, 0);
   if (read16(rec + STATE) == 255) write16(rec + Z, i == (int)read32(PLAYER_) ? read16(rec + GROUND) : 80);
   if ((character == 2 && state == 278) || (character == 3 && state == 0x115)) {
-    if (read8(rec + BUMPED) & 15) write16(rec + GROUND, read16(rec + FLOOR));
+    if (read8(rec + BUMPED) & 15) write16(rec + GROUND, read16(FLOOR));
     write8(rec + BUMPED, read8(rec + BUMPED) & 0xF0);
   }
   int bumped = read8(rec + BUMPED);
@@ -688,7 +690,7 @@ static void pushApart(int i, int j) {
   int push = ((near - (uint32_t)distance) >> 16) << ((read32(rec + FLAGS) & 1) ? 7 : 5);
   if ((dx < 0 ? -dx : dx) < (dy < 0 ? -dy : dy)) {
     write16(rec + SPEED_X, (uint16_t)(read16(rec + SPEED_X) + (x > reads16(other + X) ? push : -push)));
-  } else write16(rec + SPEED_Y, (uint16_t)(read16(rec + Y) + (y > reads16(other + Y) ? push : -push)));
+  } else write16(rec + SPEED_Y, (uint16_t)(read16(rec + SPEED_Y) + (y > reads16(other + Y) ? push : -push)));
 }
 
 static const uint32_t REACTION_FLAGS = 0x800u | 0x80u | 0x20u | 0x40u | 0x10u | 0x8u | 0x200u | 0x100u | 0x400u

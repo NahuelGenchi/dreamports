@@ -29,6 +29,8 @@ on:
 permissions:
   contents: read
   issues: write
+  # to see which tasks open pull requests have in review, which pieces can start on top of (src/lib/pieces.mjs)
+  pull-requests: read
 
 concurrency:
   group: claims-${{ github.event.issue.number || 'release' }}
@@ -250,20 +252,30 @@ jobs:
             ))());
             return mains.get(game);
           }
-          // what a piece is still waiting on, each as a name, with its number when it has an issue, as find says it (pieces.mjs),
-          // whoever has it, as it's asked for the piece just claimed
-          function waitingOn(piece, pieces, file, main = 'js') {
+          // the tasks open pull requests that aren't drafts have in review (pieces.mjs), read once: a piece that needs one can
+          // start on top of its pull request. With none read, nothing is in review, as before
+          let inReview = null;
+          async function reviewing() {
+            inReview ??= list('/pulls?state=open').then(pulls => rules.inReview?.(pulls, repository) ?? new Map(), () => new Map());
+            return inReview;
+          }
+          // what a piece is still waiting on, each as a name, with its number when it has an issue, and the pull requests it
+          // starts on top of, as find says them (pieces.mjs), whoever has it, as it's asked for the piece just claimed
+          async function waitingOn(piece, pieces, file, main = 'js') {
             const asked = { ...piece, state: 'open', assignees: [] };
-            const { waiting } = rules.whatCanStart([...pieces.filter(p => p.number !== piece.number), asked], file, new Set(), { main });
-            return (waiting.find(w => w.piece === asked)?.on ?? []).map(on => (on.number ? `#${on.number} ${on.name}` : on.name));
+            const { waiting, buildsOn } = rules.whatCanStart([...pieces.filter(p => p.number !== piece.number), asked], file, new Set(), { main, reviewing: await reviewing() });
+            return {
+              on: (waiting.find(w => w.piece === asked)?.on ?? []).map(on => `${on.number ? `#${on.number} ${on.name}` : on.name}${on.pull ? ` (in review in #${on.pull})` : ''}`),
+              under: (buildsOn?.(asked) ?? []).map(b => `#${b.pull}`),
+            };
           }
 
           // what's still free in a game: its lead, when nobody leads it, and the pieces under its game's issue nobody has
-          // and that wait on nothing, in find's order: C first, then the order a player meets them (pieces.mjs)
+          // and that wait on nothing, or only on pull requests in review, in find's order: C first, then the order a player meets them (pieces.mjs)
           async function free(game, title, except) {
             const home = await gameIssueOf(game);
             const pieces = home ? await piecesOf(home) : [], main = await mainOf(game);
-            const tasks = rules.whatCanStart(pieces, await partsOf(game), new Set(), { main }).free.filter(i => i.number !== except);
+            const tasks = rules.whatCanStart(pieces, await partsOf(game), new Set(), { main, reviewing: await reviewing() }).free.filter(i => i.number !== except);
             const lines = [];
             if (home?.state === 'open' && !home.assignees.length && home.number !== except) lines.push(`- #${home.number}: leading ${title}`);
             lines.push(...tasks.slice(0, 10).map(t => `- #${t.number}: ${t.title.replace(/^Task:\s*/i, '')}`));
@@ -294,8 +306,9 @@ jobs:
             changed = true;
             const help = `A claim with no activity on ${title}'s issues or pull requests for ${periodOf(issue)} is released, and \`/release\` gives it back sooner. [Claims and teams](${guide}) says what comes next.`;
             const home = lead ? null : await gameIssueOf(game);
-            const waits = home ? waitingOn(issue, await piecesOf(home), await partsOf(game), await mainOf(game)) : [];
-            const waiting = waits.length ? ` It needs ${waits.join(' and ')} first, which ${waits.length === 1 ? 'isn\'t' : 'aren\'t'} finished, so it can't be finished before then.` : '';
+            const { on: waits = [], under = [] } = home ? await waitingOn(issue, await piecesOf(home), await partsOf(game), await mainOf(game)) : {};
+            const waiting = waits.length ? ` It needs ${waits.join(' and ')} first, which ${waits.length === 1 ? 'isn\'t' : 'aren\'t'} finished, so it can't be finished before then.`
+              : under.length ? ` It builds on ${under.join(' and ')}, in review: start it from the latest main with ${under.length === 1 ? 'that pull request' : 'those pull requests'} merged in, and its own pull request merges after ${under.length === 1 ? 'it' : 'them'}.` : '';
             return answer(issue, about, lead
               ? `@${user}, ${title} is yours to lead. This is its game's issue, where it's talked about: the tasks you open for it with [the Task form](${form('task.yml')}) land under it, with the label \`${game}\`, and anyone can claim them. ${help}`
               : `@${user}, this task is yours, and nobody else can claim it while you have it.${waiting} ${help}`,

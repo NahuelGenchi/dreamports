@@ -1,0 +1,199 @@
+{
+  "about": "Shadow's attacks, from Training with Shadow chosen and a Sonic that does nothing: the opening's three presses of A, Shadow running up to the other fighter, a jump, and the ground combo that throws the other fighter back and fills the gauges.",
+  "start": "fight=training&vblanks=1209&you=6",
+  "frames": 760,
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      70,
+      [
+        "A"
+      ]
+    ],
+    [
+      72,
+      []
+    ],
+    [
+      100,
+      [
+        "A"
+      ]
+    ],
+    [
+      102,
+      []
+    ],
+    [
+      130,
+      [
+        "A"
+      ]
+    ],
+    [
+      132,
+      []
+    ],
+    [
+      400,
+      [
+        "RIGHT",
+        "DOWN"
+      ]
+    ],
+    [
+      426,
+      []
+    ],
+    [
+      450,
+      [
+        "A"
+      ]
+    ],
+    [
+      452,
+      []
+    ],
+    [
+      526,
+      [
+        "B"
+      ]
+    ],
+    [
+      528,
+      []
+    ],
+    [
+      530,
+      [
+        "B"
+      ]
+    ],
+    [
+      532,
+      []
+    ],
+    [
+      600,
+      [
+        "B"
+      ]
+    ],
+    [
+      602,
+      []
+    ],
+    [
+      612,
+      [
+        "B"
+      ]
+    ],
+    [
+      614,
+      []
+    ],
+    [
+      624,
+      [
+        "B"
+      ]
+    ],
+    [
+      626,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 1254,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          747,
+          [
+            "START"
+          ]
+        ],
+        [
+          748,
+          []
+        ],
+        [
+          881,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          882,
+          []
+        ],
+        [
+          921,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          922,
+          []
+        ],
+        [
+          961,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          962,
+          []
+        ],
+        [
+          1001,
+          [
+            "A"
+          ]
+        ],
+        [
+          1002,
+          []
+        ],
+        [
+          1201,
+          [
+            "START"
+          ]
+        ],
+        [
+          1202,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 778,
+          "address": "03002170",
+          "bytes": 2,
+          "value": 1
+        },
+        {
+          "frame": 1180,
+          "address": "030053F8",
+          "bytes": 1,
+          "value": 6
+        }
+      ],
+      "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, and Start on its first choices with Shadow chosen."
+    }
+  ]
+}

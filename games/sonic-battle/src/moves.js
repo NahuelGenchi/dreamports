@@ -19,6 +19,7 @@ import { fn0800f9c0, fn08011c7c } from './arena.js';
 const FIGHTERS = 0x03001C40, RECORD = 252;
 const SETUP = 0x03001620;                    // gUnknown_03001620: what the fight is
 const SLOTS = 0x03001634;                    // who stands in each of the four places, 255 for nobody
+const CHOICES = 0x030013B0, CHOICE_SIZE = 156;   // each player's skill for each of Emerl's states
 const PLAYER = 0x03001380;                   // the place the person plays
 const KEYS = 0x03001B30, KEYS_PER_FIGHTER = 64, KEYS_PRESSED = 20, KEYS_RELEASED = 40, KEYS_NOW = 60;
 const SCRIPTS = 0x08ED68A8, SCRIPTS_PER_CHARACTER = 280;
@@ -246,7 +247,7 @@ const SCRIPT_OF = new Map([
   [535, 35], [536, 38], [565, 59],
 ]);
 
-/** 0x08007ec8: a new state starts its script from the top, and the state's script runs a frame. Partly: not Emerl's. */
+/** 0x08007ec8: a new state starts its script from the top, and the state's script runs a frame. */
 function fighterThink(c, i) {
   const rec = record(i);
   const next = read8(c, rec + PAUSE_NEXT);
@@ -266,10 +267,11 @@ function fighterThink(c, i) {
     clearFlags(c, rec, FLAG_NEW_STATE);
   }
   const character = read8(c, rec + CHARACTER);
-  if (character === 9) notPorted('0800964C', 'the character 9');
   const slot = SCRIPT_OF.get(read16(c, rec + STATE));
   if (slot === undefined) return;
-  runScript(c, read32(c, SCRIPTS + character * SCRIPTS_PER_CHARACTER + slot * 4), i);
+  // 0x0800964C: Emerl runs the script and animation of the character its skill slot has, and the frame ends there
+  const chosen = character === 9 ? read8(c, CHOICES + i * CHOICE_SIZE + slot) : character;
+  runScript(c, read32(c, SCRIPTS + chosen * SCRIPTS_PER_CHARACTER + slot * 4), i);
   write8(c, rec + ANIMATION, slot);
 }
 
@@ -577,6 +579,43 @@ function setState(c, i, state) {
         // the states with nothing of their own here
       }
   }
+  // 0x08001b0c's charge and release for the special attacks: a held R keeps the charge going, and letting go fires
+  if (state === 19 || state === 20 || state === 23 || state === 24) {
+    write8(c, rec + 143, 0);
+  } else if (state === 0x113) {
+    const charge = Math.min(read8(c, rec + 143) + 1, 12);
+    write8(c, rec + 143, charge);
+    if (charge === 5) write16(c, rec + 164, 215);
+    else if (charge === 12) write16(c, rec + 164, 216);
+    if ((held(c, i) & 0x100) === 0) setState(c, i, 0x213);
+  } else if (state === 0x114) {
+    // the air special's charge, up to three: its sound plays as it builds
+    const charge = Math.min(read8(c, rec + 143) + 1, 3);
+    write8(c, rec + 143, charge);
+    c.sound?.play(0x323);
+    if ((held(c, i) & 0x100) === 0) setState(c, i, 0x214);
+  } else if (state === 0x117) {
+    // the third special's charge, up to five
+    const charge = Math.min(read8(c, rec + 143) + 1, 5);
+    write8(c, rec + 143, charge);
+    c.sound?.play(0x338);
+    if ((held(c, i) & 0x100) === 0) setState(c, i, 0x217);
+  } else if (state === 0x115) {
+    if ((held(c, i) & 0x100) === 0) setState(c, i, 0x215);
+  } else if (state === 0x213) {
+    const charge = read8(c, rec + 143);
+    write16(c, rec + 166, charge <= 4 ? 0xFE00 : charge <= 11 ? 0xFC00 : 0xF880);
+    write16(c, rec + 168, 24);
+  } else if (state === 0x214) {
+    write16(c, rec + 168, 20);
+  } else if (state === 0x217) {
+    write16(c, rec + 168, 24);
+  } else if (state === 0x218) {
+    write16(c, rec + 168, 20);
+  } else if (state === 0x116) {
+    write16(c, rec + Z, read16(c, rec + GROUND));
+    write32(c, rec + FLAGS, read32(c, rec + FLAGS) | 1);
+  }
   // (0x08002762) what the special attacks' states do with their things
   if (state === 21 || state === 22) {
     // the state's own timer, which counts the special down and sounds while it runs
@@ -610,7 +649,8 @@ function leaveThings(c, i) {
     const facing = read8(c, thing + 64), x = read16(c, thing + 58), y = read16(c, thing + 60), z = read16(c, thing + 62);
     const full = read8(c, thing + 65);
     clearEffect(c, k);
-    fn0800c1c8(c, blast, facing, x, y, z, 0, 0, 0, 0, i, full);
+    // the Sets' blasts sit one lower than the thing they came from, as 0x0800f5bc leaves them
+    fn0800c1c8(c, blast, facing, x, y, blast === 122 ? s16(z - 1) : z, 0, 0, 0, 0, i, full);
   }
 }
 
@@ -1366,18 +1406,18 @@ function turnForAttack(c, rec) {
 function landOrFall(c, i) {
   const rec = record(i);
   if (read8(c, rec + PAUSE) !== 0) return;
-  let state = read16(c, rec + STATE);
-  // a fighter thrown at a wall it was facing bounces off it
+  const state = read16(c, rec + STATE);
+  // 0x0800444c: a fighter thrown into a wall it was flying at bounces, unless the guard's last hit takes it instead
   const bumped = read8(c, rec + BUMPED);
   if (bumped !== 0 && (state === 66 || state === 81)) {
-    const last = read8(c, rec + LAST_FACING);
-    if (((bumped & 1) && last === 4) || ((bumped & 2) && last === 6)
-      || ((bumped & 4) && last === 8) || ((bumped & 8) && last === 2)) {
+    const facing = read8(c, rec + LAST_FACING);
+    const intoWall = [[1, 4], [2, 6], [4, 8], [8, 2], [16, 4], [32, 6], [64, 8], [128, 2]]
+      .some(([bit, way]) => (bumped & bit) !== 0 && facing === way);
+    if (intoWall) {
       if (read8(c, rec + 185) === 1) {
         write8(c, rec + 125, read8(c, rec + 124));
         setState(c, i, 96);
       } else addFlags(c, rec, 0x80);
-      state = read16(c, rec + STATE);
     }
   }
   const inAir = () => {
@@ -1435,8 +1475,17 @@ const THING_SCRIPTS = new Map([
   [3, 0x0806B514], [4, 0x0806B54C], [5, 0x0806B594], [8, 0x0806B630], [10, 0x0806B6B4], [11, 0x0806B7B0],
   [12, 0x0806B8CC], [13, 0x0806B940], [14, 0x0806B804], [15, 0x0806B9D4], [16, 0x0806BB08], [31, 0x0806BB08],
   [32, 0x0806BBA0], [34, 0x0806BBF4], [35, 0x0806BC54], [40, 0x0806C6EC], [37, 0x0806C07C], [38, 0x0806C1AC], [39, 0x0806C448],
-  [43, 0x0806C60C], [44, 0x0806C67C], [45, 0x0806C8F4], [41, 0x0806C790], [46, 0x0806C944], [158, 0x0806E520], [160, 0x0806E5F0],
-  [114, 0x0806DB48], [117, 0x0806DC00], [118, 0x0806DC60], [120, 0x0806DCBC], [121, 0x0806DD04], [122, 0x0806DDA4],
+  [43, 0x0806C60C], [44, 0x0806C67C], [45, 0x0806C8F4], [41, 0x0806C790], [46, 0x0806C944], [73, 0x0806CE18],
+  [75, 0x0806CE98], [77, 0x0806CFBC], [79, 0x0806D29C], [80, 0x0806D2EC], [81, 0x0806D378],
+  [54, 0x0806C984], [57, 0x0806CA14], [60, 0x0806CD14], [61, 0x0806CD68],
+  [117, 0x0806DC00], [118, 0x0806DC60], [114, 0x0806DB48], [120, 0x0806DCBC], [121, 0x0806DD04], [122, 0x0806DDA4],
+  [36, 0x0806C054], [78, 0x0806D13C], [158, 0x0806E520], [160, 0x0806E5F0], [154, 0x0806E268],
+  [157, 0x0806E4DC], [161, 0x0806E680], [162, 0x0806E6E0], [163, 0x0806E70C], [164, 0x0806E76C],
+  [165, 0x0806E82C], [166, 0x0806E8EC], [210, 0x0806F724], [211, 0x0806F7E4], [212, 0x0806F8A4],
+  [213, 0x0806F924], [214, 0x0806F9C8], [215, 0x0806FA90], [216, 0x0806FBA8], [230, 0x0806FC60],
+  [231, 0x0806FD88], [240, 0x0806FCB0], [241, 0x0806FCF0], [245, 0x0806FE2C],
+  [174, 0x0806E9AC], [175, 0x0806EB10], [177, 0x0806EC74], [178, 0x0806ED0C], [179, 0x0806EDA4],
+  [180, 0x0806EE3C], [181, 0x0806EEE8],
 ]);
 const THING_MARK = 0xFFF00000;
 // the fields a script's words set, by the word's first half
@@ -1558,15 +1607,24 @@ function runThingScript(c, k, script) {
 const THING_HITS = new Map([
   [38, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [41, [0x280, 4, 20, 2, 0x3C0, 0, 0, 22]], [43, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
   [39, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [44, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
-  [117, [0x140, 6, 15, 2, 0x380, 0, 0, 255]],
-  [122, [0x240, 20, 15, 2, 0x3C0, 0, 0, 22]],
+  [79, [0x180, 12, 30, 3, 0x380, 0, 0, 255]],
+  [54, [0x100, 16, 30, 2, 0x280, 0, 11, 16]], [57, [0x120, 4, 5, 2, 0x340, 1, 0, 255]],
+  [117, [0x140, 6, 15, 2, 0x380, 0, 0, 255]], [122, [0x240, 20, 15, 2, 0x3C0, 0, 0, 22]],
+  [78, [0x300, 8, 20, 1, 0x380, 0, 0, 255]],
+  [177, [0x140, 8, 20, 2, 0x380, 0, 0, 255]], [178, [0x140, 8, 40, 4, 0x380, 0, 0, 255]],
+  [179, [0x140, 8, 60, 6, 0x380, 0, 0, 255]],
+  [154, [0x120, 24, 30, 3, 0x2C0, 0, 4, 34]],
+  [158, [0x120, 10, 30, 3, 0x380, 0, 0, 255]], [160, [0x120, 10, 30, 3, 0x380, 0, 0, 255]],
 ]);
 // the kinds 0x0800eaec has hits for that aren't ported yet
-const THING_HITS_LATER = new Set([54, 57, 62, 63, 78, 79, 82, 94, 97, 102, 137, 138, 142, 154, 158, 160,
-  165, 166, 174, 175, 177, 178, 179, 185, 191, 194, 197, 201, 241, 245]);
+const THING_HITS_LATER = new Set([62, 63, 82, 94, 97, 102, 137, 138, 142,
+  165, 166, 174, 175, 185, 191, 194, 197, 201, 241, 245]);
 
 // the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet
-const THING_STEPS_LATER = new Set([39, 61, 79, 101, 141]);
+const THING_STEPS_LATER = new Set([39, 101, 141]);
+// the kinds 0x0800cec8 sends to 0x0800d260, its steps of walls and the arena's edges for a thing that moves
+const THINGS_WITH_FLOOR_STEPS = new Set([35, 38, 39, 40, 57, 58, 60, 61, 63, 79, 80, 81, 100, 101, 117, 118, 120,
+  121, 137, 138, 140, 141, 157, 158, 159, 160, 161, 162, 163, 164, 180, 181, 182, 190, 197, 200, 201, 230, 231]);
 
 /**
  * 0x0800d818: a kind 40 mine feels the first fighter that comes near it, other than its owner, and tells its owner,
@@ -1668,46 +1726,51 @@ function thingHitsFighters(c, k, reach, height, damage, hold, hitKind, again, fi
 }
 
 /**
- * 0x0800cec8's kind 121: a shot that turns to the nearest fighter, within its reach, and follows it. When it comes
- * close enough its owner's mine flag is set, which sets the shot off as kind 122.
+ * 0x0800cec8's steps for a kind 121 thing, Amy's Set: it turns toward the nearest fighter and moves that way, and a
+ * fighter close enough sets its owner's +236, which starts the Set. Its own hit call has nothing for the kind, so the
+ * reach is only through its owner's move.
  */
-function homingThing(c, thing) {
+function stepAmySet(c, thing, k) {
   const owner = read8(c, thing + 53);
-  const x = reads16(c, thing + 58), y = reads16(c, thing + 60), z = reads16(c, thing + 62);
-  let nearest = 255, best = 0xFFFF;
-  for (let j = 0; j < 4; j++) {
-    if (j === owner) continue;
-    const rec = record(j);
-    if (read8(c, rec + 187) === 0 || read8(c, SETUP + 20 + j) === 255) continue;
+  let nearest = 255, nearestDistance = 0xFFFF;
+  for (let i = 0; i < 4; i++) {
+    if (i === owner) continue;
+    const rec = record(i);
+    if (read8(c, rec + 187) === 0 || read8(c, SETUP + 20 + i) === 255) continue;
     if (read8(c, SETUP + 8) !== 0 && read8(c, SETUP + 9) !== 1
-      && read8(c, SETUP + 32 + j) === read8(c, SETUP + 32 + owner)) continue;
-    const dx = s16(x - reads16(c, rec)), dy = s16(y - reads16(c, rec + 2));
-    const away = Math.abs(dx) + Math.abs(dy);
-    if (away < best) { best = away; nearest = j; }
-    const dz = s16(z - reads16(c, rec + 4));
+      && read8(c, SETUP + 32 + owner) === read8(c, SETUP + 32 + i)) continue;
+    const dx = s16(read16(c, thing + 58) - read16(c, rec));
+    const dy = s16(read16(c, thing + 60) - read16(c, rec + 2));
+    const dz = s16(read16(c, thing + 62) - read16(c, rec + 4));
+    const state = read16(c, rec + STATE), distance = Math.abs(dx) + Math.abs(dy);
+    if (nearestDistance > distance && !(state >= 252 && state <= 255)) {
+      nearestDistance = distance;
+      nearest = i;
+    }
     if (Math.abs(dx) > 0x21F || Math.abs(dy) > 0x21F || Math.abs(dz) > 19) continue;
     if (read8(c, 0x0300138C) !== 0) {
       const player = read32(c, PLAYER);
       if (owner !== player && (owner !== player + 2 || read8(c, SETUP + 28 + owner) === 0)) continue;
     }
-    if (Math.abs(s16(z - reads16(c, rec + 4))) > 23) continue;
+    if (Math.abs(s16(read16(c, thing + 62) - read16(c, rec + 4))) > 23) continue;
     write8(c, record(owner) + 236, 1);
-    nearest = 255;
+    nearestDistance = 0;
     break;
   }
+  // the two calls the case makes to 0x0800eaec's hit: nothing for kind 121, so they leave the fighters alone
+  if (nearestDistance === 0 || nearest !== 255) thingHit(c, k, 121);
   if (nearest === 255) return;
   const rec = record(nearest);
-  const toward = (speedAt, positionAt, target) => {
-    const speed = reads16(c, speedAt) + (reads16(c, positionAt) < reads16(c, target) ? 4 : -4);
-    write16(c, speedAt, speed > 64 ? 64 : speed < -64 ? -64 : speed);
-  };
-  toward(thing + 8, thing + 58, rec);
-  toward(thing + 10, thing + 60, rec + 2);
-  const targetZ = s16(reads16(c, rec + 4) + 52);
-  if (z < targetZ) write16(c, thing + 62, z + 1);
-  else if (z > targetZ) write16(c, thing + 62, z - 1);
+  let vx = read16(c, thing + 8), vy = read16(c, thing + 10);
+  if (s16(read16(c, thing + 58)) < s16(read16(c, rec))) vx = u16(vx + 4); else vx = u16(vx - 4);
+  if (s16(read16(c, thing + 60)) < s16(read16(c, rec + 2))) vy = u16(vy + 4); else vy = u16(vy - 4);
+  write16(c, thing + 8, Math.max(-64, Math.min(64, s16(vx))));
+  write16(c, thing + 10, Math.max(-64, Math.min(64, s16(vy))));
+  const z = s16(read16(c, thing + 62)), target = s16(read16(c, rec + 4)) + 52;
+  if (z < target) write16(c, thing + 62, u16(z + 1));
+  else if (z > target) write16(c, thing + 62, u16(z - 1));
   write16(c, thing + 12, 0);
-  write8(c, thing + 64, reads16(c, thing + 8) > 0 ? 4 : 6);
+  write8(c, thing + 64, s16(read16(c, thing + 8)) < 0 ? 4 : 6);
 }
 
 /**
@@ -1742,9 +1805,20 @@ function updateThings(c) {
       write16(c, thing + 62, read16(c, thing + 62) + read16(c, thing + 12));
     }
     // 0x0800cec8's per-kind steps: walls and the arena's edges push a thing back, and it falls until its floor
-    // (0x0800d260, the same for kinds 35, 38, 39 and 40): a wall it is inside pushes it out unless it is above the
-    // wall's top, where it stands on it instead, and the arena's edges push it back in
-    if (kind === 35 || kind === 38 || kind === 39 || kind === 40) {
+    // (0x0800d260, which the cartridge's switch sends these kinds to): a wall it is inside pushes it out
+    // unless it is above the wall's top, where it stands on it instead, and the arena's edges push it back in
+    if (kind === 54) {
+      // 0x0800d33a: the arena's edges push it back and it sits on the floor, or at nothing when it meets no edge
+      let met = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
+      write8(c, thing + 16, met.bits);
+      if (met.bits & 0xF0) {
+        write16(c, thing + 58, read16(c, thing + 58) - u16(met.edgeX));
+        write16(c, thing + 60, read16(c, thing + 60) - u16(met.edgeY));
+        met = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
+        write8(c, thing + 16, met.bits);
+      }
+      write16(c, thing + 62, read8(c, thing + 16) !== 0 ? reads16(c, FLOOR) : 0);
+    } else if (THINGS_WITH_FLOOR_STEPS.has(kind)) {
       const met = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
       write8(c, thing + 16, met.bits);
       if (met.bits & 0xF) {
@@ -1782,8 +1856,43 @@ function updateThings(c) {
       if (read16(c, owner + STATE) === 0x115 || read8(c, owner + HEALTH) === 0) clearEffect(c, k);
     }
     if (kind === 40) mineFeelsFighters(c, thing);
-    if (kind === 121) homingThing(c, thing);
-    if (c.vblanks - 1609 >= 70 && c.vblanks - 1609 <= 74) console.error(`thing f${c.vblanks-1209} k${k} kind${kind} col${read8(c,thing+4)} x${reads16(c,thing+58)} y${reads16(c,thing+60)} z${reads16(c,thing+62)} pic${read8(c,thing+26)}`);
+    if (kind === 61) {
+      // 0x0800d9a4: it feels for the nearest fighter, tells its owner when one is close, and turns toward it
+      const owner = read8(c, thing + 53);
+      let nearest = 255, shortest = 0xFFFF;
+      for (let f = 0; f <= 3; f++) {
+        if (f === owner) continue;
+        const rec = record(f);
+        if (read8(c, rec + 187) === 0) continue;
+        if (read8(c, SETUP + 20 + f) === 255) continue;
+        if (read8(c, SETUP + 8) !== 0 && read8(c, SETUP + 9) !== 1
+          && read8(c, SETUP + 32 + owner) === read8(c, SETUP + 32 + f)) continue;
+        const dx = reads16(c, thing + 58) - reads16(c, rec);
+        const dy = reads16(c, thing + 60) - reads16(c, rec + 2);
+        const dz = reads16(c, thing + 62) - reads16(c, rec + 4);
+        const apart = Math.abs(dx) + Math.abs(dy);
+        if (apart < shortest && u16(read16(c, rec + 20) - 252) > 3) { shortest = apart; nearest = f; }
+        if (Math.abs(dx) > 255 || Math.abs(dy) > 255 || Math.abs(dz) > 7) continue;
+        if (read8(c, 0x0300138C) !== 0) {
+          const player = read32(c, PLAYER);
+          if (owner !== player && (owner !== player + 2 || read8(c, SETUP + 28 + owner) === 0)) continue;
+        }
+        if (Math.abs(dz) > 23) continue;
+        write8(c, record(owner) + 236, 1);
+        shortest = 0;
+        break;
+      }
+      if (nearest !== 255) {
+        const rec = record(nearest);
+        write16(c, thing + 8, reads16(c, thing + 58) < reads16(c, rec)
+          ? read16(c, thing + 8) + 4 : read16(c, thing + 8) - 4);
+        write16(c, thing + 10, reads16(c, thing + 60) < reads16(c, rec + 2)
+          ? read16(c, thing + 10) + 4 : read16(c, thing + 10) - 4);
+        write16(c, thing + 8, reads16(c, thing + 8) > 64 ? 64 : (reads16(c, thing + 8) < -64 ? -64 : read16(c, thing + 8)));
+        write16(c, thing + 10, reads16(c, thing + 10) > 64 ? 64 : (reads16(c, thing + 10) < -64 ? -64 : read16(c, thing + 10)));
+      }
+    }
+    if (kind === 121) stepAmySet(c, thing, k);
     if (THING_STEPS_LATER.has(kind)) notPorted('0800CEC8', `the steps of a thing of kind ${kind} after it moves`);
     thingHit(c, k, read16(c, thing + 56));
   }
@@ -1850,7 +1959,13 @@ function trainingFrame(c) {
     else if (keys & 16) write16(c, CAMERA_TURN, read16(c, CAMERA_TURN) + 128);
     else write16(c, CAMERA_TURN, 0);
   } else if (state === 53) {
-    if (pressed(c, player) & 0x200) notPorted('0801C28C', 'turning the camera');
+    if (pressed(c, player) & 0x200) {
+      // 0x0801c28c: L turns the view to its other side, and every fighter's facing turns with it
+      const rec = record(player), camera = read8(c, rec + CAMERA);
+      write8(c, rec + CAMERA, camera === 0 ? 1 : camera === 1 ? 0 : camera === 2 ? 3 : camera === 3 ? 2 : camera);
+      for (let i = 0; i < 4; i++) write8(c, record(i) + 18, read8(c, record(i) + 16) ^ 1);
+      write8(c, rec + FACING, 0);
+    }
   } else write16(c, CAMERA_TURN, 0);
   fn08006e64(c);
   updateThings(c);

@@ -1,6 +1,6 @@
 {
   "about": "Cream's attacks, from a start point at Training's first frame a player can move: Cream as the player and a Sonic that does nothing, after the opening's choice. Cream runs up to the other fighter, and the ground combo throws it back.",
-  "start": "fight=training&vblanks=1209&character=4&opening=400",
+  "start": "fight=training&vblanks=1209&you=4&opening=400",
   "frames": 360,
   "held": [
     [0,["RIGHT","DOWN"]],[26,[]],

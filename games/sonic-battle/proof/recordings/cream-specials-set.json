@@ -1,6 +1,6 @@
 {
   "about": "Cream's ground Set special, from a start point at Training's first frame a player can move: Cream as the player, with Set chosen on the ground. Cream runs up to the other fighter and R for the mine.",
-  "start": "fight=training&vblanks=1209&character=4&opening=400&choice=2",
+  "start": "fight=training&vblanks=1209&you=4&opening=400&choice=2",
   "frames": 220,
   "held": [
     [

@@ -1,6 +1,6 @@
 {
   "about": "Cream's ground Shot special, from a start point at Training's first frame a player can move: Cream as the player, with Shot chosen on the ground. Cream runs up to the other fighter and R for the shot.",
-  "start": "fight=training&vblanks=1209&character=4&opening=400",
+  "start": "fight=training&vblanks=1209&you=4&opening=400",
   "frames": 220,
   "held": [
     [

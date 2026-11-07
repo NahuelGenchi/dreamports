@@ -1,0 +1,199 @@
+{
+  "about": "Rouge's guard, from Training's start with the Rival's Action on Light Attack: the opening's three presses of A, Rouge walking up to the rival, L held as the rival's attack comes, which guards it, and L pressed again, which guards and then heals until the next hit.",
+  "start": "fight=training&vblanks=1206&you=4&action=4",
+  "frames": 760,
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      80,
+      [
+        "A"
+      ]
+    ],
+    [
+      82,
+      []
+    ],
+    [
+      100,
+      [
+        "A"
+      ]
+    ],
+    [
+      102,
+      []
+    ],
+    [
+      130,
+      [
+        "A"
+      ]
+    ],
+    [
+      132,
+      []
+    ],
+    [
+      400,
+      [
+        "RIGHT",
+        "DOWN"
+      ]
+    ],
+    [
+      420,
+      []
+    ],
+    [
+      482,
+      [
+        "L"
+      ]
+    ],
+    [
+      500,
+      []
+    ],
+    [
+      504,
+      [
+        "L"
+      ]
+    ],
+    [
+      700,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 1251,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          747,
+          [
+            "START"
+          ]
+        ],
+        [
+          748,
+          []
+        ],
+        [
+          881,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          882,
+          []
+        ],
+        [
+          921,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          922,
+          []
+        ],
+        [
+          961,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          962,
+          []
+        ],
+        [
+          1001,
+          [
+            "A"
+          ]
+        ],
+        [
+          1002,
+          []
+        ],
+        [
+          1150,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          1152,
+          []
+        ],
+        [
+          1162,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          1164,
+          []
+        ],
+        [
+          1174,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          1176,
+          []
+        ],
+        [
+          1186,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          1188,
+          []
+        ],
+        [
+          1198,
+          [
+            "START"
+          ]
+        ],
+        [
+          1199,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 778,
+          "address": "03002170",
+          "bytes": 2,
+          "value": 1
+        },
+        {
+          "frame": 1250,
+          "address": "03001646",
+          "bytes": 1,
+          "value": 4
+        }
+      ],
+      "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, one move right on the Character row to Tails, and Start on its first choices, three frames sooner."
+    }
+  ]
+}

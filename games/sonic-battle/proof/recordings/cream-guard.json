@@ -1,6 +1,6 @@
 {
   "about": "Cream's guard, from Training's start with the Rival's Action on Light Attack: Cream as the player. Cream walks up to the rival, holds L as its attack comes, which guards it, and presses L again, which heals until the next hit.",
-  "start": "fight=training&vblanks=1209&character=4&opening=400&action=4",
+  "start": "fight=training&vblanks=1209&you=4&opening=400&action=4",
   "frames": 360,
   "held": [
     [
