@@ -642,6 +642,21 @@ void startFightFromPoint(void) {
   startFight(vblanks, action);
 }
 
+/** The game starts again from the logos, as Delete data in the options does (0x08000210): a new save's name and
+ *  language, the screen's state reset, and the core left for the screens before the menu. */
+void restartFromStart(void) {
+  for (int i = 0; i < 6; i++) g.name[i] = 0;
+  g.mini_games_open = 1;
+  g.language = 1;
+  g.saved_language = 1;
+  g.frames = 1;
+  g.restarted = 1;
+  usingCore = 0;
+  startUp = 0;
+  previousKeys = g.keys.held;
+  logosSetup();
+}
+
 // once, with the player's copy in gba_rom: the sound engine, then the console's power-on. Sonic Battle's sound is six
 // music players, eight DirectSound channels, master volume 14, 10,512 Hz and no reverb, with its wave voice's write
 // 84,800 cycles into the frame (sound.js), and the cycle count the fight's moving colours need (core.c, arena.c).
@@ -658,8 +673,15 @@ void game_start(void) {
   spriteCopy = 0;
   titleSpriteCount = 0;
   startUp = 45;
-  language = (int)gba_start_number("language", 1);
-  g.language = language;
+  {
+    // the language the save keeps, or a start point's, or a new save's
+    uint8_t *save = gba_save(8);
+    int asked = (int)gba_start_number("language", -1);
+    int saved = save[0] == 0xA5 ? save[1] : -1;
+    language = asked >= 0 ? asked : saved >= 0 ? saved : 1;
+    g.language = language;
+    g.saved_language = language;
+  }
   g.keys.timer = 15;
   g.keys.delay = 15;
   g.keys.interval = 7;

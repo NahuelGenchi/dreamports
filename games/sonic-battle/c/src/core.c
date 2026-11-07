@@ -297,6 +297,8 @@ void fightVblank(void) {
 }
 
 static void vblank(void) {
+  // what a screen adds to the V-blank, before its sprites are copied (options.js's vblankWork)
+  if (g.vblank_work) g.vblank_work();
   if (g.fight_vblank) { fightVblank(); return; }
   g.vblanks++;
   if (g.vblank_copies) {

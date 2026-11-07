@@ -79,6 +79,7 @@ typedef struct {
   void (*callback)(void);
   void (*after_wait)(void);
   void (*line_one)(void);
+  void (*vblank_work)(void);
   int fight_vblank;
   int hold_queue;
 
@@ -86,7 +87,9 @@ typedef struct {
   int counter, blend_target, blend;
   int menu_choice;
   int mini_games_open;
-  int language;
+  int language, saved_language;
+  int restarted;
+  int saving_frames;
   // 0x03002170: the player's name, six letters' room, which a saved one from a start point fills
   uint16_t name[6];
 
@@ -272,5 +275,9 @@ void menuBeforeMenu(void);
 
 // main.c
 void startFightFromPoint(void);
+void restartFromStart(void);
+
+// options.js
+void startOptions(void);
 
 #endif
