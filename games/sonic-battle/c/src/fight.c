@@ -12,6 +12,15 @@
 #define SAVE_ SAVE
 #define CHOSEN_ CHOSEN
 #define SONG_ SONG
+#define CHOICES_ 0x030013B0u
+#define CHOICE_SIZE_ 156
+// the six starter decks a new save holds, and the catalogue each halfword is looked up in
+#define STARTER_DECKS (SAVE_ + 0x322u)
+#define DECK_BYTES 0x38
+#define STARTER_IDS 0x0810B2F4u
+#define STARTER_COUNT 0x1B
+#define CATALOGUE 0x0810B32Cu
+#define CATALOGUE_BYTES 8
 #define FADE_LEVEL 0x03004B00u
 #define FADE_KIND 0x03004B04u
 #define FADE_STEP 0x03004B08u
@@ -111,6 +120,37 @@ static void setUpFighters(void) {
   loadSharedSprites();
 }
 
+/**
+ * 0x080215a8, partly: the starter decks a brand new save holds, each of its six the same 27 skills, as the game lays
+ * them down when it finds no save. The rest of the block stays as a new one has it for what a fight reads.
+ */
+static void starterDecks(void) {
+  for (int deck = 0; deck < 6; deck++) {
+    for (int n = 0; n < STARTER_COUNT; n++) {
+      write16(STARTER_DECKS + (uint32_t)deck * DECK_BYTES + (uint32_t)n * 2, read16(STARTER_IDS + (uint32_t)n * 2));
+    }
+  }
+}
+
+/** 0x08029cfc: one player's stats and outfit, looked up from the save's three rows of skills in the catalogue. */
+static void loadProfile(int i) {
+  uint32_t record = CHOICES_ + (uint32_t)i * CHOICE_SIZE_;
+  write8(record + 0x96, read8(SAVE_ + 0x320));
+  for (int row = 0; row < 3; row++) {
+    for (int n = 0; n < 27; n++) {
+      uint16_t id = read16(STARTER_DECKS + (uint32_t)row * DECK_BYTES + (uint32_t)n * 2);
+      write8(record + 0x45 + (uint32_t)row * 27 + (uint32_t)n, read8(CATALOGUE + (uint32_t)id * CATALOGUE_BYTES + 4));
+    }
+  }
+}
+
+/** The save and the four players' profiles as the mode-select screen leaves them for a fight: 0x080215a8's decks,
+ *  then 0x08029cfc for each player. */
+static void loadProfiles(void) {
+  starterDecks();
+  for (int i = 0; i < 4; i++) loadProfile(i);
+}
+
 /** The song of the arena a fight is in, from 0x08019ed8. */
 static const int ARENA_SONGS[12] = {10, 11, 12, 14, 15, 13, 17, 16, 18, 21, 22, 20};
 
@@ -161,11 +201,11 @@ void choosingAfterWait(void) {
  * screen and its fade, and 0x0801c8a4, with 0x08019ed8, which load everything and start the song. In the original these
  * take from the Training screen's fade to the fight's first picture, with the screen black all along.
  */
-void startFight(int vblanks, int action) {
+void startFight(int vblanks, int action, int you, int rival, int arena, int colour) {
   g.vblanks = vblanks;
   g.line_one = playQueuedEffects;
   for (int i = 0; i < 512; i++) gba_pal[i] = 0;
-  write8(SAVE_ + 119, 1);
+  write8(SAVE_ + 119, 1);   // the language the save keeps: English in the USA copy (menu.c)
   for (int i = 0; i < REGISTER_COUNT; i++) {
     write16(IO + read16(REGISTERS + (uint32_t)i * 4), read16(REGISTERS + (uint32_t)i * 4 + 2));
   }
@@ -173,22 +213,29 @@ void startFight(int vblanks, int action) {
   write8(SETUP_ + 5, 10);
   for (int at = 6; at <= 11; at++) write8(SETUP_ + (uint32_t)at, 0);
   write8(SETUP_ + 36, 2);
-  write8(SETUP_ + 20, 0);
+  write8(SETUP_ + 20, (uint8_t)you);   // Training's first choice, Sonic, unless the start point picks another
   write8(SETUP_ + 21, NO_FIGHTER);
   write8(SETUP_ + 22, NO_FIGHTER);
-  write8(SETUP_ + 23, 0);
+  write8(SETUP_ + 23, (uint8_t)rival);
   write8(SETUP_ + 1, 0);
   write8(SETUP_ + 2, 1);
-  write8(SETUP_ + 3, 0);
-  write8(SETUP_ + 38, (uint8_t)action);
+  write8(SETUP_ + 3, (uint8_t)arena);   // the arena, Emerald Beach (0) unless a start point picks another of Training's maps
+  write8(SETUP_ + 38, (uint8_t)action);   // the Rival's Action, Do Nothing first
   write8(SETUP_ + 125, 4);
   write8(SETUP_ + 0, 0);
   write32(PLAYER_, 0);
-  hideSpriteBuffer();
+  loadProfiles();   // 0x080215a8 and 0x08029cfc, as the mode-select screen leaves them
+  hideSpriteBuffer();   // 0x0801ff30
   newScreen(6);
   startFadeIn(24);
   stepFade();
   g.vblank_copies = 1;
+  // the colour rows the Training screen copies into the player's choices for a character whose colours come from
+  // them (loadColours), such as Chaos: byte 93 picks colours 3 to 6, 94 picks 7 to 10, and 95 picks 11 to 13
+  if (colour != 255) {
+    static const int rows[3] = {93, 94, 95};
+    for (int i = 0; i < 3; i++) write8(CHOICES_ + (uint32_t)rows[i], (uint8_t)colour);
+  }
   setUpFight();
   write8(SONG_, (uint8_t)ARENA_SONGS[setup(3 + setup(1))]);
   startHud(10);
