@@ -273,7 +273,15 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (stopped) {
       for (let f = reached; f < frames; f++) { hashes.push(null); sounds.push(null); }
       if (firstPicture < 0) firstPicture = stopped.frame;
-      if (firstDifference < 0) firstDifference = stopped.frame;
+      if (firstDifference < 0) {
+        firstDifference = stopped.frame;
+        // the clip shows the four seconds before it, as the game drew nothing more
+        if (!clipAt && !quick) {
+          const before = [];
+          for (let f = Math.max(0, reached - 240); f < reached; f++) before.push(f);
+          for (const f of await page.evaluate(`__proof.keep(${JSON.stringify(before)})`)) keptFrames.add(f);
+        }
+      }
       if (firstNew < 0 && wasDifferent && !wasDifferent.has(stopped.frame)) firstNew = stopped.frame;
     }
     const seconds = (Date.now() - started) / 1000;
