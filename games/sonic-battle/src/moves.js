@@ -1419,7 +1419,7 @@ const THING_SCRIPTS = new Map([
   [12, 0x0806B8CC], [13, 0x0806B940], [14, 0x0806B804], [15, 0x0806B9D4], [16, 0x0806BB08], [31, 0x0806BB08],
   [32, 0x0806BBA0], [34, 0x0806BBF4], [35, 0x0806BC54], [40, 0x0806C6EC], [37, 0x0806C07C], [38, 0x0806C1AC], [39, 0x0806C448],
   [43, 0x0806C60C], [44, 0x0806C67C], [45, 0x0806C8F4], [41, 0x0806C790], [46, 0x0806C944], [158, 0x0806E520], [160, 0x0806E5F0],
-  [117, 0x0806DC00], [118, 0x0806DC60], [120, 0x0806DCBC], [121, 0x0806DD04], [122, 0x0806DDA4],
+  [114, 0x0806DB48], [117, 0x0806DC00], [118, 0x0806DC60], [120, 0x0806DCBC], [121, 0x0806DD04], [122, 0x0806DDA4],
 ]);
 const THING_MARK = 0xFFF00000;
 // the fields a script's words set, by the word's first half
@@ -1766,6 +1766,7 @@ function updateThings(c) {
     }
     if (kind === 40) mineFeelsFighters(c, thing);
     if (kind === 121) homingThing(c, thing);
+    if (c.vblanks - 1609 >= 70 && c.vblanks - 1609 <= 74) console.error(`thing f${c.vblanks-1209} k${k} kind${kind} col${read8(c,thing+4)} x${reads16(c,thing+58)} y${reads16(c,thing+60)} z${reads16(c,thing+62)} pic${read8(c,thing+26)}`);
     if (THING_STEPS_LATER.has(kind)) notPorted('0800CEC8', `the steps of a thing of kind ${kind} after it moves`);
     thingHit(c, k, read16(c, thing + 56));
   }
