@@ -4,6 +4,13 @@
   "codeMap": {"functions":102,"bytes":4796},
   "proven": {"functions":0,"bytes":0},
   "recordings": {
+    "game-start": {
+      "frames": 500,
+      "matched": 103,
+      "differs": [[103,499]],
+      "soundDiffers": [[397,499]],
+      "functions": []
+    },
     "title": {
       "frames": 120,
       "matched": 120,
