@@ -25,8 +25,8 @@ export const OTHER_LANGUAGES = Object.keys(LANGUAGES).filter(key => LANGUAGES[ke
 /**
  * A game's main version, from the languages it has a version in: its JavaScript one, when it has one, which is the
  * game's own and was there first, or else its first in another language, as a game that started in C has. Its numbers
- * are the game's first, and the others' come under them, and in a game with a JavaScript version, a task in another
- * language waits for the same part in JavaScript, as it's written from it (pieces.mjs).
+ * are the game's first, and the others' come under them. Every version is written from the original, so no task waits
+ * on the same part in another language (pieces.mjs, #965).
  * @param {(keyof typeof LANGUAGES)[]} languages
  * @returns {keyof typeof LANGUAGES}
  */

@@ -265,7 +265,7 @@ void trainingFrame(void);
 void trainingAfterWait(void);
 
 // fight.js
-void startFight(int vblanks, int action);
+void startFight(int vblanks, int action, int you, int rival, int arena, int colour);
 void choosing(void);
 void choosingAfterWait(void);
 
