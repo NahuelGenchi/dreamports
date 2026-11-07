@@ -15,6 +15,10 @@ sources:
     href: https://github.com/cypressru/SonicBattleDecomp
     license: none
     use: guide
+  - name: nicklesimba’s decompilation of Sonic Battle
+    href: https://github.com/nicklesimba/sonic-battle-decomp
+    license: none
+    use: guide
   - name: mGBA’s timing of instructions and of the BIOS, by Jeffrey Pfau
     href: https://github.com/mgba-emu/mgba/tree/0.10.5/src
     license: MPL-2.0

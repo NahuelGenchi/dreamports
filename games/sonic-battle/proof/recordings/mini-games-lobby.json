@@ -1,0 +1,116 @@
+{
+  "about": "From power-on through the title screen to the main menu as a player with a saved name reaches it, right four times to Mini-games, A, then A on Soniclash through its fade to black and into the lobby, where it stays for a while before B goes back to the Mini-games screen.",
+  "start": "name=1",
+  "frames": 2600,
+  "clip": {
+    "at": 2040,
+    "frames": 300
+  },
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      747,
+      [
+        "START"
+      ]
+    ],
+    [
+      748,
+      []
+    ],
+    [
+      880,
+      [
+        "RIGHT"
+      ]
+    ],
+    [
+      881,
+      []
+    ],
+    [
+      920,
+      [
+        "RIGHT"
+      ]
+    ],
+    [
+      921,
+      []
+    ],
+    [
+      960,
+      [
+        "RIGHT"
+      ]
+    ],
+    [
+      961,
+      []
+    ],
+    [
+      1000,
+      [
+        "RIGHT"
+      ]
+    ],
+    [
+      1001,
+      []
+    ],
+    [
+      1100,
+      [
+        "A"
+      ]
+    ],
+    [
+      1101,
+      []
+    ],
+    [
+      2000,
+      [
+        "A"
+      ]
+    ],
+    [
+      2001,
+      []
+    ],
+    [
+      2300,
+      [
+        "B"
+      ]
+    ],
+    [
+      2301,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 778,
+      "frames": 1,
+      "held": [
+        [
+          0,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 0,
+          "address": "03002170",
+          "bytes": 2,
+          "value": 1
+        }
+      ],
+      "about": "A name already saved, as in mini-games-menu."
+    }
+  ]
+}
