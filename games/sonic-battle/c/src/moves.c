@@ -1,7 +1,9 @@
-// moves.js in C: the fight's frame in Training mode and the fighters' state machines, as far as a fight's opening
-// reaches: both fighters drop from above, land and stand, with nothing pressed. Each fighter's record is 252 bytes in
-// work RAM, and what's not reached yet says so when it is: a trap, naming the original's function, in place of each path
-// left out.
+// moves.js in C: the fight's frame in Training mode and the fighters' state machines. A fighter's frame reads its keys
+// (0x08005310), runs the script of its state (0x08007ec8 and 0x0800290c), moves (0x0800597c and 0x080127d0), takes the
+// hits that reached it (0x080036dc and 0x080040fa), reaches others with its attacks (0x08006134 and 0x080066d8) and
+// takes its next state (0x0800486c, 0x0800444c and 0x08001b0c), with the way the pad faces (0x080034f0) turning an
+// aimed attack. Each fighter's record is 252 bytes in work RAM, and what's not reached yet says so when it is: a trap,
+// naming the original's function, in place of each path left out.
 
 #include "game.h"
 
