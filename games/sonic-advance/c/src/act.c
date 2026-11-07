@@ -4,6 +4,8 @@
 // function at a time; every comment names the original's function where one is rewritten.
 
 #include "act.h"
+#include "actobjects.h"
+#include "actenemies.h"
 
 enum {
   OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC,
@@ -753,6 +755,8 @@ static void draw_frame(void) {
     e.bgScroll[6] = 0; e.bgScroll[7] = 0;
     // the rings, behind the objects and Sonic
     rings_draw(camX, camY);
+    objects_draw(camX, camY);
+    enemies_draw(camX, camY);
   }
 
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
@@ -786,6 +790,20 @@ static void act_frame(void) {
   palettes_run();
   // the ring manager runs after the camera and before the objects and Sonic
   rings_update((int)__builtin_floor(act.player.x), (int)__builtin_floor(act.player.y), act.player.offsetY);
+  int camX = (int)act.cam.x, camY = (int)act.cam.y;
+  objects_update(camX, camY);
+  enemies_update(camX, camY);
+  if (!act.player.dead && !act.player.invulnerable && (objects_player_hit() || enemies_player_hit())) {
+    if (act.ringCount > 0) {
+      act.ringCount = 0;
+      act.player.state = PS_HURT; act.player.air = 1; act.player.curled = 0; act.player.offsetY = SPRITE_OFFSET_Y;
+      act.player.ysp = 3.0; act.player.xsp = 1.5 * (act.player.xsp > 0 ? -1 : 1);
+      act.player.invulnerable = 120;
+      play_song(118);
+    } else {
+      act.player.dead = 1; act.player.state = PS_DEAD;
+    }
+  }
   int left = (e.input & KEY_LEFT) != 0, right = (e.input & KEY_RIGHT) != 0;
   int up = (e.input & KEY_UP) != 0, down = (e.input & KEY_DOWN) != 0;
   int jump = (e.input & KEY_A) != 0, attack = (e.input & KEY_B) != 0;
@@ -852,6 +870,8 @@ void act_start(int level, int cardSkip, int preFrames) {
   load_stage(level);
   animFrame = 0; animDelayCount = 0;
   rings_init(level);
+  objects_init(level);
+  enemies_init(level);
   palettes_init();
   create_player(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);
