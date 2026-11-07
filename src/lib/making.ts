@@ -8,7 +8,7 @@
 // steps or pieces.
 import { SOURCE_URL, getGames } from './site';
 import { beingMade, mainLanguageOf, partsFile } from './dreamports';
-import { inReview, whatCanStart } from './pieces.mjs';
+import { inReview, languageOfIssue, whatCanStart } from './pieces.mjs';
 
 export interface Step {
   number: number;
@@ -39,6 +39,7 @@ interface Item {
   html_url: string;
   state: string;
   assignees?: unknown[];
+  body?: string | null;
   repository_url?: string;
   pull_request?: { merged_at: string | null };
 }
@@ -87,9 +88,15 @@ async function fromGitHub(games: { game: string; title: string; issue: number }[
       const merged = item.pull_request?.merged_at;
       if (merged) steps.set(item.number, { number: item.number, title: stepTitle(item.title), merged, url: item.html_url });
     }
-    const pieces = (await list<Item>(`/issues/${issue}/sub_issues`)).filter(
-      (piece) => piece.repository_url?.toLowerCase() === API.toLowerCase(),
-    );
+    // the pieces under the game's issue, and those under its versions' issues there, which hold its tasks in another
+    // language (#905)
+    const under = async (number: number) =>
+      (await list<Item>(`/issues/${number}/sub_issues`)).filter((piece) => piece.repository_url?.toLowerCase() === API.toLowerCase());
+    const direct = await under(issue);
+    const pieces = [
+      ...direct.filter((piece) => !languageOfIssue(piece)),
+      ...(await Promise.all(direct.filter((piece) => languageOfIssue(piece)).map((version) => under(version.number)))).flat(),
+    ];
     data[game] = {
       steps: [...steps.values()].sort((a, b) => b.merged.localeCompare(a.merged)),
       free: whatCanStart(pieces, partsFile(game), new Set(), { main: mainLanguageOf(game), reviewing }).free.length,

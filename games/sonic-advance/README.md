@@ -426,7 +426,7 @@ With *BUTTON CONFIG.* on *REVERSE*, every player's jump and attack swap in the s
 
 Players 1 and 2 share the keyboard. Controllers go to the players without keys first: with 3 or 4 players, the first controller is player 3's and the second player 4's, and any more go to players 1 and 2. With 2 players, the first controller is player 1's and the second player 2's. <kbd>H</kbd> and <kbd>M</kbd> work as usual; the widescreen view and the Rush boost are for single player only.
 
-For now everyone plays Sonic, which the original doesn't allow. The results screen leaves out the players' names, which the original takes from each cartridge's save. The screen after the results and the original's menus for setting up a game, where you would pick the stage, aren't built yet. For testing, `&seed=` sets the random number the players share at the start and `&chao=` (0 to 7) which of the stage's eight places the Chao starts at.
+For now everyone plays Sonic, which the original doesn't allow. Each results strip shows its player's name from that cartridge's save, and the round counts each player's wins, losses and draws in their save's VS record, as the original does. After the results the continue screen asks whether to play another round, and `?level=14` opens it too once its round ends. For testing, `&seed=` sets the random number the players share at the start and `&chao=` (0 to 7) which of the stage's eight places the Chao starts at.
 
 ## Where it's at
 
