@@ -639,20 +639,20 @@ void moveFighter(int i) {
   Meeting met = meetWalls(reads16(rec + X), reads16(rec + Y), reads16(rec + OLD_X), reads16(rec + OLD_Y));
   write8(rec + BUMPED, (uint8_t)met.bits);
   if (met.bits & 15) {
-    if (reads16(rec + Z) >= reads16(rec + FLOOR)) { met.wallX = 0; met.wallY = 0; }
+    if (reads16(rec + Z) >= reads16(FLOOR)) { met.wallX = 0; met.wallY = 0; }
     if (met.wallX == 0 && met.wallY == 0) {
       write8(rec + BUMPED, read8(rec + BUMPED) & 0xF0);
-      uint16_t floor = read16(rec + FLOOR);
+      uint16_t floor = read16(FLOOR);
       write16(rec + GROUND, floor);
       if (reads16(rec + Z) < s16(floor)) write16(rec + Z, floor);
     } else if (read16(rec + STATE) == 255) {
       write8(rec + BUMPED, read8(rec + BUMPED) & 0xF0);
-      write16(rec + GROUND, read16(rec + FLOOR));
+      write16(rec + GROUND, read16(FLOOR));
     } else write16(rec + GROUND, 0);
   } else write16(rec + GROUND, 0);
   if (read16(rec + STATE) == 255) write16(rec + Z, i == (int)read32(PLAYER_) ? read16(rec + GROUND) : 80);
   if ((character == 2 && state == 278) || (character == 3 && state == 0x115)) {
-    if (read8(rec + BUMPED) & 15) write16(rec + GROUND, read16(rec + FLOOR));
+    if (read8(rec + BUMPED) & 15) write16(rec + GROUND, read16(FLOOR));
     write8(rec + BUMPED, read8(rec + BUMPED) & 0xF0);
   }
   int bumped = read8(rec + BUMPED);
