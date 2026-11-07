@@ -71,11 +71,13 @@ void hideSpriteBuffer(void) {
   g.oam_buffer_full = 1;
 }
 
+/** 0x08017ed0: nothing queued, so the next copy leaves every sprite hidden. */
 void clearSprites(void) {
   g.sprite_count = 0;
   g.matrix_count = 0;
 }
 
+/** 0x08017c5c: asks the next V-blank for the other half of the rotation parameters and for the queued sprites. */
 void copyAtVblank(void) {
   g.affine_half ^= 1;
   g.vblank_copies = 1;
@@ -133,6 +135,7 @@ void setBlend(int effect, int first, int second, int a, int b, int y) {
 
 static inline int16_t sineAt(int a) { return reads16(0x0804DF7C + (uint32_t)(a * 2)); }
 
+/** 0x08016438: rotating layer `layer`'s parameters (2 or 3) into the half of `g.affine` the V-blank doesn't copy. */
 void setRotation(int originX, int originY, int firstDenominator, int secondDenominator, int scaleX, int scaleY,
                  int angle, int layer) {
   uint16_t pa = (uint16_t)(scaleX * divArm(s16(firstDenominator), sineAt(angle + 0x800) << 3));
@@ -202,6 +205,7 @@ int fadeToWhite(uint32_t first, int count) {
   return done;
 }
 
+/** 0x08016078: a new screen's start, with the palette filled from its first colour, VRAM cleared and sprites hidden. */
 void newScreen(int mode) {
   for (int i = 1; i < 512; i++) gba_pal[i] = gba_pal[0];
   for (uint32_t i = 0; i < 0x18000; i++) gba_vram[i] = 0;
@@ -304,7 +308,8 @@ static void vblank(void) {
   if (g.vblank_copies) {
     for (int i = 0; i < 16; i++) gba_write((uint16_t)(REG_BG2PA_ + i * 2), g.affine[g.affine_half][i]);
     hideSprites();
-    for (int i = 0; i < g.sprite_count; i++) for (int n = 0; n < 4; n++) gba_oam[i * 4 + n] = g.sprites[i * 4 + n];
+    // each queued sprite has three OAM attribute words; word 3 belongs to the rotation matrices
+    for (int i = 0; i < g.sprite_count; i++) for (int n = 0; n < 3; n++) gba_oam[i * 4 + n] = g.sprites[i * 4 + n];
     for (int i = 0; i < g.matrix_count; i++) for (int n = 0; n < 4; n++) gba_oam[i * 16 + n * 4 + 3] = g.matrices[i * 4 + n];
     g.vblank_copies = 0;
   }

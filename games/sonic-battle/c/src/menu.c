@@ -41,6 +41,8 @@ static const uint32_t FADES[4][2] = {
 #define PARTS_ARROWS 0x0816EAC4u
 
 #define MENU_SONG 1
+// 0x08039e20's unpacking runs past a V-blank and starts the menu's song 31,815 cycles into the next frame, as mGBA measures it
+#define MENU_SONG_START_CYCLE 31815
 #define SOUND_MOVE 401
 #define SOUND_MADE 404
 // gSongTable: eight bytes for each song, with the number of the player it plays on at the fifth
@@ -347,7 +349,7 @@ static void displayOn(void) {
 
 /** The song starts a frame after the screen is built, as the original's building runs past a V-blank. */
 static void songAndDisplay(void) {
-  gba_sound_wave_at(31815);   // where the song's start comes in its frame, as mGBA measures it
+  gba_sound_wave_at(MENU_SONG_START_CYCLE);
   gba_sound_play(MENU_SONG);
   displayOn();
 }

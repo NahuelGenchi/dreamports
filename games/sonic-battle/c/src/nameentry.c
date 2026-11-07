@@ -45,6 +45,8 @@
 #define SQUARE 0x081581F4u
 
 #define NAME_SONG 4
+// 0x08036560's unpacking runs past a V-blank and starts the screen's song 163,059 cycles into the next frame, as mGBA measures it
+#define NAME_SONG_START_CYCLE 163059
 #define SOUND_MOVE 401
 #define SOUND_LETTER 402
 #define SOUND_BACK 403
@@ -382,7 +384,7 @@ static void nameSetUpScreen(void) {
 /** 0x08036560's last step: it runs past a V-blank, and the display and the song come as it ends. */
 static void nameDisplayOnScreen(void) {
   queueRegister(REG_DISPCNT, DISPCNT_ON);
-  gba_sound_wave_at(g.restarted ? 136311 : 163059);   // where the song's start comes in its frame, as mGBA measures it
+  gba_sound_wave_at(g.restarted ? 136311 : NAME_SONG_START_CYCLE);
   gba_sound_play(NAME_SONG);
   g.callback = nameFrameScreen;
 }

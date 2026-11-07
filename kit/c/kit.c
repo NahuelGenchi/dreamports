@@ -9,25 +9,48 @@ const uint8_t *kit_copy;
 uint32_t kit_copy_size;
 
 #ifdef __wasm__
+static void kit_trap(void) { __builtin_trap(); }
 // memory past what the program takes, given out in turn and never taken back, as a game's memory lasts for the page
 extern unsigned char __heap_base;
 static uintptr_t heap_top;
 void *kit_alloc(size_t size) {
   if (!heap_top) heap_top = (uintptr_t)&__heap_base;
-  uintptr_t at = (heap_top + 15) & ~(uintptr_t)15, end = at + size;
+  if (heap_top > ~(uintptr_t)15) kit_trap();
+  uintptr_t at = (heap_top + 15) & ~(uintptr_t)15;
+  if (size > ~(uintptr_t)0 - at) kit_trap();
+  uintptr_t end = at + size;
   size_t have = __builtin_wasm_memory_size(0) * 65536;
-  if (end > have && __builtin_wasm_memory_grow(0, (end - have + 65535) / 65536) == (size_t)-1) __builtin_trap();
+  if (end > have) {
+    size_t need = end - have;
+    if (need > ~(size_t)65535 || __builtin_wasm_memory_grow(0, (need + 65535) / 65536) == (size_t)-1) kit_trap();
+  }
   heap_top = end;
   return __builtin_memset((void *)at, 0, size);
 }
 #else
 #include <stdlib.h>
+#include <string.h>
+static void kit_trap(void) { abort(); }
 void *kit_alloc(size_t size) {
   void *at = calloc(1, size ? size : 1);
-  if (!at) abort();
+  if (!at) kit_trap();
   return at;
 }
 #endif
+
+static void *kit_reuse(void **slot, size_t *room, size_t size) {
+  size_t need = size ? size : 1;
+  if (!*slot || need > *room) {
+    *slot = kit_alloc(need);
+    *room = need;
+    return *slot;
+  }
+#ifdef __wasm__
+  return __builtin_memset(*slot, 0, size);
+#else
+  return memset(*slot, 0, size);
+#endif
+}
 
 static uint8_t *save_bytes;
 static uint32_t save_size;
@@ -48,7 +71,10 @@ static uint32_t *screen;
 static int screen_width, screen_height;
 static size_t screen_room;
 uint32_t *kit_screen(int width, int height) {
-  size_t words = (size_t)(width > 0 ? width : 0) * (size_t)(height > 0 ? height : 0);
+  size_t w = (size_t)(width > 0 ? width : 0), h = (size_t)(height > 0 ? height : 0);
+  if (h && w > ~(size_t)0 / h) kit_trap();
+  size_t words = w * h;
+  if (words > ~(size_t)0 / 4) kit_trap();
   if (!screen || words > screen_room) {
     screen = kit_alloc(words ? words * 4 : 4);
     screen_room = words;
@@ -61,7 +87,9 @@ uint32_t *kit_screen(int width, int height) {
 // The words of the page's address, such as proof&unlocked=1, as the page gave them, and as kit_start_point reads them:
 // each word's name and value, decoded, with a zero after each, made the first time one is read.
 static char *start_text, *start_words, *start_words_end;
+static size_t start_text_room, start_words_room;
 static uint32_t start_size;
+static int start_words_ready;
 
 static int hex_digit(char c) {
   if (c >= '0' && c <= '9') return c - '0';
@@ -83,7 +111,9 @@ static char *decode_word(char *out, const char *from, const char *to) {
 }
 static void read_start_words(void) {
   // each word takes at most two bytes more than it had, and the & before it
-  char *out = start_words = kit_alloc(start_size * 2 + 2);
+  size_t len = start_size;
+  if (len > (~(size_t)0 - 2) / 2) kit_trap();
+  char *out = start_words = kit_reuse((void **)&start_words, &start_words_room, len * 2 + 2);
   const char *p = start_text, *end = start_text + start_size;
   if (p < end && *p == '?') p++;
   while (p < end) {
@@ -99,11 +129,12 @@ static void read_start_words(void) {
     p = word_end + 1;
   }
   start_words_end = out;
+  start_words_ready = 1;
 }
 
 const char *kit_start_point(const char *name) {
   if (!start_text) return NULL;
-  if (!start_words) read_start_words();
+  if (!start_words_ready) read_start_words();
   for (const char *word = start_words; word < start_words_end;) {
     const char *value = word;
     while (*value) value++;
@@ -166,18 +197,22 @@ int32_t kit_start_number(const char *name, int32_t absent) {
 }
 
 // what the page calls
+static uint8_t *rom_bytes;
+static size_t rom_room;
 /** A place for the player's copy, `size` bytes, which the page fills before it calls dp_start. */
 EXPORT("dp_rom") uint8_t *dp_rom(uint32_t size) {
-  uint8_t *at = kit_alloc(size);
+  uint8_t *at = kit_reuse((void **)&rom_bytes, &rom_room, size);
   kit_copy = at;
   kit_copy_size = size;
   return at;
 }
 /** A place for the words of the page's address, `size` bytes, which the page fills before it calls dp_start. */
 EXPORT("dp_start_point") char *dp_start_point(uint32_t size) {
-  start_text = kit_alloc(size + 1);
+  size_t len = size;
+  if (len > ~(size_t)0 - 1) kit_trap();
+  start_text = kit_reuse((void **)&start_text, &start_text_room, len + 1);
   start_size = size;
-  start_words = NULL;
+  start_words_ready = 0;
   return start_text;
 }
 /** The picture's size as the game last gave it to kit_screen, for the page to show it at that size. */

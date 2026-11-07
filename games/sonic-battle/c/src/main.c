@@ -2,11 +2,9 @@
 // from the JavaScript version in games/sonic-battle/src/. src/main.js runs it on the page, built to WebAssembly as
 // src/game.wasm (kit/gba/c/README.md).
 //
-// The SEGA and Sonic Team logos, the intro and the title screen are written from logos.js, intro.js and title.js and the
-// screen functions their core.js gives them. After the title, the name entry isn't drawn yet (its own task, #645): only
-// its palettes, its keys and its way out are here, so Start keeps the name and the main menu begins on the frame the
-// original's does. The main menu is written from menu.js (menu.c), on the core (core.c), which also runs a fight's
-// opening from its recording's start point (fight.c).
+// The core (core.c) runs every screen from power-on: the SEGA and Sonic Team logos, the intro and the title screen are
+// here, written from logos.js, intro.js and title.js, handing over to the name entry (nameentry.c), the main menu
+// (menu.c) and a fight's opening (fight.c).
 //
 // A recording's start point can open a screen straight away: fight=training&vblanks=... opens the fight's opening
 // (main.c's startFightFromPoint), and name=1 opens the screens that follow the title with a saved name.
@@ -14,9 +12,7 @@
 #include "game.h"
 #include "nameentry.h"
 
-#define PALETTE 0x05000000u
-
-#define ROM(addr) (gba_rom + ((addr) - 0x08000000u))
+#define ROM(addr) (gba_rom + ((addr) - CARTRIDGE))
 
 // the colour effect: alpha blending (1) of layer 2 (4) over layer 3 (8)
 enum { ALPHA = 1, LAYER_2 = 4, LAYER_3 = 8 };
@@ -28,21 +24,6 @@ enum {
   BG3HOFS = REG_BG2PA - 4, BG3VOFS = REG_BG2PA - 2,
 };
 
-// what the screen is doing: the logos, then the intro, then the title, then its fade away
-enum {
-  LOGOS_FADE_IN, LOGOS, LOGOS_FADE_OUT,
-  INTRO_START, INTRO_PICTURES, INTRO_ANIMATION,
-  TITLE, TITLE_FADE_NEXT, TITLE_FADE_ATTRACT, TITLE_BLACK,
-};
-
-static int state;
-static int counter, blend, blendTarget;   // the logos' frame count and cross-fade
-static int startUp;                // the console's frames before the first callback (core.js's START_UP_FRAMES)
-static unsigned pendingDispcnt;    // 0xFFFF when nothing waits
-static int affineDirty;
-static uint16_t affine[2][8];      // layer 2's and layer 3's PA, PB, PC, PD, X low, X high, Y low, Y high
-static uint16_t previousKeys;
-
 // the intro's counters and the values they ease, named after the original's
 static int16_t introTimer, introScene, introX, introY, introScroll, introScale, introScaleTarget;
 static int16_t introTargetX, introTargetY;
@@ -52,127 +33,81 @@ static int16_t introTargetX, introTargetY;
 static int16_t titleCounter, titlePulse, titleX, titleY, titleScale;
 static int16_t titleTargetX, titleTargetY, titleScaleTarget;
 static int titlePulseCount;
-static int language = 1;
-static int usingCore;             // from the name entry on, the core runs the screens
 
-// the title's queued sprites: six OAM entries of three words each, their one matrix, and whether the next V-blank
-// copies them (0x08017ed0, 0x08018004, 0x08017f34 and 0x08017c5c)
-static uint16_t titleEntries[6][3];
-static uint16_t titleMatrix[4];
-static int titleSpriteCount, spriteCopy;
-
-/** 0x08017ed0's pattern over all of OAM: every sprite hidden and every rotation matrix the identity. */
-static void hideSprites(void) {
-  for (int i = 0; i < 512; i += 16) {
-    gba_oam[i + 0] = 0x200; gba_oam[i + 1] = 0; gba_oam[i + 2] = 0; gba_oam[i + 3] = 0x100;
-    gba_oam[i + 4] = 0x200; gba_oam[i + 5] = 0; gba_oam[i + 6] = 0; gba_oam[i + 7] = 0;
-    gba_oam[i + 8] = 0x200; gba_oam[i + 9] = 0; gba_oam[i + 10] = 0; gba_oam[i + 11] = 0;
-    gba_oam[i + 12] = 0x200; gba_oam[i + 13] = 0; gba_oam[i + 14] = 0; gba_oam[i + 15] = 0x100;
-  }
-}
-
-/** core.js's copyToVram: `words` 16-bit words from the cartridge into VRAM. */
-static void copyVram(uint32_t from, uint32_t to, int words) {
-  const uint8_t *src = ROM(from);
-  uint8_t *dst = gba_vram + (to - 0x06000000u);
-  for (int i = 0; i < words * 2; i++) dst[i] = src[i];
-}
+static void showLogos(void);
+static void fadeOut(void);
+static void introSetup(void);
+static void introPictures(void);
+static void introAnimation(void);
+static void titleStep(void);
+static void nameEntry(void);
 
 /** `words` 16-bit words from the cartridge into the palette at `to`, as a DMA does. */
 static void copyPalette(uint32_t from, uint32_t to, int words) {
   const uint8_t *src = ROM(from);
-  uint16_t *dst = gba_pal + ((to - 0x05000000u) >> 1);
+  uint16_t *dst = gba_pal + ((to - PALETTE) >> 1);
   for (int i = 0; i < words; i++) dst[i] = (uint16_t)(src[i * 2] | (src[i * 2 + 1] << 8));
 }
 
 /** One signed 16-bit number of a table in the player's copy, which keeps them as signed 16-bit words. */
 static int16_t fromTable(uint32_t table, int index) {
-  const uint8_t *at = ROM(table) + index * 2;
-  return (int16_t)(at[0] | (at[1] << 8));
-}
-static uint16_t rom16(uint32_t address) {
-  const uint8_t *at = ROM(address);
-  return (uint16_t)(at[0] | (at[1] << 8));
+  return reads16(table + (uint32_t)(index * 2));
 }
 
-/** The BIOS's division (DivArm, 0x0804a5a0), rounded toward zero, and 0 for a zero denominator, as the original's. */
-static int32_t divide(int32_t denominator, int32_t numerator) {
-  return denominator ? numerator / denominator : 0;
-}
-
-/** 0x08016438: setRotation(c, 0, 0, 0x100, 0x100, 1, 1, 0, layer), the identity, kept until the next V-blank. */
-static void setIdentityRotation(int layer) {
-  uint16_t *out = affine[layer - 2];
-  out[0] = 0x100; out[1] = 0; out[2] = 0; out[3] = 0x100;
-  out[4] = 0; out[5] = 0; out[6] = 0; out[7] = 0;
-  affineDirty = 1;
-}
-
-/** 0x08016078: the palette filled with its first colour, VRAM cleared, sprites hidden, DISPCNT queued. */
-static void resetScreen(void) {
-  for (int i = 1; i < 512; i++) gba_pal[i] = gba_pal[0];
-  for (int i = 0; i < 0x18000; i++) gba_vram[i] = 0;
-  hideSprites();
-  for (int layer = 2; layer <= 3; layer++)
-    for (int i = 0; i < 8; i++) affine[layer - 2][i] = 0;
-  pendingDispcnt = 0x1C62;
-  blend = 0;
-  blendTarget = 0;
-  counter = 0;
-}
+// ---- the logos (logos.js) ----
 
 /** 0x080006ec: the colours from the first picture, then the logos. */
 static void fadeIn(void) {
   if (fadeToward(PALETTE, 0x083270B4, 0x100)) {
-    blendTarget = 0x10;
-    state = LOGOS;
+    g.blend_target = 0x10;
+    g.callback = showLogos;
   }
 }
 
 /** 0x080003a8: a frame count copies each logo into the hidden layer and turns the cross-fade toward it. */
-static void showLogos(uint16_t keys) {
-  counter = (counter + 1) & 0xFFFF;
-  switch (counter) {
+static void showLogos(void) {
+  g.counter = (g.counter + 1) & 0xFFFF;
+  switch (g.counter) {
     case 0x8:
-      copyVram(0x083272B4, 0x06008000, 0xAE0);
-      copyVram(0x08328874, 0x0600F000, 0x200);
-      blendTarget = 0;
+      copyToVram(0x083272B4, 0x06008000, 0xAE0);
+      copyToVram(0x08328874, 0x0600F000, 0x200);
+      g.blend_target = 0;
       break;
     case 0x80:
-      blendTarget = 0x10;
+      g.blend_target = 0x10;
       break;
     case 0x88:
-      copyVram(0x0832B1B4, 0x06008000, 0x1600);
-      copyVram(0x0832DDB4, 0x0600F000, 0x200);
-      blendTarget = 0;
+      copyToVram(0x0832B1B4, 0x06008000, 0x1600);
+      copyToVram(0x0832DDB4, 0x0600F000, 0x200);
+      g.blend_target = 0;
       break;
     case 0x90:
       gba_sound_play(400);
-      copyVram(0x0832E1B4, 0x06000000, 0xDC0);
-      copyVram(0x0832FD34, 0x06007000, 0x200);
-      blendTarget = 0x10;
+      copyToVram(0x0832E1B4, 0x06000000, 0xDC0);
+      copyToVram(0x0832FD34, 0x06007000, 0x200);
+      g.blend_target = 0x10;
       break;
     case 0x108:
-      blendTarget = 0;
+      g.blend_target = 0;
       break;
     case 0x110:
-      copyVram(0x08330134, 0x06000000, 0x20);
-      copyVram(0x08330174, 0x06007000, 0x200);
-      blendTarget = 0x10;
+      copyToVram(0x08330134, 0x06000000, 0x20);
+      copyToVram(0x08330174, 0x06007000, 0x200);
+      g.blend_target = 0x10;
       break;
     case 0x118:
-      state = LOGOS_FADE_OUT;
+      g.callback = fadeOut;
       break;
   }
-  if (keys & KEY_START) {
-    if (((counter - 0x19) & 0xFFFF) <= 0x66) counter = 0x7F;
-    else if (((counter - 0xA1) & 0xFFFF) <= 0x66) counter = 0x107;
+  if (g.keys.held & KEY_START) {
+    if (((g.counter - 0x19) & 0xFFFF) <= 0x66) g.counter = 0x7F;
+    else if (((g.counter - 0xA1) & 0xFFFF) <= 0x66) g.counter = 0x107;
   }
-  if (blend > blendTarget) blend -= 2;
-  if (blend < blendTarget) blend += 2;
-  setBlend(ALPHA, LAYER_2, LAYER_3, blend & 0xFF, (0x10 - blend) & 0xFF, 0);
-  setIdentityRotation(2);
-  setIdentityRotation(3);
+  if (g.blend > g.blend_target) g.blend -= 2;
+  if (g.blend < g.blend_target) g.blend += 2;
+  setBlend(ALPHA, LAYER_2, LAYER_3, g.blend & 0xFF, (0x10 - g.blend) & 0xFF, 0);
+  setRotation(0, 0, 0x100, 0x100, 1, 1, 0, 2);
+  setRotation(0, 0, 0x100, 0x100, 1, 1, 0, 3);
 }
 
 /** 0x08000724: every colour to black, then no colour effect, the palette cleared, and the intro. */
@@ -180,16 +115,40 @@ static void fadeOut(void) {
   if (fadeToBlack(PALETTE, 0x100)) {
     setBlend(0, 0, 0, 0, 0, 0);
     for (int i = 0; i < 512; i++) gba_pal[i] = 0;
-    state = INTRO_START;
+    g.callback = introSetup;
   }
+}
+
+/** 0x08000210: the logos' screen, its two layers and the first picture. */
+static void logosSetup(void) {
+  newScreen(1);
+  // the first picture in layer 2 (tiles at 0x06000000, map at 0x06007000), and an empty one in layer 3
+  copyToVram(0x08328C74, 0x06000000, 0x10A0);
+  copyToVram(0x0832ADB4, 0x06007000, 0x200);
+  copyToVram(0x08330134, 0x06008000, 0x20);
+  copyToVram(0x08330174, 0x0600F000, 0x200);
+  // both rotating layers 512 pixels across, in 256 colours: layer 2 in front, layer 3 behind it
+  clearLayer(2);
+  layerBits(2, 0x4000); layerBits(2, 0); layerBits(2, 0x80); layerBits(2, 0); layerBits(2, 0);
+  layerCharBase(2, 0); layerScreenBase(2, 0xE);
+  clearLayer(3);
+  layerBits(3, 0x4000); layerBits(3, 2); layerBits(3, 0x80); layerBits(3, 0); layerBits(3, 0);
+  layerCharBase(3, 2); layerScreenBase(3, 0x1E);
+  gba_write(REG_BG2PA, 0x100); gba_write(REG_BG2PA + 2, 0); gba_write(REG_BG2PA + 4, 0); gba_write(REG_BG2PA + 6, 0x100);
+  gba_write(REG_BG2X, 0); gba_write(REG_BG2X + 2, 0); gba_write(REG_BG2Y, 0); gba_write(REG_BG2Y + 2, 0);
+  gba_write(REG_BG3PA, 0x100); gba_write(REG_BG3PA + 2, 0); gba_write(REG_BG3PA + 4, 0); gba_write(REG_BG3PA + 6, 0x100);
+  gba_write(REG_BG3X, 0); gba_write(REG_BG3X + 2, 0); gba_write(REG_BG3Y, 0); gba_write(REG_BG3Y + 2, 0);
+  setBlend(ALPHA, LAYER_2, LAYER_3, 0, 0x10, 0);
+  gba_sound_stop_all();
+  g.callback = fadeIn;
 }
 
 // ---- the intro (intro.js) ----
 
 /** 0x08172a3c: each picture's centre as it comes in (x, y), then the centre it moves to; 0x08172a64: layer 0's
  *  scroll as each comes in, then where it moves to. */
-#define POSITIONS 0x08172A3C
-#define SCROLLS 0x08172A64
+#define POSITIONS 0x08172A3Cu
+#define SCROLLS 0x08172A64u
 
 // 0x0803d860's five pictures: layer 2's palette, tiles and map, and layer 0's tiles and map, with how many
 // 16-bit words of each there are
@@ -238,15 +197,15 @@ static void toTitle(void) {
   titleTargetY = 0;
   titleScale = 0;
   titleScaleTarget = 0;
-  state = TITLE;
+  g.callback = titleStep;
 }
 
 /** 0x0803d748: the intro's start. */
 static void introSetup(void) {
-  resetScreen();                 // 0x08016078
-  for (int i = 0; i < 0x18000; i++) gba_vram[i] = 0;   // 0x08017cb0
-  for (int i = 1; i < 512; i++) gba_pal[i] = gba_pal[0];   // 0x08017cd8
-  pendingDispcnt = 0x541;
+  newScreen(1);                 // 0x08016078
+  for (int i = 0; i < 0x18000; i++) gba_vram[i] = 0;        // 0x08017cb0
+  for (int i = 1; i < 512; i++) gba_pal[i] = gba_pal[0];    // 0x08017cd8
+  queueRegister(REG_DISPCNT, 0x541);
   for (int i = 0; i < 512; i++) gba_pal[i] = 0;
   gba_write(REG_BG0CNT, 0);
   gba_write(REG_BG1CNT, 0);
@@ -267,19 +226,19 @@ static void introSetup(void) {
   introTargetY = 0;
   gba_sound_stop_all();        // 0x0801f638
   gba_sound_play(0);           // 0x0801f618
-  state = INTRO_PICTURES;
+  g.callback = introPictures;
 }
 
 /** 0x0803d860: the five pictures, each panned toward its target, then the animation. */
-static void introPictures(uint16_t keys) {
+static void introPictures(void) {
   if (introTimer > 12) {
     introScene++;
     const IntroPicture *picture = &INTRO_PICTURE_LIST[introScene];
-    copyPalette(picture->palette, 0x05000000, 0x100);
-    copyVram(picture->tiles, 0x06000000, picture->tilesWords);
-    copyVram(picture->map, 0x0600B800, picture->mapWords);
-    copyVram(picture->layer0Tiles, 0x0600C000, picture->layer0TilesWords);
-    copyVram(picture->layer0Map, 0x0600F800, picture->layer0MapWords);
+    copyPalette(picture->palette, PALETTE, 0x100);
+    copyToVram(picture->tiles, 0x06000000, (uint32_t)picture->tilesWords);
+    copyToVram(picture->map, 0x0600B800, (uint32_t)picture->mapWords);
+    copyToVram(picture->layer0Tiles, 0x0600C000, (uint32_t)picture->layer0TilesWords);
+    copyToVram(picture->layer0Map, 0x0600F800, (uint32_t)picture->layer0MapWords);
     introTimer = 0;
     introX = fromTable(POSITIONS, introScene * 2);
     introY = fromTable(POSITIONS, introScene * 2 + 1);
@@ -291,7 +250,7 @@ static void introPictures(uint16_t keys) {
       introScene = -1;
       introScale = 1;
       introScaleTarget = 256;
-      state = INTRO_ANIMATION;
+      g.callback = introAnimation;
     }
   }
   introX = s16(introX - ((introX - fromTable(POSITIONS, 10 + introScene * 2)) >> 2));
@@ -303,15 +262,15 @@ static void introPictures(uint16_t keys) {
   gba_write(REG_BG2PA + 6, 0x100);
   setReference(((120 - introX) << 8) - 0x7800, ((120 - introY) << 8) - 0x5000);
   gba_write(BG0VOFS, (uint16_t)introScroll);
-  if (keys & KEY_START) toTitle();
+  if (g.keys.held & KEY_START) toTitle();
 }
 
 /** 0x0803dd14: a looping animation, scaled out to 320 and back in to 176, moved to (54, -24) on the way. */
-static void introAnimation(uint16_t keys) {
+static void introAnimation(void) {
   introTimer++;
   introScene++;
   if (introTimer == 0) {
-    pendingDispcnt = 0x441;
+    queueRegister(REG_DISPCNT, 0x441);
     gba_write(REG_BG2CNT, 0x5782);
     introX = -8;
     introY = 30;
@@ -321,9 +280,9 @@ static void introAnimation(uint16_t keys) {
   if (introScene > 11) introScene = 0;
   if ((introScene & 1) == 0) {
     const IntroFrame *frame = &INTRO_ANIMATION_FRAMES[introScene / 2];
-    if (frame->palette) copyPalette(frame->palette, 0x05000000, 0x100);
-    copyVram(frame->tiles, 0x06000000, frame->tilesWords);
-    copyVram(frame->map, 0x0600B800, frame->mapWords);
+    if (frame->palette) copyPalette(frame->palette, PALETTE, 0x100);
+    copyToVram(frame->tiles, 0x06000000, (uint32_t)frame->tilesWords);
+    copyToVram(frame->map, 0x0600B800, (uint32_t)frame->mapWords);
     if (frame->up) introTargetY = s16(introTargetY - 1);
   }
   introX = s16(introX - ((introX - introTargetX) >> 2));
@@ -345,19 +304,19 @@ static void introAnimation(uint16_t keys) {
     toTitle();
   }
   // BG2's matrix at angle 0: pa and pd the cosine, pb the sine, pc its negation, each over the scale
-  const int32_t cosine = (int32_t)(int16_t)rom16(0x0804DF7C + 0x800 * 2) * 8;
-  const int32_t sine = (int32_t)(int16_t)rom16(0x0804DF7C) * 8;
-  int32_t pa = divide(introScale, cosine) & 0xFFFF;
-  int32_t pb = divide(introScale, sine) & 0xFFFF;
-  int32_t pc = -divide(introScale, sine) & 0xFFFF;
-  int32_t pd = divide(introScale, cosine) & 0xFFFF;
+  const int32_t cosine = (int32_t)reads16(0x0804DF7C + 0x800 * 2) * 8;
+  const int32_t sine = (int32_t)reads16(0x0804DF7C) * 8;
+  int32_t pa = divArm(introScale, cosine) & 0xFFFF;
+  int32_t pb = divArm(introScale, sine) & 0xFFFF;
+  int32_t pc = -divArm(introScale, sine) & 0xFFFF;
+  int32_t pd = divArm(introScale, cosine) & 0xFFFF;
   gba_write(REG_BG2PA, (uint16_t)pa);
   gba_write(REG_BG2PA + 2, (uint16_t)pb);
   gba_write(REG_BG2PA + 4, (uint16_t)pc);
   gba_write(REG_BG2PA + 6, (uint16_t)pd);
   setReference(((120 - introX) << 8) - (int16_t)pa * 120 - (int16_t)pb * 80,
     ((120 - introY) << 8) - (int16_t)pc * 120 - (int16_t)pd * 80);
-  if (keys & KEY_START) toTitle();
+  if (g.keys.held & KEY_START) toTitle();
 }
 
 // ---- the title screen (title.js) ----
@@ -409,23 +368,23 @@ static const TitleSprite TITLE_SPRITES[6] = {
  *  gives every sprite priority 3 here. */
 static void titleOamEntry(int i, const TitleSprite *sprite) {
   uint16_t base = sprite->type == 106 ? 0x4300 : 0x4000;
-  titleEntries[i][0] = (uint16_t)(base | sprite->y);
-  titleEntries[i][1] = (uint16_t)(0xC000 | (sprite->x & 0x1FF));
-  titleEntries[i][2] = (uint16_t)((sprite->tile & 0x3FF) | (3 << 10) | ((sprite->palette & 0xF) << 12));
+  g.sprites[i * 4 + 0] = (uint16_t)(base | sprite->y);
+  g.sprites[i * 4 + 1] = (uint16_t)(0xC000 | (sprite->x & 0x1FF));
+  g.sprites[i * 4 + 2] = (uint16_t)((sprite->tile & 0x3FF) | (3 << 10) | ((sprite->palette & 0xF) << 12));
 }
 
 /** 0x0803e1b0's frame 0: the display off, the four layers and their pictures, the sprites' tiles, the BG2
  *  matrix at its start, and where the scene's counters begin. */
 static void titleFirstFrame(void) {
-  pendingDispcnt = 0x40;
+  queueRegister(REG_DISPCNT, 0x40);
   gba_write(REG_BG0CNT, 0x0F07);
   gba_write(REG_BG1CNT, 0x170B);
   gba_write(REG_BG2CNT, 0x1F0F);
   gba_write(REG_BG3CNT, 0x1E81);
-  const TitleTiles *tiles = &TITLE_TILE_SETS[language ? 1 : 0];
-  copyVram(tiles->tiles, 0x06000000, tiles->words);
-  copyVram(tiles->map, 0x0600F000, 0x400);
-  for (int i = 0; i < 6; i++) copyVram(TITLE_LAYERS[i].from, TITLE_LAYERS[i].to, TITLE_LAYERS[i].words);
+  const TitleTiles *tiles = &TITLE_TILE_SETS[g.language ? 1 : 0];
+  copyToVram(tiles->tiles, 0x06000000, (uint32_t)tiles->words);
+  copyToVram(tiles->map, 0x0600F000, 0x400);
+  for (int i = 0; i < 6; i++) copyToVram(TITLE_LAYERS[i].from, TITLE_LAYERS[i].to, (uint32_t)TITLE_LAYERS[i].words);
   titleX = -16;
   titleY = 0;
   titleTargetX = 36;
@@ -443,60 +402,49 @@ static void titleFirstFrame(void) {
   gba_write(REG_BG2X + 2, 0);
   gba_write(REG_BG2Y, 0);
   gba_write(REG_BG2Y + 2, 0);
-  for (int i = 0; i < 2; i++) copyVram(TITLE_SPRITE_TILES[i].from, TITLE_SPRITE_TILES[i].to, TITLE_SPRITE_TILES[i].words);
+  for (int i = 0; i < 2; i++) copyToVram(TITLE_SPRITE_TILES[i].from, TITLE_SPRITE_TILES[i].to, (uint32_t)TITLE_SPRITE_TILES[i].words);
 }
 
 /** 0x0803e1b0's frame 1: the palettes, and the display on again, queued for the next V-blank. */
 static void titleSecondFrame(void) {
   for (int i = 0; i < 3; i++) copyPalette(TITLE_PALETTES[i].from, TITLE_PALETTES[i].to, TITLE_PALETTES[i].words);
-  pendingDispcnt = 0x1F40;
+  queueRegister(REG_DISPCNT, 0x1F40);
 }
 
 /** The matrix the two affine sprites share: a scale from the angle's cosine over the scene's scale, no turn. */
 static void titleMatrixOf(void) {
-  int32_t cosine = (int32_t)(int16_t)rom16(0x0804DF7C + 0x800 * 2) * 8;
-  int32_t sine = (int32_t)(int16_t)rom16(0x0804DF7C) * 8;
-  titleMatrix[0] = (uint16_t)(divide(titleScale, cosine) & 0xFFFF);
-  titleMatrix[1] = (uint16_t)(divide(titleScale, sine) & 0xFFFF);
-  titleMatrix[2] = (uint16_t)(-divide(titleScale, sine) & 0xFFFF);
-  titleMatrix[3] = (uint16_t)(divide(titleScale, cosine) & 0xFFFF);
+  int32_t cosine = (int32_t)reads16(0x0804DF7C + 0x800 * 2) * 8;
+  int32_t sine = (int32_t)reads16(0x0804DF7C) * 8;
+  g.matrices[0] = (uint16_t)(divArm(titleScale, cosine) & 0xFFFF);
+  g.matrices[1] = (uint16_t)(divArm(titleScale, sine) & 0xFFFF);
+  g.matrices[2] = (uint16_t)(-divArm(titleScale, sine) & 0xFFFF);
+  g.matrices[3] = (uint16_t)(divArm(titleScale, cosine) & 0xFFFF);
 }
 
 /** The six sprites and their matrix, queued for the V-blank (0x08018004 and 0x08017f34), which it asks to copy. */
 static void titleQueueSprites(void) {
+  clearSprites();
   for (int i = 0; i < 6; i++) titleOamEntry(i, &TITLE_SPRITES[i]);
   titleMatrixOf();
-  titleSpriteCount = 6;
-  spriteCopy = 1;
+  g.sprite_count = 6;
+  g.matrix_count = 1;
+  copyAtVblank();
 }
 
-/** 0x08017ed0: the queue emptied, so the next copy leaves every sprite hidden. */
-static void titleClearSprites(void) {
-  titleSpriteCount = 0;
+/** What follows neither screen is ported yet: the screen goes black and waits there. */
+static void afterTitle(void) {
+  for (int i = 0; i < 512; i++) gba_pal[i] = 0;
+  for (int i = 0; i < 512; i++) gba_oam[i] = 0x200;
 }
 
-static void nameEntry(void);
-
-/** 0x0803e6e8: the palette one step to black each frame, then the name entry, which leads on to the main menu. The
- *  core runs them from here: the name entry starts the frame after this fade ends, as the original's does. */
+/** 0x0803e6e8: the palette one step to black each frame, then the name entry, which leads on to the main menu. */
 static void titleFadeToNext(void) {
-  if (!fadeToBlack(PALETTE, 0x100)) return;
-  setBlend(0, 0, 0, 0, 0, 0);
-  for (int i = 0; i < 256; i++) gba_pal[i] = 0;
-  queueRegister(REG_DISPCNT, 0x1F40);
-  // the core reads the keys from here on, with none of this screen's presses counted again
-  g.keys.held = previousKeys;
-  g.keys.inverted = (uint16_t)((~previousKeys & 0x3FF) | 0xFC00);
-  g.keys.pressed = 0;
-  g.keys.released = 0;
-  g.keys.repeated = 0;
-  g.keys.timer = 15;
-  g.keys.delay = 15;
-  g.keys.interval = 7;
-  g.start_up = 0;
-  g.language = language;
-  usingCore = 1;
-  g.callback = nameEntry;
+  if (fadeToBlack(PALETTE, 0x100)) {
+    setBlend(0, 0, 0, 0, 0, 0);
+    for (int i = 0; i < 256; i++) gba_pal[i] = 0;
+    queueRegister(REG_DISPCNT, 0x1F40);
+    g.callback = nameEntry;
+  }
 }
 
 /** 0x0803e74c: the same fade when the title screen is left alone, out to the attract mode. */
@@ -504,8 +452,8 @@ static void titleFadeToAttract(void) {
   if (fadeToBlack(PALETTE, 0x100)) {
     setBlend(0, 0, 0, 0, 0, 0);
     for (int i = 0; i < 256; i++) gba_pal[i] = 0;
-    pendingDispcnt = 0x1F40;
-    state = TITLE_BLACK;
+    queueRegister(REG_DISPCNT, 0x1F40);
+    g.callback = afterTitle;
   }
 }
 
@@ -514,7 +462,7 @@ static void titleFadeToAttract(void) {
  * is this function's frame 0, which sets the screen up; frame 1 loads the palettes; from then on the scale
  * pulses and the layers ease, until Start (pressed after frame 80) or the 600-frame attraction timeout.
  */
-static void titleStep(uint16_t pressed) {
+static void titleStep(void) {
   titleCounter = s16(titleCounter + 1);
   titlePulse = s16(titlePulse + 1);
   if (titleCounter == 0) titleFirstFrame();
@@ -540,18 +488,18 @@ static void titleStep(uint16_t pressed) {
   gba_write(REG_BG0HOFS, (uint16_t)titleX);
   gba_write(BG0VOFS, (uint16_t)(48 + titleY));
   titleQueueSprites();
-  if ((pressed & KEY_START) && titleCounter > 80) {
+  if ((g.keys.pressed & KEY_START) && titleCounter > 80) {
     titleCounter = 0;
     titlePulse = 0;
     titleX = 0;
     titleY = 0;
     titleTargetX = 0;
     titleTargetY = 0;
-    titleClearSprites();
+    clearSprites();
     gba_sound_play(404);          // 0x0801f618
     // 0x0801f718(0, 120): the player of song 0, the title's music, a step down every 120 >> 4 frames
-    gba_sound_fade_out(gba_rom[0x08BF7244 - 0x08000000 + 4], 7);
-    state = TITLE_FADE_NEXT;
+    gba_sound_fade_out(gba_rom[0x08BF7244 - CARTRIDGE + 4], 7);
+    g.callback = titleFadeToNext;
   } else if (titleCounter > 600) {
     titleCounter = 0;
     titlePulse = 0;
@@ -559,67 +507,9 @@ static void titleStep(uint16_t pressed) {
     titleY = 0;
     titleTargetX = 0;
     titleTargetY = 0;
-    titleClearSprites();
-    state = TITLE_FADE_ATTRACT;
+    clearSprites();
+    g.callback = titleFadeToAttract;
   }
-}
-
-/** What the original's V-blank applies after the frame's work: the queued display control, the rotation, and
- *  the sprites and their matrix the title queued (0x08017c5c). */
-static void vblank(void) {
-  if (pendingDispcnt != 0xFFFF) {
-    gba_write(REG_DISPCNT, (uint16_t)pendingDispcnt);
-    pendingDispcnt = 0xFFFF;
-  }
-  if (affineDirty) {
-    for (int layer = 2; layer <= 3; layer++) {
-      const uint16_t *a = affine[layer - 2];
-      unsigned base = layer == 2 ? REG_BG2PA : REG_BG3PA;
-      gba_write(base + 0, a[0]);
-      gba_write(base + 2, a[1]);
-      gba_write(base + 4, a[2]);
-      gba_write(base + 6, a[3]);
-      gba_write(base + 8, a[4]);
-      gba_write(base + 10, a[5]);
-      gba_write(base + 12, a[6]);
-      gba_write(base + 14, a[7]);
-    }
-    affineDirty = 0;
-  }
-  if (spriteCopy) {
-    hideSprites();
-    for (int i = 0; i < titleSpriteCount; i++) {
-      gba_oam[i * 4 + 0] = titleEntries[i][0];
-      gba_oam[i * 4 + 1] = titleEntries[i][1];
-      gba_oam[i * 4 + 2] = titleEntries[i][2];
-    }
-    if (titleSpriteCount) for (int i = 0; i < 4; i++) gba_oam[i * 4 + 3] = titleMatrix[i];
-    spriteCopy = 0;
-  }
-}
-
-/** 0x08000210: the logos' screen, its two layers and the first picture. */
-static void logosSetup(void) {
-  resetScreen();
-  // the first picture in layer 2 (tiles at 0x06000000, map at 0x06007000), and an empty one in layer 3
-  copyVram(0x08328C74, 0x06000000, 0x10A0);
-  copyVram(0x0832ADB4, 0x06007000, 0x200);
-  copyVram(0x08330134, 0x06008000, 0x20);
-  copyVram(0x08330174, 0x0600F000, 0x200);
-  // both rotating layers 512 pixels across, in 256 colours: layer 2 in front, layer 3 behind it
-  clearLayer(2);
-  layerBits(2, 0x4000); layerBits(2, 0); layerBits(2, 0x80); layerBits(2, 0); layerBits(2, 0);
-  layerCharBase(2, 0); layerScreenBase(2, 0xE);
-  clearLayer(3);
-  layerBits(3, 0x4000); layerBits(3, 2); layerBits(3, 0x80); layerBits(3, 0); layerBits(3, 0);
-  layerCharBase(3, 2); layerScreenBase(3, 0x1E);
-  gba_write(REG_BG2PA, 0x100); gba_write(REG_BG2PA + 2, 0); gba_write(REG_BG2PA + 4, 0); gba_write(REG_BG2PA + 6, 0x100);
-  gba_write(REG_BG2X, 0); gba_write(REG_BG2X + 2, 0); gba_write(REG_BG2Y, 0); gba_write(REG_BG2Y + 2, 0);
-  gba_write(REG_BG3PA, 0x100); gba_write(REG_BG3PA + 2, 0); gba_write(REG_BG3PA + 4, 0); gba_write(REG_BG3PA + 6, 0x100);
-  gba_write(REG_BG3X, 0); gba_write(REG_BG3X + 2, 0); gba_write(REG_BG3Y, 0); gba_write(REG_BG3Y + 2, 0);
-  setBlend(ALPHA, LAYER_2, LAYER_3, 0, 0x10, 0);
-  gba_sound_stop_all();
-  state = LOGOS_FADE_IN;
 }
 
 /**
@@ -643,7 +533,7 @@ void startFightFromPoint(void) {
 }
 
 /** The game starts again from the logos, as Delete data in the options does (0x08000210): a new save's name and
- *  language, the screen's state reset, and the core left for the screens before the menu. */
+ *  language, and the screen's state reset. */
 void restartFromStart(void) {
   for (int i = 0; i < 6; i++) g.name[i] = 0;
   g.mini_games_open = 1;
@@ -651,9 +541,7 @@ void restartFromStart(void) {
   g.saved_language = 1;
   g.frames = 1;
   g.restarted = 1;
-  usingCore = 0;
-  startUp = 0;
-  previousKeys = g.keys.held;
+  g.start_up = 0;
   logosSetup();
 }
 
@@ -661,6 +549,11 @@ void restartFromStart(void) {
 // music players, eight DirectSound channels, master volume 14, 10,512 Hz and no reverb, with its wave voice's write
 // 84,800 cycles into the frame (sound.js), and the cycle count the fight's moving colours need (core.c, arena.c).
 void game_start(void) {
+  __builtin_memset(&g, 0, sizeof(g));
+  introTimer = 0; introScene = 0; introX = 0; introY = 0; introScroll = 0;
+  introScale = 0; introScaleTarget = 0; introTargetX = 0; introTargetY = 0;
+  titleCounter = 0; titlePulse = 0; titleX = 0; titleY = 0; titleScale = 0;
+  titleTargetX = 0; titleTargetY = 0; titleScaleTarget = 0; titlePulseCount = 0;
   // the console after its start-up program: the screen white (forced blank) until the game shows it, and the rotating
   // layers at rest
   gba_write(REG_DISPCNT, 0x80);
@@ -668,20 +561,15 @@ void game_start(void) {
   gba_write(REG_BG2X, 0); gba_write(REG_BG2X + 2, 0); gba_write(REG_BG2Y, 0); gba_write(REG_BG2Y + 2, 0);
   gba_write(REG_BG3PA, 0x100); gba_write(REG_BG3PA + 2, 0); gba_write(REG_BG3PA + 4, 0); gba_write(REG_BG3PA + 6, 0x100);
   gba_write(REG_BG3X, 0); gba_write(REG_BG3X + 2, 0); gba_write(REG_BG3Y, 0); gba_write(REG_BG3Y + 2, 0);
-  pendingDispcnt = 0xFFFF;
-  affineDirty = 0;
-  spriteCopy = 0;
-  titleSpriteCount = 0;
-  startUp = 45;
   {
     // the language the save keeps, or a start point's, or a new save's
     uint8_t *save = gba_save(8);
     int asked = (int)gba_start_number("language", -1);
     int saved = save[0] == 0xA5 ? save[1] : -1;
-    language = asked >= 0 ? asked : saved >= 0 ? saved : 1;
-    g.language = language;
-    g.saved_language = language;
+    g.language = asked >= 0 ? asked : saved >= 0 ? saved : 1;
+    g.saved_language = g.language;
   }
+  g.keys.inverted = 0xFFFF;
   g.keys.timer = 15;
   g.keys.delay = 15;
   g.keys.interval = 7;
@@ -690,37 +578,15 @@ void game_start(void) {
   gba_sound_count_cycles();
   int name = (int)gba_start_number("name", 0);
   if (name) g.name[0] = (uint16_t)name;
-  // a recording's start point: the fight's opening, which the core runs
   if (gba_start_point("fight")) {
-    usingCore = 1;
     g.start_up = 1;
     g.callback = startFightFromPoint;
+  } else {
+    g.start_up = 45;
+    g.callback = logosSetup;
   }
 }
 
 void game_step(uint16_t keys) {
-  if (usingCore) {
-    step(keys);
-    return;
-  }
-  if (startUp > 0) {
-    if (--startUp == 0) {
-      for (int i = 0; i < 512; i++) gba_pal[i] = 0x7FFF;
-      previousKeys = keys;
-      logosSetup();
-    }
-    return;
-  }
-  uint16_t pressed = keys & ~previousKeys;
-  previousKeys = keys;
-  vblank();
-  if (state == LOGOS_FADE_IN) fadeIn();
-  else if (state == LOGOS) showLogos(keys);
-  else if (state == LOGOS_FADE_OUT) fadeOut();
-  else if (state == INTRO_START) introSetup();
-  else if (state == INTRO_PICTURES) introPictures(keys);
-  else if (state == INTRO_ANIMATION) introAnimation(keys);
-  else if (state == TITLE) titleStep(pressed);
-  else if (state == TITLE_FADE_NEXT) titleFadeToNext();
-  else if (state == TITLE_FADE_ATTRACT) titleFadeToAttract();
+  step(keys);
 }
