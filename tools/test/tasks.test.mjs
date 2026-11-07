@@ -3,7 +3,10 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { field } from '../lib/claims.mjs';
-import { missingParts, taskText } from '../tasks.mjs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { holdGame, missingParts, taskText, taskTitled } from '../tasks.mjs';
 
 const parts = [
   { name: 'The logos', recording: 'logos', frames: [0, 389] },
@@ -71,4 +74,30 @@ test('a game that started in C opens its tasks in C as a game\'s own, written fr
   assert.match(field(text, 'What it is'), /^The title screen, one of the game's parts\. It comes right after The intro in C \(#7\)\. It's written in `games\/made-up\/c\/` from the original\.$/);
   assert.doesNotMatch(text, /JavaScript/);
   assert.match(field(text, 'Done when'), /npm run dp -- prove made-up\/c` shows the part as proven\. Its place in `games\/made-up\/proof\/parts\.json`/);
+});
+
+test('one run opens a game\'s tasks at a time, and takes over from a run that has ended', () => {
+  const folder = mkdtempSync(join(tmpdir(), 'dp-tasks-'));
+  try {
+    const release = holdGame('made-up', folder);
+    assert.throws(() => holdGame('made-up', folder), /Another run is opening made-up's tasks already \(process \d+\)/);
+    const other = holdGame('other-game', folder);
+    other();
+    release();
+    assert.equal(existsSync(join(folder, 'made-up.lock')), false);
+    writeFileSync(join(folder, 'made-up.lock'), '2147483646');
+    holdGame('made-up', folder)();
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
+
+test('finds a task already open under its title, and leaves closed ones and pull requests out', () => {
+  const issues = [
+    { number: 3, title: 'Task: The intro in C', state: 'closed' },
+    { number: 4, title: 'Task: The intro in C', pull_request: {} },
+    { number: 5, title: 'task: the intro in c ', state: 'open' },
+  ];
+  assert.equal(taskTitled(issues, 'Task: The intro in C')?.number, 5);
+  assert.equal(taskTitled(issues, 'Task: The intro'), undefined);
 });

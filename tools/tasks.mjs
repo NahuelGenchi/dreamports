@@ -7,9 +7,14 @@
 // name, such as sonic-battle/c, it opens the tasks of the game's version in that language, "Task: Title screen in C",
 // one for every foundation and part the version hasn't proven, as a version proves each part again (src/lib/pieces.mjs).
 // In a game that started in C, with no JavaScript version, its version in C is its main one, whose tasks are opened as a
-// JavaScript version's are, written from the original and waiting on nothing in another language.
+// JavaScript version's are, written from the original and waiting on nothing in another language. One run opens a game's
+// tasks at a time on this computer, as a run takes minutes and a second one started meanwhile would open each again, and
+// a task already open under its title is used as it is (#679).
 
+import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeSync } from 'node:fs';
+import { join } from 'node:path';
 import { readPartsFile } from './lib/proof-files.mjs';
+import { LOCAL } from './lib/paths.mjs';
 import { nameKey, pieceOf, planOf, taskTitle } from '../src/lib/pieces.mjs';
 import { LANGUAGES, versionOf } from '../src/lib/languages.mjs';
 import { UPSTREAM, api } from './lib/github.mjs';
@@ -48,14 +53,67 @@ export async function run(args) {
   // the pieces in this language by their parts' names, as each task names what comes before it and what it needs
   const numbers = new Map(pieces.filter(p => pieceOf(p).language === language).map(p => [nameKey(pieceOf(p).name), p.number]));
   const named = name => ({ name: language === 'js' ? name : `${name} in ${LANGUAGES[language].name}`, number: numbers.get(nameKey(name)) });
-  for (const part of wanted) {
-    const before = part.foundation ? null : parts[parts.findIndex(p => p.name === part.name) - 1];
-    const issue = api(`repos/${repo}/issues`, { method: 'POST', body: { title: taskTitle(part.name, language), body: taskText(version, part, before && named(before.name), part.needs.map(named), main) } });
-    numbers.set(nameKey(part.name), issue.number);
-    console.log(`#${issue.number} ${part.name}${await underItsGame(repo, issue.number) ? '' : `: the bot hasn't put it under #${home.number} yet, and will`}`);
+  const release = holdGame(game);
+  let opened = 0;
+  try {
+    for (const part of wanted) {
+      const before = part.foundation ? null : parts[parts.findIndex(p => p.name === part.name) - 1];
+      const title = taskTitle(part.name, language);
+      const already = taskTitled(api(`repos/${repo}/issues?state=open&sort=created&direction=desc&per_page=100`) ?? [], title);
+      if (already) {
+        numbers.set(nameKey(part.name), already.number);
+        console.log(`#${already.number} ${part.name}: open already, so it wasn't opened again`);
+        continue;
+      }
+      const issue = api(`repos/${repo}/issues`, { method: 'POST', body: { title, body: taskText(version, part, before && named(before.name), part.needs.map(named), main) } });
+      numbers.set(nameKey(part.name), issue.number);
+      opened++;
+      console.log(`#${issue.number} ${part.name}${await underItsGame(repo, issue.number) ? '' : `: the bot hasn't put it under #${home.number} yet, and will`}`);
+    }
+  } finally {
+    release();
   }
-  console.log(`\nOpened ${wanted.length} task${wanted.length === 1 ? '' : 's'} under #${home.number}.`);
+  console.log(`\nOpened ${opened} task${opened === 1 ? '' : 's'} under #${home.number}.`);
   return 0;
+}
+
+/**
+ * Keeps other runs from opening `game`'s tasks while this one does, with a file in `folder` that names this process,
+ * and gives what lets them again. A file left by a run that has ended is taken over.
+ */
+export function holdGame(game, folder = join(LOCAL, 'tasks'), pid = process.pid) {
+  mkdirSync(folder, { recursive: true });
+  const file = join(folder, `${game}.lock`);
+  for (let tries = 0; ; tries++) {
+    try {
+      const handle = openSync(file, 'wx');
+      writeSync(handle, String(pid));
+      closeSync(handle);
+      return () => rmSync(file, { force: true });
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      const holder = readFileSync(file, 'utf8').trim();
+      if (tries || !holder || running(Number(holder))) {
+        throw new Error(`Another run is opening ${game}'s tasks already${holder ? ` (process ${holder})` : ''}. Wait for it to end, then run this again, and it opens only what's left.`);
+      }
+      rmSync(file, { force: true });
+    }
+  }
+}
+
+function running(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
+  }
+}
+
+/** The open issue among `issues` titled `title`, whatever its capitals and spaces at its ends, leaving pull requests out. */
+export function taskTitled(issues, title) {
+  const key = title.trim().toLowerCase();
+  return issues.find(issue => !issue.pull_request && issue.state !== 'closed' && issue.title.trim().toLowerCase() === key);
 }
 
 function options(args) {

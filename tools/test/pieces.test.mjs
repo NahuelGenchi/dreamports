@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { needsProblems, pieceOf, planOf, taskTitle, whatCanStart } from '../../src/lib/pieces.mjs';
+import { freeOrder, needsProblems, pieceOf, planOf, taskTitle, whatCanStart } from '../../src/lib/pieces.mjs';
 import { proofOf } from '../../src/lib/entries.mjs';
 
 const file = {
@@ -56,9 +56,9 @@ test('finds needs that go round in a circle, however long', () => {
   assert.match(circle[0], /A, then B, then C, then A/);
 });
 
-test('free has foundations first and leaves out what waits, what\'s taken and what\'s closed', () => {
+test('free is in the order a player meets the parts, and leaves out what waits, what\'s taken and what\'s closed', () => {
   const { free, waiting } = whatCanStart([...pieces, piece(7, 'Task: Taken', 'open', [{ login: 'someone' }]), piece(8, 'Task: Closed', 'closed')], file);
-  assert.deepEqual(numbers(free), [6, 1, 4]);
+  assert.deepEqual(numbers(free), [1, 6, 4], 'the menu, then the arena, which Story needs through the fighting, then Options');
   assert.deepEqual(waiting.map(w => [w.piece.number, w.on.map(n => n.number)]), [[2, [5]], [3, [5, 1]], [5, [6]]]);
 });
 
@@ -103,7 +103,8 @@ test('a piece in C waits for the same piece in JavaScript, and for what it needs
   // Options and the arena are finished in JavaScript; the menu and the fighting aren't
   const js = pieces.map(p => (p.number === 4 || p.number === 6 ? { ...p, state: 'closed' } : p));
   const { free, waiting } = whatCanStart([...js, ...inC], file);
-  assert.deepEqual(numbers(free).filter(n => n > 10), [13, 12, 15], 'the arena first, as a foundation, then Options and the logos, which parts.json proves in JavaScript');
+  assert.deepEqual(numbers(free).filter(n => n > 10), [15, 13, 12], 'the logos, which parts.json proves in JavaScript, then the arena, which Story needs, then Options');
+  assert.ok(numbers(free).findIndex(n => n < 10) > numbers(free).findLastIndex(n => n > 10), 'C, the default language, comes first');
   const on = Object.fromEntries(waiting.map(w => [w.piece.number, w.on]));
   assert.deepEqual(on[11], [{ name: 'The menu', number: 1 }, { name: 'The logos in C', number: 15 }]);
   assert.deepEqual(on[14], [{ name: 'The fighting', number: 5 }, { name: 'The arena in C', number: 13 }]);
@@ -121,11 +122,27 @@ test('a game that started in C has its pieces in C alone, which wait on nothing 
   ];
   const { free, waiting } = whatCanStart(inC, file, new Set(), { main: 'c' });
   // the logos have no task, and parts.json names their recording, proven in C as the game has no other version
-  assert.deepEqual(numbers(free), [13, 11, 12]);
+  assert.deepEqual(numbers(free), [11, 13, 12]);
   const on = Object.fromEntries(waiting.map(w => [w.piece.number, w.on]));
   assert.deepEqual(on[14], [{ name: 'The arena in C', number: 13 }]);
   assert.deepEqual(on[16], [{ name: 'The fighting in C', number: 14 }]);
   // a JavaScript version added later waits for the same part in C, as it's written from it
   const later = whatCanStart([...inC, piece(21, 'Task: Options')], file, new Set(), { main: 'c' });
   assert.deepEqual(later.waiting.find(w => w.piece.number === 21).on, [{ name: 'Options in C', number: 12 }]);
+});
+
+test('work goes in the order a player meets it, C first, each foundation just before the first part that needs it', () => {
+  const plan = planOf({
+    foundations: [{ name: 'The fighting', needs: ['The arena'] }, { name: 'The arena' }, { name: 'A spare tool' }],
+    parts: [{ name: 'The intro' }, { name: 'The title screen' }, { name: 'The menu' }, { name: 'Story', needs: ['The fighting'] }, { name: 'Options' }],
+  });
+  const titles = ['Task: A spare tool', 'Task: Options', 'Task: The fighting', 'Task: Story', 'Task: The arena', 'Task: The menu in C', 'Task: An extra', 'Task: The fighting in C', 'Task: The title screen in C', 'Task: The intro'];
+  const ordered = freeOrder(titles.map((title, number) => piece(number, title)), plan).map(p => p.title.replace('Task: ', ''));
+  assert.deepEqual(ordered, ['The title screen in C', 'The menu in C', 'The fighting in C', 'The intro', 'The arena', 'The fighting', 'Story', 'Options', 'A spare tool', 'An extra']);
+});
+
+test('a foundation needed through another comes before it, and needs that go round in a circle still give an order', () => {
+  const plan = planOf({ foundations: [{ name: 'Top', needs: ['Middle'] }, { name: 'Middle', needs: ['Bottom'] }, { name: 'Bottom' }, { name: 'Loop', needs: ['Loop 2'] }, { name: 'Loop 2', needs: ['Loop'] }], parts: [{ name: 'Part', needs: ['Top'] }] });
+  const ordered = freeOrder(['Task: Top', 'Task: Part', 'Task: Middle', 'Task: Loop', 'Task: Bottom', 'Task: Loop 2'].map((title, number) => piece(number, title)), plan).map(p => p.title.replace('Task: ', ''));
+  assert.deepEqual(ordered, ['Bottom', 'Middle', 'Top', 'Part', 'Loop', 'Loop 2']);
 });
