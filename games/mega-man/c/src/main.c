@@ -8,8 +8,8 @@
 //
 // The original times its own code: it waits for V-blank by reading $2002, and loads its tiles with the picture off
 // for frames on end, so when each write lands depends on how many of the CPU's cycles the code before it takes. The C
-// counts them as the original's instructions take them (the numbers in RUN and TIME), so each write happens at the
-// dot of the frame the original's does.
+// counts them as the original's instructions take them (the numbers in RUN), so each write happens at the dot of the
+// frame the original's does.
 
 #include "nes.h"
 
@@ -38,9 +38,52 @@
 
 #define RAM(address) nes_ram[address]
 
+// With the V-blank interrupt off, start_up() runs straight across frames, touching only work memory and the PPU.
+// game_start() runs it once as plain C to record each PPU access at its frame and dot, and game_step() replays each
+// frame's accesses until the interrupt takes over.
+#define MAX_BOOT_OPS 16384
+#define VBLANK_CLEAR_DOT 7161
+
+typedef struct {
+  int32_t dot;
+  uint8_t frame;
+  uint8_t reg;
+  uint8_t value;
+  uint8_t is_read;
+} BootOp;
+
+static BootOp boot_ops[MAX_BOOT_OPS];
+static int boot_count, boot_at, boot_frame, boot_end_frame, boot_end_clock;
+static int boot_recording, boot_vblank_ready, booting;
+
 // The original CPU's time in this frame, in the PPU's dots: 3 to a cycle.
 static int clock;
-#define RUN(cycles) (clock += 3 * (cycles))
+
+static void run(int cycles) {
+  clock += 3 * cycles;
+  if (boot_recording) {
+    int length = nes_frame_length(boot_frame);
+    while (clock >= length) {
+      clock -= length;
+      boot_frame++;
+      boot_vblank_ready = boot_frame >= 1;
+      length = nes_frame_length(boot_frame);
+    }
+    if (clock >= VBLANK_CLEAR_DOT) boot_vblank_ready = 0;
+  }
+}
+
+#define RUN(cycles) run(cycles)
+
+static void record_boot_op(uint16_t address, uint8_t value, uint8_t is_read) {
+  if (boot_count >= MAX_BOOT_OPS) return;
+  boot_ops[boot_count].dot = clock;
+  boot_ops[boot_count].frame = (uint8_t)boot_frame;
+  boot_ops[boot_count].reg = (uint8_t)(address & 7);
+  boot_ops[boot_count].value = value;
+  boot_ops[boot_count].is_read = is_read;
+  boot_count++;
+}
 
 // The 16 KB of program at $8000-$BFFF: the cartridge switches it with a write, and keeps its last at $C000-$FFFF.
 static int bank;
@@ -60,11 +103,16 @@ static void catch_up(void) {
   if (clock > now) nes_spend((clock - now + 2) / 3);
 }
 
-// A store taking `cycles`, which writes in its last.
+// A store taking `cycles`, which writes in its last. Writing $4014 copies the sprites and halts the CPU for 513 cycles.
 static void store(int cycles, uint16_t address, uint8_t value) {
   RUN(cycles - 1);
-  catch_up();
-  nes_write(address, value);
+  if (boot_recording) {
+    record_boot_op(address, value, 0);
+  } else {
+    catch_up();
+    nes_write(address, value);
+    if (address == 0x4014) RUN(513);
+  }
   RUN(1);
 }
 
@@ -82,8 +130,16 @@ static int vblank(void) {
   RUN(3);
   int on = 0;
   if (clock >= NES_VBLANK_DOT) {
-    catch_up();
-    on = nes_read(0x2002) & 0x80;
+    if (boot_recording) {
+      if (boot_vblank_ready) {
+        record_boot_op(0x2002, 0, 1);
+        boot_vblank_ready = 0;
+        on = 0x80;
+      }
+    } else {
+      catch_up();
+      on = nes_read(0x2002) & 0x80;
+    }
   }
   RUN(1);
   return on;
@@ -292,7 +348,6 @@ static void vblank_interrupt(void) {
   store(4, 0x2003, 0);
   RUN(2);                                   // lda #2
   store(4, 0x4014, SPRITES >> 8);
-  RUN(513);                                 // the copy holds the CPU
   RUN(6 + 3 + 2 + 3 + 3 + 2);               // jsr $D673, lda $1C, bne, jmp $D6FD, lda $FF, and #$FB
   RAM(CONTROL) &= 0xFB;
   RUN(3);                                   // sta $FF
@@ -334,222 +389,214 @@ static void vblank_interrupt(void) {
   RUN(2 + 3 + 4 + 2 + 4 + 2 + 4 + 6);       // lsr, sta $46, pla, tay, pla, tax, pla, rti
 }
 
-// Where start_up() is: it runs on across frames, as the original's code does with the V-blank interrupt off, and each
-// step goes on from where the last stopped. 0 before it starts, and -1 once the interrupt runs the frames.
-static int resume;
-// Moves start_up()'s time on, and ends the step where the frame ends, to go on from here in the next.
-#define TIME_AT(at, cycles)                                          \
-  do {                                                               \
-    RUN(cycles);                                                     \
-    while (clock >= nes_frame_length((int)nes_frame())) {            \
-      resume = (at) + 1;                                             \
-      return;                                                        \
-      case (at) + 1:;                                                \
-    }                                                                \
-  } while (0)
-#define TIME(cycles) TIME_AT(__COUNTER__, cycles)
-// A store in start_up(), which writes in its last cycle.
-#define PUT(cycles, address, value) \
-  do {                              \
-    TIME((cycles) - 1);             \
-    catch_up();                     \
-    nes_write(address, value);      \
-    TIME(1);                        \
-  } while (0)
+// $9003: waits for two V-blanks, each by reading $2002 until its top bit is on, then until it's off.
+static void wait_vblanks(void) {
+  for (int waits = 2; waits > 0; waits--) {
+    for (;;) {
+      int on = vblank();
+      RUN(on ? 2 : 3);                      // bpl
+      if (on) break;
+    }
+    for (;;) {
+      int on = vblank();
+      RUN(on ? 3 : 2);                      // bmi
+      if (!on) break;
+    }
+    RUN(2 + (waits > 1 ? 3 : 2));           // dex, bpl
+  }
+}
+
+// $9012: clears the work memory, the first page and then the other seven, and sets the initial PPU shadows and stage.
+static void clear_work_memory(void) {
+  for (int x = 0; x < 0x800; x++) RAM(x) = 0;
+  RAM(POINTER + 1) = 8;
+  RUN(2 + 2 + 2);                           // txs, lda #0, ldy #0
+  RUN(256 * (5 + 2 + 3) - 1);               // sta $0000,y, iny, bne
+  RUN(2 + 3);                               // lda #1, sta $05
+  RUN(7 * (2 + 256 * (6 + 2 + 3) - 1 + 5 + 3 + 2 + 3) - 1);  // lda #0, sta ($04),y, iny, bne, inc $05, lda, cmp, bne
+  RAM(CONTROL) = 0x10;
+  RAM(MASK) = 0x06;
+  RAM(SAVED_STAGE) = RAM(STAGE);
+  RAM(STAGE) = 10;
+  RUN(2 + 3 + 2 + 3 + 3 + 3 + 2 + 3);       // $FF = $10, $FE = 6, $AC = $31, $31 = 10
+}
+
+// sub_C75B: loads the stage's tiles into the cartridge's tile memory, from the list at $8D20: its first byte is how
+// many runs it has, and each run is where it starts (tiles_at) and how many pages.
+static void load_stage_tiles(void) {
+  RUN(6);                                   // jsr $C75B
+  stage_bank();
+  RUN(3 + 2 + 2);                           // lda $31, cmp #6, bcc
+  RAM(COUNT) = rom(0x8D20);
+  RUN(4 + 3 + 3 + 2);                       // lda $8D20, bne, sta $0C, lda #0
+  store(4, 0x2006, 0);
+  store(4, 0x2006, 0);
+  RAM(INDEX) = 0;
+  RUN(3);                                   // sta $0D
+  do {
+    stage_bank();
+    int y = RAM(INDEX);
+    RUN(3 + 3 + 2 + 2);                     // ldy $0D, lda $31, cmp #6, bcc
+    int x = rom((uint16_t)(0x8D21 + y));
+    int pages = rom((uint16_t)(0x8D22 + y));
+    RUN(4 + crosses(0x8D21, y) + 4 + crosses(0x8D22, y) + 3);  // lda $8D21,y, ldx $8D22,y, bne
+    tiles_at((uint8_t)x);
+    for (; pages > 0; pages--) {
+      RUN(2);                               // ldy #0
+      uint16_t from = (uint16_t)(RAM(POINTER) | RAM(POINTER + 1) << 8);
+      for (int i = 0; i < 256; i++) {
+        RUN(5);                             // lda ($04),y
+        store(4, 0x2007, rom((uint16_t)(from + i)));
+        RUN(2 + (i < 255 ? 3 : 2));         // iny, bne
+      }
+      RAM(POINTER + 1)++;
+      RUN(5 + 2 + (pages > 1 ? 3 : 2));     // inc $05, dex, bne
+    }
+    RAM(INDEX) += 2;
+    RAM(COUNT)--;
+    RUN(5 + 5 + 5 + (RAM(COUNT) ? 3 : 2));  // inc $0D twice, dec $0C, bne
+  } while (RAM(COUNT));
+  RUN(3);                                   // jmp $C3B3
+  main_bank();
+}
+
+// sub_C483: the stage's colours, from $8CD0 for the title screen: to the PPU, and 48 bytes to $03D0, then the list at
+// $8E9F, whose second byte n says how many: 6n + 1 bytes from it to $0720.
+static void load_stage_colours(void) {
+  RUN(6);                                   // jsr $C483
+  stage_bank();
+  RUN(3 + 2 + 2 + 2);                       // lda $31, cmp #6, bcc, lda #$D0
+  RAM(PALETTE) = 0xD0;
+  RAM(PALETTE + 1) = 0x8C;
+  RUN(3 + 2 + 3 + 3 + 2);                   // sta $35, lda #$8C, sta $36, jmp $C49F, lda #$20
+  write_colours(0x20);
+  RUN(2);                                   // ldy #$2F
+  uint16_t from = (uint16_t)(RAM(PALETTE) | RAM(PALETTE + 1) << 8);
+  for (int y = 0x2F; y >= 0; y--) {
+    RAM(COLOURS + y) = rom((uint16_t)(from + y));
+    RUN(5 + crosses(from, y) + 5 + 2 + (y > 0 ? 3 : 2));  // lda ($35),y, sta $03D0,y, dey, bpl
+  }
+  RAM(POINTER) = 0x9F;
+  RAM(POINTER + 1) = 0x8E;
+  RUN(3 + 2 + 2 + 2 + 3 + 2 + 3 + 3);       // lda $31, cmp #6, bcc, lda #$9F, sta $04, lda #$8E, sta $05, bne
+  from = 0x8E9F;
+  RAM(0x0720) = (uint8_t)(rom((uint16_t)(from + 1)) << 1);
+  int count = (uint8_t)(RAM(0x0720) << 1) + RAM(0x0720);
+  RUN(2 + 5 + crosses(from, 1) + 2 + 4 + 2 + 2 + 4 + 2 + 2);  // ldy #1, lda ($04),y, asl, sta, asl, clc, adc, tay, iny
+  for (int y = (uint8_t)(count + 1); y > 0; y--) {
+    RAM(0x071F + y) = rom((uint16_t)(from + y));
+    RUN(5 + crosses(from, y) + 5 + 2 + (y > 1 ? 3 : 2));  // lda ($04),y, sta $071F,y, dey, bne
+  }
+  RUN(3);                                   // jmp $C3B3
+  main_bank();
+}
+
+// sub_F956: the title screen. Its background tile everywhere, the attributes from $8EC7, the logo's seven rows of tiles
+// in order, two tiles on their own, and four lines of words from the list at $8EE4.
+static void draw_title_screen(void) {
+  RUN(6);                                   // jsr $F956
+  stage_bank();
+  RUN(2);                                   // lda #$20
+  store(4, 0x2006, 0x20);
+  RUN(2);                                   // lda #0
+  store(4, 0x2006, 0x00);
+  RUN(2 + 2 + 3 + 3);                       // ldx #$0E, lda #$7F, ldy $A6, bpl
+  for (int rows = 15; rows > 0; rows--) {
+    RUN(2);                                 // ldy #$40
+    for (int left = 64; left > 0; left--) {
+      store(4, 0x2007, 0x7F);
+      RUN(2 + (left > 1 ? 3 : 2));          // dey, bne
+    }
+    RUN(2 + (rows > 1 ? 3 : 2));            // dex, bpl
+  }
+  RUN(3 + 3 + 2);                           // lda $A6, bpl, ldx #7
+  for (int x = 7; x >= 0; x--) {
+    RUN(2);                                 // ldy #8
+    for (int left = 8; left > 0; left--) {
+      RUN(4);                               // lda $8EC7,x
+      store(4, 0x2007, rom((uint16_t)(0x8EC7 + x)));
+      RUN(2 + (left > 1 ? 3 : 2));          // dey, bne
+    }
+    RUN(2 + (x > 0 ? 3 : 2));               // dex, bpl
+  }
+  RUN(2);                                   // ldx #6
+  for (int tile = 0, x = 6; x >= 0; x--) {
+    RUN(4);                                 // lda $8ECF,x
+    store(4, 0x2006, rom((uint16_t)(0x8ECF + x)));
+    RUN(4);                                 // lda $8ED6,x
+    store(4, 0x2006, rom((uint16_t)(0x8ED6 + x)));
+    RAM(COUNT) = (uint8_t)x;
+    RUN(3 + 4 + 2);                         // stx $0C, lda $8EDD,x, tax
+    for (int left = rom((uint16_t)(0x8EDD + x)); left > 0; left--) {
+      store(4, 0x2007, (uint8_t)tile);
+      tile++;
+      RUN(2 + 2 + (left > 1 ? 3 : 2));      // iny, dex, bne
+    }
+    RUN(3 + 2 + (x > 0 ? 3 : 2));           // ldx $0C, dex, bpl
+  }
+  RUN(2);                                   // lda #$23
+  store(4, 0x2006, 0x23);
+  RUN(2);                                   // lda #$DE
+  store(4, 0x2006, 0xDE);
+  RUN(2);                                   // lda #$A0
+  store(4, 0x2007, 0xA0);
+  RUN(2);                                   // lda #$21
+  store(4, 0x2006, 0x21);
+  RUN(2);                                   // lda #$D9
+  store(4, 0x2006, 0xD9);
+  RUN(2);                                   // lda #$94
+  store(4, 0x2007, 0x94);
+  RUN(2);                                   // lda #$8D
+  store(4, 0x2007, 0x8D);
+  RAM(COUNT) = 4;
+  RUN(2 + 2 + 3);                           // inx, lda #4, sta $0C
+  for (int x = 0; RAM(COUNT) > 0;) {
+    RUN(4 + crosses(0x8EE4, x));            // lda $8EE4,x
+    store(4, 0x2006, rom((uint16_t)(0x8EE4 + x)));
+    x++;
+    RUN(2 + 4 + crosses(0x8EE4, x));        // inx, lda $8EE4,x
+    store(4, 0x2006, rom((uint16_t)(0x8EE4 + x)));
+    x++;
+    RUN(2 + 4 + crosses(0x8EE4, x) + 2);    // inx, ldy $8EE4,x, inx
+    int left = rom((uint16_t)(0x8EE4 + x));
+    x++;
+    for (; left > 0; left--) {
+      RUN(4 + crosses(0x8EE4, x));          // lda $8EE4,x
+      store(4, 0x2007, rom((uint16_t)(0x8EE4 + x)));
+      x++;
+      RUN(2 + 2 + (left > 1 ? 3 : 2));      // inx, dey, bne
+    }
+    RAM(COUNT)--;
+    RUN(5 + (RAM(COUNT) ? 3 : 2));          // dec $0C, bne
+  }
+  RAM(0xBC) = 0;
+  RUN(2 + 3 + 2);                           // ldy #0, sty $BC, ldx #$40
+  hide_sprites(0, 64);
+  RUN(3 + 2);                               // lda $FF, ora #$80
+  RAM(CONTROL) |= 0x80;
+  RUN(3);                                   // sta $FF
+  store(4, 0x2000, RAM(CONTROL));
+  RUN(3 + 2);                               // lda $A6, bmi
+}
 
 // sub_05_9000, where the reset goes, in bank 5: waits for the PPU, clears the work memory, loads the title screen's
-// tiles, colours and screen, and turns the V-blank interrupt on.
+// tiles, colours and screen, turns the V-blank interrupt on, and begins waiting at $FA0D.
 static void start_up(void) {
-  static int waits, on, pages, left, rows, x, y;
-  static uint16_t from;
-  switch (resume) {
-    case 0:
-      // $9003: waits for two V-blanks, each by reading $2002 until its top bit is on, then until it's off
-      for (waits = 2; waits > 0; waits--) {
-        for (;;) {
-          on = vblank();
-          TIME(on ? 2 : 3);                 // bpl
-          if (on) break;
-        }
-        for (;;) {
-          on = vblank();
-          TIME(on ? 3 : 2);                 // bmi
-          if (!on) break;
-        }
-        TIME(2 + (waits > 1 ? 3 : 2));      // dex, bpl
-      }
-      // $9012: clears the work memory, the first page and then the other seven
-      for (x = 0; x < 0x800; x++) RAM(x) = 0;
-      RAM(POINTER + 1) = 8;
-      TIME(2 + 2 + 2);                      // txs, lda #0, ldy #0
-      TIME(256 * (5 + 2 + 3) - 1);          // sta $0000,y, iny, bne
-      TIME(2 + 3);                          // lda #1, sta $05
-      TIME(7 * (2 + 256 * (6 + 2 + 3) - 1 + 5 + 3 + 2 + 3) - 1);  // lda #0, sta ($04),y, iny, bne, inc $05, lda, cmp, bne
-      RAM(CONTROL) = 0x10;
-      RAM(MASK) = 0x06;
-      RAM(SAVED_STAGE) = RAM(STAGE);
-      RAM(STAGE) = 10;
-      TIME(2 + 3 + 2 + 3 + 3 + 3 + 2 + 3);  // $FF = $10, $FE = 6, $AC = $31, $31 = 10
-
-      // sub_C75B: loads the stage's tiles into the cartridge's tile memory, from the list at $8D20: its first byte is
-      // how many runs it has, and each run is where it starts (tiles_at) and how many pages
-      TIME(6);                              // jsr $C75B
-      stage_bank();
-      TIME(3 + 2 + 2);                      // lda $31, cmp #6, bcc
-      RAM(COUNT) = rom(0x8D20);
-      TIME(4 + 3 + 3 + 2);                  // lda $8D20, bne, sta $0C, lda #0
-      PUT(4, 0x2006, 0);
-      PUT(4, 0x2006, 0);
-      RAM(INDEX) = 0;
-      TIME(3);                              // sta $0D
-      do {
-        stage_bank();
-        y = RAM(INDEX);
-        TIME(3 + 3 + 2 + 2);                // ldy $0D, lda $31, cmp #6, bcc
-        x = rom((uint16_t)(0x8D21 + y));
-        pages = rom((uint16_t)(0x8D22 + y));
-        TIME(4 + crosses(0x8D21, y) + 4 + crosses(0x8D22, y) + 3);  // lda $8D21,y, ldx $8D22,y, bne
-        tiles_at((uint8_t)x);
-        for (; pages > 0; pages--) {
-          TIME(2);                          // ldy #0
-          from = (uint16_t)(RAM(POINTER) | RAM(POINTER + 1) << 8);
-          for (y = 0; y < 256; y++) {
-            TIME(5);                        // lda ($04),y
-            PUT(4, 0x2007, rom((uint16_t)(from + y)));
-            TIME(2 + (y < 255 ? 3 : 2));    // iny, bne
-          }
-          RAM(POINTER + 1)++;
-          TIME(5 + 2 + (pages > 1 ? 3 : 2));  // inc $05, dex, bne
-        }
-        RAM(INDEX) += 2;
-        RAM(COUNT)--;
-        TIME(5 + 5 + 5 + (RAM(COUNT) ? 3 : 2));  // inc $0D twice, dec $0C, bne
-      } while (RAM(COUNT));
-      TIME(3);                              // jmp $C3B3
-      main_bank();
-
-      // sub_C483: the stage's colours, from $8CD0 for the title screen: to the PPU, and 48 bytes to $03D0
-      TIME(6);                              // jsr $C483
-      stage_bank();
-      TIME(3 + 2 + 2 + 2);                  // lda $31, cmp #6, bcc, lda #$D0
-      RAM(PALETTE) = 0xD0;
-      RAM(PALETTE + 1) = 0x8C;
-      TIME(3 + 2 + 3 + 3 + 2);              // sta $35, lda #$8C, sta $36, jmp $C49F, lda #$20
-      write_colours(0x20);
-      TIME(2);                              // ldy #$2F
-      from = (uint16_t)(RAM(PALETTE) | RAM(PALETTE + 1) << 8);
-      for (y = 0x2F; y >= 0; y--) {
-        RAM(COLOURS + y) = rom((uint16_t)(from + y));
-        TIME(5 + crosses(from, y) + 5 + 2 + (y > 0 ? 3 : 2));  // lda ($35),y, sta $03D0,y, dey, bpl
-      }
-      // $C4AE: and the list at $8E9F, whose second byte n says how many: 6n + 1 bytes from it to $0720
-      RAM(POINTER) = 0x9F;
-      RAM(POINTER + 1) = 0x8E;
-      TIME(3 + 2 + 2 + 2 + 3 + 2 + 3 + 3);  // lda $31, cmp #6, bcc, lda #$9F, sta $04, lda #$8E, sta $05, bne
-      from = 0x8E9F;
-      RAM(0x0720) = (uint8_t)(rom((uint16_t)(from + 1)) << 1);
-      y = (uint8_t)(RAM(0x0720) << 1) + RAM(0x0720);
-      TIME(2 + 5 + crosses(from, 1) + 2 + 4 + 2 + 2 + 4 + 2 + 2);  // ldy #1, lda ($04),y, asl, sta, asl, clc, adc, tay, iny
-      for (y = (uint8_t)(y + 1); y > 0; y--) {
-        RAM(0x071F + y) = rom((uint16_t)(from + y));
-        TIME(5 + crosses(from, y) + 5 + 2 + (y > 1 ? 3 : 2));  // lda ($04),y, sta $071F,y, dey, bne
-      }
-      TIME(3);                              // jmp $C3B3
-      main_bank();
-
-      // sub_F956: the title screen. Its background tile everywhere, the attributes from $8EC7, the logo's seven rows of
-      // tiles in order, two tiles on their own, and four lines of words from the list at $8EE4
-      TIME(6);                              // jsr $F956
-      stage_bank();
-      TIME(2);                              // lda #$20
-      PUT(4, 0x2006, 0x20);
-      TIME(2);                              // lda #0
-      PUT(4, 0x2006, 0x00);
-      TIME(2 + 2 + 3 + 3);                  // ldx #$0E, lda #$7F, ldy $A6, bpl
-      for (rows = 15; rows > 0; rows--) {
-        TIME(2);                            // ldy #$40
-        for (left = 64; left > 0; left--) {
-          PUT(4, 0x2007, 0x7F);
-          TIME(2 + (left > 1 ? 3 : 2));     // dey, bne
-        }
-        TIME(2 + (rows > 1 ? 3 : 2));       // dex, bpl
-      }
-      TIME(3 + 3 + 2);                      // lda $A6, bpl, ldx #7
-      for (x = 7; x >= 0; x--) {
-        TIME(2);                            // ldy #8
-        for (left = 8; left > 0; left--) {
-          TIME(4);                          // lda $8EC7,x
-          PUT(4, 0x2007, rom((uint16_t)(0x8EC7 + x)));
-          TIME(2 + (left > 1 ? 3 : 2));     // dey, bne
-        }
-        TIME(2 + (x > 0 ? 3 : 2));          // dex, bpl
-      }
-      TIME(2);                              // ldx #6
-      for (y = 0, x = 6; x >= 0; x--) {
-        TIME(4);                            // lda $8ECF,x
-        PUT(4, 0x2006, rom((uint16_t)(0x8ECF + x)));
-        TIME(4);                            // lda $8ED6,x
-        PUT(4, 0x2006, rom((uint16_t)(0x8ED6 + x)));
-        RAM(COUNT) = (uint8_t)x;
-        TIME(3 + 4 + 2);                    // stx $0C, lda $8EDD,x, tax
-        for (left = rom((uint16_t)(0x8EDD + x)); left > 0; left--) {
-          PUT(4, 0x2007, (uint8_t)y);
-          y++;
-          TIME(2 + 2 + (left > 1 ? 3 : 2)); // iny, dex, bne
-        }
-        TIME(3 + 2 + (x > 0 ? 3 : 2));      // ldx $0C, dex, bpl
-      }
-      TIME(2);                              // lda #$23
-      PUT(4, 0x2006, 0x23);
-      TIME(2);                              // lda #$DE
-      PUT(4, 0x2006, 0xDE);
-      TIME(2);                              // lda #$A0
-      PUT(4, 0x2007, 0xA0);
-      TIME(2);                              // lda #$21
-      PUT(4, 0x2006, 0x21);
-      TIME(2);                              // lda #$D9
-      PUT(4, 0x2006, 0xD9);
-      TIME(2);                              // lda #$94
-      PUT(4, 0x2007, 0x94);
-      TIME(2);                              // lda #$8D
-      PUT(4, 0x2007, 0x8D);
-      RAM(COUNT) = 4;
-      TIME(2 + 2 + 3);                      // inx, lda #4, sta $0C
-      for (x = 0; RAM(COUNT) > 0;) {
-        TIME(4 + crosses(0x8EE4, x));       // lda $8EE4,x
-        PUT(4, 0x2006, rom((uint16_t)(0x8EE4 + x)));
-        x++;
-        TIME(2 + 4 + crosses(0x8EE4, x));   // inx, lda $8EE4,x
-        PUT(4, 0x2006, rom((uint16_t)(0x8EE4 + x)));
-        x++;
-        TIME(2 + 4 + crosses(0x8EE4, x) + 2);  // inx, ldy $8EE4,x, inx
-        left = rom((uint16_t)(0x8EE4 + x));
-        x++;
-        for (; left > 0; left--) {
-          TIME(4 + crosses(0x8EE4, x));     // lda $8EE4,x
-          PUT(4, 0x2007, rom((uint16_t)(0x8EE4 + x)));
-          x++;
-          TIME(2 + 2 + (left > 1 ? 3 : 2)); // inx, dey, bne
-        }
-        RAM(COUNT)--;
-        TIME(5 + (RAM(COUNT) ? 3 : 2));     // dec $0C, bne
-      }
-      RAM(0xBC) = 0;
-      TIME(2 + 3 + 2);                      // ldy #0, sty $BC, ldx #$40
-      hide_sprites(0, 64);
-      TIME(3 + 2);                          // lda $FF, ora #$80
-      RAM(CONTROL) |= 0x80;
-      TIME(3);                              // sta $FF
-      PUT(4, 0x2000, RAM(CONTROL));
-      TIME(3 + 2);                          // lda $A6, bmi
-      // $FA0D: the title screen waits a frame at a time, until Start is pressed
-      frame_wait();
-      resume = -1;
-  }
+  wait_vblanks();
+  clear_work_memory();
+  load_stage_tiles();
+  load_stage_colours();
+  draw_title_screen();
+  frame_wait();
 }
 
 void game_start(void) {
   // sub_C008, the reset, 7 cycles after power-on: the interrupt off, the picture off, and on to $9000 in bank 5
+  boot_recording = 0;
+  boot_count = 0;
+  boot_at = 0;
+  boot_frame = 0;
+  boot_vblank_ready = 0;
   clock = 21;
   RUN(2 + 2);                               // sei, lda #1
   store(4, 0x2000, 0x01);
@@ -558,14 +605,31 @@ void game_start(void) {
   RUN(2 + 4);                               // lda #5, sta $C005
   bank = 5;
   RUN(3 + 2 + 2 + 2);                       // jmp $9000, ldx #$FF, txs, ldx #1
-  resume = 0;
+  clock -= nes_frame_length(-1);
+  boot_recording = 1;
+  start_up();
+  boot_recording = 0;
+  boot_end_frame = boot_frame;
+  boot_end_clock = clock;
+  booting = 1;
 }
 
 void game_step(uint32_t buttons) {
   (void)buttons;  // the controllers are read through $4016
-  if (resume >= 0) {
-    clock -= nes_frame_length((int)nes_frame() - 1);
-    start_up();
+  if (booting) {
+    int current = (int)nes_frame();
+    while (boot_at < boot_count && boot_ops[boot_at].frame == (uint8_t)current) {
+      const BootOp *op = &boot_ops[boot_at++];
+      clock = op->dot;
+      catch_up();
+      uint16_t address = (uint16_t)(0x2000 | op->reg);
+      if (op->is_read) nes_read(address);
+      else nes_write(address, op->value);
+    }
+    if (current >= boot_end_frame) {
+      clock = boot_end_clock;
+      booting = 0;
+    }
     return;
   }
   // a frame of the title screen. The main loop waits at $C02B with lda $1F and beq, 9 dots each, and the interrupt
