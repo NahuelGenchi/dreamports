@@ -6,12 +6,13 @@
 #include "objects.h"
 
 enum { OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC, SCREEN_W_ = 240, SCREEN_H_ = 160 };
-enum { HUD_GLYPHS = 11, HUD_WHITE = 0, HUD_RED = 22, HUD_RING = 44, HUD_FACE = 60 };
+// the HUD's tiles sit at fixed places below the sprites' heap (VRAM_RESERVED_UI_DIGITS_A to _D): the face, the ring, then the
+// white and the red digits
+enum { HUD_GLYPHS = 11, HUD_FACE = 0x800 / 32, HUD_RING = 0x880 / 32, HUD_WHITE = 0xA80 / 32, HUD_RED = 0xD40 / 32 };
 enum { OBJ_8x8 = 0, OBJ_16x16 = 1, OBJ_32x32 = 2, OBJ_8x16 = 8 };
 enum { ORDER_DIGITS = 2, ORDER_ICONS = 3 };
 
 Act act;
-static uint32_t hudVram, hudTile;
 
 // --- the copy's data (rom/tilemaps.js, rom/collision.js, rom/entities.js, rom/levels.js) -------------------------
 static Tilemap read_tilemap(int index) {
@@ -253,7 +254,7 @@ static int digits_of(int n, int *out) {
   return k;
 }
 static void hud_glyph(int g, int x, int y) {
-  int tile = g < HUD_GLYPHS ? (int)hudTile + g * 2 : (int)hudTile + HUD_RED + (g - HUD_GLYPHS) * 2;
+  int tile = g < HUD_GLYPHS ? HUD_WHITE + g * 2 : HUD_RED + (g - HUD_GLYPHS) * 2;
   put_oam(ORDER_DIGITS, x, y, OBJ_8x16, tile, 6, 0);
 }
 static void hud_update(int draw) {
@@ -261,8 +262,8 @@ static void hud_update(int draw) {
   if (!h->active) return;
   if (draw) {
     // the icons: the ring over the ring count and the character's face by the lives, at OAM order 3
-    put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, (int)hudTile + HUD_RING, 6, 0);
-    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, (int)hudTile + HUD_FACE, 0, 0);
+    put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, HUD_RING, 6, 0);
+    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, HUD_FACE, 0, 0);
     if (act.ringCount == 0) {
       static const int FLASH[5] = { 0, 11, 11, 0, 0 };
       int f = h->flash >> 3, g = f < 5 ? FLASH[f] : -1;
@@ -350,17 +351,15 @@ static void animate_stage_tiles(void) {
 // the HUD's tiles and colours (hudGraphics): the white and red digits, the ring and the face. The original loads
 // them as the HUD starts, after the title card's frame, which is why the card's own palette 6 is loaded later too.
 static void hud_load(void) {
-  hudVram = vram_malloc(64);
-  hudTile = (hudVram - OBJ_VRAM) >> 5;
   uint32_t fontTiles, fontPalette, faceTiles, facePalette, ringTiles, ringPalette;
   UiSlot layout;
   ui_graphics(0, &fontTiles, &fontPalette, &layout);
   ui_graphics(1, &faceTiles, &facePalette, &layout);
   ui_graphics(5, &ringTiles, &ringPalette, &layout);
-  copy_rom(fontTiles + 32 * 32, hudVram + HUD_WHITE * 32, 22 * 32);
-  copy_rom(fontTiles + 224 * 32, hudVram + HUD_RED * 32, 22 * 32);
-  copy_rom(ringTiles, hudVram + HUD_RING * 32, 16 * 32);
-  copy_rom(faceTiles, hudVram + HUD_FACE * 32, 4 * 32);
+  copy_rom(fontTiles + 32 * 32, OBJ_VRAM + HUD_WHITE * 32, 22 * 32);
+  copy_rom(fontTiles + 224 * 32, OBJ_VRAM + HUD_RED * 32, 22 * 32);
+  copy_rom(ringTiles, OBJ_VRAM + HUD_RING * 32, 16 * 32);
+  copy_rom(faceTiles, OBJ_VRAM + HUD_FACE * 32, 4 * 32);
   for (int i = 0; i < 16; i++) e.objPalette[6 * 16 + i] = (uint16_t)rom_u16(fontPalette + i * 2);
   for (int i = 0; i < 16; i++) e.objPalette[i] = (uint16_t)rom_u16(facePalette + i * 2);
   e.flags |= FLAGS_UPDATE_OBJ_PALETTES;
@@ -456,9 +455,12 @@ static void act_frame(void) {
     act.hud.active = 1;
     act.hud.flash = act.stage.hudFlash;
   }
+  // the camera's task first runs on the frame after the one that makes the act, where it only sets itself going
+  // (Task_CallUpdateCamera), and counts the animated tiles from the frame after that, in UpdateCamera
+  int camRuns = act.cam.started && act.frames > 1;
   if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
   if (act.stage.backgroundScroll == 1 && act.cam.bgUpdates > 0) casino_background_update();
-  animate_stage_tiles();
+  if (camRuns) animate_stage_tiles();
   // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts
   if (act.frames > 0) objects_run_early();
   // the title card's task (0x2100) runs before Sonic's and the clock's, so the frame it ends frees the pad and starts
@@ -554,8 +556,9 @@ static void pre_run(int cardSkip, int preFrames) {
   objects_set_drawing(0);
   while (!act.cardDone || after < preFrames) {
     int wasDone = act.cardDone;
+    int camRuns = act.cam.started;
     if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
-    animate_stage_tiles();
+    if (camRuns) animate_stage_tiles();
     objects_run_early();
     if (!act.cardDone) card_update(cardSkip == act.tick);
     PlayerInput in = { .right = act.cardDone, .jump = !act.cardDone, .attack = !act.cardDone };

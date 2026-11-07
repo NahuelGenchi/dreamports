@@ -72,7 +72,9 @@ ActTask *spikes_spawn(Slot *slot) {
   sp->o.slot = slot;
   sp->o.x = en->x;
   sp->kind = en->kind;
-  object_sprite(&sp->o.sprite, ANIM_SPIKES, variant, variant, ORDER_SPIKES, PRIORITY_FRONT, en->kind == SPIKES_LEFT, en->kind == SPIKES_DOWN);
+  // the spikes up and down share the tiles at VRAM_RESERVED_SPIKES, the sideways ones take their own from the heap
+  if (sideways) object_sprite(&sp->o.sprite, ANIM_SPIKES, variant, variant, ORDER_SPIKES, PRIORITY_FRONT, en->kind == SPIKES_LEFT, 0);
+  else object_sprite_at(&sp->o.sprite, OBJ_VRAM + VRAM_SPIKES, ANIM_SPIKES, variant, ORDER_SPIKES, PRIORITY_FRONT, 0, en->kind == SPIKES_DOWN);
   sprite_step(&sp->o.sprite);
   return object_task(&sp->o, spikes_run, PRIORITY_OBJECTS);
 }

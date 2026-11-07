@@ -10,7 +10,7 @@ enum {
 };
 enum {
   ANIM_SPRING = 455, ORDER_SPRING = 18, PRIORITY_FRONT = 2,
-  PALETTE_YELLOW_SPRING = 36, YELLOW_BANK = 7,   // the weaker up springs draw with this palette, in the next bank
+  PALETTE_YELLOW_SPRING = 36, YELLOW_BANK = 8,   // the weaker up springs draw with this palette, in the bank after the red one's (gObjPalette[8 * 16])
   SE_SPRING = 170,
   TRIGGER_OUT = 20,       // how far out on its side Sonic's centre must be for a diagonal spring to launch him
   TRIGGER_HALF_WIDTH = 12,

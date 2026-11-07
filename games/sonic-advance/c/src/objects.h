@@ -129,6 +129,14 @@ void object_end(ActTask *t);
 /** Gives `s` an object's animation `anim` (variants first to last) in the OAM `order`, in front of the layers `prio`, with its
  *  own tiles. */
 void object_sprite(Sprite *s, int anim, int first, int last, int order, int prio, int flipX, int flipY);
+// where the kinds with fixed tiles keep them, from the start of sprite VRAM (the original's vram_hardcoded.h)
+enum {
+  VRAM_SPIKES = 0x1B00, VRAM_DUST_EFFECT_BRAKING = 0x2100, VRAM_BUMPER_TRI_BIG = 0x26A0, VRAM_BUMPER_TRI = 0x2B20,
+  VRAM_BUMPER_TRI_2 = 0x2CA0, VRAM_BUMPER = 0x2E20,
+};
+/** The same, for the kinds whose tiles sit at a fixed place below the heap (vram_hardcoded.h), shared by all of that kind;
+ *  vram_free leaves those places alone. */
+void object_sprite_at(Sprite *s, uint32_t dest, int anim, int variant, int order, int prio, int flipX, int flipY);
 void object_sprite_free(Sprite *s);
 /** Starts variant `variant` over; its first frame shows on the next step. */
 void sprite_start(Sprite *s, int variant);

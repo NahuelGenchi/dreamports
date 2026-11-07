@@ -112,14 +112,18 @@ int sprite_tiles(int anim, int first, int last) {
   return most;
 }
 
-void object_sprite(Sprite *s, int anim, int firstVariant, int lastVariant, int order, int prio, int flipX, int flipY) {
+void object_sprite_at(Sprite *s, uint32_t dest, int anim, int variant, int order, int prio, int flipX, int flipY) {
   sprite_init(s);
   s->hitboxes[1].index = -1;   // no hitbox until the animation sets one
   s->graphics.anim = (uint16_t)anim;
-  s->variant = (uint8_t)firstVariant;
-  s->graphics.dest = vram_malloc((uint32_t)sprite_tiles(anim, firstVariant, lastVariant));
+  s->variant = (uint8_t)variant;
+  s->graphics.dest = dest;
   s->oamFlags = (uint16_t)(order << 6);
   s->frameFlags = (uint32_t)prio << 12 | (flipX ? SPRITE_X_FLIP : 0) | (flipY ? SPRITE_Y_FLIP : 0);
+}
+
+void object_sprite(Sprite *s, int anim, int firstVariant, int lastVariant, int order, int prio, int flipX, int flipY) {
+  object_sprite_at(s, vram_malloc((uint32_t)sprite_tiles(anim, firstVariant, lastVariant)), anim, firstVariant, order, prio, flipX, flipY);
 }
 
 void object_sprite_free(Sprite *s) {

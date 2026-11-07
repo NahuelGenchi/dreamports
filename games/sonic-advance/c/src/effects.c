@@ -70,7 +70,8 @@ static void effect_make(int kind, int anim, int variant, int x, int y, int flipX
   if (kind == EFFECT_DASH) {
     object_sprite(&e->o.sprite, sprite_tiles(ANIM_DASH_DUST_BIG, 0, 0) > sprite_tiles(ANIM_DASH_DUST, 0, 0) ? ANIM_DASH_DUST_BIG : ANIM_DASH_DUST, 0, 0, ORDER_SONIC_EFFECT, PRIORITY_FRONT, flipX, flipY);
     e->o.sprite.graphics.anim = (uint16_t)anim;
-  } else object_sprite(&e->o.sprite, anim, variant, variant, ORDER_SONIC_EFFECT, PRIORITY_FRONT, flipX, flipY);
+  } else if (kind == EFFECT_BRAKE) object_sprite_at(&e->o.sprite, OBJ_VRAM + VRAM_DUST_EFFECT_BRAKING, anim, variant, ORDER_SONIC_EFFECT, PRIORITY_FRONT, flipX, flipY);
+  else object_sprite(&e->o.sprite, anim, variant, variant, ORDER_SONIC_EFFECT, PRIORITY_FRONT, flipX, flipY);
   if (!object_task(&e->o, effect_run, PRIORITY_EFFECTS)) return;
   if (kind == EFFECT_BRAKE) brakeDust++;
 }

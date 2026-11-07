@@ -253,7 +253,11 @@ ActTask *bumper_spawn(Slot *slot) {
   b->flipY = (k == BUMPER_TRI_H && e->d[0] == 0) || (k == BUMPER_RIGHT_ANGLE && e->d[1] == 0);
   int anim = k == BUMPER_HEXAGON ? ANIM_HEXAGON : k == BUMPER_ROUND || k == BUMPER_CIRCLING ? ANIM_ROUND
     : k == BUMPER_TRI_H ? ANIM_TRI_H : k == BUMPER_TRI_V ? ANIM_TRI_V : ANIM_RIGHT_ANGLE;
-  object_sprite(&b->o.sprite, anim, 0, 0, ORDER_BUMPER, PRIORITY_FRONT, b->flipX, b->flipY);
+  // all but the hexagon share their kind's tiles, at fixed places below the heap (vram_hardcoded.h)
+  uint32_t fixed = k == BUMPER_ROUND || k == BUMPER_CIRCLING ? VRAM_BUMPER : k == BUMPER_TRI_H ? VRAM_BUMPER_TRI
+    : k == BUMPER_TRI_V ? VRAM_BUMPER_TRI_2 : k == BUMPER_RIGHT_ANGLE ? VRAM_BUMPER_TRI_BIG : 0;
+  if (fixed) object_sprite_at(&b->o.sprite, OBJ_VRAM + fixed, anim, 0, ORDER_BUMPER, PRIORITY_FRONT, b->flipX, b->flipY);
+  else object_sprite(&b->o.sprite, anim, 0, 0, ORDER_BUMPER, PRIORITY_FRONT, b->flipX, b->flipY);
   sprite_step(&b->o.sprite);
 
   // the sway: a negative d0 (d1) starts it half a turn on
