@@ -1,0 +1,9 @@
+{
+  "about": "Start pressed on the title screen, one player, then nothing.",
+  "frames": 500,
+  "held": [
+    [0, []],
+    [100, ["START"]],
+    [102, []]
+  ]
+}
