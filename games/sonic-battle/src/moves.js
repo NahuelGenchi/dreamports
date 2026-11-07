@@ -1432,6 +1432,7 @@ const THING_SCRIPTS = new Map([
   [43, 0x0806C60C], [44, 0x0806C67C], [45, 0x0806C8F4], [41, 0x0806C790], [46, 0x0806C944], [158, 0x0806E520], [160, 0x0806E5F0],
   [54, 0x0806C984], [57, 0x0806CA14], [60, 0x0806CD14], [61, 0x0806CD68],
   [117, 0x0806DC00], [118, 0x0806DC60], [114, 0x0806DB48], [120, 0x0806DCBC], [121, 0x0806DD04], [122, 0x0806DDA4],
+  [36, 0x0806C054], [73, 0x0806CE18], [78, 0x0806D13C],
 ]);
 const THING_MARK = 0xFFF00000;
 // the fields a script's words set, by the word's first half
@@ -1555,9 +1556,10 @@ const THING_HITS = new Map([
   [39, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [44, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
   [54, [0x100, 16, 30, 2, 0x280, 0, 11, 16]], [57, [0x120, 4, 5, 2, 0x340, 1, 0, 255]],
   [117, [0x140, 6, 15, 2, 0x380, 0, 0, 255]], [122, [0x240, 20, 15, 2, 0x3C0, 0, 0, 22]],
+  [78, [0x300, 8, 20, 1, 0x380, 0, 0, 255]],
 ]);
 // the kinds 0x0800eaec has hits for that aren't ported yet
-const THING_HITS_LATER = new Set([62, 63, 78, 79, 82, 94, 97, 102, 137, 138, 142, 154, 158, 160,
+const THING_HITS_LATER = new Set([62, 63, 79, 82, 94, 97, 102, 137, 138, 142, 154, 158, 160,
   165, 166, 174, 175, 177, 178, 179, 185, 191, 194, 197, 201, 241, 245]);
 
 // the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet

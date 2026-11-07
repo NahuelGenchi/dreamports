@@ -162,7 +162,7 @@ function choosingAfterWait(c) {
  * and 0x0801c8a4, with 0x08019ed8, which load everything and start the song. In the original these take from the
  * Training screen's fade to the fight's first picture, with the screen black all along.
  */
-export function startFight(c, vblanks, action = 0, you = 0, rival = 0, arena = 0) {
+export function startFight(c, vblanks, action = 0, you = 0, rival = 0, arena = 0, colour = 255) {
   c.vblanks = vblanks;
   c.lineOne = fn0801fc60;
   c.video.pal.fill(0);
@@ -190,6 +190,11 @@ export function startFight(c, vblanks, action = 0, you = 0, rival = 0, arena = 0
   startFadeIn(c, 24);
   fn080205d0(c);
   c.vblankCopies = 1;
+  // the colour rows the Training screen copies into the player's choices for a character whose colours come from
+  // them (loadColours), such as Chaos: byte 93 picks colours 3 to 6, 94 picks 7 to 10, and 95 picks 11 to 13
+  if (colour !== 255) {
+    for (const at of [93, 94, 95]) write8(c, 0x030013B0 + at, colour);
+  }
   setUpFight(c);
   write8(c, SONG, ARENA_SONGS[setup(c, 3 + setup(c, 1))]);
   fn08012b98(c, 10);
