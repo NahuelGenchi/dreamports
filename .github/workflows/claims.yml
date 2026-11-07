@@ -7,8 +7,9 @@ name: Claims
 # claims its task for its author when they tick the box. On any open issue of a game, a comment starting with /claim
 # takes it while nobody has it, and /release gives it back. Each answer is a comment, and the daily run releases every
 # claim whose holder has done nothing on the game's issues or pull requests for 14 days, or 7 for a foundation, which
-# other pieces wait on. It lists a game's free pieces as src/lib/pieces.mjs has them. Each run only
-# reads the issues' text and the repository's files, through the API, and runs nothing from them. Runs on one issue
+# other pieces wait on. It lists a game's free pieces, and says what a piece waits on, by src/lib/pieces.mjs itself,
+# checked out from the default branch, so its list is find's, in find's order (#681). Each run only reads the issues'
+# text and the repository's files, through the API, and runs nothing from them but that file and what it imports. Runs on one issue
 # wait for each other, and each answers every command on its issue that has no answer yet, since GitHub cancels all
 # but the newest waiting run of a concurrency group. A run that gives, takes back or adds a piece builds dreamports.net
 # again, so each game's page in its Make row shows how many pieces are free (docs/MAKE.md).
@@ -47,6 +48,12 @@ jobs:
       # the Deploy Hook that builds dreamports.net, kept in the repository's secrets
       DEPLOY_HOOK: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK }}
     steps:
+      - name: Take find's rules from the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: src/lib
       - name: Answer claims, or release the quiet ones
         id: claims
         env:
@@ -218,16 +225,18 @@ jobs:
             await api(`/issues/${issue.number}`, 'PATCH', { state: 'closed', state_reason: reason });
           }
 
-          // what a game's parts.json lists, foundations first, each with what it needs: read once for each game
+          // which pieces can start and what each waits on, by find's own rules (src/lib/pieces.mjs), checked out from the
+          // default branch, so the bot's list never drifts from find's
+          const rules = await import(`${process.env.GITHUB_WORKSPACE}/src/lib/pieces.mjs`);
+          // a game's parts.json, its foundations and parts, each with what it needs: read once for each game
           const plans = new Map();
-          function planOf(game) {
+          function partsOf(game) {
             if (!plans.has(game)) plans.set(game, (async () => {
               const file = await api(`/contents/games/${game}/proof/parts.json`);
               try {
-                const { foundations, parts } = JSON.parse(Buffer.from(file?.content ?? '', 'base64').toString('utf8'));
-                return [...(foundations ?? []).map(f => ({ ...f, foundation: true })), ...(parts ?? [])];
+                return JSON.parse(Buffer.from(file?.content ?? '', 'base64').toString('utf8'));
               } catch {
-                return [];
+                return {};
               }
             })());
             return plans.get(game);
@@ -241,42 +250,20 @@ jobs:
             ))());
             return mains.get(game);
           }
-          const nameOf = title => title.replace(/^Task:\s*/i, '').trim();
-          const sameName = (a, b) => same(String(a ?? '').trim(), String(b ?? '').trim());
-          // a piece's part and language: "Task: Title screen in C" is a part of the game's version in C (src/lib/languages.mjs)
-          const LANGUAGES = { c: 'C' };
-          function partOf(title) {
-            const name = nameOf(title);
-            for (const [language, called] of Object.entries(LANGUAGES)) {
-              const suffix = ` in ${called}`;
-              if (name.length > suffix.length && same(name.slice(-suffix.length), suffix)) return { name: name.slice(0, -suffix.length).trim(), language };
-            }
-            return { name, language: 'js' };
-          }
-          // what a piece is still waiting on, each as a name, with its number when it has an issue: what parts.json says
-          // it needs, unless that issue is closed, or for a part with no issue in the main language, unless parts.json names
-          // its recording. A piece in another language needs what it needs in that language, and the same piece in the
-          // main language first
-          function waitingOn(piece, pieces, plan, main = 'js') {
-            const { name, language } = partOf(piece.title);
-            const needs = plan.find(p => sameName(p.name, name))?.needs;
-            const all = [...(language === main ? [] : [[name, main]]), ...(Array.isArray(needs) ? needs : []).map(need => [need, language])];
-            return all.flatMap(([need, lang]) => {
-              const found = pieces.find(p => sameName(partOf(p.title).name, need) && partOf(p.title).language === lang);
-              if (found) return found.state === 'open' ? [`#${found.number} ${nameOf(found.title)}`] : [];
-              if (lang !== main) return [lang === 'js' ? need : `${need} in ${LANGUAGES[lang]}`];
-              return plan.find(p => sameName(p.name, need))?.recording ? [] : [need];
-            });
+          // what a piece is still waiting on, each as a name, with its number when it has an issue, as find says it (pieces.mjs),
+          // whoever has it, as it's asked for the piece just claimed
+          function waitingOn(piece, pieces, file, main = 'js') {
+            const asked = { ...piece, state: 'open', assignees: [] };
+            const { waiting } = rules.whatCanStart([...pieces.filter(p => p.number !== piece.number), asked], file, new Set(), { main });
+            return (waiting.find(w => w.piece === asked)?.on ?? []).map(on => (on.number ? `#${on.number} ${on.name}` : on.name));
           }
 
           // what's still free in a game: its lead, when nobody leads it, and the pieces under its game's issue nobody has
-          // and that wait on nothing, foundations first
+          // and that wait on nothing, in find's order: C first, then the order a player meets them (pieces.mjs)
           async function free(game, title, except) {
             const home = await gameIssueOf(game);
-            const pieces = home ? await piecesOf(home) : [], plan = await planOf(game), main = await mainOf(game);
-            const foundation = piece => plan.find(p => sameName(p.name, partOf(piece.title).name))?.foundation === true;
-            const startable = pieces.filter(i => i.state === 'open' && !i.assignees.length && i.number !== except && !waitingOn(i, pieces, plan, main).length);
-            const tasks = [...startable.filter(foundation), ...startable.filter(i => !foundation(i))];
+            const pieces = home ? await piecesOf(home) : [], main = await mainOf(game);
+            const tasks = rules.whatCanStart(pieces, await partsOf(game), new Set(), { main }).free.filter(i => i.number !== except);
             const lines = [];
             if (home?.state === 'open' && !home.assignees.length && home.number !== except) lines.push(`- #${home.number}: leading ${title}`);
             lines.push(...tasks.slice(0, 10).map(t => `- #${t.number}: ${t.title.replace(/^Task:\s*/i, '')}`));
@@ -307,7 +294,7 @@ jobs:
             changed = true;
             const help = `A claim with no activity on ${title}'s issues or pull requests for ${periodOf(issue)} is released, and \`/release\` gives it back sooner. [Claims and teams](${guide}) says what comes next.`;
             const home = lead ? null : await gameIssueOf(game);
-            const waits = home ? waitingOn(issue, await piecesOf(home), await planOf(game), await mainOf(game)) : [];
+            const waits = home ? waitingOn(issue, await piecesOf(home), await partsOf(game), await mainOf(game)) : [];
             const waiting = waits.length ? ` It needs ${waits.join(' and ')} first, which ${waits.length === 1 ? 'isn\'t' : 'aren\'t'} finished, so it can't be finished before then.` : '';
             return answer(issue, about, lead
               ? `@${user}, ${title} is yours to lead. This is its game's issue, where it's talked about: the tasks you open for it with [the Task form](${form('task.yml')}) land under it, with the label \`${game}\`, and anyone can claim them. ${help}`
