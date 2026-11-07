@@ -1,6 +1,6 @@
 # The title screen's Start opens a player select whose colours change at frame 103.
 
-About: The game's start; game-start; $C41F; $C44B; $C4F9; $C53B
+About: The title screen; game-start
 
 Proof: #1005; game-start
 
