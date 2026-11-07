@@ -51,7 +51,8 @@ void nes_chr_bank(int slot, uint8_t *bytes);
  * controller's at $4016. The write happens at the time the frame has reached (nes_spend).
  */
 void nes_write(uint16_t address, uint8_t value);
-/** Reads `address`, as the CPU's load does: $2002, $2004, $2007, $4015, and $4016 for the controller's next bit. */
+/** Reads `address`, as the CPU's load does: $2002, $2004, $2007, $4015, and $4016-$4017 for the two controllers' next
+ *  bits (first controller in bits 0-7 of `buttons`, second in bits 8-15). */
 uint8_t nes_read(uint16_t address);
 
 // Time within a frame. A step starts when the original's V-blank interrupt starts, and its writes happen then, unless

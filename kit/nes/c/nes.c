@@ -16,12 +16,19 @@ int nes_mapper;
 uint8_t nes_wram[0x2000];
 int nes_chr_writable;
 
+static uint8_t *chr_rom;
+static uint32_t chr_rom_room;
 static uint8_t *chr_ram;
 static uint8_t *battery;
 static uint32_t frame;
 static uint64_t frame_start;            // dots from power-on to this frame's start
 static uint32_t held;
-static uint8_t strobe, shifted;
+static uint8_t strobe, shifted[2];
+
+static void latch_controllers(void) {
+  shifted[0] = (uint8_t)held;
+  shifted[1] = (uint8_t)(held >> 8);
+}
 
 uint8_t nes_prg_byte(uint16_t address) {
   if (!nes_prg_size) return 0;
@@ -46,12 +53,17 @@ static void cartridge(void) {
   nes_prg_size = prg;
   if (chr && at + prg + chr <= kit_copy_size) {
     // the copy's tiles, in memory of the game's own so a mapper's game can point the PPU at any of them
-    nes_chr = kit_alloc(chr);
+    if (!chr_rom || chr > chr_rom_room) {
+      chr_rom = kit_alloc(chr);
+      chr_rom_room = chr;
+    }
+    nes_chr = chr_rom;
     for (uint32_t i = 0; i < chr; i++) nes_chr[i] = kit_copy[at + prg + i];
     nes_chr_size = chr;
     nes_chr_writable = 0;
   } else {
     if (!chr_ram) chr_ram = kit_alloc(0x2000);
+    for (int i = 0; i < 0x2000; i++) chr_ram[i] = 0;
     nes_chr = chr_ram;
     nes_chr_size = 0x2000;
     nes_chr_writable = 1;
@@ -62,6 +74,9 @@ static void cartridge(void) {
   if (ines && (h[6] & 2)) {
     battery = kit_save(0x2000);
     for (int i = 0; i < 0x2000; i++) nes_wram[i] = battery[i];
+  } else {
+    battery = NULL;
+    for (int i = 0; i < 0x2000; i++) nes_wram[i] = 0;
   }
 }
 
@@ -79,8 +94,9 @@ void nes_write(uint16_t address, uint8_t value) {
     nes_oam_dma(page);
     nes_spend(513);
   } else if (address == 0x4016) {
-    strobe = value & 1;
-    if (strobe) shifted = (uint8_t)held;
+    uint8_t next = value & 1;
+    if (strobe || next) latch_controllers();
+    strobe = next;
   } else if (address < 0x4018) {
     nes_apu_run_to(frame_start + (uint64_t)nes_now());
     nes_apu_write(address, value);
@@ -94,14 +110,14 @@ uint8_t nes_read(uint16_t address) {
     nes_apu_run_to(frame_start + (uint64_t)nes_now());
     return nes_apu_status();
   }
-  if (address == 0x4016) {
-    // the controller sends its buttons a bit at a time, A first, and then ones; with the strobe held, A again
-    if (strobe) shifted = (uint8_t)held;
-    uint8_t bit = shifted & 1;
-    shifted = (uint8_t)(shifted >> 1 | 0x80);
+  if (address == 0x4016 || address == 0x4017) {
+    // each controller sends its buttons a bit at a time, A first, and then ones; with the strobe held, A again
+    int port = address - 0x4016;
+    if (strobe) latch_controllers();
+    uint8_t bit = shifted[port] & 1;
+    shifted[port] = (uint8_t)(shifted[port] >> 1 | 0x80);
     return 0x40 | bit;
   }
-  if (address == 0x4017) return 0x40;
   if (address >= 0x6000 && address < 0x8000) return nes_wram[address - 0x6000];
   if (address >= 0x8000) return nes_prg_byte(address);
   return 0;
@@ -125,6 +141,9 @@ EXPORT("dp_start") void dp_start(void) {
   nes_ppu_power();
   nes_apu_power();
   for (int i = 0; i < 0x800; i++) nes_ram[i] = 0;
+  held = 0;
+  strobe = 0;
+  shifted[0] = shifted[1] = 0;
   frame = 0;
   // the emulator's first frame, which nothing is compared with (ppu.c)
   frame_start = (uint64_t)nes_frame_dots;
@@ -137,7 +156,8 @@ EXPORT("dp_start") void dp_start(void) {
 
 /** Runs one frame with the buttons in `buttons` held, a bit each in kit/consoles.js's order (console.h). */
 EXPORT("dp_step") void dp_step(uint32_t buttons) {
-  held = buttons & 0xFF;
+  held = buttons & 0xFFFF;
+  if (strobe) latch_controllers();
   nes_ppu_frame_start(frame);
   game_step(held);
   nes_ppu_frame_end();

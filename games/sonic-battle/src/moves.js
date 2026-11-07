@@ -603,7 +603,8 @@ function leaveThings(c, i) {
     const facing = read8(c, thing + 64), x = read16(c, thing + 58), y = read16(c, thing + 60), z = read16(c, thing + 62);
     const full = read8(c, thing + 65);
     clearEffect(c, k);
-    fn0800c1c8(c, blast, facing, x, y, z, 0, 0, 0, 0, i, full);
+    // the Sets' blasts sit one lower than the thing they came from, as 0x0800f5bc leaves them
+    fn0800c1c8(c, blast, facing, x, y, blast === 122 ? s16(z - 1) : z, 0, 0, 0, 0, i, full);
   }
 }
 
@@ -1360,14 +1361,13 @@ function landOrFall(c, i) {
   const rec = record(i);
   if (read8(c, rec + PAUSE) !== 0) return;
   const state = read16(c, rec + STATE);
-  if (read8(c, rec + BUMPED) !== 0 && (state === 66 || state === 81)) {
-    // 0x0800444c: a wall it ran into the way it faces throws it back, or turns it to its bounce state
-    const bumped = read8(c, rec + BUMPED), facing = read8(c, rec + LAST_FACING);
-    const bounced = ((bumped & 1) && facing === 4) || ((bumped & 2) && facing === 6)
-      || ((bumped & 4) && facing === 8) || ((bumped & 8) && facing === 2)
-      || ((bumped & 16) && facing === 4) || ((bumped & 32) && facing === 6)
-      || ((bumped & 64) && facing === 8) || ((bumped & 128) && facing === 2);
-    if (bounced) {
+  // 0x0800444c: a fighter thrown into a wall it was flying at bounces, unless the guard's last hit takes it instead
+  const bumped = read8(c, rec + BUMPED);
+  if (bumped !== 0 && (state === 66 || state === 81)) {
+    const facing = read8(c, rec + LAST_FACING);
+    const intoWall = [[1, 4], [2, 6], [4, 8], [8, 2], [16, 4], [32, 6], [64, 8], [128, 2]]
+      .some(([bit, way]) => (bumped & bit) !== 0 && facing === way);
+    if (intoWall) {
       if (read8(c, rec + 185) === 1) {
         write8(c, rec + 125, read8(c, rec + 124));
         setState(c, i, 96);
@@ -1430,7 +1430,8 @@ const THING_SCRIPTS = new Map([
   [12, 0x0806B8CC], [13, 0x0806B940], [14, 0x0806B804], [15, 0x0806B9D4], [16, 0x0806BB08], [31, 0x0806BB08],
   [32, 0x0806BBA0], [34, 0x0806BBF4], [35, 0x0806BC54], [40, 0x0806C6EC], [37, 0x0806C07C], [38, 0x0806C1AC], [39, 0x0806C448],
   [43, 0x0806C60C], [44, 0x0806C67C], [45, 0x0806C8F4], [41, 0x0806C790], [46, 0x0806C944], [158, 0x0806E520], [160, 0x0806E5F0],
-  [114, 0x0806DB48], [117, 0x0806DC00], [118, 0x0806DC60], [120, 0x0806DCBC], [121, 0x0806DD04],
+  [54, 0x0806C984], [57, 0x0806CA14], [60, 0x0806CD14], [61, 0x0806CD68],
+  [117, 0x0806DC00], [118, 0x0806DC60], [114, 0x0806DB48], [120, 0x0806DCBC], [121, 0x0806DD04], [122, 0x0806DDA4],
 ]);
 const THING_MARK = 0xFFF00000;
 // the fields a script's words set, by the word's first half
@@ -1552,14 +1553,15 @@ function runThingScript(c, k, script) {
 const THING_HITS = new Map([
   [38, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [41, [0x280, 4, 20, 2, 0x3C0, 0, 0, 22]], [43, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
   [39, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [44, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
-  [117, [0x140, 6, 15, 2, 0x380, 0, 0, 255]],
+  [54, [0x100, 16, 30, 2, 0x280, 0, 11, 16]], [57, [0x120, 4, 5, 2, 0x340, 1, 0, 255]],
+  [117, [0x140, 6, 15, 2, 0x380, 0, 0, 255]], [122, [0x240, 20, 15, 2, 0x3C0, 0, 0, 22]],
 ]);
 // the kinds 0x0800eaec has hits for that aren't ported yet
-const THING_HITS_LATER = new Set([54, 57, 62, 63, 78, 79, 82, 94, 97, 102, 122, 137, 138, 142, 154, 158, 160,
+const THING_HITS_LATER = new Set([62, 63, 78, 79, 82, 94, 97, 102, 137, 138, 142, 154, 158, 160,
   165, 166, 174, 175, 177, 178, 179, 185, 191, 194, 197, 201, 241, 245]);
 
 // the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet
-const THING_STEPS_LATER = new Set([39, 61, 79, 101, 141]);
+const THING_STEPS_LATER = new Set([39, 79, 101, 141]);
 
 /**
  * 0x0800d818: a kind 40 mine feels the first fighter that comes near it, other than its owner, and tells its owner,
@@ -1661,6 +1663,54 @@ function thingHitsFighters(c, k, reach, height, damage, hold, hitKind, again, fi
 }
 
 /**
+ * 0x0800cec8's steps for a kind 121 thing, Amy's Set: it turns toward the nearest fighter and moves that way, and a
+ * fighter close enough sets its owner's +236, which starts the Set. Its own hit call has nothing for the kind, so the
+ * reach is only through its owner's move.
+ */
+function stepAmySet(c, thing, k) {
+  const owner = read8(c, thing + 53);
+  let nearest = 255, nearestDistance = 0xFFFF;
+  for (let i = 0; i < 4; i++) {
+    if (i === owner) continue;
+    const rec = record(i);
+    if (read8(c, rec + 187) === 0 || read8(c, SETUP + 20 + i) === 255) continue;
+    if (read8(c, SETUP + 8) !== 0 && read8(c, SETUP + 9) !== 1
+      && read8(c, SETUP + 32 + owner) === read8(c, SETUP + 32 + i)) continue;
+    const dx = s16(read16(c, thing + 58) - read16(c, rec));
+    const dy = s16(read16(c, thing + 60) - read16(c, rec + 2));
+    const dz = s16(read16(c, thing + 62) - read16(c, rec + 4));
+    const state = read16(c, rec + STATE), distance = Math.abs(dx) + Math.abs(dy);
+    if (nearestDistance > distance && !(state >= 252 && state <= 255)) {
+      nearestDistance = distance;
+      nearest = i;
+    }
+    if (Math.abs(dx) > 0x21F || Math.abs(dy) > 0x21F || Math.abs(dz) > 19) continue;
+    if (read8(c, 0x0300138C) !== 0) {
+      const player = read32(c, PLAYER);
+      if (owner !== player && (owner !== player + 2 || read8(c, SETUP + 28 + owner) === 0)) continue;
+    }
+    if (Math.abs(s16(read16(c, thing + 62) - read16(c, rec + 4))) > 23) continue;
+    write8(c, record(owner) + 236, 1);
+    nearestDistance = 0;
+    break;
+  }
+  // the two calls the case makes to 0x0800eaec's hit: nothing for kind 121, so they leave the fighters alone
+  if (nearestDistance === 0 || nearest !== 255) thingHit(c, k, 121);
+  if (nearest === 255) return;
+  const rec = record(nearest);
+  let vx = read16(c, thing + 8), vy = read16(c, thing + 10);
+  if (s16(read16(c, thing + 58)) < s16(read16(c, rec))) vx = u16(vx + 4); else vx = u16(vx - 4);
+  if (s16(read16(c, thing + 60)) < s16(read16(c, rec + 2))) vy = u16(vy + 4); else vy = u16(vy - 4);
+  write16(c, thing + 8, Math.max(-64, Math.min(64, s16(vx))));
+  write16(c, thing + 10, Math.max(-64, Math.min(64, s16(vy))));
+  const z = s16(read16(c, thing + 62)), target = s16(read16(c, rec + 4)) + 52;
+  if (z < target) write16(c, thing + 62, u16(z + 1));
+  else if (z > target) write16(c, thing + 62, u16(z - 1));
+  write16(c, thing + 12, 0);
+  write8(c, thing + 64, s16(read16(c, thing + 8)) < 0 ? 4 : 6);
+}
+
+/**
  * 0x0800c728: the things of a fight for a frame, and the screen's shake. A thing waiting to appear counts down; one that
  * has appeared runs its script (0x0800bb88) and moves (0x0800cec8). Partly: only the kinds in THING_SCRIPTS, and none
  * of the kinds whose own steps come after the move.
@@ -1689,9 +1739,20 @@ function updateThings(c) {
       write16(c, thing + 62, read16(c, thing + 62) + read16(c, thing + 12));
     }
     // 0x0800cec8's per-kind steps: walls and the arena's edges push a thing back, and it falls until its floor
-    // (0x0800d260, the same for kinds 35, 38, 39, 40, 117, 118, 120 and 121): a wall it is inside pushes it out
-    // unless it is above the wall's top, where it stands on it instead, and the arena's edges push it back in
-    if (kind === 35 || kind === 38 || kind === 39 || kind === 40 || kind === 117 || kind === 118 || kind === 120 || kind === 121) {
+    // (0x0800d260, the same for kinds 35, 38, 39, 40, 57, 60 and 61): a wall it is inside pushes it out unless it is
+    // above the wall's top, where it stands on it instead, and the arena's edges push it back in
+    if (kind === 54) {
+      // 0x0800d33a: the arena's edges push it back and it sits on the floor, or at nothing when it meets no edge
+      let met = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
+      write8(c, thing + 16, met.bits);
+      if (met.bits & 0xF0) {
+        write16(c, thing + 58, read16(c, thing + 58) - u16(met.edgeX));
+        write16(c, thing + 60, read16(c, thing + 60) - u16(met.edgeY));
+        met = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
+        write8(c, thing + 16, met.bits);
+      }
+      write16(c, thing + 62, read8(c, thing + 16) !== 0 ? reads16(c, FLOOR) : 0);
+    } else if (kind === 35 || kind === 38 || kind === 39 || kind === 40 || kind === 57 || kind === 60 || kind === 61) {
       const met = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
       write8(c, thing + 16, met.bits);
       if (met.bits & 0xF) {
@@ -1729,6 +1790,43 @@ function updateThings(c) {
       if (read16(c, owner + STATE) === 0x115 || read8(c, owner + HEALTH) === 0) clearEffect(c, k);
     }
     if (kind === 40) mineFeelsFighters(c, thing);
+    if (kind === 61) {
+      // 0x0800d9a4: it feels for the nearest fighter, tells its owner when one is close, and turns toward it
+      const owner = read8(c, thing + 53);
+      let nearest = 255, shortest = 0xFFFF;
+      for (let f = 0; f <= 3; f++) {
+        if (f === owner) continue;
+        const rec = record(f);
+        if (read8(c, rec + 187) === 0) continue;
+        if (read8(c, SETUP + 20 + f) === 255) continue;
+        if (read8(c, SETUP + 8) !== 0 && read8(c, SETUP + 9) !== 1
+          && read8(c, SETUP + 32 + owner) === read8(c, SETUP + 32 + f)) continue;
+        const dx = reads16(c, thing + 58) - reads16(c, rec);
+        const dy = reads16(c, thing + 60) - reads16(c, rec + 2);
+        const dz = reads16(c, thing + 62) - reads16(c, rec + 4);
+        const apart = Math.abs(dx) + Math.abs(dy);
+        if (apart < shortest && u16(read16(c, rec + 20) - 252) > 3) { shortest = apart; nearest = f; }
+        if (Math.abs(dx) > 255 || Math.abs(dy) > 255 || Math.abs(dz) > 7) continue;
+        if (read8(c, 0x0300138C) !== 0) {
+          const player = read32(c, PLAYER);
+          if (owner !== player && (owner !== player + 2 || read8(c, SETUP + 28 + owner) === 0)) continue;
+        }
+        if (Math.abs(dz) > 23) continue;
+        write8(c, record(owner) + 236, 1);
+        shortest = 0;
+        break;
+      }
+      if (nearest !== 255) {
+        const rec = record(nearest);
+        write16(c, thing + 8, reads16(c, thing + 58) < reads16(c, rec)
+          ? read16(c, thing + 8) + 4 : read16(c, thing + 8) - 4);
+        write16(c, thing + 10, reads16(c, thing + 60) < reads16(c, rec + 2)
+          ? read16(c, thing + 10) + 4 : read16(c, thing + 10) - 4);
+        write16(c, thing + 8, reads16(c, thing + 8) > 64 ? 64 : (reads16(c, thing + 8) < -64 ? -64 : read16(c, thing + 8)));
+        write16(c, thing + 10, reads16(c, thing + 10) > 64 ? 64 : (reads16(c, thing + 10) < -64 ? -64 : read16(c, thing + 10)));
+      }
+    }
+    if (kind === 121) stepAmySet(c, thing, k);
     if (THING_STEPS_LATER.has(kind)) notPorted('0800CEC8', `the steps of a thing of kind ${kind} after it moves`);
     thingHit(c, k, read16(c, thing + 56));
   }
