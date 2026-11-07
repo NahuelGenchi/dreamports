@@ -87,7 +87,8 @@ void front_play(int level) {
     act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
     return;
   }
-  act_start(level, -1, 0);
+  // the course select's frame still draws itself: the act starts on the next one, as the original's task does
+  act_queue(level, -1, 0);
 }
 void front_start_demo(void) { ctx.done = 1; }
 

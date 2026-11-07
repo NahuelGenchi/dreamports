@@ -5,6 +5,10 @@
 
 #include "act.h"
 
+// the kit's sound output, as the page asks for a frame's samples (kit/gba/c/sound.c): the act renders the frames
+// before its first one here, to put the stage's music where the original has it
+float *dp_sound_render(int count);
+
 enum {
   OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC,
   LAYER_FRONT = 0, LAYER_BACK = 1, IGNORE_PLATFORMS = 0x80,
@@ -43,6 +47,9 @@ enum { ORDER_DIGITS = 2, ORDER_ICONS = 3, ORDER_SONIC = 16 };
 #define ANIM_MIN_WALK 0x08
 
 Act act;
+/** Whether this is Neo Green Hill act 2, whose frame timing this engine worked out first; the acts before it keep
+ *  the timing their recordings matched with. */
+static int act2(void) { return act.stage.level == 1; }
 static Sprite sonic;
 static uint32_t sonicVram;
 static PaletteAnimation paletteAnims[PALETTE_ANIMATIONS_MAX];
@@ -186,8 +193,10 @@ static void load_stage(int level) {
   paletteCount = info->paletteCount;
   for (int i = 0; i < paletteCount; i++) { paletteAnims[i].anim = info->palette[i][0]; paletteAnims[i].variant = info->palette[i][1]; }
   // the front layer's tiles, in the first character block, and the stage's 256 colours (extractStage's palette).
-  // The tiles go straight in: the queue also feeds the animation frame's copy over their start, in order.
-  if (s->front.tiles + s->front.tilesSize <= gba_rom_size) memcpy(gba_vram, gba_rom + s->front.tiles, s->front.tilesSize);
+  // The whole tileset goes in, its four animation frames after the static part, at the tiles the animation copies
+  // its current frame from (UpdateBgAnimationTiles).
+  uint32_t frontSize = act2() ? s->front.tilesSize + (uint32_t)(s->front.animFrameCount > 0 ? s->front.animFrameCount - 1 : 0) * s->front.animTileSize : s->front.tilesSize;
+  if (s->front.tiles + frontSize <= gba_rom_size) memcpy(gba_vram, gba_rom + s->front.tiles, frontSize);
   for (int i = 0; i < 256; i++) e.bgPalette[i] = (uint16_t)rom_u16(s->front.palette + i * 2);
   e.flags |= FLAGS_UPDATE_BG_PALETTES;
   // the background's tiles at the second character block, and its 37 × 23 map at 0xE000: a 512-wide text layer
@@ -421,9 +430,14 @@ static void hud_update(int draw) {
     put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, HUD_RING_TILE, 6, 0);
     put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, HUD_FACE_TILE, 0, 0);
     if (act.ringCount == 0) {
-      static const int FLASH[5] = { 0, 11, 11, 0, 0 };
-      int f = h->flash >> 3, g = f < 5 ? FLASH[f] : -1;
-      if (g >= 0) hud_glyph(g, 9, 5);
+      if (act2()) {
+        // the ring counter's zero flashes red for sixteen frames and white for sixteen (Task_StageUIMain)
+        hud_glyph(h->flash & 0x10 ? 11 : 0, 9, 5);
+      } else {
+        static const int FLASH[5] = { 0, 11, 11, 0, 0 };
+        int f = h->flash >> 3, g = f < 5 ? FLASH[f] : -1;
+        if (g >= 0) hud_glyph(g, 9, 5);
+      }
     } else {
       int d[12], n = digits_of(act.ringCount > 999 ? 999 : act.ringCount, d);
       int x = n == 1 ? 9 : n == 2 ? 5 : 1;
@@ -453,7 +467,7 @@ static void card_update(int pressed) {
     act.cardDone = 1;
     act.clockStopped = 0;
     act.hud.active = 1;
-    act.hud.flash = act.stage.hudFlash;
+    act.hud.flash = act2() ? (act.stage.hudFlash + 7) & 31 : act.stage.hudFlash;
   }
 }
 
@@ -463,18 +477,36 @@ static void step_palettes(void) {
 }
 
 // --- the front layer's animated tiles (background.c UpdateBgAnimationTiles) --------------------------------------
+// frame 0 is the tileset's own first tiles; frame k is the k-th block after its static part, at the tiles it
+// copies over those first tiles. The screen shows the frame from before this one's step, as the copy lands at
+// the next V-blank.
+static void copy_stage_animation_frame(int frame) {
+  Tilemap *t = &act.stage.front;
+  if (t->animFrameCount == 0) return;
+  uint32_t src = frame == 0 ? t->tiles : t->tiles + t->tilesSize + (uint32_t)(frame - 1) * t->animTileSize;
+  if (src + t->animTileSize <= gba_rom_size) memcpy(gba_vram, gba_rom + src, t->animTileSize);
+}
 static void update_stage_animations(int queue) {
   Tilemap *t = &act.stage.front;
   if (t->animFrameCount == 0) return;
-  if (++act.stage.animCounter < t->animDelay) return;
+  if (!act2()) {
+    if (++act.stage.animCounter < t->animDelay) return;
+    act.stage.animCounter = 0;
+    if (++act.stage.animFrame >= t->animFrameCount) act.stage.animFrame = 0;
+    if (!queue || act.stage.animFrame == 0) return;
+    uint32_t src = t->tiles + t->tilesSize + (uint32_t)(act.stage.animFrame - 1) * t->animTileSize;
+    if (src + t->animTileSize <= gba_rom_size) memcpy(gba_vram, gba_rom + src, t->animTileSize);
+    return;
+  }
+  act.stage.animShown = act.stage.animFrame;
+  if (++act.stage.animCounter < t->animDelay) { if (queue) copy_stage_animation_frame(act.stage.animFrame); return; }
   act.stage.animCounter = 0;
   if (++act.stage.animFrame >= t->animFrameCount) act.stage.animFrame = 0;
-  if (!queue || act.stage.animFrame == 0) return;
-  uint32_t src = t->tiles + t->tilesSize + (uint32_t)(act.stage.animFrame - 1) * t->animTileSize;
-  if (src + t->animTileSize <= gba_rom_size) memcpy(gba_vram, gba_rom + src, t->animTileSize);
+  if (queue) copy_stage_animation_frame(act.stage.animFrame);
 }
-/** Queues the frame the animation has reached, for a stage that ran its card without drawing. */
+/** Puts the frame the screen shows now in VRAM, for a stage that ran its card without drawing. */
 static void queue_stage_animation_frame(void) {
+  if (act2()) { copy_stage_animation_frame(act.stage.animFrame); return; }
   Tilemap *t = &act.stage.front;
   if (t->animFrameCount == 0 || act.stage.animFrame == 0) return;
   uint32_t src = t->tiles + t->tilesSize + (uint32_t)(act.stage.animFrame - 1) * t->animTileSize;
@@ -488,7 +520,7 @@ static void draw_neo_background(int camX, int camY) {
   (void)camY;
   int bgHeight = act.stage.background.yTiles * 8;
   // gStageTime counts the frames drawn before this one, as the camera's task reads it
-  int time = act.tick ? act.tick - 1 : 0;
+  int time = act2() ? (act.tick > 16 ? act.tick - 16 : 0) : (act.tick ? act.tick - 1 : 0);
   set_hblank_copy(REG_BG0HOFS + 3 * 4, 4);
   for (int y = 0; y < SCREEN_H_; y++) {
     int line = y < bgHeight ? y : bgHeight - 1;
@@ -518,7 +550,7 @@ static void draw_frame(void) {
   fill_layer(0xF800, LAYER_BACK, camX, camY);
   if (act.stage.zone == 0) {
     // Neo Green Hill's own line-by-line scroll, which StageBgUpdate_Zone1Acts12 sets through the H-blank
-    e.bgScroll[6] = e.bgScroll[7] = 0;
+    e.bgScroll[6] = act2() ? (uint16_t)(((act.tick > 16 ? act.tick - 16 : 0) >> 4) & 0xFF) : 0; e.bgScroll[7] = 0;
     draw_neo_background(camX, camY);
   } else {
     // StageBgUpdate_Zone7Act1: the 37 × 23 background scrolls as a whole. Its first frame keeps the course
@@ -548,7 +580,14 @@ static void draw_frame(void) {
   display_sprite(&sonic);
 }
 
+static int musicSync;
 static void act_frame(void) {
+  if (musicSync) {
+    musicSync = 0;
+    // the act's music starts on the frame after its first picture, as the stage's load ends: the frames before the
+    // recording's first one are the act's first 15 off the count, leaving 96
+    for (int i = 0; i < act.tick - 15; i++) dp_sound_render(1092);
+  }
   step_palettes();
   camera_update(&act.cam, &act.player);
   update_stage_animations(act.started);
@@ -579,14 +618,15 @@ void act_frame_now(void) { act_frame(); }
 static int pendingLevel, pendingCard, pendingPre;
 static void act_begin_task(Task *t) {
   destroy_task(t);
+  // the act's own task draws its first frame, so it is stepped once, not twice
   act_start(pendingLevel, pendingCard, pendingPre);
-  act_frame();
 }
 
 /** Starts the act on the next frame, so the frame the menu hands over still draws the menu. */
 void act_queue(int level, int cardSkip, int preFrames) {
   pendingLevel = level; pendingCard = cardSkip; pendingPre = preFrames;
-  create_task(act_begin_task, NULL, 0x0F00, 0, NULL);
+  // below every menu task, so the frame that hands the act over still draws the menu
+  create_task(act_begin_task, NULL, 0x0E00, 0, NULL);
 }
 
 /** The title card's frames before the first one the recording compares, run with no picture. */
@@ -594,14 +634,17 @@ static void pre_run(int cardSkip, int preFrames) {
   int after = 0;
   while (!act.cardDone || after < preFrames) {
     int wasDone = act.cardDone;
-    step_palettes();
+    // the stage's palette animations are made as the stage loads, and their first frame's colours are already the
+    // stage's: the card's first frames run before their first step (CreatePaletteLoaderTask)
+    if (!act2() || act.tick >= 16) step_palettes();
     camera_update(&act.cam, &act.player);
-    update_stage_animations(0);
+    if (!act2() || act.tick >= 17) update_stage_animations(0);
     if (!act.cardDone) card_update(cardSkip == act.tick);
     // the card holds the player, so his animation runs while nothing moves him; the recording's first frame
-    // starts the play
+    // starts the play. He is made a moment into the card, as the stage's loading ends (InitializePlayer), so his
+    // animation is not stepped on its first frames.
     step_player(&act.player, 0, 0, 0, 0, 0, 0, 0, 0);
-    animate_player(&act.player);
+    if (!act2() || act.tick >= 15) animate_player(&act.player);
     if (wasDone) { hud_update(0); after++; }
     // the course clock starts on the frame after the card ends, not on the one it ends
     if (wasDone && !act.clockStopped) act.courseTime++;
@@ -620,12 +663,13 @@ void act_start(int level, int cardSkip, int preFrames) {
     s->variant = (uint8_t)paletteAnims[i].variant;
     s->animSpeed = ANIM_NORMAL;
     s->palId = 0;
+    if (act2()) s->frameFlags |= SPRITE_KEEP_TILES;   // 820's tiles command would write over Sonic's in OBJ VRAM
   }
   create_player(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);
   act.lives = 3; act.score = 0; act.ringCount = 0;
   act.clockStopped = 1; act.firstCard = 1; act.cardFrame = 0;
-  act.hud.active = 0; act.hud.flash = act.stage.hudFlash;
+  act.hud.active = 0; act.hud.flash = act2() ? (act.stage.hudFlash + 7) & 31 : act.stage.hudFlash;
   act.started = 0; act.drawn = 0;
   act.firstFrame = (int)gba_start_number("first", 0);
   e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
@@ -656,8 +700,19 @@ void act_start(int level, int cardSkip, int preFrames) {
   // the frames before the recording starts: the title card to its end, then its few frames after it
   pre_run(cardSkip, preFrames);
   queue_stage_animation_frame();
-  play_song(act.stage.music);
-  gba_sound_frames_gone_by(118);
+  // the stage's music started on the act's first frame, so it has run the frames the card took: the sound engine
+  // steps them now, before the first frame the recording compares (m4aSongNumStart, then its frames)
+  if (act.stage.level == 1) {
+    // Neo Green Hill act 2's stage music manager (Task_StageMusicManager, MusManager_UpdateBgmParams): the song from
+    // its beginning at a sixty-fourth of the volume, fading in, on the music player
+    play_song(act.stage.music);
+    gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4);
+    musicSync = 1;
+  } else {
+    // the acts the engine's first piece proves keep the music start their recordings matched with
+    play_song(act.stage.music);
+    gba_sound_frames_gone_by(118);
+  }
   act.hud.active = 1;
   act.started = 1;
   create_task(act_task, NULL, 0x0F00, 0, NULL);

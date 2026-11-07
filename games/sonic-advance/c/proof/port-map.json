@@ -42,6 +42,7 @@
     ["080531E8","src/ui.c:138"],
     ["08053428","src/ui.c:138"],
     ["080535C8","src/ui.c:24"],
+    ["08053888","src/act.c:29"],
     ["08054208","src/ui.c:186"],
     ["08054370","src/ui.c:221"],
     ["080587FC","src/nameinput.c:2"],
@@ -106,7 +107,7 @@
     ["sub_80078D4","src/lines.c:25"],
     ["sub_8007958","src/lines.c:32"],
     ["sub_800FD9C","src/modeselect.c:185"],
-    ["sub_801E4E4","src/act.c:118"],
+    ["sub_801E4E4","src/act.c:139"],
     ["Task_800F058","src/modeselect.c:313"]
   ]
 }
