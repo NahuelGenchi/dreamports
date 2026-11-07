@@ -32,9 +32,9 @@ const stage = document.getElementById('stage');
 const screen = document.getElementById('screen');
 const input = createInput(LAYOUT);
 proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
-// From power-on the game opens its logos and the main menu, the screens between them not being drawn in C yet (main.c);
-// a start point opens the fight's own opening, which drops the fighters in. dreamportsProof.neverInPlay: no screen a
-// start point opens holds a character, so there's none of the opening that could leave one out of play.
+// From power-on the game opens its logos, intro, title screen and main menu; the name entry after the title isn't drawn
+// in C yet (main.c). A start point opens the fight's own opening, which drops the fighters in. dreamportsProof.neverInPlay:
+// no screen a start point opens holds a character, so there's none of the opening that could leave one out of play.
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives
 const touch = createTouch(stage, input, { screen, key: 'sonic-battle' });
