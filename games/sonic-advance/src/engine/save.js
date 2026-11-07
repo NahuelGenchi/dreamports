@@ -3,8 +3,8 @@
 // keeps them, in its storage (the kit's save.js). At power-on the game reads the save (SaveGameExists),
 // or starts an empty one (CreateEmptySaveGame) and the language screen; then it changes the save in memory
 // (LOADED_SAVE) as it goes, and writes it at set moments (WriteSaveGame): as that language screen ends, as the
-// Options menu ends, as an act's results end, as a game over ends, before the congratulations and with the Moon
-// Zone's results.
+// Options menu ends, as an act's results end, as a game over ends, before the congratulations, with the Moon
+// Zone's results and as Chao Hunt's results end.
 //
 // Its fields, by offset, as the USA ROM has them (the decompilation's struct has a language byte at 0x01A, for the
 // European version's six, which the USA ROM doesn't have, so the three fields after it are a byte earlier):
@@ -15,10 +15,11 @@
 //   0x01A timeLimitDisabled; 0x01B btnConfig (1: A and B swapped)
 // - 0x01C chaosEmeralds: a bit per special stage
 // - 0x020 timeRecords: the three best course times by character and level, 10:00 when none
-// - 0x380 multiplayerScores: ten of a player id, a name, wins, losses and draws
+// - 0x380 multiplayerScores: ten of a player id, a name, wins, losses and draws, which each Chao Hunt's results
+//   count (RecordMultiplayerResult)
 // - 0x420 unk420: a best score, which only a time-up game over with no continue raises (HandleDeath)
 // - 0x424 unk424: set once the Moon Zone is cleared; 0x425 to 0x427 unk425 to unk427: the player's own
-//   multiplayer wins, losses and draws
+//   multiplayer wins, losses and draws, which each Chao Hunt's results count (RecordOwnMultiplayerResult)
 // - 0x428 score: the rings every act's results have counted, the Tiny Chao Garden's to spend
 // - 0x42C checksum: the sum of the 32-bit words before it
 
@@ -31,6 +32,10 @@ const SIZE = 0x430, CHECKSUM = 0x42C;
 const SECURITY = 0x4F524950;
 const MAX_COURSE_TIME = 10 * 3600;
 const TIME_RECORDS = 0x20, LEVELS = 18, RECORDS_PER_COURSE = 3;
+const MULTIPLAYER_RECORDS = 10, MULTIPLAYER_RECORD_SIZE = 16;
+const MULTIPLAYER_WINS = 12, MULTIPLAYER_LOSSES = 13, MULTIPLAYER_DRAWS = 14, MAX_MULTIPLAYER_SCORE = 99;
+/** A multiplayer result, as its record counts it. */
+export const MULTIPLAYER_RESULT = { WIN: 0, LOSS: 1, DRAW: 2 };
 
 /** The frames a write takes mGBA (the reference), in which nothing else runs and gFrameCount doesn't count. */
 export const WRITE_FRAMES = 14;
@@ -105,8 +110,11 @@ export function openSave(storage = browserStorage()) {
     get unk424() { return bytes[0x424]; },
     set unk424(v) { bytes[0x424] = v; },
     get unk425() { return bytes[0x425]; },
+    set unk425(v) { bytes[0x425] = v; },
     get unk426() { return bytes[0x426]; },
+    set unk426(v) { bytes[0x426] = v; },
     get unk427() { return bytes[0x427]; },
+    set unk427(v) { bytes[0x427] = v; },
     get score() { return view.getUint32(0x428, true); },
     set score(v) { view.setUint32(0x428, v >>> 0, true); },
     /** The `rank`th best time (frames) of `character` in `level`, 10:00 when there is none. */
@@ -176,4 +184,27 @@ export function saveMoonOpened(save) {
 export function saveMoonCleared(save) {
   save.setUnlockedLevel(0, MOON_BEATEN);
   save.unk424 = 1;
+}
+
+/**
+ * The record of the player in the save's multiplayer list, where `place` is its place (`gUnknown_03005008`), or
+ * null when the place is empty (0xFF) or past the ten records.
+ */
+export function multiplayerRecord(save, place) {
+  if (!save || !Number.isInteger(place) || place < 0 || place >= MULTIPLAYER_RECORDS) return null;
+  return save.multiplayerScores.subarray(place * MULTIPLAYER_RECORD_SIZE, (place + 1) * MULTIPLAYER_RECORD_SIZE);
+}
+
+// RecordOwnMultiplayerResult: this GBA's player's own win, loss or draw, at most 99 of each.
+export function recordOwnMultiplayerResult(save, result) {
+  if (result === MULTIPLAYER_RESULT.WIN) save.unk425 = Math.min(MAX_MULTIPLAYER_SCORE, save.unk425 + 1);
+  else if (result === MULTIPLAYER_RESULT.LOSS) save.unk426 = Math.min(MAX_MULTIPLAYER_SCORE, save.unk426 + 1);
+  else if (result === MULTIPLAYER_RESULT.DRAW) save.unk427 = Math.min(MAX_MULTIPLAYER_SCORE, save.unk427 + 1);
+}
+
+// RecordMultiplayerResult: one result against the player whose record this is, at most 99 of each.
+export function recordMultiplayerResult(record, result) {
+  if (!record) return;
+  const at = result === MULTIPLAYER_RESULT.WIN ? MULTIPLAYER_WINS : result === MULTIPLAYER_RESULT.LOSS ? MULTIPLAYER_LOSSES : result === MULTIPLAYER_RESULT.DRAW ? MULTIPLAYER_DRAWS : -1;
+  if (at >= 0) record[at] = Math.min(MAX_MULTIPLAYER_SCORE, record[at] + 1);
 }
