@@ -1,0 +1,24 @@
+{
+  "about": "Sonic's ground Set special, from the same start point as the fight's opening: Training with its first choices, a Sonic that does nothing. Two moves right on the choice of specials put Set on the ground, then the opening's three presses of A, Sonic running up to the other fighter, and R for the mine.",
+  "start": "fight=training&vblanks=1209",
+  "frames": 620,
+  "held": [
+    [0,[]],
+    [60,["RIGHT"]],[62,[]],
+    [66,["RIGHT"]],[68,[]],
+    [70,["A"]],[72,[]],
+    [100,["A"]],[102,[]],
+    [130,["A"]],[132,[]],
+    [400,["RIGHT","DOWN"]],[426,[]],
+    [450,["R"]],[452,[]]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 1254,
+      "held": [[0,[]],[747,["START"]],[748,[]],[881,["RIGHT"]],[882,[]],[921,["RIGHT"]],[922,[]],[961,["RIGHT"]],[962,[]],[1001,["A"]],[1002,[]],[1201,["START"]],[1202,[]]],
+      "sets": [{ "frame": 778, "address": "03002170", "bytes": 2, "value": 1 }],
+      "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, and Start on its first choices."
+    }
+  ]
+}

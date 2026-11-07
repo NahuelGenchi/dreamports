@@ -1,21 +1,42 @@
 // npm run dp -- codemap <game> [--from <list> | --fill]: makes games/<game>/proof/code-map.json, every function in the
 // original with its address and its size, and nothing of its code. It's what code ported is measured against.
-// Without --from, it finds the functions in the contributor's copy itself (gba/functions.mjs). With --from, it takes
-// them from a list: a decompilation's symbols, as `nm -S` prints them from its ELF file, or a CSV with an address on
-// each line and its size or its end, as a disassembler such as Ghidra exports its list of functions. A list can stop
-// short, so what the tools find in the copy beyond it is added, and it can name data as a function, so those are left
-// out. With --fill, the same is done to the code map there already is, keeping its names.
+// Without --from, it finds the functions in the contributor's copy itself, in a Game Boy Advance game
+// (gba/functions.mjs) or an NES game (nes/functions.mjs). With --from, it takes them from a list: a decompilation's
+// symbols, as `nm -S` prints them from its ELF file, or a CSV with an address on each line and its size or its end, as
+// a disassembler such as Ghidra exports its list of functions. A list can stop short, so what the tools find in the
+// copy beyond it is added, and it can name data as a function, so those are left out. With --fill, the same is done to
+// the code map there already is, keeping its names.
 
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { hex, readCodeMap, readOriginal, writeCodeMap } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { readAnyCopy } from './lib/read-copy.mjs';
-import { fillFunctions, findFunctions, startsInData } from './gba/functions.mjs';
+import * as gbaFunctions from './gba/functions.mjs';
+import * as nesFunctions from './nes/functions.mjs';
 
 // where code runs on the Game Boy Advance: the cartridge and the two work RAMs
 const CODE = [[0x08000000, 0x0A000000], [0x03000000, 0x03008000], [0x02000000, 0x02040000]];
 const isCode = address => CODE.some(([from, to]) => address >= from && address < to);
+
+// the consoles whose functions the tools find themselves: how, and what a list's address is on each. A Game Boy
+// Advance address has its lowest bit set for Thumb code, which a function's start doesn't; an NES one is the offset in
+// the program, or a name the game's code would use (nes/functions.mjs), and a 6502 function can start anywhere.
+const FINDERS = {
+  gba: {
+    ...gbaFunctions,
+    file: 'tools/gba/functions.mjs',
+    inCode: () => isCode,
+    address: address => address & ~1,
+  },
+  nes: {
+    ...nesFunctions,
+    file: 'tools/nes/functions.mjs',
+    inCode: copy => offset => offset >= 0 && offset < nesFunctions.nesProgram(copy).prg.length,
+    address: address => address,
+    name: (value, copy) => nesFunctions.nesNames(value, nesFunctions.nesProgram(copy).banks)[0]?.[1],
+  },
+};
 
 export async function run(args) {
   const game = args.find(a => !a.startsWith('--'));
@@ -28,29 +49,30 @@ export async function run(args) {
   if (!copy) throw new Error(`The code map is of ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
   const read = await readAnyCopy(copy.path, original.console);
   if (read?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
-  // the tools find functions only in a Game Boy Advance game's code, and take another console's from a disassembler's list
-  const gba = original.console === 'gba';
-  if (!gba && !list && !fill) throw new Error(`The tools can't find the functions in ${original.console} code themselves: --from <list> takes them from a decompilation or a disassembler.`);
-  const theCopy = gba ? readFileSync(copy.path) : null;
-  const FOUND = 'the proof tools (tools/gba/functions.mjs)';
+  // the tools find functions only in some consoles' code, and take another console's from a disassembler's list
+  const finder = FINDERS[original.console];
+  if (!finder && !list && !fill) throw new Error(`The tools can't find the functions in ${original.console} code themselves: --from <list> takes them from a decompilation or a disassembler.`);
+  const theCopy = finder ? readFileSync(copy.path) : null;
+  const FOUND = `the proof tools (${finder?.file})`;
   const filled = listed => {
-    if (!gba) return listed;
-    const inData = startsInData(theCopy, listed);
+    if (!finder) return listed;
+    const inData = finder.startsInData(theCopy, listed);
     if (inData.length) console.log(`Left out ${inData.length} of the functions listed, which start in the data of the code before them: ${inData.map(f => `0x${hex(f.address)}`).join(', ')}.`);
     const real = listed.filter(f => !inData.includes(f));
-    return fillFunctions(real, findFunctions(theCopy, real));
+    return gbaFunctions.fillFunctions(real, finder.findFunctions(theCopy, real));
   };
   let functions, from;
   if (list) {
-    functions = filled(readList(readFileSync(list, 'utf8'), gba ? isCode : () => true, gba));
-    from = `The functions in ${basename(list)}, ${gba ? `with what ${FOUND} found in the copy beyond them` : 'as they are'}`;
+    const reading = finder ? { inCode: finder.inCode(theCopy), address: finder.address, name: finder.name && (value => finder.name(value, theCopy)) } : { inCode: () => true, address: a => a };
+    functions = filled(readList(readFileSync(list, 'utf8'), reading));
+    from = `The functions in ${basename(list)}, ${finder ? `with what ${FOUND} found in the copy beyond them` : 'as they are'}`;
   } else if (fill) {
     const map = readCodeMap(game);
     if (!map) throw new Error(`games/${game}/proof/ has no code map yet: npm run dp -- codemap ${game} makes one.`);
     functions = filled(map.functions);
     from = map.from.includes(FOUND) ? map.from : `${map.from}, with what ${FOUND} found in the copy beyond them`;
   } else {
-    functions = findFunctions(theCopy);
+    functions = finder.findFunctions(theCopy);
     from = `Found in the copy by ${FOUND}`;
   }
   if (!functions.length) throw new Error('No functions found.');
@@ -61,15 +83,14 @@ export async function run(args) {
 }
 
 /** The functions in a list: `nm -S` lines, or a CSV with a header naming its address column, and its size or end
- *  column if it has one. On the Game Boy Advance, an address's lowest bit only says the code is Thumb, so it's
- *  dropped; another console's code can start at any byte. */
-export function readList(text, inCode = isCode, thumb = true) {
-  const start = address => (thumb ? address & ~1 : address);
+ *  column if it has one. `inCode` says whether an address is code's, `address` turns a list's address into a
+ *  function's start, and `name`, where a console has one, reads an address written as a name. */
+export function readList(text, { inCode = isCode, address: start = a => a & ~1, name: named } = {}) {
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   // an address is hexadecimal, with or without 0x or a memory's name before it (ram:08000204); a size is decimal
   // unless it starts with 0x
   const clean = value => String(value ?? '').trim().replace(/^.*:/, '');
-  const address = value => (/^(0x)?[0-9a-f]+$/i.test(clean(value)) ? parseInt(clean(value).replace(/^0x/i, ''), 16) : NaN);
+  const address = value => (/^(0x)?[0-9a-f]+$/i.test(clean(value)) ? parseInt(clean(value).replace(/^0x/i, ''), 16) : named?.(String(value ?? '').trim()) ?? NaN);
   const size = value => (/^0x[0-9a-f]+$/i.test(clean(value)) ? parseInt(clean(value), 16) : /^\d+$/.test(clean(value)) ? Number(clean(value)) : NaN);
   const out = [];
   const nm = /^([0-9a-f]{8})\s+([0-9a-f]{8})\s+([tTwW])\s+(\S+)/i;
@@ -90,9 +111,9 @@ export function readList(text, inCode = isCode, thumb = true) {
     if (at < 0) throw new Error('The list needs a column for the address, named in its first line, or nm -S lines.');
     for (const line of lines.slice(1)) {
       const cells = split(line);
-      const first = address(cells[at]);
-      const bytes = length >= 0 ? size(cells[length]) : end >= 0 ? address(cells[end]) - first : NaN;
-      if (Number.isFinite(first)) out.push({ address: start(first), size: Number.isFinite(bytes) ? bytes : 0, name: label >= 0 ? cells[label] : undefined });
+      const from = address(cells[at]);
+      const bytes = length >= 0 ? size(cells[length]) : end >= 0 ? address(cells[end]) - from : NaN;
+      if (Number.isFinite(from)) out.push({ address: start(from), size: Number.isFinite(bytes) ? bytes : 0, name: label >= 0 ? cells[label] : undefined });
     }
   }
   // only code, each function once, and those listed without a size as long as the gap to the next

@@ -87,6 +87,8 @@ typedef struct {
   int menu_choice;
   int mini_games_open;
   int language;
+  // 0x03002170: the player's name, six letters' room, which a saved one from a start point fills
+  uint16_t name[6];
 
   // the line work a long job leaves for the display's lines, as arena.js's landColours does
   int line_work_line;
@@ -263,6 +265,10 @@ void trainingAfterWait(void);
 void startFight(int vblanks, int action);
 void choosing(void);
 void choosingAfterWait(void);
+
+// menu.js
+void showMenu(int playSong);
+void menuBeforeMenu(void);
 
 // main.c
 void startFightFromPoint(void);

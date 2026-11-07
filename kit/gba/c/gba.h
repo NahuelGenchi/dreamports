@@ -122,6 +122,9 @@ void gba_sound_pan(int player, int bits, int pan);
 /** m4aMPlayFadeIn and m4aMPlayFadeOut on music player `player`, a step every `speed` frames */
 void gba_sound_fade_in(int player, int speed);
 void gba_sound_fade_out(int player, int speed);
+/** Where in the frame the next song's wave write lands, in cycles, as mGBA measures it, and as the JavaScript kit's
+ *  sound call 'waveAt' does (m4a.js): a song's first wave note begins at another place in its wave without it. */
+void gba_sound_wave_at(int at);
 /** m4aMPlayTempoControl on the music (0x100 is normal speed) */
 void gba_sound_tempo(int tempo);
 /** m4aMPlayAllStop and m4aMPlayAllContinue: every music player stops, or goes on from where it stopped */

@@ -14,7 +14,7 @@
 enum {
   OP_SETUP = 1, OP_RESET, OP_START, OP_START_OR_CHANGE, OP_START_OR_CONTINUE, OP_STOP, OP_PLAYER_START, OP_PLAYER_STOP,
   OP_PLAYER_CONTINUE, OP_IMM_INIT, OP_PITCH, OP_VOLUME, OP_PANPOT, OP_FADE_IN, OP_FADE_OUT, OP_TEMPO, OP_ALL_STOP,
-  OP_ALL_CONTINUE, OP_VSYNC_OFF, OP_VSYNC_ON,
+  OP_ALL_CONTINUE, OP_VSYNC_OFF, OP_VSYNC_ON, OP_WAVE_AT,
 };
 
 typedef struct { int32_t op, a, b, c, d; } SoundCall;
@@ -72,6 +72,7 @@ static void apply(M4a *m, const SoundCall *c) {
     case OP_ALL_CONTINUE: m4a_all_continue(m); break;
     case OP_VSYNC_OFF: m4a_vsync_off(m); break;
     case OP_VSYNC_ON: m4a_vsync_on(m); break;
+    case OP_WAVE_AT: m4a_wave_at(m, c->a); break;
   }
 }
 
@@ -212,6 +213,7 @@ void gba_sound_pitch(int player, int bits, int pitch) { take(OP_PITCH, player, b
 void gba_sound_volume(int player, int bits, int volume) { take(OP_VOLUME, player, bits, volume, 0); }
 void gba_sound_pan(int player, int bits, int pan) { take(OP_PANPOT, player, bits, pan, 0); }
 void gba_sound_imm_init(int player) { take(OP_IMM_INIT, player, 0, 0, 0); }
+void gba_sound_wave_at(int at) { take(OP_WAVE_AT, at, 0, 0, 0); }
 void gba_sound_fade_in(int player, int speed) { take(OP_FADE_IN, player, speed, 0, 0); }
 void gba_sound_fade_out(int player, int speed) { take(OP_FADE_OUT, player, speed, 0, 0); }
 void gba_sound_tempo(int tempo) { take(OP_TEMPO, 0, tempo, 0, 0); }

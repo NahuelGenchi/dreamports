@@ -4,10 +4,10 @@
 // name with the language's after it, as in "Task: Title screen in C" (src/lib/languages.mjs). It's free when it's
 // open, nobody has claimed it and everything it needs is finished: in a game with a JavaScript version, a piece in
 // another language also needs the same piece in JavaScript, as it's written from the JavaScript. A game that started
-// in C, with no JavaScript version, has its pieces in C alone, which wait on nothing in another language. The site's Make pages, find and tasks read this, and the claims workflow has its
-// own short copy of it, as it runs nothing from the repository.
+// in C, with no JavaScript version, has its pieces in C alone, which wait on nothing in another language. The site's Make pages, find, tasks
+// and the claims workflow all read this, so none keeps a copy.
 
-import { LANGUAGES, OTHER_LANGUAGES } from './languages.mjs';
+import { LANGUAGES, OTHER_LANGUAGES, playOrder } from './languages.mjs';
 
 /** A name as it's compared, whatever its capitals. */
 export const nameKey = name => String(name ?? '').trim().toLowerCase();
@@ -79,12 +79,57 @@ export function needsProblems(file, at = '') {
 }
 
 /**
+ * Pieces in the order work should go in: the default language's first, C, then the others (playOrder in languages.mjs),
+ * and in each language in the order a player meets the game's parts, as parts.json lists them. A foundation comes just
+ * before the first part that needs it, directly or through other foundations, and after the foundations it needs. A foundation no part needs, and a piece parts.json doesn't list, come after the parts, in the
+ * order they came in. So the next part a player would meet, and what it needs, comes first, in every language.
+ * @template {{ title: string }} Piece
+ * @param {Piece[]} pieces
+ * @param {ReturnType<typeof planOf>} plan
+ * @returns {Piece[]}
+ */
+export function freeOrder(pieces, plan) {
+  const planned = new Map(plan.map((p, index) => [nameKey(p.name), { ...p, index }]));
+  const languages = playOrder(Object.keys(LANGUAGES));
+  // where each piece of the plan comes in the player's order: a part where it is, a foundation where the first part that
+  // needs it is, and how many foundations deep it sits under what needs it
+  const at = new Map(), depth = new Map();
+  plan.filter(p => !p.foundation).forEach((part, index) => at.set(nameKey(part.name), index));
+  const placing = new Set();
+  const place = key => {
+    const piece = planned.get(key);
+    if (!piece?.foundation) return;
+    if (at.has(key) || placing.has(key)) return;
+    placing.add(key);
+    const users = plan.filter(p => p.needs.some(need => nameKey(need) === key));
+    users.forEach(user => place(nameKey(user.name)));
+    const first = Math.min(...users.map(user => at.get(nameKey(user.name)) ?? Infinity));
+    at.set(key, first);
+    depth.set(key, Math.max(0, ...users.filter(user => user.foundation && at.get(nameKey(user.name)) === first).map(user => (depth.get(nameKey(user.name)) ?? 0) + 1)));
+    placing.delete(key);
+  };
+  plan.forEach(p => place(nameKey(p.name)));
+  const keyOf = (piece, order) => {
+    const { name, language } = pieceOf(piece);
+    const key = nameKey(name), known = planned.get(key);
+    return [Math.max(0, languages.indexOf(language)), at.get(key) ?? Infinity, known?.foundation ? 0 : 1, -(depth.get(key) ?? 0), known?.index ?? Infinity, order];
+  };
+  const keys = new Map(pieces.map((piece, order) => [piece, keyOf(piece, order)]));
+  const compare = (a, b) => {
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1;
+    return 0;
+  };
+  return [...pieces].sort((a, b) => compare(keys.get(a), keys.get(b)));
+}
+
+/**
  * Which of a game's pieces nobody has claimed can start now, from its pieces, open and closed, and its parts.json. What a
  * piece needs is finished when its issue is closed, or its number is in `gathered`, as a piece in the team build's is. A
  * part with no issue is finished, in the game's `main` language (languages.mjs), once parts.json names its recording. A
  * piece in another language needs what it needs in that language, and the same piece in the main language, finished as
- * above; a need with no issue in a language other than the main one isn't. `free` has foundations first, then the pieces in
- * their order. `waiting` has each of the others, with what it's waiting `on`, each { name, number }, with no number
+ * above; a need with no issue in a language other than the main one isn't. `free` is in the order work should go in
+ * (`playOrder`): the default language's first, C, and in each language in the order a player meets the parts, each
+ * foundation just before the first part that needs it (`freeOrder`). `waiting` has each of the others, with what it's waiting `on`, each { name, number }, with no number
  * while it has no issue yet.
  * @template {{ number: number, title: string, state: string, assignees?: unknown[] }} Piece
  * @param {Piece[]} pieces
@@ -118,7 +163,7 @@ export function whatCanStart(pieces, file, gathered = new Set(), { main = 'js' }
   const held = new Set(waiting.map(w => w.piece));
   const free = open.filter(p => !held.has(p));
   return {
-    free: [...free.filter(isFoundation), ...free.filter(p => !isFoundation(p))],
+    free: freeOrder(free, plan),
     waiting,
     /** How many of the pieces not yet finished need this one. */
     needing: piece => {
