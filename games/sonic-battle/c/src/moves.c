@@ -1856,7 +1856,14 @@ void trainingFrame(void) {
     else if (keys & 16) write16(CAMERA_TURN, read16(CAMERA_TURN) + 128);
     else write16(CAMERA_TURN, 0);
   } else if (state == 53) {
-    if (pressed(player) & 0x200) notPorted("0801C28C");
+    if (pressed(player) & 0x200) {
+      // 0x0801c28c: L turns the view to its other side, and every fighter's facing turns with it
+      uint32_t rec = record(player);
+      int camera = read8(rec + CAMERA);
+      write8(rec + CAMERA, (uint8_t)(camera == 0 ? 1 : camera == 1 ? 0 : camera == 2 ? 3 : camera == 3 ? 2 : camera));
+      for (int i = 0; i < 4; i++) write8(record(i) + 18, read8(record(i) + 16) ^ 1);
+      write8(rec + FACING, 0);
+    }
   } else write16(CAMERA_TURN, 0);
   startFighterEffects();
   updateThings();
