@@ -2,8 +2,15 @@
   "about": "Ghosts'n Goblins' parts, in the order a player meets them. Each counts the same. A part is proven when a recording plays it from its first frame to its last and every frame matches the original, picture and sound. Where the screen is one colour between two parts, those frames go with the part before.",
   "foundations": [
     {
+      "name": "The game's start from the title screen",
+      "what": "The title screen's Start, the choice of one or two players, and the first stage starting."
+    },
+    {
       "name": "Arthur moving",
-      "what": "Arthur walking, jumping, crouching and climbing ladders, with the view following him and the stage's ground, platforms and walls in the way."
+      "what": "Arthur walking, jumping, crouching and climbing ladders, with the view following him and the stage's ground, platforms and walls in the way.",
+      "needs": [
+        "The game's start from the title screen"
+      ]
     },
     {
       "name": "The armor and lives",
