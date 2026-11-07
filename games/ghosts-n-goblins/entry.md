@@ -15,6 +15,11 @@ ownCopy:
     - label: Play
       href: https://dreamports.net/play/ghosts-n-goblins/
       icon: play
+screen:
+  clip: /media/ghosts-n-goblins-dreamport
+  still: /media/ghosts-n-goblins-dreamport-still.webp
+  pixelated: true
+share: /media/ghosts-n-goblins-dreamport-share.png
 ---
 
 ## Credits
