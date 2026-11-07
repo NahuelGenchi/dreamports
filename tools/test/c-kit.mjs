@@ -392,7 +392,8 @@ async function bothWays({ what, name, source, kit, machine, cartridge, words, he
   const at = wasm.dp_rom(cartridge.length);
   new Uint8Array(wasm.memory.buffer, at, cartridge.length).set(cartridge);
   const text = new TextEncoder().encode(words);
-  new Uint8Array(wasm.memory.buffer, wasm.dp_start_point(text.length), text.length).set(text);
+  const wordsAt = wasm.dp_start_point(text.length);
+  new Uint8Array(wasm.memory.buffer, wordsAt, text.length).set(text);
   wasm.dp_start();
   let frameAt = 0, soundAt = 0, wrongFrame = -1, wrongSound = -1, loudest = 0;
   const sizes = new Set(), firsts = [];
@@ -473,6 +474,49 @@ console.log('\nThe NES kit in C');
   const { firsts } = await bothWays({ what: 'the NES starting point', name: 'start-nes', source: start, kit: NES, machine, cartridge: rom, words: 'proof', held });
   const wrong = held.findIndex((buttons, n) => firsts[n] !== (n === 0 ? GREY : buttons ? GREEN : BLUE));
   check(wrong < 0, `the NES starting point: grey as the PPU warms up, then blue, and green while a button is held${wrong < 0 ? '' : `, but not frame ${wrong}`}`);
+
+  // reset reuse and the second controller ($4017)
+  const pad2Source = join(work, 'nes-pad2.c');
+  writeFileSync(pad2Source, [
+    '#include "nes.h"',
+    'void game_start(void) { kit_start_number("scroll", 0); }',
+    'void game_step(uint32_t buttons) {',
+    '  (void)buttons;',
+    '  nes_write(0x4016, 1);',
+    '  nes_write(0x4016, 0);',
+    '  uint8_t p1 = 0, p2 = 0;',
+    '  for (int i = 0; i < 8; i++) {',
+    '    p1 |= (nes_read(0x4016) & 1) << i;',
+    '    p2 |= (nes_read(0x4017) & 1) << i;',
+    '  }',
+    '  uint8_t ninth = nes_read(0x4017);',
+    '  nes_write(0x2006, 0x3F); nes_write(0x2006, 0x00);',
+    '  nes_write(0x2007, p1 == 0x5A && p2 == 0xA5 && ninth == 0x41 ? 0x1A : 0x12);',
+    '}',
+  ].join('\n'));
+  const pad2Module = new WebAssembly.Module(readFileSync(await buildWasm([pad2Source, ...NES.sources], join(work, 'nes-pad2.wasm'), NES)));
+  const nothing = () => {};
+  const { exports: pad2 } = new WebAssembly.Instance(pad2Module, { dreamports: { save_read: nothing, save_write: nothing } });
+  const bigChrRom = Buffer.alloc(16 + 0x4000 + 8 * 0x2000);
+  bigChrRom.write('NES\x1A', 0, 'binary');
+  bigChrRom[4] = 1;
+  bigChrRom[5] = 8;
+  const loadOnce = words => {
+    const romAt = pad2.dp_rom(bigChrRom.length);
+    new Uint8Array(pad2.memory.buffer, romAt, bigChrRom.length).set(bigChrRom);
+    const enc = new TextEncoder().encode(words);
+    const wordsAt = pad2.dp_start_point(enc.length);
+    new Uint8Array(pad2.memory.buffer, wordsAt, enc.length).set(enc);
+    pad2.dp_start();
+  };
+  loadOnce('proof&scroll=12');
+  const bytesAfterFirst = pad2.memory.buffer.byteLength;
+  for (let i = 0; i < 20; i++) loadOnce(`proof&scroll=${i}`);
+  check(pad2.memory.buffer.byteLength === bytesAfterFirst, 'repeated dp_rom, dp_start_point and NES CHR-ROM resets reuse their WebAssembly buffers');
+  pad2.dp_step(0);
+  pad2.dp_step(0xA55A);
+  const pad2Color = new Uint32Array(pad2.memory.buffer, pad2.dp_draw(), 1)[0];
+  check(pad2Color === GREEN, 'the NES second controller ($4017) shifts bits 8-15 and then 0x41');
 }
 
 rmSync(work, { recursive: true, force: true });

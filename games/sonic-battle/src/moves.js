@@ -1417,8 +1417,8 @@ const THING_SCRIPTS = new Map([
   [12, 0x0806B8CC], [13, 0x0806B940], [14, 0x0806B804], [15, 0x0806B9D4], [16, 0x0806BB08], [31, 0x0806BB08],
   [32, 0x0806BBA0], [34, 0x0806BBF4], [35, 0x0806BC54], [40, 0x0806C6EC], [37, 0x0806C07C], [38, 0x0806C1AC], [39, 0x0806C448],
   [43, 0x0806C60C], [44, 0x0806C67C], [45, 0x0806C8F4], [41, 0x0806C790], [46, 0x0806C944], [73, 0x0806CE18],
-  [75, 0x0806CE98],
-  [77, 0x0806CFBC], [79, 0x0806D29C], [80, 0x0806D2EC], [81, 0x0806D378], [158, 0x0806E520], [160, 0x0806E5F0],
+  [75, 0x0806CE98], [77, 0x0806CFBC], [79, 0x0806D29C], [80, 0x0806D2EC], [81, 0x0806D378],
+  [54, 0x0806C984], [57, 0x0806CA14], [60, 0x0806CD14], [61, 0x0806CD68], [158, 0x0806E520], [160, 0x0806E5F0],
 ]);
 const THING_MARK = 0xFFF00000;
 // the fields a script's words set, by the word's first half
@@ -1541,13 +1541,14 @@ const THING_HITS = new Map([
   [38, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [41, [0x280, 4, 20, 2, 0x3C0, 0, 0, 22]], [43, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
   [39, [0x160, 6, 20, 2, 0x380, 0, 1, 255]], [44, [0x160, 6, 20, 2, 0x380, 0, 0, 255]],
   [79, [0x180, 12, 30, 3, 0x380, 0, 0, 255]],
+  [54, [0x100, 16, 30, 2, 0x280, 0, 11, 16]], [57, [0x120, 4, 5, 2, 0x340, 1, 0, 255]],
 ]);
 // the kinds 0x0800eaec has hits for that aren't ported yet
-const THING_HITS_LATER = new Set([54, 57, 62, 63, 78, 82, 94, 97, 102, 117, 122, 137, 138, 142, 154, 158, 160,
+const THING_HITS_LATER = new Set([62, 63, 78, 82, 94, 97, 102, 117, 122, 137, 138, 142, 154, 158, 160,
   165, 166, 174, 175, 177, 178, 179, 185, 191, 194, 197, 201, 241, 245]);
 
 // the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet
-const THING_STEPS_LATER = new Set([39, 61, 101, 121, 141]);
+const THING_STEPS_LATER = new Set([39, 101, 121, 141]);
 
 /**
  * 0x0800d818: a kind 40 mine feels the first fighter that comes near it, other than its owner, and tells its owner,
@@ -1677,9 +1678,21 @@ function updateThings(c) {
       write16(c, thing + 62, read16(c, thing + 62) + read16(c, thing + 12));
     }
     // 0x0800cec8's per-kind steps: walls and the arena's edges push a thing back, and it falls until its floor
-    // (0x0800d260, the same for kinds 35, 38, 39, 40, 79, 80 and 81): a wall it is inside pushes it out unless it is above the
-    // wall's top, where it stands on it instead, and the arena's edges push it back in
-    if (kind === 35 || kind === 38 || kind === 39 || kind === 40 || kind === 79 || kind === 80 || kind === 81) {
+    // (0x0800d260, the same for kinds 35, 38, 39, 40, 57, 60, 61, 79, 80 and 81): a wall it is inside pushes it out
+    // unless it is above the wall's top, where it stands on it instead, and the arena's edges push it back in
+    if (kind === 54) {
+      // 0x0800d33a: the arena's edges push it back and it sits on the floor, or at nothing when it meets no edge
+      let met = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
+      write8(c, thing + 16, met.bits);
+      if (met.bits & 0xF0) {
+        write16(c, thing + 58, read16(c, thing + 58) - u16(met.edgeX));
+        write16(c, thing + 60, read16(c, thing + 60) - u16(met.edgeY));
+        met = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
+        write8(c, thing + 16, met.bits);
+      }
+      write16(c, thing + 62, read8(c, thing + 16) !== 0 ? reads16(c, FLOOR) : 0);
+    } else if (kind === 35 || kind === 38 || kind === 39 || kind === 40 || kind === 57 || kind === 60 || kind === 61
+      || kind === 79 || kind === 80 || kind === 81) {
       const met = meetThingWalls(c, reads16(c, thing + 58), reads16(c, thing + 60));
       write8(c, thing + 16, met.bits);
       if (met.bits & 0xF) {
@@ -1717,6 +1730,42 @@ function updateThings(c) {
       if (read16(c, owner + STATE) === 0x115 || read8(c, owner + HEALTH) === 0) clearEffect(c, k);
     }
     if (kind === 40) mineFeelsFighters(c, thing);
+    if (kind === 61) {
+      // 0x0800d9a4: it feels for the nearest fighter, tells its owner when one is close, and turns toward it
+      const owner = read8(c, thing + 53);
+      let nearest = 255, shortest = 0xFFFF;
+      for (let f = 0; f <= 3; f++) {
+        if (f === owner) continue;
+        const rec = record(f);
+        if (read8(c, rec + 187) === 0) continue;
+        if (read8(c, SETUP + 20 + f) === 255) continue;
+        if (read8(c, SETUP + 8) !== 0 && read8(c, SETUP + 9) !== 1
+          && read8(c, SETUP + 32 + owner) === read8(c, SETUP + 32 + f)) continue;
+        const dx = reads16(c, thing + 58) - reads16(c, rec);
+        const dy = reads16(c, thing + 60) - reads16(c, rec + 2);
+        const dz = reads16(c, thing + 62) - reads16(c, rec + 4);
+        const apart = Math.abs(dx) + Math.abs(dy);
+        if (apart < shortest && u16(read16(c, rec + 20) - 252) > 3) { shortest = apart; nearest = f; }
+        if (Math.abs(dx) > 255 || Math.abs(dy) > 255 || Math.abs(dz) > 7) continue;
+        if (read8(c, 0x0300138C) !== 0) {
+          const player = read32(c, PLAYER);
+          if (owner !== player && (owner !== player + 2 || read8(c, SETUP + 28 + owner) === 0)) continue;
+        }
+        if (Math.abs(dz) > 23) continue;
+        write8(c, record(owner) + 236, 1);
+        shortest = 0;
+        break;
+      }
+      if (nearest !== 255) {
+        const rec = record(nearest);
+        write16(c, thing + 8, reads16(c, thing + 58) < reads16(c, rec)
+          ? read16(c, thing + 8) + 4 : read16(c, thing + 8) - 4);
+        write16(c, thing + 10, reads16(c, thing + 60) < reads16(c, rec + 2)
+          ? read16(c, thing + 10) + 4 : read16(c, thing + 10) - 4);
+        write16(c, thing + 8, reads16(c, thing + 8) > 64 ? 64 : (reads16(c, thing + 8) < -64 ? -64 : read16(c, thing + 8)));
+        write16(c, thing + 10, reads16(c, thing + 10) > 64 ? 64 : (reads16(c, thing + 10) < -64 ? -64 : read16(c, thing + 10)));
+      }
+    }
     if (THING_STEPS_LATER.has(kind)) notPorted('0800CEC8', `the steps of a thing of kind ${kind} after it moves`);
     thingHit(c, k, read16(c, thing + 56));
   }

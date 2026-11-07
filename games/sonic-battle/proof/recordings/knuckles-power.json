@@ -1,6 +1,6 @@
 {
   "about": "Knuckles's ground Power special, from the same start point as the fight's opening, with Knuckles as the player: Training with its first choices, Right selects Power first, the opening's three presses of A, Knuckles running up to the other fighter, and his ground special.",
-  "start": "fight=training&vblanks=1209&character=2",
+  "start": "fight=training&vblanks=1209&you=2",
   "frames": 900,
   "held": [
     [

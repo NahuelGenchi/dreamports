@@ -1,6 +1,6 @@
 {
   "about": "Knuckles's air moves, from the same start point as the fight's opening, with Knuckles as the player: Training with its first choices, the opening's three presses of A, Knuckles running up to the other fighter, a jump, his air attack, and his air special as he comes down.",
-  "start": "fight=training&vblanks=1209&character=2",
+  "start": "fight=training&vblanks=1209&you=2",
   "frames": 800,
   "held": [
     [

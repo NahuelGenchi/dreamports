@@ -1,6 +1,6 @@
 {
   "about": "Knuckles's ground moves, from the same start point as the fight's opening, with Knuckles as the player: Training with its first choices, the opening's three presses of A, Knuckles running up to the other fighter, his ground combo, and his ground Shot special throwing a rock.",
-  "start": "fight=training&vblanks=1209&character=2",
+  "start": "fight=training&vblanks=1209&you=2",
   "frames": 767,
   "held": [
     [
