@@ -1,0 +1,152 @@
+{
+  "about": "Ghosts'n Goblins' parts, in the order a player meets them. Each counts the same. A part is proven when a recording plays it from its first frame to its last and every frame matches the original, picture and sound. Where the screen is one colour between two parts, those frames go with the part before.",
+  "foundations": [
+    {
+      "name": "Arthur moving",
+      "what": "Arthur walking, jumping, crouching and climbing ladders, with the view following him and the stage's ground, platforms and walls in the way."
+    },
+    {
+      "name": "The armor and lives",
+      "what": "A hit taking Arthur's armor, the next one killing him, his fall and the place he comes back at, the lives left, the game over and the continue."
+    },
+    {
+      "name": "The weapons",
+      "what": "The spear, dagger, torch, axe and cross, each thrown and flying as it does, hitting enemies and their shots, and picked up from what enemies leave behind."
+    },
+    {
+      "name": "The enemies",
+      "what": "The game's enemies appearing, moving, attacking and being destroyed, such as the zombies, the plants, the little demons, the big men and the red devils."
+    },
+    {
+      "name": "The HUD and the timer",
+      "what": "The score, the lives, the weapon and the time counting down, with the music that warns when it runs low."
+    },
+    {
+      "name": "The checkpoints and the key",
+      "what": "The places a stage starts Arthur again from, the key a beaten boss leaves, and the stage that comes after it."
+    },
+    {
+      "name": "The sound",
+      "what": "The game's music and its sound effects, as the original plays them."
+    }
+  ],
+  "parts": [
+    {
+      "name": "The title screen"
+    },
+    {
+      "name": "The demonstration",
+      "needs": [
+        "Arthur moving",
+        "The enemies",
+        "The HUD and the timer",
+        "The sound"
+      ]
+    },
+    {
+      "name": "The stage map"
+    },
+    {
+      "name": "Stage 1: The graveyard",
+      "needs": [
+        "Arthur moving",
+        "The armor and lives",
+        "The weapons",
+        "The enemies",
+        "The HUD and the timer",
+        "The checkpoints and the key",
+        "The sound"
+      ]
+    },
+    {
+      "name": "Stage 2: The castle and the haunted apartments",
+      "needs": [
+        "Arthur moving",
+        "The armor and lives",
+        "The weapons",
+        "The enemies",
+        "The HUD and the timer",
+        "The checkpoints and the key",
+        "The sound"
+      ]
+    },
+    {
+      "name": "Stage 3: The cave",
+      "needs": [
+        "Arthur moving",
+        "The armor and lives",
+        "The weapons",
+        "The enemies",
+        "The HUD and the timer",
+        "The checkpoints and the key",
+        "The sound"
+      ]
+    },
+    {
+      "name": "Stage 4: The eyeball rafts and the fire bridge",
+      "needs": [
+        "Arthur moving",
+        "The armor and lives",
+        "The weapons",
+        "The enemies",
+        "The HUD and the timer",
+        "The checkpoints and the key",
+        "The sound"
+      ]
+    },
+    {
+      "name": "Stage 5: The tower",
+      "needs": [
+        "Arthur moving",
+        "The armor and lives",
+        "The weapons",
+        "The enemies",
+        "The HUD and the timer",
+        "The checkpoints and the key",
+        "The sound"
+      ]
+    },
+    {
+      "name": "Stage 6: The tower top",
+      "needs": [
+        "Arthur moving",
+        "The armor and lives",
+        "The weapons",
+        "The enemies",
+        "The HUD and the timer",
+        "The checkpoints and the key",
+        "The sound"
+      ]
+    },
+    {
+      "name": "Astaroth's chamber",
+      "needs": [
+        "Stage 6: The tower top"
+      ]
+    },
+    {
+      "name": "The first ending",
+      "needs": [
+        "Astaroth's chamber"
+      ]
+    },
+    {
+      "name": "The second quest",
+      "needs": [
+        "The first ending"
+      ]
+    },
+    {
+      "name": "Astaroth's chamber, the second time",
+      "needs": [
+        "The second quest"
+      ]
+    },
+    {
+      "name": "The true ending",
+      "needs": [
+        "Astaroth's chamber, the second time"
+      ]
+    }
+  ]
+}
