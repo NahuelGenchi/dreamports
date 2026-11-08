@@ -15,8 +15,11 @@ void enemies_draw(int camX, int camY);
 /** 1 when a body or a shot hurt the player this frame, 0 otherwise. */
 int enemies_player_hit(void);
 // CreateDustCloud at a place (the effects pool the enemies, item boxes and boulders share).
-void en_add_dust(int x, int y);
+void en_add_dust(int x, int y, int delay);
 /** 1 when the player's attack box destroyed an enemy this frame, 0 otherwise. */
 int enemies_player_attack_hit(void);
 
 #endif
+
+/** The most tiles an animation script loads in a frame (the sprite heap's size for it). */
+int en_animation_tiles(uint16_t anim, int variant);

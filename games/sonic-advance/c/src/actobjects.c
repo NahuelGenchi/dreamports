@@ -32,6 +32,7 @@ enum {
   OBJ_PS_IDLE, OBJ_PS_WALK, OBJ_PS_TURN, OBJ_PS_BRAKE, OBJ_PS_CROUCH, OBJ_PS_LOOKUP, OBJ_PS_SPIN, OBJ_PS_HURT,
   OBJ_PS_DEAD, OBJ_PS_PUSH, OBJ_PS_CROUCH_END, OBJ_PS_LOOKUP_END, OBJ_PS_BOUNCE, OBJ_PS_INSTA,
   OBJ_PS_SPRING, OBJ_PS_SPRING_RISE, OBJ_PS_SPRING_PEAK, OBJ_PS_SPRING_FALL, OBJ_PS_POLE, OBJ_PS_SPIN_DASH, OBJ_PS_SPIN_DASH_REV, OBJ_PS_ACT_CLEAR_RUN,
+  OBJ_PS_HALF_PIPE_LOW, OBJ_PS_HALF_PIPE_MID, OBJ_PS_HALF_PIPE_HIGH,
 };
 // what a collision test found, as the original's result bits (engine/collide.js)
 enum {
@@ -844,7 +845,7 @@ static int obj_update_boulder(ObjLive *l, ObjEntity *ent, int camX, int camY) {
     if (obj_breaks(l, ent->x, ent->y, hb)) {
       if (objects.standingOn == l) { objects.standingOn = NULL; p->air = 1; }
       play_song(167);
-      en_add_dust(ent->x, ent->y);
+      en_add_dust(ent->x, ent->y, 0);
       obj_spawn_debris(l, ent, camX, camY);
       ent->gone = 1;
       return 0;
@@ -1043,7 +1044,9 @@ static int obj_update_trampoline(ObjLive *l, ObjEntity *ent) {
 
 static int obj_update_bounce_block(ObjLive *l, ObjEntity *ent) {
   Player *p = &act.player;
-  l->dy = l->wobbling ? SINE[l->wobble & 0x3FF] / 1024 : 0;
+  // the frame it is hit doesn't move or animate it: its first wobble frame shows on the next one
+  int wasWobbling = l->wobbling;
+  l->dy = wasWobbling ? SINE[l->wobble & 0x3FF] / 1024 : 0;
   ObjBox hb;
   int hit = 0;
   if (obj_box(l, &hb)) {
@@ -1063,12 +1066,12 @@ static int obj_update_bounce_block(ObjLive *l, ObjEntity *ent) {
     }
   }
   if (hit) { l->wobbling = 1; l->wobble = 0; l->timer = 30; play_song(170); }
-  if (l->wobbling) {
+  if (wasWobbling) {
     l->wobble = (l->wobble + 90) & 0x3FF;
     if (--l->timer == 0) l->wobbling = 0;
+    update_sprite(&l->sprite, 0);
   }
   l->x = ent->x; l->y = ent->y + l->dy;
-  update_sprite(&l->sprite, 0);
   return 1;
 }
 
@@ -1076,7 +1079,7 @@ static int obj_update_bounce_block(ObjLive *l, ObjEntity *ent) {
 static void obj_break_box(ObjLive *l, ObjEntity *ent) {
   Player *p = &act.player;
   play_song(167);
-  en_add_dust(ent->x, ent->y + l->dy);
+  en_add_dust(ent->x, ent->y + l->dy, 0);
   if (objects.standingOn == l) { objects.standingOn = NULL; p->air = 1; p->pushing = 0; }
   if (p->air && p->ysp > 0) p->ysp = -p->ysp;
   l->phase = 1;
@@ -1209,15 +1212,22 @@ static int obj_half_pipe_height(const Player *p, int along) {
   if (fast > 256) fast = 256;
   int k = along < OBJ_HALF_PIPE_WIDTH / 2 ? along : along - OBJ_HALF_PIPE_WIDTH;
   int turn = (int)(((uint32_t)(k * 32768 / 0x150) << 16) >> 22) + 256;
-  return (((-SINE[turn & 0x3FF] * 3) >> 2) + 0x3000) * fast >> 8;
+  return (((-SINE[turn] * 3) >> 2) + 0x3000) * fast >> 8;   // the table runs 1.25 turns, so 1024 to 1279 is past one
 }
 
+static int dbgAlong, dbgH, dbgFeet, dbgOff, dbgY, dbgD, dbgXsp;
 static void obj_half_pipe_lift(Player *p, int along, int feet) {
   int h = obj_half_pipe_height(p, along);
+  // his walk becomes one of three half-pipe states by the height (halfpipes.js lift)
+  if (!p->curled && (p->state == OBJ_PS_WALK || p->state == OBJ_PS_HALF_PIPE_LOW || p->state == OBJ_PS_HALF_PIPE_MID || p->state == OBJ_PS_HALF_PIPE_HIGH)) {
+    p->state = h < 0x800 ? OBJ_PS_WALK : h < 0x1800 ? OBJ_PS_HALF_PIPE_LOW : h < 0x3000 ? OBJ_PS_HALF_PIPE_MID : OBJ_PS_HALF_PIPE_HIGH;
+  }
+  p->halfPipe = 1;
   p->air = 0;
   p->ysp = 0;
   int y = obj_round(p->y * OBJ_Q8);
   int d = feet - h - (p->offsetY << 8) - y;
+  dbgAlong = along; dbgH = h; dbgFeet = feet; dbgOff = p->offsetY; dbgY = y; dbgD = d; dbgXsp = obj_round(p->xsp * OBJ_Q8);
   if (d < -OBJ_HALF_PIPE_STEP) d = -OBJ_HALF_PIPE_STEP;
   if (d > OBJ_HALF_PIPE_STEP) d = OBJ_HALF_PIPE_STEP;
   p->y = (double)(y + d) / OBJ_Q8;
@@ -1234,12 +1244,15 @@ static int obj_update_half_pipe(ObjLive *l, ObjEntity *ent) {
   if (x >= left && x < right && y >= top && y < bottom) {
     int faster = obj_round(p->xsp * OBJ_Q8) * (start ? 1 : -1) > OBJ_HALF_PIPE_MIN_SPEED;
     objects.halfPipe = faster && !p->air;
+    p->halfPipe = objects.halfPipe;
     if (objects.halfPipe) objects.halfPipeFeet = obj_round(p->y * OBJ_Q8) + (p->offsetY << 8);
   } else if (objects.halfPipe && (start ? x >= right : x < left)) {
     if (!p->dead) {
       int v = obj_round(p->xsp * OBJ_Q8) + OBJ_HALF_PIPE_MIN_SPEED - 1;
       if ((v >= 0 && v < 2 * OBJ_HALF_PIPE_MIN_SPEED - 1) || (e.pressed & KEY_A)) {
         objects.halfPipe = 0;
+        p->halfPipe = 0;
+        if (p->state == OBJ_PS_HALF_PIPE_LOW || p->state == OBJ_PS_HALF_PIPE_MID || p->state == OBJ_PS_HALF_PIPE_HIGH) p->state = OBJ_PS_WALK;
       } else if (obj_round(p->xsp * OBJ_Q8) * (start ? 1 : -1) >= OBJ_HALF_PIPE_MIN_SPEED) {
         int along = start ? x - right : x - left + OBJ_HALF_PIPE_WIDTH;
         obj_half_pipe_lift(p, along, objects.halfPipeFeet);
@@ -1293,6 +1306,8 @@ static int obj_update_waterfall(ObjLive *l, ObjEntity *ent) {
     l->x = x;
     l->y = y + 10;
     l->noDraw = 0;
+    // the splash's animator starts on the first frame it is drawn (waterfalls.js makes it without stepping it)
+    if (l->phase == 0) { obj_restart_sprite(&l->sprite); l->phase = 1; }
     update_sprite(&l->sprite, 0);
   } else {
     l->noDraw = 1;
@@ -1491,8 +1506,19 @@ void objects_update(int camX, int camY) {
   p->hidden = p->invulnerable > 0 && (act.tick & 3) < 2;
 
   // SpawnMapEntities: everything whose spawn point is in range around the camera, in the list's order, with each
-  // region's interactables and then its item boxes
-  obj_scan(camX - 128, camX + 368, camY - 128, camY + 288);
+  // region's interactables and then its item boxes; after the first frame, only the strips the camera uncovers
+  if (!objects.hasPrev || (camX - objects.prevX > 248 || objects.prevX - camX > 248) || (camY - objects.prevY > 208 || objects.prevY - camY > 208)) {
+    obj_scan(camX - 128, camX + 368, camY - 128, camY + 288);
+    objects.prevX = camX; objects.prevY = camY; objects.hasPrev = 1;
+  } else {
+    int ax0 = camX > objects.prevX ? objects.prevX + 368 : camX - 128;
+    int ax1 = camX > objects.prevX ? camX + 368 : objects.prevX - 128;
+    int by0 = camY > objects.prevY ? objects.prevY + 288 : camY - 128;
+    int by1 = camY > objects.prevY ? camY + 288 : objects.prevY - 128;
+    if (camX != objects.prevX && ax0 != ax1) obj_scan(ax0, ax1, camY - 128, camY + 288);
+    if (camY != objects.prevY && by0 != by1) obj_scan(camX - 128, camX + 368, by0, by1);
+    objects.prevX = camX; objects.prevY = camY;
+  }
   // the objects' tasks: the thin platform runs at 0x2010, after the other objects
   for (int pass = 0; pass < 2; pass++) {
     for (int k = 0; k < OBJ_LIVE_MAX; k++) {
@@ -1646,4 +1672,3 @@ void objects_player_state(int *shield, int *invincible, int *speedUp) {
   if (invincible) *invincible = objects.invincible;
   if (speedUp) *speedUp = objects.speedUp;
 }
-

@@ -125,6 +125,8 @@ void rings_update(int px, int py, int oy) {
         rings.sparkles[k].x = rings.rings[i].x; rings.sparkles[k].y = rings.rings[i].y;
         rings.sparkles[k].seq = rings.sparkleSeq; rings.sparkleSeq++;
         rings.sparkles[k].active = 1;
+        // the sparkle's own task plays the ring song again as it first runs (game.js sparkle)
+        play_song(117);
         sprite_init(&rings.sparkles[k].anim);
         rings.sparkles[k].anim.graphics.dest = OBJ_VRAM + SPARKLE_TILES * 32;
         rings.sparkles[k].anim.graphics.anim = 708;
@@ -171,3 +173,4 @@ void rings_draw(int cx, int cy) {
     if (!more) { rings.sparkles[k].active = 0; rings.sparkleCount--; }
   }
 }
+

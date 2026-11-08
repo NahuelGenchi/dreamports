@@ -14,8 +14,10 @@ enum {
   SCREEN_W_ = 240, SCREEN_H_ = 160,
 };
 enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD, PS_PUSH, PS_CROUCH_END, PS_LOOKUP_END, PS_BOUNCE, PS_INSTA,
-  PS_SPRING, PS_SPRING_RISE, PS_SPRING_PEAK, PS_SPRING_FALL, PS_POLE, PS_SPIN_DASH, PS_SPIN_DASH_REV, PS_ACT_CLEAR_RUN };
-enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6, SONIC_PUSH = 12 };
+  PS_SPRING, PS_SPRING_RISE, PS_SPRING_PEAK, PS_SPRING_FALL, PS_POLE, PS_SPIN_DASH, PS_SPIN_DASH_REV, PS_ACT_CLEAR_RUN,
+  PS_HALF_PIPE_LOW, PS_HALF_PIPE_MID, PS_HALF_PIPE_HIGH };
+enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6, SONIC_BRAKE_TURN = 7, SONIC_BRAKE = 9, SONIC_PUSH = 12 };
+#define BRAKE_TURN_SPEED 1.5
 // the HUD's tiles at the addresses the original reserves (vram_hardcoded.h): the face at tile 64, the ring at 68,
 // the white digits at 84 and the red ones at 106
 enum { HUD_GLYPHS = 11, HUD_WHITE = 0, HUD_RED = 22, HUD_RING = -16, HUD_FACE = -20, HUD_TILE = 84 };
@@ -79,6 +81,91 @@ static void insta_flash_update(void) {
 }
 static void insta_flash_draw(void) { if (instaFlashActive) display_sprite(&instaFlash); }
 
+// the spin dash's and the brake's dust (game.js spawnDashDust and spawnBrakeDust, effects 746 to 748): the dash's
+// follows Sonic's feet while he charges, the brake's stays where it appeared, flipped by the game's random numbers
+#define DASH_DUST_ANIM 746
+#define DASH_DUST_BIG_ANIM 747
+#define BRAKE_DUST_ANIM 748
+#define BRAKE_DUST_MAX 20
+static struct { int active, slot, x, y; Sprite s; } brakeDust[BRAKE_DUST_MAX];
+static int brakeDustCount;
+static struct { int active, slot; Sprite s; } dashDust;
+static int dustTiles(int anim) { int n = en_animation_tiles((uint16_t)anim, 0); return n < 1 ? 8 : n; }
+static int feet_y(const Player *p) { return (int)__builtin_floor(p->y) + (p->inverted ? -p->offsetY : p->offsetY); }
+static void brake_dust_spawn(void) {
+  if (brakeDustCount >= BRAKE_DUST_MAX) return;
+  int k = -1;
+  for (int i = 0; i < BRAKE_DUST_MAX; i++) if (!brakeDust[i].active) { k = i; break; }
+  if (k < 0) return;
+  uint32_t slot = vram_malloc((uint32_t)dustTiles(BRAKE_DUST_ANIM));
+  if (slot == HEAP_END) return;
+  uint32_t r = front_random();
+  brakeDust[k].active = 1; brakeDust[k].slot = (int)slot;
+  brakeDust[k].x = (int)__builtin_floor(act.player.x); brakeDust[k].y = feet_y(&act.player);
+  sprite_init(&brakeDust[k].s);
+  brakeDust[k].s.graphics.dest = slot;
+  brakeDust[k].s.graphics.anim = BRAKE_DUST_ANIM;
+  brakeDust[k].s.variant = 0;
+  brakeDust[k].s.animSpeed = 0x10;
+  brakeDust[k].s.oamFlags = 8 << 6;
+  brakeDust[k].s.frameFlags = (uint32_t)(2 << 12) | (r & 0x400 ? SPRITE_X_FLIP : 0) | (r & 0x800 ? SPRITE_Y_FLIP : 0);
+  brakeDustCount++;
+}
+static void dash_dust_spawn(void) {
+  if (dashDust.active) { vram_free((uint32_t)dashDust.slot); dashDust.active = 0; }
+  uint32_t slot = vram_malloc((uint32_t)(dustTiles(DASH_DUST_ANIM) > dustTiles(DASH_DUST_BIG_ANIM) ? dustTiles(DASH_DUST_ANIM) : dustTiles(DASH_DUST_BIG_ANIM)));
+  if (slot == HEAP_END) return;
+  dashDust.active = 1; dashDust.slot = (int)slot;
+  sprite_init(&dashDust.s);
+  dashDust.s.graphics.dest = slot;
+  dashDust.s.graphics.anim = DASH_DUST_ANIM;
+  dashDust.s.variant = 0;
+  dashDust.s.animSpeed = 0x10;
+  dashDust.s.oamFlags = 8 << 6;
+  dashDust.s.frameFlags = (uint32_t)(2 << 12) | (act.player.facing > 0 ? SPRITE_X_FLIP : 0) | (act.player.inverted ? SPRITE_Y_FLIP : 0);
+}
+static void dust_update(void) {
+  for (int i = 0; i < BRAKE_DUST_MAX; i++) {
+    if (!brakeDust[i].active) continue;
+    if (!update_sprite(&brakeDust[i].s, 0)) {
+      vram_free((uint32_t)brakeDust[i].slot);
+      brakeDust[i].active = 0; brakeDustCount--;
+    }
+  }
+  if (!dashDust.active) return;
+  Player *p = &act.player;
+  if (!p->spinDashing) {
+    // the effect's task ends on the frame the charge does, before it is drawn again
+    vram_free((uint32_t)dashDust.slot);
+    dashDust.active = 0;
+    return;
+  }
+  int anim = p->dashAccel > 0x200 ? DASH_DUST_BIG_ANIM : DASH_DUST_ANIM;   // dashDustBigAbove
+  if (dashDust.s.graphics.anim != anim) {
+    dashDust.s.graphics.anim = (uint16_t)anim;
+    dashDust.s.prevAnim = 0xFFFF;
+    dashDust.s.frameFlags = (uint32_t)(2 << 12) | (p->facing > 0 ? SPRITE_X_FLIP : 0) | (p->inverted ? SPRITE_Y_FLIP : 0);
+  }
+  dashDust.s.x = (int16_t)((int)__builtin_floor(p->x) - (int)act.cam.x);
+  dashDust.s.y = (int16_t)(feet_y(p) - (int)act.cam.y);
+  update_sprite(&dashDust.s, 0);
+}
+static void dust_draw(void) {
+  int camX = (int)act.cam.x, camY = (int)act.cam.y;
+  for (int i = 0; i < BRAKE_DUST_MAX; i++) {
+    if (!brakeDust[i].active) continue;
+    brakeDust[i].s.x = (int16_t)(brakeDust[i].x - camX);
+    brakeDust[i].s.y = (int16_t)(brakeDust[i].y - camY);
+    display_sprite(&brakeDust[i].s);
+  }
+  if (dashDust.active) display_sprite(&dashDust.s);
+}
+static void dust_reset(void) {
+  for (int i = 0; i < BRAKE_DUST_MAX; i++) if (brakeDust[i].active) { vram_free((uint32_t)brakeDust[i].slot); brakeDust[i].active = 0; }
+  if (dashDust.active) { vram_free((uint32_t)dashDust.slot); dashDust.active = 0; }
+  brakeDustCount = 0;
+}
+
 // --- the act's palette animations (engine/palettes.js, UpdateSpriteAnimation_BG) ---------------------------------
 // Neo Green Hill's 814 and 815 cycle the waterfalls' colours one place every frame and the background's every
 // 16 frames; they are the sprite tables' own animation scripts, run with their colours going to the background
@@ -112,16 +199,21 @@ static void palettes_run(void) {
 // UpdateBgAnimationTiles (src/background.c): the layer's first animTileSize bytes are animated tiles; frame 0 is
 // the tileset itself, and frame k is the k-th block of the same size after it. The camera's task steps it.
 static Graphics animGfx;
-static int animFrame, animDelayCount;
+static int animFrame, animDelayCount, animPending;
 static void animate_stage_tiles(void) {
   Tilemap *t = &act.stage.front;
+  // the original queues a step for the V-blank, which shows it on the next frame (UpdateBgAnimationTiles)
+  if (animPending) {
+    animPending = 0;
+    animGfx.src = animFrame == 0 ? t->tiles : t->tiles + t->tilesSize + (uint32_t)(animFrame - 1) * t->animTileSize;
+    animGfx.dest = 0; animGfx.size = t->animTileSize; animGfx.anim = 0; animGfx.ram = NULL;
+    queue_graphics(&animGfx);
+  }
   if (t->animFrameCount == 0) return;
   if (++animDelayCount < t->animDelay) return;
   animDelayCount = 0;
   if (++animFrame >= t->animFrameCount) animFrame = 0;
-  animGfx.src = animFrame == 0 ? t->tiles : t->tiles + t->tilesSize + (uint32_t)(animFrame - 1) * t->animTileSize;
-  animGfx.dest = 0; animGfx.size = t->animTileSize; animGfx.anim = 0; animGfx.ram = NULL;
-  queue_graphics(&animGfx);
+  animPending = 1;
 }
 
 // --- the copy's data (rom/tilemaps.js, rom/collision.js, rom/entities.js, rom/levels.js) -------------------------
@@ -394,12 +486,13 @@ static void walk(Player *p, int dir) {
       if (g * dir < MAX_RUN_SPEED) g = MAX_RUN_SPEED * dir;
     }
     p->gsp = g;
-    if (p->state != PS_TURN && !p->curled && !p->actClear) { p->state = PS_WALK; set_offset_y(p, SPRITE_OFFSET_Y); }
+    if (p->state != PS_TURN && !p->curled && !p->actClear && !p->halfPipe) { p->state = PS_WALK; set_offset_y(p, SPRITE_OFFSET_Y); }
   } else {
     double g = p->gsp + DECELERATION * dir;
     if (g * dir > 0) g = REVERSE_KICK * dir;
     p->gsp = g;
-    if (g * dir <= -BRAKE_MIN_SPEED) { p->state = PS_BRAKE; set_offset_y(p, SPRITE_OFFSET_Y); }
+    // the skid sound restarts on every frame Sonic is still this fast
+    if (g * dir <= -BRAKE_MIN_SPEED) { play_song(115); p->state = PS_BRAKE; set_offset_y(p, SPRITE_OFFSET_Y); }
   }
 }
 static int wall_push(Player *p, int rolling);
@@ -589,7 +682,7 @@ static void landing_speed(Player *p, int rot) {
   else { p->ysp = __builtin_floor(p->ysp * 128) / 256; p->gsp = __builtin_fabs(p->ysp) * sign; }
 }
 static void land(Player *p) {
-  p->air = 0; p->pushing = 0; if (!p->actClear) p->state = PS_WALK;
+  p->air = 0; p->jumped = 0; p->midAir = 0; p->pushing = 0; p->halfPipe = 0; if (!p->actClear) p->state = PS_WALK;
   if (p->curled) { p->curled = 0; set_offset_y(p, SPRITE_OFFSET_Y); }
   p->offsetY = SPRITE_OFFSET_Y; p->airLock = 0; p->chain = 0;
 }
@@ -663,6 +756,7 @@ static int try_spin_dash(Player *p, int down, int jumpPressed) {
     p->state = PS_SPIN_DASH; p->spinDashing = 1; p->dashAccel = 0;
     set_offset_y(p, 9);
     play_song(109);
+    dash_dust_spawn();
     return 1;
   }
   if (!down) {
@@ -672,6 +766,7 @@ static int try_spin_dash(Player *p, int down, int jumpPressed) {
     p->gsp = (double)rom_s16(0x4A7084 + (uint32_t)i * 2) / 256 * p->facing;
     p->curled = 1; p->state = PS_SPIN;
     play_song(110);
+    act.cam.freeze = 10;   // the camera target stays put for ten frames (CAMERA.spinDashFreeze)
     return 1;
   }
   int a = p->dashAccel;
@@ -687,7 +782,7 @@ static int try_spin_dash(Player *p, int down, int jumpPressed) {
 }
 static int try_jump(Player *p, int jumpPressed) {
   if (!jumpPressed || clearance(p, (p->rotation + 0x80) & 0xFF) < 4) return 0;
-  p->air = 1; p->jumped = 1; p->pushing = 0; p->state = PS_SPIN;
+  p->air = 1; p->jumped = 1; p->pushing = 0; p->halfPipe = 0; p->state = PS_SPIN;
   int a = (p->rotation - 0x40) & 0xFF, jump = q8(JUMP_SPEED);
   p->xsp = (q8(p->xsp) + ((jump * cos8(a)) >> 8)) / Q8;
   p->ysp = (q8(p->ysp) + ((jump * sin8(a)) >> 8)) / Q8;
@@ -778,30 +873,50 @@ static void choose_animation(Player *p) {
   else if (p->state == PS_POLE) anim = 38;              // hanging from a wall pole (charState 31)
   else if (p->state == PS_SPIN_DASH) { anim = 18; variant = 0; }
   else if (p->state == PS_SPIN_DASH_REV) { anim = 18; variant = 1; }
+  else if (p->state == PS_HALF_PIPE_LOW || p->state == PS_HALF_PIPE_MID || p->state == PS_HALF_PIPE_HIGH) {
+    anim = 36;
+    variant = p->state == PS_HALF_PIPE_LOW ? 0 : p->state == PS_HALF_PIPE_MID ? 1 : 2;
+    int s = (int)__builtin_floor(speed * 256) >> 4;
+    speedAnim = s < ANIM_MIN_WALK ? ANIM_MIN_WALK : s > ANIM_NORMAL ? ANIM_NORMAL : s;
+  }
   else if (p->state == PS_ACT_CLEAR_RUN) anim = 22;
   else if (p->state == PS_INSTA) anim = 50;   // the insta-shield's own pose, until he lands
   else if (p->state == PS_WALK) {
     if (speed >= RUN_ANIM_SPEED) { anim = SONIC_RUN; variant = 0; }
     else {
       anim = SONIC_WALK; variant = 0;
-      int s = (int)((q8(p->gsp) >> 4) & 0xFFFF);
+      // the walk cycle plays at |speed| × 1.0, never slower than 0.5× (pickAnimation)
+      int s = (int)__builtin_floor(speed * 256) >> 4;
       speedAnim = s < ANIM_MIN_WALK ? ANIM_MIN_WALK : s > ANIM_NORMAL ? ANIM_NORMAL : s;
     }
-  } else if (p->state == PS_TURN || p->state == PS_BRAKE) { anim = SONIC_TURN; variant = 0; }
+  } else if (p->state == PS_TURN) anim = SONIC_TURN;
+  else if (p->state == PS_BRAKE) anim = speed < BRAKE_TURN_SPEED ? SONIC_BRAKE_TURN : SONIC_BRAKE;
   if (p->idleT && p->state == PS_IDLE) p->idleT--;
   p->anim = anim; p->variant = variant; p->animSpeed = speedAnim;
   // rising slower than 1.5 px a frame off a spring tops him out, whose animation starts on the next frame
   if (oldState == PS_SPRING_RISE && p->ysp >= -1.5) p->state = PS_SPRING_PEAK;
 }
 static void animate_player(Player *p) {
+  if (p->state == PS_BRAKE && (act.tick & 3) == 0) brake_dust_spawn();
+  // the animation's hitboxes are mirrored with the way he faces (stepAnim), so the flip is set before it runs
+  sonic.frameFlags = (sonic.frameFlags & ~(SPRITE_X_FLIP | SPRITE_Y_FLIP))
+    | (p->facing > 0 ? SPRITE_X_FLIP : 0) | (p->inverted ? SPRITE_Y_FLIP : 0);
   choose_animation(p);
   sonic.graphics.anim = (uint16_t)p->anim;
   sonic.variant = (uint8_t)p->variant;
   sonic.animSpeed = (uint8_t)p->animSpeed;
   int more = update_sprite(&sonic, 0);
-  // the somersault and the top-out end into the fall, which starts on the same frame (afterAnimation)
-  if (!more && (p->state == PS_SPRING || p->state == PS_SPRING_PEAK)) {
-    p->state = PS_SPRING_FALL;
+  // what an animation's end leads to, on the same frame (afterAnimation)
+  int next = -1;
+  if (!more) {
+    if (p->state == PS_SPRING || p->state == PS_SPRING_PEAK) next = PS_SPRING_FALL;
+    else if (p->state == PS_TURN) next = PS_WALK;
+    else if (p->state == PS_CROUCH_END) next = p->gsp != 0 ? PS_WALK : PS_IDLE;
+    else if (p->state == PS_LOOKUP_END) next = PS_IDLE;
+    else if (p->state == PS_SPIN_DASH_REV) next = PS_SPIN_DASH;
+  }
+  if (next >= 0) {
+    p->state = next;
     choose_animation(p);
     sonic.graphics.anim = (uint16_t)p->anim;
     sonic.variant = (uint8_t)p->variant;
@@ -939,7 +1054,8 @@ static void draw_frame(void) {
     enemies_draw(camX, camY);
   }
 
-  // the insta-shield's flash, at OAM order 8, before Sonic
+  // the dust and the insta-shield's flash, at OAM order 8, before Sonic
+  dust_draw();
   insta_flash_draw();
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
   int right = act.player.facing > 0;
@@ -947,7 +1063,8 @@ static void draw_frame(void) {
   sonic.oamFlags = ORDER_SONIC << 6;
   sonic.palId = 0;
   sonic.frameFlags = (uint16_t)((sonic.frameFlags & ~(SPRITE_PRIORITY | SPRITE_X_FLIP | SPRITE_Y_FLIP | SPRITE_ROT_SCALE | SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE)) | (2 << 12));
-  if (act.player.state == PS_WALK) {
+  // the walk and a bounce off a block, which keep the rotation he was launched with (renderer.js drawSonic)
+  if (act.player.state == PS_WALK || act.player.state == PS_BOUNCE) {
     sonic.frameFlags |= SPRITE_ROT_SCALE_ENABLE;
     Transform tf;
     // his ground angle, through the rotation hardware (drawSonic: drawRotation = rotation << 2)
@@ -1028,6 +1145,7 @@ static void act_frame(void) {
   if (!act.player.carried) step_player(&act.player, left, right, up, down, jump, jumpPressed, attack, attackPressed);
   insta_flash_update();
   animate_player(&act.player);
+  dust_update();
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
   draw_frame();
@@ -1088,7 +1206,8 @@ void act_start(int level, int cardSkip, int preFrames) {
   vram_reset();
   copyCount = 0;
   load_stage(level);
-  animFrame = 0; animDelayCount = 0;
+  dust_reset();
+  animFrame = 0; animDelayCount = 0; animPending = 0;
   instaFlashActive = 0; instaFlashSlot = -1;
   rings_init(level);
   // the title card's pictures and colours (LoadStageIntroGraphics), right after the player's sprites, before the
@@ -1125,3 +1244,6 @@ void act_start(int level, int cardSkip, int preFrames) {
   act.started = 1;
   create_task(act_task, NULL, 0x0F00, 0, NULL);
 }
+
+
+

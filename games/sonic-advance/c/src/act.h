@@ -39,7 +39,7 @@ typedef struct {
   int pos;              // the sprite's graphics, kept by the animation
   int dead, invulnerable, hidden, inverted, wasInverted;
   int heldDirs, pressedDirs;
-  int carried, ignoreInput, actClear;
+  int carried, ignoreInput, actClear, halfPipe;
 } Player;
 
 typedef struct {

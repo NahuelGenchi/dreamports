@@ -1,6 +1,6 @@
 {
-  "about": "From power-on with nothing saved, A on the language screen, Start through the intro, the title and its menu, A on Game Start, A on Sonic in the character select, then Neo Green Hill Zone act 1 from its first frame to its goal and results: running, jumping and rolling, a spin dash through a bowl and another through a loop.",
-  "frames": 7600,
+  "about": "From power-on with nothing saved, A on the language screen, Start through the intro, the title and its menu, A on Game Start, A on Sonic in the character select, then Neo Green Hill Zone act 1 from its first frame to the end of its results: running, jumping and rolling, a spin dash through a bowl and another through a loop.",
+  "frames": 7365,
   "held": [
     [
       0,
@@ -879,32 +879,6 @@
     ],
     [
       7352,
-      [
-        "A",
-        "RIGHT"
-      ]
-    ],
-    [
-      7366,
-      [
-        "RIGHT"
-      ]
-    ],
-    [
-      7472,
-      [
-        "A",
-        "RIGHT"
-      ]
-    ],
-    [
-      7486,
-      [
-        "RIGHT"
-      ]
-    ],
-    [
-      7592,
       [
         "A",
         "RIGHT"

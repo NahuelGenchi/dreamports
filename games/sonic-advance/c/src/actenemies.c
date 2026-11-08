@@ -61,10 +61,12 @@ typedef struct {
   int flipX, animStep;
   // the kinds' own clocks and offsets, as the JavaScript keeps them
   int vel, off, yoff, t, tops, throwing, shot, right, tackle, state, vy, cd, croakIndex, n;
+  int turnNext, turnRight, shootNext;   // the Buzzer's changes show on the frame after the decision
 } Enemy;
 
 typedef struct {
   int active, kind, animStep, flipX;
+  int born;                  // the tick it was made on, for the defeat effects whose tasks start next frame
   Sprite s;
   int x, y;
   // the coconut
@@ -81,6 +83,8 @@ typedef struct {
 
 static Enemy en_list[ENEMY_MAX];
 static int en_count;
+static int en_regionsX, en_regionsY;   // the region grid the scan's edges clamp to
+static int en_prevX, en_prevY, en_hasPrev;   // the camera the last strip scan saw
 static Effect en_effects[EFFECT_MAX];
 static uint8_t en_rl[ENEMY_RL_MAX];
 static int en_hit, en_attack_hit;
@@ -148,6 +152,9 @@ static int en_script_tiles(uint16_t anim, int variant) {
   }
   return most;
 }
+
+/** The most tiles an animation script loads in a frame, for a sprite that is not an enemy (act.c's dust). */
+int en_animation_tiles(uint16_t anim, int variant) { return en_script_tiles(anim, variant); }
 
 static void en_load_tiles(void) {
   tilesKiki = en_max2(en_script_tiles(ANIM_KIKI, KIKI_VAR_BOB), en_script_tiles(ANIM_KIKI, KIKI_VAR_THROW));
@@ -285,7 +292,7 @@ static void en_player_box(int *l, int *t, int *r, int *b) {
 }
 
 static void en_effect_free(Effect *f);
-void en_add_dust(int x, int y);
+void en_add_dust(int x, int y, int delay);
 static void en_add_animal(int x, int y);
 static void en_add_score(int x, int y, int chain);
 
@@ -312,7 +319,7 @@ static int en_attack_test(Enemy *e, int x, int y) {
   e->live = 0;
   e->gone = 1;
   vram_free(e->s.graphics.dest);
-  en_add_dust(x, y);
+  en_add_dust(x, y, 1);
   en_add_animal(x, y);
   play_song(138);
   int before = act.score;
@@ -348,6 +355,7 @@ static Effect *en_effect_new(int kind) {
     f->active = 1;
     f->kind = kind;
     f->animStep = 1;
+    f->born = (kind == EFFECT_ANIMAL || kind == EFFECT_SCORE) ? act.tick : -1;
     return f;
   }
   return NULL;
@@ -426,12 +434,13 @@ static void en_add_gami_shot(int x4, int dx, int y) {
 }
 
 // CreateDustCloud: it runs its animation once and stays where it appeared
-void en_add_dust(int x, int y) {
+void en_add_dust(int x, int y, int delay) {
   Effect *f = en_effect_new(EFFECT_DUST);
   if (!f) return;
   f->x = x;
   f->y = y;
   en_make_sprite(&f->s, ANIM_DUST, 0, 15, tilesDust, 0, 0);
+  if (delay) f->born = act.tick;   // an enemy's defeat dust starts on the next frame
 }
 
 // the freed animal, in its zone's turn: the otter and koala sit once they land, the kangaroo hops away left
@@ -572,6 +581,7 @@ static void en_spawn(Enemy *e) {
       break;
     case KIND_BUZZER:
       e->off = 0; e->shot = 0; e->t = 0; e->state = Z_BUZZER_PATROL;
+      e->turnNext = e->turnRight = e->shootNext = 0;
       if (en_player_x() >= e->spawnX) { e->vel = 256; e->flipX = 1; }
       else e->vel = -256;
       en_make_sprite(&e->s, ANIM_BUZZER, BUZZER_VAR_FLY, 18, tilesBuzzer, e->flipX, 1);
@@ -623,6 +633,12 @@ static void en_run_kiki(Enemy *e, int camX, int camY) {
 
 // Buzzer (buzzer.c): flies back and forth 1 px a frame, stopping once a leg to shoot at the wedge below it
 static void en_run_buzzer(Enemy *e, int camX, int camY) {
+  // its bounds and its shot are decided after it is drawn (buzzer.c), so the change shows on the next frame
+  if (e->turnNext) {
+    e->turnNext = 0; e->vel = e->turnRight ? 256 : -256;
+    en_start(e, ANIM_BUZZER, BUZZER_VAR_TURN, 1); e->state = Z_BUZZER_TURN; e->flipX = e->turnRight;
+  }
+  if (e->shootNext) { e->shootNext = 0; en_start(e, ANIM_BUZZER, BUZZER_VAR_SHOOT, 1); e->t = 0; e->state = Z_BUZZER_SHOOT; }
   if (e->state == Z_BUZZER_PATROL) e->off += e->vel;
   e->x = e->spawnX + (e->off >> 8);
   e->y = e->spawnY;
@@ -631,9 +647,9 @@ static void en_run_buzzer(Enemy *e, int camX, int camY) {
   if (en_attack_test(e, e->x, e->y)) return;
   if (e->state == Z_BUZZER_PATROL) {
     if ((e->off >> 8) <= e->d0 * 8) {
-      e->vel = 256; en_start(e, ANIM_BUZZER, BUZZER_VAR_TURN, 1); e->state = Z_BUZZER_TURN; e->flipX = 1;
+      e->turnNext = 1; e->turnRight = 1;
     } else if ((e->off >> 8) >= (e->d0 + e->d2) * 8) {
-      e->vel = -256; en_start(e, ANIM_BUZZER, BUZZER_VAR_TURN, 1); e->state = Z_BUZZER_TURN; e->flipX = 0;
+      e->turnNext = 1; e->turnRight = 0;
     } else if (!e->shot) {
       int px = en_player_x(), py = en_player_y();
       if (e->y <= py && e->y + 96 >= py) {
@@ -642,7 +658,7 @@ static void en_run_buzzer(Enemy *e, int camX, int camY) {
         // `frameFlags &= X_FLIP` where `&` was meant: the original also clears the sprite's priority
         e->s.frameFlags &= ~SPRITE_PRIORITY;
         if (e->flipX) { hi = -hi; lo = -lo; }
-        if (hi >= dy && lo <= dy) { en_start(e, ANIM_BUZZER, BUZZER_VAR_SHOOT, 1); e->t = 0; e->state = Z_BUZZER_SHOOT; }
+        if (hi >= dy && lo <= dy) e->shootNext = 1;
       }
     }
     e->animStep = 1;
@@ -801,6 +817,7 @@ void enemies_init(int level) {
   if (!en_rl_size) return;
   int regionsX = (int)en_u32at(4), regionsY = (int)en_u32at(8);
   if (regionsX <= 0 || regionsY <= 0 || regionsX * regionsY > 4096) return;
+  en_regionsX = regionsX; en_regionsY = regionsY;
   for (int r = 0; r < regionsX * regionsY; r++) {
     uint32_t offset = en_u32at(12 + r * 4);
     if (!offset || offset > (uint32_t)en_rl_size) continue;
@@ -821,6 +838,7 @@ void enemies_init(int level) {
 }
 
 void enemies_reset(void) {
+  en_prevX = en_prevY = 0; en_hasPrev = 0;
   for (int i = 0; i < en_count; i++) {
     if (en_list[i].live) vram_free(en_list[i].s.graphics.dest);
     en_list[i].live = 0;
@@ -844,6 +862,9 @@ static void en_scan(int x0, int x1, int y0, int y1) {
     if (!e->live && !e->gone && e->spawnX >= x0 && e->spawnX <= x1 && e->spawnY >= y0 && e->spawnY <= y1) en_spawn(e);
   }
 }
+// CamCoord's clamps: below 0 to 0, past the grid to its last pixel
+static int en_clamp_x(int v) { return v < 0 ? 0 : v > en_regionsX * 256 - 1 ? en_regionsX * 256 - 1 : v; }
+static int en_clamp_y(int v) { return v < 0 ? 0 : v > en_regionsY * 256 - 1 ? en_regionsY * 256 - 1 : v; }
 
 void enemies_update(int camX, int camY) {
   en_hit = 0;
@@ -851,14 +872,31 @@ void enemies_update(int camX, int camY) {
   // p.chain clears on landing (player.js land), which the points count from
   if (en_was_air && !act.player.air) en_chain = 0;
   en_was_air = act.player.air;
-  // spawn the ones whose spawn point the camera's range now holds
-  en_scan(camX - 128, camX + 368, camY - 128, camY + 288);
+  // spawn the ones whose spawn point the camera's range now holds, scanning the strips it uncovered as the
+  // entities manager does (Task_8008DCC): everything on the first frame, then the strip uncovered sideways and down
+  if (!en_hasPrev || (camX - en_prevX > 248 || en_prevX - camX > 248) || (camY - en_prevY > 208 || en_prevY - camY > 208)) {
+    en_scan(en_clamp_x(camX - 128), en_clamp_x(camX + 368), en_clamp_y(camY - 128), en_clamp_y(camY + 288));
+    en_prevX = camX; en_prevY = camY; en_hasPrev = 1;
+  } else {
+    int ax0 = camX > en_prevX ? en_prevX + 368 : camX - 128;
+    int ax1 = camX > en_prevX ? camX + 368 : en_prevX - 128;
+    int by0 = camY > en_prevY ? en_prevY + 288 : camY - 128;
+    int by1 = camY > en_prevY ? camY + 288 : en_prevY - 128;
+    if (camX != en_prevX && ax0 != ax1) en_scan(en_clamp_x(ax0), en_clamp_x(ax1), en_clamp_y(camY - 128), en_clamp_y(camY + 288));
+    if (camY != en_prevY && by0 != by1) en_scan(en_clamp_x(camX - 128), en_clamp_x(camX + 368), en_clamp_y(by0), en_clamp_y(by1));
+    en_prevX = camX; en_prevY = camY;
+  }
   // then run every live one, then its shots and the effects
   for (int i = 0; i < en_count; i++) if (en_list[i].live) en_run(&en_list[i], camX, camY);
-  for (int i = 0; i < EFFECT_MAX; i++) if (en_effects[i].active) en_update_effect(&en_effects[i], camX, camY);
+  for (int i = 0; i < EFFECT_MAX; i++) {
+    if (!en_effects[i].active || en_effects[i].born == act.tick) continue;
+    en_update_effect(&en_effects[i], camX, camY);
+  }
 }
 
 static void en_draw_effect(Effect *f, int camX, int camY) {
+  // the draw runs after the frame's tick moves on, so the tick it was made on is the one before this
+  if (f->born == act.tick - 1) return;
   int wx = f->x, wy = f->y;
   if (f->kind == EFFECT_ANIMAL) { wx = f->x >> 8; wy = f->y >> 8; }
   f->s.frameFlags &= (uint16_t)~(SPRITE_X_FLIP | SPRITE_Y_FLIP);
@@ -899,4 +937,3 @@ void enemies_draw(int camX, int camY) {
 
 int enemies_player_hit(void) { return en_hit; }
 int enemies_player_attack_hit(void) { return en_attack_hit; }
-
