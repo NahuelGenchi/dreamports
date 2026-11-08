@@ -4,6 +4,7 @@
 // function at a time; every comment names the original's function where one is rewritten.
 
 #include "act.h"
+#include "titlecard.h"
 
 // the kit's sound output, as the page asks for a frame's samples (kit/gba/c/sound.c): the act renders the frames
 // before its first one here, to put the stage's music where the original has it
@@ -33,7 +34,8 @@ enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6, SONIC_BRAK
   SONIC_HURT = 19, SONIC_DEAD = 21, SONIC_ACT_CLEAR_RUN = 22, SONIC_BALANCE_FORWARD = 13, SONIC_BALANCE_BACK = 14 };
 // the HUD's graphics sit at the reserved addresses sub_80538BC copies them to (vram_hardcoded.h): the white
 // digits at 0xD40, the red at 0xA80, the ring at 0x880 and the character's face at 0x800
-enum { HUD_GLYPHS = 11, HUD_WHITE_TILE = 84, HUD_RED_TILE = 106, HUD_RING_TILE = 68, HUD_FACE_TILE = 64 };
+enum { HUD_GLYPHS = 11, HUD_WHITE_TILE = 84, HUD_RED_TILE = 106, HUD_RING_TILE = 68, HUD_FACE_TILE = 64,
+  HUD_WHITE = 0, HUD_RED = 22, HUD_RING = 44, HUD_FACE = 60 };
 enum { OBJ_8x8 = 0, OBJ_16x16 = 1, OBJ_32x32 = 2, OBJ_8x16 = 8 };
 enum { ORDER_DIGITS = 2, ORDER_ICONS = 3, ORDER_SONIC = 16 };
 
@@ -80,9 +82,11 @@ Act act;
  *  the timing their recordings matched with. */
 static int act2(void) { return act.stage.level == 1; }
 static Sprite sonic;
-static uint32_t sonicVram;
+static uint32_t sonicVram, hudVram, hudTile;
 static PaletteAnimation paletteAnims[PALETTE_ANIMATIONS_MAX];
 static int paletteCount;
+static int firstPictureHidden, restoreBackdrop;   // the hand-over's black frame, and the stage's colour 0 after it
+static uint16_t firstPictureBackdrop;
 
 // --- the copy's data (rom/tilemaps.js, rom/collision.js, rom/entities.js, rom/levels.js) -------------------------
 static Tilemap read_tilemap(int index) {
@@ -92,7 +96,11 @@ static Tilemap read_tilemap(int index) {
   t.at = at;
   t.xTiles = (uint16_t)rom_u16(at); t.yTiles = (uint16_t)rom_u16(at + 2);
   t.animTileSize = (uint16_t)rom_u16(at + 4); t.animFrameCount = (uint8_t)rom_u8(at + 6); t.animDelay = (uint8_t)rom_u8(at + 7);
-  t.tiles = rom_ptr(at + 8); t.tilesSize = rom_u32(at + 12);
+  // the back layer's own tiles are at +0x24, after the front's; its tile numbers past 511 read them from the second
+  // character block, as the original's stage init loads them there
+  uint32_t tilesAt = at + 8;
+  if (index % 3 == 1 && rom_u32(at + 0x24) >= 0x08000000) tilesAt = at + 0x24;
+  t.tiles = rom_ptr(tilesAt); t.tilesSize = rom_u32(at + 12);
   t.palette = rom_ptr(at + 16);
   t.paletteOffset = (uint16_t)rom_u16(at + 20); t.paletteLength = (uint16_t)rom_u16(at + 22);
   t.map = rom_ptr(at + 24); t.mapWidth = (uint16_t)rom_u16(at + 32); t.mapHeight = (uint16_t)rom_u16(at + 34);
@@ -229,8 +237,15 @@ static void load_stage(int level) {
   // the front layer's tiles, in the first character block, and the stage's 256 colours (extractStage's palette).
   // The whole tileset goes in, its four animation frames after the static part, at the tiles the animation copies
   // its current frame from (UpdateBgAnimationTiles).
-  uint32_t frontSize = act2() ? s->front.tilesSize + (uint32_t)(s->front.animFrameCount > 0 ? s->front.animFrameCount - 1 : 0) * s->front.animTileSize : s->front.tilesSize;
-  if (s->front.tiles + frontSize <= gba_rom_size) memcpy(gba_vram, gba_rom + s->front.tiles, frontSize);
+  if (act2()) {
+    uint32_t frontSize = s->front.tilesSize + (uint32_t)(s->front.animFrameCount > 0 ? s->front.animFrameCount - 1 : 0) * s->front.animTileSize;
+    if (s->front.tiles + frontSize <= gba_rom_size) memcpy(gba_vram, gba_rom + s->front.tiles, frontSize);
+  } else {
+    // the front layer's tiles in the first character block and the back's in the second, which tile numbers past
+    // 511 read
+    copy_rom(s->front.tiles, 0, s->front.tilesSize);
+    copy_rom(s->back.tiles, 0x4000, s->back.tilesSize);
+  }
   for (int i = 0; i < 256; i++) e.bgPalette[i] = (uint16_t)rom_u16(s->front.palette + i * 2);
   e.flags |= FLAGS_UPDATE_BG_PALETTES;
   // the background's tiles at the second character block, and its 37 × 23 map at 0xE000: a 512-wide text layer
@@ -1687,7 +1702,9 @@ static int digits_of(int n, int *out) {
   return k;
 }
 static void hud_glyph(int g, int x, int y) {
-  int tile = g < HUD_GLYPHS ? HUD_WHITE_TILE + g * 2 : HUD_RED_TILE + (g - HUD_GLYPHS) * 2;
+  int white = act2() ? (int)hudTile + 20 : (int)hudTile + HUD_WHITE;
+  int red = act2() ? (int)hudTile + 42 : (int)hudTile + HUD_RED;
+  int tile = g < HUD_GLYPHS ? white + g * 2 : red + (g - HUD_GLYPHS) * 2;
   put_oam(ORDER_DIGITS, x, y, OBJ_8x16, tile, 6, 0);
 }
 static void hud_update(int draw) {
@@ -1695,8 +1712,8 @@ static void hud_update(int draw) {
   if (!h->active) return;
   if (draw) {
     // the icons: the ring over the ring count and the character's face by the lives, at OAM order 3
-    put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, HUD_RING_TILE, 6, 0);
-    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, HUD_FACE_TILE, 0, 0);
+    put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, act2() ? (int)hudTile + 4 : (int)hudTile + HUD_RING, 6, 0);
+    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, act2() ? (int)hudTile : (int)hudTile + HUD_FACE, 0, 0);
     if (act.ringCount == 0) {
       if (act2()) {
         // the ring counter's zero flashes red for sixteen frames and white for sixteen (Task_StageUIMain)
@@ -1726,7 +1743,7 @@ static void hud_update(int draw) {
   h->flash = (h->flash + 1) & 31;
 }
 
-// --- the title card's state (engine/titlecard.js), without its pictures --------------------------------------------
+// --- the title card's state for Neo Green Hill act 2 (engine/titlecard.js), without its pictures --------------------
 static void card_update(int pressed) {
   if (act.cardDone) return;
   if (pressed && act.cardFrame > 35 && act.cardFrame < 215) act.cardFrame = 215;
@@ -1735,7 +1752,7 @@ static void card_update(int pressed) {
     act.cardDone = 1;
     act.clockStopped = 0;
     act.hud.active = 1;
-    act.hud.flash = act2() ? (act.stage.hudFlash + 7) & 31 : act.stage.hudFlash;
+    act.hud.flash = (act.stage.hudFlash + 7) & 31;
   }
 }
 
@@ -1858,20 +1875,23 @@ static void draw_frame(void) {
 }
 
 static int musicSync, musicStart, musicAlready;
-static int loadFrame, loadPalette0;
 static void act_frame(void) {
-  if (loadFrame) {
-    // the frame the act loads shows black, as the original's title card's first frame does: the act's own first
-    // picture then puts the stage's colours back
-    loadFrame = 0;
-    e.bgPalette[0] = (uint16_t)loadPalette0;
-    e.flags |= FLAGS_UPDATE_BG_PALETTES;
-  }
-  if (musicStart) {
-    // a menu hands the act over: its song starts with the act's first picture, as the original's does
-    musicStart = 0;
-    play_song(act.stage.music);
-    if (act.stage.level == 1) { gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4); }
+  int hidden = firstPictureHidden;
+  firstPictureHidden = 0;
+  int cardEnded = 0;
+  if (!act.cardDone) {
+    int pressed = (e.pressed & (KEY_LEFT | KEY_RIGHT | KEY_UP | KEY_DOWN | KEY_A | KEY_B)) != 0;
+    if (act2()) {
+      int wasDone = act.cardDone;
+      card_update(pressed);
+      if (!wasDone && act.cardDone) cardEnded = 1;
+    } else if (!titlecard_step(pressed)) {
+      cardEnded = 1;
+      act.cardDone = 1;
+      act.clockStopped = 0;
+      act.hud.active = 1;
+      act.hud.flash = act.stage.hudFlash;
+    }
   }
   if (musicSync) {
     musicSync = 0;
@@ -1904,13 +1924,34 @@ static void act_frame(void) {
   int jumpPressed = (e.pressed & KEY_A) != 0, attackPressed = (e.pressed & KEY_B) != 0;
   // the start point's first frame reads the right and A the original has held there, never pressed
   if (act.firstFrame) { left = 0; right = 1; jump = 1; attack = 0; jumpPressed = 0; attackPressed = 0; act.firstFrame = 0; }
-  // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180)
-  if (act.cardDone) hud_update(1);
+  // the card holds Sonic and the clock; the HUD's task it makes first runs on the frame after it ends
+  if (!act.cardDone) { left = right = up = down = jump = attack = 0; jumpPressed = attackPressed = 0; }
+  else if (!cardEnded) hud_update(1);
   step_player(&act.player, left, right, up, down, jump, jumpPressed, attack, attackPressed);
   animate_player(&act.player);
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
+  if (hidden) {
+    // the level pick's loading frame: the act's first frame runs, but the screen stays the black the hand-over left
+    e.dispCnt = 0; e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
+    e.bgPalette[0] = 0; e.flags |= FLAGS_UPDATE_BG_PALETTES;
+    e.winRegs[0] = e.winRegs[1] = e.winRegs[2] = e.winRegs[3] = 0;
+    e.winRegs[4] = 0x3F3F; e.winRegs[5] = 0x1F;
+    restoreBackdrop = 1;
+    return;
+  }
+  if (restoreBackdrop) {
+    e.bgPalette[0] = firstPictureBackdrop; e.flags |= FLAGS_UPDATE_BG_PALETTES;
+    restoreBackdrop = 0;
+  }
+  if (musicStart) {
+    // a menu hands the act over: its song starts with the act's first picture, as the original's does
+    musicStart = 0;
+    play_song(act.stage.music);
+    if (act.stage.level == 1) { gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4); }
+  }
   draw_frame();
+  if (!act2()) titlecard_draw();
 }
 
 void act_task(Task *t) {
@@ -1924,15 +1965,15 @@ void act_frame_now(void) { act_frame(); }
 static int pendingLevel, pendingCard, pendingPre;
 static void act_begin_task(Task *t) {
   destroy_task(t);
-  // the act's own task draws its first frame, so it is stepped once, not twice
+  // the act's own task draws its first frame in this frame; the black hand-over frame hides it
   act_start(pendingLevel, pendingCard, pendingPre);
+  act_frame();
 }
 
 /** Starts the act on the next frame, so the frame the menu hands over still draws the menu. */
 void act_queue(int level, int cardSkip, int preFrames) {
   pendingLevel = level; pendingCard = cardSkip; pendingPre = preFrames;
-  // below every menu task, so the frame that hands the act over still draws the menu
-  create_task(act_begin_task, NULL, 0x0E00, 0, NULL);
+  create_task(act_begin_task, NULL, 0x0F00, 0, NULL);
 }
 
 /** The title card's frames before the first one the recording compares, run with no picture. */
@@ -1946,12 +1987,29 @@ static void pre_run(int cardSkip, int preFrames) {
     camera_update(&act.cam, &act.player);
     rings_update();
     if (!act2() || act.tick >= 17) update_stage_animations(0);
-    if (!act.cardDone) card_update(cardSkip == act.tick);
-    // the card holds the player, so his animation runs while nothing moves him; the recording's first frame
-    // starts the play. He is made a moment into the card, as the stage's loading ends (InitializePlayer), so his
-    // animation is not stepped on its first frames.
-    step_player(&act.player, 0, act.preRight && act.cardDone ? 1 : 0, 0, 0, 0, 0, 0, 0);
-    if (!act2() || act.tick >= 15) animate_player(&act.player);
+    if (!act.cardDone) {
+      if (act2()) card_update(cardSkip == act.tick);
+      else {
+        titlecard_step(cardSkip == act.tick);
+        if (!titlecard_active()) {
+          act.cardDone = 1;
+          act.clockStopped = 0;
+          act.hud.active = 1;
+          act.hud.flash = act.stage.hudFlash;
+        }
+      }
+    }
+    if (act2()) {
+      // the card holds the player, so his animation runs while nothing moves him; the recording's first frame
+      // starts the play. He is made a moment into the card, as the stage's loading ends (InitializePlayer), so his
+      // animation is not stepped on its first frames.
+      step_player(&act.player, 0, act.preRight && act.cardDone ? 1 : 0, 0, 0, 0, 0, 0, 0);
+      if (act.tick >= 15) animate_player(&act.player);
+    } else {
+      int r = act.cardDone;
+      step_player(&act.player, 0, r, 0, 0, !act.cardDone, 0, !act.cardDone, 0);
+      animate_player(&act.player);
+    }
     if (wasDone) { hud_update(0); after++; }
     // the course clock starts on the frame after the card ends, not on the one it ends
     if (wasDone && !act.clockStopped) act.courseTime++;
@@ -1965,6 +2023,10 @@ void act_music_already(void) { musicAlready = 1; }
 void act_start(int level, int cardSkip, int preFrames) {
   memset(&act, 0, sizeof act);
   copyCount = 0;
+  // what the course select still had queued is dropped, as its screen's maps are: the act's own come next
+  clear_queues();
+  clear_bg_sprites();
+  for (int i = 0; i < 4; i++) { e.mapFill[i].value = 0; memset(e.mapFill[i].rect, 0, sizeof e.mapFill[i].rect); }
   load_stage(level);
   load_rings(level);
   load_entities(level);
@@ -1999,34 +2061,50 @@ void act_start(int level, int cardSkip, int preFrames) {
   sonic.graphics.anim = SONIC_IDLE; sonic.variant = 0; sonic.animSpeed = ANIM_NORMAL;
   sonic.palId = 0; sonic.oamFlags = ORDER_SONIC << 6; sonic.frameFlags = 2 << 12;
 
-  // the HUD's tiles and colours (hudGraphics): the white and red digits, the ring and the face
+  // the HUD's tiles and colours (hudGraphics): the white and red digits, the ring and the face. Neo Green Hill keeps
+  // the original's reserved places (tiles 64 to 127); the other acts take a block from the heap so the title card's
+  // own tiles go after it.
   uint32_t fontTiles, fontPalette, faceTiles, facePalette, ringTiles, ringPalette;
   UiSlot layout;
   ui_graphics(0, &fontTiles, &fontPalette, &layout);
   ui_graphics(1, &faceTiles, &facePalette, &layout);
   ui_graphics(5, &ringTiles, &ringPalette, &layout);
-  copy_rom(fontTiles + 32 * 32, OBJ_VRAM + 0xA80, 22 * 32);    // the white digits
-  copy_rom(fontTiles + 224 * 32, OBJ_VRAM + 0xD40, 22 * 32);   // the red ones
-  copy_rom(ringTiles, OBJ_VRAM + 0x880, 16 * 32);
-  copy_rom(faceTiles, OBJ_VRAM + 0x800, 4 * 32);
+  if (act2()) {
+    hudVram = OBJ_VRAM + 0x800; hudTile = 64;
+    copy_rom(fontTiles + 32 * 32, hudVram + 0x280, 22 * 32);    // the white digits at tile 84
+    copy_rom(fontTiles + 224 * 32, hudVram + 0x540, 22 * 32);   // the red ones at tile 106
+    copy_rom(ringTiles, hudVram + 0x80, 16 * 32);               // the ring at tile 68
+    copy_rom(faceTiles, hudVram, 4 * 32);                       // the face at tile 64
+  } else {
+    hudVram = vram_malloc(64); hudTile = (hudVram - OBJ_VRAM) >> 5;
+    copy_rom(fontTiles + 32 * 32, hudVram + HUD_WHITE * 32, 22 * 32);
+    copy_rom(fontTiles + 224 * 32, hudVram + HUD_RED * 32, 22 * 32);
+    copy_rom(ringTiles, hudVram + HUD_RING * 32, 16 * 32);
+    copy_rom(faceTiles, hudVram + HUD_FACE * 32, 4 * 32);
+  }
   for (int i = 0; i < 16; i++) e.objPalette[6 * 16 + i] = (uint16_t)rom_u16(fontPalette + i * 2);
   for (int i = 0; i < 16; i++) e.objPalette[i] = (uint16_t)rom_u16(facePalette + i * 2);
   e.flags |= FLAGS_UPDATE_OBJ_PALETTES;
 
-  // the frames before the recording starts: the title card to its end, then its few frames after it
-  pre_run(cardSkip, preFrames);
+  // the title card's pictures and its pieces, from the act's first frame
+  if (!act2()) {
+    titlecard_start(level, ctx.character);
+    // the card's pieces in palette 6 use the HUD font's colours, which the stage's init loads last, as the original does
+    for (int i = 0; i < 16; i++) e.objPalette[6 * 16 + i] = (uint16_t)rom_u16(fontPalette + i * 2);
+    e.flags |= FLAGS_UPDATE_OBJ_PALETTES;
+  }
+  // the frames before the recording starts: the title card, or the frames a start point skips
+  if (gba_start_point("level") != NULL || cardSkip >= 0 || preFrames > 0) pre_run(cardSkip, preFrames);
   queue_stage_animation_frame();
-  // the stage's music started on the act's first frame, so it has run the frames the card took: the sound engine
-  // steps them now, before the first frame the recording compares (m4aSongNumStart, then its frames)
   if (act.stage.level == 1) {
     // Neo Green Hill act 2's stage music manager (Task_StageMusicManager, MusManager_UpdateBgmParams): the song from
     // its beginning at a sixty-fourth of the volume, fading in, on the music player
-    if (cardSkip >= 0) {
+    if (gba_start_point("level") != NULL || cardSkip >= 0 || preFrames > 0) {
       play_song(act.stage.music);
       gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4);
       musicSync = 1;
     } else if (!musicAlready) musicStart = 1;
-  } else if (cardSkip >= 0) {
+  } else if (gba_start_point("level") != NULL || cardSkip >= 0 || preFrames > 0) {
     // a start point skips the act's card with the sound already gone by
     play_song(act.stage.music);
     gba_sound_frames_gone_by(118);
@@ -2035,13 +2113,14 @@ void act_start(int level, int cardSkip, int preFrames) {
   act.hud.active = 1;
   act.started = 1;
   create_task(act_task, NULL, 0x0F00, 0, NULL);
-  // loading the act takes the console past the next V-blank: that frame stays black, as the original's does, and
-  // the act's own task turns the display on for its first picture
-  loadFrame = 1;
-  loadPalette0 = e.bgPalette[0];
-  e.bgPalette[0] = 0;
-  e.flags |= FLAGS_UPDATE_BG_PALETTES;
-  e.dispCnt = 0;
-  e.bldCnt = 0;
-  e.bldY = 0;
+  // the level pick's first frame runs with the picture still the black the hand-over left; the card's first picture
+  // comes on the frame after it
+  firstPictureHidden = gba_start_point("level") == NULL && cardSkip < 0 && preFrames == 0;
+  if (firstPictureHidden) {
+    firstPictureBackdrop = e.bgPalette[0];
+    e.dispCnt = 0; e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
+    e.bgPalette[0] = 0; e.flags |= FLAGS_UPDATE_BG_PALETTES;
+    e.winRegs[0] = e.winRegs[1] = e.winRegs[2] = e.winRegs[3] = 0;
+    e.winRegs[4] = 0x3F3F; e.winRegs[5] = 0x1F;
+  }
 }

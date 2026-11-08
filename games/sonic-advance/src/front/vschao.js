@@ -61,7 +61,7 @@ export function createVsChaoSelect(ctx) {
   loadBackground(e, ctx.offsets.courseSelectBackground);
 
   const screen = {
-    ctx, frame: 0, scroll: 0x14, stage: 0, chosen: 0, chao: 0,   // unk4C, unk52, unk55, unk57
+    ctx, frame: 0, scroll: 0x14, stage: 0, chosen: 0, chao: 0, places: [0, 0, 0],   // unk4C, unk52, unk55, unk57
     fade: createFade(0, 1, 2, 0, 0x200, 1),
     acts: ACTS.map(([at, variant]) => {
       const s = sprite(ANIM_ACTS, OBJ_VRAM + at, { variant, oamFlags: 0x480 });
@@ -171,6 +171,7 @@ function answer(t) {
   if ((view.slot(0)?.kind ?? 0) === STARTING) {
     t.main = start;
     screen.chao = view.slot(0).bytes[3];   // gChaoTasks
+    screen.places = [screen.chao & 7, view.slot(0).bytes[4] & 7, view.slot(0).bytes[5] & 7];
   }
   const send = link.send(id);
   if (view.flags & 0x80) {
@@ -203,7 +204,8 @@ function start(t) {
   e.dispCnt &= 0x1FFF;
   e.bldCnt = 0;
   e.bldY = 0;
-  ctx.vs?.round({ level: FIRST_STAGE_LEVEL + screen.stage, seed: ctx.vsLink.seed, chaoPlace: screen.chao & 7 });
+  ctx.vs?.round({ level: FIRST_STAGE_LEVEL + screen.stage, seed: ctx.vsLink.seed, chaoPlace: screen.chao & 7,
+    chaoPlaces: screen.places, gameMode: ctx.gameMode, connections: ctx.vsLink.connections });
   e.destroyTask(screen.list);
   e.destroyTask(t);
 }

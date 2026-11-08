@@ -18,6 +18,14 @@ import { createTouch } from '../../../../kit/gba/ui/touch.js';
 // the game as its cartridge's header names it, and the version the Dreamport is built from
 const GAME = { name: 'Sonic Battle', title: 'SONICBATTLE', codes: { BSBE: 'USA' }, versions: [{ sha1: '8cf4fbbe73f6b1907ab9997caab4c4e7d9708937' }] };
 
+// a recording's start point can play the opening's own presses before the recording's frames start, as the JavaScript
+// version's main.js does: &opening=<frames> plays them, with &choice=<1 or 2> for the Right presses that pick a ground
+// special other than the first, and the three presses of A. They are the console's own button bits, as KEYINPUT has them.
+const asked = new URLSearchParams(location.search);
+const openingFrames = Number(asked.get('opening') ?? 0) & 0xFFFF;
+const openingChoice = Number(asked.get('choice') ?? 0) & 0xFF;
+const KEY_RIGHT = 0x10, KEY_A = 0x1;
+
 // the player's buttons: the console's own, the keys that press them, and the controller's buttons by their
 // numbers in the standard layout (0 A, 1 B, 4 LB, 5 RB, 8 View, 9 Menu, 12 to 15 the d-pad)
 const LAYOUT = {
@@ -73,11 +81,25 @@ async function start() {
   const clock = createClock(GBA_FRAME_MS);
   clock.reset();
   input.enabled = true;
+  let opened = !(openingFrames > 0);
   requestAnimationFrame(function loop(now) {
     let ran = false;
     for (let n = clock.steps(now); n > 0; n--) {
       input.poll();
       game.step(input.gbaKeys());
+      // the start-up has just made the fight, so the opening's own presses run now, as a player makes them: the
+      // special's choice, then the three presses of A. Its sound runs on, as a start point's does.
+      if (!opened) {
+        opened = true;
+        for (let f = 0; f < openingFrames; f++) {
+          let held = 0;
+          if (openingChoice >= 1 && f === 60) held |= KEY_RIGHT;
+          if (openingChoice >= 2 && f === 66) held |= KEY_RIGHT;
+          if (f === 70 || f === 100 || f === 130) held |= KEY_A;
+          game.step(held);
+          game.game.dp_sound_skip_frames(1);
+        }
+      }
       ran = true;
     }
     if (ran) {

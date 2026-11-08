@@ -124,12 +124,14 @@ void front_vs_round(int level, int chao) {
 /** The round the VS menus chose, for the page: its level, or 0 while they are still choosing. */
 EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 
-// The acts in C so far: a start point (level=...) opens its act directly; otherwise the course select or the
-// character select's first act hands it over.
+// The acts in C so far: X Zone and Neo Green Hill, whose course select rows start them with their title cards; a
+// start point's `level` opens any level the C version has, past the card when it asks. Every other act, and Options,
+// stops safely where the screen is, as before.
 void front_play(int level) {
-  act_active = 1;
   int startLevel = (int)gba_start_number("level", -1);
-  if (startLevel >= 0) {
+  if (startLevel < 0) startLevel = level;
+  if (startLevel == ACT_LEVEL_X_ZONE || gba_start_point("level") != NULL) {
+    act_active = 1;
     destroy_tasks(0x2000, 0x3000);
     act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
     return;

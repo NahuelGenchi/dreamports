@@ -21,12 +21,13 @@ const s16 = v => (v << 16) >> 16;
 
 // The Chao's and the message's variants for each player, and how this GBA's player and each of the others did
 // against them, as the save's records count it (sub_803AB60's mode 1, the Chao Hunt): `foes[i]` is the result
-// for player i's record in this GBA's save, or null when the original records none.
-function outcome(ranks, count, id) {
+// for player i's record in this GBA's save, or null when the original records none. A team round reads as a
+// two-player round does, as the original's case for mode 5 does.
+function outcome(ranks, count, id, teamPlay) {
   const chao = [], msg = [], foes = new Array(4).fill(null);
   const { WIN, LOSS, DRAW } = MULTIPLAYER_RESULT;
   let result;
-  if (count === 2) {
+  if (count === 2 || teamPlay) {
     for (let i = 0; i < count; i++) chao[i] = msg[i] = ranks[i] === 0 ? 2 : ranks[i] === 4 ? 4 : 3;
     result = ranks[id] === 0 ? 0 : ranks[id] === 4 ? 2 : 1;
     // the two-player round's records, as sub_803AB60's first branch counts them
@@ -59,12 +60,12 @@ function outcome(ranks, count, id) {
  * (uiLanguage: 0 Japanese, 1 English). `records[i]` is the save record of player `i` (gUnknown_03005008), 0xFF
  * when this GBA has no record of them.
  */
-export function createResultsScreen({ canvas, assets, link, id, count, ranks, sound, input, save = null, records = null, language = 1, onDone }) {
+export function createResultsScreen({ canvas, assets, link, id, count, ranks, sound, input, save = null, records = null, language = 1, teamPlay = false, onDone }) {
   const { atlas, frames, anims } = assets.sprites, { background, backdrop, names } = assets.results;
   const g = canvas.getContext('2d');
   const top = count === 2 ? 40 : count === 3 ? 20 : 0;      // unk50
   const slide = [-240, 240, -240, 240];                      // unk48: each strip's x
-  const { chao, msg, result, foes } = outcome(ranks, count, id);
+  const { chao, msg, result, foes } = outcome(ranks, count, id, teamPlay);
   // the names' task (sub_803BFE8): this player's name from the save, the others' from the records it keeps of them
   const spaces = new Uint8Array(8).fill(0x20);
   const nameOf = i => i === id ? (save?.playerName ?? spaces) : (multiplayerRecord(save, records?.[i] ?? 0xFF)?.subarray(4, 12) ?? spaces);
