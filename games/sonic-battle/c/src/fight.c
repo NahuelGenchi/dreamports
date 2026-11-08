@@ -263,6 +263,15 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
     write8(FIGHTERS + 147, 72);
     write8(FIGHTERS + 149, 1);
     if (direct) write8(FIGHTERS + 141, 0x39);   // the three picks the choice screen's first three A presses leave
+    if (end < 0) {
+      // the other fighter's recording opens Battle's four-fighter rule: the player and three computers, each with
+      // its own picks, which its fight frame's brain ticks read
+      write8(SETUP_ + 21, 1);
+      write8(SETUP_ + 22, 2);
+      write8(SETUP_ + 23, 3);
+      for (int i = 0; i < 4; i++) write8(SETUP_ + 28 + i, i == 0 ? 0 : 1);
+      for (int i = 0; i < 4; i++) write8(FIGHTERS + (uint32_t)i * RECORD + 141, i == 0 ? 0x39 : 0x36);
+    }
   }
   gba_sound_frames_gone_by(vblanks - 2);
   gba_sound_play(read8(SONG_));

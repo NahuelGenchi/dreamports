@@ -136,6 +136,7 @@ void runFightSetup(int count);
 void hblank(int line);
 void fightVblank(void);
 void queueCopy(uint32_t to, uint32_t from, uint32_t bytes);
+void applyCopies(void);
 void queueDecompress(uint32_t to, uint32_t from);
 void hideSpriteBuffer(void);
 void clearSprites(void);
@@ -212,6 +213,21 @@ void resetBrain(int i);
 void restartBrain(int i);
 int wayToTarget(int i);
 void setBrainLevel(int level);
+uint16_t arcTan2(int x, int y);
+
+// brain.c
+void brainReset(int i);
+void brainTick(int i);
+
+// battle.c
+void battleReadyFrame(void);
+void battleReadyAfterWait(void);
+void battleFrame(void);
+void battleAfterWait(void);
+void battleStoryFrame(void);
+void battleStoryAfterWait(void);
+void setCpuAt(int vblank);
+void setBattleMode(int on);
 void queueFrameAtTile(uint32_t sheet, int tile, int frame);
 void queueFighterFrame(uint32_t sheet, int slot, int frame);
 
