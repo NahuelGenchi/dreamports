@@ -1087,8 +1087,10 @@ static void draw_frame(void) {
 }
 
 static int nextLevelWait = -1, actFromResults;
+static int actMusicWait;
 static uint16_t holdColour; static int restoreColour;   // the menu's black for the act's first picture
 static void act_frame(void) {
+  if (actMusicWait) { if (--actMusicWait == 0) play_song(act.stage.music); }
   if (restoreColour) { restoreColour = 0; e.bgPalette[0] = holdColour; e.flags |= FLAGS_UPDATE_BG_PALETTES; }
   if (nextLevelWait >= 0) {
     if (nextLevelWait > 0) { nextLevelWait--; return; }
@@ -1173,7 +1175,7 @@ void act_task(Task *t) {
 /** Draws the act's first frame now, for a screen that hands over inside its own task. */
 void act_frame_now(void) { act_frame(); }
 
-static int pendingLevel, pendingCard, pendingPre;
+static int pendingLevel, pendingCard, pendingPre, actQueued;
 static void act_begin_task(Task *t) {
   destroy_task(t);
   act_start(pendingLevel, pendingCard, pendingPre);
@@ -1183,6 +1185,7 @@ static void act_begin_task(Task *t) {
 /** Starts the act on the next frame, so the frame the menu hands over still draws the menu. */
 void act_queue(int level, int cardSkip, int preFrames) {
   pendingLevel = level; pendingCard = cardSkip; pendingPre = preFrames;
+  actQueued = 1;
   create_task(act_begin_task, NULL, 0x0F00, 0, NULL);
 }
 
@@ -1252,8 +1255,9 @@ void act_start(int level, int cardSkip, int preFrames) {
   // it; a start point that opens at the act's first frame, and the course select, run the card as part of the act
   if (cardSkip >= 0 || preFrames > 0) pre_run(cardSkip, preFrames);
   if (act.cardDone) objects_alloc_vram();
-  play_song(act.stage.music);
-  gba_sound_frames_gone_by(118);
+  if (actQueued && cardSkip < 0 && preFrames == 0) actMusicWait = 2;
+  else { play_song(act.stage.music); gba_sound_frames_gone_by(118); }
+  actQueued = 0;
   act.hud.active = 0;
   act.started = 1;
   create_task(act_task, NULL, 0x0F00, 0, NULL);
