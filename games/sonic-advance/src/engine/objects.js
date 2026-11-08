@@ -242,7 +242,7 @@ function interactable(e, slot, anims, ctx, level, zone) {
     ?? createRunWheel(e, slot, anims) ?? createUpdraft(e, slot, anims) ?? createIronBall(e, slot, anims)
     ?? createRollTube(e, slot) ?? createHidingSpring(e, slot, anims) ?? createHangBar(e, slot) ?? createConveyorBeltObject(e, slot, anims) ?? createSpikedBarrel(e, slot, anims) ?? createPropeller(e, slot, anims) ?? createToggleGravity(e, slot, ctx)
     ?? createMysteryBox(e, slot, anims, ctx)
-    ?? (e.kind === STAGE_GOAL ? createGoal(e, slot, anims) : standIn(e, slot));
+    ?? (e.kind === STAGE_GOAL ? createGoal(e, slot, anims, ctx) : standIn(e, slot));
 }
 
 /**
