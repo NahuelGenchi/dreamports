@@ -167,7 +167,7 @@ static int surface_angle(int px, int py, int layer) {
 
 typedef struct { int v, rot, hasRot; } Probe;
 static Probe probe_floor(int p0, int p1, int layer) { Probe p; p.v = column_height(p1, p0, layer); p.rot = surface_angle(p1, p0, layer); p.hasRot = 1; return p; }
-static Probe probe_wall(int p0, int p1, int layer) { Probe p; p.v = row_width(p1, p0, layer); p.rot = surface_angle(p1, p0, layer); p.hasRot = 1; return p; }
+static Probe probe_wall(int p0, int p1, int layer) { Probe p; p.v = row_width(p0, p1, layer); p.rot = surface_angle(p0, p1, layer); p.hasRot = 1; return p; }
 
 typedef struct { int d, rot, hasRot; } Scan;
 // sub_801E4E4: the original's terrain scan
@@ -362,8 +362,7 @@ static void walk_input(Player *p, int dir, int sideways) {
   }
   if (dir || sideways) p->idleT = BORED_DELAY;
   if (!((p->rotation + 0x20) & 0xC0) && p->gsp == 0) {
-    p->pushing = 0;
-    if (p->state != PS_CROUCH) p->state = PS_IDLE;
+    if (!p->pushing && p->state != PS_CROUCH) p->state = PS_IDLE;
   }
 }
 static void ground_sensors(Player *p) {
@@ -416,9 +415,9 @@ static void roll_slope(Player *p) {
 static void air_control(Player *p, int dir) {
   if (p->airLock || !dir) return;
   p->facing = dir;
-  double v = p->xsp + AIR_ACCELERATION * 2 * dir;
+  double v = p->xsp + AIR_ACCELERATION * dir;
   if (v * dir > MAX_RUN_SPEED) {
-    v -= AIR_ACCELERATION * 2 * dir;
+    v -= AIR_ACCELERATION * dir;
     if (v * dir < MAX_RUN_SPEED) v = MAX_RUN_SPEED * dir;
   }
   p->xsp = v;
@@ -467,19 +466,91 @@ static void dead_step(Player *p) {
   }
   if (p->countdown) p->countdown--;
 }
-// a solid surface under him while falling, and the walls beside him (sub_8022190's cases that Sonic meets)
-static void air_collision(Player *p) {
-  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y), down = p->inverted ? -1 : 1;
-  if (p->ysp >= 0) {
-    Scan a = scan(1, y + p->offsetY, x - 8, p->layer, 8), b = scan(1, y + p->offsetY, x + 8, p->layer, 8);
-    int d = a.d < b.d ? a.d : b.d, rot = a.d < b.d ? (a.hasRot ? a.rot : p->rotA) : (b.hasRot ? b.rot : p->rotB);
-    if (d >= 0) return;
-    p->rotation = (uint8_t)rot; p->y += down * d; land(p); landing_speed(p, rot);
+// ArcTan2, the GBA BIOS call (SWI 0x0A) as engine/trig.js works it out
+static int arc_tan(int i) {
+  int a = -((i * i) >> 14);
+  int b = ((0xA9 * a) >> 14) + 0x390;
+  b = ((b * a) >> 14) + 0x91C;
+  b = ((b * a) >> 14) + 0xFB6;
+  b = ((b * a) >> 14) + 0x16AA;
+  b = ((b * a) >> 14) + 0x2081;
+  b = ((b * a) >> 14) + 0x3651;
+  b = ((b * a) >> 14) + 0xA2F9;
+  return (i * b) >> 16;
+}
+static int arc_tan2(int x, int y) {
+  int r;
+  if (!y) r = x >= 0 ? 0 : 0x8000;
+  else if (!x) r = y >= 0 ? 0x4000 : 0xC000;
+  else if (y >= 0) {
+    if (x >= 0 && x >= y) r = arc_tan((y << 14) / x);
+    else if (x < 0 && -x >= y) r = arc_tan((y << 14) / x) + 0x8000;
+    else r = 0x4000 - arc_tan((x << 14) / y);
   } else {
-    Scan a = scan(1, y - p->offsetY, x - 8, p->layer, -8), b = scan(1, y - p->offsetY, x + 8, p->layer, -8);
-    int d = a.d < b.d ? a.d : b.d;
-    if (d > 0) return;
-    p->y -= down * d; p->ysp = 0;
+    if (x <= 0 && -x > -y) r = arc_tan((y << 14) / x) + 0x8000;
+    else if (x > 0 && x >= -y) r = arc_tan((y << 14) / x) + 0x10000;
+    else r = 0xC000 - arc_tan((x << 14) / y);
+  }
+  return r & 0xFFFF;
+}
+// the sensor pairs the air code uses (engine/sensors.js floorPair and ceilingPair)
+static void floor_pair(const Player *p, int *d, int *rot, int *out) {
+  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y) + p->offsetY, m = p->layer | (p->ysp < 0 ? IGNORE_PLATFORMS : 0);
+  Scan a = scan(1, y, x - 8, m, 8), b = scan(1, y, x + 8, m, 8);
+  if (a.d < b.d) { *d = a.d; *rot = a.rot; *out = b.d; } else { *d = b.d; *rot = b.rot; *out = a.d; }
+}
+static void ceiling_pair(const Player *p, int *d, int *rot, int *out) {
+  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y) - p->offsetY, m = p->layer | (p->ysp < 3 ? IGNORE_PLATFORMS : 0);
+  Scan a = scan(1, y, x - 8, m, -8), b = scan(1, y, x + 8, m, -8);
+  if (a.d < b.d) { *d = a.d; *rot = a.rot; *out = b.d; } else { *d = b.d; *rot = b.rot; *out = a.d; }
+}
+// a wall 9 px out to one side, which stops him (engine/sensors.js airWall)
+static int air_wall(Player *p, int dir, int solid) {
+  int m = p->layer | (p->ysp < 3 && !solid ? IGNORE_PLATFORMS : 0);
+  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y);
+  Scan s = scan(0, x + dir * (3 + 6), y, m, 8 * dir);
+  if (s.d > 0) return 0;
+  p->x += dir * s.d; p->xsp = 0;
+  return 1;
+}
+// a solid surface under him while falling, over him while rising, and the walls beside him (sub_8022190)
+static void air_collision(Player *p) {
+  int vx = q8(p->xsp), vy = q8(p->ysp), down = p->inverted ? -1 : 1;
+  int a = (vx || vy) ? arc_tan2(vx, vy) >> 8 : p->inverted ? 0x80 : 0;
+  int d, rot, out;
+  switch (((a - 0x20) & 0xC0) >> 6) {
+    case 0:   // moving down
+      air_wall(p, -1, 0); air_wall(p, 1, 0);
+      floor_pair(p, &d, &rot, &out);
+      if (d >= 0 || out < -((int)__builtin_floor(p->ysp) + 6)) return;
+      p->rotation = (uint8_t)rot; p->y += down * d; land(p); landing_speed(p, rot);
+      return;
+    case 2:   // moving up
+      air_wall(p, -1, 0); air_wall(p, 1, 0);
+      ceiling_pair(p, &d, &rot, &out);
+      if (d > 0) return;
+      p->y -= down * d;
+      // only one of the two steep ceiling slopes catches him (0x41–0x5F), as in the original
+      if (((rot + 0x20) & 0x40) && (int8_t)rot > 0x40) {
+        p->rotation = (uint8_t)rot; land(p); p->gsp = __builtin_fabs(p->ysp);
+        return;
+      }
+      p->ysp = 0;
+      return;
+    default: {   // moving left (1) or right (3)
+      int dir = a >= 0x60 && a < 0xA0 ? -1 : 1;
+      if (air_wall(p, dir, p->inverted)) p->gsp = p->ysp;   // a quirk of the original
+      ceiling_pair(p, &d, &rot, &out);
+      if (d <= 0) {
+        p->y -= down * d;
+        if (p->ysp < 0) p->ysp = 0;
+      } else if (p->ysp >= 0) {
+        floor_pair(p, &d, &rot, &out);
+        if (d > 0) return;
+        p->y += down * d; p->rotation = (uint8_t)rot;
+        land(p); p->ysp = 0; p->gsp = p->xsp;
+      }
+    }
   }
 }
 static void attack_step(Player *p, int attackPressed) {
@@ -559,6 +630,7 @@ static void step_player(Player *p, int left, int right, int up, int down, int ju
 
 // chooseAnimation and tickAnim (engine/player.js, engine/animator.js)
 static void choose_animation(Player *p) {
+  if (p->pushing) p->state = PS_PUSH;
   double speed = __builtin_fabs(p->gsp);
   int speedI = (int)speed; (void)speedI;
   int anim = SONIC_IDLE, variant = 0, speedAnim = ANIM_NORMAL;
@@ -753,7 +825,7 @@ static void sparkles_draw(int camX, int camY) {
 // tables, and their sprites are made when they first come in and freed when they leave, in the same order.
 #define ENT_MAX 64
 typedef struct { int kind, x, y, rx, ry, seq, d[4], active, spawned, gone, live, dy, vy, hopping, phase, n; Sprite box, icon; } Box;
-typedef struct { int kind, x, y, rx, ry, seq, d[4], active, spawned, anim, variant; int launching; Sprite s; } Obj;
+typedef struct { int kind, x, y, rx, ry, seq, d[4], active, spawned, animState, visible; int launching; Sprite s; } Obj;
 typedef struct { int kind, x, y, rx, ry, seq, d[4], active, spawned, anim, variant; Sprite s; } Prop;
 static Box boxes[ENT_MAX]; static int boxCount;
 static Obj springs[ENT_MAX], spikes[ENT_MAX]; static int springCount, spikeCount;
@@ -813,7 +885,7 @@ static void load_entities(int level) {
         else if ((kind >= 8 && kind <= 15) || kind == 108) { if (springCount < ENT_MAX) o = &springs[springCount++]; }
         if (o) {
           o->kind = kind; o->x = x; o->y = y; o->rx = (int)(r % rx); o->ry = (int)(r / rx); o->seq = seq;
-          o->active = o->spawned = o->launching = 0;
+          o->active = o->spawned = o->launching = 0; o->animState = -1; o->visible = 1;
           for (int i = 0; i < 4; i++) o->d[i] = (int8_t)data[at + 3 + i];
         }
         seq++;
@@ -904,6 +976,53 @@ static void box_spawn(Box *b) {
   update_sprite(&b->box, 0); update_sprite(&b->icon, 0);
 }
 static void break_box(Box *b) { b->phase = 1; b->n = 0; b->live = 0; play_song(167); }
+// Coll_Player_Platform's vertical test (collide.js vertical): onto the top or out below, keeping the subpixel
+static int box_vertical(Box *b, Player *p, const int *rect, int stoodHere, int *flags) {
+  const Hitbox *hb = &b->box.hitboxes[0];
+  int bx = b->x, by = b->y + b->dy, px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
+  if (!hits(bx, by, hb, px, py, rect)) return 0;
+  double frac = p->y - py;
+  int steep = !p->air && ((p->rotation + 0x20) & 0x40), mid = by + ((hb->top + hb->bottom) >> 1);
+  if (p->inverted ? py < mid : py > mid) {
+    p->y = (p->inverted ? by + hb->top + rect[1] : by + hb->bottom - rect[1]) + frac;
+    *flags |= 0x10000;
+    if (p->ysp > 0) return 0;
+    p->ysp = 0; if (steep) p->gsp = 0;
+    return 1;
+  }
+  p->y = (p->inverted ? by + hb->bottom + rect[3] : by + hb->top - rect[3]) + frac;
+  if (p->ysp < 0) return 0;
+  p->ysp = 0; if (steep) p->gsp = 0;
+  p->onObject = b; p->air = 0;
+  *flags |= 0x8;
+  if (!stoodHere) { land(p); p->gsp = p->xsp; p->rotation = 0; }
+  return 1;
+}
+// Coll_Player_Platform's side test (collide.js sideways): the wider, shorter flank finds the box, and walking
+// into it on the ground stops him and stands him up
+static int box_sideways(Box *b, Player *p, int *flags) {
+  if (((p->rotation + 0x20) >> 6) & 1) return 0;   // not while on a wall
+  int rect[4] = { -11, 1 - p->offsetY, 11, p->offsetY - 1 };
+  const Hitbox *hb = &b->box.hitboxes[0];
+  int bx = b->x, by = b->y + b->dy, px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
+  if (!hits(bx, by, hb, px, py, rect)) return 0;
+  int leftX = bx + hb->left - rect[2], rightX = bx + hb->right - rect[0] + 1;
+  int fromLeft = px <= bx + ((hb->left + hb->right) >> 1);
+  if (fromLeft) {
+    p->x = scan(0, leftX, py, p->layer, -8).d >= 0 ? leftX : rightX;
+    if (p->xsp < 0) return 0;
+    *flags |= 0x20000;
+  } else {
+    p->x = scan(0, rightX, py, p->layer, 8).d >= 0 ? rightX : leftX;
+    if (p->xsp > 0) return 0;
+    *flags |= 0x40000;
+  }
+  if (p->air || p->attack != 0) { p->xsp = 0; return 1; }
+  if (p->xsp == 0) return 1;
+  *flags |= 0x20;
+  p->pushing = 1; p->facing = fromLeft ? 1 : -1; uncurl(p); p->gsp = 0; p->xsp = 0;
+  return 1;
+}
 static void boxes_step(Player *p) {
   int body[4], attack[4]; body_rect(p, body);
   int hasAttack = sonic.hitboxes[1].index >= 0; if (hasAttack) attack_rect(p, attack);
@@ -918,23 +1037,24 @@ static void boxes_step(Player *p) {
       if (++b->n > 90) b->live = 0;
       continue;
     }
+    // hit from below, it hops up a pixel a frame, slowing down, until it lands again (HOP_SPEED, HOP_GRAVITY)
+    if (b->hopping) {
+      b->dy += b->vy >> 8; b->vy += 40;
+      int d = tile_floor(b->x, b->y + b->dy, 1);
+      if (d < 0) { b->dy += d; b->hopping = 0; }
+    }
     if (b->live && hasAttack && hits(b->x, b->y + b->dy, &b->box.hitboxes[0], (int)__builtin_floor(p->x), (int)__builtin_floor(p->y), attack)) {
       break_box(b); continue;
     }
-    int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
     const Hitbox *hb = &b->box.hitboxes[0];
-    if (hb->index >= 0 && hits(b->x, b->y + b->dy, hb, px, py, body)) {
-      int top = b->y + b->dy + hb->top;
-      if (!p->air && p->ysp >= 0 && py - p->offsetY < top) {
-        p->y = top - p->offsetY + (p->y - py); p->ysp = 0; p->gsp = p->xsp; p->air = 0; p->state = PS_WALK;
-      } else if (p->air && p->ysp >= 0 && py <= top + 8) {
-        p->y = top - p->offsetY + (p->y - py); p->ysp = 0; p->gsp = p->xsp; p->air = 0; p->state = PS_WALK;
-      } else {
-        int left = b->x + hb->left, right = b->x + hb->right;
-        if (px < b->x) p->x = left - 7; else p->x = right + 7;
-        p->xsp = 0; p->gsp = 0;
-      }
-    }
+    if (hb->index < 0) continue;
+    int stoodHere = p->onObject == b;
+    if (stoodHere) p->onObject = NULL;
+    int flags = 0;
+    int done = ((p->air || stoodHere) && box_vertical(b, p, body, stoodHere, &flags))
+      || box_sideways(b, p, &flags) || box_vertical(b, p, body, stoodHere, &flags);
+    if (!done && stoodHere && !p->onObject) { p->air = 1; p->pushing = 0; }
+    if (flags & 0x10000) { b->vy = -256; b->hopping = 1; }
   }
 }
 static void spring_spawn(Obj *o) {
@@ -967,14 +1087,37 @@ static void springs_step(Player *p) {
 static void spike_spawn(Obj *o) {
   o->spawned = 1;
   int v = o->kind == 1 || o->kind == 2 ? 2 : 3;
+  if (o->kind == 5 || o->kind == 6) v = 2;
   entity_sprite(&o->s, 454, v, 16, 17);
+  if (o->kind == 6) o->s.frameFlags |= SPRITE_Y_FLIP;
+  o->animState = v;
   update_sprite(&o->s, 0);
+}
+static void hiding_spike_step(Obj *o) {
+  int t = act.tick & 127, v = -1;
+  if (t >= 60 && t < 62) v = 0;
+  else if (t >= 62 && t < 64) v = 1;
+  else if (t >= 64 && t < 124) v = 2;
+  else if (t >= 124 && t < 126) v = 1;
+  else if (t >= 126) v = 0;
+  o->visible = v >= 0;
+  if (v >= 0) {
+    if (v != o->animState) { o->s.graphics.anim = 454; o->s.variant = (uint8_t)v; o->s.prevAnim = 0xFFFF; o->animState = v; }
+    update_sprite(&o->s, 0);
+  }
+  if (v != 2) return;
+  int body[4]; body_rect(&act.player, body);
+  if (!act.player.invulnerable && !act.player.dead
+    && hits(o->x, o->y, &o->s.hitboxes[0], (int)__builtin_floor(act.player.x), (int)__builtin_floor(act.player.y), body)) {
+    hurt(&act.player); play_song(171);
+  }
 }
 static void spikes_step(Player *p) {
   int body[4]; body_rect(p, body);
   for (int i = 0; i < spikeCount; i++) {
     Obj *o = &spikes[i];
-    if (!o->active || !o->spawned || p->invulnerable || p->dead) continue;
+    if (!o->active || !o->spawned || o->kind == 5 || o->kind == 6) continue;
+    if (p->invulnerable || p->dead) continue;
     if (hits(o->x, o->y, &o->s.hitboxes[0], (int)__builtin_floor(p->x), (int)__builtin_floor(p->y), body)) {
       hurt(p); play_song(171);
     }
@@ -1035,7 +1178,7 @@ static void entities_update(void) {
   for (int i = 0; i < propCount; i++) { Prop *o = &props[i]; o->active = ent_active(o->x, o->y); }
   for (int i = 0; i < boxCount; i++) { Box *b = &boxes[i]; b->active = ent_active(b->x, b->y); }
   for (int i = 0; i < springCount; i++) { Obj *o = &springs[i]; if (o->active) { if (o->spawned) update_sprite(&o->s, 0); } else obj_retire(o); }
-  for (int i = 0; i < spikeCount; i++) { Obj *o = &spikes[i]; if (o->active) { if (o->spawned) update_sprite(&o->s, 0); } else obj_retire(o); }
+  for (int i = 0; i < spikeCount; i++) { Obj *o = &spikes[i]; if (o->active) { if (!o->spawned) continue; if (o->kind == 5 || o->kind == 6) hiding_spike_step(o); else update_sprite(&o->s, 0); } else obj_retire(o); }
   for (int i = 0; i < propCount; i++) { Prop *o = &props[i]; if (o->active) { if (o->spawned) update_sprite(&o->s, 0); } else if (o->spawned) { sprite_free(&o->s); o->spawned = 0; } }
   for (int i = 0; i < boxCount; i++) { Box *b = &boxes[i]; if (b->active) { if (b->spawned) { update_sprite(&b->box, 0); update_sprite(&b->icon, 0); } } else box_retire(b); }
 }
@@ -1049,7 +1192,7 @@ static void boxes_draw(int camX, int camY) {
 }
 static void springs_spikes_draw(int camX, int camY) {
   for (int i = 0; i < springCount; i++) { Obj *o = &springs[i]; if (!o->active || !o->spawned) continue; o->s.x = (int16_t)(o->x - camX); o->s.y = (int16_t)(o->y - camY); display_sprite(&o->s); }
-  for (int i = 0; i < spikeCount; i++) { Obj *o = &spikes[i]; if (!o->active || !o->spawned) continue; o->s.x = (int16_t)(o->x - camX); o->s.y = (int16_t)(o->y - camY); display_sprite(&o->s); }
+  for (int i = 0; i < spikeCount; i++) { Obj *o = &spikes[i]; if (!o->active || !o->spawned || !o->visible) continue; o->s.x = (int16_t)(o->x - camX); o->s.y = (int16_t)(o->y - camY); display_sprite(&o->s); }
 }
 static void props_step(Player *p) {
   for (int i = 0; i < propCount; i++) {
@@ -1215,7 +1358,8 @@ static void shots_draw(int camX, int camY) {
   for (int i = 0; i < shotCount; i++) {
     Shot *sh = &shots[i];
     int x = sh->kind == SHOT_BUZZER ? I(sh->qx) : sh->kind == SHOT_GAMI ? (sh->x4 >> 2) : sh->x;
-    sh->s.x = (int16_t)(x - camX); sh->s.y = (int16_t)(sh->y - camY);
+    int y = sh->kind == SHOT_BUZZER ? I(sh->qy) : sh->y;
+    sh->s.x = (int16_t)(x - camX); sh->s.y = (int16_t)(y - camY);
     display_sprite(&sh->s);
   }
 }
@@ -1626,8 +1770,13 @@ static void act_frame(void) {
   if (musicSync) {
     musicSync = 0;
     // the act's music starts on the frame after its first picture, as the stage's load ends: the frames before the
-    // recording's first one are the act's first 15 off the count, leaving 96
-    for (int i = 0; i < act.tick - 15; i++) dp_sound_render(1092);
+    // recording's first one are the act's first 15 off the count, leaving 96, each the samples a frame holds
+    long long played = 0;
+    for (int i = 0; i < act.tick - 15; i++) {
+      int count = (int)((played + 1) * 109725 / 100 - played * 109725 / 100);
+      played++;
+      dp_sound_render(count);
+    }
   }
   step_palettes();
   camera_update(&act.cam, &act.player);
@@ -1637,6 +1786,7 @@ static void act_frame(void) {
   sparkles_update();
   entities_update();
   enemies_update();
+  act.player.pushing = 0;
   entities_step(&act.player);
   props_step(&act.player);
   act.cam.bgUpdates++;

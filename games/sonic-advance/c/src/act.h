@@ -43,6 +43,7 @@ typedef struct {
   int facing, state, air, curled, pushing, jumped, airLock, spinDashing;
   uint8_t rotation, rotA, rotB;
   int layer, offsetY, idleT;
+  void *onObject;        // the solid object he stands on, as the original keeps it
   int anim, variant, animSpeed;
   int pos;              // the sprite's graphics, kept by the animation
   int dead, invulnerable, hidden, inverted, wasInverted;
