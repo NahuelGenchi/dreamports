@@ -15,6 +15,7 @@ Front ctx;
 static int startingUp;
 int act_active;
 static uint32_t pageFrame;
+static int playHold, heldLevel, heldCard, heldPre;
 
 /** The page's frame since power-on, as a recording counts them. */
 uint32_t front_frame(void) { return pageFrame ? pageFrame - 1 : 0; }
@@ -92,6 +93,16 @@ void front_start(void) {
 /** A frame, with the buttons in `keys` held. */
 void front_step(uint16_t keys) {
   pageFrame++;
+  // the course select's X Zone hand-over keeps the screen three frames longer, as the original's does, before the act
+  if (playHold > 0) {
+    if (--playHold == 0) {
+      act_active = 1;
+      destroy_tasks(0x2000, 0x3000);
+      act_start(heldLevel, heldCard, heldPre);
+    }
+    engine_draw_setup();
+    return;
+  }
   if (act_active) {
     e.keys = keys;
     engine_run();
@@ -134,6 +145,10 @@ void front_play(int level) {
   // only the acts this engine has: X Zone and Casino Paradise act 2. Other levels stop where they begin, as the
   // course select's recordings expect until their acts are in C.
   if (level != ACT_LEVEL_CASINO_2 && level != ACT_LEVEL_X_ZONE) { ctx.done = 1; return; }
+  if (level == ACT_LEVEL_X_ZONE && gba_start_number("at", -1) < 0) {
+    playHold = 3; heldLevel = level; heldCard = (int)gba_start_number("card", -1); heldPre = (int)gba_start_number("pre", 0);
+    return;
+  }
   act_active = 1;
   destroy_tasks(0x2000, 0x3000);
   act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
