@@ -1,6 +1,6 @@
 {
   "about": "Shadow's guard, from Training with Shadow chosen and the Rival's Action on Light Attack: the opening's three presses of A, Shadow walking up to the rival, L held as the rival's attack comes, which guards it, and L pressed again, which guards and then heals until the next hit.",
-  "start": "fight=training&vblanks=1209&you=6&action=4",
+  "start": "fight=training&vblanks=1209&you=3&action=4",
   "frames": 760,
   "held": [
     [
@@ -156,7 +156,7 @@
           "frame": 1180,
           "address": "030053F8",
           "bytes": 1,
-          "value": 6
+          "value": 3
         }
       ],
       "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, and Start on its first choices with Shadow chosen."
