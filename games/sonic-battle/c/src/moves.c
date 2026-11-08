@@ -1872,7 +1872,7 @@ void setFightEndAt(int vblank) { fight_end_vblank = vblank; }
 void trainingFrame(void) {
   if (fight_end_vblank >= 0 && g.vblanks == fight_end_vblank) {
     // 0x0801c28c hands over to 0x0801b394 at the frame the start point names: Battle's rule, a full Ichikoro gauge,
-    // a rival out of health, and the point that ends the fight.
+    // the rival out of health, and the point that ends the fight at the part's first frame.
     fight_end_vblank = -1;
     write8(SETUP_ + 125, 1);
     write8(SETUP_ + 4, 2);
@@ -1882,11 +1882,7 @@ void trainingFrame(void) {
     write8(FIGHTERS + 149, 1);
     write8(FIGHTERS + RECORD + HEALTH, 0);
     write16(FIGHTERS + RECORD + STATE, 253);
-    battleFrame();
-    return;
-  }
-  if (read8(SETUP_ + 125) != 4) {   // Battle's frame keeps Training's callback timing, so the drawing stays lined up
-    battleFrame();
+    g.callback = battleFrame;
     return;
   }
   dummyKeys();

@@ -247,5 +247,5 @@ void resultTransitionAfterWait(void) {
   drawFightFrameHud(shown == 255 ? player : shown, hudMode());
 }
 
-/** The result screen, 0x0802b980, is not ported yet. A recording ends before this. */
+/** The result screen is not part of this foundation and is not ported: reaching it here stops the game. */
 void resultScreen(void) { unsupported(); }

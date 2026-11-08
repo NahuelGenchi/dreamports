@@ -250,6 +250,7 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
   write8(SONG_, (uint8_t)ARENA_SONGS[setup(3 + setup(1))]);
   startHud(10);
   setUpFighters();
+  int direct = (int)gba_start_number("direct", 0);
   if (battle) {
     // the rule and score Battle's screen leaves, and a full Ichikoro gauge for the player, as a start point may give
     write8(SETUP_ + 4, 2);
@@ -258,9 +259,14 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
     for (int i = 0; i < 4; i++) write8(SETUP_ + 51 + i, 0);
     write8(FIGHTERS + 147, 72);
     write8(FIGHTERS + 149, 1);
+    if (direct) write8(FIGHTERS + 141, 0x39);   // the three picks the choice screen's first three A presses leave
   }
   gba_sound_frames_gone_by(vblanks - 2);
   gba_sound_play(read8(SONG_));
   fightVblank();
-  g.callback = choosing;
+  if (battle && direct) {
+    // the original's setup frame hands the next frame to the fight; run its first half here so the two line up
+    g.callback = battleFrame;
+    battleFrame();
+  } else g.callback = choosing;
 }
