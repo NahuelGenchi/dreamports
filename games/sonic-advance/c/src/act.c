@@ -731,7 +731,11 @@ static void pre_run(int cardSkip, int preFrames) {
 void act_start(int level, int cardSkip, int preFrames) {
   memset(&act, 0, sizeof act);
   // a firework still going from the last act ends here and gives its tiles back before the array is cleared
-  destroy_tasks(FIREWORK_PRIORITY, FIREWORK_PRIORITY + 1);
+  for (int i = 0; i < 8; i++) {
+    if (!fireworks[i].live) continue;
+    destroy_tasks(FIREWORK_PRIORITY, FIREWORK_PRIORITY + 1);
+    break;
+  }
   memset(fireworks, 0, sizeof fireworks);
   memset(&tileAnim, 0, sizeof tileAnim);
   load_stage(level);
