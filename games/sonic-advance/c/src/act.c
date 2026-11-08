@@ -19,6 +19,9 @@ static int is_casino_level(int level) { return level == ACT_LEVEL_CASINO_2; }
 static int is_casino(void) { return is_casino_level(act.stage.level); }
 enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD };
 enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6 };
+// the two rings the first screen shows: the ring table's level 5 list (0x0B7F4C + 5 * 4) puts them at world
+// (208, 656) and (232, 656)
+static const int FIRST_RING_WORLD[2][2] = { { 208, 656 }, { 232, 656 } };
 // the HUD's graphics sit at fixed sprite VRAM addresses, which the original reserves (vram_hardcoded.h):
 // the character's face at 0x0800, the ring at 0x0880, the white digits at 0x0A80 and the red ones at 0x0D40.
 // Their tile numbers are 64, 68, 84 and 106.
@@ -30,6 +33,7 @@ enum { ORDER_DIGITS = 2, ORDER_ICONS = 3, ORDER_SONIC = 16 };
 // physics and animation (engine/constants.js)
 #define Q8 256.0
 #define SPRITE_OFFSET_Y 14
+#define BALL_SPRITE_OFFSET_Y 9   // curled up, his centre sits 5 px lower so his feet stay put (constants.js)
 #define FRICTION (8.0 / 256)
 #define ACCELERATION (8.0 / 256)
 #define DECELERATION (96.0 / 256)
@@ -635,7 +639,7 @@ static void draw_frame(void) {
 
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
   int right = act.player.facing > 0;
-  int sx = (int)__builtin_floor(act.player.x) - camX, sy = (int)__builtin_floor(act.player.y) - camY + (is_casino() ? 5 : 0);
+  int sx = (int)__builtin_floor(act.player.x) - camX, sy = (int)__builtin_floor(act.player.y) - camY;
   sonic.oamFlags = ORDER_SONIC << 6;
   sonic.palId = 0;
   sonic.frameFlags = (uint16_t)((sonic.frameFlags & ~(SPRITE_PRIORITY | SPRITE_X_FLIP | SPRITE_Y_FLIP | SPRITE_ROT_SCALE | SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE)) | (2 << 12));
@@ -652,8 +656,12 @@ static void draw_frame(void) {
   }
   display_sprite(&sonic);
   if (firstRingsMade) {
-    update_sprite(&firstRings[0], 0); display_sprite(&firstRings[0]);
-    update_sprite(&firstRings[1], 0); display_sprite(&firstRings[1]);
+    for (int i = 0; i < 2; i++) {
+      firstRings[i].x = (int16_t)(FIRST_RING_WORLD[i][0] - camX);
+      firstRings[i].y = (int16_t)(FIRST_RING_WORLD[i][1] - camY);
+      update_sprite(&firstRings[i], 0);
+      display_sprite(&firstRings[i]);
+    }
   }
 }
 
@@ -686,7 +694,10 @@ static void act_frame(void) {
   if (!act.cardDone) { left = right = up = down = jump = attack = 0; jumpPressed = attackPressed = 0; }
   else if (!cardEnded) hud_update(1);
   step_player(&act.player, left, right, up, down, jump, jumpPressed, attack, attackPressed);
-  if (act.drawn == 0 && jump && is_casino()) { act.player.state = PS_SPIN; act.player.curled = 1; act.player.air = 1; act.player.ysp = -4.875; }
+  if (act.drawn == 0 && jump && is_casino()) {
+    act.player.state = PS_SPIN; act.player.curled = 1; act.player.air = 1; act.player.ysp = -4.875;
+    set_offset_y(&act.player, BALL_SPRITE_OFFSET_Y);
+  }
   animate_player(&act.player);
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
@@ -820,7 +831,6 @@ void act_start(int level, int cardSkip, int preFrames) {
       firstRings[i].graphics.dest = OBJ_VRAM + 232 * 32;
       firstRings[i].graphics.anim = 707; firstRings[i].variant = 0; firstRings[i].animSpeed = 0x10;
       firstRings[i].palId = 0; firstRings[i].oamFlags = 17 << 6; firstRings[i].frameFlags = 2 << 12;
-      firstRings[i].x = (int16_t)(208 + i * 24); firstRings[i].y = 69;
     }
     firstRingsMade = 1;
   } else {
