@@ -1,0 +1,165 @@
+{
+  "about": "Cream's ground Set special, from a start point at Training's first frame a player can move: Cream as the player, with Set chosen on the ground. Cream runs up to the other fighter and R for the mine.",
+  "start": "fight=training&vblanks=1209&you=6&opening=400&choice=2",
+  "frames": 220,
+  "held": [
+    [
+      0,
+      [
+        "RIGHT",
+        "DOWN"
+      ]
+    ],
+    [
+      26,
+      []
+    ],
+    [
+      50,
+      [
+        "R"
+      ]
+    ],
+    [
+      52,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 1654,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          747,
+          [
+            "START"
+          ]
+        ],
+        [
+          748,
+          []
+        ],
+        [
+          881,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          882,
+          []
+        ],
+        [
+          921,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          922,
+          []
+        ],
+        [
+          961,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          962,
+          []
+        ],
+        [
+          1001,
+          [
+            "A"
+          ]
+        ],
+        [
+          1002,
+          []
+        ],
+        [
+          1201,
+          [
+            "START"
+          ]
+        ],
+        [
+          1202,
+          []
+        ],
+        [
+          1314,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          1316,
+          []
+        ],
+        [
+          1320,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          1322,
+          []
+        ],
+        [
+          1324,
+          [
+            "A"
+          ]
+        ],
+        [
+          1326,
+          []
+        ],
+        [
+          1354,
+          [
+            "A"
+          ]
+        ],
+        [
+          1356,
+          []
+        ],
+        [
+          1384,
+          [
+            "A"
+          ]
+        ],
+        [
+          1386,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 778,
+          "address": "03002170",
+          "bytes": 2,
+          "value": 1
+        },
+        {
+          "frame": 1253,
+          "address": "03001634",
+          "bytes": 1,
+          "value": 6
+        }
+      ],
+      "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, and Start on its first choices, with Cream as the player. Then the opening's choice and three presses of A."
+    }
+  ]
+}

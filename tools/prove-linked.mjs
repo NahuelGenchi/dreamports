@@ -4,13 +4,14 @@
 // so these recordings prove the gameplay they show and add no functions to the code ported.
 
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { resultFolder } from './lib/paths.mjs';
+import { join, relative } from 'node:path';
+import { REPO, resultFolder } from './lib/paths.mjs';
 import { expand } from './lib/recording.mjs';
 import { openDreamport } from './lib/dreamport.mjs';
 import { runLinked } from './gba/linked.mjs';
 import { png, fromColours } from './lib/png.mjs';
 import { mp4 } from './lib/mp4.mjs';
+import { recordingHash } from './lib/clips.mjs';
 
 const BATCH = 60;
 const CLIP_LIMIT = 2_000_000, CLIP_TARGET = 1_700_000, CLIP_RATE = 2_000_000;
@@ -98,7 +99,7 @@ export async function proveLinked({ page, game, recording, copy, server, quick, 
     sheet(kept.pictures, Array.from({ length: players }, (_, p) => again.pictures.get(`${kept.frame + 1}:${p}`)), `first-difference-${kept.frame}.png`);
   }
 
-  let clipFile = null;
+  let clipFile = null, apart = 0;
   if (clipAt.length && hashes.length >= frames) {
     say('making the clip…');
     const all = new Uint16Array(clipAt.length * players * 240 * 160);
@@ -109,11 +110,15 @@ export async function proveLinked({ page, game, recording, copy, server, quick, 
     for (let tries = 0; tries < 5; tries++) {
       const video = await page.evaluate(`__linked.video(${JSON.stringify(clipAt)}, '/proof/originals', ${bitrate})`);
       clipFile = mp4({ width: video.width, height: video.height, description: Buffer.from(video.description, 'base64'), frames: video.frames.map(f => ({ key: f.key, data: Buffer.from(f.data, 'base64') })), timescale: FRAME[1], duration: FRAME[0] });
+      apart = video.apart;
       if (clipFile.length <= CLIP_LIMIT) break;
       bitrate = Math.round(bitrate * CLIP_TARGET / clipFile.length);
     }
     server.serve('/proof/originals', null);
     writeFileSync(join(out, 'clip.mp4'), clipFile);
+    // what share checks before a pull request shows the clip (lib/clips.mjs)
+    const clip = { from: clipAt[0], to: clipAt.at(-1), frames: clipAt.length, seconds: Math.round(length * 100) / 100, apart, bytes: clipFile.length };
+    writeFileSync(join(out, 'report.json'), JSON.stringify({ recording: name, recordingFile: relative(REPO, recording.file).replaceAll('\\', '/'), recordingSha1: recordingHash(readFileSync(recording.file)), frames, players, clip }, null, 2) + '\n');
   }
   writeFileSync(join(out, 'hashes.json'), JSON.stringify({ ours: hashes, original: expected.slice(0, hashes.length) }));
   const matched = hashes.length - differ.length;
