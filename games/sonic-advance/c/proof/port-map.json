@@ -108,7 +108,10 @@
     ["sub_8007958","src/lines.c:32"],
     ["sub_800FD9C","src/modeselect.c:185"],
     ["sub_801E4E4","src/act.c:173"],
-    ["sub_8022190","src/act.c:470"],
+    ["sub_801F100","src/act.c:998"],
+    ["sub_8022190","src/act.c:516"],
+    ["sub_802486C","src/act.c:685"],
+    ["Task_8008DCC","src/act.c:825"],
     ["Task_800F058","src/modeselect.c:313"]
   ]
 }
