@@ -15,6 +15,7 @@
 // goes on to the players' overview (vsoverview.c).
 
 #include "sa.h"
+#include "act.h"
 
 enum { ANIM_CHARACTERS = 722, ANIM_BACKDROP = 723, ANIM_BLOCK = 730 };
 // the backdrop's variant by how far the row has turned, in quarters of a turn (gUnknown_08688578)
@@ -78,6 +79,7 @@ static struct {
 } screen;
 
 static void nothing(Task *t) { (void)t; }
+static void watch_start_point(Task *t);
 static void fade_in(Task *t);
 static void show_backdrop(Task *t);
 
@@ -112,6 +114,7 @@ void create_character_select(int selected) {
   screen.turning = screen.wasTurning = screen.turnFrames = 0;   // unk2C (1 to the right, 2 to the left), unk2D, unk2E
   screen.frames = 0; screen.code = NO_CODE;   // unk24, unk39
   create_task(fade_in, &screen, 0x2000, 0, NULL);
+  create_task(watch_start_point, NULL, 0x1FFF, 0, NULL);
   name.o = line(0, 0x54, 6, 2, 0, 0x14); name.frames = 0; name.angle = 0; name.shake = 0;
   screen.name = create_task(nothing, &name, 0x2030, 0, NULL);
   bars.o = line(0x100, 0x40, 8, 0, 0xF, 0x5A); bars.frames = 0; bars.angle = screen.turn & 0xFFFF; bars.shake = screen.turn;
@@ -166,6 +169,18 @@ static void bars_in(Task *t);
 static void show_arrows(Task *t);
 static void name_in(Task *t);
 static void title_in(Task *t);
+
+// A start point at X Zone opens it at the page frame the recording names, instead of the screen it would open.
+static void watch_start_point(Task *t) {
+  int level = (int)gba_start_number("level", -1);
+  if (level < 0 || gba_start_number("power", 0) != 2) return;
+  if (front_frame() < (uint32_t)gba_start_number("at", 0)) return;
+  act_active = 1;
+  act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
+  act_frame_now();
+  destroy_tasks(0x2000, 0x3000);
+  destroy_task(t);
+}
 
 // Task_8059F9C: once it has faded in, the two windows at the sides that the blend makes darker, and everything starts
 static void fade_in(Task *t) {

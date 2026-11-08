@@ -17,6 +17,8 @@
 #define KEYS_NOW 60
 #define SCRIPTS 0x08ED68A8u
 #define SCRIPTS_PER_CHARACTER 280
+#define CHOICES 0x030013B0u   // each player's skills, stats and outfit
+#define CHOICE_SIZE 156
 #define DIRECTIONS 0x0806B2D4u
 #define CAMERA_TURN 0x0300204Cu
 #define RANDOM 0x0300019Cu
@@ -242,9 +244,11 @@ void fighterThink(int i) {
     clearFlags(rec, FLAG_NEW_STATE);
   }
   int character = read8(rec + CHARACTER);
-  if (character == 9) notPorted("0800964C");
   int slot = scriptOf(read16(rec + STATE));
   if (slot < 0) return;
+  // 0x0800964C: Emerl (character 9) runs the script of the character his skill slot holds, in his player's record
+  // of choices, and the frame ends there, as the ordinary switch does for every other character
+  if (character == 9) character = read8(CHOICES + (uint32_t)i * CHOICE_SIZE + (uint32_t)slot);
   runScript(read32(SCRIPTS + (uint32_t)character * SCRIPTS_PER_CHARACTER + (uint32_t)slot * 4), i);
   write8(rec + ANIMATION, (uint8_t)slot);
 }

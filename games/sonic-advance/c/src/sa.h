@@ -29,6 +29,7 @@ static inline uint32_t rom_ptr(uint32_t at) { return rom_u32(at) - ROM_BASE; }
 // where the tables are in Sonic Advance (USA), the only copy this version takes (rom/versions.js)
 enum {
   OFFSET_SPRITE_TABLES = 0x0D868C, OFFSET_TILEMAPS = 0x4A6C40, OFFSET_UI_GRAPHICS = 0x680A38,
+  OFFSET_TITLE_CARD = 0x681274,
   OFFSET_INTRO_GRAPHICS = 0x69EC10, OFFSET_INTRO_TABLES = 0x684178, OFFSET_LANGUAGE_BACKGROUND = 0x6C7BD0,
   OFFSET_COURSE_SELECT_BACKGROUND = 0x69A6D0, OFFSET_OPTIONS_BACKGROUND = 0x6C5650,
   OFFSET_NAME_INPUT_MAPS = 0x67DC38, OFFSET_NAME_INPUT_CHARS = 0x681340,
@@ -109,6 +110,8 @@ void destroy_tasks(uint16_t lo, uint16_t hi);
 void engine_stall(int frames, void (*then)(void));
 void engine_lag(int frames, int late);
 void queue_graphics(Graphics *g);
+// applies what the graphics queue holds now, as a V-blank does, for frames a start point runs with no V-blank
+void engine_copy_graphics(void);
 void clear_queues(void);
 void queue_background(Background *bg);
 int alloc_oam(uint32_t order);
@@ -173,6 +176,7 @@ void display_sprite(Sprite *s);
 void display_sprite_background(Sprite *s);
 void write_sprite_map(Sprite *s);
 void queue_sprite_map(Sprite *s);
+void clear_bg_sprites(void);
 
 // --- backgrounds (gba/background.js) --------------------------------------------------------------------------
 void background_init(Background *bg);
