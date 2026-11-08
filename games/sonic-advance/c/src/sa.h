@@ -175,6 +175,7 @@ void display_sprite(Sprite *s);
 void display_sprite_background(Sprite *s);
 void write_sprite_map(Sprite *s);
 void queue_sprite_map(Sprite *s);
+void clear_bg_sprites(void);
 
 // --- backgrounds (gba/background.js) --------------------------------------------------------------------------
 void background_init(Background *bg);

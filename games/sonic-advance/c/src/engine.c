@@ -132,6 +132,8 @@ void engine_lag(int frames, int late) { lagging = frames; copiesLate = late; }
 
 /** A sprite whose frame the next V-blank writes as a layer's map (DisplaySprite_BG). */
 void queue_sprite_map(Sprite *s) { if (numBgSprites < 32) bgSprites[numBgSprites++] = s; }
+/** Drops the sprites a screen showed as a layer's map, as a screen that doesn't use them starts. */
+void clear_bg_sprites(void) { numBgSprites = 0; }
 
 // --- copies to VRAM ------------------------------------------------------------------------------------------------
 /** ADD_TO_GRAPHICS_QUEUE: `g` is copied in the next V-blank, as it is then. */
