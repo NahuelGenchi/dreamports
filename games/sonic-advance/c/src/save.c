@@ -41,6 +41,15 @@ static void empty_save(uint8_t *bytes) {
 /** The save at power-on: the one the save memory keeps, if it is one (its security and checksum right), or an empty one. */
 void save_open(void) {
   flash = gba_save(SAVE_SIZE);
+  save.keep = 1;
+  // a start point's save is the game's own, kept nowhere, as the JavaScript version's openSave(null) gives it: it
+  // doesn't read the cartridge's, so the language screen comes as it does at a first start
+  if (gba_start_point("unlocked")) {
+    empty_save(save.bytes);
+    save.exists = 0;
+    save.keep = 0;
+    return;
+  }
   save.exists = get32(flash, 0) == SECURITY && get32(flash, CHECKSUM) == checksum(flash);   // SaveGameExists
   if (save.exists) memcpy(save.bytes, flash, SAVE_SIZE);
   else empty_save(save.bytes);
@@ -60,10 +69,11 @@ int save_write(void) {
   set32(save.bytes, CHECKSUM, checksum(save.bytes));
   memcpy(flash, save.bytes, SAVE_SIZE);
   save.exists = 1;
-  gba_save_write();
+  if (save.keep) gba_save_write();
   return 1;
 }
 
 uint16_t save_unlocked_level(int character) { return (uint16_t)(save.bytes[0x08 + character * 2] | save.bytes[0x09 + character * 2] << 8); }
+void save_set_unlocked_level(int character, uint16_t level) { save.bytes[0x08 + character * 2] = (uint8_t)level; save.bytes[0x09 + character * 2] = (uint8_t)(level >> 8); }
 uint32_t save_player_id(void) { return get32(save.bytes, 0x04); }
 void save_set_player_id(uint32_t id) { set32(save.bytes, 0x04, id); }

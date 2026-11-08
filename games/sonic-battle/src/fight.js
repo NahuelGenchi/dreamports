@@ -227,7 +227,7 @@ export function startFight(c, vblanks, action = 0, you = 0, rival = 0, arena = 0
   fn080205d0(c);
   c.vblankCopies = 1;
   // the colour rows the Training screen copies into the player's choices for a character whose colours come from
-  // them (loadColours), such as Chaos: byte 93 picks colours 3 to 6, 94 picks 7 to 10, and 95 picks 11 to 13
+  // them (loadColours), such as fighter 10: byte 93 picks colours 3 to 6, 94 picks 7 to 10, and 95 picks 11 to 13
   if (colour !== 255) {
     for (const at of [93, 94, 95]) write8(c, 0x030013B0 + at, colour);
   }

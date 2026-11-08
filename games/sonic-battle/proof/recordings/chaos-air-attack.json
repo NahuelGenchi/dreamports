@@ -1,6 +1,6 @@
 {
   "about": "Chaos's air attack, from the same start point: the opening's three presses of A, Chaos running up to the other fighter, a jump, and B for the attack in the air.",
-  "start": "fight=training&vblanks=1209&you=10&arena=6&colour=9",
+  "start": "fight=training&vblanks=1209&you=8&arena=6",
   "frames": 640,
   "held": [
     [
@@ -173,7 +173,7 @@
           "frame": 1201,
           "address": "030052d7",
           "bytes": 1,
-          "value": 10
+          "value": 8
         }
       ],
       "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, Start on its first choices with Training's seventh character replaced by Chaos and the seventh map."
