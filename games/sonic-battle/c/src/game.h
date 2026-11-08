@@ -132,6 +132,7 @@ static inline int16_t s16(int32_t v) { return (int16_t)v; }
 
 // core.js
 void step(uint16_t held);
+void runFightSetup(int count);
 void hblank(int line);
 void fightVblank(void);
 void queueCopy(uint32_t to, uint32_t from, uint32_t bytes);

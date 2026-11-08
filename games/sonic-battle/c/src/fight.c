@@ -212,7 +212,7 @@ void choosingAfterWait(void) {
 void startFight(int vblanks, int action, int you, int rival, int arena, int colour, int battle) {
   g.vblanks = vblanks;
   int end = (int)gba_start_number("end", -1);
-  setFightEndAt(end >= 0 ? vblanks + end + 2 : -1);   // the two V-blanks startFight and the first step count
+  setFightEndAt(end > 0 ? vblanks + end + 2 : -1);   // the two V-blanks startFight and the first step count
   g.line_one = playQueuedEffects;
   for (int i = 0; i < 512; i++) gba_pal[i] = 0;
   write8(SAVE_ + 119, 1);   // the language the save keeps: English in the USA copy (menu.c)
@@ -264,6 +264,23 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
   gba_sound_frames_gone_by(vblanks - 2);
   gba_sound_play(read8(SONG_));
   fightVblank();
+  if (end == 0) {
+    // a start point at the fight's end replays the way there before the recording opens: the choice screen's
+    // three A presses at 70, 100 and 130, then the fight's own frames up to the knockout
+    g.callback = choosing;
+    g.after_wait = 0;
+    runFightSetup(400);
+    write8(SETUP_ + 125, 1);
+    write8(SETUP_ + 4, 2);
+    write8(SETUP_ + 6, 1);
+    write8(SETUP_ + 51, 1);
+    write8(FIGHTERS + 147, 72);
+    write8(FIGHTERS + 149, 1);
+    write8(FIGHTERS + RECORD + HEALTH, 0);
+    write16(FIGHTERS + RECORD + STATE, 253);
+    g.callback = battleFrame;
+    return;
+  }
   if (battle && direct) {
     // the original's setup frame hands the next frame to the fight; run its first half here so the two line up
     g.callback = battleFrame;

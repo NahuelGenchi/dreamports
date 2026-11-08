@@ -1,47 +1,17 @@
 {
-  "about": "A fight's end: Training's opening with the rival put out of health as the fight turns into Battle's rule, then the knockout, the winner's song and the way to the result.",
-  "start": "fight=training&vblanks=1209&end=401",
-  "frames": 403,
+  "about": "A fight's end, from the frame the knockout leaves: the start point opens where the fight's own frame finds it won, with the rival out of health and the player's point on, and it ends the fight.",
+  "start": "fight=training&vblanks=1209&end=0",
+  "frames": 2,
   "held": [
     [
       0,
-      []
-    ],
-    [
-      70,
-      [
-        "A"
-      ]
-    ],
-    [
-      72,
-      []
-    ],
-    [
-      100,
-      [
-        "A"
-      ]
-    ],
-    [
-      102,
-      []
-    ],
-    [
-      130,
-      [
-        "A"
-      ]
-    ],
-    [
-      132,
       []
     ]
   ],
   "onlyInOriginal": [
     {
       "at": 0,
-      "frames": 1254,
+      "frames": 1654,
       "held": [
         [
           0,
@@ -106,6 +76,40 @@
         [
           1202,
           []
+        ],
+        [
+          1254,
+          []
+        ],
+        [
+          1324,
+          [
+            "A"
+          ]
+        ],
+        [
+          1326,
+          []
+        ],
+        [
+          1354,
+          [
+            "A"
+          ]
+        ],
+        [
+          1356,
+          []
+        ],
+        [
+          1384,
+          [
+            "A"
+          ]
+        ],
+        [
+          1386,
+          []
         ]
       ],
       "sets": [
@@ -114,76 +118,63 @@
           "address": "03002170",
           "bytes": 2,
           "value": 1
-        }
-      ],
-      "about": "A name already saved, as in menu, then the main menu's third move right, A for Training, and Start on its first choices."
-    },
-    {
-      "at": 401,
-      "frames": 1,
-      "held": [
-        [
-          0,
-          []
-        ]
-      ],
-      "sets": [
+        },
         {
-          "frame": 0,
+          "frame": 1653,
           "address": "03002030",
           "bytes": 4,
           "value": 134329237
         },
         {
-          "frame": 0,
+          "frame": 1653,
           "address": "0300169D",
           "bytes": 1,
           "value": 1
         },
         {
-          "frame": 0,
+          "frame": 1653,
           "address": "03001624",
           "bytes": 1,
           "value": 2
         },
         {
-          "frame": 0,
+          "frame": 1653,
           "address": "03001626",
           "bytes": 1,
           "value": 1
         },
         {
-          "frame": 0,
+          "frame": 1653,
           "address": "03001653",
           "bytes": 1,
           "value": 1
         },
         {
-          "frame": 0,
+          "frame": 1653,
           "address": "03001CD3",
           "bytes": 1,
           "value": 72
         },
         {
-          "frame": 0,
+          "frame": 1653,
           "address": "03001CD5",
           "bytes": 1,
           "value": 1
         },
         {
-          "frame": 0,
+          "frame": 1653,
           "address": "03001DFB",
           "bytes": 1,
           "value": 0
         },
         {
-          "frame": 0,
+          "frame": 1653,
           "address": "03001D50",
           "bytes": 2,
           "value": 253
         }
       ],
-      "about": "The fight turns into Battle's rule, the player's gauge is full and the rival is out of health, so the next frame is the fight's end."
+      "about": "A name already saved, the main menu's third move right, A for Training, Start on its first choices and the three picks, then the fight's way to the knockout, whose frame the start point opens on."
     }
   ]
 }

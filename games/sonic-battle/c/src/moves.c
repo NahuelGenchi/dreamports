@@ -1261,7 +1261,13 @@ void landOrFall(int i) {
     int current = read16(rec + STATE);
     if ((uint16_t)(current - 254) <= 1) return;
     if (current != 253 && (read32(rec + FLAGS) & 1)) {
-      write8(SETUP_ + 51 + i, (uint8_t)(read8(SETUP_ + 51 + i) + 1));
+      // the other fighter gains the point: the one whose hit took this fighter's health, or the other one in play
+      int scorer = read8(rec + 124);
+      if (scorer == i || scorer > 3) {
+        scorer = -1;
+        for (int j = 0; j < 4; j++) if (j != i && read8(SLOTS_ + j) != 255) { scorer = j; break; }
+      }
+      if (scorer >= 0) write8(SETUP_ + 51 + (uint32_t)scorer, (uint8_t)(read8(SETUP_ + 51 + scorer) + 1));
       write8(SETUP_ + 47 + i, 0);
       setState(i, 253);
       write8(rec + 28, 0);
