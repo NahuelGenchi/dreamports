@@ -14,6 +14,9 @@ export const CLIP_FRAMES = 300;
 /** How far before the first frame a step changed its clip starts by itself, so it shows where that comes from. */
 export const CLIP_LEAD = 60;
 
+/** How many of a clip's frames at least show what the step changed: half of the shortest. */
+export const NEW_FRAMES = CLIP_FRAMES / 2;
+
 /** The SHA-1 of a recording's file, which ties a clip to the recording as it was when proven. */
 export const recordingHash = text => createHash('sha1').update(text).digest('hex');
 
@@ -49,7 +52,7 @@ export function mainProof(game) {
   return { base, recordings, proven: new Set(Object.values(recordings ?? {}).flatMap(r => r.functions ?? [])), files: file };
 }
 
-/** A recording that changed nothing still gets a clip in .dreamports/results/, so it says so instead of a frame. */
+/** Where a step's change starts in a recording, as prove prints it. */
 export function changedText(changed) {
   return changed ? `from frame ${changed.frame}, ${changed.why}` : 'nothing main didn\'t prove';
 }
@@ -129,30 +132,24 @@ export function clipWindow({ frames, changed, firstDifference }) {
  * @returns {string[]}
  */
 export function clipProblems(report, committed, { sideBySide = true, base } = {}) {
-  const clip = report?.clip;
-  if (!clip || typeof clip.apart !== 'number' || typeof clip.oneColour !== 'number' || typeof clip.same !== 'number'
-    || clip.changed === undefined || !report.recordingFile || !report.recordingSha1) {
-    return ['This clip comes from before prove measured what a clip shows: prove the recording again for a new one.'];
-  }
+  const stale = staleness(report, committed, { base });
+  if (stale) return [stale];
+  const clip = report.clip, name = report.recording;
   const problems = [];
-  const name = report.recording;
-  // what the step changed is told from main as the branch started from it, which a merge of main moves
-  if (base !== undefined && (clip.base ?? null) !== base) {
-    return [`The clip of ${name} was made against main at ${String(clip.base ?? 'none').slice(0, 7)}, and this branch starts from ${String(base ?? 'none').slice(0, 7)} now: prove it again.`];
-  }
   if (clip.changed === null) {
     problems.push(`${name} shows nothing this step changed: main played every frame of it the same, and its original runs no code main's proof doesn't count. `
       + 'Its clip would show what main already does, so share the clip of a recording that shows the change, or make one that does.');
   } else {
     if (clip.frames < CLIP_FRAMES) {
       problems.push(`The clip of ${name} is ${clip.frames} frames, ${clip.seconds.toFixed(2)} seconds, and a clip lasts at least ${CLIP_FRAMES} frames, five seconds. `
-        + `The recording runs on, in the place it proves, until frame ${clip.changed.frame + CLIP_FRAMES - CLIP_LEAD} at least.`);
+        + `The recording runs on, in the place it proves, until frame ${clip.changed.frame + NEW_FRAMES} at least.`);
     }
-    // the way there says nothing about the step: three quarters of the clip shows what it changed
+    // the way there, such as a menu before the act a step is about, says nothing about the step: at least half the clip
+    // shows what it changed
     const shown = clip.newFrames ?? 0;
-    if (clip.frames >= CLIP_FRAMES && shown * 4 < clip.frames * 3) {
+    if (clip.frames >= CLIP_FRAMES && shown * 2 < clip.frames) {
       problems.push(`Only ${shown} of the clip's ${clip.frames} frames come from frame ${clip.changed.frame} on, ${clip.changed.why}, so the clip shows mostly the way there, not what this step changed. `
-        + `The recording runs on, in the place it proves, until frame ${clip.changed.frame + CLIP_FRAMES - CLIP_LEAD} at least, and its "clip", if it has one, starts no earlier than frame ${Math.max(0, clip.changed.frame - CLIP_FRAMES / 4)}.`);
+        + `The recording runs on, in the place it proves, until frame ${clip.changed.frame + Math.ceil(clip.frames / 2)} at least, and its "clip", if it has one, starts no earlier than frame ${Math.max(0, clip.changed.frame - Math.floor(clip.frames / 2))}.`);
     }
   }
   // a picture with nothing on it, or one that never moves, says nothing about the Dreamport either
@@ -167,9 +164,27 @@ export function clipProblems(report, committed, { sideBySide = true, base } = {}
     problems.push(`${clip.apart} of the clip's ${clip.frames} frames differ from the original's in more than half their pixels, so the original and the Dreamport are in different places. `
       + 'The recording has to take both to the same place, such as with "sets" that give the original the progress the start point gives the Dreamport.');
   }
-  if (!committed) problems.push(`${report.recordingFile} isn't in the commit, and a clip comes from a recording that is: commit it, then prove it again.`);
-  else if (recordingHash(committed) !== report.recordingSha1) problems.push(`${report.recordingFile} changed after prove made this clip: prove it again.`);
   return problems;
+}
+
+/**
+ * Why a clip prove made no longer tells what it showed, or null when it still does: one from before prove measured
+ * clips, one whose recording isn't committed or changed since, or one made against another main than the branch starts
+ * from now, as a merge of main moves what the step changed. Such a clip is proven again, not fixed.
+ * @returns {string | null}
+ */
+export function staleness(report, committed, { base } = {}) {
+  const clip = report?.clip;
+  if (!clip || typeof clip.apart !== 'number' || typeof clip.oneColour !== 'number' || typeof clip.same !== 'number'
+    || clip.changed === undefined || !report.recordingFile || !report.recordingSha1) {
+    return 'This clip comes from before prove measured what a clip shows: prove the recording again for a new one.';
+  }
+  if (!committed) return `${report.recordingFile} isn't in the commit, and a clip comes from a recording that is: commit it, then prove it again.`;
+  if (recordingHash(committed) !== report.recordingSha1) return `${report.recordingFile} changed after prove made this clip: prove it again.`;
+  if (base !== undefined && (clip.base ?? null) !== base) {
+    return `The clip of ${report.recording} was made against main at ${String(clip.base ?? 'none').slice(0, 7)}, and this branch starts from ${String(base ?? 'none').slice(0, 7)} now: prove it again.`;
+  }
+  return null;
 }
 
 /** The addresses of clips, their frames and their measures in a text, as share's lines link them: …/clips/<game>/…. */

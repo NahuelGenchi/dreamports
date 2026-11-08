@@ -17,7 +17,7 @@ import { createInterface } from 'node:readline/promises';
 import { LOCAL, gameFolder } from './lib/paths.mjs';
 import { versionOf, versionTitle } from '../src/lib/languages.mjs';
 import { head, uncommitted, remotes, fileAt, fetchPreviews, pushPreviews, makePreview, BRANCH, CLIPS } from './lib/preview.mjs';
-import { clipProblems, mainBase, clipLinks, reportOf } from './lib/clips.mjs';
+import { clipProblems, staleness, mainBase, clipLinks, reportOf } from './lib/clips.mjs';
 import { UPSTREAM, api, signedInAs, findFork, hasCommit, pagesOf, turnOnPages, lastBuild, buildPages } from './lib/github.mjs';
 
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -172,7 +172,7 @@ function predictedAddress(fork) {
 // own clips, from .dreamports/results/, can go: the side by side clip.mp4, or the Dreamport's alone, dreamport.mp4.
 // A recording that shows nothing this step changed is left out, and a clip of what it changed that breaks a rule stops
 // share, as the pull request needs it. [{ file, bytes, still, sideBySide, recording, shows, report }]
-function chooseClips(game, file, commit, base) {
+export function chooseClips(game, file, commit, base) {
   const results = join(LOCAL, 'results', game);
   const problemsOf = clip => clipProblems(clip.report, clip.report?.recordingFile ? fileAt(commit, clip.report.recordingFile) : null, { sideBySide: clip.sideBySide, base });
   if (file) {
@@ -188,17 +188,24 @@ function chooseClips(game, file, commit, base) {
   }
   const found = made.map(f => {
     const clip = proveClip(results, f);
-    return { clip, problems: problemsOf(clip) };
+    const committed = clip.report?.recordingFile ? fileAt(commit, clip.report.recordingFile) : null;
+    return { clip, stale: staleness(clip.report, committed, { base }), problems: problemsOf(clip) };
   });
   const good = found.filter(f => !f.problems.length).map(f => f.clip);
-  // only clips of what the step changed matter: one of a recording that shows nothing new isn't missing
-  const unchanged = found.filter(f => f.problems.length && f.clip.report?.clip?.changed === null && f.clip.report?.recordingSha1);
-  const broken = found.filter(f => f.problems.length && !unchanged.includes(f));
+  // only clips of what the step changed matter: one of a recording that shows nothing new isn't missing, and one prove
+  // made before the last commit or merge of main, such as of a recording a step before this one played, says nothing
+  const stale = found.filter(f => f.stale);
+  const unchanged = found.filter(f => !f.stale && f.clip.report.clip.changed === null);
+  const broken = found.filter(f => f.problems.length && !f.stale && !unchanged.includes(f));
   if (unchanged.length) console.log(`Left out, as they show nothing this step changed: ${unchanged.map(f => f.clip.recording).join(', ')}.`);
+  if (stale.length) console.log(`Left out, as prove made them before the last commit or merge of main changed them: ${stale.map(f => f.clip.recording).join(', ')}. Prove them again if they show this step.`);
   if (broken.length && !good.length) {
     throw new Error(`No clip of what this step changed keeps the rules, so nothing was published:\n${broken.map(f => `  ${f.clip.recording}:\n${f.problems.map(p => `    ${p}`).join('\n')}`).join('\n')}`);
   }
-  if (broken.length) console.log(`Left out, as they break a rule, though the clips that keep them go: ${broken.map(f => `${f.clip.recording} (${f.problems[0]})`).join('; ')}\n`);
+  if (broken.length) console.log(`Left out, as they break a rule, though the clips that keep them go:\n${broken.map(f => `  ${f.clip.recording}: ${f.problems.join(' ')}`).join('\n')}\n`);
+  if (!good.length && stale.length && !unchanged.length) {
+    throw new Error('Every clip prove made is from before the last commit or merge of main changed its recording, so nothing was published: run npm run dp -- prove with every recording, then share again.');
+  }
   if (!good.length) console.log('No recording shows anything this step changed, so the preview goes without a clip.\n');
   return good;
 }
@@ -311,9 +318,13 @@ export function missingLines(text, saved) {
 // share --check: the pull request's text has every clip shared from this branch, each with its frame and link
 function checkText(file) {
   if (!existsSync(file)) throw new Error(`${file} isn't there: give the pull request's text, filled in from .github/pull_request_template.md.`);
-  const { branch } = head();
+  const { branch, commit } = head();
   const saved = readSaved();
   if (saved?.branch !== branch) throw new Error(`Nothing has been shared from ${branch} yet, and a Dreamport's pull request shows its clips: run npm run dp -- share <game> first.`);
+  // a clip shared before that no longer keeps the rules, such as after a merge of main, is shared again, not shown
+  if (stillGood(saved, branch, commit, mainBase()).clips.length < saved.clips.length) {
+    throw new Error(`A clip shared from ${branch} no longer keeps the rules, as it says above: prove its recording again and run npm run dp -- share <game> again.`);
+  }
   if (!saved.clips.length) {
     if (clipLinks(readFileSync(file, 'utf8')).length) throw new Error(`share published no clip from ${branch}, so the text can't link one: take the clips' links out.`);
     console.log(`share found no clip to publish from ${branch}, so the text has none to show.`);

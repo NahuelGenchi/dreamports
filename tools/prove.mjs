@@ -225,7 +225,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // where this step's change starts, as main's proof tells it, for the clip to start a second before (lib/clips.mjs):
     // a guess now, from main alone, and known once the Dreamport has played
     const recordingText = readFileSync(recording.file, 'utf8'), recordingFile = relative(REPO, recording.file).replaceAll('\\', '/');
-    const ranAt = codeMap && first.ran ? f => (first.ran[originalOf[f]] ?? []).map(i => hex(codeMap.functions[i].address)) : null;
+    // (a frame's list comes as a Uint32Array, whose own map would turn the addresses back into numbers)
+    const ranAt = codeMap && first.ran ? f => Array.from(first.ran[originalOf[f]] ?? [], i => hex(codeMap.functions[i].address)) : null;
     const changeOf = differs => firstChanged({ main, name, file: recordingFile, text: recordingText, frames, ran: ranAt, differs });
     const guessed = quick ? null : changeOf(null);
     const compareSound = soundOf(first.sound, machine), heardOf = Array.from(originalOf, g => g + 1);
@@ -530,8 +531,9 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (!quick) console.log(`  Clip, ${(file.length / 1e6).toFixed(2)} MB, frames ${clip[0]} to ${clip[1]}: ${where}/clip.mp4`);
     if (!quick && file.length > CLIP_LIMIT) console.log('  The clip is still over 2 MB: a shorter "clip" in the recording makes it lighter.');
     // where this step's change starts, and what share would refuse, said now, while the recording can still change
-    if (!quick) console.log(`  What this step changed: ${changedText(changed)}.`);
-    for (const problem of problems) console.log(`  share won't put this clip in a pull request: ${problem}`);
+    // a recording the step changed nothing in has nothing to say about its clip, which share leaves out
+    if (!quick) console.log(`  What this step changed: ${changedText(changed)}${changed ? '' : ', so share leaves this clip out'}.`);
+    if (changed) for (const problem of problems) console.log(`  share won't put this clip in a pull request: ${problem}`);
     if (showing) console.log(`  What the original shows as it ends: ${Object.entries(showing).map(([kind, value]) => `its ${kind} is ${typeof value === 'number' ? `${value}, which original.json gives no name` : value}`).join('; ')}.`);
     return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(showing ? { shows: showing } : {}), functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };
     }

@@ -20,7 +20,7 @@ const report = clip => ({
 
 test('five seconds of what the step changed, of both in the same place, moving, from the committed recording, can go in a pull request', () => {
   assert.deepEqual(clipProblems(report(), RECORDING), []);
-  assert.deepEqual(clipProblems(report({ apart: 75, oneColour: 75, same: 270, newFrames: 225 }), Buffer.from(RECORDING)), []);
+  assert.deepEqual(clipProblems(report({ apart: 75, oneColour: 75, same: 270, newFrames: 150 }), Buffer.from(RECORDING)), []);
 });
 
 test('a clip of a fraction of a second, or of two seconds, is refused', () => {
@@ -32,8 +32,10 @@ test('a clip of the way there, such as a menu before the act it proves, is refus
   // casino-2-opening, as #1003 shared it: 300 frames of the course select, and the act in its last
   const [problem] = clipProblems(report({ changed: { frame: 1299, why: 'where the original first runs code main\'s proof doesn\'t count, at 0800C728' }, newFrames: 1 }), RECORDING);
   assert.match(problem, /Only 1 of the clip's 300 frames come from frame 1299 on/);
-  assert.match(problem, /until frame 1539 at least/);
-  assert.equal(clipProblems(report({ newFrames: 224 }), RECORDING).length, 1);
+  assert.match(problem, /until frame 1449 at least, and its "clip", if it has one, starts no earlier than frame 1149/);
+  // a special attack two and a half seconds into the clip, as #1023's Chaos recordings have it, shows enough of it
+  assert.deepEqual(clipProblems(report({ newFrames: 151 }), RECORDING), []);
+  assert.equal(clipProblems(report({ newFrames: 149 }), RECORDING).length, 1);
 });
 
 test('a clip of a recording the step changed nothing in is refused', () => {

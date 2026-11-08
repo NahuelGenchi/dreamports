@@ -140,7 +140,7 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   const per = Array.from({ length: players }, (_, p) => hashes.filter((h, f) => h[p] !== expected[f][p]).length);
   console.log(`\n${name}: ${players} players, ${matched} of ${hashes.length} frames played match${firstDifference >= 0 ? `; the first that differs is ${firstDifference}, and each player differs in ${per.join(', ')} frames` : ''}. Pictures: ${out}`);
   if (clipFile) console.log(`  Clip, ${(clipFile.length / 1e6).toFixed(2)} MB, frames ${clipAt[0]} to ${clipAt.at(-1)}: ${out}/clip.mp4 (the Dreamport's screens above, the original's below)`);
-  if (clipFile) console.log(`  What this step changed: ${changedText(changed)}.`);
-  for (const problem of problems) console.log(`  share won't put this clip in a pull request: ${problem}`);
+  if (clipFile) console.log(`  What this step changed: ${changedText(changed)}${changed ? '' : ', so share leaves this clip out'}.`);
+  if (changed) for (const problem of problems) console.log(`  share won't put this clip in a pull request: ${problem}`);
   return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], functions: [] };
 }
