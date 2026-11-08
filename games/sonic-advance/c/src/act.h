@@ -1,5 +1,6 @@
-// The act: X Zone's stage, the camera, Sonic and the HUD, translated from the JavaScript version's engine/game.js,
-// engine/player.js, engine/camera.js, engine/terrain.js, engine/stage.js, engine/hud.js and rom/extract.js.
+// The acts: their stages, the camera, Sonic, the HUD and the title card, translated from the JavaScript version's
+// engine/game.js, engine/player.js, engine/camera.js, engine/terrain.js, engine/stage.js, engine/hud.js,
+// engine/titlecard.js and rom/extract.js.
 
 #ifndef SA_ACT_H
 #define SA_ACT_H
