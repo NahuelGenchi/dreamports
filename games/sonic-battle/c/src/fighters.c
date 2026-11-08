@@ -367,7 +367,7 @@ int stepAnimation(int set, int id, int loops, int tiles, int player) {
     if (read16(ANIM_CURSOR + two) > 254) return 255;
   }
   if ((WORD() & 0xFFFF) != reads16(ANIM_COUNT + two)) COUNTED();
-  g.cycles += 430;
+  g.cycles += 160;
   write16(ANIM_CURSOR + two, read16(ANIM_CURSOR + two) + 1);
   if ((WORD() >> 16) == 0xFFF0) COUNTED();
   for (;;) {
@@ -380,7 +380,11 @@ int stepAnimation(int set, int id, int loops, int tiles, int player) {
       write16(ANIM_CURSOR + two, 0);
       write16(ANIM_COUNT + two, (uint16_t)(1 - (loops & 0xFF)));
       return restarted ? 0 : 255;
+    } else if (kind == 0x0100) {
+      // the original's default path for this command, whose work no other script here spends
+      g.cycles += 270;
     } else if (kind == 0x1000) {
+      g.cycles += 270;
       int other = read8(OTHER_COLOURS + player) != 0 || copying;
       uint32_t sheet = 0;
       int row = character >= 20 ? character - 20 : character;
