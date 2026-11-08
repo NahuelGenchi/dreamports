@@ -267,6 +267,11 @@ static void casino_background_update(void) {
 // It shows its animation once, drawn four times (as it is, across, down and both), and goes on the frame after it ends.
 typedef struct { Sprite s; int x, y, live; } Firework;
 static Firework fireworks[8];
+// TaskDestructor_MultiplayerSpriteTask: the task gives its sprite's tiles back to the heap
+static void firework_destroy(Task *t) {
+  Firework *f = t->data;
+  vram_free(f->s.graphics.dest);
+}
 static void firework_task(Task *t) {
   Firework *f = t->data;
   if (f->s.frameFlags & SPRITE_ANIM_OVER) { f->live = 0; destroy_task(t); return; }
@@ -292,7 +297,7 @@ static void create_firework(int x, int y, int small) {
     f->s.oamFlags = 31 << 6; f->s.frameFlags = 3 << 12;
     f->x = x; f->y = y; f->live = 1;
     f->s.x = (int16_t)(x - act.cam.bgX); f->s.y = (int16_t)(y - act.cam.bgY);
-    create_task(firework_task, f, FIREWORK_PRIORITY, 0, NULL);
+    create_task(firework_task, f, FIREWORK_PRIORITY, 0, firework_destroy);
     return;
   }
 }
@@ -725,6 +730,8 @@ static void pre_run(int cardSkip, int preFrames) {
 
 void act_start(int level, int cardSkip, int preFrames) {
   memset(&act, 0, sizeof act);
+  // a firework still going from the last act ends here and gives its tiles back before the array is cleared
+  destroy_tasks(FIREWORK_PRIORITY, FIREWORK_PRIORITY + 1);
   memset(fireworks, 0, sizeof fireworks);
   memset(&tileAnim, 0, sizeof tileAnim);
   load_stage(level);
