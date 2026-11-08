@@ -561,6 +561,11 @@ void setState(int i, int state) {
     write32(rec + FLAGS, read32(rec + FLAGS) | 1);
   }
   // (0x08002762) what the special attacks' states do with their things
+  if (state == 21 || state == 22) {
+    // the state's own timer, which counts the special down, set by the frame that starts it
+    int timer = 145 + (state - 21);
+    if (read8(rec + timer) == 0) { write8(rec + timer, 240); return; }
+  }
   if (state == 21) {
     if (read8(rec + 23) != 0) return;
     for (int k = 0; k < 12; k++) {
@@ -1073,8 +1078,8 @@ void readFighterKeys(int i) {
       write8(rec + timers2[n], 0);
       continue;
     }
-    int rate = left > 149 ? 30 : left > 59 ? 15 : 0;
-    if (rate != 0 && left % rate == 0 && i == (int)read32(PLAYER_)) gba_sound_play(0x338);
+    // 0x08005888 asks for song 0x338 at this timer's steps, but the original never sounds it: Sonic's
+    // specials-power and Cream's air Power show only the special's own sound while the timer runs down.
     write8(rec + timers2[n], (uint8_t)(left - 1));
   }
 }
@@ -1403,7 +1408,7 @@ static void runThingScript(int k, uint32_t script) {
         else if (op == 0x1600) write8(thing + THING_PICTURE_WAIT, (uint8_t)w);
         else if (op == 0x3F00) write8(thing + THING_SHAKE, 1);
         else if (op == 0x3000) write8(0x030016CC, (uint8_t)w);
-        else if (op == 0x0001) {
+        else if (op == 0x0001 || (w >> 24) == 1) {
           int speed = s16(w), diagonal = (int16_t)(((uint32_t)(speed * 11) << 12) >> 16);
           switch (read8(thing + THING_FACING)) {
             case 1: write16(thing + THING_SPEED_X, (uint16_t)-diagonal); write16(thing + THING_SPEED_Y, (uint16_t)diagonal); break;
@@ -1417,7 +1422,7 @@ static void runThingScript(int k, uint32_t script) {
             default: break;
           }
         } else if (op == 0x0002) write16(thing + THING_SPEED_Z, (uint16_t)w);
-        else if (op == 0x0012) write16(thing + THING_FALL, (uint16_t)w);
+        else if (op == 0x0012 || (w >> 24) == 0x12) write16(thing + THING_FALL, (uint16_t)w);
         else if (op == 0x2800) {
           int place = ((read16(thing + THING_SCREEN_X) - 88) << 17) >> 16;
           if (place > 127) place = 127;
@@ -1694,8 +1699,11 @@ void updateThings(void) {
     int wait = read8(thing + THING_WAIT);
     if (wait != 0) { write8(thing + THING_WAIT, (uint8_t)(wait - 1)); continue; }
     uint32_t script = thingScript(kind);
-    if (!script) notPorted("0800C728");
-    runThingScript(k, script);
+    // the switch at 0x0800c7dc sends a kind with no script to 0x0800cec8, which runs only its own steps
+    if (read32(0x0800C7DCu + (uint32_t)(uint16_t)(kind - 3) * 4) != 0x0800CEC8u) {
+      if (!script) notPorted("0800C728");
+      runThingScript(k, script);
+    }
     // 0x0800cec8: it follows its owner, or moves on its own
     if (read8(thing + THING_FOLLOWS) == 1) {
       uint32_t owner = record(read8(thing + THING_OWNER));
