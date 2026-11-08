@@ -10,7 +10,7 @@
 float *dp_sound_render(int count);
 
 enum {
-  OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC, OFFSET_RINGS = 0x0B7F4C, OFFSET_INTERACTABLES = 0x0B7F94, OFFSET_ITEMBOXES = 0x0B7FDC,
+  OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC, OFFSET_RINGS = 0x0B7F4C, OFFSET_INTERACTABLES = 0x0B7F94, OFFSET_ITEMBOXES = 0x0B7FDC, OFFSET_ENEMIES = 0x0B8024,
   LAYER_FRONT = 0, LAYER_BACK = 1, IGNORE_PLATFORMS = 0x80,
   SCREEN_W_ = 240, SCREEN_H_ = 160,
 };
@@ -559,7 +559,8 @@ static void step_player(Player *p, int left, int right, int up, int down, int ju
 
 // chooseAnimation and tickAnim (engine/player.js, engine/animator.js)
 static void choose_animation(Player *p) {
-  int speed = (int)__builtin_fabs(p->gsp);
+  double speed = __builtin_fabs(p->gsp);
+  int speedI = (int)speed; (void)speedI;
   int anim = SONIC_IDLE, variant = 0, speedAnim = ANIM_NORMAL;
   switch (p->state) {
     case PS_WALK:
@@ -571,7 +572,7 @@ static void choose_animation(Player *p) {
       }
       break;
     case PS_TURN: anim = SONIC_TURN; break;
-    case PS_BRAKE: anim = speed < BRAKE_MIN_SPEED ? SONIC_BRAKE_TURN : SONIC_BRAKE; break;
+    case PS_BRAKE: anim = speed < 1.5 ? SONIC_BRAKE_TURN : SONIC_BRAKE; break;
     case PS_SPIN: anim = SONIC_SPIN; break;
     case PS_SPIN_ATTACK: anim = SONIC_SPIN_ATTACK; break;
     case PS_SOMERSAULT: anim = SONIC_SOMERSAULT; break;
@@ -745,12 +746,34 @@ static void sparkles_draw(int camX, int camY) {
   for (int i = 0; i < sparkleCount; i++) if (!sparkles[i].dead) sparkles[kept++] = sparkles[i];
   sparkleCount = kept;
 }
-// --- item boxes, springs and spikes (engine/itembox.js, springs.js, spikes.js) ----------------------------------
-#define ENT_MAX 32
-typedef struct { int kind, x, y, d[4], active, live, dy, vy, hopping, phase, n; Sprite box, icon; } Box;
-typedef struct { int kind, x, y, d[4], active, launching; Sprite s; } Obj;
+// --- item boxes, springs, spikes and the act's enemies ------------------------------------------------------------
+// The entities manager makes each object's task when its point comes into the camera's range, and that task runs
+// from that same frame (Task_8008DCC). A sprite's tiles come from VramMalloc when its task is made, so the heap's
+// addresses follow the spawn order; a task that leaves frees them. Here the objects keep their data from the act's
+// tables, and their sprites are made when they first come in and freed when they leave, in the same order.
+#define ENT_MAX 64
+typedef struct { int kind, x, y, rx, ry, seq, d[4], active, spawned, gone, live, dy, vy, hopping, phase, n; Sprite box, icon; } Box;
+typedef struct { int kind, x, y, rx, ry, seq, d[4], active, spawned, anim, variant; int launching; Sprite s; } Obj;
+typedef struct { int kind, x, y, rx, ry, seq, d[4], active, spawned, anim, variant; Sprite s; } Prop;
 static Box boxes[ENT_MAX]; static int boxCount;
 static Obj springs[ENT_MAX], spikes[ENT_MAX]; static int springCount, spikeCount;
+static Prop props[ENT_MAX]; static int propCount;
+static int entRegionsX = 45, entRegionsY = 6;
+enum { EK_KIKI, EK_BUZZER, EK_GAMIGAMI, EK_RHINOTANK, EK_KEROKERO };
+#define ENEMY_MAX 32
+#define SHOT_MAX 32
+typedef struct {
+  int kind, x, y, rx, ry, seq, d[4], active, spawned, gone;
+  int state, off, yoff, vx, vy, t, n, cd, tops, throwing, shot, tackle, right;
+  Sprite s;
+} Enemy;
+typedef struct { int kind, x, y, x0, y0, vx, vy, acc, qx, qy, x4, dx, resting, rest, bounces, done; Sprite s; } Shot;
+static Enemy enemies[ENEMY_MAX]; static int enemyCount;
+static Shot shots[SHOT_MAX]; static int shotCount;
+enum { SHOT_COCONUT, SHOT_PIECE, SHOT_BUZZER, SHOT_GAMI };
+
+static void enemy_spawn(Enemy *e);
+
 
 static int read_grid(uint32_t table, int level, uint8_t *out, int cap) {
   uint32_t raw = rom_u32(table + level * 4);
@@ -763,30 +786,86 @@ static void load_entities(int level) {
   int n = read_grid(OFFSET_ITEMBOXES, level, data, sizeof data);
   if (n >= 12) {
     uint32_t rx = data32(data, 4), ry = data32(data, 8);
+    entRegionsX = (int)rx; entRegionsY = (int)ry;
     for (uint32_t r = 0; r < rx * ry && r < 4096; r++) {
       uint32_t off = data32(data, 12 + r * 4); if (!off) continue;
+      int seq = 0;
       for (int at = 4 + (int)off; at + 2 < n && data[at] != 0xFF && boxCount < ENT_MAX; at += 3) {
         Box *b = &boxes[boxCount++];
         b->kind = data[at + 2]; b->x = data[at] * 8 + (int)(r % rx) * 256; b->y = data[at + 1] * 8 + (int)(r / rx) * 256;
-        b->active = 0; b->live = 1; b->dy = b->vy = b->hopping = b->phase = b->n = 0;
+        b->rx = (int)(r % rx); b->ry = (int)(r / rx); b->seq = seq++;
+        b->active = b->spawned = b->gone = 0; b->live = 1; b->dy = b->vy = b->hopping = b->phase = b->n = 0;
       }
     }
   }
   n = read_grid(OFFSET_INTERACTABLES, level, data, sizeof data);
   if (n >= 12) {
     uint32_t rx = data32(data, 4), ry = data32(data, 8);
+    entRegionsX = (int)rx; entRegionsY = (int)ry;
+    int seq = 0;
     for (uint32_t r = 0; r < rx * ry && r < 4096; r++) {
-      uint32_t off = data32(data, 12 + r * 4); if (!off) continue;
+      uint32_t off = data32(data, 12 + r * 4);
+      if (!off) continue;
       for (int at = 4 + (int)off; at + 6 < n && data[at] != 0xFF; at += 7) {
         int kind = data[at + 2], x = data[at] * 8 + (int)(r % rx) * 256, y = data[at + 1] * 8 + (int)(r / rx) * 256;
         Obj *o = NULL;
-        if (kind >= 1 && kind <= 4 && spikeCount < ENT_MAX) o = &spikes[spikeCount++];
+        if (kind >= 1 && kind <= 6 && spikeCount < ENT_MAX) o = &spikes[spikeCount++];
         else if ((kind >= 8 && kind <= 15) || kind == 108) { if (springCount < ENT_MAX) o = &springs[springCount++]; }
-        if (!o) continue;
-        o->kind = kind; o->x = x; o->y = y; o->active = o->launching = 0;
-        for (int i = 0; i < 4; i++) o->d[i] = (int8_t)data[at + 3 + i];
+        if (o) {
+          o->kind = kind; o->x = x; o->y = y; o->rx = (int)(r % rx); o->ry = (int)(r / rx); o->seq = seq;
+          o->active = o->spawned = o->launching = 0;
+          for (int i = 0; i < 4; i++) o->d[i] = (int8_t)data[at + 3 + i];
+        }
+        seq++;
       }
     }
+  }
+}
+static int prop_look(int kind, int d0, int *variant) {
+  *variant = 0;
+  switch (kind) {
+    case 0: return 453; case 7: return 452;
+    case 21: case 22: case 55: return 463; case 23: return 461; case 24: return 904; case 25: return 462;
+    case 30: return 467;
+    case 31: return 471; case 32: *variant = 2; return 471; case 33: *variant = 1; return 471;
+    case 44: case 45: return 452;
+    case 47: return 472;
+    case 100: return 571; case 101: return 570;
+    default: return -1;
+  }
+}
+static void load_props(int level) {
+  static uint8_t data[32768];
+  propCount = 0;
+  int n = read_grid(OFFSET_INTERACTABLES, level, data, sizeof data);
+  if (n < 12) return;
+  uint32_t rx = data32(data, 4), ry = data32(data, 8);
+  int seq = 0;
+  for (uint32_t r = 0; r < rx * ry && r < 4096; r++) {
+    uint32_t off = data32(data, 12 + r * 4);
+    if (!off) continue;
+    for (int at = 4 + (int)off; at + 6 < n && data[at] != 0xFF; at += 7) {
+      int kind = data[at + 2], v;
+      int anim = prop_look(kind, data[at + 3], &v);
+      if (anim >= 0 && propCount < ENT_MAX) {
+        Prop *o = &props[propCount++];
+        o->kind = kind; o->x = data[at] * 8 + (int)(r % rx) * 256; o->y = data[at + 1] * 8 + (int)(r / rx) * 256;
+        o->rx = (int)(r % rx); o->ry = (int)(r / rx); o->seq = seq;
+        o->active = o->spawned = 0; o->anim = anim; o->variant = v;
+        for (int i = 0; i < 4; i++) o->d[i] = (int8_t)data[at + 3 + i];
+      }
+      seq++;
+    }
+  }
+}
+static int prop_tiles(int anim, int variant) {
+  switch (anim) {
+    case 453: return 36; case 452: return 18;
+    case 463: return 18; case 461: return 24; case 462: return 12; case 904: return 18; case 467: return 16;
+    case 468: return 12;
+    case 471: return variant ? 12 : 8;
+    case 472: return 8;
+    default: return 16;
   }
 }
 static void entity_sprite(Sprite *sp, int anim, int variant, uint32_t tiles, int order) {
@@ -796,24 +875,8 @@ static void entity_sprite(Sprite *sp, int anim, int variant, uint32_t tiles, int
   sp->graphics.anim = (uint16_t)anim; sp->variant = (uint8_t)variant; sp->animSpeed = ANIM_NORMAL;
   sp->palId = 0; sp->oamFlags = (uint16_t)(order << 6); sp->frameFlags = 2 << 12;
 }
+static void sprite_free(Sprite *sp) { if (sp->graphics.dest >= OBJ_VRAM + 0x13200) vram_free(sp->graphics.dest); }
 static const int SPRING_ANIM[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 4, 4, 6, 6 };
-static void entities_init(void) {
-  for (int i = 0; i < boxCount; i++) {
-    Box *b = &boxes[i];
-    entity_sprite(&b->box, 705, 0, 16, 18);
-    entity_sprite(&b->icon, 706, b->kind == 0 ? 0 : b->kind == 5 ? 8 : b->kind + 4, 4, 19);
-  }
-  for (int i = 0; i < springCount; i++) {
-    Obj *o = &springs[i];
-    int v = o->kind >= 8 && o->kind <= 15 ? SPRING_ANIM[o->kind] : 0;
-    entity_sprite(&o->s, 455, v, 8, 18);
-  }
-  for (int i = 0; i < spikeCount; i++) {
-    Obj *o = &spikes[i];
-    int v = o->kind == 1 || o->kind == 2 ? 2 : 3;
-    entity_sprite(&o->s, 454, v, 8, 17);
-  }
-}
 static int ent_active(int x, int y) {
   return x >= act.cam.x - 128 && x <= act.cam.x + 368 && y >= act.cam.y - 128 && y <= act.cam.y + 288;
 }
@@ -825,14 +888,28 @@ static int hits(int x0, int y0, const Hitbox *b, int px, int py, const int *r) {
 }
 static void body_rect(const Player *p, int *r) { r[0] = -6; r[1] = -p->offsetY; r[2] = 6; r[3] = p->offsetY; }
 static void attack_rect(const Player *p, int *r) { r[0] = sonic.hitboxes[1].left; r[1] = sonic.hitboxes[1].top; r[2] = sonic.hitboxes[1].right; r[3] = sonic.hitboxes[1].bottom; }
+// sub_801F100's one-tile floor probe (engine/terrain.js tileFloor)
+static int tile_floor(int x, int y, int layer) {
+  int v = column_height(x, y, layer), r = y & 7;
+  if (v == 0) return 8 - r;
+  if (v == 8) return -1 - r;
+  return v > 0 ? v - 1 - r : v + r;
+}
+
+// --- item boxes, springs and spikes -----------------------------------------------------------------------------
+static void box_spawn(Box *b) {
+  b->spawned = 1;
+  entity_sprite(&b->box, 705, 0, 16, 18);
+  entity_sprite(&b->icon, 706, b->kind == 0 ? 0 : b->kind == 5 ? 8 : b->kind + 4, 4, 19);
+  update_sprite(&b->box, 0); update_sprite(&b->icon, 0);
+}
 static void break_box(Box *b) { b->phase = 1; b->n = 0; b->live = 0; play_song(167); }
 static void boxes_step(Player *p) {
   int body[4], attack[4]; body_rect(p, body);
   int hasAttack = sonic.hitboxes[1].index >= 0; if (hasAttack) attack_rect(p, attack);
   for (int i = 0; i < boxCount; i++) {
     Box *b = &boxes[i];
-    b->active = ent_active(b->x, b->y);
-    if (!b->active) continue;
+    if (!b->active || !b->spawned) continue;
     if (b->phase == 1) {
       b->dy--;
       if (++b->n > 60) b->phase = 2;
@@ -847,7 +924,7 @@ static void boxes_step(Player *p) {
     int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
     const Hitbox *hb = &b->box.hitboxes[0];
     if (hb->index >= 0 && hits(b->x, b->y + b->dy, hb, px, py, body)) {
-      int top = b->y + b->dy + hb->top, bottom = b->y + b->dy + hb->bottom;
+      int top = b->y + b->dy + hb->top;
       if (!p->air && p->ysp >= 0 && py - p->offsetY < top) {
         p->y = top - p->offsetY + (p->y - py); p->ysp = 0; p->gsp = p->xsp; p->air = 0; p->state = PS_WALK;
       } else if (p->air && p->ysp >= 0 && py <= top + 8) {
@@ -860,12 +937,17 @@ static void boxes_step(Player *p) {
     }
   }
 }
+static void spring_spawn(Obj *o) {
+  o->spawned = 1;
+  int v = o->kind >= 8 && o->kind <= 15 ? SPRING_ANIM[o->kind] : 0;
+  entity_sprite(&o->s, 455, v, 16, 18);
+  update_sprite(&o->s, 0);
+}
 static void springs_step(Player *p) {
   int body[4]; body_rect(p, body);
   for (int i = 0; i < springCount; i++) {
     Obj *o = &springs[i];
-    o->active = ent_active(o->x, o->y);
-    if (!o->active) continue;
+    if (!o->active || !o->spawned) continue;
     const Hitbox *hb = &o->s.hitboxes[0];
     int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
     if (!hits(o->x, o->y, hb, px, py, body)) continue;
@@ -882,75 +964,97 @@ static void springs_step(Player *p) {
     }
   }
 }
+static void spike_spawn(Obj *o) {
+  o->spawned = 1;
+  int v = o->kind == 1 || o->kind == 2 ? 2 : 3;
+  entity_sprite(&o->s, 454, v, 16, 17);
+  update_sprite(&o->s, 0);
+}
 static void spikes_step(Player *p) {
   int body[4]; body_rect(p, body);
   for (int i = 0; i < spikeCount; i++) {
     Obj *o = &spikes[i];
-    o->active = ent_active(o->x, o->y);
-    if (!o->active || p->invulnerable || p->dead) continue;
+    if (!o->active || !o->spawned || p->invulnerable || p->dead) continue;
     if (hits(o->x, o->y, &o->s.hitboxes[0], (int)__builtin_floor(p->x), (int)__builtin_floor(p->y), body)) {
       hurt(p); play_song(171);
     }
   }
 }
-static void entities_step(Player *p) { boxes_step(p); springs_step(p); spikes_step(p); }
-static void entities_draw(int camX, int camY) {
-  for (int i = 0; i < boxCount; i++) {
-    Box *b = &boxes[i]; if (!b->active) continue;
-    if (b->phase != 2) { b->box.x = (int16_t)(b->x - camX); b->box.y = (int16_t)(b->y + b->dy - camY); display_sprite(&b->box); }
-    if (b->phase == 1 || b->phase == 2) { b->icon.x = (int16_t)(b->x - camX); b->icon.y = (int16_t)(b->y + b->dy - camY); display_sprite(&b->icon); }
-  }
-  for (int i = 0; i < springCount; i++) { Obj *o = &springs[i]; if (!o->active) continue; o->s.x = (int16_t)(o->x - camX); o->s.y = (int16_t)(o->y - camY); display_sprite(&o->s); }
-  for (int i = 0; i < spikeCount; i++) { Obj *o = &spikes[i]; if (!o->active) continue; o->s.x = (int16_t)(o->x - camX); o->s.y = (int16_t)(o->y - camY); display_sprite(&o->s); }
+static void box_retire(Box *b) {
+  if (!b->spawned) return;
+  if (!b->live) b->gone = 1;
+  sprite_free(&b->box); sprite_free(&b->icon);
+  b->spawned = 0; b->phase = 0; b->dy = b->vy = b->hopping = b->n = 0;
 }
-static void entities_update(void) {
-  // an object's task is made the first frame its point is in the camera's spawn range, and that first step loads
-  // its colours and sets its hitbox: this runs before the steps, so a new object's palette lands on that frame
-  for (int i = 0; i < boxCount; i++) { boxes[i].active = ent_active(boxes[i].x, boxes[i].y); if (boxes[i].active) { update_sprite(&boxes[i].box, 0); update_sprite(&boxes[i].icon, 0); } }
-  for (int i = 0; i < springCount; i++) { springs[i].active = ent_active(springs[i].x, springs[i].y); if (springs[i].active) update_sprite(&springs[i].s, 0); }
-  for (int i = 0; i < spikeCount; i++) { spikes[i].active = ent_active(spikes[i].x, spikes[i].y); if (spikes[i].active) update_sprite(&spikes[i].s, 0); }
-}
-// --- act 2's other interactables (platforms.js, boosters.js, checkpoints.js, goal.js, shrubs.js) -----------------
-typedef struct { int kind, x, y, d[4], active, anim, variant; Sprite s; } Prop;
-static Prop props[64]; static int propCount;
-static int prop_look(int kind, int d0, int *variant) {
-  *variant = 0;
-  switch (kind) {
-    case 0: return 453; case 7: return 452;
-    case 21: case 22: return 463; case 23: return 461; case 24: return 904; case 25: return 462;
-    case 30: return 467; case 44: case 45: return 468;
-    case 31: return 471; case 32: *variant = 2; return 471; case 33: *variant = 1; return 471;
-    case 47: return 472; case 100: return 571; case 101: return 570;
-    default: return -1;
-  }
-}
-static void load_props(int level) {
-  static uint8_t data[32768];
-  propCount = 0;
-  int n = read_grid(OFFSET_INTERACTABLES, level, data, sizeof data);
-  if (n < 12) return;
-  uint32_t rx = data32(data, 4), ry = data32(data, 8);
-  for (uint32_t r = 0; r < rx * ry && r < 4096; r++) {
-    uint32_t off = data32(data, 12 + r * 4); if (!off) continue;
-    for (int at = 4 + (int)off; at + 6 < n && data[at] != 0xFF && propCount < 64; at += 7) {
-      int kind = data[at + 2], v;
-      int anim = prop_look(kind, data[at + 3], &v);
-      if (anim < 0) continue;
-      Prop *o = &props[propCount++];
-      o->kind = kind; o->x = data[at] * 8 + (int)(r % rx) * 256; o->y = data[at + 1] * 8 + (int)(r / rx) * 256;
-      o->active = 0; o->anim = anim; o->variant = v;
-      for (int i = 0; i < 4; i++) o->d[i] = (int8_t)data[at + 3 + i];
+static void obj_retire(Obj *o) { if (!o->spawned) return; sprite_free(&o->s); o->spawned = 0; o->launching = 0; }
+static void entity_spawn_all(int x0, int x1, int y0, int y1) {
+  for (int ry = y0 >> 8; ry * 256 < y1 && ry < entRegionsY; ry++) {
+    for (int rx = x0 >> 8; rx * 256 < x1 && rx < entRegionsX; rx++) {
+      // the region's interactables in the table's order, then its item boxes, then its enemies
+      for (;;) {
+        int best = -1, bestSeq = 1 << 30, bestType = 0;
+        for (int i = 0; i < springCount; i++) if (springs[i].rx == rx && springs[i].ry == ry && !springs[i].spawned && springs[i].seq < bestSeq
+          && springs[i].x >= x0 && springs[i].x <= x1 && springs[i].y >= y0 && springs[i].y <= y1) { best = i; bestSeq = springs[i].seq; bestType = 0; }
+        for (int i = 0; i < spikeCount; i++) if (spikes[i].rx == rx && spikes[i].ry == ry && !spikes[i].spawned && spikes[i].seq < bestSeq
+          && spikes[i].x >= x0 && spikes[i].x <= x1 && spikes[i].y >= y0 && spikes[i].y <= y1) { best = i; bestSeq = spikes[i].seq; bestType = 1; }
+        for (int i = 0; i < propCount; i++) if (props[i].rx == rx && props[i].ry == ry && !props[i].spawned && props[i].seq < bestSeq
+          && props[i].x >= x0 && props[i].x <= x1 && props[i].y >= y0 && props[i].y <= y1) { best = i; bestSeq = props[i].seq; bestType = 2; }
+        if (best < 0) break;
+        if (bestType == 0) { springs[best].active = 1; spring_spawn(&springs[best]); }
+        else if (bestType == 1) { spikes[best].active = 1; spike_spawn(&spikes[best]); }
+        else { Prop *o = &props[best]; o->active = 1; entity_sprite(&o->s, o->anim, o->variant, prop_tiles(o->anim, o->variant), 18); update_sprite(&o->s, 0); o->spawned = 1; }
+      }
+      for (;;) {
+        int best = -1, bestSeq = 1 << 30;
+        for (int i = 0; i < boxCount; i++) if (boxes[i].rx == rx && boxes[i].ry == ry && !boxes[i].spawned && !boxes[i].gone && boxes[i].seq < bestSeq
+          && boxes[i].x >= x0 && boxes[i].x <= x1 && boxes[i].y >= y0 && boxes[i].y <= y1) { best = i; bestSeq = boxes[i].seq; }
+        if (best < 0) break;
+        boxes[best].active = 1; box_spawn(&boxes[best]);
+      }
+      for (;;) {
+        int best = -1, bestSeq = 1 << 30;
+        for (int i = 0; i < enemyCount; i++) if (enemies[i].rx == rx && enemies[i].ry == ry && !enemies[i].spawned && !enemies[i].gone && enemies[i].seq < bestSeq
+          && enemies[i].x >= x0 && enemies[i].x <= x1 && enemies[i].y >= y0 && enemies[i].y <= y1) { best = i; bestSeq = enemies[i].seq; }
+        if (best < 0) break;
+        enemies[best].active = 1; enemy_spawn(&enemies[best]);
+      }
     }
   }
 }
-static void props_init(void) {
-  for (int i = 0; i < propCount; i++) entity_sprite(&props[i].s, props[i].anim, props[i].variant, 16, 18);
+static void entity_scan(void) {
+  int x0 = (int)act.cam.x - 128, x1 = (int)act.cam.x + 368, y0 = (int)act.cam.y - 128, y1 = (int)act.cam.y + 288;
+  if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0;
+  int w = entRegionsX * 256, h = entRegionsY * 256;
+  if (x1 >= w) x1 = w - 1; if (y1 >= h) y1 = h - 1;
+  entity_spawn_all(x0, x1, y0, y1);
+}
+static void entities_update(void) {
+  entity_scan();
+  for (int i = 0; i < springCount; i++) { Obj *o = &springs[i]; o->active = ent_active(o->x, o->y); }
+  for (int i = 0; i < spikeCount; i++) { Obj *o = &spikes[i]; o->active = ent_active(o->x, o->y); }
+  for (int i = 0; i < propCount; i++) { Prop *o = &props[i]; o->active = ent_active(o->x, o->y); }
+  for (int i = 0; i < boxCount; i++) { Box *b = &boxes[i]; b->active = ent_active(b->x, b->y); }
+  for (int i = 0; i < springCount; i++) { Obj *o = &springs[i]; if (o->active) { if (o->spawned) update_sprite(&o->s, 0); } else obj_retire(o); }
+  for (int i = 0; i < spikeCount; i++) { Obj *o = &spikes[i]; if (o->active) { if (o->spawned) update_sprite(&o->s, 0); } else obj_retire(o); }
+  for (int i = 0; i < propCount; i++) { Prop *o = &props[i]; if (o->active) { if (o->spawned) update_sprite(&o->s, 0); } else if (o->spawned) { sprite_free(&o->s); o->spawned = 0; } }
+  for (int i = 0; i < boxCount; i++) { Box *b = &boxes[i]; if (b->active) { if (b->spawned) { update_sprite(&b->box, 0); update_sprite(&b->icon, 0); } } else box_retire(b); }
+}
+static void entities_step(Player *p) { boxes_step(p); springs_step(p); spikes_step(p); }
+static void boxes_draw(int camX, int camY) {
+  for (int i = 0; i < boxCount; i++) {
+    Box *b = &boxes[i]; if (!b->active || !b->spawned) continue;
+    if (b->phase != 2) { b->box.x = (int16_t)(b->x - camX); b->box.y = (int16_t)(b->y + b->dy - camY); display_sprite(&b->box); }
+    b->icon.x = (int16_t)(b->x - camX); b->icon.y = (int16_t)(b->y + b->dy - camY); display_sprite(&b->icon);
+  }
+}
+static void springs_spikes_draw(int camX, int camY) {
+  for (int i = 0; i < springCount; i++) { Obj *o = &springs[i]; if (!o->active || !o->spawned) continue; o->s.x = (int16_t)(o->x - camX); o->s.y = (int16_t)(o->y - camY); display_sprite(&o->s); }
+  for (int i = 0; i < spikeCount; i++) { Obj *o = &spikes[i]; if (!o->active || !o->spawned) continue; o->s.x = (int16_t)(o->x - camX); o->s.y = (int16_t)(o->y - camY); display_sprite(&o->s); }
 }
 static void props_step(Player *p) {
   for (int i = 0; i < propCount; i++) {
     Prop *o = &props[i];
-    o->active = ent_active(o->x, o->y);
-    if (!o->active) continue;
+    if (!o->active || !o->spawned) continue;
     const Hitbox *hb = &o->s.hitboxes[0];
     int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y), body[4]; body_rect(p, body);
     if (hb->index >= 0 && hits(o->x, o->y, hb, px, py, body)) {
@@ -970,15 +1074,367 @@ static void props_step(Player *p) {
     if (o->kind == 7 && !act.goalReached && p->x > o->x) { o->variant = 2; play_song(169); }
   }
 }
-static void props_update(void) {
-  for (int i = 0; i < propCount; i++) { props[i].active = ent_active(props[i].x, props[i].y); if (props[i].active) update_sprite(&props[i].s, 0); }
-}
 static void props_draw(int camX, int camY) {
   for (int i = 0; i < propCount; i++) {
-    Prop *o = &props[i]; if (!o->active) continue;
+    Prop *o = &props[i]; if (!o->active || !o->spawned) continue;
     o->s.x = (int16_t)(o->x - camX); o->s.y = (int16_t)(o->y - camY); display_sprite(&o->s);
   }
 }
+
+// --- the act's enemies (engine/enemies.js; kiki.c, buzzer.c, gamigami.c, rhinotank.c, kerokero.c) -----------------
+// Each is a task at the objects' priority, made when its point comes into the range, gone when both that point and
+// its own leave it; a defeated one stays gone until the act starts over. Their shots are tasks made by them.
+static int off_cam(int sx, int sy) { return (((sx + 128) & 0xFFFF) > 496) || sy + 128 < 0 || sy > 288; }
+static int off_display(int wx, int wy) { return wx > act.cam.x + 368 || wx < act.cam.x - 128 || wy > act.cam.y + 288 || wy < act.cam.y - 128; }
+static int enemy_gone(int spawnX, int spawnY, int x, int y) { return off_display(spawnX, spawnY) && off_cam(x - (int)act.cam.x, y - (int)act.cam.y); }
+static int sonic_x(void) { return (int)__builtin_floor(act.player.x); }
+static int sonic_y(void) { return (int)__builtin_floor(act.player.y); }
+static int q16s(int v) { return (int16_t)v; }
+static int I(int v) { return v >> 8; }
+static int Div(int a, int b) { return a / b; }
+static int COS10(int a) { return SINE[(a + 256) & 1023]; }
+static int SIN10(int a) { return SINE[a & 1023]; }
+static int octant_angle(int a, int b) {
+  int index = 0;
+  if (a <= 0) { a = -a; index = 4; }
+  if (b <= 0) { b = -b; index += 2; }
+  int frac;
+  if (a >= b) frac = Div(b * 128, a);
+  else { index++; frac = Div(a * 128, b); }
+  static const int arr[8] = { 1, 0, 2, 3, 6, 7, 5, 4 };
+  if (arr[index] & 1) frac = 128 - frac;
+  return (frac + arr[index] * 128) & 1023;
+}
+static void enemy_flip(Enemy *e, int flip) { e->s.frameFlags = (uint16_t)((e->s.frameFlags & ~(SPRITE_X_FLIP | SPRITE_Y_FLIP)) | (flip ? SPRITE_X_FLIP : 0)); }
+static void enemy_sprite_init(Enemy *e, int anim, int variant, int order, uint32_t tiles) { entity_sprite(&e->s, anim, variant, tiles, order); }
+static void enemy_anim(Enemy *e, int anim, int variant) { e->s.graphics.anim = (uint16_t)anim; e->s.variant = (uint8_t)variant; e->s.prevAnim = 0xFFFF; }
+static void enemy_defeat(Enemy *e) { e->gone = 1; e->active = 0; if (e->spawned) sprite_free(&e->s); e->spawned = 0; play_song(138); }
+static int enemy_attack(Enemy *e, int x, int y) {
+  if (e->s.hitboxes[0].index < 0) return 0;
+  int px = sonic_x(), py = sonic_y(), body[4], attack[4]; body_rect(&act.player, body);
+  int hb = hits(x, y, &e->s.hitboxes[0], px, py, body);
+  if (sonic.hitboxes[1].index >= 0) {
+    attack_rect(&act.player, attack);
+    if (hits(x, y, &e->s.hitboxes[0], px, py, attack)) {
+      if (act.player.ysp > 0) act.player.ysp = -act.player.ysp;
+      enemy_defeat(e);
+      return 1;
+    }
+  }
+  if (hb) {
+    if (act.player.invulnerable > 0) { enemy_defeat(e); return 1; }
+    hurt(&act.player);
+  }
+  return 0;
+}
+static void shot_make_anim(Shot *sh, int kind, int anim, int order, uint32_t tiles) {
+  sh->kind = kind;
+  entity_sprite(&sh->s, anim, 0, tiles, order);
+}
+static int shot_attack(Shot *sh, int x, int y) {
+  if (sh->s.hitboxes[0].index < 0 || act.player.dead) return 0;
+  int body[4]; body_rect(&act.player, body);
+  if (!hits(x, y, &sh->s.hitboxes[0], sonic_x(), sonic_y(), body)) return 0;
+  hurt(&act.player);
+  return 1;
+}
+static void shot_coconut(int x0, int y0) {
+  if (shotCount >= SHOT_MAX) return;
+  Shot *sh = &shots[shotCount++];
+  shot_make_anim(sh, SHOT_COCONUT, 408, 18, 16);
+  int px = sonic_x();
+  sh->x0 = x0; sh->y0 = y0; sh->x = x0; sh->y = y0;
+  sh->vx = px < x0 ? -Div((x0 - px) * 400, 800) : Div((px - x0) * 400, 800);
+  if (sh->vx < -60) sh->vx = -60; if (sh->vx > 60) sh->vx = 60;
+  sh->vy = -512; sh->acc = 0; sh->bounces = 0; sh->resting = 0; sh->rest = 0;
+}
+static void shot_piece(int x, int y) {
+  if (shotCount >= SHOT_MAX) return;
+  Shot *sh = &shots[shotCount++];
+  shot_make_anim(sh, SHOT_PIECE, 402, 18, 16);
+  sh->x = x; sh->y = y;
+}
+static void shot_buzzer(int x0, int y0) {
+  if (shotCount >= SHOT_MAX) return;
+  Shot *sh = &shots[shotCount++];
+  shot_make_anim(sh, SHOT_BUZZER, 409, 18, 1);
+  int a = octant_angle(sonic_y() - y0, sonic_x() - x0);
+  sh->vx = Div(COS10(a), 38); sh->vy = Div(SIN10(a), 38);
+  sh->qx = x0 * 256; sh->qy = y0 * 256;
+}
+static void shot_gami(int x4, int dx, int y0) {
+  if (shotCount >= SHOT_MAX) return;
+  Shot *sh = &shots[shotCount++];
+  shot_make_anim(sh, SHOT_GAMI, 410, 9, 4);
+  sh->x4 = x4; sh->dx = dx; sh->y = y0; sh->vy = -512;
+}
+static void shots_update(void) {
+  for (int i = 0; i < shotCount; i++) {
+    Shot *sh = &shots[i];
+    if (sh->done) continue;
+    if (sh->kind == SHOT_COCONUT) {
+      if (!sh->resting) {
+        sh->vy = q16s(sh->vy + 40); sh->acc = q16s(sh->acc + sh->vx);
+        sh->x = sh->x0 + Div(sh->acc, 40); sh->y = q16s(sh->y + I(sh->vy));
+        if (sh->vy > 0) {
+          int d = tile_floor(sh->x, sh->y, 1);
+          if (d < 0) {
+            sh->y += d;
+            if (!sh->bounces) { sh->vy = -(sh->vy >> 2); sh->bounces++; }
+            else { sh->resting = 1; sh->rest = 0; sh->vy = 0; }
+          }
+        }
+      } else if (sh->rest++ >= 0x60) { shot_piece(sh->x, sh->y); sh->done = 1; continue; }
+      if (shot_attack(sh, sh->x, sh->y)) { shot_piece(sh->x, sh->y); sh->done = 1; continue; }
+      update_sprite(&sh->s, 0);
+    } else if (sh->kind == SHOT_PIECE) {
+      shot_attack(sh, sh->x, sh->y);
+      if (update_sprite(&sh->s, 0) == 0) sh->done = 1;
+    } else if (sh->kind == SHOT_BUZZER) {
+      sh->qx += sh->vx; sh->qy += sh->vy;
+      int x = I(sh->qx), y = I(sh->qy);
+      shot_attack(sh, x, y);
+      int sx = x - (int)act.cam.x, sy = y - (int)act.cam.y;
+      if ((((sx + 40) & 0xFFFF) > 320) || sy + 40 < 0 || sy > 200) { sh->done = 1; continue; }
+      update_sprite(&sh->s, 0);
+    } else {
+      sh->x4 += sh->dx;
+      int x = sh->x4 >> 2;
+      sh->vy += 40; sh->y += I(sh->vy);
+      shot_attack(sh, x, sh->y);
+      int sx = x - (int)act.cam.x, sy = sh->y - (int)act.cam.y;
+      if ((((sx + 20) & 0xFFFF) > 276) || sy + 20 < 0 || sy > 240) { sh->done = 1; continue; }
+      update_sprite(&sh->s, 0);
+    }
+  }
+  int kept = 0;
+  for (int i = 0; i < shotCount; i++) if (!shots[i].done) shots[kept++] = shots[i];
+  shotCount = kept;
+}
+static void shots_draw(int camX, int camY) {
+  for (int i = 0; i < shotCount; i++) {
+    Shot *sh = &shots[i];
+    int x = sh->kind == SHOT_BUZZER ? I(sh->qx) : sh->kind == SHOT_GAMI ? (sh->x4 >> 2) : sh->x;
+    sh->s.x = (int16_t)(x - camX); sh->s.y = (int16_t)(sh->y - camY);
+    display_sprite(&sh->s);
+  }
+}
+static void enemy_spawn(Enemy *e) {
+  e->spawned = 1;
+  switch (e->kind) {
+    case EK_KIKI:
+      enemy_sprite_init(e, 401, 1, 18, 20);
+      e->throwing = 0; e->tops = 0; e->yoff = 0; e->t = 0; e->vx = 1;
+      break;
+    case EK_BUZZER: {
+      int right = sonic_x() >= e->x;
+      enemy_sprite_init(e, 403, 0, 18, 20);
+      e->vx = right ? 256 : -256; e->off = 0; e->shot = 0; e->t = 0; e->state = 0; e->right = right;
+      enemy_flip(e, right);
+      break;
+    }
+    case EK_GAMIGAMI: {
+      int right = sonic_x() >= e->x;
+      enemy_sprite_init(e, 404, 0, 18, 30);
+      e->vx = right ? 160 : -160; e->off = 0; e->yoff = 0; e->t = 0; e->right = right; e->state = 0;
+      break;
+    }
+    case EK_RHINOTANK:
+      enemy_sprite_init(e, 405, 0, 18, 20);
+      e->vx = -160; e->off = 0; e->yoff = 0; e->t = 0; e->tackle = 0; e->state = 0; enemy_flip(e, 1);
+      break;
+    case EK_KEROKERO:
+      enemy_sprite_init(e, 406, 0, 18, 20);
+      e->off = 0; e->yoff = 0; e->vy = 0; e->cd = 0; e->t = 0; e->n = 0; e->state = 0;
+      break;
+  }
+  update_sprite(&e->s, 0);
+}
+static void kiki_step(Enemy *e) {
+  int was = e->throwing;
+  if (!e->throwing) {
+    e->yoff = (int8_t)(e->yoff + e->vx);
+    if (e->yoff <= e->d[1] * 8) {
+      e->tops = (e->tops + 1) & 0xFF; e->vx = 1;
+      if (!(e->tops & 1)) { e->t = 0; enemy_anim(e, 401, 2); e->throwing = 1; }
+    } else if (e->yoff >= e->d[1] * 8 + e->d[3] * 8) e->vx = -1;
+  }
+  int y = e->y + e->yoff;
+  if (enemy_attack(e, e->x, y)) return;
+  if (off_cam(e->x - (int)act.cam.x, y - (int)act.cam.y)) { e->active = 0; return; }
+  enemy_flip(e, !(sonic_x() < e->x));
+  if (was && ++e->t > 14) {
+    e->throwing = 0; enemy_anim(e, 401, 1);
+    shot_coconut(e->x + ((e->s.frameFlags & SPRITE_X_FLIP) ? -18 : 8), y - 8);
+  }
+  update_sprite(&e->s, 0);
+  e->s.x = (int16_t)(e->x + ((e->s.frameFlags & SPRITE_X_FLIP) ? -8 : 0) - (int)act.cam.x);
+  e->s.y = (int16_t)(y - (int)act.cam.y);
+  display_sprite(&e->s);
+}
+static void buzzer_step(Enemy *e) {
+  if (e->state == 0) e->off += e->vx;
+  int x = e->x + I(e->off), y = e->y;
+  if (e->state == 1 && ++e->t == 10) shot_buzzer(x, y + 6);
+  if (enemy_gone(e->x, e->y, x, y)) { e->active = 0; return; }
+  if (enemy_attack(e, x, y)) return;
+  if (e->state == 0) {
+    update_sprite(&e->s, 0);
+    e->s.x = (int16_t)(x - (int)act.cam.x); e->s.y = (int16_t)(y - (int)act.cam.y); display_sprite(&e->s);
+    if (I(e->off) <= e->d[0] * 8) { e->vx = 256; enemy_anim(e, 403, 2); e->state = 2; enemy_flip(e, 1); }
+    else if (I(e->off) >= (e->d[0] + e->d[2]) * 8) { e->vx = -256; enemy_anim(e, 403, 2); e->state = 2; enemy_flip(e, 0); }
+    else if (!e->shot) {
+      int py = sonic_y();
+      if (y <= py && y + 96 >= py) {
+        int dy = py - y, dx = x - sonic_x();
+        int hi = q16s(Div(dx * 17, 10)), lo = q16s(Div(dx * 10, 17));
+        e->s.frameFlags = (uint16_t)(e->s.frameFlags & ~(SPRITE_PRIORITY));   // the original's & instead of | here
+        if (e->s.frameFlags & SPRITE_X_FLIP) { hi = -hi; lo = -lo; }
+        if (hi >= dy && lo <= dy) { enemy_anim(e, 403, 1); e->t = 0; e->state = 1; }
+      }
+    }
+    return;
+  }
+  if (e->state == 1) {
+    if (e->t >= 30) { enemy_anim(e, 403, 0); e->state = 0; e->shot = 1; }
+    update_sprite(&e->s, 0);
+  } else {
+    e->shot = 0;
+    if (update_sprite(&e->s, 0) == 0) { enemy_anim(e, 403, 0); e->state = 0; }
+  }
+  e->s.x = (int16_t)(x - (int)act.cam.x); e->s.y = (int16_t)(y - (int)act.cam.y); display_sprite(&e->s);
+}
+static void gamigami_step(Enemy *e) {
+  if (e->state == 0) e->off += e->vx;
+  int x = e->x + Div(e->off, 256), y = e->y - 6 + e->yoff;
+  if (e->state == 1 && ++e->t == 15) {
+    shot_gami((x + 14) * 4, 6, y - 20);
+    shot_gami((x - 14) * 4, -6, y - 20);
+  }
+  if (enemy_gone(e->x, e->y, x, y)) { e->active = 0; return; }
+  if (enemy_attack(e, x, y)) return;
+  e->yoff += tile_floor(x, y, e->d[3] ? 1 : 0);
+  if (e->state == 0) {
+    if (Div(e->off, 256) <= e->d[0] * 8) {
+      if (!e->right) { e->vx = 160; e->t = 0; e->right = 1; enemy_anim(e, 404, 1); e->state = 1; }
+    } else if (Div(e->off, 256) >= (e->d[0] + e->d[2]) * 8) {
+      if (e->right) { e->vx = -160; e->t = 0; e->right = 0; enemy_anim(e, 404, 1); e->state = 1; }
+    }
+  } else if (e->t > 18) { enemy_anim(e, 404, 0); e->state = 0; }
+  update_sprite(&e->s, 0);
+  e->s.x = (int16_t)(x - (int)act.cam.x); e->s.y = (int16_t)(y - (int)act.cam.y); display_sprite(&e->s);
+}
+static void rhinotank_step(Enemy *e) {
+  if (e->state == 0) e->off += e->vx;
+  int x = e->x + (e->state == 0 ? Div(e->off, 256) : I(e->off)), y = e->y + e->yoff;
+  if (enemy_gone(e->x, e->y, x, y)) { e->active = 0; return; }
+  if (enemy_attack(e, x, y)) return;
+  e->yoff += tile_floor(x, y, 1);
+  int flip = (e->s.frameFlags & SPRITE_X_FLIP) != 0;
+  if (e->state == 0) {
+    int px = sonic_x(), py = sonic_y();
+    if (I(e->off) <= (e->d[0] + 1) * 8) {
+      if (!flip) {
+        if (e->tackle) e->off += 768;
+        e->t = 0; e->vx = 160; enemy_anim(e, 405, 2); e->state = 1;
+      }
+    } else if (I(e->off) >= (e->d[0] + e->d[2] - 1) * 8) {
+      if (flip) {
+        if (e->tackle) e->off -= 768;
+        e->t = 0; e->vx = -160; enemy_anim(e, 405, 2); e->state = 1;
+      }
+    } else if (!e->tackle && y - 32 <= py && y + 8 >= py
+      && (flip ? (x <= px && x + 80 >= px) : (x - 80 <= px && x >= px))) {
+      e->tackle = 1; e->t = 0; e->vx = flip ? 768 : -768; enemy_anim(e, 405, 1); e->state = 2;
+    }
+  } else if (e->state == 1) {
+    int k = Div(COS10(e->t * 21), e->tackle ? 32 : 64);
+    e->off += flip ? k : -k;
+    if (++e->t == 24) {
+      enemy_anim(e, 405, 0); e->off += e->vx; e->vx = flip ? -160 : 160;
+      enemy_flip(e, !flip); e->tackle = 0; e->state = 0;
+    }
+  } else if (++e->t == 25) { enemy_anim(e, 405, 0); e->state = 0; }
+  update_sprite(&e->s, 0);
+  e->s.x = (int16_t)(x - (int)act.cam.x); e->s.y = (int16_t)(y - (int)act.cam.y); display_sprite(&e->s);
+}
+static const int CROAK_STEPS[8] = { 54, 43, 34, 32, 12, 100, 25, 32 };
+static void kerokero_step(Enemy *e) {
+  if (e->state == 1) { e->vy += 64; e->yoff += Div(e->vy, 256); e->off += (e->s.frameFlags & SPRITE_X_FLIP) ? 256 : -256; }
+  int x = e->x + I(e->off), y = e->y + e->yoff;
+  if (enemy_gone(e->x, e->y, x, y)) { e->active = 0; return; }
+  if (e->state == 0) e->n = q16s(e->n + 1);
+  if (enemy_attack(e, x, y)) return;
+  int d = tile_floor(x, y, e->d[3] ? 1 : 0);
+  if (e->state == 0) {
+    e->yoff += d;
+    enemy_flip(e, sonic_x() > e->x + I(e->off));
+    int px = sonic_x();
+    if (e->n > 250) { e->cd = 0; e->n -= 250; enemy_anim(e, 406, 1); e->state = 2; }
+    else if (e->cd != 0) e->cd--;
+    else if (((e->s.frameFlags & SPRITE_X_FLIP) && I(e->off) <= (e->d[0] + e->d[2] - 8) * 8 && x <= px && x + 80 >= px)
+      || (!(e->s.frameFlags & SPRITE_X_FLIP) && I(e->off) >= (e->d[0] + 8) * 8 && x - 80 <= px && x >= px)) {
+      e->vy = -1280; enemy_anim(e, 406, 0);
+      e->n = q16s(e->n + CROAK_STEPS[e->t]); e->t = (e->t + 1) & 7; e->state = 1;
+    }
+    update_sprite(&e->s, 0);
+    e->s.x = (int16_t)(x - (int)act.cam.x); e->s.y = (int16_t)(y - (int)act.cam.y); display_sprite(&e->s);
+    return;
+  }
+  if (e->state == 1) {
+    if (d <= 0) {
+      e->cd = 5; e->yoff += d; enemy_anim(e, 406, 1); update_sprite(&e->s, 0);
+      enemy_anim(e, 406, 0); e->state = 0;
+      enemy_flip(e, sonic_x() > e->x + I(e->off));
+    }
+  } else {
+    e->yoff += d;
+    if (++e->cd > 60) { e->cd = 0; enemy_anim(e, 406, 0); e->state = 0; }
+  }
+  update_sprite(&e->s, 0);
+  e->s.x = (int16_t)(x - (int)act.cam.x); e->s.y = (int16_t)(y - (int)act.cam.y); display_sprite(&e->s);
+}
+static void load_enemies(int level) {
+  static uint8_t data[32768];
+  enemyCount = 0;
+  int n = read_grid(OFFSET_ENEMIES, level, data, sizeof data);
+  if (n < 12) return;
+  uint32_t rx = data32(data, 4), ry = data32(data, 8);
+  int seq = 0;
+  for (uint32_t r = 0; r < rx * ry && r < 4096; r++) {
+    uint32_t off = data32(data, 12 + r * 4);
+    if (!off) continue;
+    for (int at = 4 + (int)off; at + 6 < n && data[at] != 0xFF && enemyCount < ENEMY_MAX; at += 7) {
+      int k = data[at + 2];
+      if (k >= 0 && k <= 4) {   // only Neo Green Hill's own enemies here; the boss has its own task
+        Enemy *e = &enemies[enemyCount++];
+        e->kind = k; e->x = data[at] * 8 + (int)(r % rx) * 256; e->y = data[at + 1] * 8 + (int)(r / rx) * 256;
+        e->rx = (int)(r % rx); e->ry = (int)(r / rx); e->seq = seq;
+        e->active = e->spawned = e->gone = 0;
+        for (int i = 0; i < 4; i++) e->d[i] = (int8_t)data[at + 3 + i];
+      }
+      seq++;
+    }
+  }
+}
+static void enemies_update(void) {
+  for (int i = 0; i < enemyCount; i++) {
+    Enemy *e = &enemies[i];
+    if (e->spawned && !ent_active(e->x, e->y)) { sprite_free(&e->s); e->spawned = 0; e->active = 0; }
+    e->active = e->spawned;
+    if (!e->active || !e->spawned) continue;
+    switch (e->kind) {
+      case EK_KIKI: kiki_step(e); break;
+      case EK_BUZZER: buzzer_step(e); break;
+      case EK_GAMIGAMI: gamigami_step(e); break;
+      case EK_RHINOTANK: rhinotank_step(e); break;
+      case EK_KEROKERO: kerokero_step(e); break;
+    }
+    if (!e->active && e->spawned) { sprite_free(&e->s); e->spawned = 0; }
+  }
+  shots_update();
+}
+
 // --- the HUD (engine/hud.js) -------------------------------------------------------------------------------------
 static void put_oam(int order, int x, int y, int index, int tile, int pal, int prio) {
   int k = alloc_oam((uint32_t)order);
@@ -1139,7 +1595,8 @@ static void draw_frame(void) {
 
   rings_draw(camX, camY);
   sparkles_draw(camX, camY);
-  entities_draw(camX, camY);
+  springs_spikes_draw(camX, camY);
+  boxes_draw(camX, camY);
   props_draw(camX, camY);
 
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
@@ -1161,6 +1618,7 @@ static void draw_frame(void) {
     sonic.y = (int16_t)sy;
   }
   display_sprite(&sonic);
+  shots_draw(camX, camY);
 }
 
 static int musicSync;
@@ -1178,8 +1636,8 @@ static void act_frame(void) {
   rings_collect(&act.player);
   sparkles_update();
   entities_update();
+  enemies_update();
   entities_step(&act.player);
-  props_update();
   props_step(&act.player);
   act.cam.bgUpdates++;
   int left = (e.input & KEY_LEFT) != 0, right = (e.input & KEY_RIGHT) != 0;
@@ -1249,6 +1707,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   load_stage(level);
   load_rings(level);
   load_entities(level);
+  load_enemies(level);
   load_props(level);
   for (int i = 0; i < paletteCount; i++) {
     Sprite *s = &paletteAnims[i].sprite;
@@ -1260,8 +1719,6 @@ void act_start(int level, int cardSkip, int preFrames) {
     if (act2()) s->frameFlags |= SPRITE_KEEP_TILES;   // 820's tiles command would write over Sonic's in OBJ VRAM
   }
   rings_init();
-  entities_init();
-  props_init();
   create_player(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);
   act.lives = 3; act.score = 0; act.ringCount = 0;
