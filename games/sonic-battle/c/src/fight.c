@@ -3,7 +3,9 @@
 // (bus.c), so what one sets the next reads, as in the original.
 //
 // Nothing before a fight leads here yet, so a recording's start point opens it: the address's fight=training says so,
-// and vblanks= gives how many V-blanks the console has counted by then, which the view turns with during the choice.
+// vblanks= gives how many V-blanks the console has counted by then, which the view turns with during the choice, and
+// you=, rival= and arena= pick the fighters and the arena, with colour= for the colour rows Training's screen gives a
+// character whose colours come from its choices.
 
 #include "game.h"
 
