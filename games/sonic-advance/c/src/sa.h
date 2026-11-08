@@ -110,6 +110,8 @@ void destroy_tasks(uint16_t lo, uint16_t hi);
 void engine_stall(int frames, void (*then)(void));
 void engine_lag(int frames, int late);
 void queue_graphics(Graphics *g);
+// applies what the graphics queue holds now, as a V-blank does, for frames a start point runs with no V-blank
+void engine_copy_graphics(void);
 void clear_queues(void);
 void queue_background(Background *bg);
 int alloc_oam(uint32_t order);

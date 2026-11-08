@@ -124,19 +124,20 @@ void front_vs_round(int level, int chao) {
 /** The round the VS menus chose, for the page: its level, or 0 while they are still choosing. */
 EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 
-// The acts in C so far. A recording's start point can name the act (`level`) and skip its title card's pictures
-// (`card` and `pre`); otherwise the act is the one the course select chose, and its card's state runs without its
-// pictures before the first frame.
+// The acts in C so far: X Zone, Secret Base act 2 and Casino Paradise act 2, whose course select rows start them
+// with their title cards. A start point's `level` opens any level the C version has, past the card when it asks;
+// every other act, and Options, stops safely where the screen is, as before.
 void front_play(int level) {
   int startLevel = (int)gba_start_number("level", -1);
-  if (startLevel >= 0) level = startLevel;
-  if (level < 0) level = 0;
-  // only the acts this engine has: X Zone and Casino Paradise act 2. Other levels stop where they begin, as the
-  // course select's recordings expect until their acts are in C.
-  if (level != ACT_LEVEL_CASINO_2 && level != ACT_LEVEL_X_ZONE) { ctx.done = 1; return; }
-  act_active = 1;
-  destroy_tasks(0x2000, 0x3000);
-  act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
+  if (startLevel < 0) startLevel = level;
+  if (startLevel == ACT_LEVEL_X_ZONE || startLevel == ACT_LEVEL_SECRET_BASE_2 || startLevel == ACT_LEVEL_CASINO_2 || gba_start_point("level") != NULL) {
+    act_active = 1;
+    destroy_tasks(0x2000, 0x3000);
+    act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
+    if (gba_start_point("level") != NULL) act_frame_now();
+    return;
+  }
+  ctx.done = 1;
 }
 void front_start_demo(void) { ctx.done = 1; }
 

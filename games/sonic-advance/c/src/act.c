@@ -8,6 +8,7 @@
 
 enum {
   OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC,
+  OFFSET_RINGS = 0x0B7F4C, OFFSET_INTERACTABLES = 0x0B7F94,
   LAYER_FRONT = 0, LAYER_BACK = 1, IGNORE_PLATFORMS = 0x80,
   SCREEN_W_ = 240, SCREEN_H_ = 160,
 };
@@ -17,11 +18,96 @@ static const uint16_t CASINO_PALETTE_ANIMATIONS[11] = { 816, 817, 818, 824, 825,
 enum { FIREWORK_PRIORITY = 0x4001 };
 static int is_casino_level(int level) { return level == ACT_LEVEL_CASINO_2; }
 static int is_casino(void) { return is_casino_level(act.stage.level); }
+enum { SCROLL_NONE, SCROLL_SECRET_BASE_2, SCROLL_X_ZONE, SCROLL_CASINO };
+
+// Each act's stage init settings (rom/levels.js StageInit_ZoneNActM): its zone and act, the song it starts, what its
+// HUD's zero-ring counter finds in memory, how its background scrolls, the size of its BG3 map in tiles
+// (sStageBgDimensions in the original, which the USA copy has 256 × 256 for Secret Base act 2), and the palette
+// animations StageInit makes (palette_loader.c).
+typedef struct { int zone, act, music, hudFlash, scroll, bgTilesW, bgTilesH, palA, palB, palC; } LevelMeta;
+static const LevelMeta LEVEL_META[16] = {
+  [0] = { 0, 0, 12, 90, SCROLL_NONE, 0, 0, 814, 815, -1 },
+  [1] = { 0, 1, 13, 90, SCROLL_NONE, 0, 0, 814, 815, -1 },
+  [2] = { 1, 0, 14, 56, SCROLL_NONE, 0, 0, 819, 845, 849 },
+  [3] = { 1, 1, 15, 64, SCROLL_SECRET_BASE_2, 32, 32, 819, 845, 849 },
+  [4] = { 2, 0, 16, 20, SCROLL_NONE, 0, 0, -1, -1, -1 },
+  [5] = { 2, 1, 17, 52, SCROLL_CASINO, 32, 32, -1, -1, -1 },
+  [6] = { 3, 0, 18, 90, SCROLL_NONE, 0, 0, 822, 821, -1 },
+  [7] = { 3, 1, 19, 90, SCROLL_NONE, 0, 0, 822, 821, -1 },
+  [8] = { 4, 0, 20, 90, SCROLL_NONE, 0, 0, 823, -1, -1 },
+  [9] = { 4, 1, 21, 20, SCROLL_NONE, 0, 0, 823, -1, -1 },
+  [10] = { 5, 0, 22, 4, SCROLL_NONE, 0, 0, 839, 840, 841 },
+  [11] = { 5, 1, 23, 90, SCROLL_NONE, 0, 0, 829, 830, 831 },
+  [12] = { 6, 0, 24, 90, SCROLL_X_ZONE, 37, 23, -1, -1, -1 },
+  [13] = { 6, 1, 26, 1, SCROLL_NONE, 0, 0, -1, -1, -1 },
+};
+
+// --- the act's palette animations (engine/palettes.js, sprites.js paletteAnimation) ---------------------------------
+typedef struct { int32_t palId; uint16_t insert, count; } PalLoad;
+typedef struct { uint16_t delay; PalLoad loads[4]; int loadCount, at; } PalFrame;
+typedef struct { int anim, variant, frameCount, loop, next, wait, shown; PalFrame frames[32]; } PaletteAnim;
+static PaletteAnim palAnims[3];
+static int palAnimCount;
+
+static void palette_anim_init(PaletteAnim *p, int anim, int variant) {
+  memset(p, 0, sizeof *p);
+  p->anim = anim; p->variant = variant; p->shown = -1;
+  if (anim < 0) return;
+  uint32_t variants = rom_ptr(sprites.anims + (uint32_t)anim * 4u);
+  uint32_t script = rom_ptr(variants + (uint32_t)variant * 4u);
+  PalLoad pending[4];
+  int pendingCount = 0;
+  int jumpTo = -1;
+  for (int cur = 0, guard = 0; guard < 600; guard++) {
+    int32_t id = rom_s32(script + (uint32_t)cur * 4u);
+    if (id >= 0) {
+      if (p->frameCount >= 32) break;
+      PalFrame *frame = &p->frames[p->frameCount++];
+      frame->delay = (uint16_t)id; frame->at = cur; frame->loadCount = pendingCount;
+      for (int i = 0; i < pendingCount; i++) frame->loads[i] = pending[i];
+      pendingCount = 0;
+      cur += 2;
+      continue;
+    }
+    if (id == -2) {
+      if (pendingCount < 4) {
+        PalLoad *l = &pending[pendingCount++];
+        l->palId = rom_s32(script + (uint32_t)cur * 4u + 4u);
+        l->count = (uint16_t)rom_u16(script + (uint32_t)cur * 4u + 8u);
+        l->insert = (uint16_t)rom_u16(script + (uint32_t)cur * 4u + 10u);
+      }
+      cur += 3;
+      continue;
+    }
+    if (id == -3) { jumpTo = cur - rom_s32(script + (uint32_t)cur * 4u + 4u); break; }
+    if (id == -4) break;
+    // the other commands (tiles, sounds, hitboxes, priorities) change nothing this act's palette needs
+    int words = id == -1 ? 3 : id == -5 ? 2 : id == -6 ? 3 : id == -7 ? 2 : id == -8 ? 3 : id == -9 ? 2 : id == -10 ? 4 : id == -11 || id == -12 ? 2 : 0;
+    if (!words) break;
+    cur += words;
+  }
+  p->loop = 0;
+  if (jumpTo >= 0) for (int i = 0; i < p->frameCount; i++) if (p->frames[i].at >= jumpTo) { p->loop = i; break; }
+}
+static void palette_anim_step(PaletteAnim *p) {
+  if (p->anim < 0) return;
+  if (p->wait > 0) { p->wait -= 256; return; }
+  if (p->next < 0 || p->next >= p->frameCount) return;
+  p->shown = p->next;
+  const PalFrame *frame = &p->frames[p->next];
+  for (int i = 0; i < frame->loadCount; i++) {
+    const PalLoad *l = &frame->loads[i];
+    uint32_t src = sprites.palettes + (uint32_t)l->palId * 32u;
+    for (int k = 0; k < l->count; k++) e.bgPalette[(l->insert + k) & 0xFF] = (uint16_t)rom_u16(src + (uint32_t)k * 2u);
+  }
+  e.flags |= FLAGS_UPDATE_BG_PALETTES;
+  p->wait += (frame->delay - 1) * 256;
+  p->next = p->next + 1 < p->frameCount ? p->next + 1 : p->loop;
+}
+static void palette_animations_step(void) { for (int i = 0; i < palAnimCount; i++) palette_anim_step(&palAnims[i]); }
+
 enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD };
 enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6 };
-// the two rings the first screen shows: the ring table's level 5 list (0x0B7F4C + 5 * 4) puts them at world
-// (208, 656) and (232, 656)
-static const int FIRST_RING_WORLD[2][2] = { { 208, 656 }, { 232, 656 } };
 // the HUD's graphics sit at fixed sprite VRAM addresses, which the original reserves (vram_hardcoded.h):
 // the character's face at 0x0800, the ring at 0x0880, the white digits at 0x0A80 and the red ones at 0x0D40.
 // Their tile numbers are 64, 68, 84 and 106.
@@ -47,9 +133,10 @@ enum { ORDER_DIGITS = 2, ORDER_ICONS = 3, ORDER_SONIC = 16 };
 
 Act act;
 static Sprite sonic;
-static uint32_t sonicVram, hudVram, hudTile;
-static Sprite firstRings[2];
-static int firstRingsMade;
+static uint32_t sonicVram, hudVram;
+static int hudTile, hudRingTile, hudFaceTile;
+// keeps the WebAssembly heap off a page boundary, so the copy and the start point both fit in the pages the copy grows
+static volatile uint8_t heapPad[80] __attribute__((used));
 static int firstPictureHidden;   // the level pick's loading frame: the act steps, but the screen keeps the black before it
 static int restoreBackdrop;      // the stage's colour 0 comes back with the first picture after it
 static uint16_t firstPictureBackdrop;
@@ -62,6 +149,8 @@ static Tilemap read_tilemap(int index) {
   t.at = at;
   t.xTiles = (uint16_t)rom_u16(at); t.yTiles = (uint16_t)rom_u16(at + 2);
   t.animTileSize = (uint16_t)rom_u16(at + 4); t.animFrameCount = (uint8_t)rom_u8(at + 6); t.animDelay = (uint8_t)rom_u8(at + 7);
+  // the two stage layers share one tileset, as DrawBackground reads each layer's own header: both layers' tile
+  // numbers read the same tiles, past 511 into the second character block
   t.tiles = rom_ptr(at + 8); t.tilesSize = rom_u32(at + 12);
   t.palette = rom_ptr(at + 16);
   t.paletteOffset = (uint16_t)rom_u16(at + 20); t.paletteLength = (uint16_t)rom_u16(at + 22);
@@ -184,14 +273,12 @@ static void load_stage(int level) {
   s->spawnX = rom_s16(OFFSET_SPAWNS + level * 4);
   s->spawnY = rom_s16(OFFSET_SPAWNS + level * 4 + 2);
   s->width = s->collision.width; s->height = s->collision.height;
-  s->zone = is_casino_level(level) ? 2 : 6;
-  s->act = is_casino_level(level) ? 1 : 0;
-  s->music = is_casino_level(level) ? 17 : 24;
-  s->hudFlash = is_casino_level(level) ? 52 : 90;
-  // the front layer's tiles in the first character block, its second half in the second (where tile numbers past
-  // 511 read them), and the stage's 256 colours (extractStage's palette). Both layers share the front tilemap's
-  // tileset, so it fills both blocks and the back tilemap's own header is not loaded.
-  copy_rom(s->front.tiles, 0, s->front.tilesSize);
+  const LevelMeta *meta = &LEVEL_META[level < 16 ? level : 0];
+  s->zone = meta->zone; s->act = meta->act; s->music = meta->music; s->hudFlash = meta->hudFlash;
+  s->scroll = meta->scroll;
+  // the stage's tileset in both character blocks, which tile numbers past 511 read, and its 256 colours
+  // (extractStage's palette). They go in at once, as the original's load does, so the act's first frame has them.
+  for (uint32_t i = 0; i < s->front.tilesSize && i < 0x8000; i++) gba_vram[i] = (uint8_t)rom_u8(s->front.tiles + i);
   // past the tileset the original's VRAM is what the card left, a blank run with a few tiles in it (the ROM's
   // 0x3D7074, one of the four copies of this tileset's tail)
   if (is_casino_level(level)) copy_rom(0x3D7074, 0x7D00, 0x300);
@@ -200,10 +287,13 @@ static void load_stage(int level) {
   // the maps the course select left are cleared, as the original's stage init leaves the parts its own maps don't
   // fill zero; the front and back layers' maps come in each frame
   for (uint32_t at = 0xE000; at < 0x10000; at += 2) { gba_vram[at] = 0; gba_vram[at + 1] = 0; }
-  // the background's tiles at the second character block, and its map. Casino Paradise's 32 × 32 map is one
-  // 256 × 256 text layer at 0xE800 (InitCamera's STGBG_SCRN_DIM(256, 256, 2, 29)); X Zone's 37 × 23 map is a
-  // 512-wide layer at 0xE000, whose columns 32–36 go to the block at 0xE800 (DrawBackground, copy_backgrounds).
-  copy_rom(s->background.tiles, 0x8000, s->background.tilesSize);
+  // the background's tiles at the second character block, and its map at 0xE000. Casino Paradise's 32 × 32 map is
+  // one 256 × 256 text layer at 0xE800 (InitCamera's STGBG_SCRN_DIM(256, 256, 2, 29)); the others' maps are at
+  // 0xE000, a 512-wide one as two 32-tile blocks, columns 32 on at 0xE800.
+  for (uint32_t i = 0; i < s->background.tilesSize && 0x8000u + i < 0x10000u; i++) gba_vram[0x8000u + i] = (uint8_t)rom_u8(s->background.tiles + i);
+  int bgTilesW = meta->bgTilesW ? meta->bgTilesW : s->background.xTiles;
+  int bgTilesH = meta->bgTilesH ? meta->bgTilesH : s->background.yTiles;
+  int bgWide = !is_casino_level(level) && bgTilesW > 32, bgTall = !is_casino_level(level) && bgTilesH > 32;
   if (is_casino_level(level)) {
     for (int row = 0; row < s->background.yTiles; row++)
       for (int col = 0; col < s->background.xTiles; col++) {
@@ -212,10 +302,12 @@ static void load_stage(int level) {
         gba_vram[at] = (uint8_t)entry; gba_vram[at + 1] = (uint8_t)(entry >> 8);
       }
   } else {
-    for (int row = 0; row < s->background.yTiles; row++) {
-      for (int col = 0; col < s->background.xTiles; col++) {
+    for (int row = 0; row < bgTilesH; row++) {
+      for (int col = 0; col < bgTilesW; col++) {
         uint16_t entry = (uint16_t)rom_u16(s->background.map + (row * s->background.xTiles + col) * 2);
-        uint32_t at = (col < 32 ? 0xE000 + (uint32_t)col * 2u : 0xE800 + (uint32_t)(col - 32) * 2u) + (uint32_t)row * 64u;
+        uint32_t at;
+        if (bgWide) at = (col < 32 ? 0xE000 + (uint32_t)col * 2u : 0xE800 + (uint32_t)(col - 32) * 2u) + (uint32_t)row * 64u;
+        else at = 0xE000 + ((uint32_t)row * 32u + (uint32_t)col) * 2u;
         gba_vram[at] = (uint8_t)entry; gba_vram[at + 1] = (uint8_t)(entry >> 8);
       }
     }
@@ -224,7 +316,168 @@ static void load_stage(int level) {
   e.dispCnt = 0x304E;           // OBJ on, window 0 on, BG1, BG2 and BG3 on, 1D OAM
   e.bgCnt[1] = 0x1E01;          // 256 × 256, priority 1, map 30 (0xF000), character base 0
   e.bgCnt[2] = 0x1F02;          // 256 × 256, priority 2, map 31 (0xF800), character base 0
-  e.bgCnt[3] = is_casino_level(level) ? 0x1D0B : 0x5C0B;   // 256 × 256, map 29 (0xE800), or X Zone's 512 × 256 at 28
+  if (is_casino_level(level)) e.bgCnt[3] = 0x1D0B;   // 256 × 256, priority 3, map 29 (0xE800)
+  else {
+    int bgSize = bgWide ? (bgTall ? 3 : 1) : (bgTall ? 2 : 0);
+    e.bgCnt[3] = (uint16_t)((bgSize << 14) | 0x1C00 | 0x0B);   // priority 3, map 28 (0xE000), character base 2 (0x8000)
+  }
+}
+
+
+// --- the level's rings and interactables (rom/entities.js, engine/rings.js, engine/objects.js) --------------------
+// The BIOS's RLUnComp format, as the level's entity lists keep it: a size word, then runs and literal blocks.
+static int rl_decompress(uint32_t at, uint8_t *out, uint32_t room) {
+  uint32_t header = rom_u32(at);
+  uint32_t size = header >> 8;
+  if ((header & 0xFF) != 0x30 || size > room) return 0;
+  uint32_t i = at + 4, n = 0;
+  while (n < size) {
+    uint32_t flag = rom_u8(i++);
+    if (flag & 0x80) {
+      uint32_t b = rom_u8(i++);
+      for (uint32_t k = (flag & 0x7F) + 3; k > 0 && n < size; k--) out[n++] = (uint8_t)b;
+    } else {
+      for (uint32_t k = (flag & 0x7F) + 1; k > 0 && n < size; k--) out[n++] = (uint8_t)rom_u8(i++);
+    }
+  }
+  return (int)size;
+}
+static uint32_t grid_u32(const uint8_t *data, int at) {
+  return (uint32_t)data[at] | (uint32_t)data[at + 1] << 8 | (uint32_t)data[at + 2] << 16 | (uint32_t)data[at + 3] << 24;
+}
+
+typedef struct { int32_t x, y; int taken; } Ring;
+static Ring rings[512];
+static int ringCount;
+static Sprite ringSprite;
+
+// the sparkle a taken ring leaves (CreateCollectRingEffect), at the objects' order, 15
+typedef struct { Sprite s; int x, y, active; } RingSparkle;
+static RingSparkle sparkles[8];
+
+typedef struct { int32_t x, y; Sprite vent, lid; int blowing; } SteamExhaust;
+static SteamExhaust steams[16];
+static int steamCount;
+
+static void load_rings(int level) {
+  static uint8_t data[0x4000];
+  ringCount = 0;
+  int size = rl_decompress(rom_ptr(OFFSET_RINGS + (uint32_t)level * 4u), data, sizeof data);
+  if (!size) return;
+  int regionsX = (int)grid_u32(data, 4), regionsY = (int)grid_u32(data, 8);
+  for (int r = 0; r < regionsX * regionsY; r++) {
+    uint32_t offset = grid_u32(data, 12 + r * 4);
+    if (!offset) continue;
+    int rx = r % regionsX, ry = r / regionsX;
+    for (int at = 4 + (int)offset; at < size && data[at] != 0xFF; at += 2) {
+      if (ringCount >= (int)(sizeof rings / sizeof rings[0])) return;
+      rings[ringCount].x = data[at] * 8 + rx * 256;
+      rings[ringCount].y = data[at + 1] * 8 + ry * 256;
+      rings[ringCount].taken = 0;
+      ringCount++;
+    }
+  }
+}
+static void load_steam_exhausts(int level) {
+  static uint8_t data[0x4000];
+  steamCount = 0;
+  int size = rl_decompress(rom_ptr(OFFSET_INTERACTABLES + (uint32_t)level * 4u), data, sizeof data);
+  if (!size) return;
+  int regionsX = (int)grid_u32(data, 4), regionsY = (int)grid_u32(data, 8);
+  for (int r = 0; r < regionsX * regionsY; r++) {
+    uint32_t offset = grid_u32(data, 12 + r * 4);
+    if (!offset) continue;
+    int rx = r % regionsX, ry = r / regionsX;
+    for (int at = 4 + (int)offset; at + 6 < size && data[at] != 0xFF; at += 7) {
+      if (data[at + 2] != 79 || steamCount >= (int)(sizeof steams / sizeof steams[0])) continue;
+      SteamExhaust *s = &steams[steamCount++];
+      s->x = data[at] * 8 + rx * 256;
+      s->y = data[at + 1] * 8 + ry * 256;
+      s->blowing = 0;
+      sprite_init(&s->vent);
+      s->vent.graphics.dest = OBJ_VRAM + 532u * 32u;
+      s->vent.graphics.anim = 501; s->vent.variant = 0;
+      s->vent.oamFlags = 18 << 6; s->vent.palId = 0; s->vent.frameFlags = 2 << 12;
+      sprite_init(&s->lid);
+      s->lid.graphics.dest = OBJ_VRAM + 556u * 32u;
+      s->lid.graphics.anim = 501; s->lid.variant = 2;
+      s->lid.oamFlags = 17 << 6; s->lid.palId = 0; s->lid.frameFlags = 2 << 12;
+    }
+  }
+}
+static int ring_touching(const Player *p, const Ring *r) {
+  int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y), oy = p->offsetY;
+  int l = px - 6, right = px + 6, top = py - oy, bottom = py + oy;
+  return ((r->x - 8 <= l && r->x + 8 >= l) || (r->x - 8 >= l && right >= r->x - 8))
+    && ((r->y - 16 <= top && r->y >= top) || (r->y - 16 >= top && bottom >= r->y - 16));
+}
+static void spawn_sparkle(int x, int y) {
+  for (int i = 0; i < 8; i++) {
+    if (sparkles[i].active) continue;
+    RingSparkle *sp = &sparkles[i];
+    memset(sp, 0, sizeof *sp);
+    sp->active = 1; sp->x = x; sp->y = y;
+    sprite_init(&sp->s);
+    sp->s.graphics.dest = OBJ_VRAM + 600u * 32u;
+    sp->s.graphics.anim = 708; sp->s.variant = 0;
+    sp->s.oamFlags = 15 << 6; sp->s.frameFlags = 2 << 12;
+    update_sprite(&sp->s, 0);
+    return;
+  }
+}
+static void step_rings(void) {
+  update_sprite(&ringSprite, 0);
+  // a ring Sonic touches is taken, with its sparkle and sound on the next sound effect player by the count's parity
+  if (!act.player.dead) {
+    for (int i = 0; i < ringCount; i++) {
+      Ring *r = &rings[i];
+      if (r->taken || !ring_touching(&act.player, r)) continue;
+      r->taken = 1;
+      act.ringCount++;
+      int odd = act.ringCount & 1;
+      spawn_sparkle((int)r->x, (int)r->y);
+      gba_sound_start_on(odd ? 2 : 1, 117);
+      gba_sound_imm_init(odd ? 2 : 1);
+      gba_sound_volume(odd ? 2 : 1, 0xFFFF, 128);
+      gba_sound_pan(odd ? 2 : 1, 0xFFFF, odd ? -64 : 64);
+    }
+  }
+  for (int i = 0; i < 8; i++) {
+    RingSparkle *sp = &sparkles[i];
+    if (!sp->active) continue;
+    if (update_sprite(&sp->s, 0) == 0) sp->active = 0;
+  }
+}
+static void draw_rings(int camX, int camY) {
+  for (int i = 0; i < ringCount; i++) {
+    Ring *r = &rings[i];
+    int sx = (int)r->x - camX, sy = (int)r->y - camY;
+    if (r->taken || sx < -8 || sx > SCREEN_W_ + 8 || sy < 0 || sy - 16 > SCREEN_H_) continue;
+    ringSprite.x = (int16_t)sx; ringSprite.y = (int16_t)sy;
+    display_sprite(&ringSprite);
+  }
+  for (int i = 0; i < 8; i++) {
+    RingSparkle *sp = &sparkles[i];
+    if (!sp->active) continue;
+    sp->s.x = (int16_t)(sp->x - camX); sp->s.y = (int16_t)(sp->y - camY);
+    display_sprite(&sp->s);
+  }
+}
+static void step_steam_exhausts(void) {
+  for (int i = 0; i < steamCount; i++) {
+    SteamExhaust *s = &steams[i];
+    update_sprite(&s->vent, 0);
+    update_sprite(&s->lid, 0);
+  }
+}
+static void draw_steam_exhausts(int camX, int camY) {
+  for (int i = 0; i < steamCount; i++) {
+    SteamExhaust *s = &steams[i];
+    s->vent.x = (int16_t)(s->x - camX); s->vent.y = (int16_t)(s->y - camY);
+    s->lid.x = s->vent.x; s->lid.y = s->vent.y;
+    display_sprite(&s->vent);
+    display_sprite(&s->lid);
+  }
 }
 
 // a stage layer's visible tile entries around the camera (DrawBackground's level-map path)
@@ -233,9 +486,10 @@ static uint16_t stage_entry(int layer, int tx, int ty) {
   int mx = fdiv(tx, 12), my = fdiv(ty, 12), lx = tx - mx * 12, ly = ty - my * 12;
   if (mx < 0 || my < 0 || mx >= c->levelX || my >= c->levelY) return 0;
   uint32_t id = rom_u8(c->layers[layer & 1] + my * c->levelX + mx);
-  // both layers index the front tilemap's metatile atlas, as the JavaScript version's extractStage keeps it for
-  // them; the back tilemap's own atlas is not what its layer's ids name
-  return (uint16_t)rom_u16(act.stage.front.map + (id * 144u + (uint32_t)ly * 12u + (uint32_t)lx) * 2u);
+  // Casino Paradise's two layers share the front tilemap's atlas; the others read each layer's own, as #1009's
+  // Secret Base act 2 does
+  uint32_t map = (is_casino() || !layer) ? act.stage.front.map : act.stage.back.map;
+  return (uint16_t)rom_u16(map + (id * 144u + (uint32_t)ly * 12u + (uint32_t)lx) * 2u);
 }
 static void fill_layer(uint32_t dest, int layer, int camX, int camY) {
   int tx0 = camX >> 3, ty0 = camY >> 3;
@@ -591,8 +845,8 @@ static void hud_update(int draw) {
   if (!h->active) return;
   if (draw) {
     // the icons: the ring over the ring count and the character's face by the lives, at OAM order 3
-    put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, is_casino() ? HUD_RING_TILE : (int)hudTile + HUD_RING, 6, 0);
-    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, is_casino() ? HUD_FACE_TILE : (int)hudTile + HUD_FACE, 0, 0);
+    put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, hudRingTile, 6, 0);
+    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, hudFaceTile, 0, 0);
     if (act.ringCount == 0) {
       static const int FLASH[5] = { 0, 11, 11, 0, 0 };
       int f = h->flash >> 3;
@@ -618,6 +872,62 @@ static void hud_update(int draw) {
   h->flash = (h->flash + 1) & 31;
 }
 
+// --- the stage's animated tiles (engine/stage.js animateStageTiles, src/background.c UpdateBgAnimationTiles) ------
+static int stageAnimFrame, stageAnimDelay, stageAnimShown;
+static void stage_tiles_step(void) {
+  const Tilemap *t = &act.stage.front;
+  if (t->animFrameCount <= 1 || !t->animTileSize) return;
+  stageAnimShown = stageAnimFrame;
+  int delay = t->animDelay ? t->animDelay : 1;
+  if (++stageAnimDelay < delay) return;
+  stageAnimDelay = 0;
+  stageAnimFrame = (stageAnimFrame + 1) % t->animFrameCount;
+}
+static void stage_tiles_draw(void) {
+  const Tilemap *t = &act.stage.front;
+  if (t->animFrameCount <= 1 || !t->animTileSize || stageAnimShown == 0) return;
+  uint32_t src = t->tiles + t->tilesSize + (uint32_t)(stageAnimShown - 1) * t->animTileSize;
+  for (uint32_t i = 0; i < t->animTileSize && i < 0x4000; i++) gba_vram[i] = (uint8_t)rom_u8(src + i);
+}
+
+// --- the background (engine/backgrounds.js) ----------------------------------------------------------------------
+static int js_mod(int a, int n) { int r = a % n; return r < 0 ? r + n : r; }
+
+/**
+ * StageBgUpdate_Zone2Act2's scroll for one screen line (StageBgUpdate_Zone2_Interior): [x, y] where the line's
+ * first pixel comes from, and the map row shown above it. The wall repeats every 64 lines, and the three bars
+ * and the bigger one are laid over it.
+ */
+static void secret_base_scroll(int line, int cx, int cy, int *outX, int *outY) {
+  int x = (cx >> 2) & 0xFF, row = (line + ((cy >> 2) & 63)) & 63;
+  for (int i = 0; i < 3; i++) {
+    int k = js_mod(line + ((cy >> 1) + (i << 6)) + 16, 256);
+    if (k < 16) { x = ((cx >> 1) + (i << 5)) & 0xFF; row = 64 + k; }
+  }
+  int k = js_mod(line + (cy * 2) / 3 + 288 + 24, 256);
+  if (k < 24) { x = ((cx * 2) / 3 + 96) & 0xFF; row = 80 + k; }
+  *outX = x;
+  *outY = row - line;
+}
+static void scroll_background(int camX, int camY) {
+  if (act.stage.scroll == SCROLL_SECRET_BASE_2) {
+    int x, y;
+    // the base scroll the original keeps, and the line table over it
+    e.bgScroll[6] = (uint16_t)((camX >> 2) & 0xFF); e.bgScroll[7] = (uint16_t)((camY >> 2) & 0xFF);
+    set_hblank_copy(REG_BG0HOFS + 3 * 4, 4);
+    for (int line = 0; line < SCREEN_H_; line++) {
+      secret_base_scroll(line, camX, camY, &x, &y);
+      put16(e.primary + (uint32_t)line * 4u, (uint32_t)x);
+      put16(e.primary + (uint32_t)line * 4u + 2u, (uint32_t)y);
+    }
+  } else {
+    int bgX = (int)(((double)camX * 56.0) / (act.stage.width - SCREEN_W_));
+    int bgY = (int)(((double)camY * 24.0) / (act.stage.height - SCREEN_H_));
+    e.bgScroll[6] = (uint16_t)bgX; e.bgScroll[7] = (uint16_t)bgY;
+  }
+}
+
+
 // --- the frame (engine/game.js) ----------------------------------------------------------------------------------
 static void draw_frame(void) {
   int camX = (int)act.cam.x, camY = (int)act.cam.y;
@@ -632,18 +942,16 @@ static void draw_frame(void) {
     e.bgScroll[2] = (uint16_t)(camX & 7); e.bgScroll[3] = (uint16_t)(camY & 7);
     e.bgScroll[4] = (uint16_t)(camX & 7); e.bgScroll[5] = (uint16_t)(camY & 7);
   }
+  if (!is_casino()) stage_tiles_draw();
   fill_layer(0xF000, LAYER_FRONT, camX, camY);
   fill_layer(0xF800, LAYER_BACK, camX, camY);
-  // StageBgUpdate_Zone7Act1: the 37 × 23 background scrolls as a whole. Its first frame keeps the course
-  // select's scroll, which the original shows before the act's own update lands. Casino Paradise's own update
-  // (StageBgUpdate_Zone3Acts12) runs from act_frame and leaves BG3's scroll and its HBlank table there.
-  if (!is_casino()) {
-    int bgX = (int)(((double)camX * 56.0) / (act.stage.width - SCREEN_W_));
-    int bgY = (int)(((double)camY * 24.0) / (act.stage.height - SCREEN_H_));
-    e.bgScroll[6] = (uint16_t)bgX; e.bgScroll[7] = (uint16_t)bgY;
-    act.cam.bgX = bgX; act.cam.bgY = bgY;
-  }
+  // the act's background: StageBgUpdate_Zone2Act2's lines, StageBgUpdate_Zone7Act1's whole map, or Casino Paradise's
+  // own update (StageBgUpdate_Zone3Acts12), which act_frame runs and which leaves BG3's scroll and HBlank table there
+  if (!is_casino()) scroll_background(camX, camY);
 
+  // the act's rings and Steam Base's steam exhausts, at their OAM orders
+  draw_rings(camX, camY);
+  draw_steam_exhausts(camX, camY);
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
   int right = act.player.facing > 0;
   int sx = (int)__builtin_floor(act.player.x) - camX, sy = (int)__builtin_floor(act.player.y) - camY;
@@ -662,14 +970,6 @@ static void draw_frame(void) {
     sonic.y = (int16_t)sy;
   }
   display_sprite(&sonic);
-  if (firstRingsMade) {
-    for (int i = 0; i < 2; i++) {
-      firstRings[i].x = (int16_t)(FIRST_RING_WORLD[i][0] - camX);
-      firstRings[i].y = (int16_t)(FIRST_RING_WORLD[i][1] - camY);
-      update_sprite(&firstRings[i], 0);
-      display_sprite(&firstRings[i]);
-    }
-  }
 }
 
 static void act_frame(void) {
@@ -689,7 +989,9 @@ static void act_frame(void) {
   int moves = act.cam.started;
   camera_update(&act.cam, &act.player);
   if (is_casino() && moves) { casino_background_update(); casino_background_tasks(); }
-  stage_animated_tiles(1);
+  if (is_casino()) stage_animated_tiles(1); else stage_tiles_step();
+  step_rings();
+  step_steam_exhausts();
   act.cam.bgUpdates++;
   int left = (e.input & KEY_LEFT) != 0, right = (e.input & KEY_RIGHT) != 0;
   int up = (e.input & KEY_UP) != 0, down = (e.input & KEY_DOWN) != 0;
@@ -706,6 +1008,7 @@ static void act_frame(void) {
     set_offset_y(&act.player, BALL_SPRITE_OFFSET_Y);
   }
   animate_player(&act.player);
+  palette_animations_step();
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
   if (hidden) {
@@ -752,6 +1055,14 @@ void act_queue(int level, int cardSkip, int preFrames) {
 static void pre_run(int cardSkip, int preFrames) {
   int after = 0;
   while (!act.cardDone || after < preFrames) {
+    if (act.cardDone) {
+      // the frames after the card only settle the HUD's task, which runs a frame after the card ends: the stage keeps
+      // the frame it ended on, as the original's does, and only the clock and the HUD move on
+      if (!act.clockStopped) act.courseTime++;
+      hud_update(0);
+      after++;
+      continue;
+    }
     int wasDone = act.cardDone;
     int moves = act.cam.started;
     camera_update(&act.cam, &act.player);
@@ -760,7 +1071,9 @@ static void pre_run(int cardSkip, int preFrames) {
       palette_animations_pre();
       fireworks_pre();
     }
-    stage_animated_tiles(0);
+    if (is_casino()) stage_animated_tiles(0); else stage_tiles_step();
+    step_rings();
+    step_steam_exhausts();
     if (!act.cardDone) {
       titlecard_step(cardSkip == act.tick);
       if (!titlecard_active()) {
@@ -770,13 +1083,21 @@ static void pre_run(int cardSkip, int preFrames) {
         act.hud.flash = is_casino() && gba_start_number("power", 0) == 2 ? 0 : act.stage.hudFlash;
       }
     }
-    step_player(&act.player, 0, is_casino() ? 0 : act.cardDone, 0, 0, !act.cardDone, 0, !act.cardDone, 0);
+    // the card holds Sonic still, as the original's does
+    step_player(&act.player, 0, 0, 0, 0, 0, 0, 0, 0);
     animate_player(&act.player);
+    palette_animations_step();
     if (wasDone) { hud_update(0); after++; }
     if (!act.clockStopped) act.courseTime++;
     act.tick++;
+    // these frames run with no V-blank, so what each one queued for video memory goes in now, as the original's did
+    engine_copy_graphics();
   }
   if (is_casino()) stage_animated_tiles_pre();
+  // the card's last frame steps the stage's animations once, as the original's does, but its first act frame then waits
+  // one frame longer before the ring and the palette animations move on
+  ringSprite.qAnimDelay = (int16_t)(ringSprite.qAnimDelay + 256);
+  for (int i = 0; i < palAnimCount; i++) palAnims[i].wait += 256;
 }
 
 void act_start(int level, int cardSkip, int preFrames) {
@@ -794,6 +1115,18 @@ void act_start(int level, int cardSkip, int preFrames) {
   memset(fireworks, 0, sizeof fireworks);
   memset(&tileAnim, 0, sizeof tileAnim);
   load_stage(level);
+  const LevelMeta *meta = &LEVEL_META[level < 16 ? level : 0];
+  palAnimCount = 0;
+  if (meta->palA >= 0) palette_anim_init(&palAnims[palAnimCount++], meta->palA, 0);
+  if (meta->palB >= 0) palette_anim_init(&palAnims[palAnimCount++], meta->palB, 0);
+  if (meta->palC >= 0) palette_anim_init(&palAnims[palAnimCount++], meta->palC, 0);
+  load_rings(level);
+  load_steam_exhausts(level);
+  sprite_init(&ringSprite);
+  ringSprite.graphics.dest = OBJ_VRAM + (level == 3 ? 232u : 240u) * 32u;
+  ringSprite.graphics.anim = 707; ringSprite.variant = 0;
+  memset(sparkles, 0, sizeof sparkles);
+  ringSprite.oamFlags = 20 << 6; ringSprite.palId = 0; ringSprite.frameFlags = 2 << 12;
   create_player(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);
   if (is_casino()) init_palette_animations();
@@ -801,7 +1134,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   act.clockStopped = 1; act.firstCard = 1;
   act.hud.active = 0; act.hud.flash = is_casino() && gba_start_number("power", 0) == 2 ? 0 : act.stage.hudFlash;
   act.started = 0; act.drawn = 0;
-  firstRingsMade = 0;
+  stageAnimFrame = 0; stageAnimDelay = 0; stageAnimShown = 0;
   act.firstFrame = (int)gba_start_number("first", 0);
   e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
   e.winRegs[0] = e.winRegs[1] = e.winRegs[2] = e.winRegs[3] = 0;
@@ -814,39 +1147,33 @@ void act_start(int level, int cardSkip, int preFrames) {
   sonic.graphics.anim = SONIC_IDLE; sonic.variant = 0; sonic.animSpeed = ANIM_NORMAL;
   sonic.palId = 0; sonic.oamFlags = ORDER_SONIC << 6; sonic.frameFlags = 2 << 12;
 
-  // the HUD's tiles and colours (hudGraphics): the white and red digits, the ring and the face, at the
-  // original's fixed sprite VRAM addresses
+  // the HUD's tiles and colours (hudGraphics): the white and red digits, the ring and the face. Its place in
+  // sprite memory is where the original's act puts it after its player and its objects: in Secret Base act 2 and
+  // Casino Paradise act 2 the face at 64, the ring at 68 and the digits at 84, and 400 for the whole sheet in X Zone,
+  // whose recording fixed it.
+  if (level == 3 || is_casino_level(level)) {
+    hudVram = OBJ_VRAM + 84u * 32u;
+    hudTile = 84; hudRingTile = 68; hudFaceTile = 64;
+  } else {
+    hudVram = vram_malloc(64);
+    hudTile = (int)((hudVram - OBJ_VRAM) >> 5); hudRingTile = hudTile + HUD_RING; hudFaceTile = hudTile + HUD_FACE;
+  }
   uint32_t fontTiles, fontPalette, faceTiles, facePalette, ringTiles, ringPalette;
   UiSlot layout;
   ui_graphics(0, &fontTiles, &fontPalette, &layout);
   ui_graphics(1, &faceTiles, &facePalette, &layout);
   ui_graphics(5, &ringTiles, &ringPalette, &layout);
-  if (is_casino()) {
-    copy_rom(fontTiles + 32 * 32, OBJ_VRAM + HUD_WHITE_TILE * 32, 22 * 32);
-    copy_rom(fontTiles + 224 * 32, OBJ_VRAM + HUD_RED_TILE * 32, 22 * 32);
-    copy_rom(ringTiles, OBJ_VRAM + HUD_RING_TILE * 32, 16 * 32);
-    copy_rom(faceTiles, OBJ_VRAM + HUD_FACE_TILE * 32, 4 * 32);
+  // the HUD's graphics go in now, before the act's first frame, as its tiles are there on it
+  for (uint32_t i = 0; i < 22 * 32; i++) gba_vram[hudVram + HUD_WHITE * 32 + i] = (uint8_t)rom_u8(fontTiles + 32 * 32 + i);
+  for (uint32_t i = 0; i < 22 * 32; i++) gba_vram[hudVram + HUD_RED * 32 + i] = (uint8_t)rom_u8(fontTiles + 224 * 32 + i);
+  for (uint32_t i = 0; i < 16 * 32; i++) gba_vram[OBJ_VRAM + (uint32_t)hudRingTile * 32u + i] = (uint8_t)rom_u8(ringTiles + i);
+  for (uint32_t i = 0; i < 4 * 32; i++) gba_vram[OBJ_VRAM + (uint32_t)hudFaceTile * 32u + i] = (uint8_t)rom_u8(faceTiles + i);
+  // the two tiles a zero-ring count reads past its string, which the character select left at 20
+  if (is_casino_level(level)) {
     uint32_t pastTiles, pastPalette;
     UiSlot pastLayout;
     ui_graphics(39, &pastTiles, &pastPalette, &pastLayout);
     copy_rom(pastTiles + 19 * 32, OBJ_VRAM + HUD_PAST_TILE * 32, 2 * 32);
-    firstRingsMade = 0;
-    copy_rom(0x3C06D4, OBJ_VRAM + 232 * 32, 4 * 32);
-    // the two rings the act's first screen shows, animation 707, at the tiles the original gives them
-    for (int i = 0; i < 2; i++) {
-      sprite_init(&firstRings[i]);
-      firstRings[i].graphics.dest = OBJ_VRAM + 232 * 32;
-      firstRings[i].graphics.anim = 707; firstRings[i].variant = 0; firstRings[i].animSpeed = 0x10;
-      firstRings[i].palId = 0; firstRings[i].oamFlags = 17 << 6; firstRings[i].frameFlags = 2 << 12;
-    }
-    firstRingsMade = 1;
-  } else {
-    hudVram = vram_malloc(64);
-    hudTile = (hudVram - OBJ_VRAM) >> 5;
-    copy_rom(fontTiles + 32 * 32, hudVram + HUD_WHITE * 32, 22 * 32);
-    copy_rom(fontTiles + 224 * 32, hudVram + HUD_RED * 32, 22 * 32);
-    copy_rom(ringTiles, hudVram + HUD_RING * 32, 16 * 32);
-    copy_rom(faceTiles, hudVram + HUD_FACE * 32, 4 * 32);
   }
   for (int i = 0; i < 16; i++) e.objPalette[6 * 16 + i] = (uint16_t)rom_u16(fontPalette + i * 2);
   for (int i = 0; i < 16; i++) e.objPalette[i] = (uint16_t)rom_u16(facePalette + i * 2);

@@ -65,6 +65,8 @@ static void watch_start_point(Task *t);
 static void watch_start_point(Task *t) {
   int level = (int)gba_start_number("level", -1);
   if (level < 0 || gba_start_number("power", 0) != 2) return;
+  // only a start point that names its frame; the normal course select picks the act when A is pressed
+  if (gba_start_number("at", -1) < 0) return;
   if (front_frame() < (uint32_t)gba_start_number("at", 0)) return;
   destroy_tasks(0x2000, 0x3000);
   act_active = 1;
