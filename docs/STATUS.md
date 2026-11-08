@@ -20,6 +20,6 @@ Every game needs your own copy of the original. The proof tools write this table
 | **[Sonic Battle Dreamport](../games/sonic-battle/)** | [47.69%](../.github/readme/progress/sonic-battle.svg) | [30%, 6 of 20 parts](../.github/readme/progress/sonic-battle.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-battle/) |
 | [Sonic Battle Dreamport in C](../games/sonic-battle/c/) | [38.83%](../.github/readme/progress/sonic-battle-c.svg) | [30%, 6 of 20 parts](../.github/readme/progress/sonic-battle-c.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | Not yet |
 | **[Sonic Advance Dreamport](../games/sonic-advance/)** | [72.13%](../.github/readme/progress/sonic-advance.svg) | [21.62%, 8 of 37 parts](../.github/readme/progress/sonic-advance.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
-| [Sonic Advance Dreamport in C](../games/sonic-advance/c/) | [18.3%](../.github/readme/progress/sonic-advance-c.svg) | [18.92%, 7 of 37 parts](../.github/readme/progress/sonic-advance-c.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | Not yet |
+| [Sonic Advance Dreamport in C](../games/sonic-advance/c/) | [18.96%](../.github/readme/progress/sonic-advance-c.svg) | [18.92%, 7 of 37 parts](../.github/readme/progress/sonic-advance-c.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | Not yet |
 
 <!-- End of the table of Dreamports. -->
