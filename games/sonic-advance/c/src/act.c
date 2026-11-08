@@ -665,14 +665,22 @@ static int ring_touches(int px, int py, int oy, int rx, int ry) {
 static void rings_init(void) {
   for (int i = 0; i < ringTotal; i++) rings[i].taken = 0;
   sprite_init(&ringSprite);
-  // the original keeps the collectible ring's tiles at OBJ VRAM tile 240 (0x1E00), the base its OAM entries name
-  ringSprite.graphics.dest = OBJ_VRAM + 0x1E00;
+  // the original keeps the collectible ring's tiles at OBJ VRAM tile 232 (0x1D00), the base its OAM entries name
+  // (rings_manager.h, RESERVED_RING_TILES_VRAM for SA1); the OAM entries' tile is that base plus the frame's 4 tiles
+  ringSprite.graphics.dest = OBJ_VRAM + 0x1D00;
   ringSprite.graphics.anim = 707; ringSprite.variant = 0; ringSprite.animSpeed = ANIM_NORMAL;
   ringSprite.palId = 0; ringSprite.oamFlags = 20 << 6; ringSprite.frameFlags = 2 << 12;   // its colours in row 7, away from the HUD's row 6
+  // the rings manager is made while the stage loads, and its task runs through the frames the load takes before the
+  // act's first frame: sixteen of them, as the palette animations' first step at tick 16 shows. Its spin is that far
+  // on when the act's first frame is drawn
+  for (int i = 0; i < 16; i++) update_sprite(&ringSprite, 0);
 }
+static void sparkle_make(int x, int y);
+
 // addRing (game.js): the count, and the ring song on the second sound player for odd ones and the first for even
 static void ring_take(const Ring *g) {
   act.ringCount++;
+  sparkle_make(g->x, g->y);
   int odd = act.ringCount & 1, p = odd ? 2 : 1;
   gba_sound_start_on(p, SONG_RING);
   gba_sound_volume(p, 0xFF, 128);
@@ -699,6 +707,43 @@ static void rings_draw(int camX, int camY) {
     ringSprite.frameFlags = (ringSprite.frameFlags & ~(SPRITE_X_FLIP | SPRITE_Y_FLIP | SPRITE_PRIORITY)) | (2 << 12);
     display_sprite(&ringSprite);
   }
+}
+// a collected ring leaves its sparkle (CreateCollectRingEffect, engine/game.js sparkle): a task made in the ring
+// manager's own frame, so its first step and first picture are the next frame, at OAM order 15 and the ring effect's
+// own reserved tiles; it ends on its animation's End, and its last picture shows on the frame it ends
+#define SPARKLE_MAX 8
+typedef struct { int x, y, fresh, dead; Sprite s; } Sparkle;
+static Sparkle sparkles[SPARKLE_MAX];
+static int sparkleCount;
+
+static void sparkle_make(int x, int y) {
+  if (sparkleCount >= SPARKLE_MAX) return;
+  Sparkle *sp = &sparkles[sparkleCount++];
+  sp->x = x; sp->y = y; sp->fresh = 1; sp->dead = 0;
+  sprite_init(&sp->s);
+  sp->s.graphics.dest = OBJ_VRAM + 0x1F00;   // RESERVED_RING_EFFECT_TILES_VRAM (0x1F00 for SA1)
+  sp->s.graphics.anim = 708; sp->s.variant = 0; sp->s.animSpeed = ANIM_NORMAL;
+  sp->s.palId = 0; sp->s.oamFlags = 15 << 6; sp->s.frameFlags = 2 << 12;
+}
+static void sparkles_update(void) {
+  for (int i = 0; i < sparkleCount; i++) {
+    Sparkle *sp = &sparkles[i];
+    if (sp->dead) continue;
+    // the task is made in the frame's ring manager and runs after it that same frame, as TaskCreate puts it just
+    // after every task of its priority
+    sp->fresh = 0;
+    if (update_sprite(&sp->s, 0) == 0) sp->dead = 1;
+  }
+}
+static void sparkles_draw(int camX, int camY) {
+  for (int i = 0; i < sparkleCount; i++) {
+    Sparkle *sp = &sparkles[i];
+    sp->s.x = (int16_t)(sp->x - camX); sp->s.y = (int16_t)(sp->y - camY);
+    display_sprite(&sp->s);
+  }
+  int kept = 0;
+  for (int i = 0; i < sparkleCount; i++) if (!sparkles[i].dead) sparkles[kept++] = sparkles[i];
+  sparkleCount = kept;
 }
 // --- item boxes, springs and spikes (engine/itembox.js, springs.js, spikes.js) ----------------------------------
 #define ENT_MAX 32
@@ -859,9 +904,11 @@ static void entities_draw(int camX, int camY) {
   for (int i = 0; i < spikeCount; i++) { Obj *o = &spikes[i]; if (!o->active) continue; o->s.x = (int16_t)(o->x - camX); o->s.y = (int16_t)(o->y - camY); display_sprite(&o->s); }
 }
 static void entities_update(void) {
-  for (int i = 0; i < boxCount; i++) if (boxes[i].active) { update_sprite(&boxes[i].box, 0); update_sprite(&boxes[i].icon, 0); }
-  for (int i = 0; i < springCount; i++) if (springs[i].active) update_sprite(&springs[i].s, 0);
-  for (int i = 0; i < spikeCount; i++) if (spikes[i].active) update_sprite(&spikes[i].s, 0);
+  // an object's task is made the first frame its point is in the camera's spawn range, and that first step loads
+  // its colours and sets its hitbox: this runs before the steps, so a new object's palette lands on that frame
+  for (int i = 0; i < boxCount; i++) { boxes[i].active = ent_active(boxes[i].x, boxes[i].y); if (boxes[i].active) { update_sprite(&boxes[i].box, 0); update_sprite(&boxes[i].icon, 0); } }
+  for (int i = 0; i < springCount; i++) { springs[i].active = ent_active(springs[i].x, springs[i].y); if (springs[i].active) update_sprite(&springs[i].s, 0); }
+  for (int i = 0; i < spikeCount; i++) { spikes[i].active = ent_active(spikes[i].x, spikes[i].y); if (spikes[i].active) update_sprite(&spikes[i].s, 0); }
 }
 // --- act 2's other interactables (platforms.js, boosters.js, checkpoints.js, goal.js, shrubs.js) -----------------
 typedef struct { int kind, x, y, d[4], active, anim, variant; Sprite s; } Prop;
@@ -923,7 +970,9 @@ static void props_step(Player *p) {
     if (o->kind == 7 && !act.goalReached && p->x > o->x) { o->variant = 2; play_song(169); }
   }
 }
-static void props_update(void) { for (int i = 0; i < propCount; i++) if (props[i].active) update_sprite(&props[i].s, 0); }
+static void props_update(void) {
+  for (int i = 0; i < propCount; i++) { props[i].active = ent_active(props[i].x, props[i].y); if (props[i].active) update_sprite(&props[i].s, 0); }
+}
 static void props_draw(int camX, int camY) {
   for (int i = 0; i < propCount; i++) {
     Prop *o = &props[i]; if (!o->active) continue;
@@ -1089,6 +1138,7 @@ static void draw_frame(void) {
   }
 
   rings_draw(camX, camY);
+  sparkles_draw(camX, camY);
   entities_draw(camX, camY);
   props_draw(camX, camY);
 
@@ -1101,7 +1151,8 @@ static void draw_frame(void) {
   if (act.player.state == PS_WALK) {
     sonic.frameFlags |= SPRITE_ROT_SCALE_ENABLE;
     Transform tf;
-    tf.rotation = 0; tf.qScaleX = (int16_t)(right ? -256 : 256); tf.qScaleY = 256;
+    // walk frames go through the rotation hardware along the slope (drawSonic: rotation = p.rotation << 2)
+    tf.rotation = (uint16_t)(act.player.rotation << 2); tf.qScaleX = (int16_t)(right ? -256 : 256); tf.qScaleY = 256;
     tf.x = (int16_t)(sx - (right ? 1 : 0)); tf.y = (int16_t)sy;
     transform_sprite(&sonic, &tf);
   } else {
@@ -1125,6 +1176,7 @@ static void act_frame(void) {
   update_stage_animations(act.started);
   rings_update();
   rings_collect(&act.player);
+  sparkles_update();
   entities_update();
   entities_step(&act.player);
   props_update();
