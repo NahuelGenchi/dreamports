@@ -19,6 +19,51 @@ static uint32_t pageFrame;
 /** The page's frame since power-on, as a recording counts them. */
 uint32_t front_frame(void) { return pageFrame ? pageFrame - 1 : 0; }
 
+// the start point's words (tools/README.md): a recording opens the game at a part with them, and the original gets
+// there by its own presses. `unlocked` gives the game a save of its own, kept nowhere, with the character's progress
+// at its value and, when they are there, the others' and the Chaos Emeralds', as main.js's proofSave does at Game Start.
+static struct {
+  int unlocked, unlockedGiven;
+  int levels[4];      // sonic, tails, knuckles and amy; -1 when the word isn't there
+  int emeralds;       // -1 when the word isn't there
+} startPoint;
+static const char *const START_CHARACTERS[4] = { "sonic", "tails", "knuckles", "amy" };
+
+/** The page's address's start point, read once the engine has started. */
+static void read_start_point(void) {
+  const char *unlocked = gba_start_point("unlocked");
+  startPoint.unlockedGiven = unlocked != NULL;
+  startPoint.unlocked = startPoint.unlockedGiven ? (int)gba_start_number("unlocked", 0) & 0xFFFF : 0;
+  for (int c = 0; c < 4; c++) startPoint.levels[c] = (int)gba_start_number(START_CHARACTERS[c], -1);
+  startPoint.emeralds = (int)gba_start_number("emeralds", -1);
+  ctx.character = (int)gba_start_number("character", 0);
+  if (ctx.character < 0) ctx.character = 0;
+  if (ctx.character > 3) ctx.character = 3;
+  ctx.select = !startPoint.unlockedGiven || gba_start_point("select") != NULL;
+  ctx.currentLevel = startPoint.unlockedGiven ? (int)gba_start_number("current", 0) : 0;
+  ctx.startLevel = startPoint.unlockedGiven ? (int)gba_start_number("started", 0) : 0;
+}
+
+/**
+ * The progress a start point gives the save as Game Start is pressed, as the JavaScript version's page does: the
+ * characters' levels, then the level being played's own, which wins, and the Chaos Emeralds.
+ */
+static void apply_start_point(void) {
+  if (!startPoint.unlockedGiven) return;
+  for (int c = 0; c < 4; c++) if (startPoint.levels[c] >= 0) save_set_unlocked_level(c, (uint16_t)startPoint.levels[c]);
+  save_set_unlocked_level(ctx.character, (uint16_t)startPoint.unlocked);
+  if (startPoint.emeralds >= 0) SAVE_CHAOS_EMERALDS = (uint8_t)(startPoint.emeralds & ALL_EMERALDS);
+}
+
+/** Game Start: the character select, unless a start point leaves it out, and then the course select once the
+ *  character has progress, or the act. */
+void front_start_game(void) {
+  if (ctx.select) { create_character_select(ctx.character); return; }
+  apply_start_point();
+  if (ctx.gameMode == GAME_MODE_TIME_ATTACK || save_unlocked_level(ctx.character) != 0) create_course_select();
+  else front_play(-1);
+}
+
 /**
  * GameInit: the language screen when there is no save (a new game), else the logos, or, after a soft reset, which sets
  * FLAGS_SKIP_INTRO, the title screen with its music.
@@ -33,6 +78,7 @@ static void power_on(int skipIntro) {
 void front_start(void) {
   memset(&ctx, 0, sizeof ctx);
   engine_init();
+  read_start_point();
   sprites.anims = rom_ptr(OFFSET_SPRITE_TABLES);
   sprites.dims = rom_ptr(OFFSET_SPRITE_TABLES + 4);
   sprites.oam = rom_ptr(OFFSET_SPRITE_TABLES + 8);
@@ -78,7 +124,8 @@ void front_vs_round(int level, int chao) {
 /** The round the VS menus chose, for the page: its level, or 0 while they are still choosing. */
 EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 
-// The acts in C so far: X Zone opens from a start point (level=12), its title card's state run without its pictures.
+// The acts in C so far: a start point (level=...) opens its act directly; otherwise the course select or the
+// character select's first act hands it over.
 void front_play(int level) {
   act_active = 1;
   int startLevel = (int)gba_start_number("level", -1);
@@ -87,6 +134,8 @@ void front_play(int level) {
     act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
     return;
   }
+  // the character select's first act has no course select to name its level
+  if (level < 0) level = ctx.startLevel >= 0 ? ctx.startLevel : 0;
   // the frame that hands the act over still draws its menu: the act starts and draws once, on the next one
   act_queue(level, -1, 0);
 }
