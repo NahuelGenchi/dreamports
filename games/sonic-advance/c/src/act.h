@@ -78,6 +78,7 @@ extern Act act;
 extern int act_active;
 
 void act_start(int level, int cardSkip, int preFrames);
+void act_music_already(void);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_frame_now(void);
 void act_task(Task *t);

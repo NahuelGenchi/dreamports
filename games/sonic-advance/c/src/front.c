@@ -135,7 +135,7 @@ void front_play(int level) {
     return;
   }
   // the character select's first act has no course select to name its level
-  if (level < 0) level = ctx.startLevel >= 0 ? ctx.startLevel : 0;
+  if (level < 0) { level = ctx.startLevel >= 0 ? ctx.startLevel : 0; act_music_already(); }
   // the frame that hands the act over still draws its menu: the act starts and draws once, on the next one
   act_queue(level, -1, 0);
 }

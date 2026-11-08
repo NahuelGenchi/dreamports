@@ -1857,8 +1857,22 @@ static void draw_frame(void) {
   shots_draw(camX, camY);
 }
 
-static int musicSync;
+static int musicSync, musicStart, musicAlready;
+static int loadFrame, loadPalette0;
 static void act_frame(void) {
+  if (loadFrame) {
+    // the frame the act loads shows black, as the original's title card's first frame does: the act's own first
+    // picture then puts the stage's colours back
+    loadFrame = 0;
+    e.bgPalette[0] = (uint16_t)loadPalette0;
+    e.flags |= FLAGS_UPDATE_BG_PALETTES;
+  }
+  if (musicStart) {
+    // a menu hands the act over: its song starts with the act's first picture, as the original's does
+    musicStart = 0;
+    play_song(act.stage.music);
+    if (act.stage.level == 1) { gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4); }
+  }
   if (musicSync) {
     musicSync = 0;
     // the act's music starts on the frame after its first picture, as the stage's load ends: the frames before the
@@ -1945,6 +1959,9 @@ static void pre_run(int cardSkip, int preFrames) {
   }
 }
 
+/** The menu that hands the act over already started its song, a frame ahead of the act's first picture. */
+void act_music_already(void) { musicAlready = 1; }
+
 void act_start(int level, int cardSkip, int preFrames) {
   memset(&act, 0, sizeof act);
   copyCount = 0;
@@ -2004,15 +2021,27 @@ void act_start(int level, int cardSkip, int preFrames) {
   if (act.stage.level == 1) {
     // Neo Green Hill act 2's stage music manager (Task_StageMusicManager, MusManager_UpdateBgmParams): the song from
     // its beginning at a sixty-fourth of the volume, fading in, on the music player
-    play_song(act.stage.music);
-    gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4);
-    musicSync = 1;
-  } else {
-    // the acts the engine's first piece proves keep the music start their recordings matched with
+    if (cardSkip >= 0) {
+      play_song(act.stage.music);
+      gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4);
+      musicSync = 1;
+    } else if (!musicAlready) musicStart = 1;
+  } else if (cardSkip >= 0) {
+    // a start point skips the act's card with the sound already gone by
     play_song(act.stage.music);
     gba_sound_frames_gone_by(118);
-  }
+  } else if (!musicAlready) musicStart = 1;
+  musicAlready = 0;
   act.hud.active = 1;
   act.started = 1;
   create_task(act_task, NULL, 0x0F00, 0, NULL);
+  // loading the act takes the console past the next V-blank: that frame stays black, as the original's does, and
+  // the act's own task turns the display on for its first picture
+  loadFrame = 1;
+  loadPalette0 = e.bgPalette[0];
+  e.bgPalette[0] = 0;
+  e.flags |= FLAGS_UPDATE_BG_PALETTES;
+  e.dispCnt = 0;
+  e.bldCnt = 0;
+  e.bldY = 0;
 }
