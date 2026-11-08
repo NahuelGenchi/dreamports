@@ -36,9 +36,10 @@ function showResults(player) {
 }
 
 /** The task for a goal entity, or null when `e` is not one or doesn't spawn. */
-export function createGoal(e, slot, anims) {
+export function createGoal(e, slot, anims, ctx = null) {
   if (e.kind !== STAGE_GOAL) return null;
-  if (e.d[1] === 0) return null;
+  // in a multiplayer mode even the hidden goals spawn, as the teammates' finish checks need them
+  if (e.d[1] === 0 && !ctx?.mp) return null;
   const o = makeSprite('goal');
   animate(o, anims);
   const shows = e.d[0] !== 0;
@@ -87,6 +88,16 @@ export function createGoal(e, slot, anims) {
       if (phase === 'passed') return passed(ctx);
       if (reached(ctx)) {
         startAnim(o, 'goalSpin');
+        const mp = ctx.mp;
+        if (mp) {
+          // the other GBAs learn it through the original's room event 7, and a team round ends on all of them once
+          // every player of one team has reached a goal
+          mp.sendEvent({ type: 7 });
+          mp.goal?.(mp.id);
+          if (ctx.world.level !== EGG_ROCKET) ctx.world.playSound(SONG.GOAL);
+          phase = 'passed';
+          return passed(ctx);
+        }
         if (ctx.world.goalReached) { phase = 'passed'; return passed(ctx); }
         ctx.world.reachGoal();
         if (ctx.world.level !== EGG_ROCKET) ctx.world.playSound(SONG.GOAL);
