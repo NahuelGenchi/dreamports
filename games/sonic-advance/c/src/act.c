@@ -369,10 +369,12 @@ static void ground_sensors(Player *p) {
   int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y), soy = p->offsetY;
   int mode = ground_mode(act_angle(p));
   Scan a, b; double speed;
+  // the walls beside a steep slope are scanned as rows (engine/sensors.js groundSensors, sub_8022B18 and
+  // sub_8022C44), the floor and the ceiling as columns
   if (mode == 0) { a = scan(1, y + soy, x - 8, p->layer, 8); b = scan(1, y + soy, x + 8, p->layer, 8); speed = p->xsp; }
-  else if (mode == 1) { a = scan(1, x - soy, y - 8, p->layer, -8); b = scan(1, x - soy, y + 8, p->layer, -8); speed = p->ysp; }
+  else if (mode == 1) { a = scan(0, x - soy, y - 8, p->layer, -8); b = scan(0, x - soy, y + 8, p->layer, -8); speed = p->ysp; }
   else if (mode == 2) { a = scan(1, y - soy, x + 8, p->layer, -8); b = scan(1, y - soy, x - 8, p->layer, -8); speed = p->xsp; }
-  else { a = scan(1, x + soy, y + 8, p->layer, 8); b = scan(1, x + soy, y - 8, p->layer, 8); speed = p->ysp; }
+  else { a = scan(0, x + soy, y + 8, p->layer, 8); b = scan(0, x + soy, y - 8, p->layer, 8); speed = p->ysp; }
   if (a.hasRot) p->rotA = (uint8_t)a.rot;
   if (b.hasRot) p->rotB = (uint8_t)b.rot;
   int val = a.d < b.d ? a.d : b.d, rot = a.d < b.d ? p->rotA : p->rotB;
@@ -692,7 +694,7 @@ static void animate_player(Player *p) {
 
 // --- the act's rings (engine/rings.js, rings_manager.c) ---------------------------------------------------------
 #define RING_MAX 512
-typedef struct { int x, y, taken; } Ring;
+typedef struct { int x, y, rx, ry, taken; } Ring;
 static Ring rings[RING_MAX];
 static int ringTotal;
 static uint8_t ringData[32768];
@@ -727,6 +729,7 @@ static void load_rings(int level) {
       Ring *g = &rings[ringTotal++];
       g->x = ringData[at] * 8 + (int)(r % rx) * 256;
       g->y = ringData[at + 1] * 8 + (int)(r / rx) * 256;
+      g->rx = (int)(r % rx); g->ry = (int)(r / rx);
       g->taken = 0;
     }
   }
@@ -764,20 +767,26 @@ static void ring_take(const Ring *g) {
 }
 static void rings_collect(Player *p) {
   if (!p || p->dead) return;
-  int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
+  // the ring manager searches the 256 px regions under his box, its bottom and right edges a ring's height and
+  // half its width in, so a ring just in the next region down or right waits a frame (Task_RingsMgrMain)
+  int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y), oy = p->offsetY;
+  int ry0 = fdiv(py - oy, 256), ry1 = fdiv(py + oy - 16, 256);
+  int rx0 = fdiv(px - 6 - 8, 256), rx1 = fdiv(px + 6 - 8, 256);
   for (int i = 0; i < ringTotal; i++) {
     Ring *g = &rings[i];
-    if (g->taken) continue;
-    if (ring_touches(px, py, p->offsetY, g->x, g->y)) { g->taken = 1; ring_take(g); }
+    if (g->taken || g->ry < ry0 || g->ry > ry1 || g->rx < rx0 || g->rx > rx1) continue;
+    if (ring_touches(px, py, oy, g->x, g->y)) { g->taken = 1; ring_take(g); }
   }
 }
 static void rings_update(void) { update_sprite(&ringSprite, 0); }
 static void rings_draw(int camX, int camY) {
+  // region by region from the camera's, as the original draws them, so each ring keeps its place in OAM's order
+  int ry0 = camY >> 8, ry1 = (camY + SCREEN_H_ - 1) >> 8, rx0 = camX >> 8, rx1 = (camX + SCREEN_W_ - 1) >> 8;
   for (int i = 0; i < ringTotal; i++) {
     Ring *g = &rings[i];
-    if (g->taken) continue;
+    if (g->taken || g->ry < ry0 || g->ry > ry1 || g->rx < rx0 || g->rx > rx1) continue;
     int sx = g->x - camX, sy = g->y - camY;
-    if (sx < -16 || sx > 256 || sy < 0 || sy - 16 > 160) continue;
+    if (sx < -8 || sx + 8 > SCREEN_W_ + 16 || sy < 0 || sy - 16 > SCREEN_H_) continue;
     ringSprite.x = (int16_t)(sx); ringSprite.y = (int16_t)(sy);
     ringSprite.frameFlags = (ringSprite.frameFlags & ~(SPRITE_X_FLIP | SPRITE_Y_FLIP | SPRITE_PRIORITY)) | (2 << 12);
     display_sprite(&ringSprite);
