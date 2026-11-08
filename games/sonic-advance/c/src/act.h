@@ -96,6 +96,9 @@ void card_create(int level, int character, int fromResults, int blank);
 int card_run(int pressed);
 void card_draw(void);
 void act_start(int level, int cardSkip, int preFrames);
+// the opening engine for the acts before act 1's full port: Secret Base act 2 and X Zone
+void opening_start(int level, int cardSkip, int preFrames);
+void opening_frame_now(void);
 void act_queue(int level, int cardSkip, int preFrames);
 /** Keeps the screen black for this frame, as a menu's last frame is. */
 void act_hold_black(void);

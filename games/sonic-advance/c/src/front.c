@@ -124,28 +124,38 @@ void front_vs_round(int level, int chao) {
 /** The round the VS menus chose, for the page: its level, or 0 while they are still choosing. */
 EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 
-// The acts in C so far: Neo Green Hill Zone act 1 and X Zone open from a start point (level=0 and level=12). A start
-// point's `level` opens the act at once; the course select hands the act its own level.
+// The acts in C so far: Neo Green Hill act 1 in full, and the openings of Secret Base act 2 and X Zone. A start
+// point's `level` opens one of them at once; the course select hands the act its own level; any other act stops
+// safely where the screen is.
 void front_play(int level) {
+  int startLevel = (int)gba_start_number("level", -1);
+  int fromStart = startLevel >= 0;
+  if (!fromStart) startLevel = level;
+  if (level < 0 && startLevel < 0) startLevel = ctx.startLevel >= 0 ? ctx.startLevel : 0;
+  if (startLevel != 0 && startLevel != 3 && startLevel != 12) { ctx.done = 1; return; }
   act_active = 1;
   // a new game's act comes from the character select, whose HUD's zero-ring flash starts at 1; a course select
   // or a start point starts it from the stage's own value (levels.js hudFlash)
   actHudFlash = level < 0 ? 1 : -1;
-  int startLevel = (int)gba_start_number("level", -1);
-  if (startLevel >= 0) {
+  int card = (int)gba_start_number("card", -1), pre = (int)gba_start_number("pre", 0);
+  if (fromStart) {
     destroy_tasks(0x2000, 0x3000);
-    act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
+    if (startLevel == 0) act_start(startLevel, card, pre);
+    else { opening_start(startLevel, card, pre); opening_frame_now(); }
     return;
   }
   if (level < 0) {
     // Game Start after the character select hands the act the level the game was started on (0 for a new game).
     // The screen stays black for this frame, as the original's menu fades to black before its stage's first picture.
-    act_start(ctx.startLevel, -1, 0);
+    if (startLevel == 0) act_start(startLevel, -1, 0);
+    else opening_start(startLevel, -1, 0);
     act_hold_black();
     return;
   }
-  // The course select's last frame still draws, and its act's song starts with the act's first picture.
-  act_queue(level, -1, 0);
+  // The course select's last frame still draws; act 1's song starts with its first picture, and the opening acts
+  // start on the frame after the menu.
+  if (startLevel == 0) act_queue(level, -1, 0);
+  else { destroy_tasks(0x2000, 0x3000); opening_start(startLevel, -1, 0); }
 }
 void front_start_demo(void) { ctx.done = 1; }
 

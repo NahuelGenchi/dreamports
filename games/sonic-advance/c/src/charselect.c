@@ -176,8 +176,8 @@ static void watch_start_point(Task *t) {
   if (level < 0 || gba_start_number("power", 0) != 2) return;
   if (front_frame() < (uint32_t)gba_start_number("at", 0)) return;
   act_active = 1;
-  act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
-  act_frame_now();
+  if (level == 0) { act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0)); act_frame_now(); }
+  else { opening_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0)); opening_frame_now(); }
   destroy_tasks(0x2000, 0x3000);
   destroy_task(t);
 }
