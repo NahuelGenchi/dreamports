@@ -964,7 +964,7 @@ void opening_start(int level, int cardSkip, int preFrames) {
   else { gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4); }
   oact.hud.active = 1;
   oact.started = 1;
-  create_task(act_task, NULL, 0x0F00, 0, NULL);
+  create_task(opening_task, NULL, 0x0F00, 0, NULL);
   // the level pick's first frame runs with the picture still the black the hand-over left; the card's first picture
   // comes on the frame after it
   firstPictureHidden = gba_start_point("level") == NULL && cardSkip < 0 && preFrames == 0;
