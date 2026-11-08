@@ -137,8 +137,10 @@ void front_play(int level) {
     act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
     return;
   }
-  // Game Start after the character select hands the act the level the game was started on (0 for a new game)
+  // Game Start after the character select hands the act the level the game was started on (0 for a new game).
+  // The screen stays black for this frame, as the original's menu fades to black before its stage's first picture.
   act_start(level >= 0 ? level : ctx.startLevel, -1, 0);
+  act_hold_black();
 }
 void front_start_demo(void) { ctx.done = 1; }
 

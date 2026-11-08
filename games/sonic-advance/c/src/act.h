@@ -96,6 +96,8 @@ int card_run(int pressed);
 void card_draw(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
+/** Keeps the screen black for this frame, as a menu's last frame is. */
+void act_hold_black(void);
 void act_frame_now(void);
 void act_start_clear(void);
 void act_stage_results(void);

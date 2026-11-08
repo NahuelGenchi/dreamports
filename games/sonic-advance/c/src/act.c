@@ -810,9 +810,11 @@ static void air_step(Player *p, int dir, int jump, int jumpPressed) {
   air_collision(p);
 }
 
+static int loopDrawX = -1;
 static void bounds(Player *p) {
   // past the act's loop point, Sonic and the camera go back by its distance while the camera moves
   if (act.stage.loopX >= 0 && p->x >= act.stage.loopX && act.cam.speedX != 0 && !act.cam.locked) {
+    loopDrawX = (int)act.cam.x;
     p->x += act.stage.loopShift; act.cam.x += act.stage.loopShift; act.cam.wrapped += act.stage.loopShift;
   }
   double maxX = act.cam.maxX + SCREEN_W_ - 1.0 / Q8, maxY = act.cam.maxY + SCREEN_H_ - 1.0 / Q8;
@@ -1023,7 +1025,8 @@ static void draw_frame(void) {
   e.bgScroll[2] = (uint16_t)(camX & 7); e.bgScroll[3] = (uint16_t)(camY & 7);
   e.bgScroll[4] = (uint16_t)(camX & 7); e.bgScroll[5] = (uint16_t)(camY & 7);
   fill_layer(0xF000, LAYER_FRONT, camX, camY);
-  fill_layer(0xF800, LAYER_BACK, camX, camY);
+  fill_layer(0xF800, LAYER_BACK, loopDrawX >= 0 ? loopDrawX : camX, camY);
+  loopDrawX = -1;
   // StageBgUpdate_Zone7Act1: the 37 × 23 background scrolls as a whole. Its first frame keeps the course
   // select's scroll, which the original shows before the act's own update lands.
   if (act.stage.zone == 6) {
@@ -1084,7 +1087,9 @@ static void draw_frame(void) {
 }
 
 static int nextLevelWait = -1, actFromResults;
+static uint16_t holdColour; static int restoreColour;   // the menu's black for the act's first picture
 static void act_frame(void) {
+  if (restoreColour) { restoreColour = 0; e.bgPalette[0] = holdColour; e.flags |= FLAGS_UPDATE_BG_PALETTES; }
   if (nextLevelWait >= 0) {
     if (nextLevelWait > 0) { nextLevelWait--; return; }
     nextLevelWait = -1;
@@ -1181,6 +1186,15 @@ void act_queue(int level, int cardSkip, int preFrames) {
   create_task(act_begin_task, NULL, 0x0F00, 0, NULL);
 }
 
+/** Keeps the screen black for this frame, as the menu's last frame is, until the act first draws. */
+void act_hold_black(void) {
+  holdColour = e.bgPalette[0];
+  e.dispCnt = 0;
+  e.bgPalette[0] = 0;
+  e.flags |= FLAGS_UPDATE_BG_PALETTES;
+  restoreColour = 1;
+}
+
 /** The title card's frames before the first one the recording compares, run with no picture. */
 static void pre_run(int cardSkip, int preFrames) {
   int after = 0;
@@ -1244,6 +1258,3 @@ void act_start(int level, int cardSkip, int preFrames) {
   act.started = 1;
   create_task(act_task, NULL, 0x0F00, 0, NULL);
 }
-
-
-

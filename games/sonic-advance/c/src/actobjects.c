@@ -1524,8 +1524,8 @@ void objects_update(int camX, int camY) {
     for (int k = 0; k < OBJ_LIVE_MAX; k++) {
       ObjLive *l = &objects.live[k];
       if (!l->active) continue;
-      if (pass == 0 && l->kind == 21) continue;
-      if (pass == 1 && l->kind != 21) continue;
+      if (pass == 0 && (l->kind == 21 || l->kind == 29)) continue;
+      if (pass == 1 && l->kind != 21 && l->kind != 29) continue;
       if (l->fresh) { l->fresh = 0; continue; }
       if (!obj_update_live(k, camX, camY)) { obj_despawn(k); continue; }
       if (obj_should_leave(k, camX, camY)) obj_despawn(k);
