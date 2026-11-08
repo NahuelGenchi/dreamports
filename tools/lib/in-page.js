@@ -247,6 +247,17 @@
       frames.forEach((frame, i) => originals.set(frame, all.subarray(i * PIXELS, (i + 1) * PIXELS)));
     },
 
+    /** Of these frames, those whose picture differs from the original's in more than half its pixels: two different
+     *  places, such as an original that went elsewhere, rather than one place drawn a little differently. */
+    apart(frames) {
+      return frames.filter(frame => {
+        const original = originals.get(frame), dreamport = kept.get(frame);
+        let pixels = 0;
+        for (let p = 0; p < PIXELS; p++) if (original[p] !== dreamport[p]) pixels++;
+        return pixels > PIXELS / 2;
+      });
+    },
+
     /** A still of one frame as a PNG in base64, with where it differs when `difference`, or of the Dreamport `alone`. */
     async still(frame, difference = false, alone = false) {
       const canvas = new OffscreenCanvas(WIDTH * SCALE * (alone ? 1 : difference ? 3 : 2), HEIGHT * SCALE + BAR);

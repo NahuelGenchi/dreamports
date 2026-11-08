@@ -69,7 +69,8 @@
     },
     shown,
     /** The clip of these frames, as H.264: the Dreamport's pictures above, and below them the original's, which are
-     *  fetched from `address` (every frame's, player after player, in 15-bit colour). */
+     *  fetched from `address` (every frame's, player after player, in 15-bit colour). `apart` counts the frames where a
+     *  player's picture differs from the original's in more than half its pixels, as two different places do. */
     async video(frames, address, bitrate) {
       const all = new Uint16Array(await (await fetch(address)).arrayBuffer());
       const players = clip.get(frames[0]).length, W = 240, H = 160, PIXELS = W * H;
@@ -83,8 +84,13 @@
           }
         }
       };
+      const differing = (ours, theirs) => {
+        let n = 0;
+        for (let p = 0; p < PIXELS; p++) if ((ours[p] & 0x7FFF) !== (theirs[p] & 0x7FFF)) n++;
+        return n;
+      };
       const chunks = [];
-      let description = null, failure = null;
+      let description = null, failure = null, apart = 0;
       const encoder = new VideoEncoder({
         output(chunk, metadata) {
           const config = metadata?.decoderConfig?.description;
@@ -100,10 +106,14 @@
       encoder.configure((await VideoEncoder.isConfigSupported(software)).supported ? software : config);
       for (let i = 0; i < frames.length && !failure; i++) {
         const ours = clip.get(frames[i]);
+        let away = false;
         for (let p = 0; p < players; p++) {
+          const theirs = all.subarray((i * players + p) * PIXELS, (i * players + p + 1) * PIXELS);
           put(ours[p], 0, p);
-          put(all.subarray((i * players + p) * PIXELS, (i * players + p + 1) * PIXELS), 1, p);
+          put(theirs, 1, p);
+          away ||= differing(ours[p], theirs) > PIXELS / 2;
         }
+        if (away) apart++;
         context.putImageData(image, 0, 0);
         const frame = new VideoFrame(canvas, { timestamp: Math.round(i * FRAME_US), duration: Math.round(FRAME_US) });
         encoder.encode(frame, { keyFrame: i % 300 === 0 });
@@ -113,7 +123,7 @@
       if (!failure) await encoder.flush();
       encoder.close();
       if (failure) throw failure;
-      return { width: canvas.width, height: canvas.height, description: toBase64(description), frames: chunks.map(c => ({ key: c.key, data: toBase64(c.data) })) };
+      return { width: canvas.width, height: canvas.height, description: toBase64(description), frames: chunks.map(c => ({ key: c.key, data: toBase64(c.data) })), apart };
     },
     get first() { return kept; },
   };

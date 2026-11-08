@@ -39,6 +39,9 @@ function launchSpeed([d0, d1]) {
 // speeds, as Sonic Advance 2's springs do (disableTrickTimer)
 function holdTricks(p, o) { p.trickDelay = SA2_TRICKS.springDelay[o.d[0] & 3]; }
 
+// in a team round a spring leaves him safe for two frames (spring.c's timerInvulnerability)
+const teamSafe = (p, world) => { if (world.mp?.teamPlay) p.invulnerable = 2; };
+
 // thrown into the air by a spring that points up: no jump moves until he lands, and the spring's d0 bit 0
 // picks the rise-and-fall animations over the somersault
 function throwUp(p, o) {
@@ -51,21 +54,25 @@ function throwUp(p, o) {
 }
 
 // up (sub_8022640): landing on it launches him straight up, keeping his X speed
-function up(o, p, { terrain: t }) {
+function up(o, p, world) {
+  const t = world.terrain;
   const landed = (platform(o, o.boxes[0], p, t) & LANDED) !== 0, hammered = !landed && hammerHits(p, o.x, o.y, o.boxes[0]);
   if (!landed && !hammered) return false;
   land(p);
   p.ysp = hammered ? hammerSpeed(-o.speed) : -o.speed;
+  teamSafe(p, world);
   throwUp(p, o);
   return true;
 }
 
 // down (sub_8022804): bumping it from below throws him down as he is; standing on it counts as ground
-function down(o, p, { terrain: t }) {
+function down(o, p, world) {
+  const t = world.terrain;
   const r = platform(o, o.boxes[0], p, t);
   if (r & FROM_BELOW) {
     p.air = true; p.jumped = false; p.midAir = 0;
     p.ysp = o.speed;
+    teamSafe(p, world);
     holdTricks(p, o);
     return true;
   }
@@ -85,6 +92,7 @@ function side(o, p, world) {
   if (face === dir) {
     if (world.boostMode && !world.actOver && !p.air && o.speed > B.sideSpring) enterBoostMode(p);
     p.xsp = p.gsp = o.speed * dir;
+    teamSafe(p, world);
     endAttack(p);
     holdTricks(p, o);
     p.state = p.curled ? 'spin' : 'walk';
@@ -98,7 +106,8 @@ function side(o, p, world) {
 
 // diagonal (sub_8022AB4 big, sub_8022E14 small): its second hitbox is the trigger, but only once Sonic's
 // centre is more than 20 px out on the side it points to; otherwise it is solid
-function diagonal(o, p, { terrain: t }) {
+function diagonal(o, p, world) {
+  const t = world.terrain;
   const probe = [-12, -(p.offsetY + 1), 12, p.offsetY + 1];
   const hammered = hammerHits(p, o.x, o.y, o.boxes[0]);
   if (!hammered && !overlap(o.x, o.y, o.boxes[1], Math.floor(p.x), Math.floor(p.y), probe)) { platform(o, o.boxes[0], p, t); return false; }
@@ -108,6 +117,7 @@ function diagonal(o, p, { terrain: t }) {
   if (!dir) { platform(o, o.boxes[0], p, t); return false; }
   const speed = hammered ? hammerSpeed(o.speed) : o.speed;
   p.ysp = p.inverted ? speed : -speed; p.xsp = speed * dir;   // under flipped gravity, still world up
+  teamSafe(p, world);
   throwUp(p, o);
   return true;
 }
