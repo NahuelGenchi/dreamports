@@ -298,6 +298,9 @@ static int en_attack_test(Enemy *e, int x, int y) {
   if (en_player_attacking()) {
     // Coll_Player_Enemy_Attack reads the sprite's attack box (slot 1), not the body
     if (!act_player_attack_box(&l, &t, &r, &b)) return 0;
+    // the sprite's boxes are relative to his centre; the collision test wants them in the act
+    int px = en_player_x(), py = en_player_y();
+    l += px; t += py; r += px; b += py;
     if (!en_box_touch(x, y, hb, l, t, r, b)) return 0;
     en_attack_hit = 1;
   } else {
@@ -896,3 +899,4 @@ void enemies_draw(int camX, int camY) {
 
 int enemies_player_hit(void) { return en_hit; }
 int enemies_player_attack_hit(void) { return en_attack_hit; }
+

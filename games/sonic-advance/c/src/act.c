@@ -6,13 +6,15 @@
 #include "act.h"
 #include "actobjects.h"
 #include "actenemies.h"
+#include "results.h"
 
 enum {
-  OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC,
+  OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC, OFFSET_LOOP_POINTS = 0x4A6E74, OFFSET_LOOP_SHIFTS = 0x4A6EBC,
   LAYER_FRONT = 0, LAYER_BACK = 1, IGNORE_PLATFORMS = 0x80,
   SCREEN_W_ = 240, SCREEN_H_ = 160,
 };
-enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD, PS_PUSH, PS_CROUCH_END, PS_LOOKUP_END, PS_BOUNCE, PS_INSTA };
+enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD, PS_PUSH, PS_CROUCH_END, PS_LOOKUP_END, PS_BOUNCE, PS_INSTA,
+  PS_SPRING, PS_SPRING_RISE, PS_SPRING_PEAK, PS_SPRING_FALL, PS_POLE, PS_SPIN_DASH, PS_SPIN_DASH_REV, PS_ACT_CLEAR_RUN };
 enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6, SONIC_PUSH = 12 };
 // the HUD's tiles at the addresses the original reserves (vram_hardcoded.h): the face at tile 64, the ring at 68,
 // the white digits at 84 and the red ones at 106
@@ -30,6 +32,10 @@ enum { ORDER_DIGITS = 2, ORDER_ICONS = 3, ORDER_SONIC = 16 };
 #define RUN_ANIM_SPEED 4.5
 #define REVERSE_KICK (96.0 / 256)
 #define BRAKE_MIN_SPEED 3.0
+#define WALL_MIN_SPEED 1.875
+#define SLIP_LOCK 30
+#define ROLL_DECELERATION (24.0 / 256)
+#define FORCED_ROLL_SPEED 3.0
 #define BORED_DELAY 360
 #define ANIM_NORMAL 0x10
 #define ANIM_MIN_WALK 0x08
@@ -151,6 +157,12 @@ static int q8(double v) { return js_round(v * Q8); }
 static int toward0(int v, int step) { return v > 0 ? (v - step > 0 ? v - step : 0) : v < 0 ? (v + step < 0 ? v + step : 0) : 0; }
 static int sin8(int angle) { return SINE[(angle & 0xFF) * 4] >> 6; }
 static int cos8(int angle) { return SINE[(angle & 0xFF) * 4 + 256] >> 6; }
+// groundMode (engine/sensors.js, sub_8022D6C): the original's rounding at the 45° edges, where -32 is a wall
+static int ground_mode(int rot) {
+  int r = (int)(int8_t)rot;
+  return ((r + (r > -0x20 && r <= 0 ? 0x20 : 0x1F)) & 0xFF) >> 6;
+}
+static int act_angle(const Player *p) { return p->inverted ? (-0x80 - p->rotation) & 0xFF : p->rotation; }
 
 // tileAt, columnHeight, rowWidth and angle (engine/terrain.js)
 static uint16_t tile_entry(int layer, int tx, int ty) {
@@ -246,6 +258,8 @@ static void load_stage(int level) {
   s->collision = read_collision(level);
   s->spawnX = rom_s16(OFFSET_SPAWNS + level * 4);
   s->spawnY = rom_s16(OFFSET_SPAWNS + level * 4 + 2);
+  s->loopX = rom_s16(OFFSET_LOOP_POINTS + level * 4);
+  s->loopShift = rom_s16(OFFSET_LOOP_SHIFTS + level * 4);
   s->width = s->collision.width; s->height = s->collision.height;
   // StageInit_ZoneNActM (rom/levels.js): the song and what the HUD's zero-ring counter finds as the level starts
   if (level == 0) { s->zone = 0; s->act = 0; s->music = 12; s->hudFlash = 90; }
@@ -327,13 +341,14 @@ static void camera_update(Camera *c, const Player *p) {
     c->targetY = (int)__builtin_floor(p->y) + c->shiftY - SCREEN_H_ / 2 + c->look + c->offsetY;
   }
   int dx = (int)c->targetX - (int)c->x;
-  if (dx > 8) c->x += dx - 8 > 16 ? 16 : dx - 8;
-  else if (dx < -8) c->x += dx + 8 < -16 ? -16 : dx + 8;
+  // at most its speed a frame, which the results set to 0 to hold it
+  if (dx > 8) c->x += dx - 8 > c->speedX ? c->speedX : dx - 8;
+  else if (dx < -8) c->x += dx + 8 < -c->speedX ? -c->speedX : dx + 8;
   int air = p->air;
   c->deadY = air ? (c->deadY + 4 < 24 ? c->deadY + 4 : 24) : (c->deadY - 4 > 0 ? c->deadY - 4 : 0);
   int dy = (int)c->targetY - (int)c->y;
-  if (dy > c->deadY) c->y += dy - c->deadY > 12 ? 12 : dy - c->deadY;
-  else if (dy < -c->deadY) c->y += dy + c->deadY < -12 ? -12 : dy + c->deadY;
+  if (dy > c->deadY) c->y += dy - c->deadY > c->speedY ? c->speedY : dy - c->deadY;
+  else if (dy < -c->deadY) c->y += dy + c->deadY < -c->speedY ? -c->speedY : dy + c->deadY;
   c->x = clamp((int)c->x, c->minX, c->maxX);
   c->y = clamp((int)c->y, c->minY, c->maxY);
   c->x += c->shakeX; c->y += c->shakeY;
@@ -343,7 +358,7 @@ static void camera_update(Camera *c, const Player *p) {
 static void set_offset_y(Player *p, int soy) {
   int dlt = soy - p->offsetY;
   if (!dlt) return;
-  int mode = (((p->rotation & 0xFF) + 0x20) & 0xC0) >> 6;
+  int mode = ground_mode(act_angle(p));
   if (mode == 0) p->y -= dlt; else if (mode == 1) p->x += dlt; else if (mode == 2) p->y += dlt; else p->x -= dlt;
   p->offsetY = soy;
 }
@@ -362,6 +377,13 @@ static void slope(Player *p) {
   if (((p->rotation + 0x60) & 0xFF) >= 0xC0 || p->gsp == 0) return;
   p->gsp = (q8(p->gsp) + ((sin8(p->rotation) * 3) >> 5)) / Q8;
 }
+// rolling downhill only gets a quarter of the pull while it fights his way up
+static void roll_slope(Player *p) {
+  if (((p->rotation + 0x60) & 0xFF) >= 0xC0 || p->gsp == 0) return;
+  int acc = (sin8(p->rotation) * 60) >> 8;
+  if ((p->gsp > 0 && acc <= 0) || (p->gsp < 0 && acc >= 0)) acc >>= 2;
+  p->gsp = (q8(p->gsp) + acc) / Q8;
+}
 static void walk(Player *p, int dir) {
   if (p->gsp * dir >= 0) {
     if (p->facing != dir) { p->state = PS_TURN; p->pushing = 0; set_offset_y(p, SPRITE_OFFSET_Y); }
@@ -372,13 +394,30 @@ static void walk(Player *p, int dir) {
       if (g * dir < MAX_RUN_SPEED) g = MAX_RUN_SPEED * dir;
     }
     p->gsp = g;
-    if (p->state != PS_TURN && !p->curled) { p->state = PS_WALK; set_offset_y(p, SPRITE_OFFSET_Y); }
+    if (p->state != PS_TURN && !p->curled && !p->actClear) { p->state = PS_WALK; set_offset_y(p, SPRITE_OFFSET_Y); }
   } else {
     double g = p->gsp + DECELERATION * dir;
     if (g * dir > 0) g = REVERSE_KICK * dir;
     p->gsp = g;
     if (g * dir <= -BRAKE_MIN_SPEED) { p->state = PS_BRAKE; set_offset_y(p, SPRITE_OFFSET_Y); }
   }
+}
+static int wall_push(Player *p, int rolling);
+// rolling (Player_8043DDC): a roll that stops stands him up, half the walking acceleration slowing it
+static void roll_step(Player *p, int dir, int sideways, int down) {
+  if (dir && !p->lock) {
+    if (p->gsp * dir >= 0) p->facing = dir;
+    else {
+      p->gsp += ROLL_DECELERATION * dir;
+      if (p->gsp * dir > 0) p->gsp = REVERSE_KICK * dir;
+    }
+  }
+  p->gsp = toward0(q8(p->gsp), q8(ACCELERATION / 2)) / Q8;
+  if (p->gsp == 0 && p->forcedRoll) { p->gsp = FORCED_ROLL_SPEED * p->facing; play_song(109); }
+  else if (p->gsp == 0) { p->curled = 0; set_offset_y(p, SPRITE_OFFSET_Y); p->state = down ? PS_CROUCH : PS_WALK; }
+  (void)sideways;
+  along_surface(p);
+  if (wall_push(p, 1) && p->curled) { p->curled = 0; set_offset_y(p, SPRITE_OFFSET_Y); p->state = PS_WALK; }
 }
 static void walk_input(Player *p, int dir, int sideways) {
   if (dir) walk(p, dir);
@@ -406,7 +445,7 @@ static void look_input(Player *p, int up, int down) {
   if (up && !down) { if (p->gsp == 0) p->state = PS_LOOKUP; }
   else if (down && !up) {
     p->state = PS_CROUCH;
-    if (p->gsp != 0) { p->curled = 1; p->state = PS_SPIN; play_song(109); }
+    if (p->gsp != 0) { p->curled = 1; set_offset_y(p, 9); p->state = PS_SPIN; play_song(109); }
   } else if (!up && !down) {
     if (p->state == PS_CROUCH) p->state = PS_CROUCH_END;
     else if (p->state == PS_LOOKUP) p->state = PS_LOOKUP_END;
@@ -437,12 +476,12 @@ static int wall_push(Player *p, int rolling) {
 }
 static void ground_sensors(Player *p) {
   int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y), soy = p->offsetY;
-  int mode = (((p->rotation & 0xFF) + 0x20) & 0xC0) >> 6;
+  int mode = ground_mode(act_angle(p));
   Scan a, b; double speed;
   if (mode == 0) { a = scan(1, y + soy, x - 8, p->layer, 8); b = scan(1, y + soy, x + 8, p->layer, 8); speed = p->xsp; }
-  else if (mode == 1) { a = scan(1, x - soy, y - 8, p->layer, -8); b = scan(1, x - soy, y + 8, p->layer, -8); speed = p->ysp; }
+  else if (mode == 1) { a = scan(0, x - soy, y - 8, p->layer, -8); b = scan(0, x - soy, y + 8, p->layer, -8); speed = p->ysp; }
   else if (mode == 2) { a = scan(1, y - soy, x + 8, p->layer, -8); b = scan(1, y - soy, x - 8, p->layer, -8); speed = p->xsp; }
-  else { a = scan(1, x + soy, y + 8, p->layer, 8); b = scan(1, x + soy, y - 8, p->layer, 8); speed = p->ysp; }
+  else { a = scan(0, x + soy, y + 8, p->layer, 8); b = scan(0, x + soy, y - 8, p->layer, 8); speed = p->ysp; }
   if (a.hasRot) p->rotA = (uint8_t)a.rot;
   if (b.hasRot) p->rotB = (uint8_t)b.rot;
   int val = a.d < b.d ? a.d : b.d, rot = a.d < b.d ? p->rotA : p->rotB;
@@ -454,6 +493,13 @@ static void ground_sensors(Player *p) {
   if (!(rot & 1)) p->rotation = p->inverted ? (uint8_t)(-0x80 - rot) : (uint8_t)rot;
 }
 static void follow_ground(Player *p) { ground_sensors(p); }
+// walls, ceilings and steep slopes drop him when he is too slow for them, and lock his controls for 30 frames
+static void fall_off(Player *p) {
+  if (p->lock) { p->lock--; return; }
+  if (((p->rotation + 0x20) & 0xC0) && __builtin_fabs(p->gsp) < WALL_MIN_SPEED) {
+    p->gsp = 0; p->air = 1; p->lock = SLIP_LOCK;
+  }
+}
 static void move_player(Player *p) {
   p->x += p->xsp;
   if (p->inverted != p->wasInverted) p->ysp = -p->ysp;
@@ -543,13 +589,18 @@ static void landing_speed(Player *p, int rot) {
   else { p->ysp = __builtin_floor(p->ysp * 128) / 256; p->gsp = __builtin_fabs(p->ysp) * sign; }
 }
 static void land(Player *p) {
-  p->air = 0; p->pushing = 0; p->state = PS_WALK;
+  p->air = 0; p->pushing = 0; if (!p->actClear) p->state = PS_WALK;
   if (p->curled) { p->curled = 0; set_offset_y(p, SPRITE_OFFSET_Y); }
   p->offsetY = SPRITE_OFFSET_Y; p->airLock = 0; p->chain = 0;
 }
 static void upright(Player *p) {
   int r = s8v(p->rotation);
   p->rotation = (uint8_t)((r > 0 ? (r > 2 ? r - 2 : 0) : (r < -2 ? r + 2 : 0)) & 0xFF);
+}
+// off a bounce block he tumbles the way he faces rather than easing upright (Player_8047224)
+static void tumble(Player *p) {
+  if (p->state == PS_BOUNCE) p->rotation = (uint8_t)((p->rotation + 4 * p->facing) & 0xFF);
+  else upright(p);
 }
 static void air_collision(Player *p) {
   int vx = (int)js_round(p->xsp * 256), vy = (int)js_round(p->ysp * 256);
@@ -603,6 +654,37 @@ static void air_drag(Player *p) {
   double drag = __builtin_floor(p->xsp * 256 / 32) / 256;
   p->xsp = p->xsp > 0 ? (p->xsp - drag > 0 ? p->xsp - drag : 0) : p->xsp < 0 ? (p->xsp - drag < 0 ? p->xsp - drag : 0) : 0;
 }
+#define SPIN_DASH_REV 0x200
+#define SPIN_DASH_REV_MIN 0x800
+// spin dash: starts from a crouch with jump, revs with jump, releases when down is let go
+static int try_spin_dash(Player *p, int down, int jumpPressed) {
+  if (!p->spinDashing) {
+    if (p->state != PS_CROUCH || !jumpPressed) return 0;
+    p->state = PS_SPIN_DASH; p->spinDashing = 1; p->dashAccel = 0;
+    set_offset_y(p, 9);
+    play_song(109);
+    return 1;
+  }
+  if (!down) {
+    p->spinDashing = 0;
+    int i = p->dashAccel >> 8;
+    if (i > 17) i = 17;
+    p->gsp = (double)rom_s16(0x4A7084 + (uint32_t)i * 2) / 256 * p->facing;
+    p->curled = 1; p->state = PS_SPIN;
+    play_song(110);
+    return 1;
+  }
+  int a = p->dashAccel;
+  if (a != 0) { a -= (a << 3) >> 8; if (a <= 0) a = 0; }
+  if (p->state != PS_SPIN_DASH_REV) p->state = PS_SPIN_DASH;
+  if (jumpPressed) {
+    p->state = PS_SPIN_DASH_REV;
+    a = a + SPIN_DASH_REV < SPIN_DASH_REV_MIN ? SPIN_DASH_REV_MIN : a + SPIN_DASH_REV;
+    play_song(109);
+  }
+  p->dashAccel = a;
+  return 1;
+}
 static int try_jump(Player *p, int jumpPressed) {
   if (!jumpPressed || clearance(p, (p->rotation + 0x80) & 0xFF) < 4) return 0;
   p->air = 1; p->jumped = 1; p->pushing = 0; p->state = PS_SPIN;
@@ -629,11 +711,15 @@ static void air_step(Player *p, int dir, int jump, int jumpPressed) {
   bounds(p);
   move_player(p);
   p->ysp += GRAVITY;
-  upright(p);
+  tumble(p);
   air_collision(p);
 }
 
 static void bounds(Player *p) {
+  // past the act's loop point, Sonic and the camera go back by its distance while the camera moves
+  if (act.stage.loopX >= 0 && p->x >= act.stage.loopX && act.cam.speedX != 0 && !act.cam.locked) {
+    p->x += act.stage.loopShift; act.cam.x += act.stage.loopShift; act.cam.wrapped += act.stage.loopShift;
+  }
   double maxX = act.cam.maxX + SCREEN_W_ - 1.0 / Q8, maxY = act.cam.maxY + SCREEN_H_ - 1.0 / Q8;
   if (!p->dead && (p->inverted ? p->y <= act.cam.minY : p->y >= maxY)) { p->dead = 1; p->ysp = -4.875; p->y = p->inverted ? act.cam.minY : maxY; }
   if (p->x < act.cam.minX || p->x > maxX) { p->x = p->x < act.cam.minX ? act.cam.minX : maxX; p->xsp = 0; p->gsp = 0; }
@@ -646,26 +732,53 @@ static void step_player(Player *p, int left, int right, int up, int down, int ju
   (void)attack; (void)attackPressed;
   if (p->dead) return;
   if (p->air) { air_step(p, dir, jump, jumpPressed); return; }
+  if (try_spin_dash(p, down && !sideways, jumpPressed)) {
+    bounds(p); follow_ground(p);
+    return;
+  }
   if (try_jump(p, jumpPressed)) return;
-  slope(p);
-  walk_input(p, dir, sideways);
-  look_input(p, up && !sideways, down && !sideways);
-  if (!sideways) p->gsp = toward0(q8(p->gsp), q8(FRICTION)) / Q8;
-  along_surface(p);
-  wall_push(p, 0);
+  if (p->curled) {
+    roll_slope(p);
+    roll_step(p, dir, sideways, down && !sideways);
+  } else {
+    slope(p);
+    if (!p->lock) walk_input(p, dir, sideways);
+    look_input(p, up && !sideways, down && !sideways);
+    if (!sideways) p->gsp = toward0(q8(p->gsp), q8(FRICTION)) / Q8;
+    along_surface(p);
+    wall_push(p, 0);
+  }
   bounds(p);
   move_player(p);
   follow_ground(p);
+  fall_off(p);
+}
+
+void act_start_clear(void) {
+  Player *p = &act.player;
+  land(p);
+  p->state = PS_ACT_CLEAR_RUN;
+  p->actClear = 1;
 }
 
 // chooseAnimation and tickAnim (engine/player.js, engine/animator.js)
 static void choose_animation(Player *p) {
   double speed = __builtin_fabs(p->gsp);
+  int oldState = p->state;
   int anim = SONIC_IDLE, variant = 0, speedAnim = ANIM_NORMAL;
   if (p->pushing) anim = SONIC_PUSH;
   else if (p->state == PS_CROUCH || p->state == PS_CROUCH_END) anim = 3;
   else if (p->state == PS_LOOKUP || p->state == PS_LOOKUP_END) anim = 2;
   else if (p->state == PS_SPIN) anim = 8;
+  else if (p->state == PS_BOUNCE) { anim = SONIC_WALK; variant = 0; }   // the walk animation (charState 23)
+  else if (p->state == PS_SPRING) anim = 11;            // the somersault off a spring (charState 17)
+  else if (p->state == PS_SPRING_RISE) { anim = 10; variant = 0; }   // rising (21), topping out (18) and falling (19)
+  else if (p->state == PS_SPRING_PEAK) { anim = 10; variant = 1; }
+  else if (p->state == PS_SPRING_FALL) { anim = 10; variant = 2; }
+  else if (p->state == PS_POLE) anim = 38;              // hanging from a wall pole (charState 31)
+  else if (p->state == PS_SPIN_DASH) { anim = 18; variant = 0; }
+  else if (p->state == PS_SPIN_DASH_REV) { anim = 18; variant = 1; }
+  else if (p->state == PS_ACT_CLEAR_RUN) anim = 22;
   else if (p->state == PS_INSTA) anim = 50;   // the insta-shield's own pose, until he lands
   else if (p->state == PS_WALK) {
     if (speed >= RUN_ANIM_SPEED) { anim = SONIC_RUN; variant = 0; }
@@ -677,13 +790,24 @@ static void choose_animation(Player *p) {
   } else if (p->state == PS_TURN || p->state == PS_BRAKE) { anim = SONIC_TURN; variant = 0; }
   if (p->idleT && p->state == PS_IDLE) p->idleT--;
   p->anim = anim; p->variant = variant; p->animSpeed = speedAnim;
+  // rising slower than 1.5 px a frame off a spring tops him out, whose animation starts on the next frame
+  if (oldState == PS_SPRING_RISE && p->ysp >= -1.5) p->state = PS_SPRING_PEAK;
 }
 static void animate_player(Player *p) {
   choose_animation(p);
   sonic.graphics.anim = (uint16_t)p->anim;
   sonic.variant = (uint8_t)p->variant;
   sonic.animSpeed = (uint8_t)p->animSpeed;
-  update_sprite(&sonic, 0);
+  int more = update_sprite(&sonic, 0);
+  // the somersault and the top-out end into the fall, which starts on the same frame (afterAnimation)
+  if (!more && (p->state == PS_SPRING || p->state == PS_SPRING_PEAK)) {
+    p->state = PS_SPRING_FALL;
+    choose_animation(p);
+    sonic.graphics.anim = (uint16_t)p->anim;
+    sonic.variant = (uint8_t)p->variant;
+    sonic.animSpeed = (uint8_t)p->animSpeed;
+    update_sprite(&sonic, 0);
+  }
 }
 
 // --- the HUD (engine/hud.js) -------------------------------------------------------------------------------------
@@ -804,7 +928,7 @@ static void draw_frame(void) {
       else if (line < 24) off = (stageTime >> 5) & 0xFF;
       else if (line < 40) off = (stageTime >> 6) & 0xFF;
       else if (line < 88) off = 0;
-      else off = ((line - 86) * camX) >> 8;
+      else off = ((line - 86) * (camX - act.cam.wrapped)) >> 8;
       put16(e.primary + (uint32_t)line * 4, (uint32_t)(off & 0x1FF));
       put16(e.primary + (uint32_t)line * 4 + 2, 0);
     }
@@ -839,9 +963,23 @@ static void draw_frame(void) {
   display_sprite(&sonic);
   // the title card's sprites, in front of everything, and its fade
   if (!act.cardDone) card_draw();
+  results_display();
 }
 
+static int nextLevelWait = -1, actFromResults;
 static void act_frame(void) {
+  if (nextLevelWait >= 0) {
+    if (nextLevelWait > 0) { nextLevelWait--; return; }
+    nextLevelWait = -1;
+    int level = act.stage.level;
+    destroy_tasks(0, 0xFFFF);
+    clear_queues();
+    stop_all_songs();
+    actFromResults = 1;
+    act_start(level + 1, -1, 0);
+    act_frame_now();
+    return;
+  }
   camera_update(&act.cam, &act.player);
   animate_stage_tiles();
   act.cam.bgUpdates++;
@@ -866,9 +1004,20 @@ static void act_frame(void) {
   int up = (e.input & KEY_UP) != 0, down = (e.input & KEY_DOWN) != 0;
   int jump = (e.input & KEY_A) != 0, attack = (e.input & KEY_B) != 0;
   int jumpPressed = (e.pressed & KEY_A) != 0, attackPressed = (e.pressed & KEY_B) != 0;
+  // past the goal he is held to the right, and the buttons held then count as no press
+  if (act.player.ignoreInput) { left = 0; right = 1; up = down = 0; jump = attack = 0; jumpPressed = attackPressed = 0; }
   // the start point's first frame reads the right and A the original has held there, never pressed
   if (act.firstFrame) { left = 0; right = 1; jump = 1; attack = 0; jumpPressed = 0; attackPressed = 0; act.firstFrame = 0; }
-  int padPressed = left || right || up || down;
+  int padPressed = (e.pressed & (KEY_LEFT | KEY_RIGHT | KEY_UP | KEY_DOWN)) != 0;
+  // the results' task (0x2100) and its pieces' (0x2120) run after the objects and before the HUD. Once they end,
+  // the save is written (the screen keeping its last frame), then the next act starts.
+  if (results_active()) {
+    if (!results_run()) {
+      save_write();
+      nextLevelWait = 0;
+      return;
+    }
+  }
   // the title card's task (0x2100) runs before Sonic's, and its last frame starts the clock and makes the HUD
   card_update(jumpPressed || attackPressed || padPressed);
   // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180); it starts on the
@@ -876,12 +1025,19 @@ static void act_frame(void) {
   if (act.hud.active == 3) act.hud.active = 2;
   else if (act.hud.active == 2) { act.hud.active = 1; hud_update(1); }
   else if (act.hud.active) hud_update(1);
-  step_player(&act.player, left, right, up, down, jump, jumpPressed, attack, attackPressed);
+  if (!act.player.carried) step_player(&act.player, left, right, up, down, jump, jumpPressed, attack, attackPressed);
   insta_flash_update();
   animate_player(&act.player);
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
   draw_frame();
+}
+
+void act_stage_results(void) {
+  int level = act.stage.level;
+  save_add_ring_bank(act.ringCount);
+  if (save_unlocked_level(0) < level + 1) save_set_unlocked_level(0, (uint16_t)(level + 1));
+  results_start(level, act.ringCount, act.courseTime, 0, 0);
 }
 
 void act_task(Task *t) {
@@ -926,7 +1082,10 @@ static void pre_run(int cardSkip, int preFrames) {
 }
 
 void act_start(int level, int cardSkip, int preFrames) {
+  int fromResults = actFromResults;
+  actFromResults = 0;
   memset(&act, 0, sizeof act);
+  vram_reset();
   copyCount = 0;
   load_stage(level);
   animFrame = 0; animDelayCount = 0;
@@ -934,7 +1093,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   rings_init(level);
   // the title card's pictures and colours (LoadStageIntroGraphics), right after the player's sprites, before the
   // objects' graphics take the rest of the sprite heap
-  card_create(level, 0, 0, 0);
+  card_create(level, 0, fromResults, 0);
   objects_init(level);
   enemies_init(level);
   palettes_init();

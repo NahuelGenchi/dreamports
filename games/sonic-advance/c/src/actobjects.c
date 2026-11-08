@@ -30,7 +30,8 @@
 // the player's states as act.c numbers them (its enum is private, so the same numbers are named here)
 enum {
   OBJ_PS_IDLE, OBJ_PS_WALK, OBJ_PS_TURN, OBJ_PS_BRAKE, OBJ_PS_CROUCH, OBJ_PS_LOOKUP, OBJ_PS_SPIN, OBJ_PS_HURT,
-  OBJ_PS_DEAD, OBJ_PS_PUSH, OBJ_PS_CROUCH_END, OBJ_PS_LOOKUP_END, OBJ_PS_BOUNCE,
+  OBJ_PS_DEAD, OBJ_PS_PUSH, OBJ_PS_CROUCH_END, OBJ_PS_LOOKUP_END, OBJ_PS_BOUNCE, OBJ_PS_INSTA,
+  OBJ_PS_SPRING, OBJ_PS_SPRING_RISE, OBJ_PS_SPRING_PEAK, OBJ_PS_SPRING_FALL, OBJ_PS_POLE, OBJ_PS_SPIN_DASH, OBJ_PS_SPIN_DASH_REV, OBJ_PS_ACT_CLEAR_RUN,
 };
 // what a collision test found, as the original's result bits (engine/collide.js)
 enum {
@@ -654,6 +655,14 @@ static int obj_spawn(int type, int index, int x0, int x1, int y0, int y1) {
     case 25:  // bounce block
       obj_spawn_sprite(l, 462, 0, 18, 2, 0, 0, 0);
       break;
+    case 44: case 45:   // wall poles: animation 468, flipped when the bar points left
+      obj_spawn_sprite(l, 468, 0, 18, 2, ent->kind == 45, 0, 0);
+      l->phase = 0;
+      break;
+    case 27:  // waterfall: its splash follows Sonic while he is in its area
+      obj_spawn_sprite(l, 464, 0, 5, 2, 0, 0, 0);
+      l->noDraw = 1;
+      break;
     case 26:  // incline ramp: no sprite
     case 17: case 18:   // layer toggles: no sprite
     case 19: case 20:   // grind rails: no sprite
@@ -689,10 +698,12 @@ static int obj_update_spring(ObjLive *l, ObjEntity *ent) {
   if (has && kind == 8) {
     // up (Task_Spring_Normal_Up): landing on it launches him straight up, keeping his X speed
     int flags;
-    if (obj_platform(l, ent->x, ent->y, hb, &flags) & OBJ_HIT_LANDED) {
+    obj_platform(l, ent->x, ent->y, hb, &flags);
+    if (flags & OBJ_HIT_LANDED) {
       obj_land(p);
       p->ysp = -speed;
       obj_throw_up(p);
+      p->state = ent->d0 & 1 ? OBJ_PS_SPRING_RISE : OBJ_PS_SPRING;
       hit = 1;
     }
   } else if (has && kind == 9) {
@@ -745,6 +756,7 @@ static int obj_update_spring(ObjLive *l, ObjEntity *ent) {
       p->ysp = -speed;
       p->xsp = speed * dir;
       obj_throw_up(p);
+      p->state = ent->d0 & 1 ? OBJ_PS_SPRING_RISE : OBJ_PS_SPRING;
       hit = 1;
     }
   }
@@ -1124,13 +1136,26 @@ static int obj_update_itembox(ObjLive *l, ObjEntity *ent) {
 // --- the goal signpost (goal.js) ----------------------------------------------------------------------------------
 static int obj_update_goal(ObjLive *l, ObjEntity *ent) {
   Player *p = &act.player;
-  if (obj_floor(p->x) > ent->x) {
+  if (l->phase == 0 && obj_floor(p->x) > ent->x) {
     if (!objects.goalReached) {
       objects.goalReached = 1;
       act.clockStopped = 1;
       play_song(135);
+      l->phase = 1; l->timer = 0; l->q = 0;
+    } else {
+      l->phase = 2;
     }
     if (l->hasSprite) l->sprite.variant = 1;
+  }
+  if (l->phase == 1) {
+    p->ignoreInput = 1;
+    if (act.cam.shiftY > -56) act.cam.shiftY--;
+    if (p->gsp > 4.5) p->gsp = 4.5;
+    // Task_ShowResults waits for him to be on the ground at 2.25 px a frame or more
+    if (l->timer > 30 && !l->q) l->q = 1;
+    if (l->q == 1 && !p->air && p->gsp >= 2.25) { act_start_clear(); l->q = 2; }
+    if (l->timer > 120 && p->state == OBJ_PS_ACT_CLEAR_RUN) { act_stage_results(); l->phase = 2; }
+    l->timer++;
   }
   if (l->hasSprite) update_sprite(&l->sprite, 0);
   return 1;
@@ -1257,6 +1282,76 @@ static int obj_update_grind(ObjLive *l, ObjEntity *ent) {
   return 1;
 }
 
+// --- the waterfalls (waterfall.c): 16/256 more fall speed inside, and a splash under Sonic -----------------------
+static int obj_update_waterfall(ObjLive *l, ObjEntity *ent) {
+  Player *p = &act.player;
+  int x = obj_floor(p->x), y = obj_floor(p->y);
+  int top = ent->y + (int8_t)ent->d1 * 8, bottom = top + ent->d3 * 8;
+  int inside = x >= ent->x && x <= ent->x + ent->d2 * 8 && y >= top && y <= bottom;
+  if (inside && !p->dead) {
+    p->ysp += 16.0 / 256;
+    l->x = x;
+    l->y = y + 10;
+    l->noDraw = 0;
+    update_sprite(&l->sprite, 0);
+  } else {
+    l->noDraw = 1;
+  }
+  return 1;
+}
+
+// --- the wall poles (red_flag_and_pole.c): catches Sonic, bobs down and swings him up -------------------------------
+static const int POLE_SWING[14] = { 1, 1, 1, 1, 1, 1, 1, 1, 16, 7, 7, 7, 7, 7 };
+static int obj_update_pole(ObjLive *l, ObjEntity *ent) {
+  Player *p = &act.player;
+  int dir = ent->kind == 45 ? -1 : 1;   // the way the bar points, away from its wall
+  int started = 0;
+  if (l->phase == 0) {
+    // the waiting pole tests the box its last frame set before stepping its animation
+    ObjBox hb;
+    int caught = 0;
+    if (!p->dead && !p->carried && obj_box(l, &hb))
+      caught = obj_overlap(ent->x, ent->y, hb, obj_floor(p->x), obj_floor(p->y), obj_body(p));
+    if (caught) {
+      obj_end_attack(p); p->pushing = 0;
+      p->carried = 1;
+      p->x = ent->x + 8 * dir; p->y = ent->y + 16;
+      p->facing = -dir;
+      p->state = OBJ_PS_POLE;
+      play_song(175);
+      obj_restart_sprite(&l->sprite);
+      l->sprite.variant = 1;
+      l->phase = 1; l->timer = 0;
+      started = 1;
+    }
+  } else if (l->phase == 1) {
+    if (p->dead) { p->carried = 0; l->phase = 2; }
+    else {
+      p->y += l->timer > 6 ? -POLE_SWING[l->timer] : POLE_SWING[l->timer];
+      if (++l->timer > 13) {
+        p->air = 1;
+        obj_stand_up(p);
+        p->airLock = 0;
+        p->state = OBJ_PS_SPRING_RISE;
+        p->ysp = -7.5;
+        p->carried = 0;
+        l->phase = 2;
+      }
+    }
+  }
+  int more = update_sprite(&l->sprite, 0);
+  if (started) {
+    // the swing's first frame also shows on the catch frame
+  } else if (l->phase == 2 && !more) {
+    obj_restart_sprite(&l->sprite);
+    l->sprite.variant = 0;
+    l->phase = 0;
+    update_sprite(&l->sprite, 0);
+  }
+  l->x = ent->x; l->y = ent->y;
+  return 1;
+}
+
 // --- the forced slide (slides.js) --------------------------------------------------------------------------------
 static int obj_update_slide(ObjLive *l, ObjEntity *ent) {
   Player *p = &act.player;
@@ -1302,6 +1397,8 @@ static int obj_update_live(int k, int camX, int camY) {
     case 24: return obj_update_crumbling(l, ent);
     case 25: return obj_update_bounce_block(l, ent);
     case 26: return obj_update_ramp(l, ent);
+    case 27: return obj_update_waterfall(l, ent);
+    case 44: case 45: return obj_update_pole(l, ent);
     case 28: case 29: return obj_update_half_pipe(l, ent);
     case 31: case 32: case 33: return obj_update_booster(l, ent);
     case 46: return obj_update_slide(l, ent);
@@ -1318,6 +1415,8 @@ static int obj_should_leave(int k, int camX, int camY) {
   ObjLive *l = &objects.live[k];
   ObjEntity *ent = obj_entity_of(l);
   switch (l->kind) {
+    case 0:    // once the goal has ended the act it stays until the results take over
+      return l->phase == 0 ? obj_off_cam(ent->x, ent->y, camX, camY) : 0;
     case 21:   // thin: its spawn point off the screen and its current place out of range
       return obj_off_cam(l->x, l->y, camX, camY) && obj_off_cam(ent->x, ent->y, camX, camY);
     case 22:   // falling: its current place once it falls
@@ -1547,3 +1646,4 @@ void objects_player_state(int *shield, int *invincible, int *speedUp) {
   if (invincible) *invincible = objects.invincible;
   if (speedUp) *speedUp = objects.speedUp;
 }
+

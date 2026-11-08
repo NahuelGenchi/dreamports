@@ -26,24 +26,27 @@ typedef struct {
   Tilemap front, back, background;
   Collision collision;
   int32_t spawnX, spawnY;
+  int loopX, loopShift;   // past x loopX Sonic and the camera go back by loopShift
   int width, height;
 } Stage;
 
 typedef struct {
   double x, y, gsp, xsp, ysp;
-  int facing, state, air, curled, pushing, jumped, airLock, spinDashing, midAir, chain, forcedRoll;
+  int facing, state, air, curled, pushing, jumped, airLock, lock, spinDashing, dashAccel, midAir, chain, forcedRoll;
   uint8_t rotation, rotA, rotB;
   int layer, offsetY, idleT;
   int anim, variant, animSpeed;
   int pos;              // the sprite's graphics, kept by the animation
   int dead, invulnerable, hidden, inverted, wasInverted;
   int heldDirs, pressedDirs;
+  int carried, ignoreInput, actClear;
 } Player;
 
 typedef struct {
   double x, y, targetX, targetY, offsetY, deadY;
   int minX, minY, maxX, maxY, started, speedX, speedY, shiftX, shiftY;
   int width, height, freeze, locked, look, lookDelay, shakeX, shakeY, bgUpdates;
+  int wrapped;   // how far the act's loop point has moved the camera, which the background leaves out
 } Camera;
 
 typedef struct {
@@ -94,6 +97,8 @@ void card_draw(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_frame_now(void);
+void act_start_clear(void);
+void act_stage_results(void);
 void act_task(Task *t);
 uint32_t front_frame(void);
 

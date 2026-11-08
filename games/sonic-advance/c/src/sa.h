@@ -114,6 +114,7 @@ void clear_queues(void);
 void queue_background(Background *bg);
 int alloc_oam(uint32_t order);
 uint32_t vram_malloc(uint32_t tiles);
+void vram_reset(void);
 void vram_free(uint32_t dest);
 void set_hblank_copy(uint32_t target, uint32_t size);
 void engine_run(void);
@@ -230,6 +231,7 @@ extern Save save;
 void save_open(void);
 int save_write(void);
 void save_set_unlocked_level(int character, uint16_t level);
+void save_add_ring_bank(int rings);
 #define SAVE_UI_LANGUAGE (save.bytes[0x19])
 #define SAVE_CHAOS_EMERALDS (save.bytes[0x1C])
 #define SAVE_PLAYER_NAME (save.bytes + 0x10)            // six characters of the UI font, and two unused

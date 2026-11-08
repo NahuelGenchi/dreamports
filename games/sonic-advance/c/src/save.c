@@ -59,6 +59,9 @@ void save_open(void) {
  * WriteSaveGame: nothing when the flash already holds the save; otherwise the save is marked, summed and kept. Returns
  * whether it was written, which takes WRITE_FRAMES.
  */
+// the act's rings into the save's ring bank (unk428), as a signed halfword, as CreateStageResults adds them
+void save_add_ring_bank(int rings) { set32(save.bytes, 0x428, le32(save.bytes, 0x428) + (uint32_t)(int16_t)rings); }
+
 int save_write(void) {
   if (save.exists) {
     int same = 1;
