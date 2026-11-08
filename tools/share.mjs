@@ -14,6 +14,7 @@ import { createInterface } from 'node:readline/promises';
 import { LOCAL, gameFolder } from './lib/paths.mjs';
 import { versionOf, versionTitle } from '../src/lib/languages.mjs';
 import { head, uncommitted, remotes, fileAt, fetchPreviews, pushPreviews, makePreview, BRANCH, CLIPS } from './lib/preview.mjs';
+import { clipProblems } from './lib/clips.mjs';
 import { UPSTREAM, api, signedInAs, findFork, hasCommit, pagesOf, turnOnPages, lastBuild, buildPages } from './lib/github.mjs';
 
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -57,6 +58,12 @@ export async function run(args) {
 
   // the clip for the step's pull request, and a frame of it
   const clip = chooseClip(game, clipFile);
+  // a clip prove made only when it's a few seconds long, of both in the same place when it's side by side, from a
+  // recording that's committed as it was proven (lib/clips.mjs)
+  if (clip?.sideBySide || clip?.report) {
+    const problems = clipProblems(clip.report, clip.report?.recordingFile ? fileAt(commit, clip.report.recordingFile) : null, { sideBySide: clip.sideBySide });
+    if (problems.length) throw new Error(`${clip.file} can't go in the pull request, so nothing was published:\n${problems.map(p => `  ${p}`).join('\n')}`);
+  }
   const clips = clip ? clipFiles(game, commit, clip) : [];
 
   const tip = fetchPreviews(fork.remote);
@@ -186,11 +193,11 @@ function chooseClip(game, file) {
   const recording = file.startsWith(results + sep) ? file.slice(results.length + 1).split(sep)[0] : null;
   // and who the original's own memory says it plays, which a reviewer who doesn't see the pictures can read
   // (src/lib/shows.mjs)
-  let shows = null;
+  let report = null;
   try {
-    if (recording) shows = JSON.parse(readFileSync(join(results, recording, 'report.json'), 'utf8')).shows ?? null;
-  } catch { /* a clip prove didn't make, or one from before it read the original's memory */ }
-  return { file, bytes, still: still ?? null, sideBySide, recording, shows };
+    if (recording) report = JSON.parse(readFileSync(join(results, recording, 'report.json'), 'utf8'));
+  } catch { /* a clip prove didn't make */ }
+  return { file, bytes, still: still ?? null, sideBySide, recording, shows: report?.shows ?? null, report };
 }
 
 // where a clip and its frame go on the previews site. What's in the clip names it too, so a step's second clip, from

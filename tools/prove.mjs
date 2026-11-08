@@ -34,6 +34,7 @@ import { notesAbout } from './notes.mjs';
 import { proveLinked } from './prove-linked.mjs';
 import { versionOf } from '../src/lib/languages.mjs';
 import { kindsOf, shownOf, showsProblems } from '../src/lib/shows.mjs';
+import { CLIP_FRAMES, recordingHash } from './lib/clips.mjs';
 
 const BATCH = 120;
 const STILLS = 600, STATES = 20;
@@ -405,6 +406,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     await still(clipFrames[clipFrames.length >> 1], 'clip-middle.png', false);
     await still(clipFrames.at(-1), 'clip-end.png', false);
     const length = clipFrames.length * machine.frame[0] / machine.frame[1];
+    // the clip's frames whose halves are in two different places, which share won't let a pull request show
+    const apart = (await page.evaluate(`__proof.apart(${JSON.stringify(clipFrames)})`)).length;
     const encode = async alone => {
       let bitrate = Math.round(Math.min(CLIP_RATE, CLIP_TARGET * 8 / length) / (alone ? 2 : 1)), file;
       for (let tries = 0; tries < 5; tries++) {
@@ -429,18 +432,18 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
 
     const outside = first.outside;
     const report = {
-      recording: name, frames, matched, ...(stopped ? { stopped } : {}), differs: differing, neverInPlay: neverSeen, firstDifference: difference, ...(pictureDifference ? { firstPictureDifference: pictureDifference } : {}), onlyInOriginal, oneColour, parts: partsFound, stills, pixels: stillsFound, states,
+      recording: name, recordingFile: relative(REPO, recording.file).replaceAll('\\', '/'), recordingSha1: recordingHash(readFileSync(recording.file)), frames, matched, ...(stopped ? { stopped } : {}), differs: differing, neverInPlay: neverSeen, firstDifference: difference, ...(pictureDifference ? { firstPictureDifference: pictureDifference } : {}), onlyInOriginal, oneColour, parts: partsFound, stills, pixels: stillsFound, states,
       sound: { heard: madeSound, differs: soundDiffers, firstDifference: firstSound, ...(unheard.size ? { notCompared: stretchesOf([...unheard].sort((a, b) => a - b)) } : {}) },
       ...(wasDifferent ? { sinceLastProven: { differs: newly, firstDifference: newDifference, matches: fixed } } : {}),
-      clip: { from: clip[0], to: clip[1], frames: clipFrames.length, bytes: file.length, bitrate, dreamport: { bytes: own.file.length, bitrate: own.bitrate } },
+      clip: { from: clip[0], to: clip[1], frames: clipFrames.length, seconds: Math.round(length * 100) / 100, apart, bytes: file.length, bitrate, dreamport: { bytes: own.file.length, bitrate: own.bitrate } },
       ...(showing ? { shows: showing } : {}),
       seconds, errors: page.errors,
       ...(codeMap ? { functions: proven.size, outsideCodeMap: outside } : {}),
     };
     writeFileSync(join(out, 'report.json'), JSON.stringify(report, null, 2) + '\n');
-    return finish({ file, own });
+    return finish({ file, own, apart });
 
-    function finish({ file, own }) {
+    function finish({ file, own, apart = 0 }) {
     first.sound.close();
     if (process.stdout.isTTY) process.stdout.write(`\r${''.padEnd(70)}\r`);
     const where = relative(REPO, out);
@@ -510,6 +513,9 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     }
     if (!quick) console.log(`  Clip, ${(file.length / 1e6).toFixed(2)} MB, frames ${clip[0]} to ${clip[1]}: ${where}/clip.mp4`);
     if (!quick && file.length > CLIP_LIMIT) console.log('  The clip is still over 2 MB: a shorter "clip" in the recording makes it lighter.');
+    // what share would refuse, said now, while the recording can still change (lib/clips.mjs)
+    if (!quick && clipFrames.length < CLIP_FRAMES) console.log(`  The clip is ${clipFrames.length} frames, and share wants at least ${CLIP_FRAMES}, about two seconds: a longer "clip", or a recording that runs on further, makes one.`);
+    if (!quick && apart * 4 > clipFrames.length) console.log(`  ${apart} of the clip's ${clipFrames.length} frames differ in more than half their pixels: the original and the Dreamport are in different places, and share won't put the clip in a pull request.`);
     if (showing) console.log(`  What the original shows as it ends: ${Object.entries(showing).map(([kind, value]) => `its ${kind} is ${typeof value === 'number' ? `${value}, which original.json gives no name` : value}`).join('; ')}.`);
     return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(showing ? { shows: showing } : {}), functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };
     }
