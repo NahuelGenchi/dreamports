@@ -153,7 +153,7 @@ static void copy16(uint32_t src, uint32_t dest, uint32_t bytes, const uint8_t *f
   memcpy(gba_vram + dest, gba_rom + src, n);
 }
 // ProcessVramGraphicsCopyQueue: 1 KB at a time, each entry's size counted down to 0
-static void copy_graphics(void) {
+void engine_copy_graphics(void) {
   while (gfxCursor != gfxIndex) {
     Graphics *g = gfxQueue[gfxCursor];
     for (uint32_t offset = 0; g->size > 0; offset += COPY_CHUNK) {
@@ -366,7 +366,7 @@ static void vblank(void) {
   if (e.flags & FLAGS_HBLANK_COPY) copy_hblank_entry(e.primary);
   process_oam();
   memcpy(gba_oam, e.oamBuffer, sizeof e.oamBuffer);
-  copy_graphics();
+  engine_copy_graphics();
   fill_maps();
   for (unsigned i = 0; i < numBgSprites; i++) write_sprite_map(bgSprites[i]);
   numBgSprites = 0;

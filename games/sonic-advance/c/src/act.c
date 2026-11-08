@@ -138,11 +138,9 @@ static Tilemap read_tilemap(int index) {
   t.at = at;
   t.xTiles = (uint16_t)rom_u16(at); t.yTiles = (uint16_t)rom_u16(at + 2);
   t.animTileSize = (uint16_t)rom_u16(at + 4); t.animFrameCount = (uint8_t)rom_u8(at + 6); t.animDelay = (uint8_t)rom_u8(at + 7);
-  // the back layer's own tiles are at +0x24, after the front's; its tile numbers past 511 read them from the second
-  // character block, as the original's stage init loads them there
-  uint32_t tilesAt = at + 8;
-  if (index % 3 == 1 && rom_u32(at + 0x24) >= 0x08000000) tilesAt = at + 0x24;
-  t.tiles = rom_ptr(tilesAt); t.tilesSize = rom_u32(at + 12);
+  // the two stage layers share one tileset, as DrawBackground reads each layer's own header: both layers' tile
+  // numbers read the same tiles, past 511 into the second character block
+  t.tiles = rom_ptr(at + 8); t.tilesSize = rom_u32(at + 12);
   t.palette = rom_ptr(at + 16);
   t.paletteOffset = (uint16_t)rom_u16(at + 20); t.paletteLength = (uint16_t)rom_u16(at + 22);
   t.map = rom_ptr(at + 24); t.mapWidth = (uint16_t)rom_u16(at + 32); t.mapHeight = (uint16_t)rom_u16(at + 34);
@@ -257,11 +255,9 @@ static void load_stage(int level) {
   const LevelMeta *meta = &LEVEL_META[level < 16 ? level : 0];
   s->zone = meta->zone; s->act = meta->act; s->music = meta->music; s->hudFlash = meta->hudFlash;
   s->scroll = meta->scroll;
-  // the front layer's tiles in the first character block and the back's in the second, which tile numbers past 511
-  // read, and the stage's 256 colours (extractStage's palette). They go in at once, as the original's load does,
-  // so the act's first frame has them.
-  for (uint32_t i = 0; i < s->front.tilesSize && i < 0x4000; i++) gba_vram[i] = (uint8_t)rom_u8(s->front.tiles + i);
-  for (uint32_t i = 0; i < s->back.tilesSize && 0x4000u + i < 0x8000u; i++) gba_vram[0x4000u + i] = (uint8_t)rom_u8(s->back.tiles + i);
+  // the stage's tileset in both character blocks, which tile numbers past 511 read, and its 256 colours
+  // (extractStage's palette). They go in at once, as the original's load does, so the act's first frame has them.
+  for (uint32_t i = 0; i < s->front.tilesSize && i < 0x8000; i++) gba_vram[i] = (uint8_t)rom_u8(s->front.tiles + i);
   for (int i = 0; i < 256; i++) e.bgPalette[i] = (uint16_t)rom_u16(s->front.palette + i * 2);
   e.flags |= FLAGS_UPDATE_BG_PALETTES;
   // the maps the course select left are cleared, as the original's stage init leaves the parts its own maps don't
@@ -855,6 +851,14 @@ void act_queue(int level, int cardSkip, int preFrames) {
 static void pre_run(int cardSkip, int preFrames) {
   int after = 0;
   while (!act.cardDone || after < preFrames) {
+    if (act.cardDone) {
+      // the frames after the card only settle the HUD's task, which runs a frame after the card ends: the stage keeps
+      // the frame it ended on, as the original's does, and only the clock and the HUD move on
+      if (!act.clockStopped) act.courseTime++;
+      hud_update(0);
+      after++;
+      continue;
+    }
     int wasDone = act.cardDone;
     camera_update(&act.cam, &act.player);
     stage_tiles_step();
@@ -869,14 +873,20 @@ static void pre_run(int cardSkip, int preFrames) {
         act.hud.flash = act.stage.hudFlash;
       }
     }
-    int r = act.cardDone;
-    step_player(&act.player, 0, r, 0, 0, !act.cardDone, 0, !act.cardDone, 0);
+    // the card holds Sonic still, as the original's does
+    step_player(&act.player, 0, 0, 0, 0, 0, 0, 0, 0);
     animate_player(&act.player);
     palette_animations_step();
     if (wasDone) { hud_update(0); after++; }
     if (!act.clockStopped) act.courseTime++;
     act.tick++;
+    // these frames run with no V-blank, so what each one queued for video memory goes in now, as the original's did
+    engine_copy_graphics();
   }
+  // the card's last frame steps the stage's animations once, as the original's does, but its first act frame then waits
+  // one frame longer before the ring and the palette animations move on
+  ringSprite.qAnimDelay = (int16_t)(ringSprite.qAnimDelay + 256);
+  for (int i = 0; i < palAnimCount; i++) palAnims[i].wait += 256;
 }
 
 void act_start(int level, int cardSkip, int preFrames) {

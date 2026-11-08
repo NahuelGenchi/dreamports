@@ -134,6 +134,7 @@ void front_play(int level) {
     act_active = 1;
     destroy_tasks(0x2000, 0x3000);
     act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
+    if (gba_start_point("level") != NULL) act_frame_now();
     return;
   }
   ctx.done = 1;
