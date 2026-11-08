@@ -209,7 +209,7 @@ export function makePreview({ tip, commit, branch, game, title, name, author, re
     ...kept.map(f => ({ mode: f.mode, sha: f.sha, path: f.path })),
     ...files.map(f => ({ mode: '100644', sha: f.sha, path: f.to })),
     ...generated.map(([path, text]) => ({ mode: '100644', sha: store(text), path })),
-    ...clips.map(c => ({ mode: '100644', sha: store(readFileSync(c.file)), path: c.path })),
+    ...clips.map(c => ({ mode: '100644', sha: store(c.bytes ?? readFileSync(c.file)), path: c.path })),
   ];
   const index = join(LOCAL, 'share', 'index');
   mkdirSync(join(LOCAL, 'share'), { recursive: true });

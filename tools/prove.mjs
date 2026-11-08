@@ -34,7 +34,7 @@ import { notesAbout } from './notes.mjs';
 import { proveLinked } from './prove-linked.mjs';
 import { versionOf } from '../src/lib/languages.mjs';
 import { kindsOf, shownOf, showsProblems } from '../src/lib/shows.mjs';
-import { CLIP_FRAMES, recordingHash } from './lib/clips.mjs';
+import { recordingHash, mainProof, firstChanged, clipWindow, newFramesIn, clipProblems, changedText } from './lib/clips.mjs';
 
 const BATCH = 120;
 const STILLS = 600, STATES = 20;
@@ -63,6 +63,8 @@ export async function run(args) {
   reference.ensureOriginal(console.log);
 
   const progress = readProgress(game), parts = readParts(game);
+  // what main's proof had, which tells the frames this step changed, where each clip starts (lib/clips.mjs)
+  const main = quick ? null : mainProof(game);
   const server = await serveRepository();
   let failed = false, page = null;
   try {
@@ -70,7 +72,7 @@ export async function run(args) {
       const own = parts.filter(p => p.recording === recording.name && Array.isArray(p.frames) && p.frames.length === 2 && p.frames.every(Number.isInteger));
       // one browser for all of them, with each recording's page starting from nothing
       page = page ? await page.another() : await openChrome({ profile: join(LOCAL, 'chrome', 'prove'), headless: true });
-      const result = recording.players ? await proveLinked({ page, game, recording, copy: copy.path, server, quick, asked }) : await prove({ page, reference, game, recording, copy: copy.path, server, codeMap, before: progress.recordings[recording.name], asked, askedState, parts: own, kinds, keysLate: original.keysAfterVBlank === true, paced: args.includes('--paced'), quick });
+      const result = recording.players ? await proveLinked({ page, game, recording, copy: copy.path, server, main, quick, asked }) : await prove({ page, reference, game, recording, copy: copy.path, server, codeMap, main, before: progress.recordings[recording.name], asked, askedState, parts: own, kinds, keysLate: original.keysAfterVBlank === true, paced: args.includes('--paced'), quick });
       // what the original shows is checked however the frames compare, and a linked recording, played by more than one
       // console, isn't read
       const wrong = showsProblems(recording.name, result.shows, recording.players ? [] : kinds);
@@ -159,7 +161,7 @@ const stretchesOf = frames => {
 const listed = stretches => stretches.slice(0, 8).map(([a, b]) => (a === b ? `${a}` : `${a} to ${b}`)).join(', ')
   + (stretches.length > 8 ? `, and ${stretches.length - 8} more stretches` : '');
 
-async function prove({ page, reference, game, recording, copy, server, codeMap, before, asked, askedState, parts, kinds, keysLate, paced, quick }) {
+async function prove({ page, reference, game, recording, copy, server, codeMap, main, before, asked, askedState, parts, kinds, keysLate, paced, quick }) {
   const { name, frames } = recording;
   const { machine, KEY, runOriginal } = reference;
   const out = resultFolder(game, name);
@@ -220,6 +222,12 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const showing = kinds.length ? shownOf(kinds, first.outside.reads) : null;
     checkSizes(first.outside.sizes, machine, Array.from(originalOf, g => g + 1), (_, frame) => frame);
     const expected = Array.from(originalOf, g => first.hashes[g + 1]);
+    // where this step's change starts, as main's proof tells it, for the clip to start a second before (lib/clips.mjs):
+    // a guess now, from main alone, and known once the Dreamport has played
+    const recordingText = readFileSync(recording.file, 'utf8'), recordingFile = relative(REPO, recording.file).replaceAll('\\', '/');
+    const ranAt = codeMap && first.ran ? f => (first.ran[originalOf[f]] ?? []).map(i => hex(codeMap.functions[i].address)) : null;
+    const changeOf = differs => firstChanged({ main, name, file: recordingFile, text: recordingText, frames, ran: ranAt, differs });
+    const guessed = quick ? null : changeOf(null);
     const compareSound = soundOf(first.sound, machine), heardOf = Array.from(originalOf, g => g + 1);
     // the frames next to a stretch only the original has, whose sound isn't compared: the original's runs into or out
     // of the screen the Dreamport skips
@@ -230,7 +238,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const wasDifferent = !quick && before?.frames === frames ? inStretches(before.differs) : null;
     const wanted = new Set();
     const clipAt = recording.clip && !quick ? [recording.clip.at, recording.clip.at + recording.clip.frames - 1] : null;
-    if (clipAt) for (let f = clipAt[0]; f <= clipAt[1]; f++) wanted.add(f);
+    const planned = clipAt ?? (guessed ? clipWindow({ frames, changed: guessed, firstDifference: -1 }) : null);
+    if (planned) for (let f = planned[0]; f <= planned[1]; f++) wanted.add(f);
     // the stills asked for, and each part's first and last frames with the one before and the one after
     const boundaries = parts.flatMap(({ frames: [a, b] }) => [a - 1, a, b, b + 1]);
     const stills = [...new Set([...asked, ...(quick ? [] : boundaries)])].filter(f => f >= 0 && f < frames).sort((a, b) => a - b);
@@ -347,12 +356,14 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const newly = wasDifferent ? stretchesOf(different.filter(f => !wasDifferent.has(f))) : [];
     const fixed = wasDifferent ? stretchesOf([...wasDifferent].filter(f => f < frames && !differs(f)).sort((a, b) => a - b)) : [];
 
-    // the clip: the recording's, or around the first difference, or else the last five seconds
-    const clip = clipAt ?? (firstDifference >= 0 ? [Math.max(0, firstDifference - 240), Math.min(frames - 1, firstDifference + 59)] : [Math.max(0, frames - 300), frames - 1]);
-    if (!quick && !clipAt && firstDifference < 0) {
-      const last = [];
-      for (let f = clip[0]; f <= clip[1]; f++) last.push(f);
-      for (const f of await page.evaluate(`__proof.keep(${JSON.stringify(last)})`)) keptFrames.add(f);
+    // the clip: the recording's, or five seconds from a second before what this step changed, around the first
+    // difference when that's further on, or else the last five seconds (lib/clips.mjs)
+    const changed = quick ? null : changeOf(differing);
+    const clip = clipAt ?? clipWindow({ frames, changed, firstDifference });
+    if (!quick && !clipAt) {
+      const wantedNow = [];
+      for (let f = clip[0]; f <= clip[1]; f++) if (!keptFrames.has(f)) wantedNow.push(f);
+      for (const f of await page.evaluate(`__proof.keep(${JSON.stringify(wantedNow)})`)) keptFrames.add(f);
     }
     // all of the clip that's kept: a console with a large screen keeps fewer pictures
     const clipFrames = [];
@@ -406,8 +417,10 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     await still(clipFrames[clipFrames.length >> 1], 'clip-middle.png', false);
     await still(clipFrames.at(-1), 'clip-end.png', false);
     const length = clipFrames.length * machine.frame[0] / machine.frame[1];
-    // the clip's frames whose halves are in two different places, which share won't let a pull request show
+    // the clip's frames whose halves are in two different places, and those whose Dreamport is one colour or the same
+    // picture as the frame before, which share won't let a pull request show (lib/clips.mjs)
     const apart = (await page.evaluate(`__proof.apart(${JSON.stringify(clipFrames)})`)).length;
+    const { oneColour: plainFrames, same } = await page.evaluate(`__proof.plainness(${JSON.stringify(clipFrames)})`);
     const encode = async alone => {
       let bitrate = Math.round(Math.min(CLIP_RATE, CLIP_TARGET * 8 / length) / (alone ? 2 : 1)), file;
       for (let tries = 0; tries < 5; tries++) {
@@ -432,18 +445,21 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
 
     const outside = first.outside;
     const report = {
-      recording: name, recordingFile: relative(REPO, recording.file).replaceAll('\\', '/'), recordingSha1: recordingHash(readFileSync(recording.file)), frames, matched, ...(stopped ? { stopped } : {}), differs: differing, neverInPlay: neverSeen, firstDifference: difference, ...(pictureDifference ? { firstPictureDifference: pictureDifference } : {}), onlyInOriginal, oneColour, parts: partsFound, stills, pixels: stillsFound, states,
+      recording: name, recordingFile, recordingSha1: recordingHash(recordingText), frames, matched, ...(stopped ? { stopped } : {}), differs: differing, neverInPlay: neverSeen, firstDifference: difference, ...(pictureDifference ? { firstPictureDifference: pictureDifference } : {}), onlyInOriginal, oneColour, parts: partsFound, stills, pixels: stillsFound, states,
       sound: { heard: madeSound, differs: soundDiffers, firstDifference: firstSound, ...(unheard.size ? { notCompared: stretchesOf([...unheard].sort((a, b) => a - b)) } : {}) },
       ...(wasDifferent ? { sinceLastProven: { differs: newly, firstDifference: newDifference, matches: fixed } } : {}),
-      clip: { from: clip[0], to: clip[1], frames: clipFrames.length, seconds: Math.round(length * 100) / 100, apart, bytes: file.length, bitrate, dreamport: { bytes: own.file.length, bitrate: own.bitrate } },
+      clip: {
+        from: clip[0], to: clip[1], frames: clipFrames.length, seconds: Math.round(length * 100) / 100, apart, oneColour: plainFrames, same,
+        changed, newFrames: newFramesIn(clipFrames, changed), base: main?.base ?? null, bytes: file.length, bitrate, dreamport: { bytes: own.file.length, bitrate: own.bitrate },
+      },
       ...(showing ? { shows: showing } : {}),
       seconds, errors: page.errors,
       ...(codeMap ? { functions: proven.size, outsideCodeMap: outside } : {}),
     };
     writeFileSync(join(out, 'report.json'), JSON.stringify(report, null, 2) + '\n');
-    return finish({ file, own, apart });
+    return finish({ file, own, problems: clipProblems(report, recordingText, { base: main?.base ?? null }) });
 
-    function finish({ file, own, apart = 0 }) {
+    function finish({ file, own, problems = [] }) {
     first.sound.close();
     if (process.stdout.isTTY) process.stdout.write(`\r${''.padEnd(70)}\r`);
     const where = relative(REPO, out);
@@ -513,9 +529,9 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     }
     if (!quick) console.log(`  Clip, ${(file.length / 1e6).toFixed(2)} MB, frames ${clip[0]} to ${clip[1]}: ${where}/clip.mp4`);
     if (!quick && file.length > CLIP_LIMIT) console.log('  The clip is still over 2 MB: a shorter "clip" in the recording makes it lighter.');
-    // what share would refuse, said now, while the recording can still change (lib/clips.mjs)
-    if (!quick && clipFrames.length < CLIP_FRAMES) console.log(`  The clip is ${clipFrames.length} frames, and share wants at least ${CLIP_FRAMES}, about two seconds: a longer "clip", or a recording that runs on further, makes one.`);
-    if (!quick && apart * 4 > clipFrames.length) console.log(`  ${apart} of the clip's ${clipFrames.length} frames differ in more than half their pixels: the original and the Dreamport are in different places, and share won't put the clip in a pull request.`);
+    // where this step's change starts, and what share would refuse, said now, while the recording can still change
+    if (!quick) console.log(`  What this step changed: ${changedText(changed)}.`);
+    for (const problem of problems) console.log(`  share won't put this clip in a pull request: ${problem}`);
     if (showing) console.log(`  What the original shows as it ends: ${Object.entries(showing).map(([kind, value]) => `its ${kind} is ${typeof value === 'number' ? `${value}, which original.json gives no name` : value}`).join('; ')}.`);
     return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(showing ? { shows: showing } : {}), functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };
     }
