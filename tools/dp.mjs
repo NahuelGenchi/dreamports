@@ -10,7 +10,7 @@ const TOOLS = {
   new: 'Writes a claimed game\'s first files: its page, its code on the kit with everything wired in, its license and its entry',
   portmap: 'Makes the port map: each function of the original the Dreamport\'s code names, and where',
   read: 'Prints one of the original\'s functions, its ARM or Thumb instructions, from your copy, for code its decompilation lacks',
-  share: 'Publishes a preview on GitHub Pages from your fork, with the newest clip for the step\'s pull request',
+  share: 'Publishes a preview on GitHub Pages from your fork, with the clips of what the step changed for its pull request',
   find: 'Shows where a game stands: its lead, its numbers, its team build, who has claimed what, its free tasks and what the others wait on',
   tasks: 'Opens a Task issue for each of a game\'s foundations and parts that has none yet, foundations first',
   notes: 'Shows what people found while making a game or its console\'s kit, so nobody has to find it again',
