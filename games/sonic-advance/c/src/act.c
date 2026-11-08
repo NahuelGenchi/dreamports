@@ -4,6 +4,7 @@
 // function at a time; every comment names the original's function where one is rewritten.
 
 #include "act.h"
+#include "titlecard.h"
 
 enum {
   OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC,
@@ -33,6 +34,9 @@ enum { ORDER_DIGITS = 2, ORDER_ICONS = 3, ORDER_SONIC = 16 };
 Act act;
 static Sprite sonic;
 static uint32_t sonicVram, hudVram, hudTile;
+static int firstPictureHidden;   // the level pick's loading frame: the act steps, but the screen keeps the black before it
+static int restoreBackdrop;      // the stage's colour 0 comes back with the first picture after it
+static uint16_t firstPictureBackdrop;
 
 // --- the copy's data (rom/tilemaps.js, rom/collision.js, rom/entities.js, rom/levels.js) -------------------------
 static Tilemap read_tilemap(int index) {
@@ -42,7 +46,11 @@ static Tilemap read_tilemap(int index) {
   t.at = at;
   t.xTiles = (uint16_t)rom_u16(at); t.yTiles = (uint16_t)rom_u16(at + 2);
   t.animTileSize = (uint16_t)rom_u16(at + 4); t.animFrameCount = (uint8_t)rom_u8(at + 6); t.animDelay = (uint8_t)rom_u8(at + 7);
-  t.tiles = rom_ptr(at + 8); t.tilesSize = rom_u32(at + 12);
+  // the back layer's own tiles are at +0x24, after the front's; its tile numbers past 511 read them from the second
+  // character block, as the original's stage init loads them there
+  uint32_t tilesAt = at + 8;
+  if (index % 3 == 1 && rom_u32(at + 0x24) >= 0x08000000) tilesAt = at + 0x24;
+  t.tiles = rom_ptr(tilesAt); t.tilesSize = rom_u32(at + 12);
   t.palette = rom_ptr(at + 16);
   t.paletteOffset = (uint16_t)rom_u16(at + 20); t.paletteLength = (uint16_t)rom_u16(at + 22);
   t.map = rom_ptr(at + 24); t.mapWidth = (uint16_t)rom_u16(at + 32); t.mapHeight = (uint16_t)rom_u16(at + 34);
@@ -164,10 +172,15 @@ static void load_stage(int level) {
   s->spawnY = rom_s16(OFFSET_SPAWNS + level * 4 + 2);
   s->width = s->collision.width; s->height = s->collision.height;
   s->zone = 6; s->act = 0; s->music = 24; s->hudFlash = 90;
-  // the front layer's tiles, in the first character block, and the stage's 256 colours (extractStage's palette)
+  // the front layer's tiles in the first character block and the back's in the second, which tile numbers past 511
+  // read, and the stage's 256 colours (extractStage's palette)
   copy_rom(s->front.tiles, 0, s->front.tilesSize);
+  copy_rom(s->back.tiles, 0x4000, s->back.tilesSize);
   for (int i = 0; i < 256; i++) e.bgPalette[i] = (uint16_t)rom_u16(s->front.palette + i * 2);
   e.flags |= FLAGS_UPDATE_BG_PALETTES;
+  // the maps the course select left are cleared, as the original's stage init leaves the parts its own maps don't
+  // fill zero; the front and back layers' maps come in each frame
+  for (uint32_t at = 0xE000; at < 0x10000; at += 2) { gba_vram[at] = 0; gba_vram[at + 1] = 0; }
   // the background's tiles at the second character block, and its 37 × 23 map at 0xE000: a 512-wide text layer
   // is two 32-tile blocks, so columns 32–36 go to the block at 0xE800 (DrawBackground, copy_backgrounds)
   copy_rom(s->background.tiles, 0x8000, s->background.tilesSize);
@@ -191,7 +204,8 @@ static uint16_t stage_entry(int layer, int tx, int ty) {
   int mx = fdiv(tx, 12), my = fdiv(ty, 12), lx = tx - mx * 12, ly = ty - my * 12;
   if (mx < 0 || my < 0 || mx >= c->levelX || my >= c->levelY) return 0;
   uint32_t id = rom_u8(c->layers[layer & 1] + my * c->levelX + mx);
-  return (uint16_t)rom_u16(act.stage.front.map + (id * 144u + (uint32_t)ly * 12u + (uint32_t)lx) * 2u);
+  uint32_t map = layer ? act.stage.back.map : act.stage.front.map;
+  return (uint16_t)rom_u16(map + (id * 144u + (uint32_t)ly * 12u + (uint32_t)lx) * 2u);
 }
 static void fill_layer(uint32_t dest, int layer, int camX, int camY) {
   int tx0 = camX >> 3, ty0 = camY >> 3;
@@ -421,19 +435,6 @@ static void hud_update(int draw) {
   h->flash = (h->flash + 1) & 31;
 }
 
-// --- the title card's state (engine/titlecard.js), without its pictures --------------------------------------------
-static void card_update(int pressed) {
-  if (act.cardDone) return;
-  if (pressed && act.cardFrame > 35 && act.cardFrame < 215) act.cardFrame = 215;
-  act.cardFrame++;
-  if (act.cardFrame > 225) {
-    act.cardDone = 1;
-    act.clockStopped = 0;
-    act.hud.active = 1;
-    act.hud.flash = act.stage.hudFlash;
-  }
-}
-
 // --- the frame (engine/game.js) ----------------------------------------------------------------------------------
 static void draw_frame(void) {
   int camX = (int)act.cam.x, camY = (int)act.cam.y;
@@ -474,6 +475,19 @@ static void draw_frame(void) {
 }
 
 static void act_frame(void) {
+  int hidden = firstPictureHidden;
+  firstPictureHidden = 0;
+  int cardEnded = 0;
+  if (!act.cardDone) {
+    int pressed = (e.pressed & (KEY_LEFT | KEY_RIGHT | KEY_UP | KEY_DOWN | KEY_A | KEY_B)) != 0;
+    if (!titlecard_step(pressed)) {
+      cardEnded = 1;
+      act.cardDone = 1;
+      act.clockStopped = 0;
+      act.hud.active = 1;
+      act.hud.flash = act.stage.hudFlash;
+    }
+  }
   camera_update(&act.cam, &act.player);
   act.cam.bgUpdates++;
   int left = (e.input & KEY_LEFT) != 0, right = (e.input & KEY_RIGHT) != 0;
@@ -482,13 +496,28 @@ static void act_frame(void) {
   int jumpPressed = (e.pressed & KEY_A) != 0, attackPressed = (e.pressed & KEY_B) != 0;
   // the start point's first frame reads the right and A the original has held there, never pressed
   if (act.firstFrame) { left = 0; right = 1; jump = 1; attack = 0; jumpPressed = 0; attackPressed = 0; act.firstFrame = 0; }
-  // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180)
-  if (act.cardDone) hud_update(1);
+  // the card holds Sonic and the clock; the HUD's task it makes first runs on the frame after it ends
+  if (!act.cardDone) { left = right = up = down = jump = attack = 0; jumpPressed = attackPressed = 0; }
+  else if (!cardEnded) hud_update(1);
   step_player(&act.player, left, right, up, down, jump, jumpPressed, attack, attackPressed);
   animate_player(&act.player);
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
+  if (hidden) {
+    // the level pick's loading frame: the act's first frame runs, but the screen stays the black the hand-over left
+    e.dispCnt = 0; e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
+    e.bgPalette[0] = 0; e.flags |= FLAGS_UPDATE_BG_PALETTES;
+    e.winRegs[0] = e.winRegs[1] = e.winRegs[2] = e.winRegs[3] = 0;
+    e.winRegs[4] = 0x3F3F; e.winRegs[5] = 0x1F;
+    restoreBackdrop = 1;
+    return;
+  }
+  if (restoreBackdrop) {
+    e.bgPalette[0] = firstPictureBackdrop; e.flags |= FLAGS_UPDATE_BG_PALETTES;
+    restoreBackdrop = 0;
+  }
   draw_frame();
+  titlecard_draw();
 }
 
 void act_task(Task *t) {
@@ -518,7 +547,15 @@ static void pre_run(int cardSkip, int preFrames) {
   while (!act.cardDone || after < preFrames) {
     int wasDone = act.cardDone;
     camera_update(&act.cam, &act.player);
-    if (!act.cardDone) card_update(cardSkip == act.tick);
+    if (!act.cardDone) {
+      titlecard_step(cardSkip == act.tick);
+      if (!titlecard_active()) {
+        act.cardDone = 1;
+        act.clockStopped = 0;
+        act.hud.active = 1;
+        act.hud.flash = act.stage.hudFlash;
+      }
+    }
     int r = act.cardDone;
     step_player(&act.player, 0, r, 0, 0, !act.cardDone, 0, !act.cardDone, 0);
     animate_player(&act.player);
@@ -531,11 +568,15 @@ static void pre_run(int cardSkip, int preFrames) {
 void act_start(int level, int cardSkip, int preFrames) {
   memset(&act, 0, sizeof act);
   copyCount = 0;
+  // what the course select still had queued is dropped, as its screen's maps are: the act's own come next
+  clear_queues();
+  clear_bg_sprites();
+  for (int i = 0; i < 4; i++) { e.mapFill[i].value = 0; memset(e.mapFill[i].rect, 0, sizeof e.mapFill[i].rect); }
   load_stage(level);
   create_player(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);
   act.lives = 3; act.score = 0; act.ringCount = 0;
-  act.clockStopped = 1; act.firstCard = 1; act.cardFrame = 0;
+  act.clockStopped = 1; act.firstCard = 1;
   act.hud.active = 0; act.hud.flash = act.stage.hudFlash;
   act.started = 0; act.drawn = 0;
   act.firstFrame = (int)gba_start_number("first", 0);
@@ -566,11 +607,29 @@ void act_start(int level, int cardSkip, int preFrames) {
   for (int i = 0; i < 16; i++) e.objPalette[i] = (uint16_t)rom_u16(facePalette + i * 2);
   e.flags |= FLAGS_UPDATE_OBJ_PALETTES;
 
-  // the frames before the recording starts: the title card to its end, then its few frames after it
-  pre_run(cardSkip, preFrames);
+  // the title card's pictures and its pieces, from the act's first frame
+  titlecard_start(level, ctx.character);
+  // the card's pieces in palette 6 use the HUD font's colours, which the stage's init loads last, as the original does
+  for (int i = 0; i < 16; i++) e.objPalette[6 * 16 + i] = (uint16_t)rom_u16(fontPalette + i * 2);
+  e.flags |= FLAGS_UPDATE_OBJ_PALETTES;
+  // a start point that opens past the card runs its frames with no picture
+  if (gba_start_point("level") != NULL || cardSkip >= 0 || preFrames > 0) pre_run(cardSkip, preFrames);
   play_song(act.stage.music);
-  gba_sound_frames_gone_by(118);
+  // the act's music starts with the act, as the stage's init does; a start point that opens past the card gets the
+  // frames the card played first, as the original's init does before its first picture
+  if (gba_start_point("level") != NULL) gba_sound_frames_gone_by(118);
+  else { gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4); }
   act.hud.active = 1;
   act.started = 1;
   create_task(act_task, NULL, 0x0F00, 0, NULL);
+  // the level pick's first frame runs with the picture still the black the hand-over left; the card's first picture
+  // comes on the frame after it
+  firstPictureHidden = gba_start_point("level") == NULL && cardSkip < 0 && preFrames == 0;
+  if (firstPictureHidden) {
+    firstPictureBackdrop = e.bgPalette[0];
+    e.dispCnt = 0; e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
+    e.bgPalette[0] = 0; e.flags |= FLAGS_UPDATE_BG_PALETTES;
+    e.winRegs[0] = e.winRegs[1] = e.winRegs[2] = e.winRegs[3] = 0;
+    e.winRegs[4] = 0x3F3F; e.winRegs[5] = 0x1F;
+  }
 }

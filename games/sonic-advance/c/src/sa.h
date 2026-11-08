@@ -29,6 +29,7 @@ static inline uint32_t rom_ptr(uint32_t at) { return rom_u32(at) - ROM_BASE; }
 // where the tables are in Sonic Advance (USA), the only copy this version takes (rom/versions.js)
 enum {
   OFFSET_SPRITE_TABLES = 0x0D868C, OFFSET_TILEMAPS = 0x4A6C40, OFFSET_UI_GRAPHICS = 0x680A38,
+  OFFSET_TITLE_CARD = 0x681274,
   OFFSET_INTRO_GRAPHICS = 0x69EC10, OFFSET_INTRO_TABLES = 0x684178, OFFSET_LANGUAGE_BACKGROUND = 0x6C7BD0,
   OFFSET_COURSE_SELECT_BACKGROUND = 0x69A6D0, OFFSET_OPTIONS_BACKGROUND = 0x6C5650,
   OFFSET_NAME_INPUT_MAPS = 0x67DC38, OFFSET_NAME_INPUT_CHARS = 0x681340,
@@ -173,6 +174,7 @@ void display_sprite(Sprite *s);
 void display_sprite_background(Sprite *s);
 void write_sprite_map(Sprite *s);
 void queue_sprite_map(Sprite *s);
+void clear_bg_sprites(void);
 
 // --- backgrounds (gba/background.js) --------------------------------------------------------------------------
 void background_init(Background *bg);
