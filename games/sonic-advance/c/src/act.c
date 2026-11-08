@@ -482,7 +482,8 @@ static void walk_input(Player *p, int dir, int sideways) {
     if (p->state != PS_CROUCH) p->state = PS_IDLE;
   }
 }
-static void ground_sensors(Player *p) {
+// returns 1 when it puts him on the surface, 0 when it leaves him in the air
+static int ground_sensors(Player *p) {
   int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y), soy = p->offsetY;
   int mode = (((p->rotation & 0xFF) + 0x20) & 0xC0) >> 6;
   Scan a, b; double speed;
@@ -493,14 +494,20 @@ static void ground_sensors(Player *p) {
   if (a.hasRot) p->rotA = (uint8_t)a.rot;
   if (b.hasRot) p->rotB = (uint8_t)b.rot;
   int val = a.d < b.d ? a.d : b.d, rot = a.d < b.d ? p->rotA : p->rotB;
-  if (val < -11) return;
+  if (val < -11) return 0;
   int limit = (int)__builtin_floor(__builtin_fabs(speed)) + 3;
   if (limit > 11) limit = 11;
-  if (val > 0 && val > limit) { p->air = 1; p->pushing = 0; return; }
+  if (val > 0 && val > limit) { p->air = 1; p->pushing = 0; return 0; }
   if (mode == 0) p->y += val; else if (mode == 1) p->x -= val; else if (mode == 2) p->y -= val; else p->x += val;
   if (!(rot & 1)) p->rotation = p->inverted ? (uint8_t)(-0x80 - rot) : (uint8_t)rot;
+  return 1;
 }
-static void follow_ground(Player *p) { ground_sensors(p); }
+static void follow_ground(Player *p) {
+  int snapped = ground_sensors(p);
+  // the original's air collision lands him when he comes down onto the surface, so the first frame's jump is a real
+  // one: he rises, the floor catches him again, and the ball never passes through it
+  if (is_casino() && p->air && p->ysp >= 0 && snapped) { p->air = 0; p->ysp = 0; }
+}
 static void move_player(Player *p) {
   p->x += p->xsp;
   if (p->inverted != p->wasInverted) p->ysp = -p->ysp;
@@ -528,7 +535,7 @@ static void step_player(Player *p, int left, int right, int up, int down, int ju
   }
   bounds(p);
   move_player(p);
-  if (!p->air || !is_casino()) follow_ground(p);
+  follow_ground(p);
 }
 
 // chooseAnimation and tickAnim (engine/player.js, engine/animator.js)
