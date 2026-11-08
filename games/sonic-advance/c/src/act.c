@@ -682,6 +682,8 @@ static void after_animation(Player *p) {
 }
 static void animate_player(Player *p) {
   choose_animation(p);
+  // a new animation clears both his hitboxes until its script sets them (sub_802486C, engine/player.js choose)
+  if (sonic.graphics.anim != (uint16_t)p->anim) { sonic.hitboxes[0].index = -1; sonic.hitboxes[1].index = -1; }
   sonic.graphics.anim = (uint16_t)p->anim;
   sonic.variant = (uint8_t)p->variant;
   sonic.animSpeed = (uint8_t)p->animSpeed;
@@ -825,8 +827,14 @@ static void sparkles_draw(int camX, int camY) {
 // tables, and their sprites are made when they first come in and freed when they leave, in the same order.
 #define ENT_MAX 64
 typedef struct { int kind, x, y, rx, ry, seq, d[4], active, spawned, gone, live, dy, vy, hopping, phase, n; Sprite box, icon; } Box;
+typedef struct { int x, y, dead; Sprite s; } Dust;
+static Dust dusts[8]; static int dustCount;
+static void dust_make(int x, int y);
 typedef struct { int kind, x, y, rx, ry, seq, d[4], active, spawned, animState, visible; int launching; Sprite s; } Obj;
 typedef struct { int kind, x, y, rx, ry, seq, d[4], active, spawned, anim, variant; Sprite s; } Prop;
+// the layer toggles (interactables 17 and 18): an unseen rectangle that sets which collision layer Sonic touches
+typedef struct { int layer, x, y, w, h; } Toggle;
+static Toggle toggles[ENT_MAX]; static int toggleCount;
 static Box boxes[ENT_MAX]; static int boxCount;
 static Obj springs[ENT_MAX], spikes[ENT_MAX]; static int springCount, spikeCount;
 static Prop props[ENT_MAX]; static int propCount;
@@ -854,7 +862,7 @@ static int read_grid(uint32_t table, int level, uint8_t *out, int cap) {
 }
 static void load_entities(int level) {
   static uint8_t data[32768];
-  boxCount = springCount = spikeCount = 0;
+  boxCount = springCount = spikeCount = toggleCount = 0;
   int n = read_grid(OFFSET_ITEMBOXES, level, data, sizeof data);
   if (n >= 12) {
     uint32_t rx = data32(data, 4), ry = data32(data, 8);
@@ -883,6 +891,11 @@ static void load_entities(int level) {
         Obj *o = NULL;
         if (kind >= 1 && kind <= 6 && spikeCount < ENT_MAX) o = &spikes[spikeCount++];
         else if ((kind >= 8 && kind <= 15) || kind == 108) { if (springCount < ENT_MAX) o = &springs[springCount++]; }
+        else if ((kind == 17 || kind == 18) && toggleCount < ENT_MAX) {
+          Toggle *t = &toggles[toggleCount++];
+          t->layer = kind == 17 ? 0 : 1;
+          t->x = x; t->y = y; t->w = (int8_t)data[at + 5] * 8; t->h = (int8_t)data[at + 6] * 8;
+        }
         if (o) {
           o->kind = kind; o->x = x; o->y = y; o->rx = (int)(r % rx); o->ry = (int)(r / rx); o->seq = seq;
           o->active = o->spawned = o->launching = 0; o->animState = -1; o->visible = 1;
@@ -948,6 +961,28 @@ static void entity_sprite(Sprite *sp, int anim, int variant, uint32_t tiles, int
   sp->palId = 0; sp->oamFlags = (uint16_t)(order << 6); sp->frameFlags = 2 << 12;
 }
 static void sprite_free(Sprite *sp) { if (sp->graphics.dest >= OBJ_VRAM + 0x13200) vram_free(sp->graphics.dest); }
+// a dust cloud (engine/defeat.js dustCloud): animation 407, OAM order 15, which ends after its four frames
+static void dust_make(int x, int y) {
+  if (dustCount >= 8) return;
+  Dust *d = &dusts[dustCount++];
+  d->x = x; d->y = y; d->dead = 0;
+  entity_sprite(&d->s, 407, 0, 64, 15);
+  d->s.graphics.dest = OBJ_VRAM + 0x1000;   // DUST_CLOUD_VRAM_ADDRESS, a fixed place (dust_cloud.c)
+  update_sprite(&d->s, 0);
+}
+static void dusts_update(void) {
+  for (int i = 0; i < dustCount; i++) if (!dusts[i].dead && update_sprite(&dusts[i].s, 0) == 0) dusts[i].dead = 1;
+}
+static void dusts_draw(int camX, int camY) {
+  for (int i = 0; i < dustCount; i++) {
+    Dust *d = &dusts[i];
+    d->s.x = (int16_t)(d->x - camX); d->s.y = (int16_t)(d->y - camY);
+    display_sprite(&d->s);
+  }
+  int kept = 0;
+  for (int i = 0; i < dustCount; i++) if (!dusts[i].dead) dusts[kept++] = dusts[i];
+  dustCount = kept;
+}
 static const int SPRING_ANIM[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 4, 4, 6, 6 };
 static int ent_active(int x, int y) {
   return x >= act.cam.x - 128 && x <= act.cam.x + 368 && y >= act.cam.y - 128 && y <= act.cam.y + 288;
@@ -975,7 +1010,18 @@ static void box_spawn(Box *b) {
   entity_sprite(&b->icon, 706, b->kind == 0 ? 0 : b->kind == 5 ? 8 : b->kind + 4, 4, 19);
   update_sprite(&b->box, 0); update_sprite(&b->icon, 0);
 }
-static void break_box(Box *b) { b->phase = 1; b->n = 0; b->live = 0; play_song(167); }
+static void box_prize(Box *b) {
+  switch (b->kind) {
+    case 0: if (act.lives < 9) act.lives++; break;                 // 1-up
+    case 5: act.ringCount += 5; play_song(SONG_RING); break;      // rings 5
+    case 6: act.ringCount += 10; play_song(SONG_RING); break;     // rings 10
+    case 7: act.ringCount += 10; play_song(SONG_RING); break;     // random rings, 10 for now
+  }
+}
+static void break_box(Box *b) {
+  b->phase = 1; b->dy = 0; b->n = 0; b->live = 0; play_song(167);
+  dust_make(b->x, b->y + b->dy);
+}
 // Coll_Player_Platform's vertical test (collide.js vertical): onto the top or out below, keeping the subpixel
 static int box_vertical(Box *b, Player *p, const int *rect, int stoodHere, int *flags) {
   const Hitbox *hb = &b->box.hitboxes[0];
@@ -1031,10 +1077,13 @@ static void boxes_step(Player *p) {
     if (!b->active || !b->spawned) continue;
     if (b->phase == 1) {
       b->dy--;
-      if (++b->n > 60) b->phase = 2;
+      if (++b->n >= 60) { box_prize(b); b->phase = 2; b->n = 0; }
       continue;
     } else if (b->phase == 2) {
-      if (++b->n > 90) b->live = 0;
+      if (++b->n > 30) {
+        sprite_free(&b->box); sprite_free(&b->icon);
+        b->spawned = 0; b->gone = 1; b->active = 0;
+      }
       continue;
     }
     // hit from below, it hops up a pixel a frame, slowing down, until it lands again (HOP_SPEED, HOP_GRAVITY)
@@ -1043,17 +1092,42 @@ static void boxes_step(Player *p) {
       int d = tile_floor(b->x, b->y + b->dy, 1);
       if (d < 0) { b->dy += d; b->hopping = 0; }
     }
-    if (b->live && hasAttack && hits(b->x, b->y + b->dy, &b->box.hitboxes[0], (int)__builtin_floor(p->x), (int)__builtin_floor(p->y), attack)) {
-      break_box(b); continue;
-    }
     const Hitbox *hb = &b->box.hitboxes[0];
     if (hb->index < 0) continue;
     int stoodHere = p->onObject == b;
     if (stoodHere) p->onObject = NULL;
     int flags = 0;
-    int done = ((p->air || stoodHere) && box_vertical(b, p, body, stoodHere, &flags))
-      || box_sideways(b, p, &flags) || box_vertical(b, p, body, stoodHere, &flags);
-    if (!done && stoodHere && !p->onObject) { p->air = 1; p->pushing = 0; }
+    // with an attack box the box is breakable (Coll_Player_Itembox), without one it is solid (Coll_Player_Platform)
+    if (stoodHere || !hasAttack) {
+      int done = ((p->air || stoodHere) && box_vertical(b, p, body, stoodHere, &flags))
+        || box_sideways(b, p, &flags) || box_vertical(b, p, body, stoodHere, &flags);
+      if (!done && stoodHere && !p->onObject) { p->air = 1; p->pushing = 0; }
+    } else {
+      int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
+      int flank[4] = { -11, 1 - p->offsetY, 11, p->offsetY - 1 };
+      if (hits(b->x, b->y + b->dy, hb, px, py, attack)) {
+        flags |= 0x20;
+        if (p->air && p->ysp > 0) p->ysp = -p->ysp;
+      }
+      if (p->air) {
+        if (hits(b->x, b->y + b->dy, hb, px, py, body)) {
+          int mid = b->y + b->dy + ((hb->top + hb->bottom) >> 1);
+          if (p->inverted ? py >= mid : py <= mid) {
+            if (p->ysp >= 0) { flags |= 0x8; if (p->ysp > 0) p->ysp = -p->ysp; }
+          } else if (p->ysp < 0) {
+            p->ysp = 0;
+            int under = b->y + b->dy + hb->bottom - body[1];
+            p->y = p->inverted ? p->y + py - under : under + (p->y - py);
+            flags |= 0x10000;
+          }
+        } else if (hits(b->x, b->y + b->dy, hb, px, py, flank)) {
+          if (px <= b->x + ((hb->left + hb->right) >> 1)) {
+            if (p->xsp > 0) { p->xsp = 0; p->x = b->x + hb->left - flank[2]; }
+          } else if (p->xsp < 0) { p->xsp = 0; p->x = b->x + hb->right - flank[0] + 1; }
+        }
+      }
+      if (flags & 0x28) { break_box(b); continue; }
+    }
     if (flags & 0x10000) { b->vy = -256; b->hopping = 1; }
   }
 }
@@ -1182,12 +1256,20 @@ static void entities_update(void) {
   for (int i = 0; i < propCount; i++) { Prop *o = &props[i]; if (o->active) { if (o->spawned) update_sprite(&o->s, 0); } else if (o->spawned) { sprite_free(&o->s); o->spawned = 0; } }
   for (int i = 0; i < boxCount; i++) { Box *b = &boxes[i]; if (b->active) { if (b->spawned) { update_sprite(&b->box, 0); update_sprite(&b->icon, 0); } } else box_retire(b); }
 }
+static void layer_toggles(Player *p) {
+  int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
+  for (int i = 0; i < toggleCount; i++) {
+    Toggle *t = &toggles[i];
+    if (px >= t->x && px <= t->x + t->w && py >= t->y && py <= t->y + t->h) p->layer = t->layer;
+  }
+}
 static void entities_step(Player *p) { boxes_step(p); springs_step(p); spikes_step(p); }
 static void boxes_draw(int camX, int camY) {
   for (int i = 0; i < boxCount; i++) {
     Box *b = &boxes[i]; if (!b->active || !b->spawned) continue;
-    if (b->phase != 2) { b->box.x = (int16_t)(b->x - camX); b->box.y = (int16_t)(b->y + b->dy - camY); display_sprite(&b->box); }
-    b->icon.x = (int16_t)(b->x - camX); b->icon.y = (int16_t)(b->y + b->dy - camY); display_sprite(&b->icon);
+    if (b->phase == 0) { b->box.x = (int16_t)(b->x - camX); b->box.y = (int16_t)(b->y + b->dy - camY); display_sprite(&b->box); }
+    // the break frame shows the dust only; the icon rises from the next one (engine/itembox.js)
+    if (!(b->phase == 1 && b->n == 0)) { b->icon.x = (int16_t)(b->x - camX); b->icon.y = (int16_t)(b->y + b->dy - camY); display_sprite(&b->icon); }
   }
 }
 static void springs_spikes_draw(int camX, int camY) {
@@ -1739,6 +1821,7 @@ static void draw_frame(void) {
 
   rings_draw(camX, camY);
   sparkles_draw(camX, camY);
+  dusts_draw(camX, camY);
   springs_spikes_draw(camX, camY);
   boxes_draw(camX, camY);
   props_draw(camX, camY);
@@ -1784,8 +1867,10 @@ static void act_frame(void) {
   rings_update();
   rings_collect(&act.player);
   sparkles_update();
+  dusts_update();
   entities_update();
   enemies_update();
+  layer_toggles(&act.player);
   act.player.pushing = 0;
   entities_step(&act.player);
   props_step(&act.player);
