@@ -582,6 +582,9 @@ void game_start(void) {
   gba_sound_count_cycles();
   int name = (int)gba_start_number("name", 0);
   if (name) g.name[0] = (uint16_t)name;
+  // 0x03002188: which of the Mini-games screen's entries the save has opened, one bit each, a new save's only the
+  // first, or a start point's
+  g.mini_games_open = (int)gba_start_number("open", 1) & 0xFF;
   if (gba_start_point("fight")) {
     g.start_up = 1;
     g.callback = startFightFromPoint;
