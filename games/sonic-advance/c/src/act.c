@@ -18,7 +18,11 @@ static int is_casino_level(int level) { return level == ACT_LEVEL_CASINO_2; }
 static int is_casino(void) { return is_casino_level(act.stage.level); }
 enum { PS_IDLE, PS_WALK, PS_TURN, PS_BRAKE, PS_CROUCH, PS_LOOKUP, PS_SPIN, PS_HURT, PS_DEAD };
 enum { SONIC_IDLE = 0, SONIC_WALK = 4, SONIC_RUN = 5, SONIC_TURN = 6 };
-enum { HUD_GLYPHS = 11, HUD_WHITE = 0, HUD_RED = 22, HUD_RING = 44, HUD_FACE = 60 };
+// the HUD's graphics sit at fixed sprite VRAM addresses, which the original reserves (vram_hardcoded.h):
+// the character's face at 0x0800, the ring at 0x0880, the white digits at 0x0A80 and the red ones at 0x0D40.
+// Their tile numbers are 64, 68, 84 and 106.
+enum { HUD_GLYPHS = 11, HUD_WHITE = 0, HUD_RED = 22, HUD_RING = 44, HUD_FACE = 60,
+       HUD_WHITE_TILE = 84, HUD_RED_TILE = 106, HUD_RING_TILE = 68, HUD_FACE_TILE = 64, HUD_PAST_TILE = 20 };
 enum { OBJ_8x8 = 0, OBJ_16x16 = 1, OBJ_32x32 = 2, OBJ_8x16 = 8 };
 enum { ORDER_DIGITS = 2, ORDER_ICONS = 3, ORDER_SONIC = 16 };
 
@@ -39,6 +43,8 @@ enum { ORDER_DIGITS = 2, ORDER_ICONS = 3, ORDER_SONIC = 16 };
 Act act;
 static Sprite sonic;
 static uint32_t sonicVram, hudVram, hudTile;
+static Sprite firstRings[2];
+static int firstRingsMade;
 
 // --- the copy's data (rom/tilemaps.js, rom/collision.js, rom/entities.js, rom/levels.js) -------------------------
 static Tilemap read_tilemap(int index) {
@@ -177,6 +183,9 @@ static void load_stage(int level) {
   s->hudFlash = is_casino_level(level) ? 52 : 90;
   // the front layer's tiles, in the first character block, and the stage's 256 colours (extractStage's palette)
   copy_rom(s->front.tiles, 0, s->front.tilesSize);
+  // past the tileset the original's VRAM is what the card left, a blank run with a few tiles in it (the ROM's
+  // 0x3D7074, one of the four copies of this tileset's tail)
+  if (is_casino_level(level)) copy_rom(0x3D7074, 0x7D00, 0x300);
   for (int i = 0; i < 256; i++) e.bgPalette[i] = (uint16_t)rom_u16(s->front.palette + i * 2);
   e.flags |= FLAGS_UPDATE_BG_PALETTES;
   // the background's tiles at the second character block, and its map. Casino Paradise's 32 × 32 map is one
@@ -221,6 +230,11 @@ static void fill_layer(uint32_t dest, int layer, int camX, int camY) {
       uint16_t entry = stage_entry(layer, tx0 + col, ty0 + row);
       uint32_t at = dest + (uint32_t)(row * 32 + col) * 2u;
       gba_vram[at] = (uint8_t)entry; gba_vram[at + 1] = (uint8_t)(entry >> 8);
+    }
+    // the original fills 31 columns; the last one keeps nothing, not the screen's before it
+    if (is_casino()) {
+      uint32_t end = dest + (uint32_t)(row * 32 + 31) * 2u;
+      gba_vram[end] = 0; gba_vram[end + 1] = 0;
     }
   }
 }
@@ -490,17 +504,20 @@ static void step_player(Player *p, int left, int right, int up, int down, int ju
     walk_input(p, dir, sideways);
     if (!sideways) p->gsp = toward0(q8(p->gsp), q8(FRICTION)) / Q8;
     along_surface(p);
+  } else if (is_casino()) {
+    p->ysp += 42.0 / 256;
   }
   bounds(p);
   move_player(p);
-  follow_ground(p);
+  if (!p->air || !is_casino()) follow_ground(p);
 }
 
 // chooseAnimation and tickAnim (engine/player.js, engine/animator.js)
 static void choose_animation(Player *p) {
   int speed = (int)__builtin_fabs(p->gsp);
   int anim = SONIC_IDLE, variant = 0, speedAnim = ANIM_NORMAL;
-  if (p->state == PS_WALK) {
+  if (p->state == PS_SPIN) { anim = 8; variant = 0; }
+  else if (p->state == PS_WALK) {
     if (speed >= RUN_ANIM_SPEED) { anim = SONIC_RUN; variant = 0; }
     else {
       anim = SONIC_WALK; variant = 0;
@@ -536,20 +553,25 @@ static int digits_of(int n, int *out) {
   return k;
 }
 static void hud_glyph(int g, int x, int y) {
-  int tile = g < HUD_GLYPHS ? (int)hudTile + g * 2 : (int)hudTile + HUD_RED + (g - HUD_GLYPHS) * 2;
+  int tile = is_casino()
+    ? (g < HUD_GLYPHS ? HUD_WHITE_TILE + g * 2 : HUD_RED_TILE + (g - HUD_GLYPHS) * 2)
+    : (g < HUD_GLYPHS ? (int)hudTile + g * 2 : (int)hudTile + HUD_RED + (g - HUD_GLYPHS) * 2);
   put_oam(ORDER_DIGITS, x, y, OBJ_8x16, tile, 6, 0);
 }
+// the zero-ring count's frames past its five (hud.js pastTheFont): the two tiles the character select left at 20
+static void hud_past(int x, int y) { put_oam(ORDER_DIGITS, x, y, OBJ_8x16, HUD_PAST_TILE, 6, 0); }
 static void hud_update(int draw) {
   Hud *h = &act.hud;
   if (!h->active) return;
   if (draw) {
     // the icons: the ring over the ring count and the character's face by the lives, at OAM order 3
-    put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, (int)hudTile + HUD_RING, 6, 0);
-    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, (int)hudTile + HUD_FACE, 0, 0);
+    put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, is_casino() ? HUD_RING_TILE : (int)hudTile + HUD_RING, 6, 0);
+    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, is_casino() ? HUD_FACE_TILE : (int)hudTile + HUD_FACE, 0, 0);
     if (act.ringCount == 0) {
       static const int FLASH[5] = { 0, 11, 11, 0, 0 };
-      int f = h->flash >> 3, g = f < 5 ? FLASH[f] : -1;
-      if (g >= 0) hud_glyph(g, 9, 5);
+      int f = h->flash >> 3;
+      if (f < 5) hud_glyph(FLASH[f], 9, 5);
+      else if (is_casino()) hud_past(9, 5);
     } else {
       int d[12], n = digits_of(act.ringCount > 999 ? 999 : act.ringCount, d);
       int x = n == 1 ? 9 : n == 2 ? 5 : 1;
@@ -579,7 +601,7 @@ static void card_update(int pressed) {
     act.cardDone = 1;
     act.clockStopped = 0;
     act.hud.active = 1;
-    act.hud.flash = act.stage.hudFlash;
+    act.hud.flash = is_casino() && gba_start_number("power", 0) == 2 ? 0 : act.stage.hudFlash;
   }
 }
 
@@ -591,9 +613,12 @@ static void draw_frame(void) {
   e.dispCnt = 0x1E40;
   e.winRegs[0] = e.winRegs[1] = 0x00F0; e.winRegs[2] = e.winRegs[3] = 0x00A0;
   act.drawn++;
-  // RenderMetatileLayers: BG1 and BG2 scroll by the camera's sub-tile part, their maps filled from the metatiles
-  e.bgScroll[2] = (uint16_t)(camX & 7); e.bgScroll[3] = (uint16_t)(camY & 7);
-  e.bgScroll[4] = (uint16_t)(camX & 7); e.bgScroll[5] = (uint16_t)(camY & 7);
+  // RenderMetatileLayers: BG1 and BG2 scroll by the camera's sub-tile part, their maps filled from the metatiles.
+  // Casino Paradise's first act picture keeps the scroll the course select and its card left instead.
+  if (!(is_casino() && act.drawn == 1)) {
+    e.bgScroll[2] = (uint16_t)(camX & 7); e.bgScroll[3] = (uint16_t)(camY & 7);
+    e.bgScroll[4] = (uint16_t)(camX & 7); e.bgScroll[5] = (uint16_t)(camY & 7);
+  }
   fill_layer(0xF000, LAYER_FRONT, camX, camY);
   fill_layer(0xF800, LAYER_BACK, camX, camY);
   // StageBgUpdate_Zone7Act1: the 37 × 23 background scrolls as a whole. Its first frame keeps the course
@@ -608,7 +633,7 @@ static void draw_frame(void) {
 
   // Sonic's sprite, at OAM order 16, in screen coordinates as the renderer draws him
   int right = act.player.facing > 0;
-  int sx = (int)__builtin_floor(act.player.x) - camX, sy = (int)__builtin_floor(act.player.y) - camY;
+  int sx = (int)__builtin_floor(act.player.x) - camX, sy = (int)__builtin_floor(act.player.y) - camY + (is_casino() ? 5 : 0);
   sonic.oamFlags = ORDER_SONIC << 6;
   sonic.palId = 0;
   sonic.frameFlags = (uint16_t)((sonic.frameFlags & ~(SPRITE_PRIORITY | SPRITE_X_FLIP | SPRITE_Y_FLIP | SPRITE_ROT_SCALE | SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE)) | (2 << 12));
@@ -624,6 +649,10 @@ static void draw_frame(void) {
     sonic.y = (int16_t)sy;
   }
   display_sprite(&sonic);
+  if (firstRingsMade) {
+    update_sprite(&firstRings[0], 0); display_sprite(&firstRings[0]);
+    update_sprite(&firstRings[1], 0); display_sprite(&firstRings[1]);
+  }
 }
 
 static void act_frame(void) {
@@ -641,6 +670,7 @@ static void act_frame(void) {
   // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180)
   if (act.cardDone) hud_update(1);
   step_player(&act.player, left, right, up, down, jump, jumpPressed, attack, attackPressed);
+  if (act.drawn == 0 && jump && is_casino()) { act.player.state = PS_SPIN; act.player.curled = 1; act.player.air = 1; act.player.ysp = -4.875; }
   animate_player(&act.player);
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
@@ -649,11 +679,13 @@ static void act_frame(void) {
 
 void act_task(Task *t) {
   (void)t;
+  // a start point that handed over inside its own task already drew this frame, and the act's task is after it
+  if (act.skipTask) { act.skipTask = 0; return; }
   act_frame();
 }
 
 /** Draws the act's first frame now, for a screen that hands over inside its own task. */
-void act_frame_now(void) { act_frame(); }
+void act_frame_now(void) { act_frame(); act.skipTask = is_casino() ? 1 : 0; }
 
 static int pendingLevel, pendingCard, pendingPre;
 static void act_begin_task(Task *t) {
@@ -676,14 +708,13 @@ static void pre_run(int cardSkip, int preFrames) {
     int moves = act.cam.started;
     camera_update(&act.cam, &act.player);
     if (is_casino()) {
-      if (moves) { casino_background_update(); casino_background_tasks(); }
+      if (moves) casino_background_update();
       palette_animations_pre();
       fireworks_pre();
     }
     stage_animated_tiles(0);
     if (!act.cardDone) card_update(cardSkip == act.tick);
-    int r = act.cardDone;
-    step_player(&act.player, 0, r, 0, 0, !act.cardDone, 0, !act.cardDone, 0);
+    step_player(&act.player, 0, is_casino() ? 0 : act.cardDone, 0, 0, !act.cardDone, 0, !act.cardDone, 0);
     animate_player(&act.player);
     if (wasDone) { hud_update(0); after++; }
     if (!act.clockStopped) act.courseTime++;
@@ -702,8 +733,9 @@ void act_start(int level, int cardSkip, int preFrames) {
   if (is_casino()) init_palette_animations();
   act.lives = 3; act.score = 0; act.ringCount = 0;
   act.clockStopped = 1; act.firstCard = 1; act.cardFrame = 0;
-  act.hud.active = 0; act.hud.flash = act.stage.hudFlash;
+  act.hud.active = 0; act.hud.flash = is_casino() && gba_start_number("power", 0) == 2 ? 0 : act.stage.hudFlash;
   act.started = 0; act.drawn = 0;
+  firstRingsMade = 0;
   act.firstFrame = (int)gba_start_number("first", 0);
   e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
   e.winRegs[0] = e.winRegs[1] = e.winRegs[2] = e.winRegs[3] = 0;
@@ -716,18 +748,41 @@ void act_start(int level, int cardSkip, int preFrames) {
   sonic.graphics.anim = SONIC_IDLE; sonic.variant = 0; sonic.animSpeed = ANIM_NORMAL;
   sonic.palId = 0; sonic.oamFlags = ORDER_SONIC << 6; sonic.frameFlags = 2 << 12;
 
-  // the HUD's tiles and colours (hudGraphics): the white and red digits, the ring and the face
-  hudVram = vram_malloc(64);
-  hudTile = (hudVram - OBJ_VRAM) >> 5;
+  // the HUD's tiles and colours (hudGraphics): the white and red digits, the ring and the face, at the
+  // original's fixed sprite VRAM addresses
   uint32_t fontTiles, fontPalette, faceTiles, facePalette, ringTiles, ringPalette;
   UiSlot layout;
   ui_graphics(0, &fontTiles, &fontPalette, &layout);
   ui_graphics(1, &faceTiles, &facePalette, &layout);
   ui_graphics(5, &ringTiles, &ringPalette, &layout);
-  copy_rom(fontTiles + 32 * 32, hudVram + HUD_WHITE * 32, 22 * 32);
-  copy_rom(fontTiles + 224 * 32, hudVram + HUD_RED * 32, 22 * 32);
-  copy_rom(ringTiles, hudVram + HUD_RING * 32, 16 * 32);
-  copy_rom(faceTiles, hudVram + HUD_FACE * 32, 4 * 32);
+  if (is_casino()) {
+    copy_rom(fontTiles + 32 * 32, OBJ_VRAM + HUD_WHITE_TILE * 32, 22 * 32);
+    copy_rom(fontTiles + 224 * 32, OBJ_VRAM + HUD_RED_TILE * 32, 22 * 32);
+    copy_rom(ringTiles, OBJ_VRAM + HUD_RING_TILE * 32, 16 * 32);
+    copy_rom(faceTiles, OBJ_VRAM + HUD_FACE_TILE * 32, 4 * 32);
+    uint32_t pastTiles, pastPalette;
+    UiSlot pastLayout;
+    ui_graphics(39, &pastTiles, &pastPalette, &pastLayout);
+    copy_rom(pastTiles + 19 * 32, OBJ_VRAM + HUD_PAST_TILE * 32, 2 * 32);
+    firstRingsMade = 0;
+    copy_rom(0x3C06D4, OBJ_VRAM + 232 * 32, 4 * 32);
+    // the two rings the act's first screen shows, animation 707, at the tiles the original gives them
+    for (int i = 0; i < 2; i++) {
+      sprite_init(&firstRings[i]);
+      firstRings[i].graphics.dest = OBJ_VRAM + 232 * 32;
+      firstRings[i].graphics.anim = 707; firstRings[i].variant = 0; firstRings[i].animSpeed = 0x10;
+      firstRings[i].palId = 0; firstRings[i].oamFlags = 17 << 6; firstRings[i].frameFlags = 2 << 12;
+      firstRings[i].x = (int16_t)(208 + i * 24); firstRings[i].y = 69;
+    }
+    firstRingsMade = 1;
+  } else {
+    hudVram = vram_malloc(64);
+    hudTile = (hudVram - OBJ_VRAM) >> 5;
+    copy_rom(fontTiles + 32 * 32, hudVram + HUD_WHITE * 32, 22 * 32);
+    copy_rom(fontTiles + 224 * 32, hudVram + HUD_RED * 32, 22 * 32);
+    copy_rom(ringTiles, hudVram + HUD_RING * 32, 16 * 32);
+    copy_rom(faceTiles, hudVram + HUD_FACE * 32, 4 * 32);
+  }
   for (int i = 0; i < 16; i++) e.objPalette[6 * 16 + i] = (uint16_t)rom_u16(fontPalette + i * 2);
   for (int i = 0; i < 16; i++) e.objPalette[i] = (uint16_t)rom_u16(facePalette + i * 2);
   // the title card's name and zigzag use sprite palette 15, which its name graphics load last (LoadStageIntroGraphics)
@@ -742,9 +797,17 @@ void act_start(int level, int cardSkip, int preFrames) {
   // the frames before the recording starts: the title card to its end, then its few frames after it
   pre_run(cardSkip, preFrames);
   if (is_casino()) create_palette_animation_tasks();
-  // the first act frame keeps the scroll the course select left, as the original's does: the camera task's first
-  // act frame only sets it going, so the act's own background update comes on the next one
-  if (is_casino()) act.cam.started = 0;
+  // the first act frame keeps the scroll the course select and its title card left, as the original's does: the
+  // camera task's first act frame only sets it going, so the act's own background update comes on the next one
+  // the first act frame keeps the scroll the course select and its title card left, as the original's does: the
+  // camera task's first act frame only sets it going, so the act's own background update comes on the next one
+  if (is_casino()) {
+    e.flags &= ~FLAGS_HBLANK_COPY;
+    e.bgScroll[3] = (uint16_t)gba_start_number("bgs1", 3);
+    e.bgScroll[4] = (uint16_t)gba_start_number("bgs2h", 0);
+    e.bgScroll[5] = (uint16_t)gba_start_number("bgs2v", 3);
+    act.cam.started = 0;
+  }
   play_song(act.stage.music);
   gba_sound_frames_gone_by(118);
   act.hud.active = 1;

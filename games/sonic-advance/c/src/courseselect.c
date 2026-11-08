@@ -48,6 +48,7 @@ static struct {
 } screen;
 
 static void slide_in(Task *t);
+static void idle(Task *t);
 static void choose_act(Task *t);
 static void leave_choose(Task *t, int ending, int song);
 static void fade_out(Task *t);
@@ -182,9 +183,23 @@ void create_course_select(void) {
   (void)main;
 }
 
+// a start point at an act opens it at the A that would have chosen it, while the original plays its title card
+static int take_start_point(Task *t) {
+  int level = (int)gba_start_number("level", -1);
+  if (!(e.pressed & KEY_A) || level != ACT_LEVEL_CASINO_2 || gba_start_number("power", 0) != 2) return 0;
+  if (front_frame() < (uint32_t)gba_start_number("at", 0)) return 0;
+  destroy_tasks(0x2001, 0x3000);
+  t->main = idle;
+  act_active = 1;
+  act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
+  act_frame_now();
+  return 1;
+}
+
 // Task_CourseSelectInit, 0x08061E50: the colours, and the picture's bands apart by what's left of the slide: 12 lines
 // at the scroll, and then bands of 24 lines, each below a gap of 64 - frame lines that show the map's first rows
 static void slide_in(Task *t) {
+  if (take_start_point(t)) return;
   int frame = screen.frame + 1;
   screen.scrollTo = frame == SLIDE_END && screen.rows == 1 ? 0 : 0x14;
   screen.scroll = 0x14;
@@ -213,7 +228,9 @@ static void slide_in(Task *t) {
 
 // Task_8062140: Up and Down choose, and the lists scroll two rows at a time to keep the choice in view. A on the
 // first frame after the slide only stops the song.
+static void idle(Task *t) { (void)t; }
 static void choose_act(Task *t) {
+  if (take_start_point(t)) return;
   int frame = screen.frame + 1;
   if (screen.rows > 1) {
     if (e.repeated & KEY_DOWN) {
