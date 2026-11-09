@@ -688,7 +688,6 @@ static void step_player(Player *p, int left, int right, int up, int down, int ju
   (void)up; (void)down; (void)attack;
   p->jumpPressed = jumpPressed; p->attackPressed = attackPressed;
   if (p->dead) { dead_step(p); return; }
-  if (p->invulnerable > 1) p->invulnerable--;
   if (!p->air) {
     if (p->curled) {
       if (try_jump(p, jumpPressed)) return;
@@ -778,6 +777,8 @@ static void animate_player(Player *p) {
   sonic.variant = (uint8_t)p->variant;
   sonic.animSpeed = (uint8_t)p->animSpeed;
   if (update_sprite(&sonic, 0) == 0) after_animation(p);
+  // the blink after a hit runs down once he has landed, as the original's does (engine/player.js animatePlayer)
+  if (!(p->dead && p->invulnerable == 1) && p->state != PS_HURT && p->invulnerable > 0) p->invulnerable--;
 }
 
 // --- the act's rings (engine/rings.js, rings_manager.c) ---------------------------------------------------------
@@ -1489,10 +1490,7 @@ static int enemy_attack(Enemy *e, int x, int y) {
       return 1;
     }
   }
-  if (hb) {
-    if (act.player.invulnerable > 0) { enemy_defeat(e); return 1; }
-    hurt(&act.player);
-  }
+  if (hb) hurt(&act.player);
   return 0;
 }
 static void shot_make_anim(Shot *sh, int kind, int anim, int order, uint32_t tiles) {
