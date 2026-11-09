@@ -1,0 +1,79 @@
+// node tools/clips-check.mjs [<file>]: the pull request's check of its clips (.github/workflows/clips.yml). It reads
+// the pull request's text, from <file> or PR_BODY, and every clip it links, as share publishes them: the video, and the
+// measures share puts beside it. It fails when a clip has no measures, as one share didn't make, when the video isn't
+// the one measured, when the recording measured isn't the pull request's, or when the measures break a rule of
+// docs/STANDARD.md#clips (lib/clips.mjs). Text with no clip passes, as a step that changes nothing a recording shows
+// has none. It needs only Node: nothing is installed, and nothing but the clips' own addresses is fetched.
+
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { clipLinks, clipProblems, reportOf } from './lib/clips.mjs';
+import { REPO } from './lib/paths.mjs';
+
+const MOST = { mp4: 2_200_000, json: 64_000 };
+
+/** Every problem with the clips a text links, as sentences, with `fetched(url, most)` for their bytes or null. */
+export async function checkClips(text, { fetched = download, read = path => readRecording(path) } = {}) {
+  const links = [...new Set(clipLinks(text))];
+  const videos = links.filter(link => link.endsWith('.mp4'));
+  const problems = [];
+  // a picture on its own is a clip prove didn't make, as share links each video's frame beside it, and nothing else
+  for (const link of links.filter(l => !l.endsWith('.mp4'))) {
+    const video = link.replace(/-still\.png$/, '.mp4');
+    if (!link.endsWith('-still.png') || !videos.includes(video)) problems.push(`${link} isn't the frame of a clip the text links: a clip is a video prove made, which share publishes with its frame.`);
+  }
+  for (const link of videos) {
+    const stamp = /-([0-9a-f]{7})\.mp4$/.exec(link)?.[1];
+    const json = await fetched(link.replace(/\.mp4$/, '.json'), MOST.json);
+    let measures = null;
+    try {
+      measures = json && JSON.parse(json.toString('utf8'));
+    } catch { /* not measures */ }
+    if (measures?.clip !== 'dreamports' || !measures.measures) {
+      problems.push(`${link} has no measures beside it, so share didn't make it as it is now: prove the recording, share it, and paste .dreamports/share/clips.md under Clips.`);
+      continue;
+    }
+    const video = await fetched(link, MOST.mp4);
+    const hash = video && createHash('sha1').update(video).digest('hex');
+    if (!video) problems.push(`${link} can't be fetched.`);
+    else if (hash !== measures.video || !hash.startsWith(stamp ?? '-')) problems.push(`${link} isn't the video its measures are of.`);
+    for (const problem of clipProblems(reportOf(measures), read(measures.recordingFile), { sideBySide: measures.sideBySide })) problems.push(`${measures.recording}: ${problem}`);
+  }
+  return problems;
+}
+
+// a recording of the pull request's, as it's checked out, or null
+function readRecording(path) {
+  if (typeof path !== 'string' || !/^games\/[a-z0-9-]+(?:\/[a-z0-9-]+)?\/proof\/recordings\/[a-z0-9-]+\.json$/.test(path)) return null;
+  const file = join(REPO, path);
+  return existsSync(file) ? readFileSync(file) : null;
+}
+
+// a clip's file from its address, up to `most` bytes, or null
+async function download(url, most) {
+  for (let tries = 0; tries < 3; tries++) {
+    try {
+      const response = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(20_000) });
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(String(response.status));
+      const bytes = Buffer.from(await response.arrayBuffer());
+      return bytes.length > most ? null : bytes;
+    } catch {
+      await new Promise(done => setTimeout(done, 3000 * (tries + 1)));
+    }
+  }
+  return null;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const text = process.argv[2] ? readFileSync(process.argv[2], 'utf8') : process.env.PR_BODY ?? '';
+  const problems = await checkClips(text);
+  if (problems.length) {
+    console.log(`The pull request's clips break the rules of docs/STANDARD.md#clips:\n${problems.map(p => `- ${p}`).join('\n')}`);
+    process.exitCode = 1;
+  } else {
+    const count = clipLinks(text).filter(l => l.endsWith('.mp4')).length;
+    console.log(count ? `All ${count} clip${count > 1 ? 's' : ''} keep the rules.` : 'The pull request links no clip.');
+  }
+}
