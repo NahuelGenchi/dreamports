@@ -1,7 +1,11 @@
 {
-  "about": "A fight's end, from the frame the knockout leaves through the Game Set banner: the start point opens where the fight's own frame finds it won, with the rival out of health and the player's point on, and it ends the fight.",
-  "start": "fight=training&vblanks=1209&end=0",
-  "frames": 242,
+  "about": "A fight's end: fifty-eight frames of the fight before the knockout, then the end's 242 frames through the Game Set banner. The start point opens just before the blow that takes the rival's health, and the hidden knockout frame hands the original to the end the Dreamport starts.",
+  "start": "fight=training&vblanks=1209&lead=58",
+  "frames": 300,
+  "clip": {
+    "at": 0,
+    "frames": 300
+  },
   "held": [
     [
       0,
@@ -11,7 +15,7 @@
   "onlyInOriginal": [
     {
       "at": 0,
-      "frames": 1654,
+      "frames": 1594,
       "held": [
         [
           0,
@@ -112,69 +116,82 @@
           []
         ]
       ],
+      "about": "A name already saved, the main menu's third move right, A for Training, Start on its first choices and the three picks, then the fight's frames up to just before the knockout.",
       "sets": [
         {
           "frame": 778,
           "address": "03002170",
           "bytes": 2,
           "value": 1
-        },
+        }
+      ]
+    },
+    {
+      "at": 58,
+      "frames": 1,
+      "held": [
+        [
+          0,
+          []
+        ]
+      ],
+      "sets": [
         {
-          "frame": 1653,
+          "frame": 0,
           "address": "03002030",
           "bytes": 4,
           "value": 134329237
         },
         {
-          "frame": 1653,
+          "frame": 0,
           "address": "0300169D",
           "bytes": 1,
           "value": 1
         },
         {
-          "frame": 1653,
+          "frame": 0,
           "address": "03001624",
           "bytes": 1,
           "value": 2
         },
         {
-          "frame": 1653,
+          "frame": 0,
           "address": "03001626",
           "bytes": 1,
           "value": 1
         },
         {
-          "frame": 1653,
+          "frame": 0,
           "address": "03001653",
           "bytes": 1,
           "value": 1
         },
         {
-          "frame": 1653,
+          "frame": 0,
           "address": "03001CD3",
           "bytes": 1,
           "value": 72
         },
         {
-          "frame": 1653,
+          "frame": 0,
           "address": "03001CD5",
           "bytes": 1,
           "value": 1
         },
         {
-          "frame": 1653,
+          "frame": 0,
           "address": "03001DFB",
           "bytes": 1,
           "value": 0
         },
         {
-          "frame": 1653,
+          "frame": 0,
           "address": "03001D50",
           "bytes": 2,
           "value": 253
         }
       ],
-      "about": "A name already saved, the main menu's third move right, A for Training, Start on its first choices and the three picks, then the fight's way to the knockout, whose frame the start point opens on."
+      "about": "The knockout frame, hidden: it gives the original the rival's state, the player's point and the callback the ending starts from, as the start point gives the Dreamport."
     }
   ]
 }
