@@ -32,6 +32,8 @@ const stage = document.getElementById('stage');
 const screen = document.getElementById('screen');
 const input = createInput(LAYOUT);
 proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
+// No dreamportsProof.neverInPlay here: the game in C reads no start point yet and always opens from power-on, so every
+// frame it shows is one a player sees
 // on touch screens the controller drawn around the game, with the screen sized among its buttons, and the settings,
 // with the controls the layout gives
 const touch = createTouch(stage, input, { screen, key: 'sonic-advance-3' });
