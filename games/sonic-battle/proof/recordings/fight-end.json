@@ -1,6 +1,6 @@
 {
-  "about": "A fight's end, from the frame the knockout leaves through the Game Set banner and the result screen's fade in: the start point opens where the fight's own frame finds it won, with the rival out of health and the player's point on, and the recording ends as the result screen's background has faded in.",
-  "start": "fight=training&vblanks=1209&end=0",
+  "about": "A fight's end, from the frame the knockout leaves through the Game Set banner and the result screen's fade in: the start point opens where a real Battle fight's own frame finds it won, with the rival out of health and the player's point on, and the recording ends as the result screen's background has faded in.",
+  "start": "fight=battle&vblanks=1209&end=0",
   "frames": 300,
   "held": [
     [
@@ -174,7 +174,7 @@
           "value": 253
         }
       ],
-      "about": "A name already saved, the main menu's third move right, A for Training, Start on its first choices and the three picks, then the fight's way to the knockout, whose frame the start point opens on."
+      "about": "A name already saved, the main menu's right and A for Battle, the Battle screen's picks, then the fight's way to the knockout, whose frame the start point opens on."
     }
   ]
 }
