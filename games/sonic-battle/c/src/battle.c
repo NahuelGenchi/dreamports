@@ -1,7 +1,7 @@
 // A fight's frame with computer players, in C: 0x0801c4bc, the frame Battle mode runs. It reads every fighter's keys,
 // gives each computer player its thought (brain.c), runs the fighters, waits for the V-blank, then turns the view and
-// draws. The start point's `cpu` frame turns a Training fight into this one, so the other fighter's play can be proven
-// without a Battle screen in the C menu yet.
+// draws. The `other-fighter` recording opens this path from a start point; its clip shows the Dreamport alone until the
+// original's Battle choice and camera are ported.
 
 #include "game.h"
 
