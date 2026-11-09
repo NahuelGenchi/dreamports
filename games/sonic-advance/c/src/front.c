@@ -130,6 +130,8 @@ EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 // The acts in C so far: a start point opens the act it names (level=12 is X Zone), its title card's state run without
 // its pictures; the course select opens the act it chose.
 void front_play(int level) {
+  // an act that isn't in C yet, and Options, stop safely where the screen is, unless a start point names the act
+  if (gba_start_point("level") == NULL && !act_level_ported(level)) { ctx.done = 1; return; }
   act_active = 1;
   destroy_tasks(0x2000, 0x3000);
   int startLevel = (int)gba_start_number("level", -1);
@@ -140,7 +142,7 @@ void front_play(int level) {
     act.stallLoad = 0;
     return;
   }
-  act_start(level < 0 ? 0 : level, -1, 0);
+  act_start(level, -1, 0);
   act_frame_now();
 }
 void front_start_demo(void) { ctx.done = 1; }
