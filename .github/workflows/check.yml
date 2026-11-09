@@ -8,9 +8,6 @@ name: Check
 # can only read and no secrets.
 on:
   pull_request:
-  # main requires this check (#1033), and the Readme workflow starts it on its own commit, as a pull request that
-  # workflow's token opens starts no workflow by itself
-  workflow_dispatch:
 
 permissions:
   contents: read
