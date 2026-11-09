@@ -101,7 +101,6 @@ ActTask *barrel_spawn(Slot *slot);
 ActTask *bowl_spawn(Slot *slot);
 ActTask *carousel_spawn(Slot *slot);
 ActTask *ship_swing_spawn(Slot *slot);
-ActTask *steam_exhaust_spawn(Slot *slot);
 
 void entities_load(int level);
 int entities_manager(ActTask *t);

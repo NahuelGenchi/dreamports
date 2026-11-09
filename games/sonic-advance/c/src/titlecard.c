@@ -2,7 +2,7 @@
 // Task_8055458 and the six tasks it makes), translated from the JavaScript version's rom/titlecard.js and
 // engine/titlecard.js. Six pieces slide in over the act while the screen fades in from black, hold, and slide out.
 
-#include "objects.h"
+#include "act.h"
 
 #define CARD_ENTRY 28
 #define CARD_TILE 32
@@ -138,8 +138,6 @@ void titlecard_start(int level, int character) {
 }
 
 static void card_put(int order, int shape, int size, int x, int y, int tile, int pal, int semi) {
-  // the card's frames a start point runs with no picture put nothing in the OAM, which no V-blank empties
-  if (!objects_drawing()) return;
   int k = alloc_oam((uint32_t)order);
   if (k < 0) return;
   e.oamMalloc[k * 4] = (uint16_t)((shape << 14) | (y & 0xFF) | (semi ? 0x400 : 0));
