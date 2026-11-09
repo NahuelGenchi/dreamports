@@ -8,6 +8,7 @@
 // (445 otter, 450 koala, 449 kangaroo), then its points (709), and plays song 138.
 
 #include "act.h"
+#include "actobjects.h"
 #include "actenemies.h"
 
 // the enemy table after the item boxes in the USA copy (rom/versions.js)
@@ -313,8 +314,12 @@ static int en_attack_test(Enemy *e, int x, int y) {
   } else {
     en_player_box(&l, &t, &r, &b);
     if (!en_box_touch(x, y, hb, l, t, r, b)) return 0;
-    // his body is hurt, unless he is invincible, which destroys the enemy instead
-    if (act.player.invulnerable <= 0) { en_hit = 1; return 0; }
+    // an item box's invincibility destroys the enemy; blinking from the last hit leaves it alone; otherwise his
+    // body is hurt, by the same Coll_DamagePlayer the objects use
+    if (!objects_player_invincible()) {
+      if (act.player.invulnerable <= 0) en_hit = 1;
+      return 0;
+    }
   }
   e->live = 0;
   e->gone = 1;
@@ -342,7 +347,7 @@ static int en_projectile_test(Effect *f, int x, int y) {
   int l, t, r, b;
   en_player_box(&l, &t, &r, &b);
   if (!en_box_touch(x, y, hb, l, t, r, b)) return 0;
-  if (act.player.invulnerable <= 0) en_hit = 1;
+  if (act.player.invulnerable <= 0 && !objects_player_invincible()) en_hit = 1;
   return 1;
 }
 

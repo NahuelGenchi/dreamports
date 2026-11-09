@@ -18,8 +18,13 @@ void objects_reset(void);
 void objects_update(int camX, int camY);
 // Draws every live object's sprite at its place on the screen.
 void objects_draw(int camX, int camY);
-// 1 when an enemy, spike or projectile hit Sonic this frame (the act's player step then hurts him).
+// 1 when an object or spike hurt Sonic this frame, which it did itself through objects_hurt_player.
 int objects_player_hit(void);
+// Hurts Sonic as Coll_DamagePlayer does: a shield takes the hit, with rings he drops them, or without any he dies.
+// Already called where an object or spike touches him; the act calls it for an enemy or shot that touched him.
+void objects_hurt_player(void);
+// 1 while an item box's invincibility, which destroys enemies that touch him instead of hurting him.
+int objects_player_invincible(void);
 // The item boxes' prizes that live here while they run: the shield (0 none, 1 shield, 2 magnetic shield),
 // frames of invincibility left, and frames of speed shoes left. `act` has no fields for them.
 void objects_player_state(int *shield, int *invincible, int *speedUp);

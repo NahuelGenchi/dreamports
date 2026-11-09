@@ -133,6 +133,9 @@ void front_play(int level) {
   int fromStart = startLevel >= 0;
   if (!fromStart) startLevel = level;
   if (level < 0 && startLevel < 0) startLevel = ctx.startLevel >= 0 ? ctx.startLevel : 0;
+  // Neo Green Hill act 1 is Sonic's in C: another character's act stops here, with the screen as it is, rather
+  // than starting the act as Sonic
+  if (startLevel == 0 && ctx.character != 0) { stop_all_songs(); ctx.done = 1; return; }
   if (startLevel != 0 && startLevel != 3 && startLevel != 12) { ctx.done = 1; return; }
   act_active = 1;
   // a new game's act comes from the character select, whose HUD's zero-ring flash starts at 1; a course select

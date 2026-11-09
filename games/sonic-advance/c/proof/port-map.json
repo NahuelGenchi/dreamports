@@ -129,7 +129,7 @@
     ["sub_80039E4","src/sprite.c:205"],
     ["sub_8003EE4","src/background.c:35"],
     ["sub_8004010","src/engine.c:171"],
-    ["sub_8004418","src/actenemies.c:397"],
+    ["sub_8004418","src/actenemies.c:402"],
     ["sub_80047A0","src/ui.c:173"],
     ["sub_8006228","src/lines.c:53"],
     ["sub_80064A8","src/lines.c:53"],
@@ -142,7 +142,7 @@
     ["sub_8022D6C","src/act.c:254"],
     ["sub_80232D0","src/results.c:14"],
     ["sub_802486C","src/sprite.c:99"],
-    ["Task_8008DCC","src/actenemies.c:876"],
+    ["Task_8008DCC","src/actenemies.c:881"],
     ["Task_800F058","src/modeselect.c:313"]
   ]
 }

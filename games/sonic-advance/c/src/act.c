@@ -1124,17 +1124,9 @@ static void act_frame(void) {
   int camX = (int)act.cam.x, camY = (int)act.cam.y;
   objects_update(camX, camY);
   enemies_update(camX, camY);
-  if (!act.player.dead && !act.player.invulnerable && (objects_player_hit() || enemies_player_hit())) {
-    if (act.ringCount > 0) {
-      act.ringCount = 0;
-      act.player.state = PS_HURT; act.player.air = 1; act.player.curled = 0; act.player.offsetY = SPRITE_OFFSET_Y;
-      act.player.ysp = 3.0; act.player.xsp = 1.5 * (act.player.xsp > 0 ? -1 : 1);
-      act.player.invulnerable = 120;
-      play_song(118);
-    } else {
-      act.player.dead = 1; act.player.state = PS_DEAD;
-    }
-  }
+  // the objects and spikes hurt him themselves as they touch him; an enemy or shot only says it did, so the
+  // same Coll_DamagePlayer handles its shield, invincibility, rings and death
+  if (!act.player.dead && enemies_player_hit()) objects_hurt_player();
   int left = (e.input & KEY_LEFT) != 0, right = (e.input & KEY_RIGHT) != 0;
   int up = (e.input & KEY_UP) != 0, down = (e.input & KEY_DOWN) != 0;
   int jump = (e.input & KEY_A) != 0, attack = (e.input & KEY_B) != 0;

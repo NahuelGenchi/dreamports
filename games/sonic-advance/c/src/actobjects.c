@@ -493,6 +493,8 @@ static void obj_hurt(void) {
   play_song(171);
 }
 
+void objects_hurt_player(void) { obj_hurt(); }
+
 // INCREMENT_RINGS: passing a hundred gives a life
 static void obj_add_rings(int n) {
   int before = act.ringCount;
@@ -1666,6 +1668,7 @@ void objects_alloc_vram(void) {
 }
 
 int objects_player_hit(void) { return objects.hurtFrame; }
+int objects_player_invincible(void) { return objects.invincible > 0; }
 
 void objects_player_state(int *shield, int *invincible, int *speedUp) {
   if (shield) *shield = objects.shield;
