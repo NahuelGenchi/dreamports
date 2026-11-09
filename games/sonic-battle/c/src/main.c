@@ -585,6 +585,10 @@ void game_start(void) {
   if (gba_start_point("fight")) {
     g.start_up = 1;
     g.callback = startFightFromPoint;
+  } else if (gba_start_point("skills")) {
+    // a recording's start point, as nothing leads to Emerl's screen yet: `skills` in the address opens it (skills.c)
+    g.start_up = 1;
+    g.callback = startSkills;
   } else {
     g.start_up = 45;
     g.callback = logosSetup;

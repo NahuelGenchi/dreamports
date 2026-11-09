@@ -280,4 +280,7 @@ void restartFromStart(void);
 // options.js
 void startOptions(void);
 
+// skills.js
+void startSkills(void);
+
 #endif

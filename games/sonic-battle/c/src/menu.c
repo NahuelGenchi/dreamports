@@ -54,7 +54,9 @@ static const uint32_t FADES[4][2] = {
 #define MAX_NODES 64
 #define MAX_DRAWN 32
 static Node nodes[MAX_NODES];
-static int node_count;
+// the nodes made so far, the first and last on the list, and the first removed node whose room is free again
+static int node_count, head = -1, tail = -1, free_node = -1;
+static int free_next[MAX_NODES];
 static Place drawn[4][MAX_DRAWN];
 static int drawn_count[4];
 static int matrices;
@@ -97,18 +99,40 @@ Place menuRecord(uint32_t at) {
   return p;
 }
 
-/** 0x0801f7d0: a node added at the end of the list. */
+/** 0x0801f7d0: a node added at the end of the list, in a removed node's room when there is one. */
 Node *menuAddNode(void (*run)(Node *), Place place, int hasPlace) {
-  if (node_count >= MAX_NODES) return &nodes[MAX_NODES - 1];
-  Node *node = &nodes[node_count++];
+  int at;
+  if (free_node >= 0) {
+    at = free_node;
+    free_node = free_next[at];
+  } else {
+    if (node_count >= MAX_NODES) return &nodes[MAX_NODES - 1];
+    at = node_count++;
+  }
+  Node *node = &nodes[at];
+  __builtin_memset(node, 0, sizeof(*node));
   node->run = run;
   node->place = place;
-  node->count = node->to = node->tile = node->timer = 0;
-  node->base_x = node->base_y = 0;
-  node->left = node->right = 0;
-  node->scrolled = 0;
   if (!hasPlace) node->place.parts = 0;
+  node->active = 1;
+  node->next = -1;
+  if (tail >= 0) nodes[tail].next = at; else head = at;
+  tail = at;
   return node;
+}
+
+/** 0x0801f8c0: a node taken off the list, with the walk through the list going on from the next. The removed node
+ *  keeps its link to the next, so a walk standing on it goes on from there. */
+void menuRemoveNode(Node *node) {
+  int at = (int)(node - nodes);
+  if (at < 0 || at >= node_count || !node->active) return;
+  int previous = -1;
+  for (int i = head; i >= 0 && i != at; i = nodes[i].next) previous = i;
+  if (previous >= 0) nodes[previous].next = node->next; else head = node->next;
+  if (tail == at) tail = previous;
+  node->active = 0;
+  free_next[at] = free_node;
+  free_node = at;
 }
 
 /** 0x0801fed8: a sprite asks to be drawn this frame. */
@@ -128,6 +152,7 @@ static void startFrameNode(Node *node) { (void)node; menuStartFrame(); }
 /** The list emptied, as a screen's first frame does. */
 void menuReset(void) {
   node_count = 0;
+  head = tail = free_node = -1;
   menuStartFrame();
 }
 
@@ -195,7 +220,7 @@ static void drawSprites(void) {
 
 /** 0x08039fd0: the frame wrapper. Every node, a node added on the way too, and then the sprites they asked for. */
 void menuFrame(void) {
-  for (int walking = 0; walking < node_count; walking++) nodes[walking].run(&nodes[walking]);
+  for (int walking = head; walking >= 0; walking = nodes[walking].next) nodes[walking].run(&nodes[walking]);
   drawSprites();
 }
 
@@ -336,8 +361,7 @@ void menuBeforeMenu(void) {
   }
 }
 
-/** 0x0801fbfc: display registers from the cartridge's table at `from`, each its offset in 0x04000000 and its value. */
-static void writeRegisters(uint32_t from, int count) {
+void menuWriteRegisters(uint32_t from, int count) {
   for (int i = 0; i < count; i++) gba_write(rom16(from + (uint32_t)i * 4), rom16(from + (uint32_t)i * 4 + 2));
 }
 
@@ -361,7 +385,7 @@ static void songAndDisplay(void) {
 void showMenu(int playSong) {
   menuReset();
   selection = 0;
-  writeRegisters(REGISTERS, REGISTER_COUNT);
+  menuWriteRegisters(REGISTERS, REGISTER_COUNT);
   g.queue_count = 0;              // 0x0801fb94
   hideSpriteBuffer();             // 0x0801ff30
   for (int i = 0; i < 512; i++) gba_pal[i] = 0;
