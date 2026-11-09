@@ -197,6 +197,9 @@ void gba_sound_frame_done(void) {
 }
 void gba_sound_reset(void) { take(OP_RESET, 0, 0, 0, 0); }
 void gba_sound_play(int song) { take(OP_START, song, 0, 0, 0); }
+int gba_sound_song_player(int song) {
+  return running && song >= 0 && song < layout.songs ? gba_rom[layout.songTable + song * 8 + 4] : -1;
+}
 void gba_sound_play_or_change(int song) { take(OP_START_OR_CHANGE, song, 0, 0, 0); }
 void gba_sound_start_or_continue(int song) { take(OP_START_OR_CONTINUE, song, 0, 0, 0); }
 void gba_sound_stop(int song) { take(OP_STOP, song, 0, 0, 0); }

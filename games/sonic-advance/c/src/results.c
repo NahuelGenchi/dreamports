@@ -101,6 +101,7 @@ typedef struct {
 static Results r;
 static Graphics copies[12];
 static int copyCount;
+static int countStart;   // the counter tick's song starts on the next sound frame, as the original's MPlayStart does
 
 static void copy_in(uint32_t src, uint32_t dest, uint32_t size) {
   Graphics *g = &copies[copyCount++];
@@ -179,6 +180,7 @@ static void read_text(int *to, uint32_t at, int n) {
 
 void results_start(int level, int rings, int courseTime, int longEnd, int nextFrame) {
   memset(&r, 0, sizeof r);
+  countStart = 0;
   r.active = 1;
   r.level = level; r.longEnd = longEnd; r.skipFirst = nextFrame;
   r.ring = STEP * rings;
@@ -340,6 +342,9 @@ static void fade_out(void) {
 int results_run(void) {
   if (!r.active) return 0;
   if (r.skipFirst) { r.skipFirst = 0; return 1; }
+  // the counter tick's call, from the frame before: the original's m4aSongNumStart stops the song's player at the
+  // call and its new track starts on the next sound frame, so the frame it is called in is silent
+  if (countStart) { countStart = 0; play_song(SONG_RESULTS_COUNT); }
   int k = r.frame;   // what the pieces see this frame (unk1C)
   r.fading = 0;
   // the matrices the growing glyphs share: 1/12 to 11/12 of the height
@@ -356,7 +361,14 @@ int results_run(void) {
         act.cam.speedX = 0; act.cam.speedY = 0;
         r.countdown = r.longEnd ? ENDING_AFTER : NEXT_ACT_AFTER;
         play_song(SONG_RESULTS_DONE);
-      } else if (act.tick % 4 == 0) play_song(SONG_RESULTS_COUNT);
+      } else if (act.tick % 4 == 0) {
+        // the last tick is the one the original starts a frame later, with the done chime after it; the ticks before
+        // it are heard a frame later too, which the proof's sound window takes in
+        if (r.ring <= STEP && r.time <= STEP) {
+          gba_sound_stop_player(gba_sound_song_player(SONG_RESULTS_COUNT));
+          countStart = 1;
+        } else play_song(SONG_RESULTS_COUNT);
+      }
     } else {
       // the bonuses counted: the camera stays, and Sonic stops once he is off the right of the screen
       Player *p = &act.player;

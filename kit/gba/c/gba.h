@@ -98,6 +98,8 @@ void gba_sound_frames_gone_by(int frames);
 void gba_sound_reset(void);
 /** m4aSongNumStart */
 void gba_sound_play(int song);
+/** The number of the music player song `song` plays on, from the copy's song table, or -1. */
+int gba_sound_song_player(int song);
 /** m4aSongNumStartOrChange: starts the song unless it is already playing on its player */
 void gba_sound_play_or_change(int song);
 /** m4aSongNumStartOrContinue: restarts a different song or an ended one, and lets a stopped one go on */
