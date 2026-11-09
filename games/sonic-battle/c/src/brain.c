@@ -31,15 +31,15 @@
 #define B_FIELD20 20
 
 // a fighter's fields the brain reads, by what the code does with them
-#define F_FIELD16 16
+#define F_SIDE 16
 #define F_STATE 20
-#define F_FIELD50 50
-#define F_FIELD54 54
-#define F_FIELD62 62
-#define F_FIELD72 72
-#define F_FIELD88 88
-#define F_FIELD180 180
-#define F_FIELD191 191
+#define F_LOW_FLAGS 50
+#define F_ACROSS_OFFSET 54
+#define F_ALONG_OFFSET 62
+#define F_DISTANCE_SQUARED 72
+#define F_DISTANCE 88
+#define F_FLAGS 180
+#define F_HEALTH 191
 #define F_CHARACTER 196
 
 // the condition lists a thought runs: one for the other characters, one for fighter 19
@@ -81,28 +81,69 @@
 #define LEVEL_DODGE 0x08071264u
 #define MAX_HEALTH 0x03001B28u
 
+// the words a condition list is made of
+#define CONDITION_END 0xFF
+#define CONDITION_GROUP_END 7
+#define CONDITION_NONE 0x10
+#define CONDITION_OPERAND_SHIFT 16
+#define CONDITION_OPERATION_SHIFT 8
+#define CONDITION_OPERATION_MASK 0xFF
+#define CONDITION_LOW_FLAGS 0xF
+#define CONDITION_RESULT_OFFSET 2
+#define KNOCKED_OUT_STATE 252
+#define KNOCKED_OUT_STATES 4
+#define INACTIVE_STATE 0xFC
+#define NO_FIGHTER 0xFF
+#define FIGHTER_INDEX_MASK 0xFF
+#define FIGHTER_SLOTS 4
+#define TARGET_NEAREST 0x7FFFFFFF
+#define TARGET_RANDOM_MASK 6
+#define TARGET_RANDOM_SHIFT 1
+#define TARGET_TRIES 6
+#define FACING_ACROSS 512
+#define FACING_ALONG 128
+#define FACING_ACROSS_BIG 1152
+
+// the direction bits a fighter's keys carry
+#define KEY_LEFT 0x20
+#define KEY_RIGHT 0x10
+#define KEY_UP 0x40
+#define KEY_DOWN 0x80
+#define KEY_DIRECTION_MASK 0xFF0F
+#define KEY_BOTH_HORIZONTAL 0x30
+#define KEY_BOTH_VERTICAL 0xC0
+#define KEY_SPECIAL 0x200
+#define SCRIPT_TURN_TO_TARGET 0x8000
+#define BRAIN_SLOT_MASK 3
+#define NEAR_RANGE 512
+#define WAIT_FRACTION_MASK 0xFFF
+#define WAIT_FRACTION_SHIFT 12
+#define WAY_ANGLE_SHIFT 12
+#define BYTE_MASK 0xFF
+#define GUARD_HOLD_FRAMES 5
+
 typedef void (*BrainFn)(int);
 
 static BrainFn brain_fn[4];
 
-static uint32_t brainAt(int i) { return BRAINS + (uint32_t)(i & 0xFF) * BRAIN_SIZE; }
-static uint32_t fighterAt(int i) { return FIGHTERS_ + (uint32_t)(i & 0xFF) * RECORD_; }
+static uint32_t brainAt(int i) { return BRAINS + (uint32_t)(i & FIGHTER_INDEX_MASK) * BRAIN_SIZE; }
+static uint32_t fighterAt(int i) { return FIGHTERS_ + (uint32_t)(i & FIGHTER_INDEX_MASK) * RECORD_; }
 static int brainTarget(int i) { return read8(brainAt(i) + B_TARGET); }
 static uint16_t brainKeys(int i) { return read16(brainAt(i) + B_KEYS); }
 static void setBrainKeys(int i, uint16_t keys) { write16(brainAt(i) + B_KEYS, keys); }
-static void setCallback(int i, BrainFn fn) { brain_fn[i & 3] = fn; }
-static int16_t field54(int i, int j) { return reads16(fighterAt(i) + F_FIELD54 + (uint32_t)(j & 0xFF) * 2); }
-static int16_t field62(int i, int j) { return reads16(fighterAt(i) + F_FIELD62 + (uint32_t)(j & 0xFF) * 2); }
-static int32_t field72(int i, int j) { return reads32(fighterAt(i) + F_FIELD72 + (uint32_t)(j & 0xFF) * 4); }
-static int16_t field88(int i, int j) { return reads16(fighterAt(i) + F_FIELD88 + (uint32_t)(j & 0xFF) * 2); }
+static void setCallback(int i, BrainFn fn) { brain_fn[i & BRAIN_SLOT_MASK] = fn; }
+static int16_t fighterAcrossOffset(int i, int j) { return reads16(fighterAt(i) + F_ACROSS_OFFSET + (uint32_t)(j & FIGHTER_INDEX_MASK) * 2); }
+static int16_t fighterAlongOffset(int i, int j) { return reads16(fighterAt(i) + F_ALONG_OFFSET + (uint32_t)(j & FIGHTER_INDEX_MASK) * 2); }
+static int32_t fighterDistanceSquared(int i, int j) { return reads32(fighterAt(i) + F_DISTANCE_SQUARED + (uint32_t)(j & FIGHTER_INDEX_MASK) * 4); }
+static int16_t fighterDistance(int i, int j) { return reads16(fighterAt(i) + F_DISTANCE + (uint32_t)(j & FIGHTER_INDEX_MASK) * 2); }
 static uint16_t fighterState(int i) { return read16(fighterAt(i) + F_STATE); }
-static uint8_t fighterField50(int i) { return read8(fighterAt(i) + F_FIELD50); }
-static uint32_t fighterField180(int i) { return read32(fighterAt(i) + F_FIELD180); }
-static uint8_t fighterHealth(int i) { return read8(fighterAt(i) + F_FIELD191); }
+static uint8_t fighterLowFlags(int i) { return read8(fighterAt(i) + F_LOW_FLAGS); }
+static uint32_t fighterFlags(int i) { return read32(fighterAt(i) + F_FLAGS); }
+static uint8_t fighterHealth(int i) { return read8(fighterAt(i) + F_HEALTH); }
 static uint8_t fighterCharacter(int i) { return read8(fighterAt(i) + F_CHARACTER); }
-static uint8_t fighterSide(int i) { return read8(fighterAt(i) + F_FIELD16); }
+static uint8_t fighterSide(int i) { return read8(fighterAt(i) + F_SIDE); }
 static int brainTeam(void) { return read8(SETUP_ + 8) != 0; }
-static int brainActive(int i) { return read8(SETUP_ + 20 + i) != 0xFF; }
+static int brainActive(int i) { return read8(SETUP_ + 20 + i) != NO_FIGHTER; }
 static int brainGroup(int i) { return read8(SETUP_ + 32 + i); }
 
 static int brainTargetBest(int i);
@@ -152,70 +193,80 @@ static void brainGuardEnd(int i);
 
 // ----------------------------------------------------------------------------------------------- The conditions
 
+enum Comparison { COMPARE_EQUAL, COMPARE_LESS, COMPARE_MORE };
+
+/** The comparison a condition's operation byte asks for. */
+static uint32_t compare(int operation, int32_t value, int32_t operand) {
+  if (operation == COMPARE_EQUAL) return value == operand;
+  if (operation == COMPARE_LESS) return value < operand;
+  if (operation == COMPARE_MORE) return value > operand;
+  return 0;
+}
+
 /** 0x0801f080: one of a fighter's x offsets to another, compared with the word's high half. */
-static uint32_t condition0801f080(int i, int other, uint32_t *stream) {
+static uint32_t conditionAcrossOffset(int i, int other, uint32_t *stream) {
   uint32_t word = read32(*stream);
-  int16_t operand = (int16_t)(word >> 16);
-  uint8_t operation = (uint8_t)((word >> 8) & 0xFF);
-  int16_t value = field54(i, other);
-  uint32_t result = operation == 0 ? value == operand : operation == 1 ? value < operand : operation == 2 ? value > operand : 0;
+  int16_t operand = (int16_t)(word >> CONDITION_OPERAND_SHIFT);
+  uint8_t operation = (uint8_t)((word >> CONDITION_OPERATION_SHIFT) & CONDITION_OPERATION_MASK);
+  int16_t value = fighterAcrossOffset(i, other);
+  uint32_t result = compare(operation, value, operand);
   *stream += 4;
   return result;
 }
 
 /** 0x0801f128: one of a fighter's y offsets to another. */
-static uint32_t condition0801f128(int i, int other, uint32_t *stream) {
+static uint32_t conditionAlongOffset(int i, int other, uint32_t *stream) {
   uint32_t word = read32(*stream);
-  int16_t operand = (int16_t)(word >> 16);
-  uint8_t operation = (uint8_t)((word >> 8) & 0xFF);
-  int16_t value = field62(i, other);
-  uint32_t result = operation == 0 ? value == operand : operation == 1 ? value < operand : operation == 2 ? value > operand : 0;
+  int16_t operand = (int16_t)(word >> CONDITION_OPERAND_SHIFT);
+  uint8_t operation = (uint8_t)((word >> CONDITION_OPERATION_SHIFT) & CONDITION_OPERATION_MASK);
+  int16_t value = fighterAlongOffset(i, other);
+  uint32_t result = compare(operation, value, operand);
   *stream += 4;
   return result;
 }
 
 /** 0x0801f1d0: one of a fighter's distances to another. */
-static uint32_t condition0801f1d0(int i, int other, uint32_t *stream) {
+static uint32_t conditionDistance(int i, int other, uint32_t *stream) {
   uint32_t word = read32(*stream);
-  int16_t operand = (int16_t)(word >> 16);
-  uint8_t operation = (uint8_t)((word >> 8) & 0xFF);
-  int16_t value = field88(i, other);
-  uint32_t result = operation == 0 ? value == operand : operation == 1 ? value < operand : operation == 2 ? value > operand : 0;
+  int16_t operand = (int16_t)(word >> CONDITION_OPERAND_SHIFT);
+  uint8_t operation = (uint8_t)((word >> CONDITION_OPERATION_SHIFT) & CONDITION_OPERATION_MASK);
+  int16_t value = fighterDistance(i, other);
+  uint32_t result = compare(operation, value, operand);
   *stream += 4;
   return result;
 }
 
 /** 0x0801f274: one of a fighter's squared distances to another, with its operand in the next word. */
-static uint32_t condition0801f274(int i, int other, uint32_t *stream) {
+static uint32_t conditionDistanceSquared(int i, int other, uint32_t *stream) {
   uint32_t word = read32(*stream);
   int32_t operand = (int32_t)read32(*stream + 4);
-  uint8_t operation = (uint8_t)((word >> 8) & 0xFF);
-  int32_t value = field72(i, other);
-  uint32_t result = operation == 0 ? value == operand : operation == 1 ? value < operand : operation == 2 ? value > operand : 0;
+  uint8_t operation = (uint8_t)((word >> CONDITION_OPERATION_SHIFT) & CONDITION_OPERATION_MASK);
+  int32_t value = fighterDistanceSquared(i, other);
+  uint32_t result = compare(operation, value, operand);
   *stream += 8;
   return result;
 }
 
 /** 0x0801f308: a roll of the chance in the word's high half. */
-static uint32_t condition0801f308(int i, int other, uint32_t *stream) {
+static uint32_t conditionChance(int i, int other, uint32_t *stream) {
   uint32_t word = read32(*stream);
   (void)i;
   (void)other;
   *stream += 4;
-  return (uint32_t)rollChance((int)(word >> 16));
+  return (uint32_t)rollChance((int)(word >> CONDITION_OPERAND_SHIFT));
 }
 
 /** 0x0801f31c: whether the fighter has anything in its low flags. */
-static uint32_t condition0801f31c(int i, int other, uint32_t *stream) {
+static uint32_t conditionLowFlags(int i, int other, uint32_t *stream) {
   (void)other;
   *stream += 4;
-  return (fighterField50(i) & 0xF) != 0;
+  return (fighterLowFlags(i) & CONDITION_LOW_FLAGS) != 0;
 }
 
-static uint32_t condition0801f350(int i, int other, uint32_t *stream);
+static uint32_t conditionAnyOf(int i, int other, uint32_t *stream);
 
 /** 0x0801f3a4: always true. */
-static uint32_t condition0801f3a4(int i, int other, uint32_t *stream) {
+static uint32_t conditionAlways(int i, int other, uint32_t *stream) {
   (void)i;
   (void)other;
   *stream += 4;
@@ -223,74 +274,74 @@ static uint32_t condition0801f3a4(int i, int other, uint32_t *stream) {
 }
 
 /** 0x0801f3b0: a flag of the other fighter. */
-static uint32_t condition0801f3b0(int i, int other, uint32_t *stream) {
+static uint32_t conditionOtherFlag(int i, int other, uint32_t *stream) {
   uint32_t operand = read32(*stream + 4);
   (void)i;
   *stream += 8;
-  return (fighterField180(other) & operand) == 1;
+  return (fighterFlags(other) & operand) == 1;
 }
 
 /** 0x0801f3e4: a flag of this fighter. */
-static uint32_t condition0801f3e4(int i, int other, uint32_t *stream) {
+static uint32_t conditionOwnFlag(int i, int other, uint32_t *stream) {
   uint32_t operand = read32(*stream + 4);
   (void)other;
   *stream += 8;
-  return (fighterField180(i) & operand) == 1;
+  return (fighterFlags(i) & operand) == 1;
 }
 
 /** 0x0801f418: this fighter's state. */
-static uint32_t condition0801f418(int i, int other, uint32_t *stream) {
+static uint32_t conditionOwnState(int i, int other, uint32_t *stream) {
   uint32_t word = read32(*stream);
   (void)other;
   *stream += 4;
-  return fighterState(i) == (uint16_t)(word >> 16);
+  return fighterState(i) == (uint16_t)(word >> CONDITION_OPERAND_SHIFT);
 }
 
 /** 0x0801f448: whether the brain's wait is over. */
-static uint32_t condition0801f448(int i, int other, uint32_t *stream) {
+static uint32_t conditionWaitOver(int i, int other, uint32_t *stream) {
   (void)other;
   *stream += 4;
   return read16(brainAt(i) + B_WAIT) == 0;
 }
 
 /** 0x0801f474: this fighter's health, compared with the word's high half. */
-static uint32_t condition0801f474(int i, int other, uint32_t *stream) {
+static uint32_t conditionOwnHealth(int i, int other, uint32_t *stream) {
   uint32_t word = read32(*stream);
-  int16_t operand = (int16_t)(word >> 16);
-  uint8_t operation = (uint8_t)((word >> 8) & 0xFF);
+  int16_t operand = (int16_t)(word >> CONDITION_OPERAND_SHIFT);
+  uint8_t operation = (uint8_t)((word >> CONDITION_OPERATION_SHIFT) & CONDITION_OPERATION_MASK);
   uint8_t value = fighterHealth(i);
-  uint32_t result = operation == 0 ? value == operand : operation == 1 ? value < operand : operation == 2 ? value > operand : 0;
+  uint32_t result = compare(operation, value, operand);
   (void)other;
   *stream += 4;
   return result;
 }
 
 /** 0x0801f4f4: whether the other fighter is knocked out. */
-static uint32_t condition0801f4f4(int i, int other, uint32_t *stream) {
+static uint32_t conditionOtherKnockedOut(int i, int other, uint32_t *stream) {
   (void)i;
   *stream += 4;
-  return (uint16_t)(fighterState(other) - 252) <= 3;
+  return (uint16_t)(fighterState(other) - KNOCKED_OUT_STATE) <= KNOCKED_OUT_STATES - 1;
 }
 
-static uint32_t (*const CONDITIONS_TABLE[])(int, int, uint32_t *) = {
-  condition0801f080, condition0801f128, condition0801f274, condition0801f1d0, condition0801f308,
-  condition0801f31c, condition0801f350, condition0801f3a4, condition0801f3b0, condition0801f3e4,
-  condition0801f418, condition0801f448, condition0801f474, condition0801f4f4,
+static uint32_t (*const CONDITION_READERS[])(int, int, uint32_t *) = {
+  conditionAcrossOffset, conditionAlongOffset, conditionDistanceSquared, conditionDistance, conditionChance,
+  conditionLowFlags, conditionAnyOf, conditionAlways, conditionOtherFlag, conditionOwnFlag,
+  conditionOwnState, conditionWaitOver, conditionOwnHealth, conditionOtherKnockedOut,
 };
 
 /** 0x0801f350: every condition in a group, until the word of 0xFF or of 7 that ends it. */
-static uint32_t condition0801f350(int i, int other, uint32_t *stream) {
+static uint32_t conditionAnyOf(int i, int other, uint32_t *stream) {
   uint32_t result = 0;
   *stream += 4;
   for (;;) {
     uint32_t current = *stream;
     uint8_t operation = read8(current);
-    if (operation == 0xFF) return result;
-    if (operation == 7) {
+    if (operation == CONDITION_END) return result;
+    if (operation == CONDITION_GROUP_END) {
       *stream = current + 4;
       return result;
     }
-    if (CONDITIONS_TABLE[operation](i, other, stream) != 0) result = 1;
+    if (CONDITION_READERS[operation](i, other, stream) != 0) result = 1;
   }
 }
 
@@ -300,29 +351,29 @@ static uint32_t brainConditions(int i, int other, uint32_t streams) {
     uint32_t stream = read32(streams);
     uint32_t current = stream;
     uint32_t result;
-    if (read8(current) != 0xFF) {
+    if (read8(current) != CONDITION_END) {
       do {
-        if (CONDITIONS_TABLE[read8(current)](i, other, &stream) == 0) {
-          result = 0x10;
+        if (CONDITION_READERS[read8(current)](i, other, &stream) == 0) {
+          result = CONDITION_NONE;
           goto check_result;
         }
         current = stream;
-      } while ((read8(stream) & 0xFF) != 0xFF);
+      } while ((read8(stream) & BYTE_MASK) != CONDITION_END);
     }
-    result = read16(stream + 2);
+    result = read16(stream + CONDITION_RESULT_OFFSET);
   check_result:
-    if (result != 0x10) return result;
+    if (result != CONDITION_NONE) return result;
     streams += 4;
   }
-  return 0x10;
+  return CONDITION_NONE;
 }
 
 // ----------------------------------------------------------------------------------------------- The targets
 
 /** 0x0801d068: the fighter this one should go after: the nearest by its scores, or a random one, or a person. */
 static int brainTargetBest(int i) {
-  uint32_t scores = fighterAt(i) + F_FIELD72;
-  int32_t best = 0x7FFFFFFF;
+  uint32_t scores = fighterAt(i) + F_DISTANCE_SQUARED;
+  int32_t best = TARGET_NEAREST;
   int best_index = 0;
   if (rollChance((int)(int8_t)read8(LEVEL_SEE + read8(LEVEL)))) return brainTargetFree(i);
   if (rollChance(20)) return brainTargetRandom(i);
@@ -333,22 +384,22 @@ static int brainTargetBest(int i) {
     int32_t score = reads32(scores + (uint32_t)n * 4);
     if (best <= score) continue;
     uint16_t state = fighterState(n);
-    if (state >= 0xFC) continue;
+    if (state >= INACTIVE_STATE) continue;
     best = score;
     best_index = n;
   }
-  return best == 0x7FFFFFFF ? i : best_index;
+  return best == TARGET_NEAREST ? i : best_index;
 }
 
 /** 0x0801d188: a random other fighter, up to six tries, or this one when none is left. */
 static int brainTargetRandom(int i) {
-  for (int attempt = 0; attempt <= 5; attempt++) {
-    int candidate = (int)((randomNumber() & 6) >> 1);
+  for (int attempt = 0; attempt < TARGET_TRIES; attempt++) {
+    int candidate = (int)((randomNumber() & TARGET_RANDOM_MASK) >> TARGET_RANDOM_SHIFT);
     if (candidate == i) continue;
     if (!brainActive(candidate)) continue;
     if (brainTeam() && brainGroup(candidate) == brainGroup(i)) continue;
     uint16_t state = fighterState(candidate);
-    if (state >= 0xFC) continue;
+    if (state >= INACTIVE_STATE) continue;
     return candidate;
   }
   return i;
@@ -356,13 +407,13 @@ static int brainTargetRandom(int i) {
 
 /** 0x0801d200: a random other fighter that a person plays, or 0x0801d188's choice when there is none. */
 static int brainTargetFree(int i) {
-  for (int attempt = 0; attempt <= 5; attempt++) {
-    int candidate = (int)((randomNumber() & 6) >> 1);
+  for (int attempt = 0; attempt < TARGET_TRIES; attempt++) {
+    int candidate = (int)((randomNumber() & TARGET_RANDOM_MASK) >> TARGET_RANDOM_SHIFT);
     if (candidate == i) continue;
     if (!brainActive(candidate)) continue;
     if (brainTeam() && brainGroup(candidate) == brainGroup(i)) continue;
     uint16_t state = fighterState(candidate);
-    if (state >= 0xFC) continue;
+    if (state >= INACTIVE_STATE) continue;
     if (read8(SETUP_ + 28 + candidate) == 0) return candidate;
   }
   return brainTargetRandom(i);
@@ -370,19 +421,19 @@ static int brainTargetFree(int i) {
 
 /** 0x0801d288: the direction bits toward a brain's target, within the ranges the original uses. */
 static uint32_t brainFaceTarget(int i) {
-  uint32_t result = brainKeys(i) & 0xFF0F;
+  uint32_t result = brainKeys(i) & KEY_DIRECTION_MASK;
   int target = brainTarget(i);
-  int16_t first = field54(i, target), second = field62(i, target);
+  int16_t first = fighterAcrossOffset(i, target), second = fighterAlongOffset(i, target);
   if (fighterCharacter(i) != 19) {
-    if (first > 512) result |= 0x20;
-    else if (first < -512) result |= 0x10;
-    if (second > 128) result |= 0x40;
-    else if (second < -128) result |= 0x80;
+    if (first > FACING_ACROSS) result |= KEY_LEFT;
+    else if (first < -FACING_ACROSS) result |= KEY_RIGHT;
+    if (second > FACING_ALONG) result |= KEY_UP;
+    else if (second < -FACING_ALONG) result |= KEY_DOWN;
   } else {
-    if (first > 1152) result |= 0x20;
-    else if (first < -1152) result |= 0x10;
-    if (second > 1152) result |= 0x40;
-    else if (second < -1152) result |= 0x80;
+    if (first > FACING_ACROSS_BIG) result |= KEY_LEFT;
+    else if (first < -FACING_ACROSS_BIG) result |= KEY_RIGHT;
+    if (second > FACING_ACROSS_BIG) result |= KEY_UP;
+    else if (second < -FACING_ACROSS_BIG) result |= KEY_DOWN;
   }
   write16(brainAt(i) + B_KEYS, (uint16_t)result);
   return result;
@@ -391,8 +442,8 @@ static uint32_t brainFaceTarget(int i) {
 /** 0x0801d370: the direction bits 0x30 and 0xC0 flipped when they're set. */
 static uint16_t brainFlip(int i) {
   uint16_t keys = brainKeys(i);
-  if (keys & 0x30) keys ^= 0x30;
-  if (keys & 0xC0) keys ^= 0xC0;
+  if (keys & KEY_BOTH_HORIZONTAL) keys ^= KEY_BOTH_HORIZONTAL;
+  if (keys & KEY_BOTH_VERTICAL) keys ^= KEY_BOTH_VERTICAL;
   write16(brainAt(i) + B_KEYS, keys);
   return keys;
 }
@@ -400,9 +451,9 @@ static uint16_t brainFlip(int i) {
 /** 0x0801d3ac: which of the 16 ways the target lies, by the table for a fighter's other colours. */
 static uint8_t brainTargetWayOther(int i) {
   int target = brainTarget(i);
-  int16_t first = field54(i, target), second = field62(i, target);
+  int16_t first = fighterAcrossOffset(i, target), second = fighterAlongOffset(i, target);
   uint16_t angle = arcTan2(first, second);
-  return read8(WAY_TO_OTHER + (uint32_t)(angle >> 12));
+  return read8(WAY_TO_OTHER + (uint32_t)(angle >> WAY_ANGLE_SHIFT));
 }
 
 // ----------------------------------------------------------------------------------------------- The scripts
@@ -422,7 +473,7 @@ static int brainScript(int i) {
   }
   uint16_t flags = read16(data + 2);
   uint16_t keys = flags & 0x3FF;
-  if (flags & 0x8000) keys = (uint16_t)((keys & 0xFF0F) | wayToTarget(i));
+  if (flags & SCRIPT_TURN_TO_TARGET) keys = (uint16_t)((keys & KEY_DIRECTION_MASK) | wayToTarget(i));
   else if (read8(entity + B_SIDE) == 0 && (keys & 0x30) != 0) keys ^= 0x30;
   write16(entity + B_KEYS, keys);
   write32(entity + B_DATA, data);
@@ -439,8 +490,8 @@ static void brainSetScript(int i, uint32_t data) {
 
 /** 0x0801d5d4: one frame of a computer player: its thought, the keys it gives the fighter, and its wait. */
 void brainTick(int i) {
-  if (brain_fn[i & 3] == 0) return;
-  brain_fn[i & 3](i & 0xFF);
+  if (brain_fn[i & BRAIN_SLOT_MASK] == 0) return;
+  brain_fn[i & BRAIN_SLOT_MASK](i & FIGHTER_INDEX_MASK);
   write16(fighterAt(i) + 200, brainKeys(i));
   uint16_t wait = read16(brainAt(i) + B_WAIT);
   if (wait != 0) write16(brainAt(i) + B_WAIT, (uint16_t)(wait - 1));
@@ -464,11 +515,11 @@ static void brainFirst(int i) {
   uint32_t entity = brainAt(i);
   int target = brainTarget(i);
   if (read8(entity + B_ROLL) != 0) {
-    int16_t first = field54(i, target), second = field62(i, target);
+    int16_t first = fighterAcrossOffset(i, target), second = fighterAlongOffset(i, target);
     uint16_t type = fighterState(target);
     if ((uint16_t)(type - 10) <= 5) {
       if (first >= -0x4FF && first <= 0x9FE) {
-        if (second <= 511 && second > -512) {
+        if (second < NEAR_RANGE && second > -NEAR_RANGE) {
           brainScriptB(i);
           return;
         }
@@ -519,7 +570,7 @@ static void brainCountdown(int i) {
   }
   uint16_t base = read16(LEVEL_WAIT + (uint32_t)read8(LEVEL) * 2);
   uint32_t number = (uint32_t)randomNumber();
-  write16(entity + B_WAIT, (uint16_t)(base + (((number & 0xFFF) * base) >> 12)));
+  write16(entity + B_WAIT, (uint16_t)(base + (((number & WAIT_FRACTION_MASK) * base) >> WAIT_FRACTION_SHIFT)));
   setCallback(i, brainThink);
   write8(entity + B_TARGET, (uint8_t)brainTargetBest(i));
 }
@@ -543,19 +594,19 @@ static void brainResetAlt(int i) {
 static void brainApproach(int i) {
   uint32_t entity = brainAt(i);
   int target = brainTarget(i);
-  int16_t first = field54(i, target), second = field62(i, target);
+  int16_t first = fighterAcrossOffset(i, target), second = fighterAlongOffset(i, target);
   int32_t health = fighterHealth(i);
   int32_t half = (read16(MAX_HEALTH) - health) / 2;
   if (health < half) {
     if (first > 0xC00 || first < -0xC00 || second > 0xC00 || second < -0xC00) {
-      write16(entity + B_KEYS, (uint16_t)((brainKeys(i) & 0xFF0F) | 0x200));
+      write16(entity + B_KEYS, (uint16_t)((brainKeys(i) & KEY_DIRECTION_MASK) | KEY_SPECIAL));
       write8(entity + B_COUNT, 0);
       setCallback(i, brainGuardHold);
     }
   }
   if (read8(entity + B_ROLL) != 0 && (uint16_t)(fighterState(target) - 10) <= 5) {
     if (first >= -0x4FF && first <= 0x9FE) {
-      if (second <= 0x1FF && second > -0x200) {
+      if (second < NEAR_RANGE && second > -NEAR_RANGE) {
         setCallback(i, brainScriptBDone);
         brainSetScript(i, SCRIPT_DODGE_2);
         return;
@@ -567,7 +618,7 @@ static void brainApproach(int i) {
     else brainReset(i);
     return;
   }
-  if ((fighterField50(i) & 0xF) != 0 && read8(entity + B_COUNT) > 5) {
+  if ((fighterLowFlags(i) & CONDITION_LOW_FLAGS) != 0 && read8(entity + B_COUNT) > GUARD_HOLD_FRAMES) {
     uint8_t character = fighterCharacter(i);
     uint32_t script = 0;
     if (character <= 19) {
@@ -624,18 +675,18 @@ static void brainReact(int i) {
     case 3: brainScriptA(i); break;
     case 4: brainScriptB(i); break;
     case 5:
-      if (target == i || (field54(i, target) < 0 && fighterSide(i) != 0)
-        || (field54(i, target) >= 0 && fighterSide(i) == 0)) brainScriptC(i);
+      if (target == i || (fighterAcrossOffset(i, target) < 0 && fighterSide(i) != 0)
+        || (fighterAcrossOffset(i, target) >= 0 && fighterSide(i) == 0)) brainScriptC(i);
       else brainScriptF(i);
       break;
     case 6:
-      if (target == i || (field54(i, target) < 0 && fighterSide(i) != 0)
-        || (field54(i, target) >= 0 && fighterSide(i) == 0)) brainScriptD(i);
+      if (target == i || (fighterAcrossOffset(i, target) < 0 && fighterSide(i) != 0)
+        || (fighterAcrossOffset(i, target) >= 0 && fighterSide(i) == 0)) brainScriptD(i);
       else brainScriptF(i);
       break;
     case 7:
-      if (target == i || (field54(i, target) < 0 && fighterSide(i) != 0)
-        || (field54(i, target) >= 0 && fighterSide(i) == 0)) brainScriptE(i);
+      if (target == i || (fighterAcrossOffset(i, target) < 0 && fighterSide(i) != 0)
+        || (fighterAcrossOffset(i, target) >= 0 && fighterSide(i) == 0)) brainScriptE(i);
       else brainScriptF(i);
       break;
     case 15: brainAttackScript(i); break;
@@ -652,18 +703,18 @@ static void brainThink(int i) {
     case 3: brainScriptA(i); break;
     case 4: brainScriptB(i); break;
     case 5:
-      if (target == i || (field54(i, target) < 0 && fighterSide(i) != 0)
-        || (field54(i, target) >= 0 && fighterSide(i) == 0)) brainScriptC(i);
+      if (target == i || (fighterAcrossOffset(i, target) < 0 && fighterSide(i) != 0)
+        || (fighterAcrossOffset(i, target) >= 0 && fighterSide(i) == 0)) brainScriptC(i);
       else brainScriptF(i);
       break;
     case 6:
-      if (target == i || (field54(i, target) < 0 && fighterSide(i) != 0)
-        || (field54(i, target) >= 0 && fighterSide(i) == 0)) brainScriptD(i);
+      if (target == i || (fighterAcrossOffset(i, target) < 0 && fighterSide(i) != 0)
+        || (fighterAcrossOffset(i, target) >= 0 && fighterSide(i) == 0)) brainScriptD(i);
       else brainScriptF(i);
       break;
     case 7:
-      if (target == i || (field54(i, target) < 0 && fighterSide(i) != 0)
-        || (field54(i, target) >= 0 && fighterSide(i) == 0)) brainScriptE(i);
+      if (target == i || (fighterAcrossOffset(i, target) < 0 && fighterSide(i) != 0)
+        || (fighterAcrossOffset(i, target) >= 0 && fighterSide(i) == 0)) brainScriptE(i);
       else brainScriptF(i);
       break;
     case 8: brainSpecial(i); break;
@@ -672,7 +723,7 @@ static void brainThink(int i) {
       int next = brainTargetBest(i);
       write8(brainAt(i) + B_TARGET, (uint8_t)next);
       if (next == i) break;
-      if ((field54(i, next) < 0 && fighterSide(i) != 0) || (field54(i, next) >= 0 && fighterSide(i) == 0)) break;
+      if ((fighterAcrossOffset(i, next) < 0 && fighterSide(i) != 0) || (fighterAcrossOffset(i, next) >= 0 && fighterSide(i) == 0)) break;
       brainScriptF(i);
       break;
     }
@@ -735,7 +786,7 @@ static void brainAfterGuard2(int i) {
   if (state == 0) setCallback(i, brainThink);
   else if (state == 16) {
     int target = brainTarget(i);
-    if (field72(i, target) <= 0x3FFFF) {
+    if (fighterDistanceSquared(i, target) <= 0x3FFFF) {
       setCallback(i, brainAfterDodge3);
       brainSetScript(i, SCRIPT_DODGE_3);
     }
@@ -782,9 +833,9 @@ static void brainAfterSpecial(int i) {
 static void brainAim(int i) {
   if (brainScript(i) == 0) brainReset(i);
   int target = brainTarget(i);
-  int16_t first = field54(i, target), second = field62(i, target);
+  int16_t first = fighterAcrossOffset(i, target), second = fighterAlongOffset(i, target);
   uint16_t angle = arcTan2(first, second);
-  uint16_t keys = (uint16_t)((brainKeys(i) & 0xFF0F) | read8(WAY_TO_TARGET + (uint32_t)(angle >> 12)));
+  uint16_t keys = (uint16_t)((brainKeys(i) & KEY_DIRECTION_MASK) | read8(WAY_TO_TARGET + (uint32_t)(angle >> WAY_ANGLE_SHIFT)));
   write16(brainAt(i) + B_KEYS, keys);
 }
 
@@ -851,8 +902,8 @@ static void brainGuardHold(int i) {
   }
   uint8_t count = read8(entity + B_COUNT);
   uint16_t keys = brainKeys(i);
-  if (count > 1) keys = (uint16_t)((keys & 0xFF0F) | 0x200);
-  else keys &= 0xFF0F;
+  if (count > 1) keys = (uint16_t)((keys & KEY_DIRECTION_MASK) | KEY_SPECIAL);
+  else keys &= KEY_DIRECTION_MASK;
   write16(entity + B_KEYS, keys);
   int32_t health = fighterHealth(i);
   int32_t limit = (int32_t)read16(MAX_HEALTH) - (health >> 2);
@@ -860,7 +911,7 @@ static void brainGuardHold(int i) {
   if ((state & 0xF0) == 0x40 || (state & 0xF0) == 0x50) setCallback(i, brainThink);
   int target = brainTargetBest(i);
   if (target != i) {
-    int16_t first = field54(i, target), second = field62(i, target);
+    int16_t first = fighterAcrossOffset(i, target), second = fighterAlongOffset(i, target);
     if (first >= -0x4FF && first <= 0x4FF && second >= -0x4FF && second <= 0x4FF) setCallback(i, brainThink);
   }
 }
@@ -868,21 +919,21 @@ static void brainGuardHold(int i) {
 /** 0x0801e62c: turn toward the target and move. */
 static void brainTurn(int i) {
   int target = brainTarget(i);
-  int16_t first = field54(i, target), second = field62(i, target);
+  int16_t first = fighterAcrossOffset(i, target), second = fighterAlongOffset(i, target);
   uint16_t angle = arcTan2(first, second);
-  write16(brainAt(i) + B_KEYS, read8(WAY_TO_MOVE + (uint32_t)(angle >> 12)));
+  write16(brainAt(i) + B_KEYS, read8(WAY_TO_MOVE + (uint32_t)(angle >> WAY_ANGLE_SHIFT)));
   write8(brainAt(i) + B_COUNT, 0);
   setCallback(i, brainMove);
-  write8(brainAt(i) + B_FIELD20, fighterField50(i));
+  write8(brainAt(i) + B_FIELD20, fighterLowFlags(i));
 }
 
 /** 0x0801e6a0: the thought that keeps its target ahead and picks an attack or a guard. */
 static void brainMove(int i) {
   uint32_t entity = brainAt(i);
   int target = brainTarget(i);
-  int16_t first = field54(i, target), second = field62(i, target);
+  int16_t first = fighterAcrossOffset(i, target), second = fighterAlongOffset(i, target);
   uint16_t angle = arcTan2(first, second);
-  if ((read8(WAY_TO_MOVE + (uint32_t)(angle >> 12)) & brainKeys(i)) == 0) {
+  if ((read8(WAY_TO_MOVE + (uint32_t)(angle >> WAY_ANGLE_SHIFT)) & brainKeys(i)) == 0) {
     setCallback(i, brainThink);
     write8(entity + B_TARGET, (uint8_t)brainTargetBest(i));
     return;
@@ -891,14 +942,14 @@ static void brainMove(int i) {
   int32_t half = (read16(MAX_HEALTH) - health) / 2;
   if (health < half) {
     if (first > 0x1000 || first < -0x1000 || second > 0x1000 || second < -0x1000) {
-      write16(entity + B_KEYS, (uint16_t)((brainKeys(i) & 0xFF0F) | 0x200));
+      write16(entity + B_KEYS, (uint16_t)((brainKeys(i) & KEY_DIRECTION_MASK) | KEY_SPECIAL));
       write8(entity + B_COUNT, 0);
       setCallback(i, brainGuardHold);
     }
   }
   if (read8(entity + B_ROLL) != 0 && (uint16_t)(fighterState(target) - 10) <= 5) {
     if (first >= -0x4FF && first <= 0x9FE) {
-      if (second <= 0x1FF && second > -0x200) {
+      if (second < NEAR_RANGE && second > -NEAR_RANGE) {
         setCallback(i, brainScriptBDone);
         brainSetScript(i, SCRIPT_DODGE_2);
         return;
@@ -910,7 +961,7 @@ static void brainMove(int i) {
     else brainReset(i);
     return;
   }
-  uint8_t field50 = fighterField50(i), field20 = read8(entity + B_FIELD20);
+  uint8_t field50 = fighterLowFlags(i), field20 = read8(entity + B_FIELD20);
   if ((field50 & field20) == 0) { brainReset(i); return; }
   uint16_t keys = brainKeys(i);
   if ((keys & 0x20) && (field20 & 0x22) == 0 && (field50 & 0x22) != 0) keys ^= 0x30;
@@ -922,7 +973,7 @@ static void brainMove(int i) {
 
 /** 0x0801ea6c: a script that ends with the fighter standing, then the reaction and the direction. */
 static void brainScriptDone(int i) {
-  if (brainScript(i) == 0 && (fighterField180(i) & 1) != 0) setCallback(i, brainResetAlt);
+  if (brainScript(i) == 0 && (fighterFlags(i) & 1) != 0) setCallback(i, brainResetAlt);
   brainReact(i);
   if ((uint16_t)brainFaceTarget(i) == 0) brainReset(i);
 }
@@ -1017,7 +1068,7 @@ static void brainGuardEnd(int i) {
 /** 0x0801ef7c: whether the target is the side the fighter faces. */
 static int brainTargetFacing(int i) {
   if (brainTarget(i) == i) return 1;
-  int16_t first = field54(i, brainTarget(i));
+  int16_t first = fighterAcrossOffset(i, brainTarget(i));
   if (first < 0) return fighterSide(i) != 0;
   return fighterSide(i) == 0;
 }
@@ -1025,9 +1076,9 @@ static int brainTargetFacing(int i) {
 /** 0x0801efd4: which way the target lies, by the moving table. */
 static uint8_t brainTargetWayMove(int i) {
   int target = brainTarget(i);
-  int16_t first = field54(i, target), second = field62(i, target);
+  int16_t first = fighterAcrossOffset(i, target), second = fighterAlongOffset(i, target);
   uint16_t angle = arcTan2(first, second);
-  return read8(WAY_TO_MOVE + (uint32_t)(angle >> 12));
+  return read8(WAY_TO_MOVE + (uint32_t)(angle >> WAY_ANGLE_SHIFT));
 }
 
 /** 0x0801f030 and 0x0801f058: the next thought with a fresh target. */
@@ -1045,7 +1096,7 @@ static void brainRandomTarget(int i) {
 static uint16_t brainWaitTime(void) {
   uint32_t number = (uint32_t)randomNumber();
   uint16_t base = read16(LEVEL_WAIT + (uint32_t)read8(LEVEL) * 2);
-  return (uint16_t)(base + (((number & 0xFFF) * base) >> 12));
+  return (uint16_t)(base + (((number & WAIT_FRACTION_MASK) * base) >> WAIT_FRACTION_SHIFT));
 }
 
 // the helpers no thought reaches yet are kept so the port map can see every function this file rewrites
