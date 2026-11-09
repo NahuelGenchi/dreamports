@@ -87,7 +87,9 @@ static void insta_flash_draw(void) { if (instaFlashActive) display_sprite(&insta
 #define DASH_DUST_BIG_ANIM 747
 #define BRAKE_DUST_ANIM 748
 #define BRAKE_DUST_MAX 20
-static struct { int active, slot, x, y; Sprite s; } brakeDust[BRAKE_DUST_MAX];
+// every cloud shares the reserved tiles the original keeps for them, past the ring effect's and before the heap
+#define BRAKE_DUST_VRAM (OBJ_VRAM + 0x2100)
+static struct { int active, done, x, y; Sprite s; } brakeDust[BRAKE_DUST_MAX];
 static int brakeDustCount;
 static struct { int active, slot; Sprite s; } dashDust;
 static int dustTiles(int anim) { int n = en_animation_tiles((uint16_t)anim, 0); return n < 1 ? 8 : n; }
@@ -97,13 +99,11 @@ static void brake_dust_spawn(void) {
   int k = -1;
   for (int i = 0; i < BRAKE_DUST_MAX; i++) if (!brakeDust[i].active) { k = i; break; }
   if (k < 0) return;
-  uint32_t slot = vram_malloc((uint32_t)dustTiles(BRAKE_DUST_ANIM));
-  if (slot == HEAP_END) return;
   uint32_t r = front_random();
-  brakeDust[k].active = 1; brakeDust[k].slot = (int)slot;
+  brakeDust[k].active = 1; brakeDust[k].done = 0;
   brakeDust[k].x = (int)__builtin_floor(act.player.x); brakeDust[k].y = feet_y(&act.player);
   sprite_init(&brakeDust[k].s);
-  brakeDust[k].s.graphics.dest = slot;
+  brakeDust[k].s.graphics.dest = BRAKE_DUST_VRAM;
   brakeDust[k].s.graphics.anim = BRAKE_DUST_ANIM;
   brakeDust[k].s.variant = 0;
   brakeDust[k].s.animSpeed = 0x10;
@@ -127,10 +127,12 @@ static void dash_dust_spawn(void) {
 static void dust_update(void) {
   for (int i = 0; i < BRAKE_DUST_MAX; i++) {
     if (!brakeDust[i].active) continue;
-    if (!update_sprite(&brakeDust[i].s, 0)) {
-      vram_free((uint32_t)brakeDust[i].slot);
+    // the original's task draws the frame its animation ends on, then ends on the next frame before drawing
+    if (brakeDust[i].done) {
       brakeDust[i].active = 0; brakeDustCount--;
+      continue;
     }
+    if (!update_sprite(&brakeDust[i].s, 0)) brakeDust[i].done = 1;
   }
   if (!dashDust.active) return;
   Player *p = &act.player;
@@ -161,7 +163,7 @@ static void dust_draw(void) {
   if (dashDust.active) display_sprite(&dashDust.s);
 }
 static void dust_reset(void) {
-  for (int i = 0; i < BRAKE_DUST_MAX; i++) if (brakeDust[i].active) { vram_free((uint32_t)brakeDust[i].slot); brakeDust[i].active = 0; }
+  for (int i = 0; i < BRAKE_DUST_MAX; i++) brakeDust[i].active = 0;
   if (dashDust.active) { vram_free((uint32_t)dashDust.slot); dashDust.active = 0; }
   brakeDustCount = 0;
 }
@@ -1087,7 +1089,10 @@ static void draw_frame(void) {
 }
 
 static int nextLevelWait = -1, actFromResults;
-static int actMusicWait;
+static int actMusicWait, actMusicAhead;
+/** The character select starts the act's song a frame before its first picture; the act then keeps it, as the
+ *  original's StageInit does, instead of starting it again. */
+void act_music_ahead(void) { actMusicAhead = 1; }
 static uint16_t holdColour; static int restoreColour;   // the menu's black for the act's first picture
 static void act_frame(void) {
   if (actMusicWait) { if (--actMusicWait == 0) play_song(act.stage.music); }
@@ -1256,7 +1261,11 @@ void act_start(int level, int cardSkip, int preFrames) {
   if (cardSkip >= 0 || preFrames > 0) pre_run(cardSkip, preFrames);
   if (act.cardDone) objects_alloc_vram();
   if (actQueued && cardSkip < 0 && preFrames == 0) actMusicWait = 2;
-  else { play_song(act.stage.music); gba_sound_frames_gone_by(118); }
+  else {
+    if (!actMusicAhead) play_song(act.stage.music);
+    gba_sound_frames_gone_by(118);
+  }
+  actMusicAhead = 0;
   actQueued = 0;
   act.hud.active = 0;
   act.started = 1;
