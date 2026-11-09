@@ -95,6 +95,12 @@ ActTask *pipe_entrance_spawn(Slot *slot);
 ActTask *pipe_exit_spawn(Slot *slot);
 ActTask *visibility_spawn(Slot *slot);
 ActTask *special_spring_spawn(Slot *slot);
+ActTask *ice_block_spawn(Slot *slot);         // 95
+ActTask *skating_stone_spawn(Slot *slot);     // 84
+ActTask *ferris_wheel_spawn(Slot *slot);      // 91
+ActTask *forced_slide_spawn(Slot *slot);      // 46
+ActTask *crumbling_platform_spawn(Slot *slot);   // 24
+ActTask *air_bubbles_spawn(Slot *slot);       // 94
 ActTask *square_platform_spawn(Slot *slot);
 ActTask *spiked_platform_spawn(Slot *slot);
 ActTask *barrel_spawn(Slot *slot);
@@ -134,6 +140,12 @@ typedef struct {
 enum { OBJECT_BYTES = 640 };
 void *object_new(void);
 #define OBJECT_NEW(type) ((void)sizeof(char[sizeof(type) <= OBJECT_BYTES ? 1 : -1]), (type *)object_new())
+/** A block for a task with no sprite of its own: its sprite has no tiles to free. */
+static inline void *object_plain(void *block) {
+  if (block) ((Object *)block)->sprite.graphics.dest = HEAP_END;
+  return block;
+}
+#define PLAIN_NEW(type) ((type *)object_plain(OBJECT_NEW(type)))
 /** Makes the task of an object's block at the objects' priority, or at `priority`; false, with the block freed, when the
  *  list is full. */
 ActTask *object_task(Object *o, ActRun run, int priority);
@@ -164,8 +176,15 @@ int sprite_tiles(int anim, int first, int last);
 // --- effects and what the prizes put around Sonic (effects.c, items.c) -------------------------------------------------------
 /** The puff of smoke a broken item box or a defeated enemy leaves, at a world point. */
 void dust_cloud(int x, int y);
+/** How the four pieces of a broken block of ice or skating stone look: their two animations and the tiles each takes, the
+ *  scale they start at (1/256), how much it grows a frame, and how many frames they last. */
+typedef struct { int small, smallTiles, large, largeTiles, scale, grow, frames; } DebrisLook;
+/** The pieces, spinning out from a world point and falling, placed around a place on screen (iceblocks.c). */
+void debris_new(const DebrisLook *look, int x, int y, int sx, int sy);
 /** Sonic's effects start over with the act: no brake dust on screen. */
 void effects_start(void);
+/** And so do the water's: no bubbles rising and no drowning music (underwater.c). */
+void water_effects_start(void);
 void items_shield(int shield);
 void items_stars(void);
 
@@ -197,6 +216,8 @@ int collide_platform(const void *o, int ox, int oy, const Hitbox *hb, Player *p)
 int collide_gate(int ox, int oy, const Hitbox *hb, Player *p);
 /** A platform he can only land on (Coll_Player_PlatformCrumbling). */
 int collide_platform_top(const void *o, int ox, int oy, const Hitbox *hb, Player *p);
+/** Coll_Player_SkatingStone: a platform's landing and bumping from below, with no pushing at its sides. */
+int collide_skating_stone(const void *o, int ox, int oy, const Hitbox *hb, Player *p);
 /** An item box (Coll_Player_Itembox). */
 int collide_item_box(int ox, int oy, const Hitbox *hb, Player *p);
 /** A horizontal spring's box (Coll_Player_Spring_Sideways). */

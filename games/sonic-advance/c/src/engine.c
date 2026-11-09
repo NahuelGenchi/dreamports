@@ -331,6 +331,16 @@ static void copy_hblank_entry(uint32_t at) { copy_hblank_line(e.hblankTarget, at
 // this frame's H-blank DMA: where it starts reading
 static struct { int on; uint32_t at, target, size; } hdma;
 static uint32_t hdmaAt;
+// this frame's V-count interrupt: whether the V-blank turned it on, and at the start of which line
+static struct { int on; int line; } vcount;
+// gVBlankIntrs: the callback the tasks asked for the frame before, which this V-blank's update runs
+static void (*vblankIntr)(void);
+/** DmaSet(0, gBgOffsetsHBlankSecondary, target, DMA_START_HBLANK | DMA_REPEAT | DMA_DEST_RELOAD), from the V-count
+ *  interrupt as the frame is drawn: from the next H-blank on, a line's worth of the other buffer's values each time. */
+void hblank_dma_secondary(uint32_t target, uint32_t size) {
+  hdma.on = 1; hdma.target = target; hdma.size = size;
+  hdmaAt = e.primary ? 0 : HBLANK_BUFFER;
+}
 
 // --- keys (core.c: GetInput) ---------------------------------------------------------------------------------------
 static void read_keys(void) {
@@ -353,6 +363,8 @@ static void vblank(void) {
     copy_hblank_entry(e.primary);
     hdma.on = 1; hdma.at = e.primary + e.hblankSize; hdma.target = e.hblankTarget; hdma.size = e.hblankSize;
   } else e.hblankTarget = 0;
+  vcount.on = (e.flagsPreVBlank & FLAGS_VCOUNT_INTR) && e.vcountIntr;
+  vcount.line = e.vcountLine;
   e.frameCount++;
 
   gba_write(REG_DISPCNT, e.dispCnt);
@@ -372,6 +384,10 @@ static void vblank(void) {
   if (e.flags & FLAGS_HBLANK_COPY) copy_hblank_entry(e.primary);
   process_oam();
   memcpy(gba_oam, e.oamBuffer, sizeof e.oamBuffer);
+  // UpdateScreenDma's V-blank callbacks: last frame's run now, after the registers, and this frame's wait for the next
+  if (vblankIntr) vblankIntr();
+  vblankIntr = e.vblankCallback;
+  e.vblankCallback = NULL;
   engine_copy_graphics();
   fill_maps();
   for (unsigned i = 0; i < numBgSprites; i++) write_sprite_map(bgSprites[i]);
@@ -420,14 +436,18 @@ void engine_run(void) {
   vblank();
 }
 
-// the H-blank DMA between the lines as the kit draws the frame: after each line, the next line's values
+// the H-blank DMA between the lines as the kit draws the frame: after each line, the next line's values; then the
+// V-count interrupt, at the start of its line
 static void hblank_line(int y) {
-  (void)y;
-  copy_hblank_line(hdma.target, hdmaAt, hdma.size);
-  hdmaAt += hdma.size;
+  if (hdma.on) {
+    copy_hblank_line(hdma.target, hdmaAt, hdma.size);
+    hdmaAt += hdma.size;
+  }
+  if (vcount.on && y + 1 == vcount.line) e.vcountIntr();
 }
 /** Sets the kit's drawing of this frame up, with the H-blank DMA its V-blank started. */
 void engine_draw_setup(void) {
   hdmaAt = hdma.at;
-  gba_on_hblank(hdma.on ? hblank_line : NULL);
+  if (vcount.on && vcount.line == 0) e.vcountIntr();
+  gba_on_hblank(hdma.on || vcount.on ? hblank_line : NULL);
 }

@@ -222,6 +222,12 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 70, 70, visibility_spawn },
   { 74, 74, carousel_spawn },
   { 102, 102, special_spring_spawn },
+  { 95, 95, ice_block_spawn },
+  { 84, 84, skating_stone_spawn },
+  { 91, 91, ferris_wheel_spawn },
+  { 46, 46, forced_slide_spawn },
+  { 24, 24, crumbling_platform_spawn },
+  { 94, 94, air_bubbles_spawn },
 };
 
 // the enemies by their kind numbers (the ENEMIES table)
@@ -233,6 +239,9 @@ static const struct { int kind; Spawn spawn; } ENEMIES[] = {
   { 15, mole_spawn },
   { 23, egg_press_spawn },
   { 7, fireball_spawn },
+  { 16, yukimaru_spawn },
+  { 20, pen_spawn },
+  { 18, drisame_spawn },
 };
 
 ActTask *entity_spawn(Slot *slot) {
@@ -263,6 +272,7 @@ void objects_start(int level, int paletteAnimations) {
   memset(blocks, 0, sizeof blocks);
   drawing = 1;
   effects_start();
+  water_effects_start();
   enemies_start();
   entities_load(level);
   rings_load(level);

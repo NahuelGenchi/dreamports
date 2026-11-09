@@ -116,3 +116,20 @@ int arc_tan2(int x, int y) {
   }
   return r & 0xFFFF;
 }
+
+// sub_8004418: a rough angle of (a, b) in 1024 steps a turn, from its octant and the ratio of the smaller coordinate to the
+// larger, linear within the octant; -1 for (0, 0). The callers pass (dy, dx). The smaller one times 128 wraps as an s16, as in
+// the original.
+int quick_angle(int a, int b) {
+  static const int OCTANTS[8] = { 1, 0, 2, 3, 6, 7, 5, 4 };
+  a = (int16_t)a; b = (int16_t)b;
+  if ((a | b) == 0) return -1;
+  int i = 0, f;
+  if (a <= 0) { a = (int16_t)-a; i = 4; }
+  if (b <= 0) { b = (int16_t)-b; i += 2; }
+  if (a >= b) f = a == 0 ? (int16_t)(b << 7) : (int16_t)(b << 7) / a;
+  else { i++; f = b == 0 ? (int16_t)(a << 7) : (int16_t)(a << 7) / b; }
+  f = (int16_t)f;
+  if (OCTANTS[i] & 1) f = (int16_t)(0x80 - f);
+  return (f + OCTANTS[i] * 128) & 0x3FF;
+}
