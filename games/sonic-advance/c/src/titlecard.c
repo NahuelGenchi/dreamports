@@ -1,307 +1,272 @@
-// The title card's pictures and pieces, translated from the JavaScript version's engine/titlecard.js and
-// rom/titlecard.js (SAT-R's src/game/stage/ui_z.c: LoadStageIntroGraphics, sub_80550F8, Task_8055458 and the six
-// tasks it makes). Each piece is a row of sprites of one size; a glyph is the run of tiles one sprite shows (1D OBJ
-// mapping), and the card's text says which glyph each sprite shows.
+// The title card (SAT-R decompilation, src/game/sa1/stage/stage_ui_z.c: LoadStageIntroGraphics, sub_80550F8,
+// Task_8055458 and the six tasks it makes), translated from the JavaScript version's rom/titlecard.js and
+// engine/titlecard.js. Six pieces slide in over the act while the screen fades in from black, hold, and slide out.
 
-#include "titlecard.h"
+#include "objects.h"
 
-#define TILE 32
-#define GLYPH_BASE_ 0x20
-#define CARD_SPRITES 64
+#define CARD_ENTRY 28
+#define CARD_TILE 32
+#define CARD_SKIP_FROM 35
+#define CARD_SKIP_TO 215
+#define CARD_FRAMES 225
+#define CARD_FADE_FULL 0x2000
+#define CARD_FADE_SPEED 96
+#define CARD_LAST_ACT_LEVEL 11
+#define CARD_ZONE_PADDING 5
 
-enum { PIECE_ZIGZAG, PIECE_NAME, PIECE_ACT, PIECE_BAR, PIECE_ZONE_JP, PIECE_ZONE, PIECE_COUNT };
-// the UI graphics entries the card loads (rom/titlecard.js)
-enum { UI_FONT = 0, UI_ZIGZAG = 6, UI_CHAR_NAMES = 10, UI_ACT = 15, UI_BAR = 16, UI_ZONE_JP = 17, UI_ZONE_NAME = 19 };
-// the card's tables (gUnknown_08688378 on): per level the Japanese name's tile count and first tile, the character
-// name's text, per level the zone name's graphics, and the pieces' texts
-enum { CARD_JP_TILES = 0x00, CARD_JP_FIRST = 0x0E, CARD_ZONE_NAME = 0x20, CARD_TEXT_NAME = 0x1C,
-  CARD_TEXT_ZIGZAG = 0x34, CARD_TEXT_ACT = 0x38, CARD_TEXT_BAR = 0x40, CARD_TEXT_ZONE_JP = 0x4C, CARD_TEXT_ZONE = 0x54 };
+enum { PIECE_ZIGZAG, PIECE_NAME, PIECE_ACT, PIECE_BAR, PIECE_ZONE_JP, PIECE_ZONE, PIECES };
+enum { TEXT_NAME = 0x1C, TEXT_ZIGZAG = 0x34, TEXT_ACT = 0x38, TEXT_BAR = 0x40, TEXT_ZONE_JP = 0x4C, TEXT_ZONE = 0x54 };
+static const int TEXT_AT[PIECES] = { TEXT_ZIGZAG, TEXT_NAME, TEXT_ACT, TEXT_BAR, TEXT_ZONE_JP, TEXT_ZONE };
+static const int TEXT_COUNT[PIECES] = { 3, 4, 6, 8, 4, 22 };
+static const int PIECE_ORDER[PIECES] = { 3, 2, 0, 1, 0, 0 };
 
 typedef struct {
-  int slot, x, y, count, order, palette, rows, grid, mark, drops;
-  int shape, size, w, h, perGlyph, tile;
-  const uint8_t *text;
+  int shape, size, wide, high, perGlyph, count, tileBase, pal;
+  int x, y, countNow, order, rows, grid, mark, drops;
+  int text[32];
 } CardPiece;
 
-typedef struct { uint16_t a0, a1, a2; uint8_t order; } CardSprite;
+typedef struct {
+  int frame, done, blank, fading, display, level, speed, bldY, levelIndex;
+  CardPiece p[PIECES];
+} Card;
 
-static struct {
-  int frame, done, blank, active, drawn, semi, fading;
-  Fade fade;
-  CardPiece pieces[PIECE_COUNT];
-  uint8_t texts[PIECE_COUNT][32];
-  uint32_t vram[PIECE_COUNT];
-  int vramCount;
-  CardSprite sprites[CARD_SPRITES];
-  int spriteCount;
-} card;
+static Card card;
+static Graphics cardCopies[8];
+static int cardCopyCount;
+static uint8_t actTiles[12 * CARD_TILE];
+static uint8_t jpTiles[16 * CARD_TILE];
 
-static void copy_text(uint8_t *to, uint32_t from, int count) {
-  for (int i = 0; i < count; i++) to[i] = (uint8_t)rom_u8(from + i);
+static void card_copy(uint32_t src, uint32_t dest, uint32_t size) {
+  if (cardCopyCount >= 8) return;
+  Graphics *g = &cardCopies[cardCopyCount++];
+  g->src = src; g->dest = dest; g->size = size & 0xFFFF; g->anim = 0; g->ram = NULL;
+  queue_graphics(g);
+}
+static void card_copy_ram(const uint8_t *ram, uint32_t dest, uint32_t size) {
+  if (cardCopyCount >= 8) return;
+  Graphics *g = &cardCopies[cardCopyCount++];
+  g->src = 0; g->dest = dest; g->size = size & 0xFFFF; g->anim = 0; g->ram = ram;
+  queue_graphics(g);
 }
 
-// sub_80528AC: one load of sprite tiles (and, when asked, its colours) into a slot
-static void load_piece(int slot, uint32_t tiles, uint32_t tilesSize, uint32_t palette, int paletteRow, uint32_t vram,
-  const UiSlot *layout, int withPalette) {
-  UiGfx g;
-  memset(&g, 0, sizeof g);
-  g.tiles = tiles; g.tilesSize = tilesSize;
-  g.palette = palette; g.paletteSize = withPalette ? 32 : 0;
-  g.unk28 = (uint8_t)paletteRow;
-  g.unk2A = (uint8_t)(0x9 | (withPalette ? 0x4 : 0));
-  g.unk2B = slot;
-  g.vramC = vram;
-  g.layout = layout;
-  load_ui_gfx(&g);
+// an entry of the UI graphics table: its tiles, palette, and how its glyphs are laid out
+typedef struct { uint32_t tiles, palette; uint32_t perGlyph, size, shape, wide, high; } CardGfx;
+static CardGfx card_gfx(int id) {
+  uint32_t at = OFFSET_UI_GRAPHICS + (uint32_t)id * CARD_ENTRY;
+  CardGfx g;
+  g.tiles = rom_ptr(at); g.palette = rom_ptr(at + 4);
+  g.perGlyph = rom_u32(at + 8); g.size = rom_u32(at + 12); g.shape = rom_u32(at + 16);
+  g.wide = rom_u32(at + 20); g.high = rom_u32(at + 24);
+  return g;
 }
 
-static uint32_t new_vram(int tiles) {
-  uint32_t v = vram_malloc((uint32_t)tiles);
-  if (card.vramCount < PIECE_COUNT) card.vram[card.vramCount++] = v;
-  return v;
+/** LoadStageIntroGraphics and the card's tables: the pieces' tiles in video memory, their colours, and their texts. */
+// the card's tiles, 400 to 531 of the sprites' graphics, kept from the heap while it shows
+enum { CARD_HEAP_TILES = 132 };
+static uint32_t cardHeap;
+
+void titlecard_start(int level, int character) {
+  memset(&card, 0, sizeof card);
+  cardHeap = vram_malloc(CARD_HEAP_TILES);
+  card.levelIndex = level;
+  cardCopyCount = 0;
+  uint32_t cardAt = OFFSET_TITLE_CARD;
+  CardGfx zigzag = card_gfx(6 + character), names = card_gfx(10), bar = card_gfx(16), jp = card_gfx(17), actGfx = card_gfx(15);
+  CardGfx zone = card_gfx(19 + rom_u8(cardAt + 0x20 + level));
+  // the Japanese name: its tiles right-aligned in 12, the tiles from 73 before them, then tiles 8 to 11,
+  // and tile 8 again over the first
+  int jpCount = (int)rom_u8(cardAt + level), jpFirst = (int)rom_u8(cardAt + 0x0E + level);
+  memset(jpTiles, 0, sizeof jpTiles);
+  memcpy(jpTiles, &gba_rom[jp.tiles + 73 * CARD_TILE], (size_t)(12 - jpCount) * CARD_TILE);
+  memcpy(jpTiles + 12 * CARD_TILE, &gba_rom[jp.tiles + 8 * CARD_TILE], 4 * CARD_TILE);
+  memcpy(jpTiles + (12 - jpCount) * CARD_TILE, &gba_rom[jp.tiles + jpFirst * CARD_TILE], (size_t)jpCount * CARD_TILE);
+  memcpy(jpTiles, &gba_rom[jp.tiles + 8 * CARD_TILE], CARD_TILE);
+  // the act number: "ACT" and the act's digit after it
+  memcpy(actTiles, &gba_rom[actGfx.tiles], 8 * CARD_TILE);
+  memcpy(actTiles + 8 * CARD_TILE, &gba_rom[actGfx.tiles + 8 * CARD_TILE + (level & 1) * 4 * CARD_TILE], 4 * CARD_TILE);
+
+  // the pieces' graphics: [tiles, tile base, entry, text offset, text count]
+  card.p[PIECE_ZIGZAG].tileBase = 400;
+  card.p[PIECE_NAME].tileBase = 64;
+  card.p[PIECE_ACT].tileBase = 432;
+  card.p[PIECE_BAR].tileBase = 444;
+  card.p[PIECE_ZONE_JP].tileBase = 460;
+  card.p[PIECE_ZONE].tileBase = 476;
+  card_copy(zigzag.tiles, OBJ_VRAM + 400 * CARD_TILE, 32 * CARD_TILE);
+  card_copy(names.tiles + (uint32_t)character * 64 * CARD_TILE, OBJ_VRAM + 64 * CARD_TILE, 64 * CARD_TILE);
+  card_copy_ram(actTiles, OBJ_VRAM + 432 * CARD_TILE, sizeof actTiles);
+  card_copy(bar.tiles, OBJ_VRAM + 444 * CARD_TILE, 16 * CARD_TILE);
+  card_copy_ram(jpTiles, OBJ_VRAM + 460 * CARD_TILE, sizeof jpTiles);
+  card_copy(zone.tiles, OBJ_VRAM + 476 * CARD_TILE, 56 * CARD_TILE);
+
+  // the colours: the zigzag and the name use palette 15, the rest palette 6 (the HUD font's)
+  for (int i = 0; i < 16; i++) e.objPalette[15 * 16 + i] = (uint16_t)rom_u16(names.palette + i * 2);
+  e.flags |= FLAGS_UPDATE_OBJ_PALETTES;
+
+  // each piece's slot and its text
+  const CardGfx slots[PIECES] = { zigzag, names, actGfx, bar, { 0, 0, 4, 1, 1, 4, 1 }, { zone.tiles, zone.palette, 8, 2, 1, 4, 2 } };
+  static const int TILE_COUNT[PIECES] = { 32, 64, 12, 16, 16, 56 };
+  static const int PALETTE[PIECES] = { 15, 15, 6, 6, 6, 6 };
+  for (int i = 0; i < PIECES; i++) {
+    card.p[i].shape = (int)slots[i].shape;
+    card.p[i].size = (int)slots[i].size;
+    card.p[i].wide = (int)slots[i].wide;
+    card.p[i].high = (int)slots[i].high;
+    card.p[i].perGlyph = (int)slots[i].perGlyph;
+    card.p[i].count = TILE_COUNT[i] / (slots[i].perGlyph ? (int)slots[i].perGlyph : 1);
+    card.p[i].pal = PALETTE[i];
+    card.p[i].order = PIECE_ORDER[i];
+    for (int k = 0; k < TEXT_COUNT[i]; k++) card.p[i].text[k] = (int)rom_u8(cardAt + TEXT_AT[i] + k) - 32;
+    if (i == PIECE_ZONE) { for (int k = 0; k < CARD_ZONE_PADDING; k++) card.p[i].text[TEXT_COUNT[i] + k] = -32; }
+  }
+
+  // the pieces' places (createTitleCard)
+  card.p[PIECE_ZIGZAG].x = -80; card.p[PIECE_ZIGZAG].y = 0; card.p[PIECE_ZIGZAG].countNow = 3; card.p[PIECE_ZIGZAG].rows = 5; card.p[PIECE_ZIGZAG].grid = 1;
+  card.p[PIECE_NAME].x = 20; card.p[PIECE_NAME].y = 0; card.p[PIECE_NAME].countNow = 1;
+  card.p[PIECE_ACT].x = 180; card.p[PIECE_ACT].y = 160; card.p[PIECE_ACT].countNow = 6;
+  card.p[PIECE_BAR].x = 240; card.p[PIECE_BAR].y = 126; card.p[PIECE_BAR].countNow = 8;
+  card.p[PIECE_ZONE_JP].x = 360; card.p[PIECE_ZONE_JP].y = 114; card.p[PIECE_ZONE_JP].countNow = 4;
+  card.p[PIECE_ZONE].x = 256; card.p[PIECE_ZONE].y = 128; card.p[PIECE_ZONE].countNow = 9;
+
+  card.frame = 0; card.done = 1; card.blank = 0; card.fading = 1;
+  card.level = 0; card.speed = CARD_FADE_SPEED; card.bldY = 0;
+  // the fade's first step, as the card is made
+  card.level = 96;
+  card.bldY = (32 - (card.level >> 8)) >> 1;
+  act.cardFrame = 0; act.cardDone = 0;
 }
 
-static void use_slot(CardPiece *p, int slot) {
-  const UiSlot *s = &ui_slots()[slot];
-  p->slot = slot;
-  p->shape = s->unk9;
-  p->size = s->unk8;
-  p->w = s->unkA * 8;
-  p->h = s->unkB * 8;
-  p->perGlyph = (int)s->unk4;
-  p->tile = (int)s->unk0;
+static void card_put(int order, int shape, int size, int x, int y, int tile, int pal, int semi) {
+  // the card's frames a start point runs with no picture put nothing in the OAM, which no V-blank empties
+  if (!objects_drawing()) return;
+  int k = alloc_oam((uint32_t)order);
+  if (k < 0) return;
+  e.oamMalloc[k * 4] = (uint16_t)((shape << 14) | (y & 0xFF) | (semi ? 0x400 : 0));
+  e.oamMalloc[k * 4 + 1] = (uint16_t)((size << 14) | (x & 0x1FF));
+  e.oamMalloc[k * 4 + 2] = (uint16_t)((pal << 12) | (tile & 0x3FF));
 }
 
-static void free_vram(void) {
-  for (int i = 0; i < card.vramCount; i++) vram_free(card.vram[i]);
-  card.vramCount = 0;
-}
-
-/** sub_8052F78 and sub_80530CC: `count` sprites of `text` from (x, y), or the zigzag's rows of them. */
-static void put(CardPiece *p, const uint8_t *text, int y, int semi) {
-  int a0 = (p->shape << 14) + (y & 0xFF) + (semi ? 0x400 : 0);
-  int a1 = (p->size << 14) + (p->x & 0x1FF);
+// put(card, p, [text, y], semi): a row of sprites from (x, y), or the zigzag's grid
+static void card_piece_put(CardPiece *p, int y, int semi, int textOffset) {
+  int w = p->wide * 8, h = p->high * 8;
   if (!p->grid) {
-    for (int i = 0; i < p->count; i++, a1 += p->w) {
-      if (card.spriteCount >= CARD_SPRITES) return;
-      CardSprite *s = &card.sprites[card.spriteCount++];
-      s->order = (uint8_t)p->order; s->a0 = (uint16_t)a0; s->a1 = (uint16_t)a1;
-      s->a2 = (uint16_t)((p->palette << 12) | ((p->tile + (text[i] - GLYPH_BASE_) * p->perGlyph) & 0x3FF));
+    for (int i = 0; i < p->countNow; i++) {
+      int g = p->text[i + textOffset] & 31;
+      card_put(p->order, p->shape, p->size, (p->x + i * w) & 0x1FF, y, p->tileBase + g * p->perGlyph, p->pal, semi);
     }
     return;
   }
-  for (int r = 0; r < p->rows; r++, a0 += p->h) {
-    int a1r = (p->size << 14) + (p->x & 0x1FF);
-    for (int i = ((-p->x & 0x1FF) >> 7); i < p->count; i++, a1r += p->w) {
-      if (card.spriteCount >= CARD_SPRITES) return;
-      CardSprite *s = &card.sprites[card.spriteCount++];
-      s->order = (uint8_t)p->order; s->a0 = (uint16_t)a0; s->a1 = (uint16_t)a1r;
-      s->a2 = (uint16_t)((p->palette << 12) | ((p->tile + (text[i] - GLYPH_BASE_) * p->perGlyph) & 0x3FF));
+  int top = y;
+  for (int r = 0; r < p->rows; r++, top += h) {
+    int x = p->x;
+    for (int i = (-p->x & 0x1FF) >> 7; i < p->countNow; i++) {
+      int g = p->text[i + textOffset] & 31;
+      card_put(p->order, p->shape, p->size, (x + i * w) & 0x1FF, top & 0xFF, p->tileBase + g * p->perGlyph, p->pal, semi);
     }
   }
 }
 
-// Task_8055730: in from the left 8 px a frame, and out the same way
-static void task_zigzag(CardPiece *p, int k) {
-  if (k > 215) p->x = s16(p->x - 8);
-  else if (k > 10) p->x = 0;
-  else if (k > 0) p->x = s16(p->x + 8);
-  put(p, p->text, p->y, card.semi);
-}
-
-// Task_8055798: four sprites down the zigzag, dropping in from the top from the 27th frame and showing from the 33rd
-static void task_name(CardPiece *p, int k) {
-  if (k > 215) {
-    int q = s16(bios_div((k - 215) << 7, 10));
-    for (int i = 0; i < 4; i++) {
-      p->y = s16(-q + 32 * i);
-      if (p->y >= -32) put(p, p->text + i, p->y, card.semi);
-    }
-  } else if (k > 31) {
-    for (int i = 0; i < 4; i++) { p->y = 32 * i; put(p, p->text + i, p->y, card.semi); }
-  } else if (k > 25) {
-    int y = (bios_div((k - 215) << 7, 6) - 176) & 0x1FF;
-    if (y > 421) for (int i = 0; i < 4; i++) { p->y = s16(y + 32 * i); put(p, p->text + i, p->y, card.semi); }
-  }
-}
-
-// Task_8055904: up from the bottom 3 px a frame to y 144, and back down 2 px a frame
-static void task_act(CardPiece *p, int k) {
-  if (k > 215) { if (p->y < 160) p->y = s16(p->y + 2); }
-  else if (k > 35) { p->x = 180; p->y = 144; p->count = 6; }
-  else if (k > 30) { if (p->y > 144) p->y = s16(p->y - 3); }
-  put(p, p->text, p->y, card.semi);
-}
-
-// Task_8055998: in from the right 26 px a frame to x -16 (or down from the top 9 px a frame), out to the left
-static void task_bar(CardPiece *p, int k) {
-  if (k > 215) {
-    if (p->x < -32) { p->x = s16(p->x + 32); if (p->count != 0) p->count = s16(p->count - 1); }
-    p->x = s16(p->x - 26);
-  } else if (k > 25) p->x = -16;
-  else if (k > 15 && p->drops) { p->x = -16; p->y = p->y + 9 < 126 ? p->y + 9 : 126; }
-  else if (k > 15) { p->y = 126; p->x = s16(p->x - 26); if (p->x < -16) p->x = -16; }
-  put(p, p->text, p->y, card.semi);
-}
-
-// Task_8055AA0: in from the right 26 px a frame to x 112, and out to the left
-static void task_zone_jp(CardPiece *p, int k) {
-  if (k > 215) p->x = s16(p->x - 26);
-  else if (k > 25) p->x = 112;
-  else if (k > 15) { p->x = s16(p->x - 26); if (p->x < 112) p->x = 112; }
-  put(p, p->text, p->y, card.semi);
-}
-
-// Task_8055B18: in from the right 28 px a frame, then scrolling left 2 px a frame, out to the left 28 px a frame
-static void task_zone(CardPiece *p, int k) {
-  if (k > 215) {
-    int old = p->x;
-    p->x = s16(p->x - 28);
-    if (p->x < -31) { p->count = s16(p->count - 1); p->x = s16(old + 4); p->mark = (p->mark + 1) % 7; }
-    put(p, p->text + p->mark, p->y, card.semi);
-  } else if (k > 25) {
-    int old = p->x;
-    p->x = s16(old - 2); p->count = 9;
-    if (p->x < -31) { p->x = s16(old + 30); p->mark = (p->mark + 1) % 7; }
-    put(p, p->text + p->mark, p->y, card.semi);
-  } else if (k > 15) {
-    p->y = 128;
-    int old = p->x;
-    p->x = s16(old - 28);
-    if (p->x < 240) {
-      p->count = 9 - (p->x >> 5);
-      if (p->x < -31) { p->x = s16(old + 4); p->mark = (p->mark + 1) % 7; }
-      put(p, p->text + p->mark, p->y, card.semi);
-    }
-  }
-}
-
-void titlecard_start(int level, int character) {
-  uint32_t tiles, palette;
-  UiSlot layout, custom;
-  uint32_t zoneGfx;
-
-  memset(&card, 0, sizeof card);
-  card.active = 1;
-  card.done = 1;
-  card.fade = create_fade(0, 0, 2, 0, 96, 1);
-  fade_step(&card.fade);
-  create_ui_task();
-  ui_gfx_stack_init();
-
-  const uint32_t at = OFFSET_TITLE_CARD;
-
-  // the zigzag band and the character's name, then the name's colours last in palette row 15
-  ui_graphics(UI_ZIGZAG + character, &tiles, &palette, &layout);
-  load_piece(6, tiles, 0x400, palette, 15, new_vram(32), &layout, 1);
-  ui_graphics(UI_CHAR_NAMES, &tiles, &palette, &layout);
-  load_piece(7, tiles + (uint32_t)character * 64 * TILE, 0x800, palette, 15, new_vram(64), &layout, 1);
-
-  // the white bar
-  ui_graphics(UI_BAR, &tiles, &palette, &layout);
-  load_piece(8, tiles, 0x200, palette, 6, new_vram(16), &layout, 1);
-
-  // the Japanese name: its tiles right-aligned in 12, blank tiles (49) before them, then four more (8 to 11),
-  // and tile 8 again over the first
-  ui_graphics(UI_ZONE_JP, &tiles, &palette, &layout);
-  const int jpCount = (int)rom_u8(at + CARD_JP_TILES + (uint32_t)level);
-  const int jpFirst = (int)rom_u8(at + CARD_JP_FIRST + (uint32_t)level);
-  const uint32_t jpVram = new_vram(16);
-  load_piece(9, tiles + 49 * TILE, (uint32_t)(12 - jpCount) * TILE, palette, 6, jpVram, NULL, 0);
-  load_piece(9, tiles + 8 * TILE, 4 * TILE, palette, 6, jpVram + 12 * TILE, NULL, 0);
-  load_piece(9, tiles + (uint32_t)jpFirst * TILE, (uint32_t)jpCount * TILE, palette, 6,
-    jpVram + (uint32_t)(12 - jpCount) * TILE, NULL, 0);
-  memset(&custom, 0, sizeof custom);
-  custom.unk4 = 4; custom.unk8 = 1; custom.unk9 = 1; custom.unkA = 4; custom.unkB = 1;
-  load_piece(9, tiles + 8 * TILE, TILE, palette, 6, jpVram, &custom, 1);
-
-  // the act number: "ACT" and the act's digit after it
-  ui_graphics(UI_ACT, &tiles, &palette, &layout);
-  const uint32_t actVram = new_vram(12);
-  load_piece(10, tiles + 8 * TILE + (uint32_t)(level & 1) * 4 * TILE, 4 * TILE, palette, 6, actVram + 8 * TILE, NULL, 0);
-  load_piece(10, tiles, 0x100, palette, 6, actVram, &layout, 1);
-
-  // the zone's name, in the palette entry 19 has
-  uint32_t zonePalette;
-  ui_graphics(19, &tiles, &zonePalette, &layout);
-  zoneGfx = rom_u8(at + CARD_ZONE_NAME + (uint32_t)level);
-  ui_graphics((int)(19 + zoneGfx), &tiles, &palette, &layout);
-  memset(&custom, 0, sizeof custom);
-  custom.unk4 = 8; custom.unk8 = 2; custom.unk9 = 1; custom.unkA = 4; custom.unkB = 2;
-  load_piece(2, tiles, 0x700, zonePalette, 6, new_vram(56), &custom, 1);
-
-  // the card's texts, as glyph numbers on the pieces' sheets
-  copy_text(card.texts[PIECE_ZIGZAG], at + CARD_TEXT_ZIGZAG, 3);
-  copy_text(card.texts[PIECE_NAME], at + CARD_TEXT_NAME, 4);
-  copy_text(card.texts[PIECE_ACT], at + CARD_TEXT_ACT, 6);
-  copy_text(card.texts[PIECE_BAR], at + CARD_TEXT_BAR, 8);
-  copy_text(card.texts[PIECE_ZONE_JP], at + CARD_TEXT_ZONE_JP, 4);
-  copy_text(card.texts[PIECE_ZONE], at + CARD_TEXT_ZONE, 22);
-  for (int i = 22; i < 27; i++) card.texts[PIECE_ZONE][i] = GLYPH_BASE_;
-
-  CardPiece *p = card.pieces;
-  memset(p, 0, sizeof card.pieces);
-  p[PIECE_ZIGZAG] = (CardPiece){ .x = -80, .y = 0, .count = 3, .order = 3, .palette = 15, .rows = 5, .grid = 1, .text = card.texts[PIECE_ZIGZAG] };
-  p[PIECE_NAME] = (CardPiece){ .x = 20, .y = 0, .count = 1, .order = 2, .palette = 15, .text = card.texts[PIECE_NAME] };
-  p[PIECE_ACT] = (CardPiece){ .x = 180, .y = 160, .count = 6, .order = 0, .palette = 6, .text = card.texts[PIECE_ACT] };
-  p[PIECE_BAR] = (CardPiece){ .x = 240, .y = 126, .count = 8, .order = 1, .palette = 6, .text = card.texts[PIECE_BAR] };
-  p[PIECE_ZONE_JP] = (CardPiece){ .x = 360, .y = 114, .count = 4, .order = 0, .palette = 6, .text = card.texts[PIECE_ZONE_JP] };
-  p[PIECE_ZONE] = (CardPiece){ .x = 256, .y = 128, .count = 9, .order = 0, .palette = 6, .text = card.texts[PIECE_ZONE] };
-  use_slot(&p[PIECE_ZIGZAG], 6);
-  use_slot(&p[PIECE_NAME], 7);
-  use_slot(&p[PIECE_ACT], 10);
-  use_slot(&p[PIECE_BAR], 8);
-  use_slot(&p[PIECE_ZONE_JP], 9);
-  use_slot(&p[PIECE_ZONE], 2);
-}
-
-int titlecard_step(int pressed) {
-  if (!card.active) return 0;
-  // a press of A, B or the pad from its 36th frame to its 214th skips to its 215th
-  if (pressed && card.frame > 35 && card.frame < 215) {
-    card.frame = 215;
-    card.fade.unk8 = (uint16_t)bios_div(0x2000 - card.fade.unk6, 10);
-    if (!card.blank) { card.done = (uint8_t)fade_step(&card.fade); card.fading = 1; }
-  }
-  const int k = card.frame, done = card.done;
-  if (!card.blank && (k <= 105 || !card.done)) {
-    if (k > 20) card.done = (uint8_t)fade_step(&card.fade);
-    else fade_show(&card.fade);
-    card.fading = 1;
-  } else { e.bldY = 0; card.fading = 0; }
-
-  card.frame++;
-  if (card.frame > 225) {
-    card.active = 0; card.drawn = 0;
-    e.bldCnt = 0; e.bldY = 0;
-    e.dispCnt &= (uint16_t)~0x2000;
-    free_vram();
-    return 0;
-  }
-
-  card.semi = k <= 105 || !done || card.blank;
-  card.spriteCount = 0;
-  task_zigzag(&card.pieces[PIECE_ZIGZAG], k);
-  task_name(&card.pieces[PIECE_NAME], k);
-  task_act(&card.pieces[PIECE_ACT], k);
-  task_bar(&card.pieces[PIECE_BAR], k);
-  task_zone_jp(&card.pieces[PIECE_ZONE_JP], k);
-  task_zone(&card.pieces[PIECE_ZONE], k);
-  card.drawn = 1;
+// fadeStep: the brightness decrease, 16 sixteenths (black) down to 0
+static int card_fade_step(int advance) {
+  card.bldY = (32 - (card.level >> 8)) >> 1;
+  if (!advance) return 0;
+  card.level += card.speed;
+  if (card.level < CARD_FADE_FULL) return 0;
+  card.level = CARD_FADE_FULL;
   return 1;
 }
 
-void titlecard_draw(void) {
-  if (!card.active || !card.drawn) return;
-  if (card.fading) fade_show(&card.fade);
-  for (int i = 0; i < card.spriteCount; i++) {
-    const CardSprite *s = &card.sprites[i];
-    int k = alloc_oam(s->order);
-    if (k < 0) return;
-    e.oamMalloc[k * 4] = s->a0;
-    e.oamMalloc[k * 4 + 1] = s->a1;
-    e.oamMalloc[k * 4 + 2] = s->a2;
+// Task_8055730, Task_8055798, Task_8055904, Task_8055998, Task_8055AA0, Task_8055B18
+static void card_tasks(int k, int semi) {
+  CardPiece *zigzag = &card.p[PIECE_ZIGZAG], *name = &card.p[PIECE_NAME], *act = &card.p[PIECE_ACT];
+  CardPiece *bar = &card.p[PIECE_BAR], *jp = &card.p[PIECE_ZONE_JP], *zone = &card.p[PIECE_ZONE];
+  // zigzag: in from the left 8 px a frame, and out the same way
+  if (k > 215) zigzag->x = s16(zigzag->x - 8);
+  else if (k > 10) zigzag->x = 0;
+  else if (k > 0) zigzag->x = s16(zigzag->x + 8);
+  card_piece_put(zigzag, zigzag->y, semi, 0);
+  // name: four sprites down the zigzag, dropping in from the top from the 27th frame and showing from the 33rd
+  if (k > 215) {
+    int q = s16(((k - 215) << 7) / 10);
+    for (int i = 0; i < 4; i++) {
+      int y = s16(-q + 32 * i);
+      if (y >= -32) { name->countNow = 1; card_piece_put(name, y, semi, i); }
+    }
+  } else if (k > 31) {
+    for (int i = 0; i < 4; i++) { name->countNow = 1; card_piece_put(name, 32 * i, semi, i); }
+  } else if (k > 25) {
+    int y = (((k - 215) << 7) / 6 - 176) & 0x1FF;
+    if (y > 421) for (int i = 0; i < 4; i++) { name->countNow = 1; card_piece_put(name, s16(y + 32 * i), semi, i); }
   }
+  // act: up from the bottom 3 px a frame to y 144, and back down 2 px a frame
+  if (k > 215) { if (act->y < 160) act->y = s16(act->y + 2); }
+  else if (k > 35) { act->x = 180; act->y = 144; act->countNow = 6; }
+  else if (k > 30) { if (act->y > 144) act->y = s16(act->y - 3); }
+  if (card.levelIndex <= CARD_LAST_ACT_LEVEL) card_piece_put(act, act->y, semi, 0);
+  // bar: in from the right 26 px a frame to x -16, and out to the left, a sprite fewer every 32 px
+  if (k > 215) {
+    if (bar->x < -32) { bar->x = s16(bar->x + 32); if (bar->countNow != 0) bar->countNow = s16(bar->countNow - 1); }
+    bar->x = s16(bar->x - 26);
+  } else if (k > 25) bar->x = -16;
+  else if (k > 15) { bar->y = 126; bar->x = s16(bar->x - 26); if (bar->x < -16) bar->x = -16; }
+  card_piece_put(bar, bar->y, semi, 0);
+  // zoneJp: in from the right 26 px a frame to x 112, and out to the left
+  if (k > 215) jp->x = s16(jp->x - 26);
+  else if (k > 25) jp->x = 112;
+  else if (k > 15) { jp->x = s16(jp->x - 26); if (jp->x < 112) jp->x = 112; }
+  card_piece_put(jp, jp->y, semi, 0);
+  // zone: in from the right 28 px a frame, then scrolling left 2 px a frame; out to the left
+  if (k > 215) {
+    int old = zone->x;
+    zone->x = s16(zone->x - 28);
+    if (zone->x < -31) { zone->countNow = s16(zone->countNow - 1); zone->x = s16(old + 4); zone->mark = (zone->mark + 1) % 7; }
+  } else if (k > 25) {
+    int old = zone->x;
+    zone->x = s16(old - 2); zone->countNow = 9;
+    if (zone->x < -31) { zone->x = s16(old + 30); zone->mark = (zone->mark + 1) % 7; }
+  } else if (k > 15) {
+    zone->y = 128;
+    int old = zone->x;
+    zone->x = s16(zone->x - 28);
+    if (zone->x < 240) {
+      zone->countNow = 9 - (zone->x >> 5);
+      if (zone->x < -31) { zone->x = s16(old + 4); zone->mark = (zone->mark + 1) % 7; }
+    } else return;
+  } else return;
+  card_piece_put(zone, zone->y, semi, zone->mark);
 }
 
-int titlecard_active(void) { return card.active; }
+/** runTitleCard: the card's tasks for one frame. Returns 0 on the frame it ends, with nothing drawn. */
+int titlecard_run(int pressed) {
+  card.fading = 0;
+  if (pressed && card.frame > CARD_SKIP_FROM && card.frame < CARD_SKIP_TO) {
+    card.frame = CARD_SKIP_TO;
+    card.speed = (CARD_FADE_FULL - card.level) / 10;
+    if (!card.blank) { card.done = card_fade_step(1); card.fading = 1; }
+  }
+  int k = card.frame, done = card.done;
+  if (!card.blank && (k <= 105 || !card.done)) {
+    if (k > 20) card.done = card_fade_step(1);
+    else card_fade_step(0);
+    card.fading = 1;
+  } else card.bldY = 0;
+  act.cardFrame = card.frame;
+  act.cardDone = 0;
+  // the frame it ends draws nothing
+  card.display = 0;
+  if (++card.frame > CARD_FRAMES) { act.cardFrame = card.frame; act.cardDone = 1; vram_free(cardHeap); return 0; }
+  int semi = k <= 105 || !done || card.blank;
+  card_tasks(k, semi);
+  card.display = card.fading || card.bldY;
+  return 1;
+}
+
+/** The card's fade, set over the act's display once the frame is drawn: window 0 over the whole screen and the
+ * brightness decrease on every layer. */
+void titlecard_display(void) {
+  if (!card.display) return;
+  e.dispCnt = 0x3E40;   // OBJ and window 0 on, BG1, BG2 and BG3 on, 1D OAM
+  e.winRegs[0] = 0x00F0; e.winRegs[2] = 0x00A0;
+  e.bldCnt = 0x3FFF; e.bldAlpha = 0x0010; e.bldY = (uint16_t)card.bldY;
+}

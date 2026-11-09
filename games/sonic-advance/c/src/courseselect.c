@@ -188,7 +188,7 @@ void create_course_select(void) {
 // a start point at an act opens it at the A that would have chosen it, while the original plays its title card
 static int take_start_point(Task *t) {
   int level = (int)gba_start_number("level", -1);
-  if (!(e.pressed & KEY_A) || level != ACT_LEVEL_CASINO_2 || gba_start_number("power", 0) != 2) return 0;
+  if (!(e.pressed & KEY_A) || level != ACT_LEVEL_CASINO_PARADISE_2 || gba_start_number("power", 0) != 2) return 0;
   if (front_frame() < (uint32_t)gba_start_number("at", 0)) return 0;
   destroy_tasks(0x2001, 0x3000);
   t->main = idle;
