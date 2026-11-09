@@ -7,7 +7,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { CLIP_FRAMES, clipLinks, clipProblems, clipWindow, firstChanged, gamesChanged, newFramesIn, recordingHash } from '../lib/clips.mjs';
+import { CLIP_FRAMES, clipLinks, clipProblems, clipWindow, firstChanged, gameAt, gamesChanged, gamesShownIn, newFramesIn, recordingHash } from '../lib/clips.mjs';
+import { pathsOf } from '../../.github/first-entry/rules.mjs';
 import { readRecording } from '../lib/recording.mjs';
 import { checkClips } from '../clips-check.mjs';
 
@@ -15,12 +16,23 @@ const RECORDING = '{"about": "A, then nothing.", "frames": 2000, "held": [[0, []
 const FILE = 'games/a-game/proof/recordings/a-test.json';
 const report = clip => ({
   recording: 'a-test', recordingFile: FILE, recordingSha1: recordingHash(RECORDING),
-  clip: { from: 1000, to: 1299, frames: 300, seconds: 5.02, apart: 0, oneColour: 0, same: 40, changed: { frame: 1060, why: 'the first that differed on main and matches now' }, newFrames: 240, base: 'b'.repeat(40), ...clip },
+  clip: { from: 1000, to: 1299, frames: 300, seconds: 5.02, apart: 0, differing: 0, oneColour: 0, same: 40, changed: { frame: 1060, why: 'the first that differed on main and matches now' }, newFrames: 240, base: 'b'.repeat(40), ...clip },
 });
 
 test('five seconds of what the step changed, of both in the same place, moving, from the committed recording, can go in a pull request', () => {
   assert.deepEqual(clipProblems(report(), RECORDING), []);
-  assert.deepEqual(clipProblems(report({ apart: 75, oneColour: 75, same: 270, newFrames: 150 }), Buffer.from(RECORDING)), []);
+  assert.deepEqual(clipProblems(report({ oneColour: 75, same: 270, newFrames: 150 }), Buffer.from(RECORDING)), []);
+});
+
+test('a clip with a frame that differs from the original\'s is refused, whichever video it is', () => {
+  // casino-2-opening, as #1003 ran it on: its one new frame matches, and the 299 after it differ
+  for (const sideBySide of [true, false]) {
+    const [problem, ...rest] = clipProblems(report({ differing: 299 }), RECORDING, { sideBySide });
+    assert.match(problem, /299 of the clip's 300 frames differ from the original's, in picture or sound/);
+    assert.match(problem, /port what those frames need/);
+    assert.deepEqual(rest, []);
+  }
+  assert.equal(clipProblems(report({ differing: 1 }), RECORDING).length, 1);
 });
 
 test('a clip of a fraction of a second, or of two seconds, is refused', () => {
@@ -54,6 +66,7 @@ test('a clip whose original is somewhere else is refused, side by side only', ()
   assert.match(problem, /different places/);
   assert.deepEqual(clipProblems(report({ apart: 300 }), RECORDING, { sideBySide: false }), []);
   assert.equal(clipProblems(report({ apart: 76 }), RECORDING).length, 1);
+  assert.deepEqual(clipProblems(report({ apart: 75 }), RECORDING), []);
 });
 
 test('a clip from a recording that isn\'t committed, or changed since, is refused', () => {
@@ -68,7 +81,7 @@ test('a clip made against another main than the branch starts from now is refuse
 
 test('a clip prove made before it measured what a clip shows is refused', () => {
   assert.match(clipProblems(null, RECORDING)[0], /prove the recording again/);
-  for (const field of ['apart', 'oneColour', 'same', 'changed']) {
+  for (const field of ['apart', 'differing', 'oneColour', 'same', 'changed']) {
     const old = report();
     delete old.clip[field];
     assert.match(clipProblems(old, RECORDING)[0], /prove the recording again/, field);
@@ -107,10 +120,15 @@ test('the first frame a step changed, in a recording main didn\'t prove as it is
   assert.equal(firstChanged({ ...fresh, main: null }).frame, 0);
 });
 
-test('prove\'s clip starts a second before what changed, or shows the four seconds before the first difference further on', () => {
+test('prove\'s clip starts a second before what changed, and ends before the first frame that differs', () => {
   assert.deepEqual(clipWindow({ frames: 2000, changed: { frame: 469 }, firstDifference: -1 }), [409, 708]);
-  assert.deepEqual(clipWindow({ frames: 2000, changed: { frame: 469 }, firstDifference: 1500 }), [1260, 1559]);
-  assert.deepEqual(clipWindow({ frames: 2000, changed: { frame: 469 }, firstDifference: 500 }), [409, 708]);
+  assert.deepEqual(clipWindow({ frames: 2000, changed: { frame: 469 }, firstDifference: 1500 }), [409, 708]);
+  assert.deepEqual(clipWindow({ frames: 2000, changed: { frame: 469 }, firstDifference: 700 }), [400, 699]);
+  // a step that makes too few frames match before one differs: five seconds that match, which the rule refuses for
+  // showing too little of the step
+  const before = clipWindow({ frames: 2000, changed: { frame: 469 }, firstDifference: 500 });
+  assert.deepEqual(before, [200, 499]);
+  assert.equal(newFramesIn(Array.from({ length: 300 }, (_, i) => before[0] + i), { frame: 469 }), 31);
   // a recording that ends nine frames into what it changed still gets five seconds, which the rule then refuses
   const [first, last] = clipWindow({ frames: 1964, changed: { frame: 1955 }, firstDifference: -1 });
   assert.deepEqual([first, last], [1664, 1963]);
@@ -166,12 +184,14 @@ test('the pull request\'s check reads each clip\'s measures, and the video they\
   assert.match((await checkClips(text, { fetched: site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(measures({ frames: 120, newFrames: 120 }))) }), read }))[0], /a-test: The clip of a-test is 120 frames/);
   // a picture on its own is a clip prove didn't make
   assert.match((await checkClips(`![a](${at}.png)`, { fetched: site({}), read }))[0], /isn't the frame of a clip the text links/);
+  // the Dreamport on its own, as #1019 shared it, shows nothing of whether it does what the original does
+  const alone = { ...measures(), sideBySide: false };
+  assert.match((await checkClips(text, { fetched: site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(alone)) }), read }))[0], /shows the Dreamport on its own/);
   // a pull request that changes a game's code or recordings links a clip of that game, and one that changes neither needs none
-  const code = ['games/a-game/c/src/brain.c', 'docs/STANDARD.md'];
-  assert.match((await checkClips('Clips: none.', { fetched: site({}), read, changed: code }))[0], /changes a-game's code or recordings and links no clip of it/);
-  assert.deepEqual(await checkClips('Clips: none.', { fetched: site({}), read, changed: ['games/a-game/notes/a-note.md', 'games/a-game/entry.md', 'tools/share.mjs'] }), []);
-  assert.deepEqual(await checkClips(text, { fetched: site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(measures())) }), read, changed: code }), []);
-  const other = await checkClips(text, { fetched: site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(measures())) }), read, changed: ['games/another-game/proof/recordings/a-test.json'] });
+  assert.match((await checkClips('Clips: none.', { fetched: site({}), read, games: ['a-game'] }))[0], /changes a-game's code or recordings and links no clip of it/);
+  assert.deepEqual(await checkClips('Clips: none.', { fetched: site({}), read, games: [] }), []);
+  assert.deepEqual(await checkClips(text, { fetched: site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(measures())) }), read, games: ['a-game'] }), []);
+  const other = await checkClips(text, { fetched: site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(measures())) }), read, games: ['another-game'] });
   assert.equal(other.length, 1);
   assert.match(other[0], /another-game/);
 });
@@ -183,4 +203,10 @@ test('the games whose code or recordings a step changes', () => {
     'games/sonic-advance/notes/a-note.md', 'games/sonic-advance/entry.md', 'kit/gba/c/video.c', 'tools/share.mjs',
   ]), ['sonic-battle', 'sonic-advance', 'mega-man']);
   assert.deepEqual(gamesChanged(null), []);
+  // only a game main has already is shown: a first entry adds one nobody can play yet, in either language (#1032)
+  const has = game => game !== 'a-new-game';
+  for (const language of ['js', 'c']) assert.deepEqual(gamesShownIn(pathsOf('a-new-game', language), has), []);
+  assert.deepEqual(gamesShownIn([...pathsOf('a-new-game', 'c'), 'games/sonic-battle/c/src/brain.c'], has), ['sonic-battle']);
+  assert.equal(gameAt('HEAD', 'sonic-advance'), true);
+  assert.equal(gameAt('HEAD', 'a-new-game'), false);
 });

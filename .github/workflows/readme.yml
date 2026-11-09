@@ -12,7 +12,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
-  # to start Check and Clips on its own commit, which main requires (#1033), and to read how they ended
+  # to approve the runs GitHub holds on its own pull request, of Check and Clips, which main requires (#1033), and to read
+  # how they ended
   actions: write
   checks: read
 

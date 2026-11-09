@@ -105,6 +105,9 @@ typedef struct {
 
   // the last sound frame's cycles, which the JavaScript kit gives as frameCycles()
   int32_t sound_cycles;
+
+  // the cycles a move on the Mini-games screen takes unpacking its picture and writing its letters (minigames.c)
+  int32_t move_cycles, text_cycles;
 } Game;
 
 extern Game g;
@@ -143,6 +146,7 @@ void copyAtVblank(void);
 void queueRegister(uint16_t offset, uint16_t value);
 void copyToVram(uint32_t from, uint32_t to, uint32_t count);
 void decompress(uint32_t from, uint32_t to);
+int32_t unpackCycles(uint32_t from);
 void copyTileBlock(uint32_t to, uint32_t from, int columns, int rows, int base);
 uint16_t *colours(uint32_t first);
 void clearLayer(int layer);
@@ -308,5 +312,9 @@ void restartFromStart(void);
 
 // options.js
 void startOptions(void);
+
+// mini-games.js and lobby.js
+void startMiniGames(void);
+void startLobby(void);
 
 #endif

@@ -7,10 +7,6 @@ name: Clips
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened, ready_for_review]
-  # main requires this check (#1033), and the Readme workflow starts it on its own commit, as a pull request that
-  # workflow's token opens starts no workflow by itself. Started that way it has no text, so it fails a branch that
-  # changes the code or recordings of a game main has, which would need a clip.
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -24,20 +20,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # a pull request's merge into main and main itself, its first parent, so git can tell what it changes; started
-          # by hand, the branch and all of main, to find where the branch leaves main
-          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 0 }}
+          # the merge of the pull request into main and main itself, its first parent, so git can tell what it changes
+          fetch-depth: 2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
-      - name: Find where it leaves main
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            echo "CHANGED_FROM=HEAD^1" >> "$GITHUB_ENV"
-          else
-            base=$(git merge-base origin/main HEAD)
-            echo "CHANGED_FROM=$base" >> "$GITHUB_ENV"
-          fi
       - run: node tools/clips-check.mjs
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+          CHANGED_FROM: HEAD^1

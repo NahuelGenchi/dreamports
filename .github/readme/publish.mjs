@@ -1,8 +1,9 @@
 // Puts the table in docs/STATUS.md and the progress maps on main (.github/workflows/readme.yml). `npm run dp -- readme` has just
 // written them from main's own files, and main only takes pull requests, so this opens one with only those files and
-// merges it. main also requires the Check and Clips checks (#1033), and a pull request this workflow's token opens starts
-// no workflow, so it starts both on its own commit and merges once they pass. It asks no model, runs nothing from a pull
-// request, and does nothing when they haven't changed.
+// merges it. main also requires the Check and Clips checks (#1033), whose runs GitHub holds on this workflow's own pull
+// request until someone approves them, as it treats the Actions bot like a first-time contributor, so it approves them
+// and merges once both pass. It asks no model, runs nothing from a pull request, and does nothing when they haven't
+// changed.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -12,8 +13,8 @@ export const BRANCH = 'ops/readme-table';
 export const TITLE = 'ops: the table of Dreamports and progress maps (#566)';
 const BODY = 'Written by the Readme workflow from the proof files on `main`, with nothing else in it. Refs #566';
 const TRIES = 5;
-/** The workflows of the checks main requires, and the names they report, as the ruleset main checks names them. */
-export const CHECKS = { 'check.yml': 'Check', 'clips.yml': 'Clips' };
+/** The checks main requires, as the ruleset main checks names them, each the name of its workflow and of its job. */
+export const CHECKS = ['Check', 'Clips'];
 // Check takes five to seven minutes, so it's asked every 20 seconds for up to 20 minutes
 const WAIT = { every: 20_000, polls: 60 };
 
@@ -32,7 +33,7 @@ export async function publish({ api, changed, head, owner, sleep = ms => new Pro
   else await api('/git/refs', 'POST', { ref: `refs/heads/${BRANCH}`, sha: commit });
   const [open] = await api(`/pulls?state=open&head=${owner}:${BRANCH}`);
   const { number } = open ?? await api('/pulls', 'POST', { title: TITLE, head: BRANCH, base: 'main', body: BODY });
-  for (const workflow of Object.keys(CHECKS)) await api(`/actions/workflows/${workflow}/dispatches`, 'POST', { ref: BRANCH });
+  await approve({ api, commit, sleep });
   await checked({ api, commit, sleep });
   // GitHub needs a moment before a new pull request can merge
   for (let tries = 1; ; tries++) {
@@ -46,10 +47,23 @@ export async function publish({ api, changed, head, owner, sleep = ms => new Pro
   }
 }
 
+/** Approves the runs GitHub holds on this workflow's own pull request at `commit`, once those of the checks main requires
+ * are there, and throws when they never come. Each runs main's own workflow on a commit with only the table and maps. */
+export async function approve({ api, commit, sleep, wait = WAIT }) {
+  for (let poll = 1; ; poll++) {
+    const { workflow_runs: runs = [] } = await api(`/actions/runs?head_sha=${commit}&event=pull_request&per_page=50`);
+    const ours = runs.filter(run => run.head_sha === commit && run.head_branch === BRANCH);
+    for (const run of ours.filter(r => r.conclusion === 'action_required')) await api(`/actions/runs/${run.id}/approve`, 'POST');
+    if (CHECKS.every(name => ours.some(run => run.name === name))) return;
+    if (poll >= wait.polls) throw new Error(`GitHub started no ${CHECKS.filter(name => !ours.some(run => run.name === name)).join(' or ')} run on ${commit}, so nothing was merged.`);
+    await sleep(wait.every);
+  }
+}
+
 /** Waits until each check main requires has run on `commit`, and throws when one fails or doesn't finish in time. */
 export async function checked({ api, commit, sleep, wait = WAIT }) {
   for (let poll = 1; ; poll++) {
-    const latest = await Promise.all(Object.values(CHECKS).map(async name => {
+    const latest = await Promise.all(CHECKS.map(async name => {
       const { check_runs: runs = [] } = await api(`/commits/${commit}/check-runs?check_name=${name}&filter=latest`);
       return runs.find(run => run.name === name) ?? { name, status: 'not started' };
     }));
@@ -78,8 +92,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     });
     if (missingIsFine && response.status === 404) return null;
     if (!response.ok) throw new Error(`GitHub API ${method} ${path}: HTTP ${response.status}: ${await response.text()}`);
-    // starting a workflow answers with no content
-    return response.status === 204 ? null : response.json();
+    // approving a run answers with no content
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
   };
   const folder = process.cwd();
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: folder, encoding: 'utf8' }).trim();
