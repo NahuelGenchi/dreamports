@@ -532,16 +532,7 @@ int rollChance(int chance) {
   return roll > (uint32_t)chance ? 0 : 1;
 }
 
-void resetBrain(int i) {
-  uint32_t r = brain(i & 0xFF);
-  write16(r + 8, 0);
-  write8(r + 12, 0);
-  write8(r + 13, 0);
-  write8(r + 18, (uint8_t)(rollChance(read16(0x0807125A + (uint32_t)read8(LEVEL) * 2)) != 0 ? 1 : 0));
-  write32(r + 4, 0x08ED898C);
-  write8(r + 14, 0);
-  write8(r + 16, read8(fighter(i & 0xFF) + 16));
-}
+void resetBrain(int i) { brainReset(i); }
 
 void restartBrain(int i) {
   uint32_t number = (uint32_t)randomNumber();
@@ -558,7 +549,7 @@ static int32_t arcTan(int i) {
   return (i * b) >> 16;
 }
 
-static uint16_t arcTan2(int x, int y) {
+uint16_t arcTan2(int x, int y) {
   if (y == 0) return x >= 0 ? 0 : 0x8000;
   if (x == 0) return y >= 0 ? 0x4000 : 0xC000;
   #define OVER(n, d) ((int32_t)((uint32_t)(n) * 16384u) / (d))
