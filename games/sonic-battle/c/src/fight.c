@@ -33,6 +33,8 @@
 #define BLDY 0x54
 #define NO_FIGHTER 255
 
+void dp_sound_skip_frames(int frames);   // the kit's sound engine, run without rendering (kit/gba/c/sound.c)
+
 static int setup(int at) { return read8(SETUP_ + (uint32_t)at); }
 
 /** 0x08020840: the colour effect's fade in from black, over `frames` frames. */
@@ -266,10 +268,12 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
   fightVblank();
   if (end == 0) {
     // a start point at the fight's end replays the way there before the recording opens: the choice screen's
-    // three A presses at 70, 100 and 130, then the fight's own frames up to the knockout
+    // three A presses at 70, 100 and 130, then the fight's own frames up to the knockout. Its last frame, which finds
+    // the fight won, runs here too, so the recording opens on the ending's first frame as the original does.
     g.callback = choosing;
     g.after_wait = 0;
     runFightSetup(400);
+    dp_sound_skip_frames(400);   // the hidden frames' sounds play while they run, not after the recording opens
     write8(SETUP_ + 125, 1);
     write8(SETUP_ + 4, 2);
     write8(SETUP_ + 6, 1);
@@ -278,7 +282,9 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
     write8(FIGHTERS + 149, 1);
     write8(FIGHTERS + RECORD + HEALTH, 0);
     write16(FIGHTERS + RECORD + STATE, 253);
-    g.callback = battleFrame;
+    beginEnding();
+    battleAfterWait();   // the win frame's after-wait draw, which starts the banner's first frame
+    g.after_wait = 0;
     return;
   }
   if (battle && direct) {

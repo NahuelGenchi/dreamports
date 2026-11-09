@@ -271,6 +271,7 @@ void battleReadyFrame(void);
 void battleReadyAfterWait(void);
 void battleFrame(void);
 void battleAfterWait(void);
+void beginEnding(void);
 void endingFrame(void);
 void endingAfterWait(void);
 void resultTransition(void);
