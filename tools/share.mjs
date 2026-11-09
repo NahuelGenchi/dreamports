@@ -173,7 +173,8 @@ function predictedAddress(fork) {
 
 // the clips for the pull request, which only pull requests may show (docs/STANDARD.md#clips): the one --clip names, or
 // every clip prove made that keeps the rules, as a step that changed more than one recording shows each. Only prove's
-// own clips, from .dreamports/results/, can go: the side by side clip.mp4, or the Dreamport's alone, dreamport.mp4.
+// own side by side clips, from .dreamports/results/, can go, as clip.mp4: never the Dreamport's alone, dreamport.mp4,
+// which shows nothing of whether it does what the original does (#1039).
 // A recording that shows nothing this step changed is left out, and a clip of what it changed that breaks a rule stops
 // share, as the pull request needs it. A step that changes the game's code or recordings with no clip to show stops it
 // too (#1030), unless main doesn't have the game yet, as in its first entry (#1032). [{ file, bytes, still, sideBySide, recording, shows, report }]
@@ -222,8 +223,12 @@ export function chooseClips(game, file, commit, base, { team = false } = {}) {
 
 // a clip prove made, from its folder in .dreamports/results/<game>/, with its frame and its report
 function proveClip(results, file) {
-  if (!file.startsWith(results + sep) || !/^(clip|dreamport)\.mp4$/.test(basename(file)) || dirname(dirname(file)) !== results) {
-    throw new Error(`${file} isn't a clip prove made. share takes only prove's own, as .dreamports/results/<game>/<recording>/clip.mp4 or dreamport.mp4, which it measured: `
+  if (basename(file) === 'dreamport.mp4') {
+    throw new Error(`${file} is the Dreamport on its own, and a pull request's clip shows the original next to it, every frame matching: share takes clip.mp4, beside it. `
+      + 'If that one breaks a rule, port what its frames need and prove it again.');
+  }
+  if (!file.startsWith(results + sep) || basename(file) !== 'clip.mp4' || dirname(dirname(file)) !== results) {
+    throw new Error(`${file} isn't a clip prove made. share takes only prove's own, as .dreamports/results/<game>/<recording>/clip.mp4, which it measured: `
       + 'never a video made another way.');
   }
   if (!existsSync(file)) throw new Error(`${file} isn't there: npm run dp -- prove makes it.`);
