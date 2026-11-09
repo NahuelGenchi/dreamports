@@ -2,6 +2,10 @@
   "about": "Chaos's ground Set special, from the same start point: the opening's choice, two moves on it to put Set on the ground, Chaos running up to the other fighter, and R for the set.",
   "start": "fight=training&vblanks=1209&you=8&arena=6",
   "frames": 680,
+  "clip": {
+    "at": 380,
+    "frames": 300
+  },
   "held": [
     [
       0,
