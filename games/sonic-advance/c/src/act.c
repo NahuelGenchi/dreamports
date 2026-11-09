@@ -868,10 +868,15 @@ static void hud_update(int draw) {
     put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, hudFaceTile, 0, 0);
     if (act.ringCount == 0) {
       static const int FLASH[5] = { 0, 11, 11, 0, 0 };
-      // the HUD's task runs seven frames into the act, so its flash starts then
-      int f = h->flash >= 7 ? (h->flash - 7) >> 3 : 0;
-      if (f < 5) hud_glyph(FLASH[f], 9, 5);
-      else if (is_casino()) hud_past(9, 5);
+      if (is_casino()) {
+        // the HUD's task runs seven frames into the act, so its flash starts then
+        int f = h->flash >= 7 ? (h->flash - 7) >> 3 : 0;
+        if (f < 5) hud_glyph(FLASH[f], 9, 5);
+        else hud_past(9, 5);
+      } else {
+        int f = h->flash >> 3, g = f < 5 ? FLASH[f] : -1;
+        if (g >= 0) hud_glyph(g, 9, 5);
+      }
     } else {
       int d[12], n = digits_of(act.ringCount > 999 ? 999 : act.ringCount, d);
       int x = n == 1 ? 9 : n == 2 ? 5 : 1;
@@ -1131,8 +1136,10 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
   }
   if (is_casino()) stage_animated_tiles_pre();
   // the card's last frame steps the stage's animations once, as the original's does; the ring then steps on the
-  // original's next frame, two display frames into the act
-  ringSprite.qAnimDelay = 512;
+  // original's next frame, two display frames into the act. Casino's ring starts two frames in; other acts keep the
+  // frame their own recordings were proven with.
+  if (is_casino()) ringSprite.qAnimDelay = 512;
+  else ringSprite.qAnimDelay = (int16_t)(ringSprite.qAnimDelay + 256);
   for (int i = 0; i < palAnimCount; i++) palAnims[i].wait += 256;
 }
 
