@@ -46,7 +46,7 @@ typedef struct Capsule Capsule;
 typedef int (*Phase)(Capsule *);
 struct Capsule {
   Object o;            // the capsule
-  Sprite s2;           // its switch
+  Object sw;           // its switch
   Transform tf;        // the grow's turn and scale
   Phase phase;
   int x, y;            // in the act (worldX, worldY)
@@ -95,7 +95,7 @@ static int touches(Capsule *c, const Sprite *s) {
 // Task_801623C: dropping in the middle of the screen until it meets the floor; there it shakes the screen and knocks Sonic
 // aside if it lands on him, to the capsule's side nearer where he was
 static int drop(Capsule *c) {
-  Sprite *s = &c->o.sprite, *s2 = &c->s2;
+  Sprite *s = &c->o.sprite, *s2 = &c->sw.sprite;
   int sy = s16(c->y - cam_y() - c->rise);
   s->x = s2->x = CENTRE;
   s->y = s2->y = (int16_t)sy;
@@ -283,15 +283,17 @@ static void animals(int x, int y) {
 }
 
 // --- the capsule's phases ----------------------------------------------------------------------------------------------------
-// the capsule (at the switch's height + dy for the switch) as a solid object for Sonic, unless he is hurt
-static int solid(Capsule *c, const Sprite *s, int dy) {
-  return collide_platform(s, c->x, c->y + dy, box(s), &act.player);
+// the capsule or its switch (at the switch's height + dy for the switch) as a solid object for Sonic, unless he is hurt; it
+// stands where the capsule is, which is where Sonic balancing on it finds its sides (Player_8044D74 reads its sprite's place)
+static int solid(Capsule *c, Object *o, int dy) {
+  o->x = c->x;
+  return collide_platform(o, c->x, c->y + dy, box(&o->sprite), &act.player);
 }
 
 // Task_BossCapsuleUpdate: shut, until Sonic lands on the switch. Pushed down by the capsule or below its bottom, he is put at its
 // bottom left corner.
 static int closed(Capsule *c) {
-  Sprite *s = &c->o.sprite, *s2 = &c->s2;
+  Sprite *s = &c->o.sprite, *s2 = &c->sw.sprite;
   Player *p = &act.player;
   update_sprite(s, 0);
   update_sprite(s2, 0);
@@ -300,13 +302,13 @@ static int closed(Capsule *c) {
   int pressed = 0;
   if (p->state != PS_HURT) {
     int before = sonic_y();
-    solid(c, s, 0);
+    solid(c, &c->o, 0);
     if (!p->dead && (before < sonic_y() || c->y < sonic_y())) {
       const Hitbox *b = box(s);
       if (b) p->x = c->x + b->left - SONIC_HALF_WIDTH;
       p->y = c->y - p->offsetY;
     }
-    if (solid(c, s2, 0) & COLLIDE_LANDED) pressed = 1;
+    if (solid(c, &c->sw, 0) & COLLIDE_LANDED) pressed = 1;
   }
   if (pressed) {
     c->phase = opening;
@@ -324,15 +326,15 @@ static int closed(Capsule *c) {
 
 // Task_8016650: the switch sinks 4 px and the capsule opens; then the shell's halves fly off and the animals come out
 static int opening(Capsule *c) {
-  Sprite *s = &c->o.sprite, *s2 = &c->s2;
+  Sprite *s = &c->o.sprite, *s2 = &c->sw.sprite;
   Player *p = &act.player;
   int ended = !update_sprite(s, 0);
   update_sprite(s2, 0);
-  if (p->state != PS_HURT) { solid(c, s, 0); solid(c, s2, SWITCH_SINK); }
+  if (p->state != PS_HURT) { solid(c, &c->o, 0); solid(c, &c->sw, SWITCH_SINK); }
   boss_display(s, c->x - cam_x(), c->y - cam_y());
   boss_display(s2, c->x - cam_x(), c->y + SWITCH_SINK - cam_y());
   if (!ended) return 1;
-  if (p->onObject == s2) { p->onObject = NULL; p->air = 1; }
+  if (p->onObject == &c->sw) { p->onObject = NULL; p->air = 1; }
   c->phase = open;
   s->variant = CAPSULE_OPEN;
   for (int i = 0; i < 2; i++) {
@@ -350,7 +352,7 @@ static int opening(Capsule *c) {
 static int open(Capsule *c) {
   Sprite *s = &c->o.sprite;
   update_sprite(s, 0);
-  if (act.player.state != PS_HURT) solid(c, s, 0);
+  if (act.player.state != PS_HURT) solid(c, &c->o, 0);
   boss_display(s, c->x - cam_x(), c->y - cam_y());
   return 1;
 }
@@ -362,7 +364,7 @@ static int capsule_run(ActTask *t) {
 
 static void capsule_end(ActTask *t) {
   Capsule *c = (Capsule *)t->data;
-  object_sprite_free(&c->s2);
+  object_sprite_free(&c->sw.sprite);
   object_end(t);
 }
 
@@ -372,10 +374,10 @@ void boss_capsule(int x, int y) {
   c->x = x; c->y = y;
   c->speed = RISE_SPEED;
   c->phase = grow;
-  c->s2.graphics.dest = HEAP_END;
+  c->sw.sprite.graphics.dest = HEAP_END;
   object_sprite_at(&c->o.sprite, vram_malloc(CAPSULE_TILES), ANIM_SMALL, 0, CAPSULE_ORDER, ENEMY_PRIORITY, 0, 0);
   c->o.sprite.frameFlags |= SPRITE_ROT_SCALE_ENABLE | GROW_MATRIX;
   c->tf = (Transform){ 0, GROW_FROM, GROW_FROM, 0, 0 };
   if (!boss_task(&c->o, capsule_run, capsule_end, PRIORITY_OBJECTS)) return;
-  object_sprite_at(&c->s2, vram_malloc(SWITCH_TILES), ANIM_SWITCH, 0, SWITCH_ORDER, ENEMY_PRIORITY, 0, 0);
+  object_sprite_at(&c->sw.sprite, vram_malloc(SWITCH_TILES), ANIM_SWITCH, 0, SWITCH_ORDER, ENEMY_PRIORITY, 0, 0);
 }

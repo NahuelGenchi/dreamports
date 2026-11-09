@@ -15,6 +15,7 @@ enum {
   PRIORITY_CAMERA = 0xF00,     // the camera's task (Task_UpdateCamera): a boss's screen shake runs just before it
   PRIORITY_OBJECTS = 0x2000,   // the rings, the entities manager and the objects it spawns
   PRIORITY_SCATTER = 0x2001,   // the rings Sonic dropped
+  PRIORITY_HUD = 0x2180,       // the HUD's task (Task_StageUIMain): the title card's and the results' come before it
   PRIORITY_SONIC = 0x3000,
   PRIORITY_ITEMS = 0x4001,     // a shield and the invincibility stars, after the music manager
 };
@@ -117,6 +118,9 @@ void objects_start(int level, int paletteAnimations);
 void act_tasks_destroy_all(void);
 void objects_run_before_camera(void);
 void objects_run_early(void);
+/** The same in two parts, before the HUD's place and from it, for act_frame to run the card, the results and the HUD between. */
+void objects_run_before_hud(void);
+void objects_run_after_hud(void);
 void objects_run_late(void);
 /** Whether the frame is drawn: the title card's frames before the first picture aren't. */
 void objects_set_drawing(int on);

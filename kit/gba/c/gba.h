@@ -87,6 +87,11 @@ int gba_sound_start_layout(uint32_t playerTable, int players, int channels, int 
 /** After gba_sound_start, for a game whose picture depends on how long the console's sound work takes, as the
  *  JavaScript kit's countCycles: a silent engine of its own runs a frame as each of the game's frames ends, so what
  *  gba_sound_frame_cycles says is the same in a player's browser as under the proof tools. */
+/** Before gba_sound_start, for a game whose SoundMain runs well into the console's frame: the writes to the sound chip's
+ *  four channels then land `cycles` into its frame plus what SoundMain has counted so far, and the game's own calls at
+ *  `cycles`, as a square's phase lasts from note to note (kit/gba/notes/a-squares-notes-land-where-soundmain-runs.md).
+ *  0, the default, writes them at once. */
+void gba_sound_psg_at(int cycles);
 int gba_sound_count_cycles(void);
 /** With gba_sound_count_cycles, how many of the console's cycles the last frame's SoundMain took, as the JavaScript
  *  kit's frameCycles(), or -1 without it. */

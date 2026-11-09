@@ -9,6 +9,7 @@
 // Sonic Advance builds the engine with four music players, the music's and three for sound effects, and its sound mode
 // (rom/sound.js): 5 DirectSound channels, master volume 15, 10512 Hz and no reverb
 void game_start(void) {
+  gba_sound_psg_at(52150);   // where its SoundMain starts in the chip's frame, measured on sonic-ice-mountain-act-2
   gba_sound_start(4, 5, 15, 10512, 0);
   gba_sound_count_cycles();
   save_open();

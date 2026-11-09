@@ -117,6 +117,8 @@ void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_song_playing(void);
 void act_task(Task *t);
+/** The background's colours as the palette animations will leave them next frame. */
+void act_next_bg_palette(uint16_t *pal);
 uint32_t front_frame(void);
 
 // the act's water (water.c, gWater)
@@ -127,6 +129,7 @@ typedef struct {
   Sprite surface;
   int bubbles;          // gSmallAirBubbleCount
   int late;             // the waves start a line late this frame (water.c)
+  int early;            // the colours under water are next frame's (water.c)
 } Water;
 extern Water water;
 void water_start(int level, uint32_t mask);

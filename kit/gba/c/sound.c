@@ -19,6 +19,7 @@
 static Apu apu;
 static M4a engine;
 static SoundLayout layout;
+static int psgAt;   // gba_sound_psg_at's place, for the next setup
 static int running;          // the engine has a layout
 static int handOver;         // the calls go to the page, for the audio thread
 static SoundCall queue[CALLS], taken[CALLS];
@@ -85,7 +86,7 @@ static void clear_buffers(void) {
 static void setup(int a, int b, int c, int d) {
   layout.playerTable = (uint32_t)a; layout.players = b & 0xFF; layout.mode.channels = (b >> 8) & 0xFF;
   layout.mode.volume = (b >> 16) & 0xFF; layout.mode.reverb = (b >> 24) & 0x7F; layout.mode.rate = c & 0xFFFF;
-  layout.voicesEndOnChip = (c >> 16) & 1; layout.soundMainAt = d;
+  layout.voicesEndOnChip = (c >> 16) & 1; layout.soundMainAt = d; layout.psgAt = psgAt;
   layout.songTable = layout.playerTable + layout.players * 12;
   // the songs the engine has, as tables.js counts them
   layout.songs = 0;
@@ -214,6 +215,7 @@ void gba_sound_volume(int player, int bits, int volume) { take(OP_VOLUME, player
 void gba_sound_pan(int player, int bits, int pan) { take(OP_PANPOT, player, bits, pan, 0); }
 void gba_sound_imm_init(int player) { take(OP_IMM_INIT, player, 0, 0, 0); }
 void gba_sound_wave_at(int at) { take(OP_WAVE_AT, at, 0, 0, 0); }
+void gba_sound_psg_at(int cycles) { psgAt = cycles; }
 void gba_sound_fade_in(int player, int speed) { take(OP_FADE_IN, player, speed, 0, 0); }
 void gba_sound_fade_out(int player, int speed) { take(OP_FADE_OUT, player, speed, 0, 0); }
 void gba_sound_tempo(int tempo) { take(OP_TEMPO, 0, tempo, 0, 0); }

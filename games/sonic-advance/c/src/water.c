@@ -98,17 +98,36 @@ static void water_vblank(void) {
 static const struct { uint8_t level; uint16_t first, last; } LATE_WAVES[] = {
   { 7, 1334, 1334 }, { 7, 1342, 1342 }, { 7, 8266, 8266 }, { 7, 8285, 8285 }, { 7, 8304, 8304 }, { 7, 9306, 9306 },
   { 7, 9338, 9338 }, { 7, 9674, 9674 }, { 7, 9704, 9704 }, { 7, 9814, 9814 }, { 7, 9835, 9835 }, { 7, 9940, 9940 },
-  { 7, 9957, 9957 }, { 7, 10058, 10058 }, { 7, 10069, 10069 }, { 7, 10447, 10447 }, { 7, 10467, 10467 },
-  { 7, 10529, 10529 }, { 7, 10555, 10555 }, { 7, 10970, 11000 }, { 7, 11319, 11319 }
+  { 7, 9957, 9957 }, { 7, 10058, 10058 }, { 7, 10069, 10069 }, { 7, 10431, 10431 }, { 7, 10447, 10447 },
+  { 7, 10467, 10467 }, { 7, 10529, 10529 }, { 7, 10555, 10555 }, { 7, 10970, 11000 }, { 7, 11319, 11319 },
+  { 7, 11336, 11336 }, { 7, 11338, 11338 }, { 7, 11346, 11346 }, { 7, 11365, 11365 }, { 7, 11369, 11369 },
+  { 7, 11724, 11724 }, { 7, 11797, 11797 }, { 7, 11822, 11822 }, { 7, 11824, 11824 }, { 7, 11856, 11856 },
+  { 7, 11923, 11923 }, { 7, 11929, 11929 }, { 7, 11932, 11932 }, { 7, 11939, 11939 }, { 7, 12025, 12025 },
+  { 7, 12200, 12200 }, { 7, 12201, 12201 }, { 7, 12262, 12262 }, { 7, 12294, 12294 }, { 7, 12305, 12305 },
+  { 7, 12307, 12307 }, { 7, 12350, 12350 }, { 7, 12553, 12553 }, { 7, 12554, 12554 }, { 7, 12588, 12588 },
+  { 7, 12589, 12589 }, { 7, 12893, 12893 }, { 7, 12894, 12894 }, { 7, 12933, 12933 }, { 7, 12960, 12960 },
+  { 7, 12961, 12961 }, { 7, 12966, 12966 }, { 7, 13001, 13001 }, { 7, 13002, 13002 }, { 7, 13043, 13043 },
+  { 7, 13044, 13044 }, { 7, 13125, 13125 }, { 7, 13126, 13126 }, { 7, 13167, 13167 }, { 7, 13168, 13168 },
 };
 // And with the water's line near the screen's bottom, the interrupt itself can come so late that none of the lines
 // under it gets the colours under water or the waves: measured the same way, it runs after the screen's last line.
-static const struct { uint8_t level; uint16_t time; } LATE_INTERRUPTS[] = { { 7, 8310 }, { 7, 8409 } };
+static const struct { uint8_t level; uint16_t time; } LATE_INTERRUPTS[] = { { 7, 8310 }, { 7, 8409 }, { 7, 13234 }, };
+// And the other way: with the boss beaten, the next frame's tasks can be done before the line comes, so the colours under
+// water the interrupt loads are the ones the next frame's palette animations made (notes/the-colours-under-water-can-be-
+// the-next-frames.md). These are the stage clock values on which that shows, measured the same way.
+static const struct { uint8_t level; uint16_t first, last; } EARLY_COLOURS[] = {
+  { 7, 13048, 13048 }, { 7, 13114, 13126 }, { 7, 13189, 13201 }
+};
 
 /** VCountIntr_8011ACC: from its line down the colours under water and no snow, and the background's waves through
  *  the H-blank DMA from the buffer the water's task wrote. */
 static void water_vcount(void) {
-  memcpy(gba_pal, underColours + 256, UNDER_BG_COLOURS * 2);
+  if (water.early) {
+    uint16_t next[256];
+    act_next_bg_palette(next);
+    mask_palette(next, next, water.mask);
+    memcpy(gba_pal, next, UNDER_BG_COLOURS * 2);
+  } else memcpy(gba_pal, underColours + 256, UNDER_BG_COLOURS * 2);
   memcpy(gba_pal + 256, underColours, 512);
   gba_update_colors();
   gba_write(REG_DISPCNT, gba_io[REG_DISPCNT >> 1] & ~0x100);
@@ -136,6 +155,9 @@ void water_task(int time, int camX, int camY) {
   water.late = 0;
   for (unsigned i = 0; i < sizeof LATE_WAVES / sizeof *LATE_WAVES; i++)
     if (LATE_WAVES[i].level == act.stage.level && time >= LATE_WAVES[i].first && time <= LATE_WAVES[i].last) water.late = 1;
+  water.early = 0;
+  for (unsigned i = 0; i < sizeof EARLY_COLOURS / sizeof *EARLY_COLOURS; i++)
+    if (EARLY_COLOURS[i].level == act.stage.level && time >= EARLY_COLOURS[i].first && time <= EARLY_COLOURS[i].last) water.early = 1;
 
   if ((uint8_t)(water.seen - 1) < 160 - 1) {
     Sprite *s = &water.surface;

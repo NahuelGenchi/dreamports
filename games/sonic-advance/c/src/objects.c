@@ -286,4 +286,6 @@ void objects_start(int level, int paletteAnimations) {
 
 void objects_run_before_camera(void) { act_tasks_run(0, PRIORITY_CAMERA); }
 void objects_run_early(void) { act_tasks_run(PRIORITY_CAMERA, PRIORITY_SONIC); }
+void objects_run_before_hud(void) { act_tasks_run(PRIORITY_CAMERA, PRIORITY_HUD); }
+void objects_run_after_hud(void) { act_tasks_run(PRIORITY_HUD, PRIORITY_SONIC); }
 void objects_run_late(void) { act_tasks_run(PRIORITY_SONIC, 0x10000); }

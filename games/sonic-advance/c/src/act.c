@@ -166,18 +166,27 @@ static void parse_palette_animation(PaletteAnim *p, int anim) {
     }
   }
 }
-static void palette_animation_task(Task *t) {
-  PaletteAnim *p = (PaletteAnim *)t->data;
+// one frame of a palette animation, loading its colours into `pal`
+static void palette_animation_step(PaletteAnim *p, uint16_t *pal) {
   if (p->wait > 0) { p->wait -= 256; return; }
   if (p->frame < 0) return;
   p->shown = p->frame;
   for (int l = 0; l < p->loadCount[p->frame]; l++) {
     int entry = p->loads[p->frame][l].entry, count = p->loads[p->frame][l].count, insert = p->loads[p->frame][l].insert;
-    for (int i = 0; i < count; i++) e.bgPalette[(insert + i) & 0xFF] = (uint16_t)rom_u16(sprites.palettes + (uint32_t)entry * 32 + (uint32_t)i * 2);
-    e.flags |= FLAGS_UPDATE_BG_PALETTES;
+    for (int i = 0; i < count; i++) pal[(insert + i) & 0xFF] = (uint16_t)rom_u16(sprites.palettes + (uint32_t)entry * 32 + (uint32_t)i * 2);
+    if (pal == e.bgPalette) e.flags |= FLAGS_UPDATE_BG_PALETTES;
   }
   p->wait += (p->delays[p->frame] - 1) * 256;
   p->frame = p->frame + 1 < p->count ? p->frame + 1 : p->loop;
+}
+static void palette_animation_task(Task *t) { palette_animation_step((PaletteAnim *)t->data, e.bgPalette); }
+// the background's colours as the palette animations will leave them next frame, worked out on copies of them
+void act_next_bg_palette(uint16_t *pal) {
+  memcpy(pal, e.bgPalette, 256 * sizeof *pal);
+  for (int i = 0; i < act.palCount && i < 16; i++) {
+    PaletteAnim p = paletteAnims[i];
+    palette_animation_step(&p, pal);
+  }
 }
 static void card_water_task(Task *t);
 static void start_palette_animations(void) {
@@ -600,8 +609,9 @@ static void act_frame(void) {
   if (camRuns && act.stage.backgroundScroll == 4) ice_mountain_bg_update((int)act.cam.x, (int)act.cam.y, act.tick);
   if (act.stage.backgroundScroll == 1 && act.cam.bgUpdates > 0) casino_background_update();
   if (camRuns) animate_stage_tiles();
-  // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts
-  if (act.frames > 0) objects_run_early();
+  // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts;
+  // those from the HUD's priority on run after it, below
+  if (act.frames > 0) objects_run_before_hud();
   // the title card's task (0x2100) runs before Sonic's and the clock's, so the frame it ends frees the pad and starts
   // the clock; its pieces and fade go over the act, and it sets the display while it shows, after draw_frame
   int cardShows = !act.cardDone;
@@ -611,6 +621,10 @@ static void act_frame(void) {
   }
   // the results' task (0x2100) and its pieces' (0x2120); the frame they end, the next act takes over
   if (results_active() && !results_run()) { go_to_next_level(); return; }
+  // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180), and the objects' tasks from
+  // its priority after it, so an icicle (0x2200) that hurts Sonic takes his rings after the HUD has shown them
+  if (act.cardDone) hud_update(1);
+  if (act.frames > 0) objects_run_after_hud();
   PlayerInput in = {
     .left = (e.input & KEY_LEFT) != 0, .right = (e.input & KEY_RIGHT) != 0,
     .up = (e.input & KEY_UP) != 0, .down = (e.input & KEY_DOWN) != 0,
@@ -630,8 +644,6 @@ static void act_frame(void) {
   // gives him to run off (HOLD_RIGHT)
   if (act.player.ignoreInput)
     in = act.player.heldRight ? (PlayerInput){ .right = 1 } : act.player.heldLeft ? (PlayerInput){ .left = 1 } : (PlayerInput){0};
-  // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180)
-  if (act.cardDone) hud_update(1);
   player_step(&act.player, &in);
   player_animate(&act.player, &in);
   if (act.frames > 0) objects_run_late();

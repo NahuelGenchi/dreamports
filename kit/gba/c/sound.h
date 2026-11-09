@@ -34,6 +34,7 @@ typedef struct {
   int seqTimer, seqStep;
   int muted;              // channels 1 to 4 (bits 0 to 3) left out of the mix
   int hasAt, at;          // with soundMainAt, where in the console's frame the wave voice's next write lands
+  int psgAt;              // with psgAt, where in it the next write to a channel lands, or -1 for at once
   ApuWait wait[APU_WAITS];
   int waits;
 } Apu;
@@ -56,7 +57,7 @@ typedef struct {
   uint32_t playerTable, songTable;
   int players, songs;
   SoundMode mode;
-  int voicesEndOnChip, soundMainAt;
+  int voicesEndOnChip, soundMainAt, psgAt;
 } SoundLayout;
 
 typedef struct { uint8_t type, key, length, panSweep; uint32_t wav; uint8_t attack, decay, sustain, release; } M4aVoice;
