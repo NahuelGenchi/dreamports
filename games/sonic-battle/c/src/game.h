@@ -218,14 +218,6 @@ uint16_t arcTan2(int x, int y);
 void brainReset(int i);
 void brainTick(int i);
 
-// battle.c
-void battleReadyFrame(void);
-void battleReadyAfterWait(void);
-void battleFrame(void);
-void battleAfterWait(void);
-void battleStoryFrame(void);
-void battleStoryAfterWait(void);
-void setBattleMode(int on);
 void queueFrameAtTile(uint32_t sheet, int tile, int frame);
 void queueFighterFrame(uint32_t sheet, int slot, int frame);
 

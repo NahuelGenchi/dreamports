@@ -36,9 +36,8 @@
     ["080127D0","src/moves.c:2"],
     ["08012B98","src/hud.c:4"],
     ["08013214","src/hud.c:4"],
-    ["08015384","src/battle.c:32"],
     ["08015858","src/fightend.c:134"],
-    ["080158C0","src/fightend.c:216"],
+    ["080158C0","src/fightend.c:220"],
     ["08016078","src/core.c:208"],
     ["08016438","src/core.c:138"],
     ["08016684","src/sprites.c:3"],
@@ -60,15 +59,14 @@
     ["0801A228","src/fightend.c:53"],
     ["0801A61C","src/fightend.c:76"],
     ["0801A898","src/fight.c:161"],
-    ["0801AD38","src/battle.c:107"],
+    ["0801AD38","src/fightend.c:2"],
     ["0801AFC4","src/fightend.c:3"],
-    ["0801B394","src/battle.c:70"],
+    ["0801B394","src/fightend.c:3"],
     ["0801BD90","src/fightend.c:3"],
     ["0801C28C","src/moves.c:1937"],
-    ["0801C4BC","src/battle.c:1"],
     ["0801C82C","src/fight.c:207"],
     ["0801C8A4","src/fight.c:208"],
-    ["0801C8F0","src/fightend.c:210"],
+    ["0801C8F0","src/fightend.c:214"],
     ["0801CFC8","src/brain.c:3"],
     ["0801D068","src/brain.c:373"],
     ["0801D188","src/brain.c:394"],
@@ -257,7 +255,6 @@
     ["0x0800d954","src/moves.c:1814"],
     ["0x0800d9a4","src/moves.c:1821"],
     ["0x0800e572","src/moves.c:1737"],
-    ["0x0801b42c","src/battle.c:79"],
-    ["0x0801bb1a","src/fightend.c:211"]
+    ["0x0801bb1a","src/fightend.c:215"]
   ]
 }
