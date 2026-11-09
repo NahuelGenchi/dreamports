@@ -42,7 +42,6 @@
     ["080531E8","src/ui.c:138"],
     ["08053428","src/ui.c:138"],
     ["080535C8","src/ui.c:24"],
-    ["08053888","src/act.c:35"],
     ["08054208","src/ui.c:186"],
     ["08054370","src/ui.c:221"],
     ["080550C4","src/titlecard.c:2"],
@@ -125,13 +124,13 @@
     ["sub_80078D4","src/lines.c:25"],
     ["sub_8007958","src/lines.c:32"],
     ["sub_800FD9C","src/modeselect.c:185"],
-    ["sub_801E4E4","src/act.c:181"],
-    ["sub_801F100","src/act.c:1022"],
-    ["sub_8022190","src/act.c:533"],
-    ["sub_8022B18","src/act.c:387"],
-    ["sub_8022C44","src/act.c:388"],
-    ["sub_802486C","src/act.c:702"],
-    ["Task_8008DCC","src/act.c:849"],
+    ["sub_801E4E4","src/act.c:263"],
+    ["sub_801F100","src/act.c:1141"],
+    ["sub_8022190","src/act.c:606"],
+    ["sub_8022B18","src/act.c:460"],
+    ["sub_8022C44","src/act.c:461"],
+    ["sub_802486C","src/act.c:775"],
+    ["Task_8008DCC","src/act.c:968"],
     ["Task_800F058","src/modeselect.c:313"]
   ]
 }

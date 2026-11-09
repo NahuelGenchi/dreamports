@@ -7,6 +7,7 @@
 #include "sa.h"
 
 #define ACT_LEVEL_X_ZONE 12
+#define ACT_LEVEL_SECRET_BASE_2 3
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
 #define ACT_LEVEL_BLOCKS 8192   // the largest layer, in 96 × 96 px blocks
 #define ACT_TILE_ENTRIES (ACT_TILES * 144)
@@ -22,7 +23,7 @@ typedef struct {
 } Collision;
 
 typedef struct {
-  int level, zone, act, music, hudFlash, cameraStop;
+  int level, zone, act, music, hudFlash, cameraStop, scroll;
   Tilemap front, back, background;
   Collision collision;
   int32_t spawnX, spawnY;

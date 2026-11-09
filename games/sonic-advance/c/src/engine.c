@@ -153,7 +153,7 @@ static void copy16(uint32_t src, uint32_t dest, uint32_t bytes, const uint8_t *f
   memcpy(gba_vram + dest, gba_rom + src, n);
 }
 // ProcessVramGraphicsCopyQueue: 1 KB at a time, each entry's size counted down to 0
-static void copy_graphics(void) {
+void engine_copy_graphics(void) {
   while (gfxCursor != gfxIndex) {
     Graphics *g = gfxQueue[gfxCursor];
     for (uint32_t offset = 0; g->size > 0; offset += COPY_CHUNK) {
@@ -280,7 +280,11 @@ static void process_oam(void) {
     for (uint32_t k = 0; k < e.oamFreeIndex; k++) memmove(&e.oamBuffer[(OAM_ENTRIES - 1 - k) * 4], &e.oamBuffer[(e.oamFreeIndex - 1 - k) * 4], 3 * 2);
     firstPaused = OAM_ENTRIES - e.oamFreeIndex;
     for (uint32_t i = 0; i < firstPaused; i++) hide_oam(i);
-  } else firstPaused = 0;
+  } else {
+    firstPaused = 0;
+    // the entries no sprite took this frame are hidden, as the original's OAM buffer holds no leftovers
+    for (uint32_t i = dst; i < OAM_ENTRIES; i++) hide_oam(i);
+  }
   e.oamFreeIndex = 0;
   memset(orderStart, 0xFF, sizeof orderStart); memset(orderEnd, 0xFF, sizeof orderEnd);
 }
@@ -362,7 +366,7 @@ static void vblank(void) {
   if (e.flags & FLAGS_HBLANK_COPY) copy_hblank_entry(e.primary);
   process_oam();
   memcpy(gba_oam, e.oamBuffer, sizeof e.oamBuffer);
-  copy_graphics();
+  engine_copy_graphics();
   fill_maps();
   for (unsigned i = 0; i < numBgSprites; i++) write_sprite_map(bgSprites[i]);
   numBgSprites = 0;
