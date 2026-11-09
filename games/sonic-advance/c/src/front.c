@@ -60,6 +60,9 @@ static void apply_start_point(void) {
 void front_start_game(void) {
   if (ctx.select) { create_character_select(ctx.character); return; }
   apply_start_point();
+  // a start point that names a level opens that act at once, as the JavaScript page's does, unless it asks to go through
+  // the menus (power), where the course select opens it
+  if (gba_start_point("level") && !gba_start_number("power", 0)) { front_play((int)gba_start_number("level", 0)); return; }
   if (ctx.gameMode == GAME_MODE_TIME_ATTACK || save_unlocked_level(ctx.character) != 0) create_course_select();
   else front_play(-1);
 }
@@ -124,20 +127,21 @@ void front_vs_round(int level, int chao) {
 /** The round the VS menus chose, for the page: its level, or 0 while they are still choosing. */
 EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 
-// The acts in C so far: X Zone and Secret Base act 2, whose course select rows start them with their title cards. A
-// start point's `level` opens any level the C version has, past the card when it asks; every other act, and
-// Options, stops safely where the screen is, as before.
+// The acts in C so far: a start point opens the act it names (level=12 is X Zone), its title card's state run without
+// its pictures; the course select opens the act it chose.
 void front_play(int level) {
+  act_active = 1;
+  destroy_tasks(0x2000, 0x3000);
   int startLevel = (int)gba_start_number("level", -1);
-  if (startLevel < 0) startLevel = level;
-  if (startLevel == ACT_LEVEL_X_ZONE || startLevel == ACT_LEVEL_SECRET_BASE_2 || gba_start_point("level") != NULL) {
-    act_active = 1;
-    destroy_tasks(0x2000, 0x3000);
+  if (startLevel >= 0) {
     act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
-    if (gba_start_point("level") != NULL) act_frame_now();
+    act_frame_now();
+    // the frame the act takes to load went by with the card's, before the recording's first act frame
+    act.stallLoad = 0;
     return;
   }
-  ctx.done = 1;
+  act_start(level < 0 ? 0 : level, -1, 0);
+  act_frame_now();
 }
 void front_start_demo(void) { ctx.done = 1; }
 

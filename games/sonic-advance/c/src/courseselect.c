@@ -145,7 +145,8 @@ void create_course_select(void) {
   screen.tasks[0] = create_task(show_arrows, &screen, 0x2030, 0, NULL);
   update_sprite(&screen.arrow, 0);
   // only link play shows it, but its first frame's tiles and colours load all the same
-  Sprite wait;
+  // static: its tiles are copied at the next VBlank, after this function returns
+  static Sprite wait;
   screen_sprite(&wait, ANIM_VS_MENU_WAIT, OBJ_VRAM + WAIT_TILES_AT);
   wait.x = 120; wait.y = 80; wait.oamFlags = 0x80; wait.frameFlags = 0x2000;
   update_sprite(&wait, 0);

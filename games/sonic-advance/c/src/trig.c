@@ -86,3 +86,33 @@ const int16_t SINE[1280] = {
   16069, 16088, 16107, 16125, 16142, 16159, 16175, 16191, 16206, 16221, 16234, 16248, 16260, 16272, 16284, 16294,
   16305, 16314, 16323, 16331, 16339, 16346, 16353, 16359, 16364, 16368, 16372, 16376, 16379, 16381, 16382, 16383,
 };
+
+// the BIOS's ArcTan (the series SWI 0x0A runs, after mGBA's reimplementation): the angle of a ratio `i` in Q2.14
+static int arc_tan(int i) {
+  int a = -((i * i) >> 14);
+  int b = ((0xA9 * a) >> 14) + 0x390;
+  b = ((b * a) >> 14) + 0x91C;
+  b = ((b * a) >> 14) + 0xFB6;
+  b = ((b * a) >> 14) + 0x16AA;
+  b = ((b * a) >> 14) + 0x2081;
+  b = ((b * a) >> 14) + 0x3651;
+  b = ((b * a) >> 14) + 0xA2F9;
+  return (i * b) >> 16;
+}
+
+/** ArcTan2: the angle of (x, y) in 65536 steps a turn, y pointing down; x and y are 16-bit. */
+int arc_tan2(int x, int y) {
+  int r;
+  if (!y) r = x >= 0 ? 0 : 0x8000;
+  else if (!x) r = y >= 0 ? 0x4000 : 0xC000;
+  else if (y >= 0) {
+    if (x >= 0 && x >= y) r = arc_tan((y << 14) / x);
+    else if (x < 0 && -x >= y) r = arc_tan((y << 14) / x) + 0x8000;
+    else r = 0x4000 - arc_tan((x << 14) / y);
+  } else {
+    if (x <= 0 && -x > -y) r = arc_tan((y << 14) / x) + 0x8000;
+    else if (x > 0 && x >= -y) r = arc_tan((y << 14) / x) + 0x10000;
+    else r = 0xC000 - arc_tan((x << 14) / y);
+  }
+  return r & 0xFFFF;
+}
