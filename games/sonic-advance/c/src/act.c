@@ -1104,9 +1104,15 @@ static void act_frame(void) {
     destroy_tasks(0, 0xFFFF);
     clear_queues();
     stop_all_songs();
-    actFromResults = 1;
-    act_start(level + 1, -1, 0);
-    act_frame_now();
+    // the next act, when this version has it; another act stops where the results left the screen, as the menus do
+    int next = level + 1;
+    if (next == 0 || next == 3 || next == 12) {
+      actFromResults = 1;
+      if (next == 0) act_start(next, -1, 0);
+      else { opening_start(next, -1, 0); opening_frame_now(); }
+    } else {
+      act_active = 0;
+    }
     return;
   }
   camera_update(&act.cam, &act.player);
