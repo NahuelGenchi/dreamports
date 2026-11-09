@@ -12,6 +12,27 @@
 #define KEEP 0x0807A37Cu
 #define SPREAD 0x0807A77Cu
 
+// the cycles 0x08020978 takes, as mGBA counts its instructions: a letter's start, each row's turn of the loop, and
+// each stretch of pixels a row writes, the first column's and the next two's
+#define LETTER_CYCLES 173
+#define ROW_CYCLES 122
+#define FIRST_CYCLES 62
+#define NEXT_CYCLES 68
+
+// a text's tokens: a new line, nothing, a colour that follows, a token skipped with the one after it, letters with no
+// width, and the end
+#define NEW_LINE 0xFFFD
+#define NOTHING 0xFFFC
+#define COLOUR 0xFFFB
+#define SKIP_ONE 0xFFFA
+#define SKIP_TWO 0xFFF9
+#define NO_WIDTH 0xFFF8
+#define NO_WIDTH_TWO 0xFFF7
+#define END 0xFFFE
+// 0x08020b74's colours: the letters' and their shadows'
+#define TEXT_COLOUR 8
+#define TEXT_SHADOW 9
+
 static int textTo, textEnd, textStride, textRows, textBlock;
 
 /** 0x08020ecc: the stretch of VRAM at `to`, `width` by `height` tiles, that the next letters go into. */
@@ -45,12 +66,46 @@ int putGlyph(int x, int y, int glyph, int colour) {
   int shift = x & 7;
   uint32_t source = GLYPHS - CARTRIDGE + ((uint32_t)(glyph & 0x7FFF) << 5);
   int count = textRows <= y ? 0 : (textRows - y < 16 ? textRows - y : 16);
+  g.text_cycles += LETTER_CYCLES;
   for (int i = 0; i < count; i++) {
     int at = textTo + (((x >> 3) * textStride) + y + i) * 4;
     uint8_t first = gba_rom[source + (uint32_t)i * 2], second = gba_rom[source + (uint32_t)i * 2 + 1];
+    // this row's turn of the loop, and each stretch of pixels it writes
+    g.text_cycles += ROW_CYCLES + ((first << shift) & 0xFF ? FIRST_CYCLES : 0)
+      + (((first >> (8 - shift)) | (second << shift)) & 0xFF ? NEXT_CYCLES : 0)
+      + ((second >> (8 - shift)) & 0xFF ? NEXT_CYCLES : 0);
     putPixels(at, (first << shift) & 0xFF, colour);
     putPixels(at + textStride * 4, ((first >> (8 - shift)) | (second << shift)) & 0xFF, colour);
     putPixels(at + textBlock * 4, (second >> (8 - shift)) & 0xFF, colour);
   }
   return glyphWidth(glyph);
+}
+
+static int isLetter(uint16_t token) { return token != NOTHING && token != NO_WIDTH && token != NO_WIDTH_TWO; }
+
+/** 0x08020ad0: how wide a text in the cartridge is, in pixels, the width of its last line. */
+int textWidth(uint32_t text) {
+  int width = 0;
+  for (uint32_t at = text; read16(at) != END; at += 2) {
+    uint16_t token = read16(at);
+    if (token == NEW_LINE) width = 0;
+    else if (token == COLOUR || token == SKIP_ONE || token == SKIP_TWO) at += 2;
+    else if (isLetter(token)) width += glyphWidth(token);
+  }
+  return width;
+}
+
+/** 0x08020b74: a text in the cartridge into the stretch from `x` and `y`, each letter over its shadow. */
+void putText(int x, int y, uint32_t text) {
+  int colour = TEXT_COLOUR, left = x, top = y;
+  for (uint32_t at = text; read16(at) != END; at += 2) {
+    uint16_t token = read16(at);
+    if (token == NEW_LINE) { left = 0; top += 16; }
+    else if (token == COLOUR) { at += 2; colour = read16(at); }
+    else if (token == SKIP_ONE || token == SKIP_TWO) at += 2;
+    else if (isLetter(token)) {
+      putGlyph(left + 1, top + 1, token, TEXT_SHADOW);
+      left += putGlyph(left, top, token, colour);
+    }
+  }
 }
