@@ -121,7 +121,7 @@ test('a clip\'s measures go beside it, and none for a clip prove didn\'t measure
 test('a clip shared before that breaks a rule now leaves the branch\'s clips', () => {
   const text = '{"frames": 2000, "held": []}';
   const measures = (clip = {}) => ({ recording: 'r', recordingFile: 'games/a-game/proof/recordings/r.json', recordingSha1: recordingHash(text), sideBySide: true, base: 'b'.repeat(40),
-    measures: { frames: 300, seconds: 5, apart: 0, oneColour: 0, same: 0, changed: { frame: 10, why: 'w' }, newFrames: 290, base: 'b'.repeat(40), ...clip } });
+    measures: { frames: 300, seconds: 5, apart: 0, differing: 0, oneColour: 0, same: 0, changed: { frame: 10, why: 'w' }, newFrames: 290, base: 'b'.repeat(40), ...clip } });
   let saved = keepClip(null, 'feat/1-a', 'good', 'g', measures());
   saved = keepClip(saved, 'feat/1-a', 'title', 't', measures({ changed: null, newFrames: 0 }));
   saved = keepClip(saved, 'feat/1-a', 'old', 'o');

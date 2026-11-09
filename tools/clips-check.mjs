@@ -1,6 +1,7 @@
 // node tools/clips-check.mjs [<file>]: the pull request's check of its clips (.github/workflows/clips.yml). It reads
 // the pull request's text, from <file> or PR_BODY, and every clip it links, as share publishes them: the video, and the
-// measures share puts beside it. It fails when a clip has no measures, as one share didn't make, when the video isn't
+// measures share puts beside it. It fails when a clip has no measures, as one share didn't make, when it shows the
+// Dreamport on its own (#1039), when the video isn't
 // the one measured, when the recording measured isn't the pull request's, or when the measures break a rule of
 // docs/STANDARD.md#clips (lib/clips.mjs). With what the pull request changes since CHANGED_FROM, it also fails one that
 // changes the code or recordings of a game main has and links no clip of that game, since #1030: text with no clip
@@ -40,6 +41,8 @@ export async function checkClips(text, { fetched = download, read = path => read
       problems.push(`${link} has no measures beside it, so share didn't make it as it is now: prove the recording, share it, and paste .dreamports/share/clips.md under Clips.`);
       continue;
     }
+    // the Dreamport on its own shows nothing of whether it does what the original does (#1039)
+    if (measures.sideBySide !== true) problems.push(`${link} shows the Dreamport on its own, and a pull request's clip shows the original next to it, every frame matching: share the side by side clip prove made.`);
     const video = await fetched(link, MOST.mp4);
     const hash = video && createHash('sha1').update(video).digest('hex');
     if (!video) problems.push(`${link} can't be fetched.`);

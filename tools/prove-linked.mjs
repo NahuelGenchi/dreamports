@@ -130,7 +130,9 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
     const pictures = clipAt.map(f => Array.from({ length: players }, (_, p) => first.pictures.get(`${f + 1}:${p}`)));
     const oneColour = pictures.filter(([own]) => own.every(c => c === own[0])).length;
     const same = pictures.filter((now, i) => i > 0 && clipAt[i - 1] === clipAt[i] - 1 && now.every((own, p) => own.every((c, at) => c === pictures[i - 1][p][at]))).length;
-    const clip = { from: clipAt[0], to: clipAt.at(-1), frames: clipAt.length, seconds: Math.round(length * 100) / 100, apart, oneColour, same, changed, newFrames: newFramesIn(clipAt, changed), base: main?.base ?? null, bytes: clipFile.length };
+    // the clip's frames that differ from the original's, which share won't let a pull request show
+    const differing = new Set(differ);
+    const clip = { from: clipAt[0], to: clipAt.at(-1), frames: clipAt.length, seconds: Math.round(length * 100) / 100, apart, differing: clipAt.filter(f => differing.has(f)).length, oneColour, same, changed, newFrames: newFramesIn(clipAt, changed), base: main?.base ?? null, bytes: clipFile.length };
     const report = { recording: name, recordingFile, recordingSha1: recordingHash(text), frames, players, clip };
     writeFileSync(join(out, 'report.json'), JSON.stringify(report, null, 2) + '\n');
     problems = clipProblems(report, text);
