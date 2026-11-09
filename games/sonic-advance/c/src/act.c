@@ -446,9 +446,12 @@ int act_level_ported(int level) {
   return level == ACT_LEVEL_SECRET_BASE_2 || level == ACT_LEVEL_CASINO_PARADISE_1 || level == ACT_LEVEL_X_ZONE;
 }
 
-// GoToNextLevel, once the save is written: the next act, made inside the task as the course select makes one
+// GoToNextLevel, once the save is written: the next act, made inside the task as the course select makes one. A next
+// act that isn't in C yet stops the game there, with the screen as it was, as the front end does (front.c), rather
+// than load with another act's music and background
 static int nextLevel;
 static void next_act(void) {
+  if (!act_level_ported(nextLevel)) { act_active = 0; ctx.done = 1; return; }
   act_start(nextLevel, -1, 0);
   act_frame_now();
 }
