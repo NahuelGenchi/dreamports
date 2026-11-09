@@ -84,6 +84,16 @@ static int winnerSong(int character) {
   }
 }
 
+/** 0x080207ec: the fade to black over `frames` frames, from the ending to the result. */
+static void startFadeOut(int frames) {
+  queueRegister(0x50, 0xFF);   // BLDCNT: every layer, brightness down
+  queueRegister(0x54, 0);
+  write8(0x03004B04, 1);
+  write16(0x03004B00, 0);
+  int step = 0x7FFF / (frames ? frames : 1);
+  write16(0x03004B08, (uint16_t)(step ? step : 1));
+}
+
 /** The drawing every fight frame does after its wait: the view on the player, the HUD, the fighters and the arena. */
 static void drawFightFrameHud(int player, int hud) {
   followFighter(player);
@@ -190,6 +200,7 @@ void battleAfterWait(void) {
 void endingFrame(void) {
   for (int i = 0; i < 4; i++) forgetKeys(i);
   if (countSlides()) {
+    startFadeOut(32);   // 0x080207ec(32), the fade the way to the result uses
     g.callback = resultTransition;
     int winner = fightWinner(read8(SETUP_ + 4));
     write8(RESULT_WINNER, (uint8_t)winner);
@@ -253,5 +264,3 @@ void resultTransitionAfterWait(void) {
   drawFightFrameHud(shown == 255 ? player : shown, hudMode());
 }
 
-/** The result screen is not part of this foundation and is not ported: reaching it here stops the game. */
-void resultScreen(void) { unsupported(); }

@@ -255,6 +255,7 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
   int direct = (int)gba_start_number("direct", 0);
   if (battle) {
     // the rule and score Battle's screen leaves, and a full Ichikoro gauge for the player, as a start point may give
+    write32(0x03005264, 1);   // the choice the main menu last made, which picks the result screen's tiles and palette
     write8(SETUP_ + 4, 2);
     write8(SETUP_ + 6, 1);
     write8(SETUP_ + 125, 1);
@@ -270,6 +271,7 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
     // a start point at the fight's end replays the way there before the recording opens: the choice screen's
     // three A presses at 70, 100 and 130, then the fight's own frames up to the knockout. Its last frame, which finds
     // the fight won, runs here too, so the recording opens on the ending's first frame as the original does.
+    write32(0x03005264, 1);   // the choice the main menu last made, which picks the result screen's tiles and palette
     g.callback = choosing;
     g.after_wait = 0;
     runFightSetup(400);

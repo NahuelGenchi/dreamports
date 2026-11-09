@@ -1,7 +1,7 @@
 {
-  "about": "A fight's end, from the frame the knockout leaves through the Game Set banner: the start point opens where the fight's own frame finds it won, with the rival out of health and the player's point on, and it ends the fight.",
+  "about": "A fight's end, from the frame the knockout leaves through the Game Set banner and the result screen's fade in: the start point opens where the fight's own frame finds it won, with the rival out of health and the player's point on, and the recording ends as the result screen's background has faded in.",
   "start": "fight=training&vblanks=1209&end=0",
-  "frames": 242,
+  "frames": 300,
   "held": [
     [
       0,
