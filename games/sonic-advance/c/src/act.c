@@ -730,7 +730,7 @@ void act_start(int level, int cardSkip, int preFrames) {
 
   // the title card's graphics. An act a start point opens runs the card to its end and its few frames after it with
   // no picture, as its recording starts there; one the course select opens shows the card from its first frame
-  titlecard_start(level, 0);
+  titlecard_start(level, ctx.character);
   objects_start(level, act.stage.paletteCount > 0);
   if (gba_start_point("level")) {
     pre_run(cardSkip, preFrames);
