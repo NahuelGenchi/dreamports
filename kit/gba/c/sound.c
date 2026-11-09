@@ -282,6 +282,14 @@ static void render(int count) {
 #define EXPORT(name)
 #endif
 
+/** `frames` frames of the sound engine with nothing rendered, for a start point that plays frames of its own (a
+ *  recording's opening): the engine runs them as it would with the game, and their samples are let go, as the
+ *  JavaScript kit's createSound().skipFrames. */
+EXPORT("dp_sound_skip_frames") void dp_sound_skip_frames(int frames) {
+  if (!running) return;
+  for (int i = 0; i < frames; i++) frame();
+}
+
 /** Whether the game has sound: it found the engine's tables and started it. */
 EXPORT("dp_sound_running") int dp_sound_running(void) { return running; }
 /** From now on the game's calls wait for the page to take them (dp_sound_taken), for the audio thread's copy. */

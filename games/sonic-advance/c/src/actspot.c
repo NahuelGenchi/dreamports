@@ -103,11 +103,7 @@ void spotlights_frame(void) {
     if (x > FADE_X) spot.fading = 1;
     else if (act.player.dead) { gone(); return; }
   }
-  // The beams write the table after the one shown this frame: the V-blank shows what they wrote last frame,
-  // as the original's VBlankIntr copies the table before ClearOamBuffer swaps it.
-  uint32_t shown = e.primary;
-  e.primary ^= HBLANK_BUFFER;
+  // the beams write this frame's half of the table, which the V-blank shows
   beam_frame(&spot.beams[0]);
   beam_frame(&spot.beams[1]);
-  e.primary = shown;
 }

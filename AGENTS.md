@@ -28,6 +28,7 @@ Commands: `npm run dev`, `npm run test:game`, `npm run check`, `npm run build`, 
 ## Working well here
 
 - Start from the active issue, then read only the files involved.
+- Keep files you make for yourself, such as scripts, builds and frame dumps, in `.dreamports/tmp/`, never in /tmp, and delete big ones once read: a full /tmp stops every command on the computer.
 - Keep the README and site text plain enough for someone who has never used GitHub.
 - The site never hosts ROMs, game files or extracted game assets, and only links to projects that require players to bring their own legal copy.
 - Pictures of games on the site are only real captures of play, chosen by a person when one is there, short and silent, which the team looks at before they appear (`docs/STANDARD.md#a-games-capture`). Nothing drawn, generated or reconstructed, ever. Clips that show the original next to a Dreamport, made by `prove`, may appear in pull requests, and nowhere else (`docs/STANDARD.md#clips`). Never use publishers' logos, box art or characters in the site's own design.

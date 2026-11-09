@@ -48,11 +48,15 @@ export function hudTask(mp, anims) {
       show(ctx, set[(ss >> 4) & 0xF], 32, 32);
       show(ctx, set[ss & 0xF], 40, 32);
       show(ctx, set[bcd(minutes % 60) & 0xF], 16, 32);
-      // each player's Chao, by link id
-      for (let i = 0; i < 4 && i < mp.count; i++) {
+      // each player's Chao, by link id; in team play a counter for each team, with its members' Chao added
+      const counts = [];
+      if (mp.teamPlay) {
+        for (let team = 0; team < 2; team++) counts.push(mp.charRings.reduce((sum, n, i) => (i < mp.count && mp.teams[i] === team ? sum + n : sum), 0));
+      } else for (let i = 0; i < mp.count && i < 4; i++) counts.push(mp.charRings[i]);
+      for (let i = 0; i < counts.length; i++) {
         const x = i * 20 + 8;
         show(ctx, backdrop, x, 8);
-        const n = bcd(mp.charRings[i]);
+        const n = bcd(counts[i]);
         if (n >= 0x100) {
           show(ctx, digits[(n >> 8) & 0xF], x + 3, 14);
           show(ctx, digits[(n >> 4) & 0xF], x + 11, 14);
@@ -202,19 +206,28 @@ const WAIT = 240, FADE_STEP = 64, FADE_END = 0x1000;
 export function finishTask(mp, game, anims, done) {
   const { world, state } = game;
   world.playSound(SONG.ROUND_OVER);
-  const counts = mp.charRings.slice(0, 4), order = [0, 1, 2, 3];
-  while (counts.length < 4) counts.push(0);
-  for (let i = 0; i < 4; i++) {
-    for (let j = 0; j < 3 - i; j++) {
-      if (counts[j] < counts[j + 1]) {
-        [counts[j], counts[j + 1]] = [counts[j + 1], counts[j]];
-        [order[j], order[j + 1]] = [order[j + 1], order[j]];
+  if (mp.teamPlay) {
+    if (mp.goalWinner === undefined) {
+      // the team with more Chao wins, both its players; a tie is a draw for all
+      const sums = [0, 0];
+      for (let i = 0; i < mp.count; i++) sums[mp.teams[i]] += mp.charRings[i];
+      for (let i = 0; i < mp.count; i++) mp.ranks[i] = sums[0] === sums[1] ? 4 : mp.teams[i] === (sums[0] > sums[1] ? 0 : 1) ? 0 : 1;
+    }
+  } else {
+    const counts = mp.charRings.slice(0, 4), order = [0, 1, 2, 3];
+    while (counts.length < 4) counts.push(0);
+    for (let i = 0; i < 4; i++) {
+      for (let j = 0; j < 3 - i; j++) {
+        if (counts[j] < counts[j + 1]) {
+          [counts[j], counts[j + 1]] = [counts[j + 1], counts[j]];
+          [order[j], order[j + 1]] = [order[j + 1], order[j]];
+        }
       }
     }
-  }
-  for (let i = 0; i < 4; i++) {
-    if (i !== 0) mp.ranks[order[i]] = counts[i] === counts[0] ? 4 : 1;
-    else mp.ranks[order[0]] = counts[0] === counts[1] ? 4 : 0;
+    for (let i = 0; i < 4; i++) {
+      if (i !== 0) mp.ranks[order[i]] = counts[i] === counts[0] ? 4 : 1;
+      else mp.ranks[order[0]] = counts[0] === counts[1] ? 4 : 0;
+    }
   }
   for (let i = 0; i < mp.count; i++) game.tasks.add(resultTask(mp, i, mp.ranks[i] & 0xFF, anims), 0x2010);
   let frame = 0, phase = 'wait';

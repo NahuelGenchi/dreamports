@@ -6,8 +6,9 @@
 
 #include "sa.h"
 
-#define ACT_LEVEL_SECRET_BASE_1 2
 #define ACT_LEVEL_X_ZONE 12
+#define ACT_LEVEL_SECRET_BASE_1 2
+#define ACT_LEVEL_SECRET_BASE_2 3
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
 #define ACT_LEVEL_BLOCKS 8192   // the largest layer, in 96 × 96 px blocks
 #define ACT_TILE_ENTRIES (ACT_TILES * 144)
@@ -22,15 +23,8 @@ typedef struct {
   uint16_t levelX, levelY, width, height;
 } Collision;
 
-// where the background scrolls, as backgrounds.js names each zone's update: only the ones the acts in C use
-enum { BG_SCROLL_NONE, BG_SCROLL_SECRET_BASE_1, BG_SCROLL_SECRET_BASE_2, BG_SCROLL_X_ZONE };
-
 typedef struct {
-  int level, zone, act, music, hudFlash;
-  int backgroundScroll;      // BG_SCROLL_*
-  int spotlights;            // Secret Base act 1's, made after the stage init (engine/acts.js)
-  const uint16_t *paletteAnimations;
-  int paletteAnimationCount;
+  int level, zone, act, music, hudFlash, scroll;
   Tilemap front, back, background;
   Collision collision;
   int32_t spawnX, spawnY;
@@ -74,6 +68,9 @@ void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_frame_now(void);
 void act_task(Task *t);
+// Secret Base act 1's spotlights (engine/spotlights.js), in actspot.c
+void spotlights_start(void);
+void spotlights_frame(void);
 uint32_t front_frame(void);
 
 #endif
