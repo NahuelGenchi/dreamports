@@ -251,12 +251,6 @@ void queueDecompress(uint32_t to, uint32_t from) {
   }
 }
 
-static void runCopies(void);
-
-/** Applies what is queued for the video memory now, for a frame that draws after its logic and must still show
- * what the original's V-blank copies before it draws. */
-void applyCopies(void) { runCopies(); }
-
 static void runCopies(void) {
   for (int i = 0; i < g.copy_count; i++) {
     Copy copy = g.copies[i];

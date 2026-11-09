@@ -2,8 +2,8 @@
 // original's brain at 0x03003db0 (24 bytes each), written from the original's instructions: 0x0801d5d4 runs one frame of
 // a brain, 0x0801cfc8 plays the keys a brain script holds, and 0x0801f578 reads the condition lists that pick a thought.
 // The scripts and condition lists stay in the player's copy, read by address, as the original reads them.
-// Its proof is not here yet: Battle's own path needs its choice screen and fight camera in C first, and the recording
-// that called this from Training's frame was removed because it made the original run a program no player could see.
+// Training's frame never calls this: only Battle's and Story's frames do. Their choice screen and fight camera are not
+// in C yet, so there is no recording of it without changing the original's own program, which the proof does not allow.
 
 #include "game.h"
 
