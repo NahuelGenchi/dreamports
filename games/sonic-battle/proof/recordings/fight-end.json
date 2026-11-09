@@ -1,0 +1,450 @@
+{
+  "about": "A fight's end, from the frame the knockout leaves through the Game Set banner and the result screen's fade in: the start point opens where a real Battle fight's own frame finds it won, with the rival out of health, the player's point on, and the blast a real knockout leaves in the things, and the recording ends as the result screen's background has faded in.",
+  "start": "fight=battle&vblanks=1209&end=0",
+  "frames": 300,
+  "held": [
+    [
+      0,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 0,
+      "frames": 1654,
+      "held": [
+        [
+          0,
+          []
+        ],
+        [
+          747,
+          [
+            "START"
+          ]
+        ],
+        [
+          748,
+          []
+        ],
+        [
+          881,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          882,
+          []
+        ],
+        [
+          921,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          922,
+          []
+        ],
+        [
+          961,
+          [
+            "RIGHT"
+          ]
+        ],
+        [
+          962,
+          []
+        ],
+        [
+          1001,
+          [
+            "A"
+          ]
+        ],
+        [
+          1002,
+          []
+        ],
+        [
+          1201,
+          [
+            "START"
+          ]
+        ],
+        [
+          1202,
+          []
+        ],
+        [
+          1254,
+          []
+        ],
+        [
+          1324,
+          [
+            "A"
+          ]
+        ],
+        [
+          1326,
+          []
+        ],
+        [
+          1354,
+          [
+            "A"
+          ]
+        ],
+        [
+          1356,
+          []
+        ],
+        [
+          1384,
+          [
+            "A"
+          ]
+        ],
+        [
+          1386,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 778,
+          "address": "03002170",
+          "bytes": 2,
+          "value": 1
+        },
+        {
+          "frame": 1653,
+          "address": "03002030",
+          "bytes": 4,
+          "value": 134329237
+        },
+        {
+          "frame": 1653,
+          "address": "0300169D",
+          "bytes": 1,
+          "value": 1
+        },
+        {
+          "frame": 1653,
+          "address": "03001624",
+          "bytes": 1,
+          "value": 2
+        },
+        {
+          "frame": 1653,
+          "address": "03001626",
+          "bytes": 1,
+          "value": 1
+        },
+        {
+          "frame": 1653,
+          "address": "03001653",
+          "bytes": 1,
+          "value": 1
+        },
+        {
+          "frame": 1653,
+          "address": "03001CD3",
+          "bytes": 1,
+          "value": 72
+        },
+        {
+          "frame": 1653,
+          "address": "03001CD5",
+          "bytes": 1,
+          "value": 1
+        },
+        {
+          "frame": 1653,
+          "address": "03001DFB",
+          "bytes": 1,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "03001D50",
+          "bytes": 2,
+          "value": 253
+        },
+        {
+          "frame": 1653,
+          "address": "0300184C",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "03001890",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "030018D4",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "03001918",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "0300195C",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "030019A0",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "030019E4",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "03001A28",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "03001A6C",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "03001AB0",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "03001AF4",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "030017D0",
+          "bytes": 2,
+          "value": 256
+        },
+        {
+          "frame": 1653,
+          "address": "030017D2",
+          "bytes": 2,
+          "value": 65282
+        },
+        {
+          "frame": 1653,
+          "address": "030017D4",
+          "bytes": 2,
+          "value": 1
+        },
+        {
+          "frame": 1653,
+          "address": "030017D6",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "030017D8",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "030017DA",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "030017DC",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "030017DE",
+          "bytes": 2,
+          "value": 2
+        },
+        {
+          "frame": 1653,
+          "address": "030017E0",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "030017E2",
+          "bytes": 2,
+          "value": 71
+        },
+        {
+          "frame": 1653,
+          "address": "030017E4",
+          "bytes": 2,
+          "value": 106
+        },
+        {
+          "frame": 1653,
+          "address": "030017E6",
+          "bytes": 2,
+          "value": 32
+        },
+        {
+          "frame": 1653,
+          "address": "030017E8",
+          "bytes": 2,
+          "value": 9
+        },
+        {
+          "frame": 1653,
+          "address": "030017EA",
+          "bytes": 2,
+          "value": 65535
+        },
+        {
+          "frame": 1653,
+          "address": "030017EC",
+          "bytes": 2,
+          "value": 65535
+        },
+        {
+          "frame": 1653,
+          "address": "030017EE",
+          "bytes": 2,
+          "value": 65535
+        },
+        {
+          "frame": 1653,
+          "address": "030017F0",
+          "bytes": 2,
+          "value": 65535
+        },
+        {
+          "frame": 1653,
+          "address": "030017F2",
+          "bytes": 2,
+          "value": 65520
+        },
+        {
+          "frame": 1653,
+          "address": "030017F4",
+          "bytes": 2,
+          "value": 16
+        },
+        {
+          "frame": 1653,
+          "address": "030017F6",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "030017F8",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "030017FA",
+          "bytes": 2,
+          "value": 65512
+        },
+        {
+          "frame": 1653,
+          "address": "030017FC",
+          "bytes": 2,
+          "value": 65520
+        },
+        {
+          "frame": 1653,
+          "address": "030017FE",
+          "bytes": 2,
+          "value": 8
+        },
+        {
+          "frame": 1653,
+          "address": "03001800",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "03001802",
+          "bytes": 2,
+          "value": 3
+        },
+        {
+          "frame": 1653,
+          "address": "03001804",
+          "bytes": 2,
+          "value": 259
+        },
+        {
+          "frame": 1653,
+          "address": "03001806",
+          "bytes": 2,
+          "value": 256
+        },
+        {
+          "frame": 1653,
+          "address": "03001808",
+          "bytes": 2,
+          "value": 138
+        },
+        {
+          "frame": 1653,
+          "address": "0300180A",
+          "bytes": 2,
+          "value": 60844
+        },
+        {
+          "frame": 1653,
+          "address": "0300180C",
+          "bytes": 2,
+          "value": 60728
+        },
+        {
+          "frame": 1653,
+          "address": "0300180E",
+          "bytes": 2,
+          "value": 0
+        },
+        {
+          "frame": 1653,
+          "address": "03001810",
+          "bytes": 2,
+          "value": 512
+        },
+        {
+          "frame": 1653,
+          "address": "03001812",
+          "bytes": 2,
+          "value": 1
+        }
+      ],
+      "about": "A name already saved, the main menu's right and A for Battle, the Battle screen's picks, then the fight's way to the knockout, whose frame the start point opens on with the blast a real knockout leaves in the things."
+    }
+  ]
+}
