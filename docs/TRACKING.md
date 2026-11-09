@@ -73,4 +73,4 @@ GitHub keeps only the newest waiting run in a concurrency group. Runs started by
 
 ## Enforcement
 
-The workflow does not block anything. The **main protection** branch ruleset does: every change to `main` goes through a pull request, and `main` can't be force-pushed or deleted. No approving review is required, so the owner can merge their own PRs. The ruleset was set up in #1.
+The workflow does not block anything. The **main protection** branch ruleset does: every change to `main` goes through a pull request, and `main` can't be force-pushed or deleted. No approving review is required, so the owner can merge their own PRs. The ruleset was set up in #1. A second ruleset, **main checks**, keeps a pull request from merging until its *Check* and *Clips* checks have passed, as GitHub Actions reports them, since #1033, so no way of merging skips them. GitHub lets no app past it on a repository a person owns, and it holds the runs on the Readme workflow's own pull request for approval, as it treats the Actions bot like a first-time contributor, so that workflow approves them and merges once *Check* and *Clips* pass.

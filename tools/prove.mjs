@@ -357,8 +357,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const newly = wasDifferent ? stretchesOf(different.filter(f => !wasDifferent.has(f))) : [];
     const fixed = wasDifferent ? stretchesOf([...wasDifferent].filter(f => f < frames && !differs(f)).sort((a, b) => a - b)) : [];
 
-    // the clip: the recording's, or five seconds from a second before what this step changed, around the first
-    // difference when that's further on, or else the last five seconds (lib/clips.mjs)
+    // the clip: the recording's, or five seconds from a second before what this step changed, ending before the first
+    // frame that differs, or else the last five seconds (lib/clips.mjs)
     const changed = quick ? null : changeOf(differing);
     const clip = clipAt ?? clipWindow({ frames, changed, firstDifference });
     if (!quick && !clipAt) {
@@ -418,9 +418,11 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     await still(clipFrames[clipFrames.length >> 1], 'clip-middle.png', false);
     await still(clipFrames.at(-1), 'clip-end.png', false);
     const length = clipFrames.length * machine.frame[0] / machine.frame[1];
-    // the clip's frames whose halves are in two different places, and those whose Dreamport is one colour or the same
-    // picture as the frame before, which share won't let a pull request show (lib/clips.mjs)
+    // the clip's frames whose halves are in two different places, those that differ from the original's at all, in
+    // picture or sound, and those whose Dreamport is one colour or the same picture as the frame before, which share
+    // won't let a pull request show (lib/clips.mjs)
     const apart = (await page.evaluate(`__proof.apart(${JSON.stringify(clipFrames)})`)).length;
+    const clipDiffering = clipFrames.filter(f => differs(f)).length;
     const { oneColour: plainFrames, same } = await page.evaluate(`__proof.plainness(${JSON.stringify(clipFrames)})`);
     const encode = async alone => {
       let bitrate = Math.round(Math.min(CLIP_RATE, CLIP_TARGET * 8 / length) / (alone ? 2 : 1)), file;
@@ -450,7 +452,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       sound: { heard: madeSound, differs: soundDiffers, firstDifference: firstSound, ...(unheard.size ? { notCompared: stretchesOf([...unheard].sort((a, b) => a - b)) } : {}) },
       ...(wasDifferent ? { sinceLastProven: { differs: newly, firstDifference: newDifference, matches: fixed } } : {}),
       clip: {
-        from: clip[0], to: clip[1], frames: clipFrames.length, seconds: Math.round(length * 100) / 100, apart, oneColour: plainFrames, same,
+        from: clip[0], to: clip[1], frames: clipFrames.length, seconds: Math.round(length * 100) / 100, apart, differing: clipDiffering, oneColour: plainFrames, same,
         changed, newFrames: newFramesIn(clipFrames, changed), base: main?.base ?? null, bytes: file.length, bitrate, dreamport: { bytes: own.file.length, bitrate: own.bitrate },
       },
       ...(showing ? { shows: showing } : {}),
