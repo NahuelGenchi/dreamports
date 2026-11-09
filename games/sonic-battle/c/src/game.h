@@ -216,6 +216,12 @@ void resetBrain(int i);
 void restartBrain(int i);
 int wayToTarget(int i);
 void setBrainLevel(int level);
+uint16_t arcTan2(int x, int y);
+
+// brain.c
+void brainReset(int i);
+void brainTick(int i);
+
 void queueFrameAtTile(uint32_t sheet, int tile, int frame);
 void queueFighterFrame(uint32_t sheet, int slot, int frame);
 
@@ -284,6 +290,14 @@ void resultTransitionAfterWait(void);
 void resultScreen(void);
 
 // fight.js
+void startFadeIn(int frames);
+void setUpFight(void);
+void setUpFighters(void);
+void giveComputerPicks(int i);
+void demoScreen(void);
+void demoSetup(void);
+void demoFrame(void);
+void demoAfterWait(void);
 void startFight(int vblanks, int action, int you, int rival, int arena, int colour, int battle);
 void choosing(void);
 void choosingAfterWait(void);

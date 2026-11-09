@@ -431,12 +431,6 @@ static void titleQueueSprites(void) {
   copyAtVblank();
 }
 
-/** What follows neither screen is ported yet: the screen goes black and waits there. */
-static void afterTitle(void) {
-  for (int i = 0; i < 512; i++) gba_pal[i] = 0;
-  for (int i = 0; i < 512; i++) gba_oam[i] = 0x200;
-}
-
 /** 0x0803e6e8: the palette one step to black each frame, then the name entry, which leads on to the main menu. */
 static void titleFadeToNext(void) {
   if (fadeToBlack(PALETTE, 0x100)) {
@@ -447,13 +441,13 @@ static void titleFadeToNext(void) {
   }
 }
 
-/** 0x0803e74c: the same fade when the title screen is left alone, out to the attract mode. */
+/** 0x0803e74c: the same fade when the title screen is left alone, out to its demo (demo.c). */
 static void titleFadeToAttract(void) {
   if (fadeToBlack(PALETTE, 0x100)) {
     setBlend(0, 0, 0, 0, 0, 0);
     for (int i = 0; i < 256; i++) gba_pal[i] = 0;
     queueRegister(REG_DISPCNT, 0x1F40);
-    g.callback = afterTitle;
+    g.callback = demoScreen;
   }
 }
 
