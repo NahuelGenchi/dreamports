@@ -3,8 +3,8 @@
 // effects the way mGBA's software renderer does (mGBA 0.10, src/gba/renderers/), the emulator the original games
 // are recorded in, so a frame matches its pixels exactly: the same 8-bit colours, the same blending arithmetic,
 // the same order of sprites and layers, and the same quirks where it departs from the plain rules (how a rotated
-// sprite's line starts and stops, which pixels a semi-transparent sprite brightens or darkens). Mosaic and the
-// OBJ window aren't drawn yet: a game that needs them adds them here.
+// sprite's line starts and stops, which pixels a semi-transparent sprite brightens or darkens). Mosaic isn't drawn
+// yet, and the OBJ window only on the original screen: a game that needs more adds it here.
 //
 // The widescreen view draws a wider frame with the original screen in its middle, drawn exactly as above. Around
 // it, each scene goes on as it really is: each layer as the scene says it carries on past the screen's edges
@@ -87,8 +87,12 @@ export function createVideo() {
   let variantFor = -1;   // the effect and level the variant colours were made for
 
   const row = new Uint32Array(MAX_W), spriteLayer = new Uint32Array(MAX_W);
-  const windows = Array.from({ length: 64 }, () => ({ endX: 0, ctl: 0 }));
+  // outside: a run no window 0 or 1 covers
+  const windows = Array.from({ length: MAX_W }, () => ({ endX: 0, ctl: 0, outside: false }));
   let nWindows = 1;
+  // the outside's own control bits, which a sprite's colours keep inside the OBJ window too, as in mGBA
+  let outsideCtl = 0;
+  const spriteCtl = w => w.outside ? outsideCtl : w.ctl;
 
   // the widescreen view while a frame is drawn (null for the original screen): `ox` the columns left of the
   // original screen, so a line's pixel x is at row[x + ox]; on a line above or below it, the whole line is margin
@@ -156,6 +160,7 @@ export function createVideo() {
           i++;
         }
         windows[i].ctl = ctl;
+        windows[i].outside = false;
         windows[i].endX = end;
         if (end >= old.endX) {
           for (i++; nWindows > i + 1 && end >= windows[i].endX; i++) {
@@ -204,7 +209,7 @@ export function createVideo() {
   // the runs across a line of the widescreen view, as row indices: the screen's own (already in `windows`) moved
   // over by `ox`, and the margins' worked out a pixel at a time
   function wideWindows(y) {
-    const centre = marginLine ? [] : windows.slice(0, nWindows).map(w => ({ endX: w.endX + ox, ctl: w.ctl }));
+    const centre = marginLine ? [] : windows.slice(0, nWindows).map(w => ({ endX: w.endX + ox, ctl: w.ctl, outside: w.outside }));
     const runs = [];
     // a run never crosses the screen's edges, so each is the screen's or a margin's
     const margin = (from, to) => {
@@ -212,7 +217,7 @@ export function createVideo() {
       for (let x = from; x < to; x++) {
         const c = marginCtl(x, y);
         if (c === ctl) runs[runs.length - 1].endX = x + ox + 1;
-        else { runs.push({ endX: x + ox + 1, ctl: c }); ctl = c; }
+        else { runs.push({ endX: x + ox + 1, ctl: c, outside: false }); ctl = c; }
       }
     };
     if (marginLine) margin(-ox, SCREEN_W + ox);
@@ -222,7 +227,7 @@ export function createVideo() {
       margin(SCREEN_W, SCREEN_W + ox);
     }
     nWindows = runs.length;
-    runs.forEach((r, i) => { windows[i].endX = r.endX; windows[i].ctl = r.ctl; });
+    runs.forEach((r, i) => Object.assign(windows[i], r));
   }
   const inScreen = (start, end) => !marginLine && start >= ox && end <= ox + SCREEN_W;
 
@@ -255,7 +260,7 @@ export function createVideo() {
     const objMode = (a >> 10) & 3, blendOn = (ctl & 0x20) !== 0;
     let flags = ((c >> 10) & 3) << PRIORITY_SHIFT;
     if ((blendOn && target1Obj && effect === ALPHA) || objMode === 1) flags |= TARGET_1;
-    if (objMode === 2) return 0;   // the OBJ window: not drawn yet
+    if ((objMode === 2) !== objwinPass) return 0;   // an OBJ window sprite marks the window and is never drawn
     const real = s.trueX !== undefined;
     let x = real ? s.trueX : (b << 23) >> 23;
     const map1d = (dispcnt & 0x40) !== 0, is256 = (a & 0x2000) !== 0;
@@ -263,7 +268,7 @@ export function createVideo() {
     const maskLo = map1d ? 0x7FFE : 0x3FE, maskHi = map1d ? 0 : charBase & 0x7C00;
     if (mode >= 3 && (c & 0x3FF) < 512) return 0;
     let useVariant = target1Obj && blendOn && (effect === BRIGHTEN || effect === DARKEN);
-    if (objMode === 1 || (target1Obj && effect === ALPHA)) {
+    if (!objwinPass && (objMode === 1 || (target1Obj && effect === ALPHA))) {
       const target2 = target2Bd || bgs.some(bg => bg.target2 && bg.enabled);
       if (target2) { forceTarget1 = true; flags |= REBLEND; useVariant = false; }
       else flags &= ~TARGET_1;
@@ -275,7 +280,7 @@ export function createVideo() {
     const stride = map1d ? (width >> (is256 ? 0 : 1)) : 0x80;
     const OBJ = 0x10000;
 
-    const put = (outX, pixel) => {
+    const put = objwinPass ? (outX, pixel) => { if (pixel) objwinMask[outX] = 1; } : (outX, pixel) => {
       const at = outX + ox, current = spriteLayer[at];
       if (((current & ORDER) >>> 0) <= flags) return;
       if (pixel) spriteLayer[at] = (colors[palBase + pixel] | flags) >>> 0;
@@ -517,6 +522,35 @@ export function createVideo() {
     }
   }
 
+  const onLine = (s, y) => !((y < s.y && (s.endY - 256 < 0 || y >= s.endY - 256)) || y >= s.endY);
+
+  // the OBJ window: where its sprites, drawn for as long as the line's time lasts as the others are, have a pixel
+  // that neither window 0 nor 1 covers, the outside's runs take WINOUT's upper byte
+  let objwinPass = false;
+  const objwinMask = new Uint8Array(MAX_W);
+  function breakObjWindow(y) {
+    objwinMask.fill(0, 0, SCREEN_W);
+    objwinPass = true;
+    let cycles = dispcnt & 0x20 ? OBJ_CYCLES_HBLANK_FREE : OBJ_CYCLES;
+    for (const s of sprites) {
+      if (!onLine(s, y)) continue;
+      drawSprite(s, y, 0, SCREEN_W, 0);
+      cycles -= s.cycles;
+      if (cycles <= 0) break;
+    }
+    objwinPass = false;
+    const ctl = (io[REG.WINOUT >> 1] >> 8) & 0x3F, old = windows.slice(0, nWindows).map(w => ({ ...w }));
+    let x = 0;
+    nWindows = 0;
+    for (const w of old) {
+      for (; x < w.endX; x++) {
+        const c = w.outside && objwinMask[x] ? ctl : w.ctl, last = nWindows ? windows[nWindows - 1] : null;
+        if (last && last.ctl === c && last.outside === w.outside) last.endX = x + 1;
+        else Object.assign(windows[nWindows++], { endX: x + 1, ctl: c, outside: w.outside });
+      }
+    }
+  }
+
   function drawLine(y, out, outAt) {
     dispcnt = io[0];
     if (dispcnt & 0x80) { out.fill(0xFFFFFFFF, outAt, outAt + lineW); return; }
@@ -538,12 +572,14 @@ export function createVideo() {
 
     spriteLayer.fill(UNWRITTEN);
     windows[0].endX = SCREEN_W;
+    windows[0].outside = true;
     nWindows = 1;
     if (dispcnt & 0xE000) {
-      windows[0].ctl = io[REG.WINOUT >> 1] & 0x3F;
+      windows[0].ctl = outsideCtl = io[REG.WINOUT >> 1] & 0x3F;
       if (dispcnt & 0x4000) breakWindow(1, y);
       if (dispcnt & 0x2000) breakWindow(0, y);
-    } else windows[0].ctl = 0xFF;
+      if ((dispcnt & 0x9000) === 0x9000 && !marginLine) breakObjWindow(y);
+    } else windows[0].ctl = outsideCtl = 0xFF;
     if (ox || marginLine) wideWindows(y);
     forceTarget1 = false;
 
@@ -561,13 +597,13 @@ export function createVideo() {
     if (dispcnt & 0x1000) {
       let cycles = dispcnt & 0x20 ? OBJ_CYCLES_HBLANK_FREE : OBJ_CYCLES;
       for (const s of marginLine ? [] : sprites) {
-        if ((y < s.y && (s.endY - 256 < 0 || y >= s.endY - 256)) || y >= s.endY) continue;
+        if (!onLine(s, y)) continue;
         let end = 0;
         for (let w = 0; w < nWindows; w++) {
           const start = end;
           end = windows[w].endX;
           if (!(windows[w].ctl & 0x10) || (ox && !inScreen(start, end))) continue;
-          spriteLayers |= drawSprite(s, y, start - ox, end - ox, windows[w].ctl) << ((s.c >> 10) & 3);
+          spriteLayers |= drawSprite(s, y, start - ox, end - ox, spriteCtl(windows[w])) << ((s.c >> 10) & 3);
         }
         cycles -= s.cycles;
         if (cycles <= 0) break;
@@ -582,7 +618,7 @@ export function createVideo() {
           const start = end;
           end = windows[w].endX;
           if (!(windows[w].ctl & 0x10) || inScreen(start, end)) continue;
-          spriteLayers |= drawSprite(s, y, start - ox, end - ox, windows[w].ctl) << ((s.c >> 10) & 3);
+          spriteLayers |= drawSprite(s, y, start - ox, end - ox, spriteCtl(windows[w])) << ((s.c >> 10) & 3);
         }
       }
     }

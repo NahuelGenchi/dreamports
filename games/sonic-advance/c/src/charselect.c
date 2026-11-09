@@ -460,6 +460,7 @@ static void leave(Task *t) {
     // Loading the act takes the console past the next V-blank, so it starts a frame later, and the windows and the
     // blend the original turns off here never reach the screen, which stays black.
     play_song(SONG_NEO_GREEN_HILL_1);   // StageInit_ZoneNActM's music, a frame ahead of the act's first picture
+    act_song_playing();
     t->main = to_act;
   } else if (screen.frames > PICK_WAIT) fade_step(&screen.fade);
 }
