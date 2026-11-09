@@ -12,6 +12,10 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # to approve the runs GitHub holds on its own pull request, of Check and Clips, which main requires (#1033), and to read
+  # how they ended
+  actions: write
+  checks: read
 
 concurrency:
   group: readme
@@ -21,7 +25,8 @@ jobs:
   update:
     name: Put the table and maps on main
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    # it waits for Check, which takes five to seven minutes
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

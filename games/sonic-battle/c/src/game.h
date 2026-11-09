@@ -135,6 +135,7 @@ static inline int16_t s16(int32_t v) { return (int16_t)v; }
 
 // core.js
 void step(uint16_t held);
+void runFightSetup(int count);
 void hblank(int line);
 void fightVblank(void);
 void queueCopy(uint32_t to, uint32_t from, uint32_t bytes);
@@ -267,9 +268,23 @@ void updateThings(void);
 void followFighter(int i);
 void trainingFrame(void);
 void trainingAfterWait(void);
+void setFightEndAt(int vblank);
+int fightWinner(int mode);
+void selectWinner(int mode);
+void battleReadyFrame(void);
+void battleReadyAfterWait(void);
+void battleFrame(void);
+void battleAfterWait(void);
+void beginEnding(void);
+void placeRealBlast(void);
+void endingFrame(void);
+void endingAfterWait(void);
+void resultTransition(void);
+void resultTransitionAfterWait(void);
+void resultScreen(void);
 
 // fight.js
-void startFight(int vblanks, int action, int you, int rival, int arena, int colour);
+void startFight(int vblanks, int action, int you, int rival, int arena, int colour, int battle);
 void choosing(void);
 void choosingAfterWait(void);
 

@@ -7,7 +7,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { CLIP_FRAMES, clipLinks, clipProblems, clipWindow, firstChanged, newFramesIn, recordingHash } from '../lib/clips.mjs';
+import { CLIP_FRAMES, clipLinks, clipProblems, clipWindow, firstChanged, gameAt, gamesChanged, gamesShownIn, newFramesIn, recordingHash } from '../lib/clips.mjs';
+import { pathsOf } from '../../.github/first-entry/rules.mjs';
 import { readRecording } from '../lib/recording.mjs';
 import { checkClips } from '../clips-check.mjs';
 
@@ -166,4 +167,26 @@ test('the pull request\'s check reads each clip\'s measures, and the video they\
   assert.match((await checkClips(text, { fetched: site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(measures({ frames: 120, newFrames: 120 }))) }), read }))[0], /a-test: The clip of a-test is 120 frames/);
   // a picture on its own is a clip prove didn't make
   assert.match((await checkClips(`![a](${at}.png)`, { fetched: site({}), read }))[0], /isn't the frame of a clip the text links/);
+  // a pull request that changes a game's code or recordings links a clip of that game, and one that changes neither needs none
+  assert.match((await checkClips('Clips: none.', { fetched: site({}), read, games: ['a-game'] }))[0], /changes a-game's code or recordings and links no clip of it/);
+  assert.deepEqual(await checkClips('Clips: none.', { fetched: site({}), read, games: [] }), []);
+  assert.deepEqual(await checkClips(text, { fetched: site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(measures())) }), read, games: ['a-game'] }), []);
+  const other = await checkClips(text, { fetched: site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(measures())) }), read, games: ['another-game'] });
+  assert.equal(other.length, 1);
+  assert.match(other[0], /another-game/);
+});
+
+test('the games whose code or recordings a step changes', () => {
+  assert.deepEqual(gamesChanged([
+    'games/sonic-battle/c/src/brain.c', 'games/sonic-battle/c/src/game.h', 'games/sonic-advance/proof/recordings/act-1.json',
+    'games/mega-man/src/main.js', 'games/sonic-advance/c/proof/progress.json', 'games/sonic-advance/c/proof/port-map.json',
+    'games/sonic-advance/notes/a-note.md', 'games/sonic-advance/entry.md', 'kit/gba/c/video.c', 'tools/share.mjs',
+  ]), ['sonic-battle', 'sonic-advance', 'mega-man']);
+  assert.deepEqual(gamesChanged(null), []);
+  // only a game main has already is shown: a first entry adds one nobody can play yet, in either language (#1032)
+  const has = game => game !== 'a-new-game';
+  for (const language of ['js', 'c']) assert.deepEqual(gamesShownIn(pathsOf('a-new-game', language), has), []);
+  assert.deepEqual(gamesShownIn([...pathsOf('a-new-game', 'c'), 'games/sonic-battle/c/src/brain.c'], has), ['sonic-battle']);
+  assert.equal(gameAt('HEAD', 'sonic-advance'), true);
+  assert.equal(gameAt('HEAD', 'a-new-game'), false);
 });

@@ -376,6 +376,26 @@ void hblank(int line) {
   }
 }
 
+/** A start point at a fight's end runs the way there before the recording opens: the choice screen's A presses at
+ *  70, 100 and 130, then the fight's frames, one frame at a time, as `step` runs them, without recursing into it. */
+void runFightSetup(int count) {
+  for (int f = 0; f < count; f++) {
+    uint16_t held = (f == 70 || f == 100 || f == 130) ? 1 : 0;
+    if (g.after_wait) {
+      void (*rest)(void) = g.after_wait;
+      g.after_wait = 0;
+      rest();
+      if (g.line_one) g.line_one();
+      continue;
+    }
+    vblank();
+    runCopies();
+    readKeys(held);
+    g.callback();
+    if (g.line_one) g.line_one();
+  }
+}
+
 void step(uint16_t held) {
   if (g.start_up > 0) {
     if (--g.start_up == 0) {
