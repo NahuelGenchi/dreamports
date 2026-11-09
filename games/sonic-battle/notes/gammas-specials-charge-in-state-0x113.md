@@ -1,7 +1,7 @@
 # Gamma's specials charge in state 0x113 and fire as things 177 to 179.
 
-About: Special attacks; 0x08001b0c; 0x0800c728; 0x0800eaec; 0x0806ec74
+About: Special attacks; 0x08001b0c; 0x080025a2; 0x0800c728; 0x0800eaec; gamma-shot; gamma-set
 
-Proof: #463
+Proof: #463; #639; gamma-shot; gamma-set
 
-0x08001b0c starts state 19, 20, 23 and 24 with the charge counter at +143 set to 0. State 0x113 adds 1 to it, up to 12, sets pictures 215 and 216 at 5 and 12, and leaves for 0x213 when R isn't held. State 0x213 sets the reach at +166 from the counter, and its script at 0x0806ec74 starts kind 177, whose speed and pictures grow with the charge. Kinds 178 and 179, at 0x0806ed0c and 0x0806eda4, are the stronger forms. 0x0800eaec gives them a reach of 0x140, height 8, damage 20, 40 and 60, holds of 2, 4 and 6, and hit kind 0x380. State 0x117 does the same for the third special with sounds 0x338, and state 0x115 leaves for 0x215 when R isn't held.
+0x08001b0c's charge steps sit behind a switch on the fighter's character, and Shadow and Gamma take different branches. In Gamma's, at 0x080025a2, the Shot's charge stops at 4 and the Set's at 6, and each step plays the charge sound. Letting go of R fires. Shadow's branch instead charges further, with no sound, and changes his picture as it grows. The Shot fires kind 177, and kinds 178 and 179 for a charge of 3 and 4. The Set's thing is kind 185, and 0x0800c728's table gives its script and 0x0800eaec its hit. While the C ran Shadow's branch for Gamma, gamma-shot's sound differed at frames 81 and 82 and gamma-set stopped at kind 185. With Gamma's own branch, both match every frame in C.

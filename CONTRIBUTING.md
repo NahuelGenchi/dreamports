@@ -157,4 +157,4 @@ Write clear English that someone who has never used GitHub can follow. Prefer sp
 
 ## Tracking automation is not branch protection
 
-The metadata workflow assigns missing milestones and labels PRs that need tracking. It does not run checks. A separate branch ruleset requires a pull request for every change to `main`. See [docs/TRACKING.md](docs/TRACKING.md).
+The metadata workflow assigns missing milestones and labels PRs that need tracking. It does not run checks. A separate branch ruleset requires a pull request for every change to `main`, and another requires its *Check* and *Clips* checks to pass before it merges. See [docs/TRACKING.md](docs/TRACKING.md).
