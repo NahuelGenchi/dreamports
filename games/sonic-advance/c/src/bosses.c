@@ -82,6 +82,29 @@ void boss_cam_bounds(int minY, int maxY, int minX, int maxX) {
   object_task(&b->o, cam_bounds_run, PRIORITY_OBJECTS);
 }
 
+// --- the camera's pan (CreatePreBossCameraPan, Task_PreBossCameraPan) ----------------------------------------------------
+// Only the top and bottom edges close in, 1 px a frame, as in Bosses_SetCamBounds.
+typedef struct { Object o; int minY, maxY; } CamPan;
+
+static int cam_pan_run(ActTask *t) {
+  CamPan *b = (CamPan *)t->data;
+  Camera *c = &act.cam;
+  c->minY = toward(c->minY, b->minY);
+  c->maxY = toward(c->maxY + DISPLAY_HEIGHT, b->maxY) - DISPLAY_HEIGHT;
+  return !(c->minY == b->minY && c->maxY + DISPLAY_HEIGHT == b->maxY);
+}
+
+void boss_cam_pan(int minY, int maxY) {
+  Camera *c = &act.cam;
+  int y = cam_y();
+  c->minY = y; c->maxY = y;
+  if (maxY > y + DISPLAY_HEIGHT) c->maxY = y + CAM_GROW - DISPLAY_HEIGHT;
+  CamPan *b = PLAIN_NEW(CamPan);
+  if (!b) return;
+  b->minY = minY; b->maxY = maxY;
+  object_task(&b->o, cam_pan_run, PRIORITY_OBJECTS);
+}
+
 // --- the screen's shake (screen_shake.c) ----------------------------------------------------------------------------------
 typedef struct { Object o; int amplitude, fade, step, frames, flags, angle; } Shake;
 
@@ -296,27 +319,36 @@ int boss_hit26(const Sprite *s, int x, int y) {
   return HIT_NONE;
 }
 
-// --- the boss music (Task_StageMusicManager) ------------------------------------------------------------------------------
-// The act has no music manager of its own, so a boss's state is a task at the manager's place in the frame, which does what
-// the manager does with it: 0x10 starts the boss song, 0x30 stops it and starts the stage's song again, faded in, after which
-// the manager is off for the rest of the act. It waits while Sonic is dead, as the manager does nothing then.
-typedef struct { Object o; int state; } Music;
+// --- the boss music ------------------------------------------------------------------------------------------------------
+// a boss's state for the music manager (gMusicManagerState.unk1, music.c)
+void boss_music(int state) { music_call(MUSIC_STATE, state); }
 
-static int music_run(ActTask *t) {
-  Music *m = (Music *)t->data;
-  if (act.player.dead) return 1;
-  if (m->state == BOSS_MUSIC_START) play_song(SONG_BOSS_FIGHT);
-  else {
-    stop_song(SONG_BOSS_FIGHT);
-    play_song(act.stage.music);
-    gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4);
+// --- Sonic against a boss (Coll_Player_Boss) -------------------------------------------------------------------------------
+// His attack box on the boss's box 0 hits it and sends him back the way he came, in the air or not; otherwise his body on it
+// hurts him.
+int boss_hit(const Sprite *s, int x, int y) {
+  Player *p = &act.player;
+  const Hitbox *b0 = object_box(s, 0);
+  if (!b0 || p->dead) return HIT_NONE;
+  const Hitbox *body = object_box(&p->sprite, 0), *attack = object_box(&p->sprite, 1);
+  int px = enemy_sonic_x(), py = enemy_sonic_y();
+  if (attack && collide_overlap(x, y, b0, px, py, attack)) {
+    p->xsp = -p->xsp;
+    p->ysp = -p->ysp;
+    return HIT_ENEMY;
   }
-  return 0;
+  if (body && collide_overlap(x, y, b0, px, py, body)) {
+    world_damage(p);
+    return HIT_PLAYER;
+  }
+  return HIT_NONE;
 }
 
-void boss_music(int state) {
-  Music *m = PLAIN_NEW(Music);
-  if (!m) return;
-  m->state = state;
-  object_task(&m->o, music_run, PRIORITY_MUSIC);
+// sub_800BFEC: the sprite's box 1 on Sonic's body hurts him
+int boss_hurt(const Sprite *s, int x, int y) {
+  Player *p = &act.player;
+  const Hitbox *b1 = object_box(s, 1), *body = object_box(&p->sprite, 0);
+  if (!b1 || !body || p->dead || !collide_overlap(x, y, b1, enemy_sonic_x(), enemy_sonic_y(), body)) return HIT_NONE;
+  world_damage(p);
+  return HIT_PLAYER;
 }

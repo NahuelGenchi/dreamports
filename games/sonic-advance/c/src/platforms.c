@@ -24,7 +24,7 @@ enum {
 
 // the platforms' animations by level (rom/levels.js sprites): thin, the brick and the bounce block if the level has them
 static const struct { int level, thin, brick, bounce; } ANIMATIONS[] = {
-  { 3, 506, 0, 499 }, { 4, 495, 0, 0 }, { 5, 495, 0, 0 }, { 12, 605, 574, 0 },
+  { 3, 506, 0, 499 }, { 4, 495, 0, 0 }, { 5, 495, 0, 0 }, { 6, 523, 0, 543 }, { 7, 523, 0, 543 }, { 12, 605, 574, 0 },
 };
 enum { FALL_STILL, FALL_WAITING, FALL_FALLING };
 

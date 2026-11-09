@@ -17,7 +17,6 @@ enum {
   SHAKE_POSITIVE = 0x1, SHAKE_NEGATIVE = 0x2, SHAKE_RANDOM = 0x10, SHAKE_EVEN_FRAMES = 0x20,
   SHAKE_HORIZONTAL = 0x40, SHAKE_VERTICAL = 0x80,
   PRIORITY_SHAKE = 0xEFF,
-  PRIORITY_MUSIC = 0x4000,   // the stage music manager's
 };
 
 // the music manager's boss states (gMusicManagerState.unk1): the boss song starts, or stops for the stage's song
@@ -42,6 +41,8 @@ int boss_matrix(void);
 
 /** Bosses_SetCamBounds: the arena's edges in the act; the camera closes in on them 1 px a frame. */
 void boss_cam_bounds(int minY, int maxY, int minX, int maxX);
+/** CreatePreBossCameraPan: the top and bottom edges close in on `minY` and `maxY` 1 px a frame. */
+void boss_cam_pan(int minY, int maxY);
 /** CreateScreenShake: `amplitude` (1/256 px) falls by `fade` a frame, the wave turns `step` of 1024 a frame, for `frames`
  *  frames (-1 for as long as it lasts). */
 void boss_shake(int amplitude, int fade, int step, int frames, int flags);
@@ -54,6 +55,10 @@ void boss_debris(int x, int y, int ay);
 void boss_egg_mobile(int x, int y);
 /** Coll_Player_Bosses_2_6: Sonic on the boss's sprite at (x, y). */
 int boss_hit26(const Sprite *s, int x, int y);
+/** Coll_Player_Boss: Sonic's attack on the boss's box 0 hits it, his body on it is hurt. */
+int boss_hit(const Sprite *s, int x, int y);
+/** sub_800BFEC: the sprite's box 1 on Sonic's body hurts him. */
+int boss_hurt(const Sprite *s, int x, int y);
 /** The music manager's boss state, acted on in this frame's run of the manager. */
 void boss_music(int state);
 /** CreateBossCapsule: the capsule rises from the beaten boss at (x, y) (capsule.c). */

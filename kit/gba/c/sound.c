@@ -11,13 +11,6 @@
 
 #include "sound.h"
 
-enum {
-  OP_SETUP = 1, OP_RESET, OP_START, OP_START_OR_CHANGE, OP_START_OR_CONTINUE, OP_STOP, OP_PLAYER_START, OP_PLAYER_STOP,
-  OP_PLAYER_CONTINUE, OP_IMM_INIT, OP_PITCH, OP_VOLUME, OP_PANPOT, OP_FADE_IN, OP_FADE_OUT, OP_TEMPO, OP_ALL_STOP,
-  OP_ALL_CONTINUE, OP_VSYNC_OFF, OP_VSYNC_ON, OP_WAVE_AT,
-};
-
-typedef struct { int32_t op, a, b, c, d; } SoundCall;
 #define CALLS 256
 #define RENDER_MAX 4096
 #define FULL_SCALE 512.0   // the 10-bit DAC swings ±512 around the bias
@@ -52,7 +45,8 @@ static int counterQueued;
 
 // ---- the game's calls ----
 
-static void apply(M4a *m, const SoundCall *c) {
+static void apply(M4a *m, const SoundCall *c) { gba_sound_apply(m, c); }
+void gba_sound_apply(M4a *m, const SoundCall *c) {
   switch (c->op) {
     case OP_START: m4a_song_start(m, c->a); break;
     case OP_START_OR_CHANGE: m4a_song_start_or_change(m, c->a); break;
@@ -74,6 +68,12 @@ static void apply(M4a *m, const SoundCall *c) {
     case OP_VSYNC_ON: m4a_vsync_on(m); break;
     case OP_WAVE_AT: m4a_wave_at(m, c->a); break;
   }
+}
+
+// without a music manager of the game's own, each frame runs the calls queued for it, in order, as the JavaScript kit's
+// runCalls (sound/synth.js)
+__attribute__((weak)) void game_sound_frame(M4a *m, const SoundCall *calls, int count) {
+  for (int i = 0; i < count; i++) gba_sound_apply(m, &calls[i]);
 }
 
 static void clear_buffers(void) {
@@ -221,13 +221,14 @@ void gba_sound_stop_all(void) { take(OP_ALL_STOP, 0, 0, 0, 0); }
 void gba_sound_continue_all(void) { take(OP_ALL_CONTINUE, 0, 0, 0, 0); }
 void gba_sound_vsync_off(void) { take(OP_VSYNC_OFF, 0, 0, 0, 0); }
 void gba_sound_vsync_on(void) { take(OP_VSYNC_ON, 0, 0, 0, 0); }
+void gba_sound_manager_call(int op, int a, int b, int c) { if (op >= SOUND_OP_MANAGER) take(op, a, b, c, 0); }
 
 // ---- the clock ----
 
 static void frame(void) {
   int8_t *was = playing;
   playing = pending; pending = was;
-  for (int i = 0; i < queued; i++) apply(&engine, &queue[i]);
+  game_sound_frame(&engine, queue, queued);
   queued = 0;
   int n = engine.samples;
   if (engine.locked) { __builtin_memset(playing, 0, 2 * n); __builtin_memset(pending, 0, 2 * n); return; }

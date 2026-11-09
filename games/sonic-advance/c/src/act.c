@@ -70,7 +70,7 @@ static void load_stage(int level) {
   s->width = s->collision.width; s->height = s->collision.height;
   // each act's stage init (levels.js): Casino Paradise act 1 is level 4, X Zone level 12
   s->zone = 6; s->act = 0; s->music = 24; s->hudFlash = 90; s->backgroundScroll = 2;
-  s->paletteCount = 0; s->paletteAnimations = NULL;
+  s->paletteCount = 0; s->paletteAnimations = NULL; s->waterLevel = -1;
   if (level == 4) {
     static const int CASINO_PALETTES[] = { 816, 817, 818, 824, 825, 827, 827, 828, 843, 844, 826 };
     s->zone = 2; s->act = 0; s->music = 16; s->hudFlash = 20; s->backgroundScroll = 1;
@@ -83,6 +83,15 @@ static void load_stage(int level) {
     s->zone = 1; s->act = 1; s->music = 15; s->hudFlash = 64; s->backgroundScroll = 3;
     s->paletteCount = (int)(sizeof SECRET_BASE_PALETTES / sizeof SECRET_BASE_PALETTES[0]);
     s->paletteAnimations = SECRET_BASE_PALETTES;
+  } else if (level == ACT_LEVEL_ICE_MOUNTAIN_1 || level == ACT_LEVEL_ICE_MOUNTAIN_2) {
+    // StageInit_Zone4Act1 and 2: palette animations 822 and 821, the water (CreateStageWaterTask at 1546 and 1664)
+    // and each act's song
+    static const int ICE_MOUNTAIN_PALETTES[] = { 822, 821 };
+    int second = level == ACT_LEVEL_ICE_MOUNTAIN_2;
+    s->zone = 3; s->act = second; s->music = second ? 19 : 18; s->hudFlash = 90; s->backgroundScroll = 4;
+    s->waterLevel = second ? 1664 : 1546;
+    s->paletteCount = (int)(sizeof ICE_MOUNTAIN_PALETTES / sizeof ICE_MOUNTAIN_PALETTES[0]);
+    s->paletteAnimations = ICE_MOUNTAIN_PALETTES;
   }
   // the front layer's tiles, in the first character block, and the stage's 256 colours (extractStage's palette)
   copy_rom(s->front.tiles, 0, s->front.tilesSize);
@@ -95,7 +104,8 @@ static void load_stage(int level) {
       uint16_t entry = (uint16_t)rom_u16(s->background.map + (row * s->background.xTiles + col) * 2);
       // X Zone's 37 × 23 background is a 512-wide text layer: two 32-tile blocks, columns 32–36 at 0xE800.
       // Casino Paradise's is 32 × 32 at 0xE800, a 256 × 256 layer, and Secret Base act 2's the first 32 × 32 of its
-      // map at 0xE000 (sStageBgDimensions has 256 × 256 for it).
+      // map at 0xE000 (sStageBgDimensions has 256 × 256 for it). Ice Mountain's is 32 × 64 at 0xE000, a 256 × 512
+      // layer, which the last branch writes as it is.
       if (level == ACT_LEVEL_SECRET_BASE_2 && (row >= 32 || col >= 32)) continue;
       uint32_t at = level == 4 ? 0xE800 + (uint32_t)(row * 32 + col) * 2u
         : level == ACT_LEVEL_SECRET_BASE_2 ? 0xE000 + (uint32_t)(row * 32 + col) * 2u
@@ -112,6 +122,7 @@ static void load_stage(int level) {
   memset(gba_vram + 0xF000, 0, 0x1000);
   e.bgCnt[3] = level == 4 ? 0x1D0B   // 256 × 256, priority 3, map 29 (0xE800), character base 2 (0x8000)
     : level == ACT_LEVEL_SECRET_BASE_2 ? 0x1C0B   // 256 × 256, priority 3, map 28 (0xE000), character base 2 (0x8000)
+    : s->backgroundScroll == 4 ? 0x9C0B          // 256 × 512, priority 3, map 28 (0xE000), character base 2 (0x8000)
     : 0x5C0B;                                    // 512 × 256, priority 3, map 28 (0xE000), character base 2 (0x8000)
 }
 
@@ -168,6 +179,7 @@ static void palette_animation_task(Task *t) {
   p->wait += (p->delays[p->frame] - 1) * 256;
   p->frame = p->frame + 1 < p->count ? p->frame + 1 : p->loop;
 }
+static void card_water_task(Task *t);
 static void start_palette_animations(void) {
   act.palCount = act.stage.paletteCount;
   act.pal = paletteAnims;
@@ -175,6 +187,7 @@ static void start_palette_animations(void) {
     parse_palette_animation(&paletteAnims[i], act.stage.paletteAnimations[i]);
     create_task(palette_animation_task, &paletteAnims[i], 0x2000, 0, NULL);
   }
+  if (act.stage.backgroundScroll == 4 && !act.cardDone) act.cardWaterTask = create_task(card_water_task, NULL, 0x2100, 0, NULL);
 }
 
 // a stage layer's visible tile entries around the camera (DrawBackground's level-map path)
@@ -313,6 +326,21 @@ static void card_update(int pressed) {
   if (act.cardDone) return;
   if (!titlecard_run(pressed)) act.clockStopped = 0;
 }
+// Ice Mountain's card takes the colours under water from the act's on each of its frames, and on its last loads palette
+// 423 into the sprites' first (Task_8055458)
+static void card_water(void) {
+  if (act.stage.backgroundScroll != 4) return;
+  if (act.cardDone) water_load_palette_423();
+  water_mask_palettes();
+}
+// the card's task runs at 0x2100, after the palette animations' (0x2000), so once those run as tasks the colours it
+// takes are the ones this frame's step loaded: act_frame, at 0x0F00, leaves card_water to this task
+static void card_water_task(Task *t) {
+  if (!act.cardWater) return;
+  act.cardWater = 0;
+  card_water();
+  if (act.cardDone) { destroy_task(t); act.cardWaterTask = NULL; }
+}
 
 // --- Secret Base's background (engine/backgrounds.js) ----------------------------------------------------------------
 static int js_mod(int a, int n) { int r = a % n; return r < 0 ? r + n : r; }
@@ -343,6 +371,10 @@ static void draw_frame(void) {
   e.bldCnt = 0; e.bldAlpha = 0x0010; e.bldY = 0;
   e.dispCnt = 0x1E40;
   e.winRegs[0] = e.winRegs[1] = 0x00F0; e.winRegs[2] = e.winRegs[3] = 0x00A0;
+  // Ice Mountain's blend and snow, set by the camera's update, which runs before the objects
+  if (act.stage.backgroundScroll == 4) ice_mountain_display();
+  // a boss's task clears the blending after that, while Sonic is alive (sub_80308A4)
+  if (act.blendOff) { e.winRegs[5] = 0; e.bldCnt = 0; e.bldY = 0; act.blendOff = 0; }
   // a hit boss's flash: the OBJ window on, everything in it brightened all the way (sub_802D870)
   if (act.bossFlash) { e.dispCnt |= 0x8000; e.winRegs[5] = 0x3F1F; e.bldCnt = 0xBF; e.bldY = 0x10; }
   act.drawn++;
@@ -377,6 +409,8 @@ static void draw_frame(void) {
       put16(e.primary + (uint32_t)line * 4, (uint32_t)x);
       put16(e.primary + (uint32_t)line * 4 + 2, (uint32_t)y);
     }
+  } else if (act.stage.backgroundScroll == 4) {
+    // Ice Mountain's background and snow are scrolled by the camera's update (icemountain.c)
   } else {
     // StageBgUpdate_Zone7Act1: the 37 × 23 background scrolls as a whole. Its first frame keeps the course
     // select's scroll, which the original shows before the act's own update lands.
@@ -445,7 +479,9 @@ void act_freeze_camera(void) { act.cam.freeze = SPIN_DASH_FREEZE; }
 void act_player_died(void) {
   act.cam.locked = 1;
   act.clockStopped = 1;
-  play_song(SE_LIFE_LOST);
+  // the drowning music stops, and drowning has its own sound
+  stop_song(27);
+  play_song(act.player.drownSeconds < 0 ? 192 : SE_LIFE_LOST);
 }
 // the act starting over with a life less is not here yet
 void act_life_lost(void) {}
@@ -560,6 +596,8 @@ static void act_frame(void) {
   int camRuns = act.cam.started && act.frames > 1;
   if (act.frames > 0) objects_run_before_camera();
   if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
+  // the zone's background update, at the end of UpdateCamera
+  if (camRuns && act.stage.backgroundScroll == 4) ice_mountain_bg_update((int)act.cam.x, (int)act.cam.y, act.tick);
   if (act.stage.backgroundScroll == 1 && act.cam.bgUpdates > 0) casino_background_update();
   if (camRuns) animate_stage_tiles();
   // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts
@@ -567,7 +605,10 @@ static void act_frame(void) {
   // the title card's task (0x2100) runs before Sonic's and the clock's, so the frame it ends frees the pad and starts
   // the clock; its pieces and fade go over the act, and it sets the display while it shows, after draw_frame
   int cardShows = !act.cardDone;
-  if (cardShows) card_update((e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
+  if (cardShows) {
+    card_update((e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
+    if (act.cardWaterTask) act.cardWater = 1; else card_water();
+  }
   // the results' task (0x2100) and its pieces' (0x2120); the frame they end, the next act takes over
   if (results_active() && !results_run()) { go_to_next_level(); return; }
   PlayerInput in = {
@@ -594,23 +635,29 @@ static void act_frame(void) {
   player_step(&act.player, &in);
   player_animate(&act.player, &in);
   if (act.frames > 0) objects_run_late();
+  // what the music manager reads of Sonic (0x4000)
+  const Player *sonic = &act.player;
+  music_call(MUSIC_PLAYER, (sonic->invincible > 0) | (sonic->speedUp > 0) << 1 | !sonic->dead << 2);
   // the stage clock's task (0xFF00): the course time counts once the card has ended, the stage's tick every frame
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
   act.frames++;
+  // the water's task (0xFFFE), after the clock's
+  water_task(act.tick, (int)act.cam.x, (int)act.cam.y);
   draw_frame();
   if (cardShows) titlecard_display();
+  // the card's last frame clears the blend the camera's update set (Task_8055458)
+  if (cardShows && act.cardDone && act.stage.backgroundScroll == 4) { e.bldCnt = 0; e.bldY = 0; }
   results_display();
 }
 
 // the act's music, as the course select leaves it: the stage music manager (Task_StageMusicManager, priority 0x4000)
-// starts it on the frame the act is made, as no song plays, and fades it in (MusManager_UpdateBgmParams). After the act
+// starts it on the frame after the act is made, as no song plays, and fades it in (MusManager_UpdateBgmParams). After the act
 // before (GoToNextLevel) it starts at full volume, as the JavaScript's startNextAct has it
 static void start_music(void) {
   if (!act.musicStarts) return;
   act.musicStarts = 0;
-  play_song(act.stage.music);
-  if (!act.afterLevel) { gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4); }
+  music_call(act.afterLevel ? MUSIC_STAGE : MUSIC_STAGE_IN, act.stage.music);
 }
 
 static void act_loaded(void) {
@@ -639,13 +686,12 @@ void act_task(Task *t) {
   act_frame();
 }
 
-/** Draws the act's first frame now, for a screen that hands over inside its own task, and makes its task run from
- *  the next frame. */
 /** Draws the act's first frame now, for a screen that hands over inside its own task: it does its work but the
- *  frame has no V-blank, so the screen keeps the course select's black while the act loads. */
+ *  frame has no V-blank, so the screen keeps the course select's black while the act loads. The course select's act
+ *  starts its music on that loading frame, the next one; the next act after GoToNextLevel starts it now. */
 void act_frame_now(void) {
   act_frame();
-  start_music();
+  if (act.afterLevel) start_music();
   if (act.task) destroy_task(act.task);
   act.task = create_task(act_task, NULL, 0x0F00, 0, NULL);
   act.stallLoad = 1;
@@ -684,11 +730,12 @@ static void pre_run(int cardSkip, int preFrames) {
     int camRuns = act.cam.started;
     if (act.tick >= OBJECTS_FROM) objects_run_before_camera();
     if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
+    if (camRuns && act.stage.backgroundScroll == 4) ice_mountain_bg_update((int)act.cam.x, (int)act.cam.y, act.tick);
     if (camRuns) animate_stage_tiles();
     if (act.tick >= OBJECTS_FROM) objects_run_early();
     if (act.tick == PALETTES_FROM) start_palette_animations();
     if (act.tick >= PALETTES_FROM) for (int i = 0; i < act.palCount; i++) palette_animation_task(&(Task){ .data = &paletteAnims[i] });
-    if (!act.cardDone) card_update(cardSkip == act.tick);
+    if (!act.cardDone) { card_update(cardSkip == act.tick); card_water(); }
     // the card holds jump and attack; then the pad is free, with nothing pressed until the recording's first frame
     PlayerInput in = { .jump = !act.cardDone, .attack = !act.cardDone };
     player_step(&act.player, &in);
@@ -697,6 +744,7 @@ static void pre_run(int cardSkip, int preFrames) {
     if (wasDone) { hud_update(0); after++; }
     if (!act.clockStopped) act.courseTime++;
     act.tick++;
+    water_task(act.tick, (int)act.cam.x, (int)act.cam.y);
     act.frames++;   // the act's first frames, which keep the camera where it started, are these
     // each frame has its V-blank, as the original's does, only with no picture
     engine_vblank_unseen();
@@ -715,6 +763,8 @@ void act_start(int level, int cardSkip, int preFrames) {
   for (int i = 0; i < FIREWORKS; i++) fireworks[i].done = 1;
   copyCount = 0;
   load_stage(level);
+  if (act.stage.backgroundScroll == 4) ice_mountain_create_bg();
+  water_start(act.stage.waterLevel, 0x7F207F20);
   act.bgAnimFrame = 0; act.bgAnimShown = 0; act.bgAnimDelay = 0;
   player_init(&act.player, act.stage.spawnX, act.stage.spawnY);
   create_camera(&act.cam, &act.player);
@@ -734,7 +784,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   objects_start(level, act.stage.paletteCount > 0);
   if (gba_start_point("level")) {
     pre_run(cardSkip, preFrames);
-    play_song(act.stage.music);
+    music_call(MUSIC_STAGE, act.stage.music);
     gba_sound_frames_gone_by(118);
   } else act.musicStarts = !songPlaying;
   songPlaying = 0;

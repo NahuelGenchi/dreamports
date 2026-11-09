@@ -9,6 +9,8 @@
 
 #define ACT_LEVEL_X_ZONE 12
 #define ACT_LEVEL_SECRET_BASE_2 3
+#define ACT_LEVEL_ICE_MOUNTAIN_1 6
+#define ACT_LEVEL_ICE_MOUNTAIN_2 7
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
 #define ACT_LEVEL_BLOCKS 8192   // the largest layer, in 96 × 96 px blocks
 #define ACT_TILE_ENTRIES (ACT_TILES * 144)
@@ -25,7 +27,8 @@ typedef struct {
 
 typedef struct {
   int level, zone, act, music, hudFlash;
-  int backgroundScroll;   // 0 still, 1 Casino Paradise's bands, 2 X Zone, 3 Secret Base's inside
+  int backgroundScroll;   // 0 still, 1 Casino Paradise's bands, 2 X Zone, 3 Secret Base's inside, 4 Ice Mountain's snow
+  int waterLevel;         // the water line the act starts with, -1 for none
   int paletteCount;
   const int *paletteAnimations;
   Tilemap front, back, background;
@@ -66,8 +69,11 @@ typedef struct {
   int afterLevel;                  // made by GoToNextLevel after the act before, rather than by the course select
   int loadFrames;                  // the frames left that the next act spends loading after its first (act_task)
   int bossFlash;                   // a hit boss drawn into the OBJ window, which the frame brightens to white
+  int blendOff;                    // a boss turned the zone's blending off this frame (gBldRegs cleared after the camera)
   int checkpointIndex, checkpointX, checkpointY, checkpointTime;   // the last checkpoint passed (gBossIndex), where and when
   int clockStopped, cardFrame, cardDone, firstCard, started, preFrames, firstFrame, drawn;
+  int cardWater;            // the card's colours under water are due from its task this frame (card_water_task)
+  struct Task *cardWaterTask;
   // the stage's animated tiles (UpdateBgAnimationTiles), and its palette animations' sprites
   int bgAnimFrame, bgAnimShown, bgAnimDelay;
   int startCamX, startCamY;
@@ -112,5 +118,35 @@ void act_queue(int level, int cardSkip, int preFrames);
 void act_song_playing(void);
 void act_task(Task *t);
 uint32_t front_frame(void);
+
+// the act's water (water.c, gWater)
+typedef struct {
+  int active, level, target;
+  uint8_t line, seen;   // unk2 and unk1: where the line is on the screen, 0 above it, 255 below it
+  uint32_t mask;
+  Sprite surface;
+  int bubbles;          // gSmallAirBubbleCount
+  int late;             // the waves start a line late this frame (water.c)
+} Water;
+extern Water water;
+void water_start(int level, uint32_t mask);
+void water_task(int time, int camX, int camY);
+void water_mask_palettes(void);
+void water_load_palette_423(void);
+/** The water's line in the act, -1 without any. */
+int water_level(void);
+/** What Sonic does in the water (Player_HandleWater): the splash at the line, a bubble from (x, y) in 1/256 px moving
+ *  dx across (a group of them when `group`), a number of the drowning countdown over him, and drowning. */
+void water_splash(int x);
+void water_bubble(int x, int y, int dx, int group);
+void water_countdown(const Player *p, int n);
+void water_drowned(const Player *p);
+void water_drowning_music(void);
+void water_stop_drowning_music(void);
+
+// Ice Mountain's background and snow (icemountain.c)
+void ice_mountain_create_bg(void);
+void ice_mountain_bg_update(int x, int y, int time);
+void ice_mountain_display(void);
 
 #endif

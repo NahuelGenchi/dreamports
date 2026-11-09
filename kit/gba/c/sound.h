@@ -137,6 +137,24 @@ void m4a_tempo_control(M4a *m, int p, int tempo);
 void m4a_wave_at(M4a *m, int at);
 void m4a_before_sound_main(M4a *m, int n);
 
+// ---- the calls, and a music manager of the game's own (sound.c) ----
+
+/** A call the game made, as the engine gets it at the start of the next sound frame: `op` names the sound library's
+ *  function, and those from SOUND_OP_MANAGER on are the game's own music manager's (gba_sound_manager_call). */
+enum {
+  OP_SETUP = 1, OP_RESET, OP_START, OP_START_OR_CHANGE, OP_START_OR_CONTINUE, OP_STOP, OP_PLAYER_START, OP_PLAYER_STOP,
+  OP_PLAYER_CONTINUE, OP_IMM_INIT, OP_PITCH, OP_VOLUME, OP_PANPOT, OP_FADE_IN, OP_FADE_OUT, OP_TEMPO, OP_ALL_STOP,
+  OP_ALL_CONTINUE, OP_VSYNC_OFF, OP_VSYNC_ON, OP_WAVE_AT,
+};
+typedef struct { int32_t op, a, b, c, d; } SoundCall;
+/** Runs one of the engine's calls on it now. */
+void gba_sound_apply(M4a *m, const SoundCall *c);
+/** What runs each sound frame's calls on the engine, as the JavaScript kit's `manager` in sound/synth.js: by default each
+ *  call as it is. A game whose music manager decides what plays defines its own, which runs the calls, its own among
+ *  them, and then decides; it runs where the sound does, on the audio thread for a player. The cycle counter
+ *  (gba_sound_count_cycles) gets the engine's calls alone. */
+void game_sound_frame(M4a *m, const SoundCall *calls, int count);
+
 /** The end of one of the game's frames, which the kit calls after game_step: the cycle counter's frame. */
 void gba_sound_frame_done(void);
 

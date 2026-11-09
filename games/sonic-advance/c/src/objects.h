@@ -90,6 +90,8 @@ ActTask *swinging_hook_spawn(Slot *slot);
 ActTask *hook_rail_spawn(Slot *slot);
 ActTask *curler_spawn(Slot *slot);
 ActTask *lava_spawn(Slot *slot);
+ActTask *lava_platform_spawn(Slot *slot);
+ActTask *slide_spawn(Slot *slot);
 ActTask *crane_claw_spawn(Slot *slot);
 ActTask *pipe_entrance_spawn(Slot *slot);
 ActTask *pipe_exit_spawn(Slot *slot);
@@ -101,6 +103,10 @@ ActTask *barrel_spawn(Slot *slot);
 ActTask *bowl_spawn(Slot *slot);
 ActTask *carousel_spawn(Slot *slot);
 ActTask *ship_swing_spawn(Slot *slot);
+ActTask *breakable_wall_spawn(Slot *slot);
+ActTask *sinking_platform_spawn(Slot *slot);
+ActTask *rising_platform_spawn(Slot *slot);
+ActTask *air_bubbles_spawn(Slot *slot);
 
 void entities_load(int level);
 int entities_manager(ActTask *t);
@@ -131,7 +137,7 @@ typedef struct {
   Sprite sprite;
   int x;
 } Object;
-enum { OBJECT_BYTES = 640 };
+enum { OBJECT_BYTES = 704 };   // room for the largest, the Drisame's ice block, built for a 64-bit computer too
 void *object_new(void);
 #define OBJECT_NEW(type) ((void)sizeof(char[sizeof(type) <= OBJECT_BYTES ? 1 : -1]), (type *)object_new())
 /** Makes the task of an object's block at the objects' priority, or at `priority`; false, with the block freed, when the
@@ -175,6 +181,8 @@ void rings_start(void);
 int rings_task(ActTask *t);
 int scatter_task(ActTask *t);
 void scatter_launch(int x, int y, int n, int layer, int inverted);
+/** From now until the act starts again, the scattered rings also bounce off ceilings while they rise (a boss's). */
+void scatter_ceilings(void);
 /** A ring taken at (x, y): counted, with its sparkle and sound; ring_effect is the sparkle and sound alone. */
 void ring_add(int x, int y);
 void ring_effect(int x, int y);
@@ -206,6 +214,8 @@ int collide_spring_side(const void *o, int ox, int oy, const Hitbox *hb, Player 
 /** A hazard touched Sonic (Coll_DamagePlayer): false while he is invincible or still blinking. */
 int world_damage(Player *p);
 void world_add_score(int points);
+void world_add_score_jingle(int points);
+void world_extra_life(void);
 void world_prize(int kind);
 void world_life_more(void);
 

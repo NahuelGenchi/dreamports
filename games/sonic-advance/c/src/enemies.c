@@ -155,7 +155,7 @@ void enemy_defeat(int x, int y) {
   next_animal = (next_animal + 1) % ZONE_ANIMALS_EACH;
   play_song(SE_ENEMY_DEFEAT);
   int chain = p->chain < SCORE_KINDS ? p->chain : SCORE_KINDS - 1;
-  world_add_score(SCORES[chain]);
+  world_add_score_jingle(SCORES[chain]);
   popup_new(x, y, chain);
   if (p->chain < SCORE_KINDS - 1) p->chain++;
 }

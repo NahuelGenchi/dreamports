@@ -203,7 +203,7 @@ void results_start(int level, int rings, int courseTime, int longEnd, int nextFr
 
   // the act-clear jingle: X Zone's, a zone's second act's (after its boss), or an act's
   play_song(level == X_ZONE ? SONG_FINAL_CLEAR : level & 1 ? SONG_BOSS_CLEAR : SONG_ACT_CLEAR);
-  // the original switches the music manager off here; it is not in C yet, so there is nothing to switch
+  music_call(MUSIC_OFF, 0);
 }
 
 int results_active(void) { return r.active; }
@@ -386,7 +386,8 @@ int results_run(void) {
 
 void results_display(void) {
   if (!r.display) return;
-  e.dispCnt = 0x3E40;   // OBJ and window 0 on, BG1, BG2 and BG3 on, 1D OAM
+  e.dispCnt |= 0x2000;   // window 0 on, over what the act shows (Ice Mountain's snow too)
   e.winRegs[0] = 0x00F0; e.winRegs[2] = 0x00A0;
+  e.winRegs[5] |= 0x1F;
   e.bldCnt = 0x3FFF; e.bldAlpha = 0x0010; e.bldY = (uint16_t)r.bldY;
 }

@@ -31,6 +31,20 @@ void draw_background(Background *bg) {
   queue_background(bg);
 }
 
+/** UpdateBgAnimationTiles: a tilemap with animated tiles shows its next frame every animDelay calls; frame 0 is its
+ *  tileset, frame k the k-th block stored after it. */
+void update_bg_animation_tiles(Background *bg) {
+  uint32_t at = rom_ptr(OFFSET_TILEMAPS + bg->tilemapId * 4);
+  uint32_t animTileSize = rom_u16(at + 4), frames = rom_u8(at + 6), delay = rom_u8(at + 7);
+  if (!frames || ++bg->animDelayCounter < delay) return;
+  bg->animDelayCounter = 0;
+  if (++bg->animFrameCounter >= frames) bg->animFrameCounter = 0;
+  uint32_t tiles = rom_ptr(at + 8), size = rom_u32(at + 12);
+  bg->graphics.src = bg->animFrameCounter == 0 ? tiles : tiles + size + (bg->animFrameCounter - 1u) * animTileSize;
+  bg->graphics.size = animTileSize;
+  queue_graphics(&bg->graphics);
+}
+
 /**
  * sub_8003EE4: a rotating layer's registers for an `angle` of 0 to 1023, the map drawn `scaleX` / 256 and `scaleY` /
  * 256 times its size, so that its point (x, y) shows at (cx, cy) on the screen.

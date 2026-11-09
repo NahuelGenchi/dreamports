@@ -130,6 +130,10 @@ void gba_sound_tempo(int tempo);
 /** m4aMPlayAllStop and m4aMPlayAllContinue: every music player stops, or goes on from where it stopped */
 void gba_sound_stop_all(void);
 void gba_sound_continue_all(void);
+/** A call for the game's own music manager (game_sound_frame in sound.h), queued with the engine's: `op` from
+ *  SOUND_OP_MANAGER on. */
+enum { SOUND_OP_MANAGER = 64 };
+void gba_sound_manager_call(int op, int a, int b, int c);
 /** m4aSoundVSyncOff and m4aSoundVSyncOn: the mixing cleared and held, as a game does around a flash write */
 void gba_sound_vsync_off(void);
 void gba_sound_vsync_on(void);
