@@ -286,6 +286,14 @@ void resultTransitionAfterWait(void);
 void resultScreen(void);
 
 // fight.js
+void startFadeIn(int frames);
+void setUpFight(void);
+void setUpFighters(void);
+void giveComputerPicks(int i);
+void demoScreen(void);
+void demoSetup(void);
+void demoFrame(void);
+void demoAfterWait(void);
 void startFight(int vblanks, int action, int you, int rival, int arena, int colour, int battle);
 void choosing(void);
 void choosingAfterWait(void);

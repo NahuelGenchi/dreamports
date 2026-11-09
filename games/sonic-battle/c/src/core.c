@@ -205,7 +205,8 @@ int fadeToWhite(uint32_t first, int count) {
   return done;
 }
 
-/** 0x08016078: a new screen's start, with the palette filled from its first colour, VRAM cleared and sprites hidden. */
+/** 0x08016078: a new screen's start, with the palette filled from its first colour, VRAM cleared, sprites hidden and
+ *  the random numbers seeded. */
 void newScreen(int mode) {
   for (int i = 1; i < 512; i++) gba_pal[i] = gba_pal[0];
   for (uint32_t i = 0; i < 0x18000; i++) gba_vram[i] = 0;
@@ -231,6 +232,8 @@ void newScreen(int mode) {
   write16(0x03001B08, 0);
   write16(0x03001B04, 0x100);
   write16(0x030016C8, 0x200);
+  // 0x08020134: the random numbers start again from the save's word at +4 and the main loop's frames
+  write32(0x0300019C, (read32(SAVE + 4) + (uint32_t)g.frames) | 1);
 }
 
 void queueCopy(uint32_t to, uint32_t from, uint32_t bytes) {

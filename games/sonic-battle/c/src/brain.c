@@ -92,7 +92,6 @@
 #define CONDITION_RESULT_OFFSET 2
 #define KNOCKED_OUT_STATE 252
 #define KNOCKED_OUT_STATES 4
-#define INACTIVE_STATE 0xFC
 #define NO_FIGHTER 0xFF
 #define FIGHTER_INDEX_MASK 0xFF
 #define FIGHTER_SLOTS 4
@@ -128,6 +127,8 @@ static BrainFn brain_fn[4];
 
 static uint32_t brainAt(int i) { return BRAINS + (uint32_t)(i & FIGHTER_INDEX_MASK) * BRAIN_SIZE; }
 static uint32_t fighterAt(int i) { return FIGHTERS_ + (uint32_t)(i & FIGHTER_INDEX_MASK) * RECORD_; }
+/** States 252 to 255, a fighter knocked down or out, which no brain goes after; the states past them are in play. */
+static int isOutOfPlay(uint16_t state) { return state >= 252 && state <= 255; }
 static int brainTarget(int i) { return read8(brainAt(i) + B_TARGET); }
 static uint16_t brainKeys(int i) { return read16(brainAt(i) + B_KEYS); }
 static void setBrainKeys(int i, uint16_t keys) { write16(brainAt(i) + B_KEYS, keys); }
@@ -384,7 +385,7 @@ static int brainTargetBest(int i) {
     int32_t score = reads32(scores + (uint32_t)n * 4);
     if (best <= score) continue;
     uint16_t state = fighterState(n);
-    if (state >= INACTIVE_STATE) continue;
+    if (isOutOfPlay(state)) continue;
     best = score;
     best_index = n;
   }
@@ -399,7 +400,7 @@ static int brainTargetRandom(int i) {
     if (!brainActive(candidate)) continue;
     if (brainTeam() && brainGroup(candidate) == brainGroup(i)) continue;
     uint16_t state = fighterState(candidate);
-    if (state >= INACTIVE_STATE) continue;
+    if (isOutOfPlay(state)) continue;
     return candidate;
   }
   return i;
@@ -413,7 +414,7 @@ static int brainTargetFree(int i) {
     if (!brainActive(candidate)) continue;
     if (brainTeam() && brainGroup(candidate) == brainGroup(i)) continue;
     uint16_t state = fighterState(candidate);
-    if (state >= INACTIVE_STATE) continue;
+    if (isOutOfPlay(state)) continue;
     if (read8(SETUP_ + 28 + candidate) == 0) return candidate;
   }
   return brainTargetRandom(i);

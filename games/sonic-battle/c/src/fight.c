@@ -38,7 +38,7 @@ void dp_sound_skip_frames(int frames);   // the kit's sound engine, run without 
 static int setup(int at) { return read8(SETUP_ + (uint32_t)at); }
 
 /** 0x08020840: the colour effect's fade in from black, over `frames` frames. */
-static void startFadeIn(int frames) {
+void startFadeIn(int frames) {
   queueRegister(BLDCNT, 0xFF);
   queueRegister(BLDY, 0x10);
   write16(FADE_KIND, 2);
@@ -48,7 +48,7 @@ static void startFadeIn(int frames) {
 }
 
 /** 0x080198b0: the fight's counters cleared, the fighters' colours, the arena and the fighters set up. */
-static void setUpFight(void) {
+void setUpFight(void) {
   write8(CHOSEN_, 0);
   write8(CHOSEN_ + 4, 0);
   for (int i = 0; i < 4; i++) {
@@ -101,11 +101,21 @@ static void setUpFight(void) {
   for (int i = 0; i < 4; i++) write8(0x03001C40 + 159 + (uint32_t)i * 252, 0);
 }
 
+/** The special attacks a computer fighter takes into a fight, one of six sets the V-blanks counted pick, as 0x08019b5c
+ *  and the demo's frame (0x0801c4bc) give them. */
+void giveComputerPicks(int i) {
+  static const uint8_t PICKS[6] = {27, 30, 39, 45, 54, 57};
+  uint32_t v = (uint16_t)g.vblanks;
+  int32_t roll = (int32_t)((v + 4) * (v + 7)) % 6;   // 0x0804b03c, a remainder with the product's sign
+  if ((uint32_t)roll < 6) write8(FIGHTERS + (uint32_t)i * RECORD + 141, PICKS[roll]);
+}
+
 /**
  * 0x08019b5c, for a fight that isn't a team's: each fighter's choices cleared, the gauges at nothing, a second fighter
- * of the same character marked to wear its other colours, and the colours loaded with that known.
+ * of the same character marked to wear its other colours, each computer's special attacks picked, and the colours
+ * loaded with that known.
  */
-static void setUpFighters(void) {
+void setUpFighters(void) {
   if (read8(0x03002600 + 7) == 0) {
     static const int fields[4] = {12, 16, 141, 145};
     for (int i = 0; i < 4; i++) for (int n = 0; n < 4; n++) write8(SETUP_ + (uint32_t)fields[n] + i, 0);
@@ -119,6 +129,7 @@ static void setUpFighters(void) {
       if (setup(20 + i) == setup(20 + j)) write8(SETUP_ + 24 + (j == player ? i : j), 1);
     }
   }
+  for (int i = 0; i < 4; i++) if (setup(28 + i) != 0) giveComputerPicks(i);
   loadColours();
   for (int i = 0; i < 4; i++) if (setup(20 + i) != NO_FIGHTER) showColours(i, setup(20 + i), 0);
   loadSharedSprites();
@@ -263,15 +274,6 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
     write8(FIGHTERS + 147, 72);
     write8(FIGHTERS + 149, 1);
     if (direct) write8(FIGHTERS + 141, 0x39);   // the three picks the choice screen's first three A presses leave
-    if (end < 0) {
-      // the other fighter's recording opens Battle's four-fighter rule: the player and three computers, each with
-      // its own picks, which its fight frame's brain ticks read
-      write8(SETUP_ + 21, 1);
-      write8(SETUP_ + 22, 2);
-      write8(SETUP_ + 23, 3);
-      for (int i = 0; i < 4; i++) write8(SETUP_ + 28 + i, i == 0 ? 0 : 1);
-      for (int i = 0; i < 4; i++) write8(FIGHTERS + (uint32_t)i * RECORD + 141, i == 0 ? 0x39 : 0x36);
-    }
   }
   gba_sound_frames_gone_by(vblanks - 2);
   gba_sound_play(read8(SONG_));
