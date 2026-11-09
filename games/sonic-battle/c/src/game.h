@@ -272,6 +272,7 @@ void battleReadyAfterWait(void);
 void battleFrame(void);
 void battleAfterWait(void);
 void beginEnding(void);
+void placeRealBlast(void);
 void endingFrame(void);
 void endingAfterWait(void);
 void resultTransition(void);

@@ -284,6 +284,7 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
     write8(FIGHTERS + 149, 1);
     write8(FIGHTERS + RECORD + HEALTH, 0);
     write16(FIGHTERS + RECORD + STATE, 253);
+    placeRealBlast();
     beginEnding();
     battleAfterWait();   // the win frame's after-wait draw, which starts the banner's first frame
     g.after_wait = 0;

@@ -1338,6 +1338,7 @@ static const ThingScript THING_SCRIPTS[] = {
   {73, 0x0806CE18}, {75, 0x0806CE98}, {77, 0x0806CFBC}, {79, 0x0806D29C}, {80, 0x0806D2EC}, {81, 0x0806D378},
   {54, 0x0806C984}, {57, 0x0806CA14}, {60, 0x0806CD14}, {61, 0x0806CD68},
   {117, 0x0806DC00}, {118, 0x0806DC60}, {114, 0x0806DB48}, {120, 0x0806DCBC}, {121, 0x0806DD04}, {122, 0x0806DDA4},
+  {137, 0x0806DE3C}, {138, 0x0806DF70},
   {36, 0x0806C054}, {78, 0x0806D13C}, {158, 0x0806E520}, {160, 0x0806E5F0}, {154, 0x0806E268},
   {157, 0x0806E4DC}, {161, 0x0806E680}, {162, 0x0806E6E0}, {163, 0x0806E70C}, {164, 0x0806E76C},
   {165, 0x0806E82C}, {166, 0x0806E8EC}, {210, 0x0806F724}, {211, 0x0806F7E4}, {212, 0x0806F8A4},
@@ -1505,9 +1506,10 @@ static const ThingHit THING_HITS[] = {
   {154, 0x120, 24, 30, 3, 0x2C0, 0, 4, 34}, {158, 0x120, 10, 30, 3, 0x380, 0, 0, 255},
   {160, 0x120, 10, 30, 3, 0x380, 0, 0, 255}, {185, 0x280, 8, 40, 3, 0x3C0, 0, 2, 8},
   {191, 0x200, 20, 35, 3, 0x280, 0, 2, 20}, {197, 0x140, 10, 30, 3, 0x340, 0, 0, 24},
+  {137, 0x180, 10, 10, 2, 0x340, 0, 0, 24}, {138, 0x180, 10, 10, 2, 0x340, 0, 0, 24},
 };
 // the kinds 0x0800eaec has hits for that aren't ported yet
-static const int THING_HITS_LATER[] = {62, 63, 82, 94, 97, 102, 137, 138, 142, 165, 166, 174, 175, 194, 201, 241, 245};
+static const int THING_HITS_LATER[] = {62, 63, 82, 94, 97, 102, 142, 165, 166, 174, 175, 194, 201, 241, 245};
 // the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet
 static const int THING_STEPS_LATER[] = {39, 101, 141};
 // the kinds 0x0800cec8 sends to 0x0800d260, its steps of walls and the arena's edges for a thing that moves
@@ -1943,6 +1945,7 @@ void trainingFrame(void) {
     write8(FIGHTERS + 149, 1);
     write8(FIGHTERS + RECORD + HEALTH, 0);
     write16(FIGHTERS + RECORD + STATE, 253);
+    placeRealBlast();
     g.callback = battleFrame;
     return;
   }
