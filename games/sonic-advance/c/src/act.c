@@ -4,6 +4,8 @@
 // every comment names the original's function where one is rewritten.
 
 #include "act.h"
+
+void dp_sound_skip_frames(int frames);
 #include "titlecard.h"
 
 enum {
@@ -352,7 +354,7 @@ static int ringCount;
 static Sprite ringSprite;
 
 // the sparkle a taken ring leaves (CreateCollectRingEffect), at the objects' order, 15
-typedef struct { Sprite s; int x, y, active; } RingSparkle;
+typedef struct { Sprite s; int x, y, active, pending; } RingSparkle;
 static RingSparkle sparkles[8];
 
 typedef struct { int32_t x, y; Sprite vent, lid; int blowing; } SteamExhaust;
@@ -416,12 +418,11 @@ static void spawn_sparkle(int x, int y) {
     if (sparkles[i].active) continue;
     RingSparkle *sp = &sparkles[i];
     memset(sp, 0, sizeof *sp);
-    sp->active = 1; sp->x = x; sp->y = y;
+    sp->active = 1; sp->pending = 1; sp->x = x; sp->y = y;
     sprite_init(&sp->s);
     sp->s.graphics.dest = OBJ_VRAM + 600u * 32u;
     sp->s.graphics.anim = 708; sp->s.variant = 0;
     sp->s.oamFlags = 15 << 6; sp->s.frameFlags = 2 << 12;
-    update_sprite(&sp->s, 0);
     return;
   }
 }
@@ -445,6 +446,8 @@ static void step_rings(void) {
   for (int i = 0; i < 8; i++) {
     RingSparkle *sp = &sparkles[i];
     if (!sp->active) continue;
+    // the sparkle's task starts the ring song again on its first frame, as the original's does
+    if (sp->pending) { sp->pending = 0; gba_sound_play(117); }
     if (update_sprite(&sp->s, 0) == 0) sp->active = 0;
   }
 }
@@ -517,7 +520,7 @@ static void casino_background_update(void) {
   int ySub = ((camY << 6) + (camY << 5)) / (c->height - SCREEN_H_);
   act.cam.bgX = xSub; act.cam.bgY = ySub;
   e.bgScroll[6] = (uint16_t)xSub; e.bgScroll[7] = (uint16_t)ySub;
-  set_hblank_copy(REG_BG0HOFS + 6, 4);
+  set_hblank_copy(REG_BG0HOFS + 3 * 4, 4);
   for (int line = 0; line < SCREEN_H_; line++) {
     int row = ySub + line, x = xSub;
     if (row >= 134 && row < 140) x = (xSub + (camX >> 5)) & 0xFF;
@@ -757,10 +760,25 @@ static int ground_sensors(Player *p) {
   return 1;
 }
 static void follow_ground(Player *p) {
+  if (is_casino() && p->air) {
+    // Player_AirCollision (sub_8022190), moving down: the floor under his feet, not the ground sensors, which would
+    // pull him down onto it while he is still above it
+    if (p->ysp < 0) return;
+    int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y) + p->offsetY;
+    int layer = p->layer | (p->ysp < 0 ? IGNORE_PLATFORMS : 0);
+    Scan a = scan(1, y, x - 8, layer, 8), b = scan(1, y, x + 8, layer, 8);
+    Scan f = a.d < b.d ? a : b;
+    int out = a.d < b.d ? b.d : a.d;
+    if (f.d >= 0 || out < -((int)__builtin_floor(p->ysp) + 6)) return;
+    p->rotation = (uint8_t)f.rot;
+    p->y += f.d;
+    // Player_Land: he comes down walking, uncurled with his feet where they landed
+    p->state = PS_WALK; p->curled = 0; p->offsetY = SPRITE_OFFSET_Y;
+    p->air = 0; p->ysp = 0; p->gsp = p->xsp;
+    return;
+  }
   int snapped = ground_sensors(p);
-  // the original's air collision lands him when he comes down onto the surface, so the first frame's jump is a real
-  // one: he rises, the floor catches him again, and the ball never passes through it
-  if (is_casino() && p->air && p->ysp >= 0 && snapped) { p->air = 0; p->ysp = 0; }
+  if (is_casino() && snapped) { p->air = 0; p->ysp = 0; }
 }
 static void move_player(Player *p) {
   p->x += p->xsp;
@@ -784,11 +802,11 @@ static void step_player(Player *p, int left, int right, int up, int down, int ju
     walk_input(p, dir, sideways);
     if (!sideways) p->gsp = toward0(q8(p->gsp), q8(FRICTION)) / Q8;
     along_surface(p);
-  } else if (is_casino()) {
-    p->ysp += 42.0 / 256;
   }
   bounds(p);
   move_player(p);
+  // the original's air step moves him first and only then adds gravity, so the first move uses the jump's own speed
+  if (p->air && is_casino()) p->ysp += 42.0 / 256;
   follow_ground(p);
 }
 
@@ -849,7 +867,8 @@ static void hud_update(int draw) {
     put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, hudFaceTile, 0, 0);
     if (act.ringCount == 0) {
       static const int FLASH[5] = { 0, 11, 11, 0, 0 };
-      int f = h->flash >> 3;
+      // the HUD's task runs seven frames into the act, so its flash starts then
+      int f = h->flash >= 7 ? (h->flash - 7) >> 3 : 0;
       if (f < 5) hud_glyph(FLASH[f], 9, 5);
       else if (is_casino()) hud_past(9, 5);
     } else {
@@ -1004,7 +1023,7 @@ static void act_frame(void) {
   else if (!cardEnded) hud_update(1);
   step_player(&act.player, left, right, up, down, jump, jumpPressed, attack, attackPressed);
   if (act.drawn == 0 && jump && is_casino()) {
-    act.player.state = PS_SPIN; act.player.curled = 1; act.player.air = 1; act.player.ysp = -4.875;
+    act.player.state = PS_SPIN; act.player.curled = 1; act.player.air = 1; act.player.ysp = -3.0;
     set_offset_y(&act.player, BALL_SPRITE_OFFSET_Y);
   }
   animate_player(&act.player);
@@ -1036,7 +1055,7 @@ void act_task(Task *t) {
 }
 
 /** Draws the act's first frame now, for a screen that hands over inside its own task. */
-void act_frame_now(void) { act_frame(); act.skipTask = is_casino() ? 1 : 0; }
+void act_frame_now(void) { act_frame(); act.skipTask = 0; }
 
 static int pendingLevel, pendingCard, pendingPre;
 static void act_begin_task(Task *t) {
@@ -1067,7 +1086,7 @@ static void pre_run(int cardSkip, int preFrames) {
     int moves = act.cam.started;
     camera_update(&act.cam, &act.player);
     if (is_casino()) {
-      if (moves) casino_background_update();
+      if (moves) { casino_background_update(); casino_background_tasks(); }
       palette_animations_pre();
       fireworks_pre();
     }
@@ -1094,9 +1113,9 @@ static void pre_run(int cardSkip, int preFrames) {
     engine_copy_graphics();
   }
   if (is_casino()) stage_animated_tiles_pre();
-  // the card's last frame steps the stage's animations once, as the original's does, but its first act frame then waits
-  // one frame longer before the ring and the palette animations move on
-  ringSprite.qAnimDelay = (int16_t)(ringSprite.qAnimDelay + 256);
+  // the card's last frame steps the stage's animations once, as the original's does; the ring then steps on the
+  // original's next frame, two display frames into the act
+  ringSprite.qAnimDelay = 512;
   for (int i = 0; i < palAnimCount; i++) palAnims[i].wait += 256;
 }
 
@@ -1123,7 +1142,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   load_rings(level);
   load_steam_exhausts(level);
   sprite_init(&ringSprite);
-  ringSprite.graphics.dest = OBJ_VRAM + (level == 3 ? 232u : 240u) * 32u;
+  ringSprite.graphics.dest = OBJ_VRAM + (level == 3 || is_casino_level(level) ? 232u : 240u) * 32u;
   ringSprite.graphics.anim = 707; ringSprite.variant = 0;
   memset(sparkles, 0, sizeof sparkles);
   ringSprite.oamFlags = 20 << 6; ringSprite.palId = 0; ringSprite.frameFlags = 2 << 12;
@@ -1186,7 +1205,26 @@ void act_start(int level, int cardSkip, int preFrames) {
   e.flags |= FLAGS_UPDATE_OBJ_PALETTES;
   // a start point that opens past the card runs its frames with no picture
   if (gba_start_point("level") != NULL || cardSkip >= 0 || preFrames > 0) pre_run(cardSkip, preFrames);
-  if (is_casino()) create_palette_animation_tasks();
+  // the HUD's task first runs on the act's first frame, so its zero-ring flash starts then
+  if (is_casino()) act.hud.flash = 0;
+  // the original's palette tasks have loaded one more frame by the act's first frame for the rows that change in it;
+  // animations 818, 825 and 828 are already on the right frame, as their longer delays show
+  if (is_casino()) {
+    static const int behind[] = { 0, 1, 3, 8, 10 };
+    for (unsigned k = 0; k < sizeof behind / sizeof behind[0]; k++) {
+      paletteAnims[behind[k]].s.qAnimDelay = 0;
+      update_sprite(&paletteAnims[behind[k]].s, 1);
+    }
+    // animation 818 steps one display frame earlier than the card left it
+    paletteAnims[2].s.qAnimDelay = (int16_t)(paletteAnims[2].s.qAnimDelay - 256);
+    // the delay-6 animations step two display frames earlier than the card left them
+    paletteAnims[0].s.qAnimDelay = (int16_t)(paletteAnims[0].s.qAnimDelay - 512);
+    paletteAnims[10].s.qAnimDelay = (int16_t)(paletteAnims[10].s.qAnimDelay - 512);
+    // the delay-8 animations step at the original's next frame, four frames on
+    static const int next[] = { 4, 5, 6, 7, 9 };
+    for (unsigned k = 0; k < sizeof next / sizeof next[0]; k++) paletteAnims[next[k]].s.qAnimDelay = 256;
+    create_palette_animation_tasks();
+  }
   // the first act frame keeps the scroll the course select and its title card left, as the original's does: the
   // camera task's first act frame only sets it going, so the act's own background update comes on the next one
   if (is_casino()) {
@@ -1199,8 +1237,12 @@ void act_start(int level, int cardSkip, int preFrames) {
   play_song(act.stage.music);
   // the act's music starts with the act, as the stage's init does; a start point that opens past the card gets the
   // frames the card played first, as the original's init does before its first picture
-  if (gba_start_point("level") != NULL) gba_sound_frames_gone_by(118);
-  else { gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4); }
+  if (gba_start_point("level") != NULL) {
+    // Casino Paradise's act music has played the card's frames by its first picture; the other start points keep
+    // the frame count their own recordings were proven with
+    if (is_casino_level(level)) { gba_sound_frames_gone_by(227); dp_sound_skip_frames(232); }
+    else gba_sound_frames_gone_by(118);
+  } else { gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4); }
   act.hud.active = 1;
   act.started = 1;
   create_task(act_task, NULL, 0x0F00, 0, NULL);

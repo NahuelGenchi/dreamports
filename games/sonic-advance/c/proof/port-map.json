@@ -124,7 +124,8 @@
     ["sub_80078D4","src/lines.c:25"],
     ["sub_8007958","src/lines.c:32"],
     ["sub_800FD9C","src/modeselect.c:185"],
-    ["sub_801E4E4","src/act.c:227"],
+    ["sub_801E4E4","src/act.c:229"],
+    ["sub_8022190","src/act.c:764"],
     ["Task_800F058","src/modeselect.c:313"]
   ]
 }
