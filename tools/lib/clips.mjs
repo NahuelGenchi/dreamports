@@ -192,5 +192,22 @@ export function clipLinks(text) {
   return [...String(text).matchAll(/https:\/\/[^\s()<>"'[\]]+\/clips\/[^\s()<>"'[\]]+\.(?:mp4|png|json)/g)].map(m => m[0]);
 }
 
+/** A game's code or recordings, as a path in the repository, with the game's folder: a step that changes either shows it in a clip. */
+export const GAME_CHANGE = /^games\/([a-z0-9-]+)\/(?:[a-z0-9-]+\/)?(?:src|proof\/recordings)\//;
+
+/** The games whose code or recordings these paths change. */
+export const gamesChanged = paths => [...new Set((paths ?? []).map(path => GAME_CHANGE.exec(path)?.[1]).filter(Boolean))];
+
+/** The paths a commit adds or changes since `base`, leaving out those it deletes, or null when git can't tell. */
+export function changedSince(base, commit = 'HEAD') {
+  const out = base ? git(['diff', '--name-only', '--no-renames', '--diff-filter=d', base, commit]) : null;
+  return out === null ? null : out.split('\n').filter(Boolean);
+}
+
+/** What a step that changes a game and shows it in no clip does, as share, its check and the review say it. */
+export const SHOW_IT = 'a step that changes a game\'s code or recordings shows it in a clip: prove the recordings it changed, '
+  + 'and if none shows the new code, add a recording that plays it, or run one on until it does (npm run dp -- help recording), '
+  + 'then prove it and share again';
+
 /** A clip's published measures, as share writes them beside it, read the way clipProblems reads prove's report. */
 export const reportOf = m => ({ recording: m.recording, recordingFile: m.recordingFile, recordingSha1: m.recordingSha1, clip: m.measures });
