@@ -31,6 +31,12 @@ static void act_task_remove(ActTask *t) {
   t->used = 0;
 }
 
+/** TasksDestroyAll for the act's objects: each goes as its destructor has it, freeing its sprites' VRAM. */
+void act_tasks_destroy_all(void) {
+  while (first) act_task_remove(first);
+  following = NULL;
+}
+
 void act_tasks_run(int from, int to) {
   ActTask *t = first;
   while (t && t->priority < from) t = t->next;
@@ -175,7 +181,8 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 5, 6, hiding_spikes_spawn },
   { 8, 15, spring_spawn },
   { TOGGLE_FRONT, TOGGLE_BACK, toggle_spawn },
-  { 21, 22, platform_spawn },
+  { 21, 23, platform_spawn },
+  { 25, 25, platform_spawn },
   { 104, 104, platform_spawn },
   { 48, 53, bumper_spawn },
   { 54, 54, flipper_spawn },
@@ -199,6 +206,19 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 62, 62, bowl_spawn },
   { 63, 64, panel_gate_spawn },
   { 69, 69, conveyor_spawn },
+  { 79, 79, steam_exhaust_spawn },
+  { 31, 33, booster_spawn },
+  { 75, 75, hook_rail_spawn },
+  { 76, 76, swinging_hook_spawn },
+  { 96, 96, curler_spawn },
+  { 105, 105, lava_spawn },
+  { 77, 77, security_gate_spawn },
+  { 78, 78, swing_rope_spawn },
+  { 80, 80, crane_claw_spawn },
+  { 110, 110, pipe_entrance_spawn },
+  { 111, 111, pipe_exit_spawn },
+  { 47, 47, booster_spawn },
+  { 100, 101, booster_spawn },
   { 70, 70, visibility_spawn },
   { 74, 74, carousel_spawn },
   { 102, 102, special_spring_spawn },
@@ -209,6 +229,10 @@ static const struct { int kind; Spawn spawn; } ENEMIES[] = {
   { 8, hanabii_spawn },
   { 9, slot_machine_spawn },
   { 10, pierrot_spawn },
+  { 6, tentou_spawn },
+  { 15, mole_spawn },
+  { 23, egg_press_spawn },
+  { 7, fireball_spawn },
 };
 
 ActTask *entity_spawn(Slot *slot) {
@@ -249,5 +273,6 @@ void objects_start(int level, int paletteAnimations) {
   act_task_add(scatter_task, NULL, NULL, PRIORITY_SCATTER);
 }
 
-void objects_run_early(void) { act_tasks_run(0, PRIORITY_SONIC); }
+void objects_run_before_camera(void) { act_tasks_run(0, PRIORITY_CAMERA); }
+void objects_run_early(void) { act_tasks_run(PRIORITY_CAMERA, PRIORITY_SONIC); }
 void objects_run_late(void) { act_tasks_run(PRIORITY_SONIC, 0x10000); }

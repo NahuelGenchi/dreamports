@@ -82,6 +82,13 @@ static int sideways(int ox, int oy, const Hitbox *hb, Player *p, int *flags) {
   return 1;
 }
 
+int collide_gate(int ox, int oy, const Hitbox *hb, Player *p) {
+  int flags = 0;
+  if (!hb || p->dead) return 0;
+  sideways(ox, oy, hb, p, &flags);
+  return flags;
+}
+
 int collide_platform(const void *o, int ox, int oy, const Hitbox *hb, Player *p) {
   int flags = 0;
   if (!hb || p->dead) return 0;

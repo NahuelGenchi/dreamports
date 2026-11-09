@@ -11,7 +11,7 @@
     { "name": "Neo Green Hill Zone act 1" },
     { "name": "Neo Green Hill Zone act 2" },
     { "name": "Secret Base Zone act 1" },
-    { "name": "Secret Base Zone act 2" },
+    { "name": "Secret Base Zone act 2", "recording": "sonic-secret-base-act-2", "frames": [1957, 10324] },
     { "name": "Casino Paradise Zone act 1", "recording": "sonic-casino-paradise", "frames": [1979, 6393] },
     { "name": "Casino Paradise Zone act 2" },
     { "name": "Ice Mountain Zone act 1" },

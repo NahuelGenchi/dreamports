@@ -8,6 +8,7 @@
 #include "player.h"
 
 #define ACT_LEVEL_X_ZONE 12
+#define ACT_LEVEL_SECRET_BASE_2 3
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
 #define ACT_LEVEL_BLOCKS 8192   // the largest layer, in 96 × 96 px blocks
 #define ACT_TILE_ENTRIES (ACT_TILES * 144)
@@ -24,7 +25,7 @@ typedef struct {
 
 typedef struct {
   int level, zone, act, music, hudFlash;
-  int backgroundScroll;   // 0 still, 1 Casino Paradise's bands, 2 X Zone
+  int backgroundScroll;   // 0 still, 1 Casino Paradise's bands, 2 X Zone, 3 Secret Base's inside
   int paletteCount;
   const int *paletteAnimations;
   Tilemap front, back, background;
@@ -62,6 +63,9 @@ typedef struct {
   int tick, frames, courseTime, ringCount, lives, score;
   uint32_t seed;
   int goalReached, ringsStopped;   // past the goal; past the goal or a beaten boss, the rings manager neither takes nor draws
+  int afterLevel;                  // made by GoToNextLevel after the act before, rather than by the course select
+  int loadFrames;                  // the frames left that the next act spends loading after its first (act_task)
+  int bossFlash;                   // a hit boss drawn into the OBJ window, which the frame brightens to white
   int checkpointIndex, checkpointX, checkpointY, checkpointTime;   // the last checkpoint passed (gBossIndex), where and when
   int clockStopped, cardFrame, cardDone, firstCard, started, preFrames, firstFrame, drawn;
   // the stage's animated tiles (UpdateBgAnimationTiles), and its palette animations' sprites

@@ -60,8 +60,9 @@ static void apply_start_point(void) {
 void front_start_game(void) {
   if (ctx.select) { create_character_select(ctx.character); return; }
   apply_start_point();
-  // a start point that names a level opens that act at once, as the JavaScript page's does
-  if (gba_start_point("level")) { front_play((int)gba_start_number("level", 0)); return; }
+  // a start point that names a level opens that act at once, as the JavaScript page's does, unless it asks to go through
+  // the menus (power), where the course select opens it
+  if (gba_start_point("level") && !gba_start_number("power", 0)) { front_play((int)gba_start_number("level", 0)); return; }
   if (ctx.gameMode == GAME_MODE_TIME_ATTACK || save_unlocked_level(ctx.character) != 0) create_course_select();
   else front_play(-1);
 }
@@ -135,6 +136,8 @@ void front_play(int level) {
   if (startLevel >= 0) {
     act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
     act_frame_now();
+    // the frame the act takes to load went by with the card's, before the recording's first act frame
+    act.stallLoad = 0;
     return;
   }
   act_start(level < 0 ? 0 : level, -1, 0);
