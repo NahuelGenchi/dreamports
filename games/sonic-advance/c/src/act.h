@@ -7,6 +7,10 @@
 #include "sa.h"
 #include "player.h"
 
+// how an act's background moves (its StageBgUpdate)
+enum { BG_SCROLL_STILL, BG_SCROLL_CASINO_PARADISE, BG_SCROLL_X_ZONE, BG_SCROLL_SECRET_BASE };
+#define ACT_LEVEL_SECRET_BASE_2 3
+#define ACT_LEVEL_CASINO_PARADISE_1 4
 #define ACT_LEVEL_X_ZONE 12
 #define ACT_LEVEL_SECRET_BASE_2 3
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
@@ -25,7 +29,7 @@ typedef struct {
 
 typedef struct {
   int level, zone, act, music, hudFlash;
-  int backgroundScroll;   // 0 still, 1 Casino Paradise's bands, 2 X Zone, 3 Secret Base's inside
+  int backgroundScroll;   // how the background moves (BG_SCROLL_*)
   int paletteCount;
   const int *paletteAnimations;
   Tilemap front, back, background;
@@ -73,7 +77,7 @@ typedef struct {
   int startCamX, startCamY;
   Task *task;
   int stallLoad, musicStarts;
-  int palCount;
+  int palCount, palStarted;
   struct PaletteAnim *pal;
   // the title card's graphics and state (titlecard.c), and where its pieces are
   int cardGraphic;
@@ -110,6 +114,8 @@ void act_frame_now(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_song_playing(void);
+/** Whether the C version has `level`'s act, which the course select may start. */
+int act_level_ported(int level);
 void act_task(Task *t);
 uint32_t front_frame(void);
 
