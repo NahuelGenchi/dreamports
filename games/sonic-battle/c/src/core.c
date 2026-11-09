@@ -371,13 +371,6 @@ void step(uint16_t held) {
   g.sound_cycles = gba_sound_frame_cycles();
   finishLineWork();
   vblank();
-  // a start point that opens just before the end: its own frames run first, then this one ends the fight
-  if (g.fight_end_in > 0 && --g.fight_end_in == 0) {
-    g.after_wait = 0;
-    fightEndNow();
-    if (g.line_one) g.line_one();
-    return;
-  }
   if (g.after_wait) {
     void (*rest)(void) = g.after_wait;
     g.after_wait = 0;

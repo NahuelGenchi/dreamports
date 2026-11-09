@@ -253,25 +253,5 @@ void resultTransitionAfterWait(void) {
   drawFightFrameHud(shown == 255 ? player : shown, hudMode());
 }
 
-/** A start point that opens just before the end counts its own frames down, then ends the fight as the original's
- *  win frame does: the rival out of health, the player's point on, the win frame's after-wait and the banner's first
- *  frame. */
-void fightEndNow(void) {
-  write8(SETUP_ + 125, 1);
-  write8(SETUP_ + 4, 2);
-  write8(SETUP_ + 6, 1);
-  write8(SETUP_ + 51, 1);
-  write8(FIGHTERS + 147, 72);
-  write8(FIGHTERS + 149, 1);
-  write8(FIGHTERS + RECORD + HEALTH, 0);
-  write16(FIGHTERS + RECORD + STATE, 253);
-  battleFrame();   // the win frame's own logic, which finds the winner and starts the ending
-  battleAfterWait();
-  g.after_wait = 0;
-}
-
-/** The number of the Dreamport's own frames a start point opens before the end. */
-void fightEndAfter(int frames) { g.fight_end_in = frames + 1; }
-
 /** The result screen is not part of this foundation and is not ported: reaching it here stops the game. */
 void resultScreen(void) { unsupported(); }
