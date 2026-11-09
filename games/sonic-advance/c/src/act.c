@@ -772,8 +772,9 @@ static void follow_ground(Player *p) {
     if (f.d >= 0 || out < -((int)__builtin_floor(p->ysp) + 6)) return;
     p->rotation = (uint8_t)f.rot;
     p->y += f.d;
-    // Player_Land: he comes down walking, uncurled with his feet where they landed
-    p->state = PS_WALK; p->curled = 0; p->offsetY = SPRITE_OFFSET_Y;
+    // Player_Land: he comes down walking, uncurled with his feet where they landed, so his centre moves up
+    // the five pixels between the ball's offset and his standing one
+    p->state = PS_WALK; p->curled = 0; set_offset_y(p, SPRITE_OFFSET_Y);
     p->air = 0; p->ysp = 0; p->gsp = p->xsp;
     return;
   }
@@ -1023,6 +1024,8 @@ static void act_frame(void) {
   else if (!cardEnded) hud_update(1);
   step_player(&act.player, left, right, up, down, jump, jumpPressed, attack, attackPressed);
   if (act.drawn == 0 && jump && is_casino()) {
+    // the held A started his jump on the frame before the first one compared: its sound plays at the act's start,
+    // and this is the jump's first compared frame
     act.player.state = PS_SPIN; act.player.curled = 1; act.player.air = 1; act.player.ysp = -3.0;
     set_offset_y(&act.player, BALL_SPRITE_OFFSET_Y);
   }
@@ -1071,7 +1074,21 @@ void act_queue(int level, int cardSkip, int preFrames) {
 }
 
 /** The title card's frames before the first one the recording compares, run with no picture. */
-static void pre_run(int cardSkip, int preFrames) {
+static void pre_run(int cardSkip, int preFrames, int prelude) {
+  // the course select's frames before the card, which a start point at the A leaves out: the stage's own clock,
+  // its background, its fireworks and its random numbers still run through them, as the original's do. The card
+  // and the palette animations start after them, as the original's card does.
+  for (int i = 0; i < prelude; i++) {
+    int moves = act.cam.started;
+    camera_update(&act.cam, &act.player);
+    if (is_casino()) {
+      if (moves) { casino_background_update(); casino_background_tasks(); }
+      fireworks_pre();
+    }
+    if (is_casino()) stage_animated_tiles(0); else stage_tiles_step();
+    act.tick++;
+    engine_copy_graphics();
+  }
   int after = 0;
   while (!act.cardDone || after < preFrames) {
     if (act.cardDone) {
@@ -1204,7 +1221,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   for (int i = 0; i < 16; i++) e.objPalette[6 * 16 + i] = (uint16_t)rom_u16(fontPalette + i * 2);
   e.flags |= FLAGS_UPDATE_OBJ_PALETTES;
   // a start point that opens past the card runs its frames with no picture
-  if (gba_start_point("level") != NULL || cardSkip >= 0 || preFrames > 0) pre_run(cardSkip, preFrames);
+  if (gba_start_point("level") != NULL || cardSkip >= 0 || preFrames > 0) pre_run(cardSkip, preFrames, (int)gba_start_number("prelude", 0));
   // the HUD's task first runs on the act's first frame, so its zero-ring flash starts then
   if (is_casino()) act.hud.flash = 0;
   // the original's palette tasks have loaded one more frame by the act's first frame for the rows that change in it;
@@ -1240,8 +1257,22 @@ void act_start(int level, int cardSkip, int preFrames) {
   if (gba_start_point("level") != NULL) {
     // Casino Paradise's act music has played the card's frames by its first picture; the other start points keep
     // the frame count their own recordings were proven with
-    if (is_casino_level(level)) { gba_sound_frames_gone_by(227); dp_sound_skip_frames(232); }
-    else gba_sound_frames_gone_by(118);
+    if (is_casino_level(level)) {
+      // the original's music manager starts the act's song with its volume and fade-in as the song starts, before
+      // the card; a start point that skips those frames does the same before the skip, so the fade is over by its
+      // first frame
+      gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4);
+      gba_sound_frames_gone_by(227);
+      int skip = (int)gba_start_number("skip", 232);
+      // a start point whose first act frame is a jump the course select's A began: its sound starts on the card's
+      // last frames, before the first compared one, as the original's does; the music still skips the same frames
+      if (gba_start_number("jump", 0)) {
+        int advance = (int)gba_start_number("jumpadv", 1);
+        dp_sound_skip_frames(skip - advance);
+        play_song(SONG_JUMP);
+        dp_sound_skip_frames(advance);
+      } else dp_sound_skip_frames(skip);
+    } else gba_sound_frames_gone_by(118);
   } else { gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4); }
   act.hud.active = 1;
   act.started = 1;
