@@ -1,7 +1,7 @@
 {
   "about": "Gamma's ground Shot special, from a start point at Training's first frame a player can move: Gamma as the player, with Shot chosen on the ground. Gamma runs up to the other fighter and R for the shot.",
   "start": "fight=training&vblanks=1209&you=7&opening=400",
-  "frames": 220,
+  "frames": 360,
   "held": [
     [
       0,

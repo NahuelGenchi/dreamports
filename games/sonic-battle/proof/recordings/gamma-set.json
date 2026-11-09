@@ -1,7 +1,7 @@
 {
   "about": "Gamma's ground Set special, from a start point at Training's first frame a player can move: Gamma as the player, with Set chosen on the ground. Gamma runs up to the other fighter and R for the trap.",
   "start": "fight=training&vblanks=1209&you=7&opening=400&choice=2",
-  "frames": 260,
+  "frames": 360,
   "held": [
     [
       0,
