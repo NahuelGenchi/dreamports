@@ -318,7 +318,7 @@ async function add(game, rest, { fork: wanted, all = false, yes = false }) {
   console.log('');
 
   // the team preview is the team build's
-  await share([versions[0], '--as', game, '--fork', fork.repository, '--yes']);
+  await share([versions[0], '--as', game, '--fork', fork.repository, '--yes'], { team: true });
   return 0;
 }
 

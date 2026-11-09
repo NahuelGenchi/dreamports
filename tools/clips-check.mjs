@@ -1,23 +1,30 @@
 // node tools/clips-check.mjs [<file>]: the pull request's check of its clips (.github/workflows/clips.yml). It reads
 // the pull request's text, from <file> or PR_BODY, and every clip it links, as share publishes them: the video, and the
-// measures share puts beside it. It fails when a clip has no measures, as one share didn't make, when the video isn't
+// measures share puts beside it. It fails when a clip has no measures, as one share didn't make, when it shows the
+// Dreamport on its own (#1039), when the video isn't
 // the one measured, when the recording measured isn't the pull request's, or when the measures break a rule of
-// docs/STANDARD.md#clips (lib/clips.mjs). Text with no clip passes, as a step that changes nothing a recording shows
-// has none. It needs only Node: nothing is installed, and nothing but the clips' own addresses is fetched.
+// docs/STANDARD.md#clips (lib/clips.mjs). With what the pull request changes since CHANGED_FROM, it also fails one that
+// changes the code or recordings of a game main has and links no clip of that game, since #1030: text with no clip
+// passes only when the step changes neither, or adds a game's first entry, which nobody can play yet (#1032). It needs
+// only Node and git: nothing is installed, and nothing but the clips' own addresses is fetched.
 
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { clipLinks, clipProblems, reportOf } from './lib/clips.mjs';
+import { clipLinks, clipProblems, gamesToShow, reportOf, SHOW_IT } from './lib/clips.mjs';
 import { REPO } from './lib/paths.mjs';
 
 const MOST = { mp4: 2_200_000, json: 64_000 };
 
-/** Every problem with the clips a text links, as sentences, with `fetched(url, most)` for their bytes or null. */
-export async function checkClips(text, { fetched = download, read = path => readRecording(path) } = {}) {
+/** Every problem with the clips a text links, as sentences, with `fetched(url, most)` for their bytes or null, and in
+ * `games` the games whose code or recordings the pull request changes, which main has already. */
+export async function checkClips(text, { fetched = download, read = path => readRecording(path), games = [] } = {}) {
   const links = [...new Set(clipLinks(text))];
   const videos = links.filter(link => link.endsWith('.mp4'));
   const problems = [];
+  for (const game of games) {
+    if (!videos.some(link => link.includes(`/clips/${game}/`))) problems.push(`It changes ${game}'s code or recordings and links no clip of it: ${SHOW_IT}, and paste .dreamports/share/clips.md under Clips.`);
+  }
   // a picture on its own is a clip prove didn't make, as share links each video's frame beside it, and nothing else
   for (const link of links.filter(l => !l.endsWith('.mp4'))) {
     const video = link.replace(/-still\.png$/, '.mp4');
@@ -34,6 +41,8 @@ export async function checkClips(text, { fetched = download, read = path => read
       problems.push(`${link} has no measures beside it, so share didn't make it as it is now: prove the recording, share it, and paste .dreamports/share/clips.md under Clips.`);
       continue;
     }
+    // the Dreamport on its own shows nothing of whether it does what the original does (#1039)
+    if (measures.sideBySide !== true) problems.push(`${link} shows the Dreamport on its own, and a pull request's clip shows the original next to it, every frame matching: share the side by side clip prove made.`);
     const video = await fetched(link, MOST.mp4);
     const hash = video && createHash('sha1').update(video).digest('hex');
     if (!video) problems.push(`${link} can't be fetched.`);
@@ -68,7 +77,13 @@ async function download(url, most) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const text = process.argv[2] ? readFileSync(process.argv[2], 'utf8') : process.env.PR_BODY ?? '';
-  const problems = await checkClips(text);
+  // the workflow checks out the merge of the pull request into main, so what it changes is what that merge adds
+  const games = process.env.CHANGED_FROM ? gamesToShow(process.env.CHANGED_FROM) : [];
+  if (games === null) {
+    console.log(`git can't tell what the pull request changes since ${process.env.CHANGED_FROM}, so its clips can't be checked.`);
+    process.exit(1);
+  }
+  const problems = await checkClips(text, { games });
   if (problems.length) {
     console.log(`The pull request's clips break the rules of docs/STANDARD.md#clips:\n${problems.map(p => `- ${p}`).join('\n')}`);
     process.exitCode = 1;

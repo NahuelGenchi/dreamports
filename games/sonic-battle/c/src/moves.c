@@ -448,6 +448,49 @@ static void setVoice(uint32_t rec, int value) {
   if (read8(rec + 199) <= 6) write8(rec + 199, 7);
 }
 
+/** 0x08002488, Shadow's case of 0x08001b0c's switch: the charge grows to 13, with its pictures at 5 and 12. */
+static void chargeShadow(int i, uint32_t rec, int state) {
+  if (state == 19) {
+    write8(rec + 143, 0);
+  } else if (state == 0x113) {
+    uint8_t charge = read8(rec + 143);
+    if (charge <= 12) write8(rec + 143, ++charge);
+    if (charge == 5) write16(rec + 164, 215);
+    else if (charge == 12) write16(rec + 164, 216);
+    if ((held(i) & 0x100) == 0) setState(i, 0x213);
+  } else if (state == 0x213) {
+    uint8_t charge = read8(rec + 143);
+    write16(rec + 166, (uint16_t)(charge <= 4 ? 0xFE00 : charge <= 11 ? 0xFC00 : 0xF880));
+  } else if (state == 0x115) {
+    if ((held(i) & 0x100) == 0) setState(i, 0x215);
+  } else if (state == 0x116) {
+    write16(rec + Z, read16(rec + GROUND));
+    write32(rec + FLAGS, read32(rec + FLAGS) | 1);
+  }
+}
+
+/**
+ * 0x080025a2, Gamma's case of 0x08001b0c's switch: the shot's charge, on the ground (0x113) or in the air (0x114),
+ * grows to 4 and the set's (0x117, 0x118) to 6, and each step of it sounds. Letting go of R fires, and the firing
+ * state sets its height at +168.
+ */
+static void chargeGamma(int i, uint32_t rec, int state) {
+  int ground = (state & 1) != 0;
+  if (state == 19 || state == 20 || state == 23 || state == 24) {
+    write8(rec + 143, 0);
+  } else if (state == 0x113 || state == 0x114 || state == 0x117 || state == 0x118) {
+    int shot = state <= 0x114;
+    uint8_t charge = read8(rec + 143);
+    if (charge <= (shot ? 3 : 5)) {
+      write8(rec + 143, charge + 1);
+      gba_sound_play(shot ? 0x323 : 0x338);
+    }
+    if ((held(i) & 0x100) == 0) setState(i, state + 0x100);
+  } else if (state == 0x213 || state == 0x214 || state == 0x217 || state == 0x218) {
+    write16(rec + 168, ground ? 24 : 20);
+  }
+}
+
 static void playAtFighter(uint32_t rec, int sound) {
   uint16_t x = read16(rec + 12);
   if ((((uint32_t)(x + 48) << 16) >> 0) > 0x1200000u) return;
@@ -524,43 +567,13 @@ void setState(int i, int state) {
         FACE_CAMERA();
       }
   }
-  // 0x08001b0c's charge and release for the special attacks: a held R keeps the charge going, and letting go fires
-  if (state == 19 || state == 20 || state == 23 || state == 24) {
-    write8(rec + 143, 0);
-  } else if (state == 0x113) {
-    int charge = read8(rec + 143) + 1;
-    if (charge > 12) charge = 12;
-    write8(rec + 143, (uint8_t)charge);
-    if (charge == 5) write16(rec + 164, 215);
-    else if (charge == 12) write16(rec + 164, 216);
-    if ((held(i) & 0x100) == 0) setState(i, 0x213);
-  } else if (state == 0x114) {
-    // the air special's charge, up to three: its sound plays as it builds
-    int charge = read8(rec + 143) + 1;
-    if (charge > 3) charge = 3;
-    write8(rec + 143, (uint8_t)charge);
-    gba_sound_play(0x323);
-    if ((held(i) & 0x100) == 0) setState(i, 0x214);
-  } else if (state == 0x117) {
-    // the third special's charge, up to five
-    int charge = read8(rec + 143) + 1;
-    if (charge > 5) charge = 5;
-    write8(rec + 143, (uint8_t)charge);
-    gba_sound_play(0x338);
-    if ((held(i) & 0x100) == 0) setState(i, 0x217);
-  } else if (state == 0x115) {
-    if ((held(i) & 0x100) == 0) setState(i, 0x215);
-  } else if (state == 0x213) {
-    int charge = read8(rec + 143);
-    write16(rec + 166, (uint16_t)(charge <= 4 ? 0xFE00 : charge <= 11 ? 0xFC00 : 0xF880));
-    write16(rec + 168, 24);
-  } else if (state == 0x214) {
-    write16(rec + 168, 20);
-  } else if (state == 0x217) {
-    write16(rec + 168, 24);
-  } else if (state == 0x218) {
-    write16(rec + 168, 20);
-  } else if (state == 0x116) {
+  // 0x08001b0c's charge and release for the special attacks, by the switch at 0x0800241a on the character: a held R
+  // keeps the charge going, and letting go fires
+  int charger = read8(rec + CHARACTER_NOW);
+  if (charger == 3) chargeShadow(i, rec, state);
+  else if (charger == 7 || charger == 17 || charger == 18) chargeGamma(i, rec, state);
+  else if (charger == 23 && state == 0x116) {
+    // 0x0800257c
     write16(rec + Z, read16(rec + GROUND));
     write32(rec + FLAGS, read32(rec + FLAGS) | 1);
   }
@@ -1259,7 +1272,32 @@ void landOrFall(int i) {
   } else IN_AIR();
   #undef IN_AIR
   if (read8(SETUP_ + 125) == 4) for (int j = 0; j < 4; j++) write8(record(j) + HEALTH, 100);
-  if (read8(rec + HEALTH) == 0) notPorted("0800444C");
+  if (read8(rec + HEALTH) == 0) {
+    // 0x0800444c: a fighter out of health. On the ground its opponent gains a point and it takes state 253; in the air
+    // it takes state 252 and flies back. Either state's script ends it in 254, lying down.
+    int current = read16(rec + STATE);
+    if ((uint16_t)(current - 254) <= 1) return;
+    if (current != 253 && (read32(rec + FLAGS) & 1)) {
+      // the other fighter gains the point: the one whose hit took this fighter's health, or the other one in play
+      int scorer = read8(rec + 124);
+      if (scorer == i || scorer > 3) {
+        scorer = -1;
+        for (int j = 0; j < 4; j++) if (j != i && read8(SLOTS_ + j) != 255) { scorer = j; break; }
+      }
+      if (scorer >= 0) write8(SETUP_ + 51 + (uint32_t)scorer, (uint8_t)(read8(SETUP_ + 51 + scorer) + 1));
+      write8(SETUP_ + 47 + i, 0);
+      setState(i, 253);
+      write8(rec + 28, 0);
+      write8(rec + 29, 0);
+      return;
+    }
+    if ((uint16_t)(current - 252) <= 1) return;
+    if (!(read32(rec + FLAGS) & 4)) return;
+    setState(i, 252);
+    write8(rec + 28, 0);
+    write8(rec + 29, 0);
+    return;
+  }
   uint32_t flags = read32(rec + FLAGS);
   int now = read16(rec + STATE);
   if (flags & FLAG_LANDED) {
@@ -1300,13 +1338,15 @@ static const ThingScript THING_SCRIPTS[] = {
   {73, 0x0806CE18}, {75, 0x0806CE98}, {77, 0x0806CFBC}, {79, 0x0806D29C}, {80, 0x0806D2EC}, {81, 0x0806D378},
   {54, 0x0806C984}, {57, 0x0806CA14}, {60, 0x0806CD14}, {61, 0x0806CD68},
   {117, 0x0806DC00}, {118, 0x0806DC60}, {114, 0x0806DB48}, {120, 0x0806DCBC}, {121, 0x0806DD04}, {122, 0x0806DDA4},
+  {137, 0x0806DE3C}, {138, 0x0806DF70},
   {36, 0x0806C054}, {78, 0x0806D13C}, {158, 0x0806E520}, {160, 0x0806E5F0}, {154, 0x0806E268},
   {157, 0x0806E4DC}, {161, 0x0806E680}, {162, 0x0806E6E0}, {163, 0x0806E70C}, {164, 0x0806E76C},
   {165, 0x0806E82C}, {166, 0x0806E8EC}, {210, 0x0806F724}, {211, 0x0806F7E4}, {212, 0x0806F8A4},
   {213, 0x0806F924}, {214, 0x0806F9C8}, {215, 0x0806FA90}, {216, 0x0806FBA8}, {230, 0x0806FC60},
   {231, 0x0806FD88}, {240, 0x0806FCB0}, {241, 0x0806FCF0}, {245, 0x0806FE2C},
   {174, 0x0806E9AC}, {175, 0x0806EB10}, {177, 0x0806EC74}, {178, 0x0806ED0C}, {179, 0x0806EDA4},
-  {180, 0x0806EE3C}, {181, 0x0806EEE8}, {191, 0x0806F318}, {197, 0x0806F4C4}, {200, 0x0806F55C},
+  {180, 0x0806EE3C}, {181, 0x0806EEE8}, {185, 0x0806F040}, {191, 0x0806F318}, {197, 0x0806F4C4},
+  {200, 0x0806F55C},
 };
 
 static uint32_t thingScript(int kind) {
@@ -1464,12 +1504,12 @@ static const ThingHit THING_HITS[] = {
   {78, 0x300, 8, 20, 1, 0x380, 0, 0, 255}, {177, 0x140, 8, 20, 2, 0x380, 0, 0, 255},
   {178, 0x140, 8, 40, 4, 0x380, 0, 0, 255}, {179, 0x140, 8, 60, 6, 0x380, 0, 0, 255},
   {154, 0x120, 24, 30, 3, 0x2C0, 0, 4, 34}, {158, 0x120, 10, 30, 3, 0x380, 0, 0, 255},
-  {160, 0x120, 10, 30, 3, 0x380, 0, 0, 255}, {191, 0x200, 20, 35, 3, 0x280, 0, 2, 20},
-  {197, 0x140, 10, 30, 3, 0x340, 0, 0, 24},
+  {160, 0x120, 10, 30, 3, 0x380, 0, 0, 255}, {185, 0x280, 8, 40, 3, 0x3C0, 0, 2, 8},
+  {191, 0x200, 20, 35, 3, 0x280, 0, 2, 20}, {197, 0x140, 10, 30, 3, 0x340, 0, 0, 24},
+  {137, 0x180, 10, 10, 2, 0x340, 0, 0, 24}, {138, 0x180, 10, 10, 2, 0x340, 0, 0, 24},
 };
 // the kinds 0x0800eaec has hits for that aren't ported yet
-static const int THING_HITS_LATER[] = {62, 63, 82, 94, 97, 102, 137, 138, 142, 165, 166, 174, 175, 185, 194, 201, 241,
-  245};
+static const int THING_HITS_LATER[] = {62, 63, 82, 94, 97, 102, 142, 165, 166, 174, 175, 194, 201, 241, 245};
 // the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet
 static const int THING_STEPS_LATER[] = {39, 101, 141};
 // the kinds 0x0800cec8 sends to 0x0800d260, its steps of walls and the arena's edges for a thing that moves
@@ -1887,7 +1927,28 @@ void followFighter(int i) {
   zoomCamera(0x200);
 }
 
+static int fight_end_vblank = -1;
+
+/** A start point may turn a Training fight into a Battle one at a chosen frame, so the fight's end can be proven. */
+void setFightEndAt(int vblank) { fight_end_vblank = vblank; }
+
 void trainingFrame(void) {
+  if (fight_end_vblank >= 0 && g.vblanks == fight_end_vblank) {
+    // 0x0801c28c hands over to 0x0801b394 at the frame the start point names: Battle's rule, a full Ichikoro gauge,
+    // the rival out of health, and the point that ends the fight at the part's first frame.
+    fight_end_vblank = -1;
+    write8(SETUP_ + 125, 1);
+    write8(SETUP_ + 4, 2);
+    write8(SETUP_ + 6, 1);
+    write8(SETUP_ + 51, 1);
+    write8(FIGHTERS + 147, 72);
+    write8(FIGHTERS + 149, 1);
+    write8(FIGHTERS + RECORD + HEALTH, 0);
+    write16(FIGHTERS + RECORD + STATE, 253);
+    placeRealBlast();
+    g.callback = battleFrame;
+    return;
+  }
   dummyKeys();
   int player = (int)read32(PLAYER_);
   readAllKeys(player);
