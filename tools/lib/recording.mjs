@@ -17,8 +17,9 @@
 //     the part this recording plays. tools/README.md, Start points.
 //   "players": optional, 2 to 4: the recording is of that many GBAs on one link, each from power-on with the Dreamport's page at
 //     "start" (default vs=<players>); "held" is the first player's, and "others" the rest's, a list of such lists.
-//   "clip": optional, the frames the clip shows: { "at", "frames" }, with at least 120 frames, about two seconds, or
-//     all of a shorter recording's (lib/clips.mjs)
+//   "clip": optional, the frames the clip shows: { "at", "frames" }, with at least 300 frames, five seconds, or all of
+//     a shorter recording's, which share refuses until it runs on further. Without one, prove's clip starts a second
+//     before the first frame the step changed (lib/clips.mjs)
 // }
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -93,7 +94,7 @@ export function readRecording(file) {
   }
   // a recording shorter than that can't have a longer clip, and share refuses its clip until it runs on further
   if (clip && clip.frames < Math.min(CLIP_FRAMES, frames)) {
-    throw new Error(`${file}: "clip" has ${clip.frames} frames, and a clip lasts at least ${CLIP_FRAMES}, about two seconds: a recording that proves only a few frames runs on further`);
+    throw new Error(`${file}: "clip" has ${clip.frames} frames, and a clip lasts at least ${CLIP_FRAMES}, five seconds, of what the step changed: a recording that proves only a few frames runs on further in the place it proves`);
   }
   return { ...recording, onlyInOriginal };
 }
