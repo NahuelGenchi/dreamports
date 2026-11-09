@@ -1,0 +1,27 @@
+name: Clips
+
+# A pull request's clips keep the rules of docs/STANDARD.md#clips: tools/clips-check.mjs reads the text and every clip
+# it links, with the measures share published beside it, and fails a clip share didn't make or one that breaks a rule.
+# It runs again whenever the text changes. It fetches only the clips' own addresses, with a token that can only read.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  clips:
+    name: Clips
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - run: node tools/clips-check.mjs
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}

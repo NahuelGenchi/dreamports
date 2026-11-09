@@ -17,6 +17,8 @@
 #define KEYS_NOW 60
 #define SCRIPTS 0x08ED68A8u
 #define SCRIPTS_PER_CHARACTER 280
+#define CHOICES 0x030013B0u   // each player's skills, stats and outfit
+#define CHOICE_SIZE 156
 #define DIRECTIONS 0x0806B2D4u
 #define CAMERA_TURN 0x0300204Cu
 #define RANDOM 0x0300019Cu
@@ -242,9 +244,11 @@ void fighterThink(int i) {
     clearFlags(rec, FLAG_NEW_STATE);
   }
   int character = read8(rec + CHARACTER);
-  if (character == 9) notPorted("0800964C");
   int slot = scriptOf(read16(rec + STATE));
   if (slot < 0) return;
+  // 0x0800964C: Emerl (character 9) runs the script of the character his skill slot holds, in his player's record
+  // of choices, and the frame ends there, as the ordinary switch does for every other character
+  if (character == 9) character = read8(CHOICES + (uint32_t)i * CHOICE_SIZE + (uint32_t)slot);
   runScript(read32(SCRIPTS + (uint32_t)character * SCRIPTS_PER_CHARACTER + (uint32_t)slot * 4), i);
   write8(rec + ANIMATION, (uint8_t)slot);
 }
@@ -1315,7 +1319,8 @@ static const ThingScript THING_SCRIPTS[] = {
   {213, 0x0806F924}, {214, 0x0806F9C8}, {215, 0x0806FA90}, {216, 0x0806FBA8}, {230, 0x0806FC60},
   {231, 0x0806FD88}, {240, 0x0806FCB0}, {241, 0x0806FCF0}, {245, 0x0806FE2C},
   {174, 0x0806E9AC}, {175, 0x0806EB10}, {177, 0x0806EC74}, {178, 0x0806ED0C}, {179, 0x0806EDA4},
-  {180, 0x0806EE3C}, {181, 0x0806EEE8}, {185, 0x0806F040},
+  {180, 0x0806EE3C}, {181, 0x0806EEE8}, {185, 0x0806F040}, {191, 0x0806F318}, {197, 0x0806F4C4},
+  {200, 0x0806F55C},
 };
 
 static uint32_t thingScript(int kind) {
@@ -1474,15 +1479,17 @@ static const ThingHit THING_HITS[] = {
   {178, 0x140, 8, 40, 4, 0x380, 0, 0, 255}, {179, 0x140, 8, 60, 6, 0x380, 0, 0, 255},
   {154, 0x120, 24, 30, 3, 0x2C0, 0, 4, 34}, {158, 0x120, 10, 30, 3, 0x380, 0, 0, 255},
   {160, 0x120, 10, 30, 3, 0x380, 0, 0, 255}, {185, 0x280, 8, 40, 3, 0x3C0, 0, 2, 8},
+  {191, 0x200, 20, 35, 3, 0x280, 0, 2, 20}, {197, 0x140, 10, 30, 3, 0x340, 0, 0, 24},
 };
 // the kinds 0x0800eaec has hits for that aren't ported yet
-static const int THING_HITS_LATER[] = {62, 63, 82, 94, 97, 102, 137, 138, 142, 165, 166, 174, 175, 191, 194, 197,
-  201, 241, 245};
+static const int THING_HITS_LATER[] = {62, 63, 82, 94, 97, 102, 137, 138, 142, 165, 166, 174, 175, 194, 201, 241, 245};
 // the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet
 static const int THING_STEPS_LATER[] = {39, 101, 141};
 // the kinds 0x0800cec8 sends to 0x0800d260, its steps of walls and the arena's edges for a thing that moves
 static const int THINGS_WITH_FLOOR_STEPS[] = {35, 38, 39, 40, 57, 58, 60, 61, 63, 79, 80, 81, 100, 101, 117, 118, 120,
   121, 137, 138, 140, 141, 157, 158, 159, 160, 161, 162, 163, 164, 180, 181, 182, 190, 197, 200, 201, 230, 231};
+// the kinds 0x0800cec8 sends to 0x0800d33a, which sits a thing on the floor inside the arena's edges
+static const int THINGS_ON_THE_FLOOR[] = {54, 97, 154, 191};
 
 /**
  * 0x080125dc: where a point meets a wall or an edge of the arena. Each wall it is inside pushes it out the shortest
@@ -1700,6 +1707,32 @@ static void stepAmySet(uint32_t thing, int k) {
 }
 
 /**
+ * 0x0800cec8's steps for a kind 200 thing, Chaos's Set (0x0800e572): a fighter close enough to it, across, along and
+ * in height, sets its owner's +236, which starts the Set. It doesn't move toward anyone.
+ */
+static void chaosSetFeelsFighters(uint32_t thing) {
+  int owner = read8(thing + THING_OWNER);
+  for (int i = 0; i < 4; i++) {
+    if (i == owner) continue;
+    uint32_t rec = record(i);
+    if (read8(rec + 187) == 0 || read8(SETUP_ + 20 + i) == 255) continue;
+    if (read8(SETUP_ + 8) != 0 && read8(SETUP_ + 9) != 1
+      && read8(SETUP_ + 32 + owner) == read8(SETUP_ + 32 + i)) continue;
+    int dx = reads16(thing + THING_X) - reads16(rec);
+    int dy = reads16(thing + THING_Y) - reads16(rec + 2);
+    int dz = reads16(thing + THING_Z) - reads16(rec + 4);
+    if ((dx < 0 ? -dx : dx) > 0x13F || (dy < 0 ? -dy : dy) > 0x13F || (dz < 0 ? -dz : dz) > 3) continue;
+    if (read8(0x0300138C) != 0) {
+      int player = (int)read32(PLAYER_);
+      if (owner != player && (owner != player + 2 || read8(SETUP_ + 28 + owner) == 0)) continue;
+    }
+    if ((dz < 0 ? -dz : dz) > 23) continue;
+    write8(record(owner) + 236, 1);
+    break;
+  }
+}
+
+/**
  * 0x0800c728: the things of a fight for a frame, and the screen's shake. A thing waiting to appear counts down; one that
  * has appeared runs its script (0x0800bb88) and moves (0x0800cec8).
  */
@@ -1729,7 +1762,7 @@ void updateThings(void) {
       write16(thing + THING_Z, read16(thing + THING_Z) + read16(thing + THING_SPEED_Z));
     }
     // 0x0800cec8's per-kind steps: walls and the arena's edges push a thing back, and it falls until its floor
-    if (kind == 54) {
+    if (inList(THINGS_ON_THE_FLOOR, sizeof THINGS_ON_THE_FLOOR / sizeof THINGS_ON_THE_FLOOR[0], kind)) {
       // 0x0800d33a: the arena's edges push it back and it sits on the floor, or at nothing when it meets no edge
       Meeting met = meetThingWalls(reads16(thing + THING_X), reads16(thing + THING_Y));
       write8(thing + THING_BITS, (uint8_t)met.bits);
@@ -1795,6 +1828,7 @@ void updateThings(void) {
       }
     }
     if (kind == 121) stepAmySet(thing, k);
+    if (kind == 200) chaosSetFeelsFighters(thing);
     if (inList(THING_STEPS_LATER, sizeof THING_STEPS_LATER / sizeof THING_STEPS_LATER[0], kind)) notPorted("0800CEC8");
     thingHit(k, read16(thing + THING_KIND));
   }
