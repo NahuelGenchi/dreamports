@@ -19,7 +19,7 @@ import { createInterface } from 'node:readline/promises';
 import { LOCAL, gameFolder } from './lib/paths.mjs';
 import { versionOf, versionTitle } from '../src/lib/languages.mjs';
 import { head, uncommitted, remotes, fileAt, fetchPreviews, pushPreviews, makePreview, BRANCH, CLIPS } from './lib/preview.mjs';
-import { clipProblems, staleness, mainBase, clipLinks, reportOf, gamesChanged, changedSince, SHOW_IT } from './lib/clips.mjs';
+import { clipProblems, staleness, mainBase, clipLinks, reportOf, gamesToShow, SHOW_IT } from './lib/clips.mjs';
 import { UPSTREAM, api, signedInAs, findFork, hasCommit, pagesOf, turnOnPages, lastBuild, buildPages } from './lib/github.mjs';
 
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -176,10 +176,10 @@ function predictedAddress(fork) {
 // own clips, from .dreamports/results/, can go: the side by side clip.mp4, or the Dreamport's alone, dreamport.mp4.
 // A recording that shows nothing this step changed is left out, and a clip of what it changed that breaks a rule stops
 // share, as the pull request needs it. A step that changes the game's code or recordings with no clip to show stops it
-// too (#1030). [{ file, bytes, still, sideBySide, recording, shows, report }]
+// too (#1030), unless main doesn't have the game yet, as in its first entry (#1032). [{ file, bytes, still, sideBySide, recording, shows, report }]
 export function chooseClips(game, file, commit, base, { team = false } = {}) {
   const results = join(LOCAL, 'results', game);
-  const mustShow = !team && gamesChanged(changedSince(base, commit)).includes(game.split('/')[0]);
+  const mustShow = !team && (gamesToShow(base, commit) ?? []).includes(game.split('/')[0]);
   const problemsOf = clip => clipProblems(clip.report, clip.report?.recordingFile ? fileAt(commit, clip.report.recordingFile) : null, { sideBySide: clip.sideBySide, base });
   if (file) {
     const clip = proveClip(results, resolve(file));
@@ -337,7 +337,7 @@ function checkText(file) {
   }
   if (!saved.clips.length) {
     if (clipLinks(readFileSync(file, 'utf8')).length) throw new Error(`share published no clip from ${branch}, so the text can't link one: take the clips' links out.`);
-    const games = gamesChanged(changedSince(mainBase(), commit));
+    const games = gamesToShow(mainBase(), commit) ?? [];
     if (games.length) throw new Error(`${branch} changes ${games.join(' and ')}'s code or recordings, and share published no clip of it: ${SHOW_IT}.`);
     console.log(`share found no clip to publish from ${branch}, so the text has none to show.`);
     return 0;
