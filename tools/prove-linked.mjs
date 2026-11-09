@@ -11,7 +11,7 @@ import { openDreamport } from './lib/dreamport.mjs';
 import { runLinked } from './gba/linked.mjs';
 import { png, fromColours } from './lib/png.mjs';
 import { mp4 } from './lib/mp4.mjs';
-import { recordingHash } from './lib/clips.mjs';
+import { CLIP_FRAMES, recordingHash, firstChanged, newFramesIn, clipProblems, changedText } from './lib/clips.mjs';
 
 const BATCH = 60;
 const CLIP_LIMIT = 2_000_000, CLIP_TARGET = 1_700_000, CLIP_RATE = 2_000_000;
@@ -23,7 +23,7 @@ const KEYS = { A: 1, B: 2, SELECT: 4, START: 8, RIGHT: 16, LEFT: 32, UP: 64, DOW
 export const heldOf = recording => [recording.held, ...(recording.others ?? [])];
 
 /** Plays a recording with players. Resolves like prove's: { frames, matched, differs, functions, ... }. */
-export async function proveLinked({ page, game, recording, copy, server, quick, asked = [] }) {
+export async function proveLinked({ page, game, recording, copy, server, main = null, quick, asked = [] }) {
   const { name, frames, players } = recording;
   const out = resultFolder(game, name);
   rmSync(out, { recursive: true, force: true });
@@ -37,8 +37,8 @@ export async function proveLinked({ page, game, recording, copy, server, quick, 
   say('playing the original…');
   // the page's frame f is the original's frame f + 1: what a frame shows is what the one before worked out (prove.mjs)
   const keepAt = [...new Set(asked)].filter(f => f >= 0 && f < frames);
-  // the clip: the recording's, or the last four seconds, with the Dreamport's screens above and the original's below
-  const clipAt = quick ? [] : Array.from({ length: Math.min(frames, recording.clip?.frames ?? 240) }, (_, i) => (recording.clip?.at ?? Math.max(0, frames - 240)) + i).filter(f => f < frames);
+  // the clip: the recording's, or the last five seconds, with the Dreamport's screens above and the original's below
+  const clipAt = quick ? [] : Array.from({ length: Math.min(frames, recording.clip?.frames ?? CLIP_FRAMES) }, (_, i) => (recording.clip?.at ?? Math.max(0, frames - CLIP_FRAMES)) + i).filter(f => f < frames);
   const first = await runLinked({ copy, players, frames: frames + 1, buttons: bits, pictures: [...new Set([...keepAt, ...clipAt])].map(f => f + 1) });
   const expected = Array.from({ length: frames }, (_, f) => Array.from({ length: players }, (_, p) => first.hashes[(f + 1) * players + p]));
 
@@ -99,7 +99,13 @@ export async function proveLinked({ page, game, recording, copy, server, quick, 
     sheet(kept.pictures, Array.from({ length: players }, (_, p) => again.pictures.get(`${kept.frame + 1}:${p}`)), `first-difference-${kept.frame}.png`);
   }
 
-  let clipFile = null, apart = 0;
+  const stretches = [];
+  for (const f of differ) {
+    const last = stretches.at(-1);
+    if (last && last[1] === f - 1) last[1] = f;
+    else stretches.push([f, f]);
+  }
+  let clipFile = null, apart = 0, problems = [], changed = null;
   if (clipAt.length && hashes.length >= frames) {
     say('making the clip…');
     const all = new Uint16Array(clipAt.length * players * 240 * 160);
@@ -116,20 +122,25 @@ export async function proveLinked({ page, game, recording, copy, server, quick, 
     }
     server.serve('/proof/originals', null);
     writeFileSync(join(out, 'clip.mp4'), clipFile);
-    // what share checks before a pull request shows the clip (lib/clips.mjs)
-    const clip = { from: clipAt[0], to: clipAt.at(-1), frames: clipAt.length, seconds: Math.round(length * 100) / 100, apart, bytes: clipFile.length };
-    writeFileSync(join(out, 'report.json'), JSON.stringify({ recording: name, recordingFile: relative(REPO, recording.file).replaceAll('\\', '/'), recordingSha1: recordingHash(readFileSync(recording.file)), frames, players, clip }, null, 2) + '\n');
+    // what share checks before a pull request shows the clip (lib/clips.mjs): what this step changed, from main's
+    // proof, as nothing here says which code ran, and how many pictures are one colour or the same as the one before,
+    // from the original's, as the Dreamport's are the same where it matters, which `apart` measures
+    const text = readFileSync(recording.file, 'utf8'), recordingFile = relative(REPO, recording.file).replaceAll('\\', '/');
+    changed = firstChanged({ main, name, file: recordingFile, text, frames, differs: stretches });
+    const pictures = clipAt.map(f => Array.from({ length: players }, (_, p) => first.pictures.get(`${f + 1}:${p}`)));
+    const oneColour = pictures.filter(([own]) => own.every(c => c === own[0])).length;
+    const same = pictures.filter((now, i) => i > 0 && clipAt[i - 1] === clipAt[i] - 1 && now.every((own, p) => own.every((c, at) => c === pictures[i - 1][p][at]))).length;
+    const clip = { from: clipAt[0], to: clipAt.at(-1), frames: clipAt.length, seconds: Math.round(length * 100) / 100, apart, oneColour, same, changed, newFrames: newFramesIn(clipAt, changed), base: main?.base ?? null, bytes: clipFile.length };
+    const report = { recording: name, recordingFile, recordingSha1: recordingHash(text), frames, players, clip };
+    writeFileSync(join(out, 'report.json'), JSON.stringify(report, null, 2) + '\n');
+    problems = clipProblems(report, text);
   }
   writeFileSync(join(out, 'hashes.json'), JSON.stringify({ ours: hashes, original: expected.slice(0, hashes.length) }));
   const matched = hashes.length - differ.length;
-  const stretches = [];
-  for (const f of differ) {
-    const last = stretches.at(-1);
-    if (last && last[1] === f - 1) last[1] = f;
-    else stretches.push([f, f]);
-  }
   const per = Array.from({ length: players }, (_, p) => hashes.filter((h, f) => h[p] !== expected[f][p]).length);
   console.log(`\n${name}: ${players} players, ${matched} of ${hashes.length} frames played match${firstDifference >= 0 ? `; the first that differs is ${firstDifference}, and each player differs in ${per.join(', ')} frames` : ''}. Pictures: ${out}`);
   if (clipFile) console.log(`  Clip, ${(clipFile.length / 1e6).toFixed(2)} MB, frames ${clipAt[0]} to ${clipAt.at(-1)}: ${out}/clip.mp4 (the Dreamport's screens above, the original's below)`);
+  if (clipFile) console.log(`  What this step changed: ${changedText(changed)}${changed ? '' : ', so share leaves this clip out'}.`);
+  if (changed) for (const problem of problems) console.log(`  share won't put this clip in a pull request: ${problem}`);
   return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], functions: [] };
 }

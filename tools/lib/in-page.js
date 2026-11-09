@@ -258,6 +258,21 @@
       });
     },
 
+    /** Of these frames, how many of the Dreamport's pictures are one colour, as between screens, and how many are the
+     *  same picture as the frame before, which a clip that's a still picture is: { oneColour, same }. */
+    plainness(frames) {
+      let oneColour = 0, same = 0;
+      frames.forEach((frame, i) => {
+        const picture = kept.get(frame), before = i > 0 && frames[i - 1] === frame - 1 ? kept.get(frame - 1) : null;
+        let plain = true, unchanged = !!before;
+        for (let p = 1; p < PIXELS && plain; p++) plain = picture[p] === picture[0];
+        for (let p = 0; p < PIXELS && unchanged; p++) unchanged = picture[p] === before[p];
+        if (plain) oneColour++;
+        if (unchanged) same++;
+      });
+      return { oneColour, same };
+    },
+
     /** A still of one frame as a PNG in base64, with where it differs when `difference`, or of the Dreamport `alone`. */
     async still(frame, difference = false, alone = false) {
       const canvas = new OffscreenCanvas(WIDTH * SCALE * (alone ? 1 : difference ? 3 : 2), HEIGHT * SCALE + BAR);

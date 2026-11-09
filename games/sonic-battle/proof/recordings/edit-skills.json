@@ -2,7 +2,7 @@
   "about": "Emerl's screen, from a start point, as nothing leads to it yet: the original jumps to its initializer from the main menu. A on Edit skills, the MOVE rows sliding in, down twice and up once, and B, which slides it off to the right.",
   "start": "skills=1",
   "frames": 311,
-  "clip": { "at": 120, "frames": 180 },
+  "clip": { "at": 0, "frames": 300 },
   "held": [
     [0,[]],
     [120,["A"]],
