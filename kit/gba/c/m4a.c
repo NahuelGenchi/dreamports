@@ -95,9 +95,9 @@ static void clear_track(M4aTrack *T) {
 }
 
 // with `psgAt`, the writes to the sound chip's channels land at that place in its frame: SoundMain's plus what it has
-// counted so far, as the original's land where its work has reached, and the game's own calls at the place itself
+// counted so far, as the original's land where its work has reached; the game's own calls write at once
 static void io_write(M4a *m, int reg, int v) {
-  m->io->psgAt = !m->layout.psgAt ? -1 : m->layout.psgAt + (m->inFrame ? m->cycles : 0);
+  m->io->psgAt = !m->layout.psgAt || !m->inFrame ? -1 : m->layout.psgAt + m->cycles;
   apu_write(m->io, reg, v);
 }
 static int io_read(M4a *m, int reg) { return apu_read(m->io, reg); }

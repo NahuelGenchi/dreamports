@@ -691,7 +691,6 @@ void act_task(Task *t) {
     // the frame the act takes to load: it skips its V-blank, so the screen and the palette keep the frame before
     int frames = act.stallLoad;
     act.stallLoad = 0;
-    start_music();
     engine_stall(frames, act_loaded);
     return;
   }
@@ -699,11 +698,12 @@ void act_task(Task *t) {
 }
 
 /** Draws the act's first frame now, for a screen that hands over inside its own task: it does its work but the
- *  frame has no V-blank, so the screen keeps the course select's black while the act loads. The course select's act
- *  starts its music on that loading frame, the next one; the next act after GoToNextLevel starts it now. */
+ *  frame has no V-blank, so the screen keeps the course select's black while the act loads. Its music starts now:
+ *  the original's starts on the loading frame, but starting it there here left a frame of silence after the select
+ *  sound that the original doesn't have (sonic-casino-paradise, frame 1984). */
 void act_frame_now(void) {
   act_frame();
-  if (act.afterLevel) start_music();
+  start_music();
   if (act.task) destroy_task(act.task);
   act.task = create_task(act_task, NULL, 0x0F00, 0, NULL);
   act.stallLoad = 1;
