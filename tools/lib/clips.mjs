@@ -204,6 +204,19 @@ export function changedSince(base, commit = 'HEAD') {
   return out === null ? null : out.split('\n').filter(Boolean);
 }
 
+/** Whether the commit `base` has a game, as its entry says. */
+export const gameAt = (base, game) => git(['cat-file', '-e', `${base}:games/${game}/entry.md`]) !== null;
+
+/** Of the games these paths change the code or recordings of, those `has(game)` says main has already, which a step shows
+ * in a clip. A game's first entry adds one main doesn't have, whose first files nobody can play yet (#1032). */
+export const gamesShownIn = (paths, has) => gamesChanged(paths).filter(game => has(game));
+
+/** The games a commit changes the code or recordings of since `base`, which `base` has, or null when git can't tell. */
+export function gamesToShow(base, commit = 'HEAD') {
+  const changed = changedSince(base, commit);
+  return changed === null ? null : gamesShownIn(changed, game => gameAt(base, game));
+}
+
 /** What a step that changes a game and shows it in no clip does, as share, its check and the review say it. */
 export const SHOW_IT = 'a step that changes a game\'s code or recordings shows it in a clip: prove the recordings it changed, '
   + 'and if none shows the new code, add a recording that plays it, or run one on until it does (npm run dp -- help recording), '
