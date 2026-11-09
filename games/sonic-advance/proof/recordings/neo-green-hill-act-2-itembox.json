@@ -2,6 +2,7 @@
   "about": "Neo Green Hill Zone act 2 from its first frame after the title card, with Sonic running right to the act's first item box.",
   "start": "level=1&card=80&pre=20&first=0",
   "frames": 550,
+  "clip": {"at": 250, "frames": 300},
   "held": [
     [
       0,
