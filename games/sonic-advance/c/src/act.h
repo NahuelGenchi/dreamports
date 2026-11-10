@@ -8,7 +8,11 @@
 #include "player.h"
 
 // how an act's background moves (its StageBgUpdate)
-enum { BG_SCROLL_STILL, BG_SCROLL_CASINO_PARADISE, BG_SCROLL_X_ZONE, BG_SCROLL_SECRET_BASE, BG_SCROLL_SECRET_BASE_OUTSIDE };
+enum { BG_SCROLL_STILL, BG_SCROLL_CASINO_PARADISE, BG_SCROLL_X_ZONE, BG_SCROLL_SECRET_BASE, BG_SCROLL_SECRET_BASE_OUTSIDE, BG_SCROLL_NEO_GREEN };
+#define ACT_LEVEL_NEO_GREEN_1 0
+#define ACT_LEVEL_NEO_GREEN_2 1
+#define ACT_LEVEL_NEO_GREEN_HILL_1 ACT_LEVEL_NEO_GREEN_1
+#define BG_SCROLL_NEO_GREEN_HILL BG_SCROLL_NEO_GREEN
 #define ACT_LEVEL_SECRET_BASE_1 2
 #define ACT_LEVEL_SECRET_BASE_2 3
 #define ACT_LEVEL_CASINO_PARADISE_1 4
@@ -33,10 +37,12 @@ typedef struct {
   int backgroundScroll;   // how the background moves (BG_SCROLL_*)
   int paletteCount;
   const int *paletteAnimations;
+  const int *paletteVariants;   // each animation's variant, or NULL for variant 0
   Tilemap front, back, background;
   Collision collision;
   int32_t spawnX, spawnY;
   int loopX, loopShift;   // past x loopX Sonic and the camera go back by loopShift (gUnknown_084ADF78), loopX < 0 for none
+  int cameraStop;        // how far short of the right edge the camera stops, or 0 for the screen's width
   int width, height;
 } Stage;
 
@@ -46,6 +52,7 @@ typedef struct {
   int width, height, freeze, locked, look, lookDelay, shakeX, shakeY, bgUpdates;
   int bgX, bgY;
   int wrapped;   // how far the act's loop point has moved the camera, which the background leaves out (unk20)
+  int wrappedThisFrame;   // the loop point's shift on this frame, which the layer maps are drawn without (the camera's task runs before it)
 } Camera;
 
 typedef struct {
@@ -111,7 +118,11 @@ uint32_t act_random(void);
 void titlecard_start(int level, int character);
 int titlecard_run(int pressed);
 void titlecard_display(void);
+extern int actHudFlash;
+void act_hold_black(void);
 void act_frame_now(void);
+/** The rings' animation doesn't step on the frame a menu hands over to the act (rings.c). */
+void rings_skip_first_update(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_song_playing(void);

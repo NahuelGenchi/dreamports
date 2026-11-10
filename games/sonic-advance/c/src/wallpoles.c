@@ -92,7 +92,8 @@ ActTask *wall_pole_spawn(Slot *slot) {
   w->dir = en->kind == WALL_POLE_RIGHT ? -1 : 1;   // the way it points out of its wall
   w->phase = PHASE_WAITING;
   int anim = act.stage.zone == NEO_GREEN_HILL ? ANIM_POLE_NEO_GREEN_HILL : ANIM_POLE_FLAG;
-  // no animation step yet: its first frame has no box
+  // its first frame's box is set before its first run, which steps it on as the original does
   object_sprite(&w->o.sprite, anim, VARIANT_REST, VARIANT_SWING, ORDER_POLE, PRIORITY_FRONT, w->dir < 0, 0);
+  sprite_step(&w->o.sprite);
   return object_task(&w->o, pole_run, PRIORITY_OBJECTS);
 }

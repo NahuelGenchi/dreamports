@@ -20,11 +20,12 @@ enum {
   SE_TRAMPOLINE = 176,
   // the bounce block throws him up at 5 px a frame and wobbles for 30 frames, 90/1024 of a turn a frame
   BOUNCE_UP = 5, WOBBLE_FRAMES = 30, WOBBLE_STEP = 90, SE_SPRING = 170,
+  BOUNCE_TILES = 32 / 8 * (24 / 8),   // ALLOC_TILES(SA1_ANIM_BOUNCE_BLOCK_1), whichever level's block it shows
 };
 
 // the platforms' animations by level (rom/levels.js sprites): thin, the brick and the bounce block if the level has them
 static const struct { int level, thin, brick, bounce; } ANIMATIONS[] = {
-  { 3, 506, 0, 499 }, { 4, 495, 0, 0 }, { 5, 495, 0, 0 }, { 12, 605, 574, 0 },
+  { 0, 463, 0, 462 }, { 1, 0, 0, 462 }, { 3, 506, 0, 499 }, { 4, 495, 0, 0 }, { 5, 495, 0, 0 }, { 12, 605, 574, 0 },
 };
 enum { FALL_STILL, FALL_WAITING, FALL_FALLING };
 
@@ -217,15 +218,25 @@ static int bounce_run(ActTask *t) {
   return 1;
 }
 
+// CreateEntity_BounceBlock: the level's block, in tiles enough for the first level's
+static ActTask *bounce_spawn(Slot *slot) {
+  int anim = animation_of(2);
+  if (!anim) return NULL;
+  Platform *pf = OBJECT_NEW(Platform);
+  if (!pf) return NULL;
+  pf->o.slot = slot;
+  pf->o.x = slot->e.x;
+  object_sprite_at(&pf->o.sprite, vram_malloc(BOUNCE_TILES), anim, 0, ORDER_PLATFORM, PRIORITY_FRONT, 0, 0);
+  sprite_step(&pf->o.sprite);
+  return object_task(&pf->o, bounce_run, PRIORITY_OBJECTS);
+}
+
 ActTask *platform_spawn(Slot *slot) {
   switch (slot->e.kind) {
     case PLATFORM_THIN: return thin_spawn(slot);
     case PLATFORM_FALLING: return falling_spawn(slot, 0);
     case PLATFORM_TRAMPOLINE: return trampoline_spawn(slot);
-    case PLATFORM_BOUNCE_BLOCK: {
-      Platform *pf = platform_new(slot, 2);
-      return pf ? object_task(&pf->o, bounce_run, PRIORITY_OBJECTS) : NULL;
-    }
+    case PLATFORM_BOUNCE_BLOCK: return bounce_spawn(slot);
     default: return falling_spawn(slot, 1);
   }
 }

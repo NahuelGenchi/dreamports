@@ -23,6 +23,7 @@ typedef enum {
   PS_POLE, PS_FLAG_SWING, PS_ACT_CLEAR_RUN, PS_CAROUSEL_RIDE,   // on a wall pole, swinging round a red flag, running off past the goal, riding a carousel
   PS_SWING_ROPE, PS_HOOK,   // swinging round a rope, hanging from a hook rail, a swinging hook or a crane claw
   PS_ACT_CLEAR_POSE,        // standing by an opened capsule (CHARSTATE_ACT_CLEAR_B)
+  PS_HALF_PIPE_LOW, PS_HALF_PIPE_MID, PS_HALF_PIPE_HIGH,   // the three walks a half-pipe gives him
   PA_BORED, PA_RUN, PA_BRAKE_TURN,   // bored of waiting, running, and turning round after a skid
   PA_COUNT
 } PlayerAnim;

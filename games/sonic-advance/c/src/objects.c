@@ -181,8 +181,15 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 5, 6, hiding_spikes_spawn },
   { 8, 15, spring_spawn },
   { TOGGLE_FRONT, TOGGLE_BACK, toggle_spawn },
+  { 16, 16, boulder_spawn },
+  { 19, 20, grind_rail_spawn },
   { 21, 23, platform_spawn },
+  { 24, 24, crumbling_spawn },
   { 25, 25, platform_spawn },
+  { 26, 26, ramp_spawn },
+  { 27, 27, waterfall_spawn },
+  { 28, 29, half_pipe_spawn },
+  { 46, 46, slide_spawn },
   { 104, 104, platform_spawn },
   { 48, 53, bumper_spawn },
   { 54, 54, flipper_spawn },
@@ -226,6 +233,11 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
 
 // the enemies by their kind numbers (the ENEMIES table)
 static const struct { int kind; Spawn spawn; } ENEMIES[] = {
+  { 0, kiki_spawn },
+  { 1, buzzer_spawn },
+  { 2, gamigami_spawn },
+  { 3, rhinotank_spawn },
+  { 4, kerokero_spawn },
   { 8, hanabii_spawn },
   { 9, slot_machine_spawn },
   { 10, pierrot_spawn },
@@ -276,3 +288,4 @@ void objects_start(int level, int paletteAnimations) {
 void objects_run_before_camera(void) { act_tasks_run(0, PRIORITY_CAMERA); }
 void objects_run_early(void) { act_tasks_run(PRIORITY_CAMERA, PRIORITY_SONIC); }
 void objects_run_late(void) { act_tasks_run(PRIORITY_SONIC, 0x10000); }
+

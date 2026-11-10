@@ -178,9 +178,14 @@ static void draw_rings(void) {
   }
 }
 
+/** Whether the next frame draws the rings without stepping their animation, as a menu\'s hand-over does. */
+static int skipUpdate;
+void rings_skip_first_update(void) { skipUpdate = 1; }
+
 int rings_task(ActTask *t) {
   (void)t;
-  update_sprite(&ringSprite, 0);
+  if (skipUpdate) skipUpdate = 0;
+  else update_sprite(&ringSprite, 0);
   const Player *p = &act.player;
   // the rings can't be taken while Sonic is knocked back and blinking, or dead
   if (!act.ringsStopped && p->dead == 0 && !(p->state == PS_HURT && p->invulnerable)) collect_rings(p);
@@ -307,6 +312,13 @@ int scatter_task(ActTask *t) {
 }
 
 /** Puts every ring back and clears the slots, as the act's start does. */
+void rings_act2_prepare(void) {
+  // the rings manager is made while the stage loads and runs through the card's frames: sixteen of them before the
+  // act's first picture, and one more step of delay, as Neo Green Hill act 2's recording has them
+  for (int i = 0; i < 16; i++) update_sprite(&ringSprite, 0);
+  ringSprite.qAnimDelay = (int16_t)(ringSprite.qAnimDelay + 256);
+}
+
 void rings_start(void) {
   ring_sprite(&ringSprite, RING_TILES, ORDER_RING);
   ring_sprite(&scatterSprite, RING_TILES, ORDER_RING);
