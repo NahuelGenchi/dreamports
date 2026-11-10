@@ -82,7 +82,6 @@ ActTask *sega_letter_spawn(Slot *slot);
 ActTask *balloon_spawn(Slot *slot);
 ActTask *panel_gate_spawn(Slot *slot);
 ActTask *conveyor_spawn(Slot *slot);
-ActTask *steam_exhaust_spawn(Slot *slot);
 ActTask *booster_spawn(Slot *slot);
 ActTask *swing_rope_spawn(Slot *slot);
 ActTask *security_gate_spawn(Slot *slot);
@@ -107,6 +106,14 @@ ActTask *barrel_spawn(Slot *slot);
 ActTask *bowl_spawn(Slot *slot);
 ActTask *carousel_spawn(Slot *slot);
 ActTask *ship_swing_spawn(Slot *slot);
+ActTask *steam_exhaust_spawn(Slot *slot);
+ActTask *boulder_spawn(Slot *slot);
+ActTask *crumbling_spawn(Slot *slot);
+ActTask *ramp_spawn(Slot *slot);
+ActTask *waterfall_spawn(Slot *slot);
+ActTask *half_pipe_spawn(Slot *slot);
+ActTask *grind_rail_spawn(Slot *slot);
+ActTask *slide_spawn(Slot *slot);
 
 void entities_load(int level);
 int entities_manager(ActTask *t);
@@ -180,7 +187,7 @@ void dust_cloud(int x, int y);
  *  scale they start at (1/256), how much it grows a frame, and how many frames they last. */
 typedef struct { int small, smallTiles, large, largeTiles, scale, grow, frames; } DebrisLook;
 /** The pieces, spinning out from a world point and falling, placed around a place on screen (iceblocks.c). */
-void debris_new(const DebrisLook *look, int x, int y, int sx, int sy);
+void shards_new(const DebrisLook *look, int x, int y, int sx, int sy);
 /** Sonic's effects start over with the act: no brake dust on screen. */
 void effects_start(void);
 /** And so do the water's: no bubbles rising and no drowning music (underwater.c). */
@@ -191,6 +198,8 @@ void items_stars(void);
 // --- the rings (rings.c) -----------------------------------------------------------------------------------------------
 void rings_load(int level);
 void rings_start(void);
+void rings_act2_prepare(void);
+void rings_start_point(void);
 int rings_task(ActTask *t);
 int scatter_task(ActTask *t);
 void scatter_launch(int x, int y, int n, int layer, int inverted);

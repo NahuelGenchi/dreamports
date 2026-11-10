@@ -81,6 +81,12 @@ static void curl(Player *p) { p->curled = 1; sensors_set_offset_y(p, BALL_SPRITE
 static void uncurl(Player *p) { p->curled = 0; sensors_set_offset_y(p, SPRITE_OFFSET_Y); }
 void player_stand_up(Player *p) { uncurl(p); }
 void player_curl_up(Player *p) { curl(p); }
+/** Starts the jump the course select's held A began, one frame into it: curled and rising at 3 px a frame. */
+void player_start_jump(Player *p) {
+  p->air = 1; p->jumped = 1; p->pushing = 0; p->state = PS_SPIN;
+  p->ysp = -3.0;
+  curl(p);
+}
 // the walk's states put his hitbox back at its standing height; it only moves him when something uncurled him
 // without it
 static void stand_height(Player *p) { sensors_set_offset_y(p, SPRITE_OFFSET_Y); }
@@ -144,6 +150,7 @@ static void bounds(Player *p) {
   // follows him; the background leaves it out
   if (act.stage.loopX >= 0 && p->x >= act.stage.loopX && c->speedX != 0 && !c->locked) {
     p->x += act.stage.loopShift; c->x += act.stage.loopShift; c->wrapped += act.stage.loopShift;
+    c->wrappedThisFrame += act.stage.loopShift;
   }
   double maxX = c->maxX + 240 - 1.0 / 256, maxY = c->maxY + 160 - 1.0 / 256;
   if (!p->dead && (p->inverted ? p->y <= c->minY : p->y >= maxY)) {
@@ -654,6 +661,7 @@ static const uint8_t ANIMATIONS[PA_COUNT][2] = {
   [PS_SOMERSAULT] = {52, 0}, [PS_SLIDE] = {53, 0}, [PS_SLIDE_END] = {53, 1}, [PS_BACKFLIP] = {55, 0}, [PS_BOUNCE] = {4, 0},
   [PS_MARBLE_TRACK] = {39, 0}, [PS_POLE] = {38, 0}, [PS_FLAG_SWING] = {37, 0}, [PS_ACT_CLEAR_RUN] = {22, 0},
   [PS_CAROUSEL_RIDE] = {40, 0}, [PS_SWING_ROPE] = {40, 1}, [PS_HOOK] = {43, 0}, [PS_ACT_CLEAR_POSE] = {23, 0},
+  [PS_HALF_PIPE_LOW] = {36, 0}, [PS_HALF_PIPE_MID] = {36, 1}, [PS_HALF_PIPE_HIGH] = {36, 2},
   [PS_BREATHE] = {17, 0},
 };
 
@@ -679,6 +687,9 @@ static int pick_animation(Player *p, const PlayerInput *in) {
       p->sprite.animSpeed = (uint8_t)walk_cycle_speed(speed);
       return PS_WALK;
     case PS_BRAKE: return speed < BRAKE_TURN_SPEED ? PA_BRAKE_TURN : PS_BRAKE;
+    case PS_HALF_PIPE_LOW: case PS_HALF_PIPE_MID: case PS_HALF_PIPE_HIGH:
+      p->sprite.animSpeed = (uint8_t)walk_cycle_speed(speed);
+      return p->state;
     case PS_SPRING_RISE:
       // the animation was picked before the state changes, so the top-out one starts on the next frame
       if (p->ysp >= -SPRING_PEAK_SPEED) p->state = PS_SPRING_PEAK;

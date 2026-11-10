@@ -7,11 +7,21 @@
 #include "sa.h"
 #include "player.h"
 
-#define ACT_LEVEL_X_ZONE 12
+// how an act's background moves (its StageBgUpdate)
+enum { BG_SCROLL_STILL, BG_SCROLL_CASINO_PARADISE, BG_SCROLL_X_ZONE, BG_SCROLL_SECRET_BASE, BG_SCROLL_SECRET_BASE_OUTSIDE, BG_SCROLL_NEO_GREEN,
+       BG_SCROLL_ICE_MOUNTAIN };
+#define ACT_LEVEL_NEO_GREEN_1 0
+#define ACT_LEVEL_NEO_GREEN_2 1
+#define ACT_LEVEL_NEO_GREEN_HILL_1 ACT_LEVEL_NEO_GREEN_1
+#define BG_SCROLL_NEO_GREEN_HILL BG_SCROLL_NEO_GREEN
+#define ACT_LEVEL_SECRET_BASE_1 2
 #define ACT_LEVEL_SECRET_BASE_2 3
+#define ACT_LEVEL_CASINO_PARADISE_1 4
+#define ACT_LEVEL_CASINO_PARADISE_2 5
 #define ACT_LEVEL_ICE_MOUNTAIN_1 6
 #define ACT_LEVEL_ICE_MOUNTAIN_2 7
 #define ACT_IS_ICE_MOUNTAIN(level) ((level) == ACT_LEVEL_ICE_MOUNTAIN_1 || (level) == ACT_LEVEL_ICE_MOUNTAIN_2)
+#define ACT_LEVEL_X_ZONE 12
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
 #define ACT_LEVEL_BLOCKS 8192   // the largest layer, in 96 × 96 px blocks
 #define ACT_TILE_ENTRIES (ACT_TILES * 144)
@@ -28,13 +38,15 @@ typedef struct {
 
 typedef struct {
   int level, zone, act, music, hudFlash;
-  int backgroundScroll;   // 0 still, 1 Casino Paradise's bands, 2 X Zone, 3 Secret Base's inside, 4 Ice Mountain's snow
+  int backgroundScroll;   // how the background moves (BG_SCROLL_*)
   int paletteCount;
   const int *paletteAnimations;
+  const int *paletteVariants;   // each animation's variant, or NULL for variant 0
   Tilemap front, back, background;
   Collision collision;
   int32_t spawnX, spawnY;
   int loopX, loopShift;   // past x loopX Sonic and the camera go back by loopShift (gUnknown_084ADF78), loopX < 0 for none
+  int cameraStop;        // how far short of the right edge the camera stops, or 0 for the screen's width
   int width, height;
 } Stage;
 
@@ -44,6 +56,7 @@ typedef struct {
   int width, height, freeze, locked, look, lookDelay, shakeX, shakeY, bgUpdates;
   int bgX, bgY;
   int wrapped;   // how far the act's loop point has moved the camera, which the background leaves out (unk20)
+  int wrappedThisFrame;   // the loop point's shift on this frame, which the layer maps are drawn without (the camera's task runs before it)
 } Camera;
 
 typedef struct {
@@ -76,7 +89,7 @@ typedef struct {
   int startCamX, startCamY;
   Task *task;
   int stallLoad, musicStarts;
-  int palCount;
+  int palCount, palStarted;
   struct PaletteAnim *pal;
   // the title card's graphics and state (titlecard.c), and where its pieces are
   int cardGraphic;
@@ -128,11 +141,21 @@ void water_drowning_music_stop(void);
 void titlecard_start(int level, int character);
 int titlecard_run(int pressed);
 void titlecard_display(void);
+extern int actHudFlash;
+void act_hold_black(void);
 void act_frame_now(void);
+/** The rings' animation doesn't step on the frame a menu hands over to the act (rings.c). */
+void rings_skip_first_update(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_song_playing(void);
+/** Whether the C version has `level`'s act, which the course select may start. */
+int act_level_ported(int level);
 void act_task(Task *t);
 uint32_t front_frame(void);
+
+// Secret Base act 1's spotlights (engine/spotlights.js), in actspot.c
+void spotlights_start(void);
+void spotlights_frame(void);
 
 #endif

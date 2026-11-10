@@ -14,7 +14,7 @@
 enum {
   OP_SETUP = 1, OP_RESET, OP_START, OP_START_OR_CHANGE, OP_START_OR_CONTINUE, OP_STOP, OP_PLAYER_START, OP_PLAYER_STOP,
   OP_PLAYER_CONTINUE, OP_IMM_INIT, OP_PITCH, OP_VOLUME, OP_PANPOT, OP_FADE_IN, OP_FADE_OUT, OP_TEMPO, OP_ALL_STOP,
-  OP_ALL_CONTINUE, OP_VSYNC_OFF, OP_VSYNC_ON, OP_WAVE_AT,
+  OP_ALL_CONTINUE, OP_VSYNC_OFF, OP_VSYNC_ON, OP_WAVE_AT, OP_PLAYED_FOR,
 };
 
 typedef struct { int32_t op, a, b, c, d; } SoundCall;
@@ -73,6 +73,9 @@ static void apply(M4a *m, const SoundCall *c) {
     case OP_VSYNC_OFF: m4a_vsync_off(m); break;
     case OP_VSYNC_ON: m4a_vsync_on(m); break;
     case OP_WAVE_AT: m4a_wave_at(m, c->a); break;
+    // frames that played before a start point, each the engine's frame and then the chip's, as the clock runs them,
+    // with what they mixed left unheard
+    case OP_PLAYED_FOR: for (int i = 0; i < c->a; i++) { m4a_frame(m); apu_run(m->io, FRAME_CYCLES); } break;
   }
 }
 
@@ -103,8 +106,9 @@ static void setup(int a, int b, int c, int d) {
 
 static void take(int op, int a, int b, int c, int d) {
   SoundCall call = { op, a, b, c, d };
-  // the counter has every call but these two, which the JavaScript kit doesn't send it either
-  if (counting && op != OP_SETUP && op != OP_RESET && counterQueued < CALLS) counterQueue[counterQueued++] = call;
+  // the counter has every call but these, which the JavaScript kit doesn't send it either: a start point moves it on
+  // with gba_sound_frames_gone_by
+  if (counting && op != OP_SETUP && op != OP_RESET && op != OP_PLAYED_FOR && counterQueued < CALLS) counterQueue[counterQueued++] = call;
   if (op == OP_SETUP) setup(a, b, c, d);
   if (handOver) {
     if (takenCount < CALLS) taken[takenCount++] = call;
@@ -196,7 +200,11 @@ void gba_sound_frame_done(void) {
   m4a_frame(&counter);
 }
 void gba_sound_reset(void) { take(OP_RESET, 0, 0, 0, 0); }
+void gba_sound_played_for(int frames) { if (frames > 0) take(OP_PLAYED_FOR, frames, 0, 0, 0); }
 void gba_sound_play(int song) { take(OP_START, song, 0, 0, 0); }
+int gba_sound_song_player(int song) {
+  return running && song >= 0 && song < layout.songs ? gba_rom[layout.songTable + song * 8 + 4] : -1;
+}
 void gba_sound_play_or_change(int song) { take(OP_START_OR_CHANGE, song, 0, 0, 0); }
 void gba_sound_start_or_continue(int song) { take(OP_START_OR_CONTINUE, song, 0, 0, 0); }
 void gba_sound_stop(int song) { take(OP_STOP, song, 0, 0, 0); }

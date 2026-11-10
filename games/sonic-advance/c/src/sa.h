@@ -29,10 +29,10 @@ static inline uint32_t rom_ptr(uint32_t at) { return rom_u32(at) - ROM_BASE; }
 // where the tables are in Sonic Advance (USA), the only copy this version takes (rom/versions.js)
 enum {
   OFFSET_SPRITE_TABLES = 0x0D868C, OFFSET_TILEMAPS = 0x4A6C40, OFFSET_UI_GRAPHICS = 0x680A38,
-  OFFSET_TITLE_CARD = 0x681274,
   OFFSET_INTRO_GRAPHICS = 0x69EC10, OFFSET_INTRO_TABLES = 0x684178, OFFSET_LANGUAGE_BACKGROUND = 0x6C7BD0,
   OFFSET_COURSE_SELECT_BACKGROUND = 0x69A6D0, OFFSET_OPTIONS_BACKGROUND = 0x6C5650,
-  OFFSET_NAME_INPUT_MAPS = 0x67DC38, OFFSET_NAME_INPUT_CHARS = 0x681340,
+  OFFSET_NAME_INPUT_MAPS = 0x67DC38, OFFSET_NAME_INPUT_CHARS = 0x681340, OFFSET_TITLE_CARD = 0x681274,
+  OFFSET_RINGS = 0x0B7F4C, OFFSET_INTERACTABLES = 0x0B7F94, OFFSET_ITEM_BOXES = 0x0B7FDC,
 };
 
 // --- the original's sine table (engine/trig.js), 1.25 turns of 1024 steps in Q2.14 -------------------------------
@@ -120,6 +120,8 @@ void destroy_tasks(uint16_t lo, uint16_t hi);
 void engine_stall(int frames, void (*then)(void));
 void engine_lag(int frames, int late);
 void queue_graphics(Graphics *g);
+// applies what the graphics queue holds now, as a V-blank does, for frames a start point runs with no V-blank
+void engine_copy_graphics(void);
 void clear_queues(void);
 void clear_bg_sprites(void);
 void engine_copy_graphics(void);
@@ -128,6 +130,7 @@ void queue_background(Background *bg);
 int alloc_oam(uint32_t order);
 void clear_oam(void);
 uint32_t vram_malloc(uint32_t tiles);
+void vram_reset(void);
 void vram_free(uint32_t dest);
 void set_hblank_copy(uint32_t target, uint32_t size);
 void hblank_dma_secondary(uint32_t target, uint32_t size);
@@ -142,7 +145,7 @@ void stop_all_songs(void);
 enum { SONG_INTRO = 1, SONG_TITLE_FANFARE = 2, SONG_CHARACTER_SELECTION = 3, SONG_NEO_GREEN_HILL_1 = 12,
   SONG_SEGA_RING = 102, SONG_SELECT = 106,
   SONG_RETURN = 107, SONG_MENU_CURSOR = 108, SONG_BOSS_FIGHT = 29,
-  SONG_SHIFT = 103, SONG_RING = 117,
+  SONG_SHIFT = 103, SONG_JUMP = 116, SONG_RING = 117,
   SONG_COURSE_SELECTION = 4, SONG_VS_PLEASE_WAIT = 5, SONG_VS_LOBBY = 6, SONG_PLAYER_DATA = 48,
   SONG_VS_LOBBY_HELLO = 156, SONG_VS_LOBBY_CLOSED = 160,
   SONG_CONNECTION_SUCCESS = 301, SONG_CONNECTION_ERROR = 302, SONG_CONNECTION_CLOSED = 303 };

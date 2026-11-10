@@ -69,7 +69,7 @@ static void shards_end(ActTask *t) {
 
 /** CreateIceBlockShards and CreateSkatingStoneDebris, from the point they break from in the world and the place on screen it
  *  is measured from; each sprite takes room for its animation's whole size (ALLOC_TILES) */
-void debris_new(const DebrisLook *look, int x, int y, int sx, int sy) {
+void shards_new(const DebrisLook *look, int x, int y, int sx, int sy) {
   Shards *d = OBJECT_NEW(Shards);
   if (!d) return;
   d->look = look;
@@ -131,7 +131,7 @@ static int ice_block_run(ActTask *t) {
       if (p->onObject == &b->o) { p->onObject = NULL; p->air = 1; }
       dust_cloud(x, y);
       play_song(SE_ITEM_BOX);
-      debris_new(&SHARDS, x, y + SHARDS_ABOVE, s16(x - cam_x()), s16(y - cam_y()));
+      shards_new(&SHARDS, x, y + SHARDS_ABOVE, s16(x - cam_x()), s16(y - cam_y()));
       play_song(SE_ICE_BLOCK);
       slot->gone = 1;
       return 0;

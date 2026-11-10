@@ -312,6 +312,8 @@ uint32_t vram_malloc(uint32_t tiles) {
   }
   return HEAP_END;
 }
+/** Puts every heap segment back: a new act starts with the whole sprite heap free. */
+void vram_reset(void) { memset(heap, 0, sizeof heap); }
 /** VramFree */
 void vram_free(uint32_t dest) {
   if (dest == HEAP_END) return;

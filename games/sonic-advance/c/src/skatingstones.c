@@ -75,7 +75,7 @@ static int break_up(Stone *n, int x, int y) {
     knock_off(n, p);
   }
   stop_song(SE_SKATING);
-  debris_new(act.stage.zone == ZONE_ICE_MOUNTAIN ? &DEBRIS_ICE : &DEBRIS, x + (n->ox >> 8), y + (n->oy >> 8) + DEBRIS_ABOVE, n->sx, n->sy);
+  shards_new(act.stage.zone == ZONE_ICE_MOUNTAIN ? &DEBRIS_ICE : &DEBRIS, x + (n->ox >> 8), y + (n->oy >> 8) + DEBRIS_ABOVE, n->sx, n->sy);
   play_song(SE_BOSS_HIT);
   return 0;
 }

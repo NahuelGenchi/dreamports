@@ -22,6 +22,7 @@ typedef enum {
   PS_POLE, PS_FLAG_SWING, PS_ACT_CLEAR_RUN, PS_CAROUSEL_RIDE,   // on a wall pole, swinging round a red flag, running off past the goal, riding a carousel
   PS_SWING_ROPE, PS_HOOK,   // swinging round a rope, hanging from a hook rail, a swinging hook or a crane claw
   PS_ACT_CLEAR_POSE,        // standing by an opened capsule (CHARSTATE_ACT_CLEAR_B)
+  PS_HALF_PIPE_LOW, PS_HALF_PIPE_MID, PS_HALF_PIPE_HIGH,   // the three walks a half-pipe gives him
   PS_BREATHE,               // taking a breath from an air bubble (CHARSTATE_27)
   PA_BORED, PA_RUN, PA_BRAKE_TURN,   // bored of waiting, running, and turning round after a skid
   PA_COUNT
@@ -89,6 +90,8 @@ void player_draw(Player *p, int camX, int camY);
 /** The hooks for the objects: out of a ball and into one, keeping his feet in place. */
 void player_stand_up(Player *p);
 void player_curl_up(Player *p);
+/** Starts the jump the course select's held A began, one frame into it. */
+void player_start_jump(Player *p);
 /** Touching down on the ground or an object (sub_8021BE0); the caller sets the ground speed. */
 void player_land(Player *p);
 /** Ends the B-button combo, the mid-air moves and the spin dash. */
