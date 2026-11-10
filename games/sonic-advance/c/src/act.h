@@ -8,7 +8,8 @@
 #include "player.h"
 
 // how an act's background moves (its StageBgUpdate)
-enum { BG_SCROLL_STILL, BG_SCROLL_CASINO_PARADISE, BG_SCROLL_X_ZONE, BG_SCROLL_SECRET_BASE, BG_SCROLL_SECRET_BASE_OUTSIDE, BG_SCROLL_NEO_GREEN };
+enum { BG_SCROLL_STILL, BG_SCROLL_CASINO_PARADISE, BG_SCROLL_X_ZONE, BG_SCROLL_SECRET_BASE, BG_SCROLL_SECRET_BASE_OUTSIDE, BG_SCROLL_NEO_GREEN,
+       BG_SCROLL_ICE_MOUNTAIN };
 #define ACT_LEVEL_NEO_GREEN_1 0
 #define ACT_LEVEL_NEO_GREEN_2 1
 #define ACT_LEVEL_NEO_GREEN_HILL_1 ACT_LEVEL_NEO_GREEN_1
@@ -17,6 +18,9 @@ enum { BG_SCROLL_STILL, BG_SCROLL_CASINO_PARADISE, BG_SCROLL_X_ZONE, BG_SCROLL_S
 #define ACT_LEVEL_SECRET_BASE_2 3
 #define ACT_LEVEL_CASINO_PARADISE_1 4
 #define ACT_LEVEL_CASINO_PARADISE_2 5
+#define ACT_LEVEL_ICE_MOUNTAIN_1 6
+#define ACT_LEVEL_ICE_MOUNTAIN_2 7
+#define ACT_IS_ICE_MOUNTAIN(level) ((level) == ACT_LEVEL_ICE_MOUNTAIN_1 || (level) == ACT_LEVEL_ICE_MOUNTAIN_2)
 #define ACT_LEVEL_X_ZONE 12
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
 #define ACT_LEVEL_BLOCKS 8192   // the largest layer, in 96 × 96 px blocks
@@ -115,6 +119,25 @@ void act_special_stage(int x, int y);
 /** The game's random numbers (gPseudoRandom): the next, which also moves the sequence on. */
 uint32_t act_random(void);
 
+// Ice Mountain's snow, background and water (icemountain.c)
+void ice_mountain_create_background(void);
+void ice_mountain_background_update(int x, int y);
+void ice_mountain_draw(void);
+void water_create(int level, uint32_t mask);
+void water_card(int ending);
+void water_card_flush(void);
+void water_task(void);
+int water_line_on_screen(void);
+/** gWater.currentWaterLevel: the water line's height in the world, -1 in an act without water. */
+int water_level(void);
+// what happens under it (underwater.c): the splash at the line, a bubble rising from (x, y) in 1/256 px, the bubbles after
+// Sonic drowns, a number of the drowning countdown over him, and the drowning music, started and stopped
+void water_splash(int x);
+void water_bubble(int x, int y, int dx, int group);
+void water_drowned_bubbles(void);
+void water_countdown(int n);
+void water_drowning_music(void);
+void water_drowning_music_stop(void);
 void titlecard_start(int level, int character);
 int titlecard_run(int pressed);
 void titlecard_display(void);

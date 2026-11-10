@@ -1,16 +1,16 @@
-// Neo Green Hill act 1's own objects: the boulder and its pieces, the crumbling platform, the incline ramp, the
-// waterfalls, the half-pipe, the grind rails and the forced slide (its boosters are in boosters.c, and its trampoline
-// and bounce block in platforms.c). Translated from the JavaScript version's engine/boulders.js, platforms.js, ramps.js, waterfalls.js,
-// halfpipes.js, grindrails.js and slides.js, in the style of the act's other objects.
+// Neo Green Hill act 1's own objects: the boulder and its pieces, the incline ramp, the waterfalls, the half-pipe and the
+// grind rails (its boosters are in boosters.c, its trampoline and bounce block in platforms.c, its crumbling platform in
+// crumbling.c and its forced slide in slides.c). Translated from the JavaScript version's engine/boulders.js, ramps.js,
+// waterfalls.js, halfpipes.js and grindrails.js, in the style of the act's other objects.
 
 #include "objects.h"
 #include "terrain.h"
 
 enum {
   ANIM_BOULDER = 458, ANIM_DEBRIS_SMALL = 459, ANIM_DEBRIS_BIG = 460,
-  ANIM_WATERFALL = 464, ANIM_SLIDE = 474,
+  ANIM_WATERFALL = 464,
   ORDER_OBJECT = 18, PRIORITY_FRONT = 2,
-  SE_BREAK = 167, SE_CRUMBLE = 173,
+  SE_BREAK = 167,
   SE_GRIND_START = 114, SE_GRIND_END = 116,
   DEBRIS = 4, DEBRIS_FRAMES = 60,
 };
@@ -115,41 +115,6 @@ ActTask *boulder_spawn(Slot *slot) {
   object_sprite(&b->o.sprite, ANIM_BOULDER, 0, 0, ORDER_OBJECT, PRIORITY_FRONT, 0, 0);
   sprite_step(&b->o.sprite);
   return object_task(&b->o, boulder_run, PRIORITY_OBJECTS);
-}
-
-// --- the crumbling platform (platforms.js) -------------------------------------------------------------------------------------
-typedef struct { Object o; int phase, n; } Crumbling;
-
-static int crumbling_run(ActTask *t) {
-  Crumbling *c = (Crumbling *)t->data;
-  const Slot *en = c->o.slot;
-  Player *p = &act.player;
-  const Hitbox *hb = box(&c->o, 0);
-  if (c->phase == 0) {
-    if (hb && (collide_platform_top(&c->o, en->e.x, en->e.y, hb, p) & COLLIDE_LANDED)) { c->phase = 1; c->n = 0; }
-  } else if (c->phase == 1) {
-    if (c->n++ > 30) { c->phase = 2; c->n = 0; play_song(SE_CRUMBLE); }
-    else if (hb) collide_platform_top(&c->o, en->e.x, en->e.y, hb, p);
-  } else if (c->phase == 2) {
-    if (c->n < 32 && hb) collide_platform_top(&c->o, en->e.x, en->e.y, hb, p);
-    if (++c->n >= 32) {
-      if (p->onObject == &c->o) { p->onObject = NULL; p->air = 1; }
-      c->phase = 3;
-    }
-  }
-  if (off_cam(en->e.x, en->e.y)) return 0;
-  sprite_step(&c->o.sprite);
-  object_draw(&c->o.sprite, en->e.x, en->e.y);
-  return 1;
-}
-
-ActTask *crumbling_spawn(Slot *slot) {
-  Crumbling *c = OBJECT_NEW(Crumbling);
-  if (!c) return NULL;
-  c->o.slot = slot; c->o.x = slot->e.x;
-  object_sprite(&c->o.sprite, 904, 0, 0, ORDER_OBJECT, PRIORITY_FRONT, d0(slot) != 0, 0);
-  sprite_step(&c->o.sprite);
-  return object_task(&c->o, crumbling_run, PRIORITY_OBJECTS);
 }
 
 // --- the incline ramp (ramps.js) ------------------------------------------------------------------------------------------------
@@ -332,42 +297,4 @@ ActTask *grind_rail_spawn(Slot *slot) {
   if (!g) return NULL;
   g->o.slot = slot; g->o.x = slot->e.x;
   return object_task(&g->o, grind_run, PRIORITY_OBJECTS);
-}
-
-// --- the forced slide (slides.js) -----------------------------------------------------------------------------------------------
-typedef struct { Object o; int held; } Slide;
-
-static int slide_run(ActTask *t) {
-  Slide *sl = (Slide *)t->data;
-  const Slot *en = sl->o.slot;
-  Player *p = &act.player;
-  int dir = d0(en) ? -1 : 1;
-  int w = d2(en) * 8, h = d3(en) * 8;
-  int x = fl(p->x), y = fl(p->y);
-  int inside = x >= en->e.x && x <= en->e.x + w && y >= en->e.y && y <= en->e.y + h;
-  if (p->dead) { sl->held = 0; return 1; }
-  if (inside && !p->air && p->onObject == NULL) {
-    sl->held = 1;
-    player_end_attack(p);
-    p->pushing = 0; p->airLock = 0;
-    p->facing = dir;
-    p->gsp = p->xsp = 4.0 * dir;
-    p->ysp = 0;
-    p->state = PS_HURT;
-    player_stand_up(p);
-    sl->o.sprite.x = (int16_t)(x - cam_x());
-    sl->o.sprite.y = (int16_t)(y - cam_y());
-    sprite_step(&sl->o.sprite);
-    if (objects_drawing()) display_sprite(&sl->o.sprite);
-  } else if (sl->held && (!inside || p->air)) sl->held = 0;
-  if (off_cam(en->e.x, en->e.y)) return 0;
-  return 1;
-}
-
-ActTask *slide_spawn(Slot *slot) {
-  Slide *sl = OBJECT_NEW(Slide);
-  if (!sl) return NULL;
-  sl->o.slot = slot; sl->o.x = slot->e.x;
-  object_sprite(&sl->o.sprite, ANIM_SLIDE, 0, 0, 3, PRIORITY_FRONT, d0(slot) != 0, 0);
-  return object_task(&sl->o, slide_run, PRIORITY_OBJECTS);
 }

@@ -29,6 +29,19 @@ void fill_lines(int bg, int minY, int maxY, int h, int v) {
   for (uint32_t at = e.primary + minY * 4; minY < maxY; minY++, at += 4) { put16(at, (uint32_t)jmod(h, 512)); put16(at + 2, (uint32_t)jmod(v, 512)); }
 }
 
+/** sub_8007738: layer `bg` waving on lines minY to maxY - 1, around (x, y): across by `hSize` px of the sine at `h`,
+ *  `hStep` further each line, and up and down by `vSize` px of the sine at `v`, `vStep` further each line. */
+void wave_lines(int bg, int minY, int maxY, uint16_t h, uint8_t hSize, uint8_t hStep, uint16_t v, uint8_t vSize, uint8_t vStep,
+                int16_t x, int16_t y) {
+  set_hblank_copy(REG_BG0HOFS + bg * 4, 4);
+  minY &= 0xFF; maxY &= 0xFF;
+  for (uint32_t at = e.primary + minY * 4; minY < maxY; minY++, at += 4) {
+    put16(at, (uint32_t)(((SINE[h & 0x3FF] * hSize) >> 14) + x) & 0x1FF);
+    put16(at + 2, (uint32_t)(((SINE[v & 0x3FF] * vSize) >> 14) + y) & 0x1FF);
+    h = (uint16_t)(h + hStep); v = (uint16_t)(v + vStep);
+  }
+}
+
 /** sub_8007958: layer `bg` shifted by `shift` one way and the next line the other, `step` further each line. */
 void shear_lines(int bg, int minY, int maxY, int shift, int step, int h, int v) {
   set_hblank_copy(REG_BG0HOFS + bg * 4, 4);

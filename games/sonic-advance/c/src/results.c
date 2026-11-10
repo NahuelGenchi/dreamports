@@ -398,7 +398,9 @@ int results_run(void) {
 
 void results_display(void) {
   if (!r.display) return;
-  e.dispCnt = 0x3E40;   // OBJ and window 0 on, BG1, BG2 and BG3 on, 1D OAM
+  // OBJ and window 0 on, BG1, BG2 and BG3 on, 1D OAM, and BG0 as the stage's background update left it: the results'
+  // tasks never write the display, so Ice Mountain's snow stays on through the fade
+  e.dispCnt = (uint16_t)(0x3E40 | (e.dispCnt & 0x100));
   e.winRegs[0] = 0x00F0; e.winRegs[2] = 0x00A0;
   e.bldCnt = 0x3FFF; e.bldAlpha = 0x0010; e.bldY = (uint16_t)r.bldY;
 }

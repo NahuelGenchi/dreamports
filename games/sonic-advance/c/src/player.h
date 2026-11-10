@@ -1,6 +1,5 @@
 // Sonic: his state, movement and animation, translated from the JavaScript version's engine/player.js and
-// engine/animator.js. The characters other than Sonic, the water, the boost modes and the Sonic Advance 2 tricks are
-// not here; the fields the objects will read and set (onto him, holding his controls, curling him up) are.
+// engine/animator.js. The characters other than Sonic, the boost modes and the Sonic Advance 2 tricks are not here; the fields the objects will read and set (onto him, holding his controls, curling him up) are.
 
 #ifndef SA_PLAYER_H
 #define SA_PLAYER_H
@@ -24,6 +23,7 @@ typedef enum {
   PS_SWING_ROPE, PS_HOOK,   // swinging round a rope, hanging from a hook rail, a swinging hook or a crane claw
   PS_ACT_CLEAR_POSE,        // standing by an opened capsule (CHARSTATE_ACT_CLEAR_B)
   PS_HALF_PIPE_LOW, PS_HALF_PIPE_MID, PS_HALF_PIPE_HIGH,   // the three walks a half-pipe gives him
+  PS_BREATHE,               // taking a breath from an air bubble (CHARSTATE_27)
   PA_BORED, PA_RUN, PA_BRAKE_TURN,   // bored of waiting, running, and turning round after a skid
   PA_COUNT
 } PlayerAnim;
@@ -56,6 +56,10 @@ typedef struct {
   int dead, death, countdown;   // dead, the stage of the death (PLAYER_DEATH_*), and frames to the restart
   int chain;                    // enemies defeated since he last touched the ground
   int inverted, wasInverted;    // gravity flipped, now and when the stage clock last ran
+  int water;                    // in the water (MOVESTATE_IN_WATER): his centre 4 px or more below its line
+  int drownSeconds, drownFrames;   // seconds until he drowns, and frames until the next goes (secondsUntilDrown and
+                                   // framesUntilDrownCountDecrement)
+  int surfaceT;                 // frames before the next splash at the line can show (unk88)
   // what the objects set
   int shield;                   // the shield an item box gave him (SHIELD_*)
   const void *onObject;         // the solid object he stands on, if any
@@ -96,5 +100,7 @@ void player_end_attack(Player *p);
 int player_hurt(Player *p);
 /** Knocks him aside at the given speeds, blinking as after a hit but keeping his rings. */
 void player_knock_aside(Player *p, double xsp, double ysp);
+/** A breath from an air bubble: his moves end, he uncurls, stops dead, and the drowning count starts over. */
+void player_breathe(Player *p);
 
 #endif

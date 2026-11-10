@@ -50,26 +50,8 @@ typedef struct {
   int shaking, c;                  // the shake, and its frame
 } Bumper;
 
-// --- sub_8004418: the angle from (x, y) to him, 1024 steps a turn ---------------------------------------------------------------
-static int wrap16(int v) { return (int16_t)v; }
-// a rough angle of (a, b) in 1024 steps a turn, from its octant and the ratio of the smaller coordinate to the larger, linear
-// within the octant; -1 for (0, 0). The smaller one times 128 wraps as an s16, as in the original.
-static int octant_angle(int a, int b) {
-  static const int OCTANTS[8] = { 1, 0, 2, 3, 6, 7, 5, 4 };
-  a = wrap16(a); b = wrap16(b);
-  if ((a | b) == 0) return -1;
-  int i = 0, f;
-  if (a <= 0) { a = wrap16(-a); i = 4; }
-  if (b <= 0) { b = wrap16(-b); i += 2; }
-  if (a >= b) f = a == 0 ? wrap16(b << 7) : wrap16(b << 7) / a;
-  else { i++; f = b == 0 ? wrap16(a << 7) : wrap16(a << 7) / b; }
-  f = wrap16(f);
-  if (OCTANTS[i] & 1) f = wrap16(0x80 - f);
-  return (f + OCTANTS[i] * 128) & 0x3FF;
-}
-
 static int floor_of(double v) { return (int)__builtin_floor(v); }
-static int angle_to(const Player *p, int x, int y) { return octant_angle(floor_of(p->y) - y, floor_of(p->x) - x); }
+static int angle_to(const Player *p, int x, int y) { return quick_angle(floor_of(p->y) - y, floor_of(p->x) - x); }   // sub_8004418
 static int sine_at(int i) { return i < 0 ? SIN_BEFORE : SINE[i]; }
 
 // Coll_Player_Entity_Intersection: his body's box against the bumper's first hitbox

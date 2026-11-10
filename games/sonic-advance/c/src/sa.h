@@ -41,10 +41,12 @@ extern const int16_t SINE[1280];
 static inline int sin8(int angle) { return SINE[(angle & 0xFF) * 4] >> 6; }
 static inline int cos8(int angle) { return SINE[(angle & 0xFF) * 4 + 256] >> 6; }
 int arc_tan2(int x, int y);
+/** sub_8004418: the rough angle of (a, b), 1024 steps a turn, -1 for (0, 0). */
+int quick_angle(int a, int b);
 
 // --- the engine (gba/engine.js) ---------------------------------------------------------------------------------
 enum {
-  FLAGS_UPDATE_BG_PALETTES = 0x1, FLAGS_UPDATE_OBJ_PALETTES = 0x2, FLAGS_HBLANK_COPY = 0x4, FLAGS_KEEP_HBLANK_BUFFER = 0x20,
+  FLAGS_UPDATE_BG_PALETTES = 0x1, FLAGS_UPDATE_OBJ_PALETTES = 0x2, FLAGS_HBLANK_COPY = 0x4, FLAGS_KEEP_HBLANK_BUFFER = 0x20, FLAGS_VCOUNT_INTR = 0x40,
   FLAGS_PAUSE_GAME = 0x400, FLAGS_PAUSED = 0x800, FLAGS_NO_RESET = 0x8000,
 };
 enum { TASK_INACTIVE = 0x1, TASK_DESTROY_DISABLED = 0x2, TASK_RUNS_PAUSED = 0x4 };
@@ -93,6 +95,10 @@ typedef struct {
   uint16_t oamBuffer[128 * 4];
   uint8_t *hblank;        // the H-blank DMA's two buffers (gBgOffsetsBuffer)
   uint32_t primary, hblankTarget, hblankSize;
+  // the V-count interrupt (gIntrTable[INTR_INDEX_VCOUNT]) and the line it comes at (gUnknown_03002874)
+  void (*vcountIntr)(void);
+  uint8_t vcountLine;
+  void (*vblankCallback)(void);   // gVBlankCallbacks, the one a task asks for this frame, run in the next V-blank's update
   // the keys (gInput and the rest)
   uint16_t input, prevInput, pressed, released, repeated;
   uint8_t repeatCounters[10], firstRepeat[10], nextRepeat[10];
@@ -127,6 +133,7 @@ uint32_t vram_malloc(uint32_t tiles);
 void vram_reset(void);
 void vram_free(uint32_t dest);
 void set_hblank_copy(uint32_t target, uint32_t size);
+void hblank_dma_secondary(uint32_t target, uint32_t size);
 void engine_run(void);
 void engine_draw_setup(void);
 
@@ -195,6 +202,8 @@ void transform_background(Affine *affine, int angle, int scaleX, int scaleY, int
 void put16(uint32_t at, uint32_t v);
 void scroll_lines(int bg, int minY, int maxY, int h, int v);
 void fill_lines(int bg, int minY, int maxY, int h, int v);
+void wave_lines(int bg, int minY, int maxY, uint16_t h, uint8_t hSize, uint8_t hStep, uint16_t v, uint8_t vSize, uint8_t vStep,
+                int16_t x, int16_t y);
 void shear_lines(int bg, int minY, int maxY, int shift, int step, int h, int v);
 void window_right(int bg, int x1, int y1, int x2, int y2, int left);
 void window_left(int bg, int x1, int y1, int x2, int y2, int right);

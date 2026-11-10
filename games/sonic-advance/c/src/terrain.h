@@ -20,6 +20,9 @@ Scan terrain_scan(int probe, int p0, int p1, int layer, int step);
 int terrain_tile_floor(int x, int y, int layer, int step);
 /** The same probe along either axis (the JavaScript version's tileScan): `kind` and the coordinates as terrain_scan takes them. */
 int terrain_tile_scan(int kind, int p0, int p1, int layer, int step);
+/** The same probe with the angle of the tile it read (sub_801F07C's rotation out, the JavaScript version's probeTile); the
+ *  angle is only there (hasRot) when that tile isn't empty. */
+Scan terrain_tile_probe(int kind, int p0, int p1, int layer, int step);
 /** The surface angle of the tile at (px, py), 0-255 a turn, mirrored for flipped tiles. */
 int terrain_angle(int px, int py, int layer);
 

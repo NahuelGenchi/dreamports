@@ -49,12 +49,6 @@ int boss_matrix(void) {
   return next++ & 0xFF;
 }
 
-// a task with no sprite of its own: its block's sprite has no tiles to free
-#define PLAIN_NEW(type) ((type *)plain(OBJECT_NEW(type)))
-static void *plain(void *block) {
-  if (block) ((Object *)block)->sprite.graphics.dest = HEAP_END;
-  return block;
-}
 
 // --- the arena's camera (Bosses_SetCamBounds, Task_8017244) --------------------------------------------------------------
 // The right edge goes to `maxX` at once; the top, bottom and left start at the screen's and move 1 px a frame to theirs, a

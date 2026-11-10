@@ -295,3 +295,9 @@ int terrain_tile_scan(int kind, int p0, int p1, int layer, int step) {
   if (v == 8) return step > 0 ? -1 - r : r - 8;
   return partial(v, r);
 }
+
+Scan terrain_tile_probe(int kind, int p0, int p1, int layer, int step) {
+  Probe t = probe(kind, p0, p1, layer);
+  Scan out = { terrain_tile_scan(kind, p0, p1, layer, step), t.rot, t.v != 0 };
+  return out;
+}

@@ -1,6 +1,6 @@
 // Sonic against an object's hitbox, as Sonic Advance does it. Translated from the JavaScript version's engine/collide.js
 // (the original's collision_1.c Coll_Player_Platform, collision_2.c sub_800C934 and sub_800CBBC, and collision_3.c
-// Coll_Player_Spring_Sideways and Coll_Player_Itembox). Hitboxes are around the object's origin, edges included. Sonic is
+// Coll_Player_Spring_Sideways and Coll_Player_Itembox, and skating_stone's collision.c Coll_Player_SkatingStone). Hitboxes are around the object's origin, edges included. Sonic is
 // tested with plain rectangles around his centre; only an item box also looks at his attack box.
 
 #include "objects.h"
@@ -97,6 +97,18 @@ int collide_platform(const void *o, int ox, int oy, const Hitbox *hb, Player *p)
   Hitbox body = collide_body(p);
   int done = ((p->air || stoodHere) && vertical(o, ox, oy, hb, p, &body, stoodHere, &flags))
     || sideways(ox, oy, hb, p, &flags) || vertical(o, ox, oy, hb, p, &body, stoodHere, &flags);
+  if (!done && stoodHere && !p->onObject) { p->air = 1; p->pushing = 0; }   // walked or jumped off
+  return flags;
+}
+
+int collide_skating_stone(const void *o, int ox, int oy, const Hitbox *hb, Player *p) {
+  int flags = 0;
+  if (!hb || p->dead) return 0;
+  int stoodHere = p->onObject == o;
+  if (stoodHere) p->onObject = NULL;
+  Hitbox body = collide_body(p);
+  int done = ((p->air || stoodHere) && vertical(o, ox, oy, hb, p, &body, stoodHere, &flags))
+    || vertical(o, ox, oy, hb, p, &body, stoodHere, &flags);
   if (!done && stoodHere && !p->onObject) { p->air = 1; p->pushing = 0; }   // walked or jumped off
   return flags;
 }
