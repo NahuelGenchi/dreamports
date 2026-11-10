@@ -66,6 +66,12 @@ static void curl(Player *p) { p->curled = 1; sensors_set_offset_y(p, BALL_SPRITE
 static void uncurl(Player *p) { p->curled = 0; sensors_set_offset_y(p, SPRITE_OFFSET_Y); }
 void player_stand_up(Player *p) { uncurl(p); }
 void player_curl_up(Player *p) { curl(p); }
+/** Starts the jump the course select's held A began, one frame into it: curled and rising at 3 px a frame. */
+void player_start_jump(Player *p) {
+  p->air = 1; p->jumped = 1; p->pushing = 0; p->state = PS_SPIN;
+  p->ysp = -3.0;
+  curl(p);
+}
 // the walk's states put his hitbox back at its standing height; it only moves him when something uncurled him
 // without it
 static void stand_height(Player *p) { sensors_set_offset_y(p, SPRITE_OFFSET_Y); }

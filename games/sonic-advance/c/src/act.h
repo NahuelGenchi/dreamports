@@ -8,10 +8,12 @@
 #include "player.h"
 
 // how an act's background moves (its StageBgUpdate)
-enum { BG_SCROLL_STILL, BG_SCROLL_NEO_GREEN_HILL, BG_SCROLL_CASINO_PARADISE, BG_SCROLL_X_ZONE, BG_SCROLL_SECRET_BASE };
+enum { BG_SCROLL_STILL, BG_SCROLL_NEO_GREEN_HILL, BG_SCROLL_CASINO_PARADISE, BG_SCROLL_X_ZONE, BG_SCROLL_SECRET_BASE, BG_SCROLL_SECRET_BASE_OUTSIDE };
 #define ACT_LEVEL_NEO_GREEN_HILL_1 0
+#define ACT_LEVEL_SECRET_BASE_1 2
 #define ACT_LEVEL_SECRET_BASE_2 3
 #define ACT_LEVEL_CASINO_PARADISE_1 4
+#define ACT_LEVEL_CASINO_PARADISE_2 5
 #define ACT_LEVEL_X_ZONE 12
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
 #define ACT_LEVEL_BLOCKS 8192   // the largest layer, in 96 × 96 px blocks
@@ -119,5 +121,9 @@ void act_song_playing(void);
 int act_level_ported(int level);
 void act_task(Task *t);
 uint32_t front_frame(void);
+
+// Secret Base act 1's spotlights (engine/spotlights.js), in actspot.c
+void spotlights_start(void);
+void spotlights_frame(void);
 
 #endif
