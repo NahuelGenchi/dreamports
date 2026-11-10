@@ -44,7 +44,8 @@ static struct {
   int rows, records, frame, ending, shown, scroll, scrollTo, level;   // unk4C, unk50, unk52, and the slide's frame
   Fade fade;
   Task *tasks[3];   // the arrows, the acts and the zones
-  Sprite arrow, acts[MAX_ROWS], zones[8];
+  // wait: link play's waiting sign, which isn't shown, but whose tiles and colours are queued and copied in the V-blank
+  Sprite arrow, wait, acts[MAX_ROWS], zones[8];
 } screen;
 
 static void slide_in(Task *t);
@@ -164,10 +165,9 @@ void create_course_select(void) {
   screen.tasks[0] = create_task(show_arrows, &screen, 0x2030, 0, NULL);
   update_sprite(&screen.arrow, 0);
   // only link play shows it, but its first frame's tiles and colours load all the same
-  Sprite wait;
-  screen_sprite(&wait, ANIM_VS_MENU_WAIT, OBJ_VRAM + WAIT_TILES_AT);
-  wait.x = 120; wait.y = 80; wait.oamFlags = 0x80; wait.frameFlags = 0x2000;
-  update_sprite(&wait, 0);
+  screen_sprite(&screen.wait, ANIM_VS_MENU_WAIT, OBJ_VRAM + WAIT_TILES_AT);
+  screen.wait.x = 120; screen.wait.y = 80; screen.wait.oamFlags = 0x80; screen.wait.frameFlags = 0x2000;
+  update_sprite(&screen.wait, 0);
   for (int i = 0; i < rows; i++) {
     screen_sprite(&screen.acts[i], ANIM_ACTS, OBJ_VRAM + ACT_TILES_AT + i * COURSE_ACT_TILES);
     screen.acts[i].variant = (uint8_t)i; screen.acts[i].oamFlags = 0x480; screen.acts[i].frameFlags = 0x2000;
