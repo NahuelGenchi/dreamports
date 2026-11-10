@@ -307,6 +307,13 @@ int scatter_task(ActTask *t) {
 }
 
 /** Puts every ring back and clears the slots, as the act's start does. */
+void rings_act2_prepare(void) {
+  // the rings manager is made while the stage loads and runs through the card's frames: sixteen of them before the
+  // act's first picture, and one more step of delay, as Neo Green Hill act 2's recording has them
+  for (int i = 0; i < 16; i++) update_sprite(&ringSprite, 0);
+  ringSprite.qAnimDelay = (int16_t)(ringSprite.qAnimDelay + 256);
+}
+
 void rings_start(void) {
   ring_sprite(&ringSprite, RING_TILES, ORDER_RING);
   ring_sprite(&scatterSprite, RING_TILES, ORDER_RING);
