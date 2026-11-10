@@ -134,9 +134,6 @@ void front_play(int level) {
   // Game Start after the character select hands the act the level the game was started on (0 for a new game)
   if (level < 0 && startLevel < 0) startLevel = ctx.startLevel >= 0 ? ctx.startLevel : 0;
   if (!act_level_ported(startLevel) && !fromStart) { ctx.done = 1; return; }
-  // Neo Green Hill act 1 is Sonic's in C: another character's act stops here, with the screen as it is, rather
-  // than starting the act as Sonic
-  if (startLevel == ACT_LEVEL_NEO_GREEN_HILL_1 && ctx.character != 0) { stop_all_songs(); ctx.done = 1; return; }
   act_active = 1;
   // a new game's act comes from the character select, whose HUD's zero-ring flash starts at 1; a course select
   // or a start point starts it from the stage's own value (levels.js hudFlash)
@@ -155,9 +152,7 @@ void front_play(int level) {
     else { destroy_tasks(0x2000, 0x3000); act_start(startLevel, -1, 0); act_frame_now(); }
     return;
   }
-  // the course select's last frame still draws; act 1's song starts with its first picture
-  if (startLevel == ACT_LEVEL_NEO_GREEN_HILL_1) act_queue(level, -1, 0);
-  else { destroy_tasks(0x2000, 0x3000); act_start(startLevel, -1, 0); act_frame_now(); }
+  destroy_tasks(0x2000, 0x3000); act_start(startLevel, -1, 0); act_frame_now();
 }
 void front_start_demo(void) { ctx.done = 1; }
 
