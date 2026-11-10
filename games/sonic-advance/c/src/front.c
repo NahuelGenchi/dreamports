@@ -55,9 +55,8 @@ static void apply_start_point(void) {
   if (startPoint.emeralds >= 0) SAVE_CHAOS_EMERALDS = (uint8_t)(startPoint.emeralds & ALL_EMERALDS);
 }
 
-/** Game Start: the start point's progress reaches the save before the character select, as the JavaScript version's
- *  onGameStart does, so a character select that leads to the course select finds the progress there; then the
- *  character select, unless the start point leaves it out, and then the course select or the act. */
+/** Game Start: the character select, unless a start point leaves it out, and then the course select once the
+ *  character has progress, or the act. */
 void front_start_game(void) {
   apply_start_point();
   if (ctx.select) { create_character_select(ctx.character); return; }
@@ -125,18 +124,19 @@ void front_vs_round(int level, int chao) {
 /** The round the VS menus chose, for the page: its level, or 0 while they are still choosing. */
 EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 
-// The acts in C so far: Neo Green Hill act 1 in full, and the openings of Secret Base act 2 and X Zone. A start
-// point's `level` opens one of them at once; the course select hands the act its own level; any other act stops
-// safely where the screen is.
+// The acts in C so far: Neo Green Hill act 1, Secret Base act 2, Casino Paradise act 1 and X Zone, whose course
+// select rows start them with their title cards. A start point's `level` opens any level the C version has, past the
+// card when it asks; every other act, and Options, stops safely where the screen is.
 void front_play(int level) {
   int startLevel = (int)gba_start_number("level", -1);
   int fromStart = startLevel >= 0;
   if (!fromStart) startLevel = level;
+  // Game Start after the character select hands the act the level the game was started on (0 for a new game)
   if (level < 0 && startLevel < 0) startLevel = ctx.startLevel >= 0 ? ctx.startLevel : 0;
+  if (!act_level_ported(startLevel) && !fromStart) { ctx.done = 1; return; }
   // Neo Green Hill act 1 is Sonic's in C: another character's act stops here, with the screen as it is, rather
   // than starting the act as Sonic
-  if (startLevel == 0 && ctx.character != 0) { stop_all_songs(); ctx.done = 1; return; }
-  if (startLevel != 0 && startLevel != 3 && startLevel != 12) { ctx.done = 1; return; }
+  if (startLevel == ACT_LEVEL_NEO_GREEN_HILL_1 && ctx.character != 0) { stop_all_songs(); ctx.done = 1; return; }
   act_active = 1;
   // a new game's act comes from the character select, whose HUD's zero-ring flash starts at 1; a course select
   // or a start point starts it from the stage's own value (levels.js hudFlash)
@@ -144,22 +144,20 @@ void front_play(int level) {
   int card = (int)gba_start_number("card", -1), pre = (int)gba_start_number("pre", 0);
   if (fromStart) {
     destroy_tasks(0x2000, 0x3000);
-    if (startLevel == 0) act_start(startLevel, card, pre);
-    else { opening_start(startLevel, card, pre); opening_frame_now(); }
+    act_start(startLevel, card, pre);
+    act_frame_now();
     return;
   }
   if (level < 0) {
-    // Game Start after the character select hands the act the level the game was started on (0 for a new game).
-    // The screen stays black for this frame, as the original's menu fades to black before its stage's first picture.
-    if (startLevel == 0) act_start(startLevel, -1, 0);
-    else opening_start(startLevel, -1, 0);
-    act_hold_black();
+    // Game Start after the character select: the screen stays black for this frame, as the original's menu fades
+    // to black before its stage's first picture
+    if (startLevel == ACT_LEVEL_NEO_GREEN_HILL_1) { act_start(startLevel, -1, 0); act_hold_black(); }
+    else { destroy_tasks(0x2000, 0x3000); act_start(startLevel, -1, 0); act_frame_now(); }
     return;
   }
-  // The course select's last frame still draws; act 1's song starts with its first picture, and the opening acts
-  // start on the frame after the menu.
-  if (startLevel == 0) act_queue(level, -1, 0);
-  else { destroy_tasks(0x2000, 0x3000); opening_start(startLevel, -1, 0); }
+  // the course select's last frame still draws; act 1's song starts with its first picture
+  if (startLevel == ACT_LEVEL_NEO_GREEN_HILL_1) act_queue(level, -1, 0);
+  else { destroy_tasks(0x2000, 0x3000); act_start(startLevel, -1, 0); act_frame_now(); }
 }
 void front_start_demo(void) { ctx.done = 1; }
 

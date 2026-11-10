@@ -20,5 +20,4 @@ void results_display(void);
 /** 1 from results_start until results_run returns 0. */
 int results_active(void);
 
-
 #endif

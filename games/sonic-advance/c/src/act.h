@@ -5,9 +5,14 @@
 #define SA_ACT_H
 
 #include "sa.h"
+#include "player.h"
 
-#define ACT_LEVEL_X_ZONE 12
+// how an act's background moves (its StageBgUpdate)
+enum { BG_SCROLL_STILL, BG_SCROLL_NEO_GREEN_HILL, BG_SCROLL_CASINO_PARADISE, BG_SCROLL_X_ZONE, BG_SCROLL_SECRET_BASE };
+#define ACT_LEVEL_NEO_GREEN_HILL_1 0
 #define ACT_LEVEL_SECRET_BASE_2 3
+#define ACT_LEVEL_CASINO_PARADISE_1 4
+#define ACT_LEVEL_X_ZONE 12
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
 #define ACT_LEVEL_BLOCKS 8192   // the largest layer, in 96 × 96 px blocks
 #define ACT_TILE_ENTRIES (ACT_TILES * 144)
@@ -23,89 +28,95 @@ typedef struct {
 } Collision;
 
 typedef struct {
-  int level, zone, act, music, hudFlash, scroll;
+  int level, zone, act, music, hudFlash;
+  int backgroundScroll;   // how the background moves (BG_SCROLL_*)
+  int paletteCount;
+  const int *paletteAnimations;
   Tilemap front, back, background;
   Collision collision;
   int32_t spawnX, spawnY;
-  int loopX, loopShift;   // past x loopX Sonic and the camera go back by loopShift
+  int loopX, loopShift;   // past x loopX Sonic and the camera go back by loopShift (gUnknown_084ADF78), loopX < 0 for none
   int width, height;
 } Stage;
-
-typedef struct {
-  double x, y, gsp, xsp, ysp;
-  int facing, state, air, curled, pushing, jumped, airLock, lock, spinDashing, dashAccel, midAir, chain, forcedRoll;
-  uint8_t rotation, rotA, rotB;
-  int layer, offsetY, idleT;
-  int anim, variant, animSpeed;
-  int pos;              // the sprite's graphics, kept by the animation
-  int dead, invulnerable, hidden, inverted, wasInverted;
-  int heldDirs, pressedDirs;
-  int carried, ignoreInput, actClear, halfPipe;
-} Player;
 
 typedef struct {
   double x, y, targetX, targetY, offsetY, deadY;
   int minX, minY, maxX, maxY, started, speedX, speedY, shiftX, shiftY;
   int width, height, freeze, locked, look, lookDelay, shakeX, shakeY, bgUpdates;
-  int wrapped;   // how far the act's loop point has moved the camera, which the background leaves out
+  int bgX, bgY;
+  int wrapped;   // how far the act's loop point has moved the camera, which the background leaves out (unk20)
 } Camera;
 
 typedef struct {
   int flash, active;
 } Hud;
 
-// the title card (engine/titlecard.js): the pieces' state, the fade and the sprites each frame
-#define CARD_PIECES 6
-#define CARD_SPRITES 128
-typedef struct { int slot, glyph, a0, a1, order; } CardSprite;
-typedef struct {
-  int slot, x, y, count, order, rows, grid, mark, drops;
-  int text[32];
-} CardPiece;
-typedef struct {
-  int frame, done, fading, blank, level, character;
-  int fadeLevel, fadeSpeed, fadeBldY;
-  CardPiece pieces[CARD_PIECES];
-  CardSprite sprites[CARD_SPRITES];
-  int spriteCount;
-  struct { uint32_t vram; int shape, size, w, h, perGlyph, glyphs; int palette; } slots[CARD_PIECES];
-} TitleCard;
+typedef struct PaletteAnim PaletteAnim;
+struct PaletteAnim {
+  int frame, wait, shown, count, loop;
+  int delays[64], at[64];
+  int loadCount[64];
+  struct { int entry, count, insert; } loads[64][8];
+};
 
 typedef struct {
   Stage stage;
   Player player;
   Camera cam;
   Hud hud;
-  TitleCard card;
-  int tick, courseTime, ringCount, lives, score;
+  int tick, frames, courseTime, ringCount, lives, score;
+  uint32_t seed;
+  int goalReached, ringsStopped;   // past the goal; past the goal or a beaten boss, the rings manager neither takes nor draws
+  int checkpointIndex, checkpointX, checkpointY, checkpointTime;   // the last checkpoint passed (gBossIndex), where and when
   int clockStopped, cardFrame, cardDone, firstCard, started, preFrames, firstFrame, drawn;
+  // the stage's animated tiles (UpdateBgAnimationTiles), and its palette animations' sprites
+  int bgAnimFrame, bgAnimShown, bgAnimDelay;
+  int startCamX, startCamY;
+  Task *task;
+  int stallLoad, musicStarts;
+  int palCount, palStarted;
+  struct PaletteAnim *pal;
+  // the title card's graphics and state (titlecard.c), and where its pieces are
+  int cardGraphic;
+  int cardX[6], cardY[6], cardCount[6], cardMark[6];
 } Act;
 
 extern Act act;
 extern int act_active;
-extern int actHudFlash;   // 1 from the character select, -1 for the stage's own (a course select or start point)
+/** The HUD's zero-ring flash the character select hands over (1), or -1 for the stage's own value. */
+extern int actHudFlash;
 
-// Sonic's sprite hitboxes as his animation script last set them (0 when the slot is off): relative to him
-int act_player_attack_box(int *l, int *t, int *r, int *b);
-int act_player_body_box(int *l, int *t, int *r, int *b);
-void rings_init(int level);
-void rings_reset(void);
-void rings_update(int px, int py, int oy);
-void rings_draw(int cx, int cy);
-void card_create(int level, int character, int fromResults, int blank);
-int card_run(int pressed);
-void card_draw(void);
-void act_start(int level, int cardSkip, int preFrames);
-void act_music_ahead(void);
-// the opening engine for the acts before act 1's full port: Secret Base act 2 and X Zone
-void opening_start(int level, int cardSkip, int preFrames);
-void opening_frame_now(void);
-void act_queue(int level, int cardSkip, int preFrames);
+// what the act does for Sonic's moves: the effects they start, the camera they hold still, and his death
+void act_brake_dust(void);
+void act_dash_dust(void);
+void act_insta_shield(void);
+void act_freeze_camera(void);
+void act_player_died(void);
+void act_life_lost(void);
+// what the objects hand to the act: the goal post, the checkpoints and the special springs (goal.c, checkpoints.c,
+// specialspring.c)
+int act_goal_passed(void);
+void act_goal_reached(void);
+void act_stage_results(void);
+int act_checkpoint_index(void);
+void act_checkpoint_pass(int index, int x, int y);
+int act_special_stages(void);
+void act_hold_camera(int x, int y);
+void act_special_stage(int x, int y);
+/** The game's random numbers (gPseudoRandom): the next, which also moves the sequence on. */
+uint32_t act_random(void);
+
+void titlecard_start(int level, int character);
+int titlecard_run(int pressed);
+void titlecard_display(void);
+void act_frame_now(void);
 /** Keeps the screen black for this frame, as a menu's last frame is. */
 void act_hold_black(void);
-void act_frame_now(void);
-void act_start_clear(void);
-void act_stage_results(void);
+void act_start(int level, int cardSkip, int preFrames);
+void act_queue(int level, int cardSkip, int preFrames);
+void act_song_playing(void);
+/** Whether the C version has `level`'s act, which the course select may start. */
+int act_level_ported(int level);
 void act_task(Task *t);
 uint32_t front_frame(void);
 

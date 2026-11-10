@@ -17,6 +17,7 @@
 // 2 px too far right. The fix is not here but in the act: see the report about `casino_background_update`.
 
 #include "act.h"
+#include "objects.h"
 #include "results.h"
 
 // the songs and sounds the results play (songs.js)
@@ -89,7 +90,7 @@ typedef struct {
 } Piece;
 
 typedef struct {
-  int active, level, wait, longEnd, frame, ring, time, countdown, skipFirst, fading, display, stall;
+  int active, level, wait, longEnd, frame, ring, time, countdown, skipFirst, fading, display;
   int fadeLevel, fadeSpeed, bldY;
   int tile0;              // the block's first tile
   uint32_t vram;
@@ -354,8 +355,8 @@ int results_run(void) {
   int next = 0;
   if (k >= TALLY_FROM) {
     if (r.ring != 0 || r.time != 0) {
-      if (r.ring != 0) { r.ring -= STEP; act.score += STEP; r.p[PIECE_RING].value = r.ring; }
-      if (r.time != 0) { r.time -= STEP; act.score += STEP; r.p[PIECE_TIME].value = r.time; }
+      if (r.ring != 0) { r.ring -= STEP; world_add_score(STEP); r.p[PIECE_RING].value = r.ring; }
+      if (r.time != 0) { r.time -= STEP; world_add_score(STEP); r.p[PIECE_TIME].value = r.time; }
       if (r.ring == 0 && r.time == 0) {
         if (!(r.level & 1)) act.player.actClear = 0;
         act.cam.speedX = 0; act.cam.speedY = 0;
@@ -384,14 +385,9 @@ int results_run(void) {
       }
     }
   }
-  // the frame the next act starts keeps the last frame's sprites: it draws nothing new. In C the screen isn't
-  // kept between frames by itself, so the results keep drawing the band through the save write's frames.
+  // the frame the next act starts keeps the last frame's sprites: it draws nothing new
   r.display = r.fading || r.bldY;
-  if (next) {
-    if (!r.stall) r.stall = 16;
-    if (--r.stall > 0) next = 0;
-    else { r.active = 0; r.display = 0; vram_free(r.vram); return 0; }
-  }
+  if (next) { r.active = 0; r.display = 0; vram_free(r.vram); return 0; }
   r.frame++;
   band_task(&r.p[PIECE_BAND], k);
   line_task(&r.p[PIECE_LINE], k);
@@ -406,4 +402,3 @@ void results_display(void) {
   e.winRegs[0] = 0x00F0; e.winRegs[2] = 0x00A0;
   e.bldCnt = 0x3FFF; e.bldAlpha = 0x0010; e.bldY = (uint16_t)r.bldY;
 }
-
