@@ -98,9 +98,10 @@ static int coconut_run(ActTask *t) {
 static int piece_run(ActTask *t) {
   Effect *f = (Effect *)t->data;
   enemy_projectile(&f->o.sprite, f->x, f->y);
-  int ended = !sprite_step(&f->o.sprite);
+  // the original ends the piece on its animation's end frame, before drawing it
+  if (sprite_step(&f->o.sprite)) return 0;
   object_draw(&f->o.sprite, f->x, f->y);
-  return !ended;
+  return 1;
 }
 
 static int buzzer_shot_run(ActTask *t) {
@@ -188,7 +189,7 @@ static void add_gami_shot(int x4, int dx, int y) {
   if (!f) return;
   f->x4 = x4; f->dx = dx;
   f->x = x4 >> 2; f->y = y; f->vy = -512;
-  object_sprite(&f->o.sprite, ANIM_GAMIGAMI_SHOT, 0, 0, ORDER_EFFECT, ENEMY_PRIORITY, 0, 0);
+  object_sprite(&f->o.sprite, ANIM_GAMIGAMI_SHOT, 0, 0, 9, ENEMY_PRIORITY, 0, 0);
   sprite_step(&f->o.sprite);
   object_task(&f->o, gami_shot_run, PRIORITY_SONIC);
 }
@@ -222,7 +223,8 @@ static int kiki_run(ActTask *t) {
     add_coconut((s->frameFlags & SPRITE_X_FLIP) ? e->x - 18 : e->x + 8, e->y - 8);
   }
   sprite_step(s);
-  object_draw(s, e->x, e->y);
+  // facing right, it is drawn 8 px left of its box (kiki.c)
+  object_draw(s, e->x - ((s->frameFlags & SPRITE_X_FLIP) ? 8 : 0), e->y);
   return 1;
 }
 
@@ -261,7 +263,7 @@ static int buzzer_run(ActTask *t) {
   } else if (e->state == Z_BUZZER_SHOOT) {
     if (e->t >= 30) { start(e, ANIM_BUZZER, BUZZER_VAR_FLY, 1); e->state = Z_BUZZER_PATROL; e->shot = 1; }
   } else e->shot = 0;
-  int ended = !sprite_step(s);
+  int ended = sprite_step(s);
   if (e->state == Z_BUZZER_TURN && ended) { start(e, ANIM_BUZZER, BUZZER_VAR_FLY, 0); e->state = Z_BUZZER_PATROL; }
   object_draw(s, e->x, e->y);
   return 1;
@@ -418,7 +420,6 @@ ActTask *kiki_spawn(Slot *slot) {
   if (!e) return NULL;
   e->vel = 1;
   enemy_sprite(&e->o.sprite, ANIM_KIKI, KIKI_VAR_BOB, KIKI_VAR_THROW, ENEMY_ORDER);
-  sprite_step(&e->o.sprite);
   return object_task(&e->o, kiki_run, PRIORITY_OBJECTS);
 }
 

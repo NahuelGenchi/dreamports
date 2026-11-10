@@ -149,7 +149,6 @@ ActTask *booster_spawn(Slot *slot) {
   b->o.slot = slot; b->o.x = slot->e.x;
   int variant = slot->e.kind == 31 ? 0 : slot->e.kind == 32 ? 2 : 1;
   object_sprite(&b->o.sprite, ANIM_BOOSTER, variant, variant, ORDER_OBJECT, PRIORITY_FRONT, d1(slot) != 0, 0);
-  sprite_step(&b->o.sprite);
   return object_task(&b->o, booster_run, PRIORITY_OBJECTS);
 }
 

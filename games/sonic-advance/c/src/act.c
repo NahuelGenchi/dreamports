@@ -573,7 +573,8 @@ static void act_frame(void) {
   int camRuns = act.cam.started && act.frames > 1;
   if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
   if (act.stage.backgroundScroll == BG_SCROLL_CASINO_PARADISE && act.cam.bgUpdates > 0) casino_background_update();
-  if (camRuns) animate_stage_tiles();
+  // Neo Green Hill's tiles count from its second frame, one before its camera task starts going
+  if (camRuns || (act.stage.level == ACT_LEVEL_NEO_GREEN_HILL_1 && act.frames > 0)) animate_stage_tiles();
   // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts;
   // Neo Green Hill's run from its first picture, as the original's do
   if (act.frames > 0 || act.stage.level == ACT_LEVEL_NEO_GREEN_HILL_1) objects_run_early();
@@ -695,7 +696,7 @@ static void pre_run(int cardSkip, int preFrames) {
     // as in act_frame: the camera counts the animated tiles, and the objects run, from the frames after the act is made
     int camRuns = act.cam.started && act.tick > 1;
     if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
-    if (camRuns) animate_stage_tiles();
+    if (camRuns || (act.stage.level == ACT_LEVEL_NEO_GREEN_HILL_1 && act.tick > 0)) animate_stage_tiles();
     if (act.tick > 0) objects_run_early();
     card_update(cardSkip == act.tick);
     // the card holds Sonic with jump and attack held, as act_frame does
