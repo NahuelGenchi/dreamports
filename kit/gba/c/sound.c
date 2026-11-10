@@ -19,7 +19,7 @@
 static Apu apu;
 static M4a engine;
 static SoundLayout layout;
-static int psgAt;   // gba_sound_psg_at's place, for the next setup
+static int psgAt;   // gba_sound_psg_at's last place, for the next setup
 static int running;          // the engine has a layout
 static int handOver;         // the calls go to the page, for the audio thread
 static SoundCall queue[CALLS], taken[CALLS];
@@ -68,6 +68,7 @@ void gba_sound_apply(M4a *m, const SoundCall *c) {
     case OP_VSYNC_OFF: m4a_vsync_off(m); break;
     case OP_VSYNC_ON: m4a_vsync_on(m); break;
     case OP_WAVE_AT: m4a_wave_at(m, c->a); break;
+    case OP_PSG_AT: m->layout.psgAt = c->a; break;
   }
 }
 
@@ -215,7 +216,7 @@ void gba_sound_volume(int player, int bits, int volume) { take(OP_VOLUME, player
 void gba_sound_pan(int player, int bits, int pan) { take(OP_PANPOT, player, bits, pan, 0); }
 void gba_sound_imm_init(int player) { take(OP_IMM_INIT, player, 0, 0, 0); }
 void gba_sound_wave_at(int at) { take(OP_WAVE_AT, at, 0, 0, 0); }
-void gba_sound_psg_at(int cycles) { psgAt = cycles; }
+void gba_sound_psg_at(int cycles) { psgAt = cycles; take(OP_PSG_AT, cycles, 0, 0, 0); }
 void gba_sound_fade_in(int player, int speed) { take(OP_FADE_IN, player, speed, 0, 0); }
 void gba_sound_fade_out(int player, int speed) { take(OP_FADE_OUT, player, speed, 0, 0); }
 void gba_sound_tempo(int tempo) { take(OP_TEMPO, 0, tempo, 0, 0); }

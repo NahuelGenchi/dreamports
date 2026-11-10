@@ -777,7 +777,12 @@ static void pre_run(int cardSkip, int preFrames) {
 static int songPlaying;
 void act_song_playing(void) { songPlaying = 1; }
 
+// where an act's SoundMain starts in the chip's frame, after the act's V-blank work, measured on
+// sonic-ice-mountain-act-2; the menus' V-blanks do less, and their sound writes as it did before (#741)
+#define ACT_SOUND_MAIN_AT 52550
+
 void act_start(int level, int cardSkip, int preFrames) {
+  gba_sound_psg_at(ACT_SOUND_MAIN_AT);
   memset(&act, 0, sizeof act);
   act.seed = 0;   // gPseudoRandom starts from 0, as the JavaScript page starts the act
   for (int i = 0; i < FIREWORKS; i++) fireworks[i].done = 1;

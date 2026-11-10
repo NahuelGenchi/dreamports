@@ -2,8 +2,10 @@
 
 About: the GBA kit's sound in C
 
-Proof: #741; sonic-ice-mountain-act-2
+Proof: #741; sonic-ice-mountain-act-2, character-select-to-course, soft-reset-special-stage
 
 A square channel's phase never resets: the console's sound chip keeps counting it from note to note, and each write to its registers moves it on by how long the old note played, so a note written at the wrong moment can leave the square out of step with the original for good. Where two voices play the same pitch that shows: on frame 6443 of `sonic-ice-mountain-act-2` square 2 was half a wave out of step, and the mix came out louder in the low bands, though each voice alone matched.
 
 Logging the original's writes shows Sonic Advance's SoundMain runs as the V-blank ends, and its writes to the channels land where its work has reached, from a few lines in to about twenty when many notes start. So with `gba_sound_psg_at(cycles)` every write to the four channels, the wave's samples and the sides they play on lands `cycles` into the chip's frame plus what SoundMain has counted so far, while the game's own calls, made from its code before SoundMain runs, write at once. Holding the calls' writes for `cycles` too moved the end of the select sound on the course select a frame, so Casino Paradise's act 1 differed. Writing them at one fixed place, or only the squares' and the noise's, made other frames differ, and the sound library reads the sides back to change one channel's, so a read gives a write that is still waiting. Small errors in the count carry on from note to note, so the place is measured on the whole act, as `soundMainAt` is for the wave voice.
+
+Where SoundMain runs depends on the V-blank work before it, and the menus do less of it than an act. Giving the act's place for the whole game moved a sound edge a frame on the character select's way to the course select (frame 1729 of `character-select-to-course`) and in `soft-reset-special-stage` (frame 1462), whatever the place, so Sonic Advance gives it as each act starts and the menus write at once, as before. A call to `gba_sound_psg_at` lands with the next sound frame, and a reset of the engine goes back to the place it started with.
