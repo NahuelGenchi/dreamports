@@ -1,6 +1,5 @@
 // Sonic: his state, movement and animation, translated from the JavaScript version's engine/player.js and
-// engine/animator.js. The characters other than Sonic, the boost modes and the Sonic Advance 2 tricks are
-// not here; the fields the objects will read and set (onto him, holding his controls, curling him up) are.
+// engine/animator.js. The characters other than Sonic, the boost modes and the Sonic Advance 2 tricks are not here; the fields the objects will read and set (onto him, holding his controls, curling him up) are.
 
 #ifndef SA_PLAYER_H
 #define SA_PLAYER_H
@@ -23,7 +22,8 @@ typedef enum {
   PS_POLE, PS_FLAG_SWING, PS_ACT_CLEAR_RUN, PS_CAROUSEL_RIDE,   // on a wall pole, swinging round a red flag, running off past the goal, riding a carousel
   PS_SWING_ROPE, PS_HOOK,   // swinging round a rope, hanging from a hook rail, a swinging hook or a crane claw
   PS_ACT_CLEAR_POSE,        // standing by an opened capsule (CHARSTATE_ACT_CLEAR_B)
-  PS_BREATHE,               // taking a breath from an air bubble under water (CHARSTATE_27)
+  PS_HALF_PIPE_LOW, PS_HALF_PIPE_MID, PS_HALF_PIPE_HIGH,   // the three walks a half-pipe gives him
+  PS_BREATHE,               // taking a breath from an air bubble (CHARSTATE_27)
   PA_BORED, PA_RUN, PA_BRAKE_TURN,   // bored of waiting, running, and turning round after a skid
   PA_COUNT
 } PlayerAnim;
@@ -56,9 +56,10 @@ typedef struct {
   int dead, death, countdown;   // dead, the stage of the death (PLAYER_DEATH_*), and frames to the restart
   int chain;                    // enemies defeated since he last touched the ground
   int inverted, wasInverted;    // gravity flipped, now and when the stage clock last ran
-  int water, waterCrossed;      // in the water (his centre 4 px below its line), and gone in or out this frame
-  int drownSeconds, drownFrames;   // seconds until he drowns, and frames until the next goes
-  int surfaceT;                 // frames before the next splash can show
+  int water;                    // in the water (MOVESTATE_IN_WATER): his centre 4 px or more below its line
+  int drownSeconds, drownFrames;   // seconds until he drowns, and frames until the next goes (secondsUntilDrown and
+                                   // framesUntilDrownCountDecrement)
+  int surfaceT;                 // frames before the next splash at the line can show (unk88)
   // what the objects set
   int shield;                   // the shield an item box gave him (SHIELD_*)
   const void *onObject;         // the solid object he stands on, if any
@@ -89,16 +90,17 @@ void player_draw(Player *p, int camX, int camY);
 /** The hooks for the objects: out of a ball and into one, keeping his feet in place. */
 void player_stand_up(Player *p);
 void player_curl_up(Player *p);
+/** Starts the jump the course select's held A began, one frame into it. */
+void player_start_jump(Player *p);
 /** Touching down on the ground or an object (sub_8021BE0); the caller sets the ground speed. */
 void player_land(Player *p);
 /** Ends the B-button combo, the mid-air moves and the spin dash. */
 void player_end_attack(Player *p);
-/** A breath from an air bubble (Task_BubbleContainingAir): his moves end, he uncurls (in the air without moving his
- *  centre), stops dead, and the drowning count starts over. */
-void player_breathe(Player *p);
 /** Hurts him, unless he is invincible or still blinking; false when he is protected. */
 int player_hurt(Player *p);
 /** Knocks him aside at the given speeds, blinking as after a hit but keeping his rings. */
 void player_knock_aside(Player *p, double xsp, double ysp);
+/** A breath from an air bubble: his moves end, he uncurls, stops dead, and the drowning count starts over. */
+void player_breathe(Player *p);
 
 #endif

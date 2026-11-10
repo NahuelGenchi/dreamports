@@ -201,7 +201,7 @@ static void beaten(EggSpider *b) {
   int minY = c->minY, maxY = c->maxY;
   boss_cam_pan(maxY, maxY + DISPLAY_HEIGHT);
   c->minY = minY; c->maxY = maxY;
-  water.target += DISPLAY_HEIGHT;
+  water_lower(DISPLAY_HEIGHT);
   world_add_score(HIT_SCORE);
   b->phase = falling;
   falling(b);

@@ -49,18 +49,23 @@ void enemy_defeat(int x, int y);
 void enemies_start(void);
 
 // the kinds
+ActTask *kiki_spawn(Slot *slot);            // 0
+ActTask *buzzer_spawn(Slot *slot);          // 1
+ActTask *gamigami_spawn(Slot *slot);        // 2
+ActTask *rhinotank_spawn(Slot *slot);       // 3
+ActTask *kerokero_spawn(Slot *slot);        // 4
 ActTask *hanabii_spawn(Slot *slot);         // 8
 ActTask *slot_machine_spawn(Slot *slot);    // 9
 ActTask *pierrot_spawn(Slot *slot);         // 10
 ActTask *tentou_spawn(Slot *slot);          // 6
 ActTask *mole_spawn(Slot *slot);            // 15
 ActTask *egg_press_spawn(Slot *slot);       // 23
-ActTask *egg_spider_spawn(Slot *slot);      // 25
 ActTask *fireball_spawn(Slot *slot);        // 7
-ActTask *drisame_spawn(Slot *slot);         // 18
-ActTask *kuraa_spawn(Slot *slot);           // 19
-ActTask *pen_spawn(Slot *slot);             // 20
 ActTask *yukimaru_spawn(Slot *slot);        // 16
 ActTask *yukimaru_wall_spawn(Slot *slot);   // 17
+ActTask *kuraa_spawn(Slot *slot);           // 19
+ActTask *egg_spider_spawn(Slot *slot);      // 25
+ActTask *pen_spawn(Slot *slot);             // 20
+ActTask *drisame_spawn(Slot *slot);         // 18
 
 #endif

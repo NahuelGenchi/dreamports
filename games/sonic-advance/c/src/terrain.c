@@ -289,19 +289,15 @@ void sensors_set_offset_y(Player *p, int offsetY) {
   p->offsetY = offsetY;
 }
 
-Scan terrain_tile_probe(int kind, int p0, int p1, int layer, int step) {
-  Probe t = probe(kind, p0, p1, layer);
-  int r = p0 & 7;
-  Scan s = { 0, t.rot, t.v != 0 };
-  if (t.v == 0) s.d = step > 0 ? 8 - r : r + 1;
-  else if (t.v == 8) s.d = step > 0 ? -1 - r : r - 8;
-  else s.d = partial(t.v, r);
-  return s;
-}
-
 int terrain_tile_scan(int kind, int p0, int p1, int layer, int step) {
   int v = probe(kind, p0, p1, layer).v, r = p0 & 7;
   if (v == 0) return step > 0 ? 8 - r : r + 1;
   if (v == 8) return step > 0 ? -1 - r : r - 8;
   return partial(v, r);
+}
+
+Scan terrain_tile_probe(int kind, int p0, int p1, int layer, int step) {
+  Probe t = probe(kind, p0, p1, layer);
+  Scan out = { terrain_tile_scan(kind, p0, p1, layer, step), t.rot, t.v != 0 };
+  return out;
 }

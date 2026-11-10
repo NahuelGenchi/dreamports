@@ -255,7 +255,12 @@ int titlecard_run(int pressed) {
   act.cardDone = 0;
   // the frame it ends draws nothing
   card.display = 0;
-  if (++card.frame > CARD_FRAMES) { act.cardFrame = card.frame; act.cardDone = 1; vram_free(cardHeap); return 0; }
+  if (++card.frame > CARD_FRAMES) {
+    // Task_UpdateStageTitleCard's end: the blend off, over what the camera's task set this frame
+    e.bldCnt = 0; e.bldY = 0;
+    act.cardFrame = card.frame; act.cardDone = 1; water_card(1); vram_free(cardHeap); return 0;
+  }
+  water_card(0);
   int semi = k <= 105 || !done || card.blank;
   card_tasks(k, semi);
   card.display = card.fading || card.bldY;
@@ -266,7 +271,7 @@ int titlecard_run(int pressed) {
  * brightness decrease on every layer. */
 void titlecard_display(void) {
   if (!card.display) return;
-  // OBJ and window 0 on, BG1, BG2 and BG3 on, 1D OAM, and BG0 as the act has it (Ice Mountain's snow)
+  // OBJ and window 0 on, BG1, BG2 and BG3 on, 1D OAM, and BG0 as the stage's background update left it
   e.dispCnt = (uint16_t)(0x3E40 | (e.dispCnt & 0x100));
   e.winRegs[0] = 0x00F0; e.winRegs[2] = 0x00A0;
   e.bldCnt = 0x3FFF; e.bldAlpha = 0x0010; e.bldY = (uint16_t)card.bldY;

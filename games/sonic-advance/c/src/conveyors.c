@@ -1,4 +1,4 @@
-// The conveyor belts, kind 69 outside Ice Mountain, which uses the kind for its snow. Translated from the JavaScript version's
+// The conveyor belts, kind 69 outside Ice Mountain, which uses the kind for its slowing snow. Translated from the JavaScript version's
 // engine/conveyors.js (the original's conveyor_belt_movement.c, Task_ConveyorBeltMvt). The belt itself is drawn in the act; the
 // entity is a box from its spawn point, d2 by d3 tiles (both edges in). On every frame Sonic's position is in it and he is on
 // the ground, it carries him 0.625 px, right when d0 is set and left otherwise, then pushes him out of any wall 8 px ahead of or
@@ -28,7 +28,22 @@ static int conveyor_run(ActTask *t) {
   return 1;
 }
 
+/** Task_SlowingSnow: Ice Mountain's deep snow, the same box, takes 5% of Sonic's ground speed every frame he is on the
+ *  ground in it */
+static int slowing_snow_run(ActTask *t) {
+  Slot *slot = (Slot *)t->data;
+  const Entity *e = &slot->e;
+  Player *p = &act.player;
+  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y);
+  if (!p->dead && x >= e->x && x <= e->x + e->d[2] * TILE && y >= e->y && y <= e->y + e->d[3] * TILE && !p->air) {
+    int32_t q = (int32_t)__builtin_floor(p->gsp * 256.0);   // qSpeedGround
+    p->gsp = bios_div(q * 95, 100) / 256.0;
+  }
+  if (off_cam(e->x, e->y)) { slot->live = NULL; return 0; }
+  return 1;
+}
+
+/** CreateEntity_ConveyorBelt: the belt, or in Ice Mountain the snow */
 ActTask *conveyor_spawn(Slot *slot) {
-  if (act.stage.zone == ICE_MOUNTAIN) return NULL;   // Ice Mountain's snow
-  return act_task_add(conveyor_run, NULL, slot, PRIORITY_OBJECTS);
+  return act_task_add(act.stage.zone == ICE_MOUNTAIN ? slowing_snow_run : conveyor_run, NULL, slot, PRIORITY_OBJECTS);
 }

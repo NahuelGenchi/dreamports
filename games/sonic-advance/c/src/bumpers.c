@@ -50,9 +50,8 @@ typedef struct {
   int shaking, c;                  // the shake, and its frame
 } Bumper;
 
-// sub_8004418 (octant_angle, trig.c): the angle from (x, y) to him, 1024 steps a turn
 static int floor_of(double v) { return (int)__builtin_floor(v); }
-static int angle_to(const Player *p, int x, int y) { return octant_angle(floor_of(p->y) - y, floor_of(p->x) - x); }
+static int angle_to(const Player *p, int x, int y) { return quick_angle(floor_of(p->y) - y, floor_of(p->x) - x); }   // sub_8004418
 static int sine_at(int i) { return i < 0 ? SIN_BEFORE : SINE[i]; }
 
 // Coll_Player_Entity_Intersection: his body's box against the bumper's first hitbox

@@ -13,8 +13,8 @@ enum {
   RISE_FRAMES = 60, HOLD_FRAMES = 30,
   HOP_SPEED = -256, HOP_GRAVITY = 40,   // in 1/256 px
 };
-// each prize's icon (gUnknown_080BB4D8): Sonic's 1-up, then the others in order
-static const uint8_t ICONS[8] = { 0, 4, 5, 6, 7, 8, 9, 10 };
+// each prize's icon (gUnknown_080BB4D8): Sonic's 1-up, then the others in order, then the mystery boxes' prizes
+static const uint8_t ICONS[16] = { 0, 4, 5, 6, 7, 8, 9, 10, 12, 13, 15, 9, 10, 8, 7, 6 };
 enum { PHASE_WHOLE, PHASE_RISING, PHASE_HELD };
 
 typedef struct {
@@ -76,7 +76,7 @@ ActTask *item_box_spawn(Slot *slot) {
   ItemBox *b = OBJECT_NEW(ItemBox);
   if (!b) return NULL;
   const Entity *en = &slot->e;
-  int icon = ICONS[en->kind & 7];   // the 1-up's is Sonic's face, the first of the characters'
+  int icon = ICONS[en->kind & 15];   // the 1-up's is Sonic's face, the first of the characters'
   b->o.slot = slot;
   b->o.x = en->x;
   object_sprite(&b->o.sprite, ANIM_ITEM_BOX, 0, 0, ORDER_BOX, PRIORITY_FRONT, 0, 0);

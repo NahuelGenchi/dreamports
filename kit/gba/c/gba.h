@@ -84,9 +84,6 @@ int gba_sound_start(int players, int channels, int volume, int rate, int reverb)
  *  `voicesEndOnChip` for a game whose voices end on the chip, and `soundMainAt` where SoundMain's wave write lands. */
 int gba_sound_start_layout(uint32_t playerTable, int players, int channels, int volume, int rate, int reverb,
                            int voicesEndOnChip, int soundMainAt);
-/** After gba_sound_start, for a game whose picture depends on how long the console's sound work takes, as the
- *  JavaScript kit's countCycles: a silent engine of its own runs a frame as each of the game's frames ends, so what
- *  gba_sound_frame_cycles says is the same in a player's browser as under the proof tools. */
 /** For a game whose SoundMain runs well into the console's frame: from the next sound frame, SoundMain's writes to the
  *  sound chip's four channels land `cycles` into its frame plus what SoundMain has counted so far, while the game's own
  *  calls write at once, as a square's phase lasts from note to note
@@ -94,6 +91,9 @@ int gba_sound_start_layout(uint32_t playerTable, int players, int channels, int 
  *  does before it, so a game can give it for one screen and 0, the default, which writes at once, for the rest; a reset
  *  of the engine goes back to the place it had when it started. */
 void gba_sound_psg_at(int cycles);
+/** After gba_sound_start, for a game whose picture depends on how long the console's sound work takes, as the
+ *  JavaScript kit's countCycles: a silent engine of its own runs a frame as each of the game's frames ends, so what
+ *  gba_sound_frame_cycles says is the same in a player's browser as under the proof tools. */
 int gba_sound_count_cycles(void);
 /** With gba_sound_count_cycles, how many of the console's cycles the last frame's SoundMain took, as the JavaScript
  *  kit's frameCycles(), or -1 without it. */
@@ -101,10 +101,15 @@ int gba_sound_frame_cycles(void);
 /** With gba_sound_count_cycles, `frames` frames of SoundMain with nothing playing, for a start point that leaves out
  *  what led to it, as the JavaScript kit's framesGoneBy(). */
 void gba_sound_frames_gone_by(int frames);
+/** For a start point that leaves out what led to it, the frames the sound has already played: the engine, with the
+ *  calls before this one, runs `frames` frames at once, unheard, so the music is where the original's is. */
+void gba_sound_played_for(int frames);
 /** m4aSoundInit after a soft reset: the engine starts again from nothing, with the sound chip as it was. */
 void gba_sound_reset(void);
 /** m4aSongNumStart */
 void gba_sound_play(int song);
+/** The number of the music player song `song` plays on, from the copy's song table, or -1. */
+int gba_sound_song_player(int song);
 /** m4aSongNumStartOrChange: starts the song unless it is already playing on its player */
 void gba_sound_play_or_change(int song);
 /** m4aSongNumStartOrContinue: restarts a different song or an ended one, and lets a stopped one go on */

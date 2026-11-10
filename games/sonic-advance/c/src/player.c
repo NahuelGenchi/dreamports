@@ -9,12 +9,7 @@
 // Sonic's sound effects (sound/songs.js)
 enum {
   SE_SPIN = 109, SE_SPIN_DASH_RELEASE = 110, SE_SLIDE = 111, SE_AIR_DASH = 112, SE_INSTA_SHIELD = 113, SE_BRAKE = 115,
-  SE_JUMP = 116, SE_SOMERSAULT = 121, SE_SURFACE_HIT = 190,
-};
-enum {
-  DROWN_SECONDS = 30, DROWN_SECOND_FRAMES = 60,   // seconds under water before he drowns, counted down every 60 frames
-  SURFACE_EFFECT_DELAY = 10,                      // frames between two splashes at the water line
-  IN_WATER_BELOW = 4,                             // his centre this far below the line is in the water
+  SE_JUMP = 116, SE_SOMERSAULT = 121,
 };
 
 // physics (PHYSICS in engine/constants.js), in pixels a frame
@@ -39,15 +34,15 @@ enum {
 #define SPRING_PEAK_SPEED 1.5
 #define HURT_SPEED_X 1.5
 #define HURT_SPEED_Y 3.0
-#define ROOM_TO_JUMP 4                    // px of room above him a jump needs
-// under water (K.water): Player_HandleWater's top speed, acceleration and deceleration, and the gravity and jump that
-// read MOVESTATE_IN_WATER
+// under water (Player_HandleWater and the MOVESTATE_IN_WATER branches): half the top speed, acceleration and deceleration,
+// a lighter gravity (PLAYER_GRAVITY_UNDER_WATER), a lower jump (PLAYER_JUMP_HEIGHT_UNDER_WATER) and its lower cap
 #define WATER_MAX_RUN_SPEED 2.25
 #define WATER_ACCELERATION (4.0 / 256)
 #define WATER_DECELERATION (48.0 / 256)
 #define WATER_GRAVITY (12.0 / 256)
 #define WATER_JUMP_SPEED 2.625
 #define WATER_JUMP_RELEASE_CAP 1.5
+#define ROOM_TO_JUMP 4                    // px of room above him a jump needs
 enum {
   BORED_DELAY = 360, SLIP_LOCK = 30, INVULNERABLE_FRAMES = 120,
   DASH_REV = 0x200, DASH_REV_MIN = 0x800,                  // the spin dash's charge: each rev adds, and a first rev jumps to
@@ -58,6 +53,13 @@ enum {
   SPIN_DASH_SPEEDS = 0x4A7084, SPIN_DASH_SPEED_COUNT = 18, // the table of release speeds in the ROM (USA), 8.8 each
   PLAYER_ORDER = 16,                                        // his sprite's OAM order until an animation says otherwise
   DEFAULT_PRIORITY = 2,
+  DROWN_SECONDS = 30, DROWN_SECOND = 60,                    // seconds under water before he drowns, of 60 frames each
+  DROWNING_MUSIC_AT = 11,                                   // the second the drowning music starts at
+  WATER_BELOW = 4,                                          // his centre is in the water this far below its line
+  SURFACE_EFFECT_DELAY = 10,                                // frames between two splashes at the line
+  BREATH_EVERY = 16, BREATH_AHEAD = 4, BREATH_ABOVE = 4,    // a breath out every 16th frame of the clock, from there
+  DROWNED_BUBBLE_ABOVE = 12,
+  SE_WATERFALL_SURFACE_HIT = 190,
 };
 // ANIMATION: the walk cycle plays at his speed, never slower than half, and the run starts at 4.5
 #define RUN_SPEED 4.5
@@ -71,9 +73,6 @@ typedef struct { int dir, sideways, up, down, jump, jumpPressed, attackPressed; 
 static int js_round(double v) { return (int)__builtin_floor(v + 0.5); }
 /** A speed as the 8.8 integer the original does its arithmetic on. */
 static int q8(double v) { return js_round(v * 256); }
-static double gravity(const Player *p) { return p->water ? WATER_GRAVITY : GRAVITY; }
-static double jump_speed(const Player *p) { return p->water ? WATER_JUMP_SPEED : JUMP_SPEED; }
-static double jump_release_cap(const Player *p) { return p->water ? WATER_JUMP_RELEASE_CAP : JUMP_RELEASE_CAP; }
 static double toward0(double v, double step) { return v > 0 ? (v - step > 0 ? v - step : 0) : v < 0 ? (v + step < 0 ? v + step : 0) : 0; }
 
 // --- ball and standing ---------------------------------------------------------------------------------------------------
@@ -82,6 +81,12 @@ static void curl(Player *p) { p->curled = 1; sensors_set_offset_y(p, BALL_SPRITE
 static void uncurl(Player *p) { p->curled = 0; sensors_set_offset_y(p, SPRITE_OFFSET_Y); }
 void player_stand_up(Player *p) { uncurl(p); }
 void player_curl_up(Player *p) { curl(p); }
+/** Starts the jump the course select's held A began, one frame into it: curled and rising at 3 px a frame. */
+void player_start_jump(Player *p) {
+  p->air = 1; p->jumped = 1; p->pushing = 0; p->state = PS_SPIN;
+  p->ysp = -3.0;
+  curl(p);
+}
 // the walk's states put his hitbox back at its standing height; it only moves him when something uncurled him
 // without it
 static void stand_height(Player *p) { sensors_set_offset_y(p, SPRITE_OFFSET_Y); }
@@ -92,7 +97,7 @@ void player_init(Player *p, int x, int y) {
   p->state = p->prevState = p->animName = PS_IDLE;
   p->layer = LAYER_BACK; p->offsetY = SPRITE_OFFSET_Y; p->idleT = BORED_DELAY; p->prio = DEFAULT_PRIORITY;
   p->track = NO_TRACK; p->scale = FULL_SCALE;
-  p->drownSeconds = DROWN_SECONDS; p->drownFrames = DROWN_SECOND_FRAMES; p->surfaceT = SURFACE_EFFECT_DELAY;
+  p->drownSeconds = DROWN_SECONDS; p->drownFrames = DROWN_SECOND; p->surfaceT = SURFACE_EFFECT_DELAY;
   sprite_init(&p->sprite);
   p->sprite.palId = 0;
   p->sprite.oamFlags = (uint16_t)(PLAYER_ORDER << 6);
@@ -100,6 +105,15 @@ void player_init(Player *p, int x, int y) {
 }
 
 // --- moving --------------------------------------------------------------------------------------------------------------
+// speed shoes double the top speed, the acceleration and the deceleration, which Player_HandleWater sets each frame for
+// the land or the water
+static int pace(const Player *p) { return p->speedUp > 0 ? 2 : 1; }
+static double accel(const Player *p) { return (p->water ? WATER_ACCELERATION : ACCELERATION) * pace(p); }
+static double decel(const Player *p) { return (p->water ? WATER_DECELERATION : DECELERATION) * pace(p); }
+static double top_speed(const Player *p) { return (p->water ? WATER_MAX_RUN_SPEED : MAX_RUN_SPEED) * pace(p); }
+static double gravity(const Player *p) { return p->water ? WATER_GRAVITY : GRAVITY; }   // PLAYERFN_UPDATE_AIR_FALL_SPEED
+static double jump_speed(const Player *p) { return p->water ? WATER_JUMP_SPEED : JUMP_SPEED; }
+
 // a frame's move (PLAYERFN_UPDATE_POSITION): gravity flipped since the stage clock last ran turns his Y speed around,
 // and flipped, it moves him up the act
 static void move(Player *p) {
@@ -136,6 +150,7 @@ static void bounds(Player *p) {
   // follows him; the background leaves it out
   if (act.stage.loopX >= 0 && p->x >= act.stage.loopX && c->speedX != 0 && !c->locked) {
     p->x += act.stage.loopShift; c->x += act.stage.loopShift; c->wrapped += act.stage.loopShift;
+    c->wrappedThisFrame += act.stage.loopShift;
   }
   double maxX = c->maxX + 240 - 1.0 / 256, maxY = c->maxY + 160 - 1.0 / 256;
   if (!p->dead && (p->inverted ? p->y <= c->minY : p->y >= maxY)) {
@@ -221,17 +236,6 @@ void player_end_attack(Player *p) {
   p->attack = 0; p->attackNext = 0; p->midAir = 0; p->jumped = 0; p->spinDashing = 0; p->halfPipe = 0;
 }
 
-void player_breathe(Player *p) {
-  player_end_attack(p);
-  p->state = PS_BREATHE;
-  if (p->curled) {
-    if (p->air) { p->curled = 0; p->offsetY = SPRITE_OFFSET_Y; }
-    else uncurl(p);
-  }
-  p->xsp = p->ysp = p->gsp = 0; p->pushing = 0;
-  p->drownFrames = DROWN_SECOND_FRAMES; p->drownSeconds = DROWN_SECONDS;
-}
-
 // the B-button combo on the ground (sub_8047668): true while it owns the frame. It doesn't start while Sonic revs a
 // spin dash, pushes, or stands on a wall or the ceiling (Player_Sonic_StartRoll).
 static int attack_step(Player *p, const Control *c) {
@@ -269,15 +273,8 @@ static int attack_step(Player *p, const Control *c) {
 }
 
 // --- walking --------------------------------------------------------------------------------------------------------------
-// speed shoes double the top speed, the acceleration and the deceleration
-static int pace(const Player *p) { return p->speedUp > 0 ? 2 : 1; }
-// what Player_HandleWater sets each frame: the numbers on land or under water
-static double max_run(const Player *p) { return p->water ? WATER_MAX_RUN_SPEED : MAX_RUN_SPEED; }
-static double accel(const Player *p) { return (p->water ? WATER_ACCELERATION : ACCELERATION) * pace(p); }
-static double decel(const Player *p) { return p->water ? WATER_DECELERATION : DECELERATION; }
-
 static void walk(Player *p, int dir) {
-  double acc = accel(p), max = max_run(p) * pace(p);
+  double acc = accel(p), max = top_speed(p);
   if (p->gsp * dir >= 0) {
     if (p->facing != dir) { p->state = PS_TURN; p->pushing = 0; stand_height(p); }
     p->facing = dir;
@@ -290,7 +287,7 @@ static void walk(Player *p, int dir) {
     // on a half-pipe he keeps the state it gives him, and past the goal his act-clear run
     if (p->state != PS_TURN && !p->halfPipe && !p->actClear && !p->scripted) { p->state = PS_WALK; stand_height(p); }
   } else {
-    double g = p->gsp + decel(p) * pace(p) * dir;
+    double g = p->gsp + decel(p) * dir;
     if (g * dir > 0) g = REVERSE_KICK * dir;
     p->gsp = g;
     // the skid sound restarts on every frame Sonic is still this fast
@@ -435,7 +432,7 @@ static void tumble(Player *p) {
 static void air_control(Player *p, const Control *c, int turn) {
   if (p->airLock || !c->dir) return;
   int dir = c->dir;
-  double acc = accel(p) * 2, max = max_run(p) * pace(p);
+  double acc = accel(p) * 2, max = top_speed(p);
   if (turn) p->facing = dir;
   double v = p->xsp + acc * dir;
   if (v * dir > max) {
@@ -466,14 +463,15 @@ static void air_step(Player *p, const Control *c) {
     int tap = double_tap(p);
     if (tap) {
       p->midAir = 2; p->state = PS_AIR_DASH;
-      p->xsp += (q8(max_run(p) * pace(p)) >> 2) / 256.0 * tap;
+      p->xsp += (q8(top_speed(p)) >> 2) / 256.0 * tap;
       p->ysp = 0;
       play_song(SE_AIR_DASH);
     }
   }
   // jump cap, or once the rise has slowed the insta-shield (Player_8044670)
   if (p->jumped) {
-    if (p->ysp < -jump_release_cap(p)) { if (!c->jump) p->ysp = -jump_release_cap(p); }
+    double cap = p->water ? WATER_JUMP_RELEASE_CAP : JUMP_RELEASE_CAP;
+    if (p->ysp < -cap) { if (!c->jump) p->ysp = -cap; }
     else if (p->midAir == 0 && c->jumpPressed) {
       p->airLock = 0; p->midAir = 1;
       p->state = PS_INSTA_SHIELD;
@@ -508,14 +506,16 @@ void player_land(Player *p) {
 // --- hurt and dead ----------------------------------------------------------------------------------------------------------
 int player_hurt(Player *p) {
   if (p->invulnerable > 0 || p->invincible > 0) return 0;
-  player_knock_aside(p, p->xsp < 0 || (p->xsp == 0 && p->facing < 0) ? HURT_SPEED_X : -HURT_SPEED_X, -HURT_SPEED_Y);
+  double xsp = p->xsp < 0 || (p->xsp == 0 && p->facing < 0) ? HURT_SPEED_X : -HURT_SPEED_X, ysp = -HURT_SPEED_Y;
+  // under water both are halved (Coll_DamagePlayer)
+  if (p->water) { xsp = (q8(xsp) >> 1) / 256.0; ysp = (q8(ysp) >> 1) / 256.0; }
+  player_knock_aside(p, xsp, ysp);
   return 1;
 }
 
 void player_knock_aside(Player *p, double xsp, double ysp) {
   p->invulnerable = INVULNERABLE_FRAMES;
   p->xsp = xsp; p->ysp = ysp;
-  if (p->water) { p->xsp = (q8(p->xsp) >> 1) / 256.0; p->ysp = (q8(p->ysp) >> 1) / 256.0; }
   p->air = 1; p->pushing = 0;
   player_end_attack(p);
   p->airLock = 0;
@@ -549,47 +549,73 @@ static void dead_step(Player *p) {
 }
 
 // --- the water ------------------------------------------------------------------------------------------------------------------
-// the splash where he went in or out, at most one every 10 frames (with its sound)
+// the countdown's numbers, by the second they show at (SpawnDrowningCountdownNum)
+static int countdown_number(int second) {
+  switch (second) { case 12: return 5; case 10: return 4; case 8: return 3; case 6: return 2; case 4: return 1; case 2: return 0; }
+  return -1;
+}
+
+static void drown_count_reset(Player *p) { p->drownFrames = DROWN_SECOND; p->drownSeconds = DROWN_SECONDS; }
+
+// a splash at the line with its sound, at most one every 10 frames
 static void surface_splash(Player *p) {
   if (p->surfaceT >= 1) return;
   p->surfaceT = SURFACE_EFFECT_DELAY;
   water_splash((int)__builtin_floor(p->x));
-  play_song(SE_SURFACE_HIT);
+  play_song(SE_WATERFALL_SURFACE_HIT);
 }
 
-// Player_HandleWater (sub_8023878), before he moves: he is in the water while his centre is 4 px or more below its line.
-// Going in halves his X speed and quarters his Y speed, coming out doubles his Y speed, and each makes a splash. Under water
-// a second goes every 60 frames: at 12, 10, 8, 6, 4 and 2 a number counts down over him, at 11 the drowning music starts
-// and below 0 he drowns; every 16th frame of the stage clock he lets a bubble out, one time in four. Out of the water the
-// count starts over and the drowning music stops.
-static void handle_water(Player *p) {
+// Player_HandleWater (sub_8023878), before he moves: going in halves his X speed and quarters his Y speed, coming out
+// doubles his Y speed. Under water a second goes every 60 frames: at 12, 10, 8, 6, 4 and 2 a number counts down over him, at
+// 11 the drowning music starts and below 0 he drowns; every 16th frame of the clock he breathes out a bubble, one time in
+// four. Out of the water the count starts over and the drowning music stops.
+static void water_step(Player *p) {
   int level = water_level();
-  p->waterCrossed = 0;
-  if (level >= 0 && (int)__builtin_floor(p->y) - IN_WATER_BELOW >= level) {
+  if (level >= 0 && (int)__builtin_floor(p->y) - WATER_BELOW >= level) {
     if (!p->water) {
-      p->water = 1; p->waterCrossed = 1;
-      p->xsp = (q8(p->xsp) >> 1) / 256.0; p->ysp = (q8(p->ysp) >> 2) / 256.0;
+      p->water = 1;
+      p->xsp = (q8(p->xsp) >> 1) / 256.0;
+      p->ysp = (q8(p->ysp) >> 2) / 256.0;
       surface_splash(p);
     }
     if (--p->drownFrames < 1) {
       int second = p->drownSeconds--;
-      if (second == 11) water_drowning_music();
-      else if (second >= 2 && second <= 12 && !(second & 1)) water_countdown(p, (second - 2) / 2);
-      if (p->drownSeconds < 0) { p->dead = 1; p->ysp = 0; water_drowned(p); }
-      p->drownFrames = DROWN_SECOND_FRAMES;
+      if (second == DROWNING_MUSIC_AT) water_drowning_music();
+      else if (countdown_number(second) >= 0) water_countdown(countdown_number(second));
+      if (p->drownSeconds < 0) {
+        p->dead = 1; p->ysp = 0;
+        water_bubble((int)__builtin_floor(p->x * 256), (int)__builtin_floor(p->y * 256) - DROWNED_BUBBLE_ABOVE * 256, 0, 1);
+        water_drowned_bubbles();
+      }
+      p->drownFrames = DROWN_SECOND;
     }
-    if (act.tick % 16 == 0 && (act_random() & 0x300) == 0)
-      water_bubble(q8(p->x) + (p->facing < 0 ? -0x400 : 0x400), q8(p->y) - 0x400, 0, 0);
+    if (act.tick % BREATH_EVERY == 0 && !(act_random() & 0x300)) {
+      int ahead = p->facing < 0 ? -BREATH_AHEAD : BREATH_AHEAD;
+      water_bubble((int)__builtin_floor(p->x * 256) + ahead * 256, (int)__builtin_floor(p->y * 256) - BREATH_ABOVE * 256, 0, 0);
+    }
   } else {
     if (p->water) {
-      p->water = 0; p->waterCrossed = 1;
-      p->ysp = (double)(int16_t)(q8(p->ysp) << 1) / 256.0;
+      p->water = 0;
+      p->ysp = (s16(q8(p->ysp) << 1)) / 256.0;
       surface_splash(p);
     }
-    p->drownFrames = DROWN_SECOND_FRAMES; p->drownSeconds = DROWN_SECONDS;
-    if (level >= 0) water_stop_drowning_music();
+    drown_count_reset(p);
+    if (level >= 0) water_drowning_music_stop();
   }
   if (p->surfaceT != 0) p->surfaceT--;
+}
+
+void player_breathe(Player *p) {
+  player_end_attack(p); p->pushing = 0;   // Player_TransitionCancelFlyingAndBoost
+  p->state = PS_BREATHE;
+  if (p->curled) {
+    p->airLock = 0;
+    // in the air his centre stays where it is (PLAYERFN_SET_SHIFT_OFFSETS), on the ground his feet do
+    if (p->air) { p->curled = 0; p->offsetY = SPRITE_OFFSET_Y; }
+    else uncurl(p);
+  }
+  p->xsp = p->ysp = p->gsp = 0;
+  drown_count_reset(p);
 }
 
 // --- one frame ------------------------------------------------------------------------------------------------------------------
@@ -617,9 +643,8 @@ void player_step(Player *p, const PlayerInput *in) {
   p->jumpPressed = c.jumpPressed; p->attackPressed = c.attackPressed;
 
   if (p->dead) { dead_step(p); return; }
-  if (p->override) return;   // an object moves him, and his own code doesn't run
-  handle_water(p);
-  if (p->carried) return;
+  water_step(p);
+  if (p->override || p->carried) return;   // an object moves him, and his own code doesn't run
   if (p->air) air_step(p, &c);
   else ground_step(p, &c);
 }
@@ -636,6 +661,7 @@ static const uint8_t ANIMATIONS[PA_COUNT][2] = {
   [PS_SOMERSAULT] = {52, 0}, [PS_SLIDE] = {53, 0}, [PS_SLIDE_END] = {53, 1}, [PS_BACKFLIP] = {55, 0}, [PS_BOUNCE] = {4, 0},
   [PS_MARBLE_TRACK] = {39, 0}, [PS_POLE] = {38, 0}, [PS_FLAG_SWING] = {37, 0}, [PS_ACT_CLEAR_RUN] = {22, 0},
   [PS_CAROUSEL_RIDE] = {40, 0}, [PS_SWING_ROPE] = {40, 1}, [PS_HOOK] = {43, 0}, [PS_ACT_CLEAR_POSE] = {23, 0},
+  [PS_HALF_PIPE_LOW] = {36, 0}, [PS_HALF_PIPE_MID] = {36, 1}, [PS_HALF_PIPE_HIGH] = {36, 2},
   [PS_BREATHE] = {17, 0},
 };
 
@@ -646,15 +672,7 @@ static int walk_cycle_speed(double speed) {
 }
 
 // state -> animation, with the walk cycle's speed and the idle timer (sub_802486C)
-static int pick(Player *p, const PlayerInput *in);
-// under water every animation plays at half its speed, rounded up
 static int pick_animation(Player *p, const PlayerInput *in) {
-  int name = pick(p, in);
-  if (p->water) p->sprite.animSpeed = (uint8_t)(p->sprite.animSpeed - (p->sprite.animSpeed >> 1));
-  return name;
-}
-
-static int pick(Player *p, const PlayerInput *in) {
   double speed = __builtin_fabs(p->gsp);
   p->sprite.animSpeed = ANIM_NORMAL_SPEED;
   if (p->override) return p->state;
@@ -669,12 +687,22 @@ static int pick(Player *p, const PlayerInput *in) {
       p->sprite.animSpeed = (uint8_t)walk_cycle_speed(speed);
       return PS_WALK;
     case PS_BRAKE: return speed < BRAKE_TURN_SPEED ? PA_BRAKE_TURN : PS_BRAKE;
+    case PS_HALF_PIPE_LOW: case PS_HALF_PIPE_MID: case PS_HALF_PIPE_HIGH:
+      p->sprite.animSpeed = (uint8_t)walk_cycle_speed(speed);
+      return p->state;
     case PS_SPRING_RISE:
       // the animation was picked before the state changes, so the top-out one starts on the next frame
       if (p->ysp >= -SPRING_PEAK_SPEED) p->state = PS_SPRING_PEAK;
       return PS_SPRING_RISE;
     default: return p->state;
   }
+}
+
+// the animation, and under water it runs at half speed, rounded up (the end of sub_802486C)
+static int pick(Player *p, const PlayerInput *in) {
+  int name = pick_animation(p, in);
+  if (p->water) p->sprite.animSpeed = (uint8_t)(p->sprite.animSpeed - (p->sprite.animSpeed >> 1));
+  return name;
 }
 
 // what comes after an animation that ends (sub_8024B10)
@@ -721,7 +749,7 @@ static void choose(Player *p, int name, int restart) {
 void player_animate(Player *p, const PlayerInput *in) {
   Sprite *s = &p->sprite;
   if (p->death == PLAYER_GONE) return;
-  choose(p, pick_animation(p, in), p->animRestart);
+  choose(p, pick(p, in), p->animRestart);
   p->animRestart = 0;
   if (p->state == PS_BRAKE && act.tick % 4 == 0) act_brake_dust();
   // a hitbox a frame sets is turned with him, as the sprite system applies its flips when it sets one
@@ -731,7 +759,7 @@ void player_animate(Player *p, const PlayerInput *in) {
     int before = p->state;
     after_animation(p);
     if (p->state == before) break;
-    choose(p, pick_animation(p, in), 0);
+    choose(p, pick(p, in), 0);
   }
   p->prio = (int)((s->frameFlags & SPRITE_PRIORITY) >> 12);
   p->prevState = p->state;

@@ -29,10 +29,10 @@ static inline uint32_t rom_ptr(uint32_t at) { return rom_u32(at) - ROM_BASE; }
 // where the tables are in Sonic Advance (USA), the only copy this version takes (rom/versions.js)
 enum {
   OFFSET_SPRITE_TABLES = 0x0D868C, OFFSET_TILEMAPS = 0x4A6C40, OFFSET_UI_GRAPHICS = 0x680A38,
-  OFFSET_TITLE_CARD = 0x681274,
   OFFSET_INTRO_GRAPHICS = 0x69EC10, OFFSET_INTRO_TABLES = 0x684178, OFFSET_LANGUAGE_BACKGROUND = 0x6C7BD0,
   OFFSET_COURSE_SELECT_BACKGROUND = 0x69A6D0, OFFSET_OPTIONS_BACKGROUND = 0x6C5650,
-  OFFSET_NAME_INPUT_MAPS = 0x67DC38, OFFSET_NAME_INPUT_CHARS = 0x681340,
+  OFFSET_NAME_INPUT_MAPS = 0x67DC38, OFFSET_NAME_INPUT_CHARS = 0x681340, OFFSET_TITLE_CARD = 0x681274,
+  OFFSET_RINGS = 0x0B7F4C, OFFSET_INTERACTABLES = 0x0B7F94, OFFSET_ITEM_BOXES = 0x0B7FDC,
 };
 
 // --- the original's sine table (engine/trig.js), 1.25 turns of 1024 steps in Q2.14 -------------------------------
@@ -41,12 +41,12 @@ extern const int16_t SINE[1280];
 static inline int sin8(int angle) { return SINE[(angle & 0xFF) * 4] >> 6; }
 static inline int cos8(int angle) { return SINE[(angle & 0xFF) * 4 + 256] >> 6; }
 int arc_tan2(int x, int y);
-int octant_angle(int x, int y);   // sub_8004418, in 1024 steps a turn
+/** sub_8004418: the rough angle of (a, b), 1024 steps a turn, -1 for (0, 0). */
+int quick_angle(int a, int b);
 
 // --- the engine (gba/engine.js) ---------------------------------------------------------------------------------
 enum {
-  FLAGS_UPDATE_BG_PALETTES = 0x1, FLAGS_UPDATE_OBJ_PALETTES = 0x2, FLAGS_HBLANK_COPY = 0x4, FLAGS_VBLANK_CALLBACKS = 0x10,
-  FLAGS_KEEP_HBLANK_BUFFER = 0x20, FLAGS_VCOUNT = 0x40,
+  FLAGS_UPDATE_BG_PALETTES = 0x1, FLAGS_UPDATE_OBJ_PALETTES = 0x2, FLAGS_HBLANK_COPY = 0x4, FLAGS_KEEP_HBLANK_BUFFER = 0x20, FLAGS_VCOUNT_INTR = 0x40,
   FLAGS_PAUSE_GAME = 0x400, FLAGS_PAUSED = 0x800, FLAGS_NO_RESET = 0x8000,
 };
 enum { TASK_INACTIVE = 0x1, TASK_DESTROY_DISABLED = 0x2, TASK_RUNS_PAUSED = 0x4 };
@@ -76,7 +76,7 @@ typedef struct {
   Graphics graphics;
   uint32_t layoutVram, layout;
   uint16_t xTiles, yTiles, unk18, unk1A, tilemapId, unk1E, unk20, unk22, unk24, targetTilesX, targetTilesY;
-  uint8_t paletteOffset, animFrameCounter, animDelayCounter;
+  uint8_t paletteOffset;
   uint16_t flags;
   int16_t scrollX, scrollY, prevScrollX, prevScrollY;
 } Background;
@@ -95,6 +95,10 @@ typedef struct {
   uint16_t oamBuffer[128 * 4];
   uint8_t *hblank;        // the H-blank DMA's two buffers (gBgOffsetsBuffer)
   uint32_t primary, hblankTarget, hblankSize;
+  // the V-count interrupt (gIntrTable[INTR_INDEX_VCOUNT]) and the line it comes at (gUnknown_03002874)
+  void (*vcountIntr)(void);
+  uint8_t vcountLine;
+  void (*vblankCallback)(void);   // gVBlankCallbacks, the one a task asks for this frame, run in the next V-blank's update
   // the keys (gInput and the rest)
   uint16_t input, prevInput, pressed, released, repeated;
   uint8_t repeatCounters[10], firstRepeat[10], nextRepeat[10];
@@ -116,6 +120,8 @@ void destroy_tasks(uint16_t lo, uint16_t hi);
 void engine_stall(int frames, void (*then)(void));
 void engine_lag(int frames, int late);
 void queue_graphics(Graphics *g);
+// applies what the graphics queue holds now, as a V-blank does, for frames a start point runs with no V-blank
+void engine_copy_graphics(void);
 void clear_queues(void);
 void clear_bg_sprites(void);
 void engine_copy_graphics(void);
@@ -124,15 +130,10 @@ void queue_background(Background *bg);
 int alloc_oam(uint32_t order);
 void clear_oam(void);
 uint32_t vram_malloc(uint32_t tiles);
+void vram_reset(void);
 void vram_free(uint32_t dest);
 void set_hblank_copy(uint32_t target, uint32_t size);
-// the V-blank's callbacks (gVBlankCallbacks), each run in the V-blank after the next, and the VCount interrupt
-// (gIntrTable[INTR_INDEX_VCOUNT], with gUnknown_03002874 its line), which runs while the frame is drawn
-void add_vblank_callback(void (*fn)(void));
-void set_vcount_intr(void (*fn)(void), int line);
-/** A DmaSet on channel 0 at H-blank, repeating, from the next H-blank on, or the one after it when it was `late`. */
-void hblank_dma_start(uint32_t at, uint32_t target, uint32_t size, int late);
-uint32_t hblank_secondary(void);
+void hblank_dma_secondary(uint32_t target, uint32_t size, int late);
 void engine_run(void);
 void engine_draw_setup(void);
 
@@ -141,14 +142,6 @@ void play_song(int song);
 void play_song_or_continue(int song);
 void stop_song(int song);
 void stop_all_songs(void);
-enum { SONG_INTRO = 1, SONG_TITLE_FANFARE = 2, SONG_CHARACTER_SELECTION = 3, SONG_NEO_GREEN_HILL_1 = 12,
-  SONG_SEGA_RING = 102, SONG_SELECT = 106,
-  SONG_RETURN = 107, SONG_MENU_CURSOR = 108, SONG_BOSS_FIGHT = 29,
-  SONG_SHIFT = 103, SONG_RING = 117,
-  SONG_COURSE_SELECTION = 4, SONG_VS_PLEASE_WAIT = 5, SONG_VS_LOBBY = 6, SONG_PLAYER_DATA = 48,
-  SONG_VS_LOBBY_HELLO = 156, SONG_VS_LOBBY_CLOSED = 160,
-  SONG_CONNECTION_SUCCESS = 301, SONG_CONNECTION_ERROR = 302, SONG_CONNECTION_CLOSED = 303 };
-void play_song_or_change(int song);
 /** The stage's music manager (music.c), which runs on the sound's side after each frame's calls: the act's song starting
  *  (MUSIC_STAGE_IN fading in, MUSIC_STAGE as it is), the results switching it off, a boss's state, an extra life's
  *  jingle, invincibility's song, the drowning music, and what it reads of Sonic each frame (MUSIC_PLAYER: invincible, speed
@@ -158,6 +151,14 @@ enum { MUSIC_STAGE = SOUND_OP_MANAGER, MUSIC_STAGE_IN, MUSIC_OFF, MUSIC_STATE, M
 /** the music's tempo (m4aMPlayTempoControl): normal, and doubled while Sonic has speed shoes (PLAYER_SPEED_UP_MUSIC_TEMPO) */
 enum { TEMPO_NORMAL = 0x100, TEMPO_SPEED_UP = 0x200 };
 void music_call(int op, int a);
+enum { SONG_INTRO = 1, SONG_TITLE_FANFARE = 2, SONG_CHARACTER_SELECTION = 3, SONG_NEO_GREEN_HILL_1 = 12,
+  SONG_SEGA_RING = 102, SONG_SELECT = 106,
+  SONG_RETURN = 107, SONG_MENU_CURSOR = 108, SONG_BOSS_FIGHT = 29,
+  SONG_SHIFT = 103, SONG_JUMP = 116, SONG_RING = 117,
+  SONG_COURSE_SELECTION = 4, SONG_VS_PLEASE_WAIT = 5, SONG_VS_LOBBY = 6, SONG_PLAYER_DATA = 48,
+  SONG_VS_LOBBY_HELLO = 156, SONG_VS_LOBBY_CLOSED = 160,
+  SONG_CONNECTION_SUCCESS = 301, SONG_CONNECTION_ERROR = 302, SONG_CONNECTION_CLOSED = 303 };
+void play_song_or_change(int song);
 void sound_vsync_off(void);
 void sound_vsync_on(void);
 
@@ -204,13 +205,14 @@ void queue_sprite_map(Sprite *s);
 // --- backgrounds (gba/background.js) --------------------------------------------------------------------------
 void background_init(Background *bg);
 void draw_background(Background *bg);
-void update_bg_animation_tiles(Background *bg);
 void transform_background(Affine *affine, int angle, int scaleX, int scaleY, int x, int y, int cx, int cy);
 
 // --- line-by-line effects (gba/lines.js) ------------------------------------------------------------------------
 void put16(uint32_t at, uint32_t v);
 void scroll_lines(int bg, int minY, int maxY, int h, int v);
 void fill_lines(int bg, int minY, int maxY, int h, int v);
+void wave_lines(int bg, int minY, int maxY, uint16_t h, uint8_t hSize, uint8_t hStep, uint16_t v, uint8_t vSize, uint8_t vStep,
+                int16_t x, int16_t y);
 void shear_lines(int bg, int minY, int maxY, int shift, int step, int h, int v);
 void window_right(int bg, int x1, int y1, int x2, int y2, int left);
 void window_left(int bg, int x1, int y1, int x2, int y2, int right);

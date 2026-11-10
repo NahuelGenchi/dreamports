@@ -178,9 +178,14 @@ static void draw_rings(void) {
   }
 }
 
+/** Whether the next frame draws the rings without stepping their animation, as a menu\'s hand-over does. */
+static int skipUpdate;
+void rings_skip_first_update(void) { skipUpdate = 1; }
+
 int rings_task(ActTask *t) {
   (void)t;
-  update_sprite(&ringSprite, 0);
+  if (skipUpdate) skipUpdate = 0;
+  else update_sprite(&ringSprite, 0);
   const Player *p = &act.player;
   // the rings can't be taken while Sonic is knocked back and blinking, or dead
   if (!act.ringsStopped && p->dead == 0 && !(p->state == PS_HURT && p->invulnerable)) collect_rings(p);
@@ -189,20 +194,6 @@ int rings_task(ActTask *t) {
 }
 
 // --- a ring the magnetic shield pulled in (magnetic_ring.c) ------------------------------------------------------------------------
-// the original's quick angle (sub_8004418): 1024 steps a turn, straight within each eighth of it, from its two
-// arguments in the order the magnetic ring passes them (y, then x)
-static int quick_angle(int a, int b) {
-  static const int OCTANT[8] = { 1, 0, 2, 3, 6, 7, 5, 4 };
-  if ((a | b) == 0) return -1;
-  int i = 0, f;
-  if (a <= 0) { a = -a; i = 4; }
-  if (b <= 0) { b = -b; i += 2; }
-  if (a >= b) f = b * 128 / a;
-  else { i++; f = a * 128 / b; }
-  if (OCTANT[i] & 1) f = 128 - f;
-  return (f + OCTANT[i] * 128) & 0x3FF;
-}
-
 typedef struct { Object o; int x, y, speed; } MagneticRing;
 
 static int magnetic_ring_run(ActTask *t) {
@@ -210,7 +201,7 @@ static int magnetic_ring_run(ActTask *t) {
   Player *p = &act.player;
   int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
   // a ring right on Sonic's centre has angle -1, which reads the table one entry early (0 for the sine's)
-  int a = quick_angle(py - (m->y & 0xFFFF), px - (m->x & 0xFFFF));
+  int a = quick_angle(py - (m->y & 0xFFFF), px - (m->x & 0xFFFF));   // sub_8004418
   m->speed = s16(m->speed + 64);
   m->x = s16(m->x + ((m->speed * SINE[a + 256]) >> 22));
   m->y = s16(m->y + ((m->speed * (a >= 0 ? SINE[a] : 0)) >> 22));
@@ -317,6 +308,13 @@ int scatter_task(ActTask *t) {
 }
 
 /** Puts every ring back and clears the slots, as the act's start does. */
+void rings_act2_prepare(void) {
+  // the rings manager is made while the stage loads and runs through the card's frames: sixteen of them before the
+  // act's first picture, and one more step of delay, as Neo Green Hill act 2's recording has them
+  for (int i = 0; i < 16; i++) update_sprite(&ringSprite, 0);
+  ringSprite.qAnimDelay = (int16_t)(ringSprite.qAnimDelay + 256);
+}
+
 void rings_start(void) {
   ring_sprite(&ringSprite, RING_TILES, ORDER_RING);
   ring_sprite(&scatterSprite, RING_TILES, ORDER_RING);
@@ -325,3 +323,6 @@ void rings_start(void) {
   scatterCeilings = 0;
   sparkles = 0;
 }
+
+/** The ring animation Casino Paradise act 2's first compared frame shows, two frames into the act. */
+void rings_start_point(void) { ringSprite.qAnimDelay = 512; }

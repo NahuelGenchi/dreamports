@@ -15,7 +15,7 @@ enum {
   PRIORITY_CAMERA = 0xF00,     // the camera's task (Task_UpdateCamera): a boss's screen shake runs just before it
   PRIORITY_OBJECTS = 0x2000,   // the rings, the entities manager and the objects it spawns
   PRIORITY_SCATTER = 0x2001,   // the rings Sonic dropped
-  PRIORITY_HUD = 0x2180,       // the HUD's task (Task_StageUIMain): the title card's and the results' come before it
+  PRIORITY_HUD = 0x2180,       // the HUD's task, which act.c runs between the objects before and after it
   PRIORITY_SONIC = 0x3000,
   PRIORITY_ITEMS = 0x4001,     // a shield and the invincibility stars, after the music manager
 };
@@ -83,7 +83,6 @@ ActTask *sega_letter_spawn(Slot *slot);
 ActTask *balloon_spawn(Slot *slot);
 ActTask *panel_gate_spawn(Slot *slot);
 ActTask *conveyor_spawn(Slot *slot);
-ActTask *steam_exhaust_spawn(Slot *slot);
 ActTask *booster_spawn(Slot *slot);
 ActTask *swing_rope_spawn(Slot *slot);
 ActTask *security_gate_spawn(Slot *slot);
@@ -91,23 +90,33 @@ ActTask *swinging_hook_spawn(Slot *slot);
 ActTask *hook_rail_spawn(Slot *slot);
 ActTask *curler_spawn(Slot *slot);
 ActTask *lava_spawn(Slot *slot);
-ActTask *lava_platform_spawn(Slot *slot);
-ActTask *slide_spawn(Slot *slot);
 ActTask *crane_claw_spawn(Slot *slot);
 ActTask *pipe_entrance_spawn(Slot *slot);
 ActTask *pipe_exit_spawn(Slot *slot);
 ActTask *visibility_spawn(Slot *slot);
 ActTask *special_spring_spawn(Slot *slot);
+ActTask *ice_block_spawn(Slot *slot);         // 95
+ActTask *skating_stone_spawn(Slot *slot);     // 84
+ActTask *ferris_wheel_spawn(Slot *slot);      // 91
+ActTask *forced_slide_spawn(Slot *slot);      // 46
+ActTask *crumbling_platform_spawn(Slot *slot);   // 24
+ActTask *air_bubbles_spawn(Slot *slot);       // 94
+ActTask *breakable_wall_spawn(Slot *slot);    // 114
+ActTask *sinking_platform_spawn(Slot *slot);  // 85
+ActTask *rising_platform_spawn(Slot *slot);   // 89
+ActTask *lava_platform_spawn(Slot *slot);     // 98
 ActTask *square_platform_spawn(Slot *slot);
 ActTask *spiked_platform_spawn(Slot *slot);
 ActTask *barrel_spawn(Slot *slot);
 ActTask *bowl_spawn(Slot *slot);
 ActTask *carousel_spawn(Slot *slot);
 ActTask *ship_swing_spawn(Slot *slot);
-ActTask *breakable_wall_spawn(Slot *slot);
-ActTask *sinking_platform_spawn(Slot *slot);
-ActTask *rising_platform_spawn(Slot *slot);
-ActTask *air_bubbles_spawn(Slot *slot);
+ActTask *steam_exhaust_spawn(Slot *slot);
+ActTask *boulder_spawn(Slot *slot);
+ActTask *ramp_spawn(Slot *slot);
+ActTask *waterfall_spawn(Slot *slot);
+ActTask *half_pipe_spawn(Slot *slot);
+ActTask *grind_rail_spawn(Slot *slot);
 
 void entities_load(int level);
 int entities_manager(ActTask *t);
@@ -118,7 +127,7 @@ void objects_start(int level, int paletteAnimations);
 void act_tasks_destroy_all(void);
 void objects_run_before_camera(void);
 void objects_run_early(void);
-/** The same in two parts, before the HUD's place and from it, for act_frame to run the card, the results and the HUD between. */
+/** The objects' tasks from the camera's priority up to the HUD's, and from the HUD's up to Sonic's. */
 void objects_run_before_hud(void);
 void objects_run_after_hud(void);
 void objects_run_late(void);
@@ -141,9 +150,15 @@ typedef struct {
   Sprite sprite;
   int x;
 } Object;
-enum { OBJECT_BYTES = 704 };   // room for the largest, the Drisame's ice block, built for a 64-bit computer too
+enum { OBJECT_BYTES = 640 };
 void *object_new(void);
 #define OBJECT_NEW(type) ((void)sizeof(char[sizeof(type) <= OBJECT_BYTES ? 1 : -1]), (type *)object_new())
+/** A block for a task with no sprite of its own: its sprite has no tiles to free. */
+static inline void *object_plain(void *block) {
+  if (block) ((Object *)block)->sprite.graphics.dest = HEAP_END;
+  return block;
+}
+#define PLAIN_NEW(type) ((type *)object_plain(OBJECT_NEW(type)))
 /** Makes the task of an object's block at the objects' priority, or at `priority`; false, with the block freed, when the
  *  list is full. */
 ActTask *object_task(Object *o, ActRun run, int priority);
@@ -174,14 +189,23 @@ int sprite_tiles(int anim, int first, int last);
 // --- effects and what the prizes put around Sonic (effects.c, items.c) -------------------------------------------------------
 /** The puff of smoke a broken item box or a defeated enemy leaves, at a world point. */
 void dust_cloud(int x, int y);
+/** How the four pieces of a broken block of ice or skating stone look: their two animations and the tiles each takes, the
+ *  scale they start at (1/256), how much it grows a frame, and how many frames they last. */
+typedef struct { int small, smallTiles, large, largeTiles, scale, grow, frames; } DebrisLook;
+/** The pieces, spinning out from a world point and falling, placed around a place on screen (iceblocks.c). */
+void shards_new(const DebrisLook *look, int x, int y, int sx, int sy);
 /** Sonic's effects start over with the act: no brake dust on screen. */
 void effects_start(void);
+/** And so do the water's: no bubbles rising and no drowning music (underwater.c). */
+void water_effects_start(void);
 void items_shield(int shield);
 void items_stars(void);
 
 // --- the rings (rings.c) -----------------------------------------------------------------------------------------------
 void rings_load(int level);
 void rings_start(void);
+void rings_act2_prepare(void);
+void rings_start_point(void);
 int rings_task(ActTask *t);
 int scatter_task(ActTask *t);
 void scatter_launch(int x, int y, int n, int layer, int inverted);
@@ -209,6 +233,8 @@ int collide_platform(const void *o, int ox, int oy, const Hitbox *hb, Player *p)
 int collide_gate(int ox, int oy, const Hitbox *hb, Player *p);
 /** A platform he can only land on (Coll_Player_PlatformCrumbling). */
 int collide_platform_top(const void *o, int ox, int oy, const Hitbox *hb, Player *p);
+/** Coll_Player_SkatingStone: a platform's landing and bumping from below, with no pushing at its sides. */
+int collide_skating_stone(const void *o, int ox, int oy, const Hitbox *hb, Player *p);
 /** An item box (Coll_Player_Itembox). */
 int collide_item_box(int ox, int oy, const Hitbox *hb, Player *p);
 /** A horizontal spring's box (Coll_Player_Spring_Sideways). */
@@ -219,8 +245,9 @@ int collide_spring_side(const void *o, int ox, int oy, const Hitbox *hb, Player 
 int world_damage(Player *p);
 void world_add_score(int points);
 void world_add_score_jingle(int points);
-void world_extra_life(void);
 void world_prize(int kind);
 void world_life_more(void);
+/** A life more, with the 1-up jingle in place of the music. */
+void world_extra_life(void);
 
 #endif

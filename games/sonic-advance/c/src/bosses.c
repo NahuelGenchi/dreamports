@@ -49,12 +49,6 @@ int boss_matrix(void) {
   return next++ & 0xFF;
 }
 
-// a task with no sprite of its own: its block's sprite has no tiles to free
-#define PLAIN_NEW(type) ((type *)plain(OBJECT_NEW(type)))
-static void *plain(void *block) {
-  if (block) ((Object *)block)->sprite.graphics.dest = HEAP_END;
-  return block;
-}
 
 // --- the arena's camera (Bosses_SetCamBounds, Task_8017244) --------------------------------------------------------------
 // The right edge goes to `maxX` at once; the top, bottom and left start at the screen's and move 1 px a frame to theirs, a
@@ -80,29 +74,6 @@ void boss_cam_bounds(int minY, int maxY, int minX, int maxX) {
   if (!b) return;
   b->minY = minY; b->maxY = maxY; b->minX = minX; b->maxX = maxX;
   object_task(&b->o, cam_bounds_run, PRIORITY_OBJECTS);
-}
-
-// --- the camera's pan (CreatePreBossCameraPan, Task_PreBossCameraPan) ----------------------------------------------------
-// Only the top and bottom edges close in, 1 px a frame, as in Bosses_SetCamBounds.
-typedef struct { Object o; int minY, maxY; } CamPan;
-
-static int cam_pan_run(ActTask *t) {
-  CamPan *b = (CamPan *)t->data;
-  Camera *c = &act.cam;
-  c->minY = toward(c->minY, b->minY);
-  c->maxY = toward(c->maxY + DISPLAY_HEIGHT, b->maxY) - DISPLAY_HEIGHT;
-  return !(c->minY == b->minY && c->maxY + DISPLAY_HEIGHT == b->maxY);
-}
-
-void boss_cam_pan(int minY, int maxY) {
-  Camera *c = &act.cam;
-  int y = cam_y();
-  c->minY = y; c->maxY = y;
-  if (maxY > y + DISPLAY_HEIGHT) c->maxY = y + CAM_GROW - DISPLAY_HEIGHT;
-  CamPan *b = PLAIN_NEW(CamPan);
-  if (!b) return;
-  b->minY = minY; b->maxY = maxY;
-  object_task(&b->o, cam_pan_run, PRIORITY_OBJECTS);
 }
 
 // --- the screen's shake (screen_shake.c) ----------------------------------------------------------------------------------
@@ -298,30 +269,29 @@ void boss_egg_mobile(int x, int y) {
   boss_task(&m->o, egg_mobile_run, egg_mobile_end, PRIORITY_OBJECTS);
 }
 
-// --- Sonic against a boss (Coll_Player_Bosses_2_6) ------------------------------------------------------------------------
-// His attack box on the boss's box 0 while in the air hits it and sends him back the way he came; otherwise his body on either
-// of its boxes hurts him, whether or not he can be hurt then. There is no CPU partner here.
-int boss_hit26(const Sprite *s, int x, int y) {
-  Player *p = &act.player;
-  if (p->dead) return HIT_NONE;
-  const Hitbox *b0 = object_box(s, 0), *b1 = object_box(s, 1);
-  const Hitbox *body = object_box(&p->sprite, 0), *attack = object_box(&p->sprite, 1);
-  int px = enemy_sonic_x(), py = enemy_sonic_y();
-  if (attack && b0 && p->air && collide_overlap(x, y, b0, px, py, attack)) {
-    p->xsp = -p->xsp;
-    p->ysp = -p->ysp;
-    return HIT_ENEMY;
-  }
-  if (body && ((b0 && collide_overlap(x, y, b0, px, py, body)) || (b1 && collide_overlap(x, y, b1, px, py, body)))) {
-    world_damage(p);
-    return HIT_PLAYER;
-  }
-  return HIT_NONE;
+// --- the camera's pan (CreatePreBossCameraPan, Task_PreBossCameraPan) ----------------------------------------------------
+// Only the top and bottom edges close in, 1 px a frame, as in Bosses_SetCamBounds.
+typedef struct { Object o; int minY, maxY; } CamPan;
+
+static int cam_pan_run(ActTask *t) {
+  CamPan *b = (CamPan *)t->data;
+  Camera *c = &act.cam;
+  c->minY = toward(c->minY, b->minY);
+  c->maxY = toward(c->maxY + DISPLAY_HEIGHT, b->maxY) - DISPLAY_HEIGHT;
+  return !(c->minY == b->minY && c->maxY + DISPLAY_HEIGHT == b->maxY);
 }
 
-// --- the boss music ------------------------------------------------------------------------------------------------------
-// a boss's state for the music manager (gMusicManagerState.unk1, music.c)
-void boss_music(int state) { music_call(MUSIC_STATE, state); }
+void boss_cam_pan(int minY, int maxY) {
+  Camera *c = &act.cam;
+  int y = cam_y();
+  c->minY = y; c->maxY = y;
+  if (maxY > y + DISPLAY_HEIGHT) c->maxY = y + CAM_GROW - DISPLAY_HEIGHT;
+  CamPan *b = PLAIN_NEW(CamPan);
+  if (!b) return;
+  b->minY = minY; b->maxY = maxY;
+  object_task(&b->o, cam_pan_run, PRIORITY_OBJECTS);
+}
+
 
 // --- Sonic against a boss (Coll_Player_Boss) -------------------------------------------------------------------------------
 // His attack box on the boss's box 0 hits it and sends him back the way he came, in the air or not; otherwise his body on it
@@ -352,3 +322,27 @@ int boss_hurt(const Sprite *s, int x, int y) {
   world_damage(p);
   return HIT_PLAYER;
 }
+
+// --- Sonic against a boss (Coll_Player_Bosses_2_6) ------------------------------------------------------------------------
+// His attack box on the boss's box 0 while in the air hits it and sends him back the way he came; otherwise his body on either
+// of its boxes hurts him, whether or not he can be hurt then. There is no CPU partner here.
+int boss_hit26(const Sprite *s, int x, int y) {
+  Player *p = &act.player;
+  if (p->dead) return HIT_NONE;
+  const Hitbox *b0 = object_box(s, 0), *b1 = object_box(s, 1);
+  const Hitbox *body = object_box(&p->sprite, 0), *attack = object_box(&p->sprite, 1);
+  int px = enemy_sonic_x(), py = enemy_sonic_y();
+  if (attack && b0 && p->air && collide_overlap(x, y, b0, px, py, attack)) {
+    p->xsp = -p->xsp;
+    p->ysp = -p->ysp;
+    return HIT_ENEMY;
+  }
+  if (body && ((b0 && collide_overlap(x, y, b0, px, py, body)) || (b1 && collide_overlap(x, y, b1, px, py, body)))) {
+    world_damage(p);
+    return HIT_PLAYER;
+  }
+  return HIT_NONE;
+}
+
+// the music manager's boss state (gMusicManagerState.unk1), which it acts on after this frame's calls (music.c)
+void boss_music(int state) { music_call(MUSIC_STATE, state); }

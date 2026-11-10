@@ -117,19 +117,18 @@ int arc_tan2(int x, int y) {
   return r & 0xFFFF;
 }
 
-// the octants of sub_8004418, by the signs of x and y and which of them is larger
-static const int OCTANTS[8] = { 1, 0, 2, 3, 6, 7, 5, 4 };
-
-/** sub_8004418: a rough angle of (x, y) in 1024 steps a turn, from its octant and the ratio of the smaller coordinate to
- *  the larger, linear within the octant; -1 for (0, 0). x and y are 16-bit, and the smaller one times 128 wraps as one. */
-int octant_angle(int x, int y) {
-  x = (int16_t)x; y = (int16_t)y;
-  if ((x | y) == 0) return -1;
+// sub_8004418: a rough angle of (a, b) in 1024 steps a turn, from its octant and the ratio of the smaller coordinate to the
+// larger, linear within the octant; -1 for (0, 0). The callers pass (dy, dx). The smaller one times 128 wraps as an s16, as in
+// the original.
+int quick_angle(int a, int b) {
+  static const int OCTANTS[8] = { 1, 0, 2, 3, 6, 7, 5, 4 };
+  a = (int16_t)a; b = (int16_t)b;
+  if ((a | b) == 0) return -1;
   int i = 0, f;
-  if (x <= 0) { x = (int16_t)-x; i = 4; }
-  if (y <= 0) { y = (int16_t)-y; i += 2; }
-  if (x >= y) f = x == 0 ? (int16_t)(y << 7) : (int16_t)(y << 7) / x;
-  else { i++; f = y == 0 ? (int16_t)(x << 7) : (int16_t)(x << 7) / y; }
+  if (a <= 0) { a = (int16_t)-a; i = 4; }
+  if (b <= 0) { b = (int16_t)-b; i += 2; }
+  if (a >= b) f = a == 0 ? (int16_t)(b << 7) : (int16_t)(b << 7) / a;
+  else { i++; f = b == 0 ? (int16_t)(a << 7) : (int16_t)(a << 7) / b; }
   f = (int16_t)f;
   if (OCTANTS[i] & 1) f = (int16_t)(0x80 - f);
   return (f + OCTANTS[i] * 128) & 0x3FF;
