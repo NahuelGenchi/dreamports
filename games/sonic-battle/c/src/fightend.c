@@ -169,6 +169,10 @@ void battleReadyAfterWait(void) {
 /** 0x0801b394: a fight's frame. It runs every fighter, then its wait, then the winner check. A win hands the next
  *  frame to the ending and starts the Game Set banner, whose first frame the wait below draws. */
 void battleFrame(void) {
+  for (int i = 0; i < 4; i++) {
+    uint8_t kind = read8(SETUP_ + 28 + i);
+    if (kind != 0 && kind != 255) brainTick(i);
+  }
   int player = (int)read32(PLAYER_);
   readAllKeys(player);
   startFighterEffects();

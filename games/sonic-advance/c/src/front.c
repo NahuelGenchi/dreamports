@@ -127,12 +127,13 @@ void front_vs_round(int level, int chao) {
 /** The round the VS menus chose, for the page: its level, or 0 while they are still choosing. */
 EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 
-// The acts in C so far: a start point opens the act it names (level=12 is X Zone), its title card's state run without
-// its pictures; the course select opens the act it chose.
+// The acts in C so far (act_level_ported), which the course select's rows start with their title cards; a start point
+// opens the act it names, its title card's state run without its pictures. Every other act stops where the screen is.
 void front_play(int level) {
+  int startLevel = (int)gba_start_number("level", -1);
+  if (startLevel < 0 && !act_level_ported(level)) { ctx.done = 1; return; }
   act_active = 1;
   destroy_tasks(0x2000, 0x3000);
-  int startLevel = (int)gba_start_number("level", -1);
   if (startLevel >= 0) {
     act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
     act_frame_now();

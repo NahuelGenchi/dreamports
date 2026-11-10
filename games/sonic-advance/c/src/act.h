@@ -9,6 +9,7 @@
 
 #define ACT_LEVEL_X_ZONE 12
 #define ACT_LEVEL_SECRET_BASE_2 3
+#define ACT_LEVEL_CASINO_PARADISE_1 4
 #define ACT_LEVEL_ICE_MOUNTAIN_1 6
 #define ACT_LEVEL_ICE_MOUNTAIN_2 7
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
@@ -116,6 +117,8 @@ void act_frame_now(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_song_playing(void);
+/** Whether the C version has `level`'s act, which the course select may start. */
+int act_level_ported(int level);
 void act_task(Task *t);
 /** The background's colours as the palette animations will leave them next frame. */
 void act_next_bg_palette(uint16_t *pal);
