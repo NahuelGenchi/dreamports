@@ -24,7 +24,8 @@ import { LOCAL, REPO, gameFolder } from './lib/paths.mjs';
 import { knownOf, pullRequestText, unfilled } from './lib/pull-request.mjs';
 import { versionOf, versionTitle } from '../src/lib/languages.mjs';
 import { head, uncommitted, remotes, fileAt, fetchPreviews, pushPreviews, makePreview, BRANCH, CLIPS } from './lib/preview.mjs';
-import { clipProblems, staleness, mainBase, clipLinks, reportOf, gamesToShow, SHOW_IT } from './lib/clips.mjs';
+import { clipProblems, staleness, mainBase, clipLinks, reportOf, gamesToShow, changedSince, SHOW_IT } from './lib/clips.mjs';
+import { RECORD_END, changesOf, readRecord, recordLines, recordLinks, recordProblems, stateAt } from './lib/same-proof.mjs';
 import { UPSTREAM, api, signedInAs, findFork, hasCommit, pagesOf, turnOnPages, lastBuild, buildPages } from './lib/github.mjs';
 
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -75,9 +76,12 @@ export async function run(args, { team = false } = {}) {
   // this step changed, five seconds or more, that move, of both in the same place when side by side, from a recording
   // that's committed as it was proven, against main as the branch starts from it (lib/clips.mjs)
   const base = mainBase();
-  const chosen = chooseClips(game, clipFile, commit, base, { team });
+  // a step that changes the game's code and no frame has no clip to show: the record of its proof goes in one's place
+  const stands = team ? null : standIn(game, commit, base);
+  const chosen = chooseClips(game, clipFile, commit, base, { team, stands });
   const shared = chosen.map(clip => ({ clip, files: clipFiles(game, commit, clip, undefined, base) }));
-  const clips = shared.flatMap(s => s.files);
+  const proof = !chosen.length && stands && !stands.problems.length ? recordFile(game, commit, base, stands.record) : null;
+  const clips = [...shared.flatMap(s => s.files), ...(proof ? [proof] : [])];
 
   const tip = fetchPreviews(fork.remote);
   const preview = makePreview({ tip, commit, branch, game, title, name, author: login, repository: fork.repository, linked, url, about, guide: GUIDE, clips, built });
@@ -86,6 +90,7 @@ export async function run(args, { team = false } = {}) {
   console.log(`It holds ${preview.files} files, ${(preview.bytes / 1e6).toFixed(1)} MB, and only code: the game, its console's kit and the preview's own pages.`);
   console.log(`Anyone with the link can open it, on ${fork.repository}'s GitHub Pages. It says it hasn't been reviewed, and the player gives it their own copy.`);
   if (shared.length) console.log(`${shared.length === 1 ? 'The clip' : `${shared.length} clips`} for the pull request ${shared.length === 1 ? 'goes' : 'go'} on the same site, apart from the preview, for only the pull request to show: ${shared.map(s => `${url}${s.files[0].path}`).join(', ')}.`);
+  if (proof) console.log(`This step changes no frame: all ${stands.record.recordings} recordings came out as main has them. The record of that proof goes on the same site, where the step's clip would, for the pull request to show.`);
   if (!linked) console.log(`Commit ${commit.slice(0, 7)} isn't on GitHub yet, so the preview names it without a link.`);
   const turnOn = !pages;
   if (!(await ask(turnOn
@@ -107,6 +112,7 @@ export async function run(args, { team = false } = {}) {
   let saved = stillGood(readSaved(), branch, commit, base);
   for (const { clip, files } of shared) saved = keepClip(saved, branch, clip.recording, clipLines(title, clip, files, siteUrl), measuresOf(clip, commit, base));
   if (!shared.length) saved = keepNone(saved, branch);
+  if (proof) saved = keepProof(saved, branch, game, recordLines(title, stands.record, `${siteUrl}${proof.path}`));
   mkdirSync(dirname(SAVED), { recursive: true });
   writeFileSync(SAVED, `${JSON.stringify(saved, null, 2)}\n`);
   writeFileSync(SAVED_LINES, `${savedLines(saved)}\n`);
@@ -115,6 +121,10 @@ export async function run(args, { team = false } = {}) {
     console.log(`\n${saved.clips.length === 1 ? 'Its lines are' : `The lines of all ${saved.clips.length} clips shared from ${branch} are`} in .dreamports/share/clips.md. `
       + 'Paste that file under Clips as it is, frames and links, and check the text with npm run dp -- share --check <the filled-in template> '
       + 'before the pull request goes out or its text changes. Never write a clip\'s lines by hand.');
+  }
+  if (proof) {
+    console.log(`\nFor the step's pull request, under Clips, in place of a clip:\n\n  ${saved.proofs.find(kept => kept.key === game).lines}`);
+    console.log('\nIt\'s in .dreamports/share/clips.md. Paste that file under Clips as it is, and check the text with npm run dp -- share --check <the filled-in template>.');
   }
   if (!team) writeText({ game, branch, commit, base, about, preview: `${siteUrl}${name}/`, clips: savedLines(saved) });
   await waitUntilOnline(fork.repository, preview.commit, `${siteUrl}${name}/preview.json`, preview.made);
@@ -201,26 +211,32 @@ function predictedAddress(fork) {
 // A recording that shows nothing this step changed is left out, and a clip of what it changed that breaks a rule stops
 // share, as the pull request needs it. A step that changes the game's code or recordings with no clip to show stops it
 // too (#1030), unless main doesn't have the game yet, as in its first entry (#1032). [{ file, bytes, still, sideBySide, recording, shows, report }]
-export function chooseClips(game, file, commit, base, { team = false } = {}) {
+export function chooseClips(game, file, commit, base, { team = false, stands = null } = {}) {
   const results = join(LOCAL, 'results', game);
   const mustShow = !team && (gamesToShow(base, commit) ?? []).includes(game.split('/')[0]);
+  // with no clip of what the step changed, its proof stands in when it's main's own, or says why it can't
+  const standsIn = mustShow && stands && !stands.problems.length;
+  const cant = stands?.problems.length ? ` Its proof can't stand in for a clip either: ${stands.problems.join(' ')}` : '';
   const problemsOf = clip => clipProblems(clip.report, clip.report?.recordingFile ? fileAt(commit, clip.report.recordingFile) : null, { sideBySide: clip.sideBySide, base });
   if (file) {
     const clip = proveClip(results, resolve(file));
-    const problems = problemsOf(clip);
+    const problems = [...problemsOf(clip), ...(clip.still ? [] : [NO_FRAME(clip)])];
     if (problems.length) throw new Error(`${clip.file} can't go in the pull request, so nothing was published:\n${problems.map(p => `  ${p}`).join('\n')}`);
     return [clip];
   }
   const made = existsSync(results) ? readdirSync(results).map(r => join(results, r, 'clip.mp4')).filter(existsSync).sort() : [];
   if (!made.length) {
-    if (mustShow) throw new Error(`This step changes ${game.split('/')[0]}'s code or recordings, and prove has made no clip yet, so nothing was published: ${SHOW_IT}.`);
+    if (standsIn) return [];
+    if (mustShow) throw new Error(`This step changes ${game.split('/')[0]}'s code or recordings, and prove has made no clip yet, so nothing was published: ${SHOW_IT}.${cant}`);
     console.log(`No clip: npm run dp -- prove ${game} makes them.\n`);
     return [];
   }
   const found = made.map(f => {
     const clip = proveClip(results, f);
     const committed = clip.report?.recordingFile ? fileAt(commit, clip.report.recordingFile) : null;
-    return { clip, stale: staleness(clip.report, committed, { base }), problems: problemsOf(clip) };
+    const problems = problemsOf(clip);
+    // one that would go needs its frame, where one left out for another reason doesn't
+    return { clip, stale: staleness(clip.report, committed, { base }), problems: problems.length || clip.still ? problems : [NO_FRAME(clip)] };
   });
   const good = found.filter(f => !f.problems.length).map(f => f.clip);
   // only clips of what the step changed matter: one of a recording that shows nothing new isn't missing, and one prove
@@ -237,14 +253,30 @@ export function chooseClips(game, file, commit, base, { team = false } = {}) {
   if (!good.length && stale.length && !unchanged.length) {
     throw new Error('Every clip prove made is from before the last commit or merge of main changed its recording, so nothing was published: run npm run dp -- prove with every recording, then share again.');
   }
-  if (!good.length && mustShow) {
-    throw new Error(`This step changes ${game.split('/')[0]}'s code or recordings, but no recording shows anything it changed, so there's no clip of it, and nothing was published: ${SHOW_IT}.`);
+  if (!good.length && mustShow && !standsIn) {
+    throw new Error(`This step changes ${game.split('/')[0]}'s code or recordings, but no recording shows anything it changed, so there's no clip of it, and nothing was published: ${SHOW_IT}.${cant}`);
   }
+  if (!good.length && standsIn) return [];
   if (!good.length) console.log('No recording shows anything this step changed, and it changes no game\'s code or recordings, so the preview goes without a clip.\n');
   return good;
 }
 
+// Whether the record of the version's last whole proof can stand in for a clip of this commit (lib/same-proof.mjs):
+// { record, problems }, with what's in the way as sentences. A step that changes the game's recordings shows a clip.
+function standIn(game, commit, base) {
+  const { recordings } = changesOf(changedSince(base, commit) ?? [], game.split('/')[0]);
+  if (recordings) return { record: null, problems: ['The step changes the game\'s recordings, which a clip always shows.'] };
+  const record = readRecord(game);
+  return { record, problems: recordProblems(record, game, stateAt(game, commit, base)) };
+}
+
+// where the record goes on the previews site, beside the game's clips, with the commit and the main it's of
+function recordFile(game, commit, base, record, day = new Date().toISOString().slice(0, 10)) {
+  return { path: `${CLIPS}/${game}/${day}-${commit.slice(0, 7)}${RECORD_END}`, bytes: Buffer.from(`${JSON.stringify({ ...record, commit, base }, null, 2)}\n`) };
+}
+
 // a clip prove made, from its folder in .dreamports/results/<game>/, with its frame and its report
+const NO_FRAME = clip => `The clip of ${clip.recording} has no frame beside it, clip.png or clip-middle.png, and a pull request shows a clip by its frame: prove the recording again.`;
 function proveClip(results, file) {
   if (basename(file) === 'dreamport.mp4') {
     throw new Error(`${file} is the Dreamport on its own, and a pull request's clip shows the original next to it, every frame matching: share takes clip.mp4, beside it. `
@@ -259,8 +291,8 @@ function proveClip(results, file) {
   if (bytes > CLIP_LIMIT) throw new Error(`${basename(file)} is ${(bytes / 1e6).toFixed(1)} MB, and a clip stays under 2 MB: a shorter one is lighter.`);
   // a frame for the pull request: prove keeps dreamport.png beside dreamport.mp4, and clip-middle.png beside clip.mp4
   const base = join(dirname(file), basename(file, '.mp4'));
-  const still = [`${base}.png`, `${base}-middle.png`].find(existsSync);
-  if (!still) throw new Error(`${basename(file)} has no frame beside it, ${basename(base)}.png or ${basename(base)}-middle.png: prove the recording again.`);
+  // (a clip of a linked recording has none yet, which matters only once it's one that goes)
+  const still = [`${base}.png`, `${base}-middle.png`].find(existsSync) ?? null;
   const recording = basename(dirname(file));
   // and who the original's own memory says it plays, which a reviewer who doesn't see the pictures can read
   // (src/lib/shows.mjs)
@@ -313,42 +345,54 @@ function readSaved() {
 }
 
 // the branch's clips with this one added, or put in place of the one that played the same recording; another
-// branch's clips are another step's, and are left out
+// branch's clips are another step's, and are left out. A proof's record shared from the branch stays beside them
 export function keepClip(saved, branch, key, lines, measures) {
-  const clips = saved?.branch === branch ? saved.clips.filter(c => c.key !== key) : [];
-  return { branch, clips: [...clips, { key, lines, ...(measures ? { measures } : {}) }] };
+  const kept = saved?.branch === branch ? saved : null;
+  const clips = (kept?.clips ?? []).filter(c => c.key !== key);
+  return { branch, clips: [...clips, { key, lines, ...(measures ? { measures } : {}) }], ...(kept?.proofs ? { proofs: kept.proofs } : {}) };
 }
 
 // the branch's clips that still keep the rules, as the commit and main are now: one shared by mistake, or before the
 // rules, or whose recording changed since, goes, rather than staying one the pull request has to show
-export function stillGood(saved, branch, commit, base, read = fileAt) {
+export function stillGood(saved, branch, commit, base, read = fileAt, stands = version => !recordProblems(readRecord(version), version, stateAt(version, commit, base)).length) {
   if (saved?.branch !== branch) return saved;
   const clips = saved.clips.filter(c => {
     const problems = c.measures ? clipProblems(reportOf(c.measures), read(commit, c.measures.recordingFile), { sideBySide: c.measures.sideBySide, base }) : ['it was shared before share kept its measures'];
     if (problems.length) console.log(`The clip of ${c.key} shared from ${branch} before goes, as ${problems[0].replace(/^./, l => l.toLowerCase())}`);
     return !problems.length;
   });
-  return { ...saved, clips };
+  // and a proof's record goes once the commit's proof isn't main's any more, or isn't the one recorded
+  const proofs = (saved.proofs ?? []).filter(proof => stands(proof.key));
+  return { ...saved, clips, ...(saved.proofs ? { proofs } : {}) };
 }
 
 export function keepNone(saved, branch) {
   return saved?.branch === branch ? saved : { branch, clips: [] };
 }
 
+// the branch's shared things with this version's proof record added, in place of one shared before for it
+export function keepProof(saved, branch, version, lines) {
+  const kept = saved?.branch === branch ? saved : { branch, clips: [] };
+  return { ...kept, proofs: [...(kept.proofs ?? []).filter(proof => proof.key !== version), { key: version, lines }] };
+}
+
+// everything shared from the branch that the pull request shows: its clips, then the records that stand in for one
+const shownOf = saved => [...(saved?.clips ?? []), ...(saved?.proofs ?? [])];
+
 export function savedLines(saved) {
-  return saved.clips.map(c => c.lines).join('\n\n');
+  return shownOf(saved).map(c => c.lines).join('\n\n');
 }
 
-// the clip addresses in the text that no saved clip's lines hold
+// the clip and record addresses in the text that nothing saved holds
 export function foreignLinks(text, saved) {
-  const ours = new Set((saved?.clips ?? []).flatMap(c => clipLinks(c.lines)));
-  return [...new Set(clipLinks(text))].filter(link => !ours.has(link));
+  const ours = new Set(shownOf(saved).flatMap(c => [...clipLinks(c.lines), ...recordLinks(c.lines)]));
+  return [...new Set([...clipLinks(text), ...recordLinks(text)])].filter(link => !ours.has(link));
 }
 
-// the lines of each saved clip the text leaves out: [{ key, lines: [the lines missing] }]
+// the lines of each saved clip or record the text leaves out: [{ key, lines: [the lines missing] }]
 export function missingLines(text, saved) {
   const has = new Set(text.split('\n').map(line => line.trim()).filter(Boolean));
-  return saved.clips
+  return shownOf(saved)
     .map(c => ({ key: c.key, lines: c.lines.split('\n').map(line => line.trim()).filter(line => line && !has.has(line)) }))
     .filter(c => c.lines.length);
 }
@@ -363,15 +407,27 @@ function checkText(file) {
   if (stillGood(saved, branch, commit, mainBase()).clips.length < saved.clips.length) {
     throw new Error(`A clip shared from ${branch} no longer keeps the rules, as it says above: prove its recording again and run npm run dp -- share <game> again.`);
   }
-  if (!saved.clips.length) {
-    refuseUnfilled(readFileSync(file, 'utf8'));
-    if (clipLinks(readFileSync(file, 'utf8')).length) throw new Error(`share published no clip from ${branch}, so the text can't link one: take the clips' links out.`);
-    const games = gamesToShow(mainBase(), commit) ?? [];
-    if (games.length) throw new Error(`${branch} changes ${games.join(' and ')}'s code or recordings, and share published no clip of it: ${SHOW_IT}.`);
-    console.log(`share found no clip to publish from ${branch}, so the text has none to show.`);
-    return 0;
+  // and so is a proof's record that no longer stands in for one
+  const base = mainBase(), kept = stillGood(saved, branch, commit, base);
+  if ((kept.proofs ?? []).length < (saved.proofs ?? []).length) {
+    throw new Error(`The record of a proof shared from ${branch} no longer stands in for a clip, as the commit or main changed since: prove the game with every recording and run npm run dp -- share <game> again.`);
   }
   const text = readFileSync(file, 'utf8');
+  if (!saved.clips.length) {
+    refuseUnfilled(text);
+    if (clipLinks(text).length) throw new Error(`share published no clip from ${branch}, so the text can't link one: take the clips' links out.`);
+    // a game the step changes with no clip of it shows the record of its proof, for each version it changes
+    const changed = changedSince(base, commit) ?? [], recorded = new Set((saved.proofs ?? []).map(proof => proof.key));
+    const games = (gamesToShow(base, commit) ?? []).filter(game => {
+      const { versions, recordings } = changesOf(changed, game);
+      return recordings || !versions.length || versions.some(version => !recorded.has(version));
+    });
+    if (games.length) throw new Error(`${branch} changes ${games.join(' and ')}'s code or recordings, and share published no clip of it: ${SHOW_IT}.`);
+    if (!(saved.proofs ?? []).length) {
+      console.log(`share found no clip to publish from ${branch}, so the text has none to show.`);
+      return 0;
+    }
+  }
   refuseUnfilled(text);
   // a clip share didn't make for this branch, such as one written by hand or kept from another step, never goes
   const foreign = foreignLinks(text, saved);
@@ -384,7 +440,9 @@ function checkText(file) {
     throw new Error(`The text leaves out ${missing.length === 1 ? 'a clip\'s lines' : `${missing.length} clips' lines`}. Paste .dreamports/share/clips.md under Clips as it is, `
       + `or put these clips' lines there in place of theirs:\n\n${saved.clips.filter(c => missing.some(m => m.key === c.key)).map(c => c.lines).join('\n\n')}`);
   }
-  console.log(`All ${saved.clips.length === 1 ? 'the clip\'s lines are' : `${saved.clips.length} clips' lines are`} in it, each frame with its link.`);
+  console.log(saved.clips.length
+    ? `All ${saved.clips.length === 1 ? 'the clip\'s lines are' : `${saved.clips.length} clips' lines are`} in it, each frame with its link.`
+    : 'The record of the proof is in it, in place of a clip.');
   return 0;
 }
 
