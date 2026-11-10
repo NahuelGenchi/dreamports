@@ -184,12 +184,12 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 16, 16, boulder_spawn },
   { 19, 20, grind_rail_spawn },
   { 21, 23, platform_spawn },
-  { 24, 24, crumbling_spawn },
+  { 24, 24, crumbling_platform_spawn },
   { 25, 25, platform_spawn },
   { 26, 26, ramp_spawn },
   { 27, 27, waterfall_spawn },
   { 28, 29, half_pipe_spawn },
-  { 46, 46, slide_spawn },
+  { 46, 46, forced_slide_spawn },
   { 104, 104, platform_spawn },
   { 48, 53, bumper_spawn },
   { 54, 54, flipper_spawn },
@@ -232,8 +232,6 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 95, 95, ice_block_spawn },
   { 84, 84, skating_stone_spawn },
   { 91, 91, ferris_wheel_spawn },
-  { 46, 46, forced_slide_spawn },
-  { 24, 24, crumbling_platform_spawn },
   { 94, 94, air_bubbles_spawn },
 };
 

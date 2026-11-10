@@ -586,7 +586,7 @@ void act_stage_results(void) {
 int act_level_ported(int level) {
   return level == ACT_LEVEL_NEO_GREEN_1 || level == ACT_LEVEL_NEO_GREEN_2
     || level == ACT_LEVEL_SECRET_BASE_1 || level == ACT_LEVEL_SECRET_BASE_2 || is_casino_level(level)
-    || level == ACT_LEVEL_ICE_MOUNTAIN_1 || level == ACT_LEVEL_X_ZONE;
+    || ACT_IS_ICE_MOUNTAIN(level) || level == ACT_LEVEL_X_ZONE;
 }
 
 // GoToNextLevel, once the save is written: the next act, made inside the task as the course select makes one, with the

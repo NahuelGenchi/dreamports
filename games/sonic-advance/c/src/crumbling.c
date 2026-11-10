@@ -19,8 +19,8 @@ enum {
   RANGE = 128,                          // CAM_REGION_WIDTH / 2
 };
 
-// sPlatformCrumblingAnims, for each level
-static const uint16_t ANIMS[] = { 906, 906, 502, 502, 502, 502, 527, 527, 551, 551, 513, 602, 513, 513, 906, 502, 502, 602 };
+// sPlatformCrumblingAnims, for each level, with the USA copy's numbers, 2 lower than the decompilation's from about 886 on
+static const uint16_t ANIMS[] = { 904, 904, 502, 502, 502, 502, 527, 527, 551, 551, 513, 602, 513, 513, 904, 502, 502, 602 };
 
 enum { WAITING, LANDED, CRUMBLING, FALLING };
 
