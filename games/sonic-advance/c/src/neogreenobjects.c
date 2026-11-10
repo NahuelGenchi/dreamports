@@ -335,7 +335,7 @@ ActTask *waterfall_spawn(Slot *slot) {
   Waterfall *w = OBJECT_NEW(Waterfall);
   if (!w) return NULL;
   w->o.slot = slot; w->o.x = slot->e.x;
-  object_sprite(&w->o.sprite, ANIM_WATERFALL, 0, 5, ORDER_OBJECT, PRIORITY_FRONT, 0, 0);
+  object_sprite(&w->o.sprite, ANIM_WATERFALL, 0, 5, 5, PRIORITY_FRONT, 0, 0);   // the splash sits in front, at OAM order 5 (waterfall.c)
   return object_task(&w->o, waterfall_run, PRIORITY_OBJECTS);
 }
 
