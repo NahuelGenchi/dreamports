@@ -246,6 +246,9 @@ export function chooseClips(game, file, commit, base, { team = false, stands = n
   const broken = found.filter(f => f.problems.length && !f.stale && !unchanged.includes(f));
   if (unchanged.length) console.log(`Left out, as they show nothing this step changed: ${unchanged.map(f => f.clip.recording).join(', ')}.`);
   if (stale.length) console.log(`Left out, as prove made them before the last commit or merge of main changed them: ${stale.map(f => f.clip.recording).join(', ')}. Prove them again if they show this step.`);
+  // a proof that is main's own file means no clip could show a change, whatever state prove's clips are in, such as
+  // all from before a merge of main: its record goes, and nothing is proven again for it (#1062)
+  if (!good.length && standsIn) return [];
   if (broken.length && !good.length) {
     throw new Error(`No clip of what this step changed keeps the rules, so nothing was published:\n${broken.map(f => `  ${f.clip.recording}:\n${f.problems.map(p => `    ${p}`).join('\n')}`).join('\n')}`);
   }
@@ -256,7 +259,6 @@ export function chooseClips(game, file, commit, base, { team = false, stands = n
   if (!good.length && mustShow && !standsIn) {
     throw new Error(`This step changes ${game.split('/')[0]}'s code or recordings, but no recording shows anything it changed, so there's no clip of it, and nothing was published: ${SHOW_IT}.${cant}`);
   }
-  if (!good.length && standsIn) return [];
   if (!good.length) console.log('No recording shows anything this step changed, and it changes no game\'s code or recordings, so the preview goes without a clip.\n');
   return good;
 }
