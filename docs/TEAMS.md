@@ -10,7 +10,7 @@ Every Dreamport has one lead, and each of its tasks one person at a time, so nob
 npm run dp -- find sonic battle
 ```
 
-`find` takes a game's folder or a few words of its name. It shows the game's lead, its game's issue, its two numbers, code ported and gameplay proven, its Make page, its team build and team preview, and the pieces under its game's issue: who has claimed which, the ones free to start, what the waiting ones need, and how many are done. If nobody makes a Dreamport of the game yet, it says so. With no game, it lists every Dreamport and every game claimed so far.
+`find` takes a game's folder or a few words of its name. It shows the game's lead, its game's issue, its two numbers, code ported and gameplay proven, its Make page, its team build and team preview, and the pieces under its game's issue: who has claimed which, the ones free to start, what the waiting ones need, and how many are done. If nobody makes a Dreamport of the game yet, it says so. With no game, it lists every Dreamport and every game claimed so far. It lists the first three free and waiting pieces of each kind, and `--all` lists every one. `npm run dp -- find <game> --take` says only which task is yours to take next, with the command that claims it, as `/dreamport` asks it.
 
 ## Start a Dreamport
 

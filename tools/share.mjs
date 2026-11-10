@@ -6,17 +6,22 @@
 // such clip, or the one --clip names, each with its measures beside it for the pull request's check
 // (tools/clips-check.mjs). A step that changes the game's code or recordings has at least one, or share refuses it
 // (#1030). share prints the lines for them, a frame that links the video and a link, and keeps every
-// clip's lines for the branch in .dreamports/share/clips.md, to paste as they are, before it waits for Pages.
+// clip's lines for the branch in .dreamports/share/clips.md, to paste as they are, before it waits for Pages. It also
+// writes the pull request's text, .dreamports/share/pull-request.md, from the repository's template, with all it
+// knows filled in: the issue the branch is for and its milestone, the pull requests in review it starts on top of,
+// what --about says changed, the clips, the game's two numbers on main and now, the notes the step adds, and the
+// preview (lib/pull-request.mjs). What only whoever made the step can say stays in <angle brackets> to fill in.
 // share asks before it publishes and before it switches Pages on; --yes answers yes, once the contributor has said yes.
 // npm run dp -- share --check <file>: refuses the pull request's text in <file> when a clip's frame or link is missing,
 // or when it links a clip share didn't make for the branch, or has none when the branch changes a game's code or
-// recordings.
+// recordings, or when a line of it still holds the template's own words, which nobody filled in.
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve, extname, basename, dirname, sep } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { LOCAL, gameFolder } from './lib/paths.mjs';
+import { LOCAL, REPO, gameFolder } from './lib/paths.mjs';
+import { knownOf, pullRequestText, unfilled } from './lib/pull-request.mjs';
 import { versionOf, versionTitle } from '../src/lib/languages.mjs';
 import { head, uncommitted, remotes, fileAt, fetchPreviews, pushPreviews, makePreview, BRANCH, CLIPS } from './lib/preview.mjs';
 import { clipProblems, staleness, mainBase, clipLinks, reportOf, gamesToShow, SHOW_IT } from './lib/clips.mjs';
@@ -31,6 +36,9 @@ const USAGE = 'Usage: npm run dp -- share <game> [--as <preview>] [--about "<wha
 // every clip shared from the branch, with its lines for the pull request: { branch, clips: [{ key, lines }] }
 const SAVED = join(LOCAL, 'share', 'clips.json');
 const SAVED_LINES = join(LOCAL, 'share', 'clips.md');
+// the pull request's text, with what share knows filled in, and the branch it was written for
+const TEXT = join(LOCAL, 'share', 'pull-request.md'), TEXT_FOR = join(LOCAL, 'share', 'pull-request.json');
+const TEMPLATE = join(REPO, '.github', 'pull_request_template.md');
 
 // `team`, from team.mjs only, is a team build's preview, which shows its pieces, each with the clips of its own pull
 // request, so it doesn't need one of its own
@@ -108,9 +116,24 @@ export async function run(args, { team = false } = {}) {
       + 'Paste that file under Clips as it is, frames and links, and check the text with npm run dp -- share --check <the filled-in template> '
       + 'before the pull request goes out or its text changes. Never write a clip\'s lines by hand.');
   }
+  if (!team) writeText({ game, branch, commit, base, about, preview: `${siteUrl}${name}/`, clips: savedLines(saved) });
   await waitUntilOnline(fork.repository, preview.commit, `${siteUrl}${name}/preview.json`, preview.made);
   console.log(`\nOnline: ${siteUrl}${name}/`);
   return 0;
+}
+
+// The pull request's text for the branch, in .dreamports/share/pull-request.md (lib/pull-request.mjs). One written
+// before for the same branch keeps what someone filled in, with the tools' own lines written again.
+function writeText(step) {
+  const earlier = existsSync(TEXT) && existsSync(TEXT_FOR) && JSON.parse(readFileSync(TEXT_FOR, 'utf8')).branch === step.branch ? readFileSync(TEXT, 'utf8') : null;
+  const template = readFileSync(TEMPLATE, 'utf8');
+  const text = pullRequestText(template, knownOf(step), earlier);
+  writeFileSync(TEXT, text);
+  writeFileSync(TEXT_FOR, `${JSON.stringify({ branch: step.branch }, null, 2)}\n`);
+  const left = unfilled(text, template).map(line => (line.startsWith('<') ? 'Limitations and follow-up' : line.split(':')[0]));
+  console.log(`\nThe pull request's text is in .dreamports/share/pull-request.md, with its tracking lines, its clips, the game's numbers before and after, its notes and its preview filled in.${
+    left.length ? ` Still yours to write, where the template's own words stand in <angle brackets>: ${left.join(', ')}.` : ''
+  } npm run dp -- share --check .dreamports/share/pull-request.md checks it before it goes out.`);
 }
 
 function options(args) {
@@ -341,6 +364,7 @@ function checkText(file) {
     throw new Error(`A clip shared from ${branch} no longer keeps the rules, as it says above: prove its recording again and run npm run dp -- share <game> again.`);
   }
   if (!saved.clips.length) {
+    refuseUnfilled(readFileSync(file, 'utf8'));
     if (clipLinks(readFileSync(file, 'utf8')).length) throw new Error(`share published no clip from ${branch}, so the text can't link one: take the clips' links out.`);
     const games = gamesToShow(mainBase(), commit) ?? [];
     if (games.length) throw new Error(`${branch} changes ${games.join(' and ')}'s code or recordings, and share published no clip of it: ${SHOW_IT}.`);
@@ -348,6 +372,7 @@ function checkText(file) {
     return 0;
   }
   const text = readFileSync(file, 'utf8');
+  refuseUnfilled(text);
   // a clip share didn't make for this branch, such as one written by hand or kept from another step, never goes
   const foreign = foreignLinks(text, saved);
   if (foreign.length) {
@@ -361,6 +386,12 @@ function checkText(file) {
   }
   console.log(`All ${saved.clips.length === 1 ? 'the clip\'s lines are' : `${saved.clips.length} clips' lines are`} in it, each frame with its link.`);
   return 0;
+}
+
+// a text with a line nobody filled in isn't ready to go out
+function refuseUnfilled(text) {
+  const left = unfilled(text, readFileSync(TEMPLATE, 'utf8'));
+  if (left.length) throw new Error(`${left.length === 1 ? 'A line of the text still holds' : `${left.length} lines of the text still hold`} the template's own words, in <angle brackets>. Write what each asks for, or none where that's true:\n\n${left.join('\n')}`);
 }
 
 // waits for GitHub to build the Pages site with the new commit, then for the preview's address to serve it
