@@ -452,7 +452,11 @@ static void draw_frame(void) {
   fill_layer(0xF000, LAYER_FRONT, layerX, camY);
   fill_layer(0xF800, LAYER_BACK, layerX, camY);
   int bgX, bgY;
-  if (act.stage.backgroundScroll == BG_SCROLL_SECRET_BASE) {
+  // StageBgUpdate_Zone2Act1 hands over to StageBgUpdate_Zone2_Interior once the camera's x, less its loop wrap, reaches
+  // 1488; act 2 is inside from its first frame
+  int secretBaseInside = act.stage.backgroundScroll == BG_SCROLL_SECRET_BASE
+    || (act.stage.backgroundScroll == BG_SCROLL_SECRET_BASE_OUTSIDE && camX - act.cam.wrapped >= 1488);
+  if (secretBaseInside) {
     // StageBgUpdate_Zone2Act2 (StageBgUpdate_Zone2_Interior): a wall that repeats every 64 lines, with three bars and a
     // bigger one laid over it, each line's place set through HBlank
     e.bgScroll[6] = (uint16_t)((camX >> 2) & 0xFF); e.bgScroll[7] = (uint16_t)((camY >> 2) & 0xFF);
