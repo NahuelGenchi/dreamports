@@ -29,16 +29,16 @@ test('what the tools know is filled in, and the rest keeps the template\'s words
   }
   assert.ok(text.includes(`Clips:\n\n${CLIPS}\n\nCode ported in C:`));
   assert.ok(!text.includes('<!--'));
-  assert.deepEqual(unfilled(text).map(line => line.split(':')[0]), ['Sources', 'Start points', 'Site build', 'Browser checks', 'Source/diff review', '<what still differs, what wasn\'t checked and what follows, or None when that\'s true>']);
+  assert.deepEqual(unfilled(text, TEMPLATE).map(line => line.split(':')[0]), ['Sources', 'Start points', 'Site build', 'Browser checks', 'Source/diff review', '<what still differs, what wasn\'t checked and what follows, or None when that\'s true>']);
 });
 
 test('what isn\'t known stays to fill in', () => {
   const text = pullRequestText(TEMPLATE, { clips: '', notes: [] });
-  assert.ok(unfilled(text).includes('Closes #<issue-number>'));
+  assert.ok(unfilled(text, TEMPLATE).includes('Closes #<issue-number>'));
   assert.ok(text.includes('Clips: none'));
   assert.ok(text.includes('Notes: none'));
-  assert.ok(unfilled(text).some(line => line.startsWith('Milestone: <')));
-  assert.ok(unfilled(text).some(line => line.startsWith('Code ported: <')));
+  assert.ok(unfilled(text, TEMPLATE).some(line => line.startsWith('Milestone: <')));
+  assert.ok(unfilled(text, TEMPLATE).some(line => line.startsWith('Code ported: <')));
 });
 
 test('a text filled in before keeps what someone wrote, with the tools\' lines written again', () => {
@@ -71,6 +71,9 @@ test('the numbers, before and after, name the language and the parts added', () 
   assert.equal(numberLines('walk', null, proof(1, [])).ported, 'Code ported: not measured yet → 5%');
 });
 
-test('a line with words in angle brackets that someone wrote isn\'t one to fill in', () => {
-  assert.deepEqual(unfilled('Sources: none\nIt reads <game>/c and `a < b`.\nSite build: not run'), []);
+test('angle brackets someone wrote aren\'t the template\'s words', () => {
+  const written = ['Sources: none', 'It reads <game>/c and `a < b`.', 'Run `npm run dp -- share --check <the filled-in template>` first.',
+    '<img width="480" alt="a frame of the clip" src="https://someone.github.io/dreamports/clips/walk/still.png">', 'Branch: feat/<issue>-walk was the plan.', 'Site build: not run'];
+  assert.deepEqual(unfilled(written.join('\n'), TEMPLATE), []);
+  assert.deepEqual(unfilled('Closes #<issue-number>\nSource/diff review: <actual scope>\nSources: the game <every source used, such as a decompilation or a port made elsewhere, with its license and whether code came in from it>', TEMPLATE).length, 3);
 });

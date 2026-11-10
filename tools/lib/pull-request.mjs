@@ -53,8 +53,10 @@ export function numberLines(game, before, after) {
   };
 }
 
-// what stands in a line until someone fills it in: the template's own words, in angle brackets
-const PLACEHOLDER = /<[^<>\n]{12,}>/;
+// what stands under two headings the template leaves empty, until someone writes there
+const CHANGES = '<what changed, in plain words, and any decision that matters>';
+const LIMITS = '<what still differs, what wasn\'t checked and what follows, or None when that\'s true>';
+const withoutComments = template => template.replace(/<!--[\s\S]*?-->\n?/g, '');
 // the label a line starts with, as in "Sources: …", without the language a number's line names, as in "Code ported in C: …"
 const labelOf = line => /^([A-Z][A-Za-z/ ]*?)(?: in [A-Z][A-Za-z+#]*)?:/.exec(line)?.[1] ?? null;
 
@@ -81,7 +83,7 @@ export function pullRequestText(template, known, earlier = null) {
     Milestone: milestone ? `Milestone: ${milestone}` : undefined,
     Branch: branch ? `Branch: ${branch}, new from the latest main and used only for this issue` : undefined,
   };
-  const lines = (earlier ?? template.replace(/<!--[\s\S]*?-->\n?/g, '')).split('\n'), out = [];
+  const lines = (earlier ?? withoutComments(template)).split('\n'), out = [];
   for (let at = 0; at < lines.length; at++) {
     const line = lines[at], label = labelOf(line);
     if (label === 'Clips' && own.Clips !== undefined) {
@@ -92,15 +94,23 @@ export function pullRequestText(template, known, earlier = null) {
     else if (earlier) out.push(line);
     else if (once[label] !== undefined) out.push(once[label]);
     else if (line.trim() === 'Closes #<issue-number>' && issue) out.push(`Closes #${issue}`, ...buildsOn.map(number => `Builds on #${number}`));
-    else if (line.trim() === '## Changes') out.push(line, '', about || '<what changed, in plain words, and any decision that matters>');
-    else if (line.trim() === '## Limitations and follow-up') out.push(line, '', '<what still differs, what wasn\'t checked and what follows, or None when that\'s true>');
+    else if (line.trim() === '## Changes') out.push(line, '', about || CHANGES);
+    else if (line.trim() === '## Limitations and follow-up') out.push(line, '', LIMITS);
     else out.push(line);
   }
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }
 
-/** The lines of a pull request's text that nobody has filled in yet: those that still hold the template's own words. */
-export const unfilled = text => text.split('\n').filter(line => PLACEHOLDER.test(line) || line.trim() === 'Closes #<issue-number>').map(line => line.trim());
+/**
+ * The lines of a pull request's text that nobody has filled in yet: those that still hold the `template`'s own words,
+ * in angle brackets. Only the template's words count, so angle brackets someone wrote, as in a command or a tag, don't.
+ */
+export function unfilled(text, template) {
+  const own = withoutComments(template).split('\n').map(line => line.trim()).filter(line => /<[^<>]+>/.test(line));
+  // a long one anywhere in a line, and a short one, such as an issue's number, only in the template's own line
+  const long = [CHANGES, LIMITS, ...own.flatMap(line => line.match(/<[^<>]+>/g)).filter(words => words.length >= 14)];
+  return text.split('\n').map(line => line.trim()).filter(line => own.includes(line) || long.some(words => line.includes(words)));
+}
 
 /**
  * What the tools know of a step for its pull request's text, as pullRequestText takes it, read from the repository and

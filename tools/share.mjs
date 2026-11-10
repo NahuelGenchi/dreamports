@@ -38,6 +38,7 @@ const SAVED = join(LOCAL, 'share', 'clips.json');
 const SAVED_LINES = join(LOCAL, 'share', 'clips.md');
 // the pull request's text, with what share knows filled in, and the branch it was written for
 const TEXT = join(LOCAL, 'share', 'pull-request.md'), TEXT_FOR = join(LOCAL, 'share', 'pull-request.json');
+const TEMPLATE = join(REPO, '.github', 'pull_request_template.md');
 
 // `team`, from team.mjs only, is a team build's preview, which shows its pieces, each with the clips of its own pull
 // request, so it doesn't need one of its own
@@ -125,10 +126,11 @@ export async function run(args, { team = false } = {}) {
 // before for the same branch keeps what someone filled in, with the tools' own lines written again.
 function writeText(step) {
   const earlier = existsSync(TEXT) && existsSync(TEXT_FOR) && JSON.parse(readFileSync(TEXT_FOR, 'utf8')).branch === step.branch ? readFileSync(TEXT, 'utf8') : null;
-  const text = pullRequestText(readFileSync(join(REPO, '.github', 'pull_request_template.md'), 'utf8'), knownOf(step), earlier);
+  const template = readFileSync(TEMPLATE, 'utf8');
+  const text = pullRequestText(template, knownOf(step), earlier);
   writeFileSync(TEXT, text);
   writeFileSync(TEXT_FOR, `${JSON.stringify({ branch: step.branch }, null, 2)}\n`);
-  const left = unfilled(text).map(line => (line.startsWith('<') ? 'Limitations and follow-up' : line.split(':')[0]));
+  const left = unfilled(text, template).map(line => (line.startsWith('<') ? 'Limitations and follow-up' : line.split(':')[0]));
   console.log(`\nThe pull request's text is in .dreamports/share/pull-request.md, with its tracking lines, its clips, the game's numbers before and after, its notes and its preview filled in.${
     left.length ? ` Still yours to write, where the template's own words stand in <angle brackets>: ${left.join(', ')}.` : ''
   } npm run dp -- share --check .dreamports/share/pull-request.md checks it before it goes out.`);
@@ -388,7 +390,7 @@ function checkText(file) {
 
 // a text with a line nobody filled in isn't ready to go out
 function refuseUnfilled(text) {
-  const left = unfilled(text);
+  const left = unfilled(text, readFileSync(TEMPLATE, 'utf8'));
   if (left.length) throw new Error(`${left.length === 1 ? 'A line of the text still holds' : `${left.length} lines of the text still hold`} the template's own words, in <angle brackets>. Write what each asks for, or none where that's true:\n\n${left.join('\n')}`);
 }
 
