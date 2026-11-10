@@ -237,4 +237,3 @@ void write_sprite_map(Sprite *s) {
     }
   }
 }
-
