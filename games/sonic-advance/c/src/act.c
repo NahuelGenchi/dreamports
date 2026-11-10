@@ -951,7 +951,8 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
       paletteAnims[behind[k]].wait = 0;
       palette_animation_step(&paletteAnims[behind[k]]);
     }
-    paletteAnims[2].wait -= 256;
+    // animation 818's palette 1, the striped columns' colours, changes five frames later than the card leaves it
+    paletteAnims[2].wait -= 5 * 256;
     paletteAnims[0].wait -= 512;
     paletteAnims[10].wait -= 512;
     static const int next[] = { 4, 5, 6, 7, 9 };

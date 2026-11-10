@@ -1,10 +1,14 @@
 // Runs what plays the original, for any console: the program writes each frame's picture hash, its one colour, the
 // functions that ran in it and the pictures and states asked for, and its sound to a file (gba/original.c, libretro/host.c).
 
+import { threadId } from 'node:worker_threads';
 import { spawn } from 'node:child_process';
 import { closeSync, mkdirSync, openSync, readSync, writeFileSync, rmSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { LOCAL } from './paths.mjs';
+
+// how many runs this thread has started, which with its number keeps the files of two at once apart
+let runs = 0;
 
 // each frame's sound, from the file the original wrote, read as it's needed: a long recording's holds tens of
 // megabytes. Once this has opened it, nothing else needs its name, so it goes as runReference ends
@@ -46,7 +50,7 @@ function soundIn(file, frames) {
 export async function runReference({ program, args, env, width, height, stateBytes = 0, buttonBytes = 2, frames, buttons, functions = [], pictures = [], sound = false, sets = [], states = [], reads = [] }) {
   const folder = join(LOCAL, 'tmp');
   mkdirSync(folder, { recursive: true });
-  const id = `${process.pid}-${Date.now()}`;
+  const id = `${process.pid}-${threadId}-${Date.now()}-${++runs}`;
   const files = {
     buttons: join(folder, `buttons-${id}.bin`), functions: join(folder, `functions-${id}.bin`), pictures: join(folder, `pictures-${id}.bin`),
     sound: join(folder, `sound-${id}.bin`), sets: join(folder, `sets-${id}.bin`), states: join(folder, `states-${id}.bin`),

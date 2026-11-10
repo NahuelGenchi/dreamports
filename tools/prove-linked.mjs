@@ -23,12 +23,11 @@ const KEYS = { A: 1, B: 2, SELECT: 4, START: 8, RIGHT: 16, LEFT: 32, UP: 64, DOW
 export const heldOf = recording => [recording.held, ...(recording.others ?? [])];
 
 /** Plays a recording with players. Resolves like prove's: { frames, matched, differs, functions, ... }. */
-export async function proveLinked({ page, game, recording, copy, server, main = null, quick, asked = [] }) {
+export async function proveLinked({ page, game, recording, copy, server, main = null, quick, asked = [], log = console.log, say = () => {} }) {
   const { name, frames, players } = recording;
   const out = resultFolder(game, name);
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
-  const say = text => process.stdout.isTTY && process.stdout.write(`\r${`${name}: ${text}`.padEnd(70)}`);
   const lists = heldOf(recording).map(list => expand(list, frames));
   const bits = lists.map(frames => frames.map(list => list.reduce((mask, b) => mask | (KEYS[b] ?? 0), 0)));
   const unknown = [...new Set(lists.flat(2))].filter(b => !(b in KEYS));
@@ -140,9 +139,10 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   writeFileSync(join(out, 'hashes.json'), JSON.stringify({ ours: hashes, original: expected.slice(0, hashes.length) }));
   const matched = hashes.length - differ.length;
   const per = Array.from({ length: players }, (_, p) => hashes.filter((h, f) => h[p] !== expected[f][p]).length);
-  console.log(`\n${name}: ${players} players, ${matched} of ${hashes.length} frames played match${firstDifference >= 0 ? `; the first that differs is ${firstDifference}, and each player differs in ${per.join(', ')} frames` : ''}. Pictures: ${out}`);
-  if (clipFile) console.log(`  Clip, ${(clipFile.length / 1e6).toFixed(2)} MB, frames ${clipAt[0]} to ${clipAt.at(-1)}: ${out}/clip.mp4 (the Dreamport's screens above, the original's below)`);
-  if (clipFile) console.log(`  What this step changed: ${changedText(changed)}${changed ? '' : ', so share leaves this clip out'}.`);
-  if (changed) for (const problem of problems) console.log(`  share won't put this clip in a pull request: ${problem}`);
-  return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], functions: [] };
+  log(`\n${name}: ${players} players, ${matched} of ${hashes.length} frames played match${firstDifference >= 0 ? `; the first that differs is ${firstDifference}, and each player differs in ${per.join(', ')} frames` : ''}. Pictures: ${out}`);
+  if (clipFile) log(`  Clip, ${(clipFile.length / 1e6).toFixed(2)} MB, frames ${clipAt[0]} to ${clipAt.at(-1)}: ${out}/clip.mp4 (the Dreamport's screens above, the original's below)`);
+  if (clipFile) log(`  What this step changed: ${changedText(changed)}${changed ? '' : ', so share leaves this clip out'}.`);
+  if (changed) for (const problem of problems) log(`  share won't put this clip in a pull request: ${problem}`);
+  say('');
+  return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], changed: !!changed, functions: [] };
 }
