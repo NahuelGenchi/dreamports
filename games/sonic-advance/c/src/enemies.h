@@ -49,6 +49,11 @@ void enemy_defeat(int x, int y);
 void enemies_start(void);
 
 // the kinds
+ActTask *kiki_spawn(Slot *slot);            // 0
+ActTask *buzzer_spawn(Slot *slot);          // 1
+ActTask *gamigami_spawn(Slot *slot);        // 2
+ActTask *rhinotank_spawn(Slot *slot);       // 3
+ActTask *kerokero_spawn(Slot *slot);        // 4
 ActTask *hanabii_spawn(Slot *slot);         // 8
 ActTask *slot_machine_spawn(Slot *slot);    // 9
 ActTask *pierrot_spawn(Slot *slot);         // 10

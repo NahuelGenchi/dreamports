@@ -20,7 +20,13 @@ enum { OBJ_8x8 = 0, OBJ_16x16 = 1, OBJ_32x32 = 2, OBJ_8x16 = 8 };
 enum { ORDER_DIGITS = 2, ORDER_ICONS = 3 };
 
 Act act;
+int actHudFlash = -1;
+
+// the HUD's zero-ring flash the act starts with: the character select hands over 1, a course select or a start
+// point the stage's own value (levels.js hudFlash)
+static int hud_flash(void) { return actHudFlash >= 0 ? actHudFlash : act.stage.hudFlash; }
 static int musicSync;
+static uint16_t holdColour; static int restoreColour;   // the menu's black for the act's first picture
 
 static int is_casino_level(int level) { return level == ACT_LEVEL_CASINO_PARADISE_1 || level == ACT_LEVEL_CASINO_PARADISE_2; }
 
@@ -262,6 +268,7 @@ static void update_look(Camera *c, const Player *p) {
   } else ease_look_back(c);
 }
 static int camera_update(Camera *c, const Player *p) {
+  c->wrappedThisFrame = 0;
   if (!c->started) { c->started = 1; return 0; }
   c->x = clamp((int)c->x, c->minX, c->maxX - 1);
   c->y = clamp((int)c->y, c->minY, c->maxY - 1);
@@ -395,6 +402,7 @@ static void neo_stage_animation_step(void);
 static void neo_stage_animation_draw(void);
 
 static void draw_frame(void) {
+  if (restoreColour) { restoreColour = 0; e.bgPalette[0] = holdColour; e.flags |= FLAGS_UPDATE_BG_PALETTES; }
   // the first picture the screen shows keeps the layers where the act started, before the camera's first move
   int camX = act.frames <= 2 ? act.startCamX : (int)act.cam.x;
   int camY = act.frames <= 2 ? act.startCamY : (int)act.cam.y;
@@ -409,8 +417,11 @@ static void draw_frame(void) {
   e.bgScroll[2] = (uint16_t)(camX & 7); e.bgScroll[3] = (uint16_t)(camY & 7);
   e.bgScroll[4] = (uint16_t)(camX & 7); e.bgScroll[5] = (uint16_t)(camY & 7);
   if (act.stage.level == ACT_LEVEL_NEO_GREEN_2) neo_stage_animation_draw();
-  fill_layer(0xF000, LAYER_FRONT, camX, camY);
-  fill_layer(0xF800, LAYER_BACK, camX, camY);
+  // the camera's task draws the layers before the player's task wraps the loop, so the frame of a wrap keeps the map of
+  // where the camera was before it; the scroll, a multiple of 8 px back, is the same as after it
+  int layerX = camX - act.cam.wrappedThisFrame;
+  fill_layer(0xF000, LAYER_FRONT, layerX, camY);
+  fill_layer(0xF800, LAYER_BACK, layerX, camY);
   int bgX, bgY;
   if (act.stage.backgroundScroll == BG_SCROLL_SECRET_BASE) {
     // StageBgUpdate_Zone2Act2 (StageBgUpdate_Zone2_Interior): a wall that repeats every 64 lines, with three bars and a
@@ -424,7 +435,8 @@ static void draw_frame(void) {
       put16(e.primary + (uint32_t)line * 4 + 2, (uint32_t)y);
     }
   } else if (act.stage.backgroundScroll == BG_SCROLL_NEO_GREEN) {
-    draw_neo_background(camX);
+    // StageBgUpdate_Zone1Acts12 leaves out the loop wrap (x -= cam->sa2__unk20)
+    draw_neo_background(camX - act.cam.wrapped);
   } else if (act.stage.backgroundScroll == BG_SCROLL_SECRET_BASE_OUTSIDE) {
     // StageBgUpdate_Zone2Act1, outside the base (before x 1488): the map's bottom 160 rows, moving across a 78th of
     // the camera's way
@@ -650,16 +662,17 @@ static void act_frame(void) {
   if (act.cardDone && !act.hud.active && act.started) {
     hud_load();
     act.hud.active = 1;
-    act.hud.flash = act.stage.level == ACT_LEVEL_NEO_GREEN_2 ? (act.stage.hudFlash + 7) & 31 : act.stage.hudFlash;
+    act.hud.flash = act.stage.level == ACT_LEVEL_NEO_GREEN_2 ? (act.stage.hudFlash + 7) & 31 : hud_flash();
+    actHudFlash = -1;
   }
   // the camera's task first runs on the frame after the one that makes the act, where it only sets itself going
   // (Task_CallUpdateCamera), and counts the animated tiles from the frame after that, in UpdateCamera
   int camRuns = act.cam.started && act.frames > 1;
   if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
   if (act.stage.backgroundScroll == BG_SCROLL_CASINO_PARADISE && act.cam.bgUpdates > 0) casino_background_update();
-  if (camRuns) { if (act.stage.level == ACT_LEVEL_NEO_GREEN_2) neo_stage_animation_step(); else animate_stage_tiles(); }
+  if (camRuns || (act.stage.level == ACT_LEVEL_NEO_GREEN_1 && act.frames > 0)) { if (act.stage.level == ACT_LEVEL_NEO_GREEN_2) neo_stage_animation_step(); else animate_stage_tiles(); }
   // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts
-  if (act.frames > 0) objects_run_early();
+  if (act.frames > 0 || act.stage.level == ACT_LEVEL_NEO_GREEN_1) objects_run_early();
   // the title card's task (0x2100) runs before Sonic's and the clock's, so the frame it ends frees the pad and starts
   // the clock; its pieces and fade go over the act, and it sets the display while it shows, after draw_frame
   int cardShows = !act.cardDone;
@@ -692,7 +705,7 @@ static void act_frame(void) {
   player_animate(&act.player, &in);
   if (act.stage.level == ACT_LEVEL_NEO_GREEN_2)
     for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
-  if (act.frames > 0) objects_run_late();
+  if (act.frames > 0 || act.stage.level == ACT_LEVEL_NEO_GREEN_1) objects_run_late();
   // the stage clock's task (0xFF00): the course time counts once the card has ended, the stage's tick every frame
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
@@ -732,8 +745,16 @@ void act_task(Task *t) {
   act_frame();
 }
 
-/** Draws the act's first frame now, for a screen that hands over inside its own task, and makes its task run from
- *  the next frame. */
+/** Keeps the screen black for this frame, as a menu's last frame is, while the act's first picture waits for the
+ *  next one. */
+void act_hold_black(void) {
+  holdColour = e.bgPalette[0];
+  e.dispCnt = 0;
+  e.bgPalette[0] = 0;
+  e.flags |= FLAGS_UPDATE_BG_PALETTES;
+  restoreColour = 1;
+}
+
 /** Draws the act's first frame now, for a screen that hands over inside its own task: it does its work but the
  *  frame has no V-blank, so the screen keeps the course select's black while the act loads. */
 void act_frame_now(void) {
@@ -750,6 +771,9 @@ static void act_begin_task(Task *t) {
   destroy_task(t);
   act_start(pendingLevel, pendingCard, pendingPre);
   act_frame();
+  // the stage init starts the act's song as the menu leaves, as act_frame_now does for a menu that hands over inside
+  // its own task
+  start_music();
 }
 
 /** Starts the act on the next frame, so the frame the menu hands over still draws the menu. */
@@ -790,7 +814,7 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
     int camRuns = act.cam.started && act.tick > 1;
     if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
     if (act.stage.level == ACT_LEVEL_CASINO_PARADISE_2 && act.cam.bgUpdates > 0) { casino_background_update(); fireworks_pre(); }
-    if (camRuns) {
+    if (camRuns || (act.stage.level == ACT_LEVEL_NEO_GREEN_1 && act.tick > 0)) {
       if (act.stage.level == ACT_LEVEL_NEO_GREEN_2) { if (act.tick >= 17) neo_stage_animation_step(); }
       else animate_stage_tiles();
     }
@@ -808,7 +832,8 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
       // the card's last frame makes the HUD (CreateStageUI), which loads its tiles and colours at once, before the tasks
       // after the card's run: Secret Base act 1's beams then write past their table into the colours it loaded
       act.hud.active = 1;
-      act.hud.flash = act.stage.hudFlash;
+      act.hud.flash = hud_flash();
+      actHudFlash = -1;
       hud_load();
     }
     // the card holds Sonic with jump and attack held, as act_frame does
@@ -871,7 +896,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   act.startCamX = (int)act.cam.x; act.startCamY = (int)act.cam.y;
   act.lives = 3; act.score = 0; act.ringCount = 0;
   act.clockStopped = 1; act.firstCard = 1; act.cardFrame = 0;
-  act.hud.active = 0; act.hud.flash = act.stage.hudFlash;
+  act.hud.active = 0; act.hud.flash = hud_flash();
   act.started = 0; act.drawn = 0;
   act.firstFrame = (int)gba_start_number("first", 0);
   e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
@@ -883,6 +908,8 @@ void act_start(int level, int cardSkip, int preFrames) {
   // no picture, as its recording starts there; one the course select opens shows the card from its first frame
   titlecard_start(level, ctx.character);
   objects_start(level, act.stage.paletteCount > 0);
+  // Neo Green Hill act 1's palette animations start with the act, as its recording runs before the load stall
+  if (level == ACT_LEVEL_NEO_GREEN_1) start_palette_animations();
   if (gba_start_point("level")) {
     if (level == ACT_LEVEL_NEO_GREEN_2) {
       pre_run(cardSkip, preFrames, (int)gba_start_number("prelude", 0));

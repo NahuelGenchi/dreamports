@@ -128,3 +128,4 @@ int entities_manager(ActTask *t) {
   prevX = cx; prevY = cy;
   return 1;
 }
+

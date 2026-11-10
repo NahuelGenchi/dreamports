@@ -90,6 +90,16 @@ ActTask *bowl_spawn(Slot *slot);
 ActTask *carousel_spawn(Slot *slot);
 ActTask *ship_swing_spawn(Slot *slot);
 ActTask *steam_exhaust_spawn(Slot *slot);
+ActTask *boulder_spawn(Slot *slot);
+ActTask *booster_spawn(Slot *slot);
+ActTask *trampoline_spawn(Slot *slot);
+ActTask *crumbling_spawn(Slot *slot);
+ActTask *bounce_spawn(Slot *slot);
+ActTask *ramp_spawn(Slot *slot);
+ActTask *waterfall_spawn(Slot *slot);
+ActTask *half_pipe_spawn(Slot *slot);
+ActTask *grind_rail_spawn(Slot *slot);
+ActTask *slide_spawn(Slot *slot);
 
 void entities_load(int level);
 int entities_manager(ActTask *t);
