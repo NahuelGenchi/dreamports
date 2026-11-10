@@ -42,6 +42,7 @@ import { proveLinked } from './prove-linked.mjs';
 import { versionOf } from '../src/lib/languages.mjs';
 import { kindsOf, shownOf, showsProblems } from '../src/lib/shows.mjs';
 import { recordingHash, mainProof, firstChanged, clipWindow, newFramesIn, clipProblems, changedText } from './lib/clips.mjs';
+import { keepRecord, recordOf } from './lib/same-proof.mjs';
 
 const BATCH = 120;
 const STILLS = 600, STATES = 20;
@@ -163,6 +164,11 @@ export async function run(args) {
     console.log(`\nNo code map yet, so no code ported: npm run dp -- codemap ${game} makes one.`);
   }
   writeProgress(game, { ...totals, recordings: progress.recordings });
+  // what a whole proof found, which share can show in place of a clip when the step changed no frame (lib/same-proof.mjs)
+  if (!names.length) {
+    const file = `games/${game}/proof/progress.json`;
+    keepRecord(recordOf(game, { recordings: recordings.length, progress: readFileSync(join(REPO, file), 'utf8'), mains: mainProof(game)?.files(file) ?? null }));
+  }
   // the two numbers the game shows now
   try {
     const { ported, gameplay } = readProof(game) ?? {};

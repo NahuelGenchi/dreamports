@@ -194,9 +194,10 @@ export function staleness(report, committed, { base } = {}) {
   return null;
 }
 
-/** The addresses of clips, their frames and their measures in a text, as share's lines link them: …/clips/<game>/…. */
+/** The addresses of clips, their frames and their measures in a text, as share's lines link them: …/clips/<game>/….
+ *  The record of a proof that stands in for a clip lives beside them, and isn't one (lib/same-proof.mjs). */
 export function clipLinks(text) {
-  return [...String(text).matchAll(/https:\/\/[^\s()<>"'[\]]+\/clips\/[^\s()<>"'[\]]+\.(?:mp4|png|json)/g)].map(m => m[0]);
+  return [...String(text).matchAll(/https:\/\/[^\s()<>"'[\]]+\/clips\/[^\s()<>"'[\]]+\.(?:mp4|png|json)/g)].map(m => m[0]).filter(link => !link.endsWith('-same-proof.json'));
 }
 
 /** A game's code or recordings, as a path in the repository, with the game's folder: a step that changes either shows it in a clip. */
@@ -227,7 +228,8 @@ export function gamesToShow(base, commit = 'HEAD') {
 /** What a step that changes a game and shows it in no clip does, as share, its check and the review say it. */
 export const SHOW_IT = 'a step that changes a game\'s code or recordings shows it in a clip: prove the recordings it changed, '
   + 'and if none shows the new code, add a recording that plays it, or run one on until it does (npm run dp -- help recording), '
-  + 'then prove it and share again';
+  + 'then prove it and share again. A step that changes no frame shows its proof instead: prove the game with every '
+  + 'recording, commit, and share';
 
 /** A clip's published measures, as share writes them beside it, read the way clipProblems reads prove's report. */
 export const reportOf = m => ({ recording: m.recording, recordingFile: m.recordingFile, recordingSha1: m.recordingSha1, clip: m.measures });
