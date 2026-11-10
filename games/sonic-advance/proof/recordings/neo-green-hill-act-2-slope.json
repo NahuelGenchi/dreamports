@@ -2,7 +2,10 @@
   "about": "Neo Green Hill Zone act 2 from its first frame after the title card, with Sonic running right and jumping the steep step before its first loop.",
   "start": "level=1&card=80&pre=20&first=0",
   "frames": 857,
-  "clip": {"at": 557, "frames": 300},
+  "clip": {
+    "at": 399,
+    "frames": 300
+  },
   "held": [
     [
       0,

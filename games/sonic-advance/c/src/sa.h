@@ -37,6 +37,10 @@ enum {
 
 // --- the original's sine table (engine/trig.js), 1.25 turns of 1024 steps in Q2.14 -------------------------------
 extern const int16_t SINE[1280];
+/** sin and cos of a 0-255 angle as 8.8 fixed point (-256 ... 256), like SIN_24_8 and COS_24_8. */
+static inline int sin8(int angle) { return SINE[(angle & 0xFF) * 4] >> 6; }
+static inline int cos8(int angle) { return SINE[(angle & 0xFF) * 4 + 256] >> 6; }
+int arc_tan2(int x, int y);
 
 // --- the engine (gba/engine.js) ---------------------------------------------------------------------------------
 enum {
@@ -176,7 +180,6 @@ void display_sprite(Sprite *s);
 void display_sprite_background(Sprite *s);
 void write_sprite_map(Sprite *s);
 void queue_sprite_map(Sprite *s);
-void clear_bg_sprites(void);
 
 // --- backgrounds (gba/background.js) --------------------------------------------------------------------------
 void background_init(Background *bg);
@@ -233,6 +236,7 @@ extern Save save;
 void save_open(void);
 int save_write(void);
 void save_set_unlocked_level(int character, uint16_t level);
+void save_add_ring_bank(int rings);
 #define SAVE_UI_LANGUAGE (save.bytes[0x19])
 #define SAVE_CHAOS_EMERALDS (save.bytes[0x1C])
 #define SAVE_PLAYER_NAME (save.bytes + 0x10)            // six characters of the UI font, and two unused
