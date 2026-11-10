@@ -96,8 +96,6 @@ int update_sprite(Sprite *s, int background) {
     s->animCursor = 0;
     s->qAnimDelay = 0;
     s->frameFlags &= ~SPRITE_ANIM_OVER;
-    // a new animation clears both hitboxes until its script sets them (sub_802486C)
-    for (int i = 0; i < 16; i++) s->hitboxes[i].index = -1;
   }
   if (s->frameFlags & SPRITE_ANIM_OVER) return ENDED;
   if (s->qAnimDelay > 0) {
