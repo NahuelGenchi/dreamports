@@ -43,6 +43,7 @@ import { versionOf } from '../src/lib/languages.mjs';
 import { kindsOf, shownOf, showsProblems } from '../src/lib/shows.mjs';
 import { recordingHash, mainProof, firstChanged, clipWindow, newFramesIn, clipProblems, changedText } from './lib/clips.mjs';
 import { keepRecord, recordOf } from './lib/same-proof.mjs';
+import { DIFFERS_AS_BEFORE, provenBefore, worseThan } from './lib/as-before.mjs';
 
 const BATCH = 120;
 const STILLS = 600, STATES = 20;
@@ -177,7 +178,15 @@ export async function run(args) {
   } catch (error) {
     console.log(error.message);
   }
-  return failed ? 1 : 0;
+  if (!failed) return 0;
+  // frames differ: a step back, when one that matched in the last commit differs now, or as things were (lib/as-before.mjs)
+  const worse = worseThan(provenBefore(game), recordings.map((recording, at) => ({ name: recording.name, row: keptOf(results[at]), wrong: results[at].wrong })));
+  if (!worse.length) {
+    console.log('No frame that matched in the last commit differs.');
+    return DIFFERS_AS_BEFORE;
+  }
+  console.log(`Worse than the last commit has ${worse.length === 1 ? 'it' : 'them'}: ${worse.slice(0, 6).map(each => `${each.name}, as ${each.why}`).join('; ')}${worse.length > 6 ? `; and ${worse.length - 6} more` : ''}.`);
+  return 1;
 }
 
 /** What progress.json keeps of what a recording found. */
