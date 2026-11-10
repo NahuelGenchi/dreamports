@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { optionsOf } from '../update.mjs';
-import { finishMerge, keepMainsTable, merging, newGames, provedOnBothSides, startMerge } from '../lib/merge-main.mjs';
+import { builtOn, finishMerge, holding, isHolding, keepMainsTable, merging, newGames, provedOnBothSides, startMerge } from '../lib/merge-main.mjs';
 
 const START = '<!-- The proof tools write this table from each Dreamport\'s entry: npm run dp -- readme. -->';
 const END = '<!-- End of the table of Dreamports. -->';
@@ -141,6 +141,147 @@ test('a branch with no progress.json of main\'s leaves nothing to prove twice', 
   both({ 'games/one/code.js': 'a\nb\nc\nd\n' }, { [PROGRESS]: progress({ a: { matched: 6 } }) });
   startMerge(cwd, 'main');
   assert.deepEqual(provedOnBothSides(cwd), []);
+});
+
+/** A pull request's branch from main, with a commit of its own, and the work branch checked out again. */
+function pull(branch, files) {
+  git('switch', '-q', 'main');
+  git('switch', '-qc', branch);
+  put(files);
+  git('switch', '-q', 'work');
+}
+const more = (branch, files) => { git('switch', '-q', branch); put(files); git('switch', '-q', 'work'); };
+const sha = ref => git('rev-parse', ref);
+// GitHub, as far as builtOn asks it: the pull requests it lists for a commit, each one's facts and its newest commit.
+// `listed` is false for one GitHub no longer lists by its commits, as one that merged and lost its branch
+const github = pulls => ({
+  pullsWith: commit => pulls.filter(each => each.listed !== false).filter(each => { try { git('merge-base', '--is-ancestor', commit, each.branch); return true; } catch { return false; } }).map(each => each.number),
+  pullOf: number => pulls.find(each => each.number === number) ?? null,
+  fetchHead: number => sha(pulls.find(each => each.number === number).branch),
+});
+
+test('a branch built on nothing has nothing under it', () => {
+  put({ 'games/one/own.js': 'mine\n' });
+  assert.deepEqual(builtOn(cwd, 'main', 'work', github([{ number: 12, branch: 'work', open: true }])), []);
+});
+
+test('a branch that merged a pull request in is built on it, and knows when that one has gone on', () => {
+  pull('lower', { 'games/one/lower.js': 'one\n' });
+  git('merge', '-q', '--no-ff', '--no-edit', 'lower');
+  put({ 'games/one/own.js': 'mine\n' });
+  const pulls = [{ number: 10, branch: 'lower', open: true }, { number: 12, branch: 'work', open: true }];
+  assert.deepEqual(builtOn(cwd, 'main', 'work', github(pulls)), [{ number: 10, head: sha('lower'), has: true, inMain: false }]);
+  more('lower', { 'games/one/lower.js': 'two\n' });
+  assert.deepEqual(builtOn(cwd, 'main', 'work', github(pulls)), [{ number: 10, head: sha('lower'), has: false, inMain: false }]);
+  // its newest commits come in like main does, and then the branch has them
+  assert.deepEqual(startMerge(cwd, sha('lower')), { upToDate: false, conflicts: [] });
+  finishMerge(cwd, [], 'Merge #10');
+  assert.equal(read('games/one/lower.js'), 'two\n');
+  assert.equal(builtOn(cwd, 'main', 'work', github(pulls))[0].has, true);
+});
+
+test('another piece built on the same pull request isn\'t under this one', () => {
+  pull('lower', { 'games/one/lower.js': 'one\n' });
+  git('merge', '-q', '--no-ff', '--no-edit', 'lower');
+  git('switch', '-q', 'main');
+  git('switch', '-qc', 'beside');
+  git('merge', '-q', '--no-ff', '--no-edit', 'lower');
+  put({ 'games/one/beside.js': 'theirs\n' });
+  git('switch', '-q', 'work');
+  const found = builtOn(cwd, 'main', 'work', github([{ number: 10, branch: 'lower', open: true }, { number: 11, branch: 'beside', open: true }, { number: 12, branch: 'work', open: true }]));
+  assert.deepEqual(found.map(each => each.number), [10]);
+});
+
+test('one that merged is still brought in whole, and one closed without merging is left out', () => {
+  pull('lower', { 'games/one/lower.js': 'one\n' });
+  pull('dropped', { 'games/one/dropped.js': 'one\n' });
+  git('merge', '-q', '--no-ff', '--no-edit', 'lower');
+  git('merge', '-q', '--no-ff', '--no-edit', 'dropped');
+  more('lower', { 'games/one/lower.js': 'two\n' });
+  const found = builtOn(cwd, 'main', 'work', github([{ number: 10, branch: 'lower', open: false, merged: true }, { number: 9, branch: 'dropped', open: false, merged: false }]));
+  assert.deepEqual(found, [{ number: 10, head: sha('lower'), has: false, inMain: false }]);
+});
+
+test('one GitHub no longer lists is found by what its merge is called', () => {
+  pull('lower', { 'games/one/lower.js': 'one\n' });
+  git('merge', '-q', '--no-ff', '-m', "Merge commit 'refs/pull/10/head' into work", 'lower');
+  more('lower', { 'games/one/lower.js': 'two\n' });
+  const gone = [{ number: 10, branch: 'lower', open: false, merged: true, listed: false }];
+  assert.deepEqual(builtOn(cwd, 'main', 'work', github(gone)), [{ number: 10, head: sha('lower'), has: false, inMain: false }]);
+  // and by the name update gives its own merges of it
+  startMerge(cwd, sha('lower'));
+  finishMerge(cwd, [], 'Merge #10, which this branch is built on');
+  more('lower', { 'games/one/lower.js': 'three\n' });
+  assert.deepEqual(builtOn(cwd, 'main', 'work', github(gone)), [{ number: 10, head: sha('lower'), has: false, inMain: false }]);
+});
+
+test('a number in a merge\'s name that isn\'t a pull request, or isn\'t that side\'s, is nothing', () => {
+  pull('lower', { 'games/one/lower.js': 'one\n' });
+  pull('other', { 'games/one/other.js': 'one\n' });
+  git('merge', '-q', '--no-ff', '-m', "Merge branch 'pr77' into work", 'lower');
+  assert.deepEqual(builtOn(cwd, 'main', 'work', github([{ number: 10, branch: 'lower', open: true, listed: false }])), []);
+  // pull request 77 is another branch, which this side was never on
+  assert.deepEqual(builtOn(cwd, 'main', 'work', github([{ number: 77, branch: 'other', open: true, listed: false }])), []);
+});
+
+// main takes a pull request as GitHub's squash does: one new commit with its changes, and none of its own commits
+function squash(branch) {
+  git('switch', '-q', 'main');
+  git('merge', '-q', '--squash', branch);
+  git('commit', '-qm', `${branch}, squashed`);
+  git('switch', '-q', 'work');
+  return sha('main');
+}
+
+test('a branch that took the other\'s commits with no merge of its own is found by what its pull request says', () => {
+  pull('lower', { 'games/one/lower.js': 'one\n' });
+  git('merge', '-q', '--ff-only', 'lower');
+  put({ 'games/one/own.js': 'mine\n' });
+  const pulls = [{ number: 10, branch: 'lower', open: true }, { number: 11, branch: 'other', open: true }];
+  pull('other', { 'games/one/other.js': 'one\n' });
+  assert.deepEqual(builtOn(cwd, 'main', 'work', github(pulls)), []);
+  assert.deepEqual(builtOn(cwd, 'main', 'work', { ...github(pulls), stated: [10] }), [{ number: 10, head: sha('lower'), has: true, inMain: false }]);
+  // one it names and carries nothing of isn't under it
+  assert.deepEqual(builtOn(cwd, 'main', 'work', { ...github(pulls), stated: [11, 99] }), []);
+});
+
+test('once what it\'s built on is squashed into main, main comes in saying it holds it, and only the branch\'s own work is left', () => {
+  pull('lower', { 'games/one/code.js': 'a\nlower\nc\n' });
+  git('merge', '-q', '--no-ff', '-m', "Merge commit 'refs/pull/10/head' into work", 'lower');
+  put({ 'games/one/code.js': 'a\nlower, and more\nc\n' });
+  const pulls = [{ number: 10, branch: 'lower', open: false, merged: true, listed: false, mergedAs: squash('lower') }];
+  assert.deepEqual(builtOn(cwd, 'main', 'work', github(pulls)), [{ number: 10, head: sha('lower'), has: true, inMain: true }]);
+  // main alone conflicts in the line the branch changed on top of the pull request
+  assert.deepEqual(startMerge(cwd, 'main').conflicts, ['games/one/code.js']);
+  git('merge', '--abort');
+  const told = holding(cwd, 'main', [sha('lower')], 'main, which holds #10');
+  assert.equal(isHolding(cwd, told, 'main'), true);
+  assert.equal(holding(cwd, 'main', [sha('lower')], 'main, which holds #10'), told);
+  assert.deepEqual(startMerge(cwd, told), { upToDate: false, conflicts: [] });
+  finishMerge(cwd, [], 'Merge main');
+  assert.equal(read('games/one/code.js'), 'a\nlower, and more\nc\n');
+  // the branch has main now, and the commit that told it so isn't taken for a pull request under it
+  assert.deepEqual(startMerge(cwd, 'main'), { upToDate: true, conflicts: [] });
+  let asked = 0;
+  const found = builtOn(cwd, 'main', 'work', { ...github(pulls), pullsWith: () => { asked++; return []; } });
+  assert.deepEqual([found.map(each => each.number), asked], [[10], 1]);
+});
+
+test('main holds nothing more when it has every commit already, and a plain commit isn\'t one that says so', () => {
+  pull('lower', { 'games/one/lower.js': 'one\n' });
+  git('switch', '-q', 'main');
+  git('merge', '-q', '--no-ff', '--no-edit', 'lower');
+  git('switch', '-q', 'work');
+  assert.equal(holding(cwd, 'main', [sha('lower')], 'main, which holds #10'), 'main');
+  assert.equal(isHolding(cwd, sha('lower'), 'main'), false);
+});
+
+test('a merge of main isn\'t a pull request the branch is built on', () => {
+  both({ 'games/one/own.js': 'mine\n' }, { 'other.txt': 'x' });
+  git('merge', '-q', '--no-ff', '--no-edit', 'main');
+  let asked = 0;
+  assert.deepEqual(builtOn(cwd, 'main', 'work', { pullsWith: () => { asked++; return []; }, pullOf: () => { asked++; return null; }, fetchHead: () => null }), []);
+  assert.equal(asked, 0);
 });
 
 test('the command\'s words, in any order', () => {
