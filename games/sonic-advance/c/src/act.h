@@ -8,7 +8,9 @@
 #include "player.h"
 
 // how an act's background moves (its StageBgUpdate)
-enum { BG_SCROLL_STILL, BG_SCROLL_CASINO_PARADISE, BG_SCROLL_X_ZONE, BG_SCROLL_SECRET_BASE, BG_SCROLL_SECRET_BASE_OUTSIDE };
+enum { BG_SCROLL_STILL, BG_SCROLL_CASINO_PARADISE, BG_SCROLL_X_ZONE, BG_SCROLL_SECRET_BASE, BG_SCROLL_SECRET_BASE_OUTSIDE, BG_SCROLL_NEO_GREEN };
+#define ACT_LEVEL_NEO_GREEN_1 0
+#define ACT_LEVEL_NEO_GREEN_2 1
 #define ACT_LEVEL_SECRET_BASE_1 2
 #define ACT_LEVEL_SECRET_BASE_2 3
 #define ACT_LEVEL_CASINO_PARADISE_1 4
@@ -33,10 +35,12 @@ typedef struct {
   int backgroundScroll;   // how the background moves (BG_SCROLL_*)
   int paletteCount;
   const int *paletteAnimations;
+  const int *paletteVariants;   // each animation's variant, or NULL for variant 0
   Tilemap front, back, background;
   Collision collision;
   int32_t spawnX, spawnY;
   int loopX, loopShift;   // past x loopX Sonic and the camera go back by loopShift (gUnknown_084ADF78), loopX < 0 for none
+  int cameraStop;        // how far short of the right edge the camera stops, or 0 for the screen's width
   int width, height;
 } Stage;
 
