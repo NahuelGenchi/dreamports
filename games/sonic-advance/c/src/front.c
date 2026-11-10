@@ -152,7 +152,7 @@ void front_play(int level) {
     else { destroy_tasks(0x2000, 0x3000); act_start(startLevel, -1, 0); act_frame_now(); }
     return;
   }
-  destroy_tasks(0x2000, 0x3000); act_start(startLevel, -1, 0); act_frame_now();
+  destroy_tasks(0x2000, 0x3000); act_start(startLevel, -1, 0); rings_skip_first_update(); act_frame_now();
 }
 void front_start_demo(void) { ctx.done = 1; }
 

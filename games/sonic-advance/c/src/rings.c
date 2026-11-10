@@ -178,9 +178,14 @@ static void draw_rings(void) {
   }
 }
 
+/** Whether the next frame draws the rings without stepping their animation, as a menu\'s hand-over does. */
+static int skipUpdate;
+void rings_skip_first_update(void) { skipUpdate = 1; }
+
 int rings_task(ActTask *t) {
   (void)t;
-  update_sprite(&ringSprite, 0);
+  if (skipUpdate) skipUpdate = 0;
+  else update_sprite(&ringSprite, 0);
   const Player *p = &act.player;
   // the rings can't be taken while Sonic is knocked back and blinking, or dead
   if (!act.ringsStopped && p->dead == 0 && !(p->state == PS_HURT && p->invulnerable)) collect_rings(p);

@@ -118,6 +118,8 @@ void titlecard_display(void);
 extern int actHudFlash;
 void act_hold_black(void);
 void act_frame_now(void);
+/** The rings' animation doesn't step on the frame a menu hands over to the act (rings.c). */
+void rings_skip_first_update(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_song_playing(void);

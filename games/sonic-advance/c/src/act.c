@@ -771,6 +771,9 @@ static void act_begin_task(Task *t) {
   destroy_task(t);
   act_start(pendingLevel, pendingCard, pendingPre);
   act_frame();
+  // the stage init starts the act's song as the menu leaves, as act_frame_now does for a menu that hands over inside
+  // its own task
+  start_music();
 }
 
 /** Starts the act on the next frame, so the frame the menu hands over still draws the menu. */
