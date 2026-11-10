@@ -60,6 +60,8 @@ A finished piece can wait a while for its review, and nobody should wait with it
 
 Its branch starts from the latest `main` with each of those pull requests merged in: `git fetch upstream pull/<number>/head`, then `git merge --no-edit FETCH_HEAD`. The code still goes in order, as the piece is built on what it needs, but nobody waits for a review or a merge. Its pull request says `Builds on #<number>` for each, and merges after them: the **Builds on** check fails a pull request while one it builds on hasn't merged, as it carries that one's commits, which nobody has reviewed yet. Once they merge, *Update branch* on the pull request, or `npm run dp -- update`, brings in `main`, and the check passes. If one is closed without merging, the piece starts again from the latest `main`, or from whatever replaced it.
 
+A pull request in review goes on changing, and the piece on top has to keep up with it, or it conflicts with `main` in every file the two share once that one merges. So run `npm run dp -- update` on the piece on top whenever the one below gets new commits, and again once it has merged: it brings in the newest commits of what the branch is built on, then `main`, and settles what the tools can ([Bringing a branch up to date](../tools/README.md#bringing-a-branch-up-to-date)). *Update branch* on GitHub brings in `main` alone.
+
 Whoever an issue is assigned to has it. The Dreamports team can also assign and unassign issues by hand, and the bot leaves those as they are. Either way, the game's page in the Make tab on dreamports.net shows how many pieces are still free a few minutes later ([The Make pages](MAKE.md)).
 
 ## Going quiet
