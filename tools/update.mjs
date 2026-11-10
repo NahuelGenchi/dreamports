@@ -1,6 +1,8 @@
 // npm run dp -- update <game> [--base <branch>]: brings a branch up to date with main, for a pull request about to go
 // out or one that conflicts. It merges main, settles conflicts in the files the tools write by itself, runs `ready`
-// on what comes out, and commits it, so nothing that isn't proven goes on the branch. Conflicts in anything else stop
+// on what comes out, and commits it, so nothing that isn't proven goes on the branch. A merge is held to what both
+// sides had: the check and the build pass, and no frame that matched in either side's last commit differs now, so a
+// version that doesn't match every recording yet, such as one in C behind its JavaScript, can be brought up to date too. Conflicts in anything else stop
 // it, with the merge left open: settle those, `git add` them and run it again. Pushing stays with whoever runs it.
 // A branch built on a pull request in review (docs/TEAMS.md, Building on a piece in review) first gets that pull
 // request's newest commits the same way, while it's open and once more after it has merged: a branch left behind what
@@ -48,7 +50,7 @@ export async function run(args) {
     const games = [...new Set([game, ...provedOnBothSides(REPO)])];
     const added = newGames(REPO);
     for (const each of games) {
-      if (!tool('ready', each)) {
+      if (!tool('ready', each, '--no-worse')) {
         console.log(`Not committed, and the merge of ${name} is still open: fix what ${each} found, and run update again.`);
         return 1;
       }
