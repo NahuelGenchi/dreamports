@@ -6,7 +6,11 @@
 #include "sa.h"
 
 #define IWRAM_BYTES (2 * HBLANK_BUFFER + 0x200)
-static void hb(uint32_t at, uint32_t v) { if (at < IWRAM_BYTES) e.hblank[at] = (uint8_t)v; }
+static void hb(uint32_t at, uint32_t v) {
+  if (at < 2 * HBLANK_BUFFER) e.hblank[at] = (uint8_t)v;
+  // past both tables the original's writers run into the sprite palette that follows them (engine.c, spriteRow)
+  else if (at < 2 * HBLANK_BUFFER + 32) sprite_row_byte(at - 2 * HBLANK_BUFFER, v);
+}
 
 void put16(uint32_t at, uint32_t v) { hb(at, v & 0xFF); hb(at + 1, (v >> 8) & 0xFF); }
 

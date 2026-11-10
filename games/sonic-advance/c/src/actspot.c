@@ -14,6 +14,7 @@ typedef struct { int swing, accel, speed, x, y, half, spread; } LightBeam;
 
 static struct {
   int active, fading, qBlend;
+  int bldY;
   LightBeam beams[2];
 } spot;
 
@@ -61,14 +62,12 @@ static void beam_frame(LightBeam *b) {
 // TaskDestructor_SpotlightsManager: the windows and the blend go
 static void gone(void) {
   spot.active = 0;
-  e.bldCnt = 0; e.bldY = 0;
-  e.winRegs[4] = e.winRegs[5] = 0;
-  e.dispCnt &= ~0x6000;
+  spot.bldY = 0;
 }
 
 /** CreateSpotlights: the manager and the two beams as the act starts, with the windows on and the screen dark. */
 void spotlights_start(void) {
-  spot.active = 1; spot.fading = 0; spot.qBlend = 2 * MIN_BLEND;
+  spot.active = 1; spot.fading = 0; spot.qBlend = 2 * MIN_BLEND; spot.bldY = 16;
   spot.beams[0] = (LightBeam){ 0, 0x40, 0x800, 60, 200, 0, 0x20 };
   spot.beams[1] = (LightBeam){ 0, 8, 0x400, 200, 240, 1, 0x10 };
   e.winRegs[0] = e.winRegs[1] = 0x00F0;
@@ -85,25 +84,35 @@ void spotlights_start(void) {
   for (int i = 0; i < 4; i++) { e.hblank[i] = left[i]; e.hblank[HBLANK_BUFFER + i] = left[i]; }
 }
 
-/** The spotlights' frame: the manager's fade, then each beam's window. */
+/** The spotlights' manager (Task_SpotlightsManagerMain and Task_801796C): the fade, read before Sonic's task runs. */
 void spotlights_frame(void) {
   if (!spot.active) return;
-  e.dispCnt |= 0x6000;
-  e.winRegs[4] = 0x1F1F; e.winRegs[5] = 0x003F;
-  e.bldCnt = 0x3FDF;
   int x = (int)__builtin_floor(act.player.x);
   if (spot.fading) {
     // Task_801796C
     spot.qBlend = s16(spot.qBlend - 64);
     if (spot.qBlend < 0 || x > GONE_X || act.player.dead) { gone(); return; }
-    e.bldY = (uint16_t)(spot.qBlend >> 8);
+    spot.bldY = spot.qBlend >> 8;
   } else {
     spot.qBlend = s16(spot.qBlend - 64) > MIN_BLEND ? s16(spot.qBlend - 64) : MIN_BLEND;
-    e.bldY = (uint16_t)(spot.qBlend >> 8);
+    spot.bldY = spot.qBlend >> 8;
     if (x > FADE_X) spot.fading = 1;
     else if (act.player.dead) { gone(); return; }
   }
-  // the beams write this frame's half of the table, which the V-blank shows
+}
+
+/** The two beams' windows (Task_SpotlightBeam), written after the frame's own table: this half is what the V-blank shows. */
+void spotlights_beams(void) {
+  if (!spot.active) return;
   beam_frame(&spot.beams[0]);
   beam_frame(&spot.beams[1]);
+}
+
+/** What the manager's fade and the beams leave in the display registers, after the frame has set its own. */
+void spotlights_apply(void) {
+  if (!spot.active) return;
+  e.dispCnt |= 0x6000;
+  e.winRegs[4] = 0x1F1F; e.winRegs[5] = 0x003F;
+  e.bldCnt = 0x3FDF;
+  e.bldY = (uint16_t)spot.bldY;
 }

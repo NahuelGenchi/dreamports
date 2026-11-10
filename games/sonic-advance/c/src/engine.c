@@ -26,6 +26,14 @@ Engine e;
 // In IWRAM the sprites' colours (gObjPalette) come right after the H-blank buffers, and the window effects (lines.c)
 // can write a line past the end of the second, into the first two colours.
 static uint8_t iwram[2 * HBLANK_BUFFER + 0x200] __attribute__((aligned(4)));
+SpriteRow spriteRow;
+
+/** A byte a window writer puts past the second table: it lands in the sprite palette's first colours. */
+void sprite_row_byte(uint32_t at, uint32_t v) {
+  spriteRow.bytes[at] = (uint8_t)v;
+  // a colour a script loaded this frame is loaded after the beams in the original, so the script's colour stays
+  if (!(spriteRow.loaded >> (at >> 1) & 1)) spriteRow.written |= 1u << (at >> 1);
+}
 
 static Graphics *gfxQueue[GFX_QUEUE];
 // gBgSprites: the sprites shown as a layer's map (sprite.c), written in the next V-blank
@@ -373,7 +381,14 @@ static void vblank(void) {
   gba_write(REG_DISPCNT, e.dispCnt);
   for (int i = 0; i < 4; i++) gba_write(REG_BG0CNT + i * 2, e.bgCnt[i]);
   if (e.flags & FLAGS_UPDATE_BG_PALETTES) { memcpy(gba_pal, e.bgPalette, 512); e.flags ^= FLAGS_UPDATE_BG_PALETTES; }
-  if (e.flags & FLAGS_UPDATE_OBJ_PALETTES) { memcpy(gba_pal + 256, e.objPalette, 512); e.flags ^= FLAGS_UPDATE_OBJ_PALETTES; }
+  if (e.flags & FLAGS_UPDATE_OBJ_PALETTES) {
+    memcpy(gba_pal + 256, e.objPalette, 512);
+    // a window writer's bytes past the tables show over the colours a script loaded, as they do in the original
+    for (int c = 0; c < 16; c++)
+      if (spriteRow.written >> c & 1) gba_pal[256 + c] = (uint16_t)(spriteRow.bytes[c * 2] | spriteRow.bytes[c * 2 + 1] << 8);
+    e.flags ^= FLAGS_UPDATE_OBJ_PALETTES;
+  }
+  spriteRow.loaded = 0;
   for (int i = 0; i < 6; i++) gba_write(REG_WIN0H + i * 2, e.winRegs[i]);
   gba_write(REG_BLDCNT, e.bldCnt); gba_write(REG_BLDALPHA, e.bldAlpha); gba_write(REG_BLDY, e.bldY);
   for (int i = 0; i < 8; i++) gba_write(REG_BG0HOFS + i * 2, e.bgScroll[i]);
