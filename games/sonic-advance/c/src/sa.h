@@ -113,6 +113,13 @@ typedef struct {
 
 extern Engine e;
 
+/** The sprite palette's first colours, which the H-blank writers run over past the second table (lines.c): the bytes
+ *  written, and a bit for each colour written since a script last loaded it. The screen shows them on the frames the
+ *  sprite palette reaches it, in place of the colours the scripts loaded, as the original's memory does. */
+typedef struct { uint8_t bytes[32]; uint32_t written, loaded; } SpriteRow;
+extern SpriteRow spriteRow;
+void sprite_row_byte(uint32_t at, uint32_t v);
+
 void engine_init(void);
 Task *create_task(TaskMain main, void *data, uint16_t priority, uint16_t flags, TaskMain dtor);
 void destroy_task(Task *t);

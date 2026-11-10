@@ -246,6 +246,7 @@ static const struct { int kind; Spawn spawn; } ENEMIES[] = {
   { 2, gamigami_spawn },
   { 3, rhinotank_spawn },
   { 4, kerokero_spawn },
+  { 5, senbon_spawn },
   { 8, hanabii_spawn },
   { 9, slot_machine_spawn },
   { 10, pierrot_spawn },

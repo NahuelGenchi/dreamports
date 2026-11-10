@@ -163,5 +163,7 @@ uint32_t front_frame(void);
 // Secret Base act 1's spotlights (engine/spotlights.js), in actspot.c
 void spotlights_start(void);
 void spotlights_frame(void);
+void spotlights_beams(void);
+void spotlights_apply(void);
 
 #endif

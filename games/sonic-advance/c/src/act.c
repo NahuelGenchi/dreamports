@@ -452,7 +452,11 @@ static void draw_frame(void) {
   fill_layer(0xF000, LAYER_FRONT, layerX, camY);
   fill_layer(0xF800, LAYER_BACK, layerX, camY);
   int bgX, bgY;
-  if (act.stage.backgroundScroll == BG_SCROLL_SECRET_BASE) {
+  // StageBgUpdate_Zone2Act1 hands over to StageBgUpdate_Zone2_Interior once the camera's x, less its loop wrap, reaches
+  // 1488; act 2 is inside from its first frame
+  int secretBaseInside = act.stage.backgroundScroll == BG_SCROLL_SECRET_BASE
+    || (act.stage.backgroundScroll == BG_SCROLL_SECRET_BASE_OUTSIDE && camX - act.cam.wrapped >= 1488);
+  if (secretBaseInside) {
     // StageBgUpdate_Zone2Act2 (StageBgUpdate_Zone2_Interior): a wall that repeats every 64 lines, with three bars and a
     // bigger one laid over it, each line's place set through HBlank
     e.bgScroll[6] = (uint16_t)((camX >> 2) & 0xFF); e.bgScroll[7] = (uint16_t)((camY >> 2) & 0xFF);
@@ -730,6 +734,9 @@ static void act_frame(void) {
   // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts;
   // those from the HUD's priority on run after it, below
   int objectsRun = act.frames > 0 || act.stage.level == ACT_LEVEL_NEO_GREEN_1;
+  // Secret Base act 1's spotlights' manager (0x2000) was made before the entities manager, so it reads Sonic before the
+  // objects move him, as the original's does
+  if (act.stage.level == ACT_LEVEL_SECRET_BASE_1) spotlights_frame();
   if (objectsRun) objects_run_before_hud();
   // the title card's task (0x2100) runs before Sonic's and the clock's, so the frame it ends frees the pad and starts
   // the clock; its pieces and fade go over the act, and it sets the display while it shows, after draw_frame
@@ -777,9 +784,8 @@ static void act_frame(void) {
   if (act.frames > 0) water_task();
   act.frames++;
   draw_frame();
-  // Secret Base act 1's spotlights' tasks run after the objects and before the screen is drawn, and write the windows
-  // and the brightness decrease into this frame's registers and H-blank table
-  if (act.stage.level == ACT_LEVEL_SECRET_BASE_1) spotlights_frame();
+  // the beams write this frame's window table after its own, and the fade goes back into the registers the frame reset
+  if (act.stage.level == ACT_LEVEL_SECRET_BASE_1) { spotlights_beams(); spotlights_apply(); }
   if (cardShows) titlecard_display();
   results_display();
 }
@@ -910,7 +916,8 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
       actHudFlash = -1;
       hud_load();
     }
-    // the card holds Sonic with jump and attack held, as act_frame does
+    // the card holds Sonic with jump and attack held, as act_frame does; the spotlights' manager reads him before that
+    if (act.stage.level == ACT_LEVEL_SECRET_BASE_1 && !loading) spotlights_frame();
     PlayerInput in = { .jump = 1, .attack = 1 };
     player_step(&act.player, &in);
     if (act.stage.level != ACT_LEVEL_NEO_GREEN_2 || act.tick >= 15) player_animate(&act.player, &in);
@@ -918,8 +925,8 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
     if (act.stage.level != ACT_LEVEL_NEO_GREEN_2 || act.tick >= 16)
       for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
     water_card_flush();   // the card's part in the water, after the palette animations as in the task list
-    // Secret Base act 1's spotlights are made on the frame after the stage's load
-    if (act.stage.level == ACT_LEVEL_SECRET_BASE_1 && !loading) spotlights_frame();
+    // Secret Base act 1's beams write their table after the frame's own, as in act_frame
+    if (act.stage.level == ACT_LEVEL_SECRET_BASE_1 && !loading) spotlights_beams();
     if (!act.clockStopped && !(act.stage.level == ACT_LEVEL_NEO_GREEN_2 && cardJustEnded)) act.courseTime++;
     if (wasDone && act.stage.level == ACT_LEVEL_NEO_GREEN_2) {
       // Neo Green Hill act 2 keeps stepping the act through the frames after its card, as its first recording starts
@@ -933,6 +940,7 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
     // loading. Which table is shown matters to Secret Base act 1's spotlights, whose lines past the second one run into
     // Sonic's colours.
     engine_copy_graphics();
+    spriteRow.loaded = 0;
     if (!loading && !(e.flags & FLAGS_KEEP_HBLANK_BUFFER)) e.primary ^= HBLANK_BUFFER;
   }
   // the card's last frame steps the palette animations once, as the original's does; the ones whose longer delays
@@ -1036,7 +1044,7 @@ void act_start(int level, int cardSkip, int preFrames) {
       // the act's music starts with the act, fading in as the course select leaves it (MusManager_UpdateBgmParams,
       // music.js stageMusicIn): the card's frames of it play at once, unheard, so it goes on from where the original's is
       music_call(MUSIC_STAGE_IN, act.stage.music);
-      gba_sound_played_for(act.tick);
+      gba_sound_played_for(act.tick + 1);
       gba_sound_frames_gone_by(118);
     }
   } else act.musicStarts = !songPlaying;
