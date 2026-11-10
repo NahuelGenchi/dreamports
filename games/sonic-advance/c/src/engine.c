@@ -331,16 +331,17 @@ static void copy_hblank_line(uint32_t target, uint32_t at, uint32_t size) {
 }
 static void copy_hblank_entry(uint32_t at) { copy_hblank_line(e.hblankTarget, at, e.hblankSize); }
 // this frame's H-blank DMA: where it starts reading
-static struct { int on; uint32_t at, target, size; } hdma;
+static struct { int on, wait; uint32_t at, target, size; } hdma;   // wait: H-blanks it lets go by first
 static uint32_t hdmaAt;
 // this frame's V-count interrupt: whether the V-blank turned it on, and at the start of which line
 static struct { int on; int line; } vcount;
 // gVBlankIntrs: the callback the tasks asked for the frame before, which this V-blank's update runs
 static void (*vblankIntr)(void);
 /** DmaSet(0, gBgOffsetsHBlankSecondary, target, DMA_START_HBLANK | DMA_REPEAT | DMA_DEST_RELOAD), from the V-count
- *  interrupt as the frame is drawn: from the next H-blank on, a line's worth of the other buffer's values each time. */
-void hblank_dma_secondary(uint32_t target, uint32_t size) {
-  hdma.on = 1; hdma.target = target; hdma.size = size;
+ *  interrupt as the frame is drawn: from the next H-blank on, or the one after it when it was `late`, a line's worth of the
+ *  other buffer's values each time. */
+void hblank_dma_secondary(uint32_t target, uint32_t size, int late) {
+  hdma.on = 1; hdma.wait = late; hdma.target = target; hdma.size = size;
   hdmaAt = e.primary ? 0 : HBLANK_BUFFER;
 }
 
@@ -363,7 +364,7 @@ static void vblank(void) {
   hdma.on = 0;
   if (e.flagsPreVBlank & FLAGS_HBLANK_COPY) {
     copy_hblank_entry(e.primary);
-    hdma.on = 1; hdma.at = e.primary + e.hblankSize; hdma.target = e.hblankTarget; hdma.size = e.hblankSize;
+    hdma.on = 1; hdma.wait = 0; hdma.at = e.primary + e.hblankSize; hdma.target = e.hblankTarget; hdma.size = e.hblankSize;
   } else e.hblankTarget = 0;
   vcount.on = (e.flagsPreVBlank & FLAGS_VCOUNT_INTR) && e.vcountIntr;
   vcount.line = e.vcountLine;
@@ -441,7 +442,8 @@ void engine_run(void) {
 // the H-blank DMA between the lines as the kit draws the frame: after each line, the next line's values; then the
 // V-count interrupt, at the start of its line
 static void hblank_line(int y) {
-  if (hdma.on) {
+  if (hdma.on && hdma.wait) hdma.wait--;
+  else if (hdma.on) {
     copy_hblank_line(hdma.target, hdmaAt, hdma.size);
     hdmaAt += hdma.size;
   }

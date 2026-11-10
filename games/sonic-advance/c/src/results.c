@@ -1,6 +1,6 @@
 // The act's results (SAT-R decompilation, src/game/sa1/ui/stage_results.c: CreateStageResults, Task_8057888 and the
 // four tasks it runs), translated from the JavaScript version's engine/results.js and rom/results.js. They play the
-// act-clear jingle, switch the music manager off (not in C yet), and put up a white band with "SONIC GOT THROUGH ACT 1"
+// act-clear jingle, switch the music manager off, and put up a white band with "SONIC GOT THROUGH ACT 1"
 // scrolling along it, then the time bonus and the ring bonus, each label's letters and figures growing in one by one.
 // From the 182nd frame both bonuses count down 100 a frame into the score, with a tick every fourth frame of the
 // stage clock and a chime at the end, when the camera stops and Sonic, off the right of the screen, is stopped too.
@@ -205,7 +205,7 @@ void results_start(int level, int rings, int courseTime, int longEnd, int nextFr
 
   // the act-clear jingle: X Zone's, a zone's second act's (after its boss), or an act's
   play_song(level == X_ZONE ? SONG_FINAL_CLEAR : level & 1 ? SONG_BOSS_CLEAR : SONG_ACT_CLEAR);
-  // the original switches the music manager off here; it is not in C yet, so there is nothing to switch
+  music_call(MUSIC_OFF, 0);
 }
 
 int results_active(void) { return r.active; }

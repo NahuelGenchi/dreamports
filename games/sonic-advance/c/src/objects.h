@@ -15,6 +15,7 @@ enum {
   PRIORITY_CAMERA = 0xF00,     // the camera's task (Task_UpdateCamera): a boss's screen shake runs just before it
   PRIORITY_OBJECTS = 0x2000,   // the rings, the entities manager and the objects it spawns
   PRIORITY_SCATTER = 0x2001,   // the rings Sonic dropped
+  PRIORITY_HUD = 0x2180,       // the HUD's task, which act.c runs between the objects before and after it
   PRIORITY_SONIC = 0x3000,
   PRIORITY_ITEMS = 0x4001,     // a shield and the invincibility stars, after the music manager
 };
@@ -100,6 +101,10 @@ ActTask *ferris_wheel_spawn(Slot *slot);      // 91
 ActTask *forced_slide_spawn(Slot *slot);      // 46
 ActTask *crumbling_platform_spawn(Slot *slot);   // 24
 ActTask *air_bubbles_spawn(Slot *slot);       // 94
+ActTask *breakable_wall_spawn(Slot *slot);    // 114
+ActTask *sinking_platform_spawn(Slot *slot);  // 85
+ActTask *rising_platform_spawn(Slot *slot);   // 89
+ActTask *lava_platform_spawn(Slot *slot);     // 98
 ActTask *square_platform_spawn(Slot *slot);
 ActTask *spiked_platform_spawn(Slot *slot);
 ActTask *barrel_spawn(Slot *slot);
@@ -122,6 +127,9 @@ void objects_start(int level, int paletteAnimations);
 void act_tasks_destroy_all(void);
 void objects_run_before_camera(void);
 void objects_run_early(void);
+/** The objects' tasks from the camera's priority up to the HUD's, and from the HUD's up to Sonic's. */
+void objects_run_before_hud(void);
+void objects_run_after_hud(void);
 void objects_run_late(void);
 /** Whether the frame is drawn: the title card's frames before the first picture aren't. */
 void objects_set_drawing(int on);
@@ -201,6 +209,8 @@ void rings_start_point(void);
 int rings_task(ActTask *t);
 int scatter_task(ActTask *t);
 void scatter_launch(int x, int y, int n, int layer, int inverted);
+/** From now until the act starts again, the scattered rings also bounce off ceilings while they rise (a boss's). */
+void scatter_ceilings(void);
 /** A ring taken at (x, y): counted, with its sparkle and sound; ring_effect is the sparkle and sound alone. */
 void ring_add(int x, int y);
 void ring_effect(int x, int y);
@@ -234,7 +244,10 @@ int collide_spring_side(const void *o, int ox, int oy, const Hitbox *hb, Player 
 /** A hazard touched Sonic (Coll_DamagePlayer): false while he is invincible or still blinking. */
 int world_damage(Player *p);
 void world_add_score(int points);
+void world_add_score_jingle(int points);
 void world_prize(int kind);
 void world_life_more(void);
+/** A life more, with the 1-up jingle in place of the music. */
+void world_extra_life(void);
 
 #endif

@@ -79,7 +79,7 @@ static void round_throw(Player *p, int rot) {
   p->gsp = p->xsp;
   p->ysp = (sine_at(rot) / 15) / 256.0;
   if (p->xsp == 0) p->xsp = 8 / 256.0;
-  world_add_score(POINTS);
+  world_add_score_jingle(POINTS);
   play_song(SE_BUMPER_A);
 }
 

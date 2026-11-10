@@ -232,6 +232,10 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 95, 95, ice_block_spawn },
   { 84, 84, skating_stone_spawn },
   { 91, 91, ferris_wheel_spawn },
+  { 114, 114, breakable_wall_spawn },
+  { 85, 85, sinking_platform_spawn },
+  { 89, 89, rising_platform_spawn },
+  { 98, 98, lava_platform_spawn },
   { 94, 94, air_bubbles_spawn },
 };
 
@@ -252,6 +256,9 @@ static const struct { int kind; Spawn spawn; } ENEMIES[] = {
   { 16, yukimaru_spawn },
   { 20, pen_spawn },
   { 18, drisame_spawn },
+  { 25, egg_spider_spawn },
+  { 17, yukimaru_wall_spawn },
+  { 19, kuraa_spawn },
 };
 
 ActTask *entity_spawn(Slot *slot) {
@@ -295,5 +302,7 @@ void objects_start(int level, int paletteAnimations) {
 
 void objects_run_before_camera(void) { act_tasks_run(0, PRIORITY_CAMERA); }
 void objects_run_early(void) { act_tasks_run(PRIORITY_CAMERA, PRIORITY_SONIC); }
+void objects_run_before_hud(void) { act_tasks_run(PRIORITY_CAMERA, PRIORITY_HUD); }
+void objects_run_after_hud(void) { act_tasks_run(PRIORITY_HUD, PRIORITY_SONIC); }
 void objects_run_late(void) { act_tasks_run(PRIORITY_SONIC, 0x10000); }
 

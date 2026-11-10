@@ -600,7 +600,7 @@ static void water_step(Player *p) {
       surface_splash(p);
     }
     drown_count_reset(p);
-    water_drowning_music_stop();
+    if (level >= 0) water_drowning_music_stop();
   }
   if (p->surfaceT != 0) p->surfaceT--;
 }
@@ -768,7 +768,7 @@ void player_animate(Player *p, const PlayerInput *in) {
   if (p->dead && p->invulnerable == 1) return;
   if (p->state != PS_HURT && p->invulnerable > 0) p->invulnerable--;
   // the speed shoes and invincibility run out
-  if (p->speedUp > 0) p->speedUp--;
+  if (p->speedUp > 0 && --p->speedUp == 0) gba_sound_tempo(TEMPO_NORMAL);
   if (p->invincible > 0) p->invincible--;
 }
 

@@ -37,7 +37,7 @@ static int body_touching(const Player *p, int rx, int ry) {
 void rings_add(int n) {
   int before = act.ringCount;
   act.ringCount = (before + n) & 0xFFFF;
-  if (act.ringCount / 100 != before / 100) world_life_more();
+  if (act.ringCount / 100 != before / 100) world_extra_life();
 }
 
 // --- the sparkle a ring leaves, with its sound (CreateCollectRingEffect) --------------------------------------------------------
@@ -235,6 +235,9 @@ enum {
 };
 static struct { int x, y, vx, vy, life, layer; } scatter[SCATTER_SLOTS];
 static Sprite scatterSprite;
+static int scatterCeilings;   // set by a boss (unk2B6 bit 0): the rings also bounce off ceilings while rising
+
+void scatter_ceilings(void) { scatterCeilings = 1; }
 
 /** InitScatteringRings: up to 48 rings from (x, y), in the free slots; the rest are lost. The speeds go round three circles
  *  in mirrored pairs: each even ring gets the next angle on the circle, and the odd ring after it the same with X
@@ -288,6 +291,13 @@ int scatter_task(ActTask *t) {
         scatter[i].vy = (scatter[i].vy >> 2) - scatter[i].vy;
       }
     }
+    if (scatterCeilings && !up && scatter[i].vy < 0) {
+      int d = terrain_tile_probe(PROBE_FLOOR, ry - 16, rx, scatter[i].layer, -8).d;
+      if (d <= 0) {
+        scatter[i].y -= d * 256;
+        scatter[i].vy = (scatter[i].vy >> 2) - scatter[i].vy;
+      }
+    }
     scatter[i].vy += up ? -SCATTER_GRAVITY : SCATTER_GRAVITY;
     // drawn where it was before the bounce, blinking in its last 32 frames with Sonic's blink
     if (sx + TILE > 0 && sx + TILE < DISPLAY_WIDTH + 2 * TILE && sy > -TILE && sy < DISPLAY_HEIGHT + TILE
@@ -310,6 +320,7 @@ void rings_start(void) {
   ring_sprite(&scatterSprite, RING_TILES, ORDER_RING);
   scatterSprite.animSpeed = SCATTER_ANIM_SPEED;
   memset(scatter, 0, sizeof scatter);
+  scatterCeilings = 0;
   sparkles = 0;
 }
 

@@ -36,7 +36,37 @@ static struct {
   Task *t;
   Task *card;                     // the title card's part in it, and what it does next: 1 a frame, 2 the card's end
   int cardStep;
+  int late, early;                // this frame the waves start a line late, the colours under it are next frame's
 } water;
+
+// The stage clock's values (first to last) on which the original's VCount interrupt sets the waves' H-blank DMA up after the H-blank
+// of the line it comes on, so its first values go to the line after the water's line, which keeps the scroll the
+// V-blank wrote. It takes the console's timing, which nothing here counts, so these are measured from the original
+// in the act's recording (notes/the-waves-can-start-a-line-late.md), as the title demo's are (demo.js's lateWaves).
+static const struct { uint8_t level; uint16_t first, last; } LATE_WAVES[] = {
+  { 7, 1334, 1334 }, { 7, 1342, 1342 }, { 7, 8266, 8266 }, { 7, 8285, 8285 }, { 7, 8304, 8304 }, { 7, 9306, 9306 },
+  { 7, 9338, 9338 }, { 7, 9674, 9674 }, { 7, 9704, 9704 }, { 7, 9814, 9814 }, { 7, 9835, 9835 }, { 7, 9940, 9940 },
+  { 7, 9957, 9957 }, { 7, 10058, 10058 }, { 7, 10069, 10069 }, { 7, 10431, 10431 }, { 7, 10447, 10447 },
+  { 7, 10467, 10467 }, { 7, 10529, 10529 }, { 7, 10555, 10555 }, { 7, 10970, 11000 }, { 7, 11319, 11319 },
+  { 7, 11336, 11336 }, { 7, 11338, 11338 }, { 7, 11346, 11346 }, { 7, 11365, 11365 }, { 7, 11369, 11369 },
+  { 7, 11724, 11724 }, { 7, 11797, 11797 }, { 7, 11822, 11822 }, { 7, 11824, 11824 }, { 7, 11856, 11856 },
+  { 7, 11923, 11923 }, { 7, 11929, 11929 }, { 7, 11932, 11932 }, { 7, 11939, 11939 }, { 7, 12025, 12025 },
+  { 7, 12200, 12200 }, { 7, 12201, 12201 }, { 7, 12262, 12262 }, { 7, 12294, 12294 }, { 7, 12305, 12305 },
+  { 7, 12307, 12307 }, { 7, 12350, 12350 }, { 7, 12553, 12553 }, { 7, 12554, 12554 }, { 7, 12588, 12588 },
+  { 7, 12589, 12589 }, { 7, 12893, 12893 }, { 7, 12894, 12894 }, { 7, 12933, 12933 }, { 7, 12960, 12960 },
+  { 7, 12961, 12961 }, { 7, 12966, 12966 }, { 7, 13001, 13001 }, { 7, 13002, 13002 }, { 7, 13043, 13043 },
+  { 7, 13044, 13044 }, { 7, 13125, 13125 }, { 7, 13126, 13126 }, { 7, 13167, 13167 }, { 7, 13168, 13168 },
+};
+// And with the water's line near the screen's bottom, the interrupt itself can come so late that none of the lines
+// under it gets the colours under water or the waves: measured the same way, it runs after the screen's last line.
+static const struct { uint8_t level; uint16_t time; } LATE_INTERRUPTS[] = { { 7, 8310 }, { 7, 8409 }, { 7, 13234 }, };
+// And the other way: with the boss beaten, the next frame's tasks can be done before the line comes, so the colours under
+// water the interrupt loads are the ones the next frame's palette animations made (notes/the-colours-under-water-can-be-
+// the-next-frames.md). These are the stage clock values on which that shows, measured the same way.
+static const struct { uint8_t level; uint16_t first, last; } EARLY_COLOURS[] = {
+  { 7, 13048, 13048 }, { 7, 13114, 13126 }, { 7, 13189, 13201 }
+};
+
 
 /** CreateStageBg_Zone4 */
 void ice_mountain_create_background(void) {
@@ -141,7 +171,8 @@ static uint16_t under_colour(uint16_t c, uint16_t mask) {
   return (uint16_t)(v >> 1);
 }
 /** sub_804C40C: the colours under the water, from the sprites' and the backgrounds' as they are now */
-static void water_mask_palettes(void) {
+void water_mask_palettes(void) {
+  if (!water.on) return;
   // the mask is two colours in one word, read with the 32-bit colours it is mixed with: the low one for even entries
   uint16_t lo = (uint16_t)water.mask, hi = (uint16_t)(water.mask >> 16);
   for (int i = 0; i < 256; i++) water.under[i] = under_colour(e.objPalette[i], i & 1 ? hi : lo);
@@ -177,12 +208,17 @@ void water_card(int ending) {
 /** VCountIntr_8011ACC: from its line down, the colours under the water and no snow, which the next V-blank puts back,
  *  and from the line after it the background's waves, the ones the tasks wrote this frame */
 static void water_line(void) {
-  memcpy(gba_pal, water.under + 256, UNDER_BG_COLOURS * 2);
+  if (water.early) {
+    uint16_t next[256];
+    act_next_bg_palette(next);
+    uint16_t lo = (uint16_t)water.mask, hi = (uint16_t)(water.mask >> 16);
+    for (int i = 0; i < UNDER_BG_COLOURS; i++) gba_pal[i] = under_colour(next[i], i & 1 ? hi : lo);
+  } else memcpy(gba_pal, water.under + 256, UNDER_BG_COLOURS * 2);
   memcpy(gba_pal + 256, water.under, 256 * 2);
   gba_update_colors();
   gba_write(REG_DISPCNT, (uint16_t)(gba_io[REG_DISPCNT >> 1] & ~DISPCNT_BG0_ON));
   e.flags |= FLAGS_UPDATE_OBJ_PALETTES | FLAGS_UPDATE_BG_PALETTES;
-  hblank_dma_secondary(REG_BG0HOFS + 3 * 4, e.hblankSize);
+  hblank_dma_secondary(REG_BG0HOFS + 3 * 4, e.hblankSize, water.late);
 }
 
 /** sub_8011A4C, in the V-blank's update after the frame the water task asked for it: the line the frame is drawn with
@@ -207,6 +243,15 @@ void water_task(void) {
     if (water.current < water.target) water.current++;
     else if (water.current > water.target) water.current--;
   }
+  int time = act.tick;
+  water.late = water.early = 0;
+  for (unsigned i = 0; i < sizeof LATE_WAVES / sizeof *LATE_WAVES; i++)
+    if (LATE_WAVES[i].level == act.stage.level && time >= LATE_WAVES[i].first && time <= LATE_WAVES[i].last) water.late = 1;
+  for (unsigned i = 0; i < sizeof EARLY_COLOURS / sizeof *EARLY_COLOURS; i++)
+    if (EARLY_COLOURS[i].level == act.stage.level && time >= EARLY_COLOURS[i].first && time <= EARLY_COLOURS[i].last) water.early = 1;
+  int afterScreen = 0;
+  for (unsigned i = 0; i < sizeof LATE_INTERRUPTS / sizeof *LATE_INTERRUPTS; i++)
+    if (LATE_INTERRUPTS[i].level == act.stage.level && LATE_INTERRUPTS[i].time == time) afterScreen = 1;
   int camY = (int)act.cam.y;
   if (water.current <= camY) water.unk2 = 0;
   else if (water.current < camY + SCREEN_H) water.unk2 = (uint8_t)(water.current - camY);
@@ -227,7 +272,7 @@ void water_task(void) {
   // from the line on, the colours under the water and the waves (VCountIntr_8011ACC), from a line inside the screen
   if ((uint8_t)(water.unk2 - 1) < SCREEN_H - 1) {
     e.vcountIntr = water_line;
-    e.vcountLine = (uint8_t)(water.unk2 - 1);
+    e.vcountLine = (uint8_t)(afterScreen ? SCREEN_H : water.unk2 - 1);
     e.flags |= FLAGS_VCOUNT_INTR;
   } else {
     e.vcountIntr = NULL;
@@ -251,4 +296,5 @@ void water_task(void) {
 
 /** Whether the water's line is on the screen, which this part of the act doesn't take Sonic to yet */
 int water_level(void) { return water.current; }
+void water_lower(int dy) { water.target += dy; }
 int water_line_on_screen(void) { return water.on && (uint8_t)(water.unk1 - 1) < SCREEN_H - 1; }

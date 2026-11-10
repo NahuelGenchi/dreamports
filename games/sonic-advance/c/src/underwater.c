@@ -151,43 +151,15 @@ void water_countdown(int n) {
   object_task(&c->o, countdown_run, PRIORITY_EFFECTS);
 }
 
-// --- the drowning music (Task_StageMusicManager) ------------------------------------------------------------------------------
-// The act has no music manager of its own, so what it does with the drowning music is a task at its place in the frame:
-// gMusicManagerState.unk4 starts the song, and once Sonic's code has stopped it the manager finds no music playing and
-// starts the stage's song again, faded in (MusManager_UpdateBgmParams). It waits while Sonic is dead.
-enum { MUSIC_DROWNING = 1, MUSIC_STAGE };
-static int drowning;   // the drowning music plays
-typedef struct { Object o; int what; } Music;
+// --- the drowning music -------------------------------------------------------------------------------------------------------
+// gMusicManagerState.unk4: the music manager starts it after this frame's calls (music.c)
+void water_drowning_music(void) { music_call(MUSIC_DROWNING, 0); }
 
-static int music_run(ActTask *t) {
-  Music *m = (Music *)t->data;
-  if (act.player.dead) return 1;
-  if (m->what == MUSIC_DROWNING) play_song(MUS_DROWNING);
-  else {
-    play_song(act.stage.music);
-    gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4);
-  }
-  return 0;
-}
+/** m4aSongNumStop(MUS_DROWNING), which Sonic's code calls on every frame he is out of the water; the music manager then
+ *  finds no music playing and starts the stage's song again */
+void water_drowning_music_stop(void) { stop_song(MUS_DROWNING); }
 
-static void music(int what) {
-  Music *m = PLAIN_NEW(Music);
-  if (!m) return;
-  m->what = what;
-  object_task(&m->o, music_run, PRIORITY_MUSIC);
-}
-
-void water_drowning_music(void) { drowning = 1; music(MUSIC_DROWNING); }
-
-/** m4aSongNumStop(MUS_DROWNING), and the manager's stage song after it */
-void water_drowning_music_stop(void) {
-  if (!drowning) return;
-  drowning = 0;
-  stop_song(MUS_DROWNING);
-  music(MUSIC_STAGE);
-}
-
-void water_effects_start(void) { bubbles = 0; drowning = 0; }
+void water_effects_start(void) { bubbles = 0; }
 
 // --- the air bubbles (air_bubbles.c) --------------------------------------------------------------------------------------------
 // the frames between two big bubbles, in turn (gUnknown_086CEE60); a stream of small ones starts every half of one of them,
@@ -199,17 +171,21 @@ typedef struct { Object o; int kind, breathed, t, x, y; } Rising;   // unk3C, un
 
 static int sway(int t) { return SINE[(t * 3) & 1023] >> 11; }
 
-/** Task_BubbleContainingAir, rising, and Task_809141C, once he has breathed from it */
+/** Task_809141C: once he has breathed from it, the bubble stays where it is for 16 more frames */
+static int breathed_run(ActTask *t) {
+  Rising *r = (Rising *)t->data;
+  int x = r->x + sway(r->t), y = r->y - (r->t >> 1), level = water_level();
+  if (off_cam(x, y) || --r->breathed < 0 || level < 0 || y < level) return 0;
+  sprite_step(&r->o.sprite);
+  object_draw(&r->o.sprite, x, y);
+  return 1;
+}
+
+/** Task_BubbleContainingAir, rising */
 static int big_run(ActTask *t) {
   Rising *r = (Rising *)t->data;
   Sprite *s = &r->o.sprite;
   int x = r->x + sway(r->t), y = r->y - (r->t >> 1), level = water_level();
-  if (r->breathed) {
-    if (off_cam(x, y) || --r->breathed < 0 || level < 0 || y < level) return 0;
-    sprite_step(s);
-    object_draw(s, x, y);
-    return 1;
-  }
   if (off_cam(x, y) || level < 0 || y < level) return 0;
   ++r->t;
   sprite_step(s);   // r->kind * 8 > r->t, or the big one's kind: it always animates
@@ -222,6 +198,7 @@ static int big_run(ActTask *t) {
       water_drowning_music_stop();
       play_song(SE_AIR_BUBBLE);
       r->breathed = BREATHED_FOR;
+      t->run = breathed_run;
     }
   }
   object_draw(s, x, y);

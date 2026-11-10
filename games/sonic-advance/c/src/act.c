@@ -205,17 +205,25 @@ static void parse_palette_animation(PaletteAnim *p, int anim, int variant) {
     }
   }
 }
-static void palette_animation_step(PaletteAnim *p) {
+// one step of a palette animation into a palette, the screen's or a copy of it
+static void palette_animation_into(PaletteAnim *p, uint16_t *pal) {
   if (p->wait > 0) { p->wait -= 256; return; }
   if (p->frame < 0) return;
   p->shown = p->frame;
   for (int l = 0; l < p->loadCount[p->frame]; l++) {
     int entry = p->loads[p->frame][l].entry, count = p->loads[p->frame][l].count, insert = p->loads[p->frame][l].insert;
-    for (int i = 0; i < count; i++) e.bgPalette[(insert + i) & 0xFF] = (uint16_t)rom_u16(sprites.palettes + (uint32_t)entry * 32 + (uint32_t)i * 2);
-    e.flags |= FLAGS_UPDATE_BG_PALETTES;
+    for (int i = 0; i < count; i++) pal[(insert + i) & 0xFF] = (uint16_t)rom_u16(sprites.palettes + (uint32_t)entry * 32 + (uint32_t)i * 2);
+    if (pal == e.bgPalette) e.flags |= FLAGS_UPDATE_BG_PALETTES;
   }
   p->wait += (p->delays[p->frame] - 1) * 256;
   p->frame = p->frame + 1 < p->count ? p->frame + 1 : p->loop;
+}
+static void palette_animation_step(PaletteAnim *p) { palette_animation_into(p, e.bgPalette); }
+// the background colours the palette animations make on the next frame, which the water's colours below it can show
+// a frame early (notes/the-colours-under-water-can-be-the-next-frames.md)
+void act_next_bg_palette(uint16_t *pal) {
+  for (int i = 0; i < 256; i++) pal[i] = e.bgPalette[i];
+  for (int i = 0; i < act.palCount && i < 16; i++) { PaletteAnim copy = paletteAnims[i]; palette_animation_into(&copy, pal); }
 }
 static void palette_animation_task(Task *t) { palette_animation_step((PaletteAnim *)t->data); }
 static void start_palette_animations(void) {
@@ -429,6 +437,8 @@ static void draw_frame(void) {
   e.winRegs[0] = e.winRegs[1] = 0x00F0;
   // Secret Base act 1's beams leave WIN0V and WIN1V as they last set them on the frames they don't draw (actspot.c)
   if (act.stage.level != ACT_LEVEL_SECRET_BASE_1) e.winRegs[2] = e.winRegs[3] = 0x00A0;
+  // a boss's task clears the blending, while Sonic is alive (sub_80308A4)
+  if (act.blendOff) { e.winRegs[5] = 0; e.bldCnt = 0; e.bldY = 0; act.blendOff = 0; }
   // a hit boss's flash: the OBJ window on, everything in it brightened all the way (sub_802D870)
   if (act.bossFlash) { e.dispCnt |= 0x8000; e.winRegs[5] = 0x3F1F; e.bldCnt = 0xBF; e.bldY = 0x10; }
   act.drawn++;
@@ -717,14 +727,20 @@ static void act_frame(void) {
   // UpdateCamera's fnBgUpdate, which runs with its RenderMetatileLayers
   if (act.stage.backgroundScroll == BG_SCROLL_ICE_MOUNTAIN && camRuns) ice_mountain_background_update((int)act.cam.x, (int)act.cam.y);
   if (camRuns || (act.stage.level == ACT_LEVEL_NEO_GREEN_1 && act.frames > 0)) { if (act.stage.level == ACT_LEVEL_NEO_GREEN_2) neo_stage_animation_step(); else animate_stage_tiles(); }
-  // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts
-  if (act.frames > 0 || act.stage.level == ACT_LEVEL_NEO_GREEN_1) objects_run_early();
+  // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts;
+  // those from the HUD's priority on run after it, below
+  int objectsRun = act.frames > 0 || act.stage.level == ACT_LEVEL_NEO_GREEN_1;
+  if (objectsRun) objects_run_before_hud();
   // the title card's task (0x2100) runs before Sonic's and the clock's, so the frame it ends frees the pad and starts
   // the clock; its pieces and fade go over the act, and it sets the display while it shows, after draw_frame
   int cardShows = !act.cardDone;
   if (cardShows) card_update((e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
   // the results' task (0x2100) and its pieces' (0x2120); the frame they end, the next act takes over
   if (results_active() && !results_run()) { go_to_next_level(); return; }
+  // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180), and the objects' tasks from
+  // its priority after it, so an icicle (0x2200) that hurts Sonic takes his rings after the HUD has shown them
+  if (act.cardDone) hud_update(1);
+  if (objectsRun) objects_run_after_hud();
   PlayerInput in = {
     .left = (e.input & KEY_LEFT) != 0, .right = (e.input & KEY_RIGHT) != 0,
     .up = (e.input & KEY_UP) != 0, .down = (e.input & KEY_DOWN) != 0,
@@ -744,8 +760,6 @@ static void act_frame(void) {
   // gives him to run off (HOLD_RIGHT)
   if (act.player.ignoreInput)
     in = act.player.heldRight ? (PlayerInput){ .right = 1 } : act.player.heldLeft ? (PlayerInput){ .left = 1 } : (PlayerInput){0};
-  // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180)
-  if (act.cardDone) hud_update(1);
   player_step(&act.player, &in);
   // the start point's first act frame is the held A's jump, one frame after it began
   if (act.drawn == 0 && act.stage.level == ACT_LEVEL_CASINO_PARADISE_2 && gba_start_number("jump", 0)) player_start_jump(&act.player);
@@ -753,6 +767,9 @@ static void act_frame(void) {
   if (act.stage.level == ACT_LEVEL_NEO_GREEN_2)
     for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
   if (act.frames > 0 || act.stage.level == ACT_LEVEL_NEO_GREEN_1) objects_run_late();
+  // what the music manager reads of Sonic (0x4000)
+  const Player *sonic = &act.player;
+  music_call(MUSIC_PLAYER, (sonic->invincible > 0) | (sonic->speedUp > 0) << 1 | !sonic->dead << 2);
   // the stage clock's task (0xFF00): the course time counts once the card has ended, the stage's tick every frame
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
@@ -773,8 +790,7 @@ static void act_frame(void) {
 static void start_music(void) {
   if (!act.musicStarts) return;
   act.musicStarts = 0;
-  play_song(act.stage.music);
-  if (!act.afterLevel) { gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4); }
+  music_call(act.afterLevel ? MUSIC_STAGE : MUSIC_STAGE_IN, act.stage.music);
 }
 
 static void act_loaded(void) {
@@ -942,7 +958,12 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
 static int songPlaying;
 void act_song_playing(void) { songPlaying = 1; }
 
+// where an act's SoundMain starts in the chip's frame, after the act's V-blank work, measured on
+// sonic-ice-mountain-act-2; the menus' V-blanks do less, and their sound writes as it did before (#741)
+#define ACT_SOUND_MAIN_AT 52550
+
 void act_start(int level, int cardSkip, int preFrames) {
+  gba_sound_psg_at(ACT_SOUND_MAIN_AT);
   memset(&act, 0, sizeof act);
   // gPseudoRandom is one sequence for the whole game: the act goes on with what the front left
   act.seed = 0;
@@ -985,8 +1006,7 @@ void act_start(int level, int cardSkip, int preFrames) {
       act.frames = act.tick;
       // the stage's music manager, from its beginning at a sixty-fourth, fading in; the frames before the recording
       // are rendered at the first shown frame, as its own engine did
-      play_song(act.stage.music);
-      gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4);
+      music_call(MUSIC_STAGE_IN, act.stage.music);
       musicSync = 1;
       act.bgAnimDelay = 5;
       rings_act2_prepare();
@@ -994,7 +1014,7 @@ void act_start(int level, int cardSkip, int preFrames) {
     } else if (level == ACT_LEVEL_CASINO_PARADISE_2) {
       // the stage init starts the act's song before the card; the start point runs those frames with no sound engine,
       // then skips the music the same way, and starts the held A's jump sound one frame before the first compared
-      play_song(act.stage.music);
+      music_call(MUSIC_STAGE, act.stage.music);
       pre_run(cardSkip, preFrames, (int)gba_start_number("prelude", 0));
       act.startCamX = (int)act.cam.x; act.startCamY = (int)act.cam.y;
       act.frames = act.tick;
@@ -1014,8 +1034,7 @@ void act_start(int level, int cardSkip, int preFrames) {
       act.frames = act.tick;
       // the act's music starts with the act, fading in as the course select leaves it (MusManager_UpdateBgmParams,
       // music.js stageMusicIn): the card's frames of it play at once, unheard, so it goes on from where the original's is
-      play_song(act.stage.music);
-      gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4);
+      music_call(MUSIC_STAGE_IN, act.stage.music);
       gba_sound_played_for(act.tick);
       gba_sound_frames_gone_by(118);
     }

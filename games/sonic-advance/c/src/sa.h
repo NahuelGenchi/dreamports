@@ -133,7 +133,7 @@ uint32_t vram_malloc(uint32_t tiles);
 void vram_reset(void);
 void vram_free(uint32_t dest);
 void set_hblank_copy(uint32_t target, uint32_t size);
-void hblank_dma_secondary(uint32_t target, uint32_t size);
+void hblank_dma_secondary(uint32_t target, uint32_t size, int late);
 void engine_run(void);
 void engine_draw_setup(void);
 
@@ -142,6 +142,15 @@ void play_song(int song);
 void play_song_or_continue(int song);
 void stop_song(int song);
 void stop_all_songs(void);
+/** The stage's music manager (music.c), which runs on the sound's side after each frame's calls: the act's song starting
+ *  (MUSIC_STAGE_IN fading in, MUSIC_STAGE as it is), the results switching it off, a boss's state, an extra life's
+ *  jingle, invincibility's song, the drowning music, and what it reads of Sonic each frame (MUSIC_PLAYER: invincible, speed
+ *  shoes and alive, bits 0 to 2). */
+enum { MUSIC_STAGE = SOUND_OP_MANAGER, MUSIC_STAGE_IN, MUSIC_OFF, MUSIC_STATE, MUSIC_ONE_UP, MUSIC_STAR, MUSIC_DROWNING,
+  MUSIC_PLAYER };
+/** the music's tempo (m4aMPlayTempoControl): normal, and doubled while Sonic has speed shoes (PLAYER_SPEED_UP_MUSIC_TEMPO) */
+enum { TEMPO_NORMAL = 0x100, TEMPO_SPEED_UP = 0x200 };
+void music_call(int op, int a);
 enum { SONG_INTRO = 1, SONG_TITLE_FANFARE = 2, SONG_CHARACTER_SELECTION = 3, SONG_NEO_GREEN_HILL_1 = 12,
   SONG_SEGA_RING = 102, SONG_SELECT = 106,
   SONG_RETURN = 107, SONG_MENU_CURSOR = 108, SONG_BOSS_FIGHT = 29,

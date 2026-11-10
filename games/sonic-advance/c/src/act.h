@@ -82,6 +82,7 @@ typedef struct {
   int afterLevel;                  // made by GoToNextLevel after the act before, rather than by the course select
   int loadFrames;                  // the frames left that the next act spends loading after its first (act_task)
   int bossFlash;                   // a hit boss drawn into the OBJ window, which the frame brightens to white
+  int blendOff;                    // a boss's task cleared the blending this frame
   int checkpointIndex, checkpointX, checkpointY, checkpointTime;   // the last checkpoint passed (gBossIndex), where and when
   int clockStopped, cardFrame, cardDone, firstCard, started, preFrames, firstFrame, drawn;
   // the stage's animated tiles (UpdateBgAnimationTiles), and its palette animations' sprites
@@ -130,6 +131,11 @@ void water_task(void);
 int water_line_on_screen(void);
 /** gWater.currentWaterLevel: the water line's height in the world, -1 in an act without water. */
 int water_level(void);
+/** The water's colours for the frame's palette, and the water line's target moved down by dy px (the Egg Spider's). */
+void water_mask_palettes(void);
+void water_lower(int dy);
+/** The background's colours as the palette animations will leave them next frame, worked out on copies of them. */
+void act_next_bg_palette(uint16_t *pal);
 // what happens under it (underwater.c): the splash at the line, a bubble rising from (x, y) in 1/256 px, the bubbles after
 // Sonic drowns, a number of the drowning countdown over him, and the drowning music, started and stopped
 void water_splash(int x);
