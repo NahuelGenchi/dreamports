@@ -25,7 +25,7 @@ enum { SHOT_PRIORITY = 0x9000 };
 typedef struct {
   Object o;
   int spawnX, spawnY, x, y, d0, d1, d2, d3;
-  int kind, vel, off, yoff, t, tops, throwing, shot, right, tackle, state, vy, cd, croakIndex, n, fresh;
+  int kind, vel, off, yoff, t, tops, throwing, shot, right, tackle, state, vy, cd, croakIndex, n;
   int turnNext, turnRight, shootNext;
 } Enemy;
 
