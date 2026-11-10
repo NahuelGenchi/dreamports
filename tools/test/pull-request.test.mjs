@@ -32,6 +32,12 @@ test('what the tools know is filled in, and the rest keeps the template\'s words
   assert.deepEqual(unfilled(text, TEMPLATE).map(line => line.split(':')[0]), ['Sources', 'Start points', 'Site build', 'Browser checks', 'Source/diff review', '<what still differs, what wasn\'t checked and what follows, or None when that\'s true>']);
 });
 
+test('someone else\'s game names its lead under what changed', () => {
+  const text = pullRequestText(TEMPLATE, { ...KNOWN, lead: 'pat-lead' });
+  assert.ok(text.includes('The late room plays.\n\nThe game\'s lead is @pat-lead.\n\n## A Dreamport\'s changes'));
+  assert.ok(!pullRequestText(TEMPLATE, KNOWN).includes('lead is @'));
+});
+
 test('what isn\'t known stays to fill in', () => {
   const text = pullRequestText(TEMPLATE, { clips: '', notes: [] });
   assert.ok(unfilled(text, TEMPLATE).includes('Closes #<issue-number>'));

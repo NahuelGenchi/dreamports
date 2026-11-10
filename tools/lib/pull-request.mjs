@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { proofOf, percentText } from '../../src/lib/entries.mjs';
 import { LANGUAGES, versionOf } from '../../src/lib/languages.mjs';
 import { notesIn } from '../../src/lib/notes.mjs';
-import { UPSTREAM, api } from './github.mjs';
+import { UPSTREAM, api, signedInAs } from './github.mjs';
 import { REPO } from './paths.mjs';
 
 /** The issue a branch is for, from its name, as in feat/741-ice-mountain-act-2, or null. */
@@ -63,14 +63,15 @@ const labelOf = line => /^([A-Z][A-Za-z/ ]*?)(?: in [A-Z][A-Za-z+#]*)?:/.exec(li
 /**
  * The pull request's text from the repository's `template`, with what `known` holds filled in: `issue` and its
  * `milestone`, the `branch`, `buildsOn`, the numbers of the pull requests in review the branch starts on top of,
- * `about`, what changed in a sentence or two, `clips`, their lines as share keeps them, or '' when it shared none,
+ * `about`, what changed in a sentence or two, `lead`, the game's lead when it's someone else, `clips`, their lines as
+ * share keeps them, or '' when it shared none,
  * `numbers` (numberLines), `notes`, the titles of the notes the step adds or changes, and `preview`, its address.
  * Anything not known keeps the template's own words. With `earlier`, a text made before for the same branch, everything
  * someone wrote in it stays, and only the lines the tools know better now are written again: the clips, the numbers,
  * the notes and the preview.
  */
 export function pullRequestText(template, known, earlier = null) {
-  const { issue, milestone, branch, buildsOn = [], about, clips, numbers, notes, preview } = known;
+  const { issue, milestone, branch, buildsOn = [], about, lead, clips, numbers, notes, preview } = known;
   // each line the tools write, by the label it starts with
   const own = {
     Clips: clips === undefined ? undefined : clips ? `Clips:\n\n${clips}\n` : 'Clips: none',
@@ -94,7 +95,7 @@ export function pullRequestText(template, known, earlier = null) {
     else if (earlier) out.push(line);
     else if (once[label] !== undefined) out.push(once[label]);
     else if (line.trim() === 'Closes #<issue-number>' && issue) out.push(`Closes #${issue}`, ...buildsOn.map(number => `Builds on #${number}`));
-    else if (line.trim() === '## Changes') out.push(line, '', about || CHANGES);
+    else if (line.trim() === '## Changes') out.push(line, '', about || CHANGES, ...(lead ? ['', `The game's lead is @${lead}.`] : []));
     else if (line.trim() === '## Limitations and follow-up') out.push(line, '', LIMITS);
     else out.push(line);
   }
@@ -132,9 +133,15 @@ export function knownOf({ game, branch, commit, base, about, preview, clips }) {
   const at = wanted => [path => (has(['cat-file', '-e', `${wanted}:${path}`]) ? git(['show', `${wanted}:${path}`]) : null),
     folder => (has(['cat-file', '-e', `${wanted}:${folder}`]) ? git(['ls-tree', '--name-only', `${wanted}:${folder}/`]).split('\n').filter(Boolean).map(path => path.split('/').pop()) : [])];
   const issue = issueOfBranch(branch);
-  let milestone = null, buildsOn = [];
+  // the game's lead, when it's someone else than whoever is signed in: whoever its game's issue is assigned to, or else
+  // its entry's lead
+  const entry = at(commit)[0](`games/${versionOf(game).game}/entry.md`) ?? '';
+  const home = Number(/^issue:\s*(\d+)/m.exec(entry)?.[1]) || null;
+  let milestone = null, buildsOn = [], lead = /^lead:\s*['"]?([\w-]+)/m.exec(entry)?.[1] ?? null;
   try {
     milestone = issue ? api(`repos/${UPSTREAM}/issues/${issue}`)?.milestone?.title ?? null : null;
+    lead = (home ? api(`repos/${UPSTREAM}/issues/${home}`)?.assignees?.[0]?.login : null) ?? lead;
+    if (lead?.toLowerCase() === signedInAs().toLowerCase()) lead = null;
     // the pull requests in review whose commits the branch carries and main doesn't have, as a piece on top of one starts from it
     const carried = sha => has(['merge-base', '--is-ancestor', sha, commit]) && !(base && has(['merge-base', '--is-ancestor', sha, base]));
     buildsOn = (api(`repos/${UPSTREAM}/pulls?state=open&per_page=100`) ?? []).filter(pull => !pull.draft && pull.head.ref !== branch && carried(pull.head.sha)).map(pull => pull.number);
@@ -147,5 +154,5 @@ export function knownOf({ game, branch, commit, base, about, preview, clips }) {
     const [top, name] = path.split('/');
     return notesIn(REPO, top, name).find(note => note.path === path)?.title;
   }).filter(Boolean);
-  return { issue, milestone, branch, buildsOn, about, clips, numbers: numberLines(game, base ? proofAt(game, ...at(base)) : null, proofAt(game, ...at(commit))), notes, preview };
+  return { issue, milestone, branch, buildsOn, about, lead, clips, numbers: numberLines(game, base ? proofAt(game, ...at(base)) : null, proofAt(game, ...at(commit))), notes, preview };
 }
