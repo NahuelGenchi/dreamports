@@ -15,7 +15,9 @@
 // pictures and the clips stay in .dreamports/results/ on this computer: they show the game, so they never go in a commit.
 // Several recordings play at the same time, each in a page of the browser and a thread of this tool of its own, as many
 // as the computer has room for as it starts (lib/at-once.mjs), or as --at-once says. Each still prints everything it
-// found in one piece, in the usual order.
+// found in one piece, in the usual order. A whole game's proof sums up, in a line or two, the recordings that came out
+// as when last proven and that this step changed nothing in, as nothing about them is news, and --all prints each of
+// those in full too, as naming a recording does.
 
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -55,7 +57,7 @@ export async function run(args) {
   const asked = [...new Set([...(stillsAt >= 0 ? framesIn(args[stillsAt + 1], '--stills', STILLS) : []), ...askedState])].sort((x, y) => x - y);
   const atOnceAt = args.indexOf('--at-once');
   const [game, ...names] = args.filter((a, i) => !a.startsWith('--') && [stillsAt, stateAt, atOnceAt].every(at => at < 0 || i !== at + 1));
-  if (!game) throw new Error('Usage: npm run dp -- prove <game> [recording…] [--quick] [--stills <frames>] [--state <frames>] [--at-once <how many>]');
+  if (!game) throw new Error('Usage: npm run dp -- prove <game> [recording…] [--quick] [--stills <frames>] [--state <frames>] [--all] [--at-once <how many>]');
   const quick = args.includes('--quick');
   const original = readOriginal(game);
   const reference = await referenceOf(original);
@@ -68,6 +70,10 @@ export async function run(args) {
   reference.ensureOriginal(console.log);
 
   const progress = readProgress(game);
+  // a whole game's plain proof says in full only what's news: the recordings that came out as when last proven, and
+  // that this step changed nothing in, are summed up at the end
+  const summing = !names.length && !quick && !asked.length && !args.includes('--all');
+  const asBefore = (result, name) => !result.changed && !result.wrong && !result.neverInPlay.length && JSON.stringify(keptOf(result)) === JSON.stringify(progress.recordings[name]);
   // what every lane plays with: what was asked, and what each recording found when last proven
   const paced = args.includes('--paced');
   const setup = { game, quick, paced, asked, askedState, before: progress.recordings };
@@ -75,12 +81,16 @@ export async function run(args) {
   const lanes = atOnce({ wanted: recordings.length, asked: paced ? 1 : atOnceAt >= 0 ? args[atOnceAt + 1] : undefined });
   // each recording's result, kept with what it said until every one before it has ended, so they print and are
   // written in the usual order whichever ends first
-  const results = new Array(recordings.length), said = recordings.map(() => []);
+  const results = new Array(recordings.length), said = recordings.map(() => []), quiet = [];
   let browser = null, printed = 0;
   const status = text => lanes > 1 && process.stdout.isTTY && process.stdout.write(`\r${text.padEnd(70)}${text ? '' : '\r'}`);
   const ended = (at, result, lines = []) => {
     results[at] = result;
     said[at] = lines;
+    if (summing && asBefore(result, recordings[at].name)) {
+      quiet.push(at);
+      said[at] = [];
+    }
     status('');
     for (; printed < recordings.length && results[printed]; printed++) for (const line of said[printed]) console.log(line);
     const count = results.filter(Boolean).length;
@@ -100,7 +110,9 @@ export async function run(args) {
         for (let page = browser; waiting.length; page = waiting.length ? await page.another() : page) {
           const at = waiting.shift(), { name } = recordings[at];
           const say = text => process.stdout.isTTY && process.stdout.write(text ? `\r${`${name}: ${text}`.padEnd(70)}` : `\r${''.padEnd(70)}\r`);
-          ended(at, await lane.play(name, page, { log: console.log, say }));
+          // a recording that may be summed up says nothing until it ends
+          const lines = [];
+          ended(at, await lane.play(name, page, { log: summing ? line => lines.push(line) : console.log, say }), lines);
         }
       } finally {
         await lane.close();
@@ -130,21 +142,8 @@ export async function run(args) {
     await browser?.close();
   }
   const failed = results.some(result => result.matched < result.frames || result.neverInPlay.length > 0 || result.wrong > 0);
-  if (!quick) {
-    recordings.forEach((recording, at) => {
-      const result = results[at];
-      progress.recordings[recording.name] = {
-        frames: result.frames,
-        matched: result.matched,
-        differs: result.differs,
-        ...(result.soundDiffers.length ? { soundDiffers: result.soundDiffers } : {}),
-        ...(result.onlyInOriginal ? { onlyInOriginal: result.onlyInOriginal } : {}),
-        ...(result.neverInPlay.length ? { neverInPlay: result.neverInPlay } : {}),
-        ...(result.shows ? { shows: result.shows } : {}),
-        functions: result.functions,
-      };
-    });
-  }
+  if (quiet.length) for (const line of summed(quiet.sort((a, b) => a - b).map(at => ({ name: recordings[at].name, ...results[at] })), recordings.length)) console.log(line);
+  if (!quick) recordings.forEach((recording, at) => { progress.recordings[recording.name] = keptOf(results[at]); });
 
   // only a game's own code knows what its opening does, so the tools can only remind it
   if (recordings.some(recording => fromStartPoint(recording, Infinity)) && !namesNeverInPlay(join(REPO, 'games', game, 'src'))) {
@@ -173,6 +172,31 @@ export async function run(args) {
     console.log(error.message);
   }
   return failed ? 1 : 0;
+}
+
+/** What progress.json keeps of what a recording found. */
+const keptOf = result => ({
+  frames: result.frames,
+  matched: result.matched,
+  differs: result.differs,
+  ...(result.soundDiffers.length ? { soundDiffers: result.soundDiffers } : {}),
+  ...(result.onlyInOriginal ? { onlyInOriginal: result.onlyInOriginal } : {}),
+  ...(result.neverInPlay.length ? { neverInPlay: result.neverInPlay } : {}),
+  ...(result.shows ? { shows: result.shows } : {}),
+  functions: result.functions,
+});
+
+/**
+ * The lines that sum up the recordings a whole game's proof found as when last proven, with nothing this step changed
+ * in them: `found` holds each one's { name, frames, matched, differs }, in order, of `all` recordings played.
+ */
+export function summed(found, all) {
+  const same = found.filter(r => r.matched === r.frames), differing = found.filter(r => r.matched < r.frames);
+  return [
+    `\n${found.length} of ${all} recordings came out as when last proven, and this step changed nothing in them. --all prints each one in full.`,
+    ...(same.length ? [`  Every frame the same, ${same.length}: ${same.map(r => r.name).join(', ')}.`] : []),
+    ...(differing.length ? [`  Differing from the same frame as before, ${differing.length}: ${differing.map(r => `${r.name} from ${r.differs[0]?.[0] ?? r.matched}`).join(', ')}.`] : []),
+  ];
 }
 
 /**
@@ -626,7 +650,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (!quick) log(`  What this step changed: ${changedText(changed)}${changed ? '' : ', so share leaves this clip out'}.`);
     if (changed) for (const problem of problems) log(`  share won't put this clip in a pull request: ${problem}`);
     if (showing) log(`  What the original shows as it ends: ${Object.entries(showing).map(([kind, value]) => `its ${kind} is ${typeof value === 'number' ? `${value}, which original.json gives no name` : value}`).join('; ')}.`);
-    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(showing ? { shows: showing } : {}), functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };
+    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(showing ? { shows: showing } : {}), changed: !!changed, functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };
     }
   }
 }

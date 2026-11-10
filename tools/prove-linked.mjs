@@ -144,5 +144,5 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   if (clipFile) log(`  What this step changed: ${changedText(changed)}${changed ? '' : ', so share leaves this clip out'}.`);
   if (changed) for (const problem of problems) log(`  share won't put this clip in a pull request: ${problem}`);
   say('');
-  return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], functions: [] };
+  return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], changed: !!changed, functions: [] };
 }
