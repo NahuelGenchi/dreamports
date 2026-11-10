@@ -10,11 +10,12 @@
 // aren't in C yet: every press here starts the act through front_play, which stops where the acts begin.
 
 #include "sa.h"
+#include "act.h"
 
 enum { ANIM_ACTS = 724, ANIM_ARROW_UP = 745, ANIM_VS_MENU_WAIT = 905 };
 // gUnknown_0868B10C: the acts' 15 sets of tiles, in sprite VRAM
 #define ACT_TILES_AT 0x20
-#define ACT_TILES 0x3C0
+#define COURSE_ACT_TILES 0x3C0
 // gUnknown_0868B1C0's animations: the zones' names
 static const uint16_t ZONES[8] = { 725, 726, 727, 742, 743, 744, 729, 728 };
 #define ZONE_TILES_AT 0x3860
@@ -48,6 +49,7 @@ static struct {
 } screen;
 
 static void slide_in(Task *t);
+static void idle(Task *t);
 static void choose_act(Task *t);
 static void leave_choose(Task *t, int ending, int song);
 static void fade_out(Task *t);
@@ -56,6 +58,23 @@ static void slide_acts(Task *t);
 static void show_acts(Task *t);
 static void slide_zones(Task *t);
 static void show_zones(Task *t);
+static void watch_start_point(Task *t);
+
+// A start point at an act opens it at the page frame the recording names, while the original plays the course
+// select and the act's title card in onlyInOriginal. It leaves the course select running until then, so the sprite
+// palettes the screen loaded are the ones the act keeps.
+static void watch_start_point(Task *t) {
+  int level = (int)gba_start_number("level", -1);
+  if (level < 0 || gba_start_number("power", 0) != 2) return;
+  // only a start point that names its frame; the normal course select picks the act when A is pressed
+  if (gba_start_number("at", -1) < 0) return;
+  if (front_frame() < (uint32_t)gba_start_number("at", 0)) return;
+  destroy_tasks(0x2000, 0x3000);
+  act_active = 1;
+  act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
+  act_frame_now();
+  destroy_task(t);
+}
 
 // a sprite of the screen's: its animation from the start, at normal speed
 static void screen_sprite(Sprite *s, uint16_t anim, uint32_t dest) {
@@ -150,7 +169,7 @@ void create_course_select(void) {
   screen.wait.x = 120; screen.wait.y = 80; screen.wait.oamFlags = 0x80; screen.wait.frameFlags = 0x2000;
   update_sprite(&screen.wait, 0);
   for (int i = 0; i < rows; i++) {
-    screen_sprite(&screen.acts[i], ANIM_ACTS, OBJ_VRAM + ACT_TILES_AT + i * ACT_TILES);
+    screen_sprite(&screen.acts[i], ANIM_ACTS, OBJ_VRAM + ACT_TILES_AT + i * COURSE_ACT_TILES);
     screen.acts[i].variant = (uint8_t)i; screen.acts[i].oamFlags = 0x480; screen.acts[i].frameFlags = 0x2000;
     update_sprite(&screen.acts[i], 0);
   }
@@ -161,13 +180,28 @@ void create_course_select(void) {
     update_sprite(&screen.zones[i], 0);
   }
   screen.tasks[2] = create_task(slide_zones, &screen, 0x2030, 0, NULL);
+  create_task(watch_start_point, NULL, 0x1FFF, 0, NULL);
   fade_step(&screen.fade);
   (void)main;
+}
+
+// a start point at an act opens it at the A that would have chosen it, while the original plays its title card
+static int take_start_point(Task *t) {
+  int level = (int)gba_start_number("level", -1);
+  if (!(e.pressed & KEY_A) || level != ACT_LEVEL_CASINO_PARADISE_2 || gba_start_number("power", 0) != 2) return 0;
+  if (front_frame() < (uint32_t)gba_start_number("at", 0)) return 0;
+  destroy_tasks(0x2001, 0x3000);
+  t->main = idle;
+  act_active = 1;
+  act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
+  act_frame_now();
+  return 1;
 }
 
 // Task_CourseSelectInit, 0x08061E50: the colours, and the picture's bands apart by what's left of the slide: 12 lines
 // at the scroll, and then bands of 24 lines, each below a gap of 64 - frame lines that show the map's first rows
 static void slide_in(Task *t) {
+  if (take_start_point(t)) return;
   int frame = screen.frame + 1;
   screen.scrollTo = frame == SLIDE_END && screen.rows == 1 ? 0 : 0x14;
   screen.scroll = 0x14;
@@ -196,7 +230,9 @@ static void slide_in(Task *t) {
 
 // Task_8062140: Up and Down choose, and the lists scroll two rows at a time to keep the choice in view. A on the
 // first frame after the slide only stops the song.
+static void idle(Task *t) { (void)t; }
 static void choose_act(Task *t) {
+  if (take_start_point(t)) return;
   int frame = screen.frame + 1;
   if (screen.rows > 1) {
     if (e.repeated & KEY_DOWN) {
