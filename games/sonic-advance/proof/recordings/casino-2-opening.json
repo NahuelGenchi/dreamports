@@ -1,0 +1,109 @@
+{
+  "about": "Casino Paradise Zone act 2's opening in C: its first playable frame, and the five seconds after it, where its rings, palette animations, background scroll and fireworks begin.",
+  "start": "unlocked=5&character=0&power=2&level=5&card=-1&pre=5&at=4767&prelude=5&jump=1&jumpadv=1&skip=232",
+  "frames": 5068,
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      150,
+      [
+        "A"
+      ]
+    ],
+    [
+      156,
+      []
+    ],
+    [
+      3600,
+      [
+        "START"
+      ]
+    ],
+    [
+      3606,
+      []
+    ],
+    [
+      3700,
+      [
+        "A"
+      ]
+    ],
+    [
+      3706,
+      []
+    ],
+    [
+      3880,
+      [
+        "DOWN"
+      ]
+    ],
+    [
+      4240,
+      []
+    ],
+    [
+      4767,
+      [
+        "A"
+      ]
+    ],
+    [
+      4768,
+      []
+    ]
+  ],
+  "onlyInOriginal": [
+    {
+      "at": 3751,
+      "frames": 126,
+      "held": [
+        [
+          69,
+          [
+            "A"
+          ]
+        ],
+        [
+          75,
+          []
+        ]
+      ],
+      "sets": [
+        {
+          "frame": 9,
+          "address": "03005168",
+          "bytes": 1,
+          "value": 5
+        }
+      ],
+      "about": "The character select, which the address's ?unlocked leaves out of the Dreamport: A picks Sonic, with his progress set, which leads to the course select."
+    },
+    {
+      "at": 4767,
+      "frames": 245,
+      "held": [
+        [
+          0,
+          [
+            "A"
+          ]
+        ],
+        [
+          6,
+          []
+        ]
+      ],
+      "about": "The course select's A on Casino Paradise Zone act 2 and its title card, which the Dreamport's start point runs without its pictures."
+    }
+  ],
+  "clip": {
+    "at": 4767,
+    "frames": 300
+  }
+}

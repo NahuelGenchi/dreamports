@@ -114,6 +114,8 @@ void destroy_tasks(uint16_t lo, uint16_t hi);
 void engine_stall(int frames, void (*then)(void));
 void engine_lag(int frames, int late);
 void queue_graphics(Graphics *g);
+// applies what the graphics queue holds now, as a V-blank does, for frames a start point runs with no V-blank
+void engine_copy_graphics(void);
 void clear_queues(void);
 void clear_bg_sprites(void);
 void engine_copy_graphics(void);
@@ -135,7 +137,7 @@ void stop_all_songs(void);
 enum { SONG_INTRO = 1, SONG_TITLE_FANFARE = 2, SONG_CHARACTER_SELECTION = 3, SONG_NEO_GREEN_HILL_1 = 12,
   SONG_SEGA_RING = 102, SONG_SELECT = 106,
   SONG_RETURN = 107, SONG_MENU_CURSOR = 108, SONG_BOSS_FIGHT = 29,
-  SONG_SHIFT = 103, SONG_RING = 117,
+  SONG_SHIFT = 103, SONG_JUMP = 116, SONG_RING = 117,
   SONG_COURSE_SELECTION = 4, SONG_VS_PLEASE_WAIT = 5, SONG_VS_LOBBY = 6, SONG_PLAYER_DATA = 48,
   SONG_VS_LOBBY_HELLO = 156, SONG_VS_LOBBY_CLOSED = 160,
   SONG_CONNECTION_SUCCESS = 301, SONG_CONNECTION_ERROR = 302, SONG_CONNECTION_CLOSED = 303 };

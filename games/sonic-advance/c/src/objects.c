@@ -206,7 +206,6 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 62, 62, bowl_spawn },
   { 63, 64, panel_gate_spawn },
   { 69, 69, conveyor_spawn },
-  { 79, 79, steam_exhaust_spawn },
   { 31, 33, booster_spawn },
   { 75, 75, hook_rail_spawn },
   { 76, 76, swinging_hook_spawn },
@@ -221,6 +220,7 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 100, 101, booster_spawn },
   { 70, 70, visibility_spawn },
   { 74, 74, carousel_spawn },
+  { 79, 79, steam_exhaust_spawn },
   { 102, 102, special_spring_spawn },
 };
 

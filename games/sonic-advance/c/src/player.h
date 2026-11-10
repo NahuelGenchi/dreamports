@@ -85,6 +85,8 @@ void player_draw(Player *p, int camX, int camY);
 /** The hooks for the objects: out of a ball and into one, keeping his feet in place. */
 void player_stand_up(Player *p);
 void player_curl_up(Player *p);
+/** Starts the jump the course select's held A began, one frame into it. */
+void player_start_jump(Player *p);
 /** Touching down on the ground or an object (sub_8021BE0); the caller sets the ground speed. */
 void player_land(Player *p);
 /** Ends the B-button combo, the mid-air moves and the spin dash. */

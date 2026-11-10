@@ -98,7 +98,9 @@ static uint32_t normal[512], variant[512];
 static int variant_for = -1;   // the effect and level the variant colours were made for
 
 static uint32_t row[MAX_W], sprite_layer[MAX_W];
-typedef struct { int end_x; int ctl; int outside; } Window;   // outside: a run no window 0 or 1 covers
+// outside: a run no window 0 or 1 covers. run_start and run_end: the run as windows 0 and 1 leave it, which the OBJ
+// window splits only pixel by pixel, as mGBA draws it
+typedef struct { int end_x; int ctl; int outside; int run_start, run_end; } Window;
 static Window windows[MAX_W];
 static int n_windows = 1;
 // the outside's own control bits, which a sprite's colours keep inside the OBJ window too, as in mGBA
@@ -364,8 +366,20 @@ static void composite_sprites(int priority, int start, int end, int ctl) {
   }
 }
 
+// mGBA draws a run's first tile on its own when the run starts partway into it (software-mode0.c,
+// DRAW_BACKGROUND_MODE_0_TILE_SUFFIX_16 and _256), and not quite as the console does when the run also ends inside
+// it: a flipped tile goes from the run's last pixel back, from the tile's first column, and a 256-colour one in two
+// halves of 4 pixels, the second from the tile's fifth column. The column of the tile's row that x shows, from the
+// run [start, end) inside the tile and the run's start in it, `mod8`, or 8 or more for none.
+static int first_tile_column(int x, int start, int end, int mod8, int is256, int hflip) {
+  if (hflip) return end - 1 - x;
+  if (!is256) return mod8 + x - start;
+  if (end - 4 > start) return x < end - 4 ? mod8 + x - start : 4 + x - (end - 4);
+  return 4 + (mod8 & 3) + x - start;
+}
+
 // a text background over [start, end) of line y
-static void draw_text(const Bg *bg, int y, int start, int end, int ctl) {
+static void draw_text(const Bg *bg, int y, int start, int end, int run_start, int run_end, int ctl) {
   if (!(ctl & (1 << bg->index))) return;
   const uint32_t *colors;
   uint32_t flags = bg_flags(bg, ctl, &colors);
@@ -378,6 +392,9 @@ static void draw_text(const Bg *bg, int y, int start, int end, int ctl) {
   if (size == 2) y_base += in_y & 0x100;
   else if (size == 3) y_base += (in_y & 0x100) << 1;
   y_base = (screen_base >> 1) + (y_base << 2);
+  // the run's first tile, when it starts partway into one, ends at first_end
+  int mod8 = (run_start + hofs) & 7, first_end = mod8 ? run_start + 8 - mod8 : run_start;
+  if (first_end > run_end) first_end = run_end;
   for (int x = start; x < end; x++) {
     int local_x = (x + hofs) & 0x1FF;
     int x_base = local_x & 0xF8;
@@ -385,7 +402,9 @@ static void draw_text(const Bg *bg, int y, int start, int end, int ctl) {
     uint16_t map = vram16((uint32_t)(y_base + (x_base >> 3)) & 0xFFFF);
     int ty = in_y & 7, tx = local_x & 7;
     if (map & 0x800) ty = 7 - ty;
-    if (map & 0x400) tx = 7 - tx;
+    if (x < first_end) tx = first_tile_column(x, run_start, first_end, mod8, is256, map & 0x400);
+    else if (map & 0x400) tx = 7 - tx;
+    if (tx > 7) continue;
     int pixel;
     uint32_t color;
     if (is256) {
@@ -475,8 +494,8 @@ static void break_obj_window(int y) {
     for (; x < old[w].end_x; x++) {
       int c = old[w].outside && objwin_mask[x] ? ctl : old[w].ctl;
       Window *last = n_windows ? &windows[n_windows - 1] : NULL;
-      if (last && last->ctl == c && last->outside == old[w].outside) last->end_x = x + 1;
-      else windows[n_windows++] = (Window){ x + 1, c, old[w].outside };
+      if (last && last->ctl == c && last->run_start == old[w].run_start) last->end_x = x + 1;
+      else windows[n_windows++] = (Window){ x + 1, c, old[w].outside, old[w].run_start, old[w].run_end };
     }
   }
 }
@@ -512,8 +531,12 @@ static void draw_line(int y, uint32_t *out) {
     windows[0].ctl = outside_ctl = gba_io[REG_WINOUT >> 1] & 0x3F;
     if (dispcnt & 0x4000) break_window(1, y);
     if (dispcnt & 0x2000) break_window(0, y);
-    if ((dispcnt & 0x9000) == 0x9000) break_obj_window(y);
   } else windows[0].ctl = outside_ctl = 0xFF;
+  for (int w = 0, start = 0; w < n_windows; start = windows[w++].end_x) {
+    windows[w].run_start = start;
+    windows[w].run_end = windows[w].end_x;
+  }
+  if ((dispcnt & 0x9000) == 0x9000) break_obj_window(y);
   force_target_1 = 0;
 
   // the backdrop
@@ -554,7 +577,7 @@ static void draw_line(int y, uint32_t *out) {
         if (!bg->enabled || bg->priority != p) continue;
         int text = i < 2 ? mode < 2 : mode == 0;
         int affine = i == 2 ? mode == 1 || mode == 2 : i == 3 && mode == 2;
-        if (text) draw_text(bg, y, start, end, ctl);
+        if (text) draw_text(bg, y, start, end, windows[w].run_start, windows[w].run_end, ctl);
         else if (affine) draw_affine(bg, start, end, ctl);
         else if (i == 2 && mode == 4) draw_bitmap(bg, start, end, ctl);
       }

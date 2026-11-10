@@ -87,8 +87,9 @@ export function createVideo() {
   let variantFor = -1;   // the effect and level the variant colours were made for
 
   const row = new Uint32Array(MAX_W), spriteLayer = new Uint32Array(MAX_W);
-  // outside: a run no window 0 or 1 covers
-  const windows = Array.from({ length: MAX_W }, () => ({ endX: 0, ctl: 0, outside: false }));
+  // outside: a run no window 0 or 1 covers. runStart and runEnd: the run on the screen as windows 0 and 1 leave it,
+  // which the OBJ window splits only pixel by pixel, as mGBA draws it
+  const windows = Array.from({ length: MAX_W }, () => ({ endX: 0, ctl: 0, outside: false, runStart: 0, runEnd: 0 }));
   let nWindows = 1;
   // the outside's own control bits, which a sprite's colours keep inside the OBJ window too, as in mGBA
   let outsideCtl = 0;
@@ -209,7 +210,7 @@ export function createVideo() {
   // the runs across a line of the widescreen view, as row indices: the screen's own (already in `windows`) moved
   // over by `ox`, and the margins' worked out a pixel at a time
   function wideWindows(y) {
-    const centre = marginLine ? [] : windows.slice(0, nWindows).map(w => ({ endX: w.endX + ox, ctl: w.ctl, outside: w.outside }));
+    const centre = marginLine ? [] : windows.slice(0, nWindows).map(w => ({ endX: w.endX + ox, ctl: w.ctl, outside: w.outside, runStart: w.runStart, runEnd: w.runEnd }));
     const runs = [];
     // a run never crosses the screen's edges, so each is the screen's or a margin's
     const margin = (from, to) => {
@@ -217,7 +218,7 @@ export function createVideo() {
       for (let x = from; x < to; x++) {
         const c = marginCtl(x, y);
         if (c === ctl) runs[runs.length - 1].endX = x + ox + 1;
-        else { runs.push({ endX: x + ox + 1, ctl: c, outside: false }); ctl = c; }
+        else { runs.push({ endX: x + ox + 1, ctl: c, outside: false, runStart: 0, runEnd: 0 }); ctl = c; }
       }
     };
     if (marginLine) margin(-ox, SCREEN_W + ox);
@@ -390,8 +391,20 @@ export function createVideo() {
     return [flags >>> 0, useVariant ? variant : normal];
   }
 
+  // mGBA draws a run's first tile on its own when the run starts partway into it (software-mode0.c,
+  // DRAW_BACKGROUND_MODE_0_TILE_SUFFIX_16 and _256), and not quite as the console does when the run also ends
+  // inside it: a flipped tile goes from the run's last pixel back, from the tile's first column, and a 256-colour
+  // one in two halves of 4 pixels, the second from the tile's fifth column. The column of the tile's row that x
+  // shows, from the run [start, end) inside the tile and the run's start in it, `mod8`, or 8 or more for none.
+  function firstTileColumn(x, start, end, mod8, is256, hflip) {
+    if (hflip) return end - 1 - x;
+    if (!is256) return mod8 + x - start;
+    if (end - 4 > start) return x < end - 4 ? mod8 + x - start : 4 + x - (end - 4);
+    return 4 + (mod8 & 3) + x - start;
+  }
+
   // a text background over [start, end) of line y
-  function drawText(bg, y, start, end, ctl) {
+  function drawText(bg, y, start, end, runStart, runEnd, ctl) {
     if (!(ctl & (1 << bg.index))) return;
     const [flags, colors] = bgFlags(bg, ctl), blend = (flags & TARGET_2) !== 0;
     const cnt = bg.cnt, size = cnt >> 14, is256 = (cnt & 0x80) !== 0;
@@ -402,6 +415,9 @@ export function createVideo() {
     if (size === 2) yBase += inY & 0x100;
     else if (size === 3) yBase += (inY & 0x100) << 1;
     yBase = (screenBase >> 1) + (yBase << 2);
+    // the run's first tile, when it starts partway into one, ends at firstEnd
+    const mod8 = (runStart + hofs) & 7;
+    const firstEnd = Math.min(mod8 ? runStart + 8 - mod8 : runStart, runEnd);
     for (let x = start; x < end; x++) {
       const localX = (x + hofs) & 0x1FF;
       let xBase = localX & 0xF8;
@@ -409,7 +425,9 @@ export function createVideo() {
       const map = vram16[(yBase + (xBase >> 3)) & 0xFFFF];
       let ty = inY & 7, tx = localX & 7;
       if (map & 0x800) ty = 7 - ty;
-      if (map & 0x400) tx = 7 - tx;
+      if (x < firstEnd) tx = firstTileColumn(x, runStart, firstEnd, mod8, is256, map & 0x400);
+      else if (map & 0x400) tx = 7 - tx;
+      if (tx > 7) continue;
       let pixel, color;
       if (is256) {
         pixel = vram[(charBase + ((map & 0x3FF) << 6) + (ty << 3) + tx) % 0x18000];
@@ -545,8 +563,8 @@ export function createVideo() {
     for (const w of old) {
       for (; x < w.endX; x++) {
         const c = w.outside && objwinMask[x] ? ctl : w.ctl, last = nWindows ? windows[nWindows - 1] : null;
-        if (last && last.ctl === c && last.outside === w.outside) last.endX = x + 1;
-        else Object.assign(windows[nWindows++], { endX: x + 1, ctl: c, outside: w.outside });
+        if (last && last.ctl === c && last.runStart === w.runStart) last.endX = x + 1;
+        else Object.assign(windows[nWindows++], { endX: x + 1, ctl: c, outside: w.outside, runStart: w.runStart, runEnd: w.runEnd });
       }
     }
   }
@@ -578,8 +596,9 @@ export function createVideo() {
       windows[0].ctl = outsideCtl = io[REG.WINOUT >> 1] & 0x3F;
       if (dispcnt & 0x4000) breakWindow(1, y);
       if (dispcnt & 0x2000) breakWindow(0, y);
-      if ((dispcnt & 0x9000) === 0x9000 && !marginLine) breakObjWindow(y);
     } else windows[0].ctl = outsideCtl = 0xFF;
+    for (let w = 0, start = 0; w < nWindows; start = windows[w++].endX) Object.assign(windows[w], { runStart: start, runEnd: windows[w].endX });
+    if ((dispcnt & 0x9000) === 0x9000 && !marginLine) breakObjWindow(y);
     if (ox || marginLine) wideWindows(y);
     forceTarget1 = false;
 
@@ -636,7 +655,7 @@ export function createVideo() {
           const affine = bg.index === 2 ? mode === 1 || mode === 2 : bg.index === 3 && mode === 2;
           if (text) {
             if (margin) drawTextWide(bg, y, start, end, ctl);
-            else drawText(bg, y, start - ox, end - ox, ctl);
+            else drawText(bg, y, start - ox, end - ox, windows[w].runStart, windows[w].runEnd, ctl);
           } else if (affine && !marginLine) drawAffine(bg, start - ox, end - ox, ctl);
           else if (bg.index === 2 && mode === 4 && !marginLine) drawBitmap(bg, start - ox, end - ox, ctl);
         }

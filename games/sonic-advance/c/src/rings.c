@@ -314,3 +314,6 @@ void rings_start(void) {
   memset(scatter, 0, sizeof scatter);
   sparkles = 0;
 }
+
+/** The ring animation Casino Paradise act 2's first compared frame shows, two frames into the act. */
+void rings_start_point(void) { ringSprite.qAnimDelay = 512; }

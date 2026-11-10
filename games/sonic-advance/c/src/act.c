@@ -6,6 +6,8 @@
 #include "objects.h"
 #include "results.h"
 
+void dp_sound_skip_frames(int frames);
+
 enum { OFFSET_COLLISION = 0x4A6DA4, OFFSET_SPAWNS = 0x4A6DEC, OFFSET_LOOP_POINTS = 0x4A6E74, OFFSET_LOOP_SHIFTS = 0x4A6EBC, SCREEN_W_ = 240, SCREEN_H_ = 160 };
 // the HUD's tiles sit at fixed places below the sprites' heap (VRAM_RESERVED_UI_DIGITS_A to _D): the face, the ring, then the
 // white and the red digits
@@ -14,6 +16,8 @@ enum { OBJ_8x8 = 0, OBJ_16x16 = 1, OBJ_32x32 = 2, OBJ_8x16 = 8 };
 enum { ORDER_DIGITS = 2, ORDER_ICONS = 3 };
 
 Act act;
+
+static int is_casino_level(int level) { return level == ACT_LEVEL_CASINO_PARADISE_1 || level == ACT_LEVEL_CASINO_PARADISE_2; }
 
 // --- the copy's data (rom/tilemaps.js, rom/collision.js, rom/entities.js, rom/levels.js) -------------------------
 static Tilemap read_tilemap(int index) {
@@ -68,12 +72,26 @@ static void load_stage(int level) {
   s->loopX = rom_s16(OFFSET_LOOP_POINTS + level * 4);
   s->loopShift = rom_s16(OFFSET_LOOP_SHIFTS + level * 4);
   s->width = s->collision.width; s->height = s->collision.height;
-  // each act's stage init (levels.js): Casino Paradise act 1 is level 4, X Zone level 12
-  s->zone = 6; s->act = 0; s->music = 24; s->hudFlash = 90; s->backgroundScroll = 2;
+  // each act's stage init (levels.js): Secret Base act 1 is level 2, act 2 is level 3, Casino Paradise act 1 level 4, X Zone level 12
+  s->zone = 6; s->act = 0; s->music = 24; s->hudFlash = 90; s->backgroundScroll = BG_SCROLL_X_ZONE;
   s->paletteCount = 0; s->paletteAnimations = NULL;
-  if (level == 4) {
+  static const int SECRET_BASE_PALETTES[] = { 819, 845, 849 };   // StageInit_Zone2Act1 and StageInit_Zone2Act2
+  if (level == ACT_LEVEL_SECRET_BASE_1) {
+    s->zone = 1; s->act = 0; s->music = 14; s->hudFlash = 56; s->backgroundScroll = BG_SCROLL_SECRET_BASE_OUTSIDE;
+    s->paletteCount = (int)(sizeof SECRET_BASE_PALETTES / sizeof SECRET_BASE_PALETTES[0]);
+    s->paletteAnimations = SECRET_BASE_PALETTES;
+  }
+  if (level == ACT_LEVEL_SECRET_BASE_2) {
+    s->zone = 1; s->act = 1; s->music = 15; s->hudFlash = 64; s->backgroundScroll = BG_SCROLL_SECRET_BASE;
+    s->paletteCount = (int)(sizeof SECRET_BASE_PALETTES / sizeof SECRET_BASE_PALETTES[0]);
+    s->paletteAnimations = SECRET_BASE_PALETTES;
+  }
+  if (level == ACT_LEVEL_CASINO_PARADISE_1 || level == ACT_LEVEL_CASINO_PARADISE_2) {
     static const int CASINO_PALETTES[] = { 816, 817, 818, 824, 825, 827, 827, 828, 843, 844, 826 };
-    s->zone = 2; s->act = 0; s->music = 16; s->hudFlash = 20; s->backgroundScroll = 1;
+    s->zone = 2; s->act = level == ACT_LEVEL_CASINO_PARADISE_2 ? 1 : 0;
+    s->music = level == ACT_LEVEL_CASINO_PARADISE_2 ? 17 : 16;
+    s->hudFlash = level == ACT_LEVEL_CASINO_PARADISE_2 ? 52 : 20;
+    s->backgroundScroll = BG_SCROLL_CASINO_PARADISE;
     s->paletteCount = (int)(sizeof CASINO_PALETTES / sizeof CASINO_PALETTES[0]);
     s->paletteAnimations = CASINO_PALETTES;
   } else if (level == ACT_LEVEL_SECRET_BASE_2) {
@@ -95,10 +113,11 @@ static void load_stage(int level) {
       uint16_t entry = (uint16_t)rom_u16(s->background.map + (row * s->background.xTiles + col) * 2);
       // X Zone's 37 × 23 background is a 512-wide text layer: two 32-tile blocks, columns 32–36 at 0xE800.
       // Casino Paradise's is 32 × 32 at 0xE800, a 256 × 256 layer, and Secret Base act 2's the first 32 × 32 of its
-      // map at 0xE000 (sStageBgDimensions has 256 × 256 for it).
+      // map at 0xE000 (sStageBgDimensions, 256 × 256 in this copy). Secret Base act 1's is 32 × 64 at 0xE000, a 256 × 512
+      // layer.
       if (level == ACT_LEVEL_SECRET_BASE_2 && (row >= 32 || col >= 32)) continue;
-      uint32_t at = level == 4 ? 0xE800 + (uint32_t)(row * 32 + col) * 2u
-        : level == ACT_LEVEL_SECRET_BASE_2 ? 0xE000 + (uint32_t)(row * 32 + col) * 2u
+      uint32_t at = is_casino_level(level) ? 0xE800 + (uint32_t)(row * 32 + col) * 2u
+        : level == ACT_LEVEL_SECRET_BASE_1 || level == ACT_LEVEL_SECRET_BASE_2 ? 0xE000 + (uint32_t)(row * 32 + col) * 2u
         : (col < 32 ? 0xE000 + (uint32_t)col * 2u : 0xE800 + (uint32_t)(col - 32) * 2u) + (uint32_t)row * 64u;
       gba_vram[at] = (uint8_t)entry; gba_vram[at + 1] = (uint8_t)(entry >> 8);
     }
@@ -110,9 +129,10 @@ static void load_stage(int level) {
   // and their maps cleared to entry 0 (gBgSprites_Unknown2[1] and [2], whole 32-row maps), so the column and rows the
   // layers never fill hold nothing of the screen before; done here at once, as the act writes its maps straight to VRAM
   memset(gba_vram + 0xF000, 0, 0x1000);
-  e.bgCnt[3] = level == 4 ? 0x1D0B   // 256 × 256, priority 3, map 29 (0xE800), character base 2 (0x8000)
-    : level == ACT_LEVEL_SECRET_BASE_2 ? 0x1C0B   // 256 × 256, priority 3, map 28 (0xE000), character base 2 (0x8000)
-    : 0x5C0B;                                    // 512 × 256, priority 3, map 28 (0xE000), character base 2 (0x8000)
+  e.bgCnt[3] = is_casino_level(level) ? 0x1D0B   // 256 × 256, priority 3, map 29 (0xE800), character base 2
+              : level == ACT_LEVEL_SECRET_BASE_1 ? 0x9C0B       // 256 × 512, priority 3, map 28 (0xE000), character base 2
+              : level == ACT_LEVEL_SECRET_BASE_2 ? 0x1C0B       // 256 × 256, priority 3, map 28 (0xE000), character base 2
+              : 0x5C0B;                                          // 512 × 256, priority 3, map 28 (0xE000), character base 2
 }
 
 // the stage's palette animations (palette_loader.c, palettes.js): each loads colours into the background palette
@@ -155,8 +175,7 @@ static void parse_palette_animation(PaletteAnim *p, int anim) {
     }
   }
 }
-static void palette_animation_task(Task *t) {
-  PaletteAnim *p = (PaletteAnim *)t->data;
+static void palette_animation_step(PaletteAnim *p) {
   if (p->wait > 0) { p->wait -= 256; return; }
   if (p->frame < 0) return;
   p->shown = p->frame;
@@ -168,7 +187,10 @@ static void palette_animation_task(Task *t) {
   p->wait += (p->delays[p->frame] - 1) * 256;
   p->frame = p->frame + 1 < p->count ? p->frame + 1 : p->loop;
 }
+static void palette_animation_task(Task *t) { palette_animation_step((PaletteAnim *)t->data); }
 static void start_palette_animations(void) {
+  if (act.palStarted) return;
+  act.palStarted = 1;
   act.palCount = act.stage.paletteCount;
   act.pal = paletteAnims;
   for (int i = 0; i < act.palCount && i < 16; i++) {
@@ -314,13 +336,11 @@ static void card_update(int pressed) {
   if (!titlecard_run(pressed)) act.clockStopped = 0;
 }
 
-// --- Secret Base's background (engine/backgrounds.js) ----------------------------------------------------------------
+// --- the frame (engine/game.js) ----------------------------------------------------------------------------------
 static int js_mod(int a, int n) { int r = a % n; return r < 0 ? r + n : r; }
-/**
- * StageBgUpdate_Zone2_Interior's scroll for one screen line: where the line's first pixel comes from across, and the
- * map row shown on it less the line. The wall, rows 0 to 63, repeats every 64 lines, and the three bars and the
- * bigger one are laid over it.
- */
+
+/** StageBgUpdate_Zone2_Interior for one screen line: the x its first pixel comes from, and the y offset that shows the
+ *  map row it takes: the wall's row, or a bar's when one crosses the line. */
 static void secret_base_scroll(int line, int cx, int cy, int *outX, int *outY) {
   int x = (cx >> 2) & 0xFF, row = (line + ((cy >> 2) & 63)) & 63;
   for (int i = 0; i < 3; i++) {
@@ -333,7 +353,6 @@ static void secret_base_scroll(int line, int cx, int cy, int *outX, int *outY) {
   *outY = row - line;
 }
 
-// --- the frame (engine/game.js) ----------------------------------------------------------------------------------
 static void draw_frame(void) {
   // the first picture the screen shows keeps the layers where the act started, before the camera's first move
   int hold = act.frames <= 2 && !act.afterLevel;
@@ -342,7 +361,9 @@ static void draw_frame(void) {
   // the act has no blend, and its first frames keep the course select's display, as the original does
   e.bldCnt = 0; e.bldAlpha = 0x0010; e.bldY = 0;
   e.dispCnt = 0x1E40;
-  e.winRegs[0] = e.winRegs[1] = 0x00F0; e.winRegs[2] = e.winRegs[3] = 0x00A0;
+  e.winRegs[0] = e.winRegs[1] = 0x00F0;
+  // Secret Base act 1's beams leave WIN0V and WIN1V as they last set them on the frames they don't draw (actspot.c)
+  if (act.stage.level != ACT_LEVEL_SECRET_BASE_1) e.winRegs[2] = e.winRegs[3] = 0x00A0;
   // a hit boss's flash: the OBJ window on, everything in it brightened all the way (sub_802D870)
   if (act.bossFlash) { e.dispCnt |= 0x8000; e.winRegs[5] = 0x3F1F; e.bldCnt = 0xBF; e.bldY = 0x10; }
   act.drawn++;
@@ -352,7 +373,22 @@ static void draw_frame(void) {
   fill_layer(0xF000, LAYER_FRONT, camX, camY);
   fill_layer(0xF800, LAYER_BACK, camX, camY);
   int bgX, bgY;
-  if (act.stage.backgroundScroll == 1) {
+  if (act.stage.backgroundScroll == BG_SCROLL_SECRET_BASE) {
+    // StageBgUpdate_Zone2Act2 (StageBgUpdate_Zone2_Interior): a wall that repeats every 64 lines, with three bars and a
+    // bigger one laid over it, each line's place set through HBlank
+    e.bgScroll[6] = (uint16_t)((camX >> 2) & 0xFF); e.bgScroll[7] = (uint16_t)((camY >> 2) & 0xFF);
+    set_hblank_copy(REG_BG0HOFS + 3 * 4, 4);
+    for (int line = 0; line < SCREEN_H_; line++) {
+      int x, y;
+      secret_base_scroll(line, camX, camY, &x, &y);
+      put16(e.primary + (uint32_t)line * 4, (uint32_t)x);
+      put16(e.primary + (uint32_t)line * 4 + 2, (uint32_t)y);
+    }
+  } else if (act.stage.backgroundScroll == BG_SCROLL_SECRET_BASE_OUTSIDE) {
+    // StageBgUpdate_Zone2Act1, outside the base (before x 1488): the map's bottom 160 rows, moving across a 78th of
+    // the camera's way
+    e.bgScroll[6] = (uint16_t)((camX * 16) / (78 * 16)); e.bgScroll[7] = (uint16_t)(512 - SCREEN_H_);
+  } else if (act.stage.backgroundScroll == BG_SCROLL_CASINO_PARADISE) {
     // StageBgUpdate_Zone3Acts12: the 256 × 256 map moves 16 px across the act and 96 px down it, and its bands
     // of hedges and railing scroll faster through HBlank (BACKGROUND_SCROLL.casinoParadise)
     static const int BANDS[6] = { 134, 140, 152, 168, 192, 256 };
@@ -365,17 +401,6 @@ static void draw_frame(void) {
       for (int b = 4; b >= 0; b--) if (row >= BANDS[b] && row < BANDS[b + 1]) { x = (bgX + ((camX - act.cam.wrapped) >> SHIFT[b])) & 0xFF; break; }
       put16(e.primary + (uint32_t)line * 4, (uint32_t)(x & 0x1FF));
       put16(e.primary + (uint32_t)line * 4 + 2, (uint32_t)(bgY & 0x1FF));
-    }
-  } else if (act.stage.backgroundScroll == 3) {
-    // StageBgUpdate_Zone2Act2: the inside's wall and bars, a scroll for each line through HBlank, over the base scroll
-    // the original keeps
-    e.bgScroll[6] = (uint16_t)((camX >> 2) & 0xFF); e.bgScroll[7] = (uint16_t)((camY >> 2) & 0xFF);
-    set_hblank_copy(REG_BG0HOFS + 3 * 4, 4);
-    for (int line = 0; line < SCREEN_H_; line++) {
-      int x, y;
-      secret_base_scroll(line, camX, camY, &x, &y);
-      put16(e.primary + (uint32_t)line * 4, (uint32_t)x);
-      put16(e.primary + (uint32_t)line * 4 + 2, (uint32_t)y);
     }
   } else {
     // StageBgUpdate_Zone7Act1: the 37 × 23 background scrolls as a whole. Its first frame keeps the course
@@ -432,7 +457,10 @@ enum { FIREWORK_PRIORITY = 0x4001, FIREWORKS = 12 };
 typedef struct { Sprite s; int x, y, done, ended; } Firework;
 static Firework fireworks[FIREWORKS];
 
-uint32_t act_random(void) { return act.seed = act.seed * 0x196225u + 0x3C6EF35Fu; }
+uint32_t act_random(void) {
+  if (act.stage.level == ACT_LEVEL_CASINO_PARADISE_2) return front_random();
+  return act.seed = act.seed * 0x196225u + 0x3C6EF35Fu;
+}
 
 // --- what Sonic's moves ask of the act (the world's hooks in engine/game.js) --------------------------------------------
 enum { SE_LIFE_LOST = 119, SPIN_DASH_FREEZE = 10 };
@@ -459,12 +487,18 @@ void act_stage_results(void) {
   results_start(level, act.ringCount, act.courseTime, level == ACT_LEVEL_X_ZONE, 0);
 }
 
+int act_level_ported(int level) {
+  return level == ACT_LEVEL_SECRET_BASE_1 || level == ACT_LEVEL_SECRET_BASE_2 || is_casino_level(level) || level == ACT_LEVEL_X_ZONE;
+}
+
 // GoToNextLevel, once the save is written: the next act, made inside the task as the course select makes one, with the
 // score, the lives and the game's random numbers carried over (GameStageStart leaves them). Its first frame runs at
-// once, then it loads for NEXT_LEVEL_LOAD frames (act_task)
+// once, then it loads for NEXT_LEVEL_LOAD frames (act_task). A next act that isn't in C yet stops the game there, with
+// the screen as it was, as the front end does (front.c), rather than load with another act's music and background
 enum { NEXT_LEVEL_LOAD = 2 };
 static int nextLevel;
 static void next_act(void) {
+  if (!act_level_ported(nextLevel)) { act_active = 0; ctx.done = 1; return; }
   int lives = act.lives, score = act.score;
   uint32_t seed = act.seed;
   act_start(nextLevel, -1, 0);
@@ -518,6 +552,15 @@ static void firework_task(Task *t) {
   }
 }
 
+// the card's frames, where no picture is drawn: the fireworks' states carry on, but nothing goes to OAM
+static void fireworks_pre(void) {
+  for (int i = 0; i < FIREWORKS; i++) {
+    Firework *f = &fireworks[i];
+    if (f->done) continue;
+    if (!update_sprite(&f->s, 0)) f->ended = 1;
+  }
+}
+
 static void create_firework(int x, int y, int small) {
   for (int i = 0; i < FIREWORKS; i++) {
     Firework *f = &fireworks[i];
@@ -560,7 +603,7 @@ static void act_frame(void) {
   int camRuns = act.cam.started && act.frames > 1;
   if (act.frames > 0) objects_run_before_camera();
   if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
-  if (act.stage.backgroundScroll == 1 && act.cam.bgUpdates > 0) casino_background_update();
+  if (act.stage.backgroundScroll == BG_SCROLL_CASINO_PARADISE && act.cam.bgUpdates > 0) casino_background_update();
   if (camRuns) animate_stage_tiles();
   // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts
   if (act.frames > 0) objects_run_early();
@@ -592,6 +635,8 @@ static void act_frame(void) {
   // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180)
   if (act.cardDone) hud_update(1);
   player_step(&act.player, &in);
+  // the start point's first act frame is the held A's jump, one frame after it began
+  if (act.drawn == 0 && act.stage.level == ACT_LEVEL_CASINO_PARADISE_2 && gba_start_number("jump", 0)) player_start_jump(&act.player);
   player_animate(&act.player, &in);
   if (act.frames > 0) objects_run_late();
   // the stage clock's task (0xFF00): the course time counts once the card has ended, the stage's tick every frame
@@ -599,6 +644,9 @@ static void act_frame(void) {
   act.tick++;
   act.frames++;
   draw_frame();
+  // Secret Base act 1's spotlights' tasks run after the objects and before the screen is drawn, and write the windows
+  // and the brightness decrease into this frame's registers and H-blank table
+  if (act.stage.level == ACT_LEVEL_SECRET_BASE_1) spotlights_frame();
   if (cardShows) titlecard_display();
   results_display();
 }
@@ -648,7 +696,8 @@ void act_frame_now(void) {
   start_music();
   if (act.task) destroy_task(act.task);
   act.task = create_task(act_task, NULL, 0x0F00, 0, NULL);
-  act.stallLoad = 1;
+  // an act a start point opens has loaded in the card's frames it ran with no picture, so it goes straight on
+  act.stallLoad = gba_start_point("level") == NULL;
 }
 
 static int pendingLevel, pendingCard, pendingPre;
@@ -664,42 +713,74 @@ void act_queue(int level, int cardSkip, int preFrames) {
   create_task(act_begin_task, NULL, 0x0F00, 0, NULL);
 }
 
-/** The title card's frames before the first one the recording compares, run with no picture, each as act_task would run
- *  it: the act's first frame makes the palette animations' tasks, which run from the next, and the objects', which run once
- *  the frame its load takes has gone by. */
-enum { PALETTES_FROM = 1, OBJECTS_FROM = 2 };
-static void pre_run(int cardSkip, int preFrames) {
-  int after = 0;
-  // the HUD's graphics, and the character select's tiles they read past, are there before the act, so Sonic's first
-  // frames go over what they share with his sprite
-  hud_load();
-  objects_set_drawing(0);
-  while (!act.cardDone || after < preFrames) {
-    int wasDone = act.cardDone;
-    // the HUD's task, made as the card ends
-    if (wasDone && !act.hud.active) {
-      act.hud.active = 1;
-      act.hud.flash = act.stage.hudFlash;
-    }
-    int camRuns = act.cam.started;
-    if (act.tick >= OBJECTS_FROM) objects_run_before_camera();
+/** The title card's frames before the first one the recording compares, run with no picture. */
+static void pre_run(int cardSkip, int preFrames, int prelude) {
+  // the course select's frames before the card, which a start point at the A leaves out: the stage clock, the
+  // background and the fireworks' random numbers run through them, as the original's do; the card and its palette
+  // animations start after them
+  for (int i = 0; i < prelude; i++) {
+    int camRuns = act.cam.started && act.tick > 1;
     if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
     if (camRuns) animate_stage_tiles();
-    if (act.tick >= OBJECTS_FROM) objects_run_early();
-    if (act.tick == PALETTES_FROM) start_palette_animations();
-    if (act.tick >= PALETTES_FROM) for (int i = 0; i < act.palCount; i++) palette_animation_task(&(Task){ .data = &paletteAnims[i] });
-    if (!act.cardDone) card_update(cardSkip == act.tick);
-    // the card holds jump and attack; then the pad is free, with nothing pressed until the recording's first frame
-    PlayerInput in = { .jump = !act.cardDone, .attack = !act.cardDone };
+    if (act.stage.level == ACT_LEVEL_CASINO_PARADISE_2 && act.cam.bgUpdates > 0) { casino_background_update(); fireworks_pre(); }
+    act.tick++;
+    engine_copy_graphics();
+  }
+  int after = 0;
+  objects_set_drawing(0);
+  // the palette animations are made with the act, so they run through the card's frames
+  start_palette_animations();
+  while (!act.cardDone || after < preFrames) {
+    if (act.cardDone) {
+      // the frames after the card only settle the HUD's task, which starts as the card ends: the stage keeps the frame it
+      // ended on, and only the clock and the HUD move on
+      if (!act.clockStopped) act.courseTime++;
+      hud_update(0);
+      after++;
+      continue;
+    }
+    int loading = act.tick == 0;
+    // as in act_frame: the camera counts the animated tiles, and the objects run, from the frames after the act is made
+    int camRuns = act.cam.started && act.tick > 1;
+    if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
+    if (act.stage.level == ACT_LEVEL_CASINO_PARADISE_2 && act.cam.bgUpdates > 0) { casino_background_update(); fireworks_pre(); }
+    if (camRuns) animate_stage_tiles();
+    if (act.tick > 0) objects_run_early();
+    card_update(cardSkip == act.tick);
+    // the card's last frame makes the HUD (CreateStageUI), which loads its tiles and colours at once, before the tasks
+    // after the card's run: Secret Base act 1's beams then write past their table into the colours it loaded
+    if (act.cardDone && !act.hud.active) { act.hud.active = 1; act.hud.flash = act.stage.hudFlash; hud_load(); }
+    // the card holds Sonic with jump and attack held, as act_frame does
+    PlayerInput in = { .jump = 1, .attack = 1 };
     player_step(&act.player, &in);
     player_animate(&act.player, &in);
-    if (act.tick >= OBJECTS_FROM) objects_run_late();
-    if (wasDone) { hud_update(0); after++; }
+    if (act.tick > 0) objects_run_late();
+    for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
+    // Secret Base act 1's spotlights are made on the frame after the stage's load
+    if (act.stage.level == ACT_LEVEL_SECRET_BASE_1 && !loading) spotlights_frame();
     if (!act.clockStopped) act.courseTime++;
     act.tick++;
-    act.frames++;   // the act's first frames, which keep the camera where it started, are these
-    // each frame has its V-blank, as the original's does, only with no picture
-    engine_vblank_unseen();
+    // these frames have no V-blank, so what each one queued for video memory goes in now, and the V-blank's
+    // ClearOamBufferDma swaps the two H-blank tables, but for the stage's load, whose V-blank the original spends still
+    // loading. Which table is shown matters to Secret Base act 1's spotlights, whose lines past the second one run into
+    // Sonic's colours.
+    engine_copy_graphics();
+    if (!loading && !(e.flags & FLAGS_KEEP_HBLANK_BUFFER)) e.primary ^= HBLANK_BUFFER;
+  }
+  // the card's last frame steps the palette animations once, as the original's does; the ones whose longer delays
+  // put them behind the original step again, and the ring starts two frames into the act
+  if (act.stage.level == ACT_LEVEL_CASINO_PARADISE_2) {
+    static const int behind[] = { 0, 1, 3, 8, 10 };
+    for (unsigned k = 0; k < sizeof behind / sizeof behind[0]; k++) {
+      paletteAnims[behind[k]].wait = 0;
+      palette_animation_step(&paletteAnims[behind[k]]);
+    }
+    paletteAnims[2].wait -= 256;
+    paletteAnims[0].wait -= 512;
+    paletteAnims[10].wait -= 512;
+    static const int next[] = { 4, 5, 6, 7, 9 };
+    for (unsigned k = 0; k < sizeof next / sizeof next[0]; k++) paletteAnims[next[k]].wait = 256;
+    rings_start_point();
   }
   objects_set_drawing(1);
 }
@@ -711,7 +792,8 @@ void act_song_playing(void) { songPlaying = 1; }
 
 void act_start(int level, int cardSkip, int preFrames) {
   memset(&act, 0, sizeof act);
-  act.seed = 0;   // gPseudoRandom starts from 0, as the JavaScript page starts the act
+  // gPseudoRandom is one sequence for the whole game: the act goes on with what the front left
+  act.seed = 0;
   for (int i = 0; i < FIREWORKS; i++) fireworks[i].done = 1;
   copyCount = 0;
   load_stage(level);
@@ -727,17 +809,46 @@ void act_start(int level, int cardSkip, int preFrames) {
   e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
   e.winRegs[0] = e.winRegs[1] = e.winRegs[2] = e.winRegs[3] = 0;
   e.winRegs[4] = 0x3F3F; e.winRegs[5] = 0x1F;
+  if (level == ACT_LEVEL_SECRET_BASE_1) spotlights_start();
 
   // the title card's graphics. An act a start point opens runs the card to its end and its few frames after it with
   // no picture, as its recording starts there; one the course select opens shows the card from its first frame
-  titlecard_start(level, 0);
+  titlecard_start(level, ctx.character);
   objects_start(level, act.stage.paletteCount > 0);
   if (gba_start_point("level")) {
-    pre_run(cardSkip, preFrames);
-    play_song(act.stage.music);
-    gba_sound_frames_gone_by(118);
+    if (level == ACT_LEVEL_CASINO_PARADISE_2) {
+      // the stage init starts the act's song before the card; the start point runs those frames with no sound engine,
+      // then skips the music the same way, and starts the held A's jump sound one frame before the first compared
+      play_song(act.stage.music);
+      pre_run(cardSkip, preFrames, (int)gba_start_number("prelude", 0));
+      act.startCamX = (int)act.cam.x; act.startCamY = (int)act.cam.y;
+      act.frames = act.tick;
+      gba_sound_frames_gone_by(227);
+      int skip = (int)gba_start_number("skip", 232);
+      int advance = (int)gba_start_number("jumpadv", 1);
+      if (gba_start_number("jump", 0)) {
+        dp_sound_skip_frames(skip - advance);
+        play_song(SONG_JUMP);
+        dp_sound_skip_frames(advance);
+      } else dp_sound_skip_frames(skip);
+    } else {
+      pre_run(cardSkip, preFrames, (int)gba_start_number("prelude", 0));
+      // the act has run its first frames with the card: its objects run from the first frame shown, where the card left
+      // the camera
+      act.startCamX = (int)act.cam.x; act.startCamY = (int)act.cam.y;
+      act.frames = act.tick;
+      // the act's music starts with the act, fading in as the course select leaves it (MusManager_UpdateBgmParams,
+      // music.js stageMusicIn): the card's frames of it play at once, unheard, so it goes on from where the original's is
+      play_song(act.stage.music);
+      gba_sound_imm_init(0); gba_sound_volume(0, 0xFF, 4); gba_sound_fade_in(0, 4);
+      gba_sound_played_for(act.tick);
+      gba_sound_frames_gone_by(118);
+    }
   } else act.musicStarts = !songPlaying;
   songPlaying = 0;
+  // the HUD the card's last frame made has its graphics already
+  if (act.cardDone && !act.hud.active) hud_load();
+  act.hud.active = act.cardDone ? 1 : 0;
   act.started = 1;
   act.task = create_task(act_task, NULL, 0x0F00, 0, NULL);
 }

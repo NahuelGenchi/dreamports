@@ -33,10 +33,12 @@
 #define BLDY 0x54
 #define NO_FIGHTER 255
 
+void dp_sound_skip_frames(int frames);   // the kit's sound engine, run without rendering (kit/gba/c/sound.c)
+
 static int setup(int at) { return read8(SETUP_ + (uint32_t)at); }
 
 /** 0x08020840: the colour effect's fade in from black, over `frames` frames. */
-static void startFadeIn(int frames) {
+void startFadeIn(int frames) {
   queueRegister(BLDCNT, 0xFF);
   queueRegister(BLDY, 0x10);
   write16(FADE_KIND, 2);
@@ -46,7 +48,7 @@ static void startFadeIn(int frames) {
 }
 
 /** 0x080198b0: the fight's counters cleared, the fighters' colours, the arena and the fighters set up. */
-static void setUpFight(void) {
+void setUpFight(void) {
   write8(CHOSEN_, 0);
   write8(CHOSEN_ + 4, 0);
   for (int i = 0; i < 4; i++) {
@@ -99,11 +101,21 @@ static void setUpFight(void) {
   for (int i = 0; i < 4; i++) write8(0x03001C40 + 159 + (uint32_t)i * 252, 0);
 }
 
+/** The special attacks a computer fighter takes into a fight, one of six sets the V-blanks counted pick, as 0x08019b5c
+ *  and the demo's frame (0x0801c4bc) give them. */
+void giveComputerPicks(int i) {
+  static const uint8_t PICKS[6] = {27, 30, 39, 45, 54, 57};
+  uint32_t v = (uint16_t)g.vblanks;
+  int32_t roll = (int32_t)((v + 4) * (v + 7)) % 6;   // 0x0804b03c, a remainder with the product's sign
+  if ((uint32_t)roll < 6) write8(FIGHTERS + (uint32_t)i * RECORD + 141, PICKS[roll]);
+}
+
 /**
  * 0x08019b5c, for a fight that isn't a team's: each fighter's choices cleared, the gauges at nothing, a second fighter
- * of the same character marked to wear its other colours, and the colours loaded with that known.
+ * of the same character marked to wear its other colours, each computer's special attacks picked, and the colours
+ * loaded with that known.
  */
-static void setUpFighters(void) {
+void setUpFighters(void) {
   if (read8(0x03002600 + 7) == 0) {
     static const int fields[4] = {12, 16, 141, 145};
     for (int i = 0; i < 4; i++) for (int n = 0; n < 4; n++) write8(SETUP_ + (uint32_t)fields[n] + i, 0);
@@ -117,6 +129,7 @@ static void setUpFighters(void) {
       if (setup(20 + i) == setup(20 + j)) write8(SETUP_ + 24 + (j == player ? i : j), 1);
     }
   }
+  for (int i = 0; i < 4; i++) if (setup(28 + i) != 0) giveComputerPicks(i);
   loadColours();
   for (int i = 0; i < 4; i++) if (setup(20 + i) != NO_FIGHTER) showColours(i, setup(20 + i), 0);
   loadSharedSprites();
@@ -167,8 +180,11 @@ void choosing(void) {
   if (chosen > 8) {
     write8(CHOSEN_, 0);
     for (int i = 0; i < 4; i++) forgetKeys(i);
-    if (setup(125) != 4) __builtin_trap();
-    g.callback = trainingFrame;
+    if (setup(125) == 4) g.callback = trainingFrame;
+    else {
+      startHud(20);
+      g.callback = battleReadyFrame;
+    }
   } else if (chosen != 0) write8(CHOSEN_, chosen + 1);
   else if (answer != 0) write8(CHOSEN_, 1);
   g.after_wait = choosingAfterWait;
@@ -206,15 +222,17 @@ void choosingAfterWait(void) {
  * A start point's `you`, `rival`, `arena` and `colour` are what Training's screen would have picked: the player's
  * character, the rival's, the map, and the colour rows a character whose colours come from its choices wears.
  */
-void startFight(int vblanks, int action, int you, int rival, int arena, int colour) {
+void startFight(int vblanks, int action, int you, int rival, int arena, int colour, int battle) {
   g.vblanks = vblanks;
+  int end = (int)gba_start_number("end", -1);
+  setFightEndAt(end > 0 ? vblanks + end + 2 : -1);   // the two V-blanks startFight and the first step count
   g.line_one = playQueuedEffects;
   for (int i = 0; i < 512; i++) gba_pal[i] = 0;
   write8(SAVE_ + 119, 1);   // the language the save keeps: English in the USA copy (menu.c)
   for (int i = 0; i < REGISTER_COUNT; i++) {
     write16(IO + read16(REGISTERS + (uint32_t)i * 4), read16(REGISTERS + (uint32_t)i * 4 + 2));
   }
-  write8(SETUP_ + 4, 0);
+  write8(SETUP_ + 4, 0);   // the choice screen copies a tile by this, as Training's screen leaves it
   write8(SETUP_ + 5, 10);
   for (int at = 6; at <= 11; at++) write8(SETUP_ + (uint32_t)at, 0);
   write8(SETUP_ + 36, 2);
@@ -226,7 +244,7 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
   write8(SETUP_ + 2, 1);
   write8(SETUP_ + 3, (uint8_t)arena);   // the arena, Emerald Beach (0) unless a start point picks another of Training's maps
   write8(SETUP_ + 38, (uint8_t)action);   // the Rival's Action, Do Nothing first
-  write8(SETUP_ + 125, 4);
+  write8(SETUP_ + 125, 4);   // the screen the choice of specials starts after, as Training leaves it
   write8(SETUP_ + 0, 0);
   write32(PLAYER_, 0);
   loadProfiles();   // 0x080215a8 and 0x08029cfc, as the mode-select screen leaves them
@@ -245,8 +263,47 @@ void startFight(int vblanks, int action, int you, int rival, int arena, int colo
   write8(SONG_, (uint8_t)ARENA_SONGS[setup(3 + setup(1))]);
   startHud(10);
   setUpFighters();
+  int direct = (int)gba_start_number("direct", 0);
+  if (battle) {
+    // the rule and score Battle's screen leaves, and a full Ichikoro gauge for the player, as a start point may give
+    write32(0x03005264, 1);   // the choice the main menu last made, which picks the result screen's tiles and palette
+    write8(SETUP_ + 4, 2);
+    write8(SETUP_ + 6, 1);
+    write8(SETUP_ + 125, 1);
+    for (int i = 0; i < 4; i++) write8(SETUP_ + 51 + i, 0);
+    write8(FIGHTERS + 147, 72);
+    write8(FIGHTERS + 149, 1);
+    if (direct) write8(FIGHTERS + 141, 0x39);   // the three picks the choice screen's first three A presses leave
+  }
   gba_sound_frames_gone_by(vblanks - 2);
   gba_sound_play(read8(SONG_));
   fightVblank();
-  g.callback = choosing;
+  if (end == 0) {
+    // a start point at the fight's end replays the way there before the recording opens: the choice screen's
+    // three A presses at 70, 100 and 130, then the fight's own frames up to the knockout. Its last frame, which finds
+    // the fight won, runs here too, so the recording opens on the ending's first frame as the original does.
+    write32(0x03005264, 1);   // the choice the main menu last made, which picks the result screen's tiles and palette
+    g.callback = choosing;
+    g.after_wait = 0;
+    runFightSetup(400);
+    dp_sound_skip_frames(400);   // the hidden frames' sounds play while they run, not after the recording opens
+    write8(SETUP_ + 125, 1);
+    write8(SETUP_ + 4, 2);
+    write8(SETUP_ + 6, 1);
+    write8(SETUP_ + 51, 1);
+    write8(FIGHTERS + 147, 72);
+    write8(FIGHTERS + 149, 1);
+    write8(FIGHTERS + RECORD + HEALTH, 0);
+    write16(FIGHTERS + RECORD + STATE, 253);
+    placeRealBlast();
+    beginEnding();
+    battleAfterWait();   // the win frame's after-wait draw, which starts the banner's first frame
+    g.after_wait = 0;
+    return;
+  }
+  if (battle && direct) {
+    // the original's setup frame hands the next frame to the fight; run its first half here so the two line up
+    g.callback = battleFrame;
+    battleFrame();
+  } else g.callback = choosing;
 }

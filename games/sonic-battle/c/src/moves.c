@@ -448,6 +448,49 @@ static void setVoice(uint32_t rec, int value) {
   if (read8(rec + 199) <= 6) write8(rec + 199, 7);
 }
 
+/** 0x08002488, Shadow's case of 0x08001b0c's switch: the charge grows to 13, with its pictures at 5 and 12. */
+static void chargeShadow(int i, uint32_t rec, int state) {
+  if (state == 19) {
+    write8(rec + 143, 0);
+  } else if (state == 0x113) {
+    uint8_t charge = read8(rec + 143);
+    if (charge <= 12) write8(rec + 143, ++charge);
+    if (charge == 5) write16(rec + 164, 215);
+    else if (charge == 12) write16(rec + 164, 216);
+    if ((held(i) & 0x100) == 0) setState(i, 0x213);
+  } else if (state == 0x213) {
+    uint8_t charge = read8(rec + 143);
+    write16(rec + 166, (uint16_t)(charge <= 4 ? 0xFE00 : charge <= 11 ? 0xFC00 : 0xF880));
+  } else if (state == 0x115) {
+    if ((held(i) & 0x100) == 0) setState(i, 0x215);
+  } else if (state == 0x116) {
+    write16(rec + Z, read16(rec + GROUND));
+    write32(rec + FLAGS, read32(rec + FLAGS) | 1);
+  }
+}
+
+/**
+ * 0x080025a2, Gamma's case of 0x08001b0c's switch: the shot's charge, on the ground (0x113) or in the air (0x114),
+ * grows to 4 and the set's (0x117, 0x118) to 6, and each step of it sounds. Letting go of R fires, and the firing
+ * state sets its height at +168.
+ */
+static void chargeGamma(int i, uint32_t rec, int state) {
+  int ground = (state & 1) != 0;
+  if (state == 19 || state == 20 || state == 23 || state == 24) {
+    write8(rec + 143, 0);
+  } else if (state == 0x113 || state == 0x114 || state == 0x117 || state == 0x118) {
+    int shot = state <= 0x114;
+    uint8_t charge = read8(rec + 143);
+    if (charge <= (shot ? 3 : 5)) {
+      write8(rec + 143, charge + 1);
+      gba_sound_play(shot ? 0x323 : 0x338);
+    }
+    if ((held(i) & 0x100) == 0) setState(i, state + 0x100);
+  } else if (state == 0x213 || state == 0x214 || state == 0x217 || state == 0x218) {
+    write16(rec + 168, ground ? 24 : 20);
+  }
+}
+
 static void playAtFighter(uint32_t rec, int sound) {
   uint16_t x = read16(rec + 12);
   if ((((uint32_t)(x + 48) << 16) >> 0) > 0x1200000u) return;
@@ -509,67 +552,42 @@ void setState(int i, int state) {
     case 565:
       if (held(i) & 0x200) setState(i, 0x137);
       break;
-    default:
-      if (state >= 10 && state <= 24 && state != 16) {
-        if (state >= 19) {
-          write8(rec + 149, read8(rec + 149) | 2);
-          write8(rec + 138, 0);
-          write8(rec + 184, 0);
-        }
-        if (read32(rec + FLAGS) & FLAG_NEW_STATE) {
-          write8(rec + 126, 0);
-          write8(rec + 125, 255);
-          clearFlags(rec, FLAG_CHAIN);
-        }
-        FACE_CAMERA();
-      }
+    default: break;
   }
-  // 0x08001b0c's charge and release for the special attacks: a held R keeps the charge going, and letting go fires
-  if (state == 19 || state == 20 || state == 23 || state == 24) {
-    write8(rec + 143, 0);
-  } else if (state == 0x113) {
-    int charge = read8(rec + 143) + 1;
-    if (charge > 12) charge = 12;
-    write8(rec + 143, (uint8_t)charge);
-    if (charge == 5) write16(rec + 164, 215);
-    else if (charge == 12) write16(rec + 164, 216);
-    if ((held(i) & 0x100) == 0) setState(i, 0x213);
-  } else if (state == 0x114) {
-    // the air special's charge, up to three: its sound plays as it builds
-    int charge = read8(rec + 143) + 1;
-    if (charge > 3) charge = 3;
-    write8(rec + 143, (uint8_t)charge);
-    gba_sound_play(0x323);
-    if ((held(i) & 0x100) == 0) setState(i, 0x214);
-  } else if (state == 0x117) {
-    // the third special's charge, up to five
-    int charge = read8(rec + 143) + 1;
-    if (charge > 5) charge = 5;
-    write8(rec + 143, (uint8_t)charge);
-    gba_sound_play(0x338);
-    if ((held(i) & 0x100) == 0) setState(i, 0x217);
-  } else if (state == 0x115) {
-    if ((held(i) & 0x100) == 0) setState(i, 0x215);
-  } else if (state == 0x213) {
-    int charge = read8(rec + 143);
-    write16(rec + 166, (uint16_t)(charge <= 4 ? 0xFE00 : charge <= 11 ? 0xFC00 : 0xF880));
-    write16(rec + 168, 24);
-  } else if (state == 0x214) {
-    write16(rec + 168, 20);
-  } else if (state == 0x217) {
-    write16(rec + 168, 24);
-  } else if (state == 0x218) {
-    write16(rec + 168, 20);
-  } else if (state == 0x116) {
+  // 0x08002188, after every state's own case: the attacks and specials, in each of their three forms, start fresh and
+  // face the camera's way
+  int special = (state >= 19 && state <= 24) || (state >= 0x113 && state <= 0x118) || (state >= 0x213 && state <= 0x218);
+  if (special || (state >= 10 && state <= 18 && state != 16) || state == 0x111) {
+    if (special) {   // 0x080021e8
+      write8(rec + 149, read8(rec + 149) | 2);
+      write8(rec + 138, 0);
+      write8(rec + 184, 0);
+    }
+    if (read32(rec + FLAGS) & FLAG_NEW_STATE) {
+      write8(rec + 126, 0);
+      write8(rec + 125, 255);
+      clearFlags(rec, FLAG_CHAIN);
+    }
+    FACE_CAMERA();
+  } else if (state == 252 || state == 253) {
+    if (read8(rec + 198) == 0) notPorted("080022C4");   // a knock-out's cry and what it throws
+  }
+  // 0x08001b0c's charge and release for the special attacks, by the switch at 0x0800241a on the character: a held R
+  // keeps the charge going, and letting go fires
+  int charger = read8(rec + CHARACTER_NOW);
+  if (charger == 3) chargeShadow(i, rec, state);
+  else if (charger == 7 || charger == 17 || charger == 18) {
+    // 0x080025a2: a special's state starts its own timer, which counts the special down, on the frame it starts
+    int timer = state == 21 ? 145 : state == 22 ? 146 : 0;
+    if (timer != 0 && read8(rec + timer) == 0) write8(rec + timer, 240);
+    else chargeGamma(i, rec, state);
+  }
+  else if (charger == 23 && state == 0x116) {
+    // 0x0800257c
     write16(rec + Z, read16(rec + GROUND));
     write32(rec + FLAGS, read32(rec + FLAGS) | 1);
   }
   // (0x08002762) what the special attacks' states do with their things
-  if (state == 21 || state == 22) {
-    // the state's own timer, which counts the special down, set by the frame that starts it
-    int timer = 145 + (state - 21);
-    if (read8(rec + timer) == 0) { write8(rec + timer, 240); return; }
-  }
   if (state == 21) {
     if (read8(rec + 23) != 0) return;
     for (int k = 0; k < 12; k++) {
@@ -766,6 +784,110 @@ static int isThrownKind(int kind) {
 
 static void guardHit(int i, int j);
 
+/** In linked play a hit counts only on the console of the fighter it reaches, or of its partner when that partner is
+ *  the computer's: true when this console leaves it to another. */
+static int countedElsewhere(int i) {
+  if (read8(0x0300138C) == 0 || i == (int)read32(PLAYER_)) return 0;
+  return i != (int)read32(PLAYER_) + 2 || read8(SETUP_ + 28 + i) == 0;
+}
+
+/** The damage a hit of the given power does, weighed by how tough the fighter it reaches is against how strong the
+ *  fighter that made it is, kept for settleHits, with the special power it gains. A hit of power 63 knocks it out
+ *  there and then. */
+static void weighHit(int i, int j, int kind, int power) {
+  uint32_t rec = record(i);
+  if (kind == 9) {
+    write16(rec + 240, 0);
+    write16(rec + 242, 0);
+    return;
+  }
+  int damage = power;
+  if (power == 63) {
+    uint32_t taken = SETUP_ + 98 + (uint32_t)i * 2;
+    write16(taken, (uint16_t)(read16(taken) + read8(rec + HEALTH)));
+    write8(rec + HEALTH, 0);
+    write8(rec + 192, 1);
+    write16(rec + 240, 0);
+  } else {
+    int weight = (read8(SETUP_ + 16 + i) >> 1) - read8(SETUP_ + 12 + j);
+    damage = s16((uint16_t)(power - ((power * weight) >> 4)));
+    if (damage <= 0) damage = 1;
+    write16(rec + 240, (uint16_t)damage);
+  }
+  int gained = s16((uint16_t)((damage << 16) >> 19));
+  if (gained <= 0) gained = 1;
+  if (read8(rec + 155) == 9) gained <<= 1;
+  write16(rec + 242, (uint16_t)gained);
+}
+
+/** 0x080037ce: another fighter's attack reaches this one, which guards it or takes it. */
+static void hitByAttack(int i, int j, uint32_t attacks) {
+  uint32_t rec = record(i);
+  int kind = (attacks >> 8) & 0x1F, guard = read8(rec + 141) & 0x30;
+  uint16_t now = read16(rec + STATE);
+  if (now == 53 || now == 0x135 || read8(rec + 151) != 0
+    || ((kind == 10 || kind == 11 || kind == 12) && guard == 0x20)
+    || ((kind == 13 || kind == 14) && guard == 0x10) || (kind == 15 && guard == 0x30)) {
+    guardHit(i, j);
+    return;
+  }
+  clearFlags(rec, 0x40000);
+  if (kind < 16 && KIND_REACTION[kind] != 0) addFlags(rec, KIND_REACTION[kind]);
+  int way = (attacks >> (24 + i * 2)) & 15;
+  if (isThrownKind(kind) && way <= 3) {
+    int facing = way == 0 ? 8 : way == 1 ? 6 : way == 2 ? 4 : 2;
+    write8(rec + 36, (uint8_t)facing);
+    write8(rec + 37, (uint8_t)facing);
+  }
+  write8(rec + 124, (uint8_t)j);
+  if (countedElsewhere(i)) return;
+  write8(rec + 127, (uint8_t)((kind & 15) > 9 ? 255 : 15));
+  weighHit(i, j, kind, attacks & 0xFF);
+  write8(rec + PAUSE_NEXT, (uint8_t)((attacks >> 17) & 0x7F));
+}
+
+/** 0x08004024: a thing guarded, which holds the fighter a moment as an attack's guard does, but marks no attacker. */
+static void guardThing(int i, uint16_t raw) {
+  uint32_t rec = record(i);
+  if (read8(rec + 151) == 5) return;
+  addFlags(rec, 0x40000);
+  write8(rec + 151, 6);
+  setState(i, 0x135);
+  write8(rec + PAUSE_DONE, 1);
+  write8(rec + PAUSE, (uint8_t)((raw >> 13) << 1));
+  if (countedElsewhere(i)) return;
+  int power = raw & 0x3F;
+  if (power == 63) {
+    write8(rec + 147, 72);
+    write16(rec + 242, 0);
+    return;
+  }
+  int gained = power >> 1;
+  if (gained == 0) gained = 1;
+  if (read8(rec + 155) == 9) gained <<= 1;
+  write16(rec + 242, (uint16_t)gained);
+}
+
+/** 0x08003d14: a thing another fighter threw or left reaches this one, which guards it or takes it. */
+static void hitByThing(int i, int j, uint16_t raw) {
+  uint32_t rec = record(i);
+  int kind = (raw >> 6) & 0x1F, guard = read8(rec + 141) & 0x30;
+  uint16_t now = read16(rec + STATE);
+  if (now == 53 || now == 0x135 || read8(rec + 151) != 0
+    || ((kind == 10 || kind == 11 || kind == 12) && guard == 0x20)
+    || ((kind == 13 || kind == 14) && guard == 0x10) || (kind == 15 && guard == 0x30)) {
+    guardThing(i, raw);
+    return;
+  }
+  clearFlags(rec, 0x40000);
+  if (kind < 16 && KIND_REACTION[kind] != 0) addFlags(rec, KIND_REACTION[kind]);   // the same reactions as an attack's
+  write8(rec + 124, (uint8_t)j);
+  if (countedElsewhere(i)) return;
+  write8(rec + 127, (uint8_t)((kind & 15) > 9 ? 255 : 15));
+  weighHit(i, j, kind, raw & 0x3F);
+  write8(rec + PAUSE_NEXT, (uint8_t)(raw >> 13));
+}
+
 void takeHits(int i) {
   uint32_t rec = record(i);
   uint16_t state = read16(rec + STATE);
@@ -774,80 +896,16 @@ void takeHits(int i) {
   uint32_t bit = 0x2000u << i;
   for (int j = 0; j < 4; j++) {
     if (j == i || !isActive(j)) continue;
-    uint32_t attacker = record(j), attacks = read32(attacker + ATTACKS);
-    if (!(attacks & bit)) continue;
-    int kind = (attacks >> 8) & 0x1F, guard = read8(rec + 141) & 0x30;
-    uint16_t now = read16(rec + STATE);
-    if (now == 53 || now == 0x135 || read8(rec + 151) != 0
-      || ((kind == 10 || kind == 11 || kind == 12) && guard == 0x20)
-      || ((kind == 13 || kind == 14) && guard == 0x10) || (kind == 15 && guard == 0x30)) {
-      guardHit(i, j);
-      break;
+    uint32_t attacks = read32(record(j) + ATTACKS);
+    if (attacks & bit) {
+      hitByAttack(i, j, attacks);
+      break;   // the first attack that reaches it is the only one it takes
     }
-    clearFlags(rec, 0x40000);
-    if (KIND_REACTION[kind] != 0) addFlags(rec, KIND_REACTION[kind]);
-    int way = (attacks >> (24 + i * 2)) & 15;
-    if (isThrownKind(kind) && way <= 3) {
-      int facing = way == 0 ? 8 : way == 1 ? 6 : way == 2 ? 4 : 2;
-      write8(rec + 36, (uint8_t)facing);
-      write8(rec + 37, (uint8_t)facing);
-    }
-    write8(rec + 124, (uint8_t)j);
-    write8(rec + 127, (uint8_t)(kind > 9 ? 255 : 15));
-    int power = attacks & 0xFF;
-    if (kind == 9) {
-      write16(rec + 240, 0);
-      write16(rec + 242, 0);
-    } else if (power == 63) {
-      write16(rec + 240, read8(rec + HEALTH));
-      write8(rec + 192, 1);
-    } else {
-      int weight = (read8(SETUP_ + 20 + i) >> 1) - read8(SETUP_ + 12 + j);
-      int damage = s16(power) - ((s16(power) * weight) >> 4);
-      if (damage <= 0) damage = 1;
-      write16(rec + 240, (uint16_t)damage);
-      int gained = (damage << 16) >> 19;
-      if (gained <= 0) gained = 1;
-      if (read8(rec + 155) == 9) gained <<= 1;
-      write16(rec + 242, (uint16_t)gained);
-    }
-    write8(rec + PAUSE_NEXT, (uint8_t)((attacks >> 17) & 0x7F));
-  }
-  // a thing's hit, kept in its owner's record at 174: the damage in its low six bits, the kind above them, the fighter
-  // it reached in bits 11 and 12, and the frames it holds for above those
-  for (int j = 0; j < 4; j++) {
-    if (j == i || !isActive(j)) continue;
-    uint32_t attacker = record(j);
-    uint16_t raw = read16(attacker + 174);
-    if (raw == 0 || ((raw >> 11) & 3) != i) continue;
-    int kind = (raw >> 6) & 0x1F, guard = read8(rec + 141) & 0x30;
-    uint16_t now = read16(rec + STATE);
-    if (now == 53 || now == 0x135 || read8(rec + 151) != 0
-      || ((kind == 10 || kind == 11 || kind == 12) && guard == 0x20)
-      || ((kind == 13 || kind == 14) && guard == 0x10) || (kind == 15 && guard == 0x30)) {
-      guardHit(i, j);
-      break;
-    }
-    clearFlags(rec, 0x40000);
-    addFlags(rec, 1u << (kind + 2));
-    write8(rec + 124, (uint8_t)j);
-    write8(rec + 127, (uint8_t)(kind > 9 ? 255 : 15));
-    int power = raw & 0x3F;
-    if (power == 63) {
-      write16(rec + 240, read8(rec + HEALTH));
-      write8(rec + 192, 1);
-    } else {
-      int weight = (read8(SETUP_ + 20 + i) >> 1) - read8(SETUP_ + 12 + j);
-      int damage = s16(power) - ((s16(power) * weight) >> 4);
-      if (damage <= 0) damage = 1;
-      write16(rec + 240, (uint16_t)damage);
-      int gained = (damage << 16) >> 19;
-      if (gained <= 0) gained = 1;
-      if (read8(rec + 155) == 9) gained <<= 1;
-      write16(rec + 242, (uint16_t)gained);
-    }
-    write8(rec + PAUSE_NEXT, (uint8_t)(raw >> 13));
-    break;
+    // a thing's hit, kept in its owner's record at 174: the damage in its low six bits, the kind above them, the fighter
+    // it reached in bits 11 and 12, and the frames it holds for above those
+    uint16_t raw = read16(record(j) + 174);
+    if (raw == 0) clearFlags(rec, 0x40000);   // 0x080040ec: nothing of this fighter's reaches it, so it guards no more
+    else if (((raw >> 11) & 3) == i) hitByThing(i, j, raw);
   }
   settleHits(i);
 }
@@ -961,6 +1019,7 @@ void reachOthers(int i) {
   int reach = read8(rec + 107);
   if (reach == 63) reach = 62;
   else if (reach > 100) reach = 100;
+  uint32_t nearest = 0xFFFFFFFFu;   // how far off the nearest one it reaches is, squared
   for (int j = 0; j < 4; j++) {
     if (j == i) continue;
     uint32_t other = record(j);
@@ -986,21 +1045,27 @@ void reachOthers(int i) {
     write16(SETUP_ + 90 + (uint32_t)i * 2, read16(SETUP_ + 90 + (uint32_t)i * 2) + reach);
     attacks |= 0x2000u << j;
     write8(rec + 126, (uint8_t)(read8(rec + 126) | (1 << j)));
-    int direction = -1;
-    if (read8(rec + 106) == 2 || (read8(rec + 106) >= 10 && read8(rec + 106) <= 15)) {
-      int mode = read8(rec + 36);
-      if (mode == 4) direction = 1;
-      else if (mode == 6) direction = 2;
-      else if (mode == 8) direction = 3;
+    uint32_t apartSquared = (uint32_t)(dx * dx + dy * dy);
+    if (nearest > apartSquared) {
+      write8(rec + 125, (uint8_t)j);   // 0x080064fa: the nearest of those it reaches
+      nearest = apartSquared;
     }
-    if (direction < 0) {
-      uint32_t camera = DIRECTIONS + (uint32_t)read8(rec + CAMERA) * 10;
-      int side = read8(rec + 16) == 0 ? 4 : 6;
-      int way = read8(camera + (uint32_t)side);
-      if (way == 4) direction = 1;
-      else if (way == 6) direction = 2;
-      else if (way == 8) direction = 3;
-    }
+    // 0x0800650e: the way the hit throws it, from the way the attacker leans for a kind 2 attack, the way it faces for
+    // a throw (kinds 10 to 15), or else the side it faces as the view sees it
+    int kind = read8(rec + 106), way;
+    if (kind == 3) write8(rec + 112, 24);
+    if (kind == 2) {
+      write8(rec + 110, 24);
+      addFlags(rec, 0x4000000);
+      way = read8(rec + 108);
+    } else if (kind >= 10 && kind <= 15) {
+      way = read8(rec + 36);
+      if (kind == 11) {
+        write8(rec + 110, 24);
+        addFlags(rec, 0x4000000);
+      }
+    } else way = read8(DIRECTIONS + (uint32_t)read8(rec + CAMERA) * 10 + (read8(rec + 16) == 0 ? 4u : 6u));
+    int direction = way == 4 ? 1 : way == 6 ? 2 : way == 8 ? 3 : 0;
     if (direction > 0) attacks |= (uint32_t)direction * (0x1000000u << (j * 2));
     write32(rec + 120, attacks);
     write32(rec + ATTACKS, attacks);
@@ -1052,8 +1117,7 @@ void readFighterKeys(int i) {
     uint16_t heldKeys = held(i);
     int pointing = (way == read8(camera + 4) && (heldKeys & 0x20)) || (way == read8(camera + 6) && (heldKeys & 0x10))
       || (way == read8(camera + 8) && (heldKeys & 0x40)) || (way == read8(camera + 2) && (heldKeys & 0x80));
-    if (pointing) addFlags(rec, 0x40000000);
-    else clearFlags(rec, 0x800000 | 0x4000000 | 0x2000000);
+    if (pointing) addFlags(rec, 0x2000000);   // 0x08005692: held the way it was aimed, it keeps aiming
   } else clearFlags(rec, 0x800000 | 0x4000000 | 0x2000000);
   if (state == 66) {
     uint32_t camera = DIRECTIONS + (uint32_t)read8(rec + CAMERA) * 10, facing = read8(rec + 37);
@@ -1141,7 +1205,7 @@ void fighterAct(int i) {
     if (keys & 1) { if (!(flags & 0x40000)) setState(i, 7); }
     else if (keys & 0x200) {
       if (!(flags & FLAG_LOCKED)) setState(i, 53);
-      else if (state != 52 || reads16(rec + SCRIPT_FRAME) > 12) setState(i, 53);
+      else if (state == 52 && reads16(rec + SCRIPT_FRAME) > 12) setState(i, 53);   // 0x08004db2
     } else if (read8(rec + 17) != read8(rec + 18)) {
       if (state == 2 || state == 3 || state == 5) setState(i, 5);
       else if (state == 0 || state == 0x105 || state == 1) setState(i, 0x105);
@@ -1259,7 +1323,32 @@ void landOrFall(int i) {
   } else IN_AIR();
   #undef IN_AIR
   if (read8(SETUP_ + 125) == 4) for (int j = 0; j < 4; j++) write8(record(j) + HEALTH, 100);
-  if (read8(rec + HEALTH) == 0) notPorted("0800444C");
+  if (read8(rec + HEALTH) == 0) {
+    // 0x0800444c: a fighter out of health. On the ground its opponent gains a point and it takes state 253; in the air
+    // it takes state 252 and flies back. Either state's script ends it in 254, lying down.
+    int current = read16(rec + STATE);
+    if ((uint16_t)(current - 254) <= 1) return;
+    if (current != 253 && (read32(rec + FLAGS) & 1)) {
+      // the other fighter gains the point: the one whose hit took this fighter's health, or the other one in play
+      int scorer = read8(rec + 124);
+      if (scorer == i || scorer > 3) {
+        scorer = -1;
+        for (int j = 0; j < 4; j++) if (j != i && read8(SLOTS_ + j) != 255) { scorer = j; break; }
+      }
+      if (scorer >= 0) write8(SETUP_ + 51 + (uint32_t)scorer, (uint8_t)(read8(SETUP_ + 51 + scorer) + 1));
+      write8(SETUP_ + 47 + i, 0);
+      setState(i, 253);
+      write8(rec + 28, 0);
+      write8(rec + 29, 0);
+      return;
+    }
+    if ((uint16_t)(current - 252) <= 1) return;
+    if (!(read32(rec + FLAGS) & 4)) return;
+    setState(i, 252);
+    write8(rec + 28, 0);
+    write8(rec + 29, 0);
+    return;
+  }
   uint32_t flags = read32(rec + FLAGS);
   int now = read16(rec + STATE);
   if (flags & FLAG_LANDED) {
@@ -1294,19 +1383,22 @@ enum {
 typedef struct { uint16_t kind; uint32_t script; } ThingScript;
 static const ThingScript THING_SCRIPTS[] = {
   {3, 0x0806B514}, {4, 0x0806B54C}, {5, 0x0806B594}, {8, 0x0806B630}, {10, 0x0806B6B4}, {11, 0x0806B7B0},
-  {12, 0x0806B8CC}, {13, 0x0806B940}, {14, 0x0806B804}, {15, 0x0806B9D4}, {16, 0x0806BB08}, {31, 0x0806BB08},
-  {32, 0x0806BBA0}, {34, 0x0806BBF4}, {35, 0x0806BC54}, {40, 0x0806C6EC}, {37, 0x0806C07C}, {38, 0x0806C1AC},
-  {39, 0x0806C448}, {43, 0x0806C60C}, {44, 0x0806C67C}, {45, 0x0806C8F4}, {41, 0x0806C790}, {46, 0x0806C944},
-  {73, 0x0806CE18}, {75, 0x0806CE98}, {77, 0x0806CFBC}, {79, 0x0806D29C}, {80, 0x0806D2EC}, {81, 0x0806D378},
-  {54, 0x0806C984}, {57, 0x0806CA14}, {60, 0x0806CD14}, {61, 0x0806CD68},
-  {117, 0x0806DC00}, {118, 0x0806DC60}, {114, 0x0806DB48}, {120, 0x0806DCBC}, {121, 0x0806DD04}, {122, 0x0806DDA4},
-  {36, 0x0806C054}, {78, 0x0806D13C}, {158, 0x0806E520}, {160, 0x0806E5F0}, {154, 0x0806E268},
-  {157, 0x0806E4DC}, {161, 0x0806E680}, {162, 0x0806E6E0}, {163, 0x0806E70C}, {164, 0x0806E76C},
-  {165, 0x0806E82C}, {166, 0x0806E8EC}, {210, 0x0806F724}, {211, 0x0806F7E4}, {212, 0x0806F8A4},
-  {213, 0x0806F924}, {214, 0x0806F9C8}, {215, 0x0806FA90}, {216, 0x0806FBA8}, {230, 0x0806FC60},
-  {231, 0x0806FD88}, {240, 0x0806FCB0}, {241, 0x0806FCF0}, {245, 0x0806FE2C},
-  {174, 0x0806E9AC}, {175, 0x0806EB10}, {177, 0x0806EC74}, {178, 0x0806ED0C}, {179, 0x0806EDA4},
-  {180, 0x0806EE3C}, {181, 0x0806EEE8},
+  {12, 0x0806B8CC}, {15, 0x0806B940}, {18, 0x0806B804}, {30, 0x0806B9D4}, {31, 0x0806BB08}, {32, 0x0806BBA0},
+  {34, 0x0806BBF4}, {35, 0x0806BC54}, {36, 0x0806C054}, {37, 0x0806C07C}, {38, 0x0806C1AC}, {39, 0x0806C448},
+  {40, 0x0806C6EC}, {41, 0x0806C790}, {43, 0x0806C60C}, {44, 0x0806C67C}, {45, 0x0806C8F4}, {46, 0x0806C944},
+  {54, 0x0806C984}, {57, 0x0806CA14}, {58, 0x0806CCA8}, {60, 0x0806CD14}, {61, 0x0806CD68}, {62, 0x0806CAAC},
+  {63, 0x0806CC10}, {73, 0x0806CE18}, {75, 0x0806CE98}, {77, 0x0806CFBC}, {78, 0x0806D13C}, {79, 0x0806D29C},
+  {80, 0x0806D2EC}, {81, 0x0806D378}, {82, 0x0806D398}, {90, 0x0806D4FC}, {91, 0x0806D5F0}, {92, 0x0806D72C},
+  {94, 0x0806D760}, {97, 0x0806D90C}, {100, 0x0806D9C0}, {101, 0x0806DA24}, {102, 0x0806DA6C}, {103, 0x0806DAC4},
+  {104, 0x0806DB24}, {114, 0x0806DB48}, {117, 0x0806DC00}, {118, 0x0806DC60}, {120, 0x0806DCBC}, {121, 0x0806DD04},
+  {122, 0x0806DDA4}, {137, 0x0806DE3C}, {138, 0x0806DF70}, {140, 0x0806E094}, {141, 0x0806E0E0}, {142, 0x0806E104},
+  {154, 0x0806E268}, {157, 0x0806E4DC}, {158, 0x0806E520}, {159, 0x0806E5AC}, {160, 0x0806E5F0}, {161, 0x0806E680},
+  {162, 0x0806E6E0}, {163, 0x0806E70C}, {164, 0x0806E76C}, {165, 0x0806E82C}, {166, 0x0806E8EC}, {174, 0x0806E9AC},
+  {175, 0x0806EB10}, {177, 0x0806EC74}, {178, 0x0806ED0C}, {179, 0x0806EDA4}, {180, 0x0806EE3C}, {181, 0x0806EEE8},
+  {182, 0x0806EF94}, {185, 0x0806F040}, {190, 0x0806F1B0}, {191, 0x0806F318}, {194, 0x0806F480}, {197, 0x0806F4C4},
+  {200, 0x0806F55C}, {201, 0x0806F588}, {203, 0x0806F68C}, {210, 0x0806F724}, {211, 0x0806F7E4}, {212, 0x0806F8A4},
+  {213, 0x0806F924}, {214, 0x0806F9C8}, {215, 0x0806FA90}, {216, 0x0806FBA8}, {230, 0x0806FC60}, {231, 0x0806FD88},
+  {240, 0x0806FCB0}, {241, 0x0806FCF0}, {245, 0x0806FE2C},
 };
 
 static uint32_t thingScript(int kind) {
@@ -1464,16 +1556,20 @@ static const ThingHit THING_HITS[] = {
   {78, 0x300, 8, 20, 1, 0x380, 0, 0, 255}, {177, 0x140, 8, 20, 2, 0x380, 0, 0, 255},
   {178, 0x140, 8, 40, 4, 0x380, 0, 0, 255}, {179, 0x140, 8, 60, 6, 0x380, 0, 0, 255},
   {154, 0x120, 24, 30, 3, 0x2C0, 0, 4, 34}, {158, 0x120, 10, 30, 3, 0x380, 0, 0, 255},
-  {160, 0x120, 10, 30, 3, 0x380, 0, 0, 255},
+  {160, 0x120, 10, 30, 3, 0x380, 0, 0, 255}, {185, 0x280, 8, 40, 3, 0x3C0, 0, 2, 8},
+  {191, 0x200, 20, 35, 3, 0x280, 0, 2, 20}, {197, 0x140, 10, 30, 3, 0x340, 0, 0, 24},
+  {137, 0x180, 10, 10, 2, 0x340, 0, 0, 24}, {138, 0x180, 10, 10, 2, 0x340, 0, 0, 24},
+  {94, 0x1A0, 12, 18, 3, 0x280, 1, 0, 255},
 };
 // the kinds 0x0800eaec has hits for that aren't ported yet
-static const int THING_HITS_LATER[] = {62, 63, 82, 94, 97, 102, 137, 138, 142, 165, 166, 174, 175, 185, 191, 194, 197,
-  201, 241, 245};
+static const int THING_HITS_LATER[] = {62, 63, 82, 97, 102, 142, 165, 166, 174, 175, 194, 201, 241, 245};
 // the kinds of things 0x0800cec8 has steps for after they move that aren't ported yet
 static const int THING_STEPS_LATER[] = {39, 101, 141};
 // the kinds 0x0800cec8 sends to 0x0800d260, its steps of walls and the arena's edges for a thing that moves
 static const int THINGS_WITH_FLOOR_STEPS[] = {35, 38, 39, 40, 57, 58, 60, 61, 63, 79, 80, 81, 100, 101, 117, 118, 120,
   121, 137, 138, 140, 141, 157, 158, 159, 160, 161, 162, 163, 164, 180, 181, 182, 190, 197, 200, 201, 230, 231};
+// the kinds 0x0800cec8 sends to 0x0800d33a, which sits a thing on the floor inside the arena's edges
+static const int THINGS_ON_THE_FLOOR[] = {54, 97, 154, 191};
 
 /**
  * 0x080125dc: where a point meets a wall or an edge of the arena. Each wall it is inside pushes it out the shortest
@@ -1691,6 +1787,32 @@ static void stepAmySet(uint32_t thing, int k) {
 }
 
 /**
+ * 0x0800cec8's steps for a kind 200 thing, Chaos's Set (0x0800e572): a fighter close enough to it, across, along and
+ * in height, sets its owner's +236, which starts the Set. It doesn't move toward anyone.
+ */
+static void chaosSetFeelsFighters(uint32_t thing) {
+  int owner = read8(thing + THING_OWNER);
+  for (int i = 0; i < 4; i++) {
+    if (i == owner) continue;
+    uint32_t rec = record(i);
+    if (read8(rec + 187) == 0 || read8(SETUP_ + 20 + i) == 255) continue;
+    if (read8(SETUP_ + 8) != 0 && read8(SETUP_ + 9) != 1
+      && read8(SETUP_ + 32 + owner) == read8(SETUP_ + 32 + i)) continue;
+    int dx = reads16(thing + THING_X) - reads16(rec);
+    int dy = reads16(thing + THING_Y) - reads16(rec + 2);
+    int dz = reads16(thing + THING_Z) - reads16(rec + 4);
+    if ((dx < 0 ? -dx : dx) > 0x13F || (dy < 0 ? -dy : dy) > 0x13F || (dz < 0 ? -dz : dz) > 3) continue;
+    if (read8(0x0300138C) != 0) {
+      int player = (int)read32(PLAYER_);
+      if (owner != player && (owner != player + 2 || read8(SETUP_ + 28 + owner) == 0)) continue;
+    }
+    if ((dz < 0 ? -dz : dz) > 23) continue;
+    write8(record(owner) + 236, 1);
+    break;
+  }
+}
+
+/**
  * 0x0800c728: the things of a fight for a frame, and the screen's shake. A thing waiting to appear counts down; one that
  * has appeared runs its script (0x0800bb88) and moves (0x0800cec8).
  */
@@ -1719,8 +1841,10 @@ void updateThings(void) {
       write16(thing + THING_Y, read16(thing + THING_Y) + read16(thing + THING_SPEED_Y));
       write16(thing + THING_Z, read16(thing + THING_Z) + read16(thing + THING_SPEED_Z));
     }
-    // 0x0800cec8's per-kind steps: walls and the arena's edges push a thing back, and it falls until its floor
-    if (kind == 54) {
+    // 0x0800cec8's per-kind steps, by its kind as it is now, since its script may have just ended it: walls and the
+    // arena's edges push a thing back, and it falls until its floor
+    kind = read16(thing + THING_KIND);
+    if (inList(THINGS_ON_THE_FLOOR, sizeof THINGS_ON_THE_FLOOR / sizeof THINGS_ON_THE_FLOOR[0], kind)) {
       // 0x0800d33a: the arena's edges push it back and it sits on the floor, or at nothing when it meets no edge
       Meeting met = meetThingWalls(reads16(thing + THING_X), reads16(thing + THING_Y));
       write8(thing + THING_BITS, (uint8_t)met.bits);
@@ -1786,6 +1910,7 @@ void updateThings(void) {
       }
     }
     if (kind == 121) stepAmySet(thing, k);
+    if (kind == 200) chaosSetFeelsFighters(thing);
     if (inList(THING_STEPS_LATER, sizeof THING_STEPS_LATER / sizeof THING_STEPS_LATER[0], kind)) notPorted("0800CEC8");
     thingHit(k, read16(thing + THING_KIND));
   }
@@ -1857,7 +1982,28 @@ void followFighter(int i) {
   zoomCamera(0x200);
 }
 
+static int fight_end_vblank = -1;
+
+/** A start point may turn a Training fight into a Battle one at a chosen frame, so the fight's end can be proven. */
+void setFightEndAt(int vblank) { fight_end_vblank = vblank; }
+
 void trainingFrame(void) {
+  if (fight_end_vblank >= 0 && g.vblanks == fight_end_vblank) {
+    // 0x0801c28c hands over to 0x0801b394 at the frame the start point names: Battle's rule, a full Ichikoro gauge,
+    // the rival out of health, and the point that ends the fight at the part's first frame.
+    fight_end_vblank = -1;
+    write8(SETUP_ + 125, 1);
+    write8(SETUP_ + 4, 2);
+    write8(SETUP_ + 6, 1);
+    write8(SETUP_ + 51, 1);
+    write8(FIGHTERS + 147, 72);
+    write8(FIGHTERS + 149, 1);
+    write8(FIGHTERS + RECORD + HEALTH, 0);
+    write16(FIGHTERS + RECORD + STATE, 253);
+    placeRealBlast();
+    g.callback = battleFrame;
+    return;
+  }
   dummyKeys();
   int player = (int)read32(PLAYER_);
   readAllKeys(player);

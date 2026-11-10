@@ -82,7 +82,6 @@ ActTask *sega_letter_spawn(Slot *slot);
 ActTask *balloon_spawn(Slot *slot);
 ActTask *panel_gate_spawn(Slot *slot);
 ActTask *conveyor_spawn(Slot *slot);
-ActTask *steam_exhaust_spawn(Slot *slot);
 ActTask *booster_spawn(Slot *slot);
 ActTask *swing_rope_spawn(Slot *slot);
 ActTask *security_gate_spawn(Slot *slot);
@@ -101,6 +100,7 @@ ActTask *barrel_spawn(Slot *slot);
 ActTask *bowl_spawn(Slot *slot);
 ActTask *carousel_spawn(Slot *slot);
 ActTask *ship_swing_spawn(Slot *slot);
+ActTask *steam_exhaust_spawn(Slot *slot);
 
 void entities_load(int level);
 int entities_manager(ActTask *t);
@@ -172,6 +172,7 @@ void items_stars(void);
 // --- the rings (rings.c) -----------------------------------------------------------------------------------------------
 void rings_load(int level);
 void rings_start(void);
+void rings_start_point(void);
 int rings_task(ActTask *t);
 int scatter_task(ActTask *t);
 void scatter_launch(int x, int y, int n, int layer, int inverted);
