@@ -69,7 +69,7 @@ static const struct { uint8_t level; uint16_t first, last; } EARLY_COLOURS[] = {
 
 
 /** CreateStageBg_Zone4 */
-void ice_mountain_create_background(void) {
+static void create_background(void) {
   e.bldAlpha = 0x1010;   // BLDALPHA_BLEND(16, 16)
   // the original writes BLDCNT's targets into BG0CNT: map 27, character base 3, priority 0, which the snow then uses
   e.bgCnt[0] = 0x1B0C;
@@ -101,7 +101,7 @@ static void animate_snow(void) {
 
 /** StageBgUpdate_Zone4Acts12: the snow scrolls with the camera and falls with the stage clock over everything, blended
  *  half over it, and the mountains move 16 px across the act and 352 px down it */
-void ice_mountain_background_update(int x, int y) {
+static void background_update(int x, int y) {
   e.bldCnt = 0x3F41;     // BLDCNT_TGT2_ALL | BLDCNT_EFFECT_BLEND | BLDCNT_TGT1_BG0
   e.bldAlpha = 0x1010;
   x -= act.cam.wrapped;
@@ -118,7 +118,8 @@ void ice_mountain_background_update(int x, int y) {
 
 /** The scroll the update set, as draw_frame writes the frame's registers, and the snow on BG0 unless the water covers
  *  the whole screen (gWater.unk1 is 0); the blend stays as the update and the title card left it */
-void ice_mountain_draw(void) {
+static void draw(int camX, int camY) {
+  (void)camX; (void)camY;
   if (!view.updated) return;
   e.bgScroll[0] = view.snowX; e.bgScroll[1] = view.snowY;
   e.bgScroll[6] = view.bgX; e.bgScroll[7] = view.bgY;
@@ -298,3 +299,35 @@ void water_task(void) {
 int water_level(void) { return water.current; }
 void water_lower(int dy) { water.target += dy; }
 int water_line_on_screen(void) { return water.on && (uint8_t)(water.unk1 - 1) < SCREEN_H - 1; }
+
+// --- the acts' rows (levels.h) -------------------------------------------------------------------------------------
+// The stage inits for Zone 4: each act's song and where its water starts (CreateStageWaterTask), after its background
+// (sStageBgInitProcedures), and the palette animations palette_loader.c makes for Ice Mountain
+enum {
+  MUS_ICE_MOUNTAIN__ACT_1 = 18, MUS_ICE_MOUNTAIN__ACT_2 = 19,
+  INITIAL_WATERLEVEL_ZONE_4_ACT_1 = 1546, INITIAL_WATERLEVEL_ZONE_4_ACT_2 = 1664,
+  WATER_MASK = 0x7F207F20,
+};
+static const int PALETTES[] = { 822, 821 };
+
+static void start_first_act(void) { create_background(); water_create(INITIAL_WATERLEVEL_ZONE_4_ACT_1, WATER_MASK); }
+static void start_second_act(void) { create_background(); water_create(INITIAL_WATERLEVEL_ZONE_4_ACT_2, WATER_MASK); }
+// UpdateCamera's fnBgUpdate, which runs with its RenderMetatileLayers
+static void camera_moved(int runs) {
+  if (runs) background_update((int)act.cam.x, (int)act.cam.y);
+}
+
+const Level ACT_ICE_MOUNTAIN_1 = {
+  .song = MUS_ICE_MOUNTAIN__ACT_1, .hudFlash = 90, LEVEL_PALETTES(PALETTES),
+  // 256 × 512, priority 3, map 28 (0xE000), character base 2 (STGBG_SCRN_DIM(256, 512, 2, BACK_A))
+  .bgCnt = 0x9C0B, .bgCols = 32, .bgRows = 64,
+  .start = start_first_act, .cameraMoved = camera_moved, .drawBackground = draw,
+  .ownsBlend = 1,   // its background update sets the blend in the camera's task, which the title card's end clears
+};
+
+const Level ACT_ICE_MOUNTAIN_2 = {
+  .song = MUS_ICE_MOUNTAIN__ACT_2, .hudFlash = 90, LEVEL_PALETTES(PALETTES),
+  .bgCnt = 0x9C0B, .bgCols = 32, .bgRows = 64,
+  .start = start_second_act, .cameraMoved = camera_moved, .drawBackground = draw,
+  .ownsBlend = 1,
+};

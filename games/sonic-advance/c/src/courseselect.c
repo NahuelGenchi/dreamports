@@ -37,7 +37,6 @@ enum {
 #define ROW_3_GFX 62
 #define SLIDE_END 0x3F   // the slide's last frame, when the picture's map doubles to its full height
 enum { CHOSEN = 1, BACK = 2 };   // unk57
-enum { X_ZONE = 12, THE_MOON = 13 };
 #define MAX_ROWS 16
 
 static struct {
@@ -130,10 +129,10 @@ static void load_row3(void) {
 // with all seven Chaos Emeralds, once every character has cleared X Zone, from X Zone on, and never when the Moon has
 // been beaten and the game is on X Zone from the course select
 static int moon_opens(void) {
-  return ctx.character == 0 && ctx.currentLevel >= X_ZONE && SAVE_CHAOS_EMERALDS == ALL_EMERALDS
-    && save_unlocked_level(0) > X_ZONE && save_unlocked_level(1) > X_ZONE
-    && save_unlocked_level(2) > X_ZONE && save_unlocked_level(3) > X_ZONE
-    && !(save_unlocked_level(0) == MOON_BEATEN && ctx.startLevel == X_ZONE);
+  return ctx.character == 0 && ctx.currentLevel >= LEVEL_X_ZONE && SAVE_CHAOS_EMERALDS == ALL_EMERALDS
+    && save_unlocked_level(0) > LEVEL_X_ZONE && save_unlocked_level(1) > LEVEL_X_ZONE
+    && save_unlocked_level(2) > LEVEL_X_ZONE && save_unlocked_level(3) > LEVEL_X_ZONE
+    && !(save_unlocked_level(0) == MOON_BEATEN && ctx.startLevel == LEVEL_X_ZONE);
 }
 
 // the scroll a step nearer what it's going to, a fifth of the way
@@ -188,7 +187,7 @@ void create_course_select(void) {
 // a start point at an act opens it at the A that would have chosen it, while the original plays its title card
 static int take_start_point(Task *t) {
   int level = (int)gba_start_number("level", -1);
-  if (!(e.pressed & KEY_A) || level != ACT_LEVEL_CASINO_PARADISE_2 || gba_start_number("power", 0) != 2) return 0;
+  if (!(e.pressed & KEY_A) || level != LEVEL_CASINO_PARADISE_2 || gba_start_number("power", 0) != 2) return 0;
   if (front_frame() < (uint32_t)gba_start_number("at", 0)) return 0;
   destroy_tasks(0x2001, 0x3000);
   t->main = idle;

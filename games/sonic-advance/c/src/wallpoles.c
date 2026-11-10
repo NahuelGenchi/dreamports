@@ -13,7 +13,6 @@ enum {
   VARIANT_REST = 0, VARIANT_SWING = 1,
   ORDER_POLE = 18, PRIORITY_FRONT = 2,
   SE_POLE = 175,
-  NEO_GREEN_HILL = 0,   // the zone
   HANG_X = 8, HANG_Y = 16,   // where it puts his centre, from its point
   SWING_FRAMES = 14,
   SWING_UP_FROM = 6,    // the frames after this one swing him up
@@ -91,7 +90,7 @@ ActTask *wall_pole_spawn(Slot *slot) {
   w->o.x = en->x;
   w->dir = en->kind == WALL_POLE_RIGHT ? -1 : 1;   // the way it points out of its wall
   w->phase = PHASE_WAITING;
-  int anim = act.stage.zone == NEO_GREEN_HILL ? ANIM_POLE_NEO_GREEN_HILL : ANIM_POLE_FLAG;
+  int anim = act.stage.zone == ZONE_NEO_GREEN_HILL ? ANIM_POLE_NEO_GREEN_HILL : ANIM_POLE_FLAG;
   // its first frame's box is set before its first run, which steps it on as the original does
   object_sprite(&w->o.sprite, anim, VARIANT_REST, VARIANT_SWING, ORDER_POLE, PRIORITY_FRONT, w->dir < 0, 0);
   sprite_step(&w->o.sprite);

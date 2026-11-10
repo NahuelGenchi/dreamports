@@ -11,7 +11,7 @@
 
 enum {
   BOWL = 62,
-  ANIM_BOWL = 486, ANIM_BOWL_ANGEL_ISLAND = 546, LEVEL_ANGEL_ISLAND_1 = 8,   // sBowlAnimations by level
+  ANIM_BOWL = 486, ANIM_BOWL_ANGEL_ISLAND = 546,   // sBowlAnimations by level
   ORDER_BOWL = 5, PRIORITY_FRONT = 2,
   SE_BOWL = 206, SE_BOWL_2 = 207, SE_BOWL_3 = 208,
   HALF_WIDTH = 6,                  // Sonic's spriteOffsetX

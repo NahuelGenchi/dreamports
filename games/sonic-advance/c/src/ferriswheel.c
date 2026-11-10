@@ -10,7 +10,6 @@
 #include "objects.h"
 
 enum {
-  ZONE_CASINO_PARADISE = 2, LEVEL_CHAO_HUNT_C = 16,   // where the wheels have no hub or spokes
   ANIM_HUB = 530, ANIM_SPOKE = 531,               // SA1_ANIM_FERRIS_WHEEL_HOOK and SA1_ANIM_FERRIS_WHEEL_SEGMENT
   VRAM_HUB = 0x3020, VRAM_SPOKE = 0x30A0,         // VRAM_RESERVED_FERRIS_WHEEL_HOOK and _SEGMENT
   SEAT_TILES = 48 / 8 * (24 / 8),                 // ALLOC_TILES(SA1_ANIM_PLATFORM_HORZ_3), whichever look it has
@@ -58,6 +57,7 @@ static int wheel_run(ActTask *t) {
   } else w->riding = 0;
   if (off_display(x, y) && off_cam(x + dx, y + dy)) return 0;
   object_draw(&w->o.sprite, x + dx, y + dy + bios_div(SINE[w->sag], SAG_DIV));
+  // Casino Paradise's wheels, and Chao Hunt C's, have no hub or spokes
   if (act.stage.zone != ZONE_CASINO_PARADISE && act.stage.level != LEVEL_CHAO_HUNT_C) {
     object_draw(&w->hub, x, y);
     int32_t sx = bios_div(w->a, SPOKE_DIV), sy = bios_div(w->b, SPOKE_DIV), r8 = 0, r4 = 0;

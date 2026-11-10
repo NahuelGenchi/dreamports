@@ -9,7 +9,6 @@
 #include "enemies.h"
 
 enum {
-  ZONE_ICE_MOUNTAIN = 3,
   ANIM_PEN = 426, ANIM_SNOWBALL = 428, ANIM_PIECE = 429,   // SA1_ANIM_PEN, SA1_ANIM_PEN_PROJ_2 and _PROJ_3
   VARIANT_WALK = 0, VARIANT_THROW = 1,
   STEP = 160,                     // 0.625 px, in 1/256 px

@@ -13,7 +13,6 @@
 #include "terrain.h"
 
 enum {
-  ZONE_ICE_MOUNTAIN = 3,
   ANIM_SPLASH_WATER = 474, ANIM_SPLASH_ICE = 562,   // SA1_ANIM_WATER_SLIDE_SPLASH and SA1_ANIM_ICE_SLIDE_SPLASH
   SPLASH_TILES = 48 / 8 * (24 / 8),                 // ALLOC_TILES(SA1_ANIM_WATER_SLIDE_SPLASH), whichever splash it shows
   ORDER_SPLASH = 3, PRIORITY_SPLASH = 2,

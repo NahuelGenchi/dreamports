@@ -6,22 +6,8 @@
 
 #include "sa.h"
 #include "player.h"
+#include "levels.h"
 
-// how an act's background moves (its StageBgUpdate)
-enum { BG_SCROLL_STILL, BG_SCROLL_CASINO_PARADISE, BG_SCROLL_X_ZONE, BG_SCROLL_SECRET_BASE, BG_SCROLL_SECRET_BASE_OUTSIDE, BG_SCROLL_NEO_GREEN,
-       BG_SCROLL_ICE_MOUNTAIN };
-#define ACT_LEVEL_NEO_GREEN_1 0
-#define ACT_LEVEL_NEO_GREEN_2 1
-#define ACT_LEVEL_NEO_GREEN_HILL_1 ACT_LEVEL_NEO_GREEN_1
-#define BG_SCROLL_NEO_GREEN_HILL BG_SCROLL_NEO_GREEN
-#define ACT_LEVEL_SECRET_BASE_1 2
-#define ACT_LEVEL_SECRET_BASE_2 3
-#define ACT_LEVEL_CASINO_PARADISE_1 4
-#define ACT_LEVEL_CASINO_PARADISE_2 5
-#define ACT_LEVEL_ICE_MOUNTAIN_1 6
-#define ACT_LEVEL_ICE_MOUNTAIN_2 7
-#define ACT_IS_ICE_MOUNTAIN(level) ((level) == ACT_LEVEL_ICE_MOUNTAIN_1 || (level) == ACT_LEVEL_ICE_MOUNTAIN_2)
-#define ACT_LEVEL_X_ZONE 12
 #define ACT_TILES 3072          // the largest metatile count of the acts' collision, with room to spare
 #define ACT_LEVEL_BLOCKS 8192   // the largest layer, in 96 × 96 px blocks
 #define ACT_TILE_ENTRIES (ACT_TILES * 144)
@@ -38,7 +24,7 @@ typedef struct {
 
 typedef struct {
   int level, zone, act, music, hudFlash;
-  int backgroundScroll;   // how the background moves (BG_SCROLL_*)
+  const Level *row;       // what the engine asks of this level (levels.h)
   int paletteCount;
   const int *paletteAnimations;
   const int *paletteVariants;   // each animation's variant, or NULL for variant 0
@@ -120,10 +106,7 @@ void act_special_stage(int x, int y);
 /** The game's random numbers (gPseudoRandom): the next, which also moves the sequence on. */
 uint32_t act_random(void);
 
-// Ice Mountain's snow, background and water (icemountain.c)
-void ice_mountain_create_background(void);
-void ice_mountain_background_update(int x, int y);
-void ice_mountain_draw(void);
+// the water at Ice Mountain's foot (icemountain.c)
 void water_create(int level, uint32_t mask);
 void water_card(int ending);
 void water_card_flush(void);
@@ -155,8 +138,11 @@ void rings_skip_first_update(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_song_playing(void);
-/** Whether the C version has `level`'s act, which the course select may start. */
-int act_level_ported(int level);
+// what a zone's own code asks of the act (levels.h): one step of a palette animation, the tiles of frame `frame` of
+// the stage's animation copied now, and the frames of the act's music before the first one shown rendered there
+void act_palette_step(PaletteAnim *p);
+void act_copy_tiles(int frame);
+void act_render_music_at_first_frame(void);
 void act_task(Task *t);
 uint32_t front_frame(void);
 

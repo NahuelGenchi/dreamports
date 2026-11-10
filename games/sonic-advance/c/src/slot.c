@@ -11,7 +11,6 @@
 #include "enemies.h"
 
 enum {
-  ZONE_CASINO_PARADISE = 2,
   ANIM_SLOT = 417, ANIM_COIN = 420, ANIM_PIECE = 421,
   VARIANT_WALK = 0, VARIANT_SHOOT = 1,
   ORDER_COIN = 9,
