@@ -123,6 +123,76 @@ export function keepMainsTable(cwd, games = []) {
   if (mine && main) writeFileSync(join(cwd, STATUS), `${mine.before}${main.table}${mine.after}`);
 }
 
+/**
+ * Main as a commit that also says which merged pull requests it holds: `main`'s own files, with main and each of
+ * `heads`, those pull requests' newest commits, as its parents, under `message`. A squashed merge shares no commits
+ * with a branch built on what it squashed, so git compares the two from before either began, and every line the branch
+ * changed on top of that pull request conflicts with main's copy of it. Merging this in main's place compares from the
+ * pull request's own last commit, which leaves only what the branch and the rest of main both changed. Its date is
+ * main's, so the same main and heads always give the same commit. Main itself when it has every one of them already.
+ */
+export function holding(cwd, main, heads, message) {
+  const apart = heads.filter(head => !passes(cwd, ['merge-base', '--is-ancestor', head, main]));
+  if (!apart.length) return main;
+  const when = git(cwd, ['log', '-1', '--format=%cI', main]);
+  const args = ['commit-tree', `${main}^{tree}`, '-p', main, ...apart.flatMap(head => ['-p', head]), '-m', message];
+  return execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_DATE: when, GIT_COMMITTER_DATE: when } }).trim();
+}
+
+/** Whether `commit` is one `holding` made, of a commit `main` has: its files are its first parent's, which is main's. */
+export const isHolding = (cwd, commit, main) => passes(cwd, ['merge-base', '--is-ancestor', `${commit}^1`, main])
+  && git(cwd, ['rev-parse', `${commit}^{tree}`]) === git(cwd, ['rev-parse', `${commit}^1^{tree}`]);
+
+/**
+ * The pull requests a branch is built on. A piece that starts on top of another merges that one in, so its commits
+ * hold a merge whose other side isn't main's, and that side was the other pull request's newest commit at the time.
+ * `main` is the commit of main the branch is compared with, and `branch` its own name.
+ *
+ * Which pull request a side belongs to is asked two ways, as neither is enough alone. `pullsWith(commit)` gives the
+ * numbers of the pull requests GitHub lists for a commit, which leaves out one that has merged and lost its branch.
+ * The merge's own subject often names it, as in "Merge commit 'refs/pull/1029/head'", "Merge branch 'pr1014'" or
+ * `update`'s own "Merge #1029, which this branch is built on". `pullOf(number)` gives one's { branch, open, merged,
+ * mergedAs }, the last being the commit it became on main, or null when there's no such pull request, and
+ * `fetchHead(number)` fetches its newest commit and gives it, or null. The side has to be one of that pull request's
+ * own commits, on its first line of commits: one that only took the same commit in, as another piece built on the same
+ * pull request did, isn't under this branch.
+ *
+ * `stated` holds the numbers the branch's own pull request names in its "Builds on #N" lines, for a branch that took
+ * the other's commits with no merge of its own, as git does when that one already had all of main. Each counts when
+ * the branch carries commits of it that main doesn't have.
+ *
+ * One closed without merging is left out, as nothing stands on it any more. Gives each { number, head, has, inMain }:
+ * its newest commit, whether the branch has it already, and whether main holds the pull request, merged.
+ */
+export function builtOn(cwd, main, branch, { pullsWith, pullOf, fetchHead, stated = [] }) {
+  const start = git(cwd, ['merge-base', 'HEAD', main]);
+  const sides = new Map();
+  for (const merge of lines(git(cwd, ['rev-list', '--merges', '--first-parent', `${start}..HEAD`]))) {
+    const subject = git(cwd, ['log', '-1', '--format=%s', merge]);
+    const named = [.../\b(?:pull\/|pr[/-]?)(\d+)\b|^Merge #(\d+), which this branch is built on/gi[Symbol.matchAll](subject)].map(found => Number(found[1] ?? found[2]));
+    for (const side of git(cwd, ['rev-list', '--parents', '-n', '1', merge]).split(' ').slice(2)) {
+      if (passes(cwd, ['merge-base', '--is-ancestor', side, main]) || isHolding(cwd, side, main)) continue;
+      sides.set(side, [...(sides.get(side) ?? []), ...named]);
+    }
+  }
+  const found = new Map();
+  // one pull request, when something can still stand on it and `under(head)` finds the branch does
+  const take = (number, under) => {
+    if (found.has(number)) return;
+    const pull = pullOf(number);
+    if (!pull || pull.branch === branch || (!pull.open && !pull.merged)) return;
+    const head = fetchHead(number);
+    if (!head || !under(head)) return;
+    const inMain = Boolean(pull.mergedAs) && passes(cwd, ['merge-base', '--is-ancestor', pull.mergedAs, main]);
+    found.set(number, { number, head, has: passes(cwd, ['merge-base', '--is-ancestor', head, 'HEAD']), inMain });
+  };
+  for (const [side, named] of sides) {
+    for (const number of new Set([...named, ...pullsWith(side)])) take(number, head => lines(git(cwd, ['rev-list', '--first-parent', head, `^${start}`])).includes(side));
+  }
+  for (const number of stated) take(number, head => !passes(cwd, ['merge-base', '--is-ancestor', git(cwd, ['merge-base', 'HEAD', head]), main]));
+  return [...found.values()].sort((a, b) => a.number - b.number);
+}
+
 /** Commits the merge, with what the tools wrote for `games`. */
 export function finishMerge(cwd, games, message) {
   git(cwd, ['add', '--update']);
