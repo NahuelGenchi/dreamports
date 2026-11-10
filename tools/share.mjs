@@ -220,7 +220,7 @@ export function chooseClips(game, file, commit, base, { team = false, stands = n
   const problemsOf = clip => clipProblems(clip.report, clip.report?.recordingFile ? fileAt(commit, clip.report.recordingFile) : null, { sideBySide: clip.sideBySide, base });
   if (file) {
     const clip = proveClip(results, resolve(file));
-    const problems = problemsOf(clip);
+    const problems = [...problemsOf(clip), ...(clip.still ? [] : [NO_FRAME(clip)])];
     if (problems.length) throw new Error(`${clip.file} can't go in the pull request, so nothing was published:\n${problems.map(p => `  ${p}`).join('\n')}`);
     return [clip];
   }
@@ -234,7 +234,9 @@ export function chooseClips(game, file, commit, base, { team = false, stands = n
   const found = made.map(f => {
     const clip = proveClip(results, f);
     const committed = clip.report?.recordingFile ? fileAt(commit, clip.report.recordingFile) : null;
-    return { clip, stale: staleness(clip.report, committed, { base }), problems: problemsOf(clip) };
+    const problems = problemsOf(clip);
+    // one that would go needs its frame, where one left out for another reason doesn't
+    return { clip, stale: staleness(clip.report, committed, { base }), problems: problems.length || clip.still ? problems : [NO_FRAME(clip)] };
   });
   const good = found.filter(f => !f.problems.length).map(f => f.clip);
   // only clips of what the step changed matter: one of a recording that shows nothing new isn't missing, and one prove
@@ -274,6 +276,7 @@ function recordFile(game, commit, base, record, day = new Date().toISOString().s
 }
 
 // a clip prove made, from its folder in .dreamports/results/<game>/, with its frame and its report
+const NO_FRAME = clip => `The clip of ${clip.recording} has no frame beside it, clip.png or clip-middle.png, and a pull request shows a clip by its frame: prove the recording again.`;
 function proveClip(results, file) {
   if (basename(file) === 'dreamport.mp4') {
     throw new Error(`${file} is the Dreamport on its own, and a pull request's clip shows the original next to it, every frame matching: share takes clip.mp4, beside it. `
@@ -288,8 +291,8 @@ function proveClip(results, file) {
   if (bytes > CLIP_LIMIT) throw new Error(`${basename(file)} is ${(bytes / 1e6).toFixed(1)} MB, and a clip stays under 2 MB: a shorter one is lighter.`);
   // a frame for the pull request: prove keeps dreamport.png beside dreamport.mp4, and clip-middle.png beside clip.mp4
   const base = join(dirname(file), basename(file, '.mp4'));
-  const still = [`${base}.png`, `${base}-middle.png`].find(existsSync);
-  if (!still) throw new Error(`${basename(file)} has no frame beside it, ${basename(base)}.png or ${basename(base)}-middle.png: prove the recording again.`);
+  // (a clip of a linked recording has none yet, which matters only once it's one that goes)
+  const still = [`${base}.png`, `${base}-middle.png`].find(existsSync) ?? null;
   const recording = basename(dirname(file));
   // and who the original's own memory says it plays, which a reviewer who doesn't see the pictures can read
   // (src/lib/shows.mjs)
