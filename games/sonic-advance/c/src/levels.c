@@ -25,7 +25,7 @@ static const Level *const LEVELS[LEVEL_COUNT] = {
   // and its second act
   [LEVEL_ICE_MOUNTAIN_2] = &ACT_ICE_MOUNTAIN_2,
   // Zone 5
-  [LEVEL_ANGEL_ISLAND_1] = &NOT_IN_C,
+  [LEVEL_ANGEL_ISLAND_1] = &ACT_ANGEL_ISLAND_1,
   // and its second act
   [LEVEL_ANGEL_ISLAND_2] = &NOT_IN_C,
   // Zone 6, whose two acts are zones of their own to the player

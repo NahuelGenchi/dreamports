@@ -58,6 +58,8 @@ ActTask *senbon_spawn(Slot *slot);          // 5
 ActTask *hanabii_spawn(Slot *slot);         // 8
 ActTask *slot_machine_spawn(Slot *slot);    // 9
 ActTask *pierrot_spawn(Slot *slot);         // 10
+ActTask *leon_spawn(Slot *slot);            // 11
+ActTask *wamu_spawn(Slot *slot);            // 13
 ActTask *tentou_spawn(Slot *slot);          // 6
 ActTask *mole_spawn(Slot *slot);            // 15
 ActTask *egg_press_spawn(Slot *slot);       // 23

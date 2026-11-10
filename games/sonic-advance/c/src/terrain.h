@@ -28,8 +28,8 @@ int terrain_angle(int px, int py, int layer);
 
 /** sub_8022D6C: keeps a grounded Sonic on the surface, follows its angle, or lets him fall off. */
 void sensors_ground(Player *p);
-/** sub_8023128 walking and sub_80231C0 rolling: stops Sonic at a wall ahead one frame early. True when a wall to his
- *  side pushed him back. */
+/** sub_8023128 walking and rolling, and sub_80231C0 in the B-button combo: stops Sonic at a wall ahead one frame early.
+ *  True when a wall to his side pushed him back; the walking check also starts a push. */
 int sensors_wall_push(Player *p, int rolling);
 /** sub_8022190: the collision of Sonic in the air, touching him down on the ground. */
 void sensors_air(Player *p);

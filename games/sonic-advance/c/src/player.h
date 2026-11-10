@@ -24,6 +24,7 @@ typedef enum {
   PS_ACT_CLEAR_POSE,        // standing by an opened capsule (CHARSTATE_ACT_CLEAR_B)
   PS_HALF_PIPE_LOW, PS_HALF_PIPE_MID, PS_HALF_PIPE_HIGH,   // the three walks a half-pipe gives him
   PS_BREATHE,               // taking a breath from an air bubble (CHARSTATE_27)
+  PS_FLOAT,                 // lifted by a whirlwind (CHARSTATE_37)
   PA_BORED, PA_RUN, PA_BRAKE_TURN,   // bored of waiting, running, and turning round after a skid
   PA_COUNT
 } PlayerAnim;

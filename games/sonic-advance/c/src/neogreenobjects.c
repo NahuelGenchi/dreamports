@@ -8,7 +8,7 @@
 
 enum {
   ANIM_BOULDER = 458, ANIM_DEBRIS_SMALL = 459, ANIM_DEBRIS_BIG = 460,
-  ANIM_WATERFALL = 464,
+  ANIM_WATERFALL = 464, ANIM_WATERFALL_ANGEL_ISLAND = 552,
   ORDER_OBJECT = 18, PRIORITY_FRONT = 2,
   SE_BREAK = 167,
   SE_GRIND_START = 114, SE_GRIND_END = 116,
@@ -137,7 +137,7 @@ static int ramp_run(ActTask *t) {
     p->xsp = dir * fast;
     player_end_attack(p);
     p->pushing = 0; p->airLock = 0;
-    p->state = PS_SPIN;
+    p->state = PS_SPRING;   // CHARSTATE_17, the spring somersault
     play_song(170);
   }
   if (off_cam(en->e.x, en->e.y)) return 0;
@@ -152,10 +152,58 @@ ActTask *ramp_spawn(Slot *slot) {
 }
 
 // --- the waterfalls (waterfalls.js) ---------------------------------------------------------------------------------------------
-typedef struct { Object o; int phase; } Waterfall;
+typedef struct { Object o; int phase, sounding; } Waterfall;
+
+enum { SE_WATERFALL = 201, WATERFALL_SE2 = 2, WATERFALL_FADE = 4 };
+#define WATERFALL_SINK (176 / 256.0)
+#define WATERFALL_PUSH (4 / 256.0)
+#define WATERFALL_THROW (624 / 256.0)
+
+/** Task_WaterfallZone5: Angel Island's waterfalls hold Sonic on his feet and sink him, the d-pad pushes him the other way
+ *  along, and a jump press throws him up. The splash animates whether he is in it or not, and the sound fades out once
+ *  he is out. */
+static int waterfall_angel_island(Waterfall *w) {
+  const Slot *en = w->o.slot;
+  Player *p = &act.player;
+  int top = en->e.y + d1(en) * 8, bottom = top + d3(en) * 8;
+  if (off_cam(en->e.x, en->e.y)) {
+    if (w->sounding) fade_out_sound(WATERFALL_SE2, WATERFALL_FADE);
+    return 0;
+  }
+  if (w->phase == 0) { sprite_start(&w->o.sprite, 0); w->phase = 1; }
+  sprite_step(&w->o.sprite);
+  if (p->dead) return 1;
+  int x = fl(p->x), y = fl(p->y);
+  if (x >= en->e.x && x <= en->e.x + d2(en) * 8 && y >= top && y <= bottom) {
+    if (p->ysp >= 0) {
+      if (!w->sounding) { w->sounding = 1; play_song(SE_WATERFALL); }
+      player_end_attack(p); p->pushing = 0; p->airLock = 0;   // Player_TransitionCancelFlyingAndBoost
+      if (p->jumpPressed) {
+        p->state = PS_SPIN;
+        p->ysp = -WATERFALL_THROW;
+      } else {
+        p->air = 0; p->curled = 0;   // his hitbox keeps its height
+        p->state = PS_WALK;
+        p->y += WATERFALL_SINK;
+        if (p->ysp > 0) p->ysp = 0;
+        if (p->held[0] & DPAD_LEFT) p->gsp += WATERFALL_PUSH;
+        else if (p->held[0] & DPAD_RIGHT) p->gsp -= WATERFALL_PUSH;
+        else p->gsp -= ((int)__builtin_floor(p->gsp * 256 + 0.5) / 20) / 256.0;
+      }
+    }
+    w->o.sprite.x = (int16_t)(fl(p->x) - cam_x());
+    w->o.sprite.y = (int16_t)(fl(p->y) + 10 - cam_y());
+    if (objects_drawing()) display_sprite(&w->o.sprite);
+  } else if (w->sounding) {
+    fade_out_sound(WATERFALL_SE2, WATERFALL_FADE);
+    w->sounding = 0;
+  }
+  return 1;
+}
 
 static int waterfall_run(ActTask *t) {
   Waterfall *w = (Waterfall *)t->data;
+  if (act.stage.zone == ZONE_ANGEL_ISLAND) return waterfall_angel_island(w);
   const Slot *en = w->o.slot;
   Player *p = &act.player;
   int x = fl(p->x), y = fl(p->y);
@@ -177,7 +225,9 @@ ActTask *waterfall_spawn(Slot *slot) {
   Waterfall *w = OBJECT_NEW(Waterfall);
   if (!w) return NULL;
   w->o.slot = slot; w->o.x = slot->e.x;
-  object_sprite(&w->o.sprite, ANIM_WATERFALL, 0, 5, 5, PRIORITY_FRONT, 0, 0);   // the splash sits in front, at OAM order 5 (waterfall.c)
+  // gUnknown_086CED28, the splash by level: Angel Island's acts have their own
+  int anim = act.stage.zone == ZONE_ANGEL_ISLAND ? ANIM_WATERFALL_ANGEL_ISLAND : ANIM_WATERFALL;
+  object_sprite(&w->o.sprite, anim, 0, 5, 5, PRIORITY_FRONT, 0, 0);   // the splash sits in front, at OAM order 5 (waterfall.c)
   return object_task(&w->o, waterfall_run, PRIORITY_OBJECTS);
 }
 

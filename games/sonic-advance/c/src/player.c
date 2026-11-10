@@ -311,15 +311,16 @@ static void balance_on_terrain(Player *p) {
 }
 
 // at the side of the object he stands on (Player_8044D74): his centre more than a pixel past the side of its box, less his
-// half-width; a side at 0 never counts. Once balancing, he keeps on a pixel further in.
+// half-width; a side at 0 never counts. Once balancing, he keeps on a pixel further in. Its place is where its sprite was
+// last drawn on the screen, from where the camera is now, which for an object that moves is where it was a frame before.
 static void balance_on_object(Player *p) {
   const Object *o = p->onObject;
   const Hitbox *hb = object_box(&o->sprite, 0);
   if (!hb) return;
-  int l = hb->left, r = hb->right;
-  if (l != 0 && p->x < o->x + l - HALF_WIDTH + 1) { balance(p, -1); return; }
-  if (r != 0 && p->x > o->x + r + HALF_WIDTH - 2) { balance(p, 1); return; }
-  if ((p->x < o->x + l - HALF_WIDTH + 2 || p->x > o->x + r + HALF_WIDTH - 3) && (p->prevState == PS_BALANCE_FORWARD || p->prevState == PS_BALANCE_BACK)) {
+  int l = hb->left, r = hb->right, x = o->sprite.x + cam_x();
+  if (l != 0 && p->x < x + l - HALF_WIDTH + 1) { balance(p, -1); return; }
+  if (r != 0 && p->x > x + r + HALF_WIDTH - 2) { balance(p, 1); return; }
+  if ((p->x < x + l - HALF_WIDTH + 2 || p->x > x + r + HALF_WIDTH - 3) && (p->prevState == PS_BALANCE_FORWARD || p->prevState == PS_BALANCE_BACK)) {
     p->state = p->prevState;
   }
 }
@@ -383,8 +384,8 @@ static void roll_step(Player *p, const Control *c) {
   if (p->gsp == 0 && p->forcedRoll) { p->gsp = FORCED_ROLL_SPEED * p->facing; play_song(SE_SPIN); }
   else if (p->gsp == 0) { uncurl(p); p->state = c->down ? PS_CROUCH : PS_WALK; }
   along_surface(p);
-  // a wall to the side stops the roll and stands him up
-  if (sensors_wall_push(p, 1) && p->curled) { uncurl(p); p->state = PS_WALK; }
+  // a wall to the side stops the roll and stands him up, pushing: the roll ends with the walking check (sub_8023128)
+  if (sensors_wall_push(p, 0) && p->curled) { uncurl(p); p->state = PS_WALK; }
 }
 
 // on a frame a jump or a B move starts nothing else runs; while revving a spin dash Sonic stays put but still follows the
@@ -662,7 +663,7 @@ static const uint8_t ANIMATIONS[PA_COUNT][2] = {
   [PS_MARBLE_TRACK] = {39, 0}, [PS_POLE] = {38, 0}, [PS_FLAG_SWING] = {37, 0}, [PS_ACT_CLEAR_RUN] = {22, 0},
   [PS_CAROUSEL_RIDE] = {40, 0}, [PS_SWING_ROPE] = {40, 1}, [PS_HOOK] = {43, 0}, [PS_ACT_CLEAR_POSE] = {23, 0},
   [PS_HALF_PIPE_LOW] = {36, 0}, [PS_HALF_PIPE_MID] = {36, 1}, [PS_HALF_PIPE_HIGH] = {36, 2},
-  [PS_BREATHE] = {17, 0},
+  [PS_BREATHE] = {17, 0}, [PS_FLOAT] = {42, 0},
 };
 
 // the walk cycle plays at his speed, never slower than half
