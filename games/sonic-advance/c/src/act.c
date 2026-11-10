@@ -438,6 +438,14 @@ uint32_t act_random(void) {
   return act.seed = act.seed * 0x196225u + 0x3C6EF35Fu;
 }
 
+void act_random_seed(uint32_t seed) {
+  if (act.stage.row->sharedRandom) front_random_seed(seed);
+  else act.seed = seed;
+}
+
+// where the act's random numbers are, in whichever sequence it draws from
+static uint32_t act_random_state(void) { return act.stage.row->sharedRandom ? ctx.seed : act.seed; }
+
 // --- what Sonic's moves ask of the act (the world's hooks in engine/game.js) --------------------------------------------
 enum { SE_LIFE_LOST = 119, SE_DROWNED = 192, SPIN_DASH_FREEZE = 10 };
 
@@ -472,9 +480,11 @@ static int nextLevel;
 static void next_act(void) {
   if (!level_in_c(nextLevel)) { act_active = 0; ctx.done = 1; return; }
   int lives = act.lives, score = act.score;
-  uint32_t seed = act.seed;
+  // gPseudoRandom goes on from the act before, whichever of the C's two sequences that act drew from
+  uint32_t seed = act_random_state();
   act_start(nextLevel, -1, 0);
-  act.lives = lives; act.score = score; act.seed = seed;
+  act.lives = lives; act.score = score;
+  act_random_seed(seed);
   act.afterLevel = 1;
   act.musicStarts = 1;
   act_frame_now();
@@ -582,7 +592,7 @@ static void act_frame(void) {
     in = act.player.heldRight ? (PlayerInput){ .right = 1 } : act.player.heldLeft ? (PlayerInput){ .left = 1 } : (PlayerInput){0};
   player_step(&act.player, &in);
   // a start point's first act frame is the held A's jump, one frame after it began, when it has the word for it
-  if (act.drawn == 0 && gba_start_number("jump", 0)) player_start_jump(&act.player);
+  if (act.drawn == 0 && act.fromStartPoint && gba_start_number("jump", 0)) player_start_jump(&act.player);
   player_animate(&act.player, &in);
   if (row->palettesAfterSonic)
     for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
@@ -655,7 +665,7 @@ void act_frame_now(void) {
   if (act.task) destroy_task(act.task);
   act.task = create_task(act_task, NULL, 0x0F00, 0, NULL);
   // an act a start point opens has loaded in the card's frames it ran with no picture, so it goes straight on
-  act.stallLoad = gba_start_point("level") == NULL;
+  act.stallLoad = !act.fromStartPoint;
 }
 
 static int pendingLevel, pendingCard, pendingPre;
@@ -763,9 +773,13 @@ void act_song_playing(void) { songPlaying = 1; }
 // sonic-ice-mountain-act-2; the menus' V-blanks do less, and their sound writes as it did before (#741)
 #define ACT_SOUND_MAIN_AT 52550
 
+static int startPointSpent;   // a start point has opened its act, so the acts after it start as the game starts them
+
 void act_start(int level, int cardSkip, int preFrames) {
   gba_sound_psg_at(ACT_SOUND_MAIN_AT);
   memset(&act, 0, sizeof act);
+  act.fromStartPoint = gba_start_point("level") != NULL && !startPointSpent;
+  startPointSpent |= act.fromStartPoint;
   // gPseudoRandom is one sequence for the whole game: the act goes on with what the front left
   act.seed = 0;
   copyCount = 0;
@@ -779,7 +793,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   act.clockStopped = 1; act.firstCard = 1; act.cardFrame = 0; act.bossFlash = 0;
   act.hud.active = 0; act.hud.flash = hud_flash();
   act.started = 0; act.drawn = 0;
-  act.firstFrame = (int)gba_start_number("first", 0);
+  act.firstFrame = act.fromStartPoint ? (int)gba_start_number("first", 0) : 0;
   e.bldCnt = 0; e.bldAlpha = 0; e.bldY = 0;
   e.winRegs[0] = e.winRegs[1] = e.winRegs[2] = e.winRegs[3] = 0;
   e.winRegs[4] = 0x3F3F; e.winRegs[5] = 0x1F;
@@ -793,10 +807,13 @@ void act_start(int level, int cardSkip, int preFrames) {
   titlecard_start(level, ctx.character);
   objects_start(level, act.stage.paletteCount > 0);
   if (row->runsFromFirstFrame) start_palette_animations();
-  if (gba_start_point("level")) {
+  if (act.fromStartPoint) {
     // a start point opens the act past its card: the card's frames run with no picture, with what the act's row does
     // before and in them
     if (row->cardStarts) row->cardStarts();
+    // gFrameCount counts every frame the original runs, those a start point leaves out too (the menus' and the card's,
+    // the recording's onlyInOriginal stretches): `only` names how many, so the act goes on from the original's count
+    e.frameCount += (uint32_t)gba_start_number("only", 0);
     pre_run(cardSkip, preFrames, (int)gba_start_number("prelude", 0));
     // the act has run its first frames with the card: its objects run from the first frame shown, where the card left
     // the camera

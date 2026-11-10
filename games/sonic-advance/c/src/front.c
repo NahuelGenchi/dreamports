@@ -112,6 +112,8 @@ uint32_t front_random(void) {
   return ctx.seed;
 }
 
+void front_random_seed(uint32_t seed) { ctx.seed = seed; }
+
 /**
  * The VS menus have chosen the round: Chao Hunt's `level`, with the Chao at place `chao`. The round isn't in C yet, so
  * the game stops here, and the page shows the black the original's screens are while its stage loads (main.js).

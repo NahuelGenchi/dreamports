@@ -9,6 +9,7 @@
 enum { MAX_ACT_TASKS = 192 };
 static ActTask tasks[MAX_ACT_TASKS];
 static ActTask *first, *following;   // the first task, and the one fetched before the running one
+static int destroying;               // act_tasks_destroy is ending tasks
 
 ActTask *act_task_add(ActRun run, ActEnd end, void *data, int priority) {
   ActTask *t = NULL;
@@ -35,6 +36,21 @@ static void act_task_remove(ActTask *t) {
 void act_tasks_destroy_all(void) {
   while (first) act_task_remove(first);
   following = NULL;
+}
+
+/** TasksDestroyInPriorityRange for the act's objects: every task from priority `lo` up to `hi` goes as its destructor has it.
+ *  An object's entity stays spawned, as the original's mark on it is only cleared by an object leaving the screen, so it isn't
+ *  made again until the act starts over. */
+void act_tasks_destroy(int lo, int hi) {
+  destroying = 1;
+  for (ActTask *t = first, *next; t; t = next) {
+    next = t->next;
+    if (t->priority < lo) continue;
+    if (t->priority >= hi) break;
+    if (t == following) following = next;
+    act_task_remove(t);
+  }
+  destroying = 0;
 }
 
 void act_tasks_run(int from, int to) {
@@ -73,7 +89,7 @@ ActTask *object_task(Object *o, ActRun run, int priority) {
 
 void object_end(ActTask *t) {
   Object *o = (Object *)t->data;
-  if (o->slot) o->slot->live = NULL;
+  if (o->slot) { o->slot->live = NULL; if (destroying) o->slot->gone = 1; }
   object_sprite_free(&o->sprite);
   for (int i = 0; i < MAX_OBJECTS; i++) if (blocks[i].bytes == (uint8_t *)o) blocks[i].used = 0;
 }
@@ -258,6 +274,7 @@ static const struct { int kind; Spawn spawn; } ENEMIES[] = {
   { 20, pen_spawn },
   { 18, drisame_spawn },
   { 25, egg_spider_spawn },
+  { 24, egg_ball_spawn },
   { 17, yukimaru_wall_spawn },
   { 19, kuraa_spawn },
 };

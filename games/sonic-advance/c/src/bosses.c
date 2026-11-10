@@ -322,6 +322,15 @@ int boss_hurt(const Sprite *s, int x, int y) {
   return HIT_PLAYER;
 }
 
+// sub_800BF10: the sprite's box 0 on Sonic's body hurts him
+int boss_shot(const Sprite *s, int x, int y) {
+  Player *p = &act.player;
+  const Hitbox *b0 = object_box(s, 0), *body = object_box(&p->sprite, 0);
+  if (!b0 || !body || p->dead || !collide_overlap(x, y, b0, enemy_sonic_x(), enemy_sonic_y(), body)) return HIT_NONE;
+  world_damage(p);
+  return HIT_PLAYER;
+}
+
 // --- Sonic against a boss (Coll_Player_Bosses_2_6) ------------------------------------------------------------------------
 // His attack box on the boss's box 0 while in the air hits it and sends him back the way he came; otherwise his body on either
 // of its boxes hurts him, whether or not he can be hurt then. There is no CPU partner here.
