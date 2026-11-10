@@ -340,7 +340,7 @@ ActTask *waterfall_spawn(Slot *slot) {
 }
 
 // --- the half-pipe (halfpipes.js) ------------------------------------------------------------------------------------------------
-enum { HALF_PIPE_WIDTH = 0x150, HALF_PIPE_MIN_SPEED = 0x240, HALF_PIPE_STEP = 0x300 };
+enum { HALF_PIPE_WIDTH = 0x2A0, HALF_PIPE_MIN_SPEED = 0x240, HALF_PIPE_STEP = 0x600 };
 static int halfPipeFeet;
 static int halfPipeActive;
 
@@ -360,7 +360,7 @@ static int half_pipe_height(const Player *p, int along) {
 
 static void half_pipe_lift(Player *p, int along, int feet) {
   int h = half_pipe_height(p, along);
-  if (!p->curled && (p->state == PS_WALK || p->state == PS_HALF_PIPE_LOW || p->state == PS_HALF_PIPE_MID || p->state == PS_HALF_PIPE_HIGH))
+  if (!p->curled && p->attack == 0 && (p->state == PS_WALK || p->state == PS_HALF_PIPE_LOW || p->state == PS_HALF_PIPE_MID || p->state == PS_HALF_PIPE_HIGH))
     p->state = h < 0x800 ? PS_WALK : h < 0x1800 ? PS_HALF_PIPE_LOW : h < 0x3000 ? PS_HALF_PIPE_MID : PS_HALF_PIPE_HIGH;
   p->halfPipe = 1;
   p->air = 0;
@@ -400,7 +400,10 @@ static int half_pipe_run(ActTask *t) {
       }
     }
   }
-  if (off_cam(en->e.x, en->e.y)) { p->halfPipe = 0; halfPipeActive = 0; return 0; }
+  // Task_HalfPipeStart looks 800 px back and 368 ahead; Task_HalfPipeEnd 128 back and 1,040 ahead
+  int cx = cam_x(), cy = cam_y();
+  int out = start ? en->e.x > cx + 368 || en->e.x < cx - 800 : en->e.x > cx + 1040 || en->e.x < cx - 128;
+  if (out || en->e.y > cy + 288 || en->e.y < cy - 128) { p->halfPipe = 0; halfPipeActive = 0; return 0; }
   return 1;
 }
 

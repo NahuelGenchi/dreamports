@@ -125,6 +125,7 @@ static void bounds(Player *p) {
   // follows him; the background leaves it out
   if (act.stage.loopX >= 0 && p->x >= act.stage.loopX && c->speedX != 0 && !c->locked) {
     p->x += act.stage.loopShift; c->x += act.stage.loopShift; c->wrapped += act.stage.loopShift;
+    c->wrappedThisFrame += act.stage.loopShift;
   }
   double maxX = c->maxX + 240 - 1.0 / 256, maxY = c->maxY + 160 - 1.0 / 256;
   if (!p->dead && (p->inverted ? p->y <= c->minY : p->y >= maxY)) {

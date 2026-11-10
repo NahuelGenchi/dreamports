@@ -52,6 +52,7 @@ typedef struct {
   int width, height, freeze, locked, look, lookDelay, shakeX, shakeY, bgUpdates;
   int bgX, bgY;
   int wrapped;   // how far the act's loop point has moved the camera, which the background leaves out (unk20)
+  int wrappedThisFrame;   // the loop point's shift on this frame, which the layer maps are drawn without (the camera's task runs before it)
 } Camera;
 
 typedef struct {

@@ -268,6 +268,7 @@ static void update_look(Camera *c, const Player *p) {
   } else ease_look_back(c);
 }
 static int camera_update(Camera *c, const Player *p) {
+  c->wrappedThisFrame = 0;
   if (!c->started) { c->started = 1; return 0; }
   c->x = clamp((int)c->x, c->minX, c->maxX - 1);
   c->y = clamp((int)c->y, c->minY, c->maxY - 1);
@@ -416,8 +417,11 @@ static void draw_frame(void) {
   e.bgScroll[2] = (uint16_t)(camX & 7); e.bgScroll[3] = (uint16_t)(camY & 7);
   e.bgScroll[4] = (uint16_t)(camX & 7); e.bgScroll[5] = (uint16_t)(camY & 7);
   if (act.stage.level == ACT_LEVEL_NEO_GREEN_2) neo_stage_animation_draw();
-  fill_layer(0xF000, LAYER_FRONT, camX, camY);
-  fill_layer(0xF800, LAYER_BACK, camX, camY);
+  // the camera's task draws the layers before the player's task wraps the loop, so the frame of a wrap keeps the map of
+  // where the camera was before it; the scroll, a multiple of 8 px back, is the same as after it
+  int layerX = camX - act.cam.wrappedThisFrame;
+  fill_layer(0xF000, LAYER_FRONT, layerX, camY);
+  fill_layer(0xF800, LAYER_BACK, layerX, camY);
   int bgX, bgY;
   if (act.stage.backgroundScroll == BG_SCROLL_SECRET_BASE) {
     // StageBgUpdate_Zone2Act2 (StageBgUpdate_Zone2_Interior): a wall that repeats every 64 lines, with three bars and a
@@ -431,7 +435,8 @@ static void draw_frame(void) {
       put16(e.primary + (uint32_t)line * 4 + 2, (uint32_t)y);
     }
   } else if (act.stage.backgroundScroll == BG_SCROLL_NEO_GREEN) {
-    draw_neo_background(camX);
+    // StageBgUpdate_Zone1Acts12 leaves out the loop wrap (x -= cam->sa2__unk20)
+    draw_neo_background(camX - act.cam.wrapped);
   } else if (act.stage.backgroundScroll == BG_SCROLL_SECRET_BASE_OUTSIDE) {
     // StageBgUpdate_Zone2Act1, outside the base (before x 1488): the map's bottom 160 rows, moving across a 78th of
     // the camera's way
