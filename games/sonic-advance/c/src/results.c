@@ -28,9 +28,7 @@ enum { SONG_ACT_CLEAR = 33, SONG_BOSS_CLEAR = 34, SONG_FINAL_CLEAR = 35, SONG_RE
 #define UI_BAR 16
 #define UI_RESULT_TEXT 34
 #define TILE 32
-#define X_ZONE 12
-#define THE_MOON 13
-#define FINAL_LEVEL_FROM 12   // IS_FINAL_OR_EXTRA_STAGE: X Zone and the Moon Zone
+#define FINAL_LEVEL_FROM LEVEL_X_ZONE   // IS_FINAL_OR_EXTRA_STAGE: X Zone and the Moon Zone
 
 #define NAME_TILES 48
 #define TEXT_TILES 80
@@ -144,7 +142,7 @@ static void load_graphics(int level, int character) {
   r.slot[SLOT_LINE] = slot_of(UI_RESULT_SONIC + character, &nameTiles, &namePalette);
   slot_of(UI_RESULT_TEXT, &textTiles, &textPalette);
   // the text tiles of the line by level: the first act's, the second act's (0x50 on), X Zone's and the Moon Zone's
-  int textAt = level == THE_MOON ? 0xF0 : level == X_ZONE ? 0xA0 : level & 1 ? 0x50 : 0;
+  int textAt = level == LEVEL_THE_MOON ? 0xF0 : level == LEVEL_X_ZONE ? 0xA0 : level & 1 ? 0x50 : 0;
 
   r.vram = vram_malloc(BLOCK_TILES);
   r.tile0 = (int)((r.vram - OBJ_VRAM) >> 5);
@@ -204,7 +202,7 @@ void results_start(int level, int rings, int courseTime, int longEnd, int nextFr
   figure(time->text, r.timeLabel, r.time);
 
   // the act-clear jingle: X Zone's, a zone's second act's (after its boss), or an act's
-  play_song(level == X_ZONE ? SONG_FINAL_CLEAR : level & 1 ? SONG_BOSS_CLEAR : SONG_ACT_CLEAR);
+  play_song(level == LEVEL_X_ZONE ? SONG_FINAL_CLEAR : level & 1 ? SONG_BOSS_CLEAR : SONG_ACT_CLEAR);
   music_call(MUSIC_OFF, 0);
 }
 

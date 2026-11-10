@@ -17,7 +17,6 @@
 enum {
   HOOK_RAIL = 75,
   ANIM_HOOK_RAIL = 504, ANIM_HOOK_RAIL_ICE = 569,   // SA1_ANIM_HOOK_RAIL_2, and _3 in Ice Mountain (ZONE_4)
-  ICE_MOUNTAIN = 3,
   ORDER_HOOK = 18, PRIORITY_FRONT = 2,
   SE_HOOK_RAIL = 180,
   HANG_X = 6, HANG_Y = 36, HANG_Y_LEFT = 38,   // HOOK_PLAYER_OFFSET_X, _Y and _2_Y
@@ -187,7 +186,7 @@ ActTask *hook_rail_spawn(Slot *slot) {
   h->rail = d0 == 1 ? RAIL_RIGHT : d0 == 2 ? RAIL_LEFT : RAIL_LEFT_THEN_RIGHT;
   // ALLOC_TILES_VARIANT(anim, 0); Ice Mountain's takes room for its animation's whole size (ALLOC_TILES), which waits for
   // that act: variant 0's tiles here
-  if (act.stage.zone == ICE_MOUNTAIN) object_sprite(&h->o.sprite, ANIM_HOOK_RAIL_ICE, 0, 0, ORDER_HOOK, PRIORITY_FRONT, 0, 0);
+  if (act.stage.zone == ZONE_ICE_MOUNTAIN) object_sprite(&h->o.sprite, ANIM_HOOK_RAIL_ICE, 0, 0, ORDER_HOOK, PRIORITY_FRONT, 0, 0);
   else object_sprite(&h->o.sprite, ANIM_HOOK_RAIL, 0, 0, ORDER_HOOK, PRIORITY_FRONT, 0, 0);
   sprite_step(&h->o.sprite);
   return object_task(&h->o, hook_rail_run, PRIORITY_OBJECTS);

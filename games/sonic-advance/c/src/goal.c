@@ -18,8 +18,6 @@ enum {
   ANIM_GOAL = 453, VARIANT_FACE = 0, VARIANT_SPIN = 1,   // Eggman's face, and spinning once Sonic has passed it
   ORDER_GOAL = 18, PRIORITY_FRONT = 2,
   SE_GOAL = 135,
-  ICE_MOUNTAIN_2 = 7,       // LEVEL_INDEX(ZONE_4, ACT_2)
-  EGG_ROCKET = 10,          // LEVEL_INDEX(ZONE_6, ACT_1)
   ICE_MOUNTAIN_ABOVE = 80,  // DISPLAY_CENTER_Y: how far above the goal Sonic may be in Ice Mountain act 2
   SHIFT_Y = -56,            // how far the camera's target rises
   FRAMES_BEFORE_WAIT = 30,  // frames before the task that waits for Sonic to be on the ground is made
@@ -53,7 +51,7 @@ static int passed(Goal *g) {
 // Task_StageGoal2
 static int ending(Goal *g) {
   Player *p = &act.player;
-  int rocket = act.stage.level == EGG_ROCKET;
+  int rocket = act.stage.level == LEVEL_EGG_ROCKET;
   if (rocket) p->carried = 1;
   else {
     p->ignoreInput = 1; p->heldRight = 1;
@@ -80,8 +78,8 @@ static int reached(const Goal *g) {
   const Entity *e = &g->o.slot->e;
   int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
   if (px <= e->x) return 0;
-  if (act.stage.level == ICE_MOUNTAIN_2) return py > e->y - ICE_MOUNTAIN_ABOVE;
-  if (act.stage.level != EGG_ROCKET) return 1;
+  if (act.stage.level == LEVEL_ICE_MOUNTAIN_2) return py > e->y - ICE_MOUNTAIN_ABOVE;
+  if (act.stage.level != LEVEL_EGG_ROCKET) return 1;
   const Hitbox *b = object_box(&p->sprite, 0);
   return b && px + b->left <= e->x && px + b->right >= e->x && py + b->top <= e->y && py + b->bottom >= e->y;
 }
@@ -96,7 +94,7 @@ static int goal_run(ActTask *t) {
     if (s->variant != VARIANT_SPIN) sprite_start(s, VARIANT_SPIN);
     if (act_goal_passed()) { g->phase = PHASE_PASSED; return passed(g); }
     act_goal_reached();
-    if (act.stage.level != EGG_ROCKET) play_song(SE_GOAL);
+    if (act.stage.level != LEVEL_EGG_ROCKET) play_song(SE_GOAL);
     g->phase = PHASE_ENDING;
     return ending(g);
   }

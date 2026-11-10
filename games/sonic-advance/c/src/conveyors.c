@@ -7,7 +7,7 @@
 #include "objects.h"
 #include "terrain.h"
 
-enum { CONVEYOR = 69, ICE_MOUNTAIN = 3, TILE = 8 };   // the wall beside him is the one-tile probe, sub_801F100 with sub_801EB44
+enum { CONVEYOR = 69, TILE = 8 };   // the wall beside him is the one-tile probe, sub_801F100 with sub_801EB44
 #define CONVEYOR_BELT_SPEED 0.625
 
 static int conveyor_run(ActTask *t) {
@@ -45,5 +45,5 @@ static int slowing_snow_run(ActTask *t) {
 
 /** CreateEntity_ConveyorBelt: the belt, or in Ice Mountain the snow */
 ActTask *conveyor_spawn(Slot *slot) {
-  return act_task_add(act.stage.zone == ICE_MOUNTAIN ? slowing_snow_run : conveyor_run, NULL, slot, PRIORITY_OBJECTS);
+  return act_task_add(act.stage.zone == ZONE_ICE_MOUNTAIN ? slowing_snow_run : conveyor_run, NULL, slot, PRIORITY_OBJECTS);
 }

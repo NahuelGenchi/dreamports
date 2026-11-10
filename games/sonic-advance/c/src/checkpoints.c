@@ -7,7 +7,7 @@
 
 // What the checkpoint hands to the act (the act_* hooks) is in act.h; act.c writes them.
 
-enum { CHECKPOINT = 7, EGG_ROCKET = 10 };
+enum { CHECKPOINT = 7 };
 enum {
   ANIM_CHECKPOINT = 452, VARIANT_WAITING = 0, VARIANT_SPIN = 1, VARIANT_PASSED = 2,
   ORDER_CHECKPOINT = 18, PRIORITY_FRONT = 2,
@@ -52,7 +52,7 @@ static int checkpoint_run(ActTask *t) {
 }
 
 ActTask *checkpoint_spawn(Slot *slot) {
-  if (act.stage.level == EGG_ROCKET) return NULL;   // its checkpoints are the rocket's launch and stage separations
+  if (act.stage.level == LEVEL_EGG_ROCKET) return NULL;   // its checkpoints are the rocket's launch and stage separations
   Checkpoint *c = OBJECT_NEW(Checkpoint);
   if (!c) return NULL;
   const Entity *en = &slot->e;

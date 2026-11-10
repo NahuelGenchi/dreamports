@@ -11,7 +11,6 @@
 enum {
   SPIKED_PLATFORM = 61,
   ORDER_PLATFORM = 18, PRIORITY_FRONT = 2,
-  ZONE_CASINO_PARADISE = 2, LEVEL_CHAO_HUNT_C = 16,   // the zone and the level whose platforms are Casino's
   ANIM_CASINO = 521, ANIM_SPIKES_UP = 538, ANIM_SPIKES_DOWN = 539,
   SWING_HALF = 0x80,       // the stage clock frames of half a swing
   HALF_WIDTH = 6,          // Sonic's spriteOffsetX
