@@ -29,7 +29,8 @@ export async function run(args) {
     console.log(`${name}: failed. Its last ${Math.min(lines.length, KEPT_LINES)} lines, of ${lines.length} kept in .dreamports/ready/:\n${lines.slice(-KEPT_LINES).join('\n')}`);
   };
   step('port map', tool('portmap', game));
-  // what every recording did is the point, so it shows in full, and frames that differ fail the step
+  // what the recordings found is the point, so it shows as prove says it: in full where there's news, and summed up
+  // where a recording came out as when last proven. Frames that differ fail the step
   const proved = spawnSync(...tool('prove', game), { cwd: REPO, stdio: 'inherit' });
   if (proved.status !== 0) failed.push('prove');
   step('check', npm('check'));
