@@ -75,6 +75,9 @@ typedef struct {
   int tick, frames, courseTime, ringCount, lives, score;
   uint32_t seed;
   int goalReached, ringsStopped;   // past the goal; past the goal or a beaten boss, the rings manager neither takes nor draws
+  int afterLevel;                  // made by GoToNextLevel after the act before, rather than by the course select
+  int loadFrames;                  // the frames left that the next act spends loading after its first (act_task)
+  int bossFlash;                   // a hit boss drawn into the OBJ window, which the frame brightens to white
   int checkpointIndex, checkpointX, checkpointY, checkpointTime;   // the last checkpoint passed (gBossIndex), where and when
   int clockStopped, cardFrame, cardDone, firstCard, started, preFrames, firstFrame, drawn;
   // the stage's animated tiles (UpdateBgAnimationTiles), and its palette animations' sprites

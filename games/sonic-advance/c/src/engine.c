@@ -264,6 +264,12 @@ int alloc_oam(uint32_t order) {
   e.oamFreeIndex++;
   return i;
 }
+/** Every OAM entry hidden and none taken, in the buffer and the allocator alike, so later entries this frame start a fresh list. */
+void clear_oam(void) {
+  for (int i = 0; i < OAM_ENTRIES * 4; i++) e.oamBuffer[i] = e.oamMalloc[i] = 0x200;
+  e.oamFreeIndex = 0;
+  memset(orderStart, 0xFF, sizeof orderStart); memset(orderEnd, 0xFF, sizeof orderEnd);
+}
 static void hide_oam(uint32_t i) { e.oamBuffer[i * 4] = e.oamBuffer[i * 4 + 1] = e.oamBuffer[i * 4 + 2] = 0x200; }
 static void process_oam(void) {
   uint32_t dst = 0;
@@ -382,6 +388,12 @@ static void vblank(void) {
   }
   if (e.flags & FLAGS_PAUSE_GAME) e.flags |= FLAGS_PAUSED;
   else e.flags &= ~FLAGS_PAUSED;
+}
+
+/** The V-blank of a frame that runs with no picture, such as the title card's that a start point skips. */
+void engine_vblank_unseen(void) {
+  e.flagsPreVBlank = e.flags;
+  vblank();
 }
 
 /** One frame: the keys, the tasks and the V-blank. Then the kit draws it. */

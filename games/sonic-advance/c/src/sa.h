@@ -117,8 +117,12 @@ void queue_graphics(Graphics *g);
 // applies what the graphics queue holds now, as a V-blank does, for frames a start point runs with no V-blank
 void engine_copy_graphics(void);
 void clear_queues(void);
+void clear_bg_sprites(void);
+void engine_copy_graphics(void);
+void engine_vblank_unseen(void);
 void queue_background(Background *bg);
 int alloc_oam(uint32_t order);
+void clear_oam(void);
 uint32_t vram_malloc(uint32_t tiles);
 void vram_reset(void);
 void vram_free(uint32_t dest);

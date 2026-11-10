@@ -52,9 +52,11 @@ static void throw_up(const Spring *sp, Player *p) {
 
 static const Hitbox *box_of(const Spring *sp, int slot) { return object_box(&sp->o.sprite, slot); }
 
-// up (sub_8022640): landing on it launches him straight up, keeping his X speed
+// up (sub_8022640): landing on it launches him straight up, keeping his X speed; while an object carries him
+// (MOVESTATE_IA_OVERRIDE), as a hook rail does, it is not there for him at all
 static int up(Spring *sp, Player *p) {
   const Entity *e = &sp->o.slot->e;
+  if (p->carried) return 0;
   if (!(collide_platform(&sp->o, e->x, e->y, box_of(sp, 0), p) & COLLIDE_LANDED)) return 0;
   player_land(p);
   p->ysp = -sp->speed;

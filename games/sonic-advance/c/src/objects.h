@@ -12,6 +12,7 @@
 // fetches the next task before it runs the current one and puts a new task after the last of its priority, so a task made
 // by the one just before its place in the list only runs from the next frame.
 enum {
+  PRIORITY_CAMERA = 0xF00,     // the camera's task (Task_UpdateCamera): a boss's screen shake runs just before it
   PRIORITY_OBJECTS = 0x2000,   // the rings, the entities manager and the objects it spawns
   PRIORITY_SCATTER = 0x2001,   // the rings Sonic dropped
   PRIORITY_SONIC = 0x3000,
@@ -81,6 +82,16 @@ ActTask *sega_letter_spawn(Slot *slot);
 ActTask *balloon_spawn(Slot *slot);
 ActTask *panel_gate_spawn(Slot *slot);
 ActTask *conveyor_spawn(Slot *slot);
+ActTask *booster_spawn(Slot *slot);
+ActTask *swing_rope_spawn(Slot *slot);
+ActTask *security_gate_spawn(Slot *slot);
+ActTask *swinging_hook_spawn(Slot *slot);
+ActTask *hook_rail_spawn(Slot *slot);
+ActTask *curler_spawn(Slot *slot);
+ActTask *lava_spawn(Slot *slot);
+ActTask *crane_claw_spawn(Slot *slot);
+ActTask *pipe_entrance_spawn(Slot *slot);
+ActTask *pipe_exit_spawn(Slot *slot);
 ActTask *visibility_spawn(Slot *slot);
 ActTask *special_spring_spawn(Slot *slot);
 ActTask *square_platform_spawn(Slot *slot);
@@ -91,10 +102,7 @@ ActTask *carousel_spawn(Slot *slot);
 ActTask *ship_swing_spawn(Slot *slot);
 ActTask *steam_exhaust_spawn(Slot *slot);
 ActTask *boulder_spawn(Slot *slot);
-ActTask *booster_spawn(Slot *slot);
-ActTask *trampoline_spawn(Slot *slot);
 ActTask *crumbling_spawn(Slot *slot);
-ActTask *bounce_spawn(Slot *slot);
 ActTask *ramp_spawn(Slot *slot);
 ActTask *waterfall_spawn(Slot *slot);
 ActTask *half_pipe_spawn(Slot *slot);
@@ -107,6 +115,8 @@ ActTask *entity_spawn(Slot *slot);
 
 void objects_start(int level, int paletteAnimations);
 /** The tasks that run before Sonic's, and after him. */
+void act_tasks_destroy_all(void);
+void objects_run_before_camera(void);
 void objects_run_early(void);
 void objects_run_late(void);
 /** Whether the frame is drawn: the title card's frames before the first picture aren't. */
@@ -192,6 +202,8 @@ Hitbox collide_body(const Player *p);
 Hitbox collide_flank(const Player *p);
 /** A solid object (Coll_Player_Platform): he lands on it, bumps it from below or is pushed out of its sides. */
 int collide_platform(const void *o, int ox, int oy, const Hitbox *hb, Player *p);
+/** A gate's sides (Coll_Player_Gate without its attack test): he is pushed out of them. */
+int collide_gate(int ox, int oy, const Hitbox *hb, Player *p);
 /** A platform he can only land on (Coll_Player_PlatformCrumbling). */
 int collide_platform_top(const void *o, int ox, int oy, const Hitbox *hb, Player *p);
 /** An item box (Coll_Player_Itembox). */

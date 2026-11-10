@@ -1,6 +1,6 @@
 // Casino Paradise's tubes: the track (kind 106) and the tube junction (kind 107). Translated from the JavaScript version's
-// engine/pipes.js (the original's track.c) and engine/junctions.js (107.c). The pipe entrances and exits and the air corners of
-// the same file (kinds 110 to 112) are Cosmic Angel's and are not here.
+// engine/pipes.js (the original's track.c) and engine/junctions.js (107.c). The pipe entrances and exits (kinds 110 and 111) are in
+// pipes.c; the air corners (112) are Cosmic Angel's and are not here.
 //
 // A track takes Sonic, curled up, along a straight stretch; the step of the chain holding him is act.player.track. A junction catches
 // him where tubes meet, circles him and sends him off with a fresh press of a way out.

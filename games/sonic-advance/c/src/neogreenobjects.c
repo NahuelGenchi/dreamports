@@ -1,6 +1,6 @@
-// Neo Green Hill act 1's own objects: the boulder and its pieces, the boosters, the trampoline, the crumbling
-// platform, the bounce block, the incline ramp, the waterfalls, the half-pipe, the grind rails and the forced slide.
-// Translated from the JavaScript version's engine/boulders.js, boosters.js, platforms.js, ramps.js, waterfalls.js,
+// Neo Green Hill act 1's own objects: the boulder and its pieces, the crumbling platform, the incline ramp, the
+// waterfalls, the half-pipe, the grind rails and the forced slide (its boosters are in boosters.c, and its trampoline
+// and bounce block in platforms.c). Translated from the JavaScript version's engine/boulders.js, platforms.js, ramps.js, waterfalls.js,
 // halfpipes.js, grindrails.js and slides.js, in the style of the act's other objects.
 
 #include "objects.h"
@@ -8,10 +8,9 @@
 
 enum {
   ANIM_BOULDER = 458, ANIM_DEBRIS_SMALL = 459, ANIM_DEBRIS_BIG = 460,
-  ANIM_TRAMPOLINE = 461, ANIM_BOUNCE_BLOCK = 462, ANIM_PLATFORM = 463, ANIM_WATERFALL = 464,
-  ANIM_BOOSTER = 471, ANIM_SLIDE = 474,
+  ANIM_WATERFALL = 464, ANIM_SLIDE = 474,
   ORDER_OBJECT = 18, PRIORITY_FRONT = 2,
-  SE_BREAK = 167, SE_SPRING = 170, SE_BOOST = 172, SE_CRUMBLE = 173, SE_TRAMPOLINE = 176,
+  SE_BREAK = 167, SE_CRUMBLE = 173,
   SE_GRIND_START = 114, SE_GRIND_END = 116,
   DEBRIS = 4, DEBRIS_FRAMES = 60,
 };
@@ -118,82 +117,6 @@ ActTask *boulder_spawn(Slot *slot) {
   return object_task(&b->o, boulder_run, PRIORITY_OBJECTS);
 }
 
-// --- the speed boosters (boosters.js) ----------------------------------------------------------------------------------------
-typedef struct { Object o; } Booster;
-
-static int booster_run(ActTask *t) {
-  Booster *b = (Booster *)t->data;
-  const Slot *en = b->o.slot;
-  Player *p = &act.player;
-  int dir = d1(en) ? -1 : 1;
-  Hitbox hb = en->e.kind == 31 ? (Hitbox){ 0, -15, -6, 7, 0 } : (Hitbox){ 0, -15, -9, 6, 2 };
-  Hitbox probe = collide_flank(p);
-  int px = fl(p->x), py = fl(p->y);
-  if (!p->dead && !p->air && collide_overlap(en->e.x, en->e.y, &hb, px, py, &probe)) {
-    player_end_attack(p);
-    p->pushing = 0;
-    play_song(SE_BOOST);
-    if (p->state != PS_SPIN) p->state = PS_WALK;
-    p->facing = dir;
-    if (p->gsp * dir < 9.0) p->gsp = p->xsp = 12.0 * dir;
-  }
-  if (off_cam(en->e.x, en->e.y)) return 0;
-  sprite_step(&b->o.sprite);
-  object_draw(&b->o.sprite, en->e.x, en->e.y);
-  return 1;
-}
-
-ActTask *booster_spawn(Slot *slot) {
-  Booster *b = OBJECT_NEW(Booster);
-  if (!b) return NULL;
-  b->o.slot = slot; b->o.x = slot->e.x;
-  int variant = slot->e.kind == 31 ? 0 : slot->e.kind == 32 ? 2 : 1;
-  object_sprite(&b->o.sprite, ANIM_BOOSTER, variant, variant, ORDER_OBJECT, PRIORITY_FRONT, d1(slot) != 0, 0);
-  return object_task(&b->o, booster_run, PRIORITY_OBJECTS);
-}
-
-// --- the trampoline (platforms.js) --------------------------------------------------------------------------------------------
-typedef struct { Object o; int timer; } Trampoline;
-
-static int trampoline_run(ActTask *t) {
-  Trampoline *tr = (Trampoline *)t->data;
-  const Slot *en = tr->o.slot;
-  Player *p = &act.player;
-  const Hitbox *hb = box(&tr->o, 0);
-  int hit = 0;
-  if (hb) {
-    int flags = collide_platform(&tr->o, en->e.x, en->e.y, hb, p);
-    if (flags & COLLIDE_LANDED) {
-      int v = (int)__builtin_floor(p->ysp * 256);
-      player_end_attack(p);
-      p->onObject = NULL;
-      p->air = 1; p->curled = 0; p->offsetY = 14;
-      if (v == 0) p->y -= 8;
-      double speed = (double)((v >> 5) - (v + (v >> 2))) / 256;
-      if (speed < -2814.0 / 256) speed = -2814.0 / 256;
-      if (speed > -960.0 / 256) speed = -960.0 / 256;
-      p->ysp = speed;
-      p->state = PS_IDLE;
-      hit = 1;
-    }
-  }
-  if (hit) { tr->timer = 14; tr->o.sprite.variant = 1; play_song(SE_TRAMPOLINE); }
-  else if (tr->timer > 0 && --tr->timer == 0) tr->o.sprite.variant = 0;
-  if (off_cam(en->e.x, en->e.y)) return 0;
-  sprite_step(&tr->o.sprite);
-  object_draw(&tr->o.sprite, en->e.x, en->e.y);
-  return 1;
-}
-
-ActTask *trampoline_spawn(Slot *slot) {
-  Trampoline *tr = OBJECT_NEW(Trampoline);
-  if (!tr) return NULL;
-  tr->o.slot = slot; tr->o.x = slot->e.x;
-  object_sprite(&tr->o.sprite, ANIM_TRAMPOLINE, 0, 1, ORDER_OBJECT, PRIORITY_FRONT, 0, 0);
-  sprite_step(&tr->o.sprite);
-  return object_task(&tr->o, trampoline_run, PRIORITY_OBJECTS);
-}
-
 // --- the crumbling platform (platforms.js) -------------------------------------------------------------------------------------
 typedef struct { Object o; int phase, n; } Crumbling;
 
@@ -227,52 +150,6 @@ ActTask *crumbling_spawn(Slot *slot) {
   object_sprite(&c->o.sprite, 904, 0, 0, ORDER_OBJECT, PRIORITY_FRONT, d0(slot) != 0, 0);
   sprite_step(&c->o.sprite);
   return object_task(&c->o, crumbling_run, PRIORITY_OBJECTS);
-}
-
-// --- the bounce block (platforms.js) --------------------------------------------------------------------------------------------
-typedef struct { Object o; int wobbling, wobble, timer, dy; } Bounce;
-
-static int bounce_run(ActTask *t) {
-  Bounce *b = (Bounce *)t->data;
-  const Slot *en = b->o.slot;
-  Player *p = &act.player;
-  int was = b->wobbling;
-  b->dy = was ? SINE[b->wobble & 0x3FF] / 1024 : 0;
-  const Hitbox *hb = box(&b->o, 0);
-  int hit = 0;
-  if (hb) {
-    int flags = collide_platform(&b->o, en->e.x, en->e.y, hb, p);
-    if (!p->dead && (flags & COLLIDE_LANDED)) {
-      player_end_attack(p);
-      p->onObject = NULL;
-      p->air = 1; p->curled = 0;
-      if (e.input & KEY_LEFT) p->facing = -1;
-      else if (e.input & KEY_RIGHT) p->facing = 1;
-      p->ysp = -5;
-      p->state = PS_BOUNCE;
-      p->rotation = 0;
-      player_stand_up(p);
-      hit = 1;
-    }
-  }
-  if (hit) { b->wobbling = 1; b->wobble = 0; b->timer = 30; play_song(SE_SPRING); }
-  if (was) {
-    b->wobble = (b->wobble + 90) & 0x3FF;
-    if (--b->timer == 0) b->wobbling = 0;
-  }
-  if (off_cam(en->e.x, en->e.y)) return 0;
-  sprite_step(&b->o.sprite);
-  object_draw(&b->o.sprite, en->e.x, en->e.y + b->dy);
-  return 1;
-}
-
-ActTask *bounce_spawn(Slot *slot) {
-  Bounce *b = OBJECT_NEW(Bounce);
-  if (!b) return NULL;
-  b->o.slot = slot; b->o.x = slot->e.x;
-  object_sprite(&b->o.sprite, ANIM_BOUNCE_BLOCK, 0, 0, ORDER_OBJECT, PRIORITY_FRONT, 0, 0);
-  sprite_step(&b->o.sprite);
-  return object_task(&b->o, bounce_run, PRIORITY_OBJECTS);
 }
 
 // --- the incline ramp (ramps.js) ------------------------------------------------------------------------------------------------
