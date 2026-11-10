@@ -160,6 +160,7 @@ void items_stars(void);
 void rings_load(int level);
 void rings_start(void);
 void rings_act2_prepare(void);
+void rings_start_point(void);
 int rings_task(ActTask *t);
 int scatter_task(ActTask *t);
 void scatter_launch(int x, int y, int n, int layer, int inverted);

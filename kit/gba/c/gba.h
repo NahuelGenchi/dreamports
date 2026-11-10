@@ -94,6 +94,9 @@ int gba_sound_frame_cycles(void);
 /** With gba_sound_count_cycles, `frames` frames of SoundMain with nothing playing, for a start point that leaves out
  *  what led to it, as the JavaScript kit's framesGoneBy(). */
 void gba_sound_frames_gone_by(int frames);
+/** For a start point that leaves out what led to it, the frames the sound has already played: the engine, with the
+ *  calls before this one, runs `frames` frames at once, unheard, so the music is where the original's is. */
+void gba_sound_played_for(int frames);
 /** m4aSoundInit after a soft reset: the engine starts again from nothing, with the sound chip as it was. */
 void gba_sound_reset(void);
 /** m4aSongNumStart */
