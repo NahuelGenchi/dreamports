@@ -1,0 +1,12 @@
+{
+  "about": "The game's start with nothing pressed until Arthur stands in the first stage, then B once: his lance flies right and kills the zombie that comes from that side, for 200 points, and the one behind him knocks him out of his armour.",
+  "frames": 1300,
+  "held": [
+    [0, []],
+    [100, ["START"]],
+    [102, []],
+    [1170, ["B"]],
+    [1173, []]
+  ],
+  "clip": { "at": 1000, "frames": 300 }
+}

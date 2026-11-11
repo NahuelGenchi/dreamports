@@ -3,7 +3,7 @@
 // becomes a place on the screen, for the sprites' task. Arthur, the first object, has a task of his own (arthur.c).
 //
 // So far it has the kinds the opening scene uses, the princess, Satan, and Arthur's armour on the ground, and the
-// zombies (enemies.c). The other kinds do nothing yet.
+// zombies and the pot one carries (enemies.c), and Arthur's lance and dagger (weapons.c). The other kinds do nothing yet.
 
 #include "game.h"
 
@@ -24,10 +24,12 @@ enum { VIEW_X = 0x64, VIEW_X_SCREEN = 0x65, VIEW_Y = 0x67, VIEW_Y_SCREEN = 0x68 
 void show_object(uint8_t object) {
   RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN;
   took(OBJECT_SHOWN);
+  if (object >= 0x10) took(READ_PAST_PAGE);   // the flags of the objects from the 17th on are in the next page
 }
 void hide_object(uint8_t object) {
   RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
   took(OBJECT_SHOWN);
+  if (object >= 0x10) took(READ_PAST_PAGE);
 }
 
 // sub_F0BC: the object's place, as the second of the two.
@@ -142,6 +144,7 @@ static void scale(void) {
 // $F077 and $F08A, isn't ported yet.
 void move_object(uint8_t object, uint8_t speed) {
   took(MOVE_BEGINS);
+  if ((OBJECT_HEADING & 0xFF) + object > 0xFF) took(READ_PAST_PAGE);
   uint16_t way = (uint16_t)(0xF2A3 + RAM[OBJECT_HEADING + object] * 4);
   RAM[0xA0] = speed;
   set_ram16(0x9D, 0xF2A3);
@@ -294,10 +297,10 @@ static void satan(uint8_t object) {
   move_object(object, 0x18);
 }
 
-// sub_F63A: whether Arthur is within a box around an object: $22 and $24 are how far left and right of it he can be,
-// and $23 and $25 how far above and below. Across, the two have to be less than half a screen apart in the stage first.
-static int arthur_within(uint8_t object) {
-  int16_t apart = (int16_t)((RAM[OBJECT_X_SCREEN + ARTHUR] << 8 | RAM[OBJECT_X + ARTHUR]) - (RAM[OBJECT_X_SCREEN + object] << 8 | RAM[OBJECT_X + object]));
+// sub_F63A: whether one object is within a box around another: $22 and $24 are how far left and right of it the first
+// can be, and $23 and $25 how far above and below. Across, the two have to be less than half a screen apart in the stage first.
+static int within(uint8_t first, uint8_t object) {
+  int16_t apart = (int16_t)((RAM[OBJECT_X_SCREEN + first] << 8 | RAM[OBJECT_X + first]) - (RAM[OBJECT_X_SCREEN + object] << 8 | RAM[OBJECT_X + object]));
   RAM[0x47] = (uint8_t)apart;
   uint8_t screens = (uint8_t)((uint16_t)apart >> 8), same = screens == 0, next = screens == 0xFF;
   if (apart < -128 || apart > 127) {
@@ -305,10 +308,10 @@ static int arthur_within(uint8_t object) {
     return 0;
   }
   took(same ? WITHIN_SAME_SCREEN : WITHIN_NEXT_SCREEN);
-  uint8_t across = (uint8_t)(RAM[OBJECT_SCREEN_X + ARTHUR] - RAM[OBJECT_SCREEN_X + object]);
+  uint8_t across = (uint8_t)(RAM[OBJECT_SCREEN_X + first] - RAM[OBJECT_SCREEN_X + object]);
   if (across < RAM[0x22] && across >= RAM[0x24]) { took(WITHIN_ACROSS_NOT); return 0; }
   took(across >= RAM[0x22] ? WITHIN_ACROSS_LEFT : WITHIN_ACROSS_RIGHT);
-  uint8_t down = (uint8_t)(RAM[OBJECT_SCREEN_Y + ARTHUR] - RAM[OBJECT_SCREEN_Y + object]);
+  uint8_t down = (uint8_t)(RAM[OBJECT_SCREEN_Y + first] - RAM[OBJECT_SCREEN_Y + object]);
   took(down >= RAM[0x23] ? WITHIN_DOWN_ABOVE : down < RAM[0x25] ? WITHIN_DOWN_BELOW : WITHIN_DOWN_NOT);
   return down >= RAM[0x23] || down < RAM[0x25];
 }
@@ -326,10 +329,22 @@ int arthur_touches(uint8_t object) {
   RAM[0x22] = (uint8_t)-RAM[0x24];
   int standing = !(RAM[OBJECT_FLAGS + ARTHUR] & CROUCHING);
   if (standing) RAM[OBJECT_SCREEN_Y + ARTHUR] -= 4;
-  int touches = arthur_within(object);
+  int touches = within(ARTHUR, object);
   if (standing) RAM[OBJECT_SCREEN_Y + ARTHUR] += 4;
   took(TOUCH_ENDS);
   return touches;
+}
+
+// The copy's lists at $F6EC and $F6F1 give each weapon's own half width and half height.
+int weapon_touches(uint8_t weapon, uint8_t enemy) {
+  uint8_t which = (uint8_t)(RAM[OBJECT_KIND + weapon] - LANCE);
+  RAM[0xA9] = weapon;
+  RAM[0x24] = (uint8_t)(cart(7, (uint16_t)(0xF6EC + which)) + RAM[0x26]);
+  RAM[0x22] = (uint8_t)-RAM[0x24];
+  RAM[0x25] = (uint8_t)(cart(7, (uint16_t)(0xF6F1 + which)) + RAM[0x27]);
+  RAM[0x23] = (uint8_t)-RAM[0x25];
+  took(WEAPON_BOX);
+  return within(weapon, enemy);
 }
 
 // $BA09 in bank 4, kind $10: something to pick up, here Arthur's armour. Its shape and colours come from the copy's
@@ -389,6 +404,7 @@ wait objects_task(void) {
         case 0x00: zombie(object); break;
         case 0x10: pick_up(object); break;
         case 0x12: pot(object); break;
+        case LANCE: case DAGGER: weapon(object); break;
         case 0x33: princess(object); break;
         case 0x34: satan(object); break;
       }

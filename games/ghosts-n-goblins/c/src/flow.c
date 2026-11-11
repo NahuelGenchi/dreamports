@@ -147,14 +147,10 @@ static wait draw_first_screen(uint8_t *step) {
 // digits, and then the last object it placed.
 static uint8_t last_index;
 
-// $D17A: the words at the top of a stage's picture. They're one object, whose shape is kept in work memory at $06D6,
-// from the copy's at $CD16, so the score, the lives and the time can be written into it; the weapon Arthur has is another.
-static void start_top_of_picture(void) {
-  for (int i = 0; i < 0x28; i++) RAM[0x06D6 + i] = cart(7, (uint16_t)(0xCD16 + i));
-  took(TOP_SHAPE_COPIED);
-  // sub_D8D8: the score's six digits, empty until its first that isn't 0
+// sub_D8D8: the score's six digits at the top of the picture, empty until its first that isn't 0. It leaves 12 in the
+// processor's X register.
+static uint8_t show_score(void) {
   uint8_t empty = 0xFF, digit = 0;
-  took(CALLS);
   took(SCORE_SHOWN_BEGINS);
   for (uint8_t at = PLAYER; at < 0x0C; at += 2, digit += 2) {
     if (RAM[0x04E0 + at]) empty = 0;
@@ -164,7 +160,60 @@ static void start_top_of_picture(void) {
   }
   took(RETURNS);
   RAM[0xE4] = empty;
-  last_index = digit;
+  return digit;
+}
+
+// The score is six digits and a seventh that's always 0, a byte each, the two players' turn about from $04E0. The best
+// score, seven digits at $8D, takes any score that passes it. The life a score gives, at $D9BF, isn't ported yet.
+void add_score(uint8_t x, uint8_t y) {
+  enum { SCORE = 0x04E0, BEST = 0x8D, HOLDS_BEST = 0x04EE, DIGITS = 6 };
+  static const uint8_t ADDED[] = { 0x26, 0x27, 0x24, 0x25 };   // where what's added to each digit is, from the last
+  RAM[0x25] = RAM[0x24] = 0;
+  RAM[0xA8] = x;
+  RAM[0xA9] = y;
+  if (DEMONSTRATION) { took(SCORE_NOT_IN_DEMONSTRATION); return; }
+  took(SCORE_BEGINS);
+  uint8_t carried = 0;
+  for (unsigned digit = 0; digit < DIGITS; digit++) {
+    uint16_t at = (uint16_t)(SCORE + (DIGITS - 1 - digit) * 2 + PLAYER);
+    uint8_t sum = (uint8_t)(RAM[at] + (digit < sizeof ADDED ? RAM[ADDED[digit]] : 0) + carried);
+    carried = sum >= 10;
+    RAM[at] = carried ? (uint8_t)(sum - 10) : sum;
+    took(digit == 0 ? SCORE_FIRST_DIGIT : digit < sizeof ADDED ? SCORE_NEXT_DIGIT : SCORE_LAST_DIGITS);
+    took(carried ? SCORE_DIGIT_OVER_NINE : SCORE_DIGIT_KEPT);
+  }
+  took(SCORE_BEST_BEGINS);
+  int beats = 0;
+  for (unsigned digit = 0; digit <= DIGITS; digit++) {
+    uint8_t best = RAM[BEST + digit], mine = RAM[SCORE + PLAYER + digit * 2];
+    if (best < mine) { took(SCORE_BEATS_BEST); beats = 1; break; }
+    if (best != mine) { took(SCORE_BELOW_BEST); break; }
+    took(SCORE_SAME_DIGIT);
+    took(digit < DIGITS ? GOES_ROUND : SCORE_SAME_AS_BEST);
+  }
+  if (beats) {
+    for (unsigned digit = 0; digit <= DIGITS; digit++) RAM[BEST + digit] = RAM[SCORE + PLAYER + digit * 2];
+    took(SCORE_BEST_KEPT);
+    if (RAM[HOLDS_BEST + PLAYER]) took(SCORE_BEST_MARKED_ALREADY);
+    else {
+      RAM[HOLDS_BEST + (PLAYER ^ 1)] = PLAYER ^ 1;
+      RAM[HOLDS_BEST + PLAYER] = 0xFF;
+      took(SCORE_BEST_MARKED);
+    }
+  }
+  took(SCORE_LIFE_LOOKED_AT);
+  took(CALLS);
+  show_score();
+  took(SCORE_ENDS);
+}
+
+// $D17A: the words at the top of a stage's picture. They're one object, whose shape is kept in work memory at $06D6,
+// from the copy's at $CD16, so the score, the lives and the time can be written into it; the weapon Arthur has is another.
+static void start_top_of_picture(void) {
+  for (int i = 0; i < 0x28; i++) RAM[0x06D6 + i] = cart(7, (uint16_t)(0xCD16 + i));
+  took(TOP_SHAPE_COPIED);
+  took(CALLS);
+  last_index = show_score();
   RAM[OBJECT_SCREEN_X + TOP_WORDS] = cart(7, (uint16_t)(0xCD44 + PLAYER));
   RAM[0x06D8] = (uint8_t)(PLAYER + 1);
   RAM[OBJECT_FLAGS + TOP_WORDS] = OBJECT_FLAG_SHOWN;

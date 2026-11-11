@@ -167,6 +167,14 @@ enum { NO_OBJECT = 0x11 };
 void remove_object(uint8_t object);
 /** sub_F68E: whether Arthur touches an object, whose half width and half height are in $26 and $27. */
 int arthur_touches(uint8_t object);
+/** sub_F611: whether one of Arthur's weapons touches an enemy, whose half width and half height are in $26 and $27. */
+int weapon_touches(uint8_t weapon, uint8_t enemy);
+enum { FIRST_WEAPON = 0x11, WEAPONS = 3, LANCE = 0x23, DAGGER = 0x24, TORCH = 0x25, AXE = 0x26, CROSS = 0x27 };  // the weapons' objects and kinds
+#define WEAPON_HELD RAM[0x053A]   // the shape of the weapon Arthur has, which the top of the picture shows
+/** $EB75 and $EB84, kinds $23 and $24: a lance's or a dagger's turn (weapons.c). */
+void weapon(uint8_t object);
+/** sub_D8FC: adds what's in $26 and $27 to the score, tens and hundreds. `x` and `y` are the processor's registers, which it keeps. */
+void add_score(uint8_t x, uint8_t y);
 /** $F7BE, kind 0: a zombie's turn (enemies.c). */
 void zombie(uint8_t object);
 /** Bank 4's $BBEE, kind $12: the pot a zombie carries (enemies.c). */
