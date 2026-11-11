@@ -12,7 +12,7 @@ Often someone who has never written code and talks to you in their own words. Do
 
 ## What they ask for in their own words
 
-Do it, outside the command. To try the game, say how to play, then run `npm run dp -- play <game> --record <name>` yourself in the background and `prove` when the window closes, and report what matched and where it first differs, never asking how it felt. For a game's card, say what to do in the window, then run `npm run dp -- capture <game>` the same way, commit what it writes when they've chosen, and open a pull request with it, which a game's first entry can do with no review of its code (`docs/TEAMS.md#a-games-first-entry`). For something that feels wrong, find it in a recording, look with `prove --stills`, and fix it from how the original does it.
+Do it, outside the command. To try the game, say how to play, then run `npm run dp -- play <game> --record <name>` yourself in the background and `prove` when the window closes, and report what matched and where it first differs, never asking how it felt. For a game's card, say what to do in the window, then run `npm run dp -- capture <game>` the same way, commit what it writes when they've chosen, and send it with `--yes`, as a game's card comes in by itself with no review of its code (`docs/TEAMS.md#a-games-first-files-and-its-card`). For something that feels wrong, find it in a recording, look with `prove --stills`, and fix it from how the original does it.
 
 ## Before anything leaves this computer
 

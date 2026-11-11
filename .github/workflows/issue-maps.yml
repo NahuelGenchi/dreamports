@@ -2,9 +2,9 @@ name: Issue maps
 
 # Each game's issue shows its progress map at the top (docs/TEAMS.md#how-the-bot-works). The proof tools draw the map and
 # npm run check holds it to the game's proof/ folder, so this only puts that picture in the issue, and no model is asked
-# anything. A run follows each push that changes a map, and one each hour catches a merge made by another workflow, as a
-# first entry's is, which starts no run here. It runs only this repository's code, reads an issue's text as data, and
-# edits an issue only when its picture changed.
+# anything. A run follows each push that changes a map, and one each hour catches a merge made by another workflow, which
+# starts no run here; the bot that merges a game's first files starts one itself (first-entry.yml). It runs only this
+# repository's code, reads an issue's text as data, and edits an issue only when its picture changed.
 on:
   push:
     branches: [main]

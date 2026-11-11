@@ -39,6 +39,26 @@ export function splitTable(text) {
 }
 
 /**
+ * docs/STATUS.md as `before` has it, with only the row of `version`, such as pixel-trail/c, from `fresh`, the same file
+ * just written whole: after the row it follows there, or before the first row when it leads the table. The table is
+ * main's own, written after each merge by the Readme workflow (#566), so it can be a few hours behind the games'
+ * folders, and a new game's first files add its row to it as it is: written whole, they would carry other games' new
+ * numbers along, which nothing that reads them could tell from words of someone's own. Null when there's no such row
+ * to add, or `before` has it already.
+ */
+export function withRowOf(before, fresh, version) {
+  const link = line => /\(\.\.\/games\/([^)]+)\/\)/.exec(line)?.[1];
+  const written = fresh.split('\n'), lines = before.split('\n');
+  const at = written.findIndex(line => link(line) === version);
+  if (at < 0 || lines.some(line => link(line) === version)) return null;
+  const follows = link(written[at - 1] ?? '');
+  const after = follows ? lines.findIndex(line => link(line) === follows) : lines.findIndex(line => link(line)) - 1;
+  if (after < 0) return null;
+  lines.splice(after + 1, 0, written[at]);
+  return lines.join('\n');
+}
+
+/**
  * Writes the table in docs/STATUS.md and each Dreamport's progress map, and removes the map of a game that's gone, or only
  * compares them with `check`: { changed, files }, with the files that changed, or would.
  */
