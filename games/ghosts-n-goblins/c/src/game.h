@@ -202,7 +202,16 @@ uint8_t way_to_arthur(uint8_t from);
 int arthur_is_right_of(uint8_t object);
 /** Bank 4's $9EC0, kind 1: a plant; $F93D, kind $14: a crow; $F49C, kind $2B: a plant's shot (enemies.c). */
 void plant(uint8_t object);
-void second_kind(uint8_t object);  // bank 4's $9FB0, kind 2
+/** Bank 4's $9FB0, kind 2: the flier that sits near the end of the first stage (flier.c); $F4BC, kind $2C: its shot. */
+void flier(uint8_t object);
+void flier_shot(uint8_t object);
+/** sub_F5A0: what touches an enemy this round: the weapon that hit it, which is gone and counted at $0647, or 0, with
+ *  whether Arthur touched it and is hit. */
+uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched);
+/** $F6F6: an enemy that a weapon has killed burns away. */
+void enemy_burns_away(uint8_t object);
+/** sub_EF25: the way from the place in $75, $79, $76 and $7A to the one in $73, $77, $74 and $78, one of 16. */
+uint8_t way_to_first(void);
 void crow(uint8_t object);
 void plant_shot(uint8_t object);
 /** $EA55: the block of the stage at the place in $77 and $73, down, and $78 and $74, across. A block from $C6 up is solid. */

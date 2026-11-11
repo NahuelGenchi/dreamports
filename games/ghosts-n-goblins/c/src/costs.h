@@ -379,8 +379,9 @@ COST(MOVE_SCALE_CALLED, 12)       // $EFFF or $F026, to sub_F137
 COST(MOVE_ACROSS_BEGINS, 43)      // $F006 to $F020
 COST(MOVE_FOUND, 30)              // $F02D, and back
 COST(SCALE_BEGINS, 32)            // sub_F137 to $F14D
-COST(SCALE_BIT_CLEAR, 31)         // each bit of the speed, to $F16E: one that's clear,
-COST(SCALE_BIT_SET, 59)           // or set
+COST(SCALE_BIT_SHIFTED, 25)       // each bit of the speed: $F14D to its shift out of $52,
+COST(SCALE_BIT_CLEAR, 6)          // and to $F16E: one that's clear,
+COST(SCALE_BIT_SET, 34)           // or set
 COST(MOVE_ADDED_ACROSS, 38)       // $F041 to $F05A
 COST(MOVE_ADDED_DOWN, 40)         // $F05A to $F075
 COST(MOVE_DOWN_ONLY, 8)           // sub_F099 to $F05A
@@ -546,6 +547,7 @@ COST(WEAPON_SPENT_OVER, 26)       // and after four rounds, with sub_F734, and b
 COST(WEAPON_SPENT_STAYS, 11)      // or $EBD1 to sub_F2EB
 COST(WEAPON_STOPPED_SHAPE_RIGHT, 24) // $EBE2, and back: its shape against a gravestone, heading right,
 COST(WEAPON_STOPPED_SHAPE_LEFT, 30)  // or left
+COST(WEAPON_SPARK_SHAPE, 31)      // $EBE2 to $EC01, and back: a spark's shape
 
 // ---- the score, sub_D8FC (flow.c)
 COST(SCORE_TENS_AND_HUNDREDS, 8)  // sub_D8FC to $D902: nothing for the thousands
@@ -870,8 +872,6 @@ COST(CROW_WINGS, 24)              // $F9F0 to $F9FF
 COST(CROW_FLIES_RIGHT, 9)         // $FA02, and back,
 COST(CROW_FLIES_LEFT, 21)         // or with the shapes for the left
 COST(PLANT_ALIVE, 3)              // bank 4's $9EC3 to $9EDF: a plant
-COST(SECOND_KIND_OUT_OF_VIEW, 2)  // bank 4's $9FB6 to sub_F346: kind 2, out of the view,
-COST(SECOND_KIND_WAITS, 9)        // and $9FBE, and back, while it hasn't flown off
 COST(PLANT_DEAD, 5)               // or to $F6F6, once it's hit
 COST(BURNING_IN_VIEW, 4)          // $F6FC to $F701, across a page: an enemy that burns away, in the view,
 COST(BURNING_OUT_OF_VIEW, 2)      // or out of it, to sub_F346
@@ -1025,3 +1025,156 @@ COST(NOISE_WAITS, 20)             // sub_03_85DA
 COST(NOISE_NEXT_STEP, 52)         // to $85FF
 COST(NOISE_IS_OVER, 43)
 COST(NOISE_STEP, 63)              // $8601 to $8625
+
+// ---- the flier, kind 2, bank 4's $9FB0 (flier.c)
+COST(OBJECT_FLAG_CHANGED, 26)     // one of the routines that set or clear a flag, from sub_F305 and sub_F32A on, with its call
+COST(NEAR_LOOKED_AT, 27)          // sub_F687 with its call, to sub_F68E, for an object that's shown,
+COST(NEAR_NOT_SHOWN, 34)          // or back, for one that isn't
+COST(SPARK_TESTS_NOTHING, 9)      // sub_F585 after sub_F5A0, and back: nothing touched it,
+COST(SPARK_TESTS_TOUCHED, 13)     // or Arthur did,
+COST(SPARK_BEGINS, 24)            // or a weapon: to sub_ED51,
+COST(SPARK_ENDS, 13)              // and back
+COST(FLIER_SHOT_BEGINS, 20)       // $F4BC to sub_F0A0's call of sub_F03E: its shot
+COST(FLIER_NOT_YET, 3)            // a branch that's taken
+COST(FLIER_IS_HIGH, 2)            // and one that isn't
+COST(FLIER_COUNT_READ, 6)         // a field read and tested
+COST(FLIER_COUNT_READ_ON, 8)      // the same after a branch that isn't taken
+COST(FLIER_STATE_IS, 5)           // a branch that isn't taken, and the jump after
+COST(FLIER_MODE_IS, 11)           // $A17B on: one of the bits of what it's doing in the air is set,
+COST(FLIER_MODE_IS_NOT, 9)        // or isn't
+COST(FLIER_TESTS_BOX, 8)          // the box for a test, in $26 and $27
+COST(FLIER_HEADS_RIGHT, 7)        // its heading, to the right,
+COST(FLIER_HEADING_KEPT, 3)       // kept when Arthur is on the right,
+COST(FLIER_HEADS_LEFT, 9)         // or to the left
+COST(FLIER_SHAPE, 7)              // a shape,
+COST(FLIER_SHAPE_KEPT, 3)         // kept,
+COST(FLIER_SHAPE_TURNED, 9)       // or the one for the other side
+COST(FLIER_WING, 27)              // sub_F576, and back
+COST(FLIER_SPEED, 27)             // sub_A464 with its call, to sub_F03E,
+COST(FLIER_SPEED_MOST, 28)        // or at the most
+COST(FLIER_COUNTED, 10)           // sub_A474 to $A47C,
+COST(FLIER_COUNTED_HIGH, 16)      // or with its count's high byte
+COST(FLIER_IS_OLD, 8)             // $A47F, and back: its flag $20 is set,
+COST(FLIER_IS_YOUNG, 26)          // or it's had fewer than 1,024 rounds,
+COST(FLIER_GROWS_OLD, 57)         // or fewer than 1,056, and flashes,
+COST(FLIER_GROWN_OLD, 74)         // or the flag is set, with sub_F319
+COST(FLIER_SHOOT_BEGINS, 14)      // sub_A4B0 with its call, to sub_F687
+COST(FLIER_TOO_NEAR, 9)           // $A4B9, and back: Arthur is too near,
+COST(FLIER_SHOOTS_NOW, 13)        // or to $A4CD on the 16th round of 32,
+COST(FLIER_NO_SHOT, 24)           // or back on another,
+COST(FLIER_NO_SECOND_SHOT, 27)    // or when $5B lets it shoot on the 24th too, and it isn't that,
+COST(FLIER_SHOOTS_AGAIN, 22)      // or is
+COST(FLIER_SHOT_FREE, 10)         // $A4CD to $A4DA: the first shot's object is free,
+COST(FLIER_SECOND_SHOT_FREE, 18)  // or the second's,
+COST(FLIER_NO_SHOT_FREE, 25)      // or neither, and back
+COST(FLIER_SHOT_MADE, 95)         // $A4DA to sub_EF25: the shot's place, and Arthur's
+COST(FLIER_SHOT_HEADED, 20)       // $A51B to sub_ED51
+COST(FLIER_SHOT, 30)              // $A528, with sub_F315, and back
+COST(FLIER_DODGE_BEGINS, 46)      // sub_A41E with its call, to sub_F5F9
+COST(FLIER_DODGE_NOT_SHOWN, 61)   // or back, when it isn't shown
+COST(FLIER_NO_WEAPON_NEAR, 8)     // $A42A, and back
+COST(FLIER_WEAPON_NEAR, 3)        // or on to $A42D
+COST(FLIER_DODGES_IN_THE_AIR, 3)  // $A430 to $A453
+COST(FLIER_DODGE_HEIGHT, 14)      // $A430 to $A43B: on the ground, how far down from Arthur
+COST(FLIER_DODGE_NOT_LEVEL, 9)    // $A43B to $A453
+COST(FLIER_DODGE_LEVEL_BELOW, 15) // $A43B to $A44D: level with him, and how far across,
+COST(FLIER_DODGE_LEVEL_ABOVE, 19) // the same from just above
+COST(FLIER_STAYS_LEFT_OF_HIM, 9)  // $A44D, and back: close on his left,
+COST(FLIER_STAYS_RIGHT_OF_HIM, 13) // or his right,
+COST(FLIER_DODGE_FAR_ENOUGH, 6)   // or on to $A453
+COST(FLIER_TAKES_OFF, 39)         // $A453, with sub_F311, and back
+COST(FLIER_FACES, 33)             // $A38C to sub_FA87, with sub_F332
+COST(FLIER_FACES_RIGHT, 9)        // $A397, and back,
+COST(FLIER_FACES_LEFT, 41)        // or with sub_F30D
+COST(FLIER_WAKES, 40)             // sub_A37F to $A38C, with sub_F309
+COST(FLIER_PLACE_HIGH, 18)        // sub_A3A2 with its call, to $A3AD: 64 pixels down,
+COST(FLIER_PLACE_HIGH_FOR_LOW, 17) // or 80 when Arthur is low,
+COST(FLIER_PLACE_HIS_HEIGHT, 10)  // or $A36B to sub_A3AD: his own height
+COST(FLIER_PLACE_ON_SCREEN, 27)   // $A3AD to $A3C9: the height in the stage, on the view's screen,
+COST(FLIER_PLACE_NEXT_SCREEN, 41) // or past its 240 lines,
+COST(FLIER_PLACE_NEXT_SCREEN_CARRIED, 38) // or past 256
+COST(FLIER_PLACE_LEFT, 7)         // $A3CC to $A3D5: 32 pixels from the left,
+COST(FLIER_PLACE_RIGHT, 5)        // or the right
+COST(FLIER_PLACE_ACROSS, 19)      // $A3D5 to $A3E2
+COST(FLIER_PLACE_HEIGHT_OFF, 11)  // $A3E2 to $A3EA
+COST(FLIER_PLACE_HEIGHT_REACHED, 3) // to $A3F0: within five pixels of the height, from above,
+COST(FLIER_PLACE_HEIGHT_REACHED_FROM_BELOW, 6) // or below,
+COST(FLIER_PLACE_HEIGHT_FAR, 7)   // or to $A3FF
+COST(FLIER_PLACE_SIDE_OFF, 11)    // $A3F0 to $A3F8
+COST(FLIER_PLACE_REACHED, 9)      // and back: within five pixels across,
+COST(FLIER_PLACE_REACHED_FROM_LEFT, 12) // from the left,
+COST(FLIER_PLACE_SIDE_FAR, 7)     // or to $A3FF
+COST(FLIER_PLACE_WAY, 34)         // $A3FF to sub_EF25
+COST(FLIER_PLACE_HEADED, 10)      // $A416 to sub_F03E
+COST(FLIER_AIR_SHAPE, 7)          // $A1F5 to sub_F576, by way of $A212
+COST(FLIER_AIR_SHAPE_AFTER_SHOT, 37) // or $A1F5 to $A211, with its arms out,
+COST(FLIER_AIR_SHAPE_SHOT_OVER, 46)  // or to $A212, with sub_F33A
+COST(FLIER_LEVEL_LOOKED_AT, 12)   // $A33B to $A344
+COST(FLIER_IS_LEVEL, 3)           // to $A34A,
+COST(FLIER_IS_LEVEL_FROM_ABOVE, 6)
+COST(FLIER_NOT_LEVEL, 7)          // or to $A36B
+COST(FLIER_LANDS, 38)             // $A35E to $A38C, with sub_F336
+COST(FLIER_COMES_LEVEL, 16)       // $A325 to $A33B
+COST(FLIER_DIVE_HEIGHT, 8)        // $A28B to $A291
+COST(FLIER_DIVE_ENDS, 24)         // $A291 to the call of sub_A474
+COST(FLIER_DIVE_ACROSS, 12)       // $A2AB to $A2B4
+COST(FLIER_DIVE_NEAR_RIGHT, 3)    // to $A2BA: Arthur is less than 96 pixels to its right,
+COST(FLIER_DIVE_NEAR_LEFT, 6)     // or its left,
+COST(FLIER_DIVE_FAR, 8)           // or further, to $A307
+COST(FLIER_DIVE_DOWN, 10)         // $A2BA to $A2C1
+COST(FLIER_DIVE_BELOW_HIM, 3)     // to $A2C7: it's below him,
+COST(FLIER_DIVE_ABOVE_HIM, 6)     // or less than 48 pixels above,
+COST(FLIER_DIVE_HIGH_ABOVE_HIM, 8) // or more, to $A307
+COST(FLIER_SLIDES_RIGHT, 12)      // $A2C7 to $A2D4
+COST(FLIER_SLIDES_LEFT, 16)
+COST(FLIER_SLID, 33)              // $A2D4 to $A2EB
+COST(FLIER_SLIDE_KEPT, 4)         // to $A307, across a page
+COST(FLIER_SLIDE_DOUBLED, 13)     // $A2EB to $A2F3
+COST(FLIER_SLIDE_LEFT_SLOW, 8)    // $A2F3 to $A307: still under 16 to the left,
+COST(FLIER_SLIDE_LEFT_FASTEST, 14) // or 12 from now on,
+COST(FLIER_SLIDE_RIGHT_SLOW, 8)   // and the same to the right
+COST(FLIER_SLIDE_RIGHT_FASTEST, 16)
+COST(FLIER_WAITS_ON, 10)          // $A215 to $A283
+COST(FLIER_DIVE_APART, 33)        // $A215 to $A22B: how far across Arthur is
+COST(FLIER_DIVE_APART_LEFT, 20)   // $A22B to $A23A, when he's on the left
+COST(FLIER_DIVE_SIXTEENTH, 69)    // $A23A to the call of sub_FA87
+COST(FLIER_DIVE_SPEED_LEFT, 15)   // $A24B to $A256
+COST(FLIER_DIVE_AIMED, 79)        // $A256 to sub_EF25, by sub_FA58
+COST(FLIER_DIVE_HEADED, 17)       // $FA83, back, and to $A266
+COST(FLIER_DIVE_TURNED_BACK, 15)  // $A266 to $A270
+COST(FLIER_DIVE_STRAIGHT_DOWN_FROM_LEFT, 12) // $A270 to $A283, by $A27E
+COST(FLIER_DIVE_TURNED_ON, 16)    // $A266 to $A27C, by $A274
+COST(FLIER_DIVE_STRAIGHT_DOWN, 9) // $A27C to $A283
+COST(FLIER_WAIT_BEGINS, 33)       // $A1C6 to sub_A474
+COST(FLIER_GROUND_TURNED, 28)     // $A069 to $A06E, with sub_F30D
+COST(FLIER_GROUND_TAKES_OFF, 41)  // $A073, with sub_F311, and back
+COST(FLIER_GROUND_TESTS, 18)      // $A073 to the call of sub_F585
+COST(FLIER_GROUND_HITS_READ, 8)   // $A08B to $A08F
+COST(FLIER_GROUND_LAST_HIT, 12)   // $A08F, and back: its fourth hit,
+COST(FLIER_GROUND_HIT, 18)        // or an earlier one: to $A09E
+COST(FLIER_GROUND_FLINCH_OVER, 16) // $A0AA to $A0C9
+COST(FLIER_GROUND_SHOT_OVER, 42)  // $A0DB to $A0F5, with sub_F33A
+COST(FLIER_GROUND_RUNS, 4)        // $A0FD to $A154, across a page
+COST(FLIER_GROUND_RUN_OVER, 13)   // $A160 to $A16A
+COST(FLIER_GROUND_STEPS_AWAY, 13) // $A11E to $A128
+COST(FLIER_GROUND_RUN_BEGINS, 13) // $A132 to $A13C
+COST(FLIER_OUT_OF_VIEW, 2)        // $9FB6 to sub_F346
+COST(FLIER_WAITS, 9)              // $9FBE, and back, while it's asleep
+COST(FLIER_AWAY_LOOKED_AT, 2)     // $9FBE to sub_FA87
+COST(FLIER_AWAY_ACROSS, 12)       // $9FC3 to sub_F708: Arthur is a screen or more away across,
+COST(FLIER_NEAR_ACROSS_LEFT, 5)   // or to $9FCB: less, on the left,
+COST(FLIER_NEAR_ACROSS_RIGHT, 8)  // or the right
+COST(FLIER_AWAY_DOWN_LOOKED_AT, 20) // $9FCB to $9FDA
+COST(FLIER_NEAR_ABOVE, 9)         // and back,
+COST(FLIER_NEAR_BELOW, 13)
+COST(FLIER_AWAY_DOWN, 9)          // or to sub_F708
+COST(FLIER_IN_VIEW, 10)           // $9FB6 to sub_F2F7
+COST(FLIER_COLOURS_YOUNG, 9)      // $9FEC to $9FF1
+COST(FLIER_HITS_READ, 9)          // $9FF4 to $9FFE
+COST(FLIER_KILLED, 13)            // $9FFE to sub_ED51, by sub_F7B4
+COST(FLIER_KILLED_SCORE, 56)      // $A003 to sub_D902
+COST(FLIER_SITS, 30)              // $A02B to $A049
+COST(FLIER_SITS_IN_SIXTH_SET, 39) // or with the wider box of the sixth set of stages
+COST(FLIER_SEES_HIM, 8)           // $A04C to sub_A37F
+COST(FLIER_SLEEPS_ON, 13)         // $A05A, and back
+COST(FLIER_WOKEN_BY_HIT, 12)      // or to sub_A37F

@@ -144,14 +144,16 @@ static void scale(void) {
   uint8_t by = RAM[0x52];
   took(SCALE_BEGINS);
   do {
+    uint8_t set = by & 0x80;
     value >>= 1;
-    took(by & 0x80 ? SCALE_BIT_SET : SCALE_BIT_CLEAR);
-    if (by & 0x80) sum += value;
+    took(SCALE_BIT_SHIFTED);
     by = (uint8_t)(by << 1);
+    RAM[0x52] = by;
+    took(set ? SCALE_BIT_SET : SCALE_BIT_CLEAR);
+    if (set) sum += value;
     took(by ? GOES_ROUND : GOES_ON);
   } while (by);
   took(RETURNS);
-  RAM[0x52] = 0;
   RAM[0x25] = (uint8_t)(value >> 24);
   RAM[0x24] = (uint8_t)(value >> 16);
   RAM[0x23] = (uint8_t)(value >> 8);
@@ -221,7 +223,7 @@ void move_down(uint8_t object) {
 
 // sub_EF25: the way from the second place to the first, one of 16, from the copy's table of angles at $F1A3. Places
 // more than a screen apart, at $EF8E, aren't ported yet.
-static uint8_t way_to_first(void) {
+uint8_t way_to_first(void) {
   int16_t down = (int16_t)((A_Y_SCREEN << 8 | A_Y) - (B_Y_SCREEN << 8 | B_Y)), across = (int16_t)((A_X_SCREEN << 8 | A_X) - (B_X_SCREEN << 8 | B_X));
   // each quarter counts its angle from its own start, and in two of them sub_EFC1 has the two distances change places
   uint16_t first, second;
@@ -539,13 +541,14 @@ wait objects_task(void) {
       switch (kind) {
         case 0x00: zombie(object); break;
         case 0x01: plant(object); break;
-        case 0x02: second_kind(object); break;
+        case 0x02: flier(object); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object); break;
         case 0x12: pot(object); break;
         case 0x14: crow(object); break;
         case 0x20: gravestone(object); break;
         case 0x2B: plant_shot(object); break;
+        case 0x2C: flier_shot(object); break;
         case 0x22: map_marker(object); break;
         case LANCE: case DAGGER: weapon(object); break;
         case 0x33: princess(object); break;
