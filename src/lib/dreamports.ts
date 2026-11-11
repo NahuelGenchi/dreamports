@@ -205,6 +205,18 @@ export function makeView(data: Dreamport, github?: Making): MakeView {
   };
 }
 
+const CODE = 'Code ported', GAMEPLAY = 'Gameplay proven';
+
+/**
+ * A version's two numbers under their plain names, with no language in them, as a game's page shows them: one version
+ * at a time, the one Play opens.
+ */
+export const unnamed = (view: ProgressView): ProgressView => ({
+  ...view,
+  ported: { ...view.ported, label: CODE },
+  gameplay: { ...view.gameplay, label: GAMEPLAY },
+});
+
 // a game's two numbers, or with `language`, its version's, whose labels name the language, as in "Code ported in C"
 function progressView(game: string, proof: Proof | null, language = 'js'): ProgressView {
   const { ported = null, gameplay = null } = proof ?? {};
@@ -212,8 +224,8 @@ function progressView(game: string, proof: Proof | null, language = 'js'): Progr
   const version = versionName(game, language);
   return {
     language: language as keyof typeof LANGUAGES,
-    ported: { label: named('Code ported'), percent: ported?.percent ?? null, text: shortPercent(ported?.percent) },
-    gameplay: { label: named('Gameplay proven'), percent: gameplay?.percent ?? null, text: shortPercent(gameplay?.percent) },
+    ported: { label: named(CODE), percent: ported?.percent ?? null, text: shortPercent(ported?.percent) },
+    gameplay: { label: named(GAMEPLAY), percent: gameplay?.percent ?? null, text: shortPercent(gameplay?.percent) },
     parts: partsOf(game, gameplay),
     evidence: [
       ...(ported ? [{ value: 'The port map', href: `${SOURCE_URL}/blob/main/games/${version}/proof/port-map.json` }] : []),

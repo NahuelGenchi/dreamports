@@ -1,7 +1,7 @@
 ---
 // A game's own page, in the menu's place: its recording with the box to tick and the button
-// to play, then its name, its extras, a Dreamport's achievements, its details, a Dreamport's progress with its two
-// numbers and what it's built with folded away, and its text.
+// to play, then its name, its extras, a Dreamport's achievements, its details, a Dreamport's progress with the two
+// numbers of the version Play opens and what it's built with folded away, and its text.
 // A game with versions in more than one language ends its details with a box of its own, Advanced, whose one row
 // picks the language Play opens.
 // The play and download links stay locked until the visitor confirms they're using their own
@@ -16,7 +16,7 @@ import PixelIcon from './PixelIcon.astro';
 import Tile from './Tile.astro';
 import ViewBar from './ViewBar.astro';
 import { achievementsUrl, filterFor, gameUrl, pageTitle, type Game } from '../lib/site';
-import { dreamportView } from '../lib/dreamports';
+import { dreamportView, unnamed } from '../lib/dreamports';
 import { LANGUAGES, playHref, playOrder } from '../lib/languages.mjs';
 
 interface Props {
@@ -39,6 +39,10 @@ const Title = open ? 'h1' : 'h2';
 const languages = playOrder([dreamport.language, ...dreamport.versions.map((version) => version.language)]);
 const playIn = languages[0];
 const [howMany, another] = languages.length === 2 ? ['two languages', 'the other'] : ['more than one language', 'another'];
+// its progress, a version at a time: the numbers of the one Play opens, under their plain names, with each other
+// version's beside them, hidden until the player picks its language. Each is in a block of its own, which the check
+// of what the pages show reads up to its end (src/lib/cards.mjs), so nothing inside a block is a <div>.
+const versions = languages.map((language) => unnamed([dreamport, ...dreamport.versions].find((version) => version.language === language)!));
 // Every page holds every game's card, so each game's headings get ids of their own.
 const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$1 id="${id}-$2"`);
 ---
@@ -142,14 +146,14 @@ const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$
       <Achievements game={game.data.game} id={id} href={achievementsUrl(game)} list={dreamport.achievements} />
       {facts.length > 0 && <Facts facts={facts} id={`facts-${id}`} heading="The game" />}
       <Facts facts={dreamport.progress} id={`progress-${id}`} heading="Progress">
-        <Meter measure={dreamport.ported} />
-        <Parts measure={dreamport.gameplay} parts={dreamport.parts} evidence={dreamport.evidence} />
-        {dreamport.versions.map((version) => (
-          <>
-            <Meter measure={version.ported} />
-            <Parts measure={version.gameplay} parts={version.parts} evidence={version.evidence} />
-          </>
-        ))}
+        {
+          versions.map((version) => (
+            <div class="plays" data-language={version.language} hidden={version.language !== playIn}>
+              <Meter measure={version.ported} />
+              <Parts measure={version.gameplay} parts={version.parts} evidence={version.evidence} />
+            </div>
+          ))
+        }
         <details class="parts" slot="end">
           <summary>Built with</summary>
           <ul class="fact-items">
