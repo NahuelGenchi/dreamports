@@ -1,5 +1,6 @@
 // A Dreamport's progress map, drawn as an SVG picture from its proof/ folder, like the status pages of decompilation
-// projects. Its two numbers come first, as badges. Then a panel for code ported, with one rectangle for each function
+// projects. Its language comes first, as a badge, so two versions of one game can be told apart wherever their maps are
+// shown, then its two numbers, as badges too. Then a panel for code ported, with one rectangle for each function
 // in the original's code map, sized by its bytes and grouped by where it sits in the program, green when it counts
 // toward code ported and grey when it doesn't. Then a smaller panel for gameplay proven, with one equal block for each
 // of the game's parts, green once it's proven. It's measured by the same code as the two numbers (entries.mjs), so it
@@ -8,6 +9,7 @@
 // and sizes only, as the code map does, and nothing of the game.
 
 import { measure, percentText, portedFunctions, proofOf } from './entries.mjs';
+import { LANGUAGES, versionOf } from './languages.mjs';
 
 const WIDTH = 480;
 const BADGES = 20; // the badges' height
@@ -26,6 +28,8 @@ const COLOURS = {
   fromStart: '#7ba88a',
   todo: '#454c63',
   label: '#1f2d63',
+  // the language's badge, a blue none of the numbers' badges use
+  language: '#2f55c8',
 };
 
 // a badge's colour for its %, light enough to read white on
@@ -39,8 +43,9 @@ const escape = text => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;')
 const count = number => number.toLocaleString('en');
 
 /**
- * A Dreamport's progress map, from its proof files as proofOf takes them, or null without a code map. `title` is the
- * Dreamport's name. Returns { svg, alt }, where `alt` says what it shows in words.
+ * A Dreamport's progress map, from its proof files as proofOf takes them, or null without a code map. `game` names the
+ * version, as the tools do, such as sonic-battle/c, which says its language, and `title` is the Dreamport's name, the
+ * same for each of its versions. Returns { svg, alt }, where `alt` says what it shows in words.
  */
 export function progressMap(game, files, title) {
   const proof = proofOf(game, files);
@@ -54,21 +59,24 @@ export function progressMap(game, files, title) {
   const portedText = `${percentText(code.percent)} (${count(code.proven.bytes)}/${count(code.codeMap.bytes)} bytes)`;
   const gameplayText = gameplay ? `${percentText(gameplay.percent)} (${gameplay.proven}/${gameplay.total} parts)` : 'no list of parts yet';
 
+  const language = LANGUAGES[versionOf(game).language].name;
+  const number = (label, percent) => [label, percentText(percent) ?? 'not yet', badgeColour(percent)];
+
   const out = [];
   let y = 0;
   // the badges
   let x = 0;
-  for (const [label, percent] of [['Code ported', code.percent], ['Gameplay proven', gameplay?.percent ?? null]]) {
-    const value = percentText(percent) ?? 'not yet';
+  for (const [label, value, colour] of [['Language', language, COLOURS.language], number('Code ported', code.percent), number('Gameplay proven', gameplay?.percent ?? null)]) {
     const left = textWidth(label, 11) + 12, right = textWidth(value, 11) + 12;
     out.push(
       `<rect x="${n(x)}" width="${n(left)}" height="${BADGES}" fill="${COLOURS.label}"/>`,
-      `<rect x="${n(x + left)}" width="${n(right)}" height="${BADGES}" fill="${badgeColour(percent)}"/>`,
+      `<rect x="${n(x + left)}" width="${n(right)}" height="${BADGES}" fill="${colour}"/>`,
       `<text x="${n(x + 6)}" y="14" font-size="11" fill="${COLOURS.text}">${escape(label)}</text>`,
       `<text x="${n(x + left + 6)}" y="14" font-size="11" font-weight="700" fill="#ffffff">${escape(value)}</text>`,
     );
     x += left + right + 6;
   }
+  if (x - 6 > WIDTH) throw new Error(`${game}'s progress map has no room for its badges: "${language}" is too long a name for a language's badge.`);
   y += BADGES + GAP;
 
   // code ported: the code map's functions, in blocks
@@ -112,7 +120,7 @@ export function progressMap(game, files, title) {
   });
   y += BAR + height + 4;
 
-  const alt = `${title}’s progress. Code ported: ${portedText}. Gameplay proven: ${gameplayText}.`;
+  const alt = `${title}’s progress in ${language}. Code ported: ${portedText}. Gameplay proven: ${gameplayText}.`;
   const svg = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${y}" viewBox="0 0 ${WIDTH} ${y}">`,
     `<title>${escape(alt)}</title>`,

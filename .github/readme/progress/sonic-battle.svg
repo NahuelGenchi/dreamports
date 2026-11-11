@@ -1,14 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="480" height="412" viewBox="0 0 480 412">
-<title>Sonic Battle Dreamport’s progress. Code ported: 48.1% (148,358/308,466 bytes). Gameplay proven: 30% (6/20 parts).</title>
+<title>Sonic Battle Dreamport’s progress in JavaScript. Code ported: 48.1% (148,358/308,466 bytes). Gameplay proven: 30% (6/20 parts).</title>
 <style>text{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace}</style>
-<rect x="0" width="87" height="20" fill="#1f2d63"/>
-<rect x="87" width="46.1" height="20" fill="#b54708"/>
-<text x="6" y="14" font-size="11" fill="#eef4ff">Code ported</text>
-<text x="93" y="14" font-size="11" font-weight="700" fill="#ffffff">48.1%</text>
-<rect x="139.1" width="114.3" height="20" fill="#1f2d63"/>
-<rect x="253.4" width="32.5" height="20" fill="#b54708"/>
-<text x="145.1" y="14" font-size="11" fill="#eef4ff">Gameplay proven</text>
-<text x="259.4" y="14" font-size="11" font-weight="700" fill="#ffffff">30%</text>
+<rect x="0" width="66.6" height="20" fill="#1f2d63"/>
+<rect x="66.6" width="80.2" height="20" fill="#2f55c8"/>
+<text x="6" y="14" font-size="11" fill="#eef4ff">Language</text>
+<text x="72.6" y="14" font-size="11" font-weight="700" fill="#ffffff">JavaScript</text>
+<rect x="152.8" width="87" height="20" fill="#1f2d63"/>
+<rect x="239.8" width="46.1" height="20" fill="#b54708"/>
+<text x="158.8" y="14" font-size="11" fill="#eef4ff">Code ported</text>
+<text x="245.8" y="14" font-size="11" font-weight="700" fill="#ffffff">48.1%</text>
+<rect x="291.9" width="114.3" height="20" fill="#1f2d63"/>
+<rect x="406.2" width="32.5" height="20" fill="#b54708"/>
+<text x="297.9" y="14" font-size="11" fill="#eef4ff">Gameplay proven</text>
+<text x="412.2" y="14" font-size="11" font-weight="700" fill="#ffffff">30%</text>
 <rect y="30" width="480" height="294" fill="#050a24"/>
 <text x="10" y="47" font-size="13" fill="#eef4ff">Code ported: 48.1% (148,358/308,466 bytes)</text>
 <g><title>08000000 to 0800FFFF: 58 functions, 67,480 bytes, 94% ported</title>
