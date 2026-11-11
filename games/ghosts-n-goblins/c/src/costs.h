@@ -100,7 +100,9 @@ COST(PICTURE_COMES_ON, 14)        // sub_F17A, and back
 COST(FRESH_VIEW_BACK, 48)         // $C62F: sub_C63E, and sub_C7ED to its call for the colours
 COST(FRESH_ATTRIBUTES_BEGIN, 2)   // $C7FB
 COST(FRESH_ATTRIBUTE, 18)         // each of the 64, to both name tables' places
-COST(FRESH_ROWS_BEGIN, 56)        // $C80B back to $C64F, sub_CA27, and sub_CA2E to $CA43
+COST(FRESH_ROWS_BEGIN, 38)        // $C80B back to $C64F, sub_CA27, and the call of sub_CA2E
+COST(FIRST_TABLE_ROWS, 18)        // sub_CA2E to $CA43: the first name table's rows,
+COST(SECOND_TABLE_ROWS, 15)       // or $CA37: the second's
 COST(FRESH_ROW_CALLED, 29)        // sub_CA63 with its call, to sub_EECF
 COST(FRESH_ROWS_TO_CONTROL, 14)   // $CA49 to the write of $2000
 COST(FRESH_ROWS_TO_WAIT, 8)       // $CA54 to the loop that waits
@@ -128,8 +130,9 @@ COST(SOUND_MEMORY_CLEARED, 806)   // sub_ED72 to $ED97: the voices' 80 bytes
 COST(SOUND_REGISTERS_BEGIN, 4)    // sub_ED97
 COST(SOUND_REGISTER_OFF, 5)       // each of the 16, to its write,
 COST(SOUND_REGISTER_NEXT, 2)      // and on to the next
-COST(TITLE_TO_TASKS_STOPPED, 19)  // $C3E2 to sub_CAD6's first call
-COST(TITLE_NEXT_TASK, 6)          // $CADB to $CADE
+COST(TITLE_TO_TASKS_STOPPED, 17)  // $C3E2 to sub_CAD6
+COST(GAME_TASKS_STOP_BEGINS, 2)   // sub_CAD6: the view's, Arthur's and the objects' tasks are stopped,
+COST(GAME_TASK_STOPPED, 6)        // $CADB to $CADE after each
 COST(TITLE_SETTINGS, 34)          // $C3EE to the call of sub_C62C
 COST(TITLE_LOGO_BEGINS, 35)       // sub_C668 with its call, to $C67E
 COST(TITLE_LOGO_ROW, 19)          // sub_C691 with its call, to sub_EECF
@@ -168,7 +171,9 @@ COST(TITLE_GAME_PLAYED_BEFORE, 6) // with six more once a game has been played, 
 
 // ---- the sprites' task, $F34F and bank 4's $8000 (sprites.c)
 COST(SPRITES_TASK_BEGINS, 15)     // $F34F to the call
-COST(SPRITES_SWAP, 121)           // sub_04_8089
+COST(SPRITES_SWAP_READ, 11)       // sub_04_8089, for each of five lists: the two objects' bytes read,
+COST(SPRITES_SWAP_FIRST_STORED, 8) // the first's stored,
+COST(SPRITES_SWAP_FOURTH_STORED, 4) // and the fourth's
 COST(SPRITES_LIST_BEGINS, 10)     // $8000 to $8005, with its call of the swap
 COST(SPRITES_OBJECT_HIDDEN, 11)   // $8007: an object that isn't shown,
 COST(SPRITES_OBJECT_LISTED, 58)   // or one that is,
@@ -353,6 +358,10 @@ COST(ARTHUR_IS_HIT, 49)            // or $DAE7 to $E171, when his flags say he's
 COST(ARTHUR_HIT_BEGINS, 133)      // $E171 to sub_ED51, with his armour on
 COST(ARTHUR_ARMOUR_OFF, 25)       // $E195 to sub_E1EE
 COST(ARTHUR_KNOCKED_BACK, 29)     // $E1A6 to $DB65
+COST(ARTHUR_DIES, 47)             // or $E171 to the call that yields, without his armour
+COST(ARTHUR_DEATH_SOUND, 8)       // $E1AF to sub_ED51
+COST(ARTHUR_FALLEN, 26)           // $E1B7 to the call that sleeps: his bones
+COST(ARTHUR_GONE, 11)             // $E1E7 to the call that ends his task
 COST(GROUND_LOOKED_AT, 74)        // sub_E3E3 and sub_EA2F, with their calls, less the block's
 COST(ARTHUR_ON_GROUND, 3)         // $DB01
 COST(ARTHUR_IN_AIR, 5)            // $DB01 to $E28E
@@ -463,7 +472,8 @@ COST(ARTHUR_JUMP_CALLED, 18)      // $E500 to sub_E1EE
 COST(JUMP_BEGINS, 93)             // sub_E1EE to $E215
 COST(JUMP_FACES_RIGHT, 3)         // $E215,
 COST(JUMP_FACES_LEFT, 9)          // or with the shape that faces left
-COST(JUMP_HAS_ARMOUR, 25)         // $E21A to $E229
+COST(JUMP_HAS_ARMOUR, 25)         // $E21A to $E229,
+COST(JUMP_NO_ARMOUR, 38)          // or with the colours and shape he has without it
 COST(WAY_AHEAD_LEFT, 67)          // sub_DF62 with its call, to the block ahead of him: heading left,
 COST(WAY_AHEAD_RIGHT, 69)         // or right
 COST(WAY_SOLID, 18)               // and after it, and back: the block is solid,
@@ -509,7 +519,27 @@ COST(GAME_STAGE_COLOURS, 16)      // $D02D to sub_EEBA
 COST(GAME_ATTRIBUTES, 1802)       // $D03B to $D057: 16 attributes copied and 128 set, a byte at a time
 COST(GAME_NO_STAGE_CHOICE, 14)    // $D058 to $D0D5: not the demonstration, and the title's secret wasn't entered
 COST(GAME_OBJECTS_BEGIN, 8)       // $D0D8 to the call that starts the objects' task
-COST(GAME_SCENE_CHECKS, 59)       // sub_CD8E, and sub_CE71 to $CE85: a new game opens with the scene
+COST(GAME_MAP_LOOKED_AT, 20)      // sub_CD8E with its call, to $CD99
+COST(GAME_NO_MAP, 9)              // and back: a new game has no map before its first life,
+COST(GAME_MAP, 2)                 // or on to $CD9B
+COST(GAME_SCENE_LOOKED_AT, 27)    // sub_CE71 with its call, to $CE82
+COST(GAME_SCENE, 3)               // on to $CE85: a new game opens with the scene,
+COST(GAME_NO_SCENE, 8)            // or back
+COST(MAP_TILES_BEGIN, 38)         // $CD9B to sub_C0D9: the map's tiles
+COST(MAP_CLEARS_FIRST, 12)        // $CDB7 and sub_CA28, the two calls
+COST(MAP_CLEARS_SECOND, 3)        // $CA2B
+COST(MAP_PICTURE, 52)             // $CDBA to sub_EECF: the map's picture, 192 tiles at once
+COST(MAP_NAMES, 40)               // $CDE3 to sub_EECF: nine rows of 11
+COST(MAP_BANK_AGAIN, 18)          // $CE00 to the call that yields, with it
+COST(MAP_SOUND, 8)                // $CE0C to sub_ED51
+COST(MAP_MARKER_SET, 86)          // $CE14 to the call that sleeps: the marker at the player's place
+COST(MAP_MOVES, 16)               // $CE53 to the call that yields: a pixel across each round,
+COST(MAP_NOT_THERE, 8)            // $CE5A back to $CE53, 112 times,
+COST(MAP_THERE, 23)               // or on to the call that sleeps
+COST(MAP_ENDS, 12)                // $CE6B, and back
+COST(MARKER_OUT_OF_VIEW, 22)      // $FF68, with sub_F346, and back: the map's marker,
+COST(MARKER_IN_VIEW, 3)           // or in the view,
+COST(MARKER_BLINKS, 35)           // $FF6D, and back
 COST(GAME_SCENE_STAGE, 14)        // $CE88 to sub_CF73
 COST(STAGE_TILES_BEGIN, 36)       // sub_CF73 to sub_C0D9: the tiles every stage uses,
 COST(STAGE_TILES_OWN, 48)         // and $CF8D to sub_C0D9: the stage's own
@@ -689,6 +719,9 @@ COST(ENEMY_NOT_TOUCHED, 9)        // $F5E6, and back,
 COST(ENEMY_TOUCHES_ARTHUR, 20)    // or with Arthur's flag that says he's hit
 COST(GAME_ROUND_AFTER, 19)        // $D58D to $D595
 COST(GAME_ROUND_ENDS, 48)         // $D3F0 to the call that yields
+COST(GAME_LIFE_IS_OVER, 7)        // or $D3F0 to $D408, once Arthur's task has ended
+COST(LIFE_OVER_WEAPON_KEPT, 38)   // $D40B to sub_CAD6: the weapon he had, and a place with no other to start again from
+COST(LIFE_LOST, 20)               // $C8FF back to $C8FC, with a life left
 
 // ---- the rows' list, sub_EECF (screen.c)
 COST(ROWS_MARK_BEGINS, 2)         // sub_EECF, to the store that marks the list busy

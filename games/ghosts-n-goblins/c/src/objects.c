@@ -347,6 +347,20 @@ int weapon_touches(uint8_t weapon, uint8_t enemy) {
   return within(weapon, enemy);
 }
 
+// $FF62, kind $22: the marker on the map, which blinks between two sets of colours every four rounds.
+static void map_marker(uint8_t object) {
+  show_object(object);
+  if (!object_in_view(object)) {
+    RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
+    took(MARKER_OUT_OF_VIEW);
+    return;
+  }
+  took(MARKER_IN_VIEW);
+  RAM[OBJECT_COUNT + object]++;
+  RAM[OBJECT_COLOURS + object] = (uint8_t)(1 + ((RAM[OBJECT_COUNT + object] >> 2) & 1));
+  took(MARKER_BLINKS);
+}
+
 // $BA09 in bank 4, kind $10: something to pick up, here Arthur's armour. Its shape and colours come from the copy's
 // lists at $BB2D, by which thing it is, and it flashes another colour every fourth round. When Arthur touches the
 // armour he has it: his flags say so, the tiles' task sends the armoured Arthur's tiles, and the object is gone. The
@@ -404,6 +418,7 @@ wait objects_task(void) {
         case 0x00: zombie(object); break;
         case 0x10: pick_up(object); break;
         case 0x12: pot(object); break;
+        case 0x22: map_marker(object); break;
         case LANCE: case DAGGER: weapon(object); break;
         case 0x33: princess(object); break;
         case 0x34: satan(object); break;

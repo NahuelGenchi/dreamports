@@ -1,10 +1,10 @@
 // Ghosts'n Goblins Dreamport: Arthur's task, from the original's code at $DA71. Arthur is the first object, and his task
 // moves him, a turn a round: in the opening scene, where he sits by the princess, jumps up after Satan, and walks to his
 // armour, and in a stage, where he falls to the ground and stands, and where the first thing that hits him knocks him
-// back out of his armour. The view follows him as he moves.
+// back out of his armour and the next kills him. The view follows him as he moves.
 //
 // So far B throws his weapon in a stage, and the other buttons do nothing: walking, at $DB32 and $DB6E, jumping, at
-// $DB16, climbing, and a hit without armour, which kills him, aren't ported yet.
+// $DB16, and climbing aren't ported yet.
 
 #include "game.h"
 
@@ -183,10 +183,14 @@ static wait jump(uint8_t *step) {
       COUNT = 6;
       HEADING = FLAGS & TURNED ? 0x04 : 0x0C;
       COLOURS = 0x02;
-      SHAPE = (uint8_t)(0x16 + (FLAGS & TURNED ? 1 : 0));   // his shape without armour, at $E21F, isn't ported yet
+      SHAPE = (uint8_t)(0x16 + (FLAGS & TURNED ? 1 : 0));
       took(JUMP_BEGINS);
       took(FLAGS & TURNED ? JUMP_FACES_LEFT : JUMP_FACES_RIGHT);
-      took(JUMP_HAS_ARMOUR);
+      took(FLAGS & WITHOUT_ARMOUR ? JUMP_NO_ARMOUR : JUMP_HAS_ARMOUR);
+      if (FLAGS & WITHOUT_ARMOUR) {
+        COLOURS = 0x01;
+        SHAPE = 0x18;
+      }
       *step = RISE;
       break;
     case RISE:
@@ -346,6 +350,7 @@ wait arthur_task(void) {
   enum {
     START, SCENE_SITS, SCENE_WATCHES, SCENE_JUMPS, SCENE_LANDED, SCENE_WALKS, SCENE_STEP, SCENE_OVER,
     STAGE_TURN, STAGE_STANDS, STAGE_AGAIN, STAGE_FALLS, STAGE_FELL, STAGE_HIT, STAGE_KNOCKED_BACK,
+    DEATH_BEGINS, DEATH_FALL, DEATH_OVER,
   };
   static uint8_t inner;
   uint8_t *step = &task_step[TASK_ARTHUR];
@@ -509,8 +514,13 @@ wait arthur_task(void) {
     case STAGE_HIT:
       // $E171: something has hit him. With his armour on he loses it: nothing can touch him for a while, the tiles'
       // task sends the tiles of Arthur without it, and he's thrown back, as a jump the way he isn't facing. Without
-      // it, at $E1AC, and with the stage's time over, at $E1C2, he dies, which isn't ported yet.
+      // it he dies. With the stage's time over, at $E1C2, he dies another way, which isn't ported yet.
       STATE &= 0xEF;
+      if (FLAGS & WITHOUT_ARMOUR) {
+        took(ARTHUR_DIES);
+        *step = DEATH_BEGINS;
+        return YIELDS;
+      }
       FLAGS |= CANNOT_BE_TOUCHED;
       FLAGS &= (uint8_t)~(CROUCHES | HIT);
       COLOURS = 0x02;
@@ -521,6 +531,25 @@ wait arthur_task(void) {
       took(ARTHUR_ARMOUR_OFF);
       *step = STAGE_KNOCKED_BACK;
       break;
+    case DEATH_BEGINS:
+      // $E1AF: his death is the same throw back, with its own sound, and then his bones lie for a second
+      took(ARTHUR_DEATH_SOUND);
+      sound_play(0x0A);
+      took(CALLS);
+      *step = DEATH_FALL;
+      break;
+    case DEATH_FALL: {
+      wait how = jump(&inner);
+      if (how != DONE) return how;
+      SHAPE = 0x1A;
+      took(ARTHUR_FALLEN);
+      *step = DEATH_OVER;
+      return sleep_task(60);
+    }
+    case DEATH_OVER:
+      RAM[0x81] = 0xFF;   // which tells the game's task the life is over
+      took(ARTHUR_GONE);
+      return ENDS;
     case STAGE_KNOCKED_BACK: {
       wait how = jump(&inner);
       if (how != DONE) return how;

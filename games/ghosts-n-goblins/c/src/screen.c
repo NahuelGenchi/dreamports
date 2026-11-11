@@ -179,6 +179,33 @@ void picture_on(void) {
   took(PICTURE_COMES_ON);
 }
 
+// sub_CA2E, for the name table at $2000, and $CA37, for the one at $2400: 30 rows of the empty tile, from $CA76.
+void clear_rows_begin(uint8_t second_table) {
+  set_ram16(0x24, second_table ? 0x2400 : 0x2000);
+  RAM[0x53] = 15;
+  took(second_table ? SECOND_TABLE_ROWS : FIRST_TABLE_ROWS);
+}
+// $CA43
+void clear_rows_queue(void) {
+  for (int row = 0; row < 2; row++) {
+    took(FRESH_ROW_CALLED);
+    queue_rows(0xCA76, ram16(0x24), 1, 0x20);
+  }
+  FRAMES_SINCE_ROUND = 0;
+  took(FRESH_ROWS_TO_CONTROL);
+  write_ppu_control(PPU_CONTROL | 0x80);
+  PPU_MASK &= 0xE7;
+  took(FRESH_ROWS_TO_WAIT);
+}
+// $CA5E
+int clear_rows_done(void) {
+  took(FRESH_ROWS_COUNTED);
+  if (--RAM[0x53]) { took(GOES_ROUND); return 0; }
+  took(GOES_ON);
+  took(RETURNS);
+  return 1;
+}
+
 // sub_C62C, with sub_C63E, sub_C7ED, sub_CA2E, sub_CA63 and sub_CA96.
 wait fresh_screen(uint8_t *step) {
   enum { PICTURE_OFF, COLOURS, ATTRIBUTES_AND_ROWS, TWO_ROWS, ROWS_WRITTEN };
@@ -206,28 +233,15 @@ wait fresh_screen(uint8_t *step) {
       }
       PPU_CONTROL &= 0xFC;
       took(FRESH_ROWS_BEGIN);
-      // sub_CA2E: 30 rows of the empty tile, from $CA76, two a frame
-      set_ram16(0x24, 0x2000);
-      RAM[0x53] = 15;
+      clear_rows_begin(0);
       *step = TWO_ROWS;
       break;
     case TWO_ROWS:
-      for (int row = 0; row < 2; row++) {
-        took(FRESH_ROW_CALLED);
-        queue_rows(0xCA76, ram16(0x24), 1, 0x20);
-      }
-      FRAMES_SINCE_ROUND = 0;
-      took(FRESH_ROWS_TO_CONTROL);
-      write_ppu_control(PPU_CONTROL | 0x80);
-      PPU_MASK &= 0xE7;
-      took(FRESH_ROWS_TO_WAIT);
+      clear_rows_queue();
       *step = ROWS_WRITTEN;
       return SPINS;   // $CA5A: until V-blank has written them
     case ROWS_WRITTEN:
-      took(FRESH_ROWS_COUNTED);
-      if (--RAM[0x53]) { took(GOES_ROUND); *step = TWO_ROWS; break; }
-      took(GOES_ON);
-      took(RETURNS);
+      if (!clear_rows_done()) { *step = TWO_ROWS; break; }
       // sub_CA96: no objects. The original's loop leaves the one byte at $05F0 as it was.
       for (int i = 0x04F0; i < 0x0680; i++) if (i != 0x05F0) RAM[i] = 0;
       took(FRESH_NO_OBJECTS);

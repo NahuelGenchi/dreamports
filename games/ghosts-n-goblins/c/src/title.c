@@ -97,13 +97,7 @@ wait title_task(void) {
       ROWS_END = 0;
       RAM[ROWS] = 0xFF;
       took(TITLE_TO_TASKS_STOPPED);
-      for (uint8_t task = TASK_VIEW; task != TASK_SPRITES; task += 2) {   // sub_CAD6
-        took(CALLS);
-        stop_task(task);
-        took(TITLE_NEXT_TASK);
-        took(task + 2 != TASK_SPRITES ? GOES_ROUND : GOES_ON);
-      }
-      took(RETURNS);
+      stop_game_tasks();
       COLUMN_READY = WIDE_ROWS_READY = 0;
       SECRET_STEP = 0;
       BANK_HOME = 3;

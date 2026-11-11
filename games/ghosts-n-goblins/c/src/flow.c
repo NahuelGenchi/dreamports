@@ -1,7 +1,8 @@
 // Ghosts'n Goblins Dreamport: the game's own task, from the original's code at $C8C4, which takes a game from Start on
 // the title screen into its first stage: the "PLAYER 1 READY" screen, the stage's tiles and colours from the player's
 // copy, the stage's first screen, drawn a column a round with the picture off, the scene the game opens with, and then
-// the stage itself, with the score, the time and the weapon at the top, where it has a turn every round.
+// the stage itself, with the score, the time and the weapon at the top, where it has a turn every round. When Arthur
+// dies a life is lost, and the next starts with the same screen, then the map of the stages, and the stage again.
 //
 // So far a stage's round does little: its time counts down, the zombies come out of the ground (enemies.c), and the
 // stage's own objects are only placed when they're things to pick up. The demonstration, a second player's turn, and the stage the
@@ -362,7 +363,7 @@ static void count_time_down(void) {
 // $D284: the game's turn each round of a stage: this player's buttons, the stage's colours again every fourth round,
 // the stage's time, its objects and its dangers. Start, which pauses, at $D88C, the end of the stage, at $D341, and what
 // happens when Arthur dies aren't ported yet.
-static void stage_round(void) {
+static int stage_round(void) {
   RAM[0x89] = PAD_1;
   RAM[0x8A] = RAM[0x44];
   PAD_NOW = RAM[0x89 + PLAYER];
@@ -394,13 +395,123 @@ static void stage_round(void) {
     switch_bank(BANK_HOME);
     took(GAME_ROUND_AFTER);
   }
+  if (RAM[0x81]) {
+    took(GAME_LIFE_IS_OVER);
+    return 1;
+  }
   took(GAME_ROUND_ENDS);
+  return 0;
+}
+
+// $D408 and $C8FF: a life is over, once Arthur's task has said so at $81. The sound stops, the weapon he had is kept for
+// his next life, the stage's tasks stop, and with a life left the next begins as a game does, but for the opening
+// scene, which $A6 now keeps away. The places that send him back to an earlier one, at $D422 and $D42E, a second
+// player's turn, at $C91E, and the game's end with no life left, at $C90C, aren't ported yet.
+static void lose_life(void) {
+  took(CALLS);
+  sound_reset();
+  RAM[0xC5 + PLAYER] = WEAPON_HELD;
+  took(LIFE_OVER_WEAPON_KEPT);
+  stop_game_tasks();
+  RAM[0xA6] = 0xFF;
+  RAM[LIVES]--;
+  took(LIFE_LOST);
+}
+
+// sub_CD9B: the map of the game's stages, which every life but a game's first starts with: its tiles, 6 KB from bank
+// 0, both name tables cleared, the map's picture and the stages' names from where bank 2's lists at $8014 and $8016
+// point, and a marker, kind $22, at the place the tables at $CC50 and $CC78 give for the player's. After a second the
+// picture moves 112 pixels across, one a round, and stays another second. Called each turn until it's DONE.
+static wait show_map(uint8_t *step) {
+  enum { TILES, TILES_LOADING, CLEAR_FIRST, FIRST_CLEARING, CLEAR_SECOND, SECOND_CLEARING, PICTURE, NAMES, MARKER, MOVES, MOVED, OVER };
+  enum { MARKER_OBJECT = 1, PLACE = 0xAC };
+  static uint8_t loading;
+  for (;;) switch (*step) {
+    case TILES:
+      switch_bank(0);
+      took(MAP_TILES_BEGIN);
+      *step = TILES_LOADING;
+      break;
+    case TILES_LOADING: {
+      wait how = load_tiles(&loading, 0x8800, 0x0800, 0x30);
+      if (how != DONE) return how;
+      took(MAP_CLEARS_FIRST);
+      clear_rows_begin(0);
+      *step = CLEAR_FIRST;
+      break;
+    }
+    case CLEAR_FIRST:
+    case CLEAR_SECOND:
+      clear_rows_queue();
+      ++*step;
+      return SPINS;
+    case FIRST_CLEARING:
+      if (!clear_rows_done()) { *step = CLEAR_FIRST; break; }
+      took(MAP_CLEARS_SECOND);
+      clear_rows_begin(1);
+      *step = CLEAR_SECOND;
+      break;
+    case SECOND_CLEARING:
+      if (!clear_rows_done()) { *step = CLEAR_SECOND; break; }
+      BANK_HOME = 2;
+      switch_bank(2);
+      took(MAP_PICTURE);
+      queue_rows(peek16(0x8014), 0x21C0, 1, 0xC0);
+      took(CALLS);
+      *step = NAMES;
+      return YIELDS;
+    case NAMES:
+      took(MAP_NAMES);
+      queue_rows(peek16(0x8016), 0x2560, 9, 0x0B);
+      BANK_HOME = 2;
+      switch_bank(2);
+      took(MAP_BANK_AGAIN);
+      *step = MARKER;
+      return YIELDS;
+    case MARKER: {
+      took(MAP_SOUND);
+      sound_play(1);
+      took(CALLS);
+      picture_on();
+      uint8_t place = RAM[PLACE + PLAYER];
+      RAM[OBJECT_X + MARKER_OBJECT] = cart(7, (uint16_t)(0xCC50 + place * 2));
+      RAM[OBJECT_X_SCREEN + MARKER_OBJECT] = cart(7, (uint16_t)(0xCC50 + place * 2 + 1));
+      RAM[OBJECT_Y + MARKER_OBJECT] = cart(7, (uint16_t)(0xCC78 + place));
+      RAM[OBJECT_SHAPE + MARKER_OBJECT] = 0x1B;
+      RAM[OBJECT_Y_SCREEN + MARKER_OBJECT] = 0;
+      RAM[OBJECT_KIND + MARKER_OBJECT] = 0x22;
+      RAM[OBJECT_FLAGS + MARKER_OBJECT] = 0x40;
+      took(MAP_MARKER_SET);
+      *step = MOVES;
+      return sleep_task(60);
+    }
+    case MOVES:
+      SCROLL_X++;
+      RAM[0x64]++;   // the view's place across, which puts the marker on the screen
+      took(MAP_MOVES);
+      *step = MOVED;
+      return YIELDS;
+    case MOVED:
+      if (SCROLL_X < 0x70) {
+        took(MAP_NOT_THERE);
+        *step = MOVES;
+        break;
+      }
+      took(MAP_THERE);
+      *step = OVER;
+      return sleep_task(60);
+    case OVER:
+      RAM[OBJECT_FLAGS + MARKER_OBJECT] = 0;
+      took(MAP_ENDS);
+      *step = TILES;
+      return DONE;
+  }
 }
 
 wait game_task(void) {
   enum {
     NEW_GAME, READY_BEGINS, READY_SCREEN, READY_PICTURE_OFF, READY_TILES_BEGIN, READY_TILES, READY_SHOWN, AFTER_READY, STAGE_PICTURE_OFF,
-    STAGE_COLOURS, STAGE_ATTRIBUTES, SCENE_START, SCENE_TILES_BEGIN, SCENE_TILES, SCENE_OWN_TILES_BEGIN, SCENE_OWN_TILES, SCENE_COLOURS,
+    STAGE_COLOURS, STAGE_ATTRIBUTES, SCENE_START, MAP, MAP_OVER, SCENE_TILES_BEGIN, SCENE_TILES, SCENE_OWN_TILES_BEGIN, SCENE_OWN_TILES, SCENE_COLOURS,
     SCENE_OBJECT_COLOURS, SCENE_SCREEN, SCENE, STAGE_OFF, STAGE_SET_UP, STAGE_TILES, STAGE_OBJECT_TILES_BEGIN, STAGE_OBJECT_TILES,
     STAGE_SCREEN_BEGINS, STAGE_SCREEN, STAGE_WAITS, STAGE_STARTS, STAGE_ROUND, STAGE_ROUND_AGAIN,
   };
@@ -487,11 +598,33 @@ wait game_task(void) {
       took(CALLS);
       return picture_off();
     case SCENE_START:
-      // $D0D8. What a stage the player has reached before starts with, at $CD9B and $CE84, isn't ported yet: a new
-      // game goes to the opening scene, in the first stage.
+      // $D0D8: the objects' task, and then the map, unless this is a game's first life, at sub_CD8E. A map that
+      // $070C asks for, at $CD95, isn't ported yet.
       took(GAME_OBJECTS_BEGIN);
       start_task(TASK_OBJECTS);
-      took(GAME_SCENE_CHECKS);
+      took(GAME_MAP_LOOKED_AT);
+      if (!RAM[0xA6]) {
+        took(GAME_NO_MAP);
+        *step = MAP_OVER;
+        break;
+      }
+      took(GAME_MAP);
+      *step = MAP;
+      break;
+    case MAP:
+      how = show_map(&inner);
+      if (how != DONE) return how;
+      *step = MAP_OVER;
+      break;
+    case MAP_OVER:
+      // sub_CE71: a game's first life opens with the scene, in the first stage, and the others go to the stage
+      took(GAME_SCENE_LOOKED_AT);
+      if (RAM[0xA6]) {
+        took(GAME_NO_SCENE);
+        *step = STAGE_OFF;
+        break;
+      }
+      took(GAME_SCENE);
       *step = SCENE_TILES_BEGIN;
       took(CALLS);
       return picture_off();
@@ -610,7 +743,15 @@ wait game_task(void) {
       *step = STAGE_ROUND;
       break;
     case STAGE_ROUND:
-      stage_round();
+      if (stage_round()) {
+        lose_life();
+        // sub_D01D
+        FRAMES_A_ROUND = 2;
+        took(GAME_LIFE_BEGINS);
+        took(CALLS);
+        *step = READY_BEGINS;
+        return picture_off();
+      }
       *step = STAGE_ROUND_AGAIN;
       return YIELDS;
     case STAGE_ROUND_AGAIN:
