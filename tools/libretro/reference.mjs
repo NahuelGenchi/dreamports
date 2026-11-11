@@ -63,6 +63,11 @@ export function libretroReference(machine) {
       if (Math.abs(result.outside.fps / speed - 1) > 0.005) throw new Error(`${machine.name}'s emulator runs this copy at ${result.outside.fps} frames a second, and kit/consoles.js says ${speed.toFixed(2)}: a copy made for another region's consoles, or a wrong number there.`);
       return result;
     },
+    // what runs the route finder's search on a copy, in the folder `spec` is in (lib/explore.h), with `done` to call once it has ended
+    searchOriginal({ copy, spec }) {
+      const named = plainlyNamed(copy);
+      return { program: HOST, args: [coreFile(core), named.path === copy ? copy : join(FROM, named.path), 'route', spec, ...options], env: hostEnv(), buttonBytes: 4, done: named.done };
+    },
     playOriginal(copy) {
       const named = plainlyNamed(copy);
       const live = playReference({ program: HOST, cwd: FROM, env: hostEnv(), width, height, buttonBytes: 4, sized: true, args: [coreFile(core), named.path, 'live', String(width), String(height), ...options] });

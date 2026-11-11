@@ -4,6 +4,7 @@ const TOOLS = {
   setup: 'Builds the reference emulator the original runs in, on this computer',
   rom: 'Checks a copy of a game, says which game and version it is, and remembers where it is',
   play: 'Opens a game in a browser with your copy, and with --record keeps what you play as a recording (--from: after another\'s presses; --start: at a start point)',
+  route: 'Finds the presses that take the original from where a recording leaves it to a goal, such as an act\'s end, and writes them as a recording (--from: after another\'s presses; --minutes: how long it may search)',
   prove: 'Plays each recording in the original and in the Dreamport, compares every frame, and updates the numbers (--stills: pictures of frames; --state: what the console holds at them)',
   capture: 'Lets you play the original in a window and keep a real moment of it for the game\'s card (--open: in the background; --pick: takes the best of what was played; --from: of a list of presses)',
   codemap: 'Makes the code map: every function in the original, with its address and size',

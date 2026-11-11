@@ -6,6 +6,12 @@
 // frame shows and sounds in the next. It counts frames in its work memory, which a recording's start point can set. Right
 // halves its sound's rate, and Left puts it back, as a Nintendo 64's game chooses its own. Up shows the console's 64 x 48, and
 // Down the cartridge's own screen again, as a Mega Drive's game can change its screen between one part and the next.
+//
+// It also has a walker nobody sees, for the route finder's test (lib/explore.h): only numbers in its work memory, which
+// change no picture and no sound. A moves it a step along, B a step back, and Start hops, for 8 frames. A wall at step 20
+// stops it unless it's off the ground, and from step 40 to step 43 there's a pit, where a walker on the ground is lost
+// and moves no more. Its memory holds the step in [1], how many frames of a hop are left in [2] and whether it's lost in [3].
+// Like any core, it can copy its state out and take it back.
 
 #include <math.h>
 #include <stdbool.h>
@@ -32,7 +38,10 @@ static int16_t (*inputState)(unsigned, unsigned, unsigned, unsigned);
 static uint16_t colours[8];
 static uint16_t screen[MOST * MOST];
 static unsigned ownWidth = WIDTH, ownHeight = HEIGHT, width = WIDTH, height = HEIGHT, shownWidth = WIDTH, shownHeight = HEIGHT;
-static uint32_t memory[16];   // [0], the frame count
+static uint32_t memory[16];   // [0], the frame count, and the walker's step, hop and loss in [1], [2] and [3]
+#define WALL 20
+#define PIT_FROM 40
+#define PIT_TO 44
 static uint32_t phase;
 static unsigned rate = RATE;
 static int16_t sound[(RATE / FPS) * 2];
@@ -102,6 +111,15 @@ void retro_run(void) {
 	for (unsigned y = 0; y < height; y++) for (unsigned x = 0; x < width; x++) screen[y * MOST + x] = x == bar ? colours[4] : colour ^ (y % 12);
 	shownWidth = width;
 	shownHeight = height;
+	// the walker, which nothing above looks at
+	if (!memory[3]) {
+		if (memory[2]) memory[2]--;
+		else if (inputState(0, 1, 0, 3)) memory[2] = 8;
+		uint32_t step = memory[1] + (inputState(0, 1, 0, 8) ? 1 : 0) - (inputState(0, 1, 0, 0) && memory[1] ? 1 : 0);
+		if (step == WALL && memory[1] < WALL && !memory[2]) step = memory[1];
+		memory[1] = step;
+		if (step >= PIT_FROM && step < PIT_TO && !memory[2]) memory[3] = 1;
+	}
 	for (unsigned i = 0; i < rate / FPS; i++) {
 		// 440 Hz, half as loud as the mix goes
 		int16_t value = pressed < 0 ? 0 : (phase * 440 * 2 / rate) % 2 ? 16384 : -16384;
@@ -109,4 +127,26 @@ void retro_run(void) {
 		phase++;
 	}
 	memory[0]++;
+}
+
+// its whole state, for a tool that copies it out and brings it back: everything a frame reads that the one before wrote
+struct state { uint16_t screen[MOST * MOST]; unsigned width, height, shownWidth, shownHeight, rate; uint32_t memory[16], phase; int16_t sound[(RATE / FPS) * 2]; };
+size_t retro_serialize_size(void) { return sizeof(struct state); }
+bool retro_serialize(void* data, size_t size) {
+	if (size < sizeof(struct state)) return false;
+	struct state* state = data;
+	memcpy(state->screen, screen, sizeof screen);
+	memcpy(state->memory, memory, sizeof memory);
+	memcpy(state->sound, sound, sizeof sound);
+	state->width = width, state->height = height, state->shownWidth = shownWidth, state->shownHeight = shownHeight, state->rate = rate, state->phase = phase;
+	return true;
+}
+bool retro_unserialize(const void* data, size_t size) {
+	if (size < sizeof(struct state)) return false;
+	const struct state* state = data;
+	memcpy(screen, state->screen, sizeof screen);
+	memcpy(memory, state->memory, sizeof memory);
+	memcpy(sound, state->sound, sizeof sound);
+	width = state->width, height = state->height, shownWidth = state->shownWidth, shownHeight = state->shownHeight, rate = state->rate, phase = state->phase;
+	return true;
 }

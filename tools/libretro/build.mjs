@@ -13,6 +13,8 @@ import { WINDOWS_BUILD, windowsTools } from '../gba/windows.mjs';
 const FOLDER = join(LOCAL, 'libretro');
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOST_SOURCE = join(HERE, 'host.c');
+// the route finder's search, which the host includes (lib/explore.h)
+const EXPLORE = join(HERE, '..', 'lib', 'explore.h');
 const EXTENSION = { win32: '.dll', darwin: '.dylib' }[process.platform] ?? '.so';
 const WINDOWS = process.platform === 'win32';
 export const HOST = join(FOLDER, WINDOWS ? 'host.exe' : 'host');
@@ -27,19 +29,20 @@ function run(what, program, args, cwd, env) {
   }
 }
 
-// built again whenever its source changes
+// built again whenever its source changes, or anything it includes, which `also` lists
 const sourceOf = file => `${file}.source`;
-const isCurrent = (source, target) => existsSync(target) && existsSync(sourceOf(target)) && readFileSync(sourceOf(target), 'utf8') === readFileSync(source, 'utf8');
+const textOf = (source, also = []) => [source, ...also].map(file => readFileSync(file, 'utf8')).join('\n');
+const isCurrent = (source, target, also) => existsSync(target) && existsSync(sourceOf(target)) && readFileSync(sourceOf(target), 'utf8') === textOf(source, also);
 
-function compile(what, source, target, args, tools) {
-  if (isCurrent(source, target)) return;
+function compile(what, source, target, args, tools, also) {
+  if (isCurrent(source, target, also)) return;
   run(what, tools?.gcc ?? 'cc', ['-O2', '-std=gnu11', '-o', target, source, ...args], FOLDER, tools?.env);
-  writeFileSync(sourceOf(target), readFileSync(source, 'utf8'));
+  writeFileSync(sourceOf(target), textOf(source, also));
 }
 
 function buildHere(machine, log, tools) {
   const { core, name } = machine;
-  compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, WINDOWS ? [] : ['-ldl'], tools);
+  compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, ['-I', dirname(EXPLORE), ...(WINDOWS ? [] : ['-ldl']), ...(process.platform === 'linux' ? ['-lpthread'] : [])], tools, [EXPLORE]);
   const file = coreFile(core);
   if (core.local) return compile(`Building ${name}'s emulator`, join(REPO, core.local), file, ['-shared', '-fPIC', '-lm'], tools);
   if (existsSync(file)) return;
@@ -63,7 +66,7 @@ export function buildReference(machine, log) {
   const { core, name } = machine;
   if (core.needs) throw new Error(`${name} can't run in the tools yet: ${core.needs} (docs/CONSOLES.md).`);
   mkdirSync(FOLDER, { recursive: true });
-  const built = existsSync(HOST) && isCurrent(HOST_SOURCE, HOST) && (core.local ? isCurrent(join(REPO, core.local), coreFile(core)) : existsSync(coreFile(core)));
+  const built = existsSync(HOST) && isCurrent(HOST_SOURCE, HOST, [EXPLORE]) && (core.local ? isCurrent(join(REPO, core.local), coreFile(core)) : existsSync(coreFile(core)));
   if (built) return;
   if (!WINDOWS) return buildHere(machine, log, null);
   rmSync(WINDOWS_BUILD, { recursive: true, force: true });
