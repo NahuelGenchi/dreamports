@@ -44,6 +44,7 @@ typedef enum {
 /** The original's code took this long. V-blank's interrupt runs from here when its time comes. */
 void took(cost what);
 void took_times(cost what, uint32_t times);
+void took_instead(cost assumed, cost real);
 // what the game writes to the hardware, kept with its time until the kit's frame it belongs to
 void hardware_write(uint16_t address, uint8_t value);
 void hardware_ppu_latch(void);              // a read of $2002, which makes the next write of $2006 the first of two
@@ -177,10 +178,14 @@ int arthur_touches(uint8_t object);
 int weapon_touches(uint8_t weapon, uint8_t enemy);
 enum { FIRST_WEAPON = 0x11, WEAPONS = 3, LANCE = 0x23, DAGGER = 0x24, TORCH = 0x25, AXE = 0x26, CROSS = 0x27 };  // the weapons' objects and kinds
 #define WEAPON_HELD RAM[0x053A]   // the shape of the weapon Arthur has, which the top of the picture shows
+/** sub_F5F9: the first of Arthur's weapons that's flying, hasn't hit anything and touches an enemy, or 0 (enemies.c). */
+uint8_t weapon_that_touches(uint8_t enemy);
 /** $EB75 and $EB84, kinds $23 and $24: a lance's or a dagger's turn (weapons.c). */
 void weapon(uint8_t object);
 /** sub_D8FC: adds what's in $26 and $27 to the score, tens and hundreds. `x` and `y` are the processor's registers, which it keeps. */
 void add_score(uint8_t x, uint8_t y);
+/** sub_D902: the same with thousands and ten thousands, from $24 and $25. */
+void add_score_with_thousands(uint8_t x, uint8_t y);
 /** $F7BE, kind 0: a zombie's turn (enemies.c). */
 void zombie(uint8_t object);
 /** Bank 4's $BBEE, kind $12: the pot a zombie carries (enemies.c). */
@@ -199,7 +204,7 @@ enum { BLOCK_SOLID = 0xC6 };
 // ---- the buttons, as V-blank reads them: A, B, Select, Start, Up, Down, Left, Right from bit 7 down
 #define PAD_1 RAM[0x42]
 enum { PAD_START = 0x10, PAD_SELECT = 0x20, PAD_A = 0x80, PAD_B = 0x40, PAD_LEFT = 0x02, PAD_RIGHT = 0x01 };
-void read_pads(void);  // sub_C278
+void read_pads(uint8_t ran_ahead);  // sub_C278, when the kit's frame comes: `ran_ahead` if its time was counted before that
 
 // ---- the sound (sound.c)
 void sound_reset(void);        // sub_ED72

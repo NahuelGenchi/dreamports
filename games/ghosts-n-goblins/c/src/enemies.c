@@ -5,10 +5,11 @@
 //
 // Every sixth zombie carries a pot, an object of its own, kind $12 at bank 4's $BBEE, that stays where its carrier is.
 //
-// A lance or a dagger that touches a zombie is gone, and the zombie dies in six rounds, for 200 points.
+// A lance or a dagger that touches a zombie is gone, and the zombie dies in six rounds, for 200 points, and its pot falls
+// to the ground and is a thing to pick up.
 //
-// What a torch or an axe does to one, at $F5B5, a pot that falls, at $BC8A, what every fourth pot holds, at bank 2's
-// $8938, and the pots of the later stages, at $8928, aren't ported yet.
+// What a torch or an axe does to one, at $F5B5, what every fourth pot holds, at bank 2's $8938, and the pots of the
+// later stages, at $8928, aren't ported yet.
 
 #include "game.h"
 
@@ -96,10 +97,9 @@ void zombies_come(uint8_t *x) {
 // sub_F5A0: what touches an enemy this round, whose half width and half height are in $26 and $27. The first of
 // Arthur's three weapons that's flying, hasn't hit anything yet and touches it is gone, and is the answer: the enemy's
 // hits, at $0647, count it. With none, Arthur is hit if he touches it.
-static uint8_t touch_tests(uint8_t enemy) {
+uint8_t weapon_that_touches(uint8_t enemy) {
   enum { SPENT = 0x01 };
-  if (!(RAM[OBJECT_FLAGS + enemy] & OBJECT_FLAG_SHOWN)) { took(ENEMY_NOT_SHOWN); return 0; }
-  took(ENEMY_TESTS_BEGIN);
+  took(WEAPONS_BEGIN);
   for (uint8_t weapon = FIRST_WEAPON; weapon < FIRST_WEAPON + WEAPONS; weapon++) {
     uint8_t flags = RAM[OBJECT_FLAGS + weapon];
     if (!(flags & OBJECT_FLAG_SHOWN)) took(WEAPON_NOT_FLYING);
@@ -108,16 +108,27 @@ static uint8_t touch_tests(uint8_t enemy) {
       took(WEAPON_TESTED);
       if (weapon_touches(weapon, enemy)) {
         took(WEAPON_HIT);
-        RAM[OBJECT_STATE + weapon] = enemy;
-        RAM[OBJECT_FLAGS + weapon] = 0;
-        RAM[OBJECT_COUNT + weapon] = 0;
-        RAM[0x0647 + enemy]++;
-        took(WEAPON_STOPS);
         return weapon;
       }
       took(WEAPON_MISSED);
     }
     took(weapon + 1 < FIRST_WEAPON + WEAPONS ? GOES_ROUND_FAR : GOES_ON);
+  }
+  took(WEAPONS_NONE);
+  return 0;
+}
+
+static uint8_t touch_tests(uint8_t enemy) {
+  if (!(RAM[OBJECT_FLAGS + enemy] & OBJECT_FLAG_SHOWN)) { took(ENEMY_NOT_SHOWN); return 0; }
+  took(ENEMY_TESTS_BEGIN);
+  uint8_t weapon = weapon_that_touches(enemy);
+  if (weapon) {
+    RAM[OBJECT_STATE + weapon] = enemy;
+    RAM[OBJECT_FLAGS + weapon] = 0;
+    RAM[OBJECT_COUNT + weapon] = 0;
+    RAM[0x0647 + enemy]++;
+    took(WEAPON_STOPS);
+    return weapon;
   }
   took(ENEMY_NO_WEAPON_HIT);
   if (!arthur_touches(enemy)) { took(ENEMY_NOT_TOUCHED); return 0; }
@@ -303,6 +314,19 @@ void pot(uint8_t object) {
     hide_object(object);
   }
   took(OBJECT_FLAG_READ);
+  if (RAM[OBJECT_FLAGS + object] & SINKS) {
+    // $BC8A: it falls, the way it was headed, and once it's on the ground it's a thing to pick up, what its state says
+    took(POT_IS_FALLING);
+    if (on_the_ground(object)) {
+      RAM[OBJECT_KIND + object] = 0x10;
+      RAM[OBJECT_Y + object] = (uint8_t)((RAM[OBJECT_Y + object] & 0xF0) | 0x08);   // sub_E166: on top of the block
+      took(POT_LANDS);
+    } else {
+      took(POT_FALLS_ON);
+      move_object(object, 0x14);
+    }
+    return;
+  }
   took(POT_IS_CARRIED);
   RAM[OBJECT_Y_SCREEN + object] = RAM[OBJECT_Y_SCREEN + carrier];
   RAM[OBJECT_Y + object] = RAM[OBJECT_Y + carrier];

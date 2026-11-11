@@ -75,23 +75,28 @@ static void make_sprites(void) {
         took(SPRITES_SPRITE_LEFT_OUT);
         pointer_on(&places);
       } else {
+        took(SPRITES_SPRITE_TILE_READ);
         RAM[out + 1] = tile;
+        took(SPRITES_SPRITE_ACROSS_READ);
         RAM[out + 3] = (uint8_t)(x + peek(places));
-        took(SPRITES_SPRITE_ACROSS);
+        took(SPRITES_SPRITE_ACROSS_STORED);
         int shown = on_screen(x, peek(places));
         pointer_on(&places);
         if (shown) {
+          took(SPRITES_SPRITE_DOWN_READ);
           RAM[out] = (uint8_t)(y + peek(places));
-          took(SPRITES_SPRITE_DOWN);
+          took(SPRITES_SPRITE_DOWN_STORED);
           shown = on_screen(y, peek(places));
         }
         if (shown) {
           pointer_on(&places);
           pointer_on(&shape);
+          took(SPRITES_SPRITE_COLOURS_READ);
           RAM[out + 2] = peek(colours) | peek(shape);
+          took(SPRITES_SPRITE_COLOURS_STORED);
           pointer_on(&shape);
           pointer_on(&colours);
-          took(SPRITES_SPRITE_REST);
+          took(SPRITES_SPRITE_NEXT);
           out += 4;
           set_ram16(0x2B, out);
           set_ram16(0x26, shape);

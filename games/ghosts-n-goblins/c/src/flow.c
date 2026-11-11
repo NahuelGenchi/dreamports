@@ -167,9 +167,13 @@ static uint8_t show_score(void) {
 // The score is six digits and a seventh that's always 0, a byte each, the two players' turn about from $04E0. The best
 // score, seven digits at $8D, takes any score that passes it. The life a score gives, at $D9BF, isn't ported yet.
 void add_score(uint8_t x, uint8_t y) {
+  RAM[0x25] = RAM[0x24] = 0;
+  took(SCORE_TENS_AND_HUNDREDS);
+  add_score_with_thousands(x, y);
+}
+void add_score_with_thousands(uint8_t x, uint8_t y) {
   enum { SCORE = 0x04E0, BEST = 0x8D, HOLDS_BEST = 0x04EE, DIGITS = 6 };
   static const uint8_t ADDED[] = { 0x26, 0x27, 0x24, 0x25 };   // where what's added to each digit is, from the last
-  RAM[0x25] = RAM[0x24] = 0;
   RAM[0xA8] = x;
   RAM[0xA9] = y;
   if (DEMONSTRATION) { took(SCORE_NOT_IN_DEMONSTRATION); return; }
@@ -277,7 +281,7 @@ static void start_stage(void) {
 
 // sub_D596: the stage's own objects, from where its bank's list at $8038 points, eight bytes each: the screen Arthur has
 // to reach, a kind, and where it is. Each is placed once Arthur is on its screen, in the first free object. Only the
-// kinds the table at $D5FB sends to $D71B are ported, which are placed as they're listed.
+// kinds the table at $D5FB sends to $D71B, $D72B and $D804 are ported, which are placed as they're listed.
 static uint8_t listed_byte(uint16_t listed, uint8_t on) {
   if ((listed & 0xFF) + on > 0xFF) took(READ_PAST_PAGE);
   return peek((uint16_t)(listed + on));
@@ -295,16 +299,20 @@ static void place_stage_objects(void) {
   set_ram16(0x22, cart(7, ram16(0x24)) | cart(7, (uint16_t)(ram16(0x24) + 1)) << 8);
   took(STAGE_OBJECT_KIND);
   if (RAM[0x24] == 0xFF) took(READ_PAST_PAGE);   // the entry's second byte, when its first is a page's last
-  if (ram16(0x22) != 0xD71B) return;
+  // a kind's own routine: $D71B, whose state starts at 0, or $D72B, whose state the list gives, which $D804 jumps to
+  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804 };
+  uint16_t routine = ram16(0x22);
+  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_LISTED_TOO) return;
+  if (routine == STATE_LISTED_TOO) took(JUMPS);
   took(CALLS);
   uint8_t object = free_object();
   if (object == NO_OBJECT) {
     took(STAGE_OBJECT_NO_ROOM);
     return;
   }
-  took(STAGE_OBJECT_STATE);
+  took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : STAGE_OBJECT_STATE_LISTED);
   last_index = object;
-  RAM[OBJECT_STATE + object] = 0;
+  RAM[OBJECT_STATE + object] = routine == STATE_ZERO ? 0 : listed_byte(listed, 1);
   RAM[0x0647 + object] = 0;
   RAM[OBJECT_COUNT + object] = 0;
   RAM[OBJECT_KIND + object] = kind;
