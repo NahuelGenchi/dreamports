@@ -1,5 +1,5 @@
 {
-  "about": "The game's start with nothing pressed until Arthur stands in the first stage. Then Right is held, with a throw every 12 frames and a jump every 40, across the stage's first five screens to the flier that sits on the sixth. It wakes as he comes, two lances spark off it, and it takes off, climbs to its place, dives at him and knocks him out of his armour, pulls up, lands and takes off again.",
+  "about": "The game's start with nothing pressed until Arthur stands in the first stage. Then Right is held, with a throw every 12 frames and a jump every 40, across the stage's first five screens, where a zombie takes his armour, to the flier that sits on the sixth. Two lances spark off it and wake it: it takes off at once, climbs to its place and dives at him, and the dive kills him. A third lance sparks off it as it pulls up, and the recording ends as it comes level with where he fell.",
   "frames": 3390,
   "held": [
     [0, []],

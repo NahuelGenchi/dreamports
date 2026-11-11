@@ -326,6 +326,15 @@ COST(HIDDEN_BEGINS, 7)            // bank 4's $BB8C to $BB91: a thing that's hid
 COST(HIDDEN_OUT_OF_VIEW, 5)       // $BB97 to $BB67, with sub_F346's call apart,
 COST(HIDDEN_IN_VIEW, 17)          // or to sub_F68E
 COST(HIDDEN_NOT_TOUCHED, 5)       // $BBA8 to $BB67
+COST(HIDDEN_TOUCHED, 3)           // or to $BBAD
+COST(HIDDEN_ANY_TOUCH, 3)         // $BBB0 to $BBB9: any touch will do,
+COST(HIDDEN_NEEDS_A_CROUCH, 14)   // or only a crouching Arthur's, and to $BB67 when he isn't,
+COST(HIDDEN_CROUCHED_AT, 10)      // or on when he is
+COST(HIDDEN_OPENS, 9)             // $BBB9 to $BBCA: it isn't the armour,
+COST(HIDDEN_ARMOUR_OPENS, 17)     // or is, for an Arthur without his,
+COST(HIDDEN_ARMOUR_NOT_NEEDED, 19) // or to sub_F708, for one who has it
+COST(HIDDEN_BECOMES_POT, 47)      // $BBCA to sub_F099: a pot, further on and up
+COST(HIDDEN_POT_FALLS, 42)        // $BBEB, with $BC81, and back
 COST(HIDDEN_STAYS, 34)            // sub_BB67 for an object that isn't shown, in a stage that isn't of the third set, and back
 COST(PICK_UP_ARMOUR_TAKEN, 101)   // $BA3F to sub_F708's end, and back: the armour, in the opening scene
 COST(OBJECT_REMOVED, 42)          // sub_F708, and back, for a kind it doesn't count
