@@ -245,6 +245,8 @@ COST(VIEW_BETWEEN_ENDS, 27)       // or to $E6DF, between the stage's ends,
 COST(VIEW_AT_FIRST_END, 41)       // at its first, and back where it was,
 COST(VIEW_AT_LAST_END, 49)        // or at its last
 COST(VIEW_DOWN, 38)               // $E6DF to $E70D
+COST(VIEW_DOWN_TO_SCREEN_ABOVE, 54) // or past the top of its screen,
+COST(VIEW_DOWN_TO_SCREEN_BELOW, 55) // or past the bottom
 COST(VIEW_HELD_DOWN, 6)           // $E70D, and the same down:
 COST(VIEW_BETWEEN_TOP_AND_BOTTOM, 27)
 COST(VIEW_AT_TOP, 36)
@@ -317,6 +319,8 @@ COST(PICK_UP_ARMOUR_TAKEN, 101)   // $BA3F to sub_F708's end, and back: the armo
 COST(OBJECT_REMOVED, 42)          // sub_F708, and back, for a kind it doesn't count
 COST(TOUCH_SET_UP, 95)            // sub_F68E to its call of sub_F63A, for an Arthur who stands,
 COST(TOUCH_ENDS, 33)              // and $F6D9, and back
+COST(TOUCH_SET_UP_CROUCHING, 88)  // the same for an Arthur who crouches
+COST(TOUCH_ENDS_CROUCHING, 22)
 COST(WITHIN_SAME_SCREEN, 31)      // sub_F63A to $F65D: the two are less than half a screen apart, on one screen of the stage,
 COST(WITHIN_NEXT_SCREEN, 37)      // or on two,
 COST(WITHIN_SAME_SCREEN_FAR, 43)  // or they're further apart, and back: on one screen,
@@ -370,13 +374,15 @@ COST(MOVE_ADDED_DOWN, 40)         // $F05A to $F075
 COST(MOVE_DOWN_ONLY, 8)           // sub_F099 to $F05A
 COST(ARTHUR_SIDE, 36)             // sub_FA87 with its call: which side of an object Arthur is
 COST(MOVE_SAME_SCREEN, 12)        // $F075 to $F091, on the same screen down
+COST(MOVE_NEXT_SCREEN_DOWN, 23)   // or past its 240 lines, onto the next,
+COST(MOVE_OTHER_SCREEN, 18)       // or on another already
 COST(MOVE_ENDS, 17)               // $F091, and back
 
 // ---- Arthur's task in a stage, $DAE4 (arthur.c), and the stage's blocks (scroll.c)
 COST(STAGE_BLOCK, 217)            // $EA55: the stage's bank, sub_E945, the bank back, and back
 COST(STAGE_BLOCK_PAST_PAGE, 1)    // a cycle more for each of sub_E945's two reads that goes into the next page
 COST(ARTHUR_AGAIN, 3)             // $DB7F
-COST(ARTHUR_TURN_BEGINS, 44)      // $DAE4, with sub_DC5B
+COST(ARTHUR_COLOURS, 44)           // sub_DC5B or sub_DC4D, with its call: his colours, in a stage or on a ladder,
 COST(ARTHUR_NO_ARMOUR_COLOURS, 6)
 COST(ARTHUR_TURN_CHECKS, 98)      // $DAE7 to $DAFC
 COST(ARTHUR_HELD, 1)              // $DAFC's branch taken
@@ -401,6 +407,52 @@ COST(ARTHUR_NO_DIRECTION, 12)     // $DB28 to $DB65: none
 COST(ARTHUR_DIRECTION_SET, 12)    // $DB28 to $DB39: his heading
 COST(ARTHUR_UP_OR_DOWN, 8)        // $DB39 to $DB40: Up or Down,
 COST(ARTHUR_HELD_STILL, 3)        // which his state can stop, to $DB65
+COST(ARTHUR_GOES_UP, 12)          // $DB40 to $DC6B,
+COST(ARTHUR_GOES_DOWN, 11)        // or to $DD65
+COST(BLOCK_AT_ARTHUR, 53)         // sub_E9CE with its call, to the block at his place,
+COST(BLOCK_BELOW_ARTHUR, 49)      // or sub_EA2F, to the one 11 pixels below
+COST(LADDER_BLOCK_BELOW_ITS, 13)  // $DC41, and back: a block before a ladder's,
+COST(LADDER_BLOCK_IS, 17)         // one of a ladder's,
+COST(LADDER_BLOCK_PAST_ITS, 16)   // or one after them
+COST(LADDER_THERE, 3)             // and the branch after sub_DC3E or sub_DC38: a ladder,
+COST(LADDER_NOT_THERE, 5)         // or none, and the jump away
+COST(LADDER_NOT_HIT, 42)          // $DC7E, $DCD7 or $DD1E: sub_E014 with its call, and on,
+COST(LADDER_HIT, 43)              // or to $E171
+COST(CLIMB_UP_NO_BUTTON, 8)       // $DC86 to $DCB2: neither Up nor Down,
+COST(CLIMB_DOWN_NO_BUTTON, 9)     // or $DCDF to $DD0B, in the next page
+COST(CLIMB_TURNS_ROUND, 21)       // the other of the two: his heading, and to the other way's round
+COST(CLIMB_BUTTON_HELD, 20)       // $DC86 or $DCDF to the write of his place across,
+COST(CLIMB_ON_THE_MIDDLE, 11)     // and to $DCA7 or $DD00
+COST(CLIMB_FALLS_OFF, 5)          // his state takes him off: to $E28E,
+COST(CLIMB_GOES_ON, 3)            // or doesn't
+COST(CLIMB_MOVES, 14)             // $DCAC or $DD05, with sub_DB82, to sub_F03E
+COST(CLIMB_SHAPE, 48)             // sub_DDB2 with its call, to $E3B9
+COST(LADDER_FOOT, 27)             // $DCCC to $DCD1, with sub_E166
+COST(LADDER_DOWN_HELD, 3)         // $DD68 to $DD14, when his state holds him,
+COST(LADDER_DOWN_LOOKS, 2)        // or on to sub_EA2F
+COST(LADDER_DOWN_NO_LADDER, 5)    // $DD6D to $DD14: solid ground under him,
+COST(LADDER_DOWN_ONTO_IT, 4)      // or a ladder's top
+COST(LADDER_TOP_SHAPE, 32)        // $DD74 to $DD83: his shape half over the top,
+COST(LADDER_TOP_SHAPE_NO_ARMOUR, 38) // or without armour
+COST(LADDER_TOP_YIELDS, 46)       // $DD83, with sub_E4E5, to the jump that yields
+COST(LADDER_TOP_WAITS, 8)         // $DD86 to $DD83: neither Up nor Down,
+COST(LADDER_TOP_GOES_DOWN, 22)    // Down: to $DCD7,
+COST(LADDER_TOP_GOES_UP, 25)      // or Up: $DD86 to sub_E166's write of his place down,
+COST(LADDER_TOP_STOOD_UP, 11)     // and back
+COST(CROUCH_JUMPS, 34)            // $DD14 to $DDF7, with sub_F32E: A is held
+COST(CROUCH_NO_JUMP, 6)           // or isn't: to $DD1E
+COST(CROUCH_HIT, 72)              // $DD1E to $E171, with sub_E014 and sub_F32E
+COST(CROUCH_HELD_STILL, 9)        // $DD2C to $DD40, when his state holds him still,
+COST(CROUCH_GOES_ON, 34)          // or to $DD36, with sub_F309
+COST(CROUCH_NO_BUTTON, 8)         // $DD36 to $DD40: no direction is held,
+COST(CROUCH_UP_HELD, 11)          // or Up is,
+COST(CROUCH_STAYS, 12)            // or he stays down: to $DD46
+COST(CROUCH_FACES_ON, 8)          // $DD46 to $DD59: neither Left nor Right,
+COST(CROUCH_FACES_RIGHT, 40)      // or Right, with sub_F332,
+COST(CROUCH_FACES_LEFT, 38)       // or Left, with sub_F30D
+COST(CROUCH_SHAPE, 49)            // sub_DDCF with its call, to $DDF4,
+COST(CROUCH_THROW_SHAPE, 103)     // or by way of sub_E079, less its end
+COST(CROUCH_ENDS, 29)             // $DD40, with sub_F32E, to $DB65
 COST(ARTHUR_WALKS, 3)             // $DB39 to $DB4D: Left or Right
 COST(ARTHUR_STEP_LEFT, 42)        // $DB4D to $DB5D: a step of his walk, facing left,
 COST(ARTHUR_STEP_RIGHT, 67)       // or right
@@ -473,6 +525,15 @@ COST(WEAPON_GONE, 25)             // or with sub_F734, and back: out of the view
 COST(WEAPON_NOT_SPENT, 2)         // $EBA3
 COST(WEAPON_BLOCK_ABOVE, 53)      // sub_E9CA with its call, to the block four pixels above its place
 COST(WEAPON_FLIES_ON, 15)         // $EBA8, and back: not a gravestone
+COST(WEAPON_STOPPED_BY_D0, 13)    // $EBA8 to sub_ED51: one of a gravestone's two blocks,
+COST(WEAPON_STOPPED_BY_DF, 16)    // or the other
+COST(WEAPON_STOPPED, 56)          // $EBB5, with sub_F30D and sub_F305, and back
+COST(WEAPON_IS_SPENT, 3)          // $EB7D, $EB8C or $EBA3 to $EBC1: it's hit something
+COST(WEAPON_SPENT_COUNTED, 20)    // $EBC4 to $EBD1
+COST(WEAPON_SPENT_OVER, 26)       // and after four rounds, with sub_F734, and back,
+COST(WEAPON_SPENT_STAYS, 11)      // or $EBD1 to sub_F2EB
+COST(WEAPON_STOPPED_SHAPE_RIGHT, 24) // $EBE2, and back: its shape against a gravestone, heading right,
+COST(WEAPON_STOPPED_SHAPE_LEFT, 30)  // or left
 
 // ---- the score, sub_D8FC (flow.c)
 COST(SCORE_TENS_AND_HUNDREDS, 8)  // sub_D8FC to $D902: nothing for the thousands

@@ -3,8 +3,8 @@
 // armour, and in a stage, where he falls to the ground and stands, and where the first thing that hits him knocks him
 // back out of his armour and the next kills him. The view follows him as he moves.
 //
-// In a stage Left and Right walk him, A jumps and B throws his weapon. Crouching, at $DC6B, and climbing, at $DD65,
-// aren't ported yet.
+// In a stage Left and Right walk him, A jumps and B throws his weapon. Up climbs a ladder he stands at, from $DC6B, and
+// Down climbs down one whose top he stands on, from $DD65, or has him crouch, at $DD14.
 
 #include "game.h"
 
@@ -142,6 +142,56 @@ static void placed(int with_buttons) {
 }
 
 static void flash_after_a_hit(void);
+
+// sub_E9CE and sub_EA2F: the block of the stage at his place, or 11 pixels below it. A place whose 11 pixels below are
+// on the next screen down, at $EA44, isn't ported yet.
+static uint8_t block_at_him(uint8_t below) {
+  RAM[0x22] = below;
+  RAM[0x77] = Y_SCREEN;
+  RAM[0x73] = (uint8_t)(Y + below);
+  RAM[0x78] = X_SCREEN;
+  RAM[0x74] = X;
+  took(below ? BLOCK_BELOW_ARTHUR : BLOCK_AT_ARTHUR);
+  return block_at_stage_place();
+}
+
+// sub_DC3E and sub_DC38: whether a ladder is at his place, or under his feet. A ladder's blocks are $BA to $CF.
+static int ladder(int under) {
+  took(CALLS);
+  uint8_t block = block_at_him(under ? 0x0B : 0);
+  if (under) took(JUMPS);
+  took(block < 0xBA ? LADDER_BLOCK_BELOW_ITS : block < 0xD0 ? LADDER_BLOCK_IS : LADDER_BLOCK_PAST_ITS);
+  return block >= 0xBA && block < 0xD0;
+}
+
+// sub_DC5B and sub_DC4D: his colours, in a stage and on a ladder, with his armour or without.
+static void stage_colours(void) {
+  took(ARTHUR_COLOURS);
+  if (FLAGS & WITHOUT_ARMOUR) took(ARTHUR_NO_ARMOUR_COLOURS);
+  COLOURS = FLAGS & WITHOUT_ARMOUR ? 0x02 : 0x08;
+}
+static void ladder_colours(void) {
+  took(ARTHUR_COLOURS);
+  if (FLAGS & WITHOUT_ARMOUR) took(ARTHUR_NO_ARMOUR_COLOURS);
+  COLOURS = FLAGS & WITHOUT_ARMOUR ? 0x02 : 0x01;
+}
+
+// sub_DDB2: his two shapes on a ladder, two rounds each as he climbs.
+static void climb_shape(void) {
+  COUNT++;
+  SHAPE = (uint8_t)((0x14 + ((COUNT >> 1) & 1)) | (FLAGS & WITHOUT_ARMOUR));
+  took(CLIMB_SHAPE);
+  flash_after_a_hit();
+}
+
+// $DCAC and $DD05: a step up or down the ladder, the way he's heading, with the view after him.
+static void climb(void) {
+  took(CLIMB_MOVES);
+  move_object(ARTHUR, 0x0C);
+  took(JUMPS);
+  view_follows_across();
+  climb_shape();
+}
 
 // sub_E079: a throw's two shapes, three rounds, by the way he faces, whether he crouches and whether he has armour.
 static void throw_shape(void) {
@@ -490,6 +540,20 @@ static void throw_button(void) {
   took(THROW_ENDS);
 }
 
+// sub_DDCF: his shape as he crouches, by the way he faces, or a throw's.
+static void crouch_shape(void) {
+  if (STATE & 0x02) {
+    took(CROUCH_THROW_SHAPE);
+    throw_shape();
+    took(JUMPS);
+  } else {
+    SHAPE = (uint8_t)((0x10 + ((FLAGS >> 2) & 1)) | (FLAGS & WITHOUT_ARMOUR));
+    took(CROUCH_SHAPE);
+  }
+  took(JUMPS);
+  flash_after_a_hit();
+}
+
 // sub_DB8A, with sub_E01E: the end of a turn in a stage.
 static void end_stage_turn(void) {
   took(ARTHUR_TURN_ENDS);
@@ -506,6 +570,8 @@ wait arthur_task(void) {
     START, SCENE_SITS, SCENE_WATCHES, SCENE_JUMPS, SCENE_LANDED, SCENE_WALKS, SCENE_STEP, SCENE_OVER,
     STAGE_TURN, STAGE_STANDS, STAGE_AGAIN, STAGE_FALLS, STAGE_FELL, STAGE_HIT, STAGE_KNOCKED_BACK,
     DEATH_BEGINS, DEATH_FALL, DEATH_OVER, STAGE_JUMP,
+    LADDER_UP, CLIMB_UP, CLIMB_UP_ON, CLIMB_UP_AGAIN, LADDER_DOWN, OVER_THE_TOP, OVER_THE_TOP_AGAIN,
+    CLIMB_DOWN, CLIMB_DOWN_ON, CLIMB_DOWN_AGAIN, CROUCH, CROUCH_AGAIN,
   };
   static uint8_t inner;
   uint8_t *step = &task_step[TASK_ARTHUR];
@@ -594,9 +660,7 @@ wait arthur_task(void) {
 
     case STAGE_TURN:
       // $DAE4: each round in a stage. Without his armour he has other colours.
-      took(ARTHUR_TURN_BEGINS);
-      if (FLAGS & WITHOUT_ARMOUR) took(ARTHUR_NO_ARMOUR_COLOURS);
-      COLOURS = FLAGS & WITHOUT_ARMOUR ? 0x02 : 0x08;
+      stage_colours();
       if (FLAGS & HIT) {
         took(ARTHUR_IS_HIT);
         *step = STAGE_HIT;
@@ -638,9 +702,11 @@ wait arthur_task(void) {
         HEADING = way & 0x0C;
         took(ARTHUR_DIRECTION_SET);
         if (!(way & 0x04)) {
-          // Up or Down: crouching, at $DC6B, and climbing, at $DD65, aren't ported yet
+          // Up or Down, unless his state holds him still
           took(ARTHUR_UP_OR_DOWN);
-          if (STATE & 0x10) took(ARTHUR_HELD_STILL);
+          if (STATE & 0x10) { took(ARTHUR_HELD_STILL); break; }
+          took(HEADING ? ARTHUR_GOES_DOWN : ARTHUR_GOES_UP);
+          *step = HEADING ? LADDER_DOWN : LADDER_UP;
           break;
         }
         // $DB4D: a step of his walk, facing the way he goes, unless something's in the way
@@ -659,6 +725,185 @@ wait arthur_task(void) {
       *step = hit ? STAGE_HIT : STAGE_STANDS;
       break;
     }
+    case LADDER_UP:
+      // $DC6B: Up, which does nothing where no ladder is
+      if (ladder(0)) {
+        took(LADDER_THERE);
+        *step = CLIMB_UP;
+      } else {
+        took(LADDER_NOT_THERE);
+        *step = STAGE_STANDS;
+      }
+      break;
+    case CLIMB_UP:
+      // $DC73: each round on the way up. Where the ladder ends he's at its top, and gets over it as he would get on
+      // it to go down.
+      ladder_colours();
+      if (!ladder(0)) {
+        took(LADDER_NOT_THERE);
+        *step = LADDER_DOWN;
+        break;
+      }
+      took(LADDER_THERE);
+      *step = CLIMB_UP_ON;
+      break;
+    case CLIMB_UP_ON:
+    case CLIMB_DOWN_ON: {
+      // $DC7E and $DCD7: something that hits him takes him off the ladder; Up and Down move him, the other of the two
+      // turning him round; and with neither he stays where he is
+      int up = *step == CLIMB_UP_ON;
+      uint8_t same = up ? 0x08 : 0x04;
+      if (FLAGS & HIT) {
+        took(LADDER_HIT);
+        *step = STAGE_HIT;
+        break;
+      }
+      took(LADDER_NOT_HIT);
+      if (!(PAD_NOW & 0x0C)) took(up ? CLIMB_UP_NO_BUTTON : CLIMB_DOWN_NO_BUTTON);
+      else if (!(PAD_NOW & same)) {
+        HEADING = up ? 0x08 : 0x00;
+        took(CLIMB_TURNS_ROUND);
+        *step = up ? CLIMB_DOWN_ON : CLIMB_UP_ON;
+        break;
+      } else {
+        took(CLIMB_BUTTON_HELD);
+        X = (uint8_t)((X & 0xF8) | 0x08);   // the ladder's middle
+        took(CLIMB_ON_THE_MIDDLE);
+        if (STATE & 0x10) {
+          took(CLIMB_FALLS_OFF);
+          *step = STAGE_FALLS;
+          break;
+        }
+        took(CLIMB_GOES_ON);
+        climb();
+      }
+      took(CALLS);
+      view_follows_down();
+      placed(0);
+      *step = up ? CLIMB_UP_AGAIN : CLIMB_DOWN_AGAIN;
+      return YIELDS;
+    }
+    case CLIMB_UP_AGAIN:
+      took(JUMPS);
+      *step = CLIMB_UP;
+      break;
+    case CLIMB_DOWN:
+      // $DCC6: each round on the way down. At the ladder's foot he's on the ground again, crouching while Down is held.
+      ladder_colours();
+      if (ladder(1)) {
+        took(LADDER_THERE);
+        *step = CLIMB_DOWN_ON;
+        break;
+      }
+      stand_on_block();
+      took(LADDER_FOOT);
+      stage_colours();
+      took(JUMPS);
+      *step = CROUCH;
+      break;
+    case CLIMB_DOWN_AGAIN:
+      took(JUMPS);
+      *step = CLIMB_DOWN;
+      break;
+    case LADDER_DOWN: {
+      // $DD65: Down, or the top of a ladder reached from below. With a ladder's top under his feet he gets on it;
+      // on any other ground he crouches.
+      took(OBJECT_FLAG_READ);
+      if (FLAGS & HELD) {
+        took(LADDER_DOWN_HELD);
+        *step = CROUCH;
+        break;
+      }
+      took(LADDER_DOWN_LOOKS);
+      uint8_t block = block_at_him(0x0B);
+      if (block >= 0xD0) {
+        took(LADDER_DOWN_NO_LADDER);
+        *step = CROUCH;
+        break;
+      }
+      took(LADDER_DOWN_ONTO_IT);
+      ladder_colours();
+      SHAPE = FLAGS & WITHOUT_ARMOUR ? 0x3F : 0x1F;
+      took(FLAGS & WITHOUT_ARMOUR ? LADDER_TOP_SHAPE_NO_ARMOUR : LADDER_TOP_SHAPE);
+      *step = OVER_THE_TOP;
+      break;
+    }
+    case OVER_THE_TOP:
+      // $DD83: half over the ladder's top, he waits for Up or Down
+      FLAGS &= (uint8_t)~HELD;
+      STATE &= 0xF7;
+      took(LADDER_TOP_YIELDS);
+      *step = OVER_THE_TOP_AGAIN;
+      return YIELDS;
+    case OVER_THE_TOP_AGAIN:
+      if (!(PAD_NOW & 0x0C)) {
+        took(LADDER_TOP_WAITS);
+        *step = OVER_THE_TOP;
+      } else if (PAD_NOW & 0x04) {
+        HEADING = 0x08;
+        took(LADDER_TOP_GOES_DOWN);
+        *step = CLIMB_DOWN_ON;
+      } else {
+        took(LADDER_TOP_GOES_UP);
+        stand_on_block();
+        took(LADDER_TOP_STOOD_UP);
+        stage_colours();
+        took(JUMPS);
+        *step = STAGE_STANDS;
+      }
+      break;
+    case CROUCH:
+      // $DD14: each round he crouches. A jumps, a hit throws him back, and he stands up when Down is let go or Up is
+      // held; Left and Right turn him. A jump from here doesn't note that A is held, as a jump from standing does.
+      if (PAD_NOW & PAD_A) {
+        FLAGS &= (uint8_t)~CROUCHES;
+        took(CROUCH_JUMPS);
+        *step = STAGE_JUMP;
+        break;
+      }
+      took(CROUCH_NO_JUMP);
+      if (FLAGS & HIT) {
+        // the original calls $E171 here, which never comes back: two bytes of his task's stack are left behind
+        FLAGS &= (uint8_t)~CROUCHES;
+        took(CROUCH_HIT);
+        *step = STAGE_HIT;
+        break;
+      }
+      took(LADDER_NOT_HIT);
+      if (STATE & 0x10) took(CROUCH_HELD_STILL);
+      else {
+        FLAGS |= CROUCHES;
+        took(CROUCH_GOES_ON);
+        if (!(PAD_NOW & 0x0F)) took(CROUCH_NO_BUTTON);
+        else if (PAD_NOW & 0x08) took(CROUCH_UP_HELD);
+        else {
+          took(CROUCH_STAYS);
+          if (!(PAD_NOW & (PAD_LEFT | PAD_RIGHT))) took(CROUCH_FACES_ON);
+          else if (PAD_NOW & PAD_RIGHT) {
+            FLAGS &= (uint8_t)~TURNED;
+            took(CROUCH_FACES_RIGHT);
+          } else {
+            FLAGS |= TURNED;
+            took(CROUCH_FACES_LEFT);
+          }
+          crouch_shape();
+          placed(1);
+          *step = CROUCH_AGAIN;
+          return YIELDS;
+        }
+      }
+      FLAGS &= (uint8_t)~CROUCHES;
+      took(CROUCH_ENDS);
+      *step = STAGE_STANDS;
+      break;
+    case CROUCH_AGAIN:
+      // $DD5F: the view after him
+      took(ARTHUR_VIEW_FOLLOWS);
+      view_follows_across();
+      view_follows_down();
+      took(JUMPS);
+      *step = CROUCH;
+      break;
     case STAGE_STANDS:
       // $DB65: the view after him, and the end of the turn
       took(ARTHUR_VIEW_FOLLOWS);
