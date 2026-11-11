@@ -24,13 +24,14 @@ export const OTHER_LANGUAGES = Object.keys(LANGUAGES).filter(key => LANGUAGES[ke
 
 /**
  * A game's main version, from the languages it has a version in: its JavaScript one, when it has one, which is the
- * game's own and was there first, or else its first in another language, as a game that started in C has. Its numbers
- * are the game's first, and the others' come under them. Every version is written from the original, so no task waits
- * on the same part in another language (pieces.mjs, #965).
+ * game's own and was there first, or else its first in another language, as a game that started in C has. A game with
+ * no version yet, such as one whose first files are still in a pull request, counts as one in the default language, C,
+ * as that's what a new game starts in (#1095). Its numbers are the game's first, and the others' come under them. Every
+ * version is written from the original, so no task waits on the same part in another language (pieces.mjs, #965).
  * @param {(keyof typeof LANGUAGES)[]} languages
  * @returns {keyof typeof LANGUAGES}
  */
-export const mainLanguage = languages => (languages.includes('js') || !languages.length ? 'js' : OTHER_LANGUAGES.find(key => languages.includes(key)));
+export const mainLanguage = languages => (languages.includes('js') ? 'js' : OTHER_LANGUAGES.find(key => languages.includes(key)) ?? DEFAULT_LANGUAGE);
 
 /** A version as the tools name it, such as 'sonic-battle/c', as { game, language }; a game alone is its JavaScript one. */
 export function versionOf(name) {
