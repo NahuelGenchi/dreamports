@@ -10,7 +10,7 @@ Every Dreamport has one lead, and each of its tasks one person at a time, so nob
 npm run dp -- find sonic battle
 ```
 
-`find` takes a game's folder or a few words of its name. It shows the game's lead, its game's issue, its two numbers, code ported and gameplay proven, its Make page, its team build and team preview, and the pieces under its game's issue: who has claimed which, the ones free to start, what the waiting ones need, and how many are done. If nobody makes a Dreamport of the game yet, it says so. With no game, it lists every Dreamport and every game claimed so far.
+`find` takes a game's folder or a few words of its name. It shows the game's lead, its game's issue, its two numbers, code ported and gameplay proven, its Make page, its team build and team preview, and the pieces under its game's issue: who has claimed which, the ones free to start, what the waiting ones need, and how many are done. If nobody makes a Dreamport of the game yet, it says so. With no game, it lists every Dreamport and every game claimed so far. It lists the first three free and waiting pieces of each kind, and `--all` lists every one. `npm run dp -- find <game> --take` says only which task is yours to take next, with the command that claims it, as `/dreamport` asks it.
 
 ## Start a Dreamport
 
@@ -54,11 +54,15 @@ A game's [version in another language](../games/README.md#versions-in-other-lang
 
 What comes before a part in the game isn't something it needs. A late level can start from a [start point](../tools/README.md#start-points), so `needs` lists only what a piece can't be finished without, and the rest can go in any order.
 
+Two pieces that would write the same new files are the one case where the order matters without that. Two acts of one zone share the zone's own code, its backdrop, its objects and its enemies, and whichever is made first writes it. Made at the same time, both write it, and the second to merge settles it by hand: Ice Mountain Zone's two acts of Sonic Advance in C left 16 to 20 files that way, after the tools had settled the rest. So each act of a zone after its first needs the act before it, as in the three Sonic Advance games' `parts.json`, and starts on top of that act's pull request as soon as it's in review, as below, so it still waits for no review.
+
 ### Building on a piece in review
 
 A finished piece can wait a while for its review, and nobody should wait with it. So a task whose needs aren't finished can still start when each of them is **in review**: its task has an open pull request here that isn't a draft and closes it, with a line such as `Closes #626`. A draft isn't finished, so it doesn't count. `find` lists such a task as free, *on top of* those pull requests, and so do the bot, the Make pages and `/dreamport`.
 
 Its branch starts from the latest `main` with each of those pull requests merged in: `git fetch upstream pull/<number>/head`, then `git merge --no-edit FETCH_HEAD`. The code still goes in order, as the piece is built on what it needs, but nobody waits for a review or a merge. Its pull request says `Builds on #<number>` for each, and merges after them: the **Builds on** check fails a pull request while one it builds on hasn't merged, as it carries that one's commits, which nobody has reviewed yet. Once they merge, *Update branch* on the pull request, or `npm run dp -- update`, brings in `main`, and the check passes. If one is closed without merging, the piece starts again from the latest `main`, or from whatever replaced it.
+
+A pull request in review goes on changing, and the piece on top has to keep up with it, or it conflicts with `main` in every file the two share once that one merges. So run `npm run dp -- update` on the piece on top whenever the one below gets new commits, and again once it has merged: it brings in the newest commits of what the branch is built on, then `main`, and settles what the tools can ([Bringing a branch up to date](../tools/README.md#bringing-a-branch-up-to-date)). *Update branch* on GitHub brings in `main` alone.
 
 Whoever an issue is assigned to has it. The Dreamports team can also assign and unassign issues by hand, and the bot leaves those as they are. Either way, the game's page in the Make tab on dreamports.net shows how many pieces are still free a few minutes later ([The Make pages](MAKE.md)).
 

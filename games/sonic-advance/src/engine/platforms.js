@@ -193,7 +193,11 @@ function trampoline(e, slot, anims) {
     run(ctx) {
       // each player in turn, with the one sound however many it threw (sub_8074FB0)
       let hit = false;
-      for (const p of ctx.players) if (bounce(p, ctx.world.terrain)) hit = true;
+      for (const p of ctx.players) if (bounce(p, ctx.world.terrain)) {
+        hit = true;
+        // in a team round a trampoline leaves him safe for half a second, as race's springs do
+        if (ctx.mp?.teamPlay) p.invulnerable = 30;
+      }
       if (hit) ctx.world.playSound(SONG.TRAMPOLINE);
       if (offCam(e.x, e.y, ctx.cam)) { slot.live = null; return false; }
       if (bouncing) {

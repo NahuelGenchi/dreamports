@@ -21,6 +21,8 @@ import { SONG } from '../sound/songs.js';
 import { fixes } from './fixes.js';
 
 export const ROUND_TIME = 3 * 3600;    // TIME(3, 0)
+export const TEAM_ROUND_TIME = 5 * 3600; // TIME(5, 0)
+const GAME_MODE_CHAO_HUNT = 4, GAME_MODE_TEAM_PLAY = 5;
 const KIND_STAGE = 0x1000;              // a packet's kind in a stage
 const EVENT_SIZE = 6;                   // the bytes of a room event a packet carries
 const QUEUE = 16;                       // gRoomEventQueue's slots, of 8 bytes
@@ -31,19 +33,38 @@ const RECEIVE_PRIORITY = 1, SEND_PRIORITY = 0xFFFE;
 // the items' bits in itemEffect, as the packets carry them
 const SHIELD = 1, INVINCIBLE = 2, SPEED_UP = 4, MAGNETIC = 8, INVISIBLE = 0x20, CONFUSED = 0x40, TELEPORT = 0x80;
 const CHAO_HUNT_D = 17;
-const ROOM_EVENT = { PLATFORM: 1, MYSTERY_BOX: 5, ITEM: 6, CHAO: 9 };
+const ROOM_EVENT = { PLATFORM: 1, MYSTERY_BOX: 5, ITEM: 6, GOAL: 7, CHAO: 9 };
 
 /**
  * The mode for GBA `id` of the `count` on `link`. `seed` is the shared random number the link hands every
  * GBA as the stage starts (gMultiplayerPseudoRandom), and `chaoPlace` the Chao's place among the stage's
  * (what gChaoTasks holds before the stage makes the Chao). `onResults` is called as the round ends.
  */
-export function createChaoHunt({ link, id, count, stage, anims, seed, chaoPlace, onResults }) {
+export function createChaoHunt({ link, id, count, stage, anims, seed, chaoPlace, chaoPlaces = null, gameMode = GAME_MODE_CHAO_HUNT, connections = 0, onResults }) {
+  const teamPlay = gameMode === GAME_MODE_TEAM_PLAY;
+  const teams = [0, 1, 2, 3].map(i => (connections >> (4 + i)) & 1);
+  // the stage choice draws three different places for team play; the single Chao Hunt uses one
+  const places = teamPlay
+    ? (Array.isArray(chaoPlaces) && chaoPlaces.length >= 3 ? chaoPlaces.slice(0, 3).map(p => (p | 0) & 7) : [chaoPlace, chaoPlace, chaoPlace])
+    : [chaoPlace];
+  // the start place of player `i`: in team play both players of a team share their team's place, 24 px apart
+  function spawnOf(i) {
+    if (!teamPlay) return stage.multiplayerSpawns[i];
+    if (stage.level === 16) return stage.multiplayerSpawns[i];
+    const team = teams[i];
+    let n = 0;
+    for (let j = 0; j < i; j++) if (teams[j] === team) n++;
+    if (team === 0) n = -n;
+    return { x: stage.multiplayerSpawns[team].x + n * 24, y: stage.multiplayerSpawns[team].y };
+  }
+  const ownSpawn = spawnOf(id);
   const mp = {
     id, count, players: [], chao: [],
+    teamPlay, teams, gameMode, connections,
+    sameTeam: (a, b) => teams[a] === teams[b],
     charRings: [0, 0, 0, 0],    // gMultiplayerCharRings: the Chao each player holds
     ranks: [-1, -1, -1, -1],    // gMultiplayerRanks: each player's result, -1 while the round runs
-    courseTime: ROUND_TIME,
+    courseTime: teamPlay ? TEAM_ROUND_TIME : ROUND_TIME,
     actStart: true,             // STAGE_FLAG__ACT_START: the title card, and the round's end
     itemTurn: 0,                // gRandomItemBox: which mystery item box shows, and how many times round
     random: seed >>> 0,         // gMultiplayerPseudoRandom
@@ -62,6 +83,25 @@ export function createChaoHunt({ link, id, count, stage, anims, seed, chaoPlace,
   // before it in the slot
   const queue = Array.from({ length: QUEUE }, () => new Uint8Array(8));
   let write = 0, sent = 0;
+
+  // a player reached a goal: the original's room event 7; every GBA marks the player and, in a team round, the team
+  // that has all its players there ends the round on all of them
+  function goal(playerId) {
+    const m = mp.players[playerId];
+    if (!m || mp.ranks[playerId] !== -1) return;
+    m.state |= 1;
+    if (teamPlay) {
+      const team = mp.teams[playerId];
+      let all = true;
+      for (let i = 0; i < count; i++) if (mp.teams[i] === team && !(mp.players[i].state & 1)) all = false;
+      if (all && mp.goalWinner === undefined) {
+        mp.goalWinner = team;
+        for (let i = 0; i < count; i++) mp.ranks[i] = mp.teams[i] === team ? 0 : 1;
+        mp.finish?.();
+      }
+    } else mp.finish?.();
+  }
+  mp.goal = goal;
 
   function sendEvent(e) {
     const slot = queue[write];
@@ -87,6 +127,7 @@ export function createChaoHunt({ link, id, count, stage, anims, seed, chaoPlace,
       }
       case ROOM_EVENT.ITEM:
         if ((own.state & 1) || player.dead || mp.ranks[id] !== -1) break;
+        if (teamPlay && mp.sameTeam(from, id)) break;
         if (ev[1] === 0) {
           player.itemEffect |= CONFUSED;
           player.confusion = CONFUSION_TIME;
@@ -100,6 +141,9 @@ export function createChaoHunt({ link, id, count, stage, anims, seed, chaoPlace,
             game.state.effects2d = { ...game.state.effects2d, objWindowLayers: 0 };
           }
         }
+        break;
+      case ROOM_EVENT.GOAL:
+        goal(from);
         break;
       case ROOM_EVENT.CHAO: {
         const chao = mp.chao[ev[1]];
@@ -182,25 +226,35 @@ export function createChaoHunt({ link, id, count, stage, anims, seed, chaoPlace,
 
   return {
     mp,
-    start: stage.multiplayerSpawns[id],
+    start: ownSpawn,
 
     // the stage's multiplayer init: the room event managers, a task for every player (and an arrow for each
     // other one), the Chao, and Sonic waiting out the title card
     setup(g) {
       game = g; player = g.player;
       g.ctx.mp = mp;
+      g.world.mp = mp;
+      mp.finish = () => {
+        if (mp.finishing) return;
+        mp.finishing = true;
+        // the results screen takes over: the stage's tasks go, the rest of this frame's with them, so the packet it
+        // left zeroed is what the link carries
+        g.tasks.add(finishTask(mp, g, anims, () => { g.tasks.stop(); onResults?.(mp); }), 0x2000);
+      };
       player.itemEffect = 0; player.confusion = 0;
       g.tasks.add(receiveTask, RECEIVE_PRIORITY);
       g.tasks.add(sendTask, SEND_PRIORITY);
       for (let i = 0; i < count; i++) {
-        const m = createMultiplayerPlayer(mp, i, stage.multiplayerSpawns[id], anims);
+        const m = createMultiplayerPlayer(mp, i, ownSpawn, anims);
         mp.players[i] = m;
         g.tasks.add(m.task, PLAYERS_PRIORITY);
         if (i !== id) g.tasks.add(indicatorTask(mp, i, anims), INDICATOR_PRIORITY);
       }
-      const chao = createChao(mp, stage.chaoSpawns[chaoPlace], 0, anims, stage.level === CHAO_HUNT_D && chaoPlace > 4);
-      mp.chao[0] = chao;
-      g.tasks.add(chao.task, PLAYERS_PRIORITY);
+      for (let i = 0; i < places.length; i++) {
+        const chao = createChao(mp, stage.chaoSpawns[places[i]], i, anims, stage.level === CHAO_HUNT_D && places[i] > 4);
+        mp.chao[i] = chao;
+        g.tasks.add(chao.task, PLAYERS_PRIORITY);
+      }
       player.itemEffect |= TELEPORT;
       // the link recordings show the camera starting a frame later than in a single player act (its
       // unk64 is first eased on the stage's fourth frame); the decompilation doesn't show why
@@ -219,7 +273,7 @@ export function createChaoHunt({ link, id, count, stage, anims, seed, chaoPlace,
     },
 
     // Task_PlayerHandleDeath: he starts again at his own start place, keeping what he holds
-    lifeLost() { game.respawn(stage.multiplayerSpawns[id]); },
+    lifeLost() { game.respawn(ownSpawn); },
 
     // confused, the pad's directions turn round by one to three places, changing with the clock
     input(held) {
@@ -245,9 +299,7 @@ export function createChaoHunt({ link, id, count, stage, anims, seed, chaoPlace,
       mp.courseTime--;
       if (mp.courseTime <= 0) {
         mp.actStart = true;
-        // the results screen takes over: the stage's tasks go, the rest of this frame's with them, so the
-        // packet it left zeroed is what the link carries
-        game.tasks.add(finishTask(mp, game, anims, () => { game.tasks.stop(); onResults?.(mp); }), 0x2000);
+        mp.finish();
       }
     },
 

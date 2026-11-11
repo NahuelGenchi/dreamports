@@ -75,12 +75,16 @@ const QUIET = ['--js-flags=--optimize-for-size', '--disable-extensions', '--disa
 // A browser nobody sees needs no graphics chip. A window keeps it, as a person sees it stutter without: drawing it on the
 // processor saves little power, and it was 5 times as often late. Graphics in the browser's own process (--in-process-gpu)
 // would save 18 MB, and end the browser wherever they can't start, such as on GitHub's machines or with a dead DISPLAY
-const UNSEEN = ['--headless=new', '--hide-scrollbars', '--mute-audio', '--disable-gpu', '--window-size=320,240', ...QUIET];
+// Several pages can play at once (prove), and the browser slows the timers of every page but the one in front, which
+// would hold back a game that waits on one, so no page is treated as being behind
+const UNSEEN = ['--headless=new', '--hide-scrollbars', '--mute-audio', '--disable-gpu', '--window-size=320,240',
+  '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', ...QUIET];
 
 /**
  * Opens the browser. `profile` is its own folder, emptied first when `fresh`. Resolves to a page to drive:
  * { send, evaluate, once, errors, closed, close }, with `another()`, which closes this page and resolves to a new one
- * with nothing of its own saved, in the same browser, so the next recording needn't start a browser again.
+ * with nothing of its own saved, in the same browser, so the next recording needn't start a browser again, and
+ * `port`, which `joinChrome` takes to open more pages in it. `close()` ends the browser, with every page.
  */
 export async function openChrome({ profile, headless = true, fresh = true, controllers = !headless }) {
   if (headless) stopUnseenBrowserOf(profile);
@@ -143,39 +147,57 @@ async function drive(chrome, portFile, profile, headless, controllers) {
     if (!target) await wait(100);
   }
   if (!target) throw new Error('The browser didn\'t start.');
+  // closing any of its pages ends the browser, which is asked through the page opened last
+  let last = null;
   const close = async () => {
-    await Promise.race([first.send('Browser.close').catch(() => {}), wait(3000)]);
-    first.disconnect();
+    await Promise.race([last.send('Browser.close').catch(() => {}), wait(3000)]);
+    last.disconnect();
     chrome.kill();
     await Promise.race([exited, wait(5000)]);
     // its helpers outlive it for a moment, and the network service writes to the profile as it quits, so the folder
     // can't be emptied for the next browser until they've gone
     for (let i = 0; i < 100 && running(profile); i++) await wait(50);
   };
-  // the page it opened with, then each of the others, in a context of its own with nothing saved. `close` ends the browser
+  const { page } = pagesOf(port, { controllers, close, exited, opened: me => { last = me; } });
+  return page(await connect(target.webSocketDebuggerUrl), { targetId: target.id });
+}
+
+// The pages of the browser listening on `port`, each in a context of its own with nothing saved, but for the one a
+// browser opens with: { page, another }. `close` is what closing one does, and `exited` resolves when the browser ends.
+function pagesOf(port, { controllers, close, exited, opened = () => {} }) {
   const another = async old => {
     const socket = await connect((await (await fetch(`http://127.0.0.1:${port}/json/version`, { headers: { connection: 'close' } })).json()).webSocketDebuggerUrl);
-    if (old.context) await socket.send('Target.disposeBrowserContext', { browserContextId: old.context });
-    const { browserContextId } = await socket.send('Target.createBrowserContext');
-    const { targetId } = await socket.send('Target.createTarget', { url: 'about:blank', browserContextId });
-    // the browser's first page goes only once there's another, as a browser with no page may end
-    if (!old.context) await socket.send('Target.closeTarget', { targetId: old.targetId });
-    old.disconnect();
-    socket.disconnect();
-    return page(await connect(`ws://127.0.0.1:${port}/devtools/page/${targetId}`), { targetId, context: browserContextId });
+    try {
+      if (old?.context) await socket.send('Target.disposeBrowserContext', { browserContextId: old.context });
+      const { browserContextId } = await socket.send('Target.createBrowserContext');
+      const { targetId } = await socket.send('Target.createTarget', { url: 'about:blank', browserContextId });
+      // the browser's first page goes only once there's another, as a browser with no page may end
+      if (old && !old.context) await socket.send('Target.closeTarget', { targetId: old.targetId });
+      old?.disconnect();
+      return await page(await connect(`ws://127.0.0.1:${port}/devtools/page/${targetId}`), { targetId, context: browserContextId });
+    } finally {
+      socket.disconnect();
+    }
   };
   const page = async (driver, ids) => {
-    const me = { ...driver, ...ids, close, closed: Promise.race([driver.closed, exited]), another: () => another(me) };
+    const me = { ...driver, ...ids, port, closed: Promise.race([driver.closed, exited]), another: () => another(me) };
+    me.close = close ?? (() => me.disconnect());
     await driver.send('Page.enable');
     await driver.send('Runtime.enable');
     await driver.send('DOM.enable');
     if (!controllers) await driver.send('Page.addScriptToEvaluateOnNewDocument', { source: NO_CONTROLLERS });
-    first = me;
+    opened(me);
     return me;
   };
-  let first = null;
-  return page(await connect(target.webSocketDebuggerUrl), { targetId: target.id });
+  return { page, another };
 }
+
+/**
+ * Opens one more page in a browser `openChrome` started, the one whose page has this `port`, beside the pages it has:
+ * a page like openChrome's, in a context of its own, whose `close()` leaves the browser open. It's how several
+ * recordings play at once, each from a thread of its own (prove.mjs).
+ */
+export const joinChrome = port => pagesOf(port, { controllers: false, exited: new Promise(() => {}) }).another(null);
 
 /** Talks to a page or the browser over the DevTools protocol. */
 export async function connect(url) {

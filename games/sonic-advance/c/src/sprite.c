@@ -48,7 +48,12 @@ static int command(Sprite *s, uint32_t at, int background) {
         uint32_t pal = sprites.palettes + rom_s32(at + 4) * 32, count = rom_u16(at + 8), insert = rom_u16(at + 10);
         uint32_t n = (count * 2) >> 2 << 1;
         uint16_t *colours = background ? e.bgPalette : e.objPalette;
-        for (uint32_t i = 0; i < n; i++) colours[(s->palId * 16 + insert + i) & 0xFF] = (uint16_t)rom_u16(pal + i * 2);
+        for (uint32_t i = 0; i < n; i++) {
+          uint32_t colour = (s->palId * 16 + insert + i) & 0xFF;
+          colours[colour] = (uint16_t)rom_u16(pal + i * 2);
+          // a script's colours go over the spotlights' run-over ones, which only show until it loads them again
+          if (!background && colour < 16) { spriteRow.written &= ~(1u << colour); spriteRow.loaded |= 1u << colour; }
+        }
         e.flags |= background ? 0x1 : 0x2;
       }
       return RUNNING;

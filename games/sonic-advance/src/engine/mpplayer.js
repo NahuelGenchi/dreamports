@@ -164,6 +164,22 @@ export function createMultiplayerPlayer(mp, id, start, anims) {
     return r;
   }
 
+  // sub_80181E0: a teammate is not solid, and the two of them bounce off each other's attack boxes
+  function teamContact(p) {
+    if (p.boxes[1] && m.boxes[1].active) {
+      const v = contact(p);
+      if (v & 1) {
+        if (p.midAir === 0 && (v & 0x20000)) { if (p.xsp > 0) { p.xsp = -p.xsp; p.gsp = -p.gsp; } }
+        else if (p.midAir === 0 && (v & 0x40000)) { if (p.xsp < 0) { p.xsp = -p.xsp; p.gsp = -p.gsp; } }
+        if ((v & 0x100000) && p.ysp > 0) p.ysp = -p.ysp;
+        m.wait = STALE;
+        return true;
+      }
+    }
+    if (p.onObject === m.sprite) { p.onObject = null; p.air = true; }
+    return false;
+  }
+
   // sub_800DD54 (`state` 'hurt') and sub_800DE44 ('knocked', in which he keeps his air control): knocked up and
   // away from the way he faces (backwards when hurt), unless invincible or still blinking
   function knock(p, state, world) {
@@ -246,7 +262,9 @@ export function createMultiplayerPlayer(mp, id, start, anims) {
         // sub_8016D20, as Sonic
         if (!own) {
           if (p.onObject === m.sprite) carry(p, ctx.world.terrain);
-          if (versus(p, ctx) && (m.touch & 0x20)) { p.pushing = false; m.touch = 0; }
+          if (mp.teamPlay && mp.sameTeam(id, mp.id)) {
+            if (teamContact(p) && (m.touch & 0x20)) { p.pushing = false; m.touch = 0; }
+          } else if (versus(p, ctx) && (m.touch & 0x20)) { p.pushing = false; m.touch = 0; }
         }
       } else if ((p.itemEffect & 0x80) || (m.items & 0x80) || p.invulnerable !== 0 || p.dead || mp.ranks[id] !== -1) apart = true;
       if (apart && p.onObject === m.sprite) { p.onObject = null; p.air = true; m.wait = STALE; }
