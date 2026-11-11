@@ -148,6 +148,8 @@ void engine_draw_setup(void);
 void play_song(int song);
 void play_song_or_continue(int song);
 void stop_song(int song);
+/** m4aMPlayFadeOut on music player `player` (0 the music, 1 to 3 the sound effects), a step every `speed` frames */
+void fade_out_sound(int player, int speed);
 void stop_all_songs(void);
 /** The stage's music manager (music.c), which runs on the sound's side after each frame's calls: the act's song starting
  *  (MUSIC_STAGE_IN fading in, MUSIC_STAGE as it is), the results switching it off, a boss's state, an extra life's
@@ -212,6 +214,7 @@ void queue_sprite_map(Sprite *s);
 // --- backgrounds (gba/background.js) --------------------------------------------------------------------------
 void background_init(Background *bg);
 void draw_background(Background *bg);
+void animate_background(Background *bg, int *frame, int *delay);
 void transform_background(Affine *affine, int angle, int scaleX, int scaleY, int x, int y, int cx, int cy);
 
 // --- line-by-line effects (gba/lines.js) ------------------------------------------------------------------------

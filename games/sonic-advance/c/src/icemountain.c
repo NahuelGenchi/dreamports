@@ -85,20 +85,6 @@ static void create_background(void) {
   draw_background(&snow);
 }
 
-/** UpdateBgAnimationTiles on the snow: its tiles change every animDelay updates; frame 0 is the tileset, frame k the
- *  k-th block stored after it */
-static void animate_snow(void) {
-  uint32_t at = rom_ptr(OFFSET_TILEMAPS + TM_ICE_PARADISE_SNOW * 4);
-  int frames = rom_u8(at + 6), delay = rom_u8(at + 7);
-  uint32_t tileSize = rom_u16(at + 4), tiles = rom_ptr(at + 8), tilesSize = rom_u32(at + 12);
-  if (frames <= 0 || ++snowDelay < delay) return;
-  snowDelay = 0;
-  if (++snowFrame >= frames) snowFrame = 0;
-  snow.graphics.src = snowFrame == 0 ? tiles : tiles + tilesSize + (uint32_t)(snowFrame - 1) * tileSize;
-  snow.graphics.size = tileSize;
-  queue_graphics(&snow.graphics);
-}
-
 /** StageBgUpdate_Zone4Acts12: the snow scrolls with the camera and falls with the stage clock over everything, blended
  *  half over it, and the mountains move 16 px across the act and 352 px down it */
 static void background_update(int x, int y) {
@@ -108,7 +94,7 @@ static void background_update(int x, int y) {
   view.snowX = (uint16_t)(((x + (x >> 2)) + (act.tick >> 2)) & 0xFF);
   view.snowY = (uint16_t)(((uint16_t)(y + 256) - act.tick) & 0xFF);
   draw_background(&snow);
-  animate_snow();
+  animate_background(&snow, &snowFrame, &snowDelay);
   view.bgX = (uint16_t)bios_div(x << 4, act.stage.width - SCREEN_W);
   view.bgY = (uint16_t)bios_div((y << 8) + (y << 6) + (y << 5), act.stage.height - SCREEN_H);
   act.cam.bgX = (int16_t)view.bgX; act.cam.bgY = (int16_t)view.bgY;

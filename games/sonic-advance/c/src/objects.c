@@ -253,6 +253,11 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 89, 89, rising_platform_spawn },
   { 98, 98, lava_platform_spawn },
   { 94, 94, air_bubbles_spawn },
+  { 81, 81, moving_spring_spawn },
+  { 82, 82, iron_ball_spawn },
+  { 87, 87, torch_spawn },
+  { 97, 97, updraft_spawn },
+  { 88, 88, lift_spawn }, { 90, 90, float_spawn }, { 92, 92, boulder_spawner_spawn }, { 86, 86, run_wheel_spawn },
 };
 
 // the enemies by their kind numbers (the ENEMIES table)
@@ -277,6 +282,8 @@ static const struct { int kind; Spawn spawn; } ENEMIES[] = {
   { 24, egg_ball_spawn },
   { 17, yukimaru_wall_spawn },
   { 19, kuraa_spawn },
+  { 11, leon_spawn },
+  { 13, wamu_spawn },
 };
 
 ActTask *entity_spawn(Slot *slot) {

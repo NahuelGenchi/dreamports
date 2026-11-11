@@ -167,6 +167,7 @@ void play_song(int song) { gba_sound_play(song); }                            //
 void play_song_or_continue(int song) { gba_sound_start_or_continue(song); }  // m4aSongNumStartOrContinue
 void play_song_or_change(int song) { gba_sound_play_or_change(song); }       // m4aSongNumStartOrChange
 void stop_song(int song) { gba_sound_stop(song); }                            // m4aSongNumStop
+void fade_out_sound(int player, int speed) { gba_sound_fade_out(player, speed); }  // m4aMPlayFadeOut
 void stop_all_songs(void) { gba_sound_stop_all(); }                           // m4aMPlayAllStop
 void sound_vsync_off(void) { gba_sound_vsync_off(); }                         // m4aSoundVSyncOff
 void sound_vsync_on(void) { gba_sound_vsync_on(); }                           // m4aSoundVSyncOn

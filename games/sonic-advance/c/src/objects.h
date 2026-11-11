@@ -98,6 +98,14 @@ ActTask *special_spring_spawn(Slot *slot);
 ActTask *ice_block_spawn(Slot *slot);         // 95
 ActTask *skating_stone_spawn(Slot *slot);     // 84
 ActTask *ferris_wheel_spawn(Slot *slot);      // 91
+ActTask *moving_spring_spawn(Slot *slot);     // 81
+ActTask *iron_ball_spawn(Slot *slot);         // 82
+ActTask *torch_spawn(Slot *slot);             // 87
+ActTask *updraft_spawn(Slot *slot);           // 97
+ActTask *lift_spawn(Slot *slot);              // 88
+ActTask *float_spawn(Slot *slot);             // 90
+ActTask *boulder_spawner_spawn(Slot *slot);   // 92
+ActTask *run_wheel_spawn(Slot *slot);         // 86
 ActTask *forced_slide_spawn(Slot *slot);      // 46
 ActTask *crumbling_platform_spawn(Slot *slot);   // 24
 ActTask *air_bubbles_spawn(Slot *slot);       // 94
@@ -152,7 +160,7 @@ typedef struct {
   Sprite sprite;
   int x;
 } Object;
-enum { OBJECT_BYTES = 640 };
+enum { OBJECT_BYTES = 1024 };   // room for the largest, a Wamu with its three sprites and 64 places
 void *object_new(void);
 #define OBJECT_NEW(type) ((void)sizeof(char[sizeof(type) <= OBJECT_BYTES ? 1 : -1]), (type *)object_new())
 /** A block for a task with no sprite of its own: its sprite has no tiles to free. */
