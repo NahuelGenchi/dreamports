@@ -25,7 +25,7 @@ import { Worker, isMainThread, parentPort, workerData } from 'node:worker_thread
 import { REPO, LOCAL, resultFolder } from './lib/paths.mjs';
 import { readOriginal, readRecordings, readCodeMap, readProgress, writeProgress, readParts, hex } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
-import { expand, namesNeverInPlay } from './lib/recording.mjs';
+import { originalPlay, namesNeverInPlay } from './lib/recording.mjs';
 import { serveRepository } from './lib/server.mjs';
 import { joinChrome, openChrome } from './lib/chrome.mjs';
 import { buildIfC, openDreamport } from './lib/dreamport.mjs';
@@ -292,21 +292,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
   if (!quick) rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   // which of the original's frames is each of the Dreamport's: the same, but for the frames only the original has
-  const held = expand(recording.held, frames);
-  const originalOf = new Int32Array(frames), originalHeld = [], sets = [];
-  // a stretch only the original has: its buttons, and the values it writes to its memory, at frames counted the same way
-  const addStretch = ({ frames: count, held: own, sets: values = [] }) => {
-    for (const set of values) sets.push({ ...set, frame: originalHeld.length + set.frame + (keysLate ? 1 : 0), address: parseInt(set.address, 16) });
-    originalHeld.push(...expand(own, count));
-  };
-  let gap = 0;
-  for (let frame = 0; frame < frames; frame++) {
-    for (; gap < recording.onlyInOriginal.length && recording.onlyInOriginal[gap].at === frame; gap++) addStretch(recording.onlyInOriginal[gap]);
-    originalOf[frame] = originalHeld.length;
-    originalHeld.push(held[frame]);
-  }
-  for (; gap < recording.onlyInOriginal.length; gap++) addStretch(recording.onlyInOriginal[gap]);
-  sets.sort((a, b) => a.frame - b.frame);
+  const { held, originalOf, originalHeld, sets } = originalPlay(recording, { keysLate });
   const onlyInOriginal = originalHeld.length - frames;
 
   say('starting the Dreamport…');

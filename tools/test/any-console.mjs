@@ -86,7 +86,7 @@ async function stopPartway(signal) {
 
 function tidy() {
   const kept = readdirSync(MEDIA).filter(file => file.startsWith(GAME)).map(file => join(MEDIA, file));
-  for (const path of [gameFolder(GAME), WORK, RESULTS, CAPTURES, MAP, ...kept]) rmSync(path, { recursive: true, force: true });
+  for (const path of [gameFolder(GAME), WORK, RESULTS, CAPTURES, MAP, join(LOCAL, 'routes', GAME), ...kept]) rmSync(path, { recursive: true, force: true });
 }
 
 // the game's preview as share makes it, from a commit no branch holds. Nothing is sent anywhere
@@ -183,6 +183,7 @@ async function main() {
   run = dp('prove', GAME, 'rates');
   check(run.status === 0 && report('rates').matched === 120 && report('rates').sound.heard, `a game that chooses its own sound rate is heard at the one the tools compare at: ${report('rates').matched} of ${report('rates').frames}`);
   if (run.status) console.log(run.out);
+  findsRoute();
   await inC(original);
   run = dpWith({ DISPLAY: ':99', WAYLAND_DISPLAY: 'nowhere' }, 'prove', GAME, 'later', '--quick');
   check(run.status === 0, `a browser nobody sees doesn't mind a screen it can't reach: ${lastLine(run)}`);
@@ -244,6 +245,48 @@ async function main() {
   check(refused.includes('music.dat: this is a copy of a game'), `share won't publish one of its tracks under another name: ${refused || 'it would'}`);
 
   await ownScreen(cartridge);
+}
+
+// The route finder (tools/route.mjs), on the walker the made-up console keeps in its work memory, which shows in no
+// picture (made-up-core.c): A steps along, a wall stops a walker that isn't hopping, and a pit loses one that is on the
+// ground. It has to find when to hop, with Start, and what it writes is a recording like any other.
+function findsRoute() {
+  console.log('The route finder');
+  const recordings = join(proofFolder(GAME), 'recordings');
+  let run = dp('route', GAME, 'walk', '--from', 'buttons:10', '--goal', 'the-end');
+  check(run.status !== 0 && run.out.includes('route.json isn\'t there yet'), 'route asks for what the game says of its original first');
+  writeFileSync(join(proofFolder(GAME), 'route.json'), `${JSON.stringify({
+    about: 'Where the made-up console keeps its walker.',
+    values: { step: { address: '00000004', bytes: 4 }, hop: { address: '00000008', bytes: 4 }, lost: { address: '0000000C', bytes: 4 } },
+    cells: { step: 1 }, apart: { hop: 4 }, lost: ['lost=1'],
+    goals: { 'the-wall': 'step>=21', 'the-end': { after: 'the-wall', when: 'step>=60' }, nowhere: 'hop>=100' },
+    buttons: ['', 'A', 'B', 'START', 'A START'],
+  }, null, 2)}\n`);
+  run = dp('route', GAME, 'walk', '--goal', 'the-end');
+  check(run.status !== 0 && run.out.includes('--from'), 'with no recording to start from, it says how to name one');
+  const asked = ['route', GAME, 'walk', '--from', 'buttons:10', '--goal', 'the-end', '--at-once', '1', '--seed', '3'];
+  run = dp(...asked);
+  const file = join(recordings, 'walk.json'), found = existsSync(file) ? readFileSync(file, 'utf8') : '';
+  const walk = found ? JSON.parse(found) : {};
+  check(run.status === 0 && walk.frames > 70 && run.out.includes('played again from power-on they still do'), `it finds the presses past the wall and over the pit, one goal after the other, and plays them again from power-on to be sure: ${lastLine(run)}`);
+  if (run.status) console.log(run.out);
+  check(walk.held?.some(([, buttons]) => buttons.includes('START')) && walk.held?.some(([, buttons]) => buttons.includes('A')) && JSON.stringify(walk.held?.slice(0, 1)) === '[[0,[]]]', 'what it writes starts with the other recording\'s presses and holds the buttons that hop and step');
+  run = dp('route', GAME, 'walk', '--goal', 'the-end');
+  check(run.status === 0 && run.out.includes('already reaches'), `a recording that's already there has nothing to find: ${lastLine(run)}`);
+  run = dp(...asked);
+  check(run.status !== 0 && run.out.includes('--replace'), 'it won\'t write over a recording unless told');
+  run = dp(...asked, '--replace', '--fresh');
+  check(run.status === 0 && readFileSync(file, 'utf8') === found, 'with one console, the same seed finds the same presses');
+  run = dp('prove', GAME, 'walk');
+  check(run.status === 0 && report('walk').matched === walk.frames, `prove plays what it wrote like any recording: ${report('walk').matched} of ${report('walk').frames}`);
+  if (run.status) console.log(run.out);
+  // a goal nothing reaches: it stops by itself, says how far it got, leaves a picture, and goes on from there next time
+  run = dp('route', GAME, 'lost-walk', '--from', 'buttons:10', '--goal', 'nowhere', '--minutes', '0.05', '--at-once', '2');
+  check(run.status === 1 && run.out.includes('Not found') && run.out.includes('It reached') && !existsSync(join(recordings, 'lost-walk.json')), `a goal it can't reach ends it, with how far it got and no recording: ${run.out.split('\n').find(line => line.startsWith('Not found'))}`);
+  check(existsSync(join(LOCAL, 'routes', GAME, 'lost-walk', 'newest.png')), 'it leaves a picture of where it stopped, on this computer');
+  run = dp('route', GAME, 'lost-walk', '--from', 'buttons:10', '--goal', 'nowhere', '--minutes', '0.05', '--at-once', '2');
+  check(run.status === 1 && run.out.includes('it found before again'), `run again, it goes on from the places it had: ${run.out.split('\n').find(line => line.includes('before again'))}`);
+  rmSync(join(LOCAL, 'routes', GAME), { recursive: true, force: true });
 }
 
 // the same game written in C, on the base every console's kit in C shares (kit/c/), built to WebAssembly by the tools

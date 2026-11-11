@@ -23,3 +23,6 @@ export const runOriginal = ({ copy, ...rest }) => runReference({
   ...rest, program: ORIGINAL, width: WIDTH, height: HEIGHT, stateBytes: STATE_BYTES,
   args: names => [copy, String(rest.frames), names.buttons, names.functions, names.pictures, names.sound, names.sets, names.states],
 });
+
+/** What runs the route finder's search on a copy, in the folder `spec` is in (lib/explore.h): the program, what it's given, and how many bytes a frame's buttons take in its files. */
+export const searchOriginal = ({ copy, spec }) => ({ program: ORIGINAL, args: [copy, 'route', spec], buttonBytes: 2 });

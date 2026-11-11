@@ -11,6 +11,7 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `setup` | Builds the reference emulator the original runs in |
 | `rom` | Checks a copy of a game, says which game and which version it is, and remembers where it is |
 | `play` | Opens a game in a browser with your copy, and with `--record` keeps what you play as a recording, after another recording's presses with `--from` |
+| `route` | Finds the presses that take the original from where a recording leaves it to a goal, such as an act's end, and writes them as a recording, with nobody playing ([Finding a route](#finding-a-route)) |
 | `prove` | Plays each recording in the original and in the Dreamport, compares every frame, its picture and its sound, says what the console holds that differs, updates the numbers, and with `--stills` keeps pictures of the frames you name |
 | `capture` | Lets you play the original in a window, and keeps a real moment of it for the game's card, or with `--open`, `--pick` and `--from` does that while the game is being made, with nothing waiting for anyone |
 | `codemap` | Makes the code map: every function in the original, with its address and size |
@@ -56,7 +57,7 @@ mGBA is the reference: the original runs in it, on your computer only, so there'
 
 `--from <recording>` starts the new recording with another recording's presses, so a part later in the game can be recorded without playing everything before it again. Press Play and the game first plays them, at its own speed and with your buttons doing nothing, then it's your turn, and the terminal says when. `--from <recording>:<frame>` plays them up to that frame only, so `--from act-1:2100` takes over at frame 2100 of `act-1`. The new recording keeps those presses, and the stretches only the original has among them, so it still starts from power-on and `prove` plays it like any other.
 
-A recording can also be written by hand, as a list of presses, which is how `/dreamport` makes them, as nobody plays there, and which suits a part played with nothing pressed, such as logos and an intro left alone. Sonic Advance Dreamport's [logos and intro](../games/sonic-advance/proof/recordings/logos-and-intro.json) is one: A on the language screen, then nothing.
+A recording can also be written by hand, as a list of presses, which is how `/dreamport` makes them, as nobody plays there, and which suits a part played with nothing pressed, such as logos and an intro left alone. For a part where the character has somewhere to get to, such as a whole act, `route` finds the presses instead ([Finding a route](#finding-a-route)). Sonic Advance Dreamport's [logos and intro](../games/sonic-advance/proof/recordings/logos-and-intro.json) is one: A on the language screen, then nothing.
 
 A recording holds nothing from the game, only button presses, so it lives in the game's folder and goes in a commit, and anyone with their own copy can play it again. Write what it plays in its `about`. Its other fields:
 
@@ -89,6 +90,56 @@ It's still all compared: every frame of the part, against the original, the same
 The tools hold a game to this where it can say so. In a frame no player could ever see, a game's code writes why to `dreamportsProof.neverInPlay`, as Sonic Advance 2's countdown does for a character a start point has left in the air. `prove` names those frames and fails, however they compare, it keeps them in `progress.json`, and `npm run check` and the build stop until the recording is played again without them, so a pull request with one can't pass its checks. Only a game's own code knows what its opening does, so a game whose opening holds its character adds this line itself ([the kit's README](../kit/gba/README.md#for-the-proof-tools) shows how). Until it does, `prove` reminds it in one line whenever a recording it plays has a start point and the game's code never names `neverInPlay`, which doesn't change whether the recording passes. A game with no such opening can end the reminder with a comment naming it that says why. Keep it to what a start point can cause, as a real start must never be flagged.
 
 A recording's start point is only words and numbers, so it goes in a commit and anyone can replay it. Save states stay out of this: they hold the game's memory, so they can't go in a commit, and nobody else could replay them.
+
+## Finding a route
+
+`npm run dp -- route <game> <name> --goal <goal>` finds a recording's presses when nobody plays. It's for a part where the character has somewhere to get to, such as a whole act and its boss. It searches the original itself, in the reference emulator, for the buttons that take it from where a recording leaves it to the goal, and writes them as `games/<game>/proof/recordings/<name>.json`, a recording like any other, which `prove` then compares with the Dreamport. It needs none of the Dreamport's code, so a part's recording can be there before a line of the part is written, and every round of work after that is `prove`.
+
+The way there comes from a recording. `--from <recording>[:<frame>]` starts the new one with another's presses, up to a frame or to its end, as `play --record` does, and keeps its start point and the stretches only the original has. Without `--from`, `<name>` is a recording that's already there, and it grows from its last frame.
+
+The goal is one the game names in its `proof/route.json`, such as `act-end`, or a condition written out: one of the game's values, a sign and a number, such as `"x>=9000"`, with commas between several that all have to hold, as in `"x>=9000,y<700"`. The signs are `=`, `!=`, `<`, `<=`, `>`, `>=`, `&` for a value that has one of those bits, and `!&` for one that has none.
+
+```sh
+npm run dp -- route sonic-advance angel-island-act-2 --from angel-island-act-2-opening --goal angel-island-act-2
+```
+
+**How it searches.** It never plays from the start twice. It keeps a copy of the console's state at every new place the game reaches, a place being a cell of a grid over a few of the game's own values, such as where the character is. Then it picks a place, brings its state back, holds some buttons for a few frames, and keeps whatever new places that reaches, again and again, on several consoles at once that share what they find. The newest places and the ones tried least are picked most, so it spreads through a stage like water, and play that can't go on, such as a life lost, is dropped. Nothing is drawn as it searches, which the game can't tell, so the original runs at 2,000 to 3,000 frames a second on each console.
+
+**What it prints.** Every few seconds, a line with how many places it has reached and where the newest is. It stops by itself. At the goal it plays the whole list of presses once more from power-on, straight through, and writes the recording only if they still reach the goal. When nothing new has turned up for a long while, or its time is over, it says so, with how far each value got, and leaves a map of every place it reached and pictures of where it stopped in `.dreamports/routes/<game>/<name>/`. Those show the game, so they stay on your computer. What it found is kept there too, and the same command goes on from it. A `--goal` that names a place it already reached writes the recording that gets there at once, to look at with `prove`'s `--stills` or to go on from another way.
+
+**When it's stuck**, the map and the pictures say where. Most often the grid doesn't tell apart two states that lead to different things, so the search throws one of them away. A place that can only be passed with speed needs the character's speed under `apart`. A fight needs how far it has got, such as the boss's health, in its `cells`, and the game's clock under `apart`, as what a boss lets you do depends on when. A place where the way only opens later, such as a platform that moves, needs the search to wait there, which `wait` lets it do. A value the grid doesn't have is added to `route.json`, and `--cells`, `--apart` and `--wait` try another grid for one search, such as `--cells x:16,y:16` or `--wait 90:3`.
+
+| Flag | What it does |
+| :--- | :--- |
+| `--from <recording>[:<frame>]` | Starts the new recording with another's presses |
+| `--goal <goal>` | Where to get to: one of the game's goals, or a condition |
+| `--minutes <how long>` | How long it may search, 10 unless told. The same command goes on from where it stopped |
+| `--cells <value>:<size>,…` and `--apart <value>:<size>,…` | Another grid for this search |
+| `--wait <frames>:<states>` | Each place also keeps a state for each stretch of that many frames after the search first reached it, up to that many, so it can wait there |
+| `--then <frames>` | Frames with nothing held after the goal, such as an act's results |
+| `--at-once <how many>` | How many consoles search at the same time: as many as the computer has idle cores unless told, up to 12 |
+| `--seed <number>` | Other dice. With `--at-once 1`, the same seed finds the same presses every time |
+| `--fresh` and `--replace` | Forgets what it found before, and writes over a recording that's already there |
+
+### What a game says of its original
+
+The search knows nothing of any game. A game tells it where its original keeps the few values it reads, in `games/<game>/proof/route.json`, which every version of the game shares. Like a recording's `sets` it holds only addresses and numbers, so it goes in a commit. [Sonic Advance's](../games/sonic-advance/proof/route.json) is the example.
+
+- `values`: each value's name, with its `address` in the work memory, in hexadecimal as the code map has it, its `bytes`, 1, 2 or 4, `signed` when it can be negative, and `per`, how many of its units make one of what people count in, such as 256 to a pixel. Conditions and grids are then written in pixels.
+- `cells`: the grid, each value in it with how much of it one cell covers, such as `{ "x": 32, "y": 32 }`.
+- `apart` (optional): what tells two states of one place apart, the same way, such as `{ "speedX": 4 }`. A place then keeps a state for each.
+- `wait` (optional): `{ "frames": 90, "states": 3 }` has each place also keep a state for each stretch of 90 frames after the search first reached it, up to 3, so it can wait there for what only comes later. It costs memory, as every place keeps that many more states.
+- `lost`: conditions for play that can't go on, such as a life being lost. Without them the search wastes its tries on falls.
+- `goals`: the goals the game names, each a condition. One can be written as `{ "when", "cells", "apart", "wait" }` to have a grid of its own, and with `"after"` it names the goal to reach first: an act's end after the place its boss comes in, so one command does both, each with its own grid.
+- `buttons` (optional): the sets of buttons the search may hold, such as `"RIGHT A"`. Without it, each direction alone and with each of the console's other buttons, but Start and Select.
+
+A value the game keeps in memory it hands out as it goes, such as a boss's health, has no address of its own. It has `found` in place of `address`: the stretch of memory to look through (`from`, `to`, `step`), the `mark` that's beside it, such as the address of a function its record points to, and from the mark where the record's own address is (`pointer`, `pointerBytes`, `base`) and where in the record the value is (`offset`). It reads -1 while no record is there, which makes "the boss has come" a goal, `boss>=0`.
+
+To find where a game keeps something, look in its notes (`npm run dp -- notes <game>`) and its decompilation's names first. Then check it: `npm run dp -- route <game> <recording> --at <frames>` prints the game's values at those frames of a recording, and with `--memory <from>-<to>` every value in that stretch of work memory that isn't the same at all of them, which is how a value that changes when something happens is found.
+
+### What it can't do
+
+It searches for a way, not for a good one: the presses it finds look like nobody's play, with hops that do nothing, and it takes hits. A part with nothing to reach, such as a menu, is still written by hand. It needs the reference emulator to copy its state out and bring it back, which mGBA does and nearly every libretro core does, and on those other consoles it searches with one console at a time. It has been run on the Game Boy Advance and on the made-up console of the tools' tests only.
 
 ## What a recording shows
 
@@ -268,6 +319,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 | :--- | :--- |
 | `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum, `keysAfterVBlank` for a game that reads its buttons just after the V-blank, `screen` for a game on another console that [chooses its own size](../docs/CONSOLES.md#how-a-console-is-known), and `shows` for what a recording can be named for, as [What a recording shows](#what-a-recording-shows) says |
 | `recordings/` | Recorded play, one file per recording |
+| `route.json` | Optional: where the original keeps the few values `route` reads as it searches, and the goals the game names, as [Finding a route](#what-a-game-says-of-its-original) says |
 | `code-map.json` | The code map |
 | `progress.json` | Each recording's results and the code that ran in matching play, written by `prove` |
 | `port-map.json` | The port map: the functions the game's code names, and the names that land inside one but not at its start, written by `portmap` |
@@ -276,7 +328,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 
 ## What stays on your computer
 
-Everything else the tools keep is in `.dreamports/`, in the repository's folder, which the ignore rules keep out of commits: where your copies are, the reference emulator, every result with its pictures and clips, what `read` prints, what you played for `capture`, and the browser profiles the tools use. Deleting it is safe, as `setup` and `rom` make it again. Only what you send leaves it, such as a clip in a pull request. A coding agent is different: whatever it reads, such as what `read` prints, goes to the company that runs its model, unless that model runs on your computer too.
+Everything else the tools keep is in `.dreamports/`, in the repository's folder, which the ignore rules keep out of commits: where your copies are, the reference emulator, every result with its pictures and clips, what `route` found and the pictures of where it stopped, what `read` prints, what you played for `capture`, and the browser profiles the tools use. Deleting it is safe, as `setup` and `rom` make it again. Only what you send leaves it, such as a clip in a pull request. A coding agent is different: whatever it reads, such as what `read` prints, goes to the company that runs its model, unless that model runs on your computer too.
 
 ## For a game on the Game Boy Advance kit
 

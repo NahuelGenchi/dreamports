@@ -3,6 +3,7 @@
 //
 // host CORE ROM FRAMES BUTTONS - PICTURES SOUND SETS - WIDTH HEIGHT [KEY=VALUE…]
 // host CORE ROM live WIDTH HEIGHT [KEY=VALUE…]
+// host CORE ROM route SPEC [KEY=VALUE…]
 //
 // BUTTONS holds each frame's buttons, 32 bits each, PICTURES the frames whose picture is wanted, SETS the values to write
 // to the console's work memory ({ frame, address, bytes, value }, 32 bits each) and KEY=VALUE the core's settings. For
@@ -17,6 +18,10 @@
 // The environment's DP_READS, when it's set, names a file of values to read from the console's work memory as a frame
 // ends, in the order of their frames: each its frame, its address and how many bytes (32 bits each), little-endian. The
 // JSON on stderr then has them, in that order, under "reads", which is how the tools learn what the original holds.
+//
+// `route` finds the buttons that take the game to a goal, for the route finder (tools/route.mjs): SPEC is a file that says
+// what to search for, as lib/explore.h reads it, and it prints how far it has got. It needs a core that can copy its state
+// out and bring it back, as nearly all can, and searches with one console, as a core is one console.
 //
 // On a console whose games choose their own sound's rate, as a Nintendo 64's do, the core says when it changes, and the
 // environment's DP_SOUND_RATE gives the one rate the tools hear it at.
@@ -41,6 +46,8 @@
 #include <unistd.h>
 #define NULL_FILE "/dev/null"
 #endif
+
+#include "explore.h"
 
 // what's used of libretro's interface (libretro.h, MIT licence), which every core keeps the same
 #define ENV_GET_CAN_DUPE 3
@@ -84,6 +91,9 @@ static bool (*retro_load_game)(const struct game_info*);
 static void (*retro_run)(void);
 static void* (*retro_get_memory_data)(unsigned);
 static size_t (*retro_get_memory_size)(unsigned);
+static size_t (*retro_serialize_size)(void);
+static bool (*retro_serialize)(void*, size_t);
+static bool (*retro_unserialize)(const void*, size_t);
 
 static FILE* out;
 static FILE* err;
@@ -297,10 +307,47 @@ static void* find(void* library, const char* name) {
 	return found;
 }
 
+// what the search needs of the console (lib/explore.h): the one core this program runs
+static size_t searchSize;
+static void searchFrame(void* console, uint32_t buttons) {
+	(void) console;
+	held = buttons;
+	sampleCount = 0;
+	retro_run();
+}
+static void searchSave(void* console, void* to) {
+	(void) console;
+	if (!retro_serialize(to, searchSize)) {
+		fprintf(err, "The core wouldn't copy its state out.\n");
+		exit(2);
+	}
+}
+static void searchLoad(void* console, const void* from) {
+	(void) console;
+	if (!retro_unserialize(from, searchSize)) {
+		fprintf(err, "The core wouldn't take its state back.\n");
+		exit(2);
+	}
+}
+static int searchRead(void* console, uint32_t address, uint32_t bytes, uint32_t* value) {
+	(void) console;
+	uint8_t* memory = retro_get_memory_data(MEMORY_SYSTEM_RAM);
+	if (!memory || (size_t) address + bytes > retro_get_memory_size(MEMORY_SYSTEM_RAM)) return 0;
+	*value = 0;
+	for (uint32_t i = 0; i < bytes; i++) *value |= (uint32_t) memory[address + i] << (i * 8);
+	return 1;
+}
+static void searchSet(void* console, uint32_t address, uint32_t bytes, uint32_t value) {
+	(void) console;
+	uint8_t* memory = retro_get_memory_data(MEMORY_SYSTEM_RAM);
+	size_t size = retro_get_memory_size(MEMORY_SYSTEM_RAM);
+	for (uint32_t i = 0; i < bytes && memory && address + i < size; i++) memory[address + i] = value >> (i * 8);
+}
+
 int main(int argc, char** argv) {
-	bool live = argc >= 6 && !strcmp(argv[3], "live");
-	if (argc < (live ? 6 : 12)) {
-		fprintf(stderr, "Usage: host CORE ROM FRAMES BUTTONS - PICTURES SOUND SETS - WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM live WIDTH HEIGHT [KEY=VALUE…]\n");
+	bool live = argc >= 6 && !strcmp(argv[3], "live"), route = argc >= 5 && !strcmp(argv[3], "route");
+	if (argc < (live ? 6 : route ? 5 : 12)) {
+		fprintf(stderr, "Usage: host CORE ROM FRAMES BUTTONS - PICTURES SOUND SETS - WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM live WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM route SPEC [KEY=VALUE…]\n");
 		return 2;
 	}
 	// what the core prints goes nowhere: stdout is for the tools alone
@@ -316,12 +363,13 @@ int main(int argc, char** argv) {
 	static char outBuffer[1 << 16];
 	setvbuf(out, outBuffer, _IOFBF, sizeof outBuffer);
 
-	int at = live ? 4 : 10;
-	wantedW = atoi(argv[at]);
-	wantedH = atoi(argv[at + 1]);
+	// a search shows no picture, so it's given no size for one
+	int at = live ? 4 : route ? 3 : 10;
+	wantedW = route ? 0 : atoi(argv[at]);
+	wantedH = route ? 0 : atoi(argv[at + 1]);
 	settings = (const char**) argv + at + 2;
 	settingCount = argc - at - 2;
-	picture = malloc(wantedW * wantedH * 2);
+	picture = malloc(wantedW * wantedH * 2 + 2);
 	systemFolder = getenv("DP_SYSTEM") ? getenv("DP_SYSTEM") : ".";
 	saveFolder = getenv("DP_SAVES") ? getenv("DP_SAVES") : ".";
 
@@ -344,6 +392,11 @@ int main(int argc, char** argv) {
 	retro_run = find(library, "retro_run");
 	retro_get_memory_data = find(library, "retro_get_memory_data");
 	retro_get_memory_size = find(library, "retro_get_memory_size");
+	if (route) {
+		retro_serialize_size = find(library, "retro_serialize_size");
+		retro_serialize = find(library, "retro_serialize");
+		retro_unserialize = find(library, "retro_unserialize");
+	}
 
 	retro_set_environment(environment);
 	retro_set_video_refresh(videoRefresh);
@@ -368,6 +421,19 @@ int main(int argc, char** argv) {
 	retro_set_controller_port_device(0, DEVICE_JOYPAD);
 	retro_get_system_av_info(&av);
 	wantedRate = getenv("DP_SOUND_RATE") ? atof(getenv("DP_SOUND_RATE")) : 0;
+
+	if (route) {
+		// what the search says goes where the tools read it, which the core's own words never reach
+		exSaid = out;
+		exErrors = err;
+		searchSize = retro_serialize_size();
+		if (!searchSize) {
+			fprintf(err, "The core can't copy its state out, which the search needs.\n");
+			return 2;
+		}
+		struct ex_machine machine = { NULL, searchFrame, searchSize, searchSave, searchLoad, searchRead, searchSet };
+		return exploreRoute(machine, NULL, argv[4], 4);
+	}
 
 	if (live) {
 		uint32_t buttons;

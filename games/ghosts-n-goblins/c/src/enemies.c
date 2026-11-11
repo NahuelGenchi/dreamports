@@ -37,6 +37,11 @@ static void flags_past_page(uint8_t object, uint32_t times) {
   if (object >= 0x10) took_times(READ_PAST_PAGE, times);
 }
 
+// The sixteenth object's heading is in the next page too, and so is the one before it: a cycle more to read it by its number.
+static void heading_past_page(uint8_t object) {
+  if (object >= 0x0F) took(READ_PAST_PAGE);
+}
+
 /** Bank 2's $8416. In the first stage's first five screens, and in the eighth place, the count goes down a round at a time. */
 void zombies_come(uint8_t *x) {
   if (STAGE != 0 && STAGE != 7) { took(ZOMBIES_OTHER_STAGE); return; }
@@ -124,7 +129,8 @@ uint8_t weapon_that_touches(uint8_t enemy) {
   return 0;
 }
 
-static uint8_t touch_tests(uint8_t enemy) {
+uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched) {
+  *arthur_touched = 0;
   if (!(RAM[OBJECT_FLAGS + enemy] & OBJECT_FLAG_SHOWN)) {
     took(ENEMY_NOT_SHOWN);
     flags_past_page(enemy, 1);
@@ -145,8 +151,13 @@ static uint8_t touch_tests(uint8_t enemy) {
   flags_past_page(enemy, 1);
   if (!arthur_touches(enemy)) { took(ENEMY_NOT_TOUCHED); return 0; }
   RAM[OBJECT_FLAGS + ARTHUR] |= ARTHUR_HIT;
+  *arthur_touched = 1;
   took(ENEMY_TOUCHES_ARTHUR);
   return 0;
+}
+static uint8_t touch_tests(uint8_t enemy) {
+  int arthur_touched;
+  return enemy_touch_tests(enemy, &arthur_touched);
 }
 
 // $F770: a zombie that's been hit, six rounds of three shapes, falling the way the weapon went, and it's gone.
@@ -197,6 +208,7 @@ static void part_out_of_the_ground(uint8_t object, uint8_t step) {
   took(ZOMBIE_SHAPE);
   took(shape == 0x50 ? ZOMBIE_SHAPE_HEAD : ZOMBIE_SHAPE_FACES);
   if (shape != 0x50) shape = (uint8_t)(shape + ((RAM[OBJECT_HEADING + object] & HEADS_LEFT) << 1));
+  if (shape != 0x50) heading_past_page(object);
   RAM[OBJECT_SHAPE + object] = shape;
   RAM[OBJECT_COLOURS + object] = 0x02;
   took(ZOMBIE_COLOURS_PALE);
@@ -319,6 +331,7 @@ void zombie(uint8_t object) {
   // its two walking shapes, four rounds each, facing the way it's headed
   RAM[OBJECT_SHAPE + object] = (uint8_t)(0x54 + ((*count >> 2) & 1) + ((RAM[OBJECT_HEADING + object] & HEADS_LEFT) << 1));
   took(ZOMBIE_STEP_SHAPE);
+  heading_past_page(object);
   --*count;
   took(ZOMBIE_TURN_COUNTED);
 }
@@ -546,7 +559,7 @@ static void plant_shoots(uint8_t object) {
 
 // $F6F6: an enemy that a weapon has killed burns away where it is, eight shapes from the copy's list at $F760, two
 // rounds each, and is gone. The kinds 5, 9 and $15, which burn with the shapes at $F768, aren't ported yet.
-static void burn_away(uint8_t object) {
+void enemy_burns_away(uint8_t object) {
   uint8_t *count = &RAM[OBJECT_COUNT + object];
   show_object(object);
   if (object_in_view(object)) took(BURNING_IN_VIEW);
@@ -573,7 +586,7 @@ void plant(uint8_t object) {
   flags_past_page(object, 1);
   if (*flags & HIT) {
     took(PLANT_DEAD);
-    burn_away(object);
+    enemy_burns_away(object);
     return;
   }
   took(PLANT_ALIVE);
@@ -595,7 +608,7 @@ void plant(uint8_t object) {
     took(PLANT_HIT_SCORE);
     add_score(object, 0);
     took(JUMPS);
-    burn_away(object);
+    enemy_burns_away(object);
     return;
   }
   took(PLANT_NOT_HIT);
@@ -628,13 +641,11 @@ void plant(uint8_t object) {
   touch_tests(object);
 }
 
-/** $F49C, kind $2B: a plant's shot, which flies the way it was headed until it's out of the view, and hits Arthur if it
- *  touches him. With the cross a weapon can stop it, at $F557, which isn't ported yet. */
-void plant_shot(uint8_t object) {
-  RAM[OBJECT_COLOURS + object] = 0;
-  took(SHOT_BEGINS);
+// $F4A3: a shot flies the way it was headed until it's out of the view, and hits Arthur if it touches him. With the
+// cross a weapon can stop it, at $F557, which isn't ported yet.
+static void shot_flies(uint8_t object, uint8_t speed) {
   took(CALLS);
-  move_object(object, (uint8_t)(0x10 + RAM[0xD3]));
+  move_object(object, (uint8_t)(speed + RAM[0xD3]));
   if (!object_in_view(object)) {
     RAM[OBJECT_FLAGS + object] = 0;
     took(SHOT_GONE);
@@ -650,4 +661,18 @@ void plant_shot(uint8_t object) {
   if (!arthur_touches(object)) { took(ENEMY_NOT_TOUCHED); return; }
   RAM[OBJECT_FLAGS + ARTHUR] |= ARTHUR_HIT;
   took(ENEMY_TOUCHES_ARTHUR);
+}
+
+/** $F49C, kind $2B: a plant's shot. */
+void plant_shot(uint8_t object) {
+  RAM[OBJECT_COLOURS + object] = 0;
+  took(SHOT_BEGINS);
+  shot_flies(object, 0x10);
+}
+
+/** $F4BC, kind $2C: the flier's shot, in its own colours and faster. */
+void flier_shot(uint8_t object) {
+  RAM[OBJECT_COLOURS + object] = 0x03;
+  took(FLIER_SHOT_BEGINS);
+  shot_flies(object, 0x1A);
 }
