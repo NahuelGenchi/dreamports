@@ -6,7 +6,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL } from '../lib/paths.mjs';
 import { buildJobs } from '../lib/jobs.mjs';
@@ -26,6 +26,8 @@ const HARNESS = fileURLToPath(new URL('./original.c', import.meta.url));
 const READER_SOURCE = fileURLToPath(new URL('./read.c', import.meta.url));
 const LINKED_SOURCE = fileURLToPath(new URL('./linked.c', import.meta.url));
 const ON_WINDOWS = fileURLToPath(new URL('./on-windows.h', import.meta.url));
+// the route finder's search, which the program that runs the original includes (lib/explore.h)
+const EXPLORE = fileURLToPath(new URL('../lib/explore.h', import.meta.url));
 /** The program that runs the original (original.c). */
 export const ORIGINAL = join(FOLDER, process.platform === 'win32' ? 'original.exe' : 'original');
 /** The program that runs two to four linked copies of the original (linked.c). */
@@ -35,7 +37,7 @@ export const READER = join(FOLDER, process.platform === 'win32' ? 'read.exe' : '
 const STAMP = join(FOLDER, 'built.json');
 
 const sha1 = (...files) => files.reduce((hash, file) => hash.update(readFileSync(file)), createHash('sha1')).digest('hex');
-const harness = () => sha1(HARNESS, ON_WINDOWS);
+const harness = () => sha1(HARNESS, ON_WINDOWS, EXPLORE);
 const reader = () => sha1(READER_SOURCE, ON_WINDOWS);
 const linked = () => sha1(LINKED_SOURCE, ON_WINDOWS);
 const built = () => {
@@ -101,12 +103,13 @@ function buildHere(log, windows) {
     return join(WORK, basename(file));
   };
   beside(ON_WINDOWS);
+  beside(EXPLORE);
   const made = program => join(WORK, basename(program));
   // on macOS, mGBA's library asks Apple's CoreFoundation where the program is, and on Windows it needs Windows' own
   // libraries, and -static so the programs run once the compiler has gone
   const library = [join(BUILD, 'libmgba.a'), '-lm', ...(process.platform === 'linux' ? ['-lpthread'] : []), ...(process.platform === 'darwin' ? ['-framework', 'CoreFoundation'] : []),
     ...(windows ? ['-static', '-lws2_32', '-lshlwapi', '-lshell32', '-lole32', '-luuid', '-lwinmm', '-liphlpapi'] : [])];
-  run(compiler, ['-O2', '-o', made(ORIGINAL), beside(HARNESS), ...headers, ...library], 'Building the program that runs the original', windows?.env);
+  run(compiler, ['-O2', '-o', made(ORIGINAL), beside(HARNESS), ...(windows ? [] : ['-I', dirname(EXPLORE)]), ...headers, ...library], 'Building the program that runs the original', windows?.env);
   // the decoder's text is in mGBA's debugger part, which the library leaves out: decoder.c is built again with it,
   // on its own, as the rest has to be built as the library was. Its headers declare strlcpy unless told the computer
   // has one, and macOS's is a macro, so there they have to be told

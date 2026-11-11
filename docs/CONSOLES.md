@@ -51,7 +51,7 @@ These are the numbers each emulator gave for a small program, once it had set up
 
 **Frames.** On FCEUmm a game's frame shows in the next one, as `prove` assumes, and so does its sound. The others ran only a program that does nothing to show it.
 
-**Save states and work memory.** Nothing in the tools uses a save state, and `prove --state` says it can't compare on these consoles, so their sizes don't matter yet. A start point writes to work memory as the emulator keeps it. Going by their source, Genesis Plus GX keeps it in pairs of bytes swapped and Parallel N64 in fours, so a whole word lands as it should and a lone byte needs its address changed. Only the NES has tried a start point.
+**Save states and work memory.** Only `route` uses save states, the emulator's own, in memory as it searches for a recording's presses, and it keeps none of them ([Finding a route](../tools/README.md#finding-a-route)): it needs a core that can copy its state out and bring it back, and has been run on none of these consoles yet. `prove --state` says it can't compare on these consoles, so their sizes don't matter yet. A start point writes to work memory as the emulator keeps it. Going by their source, Genesis Plus GX keeps it in pairs of bytes swapped and Parallel N64 in fours, so a whole word lands as it should and a lone byte needs its address changed. Only the NES has tried a start point.
 
 **Buttons.** The NES's were pressed in a recording. The Mega Drive's and Nintendo 64's agree with their emulators' source, and the rest are still only as chosen.
 
