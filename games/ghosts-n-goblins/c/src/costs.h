@@ -858,10 +858,15 @@ COST(CROW_WINGS, 24)              // $F9F0 to $F9FF
 COST(CROW_FLIES_RIGHT, 9)         // $FA02, and back,
 COST(CROW_FLIES_LEFT, 21)         // or with the shapes for the left
 COST(PLANT_ALIVE, 3)              // bank 4's $9EC3 to $9EDF: a plant
+COST(PLANT_DEAD, 5)               // or to $F6F6, once it's hit
+COST(BURNING_IN_VIEW, 4)          // $F6FC to $F701, across a page: an enemy that burns away, in the view,
+COST(BURNING_OUT_OF_VIEW, 2)      // or out of it, to sub_F346
+COST(BURNS_ON, 59)                // $F701, and back: its next shape,
+COST(BURNT_AWAY, 8)               // or to sub_F708 after eight
 COST(PLANT_OUT_OF_VIEW, 22)       // $9EE5, and back: it starts again,
 COST(PLANT_IN_VIEW, 3)            // or on to $9EF2
 COST(PLANT_NOT_HIT, 6)            // $9EF2 to $9EF7
-COST(PLANT_HIT, 12)               // or $9EF2 to $9EC8 and sub_F7B4, to sub_ED51
+COST(PLANT_HIT, 18)               // or $9EF2 to $9EC8 and sub_F7B4, to sub_ED51
 COST(PLANT_HIT_SCORE, 50)         // $9ECB to sub_D8FC
 COST(PLANT_WAITS, 2)              // $9EFA to $9EFC,
 COST(PLANT_SHOOTS, 4)             // or to $9F25, across a page
