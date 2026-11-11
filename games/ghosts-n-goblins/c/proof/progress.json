@@ -1,14 +1,13 @@
 {
   "original": "3430811ecc007fa469f5b74db277f872679266dd",
   "percent": 0,
-  "codeMap": {"functions":102,"bytes":4796},
+  "codeMap": {"functions":287,"bytes":26557},
   "proven": {"functions":0,"bytes":0},
   "recordings": {
     "game-start": {
-      "frames": 500,
-      "matched": 305,
-      "differs": [[133,224],[397,499]],
-      "soundDiffers": [[397,499]],
+      "frames": 729,
+      "matched": 729,
+      "differs": [],
       "functions": []
     },
     "title": {
