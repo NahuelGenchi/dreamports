@@ -2,8 +2,8 @@
 // the opening scene has. Each round every object in use runs the code for its kind, and then its place in the stage
 // becomes a place on the screen, for the sprites' task. Arthur, the first object, has a task of his own (arthur.c).
 //
-// So far it has the kinds the opening scene uses: the princess, Satan, and Arthur's armour on the ground. The other
-// kinds do nothing yet.
+// So far it has the kinds the opening scene uses, the princess, Satan, and Arthur's armour on the ground, and the
+// zombies (enemies.c). The other kinds do nothing yet.
 
 #include "game.h"
 
@@ -21,11 +21,11 @@ enum { VIEW_X = 0x64, VIEW_X_SCREEN = 0x65, VIEW_Y = 0x67, VIEW_Y_SCREEN = 0x68 
 #define B_X RAM[0x76]
 
 // sub_F321 and sub_F346
-static void show(uint8_t object) {
+void show_object(uint8_t object) {
   RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN;
   took(OBJECT_SHOWN);
 }
-static void hide(uint8_t object) {
+void hide_object(uint8_t object) {
   RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
   took(OBJECT_SHOWN);
 }
@@ -71,7 +71,7 @@ void place_on_screen(uint8_t object) {
 }
 
 // sub_F0A3: whether an object is in the view's own screen, across and down.
-static int in_view(uint8_t object) {
+int object_in_view(uint8_t object) {
   object_place(object);
   B_Y_SCREEN++;
   view_place();
@@ -79,6 +79,37 @@ static int in_view(uint8_t object) {
   second_from_first();
   took(A_Y_SCREEN ? OBJECT_OUT_OF_VIEW_DOWN : A_X_SCREEN ? OBJECT_OUT_OF_VIEW_ACROSS : OBJECT_IN_VIEW);
   return A_Y_SCREEN == 0 && A_X_SCREEN == 0;
+}
+
+// sub_E3E3 and sub_EA2F. The two blocks $76 and $77, which a stage's set of tiles can make solid, at $E3F3, and a place
+// whose 11 pixels below are on the next screen down, at $EA44, aren't ported yet.
+int on_the_ground(uint8_t object) {
+  took(GROUND_LOOKED_AT);
+  RAM[0x77] = RAM[OBJECT_Y_SCREEN + object];
+  RAM[0x73] = (uint8_t)(RAM[OBJECT_Y + object] + 0x0B);
+  RAM[0x78] = RAM[OBJECT_X_SCREEN + object];
+  RAM[0x74] = RAM[OBJECT_X + object];
+  RAM[0x22] = block_at_stage_place();
+  return RAM[0x22] >= BLOCK_SOLID;
+}
+
+uint8_t free_object(void) {
+  uint8_t object = 1;
+  took(FREE_OBJECT_BEGINS);
+  while (object < NO_OBJECT && RAM[OBJECT_FLAGS + object]) {
+    object++;
+    took(FREE_OBJECT_USED);
+    took(object < NO_OBJECT ? GOES_ROUND : GOES_ON);
+  }
+  took(object < NO_OBJECT ? FREE_OBJECT_FOUND : FREE_OBJECT_NONE);
+  return object;
+}
+
+// For the kinds it doesn't count: the ones it does, at $F70F and $F722, aren't ported yet.
+void remove_object(uint8_t object) {
+  RAM[0x0647 + object] = 0;
+  RAM[OBJECT_FLAGS + object] = 0;
+  took(OBJECT_REMOVED);
 }
 
 // sub_F137: $48, $27 and $26, a number of 24 bits, times $52 over 256, as the original shifts and adds it: half the
@@ -177,7 +208,7 @@ static void princess(uint8_t object) {
 
 // sub_EEA8: shown every other pair of rounds, by the object's count.
 static void flash(uint8_t object) {
-  hide(object);
+  hide_object(object);
   if (RAM[OBJECT_COUNT + object] & 0x02) RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN;
   took(FLASH_AFTER_HIDING);
 }
@@ -285,7 +316,7 @@ static int arthur_within(uint8_t object) {
 // sub_F68E: whether Arthur touches an object, whose own half width and half height are in $26 and $27. He touches nothing
 // while his flags say so, as in the opening scene before his jump. His middle is 4 pixels above his place, and a
 // crouching Arthur, at $F6A2, isn't ported yet.
-static int arthur_touches(uint8_t object) {
+int arthur_touches(uint8_t object) {
   enum { CAN_TOUCH_NOTHING = 0x41, CROUCHING = 0x02 };
   if (RAM[OBJECT_FLAGS + ARTHUR] & CAN_TOUCH_NOTHING) { took(PICK_UP_CANNOT_BE_TOUCHED); return 0; }
   took(TOUCH_SET_UP);
@@ -310,8 +341,8 @@ static void pick_up(uint8_t object) {
   enum { ARMOUR = 5, WITHOUT_ARMOUR = 0x20 };
   RAM[OBJECT_COUNT + object]++;
   took(PICK_UP_BEGINS);
-  show(object);
-  if (!in_view(object)) {
+  show_object(object);
+  if (!object_in_view(object)) {
     // $BA14: hidden while it's out of the view. What the third set of stages does with it then, at $BB72, isn't ported yet.
     RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
     took(PICK_UP_OUT_OF_VIEW);
@@ -355,6 +386,7 @@ wait objects_task(void) {
       if (kind * 2 >= 0x12) took(OBJECT_KIND_PAST_PAGE);
       set_ram16(0x26, peek16((uint16_t)(0x9CED + kind * 2)));
       switch (kind) {
+        case 0x00: zombie(object); break;
         case 0x10: pick_up(object); break;
         case 0x33: princess(object); break;
         case 0x34: satan(object); break;

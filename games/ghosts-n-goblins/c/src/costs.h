@@ -1,8 +1,6 @@
 // Ghosts'n Goblins Dreamport: how long each piece of the original's code takes, in the processor's cycles. This is the
 // one place the game's time is written down (time.c): the game's own code says which piece it has done, by name.
 // Each is the sum of the cycles of the original's instructions for that piece, taken the way the piece's name says.
-//
-// A piece marked "about" stands for code that isn't ported yet, and is a guess at how long that code takes.
 
 // ---- the V-blank interrupt, $C0F0 (main.c, screen.c)
 COST(INTERRUPT_TAKEN, 7)          // the processor's own steps into it
@@ -291,6 +289,7 @@ COST(PICK_UP_FLASHES, 8)          // with its other colour every fourth round
 COST(PICK_UP_CANNOT_BE_TOUCHED, 16) // sub_F68E when Arthur's flags say so
 COST(PICK_UP_LEFT, 35)            // $BA3F to $BB6A, and back
 COST(PICK_UP_ARMOUR_TAKEN, 101)   // $BA3F to sub_F708's end, and back: the armour, in the opening scene
+COST(OBJECT_REMOVED, 42)          // sub_F708, and back, for a kind it doesn't count
 COST(TOUCH_SET_UP, 95)            // sub_F68E to its call of sub_F63A, for an Arthur who stands,
 COST(TOUCH_ENDS, 33)              // and $F6D9, and back
 COST(WITHIN_SAME_SCREEN, 31)      // sub_F63A to $F65D: the two are less than half a screen apart, on one screen of the stage,
@@ -350,7 +349,11 @@ COST(ARTHUR_TURN_BEGINS, 44)      // $DAE4, with sub_DC5B
 COST(ARTHUR_NO_ARMOUR_COLOURS, 6)
 COST(ARTHUR_TURN_CHECKS, 98)      // $DAE7 to $DAFC
 COST(ARTHUR_HELD, 1)              // $DAFC's branch taken
-COST(ARTHUR_GROUND, 74)           // sub_E3E3 and sub_EA2F, with their calls, less the block's
+COST(ARTHUR_IS_HIT, 49)            // or $DAE7 to $E171, when his flags say he's hit
+COST(ARTHUR_HIT_BEGINS, 133)      // $E171 to sub_ED51, with his armour on
+COST(ARTHUR_ARMOUR_OFF, 25)       // $E195 to sub_E1EE
+COST(ARTHUR_KNOCKED_BACK, 29)     // $E1A6 to $DB65
+COST(GROUND_LOOKED_AT, 74)        // sub_E3E3 and sub_EA2F, with their calls, less the block's
 COST(ARTHUR_ON_GROUND, 3)         // $DB01
 COST(ARTHUR_IN_AIR, 5)            // $DB01 to $E28E
 COST(ARTHUR_STANDS, 65)           // $DB06 to $DB65, with sub_DDA1,
@@ -492,7 +495,24 @@ COST(GAME_ROUND_BEGINS, 54)       // $D284 to $D31D
 COST(GAME_ROUND_NO_COLOURS, 8)    // $D31D, three rounds in four,
 COST(GAME_ROUND_COLOURS, 13)      // or to the call of sub_D871
 COST(GAME_ROUND_MIX, 15)          // $D326 to $D32F
-COST(GAME_ROUND_CHECKS, 76)       // $D32F to $D3ED, with sub_D882
+COST(GAME_ROUND_CHECKS, 56)       // $D32F to $D385, with sub_D882
+COST(TIME_STOPPED, 6)             // $D385: the time stands still,
+COST(TIME_OVER_ALREADY, 11)       // or is over,
+COST(TIME_LOOKED_AT, 17)          // or the frames played are looked at, to $D392
+COST(TIME_NO_SECOND, 3)           // fewer than 60,
+COST(TIME_SECOND, 11)             // or a second, to $D399
+COST(TIME_ONES, 3)                // off the ones,
+COST(TIME_TENS, 17)               // or the tens too,
+COST(TIME_MINUTES, 28)            // or the minute
+COST(TIME_LEFT_LOOKED_AT, 12)     // $D3AD to $D3B6
+COST(TIME_IS_LEFT, 3)
+COST(TIME_IS_OVER, 17)            // or none: $D3B8 to $D3C4
+COST(TIME_HURRY_PLAYS, 7)         // $D3C4: the music that hurries plays already,
+COST(TIME_MINUTES_LEFT, 13)       // or there's a minute or more,
+COST(TIME_SECONDS_LEFT, 71)       // or less, and the seconds are worked out, to $D3E1
+COST(TIME_ENOUGH, 3)              // 16 or more,
+COST(TIME_HURRY_CALLED, 10)       // or fewer: to sub_ED51,
+COST(TIME_HURRY_SET, 6)           // and $D3E8
 COST(GAME_ROUND_OBJECTS, 17)      // $D3ED to sub_D596
 COST(STAGE_OBJECT_LISTED, 79)     // sub_D596 to $D5C2: the next object's place in the stage's list, and its first byte
 COST(STAGE_OBJECTS_OVER, 9)       // which is the list's end mark, and back,
@@ -508,7 +528,68 @@ COST(STAGE_OBJECT_NO_ROOM, 8)     // $D71E, and back
 COST(STAGE_OBJECT_STATE, 17)      // $D71E to $D6C1
 COST(STAGE_OBJECT_FILLED, 95)     // $D6C1, and back
 COST(GAME_ROUND_DANGERS, 15)      // $D583 to bank 2's $8400
-COST(DANGERS_NOTHING, 198)        // $8400 to $8415 when nothing comes
+COST(DANGERS_OTHERS, 170)         // $8400 to $8415: its seven calls, and the six routines after the zombies' with nothing to do
+
+// ---- the zombies, bank 2's $8416 and $F7BE (enemies.c)
+COST(ZOMBIES_OTHER_STAGE, 15)     // sub_8416, and back: a place with no zombies,
+COST(ZOMBIES_FIRST_STAGE, 6)      // or the first stage, to $841F,
+COST(ZOMBIES_EIGHTH_PLACE, 10)    // or the eighth place
+COST(ZOMBIES_PAST_THEIR_SCREENS, 15) // $841F, and back: Arthur is past the fifth screen,
+COST(ZOMBIES_COUNTED_DOWN, 13)    // or the count goes down, to $8428
+COST(ZOMBIES_NOT_YET, 9)          // and back,
+COST(ZOMBIES_COME, 17)            // or $8428 to $8435
+COST(ZOMBIE_NONE_FREE, 9)         // $8438, and back: no object is free
+COST(ZOMBIE_BEGINS, 14)           // $8438 to $8442
+COST(ZOMBIE_IS_ORDINARY, 5)       // $8442 to $844B,
+COST(ZOMBIE_IS_FAST, 7)           // or for every fourth
+COST(ZOMBIE_SET_UP, 31)           // $844B to $845D
+COST(ZOMBIE_PLACE_CHOSEN, 25)     // sub_84D7 with its call
+COST(ZOMBIE_PLACED, 49)           // $8461 to $8480
+COST(ZOMBIE_UNDER_A_JUMP, 14)     // $8481 to $8496: Arthur is in the air,
+COST(ZOMBIE_ON_LOWER_GROUND, 21)  // or low in the picture,
+COST(ZOMBIE_ON_UPPER_GROUND, 19)  // or high
+COST(ZOMBIE_HEIGHT_SET, 14)       // $8496 to $849E
+COST(ZOMBIE_COUNTED, 32)          // sub_88F6 with its call, when it isn't the sixth, and $84A2
+COST(ZOMBIE_TURN_BEGINS, 25)      // $F7BE to $F7C6
+COST(ZOMBIE_UNDER_THE_GROUND, 24) // $F7C6 to $F7CB
+COST(ZOMBIE_NO_GROUND, 6)         // $F7CE to sub_F708
+COST(ZOMBIE_WAITS_ON, 18)         // $F7CE, and back: its count isn't over,
+COST(ZOMBIE_COMES_OUT, 43)        // or is, and its flag says it's out
+COST(ZOMBIE_IS_OUT, 25)           // $F7C6 to $F7DC
+COST(ZOMBIE_IN_VIEW, 3)           // $F7E2: it's in the view,
+COST(ZOMBIE_OUT_OF_VIEW, 2)       // or isn't, and is hidden
+COST(ZOMBIE_SINKING, 5)           // $F7EA to $F87D,
+COST(ZOMBIE_NOT_SINKING, 3)       // or to $F7EF
+COST(ZOMBIE_NOT_WALKING, 2)       // $F7F2, on to $F7F4
+COST(ZOMBIE_COMES_UP, 15)         // $F7F4 to $F81E, across a page: a step of its way up,
+COST(ZOMBIE_COMES_UP_FIRST, 22)   // or the first, to sub_ED51
+COST(ZOMBIE_IS_UP, 67)            // $F7F4 to $F838
+COST(ZOMBIE_WALKING, 20)          // $F7F2, across a page, to sub_F5A0
+COST(ZOMBIE_NOT_HIT, 7)           // $F830 to $F838
+COST(ZOMBIE_STEP_BEGINS, 7)       // $F838 to the call of sub_E3E3
+COST(ZOMBIE_GROUND_ENDS, 3)       // $F840 to $F847: no ground under it,
+COST(ZOMBIE_ROUNDS_OVER, 8)       // or its rounds are over,
+COST(ZOMBIE_GOES_ON, 9)           // or it goes on, to $F852
+COST(ZOMBIE_STARTS_SINKING, 36)   // $F847 to $F87D
+COST(ZOMBIE_SPEED_ORDINARY, 16)   // $F855 to sub_F03E,
+COST(ZOMBIE_SPEED_FAST, 18)       // or for a fast one
+COST(ZOMBIE_STEP_SHAPE, 59)       // $F864 to $F878, with sub_F576
+COST(ZOMBIE_TURN_COUNTED, 13)     // its count, and back
+COST(ZOMBIE_SUNK, 9)              // $F87D to sub_F708
+COST(ZOMBIE_SINKS, 13)            // or to sub_F88C
+COST(ZOMBIE_SHAPE, 17)            // sub_F88C to $F898
+COST(ZOMBIE_SHAPE_HEAD, 3)        // the shape that's only a head,
+COST(ZOMBIE_SHAPE_FACES, 21)      // or one that faces a way
+COST(ZOMBIE_COLOURS_PALE, 13)     // $F8A7 to $F8B1
+COST(ZOMBIE_COLOURS_DONE, 9)      // and back,
+COST(ZOMBIE_COLOURS_DARKER, 15)   // or $F8B1 to $F8BD,
+COST(ZOMBIE_COLOURS_ITS_OWN, 15)  // and $F8BD, and back
+COST(ENEMY_NOT_SHOWN, 29)         // sub_F5A0, and back, for an enemy that isn't shown
+COST(ENEMY_TESTS_BEGIN, 49)       // sub_F5A0 to $F5FB
+COST(WEAPON_NOT_FLYING, 12)       // each of Arthur's three weapons, when it isn't shown
+COST(ENEMY_NO_WEAPON_HIT, 38)     // $F60F to sub_F68E
+COST(ENEMY_NOT_TOUCHED, 9)        // $F5E6, and back,
+COST(ENEMY_TOUCHES_ARTHUR, 20)    // or with Arthur's flag that says he's hit
 COST(GAME_ROUND_AFTER, 19)        // $D58D to $D595
 COST(GAME_ROUND_ENDS, 48)         // $D3F0 to the call that yields
 
@@ -608,6 +689,3 @@ COST(NOISE_WAITS, 20)             // sub_03_85DA
 COST(NOISE_NEXT_STEP, 52)         // to $85FF
 COST(NOISE_IS_OVER, 43)
 COST(NOISE_STEP, 63)              // $8601 to $8625
-
-// ---- about: code that isn't ported yet
-COST(ABOUT_DANGERS_COME, 2000)    // about: bank 2's $8431, what comes out of the ground, which isn't ported yet
