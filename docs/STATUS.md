@@ -10,7 +10,7 @@ Every game needs your own copy of the original. The proof tools write this table
 
 | Dreamport | Code ported | Gameplay proven | Lead | Try it |
 | :--- | :--- | :--- | :--- | :--- |
-| **[Ghosts'n Goblins Dreamport in C](../games/ghosts-n-goblins/c/)** | [1.15%](../.github/readme/progress/ghosts-n-goblins-c.svg) | [7.14%, 1 of 14 parts](../.github/readme/progress/ghosts-n-goblins-c.svg) | [klaudito70](https://github.com/klaudito70) | [▶&nbsp;Play](https://dreamports.net/play/ghosts-n-goblins/) |
+| **[Ghosts'n Goblins Dreamport in C](../games/ghosts-n-goblins/c/)** | [21.94%](../.github/readme/progress/ghosts-n-goblins-c.svg) | [7.14%, 1 of 14 parts](../.github/readme/progress/ghosts-n-goblins-c.svg) | [klaudito70](https://github.com/klaudito70) | [▶&nbsp;Play](https://dreamports.net/play/ghosts-n-goblins/) |
 | **[Mega Man Dreamport in C](../games/mega-man/c/)** | [3.59%](../.github/readme/progress/mega-man-c.svg) | [7.69%, 1 of 13 parts](../.github/readme/progress/mega-man-c.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/mega-man/) |
 | **[Crash Bandicoot Purple: Ripto's Rampage Dreamport](../games/crash-bandicoot-purple/)** | [41.77%](../.github/readme/progress/crash-bandicoot-purple.svg) | [20.83%, 5 of 24 parts](../.github/readme/progress/crash-bandicoot-purple.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/crash-bandicoot-purple/) |
 | [Crash Bandicoot Purple: Ripto's Rampage Dreamport in C](../games/crash-bandicoot-purple/c/) | [0%](../.github/readme/progress/crash-bandicoot-purple-c.svg) | [0%, 0 of 24 parts](../.github/readme/progress/crash-bandicoot-purple-c.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | Not yet |
