@@ -117,6 +117,7 @@ static void move_back(uint16_t at, uint16_t before) {
 
 // $E68C, the view's task
 wait view_task(void) {
+  took(ABOUT_A_TURN);
   move_by(VIEW_X, SPEED_X, VIEW_X_BEFORE);
   RAM[0x22] = RAM[VIEW_X + 1] & 8;
   RAM[0x4A] = (RAM[VIEW_X_BEFORE + 1] & 8) != RAM[0x22] ? 0xFF : 0;   // it's in a new column of tiles
@@ -134,7 +135,10 @@ wait view_task(void) {
   set_ram16(VIEW_Y, down);
   if (!VIEW_HELD && (RAM[VIEW_Y + 2] == cart(7, (uint16_t)(0xEB67 + STAGE)) || cart(7, (uint16_t)(0xEB59 + STAGE)) == RAM[VIEW_Y + 2])) move_back(VIEW_Y, VIEW_Y_BEFORE);
   RAM[0x22] = RAM[VIEW_Y + 1] & 8;
-  if (RAM[0x4A]) draw_column();
+  if (RAM[0x4A]) {
+    took(ABOUT_A_COLUMN);
+    draw_column();
+  }
   SCROLL_X = RAM[VIEW_X + 1];
   SCROLL_Y = RAM[VIEW_Y + 1];
   RAM[0x22] = RAM[VIEW_X + 2] & 1;

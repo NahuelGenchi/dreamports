@@ -35,7 +35,7 @@ static void move_to(uint8_t *voice, uint16_t address) { voice[V_AT] = (uint8_t)a
 
 // sub_ED97: all the sound registers to 0, from the last down.
 void sound_registers_off(void) {
-  for (int i = 0x0F; i >= 0; i--) nes_write((uint16_t)(0x4000 + i), 0);
+  for (int i = 0x0F; i >= 0; i--) hardware_write((uint16_t)(0x4000 + i), 0);
 }
 
 // sub_ED72: no voice plays.
@@ -47,7 +47,7 @@ void sound_reset(void) {
 // $87BE: a voice is over, and its channel is silent.
 static void voice_ends(uint8_t *voice, uint16_t registers) {
   voice[V_REPEATS] = voice[V_PLAYING] = voice[V_FLAGS] = 0;
-  nes_write(registers, 0);
+  hardware_write(registers, 0);
 }
 
 // sub_03_8626: a tune's voice, when its note is over: the next thing in its part of the copy. A byte with any of its top
@@ -93,8 +93,8 @@ static void tune_voice(uint8_t *voice, uint16_t registers) {
     // note to make it half as long again: the length one shorter in the tempo's list is added to its own. A pitch whose
     // timer is 0 in the list leaves the channel's timer as it is.
     if (!SILENCED) {
-      nes_write(registers, voice[V_VOLUME]);
-      nes_write((uint16_t)(registers + 1), voice[V_SWEEP]);
+      hardware_write(registers, voice[V_VOLUME]);
+      hardware_write((uint16_t)(registers + 1), voice[V_SWEEP]);
     }
     uint8_t longer = 0;
     while ((copy((uint16_t)(here + longer)) & 0x1F) == 0x1F) longer++;
@@ -105,8 +105,8 @@ static void tune_voice(uint8_t *voice, uint16_t registers) {
       high = copy((uint16_t)(pitches + pitch * 2 + 1));
     }
     if (!SILENCED && (low || !pitch)) {
-      nes_write((uint16_t)(registers + 2), low);
-      nes_write((uint16_t)(registers + 3), high | copy((uint16_t)(lengths + length)));
+      hardware_write((uint16_t)(registers + 2), low);
+      hardware_write((uint16_t)(registers + 3), high | copy((uint16_t)(lengths + length)));
     }
     if (!voice[V_TRIPLET]) {
       voice[V_LEFT] = copy((uint16_t)(lengths + length + 1));
@@ -135,30 +135,30 @@ static void effect_voice(uint8_t *voice, uint16_t registers) {
       uint8_t next = (uint8_t)(change & 0x80 ? high - 1 : high + 1);
       if (!(next & 0x80)) voice[V_PITCH_HIGH] = high = next;
     }
-    nes_write(registers, (voice[V_SCRATCH] & 0x0F) | 0x30);
+    hardware_write(registers, (voice[V_SCRATCH] & 0x0F) | 0x30);
     if (high & 0x80) return;
-    nes_write((uint16_t)(registers + 2), low);
-    nes_write((uint16_t)(registers + 3), high);
+    hardware_write((uint16_t)(registers + 2), low);
+    hardware_write((uint16_t)(registers + 3), high);
     return;
   }
   uint16_t step = (uint16_t)(at(voice) + 6);
   move_to(voice, step);
   uint8_t lasts = copy(step);
   if (lasts == 0xFF) {
-    nes_write(registers, 0);
+    hardware_write(registers, 0);
     voice[V_FLAGS] = voice[V_REPEATS] = voice[V_PLAYING] = 0;
     return;
   }
   voice[V_LEFT] = lasts;
   if (copy((uint16_t)(step + 1)) != 0xFF) {
     voice[V_PITCH_LOW] = copy((uint16_t)(step + 1));
-    nes_write((uint16_t)(registers + 2), voice[V_PITCH_LOW]);
+    hardware_write((uint16_t)(registers + 2), voice[V_PITCH_LOW]);
     voice[V_PITCH_HIGH] = copy((uint16_t)(step + 2));
-    nes_write((uint16_t)(registers + 3), voice[V_PITCH_HIGH]);
+    hardware_write((uint16_t)(registers + 3), voice[V_PITCH_HIGH]);
   }
   voice[V_PITCHES] = copy((uint16_t)(step + 3));
   voice[V_SCRATCH] = copy((uint16_t)(step + 4));
-  nes_write((uint16_t)(registers + 3), copy((uint16_t)(step + 5)));
+  hardware_write((uint16_t)(registers + 3), copy((uint16_t)(step + 5)));
 }
 
 // sub_03_85DA: the noise. Each of its steps is three bytes: how long it lasts, the volume, with the top bit for the kind of
@@ -170,13 +170,15 @@ static void noise_voice(uint8_t *voice) {
   if (copy(step) == 0xFF) { voice_ends(voice, 0x400C); return; }
   voice[V_LEFT] = copy(step);
   uint8_t volume = copy((uint16_t)(step + 1));
-  nes_write(0x400C, volume & 0x3F);
-  nes_write(0x400E, copy((uint16_t)(step + 2)) & 0x0F);
-  nes_write(0x400F, (uint8_t)(((volume & 0x80) | copy((uint16_t)(step + 3)) >> 1) & 0xF8));
+  hardware_write(0x400C, volume & 0x3F);
+  hardware_write(0x400E, copy((uint16_t)(step + 2)) & 0x0F);
+  hardware_write(0x400F, (uint8_t)(((volume & 0x80) | copy((uint16_t)(step + 3)) >> 1) & 0xF8));
 }
 
 // sub_ED94, $8380: every voice that's playing, once a frame.
 void sound_frame(void) {
+  took(ABOUT_SOUND_IDLE);
+  for (int i = 0; i < 5; i++) if (RAM[VOICES + i * VOICE_BYTES + V_PLAYING]) took(ABOUT_SOUND_VOICE);
   for (int i = 0; i < TUNE_VOICES; i++) {
     uint8_t *voice = &RAM[VOICES + i * VOICE_BYTES];
     uint16_t registers = (uint16_t)(0x4000 + i * 4);

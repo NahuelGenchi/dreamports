@@ -5,88 +5,124 @@
 
 #include "game.h"
 
-// ---- V-blank's time. Its writes to the PPU take the processor's time, and what it writes last, the scroll and the
-// picture's mask, takes effect when it's written, so each loop here moves the frame on by what the original's takes.
-enum { CYCLES_SPRITES = 513, CYCLES_A_LISTED_BYTE = 15, CYCLES_AN_ATTRIBUTE = 16, CYCLES_A_LIST_ENTRY = 60, CYCLES_BEFORE = 50 };
-static void took(int cycles) { nes_spend(cycles); }
-
 static void ppu_address(uint8_t high, uint8_t low) {
-  nes_read(0x2002);
-  nes_write(0x2006, high);
-  nes_write(0x2006, low);
+  hardware_ppu_latch();
+  hardware_write(0x2006, high);
+  hardware_write(0x2006, low);
 }
 
-// $C11F, $C15A and $C18E: a list of runs of bytes for the PPU, each its address, high byte first, a count and the
-// bytes, up to the byte `end`.
-static void write_list(uint16_t list, uint8_t end, int rows_list) {
-  uint8_t x = 0;
-  while (RAM[list + x] != end) {
-    uint8_t high = RAM[list + x++], low = RAM[list + x++], count = RAM[list + x++];
-    ppu_address(high, low);
-    do { nes_write(0x2007, RAM[(list + x++) & 0x7FF]); took(CYCLES_A_LISTED_BYTE); } while (--count);
-    took(CYCLES_A_LIST_ENTRY);
-    if (rows_list) {
-      // the rows' list leaves the PPU's address at the start of the same table, clear of the tiles
-      RAM[0x34] = high;
-      RAM[0x5A]++;
-      nes_write(0x2006, high);
-      nes_write(0x2006, 0);
-      nes_write(0x2006, 0);
-      nes_write(0x2006, 0);
-    }
+// A run of `count` bytes from work memory to $2007.
+static void write_run(uint16_t from, uint8_t count, cost each) {
+  for (uint8_t i = 0; i < count; i++) {
+    took(each);
+    hardware_write(0x2007, RAM[(from + i) & 0x7FF]);
+    took(i + 1 < count ? GOES_ROUND : GOES_ON);
   }
+}
+
+// $C11F and $C15A: a list of runs of bytes for the PPU, each its address, high byte first, a count and the bytes, up to
+// a 0 where the next address would be.
+static void write_list(uint16_t list) {
+  uint8_t x = 0;
+  while (RAM[list + x]) {
+    took(VBLANK_RUN_BEGINS);
+    uint8_t high = RAM[list + x++], low = RAM[list + x++], count = RAM[list + x++];
+    took(VBLANK_RUN_ADDRESS);
+    ppu_address(high, low);
+    write_run((uint16_t)(list + x), count, VBLANK_RUN_BYTE);
+    x += count;
+    took(VBLANK_RUN_ENDS);
+  }
+}
+
+// $C18E: the rows' list, which ends at $FF, and leaves the PPU's address at the start of the same table after each row,
+// clear of the tiles.
+static void write_rows(void) {
+  uint8_t x = 0;
+  took(VBLANK_ROWS_BEGIN);
+  while (RAM[(ROWS + x) & 0x7FF] != 0xFF) {
+    took(VBLANK_ROW_BEGINS);
+    uint8_t high = RAM[(ROWS + x++) & 0x7FF], low = RAM[(ROWS + x++) & 0x7FF], count = RAM[(ROWS + x++) & 0x7FF];
+    took(VBLANK_ROW_ADDRESS);
+    ppu_address(high, low);
+    write_run((uint16_t)(ROWS + x), count, VBLANK_RUN_BYTE);
+    x += count;
+    RAM[0x34] = high;
+    RAM[0x5A]++;
+    took(VBLANK_ROW_ENDS);
+    hardware_write(0x2006, high);
+    hardware_write(0x2006, 0);
+    hardware_write(0x2006, 0);
+    hardware_write(0x2006, 0);
+  }
+  took(VBLANK_ROWS_END);
+  RAM[ROWS] = 0xFF;
+  ROWS_END = 0;
 }
 
 // $C0F0 to $C21D: the sprites, then the lists the tasks left, or else the next 32 attributes, and last the scroll and
 // the picture's mask. The original turns the picture off while it writes.
 void vblank_draws(void) {
-  nes_write(0x2003, 0);
+  took(VBLANK_TO_SPRITES_PLACE);
+  hardware_write(0x2003, 0);
   RAM[0xB1] = (uint8_t)(((RAM[0xB1] + 1) & 1) | 2);  // the sprites' two lists, $0200 and $0300, a frame each
-  took(CYCLES_BEFORE);
-  nes_write(0x4014, RAM[0xB1]);
-  took(CYCLES_SPRITES);
+  took(VBLANK_TO_SPRITES);
+  hardware_send_sprites(RAM[0xB1]);
+  took(VBLANK_SPRITES_SENT);
   RAM[0x5A] = 0;                                     // counts what's written this frame
-  nes_write(0x2001, 0);
+  took(VBLANK_TO_MASK);
+  hardware_write(0x2001, 0);
   if (WIDE_ROWS_READY) {
+    took(VBLANK_LIST_IS_READY);
+    took(VBLANK_WIDE_ROWS_BEGIN);
     RAM[0x5A]++;
-    write_list(WIDE_ROWS, 0, 0);
+    write_list(WIDE_ROWS);
+    took(VBLANK_WIDE_ROWS_END);
     WIDE_ROWS_READY = 0;
-  } else if (COLUMN_READY) {
-    nes_write(0x2000, PPU_CONTROL | 0x04);           // down the screen
-    RAM[0x5A]++;
-    write_list(COLUMN, 0, 0);
-    COLUMN_READY = 0;
-    nes_write(0x2000, PPU_CONTROL);
+  } else {
+    took(VBLANK_LIST_NOT_READY);
+    if (COLUMN_READY) {
+      took(VBLANK_LIST_IS_READY);
+      took(VBLANK_COLUMN_BEGIN);
+      hardware_write(0x2000, PPU_CONTROL | 0x04);      // down the screen
+      RAM[0x5A]++;
+      write_list(COLUMN);
+      took(VBLANK_COLUMN_END);
+      COLUMN_READY = 0;
+      hardware_write(0x2000, PPU_CONTROL);
+    } else took(VBLANK_LIST_NOT_READY);
   }
-  if (!ROWS_BUSY) {
-    write_list(ROWS, 0xFF, 1);
-    RAM[ROWS] = 0xFF;
-    ROWS_END = 0;
-  }
-  if (RAM[0x5A] == 0) {
+  if (ROWS_BUSY) took(VBLANK_ROWS_BUSY);
+  else write_rows();
+  if (RAM[0x5A]) took(VBLANK_WROTE_SOMETHING);
+  else {
     // $C1D3: 32 attributes from $58 to the PPU at $56, and on to the next 32, around both name tables' 64
-    uint16_t from = ram16(0x58);
+    took(VBLANK_ATTRIBUTES_BEGIN);
     ppu_address(RAM[0x57], RAM[0x56]);
-    for (int i = 0; i < 32; i++) { nes_write(0x2007, RAM[from + i]); took(CYCLES_AN_ATTRIBUTE); }
+    write_run(ram16(0x58), 32, VBLANK_ATTRIBUTE);
     RAM[0x58] = (uint8_t)((RAM[0x58] + 0x20) & 0x7F);
     uint8_t carry = RAM[0x56] > 0xDF;
     RAM[0x56] = (uint8_t)((RAM[0x56] + 0x20) | 0xC0);
     RAM[0x57] = (uint8_t)(((RAM[0x57] + carry) & 0x24) | 0x03);
+    took(VBLANK_ATTRIBUTES_END);
   }
-  nes_read(0x2002);
-  nes_write(0x2005, SCROLL_X);
-  nes_write(0x2005, SCROLL_Y);
-  nes_write(0x2000, PPU_CONTROL);
-  nes_write(0x2001, PPU_MASK);
+  took(VBLANK_SCROLL_AND_MASK);
+  hardware_ppu_latch();
+  hardware_write(0x2005, SCROLL_X);
+  hardware_write(0x2005, SCROLL_Y);
+  hardware_write(0x2000, PPU_CONTROL);
+  hardware_write(0x2001, PPU_MASK);
 }
 
-// sub_EECF. The original keeps its place in $22 to $27, and its callers read where it stopped from there.
+// sub_EECF. The original keeps its place in $22 to $27, and its callers read where it stopped from there. The list is
+// marked busy while it's added to, and V-blank leaves it alone until it's freed.
 void queue_rows(uint16_t from, uint16_t to, uint8_t rows, uint8_t count) {
   set_ram16(0x26, from);
   set_ram16(0x24, to);
   RAM[0x22] = rows;
   RAM[0x23] = count;
   ROWS_BUSY = 0xFF;
+  took(ROWS_BEGIN);
   uint8_t at = ROWS_END;
   do {
     at = ROWS_END;
@@ -94,16 +130,25 @@ void queue_rows(uint16_t from, uint16_t to, uint8_t rows, uint8_t count) {
     RAM[(ROWS + at++) & 0x7FF] = RAM[0x24];
     RAM[(ROWS + at++) & 0x7FF] = RAM[0x23];
     RAM[0x4A] = RAM[0x23];
+    took(ROWS_ROW_BEGINS);
     do {
       uint16_t source = ram16(0x26);
       RAM[(ROWS + at++) & 0x7FF] = peek(source);
       set_ram16(0x26, (uint16_t)(source + 1));
-    } while (--RAM[0x4A]);
+      took(ROWS_BYTE);
+      if (!RAM[0x26]) took(ROWS_BYTE_NEXT_PAGE);
+      took(--RAM[0x4A] ? GOES_ROUND : GOES_ON);
+    } while (RAM[0x4A]);
     ROWS_END = at;
     set_ram16(0x24, (uint16_t)(ram16(0x24) + 0x20));
-  } while (--RAM[0x22]);
+    took(ROWS_ROW_ENDS);
+    took(--RAM[0x22] ? ROWS_ROW_AGAIN : GOES_ON);
+  } while (RAM[0x22]);
+  took(ROWS_END_MARK);
   RAM[(ROWS + at) & 0x7FF] = 0xFF;
+  took(ROWS_FREED);
   ROWS_BUSY = 0;
+  took(ROWS_BACK);
 }
 
 // sub_EEBF and sub_EEBA: colours for the PPU's palette at $3F00.
@@ -136,6 +181,7 @@ wait fresh_screen(uint8_t *step) {
     case ATTRIBUTES_AND_ROWS:
       // its attributes, from $C82C, for both name tables
       for (int i = 0; i < 0x40; i++) RAM[ATTRIBUTES + i] = RAM[ATTRIBUTES + 0x40 + i] = cart(7, (uint16_t)(0xC82C + i));
+      took(ABOUT_A_COPY_OF_64);
       PPU_CONTROL &= 0xFC;
       // sub_CA2E: 30 rows of the empty tile, from $CA76, two a frame
       set_ram16(0x24, 0x2000);
@@ -154,6 +200,7 @@ wait fresh_screen(uint8_t *step) {
       if (--RAM[0x53]) { *step = TWO_ROWS; break; }
       // sub_CA96: no objects. The original's loop leaves the one byte at $05F0 as it was.
       for (int i = 0x04F0; i < 0x0680; i++) if (i != 0x05F0) RAM[i] = 0;
+      took(ABOUT_NO_OBJECTS);
       set_ram16(0x26, 0x05F0);
       RAM[0x23] = 0;
       picture_on();
@@ -188,6 +235,7 @@ wait load_tiles(uint8_t *step, uint16_t from, uint16_t to, uint8_t groups) {
 // lists of them, and the second waits while the first has any: for each, $E668 or $E670 says where a set of tiles is
 // and where it goes, and $E680 or $E684 where it ends.
 wait tiles_task(void) {
+  took(ABOUT_A_TURN);
   enum { START, EACH_ROUND };
   if (task_step[TASK_TILES] == START) {
     for (int i = 0; i < 10; i++) RAM[0xD5 + i] = 0xFF;

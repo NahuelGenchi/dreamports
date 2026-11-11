@@ -191,6 +191,7 @@ static void end_stage_turn(void) {
 }
 
 wait arthur_task(void) {
+  took(ABOUT_A_TURN);
   enum {
     START, SCENE_SITS, SCENE_WATCHES, SCENE_JUMPS, SCENE_LANDED, SCENE_WALKS, SCENE_STEP, SCENE_OVER,
     STAGE_TURN, STAGE_STANDS, STAGE_FALLS, STAGE_FELL,

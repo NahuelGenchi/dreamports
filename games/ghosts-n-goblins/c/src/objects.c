@@ -265,9 +265,11 @@ static void pick_up(uint8_t object) {
 
 // $F367, the objects' task: bank 4's $9CC8 runs every object but the first, by its kind.
 wait objects_task(void) {
+  took(ABOUT_A_TURN);
   switch_bank(4);
   for (uint8_t object = 1; object < 0x16; object++) {
     if (!RAM[OBJECT_FLAGS + object]) continue;
+    took(ABOUT_AN_OBJECT);
     set_ram16(0x26, peek16((uint16_t)(0x9CED + RAM[OBJECT_KIND + object] * 2)));
     switch (RAM[OBJECT_KIND + object]) {
       case 0x10: pick_up(object); break;

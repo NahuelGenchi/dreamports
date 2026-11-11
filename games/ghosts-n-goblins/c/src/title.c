@@ -64,6 +64,7 @@ static void move_sword(void) {
 }
 
 wait title_task(void) {
+  took(ABOUT_A_TURN);
   enum { PICTURE_OFF, SET_UP, FRESH_SCREEN, LOGO, LOGO_ROWS, LOGO_WRITTEN, SCORES, WORDS, COPYRIGHT, DRAWN, TILES, READY, START_FREE, WAIT_START, START_HELD, COUNT_DOWN };
   static uint8_t inner;   // the step of a routine this one calls
   uint8_t *step = &task_step[TASK_TITLE];
