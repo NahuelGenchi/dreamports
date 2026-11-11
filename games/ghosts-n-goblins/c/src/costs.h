@@ -176,11 +176,14 @@ COST(SPRITES_SWAP_FIRST_STORED, 8) // the first's stored,
 COST(SPRITES_SWAP_FOURTH_STORED, 4) // and the fourth's
 COST(SPRITES_LIST_BEGINS, 10)     // $8000 to $8005, with its call of the swap
 COST(SPRITES_OBJECT_HIDDEN, 11)   // $8007: an object that isn't shown,
-COST(SPRITES_OBJECT_LISTED, 58)   // or one that is,
+COST(SPRITES_OBJECT_FIRST_BYTE, 10) // or one that is: to the write of its first byte,
+COST(SPRITES_OBJECT_NEXT_BYTE, 11) // each of the next three,
+COST(SPRITES_OBJECT_LISTED, 15)   // and on,
 COST(SPRITES_OBJECT_PAST_PAGE, 1) // and a cycle more for the objects whose flags are in the next page of memory
-COST(SPRITES_LIST_FULL, 55)       // or the object that fills the list
+COST(SPRITES_LIST_FULL, 12)       // or the object that fills the list
 COST(SPRITES_LIST_END_BEGINS, 2)  // $8031
-COST(SPRITES_LIST_END_BYTE, 11)   // each of the four bytes that end the list
+COST(SPRITES_LIST_END_READ, 2)    // each of the four bytes that end the list, to its write,
+COST(SPRITES_LIST_END_BYTE, 9)    // and after
 COST(SPRITES_MAKE_BEGINS, 26)     // $803C to the call
 COST(SPRITES_MADE, 17)            // sub_04_80D0 at the list's end, and back
 COST(SPRITES_SHAPE, 169)          // $80D0 to $813C: an object's shape, places and colours found
@@ -288,14 +291,23 @@ COST(OBJECT_USED, 35)             // $9CCD to its kind's code, through the table
 COST(OBJECT_KIND_PAST_PAGE, 1)    // a cycle more for each byte of the table's entry that's in the next page
 COST(OBJECT_NEXT, 4)              // $9CE4
 COST(OBJECTS_END, 25)             // $9CE9 to the call that yields
-COST(OBJECT_PLACED, 181)          // sub_F181, with its call
+COST(PLACE_FIRST_READ, 10)        // sub_F0BC with its call, to its first write,
+COST(PLACE_NEXT_READ, 7)          // each write and the read for the next,
+COST(PLACE_LAST_WRITE, 9)         // and the last, and back: the same in sub_F108, sub_F0EC and $F0FA
+COST(VIEW_PLACE_FIRST_READ, 9)    // sub_F108 with its call, to its first write,
+COST(VIEW_PLACE_NEXT_READ, 6)     // and each of the next
+COST(APART_FIRST, 20)             // sub_F0E6 with its call, to its first write: how far apart across,
+COST(APART_SCREEN, 9)             // the screens,
+COST(APART_DOWN, 20)              // and by way of $F0FA, down
+COST(PLACE_SCREEN_COUNTED, 5)     // sub_F0A3's two counts of a screen down
+COST(OBJECT_PLACED, 32)           // sub_F181 after its three calls, and back
 COST(OBJECT_PLACED_OTHER_SCREEN, 9)
 COST(OBJECT_SHOWN, 23)            // sub_F321 or sub_F346, with its call
 COST(OBJECT_FLAG_READ, 22)        // one of the flag tests from sub_F2E3 on, with its call,
 COST(OBJECT_SHOWN_READ, 18)       // or sub_F2FF's
-COST(OBJECT_IN_VIEW, 178)         // sub_F0A3, with its call: in the view,
-COST(OBJECT_OUT_OF_VIEW_DOWN, 173) // or not, down,
-COST(OBJECT_OUT_OF_VIEW_ACROSS, 177) // or across
+COST(OBJECT_IN_VIEW, 19)          // sub_F0A3 after its three calls, and back: in the view,
+COST(OBJECT_OUT_OF_VIEW_DOWN, 14) // or not, down,
+COST(OBJECT_OUT_OF_VIEW_ACROSS, 18) // or across
 COST(PRINCESS_TURN, 27)                // $F3E9, and back
 COST(PICK_UP_BEGINS, 7)           // $BA09
 COST(PICK_UP_OUT_OF_VIEW, 62)     // $BA12 to $BB8B, and back
@@ -858,6 +870,8 @@ COST(CROW_WINGS, 24)              // $F9F0 to $F9FF
 COST(CROW_FLIES_RIGHT, 9)         // $FA02, and back,
 COST(CROW_FLIES_LEFT, 21)         // or with the shapes for the left
 COST(PLANT_ALIVE, 3)              // bank 4's $9EC3 to $9EDF: a plant
+COST(SECOND_KIND_OUT_OF_VIEW, 2)  // bank 4's $9FB6 to sub_F346: kind 2, out of the view,
+COST(SECOND_KIND_WAITS, 9)        // and $9FBE, and back, while it hasn't flown off
 COST(PLANT_DEAD, 5)               // or to $F6F6, once it's hit
 COST(BURNING_IN_VIEW, 4)          // $F6FC to $F701, across a page: an enemy that burns away, in the view,
 COST(BURNING_OUT_OF_VIEW, 2)      // or out of it, to sub_F346

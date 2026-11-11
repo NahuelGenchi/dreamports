@@ -91,14 +91,20 @@ static void vblank_comes(void) {
 
 #ifdef TIME_CHECK
 // For the check that compares work memory with the emulator's at each frame's end: a copy of it as the processor's
-// time passes the end of the kit's frame, and counts of the cycles each interrupt and each turn took.
-uint8_t time_check_memory[0x800], time_check_taken;
+// time passes the end of each of the kit's frames, the last four kept, as one turn can pass more than one, and counts
+// of the cycles each interrupt and each turn took.
+uint8_t time_check_memory[4][0x800];
+uint32_t time_check_ends;   // how many frames' ends have passed
+static uint64_t check_end_at;
 uint64_t time_check_now(void) { return now; }
 uint32_t time_check_frame(void) { return vblank_frame; }
 static void check_frame_end(void) {
-  if (time_check_taken || now < frame_starts + (uint64_t)nes_frame_length((int)frame)) return;
-  for (int i = 0; i < 0x800; i++) time_check_memory[i] = RAM[i];
-  time_check_taken = 1;
+  if (!check_end_at) check_end_at = FIRST_FRAME_DOTS + (uint64_t)nes_frame_length(0);
+  while (now >= check_end_at) {
+    for (int i = 0; i < 0x800; i++) time_check_memory[time_check_ends & 3][i] = RAM[i];
+    time_check_ends++;
+    check_end_at += (uint64_t)nes_frame_length((int)time_check_ends);
+  }
 }
 #else
 static void check_frame_end(void) {}
@@ -177,7 +183,6 @@ void time_starts(void) {
 // it wrote goes to the kit.
 void frame_begins(void) {
 #ifdef TIME_CHECK
-  time_check_taken = 0;
 #endif
   if (vblank_frame == frame) {
     if (loop.on) loop_interrupted();

@@ -37,6 +37,11 @@ static void flags_past_page(uint8_t object, uint32_t times) {
   if (object >= 0x10) took_times(READ_PAST_PAGE, times);
 }
 
+// The sixteenth object's heading is in the next page too, and so is the one before it: a cycle more to read it by its number.
+static void heading_past_page(uint8_t object) {
+  if (object >= 0x0F) took(READ_PAST_PAGE);
+}
+
 /** Bank 2's $8416. In the first stage's first five screens, and in the eighth place, the count goes down a round at a time. */
 void zombies_come(uint8_t *x) {
   if (STAGE != 0 && STAGE != 7) { took(ZOMBIES_OTHER_STAGE); return; }
@@ -197,6 +202,7 @@ static void part_out_of_the_ground(uint8_t object, uint8_t step) {
   took(ZOMBIE_SHAPE);
   took(shape == 0x50 ? ZOMBIE_SHAPE_HEAD : ZOMBIE_SHAPE_FACES);
   if (shape != 0x50) shape = (uint8_t)(shape + ((RAM[OBJECT_HEADING + object] & HEADS_LEFT) << 1));
+  if (shape != 0x50) heading_past_page(object);
   RAM[OBJECT_SHAPE + object] = shape;
   RAM[OBJECT_COLOURS + object] = 0x02;
   took(ZOMBIE_COLOURS_PALE);
@@ -319,6 +325,7 @@ void zombie(uint8_t object) {
   // its two walking shapes, four rounds each, facing the way it's headed
   RAM[OBJECT_SHAPE + object] = (uint8_t)(0x54 + ((*count >> 2) & 1) + ((RAM[OBJECT_HEADING + object] & HEADS_LEFT) << 1));
   took(ZOMBIE_STEP_SHAPE);
+  heading_past_page(object);
   --*count;
   took(ZOMBIE_TURN_COUNTED);
 }
@@ -626,6 +633,20 @@ void plant(uint8_t object) {
   plant_box();
   took(PLANT_TESTS);
   touch_tests(object);
+}
+
+/** Bank 4's $9FB0, kind 2: the enemy that sits near the end of the first stage. So far only while it's out of the view,
+ *  where it's hidden and waits. What it does in the view, from $9FE4, and how it goes once it has flown off, at $9FC0,
+ *  aren't ported yet. */
+void second_kind(uint8_t object) {
+  show_object(object);
+  if (object_in_view(object)) return;   // $9FE4
+  took(SECOND_KIND_OUT_OF_VIEW);
+  hide_object(object);
+  took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
+  if (RAM[OBJECT_FLAGS + object] & WALKS) return;   // $9FC0
+  took(SECOND_KIND_WAITS);
 }
 
 /** $F49C, kind $2B: a plant's shot, which flies the way it was headed until it's out of the view, and hits Arthur if it
