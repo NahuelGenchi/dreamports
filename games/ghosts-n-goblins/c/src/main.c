@@ -18,50 +18,50 @@ static wait (*const TASK_CODE[])(void) = {
   [TASK_OBJECTS / 2] = objects_task, [TASK_SPRITES / 2] = sprites_task, [TASK_TILES / 2] = tiles_task,
 };
 
-// whether the game has started, whether V-blank interrupts it, whether the task that's running waits in a loop, and
-// whether every task has had its turn and the processor waits for the next round
-static uint8_t powered, interrupts, spinning, round_over;
-// A round's work takes most of a frame, so when a round starts in a frame where tasks have already run, V-blank comes
-// before it's done. In the original that's while the sprites' task fills its list, the longest work there is, as when a
-// task has waited in a loop for V-blank, finishes its turn, and the next round starts at once.
-static uint8_t worked_this_frame, round_late;
-uint8_t round_started_late(void) { return round_late; }
+// whether the game has started, whether the task that's running waits in a loop for V-blank, and whether every task
+// has had its turn and the processor waits, in the loop at $C39C, for the next round
+static uint8_t powered, spinning, round_over;
 
 /** Writes $2000 from its copy in work memory, with or without V-blank's interrupt. */
 void write_ppu_control(uint8_t value) {
-  nes_write(0x2000, value);
-  interrupts = value >> 7;
+  hardware_write(0x2000, value);
+  vblank_interrupt_wanted(value >> 7);
 }
 
 // sub_C2BC: starts a task from its first instruction, unless it's running already. The original writes its first
 // return address on the task's own stack, whose top the table at $C3BC gives.
 void start_task(uint8_t task) {
   RAM[0x28] = task;
-  if (TASK_STATE(task) & 0x80) return;
+  if (TASK_STATE(task) & 0x80) { took(TASK_ALREADY_RUNNING); return; }
   TASK_STATE(task) |= TASK_READY;
   RAM[0x24] = (uint8_t)(cart(7, (uint16_t)(0xC3BC + task)) - 2);
   RAM[0x25] = 0x01;
   task_step[task] = 0;
+  took(TASK_STARTED);
 }
 
 // sub_C303: stops a task, wherever it is.
 void stop_task(uint8_t task) {
   RAM[0x28] = task;
   TASK_STATE(task) = TASK_FREE;
+  took(TASK_STOPPED);
 }
 
 // sub_C313: the task that's running sleeps for `frames` V-blanks and one more, and then has its turns again.
 wait sleep_task(uint16_t frames) {
   TASK_STATE(TASK_NOW) |= 0x40;
   set_ram16(TASK_SLEEP(TASK_NOW), frames);
-  return YIELDS;
+  return SLEEPS;
 }
 
 // $C008: the original's start. It waits for V-blank, clears work memory from $0300 up and the first page, starts the
 // sprites', the title's and the tiles' tasks, and turns V-blank's interrupt on.
 static void power_on(void) {
-  nes_write(0x2000, 0x10);
-  nes_write(0x2001, 0x06);
+  start_waited_for_vblank();
+  took(START_TO_CONTROL);
+  hardware_write(0x2000, 0x10);
+  took(START_TO_MASK);
+  hardware_write(0x2001, 0x06);
   for (int i = 0x300; i < 0x800; i++) RAM[i] = 0;
   for (int i = 0; i < 0x100; i++) RAM[i] = 0;
   RAM[0x27] = 0x08;       // where the clearing's pointer stops
@@ -69,24 +69,33 @@ static void power_on(void) {
   RAM[0x8C] = 0x22;
   RAM[0xA2] = 1;          // two players' scores on the title screen
   RAM[ROWS] = 0xFF;
-  nes_write(0x4015, 0x0F);
+  took(START_CLEARS_MEMORY);
+  took(START_TO_SOUND_ON);
+  hardware_write(0x4015, 0x0F);
   set_ram16(0x56, 0x23C0);         // where V-blank writes the next 32 attributes,
   set_ram16(0x58, ATTRIBUTES);     // and where it takes them from
   RAM[0xA3] = 1;
-  start_task(TASK_SPRITES);
-  start_task(TASK_TITLE);
-  start_task(TASK_TILES);
+  took(START_SETTINGS);
+  static const uint8_t FIRST_TASKS[] = { TASK_SPRITES, TASK_TITLE, TASK_TILES };
+  for (unsigned i = 0; i < sizeof FIRST_TASKS; i++) {
+    took(START_TASK_CALLED);
+    start_task(FIRST_TASKS[i]);
+  }
   BANK_HOME = 1;
   switch_bank(1);
+  took(START_MORE_SETTINGS);
   sound_reset();
   FRAMES_A_ROUND = 2;
   PPU_CONTROL = 0x90;
+  took(START_TO_INTERRUPTS_ON);
   write_ppu_control(0x90);
   PPU_MASK = 0x1E;
+  took(START_TO_TURNS);
 }
 
 // sub_C278 and sub_C28E: both controllers' buttons, a bit at a time, into $42 and $44, with $43 and $45 the same but
-// for the A button, which is left out there while it stays held.
+// for the A button, which is left out there while it stays held. It runs when the kit's frame comes (time.c), and
+// pads_take_time says how long the original's takes, which depends on the A buttons.
 void read_pads(void) {
   nes_write(0x4016, 1);
   nes_write(0x4016, 0);
@@ -105,48 +114,115 @@ void read_pads(void) {
   }
 }
 
+// How long sub_C278 takes, which depends on each A button, now and when last read. When the interrupt runs ahead of the
+// kit's frame, this frame's buttons aren't known yet, and A is taken as it was.
+static void pads_take_time(void) {
+  took(PADS_BEGIN);
+  for (int pad = 0; pad < 2; pad++) {
+    uint8_t was_held = RAM[0x42 + pad * 2] & 0x80;
+    uint8_t held = interrupt_runs_ahead() ? was_held : (nes_buttons() >> (pad * 8)) & BUTTON_A;
+    took(PAD_BEGINS);
+    took_times(PAD_BIT, 8);
+    took_times(GOES_ROUND, 7);
+    took(GOES_ON);
+    took(PAD_KEPT);
+    took(!held ? PAD_A_NOT_HELD : was_held ? PAD_A_STILL_HELD : PAD_A_NEWLY_HELD);
+    if (pad == 0) took(PADS_SECOND);
+  }
+}
+
 // $C0F0: the V-blank interrupt.
-static void vblank_interrupt(void) {
+void vblank_interrupt(void) {
   PPU_CONTROL &= 0x7F;
-  write_ppu_control(PPU_CONTROL);
+  took(VBLANK_TO_CONTROL);
+  hardware_write(0x2000, PPU_CONTROL);
   vblank_draws();
-  read_pads();
+  took(VBLANK_TO_PADS);
+  hardware_read_pads();
+  pads_take_time();
+  took(VBLANK_TO_SOUND);
+  time_check('S', 0);
   sound_frame();
+  time_check('E', 0);
+  took(VBLANK_AFTER_SOUND);
   FRAMES_SINCE_ROUND++;
   // $C239: the sleeping tasks' time
   for (uint8_t task = TASK_TITLE; task <= TASK_LAST; task += 2) {
-    if (TASK_STATE(task) != TASK_ASLEEP) continue;
-    uint16_t left = ram16(TASK_SLEEP(task));
-    set_ram16(TASK_SLEEP(task), (uint16_t)(left - 1));
-    if (left == 0) TASK_STATE(task) &= 0xBF;
+    took(VBLANK_TASK_LOOKED_AT);
+    if (TASK_STATE(task) != TASK_ASLEEP) took(VBLANK_TASK_AWAKE);
+    else {
+      uint16_t left = ram16(TASK_SLEEP(task));
+      set_ram16(TASK_SLEEP(task), (uint16_t)(left - 1));
+      if (left == 0) TASK_STATE(task) &= 0xBF;
+      took(left == 0 ? VBLANK_TASK_WAKES : VBLANK_TASK_SLEEPS_ON);
+    }
+    took(task < TASK_LAST ? VBLANK_NEXT_TASK : VBLANK_TASKS_DONE);
   }
+  took(VBLANK_TO_FRAME_COUNT);
   if (RAM[0x80] == 0) RAM[0x4D]++;   // a count of frames the game reads elsewhere, while $80 lets it run
+  took(RAM[0x80] == 0 ? VBLANK_FRAME_COUNTED : VBLANK_FRAME_NOT_COUNTED);
   PPU_CONTROL |= 0x80;
-  write_ppu_control(PPU_CONTROL);
+  took(VBLANK_TO_INTERRUPTS_ON);
+  hardware_write(0x2000, PPU_CONTROL);
   RAM[0x5A] = PPU_CONTROL;
+  took(VBLANK_LEAVES);
 }
 
 // $C37D: the tasks' turns. The next ready task after the one that ran has its turn, and when none is left the round is
-// over: the next starts once enough V-blanks have passed, at once if they already have.
+// over: the processor waits in a loop of three instructions until enough V-blanks have passed, or not at all if they
+// already have. A turn can run past the end of the kit's frame, and the next task's then waits for the next frame.
 static void run_tasks(void) {
-  for (;;) {
+  while (!frame_is_over()) {
     if (round_over) {
-      if (FRAMES_SINCE_ROUND < FRAMES_A_ROUND) return;
+      if (FRAMES_SINCE_ROUND < FRAMES_A_ROUND) {
+        loop_goes_on();
+        return;
+      }
+      loop_left();
       FRAMES_SINCE_ROUND = 0;
       round_over = 0;
-      round_late = worked_this_frame;
+      took(TURNS_ROUND_STARTS);
     }
     uint8_t task = TASK_NOW;
-    if (!spinning) {
-      do task += 2; while (task <= TASK_LAST && TASK_STATE(task) != TASK_READY);
-      TASK_NOW = task > TASK_LAST ? 0 : task;
-      if (!TASK_NOW) { round_over = 1; continue; }
+    if (spinning) {
+      // the task that's running waits in its own loop of two instructions for V-blank
+      if (!loop_was_interrupted()) return;
+      loop_left();
+    } else {
+      // which task is next
+      uint8_t found = 0;
+      if (task == TASK_LAST) took(TURNS_NO_TASK_AFTER);
+      else {
+        took(TURNS_LOOK);
+        while (!found) {
+          task += 2;
+          took(TURNS_CANDIDATE);
+          found = TASK_STATE(task) == TASK_READY;
+          if (found) { took(TURNS_IS_READY); break; }
+          took(TURNS_IS_NOT);
+          if (task == TASK_LAST) { took(TURNS_NONE_LEFT); break; }
+          took(TURNS_NEXT);
+        }
+      }
+      if (!found) {
+        TASK_NOW = 0;
+        round_over = 1;
+        took(TURNS_ROUND_OVER);
+        loop_begins(3);
+        continue;
+      }
+      TASK_NOW = task;
+      took(TURN_GIVEN);
     }
-    worked_this_frame = 1;
+    time_check('t', task);
     wait how = TASK_CODE[task / 2]();
+    time_check(how == SPINS ? 'p' : how == ENDS ? 'e' : how == SLEEPS ? 's' : 'y', task);
     spinning = how == SPINS;
-    if (spinning) return;
-    if (how == ENDS) TASK_STATE(task) = TASK_FREE;
+    if (spinning) loop_begins(2);
+    else if (how == ENDS) {
+      TASK_STATE(task) = TASK_FREE;
+      took(TASK_ENDS);
+    } else took(how == SLEEPS ? TASK_SLEEPS : TASK_YIELDS);
   }
 }
 
@@ -155,23 +231,20 @@ void game_start(void) {
   // the console's work memory as the proof's emulator has it at power-on: the original clears all it uses but the
   // sprites' two pages, which its sprites' task fills before the picture is on
   for (int i = 0; i < 0x800; i++) RAM[i] = 0xFF;
-  powered = interrupts = spinning = round_over = worked_this_frame = round_late = 0;
+  powered = spinning = round_over = 0;
   for (unsigned i = 0; i < sizeof task_step; i++) task_step[i] = 0;
+  time_starts();
 }
 
-// each frame: what the original's processor does from one V-blank to the next
+// each frame: what the original's processor does in it, with V-blank's interrupt first unless it has come already
 void game_step(uint32_t buttons) {
   (void)buttons;  // the controllers are read through $4016
-  worked_this_frame = 0;
-  if (!powered) {
-    // $C00D: the original waits here for the PPU's first V-blank
-    if (!(nes_read(0x2002) & 0x80)) return;
+  frame_begins();
+  if (!powered && nes_frame() == 1) {
+    // the PPU's first V-blank, which the original's start waits for, is in the kit's frame 1 (kit/nes/c/README.md)
     powered = 1;
     power_on();
-    worked_this_frame = round_late = 1;   // the start's own work, before the first round
-  } else if (interrupts) {
-    vblank_interrupt();
-    round_late = 0;
   }
-  run_tasks();
+  if (powered) run_tasks();
+  frame_ends();
 }

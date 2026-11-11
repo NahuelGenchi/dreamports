@@ -19,6 +19,7 @@ static void swap_first_and_fourth(void) {
     RAM[FIELDS[i]] = RAM[FIELDS[i] + 3];
     RAM[FIELDS[i] + 3] = first;
   }
+  took(SPRITES_SWAP);
 }
 
 // Whether a sprite is on the screen along one axis: the object's place plus the sprite's place around it has to stay in
@@ -26,13 +27,27 @@ static void swap_first_and_fourth(void) {
 // the sum, so $9F keeps what it compared with.
 static int on_screen(uint8_t object_at, uint8_t around) {
   if (object_at + around < 0x100) return 1;
-  if (!(around & 0x80)) return 0;
+  if (!(around & 0x80)) { took(SPRITES_SPRITE_OFF_RIGHT); return 0; }
   RAM[0x9F] = (uint8_t)-around;
+  took(object_at >= RAM[0x9F] ? SPRITES_SPRITE_PAST_EDGE : SPRITES_SPRITE_OFF_LEFT);
   return object_at >= RAM[0x9F];
 }
 
 // Where a table's entry for `index` is, as the original's shift and add find it.
 static uint16_t entry(uint16_t table, uint8_t index) { return (uint16_t)(table + ((index << 1) & 0xFF) + (index >> 7)); }
+
+// A two-byte entry of one of the copy's tables.
+static uint16_t table_word(uint16_t at) {
+  if ((at & 0xFF) == 0xFF) took(SPRITES_TABLE_PAST_PAGE);
+  return peek16(at);
+}
+
+// sub_04_81D6, sub_04_81DD and sub_04_81E4: one of the three pointers moves on by one.
+static void pointer_on(uint16_t *pointer) {
+  (*pointer)++;
+  took(SPRITES_POINTER_ON);
+  if (!(*pointer & 0xFF)) took(SPRITES_POINTER_NEXT_PAGE);
+}
 
 // sub_04_80D0: each listed object's sprites, from its shape. A shape is a count, which set of places it uses, and a tile
 // and its bits for each sprite; a tile of $FF is a sprite the shape leaves out. It stops if the sprites run past $03FF.
@@ -42,69 +57,134 @@ static void make_sprites(void) {
   set_ram16(0x2B, out);
   for (; RAM[listed + 2] != 0xFF; listed += 4, set_ram16(0x29, listed)) {
     uint8_t y = RAM[listed], x = RAM[listed + 3];
-    uint16_t shape = peek16((uint16_t)(SHAPES + RAM[listed + 1] * 2));
+    took(SPRITES_SHAPE);
+    uint16_t shape = table_word((uint16_t)(SHAPES + RAM[listed + 1] * 2));
     RAM[0x23] = peek(shape);
-    uint16_t places = peek16(entry(PLACES, peek((uint16_t)(shape + 1))));
+    pointer_on(&shape);
+    uint16_t places = table_word(entry(PLACES, peek(shape)));
+    pointer_on(&shape);
     set_ram16(0x24, entry(COLOURS, RAM[listed + 2]));
-    uint16_t colours = peek16(ram16(0x24));
-    shape += 2;
-    for (; RAM[0x23]; RAM[0x23]--, shape += 2, places += 2, colours++) {
-      set_ram16(0x26, (uint16_t)(shape + 2));
-      set_ram16(0x2D, (uint16_t)(colours + 1));
-      set_ram16(0x2F, (uint16_t)(places + 2));
+    uint16_t colours = table_word(ram16(0x24));
+    for (; RAM[0x23]; RAM[0x23]--) {
       uint8_t tile = peek(shape);
-      if (tile == 0xFF) continue;
-      RAM[out + 1] = tile;
-      RAM[out + 3] = (uint8_t)(x + peek(places));
-      if (!on_screen(x, peek(places))) continue;
-      RAM[out] = (uint8_t)(y + peek((uint16_t)(places + 1)));
-      if (!on_screen(y, peek((uint16_t)(places + 1)))) continue;
-      RAM[out + 2] = peek(colours) | peek((uint16_t)(shape + 1));
-      out += 4;
-      set_ram16(0x2B, out);
-      if (out >= 0x0400) return;
+      if (tile == 0xFF) {
+        // $81BD: past this sprite in all three lists
+        took(SPRITES_SPRITE_LEFT_OUT);
+        pointer_on(&places);
+      } else {
+        RAM[out + 1] = tile;
+        RAM[out + 3] = (uint8_t)(x + peek(places));
+        took(SPRITES_SPRITE_ACROSS);
+        int shown = on_screen(x, peek(places));
+        pointer_on(&places);
+        if (shown) {
+          RAM[out] = (uint8_t)(y + peek(places));
+          took(SPRITES_SPRITE_DOWN);
+          shown = on_screen(y, peek(places));
+        }
+        if (shown) {
+          pointer_on(&places);
+          pointer_on(&shape);
+          RAM[out + 2] = peek(colours) | peek(shape);
+          pointer_on(&shape);
+          pointer_on(&colours);
+          took(SPRITES_SPRITE_REST);
+          out += 4;
+          set_ram16(0x2B, out);
+          set_ram16(0x26, shape);
+          set_ram16(0x2D, colours);
+          set_ram16(0x2F, places);
+          if (out >= 0x0400) return;
+          took(SPRITES_SPRITE_COUNTED);
+          took(RAM[0x23] > 1 ? GOES_ROUND : GOES_ON);
+          continue;
+        }
+      }
+      // $81C0: past the rest of a sprite that isn't made
+      pointer_on(&shape);
+      pointer_on(&shape);
+      pointer_on(&colours);
+      pointer_on(&places);
+      took(SPRITES_SKIP_JUMP);
+      took(SPRITES_SPRITE_COUNTED);
+      took(RAM[0x23] > 1 ? GOES_ROUND : GOES_ON);
     }
+    set_ram16(0x26, shape);
+    set_ram16(0x2D, colours);
+    set_ram16(0x2F, places);
+    took(SPRITES_SHAPE_DONE);
   }
+  took(SPRITES_MADE);
 }
 
 // $8000 in bank 4: the objects that are shown, at most 20, are listed at $0480 with where they are, their shape and
 // their colours; their sprites are made at $0200, with the rest of the 64 put below the screen.
 static void list_sprites(void) {
+  took(SPRITES_LIST_BEGINS);
   swap_first_and_fourth();
   uint8_t listed = 0;
-  for (int object = 0; object < OBJECTS && listed < LIST_MOST; object++) {
-    if (!(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN)) continue;
-    RAM[LIST + listed++] = RAM[OBJECT_SCREEN_Y + object];
-    RAM[LIST + listed++] = RAM[OBJECT_SHAPE + object];
-    RAM[LIST + listed++] = RAM[OBJECT_COLOURS + object];
-    RAM[LIST + listed++] = RAM[OBJECT_SCREEN_X + object];
+  for (int object = 0; object < OBJECTS; object++) {
+    if (object >= 0x10) took(SPRITES_OBJECT_PAST_PAGE);
+    if (!(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN)) took(SPRITES_OBJECT_HIDDEN);
+    else {
+      RAM[LIST + listed++] = RAM[OBJECT_SCREEN_Y + object];
+      RAM[LIST + listed++] = RAM[OBJECT_SHAPE + object];
+      RAM[LIST + listed++] = RAM[OBJECT_COLOURS + object];
+      RAM[LIST + listed++] = RAM[OBJECT_SCREEN_X + object];
+      if (listed >= LIST_MOST) { took(SPRITES_LIST_FULL); break; }
+      took(SPRITES_OBJECT_LISTED);
+    }
+    took(object + 1 < OBJECTS ? GOES_ROUND : GOES_ON);
   }
-  for (int i = 0; i < 4; i++) RAM[LIST + listed++] = 0xFF;
+  took(SPRITES_LIST_END_BEGINS);
+  for (int i = 0; i < 4; i++) {
+    RAM[LIST + listed++] = 0xFF;
+    took(SPRITES_LIST_END_BYTE);
+    took(i < 3 ? GOES_ROUND : GOES_ON);
+  }
+  took(SPRITES_MAKE_BEGINS);
   make_sprites();
-  for (uint16_t at = ram16(0x2B); at < SPRITES_BACKWARDS; at++) RAM[at] = 0xFF;
+  took(SPRITES_FILL_BEGINS);
+  for (uint16_t at = ram16(0x2B); at < SPRITES_BACKWARDS; at++) {
+    took(SPRITES_FILL_BYTE);
+    RAM[at] = 0xFF;
+    set_ram16(0x26, (uint16_t)(at + 1));
+    took(SPRITES_FILL_NEXT);
+    if (!((at + 1) & 0xFF)) took(SPRITES_POINTER_NEXT_PAGE);
+  }
+  took(SPRITES_FILL_OVER);
   set_ram16(0x26, SPRITES_BACKWARDS);
 }
 
-// $8069: the same sprites backwards at $0300, and the first and fourth objects back in their places.
+// $8069: the same sprites backwards at $0300, a byte at a time, and the first and fourth objects back in their places.
+// V-blank often comes partway through, and sends the list as far as it has got.
 static void list_sprites_backwards(void) {
-  for (int sprite = 0; sprite < 64; sprite++) for (int i = 0; i < 4; i++) RAM[SPRITES_BACKWARDS + sprite * 4 + i] = RAM[SPRITES + (63 - sprite) * 4 + i];
-  RAM[0x22] = 0;
+  took(SPRITES_COPY_BEGINS);
+  for (int sprite = 0; sprite < 64; sprite++) {
+    took(SPRITES_COPY_SPRITE);
+    for (int i = 0; i < 4; i++) {
+      took(SPRITES_COPY_READ);
+      RAM[SPRITES_BACKWARDS + sprite * 4 + i] = RAM[SPRITES + (63 - sprite) * 4 + i];
+      RAM[0x22] = (uint8_t)(3 - i);
+      took(SPRITES_COPY_STORED);
+      took(i < 3 ? GOES_ROUND : GOES_ON);
+    }
+    took(SPRITES_COPY_SPRITE_DONE);
+    took(sprite < 63 ? GOES_ROUND : GOES_ON);
+  }
   swap_first_and_fourth();
 }
 
-// $F34F, the sprites' task. In a round that started late, V-blank comes while the list is filled, so it sends the new
-// list at $0200 or the last round's at $0300, whichever's turn it is, and the task goes on after it (main.c).
+// $F34F, the sprites' task
 wait sprites_task(void) {
-  enum { LIST_THEM, BACKWARDS };
-  uint8_t *step = &task_step[TASK_SPRITES];
-  if (*step == LIST_THEM) {
-    switch_bank(4);
-    list_sprites();
-    *step = BACKWARDS;
-    if (round_started_late()) return SPINS;
-  }
+  enum { FIRST_TURN, LATER };
+  if (task_step[TASK_SPRITES] == LATER) took(SPRITES_TASK_AGAIN);
+  task_step[TASK_SPRITES] = LATER;
+  took(SPRITES_TASK_BEGINS);
+  switch_bank(4);
+  list_sprites();
   list_sprites_backwards();
   switch_bank(BANK_HOME);
-  *step = LIST_THEM;
+  took(SPRITES_TASK_ENDS);
   return YIELDS;
 }
