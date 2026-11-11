@@ -187,7 +187,9 @@ static void add_down(uint8_t object) {
 
 // sub_F03E and sub_EFDA: moves an object by `speed` the way it's heading, one of 16 ways. The copy's table at $F2A3 has,
 // for each way, how far down and how far across a speed of 256 goes, in 256ths of a pixel.
-void move_object(uint8_t object, uint8_t speed) {
+// sub_EFDA, with its call: how far `speed` goes the way an object is heading, left in $77, $73 and $7B down and $78,
+// $74 and $7C across.
+void find_move(uint8_t object, uint8_t speed) {
   took(MOVE_BEGINS);
   if ((OBJECT_HEADING & 0xFF) + object > 0xFF) took(READ_PAST_PAGE);
   uint16_t way = (uint16_t)(0xF2A3 + RAM[OBJECT_HEADING + object] * 4);
@@ -206,6 +208,10 @@ void move_object(uint8_t object, uint8_t speed) {
     RAM[0x7B + across] = RAM[0x26];
     took(across ? MOVE_FOUND : MOVE_ACROSS_BEGINS);
   }
+}
+
+void move_object(uint8_t object, uint8_t speed) {
+  find_move(object, speed);
   took(MOVE_ADDED_ACROSS);
   uint32_t x = (uint32_t)(RAM[OBJECT_X_SCREEN + object] << 16 | RAM[OBJECT_X + object] << 8 | RAM[OBJECT_X_PART + object]);
   x += (uint32_t)(A_X_SCREEN << 16 | A_X << 8 | RAM[0x7C]);
@@ -542,6 +548,7 @@ wait objects_task(void) {
         case 0x00: zombie(object); break;
         case 0x01: plant(object); break;
         case 0x02: flier(object); break;
+        case 0x0E: platform(object); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object); break;
         case 0x12: pot(object); break;

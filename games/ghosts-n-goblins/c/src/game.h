@@ -194,6 +194,10 @@ void pot(uint8_t object);
 void zombies_come(uint8_t *x);
 /** sub_F03E: moves an object by `speed` the way it's heading, one of 16 ways. */
 void move_object(uint8_t object, uint8_t speed);
+/** sub_EFDA: how far `speed` goes the way an object is heading, left in $77, $73, $7B, $78, $74 and $7C. */
+void find_move(uint8_t object, uint8_t speed);
+/** Bank 4's $B84D, kind $0E: a platform that moves from side to side (platform.c). */
+void platform(uint8_t object);
 /** sub_F099: moves an object down by what's in $77 and $73, screens and pixels. */
 void move_down(uint8_t object);
 /** sub_EF25, from an object to Arthur: the way to head, one of 16. */
