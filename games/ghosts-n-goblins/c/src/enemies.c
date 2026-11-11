@@ -544,14 +544,38 @@ static void plant_shoots(uint8_t object) {
   took(PLANT_SHOT);
 }
 
+// $F6F6: an enemy that a weapon has killed burns away where it is, eight shapes from the copy's list at $F760, two
+// rounds each, and is gone. The kinds 5, 9 and $15, which burn with the shapes at $F768, aren't ported yet.
+static void burn_away(uint8_t object) {
+  uint8_t *count = &RAM[OBJECT_COUNT + object];
+  show_object(object);
+  if (object_in_view(object)) took(BURNING_IN_VIEW);
+  else {
+    took(BURNING_OUT_OF_VIEW);
+    hide_object(object);
+  }
+  if (*count >= 0x10) {
+    took(BURNT_AWAY);
+    remove_object(object);
+    return;
+  }
+  RAM[OBJECT_SHAPE + object] = cart(7, (uint16_t)(0xF760 + (*count >> 1)));
+  RAM[OBJECT_COLOURS + object] = 0x02;
+  ++*count;
+  took(BURNS_ON);
+}
+
 /** Bank 4's $9EC0, kind 1: a plant. In the view it faces Arthur, and every 16 rounds opens its mouth, flag $04, to shoot.
- *  Out of the view it starts again. A weapon is worth 100 points, with sound $1F; how it dies after, at $F6F6, isn't
- *  ported yet. */
+ *  Out of the view it starts again. A weapon is worth 100 points, with sound $1F, and then it burns away. */
 void plant(uint8_t object) {
   uint8_t *flags = &RAM[OBJECT_FLAGS + object];
   took(OBJECT_FLAG_READ);
   flags_past_page(object, 1);
-  if (*flags & HIT) return;   // $F6F6
+  if (*flags & HIT) {
+    took(PLANT_DEAD);
+    burn_away(object);
+    return;
+  }
   took(PLANT_ALIVE);
   show_object(object);
   if (!object_in_view(object)) {
@@ -570,6 +594,8 @@ void plant(uint8_t object) {
     RAM[0x27] = 1;   // 100 points
     took(PLANT_HIT_SCORE);
     add_score(object, 0);
+    took(JUMPS);
+    burn_away(object);
     return;
   }
   took(PLANT_NOT_HIT);
