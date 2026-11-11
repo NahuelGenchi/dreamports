@@ -46,11 +46,14 @@ static int shrub_run(ActTask *t) {
     int x = (int)__builtin_floor(p[i]->x), y = (int)__builtin_floor(p[i]->y);
     if (x >= e->x && x <= right && y >= e->y && y <= bottom) {
       if (!p[i]->dead) {
-        uint32_t r = act_random();
-        int lx = x + (int)((r & 0x1F00) >> 8) - 16;
-        int ly = y + (int)((act_random() & 0x0F00) >> 8) - 8;
-        leaves(lx, ly);
-        play_song(SE_SHRUBBERY);
+        // the bush reacts the frame he first gets into it, not every frame he stays in it
+        if (!s->inside[i]) {
+          uint32_t r = act_random();
+          int lx = x + (int)((r & 0x1F00) >> 8) - 16;
+          int ly = y + (int)((act_random() & 0x0F00) >> 8) - 8;
+          leaves(lx, ly);
+          play_song(SE_SHRUBBERY);
+        }
         s->inside[i] = 1;
       }
     } else s->inside[i] = 0;
