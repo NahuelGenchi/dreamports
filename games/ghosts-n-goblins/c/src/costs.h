@@ -358,6 +358,7 @@ COST(ARTHUR_ON_GROUND, 3)         // $DB01
 COST(ARTHUR_IN_AIR, 5)            // $DB01 to $E28E
 COST(ARTHUR_STANDS, 65)           // $DB06 to $DB65, with sub_DDA1,
 COST(ARTHUR_B_NOT_HELD, 2)        // which clears $85 when B isn't held
+COST(ARTHUR_THROWING, 11)         // or $DB06 to $DB65, while he throws
 COST(ARTHUR_VIEW_FOLLOWS, 12)     // $DB65 and $DB96, the two calls
 COST(FOLLOW_ACROSS, 59)           // sub_DBFB to $DC22
 COST(FOLLOW_LEFT_NEAR, 17)        // $DC24 on, and back: within 8 pixels to the left,
@@ -384,6 +385,66 @@ COST(ARTHUR_FLASH_OVER, 25)       // or with sub_F342: 30 rounds are over
 COST(ARTHUR_FLASH_CALLED, 6)
 COST(ARTHUR_BUTTONS, 39)          // sub_E01E, with its call
 COST(ARTHUR_BUTTONS_BUSY, 21)     // or when his state stops it
+COST(ARTHUR_B_STILL_HELD, 39)     // or with B held since before, and back
+COST(ARTHUR_THROW_LOOKS, 34)      // or with B newly pressed, to $E047
+COST(WEAPON_SLOT_FREE, 8)         // $E047 to $E05F: a weapon's object that's free,
+COST(WEAPON_SLOT_USED, 11)        // or isn't, to $E04F
+COST(WEAPON_THIRD_LOOKED_AT, 4)   // $E04F to $E053, after the second
+COST(WEAPON_NO_SLOT, 3)           // $E053 to $E074: all three are flying
+COST(WEAPON_THIRD_ASKED, 8)       // $E053 to $E05A
+COST(WEAPON_THIRD_ALLOWED, 3)     // the dagger has a third,
+COST(WEAPON_ONLY_TWO, 5)          // and the others don't
+COST(THROW_NOT_MADE, 11)          // $E074, and back
+COST(THROW_BEGINS, 24)            // $E05F to sub_E0BE
+COST(WEAPON_MADE, 62)             // sub_E0BE to $E0E7: Arthur's place, and the weapon's shape
+COST(WEAPON_IS_LANCE, 9)          // $E0E7 to $E10D: its kind, by its shape
+COST(WEAPON_IS_DAGGER, 14)
+COST(WEAPON_IS_TORCH, 19)
+COST(WEAPON_IS_AXE, 25)
+COST(WEAPON_IS_CROSS, 23)
+COST(WEAPON_FACES, 34)            // $E10D to sub_F2E7: the way Arthur faces
+COST(THROW_STANDING, 3)           // $E129: thrown from ten pixels up,
+COST(THROW_CROUCHING, 7)          // or four
+COST(WEAPON_HEIGHT, 17)           // $E12F to $E149, on Arthur's screen
+COST(WEAPON_HEADING_LOOKED_AT, 7) // $E149 to $E14E
+COST(WEAPON_HEADS_RIGHT, 3)       // $E14E to $E161,
+COST(WEAPON_LEFT_SHAPE_KEPT, 11)  // or left, with a shape that has no other,
+COST(WEAPON_LEFT_AXE, 15)         // or the axe's,
+COST(WEAPON_LEFT_SHAPE_TURNED, 23) // or the shape after it
+COST(THROW_SOUND, 5)              // $E161 to sub_ED51
+COST(THROW_ENDS, 14)              // $E06F, and back
+COST(ARTHUR_THROW_SHAPE, 122)     // sub_E35E to $E3B9 by way of sub_E079, with its call, less sub_E079's end
+COST(ARTHUR_THROW_GOES_ON, 8)     // $E0B2, and back,
+COST(ARTHUR_THROW_OVER, 20)       // or with the throw over, after three rounds
+
+// ---- a weapon's turn, $EB75 and $EB84 (weapons.c)
+COST(WEAPON_TURN_BEGINS, 7)       // $EB75 or $EB84 to sub_F2E3
+COST(LANCE_SPEED, 7)              // $EB7D to $EB90,
+COST(DAGGER_SPEED, 4)             // or $EB8C
+COST(WEAPON_IN_VIEW, 3)           // $EB93 to $EB9D,
+COST(WEAPON_GONE, 25)             // or with sub_F734, and back: out of the view
+COST(WEAPON_NOT_SPENT, 2)         // $EBA3
+COST(WEAPON_BLOCK_ABOVE, 53)      // sub_E9CA with its call, to the block four pixels above its place
+COST(WEAPON_FLIES_ON, 15)         // $EBA8, and back: not a gravestone
+
+// ---- the score, sub_D8FC (flow.c)
+COST(SCORE_NOT_IN_DEMONSTRATION, 27) // sub_D8FC, and back
+COST(SCORE_BEGINS, 22)            // sub_D8FC to $D90C
+COST(SCORE_FIRST_DIGIT, 16)       // each of the six digits, from the last: the first added to,
+COST(SCORE_NEXT_DIGIT, 14)        // the next three,
+COST(SCORE_LAST_DIGITS, 13)       // and the two that only take what's carried,
+COST(SCORE_DIGIT_KEPT, 3)         // each with its branch when it's nine or less,
+COST(SCORE_DIGIT_OVER_NINE, 6)    // or ten taken off
+COST(SCORE_BEST_BEGINS, 2)        // $D967
+COST(SCORE_BEATS_BEST, 11)        // $D969 to $D983: a digit over the best score's,
+COST(SCORE_BELOW_BEST, 13)        // or under it, to $D9A6,
+COST(SCORE_SAME_DIGIT, 20)        // or the same, to $D977
+COST(SCORE_SAME_AS_BEST, 5)       // and all seven the same, to $D9A6
+COST(SCORE_BEST_KEPT, 144)        // $D983 to $D998: the best score is this one
+COST(SCORE_BEST_MARKED_ALREADY, 3)
+COST(SCORE_BEST_MARKED, 20)       // $D998 to $D9A6
+COST(SCORE_LIFE_LOOKED_AT, 35)    // $D9A6 to $D97B: not yet the score that gives a life
+COST(SCORE_ENDS, 12)              // $D97E, and back
 COST(ARTHUR_TURN_YIELDS, 43)      // $DB93 and $E4E5, to the jump that yields
 COST(ARTHUR_FALL_RESUMES, 40)     // $E2E4 to $E28E
 COST(ARTHUR_FALL_CHECKS, 66)      // $E28E to $E29B
@@ -559,6 +620,17 @@ COST(POT_NONE_FREE, 13)           // $890A, and back: no object is free,
 COST(POT_MADE, 61)                // or the pot is made, for the first four sets of stages and not the fourth pot
 COST(ZOMBIE_NEXT, 5)              // $84A2
 COST(ZOMBIE_TURN_BEGINS, 25)      // $F7BE to $F7C6
+COST(ZOMBIE_DYING, 27)            // or $F7BE to $F770, once it's hit
+COST(ZOMBIE_DEAD_OUT_OF_VIEW, 6)  // $F776 to sub_F708: out of the view,
+COST(ZOMBIE_DEAD, 13)             // or after six rounds,
+COST(ZOMBIE_DIES_ON, 11)          // or $F776 to $F782
+COST(ZOMBIE_DYING_SHAPE, 7)       // $F782 to sub_F2E7
+COST(ZOMBIE_DIES_TO_THE_RIGHT, 3) // $F78A to $F791,
+COST(ZOMBIE_DIES_TO_THE_LEFT, 9)  // or with the other shape
+COST(ZOMBIE_DYING_ENDS, 37)       // $F791, and back
+COST(ZOMBIE_WAS_HIT, 9)           // $F830 to $F8C5
+COST(ZOMBIE_HIT, 96)              // $F8C5 to sub_D8FC
+COST(ZOMBIE_HIT_SOUND, 8)         // $F8E6 to sub_ED51
 COST(ZOMBIE_UNDER_THE_GROUND, 24) // $F7C6 to $F7CB
 COST(ZOMBIE_NO_GROUND, 6)         // $F7CE to sub_F708
 COST(ZOMBIE_WAITS_ON, 18)         // $F7CE, and back: its count isn't over,
@@ -606,6 +678,12 @@ COST(POT_FALLS, 45)               // or $BC81, and back, once its carrier is hit
 COST(ENEMY_NOT_SHOWN, 29)         // sub_F5A0, and back, for an enemy that isn't shown
 COST(ENEMY_TESTS_BEGIN, 49)       // sub_F5A0 to $F5FB
 COST(WEAPON_NOT_FLYING, 12)       // each of Arthur's three weapons, when it isn't shown
+COST(WEAPON_SPENT, 16)            // or is, and has hit something already,
+COST(WEAPON_TESTED, 17)           // or is tested: to sub_F611
+COST(WEAPON_BOX, 60)              // sub_F611 to sub_F63A: the box around the enemy, wider by the weapon's own size
+COST(WEAPON_MISSED, 7)            // $F607 to $F60D,
+COST(WEAPON_HIT, 8)               // or back
+COST(WEAPON_STOPS, 70)            // $F5A8 to $F5E2, and back: a lance or a dagger is gone, and the enemy's hits are counted
 COST(ENEMY_NO_WEAPON_HIT, 38)     // $F60F to sub_F68E
 COST(ENEMY_NOT_TOUCHED, 9)        // $F5E6, and back,
 COST(ENEMY_TOUCHES_ARTHUR, 20)    // or with Arthur's flag that says he's hit

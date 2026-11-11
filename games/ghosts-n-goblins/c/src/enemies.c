@@ -5,8 +5,10 @@
 //
 // Every sixth zombie carries a pot, an object of its own, kind $12 at bank 4's $BBEE, that stays where its carrier is.
 //
-// What a weapon does to a zombie, at $F770 and $F8C5, the weapons themselves, a pot that falls, at $BC8A, what every
-// fourth pot holds, at bank 2's $8938, and the pots of the later stages, at $8928, aren't ported yet.
+// A lance or a dagger that touches a zombie is gone, and the zombie dies in six rounds, for 200 points.
+//
+// What a torch or an axe does to one, at $F5B5, a pot that falls, at $BC8A, what every fourth pot holds, at bank 2's
+// $8938, and the pots of the later stages, at $8928, aren't ported yet.
 
 #include "game.h"
 
@@ -24,7 +26,6 @@ enum { ARTHUR = 0 };
 enum { HIT = 0x01, WALKS = 0x02, SINKS = 0x04, FAST = 0x10, OUT = 0x20, IN_USE = 0x40 };
 enum { ARTHUR_IN_THE_AIR = 0x08, ARTHUR_HIT = 0x01 };
 enum { HEADS_LEFT = 0x08 };            // the bit of a heading that the ways to the left have
-enum { FIRST_WEAPON = 0x11, WEAPONS = 3 };
 enum { POT = 0x12 };                   // a kind of object, as a zombie is kind 0
 #define CARRIER(pot) RAM[0x0647 + (pot)]   // the object that carries a pot
 #define POTS_MADE RAM[0x0708]
@@ -92,19 +93,76 @@ void zombies_come(uint8_t *x) {
   took(RETURNS);
 }
 
-// sub_F5A0: what touches an enemy this round, whose half width and half height are in $26 and $27: one of Arthur's three
-// weapons, or Arthur, who is hit by it. A weapon that's flying, at $F600, isn't ported yet.
-static void touch_tests(uint8_t enemy) {
-  if (!(RAM[OBJECT_FLAGS + enemy] & OBJECT_FLAG_SHOWN)) { took(ENEMY_NOT_SHOWN); return; }
+// sub_F5A0: what touches an enemy this round, whose half width and half height are in $26 and $27. The first of
+// Arthur's three weapons that's flying, hasn't hit anything yet and touches it is gone, and is the answer: the enemy's
+// hits, at $0647, count it. With none, Arthur is hit if he touches it.
+static uint8_t touch_tests(uint8_t enemy) {
+  enum { SPENT = 0x01 };
+  if (!(RAM[OBJECT_FLAGS + enemy] & OBJECT_FLAG_SHOWN)) { took(ENEMY_NOT_SHOWN); return 0; }
   took(ENEMY_TESTS_BEGIN);
-  for (int weapon = 0; weapon < WEAPONS; weapon++) {
-    took(WEAPON_NOT_FLYING);
-    took(weapon + 1 < WEAPONS ? GOES_ROUND_FAR : GOES_ON);
+  for (uint8_t weapon = FIRST_WEAPON; weapon < FIRST_WEAPON + WEAPONS; weapon++) {
+    uint8_t flags = RAM[OBJECT_FLAGS + weapon];
+    if (!(flags & OBJECT_FLAG_SHOWN)) took(WEAPON_NOT_FLYING);
+    else if (flags & SPENT) took(WEAPON_SPENT);
+    else {
+      took(WEAPON_TESTED);
+      if (weapon_touches(weapon, enemy)) {
+        took(WEAPON_HIT);
+        RAM[OBJECT_STATE + weapon] = enemy;
+        RAM[OBJECT_FLAGS + weapon] = 0;
+        RAM[OBJECT_COUNT + weapon] = 0;
+        RAM[0x0647 + enemy]++;
+        took(WEAPON_STOPS);
+        return weapon;
+      }
+      took(WEAPON_MISSED);
+    }
+    took(weapon + 1 < FIRST_WEAPON + WEAPONS ? GOES_ROUND_FAR : GOES_ON);
   }
   took(ENEMY_NO_WEAPON_HIT);
-  if (!arthur_touches(enemy)) { took(ENEMY_NOT_TOUCHED); return; }
+  if (!arthur_touches(enemy)) { took(ENEMY_NOT_TOUCHED); return 0; }
   RAM[OBJECT_FLAGS + ARTHUR] |= ARTHUR_HIT;
   took(ENEMY_TOUCHES_ARTHUR);
+  return 0;
+}
+
+// $F770: a zombie that's been hit, six rounds of three shapes, falling the way the weapon went, and it's gone.
+static void die(uint8_t object) {
+  uint8_t *count = &RAM[OBJECT_COUNT + object];
+  show_object(object);
+  if (!object_in_view(object)) {
+    took(ZOMBIE_DEAD_OUT_OF_VIEW);
+    remove_object(object);
+    return;
+  }
+  if (*count >= 6) {
+    took(ZOMBIE_DEAD);
+    remove_object(object);
+    return;
+  }
+  took(ZOMBIE_DIES_ON);
+  took(ZOMBIE_DYING_SHAPE);
+  took(OBJECT_FLAG_READ);
+  took(RAM[OBJECT_FLAGS + object] & WALKS ? ZOMBIE_DIES_TO_THE_LEFT : ZOMBIE_DIES_TO_THE_RIGHT);
+  RAM[OBJECT_SHAPE + object] = (uint8_t)((RAM[OBJECT_FLAGS + object] & WALKS ? 0x3A : 0xF5) + (*count >> 1));
+  RAM[OBJECT_COLOURS + object] = 0;
+  ++*count;
+  took(ZOMBIE_DYING_ENDS);
+}
+
+// $F8C5: a weapon has hit it. Its flag that said it walks now says the weapon was heading left, for the way it falls.
+static void is_hit(uint8_t object, uint8_t weapon) {
+  uint8_t *flags = &RAM[OBJECT_FLAGS + object];
+  *flags &= (uint8_t)~WALKS;
+  *flags |= (RAM[OBJECT_HEADING + weapon] >> 2) & WALKS;
+  *flags |= HIT;
+  RAM[OBJECT_COUNT + object] = 0;
+  RAM[0x26] = 0;
+  RAM[0x27] = 2;   // 200 points
+  took(ZOMBIE_HIT);
+  add_score(object, weapon);
+  took(ZOMBIE_HIT_SOUND);
+  sound_play(0x16);
 }
 
 // sub_F88C: a zombie's shape as it comes up or sinks, one of four by `step`, facing the way it's headed once it's more
@@ -140,6 +198,11 @@ static void sink(uint8_t object) {
 
 void zombie(uint8_t object) {
   uint8_t *flags = &RAM[OBJECT_FLAGS + object], *count = &RAM[OBJECT_COUNT + object];
+  if (*flags & HIT) {
+    took(ZOMBIE_DYING);
+    die(object);
+    return;
+  }
   took(ZOMBIE_TURN_BEGINS);
   if (!(*flags & OUT)) {
     // $F7CB: under the ground, which has to be there
@@ -196,7 +259,12 @@ void zombie(uint8_t object) {
     RAM[0x27] = 0x0C;
     RAM[0x26] = 0x08;
     took(ZOMBIE_WALKING);
-    touch_tests(object);
+    uint8_t weapon = touch_tests(object);
+    if (RAM[0x0647 + object]) {
+      took(ZOMBIE_WAS_HIT);
+      is_hit(object, weapon);
+      return;
+    }
     took(ZOMBIE_NOT_HIT);
   }
   // $F838: a step, unless the ground ends or its rounds are over

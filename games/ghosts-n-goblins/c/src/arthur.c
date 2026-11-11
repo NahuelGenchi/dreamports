@@ -3,8 +3,8 @@
 // armour, and in a stage, where he falls to the ground and stands, and where the first thing that hits him knocks him
 // back out of his armour. The view follows him as he moves.
 //
-// So far the buttons do nothing in a stage: walking, at $DB32 and $DB6E, jumping, at $DB16, throwing, at $E041,
-// climbing, and a hit without armour, which kills him, aren't ported yet.
+// So far B throws his weapon in a stage, and the other buttons do nothing: walking, at $DB32 and $DB6E, jumping, at
+// $DB16, climbing, and a hit without armour, which kills him, aren't ported yet.
 
 #include "game.h"
 
@@ -129,15 +129,30 @@ static void placed(void) {
   took(ARTHUR_TURN_YIELDS);
 }
 
+static void flash_after_a_hit(void);
+
 // sub_E35E and sub_E3B9: his shape. The copy's list at $E3DC gives the six steps of his walk, and his shapes without
 // armour are 32 on from those with it, and the ones facing left 4 on. His other states, at $E317, $E36B and $E382, and
 // his flashing after he's hit, at $E3BE, aren't ported yet.
 static void choose_shape(void) {
+  if (STATE & 0x02) {
+    // sub_E079: a throw's two shapes, three rounds, by the way he faces, whether he crouches and whether he has armour
+    SHAPE = (uint8_t)((8 + ((RAM[OBJECT_KIND + ARTHUR] >> 1) & 1) + ((FLAGS >> 1) & 2) + ((FLAGS << 1) & 4)) | (FLAGS & WITHOUT_ARMOUR));
+    took(ARTHUR_THROW_SHAPE);
+    if (++RAM[OBJECT_KIND + ARTHUR] >= 3) STATE &= 0xFD;
+    took(STATE & 0x02 ? ARTHUR_THROW_GOES_ON : ARTHUR_THROW_OVER);
+    flash_after_a_hit();
+    return;
+  }
   took(ARTHUR_SHAPE);
   if (COUNT >= 6) took(ARTHUR_SHAPE_STARTS_AGAIN);
   if (COUNT >= 6) COUNT = 0;
   SHAPE = (uint8_t)(((FLAGS & TURNED) | (FLAGS & WITHOUT_ARMOUR)) + cart(7, (uint16_t)(0xE3DC + COUNT)));
-  // sub_E3B9: while nothing can touch him, after a hit, he's shown every other round, for 30 rounds
+  flash_after_a_hit();
+}
+
+// sub_E3B9: while nothing can touch him, after a hit, he's shown every other round, for 30 rounds.
+static void flash_after_a_hit(void) {
   if (!(FLAGS & CANNOT_BE_TOUCHED)) { took(ARTHUR_FLASH_LOOKED_AT); return; }
   took(ARTHUR_FLASH_COUNTED);
   if (++RAM[0x0647 + ARTHUR] >= 30) {
@@ -241,12 +256,86 @@ static void start_in_stage(void) {
   X_SCREEN = RAM[VIEW_X + 2];
 }
 
-// sub_DB8A, with sub_E01E: the end of a turn in a stage. The B button, which throws his weapon, at $E041, isn't ported yet.
+// sub_E0BE: the weapon he has, as an object at his place, ten pixels up or four when he crouches, heading the way he
+// faces, with its sound. Its kind is by its shape at the top of the picture, and the shapes that have one for the left
+// are one on. A throw from the top ten pixels of a screen, at $E13A, isn't ported yet.
+static void make_weapon(uint8_t weapon) {
+  static const struct { uint8_t shape, kind; cost takes; } KINDS[] = {
+    { 0x40, LANCE, WEAPON_IS_LANCE }, { 0x42, DAGGER, WEAPON_IS_DAGGER }, { 0x44, TORCH, WEAPON_IS_TORCH }, { 0x36, AXE, WEAPON_IS_AXE },
+  };
+  RAM[OBJECT_Y_SCREEN + weapon] = Y_SCREEN;
+  RAM[OBJECT_Y + weapon] = Y;
+  RAM[OBJECT_X_SCREEN + weapon] = X_SCREEN;
+  RAM[OBJECT_X + weapon] = X;
+  RAM[OBJECT_COUNT + weapon] = RAM[0x0647 + weapon] = RAM[OBJECT_STATE + weapon] = 0;
+  RAM[OBJECT_SHAPE + weapon] = WEAPON_HELD;
+  took(WEAPON_MADE);
+  uint8_t kind = CROSS;
+  cost kind_took = WEAPON_IS_CROSS;
+  for (unsigned i = 0; i < sizeof KINDS / sizeof *KINDS; i++) if (KINDS[i].shape == WEAPON_HELD) { kind = KINDS[i].kind; kind_took = KINDS[i].takes; }
+  took(kind_took);
+  RAM[OBJECT_KIND + weapon] = kind;
+  RAM[OBJECT_FLAGS + weapon] = (FLAGS & TURNED) | 0x40;
+  RAM[OBJECT_HEADING + weapon] = FLAGS & TURNED ? 0x0C : 0x04;
+  took(WEAPON_FACES);
+  took(OBJECT_FLAG_READ);
+  took(FLAGS & CROUCHES ? THROW_CROUCHING : THROW_STANDING);
+  RAM[0x22] = FLAGS & CROUCHES ? 4 : 10;
+  RAM[OBJECT_Y + weapon] -= RAM[0x22];
+  took(WEAPON_HEIGHT);
+  took(WEAPON_HEADING_LOOKED_AT);
+  if (!(FLAGS & TURNED)) took(WEAPON_HEADS_RIGHT);
+  else if (RAM[OBJECT_SHAPE + weapon] >= 0x45) took(WEAPON_LEFT_SHAPE_KEPT);
+  else if (RAM[OBJECT_SHAPE + weapon] == 0x36) took(WEAPON_LEFT_AXE);
+  else {
+    RAM[OBJECT_SHAPE + weapon]++;
+    took(WEAPON_LEFT_SHAPE_TURNED);
+  }
+  took(THROW_SOUND);
+  sound_play(0x11);
+}
+
+// sub_E01E: B throws his weapon, once for each press, while one of its objects is free: two, or three for the dagger.
+// $85 says B was held the round before. The demonstration's own throws, at $E029, aren't ported yet.
+static void throw_button(void) {
+  enum { THROWS = 0x02, BUSY = 0x12 };
+  if (STATE & BUSY) { took(ARTHUR_BUTTONS_BUSY); return; }
+  if (!(PAD_NOW & PAD_B)) {
+    RAM[0x85] = 0;
+    took(ARTHUR_BUTTONS);
+    return;
+  }
+  if (RAM[0x85]) { took(ARTHUR_B_STILL_HELD); return; }
+  took(ARTHUR_THROW_LOOKS);
+  uint8_t weapon = FIRST_WEAPON;
+  for (;;) {
+    if (!RAM[OBJECT_FLAGS + weapon]) { took(WEAPON_SLOT_FREE); break; }
+    took(WEAPON_SLOT_USED);
+    if (++weapon < FIRST_WEAPON + 2) { took(GOES_ROUND); continue; }
+    took(WEAPON_THIRD_LOOKED_AT);
+    if (weapon >= FIRST_WEAPON + WEAPONS) { took(WEAPON_NO_SLOT); weapon = 0; break; }
+    took(WEAPON_THIRD_ASKED);
+    if (WEAPON_HELD != 0x42) { took(WEAPON_ONLY_TWO); weapon = 0; break; }
+    took(WEAPON_THIRD_ALLOWED);
+  }
+  if (!weapon) {
+    RAM[0x85] = 0;
+    took(THROW_NOT_MADE);
+    return;
+  }
+  STATE |= THROWS;
+  RAM[OBJECT_KIND + ARTHUR] = 0;   // which counts the throw's three rounds
+  took(THROW_BEGINS);
+  make_weapon(weapon);
+  RAM[0x85] = 0xFF;
+  took(THROW_ENDS);
+}
+
+// sub_DB8A, with sub_E01E: the end of a turn in a stage.
 static void end_stage_turn(void) {
   took(ARTHUR_TURN_ENDS);
   choose_shape();
-  took(STATE & 0x12 ? ARTHUR_BUTTONS_BUSY : ARTHUR_BUTTONS);
-  if (!(STATE & 0x12)) RAM[0x85] = 0;
+  throw_button();
   place_on_screen(ARTHUR);
   FLAGS &= (uint8_t)~HELD;
   STATE &= 0xF7;
@@ -360,7 +449,12 @@ wait arthur_task(void) {
         *step = STAGE_FALLS;
         break;
       } else took(ARTHUR_ON_GROUND);
-      // $DB06: on the ground, with no button that does anything yet
+      // $DB06: on the ground. A throw holds him where he is, and no other button does anything yet.
+      if (STATE & 0x02) {
+        took(ARTHUR_THROWING);
+        *step = STAGE_STANDS;
+        break;
+      }
       RAM[0x84] = 0;
       took(ARTHUR_STANDS);
       if (!(PAD_NOW & PAD_B)) {
