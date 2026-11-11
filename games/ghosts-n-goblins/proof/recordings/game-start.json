@@ -1,0 +1,10 @@
+{
+  "about": "Start pressed on the title screen, one player, then nothing: the screen that says whose turn it is, and the opening scene as far as Satan reaching the princess.",
+  "frames": 729,
+  "held": [
+    [0, []],
+    [100, ["START"]],
+    [102, []]
+  ],
+  "clip": { "at": 397, "frames": 332 }
+}
