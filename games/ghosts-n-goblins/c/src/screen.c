@@ -152,8 +152,14 @@ void queue_rows(uint16_t from, uint16_t to, uint8_t rows, uint8_t count) {
 }
 
 // sub_EEBF and sub_EEBA: colours for the PPU's palette at $3F00.
-void queue_palette(uint16_t from) { queue_rows(from, 0x3F00, 1, 0x20); }
-void queue_background_palette(uint16_t from) { queue_rows(from, 0x3F00, 1, 0x10); }
+void queue_palette(uint16_t from) {
+  took(PALETTE_SET_UP);
+  queue_rows(from, 0x3F00, 1, 0x20);
+}
+void queue_background_palette(uint16_t from) {
+  took(HALF_PALETTE_SET_UP);
+  queue_rows(from, 0x3F00, 1, 0x10);
+}
 
 // sub_F171: the picture goes off at the next V-blank, which the task waits a turn for.
 wait picture_off(void) {

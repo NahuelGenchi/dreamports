@@ -185,7 +185,8 @@ static void start_stage(void) {
 static void place_stage_objects(void) {
   uint16_t listed = (uint16_t)(peek16((uint16_t)(0x8038 + STAGE * 2)) + STAGE_OBJECTS_PLACED * 8);
   set_ram16(0x26, listed);
-  if (peek(listed) == 0x80 || peek(listed) > RAM[OBJECT_X_SCREEN + ARTHUR]) return;
+  if (peek(listed) == 0x80 || peek(listed) > RAM[OBJECT_X_SCREEN + ARTHUR]) { took(STAGE_OBJECT_NOT_YET); return; }
+  took(ABOUT_A_STAGE_OBJECT);
   uint8_t kind = peek((uint16_t)(listed + 2));
   set_ram16(0x24, (uint16_t)(0xD5FB + kind * 2));
   set_ram16(0x22, cart(7, ram16(0x24)) | cart(7, (uint16_t)(ram16(0x24) + 1)) << 8);
@@ -210,8 +211,10 @@ static void place_stage_objects(void) {
 // time it runs out it starts again from a number that's lower the harder the game is. What comes out of the ground then,
 // at $8431, and the rest of this bank's routines, aren't ported yet.
 static void stage_dangers(void) {
+  took(DANGERS_NOTHING);
   if (STAGE != 0 || RAM[OBJECT_X_SCREEN + ARTHUR] >= 5) return;
   if (--RAM[0xEA]) return;
+  took(ABOUT_DANGERS_COME);
   RAM[0xEA] = (uint8_t)(0x60 - RAM[0x5B]);
 }
 
@@ -222,30 +225,40 @@ static void stage_round(void) {
   RAM[0x89] = PAD_1;
   RAM[0x8A] = RAM[0x44];
   PAD_NOW = RAM[0x89 + PLAYER];
+  took(GAME_ROUND_BEGINS);
   uint8_t mixed = ROUNDS & 3;
-  if (!mixed) {
+  if (mixed) took(GAME_ROUND_NO_COLOURS);
+  else {
+    took(GAME_ROUND_COLOURS);
     queue_stage_colours();
     mixed = last_index;
   }
   ROUNDS++;
   RAM[0xCA] = (uint8_t)((mixed + ROUNDS) & 0x0F);
-  if (RAM[0xEB]) return;
-  place_stage_objects();
-  switch_bank(2);
-  stage_dangers();
-  switch_bank(BANK_HOME);
+  took(GAME_ROUND_MIX);
+  took(GAME_ROUND_CHECKS);
+  took(GAME_ROUND_OBJECTS);
+  if (!RAM[0xEB]) {
+    place_stage_objects();
+    took(GAME_ROUND_DANGERS);
+    switch_bank(2);
+    stage_dangers();
+    switch_bank(BANK_HOME);
+    took(GAME_ROUND_AFTER);
+  }
+  took(GAME_ROUND_ENDS);
 }
 
 wait game_task(void) {
-  took(ABOUT_A_TURN);
   enum {
     NEW_GAME, READY_SCREEN, READY_PICTURE_OFF, READY_TILES, READY_SHOWN, AFTER_READY, STAGE_PICTURE_OFF, STAGE_COLOURS, STAGE_ATTRIBUTES,
     SCENE_START, SCENE_TILES, SCENE_TILES_LOADED, SCENE_OBJECT_TILES, SCENE_MORE_TILES, SCENE_PALETTE, SCENE_PALETTES, SCENE_SCREEN, SCENE,
-    STAGE_OFF, STAGE_SET_UP, STAGE_TILES, STAGE_OBJECT_TILES, STAGE_SCREEN, STAGE_WAITS, STAGE_WAITS_AGAIN, STAGE_STARTS, STAGE_ROUND,
+    STAGE_OFF, STAGE_SET_UP, STAGE_TILES, STAGE_OBJECT_TILES, STAGE_SCREEN, STAGE_WAITS, STAGE_WAITS_AGAIN, STAGE_STARTS, STAGE_ROUND, STAGE_ROUND_AGAIN,
   };
   static uint8_t inner, loading;
   uint8_t *step = &task_step[TASK_GAME];
   wait how;
+  if (*step < STAGE_STARTS) took(ABOUT_A_TURN);   // the turns before a stage's rounds aren't counted yet
   for (;;) switch (*step) {
     case NEW_GAME:
       // $C8C4: a new game starts with no score, and both players at the first place with five of something at $0711
@@ -388,11 +401,17 @@ wait game_task(void) {
       *step = STAGE_STARTS;
       return YIELDS;
     case STAGE_STARTS:
+      took(ABOUT_A_STAGE_START);
       start_stage();
       *step = STAGE_ROUND;
       break;
     case STAGE_ROUND:
       stage_round();
+      *step = STAGE_ROUND_AGAIN;
       return YIELDS;
+    case STAGE_ROUND_AGAIN:
+      took(GAME_ROUND_AGAIN);
+      *step = STAGE_ROUND;
+      break;
   }
 }

@@ -161,6 +161,94 @@ COST(VIEW_NO_COLUMN, 6)           // $E73E
 COST(VIEW_COLUMN, 11)             // or with the call of sub_E76F
 COST(VIEW_ENDS, 57)               // $E745 to the call that yields
 
+// ---- the objects' task, $F367 and bank 4's $9CC8 (objects.c)
+COST(OBJECTS_AGAIN, 3)            // $F37C
+COST(OBJECTS_BEGIN, 17)           // $F367 to $9CC8
+COST(OBJECT_LOOKED_AT, 4)         // $9CCA
+COST(OBJECT_PAST_PAGE, 1)         // a cycle more for the objects whose flags are in the next page of memory
+COST(OBJECT_UNUSED, 3)
+COST(OBJECT_USED, 35)             // $9CCD to its kind's code, through the table at $9CED
+COST(OBJECT_KIND_PAST_PAGE, 1)    // a cycle more for each byte of the table's entry that's in the next page
+COST(OBJECT_NEXT, 4)              // $9CE4
+COST(OBJECTS_END, 25)             // $9CE9 to the call that yields
+COST(OBJECT_PLACED, 181)          // sub_F181, with its call
+COST(OBJECT_PLACED_OTHER_SCREEN, 9)
+COST(OBJECT_SHOWN, 23)            // sub_F321 or sub_F346, with its call
+COST(OBJECT_FLAG_READ, 22)        // one of the flag tests from sub_F2E3 on, with its call,
+COST(OBJECT_SHOWN_READ, 18)       // or sub_F2FF's
+COST(OBJECT_IN_VIEW, 178)         // sub_F0A3, with its call: in the view,
+COST(OBJECT_OUT_OF_VIEW_DOWN, 173) // or not, down,
+COST(OBJECT_OUT_OF_VIEW_ACROSS, 177) // or across
+COST(PRINCESS_TURN, 27)                // $F3E9, and back
+COST(PICK_UP_BEGINS, 7)           // $BA09
+COST(PICK_UP_OUT_OF_VIEW, 62)     // $BA12 to $BB8B, and back
+COST(PICK_UP_IN_VIEW, 48)         // $BA12 to the call of sub_F68E,
+COST(PICK_UP_FLASHES, 8)          // with its other colour every fourth round
+COST(PICK_UP_CANNOT_BE_TOUCHED, 16) // sub_F68E when Arthur's flags say so
+COST(PICK_UP_LEFT, 35)            // $BA3F to $BB6A, and back
+
+// ---- Arthur's task in a stage, $DAE4 (arthur.c), and the stage's blocks (scroll.c)
+COST(STAGE_BLOCK, 217)            // $EA55: the stage's bank, sub_E945, the bank back, and back
+COST(STAGE_BLOCK_PAST_PAGE, 1)    // a cycle more for each of sub_E945's two reads that goes into the next page
+COST(ARTHUR_AGAIN, 3)             // $DB7F
+COST(ARTHUR_TURN_BEGINS, 44)      // $DAE4, with sub_DC5B
+COST(ARTHUR_NO_ARMOUR_COLOURS, 6)
+COST(ARTHUR_TURN_CHECKS, 98)      // $DAE7 to $DAFC
+COST(ARTHUR_HELD, 1)              // $DAFC's branch taken
+COST(ARTHUR_GROUND, 74)           // sub_E3E3 and sub_EA2F, with their calls, less the block's
+COST(ARTHUR_ON_GROUND, 3)         // $DB01
+COST(ARTHUR_IN_AIR, 5)            // $DB01 to $E28E
+COST(ARTHUR_STANDS, 65)           // $DB06 to $DB65, with sub_DDA1,
+COST(ARTHUR_B_NOT_HELD, 2)        // which clears $85 when B isn't held
+COST(ARTHUR_VIEW_FOLLOWS, 12)     // $DB65 and $DB96, the two calls
+COST(FOLLOW_ACROSS, 59)           // sub_DBFB to $DC22
+COST(FOLLOW_LEFT_NEAR, 17)        // $DC24 on, and back: within 8 pixels to the left,
+COST(FOLLOW_LEFT_FAR, 18)         // further,
+COST(FOLLOW_RIGHT_NEAR, 13)       // less than 7 to the right,
+COST(FOLLOW_RIGHT_FAR, 20)        // or more
+COST(FOLLOW_DOWN, 32)             // sub_DB99 to $DBAE
+COST(FOLLOW_DOWN_NEXT_SCREEN, 14) // $DBB0, past the screen's 240 lines
+COST(FOLLOW_DOWN_APART, 42)       // $DBB9 to $DBD4, on the view's own screen,
+COST(FOLLOW_DOWN_SCREEN_BELOW, 15) // or to $DBE3 on another, below
+COST(FOLLOW_DOWN_SCREEN_ABOVE, 17) // or above
+COST(FOLLOW_UP_NEAR, 17)          // $DBE5 on, and back
+COST(FOLLOW_UP_FAR, 21)
+COST(FOLLOW_DOWN_NEAR, 16)
+COST(FOLLOW_DOWN_FAR, 23)
+COST(ARTHUR_AFTER_VIEW, 8)        // $DB68 to $DB7C
+COST(ARTHUR_TURN_ENDS, 6)         // the call of sub_DB8A
+COST(ARTHUR_SHAPE, 112)           // sub_E35E to $E3B9, with its call
+COST(ARTHUR_SHAPE_STARTS_AGAIN, 6) // his walk's count back to 0
+COST(ARTHUR_FLASH_LOOKED_AT, 31)  // sub_E3B9, and back
+COST(ARTHUR_FLASH_CALLED, 6)
+COST(ARTHUR_BUTTONS, 39)          // sub_E01E, with its call
+COST(ARTHUR_BUTTONS_BUSY, 21)     // or when his state stops it
+COST(ARTHUR_TURN_YIELDS, 43)      // $DB93 and $E4E5, to the jump that yields
+COST(ARTHUR_FALL_RESUMES, 40)     // $E2E4 to $E28E
+COST(ARTHUR_FALL_CHECKS, 66)      // $E28E to $E29B
+COST(ARTHUR_LANDS, 30)            // $E29E to $DB65, with sub_E166
+COST(ARTHUR_FALLS_ON, 20)         // $E29E to the call of sub_DF3E
+COST(ARTHUR_FELL_LOW, 27)         // sub_DF3E, into sub_DB99,
+COST(ARTHUR_FELL_HIGH, 31)        // or back
+COST(ARTHUR_FELL_ABOVE_HALF, 9)   // $E2B5
+COST(ARTHUR_FELL_BELOW_HALF, 14)  // or with its call of sub_DB99
+COST(ARTHUR_FALL_ENDS, 54)        // $E2BF to $E2E1
+COST(ARTHUR_STARTS_IN_STAGE, 71)  // $DA71 to $DAE4
+
+// ---- the game's task in a stage, $D284 (flow.c)
+COST(GAME_ROUND_AGAIN, 3)         // $D405
+COST(GAME_ROUND_BEGINS, 54)       // $D284 to $D31D
+COST(GAME_ROUND_NO_COLOURS, 8)    // $D31D, three rounds in four,
+COST(GAME_ROUND_COLOURS, 37)      // or with sub_D871, to its jump
+COST(GAME_ROUND_MIX, 15)          // $D326 to $D32F
+COST(GAME_ROUND_CHECKS, 76)       // $D32F to $D3ED, with sub_D882
+COST(GAME_ROUND_OBJECTS, 17)      // $D3ED to sub_D596
+COST(STAGE_OBJECT_NOT_YET, 107)   // sub_D596 when the next object's screen isn't reached, and back
+COST(GAME_ROUND_DANGERS, 15)      // $D583 to bank 2's $8400
+COST(DANGERS_NOTHING, 198)        // $8400 to $8415 when nothing comes
+COST(GAME_ROUND_AFTER, 19)        // $D58D to $D595
+COST(GAME_ROUND_ENDS, 48)         // $D3F0 to the call that yields
+
 // ---- the rows' list, sub_EECF (screen.c)
 COST(ROWS_BEGIN, 15)              // $EECF to $EED6
 COST(ROWS_ROW_BEGINS, 38)         // $EED7 to $EEED
@@ -171,6 +259,8 @@ COST(ROWS_ROW_AGAIN, 4)           // back for the next row, across a page of the
 COST(ROWS_END_MARK, 7)            // $EF12 to the store of the end mark,
 COST(ROWS_FREED, 5)               // to the store that frees the list,
 COST(ROWS_BACK, 18)                // and back
+COST(PALETTE_SET_UP, 20)          // sub_EEBF to sub_EECF, for all 32 colours,
+COST(HALF_PALETTE_SET_UP, 23)     // or sub_EEBA, for 16
 
 // ---- the sound driver, bank 3's $8380, which V-blank calls (sound.c)
 COST(SOUND_BEGINS, 31)            // sub_ED94 to $843D
@@ -254,7 +344,12 @@ COST(NOISE_STEP, 63)              // $8601 to $8625
 
 // ---- about: what hasn't been counted yet
 COST(ABOUT_A_TURN, 300)           // a task's turn that does little
+COST(ABOUT_A_STAGE_OBJECT, 400)   // sub_D596 when it places one
+COST(ABOUT_DANGERS_COME, 2000)    // bank 2's $8431
+COST(ABOUT_A_STAGE_START, 3130)   // $D16E to $D284
 COST(ABOUT_A_COPY_OF_64, 1350)    // sub_C7ED's attributes
 COST(ABOUT_NO_OBJECTS, 3300)      // sub_CA96
 COST(ABOUT_A_COLUMN, 4981)        // sub_E76F
-COST(ABOUT_AN_OBJECT, 250)        // an object's turn in the objects' task
+COST(ABOUT_SATAN, 300)            // $EDA2
+COST(ABOUT_A_MOVE, 900)           // sub_F03E
+COST(ABOUT_A_TOUCH, 250)          // sub_F68E from $F697, and $BA44

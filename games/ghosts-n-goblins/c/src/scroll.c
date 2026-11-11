@@ -25,10 +25,12 @@ enum { VIEW_X = 0x63, VIEW_Y = 0x66, VIEW_X_BEFORE = 0x6B, VIEW_Y_BEFORE = 0x6E,
 static uint8_t block_at_place(void) {
   RAM[0x22] = AT_Y_SCREEN;
   SCREEN_AT = AT_X_SCREEN;
+  if ((RAM[STAGE_SCREENS] + SCREEN_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
   RAM[0x72] = peek((uint16_t)(ram16(STAGE_SCREENS) + SCREEN_AT));
   set_ram16(0x54, (uint16_t)(peek16(0x800E) + RAM[0x72] * 240));   // a screen's 240 blocks
   set_ram16(0x47, (uint16_t)(RAM[0x72] << 4));
   BLOCK_AT = (uint8_t)((AT_X >> 4) + (AT_Y & 0xF0));
+  if ((RAM[0x54] + BLOCK_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
   BLOCK = peek((uint16_t)(ram16(0x54) + BLOCK_AT));
   return BLOCK;
 }
@@ -37,6 +39,7 @@ static uint8_t block_at_place(void) {
 uint8_t block_at_stage_place(void) {
   RAM[0xD4] = BANK_NOW;
   switch_bank(BANK_HOME);
+  took(STAGE_BLOCK);
   block_at_place();
   switch_bank(RAM[0xD4]);
   return BLOCK;

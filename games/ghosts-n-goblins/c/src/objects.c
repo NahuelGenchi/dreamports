@@ -20,8 +20,15 @@ enum { VIEW_X = 0x64, VIEW_X_SCREEN = 0x65, VIEW_Y = 0x67, VIEW_Y_SCREEN = 0x68 
 #define B_X_SCREEN RAM[0x7A]
 #define B_X RAM[0x76]
 
-static void show(uint8_t object) { RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN; }           // sub_F321
-static void hide(uint8_t object) { RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN; }  // sub_F346
+// sub_F321 and sub_F346
+static void show(uint8_t object) {
+  RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN;
+  took(OBJECT_SHOWN);
+}
+static void hide(uint8_t object) {
+  RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
+  took(OBJECT_SHOWN);
+}
 
 // sub_F0BC: the object's place, as the second of the two.
 static void object_place(uint8_t object) {
@@ -54,7 +61,11 @@ void place_on_screen(uint8_t object) {
   object_place(object);
   view_place();
   second_from_first();
-  if (RAM[OBJECT_Y_SCREEN + object] != RAM[VIEW_Y_SCREEN]) A_Y -= 0x10;
+  took(OBJECT_PLACED);
+  if (RAM[OBJECT_Y_SCREEN + object] != RAM[VIEW_Y_SCREEN]) {
+    A_Y -= 0x10;
+    took(OBJECT_PLACED_OTHER_SCREEN);
+  }
   RAM[OBJECT_SCREEN_Y + object] = A_Y;
   RAM[OBJECT_SCREEN_X + object] = A_X;
 }
@@ -66,6 +77,7 @@ static int in_view(uint8_t object) {
   view_place();
   A_Y_SCREEN++;
   second_from_first();
+  took(A_Y_SCREEN ? OBJECT_OUT_OF_VIEW_DOWN : A_X_SCREEN ? OBJECT_OUT_OF_VIEW_ACROSS : OBJECT_IN_VIEW);
   return A_Y_SCREEN == 0 && A_X_SCREEN == 0;
 }
 
@@ -94,6 +106,7 @@ static void scale(void) {
 // for each way, how far down and how far across a speed of 256 goes, in 256ths of a pixel. Leaving its screen down, at
 // $F077 and $F08A, isn't ported yet.
 void move_object(uint8_t object, uint8_t speed) {
+  took(ABOUT_A_MOVE);
   uint16_t way = (uint16_t)(0xF2A3 + RAM[OBJECT_HEADING + object] * 4);
   RAM[0xA0] = speed;
   set_ram16(0x9D, 0xF2A3);
@@ -140,7 +153,8 @@ static uint8_t way_to_first(void) {
 // $F3E9, kind $33: the princess, who sits where she is.
 static void princess(uint8_t object) {
   RAM[OBJECT_COLOURS + object] = 0x0E;
-  show(object);
+  RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN;
+  took(PRINCESS_TURN);
 }
 
 // sub_EEA8: shown every other pair of rounds, by the object's count.
@@ -154,6 +168,7 @@ static void flash(uint8_t object) {
 // height he has her, and flies up and away with her below him, until he's high enough to go as he came, in flashes.
 static void satan(uint8_t object) {
   enum { HAS_HER = 0x01, LEAVING = 0x02 };
+  took(ABOUT_SATAN);
   RAM[OBJECT_COLOURS + object] = 0x01;
   if (RAM[OBJECT_FLAGS + object] & LEAVING) {
     // $EE90: 16 rounds of flashes, and he's gone
@@ -228,7 +243,8 @@ static int arthur_within(uint8_t object) {
 // crouching Arthur, at $F6A2, isn't ported yet.
 static int arthur_touches(uint8_t object) {
   enum { CAN_TOUCH_NOTHING = 0x41, CROUCHING = 0x02 };
-  if (RAM[OBJECT_FLAGS + ARTHUR] & CAN_TOUCH_NOTHING) return 0;
+  if (RAM[OBJECT_FLAGS + ARTHUR] & CAN_TOUCH_NOTHING) { took(PICK_UP_CANNOT_BE_TOUCHED); return 0; }
+  took(ABOUT_A_TOUCH);
   RAM[0x25] = (uint8_t)(8 + RAM[0x27]);
   RAM[0x23] = (uint8_t)-RAM[0x25];
   RAM[0x24] = (uint8_t)(RAM[0x26] + 4);
@@ -248,14 +264,26 @@ static int arthur_touches(uint8_t object) {
 static void pick_up(uint8_t object) {
   enum { ARMOUR = 5, WITHOUT_ARMOUR = 0x20 };
   RAM[OBJECT_COUNT + object]++;
+  took(PICK_UP_BEGINS);
   show(object);
-  if (!in_view(object)) { hide(object); return; }
+  if (!in_view(object)) {
+    // $BA14: hidden while it's out of the view. What the third set of stages does with it then, at $BB72, isn't ported yet.
+    RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
+    took(PICK_UP_OUT_OF_VIEW);
+    return;
+  }
   uint8_t thing = RAM[OBJECT_STATE + object];
   RAM[OBJECT_SHAPE + object] = peek((uint16_t)(0xBB2D + thing));
   RAM[OBJECT_COLOURS + object] = peek((uint16_t)(0xBB3B + thing));
-  if (!(RAM[OBJECT_COUNT + object] & 3)) RAM[OBJECT_COLOURS + object] = peek((uint16_t)(0xBB49 + thing));
+  took(PICK_UP_IN_VIEW);
+  if (!(RAM[OBJECT_COUNT + object] & 3)) {
+    RAM[OBJECT_COLOURS + object] = peek((uint16_t)(0xBB49 + thing));
+    took(PICK_UP_FLASHES);
+  }
   RAM[0x26] = RAM[0x27] = 6;
-  if (!arthur_touches(object) || thing != ARMOUR) return;
+  int touched = arthur_touches(object);
+  if (!touched) took(PICK_UP_LEFT);
+  if (!touched || thing != ARMOUR) return;
   RAM[OBJECT_FLAGS + ARTHUR] &= (uint8_t)~WITHOUT_ARMOUR;
   TILES_FIRST_LIST = 0;
   RAM[0xD6] = RAM[0xD7] = RAM[0xD8] = RAM[0xD9] = 0xFF;
@@ -265,19 +293,32 @@ static void pick_up(uint8_t object) {
 
 // $F367, the objects' task: bank 4's $9CC8 runs every object but the first, by its kind.
 wait objects_task(void) {
-  took(ABOUT_A_TURN);
+  enum { FIRST_TURN, LATER };
+  if (task_step[TASK_OBJECTS] == LATER) took(OBJECTS_AGAIN);
+  task_step[TASK_OBJECTS] = LATER;
   switch_bank(4);
+  took(OBJECTS_BEGIN);
   for (uint8_t object = 1; object < 0x16; object++) {
-    if (!RAM[OBJECT_FLAGS + object]) continue;
-    took(ABOUT_AN_OBJECT);
-    set_ram16(0x26, peek16((uint16_t)(0x9CED + RAM[OBJECT_KIND + object] * 2)));
-    switch (RAM[OBJECT_KIND + object]) {
-      case 0x10: pick_up(object); break;
-      case 0x33: princess(object); break;
-      case 0x34: satan(object); break;
+    took(OBJECT_LOOKED_AT);
+    if (object >= 0x10) took(OBJECT_PAST_PAGE);
+    if (!RAM[OBJECT_FLAGS + object]) took(OBJECT_UNUSED);
+    else {
+      uint8_t kind = RAM[OBJECT_KIND + object];
+      took(OBJECT_USED);
+      if (kind * 2 >= 0x13) took(OBJECT_KIND_PAST_PAGE);
+      if (kind * 2 >= 0x12) took(OBJECT_KIND_PAST_PAGE);
+      set_ram16(0x26, peek16((uint16_t)(0x9CED + kind * 2)));
+      switch (kind) {
+        case 0x10: pick_up(object); break;
+        case 0x33: princess(object); break;
+        case 0x34: satan(object); break;
+      }
+      place_on_screen(object);
     }
-    place_on_screen(object);
+    took(OBJECT_NEXT);
+    took(object < 0x15 ? GOES_ROUND : GOES_ON);
   }
   switch_bank(BANK_HOME);
+  took(OBJECTS_END);
   return YIELDS;
 }
