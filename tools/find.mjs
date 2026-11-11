@@ -94,11 +94,11 @@ function consoleOf(game) {
 }
 
 // the language of a game's main version (src/lib/languages.mjs): the one here, or for a game not in this folder, JavaScript
-// when it has a piece in it, or else the language its pieces are in, as a game that started in C has them in C alone
+// when it has a piece in it, or else the language its pieces are in, as a game that started in C has them in C alone,
+// which is also what a game with no pieces yet counts as
 function mainOf(local, pieces) {
   if (local) return local.language ?? 'js';
-  const languages = [...new Set(pieces.map(t => pieceOf(t).language))];
-  return languages.length ? mainLanguage(languages) : 'js';
+  return mainLanguage([...new Set(pieces.map(t => pieceOf(t).language))]);
 }
 
 // a game's open pieces nobody has claimed: those that can start now, some on top of a pull request in review, and those

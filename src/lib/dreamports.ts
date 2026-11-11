@@ -56,7 +56,7 @@ function proofFor(game: string, language = 'js'): Proof | null {
 }
 
 // the languages a game has a version in, those with numbers of their own, its main one first (src/lib/languages.mjs):
-// JavaScript when it has one, or the first other, as C in a game that started in C
+// JavaScript when it has one, or the first other, as C in a game that started in C or has no numbers yet
 function languagesOf(game: string): (keyof typeof LANGUAGES)[] {
   const has = (['js', ...OTHER_LANGUAGES] as (keyof typeof LANGUAGES)[]).filter((language) =>
     ['progress', 'port-map'].some((name) => (language === 'js' ? proofFile(game, name) : versionFile(versionName(game, language), name)) !== undefined));
