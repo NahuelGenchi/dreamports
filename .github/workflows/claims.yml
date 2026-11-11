@@ -271,13 +271,19 @@ jobs:
             })());
             return plans.get(game);
           }
-          // the language of a game's main version (src/lib/languages.mjs): JavaScript when the game's folder has its page, or
-          // C in a game that started in C, with only games/<game>/c/index.html, whose pieces wait on nothing in JavaScript
+          // the language of a game's main version, by the rule the site and the tools go by (mainLanguage in
+          // src/lib/languages.mjs), from the versions it has a page for on the default branch: JavaScript when the game's
+          // folder has its page, or C in a game that started in C, with only games/<game>/c/index.html, whose pieces wait
+          // on nothing in JavaScript, and in a game with no files there yet, as a new game starts in C (#1095)
+          const { LANGUAGES, mainLanguage } = await import(`${process.env.GITHUB_WORKSPACE}/src/lib/languages.mjs`);
           const mains = new Map();
           function mainOf(game) {
-            if (!mains.has(game)) mains.set(game, (async () => (
-              await api(`/contents/games/${game}/index.html`) || !await api(`/contents/games/${game}/c/index.html`) ? 'js' : 'c'
-            ))());
+            if (!mains.has(game)) mains.set(game, (async () => {
+              const pages = await Promise.all(Object.entries(LANGUAGES).map(async ([language, { folder }]) => (
+                await api(`/contents/games/${game}/${folder ? `${folder}/` : ''}index.html`) ? language : null
+              )));
+              return mainLanguage(pages.filter(Boolean));
+            })());
             return mains.get(game);
           }
           // the tasks open pull requests that aren't drafts have in review (pieces.mjs), read once: a piece that needs one can
