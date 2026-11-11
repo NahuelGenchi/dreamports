@@ -348,7 +348,10 @@ COST(SATAN_REACHES_HER, 92)       // $EDCB to sub_F305's end, and back: within 8
 COST(SATAN_REACHES_HER_FROM_BELOW, 95) // or below her
 COST(SATAN_FLIES, 129)            // $EDCB to $EE46's call
 COST(SATAN_HEADS, 10)             // $EE49 to sub_F03E
-COST(WAY_LEFT_AND_BELOW, 147)     // sub_EF25 to $EF99, for a place to the left and not above, less than a screen away
+COST(WAY_RIGHT_AND_BELOW, 81)     // sub_EF25 to $EF99, for a place less than a screen away: to the right and not above,
+COST(WAY_RIGHT_AND_ABOVE, 147)    // to the right and above,
+COST(WAY_LEFT_AND_BELOW, 147)     // to the left and not above,
+COST(WAY_LEFT_AND_ABOVE, 114)     // or to the left and above
 COST(WAY_HALVED_FOR_FIRST, 21)    // $EF99: both halved while the first is 16 or more,
 COST(WAY_HALVED_FOR_SECOND, 27)   // or the second,
 COST(WAY_SMALL_ENOUGH, 15)        // and on to $EFAC
@@ -362,7 +365,10 @@ COST(MOVE_FOUND, 30)              // $F02D, and back
 COST(SCALE_BEGINS, 32)            // sub_F137 to $F14D
 COST(SCALE_BIT_CLEAR, 31)         // each bit of the speed, to $F16E: one that's clear,
 COST(SCALE_BIT_SET, 59)           // or set
-COST(MOVE_ADDED, 78)              // $F041 to $F075
+COST(MOVE_ADDED_ACROSS, 38)       // $F041 to $F05A
+COST(MOVE_ADDED_DOWN, 40)         // $F05A to $F075
+COST(MOVE_DOWN_ONLY, 8)           // sub_F099 to $F05A
+COST(ARTHUR_SIDE, 36)             // sub_FA87 with its call: which side of an object Arthur is
 COST(MOVE_SAME_SCREEN, 12)        // $F075 to $F091, on the same screen down
 COST(MOVE_ENDS, 17)               // $F091, and back
 
@@ -488,7 +494,6 @@ COST(SCORE_BEST_MARKED, 20)       // $D998 to $D9A6
 COST(SCORE_LIFE_LOOKED_AT, 35)    // $D9A6 to $D97B: not yet the score that gives a life
 COST(SCORE_ENDS, 12)              // $D97E, and back
 COST(ARTHUR_TURN_YIELDS, 43)      // $DB93 and $E4E5, to the jump that yields
-COST(ARTHUR_FALL_RESUMES, 40)     // $E2E4 to $E28E
 COST(ARTHUR_FALL_CHECKS, 66)      // $E28E to $E29B
 COST(ARTHUR_LANDS, 30)            // $E29E to $DB65, with sub_E166
 COST(ARTHUR_FALLS_ON, 20)         // $E29E to the call of sub_DF3E
@@ -517,7 +522,7 @@ COST(AIR_LOOKS, 14)               // or to its call of sub_DDA1
 COST(AIR_NO_TURN, 13)             // $DEE7, and back: neither Left nor Right,
 COST(AIR_TURNS, 56)               // or he faces that way, and back
 COST(STAGE_JUMP_NOT_HIT, 42)      // sub_E014 with its call, and on,
-COST(STAGE_JUMP_HIT, 44)          // or to $E171
+COST(STAGE_JUMP_HIT, 43)          // or to $E171
 COST(JUMP_STRAIGHT_UP, 26)        // sub_DF5D with its call, and back: a jump straight up moves no way,
 COST(JUMP_MOVES, 6)               // or on into sub_DF62
 COST(JUMP_SHAPE, 61)              // sub_DF93 with its call, to $E3B9, less the way he faces:
@@ -674,7 +679,8 @@ COST(FREE_OBJECT_FOUND, 15)       // the first that isn't, and back,
 COST(FREE_OBJECT_NONE, 8)         // or none, and back
 COST(STAGE_OBJECT_NO_ROOM, 8)     // $D71E, and back
 COST(STAGE_OBJECT_STATE, 17)      // $D71E to $D6C1, for a kind whose state starts at 0,
-COST(STAGE_OBJECT_STATE_LISTED, 22) // or $D72E to $D6C1, for one whose state the list gives
+COST(STAGE_OBJECT_STATE_LISTED, 22) // or $D72E to $D6C1, for one whose state the list gives,
+COST(STAGE_OBJECT_STATE_KEPT, 7)  // or $D6BC to $D6C1, for one whose state is left as it was
 COST(STAGE_OBJECT_FILLED, 95)     // $D6C1, and back
 COST(GAME_ROUND_DANGERS, 15)      // $D583 to bank 2's $8400
 COST(DANGERS_OTHERS, 170)         // $8400 to $8415: its seven calls, and the six routines after the zombies' with nothing to do
@@ -763,6 +769,66 @@ COST(POT_SHOWN_AS_CARRIER, 21)    // or shown when its carrier is
 COST(POT_CARRIER_LOOKED_AT, 10)   // $BC76 to $BC7E
 COST(POT_IS_KEPT, 8)              // and back,
 COST(POT_FALLS, 42)               // or $BC81, and back, once its carrier is hit
+COST(CROW_BEGINS, 7)              // $F940 to $F945, after its place on the screen: a crow
+COST(CROW_ALIVE, 3)               // $F948 to $F94D,
+COST(CROW_DEAD, 5)                // or to $F770
+COST(CROW_TESTS, 17)              // $F958, with sub_F934, to sub_F5A0
+COST(CROW_NOT_HIT, 7)             // $F95B to $F984
+COST(CROW_HIT, 89)                // or $F95B to sub_ED51
+COST(CROW_HIT_SCORE, 21)          // $F976 to sub_D8FC
+COST(CROW_SITS, 3)                // $F987 to $F98C,
+COST(CROW_FLIES, 5)               // or to $F9CC
+COST(CROW_HIDDEN, 9)              // $F98F, and back: it waits while it isn't shown,
+COST(CROW_COUNTS, 15)             // or $F98F to $F999
+COST(CROW_STILL_SITTING, 3)       // $F999 to $F99E,
+COST(CROW_TAKES_OFF, 28)          // or with the flag that says it sits cleared, after 24 rounds
+COST(CROW_FACES, 40)              // $F99E to the call of sub_FA87
+COST(CROW_FACES_RIGHT, 3)         // $F9AE to $F9BD,
+COST(CROW_FACES_LEFT, 42)         // or with the shape and heading for the left
+COST(CROW_COUNT_READ, 6)          // $F9BD to $F9C2
+COST(CROW_QUIET, 9)               // and back: before its 16th round,
+COST(CROW_CAWS, 19)               // or in the four after, with its other shape,
+COST(CROW_CAWS_OVER, 13)          // or later
+COST(CROW_IN_FLIGHT, 3)           // $F9CF to $F9D4,
+COST(CROW_GONE, 5)                // or to sub_F708, once it isn't shown
+COST(CROW_SPEED, 13)              // $F9D4 to sub_F03E
+COST(CROW_WAVE, 24)               // $F9DC to the call of sub_F099
+COST(CROW_WINGS, 24)              // $F9F0 to $F9FF
+COST(CROW_FLIES_RIGHT, 9)         // $FA02, and back,
+COST(CROW_FLIES_LEFT, 21)         // or with the shapes for the left
+COST(PLANT_ALIVE, 3)              // bank 4's $9EC3 to $9EDF: a plant
+COST(PLANT_OUT_OF_VIEW, 22)       // $9EE5, and back: it starts again,
+COST(PLANT_IN_VIEW, 3)            // or on to $9EF2
+COST(PLANT_NOT_HIT, 6)            // $9EF2 to $9EF7
+COST(PLANT_HIT, 12)               // or $9EF2 to $9EC8 and sub_F7B4, to sub_ED51
+COST(PLANT_HIT_SCORE, 50)         // $9ECB to sub_D8FC
+COST(PLANT_WAITS, 2)              // $9EFA to $9EFC,
+COST(PLANT_SHOOTS, 4)             // or to $9F25, across a page
+COST(PLANT_LOOKS, 14)             // $9EFC to the call of sub_FA87
+COST(PLANT_LOOKS_RIGHT, 3)        // $9F09 to $9F10,
+COST(PLANT_LOOKS_LEFT, 9)         // or with the shape for the left
+COST(PLANT_COUNTS, 13)            // $9F10 to $9F18
+COST(PLANT_NOT_YET, 3)            // $9F18 to $9F22,
+COST(PLANT_OPENS, 35)             // or every 16th round, with the flag that says it shoots
+COST(PLANT_TESTS, 16)             // $9F22, and sub_9FA5 to sub_F5A0
+COST(PLANT_TESTS_CALLED, 19)      // or $9F25, with its call
+COST(PLANT_AIMS, 13)              // $9F28 to $9F30
+COST(PLANT_AIMS_ON, 3)            // $9F30 to $9F3E, for 16 rounds,
+COST(PLANT_SHOT_LOOKED_FOR, 4)    // or to $9F34
+COST(SHOT_SLOT_FREE, 8)           // $9F34 to $9F4E: one of the two shots' objects is free,
+COST(SHOT_SLOT_USED, 11)          // or isn't
+COST(PLANT_MOUTH_OPEN, 7)         // $9F3E to the call of sub_FA87
+COST(PLANT_MOUTH_RIGHT, 9)        // and back,
+COST(PLANT_MOUTH_LEFT, 15)        // or with the shape for the left
+COST(SHOT_MADE, 86)               // $9F4E to $9F5A, with sub_FA2E: the plant's place, eight pixels up
+COST(SHOT_SAME_SCREEN, 3)         // $9F5A to $9F6A
+COST(SHOT_AIMED, 62)              // $9F6A to sub_EF25: Arthur's place and the shot's
+COST(SHOT_HEADED, 20)             // $9F95 to sub_ED51
+COST(PLANT_SHOT, 23)              // $9FA2, with sub_F332, and back
+COST(SHOT_BEGINS, 17)             // $F49C to sub_F0A0's call of sub_F03E: a plant's shot
+COST(SHOT_GONE, 18)               // $F4A6, with sub_F734, and back: out of the view,
+COST(SHOT_FLIES, 21)              // or $F4A6 to $F54D, less sub_F321
+COST(SHOT_TESTS, 39)              // $F550 to sub_F68E, for a weapon that isn't the cross
 COST(ENEMY_NOT_SHOWN, 29)         // sub_F5A0, and back, for an enemy that isn't shown
 COST(ENEMY_TESTS_BEGIN, 47)       // sub_F5A0 to sub_F5F9
 COST(WEAPONS_BEGIN, 2)            // sub_F5F9

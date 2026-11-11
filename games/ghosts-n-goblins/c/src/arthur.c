@@ -713,7 +713,10 @@ wait arthur_task(void) {
       *step = STAGE_FELL;
       return YIELDS;
     case STAGE_FELL:
-      took(ARTHUR_FALL_RESUMES);
+      // $E2E4: his flashing after a hit is seen to once more each round of a fall
+      took(CALLS);
+      flash_after_a_hit();
+      took(JUMPS);
       *step = STAGE_FALLS;
       break;
     case STAGE_HIT:

@@ -281,7 +281,7 @@ static void start_stage(void) {
 
 // sub_D596: the stage's own objects, from where its bank's list at $8038 points, eight bytes each: the screen Arthur has
 // to reach, a kind, and where it is. Each is placed once Arthur is on its screen, in the first free object. Only the
-// kinds the table at $D5FB sends to $D71B, $D72B and $D804 are ported, which are placed as they're listed.
+// kinds the table at $D5FB sends to $D71B, $D72B, $D804, $D6B9 and $D670 are ported, which are placed as they're listed.
 static uint8_t listed_byte(uint16_t listed, uint8_t on) {
   if ((listed & 0xFF) + on > 0xFF) took(READ_PAST_PAGE);
   return peek((uint16_t)(listed + on));
@@ -300,19 +300,21 @@ static void place_stage_objects(void) {
   took(STAGE_OBJECT_KIND);
   if (RAM[0x24] == 0xFF) took(READ_PAST_PAGE);   // the entry's second byte, when its first is a page's last
   // a kind's own routine: $D71B, whose state starts at 0, or $D72B, whose state the list gives, which $D804 jumps to
-  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804 };
+  // and $D6B9, which leaves the state as the object's last user left it, and which $D670 jumps to
+  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670 };
   uint16_t routine = ram16(0x22);
-  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_LISTED_TOO) return;
-  if (routine == STATE_LISTED_TOO) took(JUMPS);
+  if (routine == STATE_LISTED_TOO) { took(JUMPS); routine = STATE_LISTED; }
+  if (routine == STATE_KEPT_TOO) { took(JUMPS); routine = STATE_KEPT; }
+  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT) return;
   took(CALLS);
   uint8_t object = free_object();
   if (object == NO_OBJECT) {
     took(STAGE_OBJECT_NO_ROOM);
     return;
   }
-  took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : STAGE_OBJECT_STATE_LISTED);
+  took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : routine == STATE_LISTED ? STAGE_OBJECT_STATE_LISTED : STAGE_OBJECT_STATE_KEPT);
   last_index = object;
-  RAM[OBJECT_STATE + object] = routine == STATE_ZERO ? 0 : listed_byte(listed, 1);
+  if (routine != STATE_KEPT) RAM[OBJECT_STATE + object] = routine == STATE_ZERO ? 0 : listed_byte(listed, 1);
   RAM[0x0647 + object] = 0;
   RAM[OBJECT_COUNT + object] = 0;
   RAM[OBJECT_KIND + object] = kind;

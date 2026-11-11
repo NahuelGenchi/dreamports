@@ -153,6 +153,7 @@ static void list_sprites(void) {
   took(SPRITES_MAKE_BEGINS);
   make_sprites();
   took(SPRITES_FILL_BEGINS);
+  set_ram16(0x26, ram16(0x2B));
   for (uint16_t at = ram16(0x2B); at < SPRITES_BACKWARDS; at++) {
     took(SPRITES_FILL_BYTE);
     RAM[at] = 0xFF;
@@ -161,18 +162,19 @@ static void list_sprites(void) {
     if (!((at + 1) & 0xFF)) took(SPRITES_POINTER_NEXT_PAGE);
   }
   took(SPRITES_FILL_OVER);
-  set_ram16(0x26, SPRITES_BACKWARDS);
 }
 
 // $8069: the same sprites backwards at $0300, a byte at a time, and the first and fourth objects back in their places.
 // V-blank often comes partway through, and sends the list as far as it has got.
 static void list_sprites_backwards(void) {
   took(SPRITES_COPY_BEGINS);
-  for (int sprite = 0; sprite < 64; sprite++) {
+  // with more than 64 sprites, the ones past the 64th were made at the second list's start, and the copy starts after them
+  int first = (RAM[0x26] & 0xFC) / 4;
+  for (int sprite = first; sprite < 64; sprite++) {
     took(SPRITES_COPY_SPRITE);
     for (int i = 0; i < 4; i++) {
       took(SPRITES_COPY_READ);
-      RAM[SPRITES_BACKWARDS + sprite * 4 + i] = RAM[SPRITES + (63 - sprite) * 4 + i];
+      RAM[SPRITES_BACKWARDS + sprite * 4 + i] = RAM[SPRITES + (63 - (sprite - first)) * 4 + i];
       RAM[0x22] = (uint8_t)(3 - i);
       took(SPRITES_COPY_STORED);
       took(i < 3 ? GOES_ROUND : GOES_ON);

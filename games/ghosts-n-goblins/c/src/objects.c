@@ -104,6 +104,7 @@ uint8_t free_object(void) {
     took(FREE_OBJECT_USED);
     took(object < NO_OBJECT ? GOES_ROUND : GOES_ON);
   }
+  if (object >= 0x10) took(READ_PAST_PAGE);   // the sixteenth's flags, which are read last, are in the next page
   took(object < NO_OBJECT ? FREE_OBJECT_FOUND : FREE_OBJECT_NONE);
   return object;
 }
@@ -140,6 +141,19 @@ static void scale(void) {
   RAM[0x48] = (uint8_t)(sum >> 16);
 }
 
+// $F05A: what's in $77, $73 and $7B, screens, pixels and 256ths, added to an object's place down.
+static void add_down(uint8_t object) {
+  took(MOVE_ADDED_DOWN);
+  took(MOVE_SAME_SCREEN);
+  took(MOVE_ENDS);
+  uint32_t y = (uint32_t)(RAM[OBJECT_Y_SCREEN + object] << 16 | RAM[OBJECT_Y + object] << 8 | RAM[OBJECT_Y_PART + object]);
+  y += (uint32_t)(A_Y_SCREEN << 16 | A_Y << 8 | RAM[0x7B]);
+  RAM[OBJECT_Y_PART + object] = (uint8_t)y;
+  RAM[OBJECT_Y + object] = (uint8_t)(y >> 8);
+  A_Y_SCREEN = (uint8_t)(y >> 16);
+  RAM[OBJECT_Y_SCREEN + object] = A_Y_SCREEN;
+}
+
 // sub_F03E and sub_EFDA: moves an object by `speed` the way it's heading, one of 16 ways. The copy's table at $F2A3 has,
 // for each way, how far down and how far across a speed of 256 goes, in 256ths of a pixel. Leaving its screen down, at
 // $F077 and $F08A, isn't ported yet.
@@ -162,34 +176,49 @@ void move_object(uint8_t object, uint8_t speed) {
     RAM[0x7B + across] = RAM[0x26];
     took(across ? MOVE_FOUND : MOVE_ACROSS_BEGINS);
   }
-  took(MOVE_ADDED);
-  took(MOVE_SAME_SCREEN);
-  took(MOVE_ENDS);
+  took(MOVE_ADDED_ACROSS);
   uint32_t x = (uint32_t)(RAM[OBJECT_X_SCREEN + object] << 16 | RAM[OBJECT_X + object] << 8 | RAM[OBJECT_X_PART + object]);
   x += (uint32_t)(A_X_SCREEN << 16 | A_X << 8 | RAM[0x7C]);
   RAM[OBJECT_X_PART + object] = (uint8_t)x;
   RAM[OBJECT_X + object] = (uint8_t)(x >> 8);
   RAM[OBJECT_X_SCREEN + object] = (uint8_t)(x >> 16);
-  uint32_t y = (uint32_t)(RAM[OBJECT_Y_SCREEN + object] << 16 | RAM[OBJECT_Y + object] << 8 | RAM[OBJECT_Y_PART + object]);
-  y += (uint32_t)(A_Y_SCREEN << 16 | A_Y << 8 | RAM[0x7B]);
-  RAM[OBJECT_Y_PART + object] = (uint8_t)y;
-  RAM[OBJECT_Y + object] = (uint8_t)(y >> 8);
-  A_Y_SCREEN = (uint8_t)(y >> 16);
-  RAM[OBJECT_Y_SCREEN + object] = A_Y_SCREEN;
+  add_down(object);
 }
 
-// sub_EF25: the way from the second place to the first, one of 16, from the copy's table of angles at $F1A3. So far only
-// for a place to the left and not above; the other quarters, at $EF43 and $EF60, aren't ported yet.
+void move_down(uint8_t object) {
+  RAM[0x7B] = 0;
+  took(MOVE_DOWN_ONLY);
+  add_down(object);
+}
+
+// sub_EF25: the way from the second place to the first, one of 16, from the copy's table of angles at $F1A3. Places
+// more than a screen apart, at $EF8E, aren't ported yet.
 static uint8_t way_to_first(void) {
-  uint16_t down = (uint16_t)((A_Y_SCREEN << 8 | A_Y) - (B_Y_SCREEN << 8 | B_Y)), across = (uint16_t)((A_X_SCREEN << 8 | A_X) - (B_X_SCREEN << 8 | B_X));
-  // sub_EFC1: for this quarter the two change places, and the angle is counted from 8
-  set_ram16(0x26, down);
-  RAM[0x22] = 8;
-  uint16_t first = (uint16_t)-across, second = down;
+  int16_t down = (int16_t)((A_Y_SCREEN << 8 | A_Y) - (B_Y_SCREEN << 8 | B_Y)), across = (int16_t)((A_X_SCREEN << 8 | A_X) - (B_X_SCREEN << 8 | B_X));
+  // each quarter counts its angle from its own start, and in two of them sub_EFC1 has the two distances change places
+  uint16_t first, second;
+  if (across >= 0 && down >= 0) {
+    RAM[0x22] = 4;
+    first = (uint16_t)down, second = (uint16_t)across;
+    took(WAY_RIGHT_AND_BELOW);
+  } else if (across >= 0) {
+    RAM[0x22] = 0;
+    set_ram16(0x26, (uint16_t)down);
+    first = (uint16_t)across, second = (uint16_t)-down;
+    took(WAY_RIGHT_AND_ABOVE);
+  } else if (down >= 0) {
+    RAM[0x22] = 8;
+    set_ram16(0x26, (uint16_t)down);
+    first = (uint16_t)-across, second = (uint16_t)down;
+    took(WAY_LEFT_AND_BELOW);
+  } else {
+    RAM[0x22] = 0x0C;
+    first = (uint16_t)-down, second = (uint16_t)-across;
+    took(WAY_LEFT_AND_ABOVE);
+  }
   A_Y_SCREEN = (uint8_t)(first >> 8);
   A_X_SCREEN = (uint8_t)(second >> 8);
   uint8_t a = (uint8_t)first, b = (uint8_t)second;
-  took(WAY_LEFT_AND_BELOW);
   while ((a & 0xF0) || (b & 0xF0)) {   // both down to 4 bits, for the table
     took(a & 0xF0 ? WAY_HALVED_FOR_FIRST : WAY_HALVED_FOR_SECOND);
     a >>= 1;
@@ -201,6 +230,20 @@ static uint8_t way_to_first(void) {
   took(WAY_FOUND);
   if ((0xF1A3 & 0xFF) + (uint8_t)((a << 4) + b) > 0xFF) took(READ_PAST_PAGE);
   return (uint8_t)((cart(7, (uint16_t)(0xF1A3 + (uint8_t)((a << 4) + b))) + RAM[0x22]) & 0x0F);
+}
+
+uint8_t way_to_arthur(uint8_t from) {
+  A_X = RAM[OBJECT_X + ARTHUR];
+  A_X_SCREEN = RAM[OBJECT_X_SCREEN + ARTHUR];
+  A_Y = RAM[OBJECT_Y + ARTHUR];
+  A_Y_SCREEN = RAM[OBJECT_Y_SCREEN + ARTHUR];
+  object_place(from);
+  return way_to_first();
+}
+
+int arthur_is_right_of(uint8_t object) {
+  took(ARTHUR_SIDE);
+  return (RAM[OBJECT_X_SCREEN + ARTHUR] << 8 | RAM[OBJECT_X + ARTHUR]) >= (RAM[OBJECT_X_SCREEN + object] << 8 | RAM[OBJECT_X + object]);
 }
 
 // $F3E9, kind $33: the princess, who sits where she is.
@@ -465,10 +508,13 @@ wait objects_task(void) {
       set_ram16(0x26, peek16((uint16_t)(0x9CED + kind * 2)));
       switch (kind) {
         case 0x00: zombie(object); break;
+        case 0x01: plant(object); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object); break;
         case 0x12: pot(object); break;
+        case 0x14: crow(object); break;
         case 0x20: gravestone(object); break;
+        case 0x2B: plant_shot(object); break;
         case 0x22: map_marker(object); break;
         case LANCE: case DAGGER: weapon(object); break;
         case 0x33: princess(object); break;

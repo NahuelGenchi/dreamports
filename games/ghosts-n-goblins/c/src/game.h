@@ -194,6 +194,16 @@ void pot(uint8_t object);
 void zombies_come(uint8_t *x);
 /** sub_F03E: moves an object by `speed` the way it's heading, one of 16 ways. */
 void move_object(uint8_t object, uint8_t speed);
+/** sub_F099: moves an object down by what's in $77 and $73, screens and pixels. */
+void move_down(uint8_t object);
+/** sub_EF25, from an object to Arthur: the way to head, one of 16. */
+uint8_t way_to_arthur(uint8_t from);
+/** sub_FA87: whether Arthur is at an object's place across or right of it. */
+int arthur_is_right_of(uint8_t object);
+/** Bank 4's $9EC0, kind 1: a plant; $F93D, kind $14: a crow; $F49C, kind $2B: a plant's shot (enemies.c). */
+void plant(uint8_t object);
+void crow(uint8_t object);
+void plant_shot(uint8_t object);
 /** $EA55: the block of the stage at the place in $77 and $73, down, and $78 and $74, across. A block from $C6 up is solid. */
 uint8_t block_at_stage_place(void);
 enum { BLOCK_SOLID = 0xC6 };

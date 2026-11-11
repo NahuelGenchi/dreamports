@@ -31,6 +31,12 @@ enum { POT = 0x12 };                   // a kind of object, as a zombie is kind 
 #define CARRIER(pot) RAM[0x0647 + (pot)]   // the object that carries a pot
 #define POTS_MADE RAM[0x0708]
 
+// An object in the sixteenth place has its flags in the next page of memory, so each read or change of them by its number
+// takes a cycle more. `times` is how many the piece just counted has.
+static void flags_past_page(uint8_t object, uint32_t times) {
+  if (object >= 0x10) took_times(READ_PAST_PAGE, times);
+}
+
 /** Bank 2's $8416. In the first stage's first five screens, and in the eighth place, the count goes down a round at a time. */
 void zombies_come(uint8_t *x) {
   if (STAGE != 0 && STAGE != 7) { took(ZOMBIES_OTHER_STAGE); return; }
@@ -119,8 +125,13 @@ uint8_t weapon_that_touches(uint8_t enemy) {
 }
 
 static uint8_t touch_tests(uint8_t enemy) {
-  if (!(RAM[OBJECT_FLAGS + enemy] & OBJECT_FLAG_SHOWN)) { took(ENEMY_NOT_SHOWN); return 0; }
+  if (!(RAM[OBJECT_FLAGS + enemy] & OBJECT_FLAG_SHOWN)) {
+    took(ENEMY_NOT_SHOWN);
+    flags_past_page(enemy, 1);
+    return 0;
+  }
   took(ENEMY_TESTS_BEGIN);
+  flags_past_page(enemy, 2);
   uint8_t weapon = weapon_that_touches(enemy);
   if (weapon) {
     RAM[OBJECT_STATE + weapon] = enemy;
@@ -131,6 +142,7 @@ static uint8_t touch_tests(uint8_t enemy) {
     return weapon;
   }
   took(ENEMY_NO_WEAPON_HIT);
+  flags_past_page(enemy, 1);
   if (!arthur_touches(enemy)) { took(ENEMY_NOT_TOUCHED); return 0; }
   RAM[OBJECT_FLAGS + ARTHUR] |= ARTHUR_HIT;
   took(ENEMY_TOUCHES_ARTHUR);
@@ -154,6 +166,7 @@ static void die(uint8_t object) {
   took(ZOMBIE_DIES_ON);
   took(ZOMBIE_DYING_SHAPE);
   took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
   took(RAM[OBJECT_FLAGS + object] & WALKS ? ZOMBIE_DIES_TO_THE_LEFT : ZOMBIE_DIES_TO_THE_RIGHT);
   RAM[OBJECT_SHAPE + object] = (uint8_t)((RAM[OBJECT_FLAGS + object] & WALKS ? 0x3A : 0xF5) + (*count >> 1));
   RAM[OBJECT_COLOURS + object] = 0;
@@ -171,6 +184,7 @@ static void is_hit(uint8_t object, uint8_t weapon) {
   RAM[0x26] = 0;
   RAM[0x27] = 2;   // 200 points
   took(ZOMBIE_HIT);
+  flags_past_page(object, 3);
   add_score(object, weapon);
   took(ZOMBIE_HIT_SOUND);
   sound_play(0x16);
@@ -209,12 +223,14 @@ static void sink(uint8_t object) {
 
 void zombie(uint8_t object) {
   uint8_t *flags = &RAM[OBJECT_FLAGS + object], *count = &RAM[OBJECT_COUNT + object];
+  flags_past_page(object, 1);
   if (*flags & HIT) {
     took(ZOMBIE_DYING);
     die(object);
     return;
   }
   took(ZOMBIE_TURN_BEGINS);
+  flags_past_page(object, 1);
   if (!(*flags & OUT)) {
     // $F7CB: under the ground, which has to be there
     took(ZOMBIE_UNDER_THE_GROUND);
@@ -226,6 +242,7 @@ void zombie(uint8_t object) {
     if (--*count) { took(ZOMBIE_WAITS_ON); return; }
     *flags |= OUT;
     took(ZOMBIE_COMES_OUT);
+    flags_past_page(object, 1);
     return;
   }
   took(ZOMBIE_IS_OUT);
@@ -236,6 +253,7 @@ void zombie(uint8_t object) {
     hide_object(object);
   }
   took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
   if (*flags & SINKS) {
     took(ZOMBIE_SINKING);
     sink(object);
@@ -243,6 +261,7 @@ void zombie(uint8_t object) {
   }
   took(ZOMBIE_NOT_SINKING);
   took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
   if (!(*flags & WALKS)) {
     // $F7F4: coming up, with its sound as it starts
     took(ZOMBIE_NOT_WALKING);
@@ -265,6 +284,7 @@ void zombie(uint8_t object) {
     RAM[0x0647 + object] = 0;
     *count = (uint8_t)(0x40 + ((object + ROUNDS) & 0x1F));
     took(ZOMBIE_IS_UP);
+    flags_past_page(object, 1);
   } else {
     // $F825
     RAM[0x27] = 0x0C;
@@ -287,11 +307,13 @@ void zombie(uint8_t object) {
     *flags |= SINKS;
     *count = 0x0F;
     took(ZOMBIE_STARTS_SINKING);
+    flags_past_page(object, 1);
     sink(object);
     return;
   }
   took(ZOMBIE_GOES_ON);
   took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
   took(*flags & FAST ? ZOMBIE_SPEED_FAST : ZOMBIE_SPEED_ORDINARY);
   move_object(object, (uint8_t)((*flags & FAST ? 0x0E : 0x09) + HARDER));
   // its two walking shapes, four rounds each, facing the way it's headed
@@ -314,6 +336,7 @@ void pot(uint8_t object) {
     hide_object(object);
   }
   took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
   if (RAM[OBJECT_FLAGS + object] & SINKS) {
     // $BC8A: it falls, the way it was headed, and once it's on the ground it's a thing to pick up, what its state says
     took(POT_IS_FALLING);
@@ -351,4 +374,254 @@ void pot(uint8_t object) {
   RAM[OBJECT_FLAGS + object] |= SINKS;   // for a pot, the flag that says it falls
   RAM[OBJECT_HEADING + object] = 0x08;
   took(POT_FALLS);
+}
+
+// ---- the crows, the plants and their shots, which the first stage's list places from its third screen on
+
+// $F9CC: a crow in flight goes the way it faced at its speed, more the harder the game is, up and down by the 16 heights
+// in the copy's list at $FA0E, with two shapes for its wings, until it's out of the view.
+static void crow_flies(uint8_t object) {
+  uint8_t *count = &RAM[OBJECT_COUNT + object];
+  took(OBJECT_SHOWN_READ);
+  flags_past_page(object, 1);
+  if (!(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN)) {
+    took(CROW_GONE);
+    remove_object(object);
+    return;
+  }
+  took(CROW_IN_FLIGHT);
+  took(CROW_SPEED);
+  move_object(object, (uint8_t)(0x10 + RAM[0xD3]));
+  uint16_t height = (uint16_t)(0xFA0E + (*count & 0x0F) * 2);
+  RAM[0x73] = cart(7, height);
+  RAM[0x77] = cart(7, (uint16_t)(height + 1));
+  took(CROW_WAVE);
+  took(CALLS);
+  move_down(object);
+  ++*count;
+  RAM[OBJECT_SHAPE + object] = (uint8_t)(0xBB + ((*count >> 1) & 1));
+  took(CROW_WINGS);
+  took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
+  if (!(RAM[OBJECT_FLAGS + object] & SINKS)) { took(CROW_FLIES_RIGHT); return; }
+  RAM[OBJECT_SHAPE + object] += 0x10;   // for a crow, the flag that says it faces left
+  took(CROW_FLIES_LEFT);
+}
+
+/** $F93D, kind $14: a crow. It sits, flag $02, facing Arthur, for 24 rounds while it's shown, cawing in four of them,
+ *  and then flies. A weapon kills it for 100 points, as it does a zombie. */
+void crow(uint8_t object) {
+  uint8_t *flags = &RAM[OBJECT_FLAGS + object], *count = &RAM[OBJECT_COUNT + object];
+  place_on_screen(object);
+  RAM[OBJECT_COLOURS + object] = 0;
+  took(CROW_BEGINS);
+  took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
+  if (*flags & HIT) {
+    took(CROW_DEAD);
+    die(object);
+    return;
+  }
+  took(CROW_ALIVE);
+  show_object(object);
+  if (object_in_view(object)) took(ENEMY_IN_VIEW);
+  else {
+    took(ENEMY_OUT_OF_VIEW);
+    hide_object(object);
+  }
+  RAM[0x26] = RAM[0x27] = 4;
+  took(CROW_TESTS);
+  uint8_t weapon = touch_tests(object);
+  if (RAM[0x0647 + object]) {
+    // $F960: hit. Its flag that said it sits now says the weapon was heading left, for the way it falls.
+    *flags &= (uint8_t)~WALKS;
+    *flags |= (RAM[OBJECT_HEADING + weapon] >> 2) & WALKS;
+    *flags |= HIT;
+    took(CROW_HIT);
+    sound_play(0x16);
+    *count = 0;
+    RAM[0x26] = 0;
+    RAM[0x27] = 1;   // 100 points
+    took(CROW_HIT_SCORE);
+    add_score(object, weapon);
+    return;
+  }
+  took(CROW_NOT_HIT);
+  took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
+  if (!(*flags & WALKS)) {
+    took(CROW_FLIES);
+    crow_flies(object);
+    return;
+  }
+  took(CROW_SITS);
+  took(OBJECT_SHOWN_READ);
+  flags_past_page(object, 1);
+  if (!(*flags & OBJECT_FLAG_SHOWN)) { took(CROW_HIDDEN); return; }
+  ++*count;
+  took(CROW_COUNTS);
+  if (*count < 0x18) took(CROW_STILL_SITTING);
+  else {
+    *flags &= (uint8_t)~WALKS;
+    took(CROW_TAKES_OFF);
+  }
+  *flags &= (uint8_t)~SINKS;
+  RAM[OBJECT_HEADING + object] = 0x04;
+  RAM[OBJECT_SHAPE + object] = 0xB9;
+  took(CROW_FACES);
+  if (arthur_is_right_of(object)) took(CROW_FACES_RIGHT);
+  else {
+    *flags |= SINKS;
+    RAM[OBJECT_HEADING + object] = 0x0C;
+    RAM[OBJECT_SHAPE + object] = 0xC9;
+    took(CROW_FACES_LEFT);
+  }
+  took(CROW_COUNT_READ);
+  if (*count < 0x10) took(CROW_QUIET);
+  else if (*count >= 0x14) took(CROW_CAWS_OVER);
+  else {
+    RAM[OBJECT_SHAPE + object]++;
+    took(CROW_CAWS);
+  }
+}
+
+// sub_9FA5: a plant's half width and half height, for what touches it.
+static void plant_box(void) {
+  RAM[0x26] = 4;
+  RAM[0x27] = 0x10;
+}
+
+// $9F25: a plant with its mouth open. After 16 rounds it shoots, if one of the two shots' objects, $14 and $15, is free:
+// the shot starts at the plant's place, eight pixels up, headed for Arthur, with sound $1A. A plant in the top eight
+// pixels of a screen, at $9F5C, isn't ported yet.
+static void plant_shoots(uint8_t object) {
+  enum { FIRST_SHOT = 0x14, SHOTS = 2, SHOT = 0x2B };
+  plant_box();
+  took(PLANT_TESTS_CALLED);
+  touch_tests(object);
+  ++RAM[OBJECT_STATE + object];
+  took(PLANT_AIMS);
+  uint8_t shot = 0;
+  if (RAM[OBJECT_STATE + object] < 0x10) took(PLANT_AIMS_ON);
+  else {
+    took(PLANT_SHOT_LOOKED_FOR);
+    for (uint8_t slot = FIRST_SHOT; slot < FIRST_SHOT + SHOTS && !shot; slot++) {
+      if (!RAM[OBJECT_FLAGS + slot]) {
+        took(SHOT_SLOT_FREE);
+        shot = slot;
+      } else {
+        took(SHOT_SLOT_USED);
+        took(slot + 1 < FIRST_SHOT + SHOTS ? GOES_ROUND : GOES_ON);
+      }
+    }
+  }
+  if (!shot) {
+    RAM[OBJECT_SHAPE + object] = 0xBF;
+    took(PLANT_MOUTH_OPEN);
+    if (arthur_is_right_of(object)) took(PLANT_MOUTH_RIGHT);
+    else {
+      RAM[OBJECT_SHAPE + object] = 0xCF;
+      took(PLANT_MOUTH_LEFT);
+    }
+    return;
+  }
+  // sub_FA2E: the plant's place, in the stage and on the screen
+  RAM[OBJECT_Y + shot] = (uint8_t)(RAM[OBJECT_Y + object] - 8);
+  RAM[OBJECT_Y_SCREEN + shot] = RAM[OBJECT_Y_SCREEN + object];
+  RAM[OBJECT_SCREEN_Y + shot] = RAM[OBJECT_SCREEN_Y + object];
+  RAM[OBJECT_X + shot] = RAM[OBJECT_X + object];
+  RAM[OBJECT_X_SCREEN + shot] = RAM[OBJECT_X_SCREEN + object];
+  RAM[OBJECT_SCREEN_X + shot] = RAM[OBJECT_SCREEN_X + object];
+  RAM[OBJECT_FLAGS + shot] = IN_USE;
+  took(SHOT_MADE);
+  took(SHOT_SAME_SCREEN);
+  took(SHOT_AIMED);
+  RAM[OBJECT_HEADING + shot] = way_to_arthur(shot);
+  RAM[OBJECT_KIND + shot] = SHOT;
+  took(SHOT_HEADED);
+  sound_play(0x1A);
+  RAM[OBJECT_FLAGS + object] &= (uint8_t)~SINKS;
+  took(PLANT_SHOT);
+}
+
+/** Bank 4's $9EC0, kind 1: a plant. In the view it faces Arthur, and every 16 rounds opens its mouth, flag $04, to shoot.
+ *  Out of the view it starts again. A weapon is worth 100 points, with sound $1F; how it dies after, at $F6F6, isn't
+ *  ported yet. */
+void plant(uint8_t object) {
+  uint8_t *flags = &RAM[OBJECT_FLAGS + object];
+  took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
+  if (*flags & HIT) return;   // $F6F6
+  took(PLANT_ALIVE);
+  show_object(object);
+  if (!object_in_view(object)) {
+    RAM[OBJECT_COUNT + object] = 0;
+    *flags = IN_USE;
+    took(PLANT_OUT_OF_VIEW);
+    return;
+  }
+  took(PLANT_IN_VIEW);
+  if (RAM[0x0647 + object]) {
+    took(PLANT_HIT);
+    sound_play(0x1F);
+    *flags |= HIT;
+    RAM[OBJECT_COUNT + object] = 0;
+    RAM[0x26] = 0;
+    RAM[0x27] = 1;   // 100 points
+    took(PLANT_HIT_SCORE);
+    add_score(object, 0);
+    return;
+  }
+  took(PLANT_NOT_HIT);
+  took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
+  if (*flags & SINKS) {   // for a plant, the flag that says its mouth is open
+    took(PLANT_SHOOTS);
+    plant_shoots(object);
+    return;
+  }
+  took(PLANT_WAITS);
+  RAM[OBJECT_COLOURS + object] = 0x03;
+  RAM[OBJECT_SHAPE + object] = 0xBD;
+  took(PLANT_LOOKS);
+  if (arthur_is_right_of(object)) took(PLANT_LOOKS_RIGHT);
+  else {
+    RAM[OBJECT_SHAPE + object] = 0xCD;
+    took(PLANT_LOOKS_LEFT);
+  }
+  ++RAM[OBJECT_COUNT + object];
+  took(PLANT_COUNTS);
+  if (RAM[OBJECT_COUNT + object] & 0x0F) took(PLANT_NOT_YET);
+  else {
+    *flags |= SINKS;
+    RAM[OBJECT_STATE + object] = 0;
+    took(PLANT_OPENS);
+  }
+  plant_box();
+  took(PLANT_TESTS);
+  touch_tests(object);
+}
+
+/** $F49C, kind $2B: a plant's shot, which flies the way it was headed until it's out of the view, and hits Arthur if it
+ *  touches him. With the cross a weapon can stop it, at $F557, which isn't ported yet. */
+void plant_shot(uint8_t object) {
+  RAM[OBJECT_COLOURS + object] = 0;
+  took(SHOT_BEGINS);
+  took(CALLS);
+  move_object(object, (uint8_t)(0x10 + RAM[0xD3]));
+  if (!object_in_view(object)) {
+    RAM[OBJECT_FLAGS + object] = 0;
+    took(SHOT_GONE);
+    return;
+  }
+  show_object(object);
+  RAM[OBJECT_SHAPE + object] = 0xAB;
+  RAM[0x26] = RAM[0x27] = 2;
+  took(SHOT_FLIES);
+  place_on_screen(object);
+  took(SHOT_TESTS);
+  if (object >= 0x10) took(READ_PAST_PAGE);
+  if (!arthur_touches(object)) { took(ENEMY_NOT_TOUCHED); return; }
+  RAM[OBJECT_FLAGS + ARTHUR] |= ARTHUR_HIT;
+  took(ENEMY_TOUCHES_ARTHUR);
 }
