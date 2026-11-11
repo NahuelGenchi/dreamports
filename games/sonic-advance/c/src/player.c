@@ -590,7 +590,7 @@ static void water_step(Player *p) {
       }
       p->drownFrames = DROWN_SECOND;
     }
-    if (act.tick % BREATH_EVERY == 0 && !(act_random() & 0x300)) {
+    if (act_stage_time() % BREATH_EVERY == 0 && !(act_random() & 0x300)) {
       int ahead = p->facing < 0 ? -BREATH_AHEAD : BREATH_AHEAD;
       water_bubble((int)__builtin_floor(p->x * 256) + ahead * 256, (int)__builtin_floor(p->y * 256) - BREATH_ABOVE * 256, 0, 0);
     }
@@ -752,7 +752,7 @@ void player_animate(Player *p, const PlayerInput *in) {
   if (p->death == PLAYER_GONE) return;
   choose(p, pick(p, in), p->animRestart);
   p->animRestart = 0;
-  if (p->state == PS_BRAKE && act.tick % 4 == 0) act_brake_dust();
+  if (p->state == PS_BRAKE && act_stage_time() % 4 == 0) act_brake_dust();
   // a hitbox a frame sets is turned with him, as the sprite system applies its flips when it sets one
   s->frameFlags = (s->frameFlags & ~(SPRITE_X_FLIP | SPRITE_Y_FLIP)) | (p->facing > 0 ? SPRITE_X_FLIP : 0) | (p->inverted ? SPRITE_Y_FLIP : 0);
   for (int guard = 0; guard < 4; guard++) {
@@ -764,7 +764,7 @@ void player_animate(Player *p, const PlayerInput *in) {
   }
   p->prio = (int)((s->frameFlags & SPRITE_PRIORITY) >> 12);
   p->prevState = p->state;
-  p->hidden = !p->dead && (p->invisible || (p->invulnerable > 0 && (act.tick & 2)));
+  p->hidden = !p->dead && (p->invisible || (p->invulnerable > 0 && (act_stage_time() & 2)));
   // dead, the timers count down only on the frame he dies: the tasks that take over from then on leave them
   if (p->dead && p->invulnerable == 1) return;
   if (p->state != PS_HURT && p->invulnerable > 0) p->invulnerable--;

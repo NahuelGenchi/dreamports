@@ -25,7 +25,7 @@ enum {
 
 // the platforms' animations by level (rom/levels.js sprites): thin, the brick and the bounce block if the level has them
 static const struct { int level, thin, brick, bounce; } ANIMATIONS[] = {
-  { 0, 463, 0, 462 }, { 1, 0, 0, 462 }, { 2, 506, 0, 499 }, { 3, 506, 0, 499 }, { 4, 495, 0, 0 }, { 5, 495, 0, 0 }, { 6, 523, 0, 543 },
+  { 0, 463, 0, 462 }, { 1, 463, 0, 462 }, { 2, 506, 0, 499 }, { 3, 506, 0, 499 }, { 4, 495, 0, 0 }, { 5, 495, 0, 0 }, { 6, 523, 0, 543 },
   { 7, 523, 0, 543 }, { 8, 535, 0, 543 }, { 9, 535, 0, 543 }, { 12, 605, 574, 0 },
 };
 enum { FALL_STILL, FALL_WAITING, FALL_FALLING };
@@ -79,7 +79,7 @@ static int thin_run(ActTask *t) {
   const Entity *en = &pf->o.slot->e;
   Player *p = &act.player;
   int inverted = p->inverted;
-  int32_t next = (int32_t)((uint32_t)pf->reach * (uint32_t)(int32_t)SINE[(4 * ((act.tick + pf->phase) & 0xFF)) & 0x3FF]) >> 14;
+  int32_t next = (int32_t)((uint32_t)pf->reach * (uint32_t)(int32_t)SINE[(4 * ((act_stage_time() + pf->phase) & 0xFF)) & 0x3FF]) >> 14;
   int moved = next - pf->offset;
   pf->offset = next;
   int x = en->x + (pf->across ? pf->offset >> 8 : 0), y = en->y + (pf->across ? 0 : pf->offset >> 8);

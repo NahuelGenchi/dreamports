@@ -37,12 +37,12 @@ static int wheel_run(ActTask *t) {
   const Entity *e = &w->o.slot->e;
   Player *p = &act.player;
   int speed = s8(e->d[1]);
-  int angle = (int)(((uint32_t)((w->clockwise ? speed : -speed) * (int32_t)act.tick) + (uint32_t)w->phase) & ANGLE_MASK) >> 1;
+  int angle = (int)(((uint32_t)((w->clockwise ? speed : -speed) * (int32_t)act_stage_time()) + (uint32_t)w->phase) & ANGLE_MASK) >> 1;
   w->a = SINE[angle] * w->radius;
   w->b = SINE[angle + 256] * w->radius;
   int x = e->x, y = e->y;
   int dx = w->a >> 11, dy = w->b >> 11;
-  if (w->riding) p->x += (((w->a - w->last) >> 3) + (int)(act.tick & 1)) / 256.0;
+  if (w->riding) p->x += (((w->a - w->last) >> 3) + (int)(act_stage_time() & 1)) / 256.0;
   if (!p->dead) {
     collide_platform_top(&w->o, x + dx, y + dy, object_box(&w->o.sprite, 0), p);   // Coll_Player_PlatformCrumbling
     if (p->onObject == &w->o) {

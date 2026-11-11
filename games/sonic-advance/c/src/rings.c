@@ -236,6 +236,7 @@ enum {
 static struct { int x, y, vx, vy, life, layer; } scatter[SCATTER_SLOTS];
 static Sprite scatterSprite;
 static int scatterCeilings;   // set by a boss (unk2B6 bit 0): the rings also bounce off ceilings while rising
+#define SCATTER_CARD_STEPS 1
 
 void scatter_ceilings(void) { scatterCeilings = 1; }
 
@@ -301,7 +302,7 @@ int scatter_task(ActTask *t) {
     scatter[i].vy += up ? -SCATTER_GRAVITY : SCATTER_GRAVITY;
     // drawn where it was before the bounce, blinking in its last 32 frames with Sonic's blink
     if (sx + TILE > 0 && sx + TILE < DISPLAY_WIDTH + 2 * TILE && sy > -TILE && sy < DISPLAY_HEIGHT + TILE
-        && (scatter[i].life >= SCATTER_BLINK_BELOW || (act.tick & 2) == 0)) put_ring(s, &drawn, sx, sy);
+        && (scatter[i].life >= SCATTER_BLINK_BELOW || (act_stage_time() & 2) == 0)) put_ring(s, &drawn, sx, sy);
     scatter[i].life--;
   }
   return 1;
@@ -311,8 +312,9 @@ int scatter_task(ActTask *t) {
 void rings_act2_prepare(void) {
   // the rings manager is made while the stage loads and runs through the card's frames: sixteen of them before the
   // act's first picture, and one more step of delay, as Neo Green Hill act 2's recording has them
-  for (int i = 0; i < 16; i++) update_sprite(&ringSprite, 0);
+  for (int i = 0; i < 18; i++) update_sprite(&ringSprite, 0);
   ringSprite.qAnimDelay = (int16_t)(ringSprite.qAnimDelay + 256);
+  for (int i = 0; i < SCATTER_CARD_STEPS; i++) update_sprite(&scatterSprite, 0);
 }
 
 void rings_start(void) {

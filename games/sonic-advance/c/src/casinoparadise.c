@@ -62,7 +62,7 @@ static void background_update(void) {
   int camX = (int)act.cam.x - act.cam.wrapped;
   act.cam.bgX = fdiv(camX << 4, act.stage.width - SCREEN_W);
   act.cam.bgY = fdiv(((int)act.cam.y << 6) + ((int)act.cam.y << 5), act.stage.height - SCREEN_H);
-  if ((act.tick & 3) != 0 || (act_random() & 0x700) != 0) return;
+  if ((act_stage_time() & 3) != 0 || (act_random() & 0x700) != 0) return;
   int x = (int)((act_random() & 0xFF00) >> 8) - 8;
   int y = (int)((act_random() & 0x7F00) >> 8) - 32;
   create_firework(x, y, (act_random() & 0x100) != 0);

@@ -95,7 +95,7 @@ static void boulder_new(int x, int y, int landings) {
 static int spawner_run(ActTask *t) {
   Object *o = (Object *)t->data;
   const Entity *en = &o->slot->e;
-  if (act.tick % EVERY == 0) boulder_new(en->x, en->y, en->d[0] & 0xFF);
+  if (act_stage_time() % EVERY == 0) boulder_new(en->x, en->y, en->d[0] & 0xFF);
   return !off_display(en->x, en->y);
 }
 

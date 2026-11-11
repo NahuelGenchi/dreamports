@@ -17,7 +17,7 @@ typedef struct { Object o; int across, phase, reach; } IronBall;
 static int iron_ball_run(ActTask *t) {
   IronBall *b = (IronBall *)t->data;
   const Entity *en = &b->o.slot->e;
-  int swing = ((int32_t)((uint32_t)b->reach * (uint32_t)(int32_t)SINE[(4 * ((act.tick + b->phase) & 0xFF)) & 0x3FF]) >> 14) >> 8;
+  int swing = ((int32_t)((uint32_t)b->reach * (uint32_t)(int32_t)SINE[(4 * ((act_stage_time() + b->phase) & 0xFF)) & 0x3FF]) >> 14) >> 8;
   int x = en->x + (b->across ? swing : 0), y = en->y + (b->across ? 0 : swing);
   // Coll_Player_Entity_Intersection, then Coll_DamagePlayer
   Player *p = &act.player;

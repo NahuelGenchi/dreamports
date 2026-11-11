@@ -136,7 +136,7 @@ static int square_run(ActTask *t) {
   Square *sq = (Square *)t->data;
   const Entity *en = &sq->o.slot->e;
   Player *p = &act.player;
-  int32_t next = (int32_t)((uint32_t)sq->reach * (uint32_t)(int32_t)SINE[(4 * ((act.tick + sq->phase) & 0xFF)) & 0x3FF]) >> 14;
+  int32_t next = (int32_t)((uint32_t)sq->reach * (uint32_t)(int32_t)SINE[(4 * ((act_stage_time() + sq->phase) & 0xFF)) & 0x3FF]) >> 14;
   int moved = next - sq->offset;
   sq->offset = next;
   sq->o.x = en->x + (sq->across ? sq->offset >> 8 : 0);

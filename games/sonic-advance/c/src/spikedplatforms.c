@@ -130,7 +130,7 @@ static int spiked_run(ActTask *t) {
   Spiked *sp = (Spiked *)t->data;
   const Entity *en = &sp->o.slot->e;
   Player *p = &act.player;
-  int32_t next = (int32_t)((uint32_t)sp->reach * (uint32_t)(int32_t)SINE[(4 * ((act.tick + sp->phase) & 0xFF)) & 0x3FF]) >> 14;
+  int32_t next = (int32_t)((uint32_t)sp->reach * (uint32_t)(int32_t)SINE[(4 * ((act_stage_time() + sp->phase) & 0xFF)) & 0x3FF]) >> 14;
   int moved = next - sp->offset;
   sp->offset = next;
   sp->o.x = en->x + (sp->across ? sp->offset >> 8 : 0);

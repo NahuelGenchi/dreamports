@@ -62,6 +62,8 @@ ActTask *leon_spawn(Slot *slot);            // 11
 ActTask *wamu_spawn(Slot *slot);            // 13
 ActTask *tentou_spawn(Slot *slot);          // 6
 ActTask *mole_spawn(Slot *slot);            // 15
+ActTask *egg_hammer_tank_intro_spawn(Slot *slot);   // 21
+ActTask *egg_hammer_tank_spawn(Slot *slot);         // 22
 ActTask *egg_press_spawn(Slot *slot);       // 23
 ActTask *fireball_spawn(Slot *slot);        // 7
 ActTask *yukimaru_spawn(Slot *slot);        // 16
