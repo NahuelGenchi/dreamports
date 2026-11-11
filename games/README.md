@@ -28,7 +28,7 @@ Every Dreamport has one entry, `entry.md` in its folder, which says everything a
 
 A game's [capture](../docs/STANDARD.md#a-games-capture) gives it a place in the Make row, and only there at first, as what `npm run dp -- new` writes has no code of the original's yet. With no `screen`, or once it's taken down, it has none, and its files still build. Its place in the Dreamports row and its own page, for players, come with its first reviewed step that names code of the original, when its code ported rises above 0.
 
-`npm run dp -- new <game>` writes a new game's first entry, with its first code ([Starting a game](../tools/README.md#starting-a-game)). An entry is a Markdown file. Its fields go at its top, between two `---` lines, and the text below them, such as the credits, shows at the end of the game's page. Write them as normal sentences and labels, with a capital at the start. `npm run check` and `npm run build` stop and say what's wrong when a field is missing or wrong.
+`npm run dp -- new <game>` writes a new game's entry, with its first code ([Starting a game](../tools/README.md#starting-a-game)). An entry is a Markdown file. Its fields go at its top, between two `---` lines, and the text below them, such as the credits, shows at the end of the game's page. Write them as normal sentences and labels, with a capital at the start. `npm run check` and `npm run build` stop and say what's wrong when a field is missing or wrong.
 
 | Field | What to write |
 | :--- | :--- |

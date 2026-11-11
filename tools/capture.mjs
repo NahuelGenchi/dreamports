@@ -10,9 +10,10 @@
 // --from plays a list of presses, as a recording writes them, when nobody played at all, and takes the moment that ranks
 // first of those, or says in numbers what the presses led to. Neither shows anyone a picture.
 //
-// --yes is the person's yes to sending what's kept, as a pull request of its own: for a game not on main yet that's its
-// first entry (docs/TEAMS.md#a-games-first-entry). Nothing else is sent anywhere, and --repo sends it to another copy of
-// the repository, such as a fork that tries the first entry workflow.
+// --yes is the person's yes to sending what's kept, as a pull request of its own, the game's card
+// (docs/TEAMS.md#a-games-first-files-and-its-card), once the game's first files are on main, where `new` sent them.
+// Nothing else is sent anywhere, and --repo sends it to another copy of the repository, such as a fork that tries the
+// first entry workflow.
 
 import { execFileSync, spawn } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -22,11 +23,12 @@ import { readOriginal } from './lib/proof-files.mjs';
 import { copyOf } from './lib/copies.mjs';
 import { serveRepository } from './lib/server.mjs';
 import { go, openChrome, until } from './lib/chrome.mjs';
-import { UPSTREAM, api, findFork, repositoryOf } from './lib/github.mjs';
-import { fileAt, remotes } from './lib/preview.mjs';
+import { UPSTREAM, api } from './lib/github.mjs';
+import { fileAt } from './lib/preview.mjs';
+import { mainOf, openPull, pushesTo } from './lib/send.mjs';
 import { FEW_COLOURS, WINDOW, forConsole, loopOf, measure, shortlist, stretches } from './lib/moments.mjs';
 import { av1Configuration, av1Frame, mp4 } from './lib/mp4.mjs';
-import { captureMessage, firstFilesMessage, namesOf, plainWebp, withCapture } from './lib/new-game.mjs';
+import { captureMessage, namesOf, plainWebp, withCapture } from './lib/new-game.mjs';
 import { originalButtons, readRecording } from './lib/recording.mjs';
 import { referenceOf } from './lib/reference.mjs';
 import { roomFor } from './lib/screens.mjs';
@@ -150,72 +152,39 @@ async function keepMoment(page, game, moment, choice) {
   console.log(`Kept ${(moment.pictures.length * FRAME_SECONDS).toFixed(1)} seconds, ${(h264.length / 1e6).toFixed(2)} MB, in public/media/${game}-dreamport.*, and games/${game}/entry.md names it.`);
 }
 
-// where a capture's pull request comes from: this repository's own remote for someone who can push to it, or their fork
-function pushesTo(repository) {
-  const all = remotes();
-  const own = all.find(({ url }) => repositoryOf(url)?.toLowerCase() === repository.toLowerCase());
-  if (own && api(`repos/${repository}`)?.permissions?.push) return { remote: own.name, owner: repository.split('/')[0], source: own.name };
-  const fork = findFork(all);
-  return { remote: fork.remote, owner: fork.owner, source: own?.name ?? `https://github.com/${repository}.git` };
-}
-
-// what starts a capture's commit: main, for a game that's there, or for one that isn't, the commit of its first files
-function startOf(game, name, issue, main) {
-  const path = `games/${game}/entry.md`;
-  const onMain = fileAt(main, path);
-  if (onMain) return { base: main, entry: onMain.toString('utf8'), first: false };
-  const added = git(['log', `${main}..HEAD`, '--diff-filter=A', '--format=%H', '--', path]).split('\n').filter(Boolean).pop();
-  if (!added || git(['log', '-1', '--format=%B', added]) !== firstFilesMessage(name, issue)) return null;
-  try {
-    git(['merge-base', '--is-ancestor', `${added}^`, main]);
-  } catch {
-    return null;
-  }
-  return { base: added, entry: fileAt(added, path).toString('utf8'), first: true };
-}
-
 const HOW = {
   chose: 'A person played their own copy of the original and chose this moment.',
   played: 'A person played their own copy of the original and didn\'t choose, so this is the moment the tool ranked first of what they played. Nobody has seen it yet.',
   agent: 'Nobody played, so a coding agent wrote the presses, and this is the moment the tool ranked first of what they led to. Nobody has seen it yet.',
 };
 
-// the capture as a pull request of its own, in a commit made beside the branch being worked on, which stays as it is
+// the capture as a pull request of its own, the game's card, in a commit made on main beside the branch being worked
+// on, which stays as it is. A game whose first files aren't on main yet has nowhere for a card to go by itself
 function sendCapture({ game, original, repository }, how) {
   const issue = issueOf(game), { name } = namesOf(original), branch = captureBranch(game);
   try {
-    const { remote, owner, source } = pushesTo(repository);
-    const into = api(`repos/${repository}`).default_branch;
-    git(['fetch', '--quiet', '--no-tags', source, `+refs/heads/${into}:refs/dreamports/main`]);
-    const main = git(['rev-parse', 'refs/dreamports/main']);
-    const start = startOf(game, name, issue, main);
-    if (!start) {
-      console.log('It goes in with this branch\'s pull request, as this branch doesn\'t start from the first files alone.');
+    const from = pushesTo(repository);
+    const { into, main } = mainOf(repository, from);
+    const onMain = fileAt(main, `games/${game}/entry.md`);
+    if (!onMain) {
+      console.log('It goes in with this branch\'s pull request, as the game\'s first files aren\'t on main yet.');
       return;
     }
     const index = join(keptIn(game), 'send.index'), env = { ...process.env, GIT_INDEX_FILE: index };
     rmSync(index, { force: true });
-    git(['read-tree', start.base], { env });
+    git(['read-tree', main], { env });
     const add = (path, sha) => git(['update-index', '--add', '--cacheinfo', `100644,${sha},${path}`], { env });
     for (const media of MEDIA) add(mediaPath(game, media), git(['hash-object', '-w', join(REPO, mediaPath(game, media))]));
-    add(`games/${game}/entry.md`, git(['hash-object', '-w', '--stdin'], { input: withCapture(start.entry, game) }));
-    const commit = git(['commit-tree', git(['write-tree'], { env }), '-p', start.base, '-m', captureMessage(name, issue)]);
+    add(`games/${game}/entry.md`, git(['hash-object', '-w', '--stdin'], { input: withCapture(onMain.toString('utf8'), game) }));
+    const commit = git(['commit-tree', git(['write-tree'], { env }), '-p', main, '-m', captureMessage(name, issue)]);
     rmSync(index, { force: true });
-    git(['push', '--quiet', remote, `${commit}:refs/heads/${branch}`]);
-    const milestone = api(`repos/${repository}/issues/${issue}`)?.milestone;
-    const pull = api(`repos/${repository}/pulls`, {
-      method: 'POST',
-      body: {
-        title: captureMessage(name, issue), head: `${owner}:${branch}`, base: into, maintainer_can_modify: true,
-        body: [
-          '## Tracking', '', `Refs #${issue}`, `Milestone: ${milestone?.title ?? 'none'}`, `Branch: ${branch}, ${start.first ? 'from the game\'s first files' : 'from the latest main'}`, '',
-          '## Changes', '', `${name} Dreamport's capture, for its card in the launcher, written by \`npm run dp -- capture\`. ${HOW[how]}`, '',
-          '## Delivery record', '', 'Site build: not run', 'Browser checks: none', 'Preview: none', 'Source/diff review: what the tool wrote', 'Private data: none committed (no ROMs, game files, extracted game assets, private email addresses, or credentials)', '',
-          '## Limitations and follow-up', '', `Someone who runs this repository looks at the capture before it appears, and a person can always replace it with one they choose.${start.first ? ' This is the game\'s first entry, so it\'s the only thing to look at here.' : ''}`,
-        ].join('\n'),
-      },
+    const pull = openPull({
+      repository, from, into, commit, branch, issue, title: captureMessage(name, issue), started: 'from the latest main',
+      changes: `${name} Dreamport's capture, for its card in the launcher, written by \`npm run dp -- capture\`. ${HOW[how]}`,
+      review: 'what the tool wrote',
+      follows: 'Someone who runs this repository looks at the capture before it appears, and a person can always replace it with one they choose.',
     });
-    console.log(`Sent as ${start.first ? 'the game\'s first entry' : 'a pull request of its own'}: ${pull.html_url}`);
+    console.log(`Sent as a pull request of its own: ${pull.html_url}`);
   } catch (error) {
     console.log(`It goes in with this branch's pull request, as it couldn't go by itself: ${error.message}`);
   }

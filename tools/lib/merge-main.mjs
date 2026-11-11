@@ -100,7 +100,7 @@ export function provedOnBothSides(cwd) {
   return games('HEAD').filter(game => main.has(game));
 }
 
-/** The games the branch brings that main doesn't have yet, whose first entry carries its row and map. */
+/** The games the branch brings that main doesn't have yet, whose first files carry its row and map. */
 export function newGames(cwd) {
   return lines(git(cwd, ['diff', '--name-only', '--diff-filter=A', 'MERGE_HEAD', '--', 'games/*/entry.md'])).map(file => ENTRY.exec(file)[1]);
 }
@@ -108,7 +108,7 @@ export function newGames(cwd) {
 /**
  * The table in docs/STATUS.md and the progress maps are main's own, written after each merge by .github/workflows/readme.yml,
  * so a branch carries main's and the next merge has nothing to conflict over. A new game keeps its row, its map and
- * nothing else, as a first entry has to have them, with the table just written with its row.
+ * nothing else, as a game's first files have to have them, with the table just written with its row.
  */
 export function keepMainsTable(cwd, games = []) {
   const onMain = new Set(lines(git(cwd, ['ls-tree', '-r', '--name-only', 'MERGE_HEAD', '--', MAPS])));

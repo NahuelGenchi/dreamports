@@ -1,9 +1,11 @@
-// npm run dp -- new <game>[/<language>] [--commit] [--repo <owner/name>]: writes the first files of a Dreamport someone has claimed,
+// npm run dp -- new <game>[/<language>] [--commit] [--yes] [--repo <owner/name>]: writes the first files of a Dreamport someone has claimed,
 // which is mapped already: its page, its code on the console's kit with the controller, touch screen, settings and start
 // screen wired in, its license and its entry, so that it builds at once, ready for its capture, with nothing of the game
 // in it yet. The claim's issue gives its lead and its number. --commit commits them with the game's map, in the words its
-// first entry needs (docs/TEAMS.md#a-games-first-entry). --repo reads the claims of another copy of the repository, such
-// as a fork that tries the claims workflow. With a language's folder, as in sonic-battle/c, it starts the game's
+// first files need (docs/TEAMS.md#a-games-first-files-and-its-card), and with it --yes is the person's yes to sending
+// a whole new game's as a pull request of their own, which the Dreamports bot merges by itself once its checks pass,
+// so the game's issue shows its progress map at once. --repo reads the claims of another copy of the repository, and
+// sends there, such as a fork that tries the claims and first entry workflows. With a language's folder, as in sonic-battle/c, it starts the game's
 // version in that language (src/lib/languages.mjs), in games/<game>/c/: its page and its code. A game that has started
 // already has its entry and license, which the version shares, and a game that hasn't gets them too, and starts in that
 // language alone, as a new game starts in C, with no JavaScript version until someone adds one with new <game>.
@@ -15,6 +17,7 @@ import { REPO, gameFolder } from './lib/paths.mjs';
 import { LANGUAGES, versionOf } from '../src/lib/languages.mjs';
 import { readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { UPSTREAM } from './lib/github.mjs';
+import { mainOf, openPull, pushesTo } from './lib/send.mjs';
 import { readClaims } from './lib/claims.mjs';
 import { firstFiles, firstFilesMessage, namesOf, startingFiles } from './lib/new-game.mjs';
 import { run as portmap } from './portmap.mjs';
@@ -22,7 +25,33 @@ import { STATUS, writeReadme } from './readme.mjs';
 import { consoleOf } from './consoles.mjs';
 import { forGame } from './lib/screens.mjs';
 
-const USAGE = 'Usage: npm run dp -- new <game>[/c] [--commit] [--repo <owner/name>]';
+const USAGE = 'Usage: npm run dp -- new <game>[/c] [--commit] [--yes] [--repo <owner/name>]';
+const git = args => execFileSync('git', args, { cwd: REPO, encoding: 'utf8', stdio: 'pipe' }).trim();
+
+// a whole new game's first files as a pull request of their own: the commit just made, when it's alone on a commit of
+// main's, pushed as a branch beside the one being worked on, which stays as it is and goes on from the same commit
+function sendFirstFiles({ name, issue, repository }) {
+  try {
+    const from = pushesTo(repository);
+    const { into, main } = mainOf(repository, from);
+    const commit = git(['rev-parse', 'HEAD']);
+    try {
+      git(['merge-base', '--is-ancestor', `${commit}^`, main]);
+    } catch {
+      console.log('Its first files go in with this branch\'s pull request, as this branch doesn\'t start from main alone.');
+      return;
+    }
+    const pull = openPull({
+      repository, from, into, commit, branch: `feat/${issue}-first-files`, issue, title: firstFilesMessage(name, issue), started: 'the game\'s first files, on the latest main',
+      changes: `${name} Dreamport's first files, written by \`npm run dp -- new\`: the start every new game has, unchanged, with the map of the original's code. Nothing of the game is in them.`,
+      review: 'what the tool wrote',
+      follows: `The Dreamports bot writes every file again and merges this by itself once its checks pass, so the game's issue shows its progress map. Its card comes in a pull request of its own, and every step after that in one that's reviewed.`,
+    });
+    console.log(`Sent as a pull request of their own, which merges by itself once its checks pass: ${pull.html_url}`);
+  } catch (error) {
+    console.log(`Its first files go in with this branch's pull request, as they couldn't go by themselves: ${error.message}`);
+  }
+}
 
 export async function run(args) {
   const at = args.indexOf('--repo');
@@ -50,7 +79,7 @@ export async function run(args) {
     writeFileSync(join(folder, file), text);
   }
   await portmap([game]);
-  // a first entry brings its own row and map, as nothing else has them until it's on main
+  // a game's first files bring its own row and map, as nothing else has them until it's on main
   writeReadme();
   if (args.includes('--commit')) {
     const paths = [started ? `games/${game}` : `games/${base}`, STATUS, `.github/readme/progress/${game.replaceAll('/', '-')}.svg`];
@@ -58,6 +87,7 @@ export async function run(args) {
     const name = !started || language === 'js' ? namesOf(original).name : `${namesOf(original).name} in ${LANGUAGES[language].name}`;
     execFileSync('git', ['add', '--', ...paths], { cwd: REPO, stdio: 'pipe' });
     execFileSync('git', ['commit', '--quiet', '-m', firstFilesMessage(name, issue.number), '--', ...paths], { cwd: REPO, stdio: 'pipe' });
+    if (args.includes('--yes') && !started) sendFirstFiles({ name, issue: issue.number, repository });
   }
   console.log(started && language !== 'js'
     ? `Written: games/${game}/ with ${Object.keys(files).join(', ')}, for ${lead}, under issue ${issue.number}. It plays at /play/${game}/, and its numbers start from nothing.`
