@@ -160,6 +160,27 @@ COST(VIEW_ROW_LOOKED_AT, 19)      // $E72D to $E73E
 COST(VIEW_NO_COLUMN, 6)           // $E73E
 COST(VIEW_COLUMN, 11)             // or with the call of sub_E76F
 COST(VIEW_ENDS, 57)               // $E745 to the call that yields
+COST(COLUMN_BEGINS, 207)          // sub_E76F to its call of sub_EA73, with sub_E945
+COST(COLUMN_ADDRESS, 79)          // sub_EA73,
+COST(COLUMN_ADDRESS_SECOND_TABLE, 7) // for the second name table
+COST(COLUMN_LIST_BEGINS, 45)      // $E79B to $E7B5
+COST(COLUMN_BLOCK_TILES, 73)      // sub_E9AB
+COST(COLUMN_STARTS_UPPER, 7)      // $E7B8, from a block's upper tile,
+COST(COLUMN_STARTS_LOWER, 8)      // or its lower
+COST(COLUMN_TILE_LEFT, 32)        // $E7BE or $E7D5 to the count's compare: a block's left tile,
+COST(COLUMN_TILE_RIGHT, 33)       // or its right
+COST(COLUMN_TILES_DONE, 4)        // the branch to $E831, across a page
+COST(COLUMN_COLOURS_CALLED, 6)
+COST(COLUMN_NEXT_BLOCK, 20)       // $E7EF to $E7FA
+COST(COLUMN_ROUND, 3)             // $E7FD
+COST(COLUMN_ENDS, 34)             // $E834 to its return
+COST(BLOCK_COLOURS_FIRST_TABLE, 12) // sub_EABD: which name table's colours,
+COST(BLOCK_COLOURS_SECOND_TABLE, 14)
+COST(BLOCK_COLOURS, 70)           // $EACE to $EAF9
+COST(BLOCK_COLOURS_TOP_LEFT, 34)  // $EAFB to its return, for each quarter of an attribute byte
+COST(BLOCK_COLOURS_TOP_RIGHT, 46)
+COST(BLOCK_COLOURS_BOTTOM_LEFT, 55)
+COST(BLOCK_COLOURS_BOTTOM_RIGHT, 64)
 
 // ---- the objects' task, $F367 and bank 4's $9CC8 (objects.c)
 COST(OBJECTS_AGAIN, 3)            // $F37C
@@ -349,7 +370,6 @@ COST(ABOUT_DANGERS_COME, 2000)    // bank 2's $8431
 COST(ABOUT_A_STAGE_START, 3130)   // $D16E to $D284
 COST(ABOUT_A_COPY_OF_64, 1350)    // sub_C7ED's attributes
 COST(ABOUT_NO_OBJECTS, 3300)      // sub_CA96
-COST(ABOUT_A_COLUMN, 4981)        // sub_E76F
 COST(ABOUT_SATAN, 300)            // $EDA2
 COST(ABOUT_A_MOVE, 900)           // sub_F03E
 COST(ABOUT_A_TOUCH, 250)          // sub_F68E from $F697, and $BA44

@@ -47,6 +47,8 @@ uint8_t block_at_stage_place(void) {
 
 // sub_E9AB: where the four tiles of the block at BLOCK_AT are.
 static void find_block_tiles(void) {
+  took(COLUMN_BLOCK_TILES);
+  if ((RAM[0x54] + BLOCK_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
   BLOCK = peek((uint16_t)(ram16(0x54) + BLOCK_AT));
   set_ram16(0x26, (uint16_t)(peek16(0x8010) + BLOCK * 4));
 }
@@ -56,20 +58,36 @@ static void find_tile_address(void) {
   uint16_t address = (uint16_t)(((AT_Y & 0xF8) << 2) + (AT_X >> 3));
   // rows past the name table's 30, at $EA97, aren't ported yet
   address |= 0x2000;
-  if (AT_X_SCREEN & 1) address |= 0x0400;
+  took(COLUMN_ADDRESS);
+  if (AT_X_SCREEN & 1) {
+    address |= 0x0400;
+    took(COLUMN_ADDRESS_SECOND_TABLE);
+  }
   set_ram16(0x26, address);
 }
 
 // sub_EABD: the colours of the block at BLOCK_AT, two bits of its name table's attribute byte.
 static void set_block_colours(void) {
+  static const cost QUARTER[] = { BLOCK_COLOURS_TOP_LEFT, BLOCK_COLOURS_TOP_RIGHT, BLOCK_COLOURS_BOTTOM_LEFT, BLOCK_COLOURS_BOTTOM_RIGHT };
   uint16_t attributes = (uint16_t)(ATTRIBUTES + (SCREEN_AT & 1 ? 0x40 : 0));
+  took(SCREEN_AT & 1 ? BLOCK_COLOURS_SECOND_TABLE : BLOCK_COLOURS_FIRST_TABLE);
   set_ram16(0x26, attributes);
   RAM[0x49] = (uint8_t)(((BLOCK_AT & 0x0F) >> 1) | ((BLOCK_AT & 0xE0) >> 2));
   set_ram16(0xAE, peek16(0x8012));
+  took(BLOCK_COLOURS);
+  if ((RAM[0xAE] + BLOCK) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
   int shift = (BLOCK_AT & 0x01 ? 2 : 0) + (BLOCK_AT & 0x10 ? 4 : 0);
   RAM[0x4C] = (uint8_t)(peek((uint16_t)(ram16(0xAE) + BLOCK)) << shift);
   RAM[0x4B] = RAM[attributes + RAM[0x49]];
+  took(QUARTER[shift / 2]);
   RAM[attributes + RAM[0x49]] = (uint8_t)((RAM[0x4B] & ~(3 << shift)) | RAM[0x4C]);
+}
+
+// One tile of the column, from the block's four.
+static void column_tile(uint8_t *at, uint8_t which) {
+  if ((RAM[0x26] + which) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
+  RAM[COLUMN + (*at)++] = peek((uint16_t)(ram16(0x26) + which));
+  took(which & 1 ? COLUMN_TILE_RIGHT : COLUMN_TILE_LEFT);
 }
 
 // sub_E76F: the column of 30 tiles one screen to the right of the view, for V-blank to write down the screen. The view
@@ -79,6 +97,7 @@ static void draw_column(void) {
   AT_X = RAM[VIEW_X + 1];
   AT_Y = RAM[VIEW_Y + 1];
   AT_Y_SCREEN = RAM[VIEW_Y + 2];
+  took(COLUMN_BEGINS);
   block_at_place();
   find_tile_address();
   RAM[COLUMN] = RAM[0x27];
@@ -87,23 +106,33 @@ static void draw_column(void) {
   RAM[0x23] = 2;
   uint8_t at = 3, side = AT_X & 8 ? 1 : 0, lower = AT_Y & 8;
   RAM[0x22] = 0;
+  took(COLUMN_LIST_BEGINS);
   find_block_tiles();
+  took(lower ? COLUMN_STARTS_LOWER : COLUMN_STARTS_UPPER);
   for (;;) {
     if (!lower) {
-      RAM[COLUMN + at++] = peek((uint16_t)(ram16(0x26) + side));
+      column_tile(&at, side);
       if (++RAM[0x22] == 30) break;
+      took(GOES_ON);
     }
     lower = 0;
-    RAM[COLUMN + at++] = peek((uint16_t)(ram16(0x26) + 2 + side));
+    column_tile(&at, (uint8_t)(2 + side));
     if (++RAM[0x22] == 30) break;
+    took(GOES_ON);
+    took(COLUMN_COLOURS_CALLED);
     set_block_colours();
     BLOCK_AT += 0x10;
+    took(COLUMN_NEXT_BLOCK);
     find_block_tiles();
+    took(COLUMN_ROUND);
   }
+  took(COLUMN_TILES_DONE);
+  took(COLUMN_COLOURS_CALLED);
   set_block_colours();
   RAM[COLUMN + at] = 0;
   RAM[COLUMN + 2] = (uint8_t)(30 - RAM[COLUMN + 2]);
   COLUMN_READY = 0xFF;
+  took(COLUMN_ENDS);
 }
 
 // 24 bits at `at` plus the 24 at `by`, with what they were kept at `before`.
@@ -157,7 +186,6 @@ wait view_task(void) {
   if (!RAM[0x4A]) took(VIEW_NO_COLUMN);
   else {
     took(VIEW_COLUMN);
-    took(ABOUT_A_COLUMN);
     draw_column();
   }
   SCROLL_X = RAM[VIEW_X + 1];
