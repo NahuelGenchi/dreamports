@@ -135,9 +135,13 @@ static void list_sprites(void) {
     if (object >= 0x10) took(SPRITES_OBJECT_PAST_PAGE);
     if (!(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN)) took(SPRITES_OBJECT_HIDDEN);
     else {
+      took(SPRITES_OBJECT_FIRST_BYTE);
       RAM[LIST + listed++] = RAM[OBJECT_SCREEN_Y + object];
+      took(SPRITES_OBJECT_NEXT_BYTE);
       RAM[LIST + listed++] = RAM[OBJECT_SHAPE + object];
+      took(SPRITES_OBJECT_NEXT_BYTE);
       RAM[LIST + listed++] = RAM[OBJECT_COLOURS + object];
+      took(SPRITES_OBJECT_NEXT_BYTE);
       RAM[LIST + listed++] = RAM[OBJECT_SCREEN_X + object];
       if (listed >= LIST_MOST) { took(SPRITES_LIST_FULL); break; }
       took(SPRITES_OBJECT_LISTED);
@@ -146,6 +150,7 @@ static void list_sprites(void) {
   }
   took(SPRITES_LIST_END_BEGINS);
   for (int i = 0; i < 4; i++) {
+    took(SPRITES_LIST_END_READ);
     RAM[LIST + listed++] = 0xFF;
     took(SPRITES_LIST_END_BYTE);
     took(i < 3 ? GOES_ROUND : GOES_ON);

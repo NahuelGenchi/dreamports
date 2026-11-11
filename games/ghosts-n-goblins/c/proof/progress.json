@@ -34,6 +34,12 @@
       "differs": [],
       "functions": []
     },
+    "walk-across": {
+      "frames": 3040,
+      "matched": 3040,
+      "differs": [],
+      "functions": []
+    },
     "walk-and-jump": {
       "frames": 1300,
       "matched": 1300,
