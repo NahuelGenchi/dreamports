@@ -34,6 +34,42 @@ static inline void set_ram16(uint16_t address, uint16_t value) { RAM[address] = 
 /** Switches `bank` in at $8000, as the original's store to the cartridge does. */
 static inline void switch_bank(uint8_t bank) { BANK_NOW = bank; }
 
+// ---- the processor's time (time.c, costs.h)
+
+typedef enum {
+#define COST(name, cycles) name,
+#include "costs.h"
+#undef COST
+} cost;
+/** The original's code took this long. V-blank's interrupt runs from here when its time comes. */
+void took(cost what);
+void took_times(cost what, uint32_t times);
+// what the game writes to the hardware, kept with its time until the kit's frame it belongs to
+void hardware_write(uint16_t address, uint8_t value);
+void hardware_ppu_latch(void);              // a read of $2002, which makes the next write of $2006 the first of two
+void hardware_send_sprites(uint8_t page);   // a write of $4014
+void hardware_read_pads(void);              // sub_C278's reads, which happen when the frame comes
+void vblank_interrupt_wanted(uint8_t on);
+// a loop that waits for V-blank
+void loop_begins(uint8_t instructions);
+uint8_t loop_was_interrupted(void);
+uint8_t interrupt_runs_ahead(void);         // whether the interrupt that's running is a later frame's than the kit's
+void loop_goes_on(void);
+void loop_left(void);
+// For the check that counts what each interrupt and each turn took against the original's (time.c): it's told when one
+// begins and ends, and the game itself is built without it.
+#ifdef TIME_CHECK
+void time_check(char what, uint8_t which);
+#else
+#define time_check(what, which) ((void)0)
+#endif
+// the kit's frames
+void time_starts(void);
+void start_waited_for_vblank(void);
+void frame_begins(void);
+uint8_t frame_is_over(void);
+void frame_ends(void);
+
 // ---- the tasks (main.c)
 
 // the tasks' numbers, which are also where each one's state is kept from $02
@@ -51,15 +87,15 @@ typedef enum {
   YIELDS,  // sub_C336: the next task runs, and this one goes on in the next round
   SPINS,   // it waits in a loop for V-blank to count a frame, so nothing else runs until then
   ENDS,    // sub_C2FA: the task is over
+  SLEEPS,  // sub_C313: the next task runs, and this one once its sleep is over
 } wait;
 
 /** Writes $2000, and keeps whether V-blank interrupts. */
 void write_ppu_control(uint8_t value);
+void vblank_interrupt(void);     // $C0F0
 void start_task(uint8_t task);  // sub_C2BC
 void stop_task(uint8_t task);   // sub_C303
 wait sleep_task(uint16_t frames);  // sub_C313, which a task returns
-/** Whether this round started in a frame where tasks had already run, so V-blank comes while the sprites' list is filled. */
-uint8_t round_started_late(void);
 /** The step a task's own routine is at, kept for it between turns, and 0 when it's started. */
 extern uint8_t task_step[TASK_LAST + 2];
 
@@ -119,6 +155,22 @@ void vblank_draws(void);                  // $C0F0 to $C21D: what V-blank writes
 #define OBJECT_KIND 0x0631
 #define OBJECT_FLAG_SHOWN 0x80
 void place_on_screen(uint8_t object);  // sub_F181
+void show_object(uint8_t object);      // sub_F321
+void hide_object(uint8_t object);      // sub_F346
+int object_in_view(uint8_t object);    // sub_F0A3
+/** sub_E3E3: whether the block 11 pixels below an object's place is solid, so it's on the ground. */
+int on_the_ground(uint8_t object);
+/** sub_DA18: the first of the 16 objects after Arthur that isn't in use, or NO_OBJECT. */
+uint8_t free_object(void);
+enum { NO_OBJECT = 0x11 };
+/** sub_F708: an object is gone. */
+void remove_object(uint8_t object);
+/** sub_F68E: whether Arthur touches an object, whose half width and half height are in $26 and $27. */
+int arthur_touches(uint8_t object);
+/** $F7BE, kind 0: a zombie's turn (enemies.c). */
+void zombie(uint8_t object);
+/** bank 2's $8416: the zombies that come out of the ground. `x` is the processor's X register, which it leaves changed. */
+void zombies_come(uint8_t *x);
 /** sub_F03E: moves an object by `speed` the way it's heading, one of 16 ways. */
 void move_object(uint8_t object, uint8_t speed);
 /** $EA55: the block of the stage at the place in $77 and $73, down, and $78 and $74, across. A block from $C6 up is solid. */

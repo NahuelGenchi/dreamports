@@ -5,8 +5,8 @@
   "proven": {"functions":0,"bytes":0},
   "recordings": {
     "game-start": {
-      "frames": 1093,
-      "matched": 1093,
+      "frames": 1300,
+      "matched": 1300,
       "differs": [],
       "functions": []
     },
