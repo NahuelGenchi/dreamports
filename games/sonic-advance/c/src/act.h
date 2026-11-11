@@ -88,6 +88,9 @@ extern Act act;
 extern int act_active;
 
 // what the act does for Sonic's moves: the effects they start, the camera they hold still, and his death
+/** The original's stage clock, gStageTime: the act's own frame count less the frames the level's row says the
+ *  original doesn't count yet (`stageClockAhead`). */
+int act_stage_time(void);
 void act_brake_dust(void);
 void act_dash_dust(void);
 void act_insta_shield(void);

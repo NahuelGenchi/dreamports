@@ -39,7 +39,7 @@ static void create_background(void) {
 static void background_update(void) {
   e.bldCnt = 0x3F41;     // BLDCNT_EFFECT_BLEND | BLDCNT_TGT1_BG0 | BLDCNT_TGT2_ALL
   e.bldAlpha = 0x100C;   // BLDALPHA_BLEND(12, 16)
-  view.cloudsX = (uint16_t)((0x100 - (act.tick >> 2)) & 0xFF);
+  view.cloudsX = (uint16_t)((0x100 - (act_stage_time() >> 2)) & 0xFF);
   draw_background(&clouds);
   animate_background(&clouds, &cloudsFrame, &cloudsDelay);
   view.updated = 1;

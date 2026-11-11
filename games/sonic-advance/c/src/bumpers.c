@@ -176,7 +176,7 @@ static int test(Bumper *b, Player *p) {
 static int bumper_run(ActTask *t) {
   Bumper *b = (Bumper *)t->data;
   const Entity *e = &b->o.slot->e;
-  int tick = act.tick;
+  int tick = act_stage_time();
   int inShake = b->shaking;
   if (b->shaking && ++b->c > SHAKE_END) b->shaking = 0;
   if (b->alongX) b->qx = sway(e->d[2], b->phase, tick);

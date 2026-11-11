@@ -100,7 +100,7 @@ static int hiding_run(ActTask *t) {
   Player *p = &act.player;
   int downward = sp->kind == HIDING_SPIKES_DOWN;
   if (off_cam(en->x, en->y)) return 0;
-  int clock = act.tick % CYCLE;
+  int clock = act_stage_time() % CYCLE;
   if (clock >= UP_FROM && clock < UP_UNTIL) {
     if (sp->up != VARIANT_UP) {
       show(sp, VARIANT_UP);

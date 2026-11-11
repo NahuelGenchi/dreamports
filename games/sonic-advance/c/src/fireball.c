@@ -104,7 +104,7 @@ static int spawner_run(ActTask *t) {
   Object *o = (Object *)t->data;
   const Entity *en = &o->slot->e;
   if (off_display(en->x, en->y)) return 0;
-  if (act.tick % RATE == 0) flame_new(o->slot);
+  if (act_stage_time() % RATE == 0) flame_new(o->slot);
   return 1;
 }
 

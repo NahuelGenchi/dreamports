@@ -433,6 +433,8 @@ static void hud_load(void) {
   e.flags |= FLAGS_UPDATE_OBJ_PALETTES;
 }
 
+int act_stage_time(void) { return act.tick - act.stage.row->stageClockAhead; }
+
 uint32_t act_random(void) {
   if (act.stage.row->sharedRandom) return front_random();
   return act.seed = act.seed * 0x196225u + 0x3C6EF35Fu;

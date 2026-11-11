@@ -26,7 +26,7 @@ typedef struct {
 // to run in a frame is drawn at priority 0 and the next at 1, both in front of the layers
 static int matrixTick = -1, matrixIndex;
 static int next_index(void) {
-  if (matrixTick != act.tick) { matrixTick = act.tick; matrixIndex = 0; }
+  if (matrixTick != act_stage_time()) { matrixTick = act_stage_time(); matrixIndex = 0; }
   return matrixIndex++;
 }
 
@@ -49,7 +49,7 @@ static int hook_run(ActTask *t) {
   int x = en->x, y = en->y;
   // the swing at the stage clock: the angle the chain makes (sine and cosine, 1 = 16384, the cosine with a slight lean added,
   // which the decompilation's C adds to both) and the hook's rotation
-  int m = (act.tick * 8 / 3 + h->phase) % 512, lean;
+  int m = (act_stage_time() * 8 / 3 + h->phase) % 512, lean;
   if (m > 256) { m = 512 - m; lean = SINE[m * 2] >> 8; } else lean = -(SINE[m * 2] >> 8);
   m = (SINE[((m - 0x7E) & 0x1FF) * 2] >> 7) & 0x1FF;
   m = m < 256 ? m >> 1 : 512 - ((512 - m) >> 1);

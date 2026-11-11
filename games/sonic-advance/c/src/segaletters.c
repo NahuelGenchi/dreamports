@@ -34,7 +34,7 @@ static int letter_run(ActTask *t) {
   Player *p = &act.player;
   if (off_cam(e->x, e->y)) return 0;
   // Mod(gStageTime - delay, length), compared unsigned
-  unsigned r = (unsigned)((act.tick - l->delay) % l->length);
+  unsigned r = (unsigned)((act_stage_time() - l->delay) % l->length);
   unsigned length = (unsigned)l->length, h = (unsigned)l->h;
   int solid = 1;
   const Hitbox *hb = object_box(s, 0);

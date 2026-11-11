@@ -28,7 +28,7 @@ static int shield_run(ActTask *t) {
   if (p->invincible > 0) return 1;
   set_priority(&sh->o.sprite, priority_of(p));
   sprite_step(&sh->o.sprite);
-  if (act.tick & 2) object_draw(&sh->o.sprite, (int)__builtin_floor(p->x), (int)__builtin_floor(p->y));
+  if (act_stage_time() & 2) object_draw(&sh->o.sprite, (int)__builtin_floor(p->x), (int)__builtin_floor(p->y));
   return 1;
 }
 
@@ -63,13 +63,13 @@ static int stars_run(ActTask *t) {
   Player *p = &act.player;
   if (p->invincible <= 0) return 0;
   int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y);
-  if ((act.tick & SPARKLE_MASK) == 0) {
+  if ((act_stage_time() & SPARKLE_MASK) == 0) {
     int r = (int)((act_random() >> 8) % SPARKLE_REACH), a = (int)((act_random() >> 8) % SPARKLE_ANGLES);
     sparkle_make(x + (((SINE[a * 4 + 256] >> 6) * r) >> 8), y + (((SINE[a * 4] >> 6) * r) >> 8));
   }
   set_priority(&st->o.sprite, priority_of(p));
   sprite_step(&st->o.sprite);
-  if (!(act.tick & 2)) object_draw(&st->o.sprite, x, y);
+  if (!(act_stage_time() & 2)) object_draw(&st->o.sprite, x, y);
   return 1;
 }
 

@@ -107,6 +107,10 @@ ActTask *float_spawn(Slot *slot);             // 90
 ActTask *boulder_spawner_spawn(Slot *slot);   // 92
 ActTask *run_wheel_spawn(Slot *slot);         // 86
 ActTask *forced_slide_spawn(Slot *slot);      // 46
+ActTask *shrub_spawn(Slot *slot);             // 30
+ActTask *mini_loop_spawn(Slot *slot);         // 34 to 38
+ActTask *water_bridge_spawn(Slot *slot);      // 40
+ActTask *water_bridge_splash_spawn(Slot *slot);   // 43
 ActTask *crumbling_platform_spawn(Slot *slot);   // 24
 ActTask *air_bubbles_spawn(Slot *slot);       // 94
 ActTask *breakable_wall_spawn(Slot *slot);    // 114

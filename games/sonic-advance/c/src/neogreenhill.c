@@ -57,7 +57,7 @@ const Level ACT_NEO_GREEN_HILL_2 = {
   .cameraStop = 768,
   .bgCnt = 0x1D0B,
   .drawBackground = draw_sky_and_sea,
-  .cardEnded = second_act_card_ended,
+  .cardEnded = second_act_card_ended, .stageClockAhead = 15,
   // its first recording starts in the frames after its card, so the act steps through them
   .zeroFlashesInSixteens = 1, .palettesAfterSonic = 1, .tilesShownLate = 1, .cardStepsOn = 1,
 };

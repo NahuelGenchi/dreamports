@@ -27,6 +27,9 @@ typedef struct {
   const int *palettes, *paletteVariants;
   int paletteCount;
   int cameraStop;   // how far short of the stage's right edge the camera stops, or 0 for the screen's width
+  // how many frames the act's own count (act.tick) is ahead of the original's stage clock (gStageTime) at the act's
+  // first picture, 0 when the two agree: the frames a start point runs past the card that the original doesn't count
+  int stageClockAhead;
   // The background's screen (sStageBgDimensions) as BG3CNT has it, and how much of its map goes in, 0 for all of it
   uint16_t bgCnt, bgCols, bgRows;
 

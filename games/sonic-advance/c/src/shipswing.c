@@ -33,7 +33,7 @@ static int ship_swing_run(ActTask *t) {
   const Entity *en = &sw->o.slot->e;
   Player *p = &act.player;
   // the swing: an angle from the timer, and a lift at either end of it
-  int turn = (act.tick * 2) % SWING_PERIOD, lift;
+  int turn = (act_stage_time() * 2) % SWING_PERIOD, lift;
   if (turn > SWING_HALF) { turn = SWING_PERIOD - turn; lift = SINE[turn * 2] >> 8; }
   else lift = -(SINE[turn * 2] >> 8);
   int theta = ((SINE[((turn - SWING_PHASE) & 0x1FF) * 2] >> 7) & 0x1FF) * 2;

@@ -43,7 +43,7 @@ static int rest(SteamExhaust *se, const Entity *en, Player *p) {
     unstick(p);
   } else if (collide_platform(&se->o, en->x, en->y, object_box(&se->o.sprite, 0), p)) unstick(p);
   if (off_display(en->x, en->y) && off_cam(en->x, en->y)) return 0;
-  if (act.tick % PERIOD == 0) {
+  if (act_stage_time() % PERIOD == 0) {
     se->steam = STEAM; se->riding = 0; se->vel = LAUNCH; se->off = 0; se->bounces = BOUNCES;
     se->o.sprite.graphics.anim = ANIM_BLOW;
     sprite_start(&se->o.sprite, VARIANT_BLOW);

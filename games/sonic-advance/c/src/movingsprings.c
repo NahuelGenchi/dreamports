@@ -75,7 +75,7 @@ static int spring_collide(MovingSpring *ms, Player *p) {
 static int moving_spring_run(ActTask *t) {
   MovingSpring *ms = (MovingSpring *)t->data;
   const Entity *en = &ms->o.slot->e;
-  int swing = ((int32_t)((uint32_t)ms->reach * (uint32_t)(int32_t)SINE[(4 * ((act.tick + ms->phase) & 0xFF)) & 0x3FF]) >> 14) >> 8;
+  int swing = ((int32_t)((uint32_t)ms->reach * (uint32_t)(int32_t)SINE[(4 * ((act_stage_time() + ms->phase) & 0xFF)) & 0x3FF]) >> 14) >> 8;
   ms->o.x = en->x + (ms->across ? swing : 0);
   ms->y = en->y + (ms->across ? 0 : swing);
   Player *p = &act.player;

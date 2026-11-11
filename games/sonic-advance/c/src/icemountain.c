@@ -91,8 +91,8 @@ static void background_update(int x, int y) {
   e.bldCnt = 0x3F41;     // BLDCNT_TGT2_ALL | BLDCNT_EFFECT_BLEND | BLDCNT_TGT1_BG0
   e.bldAlpha = 0x1010;
   x -= act.cam.wrapped;
-  view.snowX = (uint16_t)(((x + (x >> 2)) + (act.tick >> 2)) & 0xFF);
-  view.snowY = (uint16_t)(((uint16_t)(y + 256) - act.tick) & 0xFF);
+  view.snowX = (uint16_t)(((x + (x >> 2)) + (act_stage_time() >> 2)) & 0xFF);
+  view.snowY = (uint16_t)(((uint16_t)(y + 256) - act_stage_time()) & 0xFF);
   draw_background(&snow);
   animate_background(&snow, &snowFrame, &snowDelay);
   view.bgX = (uint16_t)bios_div(x << 4, act.stage.width - SCREEN_W);
@@ -226,11 +226,11 @@ static void water_vblank(void) {
  *  screen's line where it starts is kept for the V-blank (sub_8011A4C), which the background update then reads */
 void water_task(void) {
   if (!water.on) return;
-  if (act.tick & 1) {
+  if (act_stage_time() & 1) {
     if (water.current < water.target) water.current++;
     else if (water.current > water.target) water.current--;
   }
-  int time = act.tick;
+  int time = act_stage_time();
   water.late = water.early = 0;
   for (unsigned i = 0; i < sizeof LATE_WAVES / sizeof *LATE_WAVES; i++)
     if (LATE_WAVES[i].level == act.stage.level && time >= LATE_WAVES[i].first && time <= LATE_WAVES[i].last) water.late = 1;
@@ -247,11 +247,11 @@ void water_task(void) {
   // pair of frames, its waves going left with the camera and a pixel every 4 frames
   if ((uint8_t)(water.unk1 - 1) < SCREEN_H - 1) {
     Sprite *s = &water.surface;
-    s->x = (int16_t)-(((int)act.cam.x + (int)((act.tick + 1) >> 2)) & 15);
+    s->x = (int16_t)-(((int)act.cam.x + (int)((act_stage_time() + 1) >> 2)) & 15);
     s->y = (int16_t)(water.unk2 + 1);
     s->frameFlags |= SPRITE_KEEP_PALETTE | SPRITE_KEEP_TILES;
     update_sprite(s, 0);
-    if (act.tick & 2 && (uint16_t)(s->y - 1) < SCREEN_W - 1) {
+    if (act_stage_time() & 2 && (uint16_t)(s->y - 1) < SCREEN_W - 1) {
       int count = SURFACE_SPRITES;
       do { display_sprite(s); s->x += 16; } while (--count >= 0);
     }
@@ -270,8 +270,8 @@ void water_task(void) {
   if (water.unk2 >= SCREEN_H) e.flags &= ~FLAGS_HBLANK_COPY;
   else {
     uint32_t bgX = view.bgX, bgY = view.bgY;   // gBgScrollRegs[3]
-    uint32_t h = (act.tick * 4 + ((bgY + water.unk2 % 32u) << 6)) % 1024u;
-    uint32_t v = ((act.tick * 2 + (((bgY + water.unk2) % 32u) << 5)) + 0x100) & 0x3FF;
+    uint32_t h = (act_stage_time() * 4 + ((bgY + water.unk2 % 32u) << 6)) % 1024u;
+    uint32_t v = ((act_stage_time() * 2 + (((bgY + water.unk2) % 32u) << 5)) + 0x100) & 0x3FF;
     wave_lines(3, 0, WAVE_LINES, (uint16_t)h, 2, 64, (uint16_t)v, 10, 32, (int16_t)bgX, (int16_t)bgY);
     uint32_t block = e.hblankSize * WAVE_LINES;
     for (uint32_t line = WAVE_LINES, at = e.primary + block; line < SCREEN_H; line += WAVE_LINES, at += block)

@@ -360,7 +360,7 @@ int results_run(void) {
         act.cam.speedX = 0; act.cam.speedY = 0;
         r.countdown = r.longEnd ? ENDING_AFTER : NEXT_ACT_AFTER;
         play_song(SONG_RESULTS_DONE);
-      } else if (act.tick % 4 == 0) {
+      } else if (act_stage_time() % 4 == 0) {
         // the last tick is the one the original starts a frame later, with the done chime after it; the ticks before
         // it are heard a frame later too, which the proof's sound window takes in
         if (r.ring <= STEP && r.time <= STEP) {

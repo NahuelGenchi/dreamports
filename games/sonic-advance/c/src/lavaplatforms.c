@@ -77,7 +77,7 @@ static int lava_platform_run(ActTask *t) {
   if (hb && (collide_platform_top(&l->o, en->x, en->y, hb, p) & COLLIDE_LANDED)) { p->y = en->y - STAND; p->air = 0; }
   if (solid) collide_platform(&l->lava, en->x, en->y, solid, p);
   if (off_display(en->x, en->y) && off_cam(en->x, en->y - LAVA_ABOVE)) return 0;
-  if (act.tick % EVERY == 0) {
+  if (act_stage_time() % EVERY == 0) {
     l->n = EVERY; l->riding = 0; l->vy = -SPURT_SPEED; l->q = 0; l->bounces = 3;
     start(&l->lava, ANIM_SPURT);
     play_song(SE_LAVA_SPURT);

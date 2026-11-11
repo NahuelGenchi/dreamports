@@ -110,7 +110,7 @@ static int drowned_run(ActTask *t) {
   (void)t;
   const Player *p = &act.player;
   if (!p->dead) return 0;
-  if (!(act.tick & 3) && !(act_random() & 0x300)) {
+  if (!(act_stage_time() & 3) && !(act_random() & 0x300)) {
     int n = (int)((act_random() & 0x100) >> 8);
     do {
       int dx = (int)((act_random() & 0x7FF00) >> 8) - 0x400;
@@ -247,8 +247,8 @@ static int spot_run(ActTask *t) {
     a->next = (a->next + 1) % BUBBLE_DELAYS;
   }
   if (--a->small == 0) {
-    small_new(x, y - 4, ((a->big >> 3) + act.tick) & 0xFF);
-    a->small = bios_div(DELAYS[act.tick % BUBBLE_DELAYS], 2);
+    small_new(x, y - 4, ((a->big >> 3) + act_stage_time()) & 0xFF);
+    a->small = bios_div(DELAYS[act_stage_time() % BUBBLE_DELAYS], 2);
   }
   if (off_cam(x, y)) return 0;
   sprite_step(&a->o.sprite);
