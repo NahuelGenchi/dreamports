@@ -7,10 +7,13 @@ import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
 import { checkRules } from '../moderation/rules.mjs';
 import { field, isNewDreamport } from '../../tools/lib/claims.mjs';
-import { mapOf, update, withMap } from './update.mjs';
+import { REF, mapOf, update, withMap } from './update.mjs';
 
 const REPOSITORY = 'someone/dreamports';
-const COMMIT = 'a'.repeat(40), NEWER = 'b'.repeat(40);
+// the commits GitHub's stand-in makes under the maps' ref, in order
+const commitNumber = n => String(n).padStart(40, 'c');
+const COMMIT = commitNumber(1), NEWER = commitNumber(2);
+const MAP = title => `<svg><title>${title}</title><g><title>Not this one</title></g></svg>`;
 const form = game => `### Game\n\nOne\n\n### Game folder\n\n${game}\n\n### Console\n\nGame Boy Advance\n\n### Where it starts\n\nThe logos.\n\n### Your copy\n\n- [X] I have my own legal copy of the game.\n`;
 const issue = (number, game, body = form(game)) => ({ number, body, labels: [{ name: 'new-dreamport' }] });
 const folders = [];
@@ -25,29 +28,53 @@ function repo(issues, mapped = Object.keys(issues), title = 'One Dreamport’s p
     writeFileSync(join(folder, path), text);
   };
   for (const [game, number] of Object.entries(issues)) write(`games/${game}/entry.md`, `---\ntitle: One Dreamport\nissue: ${number}\nlead: someone\n---\n`);
-  for (const game of mapped) write(mapOf(game), `<svg><title>${title}</title><g><title>Not this one</title></g></svg>`);
+  for (const game of mapped) write(mapOf(game), MAP(title));
   return folder;
 }
 
-// GitHub, with these issues: what it answers, and which issues were edited
-function github(issues, commit = COMMIT) {
+// GitHub, with these issues: what it answers, which issues were edited, and the commits under the maps' ref, the
+// newest last, each with its files. `git` is a stand-in from an earlier run, to carry on from what it kept
+function github(issues, git = { ref: null, commits: [], trees: new Map() }) {
   const patched = [];
+  const commit = sha => git.commits.find(c => c.sha === sha);
   const api = async (path, method = 'GET', body) => {
-    if (method === 'PATCH') {
+    if (method === 'PATCH' && path.startsWith('/issues/')) {
       const number = Number(/^\/issues\/(\d+)$/.exec(path)[1]);
       issues.find(i => i.number === number).body = body.body;
       patched.push(number);
       return {};
     }
     if (path.startsWith('/issues?')) return /[?&]page=1(&|$)/.test(path) ? issues : [];
+    if (path === `/git/ref/${REF.slice(5)}`) return git.ref && { object: { sha: git.ref } };
+    if (path === '/git/trees' && method === 'POST') {
+      for (const file of body.tree) assert.deepEqual([file.mode, file.type], ['100644', 'blob']);
+      const files = Object.fromEntries(body.tree.map(file => [file.path, file.content]));
+      const sha = JSON.stringify(files);
+      git.trees.set(sha, files);
+      return { sha };
+    }
+    if (path === '/git/commits' && method === 'POST') {
+      assert.deepEqual(body.parents, git.ref ? [git.ref] : []);
+      git.commits.push({ sha: commitNumber(git.commits.length + 1), tree: body.tree, message: body.message });
+      return { sha: git.commits.at(-1).sha };
+    }
+    if (path.startsWith('/git/commits/')) return { tree: { sha: commit(path.slice('/git/commits/'.length)).tree } };
+    if ((path === '/git/refs' && method === 'POST' && body.ref === REF && !git.ref) || (path === `/git/refs/${REF.slice(5)}` && method === 'PATCH' && git.ref)) {
+      git.ref = body.sha;
+      return {};
+    }
     if (path.startsWith('/commits?')) {
-      assert.match(path, /[?&]path=\.github%2Freadme%2Fprogress%2F/);
-      assert.match(path, /[?&]sha=head(&|$)/);
-      return [{ sha: commit }];
+      // the newest commit under the ref that changed this file, as GitHub answers
+      const file = decodeURIComponent(/[?&]path=([^&]*)/.exec(path)[1]), from = /[?&]sha=([^&]*)/.exec(path)[1];
+      assert.equal(from, git.ref, 'a picture is looked for under the maps\' ref');
+      const text = at => git.trees.get(git.commits[at].tree)[file];
+      let at = git.commits.length - 1;
+      while (at > 0 && text(at - 1) === text(at)) at--;
+      return [{ sha: git.commits[at].sha }];
     }
     throw new Error(`Nothing here answers ${method} ${path}`);
   };
-  return { api, patched };
+  return { api, patched, git };
 }
 const run = (folder, api) => update({ folder, repository: REPOSITORY, head: 'head', api });
 
@@ -113,12 +140,32 @@ test('a second run changes nothing', async () => {
 test('a new map is a new address, and the issue holds only the new one', async () => {
   const one = issue(7, 'one');
   const folder = repo({ one: 7 });
-  await run(folder, github([one]).api);
-  assert.deepEqual(await run(folder, github([one], NEWER).api), [7]);
+  const { git } = github([one]);
+  await run(folder, github([one], git).api);
+  writeFileSync(join(folder, mapOf('one')), MAP('One Dreamport’s progress. Code ported: 6%.'));
+  assert.deepEqual(await run(folder, github([one], git).api), [7]);
   assert.ok(one.body.includes(`/${NEWER}/`));
   assert.ok(!one.body.includes(`/${COMMIT}/`));
   assert.equal(one.body.match(/dreamports-map -->/g).length, 2);
   assert.ok(one.body.endsWith(form('one')));
+});
+
+test('the maps are kept under a ref of their own, and only a game whose map changed has its issue edited', async () => {
+  const one = issue(7, 'one'), two = issue(8, 'two');
+  const folder = repo({ one: 7, two: 8 });
+  const { api, patched, git } = github([one, two]);
+  assert.deepEqual(await run(folder, api), [7, 8]);
+  assert.equal(git.ref, COMMIT);
+  assert.equal(git.commits[0].message, 'The progress maps of head');
+  assert.deepEqual(Object.keys(git.trees.get(git.commits[0].tree)), [mapOf('one'), mapOf('two')]);
+  assert.deepEqual(await run(folder, api), [], 'a run with the same maps edits nothing');
+  assert.equal(git.commits.length, 1, 'and keeps nothing new');
+  writeFileSync(join(folder, mapOf('two')), MAP('Two Dreamport’s progress. Code ported: 6%.'));
+  assert.deepEqual(await run(folder, api), [8]);
+  assert.equal(git.ref, NEWER);
+  assert.ok(one.body.includes(`/${COMMIT}/${mapOf('one')}`), 'a map that didn\'t change keeps its address');
+  assert.ok(two.body.includes(`![Two Dreamport’s progress. Code ported: 6%.](https://raw.githubusercontent.com/${REPOSITORY}/${NEWER}/${mapOf('two')})`));
+  assert.deepEqual(patched, [7, 8, 8]);
 });
 
 test('an issue the game\'s entry doesn\'t name shows no map, and loses one it wrote itself', async () => {
@@ -132,9 +179,10 @@ test('an issue the game\'s entry doesn\'t name shows no map, and loses one it wr
 
 test('a game with no entry or no map yet is left as it is', async () => {
   const claimed = issue(7, 'claimed'), unmapped = issue(8, 'unmapped');
-  const { api, patched } = github([claimed, unmapped]);
+  const { api, patched, git } = github([claimed, unmapped]);
   assert.deepEqual(await run(repo({ unmapped: 8 }, []), api), []);
   assert.deepEqual(patched, []);
+  assert.equal(git.ref, null, 'and nothing is kept while no issue shows a map');
 });
 
 test('a folder that isn\'t a plain name is never looked for', async () => {
