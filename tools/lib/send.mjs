@@ -26,10 +26,14 @@ export function mainOf(repository, from) {
 
 /**
  * Pushes `commit` as `branch` where `from` says and opens a pull request for it into `into`, with the repository's
- * template filled in: it only refers to the game's issue, which stays open. Gives the pull request as GitHub answers.
+ * template filled in: it only refers to the game's issue, which stays open. Gives the pull request as GitHub answers,
+ * the one already open for that branch when there is one.
  */
 export function openPull({ repository, from, into, commit, branch, title, issue, started, changes, review, follows }) {
-  git(['push', '--quiet', from.remote, `${commit}:refs/heads/${branch}`]);
+  // the branch is the tool's own, named after what it sends, so sending again takes the place of what it sent before
+  git(['push', '--quiet', '--force', from.remote, `${commit}:refs/heads/${branch}`]);
+  const open = api(`repos/${repository}/pulls?state=open&head=${from.owner}:${branch}&per_page=1`)?.[0];
+  if (open) return open;
   const milestone = api(`repos/${repository}/issues/${issue}`)?.milestone;
   return api(`repos/${repository}/pulls`, {
     method: 'POST',

@@ -11,7 +11,7 @@
 // language alone, as a new game starts in C, with no JavaScript version until someone adds one with new <game>.
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { REPO, gameFolder } from './lib/paths.mjs';
 import { LANGUAGES, versionOf } from '../src/lib/languages.mjs';
@@ -27,6 +27,30 @@ import { forGame } from './lib/screens.mjs';
 
 const USAGE = 'Usage: npm run dp -- new <game>[/c] [--commit] [--yes] [--repo <owner/name>]';
 const git = args => execFileSync('git', args, { cwd: REPO, encoding: 'utf8', stdio: 'pipe' }).trim();
+
+// The table of Dreamports and the progress maps are main's own, written after each merge by the Readme workflow (#566),
+// so they can be a few hours behind the games' folders. A new game adds its own row and map to them as they are, and
+// leaves every other game's: written whole, its first files would carry other games' new numbers along, which nothing
+// that reads them could tell from words of someone's own.
+function onlyItsRow(version) {
+  const link = line => /\(\.\.\/games\/([^)]+)\/\)/.exec(line)?.[1];
+  const fresh = readFileSync(join(REPO, STATUS), 'utf8').split('\n');
+  const at = fresh.findIndex(line => link(line) === version);
+  let before;
+  try {
+    before = execFileSync('git', ['show', `HEAD:${STATUS}`], { cwd: REPO, encoding: 'utf8', stdio: 'pipe' }).split('\n');
+  } catch {
+    return;
+  }
+  if (at < 0 || before.some(line => link(line) === version)) return;
+  // after the row it follows in the table just written, or before the first row when it leads it
+  const follows = link(fresh[at - 1] ?? '');
+  const after = follows ? before.findIndex(line => link(line) === follows) : before.findIndex(line => link(line)) - 1;
+  if (after < 0) return;
+  before.splice(after + 1, 0, fresh[at]);
+  writeFileSync(join(REPO, STATUS), before.join('\n'));
+  execFileSync('git', ['checkout', '--quiet', 'HEAD', '--', '.github/readme/progress'], { cwd: REPO, stdio: 'pipe' });
+}
 
 // a whole new game's first files as a pull request of their own: the commit just made, when it's alone on a commit of
 // main's, pushed as a branch beside the one being worked on, which stays as it is and goes on from the same commit
@@ -81,6 +105,7 @@ export async function run(args) {
   await portmap([game]);
   // a game's first files bring its own row and map, as nothing else has them until it's on main
   writeReadme();
+  onlyItsRow(game);
   if (args.includes('--commit')) {
     const paths = [started ? `games/${game}` : `games/${base}`, STATUS, `.github/readme/progress/${game.replaceAll('/', '-')}.svg`];
     // a game's first files are its own, in whichever language it starts, and a version's are the game's in that language
