@@ -367,7 +367,7 @@ int stepAnimation(int set, int id, int loops, int tiles, int player) {
     if (read16(ANIM_CURSOR + two) > 254) return 255;
   }
   if ((WORD() & 0xFFFF) != reads16(ANIM_COUNT + two)) COUNTED();
-  g.cycles += 430;
+  g.cycles += 160;
   write16(ANIM_CURSOR + two, read16(ANIM_CURSOR + two) + 1);
   if ((WORD() >> 16) == 0xFFF0) COUNTED();
   for (;;) {
@@ -380,7 +380,11 @@ int stepAnimation(int set, int id, int loops, int tiles, int player) {
       write16(ANIM_CURSOR + two, 0);
       write16(ANIM_COUNT + two, (uint16_t)(1 - (loops & 0xFF)));
       return restarted ? 0 : 255;
+    } else if (kind == 0x0100) {
+      // the original's default path for this command, whose work no other script here spends
+      g.cycles += 270;
     } else if (kind == 0x1000) {
+      g.cycles += 270;
       int other = read8(OTHER_COLOURS + player) != 0 || copying;
       uint32_t sheet = 0;
       int row = character >= 20 ? character - 20 : character;
@@ -528,16 +532,7 @@ int rollChance(int chance) {
   return roll > (uint32_t)chance ? 0 : 1;
 }
 
-void resetBrain(int i) {
-  uint32_t r = brain(i & 0xFF);
-  write16(r + 8, 0);
-  write8(r + 12, 0);
-  write8(r + 13, 0);
-  write8(r + 18, (uint8_t)(rollChance(read16(0x0807125A + (uint32_t)read8(LEVEL) * 2)) != 0 ? 1 : 0));
-  write32(r + 4, 0x08ED898C);
-  write8(r + 14, 0);
-  write8(r + 16, read8(fighter(i & 0xFF) + 16));
-}
+void resetBrain(int i) { brainReset(i); }
 
 void restartBrain(int i) {
   uint32_t number = (uint32_t)randomNumber();
@@ -554,7 +549,7 @@ static int32_t arcTan(int i) {
   return (i * b) >> 16;
 }
 
-static uint16_t arcTan2(int x, int y) {
+uint16_t arcTan2(int x, int y) {
   if (y == 0) return x >= 0 ? 0 : 0x8000;
   if (x == 0) return y >= 0 ? 0x4000 : 0xC000;
   #define OVER(n, d) ((int32_t)((uint32_t)(n) * 16384u) / (d))

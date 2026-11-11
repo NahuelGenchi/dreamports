@@ -94,7 +94,12 @@ static void clear_track(M4aTrack *T) {
   T->flags = EXIST; T->bendRange = 2; T->volPublic = 64; T->lfoSpeed = 22; T->voice.type = 1;
 }
 
-static void io_write(M4a *m, int reg, int v) { apu_write(m->io, reg, v); }
+// with `psgAt`, the writes to the sound chip's channels land at that place in its frame: SoundMain's plus what it has
+// counted so far, as the original's land where its work has reached; the game's own calls write at once
+static void io_write(M4a *m, int reg, int v) {
+  m->io->psgAt = !m->layout.psgAt || !m->inFrame ? -1 : m->layout.psgAt + m->cycles;
+  apu_write(m->io, reg, v);
+}
 static int io_read(M4a *m, int reg) { return apu_read(m->io, reg); }
 
 void m4a_init(M4a *m, const uint8_t *rom, uint32_t romSize, const SoundLayout *layout, Apu *io) {

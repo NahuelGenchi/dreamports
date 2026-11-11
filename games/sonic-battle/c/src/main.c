@@ -431,12 +431,6 @@ static void titleQueueSprites(void) {
   copyAtVblank();
 }
 
-/** What follows neither screen is ported yet: the screen goes black and waits there. */
-static void afterTitle(void) {
-  for (int i = 0; i < 512; i++) gba_pal[i] = 0;
-  for (int i = 0; i < 512; i++) gba_oam[i] = 0x200;
-}
-
 /** 0x0803e6e8: the palette one step to black each frame, then the name entry, which leads on to the main menu. */
 static void titleFadeToNext(void) {
   if (fadeToBlack(PALETTE, 0x100)) {
@@ -447,13 +441,13 @@ static void titleFadeToNext(void) {
   }
 }
 
-/** 0x0803e74c: the same fade when the title screen is left alone, out to the attract mode. */
+/** 0x0803e74c: the same fade when the title screen is left alone, out to its demo (demo.c). */
 static void titleFadeToAttract(void) {
   if (fadeToBlack(PALETTE, 0x100)) {
     setBlend(0, 0, 0, 0, 0, 0);
     for (int i = 0; i < 256; i++) gba_pal[i] = 0;
     queueRegister(REG_DISPCNT, 0x1F40);
-    g.callback = afterTitle;
+    g.callback = demoScreen;
   }
 }
 
@@ -533,7 +527,9 @@ void startFightFromPoint(void) {
   int rival = (int)gba_start_number("rival", 0) & 0xFF;
   int arena = (int)gba_start_number("arena", 0) & 0xFF;
   int colour = gba_start_number("colour", -1) >= 0 ? (int)gba_start_number("colour", 255) & 0xFF : 255;
-  startFight(vblanks, action, you, rival, arena, colour);
+  const char *fight = gba_start_point("fight");
+  int battle = fight != 0 && fight[0] == 'b';
+  startFight(vblanks, action, you, rival, arena, colour, battle);
 }
 
 /** The game starts again from the logos, as Delete data in the options does (0x08000210): a new save's name and
@@ -582,6 +578,9 @@ void game_start(void) {
   gba_sound_count_cycles();
   int name = (int)gba_start_number("name", 0);
   if (name) g.name[0] = (uint16_t)name;
+  // 0x03002188: which of the Mini-games screen's entries the save has opened, one bit each, a new save's only the
+  // first, or a start point's
+  g.mini_games_open = (int)gba_start_number("open", 1) & 0xFF;
   if (gba_start_point("fight")) {
     g.start_up = 1;
     g.callback = startFightFromPoint;

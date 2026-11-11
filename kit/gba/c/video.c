@@ -4,7 +4,7 @@
 // (tools/test/c-kit.mjs) draws made-up scenes with both and fails on any pixel that differs.
 //
 // It draws the original screen. The widescreen view and the mosaic aren't drawn yet, as in video.js the mosaic
-// and the OBJ window aren't: a game that needs one adds it to both.
+// isn't: a game that needs one adds it to both.
 
 #include "gba.h"
 
@@ -98,9 +98,14 @@ static uint32_t normal[512], variant[512];
 static int variant_for = -1;   // the effect and level the variant colours were made for
 
 static uint32_t row[MAX_W], sprite_layer[MAX_W];
-typedef struct { int end_x; int ctl; } Window;
-static Window windows[64];
+// outside: a run no window 0 or 1 covers. run_start and run_end: the run as windows 0 and 1 leave it, which the OBJ
+// window splits only pixel by pixel, as mGBA draws it
+typedef struct { int end_x; int ctl; int outside; int run_start, run_end; } Window;
+static Window windows[MAX_W];
 static int n_windows = 1;
+// the outside's own control bits, which a sprite's colours keep inside the OBJ window too, as in mGBA
+static int outside_ctl;
+static int sprite_ctl(const Window *w) { return w->outside ? outside_ctl : w->ctl; }
 
 static void (*hblank_fn)(int y);
 void gba_on_hblank(void (*hblank)(int y)) { hblank_fn = hblank; }
@@ -159,6 +164,7 @@ static void break_window_inner(int start, int end, int ctl) {
         i++;
       }
       windows[i].ctl = ctl;
+      windows[i].outside = 0;
       windows[i].end_x = end;
       if (end >= old.end_x) {
         for (i++; n_windows > i + 1 && end >= windows[i].end_x; i++) {
@@ -230,7 +236,11 @@ static void lay_into(int x, uint32_t color) {
 static uint32_t put_flags;
 static const uint32_t *put_colors;
 static int put_pal_base;
+// while the OBJ window's sprites are drawn, their pixels only mark where it is
+static int objwin_pass;
+static uint8_t objwin_mask[MAX_W];
 static void put(int out_x, int pixel) {
+  if (objwin_pass) { if (pixel) objwin_mask[out_x] = 1; return; }
   uint32_t current = sprite_layer[out_x];
   if ((current & ORDER) <= put_flags) return;
   if (pixel) sprite_layer[out_x] = put_colors[put_pal_base + pixel] | put_flags;
@@ -257,14 +267,14 @@ static int draw_sprite(const Sprite *s, int y, int start, int end, int ctl) {
   int obj_mode = (a >> 10) & 3, blend_on = (ctl & 0x20) != 0;
   uint32_t flags = (uint32_t)((c >> 10) & 3) << PRIORITY_SHIFT;
   if ((blend_on && target_1_obj && effect == ALPHA) || obj_mode == 1) flags |= TARGET_1;
-  if (obj_mode == 2) return 0;   // the OBJ window: not drawn yet
+  if ((obj_mode == 2) != objwin_pass) return 0;   // an OBJ window sprite marks the window and is never drawn
   int x = sbits(b, 9);
   int map1d = (dispcnt & 0x40) != 0, is256 = (a & 0x2000) != 0;
   int char_base = ((c & 0x3FF) & ~(is256 && !map1d ? 1 : 0)) * 0x20;
   int mask_lo = map1d ? 0x7FFE : 0x3FE, mask_hi = map1d ? 0 : char_base & 0x7C00;
   if (mode >= 3 && (c & 0x3FF) < 512) return 0;
   int use_variant = target_1_obj && blend_on && (effect == BRIGHTEN || effect == DARKEN);
-  if (obj_mode == 1 || (target_1_obj && effect == ALPHA)) {
+  if (!objwin_pass && (obj_mode == 1 || (target_1_obj && effect == ALPHA))) {
     int target2 = target_2_bd;
     for (int i = 0; i < 4; i++) if (bgs[i].target2 && bgs[i].enabled) target2 = 1;
     if (target2) { force_target_1 = 1; flags |= REBLEND; use_variant = 0; }
@@ -356,8 +366,20 @@ static void composite_sprites(int priority, int start, int end, int ctl) {
   }
 }
 
+// mGBA draws a run's first tile on its own when the run starts partway into it (software-mode0.c,
+// DRAW_BACKGROUND_MODE_0_TILE_SUFFIX_16 and _256), and not quite as the console does when the run also ends inside
+// it: a flipped tile goes from the run's last pixel back, from the tile's first column, and a 256-colour one in two
+// halves of 4 pixels, the second from the tile's fifth column. The column of the tile's row that x shows, from the
+// run [start, end) inside the tile and the run's start in it, `mod8`, or 8 or more for none.
+static int first_tile_column(int x, int start, int end, int mod8, int is256, int hflip) {
+  if (hflip) return end - 1 - x;
+  if (!is256) return mod8 + x - start;
+  if (end - 4 > start) return x < end - 4 ? mod8 + x - start : 4 + x - (end - 4);
+  return 4 + (mod8 & 3) + x - start;
+}
+
 // a text background over [start, end) of line y
-static void draw_text(const Bg *bg, int y, int start, int end, int ctl) {
+static void draw_text(const Bg *bg, int y, int start, int end, int run_start, int run_end, int ctl) {
   if (!(ctl & (1 << bg->index))) return;
   const uint32_t *colors;
   uint32_t flags = bg_flags(bg, ctl, &colors);
@@ -370,6 +392,9 @@ static void draw_text(const Bg *bg, int y, int start, int end, int ctl) {
   if (size == 2) y_base += in_y & 0x100;
   else if (size == 3) y_base += (in_y & 0x100) << 1;
   y_base = (screen_base >> 1) + (y_base << 2);
+  // the run's first tile, when it starts partway into one, ends at first_end
+  int mod8 = (run_start + hofs) & 7, first_end = mod8 ? run_start + 8 - mod8 : run_start;
+  if (first_end > run_end) first_end = run_end;
   for (int x = start; x < end; x++) {
     int local_x = (x + hofs) & 0x1FF;
     int x_base = local_x & 0xF8;
@@ -377,7 +402,9 @@ static void draw_text(const Bg *bg, int y, int start, int end, int ctl) {
     uint16_t map = vram16((uint32_t)(y_base + (x_base >> 3)) & 0xFFFF);
     int ty = in_y & 7, tx = local_x & 7;
     if (map & 0x800) ty = 7 - ty;
-    if (map & 0x400) tx = 7 - tx;
+    if (x < first_end) tx = first_tile_column(x, run_start, first_end, mod8, is256, map & 0x400);
+    else if (map & 0x400) tx = 7 - tx;
+    if (tx > 7) continue;
     int pixel;
     uint32_t color;
     if (is256) {
@@ -441,6 +468,38 @@ static void draw_bitmap(const Bg *bg, int start, int end, int ctl) {
   }
 }
 
+static int on_line(const Sprite *s, int y) {
+  return !((y < s->y && (s->end_y - 256 < 0 || y >= s->end_y - 256)) || y >= s->end_y);
+}
+
+// the OBJ window: where its sprites, drawn for as long as the line's time lasts as the others are, have a pixel
+// that neither window 0 nor 1 covers, the outside's runs take WINOUT's upper byte
+static void break_obj_window(int y) {
+  __builtin_memset(objwin_mask, 0, SCREEN_W);
+  objwin_pass = 1;
+  int cycles = dispcnt & 0x20 ? OBJ_CYCLES_HBLANK_FREE : OBJ_CYCLES;
+  for (int i = 0; i < n_sprites; i++) {
+    const Sprite *s = &sprites[i];
+    if (!on_line(s, y)) continue;
+    draw_sprite(s, y, 0, SCREEN_W, 0);
+    cycles -= s->cycles;
+    if (cycles <= 0) break;
+  }
+  objwin_pass = 0;
+  int ctl = (gba_io[REG_WINOUT >> 1] >> 8) & 0x3F, n = n_windows, x = 0;
+  Window old[MAX_W];
+  __builtin_memcpy(old, windows, sizeof(Window) * (size_t)n);
+  n_windows = 0;
+  for (int w = 0; w < n; w++) {
+    for (; x < old[w].end_x; x++) {
+      int c = old[w].outside && objwin_mask[x] ? ctl : old[w].ctl;
+      Window *last = n_windows ? &windows[n_windows - 1] : NULL;
+      if (last && last->ctl == c && last->run_start == old[w].run_start) last->end_x = x + 1;
+      else windows[n_windows++] = (Window){ x + 1, c, old[w].outside, old[w].run_start, old[w].run_end };
+    }
+  }
+}
+
 static void draw_line(int y, uint32_t *out) {
   dispcnt = gba_io[0];
   if (dispcnt & 0x80) { for (int i = 0; i < SCREEN_W; i++) out[i] = 0xFFFFFFFF; return; }
@@ -466,12 +525,18 @@ static void draw_line(int y, uint32_t *out) {
 
   for (int i = 0; i < MAX_W; i++) sprite_layer[i] = UNWRITTEN;
   windows[0].end_x = SCREEN_W;
+  windows[0].outside = 1;
   n_windows = 1;
   if (dispcnt & 0xE000) {
-    windows[0].ctl = gba_io[REG_WINOUT >> 1] & 0x3F;
+    windows[0].ctl = outside_ctl = gba_io[REG_WINOUT >> 1] & 0x3F;
     if (dispcnt & 0x4000) break_window(1, y);
     if (dispcnt & 0x2000) break_window(0, y);
-  } else windows[0].ctl = 0xFF;
+  } else windows[0].ctl = outside_ctl = 0xFF;
+  for (int w = 0, start = 0; w < n_windows; start = windows[w++].end_x) {
+    windows[w].run_start = start;
+    windows[w].run_end = windows[w].end_x;
+  }
+  if ((dispcnt & 0x9000) == 0x9000) break_obj_window(y);
   force_target_1 = 0;
 
   // the backdrop
@@ -488,13 +553,13 @@ static void draw_line(int y, uint32_t *out) {
     int cycles = dispcnt & 0x20 ? OBJ_CYCLES_HBLANK_FREE : OBJ_CYCLES;
     for (int i = 0; i < n_sprites; i++) {
       const Sprite *s = &sprites[i];
-      if ((y < s->y && (s->end_y - 256 < 0 || y >= s->end_y - 256)) || y >= s->end_y) continue;
+      if (!on_line(s, y)) continue;
       int end = 0;
       for (int w = 0; w < n_windows; w++) {
         int start = end;
         end = windows[w].end_x;
         if (!(windows[w].ctl & 0x10)) continue;
-        sprite_layers |= draw_sprite(s, y, start, end, windows[w].ctl) << ((s->c >> 10) & 3);
+        sprite_layers |= draw_sprite(s, y, start, end, sprite_ctl(&windows[w])) << ((s->c >> 10) & 3);
       }
       cycles -= s->cycles;
       if (cycles <= 0) break;
@@ -512,7 +577,7 @@ static void draw_line(int y, uint32_t *out) {
         if (!bg->enabled || bg->priority != p) continue;
         int text = i < 2 ? mode < 2 : mode == 0;
         int affine = i == 2 ? mode == 1 || mode == 2 : i == 3 && mode == 2;
-        if (text) draw_text(bg, y, start, end, ctl);
+        if (text) draw_text(bg, y, start, end, windows[w].run_start, windows[w].run_end, ctl);
         else if (affine) draw_affine(bg, start, end, ctl);
         else if (i == 2 && mode == 4) draw_bitmap(bg, start, end, ctl);
       }

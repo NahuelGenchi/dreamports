@@ -26,6 +26,7 @@ static void step_envelope(ApuEnvelope *e) {
 void apu_init(Apu *a) {
   __builtin_memset(a, 0, sizeof *a);
   a->ch4.lfsr = 0x7FFF;
+  a->psgAt = -1;
   a->seqTimer = SEQ_PERIOD;
   a->regs[0x89 - 0x60] = 0x02;   // SOUNDBIAS resets to 0x200, the middle of the 10-bit range
 }
@@ -108,17 +109,20 @@ static void write_now(Apu *a, int r, int v) {
 }
 
 static int is_wave(int r) { return (r >= 0x70 && r <= 0x75) || (r >= 0x90 && r < 0xA0); }
+static int is_psg(int r) { return (r >= 0x60 && r <= 0x81 && r != 0x6E && r != 0x6F && r != 0x76 && r != 0x77 && r != 0x7E && r != 0x7F) || (r >= 0x90 && r <= 0x9F); }
 
 // with `at` set (soundMainAt in m4a.c), the wave voice's writes wait for their place in the console's frame, counted
 // from the start of this chip's: the wave's phase lasts from note to note, and each note's length in cycles decides
-// how far it moves
+// how far it moves. With `psgAt` set (psgAt in m4a.c), the writes to all four channels, the wave's samples and the
+// sides they play on wait for theirs in the same way, as a square's phase lasts from note to note too
 void apu_write(Apu *a, int r, int v) {
-  if (!a->hasAt || !is_wave(r)) { write_now(a, r, v); return; }
+  int at = a->hasAt && is_wave(r) ? a->at : a->psgAt >= 0 && is_psg(r) ? a->psgAt : -1;
+  if (at < 0) { write_now(a, r, v); return; }
   if (a->waits >= APU_WAITS) return;
   int i = a->waits;
-  while (i && a->wait[i - 1].in > a->at) i--;
+  while (i && a->wait[i - 1].in > at) i--;
   for (int j = a->waits; j > i; j--) a->wait[j] = a->wait[j - 1];
-  a->wait[i].in = a->at; a->wait[i].r = r; a->wait[i].v = v;
+  a->wait[i].in = at; a->wait[i].r = r; a->wait[i].v = v;
   a->waits++;
 }
 
@@ -127,13 +131,19 @@ int apu_read(const Apu *a, int r) {
     int b = ((REG(0x70) >> 6) & 1) ^ 1, i = (r - 0x90) * 2;
     return a->wave[b][(i + a->rot[b]) & 31] << 4 | a->wave[b][(i + 1 + a->rot[b]) & 31];
   }
-  // SOUNDCNT_X's low bits say which channels are still sounding, so a length counter that ran out shows here; a wave
-  // note still waiting for its place in the frame is already sounding, for the sound library that started it
+  // SOUNDCNT_X's low bits say which channels are still sounding, so a length counter that ran out shows here; a note
+  // still waiting for its place in the frame is already sounding, for the sound library that started it
   if (r == 0x84) {
     int waiting = 0;
-    for (int i = 0; i < a->waits; i++) if (a->wait[i].r == 0x75 && a->wait[i].v & 0x80) waiting = 1;
-    return (REG(0x84) & 0x80) | (a->sq[0].on ? 1 : 0) | (a->sq[1].on ? 2 : 0) | (a->ch3.on || waiting ? 4 : 0) | (a->ch4.on ? 8 : 0);
+    for (int i = 0; i < a->waits; i++) {
+      int w = a->wait[i].r;
+      if (a->wait[i].v & 0x80) waiting |= w == 0x65 ? 1 : w == 0x6D ? 2 : w == 0x75 ? 4 : w == 0x7D ? 8 : 0;
+    }
+    return (REG(0x84) & 0x80) | (a->sq[0].on || (waiting & 1) ? 1 : 0) | (a->sq[1].on || (waiting & 2) ? 2 : 0)
+      | (a->ch3.on || (waiting & 4) ? 4 : 0) | (a->ch4.on || (waiting & 8) ? 8 : 0);
   }
+  // a register read back while a write to it waits gives what was written, as the library reads its own writes
+  if (a->psgAt >= 0) for (int i = a->waits - 1; i >= 0; i--) if (a->wait[i].r == r) return a->wait[i].v & 0xFF;
   return a->regs[r - 0x60];
 }
 

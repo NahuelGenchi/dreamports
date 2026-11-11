@@ -86,3 +86,50 @@ const int16_t SINE[1280] = {
   16069, 16088, 16107, 16125, 16142, 16159, 16175, 16191, 16206, 16221, 16234, 16248, 16260, 16272, 16284, 16294,
   16305, 16314, 16323, 16331, 16339, 16346, 16353, 16359, 16364, 16368, 16372, 16376, 16379, 16381, 16382, 16383,
 };
+
+// the BIOS's ArcTan (the series SWI 0x0A runs, after mGBA's reimplementation): the angle of a ratio `i` in Q2.14
+static int arc_tan(int i) {
+  int a = -((i * i) >> 14);
+  int b = ((0xA9 * a) >> 14) + 0x390;
+  b = ((b * a) >> 14) + 0x91C;
+  b = ((b * a) >> 14) + 0xFB6;
+  b = ((b * a) >> 14) + 0x16AA;
+  b = ((b * a) >> 14) + 0x2081;
+  b = ((b * a) >> 14) + 0x3651;
+  b = ((b * a) >> 14) + 0xA2F9;
+  return (i * b) >> 16;
+}
+
+/** ArcTan2: the angle of (x, y) in 65536 steps a turn, y pointing down; x and y are 16-bit. */
+int arc_tan2(int x, int y) {
+  int r;
+  if (!y) r = x >= 0 ? 0 : 0x8000;
+  else if (!x) r = y >= 0 ? 0x4000 : 0xC000;
+  else if (y >= 0) {
+    if (x >= 0 && x >= y) r = arc_tan((y << 14) / x);
+    else if (x < 0 && -x >= y) r = arc_tan((y << 14) / x) + 0x8000;
+    else r = 0x4000 - arc_tan((x << 14) / y);
+  } else {
+    if (x <= 0 && -x > -y) r = arc_tan((y << 14) / x) + 0x8000;
+    else if (x > 0 && x >= -y) r = arc_tan((y << 14) / x) + 0x10000;
+    else r = 0xC000 - arc_tan((x << 14) / y);
+  }
+  return r & 0xFFFF;
+}
+
+// sub_8004418: a rough angle of (a, b) in 1024 steps a turn, from its octant and the ratio of the smaller coordinate to the
+// larger, linear within the octant; -1 for (0, 0). The callers pass (dy, dx). The smaller one times 128 wraps as an s16, as in
+// the original.
+int quick_angle(int a, int b) {
+  static const int OCTANTS[8] = { 1, 0, 2, 3, 6, 7, 5, 4 };
+  a = (int16_t)a; b = (int16_t)b;
+  if ((a | b) == 0) return -1;
+  int i = 0, f;
+  if (a <= 0) { a = (int16_t)-a; i = 4; }
+  if (b <= 0) { b = (int16_t)-b; i += 2; }
+  if (a >= b) f = a == 0 ? (int16_t)(b << 7) : (int16_t)(b << 7) / a;
+  else { i++; f = b == 0 ? (int16_t)(a << 7) : (int16_t)(a << 7) / b; }
+  f = (int16_t)f;
+  if (OCTANTS[i] & 1) f = (int16_t)(0x80 - f);
+  return (f + OCTANTS[i] * 128) & 0x3FF;
+}

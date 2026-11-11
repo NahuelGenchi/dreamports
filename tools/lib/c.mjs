@@ -6,8 +6,9 @@
 // computer needs its own C compiler, the one the proof tools already need (tools/README.md).
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, relative, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONSOLES } from '../../kit/consoles.js';
 import { LOCAL, REPO } from './paths.mjs';
@@ -109,20 +110,81 @@ function filesFor(sources, folders) {
   return tree;
 }
 
+const sha1 = bytes => createHash('sha1').update(bytes).digest('hex');
+
+// What each module built inside the repository came from, and what came out, so the same C is never built twice:
+// .dreamports/c/built.json, on this computer only. A whole game's proof opens the game once per recording, and a
+// large game takes seconds to build each time.
+const BUILT = join(LOCAL, 'c', 'built.json');
+function readBuilt() {
+  try {
+    return JSON.parse(readFileSync(BUILT, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+function remember(key, row) {
+  const built = readBuilt();
+  built[key] = row;
+  for (const other of Object.keys(built)) if (!existsSync(join(REPO, other))) delete built[other];
+  mkdirSync(dirname(BUILT), { recursive: true });
+  writeFileSync(BUILT, `${JSON.stringify(built, null, 2)}\n`);
+}
+
+// the compiler's own version, or null when it isn't installed
+function compilerVersion() {
+  try {
+    return JSON.parse(readFileSync(join(REPO, 'node_modules', '@yowasp', 'clang', 'package.json'), 'utf8')).version;
+  } catch {
+    return null;
+  }
+}
+
+/** Everything a build to WebAssembly comes from, as one hash: every file the compiler is given (`files`, folders of
+ *  names and bytes, as filesFor makes them), how it's asked (`args`) and which compiler it is. */
+export function buildFingerprint(files, args, compiler) {
+  const hash = createHash('sha1').update(JSON.stringify([compiler, args]));
+  const walk = (folder, path) => {
+    for (const name of Object.keys(folder).sort()) {
+      const at = `${path}/${name}`;
+      if (Buffer.isBuffer(folder[name])) hash.update(`\0${at}\0${folder[name].length}\0`).update(folder[name]);
+      else walk(folder[name], at);
+    }
+  };
+  walk(files, '');
+  return hash.digest('hex');
+}
+
+// the builds going on now, by what they write, so two that ask for the same one at once share it
+const building = new Map();
+
 /** Builds `sources` (paths of .c files) to the WebAssembly module `out`, with the kit's `folders` to include it from,
- *  as cKit gives them. */
-export async function buildWasm(sources, out, { folders }) {
+ *  as cKit gives them. A module inside the repository that was built from the same files, asked the same way of the
+ *  same compiler, is left as it is, with nothing printed. */
+export function buildWasm(sources, out, kit) {
+  if (!building.has(out)) building.set(out, build(sources, out, kit).finally(() => building.delete(out)));
+  return building.get(out);
+}
+
+async function build(sources, out, { folders }) {
+  // the compiler runs in a folder of its own, with the repository's C at the same paths
+  const files = filesFor(sources, folders), name = basename(out);
+  const args = ['clang', '--target=wasm32', ...FLAGS, '-ffreestanding', '-nostdlib', '-mbulk-memory', '-msign-ext', '-mnontrapping-fptoint',
+    ...folders.flatMap(folder => ['-I', inRepo(folder)]), '-Wl,--no-entry', '-Wl,-z,stack-size=1048576', '-Wl,--strip-all', '-o', name,
+    ...sources.map(inRepo)];
+  // only what's built inside the repository is remembered: anywhere else, such as a test's own folder, it's built each time
+  const key = relative(REPO, out).split(sep).join('/'), compiler = compilerVersion();
+  const from = compiler && !key.startsWith('../') && !isAbsolute(key) ? buildFingerprint(files, args, compiler) : null;
+  if (from && existsSync(out)) {
+    const was = readBuilt()[key];
+    if (was?.from === from && was.module === sha1(readFileSync(out))) return out;
+  }
   let runClang, runLLVM;
   try {
     ({ runClang, runLLVM } = await import('@yowasp/clang'));
   } catch {
     throw new Error('The compiler for WebAssembly isn\'t here: run npm ci in the repository\'s folder first.');
   }
-  // the compiler runs in a folder of its own, with the repository's C at the same paths
-  const files = filesFor(sources, folders), name = basename(out);
-  const args = ['clang', '--target=wasm32', ...FLAGS, '-ffreestanding', '-nostdlib', '-mbulk-memory', '-msign-ext', '-mnontrapping-fptoint',
-    ...folders.flatMap(folder => ['-I', inRepo(folder)]), '-Wl,--no-entry', '-Wl,-z,stack-size=1048576', '-Wl,--strip-all', '-o', name,
-    ...sources.map(inRepo)];
   // the compiler's files, read once from node_modules, quietly
   await runLLVM(null, {}, { fetchProgress: () => {} });
   let made, said = '';
@@ -135,6 +197,7 @@ export async function buildWasm(sources, out, { folders }) {
   if (said.trim()) console.log(said.trim());
   if (!made?.[name]) throw new Error('The C didn\'t build to WebAssembly, and the compiler didn\'t say why.');
   writeFileSync(out, made[name]);
+  if (from) remember(key, { from, module: sha1(made[name]) });
   return out;
 }
 

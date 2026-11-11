@@ -1,6 +1,7 @@
 // Runs two to four copies of the original linked by cable, from power-on, in the reference emulator (linked.c), each
 // with its own player's buttons, and gives back what each one's screen showed at every frame.
 
+import { threadId } from 'node:worker_threads';
 import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, basename } from 'node:path';
@@ -8,6 +9,9 @@ import { LOCAL } from '../lib/paths.mjs';
 import { LINKED } from './build.mjs';
 
 const WIDTH = 240, HEIGHT = 160;
+
+// how many runs this thread has started, which with its number keeps the files of two at once apart
+let runs = 0;
 
 /**
  * Runs `players` GBAs for `frames` frames. `buttons[player][frame]` is a player's buttons as bits (KEY), `pictures` the
@@ -19,7 +23,7 @@ const WIDTH = 240, HEIGHT = 160;
 export async function runLinked({ copy, players, frames, buttons, pictures = [], states = [], stateBytes = 0x58 + 0x400 + 0x400 + 0x18000 }) {
   const folder = join(LOCAL, 'tmp');
   mkdirSync(folder, { recursive: true });
-  const id = `linked-${process.pid}-${Date.now()}`;
+  const id = `linked-${process.pid}-${threadId}-${Date.now()}-${++runs}`;
   const files = { buttons: join(folder, `buttons-${id}.bin`), pictures: join(folder, `pictures-${id}.bin`), states: join(folder, `states-${id}.bin`) };
   const all = new Uint16Array(frames * players);
   for (let f = 0; f < frames; f++) for (let p = 0; p < players; p++) all[f * players + p] = buttons[p][f] ?? 0;

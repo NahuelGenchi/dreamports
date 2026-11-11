@@ -47,6 +47,6 @@ export const notYet = (plan, line) => `${askFor(plan)}
 
 ${line}`;
 export const WAITING = 'The Dreamports bot hasn\'t finished reading this pull request, so nothing was merged. Tick it again in a few minutes.';
-export const NOT_MERGED = 'GitHub wouldn\'t merge it, usually since it conflicts with `main`. Nothing was merged. Once that\'s sorted, a new push asks again.';
+export const NOT_MERGED = 'GitHub wouldn\'t merge it, usually since it conflicts with `main`, or its Check or Clips check hasn\'t passed. Nothing was merged. Once that\'s sorted, a new push asks again.';
 export const merged = name => `${markOf('')}
 Merged after the Dreamports team looked at its capture: ${name} now has its place in the Make row. It joins the Dreamports row with its first reviewed step that has code of the original's.`;

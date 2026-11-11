@@ -4,13 +4,14 @@
 // copyright line shows, "PRESS START" blinks above it, on and off every 32 frames, and Start opens the main menu: the
 // five items where "PRESS START" was, the chosen one lit. Up and Down move through them, wrapping round, with the key
 // repeat, and A on Game Start, VS, Time Attack or Options fades the screen to black and stops the music. Game Start
-// opens the character select; the rest, and the title screen's demos, aren't in C yet. A on Tiny Chao Garden does
-// nothing.
+// opens the character select, or the course select once the character has progress in the save; the rest, and the
+// title screen's demos, aren't in C yet. A on Tiny Chao Garden does nothing.
 //
 // The logo, "PRESS START" and the menu's items are in the save's language, Japanese or English; the copyright line is
 // the international release's in both.
 
 #include "sa.h"
+#include "act.h"
 
 // by the save's language (0 Japanese, 1 English): the logo's tilemap, and "PRESS START"'s and the items' animation
 static const uint16_t TM_TITLE_LOGO[2] = { 73, 74 };
@@ -253,6 +254,16 @@ static void choose_item(Task *t) {
     update_sprite(item, 0);
     display_sprite(item);
   }
+  // A start point at X Zone opens it here, as the menu hands over to the character select: the act's title card runs
+  // without its pictures and its first frame is drawn on the next one, as x-zone-opening does.
+  int startLevel = (int)gba_start_number("level", -1);
+  if ((e.pressed & KEY_A) && startLevel >= 0 && gba_start_number("power", 0) == 1) {
+    act_active = 1;
+    act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
+    act_frame_now();
+    destroy_task(t);
+    return;
+  }
   // Tiny Chao Garden's screen isn't built: A on it does nothing (the original fades out to it too)
   if (e.pressed & KEY_A && menu.selectedItem <= OPTIONS) {
     play_song(SONG_SELECT);
@@ -280,7 +291,8 @@ static void fade_out(Task *t) {
 }
 
 // Task_800DEE4: the items' tiles freed and the music stopped (a song started on its player, the player cleared and the
-// song stopped), then the character select; or the windows and the blend off, and the Time Attack or Options menu
+// song stopped), then Game Start's way on: the character select, or the course select once the character has progress;
+// or the windows and the blend off, and the Time Attack or Options menu
 static void leave_menu(Task *t) {
   int item = menu.selectedItem;
   for (int i = 0; i < MENU_ITEMS; i++) vram_free(menu.items[i].graphics.dest);
@@ -289,7 +301,7 @@ static void leave_menu(Task *t) {
   stop_song(SONG_BOSS_FIGHT);
   if (item == GAME_START) {
     ctx.gameMode = SINGLE_PLAYER;
-    create_character_select(ctx.character);
+    front_start_game();
     return;
   }
   e.dispCnt &= ~0x6000;
