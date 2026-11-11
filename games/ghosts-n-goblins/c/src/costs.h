@@ -188,12 +188,17 @@ COST(SPRITES_POINTER_ON, 20)      // sub_04_81D6, sub_04_81DD or sub_04_81E4 cal
 COST(SPRITES_POINTER_NEXT_PAGE, 4) // and into a new page
 COST(SPRITES_TABLE_PAST_PAGE, 1)  // a table's entry whose second byte is in the next page
 COST(SPRITES_SPRITE_LEFT_OUT, 13) // $813E to $81BD: a sprite the shape leaves out, and $81CC to $81A9
-COST(SPRITES_SPRITE_ACROSS, 42)   // $813E to $8164: a sprite's tile and its place across,
-COST(SPRITES_SPRITE_DOWN, 24)     // $8167 to $8183: its place down,
+COST(SPRITES_SPRITE_TILE_READ, 12) // $813E to $8164: a sprite's tile read,
+COST(SPRITES_SPRITE_ACROSS_READ, 21) // stored, and its place across worked out,
+COST(SPRITES_SPRITE_ACROSS_STORED, 9) // and stored
+COST(SPRITES_SPRITE_DOWN_READ, 15) // $8167 to $8183: its place down worked out,
+COST(SPRITES_SPRITE_DOWN_STORED, 9) // and stored
 COST(SPRITES_SPRITE_PAST_EDGE, 29) // either place when the sum goes past 255 and still fits,
 COST(SPRITES_SPRITE_OFF_LEFT, 30)  // or doesn't,
 COST(SPRITES_SPRITE_OFF_RIGHT, 8)  // or goes off the far edge
-COST(SPRITES_SPRITE_REST, 43)     // $8189 to $81A6, less its calls
+COST(SPRITES_SPRITE_COLOURS_READ, 14) // $8189 to $81A6, less its calls: its colours worked out,
+COST(SPRITES_SPRITE_COLOURS_STORED, 6) // stored,
+COST(SPRITES_SPRITE_NEXT, 23)     // and the list's place moved on
 COST(SPRITES_SPRITE_COUNTED, 5)   // $81A9
 COST(SPRITES_SKIP_JUMP, 3)        // $81CC
 COST(SPRITES_SHAPE_DONE, 21)      // $81AD to $81BA
@@ -296,6 +301,18 @@ COST(PICK_UP_IN_VIEW, 48)         // $BA12 to the call of sub_F68E,
 COST(PICK_UP_FLASHES, 8)          // with its other colour every fourth round
 COST(PICK_UP_CANNOT_BE_TOUCHED, 16) // sub_F68E when Arthur's flags say so
 COST(PICK_UP_LEFT, 35)            // $BA3F to $BB6A, and back
+COST(PICK_UP_BONUS, 55)           // $BA3F to sub_D902: one of the four things that only give points
+COST(PICK_UP_BONUS_SOUND, 8)      // $BAC6 to sub_ED51
+COST(GRAVESTONE_BEGINS, 80)       // bank 4's $BF0B to $BF23: a gravestone, which is never shown
+COST(GRAVESTONE_OUT_OF_VIEW, 9)   // $BF26, and back,
+COST(GRAVESTONE_IN_VIEW, 41)      // or to sub_F5F9
+COST(GRAVESTONE_NOT_HIT, 9)       // $BF36, and back,
+COST(GRAVESTONE_HIT_COUNTED, 24)  // or with a hit counted, fewer than 15
+COST(HIDDEN_BEGINS, 7)            // bank 4's $BB8C to $BB91: a thing that's hidden until Arthur touches it
+COST(HIDDEN_OUT_OF_VIEW, 5)       // $BB97 to $BB67, with sub_F346's call apart,
+COST(HIDDEN_IN_VIEW, 17)          // or to sub_F68E
+COST(HIDDEN_NOT_TOUCHED, 5)       // $BBA8 to $BB67
+COST(HIDDEN_STAYS, 34)            // sub_BB67 for an object that isn't shown, in a stage that isn't of the third set, and back
 COST(PICK_UP_ARMOUR_TAKEN, 101)   // $BA3F to sub_F708's end, and back: the armour, in the opening scene
 COST(OBJECT_REMOVED, 42)          // sub_F708, and back, for a kind it doesn't count
 COST(TOUCH_SET_UP, 95)            // sub_F68E to its call of sub_F63A, for an Arthur who stands,
@@ -452,8 +469,9 @@ COST(WEAPON_BLOCK_ABOVE, 53)      // sub_E9CA with its call, to the block four p
 COST(WEAPON_FLIES_ON, 15)         // $EBA8, and back: not a gravestone
 
 // ---- the score, sub_D8FC (flow.c)
-COST(SCORE_NOT_IN_DEMONSTRATION, 27) // sub_D8FC, and back
-COST(SCORE_BEGINS, 22)            // sub_D8FC to $D90C
+COST(SCORE_TENS_AND_HUNDREDS, 8)  // sub_D8FC to $D902: nothing for the thousands
+COST(SCORE_NOT_IN_DEMONSTRATION, 19) // sub_D902, and back
+COST(SCORE_BEGINS, 14)            // sub_D902 to $D90C
 COST(SCORE_FIRST_DIGIT, 16)       // each of the six digits, from the last: the first added to,
 COST(SCORE_NEXT_DIGIT, 14)        // the next three,
 COST(SCORE_LAST_DIGITS, 13)       // and the two that only take what's carried,
@@ -478,7 +496,8 @@ COST(ARTHUR_FELL_LOW, 27)         // sub_DF3E, into sub_DB99,
 COST(ARTHUR_FELL_HIGH, 31)        // or back
 COST(ARTHUR_FELL_ABOVE_HALF, 9)   // $E2B5
 COST(ARTHUR_FELL_BELOW_HALF, 14)  // or with its call of sub_DB99
-COST(ARTHUR_FALL_ENDS, 54)        // $E2BF to $E2E1
+COST(ARTHUR_FALL_STRAIGHT, 17)    // $E2C2 to $E2E1, with neither Left nor Right held,
+COST(ARTHUR_FALL_TURNS, 57)       // or facing the way the one that's held says, his walk's count going on
 COST(ARTHUR_STARTS_IN_STAGE, 71)  // $DA71 to $DAE4
 COST(ARTHUR_SCENE_BEGINS, 62)      // $DA71 to $E4F3: the opening scene, where he sits
 COST(ARTHUR_WATCHES, 10)          // $E4F9 back to $E4F3, until Satan has the princess,
@@ -654,7 +673,8 @@ COST(FREE_OBJECT_USED, 10)        // each object that's in use,
 COST(FREE_OBJECT_FOUND, 15)       // the first that isn't, and back,
 COST(FREE_OBJECT_NONE, 8)         // or none, and back
 COST(STAGE_OBJECT_NO_ROOM, 8)     // $D71E, and back
-COST(STAGE_OBJECT_STATE, 17)      // $D71E to $D6C1
+COST(STAGE_OBJECT_STATE, 17)      // $D71E to $D6C1, for a kind whose state starts at 0,
+COST(STAGE_OBJECT_STATE_LISTED, 22) // or $D72E to $D6C1, for one whose state the list gives
 COST(STAGE_OBJECT_FILLED, 95)     // $D6C1, and back
 COST(GAME_ROUND_DANGERS, 15)      // $D583 to bank 2's $8400
 COST(DANGERS_OTHERS, 170)         // $8400 to $8415: its seven calls, and the six routines after the zombies' with nothing to do
@@ -730,7 +750,10 @@ COST(ZOMBIE_COLOURS_DONE, 9)      // and back,
 COST(ZOMBIE_COLOURS_DARKER, 15)   // or $F8B1 to $F8BD,
 COST(ZOMBIE_COLOURS_ITS_OWN, 15)  // and $F8BD, and back
 COST(POT_BEGINS, 14)              // bank 4's $BBEE to $BBF8: the pot a zombie carries
-COST(POT_IS_CARRIED, 3)           // $BC06 to $BC0B
+COST(POT_IS_CARRIED, 3)           // $BC06 to $BC0B,
+COST(POT_IS_FALLING, 5)           // or to $BC8A
+COST(POT_LANDS, 32)               // $BC8D, with sub_E166, and back: it's a thing to pick up now,
+COST(POT_FALLS_ON, 7)             // or to sub_F03E
 COST(POT_FOLLOWS, 47)             // $BC0B to $BC37: its carrier's place, for a zombie
 COST(POT_CARRIER_THERE, 7)        // $BC37 to $BC3F,
 COST(POT_CARRIER_GONE, 9)         // or to sub_F708
@@ -739,9 +762,10 @@ COST(POT_STAYS_HIDDEN, 3)         // $BC66 to $BC76: out of the view,
 COST(POT_SHOWN_AS_CARRIER, 21)    // or shown when its carrier is
 COST(POT_CARRIER_LOOKED_AT, 10)   // $BC76 to $BC7E
 COST(POT_IS_KEPT, 8)              // and back,
-COST(POT_FALLS, 45)               // or $BC81, and back, once its carrier is hit
+COST(POT_FALLS, 42)               // or $BC81, and back, once its carrier is hit
 COST(ENEMY_NOT_SHOWN, 29)         // sub_F5A0, and back, for an enemy that isn't shown
-COST(ENEMY_TESTS_BEGIN, 49)       // sub_F5A0 to $F5FB
+COST(ENEMY_TESTS_BEGIN, 47)       // sub_F5A0 to sub_F5F9
+COST(WEAPONS_BEGIN, 2)            // sub_F5F9
 COST(WEAPON_NOT_FLYING, 12)       // each of Arthur's three weapons, when it isn't shown
 COST(WEAPON_SPENT, 16)            // or is, and has hit something already,
 COST(WEAPON_TESTED, 17)           // or is tested: to sub_F611
@@ -749,7 +773,8 @@ COST(WEAPON_BOX, 60)              // sub_F611 to sub_F63A: the box around the en
 COST(WEAPON_MISSED, 7)            // $F607 to $F60D,
 COST(WEAPON_HIT, 8)               // or back
 COST(WEAPON_STOPS, 70)            // $F5A8 to $F5E2, and back: a lance or a dagger is gone, and the enemy's hits are counted
-COST(ENEMY_NO_WEAPON_HIT, 38)     // $F60F to sub_F68E
+COST(WEAPONS_NONE, 8)             // $F60F, and back: none touches
+COST(ENEMY_NO_WEAPON_HIT, 30)     // $F5A8 to sub_F68E
 COST(ENEMY_NOT_TOUCHED, 9)        // $F5E6, and back,
 COST(ENEMY_TOUCHES_ARTHUR, 20)    // or with Arthur's flag that says he's hit
 COST(GAME_ROUND_AFTER, 19)        // $D58D to $D595

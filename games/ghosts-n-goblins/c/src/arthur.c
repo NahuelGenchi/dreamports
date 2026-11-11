@@ -697,8 +697,18 @@ wait arthur_task(void) {
         took(ARTHUR_FELL_BELOW_HALF);
         view_follows_down();
       } else took(ARTHUR_FELL_ABOVE_HALF);
-      COUNT = 0;
-      took(ARTHUR_FALL_ENDS);
+      // $E2BF: Left and Right turn him as he falls, and keep his walk's count going
+      took(CALLS);
+      flash_after_a_hit();
+      if (PAD_NOW & (PAD_LEFT | PAD_RIGHT)) {
+        FLAGS &= (uint8_t)~TURNED;
+        FLAGS |= (PAD_NOW << 1) & TURNED;
+        COUNT++;
+        took(ARTHUR_FALL_TURNS);
+      } else {
+        COUNT = 0;
+        took(ARTHUR_FALL_STRAIGHT);
+      }
       end_stage_turn();
       *step = STAGE_FELL;
       return YIELDS;

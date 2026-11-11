@@ -47,7 +47,7 @@ static void keep(uint8_t kind, uint16_t address, uint8_t value) {
 
 void hardware_write(uint16_t address, uint8_t value) { keep(WRITE, address, value); }
 void hardware_ppu_latch(void) { keep(PPU_LATCH, 0x2002, 0); }
-void hardware_read_pads(void) { keep(PADS, 0x4016, 0); }
+void hardware_read_pads(void) { keep(PADS, 0x4016, interrupt_runs_ahead()); }
 
 // A write of $4014: the page of sprites as it is at this moment.
 void hardware_send_sprites(uint8_t page) {
@@ -68,7 +68,7 @@ static void deliver(uint64_t until) {
       case WRITE: nes_write(w.address, w.value); break;
       case PPU_LATCH: nes_read(0x2002); break;
       case SPRITES: for (int i = 0; i < 256; i++) nes_write(0x2004, sprite_lists[w.value][i]); break;
-      case PADS: read_pads(); break;
+      case PADS: read_pads(w.value); break;
     }
   }
 }
@@ -110,6 +110,10 @@ void took_times(cost what, uint32_t times) {
   while (!interrupted && now >= vblank_at) vblank_comes();
 }
 void took(cost what) { took_times(what, 1); }
+
+// A piece that was counted before it could be known, as `assumed`, turns out to have been `real`: the time since is put
+// right. Only the buttons need it, which the interrupt can read before the kit's frame has brought them.
+void took_instead(cost assumed, cost real) { now += ((int64_t)CYCLES[real] - (int64_t)CYCLES[assumed]) * DOTS_A_CYCLE; }
 
 void vblank_interrupt_wanted(uint8_t on) { wanted = on; }
 

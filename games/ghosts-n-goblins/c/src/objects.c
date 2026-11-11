@@ -3,7 +3,8 @@
 // becomes a place on the screen, for the sprites' task. Arthur, the first object, has a task of his own (arthur.c).
 //
 // So far it has the kinds the opening scene uses, the princess, Satan, and Arthur's armour on the ground, and the
-// zombies and the pot one carries (enemies.c), and Arthur's lance and dagger (weapons.c). The other kinds do nothing yet.
+// zombies and the pot one carries (enemies.c), Arthur's lance and dagger (weapons.c), and the first of a stage's own:
+// its gravestones and its hidden things. The other kinds do nothing yet.
 
 #include "game.h"
 
@@ -347,6 +348,39 @@ int weapon_touches(uint8_t weapon, uint8_t enemy) {
   return within(weapon, enemy);
 }
 
+// Bank 4's $BF0B, kind $20: a gravestone, an object that's never shown and that counts the weapons that touch it. What
+// its fifteenth hit brings, at $BF42, and its two other states, at $F6F6 and $BF5F, aren't ported yet.
+static void gravestone(uint8_t object) {
+  RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
+  RAM[OBJECT_COLOURS + object] = 0;
+  took(GRAVESTONE_BEGINS);
+  if (!object_in_view(object)) { took(GRAVESTONE_OUT_OF_VIEW); return; }
+  RAM[0x26] = 8;
+  RAM[0x27] = 4;
+  took(GRAVESTONE_IN_VIEW);
+  if (!weapon_that_touches(object)) { took(GRAVESTONE_NOT_HIT); return; }
+  RAM[0x0647 + object]++;
+  took(GRAVESTONE_HIT_COUNTED);
+}
+
+// Bank 4's $BB8C, kind $11: a thing that's hidden where the stage's list puts it until Arthur touches the place. What
+// touching it does, at $BBAD, isn't ported yet.
+static void hidden_thing(uint8_t object) {
+  RAM[OBJECT_SHAPE + object] = 0x49;
+  took(HIDDEN_BEGINS);
+  hide_object(object);
+  if (!object_in_view(object)) {
+    took(HIDDEN_OUT_OF_VIEW);
+    hide_object(object);
+  } else {
+    RAM[0x26] = RAM[0x27] = 6;
+    took(HIDDEN_IN_VIEW);
+    arthur_touches(object);
+    took(HIDDEN_NOT_TOUCHED);
+  }
+  took(HIDDEN_STAYS);
+}
+
 // $FF62, kind $22: the marker on the map, which blinks between two sets of colours every four rounds.
 static void map_marker(uint8_t object) {
   show_object(object);
@@ -388,6 +422,21 @@ static void pick_up(uint8_t object) {
   RAM[0x26] = RAM[0x27] = 6;
   int touched = arthur_touches(object);
   if (!touched) took(PICK_UP_LEFT);
+  if (touched && thing < 4) {
+    // $BAAC: the four things that only give points, from the copy's list at $BB57, with their sound
+    uint16_t points = (uint16_t)(0xBB57 + thing * 4);
+    RAM[0x25] = peek(points);
+    RAM[0x24] = peek((uint16_t)(points + 1));
+    RAM[0x27] = peek((uint16_t)(points + 2));
+    RAM[0x26] = peek((uint16_t)(points + 3));
+    took(PICK_UP_BONUS);
+    add_score_with_thousands(object, (uint8_t)(thing * 4));
+    took(PICK_UP_BONUS_SOUND);
+    sound_play(0x21);
+    took(JUMPS);
+    remove_object(object);
+    return;
+  }
   if (!touched || thing != ARMOUR) return;
   took(PICK_UP_ARMOUR_TAKEN);
   RAM[OBJECT_FLAGS + ARTHUR] &= (uint8_t)~WITHOUT_ARMOUR;
@@ -417,7 +466,9 @@ wait objects_task(void) {
       switch (kind) {
         case 0x00: zombie(object); break;
         case 0x10: pick_up(object); break;
+        case 0x11: hidden_thing(object); break;
         case 0x12: pot(object); break;
+        case 0x20: gravestone(object); break;
         case 0x22: map_marker(object); break;
         case LANCE: case DAGGER: weapon(object); break;
         case 0x33: princess(object); break;

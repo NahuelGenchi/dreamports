@@ -107,7 +107,10 @@ static void power_on(void) {
 // sub_C278 and sub_C28E: both controllers' buttons, a bit at a time, into $42 and $44, with $43 and $45 the same but
 // for the A button, which is left out there while it stays held. It runs when the kit's frame comes (time.c), and
 // pads_take_time says how long the original's takes, which depends on the A buttons.
-void read_pads(void) {
+// Which of sub_C2A1's three ends a controller's read takes, by its A button now and when last read.
+static cost pad_end(uint8_t was_held, uint8_t held) { return !held ? PAD_A_NOT_HELD : was_held ? PAD_A_STILL_HELD : PAD_A_NEWLY_HELD; }
+
+void read_pads(uint8_t ran_ahead) {
   nes_write(0x4016, 1);
   nes_write(0x4016, 0);
   for (int pad = 0; pad < 2; pad++) {
@@ -119,6 +122,7 @@ void read_pads(void) {
       RAM[0x40] = bit < 7 ? held : RAM[0x40];
     }
     uint8_t before = RAM[0x42 + pad * 2];
+    if (ran_ahead) took_instead(pad_end(before & 0x80, before & 0x80), pad_end(before & 0x80, held & 0x80));
     RAM[0x41] = before;
     RAM[0x42 + pad * 2] = held;
     RAM[0x43 + pad * 2] = (held & 0x80) && (before & 0x80) ? held & 0x7F : held;
@@ -126,7 +130,7 @@ void read_pads(void) {
 }
 
 // How long sub_C278 takes, which depends on each A button, now and when last read. When the interrupt runs ahead of the
-// kit's frame, this frame's buttons aren't known yet, and A is taken as it was.
+// kit's frame, this frame's buttons aren't known yet: A is taken as it was, and read_pads puts the time right.
 static void pads_take_time(void) {
   took(PADS_BEGIN);
   for (int pad = 0; pad < 2; pad++) {
@@ -137,7 +141,7 @@ static void pads_take_time(void) {
     took_times(GOES_ROUND, 7);
     took(GOES_ON);
     took(PAD_KEPT);
-    took(!held ? PAD_A_NOT_HELD : was_held ? PAD_A_STILL_HELD : PAD_A_NEWLY_HELD);
+    took(pad_end(was_held, held));
     if (pad == 0) took(PADS_SECOND);
   }
 }

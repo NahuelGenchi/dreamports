@@ -27,6 +27,12 @@
       "matched": 1300,
       "differs": [],
       "functions": []
+    },
+    "walk-on": {
+      "frames": 1700,
+      "matched": 1700,
+      "differs": [],
+      "functions": []
     }
   }
 }
