@@ -170,14 +170,23 @@ wait view_task(void) {
       RAM[0x4A] = 0;
     }
   }
-  // down, where only the pixels and their 256ths move: a new screen down, at $E6F8, and a new row of tiles, at $E73B,
-  // aren't ported yet
+  // down, where only the pixels and their 256ths are added: past a screen's 240 lines it's on the next, and past its
+  // top on the one before, 16 pixels apart. A new row of tiles, at $E73B, isn't ported yet.
   uint16_t down = (uint16_t)(ram16(VIEW_Y) + ram16(SPEED_Y));
   RAM[VIEW_Y_BEFORE] = RAM[VIEW_Y];
   RAM[VIEW_Y_BEFORE + 1] = RAM[VIEW_Y + 1];
   RAM[VIEW_Y_BEFORE + 2] = RAM[VIEW_Y + 2];
   set_ram16(VIEW_Y, down);
-  took(VIEW_DOWN);
+  if (RAM[VIEW_Y + 1] < 0xF0) took(VIEW_DOWN);
+  else if (RAM[VIEW_Y + 1] >= 0xF8) {
+    RAM[VIEW_Y + 2]--;
+    RAM[VIEW_Y + 1] -= 0x10;
+    took(VIEW_DOWN_TO_SCREEN_ABOVE);
+  } else {
+    RAM[VIEW_Y + 2]++;
+    RAM[VIEW_Y + 1] += 0x10;
+    took(VIEW_DOWN_TO_SCREEN_BELOW);
+  }
   if (VIEW_HELD) took(VIEW_HELD_DOWN);
   else {
     uint8_t at_top = RAM[VIEW_Y + 2] == cart(7, (uint16_t)(0xEB67 + STAGE)), at_bottom = cart(7, (uint16_t)(0xEB59 + STAGE)) == RAM[VIEW_Y + 2];

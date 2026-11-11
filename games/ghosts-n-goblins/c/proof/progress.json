@@ -10,6 +10,12 @@
       "differs": [],
       "functions": []
     },
+    "ladder": {
+      "frames": 2425,
+      "matched": 2425,
+      "differs": [],
+      "functions": []
+    },
     "lance-throw": {
       "frames": 1300,
       "matched": 1300,

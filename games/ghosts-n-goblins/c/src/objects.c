@@ -143,20 +143,28 @@ static void scale(void) {
 
 // $F05A: what's in $77, $73 and $7B, screens, pixels and 256ths, added to an object's place down.
 static void add_down(uint8_t object) {
-  took(MOVE_ADDED_DOWN);
-  took(MOVE_SAME_SCREEN);
-  took(MOVE_ENDS);
   uint32_t y = (uint32_t)(RAM[OBJECT_Y_SCREEN + object] << 16 | RAM[OBJECT_Y + object] << 8 | RAM[OBJECT_Y_PART + object]);
   y += (uint32_t)(A_Y_SCREEN << 16 | A_Y << 8 | RAM[0x7B]);
+  uint8_t pixel = (uint8_t)(y >> 8), screen = (uint8_t)(y >> 16);
+  took(MOVE_ADDED_DOWN);
+  // a screen is 240 pixels high: 16 are taken off on another screen, or put on past the last line of its own
+  if (screen != RAM[OBJECT_Y_SCREEN + object]) {
+    pixel -= 0x10;
+    took(MOVE_OTHER_SCREEN);
+  } else if (pixel >= 0xF0) {
+    pixel += 0x10;
+    screen++;
+    took(MOVE_NEXT_SCREEN_DOWN);
+  } else took(MOVE_SAME_SCREEN);
+  took(MOVE_ENDS);
   RAM[OBJECT_Y_PART + object] = (uint8_t)y;
-  RAM[OBJECT_Y + object] = (uint8_t)(y >> 8);
-  A_Y_SCREEN = (uint8_t)(y >> 16);
-  RAM[OBJECT_Y_SCREEN + object] = A_Y_SCREEN;
+  RAM[OBJECT_Y + object] = pixel;
+  A_Y_SCREEN = screen;
+  RAM[OBJECT_Y_SCREEN + object] = screen;
 }
 
 // sub_F03E and sub_EFDA: moves an object by `speed` the way it's heading, one of 16 ways. The copy's table at $F2A3 has,
-// for each way, how far down and how far across a speed of 256 goes, in 256ths of a pixel. Leaving its screen down, at
-// $F077 and $F08A, isn't ported yet.
+// for each way, how far down and how far across a speed of 256 goes, in 256ths of a pixel.
 void move_object(uint8_t object, uint8_t speed) {
   took(MOVE_BEGINS);
   if ((OBJECT_HEADING & 0xFF) + object > 0xFF) took(READ_PAST_PAGE);
@@ -361,21 +369,21 @@ static int within(uint8_t first, uint8_t object) {
 }
 
 // sub_F68E: whether Arthur touches an object, whose own half width and half height are in $26 and $27. He touches nothing
-// while his flags say so, as in the opening scene before his jump. His middle is 4 pixels above his place, and a
-// crouching Arthur, at $F6A2, isn't ported yet.
+// while his flags say so, as in the opening scene before his jump. Standing, he's 8 pixels high either way from a
+// middle 4 pixels above his place; crouching, 4 from his place.
 int arthur_touches(uint8_t object) {
   enum { CAN_TOUCH_NOTHING = 0x41, CROUCHING = 0x02 };
   if (RAM[OBJECT_FLAGS + ARTHUR] & CAN_TOUCH_NOTHING) { took(PICK_UP_CANNOT_BE_TOUCHED); return 0; }
-  took(TOUCH_SET_UP);
-  RAM[0x25] = (uint8_t)(8 + RAM[0x27]);
+  int standing = !(RAM[OBJECT_FLAGS + ARTHUR] & CROUCHING);
+  took(standing ? TOUCH_SET_UP : TOUCH_SET_UP_CROUCHING);
+  RAM[0x25] = (uint8_t)((standing ? 8 : 4) + RAM[0x27]);
   RAM[0x23] = (uint8_t)-RAM[0x25];
   RAM[0x24] = (uint8_t)(RAM[0x26] + 4);
   RAM[0x22] = (uint8_t)-RAM[0x24];
-  int standing = !(RAM[OBJECT_FLAGS + ARTHUR] & CROUCHING);
   if (standing) RAM[OBJECT_SCREEN_Y + ARTHUR] -= 4;
   int touches = within(ARTHUR, object);
   if (standing) RAM[OBJECT_SCREEN_Y + ARTHUR] += 4;
-  took(TOUCH_ENDS);
+  took(standing ? TOUCH_ENDS : TOUCH_ENDS_CROUCHING);
   return touches;
 }
 
