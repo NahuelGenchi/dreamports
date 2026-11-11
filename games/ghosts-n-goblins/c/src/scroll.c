@@ -117,14 +117,23 @@ static void move_back(uint16_t at, uint16_t before) {
 
 // $E68C, the view's task
 wait view_task(void) {
-  took(ABOUT_A_TURN);
+  enum { FIRST_TURN, LATER };
+  if (task_step[TASK_VIEW] == LATER) took(VIEW_AGAIN);
+  task_step[TASK_VIEW] = LATER;
   move_by(VIEW_X, SPEED_X, VIEW_X_BEFORE);
   RAM[0x22] = RAM[VIEW_X + 1] & 8;
   RAM[0x4A] = (RAM[VIEW_X_BEFORE + 1] & 8) != RAM[0x22] ? 0xFF : 0;   // it's in a new column of tiles
+  took(VIEW_ACROSS);
+  took(RAM[0x4A] ? VIEW_NEW_COLUMN : VIEW_SAME_COLUMN);
   // the view stops at the screens the tables at $EB3D and $EB4B give for the stage's two ends
-  if (!VIEW_HELD && (cart(7, (uint16_t)(0xEB3D + STAGE)) == RAM[VIEW_X + 2] || cart(7, (uint16_t)(0xEB4B + STAGE)) == RAM[VIEW_X + 2])) {
-    move_back(VIEW_X, VIEW_X_BEFORE);
-    RAM[0x4A] = 0;
+  if (VIEW_HELD) took(VIEW_HELD_ACROSS);
+  else {
+    uint8_t at_first = cart(7, (uint16_t)(0xEB3D + STAGE)) == RAM[VIEW_X + 2], at_last = cart(7, (uint16_t)(0xEB4B + STAGE)) == RAM[VIEW_X + 2];
+    took(at_first ? VIEW_AT_FIRST_END : at_last ? VIEW_AT_LAST_END : VIEW_BETWEEN_ENDS);
+    if (at_first || at_last) {
+      move_back(VIEW_X, VIEW_X_BEFORE);
+      RAM[0x4A] = 0;
+    }
   }
   // down, where only the pixels and their 256ths move: a new screen down, at $E6F8, and a new row of tiles, at $E73B,
   // aren't ported yet
@@ -133,9 +142,18 @@ wait view_task(void) {
   RAM[VIEW_Y_BEFORE + 1] = RAM[VIEW_Y + 1];
   RAM[VIEW_Y_BEFORE + 2] = RAM[VIEW_Y + 2];
   set_ram16(VIEW_Y, down);
-  if (!VIEW_HELD && (RAM[VIEW_Y + 2] == cart(7, (uint16_t)(0xEB67 + STAGE)) || cart(7, (uint16_t)(0xEB59 + STAGE)) == RAM[VIEW_Y + 2])) move_back(VIEW_Y, VIEW_Y_BEFORE);
+  took(VIEW_DOWN);
+  if (VIEW_HELD) took(VIEW_HELD_DOWN);
+  else {
+    uint8_t at_top = RAM[VIEW_Y + 2] == cart(7, (uint16_t)(0xEB67 + STAGE)), at_bottom = cart(7, (uint16_t)(0xEB59 + STAGE)) == RAM[VIEW_Y + 2];
+    took(at_top ? VIEW_AT_TOP : at_bottom ? VIEW_AT_BOTTOM : VIEW_BETWEEN_TOP_AND_BOTTOM);
+    if (at_top || at_bottom) move_back(VIEW_Y, VIEW_Y_BEFORE);
+  }
   RAM[0x22] = RAM[VIEW_Y + 1] & 8;
-  if (RAM[0x4A]) {
+  took(VIEW_ROW_LOOKED_AT);
+  if (!RAM[0x4A]) took(VIEW_NO_COLUMN);
+  else {
+    took(VIEW_COLUMN);
     took(ABOUT_A_COLUMN);
     draw_column();
   }
@@ -144,5 +162,6 @@ wait view_task(void) {
   RAM[0x22] = RAM[VIEW_X + 2] & 1;
   PPU_CONTROL = (uint8_t)((PPU_CONTROL & 0xFE) | RAM[0x22]);
   for (int i = 0; i < 6; i++) RAM[SPEED_X + i] = 0;
+  took(VIEW_ENDS);
   return YIELDS;
 }

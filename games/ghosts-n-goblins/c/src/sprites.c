@@ -177,6 +177,9 @@ static void list_sprites_backwards(void) {
 
 // $F34F, the sprites' task
 wait sprites_task(void) {
+  enum { FIRST_TURN, LATER };
+  if (task_step[TASK_SPRITES] == LATER) took(SPRITES_TASK_AGAIN);
+  task_step[TASK_SPRITES] = LATER;
   took(SPRITES_TASK_BEGINS);
   switch_bank(4);
   list_sprites();

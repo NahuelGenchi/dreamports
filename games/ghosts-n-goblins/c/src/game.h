@@ -56,6 +56,13 @@ uint8_t loop_was_interrupted(void);
 uint8_t interrupt_runs_ahead(void);         // whether the interrupt that's running is a later frame's than the kit's
 void loop_goes_on(void);
 void loop_left(void);
+// For the check that counts what each interrupt and each turn took against the original's (time.c): it's told when one
+// begins and ends, and the game itself is built without it.
+#ifdef TIME_CHECK
+void time_check(char what, uint8_t which);
+#else
+#define time_check(what, which) ((void)0)
+#endif
 // the kit's frames
 void time_starts(void);
 void start_waited_for_vblank(void);

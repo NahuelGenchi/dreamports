@@ -82,8 +82,10 @@ static void vblank_comes(void) {
   vblank_at = vblank_frame_starts + NES_NMI_DOT;
   if (!wanted) return;
   interrupted = 1;
+  time_check('V', 0);
   took(INTERRUPT_TAKEN);
   vblank_interrupt();
+  time_check('W', 0);
   interrupted = 0;
 }
 
@@ -92,6 +94,7 @@ static void vblank_comes(void) {
 // time passes the end of the kit's frame, and counts of the cycles each interrupt and each turn took.
 uint8_t time_check_memory[0x800], time_check_taken;
 uint64_t time_check_now(void) { return now; }
+uint32_t time_check_frame(void) { return vblank_frame; }
 static void check_frame_end(void) {
   if (time_check_taken || now < frame_starts + (uint64_t)nes_frame_length((int)frame)) return;
   for (int i = 0; i < 0x800; i++) time_check_memory[i] = RAM[i];

@@ -132,7 +132,9 @@ void vblank_interrupt(void) {
   hardware_read_pads();
   pads_take_time();
   took(VBLANK_TO_SOUND);
+  time_check('S', 0);
   sound_frame();
+  time_check('E', 0);
   took(VBLANK_AFTER_SOUND);
   FRAMES_SINCE_ROUND++;
   // $C239: the sleeping tasks' time
@@ -203,7 +205,9 @@ static void run_tasks(void) {
       TASK_NOW = task;
       took(TURN_GIVEN);
     }
+    time_check('t', task);
     wait how = TASK_CODE[task / 2]();
+    time_check(how == SPINS ? 'p' : how == ENDS ? 'e' : how == SLEEPS ? 's' : 'y', task);
     spinning = how == SPINS;
     if (spinning) loop_begins(2);
     else if (how == ENDS) {

@@ -235,26 +235,46 @@ wait load_tiles(uint8_t *step, uint16_t from, uint16_t to, uint8_t groups) {
 // lists of them, and the second waits while the first has any: for each, $E668 or $E670 says where a set of tiles is
 // and where it goes, and $E680 or $E684 where it ends.
 wait tiles_task(void) {
-  took(ABOUT_A_TURN);
-  enum { START, EACH_ROUND };
-  if (task_step[TASK_TILES] == START) {
+  enum { START, FIRST_ROUND, EACH_ROUND };
+  uint8_t *step = &task_step[TASK_TILES];
+  if (*step == START) {
     for (int i = 0; i < 10; i++) RAM[0xD5 + i] = 0xFF;
-    task_step[TASK_TILES] = EACH_ROUND;
+    *step = FIRST_ROUND;
+    took(TILES_START);
     return YIELDS;
   }
+  if (*step == EACH_ROUND) took(TILES_AGAIN);
+  *step = EACH_ROUND;
   switch_bank(0);
+  took(TILES_BEGIN);
   // each list's place in work memory: the set it's sending, where it has got to, and where that goes
   for (int list = 0; list < 2; list++) {
     uint16_t state = list ? 0xDA : 0xD5, sets = list ? 0xE670 : 0xE668, ends = list ? 0xE684 : 0xE680;
     uint8_t set = RAM[state];
-    if (set == 0xFF) continue;
-    if (RAM[state + 2] == 0xFF) for (int i = 0; i < 4; i++) RAM[state + 1 + i] = cart(7, (uint16_t)(sets + set * 4 + i));
+    if (set == 0xFF) {
+      took(list ? TILES_SECOND_IDLE : TILES_FIRST_IDLE);
+      continue;
+    }
+    took(list ? TILES_SECOND_ACTIVE : TILES_FIRST_ACTIVE);
+    if (RAM[state + 2] != 0xFF) {
+      took(TILES_SET_GOES_ON);
+      if (list) took(TILES_SECOND_SET_PAGE);
+    }
+    else {
+      took(TILES_SET_BEGINS);
+      for (int i = 0; i < 4; i++) RAM[state + 1 + i] = cart(7, (uint16_t)(sets + set * 4 + i));
+    }
+    took(TILES_ROW);
     queue_rows(ram16((uint16_t)(state + 1)), ram16((uint16_t)(state + 3)), 1, 0x20);
     set_ram16((uint16_t)(state + 1), ram16(0x26));
     set_ram16((uint16_t)(state + 3), ram16(0x24));
-    if (ram16((uint16_t)(state + 1)) >= (uint16_t)(cart(7, (uint16_t)(ends + set * 2)) | cart(7, (uint16_t)(ends + set * 2 + 1)) << 8)) RAM[state] = RAM[state + 2] = 0xFF;
+    took(TILES_ROW_KEPT);
+    uint8_t done = ram16((uint16_t)(state + 1)) >= (uint16_t)(cart(7, (uint16_t)(ends + set * 2)) | cart(7, (uint16_t)(ends + set * 2 + 1)) << 8);
+    if (done) RAM[state] = RAM[state + 2] = 0xFF;
+    took(list ? (done ? TILES_SECOND_DONE : TILES_SECOND_NOT_DONE) : (done ? TILES_FIRST_DONE : TILES_FIRST_NOT_DONE));
     break;
   }
   switch_bank(BANK_HOME);
+  took(TILES_END);
   return YIELDS;
 }
