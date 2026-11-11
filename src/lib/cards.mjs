@@ -1,19 +1,22 @@
 // Whether a Dreamport's cards show the two numbers its proof/ folder makes, and each of its versions in other languages
-// theirs, as "Code ported in C" (src/lib/languages.mjs) (docs/LIVE-SITE.md): its card in the
-// Dreamports row, at /dreamports/<id>/, its card in the Make row, at /make/<game>/, and its place in that row, at
-// /make/. The build reads its own pages with this (src/integrations/live-site.mjs), and .github/live-site/watch.mjs
-// reads dreamports.net's, so what's checked is what a visitor gets.
+// theirs (src/lib/languages.mjs) (docs/LIVE-SITE.md): its card in the Dreamports row, at /dreamports/<id>/, which shows
+// a version at a time, the one Play opens, each in a block of its own under the numbers' plain names; its card in the
+// Make row, at /make/<game>/, which shows them all, named by language, as "Code ported in C"; and its place in that
+// row, at /make/. The build reads its own pages with this (src/integrations/live-site.mjs), and
+// .github/live-site/watch.mjs reads dreamports.net's, so what's checked is what a visitor gets.
 import { hasCode, isBeingMade, numbersText, pageOf, shortPercent } from './entries.mjs';
-import { LANGUAGES } from './languages.mjs';
+import { LANGUAGES, playOrder } from './languages.mjs';
 
 const CODE = 'Code ported', GAMEPLAY = 'Gameplay proven';
 const METER = /<span class="meter-head">\s*<span>([^<]+)<\/span>\s*<span class="meter-num">([^<]+)<\/span>\s*<\/span>\s*<span class="meter-bar"[^>]*>\s*<i style="width: ?([\d.]+)%/g;
+// a version's block on a game's page, which holds no <div> of its own (src/components/InspectCard.astro)
+const BLOCK = /<div\b([^>]*\bclass="plays"[^>]*)>([^]*?)<\/div>/g;
 
-// a card's meters by their names, each with what it says and how far its bar fills, or nothing when there's no such card
-function metersIn(html, card) {
-  const found = new RegExp(`<dialog\\b[^>]*\\bid="${card}"[^]*?</dialog>`).exec(html)?.[0];
-  return found && new Map([...found.matchAll(METER)].map(([, label, text, width]) => [label, { text, width: Number(width) }]));
-}
+// a card as its page has it, or nothing when there's no such card
+const cardIn = (html, card) => new RegExp(`<dialog\\b[^>]*\\bid="${card}"[^]*?</dialog>`).exec(html)?.[0];
+
+// the meters in some of a page by their names, each with what it says and how far its bar fills
+const metersIn = html => new Map([...html.matchAll(METER)].map(([, label, text, width]) => [label, { text, width: Number(width) }]));
 
 // what's wrong with one of a card's two numbers
 function meterProblem(meters, label, percent) {
@@ -22,6 +25,34 @@ function meterProblem(meters, label, percent) {
   const text = shortPercent(percent) ?? 'Not measured yet';
   if (meter.text !== text || meter.width !== (percent ?? 0)) return `shows ${label} ${meter.text} with its bar at ${meter.width}%, and its proof makes ${text} (${percent ?? 0}%)`;
   return null;
+}
+
+// what's wrong with a card that shows every version's numbers at once, each named by its language
+function namedProblems(card, versions) {
+  const meters = metersIn(card);
+  return versions.flatMap(({ language, proof }) => {
+    const named = language === 'js' ? '' : ` in ${LANGUAGES[language].name}`;
+    return [meterProblem(meters, CODE + named, proof?.ported?.percent), meterProblem(meters, GAMEPLAY + named, proof?.gameplay?.percent)];
+  });
+}
+
+// what's wrong with a card that shows a version at a time: each version's numbers in a block of its own, and only the
+// block of the version Play opens first not hidden
+function apartProblems(card, versions) {
+  const blocks = new Map([...card.matchAll(BLOCK)].map(([, attributes, html]) => [
+    /\bdata-language="([^"]*)"/.exec(attributes)?.[1],
+    { hidden: /\shidden\b/.test(attributes), meters: metersIn(html) },
+  ]));
+  const first = playOrder(versions.map(version => version.language))[0];
+  return versions.flatMap(({ language, proof }) => {
+    const block = blocks.get(language), name = LANGUAGES[language].name;
+    if (!block) return [`has no numbers for its version in ${name}`];
+    const wrong = [meterProblem(block.meters, CODE, proof?.ported?.percent), meterProblem(block.meters, GAMEPLAY, proof?.gameplay?.percent)]
+      .filter(Boolean).map(what => (versions.length > 1 ? `${what}, for its version in ${name}` : what));
+    if (block.hidden && language === first) wrong.push(`hides the numbers of its version in ${name}, the one Play opens`);
+    if (!block.hidden && language !== first) wrong.push(`shows the numbers of its version in ${name} at first, and Play opens the one in ${LANGUAGES[first].name}`);
+    return wrong;
+  });
 }
 
 /**
@@ -40,18 +71,15 @@ export async function problemsWith(dreamports, read) {
   for (const { game, entry, language = 'js', proof, versions = [] } of dreamports) {
     const id = pageOf(game);
     const making = isBeingMade(entry, proof);
+    const all = [{ language, proof }, ...versions];
     const cards = [
-      ...(hasCode(proof) ? [{ path: `/dreamports/${id}/`, card: `inspect-${id}`, where: 'in the Dreamports row' }] : []),
-      ...(making ? [{ path: `/make/${game}/`, card: `make-${id}`, where: 'in the Make row' }] : []),
+      ...(hasCode(proof) ? [{ path: `/dreamports/${id}/`, card: `inspect-${id}`, where: 'in the Dreamports row', problemsOf: apartProblems }] : []),
+      ...(making ? [{ path: `/make/${game}/`, card: `make-${id}`, where: 'in the Make row', problemsOf: namedProblems }] : []),
     ];
-    for (const { path, card, where } of cards) {
+    for (const { path, card, where, problemsOf } of cards) {
       const html = await page(path);
-      const meters = html && metersIn(html, card);
-      const wrong = !html ? ['has no page']
-        : !meters ? ['isn\'t on its page']
-          : [{ language, proof }, ...versions].map(version => [version.proof, version.language === 'js' ? '' : ` in ${LANGUAGES[version.language].name}`])
-            .flatMap(([measured, named]) => [meterProblem(meters, CODE + named, measured?.ported?.percent), meterProblem(meters, GAMEPLAY + named, measured?.gameplay?.percent)])
-            .filter(Boolean);
+      const found = html && cardIn(html, card);
+      const wrong = !html ? ['has no page'] : !found ? ['isn\'t on its page'] : problemsOf(found, all).filter(Boolean);
       problems.push(...wrong.map(what => `${path}: ${entry.title}'s card ${where} ${what}.`));
     }
     if (making) {
