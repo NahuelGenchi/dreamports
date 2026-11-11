@@ -49,9 +49,9 @@ export function writeReadme({ check = false } = {}) {
   if (start < 0 || end < start) throw new Error(`${STATUS} has lost the lines that mark its table of Dreamports:\n${START}\n${END}`);
   // blank lines around the table, so GitHub doesn't read the lines that mark it as part of it
   const files = new Map([[STATUS_FILE, `${text.slice(0, start + START.length)}\n\n${table(list)}\n\n${text.slice(end)}`]]);
-  for (const { name: main, language: mainIn, entry, versions } of list) {
-    files.set(join(REPO, mapOf(main)), progressMap(main, readProofFiles(main), versionTitle(entry.title, mainIn)).svg);
-    for (const { name, language } of versions) files.set(join(REPO, mapOf(name)), progressMap(name, readProofFiles(name), versionTitle(entry.title, language)).svg);
+  for (const { name: main, entry, versions } of list) {
+    files.set(join(REPO, mapOf(main)), progressMap(main, readProofFiles(main), entry.title).svg);
+    for (const { name } of versions) files.set(join(REPO, mapOf(name)), progressMap(name, readProofFiles(name), entry.title).svg);
   }
   const changed = [];
   for (const [file, next] of files) {
