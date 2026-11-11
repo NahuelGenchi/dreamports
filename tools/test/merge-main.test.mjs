@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { optionsOf } from '../update.mjs';
+import { withRowOf } from '../readme.mjs';
 import { builtOn, finishMerge, holding, isHolding, keepMainsTable, merging, newGames, provedOnBothSides, startMerge } from '../lib/merge-main.mjs';
 
 const START = '<!-- The proof tools write this table from each Dreamport\'s entry: npm run dp -- readme. -->';
@@ -290,4 +291,19 @@ test('the command\'s words, in any order', () => {
   assert.deepEqual(optionsOf(['--base', 'other', 'one']), { game: 'one', base: 'other' });
   assert.equal(optionsOf(['--base', 'other']).game, undefined);
   assert.equal(optionsOf(['one', '--base']).base, undefined);
+});
+
+test('a new game adds only its own row to the table main has, however far behind the games\' folders it is (#1098)', () => {
+  const row = (name, percent) => `| **[${name}](../games/${name}/)** | [${percent}](../.github/readme/progress/${name}.svg) |`;
+  const head = '| Dreamport | Code ported |\n| :--- | :--- |';
+  const before = readme(`${head}\n${row('one/c', '21.94%')}\n${row('two', '5%')}`);
+  // written whole, the table has one's new number too, which main's own workflow hasn't written yet
+  const leading = readme(`${head}\n${row('new/c', '0%')}\n${row('one/c', '24.68%')}\n${row('two', '5%')}`);
+  assert.equal(withRowOf(before, leading, 'new/c'), readme(`${head}\n${row('new/c', '0%')}\n${row('one/c', '21.94%')}\n${row('two', '5%')}`));
+  // a version under its game's row goes after that row
+  const under = readme(`${head}\n${row('one/c', '24.68%')}\n${row('one', '0%')}\n${row('two', '5%')}`);
+  assert.equal(withRowOf(before, under, 'one'), readme(`${head}\n${row('one/c', '21.94%')}\n${row('one', '0%')}\n${row('two', '5%')}`));
+  assert.equal(withRowOf(before, leading, 'one/c'), null, 'a row the table has already');
+  assert.equal(withRowOf(before, leading, 'other'), null, 'no row to add');
+  assert.equal(withRowOf(readme(head), leading, 'new/c'), null, 'a table with no row to put it by');
 });

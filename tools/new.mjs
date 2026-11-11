@@ -21,33 +21,24 @@ import { sendFirstFiles } from './lib/send.mjs';
 import { readClaims } from './lib/claims.mjs';
 import { firstFiles, firstFilesMessage, namesOf, startingFiles } from './lib/new-game.mjs';
 import { run as portmap } from './portmap.mjs';
-import { STATUS, writeReadme } from './readme.mjs';
+import { STATUS, withRowOf, writeReadme } from './readme.mjs';
 import { consoleOf } from './consoles.mjs';
 import { forGame } from './lib/screens.mjs';
 
 const USAGE = 'Usage: npm run dp -- new <game>[/c] [--commit] [--yes] [--repo <owner/name>]';
 
-// The table of Dreamports and the progress maps are main's own, written after each merge by the Readme workflow (#566),
-// so they can be a few hours behind the games' folders. A new game adds its own row and map to them as they are, and
-// leaves every other game's: written whole, its first files would carry other games' new numbers along, which nothing
-// that reads them could tell from words of someone's own.
+// A new game adds its own row and map to main's table and maps as they are, and leaves every other game's
+// (withRowOf in readme.mjs): the row among HEAD's, and the other maps back as HEAD has them.
 function onlyItsRow(version) {
-  const link = line => /\(\.\.\/games\/([^)]+)\/\)/.exec(line)?.[1];
-  const fresh = readFileSync(join(REPO, STATUS), 'utf8').split('\n');
-  const at = fresh.findIndex(line => link(line) === version);
   let before;
   try {
-    before = execFileSync('git', ['show', `HEAD:${STATUS}`], { cwd: REPO, encoding: 'utf8', stdio: 'pipe' }).split('\n');
+    before = execFileSync('git', ['show', `HEAD:${STATUS}`], { cwd: REPO, encoding: 'utf8', stdio: 'pipe' });
   } catch {
     return;
   }
-  if (at < 0 || before.some(line => link(line) === version)) return;
-  // after the row it follows in the table just written, or before the first row when it leads it
-  const follows = link(fresh[at - 1] ?? '');
-  const after = follows ? before.findIndex(line => link(line) === follows) : before.findIndex(line => link(line)) - 1;
-  if (after < 0) return;
-  before.splice(after + 1, 0, fresh[at]);
-  writeFileSync(join(REPO, STATUS), before.join('\n'));
+  const table = withRowOf(before, readFileSync(join(REPO, STATUS), 'utf8'), version);
+  if (table === null) return;
+  writeFileSync(join(REPO, STATUS), table);
   execFileSync('git', ['checkout', '--quiet', 'HEAD', '--', '.github/readme/progress'], { cwd: REPO, stdio: 'pipe' });
 }
 
