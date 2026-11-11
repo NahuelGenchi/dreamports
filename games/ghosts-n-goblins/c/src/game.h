@@ -95,6 +95,7 @@ void write_ppu_control(uint8_t value);
 void vblank_interrupt(void);     // $C0F0
 void start_task(uint8_t task);  // sub_C2BC
 void stop_task(uint8_t task);   // sub_C303
+void stop_game_tasks(void);     // sub_CAD6: the view's, Arthur's and the objects'
 wait sleep_task(uint16_t frames);  // sub_C313, which a task returns
 /** The step a task's own routine is at, kept for it between turns, and 0 when it's started. */
 extern uint8_t task_step[TASK_LAST + 2];
@@ -131,6 +132,11 @@ wait picture_off(void);                   // sub_F171
 void picture_on(void);                    // sub_F17A
 /** sub_C62C: the picture off, the title's colours, an empty screen, no objects, and the picture on again. A task calls it each turn until it's DONE. */
 wait fresh_screen(uint8_t *step);
+/** sub_CA2E and $CA37: a name table's 30 rows are cleared two a frame. `begin` sets it up, and then each frame `queue`
+ *  leaves two rows for V-blank, which the task waits for, and `done` says whether those were the last. */
+void clear_rows_begin(uint8_t second_table);
+void clear_rows_queue(void);
+int clear_rows_done(void);
 /** sub_C0D9: copies `groups` groups of 128 bytes from the cartridge at `from` to the PPU's tiles at `to`, a group a frame. */
 wait load_tiles(uint8_t *step, uint16_t from, uint16_t to, uint8_t groups);
 void vblank_draws(void);                  // $C0F0 to $C21D: what V-blank writes to the PPU

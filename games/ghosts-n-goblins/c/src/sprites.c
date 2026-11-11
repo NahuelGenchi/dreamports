@@ -16,10 +16,13 @@ static void swap_first_and_fourth(void) {
   static const uint16_t FIELDS[] = { OBJECT_FLAGS, OBJECT_SCREEN_Y, OBJECT_SCREEN_X, OBJECT_SHAPE, OBJECT_COLOURS };
   for (unsigned i = 0; i < sizeof FIELDS / sizeof *FIELDS; i++) {
     uint8_t first = RAM[FIELDS[i]];
+    took(SPRITES_SWAP_READ);
     RAM[FIELDS[i]] = RAM[FIELDS[i] + 3];
+    took(SPRITES_SWAP_FIRST_STORED);
     RAM[FIELDS[i] + 3] = first;
+    took(SPRITES_SWAP_FOURTH_STORED);
   }
-  took(SPRITES_SWAP);
+  took(RETURNS);
 }
 
 // Whether a sprite is on the screen along one axis: the object's place plus the sprite's place around it has to stay in

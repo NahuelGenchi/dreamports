@@ -47,6 +47,17 @@ void stop_task(uint8_t task) {
   took(TASK_STOPPED);
 }
 
+void stop_game_tasks(void) {
+  took(GAME_TASKS_STOP_BEGINS);
+  for (uint8_t task = TASK_VIEW; task != TASK_SPRITES; task += 2) {
+    took(CALLS);
+    stop_task(task);
+    took(GAME_TASK_STOPPED);
+    took(task + 2 != TASK_SPRITES ? GOES_ROUND : GOES_ON);
+  }
+  took(RETURNS);
+}
+
 // sub_C313: the task that's running sleeps for `frames` V-blanks and one more, and then has its turns again.
 wait sleep_task(uint16_t frames) {
   TASK_STATE(TASK_NOW) |= 0x40;
