@@ -35,12 +35,20 @@ static void move_to(uint8_t *voice, uint16_t address) { voice[V_AT] = (uint8_t)a
 
 // sub_ED97: all the sound registers to 0, from the last down.
 void sound_registers_off(void) {
-  for (int i = 0x0F; i >= 0; i--) hardware_write((uint16_t)(0x4000 + i), 0);
+  took(SOUND_REGISTERS_BEGIN);
+  for (int i = 0x0F; i >= 0; i--) {
+    took(SOUND_REGISTER_OFF);
+    hardware_write((uint16_t)(0x4000 + i), 0);
+    took(SOUND_REGISTER_NEXT);
+    took(i ? GOES_ROUND : GOES_ON);
+  }
+  took(RETURNS);
 }
 
 // sub_ED72: no voice plays.
 void sound_reset(void) {
   for (int i = 0; i < 0x50; i++) RAM[VOICES + i] = 0;
+  took(SOUND_MEMORY_CLEARED);
   sound_registers_off();
 }
 
@@ -53,7 +61,7 @@ static void voice_ends(uint8_t *voice, uint16_t registers) {
 // A byte of the copy read through a pointer and a count on from it, as the original's instructions read it: a cycle
 // more when the two cross into the next page.
 static uint8_t read(uint16_t from, uint8_t on) {
-  if ((from & 0xFF) + on > 0xFF) took(SOUND_READ_PAST_PAGE);
+  if ((from & 0xFF) + on > 0xFF) took(READ_PAST_PAGE);
   return copy((uint16_t)(from + on));
 }
 
@@ -311,12 +319,13 @@ void sound_frame(void) {
 
 // sub_03_838A: a voice starts a sound's part, unless what it's playing ranks higher.
 static void start_voice(uint8_t *voice, uint8_t flags, uint8_t tempo, uint16_t part) {
-  if ((flags & 0x0F) < voice[V_FLAGS]) return;
+  if ((flags & 0x0F) < voice[V_FLAGS]) { took(VOICE_KEPT); return; }
+  took(VOICE_STARTED);
   voice[V_FLAGS] = flags;
   voice[V_TEMPO] = tempo;
   move_to(voice, part);
-  voice[V_VOLUME] = copy((uint16_t)(part + 1));
-  voice[V_SWEEP] = copy((uint16_t)(part + 2));
+  voice[V_VOLUME] = read(part, 1);
+  voice[V_SWEEP] = read(part, 2);
   voice[V_LEFT] = 1;
   voice[V_PLAYING] = 0x80;
   voice[V_REPEATS] = 0;
@@ -326,15 +335,23 @@ static void start_voice(uint8_t *voice, uint8_t flags, uint8_t tempo, uint16_t p
 // sub_ED51, $8383: plays the sound `number`. The copy's list at $89AF has 12 bytes for each: its flags, its tempo, and
 // where each of the five voices' parts is, or 0 for a voice it leaves alone.
 void sound_play(uint8_t number) {
+  took(SOUND_PLAY_BEGINS);
   RAM[0x23] = number;
   RAM[0xD4] = BANK_NOW;
   uint16_t sound = (uint16_t)(SOUNDS + (uint8_t)(number << 2) * 3);
-  uint8_t flags = copy(sound), tempo = copy((uint16_t)(sound + 1));
+  took(SOUND_PLAY_FOUND);
+  if (number & 0x20) took(SOUND_PLAY_FAR);
+  uint8_t flags = read(sound, 0), tempo = read(sound, 1);
   RAM[0x48] = flags;
   RAM[0x49] = tempo;
-  for (int i = 0; i < 5; i++) {
-    uint16_t part = copy16((uint16_t)(sound + 2 + i * 2));
+  for (uint8_t i = 0; i < 5; i++) {
+    took(SOUND_VOICE_READ);
+    uint16_t part = (uint16_t)(read(sound, (uint8_t)(2 + i * 2)) | read(sound, (uint8_t)(3 + i * 2)) << 8);
     set_ram16(0x4A, part);
+    took(part ? SOUND_VOICE_PART : SOUND_VOICE_NO_PART);
     if (part) start_voice(&RAM[VOICES + i * VOICE_BYTES], flags, tempo, part);
+    took(SOUND_VOICE_NEXT);
+    took(i < 4 ? GOES_ROUND : GOES_ON);
   }
+  took(SOUND_PLAY_ENDS);
 }

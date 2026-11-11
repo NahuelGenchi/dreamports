@@ -58,7 +58,9 @@ wait sleep_task(uint16_t frames) {
 // sprites', the title's and the tiles' tasks, and turns V-blank's interrupt on.
 static void power_on(void) {
   start_waited_for_vblank();
+  took(START_TO_CONTROL);
   hardware_write(0x2000, 0x10);
+  took(START_TO_MASK);
   hardware_write(0x2001, 0x06);
   for (int i = 0x300; i < 0x800; i++) RAM[i] = 0;
   for (int i = 0; i < 0x100; i++) RAM[i] = 0;
@@ -67,21 +69,28 @@ static void power_on(void) {
   RAM[0x8C] = 0x22;
   RAM[0xA2] = 1;          // two players' scores on the title screen
   RAM[ROWS] = 0xFF;
-  took(START_ABOUT);
+  took(START_CLEARS_MEMORY);
+  took(START_TO_SOUND_ON);
   hardware_write(0x4015, 0x0F);
   set_ram16(0x56, 0x23C0);         // where V-blank writes the next 32 attributes,
   set_ram16(0x58, ATTRIBUTES);     // and where it takes them from
   RAM[0xA3] = 1;
-  start_task(TASK_SPRITES);
-  start_task(TASK_TITLE);
-  start_task(TASK_TILES);
+  took(START_SETTINGS);
+  static const uint8_t FIRST_TASKS[] = { TASK_SPRITES, TASK_TITLE, TASK_TILES };
+  for (unsigned i = 0; i < sizeof FIRST_TASKS; i++) {
+    took(START_TASK_CALLED);
+    start_task(FIRST_TASKS[i]);
+  }
   BANK_HOME = 1;
   switch_bank(1);
+  took(START_MORE_SETTINGS);
   sound_reset();
   FRAMES_A_ROUND = 2;
   PPU_CONTROL = 0x90;
+  took(START_TO_INTERRUPTS_ON);
   write_ppu_control(0x90);
   PPU_MASK = 0x1E;
+  took(START_TO_TURNS);
 }
 
 // sub_C278 and sub_C28E: both controllers' buttons, a bit at a time, into $42 and $44, with $43 and $45 the same but

@@ -2,8 +2,7 @@
 // one place the game's time is written down (time.c): the game's own code says which piece it has done, by name.
 // Each is the sum of the cycles of the original's instructions for that piece, taken the way the piece's name says.
 //
-// A piece marked "about" hasn't been counted yet: it's near enough to put V-blank in the right task's turn, which is
-// all the frames before a stage need, and it's counted when the stage's rounds that run it are proven.
+// A piece marked "about" hasn't been counted yet: it's near enough to put V-blank in the right task's turn.
 
 // ---- the V-blank interrupt, $C0F0 (main.c, screen.c)
 COST(INTERRUPT_TAKEN, 7)          // the processor's own steps into it
@@ -62,7 +61,7 @@ COST(TASK_SLEEPS, 61)             // sub_C313
 COST(TASK_ENDS, 12)               // sub_C2FA
 COST(TASK_STARTED, 118)           // sub_C2BC, for a task that wasn't running,
 COST(TASK_ALREADY_RUNNING, 48)    // and for one that was
-COST(TASK_STOPPED, 53)            // sub_C303
+COST(TASK_STOPPED, 50)            // sub_C303
 COST(TURNS_NO_TASK_AFTER, 8)      // $C37D after the last task
 COST(TURNS_LOOK, 20)              // $C37D to $C38A
 COST(TURNS_CANDIDATE, 8)          // $C38C to $C38E, for each task after the one that ran,
@@ -77,13 +76,97 @@ COST(LOOP_INSTRUCTION, 3)         // each instruction of the loops that wait for
 COST(LOOP_LEFT, 2)                // and the branch that leaves one
 COST(GOES_ROUND, 3)               // a loop's branch back, in the same page,
 COST(GOES_ON, 2)                  // and the same branch when the loop is over
+COST(GOES_ROUND_FAR, 4)           // a loop's branch back into the page before
+COST(CALLS, 6)                    // a call of a routine,
+COST(RETURNS, 6)                  // a routine's return,
+COST(JUMPS, 3)                    // and a jump
 
 // ---- the start, $C008 (main.c)
 COST(START_BEFORE_WAIT, 8)        // $C008 to $C00C
 COST(START_WAIT_READ, 3)          // the wait's read of $2002 comes this far into each pass of 7 cycles,
 COST(START_WAIT_PASS, 7)
 COST(START_WAIT_OVER, 3)          // and the pass that sees V-blank ends 3 cycles after its read
-COST(START_ABOUT, 21000)          // about: the clearing of work memory and the first settings, to $C0C6
+COST(START_TO_CONTROL, 6)         // $C012 to its write of $2000,
+COST(START_TO_MASK, 6)            // and of $2001
+COST(START_CLEARS_MEMORY, 18028)  // $C01C to $C068: work memory from $0300 up, and then the first page, a byte at a time
+COST(START_TO_SOUND_ON, 12)       // $C069 to the write of $4015
+COST(START_SETTINGS, 25)          // $C073 to $C086
+COST(START_TASK_CALLED, 8)        // each of the three tasks it starts
+COST(START_MORE_SETTINGS, 48)     // $C096 to the call of sub_ED72
+COST(START_TO_INTERRUPTS_ON, 11)  // $C0B7 to the write of $2000
+COST(START_TO_TURNS, 11)          // $C0C0 to $C37D
+
+// ---- the screen's routines (screen.c)
+COST(PICTURE_GOES_OFF, 11)        // sub_F171, to the yield
+COST(PICTURE_COMES_ON, 14)        // sub_F17A, and back
+COST(FRESH_VIEW_BACK, 48)         // $C62F: sub_C63E, and sub_C7ED to its call for the colours
+COST(FRESH_ATTRIBUTES_BEGIN, 2)   // $C7FB
+COST(FRESH_ATTRIBUTE, 18)         // each of the 64, to both name tables' places
+COST(FRESH_ROWS_BEGIN, 56)        // $C80B back to $C64F, sub_CA27, and sub_CA2E to $CA43
+COST(FRESH_ROW_CALLED, 29)        // sub_CA63 with its call, to sub_EECF
+COST(FRESH_ROWS_TO_CONTROL, 14)   // $CA49 to the write of $2000
+COST(FRESH_ROWS_TO_WAIT, 8)       // $CA54 to the loop that waits
+COST(FRESH_ROWS_COUNTED, 5)       // $CA5E
+COST(FRESH_NO_OBJECTS, 4451)      // sub_CA96 with its call, which clears the objects a byte at a time, and the jump after
+COST(LOAD_TILES_BEGINS, 3)        // sub_C0D9
+COST(LOAD_TILES_GROUP, 16)        // $C0DB to sub_EECF
+COST(LOAD_TILES_WAITS, 3)         // $C0E6, to the loop that waits
+COST(LOAD_TILES_COUNTED, 2)       // $C0EC
+
+// ---- starting a sound, sub_ED51 and bank 3's $8383 (sound.c)
+COST(SOUND_PLAY_BEGINS, 47)       // sub_ED51 to bank 3's $8383
+COST(SOUND_PLAY_FOUND, 98)        // $8383 to $8405: the sound's place in the list, its flags and its tempo,
+COST(SOUND_PLAY_FAR, 4)           // with four more for a sound whose place is past the list's first 384 bytes
+COST(SOUND_VOICE_READ, 23)        // $8406 to $8411: where a voice's part is,
+COST(SOUND_VOICE_NO_PART, 3)      // which it hasn't,
+COST(SOUND_VOICE_PART, 19)        // or has: sub_838A's call, and after it
+COST(VOICE_KEPT, 24)              // sub_838A, and back: the voice plays something that matters more,
+COST(VOICE_STARTED, 183)          // or it starts
+COST(SOUND_VOICE_NEXT, 18)        // $841B to $8427
+COST(SOUND_PLAY_ENDS, 34)         // $842A, and $ED8D back to the bank that asked
+
+// ---- the title screen's task, $C3DC (title.c)
+COST(SOUND_MEMORY_CLEARED, 806)   // sub_ED72 to $ED97: the voices' 80 bytes
+COST(SOUND_REGISTERS_BEGIN, 4)    // sub_ED97
+COST(SOUND_REGISTER_OFF, 5)       // each of the 16, to its write,
+COST(SOUND_REGISTER_NEXT, 2)      // and on to the next
+COST(TITLE_TO_TASKS_STOPPED, 19)  // $C3E2 to sub_CAD6's first call
+COST(TITLE_NEXT_TASK, 6)          // $CADB to $CADE
+COST(TITLE_SETTINGS, 34)          // $C3EE to the call of sub_C62C
+COST(TITLE_LOGO_BEGINS, 35)       // sub_C668 with its call, to $C67E
+COST(TITLE_LOGO_ROW, 19)          // sub_C691 with its call, to sub_EECF
+COST(TITLE_LOGO_WAITS, 5)         // $C684, to the loop that waits
+COST(TITLE_LOGO_COUNTED, 5)       // $C68C
+COST(TITLE_SCORE_DIGITS, 148)     // sub_C744 with its call
+COST(TITLE_ROW_SET_UP, 39)        // a row's source, place and size, to sub_EECF
+COST(TITLE_TWO_PLAYERS, 6)        // $C6C3 or $C702: the second player's are drawn too,
+COST(TITLE_ONE_PLAYER, 5)         // or aren't
+COST(TITLE_NOT_PLAYED_YET, 6)     // $C775: no third line,
+COST(TITLE_PLAYED, 5)             // or one,
+COST(TITLE_THIRD_LINE, 36)        // $C779 to sub_EECF
+COST(TITLE_COPYRIGHT, 46)         // sub_C7CD with its call, to sub_EECF
+COST(TITLE_TILES_BEGIN, 36)       // $C40F, and sub_C0C9 to sub_C0D9
+COST(START_READ, 17)              // sub_EF20 with its call
+COST(TITLE_SWORD_SET, 48)         // $C424 to $C44A
+COST(TITLE_START_NOT_HELD, 3)     // $C44E: on to the buttons,
+COST(TITLE_START_IS_HELD, 8)      // or to the call that yields
+COST(SECRET_NOT_RIGHT, 20)        // $C45B to $C4A5, in the secret's first three steps: Right isn't held,
+COST(SECRET_NO_BUTTON, 27)        // or it is with neither A nor B,
+COST(SECRET_STILL_HELD, 27)       // or they're still held from the step before,
+COST(SECRET_STEP_TAKEN, 39)       // or a step is taken
+COST(SECRET_WRONG_BEFORE, 13)     // and after them: a wrong button was pressed before,
+COST(SECRET_NOTHING_HELD, 29)     // or nothing is held,
+COST(SECRET_SAME_HELD, 29)        // or the same buttons still are,
+COST(SECRET_RIGHT, 53)            // or the buttons are the next of the run,
+COST(SECRET_WRONG, 49)            // or aren't
+COST(SWORD_STAYS, 15)             // $C4A5 to $C4CE: Select isn't held,
+COST(SWORD_WAITS, 16)             // or is, and its count hasn't run out,
+COST(SWORD_MOVES_DOWN, 42)        // or the sword moves to the next line,
+COST(SWORD_BACK_TO_TOP, 48)       // or back to the first
+COST(TITLE_TIME_AND_BLINK, 92)    // $C4D1 to $C44B
+COST(TITLE_START_STILL_HELD, 9)   // $C456 to the call that yields
+COST(TITLE_GAME_BEGINS, 119)      // $C456 to $C53B, and from there to the call that starts the game's task,
+COST(TITLE_GAME_PLAYED_BEFORE, 6) // with six more once a game has been played, when it looks at the chosen line
 
 // ---- the sprites' task, $F34F and bank 4's $8000 (sprites.c)
 COST(SPRITES_TASK_BEGINS, 15)     // $F34F to the call
@@ -256,15 +339,89 @@ COST(ARTHUR_FELL_BELOW_HALF, 14)  // or with its call of sub_DB99
 COST(ARTHUR_FALL_ENDS, 54)        // $E2BF to $E2E1
 COST(ARTHUR_STARTS_IN_STAGE, 71)  // $DA71 to $DAE4
 
+// ---- the game's task before a stage, $C8C4 (flow.c)
+COST(GAME_BEGINS, 202)            // $C8C4 to $C8FB: a new game's score and counts, for one player,
+COST(GAME_BEGINS_DEMONSTRATION, 51) // or the demonstration's, which keeps the score
+COST(GAME_LIFE_BEGINS, 11)        // the call of sub_D01D, to $D021
+COST(GAME_READY_BEGINS, 12)       // the call of sub_C971, to $C976
+COST(GAME_READY_TILES_BEGIN, 44)  // the call of sub_CB66, to sub_C0D9
+COST(GAME_READY_BANK_BACK, 19)    // $CB82, and back
+COST(GAME_READY_COLOURS, 19)      // sub_CB8B with its call, to sub_EEBA
+COST(GAME_READY_WORDS, 42)        // $C982 and sub_C9F6, to sub_EECF
+COST(GAME_READY_FIRST_PLAYER, 12) // $CA09, and back: no words for a second player
+COST(GAME_READY_HEAD, 30)         // $C98D to $C9A5
+COST(GAME_READY_LIVES, 76)        // $C9A6 to sub_EECF, with fewer than ten lives left
+COST(GAME_READY_SLEEPS, 16)       // $C9E5 to the call that sleeps
+COST(GAME_READY_OVER, 12)         // $C9F0, and back
+COST(GAME_STAGE_COLOURS, 16)      // $D02D to sub_EEBA
+COST(GAME_ATTRIBUTES, 1802)       // $D03B to $D057: 16 attributes copied and 128 set, a byte at a time
+COST(GAME_NO_STAGE_CHOICE, 14)    // $D058 to $D0D5: not the demonstration, and the title's secret wasn't entered
+COST(GAME_OBJECTS_BEGIN, 8)       // $D0D8 to the call that starts the objects' task
+COST(GAME_SCENE_CHECKS, 59)       // sub_CD8E, and sub_CE71 to $CE85: a new game opens with the scene
+COST(GAME_SCENE_STAGE, 14)        // $CE88 to sub_CF73
+COST(STAGE_TILES_BEGIN, 36)       // sub_CF73 to sub_C0D9: the tiles every stage uses,
+COST(STAGE_TILES_OWN, 48)         // and $CF8D to sub_C0D9: the stage's own
+COST(GAME_SCENE_OWN_TILES, 49)    // $CE94 to sub_C0D9
+COST(GAME_OBJECT_TILES_ASKED, 114) // $CEB7 to the call that yields
+COST(GAME_SCENE_COLOURS, 18)      // $CEC8 to sub_D871
+COST(STAGE_COLOURS_FOUND, 24)     // sub_D871 to sub_EEBA
+COST(GAME_SCENE_OBJECT_COLOURS, 36) // $CED7 to sub_EECF
+COST(FIRST_SCREEN_BEGINS, 56)     // sub_CFB0 to the call that starts the view's task
+COST(FIRST_SCREEN_VIEW_SET, 68)   // $CFD6 to $D003
+COST(FIRST_SCREEN_MOVES, 16)      // $D004 to the call that yields
+COST(FIRST_SCREEN_NOT_THERE, 13)  // $D00F: the view isn't at the stage's first screen yet,
+COST(FIRST_SCREEN_THERE, 23)      // or is, and back
+COST(SCENE_SET_UP, 135)           // $CEF8 to the call that starts Arthur's task
+COST(SCENE_MUSIC_CALLED, 8)       // $CF64 to sub_ED51
+COST(GAME_SCENE_WAITS, 12)        // $CF6C, round to the call that yields, while the scene plays,
+COST(GAME_SCENE_OVER, 8)          // or on to sub_F171
+COST(GAME_STAGE_FOUND, 39)        // $D0E6 to sub_CF73: the stage this player is at,
+COST(GAME_STAGE_FOUND_DEMONSTRATION, 30) // or the demonstration's
+COST(GAME_STAGE_OBJECT_TILES, 51) // $D101 to sub_C0D9
+COST(GAME_STAGE_OBJECT_COLOURS, 44) // $D124 to sub_EECF, for a stage that isn't the last
+COST(GAME_STAGE_TILES_ASKED, 124) // $D14D to the call that yields
+
+// ---- a stage's start, $D16E (flow.c)
+COST(STAGE_START_ARTHUR, 8)       // $D16E to the call that starts Arthur's task
+COST(STAGE_START_TOP, 5)          // $D176: not the demonstration, so the top of the picture is set up,
+COST(STAGE_START_NO_TOP, 6)       // or it is
+COST(TOP_SHAPE_COPIED, 641)       // $D17A to $D186: the 40 bytes of the top words' shape
+COST(SCORE_SHOWN_BEGINS, 10)      // sub_D8D8
+COST(SCORE_DIGIT_EMPTY, 31)       // each of the six digits: a 0,
+COST(SCORE_DIGIT, 33)             // or not
+COST(TOP_WORDS_PLACED, 41)        // $D18A to $D1A9
+COST(TOP_LIVES, 44)               // sub_D9F8 with its call, with fewer than ten lives left
+COST(TOP_TIME, 52)                // sub_D82B with its call
+COST(STAGE_START_NO_BANNER, 8)    // $D1B0 to $D1DD, for the first two sets of stages
+COST(STAGE_START_WEAPON, 31)      // $D1DD to $D203, with a weapon that has no place of its own at the top
+COST(STAGE_START_COUNTS, 141)     // $D203 to $D27D, for a stage that isn't the last
+COST(STAGE_START_TIME, 11)        // $D27D to sub_CAFD
+COST(STAGE_MUSIC_BEGINS, 21)      // sub_CAFD to sub_ED72
+COST(STAGE_MUSIC_CHOSEN, 12)      // $CB0C to sub_ED51
+COST(STAGE_MUSIC_KEPT, 13)        // or sub_CAFD and back, when the music plays already,
+COST(STAGE_MUSIC_DEMONSTRATION, 18) // or in the demonstration
+
 // ---- the game's task in a stage, $D284 (flow.c)
 COST(GAME_ROUND_AGAIN, 3)         // $D405
 COST(GAME_ROUND_BEGINS, 54)       // $D284 to $D31D
 COST(GAME_ROUND_NO_COLOURS, 8)    // $D31D, three rounds in four,
-COST(GAME_ROUND_COLOURS, 37)      // or with sub_D871, to its jump
+COST(GAME_ROUND_COLOURS, 13)      // or to the call of sub_D871
 COST(GAME_ROUND_MIX, 15)          // $D326 to $D32F
 COST(GAME_ROUND_CHECKS, 76)       // $D32F to $D3ED, with sub_D882
 COST(GAME_ROUND_OBJECTS, 17)      // $D3ED to sub_D596
-COST(STAGE_OBJECT_NOT_YET, 107)   // sub_D596 when the next object's screen isn't reached, and back
+COST(STAGE_OBJECT_LISTED, 79)     // sub_D596 to $D5C2: the next object's place in the stage's list, and its first byte
+COST(STAGE_OBJECTS_OVER, 9)       // which is the list's end mark, and back,
+COST(STAGE_OBJECT_NOT_YET, 28)    // or a screen Arthur hasn't reached, and back,
+COST(STAGE_OBJECT_ON_ITS_SCREEN, 21)   // or the screen he's on,
+COST(STAGE_OBJECT_PAST_ITS_SCREEN, 23) // or one he's past
+COST(STAGE_OBJECT_KIND, 50)       // $D5DD to the jump through the kinds' table at $D5FB
+COST(FREE_OBJECT_BEGINS, 2)       // sub_DA18
+COST(FREE_OBJECT_USED, 10)        // each object that's in use,
+COST(FREE_OBJECT_FOUND, 15)       // the first that isn't, and back,
+COST(FREE_OBJECT_NONE, 8)         // or none, and back
+COST(STAGE_OBJECT_NO_ROOM, 8)     // $D71E, and back
+COST(STAGE_OBJECT_STATE, 17)      // $D71E to $D6C1
+COST(STAGE_OBJECT_FILLED, 95)     // $D6C1, and back
 COST(GAME_ROUND_DANGERS, 15)      // $D583 to bank 2's $8400
 COST(DANGERS_NOTHING, 198)        // $8400 to $8415 when nothing comes
 COST(GAME_ROUND_AFTER, 19)        // $D58D to $D595
@@ -303,7 +460,7 @@ COST(SOUND_EFFECT_IDLE, 21)       // $84B5: the effect's voice idle, and back,
 COST(SOUND_EFFECT_PLAYS, 22)      // or playing
 COST(SOUND_PLAYS_EFFECT, 10)      // $84C7, for an effect,
 COST(SOUND_PLAYS_TUNE, 12)        // or a tune's part
-COST(SOUND_READ_PAST_PAGE, 1)     // a byte read through a pointer whose count takes it into the next page
+COST(READ_PAST_PAGE, 1)           // a byte read through a pointer or from a table, whose count takes it into the next page
 COST(TUNE_WAITS, 25)              // sub_03_8626: a note that isn't over, and back
 COST(TUNE_NOTE_OVER, 20)          // or is
 COST(TUNE_NEXT, 12)               // $8632 to $8638
@@ -365,11 +522,7 @@ COST(NOISE_STEP, 63)              // $8601 to $8625
 
 // ---- about: what hasn't been counted yet
 COST(ABOUT_A_TURN, 300)           // a task's turn that does little
-COST(ABOUT_A_STAGE_OBJECT, 400)   // sub_D596 when it places one
 COST(ABOUT_DANGERS_COME, 2000)    // bank 2's $8431
-COST(ABOUT_A_STAGE_START, 3130)   // $D16E to $D284
-COST(ABOUT_A_COPY_OF_64, 1350)    // sub_C7ED's attributes
-COST(ABOUT_NO_OBJECTS, 3300)      // sub_CA96
 COST(ABOUT_SATAN, 300)            // $EDA2
 COST(ABOUT_A_MOVE, 900)           // sub_F03E
 COST(ABOUT_A_TOUCH, 250)          // sub_F68E from $F697, and $BA44

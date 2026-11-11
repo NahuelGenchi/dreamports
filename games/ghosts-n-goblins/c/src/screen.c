@@ -164,11 +164,15 @@ void queue_background_palette(uint16_t from) {
 // sub_F171: the picture goes off at the next V-blank, which the task waits a turn for.
 wait picture_off(void) {
   PPU_MASK &= 0xE7;
+  took(PICTURE_GOES_OFF);
   return YIELDS;
 }
 
 // sub_F17A
-void picture_on(void) { PPU_MASK |= 0x18; }
+void picture_on(void) {
+  PPU_MASK |= 0x18;
+  took(PICTURE_COMES_ON);
+}
 
 // sub_C62C, with sub_C63E, sub_C7ED, sub_CA2E, sub_CA63 and sub_CA96.
 wait fresh_screen(uint8_t *step) {
@@ -176,37 +180,52 @@ wait fresh_screen(uint8_t *step) {
   for (;;) switch (*step) {
     case PICTURE_OFF:
       *step = COLOURS;
+      took(CALLS);
       return picture_off();
     case COLOURS:
       // sub_C63E: the view back at the stage's start, and sub_C7ED: the title screen's colours, from $C80C
       SCROLL_X = SCROLL_Y = 0;
       RAM[0x65] = RAM[0x64] = RAM[0x68] = RAM[0x67] = 0;
+      took(FRESH_VIEW_BACK);
       queue_palette(0xC80C);
       *step = ATTRIBUTES_AND_ROWS;
+      took(CALLS);
       return YIELDS;
     case ATTRIBUTES_AND_ROWS:
       // its attributes, from $C82C, for both name tables
-      for (int i = 0; i < 0x40; i++) RAM[ATTRIBUTES + i] = RAM[ATTRIBUTES + 0x40 + i] = cart(7, (uint16_t)(0xC82C + i));
-      took(ABOUT_A_COPY_OF_64);
+      took(FRESH_ATTRIBUTES_BEGIN);
+      for (int i = 0; i < 0x40; i++) {
+        RAM[ATTRIBUTES + i] = RAM[ATTRIBUTES + 0x40 + i] = cart(7, (uint16_t)(0xC82C + i));
+        took(FRESH_ATTRIBUTE);
+        took(i < 0x3F ? GOES_ROUND_FAR : GOES_ON);
+      }
       PPU_CONTROL &= 0xFC;
+      took(FRESH_ROWS_BEGIN);
       // sub_CA2E: 30 rows of the empty tile, from $CA76, two a frame
       set_ram16(0x24, 0x2000);
       RAM[0x53] = 15;
       *step = TWO_ROWS;
       break;
     case TWO_ROWS:
-      queue_rows(0xCA76, ram16(0x24), 1, 0x20);
-      queue_rows(0xCA76, ram16(0x24), 1, 0x20);
+      for (int row = 0; row < 2; row++) {
+        took(FRESH_ROW_CALLED);
+        queue_rows(0xCA76, ram16(0x24), 1, 0x20);
+      }
       FRAMES_SINCE_ROUND = 0;
+      took(FRESH_ROWS_TO_CONTROL);
       write_ppu_control(PPU_CONTROL | 0x80);
       PPU_MASK &= 0xE7;
+      took(FRESH_ROWS_TO_WAIT);
       *step = ROWS_WRITTEN;
       return SPINS;   // $CA5A: until V-blank has written them
     case ROWS_WRITTEN:
-      if (--RAM[0x53]) { *step = TWO_ROWS; break; }
+      took(FRESH_ROWS_COUNTED);
+      if (--RAM[0x53]) { took(GOES_ROUND); *step = TWO_ROWS; break; }
+      took(GOES_ON);
+      took(RETURNS);
       // sub_CA96: no objects. The original's loop leaves the one byte at $05F0 as it was.
       for (int i = 0x04F0; i < 0x0680; i++) if (i != 0x05F0) RAM[i] = 0;
-      took(ABOUT_NO_OBJECTS);
+      took(FRESH_NO_OBJECTS);
       set_ram16(0x26, 0x05F0);
       RAM[0x23] = 0;
       picture_on();
@@ -224,14 +243,20 @@ wait load_tiles(uint8_t *step, uint16_t from, uint16_t to, uint8_t groups) {
       set_ram16(0x26, from);
       set_ram16(0x24, to);
       left = groups;
+      took(LOAD_TILES_BEGINS);
       *step = A_GROUP;
       break;
     case A_GROUP:
+      took(LOAD_TILES_GROUP);
       queue_rows(ram16(0x26), ram16(0x24), 4, 0x20);
+      took(LOAD_TILES_WAITS);
       *step = WRITTEN;
       return SPINS;   // $C0E8: until V-blank counts a frame
     case WRITTEN:
-      if (--left) { *step = A_GROUP; break; }
+      took(LOAD_TILES_COUNTED);
+      if (--left) { took(GOES_ROUND); *step = A_GROUP; break; }
+      took(GOES_ON);
+      took(RETURNS);
       *step = 0;
       return DONE;
   }
