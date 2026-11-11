@@ -2,7 +2,7 @@
 
 The `/dreamport` command's step 8.
 
-Write a New Dreamport issue's text to a file outside the repository, and run `gh issue create --repo NahuelGenchi/dreamports --title "New Dreamport: <game>" --body-file <file>`. The bot reads it by its headings, so write them exactly like this, with the game's own console and the sources you found, and a folder of lowercase letters, numbers and single dashes:
+Write a New Dreamport issue's text to a file outside the repository, and run `gh issue create --repo NahuelGenchi/dreamports --title "Dreamport: <game>" --body-file <file>`. The bot reads it by its headings, so write them exactly like this, with the game's own console and the sources you found, and a folder of lowercase letters, numbers and single dashes:
 
 ```markdown
 ### Game
