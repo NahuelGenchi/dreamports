@@ -1,0 +1,142 @@
+// Ghosts'n Goblins Dreamport: what the game's files share. The game keeps its variables where the original keeps them,
+// in the console's work memory (nes_ram), so each one here is named by what it holds, with the original's address.
+//
+// The original runs up to eight tasks, each with its own stack, and a V-blank interrupt that does all the drawing and
+// the sound. A task runs until it hands the processor on, and a round of the tasks starts every other frame. Here a
+// task is a function that runs until its original would hand the processor on, and says how it waits (main.c).
+
+#ifndef GHOSTS_N_GOBLINS_H
+#define GHOSTS_N_GOBLINS_H
+
+#include "nes.h"
+
+#define RAM nes_ram
+
+// ---- the cartridge: eight banks of program, one of them switched in at $8000, and the last always at $C000
+
+/** The byte at `address` with `bank` switched in at $8000, or the last bank's from $C000 up. */
+static inline uint8_t cart(uint8_t bank, uint16_t address) {
+  return address >= 0xC000 ? nes_prg[nes_prg_size - 0x4000 + (address - 0xC000)] : nes_prg[(uint32_t)bank * 0x4000 + (address - 0x8000)];
+}
+#define BANK_NOW RAM[0xC7]    // the bank switched in at $8000
+#define BANK_HOME RAM[0xC8]   // the bank a routine that switches puts back: the stage's own
+/** The byte at `address` as the processor reads it: work memory, or the cartridge with the bank that's switched in.
+ *  Between the two nothing answers on this cartridge, and the proof's emulator reads 0 there, as the original does when
+ *  it looks up the stage's map before the stage's first screen. */
+static inline uint8_t peek(uint16_t address) {
+  if (address < 0x2000) return RAM[address & 0x7FF];
+  return address < 0x8000 ? 0 : cart(BANK_NOW, address);
+}
+/** A 16-bit number at `address`, low byte first. */
+static inline uint16_t peek16(uint16_t address) { return (uint16_t)(peek(address) | peek((uint16_t)(address + 1)) << 8); }
+static inline uint16_t ram16(uint16_t address) { return (uint16_t)(RAM[address] | RAM[address + 1] << 8); }
+static inline void set_ram16(uint16_t address, uint16_t value) { RAM[address] = (uint8_t)value; RAM[address + 1] = (uint8_t)(value >> 8); }
+/** Switches `bank` in at $8000, as the original's store to the cartridge does. */
+static inline void switch_bank(uint8_t bank) { BANK_NOW = bank; }
+
+// ---- the tasks (main.c)
+
+// the tasks' numbers, which are also where each one's state is kept from $02
+enum { TASK_TITLE = 0x02, TASK_GAME = 0x04, TASK_VIEW = 0x06, TASK_ARTHUR = 0x08, TASK_OBJECTS = 0x0A, TASK_SPRITES = 0x0C, TASK_TILES = 0x0E, TASK_LAST = 0x10 };
+#define TASK_NOW RAM[0x00]             // the task that's running, or 0 between rounds
+#define TASK_STATE(task) RAM[0x02 + (task)]
+enum { TASK_READY = 0x80, TASK_ASLEEP = 0xC0, TASK_FREE = 0x00 };
+#define TASK_SLEEP(task) (0x12 + (task))  // how many V-blanks more a sleeping task sleeps, 16 bits
+#define FRAMES_SINCE_ROUND RAM[0x4E]   // counted by V-blank, and cleared as a round starts
+#define FRAMES_A_ROUND RAM[0xCD]       // a round of the tasks starts once that many V-blanks have passed: 2
+
+// how a task, or a routine of one that takes more than a turn, leaves the processor
+typedef enum {
+  DONE,    // it didn't: the routine is over, and its caller goes on
+  YIELDS,  // sub_C336: the next task runs, and this one goes on in the next round
+  SPINS,   // it waits in a loop for V-blank to count a frame, so nothing else runs until then
+  ENDS,    // sub_C2FA: the task is over
+} wait;
+
+/** Writes $2000, and keeps whether V-blank interrupts. */
+void write_ppu_control(uint8_t value);
+void start_task(uint8_t task);  // sub_C2BC
+void stop_task(uint8_t task);   // sub_C303
+wait sleep_task(uint16_t frames);  // sub_C313, which a task returns
+/** Whether this round started in a frame where tasks had already run, so V-blank comes while the sprites' list is filled. */
+uint8_t round_started_late(void);
+/** The step a task's own routine is at, kept for it between turns, and 0 when it's started. */
+extern uint8_t task_step[TASK_LAST + 2];
+
+// each task's code, in the file that says what it does
+wait title_task(void);    // $C3DC
+wait game_task(void);     // $C8C4
+wait view_task(void);     // $E68C
+wait arthur_task(void);   // $DA71
+wait objects_task(void);  // $F367
+wait sprites_task(void);  // $F34F
+wait tiles_task(void);    // $E569
+
+// ---- the picture (screen.c): what V-blank writes to the PPU is asked for through work memory
+
+#define PPU_CONTROL RAM[0x38]    // what V-blank writes to $2000
+#define PPU_MASK RAM[0x39]       // and to $2001: the picture's on with bits 3 and 4
+#define SCROLL_X RAM[0x3D]
+#define SCROLL_Y RAM[0x3E]
+#define ROWS_BUSY RAM[0x4F]      // on while a task adds rows to the list, so V-blank leaves the list alone
+#define ROWS_END RAM[0x31]       // where the next row goes in the list at $0720
+#define ROWS 0x0720              // the rows to write: for each, the PPU's address, high byte first, a count and that many bytes; $FF ends it
+#define COLUMN_READY RAM[0x50]   // on when the column at $07D8 is to be written, down the screen
+#define COLUMN 0x07D8
+#define WIDE_ROWS_READY RAM[0x51]  // and the rows at $07A6
+#define WIDE_ROWS 0x07A6
+#define ATTRIBUTES 0x0400        // both name tables' colour attributes, 64 bytes each, which V-blank writes 32 at a time
+
+/** sub_EECF: adds `rows` rows of `count` bytes, from `from`, to the list V-blank writes, the first at the PPU's `to` and each next one 32 further on. */
+void queue_rows(uint16_t from, uint16_t to, uint8_t rows, uint8_t count);
+void queue_palette(uint16_t from);        // sub_EEBF: all 32 colours
+void queue_background_palette(uint16_t from);  // sub_EEBA: the first 16
+wait picture_off(void);                   // sub_F171
+void picture_on(void);                    // sub_F17A
+/** sub_C62C: the picture off, the title's colours, an empty screen, no objects, and the picture on again. A task calls it each turn until it's DONE. */
+wait fresh_screen(uint8_t *step);
+/** sub_C0D9: copies `groups` groups of 128 bytes from the cartridge at `from` to the PPU's tiles at `to`, a group a frame. */
+wait load_tiles(uint8_t *step, uint16_t from, uint16_t to, uint8_t groups);
+void vblank_draws(void);                  // $C0F0 to $C21D: what V-blank writes to the PPU
+
+// ---- the objects (objects.c): up to 25, each a field in every one of these lists
+
+#define OBJECTS 25
+#define OBJECT_FLAGS 0x04F0     // bit 7: it's drawn
+#define OBJECT_SCREEN_Y 0x0509
+#define OBJECT_SHAPE 0x0522
+#define OBJECT_COLOURS 0x053B
+#define OBJECT_SCREEN_X 0x0554
+#define OBJECT_Y_SCREEN 0x056D  // which screen of the stage it's on, down
+#define OBJECT_X_SCREEN 0x0583  // and across
+#define OBJECT_Y 0x0599
+#define OBJECT_X 0x05AF
+#define OBJECT_Y_PART 0x05C5    // 256ths of a pixel
+#define OBJECT_X_PART 0x05DB
+#define OBJECT_HEADING 0x05F1
+#define OBJECT_COUNT 0x0607
+#define OBJECT_STATE 0x061D
+#define OBJECT_KIND 0x0631
+#define OBJECT_FLAG_SHOWN 0x80
+void place_on_screen(uint8_t object);  // sub_F181
+/** sub_F03E: moves an object by `speed` the way it's heading, one of 16 ways. */
+void move_object(uint8_t object, uint8_t speed);
+/** $EA55: the block of the stage at the place in $77 and $73, down, and $78 and $74, across. A block from $C6 up is solid. */
+uint8_t block_at_stage_place(void);
+enum { BLOCK_SOLID = 0xC6 };
+#define TILES_FIRST_LIST RAM[0xD5]  // the set of tiles the tiles' task sends first, or $FF for none: $D6 to $D9 are its place
+#define SCENE_PLAYING RAM[0xE0]     // on while the opening scene plays
+#define PAD_NOW RAM[0xCC]           // the buttons of the player whose turn it is, as the game's task copies them each round
+
+// ---- the buttons, as V-blank reads them: A, B, Select, Start, Up, Down, Left, Right from bit 7 down
+#define PAD_1 RAM[0x42]
+enum { PAD_START = 0x10, PAD_SELECT = 0x20, PAD_A = 0x80, PAD_B = 0x40 };
+void read_pads(void);  // sub_C278
+
+// ---- the sound (sound.c)
+void sound_reset(void);        // sub_ED72
+void sound_registers_off(void);  // sub_ED97
+void sound_play(uint8_t number);  // sub_ED51
+void sound_frame(void);        // sub_ED94, each V-blank
+
+#endif

@@ -54,7 +54,7 @@ extras:
       clip: /media/sonic-tricks
       still: /media/sonic-tricks-still.webp
   - name: Bug fixes
-    icon: sparkles
+    icon: bug
     text: The bugs the original game shipped with, fixed. Off, it plays exactly like the cartridge, bugs included.
 facts:
   - label: Article

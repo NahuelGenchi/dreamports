@@ -1,0 +1,20 @@
+{
+  "original": "3430811ecc007fa469f5b74db277f872679266dd",
+  "percent": 0,
+  "codeMap": {"functions":287,"bytes":26557},
+  "proven": {"functions":0,"bytes":0},
+  "recordings": {
+    "game-start": {
+      "frames": 1093,
+      "matched": 1093,
+      "differs": [],
+      "functions": []
+    },
+    "title": {
+      "frames": 120,
+      "matched": 120,
+      "differs": [],
+      "functions": []
+    }
+  }
+}

@@ -1,14 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="480" height="436" viewBox="0 0 480 436">
-<title>Sonic Advance 2 Dreamport’s progress. Code ported: 14.21% (88,110/619,930 bytes). Gameplay proven: 4.55% (2/44 parts).</title>
+<title>Sonic Advance 2 Dreamport’s progress in JavaScript. Code ported: 14.21% (88,110/619,930 bytes). Gameplay proven: 4.55% (2/44 parts).</title>
 <style>text{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace}</style>
-<rect x="0" width="87" height="20" fill="#1f2d63"/>
-<rect x="87" width="52.9" height="20" fill="#b54708"/>
-<text x="6" y="14" font-size="11" fill="#eef4ff">Code ported</text>
-<text x="93" y="14" font-size="11" font-weight="700" fill="#ffffff">14.21%</text>
-<rect x="145.9" width="114.3" height="20" fill="#1f2d63"/>
-<rect x="260.2" width="46.1" height="20" fill="#b54708"/>
-<text x="151.9" y="14" font-size="11" fill="#eef4ff">Gameplay proven</text>
-<text x="266.2" y="14" font-size="11" font-weight="700" fill="#ffffff">4.55%</text>
+<rect x="0" width="66.6" height="20" fill="#1f2d63"/>
+<rect x="66.6" width="80.2" height="20" fill="#2f55c8"/>
+<text x="6" y="14" font-size="11" fill="#eef4ff">Language</text>
+<text x="72.6" y="14" font-size="11" font-weight="700" fill="#ffffff">JavaScript</text>
+<rect x="152.8" width="87" height="20" fill="#1f2d63"/>
+<rect x="239.8" width="52.9" height="20" fill="#b54708"/>
+<text x="158.8" y="14" font-size="11" fill="#eef4ff">Code ported</text>
+<text x="245.8" y="14" font-size="11" font-weight="700" fill="#ffffff">14.21%</text>
+<rect x="298.7" width="114.3" height="20" fill="#1f2d63"/>
+<rect x="413" width="46.1" height="20" fill="#b54708"/>
+<text x="304.7" y="14" font-size="11" fill="#eef4ff">Gameplay proven</text>
+<text x="419" y="14" font-size="11" font-weight="700" fill="#ffffff">4.55%</text>
 <rect y="30" width="480" height="294" fill="#050a24"/>
 <text x="10" y="47" font-size="13" fill="#eef4ff">Code ported: 14.21% (88,110/619,930 bytes)</text>
 <g><title>08000000 to 0800FFFF: 263 functions, 65,570 bytes, 44% ported</title>

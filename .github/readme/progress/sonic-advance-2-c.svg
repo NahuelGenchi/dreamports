@@ -1,14 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="480" height="436" viewBox="0 0 480 436">
-<title>Sonic Advance 2 Dreamport in C’s progress. Code ported: 0% (0/619,930 bytes). Gameplay proven: 0% (0/44 parts).</title>
+<title>Sonic Advance 2 Dreamport’s progress in C. Code ported: 0% (0/619,930 bytes). Gameplay proven: 0% (0/44 parts).</title>
 <style>text{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace}</style>
-<rect x="0" width="87" height="20" fill="#1f2d63"/>
-<rect x="87" width="25.6" height="20" fill="#b54708"/>
-<text x="6" y="14" font-size="11" fill="#eef4ff">Code ported</text>
-<text x="93" y="14" font-size="11" font-weight="700" fill="#ffffff">0%</text>
-<rect x="118.7" width="114.3" height="20" fill="#1f2d63"/>
-<rect x="233" width="25.6" height="20" fill="#b54708"/>
-<text x="124.7" y="14" font-size="11" fill="#eef4ff">Gameplay proven</text>
-<text x="239" y="14" font-size="11" font-weight="700" fill="#ffffff">0%</text>
+<rect x="0" width="66.6" height="20" fill="#1f2d63"/>
+<rect x="66.6" width="18.8" height="20" fill="#2f55c8"/>
+<text x="6" y="14" font-size="11" fill="#eef4ff">Language</text>
+<text x="72.6" y="14" font-size="11" font-weight="700" fill="#ffffff">C</text>
+<rect x="91.4" width="87" height="20" fill="#1f2d63"/>
+<rect x="178.4" width="25.6" height="20" fill="#b54708"/>
+<text x="97.4" y="14" font-size="11" fill="#eef4ff">Code ported</text>
+<text x="184.4" y="14" font-size="11" font-weight="700" fill="#ffffff">0%</text>
+<rect x="210" width="114.3" height="20" fill="#1f2d63"/>
+<rect x="324.3" width="25.6" height="20" fill="#b54708"/>
+<text x="216" y="14" font-size="11" fill="#eef4ff">Gameplay proven</text>
+<text x="330.3" y="14" font-size="11" font-weight="700" fill="#ffffff">0%</text>
 <rect y="30" width="480" height="294" fill="#050a24"/>
 <text x="10" y="47" font-size="13" fill="#eef4ff">Code ported: 0% (0/619,930 bytes)</text>
 <g><title>08000000 to 0800FFFF: 263 functions, 65,570 bytes, 0% ported</title>

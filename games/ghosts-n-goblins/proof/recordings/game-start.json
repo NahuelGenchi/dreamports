@@ -1,0 +1,10 @@
+{
+  "about": "Start pressed on the title screen, one player, then nothing: the screen that says whose turn it is, the opening scene, and the first stage's start, where Arthur lands and stands.",
+  "frames": 1093,
+  "held": [
+    [0, []],
+    [100, ["START"]],
+    [102, []]
+  ],
+  "clip": { "at": 621, "frames": 300 }
+}
