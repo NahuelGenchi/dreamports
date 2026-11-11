@@ -155,6 +155,22 @@ void vblank_draws(void);                  // $C0F0 to $C21D: what V-blank writes
 #define OBJECT_KIND 0x0631
 #define OBJECT_FLAG_SHOWN 0x80
 void place_on_screen(uint8_t object);  // sub_F181
+void show_object(uint8_t object);      // sub_F321
+void hide_object(uint8_t object);      // sub_F346
+int object_in_view(uint8_t object);    // sub_F0A3
+/** sub_E3E3: whether the block 11 pixels below an object's place is solid, so it's on the ground. */
+int on_the_ground(uint8_t object);
+/** sub_DA18: the first of the 16 objects after Arthur that isn't in use, or NO_OBJECT. */
+uint8_t free_object(void);
+enum { NO_OBJECT = 0x11 };
+/** sub_F708: an object is gone. */
+void remove_object(uint8_t object);
+/** sub_F68E: whether Arthur touches an object, whose half width and half height are in $26 and $27. */
+int arthur_touches(uint8_t object);
+/** $F7BE, kind 0: a zombie's turn (enemies.c). */
+void zombie(uint8_t object);
+/** bank 2's $8416: the zombies that come out of the ground. `x` is the processor's X register, which it leaves changed. */
+void zombies_come(uint8_t *x);
 /** sub_F03E: moves an object by `speed` the way it's heading, one of 16 ways. */
 void move_object(uint8_t object, uint8_t speed);
 /** $EA55: the block of the stage at the place in $77 and $73, down, and $78 and $74, across. A block from $C6 up is solid. */

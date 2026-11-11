@@ -1,15 +1,16 @@
 // Ghosts'n Goblins Dreamport: Arthur's task, from the original's code at $DA71. Arthur is the first object, and his task
 // moves him, a turn a round: in the opening scene, where he sits by the princess, jumps up after Satan, and walks to his
-// armour, and in a stage, where he falls to the ground and stands. The view follows him as he moves.
+// armour, and in a stage, where he falls to the ground and stands, and where the first thing that hits him knocks him
+// back out of his armour. The view follows him as he moves.
 //
 // So far the buttons do nothing in a stage: walking, at $DB32 and $DB6E, jumping, at $DB16, throwing, at $E041,
-// climbing and everything that can happen to him aren't ported yet.
+// climbing, a hit without armour, and how he flashes after one aren't ported yet.
 
 #include "game.h"
 
 enum { ARTHUR = 0, SATAN = 2 };
 // Arthur's flags
-enum { TURNED = 0x04, IN_THE_AIR = 0x08, HELD = 0x10, WITHOUT_ARMOUR = 0x20 };  // TURNED: he faces the other way, and his shapes are 4 on
+enum { HIT = 0x01, CROUCHES = 0x02, TURNED = 0x04, IN_THE_AIR = 0x08, HELD = 0x10, WITHOUT_ARMOUR = 0x20, CANNOT_BE_TOUCHED = 0x40 };  // TURNED: he faces the other way, and his shapes are 4 on
 // the view's place in the stage (scroll.c), and the speed its task is asked to move it at, each 24 bits
 enum { VIEW_X = 0x63, VIEW_Y = 0x66, VIEW_SPEED_X = 0x5C, VIEW_SPEED_Y = 0x5F };
 #define STAGE_SET RAM[0xCF]
@@ -80,18 +81,6 @@ static void view_follows_down(void) {
     if (pixels >= 7) pixels = 7;
   }
   RAM[VIEW_SPEED_Y + 1] = pixels;
-}
-
-// sub_EA2F and sub_E3E3: whether the block 11 pixels below Arthur's place is solid, so he's on the ground. The two
-// blocks $76 and $77, which a stage's set of tiles can make solid, at $E3F3, aren't ported yet.
-static int on_the_ground(void) {
-  took(ARTHUR_GROUND);
-  RAM[0x77] = Y_SCREEN;
-  RAM[0x73] = (uint8_t)(Y + 0x0B);
-  RAM[0x78] = X_SCREEN;
-  RAM[0x74] = X;
-  RAM[0x22] = block_at_stage_place();
-  return RAM[0x22] >= BLOCK_SOLID;
 }
 
 // sub_E166: his place down, on top of the block he's landed on.
@@ -188,7 +177,7 @@ static wait jump(uint8_t *step) {
       *step = COUNT ? RISE : FALL;
       break;
     case FALL:
-      if (on_the_ground()) {
+      if (on_the_ground(ARTHUR)) {
         stand_on_block();
         took(JUMP_LANDS);
         *step = BEGIN;
@@ -214,7 +203,7 @@ static wait jump(uint8_t *step) {
       break;
     case LONG_FALL:
       // $E265
-      if (on_the_ground()) {
+      if (on_the_ground(ARTHUR)) {
         stand_on_block();
         took(JUMP_LANDS_LATE);
         *step = BEGIN;
@@ -257,7 +246,7 @@ static void end_stage_turn(void) {
 wait arthur_task(void) {
   enum {
     START, SCENE_SITS, SCENE_WATCHES, SCENE_JUMPS, SCENE_LANDED, SCENE_WALKS, SCENE_STEP, SCENE_OVER,
-    STAGE_TURN, STAGE_STANDS, STAGE_AGAIN, STAGE_FALLS, STAGE_FELL,
+    STAGE_TURN, STAGE_STANDS, STAGE_AGAIN, STAGE_FALLS, STAGE_FELL, STAGE_HIT, STAGE_KNOCKED_BACK,
   };
   static uint8_t inner;
   uint8_t *step = &task_step[TASK_ARTHUR];
@@ -349,10 +338,14 @@ wait arthur_task(void) {
       took(ARTHUR_TURN_BEGINS);
       if (FLAGS & WITHOUT_ARMOUR) took(ARTHUR_NO_ARMOUR_COLOURS);
       COLOURS = FLAGS & WITHOUT_ARMOUR ? 0x02 : 0x08;
-      FLAGS &= 0xFE;
+      if (FLAGS & HIT) {
+        took(ARTHUR_IS_HIT);
+        *step = STAGE_HIT;
+        break;
+      }
       took(ARTHUR_TURN_CHECKS);
       if (FLAGS & HELD) took(ARTHUR_HELD);
-      else if (!on_the_ground()) {
+      else if (!on_the_ground(ARTHUR)) {
         took(ARTHUR_IN_AIR);
         *step = STAGE_FALLS;
         break;
@@ -384,7 +377,7 @@ wait arthur_task(void) {
       // $E28E: 6 pixels a round until he's on the ground. Off the bottom of the picture, at $E2AD, isn't ported yet.
       took(ARTHUR_FALL_CHECKS);
       if (FLAGS & HELD) { took(ARTHUR_HELD); *step = STAGE_STANDS; break; }
-      if (on_the_ground()) {
+      if (on_the_ground(ARTHUR)) {
         stand_on_block();
         took(ARTHUR_LANDS);
         *step = STAGE_STANDS;
@@ -409,5 +402,28 @@ wait arthur_task(void) {
       took(ARTHUR_FALL_RESUMES);
       *step = STAGE_FALLS;
       break;
+    case STAGE_HIT:
+      // $E171: something has hit him. With his armour on he loses it: nothing can touch him for a while, the tiles'
+      // task sends the tiles of Arthur without it, and he's thrown back, as a jump the way he isn't facing. Without
+      // it, at $E1AC, and with the stage's time over, at $E1C2, he dies, which isn't ported yet.
+      STATE &= 0xEF;
+      FLAGS |= CANNOT_BE_TOUCHED;
+      FLAGS &= (uint8_t)~(CROUCHES | HIT);
+      COLOURS = 0x02;
+      took(ARTHUR_HIT_BEGINS);
+      sound_play(0x1D);
+      TILES_FIRST_LIST = 1;
+      RAM[0xD6] = RAM[0xD7] = RAM[0xD8] = RAM[0xD9] = 0xFF;
+      took(ARTHUR_ARMOUR_OFF);
+      *step = STAGE_KNOCKED_BACK;
+      break;
+    case STAGE_KNOCKED_BACK: {
+      wait how = jump(&inner);
+      if (how != DONE) return how;
+      FLAGS |= WITHOUT_ARMOUR;
+      took(ARTHUR_KNOCKED_BACK);
+      *step = STAGE_STANDS;
+      break;
+    }
   }
 }

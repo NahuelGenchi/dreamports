@@ -3,8 +3,8 @@
 // copy, the stage's first screen, drawn a column a round with the picture off, the scene the game opens with, and then
 // the stage itself, with the score, the time and the weapon at the top, where it has a turn every round.
 //
-// So far a stage's round does little: the time doesn't count down, nothing comes out of the ground, and the stage's own
-// objects are only placed when they're things to pick up. The demonstration, a second player's turn, and the stage the
+// So far a stage's round does little: its time counts down, the zombies come out of the ground (enemies.c), and the
+// stage's own objects are only placed when they're things to pick up. The demonstration, a second player's turn, and the stage the
 // title screen's secret chooses aren't ported yet either.
 
 #include "game.h"
@@ -246,21 +246,12 @@ static void place_stage_objects(void) {
   took(STAGE_OBJECT_KIND);
   if (RAM[0x24] == 0xFF) took(READ_PAST_PAGE);   // the entry's second byte, when its first is a page's last
   if (ram16(0x22) != 0xD71B) return;
-  // sub_DA18: the first free one of 16
-  uint8_t object = 1;
   took(CALLS);
-  took(FREE_OBJECT_BEGINS);
-  while (object < 0x11 && RAM[OBJECT_FLAGS + object]) {
-    object++;
-    took(FREE_OBJECT_USED);
-    took(object < 0x11 ? GOES_ROUND : GOES_ON);
-  }
-  if (object == 0x11) {
-    took(FREE_OBJECT_NONE);
+  uint8_t object = free_object();
+  if (object == NO_OBJECT) {
     took(STAGE_OBJECT_NO_ROOM);
     return;
   }
-  took(FREE_OBJECT_FOUND);
   took(STAGE_OBJECT_STATE);
   last_index = object;
   RAM[OBJECT_STATE + object] = 0;
@@ -277,20 +268,51 @@ static void place_stage_objects(void) {
   took(STAGE_OBJECT_FILLED);
 }
 
-// $8400 in bank 2: what comes at Arthur by itself. In the first stage's first screens $EA counts rounds down, and each
-// time it runs out it starts again from a number that's lower the harder the game is. What comes out of the ground then,
-// at $8431, and the rest of this bank's routines, aren't ported yet.
+// $8400 in bank 2: what comes at Arthur by itself: the zombies (enemies.c), and six other routines, at $84E0, $8574,
+// $8610, $867A, $880A and $8748, which have nothing to do in the first stage's first screens and aren't ported yet.
 static void stage_dangers(void) {
-  took(DANGERS_NOTHING);
-  if (STAGE != 0 || RAM[OBJECT_X_SCREEN + ARTHUR] >= 5) return;
-  if (--RAM[0xEA]) return;
-  took(ABOUT_DANGERS_COME);
-  RAM[0xEA] = (uint8_t)(0x60 - RAM[0x5B]);
+  took(DANGERS_OTHERS);
+  zombies_come(&last_index);
+}
+
+// $D38D: the stage's time, which the top of the picture shows as a minute and two digits of seconds. V-blank counts
+// frames, and 60 of them take a second off. With none left Arthur dies, and in the last quarter of a minute the music
+// changes to hurry him.
+static void count_time_down(void) {
+  enum { MINUTES = 0x06F6, TENS = 0x06FA, ONES = 0x06FC };
+  if (FRAMES_PLAYED < 60) { took(TIME_NO_SECOND); return; }
+  FRAMES_PLAYED -= 60;
+  took(TIME_SECOND);
+  if (RAM[ONES]--) took(TIME_ONES);
+  else {
+    RAM[ONES] = 9;
+    if (RAM[TENS]--) took(TIME_TENS);
+    else {
+      RAM[TENS] = 5;
+      RAM[MINUTES]--;
+      took(TIME_MINUTES);
+    }
+  }
+  took(TIME_LEFT_LOOKED_AT);
+  if (RAM[ONES] | RAM[TENS] | RAM[MINUTES]) took(TIME_IS_LEFT);
+  else {
+    RAM[OBJECT_FLAGS + ARTHUR] |= 0x01;   // he's hit, and dies of it
+    RAM[0xBD] = 0xFF;
+    took(TIME_IS_OVER);
+  }
+  if (RAM[0x0709]) { took(TIME_HURRY_PLAYS); return; }
+  if (RAM[MINUTES]) { took(TIME_MINUTES_LEFT); return; }
+  took(TIME_SECONDS_LEFT);
+  if (RAM[TENS] * 10 + RAM[ONES] >= 16) { took(TIME_ENOUGH); return; }
+  took(TIME_HURRY_CALLED);
+  sound_play(0x0B);
+  RAM[0x0709] = 0xFF;
+  took(TIME_HURRY_SET);
 }
 
 // $D284: the game's turn each round of a stage: this player's buttons, the stage's colours again every fourth round,
-// the stage's objects and its dangers. Start, which pauses, at $D88C, the time counting down, at $D394, the end of the
-// stage, at $D341, and what happens when Arthur dies aren't ported yet.
+// the stage's time, its objects and its dangers. Start, which pauses, at $D88C, the end of the stage, at $D341, and what
+// happens when Arthur dies aren't ported yet.
 static void stage_round(void) {
   RAM[0x89] = PAD_1;
   RAM[0x8A] = RAM[0x44];
@@ -307,6 +329,13 @@ static void stage_round(void) {
   RAM[0xCA] = (uint8_t)((mixed + ROUNDS) & 0x0F);
   took(GAME_ROUND_MIX);
   took(GAME_ROUND_CHECKS);
+  // the time stands still while $C9 is on, and once it's over
+  if (RAM[0xC9]) took(TIME_STOPPED);
+  else if (RAM[0xBD]) took(TIME_OVER_ALREADY);
+  else {
+    took(TIME_LOOKED_AT);
+    count_time_down();
+  }
   took(GAME_ROUND_OBJECTS);
   if (!RAM[0xEB]) {
     place_stage_objects();

@@ -1,4 +1,4 @@
-# The game's start matches from Start to the first stage, frames 0 to 1092, and the zombies after it aren't ported yet.
+# The game's start matches from Start into the first stage, frames 0 to 1299, to the first zombie's hit.
 
 About: game-start
 
@@ -8,6 +8,6 @@ After Start the screen is black from frame 103, shows whose turn it is from 133 
 
 From frame 729 he has her and flies up and to the right, at $EE51, with her object kept below him, and from 765 he leaves in flashes, at $EE90, with sound 1. Arthur's task at $E500 has him jump with sub_E1EE, stand a second, walk right to his armour, kind $10 at bank 4's $BA09, and stand another second in it. The tiles' task sends his tiles without armour from frame 729 and with it from 855, to the same 22 tiles, which aren't on the screen while they change.
 
-The scene ends at frame 919. The picture is off from 921 to 1072 while the stage is loaded again at $D0E6, and the first stage's first frame is 1073: Arthur starts in the air, falls 6 pixels a round and is on the ground from 1088. Every frame to 1092 matches, picture and sound.
+The scene ends at frame 919. The picture is off from 921 to 1072 while the stage is loaded again at $D0E6, and the first stage's first frame is 1073: Arthur starts in the air, falls 6 pixels a round and is on the ground from 1088. The note zombies-come-in-threes has what follows. Every frame to 1299 matches, picture and sound.
 
-At frame 1093 the count at $EA runs out and bank 2's $8431 brings three zombies out of the ground, which isn't ported, so the recording ends there. Neither are the buttons in a stage, the time counting down, or the stage's objects other than things to pick up.
+The buttons in a stage and the stage's objects other than things to pick up aren't ported yet.
