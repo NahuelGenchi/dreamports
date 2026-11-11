@@ -1,6 +1,6 @@
 // Ghosts'n Goblins Dreamport: the player's copy, checked and kept in this browser, then the game a frame at a time, on what the kits
 // share (kit/gba/, docs/CONSOLES.md), at the game's screen and the console's own rate and buttons (kit/consoles.js). The
-// game's own code is in C, in main.c, which runs here built to WebAssembly (game.wasm), on the kit in C (kit/c/).
+// game's own code is in C, in main.c and the files beside it, which run here built to WebAssembly (game.wasm), on the kit in C (kit/c/).
 
 import '../../../../kit/gba/canvas.js';
 import { createRomSetup } from '../../../../kit/gba/ui/rom-setup.js';

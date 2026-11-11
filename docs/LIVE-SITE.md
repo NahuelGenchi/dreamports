@@ -12,7 +12,7 @@ So a workflow now compares the live site with `main`, after every merge and ever
 
 The build writes which commit it was made from to [dreamports.net/build.json](https://dreamports.net/build.json), and the workflow, `.github/workflows/live-site.yml`, checks that it's the latest commit on `main`.
 
-Then it reads the pages a visitor gets, and checks each Dreamport's two numbers, code ported and gameplay proven, against what its `proof/` folder makes: on its card in the Dreamports row, at `/dreamports/<id>/`, on its card in the Make row, at `/make/<game>/`, and in its place in that row, at `/make/`. It looks at both what a number says and how far its bar fills, as 5.35% and 4.9% both read 5%. `src/lib/cards.mjs` does this.
+Then it reads the pages a visitor gets, and checks each Dreamport's two numbers, code ported and gameplay proven, against what its `proof/` folder makes: on its card in the Dreamports row, at `/dreamports/<id>/`, on its card in the Make row, at `/make/<game>/`, and in its place in that row, at `/make/`. It looks at both what a number says and how far its bar fills, as 5.35% and 4.9% both read 5%. A game with versions in more than one language has each version's numbers checked. The Make row's card shows them all, named by language. The game's own card shows one version at a time, so it keeps each version's numbers in a block of its own, and the check reads every block and that the only one showing at first is the version Play opens. `src/lib/cards.mjs` does this.
 
 The same check runs at the end of every build, on `dist/`, by `src/integrations/live-site.mjs`. So a change that stops a card showing its game's numbers fails its pull request's check, and such a build never goes live.
 

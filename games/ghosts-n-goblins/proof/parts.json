@@ -2,28 +2,59 @@
   "about": "Ghosts'n Goblins' parts, in the order a player meets them. Each counts the same. A part is proven when a recording plays it from its first frame to its last and every frame matches the original, picture and sound. Where the screen is one colour between two parts, those frames go with the part before.",
   "foundations": [
     {
+      "name": "The game's start from the title screen",
+      "what": "The title screen's Start, the choice of one or two players, and the first stage starting."
+    },
+    {
+      "name": "The processor's time",
+      "what": "How long each task's turn takes on the console's processor, so that V-blank finds a round's work where the original's finds it: the sprites' list half copied, or the list of rows still being added to. In a stage a round takes longer than a frame, so what the picture shows depends on it.",
+      "done": "prove finds every frame the same, picture and sound, in a recording that stands in the first stage past frame 1166 of the game's start, where the original first sends its sprites half copied.",
+      "needs": [
+        "The game's start from the title screen"
+      ]
+    },
+    {
       "name": "Arthur moving",
-      "what": "Arthur walking, jumping, crouching and climbing ladders, with the view following him and the stage's ground, platforms and walls in the way."
+      "what": "Arthur walking, jumping, crouching and climbing ladders, with the view following him and the stage's ground, platforms and walls in the way.",
+      "needs": [
+        "The game's start from the title screen",
+        "The processor's time"
+      ]
     },
     {
       "name": "The armor and lives",
-      "what": "A hit taking Arthur's armor, the next one killing him, his fall and the place he comes back at, the lives left, the game over and the continue."
+      "what": "A hit taking Arthur's armor, the next one killing him, his fall and the place he comes back at, the lives left, the game over and the continue.",
+      "needs": [
+        "The processor's time"
+      ]
     },
     {
       "name": "The weapons",
-      "what": "The spear, dagger, torch, axe and cross, each thrown and flying as it does, hitting enemies and their shots, and picked up from what enemies leave behind."
+      "what": "The spear, dagger, torch, axe and cross, each thrown and flying as it does, hitting enemies and their shots, and picked up from what enemies leave behind.",
+      "needs": [
+        "The processor's time"
+      ]
     },
     {
       "name": "The enemies",
-      "what": "The game's enemies appearing, moving, attacking and being destroyed, such as the zombies, the plants, the little demons, the big men and the red devils."
+      "what": "The game's enemies appearing, moving, attacking and being destroyed, such as the zombies, the plants, the little demons, the big men and the red devils.",
+      "needs": [
+        "The processor's time"
+      ]
     },
     {
       "name": "The HUD and the timer",
-      "what": "The score, the lives, the weapon and the time counting down, with the music that warns when it runs low."
+      "what": "The score, the lives, the weapon and the time counting down, with the music that warns when it runs low.",
+      "needs": [
+        "The processor's time"
+      ]
     },
     {
       "name": "The checkpoints and the key",
-      "what": "The places a stage starts Arthur again from, the key a beaten boss leaves, and the stage that comes after it."
+      "what": "The places a stage starts Arthur again from, the key a beaten boss leaves, and the stage that comes after it.",
+      "needs": [
+        "The processor's time"
+      ]
     },
     {
       "name": "The sound",

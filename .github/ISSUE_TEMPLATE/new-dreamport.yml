@@ -1,6 +1,6 @@
 name: New Dreamport
 description: Start a Dreamport of a game nobody is making yet. Opening it makes you its lead.
-title: "New Dreamport: "
+title: "Dreamport: "
 labels: [new-dreamport]
 body:
   - type: markdown
