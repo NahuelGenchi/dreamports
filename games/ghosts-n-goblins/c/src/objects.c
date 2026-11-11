@@ -388,6 +388,7 @@ wait objects_task(void) {
       switch (kind) {
         case 0x00: zombie(object); break;
         case 0x10: pick_up(object); break;
+        case 0x12: pot(object); break;
         case 0x33: princess(object); break;
         case 0x34: satan(object); break;
       }

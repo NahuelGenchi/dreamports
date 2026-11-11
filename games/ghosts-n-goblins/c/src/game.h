@@ -169,6 +169,8 @@ void remove_object(uint8_t object);
 int arthur_touches(uint8_t object);
 /** $F7BE, kind 0: a zombie's turn (enemies.c). */
 void zombie(uint8_t object);
+/** Bank 4's $BBEE, kind $12: the pot a zombie carries (enemies.c). */
+void pot(uint8_t object);
 /** bank 2's $8416: the zombies that come out of the ground. `x` is the processor's X register, which it leaves changed. */
 void zombies_come(uint8_t *x);
 /** sub_F03E: moves an object by `speed` the way it's heading, one of 16 ways. */

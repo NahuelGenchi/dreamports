@@ -3,8 +3,10 @@
 // each round. It waits under the ground, comes up in 16 rounds, walks the way it was headed for some 64 rounds or until
 // the ground ends, and sinks again.
 //
-// What a weapon does to a zombie, at $F770 and $F8C5, the weapons themselves, and what touching one does to Arthur,
-// whose own task sees to it, aren't ported yet. Nor is what comes with every sixth zombie, at bank 2's $8900.
+// Every sixth zombie carries a pot, an object of its own, kind $12 at bank 4's $BBEE, that stays where its carrier is.
+//
+// What a weapon does to a zombie, at $F770 and $F8C5, the weapons themselves, a pot that falls, at $BC8A, what every
+// fourth pot holds, at bank 2's $8938, and the pots of the later stages, at $8928, aren't ported yet.
 
 #include "game.h"
 
@@ -23,6 +25,9 @@ enum { HIT = 0x01, WALKS = 0x02, SINKS = 0x04, FAST = 0x10, OUT = 0x20, IN_USE =
 enum { ARTHUR_IN_THE_AIR = 0x08, ARTHUR_HIT = 0x01 };
 enum { HEADS_LEFT = 0x08 };            // the bit of a heading that the ways to the left have
 enum { FIRST_WEAPON = 0x11, WEAPONS = 3 };
+enum { POT = 0x12 };                   // a kind of object, as a zombie is kind 0
+#define CARRIER(pot) RAM[0x0647 + (pot)]   // the object that carries a pot
+#define POTS_MADE RAM[0x0708]
 
 /** Bank 2's $8416. In the first stage's first five screens, and in the eighth place, the count goes down a round at a time. */
 void zombies_come(uint8_t *x) {
@@ -64,8 +69,24 @@ void zombies_come(uint8_t *x) {
     RAM[OBJECT_Y + object] = lower ? 0xB8 : 0x68;
     RAM[OBJECT_Y_SCREEN + object] = RAM[OBJECT_Y_SCREEN + ARTHUR];
     took(ZOMBIE_HEIGHT_SET);
-    ZOMBIES_COUNTED++;   // sub_88F6
-    took(ZOMBIE_COUNTED);
+    // sub_88F6: the sixth carries a pot, which holds the usual thing unless it's the fourth pot
+    took(ZOMBIE_COUNT_BEGINS);
+    if (++ZOMBIES_COUNTED < 6) took(ZOMBIE_NOT_SIXTH);
+    else {
+      ZOMBIES_COUNTED = 0;
+      took(ZOMBIE_SIXTH);
+      uint8_t pot = free_object();
+      if (pot == NO_OBJECT) took(POT_NONE_FREE);
+      else {
+        POTS_MADE++;
+        CARRIER(pot) = object;
+        RAM[OBJECT_KIND + pot] = POT;
+        RAM[OBJECT_FLAGS + pot] = IN_USE;
+        RAM[OBJECT_STATE + pot] = 1;
+        took(POT_MADE);
+      }
+    }
+    took(ZOMBIE_NEXT);
     took(--LEFT_TO_MAKE ? GOES_ROUND : GOES_ON);
   } while (LEFT_TO_MAKE);
   took(RETURNS);
@@ -135,9 +156,9 @@ void zombie(uint8_t object) {
   }
   took(ZOMBIE_IS_OUT);
   show_object(object);
-  if (object_in_view(object)) took(ZOMBIE_IN_VIEW);
+  if (object_in_view(object)) took(ENEMY_IN_VIEW);
   else {
-    took(ZOMBIE_OUT_OF_VIEW);
+    took(ENEMY_OUT_OF_VIEW);
     hide_object(object);
   }
   took(OBJECT_FLAG_READ);
@@ -199,4 +220,43 @@ void zombie(uint8_t object) {
   took(ZOMBIE_STEP_SHAPE);
   --*count;
   took(ZOMBIE_TURN_COUNTED);
+}
+
+/** Bank 4's $BBEE, kind $12: the pot a zombie carries, which is where its carrier is and shows when it does. */
+void pot(uint8_t object) {
+  uint8_t carrier = CARRIER(object);
+  RAM[OBJECT_COLOURS + object] = 0x02;
+  RAM[OBJECT_SHAPE + object] = 0x49;
+  took(POT_BEGINS);
+  show_object(object);
+  if (object_in_view(object)) took(ENEMY_IN_VIEW);
+  else {
+    took(ENEMY_OUT_OF_VIEW);
+    hide_object(object);
+  }
+  took(OBJECT_FLAG_READ);
+  took(POT_IS_CARRIED);
+  RAM[OBJECT_Y_SCREEN + object] = RAM[OBJECT_Y_SCREEN + carrier];
+  RAM[OBJECT_Y + object] = RAM[OBJECT_Y + carrier];
+  RAM[OBJECT_X_SCREEN + object] = RAM[OBJECT_X_SCREEN + carrier];
+  RAM[OBJECT_X + object] = RAM[OBJECT_X + carrier];
+  took(POT_FOLLOWS);
+  if (!RAM[OBJECT_FLAGS + carrier]) {
+    took(POT_CARRIER_GONE);
+    remove_object(object);
+    return;
+  }
+  took(POT_CARRIER_THERE);
+  took(POT_ON_A_ZOMBIE);
+  hide_object(object);
+  if (!object_in_view(object)) took(POT_STAYS_HIDDEN);
+  else {
+    RAM[OBJECT_FLAGS + object] |= RAM[OBJECT_FLAGS + carrier] & OBJECT_FLAG_SHOWN;
+    took(POT_SHOWN_AS_CARRIER);
+  }
+  took(POT_CARRIER_LOOKED_AT);
+  if (!(RAM[OBJECT_FLAGS + carrier] & HIT)) { took(POT_IS_KEPT); return; }
+  RAM[OBJECT_FLAGS + object] |= SINKS;   // for a pot, the flag that says it falls
+  RAM[OBJECT_HEADING + object] = 0x08;
+  took(POT_FALLS);
 }

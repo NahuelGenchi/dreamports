@@ -4,7 +4,7 @@
 // back out of his armour. The view follows him as he moves.
 //
 // So far the buttons do nothing in a stage: walking, at $DB32 and $DB6E, jumping, at $DB16, throwing, at $E041,
-// climbing, a hit without armour, and how he flashes after one aren't ported yet.
+// climbing, and a hit without armour, which kills him, aren't ported yet.
 
 #include "game.h"
 
@@ -137,7 +137,17 @@ static void choose_shape(void) {
   if (COUNT >= 6) took(ARTHUR_SHAPE_STARTS_AGAIN);
   if (COUNT >= 6) COUNT = 0;
   SHAPE = (uint8_t)(((FLAGS & TURNED) | (FLAGS & WITHOUT_ARMOUR)) + cart(7, (uint16_t)(0xE3DC + COUNT)));
-  took(ARTHUR_FLASH_LOOKED_AT);
+  // sub_E3B9: while nothing can touch him, after a hit, he's shown every other round, for 30 rounds
+  if (!(FLAGS & CANNOT_BE_TOUCHED)) { took(ARTHUR_FLASH_LOOKED_AT); return; }
+  took(ARTHUR_FLASH_COUNTED);
+  if (++RAM[0x0647 + ARTHUR] >= 30) {
+    FLAGS &= (uint8_t)~CANNOT_BE_TOUCHED;
+    took(ARTHUR_FLASH_OVER);
+    return;
+  }
+  FLAGS &= (uint8_t)~OBJECT_FLAG_SHOWN;
+  if (RAM[0x0647 + ARTHUR] & 1) FLAGS |= OBJECT_FLAG_SHOWN;
+  took(ARTHUR_FLASHES);
 }
 
 // How far he rises or falls this round of a jump, from the copy's list at $DEFD, whose last entries are in the next page.
