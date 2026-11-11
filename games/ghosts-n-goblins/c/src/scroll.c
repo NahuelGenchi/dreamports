@@ -33,6 +33,15 @@ static uint8_t block_at_place(void) {
   return BLOCK;
 }
 
+// $EA55, with sub_EA66: the block at the place in $77, $73, $78 and $74, read with the stage's own bank switched in.
+uint8_t block_at_stage_place(void) {
+  RAM[0xD4] = BANK_NOW;
+  switch_bank(BANK_HOME);
+  block_at_place();
+  switch_bank(RAM[0xD4]);
+  return BLOCK;
+}
+
 // sub_E9AB: where the four tiles of the block at BLOCK_AT are.
 static void find_block_tiles(void) {
   BLOCK = peek((uint16_t)(ram16(0x54) + BLOCK_AT));

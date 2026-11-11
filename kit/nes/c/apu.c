@@ -30,6 +30,7 @@ typedef struct {
 
 static Pulse pulses[2];
 static struct { int control, reload, counter, reload_flag, timer, period, step, length, enabled; } tri;
+enum { TRIANGLE_HELD_BELOW = 3 };  // the longest period at which the triangle's wave doesn't move
 static struct { Envelope envelope; int mode, timer, period, length, halt, enabled; uint16_t shift; } noise;
 static struct {
   int irq, loop, period, timer, level, address, length, current, remaining, buffer, buffered, shift, bits, silent;
@@ -128,11 +129,12 @@ static void cycle(void) {
   else if (frame_mode && frame_cycle == 37281) { quarter_frame(); half_frame(); }
   if ((!frame_mode && frame_cycle >= 29830) || (frame_mode && frame_cycle >= 37282)) frame_cycle = 0;
 
-  // the triangle's timer runs every CPU cycle, the others every other one
+  // the triangle's timer runs every CPU cycle, the others every other one. With a period of 3 or less its wave is too
+  // high to hear, which games use for silence, and FCEUmm holds the wave where it is then, so this does too
   if (tri.timer) tri.timer--;
   else {
     tri.timer = tri.period;
-    if (tri.length && tri.counter) tri.step = (tri.step + 1) & 31;
+    if (tri.length && tri.counter && tri.period > TRIANGLE_HELD_BELOW) tri.step = (tri.step + 1) & 31;
   }
   if (!(cycles & 1)) {
     for (int i = 0; i < 2; i++) {

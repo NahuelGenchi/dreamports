@@ -119,6 +119,14 @@ void vblank_draws(void);                  // $C0F0 to $C21D: what V-blank writes
 #define OBJECT_KIND 0x0631
 #define OBJECT_FLAG_SHOWN 0x80
 void place_on_screen(uint8_t object);  // sub_F181
+/** sub_F03E: moves an object by `speed` the way it's heading, one of 16 ways. */
+void move_object(uint8_t object, uint8_t speed);
+/** $EA55: the block of the stage at the place in $77 and $73, down, and $78 and $74, across. A block from $C6 up is solid. */
+uint8_t block_at_stage_place(void);
+enum { BLOCK_SOLID = 0xC6 };
+#define TILES_FIRST_LIST RAM[0xD5]  // the set of tiles the tiles' task sends first, or $FF for none: $D6 to $D9 are its place
+#define SCENE_PLAYING RAM[0xE0]     // on while the opening scene plays
+#define PAD_NOW RAM[0xCC]           // the buttons of the player whose turn it is, as the game's task copies them each round
 
 // ---- the buttons, as V-blank reads them: A, B, Select, Start, Up, Down, Left, Right from bit 7 down
 #define PAD_1 RAM[0x42]

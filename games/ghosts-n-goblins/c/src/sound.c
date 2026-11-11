@@ -89,33 +89,35 @@ static void tune_voice(uint8_t *voice, uint16_t registers) {
       continue;
     }
     // $86A0: a note. Its pitch is the channel's timer, from the voice's list, and the top of the timer's high byte
-    // comes from the tempo's list, with the note's length in frames after it. A pitch of $1F, which ties two notes,
-    // and a pitch whose timer is 0 in the list ($86C5, $86F2) aren't ported yet.
+    // comes from the tempo's list, with the note's length in frames after it. A byte whose pitch is $1F comes before a
+    // note to make it half as long again: the length one shorter in the tempo's list is added to its own. A pitch whose
+    // timer is 0 in the list leaves the channel's timer as it is.
     if (!SILENCED) {
       nes_write(registers, voice[V_VOLUME]);
       nes_write((uint16_t)(registers + 1), voice[V_SWEEP]);
     }
-    uint8_t pitch = byte & 0x1F, low = 0, high = 0;
+    uint8_t longer = 0;
+    while ((copy((uint16_t)(here + longer)) & 0x1F) == 0x1F) longer++;
+    uint8_t note = copy((uint16_t)(here + longer)), pitch = note & 0x1F, length = (note >> 4) & 0x0E, low = 0, high = 0;
     if (pitch) {
       uint16_t pitches = (uint16_t)(voice[V_PITCHES] | voice[V_PITCHES + 1] << 8);
       low = copy((uint16_t)(pitches + pitch * 2));
       high = copy((uint16_t)(pitches + pitch * 2 + 1));
     }
-    uint8_t length = (byte >> 4) & 0x0E;
-    if (!SILENCED) {
+    if (!SILENCED && (low || !pitch)) {
       nes_write((uint16_t)(registers + 2), low);
       nes_write((uint16_t)(registers + 3), high | copy((uint16_t)(lengths + length)));
     }
     if (!voice[V_TRIPLET]) {
       voice[V_LEFT] = copy((uint16_t)(lengths + length + 1));
-      move_to(voice, (uint16_t)(here + 1));
     } else {
       // $879F and $8783: a note of a group of three takes its length from the list at $888E, by the tempo
       uint8_t tempo = (uint8_t)((voice[V_TEMPO] << 3) & 0xFC);
       voice[V_SCRATCH] = (uint8_t)(tempo * 3);
       voice[V_LEFT] = copy((uint16_t)(TRIPLETS + (uint8_t)(((length - 4) << 1) + voice[V_SCRATCH] + voice[V_TRIPLET])));
-      move_to(voice, (uint16_t)(here + 2));
     }
+    if (longer) voice[V_LEFT] += copy((uint16_t)(lengths + length - 1));
+    move_to(voice, (uint16_t)(here + (longer || voice[V_TRIPLET] ? 2 : 1)));
     return;
   }
 }
