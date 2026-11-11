@@ -340,7 +340,7 @@ void sound_play(uint8_t number) {
   RAM[0xD4] = BANK_NOW;
   uint16_t sound = (uint16_t)(SOUNDS + (uint8_t)(number << 2) * 3);
   took(SOUND_PLAY_FOUND);
-  if (number & 0x20) took(SOUND_PLAY_FAR);
+  if ((uint8_t)(number << 2) & 0x80) took(SOUND_PLAY_FAR);
   uint8_t flags = read(sound, 0), tempo = read(sound, 1);
   RAM[0x48] = flags;
   RAM[0x49] = tempo;

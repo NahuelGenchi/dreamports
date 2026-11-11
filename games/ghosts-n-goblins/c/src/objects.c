@@ -164,7 +164,7 @@ static uint8_t way_to_first(void) {
   A_Y = a;
   A_X = b;
   took(WAY_FOUND);
-  if (0xA3 + (uint8_t)((a << 4) + b) > 0xFF) took(READ_PAST_PAGE);
+  if ((0xF1A3 & 0xFF) + (uint8_t)((a << 4) + b) > 0xFF) took(READ_PAST_PAGE);
   return (uint8_t)((cart(7, (uint16_t)(0xF1A3 + (uint8_t)((a << 4) + b))) + RAM[0x22]) & 0x0F);
 }
 

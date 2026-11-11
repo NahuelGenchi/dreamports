@@ -130,7 +130,7 @@ static wait draw_first_screen(uint8_t *step) {
       *step = MOVED;
       return YIELDS;
     case MOVED:
-      if (0xFD + STAGE > 0xFF) took(READ_PAST_PAGE);
+      if ((0xCCFD & 0xFF) + STAGE > 0xFF) took(READ_PAST_PAGE);   // the table's entries from the fourth on
       if (cart(7, (uint16_t)(0xCCFD + STAGE)) != VIEW_X_SCREEN) {
         took(FIRST_SCREEN_NOT_THERE);
         *step = MOVES;
@@ -244,7 +244,7 @@ static void place_stage_objects(void) {
   set_ram16(0x24, (uint16_t)(0xD5FB + kind * 2));
   set_ram16(0x22, cart(7, ram16(0x24)) | cart(7, (uint16_t)(ram16(0x24) + 1)) << 8);
   took(STAGE_OBJECT_KIND);
-  if (RAM[0x24] == 0xFF) took(READ_PAST_PAGE);
+  if (RAM[0x24] == 0xFF) took(READ_PAST_PAGE);   // the entry's second byte, when its first is a page's last
   if (ram16(0x22) != 0xD71B) return;
   // sub_DA18: the first free one of 16
   uint8_t object = 1;

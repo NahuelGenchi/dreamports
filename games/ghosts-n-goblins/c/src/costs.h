@@ -2,7 +2,7 @@
 // one place the game's time is written down (time.c): the game's own code says which piece it has done, by name.
 // Each is the sum of the cycles of the original's instructions for that piece, taken the way the piece's name says.
 //
-// A piece marked "about" hasn't been counted yet: it's near enough to put V-blank in the right task's turn.
+// A piece marked "about" stands for code that isn't ported yet, and is a guess at how long that code takes.
 
 // ---- the V-blank interrupt, $C0F0 (main.c, screen.c)
 COST(INTERRUPT_TAKEN, 7)          // the processor's own steps into it
@@ -609,5 +609,5 @@ COST(NOISE_NEXT_STEP, 52)         // to $85FF
 COST(NOISE_IS_OVER, 43)
 COST(NOISE_STEP, 63)              // $8601 to $8625
 
-// ---- about: what hasn't been counted yet
-COST(ABOUT_DANGERS_COME, 2000)    // bank 2's $8431
+// ---- about: code that isn't ported yet
+COST(ABOUT_DANGERS_COME, 2000)    // about: bank 2's $8431, what comes out of the ground, which isn't ported yet

@@ -153,7 +153,7 @@ static void choose_shape(void) {
 
 // How far he rises or falls this round of a jump, from the copy's list at $DEFD, whose last entries are in the next page.
 static uint8_t jump_height(void) {
-  if (0xFD + COUNT > 0xFF) took(READ_PAST_PAGE);
+  if ((0xDEFD & 0xFF) + COUNT > 0xFF) took(READ_PAST_PAGE);
   return cart(7, (uint16_t)(0xDEFD + COUNT));
 }
 
