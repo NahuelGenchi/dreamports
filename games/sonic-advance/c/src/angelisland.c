@@ -9,7 +9,7 @@ enum {
   BG_DISABLE_PALETTE_UPDATE = 0x10,
   BG_CHAR_3 = 0xC000, BG_SCREEN_28 = 0xE000,
   DISPCNT_BG0_ON = 0x100,
-  MUS_ANGEL_ISLAND__ACT_1 = 20,
+  MUS_ANGEL_ISLAND__ACT_1 = 20, MUS_ANGEL_ISLAND__ACT_2 = 21,
 };
 
 // the clouds' layer (gStageBackgroundsRam.unk0) and its animation's counters (animFrameCounter, animDelayCounter)
@@ -60,6 +60,15 @@ static void draw(int camX, int camY) {
 
 // StageInit_Zone5Act1's palette animation: the waterfalls' colours
 static const int PALETTES[] = { 823 };
+
+// StageInit_Zone5Act2: the same background, palette animation and clouds, with act 2's song and where its zero-ring
+// flash starts
+const Level ACT_ANGEL_ISLAND_2 = {
+  .song = MUS_ANGEL_ISLAND__ACT_2, .hudFlash = 20, LEVEL_PALETTES(PALETTES),
+  .bgCnt = 0x1D0B, .bgCols = 32, .bgRows = 32,
+  .start = create_background, .cameraMoved = camera_moved, .drawBackground = draw,
+  .ownsBlend = 1,
+};
 
 const Level ACT_ANGEL_ISLAND_1 = {
   .song = MUS_ANGEL_ISLAND__ACT_1, .hudFlash = 90, LEVEL_PALETTES(PALETTES),
