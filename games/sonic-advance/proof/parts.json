@@ -13,7 +13,7 @@
     { "name": "Secret Base Zone act 1", "recording": "secret-base-act-1", "frames": [1891, 11655] },
     { "name": "Secret Base Zone act 2", "recording": "sonic-secret-base-act-2", "frames": [1957, 10324], "needs": ["Secret Base Zone act 1"] },
     { "name": "Casino Paradise Zone act 1", "recording": "sonic-casino-paradise", "frames": [1979, 6393] },
-    { "name": "Casino Paradise Zone act 2", "needs": ["Casino Paradise Zone act 1"] },
+    { "name": "Casino Paradise Zone act 2", "recording": "sonic-casino-paradise-act-2", "frames": [4767, 12441], "needs": ["Casino Paradise Zone act 1"] },
     { "name": "Ice Mountain Zone act 1", "recording": "sonic-ice-mountain", "frames": [2029, 9009] },
     { "name": "Ice Mountain Zone act 2", "recording": "sonic-ice-mountain-act-2", "frames": [2053, 16415], "needs": ["Ice Mountain Zone act 1"] },
     { "name": "Angel Island Zone act 1" },

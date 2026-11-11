@@ -325,4 +325,9 @@ void rings_start(void) {
 }
 
 /** The ring animation Casino Paradise act 2's first compared frame shows, two frames into the act. */
-void rings_start_point(void) { ringSprite.qAnimDelay = 512; }
+void rings_start_point(void) {
+  ringSprite.qAnimDelay = 512;
+  // the dropped rings' sprite (InitPlayerHitRingsScatter's, made with the stage) animates through the frames after the
+  // card where pre_run runs no objects: four steps, as the Egg Ball's first hit shows them
+  for (int i = 0; i < 4; i++) update_sprite(&scatterSprite, 0);
+}

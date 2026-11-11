@@ -66,6 +66,7 @@ typedef struct {
   uint32_t seed;
   int goalReached, ringsStopped;   // past the goal; past the goal or a beaten boss, the rings manager neither takes nor draws
   int afterLevel;                  // made by GoToNextLevel after the act before, rather than by the course select
+  int fromStartPoint;              // opened by the recording's start point, past its card: only the first act it starts
   int loadFrames;                  // the frames left that the next act spends loading after its first (act_task)
   int bossFlash;                   // a hit boss drawn into the OBJ window, which the frame brightens to white
   int blendOff;                    // a boss's task cleared the blending this frame
@@ -105,6 +106,8 @@ void act_hold_camera(int x, int y);
 void act_special_stage(int x, int y);
 /** The game's random numbers (gPseudoRandom): the next, which also moves the sequence on. */
 uint32_t act_random(void);
+/** Starts the game's random numbers over from `seed`, as a boss does from the frame count. */
+void act_random_seed(uint32_t seed);
 
 // the water at Ice Mountain's foot (icemountain.c)
 void water_create(int level, uint32_t mask);
