@@ -15,7 +15,7 @@
 // Nothing else is sent anywhere, and --repo sends it to another copy of the repository, such as a fork that tries the
 // first entry workflow.
 
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { LOCAL, REPO, gameFolder } from './lib/paths.mjs';
@@ -24,11 +24,10 @@ import { copyOf } from './lib/copies.mjs';
 import { serveRepository } from './lib/server.mjs';
 import { go, openChrome, until } from './lib/chrome.mjs';
 import { UPSTREAM, api } from './lib/github.mjs';
-import { fileAt } from './lib/preview.mjs';
-import { mainOf, openPull, pushesTo } from './lib/send.mjs';
+import { captureBranch as branchFor, mediaPath, sendCard } from './lib/send.mjs';
 import { FEW_COLOURS, WINDOW, forConsole, loopOf, measure, shortlist, stretches } from './lib/moments.mjs';
 import { av1Configuration, av1Frame, mp4 } from './lib/mp4.mjs';
-import { captureMessage, namesOf, plainWebp, withCapture } from './lib/new-game.mjs';
+import { namesOf, plainWebp, withCapture } from './lib/new-game.mjs';
 import { originalButtons, readRecording } from './lib/recording.mjs';
 import { referenceOf } from './lib/reference.mjs';
 import { roomFor } from './lib/screens.mjs';
@@ -40,21 +39,18 @@ let machine, KEY, ensureOriginal, playOriginal, runOriginal, FRAME_SECONDS;
 const IDLE_MS = 120_000;                         // this long since their last press, and they aren't using the window
 const LONGEST_WAIT_MS = 900_000, WINDOW_MS = 60_000, CLOSING_MS = 300_000;
 const MOST_FRAMES = 216_000;                     // an hour of play is more than a list of presses needs
-const MEDIA = ['.h264.mp4', '.av1.mp4', '-still.webp', '-share.png'];
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-const git = (args, options = {}) => execFileSync('git', args, { cwd: REPO, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...options }).trim();
 const json = (response, value) => {
   response.writeHead(200, { 'content-type': 'application/json' });
   response.end(JSON.stringify(value));
 };
 
-const mediaPath = (game, name) => `public/media/${game}-dreamport${name}`;
 const entryPath = game => join(gameFolder(game), 'entry.md');
 const entryOf = game => readFileSync(entryPath(game), 'utf8');
 const issueOf = game => Number(/^issue: (\d+)$/m.exec(entryOf(game))?.[1]);
 const hasCapture = game => /^screen:/m.test(entryOf(game));
-const captureBranch = game => `feat/${issueOf(game)}-capture`;
+const captureBranch = game => branchFor(issueOf(game));
 const keptIn = game => join(LOCAL, 'captures', game);
 const windowFile = game => join(keptIn(game), 'window.json');
 
@@ -158,36 +154,9 @@ const HOW = {
   agent: 'Nobody played, so a coding agent wrote the presses, and this is the moment the tool ranked first of what they led to. Nobody has seen it yet.',
 };
 
-// the capture as a pull request of its own, the game's card, in a commit made on main beside the branch being worked
-// on, which stays as it is. A game whose first files aren't on main yet has nowhere for a card to go by itself
+// the capture as a pull request of its own, the game's card (lib/send.mjs)
 function sendCapture({ game, original, repository }, how) {
-  const issue = issueOf(game), { name } = namesOf(original), branch = captureBranch(game);
-  try {
-    const from = pushesTo(repository);
-    const { into, main } = mainOf(repository, from);
-    const onMain = fileAt(main, `games/${game}/entry.md`);
-    if (!onMain) {
-      console.log('It goes in with this branch\'s pull request, as the game\'s first files aren\'t on main yet.');
-      return;
-    }
-    const index = join(keptIn(game), 'send.index'), env = { ...process.env, GIT_INDEX_FILE: index };
-    rmSync(index, { force: true });
-    git(['read-tree', main], { env });
-    const add = (path, sha) => git(['update-index', '--add', '--cacheinfo', `100644,${sha},${path}`], { env });
-    for (const media of MEDIA) add(mediaPath(game, media), git(['hash-object', '-w', join(REPO, mediaPath(game, media))]));
-    add(`games/${game}/entry.md`, git(['hash-object', '-w', '--stdin'], { input: withCapture(onMain.toString('utf8'), game) }));
-    const commit = git(['commit-tree', git(['write-tree'], { env }), '-p', main, '-m', captureMessage(name, issue)]);
-    rmSync(index, { force: true });
-    const pull = openPull({
-      repository, from, into, commit, branch, issue, title: captureMessage(name, issue), started: 'from the latest main',
-      changes: `${name} Dreamport's capture, for its card in the launcher, written by \`npm run dp -- capture\`. ${HOW[how]}`,
-      review: 'what the tool wrote',
-      follows: 'Someone who runs this repository looks at the capture before it appears, and a person can always replace it with one they choose.',
-    });
-    console.log(`Sent as a pull request of its own: ${pull.html_url}`);
-  } catch (error) {
-    console.log(`It goes in with this branch's pull request, as it couldn't go by itself: ${error.message}`);
-  }
+  console.log(sendCard({ game, name: namesOf(original).name, issue: issueOf(game), repository, how: HOW[how], index: join(keptIn(game), 'send.index') }));
 }
 
 // a pull request with this game's capture that's waiting already, which means there's nothing more to do for it here
