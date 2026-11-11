@@ -6,7 +6,7 @@
 
 import { showTitle } from '../lib/title';
 import { hrefOf } from './controls';
-import { DEFAULT_LANGUAGE, playHref } from '../lib/languages.mjs';
+import { playHref, playLabel } from '../lib/languages.mjs';
 
 type Input = 'keys' | 'pad' | 'touch';
 type Motion = 'auto' | 'full' | 'calm';
@@ -1325,20 +1325,30 @@ function start(launcher: HTMLElement) {
       blocked = '';
       openNote.textContent = '';
     };
-    // with more than one version, the language it's played in: C unless the player picked another, which is kept
-    const langs = $$<HTMLInputElement>('.gate-langs input', dlg);
+    // with more than one version, the language it's played in: the first of its choices, C, unless the player picked
+    // another, which is kept. The choice is at the end of the game's page, so the button names a language that isn't
+    // the first.
+    const langs = $$<HTMLInputElement>('.game-langs input', dlg);
     if (langs.length) {
+      type Language = Parameters<typeof playHref>[1];
+      const first = langs[0].value as Language;
+      const plays = buttons
+        .filter((button) => button.dataset.play)
+        .map((button) => ({ button, href: button.dataset.play!, label: $('.btn-label', button), says: $('.btn-label', button).textContent ?? '' }));
       const pick = () => {
         const kept = store.get(`version:${game}`);
-        const language = (langs.some((input) => input.value === kept) ? kept : DEFAULT_LANGUAGE) as Parameters<typeof playHref>[1];
+        const language = (langs.some((input) => input.value === kept) ? kept : first) as Language;
         for (const input of langs) input.checked = input.value === language;
-        for (const button of buttons) if (button.dataset.play) button.formAction = playHref(button.dataset.play, language);
+        for (const { button, href, label, says } of plays) {
+          button.formAction = playHref(href, language);
+          label.textContent = playLabel(says, language, first);
+        }
       };
       pick();
       versionPicks.push(pick);
       for (const input of langs) {
         input.addEventListener('change', () => {
-          if (input.value === DEFAULT_LANGUAGE) store.del(`version:${game}`);
+          if (input.value === first) store.del(`version:${game}`);
           else store.set(`version:${game}`, input.value);
           pick();
           syncSettings();
@@ -1967,9 +1977,11 @@ function start(launcher: HTMLElement) {
   // ---------- Game controllers ----------
 
   const pad = { prev: [] as boolean[], dir: 0, next: 0 };
+  // what a controller can land on: nothing hidden, and nothing folded away, as what's inside a closed fold still has a
+  // box and takes no focus, which held the controller on the fold's own line
   function focusables(scope: ParentNode) {
     return $$('button:not([hidden]), a[href], a[data-href], summary, input:not([type="radio"]), input[type="radio"]:checked, [tabindex="0"]', scope).filter(
-      (el) => !el.closest('[hidden]') && el.getClientRects().length,
+      (el) => !el.closest('[hidden], details:not([open]) > :not(summary)') && el.getClientRects().length,
     );
   }
   function pollPads(now: number) {

@@ -2903,18 +2903,24 @@ dialog.card[open] {
   margin: 0 2px;
 }
 
-/* a game with versions in more than one language: the choice sits on the box's line, at its end, and drops
-   below it when the two don't fit */
-.gate-own {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px 16px;
+/* a game's own settings, in a box like its details and after them: a row as the settings' rows are, with its name
+   and its choices on one line, and under the row what it does. It needs JavaScript, like what it changes. */
+.game-set .set-row {
+  margin-top: 10px;
+  padding: 12px 0 0;
+  border-top: 2px solid var(--line);
 }
 
-.gate-langs label {
+.game-set .set-desc {
+  margin: 10px 0 0;
+}
+
+.game-langs label {
   padding: 8px 14px;
+}
+
+:root:not(.js) .game-set {
+  display: none;
 }
 
 .view .gate-actions {
