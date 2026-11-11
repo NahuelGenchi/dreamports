@@ -295,6 +295,7 @@ wait tiles_task(void) {
   }
   if (*step == EACH_ROUND) took(TILES_AGAIN);
   *step = EACH_ROUND;
+  took(TILES_TO_BANK);
   switch_bank(0);
   took(TILES_BEGIN);
   // each list's place in work memory: the set it's sending, where it has got to, and where that goes
@@ -324,6 +325,7 @@ wait tiles_task(void) {
     took(list ? (done ? TILES_SECOND_DONE : TILES_SECOND_NOT_DONE) : (done ? TILES_FIRST_DONE : TILES_FIRST_NOT_DONE));
     break;
   }
+  took(TILES_TO_BANK_BACK);
   switch_bank(BANK_HOME);
   took(TILES_END);
   return YIELDS;
