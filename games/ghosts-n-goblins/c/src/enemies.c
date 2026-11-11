@@ -129,7 +129,8 @@ uint8_t weapon_that_touches(uint8_t enemy) {
   return 0;
 }
 
-static uint8_t touch_tests(uint8_t enemy) {
+uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched) {
+  *arthur_touched = 0;
   if (!(RAM[OBJECT_FLAGS + enemy] & OBJECT_FLAG_SHOWN)) {
     took(ENEMY_NOT_SHOWN);
     flags_past_page(enemy, 1);
@@ -150,8 +151,13 @@ static uint8_t touch_tests(uint8_t enemy) {
   flags_past_page(enemy, 1);
   if (!arthur_touches(enemy)) { took(ENEMY_NOT_TOUCHED); return 0; }
   RAM[OBJECT_FLAGS + ARTHUR] |= ARTHUR_HIT;
+  *arthur_touched = 1;
   took(ENEMY_TOUCHES_ARTHUR);
   return 0;
+}
+static uint8_t touch_tests(uint8_t enemy) {
+  int arthur_touched;
+  return enemy_touch_tests(enemy, &arthur_touched);
 }
 
 // $F770: a zombie that's been hit, six rounds of three shapes, falling the way the weapon went, and it's gone.
@@ -553,7 +559,7 @@ static void plant_shoots(uint8_t object) {
 
 // $F6F6: an enemy that a weapon has killed burns away where it is, eight shapes from the copy's list at $F760, two
 // rounds each, and is gone. The kinds 5, 9 and $15, which burn with the shapes at $F768, aren't ported yet.
-static void burn_away(uint8_t object) {
+void enemy_burns_away(uint8_t object) {
   uint8_t *count = &RAM[OBJECT_COUNT + object];
   show_object(object);
   if (object_in_view(object)) took(BURNING_IN_VIEW);
@@ -580,7 +586,7 @@ void plant(uint8_t object) {
   flags_past_page(object, 1);
   if (*flags & HIT) {
     took(PLANT_DEAD);
-    burn_away(object);
+    enemy_burns_away(object);
     return;
   }
   took(PLANT_ALIVE);
@@ -602,7 +608,7 @@ void plant(uint8_t object) {
     took(PLANT_HIT_SCORE);
     add_score(object, 0);
     took(JUMPS);
-    burn_away(object);
+    enemy_burns_away(object);
     return;
   }
   took(PLANT_NOT_HIT);
@@ -635,27 +641,11 @@ void plant(uint8_t object) {
   touch_tests(object);
 }
 
-/** Bank 4's $9FB0, kind 2: the enemy that sits near the end of the first stage. So far only while it's out of the view,
- *  where it's hidden and waits. What it does in the view, from $9FE4, and how it goes once it has flown off, at $9FC0,
- *  aren't ported yet. */
-void second_kind(uint8_t object) {
-  show_object(object);
-  if (object_in_view(object)) return;   // $9FE4
-  took(SECOND_KIND_OUT_OF_VIEW);
-  hide_object(object);
-  took(OBJECT_FLAG_READ);
-  flags_past_page(object, 1);
-  if (RAM[OBJECT_FLAGS + object] & WALKS) return;   // $9FC0
-  took(SECOND_KIND_WAITS);
-}
-
-/** $F49C, kind $2B: a plant's shot, which flies the way it was headed until it's out of the view, and hits Arthur if it
- *  touches him. With the cross a weapon can stop it, at $F557, which isn't ported yet. */
-void plant_shot(uint8_t object) {
-  RAM[OBJECT_COLOURS + object] = 0;
-  took(SHOT_BEGINS);
+// $F4A3: a shot flies the way it was headed until it's out of the view, and hits Arthur if it touches him. With the
+// cross a weapon can stop it, at $F557, which isn't ported yet.
+static void shot_flies(uint8_t object, uint8_t speed) {
   took(CALLS);
-  move_object(object, (uint8_t)(0x10 + RAM[0xD3]));
+  move_object(object, (uint8_t)(speed + RAM[0xD3]));
   if (!object_in_view(object)) {
     RAM[OBJECT_FLAGS + object] = 0;
     took(SHOT_GONE);
@@ -671,4 +661,18 @@ void plant_shot(uint8_t object) {
   if (!arthur_touches(object)) { took(ENEMY_NOT_TOUCHED); return; }
   RAM[OBJECT_FLAGS + ARTHUR] |= ARTHUR_HIT;
   took(ENEMY_TOUCHES_ARTHUR);
+}
+
+/** $F49C, kind $2B: a plant's shot. */
+void plant_shot(uint8_t object) {
+  RAM[OBJECT_COLOURS + object] = 0;
+  took(SHOT_BEGINS);
+  shot_flies(object, 0x10);
+}
+
+/** $F4BC, kind $2C: the flier's shot, in its own colours and faster. */
+void flier_shot(uint8_t object) {
+  RAM[OBJECT_COLOURS + object] = 0x03;
+  took(FLIER_SHOT_BEGINS);
+  shot_flies(object, 0x1A);
 }

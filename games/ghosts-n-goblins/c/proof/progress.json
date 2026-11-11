@@ -4,6 +4,12 @@
   "codeMap": {"functions":287,"bytes":26557},
   "proven": {"functions":0,"bytes":0},
   "recordings": {
+    "flier": {
+      "frames": 3390,
+      "matched": 3390,
+      "differs": [],
+      "functions": []
+    },
     "game-start": {
       "frames": 2440,
       "matched": 2440,

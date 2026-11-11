@@ -3,7 +3,7 @@
 // lance and the dagger, which fly straight the way he faced until they leave the view or hit an enemy (enemies.c).
 //
 // A gravestone's blocks stop one: it shows against the stone for three rounds, and is gone. The torch, the axe and the
-// cross, at $EBC4 on, and the look of a weapon that's hit something else, at $EC01, aren't ported yet.
+// cross, at $EBC4 on, aren't ported yet. One that hits the flier (flier.c) stays as a spark for three rounds.
 
 #include "game.h"
 
@@ -24,7 +24,12 @@ static void spent_weapon(uint8_t object) {
   took(WEAPON_SPENT_STAYS);
   took(OBJECT_FLAG_READ);
   if (object >= 0x10) took(READ_PAST_PAGE);
-  if (!(RAM[OBJECT_FLAGS + object] & STOPPED)) return;   // $EC01
+  if (!(RAM[OBJECT_FLAGS + object] & STOPPED)) {
+    // $EC01: the spark of a weapon an enemy's hide has stopped, two shapes
+    RAM[OBJECT_SHAPE + object] = (uint8_t)(0x56 + ((RAM[OBJECT_COUNT + object] << 3) & 0x10));
+    took(WEAPON_SPARK_SHAPE);
+    return;
+  }
   int right = RAM[OBJECT_HEADING + object] == 0x04;
   RAM[OBJECT_SHAPE + object] = right ? 0xF8 : 0xF9;
   took(right ? WEAPON_STOPPED_SHAPE_RIGHT : WEAPON_STOPPED_SHAPE_LEFT);
