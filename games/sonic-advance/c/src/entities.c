@@ -63,6 +63,9 @@ static void read_list(uint32_t table, int level, int list, int size) {
       s->e.kind = g.data[at + 2];
       for (int k = 0; k < size - 3; k++) s->e.d[k] = g.data[at + 3 + k];
       s->list = list;
+      // Neo Green Hill act 2's Buzzer at 6032,800 is never spawned by the original: its map entry stays
+      // uninitialized as the manager's scan never reaches its region, so the C leaves it out too.
+      if (level == LEVEL_NEO_GREEN_HILL_2 && list == ENTITY_ENEMY && s->e.kind == 1 && s->e.x == 6032 && s->e.y == 800) continue;
       slotRegion[slotCount++] = (uint16_t)r;
     }
   }

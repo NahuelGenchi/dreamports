@@ -259,6 +259,7 @@ static int hit_test(EggTank *b, int x, int y) {
     if (body && collide_overlap(x, y, b1, px, py, body)) { world_damage(p); return HIT_PLAYER; }
     if (collide_overlap(x, y, b0, px, py, attack)) { p->xsp = -p->xsp; p->ysp = -p->ysp; return HIT_ENEMY; }
   }
+  if (body && collide_overlap(x, y, b0, px, py, body)) { world_damage(p); return HIT_PLAYER; }
   return HIT_NONE;
 }
 static void tank_beaten(EggTank *b, int x, int y, int dx, int dy);
