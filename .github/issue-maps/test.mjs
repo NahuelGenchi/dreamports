@@ -62,17 +62,32 @@ test('a game\'s map goes at the top of its issue, and every field can still be r
   assert.equal(field(one.body, 'Where it starts'), 'The logos.');
 });
 
-test('a version in another language has its map under the game\'s, once it has its page', async () => {
+test('a game\'s version in C has its map first, once it has its page, and its JavaScript one is folded under it', async () => {
   const one = issue(7, 'one');
   const { api } = github([one]);
-  const folder = repo({ one: 7 }, ['one', 'one/c']);
+  const folder = repo({ one: 7 }, ['one', 'one/c'], 'One Dreamport’s progress in C. Code ported: 5.35% (10/187 bytes). Gameplay proven: 50% (1/2 parts).');
   assert.ok(one.body === form('one'));
   await run(folder, api);
   assert.ok(!one.body.includes('one-c.svg'), 'a map with no page for its version is left out');
+  assert.ok(!one.body.includes('<details>'), 'a game\'s only map is never folded');
   mkdirSync(join(folder, 'games/one/c'), { recursive: true });
   writeFileSync(join(folder, 'games/one/c/index.html'), '');
   await run(folder, api);
-  assert.match(one.body, /progress\/one\.svg\)\n\n!\[[^\]]*\]\([^)]*progress\/one-c\.svg\)\n\n<!-- \/dreamports-map -->/);
+  assert.match(one.body, /^<!-- dreamports-map -->\n\n!\[[^\]]*\]\([^)]*progress\/one-c\.svg\)\n\n<details>\n<summary>JavaScript version: code ported 5\.35%, gameplay proven 50%<\/summary>\n\n!\[[^\]]*\]\([^)]*progress\/one\.svg\)\n\n<\/details>\n\n<!-- \/dreamports-map -->\n\n### Game\n/);
+  assert.equal(field(one.body, 'Game folder'), 'one');
+  assert.deepEqual(await run(folder, api), [], 'and a second run changes nothing');
+  assert.deepEqual(checkRules(one.body, { author: 'someone', where: 'issue' }), { key: null, rule: null, hints: [] });
+});
+
+test('a folded map with no numbers in its title, or only one, says what it has', async () => {
+  for (const [title, summary] of [['One Dreamport’s progress.', 'JavaScript version'], ['One. Code ported: 100%. Gameplay proven: no list of parts yet.', 'JavaScript version: code ported 100%']]) {
+    const one = issue(7, 'one');
+    const folder = repo({ one: 7 }, ['one', 'one/c'], title);
+    mkdirSync(join(folder, 'games/one/c'), { recursive: true });
+    writeFileSync(join(folder, 'games/one/c/index.html'), '');
+    await run(folder, github([one]).api);
+    assert.ok(one.body.includes(`<summary>${summary}</summary>`));
+  }
 });
 
 test('a game that started in C shows its version in C\'s map alone', async () => {
@@ -83,6 +98,7 @@ test('a game that started in C shows its version in C\'s map alone', async () =>
   writeFileSync(join(folder, 'games/one/c/index.html'), '');
   await run(folder, api);
   assert.match(one.body, /<!-- dreamports-map -->\n\n!\[[^\]]*\]\([^)]*progress\/one-c\.svg\)\n\n<!-- \/dreamports-map -->/);
+  assert.ok(!one.body.includes('<details>'));
 });
 
 test('a second run changes nothing', async () => {
