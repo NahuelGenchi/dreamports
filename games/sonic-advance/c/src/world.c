@@ -31,6 +31,13 @@ int world_damage(Player *p) {
   return 1;
 }
 
+void world_lose_rings(int n) {
+  Player *p = &act.player;
+  scatter_launch((int)__builtin_floor(p->x), (int)__builtin_floor(p->y), n, p->layer, p->inverted);
+  play_song(118);   // SE_RINGS_LOST
+  act.ringCount -= n;
+}
+
 // INCREMENT_SCORE_A: points with a life every 50000, without the jingle
 void world_add_score(int points) {
   int before = act.score;

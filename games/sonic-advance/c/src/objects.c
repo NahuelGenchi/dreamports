@@ -290,6 +290,9 @@ static const struct { int kind; Spawn spawn; } ENEMIES[] = {
   { 19, kuraa_spawn },
   { 11, leon_spawn },
   { 13, wamu_spawn },
+  { 28, egg_wrecker_spawn },
+  { 29, egg_drillster_spawn },
+  { 30, egg_x_spawn },
 };
 
 ActTask *entity_spawn(Slot *slot) {

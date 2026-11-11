@@ -49,7 +49,10 @@ static int command(Sprite *s, uint32_t at, int background) {
         uint32_t n = (count * 2) >> 2 << 1;
         uint16_t *colours = background ? e.bgPalette : e.objPalette;
         for (uint32_t i = 0; i < n; i++) {
-          uint32_t colour = (s->palId * 16 + insert + i) & 0xFF;
+          // the original copies to gObjPalette[palId * 16 + insert] unchecked: with a flash's palId, such as Egg X's
+          // 253, the colours land past the palettes and show nowhere
+          uint32_t colour = s->palId * 16 + insert + i;
+          if (colour > 0xFF) continue;
           colours[colour] = (uint16_t)rom_u16(pal + i * 2);
           // a script's colours go over the spotlights' run-over ones, which only show until it loads them again
           if (!background && colour < 16) { spriteRow.written &= ~(1u << colour); spriteRow.loaded |= 1u << colour; }
