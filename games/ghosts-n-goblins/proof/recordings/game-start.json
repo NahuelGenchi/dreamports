@@ -1,10 +1,10 @@
 {
-  "about": "Start pressed on the title screen, one player, then nothing: the screen that says whose turn it is, the opening scene, and the first stage's start, where Arthur lands and stands while the first three zombies come out of the ground and walk at him, until one reaches him and knocks him back out of his armour.",
-  "frames": 1300,
+  "about": "Start pressed on the title screen, one player, then nothing: the screen that says whose turn it is, the opening scene, and the first stage's start, where Arthur lands and stands while the first three zombies come out of the ground and walk at him, until one reaches him and knocks him back out of his armour. He flashes, more zombies come, one of them with a pot, and it ends just before the next one reaches him.",
+  "frames": 1550,
   "held": [
     [0, []],
     [100, ["START"]],
     [102, []]
   ],
-  "clip": { "at": 1000, "frames": 300 }
+  "clip": { "at": 1250, "frames": 300 }
 }

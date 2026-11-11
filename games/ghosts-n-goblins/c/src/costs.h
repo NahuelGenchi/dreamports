@@ -377,7 +377,10 @@ COST(ARTHUR_AFTER_VIEW, 8)        // $DB68 to $DB7C
 COST(ARTHUR_TURN_ENDS, 6)         // the call of sub_DB8A
 COST(ARTHUR_SHAPE, 112)           // sub_E35E to $E3B9, with its call,
 COST(ARTHUR_SHAPE_STARTS_AGAIN, 6) // his walk's count back to 0
-COST(ARTHUR_FLASH_LOOKED_AT, 31)  // and sub_E3B9, and back
+COST(ARTHUR_FLASH_LOOKED_AT, 31)  // and sub_E3B9, and back, when he can be touched,
+COST(ARTHUR_FLASH_COUNTED, 37)    // or sub_E3B9 to $E3C6, when he can't,
+COST(ARTHUR_FLASHES, 51)          // $E3C6, and back: shown every other round,
+COST(ARTHUR_FLASH_OVER, 25)       // or with sub_F342: 30 rounds are over
 COST(ARTHUR_FLASH_CALLED, 6)
 COST(ARTHUR_BUTTONS, 39)          // sub_E01E, with its call
 COST(ARTHUR_BUTTONS_BUSY, 21)     // or when his state stops it
@@ -549,15 +552,20 @@ COST(ZOMBIE_UNDER_A_JUMP, 14)     // $8481 to $8496: Arthur is in the air,
 COST(ZOMBIE_ON_LOWER_GROUND, 21)  // or low in the picture,
 COST(ZOMBIE_ON_UPPER_GROUND, 19)  // or high
 COST(ZOMBIE_HEIGHT_SET, 14)       // $8496 to $849E
-COST(ZOMBIE_COUNTED, 32)          // sub_88F6 with its call, when it isn't the sixth, and $84A2
+COST(ZOMBIE_COUNT_BEGINS, 18)     // sub_88F6 with its call, to $88FE
+COST(ZOMBIE_NOT_SIXTH, 9)         // and back,
+COST(ZOMBIE_SIXTH, 19)            // or $88FE to sub_DA18: the sixth, which carries a pot
+COST(POT_NONE_FREE, 13)           // $890A, and back: no object is free,
+COST(POT_MADE, 61)                // or the pot is made, for the first four sets of stages and not the fourth pot
+COST(ZOMBIE_NEXT, 5)              // $84A2
 COST(ZOMBIE_TURN_BEGINS, 25)      // $F7BE to $F7C6
 COST(ZOMBIE_UNDER_THE_GROUND, 24) // $F7C6 to $F7CB
 COST(ZOMBIE_NO_GROUND, 6)         // $F7CE to sub_F708
 COST(ZOMBIE_WAITS_ON, 18)         // $F7CE, and back: its count isn't over,
 COST(ZOMBIE_COMES_OUT, 43)        // or is, and its flag says it's out
 COST(ZOMBIE_IS_OUT, 25)           // $F7C6 to $F7DC
-COST(ZOMBIE_IN_VIEW, 3)           // $F7E2: it's in the view,
-COST(ZOMBIE_OUT_OF_VIEW, 2)       // or isn't, and is hidden
+COST(ENEMY_IN_VIEW, 3)            // the branch after sub_F0A3: it's in the view,
+COST(ENEMY_OUT_OF_VIEW, 2)        // or isn't
 COST(ZOMBIE_SINKING, 5)           // $F7EA to $F87D,
 COST(ZOMBIE_NOT_SINKING, 3)       // or to $F7EF
 COST(ZOMBIE_NOT_WALKING, 2)       // $F7F2, on to $F7F4
@@ -584,6 +592,17 @@ COST(ZOMBIE_COLOURS_PALE, 13)     // $F8A7 to $F8B1
 COST(ZOMBIE_COLOURS_DONE, 9)      // and back,
 COST(ZOMBIE_COLOURS_DARKER, 15)   // or $F8B1 to $F8BD,
 COST(ZOMBIE_COLOURS_ITS_OWN, 15)  // and $F8BD, and back
+COST(POT_BEGINS, 14)              // bank 4's $BBEE to $BBF8: the pot a zombie carries
+COST(POT_IS_CARRIED, 3)           // $BC06 to $BC0B
+COST(POT_FOLLOWS, 47)             // $BC0B to $BC37: its carrier's place, for a zombie
+COST(POT_CARRIER_THERE, 7)        // $BC37 to $BC3F,
+COST(POT_CARRIER_GONE, 9)         // or to sub_F708
+COST(POT_ON_A_ZOMBIE, 13)         // $BC3F to $BC60
+COST(POT_STAYS_HIDDEN, 3)         // $BC66 to $BC76: out of the view,
+COST(POT_SHOWN_AS_CARRIER, 21)    // or shown when its carrier is
+COST(POT_CARRIER_LOOKED_AT, 10)   // $BC76 to $BC7E
+COST(POT_IS_KEPT, 8)              // and back,
+COST(POT_FALLS, 45)               // or $BC81, and back, once its carrier is hit
 COST(ENEMY_NOT_SHOWN, 29)         // sub_F5A0, and back, for an enemy that isn't shown
 COST(ENEMY_TESTS_BEGIN, 49)       // sub_F5A0 to $F5FB
 COST(WEAPON_NOT_FLYING, 12)       // each of Arthur's three weapons, when it isn't shown
