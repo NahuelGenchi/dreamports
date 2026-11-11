@@ -3,14 +3,15 @@
 // armour, and in a stage, where he falls to the ground and stands, and where the first thing that hits him knocks him
 // back out of his armour and the next kills him. The view follows him as he moves.
 //
-// So far B throws his weapon in a stage, and the other buttons do nothing: walking, at $DB32 and $DB6E, jumping, at
-// $DB16, and climbing aren't ported yet.
+// In a stage Left and Right walk him, A jumps and B throws his weapon. Crouching, at $DC6B, and climbing, at $DD65,
+// aren't ported yet.
 
 #include "game.h"
 
 enum { ARTHUR = 0, SATAN = 2 };
 // Arthur's flags
 enum { HIT = 0x01, CROUCHES = 0x02, TURNED = 0x04, IN_THE_AIR = 0x08, HELD = 0x10, WITHOUT_ARMOUR = 0x20, CANNOT_BE_TOUCHED = 0x40 };  // TURNED: he faces the other way, and his shapes are 4 on
+#define JUMP_MOVES_ACROSS (0x065D + ARTHUR)   // 0 while a jump goes straight up
 // the view's place in the stage (scroll.c), and the speed its task is asked to move it at, each 24 bits
 enum { VIEW_X = 0x63, VIEW_Y = 0x66, VIEW_SPEED_X = 0x5C, VIEW_SPEED_Y = 0x5F };
 #define STAGE_SET RAM[0xCF]
@@ -104,12 +105,21 @@ static int way_blocked(void) {
 
 // sub_DB82, or sub_E286 for half as far: some 256ths of the way he's heading, with the view after him, unless
 // something's in his way.
-static void drift(uint8_t speed) {
-  if (way_blocked()) { took(JUMP_BLOCKED); return; }
+static void drift_unless(int blocked, uint8_t speed) {
+  if (blocked) { took(JUMP_BLOCKED); return; }
   took(JUMP_DRIFTS);
   move_object(ARTHUR, speed);
   took(JUMPS);
   view_follows_across();
+}
+static void drift(uint8_t speed) { drift_unless(way_blocked(), speed); }
+
+// sub_DDA1: what the direction buttons ask for, from the copy's list at $E307: 0 for nothing, and otherwise a heading,
+// whose bit $04 says it's across. It's also where $85, B held since before, is cleared.
+static uint8_t direction(void) {
+  if (!(PAD_NOW & PAD_B)) RAM[0x85] = 0;
+  took(PAD_NOW & PAD_B ? ARTHUR_DIRECTION_B_HELD : ARTHUR_DIRECTION);
+  return cart(7, (uint16_t)(0xE307 + (PAD_NOW & 0x0F)));
 }
 
 // sub_DF3E: down by some pixels, with the view after him once he's low in the picture. Onto the next screen down, at
@@ -121,8 +131,10 @@ static void fall_by(uint8_t pixels) {
 }
 
 // sub_DB90 and $E4E5: his place on the screen, for this round's sprites.
-static void placed(void) {
+static void throw_button(void);
+static void placed(int with_buttons) {
   took(CALLS);
+  if (with_buttons) throw_button();
   place_on_screen(ARTHUR);
   FLAGS &= (uint8_t)~HELD;
   STATE &= 0xF7;
@@ -131,16 +143,20 @@ static void placed(void) {
 
 static void flash_after_a_hit(void);
 
+// sub_E079: a throw's two shapes, three rounds, by the way he faces, whether he crouches and whether he has armour.
+static void throw_shape(void) {
+  SHAPE = (uint8_t)((8 + ((RAM[OBJECT_KIND + ARTHUR] >> 1) & 1) + ((FLAGS >> 1) & 2) + ((FLAGS << 1) & 4)) | (FLAGS & WITHOUT_ARMOUR));
+  if (++RAM[OBJECT_KIND + ARTHUR] >= 3) STATE &= 0xFD;
+  took(STATE & 0x02 ? ARTHUR_THROW_GOES_ON : ARTHUR_THROW_OVER);
+}
+
 // sub_E35E and sub_E3B9: his shape. The copy's list at $E3DC gives the six steps of his walk, and his shapes without
 // armour are 32 on from those with it, and the ones facing left 4 on. His other states, at $E317, $E36B and $E382, and
 // his flashing after he's hit, at $E3BE, aren't ported yet.
 static void choose_shape(void) {
   if (STATE & 0x02) {
-    // sub_E079: a throw's two shapes, three rounds, by the way he faces, whether he crouches and whether he has armour
-    SHAPE = (uint8_t)((8 + ((RAM[OBJECT_KIND + ARTHUR] >> 1) & 1) + ((FLAGS >> 1) & 2) + ((FLAGS << 1) & 4)) | (FLAGS & WITHOUT_ARMOUR));
     took(ARTHUR_THROW_SHAPE);
-    if (++RAM[OBJECT_KIND + ARTHUR] >= 3) STATE &= 0xFD;
-    took(STATE & 0x02 ? ARTHUR_THROW_GOES_ON : ARTHUR_THROW_OVER);
+    throw_shape();
     flash_after_a_hit();
     return;
   }
@@ -197,7 +213,7 @@ static wait jump(uint8_t *step) {
       drift(0x0C);
       Y -= jump_height();   // sub_DF04. Past the top of his screen, at $DF15, isn't ported yet.
       took(ARTHUR_RISES);
-      placed();
+      placed(0);
       *step = RISEN;
       return YIELDS;
     case RISEN:
@@ -218,7 +234,7 @@ static wait jump(uint8_t *step) {
       drift(0x0C);
       took(ARTHUR_FALL_BY_LIST);
       fall_by(jump_height());   // sub_DF33
-      placed();
+      placed(0);
       *step = FELL;
       return YIELDS;
     case FELL:
@@ -244,9 +260,148 @@ static wait jump(uint8_t *step) {
       drift(0x06);
       took(ARTHUR_FALL_BY_SEVEN);
       fall_by(7);
-      placed();
+      placed(0);
       *step = LONG_FALL_AGAIN;
       return YIELDS;
+  }
+}
+
+// sub_DEDD: in the air he faces the way Left or Right says, though he goes on the way he jumped.
+static void face_in_the_air(void) {
+  if (STATE & 0x10) { took(AIR_HELD); return; }
+  took(AIR_LOOKS);
+  uint8_t way = direction();
+  RAM[0x22] = way;
+  if (!(way & 0x04)) { took(AIR_NO_TURN); return; }
+  FLAGS &= (uint8_t)~TURNED;
+  FLAGS |= (way & 0x08) >> 1;
+  took(AIR_TURNS);
+}
+
+// sub_DF5D: whether something is in the way of a jump, which a jump straight up always has.
+static int jump_way_blocked(void) {
+  if (!RAM[JUMP_MOVES_ACROSS]) {
+    RAM[0xD1] = 0x80;
+    took(JUMP_STRAIGHT_UP);
+    return 1;
+  }
+  took(JUMP_MOVES);
+  return way_blocked();
+}
+
+// sub_DF93: his shape in a jump, by the way he faces, or a throw's.
+static void jump_shape(void) {
+  if (STATE & 0x02) {
+    took(JUMP_THROW_SHAPE);
+    throw_shape();
+  } else {
+    SHAPE = (uint8_t)((FLAGS & WITHOUT_ARMOUR) | (FLAGS & TURNED ? 0x13 : 0x12));
+    took(JUMP_SHAPE);
+    took(FLAGS & TURNED ? JUMP_SHAPE_LEFT : JUMP_SHAPE_RIGHT);
+  }
+  flash_after_a_hit();
+}
+
+// $DDF7: a jump in a stage, when A is pressed: straight up, or across the way Left or Right says, with the same six
+// rounds up and the same fall as sub_E1EE's. In the air B throws and Left and Right turn him, and a hit ends the jump:
+// `hit` says so. His look in the last stages, at $DFA0, a state that holds him, at $DFD9, and a fall off the bottom
+// of the picture, at $E1BA, aren't ported yet. Called each turn until it's DONE.
+static wait stage_jump(uint8_t *step, int *hit) {
+  enum { BEGIN, RISE, RISEN, FALL, FELL, LONG_FALL, LONG_FALL_AGAIN };
+  *hit = 0;
+  for (;;) switch (*step) {
+    case BEGIN: {
+      FLAGS |= IN_THE_AIR;
+      COUNT = 6;
+      RAM[JUMP_MOVES_ACROSS] = 0x0C;
+      took(STAGE_JUMP_BEGINS);
+      uint8_t way = direction();
+      if (!(PAD_NOW & (PAD_LEFT | PAD_RIGHT))) {
+        RAM[JUMP_MOVES_ACROSS] = 0;
+        took(STAGE_JUMP_STRAIGHT);
+      } else {
+        HEADING = way & 0x0C;
+        FLAGS &= (uint8_t)~TURNED;
+        FLAGS |= (HEADING >> 1) & TURNED;
+        took(STAGE_JUMP_SIDEWAYS);
+      }
+      *step = RISE;
+      break;
+    }
+    case RISE:
+      STATE |= 0x04;
+      took(STAGE_JUMP_RISES);
+      face_in_the_air();
+      if (FLAGS & HIT) {
+        took(STAGE_JUMP_HIT);
+        *step = BEGIN;
+        *hit = 1;
+        return DONE;
+      }
+      took(STAGE_JUMP_NOT_HIT);
+      drift_unless(jump_way_blocked(), 0x0C);
+      Y -= jump_height();
+      took(ARTHUR_RISES);
+      jump_shape();
+      placed(1);
+      *step = RISEN;
+      return YIELDS;
+    case RISEN:
+      took(ARTHUR_RISE_COUNTED);
+      took(--COUNT ? GOES_ROUND : GOES_ON);
+      if (COUNT) { *step = RISE; break; }
+      STATE &= 0xFB;
+      took(STAGE_JUMP_TOP);
+      *step = FALL;
+      break;
+    case FELL:
+      took(JUMP_FALL_COUNTED);
+      took(++COUNT < 7 ? GOES_ROUND : GOES_ON);
+      *step = COUNT < 7 ? FALL : LONG_FALL;
+      break;
+    case LONG_FALL_AGAIN:
+      took(JUMPS);
+      *step = LONG_FALL;
+      break;
+    case FALL:
+    case LONG_FALL: {
+      int long_fall = *step == LONG_FALL;
+      face_in_the_air();
+      took(OBJECT_FLAG_READ);
+      int down = 0;
+      if (FLAGS & HELD) {
+        took(STAGE_JUMP_HELD);
+        down = 1;
+      } else {
+        took(STAGE_JUMP_NOT_HELD);
+        if (on_the_ground(ARTHUR)) {
+          stand_on_block();
+          took(STAGE_JUMP_LANDS);
+          down = 1;
+        }
+      }
+      if (down) {
+        FLAGS &= (uint8_t)~IN_THE_AIR;
+        *step = BEGIN;
+        return DONE;
+      }
+      took(JUMP_STILL_IN_AIR);
+      took(JUMP_ABOVE_THE_BOTTOM);
+      if (FLAGS & HIT) {
+        took(STAGE_JUMP_HIT);
+        *step = BEGIN;
+        *hit = 1;
+        return DONE;
+      }
+      took(STAGE_JUMP_NOT_HIT);
+      drift_unless(jump_way_blocked(), long_fall ? 0x06 : 0x0C);
+      took(long_fall ? ARTHUR_FALL_BY_SEVEN : ARTHUR_FALL_BY_LIST);
+      fall_by(long_fall ? 7 : jump_height());
+      jump_shape();
+      placed(1);
+      *step = long_fall ? LONG_FALL_AGAIN : FELL;
+      return YIELDS;
+    }
   }
 }
 
@@ -350,7 +505,7 @@ wait arthur_task(void) {
   enum {
     START, SCENE_SITS, SCENE_WATCHES, SCENE_JUMPS, SCENE_LANDED, SCENE_WALKS, SCENE_STEP, SCENE_OVER,
     STAGE_TURN, STAGE_STANDS, STAGE_AGAIN, STAGE_FALLS, STAGE_FELL, STAGE_HIT, STAGE_KNOCKED_BACK,
-    DEATH_BEGINS, DEATH_FALL, DEATH_OVER,
+    DEATH_BEGINS, DEATH_FALL, DEATH_OVER, STAGE_JUMP,
   };
   static uint8_t inner;
   uint8_t *step = &task_step[TASK_ARTHUR];
@@ -454,27 +609,67 @@ wait arthur_task(void) {
         *step = STAGE_FALLS;
         break;
       } else took(ARTHUR_ON_GROUND);
-      // $DB06: on the ground. A throw holds him where he is, and no other button does anything yet.
+      // $DB06: on the ground. A throw holds him where he is.
       if (STATE & 0x02) {
         took(ARTHUR_THROWING);
         *step = STAGE_STANDS;
         break;
       }
-      RAM[0x84] = 0;
-      took(ARTHUR_STANDS);
-      if (!(PAD_NOW & PAD_B)) {
-        RAM[0x85] = 0;
-        took(ARTHUR_B_NOT_HELD);
+      took(ARTHUR_NOT_THROWING);
+      // A jumps, once for each press: $84 says it was held the round before
+      if (!(PAD_NOW & PAD_A)) {
+        RAM[0x84] = 0;
+        took(ARTHUR_A_NOT_HELD);
+      } else if (RAM[0x84]) took(ARTHUR_A_STILL_HELD);
+      else {
+        RAM[0x84] = 0xFF;
+        took(ARTHUR_JUMPS);
+        *step = STAGE_JUMP;
+        break;
       }
-      COUNT = 0;
-      *step = STAGE_STANDS;
+      {
+        uint8_t way = direction();
+        *step = STAGE_STANDS;
+        if (!way) {
+          COUNT = 0;
+          took(ARTHUR_NO_DIRECTION);
+          break;
+        }
+        HEADING = way & 0x0C;
+        took(ARTHUR_DIRECTION_SET);
+        if (!(way & 0x04)) {
+          // Up or Down: crouching, at $DC6B, and climbing, at $DD65, aren't ported yet
+          took(ARTHUR_UP_OR_DOWN);
+          if (STATE & 0x10) took(ARTHUR_HELD_STILL);
+          break;
+        }
+        // $DB4D: a step of his walk, facing the way he goes, unless something's in the way
+        took(ARTHUR_WALKS);
+        COUNT++;
+        if (HEADING == 0x0C) FLAGS |= TURNED;
+        else FLAGS &= (uint8_t)~TURNED;
+        took(HEADING == 0x0C ? ARTHUR_STEP_LEFT : ARTHUR_STEP_RIGHT);
+        drift(0x0C);
+      }
       break;
+    case STAGE_JUMP: {
+      int hit;
+      wait how = stage_jump(&inner, &hit);
+      if (how != DONE) return how;
+      *step = hit ? STAGE_HIT : STAGE_STANDS;
+      break;
+    }
     case STAGE_STANDS:
       // $DB65: the view after him, and the end of the turn
       took(ARTHUR_VIEW_FOLLOWS);
       view_follows_across();
       view_follows_down();
-      took(ARTHUR_AFTER_VIEW);
+      if (PAD_NOW & (PAD_LEFT | PAD_RIGHT)) {
+        // he faces the way the button says, whatever he's doing
+        FLAGS &= (uint8_t)~TURNED;
+        FLAGS |= (PAD_NOW << 1) & TURNED;
+        took(ARTHUR_FACES_THE_BUTTON);
+      } else took(ARTHUR_AFTER_VIEW);
       end_stage_turn();
       *step = STAGE_AGAIN;
       return YIELDS;

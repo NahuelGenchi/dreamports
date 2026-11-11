@@ -91,13 +91,16 @@ static void column_tile(uint8_t *at, uint8_t which) {
 }
 
 // sub_E76F: the column of 30 tiles one screen to the right of the view, for V-blank to write down the screen. The view
-// moving left, at $E780, and a column that runs off the bottom of its screen, at $E800, aren't ported yet.
+// moving left has the column 8 pixels left of the view instead. A column that runs off the bottom of its screen, at
+// $E800, isn't ported yet.
 static void draw_column(void) {
-  AT_X_SCREEN = (uint8_t)(RAM[VIEW_X + 2] + 1);
-  AT_X = RAM[VIEW_X + 1];
+  uint8_t left = RAM[0x5E] & 0x80;   // the speed the view was asked to move at is to the left
+  uint16_t across = left ? (uint16_t)((RAM[VIEW_X + 2] << 8 | RAM[VIEW_X + 1]) - 8) : (uint16_t)((RAM[VIEW_X + 2] + 1) << 8 | RAM[VIEW_X + 1]);
+  AT_X_SCREEN = (uint8_t)(across >> 8);
+  AT_X = (uint8_t)across;
   AT_Y = RAM[VIEW_Y + 1];
   AT_Y_SCREEN = RAM[VIEW_Y + 2];
-  took(COLUMN_BEGINS);
+  took(left ? COLUMN_BEGINS_LEFT : COLUMN_BEGINS);
   block_at_place();
   find_tile_address();
   RAM[COLUMN] = RAM[0x27];

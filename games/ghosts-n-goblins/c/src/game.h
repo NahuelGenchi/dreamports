@@ -198,7 +198,7 @@ enum { BLOCK_SOLID = 0xC6 };
 
 // ---- the buttons, as V-blank reads them: A, B, Select, Start, Up, Down, Left, Right from bit 7 down
 #define PAD_1 RAM[0x42]
-enum { PAD_START = 0x10, PAD_SELECT = 0x20, PAD_A = 0x80, PAD_B = 0x40 };
+enum { PAD_START = 0x10, PAD_SELECT = 0x20, PAD_A = 0x80, PAD_B = 0x40, PAD_LEFT = 0x02, PAD_RIGHT = 0x01 };
 void read_pads(void);  // sub_C278
 
 // ---- the sound (sound.c)

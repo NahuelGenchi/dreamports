@@ -21,6 +21,12 @@
       "matched": 120,
       "differs": [],
       "functions": []
+    },
+    "walk-and-jump": {
+      "frames": 1300,
+      "matched": 1300,
+      "differs": [],
+      "functions": []
     }
   }
 }

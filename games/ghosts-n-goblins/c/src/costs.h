@@ -212,7 +212,8 @@ COST(SPRITES_TASK_AGAIN, 3)       // $F364: round again
 // ---- the tiles' task, $E569 (screen.c)
 COST(TILES_START, 109)            // $E569 to the call that yields
 COST(TILES_AGAIN, 3)              // $E665
-COST(TILES_BEGIN, 14)             // $E576 to $E57F
+COST(TILES_TO_BANK, 2)            // $E576, to the store of the bank
+COST(TILES_BEGIN, 12)             // and to $E57F
 COST(TILES_FIRST_IDLE, 5)         // $E581 to $E5ED: the first list has nothing,
 COST(TILES_FIRST_ACTIVE, 3)       // or has
 COST(TILES_SECOND_IDLE, 10)       // $E5ED to $E65A: nor has the second,
@@ -226,7 +227,8 @@ COST(TILES_FIRST_NOT_DONE, 6)     // $E5E2 to $E65A
 COST(TILES_FIRST_DONE, 13)
 COST(TILES_SECOND_NOT_DONE, 3)    // $E652
 COST(TILES_SECOND_DONE, 10)
-COST(TILES_END, 19)               // $E65A to the call that yields
+COST(TILES_TO_BANK_BACK, 3)       // $E65A, to the store of the bank
+COST(TILES_END, 16)               // and to the call that yields
 
 // ---- the view's task, $E68C (scroll.c)
 COST(VIEW_AGAIN, 3)               // $E76C
@@ -246,7 +248,8 @@ COST(VIEW_ROW_LOOKED_AT, 19)      // $E72D to $E73E
 COST(VIEW_NO_COLUMN, 6)           // $E73E
 COST(VIEW_COLUMN, 11)             // or with the call of sub_E76F
 COST(VIEW_ENDS, 57)               // $E745 to the call that yields
-COST(COLUMN_BEGINS, 207)          // sub_E76F to its call of sub_EA73, with sub_E945
+COST(COLUMN_BEGINS, 207)          // sub_E76F to its call of sub_EA73, with sub_E945, for a view that moves right,
+COST(COLUMN_BEGINS_LEFT, 206)     // or left
 COST(COLUMN_ADDRESS, 79)          // sub_EA73,
 COST(COLUMN_ADDRESS_SECOND_TABLE, 7) // for the second name table
 COST(COLUMN_LIST_BEGINS, 45)      // $E79B to $E7B5
@@ -365,12 +368,23 @@ COST(ARTHUR_GONE, 11)             // $E1E7 to the call that ends his task
 COST(GROUND_LOOKED_AT, 74)        // sub_E3E3 and sub_EA2F, with their calls, less the block's
 COST(ARTHUR_ON_GROUND, 3)         // $DB01
 COST(ARTHUR_IN_AIR, 5)            // $DB01 to $E28E
-COST(ARTHUR_STANDS, 65)           // $DB06 to $DB65, with sub_DDA1,
-COST(ARTHUR_B_NOT_HELD, 2)        // which clears $85 when B isn't held
+COST(ARTHUR_NOT_THROWING, 9)      // $DB06 to $DB10
+COST(ARTHUR_A_NOT_HELD, 13)       // $DB10 to $DB25: A isn't held,
+COST(ARTHUR_A_STILL_HELD, 13)     // or is since before,
+COST(ARTHUR_JUMPS, 20)            // or is newly: to $DDF7
+COST(ARTHUR_DIRECTION, 33)        // sub_DDA1 with its call: what the direction buttons ask, and $85 cleared when B isn't held,
+COST(ARTHUR_DIRECTION_B_HELD, 31) // or when it is
+COST(ARTHUR_NO_DIRECTION, 12)     // $DB28 to $DB65: none
+COST(ARTHUR_DIRECTION_SET, 12)    // $DB28 to $DB39: his heading
+COST(ARTHUR_UP_OR_DOWN, 8)        // $DB39 to $DB40: Up or Down,
+COST(ARTHUR_HELD_STILL, 3)        // which his state can stop, to $DB65
+COST(ARTHUR_WALKS, 3)             // $DB39 to $DB4D: Left or Right
+COST(ARTHUR_STEP_LEFT, 42)        // $DB4D to $DB5D: a step of his walk, facing left,
+COST(ARTHUR_STEP_RIGHT, 67)       // or right
 COST(ARTHUR_THROWING, 11)         // or $DB06 to $DB65, while he throws
 COST(ARTHUR_VIEW_FOLLOWS, 12)     // $DB65 and $DB96, the two calls
 COST(FOLLOW_ACROSS, 59)           // sub_DBFB to $DC22
-COST(FOLLOW_LEFT_NEAR, 17)        // $DC24 on, and back: within 8 pixels to the left,
+COST(FOLLOW_LEFT_NEAR, 14)        // $DC24 on, and back: within 8 pixels to the left,
 COST(FOLLOW_LEFT_FAR, 18)         // further,
 COST(FOLLOW_RIGHT_NEAR, 13)       // less than 7 to the right,
 COST(FOLLOW_RIGHT_FAR, 20)        // or more
@@ -383,7 +397,8 @@ COST(FOLLOW_UP_NEAR, 17)          // $DBE5 on, and back
 COST(FOLLOW_UP_FAR, 21)
 COST(FOLLOW_DOWN_NEAR, 16)
 COST(FOLLOW_DOWN_FAR, 23)
-COST(ARTHUR_AFTER_VIEW, 8)        // $DB68 to $DB7C
+COST(ARTHUR_AFTER_VIEW, 8)        // $DB68 to $DB7C, with neither Left nor Right held,
+COST(ARTHUR_FACES_THE_BUTTON, 49)  // or facing the way the one that's held says
 COST(ARTHUR_TURN_ENDS, 6)         // the call of sub_DB8A
 COST(ARTHUR_SHAPE, 112)           // sub_E35E to $E3B9, with its call,
 COST(ARTHUR_SHAPE_STARTS_AGAIN, 6) // his walk's count back to 0
@@ -474,6 +489,26 @@ COST(JUMP_FACES_RIGHT, 3)         // $E215,
 COST(JUMP_FACES_LEFT, 9)          // or with the shape that faces left
 COST(JUMP_HAS_ARMOUR, 25)         // $E21A to $E229,
 COST(JUMP_NO_ARMOUR, 38)          // or with the colours and shape he has without it
+COST(STAGE_JUMP_BEGINS, 40)       // $DDF7 to the call of sub_DDA1: a jump in a stage
+COST(STAGE_JUMP_STRAIGHT, 15)     // $DE07 to $DE2D: straight up, with neither Left nor Right held,
+COST(STAGE_JUMP_SIDEWAYS, 66)     // or the way the one that's held says
+COST(STAGE_JUMP_RISES, 11)        // $DE2D to $DE35
+COST(AIR_HELD, 21)                // sub_DEDD with its call, and back: his state stops it,
+COST(AIR_LOOKS, 14)               // or to its call of sub_DDA1
+COST(AIR_NO_TURN, 13)             // $DEE7, and back: neither Left nor Right,
+COST(AIR_TURNS, 56)               // or he faces that way, and back
+COST(STAGE_JUMP_NOT_HIT, 42)      // sub_E014 with its call, and on,
+COST(STAGE_JUMP_HIT, 44)          // or to $E171
+COST(JUMP_STRAIGHT_UP, 26)        // sub_DF5D with its call, and back: a jump straight up moves no way,
+COST(JUMP_MOVES, 6)               // or on into sub_DF62
+COST(JUMP_SHAPE, 61)              // sub_DF93 with its call, to $E3B9, less the way he faces:
+COST(JUMP_SHAPE_RIGHT, 13)        // right,
+COST(JUMP_SHAPE_LEFT, 11)         // or left
+COST(JUMP_THROW_SHAPE, 125)       // or sub_DF93 by way of sub_E079, less sub_E079's end
+COST(STAGE_JUMP_TOP, 11)          // $DE56 to $DE5E
+COST(STAGE_JUMP_HELD, 32)         // $DE64 or $DEA7 to $DB65: held where he is,
+COST(STAGE_JUMP_NOT_HELD, 2)      // or not,
+COST(STAGE_JUMP_LANDS, 56)        // and on the ground: $DE69 or $DEAC to $DB65, with sub_E166
 COST(WAY_AHEAD_LEFT, 67)          // sub_DF62 with its call, to the block ahead of him: heading left,
 COST(WAY_AHEAD_RIGHT, 69)         // or right
 COST(WAY_SOLID, 18)               // and after it, and back: the block is solid,

@@ -1,0 +1,22 @@
+{
+  "about": "The game's start with nothing pressed until Arthur stands in the first stage. Then he walks right and jumps as he goes, throws his lance at the zombie on that side, walks back left with another jump, and throws at the zombie on the other.",
+  "frames": 1300,
+  "held": [
+    [0, []],
+    [100, ["START"]],
+    [102, []],
+    [1100, ["RIGHT"]],
+    [1118, ["RIGHT", "A"]],
+    [1121, ["RIGHT"]],
+    [1140, []],
+    [1165, ["B"]],
+    [1168, []],
+    [1180, ["LEFT"]],
+    [1190, ["LEFT", "A"]],
+    [1193, ["LEFT"]],
+    [1216, []],
+    [1228, ["B"]],
+    [1231, []]
+  ],
+  "clip": { "at": 1000, "frames": 300 }
+}
