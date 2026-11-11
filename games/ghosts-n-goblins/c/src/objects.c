@@ -87,11 +87,15 @@ static int in_view(uint8_t object) {
 static void scale(void) {
   uint32_t value = (uint32_t)RAM[0x48] << 24 | (uint32_t)(RAM[0x27] << 16 | RAM[0x26] << 8), sum = 0;
   uint8_t by = RAM[0x52];
-  while (by) {
+  took(SCALE_BEGINS);
+  do {
     value >>= 1;
+    took(by & 0x80 ? SCALE_BIT_SET : SCALE_BIT_CLEAR);
     if (by & 0x80) sum += value;
     by = (uint8_t)(by << 1);
-  }
+    took(by ? GOES_ROUND : GOES_ON);
+  } while (by);
+  took(RETURNS);
   RAM[0x52] = 0;
   RAM[0x25] = (uint8_t)(value >> 24);
   RAM[0x24] = (uint8_t)(value >> 16);
@@ -106,7 +110,7 @@ static void scale(void) {
 // for each way, how far down and how far across a speed of 256 goes, in 256ths of a pixel. Leaving its screen down, at
 // $F077 and $F08A, isn't ported yet.
 void move_object(uint8_t object, uint8_t speed) {
-  took(ABOUT_A_MOVE);
+  took(MOVE_BEGINS);
   uint16_t way = (uint16_t)(0xF2A3 + RAM[OBJECT_HEADING + object] * 4);
   RAM[0xA0] = speed;
   set_ram16(0x9D, 0xF2A3);
@@ -115,11 +119,17 @@ void move_object(uint8_t object, uint8_t speed) {
     RAM[0x27] = cart(7, (uint16_t)(way + across * 2 + 1));
     RAM[0x48] = RAM[0x27] & 0x80 ? 0xFF : 0;
     RAM[0x52] = speed;
+    took(RAM[0x27] & 0x80 ? MOVE_WAY_BACK : MOVE_WAY_FORWARD);
+    took(MOVE_SCALE_CALLED);
     scale();
     RAM[0x77 + across] = RAM[0x48];
     RAM[0x73 + across] = RAM[0x27];
     RAM[0x7B + across] = RAM[0x26];
+    took(across ? MOVE_FOUND : MOVE_ACROSS_BEGINS);
   }
+  took(MOVE_ADDED);
+  took(MOVE_SAME_SCREEN);
+  took(MOVE_ENDS);
   uint32_t x = (uint32_t)(RAM[OBJECT_X_SCREEN + object] << 16 | RAM[OBJECT_X + object] << 8 | RAM[OBJECT_X_PART + object]);
   x += (uint32_t)(A_X_SCREEN << 16 | A_X << 8 | RAM[0x7C]);
   RAM[OBJECT_X_PART + object] = (uint8_t)x;
@@ -144,9 +154,17 @@ static uint8_t way_to_first(void) {
   A_Y_SCREEN = (uint8_t)(first >> 8);
   A_X_SCREEN = (uint8_t)(second >> 8);
   uint8_t a = (uint8_t)first, b = (uint8_t)second;
-  while ((a & 0xF0) || (b & 0xF0)) { a >>= 1; b >>= 1; }   // both down to 4 bits, for the table
+  took(WAY_LEFT_AND_BELOW);
+  while ((a & 0xF0) || (b & 0xF0)) {   // both down to 4 bits, for the table
+    took(a & 0xF0 ? WAY_HALVED_FOR_FIRST : WAY_HALVED_FOR_SECOND);
+    a >>= 1;
+    b >>= 1;
+  }
+  took(WAY_SMALL_ENOUGH);
   A_Y = a;
   A_X = b;
+  took(WAY_FOUND);
+  if (0xA3 + (uint8_t)((a << 4) + b) > 0xFF) took(READ_PAST_PAGE);
   return (uint8_t)((cart(7, (uint16_t)(0xF1A3 + (uint8_t)((a << 4) + b))) + RAM[0x22]) & 0x0F);
 }
 
@@ -160,7 +178,8 @@ static void princess(uint8_t object) {
 // sub_EEA8: shown every other pair of rounds, by the object's count.
 static void flash(uint8_t object) {
   hide(object);
-  if (RAM[OBJECT_COUNT + object] & 0x02) show(object);
+  if (RAM[OBJECT_COUNT + object] & 0x02) RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN;
+  took(FLASH_AFTER_HIDING);
 }
 
 // $EDA2, kind $34: Satan in the opening scene. He waits 80 rounds, comes out of the dark in flashes, with the stage
@@ -168,13 +187,14 @@ static void flash(uint8_t object) {
 // height he has her, and flies up and away with her below him, until he's high enough to go as he came, in flashes.
 static void satan(uint8_t object) {
   enum { HAS_HER = 0x01, LEAVING = 0x02 };
-  took(ABOUT_SATAN);
   RAM[OBJECT_COLOURS + object] = 0x01;
   if (RAM[OBJECT_FLAGS + object] & LEAVING) {
     // $EE90: 16 rounds of flashes, and he's gone
     RAM[OBJECT_SHAPE + object] = 0xE6;
     RAM[OBJECT_COUNT + object]++;
+    took(SATAN_LEAVES);
     flash(object);
+    took(RAM[OBJECT_COUNT + object] >= 0x10 ? SATAN_GONE : SATAN_NOT_GONE_YET);
     if (RAM[OBJECT_COUNT + object] >= 0x10) RAM[OBJECT_FLAGS + object] = 0;
     return;
   }
@@ -185,36 +205,51 @@ static void satan(uint8_t object) {
     if (RAM[OBJECT_SCREEN_Y + object] < 0x50) {
       RAM[OBJECT_FLAGS + PRINCESS] = 0;
       RAM[OBJECT_COUNT + object] = 0;
+      took(SATAN_HIGH_ENOUGH);
       sound_play(1);
       RAM[OBJECT_FLAGS + object] |= LEAVING;
+      took(SATAN_LEAVING_SET);
       return;
     }
     RAM[OBJECT_HEADING + object] = 1;
+    took(SATAN_CARRIES);
     move_object(object, 0x18);
     RAM[OBJECT_X + PRINCESS] = (uint8_t)(RAM[OBJECT_X + object] - 8);
     RAM[OBJECT_Y + PRINCESS] = (uint8_t)(RAM[OBJECT_Y + object] + 0x10);
+    took(SATAN_CARRIED);
     return;
   }
   uint8_t count = ++RAM[OBJECT_COUNT + object];
-  if (count < 0x50) { hide(object); return; }
+  if (count < 0x50) {
+    RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
+    took(SATAN_WAITS);
+    return;
+  }
+  took(SATAN_COMES);
+  took(count == 0x50 ? SATAN_SOUND_CALLED : SATAN_NO_SOUND);
   if (count == 0x50) sound_play(0x27);
   if (count < 0x70) {
     RAM[OBJECT_SHAPE + object] = 0xE6;
-    flash(object);
+    RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
+    if (count & 0x02) RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN;
+    took(SATAN_FLASHES);
     PPU_MASK = RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN ? 0x16 : 0x1E;
+    took(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN ? SATAN_FLASH_SHOWN : SATAN_FLASH_HIDDEN);
     return;
   }
   if (count < 0x90) {
     RAM[OBJECT_SHAPE + object] = (uint8_t)(0xE8 + ((count >> 2) & 1));
-    show(object);
+    RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN;
+    took(SATAN_BEATS_WINGS);
     return;
   }
   RAM[OBJECT_SHAPE + object] = 0xE7;
-  show(object);
+  RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN;
   uint8_t above = (uint8_t)(RAM[OBJECT_SCREEN_Y + object] - RAM[OBJECT_SCREEN_Y + PRINCESS]);
   if (above < 8 || above >= 0xF8) {
     RAM[OBJECT_SHAPE + PRINCESS] = 0xF2;
     RAM[OBJECT_FLAGS + object] |= HAS_HER;
+    took(above < 8 ? SATAN_REACHES_HER : SATAN_REACHES_HER_FROM_BELOW);
     return;
   }
   A_X = RAM[OBJECT_X + PRINCESS];
@@ -222,7 +257,9 @@ static void satan(uint8_t object) {
   A_Y = RAM[OBJECT_Y + PRINCESS];
   A_Y_SCREEN = RAM[OBJECT_Y_SCREEN + PRINCESS];
   object_place(object);
+  took(SATAN_FLIES);
   RAM[OBJECT_HEADING + object] = way_to_first();
+  took(SATAN_HEADS);
   move_object(object, 0x18);
 }
 
@@ -231,10 +268,17 @@ static void satan(uint8_t object) {
 static int arthur_within(uint8_t object) {
   int16_t apart = (int16_t)((RAM[OBJECT_X_SCREEN + ARTHUR] << 8 | RAM[OBJECT_X + ARTHUR]) - (RAM[OBJECT_X_SCREEN + object] << 8 | RAM[OBJECT_X + object]));
   RAM[0x47] = (uint8_t)apart;
-  if (apart < -128 || apart > 127) return 0;
+  uint8_t screens = (uint8_t)((uint16_t)apart >> 8), same = screens == 0, next = screens == 0xFF;
+  if (apart < -128 || apart > 127) {
+    took(same ? WITHIN_SAME_SCREEN_FAR : next ? WITHIN_NEXT_SCREEN_FAR : WITHIN_SCREENS_APART);
+    return 0;
+  }
+  took(same ? WITHIN_SAME_SCREEN : WITHIN_NEXT_SCREEN);
   uint8_t across = (uint8_t)(RAM[OBJECT_SCREEN_X + ARTHUR] - RAM[OBJECT_SCREEN_X + object]);
-  if (across < RAM[0x22] && across >= RAM[0x24]) return 0;
+  if (across < RAM[0x22] && across >= RAM[0x24]) { took(WITHIN_ACROSS_NOT); return 0; }
+  took(across >= RAM[0x22] ? WITHIN_ACROSS_LEFT : WITHIN_ACROSS_RIGHT);
   uint8_t down = (uint8_t)(RAM[OBJECT_SCREEN_Y + ARTHUR] - RAM[OBJECT_SCREEN_Y + object]);
+  took(down >= RAM[0x23] ? WITHIN_DOWN_ABOVE : down < RAM[0x25] ? WITHIN_DOWN_BELOW : WITHIN_DOWN_NOT);
   return down >= RAM[0x23] || down < RAM[0x25];
 }
 
@@ -244,7 +288,7 @@ static int arthur_within(uint8_t object) {
 static int arthur_touches(uint8_t object) {
   enum { CAN_TOUCH_NOTHING = 0x41, CROUCHING = 0x02 };
   if (RAM[OBJECT_FLAGS + ARTHUR] & CAN_TOUCH_NOTHING) { took(PICK_UP_CANNOT_BE_TOUCHED); return 0; }
-  took(ABOUT_A_TOUCH);
+  took(TOUCH_SET_UP);
   RAM[0x25] = (uint8_t)(8 + RAM[0x27]);
   RAM[0x23] = (uint8_t)-RAM[0x25];
   RAM[0x24] = (uint8_t)(RAM[0x26] + 4);
@@ -253,6 +297,7 @@ static int arthur_touches(uint8_t object) {
   if (standing) RAM[OBJECT_SCREEN_Y + ARTHUR] -= 4;
   int touches = arthur_within(object);
   if (standing) RAM[OBJECT_SCREEN_Y + ARTHUR] += 4;
+  took(TOUCH_ENDS);
   return touches;
 }
 
@@ -284,6 +329,7 @@ static void pick_up(uint8_t object) {
   int touched = arthur_touches(object);
   if (!touched) took(PICK_UP_LEFT);
   if (!touched || thing != ARMOUR) return;
+  took(PICK_UP_ARMOUR_TAKEN);
   RAM[OBJECT_FLAGS + ARTHUR] &= (uint8_t)~WITHOUT_ARMOUR;
   TILES_FIRST_LIST = 0;
   RAM[0xD6] = RAM[0xD7] = RAM[0xD8] = RAM[0xD9] = 0xFF;

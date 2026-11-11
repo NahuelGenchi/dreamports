@@ -290,6 +290,57 @@ COST(PICK_UP_IN_VIEW, 48)         // $BA12 to the call of sub_F68E,
 COST(PICK_UP_FLASHES, 8)          // with its other colour every fourth round
 COST(PICK_UP_CANNOT_BE_TOUCHED, 16) // sub_F68E when Arthur's flags say so
 COST(PICK_UP_LEFT, 35)            // $BA3F to $BB6A, and back
+COST(PICK_UP_ARMOUR_TAKEN, 101)   // $BA3F to sub_F708's end, and back: the armour, in the opening scene
+COST(TOUCH_SET_UP, 95)            // sub_F68E to its call of sub_F63A, for an Arthur who stands,
+COST(TOUCH_ENDS, 33)              // and $F6D9, and back
+COST(WITHIN_SAME_SCREEN, 31)      // sub_F63A to $F65D: the two are less than half a screen apart, on one screen of the stage,
+COST(WITHIN_NEXT_SCREEN, 37)      // or on two,
+COST(WITHIN_SAME_SCREEN_FAR, 43)  // or they're further apart, and back: on one screen,
+COST(WITHIN_NEXT_SCREEN_FAR, 46)  // on two,
+COST(WITHIN_SCREENS_APART, 39)    // or on screens that aren't next to each other
+COST(WITHIN_ACROSS_LEFT, 16)      // $F65D to $F670: Arthur is within the box across, left of the object's place,
+COST(WITHIN_ACROSS_RIGHT, 21)     // or right of it,
+COST(WITHIN_ACROSS_NOT, 31)       // or isn't, and back
+COST(WITHIN_DOWN_ABOVE, 27)       // $F670, and back: within the box down, above the object's place,
+COST(WITHIN_DOWN_BELOW, 32)       // or below it,
+COST(WITHIN_DOWN_NOT, 31)         // or not
+COST(FLASH_AFTER_HIDING, 27)      // sub_EEA8 after its call of sub_F346, and back
+COST(SATAN_LEAVES, 54)            // $EDA2 to $EE98's call, once he's leaving
+COST(SATAN_NOT_GONE_YET, 15)      // $EE9B, and back,
+COST(SATAN_GONE, 21)              // or with his flags cleared
+COST(SATAN_CARRIES, 130)          // $EDA2 to $EE7A's call, with the princess, while he's below the top of the picture,
+COST(SATAN_CARRIED, 30)           // and $EE7D, and back
+COST(SATAN_HIGH_ENOUGH, 133)      // or $EDA2 to $EE6D's call, once he's high enough,
+COST(SATAN_LEAVING_SET, 23)       // and $EE70, with sub_F309, and back
+COST(SATAN_WAITS, 92)             // $EDA2 to sub_F346's end, and back, in his first 80 rounds
+COST(SATAN_COMES, 73)             // $EDA2 to $EDC4, after them,
+COST(SATAN_SOUND_CALLED, 10)      // with his sound on the 80th round,
+COST(SATAN_NO_SOUND, 3)           // or not
+COST(SATAN_FLASHES, 117)          // $EDCB to $EDE4, to the 112th round,
+COST(SATAN_FLASH_HIDDEN, 9)       // and back, hidden,
+COST(SATAN_FLASH_SHOWN, 13)       // or shown, with the stage dark
+COST(SATAN_BEATS_WINGS, 52)       // $EDCB to sub_F321's end, and back, to the 144th round
+COST(SATAN_REACHES_HER, 92)       // $EDCB to sub_F305's end, and back: within 8 pixels above her,
+COST(SATAN_REACHES_HER_FROM_BELOW, 95) // or below her
+COST(SATAN_FLIES, 129)            // $EDCB to $EE46's call
+COST(SATAN_HEADS, 10)             // $EE49 to sub_F03E
+COST(WAY_LEFT_AND_BELOW, 147)     // sub_EF25 to $EF99, for a place to the left and not above, less than a screen away
+COST(WAY_HALVED_FOR_FIRST, 21)    // $EF99: both halved while the first is 16 or more,
+COST(WAY_HALVED_FOR_SECOND, 27)   // or the second,
+COST(WAY_SMALL_ENOUGH, 15)        // and on to $EFAC
+COST(WAY_FOUND, 38)               // $EFAC, and back
+COST(MOVE_BEGINS, 55)             // sub_F03E's call of sub_EFDA, to $EFF9
+COST(MOVE_WAY_FORWARD, 3)         // $EFF9 or $F020: a way that adds,
+COST(MOVE_WAY_BACK, 7)            // or takes away
+COST(MOVE_SCALE_CALLED, 12)       // $EFFF or $F026, to sub_F137
+COST(MOVE_ACROSS_BEGINS, 43)      // $F006 to $F020
+COST(MOVE_FOUND, 30)              // $F02D, and back
+COST(SCALE_BEGINS, 32)            // sub_F137 to $F14D
+COST(SCALE_BIT_CLEAR, 31)         // each bit of the speed, to $F16E: one that's clear,
+COST(SCALE_BIT_SET, 59)           // or set
+COST(MOVE_ADDED, 78)              // $F041 to $F075
+COST(MOVE_SAME_SCREEN, 12)        // $F075 to $F091, on the same screen down
+COST(MOVE_ENDS, 17)               // $F091, and back
 
 // ---- Arthur's task in a stage, $DAE4 (arthur.c), and the stage's blocks (scroll.c)
 COST(STAGE_BLOCK, 217)            // $EA55: the stage's bank, sub_E945, the bank back, and back
@@ -321,9 +372,9 @@ COST(FOLLOW_DOWN_NEAR, 16)
 COST(FOLLOW_DOWN_FAR, 23)
 COST(ARTHUR_AFTER_VIEW, 8)        // $DB68 to $DB7C
 COST(ARTHUR_TURN_ENDS, 6)         // the call of sub_DB8A
-COST(ARTHUR_SHAPE, 112)           // sub_E35E to $E3B9, with its call
+COST(ARTHUR_SHAPE, 112)           // sub_E35E to $E3B9, with its call,
 COST(ARTHUR_SHAPE_STARTS_AGAIN, 6) // his walk's count back to 0
-COST(ARTHUR_FLASH_LOOKED_AT, 31)  // sub_E3B9, and back
+COST(ARTHUR_FLASH_LOOKED_AT, 31)  // and sub_E3B9, and back
 COST(ARTHUR_FLASH_CALLED, 6)
 COST(ARTHUR_BUTTONS, 39)          // sub_E01E, with its call
 COST(ARTHUR_BUTTONS_BUSY, 21)     // or when his state stops it
@@ -338,6 +389,40 @@ COST(ARTHUR_FELL_ABOVE_HALF, 9)   // $E2B5
 COST(ARTHUR_FELL_BELOW_HALF, 14)  // or with its call of sub_DB99
 COST(ARTHUR_FALL_ENDS, 54)        // $E2BF to $E2E1
 COST(ARTHUR_STARTS_IN_STAGE, 71)  // $DA71 to $DAE4
+COST(ARTHUR_SCENE_BEGINS, 62)      // $DA71 to $E4F3: the opening scene, where he sits
+COST(ARTHUR_WATCHES, 10)          // $E4F9 back to $E4F3, until Satan has the princess,
+COST(ARTHUR_SEES, 8)              // or on
+COST(ARTHUR_JUMP_CALLED, 18)      // $E500 to sub_E1EE
+COST(JUMP_BEGINS, 93)             // sub_E1EE to $E215
+COST(JUMP_FACES_RIGHT, 3)         // $E215,
+COST(JUMP_FACES_LEFT, 9)          // or with the shape that faces left
+COST(JUMP_HAS_ARMOUR, 25)         // $E21A to $E229
+COST(WAY_AHEAD_LEFT, 67)          // sub_DF62 with its call, to the block ahead of him: heading left,
+COST(WAY_AHEAD_RIGHT, 69)         // or right
+COST(WAY_SOLID, 18)               // and after it, and back: the block is solid,
+COST(WAY_LEFT_FREE, 25)           // or isn't, and he's clear of the picture's left edge,
+COST(WAY_LEFT_EDGE, 26)           // or at it,
+COST(WAY_RIGHT_FREE, 26)          // or clear of its right edge,
+COST(WAY_RIGHT_EDGE, 28)          // or at it
+COST(JUMP_BLOCKED, 3)             // $E22C, $E250 or $E278: something's in his way,
+COST(JUMP_DRIFTS, 16)             // or nothing is: to sub_F03E
+COST(ARTHUR_RISES, 45)            // sub_DF04 with its call: up, on his screen and below the picture's top rows
+COST(ARTHUR_RISE_COUNTED, 7)      // $E237
+COST(JUMP_STILL_IN_AIR, 3)        // $E23F or $E268,
+COST(JUMP_LANDS, 33)              // or $E23F with sub_E166, and back,
+COST(JUMP_LANDS_LATE, 24)         // or $E268 with it
+COST(JUMP_ABOVE_THE_BOTTOM, 9)    // $E245 or $E26D,
+COST(JUMP_OFF_THE_BOTTOM, 14)     // or back, off the bottom of the picture
+COST(ARTHUR_FALL_BY_LIST, 17)     // sub_DF33 with its call, to sub_DF3E,
+COST(ARTHUR_FALL_BY_SEVEN, 8)     // or sub_DF3C
+COST(JUMP_FALL_COUNTED, 13)       // $E25B to $E263
+COST(ARTHUR_LANDED, 64)           // $E50C to $E51A
+COST(ARTHUR_RESTS, 16)            // $E51D to the call that sleeps
+COST(ARTHUR_STEP_BEGINS, 15)      // $E52B to sub_F03E
+COST(ARTHUR_STEP_COUNTED, 7)      // $E53B
+COST(ARTHUR_ARMOUR_ON, 9)         // $E541 to $E548
+COST(ARTHUR_ARMOURED_RESTS, 23)   // $E54B to the call that sleeps
+COST(ARTHUR_SCENE_OVER, 11)       // $E55B to the call that ends his task
 
 // ---- the game's task before a stage, $C8C4 (flow.c)
 COST(GAME_BEGINS, 202)            // $C8C4 to $C8FB: a new game's score and counts, for one player,
@@ -428,15 +513,19 @@ COST(GAME_ROUND_AFTER, 19)        // $D58D to $D595
 COST(GAME_ROUND_ENDS, 48)         // $D3F0 to the call that yields
 
 // ---- the rows' list, sub_EECF (screen.c)
-COST(ROWS_BEGIN, 15)              // $EECF to $EED6
-COST(ROWS_ROW_BEGINS, 38)         // $EED7 to $EEED
-COST(ROWS_BYTE, 26)               // $EEEF to $EEFB, for each byte,
-COST(ROWS_BYTE_NEXT_PAGE, 4)      // and when the place it's read from goes into a new page
-COST(ROWS_ROW_ENDS, 26)           // $EEFF to $EF0E
+COST(ROWS_MARK_BEGINS, 2)         // sub_EECF, to the store that marks the list busy
+COST(ROWS_BEGIN, 13)              // and to $EED7
+COST(ROWS_ROW_BEGINS, 6)          // $EED7: a row's place in the list, to the store of its address's high byte,
+COST(ROWS_ROW_NEXT_BYTE, 10)      // to the store of its low byte, and of its count,
+COST(ROWS_ROW_KEPT, 12)           // and to $EEEF
+COST(ROWS_BYTE_READ, 6)           // each byte: read,
+COST(ROWS_BYTE_STORED, 20)        // and stored, and counted,
+COST(ROWS_BYTE_NEXT_PAGE, 4)      // with four more when what's read from goes into the next page
+COST(ROWS_ROW_ENDS, 26)           // $EEFF to $EF10
 COST(ROWS_ROW_AGAIN, 4)           // back for the next row, across a page of the code
-COST(ROWS_END_MARK, 7)            // $EF12 to the store of the end mark,
-COST(ROWS_FREED, 5)               // to the store that frees the list,
-COST(ROWS_BACK, 18)                // and back
+COST(ROWS_END_MARK, 2)            // $EF12, to the store of the list's end mark
+COST(ROWS_FREED, 7)               // and to the store that frees the list
+COST(ROWS_BACK, 21)               // and back
 COST(PALETTE_SET_UP, 20)          // sub_EEBF to sub_EECF, for all 32 colours,
 COST(HALF_PALETTE_SET_UP, 23)     // or sub_EEBA, for 16
 
@@ -521,8 +610,4 @@ COST(NOISE_IS_OVER, 43)
 COST(NOISE_STEP, 63)              // $8601 to $8625
 
 // ---- about: what hasn't been counted yet
-COST(ABOUT_A_TURN, 300)           // a task's turn that does little
 COST(ABOUT_DANGERS_COME, 2000)    // bank 2's $8431
-COST(ABOUT_SATAN, 300)            // $EDA2
-COST(ABOUT_A_MOVE, 900)           // sub_F03E
-COST(ABOUT_A_TOUCH, 250)          // sub_F68E from $F697, and $BA44

@@ -106,22 +106,38 @@ static int way_blocked(void) {
   RAM[0x78] = (uint8_t)(ahead >> 8);
   RAM[0x77] = Y_SCREEN;
   RAM[0x73] = (uint8_t)(Y + 4);
-  int blocked = block_at_stage_place() >= BLOCK_SOLID || (left ? SCREEN_X < 0x10 : SCREEN_X >= 0xF0);
-  RAM[0xD1] = blocked ? 0x80 : 0;
-  return blocked;
+  took(left ? WAY_AHEAD_LEFT : WAY_AHEAD_RIGHT);
+  int solid = block_at_stage_place() >= BLOCK_SOLID, edge = left ? SCREEN_X < 0x10 : SCREEN_X >= 0xF0;
+  took(solid ? WAY_SOLID : left ? (edge ? WAY_LEFT_EDGE : WAY_LEFT_FREE) : edge ? WAY_RIGHT_EDGE : WAY_RIGHT_FREE);
+  RAM[0xD1] = solid || edge ? 0x80 : 0;
+  return solid || edge;
 }
 
-// sub_DB82: 12 256ths of the way he's heading, with the view after him.
-static void drift(void) {
-  move_object(ARTHUR, 0x0C);
+// sub_DB82, or sub_E286 for half as far: some 256ths of the way he's heading, with the view after him, unless
+// something's in his way.
+static void drift(uint8_t speed) {
+  if (way_blocked()) { took(JUMP_BLOCKED); return; }
+  took(JUMP_DRIFTS);
+  move_object(ARTHUR, speed);
+  took(JUMPS);
   view_follows_across();
+}
+
+// sub_DF3E: down by some pixels, with the view after him once he's low in the picture. Onto the next screen down, at
+// $DF49, isn't ported yet.
+static void fall_by(uint8_t pixels) {
+  Y += pixels;
+  took(SCREEN_Y >= 0x90 ? ARTHUR_FELL_LOW : ARTHUR_FELL_HIGH);
+  if (SCREEN_Y >= 0x90) view_follows_down();
 }
 
 // sub_DB90 and $E4E5: his place on the screen, for this round's sprites.
 static void placed(void) {
+  took(CALLS);
   place_on_screen(ARTHUR);
   FLAGS &= (uint8_t)~HELD;
   STATE &= 0xF7;
+  took(ARTHUR_TURN_YIELDS);
 }
 
 // sub_E35E and sub_E3B9: his shape. The copy's list at $E3DC gives the six steps of his walk, and his shapes without
@@ -132,13 +148,20 @@ static void choose_shape(void) {
   if (COUNT >= 6) took(ARTHUR_SHAPE_STARTS_AGAIN);
   if (COUNT >= 6) COUNT = 0;
   SHAPE = (uint8_t)(((FLAGS & TURNED) | (FLAGS & WITHOUT_ARMOUR)) + cart(7, (uint16_t)(0xE3DC + COUNT)));
+  took(ARTHUR_FLASH_LOOKED_AT);
+}
+
+// How far he rises or falls this round of a jump, from the copy's list at $DEFD, whose last entries are in the next page.
+static uint8_t jump_height(void) {
+  if (0xFD + COUNT > 0xFF) took(READ_PAST_PAGE);
+  return cart(7, (uint16_t)(0xDEFD + COUNT));
 }
 
 // sub_E1EE: a jump, six rounds up and then down until he's on the ground or off the bottom of the picture, by the heights
 // the copy's list at $DEFD gives, and then 7 pixels a round, drifting the way he's heading unless something's in the way.
 // Called each turn until it's DONE.
 static wait jump(uint8_t *step) {
-  enum { BEGIN, RISE, RISEN, FALL, FELL, LONG_FALL };
+  enum { BEGIN, RISE, RISEN, FALL, FELL, LONG_FALL, LONG_FALL_AGAIN };
   for (;;) switch (*step) {
     case BEGIN:
       FLAGS |= IN_THE_AIR;
@@ -147,48 +170,64 @@ static wait jump(uint8_t *step) {
       HEADING = FLAGS & TURNED ? 0x04 : 0x0C;
       COLOURS = 0x02;
       SHAPE = (uint8_t)(0x16 + (FLAGS & TURNED ? 1 : 0));   // his shape without armour, at $E21F, isn't ported yet
+      took(JUMP_BEGINS);
+      took(FLAGS & TURNED ? JUMP_FACES_LEFT : JUMP_FACES_RIGHT);
+      took(JUMP_HAS_ARMOUR);
       *step = RISE;
       break;
     case RISE:
-      if (!way_blocked()) drift();
-      Y -= cart(7, (uint16_t)(0xDEFD + COUNT));   // sub_DF04. Past the top of his screen, at $DF15, isn't ported yet.
+      drift(0x0C);
+      Y -= jump_height();   // sub_DF04. Past the top of his screen, at $DF15, isn't ported yet.
+      took(ARTHUR_RISES);
       placed();
       *step = RISEN;
       return YIELDS;
     case RISEN:
-      *step = --COUNT ? RISE : FALL;
+      took(ARTHUR_RISE_COUNTED);
+      took(--COUNT ? GOES_ROUND : GOES_ON);
+      *step = COUNT ? RISE : FALL;
       break;
     case FALL:
       if (on_the_ground()) {
         stand_on_block();
+        took(JUMP_LANDS);
         *step = BEGIN;
         return DONE;
       }
+      took(JUMP_STILL_IN_AIR);
+      took(SCREEN_Y >= 0xE0 ? JUMP_OFF_THE_BOTTOM : JUMP_ABOVE_THE_BOTTOM);
       if (SCREEN_Y >= 0xE0) { *step = BEGIN; return DONE; }
-      if (!way_blocked()) drift();
-      Y += cart(7, (uint16_t)(0xDEFD + COUNT));   // sub_DF33
-      if (SCREEN_Y >= 0x90) view_follows_down();
+      drift(0x0C);
+      took(ARTHUR_FALL_BY_LIST);
+      fall_by(jump_height());   // sub_DF33
       placed();
       *step = FELL;
       return YIELDS;
     case FELL:
-      *step = ++COUNT < 7 ? FALL : LONG_FALL;
+      took(JUMP_FALL_COUNTED);
+      took(++COUNT < 7 ? GOES_ROUND : GOES_ON);
+      *step = COUNT < 7 ? FALL : LONG_FALL;
+      break;
+    case LONG_FALL_AGAIN:
+      took(JUMPS);
+      *step = LONG_FALL;
       break;
     case LONG_FALL:
       // $E265
       if (on_the_ground()) {
         stand_on_block();
+        took(JUMP_LANDS_LATE);
         *step = BEGIN;
         return DONE;
       }
+      took(JUMP_STILL_IN_AIR);
+      took(SCREEN_Y >= 0xE0 ? JUMP_OFF_THE_BOTTOM : JUMP_ABOVE_THE_BOTTOM);
       if (SCREEN_Y >= 0xE0) { *step = BEGIN; return DONE; }
-      if (!way_blocked()) {
-        move_object(ARTHUR, 0x06);
-        view_follows_across();
-      }
-      Y += 7;
-      if (SCREEN_Y >= 0x90) view_follows_down();
+      drift(0x06);
+      took(ARTHUR_FALL_BY_SEVEN);
+      fall_by(7);
       placed();
+      *step = LONG_FALL_AGAIN;
       return YIELDS;
   }
 }
@@ -207,7 +246,6 @@ static void start_in_stage(void) {
 static void end_stage_turn(void) {
   took(ARTHUR_TURN_ENDS);
   choose_shape();
-  took(ARTHUR_FLASH_LOOKED_AT);
   took(STATE & 0x12 ? ARTHUR_BUTTONS_BUSY : ARTHUR_BUTTONS);
   if (!(STATE & 0x12)) RAM[0x85] = 0;
   place_on_screen(ARTHUR);
@@ -232,7 +270,6 @@ wait arthur_task(void) {
         *step = STAGE_TURN;
         break;
       }
-      took(ABOUT_A_TURN);
       // $DA7A: the opening scene, where he sits by the princess without his armour
       SHAPE = 0x1C;
       FLAGS = OBJECT_FLAG_SHOWN | 0x01;
@@ -241,18 +278,25 @@ wait arthur_task(void) {
       X = 0x70;
       X_SCREEN = 0;
       COLOURS = 0x02;
+      took(ARTHUR_SCENE_BEGINS);
       *step = SCENE_SITS;
       break;
     case SCENE_SITS:
-      took(ABOUT_A_TURN);
       place_on_screen(ARTHUR);
+      took(CALLS);
       *step = SCENE_WATCHES;
       return YIELDS;
     case SCENE_WATCHES:
       // $E4F9: until Satan has her
-      if (!(RAM[OBJECT_FLAGS + SATAN] & 0x01)) { *step = SCENE_SITS; break; }
+      if (!(RAM[OBJECT_FLAGS + SATAN] & 0x01)) {
+        took(ARTHUR_WATCHES);
+        *step = SCENE_SITS;
+        break;
+      }
+      took(ARTHUR_SEES);
       HEADING = 0x04;
       TILES_FIRST_LIST = 1;   // the tiles of Arthur without his armour
+      took(ARTHUR_JUMP_CALLED);
       *step = SCENE_JUMPS;
       break;
     case SCENE_JUMPS: {
@@ -263,30 +307,41 @@ wait arthur_task(void) {
       FLAGS &= 0xFE;
       COUNT = 0;
       STATE = 0;
+      took(ARTHUR_LANDED);
       choose_shape();
+      took(ARTHUR_RESTS);
       *step = SCENE_WALKS;
       return sleep_task(60);
     }
     case SCENE_WALKS:
-      took(ABOUT_A_TURN);
+      took(CALLS);
       *step = SCENE_STEP;
       return YIELDS;
     case SCENE_STEP:
       // $E52B: to the right, a step a round, until he has his armour
       HEADING = 0x04;
+      took(ARTHUR_STEP_BEGINS);
       move_object(ARTHUR, 0x0C);
       place_on_screen(ARTHUR);
       choose_shape();
       COUNT++;
-      if (FLAGS & WITHOUT_ARMOUR) { *step = SCENE_WALKS; break; }
+      took(ARTHUR_STEP_COUNTED);
+      took(OBJECT_FLAG_READ);
+      if (FLAGS & WITHOUT_ARMOUR) {
+        took(GOES_ROUND);
+        *step = SCENE_WALKS;
+        break;
+      }
       COUNT = 0;
+      took(ARTHUR_ARMOUR_ON);
       choose_shape();
       COLOURS = 0x08;
+      took(ARTHUR_ARMOURED_RESTS);
       *step = SCENE_OVER;
       return sleep_task(60);
     case SCENE_OVER:
-      took(ABOUT_A_TURN);
       SCENE_PLAYING = 0;
+      took(ARTHUR_SCENE_OVER);
       return ENDS;
 
     case STAGE_TURN:

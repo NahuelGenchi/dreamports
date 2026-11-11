@@ -121,21 +121,26 @@ void queue_rows(uint16_t from, uint16_t to, uint8_t rows, uint8_t count) {
   set_ram16(0x24, to);
   RAM[0x22] = rows;
   RAM[0x23] = count;
+  took(ROWS_MARK_BEGINS);
   ROWS_BUSY = 0xFF;
   took(ROWS_BEGIN);
   uint8_t at = ROWS_END;
   do {
     at = ROWS_END;
+    took(ROWS_ROW_BEGINS);
     RAM[(ROWS + at++) & 0x7FF] = RAM[0x25];
+    took(ROWS_ROW_NEXT_BYTE);
     RAM[(ROWS + at++) & 0x7FF] = RAM[0x24];
+    took(ROWS_ROW_NEXT_BYTE);
     RAM[(ROWS + at++) & 0x7FF] = RAM[0x23];
     RAM[0x4A] = RAM[0x23];
-    took(ROWS_ROW_BEGINS);
+    took(ROWS_ROW_KEPT);
     do {
       uint16_t source = ram16(0x26);
+      took(ROWS_BYTE_READ);
       RAM[(ROWS + at++) & 0x7FF] = peek(source);
       set_ram16(0x26, (uint16_t)(source + 1));
-      took(ROWS_BYTE);
+      took(ROWS_BYTE_STORED);
       if (!RAM[0x26]) took(ROWS_BYTE_NEXT_PAGE);
       took(--RAM[0x4A] ? GOES_ROUND : GOES_ON);
     } while (RAM[0x4A]);
