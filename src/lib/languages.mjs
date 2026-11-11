@@ -62,3 +62,12 @@ export const playOrder = languages => [...new Set(languages.length ? languages :
  * @param {keyof typeof LANGUAGES} language
  */
 export const playHref = (href, language) => (LANGUAGES[language].folder ? new URL(`${LANGUAGES[language].folder}/`, href).href : href);
+
+/**
+ * What a play button says for a version: its own words for the one the game plays first, and with the language for
+ * another, as in 'Play in JavaScript', so a choice made further down the game's page shows on the button it acts on.
+ * @param {string} label
+ * @param {keyof typeof LANGUAGES} language
+ * @param {keyof typeof LANGUAGES} first
+ */
+export const playLabel = (label, language, first) => (language === first ? label : `${label} in ${LANGUAGES[language].name}`);
