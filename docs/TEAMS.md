@@ -54,6 +54,8 @@ A game's [version in another language](../games/README.md#versions-in-other-lang
 
 What comes before a part in the game isn't something it needs. A late level can start from a [start point](../tools/README.md#start-points), so `needs` lists only what a piece can't be finished without, and the rest can go in any order.
 
+Two pieces that would write the same new files are the one case where the order matters without that. Two acts of one zone share the zone's own code, its backdrop, its objects and its enemies, and whichever is made first writes it. Made at the same time, both write it, and the second to merge settles it by hand: Ice Mountain Zone's two acts of Sonic Advance in C left 16 to 20 files that way, after the tools had settled the rest. So each act of a zone after its first needs the act before it, as in the three Sonic Advance games' `parts.json`, and starts on top of that act's pull request as soon as it's in review, as below, so it still waits for no review.
+
 ### Building on a piece in review
 
 A finished piece can wait a while for its review, and nobody should wait with it. So a task whose needs aren't finished can still start when each of them is **in review**: its task has an open pull request here that isn't a draft and closes it, with a line such as `Closes #626`. A draft isn't finished, so it doesn't count. `find` lists such a task as free, *on top of* those pull requests, and so do the bot, the Make pages and `/dreamport`.

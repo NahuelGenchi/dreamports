@@ -332,6 +332,7 @@ void create_title_screen(int playMusic);
 void front_play(int level);
 void front_start_demo(void);
 uint32_t front_random(void);
+void front_random_seed(uint32_t seed);
 void front_start_game(void);   // the main menu's Game Start: the course select once the character has progress
 void create_main_menu(int back);
 void create_character_select(int character);

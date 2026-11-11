@@ -57,6 +57,8 @@ void boss_cam_pan(int minY, int maxY);
 int boss_hit(const Sprite *s, int x, int y);
 /** sub_800BFEC: the sprite's box 1 on Sonic's body hurts him. */
 int boss_hurt(const Sprite *s, int x, int y);
+/** sub_800BF10: the sprite's box 0 on Sonic's body hurts him. */
+int boss_shot(const Sprite *s, int x, int y);
 /** Coll_Player_Bosses_2_6: Sonic on the boss's sprite at (x, y). */
 int boss_hit26(const Sprite *s, int x, int y);
 /** The music manager's boss state, acted on in this frame's run of the manager. */

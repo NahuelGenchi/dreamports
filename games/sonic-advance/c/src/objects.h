@@ -133,6 +133,8 @@ ActTask *entity_spawn(Slot *slot);
 void objects_start(int level, int paletteAnimations);
 /** The tasks that run before Sonic's, and after him. */
 void act_tasks_destroy_all(void);
+/** TasksDestroyInPriorityRange: the act's tasks from priority `lo` up to `hi`. */
+void act_tasks_destroy(int lo, int hi);
 void objects_run_before_camera(void);
 void objects_run_early(void);
 /** The objects' tasks from the camera's priority up to the HUD's, and from the HUD's up to Sonic's. */

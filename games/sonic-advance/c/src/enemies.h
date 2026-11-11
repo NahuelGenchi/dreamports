@@ -68,6 +68,7 @@ ActTask *yukimaru_spawn(Slot *slot);        // 16
 ActTask *yukimaru_wall_spawn(Slot *slot);   // 17
 ActTask *kuraa_spawn(Slot *slot);           // 19
 ActTask *egg_spider_spawn(Slot *slot);      // 25
+ActTask *egg_ball_spawn(Slot *slot);        // 24
 ActTask *pen_spawn(Slot *slot);             // 20
 ActTask *drisame_spawn(Slot *slot);         // 18
 
