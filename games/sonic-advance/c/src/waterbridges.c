@@ -21,7 +21,7 @@ enum {
   MAX_SPEED = 0x800, PUSH = 0x40, FALL = 42,   // in 1/256 px a frame
   SPLASH_ORDER = 15, PRIORITY_BACK = 1,
   SE_WATER_BRIDGE_SPLASH = 177,
-  BALL_SPRITE_OFFSET_Y = 14,
+  BALL_SPRITE_OFFSET_Y = 9,
 };
 
 typedef struct { Object o; Sprite splash; } WaterBridge;
@@ -73,7 +73,6 @@ ActTask *water_bridge_spawn(Slot *slot) {
   b->o.slot = slot;
   b->o.x = slot->e.x;
   object_sprite(&b->splash, ANIM_SLIDE_SPLASH, 0, 0, SPLASH_ORDER, PRIORITY_BACK, 0, 0);
-  sprite_step(&b->splash);
   return object_task(&b->o, water_bridge_run, PRIORITY_OBJECTS);
 }
 
@@ -92,6 +91,5 @@ ActTask *water_bridge_splash_spawn(Slot *slot) {
   b->o.slot = slot;
   b->o.x = slot->e.x;
   object_sprite(&b->o.sprite, ANIM_BRIDGE_SPLASH, 0, 0, SPLASH_ORDER, PRIORITY_BACK, 0, 0);
-  sprite_step(&b->o.sprite);
   return object_task(&b->o, bridge_splash_run, PRIORITY_OBJECTS);
 }

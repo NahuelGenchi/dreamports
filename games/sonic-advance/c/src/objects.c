@@ -277,6 +277,8 @@ static const struct { int kind; Spawn spawn; } ENEMIES[] = {
   { 10, pierrot_spawn },
   { 6, tentou_spawn },
   { 15, mole_spawn },
+  { 21, egg_hammer_tank_intro_spawn },
+  { 22, egg_hammer_tank_spawn },
   { 23, egg_press_spawn },
   { 7, fireball_spawn },
   { 16, yukimaru_spawn },

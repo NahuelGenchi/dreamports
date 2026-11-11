@@ -236,6 +236,7 @@ enum {
 static struct { int x, y, vx, vy, life, layer; } scatter[SCATTER_SLOTS];
 static Sprite scatterSprite;
 static int scatterCeilings;   // set by a boss (unk2B6 bit 0): the rings also bounce off ceilings while rising
+#define SCATTER_CARD_STEPS 1
 
 void scatter_ceilings(void) { scatterCeilings = 1; }
 
@@ -313,6 +314,7 @@ void rings_act2_prepare(void) {
   // act's first picture, and one more step of delay, as Neo Green Hill act 2's recording has them
   for (int i = 0; i < 18; i++) update_sprite(&ringSprite, 0);
   ringSprite.qAnimDelay = (int16_t)(ringSprite.qAnimDelay + 256);
+  for (int i = 0; i < SCATTER_CARD_STEPS; i++) update_sprite(&scatterSprite, 0);
 }
 
 void rings_start(void) {
