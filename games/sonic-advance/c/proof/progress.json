@@ -1,8 +1,8 @@
 {
   "original": "d842afa7dd1e84de08addb94a51506f1bcafd551",
-  "percent": 60.51,
+  "percent": 61.86,
   "codeMap": {"functions":2238,"bytes":634614},
-  "proven": {"functions":1182,"bytes":383980},
+  "proven": {"functions":1205,"bytes":392592},
   "recordings": {
     "amy-angel-island": {
       "frames": 3400,
