@@ -1219,6 +1219,11 @@ kbd {
   text-overflow: ellipsis;
 }
 
+/* gliding to a new text's width, the label uncovers it: an ellipsis would redraw the text at every width in between */
+.nameplate.is-gliding :is(.np-name, .np-detail, .np-numbers) {
+  text-overflow: clip;
+}
+
 .np-name {
   font-size: 14px;
   line-height: 18px;
