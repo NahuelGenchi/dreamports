@@ -104,7 +104,7 @@ int object_in_view(uint8_t object) {
   return A_Y_SCREEN == 0 && A_X_SCREEN == 0;
 }
 
-// sub_E3E3 and sub_EA2F. The two blocks $76 and $77, which a stage's set of tiles can make solid, at $E3F3, and a place
+// sub_E3E3 and sub_EA2F. A place
 // whose 11 pixels below are on the next screen down, at $EA44, aren't ported yet.
 int on_the_ground(uint8_t object) {
   took(GROUND_LOOKED_AT);
@@ -113,6 +113,14 @@ int on_the_ground(uint8_t object) {
   RAM[0x78] = RAM[OBJECT_X_SCREEN + object];
   RAM[0x74] = RAM[OBJECT_X + object];
   RAM[0x22] = block_at_stage_place();
+  // $E3F3: in the first set of stages the blocks $76 and $77 are solid across half their width: the right half of
+  // $76, the left of $77
+  if (RAM[0x22] == 0x76 || RAM[0x22] == 0x77) {
+    uint8_t right_half = (RAM[OBJECT_X + object] & 0x0F) >= 8, first = RAM[0x22] == 0x76;
+    if (RAM[0xCF]) { took(first ? GROUND_HALF_BLOCK_OTHER_SET_76 : GROUND_HALF_BLOCK_OTHER_SET_77); return 0; }
+    took(first ? GROUND_HALF_BLOCK_76 : right_half ? GROUND_HALF_BLOCK_77_OPEN : GROUND_HALF_BLOCK_77_SOLID);
+    return first ? right_half : !right_half;
+  }
   return RAM[0x22] >= BLOCK_SOLID;
 }
 

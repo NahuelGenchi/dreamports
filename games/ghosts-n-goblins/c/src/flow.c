@@ -238,6 +238,54 @@ static void start_top_of_picture(void) {
   took(TOP_TIME);
 }
 
+// sub_CAFD: the stage's music, unless it plays already.
+static void stage_music(void) {
+  if (!RAM[0x0709]) took(STAGE_MUSIC_KEPT);
+  else if (DEMONSTRATION) took(STAGE_MUSIC_DEMONSTRATION);
+  else {
+    RAM[0x0709] = 0;
+    took(STAGE_MUSIC_BEGINS);
+    sound_reset();
+    took(STAGE_MUSIC_CHOSEN);
+    sound_play((uint8_t)((STAGE_SET >> 1) + 2));
+  }
+}
+
+// $D341: the view has passed the screen where the stage's next part begins, which the copy's list at $CD0B gives for
+// each. The part has its own list of objects, set of tiles for the tiles' task, and time, and the objects of the last
+// part that aren't shown are gone. The parts 2, 5 and 6 keep the time and the counts.
+static void next_part(void) {
+  RAM[0xAC + PLAYER]++;
+  STAGE++;
+  RAM[0xDA] = cart(7, (uint16_t)(0xCCB7 + STAGE));
+  STAGE_OBJECTS_PLACED = 0;
+  RAM[0xBD] = 0;
+  took(NEXT_PART_BEGINS);
+  if (STAGE == 2 || STAGE == 5 || STAGE == 6) took(STAGE == 2 ? NEXT_PART_KEEPS_2 : STAGE == 5 ? NEXT_PART_KEEPS_5 : NEXT_PART_KEEPS_6);
+  else {
+    RAM[0xEA] = RAM[0x0718] = 8;
+    took(NEXT_PART_COUNTS);
+    if (RAM[0x0709]) {
+      took(NEXT_PART_MUSIC_CALLED);
+      stage_music();
+    } else took(BRANCH_TAKEN);
+    RAM[0x06F6] = cart(7, (uint16_t)(0xD847 + STAGE * 3));
+    RAM[0x06FA] = cart(7, (uint16_t)(0xD847 + STAGE * 3 + 1));
+    RAM[0x06FC] = cart(7, (uint16_t)(0xD847 + STAGE * 3 + 2));
+    took(NEXT_PART_TIME);
+  }
+  took(NEXT_PART_CLEARS);
+  for (uint8_t object = 1; object <= 0x10; object++) {
+    if (object == 0x10) took(READ_PAST_PAGE);
+    if (RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN) took(NEXT_PART_OBJECT_KEPT);
+    else {
+      RAM[OBJECT_FLAGS + object] = 0;
+      took(NEXT_PART_OBJECT_CLEARED);
+    }
+    took(object < 0x10 ? GOES_ROUND : GOES_ON);
+  }
+}
+
 // $D16E: a stage starts: Arthur's task, the picture, the top of the picture, the stage's counts all at their start, a
 // round every three frames from here on, and the stage's music. What stages after the second set up, at $D1B5 and
 // $D26A, and two weapons' own places at the top, at $D1F9, aren't ported yet.
@@ -267,16 +315,7 @@ static void start_stage(void) {
   took(STAGE_START_COUNTS);
   FRAMES_PLAYED = 0;
   took(STAGE_START_TIME);
-  // sub_CAFD: the stage's music
-  if (!RAM[0x0709]) took(STAGE_MUSIC_KEPT);
-  else if (DEMONSTRATION) took(STAGE_MUSIC_DEMONSTRATION);
-  else {
-    RAM[0x0709] = 0;
-    took(STAGE_MUSIC_BEGINS);
-    sound_reset();
-    took(STAGE_MUSIC_CHOSEN);
-    sound_play((uint8_t)((STAGE_SET >> 1) + 2));
-  }
+  stage_music();
 }
 
 // sub_D596: the stage's own objects, from where its bank's list at $8038 points, eight bytes each: the screen Arthur has
@@ -406,6 +445,7 @@ static int stage_round(void) {
   RAM[0xCA] = (uint8_t)((mixed + ROUNDS) & 0x0F);
   took(GAME_ROUND_MIX);
   took(GAME_ROUND_CHECKS);
+  if (STAGE_SET < 4 && cart(7, (uint16_t)(0xCD0B + STAGE)) < RAM[0x65]) next_part();
   // the time stands still while $C9 is on, and once it's over
   if (RAM[0xC9]) took(TIME_STOPPED);
   else if (RAM[0xBD]) took(TIME_OVER_ALREADY);
