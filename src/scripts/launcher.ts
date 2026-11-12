@@ -7,6 +7,8 @@
 import { showTitle } from '../lib/title';
 import { hrefOf } from './controls';
 import { playHref, playLabel } from '../lib/languages.mjs';
+import type { ColourName, PoseName } from '../lib/mark';
+import { LOGO_KEYS, copyMark, logoKept, showLogo } from './mark';
 
 type Input = 'keys' | 'pad' | 'touch';
 type Motion = 'auto' | 'full' | 'calm';
@@ -92,6 +94,7 @@ function start(launcher: HTMLElement) {
   const versionPicks: (() => void)[] = [];
   const storedTheme = store.get('theme');
   const storedMotion = store.get('motion');
+  const storedLogo = logoKept();
 
   // ---------- Elements ----------
 
@@ -155,6 +158,9 @@ function start(launcher: HTMLElement) {
     sound: store.get('sound') === 'on',
     motion: (storedMotion === 'full' || storedMotion === 'calm' ? storedMotion : 'auto') as Motion,
     theme: (storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : null) as Theme | null,
+    // the logo's pose and colour, the site's own until the visitor picks
+    logoPose: storedLogo.pose,
+    logoColour: storedLogo.colour,
     aboutSec: 'dreamport',
     // what the search field holds while a search is on
     search: null as string | null,
@@ -1161,16 +1167,20 @@ function start(launcher: HTMLElement) {
   // settings
   const sndSwitch = $('#snd-switch', settingsCard);
   function syncSettings() {
+    copyMark($<SVGSVGElement>('#set-mark', settingsCard), $<SVGSVGElement>('.t-mark .mark', target));
     sndSwitch.setAttribute('aria-checked', String(state.sound));
     $<HTMLInputElement>('#theme-light', settingsCard).checked = !isDark();
     $<HTMLInputElement>('#theme-dark', settingsCard).checked = isDark();
     $('#theme-desc', settingsCard).textContent = state.theme ? '' : 'Follows your device until you pick one.';
     $<HTMLInputElement>('#motion-full', settingsCard).checked = !calm();
     $<HTMLInputElement>('#motion-calm', settingsCard).checked = calm();
+    $<HTMLInputElement>(`#pose-${state.logoPose}`, settingsCard).checked = true;
+    $<HTMLInputElement>(`#colour-${state.logoColour}`, settingsCard).checked = true;
     const kept: string[] = [];
     if (store.get('sound')) kept.push('menu sounds on');
     if (store.get('theme')) kept.push(store.get('theme') + ' look');
     if (store.get('motion')) kept.push(store.get('motion') + ' motion');
+    if (store.get(LOGO_KEYS.pose) || store.get(LOGO_KEYS.colour)) kept.push('your logo');
     const versions = store.keys('version:').length;
     if (versions) kept.push(versions === 1 ? 'the language you play a game in' : `the languages you play ${versions} games in`);
     $('#memory-note', settingsCard).textContent = kept.length
@@ -1211,12 +1221,36 @@ function start(launcher: HTMLElement) {
       sound.play('tick');
     });
   }
+  // the site's own pose and colour are kept as nothing at all, like every other setting left as it came
+  for (const input of $$<HTMLInputElement>('input[name="logo-pose"]', settingsCard)) {
+    input.addEventListener('change', () => {
+      state.logoPose = input.value as PoseName;
+      if (state.logoPose === 'leap') store.del(LOGO_KEYS.pose);
+      else store.set(LOGO_KEYS.pose, state.logoPose);
+      void showLogo(state.logoPose, state.logoColour);
+      syncSettings();
+      sound.play('tick');
+    });
+  }
+  for (const input of $$<HTMLInputElement>('input[name="logo-colour"]', settingsCard)) {
+    input.addEventListener('change', () => {
+      state.logoColour = input.value as ColourName;
+      if (state.logoColour === 'deep') store.del(LOGO_KEYS.colour);
+      else store.set(LOGO_KEYS.colour, state.logoColour);
+      void showLogo(state.logoPose, state.logoColour);
+      syncSettings();
+      sound.play('tick');
+    });
+  }
   $('#btn-forget', settingsCard).addEventListener('click', () => {
-    for (const key of ['sound', 'theme', 'motion', ...store.keys('version:')]) store.del(key);
+    for (const key of ['sound', 'theme', 'motion', LOGO_KEYS.pose, LOGO_KEYS.colour, ...store.keys('version:')]) store.del(key);
     for (const pick of versionPicks) pick();
     state.sound = false;
     state.theme = null;
     state.motion = 'auto';
+    state.logoPose = 'leap';
+    state.logoColour = 'deep';
+    void showLogo('leap', 'deep');
     applyTheme();
     applyMotion();
     syncSettings();
@@ -2381,6 +2415,8 @@ function start(launcher: HTMLElement) {
   rowEl.setAttribute('aria-orientation', 'horizontal');
   applyTheme();
   applyMotion();
+  // the logo as the visitor picked it; as the site draws it, there's nothing to do
+  if (state.logoPose !== 'leap' || state.logoColour !== 'deep') void showLogo(state.logoPose, state.logoColour);
   root.dataset.input = state.input;
   reducedMQ.addEventListener('change', () => {
     applyMotion();

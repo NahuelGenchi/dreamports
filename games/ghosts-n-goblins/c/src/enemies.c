@@ -793,12 +793,12 @@ void plant(uint8_t object) {
 
 // sub_F570's call, and what follows it in each shot: a shot flies the way it was headed, faster the harder the game is,
 // and is gone once it's out of the view.
-static int shot_moves(uint8_t object, uint8_t speed) {
+static int shot_moves(uint8_t object, uint8_t speed, cost gone) {
   took(CALLS);
   move_object(object, (uint8_t)(speed + RAM[0xD3]));
   if (object_in_view(object)) return 1;
   RAM[OBJECT_FLAGS + object] = 0;
-  took(SHOT_GONE);
+  took(gone);
   return 0;
 }
 
@@ -815,7 +815,7 @@ static void shot_tests(uint8_t object) {
 
 // $F4A3: the round shot of the plants and the fliers.
 static void shot_flies(uint8_t object, uint8_t speed) {
-  if (!shot_moves(object, speed)) return;
+  if (!shot_moves(object, speed, SHOT_GONE)) return;
   show_object(object);
   RAM[OBJECT_SHAPE + object] = 0xAB;
   RAM[0x26] = RAM[0x27] = 2;
@@ -844,7 +844,7 @@ void forest_shot(uint8_t object) {
   int past_page = OBJECT_HEADING + object >= 0x0600;   // where reading its heading takes a cycle more
   RAM[OBJECT_COLOURS + object] = 0x03;
   took(FOREST_SHOT_BEGINS);
-  if (!shot_moves(object, 0x14)) return;
+  if (!shot_moves(object, 0x14, SHOT_GONE)) return;
   show_object(object);
   if (past_page) took(READ_PAST_PAGE);
   if (heading == DOWN) {
@@ -859,5 +859,19 @@ void forest_shot(uint8_t object) {
     if (past_page) took(READ_PAST_PAGE);
     took(heading == LEFT ? FOREST_SHOT_FLIES_LEFT : FOREST_SHOT_FLIES_RIGHT);
   }
+  shot_tests(object);
+}
+
+/** $F524, kind $30: a boss's shot, which flies level. */
+void boss_shot(uint8_t object) {
+  RAM[OBJECT_COLOURS + object] = 0;
+  took(BOSS_SHOT_BEGINS);
+  if (!shot_moves(object, 0x18, BOSS_SHOT_GONE)) return;
+  took(GOES_ON);
+  show_object(object);
+  RAM[OBJECT_SHAPE + object] = RAM[OBJECT_HEADING + object] == 0x04 ? 0xC5 : 0xC6;
+  RAM[0x26] = RAM[0x27] = 4;
+  if (OBJECT_HEADING + object >= 0x0600) took(READ_PAST_PAGE);
+  took(RAM[OBJECT_HEADING + object] == 0x04 ? BOSS_SHOT_FLIES_RIGHT : BOSS_SHOT_FLIES_LEFT);
   shot_tests(object);
 }

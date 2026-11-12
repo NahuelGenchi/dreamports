@@ -1,6 +1,7 @@
 ---
 import '../styles/global.css';
 import { pageTitle } from '../lib/site';
+import { COLOURS, POSES } from '../lib/mark';
 import monocraft700 from '../assets/fonts/monocraft-700.woff2?url';
 
 interface Props {
@@ -57,7 +58,7 @@ const socialImage = new URL(social.src, Astro.site);
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content={socialImage} />
     <meta name="twitter:image:alt" content={social.alt} />
-    <script is:inline>
+    <script is:inline define:vars={{ poses: POSES.slice(1), colours: COLOURS.slice(1) }}>
       // Runs before the page is drawn, so a saved look never flashes the other one first.
       // The page follows the device's light or dark setting until the visitor picks one.
       (() => {
@@ -80,6 +81,17 @@ const socialImage = new URL(social.src, Astro.site);
         }
         const calm = motion === 'calm' || (motion !== 'full' && matchMedia('(prefers-reduced-motion: reduce)').matches);
         root.dataset.motion = calm ? 'calm' : 'full';
+        // the logo a player picked in Settings: its colour is here from the first frame, and its pose keeps the
+        // logo unseen until it is drawn in (src/scripts/mark.ts)
+        let pose = null;
+        let colour = null;
+        try {
+          pose = localStorage.getItem('dreamports:logo-pose');
+          colour = localStorage.getItem('dreamports:logo-colour');
+        } catch {}
+        // `poses` and `colours` are the ones a player can pick besides the site's own (src/lib/mark.ts)
+        if (poses.includes(pose)) root.dataset.logoPose = pose;
+        if (colours.includes(colour)) root.dataset.logoColour = colour;
       })();
     </script>
   </head>

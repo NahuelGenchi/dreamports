@@ -492,13 +492,21 @@ static int stage_round(void) {
 
 // $D408 and $C8FF: a life is over, once Arthur's task has said so at $81. The sound stops, the weapon he had is kept for
 // his next life, the stage's tasks stop, and with a life left the next begins as a game does, but for the opening
-// scene, which $A6 now keeps away. The places that send him back to an earlier one, at $D422 and $D42E, a second
-// player's turn, at $C91E, and the game's end with no life left, at $C90C, aren't ported yet.
+// scene, which $A6 now keeps away. Three places send him back to an earlier one: the third, a stage's last part with
+// its boss, to the second, and the sixth and seventh to the fifth. A second player's turn, at $C91E, and the game's
+// end with no life left, at $C90C, aren't ported yet.
 static void lose_life(void) {
   took(CALLS);
   sound_reset();
   RAM[0xC5 + PLAYER] = WEAPON_HELD;
-  took(LIFE_OVER_WEAPON_KEPT);
+  uint8_t *place = &RAM[0xAC + PLAYER];
+  if (*place == 5 || *place == 6) {
+    took(*place == 5 ? LIFE_OVER_BACK_FROM_SIXTH : LIFE_OVER_BACK_FROM_SEVENTH);
+    *place = 4;
+  } else if (*place == 2) {
+    *place = 1;
+    took(LIFE_OVER_BACK_FROM_THIRD);
+  } else took(LIFE_OVER_WEAPON_KEPT);
   stop_game_tasks();
   RAM[0xA6] = 0xFF;
   RAM[LIVES]--;

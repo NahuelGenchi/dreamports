@@ -307,6 +307,38 @@ kbd {
   flex: none;
 }
 
+/* the colours a player can pick for it in Settings in place of the site's own, Deep. Both are light enough to keep
+   in the dark theme, so they come after its rules and win over them */
+:root[data-logo-colour='soft'] {
+  --mk-b1: #9fe6f2;
+  --mk-b2: #5aa5ec;
+  --mk-b3: #4263cf;
+  --mk-w2: #c4e0f7;
+  --mk-line: #3c55c4;
+  --mk-eye: #1f2c80;
+  --mk-s1: #fff1b8;
+  --mk-s2: #ffd24d;
+  --mk-s3: #f2ae2e;
+}
+
+:root[data-logo-colour='lagoon'] {
+  --mk-b1: #a8f5e4;
+  --mk-b2: #22bfd0;
+  --mk-b3: #1a5fc0;
+  --mk-w2: #c9f3ee;
+  --mk-line: #0e6f92;
+  --mk-eye: #0b3a5c;
+  --mk-s1: #fff1b8;
+  --mk-s2: #ffd24d;
+  --mk-s3: #f2ae2e;
+}
+
+/* a pose a player picked is drawn in by the script (src/scripts/mark.ts). Until it is, the mark keeps its room and
+   stays unseen, so the site's own pose never flashes first */
+:root[data-logo-pose] .mark:not([data-pose]) {
+  visibility: hidden;
+}
+
 .mk-b1 { stop-color: var(--mk-b1); }
 .mk-b2 { stop-color: var(--mk-b2); }
 .mk-b3 { stop-color: var(--mk-b3); }
@@ -316,6 +348,13 @@ kbd {
 .mk-s2 { stop-color: var(--mk-s2); }
 .mk-s3 { stop-color: var(--mk-s3); }
 .mk-eye { fill: var(--mk-eye); }
+
+/* its eye closed, in the pose asleep */
+.mk-lid {
+  fill: none;
+  stroke: var(--mk-eye);
+  stroke-linecap: round;
+}
 
 .mk-line {
   fill: none;
@@ -1318,6 +1357,9 @@ kbd {
 }
 
 .t-mark {
+  --land-x: 63.4%;
+  --land-y: 62.8%;
+  --land-r: 12.3%;
   position: relative;
   width: calc(var(--cell) * 20);
   height: calc(var(--cell) * 20);
@@ -1334,19 +1376,20 @@ kbd {
   transform: translateY(calc(var(--cell) * -2));
 }
 
-/* the open space the dolphin curls around, under its chin and over its tail */
+/* where the game lands: the open space the leaping dolphin curls around, under its chin and over its tail. Another
+   pose has its own place, which the script sets with the pose (src/scripts/mark.ts): the middle and half the width */
 .t-mark-mouth {
   position: absolute;
-  left: 51%;
-  right: 24.5%;
-  top: 50.5%;
-  bottom: 25%;
+  left: calc(var(--land-x) - var(--land-r));
+  top: calc(var(--land-y) - var(--land-r));
+  width: calc(var(--land-r) * 2);
+  height: calc(var(--land-r) * 2);
 }
 
 .t-glow {
   position: absolute;
-  left: 63.5%;
-  top: 63%;
+  left: var(--land-x);
+  top: var(--land-y);
   width: 14%;
   height: 12%;
   translate: -50% -50%;
@@ -1566,6 +1609,27 @@ dialog.card[open] {
   margin-top: 4px;
   color: var(--dim);
   font: 400 13.5px/20px var(--font);
+}
+
+/* the logo's row shows it as picked, before its words, and has two choices, its pose over its colour; they go under
+   the words where a row is too narrow for both */
+.set-logo {
+  flex-wrap: wrap;
+}
+
+.set-logo .set-text {
+  flex: 1 1 9em;
+}
+
+.set-mark {
+  width: 44px;
+  height: 44px;
+}
+
+.set-picks {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
 }
 
 .set-desc:empty {
@@ -2501,6 +2565,10 @@ dialog.card[open] {
 
   .set-row {
     flex-wrap: wrap;
+  }
+
+  .set-picks {
+    justify-items: start;
   }
 
   .about {
