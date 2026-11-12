@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { CLIP_FRAMES, clipLinks, clipProblems, clipWindow, firstChanged, gameAt, gamesChanged, gamesShownIn, newFramesIn, recordingHash } from '../lib/clips.mjs';
+import { CLIP_FRAMES, changedText, clipLinks, clipProblems, clipsToShow, clipWindow, firstChanged, gameAt, gamesChanged, gamesShownIn, newFramesIn, recordingHash } from '../lib/clips.mjs';
 import { pathsOf } from '../../.github/first-entry/rules.mjs';
 import { readRecording } from '../lib/recording.mjs';
 import { checkClips } from '../clips-check.mjs';
@@ -107,6 +107,33 @@ test('the first frame a step changed, in a recording main proved the same', () =
   assert.equal(firstChanged({ ...same, main: mainWith({ recordings: { 'a-test': { frames: 2000, matched: 2000, differs: [] } } }), differs: [] }), null);
 });
 
+test('a change that\'s only heard comes after one that can be seen, and is marked', () => {
+  // the VS menu in a step about an act: main differed in the sound of two frames, and in the picture of a third
+  const main = mainWith({ recordings: { 'a-test': { frames: 2000, matched: 1997, differs: [[1267, 1267], [1672, 1672], [1831, 1831]], soundDiffers: [[1267, 1267], [1672, 1672]] } } });
+  const same = { main, name: 'a-test', file: FILE, text: RECORDING, frames: 2000 };
+  const heard = firstChanged({ ...same, differs: [[1831, 1831]] });
+  assert.deepEqual(heard, { frame: 1267, why: 'the first whose sound differed on main and matches now', heard: true });
+  assert.match(changedText(heard), /only heard/);
+  // once the picture's frame matches too, the clip starts there, not at the sound's
+  assert.deepEqual(firstChanged({ ...same, differs: [] }), { frame: 1831, why: 'the first that differed on main and matches now' });
+  // and the guess before the Dreamport plays starts at the picture's
+  assert.deepEqual(firstChanged({ ...same, differs: null }), { frame: 1831, why: 'the first that differed on main' });
+  // sound that matched on main and differs now is only heard when the picture still matches
+  const sound = [[1267, 1267], [1672, 1672], [1900, 1900]], differs = [[1267, 1267], [1672, 1672], [1831, 1831], [1900, 1900]];
+  assert.deepEqual(firstChanged({ ...same, differs, sound, picture: [[1831, 1831]] }), { frame: 1900, why: 'the first whose sound matched on main and differs now', heard: true });
+  assert.deepEqual(firstChanged({ ...same, differs, sound, picture: [[1831, 1831], [1900, 1900]] }), { frame: 1900, why: 'the first that matched on main and differs now' });
+});
+
+test('a clip of a change that\'s only heard is left out beside one of a change that can be seen', () => {
+  const seen = { name: 'act', changed: { frame: 4326, why: 'w' } }, heard = { name: 'menu', changed: { frame: 2267, why: 'w', heard: true } };
+  const of = clip => clip.changed;
+  assert.deepEqual(clipsToShow([seen, heard], of), { shown: [seen], heard: [heard] });
+  // a step that changes sound only still shows its clips
+  assert.deepEqual(clipsToShow([heard], of), { shown: [heard], heard: [] });
+  assert.deepEqual(clipsToShow([seen], of), { shown: [seen], heard: [] });
+  assert.deepEqual(clipsToShow([], of), { shown: [], heard: [] });
+});
+
 test('the first frame a step changed, in a recording main didn\'t prove as it is', () => {
   const fresh = { name: 'a-test', file: FILE, text: RECORDING, frames: 2000, differs: [] };
   // where the original first runs code main's proof doesn't count, as an act after a menu main proves
@@ -187,6 +214,16 @@ test('the pull request\'s check reads each clip\'s measures, and the video they\
   // the Dreamport on its own, as #1019 shared it, shows nothing of whether it does what the original does
   const alone = { ...measures(), sideBySide: false };
   assert.match((await checkClips(text, { fetched: site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(alone)) }), read }))[0], /shows the Dreamport on its own/);
+  // a clip of a change that's only heard, beside one of a change that can be seen, is refused, and alone it goes
+  const menu = Buffer.from('another made-up video'), menuHash = createHash('sha1').update(menu).digest('hex');
+  const menuAt = `https://someone.github.io/dreamports/clips/a-game/2026-11-08-a68edcf-${menuHash.slice(0, 7)}`;
+  const heard = { ...measures({ changed: { frame: 1060, why: 'the first whose sound differed on main and matches now', heard: true } }), recording: 'a-menu', video: menuHash };
+  const both = site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(measures())), [`${menuAt}.mp4`]: menu, [`${menuAt}.json`]: Buffer.from(JSON.stringify(heard)) });
+  const menuText = `[![a](${menuAt}-still.png)](${menuAt}.mp4)\n\n[Watch the clip of a-menu](${menuAt}.mp4)`;
+  const refused = await checkClips(`${text}\n\n${menuText}`, { fetched: both, read });
+  assert.equal(refused.length, 1);
+  assert.match(refused[0], /a-menu: only its sound changed/);
+  assert.deepEqual(await checkClips(menuText, { fetched: both, read }), []);
   // a pull request that changes a game's code or recordings links a clip of that game, and one that changes neither needs none
   assert.match((await checkClips('Clips: none.', { fetched: site({}), read, games: ['a-game'] }))[0], /changes a-game's code or recordings and links no clip of it/);
   assert.deepEqual(await checkClips('Clips: none.', { fetched: site({}), read, games: [] }), []);

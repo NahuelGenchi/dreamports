@@ -54,35 +54,47 @@ export function mainProof(game) {
 
 /** Where a step's change starts in a recording, as prove prints it. */
 export function changedText(changed) {
-  return changed ? `from frame ${changed.frame}, ${changed.why}` : 'nothing main didn\'t prove';
+  if (!changed) return 'nothing main didn\'t prove';
+  return `from frame ${changed.frame}, ${changed.why}${changed.heard ? ', a change that\'s only heard, which a clip has no sound to show' : ''}`;
 }
 
 /**
  * The first frame of a recording that this step changed, or null when it changed nothing main's proof of it shows.
  * When main proved the same recording, that's the first frame that matches now and didn't on main, or the other way
- * round. A recording main didn't prove as it is now starts being new where its original first runs code main's proof
- * doesn't count, or at its first frame when no code map says which code runs or none of it is new. `main` is
- * mainProof's, `text` the recording's file as it is now, at `file` in the repository, `ran(frame)` the addresses of
- * the functions the original ran in each of its frames, or null with no code map, and `differs` the stretches that
- * differ now, or null when they aren't known yet, which takes what main differed in as the guess.
- * @returns {{ frame: number, why: string } | null}
+ * round, and whose change can be seen: a frame where only the sound differed, on main or now, comes first only when
+ * no frame's picture changed, and is then marked `heard`, as a clip has no sound to show it (#1194). A recording main
+ * didn't prove as it is now starts being new where its original first runs code main's proof doesn't count, or at its
+ * first frame when no code map says which code runs or none of it is new. `main` is mainProof's, `text` the
+ * recording's file as it is now, at `file` in the repository, `ran(frame)` the addresses of the functions the original
+ * ran in each of its frames, or null with no code map, and `differs` the stretches that differ now, or null when they
+ * aren't known yet, which takes what main differed in as the guess. `sound` is the stretches whose sound differs now
+ * and `picture` those whose picture does.
+ * @returns {{ frame: number, why: string, heard?: true } | null}
  */
-export function firstChanged({ main, name, file, text, frames, ran = null, differs = null }) {
+export function firstChanged({ main, name, file, text, frames, ran = null, differs = null, sound = null, picture = null }) {
   if (!main) return { frame: 0, why: 'as this folder has no main to compare with' };
   if (!main.recordings) return { frame: 0, why: 'as main has no proof of this version yet' };
   const was = main.recordings[name];
   // the frames main proved are these frames only when main's recording is this one
   if (was && main.files(file) === String(text)) {
     const before = inStretches(was.differs, frames);
+    // main's proof keeps the frames whose sound differed and not whether their picture did too, so such a frame counts
+    // as only heard. A change that can be seen comes in stretches, whose other frames say so
+    const heardBefore = inStretches(was.soundDiffers, frames);
     if (!differs) {
-      const first = before.indexOf(true);
-      return first >= 0 ? { frame: first, why: 'the first that differed on main' } : null;
+      const seen = before.findIndex((differed, frame) => differed && !heardBefore[frame]);
+      const first = seen >= 0 ? seen : before.indexOf(true);
+      return first >= 0 ? { frame: first, why: 'the first that differed on main', ...(seen < 0 ? { heard: true } : {}) } : null;
     }
-    const now = inStretches(differs, frames);
+    const now = inStretches(differs, frames), heardNow = inStretches(sound, frames), seenNow = picture ? inStretches(picture, frames) : null;
+    let heard = null;
     for (let frame = 0; frame < frames; frame++) {
-      if (before[frame] !== now[frame]) return { frame, why: before[frame] ? 'the first that differed on main and matches now' : 'the first that matched on main and differs now' };
+      if (before[frame] === now[frame]) continue;
+      const onlyHeard = before[frame] ? heardBefore[frame] : heardNow[frame] && !seenNow?.[frame];
+      if (!onlyHeard) return { frame, why: before[frame] ? 'the first that differed on main and matches now' : 'the first that matched on main and differs now' };
+      heard ??= { frame, why: before[frame] ? 'the first whose sound differed on main and matches now' : 'the first whose sound matched on main and differs now', heard: true };
     }
-    return null;
+    return heard;
   }
   if (ran) {
     for (let frame = 0; frame < frames; frame++) {
@@ -92,6 +104,16 @@ export function firstChanged({ main, name, file, text, frames, ran = null, diffe
     return { frame: 0, why: 'as main didn\'t prove this recording as it is, though it proves all the code it runs' };
   }
   return { frame: 0, why: 'as main didn\'t prove this recording as it is, and no code map says which of its code is new' };
+}
+
+/**
+ * Of a step's clips, those a pull request shows: every one, but those of a change that's only heard when another shows
+ * a change that can be seen, as a clip has no sound and the other is what the step is about (#1194). A step that
+ * changes sound only keeps its clips. `changedOf(clip)` is what prove measured as changed. { shown, heard }
+ */
+export function clipsToShow(clips, changedOf) {
+  const heard = clips.filter(clip => changedOf(clip)?.heard === true);
+  return heard.length < clips.length ? { shown: clips.filter(clip => !heard.includes(clip)), heard } : { shown: clips, heard: [] };
 }
 
 // which frames a list of stretches, [[first, last], …], holds, as true or false for each of a recording's
