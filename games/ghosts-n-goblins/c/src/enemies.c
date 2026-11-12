@@ -791,26 +791,36 @@ void plant(uint8_t object) {
   touch_tests(object);
 }
 
-// $F4A3: a shot flies the way it was headed until it's out of the view, and hits Arthur if it touches him. With the
-// cross a weapon can stop it, at $F557, which isn't ported yet.
-static void shot_flies(uint8_t object, uint8_t speed) {
+// sub_F570's call, and what follows it in each shot: a shot flies the way it was headed, faster the harder the game is,
+// and is gone once it's out of the view.
+static int shot_moves(uint8_t object, uint8_t speed) {
   took(CALLS);
   move_object(object, (uint8_t)(speed + RAM[0xD3]));
-  if (!object_in_view(object)) {
-    RAM[OBJECT_FLAGS + object] = 0;
-    took(SHOT_GONE);
-    return;
-  }
-  show_object(object);
-  RAM[OBJECT_SHAPE + object] = 0xAB;
-  RAM[0x26] = RAM[0x27] = 2;
-  took(SHOT_FLIES);
+  if (object_in_view(object)) return 1;
+  RAM[OBJECT_FLAGS + object] = 0;
+  took(SHOT_GONE);
+  return 0;
+}
+
+// $F54D: a shot hits Arthur if it touches him, within the box in $26 and $27. With the cross a weapon can stop it, at
+// $F557, which isn't ported yet.
+static void shot_tests(uint8_t object) {
   place_on_screen(object);
   took(SHOT_TESTS);
   if (object >= 0x10) took(READ_PAST_PAGE);
   if (!arthur_touches(object)) { took(ENEMY_NOT_TOUCHED); return; }
   RAM[OBJECT_FLAGS + ARTHUR] |= ARTHUR_HIT;
   took(ENEMY_TOUCHES_ARTHUR);
+}
+
+// $F4A3: the round shot of the plants and the fliers.
+static void shot_flies(uint8_t object, uint8_t speed) {
+  if (!shot_moves(object, speed)) return;
+  show_object(object);
+  RAM[OBJECT_SHAPE + object] = 0xAB;
+  RAM[0x26] = RAM[0x27] = 2;
+  took(SHOT_FLIES);
+  shot_tests(object);
 }
 
 /** $F49C, kind $2B: a plant's shot. */
@@ -825,4 +835,29 @@ void flier_shot(uint8_t object) {
   RAM[OBJECT_COLOURS + object] = 0x03;
   took(FLIER_SHOT_BEGINS);
   shot_flies(object, 0x1A);
+}
+
+/** $F41C, kind $29: the forest enemy's shot, a long one, which lies the way it flies: across, or down. */
+void forest_shot(uint8_t object) {
+  enum { DOWN = 0x08, LEFT = 0x0C };
+  uint8_t heading = RAM[OBJECT_HEADING + object];
+  int past_page = OBJECT_HEADING + object >= 0x0600;   // where reading its heading takes a cycle more
+  RAM[OBJECT_COLOURS + object] = 0x03;
+  took(FOREST_SHOT_BEGINS);
+  if (!shot_moves(object, 0x14)) return;
+  show_object(object);
+  if (past_page) took(READ_PAST_PAGE);
+  if (heading == DOWN) {
+    RAM[OBJECT_SHAPE + object] = 0x9F;
+    RAM[0x27] = 6;
+    RAM[0x26] = 2;
+    took(FOREST_SHOT_FLIES_DOWN);
+  } else {
+    RAM[OBJECT_SHAPE + object] = heading == LEFT ? 0x9D : 0x9E;
+    RAM[0x26] = 6;
+    RAM[0x27] = 2;
+    if (past_page) took(READ_PAST_PAGE);
+    took(heading == LEFT ? FOREST_SHOT_FLIES_LEFT : FOREST_SHOT_FLIES_RIGHT);
+  }
+  shot_tests(object);
 }

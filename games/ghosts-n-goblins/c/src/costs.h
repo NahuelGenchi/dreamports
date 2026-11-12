@@ -1336,6 +1336,22 @@ COST(FOREST_NOT_AHEAD, 9)         // and it isn't heading right: back
 COST(FOREST_AHEAD_LEFT, 8)        // $A839 to $A840: on its left,
 COST(FOREST_NOT_AHEAD_LEFT, 11)   // and it isn't heading left
 COST(FOREST_READIES, 23)          // $A84B, with sub_F319, and back
+COST(FOREST_SHOT_FREE, 10)        // $A856 to $A863: the first shot's object is free,
+COST(FOREST_SECOND_SHOT_FREE, 18) // or the second's,
+COST(FOREST_NO_SHOT_FREE, 25)     // or neither, and back
+COST(FOREST_SHOT_LOOKS, 10)       // $A863 to sub_F687
+COST(FOREST_SHOT_DOWN, 7)         // $A86E to $A88A: Arthur is close by,
+COST(FOREST_SHOT_AHEAD_RIGHT, 14) // or on its right, the way it's heading,
+COST(FOREST_SHOT_NOT_AHEAD_RIGHT, 21)  // or it isn't heading there, and back,
+COST(FOREST_SHOT_AHEAD_LEFT, 14)  // or on its left, the way it's heading,
+COST(FOREST_SHOT_NOT_AHEAD_LEFT, 22)   // or it isn't
+COST(FOREST_SHOT_PLACED, 78)      // $A88A to $A890, with sub_FA2E: the shot's heading and place
+COST(FOREST_SHOT_MADE, 33)        // $A890 to $A898, with sub_F319
+COST(FOREST_SHOT_SOUND, 8)        // $A898 to sub_ED51
+COST(FOREST_SHOT_BEGINS, 17)      // $F41C to sub_F0A0's call of sub_F03E: its shot
+COST(FOREST_SHOT_FLIES_DOWN, 32)  // $F426 to $F54D, less sub_F321: it flies down,
+COST(FOREST_SHOT_FLIES_RIGHT, 40) // or to the right,
+COST(FOREST_SHOT_FLIES_LEFT, 46)  // or to the left
 COST(FOREST_TURN_MOVES, 8)        // $A778 to sub_F03E
 COST(FOREST_TURN_COUNTED, 13)     // $A77D to $A785
 COST(FOREST_TURN_ENDS, 53)        // $A785 to $A7F4, by $A7C8: the turn is over,
