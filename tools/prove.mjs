@@ -10,7 +10,8 @@
 // holds that differs (lib/state.mjs). A recording fails if the game says no player could ever see a frame of it
 // (tools/README.md, Start points), and it reminds a game whose code never can say so when a start point plays. A
 // recording also fails when its name names a character, or anything else original.json lists under `shows`, that the
-// original's own memory says it doesn't show as it ends (src/lib/shows.mjs). With --quick it stops at the first frame that differs, and says what differs
+// original's own memory says it doesn't show as it ends (src/lib/shows.mjs), and when a part of it names what it reaches
+// and the original doesn't get there within the part's frames (src/lib/reaches.mjs). With --quick it stops at the first frame that differs, and says what differs
 // there, with no clip and nothing written to progress.json: a round of work, with the plain prove to finish it. The
 // pictures and the clips stay in .dreamports/results/ on this computer: they show the game, so they never go in a commit.
 // Several recordings play at the same time, each in a page of the browser and a thread of this tool of its own, as many
@@ -25,7 +26,7 @@ import { Worker, isMainThread, parentPort, workerData } from 'node:worker_thread
 import { REPO, LOCAL, resultFolder } from './lib/paths.mjs';
 import { readOriginal, readRecordings, readCodeMap, readProgress, writeProgress, readParts, hex } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
-import { expand, namesNeverInPlay } from './lib/recording.mjs';
+import { originalPlay, namesNeverInPlay } from './lib/recording.mjs';
 import { serveRepository } from './lib/server.mjs';
 import { joinChrome, openChrome } from './lib/chrome.mjs';
 import { buildIfC, openDreamport } from './lib/dreamport.mjs';
@@ -41,12 +42,16 @@ import { notesAbout } from './notes.mjs';
 import { proveLinked } from './prove-linked.mjs';
 import { versionOf } from '../src/lib/languages.mjs';
 import { kindsOf, shownOf, showsProblems } from '../src/lib/shows.mjs';
+import { reachedAt, whyUnreached } from '../src/lib/reaches.mjs';
+import { goalsNamed, heldOver, readRoute } from './lib/route.mjs';
 import { recordingHash, mainProof, firstChanged, clipWindow, newFramesIn, clipProblems, changedText } from './lib/clips.mjs';
 import { keepRecord, recordOf } from './lib/same-proof.mjs';
 import { DIFFERS_AS_BEFORE, provenBefore, worseThan } from './lib/as-before.mjs';
 
 const BATCH = 120;
 const STILLS = 600, STATES = 20;
+// a goal that comes and goes more often than this in one recording is no goal
+const GOAL_STRETCHES = 64;
 // a clip stays under 2 MB: encoded again at a lower rate while it's over, as the encoder can overshoot its target.
 // A calm clip stops well short of its rate, which only decides what fast play gets
 const CLIP_LIMIT = 2_000_000, CLIP_TARGET = 1_700_000, CLIP_RATE = 2_000_000;
@@ -75,7 +80,7 @@ export async function run(args) {
   // a whole game's plain proof says in full only what's news: the recordings that came out as when last proven, and
   // that this step changed nothing in, are summed up at the end
   const summing = !names.length && !quick && !asked.length && !args.includes('--all');
-  const asBefore = (result, name) => !result.changed && !result.wrong && !result.neverInPlay.length && JSON.stringify(keptOf(result)) === JSON.stringify(progress.recordings[name]);
+  const asBefore = (result, name) => !result.changed && !result.wrong && !result.neverInPlay.length && !result.unreached?.length && JSON.stringify(keptOf(result)) === JSON.stringify(progress.recordings[name]);
   // what every lane plays with: what was asked, and what each recording found when last proven
   const paced = args.includes('--paced');
   const setup = { game, quick, paced, asked, askedState, before: progress.recordings };
@@ -143,7 +148,7 @@ export async function run(args) {
     await Promise.all(threads.map(thread => thread.terminate()));
     await browser?.close();
   }
-  const failed = results.some(result => result.matched < result.frames || result.neverInPlay.length > 0 || result.wrong > 0);
+  const failed = results.some(result => result.matched < result.frames || result.neverInPlay.length > 0 || result.wrong > 0 || result.unreached?.length > 0);
   if (quiet.length) for (const line of summed(quiet.sort((a, b) => a - b).map(at => ({ name: recordings[at].name, ...results[at] })), recordings.length)) console.log(line);
   if (!quick) recordings.forEach((recording, at) => { progress.recordings[recording.name] = keptOf(results[at]); });
 
@@ -180,7 +185,7 @@ export async function run(args) {
   }
   if (!failed) return 0;
   // frames differ: a step back, when one that matched in the last commit differs now, or as things were (lib/as-before.mjs)
-  const worse = worseThan(provenBefore(game), recordings.map((recording, at) => ({ name: recording.name, row: keptOf(results[at]), wrong: results[at].wrong })));
+  const worse = worseThan(provenBefore(game), recordings.map((recording, at) => ({ name: recording.name, row: keptOf(results[at]), wrong: results[at].wrong, unreached: results[at].unreached })));
   if (!worse.length) {
     console.log('No frame that matched in the last commit differs.');
     return DIFFERS_AS_BEFORE;
@@ -198,6 +203,7 @@ const keptOf = result => ({
   ...(result.onlyInOriginal ? { onlyInOriginal: result.onlyInOriginal } : {}),
   ...(result.neverInPlay.length ? { neverInPlay: result.neverInPlay } : {}),
   ...(result.shows ? { shows: result.shows } : {}),
+  ...(result.reached ? { reached: result.reached } : {}),
   functions: result.functions,
 });
 
@@ -226,6 +232,8 @@ async function laneFor({ game, quick, paced, asked, askedState, before }) {
   const main = quick ? null : mainProof(game);
   const kinds = kindsOf(original, `games/${versionOf(game).game}/proof/original.json`);
   const reference = await referenceOf(original), copy = copyWith(original.sha1).path, codeMap = readCodeMap(game), parts = readParts(game);
+  // what the game says of its original, for the parts that name what they reach (src/lib/reaches.mjs)
+  const route = parts.some(part => part.reaches !== undefined) ? readRoute(game, reference.KEY) : null;
   const server = await serveRepository();
   return {
     close: () => server.close(),
@@ -233,8 +241,9 @@ async function laneFor({ game, quick, paced, asked, askedState, before }) {
       const [recording] = readRecordings(game, [name]);
       const own = parts.filter(p => p.recording === name && Array.isArray(p.frames) && p.frames.length === 2 && p.frames.every(Number.isInteger));
       try {
+        if (recording.players && own.some(part => part.reaches !== undefined)) throw new Error('A recording that links several consoles can\'t prove a part that names what it reaches yet, as only one console\'s memory is read.');
         const result = recording.players ? await proveLinked({ page, game, recording, copy, server, main, quick, asked, log, say })
-          : await prove({ page, reference, game, recording, copy, server, codeMap, main, before: before[name], asked, askedState, parts: own, kinds, keysLate: original.keysAfterVBlank === true, paced, quick, log, say });
+          : await prove({ page, reference, game, recording, copy, server, codeMap, main, before: before[name], asked, askedState, parts: own, kinds, route, keysLate: original.keysAfterVBlank === true, paced, quick, log, say });
         // what the original shows is checked however the frames compare, and a linked recording, played by more than one
         // console, isn't read
         const wrong = showsProblems(name, result.shows, recording.players ? [] : kinds);
@@ -285,28 +294,14 @@ const stretchesOf = frames => {
 const listed = stretches => stretches.slice(0, 8).map(([a, b]) => (a === b ? `${a}` : `${a} to ${b}`)).join(', ')
   + (stretches.length > 8 ? `, and ${stretches.length - 8} more stretches` : '');
 
-async function prove({ page, reference, game, recording, copy, server, codeMap, main, before, asked, askedState, parts, kinds, keysLate, paced, quick, log, say }) {
+async function prove({ page, reference, game, recording, copy, server, codeMap, main, before, asked, askedState, parts, kinds, route, keysLate, paced, quick, log, say }) {
   const { name, frames } = recording;
   const { machine, KEY, runOriginal } = reference;
   const out = resultFolder(game, name);
   if (!quick) rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
   // which of the original's frames is each of the Dreamport's: the same, but for the frames only the original has
-  const held = expand(recording.held, frames);
-  const originalOf = new Int32Array(frames), originalHeld = [], sets = [];
-  // a stretch only the original has: its buttons, and the values it writes to its memory, at frames counted the same way
-  const addStretch = ({ frames: count, held: own, sets: values = [] }) => {
-    for (const set of values) sets.push({ ...set, frame: originalHeld.length + set.frame + (keysLate ? 1 : 0), address: parseInt(set.address, 16) });
-    originalHeld.push(...expand(own, count));
-  };
-  let gap = 0;
-  for (let frame = 0; frame < frames; frame++) {
-    for (; gap < recording.onlyInOriginal.length && recording.onlyInOriginal[gap].at === frame; gap++) addStretch(recording.onlyInOriginal[gap]);
-    originalOf[frame] = originalHeld.length;
-    originalHeld.push(held[frame]);
-  }
-  for (; gap < recording.onlyInOriginal.length; gap++) addStretch(recording.onlyInOriginal[gap]);
-  sets.sort((a, b) => a.frame - b.frame);
+  const { held, originalOf, originalHeld, sets } = originalPlay(recording, { keysLate });
   const onlyInOriginal = originalHeld.length - frames;
 
   say('starting the Dreamport…');
@@ -336,8 +331,13 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // buttons, and the Dreamport's frame f is the original's frame originalOf[f] + 1. Its sound lines up the same way
     say('playing the original…');
     const functions = codeMap?.functions ?? [];
-    // and what it holds of each kind original.json lists under `shows`, such as who is playing, as its last frame ends
-    const reads = kinds.map(({ address, bytes }) => ({ frame: originalHeld.length, address, bytes }));
+    // what its parts say they reach, read as each of the recording's frames ends (src/lib/reaches.mjs), and what it
+    // holds of each kind original.json lists under `shows`, such as who is playing, as its last frame ends
+    const aims = goalsNamed(parts, route, `games/${versionOf(game).game}/proof/`);
+    const reads = [
+      ...Array.from(originalOf, at => aims.values.map(({ address, bytes }) => ({ frame: at + (keysLate ? 1 : 0), address, bytes }))).flat(),
+      ...kinds.map(({ address, bytes }) => ({ frame: originalHeld.length, address, bytes })),
+    ];
     // its pictures that are sure to be wanted come from this run too, so the original isn't played again for them:
     // the stills, and the clip a recording shows when the step changed nothing in it, its own or its last five seconds
     const clipAt = recording.clip && !quick ? [recording.clip.at, recording.clip.at + recording.clip.frames - 1] : null;
@@ -347,8 +347,15 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const sure = new Set(stills);
     if (!quick) for (let [f, last] = clipAt ?? clipWindow({ frames, changed: null, firstDifference: -1 }); f <= last && f < frames; f++) if (f >= 0) sure.add(f);
     const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, sound: true, sets, reads, pictures: [...sure].sort((a, b) => a - b).map(f => originalOf[f] + 1) });
-    if (kinds.length && first.outside.reads?.length !== kinds.length) throw new Error("The program that runs the original read nothing of its memory: npm run dp -- setup builds it again.");
-    const showing = kinds.length ? shownOf(kinds, first.outside.reads) : null;
+    if (reads.length && first.outside.reads?.length !== reads.length) throw new Error("The program that runs the original read nothing of its memory: npm run dp -- setup builds it again.");
+    const showing = kinds.length ? shownOf(kinds, first.outside.reads.slice(reads.length - kinds.length)) : null;
+    // the frames over which each goal held, and the parts whose goal doesn't come true within their own
+    const goalsHeld = aims.goals.length ? heldOver(aims, first.outside.reads, frames, route) : null;
+    for (const [goal, stretches] of Object.entries(goalsHeld ?? {})) {
+      if (stretches.length > GOAL_STRETCHES) throw new Error(`The goal "${goal}" comes and goes ${stretches.length} times in this recording, which is no goal: one holds from when the game gets there.`);
+    }
+    const unreached = parts.filter(part => part.reaches !== undefined && reachedAt(goalsHeld[part.reaches], part.frames) === null)
+      .map(part => ({ name: part.name, goal: part.reaches, frames: part.frames, why: whyUnreached(part.reaches, goalsHeld[part.reaches], part.frames) }));
     checkSizes(first.outside.sizes, machine, Array.from(originalOf, g => g + 1), (_, frame) => frame);
     const expected = Array.from(originalOf, g => first.hashes[g + 1]);
     // where this step's change starts, as main's proof tells it, for the clip to start a second before (lib/clips.mjs):
@@ -471,8 +478,10 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       const first = different.find(f => f >= a && f <= b);
       const gap = recording.onlyInOriginal.find(g => g.at > a && g.at <= b);
       const never = neverSeen.find(({ from, to }) => from <= b && to >= a);
+      const short = unreached.find(each => each.name === part);
       return {
-        name: part, frames: [a, b], proven: b < frames && first === undefined && !gap && !never, fromStart: fromStartPoint(recording, a),
+        name: part, frames: [a, b], proven: b < frames && first === undefined && !gap && !never && !short, fromStart: fromStartPoint(recording, a),
+        ...(short ? { unreached: short.goal } : {}),
         ...(b >= frames ? { past: frames - 1 } : {}),
         ...(first !== undefined ? { differs: first, ...(hashes[first] === expected[first] ? { soundOnly: true } : {}) } : {}),
         ...(gap ? { gap: gap.at } : {}),
@@ -584,6 +593,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
         changed, newFrames: newFramesIn(clipFrames, changed), base: main?.base ?? null, bytes: file.length, bitrate, dreamport: { bytes: own.file.length, bitrate: own.bitrate },
       },
       ...(showing ? { shows: showing } : {}),
+      ...(goalsHeld ? { reached: goalsHeld } : {}),
       seconds, errors: page.errors,
       ...(codeMap ? { functions: proven.size, outsideCodeMap: outside } : {}),
     };
@@ -610,6 +620,9 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (stopped) log(`  The Dreamport stopped at frame ${stopped.frame}, throwing ${stopped.error}, so it and every frame after differ. A path the game hasn't ported yet says so this way.`);
     for (const { from, to, why } of neverSeen) {
       log(`  No player could ever see frames ${listed([[from, to]])}: ${why}. So this recording fails, however its frames compare: a start point only skips the way there, as tools/README.md says under Start points.`);
+    }
+    for (const { name: part, goal, frames: [a, b], why } of unreached) {
+      log(`  ${part}, frames ${a} to ${b}, says it reaches ${goal}, and ${why}. So it isn't proven, however its frames compare: the recording has to get there within the part's frames, as tools/README.md says under What a part reaches.`);
     }
     for (const line of states.flatMap(({ frame, ...found }) => describeState(frame, found, hashes[frame] !== expected[frame]))) log(`  ${line}`);
     if (notDrawn.length) log(`  What the console holds can't be compared at frame${notDrawn.length > 1 ? 's' : ''} ${notDrawn.join(', ')}, as the Dreamport doesn't draw ${notDrawn.length > 1 ? 'them' : 'it'} with the kit's video (kit/gba/video.js).`);
@@ -642,6 +655,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
         : part.differs !== undefined ? `not proven, as ${part.soundOnly ? 'the sound of ' : ''}frame ${part.differs} differs`
           : part.neverInPlay !== undefined ? `not proven, as no player could ever see frame ${part.neverInPlay}`
           : part.gap !== undefined ? `not proven, as the original has frames of its own before frame ${part.gap}`
+            : part.unreached !== undefined ? `not proven, though every frame is the same, as it doesn't get to ${part.unreached}`
             : 'proven from a start point, every frame the same. Prove it again from power-on once the game reaches it';
       log(`  ${part.name}, frames ${part.frames[0]} to ${part.frames[1]}: ${state}.`);
     }
@@ -665,7 +679,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (!quick) log(`  What this step changed: ${changedText(changed)}${changed ? '' : ', so share leaves this clip out'}.`);
     if (changed) for (const problem of problems) log(`  share won't put this clip in a pull request: ${problem}`);
     if (showing) log(`  What the original shows as it ends: ${Object.entries(showing).map(([kind, value]) => `its ${kind} is ${typeof value === 'number' ? `${value}, which original.json gives no name` : value}`).join('; ')}.`);
-    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(showing ? { shows: showing } : {}), changed: !!changed, functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };
+    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(showing ? { shows: showing } : {}), ...(goalsHeld ? { reached: goalsHeld } : {}), unreached, changed: !!changed, functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };
     }
   }
 }

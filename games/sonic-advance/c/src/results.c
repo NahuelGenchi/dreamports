@@ -402,3 +402,7 @@ void results_display(void) {
   e.winRegs[0] = 0x00F0; e.winRegs[2] = 0x00A0;
   e.bldCnt = 0x3FFF; e.bldAlpha = 0x0010; e.bldY = (uint16_t)r.bldY;
 }
+
+int results_wait_total(void) {
+  return r.wait + 285;
+}

@@ -6,6 +6,7 @@
 // so the two share it (main.js), and a player keeps their save whichever they play.
 
 #include "sa.h"
+#include "levels.h"
 
 #define CHECKSUM 0x42C
 #define SECURITY 0x4F524950u
@@ -78,5 +79,9 @@ int save_write(void) {
 
 uint16_t save_unlocked_level(int character) { return (uint16_t)(save.bytes[0x08 + character * 2] | save.bytes[0x09 + character * 2] << 8); }
 void save_set_unlocked_level(int character, uint16_t level) { save.bytes[0x08 + character * 2] = (uint8_t)level; save.bytes[0x09 + character * 2] = (uint8_t)(level >> 8); }
+void save_moon_opened(void) {
+  uint16_t cur = save_unlocked_level(0);
+  if (cur < LEVEL_THE_MOON + 1) save_set_unlocked_level(0, (uint16_t)(LEVEL_THE_MOON + 1));
+}
 uint32_t save_player_id(void) { return get32(save.bytes, 0x04); }
 void save_set_player_id(uint32_t id) { set32(save.bytes, 0x04, id); }

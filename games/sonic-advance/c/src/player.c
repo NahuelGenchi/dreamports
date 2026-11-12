@@ -652,7 +652,7 @@ void player_step(Player *p, const PlayerInput *in) {
 
 // --- animation ------------------------------------------------------------------------------------------------------------------
 // the animation and variant each name shows (SONIC_ANIMATIONS in rom/extract.js); bouncing shows the walk cycle
-static const uint8_t ANIMATIONS[PA_COUNT][2] = {
+static const uint16_t ANIMATIONS[PA_COUNT][2] = {
   [PS_IDLE] = {0, 0}, [PA_BORED] = {1, 0}, [PS_LOOK_UP] = {2, 0}, [PS_LOOK_UP_END] = {2, 1}, [PS_CROUCH] = {3, 0},
   [PS_CROUCH_END] = {3, 1}, [PS_WALK] = {4, 0}, [PA_RUN] = {5, 0}, [PS_TURN] = {6, 0}, [PA_BRAKE_TURN] = {7, 0},
   [PS_SPIN] = {8, 0}, [PS_BRAKE] = {9, 0}, [PS_SPRING_RISE] = {10, 0}, [PS_SPRING_PEAK] = {10, 1},
@@ -665,6 +665,8 @@ static const uint8_t ANIMATIONS[PA_COUNT][2] = {
   [PS_HALF_PIPE_LOW] = {36, 0}, [PS_HALF_PIPE_MID] = {36, 1}, [PS_HALF_PIPE_HIGH] = {36, 2},
   [PS_BREATHE] = {17, 0}, [PS_FLOAT] = {42, 0},
   [PS_HANG] = {41, 0}, [PS_HANG_MOVE] = {41, 1},
+  [PS_GRABBED] = {98, 0},
+  [PS_MOON_GAZE] = {397, 0}, [PS_MOON_TRANSFORM] = {398, 0}, [PS_MOON_FLY] = {399, 0},
 };
 
 // the walk cycle plays at his speed, never slower than half

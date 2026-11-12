@@ -925,7 +925,7 @@ wait arthur_task(void) {
     case STAGE_FALLS:
       // $E28E: 6 pixels a round until he's on the ground. Off the bottom of the picture, at $E2AD, isn't ported yet.
       took(ARTHUR_FALL_CHECKS);
-      if (FLAGS & HELD) { took(ARTHUR_HELD); *step = STAGE_STANDS; break; }
+      if (FLAGS & HELD) { took(ARTHUR_FALL_HELD); *step = STAGE_STANDS; break; }
       if (on_the_ground(ARTHUR)) {
         stand_on_block();
         took(ARTHUR_LANDS);

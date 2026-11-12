@@ -55,6 +55,10 @@ typedef struct {
   unsigned palettesAfterSonic : 1;     // the frame steps its palette animations itself, after Sonic's, with no tasks for them
   unsigned tilesShownLate : 1;         // its animated tiles are copied as a frame is drawn, the frame before the step's
   unsigned cardStepsOn : 1;            // a start point's frames after the card step the whole act, and its card has its own timing
+  // its sound chip writes land at once, as before #741, not at SoundMain's place plus the kit's count of its cycles:
+  // that count is 100 to 300 cycles a frame off the original's, and X Zone's two squares playing one note for long
+  // add it up into a phase the original doesn't have (x-zone-the-moon-opens, frame 3967)
+  unsigned soundAtOnce : 1;
 } Level;
 
 /** A row's palette animations and how many there are. */

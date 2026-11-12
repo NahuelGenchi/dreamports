@@ -49,6 +49,7 @@ BossPart *boss_part(int x, int y, int tiles, int anim, int variant);
 void boss_explosion(int qx, int qy);
 /** A piece of debris and an explosion from (x, y), falling `ay`/256 px a frame faster each frame. */
 void boss_debris(int x, int y, int ay);
+void x_boss_debris(int x, int y, int blastY);
 /** Six pieces of nuts and bolts debris thrown from above the screen (Egg Rocket Zone launch and separations). */
 void throw_nuts_and_bolts(void);
 /** CreatePostBossEggMobile: Eggman flies off from (x, y). */

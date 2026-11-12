@@ -33,35 +33,52 @@ void hide_object(uint8_t object) {
   if (object >= 0x10) took(READ_PAST_PAGE);
 }
 
-// sub_F0BC: the object's place, as the second of the two.
-static void object_place(uint8_t object) {
+// sub_F0BC: the object's place, as the second of the two. `timed` counts it a write at a time, with its call, for the
+// routines a frame can end in; the others count it in a piece of their own.
+static void object_place(uint8_t object, int timed) {
+  if (timed) took(PLACE_FIRST_READ);
   B_X = RAM[OBJECT_X + object];
+  if (timed) took(PLACE_NEXT_READ);
   B_X_SCREEN = RAM[OBJECT_X_SCREEN + object];
+  if (timed) took(PLACE_NEXT_READ);
   B_Y = RAM[OBJECT_Y + object];
+  if (timed) took(PLACE_NEXT_READ);
   B_Y_SCREEN = RAM[OBJECT_Y_SCREEN + object];
+  if (timed) took(PLACE_LAST_WRITE);
 }
 
-// sub_F108: the view's place, as the first.
+// sub_F108: the view's place, as the first, a write at a time.
 static void view_place(void) {
+  took(VIEW_PLACE_FIRST_READ);
   A_X = RAM[VIEW_X];
+  took(VIEW_PLACE_NEXT_READ);
   A_X_SCREEN = RAM[VIEW_X_SCREEN];
+  took(VIEW_PLACE_NEXT_READ);
   A_Y = RAM[VIEW_Y];
+  took(VIEW_PLACE_NEXT_READ);
   A_Y_SCREEN = RAM[VIEW_Y_SCREEN];
+  took(PLACE_LAST_WRITE);
 }
 
-// sub_F0E6: how far the second place is from the first, left in the first.
+// sub_F0E6: how far the second place is from the first, left in the first, a write at a time.
 static void second_from_first(void) {
   uint16_t across = (uint16_t)((B_X_SCREEN << 8 | B_X) - (A_X_SCREEN << 8 | A_X)), down = (uint16_t)((B_Y_SCREEN << 8 | B_Y) - (A_Y_SCREEN << 8 | A_Y));
+  took(APART_FIRST);
   A_X = (uint8_t)across;
+  took(APART_SCREEN);
   A_X_SCREEN = (uint8_t)(across >> 8);
+  took(APART_DOWN);
   A_Y = (uint8_t)down;
+  took(APART_SCREEN);
   A_Y_SCREEN = (uint8_t)(down >> 8);
+  took(PLACE_LAST_WRITE);
 }
 
 // sub_F181: where an object is on the screen, from where it is in the stage and where the view is. A screen down is 240
 // pixels, so an object on another screen than the view's is 16 pixels nearer than the numbers say.
 void place_on_screen(uint8_t object) {
-  object_place(object);
+  took(CALLS);
+  object_place(object, 1);
   view_place();
   second_from_first();
   took(OBJECT_PLACED);
@@ -75,9 +92,12 @@ void place_on_screen(uint8_t object) {
 
 // sub_F0A3: whether an object is in the view's own screen, across and down.
 int object_in_view(uint8_t object) {
-  object_place(object);
+  took(CALLS);
+  object_place(object, 1);
+  took(PLACE_SCREEN_COUNTED);
   B_Y_SCREEN++;
   view_place();
+  took(PLACE_SCREEN_COUNTED);
   A_Y_SCREEN++;
   second_from_first();
   took(A_Y_SCREEN ? OBJECT_OUT_OF_VIEW_DOWN : A_X_SCREEN ? OBJECT_OUT_OF_VIEW_ACROSS : OBJECT_IN_VIEW);
@@ -124,14 +144,16 @@ static void scale(void) {
   uint8_t by = RAM[0x52];
   took(SCALE_BEGINS);
   do {
+    uint8_t set = by & 0x80;
     value >>= 1;
-    took(by & 0x80 ? SCALE_BIT_SET : SCALE_BIT_CLEAR);
-    if (by & 0x80) sum += value;
+    took(SCALE_BIT_SHIFTED);
     by = (uint8_t)(by << 1);
+    RAM[0x52] = by;
+    took(set ? SCALE_BIT_SET : SCALE_BIT_CLEAR);
+    if (set) sum += value;
     took(by ? GOES_ROUND : GOES_ON);
   } while (by);
   took(RETURNS);
-  RAM[0x52] = 0;
   RAM[0x25] = (uint8_t)(value >> 24);
   RAM[0x24] = (uint8_t)(value >> 16);
   RAM[0x23] = (uint8_t)(value >> 8);
@@ -165,7 +187,9 @@ static void add_down(uint8_t object) {
 
 // sub_F03E and sub_EFDA: moves an object by `speed` the way it's heading, one of 16 ways. The copy's table at $F2A3 has,
 // for each way, how far down and how far across a speed of 256 goes, in 256ths of a pixel.
-void move_object(uint8_t object, uint8_t speed) {
+// sub_EFDA, with its call: how far `speed` goes the way an object is heading, left in $77, $73 and $7B down and $78,
+// $74 and $7C across.
+void find_move(uint8_t object, uint8_t speed) {
   took(MOVE_BEGINS);
   if ((OBJECT_HEADING & 0xFF) + object > 0xFF) took(READ_PAST_PAGE);
   uint16_t way = (uint16_t)(0xF2A3 + RAM[OBJECT_HEADING + object] * 4);
@@ -184,6 +208,10 @@ void move_object(uint8_t object, uint8_t speed) {
     RAM[0x7B + across] = RAM[0x26];
     took(across ? MOVE_FOUND : MOVE_ACROSS_BEGINS);
   }
+}
+
+void move_object(uint8_t object, uint8_t speed) {
+  find_move(object, speed);
   took(MOVE_ADDED_ACROSS);
   uint32_t x = (uint32_t)(RAM[OBJECT_X_SCREEN + object] << 16 | RAM[OBJECT_X + object] << 8 | RAM[OBJECT_X_PART + object]);
   x += (uint32_t)(A_X_SCREEN << 16 | A_X << 8 | RAM[0x7C]);
@@ -201,7 +229,7 @@ void move_down(uint8_t object) {
 
 // sub_EF25: the way from the second place to the first, one of 16, from the copy's table of angles at $F1A3. Places
 // more than a screen apart, at $EF8E, aren't ported yet.
-static uint8_t way_to_first(void) {
+uint8_t way_to_first(void) {
   int16_t down = (int16_t)((A_Y_SCREEN << 8 | A_Y) - (B_Y_SCREEN << 8 | B_Y)), across = (int16_t)((A_X_SCREEN << 8 | A_X) - (B_X_SCREEN << 8 | B_X));
   // each quarter counts its angle from its own start, and in two of them sub_EFC1 has the two distances change places
   uint16_t first, second;
@@ -245,7 +273,7 @@ uint8_t way_to_arthur(uint8_t from) {
   A_X_SCREEN = RAM[OBJECT_X_SCREEN + ARTHUR];
   A_Y = RAM[OBJECT_Y + ARTHUR];
   A_Y_SCREEN = RAM[OBJECT_Y_SCREEN + ARTHUR];
-  object_place(from);
+  object_place(from, 0);
   return way_to_first();
 }
 
@@ -342,7 +370,7 @@ static void satan(uint8_t object) {
   A_X_SCREEN = RAM[OBJECT_X_SCREEN + PRINCESS];
   A_Y = RAM[OBJECT_Y + PRINCESS];
   A_Y_SCREEN = RAM[OBJECT_Y_SCREEN + PRINCESS];
-  object_place(object);
+  object_place(object, 0);
   took(SATAN_FLIES);
   RAM[OBJECT_HEADING + object] = way_to_first();
   took(SATAN_HEADS);
@@ -414,8 +442,7 @@ static void gravestone(uint8_t object) {
   took(GRAVESTONE_HIT_COUNTED);
 }
 
-// Bank 4's $BB8C, kind $11: a thing that's hidden where the stage's list puts it until Arthur touches the place. What
-// touching it does, at $BBAD, isn't ported yet.
+// Bank 4's $BB8C, kind $11: a thing that's hidden where the stage's list puts it until Arthur touches the place.
 static void hidden_thing(uint8_t object) {
   RAM[OBJECT_SHAPE + object] = 0x49;
   took(HIDDEN_BEGINS);
@@ -426,8 +453,42 @@ static void hidden_thing(uint8_t object) {
   } else {
     RAM[0x26] = RAM[0x27] = 6;
     took(HIDDEN_IN_VIEW);
-    arthur_touches(object);
-    took(HIDDEN_NOT_TOUCHED);
+    if (!arthur_touches(object)) took(HIDDEN_NOT_TOUCHED);
+    else {
+      // $BBAD: touched, it comes down as a pot, 100 pixels further on and 16 higher, with what its state says inside.
+      // One whose flag $01 is set needs him crouching, and the armour isn't given to an Arthur who has his.
+      enum { POT = 0x12, FALLS = 0x04, ARMOUR = 5, CROUCHES = 0x02, WITHOUT_ARMOUR = 0x20 };
+      took(HIDDEN_TOUCHED);
+      took(OBJECT_FLAG_READ);
+      if (object >= 0x10) took(READ_PAST_PAGE);
+      int stays = 0;
+      if (RAM[OBJECT_FLAGS + object] & 0x01) {
+        stays = !(RAM[OBJECT_FLAGS + ARTHUR] & CROUCHES);
+        took(stays ? HIDDEN_NEEDS_A_CROUCH : HIDDEN_CROUCHED_AT);
+      } else took(HIDDEN_ANY_TOUCH);
+      if (!stays) {
+        if (RAM[OBJECT_STATE + object] != ARMOUR) took(HIDDEN_OPENS);
+        else if (RAM[OBJECT_FLAGS + ARTHUR] & WITHOUT_ARMOUR) took(HIDDEN_ARMOUR_OPENS);
+        else {
+          took(HIDDEN_ARMOUR_NOT_NEEDED);
+          remove_object(object);
+          return;
+        }
+        uint16_t across = (uint16_t)((RAM[OBJECT_X_SCREEN + object] << 8 | RAM[OBJECT_X + object]) + 0x64);
+        RAM[OBJECT_KIND + object] = POT;
+        RAM[OBJECT_X + object] = (uint8_t)across;
+        RAM[OBJECT_X_SCREEN + object] = (uint8_t)(across >> 8);
+        A_Y = 0xF0;
+        A_Y_SCREEN = 0xFF;
+        took(HIDDEN_BECOMES_POT);
+        move_down(object);
+        RAM[OBJECT_FLAGS + object] |= FALLS;
+        RAM[OBJECT_HEADING + object] = 0x08;
+        took(HIDDEN_POT_FALLS);
+        if (object >= 0x10) took(READ_PAST_PAGE);
+        return;
+      }
+    }
   }
   took(HIDDEN_STAYS);
 }
@@ -460,6 +521,7 @@ static void pick_up(uint8_t object) {
     // $BA14: hidden while it's out of the view. What the third set of stages does with it then, at $BB72, isn't ported yet.
     RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
     took(PICK_UP_OUT_OF_VIEW);
+    if (object >= 0x10) took_times(READ_PAST_PAGE, 2);   // its flags, hidden and read, are in the next page
     return;
   }
   uint8_t thing = RAM[OBJECT_STATE + object];
@@ -473,6 +535,7 @@ static void pick_up(uint8_t object) {
   RAM[0x26] = RAM[0x27] = 6;
   int touched = arthur_touches(object);
   if (!touched) took(PICK_UP_LEFT);
+  if (!touched && object >= 0x10) took(READ_PAST_PAGE);
   if (touched && thing < 4) {
     // $BAAC: the four things that only give points, from the copy's list at $BB57, with their sound
     uint16_t points = (uint16_t)(0xBB57 + thing * 4);
@@ -517,12 +580,15 @@ wait objects_task(void) {
       switch (kind) {
         case 0x00: zombie(object); break;
         case 0x01: plant(object); break;
+        case 0x02: flier(object); break;
+        case 0x0E: platform(object); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object); break;
         case 0x12: pot(object); break;
         case 0x14: crow(object); break;
         case 0x20: gravestone(object); break;
         case 0x2B: plant_shot(object); break;
+        case 0x2C: flier_shot(object); break;
         case 0x22: map_marker(object); break;
         case LANCE: case DAGGER: weapon(object); break;
         case 0x33: princess(object); break;

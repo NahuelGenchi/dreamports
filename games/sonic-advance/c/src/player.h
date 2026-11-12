@@ -26,6 +26,8 @@ typedef enum {
   PS_BREATHE,               // taking a breath from an air bubble (CHARSTATE_27)
   PS_FLOAT,                 // lifted by a whirlwind (CHARSTATE_37)
   PS_HANG, PS_HANG_MOVE,    // on a hang bar (CHARSTATE_35, CHARSTATE_36)
+  PS_GRABBED,               // held in Egg X's claw
+  PS_MOON_GAZE, PS_MOON_TRANSFORM, PS_MOON_FLY,   // X Zone's way to the Moon Zone
   PA_BORED, PA_RUN, PA_BRAKE_TURN,   // bored of waiting, running, and turning round after a skid
   PA_COUNT
 } PlayerAnim;

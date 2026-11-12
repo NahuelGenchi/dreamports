@@ -5,6 +5,7 @@
 
 import { needsProblems } from './pieces.mjs';
 import { kindsOf, showsProblems } from './shows.mjs';
+import { reachedAt, reachesProblem } from './reaches.mjs';
 
 /** A Dreamport's entry, in its folder in games/. */
 export const ENTRY = 'entry.md';
@@ -63,7 +64,7 @@ export const portedFunctions = (portMap, progress) => new Set([
  * functions make, or a port map that names a function the code map doesn't have.
  */
 /**
- * @typedef {{ name: string, proven: boolean, recording: string | null, frames: [number, number] | null, difference: number | null, gap: number | null, fromStart: boolean }} Part
+ * @typedef {{ name: string, proven: boolean, recording: string | null, frames: [number, number] | null, difference: number | null, gap: number | null, unreached: string | null, fromStart: boolean }} Part
  * @typedef {{ percent: number, proven: number, total: number, parts: Part[] }} Gameplay
  * @typedef {{ percent: number, functions: number, named: number, played: number, unmatched: number }} Ported
  * @typedef {{ copy: string, percent: number | null, recordings: number, codeMap: { functions: number, bytes: number } | null,
@@ -147,6 +148,7 @@ export const fromStartPoint = (recording, frame) => Boolean(recording.start) || 
 
 // gameplay proven: each part parts.json lists, proven when a measured recording plays it, from the first frame of
 // it to the last, with no frame that differs and none the original has and the Dreamport lacks
+// A part that names what it reaches also needs the original to get there within those frames (reaches.mjs)
 /** @returns {Gameplay | null} */
 function gameplayOf(at, file, measured, recorded, problems, version = false) {
   const { parts } = file;
@@ -162,8 +164,13 @@ function gameplayOf(at, file, measured, recorded, problems, version = false) {
     else if (names.has(part.name)) problems.push(`${where}, ${part.name}, is listed twice.`);
     names.add(part?.name);
     /** @type {Part} */
-    const view = { name: part?.name, proven: false, recording: null, frames: null, difference: null, gap: null, fromStart: false };
-    if (part?.recording === undefined && part?.frames === undefined) return view;
+    const view = { name: part?.name, proven: false, recording: null, frames: null, difference: null, gap: null, unreached: null, fromStart: false };
+    if (part?.recording === undefined && part?.frames === undefined) {
+      // a part nothing plays yet can already say what it will have to reach
+      const problem = part?.reaches === undefined ? null : reachesProblem(part.reaches, null, '', where);
+      if (problem) problems.push(problem);
+      return view;
+    }
     const result = measured[part.recording], recording = recorded[part.recording];
     const [from, to] = Array.isArray(part.frames) ? part.frames : [];
     // a version in another language starts with none of the game's recordings measured, each a part not proven yet
@@ -178,13 +185,21 @@ function gameplayOf(at, file, measured, recorded, problems, version = false) {
     }
     const difference = (result.differs ?? []).find(([a, b]) => b >= from && a <= to);
     const gap = (recording.onlyInOriginal ?? []).find(g => g.at > from && g.at <= to);
+    // what the part says it reaches, which the original has to get to within these frames
+    let unreached = null;
+    if (part.reaches !== undefined) {
+      const problem = reachesProblem(part.reaches, result, part.recording, where);
+      if (problem) problems.push(problem);
+      else if (reachedAt(result.reached[part.reaches], [from, to]) === null) unreached = part.reaches;
+    }
     return {
       ...view,
       recording: part.recording,
       frames: [from, to],
       difference: difference ? Math.max(difference[0], from) : null,
       gap: gap ? gap.at : null,
-      proven: !difference && !gap,
+      unreached,
+      proven: !difference && !gap && !unreached,
       fromStart: fromStartPoint(recording, from),
     };
   });
