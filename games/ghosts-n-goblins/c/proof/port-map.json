@@ -105,7 +105,7 @@
     ["0001EFDA","src/costs.h:385"],
     ["0001F03E","src/costs.h:376"],
     ["0001F099","src/costs.h:336"],
-    ["0001F0A0","src/boss.c:84"],
+    ["0001F0A0","src/boss.c:87"],
     ["0001F0A3","src/costs.h:302"],
     ["0001F0BC","src/costs.h:294"],
     ["0001F0E6","src/costs.h:299"],
@@ -144,13 +144,14 @@
     ["0001F7B4","src/costs.h:915"],
     ["0001F7B9","src/costs.h:1282"],
     ["0001F934","src/costs.h:882"],
-    ["0001FA2E","src/boss.c:101"],
+    ["0001FA2E","src/boss.c:104"],
     ["0001FA58","src/costs.h:1177"],
     ["0001FA87","src/costs.h:398"],
-    ["0001FF1D","src/boss.c:36"]
+    ["0001FF1D","src/boss.c:39"],
+    ["0001FF36","src/boss.c:236"]
   ],
   "unmatched": [
-    ["BOSS_DEAD","src/boss.c:275"],
+    ["BOSS_DEAD","src/boss.c:353"],
     ["CROW_DEAD","src/costs.h:881"],
     ["FOREST_DEAD","src/costs.h:1322"],
     ["KNIGHT_DEAD","src/costs.h:1278"],

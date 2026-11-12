@@ -8,8 +8,11 @@
 // at its end it turns round, or towards Arthur when he's far, or away from him when he's close. Every eighth step is
 // a charge, flag $08: 24 rounds at speed $18 towards him. It asks for sound $0F every 24 rounds.
 //
-// Its leap, flag $20, at $FEA4, which every 64th step starts, its dodge of a weapon, flag $10, at $FCEF, its death
-// after ten hits, at $FC10, and the last stage's boss, which $CF marks, aren't ported yet.
+// A weapon coming at it while it walks sets its dodge, flag $10, at $FCEF: a jump of 16 rounds, up and down by the
+// copy's list of heights at $FEDD, and across at the step's speed in the list at $FF0D, after which the next step
+// begins. Every 64th step is a leap, flag $20, at $FEA4: the same jump at speed $2E, and it turns round as it lands.
+//
+// Its death after ten hits, at $FC10, and the last stage's boss, which $CF marks, aren't ported yet.
 
 #include "game.h"
 
@@ -230,15 +233,90 @@ static void charge(uint8_t object) {
   move(object, (uint8_t)(0x18 + RAM[0xD3]));
 }
 
+// sub_FF36, with its call: the height of a jump's round, from the copy's list at $FEDD.
+static void jump_height(uint8_t object) {
+  uint16_t listed = (uint16_t)(0xFEDD + RAM[OBJECT_COUNT + object] * 2);
+  RAM[0x7B] = 0;
+  RAM[0x73] = cart(7, listed);
+  RAM[0x77] = cart(7, (uint16_t)(listed + 1));
+  took(BOSS_JUMP_HEIGHT);
+  move_down(object);
+}
+
+// A jump's shape, facing the side Arthur is on, which its flag keeps too.
+static void jump_shape(uint8_t object) {
+  change_flag(object, FACES_LEFT, 0);
+  RAM[OBJECT_SHAPE + object] = 0xB4;
+  took(BOSS_STAND_BEGINS);
+}
+
+// $FCEF: its dodge.
+static void dodge(uint8_t object) {
+  jump_shape(object);
+  if (arthur_is_right_of(object)) took(BOSS_DODGE_FACES_RIGHT);
+  else {
+    took(GOES_ON);
+    change_flag(object, FACES_LEFT, 1);
+    RAM[OBJECT_SHAPE + object] = 0xC4;
+    took(BOSS_JUMP_SHAPE_LEFT);
+  }
+  jump_height(object);
+  uint8_t speed = cart(7, (uint16_t)(0xFF0D + (STEP(object) & 0x0F)));
+  took(BOSS_DODGE_SPEED);
+  took(CALLS);
+  move_object(object, speed);
+  if (object_in_view(object)) took(BRANCH_TAKEN);
+  else {
+    took(GOES_ON);
+    hide_object(object);
+  }
+  if (++RAM[OBJECT_COUNT + object] < 0x10) { took(BOSS_DODGE_GOES_ON); return; }
+  took(BOSS_DODGE_LANDS);
+  change_flag(object, DODGES, 0);
+  RAM[OBJECT_COUNT + object] = RAM[0x83] & 0x1F;
+  STEP(object)++;
+  RAM[OBJECT_SHAPE + object] = 0xB0;
+  took(BOSS_DODGE_OVER);
+  if (arthur_is_right_of(object)) { took(BOSS_STAYS_IN_VIEW); return; }
+  RAM[OBJECT_SHAPE + object] = 0xC0;
+  took(BOSS_DODGE_OVER_LEFT);
+}
+
+// $FEA4: its leap.
+static void leap(uint8_t object) {
+  jump_shape(object);
+  if (arthur_is_right_of(object)) took(BRANCH_TAKEN);
+  else {
+    took(GOES_ON);
+    change_flag(object, FACES_LEFT, 1);
+    RAM[OBJECT_SHAPE + object] = 0xC4;
+    took(BOSS_JUMP_SHAPE_LEFT);
+  }
+  jump_height(object);
+  took(BOSS_LEAP_SPEED);
+  took(CALLS);
+  move_object(object, 0x2E);
+  if (object_in_view(object)) took(BRANCH_TAKEN);
+  else {
+    took(GOES_ON);
+    hide_object(object);
+  }
+  if (++RAM[OBJECT_COUNT + object] < 0x10) { took(BOSS_LEAP_GOES_ON); return; }
+  took(BOSS_LEAP_LANDS);
+  change_flag(object, READY, 0);
+  RAM[OBJECT_HEADING + object] ^= 0x08;
+  took(BOSS_LEAP_OVER);
+}
+
 // $FC3F: awake.
 static void awake(uint8_t object) {
   RAM[0xE8] = 0x0F;
   RAM[0xE9] = 0x18;
   if (flag(object, CHARGES)) { took(BOSS_TURN_ELSEWHERE); charge(object); return; }
   took(BRANCH_TAKEN);
-  if (flag(object, READY)) { took(BOSS_TURN_ELSEWHERE); return; }    // $FEA4: its leap, not ported yet
+  if (flag(object, READY)) { took(BOSS_TURN_ELSEWHERE); leap(object); return; }
   took(BRANCH_TAKEN);
-  if (flag(object, DODGES)) { took(BOSS_TURN_ELSEWHERE); return; }   // $FCEF: its dodge, not ported yet
+  if (flag(object, DODGES)) { took(BOSS_TURN_ELSEWHERE); dodge(object); return; }
   took(BOSS_TURN_STEPS);
   // $FD3F: a step
   uint8_t speed = step_speed(object);

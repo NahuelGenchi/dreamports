@@ -4,6 +4,12 @@
   "codeMap": {"functions":287,"bytes":26557},
   "proven": {"functions":0,"bytes":0},
   "recordings": {
+    "boss-dodges": {
+      "frames": 6290,
+      "matched": 6290,
+      "differs": [],
+      "functions": []
+    },
     "boss-wakes": {
       "frames": 6138,
       "matched": 6138,
