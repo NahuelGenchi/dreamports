@@ -338,6 +338,12 @@ static void late_tiles_copy(int frame);
 static void late_tiles_step(void);
 static void late_tiles_draw(void);
 
+// where Sonic's task (0x3000) left him: his sprite is put there, so a task after his that moves him, as a shot that
+// hurts him, moves him on the next frame's picture (drawSonic in engine/game.js)
+static double shownX, shownY;
+static int shownSet;
+static void sonic_shown(void) { shownX = act.player.x; shownY = act.player.y; shownSet = 1; }
+
 static void draw_frame(void) {
   const Level *row = act.stage.row;
   if (restoreColour) { restoreColour = 0; e.bgPalette[0] = holdColour; e.flags |= FLAGS_UPDATE_BG_PALETTES; }
@@ -369,7 +375,8 @@ static void draw_frame(void) {
   // the zone's StageBgUpdate
   if (row->drawBackground) row->drawBackground(camX, camY);
 
-  player_draw(&act.player, camX, camY);
+  player_draw(&act.player, shownSet ? shownX : act.player.x, shownSet ? shownY : act.player.y, camX, camY);
+  shownSet = 0;
 }
 
 // UpdateBgAnimationTiles: the front layer's first tiles change every animDelay camera runs; frame 0 is the tileset,
@@ -596,13 +603,16 @@ static void act_frame(void) {
   // a start point's first act frame is the held A's jump, one frame after it began, when it has the word for it
   if (act.drawn == 0 && act.fromStartPoint && gba_start_number("jump", 0)) player_start_jump(&act.player);
   player_animate(&act.player, &in);
+  sonic_shown();
   if (row->palettesAfterSonic)
     for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
   if (act.frames > 0 || row->runsFromFirstFrame) objects_run_late();
   // what the music manager reads of Sonic (0x4000)
   const Player *sonic = &act.player;
   music_call(MUSIC_PLAYER, (sonic->invincible > 0) | (sonic->speedUp > 0) << 1 | !sonic->dead << 2);
-  // the stage clock's task (0xFF00): the course time counts once the card has ended, the stage's tick every frame
+  // the stage clock's task (0xFF00): it keeps this frame's gravity for the next (gPrevStageFlags), the course time
+  // counts once the card has ended, and the stage's tick every frame
+  act.player.wasInverted = act.player.inverted;
   if (!act.clockStopped) act.courseTime++;
   act.tick++;
   // the water's task (0xFFFE), after the clock's
@@ -742,6 +752,7 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
     player_step(&act.player, &in);
     // a card with its own timing starts Sonic's animation on its 15th frame and the palette animations on its 16th
     if (!row->cardStepsOn || act.tick >= 15) player_animate(&act.player, &in);
+    sonic_shown();
     if (act.tick > 0) objects_run_late();
     if (!row->cardStepsOn || act.tick >= 16)
       for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);

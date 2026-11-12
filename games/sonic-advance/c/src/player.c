@@ -778,7 +778,7 @@ void player_animate(Player *p, const PlayerInput *in) {
 // slope, mirrored with a negative scale when he faces right, which also moves him 1 px left; facing left, the original
 // shifts the other frames 1 px right. Under flipped gravity the other frames are turned over, and the rotated ones
 // mirrored the other way and turned by half a turn less their angle. Dying puts him in front of the front layer.
-void player_draw(Player *p, int camX, int camY) {
+void player_draw(Player *p, double x, double y, int camX, int camY) {
   if (p->hidden) return;
   Sprite *s = &p->sprite;
   // walking, bouncing and in a marble track he is drawn through the rotation hardware: at his surface's angle, or in a
@@ -786,7 +786,7 @@ void player_draw(Player *p, int camX, int camY) {
   int rotated = p->state == PS_WALK || p->state == PS_BOUNCE || p->state == PS_MARBLE_TRACK;
   if (!rotated) p->drawRotation = 0;
   else if (p->state != PS_MARBLE_TRACK) p->drawRotation = p->rotation << 2;
-  int sx = (int)__builtin_floor(p->x) - camX, sy = (int)__builtin_floor(p->y) - camY;
+  int sx = (int)__builtin_floor(x) - camX, sy = (int)__builtin_floor(y) - camY;
   int priority = p->death != PLAYER_ALIVE ? 1 : p->prio;
   s->frameFlags &= ~(SPRITE_PRIORITY | SPRITE_X_FLIP | SPRITE_Y_FLIP | SPRITE_ROT_SCALE | SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE);
   s->frameFlags |= (uint32_t)priority << 12;

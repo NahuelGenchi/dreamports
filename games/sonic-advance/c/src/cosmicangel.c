@@ -22,7 +22,7 @@ static void draw_cosmic_angel(int camX, int camY) {
   e.bgScroll[6] = (uint16_t)x;
   e.bgScroll[7] = (uint16_t)y;
   set_hblank_copy(REG_BG0HOFS + 3 * 4, 4);
-  int time = act_stage_time() >> 1;
+  int time = (act_stage_time() - 1) >> 1;   // gStageTime as the frame before's update left it (renderer.js, tick - 1)
   for (int line = 0; line < SCREEN_H; line++) {
     int row = y + line, lineX;
     if (row >= BELT_A_START && row < BELT_A_END) lineX = (x - time) & 0x1FF;

@@ -87,7 +87,7 @@ void player_init(Player *p, int x, int y);
 void player_step(Player *p, const PlayerInput *in);
 /** Picks and steps his animation after the movement, and decides whether he is drawn. */
 void player_animate(Player *p, const PlayerInput *in);
-void player_draw(Player *p, int camX, int camY);
+void player_draw(Player *p, double x, double y, int camX, int camY);   // at where his task left him
 /** The hooks for the objects: out of a ball and into one, keeping his feet in place. */
 void player_stand_up(Player *p);
 void player_curl_up(Player *p);

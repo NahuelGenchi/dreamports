@@ -20,7 +20,7 @@ enum {
   SINE_BEFORE = 0x0800,
   ANIM_HEAD = 662, HEAD_CLOSE = 0, HEAD_OPEN = 1, HEAD_OPENED = 2, HEAD_SHUT = 3,
   ANIM_EGGMAN_IN = 660, EGG_OPEN = 0, EGG_OPEN_LAUGH = 1, EGG_OPEN_HIT = 2, EGG_SHUT = 3, EGG_SHUT_LAUGH = 4, EGG_SHUT_HIT = 5,
-  ANIM_SEGMENT = 661, ANIM_SPIKE = 659, ANIM_LASER = 663, ANIM_SHOT = 664,
+  ANIM_SEGMENT = 659, ANIM_SPIKE = 661, ANIM_LASER = 663, ANIM_SHOT = 664,
   ANIM_EGG_MOBILE = 693, MOBILE_STILL = 0, MOBILE_TURN = 1,
   ANIM_EGGMAN_OUT = 694, EGG_FLEE = 4, EGG_FLY = 6, EGG_TAUNT = 7, EGG_TURN = 9,
   HEAD_TILES = 0x30, EGGMAN_IN_TILES = 8, LASER_TILES = 6, SPIKE_TILES = 4,
@@ -37,14 +37,17 @@ static const uint16_t OPEN_FOR[4] = { 480, 300, 180, 90 };
 typedef struct EggSnake EggSnake;
 typedef int (*SnakePhase)(EggSnake *);
 
+// a segment, its own task: its own sprite in the original (segment->s), which Sonic stands on, put where the segment is on
+// the screen and given the manager's box just before he is tested against it
 typedef struct {
+  Object o;
   int x, y;
   int index;
 } SegData;
 
 typedef struct {
   Object o;
-  SegData segs[SEGMENTS];
+  SegData *segs[SEGMENTS];
   int mode, bounced, stoodOn, rising, after, depth, push, frames;
   int beforeAir, beforeYsp;
   int first;
@@ -503,6 +506,13 @@ static int segment_run(ActTask *t) {
   return 1;
 }
 
+// the manager forgets a segment that has gone
+static void segment_end(ActTask *t) {
+  SegData *sg = (SegData *)t->data;
+  if (mgr && mgr->segs[sg->index] == sg) mgr->segs[sg->index] = NULL;
+  object_end(t);
+}
+
 static int q8(double v) { return (int)__builtin_floor(v * 256 + 0.5); }
 
 static int manager_run(ActTask *t) {
@@ -517,11 +527,13 @@ static int manager_run(ActTask *t) {
     memset(bumps, 0, sizeof snake->bumps);
     update_sprite(&m->o.sprite, 0);
     for (int i = 0; i < SEGMENTS; i++) {
-      SegData *sg = &m->segs[i];
+      SegData *sg = PLAIN_NEW(SegData);
+      m->segs[i] = sg;
+      if (!sg) continue;
       sg->x = snake->x0 + i * 32 - 112;
       sg->y = snake->y0;
       sg->index = i;
-      act_task_add(segment_run, NULL, sg, PRIORITY_SEGMENT + i);
+      if (!boss_task(&sg->o, segment_run, segment_end, PRIORITY_SEGMENT + i)) m->segs[i] = NULL;
     }
     return 1;
   }
@@ -532,8 +544,13 @@ static int manager_run(ActTask *t) {
   const Hitbox *box = object_box(&m->o.sprite, 0);
   if (m->after == 0) {
     for (int i = 0; i < SEGMENTS; i++) {
-      SegData *sg = &m->segs[i];
-      if (box && collide_platform_top(NULL, s16(sg->x), s16(sg->y + bumps[i]), box, p)) {
+      SegData *sg = m->segs[i];
+      if (!sg) continue;
+      int wx = s16(sg->x), wy = s16(sg->y + bumps[i]);
+      sg->o.sprite.x = (int16_t)(wx - cam_x());
+      sg->o.sprite.y = (int16_t)(wy - cam_y());
+      if (box) sg->o.sprite.hitboxes[0] = *box;
+      if (box && collide_platform_top(&sg->o, wx, wy, box, p)) {
         on = i;
         break;
       }
