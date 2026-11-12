@@ -1,20 +1,26 @@
 name: First entry
 
-# A game's first pull request can come in with no review of its code when it's only what npm run dp -- new and
-# npm run dp -- capture write, for the game its author has claimed (docs/TEAMS.md). The reading job writes all of it again
-# and compares, with a token that can only read, and asks about the capture, the one thing only a person can check, in a
-# comment with a box to tick. Ticking it runs this again, and the acting job merges that very commit. Neither runs
-# anything from the pull request: they check out this repository's own code, and read the pull request's through the API.
+# A new game's first two pull requests come in with no review of their code (docs/TEAMS.md). Its first files, only what
+# npm run dp -- new writes for the game its author has claimed: the reading job writes all of it again and compares, with
+# a token that can only read, and as they hold no picture, the acting job merges that very commit once the pull request's
+# checks have passed, which the run that follows the Check workflow sees, and then starts the workflow that puts the
+# game's progress map in its issue. Then its card, only what npm run dp -- capture writes: the bot asks about the capture,
+# the one thing only a person can check, in a comment with a box to tick, and ticking it runs this again and merges that
+# very commit. Neither job runs anything from the pull request: they check out this repository's own code, and read the
+# pull request's through the API.
 on:
   pull_request_target:
     types: [opened, reopened, synchronize]
   issue_comment:
     types: [edited]
+  workflow_run:
+    workflows: [Check]
+    types: [completed]
 
 permissions: {}
 
 concurrency:
-  group: first-entry-${{ github.event.pull_request.number || github.event.issue.number }}
+  group: first-entry-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
@@ -22,6 +28,7 @@ jobs:
     name: Read the first entry
     if: >-
       github.event_name == 'pull_request_target'
+      || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success')
       || (github.event.issue.pull_request && github.event.comment.user.login == 'github-actions[bot]'
         && startsWith(github.event.comment.body, '<!-- first-entry') && github.event.sender.login != 'github-actions[bot]')
     runs-on: ubuntu-24.04
@@ -60,6 +67,8 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      # to start the Issue maps workflow once a game's first files are on main, as a merge made here starts no run of it
+      actions: write
     steps:
       - name: Check out the bot, never a pull request's code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -70,4 +79,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PLAN: ${{ needs.read.outputs.plan }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: node .github/first-entry/act.mjs

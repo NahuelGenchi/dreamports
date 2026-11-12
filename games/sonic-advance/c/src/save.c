@@ -6,6 +6,7 @@
 // so the two share it (main.js), and a player keeps their save whichever they play.
 
 #include "sa.h"
+#include "levels.h"
 
 #define CHECKSUM 0x42C
 #define SECURITY 0x4F524950u
@@ -59,6 +60,9 @@ void save_open(void) {
  * WriteSaveGame: nothing when the flash already holds the save; otherwise the save is marked, summed and kept. Returns
  * whether it was written, which takes WRITE_FRAMES.
  */
+// the act's rings into the save's ring bank (unk428), as a signed halfword, as CreateStageResults adds them
+void save_add_ring_bank(int rings) { set32(save.bytes, 0x428, le32(save.bytes, 0x428) + (uint32_t)(int16_t)rings); }
+
 int save_write(void) {
   if (save.exists) {
     int same = 1;
@@ -75,5 +79,15 @@ int save_write(void) {
 
 uint16_t save_unlocked_level(int character) { return (uint16_t)(save.bytes[0x08 + character * 2] | save.bytes[0x09 + character * 2] << 8); }
 void save_set_unlocked_level(int character, uint16_t level) { save.bytes[0x08 + character * 2] = (uint8_t)level; save.bytes[0x09 + character * 2] = (uint8_t)(level >> 8); }
+void save_moon_opened(void) {
+  uint16_t cur = save_unlocked_level(0);
+  if (cur < LEVEL_THE_MOON + 1) save_set_unlocked_level(0, (uint16_t)(LEVEL_THE_MOON + 1));
+}
 uint32_t save_player_id(void) { return get32(save.bytes, 0x04); }
 void save_set_player_id(uint32_t id) { set32(save.bytes, 0x04, id); }
+
+// CreateEmptySaveGame, as DELETE GAME DATA's YES does it in the Options menu: the save in memory empty again
+void save_empty(void) { empty_save(save.bytes); }
+
+// sub_8012F6C, the flash erased: the next write keeps the save whatever it holds
+void save_erase(void) { save.exists = 0; }

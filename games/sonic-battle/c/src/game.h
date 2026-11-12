@@ -105,6 +105,9 @@ typedef struct {
 
   // the last sound frame's cycles, which the JavaScript kit gives as frameCycles()
   int32_t sound_cycles;
+
+  // the cycles a move on the Mini-games screen takes unpacking its picture and writing its letters (minigames.c)
+  int32_t move_cycles, text_cycles;
 } Game;
 
 extern Game g;
@@ -132,6 +135,7 @@ static inline int16_t s16(int32_t v) { return (int16_t)v; }
 
 // core.js
 void step(uint16_t held);
+void runFightSetup(int count);
 void hblank(int line);
 void fightVblank(void);
 void queueCopy(uint32_t to, uint32_t from, uint32_t bytes);
@@ -142,6 +146,7 @@ void copyAtVblank(void);
 void queueRegister(uint16_t offset, uint16_t value);
 void copyToVram(uint32_t from, uint32_t to, uint32_t count);
 void decompress(uint32_t from, uint32_t to);
+int32_t unpackCycles(uint32_t from);
 void copyTileBlock(uint32_t to, uint32_t from, int columns, int rows, int base);
 uint16_t *colours(uint32_t first);
 void clearLayer(int layer);
@@ -211,6 +216,12 @@ void resetBrain(int i);
 void restartBrain(int i);
 int wayToTarget(int i);
 void setBrainLevel(int level);
+uint16_t arcTan2(int x, int y);
+
+// brain.c
+void brainReset(int i);
+void brainTick(int i);
+
 void queueFrameAtTile(uint32_t sheet, int tile, int frame);
 void queueFighterFrame(uint32_t sheet, int slot, int frame);
 
@@ -263,9 +274,31 @@ void updateThings(void);
 void followFighter(int i);
 void trainingFrame(void);
 void trainingAfterWait(void);
+void setFightEndAt(int vblank);
+int fightWinner(int mode);
+void selectWinner(int mode);
+void battleReadyFrame(void);
+void battleReadyAfterWait(void);
+void battleFrame(void);
+void battleAfterWait(void);
+void beginEnding(void);
+void placeRealBlast(void);
+void endingFrame(void);
+void endingAfterWait(void);
+void resultTransition(void);
+void resultTransitionAfterWait(void);
+void resultScreen(void);
 
 // fight.js
-void startFight(int vblanks, int action, int you, int rival, int arena, int colour);
+void startFadeIn(int frames);
+void setUpFight(void);
+void setUpFighters(void);
+void giveComputerPicks(int i);
+void demoScreen(void);
+void demoSetup(void);
+void demoFrame(void);
+void demoAfterWait(void);
+void startFight(int vblanks, int action, int you, int rival, int arena, int colour, int battle);
 void choosing(void);
 void choosingAfterWait(void);
 
@@ -282,5 +315,9 @@ void startOptions(void);
 
 // skills.js
 void startSkills(void);
+
+// mini-games.js and lobby.js
+void startMiniGames(void);
+void startLobby(void);
 
 #endif

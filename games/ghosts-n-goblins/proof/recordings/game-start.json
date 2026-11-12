@@ -1,0 +1,10 @@
+{
+  "about": "Start pressed on the title screen, one player, then nothing: the screen that says whose turn it is, the opening scene, and the first stage, where Arthur stands while zombies come out of the ground. One knocks him out of his armour and the next kills him: his bones, the life lost, the map of the stages, and the stage again from its start.",
+  "frames": 2440,
+  "held": [
+    [0, []],
+    [100, ["START"]],
+    [102, []]
+  ],
+  "clip": { "at": 1480, "frames": 300 }
+}

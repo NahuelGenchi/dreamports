@@ -13,7 +13,11 @@ const made = (game, ported, gameplay, screen = true) => ({
   proof: { ported: { percent: ported }, gameplay: gameplay === null ? null : { percent: gameplay } },
 });
 const meter = (label, text, width) => `<span class="meter"><span class="meter-head"><span>${label}</span><span class="meter-num">${text}</span></span><span class="meter-bar" aria-hidden="true"><i style="width: ${width}%"></i></span></span>`;
-const card = (id, ported, gameplay) => `<dialog class="card view" id="${id}" data-card="x">${meter('Code ported', ported[0], ported[1])}<details><summary>${meter('Gameplay proven', gameplay[0], gameplay[1])}</summary></details></dialog>`;
+const numbers = (ported, gameplay, named = '') => `${meter(`Code ported${named}`, ...ported)}<details><summary>${meter(`Gameplay proven${named}`, ...gameplay)}</summary></details>`;
+// a version's numbers on a game's page, in a block of its own, hidden unless it's the one Play opens
+const block = (language, ported, gameplay, hidden = false) => `<div class="plays" data-language="${language}"${hidden ? ' hidden' : ''}>${numbers(ported, gameplay)}</div>`;
+// a game's card with one version's numbers: in a block on its own page, and as they are in the Make row
+const card = (id, ported, gameplay) => `<dialog class="card view" id="${id}" data-card="x">${id.startsWith('inspect-') ? block('js', ported, gameplay) : numbers(ported, gameplay)}</dialog>`;
 const slot = (id, numbers) => `<a class="slot" href="/make/x/" data-card="make-${id}" data-title="x" data-numbers="${numbers}" draggable="false"></a>`;
 
 // the pages of a made-up game at 5.35% and 10.53%, each with the launcher's other cards beside its own
@@ -55,16 +59,45 @@ test('a place in the Make row with old numbers, or none, is found', async () => 
   assert.match((await problemsWith([one], reader({ ...PAGES, '/make/': '' })))[0], /has no numbers in the Make row/);
 });
 
-test('a version in another language has its own numbers on the card, named by the language', async () => {
-  const both = { ...one, versions: [{ language: 'c', proof: { ported: { percent: 2 }, gameplay: { percent: 0 } } }] };
-  const withC = (ported, gameplay) => meter('Code ported in C', ...ported) + `<details><summary>${meter('Gameplay proven in C', ...gameplay)}</summary></details>`;
-  const pages = Object.fromEntries(Object.entries(PAGES).map(([path, html]) => [path, html.replaceAll('</dialog>', `${withC(['2%', 2], ['0%', 0])}</dialog>`)]));
-  assert.deepEqual(await problemsWith([both], reader(pages)), []);
-  assert.match((await problemsWith([both], reader()))[0], /^\/dreamports\/one-dreamport\/: .* has no Code ported in C\.$/);
-  const stale = { ...pages, '/make/one/': card('make-one-dreamport', ['5%', 5.35], ['11%', 10.53]).replace('</dialog>', `${withC(['1%', 1], ['0%', 0])}</dialog>`) };
-  const [problem, ...rest] = await problemsWith([both], reader(stale));
+// a made-up game with a version in C too, at 2% and 0%, and its pages: every version's numbers named by language in the
+// Make row, and on its own page a block each, with only C's showing, as Play opens it
+const both = { ...one, versions: [{ language: 'c', proof: { ported: { percent: 2 }, gameplay: { percent: 0 } } }] };
+const JS = [['5%', 5.35], ['11%', 10.53]], C = [['2%', 2], ['0%', 0]];
+const inspectBoth = (js = JS, c = C, hidden = { js: true, c: false }) => `<dialog class="card view" id="inspect-one-dreamport" data-card="x">${block('c', ...c, hidden.c)}${block('js', ...js, hidden.js)}</dialog>`;
+const makeBoth = (c = C) => card('make-one-dreamport', ...JS).replace('</dialog>', `${numbers(...c, ' in C')}</dialog>`);
+const BOTH = { ...PAGES, '/dreamports/one-dreamport/': inspectBoth(), '/make/one/': makeBoth() };
+
+test('a version in another language has its own numbers on the card in the Make row, named by the language', async () => {
+  assert.deepEqual(await problemsWith([both], reader(BOTH)), []);
+  assert.match((await problemsWith([both], reader({ ...BOTH, '/make/one/': PAGES['/make/one/'] })))[0], /^\/make\/one\/: .* has no Code ported in C\.$/);
+  const [problem, ...rest] = await problemsWith([both], reader({ ...BOTH, '/make/one/': makeBoth([['1%', 1], ['0%', 0]]) }));
   assert.match(problem, /in the Make row shows Code ported in C 1% .*makes 2% \(2%\)/);
   assert.deepEqual(rest, []);
+});
+
+test('a game\'s own page keeps each version\'s numbers apart, under their plain names', async () => {
+  // a page with one version's numbers only
+  const [first, second, ...rest] = await problemsWith([both], reader({ ...BOTH, '/dreamports/one-dreamport/': PAGES['/dreamports/one-dreamport/'] }));
+  assert.match(first, /^\/dreamports\/one-dreamport\/: .* shows the numbers of its version in JavaScript at first, and Play opens the one in C\.$/);
+  assert.match(second, /in the Dreamports row has no numbers for its version in C\.$/);
+  assert.deepEqual(rest, []);
+  // old numbers in one version's block, and the other's right
+  const stale = await problemsWith([both], reader({ ...BOTH, '/dreamports/one-dreamport/': inspectBoth(JS, [['1%', 1], ['0%', 0]]) }));
+  assert.equal(stale.length, 1);
+  assert.match(stale[0], /in the Dreamports row shows Code ported 1% .*makes 2% \(2%\), for its version in C\.$/);
+  // one version's numbers in the other's block
+  assert.equal((await problemsWith([both], reader({ ...BOTH, '/dreamports/one-dreamport/': inspectBoth(C, JS) }))).length, 4);
+});
+
+test('a game\'s own page shows first the numbers of the version Play opens, C when it has one', async () => {
+  const wrong = await problemsWith([both], reader({ ...BOTH, '/dreamports/one-dreamport/': inspectBoth(JS, C, { js: false, c: true }) }));
+  assert.equal(wrong.length, 2);
+  assert.match(wrong[0], /shows the numbers of its version in JavaScript at first, and Play opens the one in C\.$/);
+  assert.match(wrong[1], /hides the numbers of its version in C, the one Play opens\.$/);
+  // both showing at once
+  assert.equal((await problemsWith([both], reader({ ...BOTH, '/dreamports/one-dreamport/': inspectBoth(JS, C, { js: false, c: false }) }))).length, 1);
+  // a game with one version shows it, whatever its language
+  assert.match((await problemsWith([one], reader({ ...PAGES, '/dreamports/one-dreamport/': PAGES['/dreamports/one-dreamport/'].replace('data-language="js"', 'data-language="js" hidden') })))[0], /hides the numbers of its version in JavaScript, the one Play opens\.$/);
 });
 
 test('a missing page or a card that isn\'t on it is found', async () => {

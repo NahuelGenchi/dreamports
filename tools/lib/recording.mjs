@@ -131,6 +131,31 @@ export function originalButtons({ frames, held, onlyInOriginal = [] }) {
   return out;
 }
 
+/**
+ * How the original plays a recording's first `frames` frames, all of them unless told: `originalHeld`, the buttons it
+ * holds at each of its own frames, with the stretches only it has in their places, `originalOf`, which of its frames
+ * each of the recording's is, and `sets`, the values those stretches write to its memory, each at the original's frame,
+ * in the order of their frames. `keysLate` is for a game that reads its buttons just after the V-blank, whose values
+ * are then written a frame later, as its buttons are given (original.json's keysAfterVBlank).
+ */
+export function originalPlay(recording, { frames = recording.frames, keysLate = false } = {}) {
+  const held = expand(recording.held, frames), stretches = recording.onlyInOriginal ?? [];
+  const originalOf = new Int32Array(frames), originalHeld = [], sets = [];
+  const addStretch = ({ frames: count, held: own, sets: values = [] }) => {
+    for (const set of values) sets.push({ ...set, frame: originalHeld.length + set.frame + (keysLate ? 1 : 0), address: parseInt(set.address, 16) });
+    originalHeld.push(...expand(own, count));
+  };
+  let gap = 0;
+  for (let frame = 0; frame < frames; frame++) {
+    for (; gap < stretches.length && stretches[gap].at === frame; gap++) addStretch(stretches[gap]);
+    originalOf[frame] = originalHeld.length;
+    originalHeld.push(held[frame]);
+  }
+  for (; gap < stretches.length && stretches[gap].at <= frames; gap++) addStretch(stretches[gap]);
+  sets.sort((a, b) => a.frame - b.frame);
+  return { held, originalOf, originalHeld, sets };
+}
+
 /** The list of changes for the buttons held at every frame. */
 export function compress(perFrame) {
   const held = [];

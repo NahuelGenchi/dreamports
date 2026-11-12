@@ -56,6 +56,43 @@ void decompress(uint32_t from, uint32_t to) {
   }
 }
 
+/** How many of the console's cycles 0x0804a5b4 takes on the picture at `from`, as mGBA counts its stand-in for the
+ *  BIOS's LZ77UnCompVram and the swi that calls it, without unpacking it: the call, each flag byte, each of its bits,
+ *  and each byte a copy or a literal writes, the second of each halfword costing two fewer. */
+#define UNPACK_CALL 103
+#define UNPACK_FLAGS 19
+#define UNPACK_BIT 32
+#define UNPACK_COPY 10
+#define UNPACK_COPIED 12
+#define UNPACK_LITERAL 5
+#define UNPACK_SECOND_BYTE 2
+
+int32_t unpackCycles(uint32_t from) {
+  const uint8_t *bytes = gba_rom;
+  uint32_t at = from - CARTRIDGE;
+  uint32_t size = bytes[at + 1] | (bytes[at + 2] << 8) | (bytes[at + 3] << 16), out = 0;
+  int32_t cycles = UNPACK_CALL;
+  at += 4;
+  while (out < size) {
+    uint8_t flags = bytes[at++];
+    cycles += UNPACK_FLAGS;
+    for (int bit = 7; bit >= 0 && out < size; bit--) {
+      cycles += UNPACK_BIT;
+      if (flags & (1 << bit)) {
+        int length = (((bytes[at] << 8) | bytes[at + 1]) >> 12) + 3;
+        at += 2;
+        cycles += UNPACK_COPY;
+        for (int i = 0; i < length; i++, out++) cycles += UNPACK_COPIED - (out & 1 ? UNPACK_SECOND_BYTE : 0);
+      } else {
+        at++;
+        cycles += UNPACK_LITERAL - (out & 1 ? UNPACK_SECOND_BYTE : 0);
+        out++;
+      }
+    }
+  }
+  return cycles;
+}
+
 static void hideSprites(void) {
   for (int i = 0; i < 32; i++) {
     uint16_t pattern[16] = {0x200, 0, 0, 0x100, 0x200, 0, 0, 0, 0x200, 0, 0, 0, 0x200, 0, 0, 0x100};
@@ -205,7 +242,8 @@ int fadeToWhite(uint32_t first, int count) {
   return done;
 }
 
-/** 0x08016078: a new screen's start, with the palette filled from its first colour, VRAM cleared and sprites hidden. */
+/** 0x08016078: a new screen's start, with the palette filled from its first colour, VRAM cleared, sprites hidden and
+ *  the random numbers seeded. */
 void newScreen(int mode) {
   for (int i = 1; i < 512; i++) gba_pal[i] = gba_pal[0];
   for (uint32_t i = 0; i < 0x18000; i++) gba_vram[i] = 0;
@@ -231,6 +269,8 @@ void newScreen(int mode) {
   write16(0x03001B08, 0);
   write16(0x03001B04, 0x100);
   write16(0x030016C8, 0x200);
+  // 0x08020134: the random numbers start again from the save's word at +4 and the main loop's frames
+  write32(0x0300019C, (read32(SAVE + 4) + (uint32_t)g.frames) | 1);
 }
 
 void queueCopy(uint32_t to, uint32_t from, uint32_t bytes) {
@@ -336,6 +376,26 @@ void hblank(int line) {
     void (*run)(void) = g.line_work;
     g.line_work = 0;
     run();
+  }
+}
+
+/** A start point at a fight's end runs the way there before the recording opens: the choice screen's A presses at
+ *  70, 100 and 130, then the fight's frames, one frame at a time, as `step` runs them, without recursing into it. */
+void runFightSetup(int count) {
+  for (int f = 0; f < count; f++) {
+    uint16_t held = (f == 70 || f == 100 || f == 130) ? 1 : 0;
+    if (g.after_wait) {
+      void (*rest)(void) = g.after_wait;
+      g.after_wait = 0;
+      rest();
+      if (g.line_one) g.line_one();
+      continue;
+    }
+    vblank();
+    runCopies();
+    readKeys(held);
+    g.callback();
+    if (g.line_one) g.line_one();
   }
 }
 

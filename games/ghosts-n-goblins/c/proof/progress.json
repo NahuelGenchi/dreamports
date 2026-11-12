@@ -1,0 +1,98 @@
+{
+  "original": "3430811ecc007fa469f5b74db277f872679266dd",
+  "percent": 0,
+  "codeMap": {"functions":287,"bytes":26557},
+  "proven": {"functions":0,"bytes":0},
+  "recordings": {
+    "flier": {
+      "frames": 3390,
+      "matched": 3390,
+      "differs": [],
+      "functions": []
+    },
+    "forest": {
+      "frames": 4990,
+      "matched": 4990,
+      "differs": [],
+      "functions": []
+    },
+    "forest-enemy": {
+      "frames": 5690,
+      "matched": 5690,
+      "differs": [],
+      "functions": []
+    },
+    "forest-shot": {
+      "frames": 5560,
+      "matched": 5560,
+      "differs": [],
+      "functions": []
+    },
+    "game-start": {
+      "frames": 2440,
+      "matched": 2440,
+      "differs": [],
+      "functions": []
+    },
+    "knights": {
+      "frames": 4200,
+      "matched": 4200,
+      "differs": [],
+      "functions": []
+    },
+    "ladder": {
+      "frames": 2425,
+      "matched": 2425,
+      "differs": [],
+      "functions": []
+    },
+    "lance-throw": {
+      "frames": 1300,
+      "matched": 1300,
+      "differs": [],
+      "functions": []
+    },
+    "plant-burns": {
+      "frames": 2480,
+      "matched": 2480,
+      "differs": [],
+      "functions": []
+    },
+    "platform": {
+      "frames": 3900,
+      "matched": 3900,
+      "differs": [],
+      "functions": []
+    },
+    "second-part": {
+      "frames": 4200,
+      "matched": 4200,
+      "differs": [],
+      "functions": []
+    },
+    "title": {
+      "frames": 120,
+      "matched": 120,
+      "differs": [],
+      "functions": []
+    },
+    "walk-across": {
+      "frames": 3040,
+      "matched": 3040,
+      "differs": [],
+      "functions": []
+    },
+    "walk-and-jump": {
+      "frames": 1300,
+      "matched": 1300,
+      "differs": [],
+      "functions": []
+    },
+    "walk-on": {
+      "frames": 2250,
+      "matched": 2250,
+      "differs": [],
+      "functions": []
+    }
+  }
+}

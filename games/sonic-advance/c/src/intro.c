@@ -431,7 +431,7 @@ static void to_title(int playMusic) {
   destroy_tasks(0, 0xFFFF);
   clear_queues();
   if (playMusic) stop_song(SONG_INTRO);
-  for (int i = 0; i < 8; i++) e.bgScroll[i] = 0;
+  for (int i = 0; i < 6; i++) e.bgScroll[i] = 0;
   create_title_screen(playMusic);
 }
 static void to_title_silent(Task *t) { (void)t; to_title(0); }

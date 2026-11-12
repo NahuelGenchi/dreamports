@@ -115,7 +115,12 @@ static void sonic_team_hold(Task *t) {
 // sub_800D364: brighter by a 32nd a frame; A or Start goes to the title screen (Task_800D4B0). Its last frame sets the
 // brightness to 16 as an 8.8 number, which the register reads as 0, so that frame isn't brightened.
 static void sonic_team_fade(Task *t) {
-  if (e.pressed & (KEY_A | KEY_START)) { t->main = to_title; return; }
+  if (e.pressed & (KEY_A | KEY_START)) {
+    // CreateTitleScreen clears its first two tiles at once; the rest of the screen it starts next frame
+    memset(gba_vram, 0, 64);
+    t->main = to_title;
+    return;
+  }
   logo.qFade += FADE_STEP;
   if (logo.qFade > FADE_END) {
     e.bldY = FADE_END;

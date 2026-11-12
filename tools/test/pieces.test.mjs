@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { freeOrder, inReview, languageIssueText, languageIssueTitle, languageOfIssue, needsProblems, pieceOf, planOf, taskTitle, whatCanStart } from '../../src/lib/pieces.mjs';
 import { proofOf } from '../../src/lib/entries.mjs';
+import { mainLanguage } from '../../src/lib/languages.mjs';
 
 const file = {
   foundations: [{ name: 'The fighting', needs: ['The arena'] }, { name: 'The arena' }],
@@ -163,6 +164,14 @@ test('a game that started in C has its pieces in C alone, which wait on nothing 
   // a JavaScript version added later is written from the original too, so it waits on nothing in C
   const later = whatCanStart([...inC, piece(21, 'Task: Options')], file, new Set(), { main: 'c' });
   assert.ok(numbers(later.free).includes(21));
+});
+
+test('a game\'s main version is its JavaScript one, or its one in C, which a game with no version yet counts as (#1095)', () => {
+  assert.equal(mainLanguage(['js']), 'js');
+  assert.equal(mainLanguage(['c', 'js']), 'js');
+  assert.equal(mainLanguage(['c']), 'c');
+  // a game whose first files are still in a pull request: a new game starts in C, so its tasks in C are its main version's
+  assert.equal(mainLanguage([]), 'c');
 });
 
 test('work goes in the order a player meets it, C first, each foundation just before the first part that needs it', () => {

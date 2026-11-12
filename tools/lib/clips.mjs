@@ -1,6 +1,6 @@
 // What a clip of the original next to a Dreamport has to be before a pull request shows it (docs/STANDARD.md#clips):
-// five seconds or more of what the step changed, both halves in the same place, a picture that moves, and made from a
-// recording that's committed as it was proven. `prove` measures each clip into its report.json, `share` refuses one
+// five seconds or more of what the step changed, every frame matching the original's, a picture that moves, and made
+// from a recording that's committed as it was proven. `prove` measures each clip into its report.json, `share` refuses one
 // that breaks a rule and publishes the measures beside it, and the pull request's check reads them again
 // (tools/clips-check.mjs). A recording's own "clip" is held to the length as it's read (lib/recording.mjs).
 
@@ -106,13 +106,14 @@ export const newFramesIn = (clipFrames, changed) => (changed ? clipFrames.filter
 
 /**
  * The frames prove's clip shows by itself when the recording names none: five seconds from a second before the first
- * frame the step changed, or the four seconds before the first that differs and one after when that's further on, or
- * else the last five seconds. [first, last], inside the recording.
+ * frame the step changed, ending before the first frame that differs, as every frame of a clip matches (#1039), or
+ * around the first that differs when that comes before what the step changed, or else the last five seconds.
+ * [first, last], inside the recording.
  */
 export function clipWindow({ frames, changed, firstDifference }) {
   if (changed && !(firstDifference >= 0 && firstDifference < changed.frame)) {
     let first = Math.max(0, changed.frame - CLIP_LEAD);
-    if (firstDifference >= 0) first = Math.max(first, firstDifference - (CLIP_FRAMES - CLIP_LEAD));
+    if (firstDifference >= 0) first = Math.min(first, firstDifference - CLIP_FRAMES);
     // a recording that ends sooner than that still shows five seconds, and the rule says what it's missing
     first = Math.max(0, Math.min(first, frames - CLIP_FRAMES));
     return [first, Math.min(frames - 1, first + CLIP_FRAMES - 1)];
@@ -159,6 +160,12 @@ export function clipProblems(report, committed, { sideBySide = true, base } = {}
   if (clip.same * 10 > clip.frames * 9) {
     problems.push(`The Dreamport's picture is the same as the frame before in ${clip.same} of the clip's ${clip.frames} frames, so it's a still picture. A clip shows something happening: presses, or the game moving by itself.`);
   }
+  // a frame that differs from the original's, in picture or sound, shows a step that isn't done, whichever video it's
+  // in: the Dreamport's on its own hides it, and doesn't change it (#1039)
+  if (clip.changed !== null && clip.differing > 0) {
+    problems.push(`${clip.differing} of the clip's ${clip.frames} frames differ from the original's, in picture or sound, so it shows the Dreamport not doing what the original does, and the step isn't done. `
+      + 'Every frame of a clip matches: port what those frames need until the recording matches, and prove it again. Never run a recording on, or move its "clip", into frames that differ.');
+  }
   // a clip's halves in two different places say nothing about the Dreamport: the recording takes the original elsewhere
   if (sideBySide && clip.apart * 4 > clip.frames) {
     problems.push(`${clip.apart} of the clip's ${clip.frames} frames differ from the original's in more than half their pixels, so the original and the Dreamport are in different places. `
@@ -175,7 +182,7 @@ export function clipProblems(report, committed, { sideBySide = true, base } = {}
  */
 export function staleness(report, committed, { base } = {}) {
   const clip = report?.clip;
-  if (!clip || typeof clip.apart !== 'number' || typeof clip.oneColour !== 'number' || typeof clip.same !== 'number'
+  if (!clip || typeof clip.apart !== 'number' || typeof clip.differing !== 'number' || typeof clip.oneColour !== 'number' || typeof clip.same !== 'number'
     || clip.changed === undefined || !report.recordingFile || !report.recordingSha1) {
     return 'This clip comes from before prove measured what a clip shows: prove the recording again for a new one.';
   }
@@ -187,10 +194,42 @@ export function staleness(report, committed, { base } = {}) {
   return null;
 }
 
-/** The addresses of clips, their frames and their measures in a text, as share's lines link them: …/clips/<game>/…. */
+/** The addresses of clips, their frames and their measures in a text, as share's lines link them: …/clips/<game>/….
+ *  The record of a proof that stands in for a clip lives beside them, and isn't one (lib/same-proof.mjs). */
 export function clipLinks(text) {
-  return [...String(text).matchAll(/https:\/\/[^\s()<>"'[\]]+\/clips\/[^\s()<>"'[\]]+\.(?:mp4|png|json)/g)].map(m => m[0]);
+  return [...String(text).matchAll(/https:\/\/[^\s()<>"'[\]]+\/clips\/[^\s()<>"'[\]]+\.(?:mp4|png|json)/g)].map(m => m[0]).filter(link => !link.endsWith('-same-proof.json'));
 }
+
+/** A game's code or recordings, as a path in the repository, with the game's folder: a step that changes either shows it in a clip. */
+export const GAME_CHANGE = /^games\/([a-z0-9-]+)\/(?:[a-z0-9-]+\/)?(?:src|proof\/recordings)\//;
+
+/** The games whose code or recordings these paths change. */
+export const gamesChanged = paths => [...new Set((paths ?? []).map(path => GAME_CHANGE.exec(path)?.[1]).filter(Boolean))];
+
+/** The paths a commit adds or changes since `base`, leaving out those it deletes, or null when git can't tell. */
+export function changedSince(base, commit = 'HEAD') {
+  const out = base ? git(['diff', '--name-only', '--no-renames', '--diff-filter=d', base, commit]) : null;
+  return out === null ? null : out.split('\n').filter(Boolean);
+}
+
+/** Whether the commit `base` has a game, as its entry says. */
+export const gameAt = (base, game) => git(['cat-file', '-e', `${base}:games/${game}/entry.md`]) !== null;
+
+/** Of the games these paths change the code or recordings of, those `has(game)` says main has already, which a step shows
+ * in a clip. A game's first entry adds one main doesn't have, whose first files nobody can play yet (#1032). */
+export const gamesShownIn = (paths, has) => gamesChanged(paths).filter(game => has(game));
+
+/** The games a commit changes the code or recordings of since `base`, which `base` has, or null when git can't tell. */
+export function gamesToShow(base, commit = 'HEAD') {
+  const changed = changedSince(base, commit);
+  return changed === null ? null : gamesShownIn(changed, game => gameAt(base, game));
+}
+
+/** What a step that changes a game and shows it in no clip does, as share, its check and the review say it. */
+export const SHOW_IT = 'a step that changes a game\'s code or recordings shows it in a clip: prove the recordings it changed, '
+  + 'and if none shows the new code, add a recording that plays it, or run one on until it does (npm run dp -- help recording), '
+  + 'then prove it and share again. A step that changes no frame shows its proof instead: prove the game with every '
+  + 'recording, commit, and share';
 
 /** A clip's published measures, as share writes them beside it, read the way clipProblems reads prove's report. */
 export const reportOf = m => ({ recording: m.recording, recordingFile: m.recordingFile, recordingSha1: m.recordingSha1, clip: m.measures });

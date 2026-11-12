@@ -23,12 +23,11 @@ const KEYS = { A: 1, B: 2, SELECT: 4, START: 8, RIGHT: 16, LEFT: 32, UP: 64, DOW
 export const heldOf = recording => [recording.held, ...(recording.others ?? [])];
 
 /** Plays a recording with players. Resolves like prove's: { frames, matched, differs, functions, ... }. */
-export async function proveLinked({ page, game, recording, copy, server, main = null, quick, asked = [] }) {
+export async function proveLinked({ page, game, recording, copy, server, main = null, quick, asked = [], log = console.log, say = () => {} }) {
   const { name, frames, players } = recording;
   const out = resultFolder(game, name);
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
-  const say = text => process.stdout.isTTY && process.stdout.write(`\r${`${name}: ${text}`.padEnd(70)}`);
   const lists = heldOf(recording).map(list => expand(list, frames));
   const bits = lists.map(frames => frames.map(list => list.reduce((mask, b) => mask | (KEYS[b] ?? 0), 0)));
   const unknown = [...new Set(lists.flat(2))].filter(b => !(b in KEYS));
@@ -130,7 +129,9 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
     const pictures = clipAt.map(f => Array.from({ length: players }, (_, p) => first.pictures.get(`${f + 1}:${p}`)));
     const oneColour = pictures.filter(([own]) => own.every(c => c === own[0])).length;
     const same = pictures.filter((now, i) => i > 0 && clipAt[i - 1] === clipAt[i] - 1 && now.every((own, p) => own.every((c, at) => c === pictures[i - 1][p][at]))).length;
-    const clip = { from: clipAt[0], to: clipAt.at(-1), frames: clipAt.length, seconds: Math.round(length * 100) / 100, apart, oneColour, same, changed, newFrames: newFramesIn(clipAt, changed), base: main?.base ?? null, bytes: clipFile.length };
+    // the clip's frames that differ from the original's, which share won't let a pull request show
+    const differing = new Set(differ);
+    const clip = { from: clipAt[0], to: clipAt.at(-1), frames: clipAt.length, seconds: Math.round(length * 100) / 100, apart, differing: clipAt.filter(f => differing.has(f)).length, oneColour, same, changed, newFrames: newFramesIn(clipAt, changed), base: main?.base ?? null, bytes: clipFile.length };
     const report = { recording: name, recordingFile, recordingSha1: recordingHash(text), frames, players, clip };
     writeFileSync(join(out, 'report.json'), JSON.stringify(report, null, 2) + '\n');
     problems = clipProblems(report, text);
@@ -138,9 +139,10 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   writeFileSync(join(out, 'hashes.json'), JSON.stringify({ ours: hashes, original: expected.slice(0, hashes.length) }));
   const matched = hashes.length - differ.length;
   const per = Array.from({ length: players }, (_, p) => hashes.filter((h, f) => h[p] !== expected[f][p]).length);
-  console.log(`\n${name}: ${players} players, ${matched} of ${hashes.length} frames played match${firstDifference >= 0 ? `; the first that differs is ${firstDifference}, and each player differs in ${per.join(', ')} frames` : ''}. Pictures: ${out}`);
-  if (clipFile) console.log(`  Clip, ${(clipFile.length / 1e6).toFixed(2)} MB, frames ${clipAt[0]} to ${clipAt.at(-1)}: ${out}/clip.mp4 (the Dreamport's screens above, the original's below)`);
-  if (clipFile) console.log(`  What this step changed: ${changedText(changed)}${changed ? '' : ', so share leaves this clip out'}.`);
-  if (changed) for (const problem of problems) console.log(`  share won't put this clip in a pull request: ${problem}`);
-  return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], functions: [] };
+  log(`\n${name}: ${players} players, ${matched} of ${hashes.length} frames played match${firstDifference >= 0 ? `; the first that differs is ${firstDifference}, and each player differs in ${per.join(', ')} frames` : ''}. Pictures: ${out}`);
+  if (clipFile) log(`  Clip, ${(clipFile.length / 1e6).toFixed(2)} MB, frames ${clipAt[0]} to ${clipAt.at(-1)}: ${out}/clip.mp4 (the Dreamport's screens above, the original's below)`);
+  if (clipFile) log(`  What this step changed: ${changedText(changed)}${changed ? '' : ', so share leaves this clip out'}.`);
+  if (changed) for (const problem of problems) log(`  share won't put this clip in a pull request: ${problem}`);
+  say('');
+  return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], changed: !!changed, functions: [] };
 }

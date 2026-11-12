@@ -26,6 +26,14 @@ Engine e;
 // In IWRAM the sprites' colours (gObjPalette) come right after the H-blank buffers, and the window effects (lines.c)
 // can write a line past the end of the second, into the first two colours.
 static uint8_t iwram[2 * HBLANK_BUFFER + 0x200] __attribute__((aligned(4)));
+SpriteRow spriteRow;
+
+/** A byte a window writer puts past the second table: it lands in the sprite palette's first colours. */
+void sprite_row_byte(uint32_t at, uint32_t v) {
+  spriteRow.bytes[at] = (uint8_t)v;
+  // a colour a script loaded this frame is loaded after the beams in the original, so the script's colour stays
+  if (!(spriteRow.loaded >> (at >> 1) & 1)) spriteRow.written |= 1u << (at >> 1);
+}
 
 static Graphics *gfxQueue[GFX_QUEUE];
 // gBgSprites: the sprites shown as a layer's map (sprite.c), written in the next V-blank
@@ -264,6 +272,12 @@ int alloc_oam(uint32_t order) {
   e.oamFreeIndex++;
   return i;
 }
+/** Every OAM entry hidden and none taken, in the buffer and the allocator alike, so later entries this frame start a fresh list. */
+void clear_oam(void) {
+  for (int i = 0; i < OAM_ENTRIES * 4; i++) e.oamBuffer[i] = e.oamMalloc[i] = 0x200;
+  e.oamFreeIndex = 0;
+  memset(orderStart, 0xFF, sizeof orderStart); memset(orderEnd, 0xFF, sizeof orderEnd);
+}
 static void hide_oam(uint32_t i) { e.oamBuffer[i * 4] = e.oamBuffer[i * 4 + 1] = e.oamBuffer[i * 4 + 2] = 0x200; }
 static void process_oam(void) {
   uint32_t dst = 0;
@@ -306,6 +320,8 @@ uint32_t vram_malloc(uint32_t tiles) {
   }
   return HEAP_END;
 }
+/** Puts every heap segment back: a new act starts with the whole sprite heap free. */
+void vram_reset(void) { memset(heap, 0, sizeof heap); }
 /** VramFree */
 void vram_free(uint32_t dest) {
   if (dest == HEAP_END) return;
@@ -323,8 +339,19 @@ static void copy_hblank_line(uint32_t target, uint32_t at, uint32_t size) {
 }
 static void copy_hblank_entry(uint32_t at) { copy_hblank_line(e.hblankTarget, at, e.hblankSize); }
 // this frame's H-blank DMA: where it starts reading
-static struct { int on; uint32_t at, target, size; } hdma;
+static struct { int on, wait; uint32_t at, target, size; } hdma;   // wait: H-blanks it lets go by first
 static uint32_t hdmaAt;
+// this frame's V-count interrupt: whether the V-blank turned it on, and at the start of which line
+static struct { int on; int line; } vcount;
+// gVBlankIntrs: the callback the tasks asked for the frame before, which this V-blank's update runs
+static void (*vblankIntr)(void);
+/** DmaSet(0, gBgOffsetsHBlankSecondary, target, DMA_START_HBLANK | DMA_REPEAT | DMA_DEST_RELOAD), from the V-count
+ *  interrupt as the frame is drawn: from the next H-blank on, or the one after it when it was `late`, a line's worth of the
+ *  other buffer's values each time. */
+void hblank_dma_secondary(uint32_t target, uint32_t size, int late) {
+  hdma.on = 1; hdma.wait = late; hdma.target = target; hdma.size = size;
+  hdmaAt = e.primary ? 0 : HBLANK_BUFFER;
+}
 
 // --- keys (core.c: GetInput) ---------------------------------------------------------------------------------------
 static void read_keys(void) {
@@ -345,14 +372,23 @@ static void vblank(void) {
   hdma.on = 0;
   if (e.flagsPreVBlank & FLAGS_HBLANK_COPY) {
     copy_hblank_entry(e.primary);
-    hdma.on = 1; hdma.at = e.primary + e.hblankSize; hdma.target = e.hblankTarget; hdma.size = e.hblankSize;
+    hdma.on = 1; hdma.wait = 0; hdma.at = e.primary + e.hblankSize; hdma.target = e.hblankTarget; hdma.size = e.hblankSize;
   } else e.hblankTarget = 0;
+  vcount.on = (e.flagsPreVBlank & FLAGS_VCOUNT_INTR) && e.vcountIntr;
+  vcount.line = e.vcountLine;
   e.frameCount++;
 
   gba_write(REG_DISPCNT, e.dispCnt);
   for (int i = 0; i < 4; i++) gba_write(REG_BG0CNT + i * 2, e.bgCnt[i]);
   if (e.flags & FLAGS_UPDATE_BG_PALETTES) { memcpy(gba_pal, e.bgPalette, 512); e.flags ^= FLAGS_UPDATE_BG_PALETTES; }
-  if (e.flags & FLAGS_UPDATE_OBJ_PALETTES) { memcpy(gba_pal + 256, e.objPalette, 512); e.flags ^= FLAGS_UPDATE_OBJ_PALETTES; }
+  if (e.flags & FLAGS_UPDATE_OBJ_PALETTES) {
+    memcpy(gba_pal + 256, e.objPalette, 512);
+    // a window writer's bytes past the tables show over the colours a script loaded, as they do in the original
+    for (int c = 0; c < 16; c++)
+      if (spriteRow.written >> c & 1) gba_pal[256 + c] = (uint16_t)(spriteRow.bytes[c * 2] | spriteRow.bytes[c * 2 + 1] << 8);
+    e.flags ^= FLAGS_UPDATE_OBJ_PALETTES;
+  }
+  spriteRow.loaded = 0;
   for (int i = 0; i < 6; i++) gba_write(REG_WIN0H + i * 2, e.winRegs[i]);
   gba_write(REG_BLDCNT, e.bldCnt); gba_write(REG_BLDALPHA, e.bldAlpha); gba_write(REG_BLDY, e.bldY);
   for (int i = 0; i < 8; i++) gba_write(REG_BG0HOFS + i * 2, e.bgScroll[i]);
@@ -366,6 +402,10 @@ static void vblank(void) {
   if (e.flags & FLAGS_HBLANK_COPY) copy_hblank_entry(e.primary);
   process_oam();
   memcpy(gba_oam, e.oamBuffer, sizeof e.oamBuffer);
+  // UpdateScreenDma's V-blank callbacks: last frame's run now, after the registers, and this frame's wait for the next
+  if (vblankIntr) vblankIntr();
+  vblankIntr = e.vblankCallback;
+  e.vblankCallback = NULL;
   engine_copy_graphics();
   fill_maps();
   for (unsigned i = 0; i < numBgSprites; i++) write_sprite_map(bgSprites[i]);
@@ -380,6 +420,12 @@ static void vblank(void) {
   }
   if (e.flags & FLAGS_PAUSE_GAME) e.flags |= FLAGS_PAUSED;
   else e.flags &= ~FLAGS_PAUSED;
+}
+
+/** The V-blank of a frame that runs with no picture, such as the title card's that a start point skips. */
+void engine_vblank_unseen(void) {
+  e.flagsPreVBlank = e.flags;
+  vblank();
 }
 
 /** One frame: the keys, the tasks and the V-blank. Then the kit draws it. */
@@ -408,14 +454,19 @@ void engine_run(void) {
   vblank();
 }
 
-// the H-blank DMA between the lines as the kit draws the frame: after each line, the next line's values
+// the H-blank DMA between the lines as the kit draws the frame: after each line, the next line's values; then the
+// V-count interrupt, at the start of its line
 static void hblank_line(int y) {
-  (void)y;
-  copy_hblank_line(hdma.target, hdmaAt, hdma.size);
-  hdmaAt += hdma.size;
+  if (hdma.on && hdma.wait) hdma.wait--;
+  else if (hdma.on) {
+    copy_hblank_line(hdma.target, hdmaAt, hdma.size);
+    hdmaAt += hdma.size;
+  }
+  if (vcount.on && y + 1 == vcount.line) e.vcountIntr();
 }
 /** Sets the kit's drawing of this frame up, with the H-blank DMA its V-blank started. */
 void engine_draw_setup(void) {
   hdmaAt = hdma.at;
-  gba_on_hblank(hdma.on ? hblank_line : NULL);
+  if (vcount.on && vcount.line == 0) e.vcountIntr();
+  gba_on_hblank(hdma.on || vcount.on ? hblank_line : NULL);
 }

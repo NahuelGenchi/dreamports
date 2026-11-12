@@ -1,20 +1,23 @@
 name: Issue maps
 
-# Each game's issue shows its progress map at the top (docs/TEAMS.md#how-the-bot-works). The proof tools draw the map and
-# npm run check holds it to the game's proof/ folder, so this only puts that picture in the issue, and no model is asked
-# anything. A run follows each push that changes a map, and one each hour catches a merge made by another workflow, as a
-# first entry's is, which starts no run here. It runs only this repository's code, reads an issue's text as data, and
-# edits an issue only when its picture changed.
+# Each game's issue shows its progress map at the top (docs/TEAMS.md#how-the-bot-works), as main's proof files make it,
+# a minute or two after each merge. The proof tools draw the maps here, with the code that draws main's own, and no
+# model is asked anything. main's own maps are written by the Readme workflow a few times a day, as each of its commits
+# costs builds of the site, so the pictures the issues show are kept apart, under the ref refs/dreamports/issue-maps:
+# no branch, so nothing is built and main gets no commit (#1102). A run follows each push to main, and one each hour
+# catches a merge made by another workflow, which starts no run here; the bot that merges a game's first files starts
+# one itself (first-entry.yml). It runs only main's code, reads an issue's text as data, and edits an issue only when
+# its picture changed.
 on:
   push:
     branches: [main]
-    paths: ['.github/readme/progress/**']
   schedule:
     - cron: '37 * * * *'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # to keep the pictures under their ref
+  contents: write
   issues: write
 
 concurrency:
@@ -25,11 +28,19 @@ jobs:
   update:
     name: Put each map in its game's issue
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Draw each game's map from main's proof files
+        run: node tools/dp.mjs readme
       - name: Bring each game's issue up to date
         env:
           GH_TOKEN: ${{ github.token }}

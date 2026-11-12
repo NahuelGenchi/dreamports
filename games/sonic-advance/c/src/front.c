@@ -58,8 +58,8 @@ static void apply_start_point(void) {
 /** Game Start: the character select, unless a start point leaves it out, and then the course select once the
  *  character has progress, or the act. */
 void front_start_game(void) {
-  if (ctx.select) { create_character_select(ctx.character); return; }
   apply_start_point();
+  if (ctx.select) { create_character_select(ctx.character); return; }
   if (ctx.gameMode == GAME_MODE_TIME_ATTACK || save_unlocked_level(ctx.character) != 0) create_course_select();
   else front_play(-1);
 }
@@ -112,6 +112,8 @@ uint32_t front_random(void) {
   return ctx.seed;
 }
 
+void front_random_seed(uint32_t seed) { ctx.seed = seed; }
+
 /**
  * The VS menus have chosen the round: Chao Hunt's `level`, with the Chao at place `chao`. The round isn't in C yet, so
  * the game stops here, and the page shows the black the original's screens are while its stage loads (main.js).
@@ -124,20 +126,39 @@ void front_vs_round(int level, int chao) {
 /** The round the VS menus chose, for the page: its level, or 0 while they are still choosing. */
 EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
 
-// The acts in C so far: X Zone and Secret Base act 2, whose course select rows start them with their title cards. A
-// start point's `level` opens any level the C version has, past the card when it asks; every other act, and
-// Options, stops safely where the screen is, as before.
+// The acts in C (levels.c), which the course select's rows start with their title cards. A start point's `level` opens
+// a level, past its card when it asks; from the menus, an act that isn't in C yet, and Options, stops safely where the
+// screen is.
 void front_play(int level) {
   int startLevel = (int)gba_start_number("level", -1);
-  if (startLevel < 0) startLevel = level;
-  if (startLevel == ACT_LEVEL_X_ZONE || startLevel == ACT_LEVEL_SECRET_BASE_2 || gba_start_point("level") != NULL) {
-    act_active = 1;
+  int fromStart = startLevel >= 0;
+  if (!fromStart) startLevel = level;
+  // Game Start after the character select hands the act the level the game was started on (0 for a new game)
+  if (level < 0 && startLevel < 0) startLevel = ctx.startLevel >= 0 ? ctx.startLevel : 0;
+  if (!level_in_c(startLevel) && !fromStart) { ctx.done = 1; return; }
+  act_active = 1;
+  // a new game's act comes from the character select, whose HUD's zero-ring flash starts at 1; a course select
+  // or a start point starts it from the stage's own value (levels.js hudFlash)
+  actHudFlash = level < 0 ? 1 : -1;
+  int card = (int)gba_start_number("card", -1), pre = (int)gba_start_number("pre", 0);
+  if (fromStart) {
     destroy_tasks(0x2000, 0x3000);
-    act_start(startLevel, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
-    if (gba_start_point("level") != NULL) act_frame_now();
+    act_start(startLevel, card, pre);
+    act_frame_now();
     return;
   }
-  ctx.done = 1;
+  if (level < 0) {
+    // Game Start after the character select: the screen stays black for this frame, as the original's menu fades
+    // to black before its stage's first picture
+    if (level_row(startLevel)->blackAtGameStart) { act_start(startLevel, -1, 0); act_hold_black(); }
+    else { destroy_tasks(0x2000, 0x3000); act_start(startLevel, -1, 0); act_frame_now(); }
+    return;
+  }
+  destroy_tasks(0x2000, 0x3000); act_start(startLevel, -1, 0);
+  // an act whose objects first run on its first frame steps the rings once more on its hand-over frame than the
+  // original's stage init does
+  if (level_row(startLevel)->runsFromFirstFrame) rings_skip_first_update();
+  act_frame_now();
 }
 void front_start_demo(void) { ctx.done = 1; }
 
@@ -146,6 +167,7 @@ void play_song(int song) { gba_sound_play(song); }                            //
 void play_song_or_continue(int song) { gba_sound_start_or_continue(song); }  // m4aSongNumStartOrContinue
 void play_song_or_change(int song) { gba_sound_play_or_change(song); }       // m4aSongNumStartOrChange
 void stop_song(int song) { gba_sound_stop(song); }                            // m4aSongNumStop
+void fade_out_sound(int player, int speed) { gba_sound_fade_out(player, speed); }  // m4aMPlayFadeOut
 void stop_all_songs(void) { gba_sound_stop_all(); }                           // m4aMPlayAllStop
 void sound_vsync_off(void) { gba_sound_vsync_off(); }                         // m4aSoundVSyncOff
 void sound_vsync_on(void) { gba_sound_vsync_on(); }                           // m4aSoundVSyncOn

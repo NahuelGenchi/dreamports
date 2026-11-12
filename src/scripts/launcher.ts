@@ -6,7 +6,7 @@
 
 import { showTitle } from '../lib/title';
 import { hrefOf } from './controls';
-import { DEFAULT_LANGUAGE, playHref } from '../lib/languages.mjs';
+import { playHref, playLabel } from '../lib/languages.mjs';
 
 type Input = 'keys' | 'pad' | 'touch';
 type Motion = 'auto' | 'full' | 'calm';
@@ -1309,6 +1309,54 @@ function start(launcher: HTMLElement) {
     return frame;
   }
 
+  // A game's progress shows one version at a time, the one Play opens. When the player picks another language, its two
+  // bars glide from the numbers they showed to the new version's, the second just after the first, and the numbers
+  // count with them. With calm motion they change at once, and a new pick ends the glide before it.
+  const GLIDE = { duration: 700, easing: 'cubic-bezier(.4,0,.2,1)' };
+  const filled = (meter: HTMLElement) => parseFloat($('.meter-bar i', meter).style.width) || 0;
+  function progressOf(dlg: HTMLElement) {
+    const blocks = $$('.plays', dlg);
+    let stop = () => {};
+    return (language: string, glide: boolean) => {
+      const from = blocks.find((block) => !block.hidden);
+      const to = blocks.find((block) => block.dataset.language === language);
+      if (!to || to === from) return;
+      stop();
+      for (const block of blocks) block.hidden = block !== to;
+      if (!from) return;
+      // what was folded open stays open
+      const folds = $$<HTMLDetailsElement>('details', from);
+      $$<HTMLDetailsElement>('details', to).forEach((fold, n) => (fold.open = folds[n]?.open ?? false));
+      if (!glide || calm()) return;
+      const was = $$('.meter', from).map(filled);
+      const ends = $$('.meter', to).map((meter, n) => {
+        const a = was[n] ?? 0;
+        const b = filled(meter);
+        const bar = $('.meter-bar i', meter).animate([{ width: `${a}%` }, { width: `${b}%` }], { ...GLIDE, delay: n * 90, fill: 'backwards' });
+        const number = $('.meter-num', meter);
+        const says = number.textContent ?? '';
+        let frame = 0;
+        // the number is wherever its bar is, and its own words again once the bar has arrived
+        const count = () => {
+          const part = bar.effect?.getComputedTiming().progress;
+          number.textContent = typeof part === 'number' ? `${Math.round(a + (b - a) * part)}%` : says;
+          if (typeof part === 'number') frame = requestAnimationFrame(count);
+        };
+        // a number counts only when it's a number, not while a version isn't measured yet
+        if (says.endsWith('%')) count();
+        return () => {
+          cancelAnimationFrame(frame);
+          bar.cancel();
+          number.textContent = says;
+        };
+      });
+      stop = () => {
+        for (const end of ends) end();
+        stop = () => {};
+      };
+    };
+  }
+
   // before you play: the links stay locked until the box is ticked, and the tick lasts
   // until the tab is closed
   for (const [game, dlg] of inspectCards) {
@@ -1325,22 +1373,34 @@ function start(launcher: HTMLElement) {
       blocked = '';
       openNote.textContent = '';
     };
-    // with more than one version, the language it's played in: C unless the player picked another, which is kept
-    const langs = $$<HTMLInputElement>('.gate-langs input', dlg);
+    // with more than one version, the language it's played in: the first of its choices, C, unless the player picked
+    // another, which is kept. The choice is at the end of the game's page, so the button names a language that isn't
+    // the first, and the game's progress shows that version's numbers.
+    const langs = $$<HTMLInputElement>('.game-langs input', dlg);
     if (langs.length) {
-      const pick = () => {
+      type Language = Parameters<typeof playHref>[1];
+      const first = langs[0].value as Language;
+      const plays = buttons
+        .filter((button) => button.dataset.play)
+        .map((button) => ({ button, href: button.dataset.play!, label: $('.btn-label', button), says: $('.btn-label', button).textContent ?? '' }));
+      const progress = progressOf(dlg);
+      const pick = (glide = false) => {
         const kept = store.get(`version:${game}`);
-        const language = (langs.some((input) => input.value === kept) ? kept : DEFAULT_LANGUAGE) as Parameters<typeof playHref>[1];
+        const language = (langs.some((input) => input.value === kept) ? kept : first) as Language;
         for (const input of langs) input.checked = input.value === language;
-        for (const button of buttons) if (button.dataset.play) button.formAction = playHref(button.dataset.play, language);
+        for (const { button, href, label, says } of plays) {
+          button.formAction = playHref(href, language);
+          label.textContent = playLabel(says, language, first);
+        }
+        progress(language, glide);
       };
       pick();
-      versionPicks.push(pick);
+      versionPicks.push(() => pick());
       for (const input of langs) {
         input.addEventListener('change', () => {
-          if (input.value === DEFAULT_LANGUAGE) store.del(`version:${game}`);
+          if (input.value === first) store.del(`version:${game}`);
           else store.set(`version:${game}`, input.value);
-          pick();
+          pick(true);
           syncSettings();
           sound.play('tick');
         });
@@ -1967,9 +2027,11 @@ function start(launcher: HTMLElement) {
   // ---------- Game controllers ----------
 
   const pad = { prev: [] as boolean[], dir: 0, next: 0 };
+  // what a controller can land on: nothing hidden, and nothing folded away, as what's inside a closed fold still has a
+  // box and takes no focus, which held the controller on the fold's own line
   function focusables(scope: ParentNode) {
     return $$('button:not([hidden]), a[href], a[data-href], summary, input:not([type="radio"]), input[type="radio"]:checked, [tabindex="0"]', scope).filter(
-      (el) => !el.closest('[hidden]') && el.getClientRects().length,
+      (el) => !el.closest('[hidden], details:not([open]) > :not(summary)') && el.getClientRects().length,
     );
   }
   function pollPads(now: number) {

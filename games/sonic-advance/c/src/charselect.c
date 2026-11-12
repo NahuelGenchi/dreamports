@@ -174,11 +174,15 @@ static void title_in(Task *t);
 static void watch_start_point(Task *t) {
   int level = (int)gba_start_number("level", -1);
   if (level < 0 || gba_start_number("power", 0) != 2) return;
+  // only a start point that names its frame; the normal course select picks the act when A is pressed
+  if (gba_start_number("at", -1) < 0) return;
   if (front_frame() < (uint32_t)gba_start_number("at", 0)) return;
+  // the screens that led here go before the act starts, so its own tasks (the palette animations among them)
+  // are the only ones left to run after it
+  destroy_tasks(0x2000, 0x3000);
   act_active = 1;
   act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
   act_frame_now();
-  destroy_tasks(0x2000, 0x3000);
   destroy_task(t);
 }
 
@@ -459,7 +463,8 @@ static void leave(Task *t) {
     }
     // Loading the act takes the console past the next V-blank, so it starts a frame later, and the windows and the
     // blend the original turns off here never reach the screen, which stays black.
-    play_song(SONG_NEO_GREEN_HILL_1);   // StageInit_ZoneNActM's music, a frame ahead of the act's first picture
+    music_call(MUSIC_STAGE, SONG_NEO_GREEN_HILL_1);   // StageInit_ZoneNActM's music, a frame ahead of the act's first picture
+    act_song_playing();
     t->main = to_act;
   } else if (screen.frames > PICK_WAIT) fade_step(&screen.fade);
 }

@@ -21,9 +21,9 @@ Anyone can make a Dreamport, or help with one, without writing code: a coding ag
 
 | Step | What it runs |
 | :--- | :--- |
-| Getting ready | `git clone` and `npm ci` the first time, `npm run dp -- find`, for where the game stands, `notes`, for what people already found, `rom`, which checks your copy, and `gh repo fork --remote` |
-| Taking a task | `/claim` on the first free task's issue, which the Dreamports bot answers ([Claims and teams](docs/TEAMS.md)). For a new game, a New Dreamport issue, then `codemap`, `new`, and `tasks`, which opens a task for each of its foundations and parts |
-| Making it | Recordings written by hand, `portmap`, and `prove`, which compares every frame with the original, picture and sound, and makes the clip, until every frame of the part matches |
+| Getting ready | `git clone` and `npm ci` the first time, `npm run dp -- find --take`, which names the task to take, `rom`, which checks your copy, and `gh repo fork --remote` |
+| Taking a task | `/claim` on the issue of the task `find` named, which the Dreamports bot answers ([Claims and teams](docs/TEAMS.md)). For a new game, a New Dreamport issue, then `codemap`, `new`, and `tasks`, which opens a task for each of its foundations and parts |
+| Making it | Recordings written by hand, or found by `route` for a part with somewhere to get to, such as a whole act, `portmap`, and `prove`, which compares every frame with the original, picture and sound, and makes the clip, until every frame of the part matches |
 | Sending it | A note on what the step found, `npm run check`, `npm run build`, `share`, for a preview on your fork's GitHub Pages and the clip for the pull request ([Previews](docs/PREVIEWS.md)), then `team send`, to the lead's team build, or a pull request to this repository |
 
 Typing the command or pasting the sentence is your yes to everything public it does in your name, and the agent says so before it starts. It asks only which game, if you didn't say, where your copy is, for you to sign in to GitHub, and for your yes before installing a program. When a difference stays that it can't explain, it opens a draft pull request that says so. It never says something matches unless `prove` found every frame the same. It follows the part of [AGENTS.md](AGENTS.md) on working on a Dreamport, and [the standard](docs/STANDARD.md).
@@ -157,4 +157,4 @@ Write clear English that someone who has never used GitHub can follow. Prefer sp
 
 ## Tracking automation is not branch protection
 
-The metadata workflow assigns missing milestones and labels PRs that need tracking. It does not run checks. A separate branch ruleset requires a pull request for every change to `main`. See [docs/TRACKING.md](docs/TRACKING.md).
+The metadata workflow assigns missing milestones and labels PRs that need tracking. It does not run checks. A separate branch ruleset requires a pull request for every change to `main`, and another requires its *Check* and *Clips* checks to pass before it merges. See [docs/TRACKING.md](docs/TRACKING.md).

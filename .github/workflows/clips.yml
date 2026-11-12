@@ -1,8 +1,10 @@
 name: Clips
 
 # A pull request's clips keep the rules of docs/STANDARD.md#clips: tools/clips-check.mjs reads the text and every clip
-# it links, with the measures share published beside it, and fails a clip share didn't make or one that breaks a rule.
-# It runs again whenever the text changes. It fetches only the clips' own addresses, with a token that can only read.
+# it links, with the measures share published beside it, and fails a clip share didn't make or one that breaks a rule,
+# or a pull request that changes a game's code or recordings and links no clip of it (#1030), unless it changes no
+# frame and links the record of its proof, which is held to what would merge (#1060). It runs again whenever
+# the text changes. It fetches only the clips' own addresses, with a token that can only read.
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened, ready_for_review]
@@ -19,9 +21,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # the merge of the pull request into main and main itself, its first parent, so git can tell what it changes
+          fetch-depth: 2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
       - run: node tools/clips-check.mjs
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
+          CHANGED_FROM: HEAD^1

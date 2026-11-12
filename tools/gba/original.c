@@ -31,6 +31,11 @@
 // At the end it writes to stderr, as JSON, how many instructions ran outside every function of the code map: in the
 // cartridge, and in the work RAM games copy code into, and the values DP_READS asked for.
 //
+// original ROM route SPEC
+//   Finds the buttons that take the game to a goal, for the route finder (tools/route.mjs): SPEC is a file that says
+//   what to search for, as lib/explore.h reads it. Nothing is drawn as it searches, which changes nothing the game
+//   can see, and it prints how far it has got.
+//
 // original ROM live
 //   Plays along with a person, for capture: for each frame it reads the buttons held from stdin (16 bits, as in
 //   BUTTONS), runs the frame just as above, and writes to stdout its picture, how many samples of sound it made, then
@@ -46,6 +51,7 @@
 #include <string.h>
 
 #include "on-windows.h"
+#include "explore.h"
 
 #define WIDTH 240
 #define HEIGHT 160
@@ -198,11 +204,60 @@ static int playAlong(const char* path) {
 	return 0;
 }
 
+// what the search needs of a console (lib/explore.h), for each one it runs
+static void searchFrame(void* console, uint32_t buttons) {
+	struct mCore* core = console;
+	struct ARMCore* cpu = core->cpu;
+	struct GBA* gba = core->board;
+	core->setKeys(core, buttons);
+	// an instruction at a time, as main plays every frame
+	int32_t frameCounter = gba->video.frameCounter;
+	while (gba->video.frameCounter == frameCounter) {
+		while (cpu->cycles >= cpu->nextEvent) cpu->irqh.processEvents(cpu);
+		ARMRun(cpu);
+	}
+}
+static void searchSave(void* console, void* to) { ((struct mCore*) console)->saveState(console, to); }
+static void searchLoad(void* console, const void* from) { ((struct mCore*) console)->loadState(console, from); }
+static int searchRead(void* console, uint32_t address, uint32_t bytes, uint32_t* value) {
+	struct mCore* core = console;
+	struct region* region = regionOf(address);
+	if (!region || region == &regions[0] || address - region->base + bytes > region->size) return 0;
+	*value = bytes == 1 ? core->rawRead8(core, address, -1) : bytes == 2 ? core->rawRead16(core, address, -1) : core->rawRead32(core, address, -1);
+	return 1;
+}
+static void searchSet(void* console, uint32_t address, uint32_t bytes, uint32_t value) { setValue(console, address, bytes, value); }
+
+// a console for the search, switched on, each with a picture of its own to draw to
+static const char* searchedCopy;
+static struct ex_machine searchConsole(void) {
+	struct mCore* core = GBACoreCreate();
+	core->init(core);
+	mCoreInitConfig(core, NULL);
+	core->setVideoBuffer(core, malloc(WIDTH * HEIGHT * sizeof(color_t)), WIDTH);
+	if (!mCoreLoadFile(core, searchedCopy)) {
+		fprintf(stderr, "mGBA can't open the copy\n");
+		exit(1);
+	}
+	core->reset(core);
+	// no frame is drawn, which only the picture would show: the game runs the same, and about half as fast again
+	struct GBA* gba = core->board;
+	gba->video.frameskip = gba->video.frameskipCounter = 1 << 30;
+	return (struct ex_machine) { core, searchFrame, core->stateSize(core), searchSave, searchLoad, searchRead, searchSet };
+}
+
+static int findRoute(const char* path, const char* spec) {
+	mLogSetDefaultLogger(&logger);
+	searchedCopy = path;
+	return exploreRoute(searchConsole(), searchConsole, spec, 2);
+}
+
 int main(int argc, char** argv) {
 	onWindows(&argv);
 	if (argc == 3 && !strcmp(argv[2], "live")) return playAlong(argv[1]);
+	if (argc == 4 && !strcmp(argv[2], "route")) return findRoute(argv[1], argv[3]);
 	if (argc != 9) {
-		fprintf(stderr, "Usage: original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS STATES\n       original ROM live\n");
+		fprintf(stderr, "Usage: original ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS STATES\n       original ROM live\n       original ROM route SPEC\n");
 		return 2;
 	}
 	long frames = atol(argv[2]);
