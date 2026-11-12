@@ -257,6 +257,7 @@ void set_ui_affine(int angle, int sx, int sy, int index);
 void draw_ui_text(const char *text, const UiText *o, int solid);
 void draw_ui_glyphs(const char *text, const UiText *o, int behind);
 void draw_ui_text_rotated(const char *text, const UiText *o);
+void draw_ui_letters(const char *text, const UiText *o);
 
 // --- a spotlight's beam (front/spotlight.js) ---------------------------------------------------------------------
 typedef struct { int32_t unk0, unk2, unk4, unk6, unk8, bg, unkB; } Beam;
@@ -334,6 +335,9 @@ void front_draw(void);
 
 void create_language_screen(int newGame);
 void create_sega_logo(void);
+void create_congratulations(void);
+void create_staff_credits(void);
+void create_emerald_message(void);
 void create_intro(void);
 void create_title_screen(int playMusic);
 void front_play(int level);

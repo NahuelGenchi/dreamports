@@ -51,6 +51,7 @@ typedef struct {
 
 typedef struct {
   int flash, active;
+  int gone;   // its task was destroyed, as X Zone's normal ending does before the results
 } Hud;
 
 typedef struct PaletteAnim PaletteAnim;

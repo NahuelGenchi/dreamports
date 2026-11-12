@@ -29,7 +29,7 @@
     { "name": "Special stage 5" },
     { "name": "Special stage 6" },
     { "name": "Special stage 7" },
-    { "name": "The normal ending" },
+    { "name": "The normal ending", "recording": "x-zone-credits-an-emerald-short", "frames": [8741, 19799] },
     { "name": "The true ending" },
     { "name": "Playing as Tails" },
     { "name": "Playing as Knuckles" },
