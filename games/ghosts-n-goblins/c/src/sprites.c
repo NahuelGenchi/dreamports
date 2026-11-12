@@ -128,8 +128,9 @@ static void make_sprites(void) {
 // $8000 in bank 4: the objects that are shown, at most 20, are listed at $0480 with where they are, their shape and
 // their colours; their sprites are made at $0200, with the rest of the 64 put below the screen.
 static void list_sprites(void) {
-  took(SPRITES_LIST_BEGINS);
+  took(CALLS);
   swap_first_and_fourth();
+  took(SPRITES_LIST_BEGINS);
   uint8_t listed = 0;
   for (int object = 0; object < OBJECTS; object++) {
     if (object >= 0x10) took(SPRITES_OBJECT_PAST_PAGE);

@@ -174,7 +174,7 @@ COST(SPRITES_TASK_BEGINS, 15)     // $F34F to the call
 COST(SPRITES_SWAP_READ, 11)       // sub_04_8089, for each of five lists: the two objects' bytes read,
 COST(SPRITES_SWAP_FIRST_STORED, 8) // the first's stored,
 COST(SPRITES_SWAP_FOURTH_STORED, 4) // and the fourth's
-COST(SPRITES_LIST_BEGINS, 10)     // $8000 to $8005, with its call of the swap
+COST(SPRITES_LIST_BEGINS, 4)      // $8003 to $8007, after the swap it calls first
 COST(SPRITES_OBJECT_HIDDEN, 11)   // $8007: an object that isn't shown,
 COST(SPRITES_OBJECT_FIRST_BYTE, 10) // or one that is: to the write of its first byte,
 COST(SPRITES_OBJECT_NEXT_BYTE, 11) // each of the next three,

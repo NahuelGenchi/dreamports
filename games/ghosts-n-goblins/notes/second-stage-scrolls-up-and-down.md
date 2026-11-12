@@ -10,4 +10,4 @@ A column, sub_E76F, that runs off the bottom of its screen goes on from the top 
 
 In towers the view first draws a row at frame 7530, as Arthur jumps to the upper ledge, and a column first splits at 7554. A lance kills a devil at 7590, by $A976: nothing is carried, so the side it falls to is read from Arthur's own heading, object 0. Kind $36 is a small ledge that goes up and down, in the view from frame 7713.
 
-At two frames' ends, 7830 and 7848, one byte of work memory differs from the emulator's: the frame ends inside the sprites' task's swap of the first and fourth objects, where the original has stored one byte more. Every turn takes the same cycles, and every picture is the same.
+At two frames' ends, 7830 and 7848, the frame ends inside the sprites' task's first swap of the first and fourth objects. The port had counted the two instructions after that swap, at $8003, before it, so it was four cycles late there and one byte behind the original at each.
