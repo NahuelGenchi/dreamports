@@ -209,6 +209,9 @@ void plant(uint8_t object);
 /** Bank 4's $9FB0, kind 2: the flier that sits near the end of the first stage (flier.c); $F4BC, kind $2C: its shot. */
 void flier(uint8_t object);
 void flier_shot(uint8_t object);
+/** Bank 2's $84E0: the flying knights that come on the first stage's last screens; bank 4's $A530, kind 3: one of them (enemies.c). */
+void knights_come(uint8_t *x);
+void knight(uint8_t object);
 /** sub_F5A0: what touches an enemy this round: the weapon that hit it, which is gone and counted at $0647, or 0, with
  *  whether Arthur touched it and is hit. */
 uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched);

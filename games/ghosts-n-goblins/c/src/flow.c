@@ -333,14 +333,12 @@ static void place_stage_objects(void) {
   took(STAGE_OBJECT_FILLED);
 }
 
-// $8400 in bank 2: what comes at Arthur by itself: the zombies (enemies.c), and six other routines, at $84E0, $8574,
-// $8610, $867A, $880A and $8748, which have nothing to do in the first stage's first screens and aren't ported yet.
+// $8400 in bank 2: what comes at Arthur by itself: the zombies and the flying knights (enemies.c), and five other
+// routines, at $8574, $8610, $867A, $880A and $8748, which have nothing to do in the first stage and aren't ported yet.
 static void stage_dangers(void) {
   took(DANGERS_OTHERS);
-  // $84E9: on the first stage's eighth screen the first of the six looks at how far across it Arthur is. What it sends
-  // at him from 64 pixels in, at $8504, isn't ported yet.
-  if (RAM[0xCF] == 0 && RAM[OBJECT_X_SCREEN + ARTHUR] == 7 && RAM[OBJECT_X + ARTHUR] < 0x40) took(DANGERS_EIGHTH_SCREEN_BEGINS);
   zombies_come(&last_index);
+  knights_come(&last_index);
 }
 
 // $D38D: the stage's time, which the top of the picture shows as a minute and two digits of seconds. V-blank counts
@@ -386,6 +384,17 @@ static int stage_round(void) {
   RAM[0x8A] = RAM[0x44];
   PAD_NOW = RAM[0x89 + PLAYER];
   took(GAME_ROUND_BEGINS);
+  // $D2AA: a sound an enemy has asked for is played once its rounds have passed without it asking again
+  if (!RAM[0xEB] && RAM[0xE8] != 0xFF) {
+    if (++RAM[0xE7] < RAM[0xE9]) took(ASKED_SOUND_WAITS);
+    else {
+      took(ASKED_SOUND_PLAYS);
+      sound_play(RAM[0xE8]);
+      RAM[0xE8] = 0xFF;
+      RAM[0xE7] = 0;
+      took(ASKED_SOUND_PLAYED);
+    }
+  }
   uint8_t mixed = ROUNDS & 3;
   if (mixed) took(GAME_ROUND_NO_COLOURS);
   else {

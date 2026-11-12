@@ -510,7 +510,7 @@ static void map_marker(uint8_t object) {
 // $BA09 in bank 4, kind $10: something to pick up, here Arthur's armour. Its shape and colours come from the copy's
 // lists at $BB2D, by which thing it is, and it flashes another colour every fourth round. When Arthur touches the
 // armour he has it: his flags say so, the tiles' task sends the armoured Arthur's tiles, and the object is gone. The
-// other things, at $BA99 and $BAAC, the sound the armour makes outside the scene, at $BA83, and the kinds $F708 keeps
+// other things, at $BA99 and $BAAC, and the kinds $F708 keeps
 // after they're picked up aren't ported yet.
 static void pick_up(uint8_t object) {
   enum { ARMOUR = 5, WITHOUT_ARMOUR = 0x20 };
@@ -552,6 +552,11 @@ static void pick_up(uint8_t object) {
     return;
   }
   if (!touched || thing != ARMOUR) return;
+  if (!SCENE_PLAYING) {
+    // $BA83: outside the opening scene it has a sound
+    took(PICK_UP_ARMOUR_SOUND);
+    sound_play(0x14);
+  }
   took(PICK_UP_ARMOUR_TAKEN);
   RAM[OBJECT_FLAGS + ARTHUR] &= (uint8_t)~WITHOUT_ARMOUR;
   TILES_FIRST_LIST = 0;
@@ -581,6 +586,7 @@ wait objects_task(void) {
         case 0x00: zombie(object); break;
         case 0x01: plant(object); break;
         case 0x02: flier(object); break;
+        case 0x03: knight(object); break;
         case 0x0E: platform(object); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object); break;
