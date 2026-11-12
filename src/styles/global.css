@@ -1632,6 +1632,12 @@ dialog.card[open] {
   gap: 6px;
 }
 
+/* a line under a row's choices, the whole row wide */
+.set-after {
+  flex: 1 1 100%;
+  margin-top: 0;
+}
+
 .set-desc:empty {
   display: none;
 }
