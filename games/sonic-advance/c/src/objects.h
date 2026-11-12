@@ -119,6 +119,11 @@ ActTask *breakable_wall_spawn(Slot *slot);    // 114
 ActTask *sinking_platform_spawn(Slot *slot);  // 85
 ActTask *rising_platform_spawn(Slot *slot);   // 89
 ActTask *lava_platform_spawn(Slot *slot);     // 98
+ActTask *hang_bar_spawn(Slot *slot);              // 83
+ActTask *spiked_barrel_spawn(Slot *slot);         // 93
+ActTask *conveyor_belt_object_spawn(Slot *slot);  // 99
+ActTask *propeller_spawn(Slot *slot);             // 103
+ActTask *egg_rocket_checkpoint_spawn(Slot *slot);
 ActTask *square_platform_spawn(Slot *slot);
 ActTask *spiked_platform_spawn(Slot *slot);
 ActTask *barrel_spawn(Slot *slot);

@@ -5,6 +5,7 @@
 
 #include "objects.h"
 #include "results.h"
+#include "bosses.h"
 
 int moon_opens(void);
 
@@ -318,7 +319,7 @@ static void hud_update(int draw) {
     }
     int d[12], n = digits_of(act.score % 1000000000, d);
     for (int i = 0; i < n; i++) hud_glyph(d[i], 81 - 8 * n + i * 8, -2);
-    int red = act.courseTime > 9 * 3600 && (act.tick & 0x10) ? 11 : 0;
+    int red = (act.timerReversed ? act.courseTime < 3600 : act.courseTime > 9 * 3600) && (act.tick & 0x10) ? 11 : 0;
     int sec = (act.courseTime / 60) % 60;
     int hundredths = (int)__builtin_floor((act.courseTime % 60) * 100.0 / 60.0 + 0.5);
     int t[7];
@@ -327,6 +328,11 @@ static void hud_update(int draw) {
     for (int i = 0; i < 7; i++) hud_glyph(t[i] + red, 25 + i * 8, 12);
     int lives = act.lives > 9 ? 9 : act.lives == 0 ? 0 : act.lives - 1;
     hud_glyph(lives, 22, 143);
+    if (act.timerReversed) {
+      if (act.courseTime < 20 * 60 && act.courseTime % 60 == 0 && act.courseTime != 0) play_song(139);
+    } else {
+      if (act.courseTime > 9 * 3600 + 40 * 60 && act.courseTime < 10 * 3600 && act.courseTime % 60 == 0) play_song(139);
+    }
   }
   if (act.ringCount == 0) h->flash = (h->flash + 1) & 31;   // it only counts while it shows
 }
@@ -342,11 +348,11 @@ static void late_tiles_copy(int frame);
 static void late_tiles_step(void);
 static void late_tiles_draw(void);
 
-// where Sonic's task (0x3000) left him: his sprite is put there, so a task after his that moves him, as a shot that
-// hurts him, moves him on the next frame's picture (drawSonic in engine/game.js)
-static double shownX, shownY;
+// Sonic as his task (0x3000) left him: his sprite is drawn from this, so a task after his that moves or turns him, as a
+// shot that hurts him or a hang bar, shows on the next frame's picture (drawSonic in engine/game.js)
+static Player shown;
 static int shownSet;
-static void sonic_shown(void) { shownX = act.player.x; shownY = act.player.y; shownSet = 1; }
+static void sonic_shown(void) { shown = act.player; shownSet = 1; }
 
 static void draw_frame(void) {
   const Level *row = act.stage.row;
@@ -379,7 +385,7 @@ static void draw_frame(void) {
   // the zone's StageBgUpdate
   if (row->drawBackground) row->drawBackground(camX, camY);
 
-  player_draw(&act.player, shownSet ? shownX : act.player.x, shownSet ? shownY : act.player.y, camX, camY);
+  player_draw(shownSet ? &shown : &act.player, camX, camY);
   shownSet = 0;
 }
 
@@ -620,6 +626,12 @@ static void act_frame(void) {
     in.left = 0; in.right = 1; in.jump = 1; in.attack = 0; in.jumpPressed = 0; in.attackPressed = 0;
     act.firstFrame = 0;
   }
+  if (act.player.wasIgnoreInput && !act.player.ignoreInput) {
+    if (e.input & KEY_A) in.jumpPressed = 1;
+    if (e.input & KEY_B) in.attackPressed = 1;
+    act.player.heldDirs = 0;
+  }
+  act.player.wasIgnoreInput = act.player.ignoreInput;
   // an object holding him takes the pad from him: he reads nothing held or pressed, or only right held as the goal post
   // gives him to run off (HOLD_RIGHT)
   if (act.player.ignoreInput)
@@ -635,10 +647,22 @@ static void act_frame(void) {
   // what the music manager reads of Sonic (0x4000)
   const Player *sonic = &act.player;
   music_call(MUSIC_PLAYER, (sonic->invincible > 0) | (sonic->speedUp > 0) << 1 | !sonic->dead << 2);
-  // the stage clock's task (0xFF00): it keeps this frame's gravity for the next (gPrevStageFlags), the course time
-  // counts once the card has ended, and the stage's tick every frame
+  // the stage clock's task (0xFF00): the course time counts once the card has ended, the stage's tick every frame; it
+  // keeps this frame's gravity as the last (gPrevStageFlags), so a flip turns his Y speed around once
   act.player.wasInverted = act.player.inverted;
-  if (!act.clockStopped) act.courseTime++;
+  if (!act.clockStopped) {
+    if (act.timerReversed) {
+      if (--act.courseTime <= 0) {
+        // time up stops the clock (STAGE_FLAG__ACT_START), so this happens once
+        act.courseTime = 0;
+        act.clockStopped = 1;
+        if (act.stage.level == LEVEL_EGG_ROCKET) boss_shake(0x800, 8, 16, -1, SHAKE_VERTICAL | SHAKE_HORIZONTAL | SHAKE_RANDOM);
+        act.player.dead = 1;
+      }
+    } else {
+      act.courseTime++;
+    }
+  }
   act.tick++;
   // the water's task (0xFFFE), after the clock's
   if (act.frames > 0) water_task();
@@ -743,7 +767,11 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
     if (act.cardDone && !row->cardStepsOn) {
       // the frames after the card only settle the HUD's task, which starts as the card ends: the stage keeps the frame it
       // ended on, and only the clock and the HUD move on
-      if (!act.clockStopped) act.courseTime++;
+      if (!act.clockStopped) {
+        if (act.timerReversed) {
+          if (--act.courseTime <= 0) act.courseTime = 0;
+        } else act.courseTime++;
+      }
       hud_update(0);
       after++;
       continue;
@@ -783,7 +811,11 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
       for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
     water_card_flush();   // the card's part in the water, after the palette animations as in the task list
     if (row->afterFrame && !loading) row->afterFrame(0);
-    if (!act.clockStopped && !(row->cardStepsOn && cardJustEnded)) act.courseTime++;
+    if (!act.clockStopped && !(row->cardStepsOn && cardJustEnded)) {
+      if (act.timerReversed) {
+        if (--act.courseTime <= 0) act.courseTime = 0;
+      } else act.courseTime++;
+    }
     if (wasDone && row->cardStepsOn) {
       // the act keeps stepping through the frames after its card, as its first recording starts there: the HUD's
       // zero-ring flash starts with the card's end, and the frames count towards the act's clock

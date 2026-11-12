@@ -46,7 +46,7 @@ int quick_angle(int a, int b);
 
 // --- the engine (gba/engine.js) ---------------------------------------------------------------------------------
 enum {
-  FLAGS_UPDATE_BG_PALETTES = 0x1, FLAGS_UPDATE_OBJ_PALETTES = 0x2, FLAGS_HBLANK_COPY = 0x4, FLAGS_KEEP_HBLANK_BUFFER = 0x20, FLAGS_VCOUNT_INTR = 0x40,
+  FLAGS_UPDATE_BG_PALETTES = 0x1, FLAGS_UPDATE_OBJ_PALETTES = 0x2, FLAGS_HBLANK_COPY = 0x4, FLAGS_HBLANK_CALLBACKS = 0x8, FLAGS_KEEP_HBLANK_BUFFER = 0x20, FLAGS_VCOUNT_INTR = 0x40,
   FLAGS_PAUSE_GAME = 0x400, FLAGS_PAUSED = 0x800, FLAGS_NO_RESET = 0x8000,
 };
 enum { TASK_INACTIVE = 0x1, TASK_DESTROY_DISABLED = 0x2, TASK_RUNS_PAUSED = 0x4 };
@@ -98,6 +98,10 @@ typedef struct {
   // the V-count interrupt (gIntrTable[INTR_INDEX_VCOUNT]) and the line it comes at (gUnknown_03002874)
   void (*vcountIntr)(void);
   uint8_t vcountLine;
+  // gHBlankCallbacks and gNumHBlankCallbacks: what a task asks the H-blank to run after each line it draws, with FLAGS_HBLANK_CALLBACKS;
+  // the next V-blank takes them over, and they start again
+  void (*hblankCallbacks[4])(int line);
+  int numHblankCallbacks;
   void (*vblankCallback)(void);   // gVBlankCallbacks, the one a task asks for this frame, run in the next V-blank's update
   // the keys (gInput and the rest)
   uint16_t input, prevInput, pressed, released, repeated;

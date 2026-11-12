@@ -52,7 +52,7 @@ static int checkpoint_run(ActTask *t) {
 }
 
 ActTask *checkpoint_spawn(Slot *slot) {
-  if (act.stage.level == LEVEL_EGG_ROCKET) return NULL;   // its checkpoints are the rocket's launch and stage separations
+  if (act.stage.level == LEVEL_EGG_ROCKET) return egg_rocket_checkpoint_spawn(slot);
   Checkpoint *c = OBJECT_NEW(Checkpoint);
   if (!c) return NULL;
   const Entity *en = &slot->e;

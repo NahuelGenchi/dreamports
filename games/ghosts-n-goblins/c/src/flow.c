@@ -284,6 +284,7 @@ static void next_part(void) {
     }
     took(object < 0x10 ? GOES_ROUND : GOES_ON);
   }
+  last_index = 0x11;   // where the loop leaves X, which the next round's mix at $CA reads if nothing is made first
 }
 
 // $D16E: a stage starts: Arthur's task, the picture, the top of the picture, the stage's counts all at their start, a
@@ -341,24 +342,41 @@ static void place_stage_objects(void) {
   // a kind's own routine: $D71B, whose state starts at 0, or $D72B, whose state the list gives, which $D804 jumps to
   // and $D6B9, which leaves the state as the object's last user left it, and which $D670 jumps to
   // and $D706, a moving platform's, which gives it a heading and a shape too
-  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, PLATFORM = 0xD706 };
+  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, PLATFORM = 0xD706, BOSS = 0xD673 };
   uint16_t routine = ram16(0x22);
   if (routine == STATE_LISTED_TOO) { took(JUMPS); routine = STATE_LISTED; }
   if (routine == STATE_KEPT_TOO) { took(JUMPS); routine = STATE_KEPT; }
-  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT && routine != PLATFORM) return;
-  took(CALLS);
-  uint8_t object = free_object();
-  if (object == NO_OBJECT) {
-    took(STAGE_OBJECT_NO_ROOM);
-    return;
+  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT && routine != PLATFORM && routine != BOSS) return;
+  uint8_t object;
+  if (routine == BOSS) {
+    // $D673: the boss has to be there, so it may take the place of something that isn't in the picture. The stage's
+    // count of bosses at $C3 goes up for one whose flags in the list have bit 2.
+    object = take_object();
+    if (object == NO_OBJECT) { took(STAGE_BOSS_NO_ROOM); return; }
+    took(STAGE_BOSS_READ);
+    if ((listed & 0xFF) + 7 > 0xFF) took(READ_PAST_PAGE);
+    if (peek((uint16_t)(listed + 7)) & 0x04) {
+      RAM[0xC3]++;
+      took(STAGE_BOSS_COUNTED);
+    } else took(BRANCH_TAKEN);
+    RAM[OBJECT_STATE + object] = 1;
+    RAM[OBJECT_HEADING + object] = 0x0C;
+    took(STAGE_BOSS_STATE);
+  } else {
+    took(CALLS);
+    object = free_object();
+    if (object == NO_OBJECT) {
+      took(STAGE_OBJECT_NO_ROOM);
+      return;
+    }
+    took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : routine == STATE_LISTED ? STAGE_OBJECT_STATE_LISTED : routine == PLATFORM ? STAGE_OBJECT_PLATFORM : STAGE_OBJECT_STATE_KEPT);
   }
-  took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : routine == STATE_LISTED ? STAGE_OBJECT_STATE_LISTED : routine == PLATFORM ? STAGE_OBJECT_PLATFORM : STAGE_OBJECT_STATE_KEPT);
   last_index = object;
   if (routine == PLATFORM) {
     RAM[OBJECT_HEADING + object] = 0x0C;
     RAM[OBJECT_SHAPE + object] = 0x5F;
   }
-  if (routine != STATE_KEPT) RAM[OBJECT_STATE + object] = routine == STATE_ZERO ? 0 : listed_byte(listed, 1);
+  if (routine != STATE_KEPT && routine != BOSS) RAM[OBJECT_STATE + object] = routine == STATE_ZERO ? 0 : listed_byte(listed, 1);
   RAM[0x0647 + object] = 0;
   RAM[OBJECT_COUNT + object] = 0;
   RAM[OBJECT_KIND + object] = kind;

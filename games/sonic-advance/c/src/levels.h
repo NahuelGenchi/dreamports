@@ -18,7 +18,7 @@ enum {
   LEVEL_COUNT
 };
 // LEVEL_TO_ZONE: a level's zone is its index halved, so the zones with two acts each have a name
-enum { ZONE_NEO_GREEN_HILL, ZONE_SECRET_BASE, ZONE_CASINO_PARADISE, ZONE_ICE_MOUNTAIN, ZONE_ANGEL_ISLAND };
+enum { ZONE_NEO_GREEN_HILL, ZONE_SECRET_BASE, ZONE_CASINO_PARADISE, ZONE_ICE_MOUNTAIN, ZONE_ANGEL_ISLAND, ZONE_EGG_ROCKET };
 
 typedef struct {
   // The stage init: the act's song, where the HUD's zero-ring flash starts, and the palette animations
