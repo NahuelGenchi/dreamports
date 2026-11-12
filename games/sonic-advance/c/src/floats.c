@@ -2,8 +2,9 @@
 // toggle_player_float.c: CreateEntity_Toggle_PlayerFloat and Task_PlayerFloatMain): an area with nothing drawn, from its
 // spawn point d2 tiles across and d3 down, both edges in. On every frame Sonic's centre is in it and he is alive, it lifts
 // him: 104/256 px a frame off his Y speed, no faster up than 2.25 px a frame, before his own frame adds gravity. It puts him
-// in the air, cancels his attack, pushing and air lock, and gives him its state: with d0 = 0 the whirlwind's spin, any other
-// d0 the spring's somersault. More than 4 px above the floor under his centre it also uncurls him, leaving his hitbox as it is.
+// in the air, cancels his attack and pushing, and gives him its state: with d0 = 0 the whirlwind's spin, any other d0 the
+// spring's somersault. More than 4 px above the floor under his centre it also uncurls him, leaving his hitbox as it is, and
+// lifts a roll jump's air lock.
 //
 // A whirlwind plays SE_200 on the frame it first lifts him while he isn't already spinning in one, and fades the second sound
 // effect player out on a frame he isn't spinning (landed, say); leaving the camera's range while it plays, it stops it. The
@@ -39,10 +40,10 @@ static int float_run(ActTask *t) {
     p->ysp -= UPDRAFT;
     if (p->ysp < -MAX_RISE) p->ysp = -MAX_RISE;
     p->air = 1;
-    // Player_TransitionCancelFlyingAndBoost
-    player_end_attack(p); p->pushing = 0; p->airLock = 0;
+    // Player_TransitionCancelFlyingAndBoost, which in this game leaves the roll jump's air lock alone
+    player_end_attack(p); p->pushing = 0;
     p->state = whirlwind ? PS_FLOAT : PS_SPRING;
-    if (terrain_tile_floor(x, y, p->layer, 8) > UNCURL_ABOVE) p->curled = 0;
+    if (terrain_tile_floor(x, y, p->layer, 8) > UNCURL_ABOVE) { p->curled = 0; p->airLock = 0; }
   }
   return 1;
 }

@@ -43,10 +43,10 @@ const Level ACT_COSMIC_ANGEL = {
 };
 
 // --- gravity toggles (kind 109, Task_ToggleGravity) ------------------------------------------------------------------------
-// An unseen line that acts when Sonic's centre crosses it, either way, within its span, while he is alive. With d2 above d3
-// it lies across, at the entity's y, from x + d0 * 8 for d2 * 8 px, and d1 says what it does: 3 turns gravity over, 4 sets
-// it normal, anything else flips it. Otherwise it stands at the entity's x, from y + d1 * 8 for d3 * 8 px, and d0 says: 0
-// turns it over, 1 normal, anything else flipped.
+// An unseen line that acts when Sonic's centre crosses it, either way, within its span, while he is alive. Its kind is d1
+// when d2 is above d3, else d0. A kind above 2 lies across, at the entity's y, from x + d0 * 8 for d2 * 8 px: 3 turns
+// gravity over, 4 sets it normal, anything else flips it. Otherwise it stands at the entity's x, from y + d1 * 8 for
+// d3 * 8 px: 0 turns it over, 1 sets it normal, anything else flips it.
 typedef struct {
   Object o;
   int across, what, turn, normal;
@@ -80,10 +80,13 @@ ActTask *toggle_gravity_spawn(Slot *slot) {
   const Entity *en = &slot->e;
   tg->o.slot = slot;
   tg->o.x = en->x;
-  tg->across = en->d[2] > en->d[3];
-  tg->what = tg->across ? en->d[1] : en->d[0];
+  // the longer span picks which of d0 and d1 is its kind, and where its watch starts, but the kind alone says which
+  // way its line runs (kind > 2: across)
+  int longAcross = en->d[2] > en->d[3];
+  tg->what = longAcross ? en->d[1] : en->d[0];
+  tg->across = tg->what > 2;
   tg->turn = tg->across ? 3 : 0;
   tg->normal = tg->across ? 4 : 1;
-  tg->last = along(tg, &act.player);
+  tg->last = longAcross ? act.player.y : act.player.x;
   return object_task(&tg->o, toggle_gravity_run, PRIORITY_OBJECTS);
 }

@@ -63,6 +63,7 @@ typedef struct {
   Camera cam;
   Hud hud;
   int tick, frames, courseTime, ringCount, lives, score;
+  int timerReversed;
   uint32_t seed;
   int goalReached, ringsStopped;   // past the goal; past the goal or a beaten boss, the rings manager neither takes nor draws
   int afterLevel;                  // made by GoToNextLevel after the act before, rather than by the course select

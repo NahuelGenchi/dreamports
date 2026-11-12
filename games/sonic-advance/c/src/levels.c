@@ -33,7 +33,7 @@ static const Level *const LEVELS[LEVEL_COUNT] = {
   // and its second act
   [LEVEL_ANGEL_ISLAND_2] = &ACT_ANGEL_ISLAND_2,
   // Zone 6, whose two acts are zones of their own to the player
-  [LEVEL_EGG_ROCKET] = NOT_IN_C_WITH(MUS_EGG_ROCKET),
+  [LEVEL_EGG_ROCKET] = &ACT_EGG_ROCKET,
   // and its second
   [LEVEL_COSMIC_ANGEL] = &ACT_COSMIC_ANGEL,
   // Zone 7, the last fight

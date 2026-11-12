@@ -17,7 +17,6 @@ enum {
   OCT_TURN_FRAMES = 30, OCT_TURN_STEP = 0x400 / 30,
   OCT_SHOOT_EVERY = 60, OCT_SHOOT_AT = 20, OCT_SHOOT_DONE = 26,
   OCT_SHOT_SPEED = 512,          // Q(2)
-  ZONE_EGG_ROCKET = 5,
 };
 
 typedef struct {

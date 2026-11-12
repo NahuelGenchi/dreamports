@@ -25,6 +25,7 @@ typedef enum {
   PS_HALF_PIPE_LOW, PS_HALF_PIPE_MID, PS_HALF_PIPE_HIGH,   // the three walks a half-pipe gives him
   PS_BREATHE,               // taking a breath from an air bubble (CHARSTATE_27)
   PS_FLOAT,                 // lifted by a whirlwind (CHARSTATE_37)
+  PS_HANG, PS_HANG_MOVE,    // on a hang bar (CHARSTATE_35, CHARSTATE_36)
   PS_GRABBED,               // held in Egg X's claw
   PS_MOON_GAZE, PS_MOON_TRANSFORM, PS_MOON_FLY,   // X Zone's way to the Moon Zone
   PA_BORED, PA_RUN, PA_BRAKE_TURN,   // bored of waiting, running, and turning round after a skid
@@ -67,7 +68,7 @@ typedef struct {
   int shield;                   // the shield an item box gave him (SHIELD_*)
   const void *onObject;         // the solid object he stands on, if any
   int animRestart;              // an object asked for his animation to start over
-  int forcedRoll, scripted, actClear, halfPipe, ignoreInput, carried, override;
+  int forcedRoll, scripted, actClear, halfPipe, ignoreInput, wasIgnoreInput, carried, override;
   int track;                    // the step of the marble track or tube holding him (unk99[0]), NO_TRACK when none does
   int scale;                    // his size through the rotation hardware (8.8), smaller inside a marble track
   int drawRotation;             // the angle he is drawn at through the rotation hardware (1024 a turn)
@@ -89,7 +90,7 @@ void player_init(Player *p, int x, int y);
 void player_step(Player *p, const PlayerInput *in);
 /** Picks and steps his animation after the movement, and decides whether he is drawn. */
 void player_animate(Player *p, const PlayerInput *in);
-void player_draw(Player *p, double x, double y, int camX, int camY);   // at where his task left him
+void player_draw(Player *p, int camX, int camY);
 /** The hooks for the objects: out of a ball and into one, keeping his feet in place. */
 void player_stand_up(Player *p);
 void player_curl_up(Player *p);
