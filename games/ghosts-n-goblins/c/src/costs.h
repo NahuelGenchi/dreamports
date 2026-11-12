@@ -1615,6 +1615,21 @@ COST(THING_ARTHUR_HELD, 22)       // or is held already,
 COST(THING_ARTHUR_BELOW, 36)      // or is below it,
 COST(THING_ARTHUR_HIGH, 40)       // or 20 pixels above it or more,
 COST(THING_ARTHUR_OFF, 58)        // or off its sides
+COST(THING_ARTHUR_ON_NEAR, 51)    // or on it, to $B795: within 36 pixels one way,
+COST(THING_ARTHUR_ON_FAR, 54)     // or the other
+COST(THING_HOLDS_GOING_DOWN, 32)  // $B795 to $B7B2: his flag and state, and how far above it he stands, when it's going down,
+COST(THING_HOLDS_GOING_UP, 36)    // or up
+COST(THING_LIFTS_SAME_SCREEN, 26) // $B7B2 to $B7D6: his place down, on its screen,
+COST(THING_LIFTS_SCREEN_ABOVE, 38) // or the one above
+COST(THING_CARRIES_DOWN, 16)      // $B7D6 to $B7ED: going down in the picture's lower half,
+COST(THING_STILL_DOWN, 18)        // or to $B7F6, in its upper,
+COST(THING_CARRIES_UP, 15)        // or going up in its upper half,
+COST(THING_STILL_UP, 17)          // or in its lower
+COST(THING_CARRY_BEGINS, 14)      // $B7ED to sub_B80D, with its call
+COST(THING_CARRIED, 50)           // $B810, and back: his place down, moved as it moves, on the same screen,
+COST(THING_CARRIED_ONTO_SCREEN_ABOVE, 69) // or past its top,
+COST(THING_CARRIED_ONTO_SCREEN_BELOW, 73) // or its 240 lines
+COST(THING_HOLD_ENDS, 7)          // $B7F6 to sub_F181
 COST(FALLING_THING_BEGINS, 21)    // $9D5F to sub_F321
 COST(FALLING_THING_OUT_OF_VIEW, 2) // $9D74 to sub_F346
 COST(FALLING_THING_WAITS_UNSEEN, 9) // $9D7C, and back
