@@ -242,7 +242,8 @@ static int buzzer_run(ActTask *t) {
   e->x = e->spawnX + (e->off >> 8);
   e->y = e->spawnY;
   if (e->state == Z_BUZZER_SHOOT && ++e->t == 10) add_buzzer_shot(e->x, e->y + 6);
-  if (gone(e, e->x, e->y)) return 0;
+  // it leaves by where it has flown to, not by where it started (buzzer.c tests worldX with its flight added)
+  if (enemy_gone(e->x, e->y, e->x, e->y)) return 0;
   if (enemy_attack(s, e->x, e->y)) { e->o.slot->gone = 1; return 0; }
   if (e->state == Z_BUZZER_PATROL) {
     if ((e->off >> 8) <= e->d0 * 8) {
@@ -426,9 +427,12 @@ ActTask *kiki_spawn(Slot *slot) {
 ActTask *buzzer_spawn(Slot *slot) {
   Enemy *e = enemy_new(slot, 1);
   if (!e) return NULL;
-  if (enemy_sonic_x() >= e->spawnX) { e->vel = 256; enemy_flip_x(&e->o.sprite, 1); }
-  else e->vel = -256;
-  enemy_sprite(&e->o.sprite, ANIM_BUZZER, BUZZER_VAR_FLY, BUZZER_VAR_TURN, ENEMY_ORDER);
+  Sprite *s = &e->o.sprite;
+  e->vel = -256;
+  // it turns to Sonic once its sprite is set and before its first step, so the turn stays (CreateEntity_Buzzer)
+  object_sprite(s, ANIM_BUZZER, BUZZER_VAR_FLY, BUZZER_VAR_TURN, ENEMY_ORDER, ENEMY_PRIORITY, 0, 0);
+  if (enemy_sonic_x() >= e->spawnX) { e->vel = 256; enemy_flip_x(s, 1); }
+  sprite_step(s);
   return object_task(&e->o, buzzer_run, PRIORITY_OBJECTS);
 }
 
