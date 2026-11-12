@@ -6,6 +6,7 @@ import { hasCode as codeIn, isBeingMade, numbersText, proofOf, shortPercent } fr
 import { LANGUAGES, OTHER_LANGUAGES, mainLanguage, versionName } from './languages.mjs';
 import { SOURCE_URL, makeUrl, type Game } from './site';
 import type { Making, Step } from './making';
+import { systemOf, type System } from './systems';
 
 export type Dreamport = Extract<Game['data'], { kind: 'dreamport' }>;
 
@@ -161,6 +162,9 @@ const hasCode = (data: Dreamport): boolean => codeIn(mainProof(data.game));
 
 /** Whether a Dreamport has its place in its row and its own page, for players. Until it has code, it's only in the Make row. */
 export const released = ({ data }: Game): boolean => hasCode(data);
+
+/** The system a Dreamport is for, its proof's console, for the launcher's row of systems (src/lib/systems.ts). */
+export const systemFor = ({ data }: Game): System => systemOf((proofFile(data.game, 'original') as { console?: string } | undefined)?.console, data.game);
 
 /**
  * Whether all of a Dreamport's code is ported, in any of its languages. Until then the Dreamports row leaves it out,

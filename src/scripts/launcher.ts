@@ -109,6 +109,9 @@ function start(launcher: HTMLElement) {
   const plateHelp = $('#np-help', launcher);
   const cursor = $('#cursor', launcher);
   const target = $('#target', launcher);
+  const sysHead = $('#sys-head', launcher);
+  const sysName = $('#sys-name', sysHead);
+  const btnSystems = $<HTMLButtonElement>('#btn-systems', launcher);
   const btnSearch = $<HTMLButtonElement>('#btn-search', launcher);
   const searchBox = $('#search', launcher);
   const searchInput = $<HTMLInputElement>('#search-input', searchBox);
@@ -141,6 +144,8 @@ function start(launcher: HTMLElement) {
       path: hrefOf(tab)!,
       paths: (tab.dataset.paths ?? '').split(' '),
       title: tab.dataset.title!,
+      // whether its row starts on systems, as the Dreamports row does
+      systems: !!template.content.querySelector('.slot[data-system]'),
     };
   });
 
@@ -163,6 +168,8 @@ function start(launcher: HTMLElement) {
     aboutSec: 'dreamport',
     // whether the Dreamports row shows those whose code isn't all ported, which it doesn't until Settings say so
     unfinished: store.get('unfinished') === 'show',
+    // the system whose Dreamports the Dreamports row shows, or none while it shows the systems
+    system: null as string | null,
     // what the search field holds while a search is on
     search: null as string | null,
   };
@@ -210,22 +217,42 @@ function start(launcher: HTMLElement) {
   const K = 0.6;
   const sel = () => state.sel[state.filter];
   const gameAt = (i: number) => slots[i]?.dataset.game ?? null;
+  // what a place is known by when the row is built again: its game, or its system
+  const keyAt = (i: number) => slots[i]?.dataset.game ?? slots[i]?.dataset.system ?? null;
 
   // the game whose own address the page was asked for, which keeps its place in the row even while unfinished ones are left out
   let asked: string | null = null;
-  // whether a place is in its row: an unfinished Dreamport isn't, until Settings show them
+  // whether a game is in its row: an unfinished Dreamport isn't, until Settings show them
   const shown = (el: HTMLElement) => state.unfinished || el.dataset.unfinished === undefined || el.dataset.game === asked;
   const allPlaces = (f = state.filter) => $$('.slot', FILTERS[f].template.content);
-  // a row's places as its template has them, without those left out
-  const places = (f = state.filter) => allPlaces(f).filter(shown);
+  // A row's places as its template has them, without those left out. The Dreamports row has two levels (#1168): the
+  // systems that have Dreamports to show, and once one is picked, that system's Dreamports. `every` is all its games,
+  // whatever their system, which is what the search looks through.
+  function places(f = state.filter, every = false) {
+    const all = allPlaces(f);
+    if (!FILTERS[f].systems) return all.filter(shown);
+    const games = all.filter((el) => el.dataset.game && shown(el));
+    if (every) return games;
+    if (state.system) return games.filter((el) => el.dataset.of === state.system);
+    return all.filter((el) => el.dataset.system && games.some((game) => game.dataset.of === el.dataset.system));
+  }
+  // the places the row holds now: what the search finds, or its level's
+  function wanted() {
+    const words = searchWords();
+    return words.length ? places(state.filter, true).filter((el) => matches(el, words)) : places();
+  }
   // whether a row has Dreamports left out
-  const leftOut = () => places().length < allPlaces().length;
+  const leftOut = () => allPlaces().some((el) => el.dataset.game && !shown(el));
+  // the system a game in the Dreamports row is for, and a system's own place, which has its name and drawing
+  const systemOfGame = (game: string, f = state.filter) => allPlaces(f).find((el) => el.dataset.game === game)?.dataset.of ?? null;
+  const systemPlace = (id: string | null, f = state.filter) => (id ? allPlaces(f).find((el) => el.dataset.system === id) : undefined);
 
-  // keep: the game to stay on, where the new row has it, or else the first place
+  // keep: the game or system to stay on, where the new row has it, or else the first place
   function buildRow(keep?: string | null) {
     sleepRow();
-    const words = searchWords();
-    rowEl.replaceChildren(...places().filter((el) => !words.length || matches(el, words)).map((el) => el.cloneNode(true)));
+    // a system with nothing left to show, as when Settings stop showing unfinished Dreamports, gives way to the systems
+    if (state.system && FILTERS[state.filter].systems && !places().length) state.system = null;
+    rowEl.replaceChildren(...wanted().map((el) => el.cloneNode(true)));
     settleRow(keep);
   }
 
@@ -233,10 +260,8 @@ function start(launcher: HTMLElement) {
   // so the game on the screen goes on playing
   function narrowRow(keep?: string | null) {
     const on = rowEl.querySelector<HTMLElement>('.slot.is-sel');
-    const words = searchWords();
     const there = $$('.slot', rowEl);
-    const next = places()
-      .filter((el) => !words.length || matches(el, words))
+    const next = wanted()
       .map((el) => there.find((old) => old.dataset.title === el.dataset.title) ?? (el.cloneNode(true) as HTMLElement));
     for (const el of there) if (!next.includes(el)) el.remove();
     next.forEach((el, i) => {
@@ -252,7 +277,7 @@ function start(launcher: HTMLElement) {
     // with nothing to show, one empty place says so
     if (!rowEl.children.length) rowEl.append(words.length ? emptyPlace('Nothing matches') : leftOut() ? emptyPlace(NONE_FINISHED, SHOW_THEM) : emptyPlace('Nothing here yet'));
     slots = $$('.slot', rowEl);
-    if (keep !== undefined) state.sel[state.filter] = Math.max(0, slots.findIndex((el) => el.dataset.game === keep));
+    if (keep !== undefined) state.sel[state.filter] = Math.max(0, slots.findIndex((el) => (el.dataset.game ?? el.dataset.system) === keep));
     state.sel[state.filter] = Math.min(sel(), slots.length - 1);
     slots.forEach((el, i) => {
       el.dataset.index = String(i);
@@ -260,13 +285,26 @@ function start(launcher: HTMLElement) {
       el.setAttribute('role', 'option');
       el.setAttribute('aria-posinset', String(i + 1));
       el.setAttribute('aria-setsize', String(slots.length));
+      // a system says how many of its Dreamports its row would show
+      if (el.dataset.system) {
+        const n = places(state.filter, true).filter((game) => game.dataset.of === el.dataset.system).length;
+        el.dataset.detail = n === 1 ? '1 Dreamport' : `${n} Dreamports`;
+      }
       const numbers = el.dataset.numbers ? `. ${el.dataset.numbers}` : '';
       const detail = el.dataset.detail ? `, ${el.dataset.detail}` : '';
       const help = el.dataset.help ? `. ${el.dataset.help}` : '';
       el.setAttribute('aria-label', el.dataset.title ? `${el.dataset.title}${detail}${numbers}${help}` : `${el.dataset.note ?? ''}${help}`);
       el.tabIndex = -1;
     });
-    rowEl.setAttribute('aria-label', 'Games: ' + f.label + (words.length ? `, matching ${state.search}` : ''));
+    const inside = f.systems && !words.length ? systemPlace(state.system) : undefined;
+    const games = 'Games: ' + (inside?.dataset.title ?? f.label) + (words.length ? `, matching ${state.search}` : '');
+    rowEl.setAttribute('aria-label', f.systems && !words.length && !inside ? 'Systems' : games);
+    // inside a system, its name stands over the row and Back leads to the systems
+    sysHead.hidden = btnSystems.hidden = !inside;
+    if (inside) {
+      sysName.textContent = inside.dataset.title!;
+      $('.sys-icon', sysHead).style.setProperty('--icon', `url(${inside.dataset.icon})`);
+    }
     for (const el of [searchInput, btnSearch]) el.setAttribute('aria-label', 'Search ' + f.label);
     searchInput.placeholder = 'Search ' + f.label;
     rowEl.classList.add('no-anim');
@@ -308,7 +346,9 @@ function start(launcher: HTMLElement) {
     const homeBar = parseFloat(getComputedStyle(corners).marginBottom) || 0;
     const stageH = H - topH - botH - homeBar;
     let s = W * (phone ? 0.68 : 0.34);
-    while (s > 120 && tileH(s) > stageH - 110) s -= 4;
+    // a system's name stands over its Dreamports, so every row leaves that room over it
+    const head = 28;
+    while (s > 120 && tileH(s) > stageH - 110 - head) s -= 4;
     S = Math.round(clamp(s, 120, 560));
     TH = tileH(S);
     const cg = Math.max(8, Math.round(S * 0.03));
@@ -316,8 +356,8 @@ function start(launcher: HTMLElement) {
     D1 = S / 2 + cg + Math.max(18, S * 0.06) + (K * S) / 2;
     DN = K * S + Math.max(14, S * 0.05);
     // the cursor, the tile and the label under it, centred between the bars
-    const block = TH + cg * 2 + 16 + 42;
-    const rowY = Math.round(topH + (stageH - block) / 2 + cg + TH / 2 + RISE);
+    const block = head + TH + cg * 2 + 16 + 42;
+    const rowY = Math.round(topH + (stageH - block) / 2 + head + cg + TH / 2 + RISE);
     const st = launcher.style;
     st.setProperty('--s', S + 'px');
     st.setProperty('--th', TH + 'px');
@@ -397,7 +437,7 @@ function start(launcher: HTMLElement) {
     // a game, or the Make row's way to start a Dreamport
     const named = slot?.dataset.title;
     const text = named ?? slot?.dataset.note ?? '';
-    if (plateName.textContent === text) return;
+    if (plateName.textContent === text && plateDetail.textContent === ((named && slot.dataset.detail) || '')) return;
     const { width: w0, height: h0 } = plate.getBoundingClientRect();
     if (slot?.dataset.game) showTitle(plateName, text);
     else plateName.textContent = text;
@@ -563,33 +603,70 @@ function start(launcher: HTMLElement) {
 
   // ---------- Filters ----------
 
-  function setFilter(f: number, dir: number) {
-    if (f === state.filter || switching || busy()) return;
+  // the row gives way to another: it slides out to one side, and what `build` makes comes in from the other
+  function swapRow(dir: number, build: () => void) {
     switching = true;
-    state.filter = f;
-    updateTabs(dir);
-    sound.play('filter', dir);
     const outCls = dir > 0 ? 'out-l' : 'out-r';
     const inCls = dir > 0 ? 'in-r' : 'in-l';
     const swap = () => {
       const hadFocus = rowEl.contains(document.activeElement);
       rowEl.classList.remove(outCls);
       rowEl.classList.add(inCls);
-      buildRow();
+      build();
       void rowEl.offsetWidth;
       rowEl.classList.remove(inCls);
       if (hadFocus) slots[sel()].focus({ preventScroll: true });
       switching = false;
       announce(rowNews());
     };
-    history.replaceState(history.state, '', FILTERS[f].path);
-    document.title = FILTERS[f].title;
     if (calm()) {
       swap();
       return;
     }
     rowEl.classList.add(outCls);
     setTimeout(swap, 170);
+  }
+
+  // the row's own address: its filter's, and inside a system, the system after a #
+  const rowAddress = () => FILTERS[state.filter].path + (FILTERS[state.filter].systems && state.system ? '#' + state.system : '');
+
+  function setFilter(f: number, dir: number) {
+    if (f === state.filter || switching || busy()) return;
+    state.filter = f;
+    updateTabs(dir);
+    sound.play('filter', dir);
+    history.replaceState(history.state, '', rowAddress());
+    document.title = FILTERS[f].title;
+    swapRow(dir, () => buildRow());
+  }
+
+  // ---------- Systems ----------
+
+  // a system's Dreamports take the row, a step on in the browser's history, so its back button leads to the systems again
+  function enterSystem(id: string) {
+    if (switching || busy() || state.system === id) return;
+    state.system = id;
+    history.pushState({ system: true }, '', rowAddress());
+    sound.play('open');
+    swapRow(1, () => buildRow(null));
+  }
+  // back to the systems, on the one just left: by a step back in the browser's history when it came from there
+  function leaveSystem() {
+    const id = state.system;
+    if (!id || !FILTERS[state.filter].systems || switching || busy()) return;
+    state.system = null;
+    if (history.state?.system) {
+      popping = true;
+      clearTimeout(popGuard);
+      popGuard = window.setTimeout(() => {
+        popping = false;
+      }, 800);
+      history.back();
+    } else {
+      history.replaceState(null, '', rowAddress());
+    }
+    sound.play('close');
+    swapRow(-1, () => buildRow(id));
   }
   const nextFilter = () => {
     press('#btn-r');
@@ -691,7 +768,11 @@ function start(launcher: HTMLElement) {
       return n ? `${f.label}: ${n} ${n === 1 ? 'game matches' : 'games match'}` : `${f.label}: nothing matches`;
     }
     const n = slots.filter((el) => el.dataset.game).length;
-    if (!n && leftOut()) return `${f.label}: ${NONE_FINISHED}. ${SHOW_THEM}`;
+    const systems = slots.filter((el) => el.dataset.system).length;
+    if (!n && !systems && leftOut()) return `${f.label}: ${NONE_FINISHED}. ${SHOW_THEM}`;
+    if (systems) return `${f.label}: ${systems} ${systems === 1 ? 'system' : 'systems'}`;
+    const inside = f.systems ? systemPlace(state.system)?.dataset.title : undefined;
+    if (inside) return `${inside}: ${n} ${n === 1 ? 'game' : 'games'}`;
     // the Make row's way to start a Dreamport, by its name
     const others = slots.filter((el) => !el.dataset.game && el.dataset.title).map((el) => el.dataset.title);
     const games = `${n} ${n === 1 ? 'game' : 'games'}`;
@@ -717,9 +798,18 @@ function start(launcher: HTMLElement) {
   function endSearch() {
     if (state.search === null) return;
     const game = gameAt(sel());
+    const of = slots[sel()]?.dataset.of;
     const hadFocus = searchBox.contains(document.activeElement) || rowEl.contains(document.activeElement);
     state.search = null;
     state.sel = searchSel;
+    // a game the search found in another system brings its system's row with it
+    if (game && of && of !== state.system) {
+      // from the systems that's a step on, as picking the system is; from another system it takes that one's place
+      const step = state.system === null;
+      state.system = of;
+      if (step) history.pushState({ system: true }, '', rowAddress());
+      else history.replaceState(history.state, '', rowAddress());
+    }
     searchBox.hidden = true;
     launcher.classList.remove('is-searching');
     btnSearch.setAttribute('aria-expanded', 'false');
@@ -733,7 +823,7 @@ function start(launcher: HTMLElement) {
   searchInput.addEventListener('input', () => {
     if (state.search === null) return;
     state.search = searchInput.value;
-    narrowRow(gameAt(sel()));
+    narrowRow(keyAt(sel()));
     if (searchWords().length) announce(rowNews());
   });
   searchInput.addEventListener('keydown', (e) => {
@@ -876,6 +966,10 @@ function start(launcher: HTMLElement) {
   function inspect(opener?: HTMLElement) {
     if (busy()) return;
     const slot = slots[sel()];
+    if (slot?.dataset.system) {
+      enterSystem(slot.dataset.system);
+      return;
+    }
     const id = slot?.dataset.card;
     const card = id ? document.getElementById(id) : null;
     if (card instanceof HTMLDialogElement) openCard(card, { opener });
@@ -908,7 +1002,7 @@ function start(launcher: HTMLElement) {
       }, 800);
       history.back();
     } else {
-      history.replaceState(null, '', FILTERS[state.filter].path);
+      history.replaceState(null, '', rowAddress());
     }
   }
 
@@ -1232,8 +1326,8 @@ function start(launcher: HTMLElement) {
       store.del('unfinished');
       root.dataset.unfinished = 'hide';
     }
-    // the row behind Settings, on the game it was on if that one is still there
-    buildRow(gameAt(sel()));
+    // the row behind Settings, on the game or system it was on if that one is still there
+    buildRow(keyAt(sel()));
   }
   unfinishedSwitch.addEventListener('click', () => {
     showUnfinished(!state.unfinished);
@@ -2089,9 +2183,11 @@ function start(launcher: HTMLElement) {
         startSearch();
         break;
       case 'Escape':
-        if (state.search === null) break;
+        // out of the search, or from a system's Dreamports back to the systems
+        if (state.search === null && !(state.system && FILTERS[state.filter].systems)) break;
         e.preventDefault();
-        endSearch();
+        if (state.search !== null) endSearch();
+        else leaveSystem();
         break;
     }
   });
@@ -2189,7 +2285,10 @@ function start(launcher: HTMLElement) {
     if (edges.includes(8)) startSearch();
     if (step === 2 && document.activeElement === searchInput) toResults();
     if (step === -2 && state.search !== null) searchInput.focus({ preventScroll: true });
-    if (edges.includes(1)) endSearch();
+    if (edges.includes(1)) {
+      if (state.search !== null) endSearch();
+      else leaveSystem();
+    }
     if (edges.includes(0)) primary();
     if (edges.includes(2) && !busy()) openCard(profileCard);
     if (edges.includes(3) && !busy()) openCard(aboutCard);
@@ -2369,6 +2468,7 @@ function start(launcher: HTMLElement) {
       if (i !== state.filter) (ringAt(i) < 0 ? prevFilter : nextFilter)();
     }),
   );
+  btnSystems.addEventListener('click', leaveSystem);
   $('#btn-settings', launcher).addEventListener('click', (e) => {
     if (!busy()) openCard(settingsCard, { opener: e.currentTarget as HTMLElement });
   });
@@ -2413,13 +2513,19 @@ function start(launcher: HTMLElement) {
     let f = FILTERS.findIndex((filter) => filter.paths.includes(path));
     if (game) f = FILTERS.findIndex((filter) => filter.key === card!.dataset.filter);
     // a game's own address keeps its place in the row, even an unfinished one's while those are left out
-    const back = !!game && asked !== game && f >= 0 && places(f).every((el) => el.dataset.game !== game);
+    const back = !!game && asked !== game && f >= 0 && allPlaces(f).some((el) => el.dataset.game === game && !shown(el));
     if (back) asked = game;
+    // the level of the Dreamports row the address asks for: a game's system, or the one after its #
+    const was = state.system;
+    if (f >= 0 && FILTERS[f].systems) {
+      if (game) state.system = systemOfGame(game, f);
+      else if (!card) state.system = systemPlace(location.hash.slice(1), f) ? location.hash.slice(1) : null;
+    }
     if (f >= 0 && f !== state.filter) {
       state.filter = f;
       updateTabs();
       buildRow();
-    } else if (back) buildRow(gameAt(sel()));
+    } else if (back || was !== state.system) buildRow(state.system ? keyAt(sel()) : was);
     if (game) {
       const i = slots.findIndex((el) => el.dataset.game === game);
       if (i >= 0 && i !== sel()) {
@@ -2447,7 +2553,7 @@ function start(launcher: HTMLElement) {
       popping = false;
       clearTimeout(popGuard);
       // a page that took the place of one under another leaves one step short of the menu's address
-      if (!FILTERS[state.filter].paths.includes(location.pathname)) history.replaceState(null, '', FILTERS[state.filter].path);
+      if (!FILTERS[state.filter].paths.includes(location.pathname)) history.replaceState(null, '', rowAddress());
       return;
     }
     followAddress(false);
