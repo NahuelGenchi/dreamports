@@ -1458,7 +1458,24 @@ COST(KEY_FALLS, 9)                // $BCBA to sub_F03E
 COST(KEY_IN_THE_AIR, 8)           // $BCCA, and back
 COST(KEY_LOOKS, 8)                // $BCD0 to sub_F687
 COST(KEY_NOT_TAKEN, 9)            // $BCD9, and back
-COST(KEY_TAKEN, 34)               // or to sub_D902
+COST(KEY_TAKEN, 37)               // or to sub_D902
+COST(ARTHUR_HAS_THE_KEY, 8)       // $DAE7 to $E423, with the key taken
+COST(GATE_FIRST_TILES, 76)        // $E429 to sub_EECF: the gate's first tiles,
+COST(GATE_SECOND_TILES, 62)       // or $E476 to sub_EECF: its second
+COST(GATE_SOUND, 21)              // $E45E to sub_ED51
+COST(GATE_RESTS, 16)              // $E46B to the call that sleeps
+COST(GATE_RESTS_AGAIN, 29)        // $E4A1 to the call that sleeps
+COST(GATE_WALK_BEGINS, 14)        // $E4B4 to $E4C1, less sub_F332
+COST(BLOCK_BEHIND_ARTHUR, 52)     // sub_EA01 with its call, to the block 8 pixels left of him and 4 down
+COST(GATE_REACHED, 19)            // $E4C4 to the call that ends his task: a block of the gate's,
+COST(GATE_NOT_YET, 19)            // or one below them, to sub_F03E, with sub_DB82's call,
+COST(GATE_NOT_YET_PAST, 23)       // or one above
+COST(GAME_STAGE_IS_CLEARED, 12)   // $D3F0 to $D436, once Arthur is through the gate
+COST(CLEARED_NO_OBJECTS, 4448)    // sub_CA96 with its call, which clears the objects a byte at a time
+COST(GAME_MAP_ASKED_FOR, 18)      // sub_CD8E with its call, to $CD9B, after a stage that's been cleared
+COST(GAME_NO_SCENE_AFTER_A_STAGE, 31) // sub_CE71 with its call, and back, after one
+COST(GAME_NEXT_PLACE, 52)         // $D442 to $D01D: the player's next place
+COST(GAME_NEXT_PLACE_BEGINS, 5)   // $D01D to $D021
 COST(BOSS_JUMP_HEIGHT, 36)        // sub_FF36 with its call, to sub_F099
 COST(BOSS_DODGE_FACES_RIGHT, 4)   // $FCFA to $FD04, across a page
 COST(BOSS_JUMP_SHAPE_LEFT, 7)     // the shape that faces left
