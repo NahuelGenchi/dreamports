@@ -418,6 +418,9 @@ COST(ARTHUR_DIES, 47)             // or $E171 to the call that yields, without h
 COST(ARTHUR_DEATH_SOUND, 8)       // $E1AF to sub_ED51
 COST(ARTHUR_FALLEN, 26)           // $E1B7 to the call that sleeps: his bones
 COST(ARTHUR_GONE, 11)             // $E1E7 to the call that ends his task
+COST(ARTHUR_TIME_IS_OVER, 14)      // $E171 to sub_ED51 by $E1C2, with the stage's time over
+COST(ARTHUR_TIME_OVER_SHAPE, 20)   // $E1C7 to the call that yields
+COST(ARTHUR_TIME_OVER_FALLEN, 23)  // $E1D7 to the call that sleeps, with no jump to it
 COST(GROUND_LOOKED_AT, 74)        // sub_E3E3 and sub_EA2F, with their calls, less the block's
 COST(ARTHUR_ON_GROUND, 3)         // $DB01
 COST(ARTHUR_IN_AIR, 5)            // $DB01 to $E28E

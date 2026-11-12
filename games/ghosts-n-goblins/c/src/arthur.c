@@ -588,6 +588,7 @@ wait arthur_task(void) {
     LADDER_UP, CLIMB_UP, CLIMB_UP_ON, CLIMB_UP_AGAIN, LADDER_DOWN, OVER_THE_TOP, OVER_THE_TOP_AGAIN,
     CLIMB_DOWN, CLIMB_DOWN_ON, CLIMB_DOWN_AGAIN, CROUCH, CROUCH_AGAIN,
     GATE_OPENS, GATE_OPENS_MORE, GATE_OPEN, GATE_WALK, GATE_WALK_AGAIN,
+    TIME_OVER_WAITS, TIME_OVER_FALLEN,
   };
   static uint8_t inner;
   uint8_t *step = &task_step[TASK_ARTHUR];
@@ -990,7 +991,17 @@ wait arthur_task(void) {
     case STAGE_HIT:
       // $E171: something has hit him. With his armour on he loses it: nothing can touch him for a while, the tiles'
       // task sends the tiles of Arthur without it, and he's thrown back, as a jump the way he isn't facing. Without
-      // it he dies. With the stage's time over, at $E1C2, he dies another way, which isn't ported yet.
+      // it he dies. With the stage's time over, at $E1C2, he dies where he stands, armour or not: the death's sound,
+      // a shape of his own for two rounds, and then his bones.
+      if (RAM[0xBD]) {
+        took(ARTHUR_TIME_IS_OVER);
+        sound_play(0x0A);
+        COLOURS = 0x01;
+        SHAPE = 0x18;
+        took(ARTHUR_TIME_OVER_SHAPE);
+        *step = TIME_OVER_WAITS;
+        return YIELDS;
+      }
       STATE &= 0xEF;
       if (FLAGS & WITHOUT_ARMOUR) {
         took(ARTHUR_DIES);
@@ -1022,6 +1033,15 @@ wait arthur_task(void) {
       *step = DEATH_OVER;
       return sleep_task(60);
     }
+    case TIME_OVER_WAITS:
+      took(CALLS);
+      *step = TIME_OVER_FALLEN;
+      return YIELDS;
+    case TIME_OVER_FALLEN:
+      SHAPE = 0x1A;
+      took(ARTHUR_TIME_OVER_FALLEN);
+      *step = DEATH_OVER;
+      return sleep_task(60);
     case DEATH_OVER:
       RAM[0x81] = 0xFF;   // which tells the game's task the life is over
       took(ARTHUR_GONE);
