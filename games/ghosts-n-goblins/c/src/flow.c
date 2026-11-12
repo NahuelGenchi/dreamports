@@ -238,6 +238,55 @@ static void start_top_of_picture(void) {
   took(TOP_TIME);
 }
 
+// sub_CAFD: the stage's music, unless it plays already.
+static void stage_music(void) {
+  if (!RAM[0x0709]) took(STAGE_MUSIC_KEPT);
+  else if (DEMONSTRATION) took(STAGE_MUSIC_DEMONSTRATION);
+  else {
+    RAM[0x0709] = 0;
+    took(STAGE_MUSIC_BEGINS);
+    sound_reset();
+    took(STAGE_MUSIC_CHOSEN);
+    sound_play((uint8_t)((STAGE_SET >> 1) + 2));
+  }
+}
+
+// $D341: the view has passed the screen where the stage's next part begins, which the copy's list at $CD0B gives for
+// each. The part has its own list of objects, set of tiles for the tiles' task, and time, and the objects of the last
+// part that aren't shown are gone. The parts 2, 5 and 6 keep the time and the counts.
+static void next_part(void) {
+  RAM[0xAC + PLAYER]++;
+  STAGE++;
+  RAM[0xDA] = cart(7, (uint16_t)(0xCCB7 + STAGE));
+  STAGE_OBJECTS_PLACED = 0;
+  RAM[0xBD] = 0;
+  took(NEXT_PART_BEGINS);
+  if (STAGE == 2 || STAGE == 5 || STAGE == 6) took(STAGE == 2 ? NEXT_PART_KEEPS_2 : STAGE == 5 ? NEXT_PART_KEEPS_5 : NEXT_PART_KEEPS_6);
+  else {
+    RAM[0xEA] = RAM[0x0718] = 8;
+    took(NEXT_PART_COUNTS);
+    if (RAM[0x0709]) {
+      took(NEXT_PART_MUSIC_CALLED);
+      stage_music();
+    } else took(BRANCH_TAKEN);
+    RAM[0x06F6] = cart(7, (uint16_t)(0xD847 + STAGE * 3));
+    RAM[0x06FA] = cart(7, (uint16_t)(0xD847 + STAGE * 3 + 1));
+    RAM[0x06FC] = cart(7, (uint16_t)(0xD847 + STAGE * 3 + 2));
+    took(NEXT_PART_TIME);
+  }
+  took(NEXT_PART_CLEARS);
+  for (uint8_t object = 1; object <= 0x10; object++) {
+    if (object == 0x10) took(READ_PAST_PAGE);
+    if (RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN) took(NEXT_PART_OBJECT_KEPT);
+    else {
+      RAM[OBJECT_FLAGS + object] = 0;
+      took(NEXT_PART_OBJECT_CLEARED);
+    }
+    took(object < 0x10 ? GOES_ROUND : GOES_ON);
+  }
+  last_index = 0x11;   // where the loop leaves X, which the next round's mix at $CA reads if nothing is made first
+}
+
 // $D16E: a stage starts: Arthur's task, the picture, the top of the picture, the stage's counts all at their start, a
 // round every three frames from here on, and the stage's music. What stages after the second set up, at $D1B5 and
 // $D26A, and two weapons' own places at the top, at $D1F9, aren't ported yet.
@@ -267,16 +316,7 @@ static void start_stage(void) {
   took(STAGE_START_COUNTS);
   FRAMES_PLAYED = 0;
   took(STAGE_START_TIME);
-  // sub_CAFD: the stage's music
-  if (!RAM[0x0709]) took(STAGE_MUSIC_KEPT);
-  else if (DEMONSTRATION) took(STAGE_MUSIC_DEMONSTRATION);
-  else {
-    RAM[0x0709] = 0;
-    took(STAGE_MUSIC_BEGINS);
-    sound_reset();
-    took(STAGE_MUSIC_CHOSEN);
-    sound_play((uint8_t)((STAGE_SET >> 1) + 2));
-  }
+  stage_music();
 }
 
 // sub_D596: the stage's own objects, from where its bank's list at $8038 points, eight bytes each: the screen Arthur has
@@ -302,24 +342,41 @@ static void place_stage_objects(void) {
   // a kind's own routine: $D71B, whose state starts at 0, or $D72B, whose state the list gives, which $D804 jumps to
   // and $D6B9, which leaves the state as the object's last user left it, and which $D670 jumps to
   // and $D706, a moving platform's, which gives it a heading and a shape too
-  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, PLATFORM = 0xD706 };
+  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, PLATFORM = 0xD706, BOSS = 0xD673 };
   uint16_t routine = ram16(0x22);
   if (routine == STATE_LISTED_TOO) { took(JUMPS); routine = STATE_LISTED; }
   if (routine == STATE_KEPT_TOO) { took(JUMPS); routine = STATE_KEPT; }
-  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT && routine != PLATFORM) return;
-  took(CALLS);
-  uint8_t object = free_object();
-  if (object == NO_OBJECT) {
-    took(STAGE_OBJECT_NO_ROOM);
-    return;
+  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT && routine != PLATFORM && routine != BOSS) return;
+  uint8_t object;
+  if (routine == BOSS) {
+    // $D673: the boss has to be there, so it may take the place of something that isn't in the picture. The stage's
+    // count of bosses at $C3 goes up for one whose flags in the list have bit 2.
+    object = take_object();
+    if (object == NO_OBJECT) { took(STAGE_BOSS_NO_ROOM); return; }
+    took(STAGE_BOSS_READ);
+    if ((listed & 0xFF) + 7 > 0xFF) took(READ_PAST_PAGE);
+    if (peek((uint16_t)(listed + 7)) & 0x04) {
+      RAM[0xC3]++;
+      took(STAGE_BOSS_COUNTED);
+    } else took(BRANCH_TAKEN);
+    RAM[OBJECT_STATE + object] = 1;
+    RAM[OBJECT_HEADING + object] = 0x0C;
+    took(STAGE_BOSS_STATE);
+  } else {
+    took(CALLS);
+    object = free_object();
+    if (object == NO_OBJECT) {
+      took(STAGE_OBJECT_NO_ROOM);
+      return;
+    }
+    took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : routine == STATE_LISTED ? STAGE_OBJECT_STATE_LISTED : routine == PLATFORM ? STAGE_OBJECT_PLATFORM : STAGE_OBJECT_STATE_KEPT);
   }
-  took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : routine == STATE_LISTED ? STAGE_OBJECT_STATE_LISTED : routine == PLATFORM ? STAGE_OBJECT_PLATFORM : STAGE_OBJECT_STATE_KEPT);
   last_index = object;
   if (routine == PLATFORM) {
     RAM[OBJECT_HEADING + object] = 0x0C;
     RAM[OBJECT_SHAPE + object] = 0x5F;
   }
-  if (routine != STATE_KEPT) RAM[OBJECT_STATE + object] = routine == STATE_ZERO ? 0 : listed_byte(listed, 1);
+  if (routine != STATE_KEPT && routine != BOSS) RAM[OBJECT_STATE + object] = routine == STATE_ZERO ? 0 : listed_byte(listed, 1);
   RAM[0x0647 + object] = 0;
   RAM[OBJECT_COUNT + object] = 0;
   RAM[OBJECT_KIND + object] = kind;
@@ -333,14 +390,14 @@ static void place_stage_objects(void) {
   took(STAGE_OBJECT_FILLED);
 }
 
-// $8400 in bank 2: what comes at Arthur by itself: the zombies (enemies.c), and six other routines, at $84E0, $8574,
-// $8610, $867A, $880A and $8748, which have nothing to do in the first stage's first screens and aren't ported yet.
+// $8400 in bank 2: what comes at Arthur by itself: the zombies and the flying knights (enemies.c), the forest's enemies
+// (forest.c), and four other routines, at $8574, $867A, $880A and $8748, which have nothing to do in the first stage and
+// aren't ported yet.
 static void stage_dangers(void) {
   took(DANGERS_OTHERS);
-  // $84E9: on the first stage's eighth screen the first of the six looks at how far across it Arthur is. What it sends
-  // at him from 64 pixels in, at $8504, isn't ported yet.
-  if (RAM[0xCF] == 0 && RAM[OBJECT_X_SCREEN + ARTHUR] == 7 && RAM[OBJECT_X + ARTHUR] < 0x40) took(DANGERS_EIGHTH_SCREEN_BEGINS);
   zombies_come(&last_index);
+  knights_come(&last_index);
+  forest_enemies_come(&last_index);
 }
 
 // $D38D: the stage's time, which the top of the picture shows as a minute and two digits of seconds. V-blank counts
@@ -386,6 +443,17 @@ static int stage_round(void) {
   RAM[0x8A] = RAM[0x44];
   PAD_NOW = RAM[0x89 + PLAYER];
   took(GAME_ROUND_BEGINS);
+  // $D2AA: a sound an enemy has asked for is played once its rounds have passed without it asking again
+  if (!RAM[0xEB] && RAM[0xE8] != 0xFF) {
+    if (++RAM[0xE7] < RAM[0xE9]) took(ASKED_SOUND_WAITS);
+    else {
+      took(ASKED_SOUND_PLAYS);
+      sound_play(RAM[0xE8]);
+      RAM[0xE8] = 0xFF;
+      RAM[0xE7] = 0;
+      took(ASKED_SOUND_PLAYED);
+    }
+  }
   uint8_t mixed = ROUNDS & 3;
   if (mixed) took(GAME_ROUND_NO_COLOURS);
   else {
@@ -397,6 +465,7 @@ static int stage_round(void) {
   RAM[0xCA] = (uint8_t)((mixed + ROUNDS) & 0x0F);
   took(GAME_ROUND_MIX);
   took(GAME_ROUND_CHECKS);
+  if (STAGE_SET < 4 && cart(7, (uint16_t)(0xCD0B + STAGE)) < RAM[0x65]) next_part();
   // the time stands still while $C9 is on, and once it's over
   if (RAM[0xC9]) took(TIME_STOPPED);
   else if (RAM[0xBD]) took(TIME_OVER_ALREADY);

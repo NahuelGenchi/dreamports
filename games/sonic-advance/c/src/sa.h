@@ -272,6 +272,8 @@ typedef struct { uint8_t bytes[SAVE_SIZE]; int exists, keep; } Save;
 extern Save save;
 void save_open(void);
 int save_write(void);
+void save_empty(void);
+void save_erase(void);
 void save_set_unlocked_level(int character, uint16_t level);
 void save_moon_opened(void);
 void save_add_ring_bank(int rings);

@@ -11,12 +11,14 @@
 
 enum {
   ANIM_PIPE_H = 588, ANIM_PIPE_V = 589,     // SA1_ANIM_PIPE_GATE_2_H and _V
-  ANIM_PIPE_ROCKET_ENTER_V = 584, ANIM_PIPE_ROCKET_EXIT_V = 585,
-  ANIM_PIPE_ROCKET_ENTER_H = 586, ANIM_PIPE_ROCKET_EXIT_H = 587,
-  ANIM_PIPE_COSMIC_ENTER_H = 590, ANIM_PIPE_COSMIC_ENTER_V = 591,
+  ANIM_PIPE_ROCKET_V = 584, ANIM_PIPE_ROCKET_EXIT_V = 585,   // SA1_ANIM_PIPE_ENTER_6_1_V, _EXIT_6_1_V
+  ANIM_PIPE_ROCKET_H = 586, ANIM_PIPE_ROCKET_EXIT_H = 587,   // and _H
+  ANIM_PIPE_COSMIC_H = 590, ANIM_PIPE_COSMIC_V = 591,
+  ANIM_AIR_CORNER = 592, VRAM_AIR_CORNER = OBJ_VRAM + 0x2680,
   VARIANT_ENTRANCE = 0, VARIANT_EXIT = 1,
   PIPE_TILES = 70,                          // ALLOC_TILES: 80 x 56 px either way round
   ORDER_PIPE = 5, PRIORITY_BEHIND = 0,
+  ORDER_CORNER = 18, PRIORITY_CORNER = 2,
   SE_SPIN_ATTACK = 109,
   STANDING_OFFSET_Y = 14,                   // his standing height, curled up or not
   FACE_DOWN = 0, FACE_UP = 1, FACE_RIGHT = 2, FACE_LEFT = 3,
@@ -53,53 +55,21 @@ typedef struct {
 enum { WAITING, PULLING, CARRYING, HOLDING = PULLING, THROWING = CARRYING };
 
 static int vertical(const Pipe *pi) { return pi->face == FACE_DOWN || pi->face == FACE_UP; }
+static int second_act_look(int level) { return level == LEVEL_COSMIC_ANGEL || level == LEVEL_CHAO_HUNT_D; }
 
-static Pipe *pipe_new(Slot *slot, int isExit) {
+static Pipe *pipe_new(Slot *slot, int exit, int flipY) {
   Pipe *pi = OBJECT_NEW(Pipe);
   if (!pi) return NULL;
   pi->o.slot = slot;
   pi->o.x = slot->e.x;
   pi->face = slot->e.d[2]; pi->step = slot->e.d[3];
-  int v = vertical(pi);
-  int level = act.stage.level;
-  int isZone6orChaoD = (level >> 1 == ZONE_EGG_ROCKET) || (level == LEVEL_CHAO_HUNT_D);
-  int isAct2 = (level & 1) != 0;
-  int anim = 0, variant = 0, flipY = 0, flipX = 0, tiles = PIPE_TILES;
-
-  if (v) {
-    if (isZone6orChaoD) {
-      if (isAct2) {
-        anim = ANIM_PIPE_COSMIC_ENTER_V;
-        variant = isExit ? 1 : 0;
-        flipY = isExit ? (pi->face != 0) : (pi->face == 0);
-        tiles = 77;
-      } else {
-        anim = isExit ? ANIM_PIPE_ROCKET_EXIT_V : ANIM_PIPE_ROCKET_ENTER_V;
-        variant = 0;
-        flipY = (pi->face != 0);
-      }
-    } else {
-      anim = ANIM_PIPE_V;
-      variant = isExit ? 1 : 0;
-      flipY = (pi->face != 0);
-    }
-  } else {
-    if (isZone6orChaoD) {
-      if (isAct2) {
-        anim = ANIM_PIPE_COSMIC_ENTER_H;
-        variant = isExit ? 1 : 0;
-        tiles = 91;
-      } else {
-        anim = isExit ? ANIM_PIPE_ROCKET_EXIT_H : ANIM_PIPE_ROCKET_ENTER_H;
-        variant = 0;
-      }
-    } else {
-      anim = ANIM_PIPE_H;
-      variant = isExit ? 1 : 0;
-    }
-    flipX = (pi->face & 1) != 0;
-  }
-  object_sprite_at(&pi->o.sprite, vram_malloc(tiles), anim, variant, ORDER_PIPE, PRIORITY_BEHIND, flipX, flipY);
+  int v = vertical(pi), level = act.stage.level;
+  int anim = second_act_look(level) ? (v ? ANIM_PIPE_COSMIC_V : ANIM_PIPE_COSMIC_H)
+           : level == LEVEL_EGG_ROCKET ? (exit ? (v ? ANIM_PIPE_ROCKET_EXIT_V : ANIM_PIPE_ROCKET_EXIT_H) : (v ? ANIM_PIPE_ROCKET_V : ANIM_PIPE_ROCKET_H))
+           : (v ? ANIM_PIPE_V : ANIM_PIPE_H);
+  int variant = (level == LEVEL_EGG_ROCKET && exit) ? 0 : (exit ? VARIANT_EXIT : VARIANT_ENTRANCE);
+  object_sprite_at(&pi->o.sprite, vram_malloc((uint32_t)sprite_tiles(anim, variant, variant)), anim, variant, ORDER_PIPE, PRIORITY_BEHIND,
+                   !v && (pi->face & 1), v && flipY);
   sprite_step(&pi->o.sprite);   // its animation steps once as it is made
   return pi;
 }
@@ -137,7 +107,8 @@ static int carry(Player *p, Pipe *pi, int x, int y, int dx, int dy) {
 
 // the side of a vertical entrance that takes him, as a Coll_Player_Platform result
 static int mouth(const Pipe *pi, const Player *p) {
-  return (pi->face != FACE_DOWN) == (p->inverted != 0) ? COLLIDE_FROM_BELOW : COLLIDE_LANDED;
+  int toward = act.stage.level == LEVEL_COSMIC_ANGEL ? !p->inverted : (p->inverted != 0);
+  return (pi->face != FACE_DOWN) == toward ? COLLIDE_FROM_BELOW : COLLIDE_LANDED;
 }
 
 // taken in, back where he was before the collision put him out of it
@@ -198,9 +169,10 @@ static int entrance_run(ActTask *t) {
   return show(pi);
 }
 
-// CreateEntity_PipeEntrance
+// CreateEntity_PipeEntrance: a vertical one is drawn upside down unless it faces down (or in Cosmic Angel, when it faces down)
 ActTask *pipe_entrance_spawn(Slot *slot) {
-  Pipe *pi = pipe_new(slot, 0);
+  int flipY = second_act_look(act.stage.level) ? slot->e.d[2] == FACE_DOWN : slot->e.d[2] != FACE_DOWN;
+  Pipe *pi = pipe_new(slot, VARIANT_ENTRANCE, flipY);
   return pi ? object_task(&pi->o, entrance_run, PRIORITY_OBJECTS | pi->step) : NULL;
 }
 
@@ -273,8 +245,36 @@ static int exit_run(ActTask *t) {
   return show(pi);
 }
 
-// CreateEntity_PipeExit
+// CreateEntity_PipeExit: a vertical one is drawn upside down unless it throws down
 ActTask *pipe_exit_spawn(Slot *slot) {
-  Pipe *pi = pipe_new(slot, 1);
+  Pipe *pi = pipe_new(slot, VARIANT_EXIT, slot->e.d[2] != FACE_DOWN);
   return pi ? object_task(&pi->o, exit_run, PRIORITY_OBJECTS | pi->step) : NULL;
+}
+
+// --- air corners (kind 112, Task_TrackAirCorner) -----------------------------------------------------------------------------
+typedef struct { Object o; } AirCorner;
+
+static int air_corner_run(ActTask *t) {
+  AirCorner *c = (AirCorner *)t->data;
+  const Entity *en = &c->o.slot->e;
+  Player *p = &act.player;
+  const Hitbox *box = object_box(&c->o.sprite, 0);
+  if (!p->dead && !p->carried && box && (collide_platform_top(&c->o, en->x, en->y, box, p) & COLLIDE_LANDED)) {
+    p->y += 2;
+  }
+  if (off_cam(en->x, en->y)) return 0;
+  object_draw(&c->o.sprite, en->x, en->y);
+  return 1;
+}
+
+ActTask *air_corner_spawn(Slot *slot) {
+  AirCorner *c = OBJECT_NEW(AirCorner);
+  if (!c) return NULL;
+  c->o.slot = slot;
+  c->o.x = slot->e.x;
+  int d0 = s8(slot->e.d[0]);
+  object_sprite_at(&c->o.sprite, VRAM_AIR_CORNER, ANIM_AIR_CORNER, 0, ORDER_CORNER, PRIORITY_CORNER,
+                   d0 == 1 || d0 == 3, d0 == 2 || d0 == 3);
+  sprite_step(&c->o.sprite);
+  return object_task(&c->o, air_corner_run, PRIORITY_OBJECTS);
 }

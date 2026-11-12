@@ -348,6 +348,12 @@ static void late_tiles_copy(int frame);
 static void late_tiles_step(void);
 static void late_tiles_draw(void);
 
+// Sonic as his task (0x3000) left him: his sprite is drawn from this, so a task after his that moves or turns him, as a
+// shot that hurts him or a hang bar, shows on the next frame's picture (drawSonic in engine/game.js)
+static Player shown;
+static int shownSet;
+static void sonic_shown(void) { shown = act.player; shownSet = 1; }
+
 static void draw_frame(void) {
   const Level *row = act.stage.row;
   if (restoreColour) { restoreColour = 0; e.bgPalette[0] = holdColour; e.flags |= FLAGS_UPDATE_BG_PALETTES; }
@@ -378,6 +384,9 @@ static void draw_frame(void) {
   fill_layer(0xF800, LAYER_BACK, layerX, camY);
   // the zone's StageBgUpdate
   if (row->drawBackground) row->drawBackground(camX, camY);
+
+  player_draw(shownSet ? &shown : &act.player, camX, camY);
+  shownSet = 0;
 }
 
 // UpdateBgAnimationTiles: the front layer's first tiles change every animDelay camera runs; frame 0 is the tileset,
@@ -631,7 +640,7 @@ static void act_frame(void) {
   // a start point's first act frame is the held A's jump, one frame after it began, when it has the word for it
   if (act.drawn == 0 && act.fromStartPoint && gba_start_number("jump", 0)) player_start_jump(&act.player);
   player_animate(&act.player, &in);
-  player_draw(&act.player, act.cam.x, act.cam.y);
+  sonic_shown();
   if (row->palettesAfterSonic)
     for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
   if (act.frames > 0 || row->runsFromFirstFrame) objects_run_late();
@@ -794,6 +803,7 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
     player_step(&act.player, &in);
     // a card with its own timing starts Sonic's animation on its 15th frame and the palette animations on its 16th
     if (!row->cardStepsOn || act.tick >= 15) player_animate(&act.player, &in);
+    sonic_shown();
     if (act.tick > 0) objects_run_late();
     if (!row->cardStepsOn || act.tick >= 16)
       for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);

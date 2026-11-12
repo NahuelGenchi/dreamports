@@ -75,6 +75,9 @@ ActTask *egg_spider_spawn(Slot *slot);      // 25
 ActTask *egg_ball_spawn(Slot *slot);        // 24
 ActTask *pen_spawn(Slot *slot);             // 20
 ActTask *drisame_spawn(Slot *slot);         // 18
+ActTask *mirror_spawn(Slot *slot);          // 12
+ActTask *oct_spawn(Slot *slot);             // 14
+ActTask *egg_snake_spawn(Slot *slot);       // 27
 ActTask *egg_wrecker_spawn(Slot *slot);     // 28
 ActTask *egg_drillster_spawn(Slot *slot);   // 29
 ActTask *egg_x_spawn(Slot *slot);           // 30

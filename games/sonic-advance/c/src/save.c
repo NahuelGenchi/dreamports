@@ -85,3 +85,9 @@ void save_moon_opened(void) {
 }
 uint32_t save_player_id(void) { return get32(save.bytes, 0x04); }
 void save_set_player_id(uint32_t id) { set32(save.bytes, 0x04, id); }
+
+// CreateEmptySaveGame, as DELETE GAME DATA's YES does it in the Options menu: the save in memory empty again
+void save_empty(void) { empty_save(save.bytes); }
+
+// sub_8012F6C, the flash erased: the next write keeps the save whatever it holds
+void save_erase(void) { save.exists = 0; }

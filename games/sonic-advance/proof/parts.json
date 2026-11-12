@@ -36,7 +36,10 @@
     { "name": "Playing as Amy" },
     { "name": "Time Attack" },
     { "name": "VS, for 2 to 4 players" },
-    { "name": "The Options menu" },
+    { "name": "The Options menu", "recording": "options-menu", "frames": [1741, 2644] },
+    { "name": "Player data, with the name input and the VS record" },
+    { "name": "The sound test" },
+    { "name": "The language screen, from the Options menu" },
     { "name": "Tiny Chao Garden" }
   ]
 }

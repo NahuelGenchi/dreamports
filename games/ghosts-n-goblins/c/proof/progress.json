@@ -4,15 +4,51 @@
   "codeMap": {"functions":287,"bytes":26557},
   "proven": {"functions":0,"bytes":0},
   "recordings": {
+    "boss-wakes": {
+      "frames": 6138,
+      "matched": 6138,
+      "differs": [],
+      "functions": []
+    },
     "flier": {
       "frames": 3390,
       "matched": 3390,
       "differs": [],
       "functions": []
     },
+    "forest": {
+      "frames": 4990,
+      "matched": 4990,
+      "differs": [],
+      "functions": []
+    },
+    "forest-enemy": {
+      "frames": 5690,
+      "matched": 5690,
+      "differs": [],
+      "functions": []
+    },
+    "forest-life": {
+      "frames": 6700,
+      "matched": 6700,
+      "differs": [],
+      "functions": []
+    },
+    "forest-shot": {
+      "frames": 5560,
+      "matched": 5560,
+      "differs": [],
+      "functions": []
+    },
     "game-start": {
       "frames": 2440,
       "matched": 2440,
+      "differs": [],
+      "functions": []
+    },
+    "knights": {
+      "frames": 4200,
+      "matched": 4200,
       "differs": [],
       "functions": []
     },
@@ -37,6 +73,12 @@
     "platform": {
       "frames": 3900,
       "matched": 3900,
+      "differs": [],
+      "functions": []
+    },
+    "second-part": {
+      "frames": 4200,
+      "matched": 4200,
       "differs": [],
       "functions": []
     },

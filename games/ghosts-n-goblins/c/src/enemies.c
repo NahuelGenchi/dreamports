@@ -42,6 +42,35 @@ static void heading_past_page(uint8_t object) {
   if (object >= 0x0F) took(READ_PAST_PAGE);
 }
 
+// sub_88F6: every sixth of the enemies that come by themselves carries a pot. It holds the usual thing, unless it's the
+// fourth pot: then the copy's list at $8963 says what, by the set of stages and how many pots there have been, and a
+// weapon Arthur already has is passed over for the next. The fifth set of stages on, at $8928, isn't ported yet.
+void sixth_carries_a_pot(uint8_t object, uint8_t *x) {
+  took(ZOMBIE_COUNT_BEGINS);
+  if (++ZOMBIES_COUNTED < 6) { took(ZOMBIE_NOT_SIXTH); return; }
+  ZOMBIES_COUNTED = 0;
+  took(ZOMBIE_SIXTH);
+  uint8_t pot = free_object();
+  if (pot == NO_OBJECT) { took(POT_NONE_FREE); return; }
+  POTS_MADE++;
+  CARRIER(pot) = object;
+  RAM[OBJECT_KIND + pot] = POT;
+  RAM[OBJECT_FLAGS + pot] = IN_USE;
+  RAM[OBJECT_STATE + pot] = 1;
+  took(POT_MADE);
+  if (POTS_MADE & 3) return;
+  uint8_t which = (uint8_t)((RAM[0xCF] << 4) + ((POTS_MADE >> 2) & 0x0F));
+  took(POT_FOURTH);
+  for (;;) {
+    RAM[0x25] = which;
+    *x = RAM[OBJECT_STATE + pot] = cart(2, (uint16_t)(0x8963 + which));
+    took(POT_CONTENTS_READ);
+    if (cart(2, (uint16_t)(0x89C3 + *x)) != WEAPON_HELD) { took(POT_CONTENTS_CHOSEN); return; }
+    which++;
+    took(POT_CONTENTS_HELD_ALREADY);
+  }
+}
+
 /** Bank 2's $8416. In the first stage's first five screens, and in the eighth place, the count goes down a round at a time. */
 void zombies_come(uint8_t *x) {
   if (STAGE != 0 && STAGE != 7) { took(ZOMBIES_OTHER_STAGE); return; }
@@ -82,23 +111,7 @@ void zombies_come(uint8_t *x) {
     RAM[OBJECT_Y + object] = lower ? 0xB8 : 0x68;
     RAM[OBJECT_Y_SCREEN + object] = RAM[OBJECT_Y_SCREEN + ARTHUR];
     took(ZOMBIE_HEIGHT_SET);
-    // sub_88F6: the sixth carries a pot, which holds the usual thing unless it's the fourth pot
-    took(ZOMBIE_COUNT_BEGINS);
-    if (++ZOMBIES_COUNTED < 6) took(ZOMBIE_NOT_SIXTH);
-    else {
-      ZOMBIES_COUNTED = 0;
-      took(ZOMBIE_SIXTH);
-      uint8_t pot = free_object();
-      if (pot == NO_OBJECT) took(POT_NONE_FREE);
-      else {
-        POTS_MADE++;
-        CARRIER(pot) = object;
-        RAM[OBJECT_KIND + pot] = POT;
-        RAM[OBJECT_FLAGS + pot] = IN_USE;
-        RAM[OBJECT_STATE + pot] = 1;
-        took(POT_MADE);
-      }
-    }
+    sixth_carries_a_pot(object, x);
     took(ZOMBIE_NEXT);
     took(--LEFT_TO_MAKE ? GOES_ROUND : GOES_ON);
   } while (LEFT_TO_MAKE);
@@ -369,6 +382,13 @@ void pot(uint8_t object) {
   RAM[OBJECT_X_SCREEN + object] = RAM[OBJECT_X_SCREEN + carrier];
   RAM[OBJECT_X + object] = RAM[OBJECT_X + carrier];
   took(POT_FOLLOWS);
+  // only a zombie and the kinds 6, 7 and 4 carry one: another's is gone
+  uint8_t carriers = RAM[OBJECT_KIND + carrier];
+  if (carriers) took(carriers == 6 ? POT_ON_KIND_6 : carriers == 7 ? POT_ON_KIND_7 : carriers == 4 ? POT_ON_KIND_4 : POT_ON_NO_CARRIER);
+  if (carriers && carriers != 6 && carriers != 7 && carriers != 4) {
+    remove_object(object);
+    return;
+  }
   if (!RAM[OBJECT_FLAGS + carrier]) {
     took(POT_CARRIER_GONE);
     remove_object(object);
@@ -387,6 +407,136 @@ void pot(uint8_t object) {
   RAM[OBJECT_FLAGS + object] |= SINKS;   // for a pot, the flag that says it falls
   RAM[OBJECT_HEADING + object] = 0x08;
   took(POT_FALLS);
+}
+
+// ---- the flying knights of the first stage's last screens
+
+#define KNIGHTS_FLYING RAM[0xD0]
+
+/** Bank 2's $84E0: in the first set of stages, from 64 pixels into the eighth screen to 144 into the ninth, three flying
+ *  knights come every so many rounds, sooner the harder the game is, each eight rounds after the last, at one of three
+ *  heights and places in their wave that the copy's list at $8554 gives. */
+void knights_come(uint8_t *x) {
+  enum { KNIGHT = 3 };
+  if (RAM[0xCF]) { took(KNIGHTS_OTHER_SET); return; }
+  uint8_t screen = RAM[OBJECT_X_SCREEN + ARTHUR], across = RAM[OBJECT_X + ARTHUR];
+  took(KNIGHTS_LOOKED_AT);
+  if (screen == 7) {
+    took(KNIGHTS_EIGHTH_SCREEN);
+    if (across < 0x40) { took(KNIGHTS_TOO_EARLY); return; }
+    took(KNIGHTS_THERE);
+  } else if (screen == 8) {
+    took(KNIGHTS_NINTH_SCREEN);
+    if (across >= 0x90) { took(KNIGHTS_PAST); return; }
+    took(GOES_ON);
+  } else { took(KNIGHTS_ELSEWHERE); return; }
+  if (--ROUNDS_TO_ZOMBIES) { took(KNIGHTS_NOT_YET); return; }
+  ROUNDS_TO_ZOMBIES = (uint8_t)(0x80 - ROUNDS_BETWEEN);
+  LEFT_TO_MAKE = 3;
+  took(KNIGHTS_COME);
+  do {
+    took(CALLS);
+    uint8_t object = free_object();
+    if (object == NO_OBJECT) { took(KNIGHT_NONE_FREE); return; }
+    KNIGHTS_FLYING++;
+    RAM[OBJECT_FLAGS + object] = IN_USE;
+    RAM[OBJECT_KIND + object] = KNIGHT;
+    RAM[OBJECT_HEADING + object] = 0x0C;
+    RAM[0x0647 + object] = 0;
+    RAM[OBJECT_COUNT + object] = (uint8_t)(LEFT_TO_MAKE << 3);
+    took(KNIGHT_SET_UP);
+    ZOMBIES_PLACE = (ZOMBIES_PLACE + 1) & 0x0F;
+    took(ZOMBIE_PLACE_CHOSEN);
+    *x = (uint8_t)(ZOMBIES_PLACE * 2);
+    RAM[OBJECT_STATE + object] = cart(2, (uint16_t)(0x8554 + *x));
+    RAM[OBJECT_Y + object] = cart(2, (uint16_t)(0x8555 + *x));
+    RAM[OBJECT_Y_SCREEN + object] = 0;
+    took(KNIGHT_PLACED);
+    sixth_carries_a_pot(object, x);
+    took(KNIGHT_NEXT);
+    took(--LEFT_TO_MAKE ? GOES_ROUND : GOES_ON);
+  } while (LEFT_TO_MAKE);
+  took(RETURNS);
+}
+
+/** Bank 4's $A530, kind 3: a flying knight. After its wait it comes in at the right of the view and flies left in a
+ *  wave, 32 heights from the copy's list at $A5EA, with a sound the game's task plays while any is flying. Its shield
+ *  stops a weapon thrown at its front: only one heading left, from behind it, kills it, for 100 points. */
+void knight(uint8_t object) {
+  enum { FLIES = 0x04 };
+  uint8_t *flags = &RAM[OBJECT_FLAGS + object], *count = &RAM[OBJECT_COUNT + object];
+  took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
+  if (!(*flags & FLIES)) {
+    if (--*count) { took(KNIGHT_WAITS); return; }
+    *flags |= FLIES;
+    RAM[OBJECT_X + object] = RAM[0x64];
+    RAM[OBJECT_X_SCREEN + object] = (uint8_t)(RAM[0x65] + 1);
+    took(KNIGHT_APPEARS);
+    flags_past_page(object, 1);
+    return;
+  }
+  took(BRANCH_TAKEN);
+  took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
+  if (*flags & HIT) {
+    took(KNIGHT_DEAD);
+    enemy_burns_away(object);
+    return;
+  }
+  RAM[0x26] = RAM[0x27] = 8;
+  took(KNIGHT_TESTS);
+  uint8_t weapon = touch_tests(object);
+  if (!RAM[0x0647 + object]) took(KNIGHT_NOT_HIT);
+  else if (RAM[OBJECT_HEADING + weapon] != 0x0C) {
+    RAM[OBJECT_FLAGS + weapon] = 0x45;   // spent, against its shield
+    took(KNIGHT_SHIELD);
+    if (weapon >= 0x0F) took(READ_PAST_PAGE);
+  } else {
+    RAM[OBJECT_FLAGS + weapon] = 0x41;
+    took(KNIGHT_KILLED);
+    if (weapon >= 0x0F) took(READ_PAST_PAGE);
+    sound_play(0x16);
+    *flags |= HIT;
+    *count = 0;
+    RAM[0x26] = 0;
+    RAM[0x27] = 1;   // 100 points
+    took(KNIGHT_KILLED_SCORE);
+    flags_past_page(object, 1);
+    add_score(object, weapon);
+    KNIGHTS_FLYING--;
+    took(KNIGHT_KILLED_ENDS);
+    enemy_burns_away(object);
+    return;
+  }
+  // $A58B: the sound of its wings, which the game's task plays 32 rounds from now unless another asks again
+  RAM[0xE8] = 0x23;
+  RAM[0xE9] = 0x20;
+  RAM[0x0647 + object] = 0;
+  took(KNIGHT_SOUND_SET);
+  show_object(object);
+  took(KNIGHT_VIEW_LOOKED_AT);
+  if ((RAM[0x65] << 8 | RAM[0x64]) >= (RAM[OBJECT_X_SCREEN + object] << 8 | RAM[OBJECT_X + object])) {
+    // past the view's left edge, it's gone
+    KNIGHTS_FLYING--;
+    took(KNIGHT_PASSED);
+    remove_object(object);
+    return;
+  }
+  uint8_t at = (uint8_t)(*count * 2 + RAM[OBJECT_STATE + object]);
+  RAM[OBJECT_COLOURS + object] = 0x01;
+  RAM[OBJECT_SHAPE + object] = (uint8_t)(0x89 + ((*count >> 2) & 1));
+  RAM[0x7B] = 0;
+  RAM[0x73] = cart(4, (uint16_t)(0xA5EA + at));
+  RAM[0x77] = cart(4, (uint16_t)(0xA5EB + at));
+  took(KNIGHT_WAVE);
+  if (0xEA + at > 0xFF) took(READ_PAST_PAGE);
+  if (0xEB + at > 0xFF) took(READ_PAST_PAGE);
+  move_down(object);
+  took(KNIGHT_MOVES);
+  move_object(object, 0x0C);
+  *count = (uint8_t)((*count + 1) & 0x1F);
+  took(KNIGHT_ROUND_COUNTED);
 }
 
 // ---- the crows, the plants and their shots, which the first stage's list places from its third screen on
@@ -641,26 +791,36 @@ void plant(uint8_t object) {
   touch_tests(object);
 }
 
-// $F4A3: a shot flies the way it was headed until it's out of the view, and hits Arthur if it touches him. With the
-// cross a weapon can stop it, at $F557, which isn't ported yet.
-static void shot_flies(uint8_t object, uint8_t speed) {
+// sub_F570's call, and what follows it in each shot: a shot flies the way it was headed, faster the harder the game is,
+// and is gone once it's out of the view.
+static int shot_moves(uint8_t object, uint8_t speed) {
   took(CALLS);
   move_object(object, (uint8_t)(speed + RAM[0xD3]));
-  if (!object_in_view(object)) {
-    RAM[OBJECT_FLAGS + object] = 0;
-    took(SHOT_GONE);
-    return;
-  }
-  show_object(object);
-  RAM[OBJECT_SHAPE + object] = 0xAB;
-  RAM[0x26] = RAM[0x27] = 2;
-  took(SHOT_FLIES);
+  if (object_in_view(object)) return 1;
+  RAM[OBJECT_FLAGS + object] = 0;
+  took(SHOT_GONE);
+  return 0;
+}
+
+// $F54D: a shot hits Arthur if it touches him, within the box in $26 and $27. With the cross a weapon can stop it, at
+// $F557, which isn't ported yet.
+static void shot_tests(uint8_t object) {
   place_on_screen(object);
   took(SHOT_TESTS);
   if (object >= 0x10) took(READ_PAST_PAGE);
   if (!arthur_touches(object)) { took(ENEMY_NOT_TOUCHED); return; }
   RAM[OBJECT_FLAGS + ARTHUR] |= ARTHUR_HIT;
   took(ENEMY_TOUCHES_ARTHUR);
+}
+
+// $F4A3: the round shot of the plants and the fliers.
+static void shot_flies(uint8_t object, uint8_t speed) {
+  if (!shot_moves(object, speed)) return;
+  show_object(object);
+  RAM[OBJECT_SHAPE + object] = 0xAB;
+  RAM[0x26] = RAM[0x27] = 2;
+  took(SHOT_FLIES);
+  shot_tests(object);
 }
 
 /** $F49C, kind $2B: a plant's shot. */
@@ -675,4 +835,29 @@ void flier_shot(uint8_t object) {
   RAM[OBJECT_COLOURS + object] = 0x03;
   took(FLIER_SHOT_BEGINS);
   shot_flies(object, 0x1A);
+}
+
+/** $F41C, kind $29: the forest enemy's shot, a long one, which lies the way it flies: across, or down. */
+void forest_shot(uint8_t object) {
+  enum { DOWN = 0x08, LEFT = 0x0C };
+  uint8_t heading = RAM[OBJECT_HEADING + object];
+  int past_page = OBJECT_HEADING + object >= 0x0600;   // where reading its heading takes a cycle more
+  RAM[OBJECT_COLOURS + object] = 0x03;
+  took(FOREST_SHOT_BEGINS);
+  if (!shot_moves(object, 0x14)) return;
+  show_object(object);
+  if (past_page) took(READ_PAST_PAGE);
+  if (heading == DOWN) {
+    RAM[OBJECT_SHAPE + object] = 0x9F;
+    RAM[0x27] = 6;
+    RAM[0x26] = 2;
+    took(FOREST_SHOT_FLIES_DOWN);
+  } else {
+    RAM[OBJECT_SHAPE + object] = heading == LEFT ? 0x9D : 0x9E;
+    RAM[0x26] = 6;
+    RAM[0x27] = 2;
+    if (past_page) took(READ_PAST_PAGE);
+    took(heading == LEFT ? FOREST_SHOT_FLIES_LEFT : FOREST_SHOT_FLIES_RIGHT);
+  }
+  shot_tests(object);
 }

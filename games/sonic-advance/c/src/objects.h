@@ -93,6 +93,8 @@ ActTask *lava_spawn(Slot *slot);
 ActTask *crane_claw_spawn(Slot *slot);
 ActTask *pipe_entrance_spawn(Slot *slot);
 ActTask *pipe_exit_spawn(Slot *slot);
+ActTask *air_corner_spawn(Slot *slot);        // 112
+ActTask *toggle_gravity_spawn(Slot *slot);    // 109
 ActTask *visibility_spawn(Slot *slot);
 ActTask *special_spring_spawn(Slot *slot);
 ActTask *ice_block_spawn(Slot *slot);         // 95
@@ -121,7 +123,6 @@ ActTask *hang_bar_spawn(Slot *slot);              // 83
 ActTask *spiked_barrel_spawn(Slot *slot);         // 93
 ActTask *conveyor_belt_object_spawn(Slot *slot);  // 99
 ActTask *propeller_spawn(Slot *slot);             // 103
-ActTask *gravity_toggle_spawn(Slot *slot);        // 109
 ActTask *egg_rocket_checkpoint_spawn(Slot *slot);
 ActTask *square_platform_spawn(Slot *slot);
 ActTask *spiked_platform_spawn(Slot *slot);
