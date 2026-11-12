@@ -42,8 +42,9 @@ static struct {
 // The stage clock's values (first to last) on which the original's VCount interrupt sets the waves' H-blank DMA up after the H-blank
 // of the line it comes on, so its first values go to the line after the water's line, which keeps the scroll the
 // V-blank wrote. It takes the console's timing, which nothing here counts, so these are measured from the original
-// in the act's recording (notes/the-waves-can-start-a-line-late.md), as the title demo's are (demo.js's lateWaves).
+// in each act's recording (notes/the-waves-can-start-a-line-late.md), as the title demo's are (demo.js's lateWaves).
 static const struct { uint8_t level; uint16_t first, last; } LATE_WAVES[] = {
+  { 6, 2656, 2656 }, { 6, 2666, 2666 }, { 6, 2707, 2707 }, { 6, 4145, 4145 }, { 6, 6364, 6364 },
   { 7, 1334, 1334 }, { 7, 1342, 1342 }, { 7, 8266, 8266 }, { 7, 8285, 8285 }, { 7, 8304, 8304 }, { 7, 9306, 9306 },
   { 7, 9338, 9338 }, { 7, 9674, 9674 }, { 7, 9704, 9704 }, { 7, 9814, 9814 }, { 7, 9835, 9835 }, { 7, 9940, 9940 },
   { 7, 9957, 9957 }, { 7, 10058, 10058 }, { 7, 10069, 10069 }, { 7, 10431, 10431 }, { 7, 10447, 10447 },
@@ -59,7 +60,7 @@ static const struct { uint8_t level; uint16_t first, last; } LATE_WAVES[] = {
 };
 // And with the water's line near the screen's bottom, the interrupt itself can come so late that none of the lines
 // under it gets the colours under water or the waves: measured the same way, it runs after the screen's last line.
-static const struct { uint8_t level; uint16_t time; } LATE_INTERRUPTS[] = { { 7, 8310 }, { 7, 8409 }, { 7, 13234 }, };
+static const struct { uint8_t level; uint16_t time; } LATE_INTERRUPTS[] = { { 6, 4094 }, { 6, 4162 }, { 6, 6374 }, { 7, 8310 }, { 7, 8409 }, { 7, 13234 }, };
 // And the other way: with the boss beaten, the next frame's tasks can be done before the line comes, so the colours under
 // water the interrupt loads are the ones the next frame's palette animations made (notes/the-colours-under-water-can-be-
 // the-next-frames.md). These are the stage clock values on which that shows, measured the same way.
