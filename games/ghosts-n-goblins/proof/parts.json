@@ -80,7 +80,12 @@
       ]
     },
     {
-      "name": "The stage map"
+      "name": "The stage map",
+      "recording": "stage-2-begins",
+      "frames": [
+        6979,
+        7476
+      ]
     },
     {
       "name": "Stage 1: The graveyard",
