@@ -21,6 +21,8 @@ enum { VIEW_X = 0x63, VIEW_Y = 0x66, VIEW_X_BEFORE = 0x6B, VIEW_Y_BEFORE = 0x6E,
 #define AT_X_SCREEN RAM[0x78]
 #define AT_X RAM[0x74]
 
+static void screen_blocks(uint8_t screen);
+
 // sub_E945 and sub_E9A4: the block at a place in the stage.
 static uint8_t block_at_place(void) {
   // a stage more than one screen high lists its screens a row at a time, each row as long as the copy's list at $EB30 says
@@ -33,7 +35,13 @@ static uint8_t block_at_place(void) {
       took(STAGE_BLOCK_ROW_DOWN);
     } while (--RAM[0x22]);
   }
-  SCREEN_AT = (uint8_t)(before + AT_X_SCREEN);
+  screen_blocks((uint8_t)(before + AT_X_SCREEN));
+  return BLOCK;
+}
+
+// sub_E95C: the blocks of one of the stage's screens, and the block of it at the place.
+static void screen_blocks(uint8_t screen) {
+  SCREEN_AT = screen;
   if ((RAM[STAGE_SCREENS] + SCREEN_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
   RAM[0x72] = peek((uint16_t)(ram16(STAGE_SCREENS) + SCREEN_AT));
   set_ram16(0x54, (uint16_t)(peek16(0x800E) + RAM[0x72] * 240));   // a screen's 240 blocks
@@ -41,7 +49,6 @@ static uint8_t block_at_place(void) {
   BLOCK_AT = (uint8_t)((AT_X >> 4) + (AT_Y & 0xF0));
   if ((RAM[0x54] + BLOCK_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
   BLOCK = peek((uint16_t)(ram16(0x54) + BLOCK_AT));
-  return BLOCK;
 }
 
 // $EA55, with sub_EA66: the block at the place in $77, $73, $78 and $74, read with the stage's own bank switched in.
@@ -65,9 +72,15 @@ static void find_block_tiles(void) {
 // sub_EA73: the PPU's address of the tile at the place, in the first name table or the second.
 static void find_tile_address(void) {
   uint16_t address = (uint16_t)(((AT_Y & 0xF8) << 2) + (AT_X >> 3));
-  // rows past the name table's 30, at $EA97, aren't ported yet
-  address |= 0x2000;
   took(COLUMN_ADDRESS);
+  if (address >= 0x0300) {
+    // a row past the name table's 30 is one at its top
+    if (address >= 0x03C0) {
+      address = (uint16_t)((address + 0x20) & 0x03FF);
+      took(COLUMN_ADDRESS_PAST_ROWS);
+    } else took(COLUMN_ADDRESS_LAST_ROWS);
+  }
+  address |= 0x2000;
   if (AT_X_SCREEN & 1) {
     address |= 0x0400;
     took(COLUMN_ADDRESS_SECOND_TABLE);
@@ -100,8 +113,8 @@ static void column_tile(uint8_t *at, uint8_t which) {
 }
 
 // sub_E76F: the column of 30 tiles one screen to the right of the view, for V-blank to write down the screen. The view
-// moving left has the column 8 pixels left of the view instead. A column that runs off the bottom of its screen, at
-// $E800, isn't ported yet.
+// moving left has the column 8 pixels left of the view instead. A column that runs off the bottom of its screen goes on
+// from the top of the screen below, as a second run for V-blank from the top of the same name table.
 static void draw_column(void) {
   uint8_t left = RAM[0x5E] & 0x80;   // the speed the view was asked to move at is to the left
   uint16_t across = left ? (uint16_t)((RAM[VIEW_X + 2] << 8 | RAM[VIEW_X + 1]) - 8) : (uint16_t)((RAM[VIEW_X + 2] + 1) << 8 | RAM[VIEW_X + 1]);
@@ -133,8 +146,21 @@ static void draw_column(void) {
     took(GOES_ON);
     took(COLUMN_COLOURS_CALLED);
     set_block_colours();
-    BLOCK_AT += 0x10;
-    took(COLUMN_NEXT_BLOCK);
+    if (BLOCK_AT < 0xE0) {
+      BLOCK_AT += 0x10;
+      took(COLUMN_NEXT_BLOCK);
+    } else {
+      // $E800
+      RAM[COLUMN + 2] = RAM[0x22];
+      RAM[COLUMN + at++] = RAM[COLUMN] & 0x24;
+      RAM[COLUMN + at++] = RAM[COLUMN + 1] & 0x1F;
+      RAM[0x23] = at++;
+      AT_Y = 0;
+      took(COLUMN_NEXT_SCREEN);
+      screen_blocks((uint8_t)(SCREEN_AT + cart(7, (uint16_t)(0xEB30 + RAM[0xCF] * 2))));
+      took(SCREEN_BLOCKS);
+      took(CALLS);
+    }
     find_block_tiles();
     took(COLUMN_ROUND);
   }
@@ -142,9 +168,94 @@ static void draw_column(void) {
   took(COLUMN_COLOURS_CALLED);
   set_block_colours();
   RAM[COLUMN + at] = 0;
-  RAM[COLUMN + 2] = (uint8_t)(30 - RAM[COLUMN + 2]);
+  RAM[COLUMN + RAM[0x23]] = (uint8_t)(30 - RAM[COLUMN + 2]);
   COLUMN_READY = 0xFF;
   took(COLUMN_ENDS);
+}
+
+// One tile of the row, from the block's four.
+static void row_tile(uint8_t *at, uint8_t which) {
+  if ((RAM[0x26] + which) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
+  RAM[WIDE_ROWS + (*at)++] = peek((uint16_t)(ram16(0x26) + which));
+  RAM[0x22]++;
+  RAM[0x24]++;
+  took(which & 2 ? ROW_TILE_LOWER : ROW_TILE_UPPER);
+}
+
+// sub_E849: the row of 35 tiles just above the view when it moves up, or 232 lines below its top when it moves down,
+// from 8 pixels left of the view, for V-blank to write. A row that runs off the right of its screen goes on from the
+// left of the next, as a second run in the other name table.
+static void draw_row(void) {
+  int up = RAM[SPEED_Y + 2] & 0x80;
+  RAM[0x22] = up ? 0 : 0xE8;
+  took(up ? ROW_ABOVE : ROW_BELOW);
+  uint16_t down = (uint16_t)(RAM[VIEW_Y + 1] + RAM[0x22]);
+  AT_Y = (uint8_t)down;
+  if (down > 0xFF || AT_Y >= 0xF0) {
+    // past the screen's 240 lines, on the next screen down
+    AT_Y += 0x10;
+    AT_Y_SCREEN = (uint8_t)(RAM[VIEW_Y + 2] + 1);
+    took(down > 0xFF ? ROW_ON_NEXT_SCREEN_CARRIED : ROW_ON_NEXT_SCREEN);
+  } else {
+    AT_Y_SCREEN = RAM[VIEW_Y + 2];
+    took(ROW_ON_VIEWS_SCREEN);
+  }
+  uint16_t across = (uint16_t)((RAM[VIEW_X + 2] << 8 | RAM[VIEW_X + 1]) - 8);
+  AT_X = (uint8_t)across;
+  AT_X_SCREEN = (uint8_t)(across >> 8);
+  took(ROW_PLACE);
+  block_at_place();
+  find_tile_address();
+  RAM[WIDE_ROWS] = RAM[0x27];
+  RAM[WIDE_ROWS + 1] = RAM[0x26];
+  RAM[WIDE_ROWS + 2] = 0;
+  RAM[0x23] = 2;
+  uint8_t at = 3, lower = AT_Y & 8 ? 2 : 0, right = AT_X & 8;
+  RAM[0x22] = RAM[0x24] = 0;
+  took(ROW_LIST_BEGINS);
+  find_block_tiles();
+  took(right ? ROW_STARTS_RIGHT : ROW_STARTS_LEFT);
+  for (;;) {
+    if (!right) {
+      row_tile(&at, lower);
+      if (RAM[0x22] == 35) break;
+      took(GOES_ON);
+    }
+    right = 0;
+    row_tile(&at, (uint8_t)(1 + lower));
+    if (RAM[0x22] == 35) break;
+    took(GOES_ON);
+    took(COLUMN_COLOURS_CALLED);
+    set_block_colours();
+    RAM[0x52] = (uint8_t)((BLOCK_AT + 1) & 0x10);
+    if ((BLOCK_AT & 0x10) == RAM[0x52]) {
+      BLOCK_AT++;
+      took(ROW_NEXT_BLOCK);
+    } else {
+      // $E8FF: the screen's last block across
+      RAM[WIDE_ROWS + RAM[0x23]] = RAM[0x24];
+      RAM[0x24] = 0;
+      RAM[WIDE_ROWS + at] = RAM[WIDE_ROWS + RAM[0x23] - 2] ^ 0x04;
+      at++;
+      RAM[WIDE_ROWS + at] = RAM[WIDE_ROWS + RAM[0x23] - 1] & 0xE0;
+      at++;
+      RAM[0x23] = at++;
+      AT_X = 0;
+      took(ROW_NEXT_SCREEN);
+      screen_blocks((uint8_t)(SCREEN_AT + 1));
+      took(SCREEN_BLOCKS);
+      took(CALLS);
+    }
+    find_block_tiles();
+    took(JUMPS);
+  }
+  took(ROW_TILES_DONE);
+  took(COLUMN_COLOURS_CALLED);
+  set_block_colours();
+  RAM[WIDE_ROWS + at] = 0;
+  RAM[WIDE_ROWS + RAM[0x23]] = RAM[0x24];
+  WIDE_ROWS_READY = 0xFF;
+  took(ROW_ENDS);
 }
 
 // 24 bits at `at` plus the 24 at `by`, with what they were kept at `before`.
@@ -180,7 +291,7 @@ wait view_task(void) {
     }
   }
   // down, where only the pixels and their 256ths are added: past a screen's 240 lines it's on the next, and past its
-  // top on the one before, 16 pixels apart. A new row of tiles, at $E73B, isn't ported yet.
+  // top on the one before, 16 pixels apart.
   uint16_t down = (uint16_t)(ram16(VIEW_Y) + ram16(SPEED_Y));
   RAM[VIEW_Y_BEFORE] = RAM[VIEW_Y];
   RAM[VIEW_Y_BEFORE + 1] = RAM[VIEW_Y + 1];
@@ -204,6 +315,11 @@ wait view_task(void) {
   }
   RAM[0x22] = RAM[VIEW_Y + 1] & 8;
   took(VIEW_ROW_LOOKED_AT);
+  if ((RAM[VIEW_Y_BEFORE + 1] & 8) != RAM[0x22]) {
+    // it's in a new row of tiles
+    took(VIEW_NEW_ROW);
+    draw_row();
+  }
   if (!RAM[0x4A]) took(VIEW_NO_COLUMN);
   else {
     took(VIEW_COLUMN);

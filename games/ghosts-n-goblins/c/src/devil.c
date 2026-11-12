@@ -4,8 +4,8 @@
 // hovers 16 more, aims at Arthur and dives for 24, and starts again a new way; from its third time round it flies
 // without stopping, and once out of the view it's gone. One hit kills it, for 100 points.
 //
-// It can carry another object under it, at $065D, which it lets go when Arthur is close below. That, at $A90F, and its
-// death, at $A976, were written from the original's instructions and haven't been run by a recording.
+// It can carry another object under it, at $065D, which it lets go when Arthur is close below. That, at $A90F, was
+// written from the original's instructions and hasn't been run by a recording.
 
 #include "game.h"
 

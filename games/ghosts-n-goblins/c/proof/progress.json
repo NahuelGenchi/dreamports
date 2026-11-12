@@ -118,6 +118,12 @@
       "differs": [],
       "functions": []
     },
+    "towers": {
+      "frames": 7850,
+      "matched": 7850,
+      "differs": [],
+      "functions": []
+    },
     "walk-across": {
       "frames": 3040,
       "matched": 3040,

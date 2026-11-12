@@ -489,6 +489,7 @@ COST(FOLLOW_RIGHT_NEAR, 13)       // less than 7 to the right,
 COST(FOLLOW_RIGHT_FAR, 20)        // or more
 COST(FOLLOW_DOWN, 32)             // sub_DB99 to $DBAE
 COST(FOLLOW_DOWN_NEXT_SCREEN, 14) // $DBB0, past the screen's 240 lines
+COST(FOLLOW_DOWN_NEXT_SCREEN_CARRIED, 8) // or past 255, by the branch at $DBA8
 COST(FOLLOW_DOWN_APART, 42)       // $DBB9 to $DBD4, on the view's own screen,
 COST(FOLLOW_DOWN_SCREEN_BELOW, 15) // or to $DBE3 on another, below
 COST(FOLLOW_DOWN_SCREEN_ABOVE, 17) // or above
@@ -1524,6 +1525,26 @@ COST(TOWER_DANGER_BEFORE, 12)     // $874C to $875D, more than its branch there:
 COST(TOWER_DANGER_FIFTH_SCREEN, 8)  // or to $875E, on his fifth,
 COST(TOWER_DANGER_LATER_SCREENS, 16) // or on his seventh to tenth,
 COST(TOWER_DANGER_PAST, 15)       // or past them
+COST(COLUMN_ADDRESS_LAST_ROWS, 7)   // sub_EA73, more for a row in the name table's last quarter,
+COST(COLUMN_ADDRESS_PAST_ROWS, 23)  // or past its 30 rows
+COST(COLUMN_NEXT_SCREEN, 78)        // $E7EF to sub_E95C, by $E800, with its call: the column goes on down the next screen
+COST(SCREEN_BLOCKS, 144)            // sub_E95C, and back
+COST(VIEW_NEW_ROW, 5)               // $E739 to sub_E849, more than its branch past the call
+COST(ROW_ABOVE, 11)                 // sub_E849 to $E855: the view moves up,
+COST(ROW_BELOW, 15)                 // or down
+COST(ROW_ON_VIEWS_SCREEN, 24)       // $E855 to $E877: the row is on the view's own screen,
+COST(ROW_ON_NEXT_SCREEN, 35)        // or past its 240 lines,
+COST(ROW_ON_NEXT_SCREEN_CARRIED, 32)
+COST(ROW_PLACE, 188)                // $E877 to sub_EA73, with sub_E945
+COST(ROW_LIST_BEGINS, 48)           // $E88A to sub_E9AB, with its call
+COST(ROW_STARTS_LEFT, 7)            // $E8A9, from a block's left tile,
+COST(ROW_STARTS_RIGHT, 8)           // or its right
+COST(ROW_TILE_UPPER, 37)            // $E8AF or $E8C9 to the count's compare: a block's upper tile,
+COST(ROW_TILE_LOWER, 40)            // or its lower
+COST(ROW_TILES_DONE, 4)             // the branch to $E931, across a page
+COST(ROW_NEXT_BLOCK, 33)            // $E8E6 to sub_E9AB, with its call
+COST(ROW_NEXT_SCREEN, 88)           // or to sub_E95C, by $E8FF, with its call: the row goes on across the next screen
+COST(ROW_ENDS, 29)                  // $E934 to its return
 
 // ---- the small blue devil, kind 6, bank 4's $A89E (devil.c)
 COST(DEVIL_IS_HIT, 5)             // $A8A1 to $F770
