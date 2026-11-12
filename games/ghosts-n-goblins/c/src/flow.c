@@ -517,6 +517,10 @@ static int stage_round(void) {
     took(GAME_LIFE_IS_OVER);
     return 1;
   }
+  if (RAM[0xBF]) {
+    took(GAME_STAGE_IS_CLEARED);
+    return 2;
+  }
   if (RAM[0xC4]) key_comes();
   took(GAME_ROUND_ENDS);
   return 0;
@@ -637,7 +641,7 @@ static wait show_map(uint8_t *step) {
 
 wait game_task(void) {
   enum {
-    NEW_GAME, READY_BEGINS, READY_SCREEN, READY_PICTURE_OFF, READY_TILES_BEGIN, READY_TILES, READY_SHOWN, AFTER_READY, STAGE_PICTURE_OFF,
+    NEW_GAME, READY_BEGINS, READY_SCREEN, READY_PICTURE_OFF, READY_TILES_BEGIN, READY_TILES, READY_SHOWN, AFTER_READY, STAGE_PICTURE_OFF, CLEARED_PICTURE_OFF, CLEARED_TILES,
     STAGE_COLOURS, STAGE_ATTRIBUTES, SCENE_START, MAP, MAP_OVER, SCENE_TILES_BEGIN, SCENE_TILES, SCENE_OWN_TILES_BEGIN, SCENE_OWN_TILES, SCENE_COLOURS,
     SCENE_OBJECT_COLOURS, SCENE_SCREEN, SCENE, STAGE_OFF, STAGE_SET_UP, STAGE_TILES, STAGE_OBJECT_TILES_BEGIN, STAGE_OBJECT_TILES,
     STAGE_SCREEN_BEGINS, STAGE_SCREEN, STAGE_WAITS, STAGE_STARTS, STAGE_ROUND, STAGE_ROUND_AGAIN,
@@ -725,17 +729,20 @@ wait game_task(void) {
       took(CALLS);
       return picture_off();
     case SCENE_START:
-      // $D0D8: the objects' task, and then the map, unless this is a game's first life, at sub_CD8E. A map that
-      // $070C asks for, at $CD95, isn't ported yet.
+      // $D0D8: the objects' task, and then the map, unless this is a game's first life, at sub_CD8E. A stage
+      // that's been cleared asks for the map too, at $070C.
       took(GAME_OBJECTS_BEGIN);
       start_task(TASK_OBJECTS);
-      took(GAME_MAP_LOOKED_AT);
-      if (!RAM[0xA6]) {
-        took(GAME_NO_MAP);
-        *step = MAP_OVER;
-        break;
+      if (RAM[0x070C]) took(GAME_MAP_ASKED_FOR);
+      else {
+        took(GAME_MAP_LOOKED_AT);
+        if (!RAM[0xA6]) {
+          took(GAME_NO_MAP);
+          *step = MAP_OVER;
+          break;
+        }
+        took(GAME_MAP);
       }
-      took(GAME_MAP);
       *step = MAP;
       break;
     case MAP:
@@ -745,6 +752,11 @@ wait game_task(void) {
       break;
     case MAP_OVER:
       // sub_CE71: a game's first life opens with the scene, in the first stage, and the others go to the stage
+      if (RAM[0x070C]) {
+        took(GAME_NO_SCENE_AFTER_A_STAGE);
+        *step = STAGE_OFF;
+        break;
+      }
       took(GAME_SCENE_LOOKED_AT);
       if (RAM[0xA6]) {
         took(GAME_NO_SCENE);
@@ -869,8 +881,15 @@ wait game_task(void) {
       start_stage();
       *step = STAGE_ROUND;
       break;
-    case STAGE_ROUND:
-      if (stage_round()) {
+    case STAGE_ROUND: {
+      int over = stage_round();
+      if (over == 2) {
+        // $D436: Arthur is through the gate
+        took(CALLS);
+        *step = CLEARED_PICTURE_OFF;
+        return picture_off();
+      }
+      if (over) {
         lose_life();
         // sub_D01D
         FRAMES_A_ROUND = 2;
@@ -881,6 +900,40 @@ wait game_task(void) {
       }
       *step = STAGE_ROUND_AGAIN;
       return YIELDS;
+    }
+    case CLEARED_PICTURE_OFF:
+      // the stage's tasks stop, there are no objects, and the letters' tiles are loaded, as before a life
+      took(CALLS);
+      stop_game_tasks();
+      for (int i = 0x04F0; i < 0x0680; i++) if (i != 0x05F0) RAM[i] = 0;
+      took(CLEARED_NO_OBJECTS);
+      set_ram16(0x26, 0x05F0);
+      RAM[0x23] = 0;
+      switch_bank(0);
+      took(GAME_READY_TILES_BEGIN);
+      loading = 0;
+      *step = CLEARED_TILES;
+      break;
+    case CLEARED_TILES:
+      how = load_tiles(&loading, 0x9000, 0x1000, 8);
+      if (how != DONE) return how;
+      switch_bank(BANK_HOME);
+      took(GAME_READY_BANK_BACK);
+      // $D442: the player's next place, which the next life starts at. After the last, at $D46B, the game goes round
+      // again harder, and the last stage has a way of its own, at $D451: neither is ported yet.
+      BANK_HOME = 1;
+      switch_bank(1);
+      STAGE++;
+      RAM[0xAC + PLAYER] = STAGE;
+      RAM[0x070C] = 0xFF;
+      took(GAME_NEXT_PLACE);
+      // sub_D01D
+      FRAMES_A_ROUND = 2;
+      inner = loading = 0;
+      took(GAME_NEXT_PLACE_BEGINS);
+      took(CALLS);
+      *step = READY_BEGINS;
+      return picture_off();
     case STAGE_ROUND_AGAIN:
       took(GAME_ROUND_AGAIN);
       *step = STAGE_ROUND;

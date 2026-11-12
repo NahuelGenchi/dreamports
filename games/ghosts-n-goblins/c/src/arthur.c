@@ -565,6 +565,21 @@ static void end_stage_turn(void) {
   took(ARTHUR_TURN_YIELDS);
 }
 
+// $E429 and $E476: the gate at the stage's end opens, in two steps half a second apart: 8 rows of 6 tiles each time,
+// from where bank 3's $8018 and $801A point, to the place on the screen the copy's list at $E417 gives for the
+// stage's set.
+static void gate_tiles(int second) {
+  switch_bank(3);
+  if (!second) {
+    COLOURS = 0x0A;
+    SHAPE = 0x1E;
+  }
+  uint16_t to = (uint16_t)(cart(7, (uint16_t)(0xE417 + RAM[0xCF] * 2)) | cart(7, (uint16_t)(0xE417 + RAM[0xCF] * 2 + 1)) << 8);
+  took(second ? GATE_SECOND_TILES : GATE_FIRST_TILES);
+  queue_rows(peek16(second ? 0x801A : 0x8018), to, 8, 6);
+  switch_bank(BANK_HOME);
+}
+
 wait arthur_task(void) {
   enum {
     START, SCENE_SITS, SCENE_WATCHES, SCENE_JUMPS, SCENE_LANDED, SCENE_WALKS, SCENE_STEP, SCENE_OVER,
@@ -572,6 +587,7 @@ wait arthur_task(void) {
     DEATH_BEGINS, DEATH_FALL, DEATH_OVER, STAGE_JUMP,
     LADDER_UP, CLIMB_UP, CLIMB_UP_ON, CLIMB_UP_AGAIN, LADDER_DOWN, OVER_THE_TOP, OVER_THE_TOP_AGAIN,
     CLIMB_DOWN, CLIMB_DOWN_ON, CLIMB_DOWN_AGAIN, CROUCH, CROUCH_AGAIN,
+    GATE_OPENS, GATE_OPENS_MORE, GATE_OPEN, GATE_WALK, GATE_WALK_AGAIN,
   };
   static uint8_t inner;
   uint8_t *step = &task_step[TASK_ARTHUR];
@@ -661,6 +677,13 @@ wait arthur_task(void) {
     case STAGE_TURN:
       // $DAE4: each round in a stage. Without his armour he has other colours.
       stage_colours();
+      if (RAM[0xC9]) {
+        // $E423: he has the key, and the stage is his
+        took(ARTHUR_HAS_THE_KEY);
+        took(CALLS);
+        *step = GATE_OPENS;
+        return YIELDS;
+      }
       if (FLAGS & HIT) {
         took(ARTHUR_IS_HIT);
         *step = STAGE_HIT;
@@ -1011,5 +1034,58 @@ wait arthur_task(void) {
       *step = STAGE_STANDS;
       break;
     }
+    case GATE_OPENS:
+      FLAGS &= (uint8_t)~WITHOUT_ARMOUR;
+      took(OBJECT_FLAG_CHANGED);
+      gate_tiles(0);
+      took(GATE_SOUND);
+      sound_play(0x0E);
+      took(GATE_RESTS);
+      *step = GATE_OPENS_MORE;
+      return sleep_task(30);
+    case GATE_OPENS_MORE:
+      gate_tiles(1);
+      took(GATE_RESTS_AGAIN);
+      *step = GATE_OPEN;
+      return sleep_task(30);
+    case GATE_OPEN:
+      // $E4B4: he walks to the right, into the gate
+      HEADING = 0x04;
+      FLAGS &= (uint8_t)~TURNED;
+      COLOURS = 0x08;
+      took(GATE_WALK_BEGINS);
+      took(OBJECT_FLAG_CHANGED);
+      *step = GATE_WALK;
+      break;
+    case GATE_WALK: {
+      // sub_EA01: the block 8 pixels to his left and 4 down. The gate's own, $60 to $6F, end the stage, at $BF.
+      uint16_t across = (uint16_t)((X_SCREEN << 8 | X) - 8);
+      RAM[0x74] = (uint8_t)across;
+      RAM[0x78] = (uint8_t)(across >> 8);
+      RAM[0x77] = Y_SCREEN;
+      RAM[0x73] = (uint8_t)(Y + 4);
+      took(BLOCK_BEHIND_ARTHUR);
+      uint8_t block = block_at_stage_place();
+      if (block >= 0x60 && block < 0x70) {
+        RAM[0xBF] = 0xFF;
+        took(GATE_REACHED);
+        return ENDS;
+      }
+      took(block < 0x60 ? GATE_NOT_YET : GATE_NOT_YET_PAST);
+      move_object(ARTHUR, 0x0C);
+      took(JUMPS);
+      view_follows_across();
+      COUNT++;
+      took(ARTHUR_STEP_COUNTED);
+      choose_shape();
+      place_on_screen(ARTHUR);
+      took(CALLS);
+      *step = GATE_WALK_AGAIN;
+      return YIELDS;
+    }
+    case GATE_WALK_AGAIN:
+      took(JUMPS);
+      *step = GATE_WALK;
+      break;
   }
 }
