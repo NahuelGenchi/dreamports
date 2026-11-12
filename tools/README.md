@@ -130,7 +130,7 @@ The search knows nothing of any game. A game tells it where its original keeps t
 - `apart` (optional): what tells two states of one place apart, the same way, such as `{ "speedX": 4 }`. A place then keeps a state for each.
 - `wait` (optional): `{ "frames": 90, "states": 3 }` has each place also keep a state for each stretch of 90 frames after the search first reached it, up to 3, so it can wait there for what only comes later. It costs memory, as every place keeps that many more states.
 - `lost`: conditions for play that can't go on, such as a life being lost. Without them the search wastes its tries on falls.
-- `goals`: the goals the game names, each a condition. One can be written as `{ "when", "cells", "apart", "wait" }` to have a grid of its own, and with `"after"` it names the goal to reach first: an act's end after the place its boss comes in, so one command does both, each with its own grid.
+- `goals`: the goals the game names, each a condition, which a part in `parts.json` can also name as [what it reaches](#what-a-part-reaches). One can be written as `{ "when", "cells", "apart", "wait" }` to have a grid of its own, and with `"after"` it names the goal to reach first: an act's end after the place its boss comes in, so one command does both, each with its own grid.
 - `buttons` (optional): the sets of buttons the search may hold, such as `"RIGHT A"`. Without it, each direction alone and with each of the console's other buttons, but Start and Select.
 
 A value the game keeps in memory it hands out as it goes, such as a boss's health, has no address of its own. It has `found` in place of `address`: the stretch of memory to look through (`from`, `to`, `step`), the `mark` that's beside it, such as the address of a function its record points to, and from the mark where the record's own address is (`pointer`, `pointerBytes`, `base`) and where in the record the value is (`offset`). It reads -1 while no record is there, which makes "the boss has come" a goal, `boss>=0`.
@@ -156,6 +156,22 @@ So the original's own memory says who it is. A game whose recordings can be name
 `prove` reads each kind from the original as a recording's last frame ends, says what it found, and keeps the name in `progress.json`. A recording whose name names one of a kind's names, as a whole word, such as `shadow` in `shadow-moving` or `amy` in `amy-x-zone`, fails unless the original shows that one, however its frames compare, and `npm run check` and the build stop on it too, so a pull request with one can't pass its checks. Name a recording for what it shows, and leave a name out of it when it shows someone else, as Sonic Advance's `x-zone-the-normal-ending` plays Sonic in the zone Amy hasn't reached yet.
 
 Each name in the list is checked once by a person against the original's pictures, with a recording that picks that value, before it goes in: a guessed name would only move the mistake into the list. A value the list doesn't name fails any recording named for that kind. Sonic Battle lists its fighters and Sonic Advance its characters.
+
+## What a part reaches
+
+A part named for an act has to play the act to its end, and a match can't tell you that: a recording that stops halfway matches the original just as well as one that gets there. Sonic Advance's Neo Green Hill Zone act 2 once counted as proven, "through its boss", on a recording that never beat the boss, with every frame the same.
+
+So the original's own memory says whether it got there. A part in `parts.json` can name what it reaches, one of the goals the game lists in its [`route.json`](#what-a-game-says-of-its-original):
+
+```json
+{ "name": "Neo Green Hill Zone act 2", "recording": "neo-green-hill-act-2", "frames": [0, 8411], "reaches": "act-end" }
+```
+
+`prove` reads the goal's values in the original as each frame of the recording ends, and keeps in `progress.json` the frames over which the goal held, as `"reached": { "act-end": [[8102, 8380]] }`. The part is proven only when the goal comes true within its frames, so one that held already before the part's first frame says nothing of it. When it doesn't, `prove` fails the recording, however its frames compare, with `--quick` too, and says where the original did get to the goal, if anywhere: past the part's last frame, before its first, or never. The two numbers, the game's page, `npm run check` and the build count the part the same way, and `check` stops on a part that names a goal no proof has measured yet.
+
+The way out is always in the recording: play on until the original gets there, with [`route`](#finding-a-route) for a part nobody plays, and give the part the frames that take it in. A part's goal is the game's lead's to write, when the parts are listed, and a task doesn't take it away.
+
+A goal a part names reads values that each have an `address`. One that reads a value only the search can find, such as a boss's health, is for `route` alone. A recording that links several consoles can't prove such a part yet. Sonic Advance's acts name `act-end`, the flag the game sets when an act is cleared.
 
 ## A game's capture
 
@@ -267,7 +283,7 @@ A part, such as a game's logos or one of its acts, is proven by a recording that
 1. Make a recording that plays the whole part and a little of what comes after it, with `play --record`, with `play --record --from` to start where another recording reaches the part, or by hand.
 2. Run `npm run dp -- prove <game> <recording>` and read the stretches where the original's screen is one colour. A part usually starts as one of them ends and ends as the next one does. Where the screen is one colour between two parts, as when one fades out and the next fades in, those frames go with the part before, so the next part starts on the first frame that isn't one colour.
 3. Check the frames you picked with `--stills`, such as `--stills 253,254,932,933`, and look at the pictures in `stills/`.
-4. Write the part's `recording` and `frames` in `parts.json`, and run `prove` again. It says whether the part is proven, and keeps pictures of its first and last frames, with the one before and the one after, so the lead can check them once more.
+4. Write the part's `recording` and `frames` in `parts.json`, and run `prove` again. It says whether the part is proven, which for a part that names [what it reaches](#what-a-part-reaches) also takes the original getting there within those frames, and keeps pictures of its first and last frames, with the one before and the one after, so the lead can check them once more.
 
 Sonic Advance Dreamport's logos are frames 254 to 932 of [`logos-and-intro`](../games/sonic-advance/proof/recordings/logos-and-intro.json): the language screen fades to white until frame 253, and the Sonic Team logo fades to black, which stays until 932.
 
@@ -319,12 +335,12 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 | :--- | :--- |
 | `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum, `keysAfterVBlank` for a game that reads its buttons just after the V-blank, `screen` for a game on another console that [chooses its own size](../docs/CONSOLES.md#how-a-console-is-known), and `shows` for what a recording can be named for, as [What a recording shows](#what-a-recording-shows) says |
 | `recordings/` | Recorded play, one file per recording |
-| `route.json` | Optional: where the original keeps the few values `route` reads as it searches, and the goals the game names, as [Finding a route](#what-a-game-says-of-its-original) says |
+| `route.json` | Optional: where the original keeps the few values `route` reads as it searches, and the goals the game names, as [Finding a route](#what-a-game-says-of-its-original) says. A part can name one of those goals as what it reaches |
 | `code-map.json` | The code map |
 | `progress.json` | Each recording's results and the code that ran in matching play, written by `prove` |
 | `port-map.json` | The port map: the functions the game's code names, and the names that land inside one but not at its start, written by `portmap` |
 | `names.json` | Optional: how far the release the game's labels come from is from the copy's, stretch by stretch, for `portmap` and `read` |
-| `parts.json` | The game's parts, each with the recording and frames that prove it once there are some, written by the game's lead |
+| `parts.json` | The game's parts, each with the recording and frames that prove it once there are some, and what it has to reach when it names that ([What a part reaches](#what-a-part-reaches)), written by the game's lead |
 
 ## What stays on your computer
 
