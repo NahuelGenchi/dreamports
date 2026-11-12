@@ -97,7 +97,7 @@ void platform(uint8_t object) {
 
 // ---- the second stage's two moving objects with shape $3E, from bank 4's $9DA2 and $9D5F. Out of the view neither is
 // shown. What the second does in the view was written from the original's instructions and hasn't been run by a
-// recording, and where Arthur comes down onto the first, which jumps to $B795, isn't ported yet.
+// recording.
 
 enum { SPEEDS_BY_STATE = 0xB800, FALLS = 0x02, DOWN = 0x08 };
 
@@ -111,6 +111,53 @@ static int thing_moves(uint8_t object, int moves) {
   if (!(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN)) { took(THING_NOT_SHOWN); return 0; }
   took(THING_IS_SHOWN);
   return 1;
+}
+
+// $B795: Arthur is held on it. His flag $10 is set, which his own turn reads as ground under him, and his state's
+// $08. He's put 16 pixels above its place when it's going down and 12 when it's going up, and while it's in the half of
+// the picture it's heading out of, he's moved down or up as it moves.
+static void thing_holds(uint8_t object) {
+  uint8_t down = RAM[OBJECT_HEADING + object], state = RAM[OBJECT_STATE + object];
+  RAM[OBJECT_FLAGS + ARTHUR] |= HELD;
+  RAM[OBJECT_STATE + ARTHUR] |= 0x08;
+  RAM[0x22] = down ? 0x10 : 0x0C;
+  took(down ? THING_HOLDS_GOING_DOWN : THING_HOLDS_GOING_UP);
+  if (object >= 0x0F) took_times(READ_PAST_PAGE, 2);   // its heading is read twice
+  RAM[OBJECT_Y + ARTHUR] = (uint8_t)(RAM[OBJECT_Y + object] - RAM[0x22]);
+  if (RAM[OBJECT_Y + ARTHUR] < 0xF0) {
+    RAM[OBJECT_Y_SCREEN + ARTHUR] = RAM[OBJECT_Y_SCREEN + object];
+    took(THING_LIFTS_SAME_SCREEN);
+  } else {
+    // a screen is 240 pixels high: above its top is on the screen above
+    RAM[OBJECT_Y + ARTHUR] -= 0x10;
+    RAM[OBJECT_Y_SCREEN + ARTHUR] = (uint8_t)(RAM[OBJECT_Y_SCREEN + object] - 1);
+    took(THING_LIFTS_SCREEN_ABOVE);
+  }
+  uint8_t line = RAM[OBJECT_SCREEN_Y + object];
+  int carries = down ? line >= 0x78 : line < 0x80;
+  took(down ? (carries ? THING_CARRIES_DOWN : THING_STILL_DOWN) : (carries ? THING_CARRIES_UP : THING_STILL_UP));
+  if (carries) {
+    // sub_B80D
+    took(THING_CARRY_BEGINS);
+    find_move(object, list((uint16_t)(SPEEDS_BY_STATE + state)));
+    uint32_t his = (uint32_t)(RAM[OBJECT_Y_SCREEN + ARTHUR] << 16 | RAM[OBJECT_Y + ARTHUR] << 8 | RAM[OBJECT_Y_PART + ARTHUR]);
+    his += (uint32_t)(RAM[0x77] << 16 | RAM[0x73] << 8 | RAM[0x7B]);
+    RAM[OBJECT_Y_PART + ARTHUR] = (uint8_t)his;
+    RAM[OBJECT_Y + ARTHUR] = (uint8_t)(his >> 8);
+    RAM[OBJECT_Y_SCREEN + ARTHUR] = (uint8_t)(his >> 16);
+    if (RAM[OBJECT_Y + ARTHUR] < 0xF0) took(THING_CARRIED);
+    else if (RAM[0x77] & 0x80) {
+      RAM[OBJECT_Y + ARTHUR] -= 0x10;
+      took(THING_CARRIED_ONTO_SCREEN_ABOVE);
+    } else {
+      RAM[OBJECT_Y + ARTHUR] += 0x10;
+      RAM[OBJECT_Y_SCREEN + ARTHUR]++;
+      took(THING_CARRIED_ONTO_SCREEN_BELOW);
+    }
+  }
+  took(THING_HOLD_ENDS);
+  place_on_screen(ARTHUR);
+  took(PLATFORM_ENDS);
 }
 
 // Kind $36, a small ledge: it goes up and down. In the view it turns above the 32nd line of a screen below the first, and below the
@@ -159,7 +206,8 @@ void rising_thing(uint8_t object) {
   if ((uint8_t)(own - his) >= 0x14) { took(THING_ARTHUR_HIGH); return; }
   uint8_t across = (uint8_t)(RAM[OBJECT_SCREEN_X + object] - RAM[OBJECT_SCREEN_X + ARTHUR]);
   if (across >= 0x24 && across < 0xDC) { took(THING_ARTHUR_OFF); return; }
-  // $B795, which holds him on it, isn't ported yet
+  took(across < 0x24 ? THING_ARTHUR_ON_NEAR : THING_ARTHUR_ON_FAR);
+  thing_holds(object);
 }
 
 // Kind $37: it stays where it is until Arthur is within 40 pixels across and 16 down. Then it falls, and it's gone once
