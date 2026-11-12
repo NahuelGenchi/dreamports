@@ -708,9 +708,12 @@ static void plant_shoots(uint8_t object) {
 }
 
 // $F6F6: an enemy that a weapon has killed burns away where it is, eight shapes from the copy's list at $F760, two
-// rounds each, and is gone. The kinds 5, 9 and $15, which burn with the shapes at $F768, aren't ported yet.
+// rounds each, and is gone. The kinds 5, 9 and $15, the bosses, burn with the bigger shapes at $F768, and one that's
+// gone takes one off the stage's count of bosses at $C3, if its flag $04 says it was counted: with none left, $C4 has
+// the key come. Kind $1F, which sets $BF, isn't ported yet.
 void enemy_burns_away(uint8_t object) {
-  uint8_t *count = &RAM[OBJECT_COUNT + object];
+  uint8_t *count = &RAM[OBJECT_COUNT + object], kind = RAM[OBJECT_KIND + object];
+  int boss = kind == 0x05 || kind == 0x09 || kind == 0x15;
   show_object(object);
   if (object_in_view(object)) took(BURNING_IN_VIEW);
   else {
@@ -719,13 +722,28 @@ void enemy_burns_away(uint8_t object) {
   }
   if (*count >= 0x10) {
     took(BURNT_AWAY);
+    if (boss) {
+      took(kind == 0x05 ? BOSS_BURNT_AWAY : kind == 0x09 ? BOSS_9_BURNT_AWAY : BOSS_15_BURNT_AWAY);
+      took(OBJECT_FLAG_READ);
+      if (object >= 0x10) took(READ_PAST_PAGE);
+      if (!(RAM[OBJECT_FLAGS + object] & 0x04)) took(BOSS_NOT_COUNTED);
+      else if (--RAM[0xC3]) took(BOSS_OTHERS_LEFT);
+      else {
+        RAM[0xC4] = 0xFF;
+        took(BOSS_WAS_THE_LAST);
+      }
+      RAM[0x0647 + object] = 0;
+      RAM[OBJECT_FLAGS + object] = 0;
+      took(BOSS_REMOVED);
+      return;
+    }
     remove_object(object);
     return;
   }
-  RAM[OBJECT_SHAPE + object] = cart(7, (uint16_t)(0xF760 + (*count >> 1)));
+  RAM[OBJECT_SHAPE + object] = cart(7, (uint16_t)((boss ? 0xF768 : 0xF760) + (*count >> 1)));
   RAM[OBJECT_COLOURS + object] = 0x02;
   ++*count;
-  took(BURNS_ON);
+  took(kind == 0x05 ? BOSS_BURNS_ON : kind == 0x09 ? BOSS_9_BURNS_ON : kind == 0x15 ? BOSS_15_BURNS_ON : BURNS_ON);
 }
 
 /** Bank 4's $9EC0, kind 1: a plant. In the view it faces Arthur, and every 16 rounds opens its mouth, flag $04, to shoot.

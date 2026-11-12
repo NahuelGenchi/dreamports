@@ -124,6 +124,46 @@ int on_the_ground(uint8_t object) {
   return RAM[0x22] >= BLOCK_SOLID;
 }
 
+/** Bank 4's $BC9C, kind $1E: the key a stage's last boss leaves. It falls from the top of the picture, its colours
+ *  changing every round, until it's on the ground, flag $02. Arthur within 8 pixels of it takes it: the time stops,
+ *  at $C9, and it's worth 1,000 points. What the stage does then, from $C9, isn't ported yet. */
+void key(uint8_t object) {
+  enum { LANDED = 0x02 };
+  RAM[OBJECT_SHAPE + object] = 0x47;
+  RAM[OBJECT_COLOURS + object] = (RAM[OBJECT_COLOURS + object] + 1) & 3;
+  took(KEY_BEGINS);
+  hide_object(object);
+  if (object_in_view(object)) {
+    took(GOES_ON);
+    show_object(object);
+  } else took(BRANCH_TAKEN);
+  took(OBJECT_FLAG_READ);
+  if (object >= 0x10) took(READ_PAST_PAGE);
+  if (RAM[OBJECT_FLAGS + object] & LANDED) took(BRANCH_TAKEN);
+  else {
+    RAM[OBJECT_HEADING + object] = 0x08;
+    took(KEY_FALLS);
+    took(CALLS);
+    move_object(object, 0x08);
+    place_on_screen(object);
+    if (!on_the_ground(object)) { took(KEY_IN_THE_AIR); return; }
+    took(BRANCH_TAKEN);
+    RAM[OBJECT_FLAGS + object] |= LANDED;
+    took(OBJECT_FLAG_CHANGED);
+    if (object >= 0x10) took(READ_PAST_PAGE);
+  }
+  RAM[0x26] = RAM[0x27] = 8;
+  took(KEY_LOOKS);
+  if (!arthur_near(object)) { took(KEY_NOT_TAKEN); return; }
+  RAM[0xC9] = 0xFF;
+  RAM[OBJECT_FLAGS + object] = 0;
+  RAM[0x25] = RAM[0x27] = RAM[0x26] = 0;
+  RAM[0x24] = 1;
+  took(KEY_TAKEN);
+  add_score_with_thousands(object, 0);
+  took(RETURNS);
+}
+
 uint8_t take_object(void) {
   enum { FIRST = 1, NEXT_SEARCH = 0xCE, AWAKE = 0x065D };
   uint8_t object = RAM[NEXT_SEARCH];
@@ -636,6 +676,7 @@ wait objects_task(void) {
         case 0x11: hidden_thing(object); break;
         case 0x12: pot(object); break;
         case 0x14: crow(object); break;
+        case 0x1E: key(object); break;
         case 0x20: gravestone(object); break;
         case 0x2B: plant_shot(object); break;
         case 0x29: forest_shot(object); break;

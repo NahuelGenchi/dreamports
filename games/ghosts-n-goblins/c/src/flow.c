@@ -438,11 +438,42 @@ static void count_time_down(void) {
 // $D284: the game's turn each round of a stage: this player's buttons, the stage's colours again every fourth round,
 // the stage's time, its objects and its dangers. Start, which pauses, at $D88C, the end of the stage, at $D341, and what
 // happens when Arthur dies aren't ported yet.
+// sub_D529: the stage's last boss is gone. Every object after Arthur's is cleared, and the key, kind $1E, starts at the
+// top of the screen the copy's list at $D56E gives for the stage's set, $50 across, with sound $0C. $EB stops the
+// stage's own objects and dangers from here on.
+static void key_comes(void) {
+  enum { KEY = 1 };
+  for (uint8_t object = 1; object <= 0x10; object++) RAM[OBJECT_FLAGS + object] = 0;
+  RAM[OBJECT_X + KEY] = 0x50;
+  RAM[OBJECT_X_SCREEN + KEY] = cart(7, (uint16_t)(0xD56E + RAM[0xCF] * 2));
+  RAM[OBJECT_Y + KEY] = 0;
+  RAM[OBJECT_Y_SCREEN + KEY] = cart(7, (uint16_t)(0xD56E + RAM[0xCF] * 2 + 1));
+  RAM[OBJECT_FLAGS + KEY] = 0x40;
+  RAM[OBJECT_KIND + KEY] = 0x1E;
+  RAM[OBJECT_SHAPE + KEY] = 0;
+  RAM[0xC4] = 0;
+  RAM[0xEB] = 0xFF;
+  last_index = (uint8_t)(RAM[0xCF] * 2 + 1);
+  took(KEY_COMES);
+  sound_play(0x0C);
+}
+
 static int stage_round(void) {
   RAM[0x89] = PAD_1;
   RAM[0x8A] = RAM[0x44];
   PAD_NOW = RAM[0x89 + PLAYER];
-  took(GAME_ROUND_BEGINS);
+  took(RAM[0xEB] ? GAME_ROUND_BEGINS_KEY_THERE : GAME_ROUND_BEGINS);
+  // $D284: the sound that follows a boss's death, once its count of rounds has run down: $070A's, or the hurried
+  // music again, sound $0B, if the time was short. Nothing is counted once the key is there, at $EB.
+  if (!RAM[0xEB] && RAM[0x070A]) {
+    if (--RAM[0x070B]) took(AFTER_BOSS_WAITS);
+    else {
+      took(RAM[0x0709] ? AFTER_BOSS_PLAYS_HURRIED : AFTER_BOSS_PLAYS);
+      sound_play(RAM[0x0709] ? 0x0B : RAM[0x070A]);
+      RAM[0x070A] = 0;
+      took(AFTER_BOSS_PLAYED);
+    }
+  }
   // $D2AA: a sound an enemy has asked for is played once its rounds have passed without it asking again
   if (!RAM[0xEB] && RAM[0xE8] != 0xFF) {
     if (++RAM[0xE7] < RAM[0xE9]) took(ASKED_SOUND_WAITS);
@@ -486,6 +517,7 @@ static int stage_round(void) {
     took(GAME_LIFE_IS_OVER);
     return 1;
   }
+  if (RAM[0xC4]) key_comes();
   took(GAME_ROUND_ENDS);
   return 0;
 }

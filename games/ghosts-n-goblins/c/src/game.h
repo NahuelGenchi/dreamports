@@ -224,6 +224,8 @@ void forest_enemies_come(uint8_t *x);
 void forest_enemy(uint8_t object);
 /** $F41C, kind $29: its shot (enemies.c). */
 void forest_shot(uint8_t object);
+/** Bank 4's $BC9C, kind $1E: the key a stage's last boss leaves (objects.c). */
+void key(uint8_t object);
 /** $FBC4, kind 5: the stage's boss (boss.c); $F524, kind $30: its shot (enemies.c). */
 void boss(uint8_t object);
 void boss_shot(uint8_t object);

@@ -1432,6 +1432,33 @@ COST(BOSS_CHARGE_NO_TURN, 9)      // $FE67 to $FE7D, three rounds in four,
 COST(BOSS_CHARGE_TURNS, 15)       // or to sub_FA87
 COST(BOSS_CHARGE_OVER, 38)        // $FE7D, with sub_F336, and back: 24 rounds are over,
 COST(BOSS_CHARGE_MOVES, 40)       // or to sub_F0A0
+COST(BOSS_DIES, 38)               // $FC04 to sub_ED51, with sub_F7A5: ten hits
+COST(BOSS_DIES_ELSEWHERE, 8)      // $FC13 to sub_F305,
+COST(BOSS_DIES_IN_SECOND_SET, 12) // or with the second set's own sound to follow
+COST(BOSS_DIES_SCORE, 30)         // $FC21 to sub_D902
+COST(BOSS_DIES_ENDS, 8)           // $FC33 to $F6F6
+COST(BOSS_BURNS_ON, 54)           // $F701, and back, for a boss, kind 5: its next shape,
+COST(BOSS_9_BURNS_ON, 58)         // or kind 9,
+COST(BOSS_15_BURNS_ON, 61)        // or kind $15
+COST(BOSS_BURNT_AWAY, 14)         // $F708 to sub_F2EB, after BURNT_AWAY's 8: kind 5,
+COST(BOSS_9_BURNT_AWAY, 18)       // or kind 9,
+COST(BOSS_15_BURNT_AWAY, 21)      // or kind $15
+COST(BOSS_NOT_COUNTED, 3)         // $F725 to $F72F: it wasn't one of the stage's count,
+COST(BOSS_OTHERS_LEFT, 10)        // or others are left,
+COST(BOSS_WAS_THE_LAST, 14)       // or none
+COST(BOSS_REMOVED, 20)            // $F72F, and back
+COST(GAME_ROUND_BEGINS_KEY_THERE, 42) // $D284 to $D31D with the key there, which skips the two sounds' counts
+COST(AFTER_BOSS_WAITS, 8)         // $D28D to $D2A6, more than the branch past it
+COST(AFTER_BOSS_PLAYS, 24)        // or to sub_ED51,
+COST(AFTER_BOSS_PLAYS_HURRIED, 24) // with the hurried music,
+COST(AFTER_BOSS_PLAYED, 6)        // and $D2A1 to $D2A6
+COST(KEY_COMES, 279)              // $D3FA to sub_ED51, with sub_D529, more than the branch past it
+COST(KEY_BEGINS, 25)              // bank 4's $BC9C to sub_F346
+COST(KEY_FALLS, 9)                // $BCBA to sub_F03E
+COST(KEY_IN_THE_AIR, 8)           // $BCCA, and back
+COST(KEY_LOOKS, 8)                // $BCD0 to sub_F687
+COST(KEY_NOT_TAKEN, 9)            // $BCD9, and back
+COST(KEY_TAKEN, 34)               // or to sub_D902
 COST(BOSS_JUMP_HEIGHT, 36)        // sub_FF36 with its call, to sub_F099
 COST(BOSS_DODGE_FACES_RIGHT, 4)   // $FCFA to $FD04, across a page
 COST(BOSS_JUMP_SHAPE_LEFT, 7)     // the shape that faces left
