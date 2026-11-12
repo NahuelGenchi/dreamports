@@ -8,7 +8,7 @@ import { showTitle } from '../lib/title';
 import { hrefOf } from './controls';
 import { playHref, playLabel } from '../lib/languages.mjs';
 import type { ColourName, PoseName } from '../lib/mark';
-import { LOGO_KEYS, copyMark, logoKept, showLogo } from './mark';
+import { LOGO_KEYS, copyMark, fetchOpeningMark, logoKept, showLogo } from './mark';
 
 type Input = 'keys' | 'pad' | 'touch';
 type Motion = 'auto' | 'full' | 'calm';
@@ -1811,6 +1811,7 @@ function start(launcher: HTMLElement) {
       return;
     }
     state.launching = true;
+    fetchOpeningMark();
     // going back to the menu part way through stops the launch
     const run = ++launchRun;
     const still = () => run === launchRun;
