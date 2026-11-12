@@ -1259,12 +1259,12 @@ function start(launcher: HTMLElement) {
       sound.play('tick');
     });
   }
-  // the site's own pose and colour are kept as nothing at all, like every other setting left as it came
+  // once picked, a pose or a colour is kept even when it is the site's own: an app on the Home Screen opens with its
+  // icon's logo when the browser keeps none (Base.astro), which must not come back over a pick of the site's own
   for (const input of $$<HTMLInputElement>('input[name="logo-pose"]', settingsCard)) {
     input.addEventListener('change', () => {
       state.logoPose = input.value as PoseName;
-      if (state.logoPose === 'leap') store.del(LOGO_KEYS.pose);
-      else store.set(LOGO_KEYS.pose, state.logoPose);
+      store.set(LOGO_KEYS.pose, state.logoPose);
       void showLogo(state.logoPose, state.logoColour);
       syncSettings();
       sound.play('tick');
@@ -1273,8 +1273,7 @@ function start(launcher: HTMLElement) {
   for (const input of $$<HTMLInputElement>('input[name="logo-colour"]', settingsCard)) {
     input.addEventListener('change', () => {
       state.logoColour = input.value as ColourName;
-      if (state.logoColour === 'deep') store.del(LOGO_KEYS.colour);
-      else store.set(LOGO_KEYS.colour, state.logoColour);
+      store.set(LOGO_KEYS.colour, state.logoColour);
       void showLogo(state.logoPose, state.logoColour);
       syncSettings();
       sound.play('tick');
