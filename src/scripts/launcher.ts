@@ -435,6 +435,12 @@ function start(launcher: HTMLElement) {
   }
 
   let plateGlide: Animation | undefined;
+  const plateText = $('.np-text', plate);
+  // the label's text fits the label again, as it does whenever it isn't gliding
+  function plateRest() {
+    plate.classList.remove('is-gliding');
+    plateText.style.width = '';
+  }
   function updatePlate() {
     const slot = slots[sel()];
     // a game, or the Make row's way to start a Dreamport
@@ -444,6 +450,7 @@ function start(launcher: HTMLElement) {
     const { width: w0, height: h0 } = plate.getBoundingClientRect();
     // a glide still running from the last move would be measured as the new size, and keep the new text cut short (#1178)
     for (const a of plate.getAnimations()) a.cancel();
+    plateRest();
     if (slot?.dataset.game) showTitle(plateName, text);
     else plateName.textContent = text;
     plateDetail.textContent = (named && slot.dataset.detail) || '';
@@ -454,16 +461,19 @@ function start(launcher: HTMLElement) {
     plate.classList.toggle('is-empty', !named);
     if (calm() || !w0 || !state.ready) return;
     const { width: w1, height: h1 } = plate.getBoundingClientRect();
+    const textWidth = plateText.getBoundingClientRect().width;
     const glide = plate.animate([{ width: w0 + 'px', height: h0 + 'px' }, { width: w1 + 'px', height: h1 + 'px' }], {
       duration: 300,
       easing: 'cubic-bezier(.22,1,.36,1)',
     });
-    // while it glides the text is uncovered as it is, never refitted to each width with an ellipsis
+    // while it glides the text keeps the width it will rest at, and is uncovered as it is: fitted to each width in
+    // between, it would be cut with an ellipsis and its lines would wrap, then jump back (#1178, #1192)
+    plateText.style.width = textWidth + 'px';
     plate.classList.add('is-gliding');
     plateGlide = glide;
-    const rest = () => plateGlide === glide && plate.classList.remove('is-gliding');
+    const rest = () => plateGlide === glide && plateRest();
     glide.finished.then(rest, rest);
-    $('.np-text', plate).animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], {
+    plateText.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], {
       duration: 240,
       easing: 'ease-out',
     });
