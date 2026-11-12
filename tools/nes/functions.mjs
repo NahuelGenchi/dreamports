@@ -2,7 +2,10 @@
 // and nothing of the code itself. Like tools/gba/functions.mjs, it follows the code, here from the console's three
 // vectors, through every call, branch and jump, and through the tables of addresses the code jumps with: a list of
 // addresses after a JSR to a routine that reads them from the stack, two tables of each address's low and high bytes
-// that the code pushes before an RTS, and the same two built into a pointer for JMP ($xx).
+// that the code pushes before an RTS, or writes into the stack page for an RTS much later, as a game that gives each
+// of its tasks a stack does, and the same two built into a pointer for JMP ($xx), in the routine itself or in one it
+// calls that is that jump alone. The two bytes can also be read through a pointer to the table, when the code builds
+// that pointer from numbers of its own. A table is only ever one the code is seen to jump with, never a guess.
 //
 // The program is in 16 KB banks. On the cartridges the tools read, the last one always sits at $C000-$FFFF and any
 // of them can be switched in at $8000-$BFFF, so an address there means nothing until the bank is known. Code in a
@@ -48,6 +51,8 @@ const LENGTH = { imp: 1, acc: 1, imm: 2, zp: 2, zpx: 2, zpy: 2, izx: 2, izy: 2, 
 // BRK is an instruction, but no game's code runs one on purpose: a zero is padding or data
 const isCode = op => OPS[op] && op !== 0x00;
 const ENDS = new Set(['RTS', 'RTI', 'JMP']);
+// how many numbers at the start of a table of addresses can have no routine
+const EMPTY_FIRST = 2;
 
 /** What an NES copy's program is: its bytes, its banks, and its mapper, or null for a copy that isn't one. */
 export function nesProgram(bytes) {
@@ -110,13 +115,19 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
   const u8 = offset => prg[offset];
   const u16 = offset => prg[offset] | prg[offset + 1] << 8;
 
-  // whether the code from an offset reads as code: instructions up to an RTS, RTI or JMP, none missing, in the same bank
-  function readsAsCode(offset, limit = 48) {
+  // whether the code from an offset reads as code: instructions up to an RTS, RTI or JMP, none missing, in the same
+  // bank. A routine can run long before its first return, as one that sets a screen up does. A JMP alone counts when
+  // it's to code that reads as code, as a table's entry that goes on in another's routine.
+  function readsAsCode(offset, limit = 256, alone = true) {
     for (let i = 0, at = offset; i < limit; i++) {
       if (at >= size || pool.has(at) || !isCode(u8(at))) return false;
       const { name, mode } = OPS[u8(at)];
       if (!sameWindow(at, at + LENGTH[mode] - 1)) return false;
-      if (ENDS.has(name)) return i >= 1 || name === 'RTS' || name === 'RTI';
+      if (ENDS.has(name)) {
+        if (i >= 1 || name === 'RTS' || name === 'RTI') return true;
+        const to = mode === 'abs' ? programOffset(u16(at + 1), ownBank(at), banks) : null;
+        return alone && to !== null && to !== at && readsAsCode(to, limit, false);
+      }
       at += LENGTH[mode];
     }
     return false;
@@ -199,32 +210,44 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
     const split = step === 1 && sameWindow(lo, hi);
     const count = split ? Math.abs(hi - lo) : Infinity;
     const out = [];
-    let first = Infinity;
+    let first = Infinity, last = 0;
     for (let i = 0; i < Math.min(count, 128); i++) {
       const l = lo + i * step, h = hi + i * step;
       if (h >= size || l >= first || h >= first || (!split && i && found.has(l))) break;
+      // a table can start with numbers that have no routine, written as zeros
+      if (!out.length && i < EMPTY_FIRST && !u8(l) && !u8(h)) continue;
       const address = (u8(l) | u8(h) << 8) + plus & 0xFFFF;
       const to = programOffset(address, bank, banks);
       if (to === null || !readsAsCode(to)) break;
       if (to > Math.min(l, h) && sameWindow(to, l)) first = Math.min(first, to);
       pool.add(l).add(h);
       out.push(to);
+      last = i;
     }
-    if (owner && out.length) owner.end = Math.max(owner.end, Math.max(lo, hi) + (out.length - 1) * step + 1);
+    if (owner && out.length) owner.end = Math.max(owner.end, Math.max(lo, hi) + last * step + 1);
     return out;
   }
+
+  // the pointer a routine jumps through when it is a JMP ($xx) and nothing else, which its callers fill, or null
+  const jumpsThrough = offset => (offset + 2 < size && OPS[u8(offset)]?.mode === 'ind' && u16(offset + 1) < 0x8000 ? u16(offset + 1) : null);
 
   // follows a function's code with `context` switched in at $8000: its end, what it calls and where its tables lead
   function trace(start, context) {
     const seen = new Set(), calls = [], jumps = [];
-    const work = [[start, { a: null, x: null, y: null, bank: context, from: {} }]];
+    const work = [[start, { a: null, x: null, y: null, bank: context, from: {}, part: null, parts: {} }]];
     const extent = { end: start + 1 };
     let bad = false;
     while (work.length) {
       let [pc, regs] = work.pop();
       // where A came from: a table read with an index, as { table: offset }
       let aFrom = null;
-      const pushed = [];
+      // what was pushed, and what was written into the stack page through a pointer, one after the other
+      const pushed = [], stacked = [];
+      // the addresses in the table a pointer was built from, the low bytes' and the high bytes'
+      const through = pointer => {
+        const lo = regs.from[pointer], hi = regs.from[pointer + 1 & 0xFFFF];
+        return lo && hi && lo.table !== hi.table ? readTable(lo.table, hi.table, lo.step, 0, regs.bank) : [];
+      };
       while (pc < size && !seen.has(pc) && !pool.has(pc) && (pc === start || !found.has(pc))) {
         const op = u8(pc);
         if (!isCode(op)) {
@@ -247,17 +270,20 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
               for (const t of readTable(next, next + 1, 2, 0, regs.bank, extent)) jumps.push([t, regs.bank]);
               break;
             }
+            // a call to a JMP ($xx) alone: through the pointer this code just built
+            const pointer = jumpsThrough(to);
+            if (pointer !== null) for (const t of through(pointer)) jumps.push([t, regs.bank]);
             const switched = switches(to, regs.a);
             if (switched !== undefined) regs.bank = switched;
           }
-          regs.a = regs.x = regs.y = null;
+          regs.a = regs.x = regs.y = regs.part = null;
           aFrom = null;
           pc = next;
           continue;
         }
         if (mode === 'rel') {
           const to = next + (operand << 24 >> 24);
-          if (to >= 0 && sameWindow(to, pc)) work.push([to, { ...regs, from: { ...regs.from } }]);
+          if (to >= 0 && sameWindow(to, pc)) work.push([to, { ...regs, from: { ...regs.from }, parts: { ...regs.parts } }]);
           pc = next;
           continue;
         }
@@ -274,9 +300,9 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
         }
         if (name === 'JMP') {
           // JMP ($xxxx): through a pointer the code just built from two tables, or one kept in the program
-          const lo = regs.from[operand], hi = regs.from[operand + 1 & 0xFFFF];
-          if (lo && hi) for (const t of readTable(lo.table, hi.table, lo.step, 0, regs.bank)) jumps.push([t, regs.bank]);
-          else if (operand >= 0x8000) {
+          const tabled = through(operand);
+          for (const t of tabled) jumps.push([t, regs.bank]);
+          if (!tabled.length && operand >= 0x8000) {
             const at = programOffset(operand, regs.bank, banks);
             if (at !== null && at + 1 < size) {
               const to = programOffset(u16(at), regs.bank, banks);
@@ -294,9 +320,33 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
         if (name === 'RTI') break;
         // the registers, as far as the bank switches need them
         const value = mode === 'imm' ? operand : null;
-        const read = (mode === 'abx' || mode === 'aby') && operand >= 0x8000 ? programOffset(operand, regs.bank, banks) : null;
+        let read = (mode === 'abx' || mode === 'aby') && operand >= 0x8000 ? programOffset(operand, regs.bank, banks) : null;
+        // a pointer in the zero page that the code built from its own numbers, as far as they're known: the high
+        // byte a number, the low byte a number, or a number added to an index
+        const lowByte = mode === 'izy' ? regs.parts[operand] : null, highByte = mode === 'izy' ? regs.parts[operand + 1 & 0xFF] : null;
+        if (name === 'LDA' && lowByte && highByte?.exact && regs.y !== null) {
+          // a read through it, of a table in the program
+          const address = (highByte.value << 8 | lowByte.value) + regs.y;
+          if (address >= 0x8000 && address <= 0xFFFF) read = programOffset(address, regs.bank, banks);
+        }
+        if (name === 'STA' && highByte?.exact && highByte.value === 1) {
+          // a write through it into the stack page: an address from two tables, less one, low byte first, for an RTS
+          // once the stack is put there
+          stacked.push(aFrom);
+          const [lo, hi] = stacked.slice(-2);
+          if (lo && hi && lo.table !== hi.table) for (const t of readTable(lo.table, hi.table, lo.step, 1, regs.bank)) jumps.push([t, regs.bank]);
+        }
+        if (mode === 'zp' && !['LDA', 'LDX', 'LDY', 'STA', 'CMP', 'CPX', 'CPY', 'BIT', 'ORA', 'AND', 'EOR', 'ADC', 'SBC'].includes(name)) delete regs.parts[operand];
+        const part = regs.part;
+        if (!['STA', 'STX', 'STY', 'CMP', 'CPX', 'CPY', 'BIT', 'CLC', 'SEC', 'LDX', 'LDY', 'INX', 'INY', 'DEX', 'DEY', 'PHA', 'PHP', 'PLP', 'TAX', 'TAY'].includes(name)) regs.part = null;
         switch (name) {
-          case 'LDA': regs.a = value; aFrom = read !== null ? { table: read, step: 1 } : null; break;
+          case 'LDA': regs.a = value; regs.part = value === null ? null : { value, exact: true }; aFrom = read !== null ? { table: read, step: 1 } : null; break;
+          case 'ADC':
+            // a number added: to another, or to an index
+            if (value !== null) regs.part = part ? { value: part.value + value & 0xFF, exact: part.exact } : { value, exact: false };
+            regs.a = null;
+            aFrom = null;
+            break;
           case 'LDX': regs.x = value; break;
           case 'LDY': regs.y = value; break;
           case 'TAX': regs.x = regs.a; break;
@@ -312,6 +362,8 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
             if (into !== null && into < 0x8000) {
               if (name === 'STA' && aFrom) regs.from[into] = aFrom;
               else delete regs.from[into];
+              if (name === 'STA' && regs.part) regs.parts[into] = regs.part;
+              else delete regs.parts[into];
             }
             if (operand >= 0x8000 && mode !== 'zp' && mode !== 'zpx' && mode !== 'zpy' && mode !== 'izx' && mode !== 'izy') {
               // a write to the cartridge: a bank switch. UNROM's program is on the bus as it's written, so what it
