@@ -49,6 +49,7 @@ BossPart *boss_part(int x, int y, int tiles, int anim, int variant);
 void boss_explosion(int qx, int qy);
 /** A piece of debris and an explosion from (x, y), falling `ay`/256 px a frame faster each frame. */
 void boss_debris(int x, int y, int ay);
+void x_boss_debris(int x, int y, int blastY);
 /** CreatePostBossEggMobile: Eggman flies off from (x, y). */
 void boss_egg_mobile(int x, int y);
 /** CreatePreBossCameraPan: the top and bottom edges close in on `minY` and `maxY` 1 px a frame. */

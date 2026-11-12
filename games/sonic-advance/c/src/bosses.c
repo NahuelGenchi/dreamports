@@ -13,7 +13,7 @@ enum {
   PART_FRAMES = 0x3C, PART_VX = 0x100, PART_VY = -0x200, PART_GROW = 8, PART_GRAVITY = 40, PART_SCALE_MAX = 0x200,
   BOLTS_MARGIN = 32,
   ANIM_EXPLOSION = 611, VRAM_EXPLOSION = 0x1000, EXPLOSION_ORDER = 20, EXPLOSION_FLIPS = 0xC00,
-  DEBRIS_ORDER = 17, DEBRIS_HOLD = 32, DEBRIS_SPEED = 0x600, DEBRIS_KINDS = 8,
+  DEBRIS_ORDER = 17, X_DEBRIS_ORDER = 23, X_DEBRIS_GRAVITY = 5, DEBRIS_HOLD = 32, DEBRIS_SPEED = 0x600, DEBRIS_KINDS = 8,
   ANIM_EGG_MOBILE = 693, ANIM_EGGMAN = 694, VRAM_EGG_MOBILE = 0x2580, VRAM_EGGMAN = 0x2E40,
   EGG_MOBILE_ORDER = 21, EGGMAN_ORDER = 19,
   EGG_MOBILE_STILL = 0, EGG_MOBILE_TURN = 1, EGGMAN_FLEE = 4, EGGMAN_TURN = 9, EGGMAN_SIT = 0, EGGMAN_SIT_X_ZONE = 8,
@@ -192,15 +192,15 @@ void boss_explosion(int qx, int qy) {
   b->o.sprite.frameFlags = (uint32_t)ENEMY_PRIORITY << 12 | (act_random() & EXPLOSION_FLIPS);
 }
 
-// flung up at 6 px a frame at a random angle and kept for at least 32 frames, with an explosion up to 63 px above and 32 px
-// either side
-void boss_debris(int x, int y, int ay) {
+// flung up at 6 px a frame at a random angle from (x, y) and kept for at least 32 frames, drawn at `order`, with an explosion
+// up to 63 px above blastY and 32 px either side
+static void debris_at(int x, int y, int blastY, int ay, int order) {
   int i = (int)(act_random() % DEBRIS_KINDS);
   Bolts *b = bolts_new(vram_malloc(DEBRIS_TILES[i]), DEBRIS_ANIM[i], DEBRIS_VARIANT[i]);
   if (b) {
     b->qx = x << 8; b->qy = y << 8;
     b->o.sprite.frameFlags = (uint32_t)ENEMY_PRIORITY << 12;
-    b->o.sprite.oamFlags = DEBRIS_ORDER << 6;
+    b->o.sprite.oamFlags = (uint16_t)(order << 6);
     b->ay = ay;
     b->hold = DEBRIS_HOLD;
   }
@@ -211,8 +211,13 @@ void boss_debris(int x, int y, int ay) {
     b->vx = s16(-(SINE[angle + 256] * DEBRIS_SPEED) >> 14);
   }
   uint32_t r = act_random();
-  boss_explosion((x + (int)(r & 0x3F) - 32) << 8, (y - (int)((r & 0x3F0000) >> 16)) << 8);
+  boss_explosion((x + (int)(r & 0x3F) - 32) << 8, (blastY - (int)((r & 0x3F0000) >> 16)) << 8);
 }
+
+void boss_debris(int x, int y, int ay) { debris_at(x, y, y, ay, DEBRIS_ORDER); }
+
+// X Zone's machines throw theirs further back, falling 5/256 px a frame faster (sub_8034EE0, sub_8036478, sub_8038420)
+void x_boss_debris(int x, int y, int blastY) { debris_at(x, y, blastY, X_DEBRIS_GRAVITY, X_DEBRIS_ORDER); }
 
 // --- the Egg Mobile's escape (CreatePostBossEggMobile) -----------------------------------------------------------------------
 // Eggman sits in it for 46 frames, rises 1 px a frame to 80 px up, turns round and flies off to the right at 4 px a frame until

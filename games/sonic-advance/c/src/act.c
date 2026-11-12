@@ -6,6 +6,8 @@
 #include "objects.h"
 #include "results.h"
 
+int moon_opens(void);
+
 // the kit's sound output, as the page asks for a frame's samples (kit/gba/c/sound.c): the act renders the frames
 // before its first one here, to put the stage's music where the original has it
 float *dp_sound_render(int count);
@@ -98,6 +100,8 @@ static void load_stage(int level) {
   // Mountain the first 32 × 64 (sStageBgDimensions)
   uint32_t screen = (uint32_t)((row->bgCnt >> 8) & 31) * 0x800u;
   int wide = (row->bgCnt >> 14) & 1;
+  uint32_t mapSize = ((row->bgCnt >> 14) == 3) ? 0x2000 : ((row->bgCnt >> 14) != 0) ? 0x1000 : 0x800;
+  memset(gba_vram + screen, 0, mapSize);
   for (int y = 0; y < s->background.yTiles; y++) {
     for (int x = 0; x < s->background.xTiles; x++) {
       if ((row->bgRows && y >= row->bgRows) || (row->bgCols && x >= row->bgCols)) continue;
@@ -475,12 +479,23 @@ void act_stage_results(void) {
 
 // GoToNextLevel, once the save is written: the next act, made inside the task as the course select makes one, with the
 // score, the lives and the game's random numbers carried over (GameStageStart leaves them). Its first frame runs at
-// once, then it loads for NEXT_LEVEL_LOAD frames (act_task). A next act that isn't in C yet stops the game there, with
-// the screen as it was, as the front end does (front.c), rather than load with another act's music and background
+// once, then it loads for NEXT_LEVEL_LOAD frames (act_task). A next act that isn't in C yet stops the game there, on
+// the black the original's screen is while its stage loads, as the front end does (front.c), rather than load with
+// another act's music and background
 enum { NEXT_LEVEL_LOAD = 2 };
 static int nextLevel;
+// the frame after, once the screen has taken the black, the game stops
+static void stop_on_black(Task *t) { destroy_task(t); ctx.done = 1; }
 static void next_act(void) {
-  if (!level_in_c(nextLevel)) { act_active = 0; ctx.done = 1; return; }
+  if (!level_in_c(nextLevel)) {
+    // and no fade over it, such as X Zone's white; its stage's song starts as it loads, as an act in C's does
+    act_hold_black();
+    e.bldCnt = 0; e.bldY = 0;
+    music_call(MUSIC_STAGE, level_row(nextLevel)->song);
+    act_active = 0;
+    create_task(stop_on_black, NULL, 0x0F00, 0, NULL);
+    return;
+  }
   int lives = act.lives, score = act.score;
   // gPseudoRandom goes on from the act before, whichever of the C's two sequences that act drew from
   uint32_t seed = act_random_state();
@@ -494,7 +509,8 @@ static void next_act(void) {
 }
 // GoToNextLevel: every task goes, the act's objects with their sprites' VRAM, the queues stop, the music stops, and
 // the save is written (the screen keeping its frame while the flash takes it), before the next act starts. Against the
-// original, the write and the next stage's start take a frame more than WRITE_FRAMES here
+// original, the write and the next stage's start take a frame more than WRITE_FRAMES here for an act in C, whose first
+// frame has no V-blank; the black of one that isn't shows on the frame the write ends, as the original's stage start's
 static void go_to_next_level(void) {
   nextLevel = act.stage.level + 1;
   destroy_tasks(0, 0xFFFF);
@@ -502,8 +518,12 @@ static void go_to_next_level(void) {
   act.task = NULL;
   clear_queues();
   stop_all_songs();
-  if (save_write()) engine_stall(WRITE_FRAMES + 1, next_act);
+  if (save_write()) engine_stall(level_in_c(nextLevel) ? WRITE_FRAMES + 1 : WRITE_FRAMES, next_act);
   else next_act();
+}
+
+void act_go_to_next_level(void) {
+  go_to_next_level();
 }
 
 int act_goal_passed(void) { return act.goalReached; }
@@ -568,7 +588,12 @@ static void act_frame(void) {
   int cardShows = !act.cardDone;
   if (cardShows) card_update((e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
   // the results' task (0x2100) and its pieces' (0x2120); the frame they end, the next act takes over
-  if (results_active() && !results_run()) { go_to_next_level(); return; }
+  if (results_active() && !results_run()) {
+    if (act.stage.level != LEVEL_X_ZONE || !moon_opens()) {
+      go_to_next_level();
+      return;
+    }
+  }
   // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180), and the objects' tasks from
   // its priority after it, so an icicle (0x2200) that hurts Sonic takes his rings after the HUD has shown them
   if (act.cardDone) hud_update(1);
@@ -778,7 +803,7 @@ void act_song_playing(void) { songPlaying = 1; }
 static int startPointSpent;   // a start point has opened its act, so the acts after it start as the game starts them
 
 void act_start(int level, int cardSkip, int preFrames) {
-  gba_sound_psg_at(ACT_SOUND_MAIN_AT);
+  gba_sound_psg_at(level_row(level)->soundAtOnce ? 0 : ACT_SOUND_MAIN_AT);
   memset(&act, 0, sizeof act);
   act.fromStartPoint = gba_start_point("level") != NULL && !startPointSpent;
   startPointSpent |= act.fromStartPoint;
