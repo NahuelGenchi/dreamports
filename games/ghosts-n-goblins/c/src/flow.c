@@ -342,11 +342,17 @@ static void place_stage_objects(void) {
   // a kind's own routine: $D71B, whose state starts at 0, or $D72B, whose state the list gives, which $D804 jumps to
   // and $D6B9, which leaves the state as the object's last user left it, and which $D670 jumps to
   // and $D706, a moving platform's, which gives it a heading and a shape too
-  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, PLATFORM = 0xD706, BOSS = 0xD673 };
+  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, PLATFORM = 0xD706, BOSS = 0xD673 , COUNT_LISTED = 0xD692, LEFT_OUT = 0xD66D };
   uint16_t routine = ram16(0x22);
   if (routine == STATE_LISTED_TOO) { took(JUMPS); routine = STATE_LISTED; }
   if (routine == STATE_KEPT_TOO) { took(JUMPS); routine = STATE_KEPT; }
-  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT && routine != PLATFORM && routine != BOSS) return;
+  if (routine == LEFT_OUT) {
+    // $D66D: a kind the list names that comes by itself instead, as the zombies do
+    STAGE_OBJECTS_PLACED++;
+    took(STAGE_OBJECT_LEFT_OUT);
+    return;
+  }
+  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT && routine != PLATFORM && routine != BOSS && routine != COUNT_LISTED) return;
   uint8_t object;
   if (routine == BOSS) {
     // $D673: the boss has to be there, so it may take the place of something that isn't in the picture. The stage's
@@ -369,16 +375,17 @@ static void place_stage_objects(void) {
       took(STAGE_OBJECT_NO_ROOM);
       return;
     }
-    took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : routine == STATE_LISTED ? STAGE_OBJECT_STATE_LISTED : routine == PLATFORM ? STAGE_OBJECT_PLATFORM : STAGE_OBJECT_STATE_KEPT);
+    took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : routine == STATE_LISTED ? STAGE_OBJECT_STATE_LISTED : routine == PLATFORM ? STAGE_OBJECT_PLATFORM : routine == COUNT_LISTED ? STAGE_OBJECT_COUNT_LISTED : STAGE_OBJECT_STATE_KEPT);
   }
   last_index = object;
   if (routine == PLATFORM) {
     RAM[OBJECT_HEADING + object] = 0x0C;
     RAM[OBJECT_SHAPE + object] = 0x5F;
   }
-  if (routine != STATE_KEPT && routine != BOSS) RAM[OBJECT_STATE + object] = routine == STATE_ZERO ? 0 : listed_byte(listed, 1);
+  if (routine != STATE_KEPT && routine != BOSS && routine != COUNT_LISTED) RAM[OBJECT_STATE + object] = routine == STATE_ZERO ? 0 : listed_byte(listed, 1);
   RAM[0x0647 + object] = 0;
-  RAM[OBJECT_COUNT + object] = 0;
+  // $D692 gives a kind the count the list has for it, and leaves its state
+  RAM[OBJECT_COUNT + object] = routine == COUNT_LISTED ? listed_byte(listed, 1) : 0;
   RAM[OBJECT_KIND + object] = kind;
   RAM[OBJECT_X + object] = listed_byte(listed, 3);
   RAM[OBJECT_X_SCREEN + object] = listed_byte(listed, 4);
@@ -392,9 +399,15 @@ static void place_stage_objects(void) {
 
 // $8400 in bank 2: what comes at Arthur by itself: the zombies and the flying knights (enemies.c), the forest's enemies
 // (forest.c), and four other routines, at $8574, $867A, $880A and $8748, which have nothing to do in the first stage and
-// aren't ported yet.
+// aren't ported yet, but for where the last begins.
 static void stage_dangers(void) {
   took(DANGERS_OTHERS);
+  if (STAGE_SET == 1) {
+    // $874E: in the second set of stages, on Arthur's fifth screen and his seventh to tenth, a count at $0718 runs
+    // down, and what comes at its end, from $875E, isn't ported yet
+    uint8_t screen = RAM[OBJECT_X_SCREEN + ARTHUR];
+    took(screen == 4 ? TOWER_DANGER_FIFTH_SCREEN : screen < 6 ? TOWER_DANGER_BEFORE : screen < 0x0A ? TOWER_DANGER_LATER_SCREENS : TOWER_DANGER_PAST);
+  }
   zombies_come(&last_index);
   knights_come(&last_index);
   forest_enemies_come(&last_index);
