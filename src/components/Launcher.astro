@@ -53,23 +53,23 @@ const making = games.filter((game) => beingMade(game.data));
 const github = await readMaking();
 const githubOf = (game: Game) => github?.[game.data.game];
 const freeOf = (game: Game) => makeView(game.data, githubOf(game)).free;
-const rows = FILTERS.map((f) => {
-  // the Make row holds only what it has: the Dreamports being made, then the way to start one
-  if (f.key === 'make') {
-    return { filter: f, list: [...making.map((game): Place => ({ game, make: true, free: freeOf(game) })), { start: true }] };
-  }
-  // the Dreamports row holds the systems that have Dreamports, in the order their newest games came, then every game,
-  // and the launcher shows one or the other (src/scripts/launcher.ts)
-  const games = forPlayers.filter((game) => f.kinds.includes(game.data.kind)).map((game) => ({ game, system: systemFor(game) }));
+// A row holds the systems its games are for, in the order their newest games came, then every game, and the launcher
+// shows one or the other (src/scripts/launcher.ts). In the Make row no system counts as unfinished: it shows every
+// Dreamport being made.
+const bySystem = (list: Game[], make = false): Place[] => {
+  const games = list.map((game) => ({ game, system: systemFor(game) }));
   const systems = [...new Map(games.map(({ system }) => [system.id, system])).values()];
-  return {
-    filter: f,
-    list: [
-      ...systems.map((system): Place => ({ system: { ...system, unfinished: !games.some((g) => g.system.id === system.id && fullyPorted(g.game)) } })),
-      ...games.map(({ game, system }): Place => ({ game, of: system.id })),
-    ],
-  };
-});
+  const unfinished = (id: string) => !make && !games.some((g) => g.system.id === id && fullyPorted(g.game));
+  return [
+    ...systems.map((system): Place => ({ system: { ...system, unfinished: unfinished(system.id) }, make })),
+    ...games.map(({ game, system }): Place => ({ game, of: system.id, make, free: make ? freeOf(game) : undefined })),
+  ];
+};
+const rows = FILTERS.map((f) => ({
+  filter: f,
+  // the Make row holds the Dreamports being made, then the way to start one, which stays with the systems
+  list: f.key === 'make' ? [...bySystem(making, true), { start: true }] : bySystem(forPlayers.filter((game) => f.kinds.includes(game.data.kind))),
+}));
 const current = rows.find((row) => row.filter.key === filter)!;
 const selIndex = Math.max(0, current.list.findIndex((place) => !!place.game && place.game.id === selected));
 // where a filter stands on the top bar, 0 being the middle, so the page starts with them in place
