@@ -14,6 +14,11 @@ export const ICON_LINKS = [
 
 export const ICONS_AT = '/icons/';
 
+/** The whole mark of a pick as a picture, in the light theme's colours and the dark's: what a game's page shows on
+ *  its Opening screen (#1185). That page is plain files with no drawing of its own to change, so its head names
+ *  these (kit/gba/ui/opening-mark.js), and the launcher fetches them as a game launches (src/scripts/mark.ts). */
+export const OPENING_MARKS = { light: 'mark.svg', dark: 'mark-dark.svg' } as const;
+
 /** The word in an address that carries a logo, as in `/?logo=sleep-lagoon`. An app on the Home Screen opens at such
  *  an address (its manifest's), since a phone keeps an app's choices apart from the browser's: the app starts with the
  *  logo its icon shows. The page's first script takes it only when the browser keeps no logo of its own. */
