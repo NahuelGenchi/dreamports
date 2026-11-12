@@ -21,10 +21,19 @@ enum { VIEW_X = 0x63, VIEW_Y = 0x66, VIEW_X_BEFORE = 0x6B, VIEW_Y_BEFORE = 0x6E,
 #define AT_X_SCREEN RAM[0x78]
 #define AT_X RAM[0x74]
 
-// sub_E945 and sub_E9A4: the block at a place in the stage. Stages more than one screen high, at $E94B, aren't ported yet.
+// sub_E945 and sub_E9A4: the block at a place in the stage.
 static uint8_t block_at_place(void) {
+  // a stage more than one screen high lists its screens a row at a time, each row as long as the copy's list at $EB30 says
+  uint8_t before = 0;
   RAM[0x22] = AT_Y_SCREEN;
-  SCREEN_AT = AT_X_SCREEN;
+  if (RAM[0x22]) {
+    took(STAGE_BLOCK_ROWS_DOWN);
+    do {
+      before = (uint8_t)(before + cart(7, (uint16_t)(0xEB30 + RAM[0xCF] * 2)));
+      took(STAGE_BLOCK_ROW_DOWN);
+    } while (--RAM[0x22]);
+  }
+  SCREEN_AT = (uint8_t)(before + AT_X_SCREEN);
   if ((RAM[STAGE_SCREENS] + SCREEN_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
   RAM[0x72] = peek((uint16_t)(ram16(STAGE_SCREENS) + SCREEN_AT));
   set_ram16(0x54, (uint16_t)(peek16(0x800E) + RAM[0x72] * 240));   // a screen's 240 blocks

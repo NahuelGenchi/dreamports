@@ -1514,3 +1514,92 @@ COST(FOREST_TURN_SHAPE_3, 26)     // to $A7B7
 COST(FOREST_TURN_SHAPE_4, 24)
 COST(FOREST_TURN_SHAPE_FLIPPED, 18)      // $A79B to $A7C5, with the shape for the other side,
 COST(FOREST_TURN_SHAPE_BACK_FLIPPED, 15) // or $A7BA to $A7C5
+
+// ---- the second stage's start (flow.c, scroll.c)
+COST(STAGE_OBJECT_LEFT_OUT, 11)   // $D66D, and back: a kind the list names that isn't placed
+COST(STAGE_OBJECT_COUNT_LISTED, 17) // or $D695 to $D6C9, for one whose count the list gives, less the two writes at $D6C1 it jumps past
+COST(STAGE_BLOCK_ROWS_DOWN, 7)    // $E949 to $E951 and the end of its loop, more than the branch past them
+COST(STAGE_BLOCK_ROW_DOWN, 14)    // each row of screens above the place's
+COST(TOWER_DANGER_BEFORE, 12)     // $874C to $875D, more than its branch there: before Arthur's seventh screen, and not his fifth,
+COST(TOWER_DANGER_FIFTH_SCREEN, 8)  // or to $875E, on his fifth,
+COST(TOWER_DANGER_LATER_SCREENS, 16) // or on his seventh to tenth,
+COST(TOWER_DANGER_PAST, 15)       // or past them
+
+// ---- the small blue devil, kind 6, bank 4's $A89E (devil.c)
+COST(DEVIL_IS_HIT, 5)             // $A8A1 to $F770
+COST(DEVIL_IS_NOT_HIT, 3)         // or to $A8A6
+COST(DEVIL_IS_NOT_AWAKE, 2)       // $A8A9 to sub_F0A3
+COST(DEVIL_IS_AWAKE, 3)           // or to $A8EA
+COST(DEVIL_WAITS_OUT_OF_VIEW, 9)  // $A8AE, and back: out of the view,
+COST(DEVIL_WAITS_ON, 18)          // or in it, with rounds of its count left,
+COST(DEVIL_WAKES, 11)             // or none, to sub_F30D
+COST(DEVIL_WOKEN, 7)              // $A8B8 to sub_F181
+COST(DEVIL_FROM_THE_LEFT, 22)     // $A8C0, and back: it's near the picture's left side,
+COST(DEVIL_FROM_THE_RIGHT, 37)    // its right,
+COST(DEVIL_FROM_ABOVE, 52)        // its top,
+COST(DEVIL_FROM_BELOW, 58)        // or none of them
+COST(DEVIL_IN_VIEW, 4)            // $A8F0 to $A90A, across a page
+COST(DEVIL_OUT_OF_VIEW, 2)        // or to sub_F346
+COST(DEVIL_STAYS, 10)             // $A8F5 to $A90A, across a page: before its third time round,
+COST(DEVIL_GONE, 28)              // or from it, and back,
+COST(DEVIL_GONE_WITH_CARRIED, 32) // with what it carries
+COST(DEVIL_CARRIES_NOTHING, 7)    // $A90A to $A968
+COST(DEVIL_CARRIES, 61)           // or to sub_F687, with what it carries under it on its own screen,
+COST(DEVIL_CARRIES_ONTO_NEXT_SCREEN, 80) // or on the next one down
+COST(DEVIL_HOLDS_ON, 3)           // $A947 to $A968: Arthur isn't near,
+COST(DEVIL_LETS_GO, 31)           // or is, to sub_FA87
+COST(DEVIL_LET_GO_RIGHT, 3)       // $A961 to $A968
+COST(DEVIL_LET_GO_LEFT, 9)
+COST(DEVIL_TESTS, 14)             // $A968 to sub_F5A0, with its call
+COST(DEVIL_NOT_KILLED, 7)         // $A971 to $A9AC
+COST(DEVIL_KILLED, 13)            // or to sub_F32E, with nothing carried,
+COST(DEVIL_KILLED_CARRYING, 19)   // or with what it carried gone
+COST(DEVIL_FALL_SIDE, 19)         // $A983 to sub_F305
+COST(DEVIL_KILLED_SOUND, 11)      // $A993 to sub_ED51, by sub_F7B9
+COST(DEVIL_KILL_COUNTED, 8)       // $A996 to $A99E
+COST(DEVIL_NO_KILLS_LEFT, 12)
+COST(DEVIL_KILLED_SCORE, 21)      // $A99E to sub_D8FC
+COST(DEVIL_FLAG_IS, 5)            // $A9AF to $AA0C, or $A9B7 to $A9EF
+COST(DEVIL_FLAG_IS_NOT, 3)        // or past it
+COST(DEVIL_DIVES, 24)             // $AA0C to sub_F03E, with its call
+COST(DEVIL_DIVE_OVER, 56)         // or to its end, and back
+COST(DEVIL_HOVERS, 25)            // $A9EF to sub_F03E, with its call, across a page
+COST(DEVIL_AIMS, 90)              // or to sub_EF25, with its call, by sub_FA58
+COST(DEVIL_AIMED, 34)             // and by sub_F315, back
+COST(DEVIL_STOPS, 58)             // $A9BC, and by sub_F311, back: its 16th round of flying
+COST(DEVIL_FLIES, 46)             // or to sub_F03E, with its call: its first two times,
+COST(DEVIL_FLIES_THIRD_TIME, 40)  // its third,
+COST(DEVIL_FLIES_LATER, 38)       // or later
+COST(DEVIL_SHAPE, 47)             // $AA33 to sub_F2E7, with sub_F576
+COST(DEVIL_SHAPE_KEPT, 9)         // $AA43, and back
+COST(DEVIL_SHAPE_TURNED, 21)
+
+// ---- the second stage's objects that go up and down, and that fall, kinds $36 and $37, bank 4's $9DA2 and $9D5F (platform.c)
+COST(RISING_THING_BEGINS, 32)     // $9DA2 to sub_F321
+COST(RISING_THING_OUT_OF_VIEW, 2) // $9DBF to sub_F346
+COST(RISING_THING_DOWN_FIRST_SCREEN, 18) // $9DBF to $9DF6: going down, on the stage's first screen down,
+COST(RISING_THING_AT_BOTTOM, 26)  // or to $9DE9, below a later screen's 224th line,
+COST(RISING_THING_GOES_DOWN, 28)  // or to $9DF6, above it
+COST(RISING_THING_UP_FIRST_SCREEN, 19) // $9DBF to $9DE9: going up, on the first screen down,
+COST(RISING_THING_GOES_UP, 27)    // or to $9DF6, below a later screen's 32nd line,
+COST(RISING_THING_AT_TOP, 26)     // or to $9DE9, above it
+COST(THING_TURNS, 11)             // $9DE9 to sub_F2FF
+COST(THING_TURNED_HIDDEN, 2)      // $9DF4 to $9DF6
+COST(THING_TURNED_SHOWN, 3)       // or to $9DFF
+COST(THING_MOVES, 14)             // $9DF6 to sub_F03E, with its call
+COST(THING_NOT_SHOWN, 9)          // $9E02, and back
+COST(THING_IS_SHOWN, 2)           // or to $9E04
+COST(THING_ARTHUR_RISES, 15)      // $9E04, and back: Arthur is going up,
+COST(THING_ARTHUR_HELD, 22)       // or is held already,
+COST(THING_ARTHUR_BELOW, 36)      // or is below it,
+COST(THING_ARTHUR_HIGH, 40)       // or 20 pixels above it or more,
+COST(THING_ARTHUR_OFF, 58)        // or off its sides
+COST(FALLING_THING_BEGINS, 21)    // $9D5F to sub_F321
+COST(FALLING_THING_OUT_OF_VIEW, 2) // $9D74 to sub_F346
+COST(FALLING_THING_WAITS_UNSEEN, 9) // $9D7C, and back
+COST(FALLING_THING_GONE, 15)
+COST(FALLING_THING_IN_VIEW, 3)    // $9D74 to $9D84
+COST(FALLING_THING_FALLS, 12)     // $9D87 to $9DF6
+COST(FALLING_THING_LOOKS, 13)     // or to sub_F687
+COST(FALLING_THING_WAITS, 9)      // $9D9C, and back
+COST(FALLING_THING_SEES_HIM, 2)   // or to sub_F309

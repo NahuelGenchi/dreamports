@@ -1091,6 +1091,51 @@ kbd {
   fill: currentColor;
 }
 
+/* a system: its drawing, filled with the logo's blues (public/systems/, #1168) */
+.screen.system {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--hollow);
+}
+
+.sys-icon {
+  display: block;
+  flex: none;
+  height: 78%;
+  aspect-ratio: 1;
+  background: linear-gradient(to bottom right, var(--mk-b1), var(--mk-b2) 55%, var(--mk-b3));
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+/* the system whose Dreamports the row shows, over the row */
+.sys-head {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: calc(var(--row-y) - var(--rise) - var(--th) / 2 - var(--cg) - 8px);
+  translate: -50% -100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.sys-head[hidden] {
+  display: none;
+}
+
+.sys-head .sys-icon {
+  width: 22px;
+  height: 22px;
+}
+
 /* an empty place, when a search finds nothing */
 .hollow {
   position: absolute;
@@ -1427,6 +1472,7 @@ kbd {
 }
 
 .launcher.is-launching .nameplate,
+.launcher.is-launching .sys-head,
 .launcher.is-launching .cursor,
 .launcher.is-launching .corners {
   opacity: 0;
@@ -2452,6 +2498,11 @@ dialog.card[open] {
   mask-image: none;
 }
 
+/* The systems need the script, which shows them or their games: until it builds the row, the row is its games (#1168). */
+.row:not([role]) .slot[data-system] {
+  display: none;
+}
+
 /* Unfinished Dreamports are out of the row from the first frame, before the script builds it (#1154). */
 :root[data-unfinished='hide'] .row:not([role]) .slot[data-unfinished] {
   display: none;
@@ -2889,7 +2940,7 @@ dialog.card[open] {
   transition: opacity 0.25s ease;
 }
 
-.launcher[data-view] :is(.cursor, .nameplate, .corners, .pad-hint, .filters) {
+.launcher[data-view] :is(.cursor, .nameplate, .sys-head, .corners, .pad-hint, .filters) {
   opacity: 0;
   pointer-events: none;
 }

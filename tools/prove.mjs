@@ -600,7 +600,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const outside = first.outside;
     const report = {
       recording: name, recordingFile, recordingSha1: recordingHash(recordingText), frames, matched, ...(stopped ? { stopped } : {}), differs: differing, neverInPlay: neverSeen, firstDifference: difference, ...(pictureDifference ? { firstPictureDifference: pictureDifference } : {}), onlyInOriginal, oneColour, parts: partsFound, stills, pixels: stillsFound, states,
-      sound: { heard: madeSound, differs: soundDiffers, firstDifference: firstSound, ...(unheard.size ? { notCompared: stretchesOf([...unheard].sort((a, b) => a - b)) } : {}) },
+      sound: { heard: madeSound, differs: soundDiffers, firstDifference: firstSound, ...(unheard.size ? { notCompared: stretchesOf([...unheard].sort((a, b) => a - b)) } : {}), ...(compareSound.dips.length ? { dips: stretchesOf(compareSound.dips) } : {}) },
       ...(wasDifferent ? { sinceLastProven: { differs: newly, firstDifference: newDifference, matches: fixed } } : {}),
       clip: {
         from: clip[0], to: clip[1], frames: clipFrames.length, seconds: Math.round(length * 100) / 100, apart, differing: clipDiffering, oneColour: plainFrames, same,
@@ -657,6 +657,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
           : `${where}, the original is ${theirs} steps loud and the Dreamport ${ours}, ${dB} dB apart`}.`);
     }
     if (unheard.size) log(`  The sound of frames ${listed(stretchesOf([...unheard].sort((a, b) => a - b)))} isn't compared, next to the frames only the original has.`);
+    if (compareSound.dips.length) log(`  Frames where one band of the sound dips for a moment, as two voices on one note cancel, which counts as the same: ${listed(stretchesOf(compareSound.dips))}.`);
     if (newly.length) log(`  Differs where it matched when last proven: ${listed(newly)}. The first is ${at(newDifference)}.`);
     if (oneColour.length && !quick && (asked.length || !parts.length)) {
       const shown = oneColour.slice(0, 12).map(({ from, to, colour }) => `${from === to ? from : `${from} to ${to}`} (${colour})`).join(', ');
