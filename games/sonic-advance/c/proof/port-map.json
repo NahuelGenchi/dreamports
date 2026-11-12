@@ -356,7 +356,7 @@
     ["sub_80078D4","src/lines.c:29"],
     ["sub_8007958","src/lines.c:49"],
     ["sub_800FD9C","src/modeselect.c:185"],
-    ["sub_8011A4C","src/icemountain.c:211"],
+    ["sub_8011A4C","src/icemountain.c:212"],
     ["sub_801E4E4","src/steamexhausts.c:31"],
     ["sub_801EB44","src/conveyors.c:10"],
     ["sub_801F07C","src/terrain.h:23"],
@@ -383,6 +383,6 @@
     ["sub_8029D14","src/player.c:125"],
     ["sub_8029ED8","src/player.c:165"],
     ["Task_800F058","src/modeselect.c:313"],
-    ["VCountIntr_8011ACC","src/icemountain.c:195"]
+    ["VCountIntr_8011ACC","src/icemountain.c:196"]
   ]
 }
