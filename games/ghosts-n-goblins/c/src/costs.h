@@ -959,6 +959,9 @@ COST(GAME_ROUND_AFTER, 19)        // $D58D to $D595
 COST(GAME_ROUND_ENDS, 48)         // $D3F0 to the call that yields
 COST(GAME_LIFE_IS_OVER, 7)        // or $D3F0 to $D408, once Arthur's task has ended
 COST(LIFE_OVER_WEAPON_KEPT, 38)   // $D40B to sub_CAD6: the weapon he had, and a place with no other to start again from
+COST(LIFE_OVER_BACK_FROM_THIRD, 44)    // or the third place, which starts again from the second,
+COST(LIFE_OVER_BACK_FROM_SIXTH, 36)    // or the sixth, from the fifth,
+COST(LIFE_OVER_BACK_FROM_SEVENTH, 39)  // or the seventh
 COST(LIFE_LOST, 20)               // $C8FF back to $C8FC, with a life left
 
 // ---- the rows' list, sub_EECF (screen.c)
@@ -1381,6 +1384,58 @@ COST(BOSS_TOUCHED, 8)             // or Arthur did,
 COST(BOSS_HIT, 16)                // or a weapon,
 COST(BOSS_HIT_BY_CROSS, 28)       // or the weapon of kind $27, whose hit is taken back
 COST(BOSS_ASLEEP, 23)             // $FC04 to $FC62: fewer than ten hits, and asleep
+COST(BOSS_AWAKE, 32)              // or awake, to sub_F2EF, with the sound it asks for
+COST(BOSS_TURN_ELSEWHERE, 5)      // a flag sends the turn to its own routine,
+COST(BOSS_TURN_STEPS, 6)          // or none does, to $FD3F
+COST(BOSS_STEP_READ, 12)          // $FD3F to $FD48: the step's speed
+COST(BOSS_STEP_STANDS, 5)         // none: to $FE34
+COST(BOSS_NO_LOOK, 9)             // $FD4D to $FD67, three rounds in four,
+COST(BOSS_LOOKS_FOR_WEAPONS, 22)  // or to sub_F5F2 and its own call of sub_F2FF
+COST(BOSS_WEAPONS_NOT_SHOWN, 28)  // which goes back for a boss that isn't shown,
+COST(BOSS_WEAPONS_SHOWN, 21)      // or on to sub_F5F9
+COST(BOSS_DODGE_SET, 32)          // $FD5D, with sub_F315, and back: a weapon is coming
+COST(BOSS_STEP_GOES_ON, 9)        // $FD67 to $FDFF: the step has rounds left,
+COST(BOSS_STEP_OVER, 7)           // or to $FD6F
+COST(BOSS_NEXT_STEP, 45)          // $FD6F to sub_F687
+COST(BOSS_FAR, 9)                 // $FD91 to sub_FA87: Arthur is far,
+COST(BOSS_FAR_RIGHT, 6)           // on its right, to $FDC1,
+COST(BOSS_FAR_LEFT, 12)           // or on its left
+COST(BOSS_NEAR_LOOKS, 13)         // $FD91 to the second call of sub_F687
+COST(BOSS_CLOSE, 9)               // $FDB0 to sub_FA87: Arthur is close
+COST(BOSS_TURNS_AWAY, 9)          // $FDBA to $FDC1, with the heading changed
+COST(BOSS_LEAP_BEGINS, 22)        // $FDC1 to sub_FA87: a 64th step
+COST(BOSS_HEADS_LEFT, 9)          // a heading changed to the left, after sub_FA87
+COST(BOSS_LEAP_SET, 23)           // $FDDC, with sub_F319, and back
+COST(BOSS_NOT_A_LEAP, 9)          // $FDC1 to $FDDF
+COST(BOSS_CHARGE_SET, 38)         // $FDDF, with sub_F311, and back: an eighth step
+COST(BOSS_NOT_A_CHARGE, 9)        // $FDDF to $FDEE
+COST(BOSS_NEXT_READ, 12)          // $FDEE to $FDF7: the next step's speed
+COST(BOSS_NEXT_STANDS, 15)        // none, and back
+COST(BOSS_WALK_BEGINS, 14)        // $FDFF to sub_FA87
+COST(BOSS_SHAPE_RIGHT, 3)         // after sub_FA87: the shape stays, facing right,
+COST(BOSS_SHAPE_LEFT, 9)          // or changes to the one facing left
+COST(BOSS_WALK_MOVES, 38)         // $FE11 to sub_F0A0
+COST(BOSS_STAYS_IN_VIEW, 9)       // after sub_F0A0, and back: still in the view
+COST(BOSS_STAND_BEGINS, 7)        // $FE34 or $FE58 to sub_FA87
+COST(BOSS_STAND_SHOOTS, 18)       // $FE43 to $FCA4, on the second round,
+COST(BOSS_STAND_WAITS, 27)        // or back,
+COST(BOSS_STAND_OVER, 33)         // or back with the step over, on the sixth
+COST(BOSS_SHOT_FREE, 10)          // $FCA4 to $FCB2: the first shot's object is free,
+COST(BOSS_SECOND_SHOT_FREE, 19)   // or the second's,
+COST(BOSS_NO_SHOT_FREE, 24)       // or neither, and back
+COST(BOSS_SHOT_PLACED, 91)        // $FCB2 to $FCD0, with sub_FA2E: its place, four pixels up,
+COST(BOSS_SHOT_PLACED_A_SCREEN_UP, 112) // or on the screen above
+COST(BOSS_SHOT_SET, 21)           // $FCD0 to sub_FA87
+COST(BOSS_SHOT_RIGHT, 9)          // and back: to the right,
+COST(BOSS_SHOT_LEFT, 22)          // or to the left
+COST(BOSS_CHARGE_NO_TURN, 9)      // $FE67 to $FE7D, three rounds in four,
+COST(BOSS_CHARGE_TURNS, 15)       // or to sub_FA87
+COST(BOSS_CHARGE_OVER, 38)        // $FE7D, with sub_F336, and back: 24 rounds are over,
+COST(BOSS_CHARGE_MOVES, 40)       // or to sub_F0A0
+COST(BOSS_SHOT_BEGINS, 17)        // $F524 to sub_F0A0's call of sub_F03E: the boss's shot
+COST(BOSS_SHOT_GONE, 19)          // $F52E, with sub_F734, and back: out of the view,
+COST(BOSS_SHOT_FLIES_RIGHT, 27)   // or $F530 to $F54D, less sub_F321: to the right,
+COST(BOSS_SHOT_FLIES_LEFT, 33)    // or to the left
 COST(BOSS_NOT_SHOWN, 9)           // $FC65, and back: it isn't shown,
 COST(BOSS_LOOKS, 27)              // or to sub_F687
 COST(BOSS_NEAR, 3)                // $FC82 to $FCA0: Arthur is near,

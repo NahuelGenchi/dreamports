@@ -3,14 +3,20 @@
 // hidden. In the view it stands asleep, with its touch tests, until Arthur comes within a box around it, or has been
 // level with it or above for 40 rounds, or has hit it three times: then it wakes, facing him.
 //
-// What it does awake, from $FC3F, its death after ten hits, at $FC10, and the last stage's, which $CF marks, aren't
-// ported yet.
+// Awake, from $FC3F, it goes through 16 steps over and over, by the copy's list at $FEFD: a walk at speed $0A the way
+// it's heading, or a stand, on whose second round it shoots, kind $30. A step lasts a count from the game's dice, and
+// at its end it turns round, or towards Arthur when he's far, or away from him when he's close. Every eighth step is
+// a charge, flag $08: 24 rounds at speed $18 towards him. It asks for sound $0F every 24 rounds.
+//
+// Its leap, flag $20, at $FEA4, which every 64th step starts, its dodge of a weapon, flag $10, at $FCEF, its death
+// after ten hits, at $FC10, and the last stage's boss, which $CF marks, aren't ported yet.
 
 #include "game.h"
 
 enum { ARTHUR = 0 };
 // its flags
-enum { HIT = 0x01, FACES_LEFT = 0x02, READY = 0x20 };
+enum { HIT = 0x01, FACES_LEFT = 0x02, CHARGES = 0x08, DODGES = 0x10, READY = 0x20 };
+#define STEP(object) RAM[OBJECT_STATE + (object)]
 #define HITS(object) RAM[0x0647 + (object)]
 #define AWAKE(object) RAM[0x065D + (object)]
 
@@ -48,6 +54,220 @@ static void wake(uint8_t object) {
   took(RETURNS);
 }
 
+// the copy's list at $FEFD: each step's speed, or 0 for a stand
+static uint8_t step_speed(uint8_t object) {
+  uint8_t step = STEP(object) & 0x0F;
+  if (0xFEFD + step > 0xFEFF) took(READ_PAST_PAGE);
+  return cart(7, (uint16_t)(0xFEFD + step));
+}
+
+// Its shape faces the side Arthur is on.
+static void face_him(uint8_t object, uint8_t shape) {
+  RAM[OBJECT_SHAPE + object] = shape;
+  if (arthur_is_right_of(object)) took(BOSS_SHAPE_RIGHT);
+  else {
+    RAM[OBJECT_SHAPE + object] = (uint8_t)(shape + 0x10);
+    took(BOSS_SHAPE_LEFT);
+  }
+}
+
+// It heads for the side Arthur is on.
+static void head_for_him(uint8_t object) {
+  RAM[OBJECT_HEADING + object] = 0x04;
+  if (arthur_is_right_of(object)) took(BRANCH_TAKEN);
+  else {
+    RAM[OBJECT_HEADING + object] = 0x0C;
+    took(BOSS_HEADS_LEFT);
+  }
+}
+
+// sub_F0A0's call and what follows it: it moves, and is hidden once it's out of the view.
+static void move(uint8_t object, uint8_t speed) {
+  took(CALLS);
+  move_object(object, speed);
+  if (object_in_view(object)) { took(BOSS_STAYS_IN_VIEW); return; }
+  took(GOES_ON);
+  hide_object(object);
+  took(RETURNS);
+}
+
+// $FCA4: its shot, if one of the two shots' objects is free: from its place, four pixels up, to the side Arthur is on.
+static void shoot(uint8_t object) {
+  enum { FIRST_SHOT = 0x14, SHOT = 0x30 };
+  uint8_t shot = FIRST_SHOT;
+  if (!RAM[OBJECT_FLAGS + shot]) took(BOSS_SHOT_FREE);
+  else if (!RAM[OBJECT_FLAGS + ++shot]) took(BOSS_SECOND_SHOT_FREE);
+  else { took(BOSS_NO_SHOT_FREE); return; }
+  // sub_FA2E: its place, in the stage and on the screen
+  RAM[OBJECT_Y + shot] = RAM[OBJECT_Y + object];
+  RAM[OBJECT_Y_SCREEN + shot] = RAM[OBJECT_Y_SCREEN + object];
+  RAM[OBJECT_SCREEN_Y + shot] = RAM[OBJECT_SCREEN_Y + object];
+  RAM[OBJECT_X + shot] = RAM[OBJECT_X + object];
+  RAM[OBJECT_X_SCREEN + shot] = RAM[OBJECT_X_SCREEN + object];
+  RAM[OBJECT_SCREEN_X + shot] = RAM[OBJECT_SCREEN_X + object];
+  RAM[OBJECT_FLAGS + shot] = 0x40;
+  RAM[OBJECT_Y + shot] -= 4;
+  if (RAM[OBJECT_Y + shot] < 0xF0) took(BOSS_SHOT_PLACED);
+  else {
+    // past the top of its screen: the one above, whose lines end at 240
+    RAM[OBJECT_Y + shot] -= 0x10;
+    RAM[OBJECT_Y_SCREEN + shot]--;
+    took(BOSS_SHOT_PLACED_A_SCREEN_UP);
+  }
+  RAM[OBJECT_KIND + shot] = SHOT;
+  RAM[OBJECT_SHAPE + object] = 0xB3;
+  RAM[OBJECT_HEADING + shot] = 0x04;
+  took(BOSS_SHOT_SET);
+  if (arthur_is_right_of(object)) { took(BOSS_SHOT_RIGHT); return; }
+  RAM[OBJECT_SHAPE + object] = 0xC3;
+  RAM[OBJECT_HEADING + shot] = 0x0C;
+  took(BOSS_SHOT_LEFT);
+}
+
+// $FDFF: a round of a walk, with two shapes.
+static void walk(uint8_t object) {
+  RAM[OBJECT_COUNT + object]--;
+  took(BOSS_WALK_BEGINS);
+  face_him(object, 0xB1);
+  RAM[OBJECT_SHAPE + object] += (RAM[OBJECT_COUNT + object] >> 2) & 1;
+  uint8_t speed = (uint8_t)(step_speed(object) + RAM[0xD3]);
+  took(BOSS_WALK_MOVES);
+  move(object, speed);
+}
+
+// $FE34: a round of a stand. It shoots on the second, and the step is over on the sixth.
+static void stand(uint8_t object) {
+  took(BOSS_STAND_BEGINS);
+  face_him(object, 0xB3);
+  uint8_t count = ++RAM[OBJECT_COUNT + object];
+  if (count == 2) {
+    took(BOSS_STAND_SHOOTS);
+    shoot(object);
+  } else if (count < 6) took(BOSS_STAND_WAITS);
+  else {
+    STEP(object)++;
+    took(BOSS_STAND_OVER);
+  }
+}
+
+// $FD6F: a step is over. The next lasts a count from the game's dice, and the boss turns round, or towards Arthur when
+// he's outside a box of $68 by $10, or away from him when he's within one of $50 by $10. Every 64th step is a leap and
+// every eighth a charge; a stand begins at once, and a walk has its first round now.
+static void next_step(uint8_t object) {
+  RAM[OBJECT_COUNT + object] = (uint8_t)(RAM[0x83] + RAM[0x4D]) & 0x1F;
+  STEP(object)++;
+  RAM[OBJECT_HEADING + object] = (RAM[OBJECT_HEADING + object] ^ 0x08) | 0x04;
+  RAM[0x26] = 0x68;
+  RAM[0x27] = 0x10;
+  took(BOSS_NEXT_STEP);
+  if (!arthur_near(object)) {
+    RAM[OBJECT_HEADING + object] = 0x04;
+    took(BOSS_FAR);
+    if (arthur_is_right_of(object)) took(BOSS_FAR_RIGHT);
+    else {
+      RAM[OBJECT_HEADING + object] = 0x0C;
+      took(BOSS_FAR_LEFT);
+    }
+  } else {
+    RAM[0x26] = 0x50;
+    RAM[0x27] = 0x10;
+    took(BOSS_NEAR_LOOKS);
+    if (!arthur_near(object)) took(BRANCH_TAKEN);
+    else {
+      RAM[OBJECT_HEADING + object] = 0x04;
+      took(BOSS_CLOSE);
+      if (!arthur_is_right_of(object)) took(BRANCH_TAKEN);
+      else {
+        RAM[OBJECT_HEADING + object] = 0x0C;
+        took(BOSS_TURNS_AWAY);
+      }
+    }
+  }
+  if (!(STEP(object) & 0x3F)) {
+    RAM[OBJECT_COUNT + object] = 0;
+    took(BOSS_LEAP_BEGINS);
+    head_for_him(object);
+    RAM[OBJECT_FLAGS + object] |= READY;
+    took(BOSS_LEAP_SET);
+    return;
+  }
+  took(BOSS_NOT_A_LEAP);
+  if (!(STEP(object) & 0x07)) {
+    RAM[OBJECT_COUNT + object] = 0;
+    RAM[OBJECT_FLAGS + object] |= CHARGES;
+    took(BOSS_CHARGE_SET);
+    return;
+  }
+  took(BOSS_NOT_A_CHARGE);
+  uint8_t speed = step_speed(object);
+  took(BOSS_NEXT_READ);
+  if (!speed) {
+    RAM[OBJECT_COUNT + object] = 0;
+    took(BOSS_NEXT_STANDS);
+    return;
+  }
+  took(BRANCH_TAKEN);
+  walk(object);
+}
+
+// $FE58: a charge: 24 rounds at speed $18, turning towards Arthur every fourth.
+static void charge(uint8_t object) {
+  took(BOSS_STAND_BEGINS);
+  face_him(object, 0xB1);
+  if (RAM[OBJECT_COUNT + object] & 3) took(BOSS_CHARGE_NO_TURN);
+  else {
+    took(BOSS_CHARGE_TURNS);
+    head_for_him(object);
+  }
+  uint8_t count = ++RAM[OBJECT_COUNT + object];
+  if (count >= 0x18) {
+    RAM[OBJECT_FLAGS + object] &= (uint8_t)~CHARGES;
+    took(BOSS_CHARGE_OVER);
+    return;
+  }
+  RAM[OBJECT_SHAPE + object] += (count >> 1) & 1;
+  took(BOSS_CHARGE_MOVES);
+  move(object, (uint8_t)(0x18 + RAM[0xD3]));
+}
+
+// $FC3F: awake.
+static void awake(uint8_t object) {
+  RAM[0xE8] = 0x0F;
+  RAM[0xE9] = 0x18;
+  if (flag(object, CHARGES)) { took(BOSS_TURN_ELSEWHERE); charge(object); return; }
+  took(BRANCH_TAKEN);
+  if (flag(object, READY)) { took(BOSS_TURN_ELSEWHERE); return; }    // $FEA4: its leap, not ported yet
+  took(BRANCH_TAKEN);
+  if (flag(object, DODGES)) { took(BOSS_TURN_ELSEWHERE); return; }   // $FCEF: its dodge, not ported yet
+  took(BOSS_TURN_STEPS);
+  // $FD3F: a step
+  uint8_t speed = step_speed(object);
+  took(BOSS_STEP_READ);
+  if (!speed) { took(BOSS_STEP_STANDS); stand(object); return; }
+  took(BRANCH_TAKEN);
+  if (RAM[OBJECT_COUNT + object] & 3) took(BOSS_NO_LOOK);
+  else {
+    // every fourth round of a walk it looks for a weapon coming, in a box of $20 by $20, and dodges it
+    RAM[0x26] = RAM[0x27] = 0x20;
+    took(BOSS_LOOKS_FOR_WEAPONS);
+    if (object >= 0x10) took(READ_PAST_PAGE);
+    if (!(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN)) took(BOSS_WEAPONS_NOT_SHOWN);
+    else {
+      took(BOSS_WEAPONS_SHOWN);
+      if (weapon_that_touches(object)) {
+        RAM[OBJECT_COUNT + object] = 0;
+        RAM[OBJECT_FLAGS + object] |= DODGES;
+        took(BOSS_DODGE_SET);
+        return;
+      }
+    }
+    took(BRANCH_TAKEN);
+  }
+  if (RAM[OBJECT_COUNT + object]) { took(BOSS_STEP_GOES_ON); walk(object); return; }
+  took(BOSS_STEP_OVER);
+  next_step(object);
+}
+
 /** $FBC4, kind 5. */
 void boss(uint8_t object) {
   enum { CROSS = 0x27 };
@@ -75,8 +295,9 @@ void boss(uint8_t object) {
     }
   }
   RAM[OBJECT_COLOURS + object] = 0x01;
+  if (HITS(object) >= 0x0A) return;   // $FC10: its death, not ported yet
+  if (AWAKE(object)) { took(BOSS_AWAKE); awake(object); return; }
   took(BOSS_ASLEEP);
-  if (HITS(object) >= 0x0A || AWAKE(object)) return;   // $FC10 and $FC3F: not ported yet
   // $FC62: asleep
   took(OBJECT_SHOWN_READ);
   if (object >= 0x10) took(READ_PAST_PAGE);

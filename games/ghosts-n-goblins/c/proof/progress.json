@@ -10,6 +10,12 @@
       "differs": [],
       "functions": []
     },
+    "boss-walks": {
+      "frames": 7150,
+      "matched": 7150,
+      "differs": [],
+      "functions": []
+    },
     "flier": {
       "frames": 3390,
       "matched": 3390,

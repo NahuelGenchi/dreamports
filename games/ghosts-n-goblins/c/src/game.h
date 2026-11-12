@@ -224,8 +224,9 @@ void forest_enemies_come(uint8_t *x);
 void forest_enemy(uint8_t object);
 /** $F41C, kind $29: its shot (enemies.c). */
 void forest_shot(uint8_t object);
-/** $FBC4, kind 5: the stage's boss (boss.c). */
+/** $FBC4, kind 5: the stage's boss (boss.c); $F524, kind $30: its shot (enemies.c). */
 void boss(uint8_t object);
+void boss_shot(uint8_t object);
 /** sub_F585: an enemy's touch tests, with the spark and sound of a weapon that hits it; the weapon, or 0 (flier.c). */
 uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched);
 /** sub_F5A0: what touches an enemy this round: the weapon that hit it, which is gone and counted at $0647, or 0, with
