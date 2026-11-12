@@ -1,7 +1,10 @@
 ---
-// Settings: menu sounds, light or dark, and full or calm motion. It needs JavaScript, like
-// everything it changes, so the menu shows its button only when JavaScript runs.
+// Settings: menu sounds, light or dark, full or calm motion, and the logo's pose and colour. It needs JavaScript,
+// like everything it changes, so the menu shows its button only when JavaScript runs.
 import ViewBar from './ViewBar.astro';
+import { COLOURS, POSES } from '../lib/mark';
+
+const named = (word: string) => word[0].toUpperCase() + word.slice(1);
 ---
 
 <dialog class="card view card-settings" id="card-settings" data-card="settings" aria-labelledby="settings-title">
@@ -35,6 +38,36 @@ import ViewBar from './ViewBar.astro';
         <div class="seg" role="radiogroup" aria-labelledby="motion-label">
           <input type="radio" name="motion" id="motion-full" value="full" /><label for="motion-full">Full</label>
           <input type="radio" name="motion" id="motion-calm" value="calm" /><label for="motion-calm">Calm</label>
+        </div>
+      </div>
+      <div class="set-row set-logo">
+        {/* the logo as picked: the script draws it, as a copy of the launch's mark, so the page doesn't carry it twice (src/scripts/mark.ts) */}
+        <svg class="mark set-mark" id="set-mark" data-mark="whole" data-id="mark-set" aria-hidden="true" focusable="false"></svg>
+        <div class="set-text">
+          <span class="set-label">Logo</span>
+          <span class="set-desc">Its pose and its colour.</span>
+        </div>
+        <div class="set-picks">
+          <div class="seg" role="radiogroup" aria-label="Logo pose">
+            {
+              POSES.map((pose) => (
+                <>
+                  <input type="radio" name="logo-pose" id={`pose-${pose}`} value={pose} />
+                  <label for={`pose-${pose}`}>{named(pose)}</label>
+                </>
+              ))
+            }
+          </div>
+          <div class="seg" role="radiogroup" aria-label="Logo colour">
+            {
+              COLOURS.map((colour) => (
+                <>
+                  <input type="radio" name="logo-colour" id={`colour-${colour}`} value={colour} />
+                  <label for={`colour-${colour}`}>{named(colour)}</label>
+                </>
+              ))
+            }
+          </div>
         </div>
       </div>
     </div>
