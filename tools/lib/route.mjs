@@ -130,6 +130,54 @@ export function readRoute(game, KEY) {
   return route;
 }
 
+/**
+ * What prove reads to hold a recording's parts to what they say they reach (src/lib/reaches.mjs): `goals`, each goal
+ * the parts name with its condition's parts as `when`, and `values`, what those read, each { name, address, bytes,
+ * signed }. `route` is the game's route.json, or null when it has none, and `where` its proof folder, for the
+ * messages. Throws on a goal the game doesn't list, and on one that reads a value only the search can find.
+ */
+export function goalsNamed(parts, route, where) {
+  const names = [...new Set(parts.map(part => part.reaches).filter(reaches => reaches !== undefined))];
+  const values = new Map();
+  const goals = names.map(name => {
+    const listed = route?.goals?.[name];
+    if (listed === undefined) {
+      throw new Error(`${where}parts.json has a part that reaches "${name}", which ${route ? `isn't one of the goals in ${where}route.json: ${Object.keys(route.goals ?? {}).join(', ') || 'it lists none'}` : `needs ${where}route.json, where a game lists its goals and the values they read (npm run dp -- help finding a route)`}.`);
+    }
+    const when = parseCondition(listed && typeof listed === 'object' ? listed.when : listed, route.values, `the goal "${name}"`);
+    for (const { value } of when) {
+      const { address, bytes, signed } = route.values[value];
+      if (address === undefined) throw new Error(`${where}parts.json has a part that reaches "${name}", which reads ${value}, a value only the route finder's search can find. A part names a goal whose values each have an address.`);
+      values.set(value, { name: value, address: parseInt(address, 16), bytes, signed: signed === true });
+    }
+    return { name, when };
+  });
+  return { goals, values: [...values.values()] };
+}
+
+/**
+ * The stretches of frames over which each goal held, as progress.json keeps them: `read` is what the original held,
+ * every frame's values one after another in the order of `values`, as goalsNamed gives them, and `route` the game's
+ * route.json.
+ */
+export function heldOver({ goals, values }, read, frames, route) {
+  const size = bytes => 2 ** (bytes * 8);
+  const reached = Object.fromEntries(goals.map(goal => [goal.name, []]));
+  for (let frame = 0; frame < frames; frame++) {
+    const held = Object.fromEntries(values.map(({ name, bytes, signed }, i) => {
+      const value = read[frame * values.length + i];
+      return [name, signed && value >= size(bytes) / 2 ? value - size(bytes) : value];
+    }));
+    for (const goal of goals) {
+      if (!holds(goal.when, route.values, held)) continue;
+      const stretches = reached[goal.name], last = stretches.at(-1);
+      if (last && last[1] === frame - 1) last[1] = frame;
+      else stretches.push([frame, frame]);
+    }
+  }
+  return reached;
+}
+
 const DIRECTION = /(^|_)(UP|DOWN|LEFT|RIGHT)$/;
 
 /** The sets of buttons a search may hold when a game names none: nothing, each direction, and each of those with each of the console's other buttons but Start, Select and Mode. */
