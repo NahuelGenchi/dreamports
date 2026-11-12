@@ -21,7 +21,8 @@ import SettingsCard from './SettingsCard.astro';
 import Slot from './Slot.astro';
 import TrophySprite from './TrophySprite.astro';
 import { FILTERS, SECTIONS, getGames, type Filter, type FilterKey, type Game } from '../lib/site';
-import { beingMade, makeView, released } from '../lib/dreamports';
+import { beingMade, fullyPorted, makeView, released, systemFor } from '../lib/dreamports';
+import type { System } from '../lib/systems';
 import { making as readMaking } from '../lib/making';
 
 interface Props {
@@ -32,9 +33,11 @@ interface Props {
   open?: 'about' | 'achievements' | 'inspect' | 'make' | 'profile' | 'player';
 }
 
-// a place in a row: a game, a Dreamport's place in the Make row, or the way to start one
+// a place in a row: a system, a game, a Dreamport's place in the Make row, or the way to start one
 interface Place {
   game?: Game;
+  system?: System & { unfinished: boolean };
+  of?: string;
   make?: boolean;
   start?: boolean;
   free?: { help: string };
@@ -55,7 +58,17 @@ const rows = FILTERS.map((f) => {
   if (f.key === 'make') {
     return { filter: f, list: [...making.map((game): Place => ({ game, make: true, free: freeOf(game) })), { start: true }] };
   }
-  return { filter: f, list: forPlayers.filter((game) => f.kinds.includes(game.data.kind)).map((game): Place => ({ game })) };
+  // the Dreamports row holds the systems that have Dreamports, in the order their newest games came, then every game,
+  // and the launcher shows one or the other (src/scripts/launcher.ts)
+  const games = forPlayers.filter((game) => f.kinds.includes(game.data.kind)).map((game) => ({ game, system: systemFor(game) }));
+  const systems = [...new Map(games.map(({ system }) => [system.id, system])).values()];
+  return {
+    filter: f,
+    list: [
+      ...systems.map((system): Place => ({ system: { ...system, unfinished: !games.some((g) => g.system.id === system.id && fullyPorted(g.game)) } })),
+      ...games.map(({ game, system }): Place => ({ game, of: system.id })),
+    ],
+  };
 });
 const current = rows.find((row) => row.filter.key === filter)!;
 const selIndex = Math.max(0, current.list.findIndex((place) => !!place.game && place.game.id === selected));
@@ -137,6 +150,8 @@ const pathsFor = (f: Filter) =>
     <div class="row" id="row" aria-label={`Games: ${current.filter.label}`}>
       {current.list.map((place, i) => <Slot {...place} index={i} />)}
     </div>
+    {/* the system whose Dreamports the row shows, once one is picked */}
+    <p class="sys-head" id="sys-head" hidden><i class="sys-icon" aria-hidden="true"></i><span id="sys-name"></span></p>
     <div class="cursor" id="cursor" aria-hidden="true">
       <i class="c-tl" data-dx="-1" data-dy="-1"></i>
       <i class="c-tr" data-dx="1" data-dy="-1"></i>
@@ -160,6 +175,12 @@ const pathsFor = (f: Filter) =>
 
   <nav class="corners" aria-label="Menu">
     <div class="corner-group">
+      <button type="button" class="corner no-label" id="btn-systems" aria-label="Back to the systems" aria-keyshortcuts="Escape" hidden>
+        <Key label="Esc" pad="B" round />
+        <svg class="c-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
+          <path d="M3 1h1v1H3zM2 2h2v1H2zM1 3h8v1H1zM0 4h9v1H0zM1 5h8v1H1zM2 6h2v1H2zM3 7h1v1H3z"></path>
+        </svg>
+      </button>
       <button type="button" class="corner no-label" id="btn-settings" aria-label="Settings" aria-keyshortcuts="S">
         <Key label="S">
           <svg viewBox="0 0 5 4"><path d="M0 0h5v1H0zM0 1.5h5v1H0zM0 3h5v1H0z"></path></svg>
