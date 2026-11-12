@@ -138,7 +138,9 @@ function partsOf(game: string, gameplay: Proof['gameplay']): PartView[] {
   return (gameplay?.parts ?? []).map((part) => {
     if (!part.recording || !part.frames) return { name: part.name, proven: false, note: null, href: null };
     const [from, to] = part.frames;
-    const found = part.difference !== null ? `frame ${part.difference} differs` : `the Dreamport lacks frames before ${part.gap}`;
+    const found = part.difference !== null ? `frame ${part.difference} differs`
+      : part.gap !== null ? `the Dreamport lacks frames before ${part.gap}`
+        : `where the original doesn't get to ${part.unreached}`;
     return {
       name: part.name,
       proven: part.proven,
