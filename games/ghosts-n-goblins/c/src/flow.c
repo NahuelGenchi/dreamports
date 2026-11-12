@@ -542,9 +542,9 @@ static int stage_round(void) {
 // $D408 and $C8FF: a life is over, once Arthur's task has said so at $81. The sound stops, the weapon he had is kept for
 // his next life, the stage's tasks stop, and with a life left the next begins as a game does, but for the opening
 // scene, which $A6 now keeps away. Three places send him back to an earlier one: the third, a stage's last part with
-// its boss, to the second, and the sixth and seventh to the fifth. A second player's turn, at $C91E, and the game's
-// end with no life left, at $C90C, aren't ported yet.
-static void lose_life(void) {
+// its boss, to the second, and the sixth and seventh to the fifth. A second player's turn, at $C91E, isn't ported yet.
+// It says whether a life is left: with none the game is over, at $C90C.
+static int lose_life(void) {
   took(CALLS);
   sound_reset();
   RAM[0xC5 + PLAYER] = WEAPON_HELD;
@@ -558,8 +558,23 @@ static void lose_life(void) {
   } else took(LIFE_OVER_WEAPON_KEPT);
   stop_game_tasks();
   RAM[0xA6] = 0xFF;
-  RAM[LIVES]--;
-  took(LIFE_LOST);
+  int left = --RAM[LIVES];
+  took(left ? LIFE_LOST : LAST_LIFE_LOST);
+  return left;
+}
+
+// sub_CB96, from $CB9F: the screen that says the game is over, on the screen sub_CB66 has loaded the letters for: the
+// colours and the place of the screen that says whose turn it is, with the words from $CBC0, and the game over's tune.
+static void draw_game_over_screen(void) {
+  took(GAME_READY_COLOURS);
+  queue_background_palette(0xCB46);            // sub_CB8B
+  took(GAME_READY_WORDS);
+  queue_rows(0xCBC0, 0x218B, 2, 9);            // sub_C9F6
+  took(GAME_READY_FIRST_PLAYER);
+  took(CALLS);
+  picture_on();
+  took(GAME_OVER_SOUND);
+  sound_play(0x08);
 }
 
 // sub_CD9B: the map of the game's stages, which every life but a game's first starts with: its tiles, 6 KB from bank
@@ -657,9 +672,10 @@ wait game_task(void) {
     NEW_GAME, READY_BEGINS, READY_SCREEN, READY_PICTURE_OFF, READY_TILES_BEGIN, READY_TILES, READY_SHOWN, AFTER_READY, STAGE_PICTURE_OFF, CLEARED_PICTURE_OFF, CLEARED_TILES,
     STAGE_COLOURS, STAGE_ATTRIBUTES, SCENE_START, MAP, MAP_OVER, SCENE_TILES_BEGIN, SCENE_TILES, SCENE_OWN_TILES_BEGIN, SCENE_OWN_TILES, SCENE_COLOURS,
     SCENE_OBJECT_COLOURS, SCENE_SCREEN, SCENE, STAGE_OFF, STAGE_SET_UP, STAGE_TILES, STAGE_OBJECT_TILES_BEGIN, STAGE_OBJECT_TILES,
-    STAGE_SCREEN_BEGINS, STAGE_SCREEN, STAGE_WAITS, STAGE_STARTS, STAGE_ROUND, STAGE_ROUND_AGAIN,
+    STAGE_SCREEN_BEGINS, STAGE_SCREEN, STAGE_WAITS, STAGE_STARTS, STAGE_ROUND, STAGE_ROUND_AGAIN, GAME_OVER_SHOWN,
   };
   static uint8_t inner, loading;
+  static uint8_t game_is_over;   // the screen being made says so, in place of whose turn it is
   uint8_t *step = &task_step[TASK_GAME];
   wait how;
   for (;;) switch (*step) {
@@ -706,6 +722,13 @@ wait game_task(void) {
       if (how != DONE) return how;
       switch_bank(BANK_HOME);
       took(GAME_READY_BANK_BACK);
+      if (game_is_over) {
+        // $CB9F: it stays five seconds
+        draw_game_over_screen();
+        took(GAME_OVER_SLEEPS);
+        *step = GAME_OVER_SHOWN;
+        return sleep_task(300);
+      }
       draw_ready_screen();
       took(GAME_READY_SLEEPS);
       *step = READY_SHOWN;
@@ -903,7 +926,14 @@ wait game_task(void) {
         return picture_off();
       }
       if (over) {
-        lose_life();
+        if (!lose_life()) {
+          // $C90C: the game is over. sub_CB96 starts as the screen before a life does, with sub_C62C
+          game_is_over = 1;
+          took(CALLS);
+          took(CALLS);
+          *step = READY_SCREEN;
+          break;
+        }
         // sub_D01D
         FRAMES_A_ROUND = 2;
         took(GAME_LIFE_BEGINS);
@@ -951,5 +981,17 @@ wait game_task(void) {
       took(GAME_ROUND_AGAIN);
       *step = STAGE_ROUND;
       break;
+    case GAME_OVER_SHOWN:
+      // $C90F: no objects, a game has ended, and the title's task takes over from this one
+      game_is_over = 0;
+      for (int i = 0x04F0; i < 0x0680; i++) if (i != 0x05F0) RAM[i] = 0;
+      took(CLEARED_NO_OBJECTS);
+      set_ram16(0x26, 0x05F0);
+      RAM[0x23] = 0;
+      RAM[0x7F] = 0xFF;
+      took(GAME_OVER_TITLE_STARTS);
+      start_task(TASK_TITLE);
+      took(CALLS);
+      return ENDS;
   }
 }

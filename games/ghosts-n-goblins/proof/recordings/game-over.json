@@ -1,0 +1,16 @@
+{
+  "about": "Start pressed on the title screen, one player, then nothing, as in game-start, until zombies have taken all three lives. The screen that says the game is over stays five seconds, with its tune, and the title screen comes back with a third line, to continue. Select moves the sword down to it and Start is pressed: the game goes on with three lives, from the screen that says whose turn it is and the map of the stages, with no opening scene, and the first stage starts again.",
+  "frames": 5400,
+  "held": [
+    [0, []],
+    [100, ["START"]],
+    [102, []],
+    [4400, ["SELECT"]],
+    [4402, []],
+    [4440, ["SELECT"]],
+    [4442, []],
+    [4480, ["START"]],
+    [4482, []]
+  ],
+  "clip": { "at": 3700, "frames": 300 }
+}
