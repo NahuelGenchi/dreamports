@@ -30,8 +30,6 @@ int actHudFlash = -1;
 static int hud_flash(void) { return actHudFlash >= 0 ? actHudFlash : act.stage.hudFlash; }
 // and after the act before it, where the original's counter stands as the HUD starts
 enum { HUD_FLASH_AFTER = 1 };
-// the act being started follows the one before it (GoToNextLevel), which its title card shows
-static int comingOn;
 static int musicSync;
 void act_render_music_at_first_frame(void) { musicSync = 1; }
 static uint16_t holdColour; static int restoreColour;   // the menu's black for the act's first picture
@@ -76,9 +74,12 @@ static void copy_rom(uint32_t src, uint32_t dest, uint32_t size) {
   g->src = src; g->dest = dest; g->size = size & 0xFFFF; g->anim = 0; g->ram = NULL;
   queue_graphics(g);
 }
+// the act being started follows the one before it (GoToNextLevel), which its title card shows
+static int comingOn;
 static void load_stage(int level) {
   Stage *s = &act.stage;
   const Level *row = level_row(level);
+  if (comingOn && row->comingOn) row = row->comingOn;
   memset(s, 0, sizeof *s);
   s->level = level; s->row = row;
   s->front = read_tilemap(level * 3 + 0);
@@ -637,9 +638,11 @@ static void act_frame(void) {
   if (act.frames > 0) objects_run_before_camera();
   if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
   // UpdateCamera's fnBgUpdate
-  // after the act before, the stage's background update runs from the act's second frame, a frame before the camera
-  if (row->cameraMoved) row->cameraMoved(camRuns || (act.afterLevel && act.frames > 0));
-  if (camRuns || (row->runsFromFirstFrame && act.frames > 0)) { if (row->tilesShownLate) late_tiles_step(); else animate_stage_tiles(); }
+  // after the act before, the stage's background update and its animated tiles run from the act's second frame, a
+  // frame before the camera
+  int bgRuns = camRuns || (act.afterLevel && act.frames > 0);
+  if (row->cameraMoved) row->cameraMoved(bgRuns);
+  if (bgRuns || (row->runsFromFirstFrame && act.frames > 0)) { if (row->tilesShownLate) late_tiles_step(); else animate_stage_tiles(); }
   // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts;
   // those from the HUD's priority on run after it, below
   int objectsRun = act.frames > 0 || row->runsFromFirstFrame;
@@ -715,8 +718,11 @@ static void act_frame(void) {
   if (act.frames > 0) water_task();
   act.frames++;
   draw_frame();
-  if (row->afterFrame) row->afterFrame(1);
+  // the card's fade first: a stage's own tasks, such as Secret Base's spotlights, run after the card's and have the
+  // last word on the display
   if (cardShows) titlecard_display();
+  // (after the act before, its tasks first run on the act's second frame, as its objects do)
+  if (row->afterFrame) row->afterFrame(1);
   results_display();
 }
 

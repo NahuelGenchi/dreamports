@@ -24,6 +24,7 @@ typedef struct {
   // The stage init: the act's song, where the HUD's zero-ring flash starts, and the palette animations
   // palette_loader.c makes for it (LEVEL_PALETTES), each with its variant, or NULL for variant 0 of every one
   int song, hudFlash;
+  const void *comingOn;   // the row (a Level) the act goes by when it follows the act before it, when that differs
   const int *palettes, *paletteVariants;
   int paletteCount;
   int cameraStop;   // how far short of the stage's right edge the camera stops, or 0 for the screen's width
