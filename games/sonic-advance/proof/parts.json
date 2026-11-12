@@ -36,7 +36,7 @@
     { "name": "Playing as Amy" },
     { "name": "Time Attack" },
     { "name": "VS, for 2 to 4 players" },
-    { "name": "The Options menu" },
+    { "name": "The Options menu", "recording": "options-menu", "frames": [1741, 2644] },
     { "name": "Tiny Chao Garden" }
   ]
 }
