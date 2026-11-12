@@ -326,6 +326,15 @@ COST(HIDDEN_BEGINS, 7)            // bank 4's $BB8C to $BB91: a thing that's hid
 COST(HIDDEN_OUT_OF_VIEW, 5)       // $BB97 to $BB67, with sub_F346's call apart,
 COST(HIDDEN_IN_VIEW, 17)          // or to sub_F68E
 COST(HIDDEN_NOT_TOUCHED, 5)       // $BBA8 to $BB67
+COST(HIDDEN_TOUCHED, 3)           // or to $BBAD
+COST(HIDDEN_ANY_TOUCH, 3)         // $BBB0 to $BBB9: any touch will do,
+COST(HIDDEN_NEEDS_A_CROUCH, 14)   // or only a crouching Arthur's, and to $BB67 when he isn't,
+COST(HIDDEN_CROUCHED_AT, 10)      // or on when he is
+COST(HIDDEN_OPENS, 9)             // $BBB9 to $BBCA: it isn't the armour,
+COST(HIDDEN_ARMOUR_OPENS, 17)     // or is, for an Arthur without his,
+COST(HIDDEN_ARMOUR_NOT_NEEDED, 19) // or to sub_F708, for one who has it
+COST(HIDDEN_BECOMES_POT, 47)      // $BBCA to sub_F099: a pot, further on and up
+COST(HIDDEN_POT_FALLS, 42)        // $BBEB, with $BC81, and back
 COST(HIDDEN_STAYS, 34)            // sub_BB67 for an object that isn't shown, in a stage that isn't of the third set, and back
 COST(PICK_UP_ARMOUR_TAKEN, 101)   // $BA3F to sub_F708's end, and back: the armour, in the opening scene
 COST(OBJECT_REMOVED, 42)          // sub_F708, and back, for a kind it doesn't count
@@ -398,7 +407,8 @@ COST(ARTHUR_AGAIN, 3)             // $DB7F
 COST(ARTHUR_COLOURS, 44)           // sub_DC5B or sub_DC4D, with its call: his colours, in a stage or on a ladder,
 COST(ARTHUR_NO_ARMOUR_COLOURS, 6)
 COST(ARTHUR_TURN_CHECKS, 98)      // $DAE7 to $DAFC
-COST(ARTHUR_HELD, 1)              // $DAFC's branch taken
+COST(ARTHUR_HELD, 2)              // $DAFC's branch taken, into the next page
+COST(ARTHUR_FALL_HELD, 4)         // $E299's, and the jump to $DB65
 COST(ARTHUR_IS_HIT, 49)            // or $DAE7 to $E171, when his flags say he's hit
 COST(ARTHUR_HIT_BEGINS, 133)      // $E171 to sub_ED51, with his armour on
 COST(ARTHUR_ARMOUR_OFF, 25)       // $E195 to sub_E1EE
@@ -755,10 +765,12 @@ COST(FREE_OBJECT_NONE, 8)         // or none, and back
 COST(STAGE_OBJECT_NO_ROOM, 8)     // $D71E, and back
 COST(STAGE_OBJECT_STATE, 17)      // $D71E to $D6C1, for a kind whose state starts at 0,
 COST(STAGE_OBJECT_STATE_LISTED, 22) // or $D72E to $D6C1, for one whose state the list gives,
+COST(STAGE_OBJECT_PLATFORM, 39)   // or $D709 to $D6C1, for a moving platform: its heading and shape too,
 COST(STAGE_OBJECT_STATE_KEPT, 7)  // or $D6BC to $D6C1, for one whose state is left as it was
 COST(STAGE_OBJECT_FILLED, 95)     // $D6C1, and back
 COST(GAME_ROUND_DANGERS, 15)      // $D583 to bank 2's $8400
 COST(DANGERS_OTHERS, 170)         // $8400 to $8415: its seven calls, and the six routines after the zombies' with nothing to do
+COST(DANGERS_EIGHTH_SCREEN_BEGINS, 5) // and $84EE to $84E8 by $84F7, on the eighth screen's first 64 pixels
 
 // ---- the zombies, bank 2's $8416 and $F7BE (enemies.c)
 COST(ZOMBIES_OTHER_STAGE, 15)     // sub_8416, and back: a place with no zombies,
@@ -1178,3 +1190,37 @@ COST(FLIER_SITS_IN_SIXTH_SET, 39) // or with the wider box of the sixth set of s
 COST(FLIER_SEES_HIM, 8)           // $A04C to sub_A37F
 COST(FLIER_SLEEPS_ON, 13)         // $A05A, and back
 COST(FLIER_WOKEN_BY_HIT, 12)      // or to sub_A37F
+
+// ---- a moving platform, kind $0E, bank 4's $B84D (platform.c)
+COST(PLATFORM_BEGINS, 17)         // $B84D to $B864
+COST(PLATFORM_IN_VIEW, 3)         // $B86A to $B86F,
+COST(PLATFORM_OUT_OF_VIEW, 2)     // or to sub_F346
+COST(PLATFORM_LEFT_END, 34)       // $B86F to $B888: its left end, and how far it is,
+COST(PLATFORM_RIGHT_END, 35)      // or by $B88C its right
+COST(PLATFORM_AT_LEFT_END, 3)     // to $B8A0: at its left end,
+COST(PLATFORM_GOES_LEFT, 5)       // or to $B8AD
+COST(PLATFORM_AT_RIGHT_END, 2)    // and the same going right
+COST(PLATFORM_GOES_RIGHT, 3)
+COST(PLATFORM_TURNS, 29)          // $B8A0 to $B8AB, with sub_F2FF
+COST(PLATFORM_TURNED_SHOWN, 3)    // to $B8BB: no move the round it turns, while it's shown,
+COST(PLATFORM_TURNED_HIDDEN, 2)   // or to $B8AD
+COST(PLATFORM_MOVES, 8)           // $B8AD to the call of sub_F0A0
+COST(PLATFORM_NOT_SHOWN, 27)      // $B8BE, and back, when it isn't shown
+COST(PLATFORM_ARTHUR_RISES, 35)   // or when Arthur is on his way up in a jump,
+COST(PLATFORM_ARTHUR_HELD, 42)    // or is held already
+COST(PLATFORM_ARTHUR_LOOKED_AT, 47) // or $B8BE to $B8D9: how far above it he is
+COST(PLATFORM_ARTHUR_BELOW, 9)    // and back: he's below it,
+COST(PLATFORM_ARTHUR_HIGH, 13)    // or 13 pixels or more above,
+COST(PLATFORM_ARTHUR_ON_TOP, 6)   // or on to $B8DF
+COST(PLATFORM_WIDTH, 28)          // $B8DF to $B8F6, for kind $0E's width,
+COST(PLATFORM_OTHER_WIDTH, 19)    // or the other's
+COST(PLATFORM_ARTHUR_ON_RIGHT_HALF, 16) // $B8F6 to $B905: he's over its right half,
+COST(PLATFORM_ARTHUR_ON_LEFT_HALF, 20)  // or its left,
+COST(PLATFORM_ARTHUR_OFF, 28)     // or past an end, and back
+COST(PLATFORM_HOLDS, 10)          // $B905 to $B90D: his flag $10
+COST(PLATFORM_LIFTS, 12)          // $B90D to $B916: his place down, 12 pixels above its own
+COST(PLATFORM_SAME_SCREEN, 13)    // $B916 to $B931, on its own screen,
+COST(PLATFORM_SCREEN_ABOVE, 25)   // or the one above
+COST(PLATFORM_CARRIES, 8)         // $B931 to the call of sub_EFDA
+COST(PLATFORM_CARRIED, 42)        // $B93A to the call of sub_F181: his place across, moved as it moves
+COST(PLATFORM_ENDS, 12)           // $B95A, and back

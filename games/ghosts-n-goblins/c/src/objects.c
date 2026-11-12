@@ -187,7 +187,9 @@ static void add_down(uint8_t object) {
 
 // sub_F03E and sub_EFDA: moves an object by `speed` the way it's heading, one of 16 ways. The copy's table at $F2A3 has,
 // for each way, how far down and how far across a speed of 256 goes, in 256ths of a pixel.
-void move_object(uint8_t object, uint8_t speed) {
+// sub_EFDA, with its call: how far `speed` goes the way an object is heading, left in $77, $73 and $7B down and $78,
+// $74 and $7C across.
+void find_move(uint8_t object, uint8_t speed) {
   took(MOVE_BEGINS);
   if ((OBJECT_HEADING & 0xFF) + object > 0xFF) took(READ_PAST_PAGE);
   uint16_t way = (uint16_t)(0xF2A3 + RAM[OBJECT_HEADING + object] * 4);
@@ -206,6 +208,10 @@ void move_object(uint8_t object, uint8_t speed) {
     RAM[0x7B + across] = RAM[0x26];
     took(across ? MOVE_FOUND : MOVE_ACROSS_BEGINS);
   }
+}
+
+void move_object(uint8_t object, uint8_t speed) {
+  find_move(object, speed);
   took(MOVE_ADDED_ACROSS);
   uint32_t x = (uint32_t)(RAM[OBJECT_X_SCREEN + object] << 16 | RAM[OBJECT_X + object] << 8 | RAM[OBJECT_X_PART + object]);
   x += (uint32_t)(A_X_SCREEN << 16 | A_X << 8 | RAM[0x7C]);
@@ -436,8 +442,7 @@ static void gravestone(uint8_t object) {
   took(GRAVESTONE_HIT_COUNTED);
 }
 
-// Bank 4's $BB8C, kind $11: a thing that's hidden where the stage's list puts it until Arthur touches the place. What
-// touching it does, at $BBAD, isn't ported yet.
+// Bank 4's $BB8C, kind $11: a thing that's hidden where the stage's list puts it until Arthur touches the place.
 static void hidden_thing(uint8_t object) {
   RAM[OBJECT_SHAPE + object] = 0x49;
   took(HIDDEN_BEGINS);
@@ -448,8 +453,42 @@ static void hidden_thing(uint8_t object) {
   } else {
     RAM[0x26] = RAM[0x27] = 6;
     took(HIDDEN_IN_VIEW);
-    arthur_touches(object);
-    took(HIDDEN_NOT_TOUCHED);
+    if (!arthur_touches(object)) took(HIDDEN_NOT_TOUCHED);
+    else {
+      // $BBAD: touched, it comes down as a pot, 100 pixels further on and 16 higher, with what its state says inside.
+      // One whose flag $01 is set needs him crouching, and the armour isn't given to an Arthur who has his.
+      enum { POT = 0x12, FALLS = 0x04, ARMOUR = 5, CROUCHES = 0x02, WITHOUT_ARMOUR = 0x20 };
+      took(HIDDEN_TOUCHED);
+      took(OBJECT_FLAG_READ);
+      if (object >= 0x10) took(READ_PAST_PAGE);
+      int stays = 0;
+      if (RAM[OBJECT_FLAGS + object] & 0x01) {
+        stays = !(RAM[OBJECT_FLAGS + ARTHUR] & CROUCHES);
+        took(stays ? HIDDEN_NEEDS_A_CROUCH : HIDDEN_CROUCHED_AT);
+      } else took(HIDDEN_ANY_TOUCH);
+      if (!stays) {
+        if (RAM[OBJECT_STATE + object] != ARMOUR) took(HIDDEN_OPENS);
+        else if (RAM[OBJECT_FLAGS + ARTHUR] & WITHOUT_ARMOUR) took(HIDDEN_ARMOUR_OPENS);
+        else {
+          took(HIDDEN_ARMOUR_NOT_NEEDED);
+          remove_object(object);
+          return;
+        }
+        uint16_t across = (uint16_t)((RAM[OBJECT_X_SCREEN + object] << 8 | RAM[OBJECT_X + object]) + 0x64);
+        RAM[OBJECT_KIND + object] = POT;
+        RAM[OBJECT_X + object] = (uint8_t)across;
+        RAM[OBJECT_X_SCREEN + object] = (uint8_t)(across >> 8);
+        A_Y = 0xF0;
+        A_Y_SCREEN = 0xFF;
+        took(HIDDEN_BECOMES_POT);
+        move_down(object);
+        RAM[OBJECT_FLAGS + object] |= FALLS;
+        RAM[OBJECT_HEADING + object] = 0x08;
+        took(HIDDEN_POT_FALLS);
+        if (object >= 0x10) took(READ_PAST_PAGE);
+        return;
+      }
+    }
   }
   took(HIDDEN_STAYS);
 }
@@ -542,6 +581,7 @@ wait objects_task(void) {
         case 0x00: zombie(object); break;
         case 0x01: plant(object); break;
         case 0x02: flier(object); break;
+        case 0x0E: platform(object); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object); break;
         case 0x12: pot(object); break;

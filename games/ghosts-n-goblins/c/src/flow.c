@@ -301,19 +301,24 @@ static void place_stage_objects(void) {
   if (RAM[0x24] == 0xFF) took(READ_PAST_PAGE);   // the entry's second byte, when its first is a page's last
   // a kind's own routine: $D71B, whose state starts at 0, or $D72B, whose state the list gives, which $D804 jumps to
   // and $D6B9, which leaves the state as the object's last user left it, and which $D670 jumps to
-  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670 };
+  // and $D706, a moving platform's, which gives it a heading and a shape too
+  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, PLATFORM = 0xD706 };
   uint16_t routine = ram16(0x22);
   if (routine == STATE_LISTED_TOO) { took(JUMPS); routine = STATE_LISTED; }
   if (routine == STATE_KEPT_TOO) { took(JUMPS); routine = STATE_KEPT; }
-  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT) return;
+  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT && routine != PLATFORM) return;
   took(CALLS);
   uint8_t object = free_object();
   if (object == NO_OBJECT) {
     took(STAGE_OBJECT_NO_ROOM);
     return;
   }
-  took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : routine == STATE_LISTED ? STAGE_OBJECT_STATE_LISTED : STAGE_OBJECT_STATE_KEPT);
+  took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : routine == STATE_LISTED ? STAGE_OBJECT_STATE_LISTED : routine == PLATFORM ? STAGE_OBJECT_PLATFORM : STAGE_OBJECT_STATE_KEPT);
   last_index = object;
+  if (routine == PLATFORM) {
+    RAM[OBJECT_HEADING + object] = 0x0C;
+    RAM[OBJECT_SHAPE + object] = 0x5F;
+  }
   if (routine != STATE_KEPT) RAM[OBJECT_STATE + object] = routine == STATE_ZERO ? 0 : listed_byte(listed, 1);
   RAM[0x0647 + object] = 0;
   RAM[OBJECT_COUNT + object] = 0;
@@ -332,6 +337,9 @@ static void place_stage_objects(void) {
 // $8610, $867A, $880A and $8748, which have nothing to do in the first stage's first screens and aren't ported yet.
 static void stage_dangers(void) {
   took(DANGERS_OTHERS);
+  // $84E9: on the first stage's eighth screen the first of the six looks at how far across it Arthur is. What it sends
+  // at him from 64 pixels in, at $8504, isn't ported yet.
+  if (RAM[0xCF] == 0 && RAM[OBJECT_X_SCREEN + ARTHUR] == 7 && RAM[OBJECT_X + ARTHUR] < 0x40) took(DANGERS_EIGHTH_SCREEN_BEGINS);
   zombies_come(&last_index);
 }
 
