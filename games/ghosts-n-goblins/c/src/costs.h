@@ -337,6 +337,7 @@ COST(HIDDEN_BECOMES_POT, 47)      // $BBCA to sub_F099: a pot, further on and up
 COST(HIDDEN_POT_FALLS, 42)        // $BBEB, with $BC81, and back
 COST(HIDDEN_STAYS, 34)            // sub_BB67 for an object that isn't shown, in a stage that isn't of the third set, and back
 COST(PICK_UP_ARMOUR_TAKEN, 101)   // $BA3F to sub_F708's end, and back: the armour, in the opening scene
+COST(PICK_UP_ARMOUR_SOUND, 7)     // and $BA83 to sub_ED51 outside it, more than the branch past it
 COST(OBJECT_REMOVED, 42)          // sub_F708, and back, for a kind it doesn't count
 COST(TOUCH_SET_UP, 95)            // sub_F68E to its call of sub_F63A, for an Arthur who stands,
 COST(TOUCH_ENDS, 33)              // and $F6D9, and back
@@ -769,8 +770,7 @@ COST(STAGE_OBJECT_PLATFORM, 39)   // or $D709 to $D6C1, for a moving platform: i
 COST(STAGE_OBJECT_STATE_KEPT, 7)  // or $D6BC to $D6C1, for one whose state is left as it was
 COST(STAGE_OBJECT_FILLED, 95)     // $D6C1, and back
 COST(GAME_ROUND_DANGERS, 15)      // $D583 to bank 2's $8400
-COST(DANGERS_OTHERS, 170)         // $8400 to $8415: its seven calls, and the six routines after the zombies' with nothing to do
-COST(DANGERS_EIGHTH_SCREEN_BEGINS, 5) // and $84EE to $84E8 by $84F7, on the eighth screen's first 64 pixels
+COST(DANGERS_OTHERS, 139)         // $8400 to $8415: its seven calls, and the five routines after the knights' with nothing to do
 
 // ---- the zombies, bank 2's $8416 and $F7BE (enemies.c)
 COST(ZOMBIES_OTHER_STAGE, 15)     // sub_8416, and back: a place with no zombies,
@@ -1224,3 +1224,47 @@ COST(PLATFORM_SCREEN_ABOVE, 25)   // or the one above
 COST(PLATFORM_CARRIES, 8)         // $B931 to the call of sub_EFDA
 COST(PLATFORM_CARRIED, 42)        // $B93A to the call of sub_F181: his place across, moved as it moves
 COST(PLATFORM_ENDS, 12)           // $B95A, and back
+
+
+// ---- the flying knights, bank 2's $84E0 and kind 3, bank 4's $A530 (enemies.c)
+COST(BRANCH_TAKEN, 3)             // a branch that's taken
+COST(KNIGHTS_OTHER_SET, 16)       // sub_84E0, and back, outside the first set of stages
+COST(KNIGHTS_LOOKED_AT, 17)       // sub_84E0 to $84EE: the screen Arthur is on
+COST(KNIGHTS_ELSEWHERE, 14)       // $84EE, and back, by $84F9: neither the eighth nor the ninth
+COST(KNIGHTS_EIGHTH_SCREEN, 8)    // $84EE to $84F5
+COST(KNIGHTS_TOO_EARLY, 11)       // and back: less than 64 pixels into it,
+COST(KNIGHTS_THERE, 4)            // or on to $8504, across a page
+COST(KNIGHTS_NINTH_SCREEN, 13)    // $84EE to $8502, by $84F9
+COST(KNIGHTS_PAST, 10)            // and back: 144 pixels into it or more
+COST(KNIGHTS_NOT_YET, 15)         // $8504, and back: the count isn't down yet,
+COST(KNIGHTS_COME, 22)            // or to $8513
+COST(KNIGHT_NONE_FREE, 10)        // $8516, and back: no object is free
+COST(KNIGHT_SET_UP, 49)           // $8516 to the call of sub_84D7
+COST(KNIGHT_PLACED, 29)           // $8539 to the call of sub_88F6
+COST(KNIGHT_NEXT, 5)              // $854F
+COST(POT_FOURTH, 30)              // $8936 to $894B, more than the branch past it: the fourth pot's own contents
+COST(POT_CONTENTS_READ, 22)       // $894B to $895A
+COST(POT_CONTENTS_CHOSEN, 3)      // and back,
+COST(POT_CONTENTS_HELD_ALREADY, 10) // or on to the next, for a weapon Arthur has
+COST(POT_ON_KIND_6, 4)            // $BC29 to $BC37, more than a zombie's: the other kinds that carry a pot,
+COST(POT_ON_KIND_7, 8)
+COST(POT_ON_KIND_4, 11)
+COST(POT_ON_NO_CARRIER, 15)       // or to sub_F708, for one that doesn't
+COST(KNIGHT_WAITS, 18)            // $A533, and back: its rounds of waiting aren't over,
+COST(KNIGHT_APPEARS, 66)          // or are: at the right of the view, with sub_F30D, and back
+COST(KNIGHT_DEAD, 5)              // $A54E to $F6F6
+COST(KNIGHT_TESTS, 17)            // $A54E to sub_F5A0
+COST(KNIGHT_NOT_HIT, 7)           // $A55C to $A58B: no weapon hit it,
+COST(KNIGHT_SHIELD, 22)           // or one that wasn't heading left: spent on its shield,
+COST(KNIGHT_KILLED, 32)           // or one that was: to sub_ED51, by sub_F7B9
+COST(KNIGHT_KILLED_SCORE, 50)     // $A570 to sub_D8FC
+COST(KNIGHT_KILLED_ENDS, 8)       // $A581 to $F6F6
+COST(KNIGHT_SOUND_SET, 17)        // $A58B to sub_F321
+COST(KNIGHT_VIEW_LOOKED_AT, 16)   // $A59B to $A5A6
+COST(KNIGHT_PASSED, 10)           // $A5A6 to sub_F708: past the view's left edge
+COST(KNIGHT_WAVE, 68)             // $A5A6 to sub_F099: its shape, and its height in the wave
+COST(KNIGHT_MOVES, 8)             // $A5D9 to sub_F03E
+COST(KNIGHT_ROUND_COUNTED, 24)    // $A5DE, and back
+COST(ASKED_SOUND_WAITS, 13)       // $D2AE to $D2C5, more than the branch past it: a sound an enemy asked for waits,
+COST(ASKED_SOUND_PLAYS, 21)       // or goes to sub_ED51,
+COST(ASKED_SOUND_PLAYED, 10)      // and $D2BD to $D2C5
