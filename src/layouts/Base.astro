@@ -80,6 +80,16 @@ const socialImage = new URL(social.src, Astro.site);
         }
         const calm = motion === 'calm' || (motion !== 'full' && matchMedia('(prefers-reduced-motion: reduce)').matches);
         root.dataset.motion = calm ? 'calm' : 'full';
+        // the logo a player picked in Settings: its colour is here from the first frame, and its pose keeps the
+        // logo unseen until it is drawn in (src/scripts/mark.ts)
+        let pose = null;
+        let colour = null;
+        try {
+          pose = localStorage.getItem('dreamports:logo-pose');
+          colour = localStorage.getItem('dreamports:logo-colour');
+        } catch {}
+        if (['jump', 'dive', 'rise', 'sleep'].includes(pose)) root.dataset.logoPose = pose;
+        if (colour === 'soft' || colour === 'lagoon') root.dataset.logoColour = colour;
       })();
     </script>
   </head>
