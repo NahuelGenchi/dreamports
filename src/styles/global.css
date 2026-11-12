@@ -40,9 +40,16 @@
   --on-act: #ffffff;
   --hollow: #eef7ff;
   --glow-o: 0.62;
-  --mk-dol: #0a3a78;
-  --mk-ring: #17b0c8;
-  --mk-rip: #8fdde8;
+  --mk-b1: #7ccbff;
+  --mk-b2: #1f5fd0;
+  --mk-b3: #0a2a66;
+  --mk-w1: #ffffff;
+  --mk-w2: #b9dcff;
+  --mk-line: #0a2a66;
+  --mk-eye: #061a44;
+  --mk-s1: #d9f0ff;
+  --mk-s2: #8fd1ff;
+  --mk-s3: #4f9df0;
   --discord: #5865f2;
 
   --font: 'Monocraft', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
@@ -69,8 +76,13 @@
     --on-act: #0a1738;
     --hollow: rgba(127, 180, 255, 0.05);
     --glow-o: 0.34;
-    --mk-dol: #8fd1ff;
-    --mk-rip: #1a7f99;
+    --mk-b1: #b5e2ff;
+    --mk-b2: #4f8df0;
+    --mk-b3: #1a4fb0;
+    --mk-line: #123a8c;
+    --mk-s1: #ffffff;
+    --mk-s2: #bfe6ff;
+    --mk-s3: #8fd1ff;
     --discord: #8c95ff;
 
     color-scheme: dark;
@@ -94,8 +106,13 @@
   --on-act: #0a1738;
   --hollow: rgba(127, 180, 255, 0.05);
   --glow-o: 0.34;
-  --mk-dol: #8fd1ff;
-  --mk-rip: #1a7f99;
+  --mk-b1: #b5e2ff;
+  --mk-b2: #4f8df0;
+  --mk-b3: #1a4fb0;
+  --mk-line: #123a8c;
+  --mk-s1: #ffffff;
+  --mk-s2: #bfe6ff;
+  --mk-s3: #8fd1ff;
   --discord: #8c95ff;
 
   color-scheme: dark;
@@ -283,15 +300,32 @@ kbd {
   font: 400 0.78em var(--font);
 }
 
-/* the Dreamports mark (Mark.astro). In the dark theme the dolphin takes the sky's blue, as the navy would vanish there */
+/* the Dreamports mark (Mark.astro). Its colours are stops along three runs of colour: the body's (b), the belly's (w)
+   and the star's (s). In the dark theme the body and its lines take lighter blues, as navy would vanish there */
 .mark {
   display: block;
   flex: none;
 }
 
-.mk-dol { fill: var(--mk-dol); }
-.mk-ring { fill: var(--mk-ring); }
-.mk-rip { fill: var(--mk-rip); }
+.mk-b1 { stop-color: var(--mk-b1); }
+.mk-b2 { stop-color: var(--mk-b2); }
+.mk-b3 { stop-color: var(--mk-b3); }
+.mk-w1 { stop-color: var(--mk-w1); }
+.mk-w2 { stop-color: var(--mk-w2); }
+.mk-s1 { stop-color: var(--mk-s1); }
+.mk-s2 { stop-color: var(--mk-s2); }
+.mk-s3 { stop-color: var(--mk-s3); }
+.mk-eye { fill: var(--mk-eye); }
+
+.mk-line {
+  fill: none;
+  stroke: var(--mk-line);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* the flipper's line, quieter than the smile */
+.mk-soft { stroke-opacity: 0.6; }
 
 /* ---------- The launcher: one screen ---------- */
 
@@ -1273,7 +1307,7 @@ kbd {
   fill: currentColor;
 }
 
-/* the mark the game goes through when it launches, dropping through its ring */
+/* the mark the game goes to when it launches, landing in the curl of the dolphin's body */
 .target {
   position: absolute;
   z-index: 0;
@@ -1300,19 +1334,19 @@ kbd {
   transform: translateY(calc(var(--cell) * -2));
 }
 
-/* inside the ring, around its middle */
+/* the open space the dolphin curls around, under its chin and over its tail */
 .t-mark-mouth {
   position: absolute;
-  left: 30%;
-  right: 28%;
-  top: 23%;
-  bottom: 35%;
+  left: 51%;
+  right: 24.5%;
+  top: 50.5%;
+  bottom: 25%;
 }
 
 .t-glow {
   position: absolute;
-  left: 51%;
-  top: 44%;
+  left: 63.5%;
+  top: 63%;
   width: 14%;
   height: 12%;
   translate: -50% -50%;
