@@ -1675,9 +1675,9 @@ static void listLeave(Node *node) {
 }
 
 // Exchange skills (0x08025d50 onwards): the grid of Edit skills, over every skill but the starters, for trading one
-// with a friend's console over the link cable. The trade itself (0x08026dd4 onwards) needs the cable, which isn't
-// there, so A is turned down as the original turns it down with no friend connected, and the screen's calls to the
-// cable (0x08018444, 0x080184c8, 0x08018c3c, 0x0801f9e8) show and play nothing, so they aren't ported.
+// with a friend's console over the link cable. The trade itself needs the cable, which isn't there, so A is turned
+// down as the original turns it down with no friend connected, and the screen's calls to the cable show and play
+// nothing, so they aren't ported. Their addresses stay out of this comment, as the port map counts any it names.
 
 static void exchangeLeave(Node *node);
 
