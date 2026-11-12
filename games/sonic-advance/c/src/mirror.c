@@ -10,6 +10,8 @@
 enum {
   ANIM_MIRROR = 432, VARIANT_WALK = 0, VARIANT_SHOOT = 1,
   ANIM_MIRROR_SHOT = 435,
+  VRAM_MIRROR_SHOT = 0x2580,
+  MIRROR_TILES = 20,         // ALLOC_TILES: 40 x 32 px
   SPEED = 160,               // 0.625 px in 1/256 px
   REST = 90, SHOOT_AT = 20, SHOOT_FRAMES = 60,
   SHOT_SPEED = 512,          // 2 px in 1/256 px
@@ -45,7 +47,7 @@ static void shot_new(int x, int y, int dir) {
   sh->qx = x << 8;
   sh->y = y;
   sh->dir = dir;
-  object_sprite(&sh->o.sprite, ANIM_MIRROR_SHOT, 0, 0, ORDER_MIRROR_SHOT, 0, 0, 0);
+  object_sprite_at(&sh->o.sprite, OBJ_VRAM + VRAM_MIRROR_SHOT, ANIM_MIRROR_SHOT, 0, ORDER_MIRROR_SHOT, 0, 0, 0);
   sprite_step(&sh->o.sprite);
   object_task(&sh->o, shot_run, ENEMY_SHOT_PRIORITY);
 }
@@ -62,9 +64,9 @@ static int mirror_run(ActTask *t) {
   if (enemy_gone(e->x, e->y, x, y)) return 0;
 
   if (!m->shooting) {
-    Hitbox body = collide_body(&act.player);
-    const Hitbox *hb = object_box(s, 0);
-    if (hb && !act.player.dead && collide_overlap(x, y, hb, enemy_sonic_x(), enemy_sonic_y(), &body)) {
+    // against his animation's own box (the original's gPlayerBodyPSI hitbox), not the made-up body box
+    const Hitbox *hb = object_box(s, 0), *body = object_box(&act.player.sprite, 0);
+    if (hb && body && !act.player.dead && collide_overlap(x, y, hb, enemy_sonic_x(), enemy_sonic_y(), body)) {
       world_damage(&act.player);
     }
     if (enemy_i(m->q) <= d.d0 * ENEMY_TILE) m->v = SPEED;
@@ -103,6 +105,7 @@ ActTask *mirror_spawn(Slot *slot) {
   m->o.slot = slot;
   m->o.x = en->x;
   m->v = -SPEED;
-  enemy_sprite(&m->o.sprite, ANIM_MIRROR, VARIANT_WALK, VARIANT_SHOOT, ENEMY_ORDER);
+  object_sprite_at(&m->o.sprite, vram_malloc(MIRROR_TILES), ANIM_MIRROR, VARIANT_WALK, ENEMY_ORDER, ENEMY_PRIORITY, 0, 0);
+  sprite_step(&m->o.sprite);
   return object_task(&m->o, mirror_run, PRIORITY_OBJECTS);
 }

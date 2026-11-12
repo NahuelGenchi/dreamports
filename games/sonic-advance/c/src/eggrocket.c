@@ -194,67 +194,83 @@ static void launch_start(void) {
 }
 
 // CreateEggRocketStageSeparation: camera pans down to worldY, stage below splits and falls away on BG2 with debris and shake,
-// then camera pans back up and countdown resets to 5:00
+// then camera pans back up and countdown resets to 5:00. Its five tasks are the phases; a phase that hands over runs the next
+// one in the same frame, as Task_8028F20, Task_8029070 and Task_8029194 call the next one's main.
 typedef struct { Object o; int worldY, q6, q8, n, phase; } EggRocketSeparation;
 
+enum { SEP_PAN_DOWN, SEP_SLIP, SEP_SLIP_SHAKE, SEP_FALL, SEP_PAN_UP };
+
+// gBgScrollRegs[2]: the front layer's scroll as RenderMetatileLayers leaves it in the camera's task, before this one runs
+static int front_h(void) { return (int)act.cam.x & 7; }
+static int front_v(void) { return (int)act.cam.y & 7; }
+
+// the stage above worldY stays, the lines from worldY to the falling part's top hold one line of empty map, and the part
+// below them shows the stage moved down by q8; once the split is off the screen the lines stop being copied
 static void separation_slip(int worldY, int q6, int q8) {
-  int top = worldY + (q6 >> 8) - (int)act.cam.y;
-  int below = worldY + (q8 >> 8) - (int)act.cam.y;
+  int16_t top = (int16_t)(worldY + (q6 >> 8) - (int)act.cam.y);
+  int16_t below = (int16_t)(worldY + (q8 >> 8) - (int)act.cam.y);
   int splitY = worldY - (int)act.cam.y;
+  int h = front_h(), v = front_v();
   if (top > 0 && below < SCREEN_H) {
     if (splitY > 0) {
-      fill_lines(2, 0, splitY, (int)act.cam.x, (int)act.cam.y);
-      scroll_lines(2, splitY, below, (int)act.cam.x, SCREEN_H + 80);
+      fill_lines(2, 0, splitY, h, v);
+      scroll_lines(2, splitY, below, h, SCREEN_H + 80);
     } else {
-      scroll_lines(2, 0, below, (int)act.cam.x, SCREEN_H + 80);
+      scroll_lines(2, 0, below, h, SCREEN_H + 80);
     }
-    fill_lines(2, below, SCREEN_H, (int)act.cam.x, (int)act.cam.y - (q8 >> 8));
+    fill_lines(2, below, SCREEN_H, h, v - (q8 >> 8));
+  } else {
+    e.flags &= ~FLAGS_HBLANK_COPY;
   }
 }
 
-static int separation_run(ActTask *t) {
-  EggRocketSeparation *s = (EggRocketSeparation *)t->data;
+static int separation_phase(EggRocketSeparation *s) {
   int worldY = s->worldY;
   switch (s->phase) {
-    case 0:
+    case SEP_PAN_DOWN:   // Task_8028CE4
       if (++act.cam.shiftY < worldY - (int)act.cam.y + SCREEN_H / 2) return 1;
       throw_nuts_and_bolts();
       boss_shake(0x800, 8, 16, 10, SHAKE_VERTICAL);
       play_song(SE_CRUMBLING_PLATFORM);
-      s->phase = 1;
+      s->phase = SEP_SLIP;
       return 1;
-    case 1:
-      s->q6 += 8; s->q8 += 16;
+    case SEP_SLIP:       // Task_8028F20
+      s->q6 = (s->q6 + 8) & 0xFFFF; s->q8 = (s->q8 + 16) & 0xFFFF;
       if (s->q6 >= 0x400 && (act.checkpointIndex == 2 || ((-(stage_time() * 2)) & 0x1FF) == 0x102)) {
-        s->phase = 2; s->n = 0;
+        s->phase = SEP_SLIP_SHAKE; s->n = 0;
         if (act.checkpointIndex == 3) view.flags |= BG_SPACE;
+        return separation_phase(s);
       }
       separation_slip(worldY, s->q6, s->q8);
       return 1;
-    case 2:
-      s->q6 += 8; s->q8 += 16;
+    case SEP_SLIP_SHAKE: // Task_8029070
+      s->q6 = (s->q6 + 8) & 0xFFFF; s->q8 = (s->q8 + 16) & 0xFFFF;
       if (s->n++ > 40) {
-        s->phase = 3; s->n = 0;
+        s->phase = SEP_FALL; s->n = 0;
         boss_shake(0x800, 8, 16, -1, SHAKE_VERTICAL | SHAKE_HORIZONTAL | SHAKE_RANDOM);
+        return separation_phase(s);
       }
       separation_slip(worldY, s->q6, s->q8);
       return 1;
-    case 3:
-      s->q8 += 0x200; s->q6 += 0x100;
+    case SEP_FALL:       // Task_8029194
+      s->q8 = (s->q8 + 0x200) & 0xFFFF; s->q6 = (s->q6 + 0x100) & 0xFFFF;
       if ((s->n++ & 0xF) == 0) { throw_nuts_and_bolts(); play_song(SE_EXPLOSION); }
-      if (worldY + (s->q8 >> 8) - (int)act.cam.y > SCREEN_H) { s->phase = 4; }
+      if ((int16_t)(worldY + (s->q8 >> 8) - (int)act.cam.y) > SCREEN_H) {
+        s->phase = SEP_PAN_UP;
+        return separation_phase(s);
+      }
       separation_slip(worldY, s->q6, s->q8);
       return 1;
-    case 4:
+    case SEP_PAN_UP: {   // Task_80294A8
       act.cam.shiftY--;
       if ((s->n++ & 0xF) == 0) { throw_nuts_and_bolts(); play_song(SE_EXPLOSION); }
+      int splitY = worldY - (int)act.cam.y;
       if ((int)act.cam.y > worldY - SCREEN_H) {
-        int splitY = worldY - (int)act.cam.y;
         if (splitY > 0) {
-          fill_lines(2, 0, splitY, (int)act.cam.x, (int)act.cam.y);
-          scroll_lines(2, splitY, SCREEN_H, (int)act.cam.x, SCREEN_H + 80);
+          fill_lines(2, 0, splitY, front_h(), front_v());
+          scroll_lines(2, splitY, SCREEN_H, front_h(), SCREEN_H + 80);
         } else {
-          scroll_lines(2, 0, SCREEN_H, (int)act.cam.x, SCREEN_H + 80);
+          scroll_lines(2, 0, SCREEN_H, front_h(), SCREEN_H + 80);
         }
         return 1;
       }
@@ -262,11 +278,15 @@ static int separation_run(ActTask *t) {
       if (act.checkpointIndex > 1) { act.cam.maxY = 5568 - SCREEN_H; act.clockStopped = 0; act.timerReversed = 1; act.courseTime = 5 * 3600; }
       if (act.checkpointIndex > 2) { act.cam.maxY = 3264 - SCREEN_H; act.clockStopped = 0; act.timerReversed = 1; act.courseTime = 5 * 3600; }
       act.player.ignoreInput = 0;
+      e.flags &= ~FLAGS_HBLANK_COPY;
       view.flags &= ~BG_SCROLLING;
       return 0;
+    }
   }
   return 0;
 }
+
+static int separation_run(ActTask *t) { return separation_phase((EggRocketSeparation *)t->data); }
 
 static void separation_start(int worldY) {
   act.player.ignoreInput = 1; act.player.xsp = 0; act.player.gsp = 0;
@@ -274,7 +294,7 @@ static void separation_start(int worldY) {
   EggRocketSeparation *s = OBJECT_NEW(EggRocketSeparation);
   if (!s) return;
   s->worldY = worldY;
-  s->q6 = 0; s->q8 = 0; s->n = 0; s->phase = 0;
+  s->q6 = 0; s->q8 = 0; s->n = 0; s->phase = SEP_PAN_DOWN;
   object_task(&s->o, separation_run, 0x4000);
 }
 

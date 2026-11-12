@@ -68,7 +68,7 @@ typedef struct {
   int shield;                   // the shield an item box gave him (SHIELD_*)
   const void *onObject;         // the solid object he stands on, if any
   int animRestart;              // an object asked for his animation to start over
-  int forcedRoll, scripted, actClear, halfPipe, ignoreInput, carried, override;
+  int forcedRoll, scripted, actClear, halfPipe, ignoreInput, wasIgnoreInput, carried, override;
   int track;                    // the step of the marble track or tube holding him (unk99[0]), NO_TRACK when none does
   int scale;                    // his size through the rotation hardware (8.8), smaller inside a marble track
   int drawRotation;             // the angle he is drawn at through the rotation hardware (1024 a turn)

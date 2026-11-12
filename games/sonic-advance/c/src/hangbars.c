@@ -4,9 +4,11 @@
 // sideways as held, until jump or moving past an end drops him 22 px under it with the spin attack on.
 
 #include "objects.h"
+#include "terrain.h"
 
 enum {
   HANG = 16, CATCH = 18, DROP = 22, STEP = 2,
+  SPRITE_OFFSET_Y = 14,
   PRIORITY_HANG_BAR = 0x8000,
 };
 
@@ -67,7 +69,7 @@ static int hang_bar_run(ActTask *t) {
         p->state = PS_HANG;
       }
       p->y = en->y + CATCH;
-      p->offsetY = 14;
+      sensors_set_offset_y(p, SPRITE_OFFSET_Y);
       b->on = 1;
       b->playerX = p->x;
     }

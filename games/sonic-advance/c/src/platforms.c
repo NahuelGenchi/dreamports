@@ -88,9 +88,10 @@ static int thin_run(ActTask *t) {
     if (pf->across) p->x += moved / 256.0;
     p->y += (inverted ? -2 : 1) + (pf->across ? 0 : moved / 256.0);
   }
-  collide_platform_top(&pf->o, x, y, box_of(pf), p);
+  // while an object holds him (MOVESTATE_IA_OVERRIDE), such as a pipe, it neither meets him nor sags, nor eases back
+  if (!p->carried) collide_platform_top(&pf->o, x, y, box_of(pf), p);
   if (off_display(en->x, en->y) && off_cam(x, y)) return 0;
-  object_draw(&pf->o.sprite, x, y + (inverted ? -1 : 1) * sagging(pf));
+  object_draw(&pf->o.sprite, x, y + (p->carried ? 0 : (inverted ? -1 : 1) * sagging(pf)));
   return 1;
 }
 

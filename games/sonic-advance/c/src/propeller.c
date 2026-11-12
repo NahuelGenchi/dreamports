@@ -6,6 +6,7 @@
 enum {
   ANIM_PROPELLER = 515,
   ORDER_PROPELLER = 18, PRIORITY_FRONT = 2,
+  PROPELLER_TILES = 54,   // ALLOC_TILES: 144 x 24 px
 };
 
 typedef struct { Object o; } Propeller;
@@ -25,8 +26,8 @@ ActTask *propeller_spawn(Slot *slot) {
   if (!pr) return NULL;
   pr->o.slot = slot;
   pr->o.x = en->x;
-  object_sprite(&pr->o.sprite, ANIM_PROPELLER, 0, 0, ORDER_PROPELLER, PRIORITY_FRONT, 0, 0);
+  object_sprite_at(&pr->o.sprite, vram_malloc(PROPELLER_TILES), ANIM_PROPELLER, 0, ORDER_PROPELLER, PRIORITY_FRONT, 0, 0);
   pr->o.sprite.frameFlags |= (1 << 18);   // skips its script's palette load
-  sprite_step(&pr->o.sprite);
+  // its animation first steps in its task, not as it is made
   return object_task(&pr->o, propeller_run, PRIORITY_OBJECTS);
 }

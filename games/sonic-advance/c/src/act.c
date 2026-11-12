@@ -378,8 +378,6 @@ static void draw_frame(void) {
   fill_layer(0xF800, LAYER_BACK, layerX, camY);
   // the zone's StageBgUpdate
   if (row->drawBackground) row->drawBackground(camX, camY);
-
-  player_draw(&act.player, camX, camY);
 }
 
 // UpdateBgAnimationTiles: the front layer's first tiles change every animDelay camera runs; frame 0 is the tileset,
@@ -619,6 +617,12 @@ static void act_frame(void) {
     in.left = 0; in.right = 1; in.jump = 1; in.attack = 0; in.jumpPressed = 0; in.attackPressed = 0;
     act.firstFrame = 0;
   }
+  if (act.player.wasIgnoreInput && !act.player.ignoreInput) {
+    if (e.input & KEY_A) in.jumpPressed = 1;
+    if (e.input & KEY_B) in.attackPressed = 1;
+    act.player.heldDirs = 0;
+  }
+  act.player.wasIgnoreInput = act.player.ignoreInput;
   // an object holding him takes the pad from him: he reads nothing held or pressed, or only right held as the goal post
   // gives him to run off (HOLD_RIGHT)
   if (act.player.ignoreInput)
@@ -627,13 +631,16 @@ static void act_frame(void) {
   // a start point's first act frame is the held A's jump, one frame after it began, when it has the word for it
   if (act.drawn == 0 && act.fromStartPoint && gba_start_number("jump", 0)) player_start_jump(&act.player);
   player_animate(&act.player, &in);
+  player_draw(&act.player, act.cam.x, act.cam.y);
   if (row->palettesAfterSonic)
     for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
   if (act.frames > 0 || row->runsFromFirstFrame) objects_run_late();
   // what the music manager reads of Sonic (0x4000)
   const Player *sonic = &act.player;
   music_call(MUSIC_PLAYER, (sonic->invincible > 0) | (sonic->speedUp > 0) << 1 | !sonic->dead << 2);
-  // the stage clock's task (0xFF00): the course time counts once the card has ended, the stage's tick every frame
+  // the stage clock's task (0xFF00): the course time counts once the card has ended, the stage's tick every frame; it
+  // keeps this frame's gravity as the last (gPrevStageFlags), so a flip turns his Y speed around once
+  act.player.wasInverted = act.player.inverted;
   if (!act.clockStopped) {
     if (act.timerReversed) {
       if (--act.courseTime <= 0) {

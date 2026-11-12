@@ -750,15 +750,20 @@ static void choose(Player *p, int name, int restart) {
   p->animName = name;
 }
 
+// walking, bouncing and in a marble track he is drawn through the rotation hardware
+static int drawn_rotated(const Player *p) { return p->state == PS_WALK || p->state == PS_BOUNCE || p->state == PS_MARBLE_TRACK; }
+
 void player_animate(Player *p, const PlayerInput *in) {
   Sprite *s = &p->sprite;
   if (p->death == PLAYER_GONE) return;
   choose(p, pick(p, in), p->animRestart);
   p->animRestart = 0;
   if (p->state == PS_BRAKE && act_stage_time() % 4 == 0) act_brake_dust();
-  // a hitbox a frame sets is turned with him, as the sprite system applies its flips when it sets one
-  s->frameFlags = (s->frameFlags & ~(SPRITE_X_FLIP | SPRITE_Y_FLIP)) | (p->facing > 0 ? SPRITE_X_FLIP : 0) | (p->inverted ? SPRITE_Y_FLIP : 0);
   for (int guard = 0; guard < 4; guard++) {
+    // a hitbox a frame sets is turned with him, as the sprite system applies its flips when it sets one; the frames drawn
+    // through the rotation hardware have their flips cleared first (sub_8024B10), so theirs are never turned
+    s->frameFlags &= ~(SPRITE_X_FLIP | SPRITE_Y_FLIP);
+    if (!drawn_rotated(p)) s->frameFlags |= (p->facing > 0 ? SPRITE_X_FLIP : 0) | (p->inverted ? SPRITE_Y_FLIP : 0);
     if (update_sprite(s, 0)) break;
     int before = p->state;
     after_animation(p);
@@ -786,7 +791,7 @@ void player_draw(Player *p, int camX, int camY) {
   Sprite *s = &p->sprite;
   // walking, bouncing and in a marble track he is drawn through the rotation hardware: at his surface's angle, or in a
   // track at the angle the track turned him to, and at his scale
-  int rotated = p->state == PS_WALK || p->state == PS_BOUNCE || p->state == PS_MARBLE_TRACK;
+  int rotated = drawn_rotated(p);
   if (!rotated) p->drawRotation = 0;
   else if (p->state != PS_MARBLE_TRACK) p->drawRotation = p->rotation << 2;
   int sx = (int)__builtin_floor(p->x) - camX, sy = (int)__builtin_floor(p->y) - camY;

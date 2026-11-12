@@ -7,6 +7,7 @@
 
 enum {
   ORDER_CONVEYOR = 18, PRIORITY_FRONT = 2,
+  WIDE_TILES = 36, SLIM_TILES = 27,   // ALLOC_TILES: 96 x 24 and 72 x 24 px
 };
 
 typedef struct { Object o; } ConveyorBeltObject;
@@ -30,8 +31,8 @@ ActTask *conveyor_belt_object_spawn(Slot *slot) {
   int isAct2 = (act.stage.level & 1) != 0;
   int anim = isAct2 ? (en->d[0] >= 2 ? 603 : 604) : (en->d[0] >= 2 ? 509 : 508);
   int variant = en->d[0] & 1;
-  object_sprite(&cb->o.sprite, anim, variant, variant, ORDER_CONVEYOR, PRIORITY_FRONT, 0, 0);
-  cb->o.sprite.variant = variant;
-  sprite_step(&cb->o.sprite);
+  object_sprite_at(&cb->o.sprite, vram_malloc(en->d[0] >= 2 ? SLIM_TILES : WIDE_TILES), anim, variant, ORDER_CONVEYOR,
+                   PRIORITY_FRONT, 0, 0);
+  // its animation first steps in its task, not as it is made
   return object_task(&cb->o, conveyor_belt_object_run, PRIORITY_OBJECTS);
 }

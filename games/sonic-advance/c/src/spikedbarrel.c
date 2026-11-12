@@ -10,6 +10,7 @@ enum {
   ORDER_BARREL = 18, PRIORITY_FRONT = 2,
   SHORT_WAIT = 0x10, LONG_WAIT = 0x30,
   SWING_HALF = 0x80,
+  BARREL_TILES = 30,   // ALLOC_TILES: 48 x 40 px
 };
 
 typedef struct {
@@ -27,9 +28,9 @@ static int spiked_barrel_run(ActTask *t) {
   int moved = next - b->offset;
   b->offset = next;
 
-  int dx = b->across ? (next / 256) : 0;
-  int dy = b->across ? 0 : (next / 256);
-  int x = en->x + dx, y = en->y + dy;
+  // it stands where I() floors its offset, and is drawn and hurts where Div() rounds it towards zero
+  int x = en->x + (b->across ? next >> 8 : 0), y = en->y + (b->across ? 0 : next >> 8);
+  int drawX = en->x + (b->across ? next / 256 : 0), drawY = en->y + (b->across ? 0 : next / 256);
   b->o.x = x;
 
   if (p->onObject == &b->o) {
@@ -39,13 +40,14 @@ static int spiked_barrel_run(ActTask *t) {
   collide_platform_top(&b->o, x, y, object_box(&b->o.sprite, 0), p);
 
   if ((b->variant == 0 || b->variant == 2) && object_box(&b->o.sprite, 1)) {
-    Hitbox body = collide_body(p);
-    if (!p->dead && collide_overlap(x, y, object_box(&b->o.sprite, 1), (int)__builtin_floor(p->x), (int)__builtin_floor(p->y), &body)) {
+    // against his animation's own body box (spriteInfoBody's hitboxes[0]), whatever its state
+    if (!p->dead && collide_overlap(drawX, drawY, object_box(&b->o.sprite, 1), (int)__builtin_floor(p->x), (int)__builtin_floor(p->y),
+                                    &p->sprite.hitboxes[0])) {
       if (world_damage(p)) play_song(171);
     }
   }
 
-  if (off_display(en->x, en->y) && off_cam(x, y)) { b->o.slot->live = NULL; return 0; }
+  if (off_display(en->x, en->y) && off_cam(drawX, drawY)) { b->o.slot->live = NULL; return 0; }
 
   if (p->onObject == &b->o) {
     b->sag = b->sag + 0x10 > 0x100 ? 0x100 : b->sag + 0x10;
@@ -60,7 +62,7 @@ static int spiked_barrel_run(ActTask *t) {
   }
 
   sprite_step(&b->o.sprite);
-  object_draw(&b->o.sprite, x, y + (SINE[b->sag] >> 12));
+  object_draw(&b->o.sprite, drawX, drawY + (SINE[b->sag] >> 12));
   return 1;
 }
 
@@ -75,7 +77,7 @@ ActTask *spiked_barrel_spawn(Slot *slot) {
   b->reach = (b->across ? en->d[2] : en->d[3]) << 11;
   b->wait = SHORT_WAIT;
   b->variant = 0;
-  object_sprite(&b->o.sprite, ANIM_SPIKED_BARREL, 0, 3, ORDER_BARREL, PRIORITY_FRONT, 0, 0);
+  object_sprite_at(&b->o.sprite, vram_malloc(BARREL_TILES), ANIM_SPIKED_BARREL, 0, ORDER_BARREL, PRIORITY_FRONT, 0, 0);
   sprite_step(&b->o.sprite);
   return object_task(&b->o, spiked_barrel_run, PRIORITY_OBJECTS);
 }

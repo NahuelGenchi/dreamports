@@ -11,6 +11,9 @@
 
 enum {
   ANIM_PIPE_H = 588, ANIM_PIPE_V = 589,     // SA1_ANIM_PIPE_GATE_2_H and _V
+  ANIM_PIPE_ROCKET_ENTER_V = 584, ANIM_PIPE_ROCKET_EXIT_V = 585,
+  ANIM_PIPE_ROCKET_ENTER_H = 586, ANIM_PIPE_ROCKET_EXIT_H = 587,
+  ANIM_PIPE_COSMIC_ENTER_H = 590, ANIM_PIPE_COSMIC_ENTER_V = 591,
   VARIANT_ENTRANCE = 0, VARIANT_EXIT = 1,
   PIPE_TILES = 70,                          // ALLOC_TILES: 80 x 56 px either way round
   ORDER_PIPE = 5, PRIORITY_BEHIND = 0,
@@ -51,15 +54,52 @@ enum { WAITING, PULLING, CARRYING, HOLDING = PULLING, THROWING = CARRYING };
 
 static int vertical(const Pipe *pi) { return pi->face == FACE_DOWN || pi->face == FACE_UP; }
 
-static Pipe *pipe_new(Slot *slot, int variant, int flipY) {
+static Pipe *pipe_new(Slot *slot, int isExit) {
   Pipe *pi = OBJECT_NEW(Pipe);
   if (!pi) return NULL;
   pi->o.slot = slot;
   pi->o.x = slot->e.x;
   pi->face = slot->e.d[2]; pi->step = slot->e.d[3];
   int v = vertical(pi);
-  object_sprite_at(&pi->o.sprite, vram_malloc(PIPE_TILES), v ? ANIM_PIPE_V : ANIM_PIPE_H, variant, ORDER_PIPE, PRIORITY_BEHIND,
-                   !v && (pi->face & 1), v && flipY);
+  int level = act.stage.level;
+  int isZone6orChaoD = (level >> 1 == ZONE_EGG_ROCKET) || (level == LEVEL_CHAO_HUNT_D);
+  int isAct2 = (level & 1) != 0;
+  int anim = 0, variant = 0, flipY = 0, flipX = 0, tiles = PIPE_TILES;
+
+  if (v) {
+    if (isZone6orChaoD) {
+      if (isAct2) {
+        anim = ANIM_PIPE_COSMIC_ENTER_V;
+        variant = isExit ? 1 : 0;
+        flipY = isExit ? (pi->face != 0) : (pi->face == 0);
+        tiles = 77;
+      } else {
+        anim = isExit ? ANIM_PIPE_ROCKET_EXIT_V : ANIM_PIPE_ROCKET_ENTER_V;
+        variant = 0;
+        flipY = (pi->face != 0);
+      }
+    } else {
+      anim = ANIM_PIPE_V;
+      variant = isExit ? 1 : 0;
+      flipY = (pi->face != 0);
+    }
+  } else {
+    if (isZone6orChaoD) {
+      if (isAct2) {
+        anim = ANIM_PIPE_COSMIC_ENTER_H;
+        variant = isExit ? 1 : 0;
+        tiles = 91;
+      } else {
+        anim = isExit ? ANIM_PIPE_ROCKET_EXIT_H : ANIM_PIPE_ROCKET_ENTER_H;
+        variant = 0;
+      }
+    } else {
+      anim = ANIM_PIPE_H;
+      variant = isExit ? 1 : 0;
+    }
+    flipX = (pi->face & 1) != 0;
+  }
+  object_sprite_at(&pi->o.sprite, vram_malloc(tiles), anim, variant, ORDER_PIPE, PRIORITY_BEHIND, flipX, flipY);
   sprite_step(&pi->o.sprite);   // its animation steps once as it is made
   return pi;
 }
@@ -158,9 +198,9 @@ static int entrance_run(ActTask *t) {
   return show(pi);
 }
 
-// CreateEntity_PipeEntrance: a vertical one is drawn upside down unless it faces down
+// CreateEntity_PipeEntrance
 ActTask *pipe_entrance_spawn(Slot *slot) {
-  Pipe *pi = pipe_new(slot, VARIANT_ENTRANCE, slot->e.d[2] != FACE_DOWN);
+  Pipe *pi = pipe_new(slot, 0);
   return pi ? object_task(&pi->o, entrance_run, PRIORITY_OBJECTS | pi->step) : NULL;
 }
 
@@ -233,8 +273,8 @@ static int exit_run(ActTask *t) {
   return show(pi);
 }
 
-// CreateEntity_PipeExit: a vertical one is drawn upside down unless it throws down
+// CreateEntity_PipeExit
 ActTask *pipe_exit_spawn(Slot *slot) {
-  Pipe *pi = pipe_new(slot, VARIANT_EXIT, slot->e.d[2] != FACE_DOWN);
+  Pipe *pi = pipe_new(slot, 1);
   return pi ? object_task(&pi->o, exit_run, PRIORITY_OBJECTS | pi->step) : NULL;
 }

@@ -9,6 +9,7 @@
 enum {
   ANIM_OCT = 433, VARIANT_PATROL = 0, VARIANT_SHOOT = 1,
   ANIM_OCT_SHOT = 436,
+  VRAM_OCT_SHOT = 0x2600,
   SPEED = 192,               // 0.75 px in 1/256 px
   TURN_FRAMES = 30,
   SHOOT_EVERY = 60,
@@ -44,7 +45,7 @@ static void shot_new(int x, int y) {
   if (!sh) return;
   sh->x = x;
   sh->qy = y << 8;
-  object_sprite(&sh->o.sprite, ANIM_OCT_SHOT, 0, 0, ORDER_OCT_SHOT, ENEMY_PRIORITY, 0, 0);
+  object_sprite_at(&sh->o.sprite, OBJ_VRAM + VRAM_OCT_SHOT, ANIM_OCT_SHOT, 0, ORDER_OCT_SHOT, ENEMY_PRIORITY, 0, 0);
   sprite_step(&sh->o.sprite);
   object_task(&sh->o, shot_run, ENEMY_SHOT_PRIORITY);
 }
@@ -76,7 +77,7 @@ static int oct_run(ActTask *t) {
   if (oc->state == STATE_WAITING) {
     if (enemy_attack(s, x, y)) { slot->gone = 1; return 0; }
     if (x - 120 < enemy_sonic_x() && x + 120 > enemy_sonic_x()) {
-      sprite_start(s, VARIANT_PATROL);
+      s->variant = VARIANT_PATROL;   // as it already was: its animation runs on, not from its start
       oc->state = STATE_PATROL;
     }
   } else if (oc->state == STATE_PATROL) {
