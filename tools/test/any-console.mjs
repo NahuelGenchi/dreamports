@@ -280,6 +280,7 @@ function findsRoute() {
   run = dp('prove', GAME, 'walk');
   check(run.status === 0 && report('walk').matched === walk.frames, `prove plays what it wrote like any recording: ${report('walk').matched} of ${report('walk').frames}`);
   if (run.status) console.log(run.out);
+  holdsPartsToTheirGoal(walk);
   // a goal nothing reaches: it stops by itself, says how far it got, leaves a picture, and goes on from there next time
   run = dp('route', GAME, 'lost-walk', '--from', 'buttons:10', '--goal', 'nowhere', '--minutes', '0.05', '--at-once', '2');
   check(run.status === 1 && run.out.includes('Not found') && run.out.includes('It reached') && !existsSync(join(recordings, 'lost-walk.json')), `a goal it can't reach ends it, with how far it got and no recording: ${run.out.split('\n').find(line => line.startsWith('Not found'))}`);
@@ -287,6 +288,35 @@ function findsRoute() {
   run = dp('route', GAME, 'lost-walk', '--from', 'buttons:10', '--goal', 'nowhere', '--minutes', '0.05', '--at-once', '2');
   check(run.status === 1 && run.out.includes('it found before again'), `run again, it goes on from the places it had: ${run.out.split('\n').find(line => line.includes('before again'))}`);
   rmSync(join(LOCAL, 'routes', GAME), { recursive: true, force: true });
+}
+
+// What a part reaches (src/lib/reaches.mjs), on the walk the route finder wrote: a part that names one of the game's
+// goals is proven only when the original gets there within its frames, as its own memory says, however the frames
+// compare. It leaves the game's parts and its proof as they were.
+function holdsPartsToTheirGoal(walk) {
+  const file = join(proofFolder(GAME), 'parts.json'), before = readFileSync(file, 'utf8');
+  const all = { name: 'All of it', recording: 'buttons', frames: [0, 259] };
+  const write = (...parts) => writeFileSync(file, `${JSON.stringify({ about: 'The game\'s parts.', parts }, null, 2)}\n`);
+  const kept = name => JSON.parse(readFileSync(join(proofFolder(GAME), 'progress.json'), 'utf8')).recordings[name];
+  write(all, { name: 'The walk', recording: 'walk', frames: [0, walk.frames - 1], reaches: 'the-end' });
+  let run = dp('prove', GAME, 'walk');
+  const [[there] = []] = kept('walk').reached?.['the-end'] ?? [];
+  check(run.status === 0 && run.out.includes('Proven, every frame the same: The walk') && there > 10 && there < walk.frames, `a part that names what it reaches is proven once the original gets there within its frames, and progress.json keeps when: ${JSON.stringify(kept('walk').reached)}`);
+  if (run.status) console.log(run.out);
+  write(all, { name: 'The walk', recording: 'walk', frames: [0, there - 1], reaches: 'the-end' });
+  run = dp('prove', GAME, 'walk');
+  check(run.status !== 0 && report('walk').matched === walk.frames && run.out.includes(`only reaches the-end at frame ${there}, past the part's last frame`), 'a part that ends a frame before the original gets there isn\'t proven, though every frame is the same, and prove says when it did');
+  run = dp('prove', GAME, 'walk', '--quick');
+  check(run.status !== 0 && run.out.includes('only reaches the-end at frame'), '--quick says so too');
+  write({ ...all, reaches: 'the-end' });
+  run = dp('prove', GAME, 'buttons');
+  check(run.status !== 0 && report('buttons').matched === 260 && run.out.includes('never reaches the-end in this recording') && kept('buttons').reached?.['the-end']?.length === 0, 'a recording that never gets there fails the part, however its frames compare');
+  write({ ...all, reaches: 'the-moon' });
+  run = dp('prove', GAME, 'buttons', '--quick');
+  check(run.status !== 0 && run.out.includes('isn\'t one of the goals'), `a goal the game doesn't list stops prove: ${lastLine(run)}`);
+  writeFileSync(file, before);
+  run = dp('prove', GAME, 'buttons');
+  check(run.status === 0 && kept('buttons').reached === undefined, 'a part that names nothing is held to its frames alone, as before');
 }
 
 // the same game written in C, on the base every console's kit in C shares (kit/c/), built to WebAssembly by the tools

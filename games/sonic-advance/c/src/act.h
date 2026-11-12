@@ -102,6 +102,7 @@ void act_life_lost(void);
 int act_goal_passed(void);
 void act_goal_reached(void);
 void act_stage_results(void);
+void act_go_to_next_level(void);
 int act_checkpoint_index(void);
 void act_checkpoint_pass(int index, int x, int y);
 int act_special_stages(void);

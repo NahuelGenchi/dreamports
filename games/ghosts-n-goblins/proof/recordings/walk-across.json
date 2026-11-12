@@ -1,5 +1,5 @@
 {
-  "about": "The game's start with nothing pressed until Arthur stands in the first stage. Then Right is held, with a throw every 12 frames and a jump every 40: he crosses the stage's first five screens along the ground with his armour on, past its zombies, crows and plants, onto the sixth.",
+  "about": "The game's start with nothing pressed until Arthur stands in the first stage. Then Right is held, with a throw every 12 frames and a jump every 40: he crosses the stage's first five screens along the ground, past its zombies, crows and plants, onto the sixth. A zombie takes his armour on the fourth screen, at frame 2539.",
   "frames": 3040,
   "held": [
     [0, []],

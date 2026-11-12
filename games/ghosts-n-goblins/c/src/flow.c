@@ -301,19 +301,24 @@ static void place_stage_objects(void) {
   if (RAM[0x24] == 0xFF) took(READ_PAST_PAGE);   // the entry's second byte, when its first is a page's last
   // a kind's own routine: $D71B, whose state starts at 0, or $D72B, whose state the list gives, which $D804 jumps to
   // and $D6B9, which leaves the state as the object's last user left it, and which $D670 jumps to
-  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670 };
+  // and $D706, a moving platform's, which gives it a heading and a shape too
+  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, PLATFORM = 0xD706 };
   uint16_t routine = ram16(0x22);
   if (routine == STATE_LISTED_TOO) { took(JUMPS); routine = STATE_LISTED; }
   if (routine == STATE_KEPT_TOO) { took(JUMPS); routine = STATE_KEPT; }
-  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT) return;
+  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT && routine != PLATFORM) return;
   took(CALLS);
   uint8_t object = free_object();
   if (object == NO_OBJECT) {
     took(STAGE_OBJECT_NO_ROOM);
     return;
   }
-  took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : routine == STATE_LISTED ? STAGE_OBJECT_STATE_LISTED : STAGE_OBJECT_STATE_KEPT);
+  took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : routine == STATE_LISTED ? STAGE_OBJECT_STATE_LISTED : routine == PLATFORM ? STAGE_OBJECT_PLATFORM : STAGE_OBJECT_STATE_KEPT);
   last_index = object;
+  if (routine == PLATFORM) {
+    RAM[OBJECT_HEADING + object] = 0x0C;
+    RAM[OBJECT_SHAPE + object] = 0x5F;
+  }
   if (routine != STATE_KEPT) RAM[OBJECT_STATE + object] = routine == STATE_ZERO ? 0 : listed_byte(listed, 1);
   RAM[0x0647 + object] = 0;
   RAM[OBJECT_COUNT + object] = 0;
@@ -328,11 +333,12 @@ static void place_stage_objects(void) {
   took(STAGE_OBJECT_FILLED);
 }
 
-// $8400 in bank 2: what comes at Arthur by itself: the zombies (enemies.c), and six other routines, at $84E0, $8574,
-// $8610, $867A, $880A and $8748, which have nothing to do in the first stage's first screens and aren't ported yet.
+// $8400 in bank 2: what comes at Arthur by itself: the zombies and the flying knights (enemies.c), and five other
+// routines, at $8574, $8610, $867A, $880A and $8748, which have nothing to do in the first stage and aren't ported yet.
 static void stage_dangers(void) {
   took(DANGERS_OTHERS);
   zombies_come(&last_index);
+  knights_come(&last_index);
 }
 
 // $D38D: the stage's time, which the top of the picture shows as a minute and two digits of seconds. V-blank counts
@@ -378,6 +384,17 @@ static int stage_round(void) {
   RAM[0x8A] = RAM[0x44];
   PAD_NOW = RAM[0x89 + PLAYER];
   took(GAME_ROUND_BEGINS);
+  // $D2AA: a sound an enemy has asked for is played once its rounds have passed without it asking again
+  if (!RAM[0xEB] && RAM[0xE8] != 0xFF) {
+    if (++RAM[0xE7] < RAM[0xE9]) took(ASKED_SOUND_WAITS);
+    else {
+      took(ASKED_SOUND_PLAYS);
+      sound_play(RAM[0xE8]);
+      RAM[0xE8] = 0xFF;
+      RAM[0xE7] = 0;
+      took(ASKED_SOUND_PLAYED);
+    }
+  }
   uint8_t mixed = ROUNDS & 3;
   if (mixed) took(GAME_ROUND_NO_COLOURS);
   else {

@@ -259,6 +259,7 @@ int collide_spring_side(const void *o, int ox, int oy, const Hitbox *hb, Player 
 // --- the world's calls (world.c) -----------------------------------------------------------------------------------------
 /** A hazard touched Sonic (Coll_DamagePlayer): false while he is invincible or still blinking. */
 int world_damage(Player *p);
+void world_lose_rings(int n);
 void world_add_score(int points);
 void world_add_score_jingle(int points);
 void world_prize(int kind);
