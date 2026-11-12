@@ -1432,6 +1432,18 @@ COST(BOSS_CHARGE_NO_TURN, 9)      // $FE67 to $FE7D, three rounds in four,
 COST(BOSS_CHARGE_TURNS, 15)       // or to sub_FA87
 COST(BOSS_CHARGE_OVER, 38)        // $FE7D, with sub_F336, and back: 24 rounds are over,
 COST(BOSS_CHARGE_MOVES, 40)       // or to sub_F0A0
+COST(BOSS_JUMP_HEIGHT, 36)        // sub_FF36 with its call, to sub_F099
+COST(BOSS_DODGE_FACES_RIGHT, 4)   // $FCFA to $FD04, across a page
+COST(BOSS_JUMP_SHAPE_LEFT, 7)     // the shape that faces left
+COST(BOSS_DODGE_SPEED, 12)        // $FD07 to sub_F0A0: the step's speed across
+COST(BOSS_DODGE_GOES_ON, 22)      // $FD18, and back, for its first 15 rounds,
+COST(BOSS_DODGE_LANDS, 15)        // or to sub_F33A
+COST(BOSS_DODGE_OVER, 24)         // $FD25 to sub_FA87: the next step
+COST(BOSS_DODGE_OVER_LEFT, 15)    // and back, with the shape that faces left
+COST(BOSS_LEAP_SPEED, 2)          // $FEBC to sub_F0A0
+COST(BOSS_LEAP_GOES_ON, 21)       // $FEC6, and back, for its first 15 rounds,
+COST(BOSS_LEAP_LANDS, 16)         // or to sub_F33E
+COST(BOSS_LEAP_OVER, 17)          // $FED4, and back: it turns round
 COST(BOSS_SHOT_BEGINS, 17)        // $F524 to sub_F0A0's call of sub_F03E: the boss's shot
 COST(BOSS_SHOT_GONE, 19)          // $F52E, with sub_F734, and back: out of the view,
 COST(BOSS_SHOT_FLIES_RIGHT, 27)   // or $F530 to $F54D, less sub_F321: to the right,
@@ -1442,7 +1454,7 @@ COST(BOSS_NEAR, 3)                // $FC82 to $FCA0: Arthur is near,
 COST(BOSS_ARTHUR_BELOW, 30)       // or isn't, and is below it: back,
 COST(BOSS_WAITED, 32)             // or to $FCA0 after 40 rounds,
 COST(BOSS_WAITS, 46)              // or before, and back,
-COST(BOSS_HIT_AWAKE, 43)          // or to $FCA0 with three hits
+COST(BOSS_HIT_AWAKE, 39)          // or to $FCA0 with three hits
 COST(BOSS_WAKES, 23)              // sub_FF1D with its call, to sub_F2F7
 COST(BOSS_WAKES_PLAIN, 13)        // $FF2C to sub_F32E,
 COST(BOSS_WAKES_READY, 19)        // or with its count cleared
