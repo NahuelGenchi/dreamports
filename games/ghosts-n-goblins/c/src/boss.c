@@ -12,7 +12,8 @@
 // copy's list of heights at $FEDD, and across at the step's speed in the list at $FF0D, after which the next step
 // begins. Every 64th step is a leap, flag $20, at $FEA4: the same jump at speed $2E, and it turns round as it lands.
 //
-// Its death after ten hits, at $FC10, and the last stage's boss, which $CF marks, aren't ported yet.
+// Ten hits kill it, at $FC10: sound $13, with another, $0D, asked for 32 rounds on, 2,000 points, and it burns away.
+// The last stage's boss, which $CF marks, isn't ported yet.
 
 #include "game.h"
 
@@ -373,7 +374,27 @@ void boss(uint8_t object) {
     }
   }
   RAM[OBJECT_COLOURS + object] = 0x01;
-  if (HITS(object) >= 0x0A) return;   // $FC10: its death, not ported yet
+  if (HITS(object) >= 0x0A) {
+    // sub_F7A5: the sound of its death, and the one that follows once the count at $070B has run down
+    RAM[0x070A] = 0x0D;
+    RAM[0x070B] = 0x20;
+    took(BOSS_DIES);
+    sound_play(0x13);
+    if (RAM[0xCF] == 1) {
+      RAM[0x070A] = 2;
+      took(BOSS_DIES_IN_SECOND_SET);
+    } else took(BOSS_DIES_ELSEWHERE);
+    change_flag(object, HIT, 1);
+    RAM[OBJECT_COUNT + object] = 0;
+    RAM[0x26] = RAM[0x27] = RAM[0x25] = 0;
+    RAM[0x24] = 2;   // 2,000 points
+    took(BOSS_DIES_SCORE);
+    add_score_with_thousands(object, 0);
+    RAM[0xE8] = 0xFF;
+    took(BOSS_DIES_ENDS);
+    enemy_burns_away(object);
+    return;
+  }
   if (AWAKE(object)) { took(BOSS_AWAKE); awake(object); return; }
   took(BOSS_ASLEEP);
   // $FC62: asleep
