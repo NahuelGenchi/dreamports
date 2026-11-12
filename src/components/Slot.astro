@@ -1,14 +1,19 @@
 ---
-// One place in the launcher's row: a game, which links to its own page; or in the Make row, a Dreamport being made,
+// One place in the launcher's row: a system, which shows its Dreamports; a game, which links to its own page; or in the Make row, a Dreamport being made,
 // which links to its page there, or the way to start a Dreamport, which leads to the README's steps. There, a Dreamport
 // also carries its two numbers, which the nameplate shows under it once it's selected, and under them how many of its
 // pieces are free to take, when there are any.
 import Tile from './Tile.astro';
 import { MAKE_GUIDE_URL, gameUrl, makeUrl, type Game } from '../lib/site';
 import { fullyPorted, numbersOf } from '../lib/dreamports';
+import type { System } from '../lib/systems';
 
 interface Props {
   game?: Game;
+  // a system in the Dreamports row, and whether none of its Dreamports is finished
+  system?: System & { unfinished: boolean };
+  // in the Dreamports row, the system a game is for
+  of?: string;
   index: number;
   // a Dreamport's place in the Make row, which opens its page there
   make?: boolean;
@@ -18,7 +23,7 @@ interface Props {
   free?: { help: string };
 }
 
-const { game, index, make = false, start = false, free } = Astro.props;
+const { game, system, of, index, make = false, start = false, free } = Astro.props;
 const detail = game && !make ? [game.data.platform, game.data.year].filter(Boolean).join(' · ') : '';
 const numbers = make && game ? numbersOf(game.data) : undefined;
 // in its own row, a Dreamport whose code isn't all ported, which the row leaves out until Settings show it
@@ -31,7 +36,27 @@ const START = {
 ---
 
 {
-  start ? (
+  system ? (
+    <a
+      class="slot"
+      href={`/#${system.id}`}
+      data-index={index}
+      data-system={system.id}
+      data-title={system.name}
+      data-icon={system.icon}
+      data-unfinished={system.unfinished ? '' : undefined}
+      draggable="false"
+    >
+      <span class="lift">
+        <span class="tile" aria-hidden="true">
+          <span class="screen system">
+            <i class="sys-icon" style={`--icon: url(${system.icon})`} />
+          </span>
+        </span>
+      </span>
+      <span class="sr-only">{system.name}</span>
+    </a>
+  ) : start ? (
     <a class="slot" href={MAKE_GUIDE_URL} data-index={index} data-title={START.title} data-help={START.help} data-href={MAKE_GUIDE_URL} draggable="false">
       <span class="lift">
         <span class="tile" aria-hidden="true">
@@ -53,6 +78,7 @@ const START = {
       href={href}
       data-index={index}
       data-game={game.id}
+      data-of={of}
       data-card={`${make ? 'make' : 'inspect'}-${game.id}`}
       data-title={game.data.title}
       data-detail={detail}

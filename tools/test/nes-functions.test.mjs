@@ -79,3 +79,41 @@ test('a list keeps an odd address, and takes names for addresses', () => {
   assert.deepEqual(readList('Address,Size\n0x1C39D,4\nsub_04_923F,6\n', nes), [{ address: 0x1123F, size: 6 }, { address: 0x1C39D, size: 4 }]);
   assert.deepEqual(readList('Address,Size\n0x08000201,4\n'), [{ address: 0x08000200, size: 4 }]);
 });
+
+// a 64 KB UNROM program whose only code is in the last bank, with the tables a game with tasks jumps with: one copied
+// into a task's stack for a later RTS, one built into a pointer that a JMP ($xx) of its own jumps through, and one
+// read through a pointer the code makes from two numbers
+function tabled() {
+  const prg = Buffer.alloc(4 * BANK, 0xFF);
+  const at = address => 3 * BANK + (address & 0x3FFF);
+  const put = (address, bytes) => Buffer.from(bytes).copy(prg, at(address));
+  const word = a => [a & 255, a >> 8];
+  put(0xC000, [0x20, 0x00, 0xC1,
+    // a pointer from the table at $C400, and a call to the jump through it
+    0xA2, 0x00, 0xBD, 0x00, 0xC4, 0x85, 0x26, 0xBD, 0x01, 0xC4, 0x85, 0x27, 0x20, 0xF0, 0xC0,
+    // the address of the table at $C420, an index added to its low byte, then its entry read through it
+    0xA5, 0x10, 0x0A, 0x18, 0x69, 0x20, 0x85, 0x24, 0xA9, 0x00, 0x69, 0xC4, 0x85, 0x25,
+    0xA0, 0x00, 0xB1, 0x24, 0x85, 0x22, 0xC8, 0xB1, 0x24, 0x85, 0x23, 0x6C, 0x22, 0x00]);
+  put(0xC0F0, [0x6C, 0x26, 0x00]);
+  // a task's start, less one, from the table at $C440 into its stack at $01F0
+  put(0xC100, [0xA9, 0xF0, 0x85, 0x24, 0xA9, 0x01, 0x85, 0x25, 0xA0, 0x00, 0xBD, 0x40, 0xC4, 0x91, 0x24, 0xC8, 0xBD, 0x41, 0xC4, 0x91, 0x24, 0x60]);
+  put(0xC400, [...word(0xC500), ...word(0xC510)]);
+  put(0xC420, [...word(0xC600), ...word(0xC530)]);
+  // no task has the number 0
+  put(0xC440, [0, 0, ...word(0xC53F), ...word(0xC54F)]);
+  for (const a of [0xC500, 0xC510, 0xC540, 0xC550]) put(a, [0x60]);
+  // an entry that is a jump to another's routine, and a routine that runs long before it returns
+  put(0xC530, [0x4C, 0x00, 0xC5]);
+  put(0xC600, [...Array(100).fill(0xE8), 0x60]);
+  for (const vector of [0xFFFA, 0xFFFC, 0xFFFE]) prg.writeUInt16LE(0xC000, at(vector));
+  const header = Buffer.from([0x4E, 0x45, 0x53, 0x1A, 4, 0, 0x21, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  return Buffer.concat([header, prg]);
+}
+
+test('follows a table into a task\'s stack, through a jump of its own, and through a pointer to the table', () => {
+  const found = Object.fromEntries(findFunctions(tabled()).map(f => [nesName(f.address, 4), f.size]));
+  assert.deepEqual(Object.keys(found), ['sub_C000', 'sub_C0F0', 'sub_C100', 'sub_C500', 'sub_C510', 'sub_C530', 'sub_C540', 'sub_C550', 'sub_C600']);
+  assert.equal(found.sub_C0F0, 3);
+  assert.equal(found.sub_C530, 3);
+  assert.equal(found.sub_C600, 101);
+});
