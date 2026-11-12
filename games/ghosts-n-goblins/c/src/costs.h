@@ -764,6 +764,26 @@ COST(FREE_OBJECT_USED, 10)        // each object that's in use,
 COST(FREE_OBJECT_FOUND, 15)       // the first that isn't, and back,
 COST(FREE_OBJECT_NONE, 8)         // or none, and back
 COST(STAGE_OBJECT_NO_ROOM, 8)     // $D71E, and back
+COST(TAKE_OBJECT_BEGINS, 9)        // sub_DA28 with its call
+COST(TAKE_OBJECT_READ, 4)          // an object's flags:
+COST(TAKE_OBJECT_SHOWN, 3)         // it's shown, and stays,
+COST(TAKE_OBJECT_FREE, 5)          // or it's free, to $DA5A,
+COST(TAKE_OBJECT_KIND_5, 13)       // or in use and not shown, to $DA4D: a kind that stays, 5,
+COST(TAKE_OBJECT_KIND_F, 17)       // or $0F,
+COST(TAKE_OBJECT_KIND_10, 21)      // or $10,
+COST(TAKE_OBJECT_KIND_11, 25)      // or $11,
+COST(TAKE_OBJECT_KIND_6_AWAKE, 34) // or 6 when it's awake,
+COST(TAKE_OBJECT_KIND_6, 35)       // or to $DA5A: a 6 that's asleep,
+COST(TAKE_OBJECT_OTHER_KIND, 29)   // or any other kind
+COST(TAKE_OBJECT_NEXT, 10)         // $DA4D to $DA56: the next object,
+COST(TAKE_OBJECT_NEXT_WRAPS, 11)   // or the first again
+COST(TAKE_OBJECT_NONE, 10)         // every object stays: back
+COST(TAKE_OBJECT_TAKEN, 24)        // $DA5A, and back: the next search starts after it,
+COST(TAKE_OBJECT_TAKEN_WRAPS, 28)  // or at the first again
+COST(STAGE_BOSS_NO_ROOM, 8)        // $D676, and back
+COST(STAGE_BOSS_READ, 16)          // $D676 to $D681: its flags in the list
+COST(STAGE_BOSS_COUNTED, 7)        // which count it among the stage's bosses
+COST(STAGE_BOSS_STATE, 17)         // $D685 to $D6C1
 COST(STAGE_OBJECT_STATE, 17)      // $D71E to $D6C1, for a kind whose state starts at 0,
 COST(STAGE_OBJECT_STATE_LISTED, 22) // or $D72E to $D6C1, for one whose state the list gives,
 COST(STAGE_OBJECT_PLATFORM, 39)   // or $D709 to $D6C1, for a moving platform: its heading and shape too,
@@ -1352,6 +1372,27 @@ COST(FOREST_SHOT_BEGINS, 17)      // $F41C to sub_F0A0's call of sub_F03E: its s
 COST(FOREST_SHOT_FLIES_DOWN, 32)  // $F426 to $F54D, less sub_F321: it flies down,
 COST(FOREST_SHOT_FLIES_RIGHT, 40) // or to the right,
 COST(FOREST_SHOT_FLIES_LEFT, 46)  // or to the left
+COST(BOSS_DEAD, 5)                // $FBC7 to $F6F6: the boss, dead,
+COST(BOSS_BEGINS, 11)             // or to sub_F346
+COST(BOSS_OUT_OF_VIEW, 4)         // $FBE1 to $FC04, across a page: out of the view,
+COST(BOSS_IN_VIEW, 10)            // or to sub_F585, less sub_F321
+COST(BOSS_NOT_HIT, 4)             // $FBEF to $FC04, across a page: nothing touched it,
+COST(BOSS_TOUCHED, 8)             // or Arthur did,
+COST(BOSS_HIT, 16)                // or a weapon,
+COST(BOSS_HIT_BY_CROSS, 28)       // or the weapon of kind $27, whose hit is taken back
+COST(BOSS_ASLEEP, 23)             // $FC04 to $FC62: fewer than ten hits, and asleep
+COST(BOSS_NOT_SHOWN, 9)           // $FC65, and back: it isn't shown,
+COST(BOSS_LOOKS, 27)              // or to sub_F687
+COST(BOSS_NEAR, 3)                // $FC82 to $FCA0: Arthur is near,
+COST(BOSS_ARTHUR_BELOW, 30)       // or isn't, and is below it: back,
+COST(BOSS_WAITED, 32)             // or to $FCA0 after 40 rounds,
+COST(BOSS_WAITS, 46)              // or before, and back,
+COST(BOSS_HIT_AWAKE, 43)          // or to $FCA0 with three hits
+COST(BOSS_WAKES, 23)              // sub_FF1D with its call, to sub_F2F7
+COST(BOSS_WAKES_PLAIN, 13)        // $FF2C to sub_F32E,
+COST(BOSS_WAKES_READY, 19)        // or with its count cleared
+COST(BOSS_FACES_RIGHT, 9)         // $FF57, and back: Arthur is on its right,
+COST(BOSS_FACES_LEFT, 9)          // or to sub_F309
 COST(FOREST_TURN_MOVES, 8)        // $A778 to sub_F03E
 COST(FOREST_TURN_COUNTED, 13)     // $A77D to $A785
 COST(FOREST_TURN_ENDS, 53)        // $A785 to $A7F4, by $A7C8: the turn is over,

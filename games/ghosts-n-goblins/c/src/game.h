@@ -170,6 +170,9 @@ int on_the_ground(uint8_t object);
 /** sub_DA18: the first of the 16 objects after Arthur that isn't in use, or NO_OBJECT. */
 uint8_t free_object(void);
 enum { NO_OBJECT = 0x11 };
+/** sub_DA28: an object for one that has to be there, looked for from where the last such search stopped: one that's
+    free, or one in use that isn't shown and isn't of a kind that stays, or NO_OBJECT. */
+uint8_t take_object(void);
 /** sub_F708: an object is gone. */
 void remove_object(uint8_t object);
 /** sub_F68E: whether Arthur touches an object, whose half width and half height are in $26 and $27. */
@@ -221,6 +224,10 @@ void forest_enemies_come(uint8_t *x);
 void forest_enemy(uint8_t object);
 /** $F41C, kind $29: its shot (enemies.c). */
 void forest_shot(uint8_t object);
+/** $FBC4, kind 5: the stage's boss (boss.c). */
+void boss(uint8_t object);
+/** sub_F585: an enemy's touch tests, with the spark and sound of a weapon that hits it; the weapon, or 0 (flier.c). */
+uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched);
 /** sub_F5A0: what touches an enemy this round: the weapon that hit it, which is gone and counted at $0647, or 0, with
  *  whether Arthur touched it and is hit. */
 uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched);
