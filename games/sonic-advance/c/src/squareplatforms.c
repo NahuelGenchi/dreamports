@@ -25,7 +25,7 @@ enum {
 // the square platform's animations by level (rom/levels.js sprites): short, and the longer one a level draws when the other
 // byte is set; a level not listed draws the default
 static const struct { int level, shortAnim, longAnim; } ANIMATIONS[] = {
-  { 6, 524, 0 }, { 7, 524, 0 }, { 8, 536, 537 }, { 10, 518, 519 }, { 11, 599, 600 }, { 17, 599, 600 },
+  { 6, 524, 0 }, { 7, 524, 0 }, { 8, 536, 537 }, { 9, 536, 537 }, { 10, 518, 519 }, { 11, 599, 600 }, { 17, 599, 600 },
 };
 
 typedef struct {

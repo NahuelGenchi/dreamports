@@ -14,11 +14,13 @@
 
 enum {
   ANIM_SPLASH_WATER = 474, ANIM_SPLASH_ICE = 562,   // SA1_ANIM_WATER_SLIDE_SPLASH and SA1_ANIM_ICE_SLIDE_SPLASH
+  ANIM_SPLASH_MUD = 568,                            // gAnimSlideSplashes, Angel Island's
   SPLASH_TILES = 48 / 8 * (24 / 8),                 // ALLOC_TILES(SA1_ANIM_WATER_SLIDE_SPLASH), whichever splash it shows
   ORDER_SPLASH = 3, PRIORITY_SPLASH = 2,
   PRIORITY_SLIDE = 0x1000,
   SPEED = 4,
   NEAR_FLOOR = 3,
+  SE_MUD_SLIDE = 201,
   SE2 = 2, FADE = 4,                                // m4aMPlayFadeOut(&gMPlayInfo_SE2, 4)
 };
 
@@ -43,6 +45,7 @@ static int slide_run(ActTask *t) {
   if (x >= en->x && x <= en->x + en->d[2] * 8 && y >= en->y && y <= en->y + en->d[3] * 8) {
     if ((d->held != 0 || terrain_tile_floor(x, y, p->layer, 8) <= NEAR_FLOOR) && !p->onObject) {
       if (!p->air) {
+        if (d->held == 0 && act.stage.zone == ZONE_ANGEL_ISLAND) play_song(SE_MUD_SLIDE);
         d->held = 1;
         player_end_attack(p); p->pushing = 0;   // Player_TransitionCancelFlyingAndBoost
         p->jumped = 0;                          // MOVESTATE_100
@@ -75,7 +78,8 @@ ActTask *forced_slide_spawn(Slot *slot) {
   d->o.slot = slot;
   d->o.x = slot->e.x;
   d->dir = slot->e.d[0] ? -1 : 1;
-  int anim = act.stage.zone == ZONE_ICE_MOUNTAIN ? ANIM_SPLASH_ICE : ANIM_SPLASH_WATER;
+  int anim = act.stage.zone == ZONE_ANGEL_ISLAND ? ANIM_SPLASH_MUD
+             : act.stage.zone == ZONE_ICE_MOUNTAIN ? ANIM_SPLASH_ICE : ANIM_SPLASH_WATER;
   object_sprite_at(&d->o.sprite, vram_malloc(SPLASH_TILES), anim, 0, ORDER_SPLASH, PRIORITY_SPLASH, d->dir < 0, 0);
   return object_task(&d->o, slide_run, PRIORITY_SLIDE + (int8_t)slot->e.d[1]);
 }

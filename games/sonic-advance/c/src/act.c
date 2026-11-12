@@ -359,7 +359,8 @@ static void draw_frame(void) {
   // a boss's task clears the blending, while Sonic is alive (sub_80308A4)
   if (act.blendOff) { e.winRegs[5] = 0; e.bldCnt = 0; e.bldY = 0; act.blendOff = 0; }
   // a hit boss's flash: the OBJ window on, everything in it brightened all the way (sub_802D870)
-  if (act.bossFlash) { e.dispCnt |= 0x8000; e.winRegs[5] = 0x3F1F; e.bldCnt = 0xBF; e.bldY = 0x10; }
+  if (act.bossFlash == BOSS_FLASH_WINDOW) { e.dispCnt |= 0x8000; e.winRegs[5] = 0x3F3F; }
+  else if (act.bossFlash) { e.dispCnt |= 0x8000; e.winRegs[5] = 0x3F1F; e.bldCnt = 0xBF; e.bldY = 0x10; }
   act.drawn++;
   // RenderMetatileLayers: BG1 and BG2 scroll by the camera's sub-tile part, their maps filled from the metatiles
   e.bgScroll[2] = (uint16_t)(camX & 7); e.bgScroll[3] = (uint16_t)(camY & 7);
@@ -507,6 +508,12 @@ static void next_act(void) {
   act_frame_now();
   act.stallLoad = 0; act.loadFrames = NEXT_LEVEL_LOAD;
 }
+// m4aSoundVSyncOn once the save is written, then the next act
+static void next_act_after_write(void) {
+  sound_vsync_on();
+  next_act();
+}
+
 // GoToNextLevel: every task goes, the act's objects with their sprites' VRAM, the queues stop, the music stops, and
 // the save is written (the screen keeping its frame while the flash takes it), before the next act starts. Against the
 // original, the write and the next stage's start take a frame more than WRITE_FRAMES here for an act in C, whose first
@@ -517,9 +524,11 @@ static void go_to_next_level(void) {
   act_tasks_destroy_all();
   act.task = NULL;
   clear_queues();
+  // the sound engine is off while the save is written (m4aSoundVSyncOff), so its frames stop with the screen's
   stop_all_songs();
-  if (save_write()) engine_stall(level_in_c(nextLevel) ? WRITE_FRAMES + 1 : WRITE_FRAMES, next_act);
-  else next_act();
+  sound_vsync_off();
+  if (save_write()) engine_stall(level_in_c(nextLevel) ? WRITE_FRAMES + 1 : WRITE_FRAMES, next_act_after_write);
+  else next_act_after_write();
 }
 
 void act_go_to_next_level(void) {
@@ -621,6 +630,9 @@ static void act_frame(void) {
   // a start point's first act frame is the held A's jump, one frame after it began, when it has the word for it
   if (act.drawn == 0 && act.fromStartPoint && gba_start_number("jump", 0)) player_start_jump(&act.player);
   player_animate(&act.player, &in);
+  // what the frame shows of him: his own task has set his place, and the tasks after it, such as a hang bar's (0x8000),
+  // move him for the next frame
+  act.player.drawX = act.player.x; act.player.drawY = act.player.y;
   if (row->palettesAfterSonic)
     for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
   if (act.frames > 0 || row->runsFromFirstFrame) objects_run_late();

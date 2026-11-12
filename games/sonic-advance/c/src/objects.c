@@ -196,6 +196,7 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 1, 4, spikes_spawn },
   { 5, 6, hiding_spikes_spawn },
   { 8, 15, spring_spawn },
+  { 108, 108, hidden_spring_spawn },
   { TOGGLE_FRONT, TOGGLE_BACK, toggle_spawn },
   { 16, 16, boulder_spawn },
   { 19, 20, grind_rail_spawn },
@@ -262,6 +263,7 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 87, 87, torch_spawn },
   { 97, 97, updraft_spawn },
   { 88, 88, lift_spawn }, { 90, 90, float_spawn }, { 92, 92, boulder_spawner_spawn }, { 86, 86, run_wheel_spawn },
+  { 83, 83, hang_bar_spawn },
 };
 
 // the enemies by their kind numbers (the ENEMIES table)
@@ -290,6 +292,7 @@ static const struct { int kind; Spawn spawn; } ENEMIES[] = {
   { 19, kuraa_spawn },
   { 11, leon_spawn },
   { 13, wamu_spawn },
+  { 26, mecha_knuckles_spawn },
   { 28, egg_wrecker_spawn },
   { 29, egg_drillster_spawn },
   { 30, egg_x_spawn },

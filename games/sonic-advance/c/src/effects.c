@@ -57,10 +57,16 @@ static int effect_run(ActTask *t) {
     return 1;
   }
   // the insta-shield's flash follows his centre; the brake dust stays where it appeared
+  // brake dust goes back to the pool the frame after its animation ends, as Task_BrakingDustEffect checks first
+  if (e->kind == EFFECT_BRAKE) {
+    if (s->frameFlags & SPRITE_ANIM_OVER) { brakeDust--; return 0; }
+    sprite_step(s);
+    object_draw(s, e->x, e->y);
+    return 1;
+  }
   if (e->kind == EFFECT_SHIELD) { e->x = whole(p->x); e->y = whole(p->y); }
   int ended = sprite_step(s);
   object_draw(s, e->x, e->y);
-  if (ended && e->kind == EFFECT_BRAKE) brakeDust--;
   return !ended;
 }
 
@@ -82,11 +88,14 @@ void effects_start(void) { brakeDust = 0; }
 
 // brake dust stays where it appeared, flipped by the game's random numbers (CreateBrakingDustEffect), with no more than
 // the pool holds
-void act_brake_dust(void) {
+void act_brake_dust_at(int x, int y) {
   if (brakeDust >= MAX_BRAKE_DUST) return;
   uint32_t r = act_random();
+  effect_make(EFFECT_BRAKE, ANIM_BRAKE_DUST, 0, x, y, (r & 0x400) != 0, (r & 0x800) != 0);
+}
+void act_brake_dust(void) {
   const Player *p = &act.player;
-  effect_make(EFFECT_BRAKE, ANIM_BRAKE_DUST, 0, whole(p->x), feet_y(p), (r & 0x400) != 0, (r & 0x800) != 0);
+  act_brake_dust_at(whole(p->x), feet_y(p));
 }
 void act_dash_dust(void) {
   const Player *p = &act.player;

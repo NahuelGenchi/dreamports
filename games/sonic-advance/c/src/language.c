@@ -128,6 +128,12 @@ static void choose(Task *t) {
   draw();
 }
 
+// m4aSoundVSyncOn once the save is written, then the SEGA logo
+static void after_write(void) {
+  sound_vsync_on();
+  create_sega_logo();
+}
+
 // Task_806AA00: once black, the screen ends; at power-on the music stops and the save is written, then the SEGA logo
 // starts (sLangScreenReturnProcs)
 static void fade_out(Task *t) {
@@ -140,9 +146,11 @@ static void fade_out(Task *t) {
   e.bldY = 0;
   destroy_task(t);
   if (!screen.at) return;   // the Options menu isn't in C yet
+  // the sound engine is off while the save is written (m4aSoundVSyncOff), so its frames stop with the screen's
   stop_all_songs();
-  if (save_write()) engine_stall(WRITE_FRAMES, create_sega_logo);
-  else create_sega_logo();
+  sound_vsync_off();
+  if (save_write()) engine_stall(WRITE_FRAMES, after_write);
+  else after_write();
 }
 
 // TaskDestructor_EditLanguageScreen: the sprites' tiles freed

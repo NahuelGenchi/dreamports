@@ -17,7 +17,7 @@ void game_start(void) {
   if (level >= 0 && !gba_start_number("power", 0)) {
     act_active = 1;
     act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
-  }
+  } else sound_vsync_off();   // from power-on the engine waits for GameInit's m4aSoundInit, as the console starts up
 }
 
 // what the original does each frame, writing the video hardware's registers, VRAM, colours and sprites as it does

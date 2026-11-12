@@ -1,7 +1,7 @@
 {
   "about": "The same play as x-zone-an-emerald-short, played on through the normal ending: with six Chaos Emeralds the staff credits go on to the message to collect them.",
   "frames": 19800,
-  "start": "unlocked=13&tails=13&knuckles=13&amy=13&emeralds=63",
+  "start": "unlocked=13&tails=13&knuckles=13&amy=13&emeralds=63&only=126",
   "clip": { "at": 19400, "frames": 300 },
   "onlyInOriginal": [
     {

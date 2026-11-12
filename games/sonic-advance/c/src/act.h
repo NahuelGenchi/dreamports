@@ -12,6 +12,10 @@
 #define ACT_LEVEL_BLOCKS 8192   // the largest layer, in 96 × 96 px blocks
 #define ACT_TILE_ENTRIES (ACT_TILES * 144)
 
+// how a hit boss flashes: most brighten what the OBJ window holds all the way to white (sub_802D870); Mecha Knuckles only
+// turns the window on, with every layer and effect outside and in it, so the stage's own blend shows through
+enum { BOSS_FLASH_WHITE = 1, BOSS_FLASH_WINDOW = 2 };
+
 typedef struct {
   uint32_t at, tiles, tilesSize, palette, map;
   uint16_t xTiles, yTiles, animTileSize, animFrameCount, animDelay, mapWidth, mapHeight, paletteOffset, paletteLength;
@@ -68,7 +72,7 @@ typedef struct {
   int afterLevel;                  // made by GoToNextLevel after the act before, rather than by the course select
   int fromStartPoint;              // opened by the recording's start point, past its card: only the first act it starts
   int loadFrames;                  // the frames left that the next act spends loading after its first (act_task)
-  int bossFlash;                   // a hit boss drawn into the OBJ window, which the frame brightens to white
+  int bossFlash;                   // a hit boss drawn into the OBJ window: BOSS_FLASH_WHITE or BOSS_FLASH_WINDOW
   int blendOff;                    // a boss's task cleared the blending this frame
   int checkpointIndex, checkpointX, checkpointY, checkpointTime;   // the last checkpoint passed (gBossIndex), where and when
   int clockStopped, cardFrame, cardDone, firstCard, started, preFrames, firstFrame, drawn;
@@ -92,6 +96,7 @@ extern int act_active;
  *  original doesn't count yet (`stageClockAhead`). */
 int act_stage_time(void);
 void act_brake_dust(void);
+void act_brake_dust_at(int x, int y);
 void act_dash_dust(void);
 void act_insta_shield(void);
 void act_freeze_camera(void);
