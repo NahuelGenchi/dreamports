@@ -377,7 +377,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const recordingText = readFileSync(recording.file, 'utf8'), recordingFile = relative(REPO, recording.file).replaceAll('\\', '/');
     // (a frame's list comes as a Uint32Array, whose own map would turn the addresses back into numbers)
     const ranAt = codeMap && first.ran ? f => Array.from(first.ran[originalOf[f]] ?? [], i => hex(codeMap.functions[i].address)) : null;
-    const changeOf = differs => firstChanged({ main, name, file: recordingFile, text: recordingText, frames, ran: ranAt, differs });
+    const changeOf = (differs, sound = null, picture = null) => firstChanged({ main, name, file: recordingFile, text: recordingText, frames, ran: ranAt, differs, sound, picture });
     const guessed = quick ? null : changeOf(null);
     const compareSound = soundOf(first.sound, machine), heardOf = Array.from(originalOf, g => g + 1);
     // the frames next to a stretch only the original has, whose sound isn't compared: the original's runs into or out
@@ -507,7 +507,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
 
     // the clip: the recording's, or five seconds from a second before what this step changed, ending before the first
     // frame that differs, or else the last five seconds (lib/clips.mjs)
-    const changed = quick ? null : changeOf(differing);
+    const changed = quick ? null : changeOf(differing, soundDiffers, stretchesOf(pictureDifferent));
     const clip = clipAt ?? clipWindow({ frames, changed, firstDifference });
     if (!quick && !clipAt) {
       const wantedNow = [];
@@ -693,7 +693,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (!quick && file.length > CLIP_LIMIT) log('  The clip is still over 2 MB: a shorter "clip" in the recording makes it lighter.');
     // where this step's change starts, and what share would refuse, said now, while the recording can still change
     // a recording the step changed nothing in has nothing to say about its clip, which share leaves out
-    if (!quick) log(`  What this step changed: ${changedText(changed)}${changed ? '' : ', so share leaves this clip out'}.`);
+    if (!quick) log(`  What this step changed: ${changedText(changed)}${changed ? (changed.heard ? ', so share leaves this clip out when another shows a change that can be seen' : '') : ', so share leaves this clip out'}.`);
     if (changed) for (const problem of problems) log(`  share won't put this clip in a pull request: ${problem}`);
     if (showing) log(`  What the original shows as it ends: ${Object.entries(showing).map(([kind, value]) => `its ${kind} is ${typeof value === 'number' ? `${value}, which original.json gives no name` : value}`).join('; ')}.`);
     return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(showing ? { shows: showing } : {}), ...(goalsHeld ? { reached: goalsHeld } : {}), unreached, changed: !!changed, functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };

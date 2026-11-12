@@ -13,7 +13,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { changedSince, clipLinks, clipProblems, gamesToShow, reportOf, SHOW_IT } from './lib/clips.mjs';
+import { changedSince, clipLinks, clipProblems, clipsToShow, gamesToShow, reportOf, SHOW_IT } from './lib/clips.mjs';
 import { changesOf, recordLinks, recordProblems, stateAt, versionIn } from './lib/same-proof.mjs';
 import { REPO } from './lib/paths.mjs';
 
@@ -54,6 +54,7 @@ export async function checkClips(text, { fetched = download, read = path => read
     const video = link.replace(/-still\.png$/, '.mp4');
     if (!link.endsWith('-still.png') || !videos.includes(video)) problems.push(`${link} isn't the frame of a clip the text links: a clip is a video prove made, which share publishes with its frame.`);
   }
+  const measured = [];
   for (const link of videos) {
     const stamp = /-([0-9a-f]{7})\.mp4$/.exec(link)?.[1];
     const json = await fetched(link.replace(/\.mp4$/, '.json'), MOST.json);
@@ -72,6 +73,11 @@ export async function checkClips(text, { fetched = download, read = path => read
     if (!video) problems.push(`${link} can't be fetched.`);
     else if (hash !== measures.video || !hash.startsWith(stamp ?? '-')) problems.push(`${link} isn't the video its measures are of.`);
     for (const problem of clipProblems(reportOf(measures), read(measures.recordingFile), { sideBySide: measures.sideBySide })) problems.push(`${measures.recording}: ${problem}`);
+    measured.push(measures);
+  }
+  // a change that's only heard has no clip beside one of a change that can be seen (#1194)
+  for (const measures of clipsToShow(measured, m => m.measures.changed).heard) {
+    problems.push(`${measures.recording}: only its sound changed, which a clip has no sound to show, and another clip shows what this step changed. Leave this clip out: share again and paste .dreamports/share/clips.md under Clips.`);
   }
   return problems;
 }

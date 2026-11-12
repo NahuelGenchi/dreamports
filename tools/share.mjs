@@ -24,7 +24,7 @@ import { LOCAL, REPO, gameFolder } from './lib/paths.mjs';
 import { knownOf, pullRequestText, unfilled } from './lib/pull-request.mjs';
 import { versionOf, versionTitle } from '../src/lib/languages.mjs';
 import { head, uncommitted, remotes, fileAt, fetchPreviews, pushPreviews, makePreview, BRANCH, CLIPS } from './lib/preview.mjs';
-import { clipProblems, staleness, mainBase, clipLinks, reportOf, gamesToShow, changedSince, SHOW_IT } from './lib/clips.mjs';
+import { clipProblems, staleness, mainBase, clipLinks, reportOf, gamesToShow, changedSince, clipsToShow, SHOW_IT } from './lib/clips.mjs';
 import { RECORD_END, changesOf, readRecord, recordLines, recordLinks, recordProblems, stateAt } from './lib/same-proof.mjs';
 import { UPSTREAM, api, signedInAs, findFork, hasCommit, pagesOf, turnOnPages, lastBuild, buildPages } from './lib/github.mjs';
 
@@ -111,6 +111,7 @@ export async function run(args, { team = false } = {}) {
   // no clip still says so for the branch, which --check reads
   let saved = stillGood(readSaved(), branch, commit, base);
   for (const { clip, files } of shared) saved = keepClip(saved, branch, clip.recording, clipLines(title, clip, files, siteUrl), measuresOf(clip, commit, base));
+  saved = seenFirst(saved);
   if (!shared.length) saved = keepNone(saved, branch);
   if (proof) saved = keepProof(saved, branch, game, recordLines(title, stands.record, `${siteUrl}${proof.path}`));
   mkdirSync(dirname(SAVED), { recursive: true });
@@ -238,7 +239,9 @@ export function chooseClips(game, file, commit, base, { team = false, stands = n
     // one that would go needs its frame, where one left out for another reason doesn't
     return { clip, stale: staleness(clip.report, committed, { base }), problems: problems.length || clip.still ? problems : [NO_FRAME(clip)] };
   });
-  const good = found.filter(f => !f.problems.length).map(f => f.clip);
+  // a change that's only heard has no clip beside one of a change that can be seen (#1194)
+  const { shown: good, heard } = clipsToShow(found.filter(f => !f.problems.length).map(f => f.clip), clip => clip.report.clip.changed);
+  if (heard.length) console.log(`Left out, as only their sound changed, which a clip has no sound to show, and another clip shows what this step changed: ${heard.map(clip => clip.recording).join(', ')}.`);
   // only clips of what the step changed matter: one of a recording that shows nothing new isn't missing, and one prove
   // made before the last commit or merge of main, such as of a recording a step before this one played, says nothing
   const stale = found.filter(f => f.stale);
@@ -366,6 +369,15 @@ export function stillGood(saved, branch, commit, base, read = fileAt, stands = v
   // and a proof's record goes once the commit's proof isn't main's any more, or isn't the one recorded
   const proofs = (saved.proofs ?? []).filter(proof => stands(proof.key));
   return { ...saved, clips, ...(saved.proofs ? { proofs } : {}) };
+}
+
+// the branch's clips without those of a change that's only heard, when one of them shows a change that can be seen:
+// a clip shared before, such as the only one prove had made by then, goes once the step's own is there (#1194)
+export function seenFirst(saved) {
+  if (!saved?.clips) return saved;
+  const { shown, heard } = clipsToShow(saved.clips, c => c.measures?.measures?.changed);
+  for (const c of heard) console.log(`The clip of ${c.key} goes, as only its sound changed, which a clip has no sound to show, and another clip shows what this step changed.`);
+  return { ...saved, clips: shown };
 }
 
 export function keepNone(saved, branch) {
