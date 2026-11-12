@@ -4,7 +4,7 @@
 // Leap never flashes first. Leap itself is what every page already draws, so nothing here holds a copy of it: a mark's
 // own drawing is put aside before another pose goes over it, and put back for Leap.
 import { COLOURS, POSES, type ColourName, type PoseName } from '../lib/mark';
-import { ICON_LINKS, iconsOf } from '../lib/mark-links';
+import { ICON_LINKS, OPENING_MARKS, iconsOf } from '../lib/mark-links';
 
 export const LOGO_KEYS = { pose: 'logo-pose', colour: 'logo-colour' } as const;
 
@@ -83,4 +83,12 @@ export function copyMark(to: SVGSVGElement, from: SVGSVGElement) {
 export function showLogoKept() {
   const { pose, colour } = logoKept();
   if (pose !== 'leap' || colour !== 'deep') void showLogo(pose, colour);
+}
+
+/** Fetches the pictures of the pick that a game's page shows on its Opening screen (#1185), as a game launches, so
+ *  that page has its logo on its first frame. The site's own logo is in that page's style sheet already. */
+export function fetchOpeningMark() {
+  const { pose, colour } = logoKept();
+  const icons = iconsOf(pose, colour);
+  if (icons) for (const file of Object.values(OPENING_MARKS)) new Image().src = icons + file;
 }

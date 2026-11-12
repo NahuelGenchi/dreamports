@@ -4,8 +4,9 @@
 // icon can't drift from the logo on the page. Only pages under src/pages/ use this: no browser loads it.
 import sharp from 'sharp';
 import css from '../styles/global.css?raw';
+import openingMark from '../../kit/gba/ui/opening-mark.js?raw';
 import { COLOURS, DOLPHIN, MARK, POSES, type Art, type ColourName, type PoseName } from './mark';
-import { LOGO_PARAM, iconsOf } from './mark-links';
+import { ICONS_AT, LOGO_PARAM, OPENING_MARKS, iconsOf } from './mark-links';
 import { POSE_ART } from './mark-poses';
 
 /** Every pick with icons of its own: all but the site's own, Leap in Deep. */
@@ -87,6 +88,20 @@ export function favicon(pose: PoseName, colour: ColourName) {
   const dark = rules(palette(colour, true));
   const night = dark === light ? '' : `@media (prefers-color-scheme:dark){${dark}}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${alone.viewBox}"><style>${light}${night}</style>${drawn(alone)}</svg>\n`;
+}
+
+/** The whole mark as a picture with nothing behind it, in the light theme's colours or the dark's: a game's Opening
+ *  screen (#1185). */
+export function opening(pose: PoseName, colour: ColourName, dark: boolean) {
+  const { whole } = artOf(pose);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${whole.viewBox}"><style>${rules(palette(colour, dark))}</style>${drawn(whole)}</svg>\n`;
+}
+
+// A game's page is plain files, so the script in its head names the picks and these pictures itself. It has to name
+// the same ones, in the same order, or a pick would open a game with no logo
+const list = (names: readonly string[]) => `[${names.map((name) => `'${name}'`).join(', ')}]`;
+for (const needed of [`POSES = ${list(POSES)};`, `COLOURS = ${list(COLOURS)};`, `\`${ICONS_AT}\${pose}-\${colour}/\``, ...Object.values(OPENING_MARKS)]) {
+  if (!openingMark.includes(needed)) throw new Error(`kit/gba/ui/opening-mark.js doesn't have "${needed}", as src/lib/mark.ts and mark-links.ts do`);
 }
 
 /** The manifest an installed app is made from: the site's own, or a pick's, with its icons and a start that carries
