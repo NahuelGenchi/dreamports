@@ -221,6 +221,20 @@ export function summed(found, all) {
 }
 
 /**
+ * What prove says of a recording that matches on every frame while no part names it, in a game whose parts don't all
+ * have a recording yet: one made for a foundation may play a whole part by now, which counts only once parts.json
+ * names it. `parts` is the game's, as parts.json lists them. Null when a part names the recording or every part has one.
+ */
+export function partsItCouldProve(name, parts) {
+  if (parts.some(part => part.recording === name)) return null;
+  const waiting = parts.filter(part => !part.recording).map(part => part.name);
+  if (!waiting.length) return null;
+  const shown = `${waiting.slice(0, 4).join(', ')}${waiting.length > 4 ? `, and ${waiting.length - 4} more` : ''}`;
+  return `No part names this recording, and ${waiting.length === 1 ? 'one of the game\'s parts has' : `${waiting.length} of the game's parts have`} no recording yet: ${shown}. `
+    + 'If it plays one of them whole, from its first frame to its last, the part counts as proven once parts.json names this recording and those frames: npm run dp -- help proving a part.';
+}
+
+/**
  * What plays recordings one after another, one at a time: it reads what they all need once, serves the repository to their pages, and
  * `play(name, page, { log, say })` resolves to what the recording called `name` found, as `run` keeps it, with
  * `wrong`, how many things its name says that the original doesn't show. `log` takes each line it has to say, and
@@ -243,7 +257,7 @@ async function laneFor({ game, quick, paced, asked, askedState, before }) {
       try {
         if (recording.players && own.some(part => part.reaches !== undefined)) throw new Error('A recording that links several consoles can\'t prove a part that names what it reaches yet, as only one console\'s memory is read.');
         const result = recording.players ? await proveLinked({ page, game, recording, copy, server, main, quick, asked, log, say })
-          : await prove({ page, reference, game, recording, copy, server, codeMap, main, before: before[name], asked, askedState, parts: own, kinds, route, keysLate: original.keysAfterVBlank === true, paced, quick, log, say });
+          : await prove({ page, reference, game, recording, copy, server, codeMap, main, before: before[name], asked, askedState, parts: own, couldProve: partsItCouldProve(name, parts), kinds, route, keysLate: original.keysAfterVBlank === true, paced, quick, log, say });
         // what the original shows is checked however the frames compare, and a linked recording, played by more than one
         // console, isn't read
         const wrong = showsProblems(name, result.shows, recording.players ? [] : kinds);
@@ -294,7 +308,7 @@ const stretchesOf = frames => {
 const listed = stretches => stretches.slice(0, 8).map(([a, b]) => (a === b ? `${a}` : `${a} to ${b}`)).join(', ')
   + (stretches.length > 8 ? `, and ${stretches.length - 8} more stretches` : '');
 
-async function prove({ page, reference, game, recording, copy, server, codeMap, main, before, asked, askedState, parts, kinds, route, keysLate, paced, quick, log, say }) {
+async function prove({ page, reference, game, recording, copy, server, codeMap, main, before, asked, askedState, parts, couldProve, kinds, route, keysLate, paced, quick, log, say }) {
   const { name, frames } = recording;
   const { machine, KEY, runOriginal } = reference;
   const out = resultFolder(game, name);
@@ -648,6 +662,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       const shown = oneColour.slice(0, 12).map(({ from, to, colour }) => `${from === to ? from : `${from} to ${to}`} (${colour})`).join(', ');
       log(`  The original's screen is one colour, as between screens, at frames ${shown}${oneColour.length > 12 ? `, and ${oneColour.length - 12} more in report.json` : ''}.`);
     }
+    // a recording this step changed that matches all through, as one made for a foundation does, may play a whole part
+    if (couldProve && changed && firstDifference < 0 && !neverSeen.length) log(`  ${couldProve}`);
     const provenParts = partsFound.filter(part => part.proven && !part.fromStart);
     if (provenParts.length && !quick) log(`  Proven, every frame the same: ${provenParts.map(part => `${part.name}, frames ${part.frames[0]} to ${part.frames[1]}`).join('; ')}.`);
     for (const part of quick ? [] : partsFound.filter(part => !provenParts.includes(part))) {
