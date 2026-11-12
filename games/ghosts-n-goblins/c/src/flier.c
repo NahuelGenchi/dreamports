@@ -39,16 +39,20 @@ int arthur_near(uint8_t object) {
 }
 
 // sub_F585, with its call: the tests every enemy has, and a weapon that hits it stays as a spark, with its sound.
-static void spark_tests(uint8_t object) {
-  int arthur_touched;
+uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched) {
   took(CALLS);
   took(CALLS);
-  uint8_t weapon = enemy_touch_tests(object, &arthur_touched);
-  if (!weapon) { took(arthur_touched ? SPARK_TESTS_TOUCHED : SPARK_TESTS_NOTHING); return; }
+  uint8_t weapon = enemy_touch_tests(object, arthur_touched);
+  if (!weapon) { took(*arthur_touched ? SPARK_TESTS_TOUCHED : SPARK_TESTS_NOTHING); return 0; }
   RAM[OBJECT_FLAGS + weapon] = 0x41;
   took(SPARK_BEGINS);
   sound_play(0x1C);
   took(SPARK_ENDS);
+  return weapon;
+}
+static void spark_tests(uint8_t object) {
+  int arthur_touched;
+  enemy_spark_tests(object, &arthur_touched);
 }
 
 // It heads right or left, to the side Arthur is on.

@@ -124,6 +124,40 @@ int on_the_ground(uint8_t object) {
   return RAM[0x22] >= BLOCK_SOLID;
 }
 
+uint8_t take_object(void) {
+  enum { FIRST = 1, NEXT_SEARCH = 0xCE, AWAKE = 0x065D };
+  uint8_t object = RAM[NEXT_SEARCH];
+  took(TAKE_OBJECT_BEGINS);
+  for (;;) {
+    uint8_t flags = RAM[OBJECT_FLAGS + object], stays = 1;
+    took(TAKE_OBJECT_READ);
+    if (object >= 0x10) took(READ_PAST_PAGE);
+    if (flags & OBJECT_FLAG_SHOWN) took(TAKE_OBJECT_SHOWN);
+    else if (!flags) { took(TAKE_OBJECT_FREE); break; }
+    else {
+      // in use and not shown: the bosses, the stage's own things and a kind 6 that's awake stay
+      static const struct { uint8_t kind; cost stays; } STAYING[] = {
+        { 0x05, TAKE_OBJECT_KIND_5 }, { 0x0F, TAKE_OBJECT_KIND_F }, { 0x10, TAKE_OBJECT_KIND_10 }, { 0x11, TAKE_OBJECT_KIND_11 },
+      };
+      uint8_t kind = RAM[OBJECT_KIND + object];
+      cost takes = TAKE_OBJECT_OTHER_KIND;
+      stays = 0;
+      for (unsigned k = 0; k < sizeof STAYING / sizeof *STAYING; k++) if (kind == STAYING[k].kind) { takes = STAYING[k].stays; stays = 1; }
+      if (kind == 0x06) { stays = RAM[AWAKE + object] != 0; takes = stays ? TAKE_OBJECT_KIND_6_AWAKE : TAKE_OBJECT_KIND_6; }
+      took(takes);
+      if (!stays) break;
+    }
+    if (++object >= NO_OBJECT) { object = FIRST; took(TAKE_OBJECT_NEXT_WRAPS); }
+    else took(TAKE_OBJECT_NEXT);
+    if (object == RAM[NEXT_SEARCH]) { took(TAKE_OBJECT_NONE); return NO_OBJECT; }
+    took(BRANCH_TAKEN);
+  }
+  RAM[NEXT_SEARCH] = (uint8_t)(object + 1);
+  if (RAM[NEXT_SEARCH] >= NO_OBJECT) { RAM[NEXT_SEARCH] = FIRST; took(TAKE_OBJECT_TAKEN_WRAPS); }
+  else took(TAKE_OBJECT_TAKEN);
+  return object;
+}
+
 uint8_t free_object(void) {
   uint8_t object = 1;
   took(FREE_OBJECT_BEGINS);
@@ -596,6 +630,7 @@ wait objects_task(void) {
         case 0x02: flier(object); break;
         case 0x03: knight(object); break;
         case 0x04: forest_enemy(object); break;
+        case 0x05: boss(object); break;
         case 0x0E: platform(object); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object); break;
