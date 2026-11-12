@@ -1,21 +1,21 @@
 ---
-// One place in the launcher's row: a system, which shows its Dreamports; a game, which links to its own page; or in the Make row, a Dreamport being made,
+// One place in the launcher's row: a system, which shows its Dreamports, or in the Make row those being made for it; a game, which links to its own page; or in the Make row, a Dreamport being made,
 // which links to its page there, or the way to start a Dreamport, which leads to the README's steps. There, a Dreamport
 // also carries its two numbers, which the nameplate shows under it once it's selected, and under them how many of its
 // pieces are free to take, when there are any.
 import Tile from './Tile.astro';
-import { MAKE_GUIDE_URL, gameUrl, makeUrl, type Game } from '../lib/site';
+import { FILTERS, MAKE_GUIDE_URL, gameUrl, makeUrl, type Game } from '../lib/site';
 import { fullyPorted, numbersOf } from '../lib/dreamports';
 import type { System } from '../lib/systems';
 
 interface Props {
   game?: Game;
-  // a system in the Dreamports row, and whether none of its Dreamports is finished
+  // a system, and whether none of its Dreamports is finished, which only the Dreamports row asks
   system?: System & { unfinished: boolean };
-  // in the Dreamports row, the system a game is for
+  // the system a game is for
   of?: string;
   index: number;
-  // a Dreamport's place in the Make row, which opens its page there
+  // a place in the Make row: a Dreamport's opens its page there, and a system's shows those being made for it
   make?: boolean;
   // the Make row's last place: how to start a Dreamport
   start?: boolean;
@@ -29,6 +29,8 @@ const numbers = make && game ? numbersOf(game.data) : undefined;
 // in its own row, a Dreamport whose code isn't all ported, which the row leaves out until Settings show it
 const unfinished = !!game && !make && !fullyPorted(game);
 const href = game && (make ? makeUrl(game.data.game) : gameUrl(game));
+// a system's row is its own row's address with the system after a #
+const rowPath = FILTERS.find((filter) => filter.key === (make ? 'make' : 'dreamports'))!.path;
 const START = {
   title: 'Start a Dreamport',
   help: 'Pick a game you own, then paste one sentence into a coding agent. It sets everything up and makes the first piece for you.',
@@ -39,7 +41,7 @@ const START = {
   system ? (
     <a
       class="slot"
-      href={`/#${system.id}`}
+      href={`${rowPath}#${system.id}`}
       data-index={index}
       data-system={system.id}
       data-title={system.name}
