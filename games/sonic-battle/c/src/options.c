@@ -122,11 +122,6 @@ static void optionsDisplayOn(void);
 
 static uint16_t letters_buffer[96];
 
-/** 0x0801fbfc: display registers from the cartridge's table at `from`, each its offset in 0x04000000 and its value. */
-static void writeRegisters(uint32_t from, int count) {
-  for (int i = 0; i < count; i++) gba_write(read16(from + (uint32_t)i * 4), read16(from + (uint32_t)i * 4 + 2));
-}
-
 /** A text as its letters, up to its end, into `out`, and how many. */
 static int readLetters(uint32_t text, uint16_t *out, int most) {
   int count = 0;
@@ -548,7 +543,7 @@ static void delayedDisplay(void) { g.callback = optionsDisplayOn; }
  * on fading out behind it.
  */
 void startOptions(void) {
-  writeRegisters(REGISTERS, REGISTER_COUNT);
+  menuWriteRegisters(REGISTERS, REGISTER_COUNT);
   g.queue_count = 0;              // 0x0801fb94
   hideSpriteBuffer();             // 0x0801ff30
   menuReset();

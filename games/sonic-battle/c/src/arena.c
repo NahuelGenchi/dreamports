@@ -445,7 +445,6 @@ static void drawWalls(void) {
 
 // from the first CpuSet's writes to the second's, for a frame whose work reaches them partway down the screen
 #define WORK_BEFORE_LINE_ONE 81796
-#define LINE_CYCLES 1232
 #define LINE_ONE_CONSTANT 90
 #define COLOURS_APART 300
 

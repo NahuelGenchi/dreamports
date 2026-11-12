@@ -151,6 +151,8 @@ void menuReset(void) {
 
 void menuPause(void) { paused = 1; }
 
+int menuResuming(void) { return resume != 0; }
+
 void menuRunsLate(int spritesToo) {
   if (spritesToo) sprites_late = 1;
   else frame_lost = 1;
