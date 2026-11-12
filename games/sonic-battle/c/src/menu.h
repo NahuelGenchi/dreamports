@@ -30,6 +30,8 @@ struct Node {
   int row, slot, index, page;
   Node *cursor, *header, *chosen;
   Node *list[5];
+  // the points shown at the top of a skill's grid: the seven digits and the slash between them
+  Node *digits[7];
   // the list's order, as 0x0801f7d0 links it: the next node, and whether this one is still on the list
   int next, active;
 };
