@@ -78,6 +78,11 @@ const named = (word: string) => word[0].toUpperCase() + word.slice(1);
             }
           </div>
         </div>
+        {/* shown only in the app on an iPhone or iPad's Home Screen (launcher.ts), where the icon can't follow the pick (#1163).
+            It comes after the choices, so it never pushes them down the screen */}
+        <span class="set-desc set-after" id="logo-icon-note" hidden>
+          The icon on your Home Screen keeps its logo. For another, pick it in Safari and add Dreamports again.
+        </span>
       </div>
     </div>
     <p class="card-note">

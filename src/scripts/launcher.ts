@@ -2222,6 +2222,9 @@ function start(launcher: HTMLElement) {
   // app on an iPhone or iPad, a line says what to do, until a tap, a key or a controller.
   const homeScreenApp = (navigator as Navigator & { standalone?: boolean }).standalone === true && navigator.maxTouchPoints > 0;
   padHint.hidden = !homeScreenApp || !navigator.getGamepads;
+  // That app's icon is the logo it was added with: iOS never redraws it and gives a page no way to ask, so a pick
+  // made in the app can't reach it (#1161). Settings says so there, and how to get another
+  $('#logo-icon-note', settingsCard).hidden = !homeScreenApp;
   $('svg', padHint).innerHTML = ICON_PAD;
   let tapFrom: { x: number; y: number } | null = null;
   window.addEventListener('pointerdown', (e) => (tapFrom = { x: e.clientX, y: e.clientY }), true);
