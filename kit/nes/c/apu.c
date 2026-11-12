@@ -31,6 +31,9 @@ typedef struct {
 static Pulse pulses[2];
 static struct { int control, reload, counter, reload_flag, timer, period, step, length, enabled; } tri;
 enum { TRIANGLE_HELD_BELOW = 3 };  // the longest period at which the triangle's wave doesn't move
+#define SOUND_TIME_LOST (1.7634 / 29780.5)  // of each cycle: what FCEUmm's sound drops, measured over 4,401 frames of its own
+static double lost;                      // towards the next cycle the waves don't get
+static uint32_t waves;                   // the cycles they did get
 static struct { Envelope envelope; int mode, timer, period, length, halt, enabled; uint16_t shift; } noise;
 static struct {
   int irq, loop, period, timer, level, address, length, current, remaining, buffer, buffered, shift, bits, silent;
@@ -123,34 +126,47 @@ static void cycle(void) {
   // the frame counter, in CPU cycles
   if (frame_reset_in && !--frame_reset_in) frame_cycle = 0;
   frame_cycle++;
-  if (frame_cycle == 7457 || frame_cycle == 22371) quarter_frame();
-  else if (frame_cycle == 14913) { quarter_frame(); half_frame(); }
-  else if (!frame_mode && frame_cycle == 29829) { quarter_frame(); half_frame(); }
+  // FCEUmm takes the length counters and sweeps down on the sequencer's first and third steps, where the console does
+  // it on the second and fourth, so this does too (kit/nes/notes/emulators-sound-runs-slow.md)
+  if (frame_cycle == 7457 || frame_cycle == 22371) { half_frame(); quarter_frame(); }
+  else if (frame_cycle == 14913) quarter_frame();
+  else if (!frame_mode && frame_cycle == 29829) quarter_frame();
   else if (frame_mode && frame_cycle == 37281) { quarter_frame(); half_frame(); }
   if ((!frame_mode && frame_cycle >= 29830) || (frame_mode && frame_cycle >= 37282)) frame_cycle = 0;
 
   // the triangle's timer runs every CPU cycle, the others every other one. With a period of 3 or less its wave is too
-  // high to hear, which games use for silence, and FCEUmm holds the wave where it is then, so this does too
-  if (tri.timer) tri.timer--;
+  // high to hear, which games use for silence, and FCEUmm holds the wave where it is then, so this does too.
+  // FCEUmm makes its sound a frame at a time, and at each frame's end drops the part of a sample it hasn't made yet:
+  // about 1.76 cycles a frame, so its waves run that much slower than the processor. This drops the same, a cycle at
+  // a time. Its triangle also keeps what's left of a step's time while the wave is stopped, by either counter or by
+  // a period of 3 or less, so the next note's first step comes when that has run.
+  lost += SOUND_TIME_LOST;
+  if (lost >= 1) lost -= 1;
   else {
-    tri.timer = tri.period;
-    if (tri.length && tri.counter && tri.period > TRIANGLE_HELD_BELOW) tri.step = (tri.step + 1) & 31;
-  }
-  if (!(cycles & 1)) {
-    for (int i = 0; i < 2; i++) {
-      Pulse *p = &pulses[i];
-      if (p->timer) p->timer--;
+    if (tri.length && tri.counter && tri.period > TRIANGLE_HELD_BELOW) {
+      if (tri.timer) tri.timer--;
       else {
-        p->timer = p->period;
-        p->step = (p->step + 1) & 7;
+        tri.timer = tri.period;
+        tri.step = (tri.step + 1) & 31;
       }
     }
-  }
-  if (noise.timer) noise.timer--;
-  else {
-    noise.timer = noise.period - 1;
-    int feedback = (noise.shift & 1) ^ ((noise.shift >> (noise.mode ? 6 : 1)) & 1);
-    noise.shift = (uint16_t)((noise.shift >> 1) | feedback << 14);
+    if (!(waves & 1)) {
+      for (int i = 0; i < 2; i++) {
+        Pulse *p = &pulses[i];
+        if (p->timer) p->timer--;
+        else {
+          p->timer = p->period;
+          p->step = (p->step + 1) & 7;
+        }
+      }
+    }
+    if (noise.timer) noise.timer--;
+    else {
+      noise.timer = noise.period - 1;
+      int feedback = (noise.shift & 1) ^ ((noise.shift >> (noise.mode ? 6 : 1)) & 1);
+      noise.shift = (uint16_t)((noise.shift >> 1) | feedback << 14);
+    }
+    waves++;
   }
   if (dmc.timer) dmc.timer--;
   else {
@@ -340,6 +356,8 @@ void nes_apu_power(void) {
   dmc.bits = 8;
   dmc.silent = 1;
   frame_mode = frame_cycle = frame_reset_in = frame_irq = 0;
+  lost = 0;
+  waves = 0;
   cycles = made = 0;
   sum = 0;
   summed = 0;

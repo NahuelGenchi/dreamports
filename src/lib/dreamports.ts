@@ -162,6 +162,13 @@ const hasCode = (data: Dreamport): boolean => codeIn(mainProof(data.game));
 /** Whether a Dreamport has its place in its row and its own page, for players. Until it has code, it's only in the Make row. */
 export const released = ({ data }: Game): boolean => hasCode(data);
 
+/**
+ * Whether all of a Dreamport's code is ported, in any of its languages. Until then the Dreamports row leaves it out,
+ * unless the player's Settings show unfinished Dreamports (#1154).
+ */
+export const fullyPorted = ({ data }: Game): boolean =>
+  languagesOf(data.game).some((language) => proofFor(data.game, language)?.ported?.percent === 100);
+
 // What a Dreamport's page in the Make row shows besides its two bars (#142): one line on where it stands, the sentence
 // that gets a newcomer's coding agent ready to help (#141), and its game's issue, where it's talked about; and from
 // GitHub (#143, src/lib/making.ts), how many pieces are free to take and its steps, the latest first. Who leads it,

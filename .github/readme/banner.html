@@ -1,6 +1,6 @@
 <!--
   Source of the README banner and the social preview image. Original artwork, no game assets.
-  The mark is public/images/mark.svg (#590). Fonts: Cinzel for the name, loaded from Google Fonts, and Monocraft
+  The mark is public/images/mark.svg (#1143). Fonts: Quicksand for the name, loaded from Google Fonts, and Monocraft
   for the rest (both SIL Open Font License; Monocraft, https://github.com/IdreesInc/Monocraft, must be installed on
   the machine that renders).
 
@@ -18,7 +18,7 @@
 <meta charset="utf-8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@700&display=swap" rel="stylesheet">
 <style>
   :root {
     --white: #ffffff;
@@ -43,8 +43,8 @@
   }
   .mark { width: var(--mark); height: var(--mark); flex: none; display: block; }
   h1 {
-    font-family: 'Cinzel', serif; font-weight: 700; font-size: var(--word); line-height: 1;
-    letter-spacing: 0.2em; margin-right: -0.2em; color: var(--navy); text-transform: uppercase;
+    font-family: 'Quicksand', sans-serif; font-weight: 700; font-size: var(--word); line-height: 1;
+    color: var(--blue);
   }
   .tag { margin-top: var(--tag-gap); font-size: var(--tag); font-weight: 400; color: var(--blue); }
   .url {
@@ -60,7 +60,7 @@
   <div class="content">
     <img class="mark" src="../../public/images/mark.svg" alt="">
     <div>
-      <h1>Dreamports</h1>
+      <h1>dreamports</h1>
       <p class="tag">Enhanced fan ports of classic games</p>
       <span class="url"><img src="../../public/favicon.svg" alt="">dreamports.net</span>
     </div>
@@ -70,8 +70,8 @@
   const params = new URLSearchParams(location.search);
   const kind = params.get('kind') || 'banner';
   const sizes = {
-    banner: { w: 1280, h: 400, r: 28, gap: 48, pad: 80, mark: 260, word: 76, tag: 26, 'tag-gap': 22, url: 20, 'url-gap': 26 },
-    social: { w: 1280, h: 640, r: 0, gap: 52, pad: 64, mark: 330, word: 84, tag: 28, 'tag-gap': 26, url: 22, 'url-gap': 32 },
+    banner: { w: 1280, h: 400, r: 28, gap: 44, pad: 80, mark: 280, word: 96, tag: 26, 'tag-gap': 18, url: 20, 'url-gap': 26 },
+    social: { w: 1280, h: 640, r: 0, gap: 48, pad: 64, mark: 360, word: 108, tag: 28, 'tag-gap': 22, url: 22, 'url-gap': 32 },
   }[kind];
   const card = document.getElementById('card');
   for (const [k, v] of Object.entries(sizes)) card.style.setProperty('--' + k, v + 'px');

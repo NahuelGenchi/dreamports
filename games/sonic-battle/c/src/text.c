@@ -35,6 +35,21 @@
 
 static int textTo, textEnd, textStride, textRows, textBlock;
 
+// the words written while they're kept: a description's longest text writes some 6,000
+#define KEPT_WRITES 16384
+static TextWrite kept[KEPT_WRITES];
+static int keeping, keptCount;
+
+void textKeepWrites(int on) {
+  keeping = on;
+  if (on) keptCount = 0;
+}
+
+const TextWrite *textWrites(int *count) {
+  *count = keptCount;
+  return kept;
+}
+
 /** 0x08020ecc: the stretch of VRAM at `to`, `width` by `height` tiles, that the next letters go into. */
 void textInto(uint32_t to, int width, int height) {
   textTo = (int)(to - VRAM);
@@ -59,6 +74,7 @@ static void putPixels(int at, int pixels, int colour) {
   gba_vram[at + 1] = (uint8_t)(out >> 8);
   gba_vram[at + 2] = (uint8_t)(out >> 16);
   gba_vram[at + 3] = (uint8_t)(out >> 24);
+  if (keeping && keptCount < KEPT_WRITES) kept[keptCount++] = (TextWrite){g.text_cycles, VRAM + (uint32_t)at, out};
 }
 
 /** 0x08020978: a letter into the stretch, at `x` and `y` in pixels, over as many as three columns of tiles. Its width. */
@@ -95,17 +111,19 @@ int textWidth(uint32_t text) {
   return width;
 }
 
-/** 0x08020b74: a text in the cartridge into the stretch from `x` and `y`, each letter over its shadow. */
-void putText(int x, int y, uint32_t text) {
-  int colour = TEXT_COLOUR, left = x, top = y;
+/** 0x08020b74: a text in the cartridge into the stretch from `x` and `y`, each letter in `colour` over its shadow. */
+void putTextIn(int x, int y, uint32_t text, int colour, int shadow) {
+  int left = x, top = y;
   for (uint32_t at = text; read16(at) != END; at += 2) {
     uint16_t token = read16(at);
     if (token == NEW_LINE) { left = 0; top += 16; }
     else if (token == COLOUR) { at += 2; colour = read16(at); }
     else if (token == SKIP_ONE || token == SKIP_TWO) at += 2;
     else if (isLetter(token)) {
-      putGlyph(left + 1, top + 1, token, TEXT_SHADOW);
+      putGlyph(left + 1, top + 1, token, shadow);
       left += putGlyph(left, top, token, colour);
     }
   }
 }
+
+void putText(int x, int y, uint32_t text) { putTextIn(x, y, text, TEXT_COLOUR, TEXT_SHADOW); }

@@ -40,9 +40,16 @@
   --on-act: #ffffff;
   --hollow: #eef7ff;
   --glow-o: 0.62;
-  --mk-dol: #0a3a78;
-  --mk-ring: #17b0c8;
-  --mk-rip: #8fdde8;
+  --mk-b1: #7ccbff;
+  --mk-b2: #1f5fd0;
+  --mk-b3: #0a2a66;
+  --mk-w1: #ffffff;
+  --mk-w2: #b9dcff;
+  --mk-line: #0a2a66;
+  --mk-eye: #061a44;
+  --mk-s1: #d9f0ff;
+  --mk-s2: #8fd1ff;
+  --mk-s3: #4f9df0;
   --discord: #5865f2;
 
   --font: 'Monocraft', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
@@ -69,8 +76,13 @@
     --on-act: #0a1738;
     --hollow: rgba(127, 180, 255, 0.05);
     --glow-o: 0.34;
-    --mk-dol: #8fd1ff;
-    --mk-rip: #1a7f99;
+    --mk-b1: #b5e2ff;
+    --mk-b2: #4f8df0;
+    --mk-b3: #1a4fb0;
+    --mk-line: #123a8c;
+    --mk-s1: #ffffff;
+    --mk-s2: #bfe6ff;
+    --mk-s3: #8fd1ff;
     --discord: #8c95ff;
 
     color-scheme: dark;
@@ -94,8 +106,13 @@
   --on-act: #0a1738;
   --hollow: rgba(127, 180, 255, 0.05);
   --glow-o: 0.34;
-  --mk-dol: #8fd1ff;
-  --mk-rip: #1a7f99;
+  --mk-b1: #b5e2ff;
+  --mk-b2: #4f8df0;
+  --mk-b3: #1a4fb0;
+  --mk-line: #123a8c;
+  --mk-s1: #ffffff;
+  --mk-s2: #bfe6ff;
+  --mk-s3: #8fd1ff;
   --discord: #8c95ff;
 
   color-scheme: dark;
@@ -283,15 +300,71 @@ kbd {
   font: 400 0.78em var(--font);
 }
 
-/* the Dreamports mark (Mark.astro). In the dark theme the dolphin takes the sky's blue, as the navy would vanish there */
+/* the Dreamports mark (Mark.astro). Its colours are stops along three runs of colour: the body's (b), the belly's (w)
+   and the star's (s). In the dark theme the body and its lines take lighter blues, as navy would vanish there */
 .mark {
   display: block;
   flex: none;
 }
 
-.mk-dol { fill: var(--mk-dol); }
-.mk-ring { fill: var(--mk-ring); }
-.mk-rip { fill: var(--mk-rip); }
+/* the colours a player can pick for it in Settings in place of the site's own, Deep. Both are light enough to keep
+   in the dark theme, so they come after its rules and win over them */
+:root[data-logo-colour='soft'] {
+  --mk-b1: #9fe6f2;
+  --mk-b2: #5aa5ec;
+  --mk-b3: #4263cf;
+  --mk-w2: #c4e0f7;
+  --mk-line: #3c55c4;
+  --mk-eye: #1f2c80;
+  --mk-s1: #fff1b8;
+  --mk-s2: #ffd24d;
+  --mk-s3: #f2ae2e;
+}
+
+:root[data-logo-colour='lagoon'] {
+  --mk-b1: #a8f5e4;
+  --mk-b2: #22bfd0;
+  --mk-b3: #1a5fc0;
+  --mk-w2: #c9f3ee;
+  --mk-line: #0e6f92;
+  --mk-eye: #0b3a5c;
+  --mk-s1: #fff1b8;
+  --mk-s2: #ffd24d;
+  --mk-s3: #f2ae2e;
+}
+
+/* a pose a player picked is drawn in by the script (src/scripts/mark.ts). Until it is, the mark keeps its room and
+   stays unseen, so the site's own pose never flashes first */
+:root[data-logo-pose] .mark:not([data-pose]) {
+  visibility: hidden;
+}
+
+.mk-b1 { stop-color: var(--mk-b1); }
+.mk-b2 { stop-color: var(--mk-b2); }
+.mk-b3 { stop-color: var(--mk-b3); }
+.mk-w1 { stop-color: var(--mk-w1); }
+.mk-w2 { stop-color: var(--mk-w2); }
+.mk-s1 { stop-color: var(--mk-s1); }
+.mk-s2 { stop-color: var(--mk-s2); }
+.mk-s3 { stop-color: var(--mk-s3); }
+.mk-eye { fill: var(--mk-eye); }
+
+/* its eye closed, in the pose asleep */
+.mk-lid {
+  fill: none;
+  stroke: var(--mk-eye);
+  stroke-linecap: round;
+}
+
+.mk-line {
+  fill: none;
+  stroke: var(--mk-line);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* the flipper's line, quieter than the smile */
+.mk-soft { stroke-opacity: 0.6; }
 
 /* ---------- The launcher: one screen ---------- */
 
@@ -1273,7 +1346,7 @@ kbd {
   fill: currentColor;
 }
 
-/* the mark the game goes through when it launches, dropping through its ring */
+/* the mark the game goes to when it launches, landing in the curl of the dolphin's body */
 .target {
   position: absolute;
   z-index: 0;
@@ -1284,6 +1357,9 @@ kbd {
 }
 
 .t-mark {
+  --land-x: 63.4%;
+  --land-y: 62.8%;
+  --land-r: 12.3%;
   position: relative;
   width: calc(var(--cell) * 20);
   height: calc(var(--cell) * 20);
@@ -1300,19 +1376,20 @@ kbd {
   transform: translateY(calc(var(--cell) * -2));
 }
 
-/* inside the ring, around its middle */
+/* where the game lands: the open space the leaping dolphin curls around, under its chin and over its tail. Another
+   pose has its own place, which the script sets with the pose (src/scripts/mark.ts): the middle and half the width */
 .t-mark-mouth {
   position: absolute;
-  left: 30%;
-  right: 28%;
-  top: 23%;
-  bottom: 35%;
+  left: calc(var(--land-x) - var(--land-r));
+  top: calc(var(--land-y) - var(--land-r));
+  width: calc(var(--land-r) * 2);
+  height: calc(var(--land-r) * 2);
 }
 
 .t-glow {
   position: absolute;
-  left: 51%;
-  top: 44%;
+  left: var(--land-x);
+  top: var(--land-y);
   width: 14%;
   height: 12%;
   translate: -50% -50%;
@@ -1532,6 +1609,33 @@ dialog.card[open] {
   margin-top: 4px;
   color: var(--dim);
   font: 400 13.5px/20px var(--font);
+}
+
+/* the logo's row shows it as picked, before its words, and has two choices, its pose over its colour; they go under
+   the words where a row is too narrow for both */
+.set-logo {
+  flex-wrap: wrap;
+}
+
+.set-logo .set-text {
+  flex: 1 1 9em;
+}
+
+.set-mark {
+  width: 44px;
+  height: 44px;
+}
+
+.set-picks {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+/* a line under a row's choices, the whole row wide */
+.set-after {
+  flex: 1 1 100%;
+  margin-top: 0;
 }
 
 .set-desc:empty {
@@ -2348,6 +2452,11 @@ dialog.card[open] {
   mask-image: none;
 }
 
+/* Unfinished Dreamports are out of the row from the first frame, before the script builds it (#1154). */
+:root[data-unfinished='hide'] .row:not([role]) .slot[data-unfinished] {
+  display: none;
+}
+
 :root:not(.js) .slot {
   position: relative;
   left: auto;
@@ -2467,6 +2576,10 @@ dialog.card[open] {
 
   .set-row {
     flex-wrap: wrap;
+  }
+
+  .set-picks {
+    justify-items: start;
   }
 
   .about {

@@ -70,7 +70,7 @@ typedef struct {
   int shield;                   // the shield an item box gave him (SHIELD_*)
   const void *onObject;         // the solid object he stands on, if any
   int animRestart;              // an object asked for his animation to start over
-  int forcedRoll, scripted, actClear, halfPipe, ignoreInput, carried, override;
+  int forcedRoll, scripted, actClear, halfPipe, ignoreInput, wasIgnoreInput, carried, override;
   int grinding;                 // on a grind rail, on the layer it put him on (MOVESTATE_1000000)
   int front;                    // drawn in front of the front layer, priority 1, as on a grind rail
   int track;                    // the step of the marble track or tube holding him (unk99[0]), NO_TRACK when none does
@@ -83,8 +83,6 @@ typedef struct {
   int heldDirs, pressedDirs;    // the d-pad his last frame read, and what it found newly pressed
   int jumpPressed, attackPressed;
   int held[DPAD_HISTORY], pressed[DPAD_HISTORY];
-  double drawX, drawY;          // where this frame's picture shows him: his place as his own task left it, before the
-                                // tasks at his priority and later move him
   Sprite sprite;                // his graphics, kept by the animation
 } Player;
 

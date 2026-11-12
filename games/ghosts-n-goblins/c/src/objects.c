@@ -104,7 +104,7 @@ int object_in_view(uint8_t object) {
   return A_Y_SCREEN == 0 && A_X_SCREEN == 0;
 }
 
-// sub_E3E3 and sub_EA2F. The two blocks $76 and $77, which a stage's set of tiles can make solid, at $E3F3, and a place
+// sub_E3E3 and sub_EA2F. A place
 // whose 11 pixels below are on the next screen down, at $EA44, aren't ported yet.
 int on_the_ground(uint8_t object) {
   took(GROUND_LOOKED_AT);
@@ -113,7 +113,89 @@ int on_the_ground(uint8_t object) {
   RAM[0x78] = RAM[OBJECT_X_SCREEN + object];
   RAM[0x74] = RAM[OBJECT_X + object];
   RAM[0x22] = block_at_stage_place();
+  // $E3F3: in the first set of stages the blocks $76 and $77 are solid across half their width: the right half of
+  // $76, the left of $77
+  if (RAM[0x22] == 0x76 || RAM[0x22] == 0x77) {
+    uint8_t right_half = (RAM[OBJECT_X + object] & 0x0F) >= 8, first = RAM[0x22] == 0x76;
+    if (RAM[0xCF]) { took(first ? GROUND_HALF_BLOCK_OTHER_SET_76 : GROUND_HALF_BLOCK_OTHER_SET_77); return 0; }
+    took(first ? GROUND_HALF_BLOCK_76 : right_half ? GROUND_HALF_BLOCK_77_OPEN : GROUND_HALF_BLOCK_77_SOLID);
+    return first ? right_half : !right_half;
+  }
   return RAM[0x22] >= BLOCK_SOLID;
+}
+
+/** Bank 4's $BC9C, kind $1E: the key a stage's last boss leaves. It falls from the top of the picture, its colours
+ *  changing every round, until it's on the ground, flag $02. Arthur within 8 pixels of it takes it: the time stops,
+ *  at $C9, and it's worth 1,000 points. What the stage does then, from $C9, isn't ported yet. */
+void key(uint8_t object) {
+  enum { LANDED = 0x02 };
+  RAM[OBJECT_SHAPE + object] = 0x47;
+  RAM[OBJECT_COLOURS + object] = (RAM[OBJECT_COLOURS + object] + 1) & 3;
+  took(KEY_BEGINS);
+  hide_object(object);
+  if (object_in_view(object)) {
+    took(GOES_ON);
+    show_object(object);
+  } else took(BRANCH_TAKEN);
+  took(OBJECT_FLAG_READ);
+  if (object >= 0x10) took(READ_PAST_PAGE);
+  if (RAM[OBJECT_FLAGS + object] & LANDED) took(BRANCH_TAKEN);
+  else {
+    RAM[OBJECT_HEADING + object] = 0x08;
+    took(KEY_FALLS);
+    took(CALLS);
+    move_object(object, 0x08);
+    place_on_screen(object);
+    if (!on_the_ground(object)) { took(KEY_IN_THE_AIR); return; }
+    took(BRANCH_TAKEN);
+    RAM[OBJECT_FLAGS + object] |= LANDED;
+    took(OBJECT_FLAG_CHANGED);
+    if (object >= 0x10) took(READ_PAST_PAGE);
+  }
+  RAM[0x26] = RAM[0x27] = 8;
+  took(KEY_LOOKS);
+  if (!arthur_near(object)) { took(KEY_NOT_TAKEN); return; }
+  RAM[0xC9] = 0xFF;
+  RAM[OBJECT_FLAGS + object] = 0;
+  RAM[0x25] = RAM[0x27] = RAM[0x26] = 0;
+  RAM[0x24] = 1;
+  took(KEY_TAKEN);
+  add_score_with_thousands(object, 0);
+  took(RETURNS);
+}
+
+uint8_t take_object(void) {
+  enum { FIRST = 1, NEXT_SEARCH = 0xCE, AWAKE = 0x065D };
+  uint8_t object = RAM[NEXT_SEARCH];
+  took(TAKE_OBJECT_BEGINS);
+  for (;;) {
+    uint8_t flags = RAM[OBJECT_FLAGS + object], stays = 1;
+    took(TAKE_OBJECT_READ);
+    if (object >= 0x10) took(READ_PAST_PAGE);
+    if (flags & OBJECT_FLAG_SHOWN) took(TAKE_OBJECT_SHOWN);
+    else if (!flags) { took(TAKE_OBJECT_FREE); break; }
+    else {
+      // in use and not shown: the bosses, the stage's own things and a kind 6 that's awake stay
+      static const struct { uint8_t kind; cost stays; } STAYING[] = {
+        { 0x05, TAKE_OBJECT_KIND_5 }, { 0x0F, TAKE_OBJECT_KIND_F }, { 0x10, TAKE_OBJECT_KIND_10 }, { 0x11, TAKE_OBJECT_KIND_11 },
+      };
+      uint8_t kind = RAM[OBJECT_KIND + object];
+      cost takes = TAKE_OBJECT_OTHER_KIND;
+      stays = 0;
+      for (unsigned k = 0; k < sizeof STAYING / sizeof *STAYING; k++) if (kind == STAYING[k].kind) { takes = STAYING[k].stays; stays = 1; }
+      if (kind == 0x06) { stays = RAM[AWAKE + object] != 0; takes = stays ? TAKE_OBJECT_KIND_6_AWAKE : TAKE_OBJECT_KIND_6; }
+      took(takes);
+      if (!stays) break;
+    }
+    if (++object >= NO_OBJECT) { object = FIRST; took(TAKE_OBJECT_NEXT_WRAPS); }
+    else took(TAKE_OBJECT_NEXT);
+    if (object == RAM[NEXT_SEARCH]) { took(TAKE_OBJECT_NONE); return NO_OBJECT; }
+    took(BRANCH_TAKEN);
+  }
+  RAM[NEXT_SEARCH] = (uint8_t)(object + 1);
+  if (RAM[NEXT_SEARCH] >= NO_OBJECT) { RAM[NEXT_SEARCH] = FIRST; took(TAKE_OBJECT_TAKEN_WRAPS); }
+  else took(TAKE_OBJECT_TAKEN);
+  return object;
 }
 
 uint8_t free_object(void) {
@@ -510,7 +592,7 @@ static void map_marker(uint8_t object) {
 // $BA09 in bank 4, kind $10: something to pick up, here Arthur's armour. Its shape and colours come from the copy's
 // lists at $BB2D, by which thing it is, and it flashes another colour every fourth round. When Arthur touches the
 // armour he has it: his flags say so, the tiles' task sends the armoured Arthur's tiles, and the object is gone. The
-// other things, at $BA99 and $BAAC, the sound the armour makes outside the scene, at $BA83, and the kinds $F708 keeps
+// other things, at $BA99 and $BAAC, and the kinds $F708 keeps
 // after they're picked up aren't ported yet.
 static void pick_up(uint8_t object) {
   enum { ARMOUR = 5, WITHOUT_ARMOUR = 0x20 };
@@ -552,6 +634,11 @@ static void pick_up(uint8_t object) {
     return;
   }
   if (!touched || thing != ARMOUR) return;
+  if (!SCENE_PLAYING) {
+    // $BA83: outside the opening scene it has a sound
+    took(PICK_UP_ARMOUR_SOUND);
+    sound_play(0x14);
+  }
   took(PICK_UP_ARMOUR_TAKEN);
   RAM[OBJECT_FLAGS + ARTHUR] &= (uint8_t)~WITHOUT_ARMOUR;
   TILES_FIRST_LIST = 0;
@@ -581,14 +668,20 @@ wait objects_task(void) {
         case 0x00: zombie(object); break;
         case 0x01: plant(object); break;
         case 0x02: flier(object); break;
+        case 0x03: knight(object); break;
+        case 0x04: forest_enemy(object); break;
+        case 0x05: boss(object); break;
         case 0x0E: platform(object); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object); break;
         case 0x12: pot(object); break;
         case 0x14: crow(object); break;
+        case 0x1E: key(object); break;
         case 0x20: gravestone(object); break;
         case 0x2B: plant_shot(object); break;
+        case 0x29: forest_shot(object); break;
         case 0x2C: flier_shot(object); break;
+        case 0x30: boss_shot(object); break;
         case 0x22: map_marker(object); break;
         case LANCE: case DAGGER: weapon(object); break;
         case 0x33: princess(object); break;

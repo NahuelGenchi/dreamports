@@ -7,6 +7,8 @@
 import { showTitle } from '../lib/title';
 import { hrefOf } from './controls';
 import { playHref, playLabel } from '../lib/languages.mjs';
+import type { ColourName, PoseName } from '../lib/mark';
+import { LOGO_KEYS, copyMark, logoKept, showLogo } from './mark';
 
 type Input = 'keys' | 'pad' | 'touch';
 type Motion = 'auto' | 'full' | 'calm';
@@ -92,6 +94,7 @@ function start(launcher: HTMLElement) {
   const versionPicks: (() => void)[] = [];
   const storedTheme = store.get('theme');
   const storedMotion = store.get('motion');
+  const storedLogo = logoKept();
 
   // ---------- Elements ----------
 
@@ -138,7 +141,6 @@ function start(launcher: HTMLElement) {
       path: hrefOf(tab)!,
       paths: (tab.dataset.paths ?? '').split(' '),
       title: tab.dataset.title!,
-      count: template.content.querySelectorAll('.slot[data-game]').length,
     };
   });
 
@@ -155,7 +157,12 @@ function start(launcher: HTMLElement) {
     sound: store.get('sound') === 'on',
     motion: (storedMotion === 'full' || storedMotion === 'calm' ? storedMotion : 'auto') as Motion,
     theme: (storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : null) as Theme | null,
+    // the logo's pose and colour, the site's own until the visitor picks
+    logoPose: storedLogo.pose,
+    logoColour: storedLogo.colour,
     aboutSec: 'dreamport',
+    // whether the Dreamports row shows those whose code isn't all ported, which it doesn't until Settings say so
+    unfinished: store.get('unfinished') === 'show',
     // what the search field holds while a search is on
     search: null as string | null,
   };
@@ -204,12 +211,21 @@ function start(launcher: HTMLElement) {
   const sel = () => state.sel[state.filter];
   const gameAt = (i: number) => slots[i]?.dataset.game ?? null;
 
+  // the game whose own address the page was asked for, which keeps its place in the row even while unfinished ones are left out
+  let asked: string | null = null;
+  // whether a place is in its row: an unfinished Dreamport isn't, until Settings show them
+  const shown = (el: HTMLElement) => state.unfinished || el.dataset.unfinished === undefined || el.dataset.game === asked;
+  const allPlaces = (f = state.filter) => $$('.slot', FILTERS[f].template.content);
+  // a row's places as its template has them, without those left out
+  const places = (f = state.filter) => allPlaces(f).filter(shown);
+  // whether a row has Dreamports left out
+  const leftOut = () => places().length < allPlaces().length;
+
   // keep: the game to stay on, where the new row has it, or else the first place
   function buildRow(keep?: string | null) {
     sleepRow();
-    rowEl.replaceChildren(FILTERS[state.filter].template.content.cloneNode(true));
     const words = searchWords();
-    if (words.length) for (const el of $$('.slot', rowEl)) if (!matches(el, words)) el.remove();
+    rowEl.replaceChildren(...places().filter((el) => !words.length || matches(el, words)).map((el) => el.cloneNode(true)));
     settleRow(keep);
   }
 
@@ -219,7 +235,7 @@ function start(launcher: HTMLElement) {
     const on = rowEl.querySelector<HTMLElement>('.slot.is-sel');
     const words = searchWords();
     const there = $$('.slot', rowEl);
-    const next = $$('.slot', FILTERS[state.filter].template.content)
+    const next = places()
       .filter((el) => !words.length || matches(el, words))
       .map((el) => there.find((old) => old.dataset.title === el.dataset.title) ?? (el.cloneNode(true) as HTMLElement));
     for (const el of there) if (!next.includes(el)) el.remove();
@@ -234,7 +250,7 @@ function start(launcher: HTMLElement) {
     const f = FILTERS[state.filter];
     const words = searchWords();
     // with nothing to show, one empty place says so
-    if (!rowEl.children.length) rowEl.append(emptyPlace(words.length ? 'Nothing matches' : 'Nothing here yet'));
+    if (!rowEl.children.length) rowEl.append(words.length ? emptyPlace('Nothing matches') : leftOut() ? emptyPlace(NONE_FINISHED, SHOW_THEM) : emptyPlace('Nothing here yet'));
     slots = $$('.slot', rowEl);
     if (keep !== undefined) state.sel[state.filter] = Math.max(0, slots.findIndex((el) => el.dataset.game === keep));
     state.sel[state.filter] = Math.min(sel(), slots.length - 1);
@@ -247,7 +263,7 @@ function start(launcher: HTMLElement) {
       const numbers = el.dataset.numbers ? `. ${el.dataset.numbers}` : '';
       const detail = el.dataset.detail ? `, ${el.dataset.detail}` : '';
       const help = el.dataset.help ? `. ${el.dataset.help}` : '';
-      el.setAttribute('aria-label', el.dataset.title ? `${el.dataset.title}${detail}${numbers}${help}` : (el.dataset.note ?? ''));
+      el.setAttribute('aria-label', el.dataset.title ? `${el.dataset.title}${detail}${numbers}${help}` : `${el.dataset.note ?? ''}${help}`);
       el.tabIndex = -1;
     });
     rowEl.setAttribute('aria-label', 'Games: ' + f.label + (words.length ? `, matching ${state.search}` : ''));
@@ -389,7 +405,7 @@ function start(launcher: HTMLElement) {
     // a Dreamport's two numbers, code ported and gameplay proven, each kept whole when they need two lines
     const numbers = named && slot.dataset.numbers ? slot.dataset.numbers.split(' · ') : [];
     plateNumbers.replaceChildren(...numbers.map((text) => Object.assign(document.createElement('span'), { textContent: text })));
-    plateHelp.textContent = (named && slot.dataset.help) || '';
+    plateHelp.textContent = slot?.dataset.help ?? '';
     plate.classList.toggle('is-empty', !named);
     if (calm() || !w0 || !state.ready) return;
     const { width: w1, height: h1 } = plate.getBoundingClientRect();
@@ -652,12 +668,17 @@ function start(launcher: HTMLElement) {
       .trim();
   const searchWords = () => (state.search ? plain(state.search).split(' ').filter(Boolean) : []);
 
+  // what an empty Dreamports row says while unfinished ones are left out
+  const NONE_FINISHED = 'No finished Dreamports yet';
+  const SHOW_THEM = 'Settings can show the unfinished ones.';
   const matches = (el: HTMLElement, words: string[]) => !!el.dataset.title && words.every((w) => plain(el.dataset.title!).includes(w));
-  function emptyPlace(note: string) {
+  // help: a second line under the note, such as where to find what the row leaves out
+  function emptyPlace(note: string, help?: string) {
     const none = document.createElement('div');
     none.className = 'slot';
     none.dataset.index = '0';
     none.dataset.note = note;
+    if (help) none.dataset.help = help;
     none.innerHTML = '<span class="lift"><span class="hollow"></span></span>';
     return none;
   }
@@ -669,7 +690,8 @@ function start(launcher: HTMLElement) {
       const n = slots.filter((el) => el.dataset.game).length;
       return n ? `${f.label}: ${n} ${n === 1 ? 'game matches' : 'games match'}` : `${f.label}: nothing matches`;
     }
-    const n = f.count;
+    const n = slots.filter((el) => el.dataset.game).length;
+    if (!n && leftOut()) return `${f.label}: ${NONE_FINISHED}. ${SHOW_THEM}`;
     // the Make row's way to start a Dreamport, by its name
     const others = slots.filter((el) => !el.dataset.game && el.dataset.title).map((el) => el.dataset.title);
     const games = `${n} ${n === 1 ? 'game' : 'games'}`;
@@ -1160,17 +1182,24 @@ function start(launcher: HTMLElement) {
 
   // settings
   const sndSwitch = $('#snd-switch', settingsCard);
+  const unfinishedSwitch = $('#unfinished-switch', settingsCard);
   function syncSettings() {
+    copyMark($<SVGSVGElement>('#set-mark', settingsCard), $<SVGSVGElement>('.t-mark .mark', target));
     sndSwitch.setAttribute('aria-checked', String(state.sound));
+    unfinishedSwitch.setAttribute('aria-checked', String(state.unfinished));
     $<HTMLInputElement>('#theme-light', settingsCard).checked = !isDark();
     $<HTMLInputElement>('#theme-dark', settingsCard).checked = isDark();
     $('#theme-desc', settingsCard).textContent = state.theme ? '' : 'Follows your device until you pick one.';
     $<HTMLInputElement>('#motion-full', settingsCard).checked = !calm();
     $<HTMLInputElement>('#motion-calm', settingsCard).checked = calm();
+    $<HTMLInputElement>(`#pose-${state.logoPose}`, settingsCard).checked = true;
+    $<HTMLInputElement>(`#colour-${state.logoColour}`, settingsCard).checked = true;
     const kept: string[] = [];
     if (store.get('sound')) kept.push('menu sounds on');
     if (store.get('theme')) kept.push(store.get('theme') + ' look');
     if (store.get('motion')) kept.push(store.get('motion') + ' motion');
+    if (store.get('unfinished')) kept.push('unfinished Dreamports shown');
+    if (store.get(LOGO_KEYS.pose) || store.get(LOGO_KEYS.colour)) kept.push('your logo');
     const versions = store.keys('version:').length;
     if (versions) kept.push(versions === 1 ? 'the language you play a game in' : `the languages you play ${versions} games in`);
     $('#memory-note', settingsCard).textContent = kept.length
@@ -1192,6 +1221,25 @@ function start(launcher: HTMLElement) {
     updateStatus();
   }
   sndSwitch.addEventListener('click', toggleSound);
+  // unfinished Dreamports are left out as the site comes, which is kept as nothing at all
+  function showUnfinished(show: boolean) {
+    if (state.unfinished === show) return;
+    state.unfinished = show;
+    if (show) {
+      store.set('unfinished', 'show');
+      delete root.dataset.unfinished;
+    } else {
+      store.del('unfinished');
+      root.dataset.unfinished = 'hide';
+    }
+    // the row behind Settings, on the game it was on if that one is still there
+    buildRow(gameAt(sel()));
+  }
+  unfinishedSwitch.addEventListener('click', () => {
+    showUnfinished(!state.unfinished);
+    syncSettings();
+    sound.play(state.unfinished ? 'on' : 'off');
+  });
   for (const input of $$<HTMLInputElement>('input[name="theme"]', settingsCard)) {
     input.addEventListener('change', () => {
       state.theme = input.value as Theme;
@@ -1211,12 +1259,36 @@ function start(launcher: HTMLElement) {
       sound.play('tick');
     });
   }
+  // once picked, a pose or a colour is kept even when it is the site's own: an app on the Home Screen opens with its
+  // icon's logo when the browser keeps none (Base.astro), which must not come back over a pick of the site's own
+  for (const input of $$<HTMLInputElement>('input[name="logo-pose"]', settingsCard)) {
+    input.addEventListener('change', () => {
+      state.logoPose = input.value as PoseName;
+      store.set(LOGO_KEYS.pose, state.logoPose);
+      void showLogo(state.logoPose, state.logoColour);
+      syncSettings();
+      sound.play('tick');
+    });
+  }
+  for (const input of $$<HTMLInputElement>('input[name="logo-colour"]', settingsCard)) {
+    input.addEventListener('change', () => {
+      state.logoColour = input.value as ColourName;
+      store.set(LOGO_KEYS.colour, state.logoColour);
+      void showLogo(state.logoPose, state.logoColour);
+      syncSettings();
+      sound.play('tick');
+    });
+  }
   $('#btn-forget', settingsCard).addEventListener('click', () => {
-    for (const key of ['sound', 'theme', 'motion', ...store.keys('version:')]) store.del(key);
+    for (const key of ['sound', 'theme', 'motion', 'unfinished', LOGO_KEYS.pose, LOGO_KEYS.colour, ...store.keys('version:')]) store.del(key);
     for (const pick of versionPicks) pick();
     state.sound = false;
     state.theme = null;
     state.motion = 'auto';
+    state.logoPose = 'leap';
+    state.logoColour = 'deep';
+    showUnfinished(false);
+    void showLogo('leap', 'deep');
     applyTheme();
     applyMotion();
     syncSettings();
@@ -1618,10 +1690,10 @@ function start(launcher: HTMLElement) {
     return irisAnim.finished;
   }
 
-  // the selected game rises, drops through the ring, and the screen closes into it
+  // the selected game rises, drops into the curl of the mark's dolphin, and the screen closes into it
   let launchRun = 0;
   let leaving = false;
-  // what goes through the ring: the game in the row, or the picture on the game's page
+  // what drops into it: the game in the row, or the picture on the game's page
   let flyer: HTMLElement | null = null;
   async function launch(dlg: HTMLDialogElement, link: string) {
     if (state.launching) return;
@@ -1660,7 +1732,7 @@ function start(launcher: HTMLElement) {
     await lift
       .animate([{ transform: 'none' }, { transform: up }], { duration: 320, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'forwards' })
       .finished.catch(() => {});
-    // the mark has finished rising by now, so its ring can be measured
+    // the mark has finished rising by now, so the space its dolphin curls around can be measured
     await wait(150);
     if (!still()) return;
     const mouth = $('.t-mark-mouth', target).getBoundingClientRect();
@@ -2150,6 +2222,9 @@ function start(launcher: HTMLElement) {
   // app on an iPhone or iPad, a line says what to do, until a tap, a key or a controller.
   const homeScreenApp = (navigator as Navigator & { standalone?: boolean }).standalone === true && navigator.maxTouchPoints > 0;
   padHint.hidden = !homeScreenApp || !navigator.getGamepads;
+  // That app's icon is the logo it was added with: iOS never redraws it and gives a page no way to ask, so a pick
+  // made in the app can't reach it (#1161). Settings says so there, and how to get another
+  $('#logo-icon-note', settingsCard).hidden = !homeScreenApp;
   $('svg', padHint).innerHTML = ICON_PAD;
   let tapFrom: { x: number; y: number } | null = null;
   window.addEventListener('pointerdown', (e) => (tapFrom = { x: e.clientX, y: e.clientY }), true);
@@ -2337,11 +2412,14 @@ function start(launcher: HTMLElement) {
     // the filter that shows this address, and the game it is about
     let f = FILTERS.findIndex((filter) => filter.paths.includes(path));
     if (game) f = FILTERS.findIndex((filter) => filter.key === card!.dataset.filter);
+    // a game's own address keeps its place in the row, even an unfinished one's while those are left out
+    const back = !!game && asked !== game && f >= 0 && places(f).every((el) => el.dataset.game !== game);
+    if (back) asked = game;
     if (f >= 0 && f !== state.filter) {
       state.filter = f;
       updateTabs();
       buildRow();
-    }
+    } else if (back) buildRow(gameAt(sel()));
     if (game) {
       const i = slots.findIndex((el) => el.dataset.game === game);
       if (i >= 0 && i !== sel()) {
@@ -2381,6 +2459,8 @@ function start(launcher: HTMLElement) {
   rowEl.setAttribute('aria-orientation', 'horizontal');
   applyTheme();
   applyMotion();
+  // the logo as the visitor picked it; as the site draws it, there's nothing to do
+  if (state.logoPose !== 'leap' || state.logoColour !== 'deep') void showLogo(state.logoPose, state.logoColour);
   root.dataset.input = state.input;
   reducedMQ.addEventListener('change', () => {
     applyMotion();
@@ -2391,7 +2471,10 @@ function start(launcher: HTMLElement) {
     if (state.open === settingsCard) syncSettings();
   });
   updateStatus();
-  buildRow();
+  // the page's own game, as the whole row counts it, which keeps its place when the page is its own
+  const first = allPlaces()[sel()]?.dataset.game ?? null;
+  if (launcher.dataset.view === 'inspect' || launcher.dataset.view === 'achievements') asked = first;
+  buildRow(first);
   layout();
   updateTabs();
   // all of it in the same frame, and in its own font if that isn't long in coming: the top bar's fade is only for a

@@ -17,5 +17,14 @@ int putGlyph(int x, int y, int glyph, int colour);
 int textWidth(uint32_t text);
 /** 0x08020b74: a text in the cartridge into the stretch from `x` and `y`, each letter over its shadow. */
 void putText(int x, int y, uint32_t text);
+/** 0x08020b74 with its colours given: the letters' and their shadows'. */
+void putTextIn(int x, int y, uint32_t text, int colour, int shadow);
+
+/** A word of VRAM the letters wrote, and how far into their cycles (`g.text_cycles`) it was written. */
+typedef struct { int32_t cycle; uint32_t at; uint32_t value; } TextWrite;
+/** With `on`, each word the letters write is kept, in order, for a text drawn over more than a frame (skills.c). */
+void textKeepWrites(int on);
+/** The words kept since textKeepWrites(1), and how many. */
+const TextWrite *textWrites(int *count);
 
 #endif

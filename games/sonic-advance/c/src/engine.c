@@ -345,6 +345,9 @@ static uint32_t hdmaAt;
 static struct { int on; int line; } vcount;
 // gVBlankIntrs: the callback the tasks asked for the frame before, which this V-blank's update runs
 static void (*vblankIntr)(void);
+// gHBlankIntrs: the callbacks this frame's V-blank took over, which run after each line is drawn
+static void (*hblankIntrs[4])(int line);
+static int numHblankIntrs;
 /** DmaSet(0, gBgOffsetsHBlankSecondary, target, DMA_START_HBLANK | DMA_REPEAT | DMA_DEST_RELOAD), from the V-count
  *  interrupt as the frame is drawn: from the next H-blank on, or the one after it when it was `late`, a line's worth of the
  *  other buffer's values each time. */
@@ -374,6 +377,11 @@ static void vblank(void) {
     copy_hblank_entry(e.primary);
     hdma.on = 1; hdma.wait = 0; hdma.at = e.primary + e.hblankSize; hdma.target = e.hblankTarget; hdma.size = e.hblankSize;
   } else e.hblankTarget = 0;
+  numHblankIntrs = 0;
+  if (e.flags & FLAGS_HBLANK_CALLBACKS) {
+    for (int i = 0; i < e.numHblankCallbacks; i++) hblankIntrs[i] = e.hblankCallbacks[i];
+    numHblankIntrs = e.numHblankCallbacks;
+  }
   vcount.on = (e.flagsPreVBlank & FLAGS_VCOUNT_INTR) && e.vcountIntr;
   vcount.line = e.vcountLine;
   e.frameCount++;
@@ -414,6 +422,8 @@ static void vblank(void) {
 
   // ClearOamBufferDma, which the original skips while the game is paused
   if (!(e.flags & FLAGS_PAUSE_GAME)) {
+    e.numHblankCallbacks = 0;
+    e.flags &= ~FLAGS_HBLANK_CALLBACKS;
     if (!(e.flags & FLAGS_KEEP_HBLANK_BUFFER)) e.primary = e.primary ? 0 : HBLANK_BUFFER;
     e.flags &= ~FLAGS_HBLANK_COPY;
     for (int i = 0; i < OAM_ENTRIES * 4; i++) e.oamBuffer[i] = 0x200;
@@ -463,10 +473,11 @@ static void hblank_line(int y) {
     hdmaAt += hdma.size;
   }
   if (vcount.on && y + 1 == vcount.line) e.vcountIntr();
+  for (int i = 0; i < numHblankIntrs; i++) hblankIntrs[i](y);
 }
 /** Sets the kit's drawing of this frame up, with the H-blank DMA its V-blank started. */
 void engine_draw_setup(void) {
   hdmaAt = hdma.at;
   if (vcount.on && vcount.line == 0) e.vcountIntr();
-  gba_on_hblank(hdma.on || vcount.on ? hblank_line : NULL);
+  gba_on_hblank(hdma.on || vcount.on || numHblankIntrs ? hblank_line : NULL);
 }

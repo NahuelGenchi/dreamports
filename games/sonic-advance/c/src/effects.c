@@ -56,15 +56,19 @@ static int effect_run(ActTask *t) {
     object_draw(s, e->x, e->y);
     return 1;
   }
-  // the insta-shield's flash follows his centre; the brake dust stays where it appeared
-  // brake dust goes back to the pool the frame after its animation ends, as Task_BrakingDustEffect checks first
+  // brake dust goes back to the pool the frame after its animation ends, as Task_BrakingDustEffect checks first, and
+  // stays where it appeared
   if (e->kind == EFFECT_BRAKE) {
     if (s->frameFlags & SPRITE_ANIM_OVER) { brakeDust--; return 0; }
     sprite_step(s);
     object_draw(s, e->x, e->y);
     return 1;
   }
-  if (e->kind == EFFECT_SHIELD) { e->x = whole(p->x); e->y = whole(p->y); }
+  // the insta-shield's flash follows his centre, turned over each frame the gravity is flipped (its task's 0x80)
+  if (e->kind == EFFECT_SHIELD) {
+    e->x = whole(p->x); e->y = whole(p->y);
+    s->frameFlags = (s->frameFlags & ~(uint32_t)SPRITE_Y_FLIP) | (p->inverted ? SPRITE_Y_FLIP : 0);
+  }
   int ended = sprite_step(s);
   object_draw(s, e->x, e->y);
   return !ended;

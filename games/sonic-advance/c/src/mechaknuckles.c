@@ -128,6 +128,8 @@ static int idle_fn(MechaKnuckles *b) {
   Player *p = &act.player;
   if (!over(&p->sprite)) return 1;
   p->ignoreInput = 0; p->scripted = 0; p->state = PS_IDLE;
+  // the boss hands him jump and attack as already held (heldInput |= jump | attack), so what's held now is no press
+  p->wasIgnoreInput = 0; p->heldDirs = 0;
   clear_presses();
   go(b, IDLE_2);
   return 0;

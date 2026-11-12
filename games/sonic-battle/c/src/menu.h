@@ -32,6 +32,15 @@ struct Node {
   // the Mini-games screen's (minigames.c): the entry chosen, the first row shown, its four rows and its frames of waiting
   int selected, top, wait, index;
   Node *rows[4], *child;
+  // the screen of Emerl's skills (skills.c): a choice's or a row's place in its list (index, above), its slot of tiles
+  // and picture, the page the cursor has scrolled to, and the nodes a screen keeps hold of
+  int row, slot, page;
+  Node *cursor, *header, *chosen;
+  Node *list[5];
+  // the points shown at the top of a skill's grid: the seven digits and the slash between them
+  Node *digits[7];
+  // the details panel's pieces it takes off the list as the screen leaves (skills.c's infoStart)
+  Node *pieces[9];
 };
 
 /** menu.js's place(): a sprite's parts, where, and what they add. */
@@ -40,6 +49,8 @@ Place menuPlace(uint32_t parts, int x, int y, int tile, int attr2);
 Place menuRecord(uint32_t at);
 /** 0x0801f7d0: a node added at the end of the list. */
 Node *menuAddNode(void (*run)(Node *), Place place, int hasPlace);
+/** 0x0801f8c0: a node taken off the list, with the walk through the list going on from the next. */
+void menuRemoveNode(Node *node);
 /** 0x0801fed8: a sprite asks to be drawn this frame. */
 void menuDraw(Place position);
 /** 0x080200f8, the list's first node: no sprite has asked yet this frame, and no matrix is taken. */
@@ -64,6 +75,8 @@ void menuWriteRegisters(uint32_t from, int count);
 void menuDisplayOn(void);
 /** A node runs past a V-blank: the list goes on from that node in the next frame, with no sprites drawn in this one. */
 void menuPause(void);
+/** Whether the list goes on this frame from the node a V-blank stopped, and not from its start. */
+int menuResuming(void);
 /** A frame's work runs past the next V-blank: with `spritesToo`, its sprites are all the next frame has, and without,
  *  the next frame of the list is lost. */
 void menuRunsLate(int spritesToo);

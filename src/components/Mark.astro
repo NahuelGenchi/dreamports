@@ -1,6 +1,8 @@
 ---
-// The Dreamports mark (src/lib/mark.ts): the dolphin leaping through its ring, or with `alone` the dolphin by itself.
-// Each whole mark on a page needs its own `id`, as its masks are found by id.
+// The Dreamports mark (src/lib/mark.ts): the leaping dolphin with its star and drops of water, or with `alone` the
+// dolphin by itself, for small sizes. Each mark on a page needs its own `id`, as its runs of colour are found by id.
+// It's drawn leaping, and src/scripts/mark.ts draws the pose a player picked over it, which is what data-mark and
+// data-id are for.
 import { DOLPHIN, MARK } from '../lib/mark';
 
 interface Props {
@@ -16,7 +18,9 @@ const art = alone ? DOLPHIN : MARK;
 <svg
   class:list={['mark', className]}
   viewBox={art.viewBox}
+  data-mark={alone ? 'alone' : 'whole'}
+  data-id={id}
   aria-hidden="true"
   focusable="false"
-  set:html={alone ? art.svg : art.svg.replaceAll('ID-', `${id}-`)}
+  set:html={art.svg.replaceAll('ID-', `${id}-`)}
 />

@@ -1,6 +1,8 @@
 ---
 import '../styles/global.css';
 import { pageTitle } from '../lib/site';
+import { COLOURS, POSES } from '../lib/mark';
+import { ICONS_AT, ICON_LINKS, LOGO_PARAM } from '../lib/mark-links';
 import monocraft700 from '../assets/fonts/monocraft-700.woff2?url';
 
 interface Props {
@@ -37,9 +39,7 @@ const socialImage = new URL(social.src, Astro.site);
     {noindex && <meta name="robots" content="noindex" />}
     {!noindex && <link rel="canonical" href={canonical} />}
     <link rel="preload" href={monocraft700} as="font" type="font/woff2" crossorigin />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    {ICON_LINKS.map(({ rel, own, type }) => <link rel={rel} href={own} type={type} />)}
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Dreamports" />
@@ -57,7 +57,7 @@ const socialImage = new URL(social.src, Astro.site);
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content={socialImage} />
     <meta name="twitter:image:alt" content={social.alt} />
-    <script is:inline>
+    <script is:inline define:vars={{ poses: POSES, colours: COLOURS, links: ICON_LINKS, iconsAt: ICONS_AT, param: LOGO_PARAM }}>
       // Runs before the page is drawn, so a saved look never flashes the other one first.
       // The page follows the device's light or dark setting until the visitor picks one.
       (() => {
@@ -80,6 +80,45 @@ const socialImage = new URL(social.src, Astro.site);
         }
         const calm = motion === 'calm' || (motion !== 'full' && matchMedia('(prefers-reduced-motion: reduce)').matches);
         root.dataset.motion = calm ? 'calm' : 'full';
+        // the Dreamports row leaves out the Dreamports whose code isn't all ported, from the first frame, unless
+        // Settings show them
+        let unfinished = null;
+        try {
+          unfinished = localStorage.getItem('dreamports:unfinished');
+        } catch {}
+        if (unfinished !== 'show') root.dataset.unfinished = 'hide';
+        // the logo a player picked in Settings: its colour is here from the first frame, and its pose keeps the
+        // logo unseen until it is drawn in (src/scripts/mark.ts)
+        let pose = null;
+        let colour = null;
+        try {
+          pose = localStorage.getItem('dreamports:logo-pose');
+          colour = localStorage.getItem('dreamports:logo-colour');
+        } catch {}
+        // an address can carry a logo, as the one an app on the Home Screen opens at does (src/lib/mark-links.ts). It
+        // is taken only when the browser keeps none, kept as a pick in Settings is, and dropped from the address
+        const url = new URL(location.href);
+        if (url.searchParams.has(param)) {
+          const [carriedPose, carriedColour, more] = url.searchParams.get(param).split('-');
+          if (pose === null && colour === null && more === undefined && poses.includes(carriedPose) && colours.includes(carriedColour)) {
+            pose = carriedPose;
+            colour = carriedColour;
+            try {
+              localStorage.setItem('dreamports:logo-pose', pose);
+              localStorage.setItem('dreamports:logo-colour', colour);
+            } catch {}
+          }
+          url.searchParams.delete(param);
+          history.replaceState(history.state, '', url);
+        }
+        // `poses` and `colours` start with the site's own (src/lib/mark.ts), which the page already is
+        const picked = [poses.indexOf(pose) > 0 ? pose : poses[0], colours.indexOf(colour) > 0 ? colour : colours[0]];
+        if (picked[0] !== poses[0]) root.dataset.logoPose = picked[0];
+        if (picked[1] !== colours[0]) root.dataset.logoColour = picked[1];
+        // the pick's icons: the browser tab's, the Home Screen's and the installed app's
+        if (root.dataset.logoPose || root.dataset.logoColour) {
+          for (const { rel, file } of links) document.querySelector(`link[rel="${rel}"]`).href = `${iconsAt}${picked.join('-')}/${file}`;
+        }
       })();
     </script>
   </head>

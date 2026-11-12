@@ -10,10 +10,22 @@
 // band is within TOLERANCE dB of the original's, a band quieter than one of the console's 10-bit steps counting as
 // silent; when one is silent in every band and the other isn't, it differs. The original's sound is taken from as
 // far as a frame before or after, wherever it's closest.
+//
+// One thing is let through: a dip. When two of the console's voices play the same note, such as a square wave and a
+// sampled instrument, they cancel each other for a moment, and when depends on where the square wave is in its wave,
+// which every write to it since the console was switched on has moved. A Dreamport can't have that to the cycle, so
+// its voices cancel at other moments than the original's. A dip is a frame where only that note's band, alone or with
+// those next to it, is further than TOLERANCE away, on each side, and no further than DIP dB. It counts as the same
+// for up to DIP_FRAMES frames in a row, after at least as many frames that were the same; a longer run differs from
+// there on, and so does one that follows a difference.
 
 /** How far apart two bands' loudness may be, in dB, for a frame's sound to be the same: 10 dB is what listeners
  *  hear as twice or half as loud. Sonic Advance Dreamport's frames are at most 6.8 dB from the original's. */
 export const TOLERANCE = 10;
+/** How far a band may be in a dip, in dB: Sonic Advance Dreamport's are at most 14.4 dB away. */
+export const DIP = 16;
+/** How many frames in a row may be a dip: an eighth of a second. Sonic Advance Dreamport's last 6 at most. */
+export const DIP_FRAMES = 8;
 /** The bands' middle pitches, in Hz. */
 export const BANDS = [125, 250, 500, 1000, 2000, 4000, 8000, 16000];
 const STEP = 16;              // the steps it's looked for in
@@ -61,6 +73,20 @@ export function makeFilter(rate = 65536) {
 const KEYS = BANDS.length * 2;
 // how far apart two levels are, in dB, a level under one step counting as one step
 const apart = (a, b) => Math.abs(20 * Math.log10(Math.max(a, 1) / Math.max(b, 1)));
+// whether the bands further than TOLERANCE away are, on each side, one band alone or with those next to it, as a note
+// is: the filters let a note into the band either side of its own
+function narrow(dBs) {
+  for (let side = 0; side < 2; side++) {
+    let first = -1, last = -1;
+    for (let band = 0; band < BANDS.length; band++) {
+      if (dBs[side * BANDS.length + band] <= TOLERANCE) continue;
+      if (first < 0) first = band;
+      last = band;
+    }
+    if (last - first > 2) return false;
+  }
+  return true;
+}
 
 /**
  * Gets the original's sound ready to compare the Dreamport's with, frame by frame. `original` is the original's
@@ -71,7 +97,8 @@ const apart = (a, b) => Math.abs(20 * Math.log10(Math.max(a, 1) / Math.max(b, 1)
  * It needs the frame after `f` too, unless `f` is the last. It returns null when the frame's sound is the same, or else
  * how it differs where the original's is closest: { side, band, original, dreamport, dB }, the band furthest apart, with
  * how loud each one is there, in the console's 10-bit steps, and `silent`, 'dreamport' or 'original', when that one is
- * silent and the other isn't. `machine` is the console, with its `sound` and `frame` (kit/consoles.js).
+ * silent and the other isn't. `machine` is the console, with its `sound` and `frame` (kit/consoles.js). A dip counts as
+ * the same, and `compare.dips` lists the frames that were one.
  */
 export function soundOf(original, machine = { sound: 65536, frame: [280896, 16777216] }) {
   // how far the original's sound is looked for, before or after the frame's, in samples: a frame
@@ -106,7 +133,22 @@ export function soundOf(original, machine = { sound: 65536, frame: [280896, 1677
     if (read === lengths.length && ended < blocks - 1) close();
   };
 
-  return (dreamport, originalOf, f) => {
+  // the frames let through as dips, and how many in a row the last of them makes
+  const dips = [];
+  let run = 0, calm = 0, last = -2;
+  // a dip is let through only in a run of at most DIP_FRAMES that starts after as many frames the same, so the
+  // frames around a sound that is wrong aren't taken for dips
+  const settle = (f, kind) => {
+    if (f !== last + 1) { run = 0; calm = 0; }
+    last = f;
+    if (kind === 'same') { run = 0; calm++; return true; }
+    const allowed = kind === 'dip' && (run ? run < DIP_FRAMES : calm >= DIP_FRAMES);
+    run = allowed ? run + 1 : 0;
+    calm = 0;
+    if (allowed) dips.push(f);
+    return allowed;
+  };
+  const compare = (dreamport, originalOf, f) => {
     // the frame with the one before and the one after, so a sound's quick changes weigh less than what goes on
     const first = Math.max(0, f - WIDE), last = Math.min(dreamport.length - 1, f + WIDE);
     let n = 0;
@@ -117,22 +159,24 @@ export function soundOf(original, machine = { sound: 65536, frame: [280896, 1677
     }
     const ours = Array.from(energies, e => Math.sqrt(e / Math.max(1, n))), oursSilent = ours.every(level => level < 1);
     reach(Math.min(blocks - 1, Math.round((starts[originalOf[first]] + REACH) / STEP) + Math.round(n / STEP)));
-    let best = null;
+    let best = null, dip = false;
     for (let shift = -REACH; shift <= REACH; shift += STEP) {
       const from = Math.round((starts[originalOf[first]] + shift) / STEP), to = from + Math.round(n / STEP);
       if (from < 0 || to >= blocks) continue;
       if (to - from >= HELD / 2 || ended - from >= HELD) throw new Error(`Frame ${f}'s sound is longer than the tools hold of the original's, ${n} samples.`);
       const theirs = Array.from({ length: KEYS }, (_, k) => Math.sqrt(Math.max(0, gathered[k * HELD + to % HELD] - gathered[k * HELD + from % HELD]) / ((to - from) * STEP)));
       const theirsSilent = theirs.every(level => level < 1);
-      if (oursSilent && theirsSilent) return null;
+      if (oursSilent && theirsSilent) { settle(f, 'same'); return null; }
       let worst = null;
+      const dBs = new Float64Array(KEYS);
       for (let k = 0; k < KEYS; k++) {
-        const dB = apart(theirs[k], ours[k]);
+        const dB = dBs[k] = apart(theirs[k], ours[k]);
         if (!worst || dB > worst.dB) worst = { side: k < BANDS.length ? 'left' : 'right', band: BANDS[k % BANDS.length], original: theirs[k], dreamport: ours[k], dB };
       }
       // one silent and the other not always differs; otherwise every band close enough is the same
       const silent = oursSilent ? 'dreamport' : theirsSilent ? 'original' : null;
-      if (!silent && worst.dB <= TOLERANCE) return null;
+      if (!silent && worst.dB <= TOLERANCE) { settle(f, 'same'); return null; }
+      if (!silent && worst.dB <= DIP && narrow(dBs)) dip = true;
       const score = (silent ? 1000 : 0) + worst.dB;
       if (!best || score < best.score) best = { ...worst, silent, score };
     }
@@ -141,9 +185,12 @@ export function soundOf(original, machine = { sound: 65536, frame: [280896, 1677
       const k = ours.indexOf(Math.max(...ours));
       best = { side: k < BANDS.length ? 'left' : 'right', band: BANDS[k % BANDS.length], original: 0, dreamport: ours[k], dB: apart(0, ours[k]), silent: 'original' };
     }
-    return best && {
+    if (settle(f, !best ? 'same' : dip ? 'dip' : 'differs')) return null;
+    return {
       side: best.side, band: best.band, original: Math.round(best.original * 10) / 10, dreamport: Math.round(best.dreamport * 10) / 10,
       dB: Math.round(best.dB * 10) / 10, ...(best.silent ? { silent: best.silent } : {}),
     };
   };
+  compare.dips = dips;
+  return compare;
 }

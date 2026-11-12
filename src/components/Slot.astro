@@ -5,7 +5,7 @@
 // pieces are free to take, when there are any.
 import Tile from './Tile.astro';
 import { MAKE_GUIDE_URL, gameUrl, makeUrl, type Game } from '../lib/site';
-import { numbersOf } from '../lib/dreamports';
+import { fullyPorted, numbersOf } from '../lib/dreamports';
 
 interface Props {
   game?: Game;
@@ -21,6 +21,8 @@ interface Props {
 const { game, index, make = false, start = false, free } = Astro.props;
 const detail = game && !make ? [game.data.platform, game.data.year].filter(Boolean).join(' · ') : '';
 const numbers = make && game ? numbersOf(game.data) : undefined;
+// in its own row, a Dreamport whose code isn't all ported, which the row leaves out until Settings show it
+const unfinished = !!game && !make && !fullyPorted(game);
 const href = game && (make ? makeUrl(game.data.game) : gameUrl(game));
 const START = {
   title: 'Start a Dreamport',
@@ -56,6 +58,7 @@ const START = {
       data-detail={detail}
       data-numbers={numbers}
       data-help={free?.help || undefined}
+      data-unfinished={unfinished ? '' : undefined}
       draggable="false"
     >
       <i class="glow" style={`--g: ${game.data.glow}`} />

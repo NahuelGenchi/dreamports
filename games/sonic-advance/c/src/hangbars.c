@@ -1,78 +1,97 @@
-// Angel Island's hang bars (kind 83): an invisible bar along the top of a box, d0 and d1 tiles (signed) from its point and
-// d2 by d3 tiles big. Falling with his centre in the box, Sonic catches it: it holds him 16 px under it, still or moving
-// 2 px a frame the way he holds, until he presses jump or goes past either end, when it drops him 22 px under it, falling
-// from rest in the air with the spin attack on, at 2 px a frame the way he holds. Its task runs after Sonic's, at priority
-// 0x8000, and it leaves once its point is out of range with nobody on it. Translated from the JavaScript version's
-// engine/hangbars.js (the original's hang_bar.c).
+// Angel Island's and Egg Rocket's hang bars (kind 83). Translated from engine/hangbars.js (the original's
+// hang_bar.c: CreateEntity_HangBar, Task_HangBar). An unseen bar across the top of a box (d0, d1 tiles from the
+// entity, d2 by d3 tiles big). Falling into the box, Sonic catches it and hangs 16 px below it, moving 2 px a frame
+// sideways as held, until jump or moving past an end drops him 22 px under it with the spin attack on.
 
 #include "objects.h"
 #include "terrain.h"
 
 enum {
-  HANG_BAR = 83,
   HANG = 16, CATCH = 18, DROP = 22, STEP = 2,
-  PRIORITY_HANG = 0x8000,
+  SPRITE_OFFSET_Y = 14,
+  PRIORITY_HANG_BAR = 0x8000,
 };
 
-typedef struct { Object o; int on; double x; } HangBar;
-
-// the pose his input picks: swinging along it the way he holds, or still; it returns the way, -1, 0 or 1
-static int pose(Player *p) {
-  if (p->held[0] & DPAD_RIGHT) { p->state = PS_HANG_MOVE; p->facing = 1; return 1; }
-  if (p->held[0] & DPAD_LEFT) { p->state = PS_HANG_MOVE; p->facing = -1; return -1; }
-  p->state = PS_HANG;
-  return 0;
-}
+typedef struct {
+  Object o;
+  int left, right, top, bottom;
+  int on;
+  double playerX;
+} HangBar;
 
 static int hang_bar_run(ActTask *t) {
-  HangBar *h = (HangBar *)t->data;
-  const Entity *e = &h->o.slot->e;
+  HangBar *b = (HangBar *)t->data;
+  const Entity *en = &b->o.slot->e;
   Player *p = &act.player;
-  int left = e->x + s8(e->d[0]) * 8, right = left + e->d[2] * 8;
-  int top = e->y + s8(e->d[1]) * 8, bottom = top + e->d[3] * 8;
-  if (h->on) {
-    if (p->dead) h->on = 0;
-    else {
-      int dir = pose(p);
-      p->x = h->x + STEP * dir;
-      p->y = e->y + HANG;
-      h->x = p->x;
-      int px = (int)__builtin_floor(p->x);
-      if (p->jumpPressed || px < left || px > right) {
-        // Player_TransitionCancelFlyingAndBoost; the spin attack goes on, the sprite offsets staying
-        player_end_attack(p); p->pushing = 0;
-        p->carried = 0; p->curled = 1;
-        p->ysp = 0; p->y = e->y + DROP; p->air = 1;
-        p->state = PS_SPRING_PEAK;   // character state 18, which leaves him uncurled in the original's code
-        int held = p->held[0];
-        int way = held & DPAD_RIGHT ? 1 : held & DPAD_LEFT ? -1 : 0;
-        if (way < 0) p->facing = -1;
-        p->gsp = p->xsp = STEP * way;
-        h->on = 0;
+
+  if (b->on) {
+    if (p->dead) {
+      b->on = 0;
+    } else {
+      int dir = (p->held[0] & DPAD_RIGHT) ? 1 : (p->held[0] & DPAD_LEFT) ? -1 : 0;
+      if (dir != 0) {
+        p->state = PS_HANG_MOVE;
+        p->facing = dir;
+        p->x = b->playerX + STEP * dir;
+      } else {
+        p->state = PS_HANG;
+      }
+      p->y = en->y + HANG;
+      b->playerX = p->x;
+
+      if (p->jumpPressed || (int)__builtin_floor(p->x) < b->left || (int)__builtin_floor(p->x) > b->right) {
+        player_end_attack(p);
+        p->pushing = 0;
+        p->carried = 0;
+        p->curled = 1;
+        p->ysp = 0;
+        p->y = en->y + DROP;
+        p->air = 1;
+        p->state = PS_SPRING_PEAK;
+        if (dir < 0) p->facing = -1;
+        p->gsp = p->xsp = STEP * dir;
+        b->on = 0;
       }
     }
-  } else if (!p->dead && (int)__builtin_floor(p->ysp * 256) > 0) {   // qSpeedAirY > Q(0), the original's integer
+  } else if (!p->dead && p->ysp > 0) {
     int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
-    if (px >= left && px <= right && py >= top && py <= bottom) {
+    if (px >= b->left && px <= b->right && py >= b->top && py <= b->bottom) {
       p->rotation = 0;
-      player_end_attack(p); p->pushing = 0;
-      p->carried = 1; p->air = 0;
-      pose(p);
-      p->y = e->y + CATCH;
-      // PLAYERFN_CHANGE_SHIFT_OFFSETS(p, 6, 14): his feet stay where they are
-      sensors_set_offset_y(p, 14);
-      h->on = 1; h->x = p->x;
+      player_end_attack(p);
+      p->pushing = 0;
+      p->carried = 1;
+      p->air = 0;
+      int dir = (p->held[0] & DPAD_RIGHT) ? 1 : (p->held[0] & DPAD_LEFT) ? -1 : 0;
+      if (dir != 0) {
+        p->state = PS_HANG_MOVE;
+        p->facing = dir;
+      } else {
+        p->state = PS_HANG;
+      }
+      p->y = en->y + CATCH;
+      sensors_set_offset_y(p, SPRITE_OFFSET_Y);
+      b->on = 1;
+      b->playerX = p->x;
     }
   }
-  if (!h->on && off_cam(e->x, e->y)) { h->o.slot->live = NULL; return 0; }
+
+  if (!b->on && off_cam(en->x, en->y)) {
+    b->o.slot->live = NULL;
+    return 0;
+  }
   return 1;
 }
 
-/** CreateEntity_HangBar: it draws nothing; the bar is in the act's tiles */
 ActTask *hang_bar_spawn(Slot *slot) {
-  HangBar *h = PLAIN_NEW(HangBar);
-  if (!h) return NULL;
-  h->o.slot = slot;
-  h->o.x = slot->e.x;
-  return act_task_add(hang_bar_run, NULL, h, PRIORITY_HANG);
+  const Entity *en = &slot->e;
+  HangBar *b = OBJECT_NEW(HangBar);
+  if (!b) return NULL;
+  b->o.slot = slot;
+  b->o.x = en->x;
+  b->left = en->x + s8(en->d[0]) * 8;
+  b->right = b->left + en->d[2] * 8;
+  b->top = en->y + s8(en->d[1]) * 8;
+  b->bottom = b->top + en->d[3] * 8;
+  b->on = 0;
+  return object_task(&b->o, hang_bar_run, PRIORITY_HANG_BAR);
 }

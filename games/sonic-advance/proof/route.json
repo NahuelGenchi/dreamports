@@ -74,16 +74,13 @@
       "signed": true,
       "about": "How many hits Neo Green Hill Zone's boss has taken, 8 beating it: the count in its record, which its task points to, the task being the one that ends with the function at 08027898. Eggman's arrival before the fight has the same record, at 0. It reads -1 while neither is there"
     },
-    "stage": {
-      "address": "03005004",
-      "bytes": 2,
-      "about": "gStageFlags, whose bit 2 is set once an act is cleared"
+    "eggSnake": {
+      "found": { "from": "03000600", "to": "03001100", "step": 4, "mark": "080341D9", "pointer": -6, "pointerBytes": 2, "base": "03000000", "offset": 154 },
+      "bytes": 1, "signed": true,
+      "about": "How many hits Cosmic Angel Zone's boss has taken, 8 beating it: the count in its record, which its task points to, the task being the one that ends with the function at 080341D8 (TaskDestructor_8034208 in the European release). It reads -1 while it isn't there"
     },
-    "random": {
-      "address": "03004C58",
-      "bytes": 4,
-      "about": "The game's random numbers (gPseudoRandom), which every effect and the bosses draw from"
-    }
+    "stage": { "address": "03005004", "bytes": 2, "about": "gStageFlags, whose bit 2 is set once an act is cleared" },
+    "random": { "address": "03004C58", "bytes": 4, "about": "The game's random numbers (gPseudoRandom), which every effect and the bosses draw from" }
   },
   "cells": {
     "x": 32,
@@ -113,19 +110,9 @@
       }
     },
     "angel-island-boss-comes": "mechaKnuckles>=0",
-    "angel-island-act-2": {
-      "after": "angel-island-boss-comes",
-      "when": "stage&2",
-      "cells": {
-        "x": 16,
-        "y": 16,
-        "mechaKnuckles": 1,
-        "score": 1000
-      },
-      "apart": {
-        "clock": 30
-      }
-    }
+    "angel-island-act-2": { "after": "angel-island-boss-comes", "when": "stage&2", "cells": { "x": 16, "y": 16, "mechaKnuckles": 1, "score": 1000 }, "apart": { "clock": 30 } },
+    "cosmic-angel-boss-comes": "eggSnake>=0",
+    "cosmic-angel-act-2": { "after": "cosmic-angel-boss-comes", "when": "stage&2", "cells": { "x": 16, "y": 16, "eggSnake": 1, "score": 1000 }, "apart": { "clock": 30 } }
   },
   "buttons": [
     "",

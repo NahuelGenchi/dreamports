@@ -2,7 +2,7 @@
   "about": "Neo Green Hill Zone act 2, whole, from its first frame after the title card to the last black frame before Secret Base Zone act 1's card: Sonic crosses the act, Eggman flies in, the Egg Hammer Tank takes its eight hits, Sonic opens the capsule and the results count. The first 1,900 frames are played as a person would. The route finder found the rest on the original, so from there Sonic hops about more than a player would and takes hits.",
   "start": "level=1&card=80&pre=20&first=0",
   "frames": 8412,
-  "clip": { "at": 2330, "frames": 300 },
+  "clip": { "at": 6394, "frames": 300 },
   "held": [
     [0,["RIGHT"]],
     [120,["A","RIGHT"]],

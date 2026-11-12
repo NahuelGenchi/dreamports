@@ -26,7 +26,7 @@ enum {
 // the platforms' animations by level (rom/levels.js sprites): thin, the brick and the bounce block if the level has them
 static const struct { int level, thin, brick, bounce; } ANIMATIONS[] = {
   { 0, 463, 0, 462 }, { 1, 463, 0, 462 }, { 2, 506, 0, 499 }, { 3, 506, 0, 499 }, { 4, 495, 0, 0 }, { 5, 495, 0, 0 }, { 6, 523, 0, 543 },
-  { 7, 523, 0, 543 }, { 8, 535, 0, 543 }, { 9, 535, 0, 543 }, { 12, 605, 574, 0 },
+  { 7, 523, 0, 543 }, { 8, 535, 0, 543 }, { 9, 535, 0, 543 }, { 10, 517, 0, 507 }, { 11, 598, 0, 601 }, { 12, 605, 574, 0 },
 };
 enum { FALL_STILL, FALL_WAITING, FALL_FALLING };
 
@@ -88,9 +88,10 @@ static int thin_run(ActTask *t) {
     if (pf->across) p->x += moved / 256.0;
     p->y += (inverted ? -2 : 1) + (pf->across ? 0 : moved / 256.0);
   }
-  collide_platform_top(&pf->o, x, y, box_of(pf), p);
+  // while an object holds him (MOVESTATE_IA_OVERRIDE), such as a pipe, it neither meets him nor sags, nor eases back
+  if (!p->carried) collide_platform_top(&pf->o, x, y, box_of(pf), p);
   if (off_display(en->x, en->y) && off_cam(x, y)) return 0;
-  object_draw(&pf->o.sprite, x, y + (inverted ? -1 : 1) * sagging(pf));
+  object_draw(&pf->o.sprite, x, y + (p->carried ? 0 : (inverted ? -1 : 1) * sagging(pf)));
   return 1;
 }
 

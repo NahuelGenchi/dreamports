@@ -18,8 +18,8 @@
     { "name": "Ice Mountain Zone act 2", "recording": "sonic-ice-mountain-act-2", "frames": [2053, 16415], "reaches": "act-end", "needs": ["Ice Mountain Zone act 1"] },
     { "name": "Angel Island Zone act 1", "recording": "sonic-angel-island", "frames": [2077, 9389], "reaches": "act-end" },
     { "name": "Angel Island Zone act 2", "recording": "angel-island-act-2", "frames": [2111, 14964], "reaches": "act-end", "needs": ["Angel Island Zone act 1"] },
-    { "name": "Egg Rocket Zone", "reaches": "act-end" },
-    { "name": "Cosmic Angel Zone", "reaches": "act-end" },
+    { "name": "Egg Rocket Zone", "recording": "egg-rocket", "frames": [2125, 38382], "reaches": "act-end" },
+    { "name": "Cosmic Angel Zone", "recording": "sonic-cosmic-angel", "frames": [2111, 16892], "reaches": "act-end" },
     { "name": "X Zone", "recording": "x-zone-the-moon-opens", "frames": [2173, 9609], "reaches": "act-end" },
     { "name": "The Moon Zone" },
     { "name": "Special stage 1" },
@@ -36,7 +36,10 @@
     { "name": "Playing as Amy" },
     { "name": "Time Attack" },
     { "name": "VS, for 2 to 4 players" },
-    { "name": "The Options menu" },
+    { "name": "The Options menu", "recording": "options-menu", "frames": [1741, 2644] },
+    { "name": "Player data, with the name input and the VS record" },
+    { "name": "The sound test" },
+    { "name": "The language screen, from the Options menu" },
     { "name": "Tiny Chao Garden" }
   ]
 }
