@@ -1,5 +1,5 @@
 // Ghosts'n Goblins Dreamport: the small blue devil that flies at Arthur among the second stage's towers, kind 6, from
-// the original's code at bank 4's $A89E. The stage's list places each with a count of rounds. Once it's in the view it
+// the original's code at sub_04_A89E. The stage's list places each with a count of rounds. Once it's in the view it
 // waits them out, then comes awake heading away from the side of the picture it's nearest. Awake it flies 16 rounds,
 // hovers 16 more, aims at Arthur and dives for 24, and starts again a new way; from its third time round it flies
 // without stopping, and once out of the view it's gone. One hit kills it, for 100 points.

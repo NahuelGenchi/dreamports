@@ -113,14 +113,14 @@ COST(LOAD_TILES_GROUP, 16)        // $C0DB to sub_EECF
 COST(LOAD_TILES_WAITS, 3)         // $C0E6, to the loop that waits
 COST(LOAD_TILES_COUNTED, 2)       // $C0EC
 
-// ---- starting a sound, sub_ED51 and bank 3's $8383 (sound.c)
-COST(SOUND_PLAY_BEGINS, 47)       // sub_ED51 to bank 3's $8383
+// ---- starting a sound, sub_ED51 and sub_03_8383 (sound.c)
+COST(SOUND_PLAY_BEGINS, 47)       // sub_ED51 to sub_03_8383
 COST(SOUND_PLAY_FOUND, 98)        // $8383 to $8405: the sound's place in the list, its flags and its tempo,
 COST(SOUND_PLAY_FAR, 4)           // with four more for a sound whose place is past the list's first 384 bytes
 COST(SOUND_VOICE_READ, 23)        // $8406 to $8411: where a voice's part is,
 COST(SOUND_VOICE_NO_PART, 3)      // which it hasn't,
-COST(SOUND_VOICE_PART, 19)        // or has: sub_838A's call, and after it
-COST(VOICE_KEPT, 24)              // sub_838A, and back: the voice plays something that matters more,
+COST(SOUND_VOICE_PART, 19)        // or has: sub_03_838A's call, and after it
+COST(VOICE_KEPT, 24)              // sub_03_838A, and back: the voice plays something that matters more,
 COST(VOICE_STARTED, 183)          // or it starts
 COST(SOUND_VOICE_NEXT, 18)        // $841B to $8427
 COST(SOUND_PLAY_ENDS, 34)         // $842A, and $ED8D back to the bank that asked
@@ -169,7 +169,7 @@ COST(TITLE_START_STILL_HELD, 9)   // $C456 to the call that yields
 COST(TITLE_GAME_BEGINS, 119)      // $C456 to $C53B, and from there to the call that starts the game's task,
 COST(TITLE_GAME_PLAYED_BEFORE, 6) // with six more once a game has been played, when it looks at the chosen line
 
-// ---- the sprites' task, $F34F and bank 4's $8000 (sprites.c)
+// ---- the sprites' task, $F34F and sub_04_8000 (sprites.c)
 COST(SPRITES_TASK_BEGINS, 15)     // $F34F to the call
 COST(SPRITES_SWAP_READ, 11)       // sub_04_8089, for each of five lists: the two objects' bytes read,
 COST(SPRITES_SWAP_FIRST_STORED, 8) // the first's stored,
@@ -281,7 +281,7 @@ COST(BLOCK_COLOURS_TOP_RIGHT, 46)
 COST(BLOCK_COLOURS_BOTTOM_LEFT, 55)
 COST(BLOCK_COLOURS_BOTTOM_RIGHT, 64)
 
-// ---- the objects' task, $F367 and bank 4's $9CC8 (objects.c)
+// ---- the objects' task, $F367 and sub_04_9CC8 (objects.c)
 COST(OBJECTS_AGAIN, 3)            // $F37C
 COST(OBJECTS_BEGIN, 17)           // $F367 to $9CC8
 COST(OBJECT_LOOKED_AT, 4)         // $9CCA
@@ -317,12 +317,12 @@ COST(PICK_UP_CANNOT_BE_TOUCHED, 16) // sub_F68E when Arthur's flags say so
 COST(PICK_UP_LEFT, 35)            // $BA3F to $BB6A, and back
 COST(PICK_UP_BONUS, 55)           // $BA3F to sub_D902: one of the four things that only give points
 COST(PICK_UP_BONUS_SOUND, 8)      // $BAC6 to sub_ED51
-COST(GRAVESTONE_BEGINS, 80)       // bank 4's $BF0B to $BF23: a gravestone, which is never shown
+COST(GRAVESTONE_BEGINS, 80)       // sub_04_BF0B to $BF23: a gravestone, which is never shown
 COST(GRAVESTONE_OUT_OF_VIEW, 9)   // $BF26, and back,
 COST(GRAVESTONE_IN_VIEW, 41)      // or to sub_F5F9
 COST(GRAVESTONE_NOT_HIT, 9)       // $BF36, and back,
 COST(GRAVESTONE_HIT_COUNTED, 24)  // or with a hit counted, fewer than 15
-COST(HIDDEN_BEGINS, 7)            // bank 4's $BB8C to $BB91: a thing that's hidden until Arthur touches it
+COST(HIDDEN_BEGINS, 7)            // sub_04_BB8C to $BB91: a thing that's hidden until Arthur touches it
 COST(HIDDEN_OUT_OF_VIEW, 5)       // $BB97 to $BB67, with sub_F346's call apart,
 COST(HIDDEN_IN_VIEW, 17)          // or to sub_F68E
 COST(HIDDEN_NOT_TOUCHED, 5)       // $BBA8 to $BB67
@@ -335,7 +335,7 @@ COST(HIDDEN_ARMOUR_OPENS, 17)     // or is, for an Arthur without his,
 COST(HIDDEN_ARMOUR_NOT_NEEDED, 19) // or to sub_F708, for one who has it
 COST(HIDDEN_BECOMES_POT, 47)      // $BBCA to sub_F099: a pot, further on and up
 COST(HIDDEN_POT_FALLS, 42)        // $BBEB, with $BC81, and back
-COST(HIDDEN_STAYS, 34)            // sub_BB67 for an object that isn't shown, in a stage that isn't of the third set, and back
+COST(HIDDEN_STAYS, 34)            // sub_04_BB67 for an object that isn't shown, in a stage that isn't of the third set, and back
 COST(PICK_UP_ARMOUR_TAKEN, 101)   // $BA3F to sub_F708's end, and back: the armour, in the opening scene
 COST(PICK_UP_ARMOUR_SOUND, 7)     // and $BA83 to sub_ED51 outside it, more than the branch past it
 COST(OBJECT_REMOVED, 42)          // sub_F708, and back, for a kind it doesn't count
@@ -790,11 +790,11 @@ COST(STAGE_OBJECT_STATE_LISTED, 22) // or $D72E to $D6C1, for one whose state th
 COST(STAGE_OBJECT_PLATFORM, 39)   // or $D709 to $D6C1, for a moving platform: its heading and shape too,
 COST(STAGE_OBJECT_STATE_KEPT, 7)  // or $D6BC to $D6C1, for one whose state is left as it was
 COST(STAGE_OBJECT_FILLED, 95)     // $D6C1, and back
-COST(GAME_ROUND_DANGERS, 15)      // $D583 to bank 2's $8400
+COST(GAME_ROUND_DANGERS, 15)      // $D583 to sub_02_8400
 COST(DANGERS_OTHERS, 118)         // $8400 to $8415: its seven calls, and the four routines with nothing to do
 
-// ---- the zombies, bank 2's $8416 and $F7BE (enemies.c)
-COST(ZOMBIES_OTHER_STAGE, 15)     // sub_8416, and back: a place with no zombies,
+// ---- the zombies, sub_02_8416 and $F7BE (enemies.c)
+COST(ZOMBIES_OTHER_STAGE, 15)     // sub_02_8416, and back: a place with no zombies,
 COST(ZOMBIES_FIRST_STAGE, 6)      // or the first stage, to $841F,
 COST(ZOMBIES_EIGHTH_PLACE, 10)    // or the eighth place
 COST(ZOMBIES_PAST_THEIR_SCREENS, 15) // $841F, and back: Arthur is past the fifth screen,
@@ -806,13 +806,13 @@ COST(ZOMBIE_BEGINS, 14)           // $8438 to $8442
 COST(ZOMBIE_IS_ORDINARY, 5)       // $8442 to $844B,
 COST(ZOMBIE_IS_FAST, 7)           // or for every fourth
 COST(ZOMBIE_SET_UP, 31)           // $844B to $845D
-COST(ZOMBIE_PLACE_CHOSEN, 25)     // sub_84D7 with its call
+COST(ZOMBIE_PLACE_CHOSEN, 25)     // sub_02_84D7 with its call
 COST(ZOMBIE_PLACED, 49)           // $8461 to $8480
 COST(ZOMBIE_UNDER_A_JUMP, 14)     // $8481 to $8496: Arthur is in the air,
 COST(ZOMBIE_ON_LOWER_GROUND, 21)  // or low in the picture,
 COST(ZOMBIE_ON_UPPER_GROUND, 19)  // or high
 COST(ZOMBIE_HEIGHT_SET, 14)       // $8496 to $849E
-COST(ZOMBIE_COUNT_BEGINS, 18)     // sub_88F6 with its call, to $88FE
+COST(ZOMBIE_COUNT_BEGINS, 18)     // sub_02_88F6 with its call, to $88FE
 COST(ZOMBIE_NOT_SIXTH, 9)         // and back,
 COST(ZOMBIE_SIXTH, 19)            // or $88FE to sub_DA18: the sixth, which carries a pot
 COST(POT_NONE_FREE, 13)           // $890A, and back: no object is free,
@@ -863,7 +863,7 @@ COST(ZOMBIE_COLOURS_PALE, 13)     // $F8A7 to $F8B1
 COST(ZOMBIE_COLOURS_DONE, 9)      // and back,
 COST(ZOMBIE_COLOURS_DARKER, 15)   // or $F8B1 to $F8BD,
 COST(ZOMBIE_COLOURS_ITS_OWN, 15)  // and $F8BD, and back
-COST(POT_BEGINS, 14)              // bank 4's $BBEE to $BBF8: the pot a zombie carries
+COST(POT_BEGINS, 14)              // sub_04_BBEE to $BBF8: the pot a zombie carries
 COST(POT_IS_CARRIED, 3)           // $BC06 to $BC0B,
 COST(POT_IS_FALLING, 5)           // or to $BC8A
 COST(POT_LANDS, 32)               // $BC8D, with sub_E166, and back: it's a thing to pick up now,
@@ -923,7 +923,7 @@ COST(PLANT_LOOKS_LEFT, 9)         // or with the shape for the left
 COST(PLANT_COUNTS, 13)            // $9F10 to $9F18
 COST(PLANT_NOT_YET, 3)            // $9F18 to $9F22,
 COST(PLANT_OPENS, 35)             // or every 16th round, with the flag that says it shoots
-COST(PLANT_TESTS, 16)             // $9F22, and sub_9FA5 to sub_F5A0
+COST(PLANT_TESTS, 16)             // $9F22, and sub_04_9FA5 to sub_F5A0
 COST(PLANT_TESTS_CALLED, 19)      // or $9F25, with its call
 COST(PLANT_AIMS, 13)              // $9F28 to $9F30
 COST(PLANT_AIMS_ON, 3)            // $9F30 to $9F3E, for 16 rounds,
@@ -982,7 +982,7 @@ COST(ROWS_BACK, 21)               // and back
 COST(PALETTE_SET_UP, 20)          // sub_EEBF to sub_EECF, for all 32 colours,
 COST(HALF_PALETTE_SET_UP, 23)     // or sub_EEBA, for 16
 
-// ---- the sound driver, bank 3's $8380, which V-blank calls (sound.c)
+// ---- the sound driver, sub_03_8380, which V-blank calls (sound.c)
 COST(SOUND_BEGINS, 31)            // sub_ED94 to $843D
 COST(SOUND_VOICE_IDLE, 10)        // $843F: a tune's voice that isn't playing,
 COST(SOUND_VOICE_PLAYS, 20)       // or is, to $844B,
@@ -1062,7 +1062,7 @@ COST(NOISE_NEXT_STEP, 52)         // to $85FF
 COST(NOISE_IS_OVER, 43)
 COST(NOISE_STEP, 63)              // $8601 to $8625
 
-// ---- the flier, kind 2, bank 4's $9FB0 (flier.c)
+// ---- the flier, kind 2, sub_04_9FB0 (flier.c)
 COST(OBJECT_FLAG_CHANGED, 26)     // one of the routines that set or clear a flag, from sub_F305 and sub_F32A on, with its call
 COST(NEAR_LOOKED_AT, 27)          // sub_F687 with its call, to sub_F68E, for an object that's shown,
 COST(NEAR_NOT_SHOWN, 34)          // or back, for one that isn't
@@ -1086,15 +1086,15 @@ COST(FLIER_SHAPE, 7)              // a shape,
 COST(FLIER_SHAPE_KEPT, 3)         // kept,
 COST(FLIER_SHAPE_TURNED, 9)       // or the one for the other side
 COST(FLIER_WING, 27)              // sub_F576, and back
-COST(FLIER_SPEED, 27)             // sub_A464 with its call, to sub_F03E,
+COST(FLIER_SPEED, 27)             // sub_04_A464 with its call, to sub_F03E,
 COST(FLIER_SPEED_MOST, 28)        // or at the most
-COST(FLIER_COUNTED, 10)           // sub_A474 to $A47C,
+COST(FLIER_COUNTED, 10)           // sub_04_A474 to $A47C,
 COST(FLIER_COUNTED_HIGH, 16)      // or with its count's high byte
 COST(FLIER_IS_OLD, 8)             // $A47F, and back: its flag $20 is set,
 COST(FLIER_IS_YOUNG, 26)          // or it's had fewer than 1,024 rounds,
 COST(FLIER_GROWS_OLD, 57)         // or fewer than 1,056, and flashes,
 COST(FLIER_GROWN_OLD, 74)         // or the flag is set, with sub_F319
-COST(FLIER_SHOOT_BEGINS, 14)      // sub_A4B0 with its call, to sub_F687
+COST(FLIER_SHOOT_BEGINS, 14)      // sub_04_A4B0 with its call, to sub_F687
 COST(FLIER_TOO_NEAR, 9)           // $A4B9, and back: Arthur is too near,
 COST(FLIER_SHOOTS_NOW, 13)        // or to $A4CD on the 16th round of 32,
 COST(FLIER_NO_SHOT, 24)           // or back on another,
@@ -1106,7 +1106,7 @@ COST(FLIER_NO_SHOT_FREE, 25)      // or neither, and back
 COST(FLIER_SHOT_MADE, 95)         // $A4DA to sub_EF25: the shot's place, and Arthur's
 COST(FLIER_SHOT_HEADED, 20)       // $A51B to sub_ED51
 COST(FLIER_SHOT, 30)              // $A528, with sub_F315, and back
-COST(FLIER_DODGE_BEGINS, 46)      // sub_A41E with its call, to sub_F5F9
+COST(FLIER_DODGE_BEGINS, 46)      // sub_04_A41E with its call, to sub_F5F9
 COST(FLIER_DODGE_NOT_SHOWN, 61)   // or back, when it isn't shown
 COST(FLIER_NO_WEAPON_NEAR, 8)     // $A42A, and back
 COST(FLIER_WEAPON_NEAR, 3)        // or on to $A42D
@@ -1122,10 +1122,10 @@ COST(FLIER_TAKES_OFF, 39)         // $A453, with sub_F311, and back
 COST(FLIER_FACES, 33)             // $A38C to sub_FA87, with sub_F332
 COST(FLIER_FACES_RIGHT, 9)        // $A397, and back,
 COST(FLIER_FACES_LEFT, 41)        // or with sub_F30D
-COST(FLIER_WAKES, 40)             // sub_A37F to $A38C, with sub_F309
-COST(FLIER_PLACE_HIGH, 18)        // sub_A3A2 with its call, to $A3AD: 64 pixels down,
+COST(FLIER_WAKES, 40)             // sub_04_A37F to $A38C, with sub_F309
+COST(FLIER_PLACE_HIGH, 18)        // sub_04_A3A2 with its call, to $A3AD: 64 pixels down,
 COST(FLIER_PLACE_HIGH_FOR_LOW, 17) // or 80 when Arthur is low,
-COST(FLIER_PLACE_HIS_HEIGHT, 10)  // or $A36B to sub_A3AD: his own height
+COST(FLIER_PLACE_HIS_HEIGHT, 10)  // or $A36B to sub_04_A3AD: his own height
 COST(FLIER_PLACE_ON_SCREEN, 27)   // $A3AD to $A3C9: the height in the stage, on the view's screen,
 COST(FLIER_PLACE_NEXT_SCREEN, 41) // or past its 240 lines,
 COST(FLIER_PLACE_NEXT_SCREEN_CARRIED, 38) // or past 256
@@ -1152,7 +1152,7 @@ COST(FLIER_NOT_LEVEL, 7)          // or to $A36B
 COST(FLIER_LANDS, 38)             // $A35E to $A38C, with sub_F336
 COST(FLIER_COMES_LEVEL, 16)       // $A325 to $A33B
 COST(FLIER_DIVE_HEIGHT, 8)        // $A28B to $A291
-COST(FLIER_DIVE_ENDS, 24)         // $A291 to the call of sub_A474
+COST(FLIER_DIVE_ENDS, 24)         // $A291 to the call of sub_04_A474
 COST(FLIER_DIVE_ACROSS, 12)       // $A2AB to $A2B4
 COST(FLIER_DIVE_NEAR_RIGHT, 3)    // to $A2BA: Arthur is less than 96 pixels to its right,
 COST(FLIER_DIVE_NEAR_LEFT, 6)     // or its left,
@@ -1181,7 +1181,7 @@ COST(FLIER_DIVE_TURNED_BACK, 15)  // $A266 to $A270
 COST(FLIER_DIVE_STRAIGHT_DOWN_FROM_LEFT, 12) // $A270 to $A283, by $A27E
 COST(FLIER_DIVE_TURNED_ON, 16)    // $A266 to $A27C, by $A274
 COST(FLIER_DIVE_STRAIGHT_DOWN, 9) // $A27C to $A283
-COST(FLIER_WAIT_BEGINS, 33)       // $A1C6 to sub_A474
+COST(FLIER_WAIT_BEGINS, 33)       // $A1C6 to sub_04_A474
 COST(FLIER_GROUND_TURNED, 28)     // $A069 to $A06E, with sub_F30D
 COST(FLIER_GROUND_TAKES_OFF, 41)  // $A073, with sub_F311, and back
 COST(FLIER_GROUND_TESTS, 18)      // $A073 to the call of sub_F585
@@ -1211,11 +1211,11 @@ COST(FLIER_KILLED, 13)            // $9FFE to sub_ED51, by sub_F7B4
 COST(FLIER_KILLED_SCORE, 56)      // $A003 to sub_D902
 COST(FLIER_SITS, 30)              // $A02B to $A049
 COST(FLIER_SITS_IN_SIXTH_SET, 39) // or with the wider box of the sixth set of stages
-COST(FLIER_SEES_HIM, 8)           // $A04C to sub_A37F
+COST(FLIER_SEES_HIM, 8)           // $A04C to sub_04_A37F
 COST(FLIER_SLEEPS_ON, 13)         // $A05A, and back
-COST(FLIER_WOKEN_BY_HIT, 12)      // or to sub_A37F
+COST(FLIER_WOKEN_BY_HIT, 12)      // or to sub_04_A37F
 
-// ---- a moving platform, kind $0E, bank 4's $B84D (platform.c)
+// ---- a moving platform, kind $0E, sub_04_B84D (platform.c)
 COST(PLATFORM_BEGINS, 17)         // $B84D to $B864
 COST(PLATFORM_IN_VIEW, 3)         // $B86A to $B86F,
 COST(PLATFORM_OUT_OF_VIEW, 2)     // or to sub_F346
@@ -1250,10 +1250,10 @@ COST(PLATFORM_CARRIED, 42)        // $B93A to the call of sub_F181: his place ac
 COST(PLATFORM_ENDS, 12)           // $B95A, and back
 
 
-// ---- the flying knights, bank 2's $84E0 and kind 3, bank 4's $A530 (enemies.c)
+// ---- the flying knights, sub_02_84E0 and kind 3, sub_04_A530 (enemies.c)
 COST(BRANCH_TAKEN, 3)             // a branch that's taken
-COST(KNIGHTS_OTHER_SET, 16)       // sub_84E0, and back, outside the first set of stages
-COST(KNIGHTS_LOOKED_AT, 17)       // sub_84E0 to $84EE: the screen Arthur is on
+COST(KNIGHTS_OTHER_SET, 16)       // sub_02_84E0, and back, outside the first set of stages
+COST(KNIGHTS_LOOKED_AT, 17)       // sub_02_84E0 to $84EE: the screen Arthur is on
 COST(KNIGHTS_ELSEWHERE, 14)       // $84EE, and back, by $84F9: neither the eighth nor the ninth
 COST(KNIGHTS_EIGHTH_SCREEN, 8)    // $84EE to $84F5
 COST(KNIGHTS_TOO_EARLY, 11)       // and back: less than 64 pixels into it,
@@ -1263,8 +1263,8 @@ COST(KNIGHTS_PAST, 10)            // and back: 144 pixels into it or more
 COST(KNIGHTS_NOT_YET, 15)         // $8504, and back: the count isn't down yet,
 COST(KNIGHTS_COME, 22)            // or to $8513
 COST(KNIGHT_NONE_FREE, 10)        // $8516, and back: no object is free
-COST(KNIGHT_SET_UP, 49)           // $8516 to the call of sub_84D7
-COST(KNIGHT_PLACED, 29)           // $8539 to the call of sub_88F6
+COST(KNIGHT_SET_UP, 49)           // $8516 to the call of sub_02_84D7
+COST(KNIGHT_PLACED, 29)           // $8539 to the call of sub_02_88F6
 COST(KNIGHT_NEXT, 5)              // $854F
 COST(POT_FOURTH, 30)              // $8936 to $894B, more than the branch past it: the fourth pot's own contents
 COST(POT_CONTENTS_READ, 22)       // $894B to $895A
@@ -1310,16 +1310,16 @@ COST(GROUND_HALF_BLOCK_77_SOLID, 21) // or its left
 COST(GROUND_HALF_BLOCK_OTHER_SET_76, 9) // and outside the first set of stages
 COST(GROUND_HALF_BLOCK_OTHER_SET_77, 5)
 
-// ---- the forest's enemy, bank 2's $8610 and kind 4, bank 4's $A66A (forest.c)
-COST(FOREST_OTHER_PART, 14)       // sub_8610, and back: from the stage's fourth part on,
+// ---- the forest's enemy, sub_02_8610 and kind 4, sub_04_A66A (forest.c)
+COST(FOREST_OTHER_PART, 14)       // sub_02_8610, and back: from the stage's fourth part on,
 COST(FOREST_BEFORE, 21)           // or with the view before the tenth screen,
 COST(FOREST_PAST, 24)             // or past the twelfth
 COST(FOREST_IN_RANGE, 19)         // or to $8621
 COST(FOREST_NOT_YET, 14)          // $8621, and back: the count isn't down yet,
 COST(FOREST_COMES, 17)            // or to the call of sub_DA18
 COST(FOREST_NONE_FREE, 9)         // $862F, and back: no object is free
-COST(FOREST_SET_UP, 42)           // $862F to the call of sub_84D7
-COST(FOREST_PLACED, 58)           // $8650 to the call of sub_88F6
+COST(FOREST_SET_UP, 42)           // $862F to the call of sub_02_84D7
+COST(FOREST_PLACED, 58)           // $8650 to the call of sub_02_88F6
 COST(FOREST_DEAD, 5)              // $A66D to $F6F6
 COST(FOREST_HITS_READ, 7)         // $A66D to $A675
 COST(FOREST_KILLED, 13)           // $A675 to sub_ED51, by sub_F7B4
@@ -1454,7 +1454,7 @@ COST(AFTER_BOSS_PLAYS, 24)        // or to sub_ED51,
 COST(AFTER_BOSS_PLAYS_HURRIED, 24) // with the hurried music,
 COST(AFTER_BOSS_PLAYED, 6)        // and $D2A1 to $D2A6
 COST(KEY_COMES, 279)              // $D3FA to sub_ED51, with sub_D529, more than the branch past it
-COST(KEY_BEGINS, 25)              // bank 4's $BC9C to sub_F346
+COST(KEY_BEGINS, 25)              // sub_04_BC9C to sub_F346
 COST(KEY_FALLS, 9)                // $BCBA to sub_F03E
 COST(KEY_IN_THE_AIR, 8)           // $BCCA, and back
 COST(KEY_LOOKS, 8)                // $BCD0 to sub_F687
@@ -1546,7 +1546,7 @@ COST(ROW_NEXT_BLOCK, 33)            // $E8E6 to sub_E9AB, with its call
 COST(ROW_NEXT_SCREEN, 88)           // or to sub_E95C, by $E8FF, with its call: the row goes on across the next screen
 COST(ROW_ENDS, 29)                  // $E934 to its return
 
-// ---- the small blue devil, kind 6, bank 4's $A89E (devil.c)
+// ---- the small blue devil, kind 6, sub_04_A89E (devil.c)
 COST(DEVIL_IS_HIT, 5)             // $A8A1 to $F770
 COST(DEVIL_IS_NOT_HIT, 3)         // or to $A8A6
 COST(DEVIL_IS_NOT_AWAKE, 2)       // $A8A9 to sub_F0A3
@@ -1595,7 +1595,7 @@ COST(DEVIL_SHAPE, 47)             // $AA33 to sub_F2E7, with sub_F576
 COST(DEVIL_SHAPE_KEPT, 9)         // $AA43, and back
 COST(DEVIL_SHAPE_TURNED, 21)
 
-// ---- the second stage's objects that go up and down, and that fall, kinds $36 and $37, bank 4's $9DA2 and $9D5F (platform.c)
+// ---- the second stage's objects that go up and down, and that fall, kinds $36 and $37, sub_04_9DA2 and sub_04_9D5F (platform.c)
 COST(RISING_THING_BEGINS, 32)     // $9DA2 to sub_F321
 COST(RISING_THING_OUT_OF_VIEW, 2) // $9DBF to sub_F346
 COST(RISING_THING_DOWN_FIRST_SCREEN, 18) // $9DBF to $9DF6: going down, on the stage's first screen down,
@@ -1625,7 +1625,7 @@ COST(THING_CARRIES_DOWN, 16)      // $B7D6 to $B7ED: going down in the picture's
 COST(THING_STILL_DOWN, 18)        // or to $B7F6, in its upper,
 COST(THING_CARRIES_UP, 15)        // or going up in its upper half,
 COST(THING_STILL_UP, 17)          // or in its lower
-COST(THING_CARRY_BEGINS, 14)      // $B7ED to sub_B80D, with its call
+COST(THING_CARRY_BEGINS, 14)      // $B7ED to sub_04_B80D, with its call
 COST(THING_CARRIED, 50)           // $B810, and back: his place down, moved as it moves, on the same screen,
 COST(THING_CARRIED_ONTO_SCREEN_ABOVE, 69) // or past its top,
 COST(THING_CARRIED_ONTO_SCREEN_BELOW, 73) // or its 240 lines

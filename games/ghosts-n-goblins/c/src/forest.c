@@ -1,5 +1,5 @@
-// Ghosts'n Goblins Dreamport: the enemy of the first stage's forest, kind 4, from the original's code at bank 4's
-// $A66A, and bank 2's $8610, which makes one every so many rounds while the view is on the tenth to twelfth screens.
+// Ghosts'n Goblins Dreamport: the enemy of the first stage's forest, kind 4, from the original's code at sub_04_A66A,
+// and sub_02_8610, which makes one every so many rounds while the view is on the tenth to twelfth screens.
 // It waits eight rounds, appears where it was put, in the air, over twelve more, and then flies up or down towards
 // Arthur's height at speed $16, facing him. Every 32 rounds it stops to turn round, eight rounds at speed 4, and when Arthur is
 // in front of it and near it readies its shot, kind $29. A readied shot is let go on a round whose count is four past a
@@ -24,7 +24,7 @@ static uint8_t flag(uint8_t object, uint8_t which) {
   return RAM[OBJECT_FLAGS + object] & which;
 }
 
-/** Bank 2's $8610. */
+/** sub_02_8610. */
 void forest_enemies_come(uint8_t *x) {
   if (RAM[0xC2] >= 3) { took(FOREST_OTHER_PART); return; }
   if (RAM[0x65] < 9) { took(FOREST_BEFORE); return; }
@@ -111,7 +111,7 @@ static void shoot(uint8_t object) {
   took(RETURNS);
 }
 
-// sub_A812, with its call: every so many rounds, sooner the harder the game, it looks for Arthur in front of it, or
+// sub_04_A812, with its call: every so many rounds, sooner the harder the game, it looks for Arthur in front of it, or
 // within a box around it, and readies its shot.
 static void attack(uint8_t object) {
   uint8_t *flags = &RAM[OBJECT_FLAGS + object], *rounds = &RAM[0x066E + object], heading = RAM[OBJECT_HEADING + object];
@@ -177,7 +177,7 @@ static void turn_round(uint8_t object) {
   tests(object);
 }
 
-/** Bank 4's $A66A, kind 4. */
+/** sub_04_A66A, kind 4. */
 void forest_enemy(uint8_t object) {
   uint8_t *flags = &RAM[OBJECT_FLAGS + object], *count = &RAM[OBJECT_COUNT + object], *state = &RAM[OBJECT_STATE + object];
   if (flag(object, HIT)) {

@@ -1,4 +1,4 @@
-// Ghosts'n Goblins Dreamport: the objects' task, from the original's code at $F367 and bank 4's $9CC8, with the objects
+// Ghosts'n Goblins Dreamport: the objects' task, from the original's code at $F367 and sub_04_9CC8, with the objects
 // the opening scene has. Each round every object in use runs the code for its kind, and then its place in the stage
 // becomes a place on the screen, for the sprites' task. Arthur, the first object, has a task of his own (arthur.c).
 //
@@ -124,7 +124,7 @@ int on_the_ground(uint8_t object) {
   return RAM[0x22] >= BLOCK_SOLID;
 }
 
-/** Bank 4's $BC9C, kind $1E: the key a stage's last boss leaves. It falls from the top of the picture, its colours
+/** sub_04_BC9C, kind $1E: the key a stage's last boss leaves. It falls from the top of the picture, its colours
  *  changing every round, until it's on the ground, flag $02. Arthur within 8 pixels of it takes it: the time stops,
  *  at $C9, and it's worth 1,000 points. What the stage does then, from $C9, isn't ported yet. */
 void key(uint8_t object) {
@@ -509,7 +509,7 @@ int weapon_touches(uint8_t weapon, uint8_t enemy) {
   return within(weapon, enemy);
 }
 
-// Bank 4's $BF0B, kind $20: a gravestone, an object that's never shown and that counts the weapons that touch it. What
+// sub_04_BF0B, kind $20: a gravestone, an object that's never shown and that counts the weapons that touch it. What
 // its fifteenth hit brings, at $BF42, and its two other states, at $F6F6 and $BF5F, aren't ported yet.
 static void gravestone(uint8_t object) {
   RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
@@ -524,7 +524,7 @@ static void gravestone(uint8_t object) {
   took(GRAVESTONE_HIT_COUNTED);
 }
 
-// Bank 4's $BB8C, kind $11: a thing that's hidden where the stage's list puts it until Arthur touches the place.
+// sub_04_BB8C, kind $11: a thing that's hidden where the stage's list puts it until Arthur touches the place.
 static void hidden_thing(uint8_t object) {
   RAM[OBJECT_SHAPE + object] = 0x49;
   took(HIDDEN_BEGINS);
@@ -647,7 +647,7 @@ static void pick_up(uint8_t object) {
   RAM[OBJECT_FLAGS + object] = 0;
 }
 
-// $F367, the objects' task: bank 4's $9CC8 runs every object but the first, by its kind.
+// $F367, the objects' task: sub_04_9CC8 runs every object but the first, by its kind.
 wait objects_task(void) {
   enum { FIRST_TURN, LATER };
   if (task_step[TASK_OBJECTS] == LATER) took(OBJECTS_AGAIN);

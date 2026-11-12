@@ -1,4 +1,4 @@
-// Ghosts'n Goblins Dreamport: a moving platform, kind $0E, from the original's code at bank 4's $B84D. It goes from side
+// Ghosts'n Goblins Dreamport: a moving platform, kind $0E, from the original's code at sub_04_B84D. It goes from side
 // to side between two ends, at a speed, that the copy's lists at $B95D, $B97D and $B99D give by its state, and turns at
 // each. When Arthur comes down onto it he's held: his flag $10 is set, which his own turn reads as ground under him,
 // he's put 12 pixels above it, and he's moved across as it moves. The first stage has one, over the water.
@@ -95,7 +95,7 @@ void platform(uint8_t object) {
   took(PLATFORM_ENDS);
 }
 
-// ---- the second stage's two moving objects with shape $3E, from bank 4's $9DA2 and $9D5F. Out of the view neither is
+// ---- the second stage's two moving objects with shape $3E, from sub_04_9DA2 and sub_04_9D5F. Out of the view neither is
 // shown. What the second does in the view was written from the original's instructions and hasn't been run by a
 // recording.
 
@@ -137,7 +137,7 @@ static void thing_holds(uint8_t object) {
   int carries = down ? line >= 0x78 : line < 0x80;
   took(down ? (carries ? THING_CARRIES_DOWN : THING_STILL_DOWN) : (carries ? THING_CARRIES_UP : THING_STILL_UP));
   if (carries) {
-    // sub_B80D
+    // sub_04_B80D
     took(THING_CARRY_BEGINS);
     find_move(object, list((uint16_t)(SPEEDS_BY_STATE + state)));
     uint32_t his = (uint32_t)(RAM[OBJECT_Y_SCREEN + ARTHUR] << 16 | RAM[OBJECT_Y + ARTHUR] << 8 | RAM[OBJECT_Y_PART + ARTHUR]);

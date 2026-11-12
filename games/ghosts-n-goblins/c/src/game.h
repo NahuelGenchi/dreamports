@@ -191,15 +191,15 @@ void add_score(uint8_t x, uint8_t y);
 void add_score_with_thousands(uint8_t x, uint8_t y);
 /** $F7BE, kind 0: a zombie's turn (enemies.c). */
 void zombie(uint8_t object);
-/** Bank 4's $BBEE, kind $12: the pot a zombie carries (enemies.c). */
+/** sub_04_BBEE, kind $12: the pot a zombie carries (enemies.c). */
 void pot(uint8_t object);
-/** bank 2's $8416: the zombies that come out of the ground. `x` is the processor's X register, which it leaves changed. */
+/** sub_02_8416: the zombies that come out of the ground. `x` is the processor's X register, which it leaves changed. */
 void zombies_come(uint8_t *x);
 /** sub_F03E: moves an object by `speed` the way it's heading, one of 16 ways. */
 void move_object(uint8_t object, uint8_t speed);
 /** sub_EFDA: how far `speed` goes the way an object is heading, left in $77, $73, $7B, $78, $74 and $7C. */
 void find_move(uint8_t object, uint8_t speed);
-/** Bank 4's $B84D, kind $0E: a platform that moves from side to side (platform.c). */
+/** sub_04_B84D, kind $0E: a platform that moves from side to side (platform.c). */
 void platform(uint8_t object);
 /** sub_F099: moves an object down by what's in $77 and $73, screens and pixels. */
 void move_down(uint8_t object);
@@ -207,24 +207,24 @@ void move_down(uint8_t object);
 uint8_t way_to_arthur(uint8_t from);
 /** sub_FA87: whether Arthur is at an object's place across or right of it. */
 int arthur_is_right_of(uint8_t object);
-/** Bank 4's $9EC0, kind 1: a plant; $F93D, kind $14: a crow; $F49C, kind $2B: a plant's shot (enemies.c). */
+/** sub_04_9EC0, kind 1: a plant; $F93D, kind $14: a crow; $F49C, kind $2B: a plant's shot (enemies.c). */
 void plant(uint8_t object);
-/** Bank 4's $9FB0, kind 2: the flier that sits near the end of the first stage (flier.c); $F4BC, kind $2C: its shot. */
+/** sub_04_9FB0, kind 2: the flier that sits near the end of the first stage (flier.c); $F4BC, kind $2C: its shot. */
 void flier(uint8_t object);
 void flier_shot(uint8_t object);
-/** Bank 2's $84E0: the flying knights that come on the first stage's last screens; bank 4's $A530, kind 3: one of them (enemies.c). */
+/** sub_02_84E0: the flying knights that come on the first stage's last screens; sub_04_A530, kind 3: one of them (enemies.c). */
 void knights_come(uint8_t *x);
 void knight(uint8_t object);
-/** sub_88F6: every sixth of the enemies that come by themselves carries a pot (enemies.c). */
+/** sub_02_88F6: every sixth of the enemies that come by themselves carries a pot (enemies.c). */
 void sixth_carries_a_pot(uint8_t object, uint8_t *x);
 /** sub_F687: whether Arthur is within the box in $26 and $27 around an object that's shown (flier.c). */
 int arthur_near(uint8_t object);
-/** Bank 2's $8610 and bank 4's $A66A, kind 4: the enemy of the first stage's forest (forest.c). */
+/** sub_02_8610 and sub_04_A66A, kind 4: the enemy of the first stage's forest (forest.c). */
 void forest_enemies_come(uint8_t *x);
 void forest_enemy(uint8_t object);
 /** $F41C, kind $29: its shot (enemies.c). */
 void forest_shot(uint8_t object);
-/** Bank 4's $BC9C, kind $1E: the key a stage's last boss leaves (objects.c). */
+/** sub_04_BC9C, kind $1E: the key a stage's last boss leaves (objects.c). */
 void key(uint8_t object);
 /** $FBC4, kind 5: the stage's boss (boss.c); $F524, kind $30: its shot (enemies.c). */
 void boss(uint8_t object);
@@ -236,9 +236,9 @@ uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched);
 uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched);
 /** $F770: an enemy that a weapon has hit falls for six rounds, the way its flag $02 says, and is gone (enemies.c). */
 void hit_enemy_falls(uint8_t object);
-/** Bank 4's $A89E, kind 6: the small blue devil of the second stage's towers (devil.c). */
+/** sub_04_A89E, kind 6: the small blue devil of the second stage's towers (devil.c). */
 void devil(uint8_t object);
-/** Bank 4's $9DA2 and $9D5F, kinds $36 and $37: the second stage's objects that go up and down, and that fall (platform.c). */
+/** sub_04_9DA2 and sub_04_9D5F, kinds $36 and $37: the second stage's objects that go up and down, and that fall (platform.c). */
 void rising_thing(uint8_t object);
 void falling_thing(uint8_t object);
 /** $F6F6: an enemy that a weapon has killed burns away. */

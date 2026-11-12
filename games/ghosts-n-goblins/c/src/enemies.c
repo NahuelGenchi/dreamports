@@ -1,9 +1,9 @@
-// Ghosts'n Goblins Dreamport: the enemies, from the original's code. So far the zombies of the first stage: bank 2's
-// $8416 brings three out of the ground near Arthur each time its count of rounds runs out, and $F7BE is a zombie's turn
+// Ghosts'n Goblins Dreamport: the enemies, from the original's code. So far the zombies of the first stage:
+// sub_02_8416 brings three out of the ground near Arthur each time its count of rounds runs out, and $F7BE is a zombie's turn
 // each round. It waits under the ground, comes up in 16 rounds, walks the way it was headed for some 64 rounds or until
 // the ground ends, and sinks again.
 //
-// Every sixth zombie carries a pot, an object of its own, kind $12 at bank 4's $BBEE, that stays where its carrier is.
+// Every sixth zombie carries a pot, an object of its own, kind $12 at sub_04_BBEE, that stays where its carrier is.
 //
 // A lance or a dagger that touches a zombie is gone, and the zombie dies in six rounds, for 200 points, and its pot falls
 // to the ground and is a thing to pick up.
@@ -42,7 +42,7 @@ static void heading_past_page(uint8_t object) {
   if (object >= 0x0F) took(READ_PAST_PAGE);
 }
 
-// sub_88F6: every sixth of the enemies that come by themselves carries a pot. It holds the usual thing, unless it's the
+// sub_02_88F6: every sixth of the enemies that come by themselves carries a pot. It holds the usual thing, unless it's the
 // fourth pot: then the copy's list at $8963 says what, by the set of stages and how many pots there have been, and a
 // weapon Arthur already has is passed over for the next. The fifth set of stages on, at $8928, isn't ported yet.
 void sixth_carries_a_pot(uint8_t object, uint8_t *x) {
@@ -71,7 +71,7 @@ void sixth_carries_a_pot(uint8_t object, uint8_t *x) {
   }
 }
 
-/** Bank 2's $8416. In the first stage's first five screens, and in the eighth place, the count goes down a round at a time. */
+/** sub_02_8416. In the first stage's first five screens, and in the eighth place, the count goes down a round at a time. */
 void zombies_come(uint8_t *x) {
   if (STAGE != 0 && STAGE != 7) { took(ZOMBIES_OTHER_STAGE); return; }
   took(STAGE ? ZOMBIES_EIGHTH_PLACE : ZOMBIES_FIRST_STAGE);
@@ -94,7 +94,7 @@ void zombies_come(uint8_t *x) {
     RAM[0x0647 + object] = 0;
     RAM[OBJECT_COUNT + object] = (uint8_t)(LEFT_TO_MAKE << 3);   // the rounds it waits: each of the three comes up 8 after the last
     took(ZOMBIE_SET_UP);
-    // sub_84D7: the next of the 16 places, each so far across from Arthur and a way to head
+    // sub_02_84D7: the next of the 16 places, each so far across from Arthur and a way to head
     ZOMBIES_PLACE = (ZOMBIES_PLACE + 1) & 0x0F;
     took(ZOMBIE_PLACE_CHOSEN);
     RAM[0x25] = ZOMBIES_PLACE;
@@ -349,7 +349,7 @@ void zombie(uint8_t object) {
   took(ZOMBIE_TURN_COUNTED);
 }
 
-/** Bank 4's $BBEE, kind $12: the pot a zombie carries, which is where its carrier is and shows when it does. */
+/** sub_04_BBEE, kind $12: the pot a zombie carries, which is where its carrier is and shows when it does. */
 void pot(uint8_t object) {
   uint8_t carrier = CARRIER(object);
   RAM[OBJECT_COLOURS + object] = 0x02;
@@ -413,7 +413,7 @@ void pot(uint8_t object) {
 
 #define KNIGHTS_FLYING RAM[0xD0]
 
-/** Bank 2's $84E0: in the first set of stages, from 64 pixels into the eighth screen to 144 into the ninth, three flying
+/** sub_02_84E0: in the first set of stages, from 64 pixels into the eighth screen to 144 into the ninth, three flying
  *  knights come every so many rounds, sooner the harder the game is, each eight rounds after the last, at one of three
  *  heights and places in their wave that the copy's list at $8554 gives. */
 void knights_come(uint8_t *x) {
@@ -459,7 +459,7 @@ void knights_come(uint8_t *x) {
   took(RETURNS);
 }
 
-/** Bank 4's $A530, kind 3: a flying knight. After its wait it comes in at the right of the view and flies left in a
+/** sub_04_A530, kind 3: a flying knight. After its wait it comes in at the right of the view and flies left in a
  *  wave, 32 heights from the copy's list at $A5EA, with a sound the game's task plays while any is flying. Its shield
  *  stops a weapon thrown at its front: only one heading left, from behind it, kills it, for 100 points. */
 void knight(uint8_t object) {
@@ -648,7 +648,7 @@ void crow(uint8_t object) {
   }
 }
 
-// sub_9FA5: a plant's half width and half height, for what touches it.
+// sub_04_9FA5: a plant's half width and half height, for what touches it.
 static void plant_box(void) {
   RAM[0x26] = 4;
   RAM[0x27] = 0x10;
@@ -746,7 +746,7 @@ void enemy_burns_away(uint8_t object) {
   took(kind == 0x05 ? BOSS_BURNS_ON : kind == 0x09 ? BOSS_9_BURNS_ON : kind == 0x15 ? BOSS_15_BURNS_ON : BURNS_ON);
 }
 
-/** Bank 4's $9EC0, kind 1: a plant. In the view it faces Arthur, and every 16 rounds opens its mouth, flag $04, to shoot.
+/** sub_04_9EC0, kind 1: a plant. In the view it faces Arthur, and every 16 rounds opens its mouth, flag $04, to shoot.
  *  Out of the view it starts again. A weapon is worth 100 points, with sound $1F, and then it burns away. */
 void plant(uint8_t object) {
   uint8_t *flags = &RAM[OBJECT_FLAGS + object];
