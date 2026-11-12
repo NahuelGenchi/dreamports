@@ -228,12 +228,23 @@ wait title_task(void) {
       break;
     }
     case START_HELD:
-      // $C453: once Start is let go, the game. Its third line, to continue, at $C553, isn't ported yet.
+      // $C453: once Start is let go, the game
       if (start_held()) {
         took(TITLE_START_STILL_HELD);
         return YIELDS;
       }
       for (int i = 0; i < 4; i++) RAM[ATTRIBUTES + 0x2A + i] = 0;
+      if (GAME_PLAYED && PLAYERS_CHOSEN == 2) {
+        // $C553: the third line goes on from the place the last game ended at, with three lives again and no
+        // opening scene. What two players choose then, at $C563, isn't ported yet.
+        RAM[0xA6] = 0xFF;
+        RAM[0x0715] = 3;
+        RAM[0x94] = 0;
+        took(TITLE_GAME_GOES_ON);
+        start_task(TASK_GAME);
+        took(CALLS);
+        return ENDS;
+      }
       RAM[0xAC] = RAM[0xAD] = RAM[0xAA] = RAM[0xAB] = RAM[0xA6] = 0;
       RAM[0xC5] = RAM[0xC6] = 0x40;
       PLAYERS = PLAYERS_CHOSEN;
