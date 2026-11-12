@@ -81,6 +81,13 @@ const socialImage = new URL(social.src, Astro.site);
         }
         const calm = motion === 'calm' || (motion !== 'full' && matchMedia('(prefers-reduced-motion: reduce)').matches);
         root.dataset.motion = calm ? 'calm' : 'full';
+        // the Dreamports row leaves out the Dreamports whose code isn't all ported, from the first frame, unless
+        // Settings show them
+        let unfinished = null;
+        try {
+          unfinished = localStorage.getItem('dreamports:unfinished');
+        } catch {}
+        if (unfinished !== 'show') root.dataset.unfinished = 'hide';
         // the logo a player picked in Settings: its colour is here from the first frame, and its pose keeps the
         // logo unseen until it is drawn in (src/scripts/mark.ts)
         let pose = null;
