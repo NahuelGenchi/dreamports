@@ -1,4 +1,4 @@
-// Ghosts'n Goblins Dreamport: the flier, kind 2, from the original's code at bank 4's $9FB0. It sits near the end of
+// Ghosts'n Goblins Dreamport: the flier, kind 2, from the original's code at sub_04_9FB0. It sits near the end of
 // the first stage until Arthur comes close or a weapon hits it. Then it runs about on the ground for 31 rounds and
 // takes off, or takes off at once when a weapon comes near. In the air it goes to a place high at one side of the
 // picture, waits a few rounds, dives across at Arthur, pulls up on the other side, comes level with him and lands, and
@@ -79,7 +79,7 @@ static void wing_shape(uint8_t object) {
   took(FLIER_WING);
 }
 
-// sub_A464, with its call: a move the way it's heading. The longer it's been awake and the harder the game, the
+// sub_04_A464, with its call: a move the way it's heading. The longer it's been awake and the harder the game, the
 // faster, up to $20.
 static void fly(uint8_t object, uint8_t speed) {
   speed = (uint8_t)(speed + COUNT_HIGH(object));
@@ -88,7 +88,7 @@ static void fly(uint8_t object, uint8_t speed) {
   move_object(object, speed >= 0x20 ? 0x20 : speed);
 }
 
-// sub_A474: its rounds are counted. After 1,024 it flashes for 32, and from then on has its other colours.
+// sub_04_A474: its rounds are counted. After 1,024 it flashes for 32, and from then on has its other colours.
 static void counted(uint8_t object) {
   if (++RAM[OBJECT_COUNT + object]) took(FLIER_COUNTED);
   else {
@@ -108,7 +108,7 @@ static void counted(uint8_t object) {
   took(FLIER_GROWN_OLD);
 }
 
-// sub_A4B0, with its call: every 32 rounds, and twice as often when $5B says so, it shoots at Arthur unless he's
+// sub_04_A4B0, with its call: every 32 rounds, and twice as often when $5B says so, it shoots at Arthur unless he's
 // within 48 pixels: the shot is kind $2C, in object $14 or $15 if one is free, four pixels above its place, with
 // sound $1B.
 static void shoot(uint8_t object) {
@@ -146,7 +146,7 @@ static void shoot(uint8_t object) {
   if (object >= 0x10) took(READ_PAST_PAGE);
 }
 
-// sub_A41E, with its call: when one of Arthur's weapons comes within a box around it, smaller the harder the game, it
+// sub_04_A41E, with its call: when one of Arthur's weapons comes within a box around it, smaller the harder the game, it
 // takes off, or in the air starts its round again. On the ground it stays when it's level with Arthur and close to him.
 static void dodge(uint8_t object) {
   RAM[0x26] = RAM[0x27] = cart(4, (uint16_t)(0xA45C + RAM[0xD2]));
@@ -184,7 +184,7 @@ static void face_him(uint8_t object) {
   took(FLIER_FACES_LEFT);
 }
 
-// sub_A37F: it wakes.
+// sub_04_A37F: it wakes.
 static void wake(uint8_t object) {
   RAM[OBJECT_FLAGS + object] |= AWAKE;
   RAM[OBJECT_COUNT + object] = 1;
@@ -193,7 +193,7 @@ static void wake(uint8_t object) {
   face_him(object);
 }
 
-// sub_A3A2 and sub_A3AD, with their calls: towards a place in the picture, 32 pixels in from the side it faces away
+// sub_04_A3A2 and sub_04_A3AD, with their calls: towards a place in the picture, 32 pixels in from the side it faces away
 // from and at a height: Arthur's, or with `high` 64 down, or 80 when he's low. Within five pixels of it, it stays.
 static void fly_to_place(uint8_t object, int high) {
   uint8_t height = RAM[OBJECT_SCREEN_Y + ARTHUR];
