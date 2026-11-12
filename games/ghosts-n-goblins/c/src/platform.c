@@ -96,8 +96,8 @@ void platform(uint8_t object) {
 }
 
 // ---- the second stage's two moving objects with shape $3E, from bank 4's $9DA2 and $9D5F. Out of the view neither is
-// shown. What they do in the view was written from the original's instructions and hasn't been run by a recording,
-// and where Arthur comes down onto the first, which jumps to $B795, isn't ported yet.
+// shown. What the second does in the view was written from the original's instructions and hasn't been run by a
+// recording, and where Arthur comes down onto the first, which jumps to $B795, isn't ported yet.
 
 enum { SPEEDS_BY_STATE = 0xB800, FALLS = 0x02, DOWN = 0x08 };
 
@@ -113,7 +113,7 @@ static int thing_moves(uint8_t object, int moves) {
   return 1;
 }
 
-// Kind $36: it goes up and down. In the view it turns above the 32nd line of a screen below the first, and below the
+// Kind $36, a small ledge: it goes up and down. In the view it turns above the 32nd line of a screen below the first, and below the
 // 224th of one. Out of the view it turns every round.
 void rising_thing(uint8_t object) {
   uint8_t *heading = &RAM[OBJECT_HEADING + object];

@@ -59,9 +59,9 @@ static void view_follows_down(void) {
   RAM[0x77] = RAM[VIEW_Y + 2];
   took(FOLLOW_DOWN);
   if (line >= 0xF0) {   // $DBB0: past the screen's 240 lines, on the next screen down
+    took(line > 0xFF ? FOLLOW_DOWN_NEXT_SCREEN_CARRIED : FOLLOW_DOWN_NEXT_SCREEN);
     line = (uint8_t)line + 0x10;
     RAM[0x77]++;
-    took(FOLLOW_DOWN_NEXT_SCREEN);
   }
   RAM[0x73] = (uint8_t)line;
   uint32_t below = (uint32_t)(Y_SCREEN << 16 | Y << 8 | RAM[OBJECT_Y_PART + ARTHUR]) - (uint32_t)(RAM[0x77] << 16 | RAM[0x73] << 8 | RAM[0x7B]);
