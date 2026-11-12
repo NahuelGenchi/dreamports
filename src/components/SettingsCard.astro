@@ -1,5 +1,5 @@
 ---
-// Settings: menu sounds, light or dark, full or calm motion, and the logo's pose and colour. It needs JavaScript,
+// Settings: menu sounds, light or dark, full or calm motion, whether unfinished Dreamports show, and the logo's pose and colour. It needs JavaScript,
 // like everything it changes, so the menu shows its button only when JavaScript runs.
 import ViewBar from './ViewBar.astro';
 import { COLOURS, POSES } from '../lib/mark';
@@ -39,6 +39,15 @@ const named = (word: string) => word[0].toUpperCase() + word.slice(1);
           <input type="radio" name="motion" id="motion-full" value="full" /><label for="motion-full">Full</label>
           <input type="radio" name="motion" id="motion-calm" value="calm" /><label for="motion-calm">Calm</label>
         </div>
+      </div>
+      <div class="set-row">
+        <div class="set-text">
+          <span class="set-label" id="unfinished-label">Unfinished Dreamports</span>
+          <span class="set-desc">Show the ones whose code isn’t all ported yet.</span>
+        </div>
+        <button type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="unfinished-label" id="unfinished-switch">
+          <span class="switch-track"><span class="switch-knob"></span></span>
+        </button>
       </div>
       <div class="set-row set-logo">
         {/* the logo as picked: the script draws it, as a copy of the launch's mark, so the page doesn't carry it twice (src/scripts/mark.ts) */}

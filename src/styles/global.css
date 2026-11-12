@@ -2446,6 +2446,11 @@ dialog.card[open] {
   mask-image: none;
 }
 
+/* Unfinished Dreamports are out of the row from the first frame, before the script builds it (#1154). */
+:root[data-unfinished='hide'] .row:not([role]) .slot[data-unfinished] {
+  display: none;
+}
+
 :root:not(.js) .slot {
   position: relative;
   left: auto;
