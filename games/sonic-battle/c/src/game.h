@@ -147,6 +147,14 @@ void queueRegister(uint16_t offset, uint16_t value);
 void copyToVram(uint32_t from, uint32_t to, uint32_t count);
 void decompress(uint32_t from, uint32_t to);
 int32_t unpackCycles(uint32_t from);
+
+// The console's frame as mGBA times it, in cycles from the V-blank's start: each line, the whole frame (as the kit's
+// sound.h has it), when line 0 is drawn, and the interrupt at line 1 (0x08018654), where SoundMain takes its cycles.
+#define LINE_CYCLES 1232
+#define FRAME_CYCLES 280896
+#define LINE_ZERO_DRAWN 84777
+#define LINE_ONE 85000
+
 void copyTileBlock(uint32_t to, uint32_t from, int columns, int rows, int base);
 uint16_t *colours(uint32_t first);
 void clearLayer(int layer);

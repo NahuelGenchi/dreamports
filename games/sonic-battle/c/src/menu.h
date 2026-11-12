@@ -39,6 +39,8 @@ struct Node {
   Node *list[5];
   // the points shown at the top of a skill's grid: the seven digits and the slash between them
   Node *digits[7];
+  // the details panel's pieces it takes off the list as the screen leaves (skills.c's infoStart)
+  Node *pieces[9];
 };
 
 /** menu.js's place(): a sprite's parts, where, and what they add. */
@@ -73,6 +75,8 @@ void menuWriteRegisters(uint32_t from, int count);
 void menuDisplayOn(void);
 /** A node runs past a V-blank: the list goes on from that node in the next frame, with no sprites drawn in this one. */
 void menuPause(void);
+/** Whether the list goes on this frame from the node a V-blank stopped, and not from its start. */
+int menuResuming(void);
 /** A frame's work runs past the next V-blank: with `spritesToo`, its sprites are all the next frame has, and without,
  *  the next frame of the list is lost. */
 void menuRunsLate(int spritesToo);

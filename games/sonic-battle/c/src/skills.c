@@ -94,6 +94,7 @@ static const uint32_t TAB_PARTS[4] = {0x08EDB638, 0x08EDB648, 0x08EDB658, 0x08ED
 #define SAVE_IDS (SAVE + 0x322u)
 #define RECORD_BYTES 56
 #define EQUIPPED 27
+#define RECORDS 6
 #define NOT_OWNED 0xFF
 #define STARTER_OWNED 1
 #define NEW_SAVE_POINTS 30
@@ -120,7 +121,27 @@ static const uint32_t TAB_PARTS[4] = {0x08EDB638, 0x08EDB648, 0x08EDB658, 0x08ED
 #define DIGITS 7
 #define SLASH 10
 #define SOUND_DENIED 419
+#define SOUND_DETAILS 420
+// each language's table of the skills' descriptions
+#define SKILL_DESCRIPTIONS 0x08EDB450u
 #define SOUND_EQUIP 418
+// the details panel's pieces: the label, the skill's number, its rank and bars (each a table of parts, from full to
+// empty), how many are owned and the times sign, and the fighter it's from, animated at tile 425 in palette 14
+#define INFO_LABEL 0x08EDB488u
+#define INFO_NUMBER 0x08EDB4F8u
+#define INFO_RANK 0x08EDB5A0u
+#define INFO_RANKS 0x08EDB578u
+#define INFO_BAR 0x08EDB548u
+#define INFO_BARS 0x08EDB500u
+#define INFO_FIGHTER 0x08EDB468u
+#define INFO_PIECES_KEPT 8
+#define INFO_TIMES 8
+#define SKILL_ANIMATIONS 0x0810BCD4u
+#define FIGHTER_TILE 425
+#define FIGHTER_PALETTE 0x050003C0u
+#define FIGHTER_COLOURS 0x08EDBBBCu
+#define FIGHTER_OFFSET_X 0x03003100u
+#define FIGHTER_OFFSET_Y 0x03003118u
 // the picture and map the grid's frame is drawn with, the stretch of text it clears, and the map entries it numbers
 #define GRID_PICTURE 0x0807C620u
 #define GRID_MAP 0x0807C060u
@@ -138,11 +159,46 @@ static const uint32_t TAB_PARTS[4] = {0x08EDB638, 0x08EDB648, 0x08EDB658, 0x08ED
 #define COLOUR_ELSE 156
 #define COLOUR_SECOND_TABLE 20
 
+// Change memory's picture and map, its three buttons' parts and places, and the cursor's parts for each step
+#define MEMORY_PICTURE 0x0807C724u
+#define MEMORY_MAP 0x0807C124u
+#define MEMORY_PARTS 0x08EDB678u
+#define MEMORY_PLACES 0x08EDB834u
+#define MEMORY_CURSOR_PARTS 0x08EDB760u
+#define MEMORIES 3
+
+// Skill list's picture and map, the text it writes the name in and the map entries that show it, the English names,
+// the name of a skill nobody owns, and the pieces: the boxes' places (six columns' x, then three rows' y), the thumb,
+// the percentage owned and its digits' places, and the cursor's parts
+#define LIST_PICTURE 0x0807C7E0u
+#define LIST_MAP 0x0807C1E4u
+#define LIST_TEXT 0x0600B000u
+#define LIST_TEXT_WORDS 0x340
+#define LIST_TEXT_FILL 0x88888888u
+#define LIST_NAME_AT 0x0600F444u
+#define LIST_NAME_FIRST 0x2180
+#define LIST_NAME_TILES 26
+#define SKILL_NAMES 0x08ED90ECu
+#define NAME_UNOWNED 0x08EDB830u
+#define TEXT_END 0xFFFE
+#define LIST_PLACES 0x08EDB86Cu
+#define LIST_ACROSS 6
+#define LIST_BOXES 18
+#define LIST_LAST (SKILL_COUNT - 1)
+#define PARTS_PERCENT 0x08EDB560u
+#define PARTS_PERCENT_DIGIT 0x08EDB558u
+#define PERCENT_PLACES 0x08EDB914u
+#define LIST_CURSOR_PARTS 0x08EDB750u
+
 // the screen's own state: its count of frames, the slots of sprite tiles taken, the category shown, and the x the
 // whole screen has slid to
 static int frames, slots, category, screenX;
 // 0x03004dbc's first byte: the choice the menu's cursor comes back to
 static int selection;
+// 0x03004dbc's third byte: the record of equipped skills Change memory's cursor is on
+static int memory;
+// 0x03004dbc's halfwords 14 and 16: the first skill Skill list shows and the one its cursor is on
+static int listTop, listAt;
 // 0x03004dbc's bytes 4 and 5 for each category: the row the cursor was on and how far the rows had scrolled
 static int savedRow[4], savedPage[4];
 // the grid of a row's skills (0x03004dd0 to 0x03004df0): the row, the skill under the cursor, how many skills it
@@ -167,6 +223,9 @@ static void cursorStart(Node *node);
 static void menuChoosing(Node *node);
 static void editEntry(Node *node);
 static void menuReturn(Node *node);
+static void memoryEntry(Node *node);
+static void listEntry(Node *node);
+static void exchangeEntry(Node *node);
 
 /** 0x080211f0: the first of the ten slots nobody has, or ten when they're all taken. */
 static int takeSlot(void) {
@@ -286,7 +345,7 @@ static void choiceAway(Node *node) {
 }
 
 // what A on each of the first four choices opens: Edit skills, Change memory, Skill list and Exchange skills
-static void (*const entries[CHOICES - 1])(Node *) = {editEntry, 0, 0, 0};
+static void (*const entries[CHOICES - 1])(Node *) = {editEntry, memoryEntry, listEntry, exchangeEntry};
 
 /** 0x080220a4: down and up move the cursor round the five, repeating while held, B goes to Return to game, and A on
  *  that leaves. */
@@ -307,8 +366,6 @@ static void menuChoosing(Node *node) {
       gba_sound_play(SOUND_MADE);
       return;
     }
-    // the screens behind Change memory, Skill list and Exchange skills aren't ported yet
-    if (!entries[row]) return;
     menuRemoveNode(moving);
     for (int i = 0; i < CHOICES; i++) node->list[i]->run = i == row ? choiceChosen : choiceAway;
     node->chosen = node->list[row];
@@ -573,7 +630,7 @@ static void editLeave(Node *node) {
   node->run = menuReturn;
 }
 
-/** 0x08022864: the menu again, the choice that was picked coming back from the top left and the other four taking a
+/** 0x08022864 and 0x08022e38: the menu again, the choice that was picked coming back from the top left and the other four taking a
  *  slot of tiles each and sliding in from the right, once there are slots enough for them. */
 static void menuReturn(Node *node) {
   int taken[CHOICES];
@@ -604,6 +661,108 @@ static void menuReturn(Node *node) {
 /** 0x080244d8: the menu's picture off the left of the screen, where it waits. */
 static void cornerStart(Node *node) { node->run = choiceRest; }
 
+// Change memory (0x08022c2c onwards): the save keeps several records of the skills equipped, and three buttons pick
+// the one in use. The screen slides in from the right as Edit skills' does, with the buttons on it and a cursor over
+// the record in use; A picks the one under the cursor, and A or B slides it all back off to the menu.
+
+static void memoryChoosing(Node *node);
+static void memoryLeave(Node *node);
+static int recordCost(void);
+static void equipRecord(void);
+
+/** A button's place: its x and y, two halfwords each (0x08edb834). */
+static int memoryX(int index) { return (int16_t)read16(MEMORY_PLACES + (uint32_t)(index * 4)); }
+static int memoryY(int index) { return (int16_t)read16(MEMORY_PLACES + (uint32_t)(index * 4 + 2)); }
+
+/** 0x08024794: a button at the screen's x. */
+static void memoryRun(Node *node) {
+  node->place.x = screenX + memoryX(node->row);
+  menuDraw(node->place);
+}
+
+/** 0x08024738: a button off the right of the screen, its picture the row's sixteen tiles, drawn from the next frame on. */
+static void memoryStart(Node *node) {
+  node->place.parts = MEMORY_PARTS;
+  node->place.tile = node->row << 4;
+  node->place.x = 256 + memoryX(node->row);
+  node->place.y = memoryY(node->row);
+  node->place.attr2 = 12;
+  node->run = memoryRun;
+}
+
+/** 0x08024b1c: the cursor half way to the button in use, in the step of its animation the screen's count of frames
+ *  gives. */
+static void memoryCursorRun(Node *node) {
+  moveTo(&node->place, memoryX(memory), memoryY(memory));
+  int step = read8(CURSOR_STEPS + (uint32_t)((frames & 28) >> 2));
+  node->place.parts = read32(MEMORY_CURSOR_PARTS + (uint32_t)(step * 4));
+  menuDraw(node->place);
+}
+
+/** 0x08024894: the cursor over the button in use, drawn from the next frame on. */
+static void memoryCursorStart(Node *node) {
+  node->place.parts = read32(MEMORY_CURSOR_PARTS);
+  node->place.tile = CURSOR_TILE;
+  node->place.x = memoryX(memory);
+  node->place.y = memoryY(memory);
+  node->place.attr2 = 8;
+  node->run = memoryCursorRun;
+}
+
+/** 0x08022fa8: the screen slides in from the right, and then the cursor comes. */
+static void memorySlideIn(Node *node) {
+  screenX /= 2;
+  queueRegister(BG0HOFS, (uint16_t)((-screenX) & 0x1FF));
+  queueRegister(BG1HOFS, (uint16_t)((-screenX) & 0x1FF));
+  if (screenX != 0) return;
+  node->cursor = menuAddNode(memoryCursorStart, menuPlace(0, 0, 0, 0, 0), 1);
+  node->run = memoryChoosing;
+}
+
+/** 0x08022c2c: the screen's picture and map, off the right, its three buttons, and the cursor on the record in use. */
+static void memoryEntry(Node *node) {
+  decompress(MEMORY_MAP, 0x0600E000);
+  decompress(MEMORY_PICTURE, 0x0600F000);
+  screenX = 256;
+  for (int i = 0; i < MEMORIES; i++) {
+    node->list[i] = menuAddNode(memoryStart, menuPlace(0, 0, 0, 0, 0), 1);
+    node->list[i]->row = i;
+  }
+  memory = read8(SAVE_RECORD);
+  node->run = memorySlideIn;
+}
+
+/** 0x08022cac: right and left move the cursor round its row of three, A makes the record under it the one in use,
+ *  and A or B leave. */
+static void memoryChoosing(Node *node) {
+  uint16_t repeated = g.keys.repeated, pressed = g.keys.pressed;
+  if (repeated & (KEY_RIGHT | KEY_LEFT)) {
+    if (repeated & KEY_RIGHT) memory = memory == 2 || memory == 5 ? memory - 2 : memory + 1;
+    else memory = memory == 0 || memory == 3 ? memory + 2 : memory - 1;
+    gba_sound_play(SOUND_MOVE);
+  } else if (pressed & KEY_A) {
+    write8(SAVE_RECORD, (uint8_t)memory);
+    menuRemoveNode(node->cursor);
+    node->run = memoryLeave;
+    gba_sound_play(SOUND_EQUIP);
+    spent = recordCost();
+    equipRecord();
+  } else if (pressed & KEY_B) {
+    menuRemoveNode(node->cursor);
+    node->run = memoryLeave;
+    gba_sound_play(SOUND_ENTER);
+  }
+}
+
+/** 0x08022db8: the screen slides off to the right, and then its buttons go and the menu comes back. */
+static void memoryLeave(Node *node) {
+  if (!slideOut()) return;
+  for (int i = 0; i < MEMORIES; i++) menuRemoveNode(node->list[i]);
+  queueRegister(BG0HOFS, 256);
+  queueRegister(BG1HOFS, 256);
+  node->run = menuReturn;
+}
+
 // The grid of a row's skills (0x0802296c onwards): the rows slide away but the one picked, which goes to the top left,
 // and twelve boxes, four across, show the skills of the row, with the points spent and the details of the skill the
 // cursor is on.
@@ -614,6 +773,7 @@ static void gridChoosing(Node *node);
 static void gridBack(Node *node);
 static void gridSlideIn(Node *node);
 static void gridSettle(Node *node);
+static void exchangeChoosing(Node *node);
 
 /** Whether the skill is owned: the save has a number for it that isn't 0xFF. */
 static int owned(int skill) { return read8(SAVE_OWNED + (uint32_t)skill) != NOT_OWNED; }
@@ -627,23 +787,26 @@ static void unequip(int skill) { equipped[skill >> 5] &= ~skillBit(skill); }
 /** Where the save keeps the equipped skill of each of the 27 places. */
 static uint32_t equippedIds(void) { return SAVE_IDS + (uint32_t)(read8(SAVE_RECORD) * RECORD_BYTES); }
 
-/** A new save, as the game leaves it: 30 points, the starters equipped and owned, and no other skill owned. The
- *  first starter is the place of no skill, which nobody owns. */
+/** 0x080215a8's skills: a new save, as the game lays it down when it finds none. No skill is owned but those the
+ *  table gives a count at its seventh byte, when its eighth says so, and the 27 starters, which are equipped in each
+ *  of the six records; the points are 30. */
 static void newSave(void) {
-  for (int skill = 0; skill < SKILL_COUNT; skill++) write8(SAVE_OWNED + (uint32_t)skill, NOT_OWNED);
-  for (int i = 1; i <= EQUIPPED; i++) write8(SAVE_OWNED + read16(SKILL_STARTERS + (uint32_t)(i * 2)), STARTER_OWNED);
-  write32(SAVE_POINTS, NEW_SAVE_POINTS);
+  for (int skill = 0; skill < SKILL_COUNT; skill++) {
+    uint32_t entry = SKILL_TABLE + (uint32_t)(skill * 8);
+    write8(SAVE_OWNED + (uint32_t)skill, read8(entry + 7) ? read8(entry + 6) : NOT_OWNED);
+  }
   write8(SAVE_RECORD, 0);
-  for (int i = 0; i < EQUIPPED; i++) write16(equippedIds() + (uint32_t)(i * 2), read16(SKILL_STARTERS + (uint32_t)(i * 2)));
+  for (int i = 0; i < EQUIPPED; i++) {
+    int starter = read16(SKILL_STARTERS + (uint32_t)(i * 2));
+    write8(SAVE_OWNED + (uint32_t)starter, STARTER_OWNED);
+    for (int record = 0; record < RECORDS; record++)
+      write16(SAVE_IDS + (uint32_t)(record * RECORD_BYTES + i * 2), (uint16_t)starter);
+  }
+  write32(SAVE_POINTS, NEW_SAVE_POINTS);
 }
 
-/** 0x08021b0c's end and 0x08021a84: the points, what's spent, and which skills are equipped. A place whose skill
- *  isn't owned gets its starter. */
-static void readSave(void) {
-  maxPoints = (int)read32(SAVE_POINTS);
-  pointsLimit = maxPoints / POINT_UNITS;
-  spent = 0;
-  for (int i = 0; i < EQUIPPED; i++) spent += skillCost(read16(equippedIds() + (uint32_t)(i * 2)));
+/** 0x08021a84: which skills the record in use equips, a bit each. A place whose skill isn't owned gets its starter. */
+static void equipRecord(void) {
   for (int i = 0; i < 16; i++) equipped[i] = 0;
   for (int i = 0; i < EQUIPPED; i++) {
     uint32_t at = equippedIds() + (uint32_t)(i * 2);
@@ -655,6 +818,21 @@ static void readSave(void) {
     }
     equip(skill);
   }
+}
+
+/** What the record in use costs, in points (0x03004dc4). */
+static int recordCost(void) {
+  int cost = 0;
+  for (int i = 0; i < EQUIPPED; i++) cost += skillCost(read16(equippedIds() + (uint32_t)(i * 2)));
+  return cost;
+}
+
+/** 0x08021b0c's end: the points, what's spent, and which skills are equipped. */
+static void readSave(void) {
+  maxPoints = (int)read32(SAVE_POINTS);
+  pointsLimit = maxPoints / POINT_UNITS;
+  spent = recordCost();
+  equipRecord();
 }
 
 /** The sprites' colour for a skill: grey when it isn't owned, and otherwise by the skill's colour code. */
@@ -748,23 +926,98 @@ static void boxStart(Node *node) {
   node->run = boxRun;
 }
 
-/** 0x08025440: the panel with the skill's details, at the screen's x. The skill's icon is copied when the cursor
- *  moves to another. Its name and numbers (0x080256fc to 0x08025a58) are drawn for a skill that's owned, and aren't
- *  ported. */
-static void infoRun(Node *node) {
-  node->place.x = screenX + 12;
+/** 0x08025734 to 0x08025994: a piece of the details panel, its x from the screen's, drawn while the skill under the
+ *  cursor is owned. The panel takes it off the list when the screen leaves. */
+static void infoPieceRun(Node *node) {
+  if (!owned(listSkill)) return;
+  node->place.x = screenX + node->base_x;
+  menuDraw(node->place);
+}
+
+/** 0x08025a08: the times sign, the one piece that takes itself off the list. */
+static void infoTimesRun(Node *node) {
   if (gridLeaving) {
     menuRemoveNode(node);
     return;
   }
-  if (listSkill != node->index) {
-    queueCopy(ICON_TILES, ICON_TABLE + (uint32_t)(listSkill * ICON_BYTES), ICON_BYTES);
-    node->index = listSkill;
+  infoPieceRun(node);
+}
+
+/** 0x080256fc to 0x080259d0: each piece's parts, x from the screen's, y and tile. */
+static const struct { uint32_t parts; int x, y, tile; } INFO_PIECES[] = {
+  {INFO_LABEL, 16, 45, 656}, {INFO_NUMBER, 60, 37, 0}, {INFO_NUMBER, 66, 37, 0}, {INFO_NUMBER, 72, 37, 0},
+  {INFO_RANK, 16, 38, 0}, {INFO_BAR, 44, 106, 0}, {INFO_BAR, 44, 112, 0}, {PARTS_PERCENT_DIGIT, 72, 141, 0},
+  {PARTS_PERCENT_DIGIT, 56, 141, 40},
+};
+
+static void infoPieceStart(Node *node) {
+  int i = node->row;
+  node->place.parts = INFO_PIECES[i].parts;
+  node->place.tile = INFO_PIECES[i].tile;
+  node->base_x = INFO_PIECES[i].x;
+  node->place.x = 256 + INFO_PIECES[i].x;
+  node->place.y = INFO_PIECES[i].y;
+  node->place.attr2 = 8;
+  node->run = i == INFO_TIMES ? infoTimesRun : infoPieceRun;
+}
+
+/** 0x08025628: the fighter the skill is from, its animation stepped every other frame in the first player's slot, and
+ *  its colours copied to palette 14 when the fighter changes. */
+static void infoFighterRun(Node *node) {
+  if (!owned(listSkill)) return;
+  int fighter = skillColourCode(listSkill);
+  if (fighter > 19) fighter -= 20;
+  if (fighter > 9) fighter = 10;
+  if (++node->count & 1) {
+    stepAnimation(fighter, read16(SKILL_ANIMATIONS + (uint32_t)(listSkill * 2)), 2, FIGHTER_TILE, 0);
   }
-  node->place.attr2 = skillColour(listSkill);
+  node->place.x = (int16_t)(screenX + 28 - reads16(FIGHTER_OFFSET_X));
+  node->place.y = (int16_t)(reads16(FIGHTER_OFFSET_Y) + 51);
+  if (node->tile != fighter) {
+    node->tile = fighter;
+    queueCopy(FIGHTER_PALETTE, read32(FIGHTER_COLOURS + (uint32_t)(fighter * 4)), 32);
+  }
   menuDraw(node->place);
 }
 
+static void infoFighterStart(Node *node) {
+  node->place.parts = INFO_FIGHTER;
+  node->place.tile = FIGHTER_TILE;
+  node->place.x = 284;
+  node->place.y = 51;
+  node->place.attr2 = 8;
+  node->tile = 0xFF;
+  node->run = infoFighterRun;
+}
+
+/** 0x08025440: the panel with the skill's details, at the screen's x. When the cursor moves to another skill, its icon
+ *  is copied and the pieces show its number, rank, bars and how many are owned. */
+static void infoRun(Node *node) {
+  node->place.x = screenX + 12;
+  if (gridLeaving) {
+    for (int i = 0; i <= INFO_PIECES_KEPT; i++) menuRemoveNode(node->pieces[i]);
+    menuRemoveNode(node);
+    return;
+  }
+  int skill = listSkill;
+  if (skill != node->index) {
+    queueCopy(ICON_TILES, ICON_TABLE + (uint32_t)(skill * ICON_BYTES), ICON_BYTES);
+    node->pieces[1]->place.tile = skill / 100;
+    node->pieces[2]->place.tile = (skill % 100) / 10;
+    node->pieces[3]->place.tile = skill % 10;
+    uint32_t at = SKILL_TABLE + (uint32_t)(skill * 8);
+    node->pieces[4]->place.parts = INFO_RANKS + (uint32_t)((6 - read8(at)) * 8);
+    node->pieces[5]->place.parts = INFO_BARS + (uint32_t)((10 - read8(at + 1)) * 8);
+    node->pieces[6]->place.parts = INFO_BARS + (uint32_t)((10 - read8(at + 2)) * 8);
+    int count = read8(SAVE_OWNED + (uint32_t)skill);
+    node->pieces[7]->place.tile = count == NOT_OWNED ? 0 : count * 4;
+    node->index = skill;
+  }
+  node->place.attr2 = skillColour(skill);
+  menuDraw(node->place);
+}
+
+/** 0x080252d0: the panel and its pieces, the fighter last, kept but for the times sign. */
 static void infoStart(Node *node) {
   node->place.parts = PARTS_INFO;
   node->place.tile = 0;
@@ -772,6 +1025,12 @@ static void infoStart(Node *node) {
   node->place.y = 35;
   node->place.attr2 = 12;
   node->index = -1;
+  for (int i = 0; i <= INFO_TIMES; i++) {
+    Node *piece = menuAddNode(infoPieceStart, menuPlace(0, 0, 0, 0, 0), 1);
+    piece->row = i;
+    if (i < INFO_PIECES_KEPT) node->pieces[i] = piece;
+  }
+  node->pieces[INFO_PIECES_KEPT] = menuAddNode(infoFighterStart, menuPlace(0, 0, 0, 0, 0), 1);
   node->run = infoRun;
 }
 
@@ -866,8 +1125,8 @@ static void tabStart(Node *node) {
   node->run = tabRun;
 }
 
-/** 0x08023978: the grid's frame and map, its boxes and the panels, and the screen slides back in. */
-static void gridBuild(Node *node) {
+/** 0x08023978 and 0x08025d50: the grid's frame and map, and the text for the skill's details, cleared. */
+static void gridFrame(void) {
   decompress(GRID_PICTURE, 0x0600F000);
   decompress(GRID_MAP, 0x0600E000);
   textInto(GRID_TEXT, 16, 14);
@@ -882,6 +1141,11 @@ static void gridBuild(Node *node) {
   }
   gridInfo = 0;
   gridLeaving = 0;
+}
+
+/** 0x08023978: the grid's frame, its boxes and the panels, and the screen slides back in. */
+static void gridBuild(Node *node) {
+  gridFrame();
   for (int i = 0; i < GRID_BOXES; i++) menuAddNode(boxStart, menuPlace(0, 0, 0, 0, 0), 1)->row = i;
   menuAddNode(infoStart, menuPlace(0, 0, 0, 0, 0), 1);
   menuAddNode(pointsStart, menuPlace(0, 0, 0, 0, 0), 1);
@@ -956,44 +1220,168 @@ static void gridPress(void) {
   gba_sound_play(SOUND_EQUIP);
 }
 
-/** 0x08023b54: the arrows move the cursor over the boxes, scrolling them by rows of four, A equips the skill, B goes
- *  back to the rows, and R opens the skill's details. */
+/** 0x08023b54's R and 0x08025fd4's: an owned skill's details open, the cursor going and the boxes moving down out of
+ *  their way, and a skill nobody owns is turned down. */
+static void detailsOpen(Node *node, void (*show)(Node *)) {
+  if (!owned(listSkill)) {
+    gba_sound_play(SOUND_DENIED);
+    return;
+  }
+  menuRemoveNode(node->cursor);
+  gridInfo = 1;
+  node->run = show;
+  gba_sound_play(SOUND_DETAILS);
+}
+
+/** The skill's description, in the save's language, into the details' text. */
+static void putDescription(void) {
+  uint32_t descriptions = read32(SKILL_DESCRIPTIONS + (uint32_t)(g.language * 4));
+  putTextIn(0, 0, read32(descriptions + (uint32_t)(listSkill * 4)), 15, 1);
+}
+
+/** 0x08024304 and 0x080264d0: R again clears the text, the boxes come back up and the cursor comes, and the grid
+ *  is chosen from again with `choosing`. */
+static void detailsClose(Node *node, void (*choosing)(Node *)) {
+  if (!(g.keys.pressed & KEY_R)) return;
+  for (uint32_t i = 0; i < GRID_TEXT_BYTES; i++) gba_vram[GRID_TEXT - VRAM + i] = 0;
+  gridInfo = 0;
+  node->cursor = menuAddNode(gridCursorStart, menuPlace(0, 0, 0, 0, 0), 1);
+  node->run = choosing;
+  gba_sound_play(SOUND_DETAILS);
+}
+
+static void detailsWait(Node *node) { detailsClose(node, gridChoosing); }
+static void exchangeDetailsWait(Node *node) { detailsClose(node, exchangeChoosing); }
+
+// The description takes the original more than two frames to write, so its letters land on the screen as the lines
+// are drawn, and the screen's list of nodes waits for them. Matched to mGBA's frames: in the frame R opens the details,
+// the letters are as far along at each line as if they'd started this many cycles before the V-blank, with SoundMain's
+// cycles at line 1 taken out, and in the frames after, they go on this many cycles after each V-blank.
+#define DETAILS_AHEAD 7000
+#define DETAILS_AFTER_V_BLANK 9500
+
+static struct {
+  const TextWrite *writes;
+  int count, landed, frame, line;
+  // the letters' cycles done by the frame's start, and the frame's SoundMain
+  int32_t done, sound;
+  void (*then)(Node *);
+} details;
+
+/** How many of the letters' cycles are done by `at` cycles into the frame, with SoundMain's at line 1 taken out. */
+static int32_t detailsDoneBy(int32_t at) {
+  int32_t from = details.frame == 0 ? -DETAILS_AHEAD : DETAILS_AFTER_V_BLANK;
+  int32_t before = (at < LINE_ONE ? at : LINE_ONE) - from;
+  int32_t after = at - LINE_ONE - details.sound;
+  return details.done + (before > 0 ? before : 0) + (after > 0 ? after : 0);
+}
+
+/** The words written by `at` cycles into the frame, into VRAM. */
+static void detailsLand(int32_t at) {
+  int32_t done = detailsDoneBy(at);
+  for (; details.landed < details.count && details.writes[details.landed].cycle <= done; details.landed++) {
+    uint32_t to = details.writes[details.landed].at, value = details.writes[details.landed].value;
+    for (int i = 0; i < 4; i++) gba_vram[to - VRAM + (uint32_t)i] = (uint8_t)(value >> (i * 8));
+  }
+}
+
+/** After each line drawn, the words written by the next line's drawing, and at the frame's end, the frame's rest and
+ *  the next frame's to its line 0. */
+static void detailsLine(void) {
+  if (details.line < SCREEN_H - 1) {
+    details.line++;
+    detailsLand(LINE_ZERO_DRAWN + details.line * LINE_CYCLES);
+  } else {
+    details.done = detailsDoneBy(FRAME_CYCLES);
+    details.frame++;
+    details.sound = g.sound_cycles;
+    details.line = 0;
+    detailsLand(LINE_ZERO_DRAWN);
+  }
+  if (details.landed == details.count) return;
+  g.line_work_line = details.line < SCREEN_H - 1 ? details.line : SCREEN_H;
+  g.line_work = detailsLine;
+}
+
+/** The list waits at the node until the frame the letters' last cycle is done in, and goes on from it then. */
+static void detailsWriting(Node *node) {
+  details.sound = g.sound_cycles;
+  if (details.count && detailsDoneBy(FRAME_CYCLES) < details.writes[details.count - 1].cycle) {
+    menuPause();
+    return;
+  }
+  node->run = details.then;
+}
+
+/** 0x080242bc and 0x0802786c: the skill's description, in the save's language, written into the details' text, with
+ *  the grid chosen from with `then` once R closes it. The words are kept and land as the original writes them. */
+static void detailsWrite(Node *node, void (*then)(Node *)) {
+  static uint8_t before[GRID_TEXT_BYTES];
+  for (uint32_t i = 0; i < GRID_TEXT_BYTES; i++) before[i] = gba_vram[GRID_TEXT - VRAM + i];
+  g.text_cycles = 0;
+  textKeepWrites(1);
+  putDescription();
+  textKeepWrites(0);
+  for (uint32_t i = 0; i < GRID_TEXT_BYTES; i++) gba_vram[GRID_TEXT - VRAM + i] = before[i];
+  details.writes = textWrites(&details.count);
+  details.landed = details.frame = details.line = 0;
+  details.done = 0;
+  details.sound = g.sound_cycles;
+  details.then = then;
+  detailsLand(LINE_ZERO_DRAWN);
+  g.line_work_line = 0;
+  g.line_work = detailsLine;
+  node->run = detailsWriting;
+  detailsWriting(node);
+}
+
+static void detailsShow(Node *node) { detailsWrite(node, detailsWait); }
+static void exchangeDetails(Node *node) { detailsWrite(node, exchangeDetailsWait); }
+
+/** 0x08023b54's arrows, as 0x08025fd4 has them too: the cursor moves over the boxes, scrolling them by rows of four
+ *  and wrapping from the end to the start. */
+static void gridArrows(uint16_t repeated) {
+  uint16_t at = (uint16_t)listCursor;
+  if (repeated & KEY_DOWN) {
+    at = (uint16_t)(at + 4);
+    if (at >= listCount) {
+      at &= 3;
+      listScroll = 0;
+    } else if (at >= listScroll + GRID_BOXES) {
+      listScroll = (at & 0xFFFC) - 8;
+    }
+  }
+  listCursor = at;
+  if (repeated & KEY_UP) {
+    at = (uint16_t)(listCursor - 4);
+    listCursor = at;
+    if (at >= listCount) {
+      at = (uint16_t)(at + (listCount & 0xFFFC) + 4);
+      listCursor = at;
+      if (at >= listCount) listCursor = (uint16_t)(at - 4);
+      listScroll = listCount > GRID_BOXES ? (listCount - 9) & -4 : 0;
+    } else if (at < listScroll) {
+      listScroll = at & 0xFFFC;
+    }
+  }
+  if (repeated & KEY_RIGHT) {
+    int to = (listCursor & 0xFFFC) | ((listCursor + 1) & 3);
+    listCursor = to >= listCount ? listCount & 0xFFFC : to;
+  }
+  if (repeated & KEY_LEFT) {
+    int to = (listCursor & 0xFFFC) | ((listCursor - 1) & 3);
+    listCursor = to >= listCount ? listCount - 1 : to;
+  }
+  listSkill = skillList[listCursor];
+  gba_sound_play(SOUND_MOVE);
+}
+
+/** 0x08023b54: the arrows move the cursor over the boxes, A equips the skill, B goes back to the rows, and R opens the
+ *  skill's details. */
 static void gridChoosing(Node *node) {
   uint16_t repeated = g.keys.repeated, pressed = g.keys.pressed;
   if (repeated & (KEY_RIGHT | KEY_LEFT | KEY_UP | KEY_DOWN)) {
-    uint16_t at = (uint16_t)listCursor;
-    if (repeated & KEY_DOWN) {
-      at = (uint16_t)(at + 4);
-      if (at >= listCount) {
-        at &= 3;
-        listScroll = 0;
-      } else if (at >= listScroll + GRID_BOXES) {
-        listScroll = (at & 0xFFFC) - 8;
-      }
-    }
-    listCursor = at;
-    if (repeated & KEY_UP) {
-      at = (uint16_t)(listCursor - 4);
-      listCursor = at;
-      if (at >= listCount) {
-        at = (uint16_t)(at + (listCount & 0xFFFC) + 4);
-        listCursor = at;
-        if (at >= listCount) listCursor = (uint16_t)(at - 4);
-        listScroll = listCount > GRID_BOXES ? (listCount - 9) & -4 : 0;
-      } else if (at < listScroll) {
-        listScroll = at & 0xFFFC;
-      }
-    }
-    if (repeated & KEY_RIGHT) {
-      int to = (listCursor & 0xFFFC) | ((listCursor + 1) & 3);
-      listCursor = to >= listCount ? listCount & 0xFFFC : to;
-    }
-    if (repeated & KEY_LEFT) {
-      int to = (listCursor & 0xFFFC) | ((listCursor - 1) & 3);
-      listCursor = to >= listCount ? listCount - 1 : to;
-    }
-    listSkill = skillList[listCursor];
-    gba_sound_play(SOUND_MOVE);
+    gridArrows(repeated);
   } else if (pressed & KEY_A) {
     gridPress();
   } else if (pressed & KEY_B) {
@@ -1001,8 +1389,7 @@ static void gridChoosing(Node *node) {
     node->run = gridBack;
     gba_sound_play(SOUND_ENTER);
   } else if (pressed & KEY_R) {
-    // the details of an owned skill (0x080242bc) aren't ported
-    if (!owned(listSkill)) gba_sound_play(SOUND_DENIED);
+    detailsOpen(node, detailsShow);
   }
 }
 
@@ -1077,9 +1464,275 @@ static void gridSettle(Node *node) {
   node->run = editChoosing;
 }
 
-/** 0x08021f04: the frame wrapper, the screen's own count of frames and then the list. */
+// Skill list (0x08023064 onwards): all 309 skills in boxes of six across, three rows at a time, coloured by whether
+// they're owned and marked when equipped, with the name of the one under the cursor, the share of them owned, and a
+// thumb for how far the list has scrolled. B slides it back off to the menu.
+
+static void listChoosing(Node *node);
+static void listLeave(Node *node);
+
+static int listColumnX(int index) { return read16(LIST_PLACES + (uint32_t)((index % LIST_ACROSS) * 2)); }
+static int listRowY(int index) { return read16(LIST_PLACES + (uint32_t)((index / LIST_ACROSS + LIST_ACROSS) * 2)); }
+
+/** 0x080238d0: the text cleared and the name of the skill under the cursor written into it, each letter over its
+ *  shadow, or the name of a skill nobody owns. */
+static void listName(void) {
+  uint32_t text = owned(listAt) ? read32(SKILL_NAMES + (uint32_t)(listAt * 4)) : NAME_UNOWNED;
+  for (uint32_t i = 0; i < LIST_TEXT_WORDS; i++) write32(LIST_TEXT + i * 4, LIST_TEXT_FILL);
+  int x = 0;
+  for (uint16_t glyph; (glyph = read16(text)) != TEXT_END; text += 2) {
+    putGlyph(x + 1, 1, glyph, 1);
+    x += putGlyph(x, 0, glyph, 15);
+  }
+}
+
+/** 0x08024d0c: a box at the screen's x, showing the skill at its place from the top of the list. */
+static void listBoxRun(Node *node) {
+  node->place.x = screenX + listColumnX(node->row);
+  if (gridLeaving) {
+    menuRemoveNode(node);
+    return;
+  }
+  int skill = listTop + node->row;
+  if (skill > LIST_LAST) return;
+  node->place.attr2 = skillColour(skill);
+  node->place.parts = isEquipped(skill) ? PARTS_BOX_EQUIPPED : PARTS_BOX;
+  menuDraw(node->place);
+}
+
+/** 0x08024c90: a box off the right of the screen. */
+static void listBoxStart(Node *node) {
+  node->place.parts = PARTS_BOX;
+  node->place.tile = 0;
+  node->place.x = 256 + listColumnX(node->row);
+  node->place.y = listRowY(node->row);
+  node->place.attr2 = 12;
+  node->run = listBoxRun;
+}
+
+/** 0x08025014: a digit of the share owned, at the screen's x. 0x08025060, a digit that isn't shown, does nothing. */
+static void percentDigitRun(Node *node) {
+  node->place.parts = PARTS_PERCENT_DIGIT;
+  node->place.y = 7;
+  node->place.x = read16(PERCENT_PLACES + (uint32_t)(node->row * 2)) + screenX;
+  node->place.attr2 = 8;
+  menuDraw(node->place);
+}
+
+/** 0x08024fcc: the percent sign at the screen's x, which takes its digits with it when the screen goes. */
+static void percentRun(Node *node) {
+  node->place.x = screenX + 212;
+  if (gridLeaving) {
+    for (int i = 0; i < 3; i++) menuRemoveNode(node->digits[i]);
+    menuRemoveNode(node);
+    return;
+  }
+  menuDraw(node->place);
+}
+
+/** 0x08024ddc: the share of the skills owned, as many digits as it needs, and the percent sign. */
+static void percentStart(Node *node) {
+  int count = 0;
+  for (int skill = 0; skill <= LIST_LAST; skill++) count += owned(skill);
+  int percent = 100 * count / SKILL_COUNT;
+  int shown[3] = {percent / 100, percent / 10 % 10, percent % 10};
+  int first = percent > 99 ? 0 : percent > 9 ? 1 : 2;
+  for (int i = 0; i < 3; i++) {
+    node->digits[i] = menuAddNode(i < first ? nothing : percentDigitRun, menuPlace(0, 0, 0, shown[i] * 4, 0), 1);
+    node->digits[i]->row = i;
+  }
+  node->place.parts = PARTS_PERCENT;
+  node->place.tile = 0;
+  node->place.x = 212;
+  node->place.y = 9;
+  node->place.attr2 = 8;
+  node->run = percentRun;
+}
+
+/** 0x0802392c: the thumb, down the track as far as the list has scrolled. */
+static void listThumbRun(Node *node) {
+  if (gridLeaving) {
+    menuRemoveNode(node);
+    return;
+  }
+  node->place.x = screenX + 223;
+  node->place.y = listTop * 99 / 306 + 30;
+  menuDraw(node->place);
+}
+
+/** 0x08023898: the thumb off the right of the screen. */
+static void listThumbStart(Node *node) {
+  node->place.parts = PARTS_THUMB;
+  node->place.tile = 0;
+  node->place.x = 479;
+  node->place.y = 30;
+  node->place.attr2 = 8;
+  node->run = listThumbRun;
+}
+
+/** 0x08024a34: the cursor half way to its box, in the step of its animation the screen's count of frames gives. */
+static void listCursorRun(Node *node) {
+  int at = listAt - listTop;
+  moveTo(&node->place, at % LIST_ACROSS * 32 + 24, at / LIST_ACROSS * 40 + 32);
+  int step = read8(GRID_CURSOR_STEPS + (uint32_t)((frames & 28) >> 2));
+  node->place.parts = read32(LIST_CURSOR_PARTS + (uint32_t)(step * 4));
+  menuDraw(node->place);
+}
+
+/** 0x080247c4: the cursor over its box, drawn from the next frame on. */
+static void listCursorStart(Node *node) {
+  int at = listAt - listTop;
+  node->place.parts = read32(LIST_CURSOR_PARTS);
+  node->place.tile = GRID_CURSOR_TILE;
+  node->place.x = at % LIST_ACROSS * 32 + 24;
+  node->place.y = at / LIST_ACROSS * 40 + 32;
+  node->place.attr2 = 8;
+  node->run = listCursorRun;
+}
+
+/** 0x08023830: the screen slides in from the right, and then the cursor comes. */
+static void listSlideIn(Node *node) {
+  screenX /= 2;
+  queueRegister(BG0HOFS, (uint16_t)((-screenX) & 0x1FF));
+  queueRegister(BG1HOFS, (uint16_t)((-screenX) & 0x1FF));
+  if (screenX != 0) return;
+  node->cursor = menuAddNode(listCursorStart, menuPlace(0, 0, 0, 0, 0), 1);
+  node->run = listChoosing;
+}
+
+/** 0x08023064: the screen's picture and map off the right, the name's text and the map entries that show it, the
+ *  eighteen boxes, the share owned and the thumb. */
+static void listEntry(Node *node) {
+  decompress(LIST_MAP, 0x0600E000);
+  decompress(LIST_PICTURE, 0x0600F000);
+  textInto(LIST_TEXT, 26, 2);
+  for (uint32_t i = 0; i < LIST_TEXT_WORDS; i++) write32(LIST_TEXT + i * 4, LIST_TEXT_FILL);
+  for (int i = 0; i < LIST_NAME_TILES; i++) {
+    write16(LIST_NAME_AT + (uint32_t)(i * 2), (uint16_t)(LIST_NAME_FIRST + i * 2));
+    write16(LIST_NAME_AT + 64 + (uint32_t)(i * 2), (uint16_t)(LIST_NAME_FIRST + i * 2 + 1));
+  }
+  listName();
+  gridLeaving = 0;
+  for (int i = 0; i < LIST_BOXES; i++) menuAddNode(listBoxStart, menuPlace(0, 0, 0, 0, 0), 1)->row = i;
+  screenX = 256;
+  menuAddNode(percentStart, menuPlace(0, 0, 0, 0, 0), 1);
+  menuAddNode(listThumbStart, menuPlace(0, 0, 0, 0, 0), 1);
+  node->run = listSlideIn;
+}
+
+/** 0x08023218: the arrows move the cursor round the boxes, scrolling a row of six at a time and wrapping from the end
+ *  to the start, and B leaves. */
+static void listChoosing(Node *node) {
+  uint16_t repeated = g.keys.repeated, pressed = g.keys.pressed;
+  if (repeated & (KEY_RIGHT | KEY_LEFT | KEY_UP | KEY_DOWN)) {
+    int old = listAt, column = old % LIST_ACROSS;
+    if (repeated & KEY_DOWN) {
+      int to = old + LIST_ACROSS;
+      if (to > LIST_LAST) {
+        listAt = to <= LIST_LAST + 3 ? old - 300 : old - 306;
+        listTop = 0;
+      } else {
+        listAt = to;
+        if (to >= listTop + 12) listTop += LIST_ACROSS;
+      }
+      old = listAt;
+    }
+    if (repeated & KEY_UP) {
+      int to = (uint16_t)(old - LIST_ACROSS);
+      if (to > LIST_LAST) {
+        listAt = old + 306;
+        if (listAt > LIST_LAST) listAt = old + 300;
+        listTop = 300;
+      } else {
+        listAt = to;
+        if (to < listTop) listTop -= LIST_ACROSS;
+      }
+    }
+    if (repeated & KEY_RIGHT) {
+      listAt = column <= 4 ? listAt + 1 : listAt - 5;
+      if (listAt > LIST_LAST) listAt = 306;
+    }
+    if (repeated & KEY_LEFT) {
+      listAt = column != 0 ? listAt - 1 : listAt + 5;
+      if (listAt > LIST_LAST) listAt = LIST_LAST;
+    }
+    listName();
+    gba_sound_play(SOUND_MOVE);
+  } else if (pressed & KEY_B) {
+    menuRemoveNode(node->cursor);
+    node->run = listLeave;
+    gba_sound_play(SOUND_ENTER);
+  }
+}
+
+/** 0x080236bc: the screen slides off to the right, and then its pieces go and the menu comes back. */
+static void listLeave(Node *node) {
+  if (!slideOut()) return;
+  gridLeaving = 1;
+  queueRegister(BG0HOFS, 256);
+  queueRegister(BG1HOFS, 256);
+  node->run = menuReturn;
+}
+
+// Exchange skills (0x08025d50 onwards): the grid of Edit skills, over every skill but the starters, for trading one
+// with a friend's console over the link cable. The trade itself (0x08026dd4 onwards) needs the cable, which isn't
+// there, so A is turned down as the original turns it down with no friend connected, and the screen's calls to the
+// cable (0x08018444, 0x080184c8, 0x08018c3c, 0x0801f9e8) show and play nothing, so they aren't ported.
+
+static void exchangeLeave(Node *node);
+
+/** 0x08025f5c: the screen slides in, and then the cursor comes. */
+static void exchangeIn(Node *node) {
+  screenX /= 2;
+  queueRegister(BG0HOFS, (uint16_t)((-screenX) & 0x1FF));
+  queueRegister(BG1HOFS, (uint16_t)((-screenX) & 0x1FF));
+  if (screenX != 0) return;
+  node->cursor = menuAddNode(gridCursorStart, menuPlace(0, 0, 0, 0, 0), 1);
+  node->run = exchangeChoosing;
+}
+
+/** 0x08025d50: every skill but the starters listed from the first, the grid's frame, its boxes and panels but the
+ *  points, from wherever the screen was left. */
+static void exchangeEntry(Node *node) {
+  buildList(ALL_SKILLS);
+  listCursor = listScroll = 0;
+  listRow = 3;
+  gridFrame();
+  for (int i = 0; i < GRID_BOXES; i++) menuAddNode(boxStart, menuPlace(0, 0, 0, 0, 0), 1)->row = i;
+  menuAddNode(infoStart, menuPlace(0, 0, 0, 0, 0), 1);
+  menuAddNode(thumbStart, menuPlace(0, 0, 0, 0, 0), 1);
+  menuAddNode(tabStart, menuPlace(0, 0, 0, 0, 0), 1);
+  listSkill = skillList[listCursor];
+  node->run = exchangeIn;
+}
+
+/** 0x08025fd4: the arrows move the cursor over the boxes, A is turned down with nobody to trade with, and B leaves. */
+static void exchangeChoosing(Node *node) {
+  uint16_t repeated = g.keys.repeated, pressed = g.keys.pressed;
+  if (repeated & (KEY_RIGHT | KEY_LEFT | KEY_UP | KEY_DOWN)) {
+    gridArrows(repeated);
+  } else if (pressed & KEY_A) {
+    gba_sound_play(SOUND_DENIED);
+  } else if (pressed & KEY_B) {
+    menuRemoveNode(node->cursor);
+    node->run = exchangeLeave;
+    gba_sound_play(SOUND_ENTER);
+  } else if (pressed & KEY_R) {
+    detailsOpen(node, exchangeDetails);
+  }
+}
+
+/** 0x08026380: the screen slides off to the right, and then the grid goes and the menu comes back, in the same frame. */
+static void exchangeLeave(Node *node) {
+  if (!slideOut()) return;
+  gridLeaving = 1;
+  menuReturn(node);
+}
+
+/** 0x08021f04: the frame wrapper, the screen's own count of frames and then the list, which a list the V-blank
+ *  stopped goes on with, without the wrapper's coming round again. */
 static void skillsFrame(void) {
-  frames++;
+  if (!menuResuming()) frames++;
   menuFrame();
 }
 
@@ -1087,7 +1740,7 @@ static void skillsFrame(void) {
  *  the list's first node, and the display queued on for the next V-blank. */
 void startSkills(void) {
   menuReset();
-  frames = slots = category = screenX = selection = 0;
+  frames = slots = category = screenX = selection = memory = listTop = listAt = 0;
   for (int i = 0; i < 4; i++) savedRow[i] = savedPage[i] = 0;
   newSave();
   readSave();

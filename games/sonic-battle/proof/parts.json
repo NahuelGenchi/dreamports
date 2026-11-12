@@ -37,7 +37,7 @@
     { "name": "Challenge mode", "needs": ["The fighting"] },
     { "name": "Training mode", "needs": ["The fighting"] },
     { "name": "The mini-games" },
-    { "name": "Emerl's skills" },
+    { "name": "Emerl's skills", "recording": "skills-every-screen", "frames": [1, 1390] },
     { "name": "The options", "recording": "options", "frames": [1676, 6496] }
   ]
 }
