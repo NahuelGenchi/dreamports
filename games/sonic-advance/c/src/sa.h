@@ -141,6 +141,8 @@ void queue_background(Background *bg);
 int alloc_oam(uint32_t order);
 void clear_oam(void);
 void engine_keep_oam(void);
+void engine_show_oam(const uint16_t *oam);
+void engine_take_oam(uint16_t *oam);
 uint32_t vram_malloc(uint32_t tiles);
 void vram_reset(void);
 void vram_free(uint32_t dest);

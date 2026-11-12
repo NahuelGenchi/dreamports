@@ -279,8 +279,11 @@ void clear_oam(void) {
   memset(orderStart, 0xFF, sizeof orderStart); memset(orderEnd, 0xFF, sizeof orderEnd);
 }
 static int keepOam;
+static const uint16_t *shownOam;
 /** This frame's V-blank leaves the screen's sprites as they are. */
 void engine_keep_oam(void) { keepOam = 1; }
+/** This frame's V-blank shows the sprites engine_take_oam kept in `oam` instead of its own. */
+void engine_show_oam(const uint16_t *oam) { shownOam = oam; }
 static void hide_oam(uint32_t i) { e.oamBuffer[i * 4] = e.oamBuffer[i * 4 + 1] = e.oamBuffer[i * 4 + 2] = 0x200; }
 static void process_oam(void) {
   uint32_t dst = 0;
@@ -304,6 +307,13 @@ static void process_oam(void) {
   }
   e.oamFreeIndex = 0;
   memset(orderStart, 0xFF, sizeof orderStart); memset(orderEnd, 0xFF, sizeof orderEnd);
+}
+/** Takes the sprites the tasks have drawn so far this frame into `oam`, as the screen would get them, and starts the
+ *  frame's sprites again from none. */
+void engine_take_oam(uint16_t *oam) {
+  process_oam();
+  memcpy(oam, e.oamBuffer, sizeof e.oamBuffer);
+  clear_oam();
 }
 
 // --- the sprites' VRAM heap (malloc_vram.c) ------------------------------------------------------------------------
@@ -413,6 +423,7 @@ static void vblank(void) {
   if (e.flags & FLAGS_HBLANK_COPY) copy_hblank_entry(e.primary);
   // a frame whose tasks were all destroyed before any drew keeps the sprites of the frame before (engine_keep_oam)
   if (keepOam) { keepOam = 0; clear_oam(); }
+  else if (shownOam) { memcpy(gba_oam, shownOam, sizeof e.oamBuffer); shownOam = NULL; clear_oam(); }
   else { process_oam(); memcpy(gba_oam, e.oamBuffer, sizeof e.oamBuffer); }
   // UpdateScreenDma's V-blank callbacks: last frame's run now, after the registers, and this frame's wait for the next
   if (vblankIntr) vblankIntr();

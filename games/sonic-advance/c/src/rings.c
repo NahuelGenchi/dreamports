@@ -181,9 +181,6 @@ static void draw_rings(void) {
 /** Whether the next frame draws the rings without stepping their animation, as a menu\'s hand-over does. */
 static int skipUpdate;
 void rings_skip_first_update(void) { skipUpdate = 1; }
-/** The rings' task on the frame the act before makes this one: it is after the results' in the list, so it runs at
- *  once and the spin is a step on when the act's own first frame comes. */
-void rings_spin_on(void) { update_sprite(&ringSprite, 0); }
 
 int rings_task(ActTask *t) {
   (void)t;

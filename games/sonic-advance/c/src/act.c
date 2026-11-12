@@ -366,6 +366,10 @@ static void draw_frame(void) {
   int hold = act.frames <= 2 && !act.afterLevel;
   int camX = hold ? act.startCamX : (int)act.cam.x;
   int camY = hold ? act.startCamY : (int)act.cam.y;
+  // the first frame after the act before draws the stage's layers from its corner, where its making left them; the
+  // sprites are already where the camera has them
+  int spriteX = camX, spriteY = camY;
+  if (act.afterLevel && act.frames == 1) camX = camY = 0;
   // the act has no blend, and its first frames keep the course select's display, as the original does
   // (Ice Mountain's background update sets its blend in the camera's task, which the title card's end clears)
   if (!row->ownsBlend) { e.bldCnt = 0; e.bldAlpha = 0x0010; }
@@ -391,7 +395,7 @@ static void draw_frame(void) {
   // the zone's StageBgUpdate
   if (row->drawBackground) row->drawBackground(camX, camY);
 
-  player_draw(shownSet ? &shown : &act.player, camX, camY);
+  player_draw(shownSet ? &shown : &act.player, spriteX, spriteY);
   shownSet = 0;
 }
 
@@ -507,6 +511,7 @@ void act_stage_results(void) {
 static void start_music(void);
 void act_task(Task *t);
 static int nextLevel;
+static uint16_t lastObjects[128 * 4];
 // the frame after, once the screen has taken the black, the game stops
 static void stop_on_black(Task *t) { destroy_task(t); ctx.done = 1; }
 static void next_act(void) {
@@ -537,7 +542,15 @@ static void next_act(void) {
   // how long the stage takes the original to load: a frame for a zone's second act, two for a new zone
   act.stallLoad = 0; act.loadFrames = nextLevel & 1 ? 2 : 3;
   titlecard_made(1);
-  rings_spin_on();
+  // the objects' tasks are after the results' in the list, so they run at once, unseen: the rings' spin and the
+  // first objects' animations are a step on when the act's own first frame comes
+  objects_set_drawing(0);
+  objects_run_before_hud();
+  objects_run_after_hud();
+  objects_set_drawing(1);
+  // this frame's V-blank is spent making the stage and doesn't swap the two H-blank tables, which Secret Base's
+  // spotlights show
+  e.primary ^= HBLANK_BUFFER;
 }
 // m4aSoundVSyncOn once the save is written, then the next act
 static void next_act_after_write(void) {
@@ -550,6 +563,9 @@ static void next_act_after_write(void) {
 // frame the write ends; the black of an act that isn't in C shows on that frame too, as the original's stage start's
 static void go_to_next_level(void) {
   nextLevel = act.stage.level + 1;
+  // what the objects' tasks drew this frame, before the results' task ended it, is on the screen for a frame as the
+  // next act loads: the animals of a capsule, flying on
+  engine_take_oam(lastObjects);
   destroy_tasks(0, 0xFFFF);
   act_tasks_destroy_all();
   act.task = NULL;
@@ -718,6 +734,8 @@ static void act_frame(void) {
   if (act.frames > 0) water_task();
   act.frames++;
   draw_frame();
+  // the first frame after the act before still has the layers where the stage's making left them, at 0
+  if (act.afterLevel && act.frames == 1) for (int i = 2; i < 8; i++) e.bgScroll[i] = 0;
   // the card's fade first: a stage's own tasks, such as Secret Base's spotlights, run after the card's and have the
   // last word on the display
   if (cardShows) titlecard_display();
@@ -746,7 +764,12 @@ void act_task(Task *t) {
   if (act.loadFrames) {
     // the next act after GoToNextLevel loads: black, with the results' band where a zone's second act comes on
     // (sub_80550F8). Then its first frame, whose palette animations are a step on already
-    if (--act.loadFrames) { titlecard_made(0); return; }
+    if (--act.loadFrames) {
+      titlecard_made(0);
+      // a new zone's first loading frame shows the act before's objects a last time
+      if (!(act.stage.level & 1) && act.loadFrames == 2) engine_show_oam(lastObjects);
+      return;
+    }
     // an act whose palette animations run from the frame that makes it has made them already
     if (!act.stage.row->runsFromFirstFrame) {
       start_palette_animations();
@@ -930,6 +953,9 @@ void act_start(int level, int cardSkip, int preFrames) {
   // act with water makes it there (CreateStageWaterTask)
   water_create(-1, 0);
   if (row->start) row->start();
+  // every task of the screen or the act before is gone, and with them their sprites' tiles: the card takes the
+  // heap's first
+  vram_reset();
   titlecard_start(level, ctx.character, comingOn);
   objects_start(level, act.stage.paletteCount > 0);
   if (row->runsFromFirstFrame) start_palette_animations();

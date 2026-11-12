@@ -134,7 +134,8 @@ void titlecard_start(int level, int character, int after) {
   card.p[PIECE_ZONE_JP].x = 360; card.p[PIECE_ZONE_JP].y = 114; card.p[PIECE_ZONE_JP].countNow = 4;
   card.p[PIECE_ZONE].x = 256; card.p[PIECE_ZONE].y = 128; card.p[PIECE_ZONE].countNow = 9;
 
-  card.frame = 0; card.done = 1; card.blank = 0; card.fading = 1;
+  // a stage with spotlights tells its card to leave the screen's fade alone (screenBlank), and its pieces stay see-through
+  card.frame = 0; card.done = 1; card.blank = act.stage.row->ownsWindows; card.fading = 1;
   card.level = 0; card.speed = CARD_FADE_SPEED; card.bldY = 0;
   // the fade's first step, as the card is made
   card.level = 96;
@@ -159,12 +160,13 @@ void titlecard_made(int first) {
   for (int i = 0; i < 8; i++) e.bgScroll[i] = 0;
   e.dispCnt = 0x3E40;
   e.winRegs[0] = e.winRegs[1] = 0x00F0; e.winRegs[2] = e.winRegs[3] = 0x00A0;
-  e.bldCnt = 0x3FFF; e.bldY = (uint16_t)card.bldY;
+  // the results' fade is still the one on the screen: black over every layer, and the sprites left as they are
+  e.bldCnt = 0x3FDF; e.bldY = (uint16_t)card.bldY;
   if (!act.stage.row->ownsBlend) e.bldAlpha = 0x0010;
-  e.winRegs[4] = 0x3F3F;
-  // the frame that makes the act still shows the results' sprites, with their fade, which leaves sprites out, and the
-  // new act's colours; from the next the card's own are there
-  if (first) { e.bldCnt = 0x3FDF; e.winRegs[5] = 0x1F; engine_keep_oam(); return; }
+  e.winRegs[4] = 0x3F3F; e.winRegs[5] = 0x1F;
+  // the frame that makes the act still shows the results' sprites, in the new act's colours; from the next the
+  // card's own are there
+  if (first) { engine_keep_oam(); return; }
   if (!card.comesOn) return;
   for (int i = 0; i < 8; i++) card_put(1, 0, 2, i * 32, CARD_BAND_Y, 0x80, 6, 1);
 }
