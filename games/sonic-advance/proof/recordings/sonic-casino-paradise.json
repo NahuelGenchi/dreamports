@@ -3204,8 +3204,5 @@
       "about": "The character select, which the Dreamport does not have yet: A picks Sonic, with the save the recording is about, which leads to the course select."
     }
   ],
-  "clip": {
-    "at": 2266,
-    "frames": 300
-  }
+  "clip": { "at": 6385, "frames": 300 }
 }

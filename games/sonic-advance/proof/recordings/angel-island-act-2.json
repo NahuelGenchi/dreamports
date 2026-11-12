@@ -2,7 +2,7 @@
   "about": "From power-on with Sonic having reached level 9: through the course select to Angel Island Zone act 2, then the whole act as Sonic, from its title card through the hang bars to Mecha Knuckles, who he beats, and on to the act's end.",
   "start": "unlocked=9&character=0&only=166",
   "frames": 15345,
-  "clip": {"at": 13600, "frames": 300},
+  "clip": { "at": 14955, "frames": 300 },
   "held": [
     [0,[]],
     [150,["A"]],
