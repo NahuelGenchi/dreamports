@@ -1618,10 +1618,10 @@ function start(launcher: HTMLElement) {
     return irisAnim.finished;
   }
 
-  // the selected game rises, drops through the ring, and the screen closes into it
+  // the selected game rises, drops into the curl of the mark's dolphin, and the screen closes into it
   let launchRun = 0;
   let leaving = false;
-  // what goes through the ring: the game in the row, or the picture on the game's page
+  // what drops into it: the game in the row, or the picture on the game's page
   let flyer: HTMLElement | null = null;
   async function launch(dlg: HTMLDialogElement, link: string) {
     if (state.launching) return;
@@ -1660,7 +1660,7 @@ function start(launcher: HTMLElement) {
     await lift
       .animate([{ transform: 'none' }, { transform: up }], { duration: 320, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'forwards' })
       .finished.catch(() => {});
-    // the mark has finished rising by now, so its ring can be measured
+    // the mark has finished rising by now, so the space its dolphin curls around can be measured
     await wait(150);
     if (!still()) return;
     const mouth = $('.t-mark-mouth', target).getBoundingClientRect();
