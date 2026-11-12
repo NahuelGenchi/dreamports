@@ -28,6 +28,10 @@ int actHudFlash = -1;
 // the HUD's zero-ring flash the act starts with: the character select hands over 1, a course select or a start
 // point the stage's own value (levels.js hudFlash)
 static int hud_flash(void) { return actHudFlash >= 0 ? actHudFlash : act.stage.hudFlash; }
+// and after the act before it, where the original's counter stands as the HUD starts
+enum { HUD_FLASH_AFTER = 1 };
+// the act being started follows the one before it (GoToNextLevel), which its title card shows
+static int comingOn;
 static int musicSync;
 void act_render_music_at_first_frame(void) { musicSync = 1; }
 static uint16_t holdColour; static int restoreColour;   // the menu's black for the act's first picture
@@ -440,11 +444,14 @@ static void hud_load(void) {
   // UI graphics 39, which the character select loads into sprite VRAM from tile 1 and nothing writes over before the act:
   // its tiles 19 and 20 are the two a zero-ring count reads past its string on its first frame (sub_8053BAC). The
   // Dreamport's recordings that skip the character select still find them there, but in an act whose row has them blank
-  if (act.stage.row->blankZeroTiles) memset(gba_vram + OBJ_VRAM + (HUD_WHITE - 64) * 32, 0, 2 * 32);
-  else {
-    uint32_t leftTiles, leftPalette;
-    ui_graphics(39, &leftTiles, &leftPalette, &layout);
-    copy_rom(leftTiles + 19 * 32, OBJ_VRAM + (HUD_WHITE - 64) * 32, 2 * 32);
+  // After the act before, Sonic's own frames have long been over them, and they stay his
+  if (!act.afterLevel) {
+    if (act.stage.row->blankZeroTiles) memset(gba_vram + OBJ_VRAM + (HUD_WHITE - 64) * 32, 0, 2 * 32);
+    else {
+      uint32_t leftTiles, leftPalette;
+      ui_graphics(39, &leftTiles, &leftPalette, &layout);
+      copy_rom(leftTiles + 19 * 32, OBJ_VRAM + (HUD_WHITE - 64) * 32, 2 * 32);
+    }
   }
   for (int i = 0; i < 16; i++) e.objPalette[6 * 16 + i] = (uint16_t)rom_u16(fontPalette + i * 2);
   for (int i = 0; i < 16; i++) e.objPalette[i] = (uint16_t)rom_u16(facePalette + i * 2);
@@ -492,11 +499,12 @@ void act_stage_results(void) {
 }
 
 // GoToNextLevel, once the save is written: the next act, made inside the task as the course select makes one, with the
-// score, the lives and the game's random numbers carried over (GameStageStart leaves them). Its first frame runs at
-// once, then it loads for NEXT_LEVEL_LOAD frames (act_task). A next act that isn't in C yet stops the game there, on
+// score, the lives and the game's random numbers carried over (GameStageStart leaves them). Its first frame comes
+// once it has loaded (act_task). A next act that isn't in C yet stops the game there, on
 // the black the original's screen is while its stage loads, as the front end does (front.c), rather than load with
 // another act's music and background
-enum { NEXT_LEVEL_LOAD = 2 };
+static void start_music(void);
+void act_task(Task *t);
 static int nextLevel;
 // the frame after, once the screen has taken the black, the game stops
 static void stop_on_black(Task *t) { destroy_task(t); ctx.done = 1; }
@@ -513,13 +521,22 @@ static void next_act(void) {
   int lives = act.lives, score = act.score;
   // gPseudoRandom goes on from the act before, whichever of the C's two sequences that act drew from
   uint32_t seed = act_random_state();
+  comingOn = 1;
   act_start(nextLevel, -1, 0);
+  comingOn = 0;
   act.lives = lives; act.score = score;
   act_random_seed(seed);
   act.afterLevel = 1;
   act.musicStarts = 1;
-  act_frame_now();
-  act.stallLoad = 0; act.loadFrames = NEXT_LEVEL_LOAD;
+  // the frame the stage is made on still shows the results' last sprites, in the new act's colours; none of its own
+  // tasks has run
+  start_music();
+  if (act.task) destroy_task(act.task);
+  act.task = create_task(act_task, NULL, 0x0F00, 0, NULL);
+  // how long the stage takes the original to load: a frame for a zone's second act, two for a new zone
+  act.stallLoad = 0; act.loadFrames = nextLevel & 1 ? 2 : 3;
+  titlecard_made(1);
+  rings_spin_on();
 }
 // m4aSoundVSyncOn once the save is written, then the next act
 static void next_act_after_write(void) {
@@ -528,9 +545,8 @@ static void next_act_after_write(void) {
 }
 
 // GoToNextLevel: every task goes, the act's objects with their sprites' VRAM, the queues stop, the music stops, and
-// the save is written (the screen keeping its frame while the flash takes it), before the next act starts. Against the
-// original, the write and the next stage's start take a frame more than WRITE_FRAMES here for an act in C, whose first
-// frame has no V-blank; the black of one that isn't shows on the frame the write ends, as the original's stage start's
+// the save is written (the screen keeping its frame while the flash takes it), before the next act starts on the
+// frame the write ends; the black of an act that isn't in C shows on that frame too, as the original's stage start's
 static void go_to_next_level(void) {
   nextLevel = act.stage.level + 1;
   destroy_tasks(0, 0xFFFF);
@@ -540,7 +556,7 @@ static void go_to_next_level(void) {
   // the sound engine is off while the save is written (m4aSoundVSyncOff), so its frames stop with the screen's
   stop_all_songs();
   sound_vsync_off();
-  if (save_write()) engine_stall(level_in_c(nextLevel) ? WRITE_FRAMES + 1 : WRITE_FRAMES, next_act_after_write);
+  if (save_write()) engine_stall(WRITE_FRAMES, next_act_after_write);
   else next_act_after_write();
 }
 
@@ -587,7 +603,9 @@ void act_hold_camera(int x, int y) { act.cam.x = x; act.cam.y = y; }
 // the HUD starts: its zero-ring flash from the act's own value, or where a counter that flashes in sixteens begins
 static void hud_begin(void) {
   act.hud.active = 1;
-  act.hud.flash = act.stage.row->zeroFlashesInSixteens ? (act.stage.hudFlash + 7) & 31 : hud_flash();
+  const Level *row = act.stage.row;
+  act.hud.flash = row->zeroFlashesInSixteens ? (act.stage.hudFlash + 7) & 31
+    : act.afterLevel ? HUD_FLASH_AFTER : hud_flash();
 }
 
 static void act_frame(void) {
@@ -619,7 +637,8 @@ static void act_frame(void) {
   if (act.frames > 0) objects_run_before_camera();
   if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
   // UpdateCamera's fnBgUpdate
-  if (row->cameraMoved) row->cameraMoved(camRuns);
+  // after the act before, the stage's background update runs from the act's second frame, a frame before the camera
+  if (row->cameraMoved) row->cameraMoved(camRuns || (act.afterLevel && act.frames > 0));
   if (camRuns || (row->runsFromFirstFrame && act.frames > 0)) { if (row->tilesShownLate) late_tiles_step(); else animate_stage_tiles(); }
   // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts;
   // those from the HUD's priority on run after it, below
@@ -719,11 +738,14 @@ static void act_loaded(void) {
 void act_task(Task *t) {
   (void)t;
   if (act.loadFrames) {
-    // the next act after GoToNextLevel loads: on these frames the act's own tasks wait, but those at the objects'
-    // priority already run, its palette animations from the first, and the screen keeps the act's first frame
-    if (act.loadFrames-- == NEXT_LEVEL_LOAD) start_palette_animations();
-    objects_run_early();
-    return;
+    // the next act after GoToNextLevel loads: black, with the results' band where a zone's second act comes on
+    // (sub_80550F8). Then its first frame, whose palette animations are a step on already
+    if (--act.loadFrames) { titlecard_made(0); return; }
+    // an act whose palette animations run from the frame that makes it has made them already
+    if (!act.stage.row->runsFromFirstFrame) {
+      start_palette_animations();
+      for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
+    }
   }
   if (act.stallLoad) {
     // the frame the act takes to load: it skips its V-blank, so the screen and the palette keep the frame before
@@ -902,7 +924,7 @@ void act_start(int level, int cardSkip, int preFrames) {
   // act with water makes it there (CreateStageWaterTask)
   water_create(-1, 0);
   if (row->start) row->start();
-  titlecard_start(level, ctx.character);
+  titlecard_start(level, ctx.character, comingOn);
   objects_start(level, act.stage.paletteCount > 0);
   if (row->runsFromFirstFrame) start_palette_animations();
   if (act.fromStartPoint) {

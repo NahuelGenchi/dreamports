@@ -278,6 +278,9 @@ void clear_oam(void) {
   e.oamFreeIndex = 0;
   memset(orderStart, 0xFF, sizeof orderStart); memset(orderEnd, 0xFF, sizeof orderEnd);
 }
+static int keepOam;
+/** This frame's V-blank leaves the screen's sprites as they are. */
+void engine_keep_oam(void) { keepOam = 1; }
 static void hide_oam(uint32_t i) { e.oamBuffer[i * 4] = e.oamBuffer[i * 4 + 1] = e.oamBuffer[i * 4 + 2] = 0x200; }
 static void process_oam(void) {
   uint32_t dst = 0;
@@ -408,8 +411,9 @@ static void vblank(void) {
     gba_write(at + 12, (uint16_t)a->y); gba_write(at + 14, (uint16_t)((uint32_t)a->y >> 16));
   }
   if (e.flags & FLAGS_HBLANK_COPY) copy_hblank_entry(e.primary);
-  process_oam();
-  memcpy(gba_oam, e.oamBuffer, sizeof e.oamBuffer);
+  // a frame whose tasks were all destroyed before any drew keeps the sprites of the frame before (engine_keep_oam)
+  if (keepOam) { keepOam = 0; clear_oam(); }
+  else { process_oam(); memcpy(gba_oam, e.oamBuffer, sizeof e.oamBuffer); }
   // UpdateScreenDma's V-blank callbacks: last frame's run now, after the registers, and this frame's wait for the next
   if (vblankIntr) vblankIntr();
   vblankIntr = e.vblankCallback;

@@ -141,7 +141,8 @@ void water_drowned_bubbles(void);
 void water_countdown(int n);
 void water_drowning_music(void);
 void water_drowning_music_stop(void);
-void titlecard_start(int level, int character);
+void titlecard_start(int level, int character, int after);
+void titlecard_made(int first);
 int titlecard_run(int pressed);
 void titlecard_display(void);
 extern int actHudFlash;
@@ -149,6 +150,7 @@ void act_hold_black(void);
 void act_frame_now(void);
 /** The rings' animation doesn't step on the frame a menu hands over to the act (rings.c). */
 void rings_skip_first_update(void);
+void rings_spin_on(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_song_playing(void);
