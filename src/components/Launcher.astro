@@ -53,12 +53,14 @@ const making = games.filter((game) => beingMade(game.data));
 const github = await readMaking();
 const githubOf = (game: Game) => github?.[game.data.game];
 const freeOf = (game: Game) => makeView(game.data, githubOf(game)).free;
-// A row holds the systems its games are for, in the order their newest games came, then every game, and the launcher
-// shows one or the other (src/scripts/launcher.ts). In the Make row no system counts as unfinished: it shows every
-// Dreamport being made.
+// A row holds the systems its games are for, then every game, both in alphabetical order, and the launcher shows one or
+// the other (src/scripts/launcher.ts). In the Make row no system counts as unfinished: it shows every Dreamport being made.
+const inOrder = new Intl.Collator('en', { numeric: true, sensitivity: 'base' }).compare;
+// a title without the word every one of them ends in, so that a game comes before its sequels
+const named = (game: Game) => game.data.title.replace(/ Dreamport$/, '');
 const bySystem = (list: Game[], make = false): Place[] => {
-  const games = list.map((game) => ({ game, system: systemFor(game) }));
-  const systems = [...new Map(games.map(({ system }) => [system.id, system])).values()];
+  const games = list.map((game) => ({ game, system: systemFor(game) })).sort((a, b) => inOrder(named(a.game), named(b.game)));
+  const systems = [...new Map(games.map(({ system }) => [system.id, system])).values()].sort((a, b) => inOrder(a.name, b.name));
   const unfinished = (id: string) => !make && !games.some((g) => g.system.id === id && fullyPorted(g.game));
   return [
     ...systems.map((system): Place => ({ system: { ...system, unfinished: unfinished(system.id) }, make })),
