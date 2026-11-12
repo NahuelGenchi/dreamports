@@ -770,7 +770,7 @@ COST(STAGE_OBJECT_PLATFORM, 39)   // or $D709 to $D6C1, for a moving platform: i
 COST(STAGE_OBJECT_STATE_KEPT, 7)  // or $D6BC to $D6C1, for one whose state is left as it was
 COST(STAGE_OBJECT_FILLED, 95)     // $D6C1, and back
 COST(GAME_ROUND_DANGERS, 15)      // $D583 to bank 2's $8400
-COST(DANGERS_OTHERS, 139)         // $8400 to $8415: its seven calls, and the five routines after the knights' with nothing to do
+COST(DANGERS_OTHERS, 118)         // $8400 to $8415: its seven calls, and the four routines with nothing to do
 
 // ---- the zombies, bank 2's $8416 and $F7BE (enemies.c)
 COST(ZOMBIES_OTHER_STAGE, 15)     // sub_8416, and back: a place with no zombies,
@@ -1285,3 +1285,64 @@ COST(GROUND_HALF_BLOCK_77_OPEN, 22) // or $77, by $E40A: its right half,
 COST(GROUND_HALF_BLOCK_77_SOLID, 21) // or its left
 COST(GROUND_HALF_BLOCK_OTHER_SET_76, 9) // and outside the first set of stages
 COST(GROUND_HALF_BLOCK_OTHER_SET_77, 5)
+
+// ---- the forest's enemy, bank 2's $8610 and kind 4, bank 4's $A66A (forest.c)
+COST(FOREST_OTHER_PART, 14)       // sub_8610, and back: from the stage's fourth part on,
+COST(FOREST_BEFORE, 21)           // or with the view before the tenth screen,
+COST(FOREST_PAST, 24)             // or past the twelfth
+COST(FOREST_IN_RANGE, 19)         // or to $8621
+COST(FOREST_NOT_YET, 14)          // $8621, and back: the count isn't down yet,
+COST(FOREST_COMES, 17)            // or to the call of sub_DA18
+COST(FOREST_NONE_FREE, 9)         // $862F, and back: no object is free
+COST(FOREST_SET_UP, 42)           // $862F to the call of sub_84D7
+COST(FOREST_PLACED, 58)           // $8650 to the call of sub_88F6
+COST(FOREST_DEAD, 5)              // $A66D to $F6F6
+COST(FOREST_HITS_READ, 7)         // $A66D to $A675
+COST(FOREST_KILLED, 13)           // $A675 to sub_ED51, by sub_F7B4
+COST(FOREST_KILLED_SCORE, 50)     // $A67A to sub_D8FC
+COST(FOREST_ALIVE, 16)            // $A675 to $A698
+COST(FOREST_TURNS, 5)             // $A698 to $A778
+COST(FOREST_WAIT_COUNTED, 9)      // $A6A0 to $A6A5
+COST(FOREST_WAITS, 9)             // and back,
+COST(FOREST_STARTS, 68)           // or $A6A5 to sub_FA87, with sub_F30D and sub_F32E
+COST(FOREST_STARTS_RIGHT, 9)      // $A6BA, and back,
+COST(FOREST_STARTS_LEFT, 41)      // or with sub_F309
+COST(FOREST_SOUND_SET, 13)        // $A6A0 to sub_F321
+COST(FOREST_OUT_OF_VIEW, 8)       // $A6D3 to $A6DA
+COST(FOREST_GONE, 5)              // to sub_F708, when it's leaving
+COST(FOREST_RISE_COUNTED, 15)     // $A6E5 to $A6EF
+COST(FOREST_IS_UP, 25)            // $A6EF, with sub_F311, and back
+COST(FOREST_RISE_SHAPE, 24)       // $A6EF to $A702
+COST(FOREST_RISE_FIRST_SHAPE, 9)  // and back,
+COST(FOREST_RISE_SHAPE_LEFT, 21)  // or with the shape for the left
+COST(FOREST_UP_BEGINS, 24)        // $A6E5 to sub_F576, by $A713
+COST(FOREST_UP_SHAPE, 27)         // sub_F576, and back
+COST(FOREST_UP_SHAPE_LEFT, 15)    // $A721 to $A72C, with the shape for the left
+COST(FOREST_STATE_READ, 6)        // $A72C to $A731
+COST(FOREST_COUNT_READ, 8)        // a branch not taken, and its count read and tested
+COST(FOREST_TURN_BEGINS, 35)      // $A738 to $A752
+COST(FOREST_TURN_HEADS_DOWN, 9)   // $A752 to $A759
+COST(FOREST_ATTACK_OVER, 35)      // $A763 to $A76D, with sub_F33E
+COST(FOREST_MOVES, 8)             // $A76D to sub_F03E
+COST(FOREST_TESTS_BEGIN, 29)      // $A7F4 to sub_F5A0
+COST(FOREST_TESTS_END, 19)        // $A808, and back
+COST(FOREST_ATTACK_COUNT, 9)      // $A815 to $A853, when it's readied
+COST(FOREST_ATTACK_WAITS, 8)      // and back, three rounds in four
+COST(FOREST_LOOK_COUNTED, 20)     // $A815 to $A822
+COST(FOREST_LOOK_NOT_YET, 9)      // and back,
+COST(FOREST_LOOKS, 19)            // or $A822 to sub_F687
+COST(FOREST_AHEAD_RIGHT, 9)       // $A839 to $A849: Arthur is on its right,
+COST(FOREST_NOT_AHEAD, 9)         // and it isn't heading right: back
+COST(FOREST_AHEAD_LEFT, 8)        // $A839 to $A840: on its left,
+COST(FOREST_NOT_AHEAD_LEFT, 11)   // and it isn't heading left
+COST(FOREST_READIES, 23)          // $A84B, with sub_F319, and back
+COST(FOREST_TURN_MOVES, 8)        // $A778 to sub_F03E
+COST(FOREST_TURN_COUNTED, 13)     // $A77D to $A785
+COST(FOREST_TURN_ENDS, 53)        // $A785 to $A7F4, by $A7C8: the turn is over,
+COST(FOREST_TURN_ENDS_BACK, 55)   // the same for the turn back
+COST(FOREST_TURN_SHAPE_1, 16)     // $A785 to $A798: the four shapes of the turn
+COST(FOREST_TURN_SHAPE_2, 18)
+COST(FOREST_TURN_SHAPE_3, 26)     // to $A7B7
+COST(FOREST_TURN_SHAPE_4, 24)
+COST(FOREST_TURN_SHAPE_FLIPPED, 18)      // $A79B to $A7C5, with the shape for the other side,
+COST(FOREST_TURN_SHAPE_BACK_FLIPPED, 15) // or $A7BA to $A7C5

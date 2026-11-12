@@ -147,10 +147,11 @@
   ],
   "unmatched": [
     ["CROW_DEAD","src/costs.h:861"],
+    ["FOREST_DEAD","src/costs.h:1299"],
     ["KNIGHT_DEAD","src/costs.h:1255"],
     ["PLANT_DEAD","src/costs.h:887"],
     ["sub_C2A1","src/main.c:110"],
-    ["sub_CD9B","src/flow.c:488"],
+    ["sub_CD9B","src/flow.c:490"],
     ["sub_DDA1","src/arthur.c:117"],
     ["sub_DDB2","src/arthur.c:179"],
     ["sub_DDCF","src/arthur.c:543"],
@@ -162,6 +163,7 @@
     ["sub_F32E","src/costs.h:466"],
     ["sub_F332","src/costs.h:475"],
     ["sub_F336","src/costs.h:1128"],
+    ["sub_F33E","src/costs.h:1325"],
     ["sub_F342","src/costs.h:507"],
     ["sub_F88C","src/costs.h:837"],
     ["ZOMBIE_DEAD","src/costs.h:803"]

@@ -212,6 +212,13 @@ void flier_shot(uint8_t object);
 /** Bank 2's $84E0: the flying knights that come on the first stage's last screens; bank 4's $A530, kind 3: one of them (enemies.c). */
 void knights_come(uint8_t *x);
 void knight(uint8_t object);
+/** sub_88F6: every sixth of the enemies that come by themselves carries a pot (enemies.c). */
+void sixth_carries_a_pot(uint8_t object, uint8_t *x);
+/** sub_F687: whether Arthur is within the box in $26 and $27 around an object that's shown (flier.c). */
+int arthur_near(uint8_t object);
+/** Bank 2's $8610 and bank 4's $A66A, kind 4: the enemy of the first stage's forest (forest.c). */
+void forest_enemies_come(uint8_t *x);
+void forest_enemy(uint8_t object);
 /** sub_F5A0: what touches an enemy this round: the weapon that hit it, which is gone and counted at $0647, or 0, with
  *  whether Arthur touched it and is hit. */
 uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched);

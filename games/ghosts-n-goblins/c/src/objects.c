@@ -595,6 +595,7 @@ wait objects_task(void) {
         case 0x01: plant(object); break;
         case 0x02: flier(object); break;
         case 0x03: knight(object); break;
+        case 0x04: forest_enemy(object); break;
         case 0x0E: platform(object); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object); break;

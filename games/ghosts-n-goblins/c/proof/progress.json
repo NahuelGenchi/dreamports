@@ -16,6 +16,12 @@
       "differs": [],
       "functions": []
     },
+    "forest-enemy": {
+      "frames": 5690,
+      "matched": 5690,
+      "differs": [],
+      "functions": []
+    },
     "game-start": {
       "frames": 2440,
       "matched": 2440,

@@ -31,7 +31,7 @@ static uint8_t flag(uint8_t object, uint8_t which) {
 }
 
 // sub_F687, with its call: whether Arthur is within the box in $26 and $27 around it, while it's shown.
-static int arthur_near(uint8_t object) {
+int arthur_near(uint8_t object) {
   if (object >= 0x10) took(READ_PAST_PAGE);
   if (!(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN)) { took(NEAR_NOT_SHOWN); return 0; }
   took(NEAR_LOOKED_AT);
