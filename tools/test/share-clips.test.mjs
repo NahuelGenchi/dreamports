@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { clipFiles, clipLines, foreignLinks, keepClip, missingLines, savedLines, stillGood } from '../share.mjs';
+import { clipFiles, clipLines, foreignLinks, keepClip, missingLines, savedLines, seenFirst, stillGood } from '../share.mjs';
 import { recordingHash } from '../lib/clips.mjs';
 
 const COMMIT = 'a68edcf'.padEnd(40, '0');
@@ -129,6 +129,15 @@ test('a clip shared before that breaks a rule now leaves the branch\'s clips', (
   assert.deepEqual(kept.clips.map(c => c.key), ['good']);
   assert.deepEqual(stillGood(saved, 'feat/1-a', COMMIT, 'c'.repeat(40), () => Buffer.from(text)).clips, []);
   assert.equal(stillGood(saved, 'feat/2-b', COMMIT, null), saved);
+});
+
+test('a clip of a change that\'s only heard leaves the branch\'s clips once one shows a change that can be seen', () => {
+  const measures = changed => ({ measures: { changed } });
+  let saved = keepClip(null, 'feat/1-a', 'menu', 'm', measures({ frame: 2267, why: 'w', heard: true }));
+  assert.deepEqual(seenFirst(saved).clips.map(c => c.key), ['menu']);
+  saved = keepClip(saved, 'feat/1-a', 'act', 'a', measures({ frame: 4326, why: 'w' }));
+  assert.deepEqual(seenFirst(saved).clips.map(c => c.key), ['act']);
+  assert.equal(seenFirst(null), null);
 });
 
 test('a text linking a clip share didn\'t make for the branch is caught', () => {
