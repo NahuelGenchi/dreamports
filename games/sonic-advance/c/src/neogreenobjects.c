@@ -308,7 +308,34 @@ ActTask *half_pipe_spawn(Slot *slot) {
 
 // --- the grind rails (grindrails.js) --------------------------------------------------------------------------------------------
 typedef struct { Object o; } GrindRail;
-static int grinding;
+enum { ANIM_GRIND_SPARKS = 749, ORDER_GRIND_SPARKS = 8 };
+
+// Task_GrindEffect: the sparks at his feet, drawn and stepped only on the frames his last animation was the steep grind
+static Sprite grindSparks;
+static int grindSparksOn;
+
+static void grind_sparks_stop(void) {
+  if (!grindSparksOn) return;
+  vram_free(grindSparks.graphics.dest);
+  grindSparksOn = 0;
+}
+static int grind_sparks_run(ActTask *t) {
+  (void)t;
+  Player *p = &act.player;
+  if (!grindSparksOn || !p->grinding) { grind_sparks_stop(); return 0; }
+  if (p->animName != PS_GRIND_STEEP) return 1;
+  if (p->facing > 0) grindSparks.frameFlags |= SPRITE_X_FLIP;
+  else grindSparks.frameFlags &= ~(uint32_t)SPRITE_X_FLIP;
+  sprite_step(&grindSparks);
+  object_draw(&grindSparks, fl(p->x), fl(p->y) + p->offsetY);
+  return 1;
+}
+static void grind_sparks_start(void) {
+  if (grindSparksOn) return;
+  object_sprite(&grindSparks, ANIM_GRIND_SPARKS, 0, 0, ORDER_GRIND_SPARKS, PRIORITY_FRONT, 0, 0);
+  grindSparksOn = 1;
+  if (!act_task_add(grind_sparks_run, NULL, NULL, PRIORITY_SCATTER)) grind_sparks_stop();
+}
 
 static int grind_run(ActTask *t) {
   GrindRail *g = (GrindRail *)t->data;
@@ -318,27 +345,32 @@ static int grind_run(ActTask *t) {
   int x = fl(p->x), y = fl(p->y);
   int inside = x >= en->e.x && x <= en->e.x + w && y >= en->e.y && y <= en->e.y + h;
   if (en->e.kind == 19) {
-    if (!p->dead && inside && !grinding && p->ysp >= 0 && p->xsp > 0) {
+    if (!p->dead && inside && !p->grinding && p->ysp >= 0 && p->xsp > 0) {
       if (p->xsp < 0.5) p->xsp = 0.5;
-      grinding = 1;
+      p->grinding = 1;
       p->layer ^= 1;
+      p->front = 1;
       play_song(SE_GRIND_START);
+      grind_sparks_start();
     }
-  } else if (!p->dead && inside && grinding) {
+  } else if (!p->dead && inside && p->grinding) {
     int far = x > en->e.x + (w >> 1);
     if (far || (e.input & KEY_A)) {
       p->ysp = far ? -4.875 : -7.0;
       stop_song(SE_GRIND_START);
       play_song(SE_GRIND_END);
       player_end_attack(p);
-      p->state = far ? PS_SPIN : PS_HURT;
+      p->state = far ? PS_SPRING : PS_RAIL_JUMP;
       p->air = 1;
       p->onObject = NULL;
-      grinding = 0;
+      p->grinding = 0;
+      p->front = 0;
       p->layer ^= 1;
+      grind_sparks_stop();
     }
   }
-  if (off_cam(en->e.x, en->e.y)) { if (grinding) { grinding = 0; p->layer ^= 1; } return 0; }
+  // the original leaves a rail part out of range without letting go of Sonic: the rail's end does that
+  if (off_cam(en->e.x, en->e.y)) return 0;
   return 1;
 }
 

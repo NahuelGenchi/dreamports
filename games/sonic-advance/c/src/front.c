@@ -7,6 +7,8 @@
 #include "page.h"
 #include "act.h"
 
+void dp_sound_skip_frames(int frames);
+
 // the frames after power-on before the game starts: the console is still starting up, the screen white (forced blank),
 // and gFrameCount isn't counted yet (VBlankIntr, which counts it, starts with GameInit)
 #define STARTUP_FRAMES 6
@@ -60,6 +62,12 @@ static void apply_start_point(void) {
 void front_start_game(void) {
   apply_start_point();
   if (ctx.select) { create_character_select(ctx.character); return; }
+  // the frames the original's character select ran, which the start point names as `only`: its sound engine ran them
+  int only = (int)gba_start_number("only", 0);
+  if (only > 0) {
+    gba_sound_frames_gone_by(only);
+    dp_sound_skip_frames(only);
+  }
   if (ctx.gameMode == GAME_MODE_TIME_ATTACK || save_unlocked_level(ctx.character) != 0) create_course_select();
   else front_play(-1);
 }
@@ -97,7 +105,10 @@ void front_step(uint16_t keys) {
     engine_run();
     link_frame_done();
   } else if (startingUp > 0) {
-    if (--startingUp == 0) power_on(0);
+    if (--startingUp == 0) {
+      sound_vsync_on();
+      power_on(0);
+    }
   } else if (!ctx.done) {
     e.keys = keys;
     engine_run();

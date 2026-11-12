@@ -9,7 +9,7 @@
 // Sonic's sound effects (sound/songs.js)
 enum {
   SE_SPIN = 109, SE_SPIN_DASH_RELEASE = 110, SE_SLIDE = 111, SE_AIR_DASH = 112, SE_INSTA_SHIELD = 113, SE_BRAKE = 115,
-  SE_JUMP = 116, SE_SOMERSAULT = 121,
+  SE_JUMP = 116, SE_SOMERSAULT = 121, SE_GRINDING = 114,
 };
 
 // physics (PHYSICS in engine/constants.js), in pixels a frame
@@ -396,11 +396,45 @@ static void follow_ground(Player *p) {
   sensors_ground(p);
 }
 
+// jumping off a grind rail (sub_8044434), if there are at least 4 px of room that way on the layer he came from, back on
+// which he lands: straight up from the rail as fast as a jump, keeping his X speed
+static int try_rail_jump(Player *p, const Control *c) {
+  if (!c->jumpPressed) return 0;
+  p->layer ^= 1;
+  if (sensors_clearance(p, sensors_act_angle(p) + 0x80) < ROOM_TO_JUMP) { p->layer ^= 1; return 0; }
+  stop_song(SE_GRINDING);
+  p->air = 1; p->jumped = 1; p->pushing = 0; p->grinding = 0; p->state = PS_SPIN;
+  p->ysp = (q8(jump_speed(p)) * sin8((p->rotation - 0x40) & 0xFF) >> 8) / 256.0;
+  play_song(SE_JUMP);
+  p->front = 0;
+  curl(p);
+  return 1;
+}
+
+// grinding down a rail (sub_80449D8): down or right (even with left) pulls him down its slope at 5/32 of the slope's
+// sine, more than a walk, left brakes, and he always slows down, but never below 0.75 px a frame
+static void grind_step(Player *p, const Control *c) {
+  if ((c->down || c->dir > 0) && ((p->rotation + 0x60) & 0xFF) < 0xC0) p->gsp = (q8(p->gsp) + ((sin8(p->rotation) * 5) >> 5)) / 256.0;
+  int g = q8(p->gsp);
+  if (c->dir < 0) { int braked = g - 8; g = braked > 0xC0 ? braked : 0xC0; }
+  int slowed = g - 8;
+  p->gsp = (slowed > 0xC0 ? slowed : 0xC0) / 256.0;
+  p->state = PS_GRIND;
+  along_surface(p);
+}
+
 static void ground_step(Player *p, const Control *c) {
   if (p->curled) {
     if (try_jump(p, c)) return;
     roll_slope(p);
     roll_step(p, c);
+  } else if (p->grinding) {
+    if (try_rail_jump(p, c)) return;
+    grind_step(p, c);
+    bounds(p);
+    move(p);
+    follow_ground(p);
+    return;
   } else if (p->attack != 0) {
     slope(p);
     attack_step(p, c);
@@ -523,6 +557,12 @@ void player_knock_aside(Player *p, double xsp, double ysp) {
   p->onObject = NULL;
   p->state = PS_HURT;
   uncurl(p);   // the feet stay put
+  // on a grind rail he leaves it for the layer he came from, unless that has less than 4 px of room above him
+  if (p->grinding) {
+    p->layer ^= 1;
+    if (sensors_clearance(p, p->rotation + 0x80) < ROOM_TO_JUMP) p->layer ^= 1;
+    else { p->grinding = 0; p->front = 0; }
+  }
 }
 
 // dead (Task_PlayerMain's death block, then Task_PlayerDied and Task_PlayerHandleDeath): on the first frame he stops moving
@@ -664,7 +704,9 @@ static const uint16_t ANIMATIONS[PA_COUNT][2] = {
   [PS_CAROUSEL_RIDE] = {40, 0}, [PS_SWING_ROPE] = {40, 1}, [PS_HOOK] = {43, 0}, [PS_ACT_CLEAR_POSE] = {23, 0},
   [PS_HALF_PIPE_LOW] = {36, 0}, [PS_HALF_PIPE_MID] = {36, 1}, [PS_HALF_PIPE_HIGH] = {36, 2},
   [PS_BREATHE] = {17, 0}, [PS_FLOAT] = {42, 0},
+  [PS_GRIND] = {44, 0}, [PS_GRIND_STEEP] = {44, 1}, [PS_RAIL_JUMP] = {45, 0},
   [PS_HANG] = {41, 0}, [PS_HANG_MOVE] = {41, 1},
+  [PS_REACT] = {24, 0},
   [PS_GRABBED] = {98, 0},
   [PS_MOON_GAZE] = {397, 0}, [PS_MOON_TRANSFORM] = {398, 0}, [PS_MOON_FLY] = {399, 0},
 };
@@ -691,6 +733,10 @@ static int pick_animation(Player *p, const PlayerInput *in) {
       p->sprite.animSpeed = (uint8_t)walk_cycle_speed(speed);
       return PS_WALK;
     case PS_BRAKE: return speed < BRAKE_TURN_SPEED ? PA_BRAKE_TURN : PS_BRAKE;
+    case PS_GRIND:
+      if (!((p->rotation + 0x20) & 0xC0)) return PS_GRIND;
+      p->facing = 1;
+      return PS_GRIND_STEEP;
     case PS_HALF_PIPE_LOW: case PS_HALF_PIPE_MID: case PS_HALF_PIPE_HIGH:
       p->sprite.animSpeed = (uint8_t)walk_cycle_speed(speed);
       return p->state;
@@ -795,7 +841,7 @@ void player_draw(Player *p, int camX, int camY) {
   if (!rotated) p->drawRotation = 0;
   else if (p->state != PS_MARBLE_TRACK) p->drawRotation = p->rotation << 2;
   int sx = (int)__builtin_floor(p->x) - camX, sy = (int)__builtin_floor(p->y) - camY;
-  int priority = p->death != PLAYER_ALIVE ? 1 : p->prio;
+  int priority = p->death != PLAYER_ALIVE || p->front ? 1 : p->prio;
   s->frameFlags &= ~(SPRITE_PRIORITY | SPRITE_X_FLIP | SPRITE_Y_FLIP | SPRITE_ROT_SCALE | SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE);
   s->frameFlags |= (uint32_t)priority << 12;
   if (rotated) {

@@ -65,7 +65,11 @@ ActTask *leon_spawn(Slot *slot) {
   l->o.slot = slot;
   l->o.x = slot->e.x;
   l->v = -WALK;
-  l->rest = REST_LEFT_IN_MEMORY;
+  if (act.stage.level == LEVEL_ANGEL_ISLAND_2) {
+    if (slot->e.x == 2560 && slot->e.y == 720) l->rest = 60;
+    else if (slot->e.x == 3832 && slot->e.y == 1232) l->rest = 0;
+    else l->rest = REST_LEFT_IN_MEMORY;
+  } else l->rest = REST_LEFT_IN_MEMORY;
   enemy_sprite(&l->o.sprite, ANIM_LEON, VARIANT_WALK, VARIANT_TURN, ENEMY_ORDER);
   return object_task(&l->o, leon_run, PRIORITY_OBJECTS);
 }

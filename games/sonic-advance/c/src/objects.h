@@ -63,6 +63,7 @@ typedef ActTask *(*Spawn)(Slot *slot);
 
 // the kinds built (the interactable kinds' numbers are in their own files)
 ActTask *spring_spawn(Slot *slot);
+ActTask *hidden_spring_spawn(Slot *slot);   // 108
 ActTask *spikes_spawn(Slot *slot);
 ActTask *hiding_spikes_spawn(Slot *slot);
 ActTask *platform_spawn(Slot *slot);
@@ -108,6 +109,7 @@ ActTask *lift_spawn(Slot *slot);              // 88
 ActTask *float_spawn(Slot *slot);             // 90
 ActTask *boulder_spawner_spawn(Slot *slot);   // 92
 ActTask *run_wheel_spawn(Slot *slot);         // 86
+ActTask *mecha_knuckles_spawn(Slot *slot);    // 26
 ActTask *forced_slide_spawn(Slot *slot);      // 46
 ActTask *shrub_spawn(Slot *slot);             // 30
 ActTask *mini_loop_spawn(Slot *slot);         // 34 to 38

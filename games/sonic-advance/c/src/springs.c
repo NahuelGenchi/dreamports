@@ -150,6 +150,71 @@ static int spring_run(ActTask *t) {
   return 1;
 }
 
+// --- Angel Island's hidden springs (spring_hiding.c, kind 108) -------------------------------------------------------------
+// A spring that shows itself only while it launches. Whenever Sonic's body touches its box it throws him up as an up spring
+// does, at d1 * 64 / 256 px a frame, and plays its launch animation where it stood.
+typedef struct { Object o; int d0, launching; } HiddenSpring;
+
+static void hidden_throw(HiddenSpring *h, Player *p) {
+  p->onObject = NULL; p->air = 1;
+  player_end_attack(p);
+  p->pushing = 0; p->halfPipe = 0; p->airLock = 0;   // Player_TransitionCancelFlyingAndBoost
+  p->state = h->d0 & 1 ? PS_SPRING_RISE : PS_SPRING;
+  p->animRestart = 1;
+  player_stand_up(p);
+}
+
+// sub_8095224: every frame, while his body is in its box, it throws him up again and starts its launch over
+static int hidden_hit(HiddenSpring *h, Player *p) {
+  Sprite *s = &h->o.sprite;
+  const Entity *e = &h->o.slot->e;
+  const Hitbox *hb = object_box(s, 0);
+  Hitbox body = collide_body(p);
+  if (p->dead || p->carried || !hb ||
+      !collide_overlap(e->x, e->y, hb, (int)__builtin_floor(p->x), (int)__builtin_floor(p->y), &body)) return 0;
+  player_land(p);
+  p->ysp = -((s8(e->d[1]) << 6) / 256.0);
+  hidden_throw(h, p);
+  sprite_start(s, 1);
+  play_song(SE_SPRING);
+  return 1;
+}
+
+static int hidden_spring_run(ActTask *t) {
+  HiddenSpring *h = (HiddenSpring *)t->data;
+  Sprite *s = &h->o.sprite;
+  const Entity *e = &h->o.slot->e;
+  if (!h->launching) {
+    // its launch's first frame shows on the next one
+    h->launching = hidden_hit(h, &act.player);
+    if (off_cam(e->x, e->y)) return 0;
+    return 1;
+  }
+  hidden_hit(h, &act.player);
+  if (sprite_step(s)) {
+    h->launching = 0;
+    sprite_start(s, 0);
+    sprite_step(s);
+  }
+  if (off_cam(e->x, e->y)) return 0;
+  object_draw(s, e->x, e->y);
+  return 1;
+}
+
+/** CreateEntity_Spring_Hiding: it waits out of sight with its first frame's box, and shows its launch */
+ActTask *hidden_spring_spawn(Slot *slot) {
+  HiddenSpring *h = OBJECT_NEW(HiddenSpring);
+  if (!h) return NULL;
+  const Entity *en = &slot->e;
+  h->o.slot = slot;
+  h->o.x = en->x;
+  h->d0 = en->d[0] & 0xFF;
+  Sprite *s = &h->o.sprite;
+  object_sprite(s, ANIM_SPRING, 0, 1, ORDER_SPRING, PRIORITY_FRONT, 0, 0);
+  sprite_step(s);
+  return object_task(&h->o, hidden_spring_run, PRIORITY_OBJECTS);
+}
+
 ActTask *spring_spawn(Slot *slot) {
   Spring *sp = OBJECT_NEW(Spring);
   if (!sp) return NULL;
