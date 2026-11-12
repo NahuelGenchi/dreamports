@@ -1268,3 +1268,20 @@ COST(KNIGHT_ROUND_COUNTED, 24)    // $A5DE, and back
 COST(ASKED_SOUND_WAITS, 13)       // $D2AE to $D2C5, more than the branch past it: a sound an enemy asked for waits,
 COST(ASKED_SOUND_PLAYS, 21)       // or goes to sub_ED51,
 COST(ASKED_SOUND_PLAYED, 10)      // and $D2BD to $D2C5
+
+// ---- the stage's next part, $D341 (flow.c), and the half-solid blocks of sub_E3E3 (objects.c)
+COST(NEXT_PART_BEGINS, 34)        // $D33F to $D358, more than the branch past it
+COST(NEXT_PART_KEEPS_2, 5)        // to $D374, for the parts that keep their time and counts
+COST(NEXT_PART_KEEPS_5, 9)
+COST(NEXT_PART_KEEPS_6, 13)
+COST(NEXT_PART_COUNTS, 25)        // $D358 to $D36C, for the others
+COST(NEXT_PART_MUSIC_CALLED, 8)   // $D36C to sub_CAFD
+COST(NEXT_PART_TIME, 52)          // $D371, with sub_D82B
+COST(NEXT_PART_CLEARS, 2)         // $D374
+COST(NEXT_PART_OBJECT_KEPT, 11)   // $D376 to $D383: an object that's shown,
+COST(NEXT_PART_OBJECT_CLEARED, 17) // or isn't, and is gone
+COST(GROUND_HALF_BLOCK_76, 20)    // $E3EA to the end by $E402, more than a plain block's: the block $76,
+COST(GROUND_HALF_BLOCK_77_OPEN, 22) // or $77, by $E40A: its right half,
+COST(GROUND_HALF_BLOCK_77_SOLID, 21) // or its left
+COST(GROUND_HALF_BLOCK_OTHER_SET_76, 9) // and outside the first set of stages
+COST(GROUND_HALF_BLOCK_OTHER_SET_77, 5)
