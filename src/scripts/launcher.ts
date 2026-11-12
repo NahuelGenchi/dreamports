@@ -432,6 +432,7 @@ function start(launcher: HTMLElement) {
     );
   }
 
+  let plateGlide: Animation | undefined;
   function updatePlate() {
     const slot = slots[sel()];
     // a game, or the Make row's way to start a Dreamport
@@ -439,6 +440,8 @@ function start(launcher: HTMLElement) {
     const text = named ?? slot?.dataset.note ?? '';
     if (plateName.textContent === text && plateDetail.textContent === ((named && slot.dataset.detail) || '')) return;
     const { width: w0, height: h0 } = plate.getBoundingClientRect();
+    // a glide still running from the last move would be measured as the new size, and keep the new text cut short (#1178)
+    for (const a of plate.getAnimations()) a.cancel();
     if (slot?.dataset.game) showTitle(plateName, text);
     else plateName.textContent = text;
     plateDetail.textContent = (named && slot.dataset.detail) || '';
@@ -449,7 +452,15 @@ function start(launcher: HTMLElement) {
     plate.classList.toggle('is-empty', !named);
     if (calm() || !w0 || !state.ready) return;
     const { width: w1, height: h1 } = plate.getBoundingClientRect();
-    plate.animate([{ width: w0 + 'px', height: h0 + 'px' }, { width: w1 + 'px', height: h1 + 'px' }], { duration: 300, easing: 'cubic-bezier(.22,1,.36,1)' });
+    const glide = plate.animate([{ width: w0 + 'px', height: h0 + 'px' }, { width: w1 + 'px', height: h1 + 'px' }], {
+      duration: 300,
+      easing: 'cubic-bezier(.22,1,.36,1)',
+    });
+    // while it glides the text is uncovered as it is, never refitted to each width with an ellipsis
+    plate.classList.add('is-gliding');
+    plateGlide = glide;
+    const rest = () => plateGlide === glide && plate.classList.remove('is-gliding');
+    glide.finished.then(rest, rest);
     $('.np-text', plate).animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], {
       duration: 240,
       easing: 'ease-out',
