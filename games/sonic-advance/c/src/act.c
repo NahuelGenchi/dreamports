@@ -653,7 +653,9 @@ static void act_frame(void) {
   if (!act.clockStopped) {
     if (act.timerReversed) {
       if (--act.courseTime <= 0) {
+        // time up stops the clock (STAGE_FLAG__ACT_START), so this happens once
         act.courseTime = 0;
+        act.clockStopped = 1;
         if (act.stage.level == LEVEL_EGG_ROCKET) boss_shake(0x800, 8, 16, -1, SHAKE_VERTICAL | SHAKE_HORIZONTAL | SHAKE_RANDOM);
         act.player.dead = 1;
       }
