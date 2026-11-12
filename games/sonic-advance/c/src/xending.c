@@ -76,8 +76,9 @@ static int normal_ending_run(ActTask *t) {
   Player *p = &act.player;
   e->tick = (e->tick + 1) & 0xFFFF;
   if (!(e->tick & 3)) {
-    int x = s16((act_random() % DISPLAY_WIDTH) + cam_x());
-    int y = s16((act_random() % DISPLAY_HEIGHT) + cam_y());
+    // the original takes the remainders of signed numbers, so half of these land left of or above the screen's corner
+    int x = s16((int32_t)act_random() % DISPLAY_WIDTH + cam_x());
+    int y = s16((int32_t)act_random() % DISPLAY_HEIGHT + cam_y());
     x_boss_debris(x, y + 16, y + 32);
   }
   e->count = (e->count + 1) & 0xFFFF;
@@ -105,7 +106,6 @@ static int normal_ending_run(ActTask *t) {
         xzone_disp.win0h = DISPLAY_WIDTH;
         xzone_disp.win0v = DISPLAY_HEIGHT;
         xzone_disp.winIn = 0x3F3F;
-        xzone_disp.winOut = 0x3F3F;
         xzone_disp.bldCnt = 0xBF;
         xzone_disp.bldY = 0;
         e->timer = 0;
@@ -116,8 +116,9 @@ static int normal_ending_run(ActTask *t) {
       if (++e->timer > 128) {
         p->heldRight = 0;
         p->xsp = 0; p->ysp = 0; p->gsp = 0;
-        p->hidden = 1;
+        p->invisible = 1;
         act_tasks_destroy(0x2000, 0x2FFF);
+        act.hud.gone = 1;   // the HUD's task is one of those (0x2180)
         xzone_disp.bldCnt &= ~0x10;
         results_start(LEVEL_X_ZONE, act.ringCount, act.courseTime, 1, 1);
         return 0;

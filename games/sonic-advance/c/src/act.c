@@ -544,6 +544,27 @@ static void go_to_next_level(void) {
   else next_act_after_write();
 }
 
+// CreateCongratulationsAnimation's start, after the last stage's results: every task goes and the save is written, as
+// before the next act, and then the normal ending takes the screen (congratulations.c)
+static uint32_t endingSeed;
+static void congratulations_after_write(void) {
+  sound_vsync_on();
+  act_active = 0;
+  front_random_seed(endingSeed);
+  create_congratulations();
+}
+static void go_to_congratulations(void) {
+  endingSeed = act_random_state();
+  destroy_tasks(0, 0xFFFF);
+  act_tasks_destroy_all();
+  act.task = NULL;
+  clear_queues();
+  stop_all_songs();
+  sound_vsync_off();
+  if (save_write()) engine_stall(WRITE_FRAMES, congratulations_after_write);
+  else congratulations_after_write();
+}
+
 void act_go_to_next_level(void) {
   go_to_next_level();
 }
@@ -611,14 +632,12 @@ static void act_frame(void) {
   if (cardShows) card_update((e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
   // the results' task (0x2100) and its pieces' (0x2120); the frame they end, the next act takes over
   if (results_active() && !results_run()) {
-    if (act.stage.level != LEVEL_X_ZONE || !moon_opens()) {
-      go_to_next_level();
-      return;
-    }
+    if (act.stage.level != LEVEL_X_ZONE) { go_to_next_level(); return; }
+    if (!moon_opens()) { go_to_congratulations(); return; }
   }
   // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180), and the objects' tasks from
   // its priority after it, so an icicle (0x2200) that hurts Sonic takes his rings after the HUD has shown them
-  if (act.cardDone) hud_update(1);
+  if (act.cardDone && !act.hud.gone) hud_update(1);
   if (objectsRun) objects_run_after_hud();
   PlayerInput in = {
     .left = (e.input & KEY_LEFT) != 0, .right = (e.input & KEY_RIGHT) != 0,

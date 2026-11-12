@@ -153,6 +153,25 @@ void draw_ui_glyphs(const char *text, const UiText *o, int behind) {
 }
 
 /**
+ * sub_8053370, which writes the staff credits' lines: as sub_805321C, but a space only moves on, a small letter (past
+ * 0x60) is a glyph of its own drawn 8 px lower, and every glyph is in priority 0.
+ */
+void draw_ui_letters(const char *text, const UiText *o) {
+  const UiSlot *slot = &ui.slots[o->unk10];
+  uint32_t step = slot->unkA * 8;
+  uint32_t a0 = (slot->unk9 << 14) + (o->unkC & 0xFF);
+  uint32_t a1 = (slot->unk8 << 14) + (o->unkA & 0x1FF);
+  uint32_t a2 = ((uint32_t)o->unk12 << 12) | (slot->unk0 & 0x3FF);
+  for (int i = 0; i < s16(o->unkE); i++, a1 = (a1 + step) & 0xFFFF) {
+    uint32_t c = (uint8_t)text[i];
+    if (c == GLYPH_BASE) continue;
+    int small = c > 0x60;
+    uint32_t glyph = (a2 + (small ? c - 0x11 : c - GLYPH_BASE) * slot->unk4) & 0xFFFF & ~0xC00u;
+    if (!put_glyph(((o->unk8 + i) >> 3) & 0xFF, (a0 + (small ? 8 : 0)) & 0xFFFF, a1, glyph)) break;
+  }
+}
+
+/**
  * front/ui.js's drawUiTextRotated: `o->unkE` glyphs of `text` side by side from (o->unkA, o->unkC), each a rotating sprite
  * twice its size on affine parameters `o->unk6`, which `o->unk4` (the angle) and the scales `o->unk0` and `o->unk2` set.
  */
