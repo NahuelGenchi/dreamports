@@ -183,6 +183,22 @@ async function main() {
   run = dp('prove', GAME, 'rates');
   check(run.status === 0 && report('rates').matched === 120 && report('rates').sound.heard, `a game that chooses its own sound rate is heard at the one the tools compare at: ${report('rates').matched} of ${report('rates').frames}`);
   if (run.status) console.log(run.out);
+  {
+    // a recording no part names, such as one made for a foundation, in a game with a part that has no recording yet
+    const file = join(proofFolder(GAME), 'parts.json'), before = readFileSync(file, 'utf8');
+    const parts = JSON.parse(before);
+    writeFileSync(file, `${JSON.stringify({ ...parts, parts: [...parts.parts, { name: 'The rest of it' }] }, null, 2)}\n`);
+    const could = 'No part names this recording, and one of the game\'s parts has no recording yet: The rest of it.';
+    run = dp('prove', GAME, 'rates');
+    check(run.status === 0 && run.out.includes(could), `prove says when a recording no part names matches on every frame and a part has no recording yet: ${lastLine(run)}`);
+    run = dp('prove', GAME, 'rates', '--quick');
+    check(run.status === 0 && !run.out.includes('No part names'), '--quick, a round of work, doesn\'t say it');
+    run = dp('prove', GAME, 'buttons');
+    check(run.status === 0 && !run.out.includes('No part names'), 'nor does a recording a part names');
+    writeFileSync(file, before);
+    run = dp('prove', GAME, 'rates');
+    check(run.status === 0 && !run.out.includes('No part names'), 'nor one in a game whose parts all have a recording');
+  }
   findsRoute();
   await inC(original);
   run = dpWith({ DISPLAY: ':99', WAYLAND_DISPLAY: 'nowhere' }, 'prove', GAME, 'later', '--quick');
