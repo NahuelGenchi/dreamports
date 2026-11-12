@@ -234,6 +234,13 @@ uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched);
 /** sub_F5A0: what touches an enemy this round: the weapon that hit it, which is gone and counted at $0647, or 0, with
  *  whether Arthur touched it and is hit. */
 uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched);
+/** $F770: an enemy that a weapon has hit falls for six rounds, the way its flag $02 says, and is gone (enemies.c). */
+void hit_enemy_falls(uint8_t object);
+/** Bank 4's $A89E, kind 6: the small blue devil of the second stage's towers (devil.c). */
+void devil(uint8_t object);
+/** Bank 4's $9DA2 and $9D5F, kinds $36 and $37: the second stage's objects that go up and down, and that fall (platform.c). */
+void rising_thing(uint8_t object);
+void falling_thing(uint8_t object);
 /** $F6F6: an enemy that a weapon has killed burns away. */
 void enemy_burns_away(uint8_t object);
 /** sub_EF25: the way from the place in $75, $79, $76 and $7A to the one in $73, $77, $74 and $78, one of 16. */

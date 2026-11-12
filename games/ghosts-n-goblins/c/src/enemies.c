@@ -174,7 +174,7 @@ static uint8_t touch_tests(uint8_t enemy) {
 }
 
 // $F770: a zombie that's been hit, six rounds of three shapes, falling the way the weapon went, and it's gone.
-static void die(uint8_t object) {
+void hit_enemy_falls(uint8_t object) {
   uint8_t *count = &RAM[OBJECT_COUNT + object];
   show_object(object);
   if (!object_in_view(object)) {
@@ -251,7 +251,7 @@ void zombie(uint8_t object) {
   flags_past_page(object, 1);
   if (*flags & HIT) {
     took(ZOMBIE_DYING);
-    die(object);
+    hit_enemy_falls(object);
     return;
   }
   took(ZOMBIE_TURN_BEGINS);
@@ -582,7 +582,7 @@ void crow(uint8_t object) {
   flags_past_page(object, 1);
   if (*flags & HIT) {
     took(CROW_DEAD);
-    die(object);
+    hit_enemy_falls(object);
     return;
   }
   took(CROW_ALIVE);
