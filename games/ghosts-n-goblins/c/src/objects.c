@@ -603,6 +603,7 @@ wait objects_task(void) {
         case 0x14: crow(object); break;
         case 0x20: gravestone(object); break;
         case 0x2B: plant_shot(object); break;
+        case 0x29: forest_shot(object); break;
         case 0x2C: flier_shot(object); break;
         case 0x22: map_marker(object); break;
         case LANCE: case DAGGER: weapon(object); break;

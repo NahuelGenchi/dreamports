@@ -2,9 +2,9 @@
 // $A66A, and bank 2's $8610, which makes one every so many rounds while the view is on the tenth to twelfth screens.
 // It waits eight rounds, appears where it was put, in the air, over twelve more, and then flies up or down towards
 // Arthur's height at speed $16, facing him. Every 32 rounds it stops to turn round, eight rounds at speed 4, and when Arthur is
-// in front of it and near it readies its shot. A weapon kills it for 100 points.
-//
-// Its shot, kind $29, at $A856, isn't ported yet.
+// in front of it and near it readies its shot, kind $29. A readied shot is let go on a round whose count is four past a
+// multiple of eight, and put away on a multiple of eight: it flies down when Arthur is close by, and the way the enemy
+// is heading when he's still in front of it. A weapon kills it for 100 points.
 
 #include "game.h"
 
@@ -71,6 +71,46 @@ static void tests(uint8_t object) {
   took(FOREST_TESTS_END);
 }
 
+// $A856: its shot, if one of the two shots' objects, $14 and $15, is free, and Arthur is within a box around it, or
+// still in front of it. The shot starts at its place, with sound $1A.
+static void shoot(uint8_t object) {
+  enum { FIRST_SHOT = 0x14, SHOT = 0x29, DOWN = 0x08 };
+  uint8_t shot = FIRST_SHOT, heading = RAM[OBJECT_HEADING + object];
+  if (!RAM[OBJECT_FLAGS + shot]) took(FOREST_SHOT_FREE);
+  else if (!RAM[OBJECT_FLAGS + ++shot]) took(FOREST_SECOND_SHOT_FREE);
+  else { took(FOREST_NO_SHOT_FREE); return; }
+  RAM[0x27] = 0x50;
+  RAM[0x26] = 0x20;
+  took(FOREST_SHOT_LOOKS);
+  if (arthur_near(object)) {
+    heading = DOWN;
+    took(FOREST_SHOT_DOWN);
+  } else if (arthur_is_right_of(object)) {
+    if (heading != 0x04) { took(FOREST_SHOT_NOT_AHEAD_RIGHT); return; }
+    took(FOREST_SHOT_AHEAD_RIGHT);
+  } else {
+    if (heading != 0x0C) { took(FOREST_SHOT_NOT_AHEAD_LEFT); return; }
+    took(FOREST_SHOT_AHEAD_LEFT);
+  }
+  RAM[OBJECT_HEADING + shot] = heading;
+  // sub_FA2E: its place, in the stage and on the screen
+  RAM[OBJECT_Y + shot] = RAM[OBJECT_Y + object];
+  RAM[OBJECT_Y_SCREEN + shot] = RAM[OBJECT_Y_SCREEN + object];
+  RAM[OBJECT_SCREEN_Y + shot] = RAM[OBJECT_SCREEN_Y + object];
+  RAM[OBJECT_X + shot] = RAM[OBJECT_X + object];
+  RAM[OBJECT_X_SCREEN + shot] = RAM[OBJECT_X_SCREEN + object];
+  RAM[OBJECT_SCREEN_X + shot] = RAM[OBJECT_SCREEN_X + object];
+  RAM[OBJECT_FLAGS + shot] = 0x40;
+  took(FOREST_SHOT_PLACED);
+  RAM[OBJECT_KIND + shot] = SHOT;
+  RAM[OBJECT_FLAGS + object] |= ATTACKS;
+  took(FOREST_SHOT_MADE);
+  if (object >= 0x10) took(READ_PAST_PAGE);
+  took(FOREST_SHOT_SOUND);
+  sound_play(0x1A);
+  took(RETURNS);
+}
+
 // sub_A812, with its call: every so many rounds, sooner the harder the game, it looks for Arthur in front of it, or
 // within a box around it, and readies its shot.
 static void attack(uint8_t object) {
@@ -80,7 +120,8 @@ static void attack(uint8_t object) {
     took(FOREST_ATTACK_COUNT);
     if (RAM[OBJECT_COUNT + object] & 3) { took(FOREST_ATTACK_WAITS); return; }
     took(BRANCH_TAKEN);
-    return;   // $A856: its shot, kind $29
+    shoot(object);
+    return;
   }
   ++*rounds;
   took(FOREST_LOOK_COUNTED);
