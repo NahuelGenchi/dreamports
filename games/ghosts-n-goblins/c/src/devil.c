@@ -26,9 +26,13 @@ static uint8_t flag(uint8_t object, uint8_t which) {
 
 // $AA33: its two wing shapes, four rounds each, one way round or the other.
 static void shape(uint8_t object) {
+  took(DEVIL_SHAPE_BEGINS);
   RAM[OBJECT_COLOURS + object] = 0;
-  RAM[OBJECT_SHAPE + object] = (uint8_t)(0x95 + ((RAM[OBJECT_COUNT + object] >> 2) & 1));
-  took(DEVIL_SHAPE);
+  took(DEVIL_SHAPE_COLOURS);
+  RAM[OBJECT_SHAPE + object] = 0x95;
+  took(DEVIL_SHAPE_FIRST);
+  RAM[OBJECT_SHAPE + object] += (RAM[OBJECT_COUNT + object] >> 2) & 1;   // sub_F576
+  took(DEVIL_SHAPE_WINGS);
   if (!flag(object, TURNED)) { took(DEVIL_SHAPE_KEPT); return; }
   RAM[OBJECT_SHAPE + object] += 0x10;
   took(DEVIL_SHAPE_TURNED);

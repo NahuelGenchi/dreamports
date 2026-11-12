@@ -309,8 +309,8 @@ void move_down(uint8_t object) {
   add_down(object);
 }
 
-// sub_EF25: the way from the second place to the first, one of 16, from the copy's table of angles at $F1A3. Places
-// more than a screen apart, at $EF8E, aren't ported yet.
+// sub_EF25: the way from the second place to the first, one of 16, from the copy's table of angles at $F1A3. For
+// places a screen or more apart both distances are halved, at $EF8E, until neither is.
 uint8_t way_to_first(void) {
   int16_t down = (int16_t)((A_Y_SCREEN << 8 | A_Y) - (B_Y_SCREEN << 8 | B_Y)), across = (int16_t)((A_X_SCREEN << 8 | A_X) - (B_X_SCREEN << 8 | B_X));
   // each quarter counts its angle from its own start, and in two of them sub_EFC1 has the two distances change places
@@ -334,8 +334,13 @@ uint8_t way_to_first(void) {
     first = (uint16_t)-down, second = (uint16_t)-across;
     took(WAY_LEFT_AND_ABOVE);
   }
-  A_Y_SCREEN = (uint8_t)(first >> 8);
-  A_X_SCREEN = (uint8_t)(second >> 8);
+  while ((first | second) >> 8) {
+    took(first >> 8 ? WAY_SCREENS_HALVED_FOR_FIRST : WAY_SCREENS_HALVED_FOR_SECOND);
+    first >>= 1;
+    second >>= 1;
+  }
+  A_Y_SCREEN = 0;
+  A_X_SCREEN = 0;
   uint8_t a = (uint8_t)first, b = (uint8_t)second;
   while ((a & 0xF0) || (b & 0xF0)) {   // both down to 4 bits, for the table
     took(a & 0xF0 ? WAY_HALVED_FOR_FIRST : WAY_HALVED_FOR_SECOND);

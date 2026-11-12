@@ -160,6 +160,20 @@ static void thing_holds(uint8_t object) {
   took(PLATFORM_ENDS);
 }
 
+// $9DF6 and $9E04: its move, and then, while it's shown, whether Arthur is coming down onto it.
+static void thing_moves_and_holds(uint8_t object, int moves) {
+  if (!thing_moves(object, moves)) return;
+  if (RAM[OBJECT_STATE + ARTHUR] & RISES) { took(THING_ARTHUR_RISES); return; }
+  if (RAM[OBJECT_FLAGS + ARTHUR] & HELD) { took(THING_ARTHUR_HELD); return; }
+  uint8_t own = RAM[OBJECT_SCREEN_Y + object], his = RAM[OBJECT_SCREEN_Y + ARTHUR];
+  if (own < his) { took(THING_ARTHUR_BELOW); return; }
+  if ((uint8_t)(own - his) >= 0x14) { took(THING_ARTHUR_HIGH); return; }
+  uint8_t across = (uint8_t)(RAM[OBJECT_SCREEN_X + object] - RAM[OBJECT_SCREEN_X + ARTHUR]);
+  if (across >= 0x24 && across < 0xDC) { took(THING_ARTHUR_OFF); return; }
+  took(across < 0x24 ? THING_ARTHUR_ON_NEAR : THING_ARTHUR_ON_FAR);
+  thing_holds(object);
+}
+
 // Kind $36, a small ledge: it goes up and down. In the view it turns above the 32nd line of a screen below the first, and below the
 // 224th of one. Out of the view it turns every round.
 void rising_thing(uint8_t object) {
@@ -197,21 +211,11 @@ void rising_thing(uint8_t object) {
     moves = !(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN);
     took(moves ? THING_TURNED_HIDDEN : THING_TURNED_SHOWN);
   }
-  if (!thing_moves(object, moves)) return;
-  // $9E04: whether Arthur is coming down onto it
-  if (RAM[OBJECT_STATE + ARTHUR] & RISES) { took(THING_ARTHUR_RISES); return; }
-  if (RAM[OBJECT_FLAGS + ARTHUR] & HELD) { took(THING_ARTHUR_HELD); return; }
-  uint8_t own = RAM[OBJECT_SCREEN_Y + object], his = RAM[OBJECT_SCREEN_Y + ARTHUR];
-  if (own < his) { took(THING_ARTHUR_BELOW); return; }
-  if ((uint8_t)(own - his) >= 0x14) { took(THING_ARTHUR_HIGH); return; }
-  uint8_t across = (uint8_t)(RAM[OBJECT_SCREEN_X + object] - RAM[OBJECT_SCREEN_X + ARTHUR]);
-  if (across >= 0x24 && across < 0xDC) { took(THING_ARTHUR_OFF); return; }
-  took(across < 0x24 ? THING_ARTHUR_ON_NEAR : THING_ARTHUR_ON_FAR);
-  thing_holds(object);
+  thing_moves_and_holds(object, moves);
 }
 
-// Kind $37: it stays where it is until Arthur is within 40 pixels across and 16 down. Then it falls, and it's gone once
-// it's out of the view.
+// Kind $37: it stays where it is until Arthur is within 40 pixels across and 16 down. Then it falls, holding him as
+// kind $36 does while he's on it, and it's gone once it's out of the view.
 void falling_thing(uint8_t object) {
   RAM[OBJECT_SHAPE + object] = 0x3E;
   RAM[OBJECT_COLOURS + object] = 0;
@@ -232,7 +236,7 @@ void falling_thing(uint8_t object) {
   if (RAM[OBJECT_FLAGS + object] & FALLS) {
     RAM[OBJECT_HEADING + object] = DOWN;
     took(FALLING_THING_FALLS);
-    thing_moves(object, 1);
+    thing_moves_and_holds(object, 1);
     return;
   }
   RAM[0x26] = 0x28;
