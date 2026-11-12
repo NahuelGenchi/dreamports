@@ -1,9 +1,10 @@
 // The mark a player picked in Settings (#1144): its pose and its colour, kept in the browser. The colour is CSS alone,
-// set on the root by the page's first script (Base.astro) and here. A pose other than Leap is drawn in from
-// mark-poses.ts, fetched only then, and until it is a mark stays unseen (global.css), so Leap never flashes first.
-// Leap itself is what every page already draws, so nothing here holds a copy of it: a mark's own drawing is put aside
-// before another pose goes over it, and put back for Leap.
+// set on the root by the page's first script (Base.astro) and here, and so are the page's icons (#1161). A pose other
+// than Leap is drawn in from mark-poses.ts, fetched only then, and until it is a mark stays unseen (global.css), so
+// Leap never flashes first. Leap itself is what every page already draws, so nothing here holds a copy of it: a mark's
+// own drawing is put aside before another pose goes over it, and put back for Leap.
 import { COLOURS, POSES, type ColourName, type PoseName } from '../lib/mark';
+import { ICON_LINKS, iconsOf } from '../lib/mark-links';
 
 export const LOGO_KEYS = { pose: 'logo-pose', colour: 'logo-colour' } as const;
 
@@ -35,6 +36,11 @@ export async function showLogo(pose: PoseName, colour: ColourName) {
   else root.dataset.logoColour = colour;
   if (pose === 'leap') delete root.dataset.logoPose;
   else root.dataset.logoPose = pose;
+  // its icons too: the browser tab's, and the ones a phone takes when the site is added to the Home Screen (#1161)
+  const icons = iconsOf(pose, colour);
+  for (const { rel, own, file } of ICON_LINKS) {
+    document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`)?.setAttribute('href', icons ? icons + file : own);
+  }
   const turn = ++asked;
   let art = null;
   if (pose !== 'leap') {

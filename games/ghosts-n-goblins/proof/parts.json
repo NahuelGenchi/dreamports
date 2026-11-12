@@ -84,6 +84,11 @@
     },
     {
       "name": "Stage 1: The graveyard",
+      "recording": "stage-clear",
+      "frames": [
+        1073,
+        6781
+      ],
       "needs": [
         "Arthur moving",
         "The armor and lives",
