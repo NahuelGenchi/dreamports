@@ -45,7 +45,7 @@ static void heading_past_page(uint8_t object) {
 // sub_88F6: every sixth of the enemies that come by themselves carries a pot. It holds the usual thing, unless it's the
 // fourth pot: then the copy's list at $8963 says what, by the set of stages and how many pots there have been, and a
 // weapon Arthur already has is passed over for the next. The fifth set of stages on, at $8928, isn't ported yet.
-static void sixth_carries_a_pot(uint8_t object, uint8_t *x) {
+void sixth_carries_a_pot(uint8_t object, uint8_t *x) {
   took(ZOMBIE_COUNT_BEGINS);
   if (++ZOMBIES_COUNTED < 6) { took(ZOMBIE_NOT_SIXTH); return; }
   ZOMBIES_COUNTED = 0;

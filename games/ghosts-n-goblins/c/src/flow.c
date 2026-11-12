@@ -372,12 +372,14 @@ static void place_stage_objects(void) {
   took(STAGE_OBJECT_FILLED);
 }
 
-// $8400 in bank 2: what comes at Arthur by itself: the zombies and the flying knights (enemies.c), and five other
-// routines, at $8574, $8610, $867A, $880A and $8748, which have nothing to do in the first stage and aren't ported yet.
+// $8400 in bank 2: what comes at Arthur by itself: the zombies and the flying knights (enemies.c), the forest's enemies
+// (forest.c), and four other routines, at $8574, $867A, $880A and $8748, which have nothing to do in the first stage and
+// aren't ported yet.
 static void stage_dangers(void) {
   took(DANGERS_OTHERS);
   zombies_come(&last_index);
   knights_come(&last_index);
+  forest_enemies_come(&last_index);
 }
 
 // $D38D: the stage's time, which the top of the picture shows as a minute and two digits of seconds. V-blank counts
