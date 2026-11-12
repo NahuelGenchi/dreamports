@@ -1,6 +1,6 @@
 {
  "about": "From power-on with Sonic having reached level 10: through the course select to Egg Rocket Zone, then running right.",
- "frames": 3000,
+ "frames": 6000,
  "start": "unlocked=10&character=0",
  "onlyInOriginal": [
   {
@@ -196,6 +196,19 @@
   ],
   [
    2410,
+   [
+    "RIGHT"
+   ]
+  ],
+  [
+   2800,
+   [
+    "RIGHT",
+    "A"
+   ]
+  ],
+  [
+   2830,
    [
     "RIGHT"
    ]

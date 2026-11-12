@@ -262,6 +262,11 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 87, 87, torch_spawn },
   { 97, 97, updraft_spawn },
   { 88, 88, lift_spawn }, { 90, 90, float_spawn }, { 92, 92, boulder_spawner_spawn }, { 86, 86, run_wheel_spawn },
+  { 83, 83, hang_bar_spawn },
+  { 93, 93, spiked_barrel_spawn },
+  { 99, 99, conveyor_belt_object_spawn },
+  { 103, 103, propeller_spawn },
+  { 109, 109, gravity_toggle_spawn },
 };
 
 // the enemies by their kind numbers (the ENEMIES table)
@@ -276,6 +281,8 @@ static const struct { int kind; Spawn spawn; } ENEMIES[] = {
   { 9, slot_machine_spawn },
   { 10, pierrot_spawn },
   { 6, tentou_spawn },
+  { 12, mirror_spawn },
+  { 14, oct_spawn },
   { 15, mole_spawn },
   { 21, egg_hammer_tank_intro_spawn },
   { 22, egg_hammer_tank_spawn },

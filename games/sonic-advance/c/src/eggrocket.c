@@ -1,9 +1,11 @@
 // Egg Rocket Zone's stage: the launch tower at sunset, then the sky the rocket climbs through and space. Translated from the
 // original a function at a time (stage.c StageInit_Zone6Act1, backgrounds/zone_6.inc.c StageBgUpdate_Zone6Act1, camera.c
-// HBlankCallback_803FA1C and bg_triangles.c sub_80078D4) with the JavaScript version's engine/eggrocket.js beside it;
+// HBlankCallback_803FA1C, egg_rocket_transitions.c and checkpoint.c) with the JavaScript version's engine/eggrocket.js beside it;
 // every comment names the function it rewrites.
 
 #include "act.h"
+#include "objects.h"
+#include "bosses.h"
 
 enum {
   MUS_EGG_ROCKET = 22,
@@ -14,6 +16,8 @@ enum {
   BG_LINE_OUTSIDE_START = 256,
   DISPCNT_BG0_ON = 0x100,
   BLDCNT_LIGHTEN_BG0 = 0x81,    // BLDCNT_EFFECT_LIGHTEN | BLDCNT_TGT1_BG0
+  SE_EXPLOSION = 144,
+  SE_CRUMBLING_PLATFORM = 173,
 };
 
 // gCamera.unk50 and the layers' scrolls the update leaves for the frame; gBgCntRegs[3] and [0] are the engine's own
@@ -133,6 +137,179 @@ static void draw(int camX, int camY) {
 static void start(void) {
   memset(&view, 0, sizeof view);
   e.bgCnt[3] = 0x9C0B;
+  int i = act_checkpoint_index();
+  if (i > 0) {
+    act.cam.minX = 1058;
+    view.flags |= BG_SCROLLING;
+    e.bgCnt[3] = (uint16_t)(e.bgCnt[3] & ~BGCNT_256X512);
+    act.timerReversed = 1;
+    act.courseTime = 5 * 3600;
+  }
+  if (i > 1) {
+    act.cam.maxY = 5568 - SCREEN_H;
+    act.timerReversed = 1;
+    act.courseTime = 5 * 3600;
+  }
+  if (i > 2) {
+    view.flags = (view.flags | BG_SPACE) & ~BG_SCROLLING;
+    act.cam.maxY = 3264 - SCREEN_H;
+    act.timerReversed = 1;
+    act.courseTime = 5 * 3600;
+  }
+}
+
+// --- the rocket's launch and stage separations (egg_rocket_transitions.c) -------------------------------------------
+
+// CreateEggRocketLaunchScreenShakeEffect: a short vertical shake, camera kept right of the tower, player locked;
+// a second later a 5-second random shake with explosions, then 5:00 countdown starts and controls unlock
+typedef struct { Object o; int t, rumbling; } EggRocketLaunch;
+
+static int launch_run(ActTask *t) {
+  EggRocketLaunch *l = (EggRocketLaunch *)t->data;
+  if (!l->rumbling) {
+    if (--l->t == 0) {
+      l->t = 300;
+      l->rumbling = 1;
+      boss_shake(0x800, 8, 16, 300, SHAKE_VERTICAL | SHAKE_RANDOM);
+    }
+    return 1;
+  }
+  if ((l->t & 0xF) == 0) play_song(SE_EXPLOSION);
+  if (--l->t != 0) return 1;
+  act.timerReversed = 1;
+  act.courseTime = 5 * 3600;
+  act.player.ignoreInput = 0;
+  return 0;
+}
+
+static void launch_start(void) {
+  boss_shake(0x800, 8, 16, 10, SHAKE_VERTICAL);
+  act.cam.minX = 1058;
+  act.player.ignoreInput = 1;
+  EggRocketLaunch *l = OBJECT_NEW(EggRocketLaunch);
+  if (!l) return;
+  l->t = 60;
+  l->rumbling = 0;
+  object_task(&l->o, launch_run, 0x4000);
+}
+
+// CreateEggRocketStageSeparation: camera pans down to worldY, stage below splits and falls away on BG2 with debris and shake,
+// then camera pans back up and countdown resets to 5:00
+typedef struct { Object o; int worldY, q6, q8, n, phase; } EggRocketSeparation;
+
+static void separation_slip(int worldY, int q6, int q8) {
+  int top = worldY + (q6 >> 8) - (int)act.cam.y;
+  int below = worldY + (q8 >> 8) - (int)act.cam.y;
+  int splitY = worldY - (int)act.cam.y;
+  if (top > 0 && below < SCREEN_H) {
+    if (splitY > 0) {
+      fill_lines(2, 0, splitY, (int)act.cam.x, (int)act.cam.y);
+      scroll_lines(2, splitY, below, (int)act.cam.x, SCREEN_H + 80);
+    } else {
+      scroll_lines(2, 0, below, (int)act.cam.x, SCREEN_H + 80);
+    }
+    fill_lines(2, below, SCREEN_H, (int)act.cam.x, (int)act.cam.y - (q8 >> 8));
+  }
+}
+
+static int separation_run(ActTask *t) {
+  EggRocketSeparation *s = (EggRocketSeparation *)t->data;
+  int worldY = s->worldY;
+  switch (s->phase) {
+    case 0:
+      if (++act.cam.shiftY < worldY - (int)act.cam.y + SCREEN_H / 2) return 1;
+      throw_nuts_and_bolts();
+      boss_shake(0x800, 8, 16, 10, SHAKE_VERTICAL);
+      play_song(SE_CRUMBLING_PLATFORM);
+      s->phase = 1;
+      return 1;
+    case 1:
+      s->q6 += 8; s->q8 += 16;
+      if (s->q6 >= 0x400 && (act.checkpointIndex == 2 || ((-(stage_time() * 2)) & 0x1FF) == 0x102)) {
+        s->phase = 2; s->n = 0;
+        if (act.checkpointIndex == 3) view.flags |= BG_SPACE;
+      }
+      separation_slip(worldY, s->q6, s->q8);
+      return 1;
+    case 2:
+      s->q6 += 8; s->q8 += 16;
+      if (s->n++ > 40) {
+        s->phase = 3; s->n = 0;
+        boss_shake(0x800, 8, 16, -1, SHAKE_VERTICAL | SHAKE_HORIZONTAL | SHAKE_RANDOM);
+      }
+      separation_slip(worldY, s->q6, s->q8);
+      return 1;
+    case 3:
+      s->q8 += 0x200; s->q6 += 0x100;
+      if ((s->n++ & 0xF) == 0) { throw_nuts_and_bolts(); play_song(SE_EXPLOSION); }
+      if (worldY + (s->q8 >> 8) - (int)act.cam.y > SCREEN_H) { s->phase = 4; }
+      separation_slip(worldY, s->q6, s->q8);
+      return 1;
+    case 4:
+      act.cam.shiftY--;
+      if ((s->n++ & 0xF) == 0) { throw_nuts_and_bolts(); play_song(SE_EXPLOSION); }
+      if ((int)act.cam.y > worldY - SCREEN_H) {
+        int splitY = worldY - (int)act.cam.y;
+        if (splitY > 0) {
+          fill_lines(2, 0, splitY, (int)act.cam.x, (int)act.cam.y);
+          scroll_lines(2, splitY, SCREEN_H, (int)act.cam.x, SCREEN_H + 80);
+        } else {
+          scroll_lines(2, 0, SCREEN_H, (int)act.cam.x, SCREEN_H + 80);
+        }
+        return 1;
+      }
+      act.cam.shiftY = 0;
+      if (act.checkpointIndex > 1) { act.cam.maxY = 5568 - SCREEN_H; act.clockStopped = 0; act.timerReversed = 1; act.courseTime = 5 * 3600; }
+      if (act.checkpointIndex > 2) { act.cam.maxY = 3264 - SCREEN_H; act.clockStopped = 0; act.timerReversed = 1; act.courseTime = 5 * 3600; }
+      act.player.ignoreInput = 0;
+      view.flags &= ~BG_SCROLLING;
+      return 0;
+  }
+  return 0;
+}
+
+static void separation_start(int worldY) {
+  act.player.ignoreInput = 1; act.player.xsp = 0; act.player.gsp = 0;
+  act.cam.maxY = worldY;
+  EggRocketSeparation *s = OBJECT_NEW(EggRocketSeparation);
+  if (!s) return;
+  s->worldY = worldY;
+  s->q6 = 0; s->q8 = 0; s->n = 0; s->phase = 0;
+  object_task(&s->o, separation_run, 0x4000);
+}
+
+// --- checkpoint entity (checkpoint.c) -------------------------------------------------------------------------------
+
+typedef struct { Object o; int index, passed; } EggRocketCheckpoint;
+
+static int egg_rocket_checkpoint_run(ActTask *t) {
+  EggRocketCheckpoint *c = (EggRocketCheckpoint *)t->data;
+  const Entity *en = &c->o.slot->e;
+  Player *p = &act.player;
+
+  int reached = c->index == 1 ? (int)__builtin_floor(p->x) > en->x : (int)__builtin_floor(p->y) + p->offsetY < en->y + 4;
+  if (!c->passed && reached && !p->carried) {
+    act_checkpoint_pass(c->index, en->x, en->y - p->offsetY);
+    c->passed = 1;
+    if (c->index == 1) { p->xsp = 0; p->gsp = 0; launch_start(); }
+    if (c->index == 2) { act.clockStopped = 1; separation_start((58 * 96) - 1); }
+    if (c->index == 3) { act.clockStopped = 1; separation_start((34 * 96) - 1); }
+    if (off_cam(en->x, en->y)) { c->o.slot->live = NULL; return 0; }
+    return 1;
+  }
+  if (off_cam(en->x, en->y)) { c->o.slot->live = NULL; return 0; }
+  return 1;
+}
+
+ActTask *egg_rocket_checkpoint_spawn(Slot *slot) {
+  const Entity *en = &slot->e;
+  EggRocketCheckpoint *c = OBJECT_NEW(EggRocketCheckpoint);
+  if (!c) return NULL;
+  c->o.slot = slot;
+  c->o.x = en->x;
+  c->index = s8(en->d[0]);
+  c->passed = c->index <= act_checkpoint_index();
+  return object_task(&c->o, egg_rocket_checkpoint_run, PRIORITY_OBJECTS);
 }
 
 // StageInit_Zone6Act1's palette animations: 839 and 842 both step one row of the stage palette, 840 and 841 each their own

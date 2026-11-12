@@ -214,6 +214,31 @@ void boss_debris(int x, int y, int ay) {
   boss_explosion((x + (int)(r & 0x3F) - 32) << 8, (y - (int)((r & 0x3F0000) >> 16)) << 8);
 }
 
+void throw_nuts_and_bolts(void) {
+  int x0 = cam_x(), y0 = cam_y() - 32;
+  static const struct { int order, prio, shift; } PASSES[2] = { { 31, 3, 6 }, { 16, 0, 5 } };
+  for (int p = 0; p < 2; p++) {
+    for (int i = 0; i < 3; i++) {
+      int idx = (int)(act_random() % DEBRIS_KINDS);
+      Bolts *b = bolts_new(vram_malloc(DEBRIS_TILES[idx]), DEBRIS_ANIM[idx], DEBRIS_VARIANT[idx]);
+      if (b) {
+        b->qx = (x0 + (int)(act_random() & 0xFF)) << 8;
+        b->qy = y0 << 8;
+        b->o.sprite.oamFlags = (uint16_t)(PASSES[p].order << 6);
+        b->o.sprite.frameFlags = (uint32_t)PASSES[p].prio << 12;
+        b->ay = 40;
+        b->hold = 256;
+        int a = (int)(act_random() & 0x1FF);
+        int shift = PASSES[p].shift;
+        int sinA = SINE[a];
+        b->vy = (sinA < 0 ? -sinA : sinA) >> shift;
+        int cosA = SINE[a + 256];
+        b->vx = -(cosA << (14 - shift)) >> 14;
+      }
+    }
+  }
+}
+
 // --- the Egg Mobile's escape (CreatePostBossEggMobile) -----------------------------------------------------------------------
 // Eggman sits in it for 46 frames, rises 1 px a frame to 80 px up, turns round and flies off to the right at 4 px a frame until
 // it is 120 px past the screen's right edge. Both sprites' tiles sit at fixed places.
