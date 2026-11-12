@@ -1,7 +1,8 @@
 {
   "about": "From power-on with Sonic having reached level 5: through the course select to Casino Paradise Zone act 2, then the whole act, its boss, the capsule, the results and the hand-over to Ice Mountain Zone act 1, up to the frame before its title card.",
   "start": "unlocked=5&character=0&power=2&level=5&card=-1&pre=5&at=4767&prelude=5&skip=232&only=371",
-  "frames": 12442,
+  "frames": 12822,
+  "clip": { "at": 12432, "frames": 300 },
   "held": [
     [
       0,

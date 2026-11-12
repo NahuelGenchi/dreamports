@@ -12,6 +12,8 @@
 #define CARD_FADE_FULL 0x2000
 #define CARD_FADE_SPEED 96
 #define CARD_LAST_ACT_LEVEL 11
+#define CARD_LAST_SECOND_ACT 12   // sub_80550F8's LEVEL_INDEX(ZONE_7, ACT_1), which no second act is
+#define CARD_BAND_Y 42          // where the results' band is across the screen
 #define CARD_ZONE_PADDING 5
 
 enum { PIECE_ZIGZAG, PIECE_NAME, PIECE_ACT, PIECE_BAR, PIECE_ZONE_JP, PIECE_ZONE, PIECES };
@@ -28,6 +30,7 @@ typedef struct {
 
 typedef struct {
   int frame, done, blank, fading, display, level, speed, bldY, levelIndex;
+  int comesOn;   // a zone's second act that follows its first: the bar starts where the results left theirs
   CardPiece p[PIECES];
 } Card;
 
@@ -66,8 +69,10 @@ static CardGfx card_gfx(int id) {
 enum { CARD_HEAP_TILES = 132 };
 static uint32_t cardHeap;
 
-void titlecard_start(int level, int character) {
+void titlecard_start(int level, int character, int after) {
   memset(&card, 0, sizeof card);
+  // gFinalBossActive, which holds the level the game last started or showed a card for, isn't this one
+  card.comesOn = after && level <= CARD_LAST_SECOND_ACT && (level & 1);
   cardHeap = vram_malloc(CARD_HEAP_TILES);
   card.levelIndex = level;
   cardCopyCount = 0;
@@ -125,11 +130,12 @@ void titlecard_start(int level, int character) {
   card.p[PIECE_ZIGZAG].x = -80; card.p[PIECE_ZIGZAG].y = 0; card.p[PIECE_ZIGZAG].countNow = 3; card.p[PIECE_ZIGZAG].rows = 5; card.p[PIECE_ZIGZAG].grid = 1;
   card.p[PIECE_NAME].x = 20; card.p[PIECE_NAME].y = 0; card.p[PIECE_NAME].countNow = 1;
   card.p[PIECE_ACT].x = 180; card.p[PIECE_ACT].y = 160; card.p[PIECE_ACT].countNow = 6;
-  card.p[PIECE_BAR].x = 240; card.p[PIECE_BAR].y = 126; card.p[PIECE_BAR].countNow = 8;
+  card.p[PIECE_BAR].x = card.comesOn ? -16 : 240; card.p[PIECE_BAR].y = card.comesOn ? CARD_BAND_Y : 126; card.p[PIECE_BAR].countNow = 8;
   card.p[PIECE_ZONE_JP].x = 360; card.p[PIECE_ZONE_JP].y = 114; card.p[PIECE_ZONE_JP].countNow = 4;
   card.p[PIECE_ZONE].x = 256; card.p[PIECE_ZONE].y = 128; card.p[PIECE_ZONE].countNow = 9;
 
-  card.frame = 0; card.done = 1; card.blank = 0; card.fading = 1;
+  // a stage with spotlights tells its card to leave the screen's fade alone (screenBlank), and its pieces stay see-through
+  card.frame = 0; card.done = 1; card.blank = act.stage.row->ownsWindows; card.fading = 1;
   card.level = 0; card.speed = CARD_FADE_SPEED; card.bldY = 0;
   // the fade's first step, as the card is made
   card.level = 96;
@@ -145,6 +151,24 @@ static void card_put(int order, int shape, int size, int x, int y, int tile, int
   e.oamMalloc[k * 4] = (uint16_t)((shape << 14) | (y & 0xFF) | (semi ? 0x400 : 0));
   e.oamMalloc[k * 4 + 1] = (uint16_t)((size << 14) | (x & 0x1FF));
   e.oamMalloc[k * 4 + 2] = (uint16_t)((pal << 12) | (tile & 0x3FF));
+}
+
+/** sub_80550F8's own sprites, on the frame it makes the card of a second act that comes on: the results' band, eight
+ *  see-through squares across the screen, until the bar's task draws it from the next frame */
+void titlecard_made(int first) {
+  // the card's fade, as it is made: black over every layer, which have nowhere to be yet
+  for (int i = 0; i < 8; i++) e.bgScroll[i] = 0;
+  e.dispCnt = 0x3E40;
+  e.winRegs[0] = e.winRegs[1] = 0x00F0; e.winRegs[2] = e.winRegs[3] = 0x00A0;
+  // the results' fade is still the one on the screen: black over every layer, and the sprites left as they are
+  e.bldCnt = 0x3FDF; e.bldY = (uint16_t)card.bldY;
+  if (!act.stage.row->ownsBlend) e.bldAlpha = 0x0010;
+  e.winRegs[4] = 0x3F3F; e.winRegs[5] = 0x1F;
+  // the frame that makes the act still shows the results' sprites, in the new act's colours; from the next the
+  // card's own are there
+  if (first) { engine_keep_oam(); return; }
+  if (!card.comesOn) return;
+  for (int i = 0; i < 8; i++) card_put(1, 0, 2, i * 32, CARD_BAND_Y, 0x80, 6, 1);
 }
 
 // put(card, p, [text, y], semi): a row of sprites from (x, y), or the zigzag's grid
@@ -209,6 +233,7 @@ static void card_tasks(int k, int semi) {
     if (bar->x < -32) { bar->x = s16(bar->x + 32); if (bar->countNow != 0) bar->countNow = s16(bar->countNow - 1); }
     bar->x = s16(bar->x - 26);
   } else if (k > 25) bar->x = -16;
+  else if (k > 15 && card.comesOn) { bar->x = -16; bar->y = s16(bar->y + 9); if (bar->y > 126) bar->y = 126; }   // down from the results' band
   else if (k > 15) { bar->y = 126; bar->x = s16(bar->x - 26); if (bar->x < -16) bar->x = -16; }
   card_piece_put(bar, bar->y, semi, 0);
   // zoneJp: in from the right 26 px a frame to x 112, and out to the left

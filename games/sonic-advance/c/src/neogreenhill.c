@@ -12,7 +12,9 @@ static void draw_sky_and_sea(int camX, int camY) {
   camX -= act.cam.wrapped;
   int bgHeight = act.stage.background.yTiles * 8;
   int second = act.stage.level == LEVEL_NEO_GREEN_HILL_2;
-  int time = second ? (act.tick > 16 ? act.tick - 16 : 0) : (act.tick ? act.tick - 1 : 0);
+  // the stage clock as the background's update last saw it; act 2 from a start point counts its card's frames
+  int late = act.stage.row->stageClockAhead + 1;
+  int time = act.tick > late ? act.tick - late : 0;
   e.bgScroll[6] = (uint16_t)(second ? ((time >> 4) & 0xFF) : 0); e.bgScroll[7] = 0;
   set_hblank_copy(REG_BG0HOFS + 3 * 4, 4);
   for (int y = 0; y < SCREEN_H; y++) {
@@ -52,6 +54,14 @@ const Level ACT_NEO_GREEN_HILL_1 = {
   .runsFromFirstFrame = 1, .blackAtGameStart = 1,
 };
 
+// Act 2 as it comes on from act 1, with nothing a start point past its card asks of it
+static const Level SECOND_ACT_COMING_ON = {
+  .song = 13, .hudFlash = 90, LEVEL_PALETTES(PALETTES_2), .paletteVariants = VARIANTS_2,
+  .cameraStop = 768,
+  .bgCnt = 0x1D0B,
+  .drawBackground = draw_sky_and_sea,
+};
+
 const Level ACT_NEO_GREEN_HILL_2 = {
   .song = 13, .hudFlash = 90, LEVEL_PALETTES(PALETTES_2), .paletteVariants = VARIANTS_2,
   .cameraStop = 768,
@@ -60,4 +70,5 @@ const Level ACT_NEO_GREEN_HILL_2 = {
   .cardEnded = second_act_card_ended, .stageClockAhead = 15,
   // its first recording starts in the frames after its card, so the act steps through them
   .zeroFlashesInSixteens = 1, .palettesAfterSonic = 1, .tilesShownLate = 1, .cardStepsOn = 1,
+  .comingOn = &SECOND_ACT_COMING_ON,
 };
