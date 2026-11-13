@@ -477,6 +477,9 @@ void engine_run(void) {
   if (stalling) return;
   e.flagsPreVBlank = e.flags;
   vblank();
+  // the H-blank DMA this V-blank starts runs through the lines SoundMain's start is drawn over: two units of 16 bits a
+  // line from internal memory to the registers, each a read and a write of a cycle, after 2 to start
+  if (hdma.on) gba_sound_hblank_dma(2 + (int)hdma.size);
 }
 
 // the H-blank DMA between the lines as the kit draws the frame: after each line, the next line's values; then the

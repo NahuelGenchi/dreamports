@@ -177,6 +177,12 @@ enum { SONG_INTRO = 1, SONG_TITLE_FANFARE = 2, SONG_CHARACTER_SELECTION = 3, SON
 void play_song_or_change(int song);
 void sound_vsync_off(void);
 void sound_vsync_on(void);
+/** The loads that hold the original's SoundMain past its place (soundlate.c): the screen names the load as it starts,
+ *  with the level or character it's for, and the kit hears how late SoundMain runs in the frame it falls in. */
+enum { LOAD_CHARACTER_SELECT, LOAD_TURN_RIGHT, LOAD_TURN_LEFT, LOAD_ACT_NEW_GAME, LOAD_ACT_COURSE_SELECT, LOAD_ACT_NEXT,
+       LOAD_ACT_AGAIN };
+void sound_late(int load, int detail);
+void sound_late_step(void);   // once a frame, at its end
 
 /** The BIOS's Div: rounded toward 0; a division by 0 gives ±1, as mGBA's BIOS does. */
 static inline int32_t bios_div(int32_t a, int32_t b) { return b == 0 ? (a < 0 ? -1 : 1) : a / b; }

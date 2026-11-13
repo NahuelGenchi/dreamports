@@ -166,6 +166,7 @@ void front_play(int level) {
     return;
   }
   destroy_tasks(0x2000, 0x3000); act_start(startLevel, -1, 0);
+  sound_late(LOAD_ACT_COURSE_SELECT, startLevel);
   // an act whose objects first run on its first frame steps the rings once more on its hand-over frame than the
   // original's stage init does
   if (level_row(startLevel)->runsFromFirstFrame) rings_skip_first_update();
@@ -182,3 +183,4 @@ void fade_out_sound(int player, int speed) { gba_sound_fade_out(player, speed); 
 void stop_all_songs(void) { gba_sound_stop_all(); }                           // m4aMPlayAllStop
 void sound_vsync_off(void) { gba_sound_vsync_off(); }                         // m4aSoundVSyncOff
 void sound_vsync_on(void) { gba_sound_vsync_on(); }                           // m4aSoundVSyncOn
+

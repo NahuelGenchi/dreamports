@@ -578,6 +578,7 @@ static void next_act(void) {
   memcpy(oldMaps, gba_vram + LAYER_MAPS, LAYER_MAPS_SIZE);
   comingOn = 1;
   act_start(nextLevel, -1, 0);
+  sound_late(LOAD_ACT_NEXT, nextLevel);
   comingOn = 0;
   act.lives = lives; act.score = score;
   act_random_seed(seed);
@@ -624,6 +625,7 @@ static void restart_act(void) {
   restarting = 1;
   respawnIndex = was.checkpointIndex; respawnX = was.checkpointX; respawnY = was.checkpointY;
   act_start(was.stage.level, -1, 0);
+  sound_late(LOAD_ACT_AGAIN, was.stage.level);
   restarting = 0;
   act.restarted = 1;
   act.lives = was.lives; act.score = was.score; act.tick = was.tick;
@@ -1046,14 +1048,9 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
 static int songPlaying;
 void act_song_playing(void) { songPlaying = 1; }
 
-// where an act's SoundMain starts in the chip's frame, after the act's V-blank work, measured on
-// sonic-ice-mountain-act-2; the menus' V-blanks do less, and their sound writes as it did before (#741)
-#define ACT_SOUND_MAIN_AT 52550
-
 static int startPointSpent;   // a start point has opened its act, so the acts after it start as the game starts them
 
 void act_start(int level, int cardSkip, int preFrames) {
-  gba_sound_psg_at(level_row(level)->soundAtOnce ? 0 : ACT_SOUND_MAIN_AT);
   memset(&act, 0, sizeof act);
   act.fromStartPoint = gba_start_point("level") != NULL && !startPointSpent;
   startPointSpent |= act.fromStartPoint;
