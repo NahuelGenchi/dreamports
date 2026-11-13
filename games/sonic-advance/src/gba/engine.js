@@ -17,6 +17,7 @@
 // OAM, where they stay behind what the tasks still show, until the V-blank after the game goes on again.
 
 import { REG, SCREEN_W, SCREEN_H } from '../../../../kit/gba/video.js';
+import { soundLate } from '../sound/timing.js';
 
 export const FLAGS = {
   UPDATE_BG_PALETTES: 0x1, UPDATE_OBJ_PALETTES: 0x2, HBLANK_COPY: 0x4, KEEP_HBLANK_BUFFER: 0x20,
@@ -59,6 +60,13 @@ export function createEngine(video, rom, sound) {
     soundVSyncOn: () => sound?.vsyncOn?.(),   // m4aSoundVSyncOn
     fadeOutPlayer: (player, speed) => sound?.fadeOut?.(player, speed),   // m4aMPlayFadeOut
     continuePlayer: player => sound?.continuePlayer?.(player),   // m4aMPlayContinue
+    // a load that runs past where SoundMain starts, from this frame (sound/timing.js)
+    soundLate: (load, detail, character) => soundLate(sound, load, detail, character),
+    // the stage music manager's start of an act's song, fading in, as a stage init the course select runs starts it
+    playStageMusicFadingIn: song => sound?.playStageMusicFadingIn?.(song),
+    playStageMusic: song => sound?.playStageMusic?.(song),
+    // the H-blank DMA's cost a line for this frame, when what the frame drew isn't the engine's own (sound/timing.js)
+    soundHblankDma: perLine => sound?.call?.('hblankDma', perLine),
     flags: 0, flagsPreVBlank: 0, frameCount: 0,
     // the RAM copies of the display registers (gDispCnt, gBgCntRegs, gBgScrollRegs as [x, y] per layer,
     // gBgAffineRegs for BG2 and BG3, gWinRegs: WIN0H, WIN1H, WIN0V, WIN1V, WININ, WINOUT, gBldRegs)
@@ -428,6 +436,9 @@ export function createEngine(video, rom, sound) {
     if (stall) return;
     e.flagsPreVBlank = e.flags;
     vblank();
+    // the H-blank DMA this V-blank starts runs through the lines SoundMain's start is drawn over: two units of 16 bits a
+    // line from internal memory to the registers, each a read and a write of a cycle, after 2 to start (sound/timing.js)
+    if (hdma) sound?.call?.('hblankDma', 2 + hdma.size);
   };
   /** Draws the frame into `out` (240 × 160 RGBA words), with the H-blank DMA between its lines; `probe(y)`, if
    *  given, sees the registers as each line is drawn. With `view` ({ w, h }), the widescreen view instead,

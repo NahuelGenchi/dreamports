@@ -13,7 +13,9 @@
 // the manager has run on that frame; the manager's task doesn't run while the game is paused, nor on the frame
 // the menu closes and every player goes on (m4aMPlayAllContinue).
 // The kit's sound engine runs each frame's calls through it on the audio thread (worklet.js), and the page
-// reaches it through the game's sound (audio.js).
+// reaches it through the game's sound (audio.js). It also counts down the frames to a load's late SoundMain (timing.js).
+
+import { lateCountdown } from './timing.js';
 
 const BGM = 0, DROWNING = 27, INVINCIBILITY = 28, ONE_UP = 307;
 // sBossSongIndices: the boss fight, its intro, Mecha Knuckles, Egg Snake, Egg Wrecker, Egg Drillster, the final boss
@@ -23,7 +25,9 @@ const PAUSE = 0x80000000;
 export function createMusicManager(engine) {
   let stageSong = null, oneUp = false, star = false, drown = false, starting = false, boss = 0, off = false;
   let invincible = false, speedUp = false, alive = true, paused = false, resuming = false;
+  const late = lateCountdown(engine);
   const own = {
+    lateIn: late.lateIn,
     stageMusic(song, ahead) { stageSong = song; starting = true; boss = 0; off = false; drown = false; engine.songStart(song); if (ahead) engine.frame(); },
     stageMusicIn(song) { stageSong = song; starting = false; boss = 0; off = false; drown = false; engine.songStart(song); bgmParams(); },
     off() { off = true; },
@@ -77,6 +81,7 @@ export function createMusicManager(engine) {
   return {
     /** Runs one frame's queued calls ([name, args] pairs), then the manager itself unless the game is paused. */
     frame(calls) {
+      late.frame();
       let ran = false;
       for (const [name, args] of calls) {
         if (name !== 'pause') { (own[name] ?? engine[name])(...args); continue; }

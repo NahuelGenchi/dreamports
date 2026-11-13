@@ -22,6 +22,7 @@ import { DEMOS, readDemoTape, BACKGROUND_TILES } from './engine/demo.js';
 import { createSpecialStageRun } from './special/run.js';
 import { createNormalEnding } from './engine/normalending.js';
 import { createSound } from './sound/audio.js';
+import { SOUND_TIMING, POWER_ON_BEFORE } from './sound/timing.js';
 import { SCREEN_W, SCREEN_H, VIEW_MAX_W, VIEW_MAX_H } from './engine/constants.js';
 import { THE_MOON, ALL_EMERALDS } from './engine/unlock.js';
 import { openSave } from './engine/save.js';
@@ -420,7 +421,9 @@ const setup = createRomSetup(picker, {
   ],
   onChange: () => queueMicrotask(showRomCount),   // once the page is set up
   onPlay() {
-    sound.load(sa1.buffer, sa1.assets.sound, players).catch(err => console.warn('No sound:', err));
+    // Sonic Advance's library, with the squares written on the original's cycles from power-on (sound/timing.js)
+    sound.load(sa1.buffer, { ...sa1.assets.sound, ...SOUND_TIMING }, players).catch(err => console.warn('No sound:', err));
+    sound.call('chipClock', POWER_ON_BEFORE);
     start(sa1.buffer, sa1.assets);
   },
 });
@@ -481,19 +484,19 @@ function start(buffer, assets, back = null, afterReset = false) {
     // the code's partner comes along with Sonic only (GameStageStart)
     partner = picked.partner && character === 0;
     if (level === undefined) play(assets.character === character && !!assets.partner === partner ? assets : extractAgain(sa1.buffer, assets, { level: assets.first, character, partner }));
-    else playChosen(level, frameCount);
-  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level'), select: !params.has('unlocked') || params.has('select'), onGameStart: proofSave, prepareDemo, back, softReset, afterReset });
+    else playChosen(level, frameCount, picked);
+  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level'), select: !params.has('unlocked') || params.has('select'), onGameStart: proofSave, prepareDemo, back, softReset, afterReset, only: Number(params.get('only') ?? 0) });
   fitScreen();
   screen.focus();
 }
 
 // the act the course select started, its zone decoded from the ROM unless it's the one the game opened with
-async function playChosen(level, frameCount) {
+async function playChosen(level, frameCount, { byCourseSelect = false, musicStarted = false } = {}) {
   const from = sa1;
   const same = from.assets.first === level && from.assets.character === character && !!from.assets.partner === partner;
   const assets = same ? from.assets : await extractAssets(from.buffer, () => {}, { level, character, partner });
   if (sa1 !== from || stage.hidden) return;   // the player left the game meanwhile
-  play(assets, null, null, { level, frameCount, timeAttack });
+  play(assets, null, null, { level, frameCount, timeAttack, byCourseSelect, musicStarted });
 }
 
 // gDemoPlayCounter, the demo the title screen starts next, and gPseudoRandom as the last demo left it: a demo goes on
@@ -559,7 +562,7 @@ function play(assets, resume = null, carry = null, chosen = null) {
     resume, carry, save, startLevel, continues, levelPick, frameCount: chosen?.frameCount, demo, seed: randomSeed,
     onSpecialStage: handover => enterSpecialStage(assets, handover),
     onNextZone: next => nextZone(next),
-    timeAttack: chosen?.timeAttack,
+    timeAttack: chosen?.timeAttack, byCourseSelect: chosen?.byCourseSelect, musicStarted: chosen?.musicStarted,
     createTimeAttackResult: result => createTimeAttackOverlay({ rom, offsets: assets.info.offsets, sound, save, ...result }),
     // a Time Attack run is over (results, a life lost or A in the pause menu): the lobby, on the frame after
     onTimeAttackEnd: () => queueMicrotask(() => toLobby()),
