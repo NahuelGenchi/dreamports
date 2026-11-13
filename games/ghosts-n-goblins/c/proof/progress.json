@@ -124,6 +124,12 @@
       "differs": [],
       "functions": []
     },
+    "time-runs-out": {
+      "frames": 14600,
+      "matched": 14600,
+      "differs": [],
+      "functions": []
+    },
     "title": {
       "frames": 120,
       "matched": 120,
