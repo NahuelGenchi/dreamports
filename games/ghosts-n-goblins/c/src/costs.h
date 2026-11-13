@@ -1512,6 +1512,22 @@ COST(PLATFORM_CARRIED, 11)        // and to the call of sub_F181
 COST(PLATFORM_ENDS, 12)           // $B95A, and back
 
 
+// ---- a flame of the fourth stage's bridge, kind $0F, sub_04_B9AD (bridge.c)
+COST(FLAME_OUT_OF_VIEW, 5)        // $B9B3 to the store at $B9C4: out of the view, its count,
+COST(FLAME_COUNT_CLEARED, 7)      // to the store at $B9C9: its flags,
+COST(FLAME_OUT, 11)               // and back
+COST(FLAME_IN_VIEW, 4)            // or $B9B3 to the store at $B9B7: in the view, its box across,
+COST(FLAME_BOX_ACROSS, 5)         // to the store at $B9BB: up and down,
+COST(FLAME_BOX_UP_AND_DOWN, 3)    // to the call of sub_F687
+COST(FLAME_ARTHUR_AWAY, 4)        // $B9C0 to the store at $B9C4: Arthur isn't within it,
+COST(FLAME_ARTHUR_NEAR, 3)        // or is: to the call of sub_F321
+COST(FLAME_COUNTED, 21)           // $B9D0 to the store at $B9DD: its count on (INC's write at its start), and its shape,
+COST(FLAME_SHAPED, 15)            // to the store at $B9E7: the touch box's height,
+COST(FLAME_HEIGHT, 5)             // to the store at $B9EB: its colours,
+COST(FLAME_COLOURS, 7)            // to the store at $B9F0: the touch box's width,
+COST(FLAME_TOUCH_BOX, 6)          // and the jump to $F5E3
+
+
 // ---- the flying knights, sub_02_84E0 and kind 3, sub_04_A530 (enemies.c)
 COST(BRANCH_TAKEN, 3)             // a branch that's taken
 COST(KNIGHTS_OTHER_SET, 16)       // sub_02_84E0, and back, outside the first set of stages
