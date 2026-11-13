@@ -154,7 +154,7 @@ void tower_crows_come(uint8_t *x) {
   RAM[0x77] = down < 0 ? 0xFF : 0;
   RAM[0x73] = (uint8_t)down;
   took(down < 0 ? TOWER_CROW_PLACED_UP : TOWER_CROW_PLACED_DOWN);
-  for (int k = 0; k < 3; k++) if ((listed & 0xFF) + k > 0xFF) took(READ_PAST_PAGE);   // the list's three reads, by X
+  for (int k = 0; k < 3; k++) if (0xDA + k + i > 0xFF) took(READ_PAST_PAGE);   // the list's three reads, $87DA,X to $87DC,X
   *x = object;
   took(CALLS);
   move_down(object);
