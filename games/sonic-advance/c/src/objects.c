@@ -78,8 +78,10 @@ void *object_new(void) {
   return NULL;
 }
 
-ActTask *object_task(Object *o, ActRun run, int priority) {
-  ActTask *t = act_task_add(run, object_end, o, priority);
+ActTask *object_task(Object *o, ActRun run, int priority) { return object_task_ending(o, run, object_end, priority); }
+
+ActTask *object_task_ending(Object *o, ActRun run, ActEnd end, int priority) {
+  ActTask *t = act_task_add(run, end, o, priority);
   if (!t) {
     for (int i = 0; i < MAX_OBJECTS; i++) if (blocks[i].bytes == (uint8_t *)o) blocks[i].used = 0;
     object_sprite_free(&o->sprite);
@@ -87,11 +89,16 @@ ActTask *object_task(Object *o, ActRun run, int priority) {
   return t;
 }
 
-void object_end(ActTask *t) {
-  Object *o = (Object *)t->data;
+void object_end(ActTask *t) { object_free((Object *)t->data); }
+
+void object_free(Object *o) {
   if (o->slot) { o->slot->live = NULL; if (destroying) o->slot->gone = 1; }
   object_sprite_free(&o->sprite);
-  for (int i = 0; i < MAX_OBJECTS; i++) if (blocks[i].bytes == (uint8_t *)o) blocks[i].used = 0;
+  object_release(o);
+}
+
+void object_release(void *data) {
+  for (int i = 0; i < MAX_OBJECTS; i++) if (blocks[i].bytes == (uint8_t *)data) blocks[i].used = 0;
 }
 
 // --- where an object is: in range of the camera ------------------------------------------------------------------------

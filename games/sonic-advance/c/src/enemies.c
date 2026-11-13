@@ -14,6 +14,7 @@ enum {
   ANIMAL_GRAVITY = 48, ANIMAL_HOP = 1024, ANIMAL_RUN = 512,   // in 1/256 px
   ANIMAL_START_AIR = 42,     // frames before the floor is looked at
   ANIMAL_MARGIN = 32,        // the animal goes when this far off the screen
+  ANIMAL_TILE = 192,         // where the zone's first animal's tiles are, the second's 4 on and the third's 8
   FLY_START = 576, FLY_TOP = 640, FLY_BOTTOM = 512, FLY_SWING = 6, FLY_SLOW = 20,   // its heading, 1024 a turn
   ZONES = 6, ZONE_ANIMALS_EACH = 3,
 };
@@ -136,7 +137,9 @@ static void animal_new(int x, int y, int zone) {
   int anim = ANIMALS[zone][next_animal].anim, moves = ANIMALS[zone][next_animal].moves;
   a->x = x * 256; a->y = y * 256;
   a->moves = moves;
-  object_sprite(&a->o.sprite, anim, 0, 0, ANIMAL_ORDER, ENEMY_PRIORITY, 0, 0);
+  // its tiles are at a fixed place in sprite VRAM, the zone's first, second or third animal's (sAnimsTrappedAnimals'
+  // vramOffset), shared by every one of that animal
+  object_sprite_at(&a->o.sprite, OBJ_VRAM + (uint32_t)(ANIMAL_TILE + 4 * next_animal) * 32, anim, 0, ANIMAL_ORDER, ENEMY_PRIORITY, 0, 0);
   if (moves == FLIES) {
     a->heading = FLY_START; a->up = 1;
     object_task(&a->o, flying_animal_run, PRIORITY_OBJECTS);

@@ -35,18 +35,18 @@ enum { SONG_ACT_CLEAR = 33, SONG_BOSS_CLEAR = 34, SONG_FINAL_CLEAR = 35, SONG_RE
 #define NAME_COLORS 6
 #define BAND_TILES 16
 #define LETTER_TILES 24
-#define DIGIT_TILES 20
-#define DIGIT_FROM_TILE 32   // the HUD's white digits in the font
+#define HUD_DIGITS_TILE (0xA80 / 32)   // the HUD's white digits, at VRAM_RESERVED_UI_DIGITS_C, which the figures draw from
 #define LINE_PALETTE 12
 #define FONT_PALETTE 6
 
 // where each piece's tiles lie: the band at a place of its own in the sprites' tiles, which the next act's title card
-// draws from too (sub_80550F8), the line in one block from the heap, and the letters and the digits in another
+// draws from too (sub_80550F8), the line in one block from the heap, and the letters in another; the figures' digits are
+// the HUD's own
 #define BAND_VRAM (OBJ_VRAM + 0x1000)
 #define LINE_BLOCK_TILES (NAME_TILES + TEXT_TILES)
 #define LETTERS_AT 0
-#define DIGITS_AT (LETTERS_AT + LETTER_TILES)
-#define FONT_BLOCK_TILES (DIGITS_AT + DIGIT_TILES)
+// what CreateStageResults takes from the heap for the letters, VramMalloc(0x1E)
+#define FONT_BLOCK_TAKEN 30
 
 // the texts, after the title card's tables: [offset in the card's table, length]
 #define TEXT_RING 0x8C
@@ -91,7 +91,7 @@ typedef struct {
 typedef struct {
   int active, level, wait, longEnd, frame, ring, time, countdown, skipFirst, fading, display;
   int fadeLevel, fadeSpeed, bldY;
-  uint32_t vram, fontVram;   // the line's block, and the letters' and digits'
+  uint32_t vram, fontVram;   // the line's block, and the letters'
   Slot_ slot[SLOTS];
   int bandText[BAND_LENGTH], lineText[LINE_LENGTH], ringLabel[LABEL], timeLabel[LABEL];
   Piece p[PIECES];
@@ -145,12 +145,12 @@ static void load_graphics(int level, int character) {
   int textAt = level == LEVEL_THE_MOON ? 0xF0 : level == LEVEL_X_ZONE ? 0xA0 : level & 1 ? 0x50 : 0;
 
   r.vram = vram_malloc(LINE_BLOCK_TILES);
-  r.fontVram = vram_malloc(FONT_BLOCK_TILES);
+  r.fontVram = vram_malloc(FONT_BLOCK_TAKEN);
   int fontTile = (int)((r.fontVram - OBJ_VRAM) >> 5);
   r.slot[SLOT_BAND].tile = (int)((BAND_VRAM - OBJ_VRAM) >> 5);
   r.slot[SLOT_LINE].tile = (int)((r.vram - OBJ_VRAM) >> 5);
   r.slot[SLOT_LETTERS].tile = fontTile + LETTERS_AT;
-  r.slot[SLOT_DIGITS].tile = fontTile + DIGITS_AT;
+  r.slot[SLOT_DIGITS].tile = HUD_DIGITS_TILE;
   r.slot[SLOT_BAND].pal = FONT_PALETTE; r.slot[SLOT_LETTERS].pal = FONT_PALETTE; r.slot[SLOT_DIGITS].pal = FONT_PALETTE;
   r.slot[SLOT_LINE].pal = LINE_PALETTE;
 
@@ -165,7 +165,6 @@ static void load_graphics(int level, int character) {
     copy_in(fontTiles + (uint32_t)LETTERS[i][0] * TILE, r.fontVram + (LETTERS_AT + to) * TILE, (uint32_t)LETTERS[i][1] * TILE);
     to += LETTERS[i][1];
   }
-  copy_in(fontTiles + DIGIT_FROM_TILE * TILE, r.fontVram + DIGITS_AT * TILE, DIGIT_TILES * TILE);
 
   // OBJ palette 6 is the font's, palette 12 the line's with the name's first six colours over them
   for (int i = 0; i < 16; i++) e.objPalette[FONT_PALETTE * 16 + i] = (uint16_t)rom_u16(fontPalette + (uint32_t)i * 2);

@@ -187,8 +187,15 @@ static inline void *object_plain(void *block) {
 /** Makes the task of an object's block at the objects' priority, or at `priority`; false, with the block freed, when the
  *  list is full. */
 ActTask *object_task(Object *o, ActRun run, int priority);
+/** object_task with an end of its own, for an object holding more than its sprite's tiles; it calls object_end. */
+ActTask *object_task_ending(Object *o, ActRun run, ActEnd end, int priority);
 /** The end of an object's task: its tiles and block go and its place is free for the entity to spawn again. */
 void object_end(ActTask *t);
+/** What object_end does, for an object that another task's data points to: its slot let go, its sprite's tiles freed and
+ *  its block given back. */
+void object_free(Object *o);
+/** Gives back a block OBJECT_NEW handed out, for data that isn't an Object. */
+void object_release(void *data);
 
 /** Gives `s` an object's animation `anim` (variants first to last) in the OAM `order`, in front of the layers `prio`, with its
  *  own tiles. */
@@ -197,6 +204,8 @@ void object_sprite(Sprite *s, int anim, int first, int last, int order, int prio
 enum {
   VRAM_SPIKES = 0x1B00, VRAM_DUST_EFFECT_BRAKING = 0x2100, VRAM_BUMPER_TRI_BIG = 0x26A0, VRAM_BUMPER_TRI = 0x2B20,
   VRAM_BUMPER_TRI_2 = 0x2CA0, VRAM_BUMPER = 0x2E20,
+  VRAM_DUST_CLOUD = 0x1000,   // dust_cloud.c's DUST_CLOUD_VRAM_ADDRESS
+  VRAM_KIKI_SHOT = 0x2580, VRAM_BUZZER_SHOT = 0x2600, VRAM_GAMIGAMI_SHOT = 0x2620,
 };
 /** The same, for the kinds whose tiles sit at a fixed place below the heap (vram_hardcoded.h), shared by all of that kind;
  *  vram_free leaves those places alone. */
