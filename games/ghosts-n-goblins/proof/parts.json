@@ -123,6 +123,11 @@
     },
     {
       "name": "Stage 3: The cave",
+      "recording": "stage-3-clear",
+      "frames": [
+        17477,
+        26531
+      ],
       "needs": [
         "Arthur moving",
         "The armor and lives",
