@@ -76,6 +76,7 @@ A late part doesn't have to wait for everything before it. A recording can have 
 
 - `start` is what the Dreamport's address adds, such as `level=2&character=1`: words and values, which the game's own page reads. `prove` opens the game with them, and so does `npm run dp -- play <game> --record <name> --start level=2`.
 - `sets`, in a stretch of `onlyInOriginal`, writes values to the original's work RAM as that stretch runs, such as which levels are unlocked: `[{ "frame": 9, "address": "03005168", "bytes": 1, "value": 2 }]`, with `frame` counted from the stretch's start, `address` in hexadecimal, as the code map has it, and `bytes` 1, 2 or 4. They can't reach the cartridge, and `prove` stops if one tries.
+- `sets` beside `held` does the same as the original plays the recording's own frames, with `frame` one of the recording's. It's for a recording the Dreamport plays all of, its menus too, where the original still needs what the start point gives the Dreamport, such as progress: then the Dreamport runs every screen the original does, and nothing either of them leaves behind for later goes missing.
 
 Write the presses and values that take the original to the part's first frame as a stretch of `onlyInOriginal`, at the frame where the Dreamport opens at the part, which is 0 when it opens there straight away. Then run `prove` and change the stretch's length until the frames line up. Its list of frames where the original's screen is one colour shows where each screen ends.
 

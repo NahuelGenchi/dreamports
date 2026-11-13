@@ -126,3 +126,20 @@ test('a list of presses gives the original every frame, with the stretches only 
   assert.deepEqual(buttons, [[], [], ['START'], ['A'], ['A'], []]);
   assert.throws(() => originalButtons({ frames: 3, held: [], onlyInOriginal: [{ at: 0, frames: 2, sets: [set()] }] }), /only real play/);
 });
+
+test('values the original is given as it plays the recording\'s own frames go in at the original\'s frame, and are kept', async () => {
+  const { originalPlay } = await import('../lib/recording.mjs');
+  const recording = read({ frames: 20, held: [[0, []]], onlyInOriginal: [{ at: 5, frames: 7 }], sets: [set({ frame: 10 })] });
+  assert.deepEqual(recording.sets, [set({ frame: 10 })]);
+  const { sets, originalOf } = originalPlay(recording);
+  assert.equal(originalOf[10], 17, 'the stretch before puts the recording\'s frame 10 at the original\'s 17');
+  assert.deepEqual(sets, [{ ...set(), frame: 17, address: 0x03005168 }]);
+  assert.deepEqual(originalPlay(recording, { frames: 10 }).sets, [], 'a value past the frames played isn\'t written');
+  assert.throws(() => read({ frames: 20, held: [], sets: [set({ frame: 20 })] }), /isn't a frame of the recording/);
+  assert.throws(() => originalButtons(recording), /only real play/);
+  assert.equal(fromStartPoint(recording, 10), true);
+  assert.equal(fromStartPoint(recording, 9), false, 'what comes before the values is from power-on');
+  const file = join(folder, 'with-values.json');
+  writeRecording(file, { about: 'Menus and all.', frames: 20, held: [[0, []]], sets: [set({ frame: 10 })] });
+  assert.deepEqual(readRecording(file).sets, [set({ frame: 10 })]);
+});
