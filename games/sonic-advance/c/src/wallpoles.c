@@ -2,8 +2,8 @@
 // red_flag_and_pole.c): bars in Neo Green Hill, red flags lying on their side in the other zones, kind 44 sticking out of a wall
 // to its right and kind 45, flipped, to its left. Whenever Sonic's body touches one's box, at any speed, on the ground or in the
 // air, it catches him: he hangs from it for 14 frames, bobbing down and swinging up, and is thrown straight up at 7.5 px a frame,
-// keeping the X speed he came with. It takes him again once its swing animation is over. (A flying Tails goes through it, as does
-// Knuckles while he glides, climbs or floats: only Sonic is here.)
+// keeping the X speed he came with. It takes him again once its swing animation is over. A flying Tails goes through it, as does
+// Knuckles while he glides, climbs or floats.
 
 #include "objects.h"
 
@@ -31,6 +31,7 @@ static int catches(WallPole *w, Player *p) {
   const Hitbox *hb = object_box(&w->o.sprite, 0);
   Hitbox body = collide_body(p);
   if (p->dead || !hb || !collide_overlap(e->x, e->y, hb, (int)__builtin_floor(p->x), (int)__builtin_floor(p->y), &body)) return 0;
+  if ((p->character == CHARACTER_TAILS || p->character == CHARACTER_KNUCKLES) && p->midAir != 0) return 0;
   // Player_TransitionCancelFlyingAndBoost; his speeds and whether he is in the air stay as they were
   player_end_attack(p); p->pushing = 0;
   p->carried = 1;

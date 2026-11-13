@@ -8,7 +8,7 @@
 // spot. The small triangles, lying (51) and standing (52), throw him off whichever side he touches; the big right-angled one (53)
 // only off its slanted side. The wall bumper (71) is part of the scenery: it throws him while his centre is in its area.
 //
-// A flying Tails or a gliding Knuckles stops as a bumper throws him; only Sonic is here, so that has nothing to do. The original's
+// A flying Tails or a gliding or climbing Knuckles stops as a bumper throws him, curled up. The original's
 // bug that makes the circling bumper work out its angle from 8 times its offset is kept, and so is the shake's last two frames
 // reading past the sine table's end (the JavaScript version's fixes are off).
 
@@ -63,7 +63,15 @@ static int touches(const Bumper *b, int x, int y, const Player *p) {
 
 // thrown off: in the air and curled up, with his ball's height; it isn't a jump, so letting go of the button doesn't cut it short,
 // and he can steer
+// a flying Tails or a gliding or climbing Knuckles stops (Player_TransitionCancelFlyingAndBoost), curled up
+static void stop_flying(Player *p) {
+  if ((p->character != CHARACTER_TAILS && p->character != CHARACTER_KNUCKLES) || p->midAir == 0) return;
+  player_end_attack(p);
+  p->state = PS_SPIN;
+}
+
 static void throw_off(Player *p) {
+  stop_flying(p);
   p->onObject = NULL; p->air = 1;
   p->jumped = 0;               // MOVESTATE_100
   p->curled = 1;

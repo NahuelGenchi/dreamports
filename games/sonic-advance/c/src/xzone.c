@@ -41,7 +41,7 @@ const Level ACT_X_ZONE = {
   .bgCnt = 0x5C0B,
   .start = xzone_start,
   .drawBackground = draw_backdrop,
-  .blankZeroTiles = 1,   // X Zone's first card leaves them blank
+  .blankZeroTiles = 1,   // X Zone's first card leaves them blank, when Sonic plays it
   .soundAtOnce = 1,
   .afterFrame = xzone_after_frame,
 };

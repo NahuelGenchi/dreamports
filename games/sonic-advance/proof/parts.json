@@ -32,7 +32,7 @@
     { "name": "The normal ending", "recording": "x-zone-credits-an-emerald-short", "frames": [8741, 19799] },
     { "name": "The true ending" },
     { "name": "Playing as Tails", "recording": "tails-neo-green-hill", "frames": [1829, 11626] },
-    { "name": "Playing as Knuckles" },
+    { "name": "Playing as Knuckles", "recording": "knuckles-neo-green-hill", "frames": [1849, 8346] },
     { "name": "Playing as Amy" },
     { "name": "Time Attack" },
     { "name": "VS, for 2 to 4 players" },

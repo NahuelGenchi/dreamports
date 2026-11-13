@@ -109,11 +109,19 @@ static int breaks(int x, int y, const Hitbox *hb, Player *p) {
   return 0;
 }
 
-/** sub_8091E88: Sonic's attack box on it while he is curled up or charging a spin dash */
+/** sub_8091E88: his attack box on it while he is curled up or charging a spin dash, and Tails flying or Knuckles gliding,
+ *  dropping from it, landing or sliding after it */
+static int attacking(const Player *p) {
+  int s = p->state;
+  if (s == PS_SPIN || s == PS_SPIN_DASH || s == PS_SPIN_DASH_REV) return 1;
+  if (p->character == CHARACTER_TAILS) return s == PS_FLY || s == PS_FLY_TURN;
+  if (p->character == CHARACTER_KNUCKLES) return s == PS_GLIDE || s == PS_GLIDE_DROP || s == PS_DROP_LAND || s == PS_GLIDE_SLIDE
+    || (s >= PS_GLIDE_TURN0 && s <= PS_GLIDE_TURN3);
+  return 0;
+}
 static int curled_attack(int x, int y, const Hitbox *hb, Player *p) {
   const Hitbox *attack = object_box(&p->sprite, 1);
-  return (p->state == PS_SPIN || p->state == PS_SPIN_DASH || p->state == PS_SPIN_DASH_REV) && attack
-    && collide_overlap(x, y, hb, enemy_sonic_x(), enemy_sonic_y(), attack);
+  return attacking(p) && attack && collide_overlap(x, y, hb, enemy_sonic_x(), enemy_sonic_y(), attack);
 }
 
 /** Task_IceBlock */
