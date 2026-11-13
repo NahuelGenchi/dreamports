@@ -37,8 +37,8 @@ static void spent_weapon(uint8_t object) {
   if (object >= 0x0F) took(READ_PAST_PAGE);
 }
 
-// sub_E9CA, with its call: the block four pixels above an object's place. A place whose four pixels above are on the
-// screen above, at $E9E5, isn't ported yet. Counted a write at a time.
+// sub_E9CA, with its call: the block four pixels above an object's place, on the screen above, at $E9E5, when they're
+// above its screen's top. Counted a write at a time.
 static uint8_t block_above(uint8_t object) {
   took(WEAPON_BLOCK_ABOVE);
   RAM[0x22] = 4;
@@ -46,6 +46,12 @@ static uint8_t block_above(uint8_t object) {
   RAM[0x77] = RAM[OBJECT_Y_SCREEN + object];
   took(WEAPON_BLOCK_LINE);
   RAM[0x73] = (uint8_t)(RAM[OBJECT_Y + object] - 4);
+  if (RAM[OBJECT_Y + object] < 4) {
+    took(WEAPON_BLOCK_SCREEN_ABOVE);
+    RAM[0x73] = (uint8_t)(RAM[0x73] - 0x10);
+    took(WEAPON_BLOCK_SCREEN_ABOVE_LINE);
+    RAM[0x77]--;
+  }
   took(WEAPON_BLOCK_SCREEN_ACROSS);
   RAM[0x78] = RAM[OBJECT_X_SCREEN + object];
   took(WEAPON_BLOCK_ROW);

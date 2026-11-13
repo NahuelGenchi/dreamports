@@ -351,6 +351,20 @@ COST(HIDDEN_ARMOUR_NOT_NEEDED, 19) // or to sub_F708, for one who has it
 COST(HIDDEN_BECOMES_POT, 47)      // $BBCA to sub_F099: a pot, further on and up
 COST(HIDDEN_POT_FALLS, 42)        // $BBEB, with $BC81, and back
 COST(HIDDEN_STAYS, 34)            // sub_04_BB67 for an object that isn't shown, in a stage that isn't of the third set, and back
+COST(WAITING_OUT_OF_VIEW, 5)      // sub_04_9E32's $9E38 to $BB67, with sub_F346's call apart: an enemy waiting unseen,
+COST(WAITING_IN_VIEW, 17)         // or to sub_F68E,
+COST(WAITING_NOT_TOUCHED, 8)      // $9E49 to $BB67, through $9EA5,
+COST(WAITING_TOUCHED, 10)         // or to the store of its flags,
+COST(WAITING_STATE, 17)           // to the store of its state,
+COST(WAITING_KIND, 9)             // to the store of its kind,
+COST(WAITING_FLIER, 4)            // to sub_F309 for the flier,
+COST(WAITING_NOT_FLIER, 5)        // or past it,
+COST(WAITING_COUNT, 9)            // to the store of its count,
+COST(WAITING_RIGHT, 12)           // to the store of $23 for a place to the right,
+COST(WAITING_LEFT, 16)            // or to the left,
+COST(WAITING_MOVED_ACROSS, 27)    // and the place across, to the store of its screen,
+COST(WAITING_DOWN, 19)            // to sub_F099 for a place lower,
+COST(WAITING_UP, 23)              // or higher
 COST(PICK_UP_ARMOUR_TAKEN, 101)   // $BA3F to sub_F708's end, and back: the armour, in the opening scene
 COST(PICK_UP_ARMOUR_SOUND, 7)     // and $BA83 to sub_ED51 outside it, more than the branch past it
 COST(OBJECT_REMOVED, 42)          // sub_F708, and back, for a kind it doesn't count
@@ -597,7 +611,9 @@ COST(WEAPON_IS_CROSS, 23)
 COST(WEAPON_FACES, 34)            // $E10D to sub_F2E7: the way Arthur faces
 COST(THROW_STANDING, 3)           // $E129: thrown from ten pixels up,
 COST(THROW_CROUCHING, 7)          // or four
-COST(WEAPON_HEIGHT, 17)           // $E12F to $E149, on Arthur's screen
+COST(WEAPON_HEIGHT, 17)           // $E12F to $E149, on Arthur's screen,
+COST(WEAPON_SCREEN_ABOVE, 8)      // or, less the branch taken, $E13A to the store of its line on the screen above,
+COST(WEAPON_SCREEN_ABOVE_STORED, 13) // and to the store of that screen, at $E149
 COST(WEAPON_HEADING_LOOKED_AT, 7) // $E149 to $E14E
 COST(WEAPON_HEADS_RIGHT, 3)       // $E14E to $E161,
 COST(WEAPON_LEFT_SHAPE_KEPT, 11)  // or left, with a shape that has no other,
@@ -619,6 +635,8 @@ COST(WEAPON_NOT_SPENT, 2)         // $EBA3
 COST(WEAPON_BLOCK_ABOVE, 11)      // sub_E9CA with its call, to the store of the four pixels above its place,
 COST(WEAPON_BLOCK_ROW, 7)         // to the store of its screen down, or $EA50's of its pixel across,
 COST(WEAPON_BLOCK_LINE, 12)       // to the store of its line,
+COST(WEAPON_BLOCK_SCREEN_ABOVE, 12) // or, for four pixels above its screen's top, $E9E1 to $E9EA's store,
+COST(WEAPON_BLOCK_SCREEN_ABOVE_LINE, 2) // and to $E9EC's store of the screen above, with the rest as below, a cycle less
 COST(WEAPON_BLOCK_SCREEN_ACROSS, 13) // to $EA4E's store of its screen across,
 COST(WEAPON_BLOCK_PLACED, 3)      // and to $EA55
 COST(WEAPON_FLIES_ON, 15)         // $EBA8, and back: not a gravestone

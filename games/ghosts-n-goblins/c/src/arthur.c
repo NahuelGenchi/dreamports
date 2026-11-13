@@ -522,8 +522,16 @@ static void make_weapon(uint8_t weapon) {
   took(OBJECT_FLAG_READ);
   took(FLAGS & CROUCHES ? THROW_CROUCHING : THROW_STANDING);
   RAM[0x22] = FLAGS & CROUCHES ? 4 : 10;
+  uint8_t above = RAM[OBJECT_Y + weapon] < RAM[0x22];
   RAM[OBJECT_Y + weapon] -= RAM[0x22];
   took(WEAPON_HEIGHT);
+  if (above) {
+    // $E13A: higher than the top of Arthur's screen, it's on the screen above, whose 240 lines end 16 short of 256
+    took(WEAPON_SCREEN_ABOVE);
+    RAM[OBJECT_Y + weapon] -= 0x10;
+    took(WEAPON_SCREEN_ABOVE_STORED);
+    RAM[OBJECT_Y_SCREEN + weapon]--;
+  }
   took(WEAPON_HEADING_LOOKED_AT);
   if (!(FLAGS & TURNED)) took(WEAPON_HEADS_RIGHT);
   else if (RAM[OBJECT_SHAPE + weapon] >= 0x45) took(WEAPON_LEFT_SHAPE_KEPT);

@@ -642,6 +642,56 @@ static void hidden_thing(uint8_t object) {
     }
   }
   took(HIDDEN_STAYS);
+  if (object >= 0x10) took(READ_PAST_PAGE);   // sub_F2FF reads its flags, from the 17th object on in the next page
+  third_set_leftover(object);
+}
+
+// sub_04_9E32, kind $21: an enemy waiting unseen where the stage's list puts it. When Arthur touches the 20 pixels
+// around its place it becomes the enemy its state picks from the copy's list at $9EA8, four bytes each: a kind, a count,
+// and how far across and down from here it starts. The flier (kind 2) starts with its flag $02 set.
+static void waiting_enemy(uint8_t object) {
+  hide_object(object);
+  if (!object_in_view(object)) {
+    took(WAITING_OUT_OF_VIEW);
+    hide_object(object);
+  } else {
+    RAM[0x26] = RAM[0x27] = 0x0A;
+    took(WAITING_IN_VIEW);
+    if (!arthur_touches(object)) took(WAITING_NOT_TOUCHED);
+    else {
+      uint16_t entry = (uint16_t)(0x9EA8 + RAM[OBJECT_STATE + object] * 4);
+      took(WAITING_TOUCHED);
+      RAM[OBJECT_FLAGS + object] = 0x40;
+      took(WAITING_STATE);
+      RAM[OBJECT_STATE + object] = 0;
+      took(WAITING_KIND);
+      uint8_t kind = cart(4, entry);
+      RAM[OBJECT_KIND + object] = kind;
+      if (kind == 0x02) {
+        took(WAITING_FLIER);
+        RAM[OBJECT_FLAGS + object] |= 0x02;   // sub_F309
+        took(OBJECT_FLAG_CHANGED);
+        if (object >= 0x10) took(READ_PAST_PAGE);
+      } else took(WAITING_NOT_FLIER);
+      took(WAITING_COUNT);
+      RAM[OBJECT_COUNT + object] = cart(4, (uint16_t)(entry + 1));
+      int8_t across = (int8_t)cart(4, (uint16_t)(entry + 2)), down = (int8_t)cart(4, (uint16_t)(entry + 3));
+      took(across < 0 ? WAITING_LEFT : WAITING_RIGHT);
+      RAM[0x23] = across < 0 ? 0xFF : 0;
+      uint16_t x = (uint16_t)((RAM[OBJECT_X_SCREEN + object] << 8 | RAM[OBJECT_X + object]) + across);
+      RAM[OBJECT_X + object] = (uint8_t)x;
+      took(WAITING_MOVED_ACROSS);
+      RAM[OBJECT_X_SCREEN + object] = (uint8_t)(x >> 8);
+      took(down < 0 ? WAITING_UP : WAITING_DOWN);
+      A_Y_SCREEN = down < 0 ? 0xFF : 0;
+      A_Y = (uint8_t)down;
+      took(CALLS);
+      move_down(object);
+      took(JUMPS);
+    }
+  }
+  took(HIDDEN_STAYS);
+  if (object >= 0x10) took(READ_PAST_PAGE);   // sub_F2FF reads its flags, from the 17th object on in the next page
   third_set_leftover(object);
 }
 
@@ -761,6 +811,7 @@ wait objects_task(void) {
         case 0x08: big_man(object); break;
         case 0x0A: bat(object); break;
         case 0x0B: cave_shooter(object); break;
+        case 0x21: waiting_enemy(object); break;
         case 0x2A: cave_shot(object); break;
         case 0x2F: thrown(object); break;
         case 0x0C: lift(object); break;
