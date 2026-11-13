@@ -16,6 +16,7 @@ enum {
   AIR_WALL = 3 + HALF_WIDTH,       // the wall checks in the air: one pixel wider than on the ground
   METATILE = 12,                   // tiles across a metatile
 };
+static int q8_of(double v) { return (int)__builtin_floor(v * 256 + 0.5); }   // Math.round of the 8.8 value
 #define LANDING_SPEED_MAX 11.8125  // the fastest a steep landing turns into ground speed
 
 static int quadrant(int rot) { return (((rot & 0xFF) + 0x20) & 0xC0) >> 6; }
@@ -148,6 +149,11 @@ static Pair sensed(Pair r, int flip) {
 }
 static Pair floor_under(const Player *p) { return sensed(p->inverted ? ceiling_pair(p) : floor_pair(p), p->inverted); }
 static Pair ceiling_over(const Player *p) { return sensed(p->inverted ? floor_pair(p) : ceiling_pair(p), p->inverted); }
+static SensorPair out_of(Pair r) { SensorPair o = { r.d, r.rot, r.out }; return o; }
+SensorPair sensors_floor_under(const Player *p) { return out_of(floor_under(p)); }
+SensorPair sensors_act_floor(const Player *p) { return out_of(sensed(floor_pair(p), p->inverted)); }
+SensorPair sensors_act_ceiling(const Player *p) { return out_of(sensed(ceiling_pair(p), p->inverted)); }
+SensorPair sensors_wall_beside(const Player *p, int dir) { return out_of(sensed(dir < 0 ? left_pair(p) : right_pair(p), p->inverted)); }
 
 int sensors_clearance(const Player *p, int angle) {
   switch (quadrant(angle)) {
@@ -273,6 +279,49 @@ void sensors_air(Player *p) {
         player_land(p);
         p->ysp = 0; p->gsp = p->xsp;
       }
+    }
+  }
+}
+
+// --- Knuckles' glide (sub_8022838) ------------------------------------------------------------------------------------------
+// a wall `reach` px past his side, which stops him and marks it in the glide's flags
+static void glide_wall(Player *p, int dir, int reach) {
+  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y);
+  int d = terrain_scan(PROBE_WALL, x + dir * (reach + HALF_WIDTH), y, platform_mask(p, 3), 8 * dir).d;
+  if (d > 0) return;
+  p->x += dir * d; p->xsp = 0;
+  p->glideFlags |= GLIDE_WALL;
+}
+// touching down clears the glide's flag GLIDE_UP
+static void glide_floor(Player *p, int down) {
+  Pair f = floor_under(p);
+  if (f.d > 0) return;
+  p->y += down * f.d; p->rotation = f.rot; p->ysp = 0;
+  p->glideFlags &= ~GLIDE_UP;
+}
+
+void sensors_glide(Player *p) {
+  if (p->onObject) { p->glideFlags &= ~GLIDE_UP; p->rotA = p->rotB = 0; return; }
+  int vx = s16(q8_of(p->xsp)), vy = s16(q8_of(p->ysp)), down = p->inverted ? -1 : 1;
+  int a = arc_tan2(vx, vy) >> 8;
+  switch (((a - 0x20) & 0xC0) >> 6) {
+    case 0:   // moving down
+      glide_wall(p, -1, 3); glide_wall(p, 1, 3);
+      glide_floor(p, down);
+      return;
+    case 2: {   // moving up
+      glide_wall(p, -1, 3); glide_wall(p, 1, 3);
+      Pair c = ceiling_over(p);
+      if (c.d <= 0) { p->y -= down * c.d; p->ysp = 0; }
+      return;
+    }
+    default: {  // moving left (1) or right (3)
+      glide_wall(p, a >= 0x60 && a < 0xA0 ? -1 : 1, 2);
+      Pair c = ceiling_over(p);
+      if (c.d <= 0) {
+        p->y -= down * c.d;
+        if (p->ysp < 0) p->ysp = 0;
+      } else if (p->ysp >= 0) glide_floor(p, down);
     }
   }
 }

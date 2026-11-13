@@ -241,13 +241,20 @@ static void ease_look_back(Camera *c) {
   if (step > LOOK_STEP) step = LOOK_STEP;
   c->look -= c->look > 0 ? step : c->look < 0 ? -step : 0;
 }
+// Knuckles floating on the water with up held looks up too (Player_8044750, Player_80447D8); his frames from a glide to
+// its end ease the look once more (sub_8048980), 2 down or 4 up, and climbing up or down once more again (Player_8047280);
+// his jump off the water leaves it as it is
 static void update_look(Camera *c, const Player *p) {
-  int looking = (p->state == PS_LOOK_UP ? -LOOK_UP : p->state == PS_CROUCH && p->gsp == 0 ? LOOK_DOWN : 0) * (p->inverted ? -1 : 1);
+  if (p->lookEase == LOOK_EASE_STILL) return;
+  int up = p->state == PS_LOOK_UP || p->state == PS_WATER_FLOAT_UP;
+  int looking = (up ? -LOOK_UP : p->state == PS_CROUCH && p->gsp == 0 ? LOOK_DOWN : 0) * (p->inverted ? -1 : 1);
   if (!looking) { c->lookDelay = LOOK_DELAY; ease_look_back(c); }
   else if (c->lookDelay == 0 || --c->lookDelay == 0) {
     if (looking < 0 && c->look + c->shiftY > looking) c->look -= LOOK_STEP;
     if (looking > 0 && c->look + c->shiftY < looking) c->look += LOOK_STEP;
   } else ease_look_back(c);
+  if (p->lookEase == LOOK_EASE_GLIDE || p->lookEase == LOOK_EASE_CLIMB) c->look += c->look > 0 ? -2 : c->look < 0 ? 4 : 0;
+  if (p->lookEase == LOOK_EASE_CLIMB) ease_look_back(c);
 }
 static int camera_update(Camera *c, const Player *p) {
   c->wrappedThisFrame = 0;
@@ -267,7 +274,8 @@ static int camera_update(Camera *c, const Player *p) {
   // at most its speed a frame, which the results set to 0 to hold it
   if (dx > 8) c->x += dx - 8 > c->speedX ? c->speedX : dx - 8;
   else if (dx < -8) c->x += dx + 8 < -c->speedX ? -c->speedX : dx + 8;
-  int air = p->air;
+  // Knuckles floating on the water counts as on the ground
+  int air = p->air && !(p->character == CHARACTER_KNUCKLES && p->midAir == KN_FLOAT);
   c->deadY = air ? (c->deadY + 4 < 24 ? c->deadY + 4 : 24) : (c->deadY - 4 > 0 ? c->deadY - 4 : 0);
   int dy = (int)c->targetY - (int)c->y;
   if (dy > c->deadY) c->y += dy - c->deadY > c->speedY ? c->speedY : dy - c->deadY;
@@ -442,7 +450,8 @@ void act_copy_tiles(int frame) { late_tiles_copy(frame); }
 // character select still find them there, but in an act whose row has them blank. After the act before, the player's
 // own frames have long been over them, and they stay his.
 static void menu_leftovers(void) {
-  if (act.stage.row->blankZeroTiles) { memset(gba_vram + OBJ_VRAM + (HUD_WHITE - 64) * 32, 0, 2 * 32); return; }
+  // X Zone's first card leaves them blank only for Sonic
+  if (act.stage.row->blankZeroTiles && ctx.character == CHARACTER_SONIC) { memset(gba_vram + OBJ_VRAM + (HUD_WHITE - 64) * 32, 0, 2 * 32); return; }
   uint32_t leftTiles, leftPalette;
   UiSlot layout;
   ui_graphics(39, &leftTiles, &leftPalette, &layout);
@@ -1082,6 +1091,8 @@ void act_start(int level, int cardSkip, int preFrames) {
   // Moon Zone, the extra stage, has none (GameStageStart).
   // Tails played by the pad has his body at Sonic's fixed place, and his tails from the heap as the partner's are
   if (ctx.character == CHARACTER_TAILS) player_become_tails(&act.player);
+  // Knuckles needs no sprite but his body
+  if (ctx.character == CHARACTER_KNUCKLES) act.player.character = CHARACTER_KNUCKLES;
   if (ctx.partner && ctx.character == 0 && level != LEVEL_THE_MOON) partner_start();
   objects_start(level, act.stage.paletteCount > 0);
   if (row->runsFromFirstFrame) start_palette_animations();

@@ -30,10 +30,13 @@ enum {
   ORDER_SONIC_EFFECT = 8,
   ANIM_BRAKE_DUST = 748, ANIM_DASH_DUST = 746, ANIM_DASH_DUST_BIG = 747, ANIM_INSTA_SHIELD = 50, VARIANT_INSTA_SHIELD = 1,
   ANIM_TAIL_SWIPE = 777,
+  ANIM_UPPERCUT_FLAME = 250, VARIANT_UPPERCUT_FLAME = 3, UPPERCUT_FLAME_TILES = 32 / 8 * (48 / 8),   // SA1_ANIM_KNUCKLES_UPPERCUT's box
+  ANIM_FLOAT_SPLASH = 782, FLOAT_SPLASH_TILES = 32 / 8 * (16 / 8),
+  FLOAT_SPLASH_ABOVE = 4, FLOAT_SPLASH_SHOWN_BELOW = 6,
   MAX_BRAKE_DUST = 20,          // the original keeps a pool of 20 brake dust clouds (CreateBrakingDustEffect)
   DASH_DUST_BIG_ABOVE = 0x200,  // the spin dash dust is the big one while the charge is above 2.0
 };
-enum { EFFECT_BRAKE, EFFECT_DASH, EFFECT_SHIELD, EFFECT_SWIPE };
+enum { EFFECT_BRAKE, EFFECT_DASH, EFFECT_SHIELD, EFFECT_SWIPE, EFFECT_SPLASH };
 
 typedef struct { Object o; int kind, x, y; const Player *p; } Effect;
 static int brakeDust;   // the brake dust clouds on screen
@@ -76,6 +79,18 @@ static int effect_run(ActTask *t) {
     e->x = whole(p->x); e->y = whole(p->y);
     s->frameFlags = (s->frameFlags & ~(uint32_t)(SPRITE_X_FLIP | SPRITE_Y_FLIP)) | (p->facing > 0 ? SPRITE_X_FLIP : 0) | (p->inverted ? SPRITE_Y_FLIP : 0);
   }
+  // Knuckles' splash: gone once he stops floating, 4 px above his centre at his sprite's priority, never ending, shown while
+  // his centre is less than 6 px under the water's line
+  if (e->kind == EFFECT_SPLASH) {
+    if (p->state != PS_WATER_FLOAT) return 0;
+    e->x = whole(p->x); e->y = whole(p->y) - FLOAT_SPLASH_ABOVE;
+    s->frameFlags = (s->frameFlags & ~(uint32_t)(SPRITE_X_FLIP | SPRITE_PRIORITY)) | (p->facing > 0 ? SPRITE_X_FLIP : 0)
+      | (uint32_t)(p->front ? 1 : p->prio) << 12;
+    sprite_step(s);
+    int level = water_level();
+    if (level >= 0 && whole(p->y) - FLOAT_SPLASH_SHOWN_BELOW < level) object_draw(s, e->x, e->y);
+    return 1;
+  }
   int ended = sprite_step(s);
   object_draw(s, e->x, e->y);
   return !ended;
@@ -90,6 +105,10 @@ static void effect_make(const Player *p, int kind, int anim, int variant, int x,
     object_sprite(&e->o.sprite, sprite_tiles(ANIM_DASH_DUST_BIG, 0, 0) > sprite_tiles(ANIM_DASH_DUST, 0, 0) ? ANIM_DASH_DUST_BIG : ANIM_DASH_DUST, 0, 0, ORDER_SONIC_EFFECT, PRIORITY_FRONT, flipX, flipY);
     e->o.sprite.graphics.anim = (uint16_t)anim;
   } else if (kind == EFFECT_BRAKE) object_sprite_at(&e->o.sprite, OBJ_VRAM + VRAM_DUST_EFFECT_BRAKING, anim, variant, ORDER_SONIC_EFFECT, PRIORITY_FRONT, flipX, flipY);
+  else if (kind == EFFECT_SWIPE && anim == ANIM_UPPERCUT_FLAME)
+    object_sprite_at(&e->o.sprite, vram_malloc(UPPERCUT_FLAME_TILES), anim, variant, ORDER_SONIC_EFFECT, PRIORITY_FRONT, flipX, flipY);
+  else if (kind == EFFECT_SPLASH)
+    object_sprite_at(&e->o.sprite, vram_malloc(FLOAT_SPLASH_TILES), anim, variant, ORDER_SONIC_EFFECT, PRIORITY_FRONT, flipX, flipY);
   else object_sprite(&e->o.sprite, anim, variant, variant, ORDER_SONIC_EFFECT, PRIORITY_FRONT, flipX, flipY);
   if (!object_task(&e->o, effect_run, PRIORITY_EFFECTS)) return;
   if (kind == EFFECT_BRAKE) brakeDust++;
@@ -110,6 +129,12 @@ void act_dash_dust_of(const Player *p) {
 }
 void act_tail_swipe(const Player *p) {
   effect_make(p, EFFECT_SWIPE, ANIM_TAIL_SWIPE, 0, whole(p->x), whole(p->y), p->facing > 0, p->inverted);
+}
+void act_uppercut_flame(const Player *p) {
+  effect_make(p, EFFECT_SWIPE, ANIM_UPPERCUT_FLAME, VARIANT_UPPERCUT_FLAME, whole(p->x), whole(p->y), p->facing > 0, p->inverted);
+}
+void act_float_splash(const Player *p) {
+  effect_make(p, EFFECT_SPLASH, ANIM_FLOAT_SPLASH, 0, whole(p->x), whole(p->y) - FLOAT_SPLASH_ABOVE, p->facing > 0, 0);
 }
 // the insta-shield's flash, facing the way he faced when it started
 void act_insta_shield(void) {
