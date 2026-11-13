@@ -212,6 +212,14 @@ void plant(uint8_t object);
 /** sub_04_9FB0, kind 2: the flier that sits near the end of the first stage (flier.c); $F4BC, kind $2C: its shot. */
 void flier(uint8_t object);
 void flier_shot(uint8_t object);
+/** sub_02_8574: kind 7, by the second stage's apartments, and sub_04_AA4F, kind 7: the small white thing from a window (apartments.c). */
+void apartments_come(uint8_t *x);
+void window_thing(uint8_t object);
+/** sub_04_ABC1, kind 8: the big man of each of the apartments' floors (apartments.c); $F504, kind $2F: what it throws (enemies.c). */
+void big_man(uint8_t object);
+void thrown(uint8_t object);
+/** sub_02_8748: the crows of the second set of stages (enemies.c). */
+void tower_crows_come(uint8_t *x);
 /** sub_02_84E0: the flying knights that come on the first stage's last screens; sub_04_A530, kind 3: one of them (enemies.c). */
 void knights_come(uint8_t *x);
 void knight(uint8_t object);

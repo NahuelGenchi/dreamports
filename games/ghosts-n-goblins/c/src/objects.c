@@ -81,13 +81,15 @@ void place_on_screen(uint8_t object) {
   object_place(object, 1);
   view_place();
   second_from_first();
-  took(OBJECT_PLACED);
   if (RAM[OBJECT_Y_SCREEN + object] != RAM[VIEW_Y_SCREEN]) {
-    A_Y -= 0x10;
     took(OBJECT_PLACED_OTHER_SCREEN);
-  }
+    A_Y -= 0x10;
+    took(OBJECT_PLACED_LINE_TAKEN);
+  } else took(OBJECT_PLACED);
   RAM[OBJECT_SCREEN_Y + object] = A_Y;
+  took(OBJECT_PLACED_LINE);
   RAM[OBJECT_SCREEN_X + object] = A_X;
+  took(OBJECT_PLACED_ACROSS);
 }
 
 // sub_F0A3: whether an object is in the view's own screen, across and down.
@@ -245,26 +247,34 @@ static void scale(void) {
   RAM[0x48] = (uint8_t)(sum >> 16);
 }
 
-// $F05A: what's in $77, $73 and $7B, screens, pixels and 256ths, added to an object's place down.
+// $F05A: what's in $77, $73 and $7B, screens, pixels and 256ths, added to an object's place down. The move is counted
+// a write at a time, as enemies move in the middle of their turns and a frame can end inside one.
 static void add_down(uint8_t object) {
   uint32_t y = (uint32_t)(RAM[OBJECT_Y_SCREEN + object] << 16 | RAM[OBJECT_Y + object] << 8 | RAM[OBJECT_Y_PART + object]);
   y += (uint32_t)(A_Y_SCREEN << 16 | A_Y << 8 | RAM[0x7B]);
-  uint8_t pixel = (uint8_t)(y >> 8), screen = (uint8_t)(y >> 16);
-  took(MOVE_ADDED_DOWN);
+  uint8_t pixel = (uint8_t)(y >> 8), screen = (uint8_t)(y >> 16), was = RAM[OBJECT_Y_SCREEN + object];
+  took(MOVE_DOWN_PART);
+  RAM[OBJECT_Y_PART + object] = (uint8_t)y;
+  took(MOVE_DOWN_PIXEL);
+  RAM[OBJECT_Y + object] = pixel;
+  took(MOVE_DOWN_SCREEN);
+  A_Y_SCREEN = screen;
+  took(MOVE_DOWN_ADDED);
   // a screen is 240 pixels high: 16 are taken off on another screen, or put on past the last line of its own
-  if (screen != RAM[OBJECT_Y_SCREEN + object]) {
-    pixel -= 0x10;
+  if (screen != was) {
+    took(MOVE_OTHER_SCREEN_TAKES);
+    RAM[OBJECT_Y + object] = (uint8_t)(pixel - 0x10);
     took(MOVE_OTHER_SCREEN);
   } else if (pixel >= 0xF0) {
-    pixel += 0x10;
-    screen++;
+    took(MOVE_NEXT_SCREEN_PUTS);
+    RAM[OBJECT_Y + object] = (uint8_t)(pixel + 0x10);
+    took(MOVE_NEXT_SCREEN_PUT);
+    A_Y_SCREEN = (uint8_t)(screen + 1);
     took(MOVE_NEXT_SCREEN_DOWN);
   } else took(MOVE_SAME_SCREEN);
   took(MOVE_ENDS);
-  RAM[OBJECT_Y_PART + object] = (uint8_t)y;
-  RAM[OBJECT_Y + object] = pixel;
-  A_Y_SCREEN = screen;
-  RAM[OBJECT_Y_SCREEN + object] = screen;
+  RAM[OBJECT_Y_SCREEN + object] = A_Y_SCREEN;
+  took(MOVE_ENDED);
 }
 
 // sub_F03E and sub_EFDA: moves an object by `speed` the way it's heading, one of 16 ways. The copy's table at $F2A3 has,
@@ -272,21 +282,35 @@ static void add_down(uint8_t object) {
 // sub_EFDA, with its call: how far `speed` goes the way an object is heading, left in $77, $73 and $7B down and $78,
 // $74 and $7C across.
 void find_move(uint8_t object, uint8_t speed) {
-  took(MOVE_BEGINS);
+  took(MOVE_CALLED);
+  RAM[0xA0] = speed;
+  took(MOVE_TABLE_HIGH);
+  RAM[0x9E] = 0xF2;
+  took(MOVE_TABLE_LOW);
+  RAM[0x9D] = 0xA3;
+  took(MOVE_WAY_READ);
   if ((OBJECT_HEADING & 0xFF) + object > 0xFF) took(READ_PAST_PAGE);
   uint16_t way = (uint16_t)(0xF2A3 + RAM[OBJECT_HEADING + object] * 4);
-  RAM[0xA0] = speed;
-  set_ram16(0x9D, 0xF2A3);
   for (int across = 0; across < 2; across++) {
+    RAM[0x48] = 0;
+    took(across ? MOVE_THIRD_READ : MOVE_FIRST_READ);
     RAM[0x26] = cart(7, (uint16_t)(way + across * 2));
+    took(MOVE_SECOND_READ);
     RAM[0x27] = cart(7, (uint16_t)(way + across * 2 + 1));
-    RAM[0x48] = RAM[0x27] & 0x80 ? 0xFF : 0;
+    if (RAM[0x27] & 0x80) {
+      took(MOVE_WAY_BACK);
+      RAM[0x48] = 0xFF;
+      took(MOVE_SIGN_SET);
+    } else took(MOVE_WAY_FORWARD);
+    took(MOVE_SPEED_READ);
     RAM[0x52] = speed;
-    took(RAM[0x27] & 0x80 ? MOVE_WAY_BACK : MOVE_WAY_FORWARD);
     took(MOVE_SCALE_CALLED);
     scale();
+    took(MOVE_RESULT_READ);
     RAM[0x77 + across] = RAM[0x48];
+    took(MOVE_RESULT_STORED);
     RAM[0x73 + across] = RAM[0x27];
+    took(MOVE_RESULT_STORED);
     RAM[0x7B + across] = RAM[0x26];
     took(across ? MOVE_FOUND : MOVE_ACROSS_BEGINS);
   }
@@ -294,18 +318,22 @@ void find_move(uint8_t object, uint8_t speed) {
 
 void move_object(uint8_t object, uint8_t speed) {
   find_move(object, speed);
-  took(MOVE_ADDED_ACROSS);
   uint32_t x = (uint32_t)(RAM[OBJECT_X_SCREEN + object] << 16 | RAM[OBJECT_X + object] << 8 | RAM[OBJECT_X_PART + object]);
   x += (uint32_t)(A_X_SCREEN << 16 | A_X << 8 | RAM[0x7C]);
+  took(MOVE_ACROSS_PART);
   RAM[OBJECT_X_PART + object] = (uint8_t)x;
+  took(MOVE_ACROSS_NEXT);
   RAM[OBJECT_X + object] = (uint8_t)(x >> 8);
+  took(MOVE_ACROSS_NEXT);
   RAM[OBJECT_X_SCREEN + object] = (uint8_t)(x >> 16);
+  took(MOVE_ADDED_ACROSS);
   add_down(object);
 }
 
 void move_down(uint8_t object) {
-  RAM[0x7B] = 0;
   took(MOVE_DOWN_ONLY);
+  RAM[0x7B] = 0;
+  took(MOVE_DOWN_ONLY_JUMPS);
   add_down(object);
 }
 
@@ -490,15 +518,32 @@ int arthur_touches(uint8_t object) {
   enum { CAN_TOUCH_NOTHING = 0x41, CROUCHING = 0x02 };
   if (RAM[OBJECT_FLAGS + ARTHUR] & CAN_TOUCH_NOTHING) { took(PICK_UP_CANNOT_BE_TOUCHED); return 0; }
   int standing = !(RAM[OBJECT_FLAGS + ARTHUR] & CROUCHING);
-  took(standing ? TOUCH_SET_UP : TOUCH_SET_UP_CROUCHING);
-  RAM[0x25] = (uint8_t)((standing ? 8 : 4) + RAM[0x27]);
+  // a write at a time, as a frame can end inside it
+  took(TOUCH_SET_UP);
+  RAM[0x25] = 8;
+  if (!standing) {
+    took(TOUCH_CROUCHING);
+    RAM[0x25] = 4;
+    took(TOUCH_HEIGHT_CROUCHING);
+  } else took(TOUCH_HEIGHT);
+  RAM[0x25] = (uint8_t)(RAM[0x25] + RAM[0x27]);
+  took(TOUCH_BOX_SIDE);
   RAM[0x23] = (uint8_t)-RAM[0x25];
+  took(TOUCH_BOX_SIDE);
   RAM[0x24] = (uint8_t)(RAM[0x26] + 4);
+  took(TOUCH_BOX_SIDE);
   RAM[0x22] = (uint8_t)-RAM[0x24];
-  if (standing) RAM[OBJECT_SCREEN_Y + ARTHUR] -= 4;
+  if (standing) {
+    took(TOUCH_RAISED);
+    RAM[OBJECT_SCREEN_Y + ARTHUR] -= 4;
+    took(TOUCH_TESTS);
+  } else took(TOUCH_TESTS_CROUCHING);
   int touches = within(ARTHUR, object);
-  if (standing) RAM[OBJECT_SCREEN_Y + ARTHUR] += 4;
-  took(standing ? TOUCH_ENDS : TOUCH_ENDS_CROUCHING);
+  if (standing) {
+    took(TOUCH_ENDS);
+    RAM[OBJECT_SCREEN_Y + ARTHUR] += 4;
+    took(TOUCH_LOWERED);
+  } else took(TOUCH_ENDS_CROUCHING);
   return touches;
 }
 
@@ -657,8 +702,9 @@ wait objects_task(void) {
   enum { FIRST_TURN, LATER };
   if (task_step[TASK_OBJECTS] == LATER) took(OBJECTS_AGAIN);
   task_step[TASK_OBJECTS] = LATER;
+  took(OBJECTS_BEGINS);
   switch_bank(4);
-  took(OBJECTS_BEGIN);
+  took(OBJECTS_BANK_SET);
   for (uint8_t object = 1; object < 0x16; object++) {
     took(OBJECT_LOOKED_AT);
     if (object >= 0x10) took(OBJECT_PAST_PAGE);
@@ -677,6 +723,9 @@ wait objects_task(void) {
         case 0x04: forest_enemy(object); break;
         case 0x05: boss(object); break;
         case 0x06: devil(object); break;
+        case 0x07: window_thing(object); break;
+        case 0x08: big_man(object); break;
+        case 0x2F: thrown(object); break;
         case 0x0E: platform(object); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object); break;
@@ -700,7 +749,8 @@ wait objects_task(void) {
     took(OBJECT_NEXT);
     took(object < 0x15 ? GOES_ROUND : GOES_ON);
   }
-  switch_bank(BANK_HOME);
   took(OBJECTS_END);
+  switch_bank(BANK_HOME);
+  took(OBJECTS_BANK_BACK);
   return YIELDS;
 }

@@ -286,14 +286,16 @@ COST(BLOCK_COLOURS_BOTTOM_RIGHT, 64)
 
 // ---- the objects' task, $F367 and sub_04_9CC8 (objects.c)
 COST(OBJECTS_AGAIN, 3)            // $F37C
-COST(OBJECTS_BEGIN, 17)           // $F367 to $9CC8
+COST(OBJECTS_BEGINS, 2)           // $F367 to the store of the bank,
+COST(OBJECTS_BANK_SET, 15)        // and to $9CC8
 COST(OBJECT_LOOKED_AT, 4)         // $9CCA
 COST(OBJECT_PAST_PAGE, 1)         // a cycle more for the objects whose flags are in the next page of memory
 COST(OBJECT_UNUSED, 3)
 COST(OBJECT_USED, 35)             // $9CCD to its kind's code, through the table at $9CED
 COST(OBJECT_KIND_PAST_PAGE, 1)    // a cycle more for each byte of the table's entry that's in the next page
 COST(OBJECT_NEXT, 4)              // $9CE4
-COST(OBJECTS_END, 25)             // $9CE9 to the call that yields
+COST(OBJECTS_END, 11)             // $9CE9 to the store of the bank,
+COST(OBJECTS_BANK_BACK, 14)       // and to the call that yields
 COST(PLACE_FIRST_READ, 10)        // sub_F0BC with its call, to its first write,
 COST(PLACE_NEXT_READ, 7)          // each write and the read for the next,
 COST(PLACE_LAST_WRITE, 9)         // and the last, and back: the same in sub_F108, sub_F0EC and $F0FA
@@ -303,8 +305,11 @@ COST(APART_FIRST, 20)             // sub_F0E6 with its call, to its first write:
 COST(APART_SCREEN, 9)             // the screens,
 COST(APART_DOWN, 20)              // and by way of $F0FA, down
 COST(PLACE_SCREEN_COUNTED, 5)     // sub_F0A3's two counts of a screen down
-COST(OBJECT_PLACED, 32)           // sub_F181 after its three calls, and back
-COST(OBJECT_PLACED_OTHER_SCREEN, 9)
+COST(OBJECT_PLACED, 13)           // sub_F181 after its three calls, to the store of its line on the screen, a write at a time,
+COST(OBJECT_PLACED_OTHER_SCREEN, 16) // or on another screen than the view's, to the store of the line 16 nearer,
+COST(OBJECT_PLACED_LINE_TAKEN, 6) // and on to the store of its line
+COST(OBJECT_PLACED_LINE, 8)       // to the store of its place across,
+COST(OBJECT_PLACED_ACROSS, 11)    // and back
 COST(OBJECT_SHOWN, 23)            // sub_F321 or sub_F346, with its call
 COST(OBJECT_FLAG_READ, 22)        // one of the flag tests from sub_F2E3 on, with its call,
 COST(OBJECT_SHOWN_READ, 18)       // or sub_F2FF's
@@ -342,10 +347,17 @@ COST(HIDDEN_STAYS, 34)            // sub_04_BB67 for an object that isn't shown,
 COST(PICK_UP_ARMOUR_TAKEN, 101)   // $BA3F to sub_F708's end, and back: the armour, in the opening scene
 COST(PICK_UP_ARMOUR_SOUND, 7)     // and $BA83 to sub_ED51 outside it, more than the branch past it
 COST(OBJECT_REMOVED, 42)          // sub_F708, and back, for a kind it doesn't count
-COST(TOUCH_SET_UP, 95)            // sub_F68E to its call of sub_F63A, for an Arthur who stands,
-COST(TOUCH_ENDS, 33)              // and $F6D9, and back
-COST(TOUCH_SET_UP_CROUCHING, 88)  // the same for an Arthur who crouches
-COST(TOUCH_ENDS_CROUCHING, 22)
+COST(TOUCH_SET_UP, 11)            // sub_F68E to the first store of his half height, a write at a time,
+COST(TOUCH_HEIGHT, 20)            // to its second, for an Arthur who stands,
+COST(TOUCH_CROUCHING, 13)         // or one who crouches, to the store of his own,
+COST(TOUCH_HEIGHT_CROUCHING, 11)  // and to the second
+COST(TOUCH_BOX_SIDE, 10)          // to each next store of the box's sides
+COST(TOUCH_RAISED, 22)            // standing, to the store of his place 4 lines up,
+COST(TOUCH_TESTS, 12)             // and to the call of sub_F63A,
+COST(TOUCH_TESTS_CROUCHING, 23)   // or crouching, to it
+COST(TOUCH_ENDS, 19)              // $F6D9 to the store of his place back, standing,
+COST(TOUCH_LOWERED, 14)           // and back,
+COST(TOUCH_ENDS_CROUCHING, 22)    // or crouching
 COST(WITHIN_SAME_SCREEN, 31)      // sub_F63A to $F65D: the two are less than half a screen apart, on one screen of the stage,
 COST(WITHIN_NEXT_SCREEN, 37)      // or on two,
 COST(WITHIN_SAME_SCREEN_FAR, 43)  // or they're further apart, and back: on one screen,
@@ -387,27 +399,67 @@ COST(WAY_HALVED_FOR_FIRST, 21)    // $EF99: both halved while the first is 16 or
 COST(WAY_HALVED_FOR_SECOND, 27)   // or the second,
 COST(WAY_SMALL_ENOUGH, 15)        // and on to $EFAC
 COST(WAY_FOUND, 38)               // $EFAC, and back
-COST(MOVE_BEGINS, 55)             // sub_F03E's call of sub_EFDA, to $EFF9
-COST(MOVE_WAY_FORWARD, 3)         // $EFF9 or $F020: a way that adds,
-COST(MOVE_WAY_BACK, 7)            // or takes away
-COST(MOVE_SCALE_CALLED, 12)       // $EFFF or $F026, to sub_F137
-COST(MOVE_ACROSS_BEGINS, 43)      // $F006 to $F020
-COST(MOVE_FOUND, 30)              // $F02D, and back
+COST(MOVE_CALLED, 6)              // sub_F03E's call of sub_EFDA, to the store of the speed, a write at a time:
+COST(MOVE_TABLE_HIGH, 10)         // to the store of its table's place,
+COST(MOVE_TABLE_LOW, 3)           // and its low byte,
+COST(MOVE_WAY_READ, 15)           // to the store of the sign, by the way it heads,
+COST(MOVE_FIRST_READ, 8)          // to the store of the table's first byte for it,
+COST(MOVE_THIRD_READ, 10)         // or $F014 to the third's,
+COST(MOVE_SECOND_READ, 10)        // to the store of the second, or the fourth
+COST(MOVE_SIGN_SET, 3)            // the sign of a way that takes away
+COST(MOVE_SPEED_READ, 3)          // $EFFF or $F026 to the store of the speed for sub_F137
+COST(MOVE_WAY_FORWARD, 6)         // $EFF7 or $F01E to $EFFF or $F026: a way that adds,
+COST(MOVE_WAY_BACK, 7)            // or takes away, to the store of its sign
+COST(MOVE_SCALE_CALLED, 9)        // and to sub_F137
+COST(MOVE_RESULT_READ, 3)         // $F006 or $F02D to the store of the screens down or across,
+COST(MOVE_RESULT_STORED, 6)       // to the store of the pixels, or of the 256ths
+COST(MOVE_ACROSS_BEGINS, 5)       // $F010 to the store of the next sign
+COST(MOVE_FOUND, 15)              // $F037, and back
 COST(SCALE_BEGINS, 32)            // sub_F137 to $F14D
 COST(SCALE_BIT_SHIFTED, 25)       // each bit of the speed: $F14D to its shift out of $52,
 COST(SCALE_BIT_CLEAR, 6)          // and to $F16E: one that's clear,
 COST(SCALE_BIT_SET, 34)           // or set
-COST(MOVE_ADDED_ACROSS, 38)       // $F041 to $F05A
-COST(MOVE_ADDED_DOWN, 40)         // $F05A to $F075
-COST(MOVE_DOWN_ONLY, 8)           // sub_F099 to $F05A
+COST(MOVE_ACROSS_PART, 9)         // $F041 to the store of the 256ths across,
+COST(MOVE_ACROSS_NEXT, 12)        // to the store of the pixels, or of the screens
+COST(MOVE_ADDED_ACROSS, 5)         // and to $F05A
+COST(MOVE_DOWN_PART, 9)           // $F05A to the store of the 256ths down,
+COST(MOVE_DOWN_PIXEL, 12)         // to the store of the pixels,
+COST(MOVE_DOWN_SCREEN, 12)        // to the store of the screens in $77,
+COST(MOVE_DOWN_ADDED, 7)          // and to $F075
+COST(MOVE_DOWN_ONLY, 2)           // sub_F099 to the store of no 256ths,
+COST(MOVE_DOWN_ONLY_JUMPS, 6)     // and to $F05A
 COST(ARTHUR_SIDE, 36)             // sub_FA87 with its call: which side of an object Arthur is
 COST(MOVE_SAME_SCREEN, 12)        // $F075 to $F091, on the same screen down
-COST(MOVE_NEXT_SCREEN_DOWN, 23)   // or past its 240 lines, onto the next,
-COST(MOVE_OTHER_SCREEN, 18)       // or on another already
-COST(MOVE_ENDS, 17)               // $F091, and back
+COST(MOVE_NEXT_SCREEN_PUTS, 13)   // or past its 240 lines, to the store of the pixels,
+COST(MOVE_NEXT_SCREEN_PUT, 5)     // to the store of the screen,
+COST(MOVE_OTHER_SCREEN_TAKES, 10) // or on another, to the store of the pixels
+COST(MOVE_NEXT_SCREEN_DOWN, 5)    // and on to $F091
+COST(MOVE_OTHER_SCREEN, 8)        // and on to $F091
+COST(MOVE_ENDS, 3)                // $F091 to the store of the screen down,
+COST(MOVE_ENDED, 14)              // and back
 
 // ---- Arthur's task in a stage, $DAE4 (arthur.c), and the stage's blocks (scroll.c)
-COST(STAGE_BLOCK, 217)            // $EA55: the stage's bank, sub_E945, the bank back, and back
+COST(BLOCK_BANK_READ, 9)          // $EA55, a write at a time: sub_EA66 with its call, to the store of the bank there was,
+COST(BLOCK_BANK_KEPT, 8)          // to the store of the stage's bank,
+COST(BLOCK_BANK_SET, 23)          // to sub_E945's store of the rows down,
+COST(BLOCK_TOP_ROW, 11)           // to the store of the screen, on the stage's top row of screens,
+COST(BLOCK_ROWS_BEGIN, 20)        // or on a row below it, to the first count of rows,
+COST(BLOCK_ROW_ADDED, 14)         // each next,
+COST(BLOCK_ROWS_ADDED, 12)        // and from the last to the store of the screen
+COST(BLOCK_SCREEN_KEPT, 10)       // to the store of the screen's list,
+COST(BLOCK_SCREEN_READ, 9)        // to the first store of its place's high byte,
+COST(BLOCK_LIST_HIGH, 7)          // to the low byte's,
+COST(BLOCK_LIST_LOW, 6)           // to $47's,
+COST(BLOCK_SIXTEENTHS, 5)         // to $48's,
+COST(BLOCK_SIXTEENTHS_HIGH, 3)    // to the first shift,
+COST(BLOCK_SHIFT, 5)              // a shift or a rotation,
+COST(BLOCK_LIST_TAKEN, 8)         // from the end of the last to the second store of the low byte,
+COST(BLOCK_LIST_LOW_TAKEN, 9)     // to the high byte's,
+COST(BLOCK_LIST_HIGH_TAKEN, 14)   // to the store of the block's column,
+COST(BLOCK_COLUMN, 13)            // to its row's,
+COST(BLOCK_ROW, 11)               // to the store of the block,
+COST(BLOCK_READ, 14)              // to the store of the bank there was,
+COST(BLOCK_BANK_BACK, 17)         // and back
 COST(STAGE_BLOCK_PAST_PAGE, 1)    // a cycle more for each of sub_E945's two reads that goes into the next page
 COST(ARTHUR_AGAIN, 3)             // $DB7F
 COST(ARTHUR_COLOURS, 44)           // sub_DC5B or sub_DC4D, with its call: his colours, in a stage or on a ladder,
@@ -556,7 +608,11 @@ COST(DAGGER_SPEED, 4)             // or $EB8C
 COST(WEAPON_IN_VIEW, 3)           // $EB93 to $EB9D,
 COST(WEAPON_GONE, 25)             // or with sub_F734, and back: out of the view
 COST(WEAPON_NOT_SPENT, 2)         // $EBA3
-COST(WEAPON_BLOCK_ABOVE, 53)      // sub_E9CA with its call, to the block four pixels above its place
+COST(WEAPON_BLOCK_ABOVE, 11)      // sub_E9CA with its call, to the store of the four pixels above its place,
+COST(WEAPON_BLOCK_ROW, 7)         // to the store of its screen down, or $EA50's of its pixel across,
+COST(WEAPON_BLOCK_LINE, 12)       // to the store of its line,
+COST(WEAPON_BLOCK_SCREEN_ACROSS, 13) // to $EA4E's store of its screen across,
+COST(WEAPON_BLOCK_PLACED, 3)      // and to $EA55
 COST(WEAPON_FLIES_ON, 15)         // $EBA8, and back: not a gravestone
 COST(WEAPON_STOPPED_BY_D0, 13)    // $EBA8 to sub_ED51: one of a gravestone's two blocks,
 COST(WEAPON_STOPPED_BY_DF, 16)    // or the other
@@ -797,9 +853,10 @@ COST(STAGE_OBJECT_STATE, 17)      // $D71E to $D6C1, for a kind whose state star
 COST(STAGE_OBJECT_STATE_LISTED, 22) // or $D72E to $D6C1, for one whose state the list gives,
 COST(STAGE_OBJECT_PLATFORM, 39)   // or $D709 to $D6C1, for a moving platform: its heading and shape too,
 COST(STAGE_OBJECT_STATE_KEPT, 7)  // or $D6BC to $D6C1, for one whose state is left as it was
+COST(STAGE_OBJECT_STATE_KEPT_COUNTED, 18) // or $D6AC to $D6C1, the same with its count set to $CA first
 COST(STAGE_OBJECT_FILLED, 95)     // $D6C1, and back
 COST(GAME_ROUND_DANGERS, 15)      // $D583 to sub_02_8400
-COST(DANGERS_OTHERS, 118)         // $8400 to $8415: its seven calls, and the four routines with nothing to do
+COST(DANGERS_OTHERS, 98)          // $8400 to $8415: its seven calls, and the three routines with nothing to do
 
 // ---- the zombies, sub_02_8416 and $F7BE (enemies.c)
 COST(ZOMBIES_OTHER_STAGE, 15)     // sub_02_8416, and back: a place with no zombies,
@@ -1537,6 +1594,174 @@ COST(TOWER_DANGER_BEFORE, 12)     // $874C to $875D, more than its branch there:
 COST(TOWER_DANGER_FIFTH_SCREEN, 8)  // or to $875E, on his fifth,
 COST(TOWER_DANGER_LATER_SCREENS, 16) // or on his seventh to tenth,
 COST(TOWER_DANGER_PAST, 15)       // or past them
+COST(KIND_7_ALL_MADE, 14)         // sub_02_8574, and back: three made already,
+COST(KIND_7_OTHER_PART, 20)       // or not the stage's fifth part,
+COST(KIND_7_LOOKED_AT, 15)        // or to $8581,
+COST(KIND_7_BEFORE, 23)           // and back: Arthur is short of $04E0,
+COST(KIND_7_PAST, 39)             // or at $05C0 or past it,
+COST(KIND_7_IN_RANGE, 32)         // or between, to $859B
+COST(KIND_7_NOT_YET, 14)          // and back: the count isn't out,
+COST(KIND_7_COME, 27)             // or is, to the call of sub_DA18
+COST(KIND_7_NONE_FREE, 9)         // $85B0, and back: no object is free,
+COST(KIND_7_SET_UP, 46)           // or one is, to the call of sub_02_84D7
+COST(KIND_7_PLACED, 36)           // $85D0 to the call of sub_02_88F6
+COST(KIND_7_NEXT, 8)              // $85EB, round again,
+COST(KIND_7_LAST, 13)             // or back
+COST(WINDOW_IS_HIT, 5)            // sub_04_AA52 to $F770
+COST(WINDOW_IS_NOT_HIT, 3)        // or to $AA57
+COST(WINDOW_COLOURS, 7)           // $AA57 to sub_F2EB
+COST(WINDOW_WAITS, 2)             // $AA5F to sub_F0A3: not out of its window yet
+COST(WINDOW_WAITS_UNSEEN, 9)      // $AA64, and back: out of the view,
+COST(WINDOW_WAITS_ON, 18)         // or in it, with rounds of its count left,
+COST(WINDOW_COMES_OUT, 11)        // or none, to sub_F30D
+COST(WINDOW_COMES_OUT_SOUND, 5)   // $AA6E to sub_ED51, by a jump
+COST(WINDOW_IS_OUT, 3)            // or out of it, to sub_F321
+COST(WINDOW_IN_VIEW, 3)           // $AA7A to $AA93
+COST(WINDOW_OUT_OF_VIEW, 10)      // or out of the view, to $AA83
+COST(WINDOW_GONE, 13)             // and gone, running off, by a jump to sub_F708,
+COST(WINDOW_GONE_NONE_LEFT, 17)   // with none counted left
+COST(WINDOW_HIDDEN, 3)            // or hidden, to sub_F346
+COST(WINDOW_NOT_RISEN, 2)         // $AA96 to $AA98
+COST(WINDOW_RISES, 13)            // $AA98 to $AAA0
+COST(WINDOW_RISING, 20)           // and back: one of its six steps,
+COST(WINDOW_RISEN, 16)            // or the last, to sub_F32E
+COST(WINDOW_FACES_LEFT, 6)        // $AAB2 to sub_F309, Arthur on its left, and less the jump to sub_F311 after
+COST(WINDOW_HAS_RISEN, 3)         // $AA96 to $AAC7
+COST(WINDOW_TESTS, 14)            // $AAC7 to sub_F5A0, with its call
+COST(WINDOW_NOT_KILLED, 8)        // $AAD0 to $AB04, across a page
+COST(WINDOW_KILLED, 6)            // or to sub_F32E
+COST(WINDOW_FALL_SIDE, 19)        // $AAD8 to sub_F305
+COST(WINDOW_ONE_LESS, 8)          // $AAE8 to sub_F7B9: one fewer made,
+COST(WINDOW_NONE_LEFT, 12)        // or none
+COST(WINDOW_KILLED_SOUND, 11)     // sub_F7B9 with its call, to sub_ED51
+COST(WINDOW_KILLED_SCORE, 21)     // $AAF6 to sub_D8FC, by two jumps
+COST(WINDOW_MOVES, 14)            // $AB04 to sub_F576's call
+COST(WINDOW_SHAPE_PICKED, 33)     // sub_F576 with its call, to sub_F2E7
+COST(WINDOW_SHAPE_KEPT, 3)        // $AB12 to $AB1D
+COST(WINDOW_SHAPE_TURNED, 15)     // or turned round
+COST(WINDOW_MODE_DROPS, 9)        // $AB1D to $AB35
+COST(WINDOW_LANDS, 15)            // $AB35, as low as Arthur: to sub_F315, less the jump
+COST(WINDOW_DROPS, 26)            // or higher, to sub_F099, with its call
+COST(WINDOW_DROPS_HIGH, 14)       // $AB48 to sub_F03E, by a jump: above the 120th line,
+COST(WINDOW_DROPS_LOW, 38)        // or below it, with speed left,
+COST(WINDOW_DROPS_LOWEST, 39)     // or none
+COST(WINDOW_MODE_RUNS, 21)        // $AB1D to $AB73
+COST(WINDOW_RUNS, 12)             // $AB73 to sub_F03E, by a jump
+COST(WINDOW_STOPS_RUNNING, 7)     // or its 16th round, to sub_F33A, less the jump to sub_F319 after
+COST(WINDOW_MODE_HOPS, 26)        // $AB1D to $AB8D
+COST(WINDOW_HOPS_OVER, 26)        // $AB8D, and back: the hop's over,
+COST(WINDOW_HOPS, 24)             // or to sub_F099, with its call,
+COST(WINDOW_HOP_TURNS, 45)        // or turning round on its fourth round
+COST(WINDOW_HOP_MOVES, 5)         // $ABBC to sub_F03E, by a jump
+COST(WINDOW_RUNS_OFF, 31)         // $AB1D to sub_F03E, by two jumps: running off
+COST(BIG_THIS_SET, 12)            // sub_04_ABC1 to $ABD4, outside the fourth and fifth sets of stages
+COST(BIG_FOURTH_SET, 8)           // or to $ABCB in the fourth,
+COST(BIG_FIFTH_SET, 11)           // or the fifth
+COST(BIG_GONE_THERE, 10)          // $ABCB to sub_F708, by a jump: $DF is 3,
+COST(BIG_STAYS_THERE, 8)          // or isn't
+COST(BIG_COLOURS, 7)              // $ABD4 to sub_F321
+COST(BIG_IN_VIEW, 3)              // $ABDF to $ABEF
+COST(BIG_OUT_OF_VIEW, 2)          // or to sub_F346
+COST(BIG_GONE_BURNT, 15)          // $ABE7, and back: out of the view once hit, it's gone,
+COST(BIG_HIDDEN, 3)               // or it's hidden
+COST(BIG_IS_HIT, 5)               // $ABF2 to $F6F6
+COST(BIG_TESTS, 13)               // or to the call of sub_F585, its box 8 by 8
+COST(BIG_NOTHING_TOUCHED, 3)      // $AC02 to $AC11: nothing touched it,
+COST(BIG_TOUCHED_ARTHUR, 7)       // or Arthur,
+COST(BIG_SPARKS, 11)              // or a weapon, which sparks: to sub_F319
+COST(BIG_STILL_STANDS, 9)         // $AC11 to $AC2F: fewer than ten hits,
+COST(BIG_KILLED, 19)              // or ten, to sub_ED51, by sub_F7B4
+COST(BIG_KILLED_SCORE, 24)        // $AC1B to sub_D8FC, by sub_C8BE
+COST(BIG_IS_ON_HIS_FLOOR, 5)      // $AC32 to $AD69
+COST(BIG_IS_NOT_ON_HIS_FLOOR, 3)  // or to $AC37
+COST(BIG_STRETCH_GOES_ON, 10)     // $AC37 to $ACAE: rounds of its stretch left,
+COST(BIG_STRETCH_OVER, 9)         // or none, to sub_F2FF
+COST(BIG_REACHES_HIS_FLOOR, 21)   // $AC3F to sub_F315, less the jump: it's shown, less than 32 lines over Arthur,
+COST(BIG_REACHES_HIS_FLOOR_ABOVE, 24) // or less than 24 under him
+COST(BIG_NOT_ON_HIS_FLOOR, 21)    // or further, to $AC58
+COST(BIG_NEW_STRETCH, 66)         // $AC58 to $AC85
+COST(BIG_STRETCH_OTHER_SET, 3)    // $AC85 to $ACA2, outside the second set of stages,
+COST(BIG_STRETCH_EARLY, 11)       // or before the seventh screen, to sub_F332,
+COST(BIG_STRETCH_MIDDLE, 15)      // or not on the ninth,
+COST(BIG_STRETCH_NINTH_LEFT, 23)  // or in the left half of the ninth,
+COST(BIG_STRETCH_NINTH_RIGHT, 22) // or its right half, to sub_F30D
+COST(BIG_STRETCH_RIGHT, 9)        // $ACA2 to $ACAE: heading right,
+COST(BIG_STRETCH_LEFT, 15)        // or left
+COST(BIG_WALK_THROWS, 5)          // $ACB1 to $AD17
+COST(BIG_WALKS, 3)                // or to $ACB6
+COST(BIG_FLOOR_AHEAD_RIGHT, 43)   // sub_04_AE24 with its call, to sub_FFAC's jump to $FFCD: heading right,
+COST(BIG_FLOOR_AHEAD_LEFT, 41)    // or sub_FFBE, heading left
+COST(BIG_FLOOR_SAME_SCREEN, 26)   // $FFCD to $EA55: 16 lines down, on its screen,
+COST(BIG_FLOOR_NEXT_SCREEN, 37)   // or the next one down
+COST(BIG_NO_FLOOR, 13)            // $AE2E or $AE3E, and back: no floor ahead,
+COST(BIG_WALL_AHEAD_RIGHT, 30)    // or floor, and sub_E9F1 with its call to $EA0E,
+COST(BIG_WALL_AHEAD_LEFT, 27)     // or sub_EA01
+COST(BIG_WALL_SAME_SCREEN, 29)    // $EA0E to $EA55: 4 lines down, on its screen,
+COST(BIG_WALL_NEXT_SCREEN, 40)    // or the next one down
+COST(BIG_WALL, 13)                // $AE35 or $AE45, and back: a wall,
+COST(BIG_NO_WALL_RIGHT, 15)       // or none, heading right,
+COST(BIG_NO_WALL_LEFT, 12)        // or left
+COST(BIG_TURNS, 13)               // $ACB9 to $ACC3: the way's shut
+COST(BIG_HEADS, 7)                // $ACC3 to sub_F2EB
+COST(BIG_HEADS_LEFT, 9)           // $ACCB to $ACD2, facing left
+COST(BIG_NOT_LOOKING, 9)          // $ACD2 to $ACF0: not one of its eighth rounds,
+COST(BIG_LOOKS, 18)               // or one, to sub_F687, its box 16 by 96
+COST(BIG_STOPS_OVER_HIM, 12)      // $ACE4 to sub_F309: Arthur is near
+COST(BIG_STEPS, 13)               // $ACF0 to sub_F03E, with its call
+COST(BIG_WALK_SHAPE, 7)           // $ACF8 to sub_F2EB
+COST(BIG_WALK_SHAPE_LEFT, 9)      // $AD00 to $AD07, facing left
+COST(BIG_WALK_STEP_SHAPE, 29)     // $AD07, and back
+COST(BIG_NOT_SHOWN, 3)            // $AD1A to $AD45: not shown,
+COST(BIG_NOT_TIME_TO_THROW, 11)   // or not one of its 32nd rounds,
+COST(BIG_ARTHUR_NOT_BELOW, 21)    // or Arthur isn't lower,
+COST(BIG_LOOKS_BELOW, 30)         // or is, to sub_F687, its box 16 by 128
+COST(BIG_THROWS_DOWN, 9)          // $AD36 to sub_04_AE4D: he's near
+COST(BIG_THROW_LOOKS, 13)         // sub_04_AE4D with its call, to $AE52, its 21st object's flags across a page
+COST(BIG_THROW_FIRST_FREE, 3)     // to $AE5C: the 21st is free,
+COST(BIG_THROW_SECOND_FREE, 12)   // or the 22nd,
+COST(BIG_THROW_NONE_FREE, 19)     // or neither, and back
+COST(BIG_THROW_PLACED, 73)        // sub_FA2E with its call
+COST(BIG_THROW_KIND, 7)           // $AE5F to sub_F311
+COST(BIG_THROW_MADE, 8)           // $AE67, and back
+COST(BIG_THROWN_DOWN, 9)          // $AD3E to $AD45: thrown down
+COST(BIG_THROWING_SHAPE, 7)       // $AD45 to sub_F30D
+COST(BIG_THROWING_SHAPE_TURNED, 9) // $AD4D to sub_F2EF
+COST(BIG_ARM_DOWN, 9)             // $AD57, and back: it hasn't just thrown,
+COST(BIG_ARM_COMES_DOWN, 9)       // or has, on its fourth round, to sub_F336, less the jump,
+COST(BIG_ARM_UP, 26)              // or before
+COST(BIG_LEAVES_UNSEEN, 7)        // $AD6C to sub_F33A, less the jump: it isn't shown,
+COST(BIG_LEAVES_HIS_FLOOR, 24)    // or it's off Arthur's floor
+COST(BIG_ON_HIS_FLOOR_ABOVE, 17)  // or on it, less than 24 lines under him, to $AD85,
+COST(BIG_ON_HIS_FLOOR_BELOW, 21)  // or less than 32 over him
+COST(BIG_NOT_TIME_TO_THROW_ALONG, 16) // $AD85 to $AD9A: not one of its 16th rounds,
+COST(BIG_THROWS_ALONG, 15)        // or one, to sub_04_AE4D
+COST(BIG_THROWN_ALONG, 11)        // $AD92 to $AD9A: thrown the way it faces
+COST(BIG_KEEPS_FACING, 21)        // $AD9A to $ADAB, not one of its fourth rounds
+COST(BIG_KEEPS_FACING_LEFT, 12)   // $ADAD to $ADCE, facing left
+COST(BIG_FACES_HIM, 23)           // or one, to sub_FA87
+COST(BIG_FACES_HIM_LEFT, 16)      // $ADC4 to $ADCE: Arthur is on its left
+COST(BIG_FLOOR_SHAPE, 21)         // $ADCE to sub_F2F7
+COST(BIG_SPARK_OVER, 9)           // $ADDF, a weapon has sparked: its fourth round, to sub_F33E, less the jump,
+COST(BIG_SPARK_SHAPE, 34)         // or before, and back
+COST(BIG_NOT_SPARKED, 3)          // or no weapon has, to sub_F2EF
+COST(BIG_FLOOR_ARM_COMES_DOWN, 12) // $ADFC, it has just thrown: its fourth round, to sub_F336,
+COST(BIG_FLOOR_ARM_UP, 13)        // or before
+COST(BIG_FLOOR_THROW_SHAPE, 21)   // $AE0A, and back
+COST(BIG_FLOOR_NOT_THROWING, 4)   // or it hasn't: $ADFC to $AE16, across a page
+COST(BIG_FLOOR_WAY_SHUT, 8)       // $AE19, and back: the way's shut,
+COST(BIG_FLOOR_STEPS, 13)         // or open, to sub_F03E, by a jump
+COST(THROWN_BEGINS, 17)           // $F504 to sub_F0A0's call of sub_F03E: what the big man throws
+COST(THROWN_FLIES, 18)            // $F516 to $F54D, less sub_F321
+COST(TOWER_CROW_NOT_YET, 9)       // $875E to the return DANGERS_OTHERS counts: the count isn't out,
+COST(TOWER_CROW_COMES, 19)        // or is, and starts again: to the call of sub_DA18
+COST(TOWER_CROW_SET_UP, 35)       // $876E to the call of sub_02_84D7
+COST(TOWER_CROW_PLACED_DOWN, 77)  // $878A to the call of sub_F099, for a place level or below,
+COST(TOWER_CROW_PLACED_UP, 81)    // or above
+COST(TOWER_CROW_HEADS, 7)         // $87C7
+COST(TOWER_CROW_FACES_RIGHT, 3)   // $87CF, to the return: Arthur is at its right,
+COST(TOWER_CROW_FACES_LEFT, 2)    // or isn't, to sub_F30D,
+COST(TOWER_CROW_HEADS_LEFT, 7)    // and on, to the return
+COST(TOWER_CROW_NONE_FREE, 3)     // $876E, to the return: no object is free
 COST(COLUMN_ADDRESS_LAST_ROWS, 7)   // sub_EA73, more for a row in the name table's last quarter,
 COST(COLUMN_ADDRESS_PAST_ROWS, 23)  // or past its 30 rows
 COST(COLUMN_NEXT_SCREEN, 78)        // $E7EF to sub_E95C, by $E800, with its call: the column goes on down the next screen
