@@ -24,7 +24,8 @@ typedef struct {
   // The stage init: the act's song, where the HUD's zero-ring flash starts, and the palette animations
   // palette_loader.c makes for it (LEVEL_PALETTES), each with its variant, or NULL for variant 0 of every one
   int song, hudFlash;
-  const void *comingOn;   // the row (a Level) the act goes by when it follows the act before it, when that differs
+  const void *played;     // the row (a Level) the act goes by when the game gets to it in play, from the act before or a
+                          // menu, not a start point past its card, when that differs
   const int *palettes, *paletteVariants;
   int paletteCount;
   int cameraStop;   // how far short of the stage's right edge the camera stops, or 0 for the screen's width
@@ -50,6 +51,8 @@ typedef struct {
   unsigned blackAtGameStart : 1;       // Game Start hands over to it with the screen black for a frame
   unsigned ownsBlend : 1;              // its background sets the blend, which the frame then leaves alone
   unsigned ownsWindows : 1;            // its own code sets WIN0V and WIN1V, which the frame then leaves alone
+  unsigned layersOnFirstLoad : 1;      // coming on in play, its stage's init has drawn its front and back layers from its
+                                       // corner by its first loading frame's V-blank, as the recordings show
   unsigned sharedRandom : 1;           // its random numbers go on from the menus' (gPseudoRandom), not from a start of their own
   unsigned blankZeroTiles : 1;         // the two tiles a zero-ring count reads past its string are blank
   unsigned zeroFlashesInSixteens : 1;  // the ring counter's zero is red for sixteen frames, then white for sixteen

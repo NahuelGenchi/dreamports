@@ -79,7 +79,7 @@ static int comingOn;
 static void load_stage(int level) {
   Stage *s = &act.stage;
   const Level *row = level_row(level);
-  if (comingOn && row->comingOn) row = row->comingOn;
+  if (!act.fromStartPoint && row->played) row = row->played;
   memset(s, 0, sizeof *s);
   s->level = level; s->row = row;
   s->front = read_tilemap(level * 3 + 0);
@@ -528,6 +528,12 @@ static void start_music(void);
 void act_task(Task *t);
 static int nextLevel;
 static uint16_t lastObjects[128 * 4];
+// the layers' maps (screens 28 to 31): a new zone's first loading frame shows the act before's, drawn with the new
+// zone's tiles, as the original's does, and the new zone's are back from the next frame
+#define LAYER_MAPS 0xE000
+#define LAYER_MAPS_SIZE 0x1000
+static uint8_t oldMaps[LAYER_MAPS_SIZE], newMaps[LAYER_MAPS_SIZE];
+static int mapsShownOld;
 // the frame after, once the screen has taken the black, the game stops
 static void stop_on_black(Task *t) { destroy_task(t); ctx.done = 1; }
 static void next_act(void) {
@@ -543,6 +549,7 @@ static void next_act(void) {
   int lives = act.lives, score = act.score;
   // gPseudoRandom goes on from the act before, whichever of the C's two sequences that act drew from
   uint32_t seed = act_random_state();
+  memcpy(oldMaps, gba_vram + LAYER_MAPS, LAYER_MAPS_SIZE);
   comingOn = 1;
   act_start(nextLevel, -1, 0);
   comingOn = 0;
@@ -771,6 +778,9 @@ static void start_music(void) {
 }
 
 static void act_loaded(void) {
+  // the load runs past the frame's V-blank, which keeps the screen, but the frame it took still ends with
+  // ClearOamBufferDma's swap of the two H-blank tables, as the original's does (Secret Base's spotlights show which)
+  if (!(e.flags & FLAGS_KEEP_HBLANK_BUFFER)) e.primary ^= HBLANK_BUFFER;
   // the palette animations first run on the frame after the load, as the original makes them
   start_palette_animations();
   act_frame();
@@ -781,10 +791,20 @@ void act_task(Task *t) {
   if (act.loadFrames) {
     // the next act after GoToNextLevel loads: black, with the results' band where a zone's second act comes on
     // (sub_80550F8). Then its first frame, whose palette animations are a step on already
+    if (mapsShownOld) { memcpy(gba_vram + LAYER_MAPS, newMaps, LAYER_MAPS_SIZE); mapsShownOld = 0; }
     if (--act.loadFrames) {
       titlecard_made(0);
-      // a new zone's first loading frame shows the act before's objects a last time
-      if (!(act.stage.level & 1) && act.loadFrames == 2) engine_show_oam(lastObjects);
+      // a new zone's first loading frame shows the act before's objects a last time, and its layers' maps
+      if (!(act.stage.level & 1) && act.loadFrames == 2) {
+        engine_show_oam(lastObjects);
+        memcpy(newMaps, gba_vram + LAYER_MAPS, LAYER_MAPS_SIZE);
+        memcpy(gba_vram + LAYER_MAPS, oldMaps, LAYER_MAPS_SIZE);
+        mapsShownOld = 1;
+        if (act.stage.row->layersOnFirstLoad) {
+          fill_layer(0xF000, LAYER_FRONT, 0, 0);
+          fill_layer(0xF800, LAYER_BACK, 0, 0);
+        }
+      }
       return;
     }
     // an act whose palette animations run from the frame that makes it has made them already

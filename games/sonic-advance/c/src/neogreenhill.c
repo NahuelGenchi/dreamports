@@ -54,8 +54,8 @@ const Level ACT_NEO_GREEN_HILL_1 = {
   .runsFromFirstFrame = 1, .blackAtGameStart = 1,
 };
 
-// Act 2 as it comes on from act 1, with nothing a start point past its card asks of it
-static const Level SECOND_ACT_COMING_ON = {
+// Act 2 as the game gets to it in play, from act 1 or the course select, with nothing a start point past its card asks of it
+static const Level SECOND_ACT_PLAYED = {
   .song = 13, .hudFlash = 90, LEVEL_PALETTES(PALETTES_2), .paletteVariants = VARIANTS_2,
   .cameraStop = 768,
   .bgCnt = 0x1D0B,
@@ -70,5 +70,5 @@ const Level ACT_NEO_GREEN_HILL_2 = {
   .cardEnded = second_act_card_ended, .stageClockAhead = 15,
   // its first recording starts in the frames after its card, so the act steps through them
   .zeroFlashesInSixteens = 1, .palettesAfterSonic = 1, .tilesShownLate = 1, .cardStepsOn = 1,
-  .comingOn = &SECOND_ACT_COMING_ON,
+  .played = &SECOND_ACT_PLAYED,
 };
