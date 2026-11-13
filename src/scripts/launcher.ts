@@ -2633,6 +2633,10 @@ function start(launcher: HTMLElement) {
     launcher.classList.add('is-laid');
     void topbar.offsetWidth;
     topbar.style.transition = '';
+    // the page's own card asked for focus while all of it still waited out of sight, which a browser refuses, so it
+    // asks again now that it shows (#1205)
+    const at = document.activeElement;
+    if (state.open && (!at || at === document.body)) focusStart(state.open)?.focus({ preventScroll: true });
   });
   // the page's own card, if it has one, opens over the menu
   followAddress(true);
