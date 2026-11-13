@@ -321,6 +321,10 @@ COST(PRINCESS_TURN, 27)                // $F3E9, and back
 COST(PICK_UP_BEGINS, 7)           // $BA09
 COST(PICK_UP_HIDES, 14)           // $BA12 to sub_F346's store of its flags,
 COST(PICK_UP_OUT_OF_VIEW, 48)     // and to $BB8B, and back
+COST(PICK_UP_THIRD_SET_BEFORE, 16) // more, in the third set of stages, with Arthur short of $0AF8,
+COST(PICK_UP_THIRD_SET_AHEAD, 24) // or past it, with the pick-up on the 12th screen or later,
+COST(PICK_UP_THIRD_SET_GONE, 19)  // or before it, to the store that makes it gone,
+COST(PICK_UP_THIRD_SET_GONE_STORED, 11) // and back
 COST(PICK_UP_IN_VIEW, 48)         // $BA12 to the call of sub_F68E,
 COST(PICK_UP_FLASHES, 8)          // with its other colour every fourth round
 COST(PICK_UP_CANNOT_BE_TOUCHED, 16) // sub_F68E when Arthur's flags say so
@@ -791,7 +795,9 @@ COST(SCORE_DIGIT, 33)             // or not
 COST(TOP_WORDS_PLACED, 41)        // $D18A to $D1A9
 COST(TOP_LIVES, 44)               // sub_D9F8 with its call, with fewer than ten lives left
 COST(TOP_TIME, 52)                // sub_D82B with its call
-COST(STAGE_START_NO_BANNER, 8)    // $D1B0 to $D1DD, for the first two sets of stages
+COST(STAGE_START_NO_BANNER, 8)    // $D1B0 to $D1DD, for the first two sets of stages,
+COST(STAGE_START_TILES, 50)       // or $D1B0 to sub_EECF, with its call, for the third and fourth: their own tiles,
+COST(STAGE_START_TILES_LATER, 48) // or for the fifth and sixth
 COST(STAGE_START_WEAPON, 31)      // $D1DD to $D203, with a weapon that has no place of its own at the top
 COST(STAGE_START_COUNTS, 141)     // $D203 to $D27D, for a stage that isn't the last
 COST(STAGE_START_TIME, 11)        // $D27D to sub_CAFD
@@ -1794,6 +1800,38 @@ COST(WATER_CROW_AIMED, 11)        // $FA83, and back
 COST(WATER_CROW_FACES, 19)        // $F917, and back: aimed left, it faces left
 COST(WATER_CROW_FLIES, 3)         // or flying, $F90F to $F921
 COST(WATER_CROW_SPEED, 16)        // $F924 to sub_F03E, with its call
+COST(BAT_DEAD, 5)                 // sub_04_B45E to $F770: a bat, hit already,
+COST(BAT_ALIVE, 10)               // or not, to sub_F2EB, its colours set
+COST(BAT_FLYING, 5)               // $B46B to $B4E6: flying,
+COST(BAT_NOT_FLYING, 3)           // or not, to sub_F2E7
+COST(BAT_DROPPING, 5)             // $B473 to $B4AA: dropping,
+COST(BAT_HANGING, 3)              // or still hanging, to sub_F321
+COST(BAT_HIDES, 11)               // $B47E to sub_F346's store of its flags, by a jump: hanging out of the view
+COST(BAT_IN_VIEW, 3)              // $B47E, $B4B0 or $B4EC: in the view, to the call of sub_04_B539
+COST(BAT_GONE, 15)                // $B4B0 or $B4EC, and back: out of the view once it has let go, gone
+COST(BAT_TESTS, 20)               // sub_04_B539 with its call, to sub_F5A0 with its call, 4 by 4
+COST(BAT_NOT_HIT, 14)             // $B542, and back: no weapon hit it,
+COST(BAT_HIT, 7)                  // or one did, to sub_F305
+COST(BAT_FALL_SIDE, 19)           // $B54F to sub_F7B9
+COST(BAT_KILLED_SOUND, 11)        // sub_F7B9 with its call, to sub_ED51
+COST(BAT_KILLED_SCORE, 24)        // $B55F to sub_D8FC, by sub_C8BE
+COST(BAT_KILLED_ENDS, 8)          // $B56D, and back
+COST(BAT_KILLED_RETURNS, 8)       // $B486, $B4BB or $B4F7, and back: killed
+COST(BAT_LOOKS, 18)               // $B486 to $B494: its hanging shape
+COST(BAT_WAITS, 8)                // and back: Arthur isn't below it,
+COST(BAT_WAITS_ABOVE, 25)         // or is, and it isn't its round to let go,
+COST(BAT_LETS_GO, 18)             // or is, to sub_F309
+COST(BAT_LETS_GO_DOWN, 13)        // $B4A4, and back
+COST(BAT_DROPS_ON, 18)            // $B4BB to $B4DE: 16 lines or more above Arthur,
+COST(BAT_LEVEL, 17)               // or fewer, to sub_F30D
+COST(BAT_FACES_RIGHT, 18)         // $B4CC to $B4DE: Arthur on its right,
+COST(BAT_FACES_LEFT, 24)          // or its left
+COST(BAT_DROP_MOVE, 8)            // $B4DE to sub_F03E, with its call
+COST(BAT_FLIES_ACROSS, 16)        // $B4F7 to sub_F03E, with its call
+COST(BAT_WAVE_UP, 38)             // $B502 to sub_F03E, with its call, up,
+COST(BAT_WAVE_DOWN, 40)           // or down
+COST(BAT_WAVE_BACK, 12)           // $B527 to $B52E
+COST(BAT_SHAPE, 17)               // $B52E to sub_F576, by a jump
 COST(TOWER_CROW_NOT_YET, 9)       // $875E to the return DANGERS_OTHERS counts: the count isn't out,
 COST(TOWER_CROW_COMES, 19)        // or is, and starts again: to the call of sub_DA18
 COST(TOWER_CROW_SET_UP, 35)       // $876E to the call of sub_02_84D7

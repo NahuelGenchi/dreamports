@@ -658,12 +658,22 @@ static void pick_up(uint8_t object) {
   took(PICK_UP_BEGINS);
   show_object(object);
   if (!object_in_view(object)) {
-    // $BA14: hidden while it's out of the view. What the third set of stages does with it then, at $BB72, isn't ported yet.
+    // $BA14: hidden while it's out of the view. In the third set of stages ($BB72), once Arthur is at $0AF8 or past
+    // it, one left on a screen before $0B is gone.
     took(PICK_UP_HIDES);
     if (object >= 0x10) took(READ_PAST_PAGE);   // its flags, hidden and read, are in the next page
     RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
     took(PICK_UP_OUT_OF_VIEW);
     if (object >= 0x10) took(READ_PAST_PAGE);
+    if (RAM[0xCF] == 2) {
+      if ((RAM[OBJECT_X_SCREEN + ARTHUR] << 8 | RAM[OBJECT_X + ARTHUR]) < 0x0AF8) took(PICK_UP_THIRD_SET_BEFORE);
+      else if (RAM[OBJECT_X_SCREEN + object] >= 0x0B) took(PICK_UP_THIRD_SET_AHEAD);
+      else {
+        took(PICK_UP_THIRD_SET_GONE);
+        RAM[OBJECT_FLAGS + object] = 0;
+        took(PICK_UP_THIRD_SET_GONE_STORED);
+      }
+    }
     return;
   }
   uint8_t thing = RAM[OBJECT_STATE + object];
@@ -735,6 +745,7 @@ wait objects_task(void) {
         case 0x06: devil(object); break;
         case 0x07: window_thing(object); break;
         case 0x08: big_man(object); break;
+        case 0x0A: bat(object); break;
         case 0x2F: thrown(object); break;
         case 0x0C: lift(object); break;
         case 0x0E: platform(object); break;
