@@ -626,13 +626,21 @@ function start(launcher: HTMLElement) {
 
   // ---------- Filters ----------
 
+  // Whether focus is on what a new row takes away: one of the row's places, or Back to the systems, which goes with a
+  // system's row. Focus then goes to the place the new row is on, instead of being left on nothing (#1211).
+  // Firefox goes on naming a button as the one in focus for a moment after it's hidden, so one out of use doesn't count.
+  const focusOnRow = () => {
+    const at = document.activeElement;
+    return rowEl.contains(at) || (!btnSystems.hidden && !btnSystems.inert && btnSystems.contains(at));
+  };
+
   // the row gives way to another: it slides out to one side, and what `build` makes comes in from the other
   function swapRow(dir: number, build: () => void) {
     switching = true;
     const outCls = dir > 0 ? 'out-l' : 'out-r';
     const inCls = dir > 0 ? 'in-r' : 'in-l';
     const swap = () => {
-      const hadFocus = rowEl.contains(document.activeElement);
+      const hadFocus = focusOnRow();
       rowEl.classList.remove(outCls);
       rowEl.classList.add(inCls);
       build();
@@ -2542,6 +2550,7 @@ function start(launcher: HTMLElement) {
   // the browser's back and forward buttons open and close cards, and switch filters
   function followAddress(first: boolean) {
     if (state.launching) return;
+    const hadFocus = focusOnRow();
     const path = location.pathname;
     let card: HTMLDialogElement | null = null;
     let game: string | null = null;
@@ -2587,6 +2596,8 @@ function start(launcher: HTMLElement) {
         rowEl.classList.remove('no-anim');
       }
     }
+    // the browser's Back out of a system builds the row again under the focus it had
+    if (hadFocus && !card && !focusOnRow()) slots[sel()]?.focus({ preventScroll: true });
     if (card) {
       // a card that is open in the page's HTML gives way to the one the address asks for
       for (const d of cards) if (d.open && d !== card && d !== state.open) d.close();
