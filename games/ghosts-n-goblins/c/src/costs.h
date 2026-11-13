@@ -332,6 +332,9 @@ COST(PICK_UP_LEFT, 35)            // $BA3F to $BB6A, and back
 COST(PICK_UP_BONUS, 55)           // $BA3F to sub_D902: one of the four things that only give points
 COST(PICK_UP_BONUS_SOUND, 8)      // $BAC6 to sub_ED51
 COST(PICK_UP_WEAPON_TAKEN, 61)   // $BA3F to sub_F708: a weapon, which Arthur holds from now on
+COST(PICK_UP_FROG_POT, 30)        // $BA3F to the store at $BAD5: the pot that turns Arthur into a frog, his state,
+COST(PICK_UP_FROG_POT_SOUND, 12)  // to sub_ED51: sound $22,
+COST(PICK_UP_FROG_POT_ENDS, 6)    // and $BADD's jumps on to sub_F708
 COST(GRAVESTONE_BEGINS, 80)       // sub_04_BF0B to $BF23: a gravestone, which is never shown
 COST(GRAVESTONE_OUT_OF_VIEW, 9)   // $BF26, and back,
 COST(GRAVESTONE_IN_VIEW, 41)      // or to sub_F5F9
@@ -622,6 +625,31 @@ COST(WEAPON_LEFT_SHAPE_TURNED, 23) // or the shape after it
 COST(THROW_SOUND, 5)              // $E161 to sub_ED51
 COST(THROW_ENDS, 14)              // $E06F, and back
 COST(ARTHUR_THROW_SHAPE, 122)     // sub_E35E to $E3B9 by way of sub_E079, with its call, less sub_E079's end
+// the frog, his state's $10 (arthur.c): the shapes from sub_E35E at $E317 and from sub_DF93 at $DFD9
+COST(FROG_WALK_BEGINS, 17)        // sub_E35E with its call to the store at $E319: the frog's colours,
+COST(FROG_WALK_COLOURED, 19)      // to the store at $E326: its shape by his walk's count,
+COST(FROG_JUMP_BEGINS, 17)        // or sub_DF93 with its call to the store at $DFDB: its colours,
+COST(FROG_JUMP_COLOURED, 7)       // to the store at $DFE0: its one shape in the air,
+COST(FROG_SHAPED, 27)             // either, and sub_F2EB with its call: the way he faces,
+COST(FROG_FACES_RIGHT, 3)         // right,
+COST(FROG_WALK_FACES_LEFT, 10)    // or left, to the store at $E334,
+COST(FROG_JUMP_FACES_LEFT, 4)     // or to the store at $DFEA,
+COST(FROG_FACES_LEFT_STORED, 5)   // and the store
+COST(FROG_COUNTED, 13)            // $E337 or $DFED to the branch: his rounds as a frog counted (INC's write at its start),
+COST(FROG_STAYS, 9)               // fewer than $F0, and back,
+COST(FROG_STAYS_IN_THE_AIR, 10)   // or from $DFF5, across a page
+// the frog's end: walking and in armour as frog-pot runs it; in the air and without armour written from the listing,
+// not run by a recording yet
+COST(FROG_ENDS_SOUND, 10)         // $E33F to sub_ED51: $F0 rounds, sound $22,
+COST(FROG_ENDS, 6)                // to the store at $E34B: his state's $10 cleared,
+COST(FROG_ENDS_COLOURS, 7)        // to the store at $E350: his armour's colours,
+COST(FROG_ENDS_IN_THE_AIR, 8)     // or $DFF5 to the store at $DFFC: his state,
+COST(FROG_ENDS_SOUND_IN_THE_AIR, 13) // to sub_ED51: sound $22,
+COST(FROG_ENDS_COLOURS_IN_THE_AIR, 2) // to the store at $E006: his armour's colours,
+COST(FROG_ARMOUR_LOOKED_AT, 27)   // either, and sub_F2F7 with its call: whether he has his armour,
+COST(FROG_ENDS_IN_ARMOUR, 9)      // he has, and back,
+COST(FROG_ENDS_WITHOUT_ARMOUR, 4) // or not, to the store of his own colours,
+COST(FROG_ENDS_WITHOUT_ARMOUR_STORED, 11) // and back
 COST(ARTHUR_THROW_GOES_ON, 8)     // $E0B2, and back,
 COST(ARTHUR_THROW_OVER, 20)       // or with the throw over, after three rounds
 

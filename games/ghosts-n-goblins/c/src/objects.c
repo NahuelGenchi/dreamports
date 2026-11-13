@@ -712,10 +712,10 @@ static void map_marker(uint8_t object) {
 // $BA09 in bank 4, kind $10: something to pick up, here Arthur's armour. Its shape and colours come from the copy's
 // lists at $BB2D, by which thing it is, and it flashes another colour every fourth round. When Arthur touches the
 // armour he has it: his flags say so, the tiles' task sends the armoured Arthur's tiles, and the object is gone. A
-// weapon becomes his, and the four things at $BAAC give points. The others, at $BA99, $BACE, $BAE0 and $BB11, and the
-// kinds $F708 keeps after they're picked up aren't ported yet.
+// weapon becomes his, the four things at $BAAC give points, and the pot at $BACE turns him into a frog. The others,
+// at $BA99, $BAE0 and $BB11, and the kinds $F708 keeps after they're picked up aren't ported yet.
 static void pick_up(uint8_t object) {
-  enum { ARMOUR = 5, WITHOUT_ARMOUR = 0x20 };
+  enum { ARMOUR = 5, FROG_POT = 0x0B, WITHOUT_ARMOUR = 0x20 };
   RAM[OBJECT_COUNT + object]++;
   took(PICK_UP_BEGINS);
   show_object(object);
@@ -754,6 +754,16 @@ static void pick_up(uint8_t object) {
     took(PICK_UP_BONUS_SOUND);
     sound_play(0x21);
     took(JUMPS);
+    remove_object(object);
+    return;
+  }
+  if (touched && thing == FROG_POT) {
+    // $BACE: the pot that turns Arthur into a frog, his state's $10, ending a throw; then gone, as a weapon is
+    took(PICK_UP_FROG_POT);
+    RAM[OBJECT_STATE + ARTHUR] = (uint8_t)((RAM[OBJECT_STATE + ARTHUR] & 0xFD) | 0x10);
+    took(PICK_UP_FROG_POT_SOUND);
+    sound_play(0x22);
+    took(PICK_UP_FROG_POT_ENDS);
     remove_object(object);
     return;
   }
