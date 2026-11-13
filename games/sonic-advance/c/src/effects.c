@@ -29,12 +29,13 @@ enum {
   PRIORITY_EFFECTS = 0x4001,
   ORDER_SONIC_EFFECT = 8,
   ANIM_BRAKE_DUST = 748, ANIM_DASH_DUST = 746, ANIM_DASH_DUST_BIG = 747, ANIM_INSTA_SHIELD = 50, VARIANT_INSTA_SHIELD = 1,
+  ANIM_TAIL_SWIPE = 777,
   MAX_BRAKE_DUST = 20,          // the original keeps a pool of 20 brake dust clouds (CreateBrakingDustEffect)
   DASH_DUST_BIG_ABOVE = 0x200,  // the spin dash dust is the big one while the charge is above 2.0
 };
-enum { EFFECT_BRAKE, EFFECT_DASH, EFFECT_SHIELD };
+enum { EFFECT_BRAKE, EFFECT_DASH, EFFECT_SHIELD, EFFECT_SWIPE };
 
-typedef struct { Object o; int kind, x, y; } Effect;
+typedef struct { Object o; int kind, x, y; const Player *p; } Effect;
 static int brakeDust;   // the brake dust clouds on screen
 
 // his feet, above his centre under flipped gravity
@@ -44,7 +45,7 @@ static int feet_y(const Player *p) { return whole(p->y + (p->inverted ? -p->offs
 
 static int effect_run(ActTask *t) {
   Effect *e = (Effect *)t->data;
-  const Player *p = &act.player;
+  const Player *p = e->p;   // whose effect it is, Sonic's or the CPU partner's
   Sprite *s = &e->o.sprite;
   if (e->kind == EFFECT_DASH) {
     // the spin dash dust follows his feet while he charges, turned over with him under flipped gravity
@@ -70,15 +71,20 @@ static int effect_run(ActTask *t) {
     e->x = whole(p->x); e->y = whole(p->y);
     s->frameFlags = (s->frameFlags & ~(uint32_t)SPRITE_Y_FLIP) | (p->inverted ? SPRITE_Y_FLIP : 0);
   }
+  // the tail swipe's follows Tails, facing as he does
+  if (e->kind == EFFECT_SWIPE) {
+    e->x = whole(p->x); e->y = whole(p->y);
+    s->frameFlags = (s->frameFlags & ~(uint32_t)(SPRITE_X_FLIP | SPRITE_Y_FLIP)) | (p->facing > 0 ? SPRITE_X_FLIP : 0) | (p->inverted ? SPRITE_Y_FLIP : 0);
+  }
   int ended = sprite_step(s);
   object_draw(s, e->x, e->y);
   return !ended;
 }
 
-static void effect_make(int kind, int anim, int variant, int x, int y, int flipX, int flipY) {
+static void effect_make(const Player *p, int kind, int anim, int variant, int x, int y, int flipX, int flipY) {
   Effect *e = OBJECT_NEW(Effect);
   if (!e) return;
-  e->kind = kind; e->x = x; e->y = y;
+  e->kind = kind; e->x = x; e->y = y; e->p = p;
   // the dash dust swaps between its two sizes, so it has the tiles of the bigger
   if (kind == EFFECT_DASH) {
     object_sprite(&e->o.sprite, sprite_tiles(ANIM_DASH_DUST_BIG, 0, 0) > sprite_tiles(ANIM_DASH_DUST, 0, 0) ? ANIM_DASH_DUST_BIG : ANIM_DASH_DUST, 0, 0, ORDER_SONIC_EFFECT, PRIORITY_FRONT, flipX, flipY);
@@ -96,18 +102,17 @@ void effects_start(void) { brakeDust = 0; }
 void act_brake_dust_at(int x, int y) {
   if (brakeDust >= MAX_BRAKE_DUST) return;
   uint32_t r = act_random();
-  effect_make(EFFECT_BRAKE, ANIM_BRAKE_DUST, 0, x, y, (r & 0x400) != 0, (r & 0x800) != 0);
+  effect_make(&act.player, EFFECT_BRAKE, ANIM_BRAKE_DUST, 0, x, y, (r & 0x400) != 0, (r & 0x800) != 0);
 }
-void act_brake_dust(void) {
-  const Player *p = &act.player;
-  act_brake_dust_at(whole(p->x), feet_y(p));
+void act_brake_dust_of(const Player *p) { act_brake_dust_at(whole(p->x), feet_y(p)); }
+void act_dash_dust_of(const Player *p) {
+  effect_make(p, EFFECT_DASH, ANIM_DASH_DUST, 0, whole(p->x), feet_y(p), p->facing > 0, p->inverted);
 }
-void act_dash_dust(void) {
-  const Player *p = &act.player;
-  effect_make(EFFECT_DASH, ANIM_DASH_DUST, 0, whole(p->x), feet_y(p), p->facing > 0, p->inverted);
+void act_tail_swipe(const Player *p) {
+  effect_make(p, EFFECT_SWIPE, ANIM_TAIL_SWIPE, 0, whole(p->x), whole(p->y), p->facing > 0, p->inverted);
 }
 // the insta-shield's flash, facing the way he faced when it started
 void act_insta_shield(void) {
   const Player *p = &act.player;
-  effect_make(EFFECT_SHIELD, ANIM_INSTA_SHIELD, VARIANT_INSTA_SHIELD, whole(p->x), whole(p->y), p->facing > 0, 0);
+  effect_make(p, EFFECT_SHIELD, ANIM_INSTA_SHIELD, VARIANT_INSTA_SHIELD, whole(p->x), whole(p->y), p->facing > 0, 0);
 }
