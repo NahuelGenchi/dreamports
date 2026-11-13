@@ -1511,7 +1511,7 @@ COST(BOSS_CHARGE_OVER, 38)        // $FE7D, with sub_F336, and back: 24 rounds a
 COST(BOSS_CHARGE_MOVES, 40)       // or to sub_F0A0
 COST(BOSS_DIES, 38)               // $FC04 to sub_ED51, with sub_F7A5: ten hits
 COST(BOSS_DIES_ELSEWHERE, 8)      // $FC13 to sub_F305,
-COST(BOSS_DIES_IN_SECOND_SET, 12) // or with the second set's own sound to follow
+COST(BOSS_DIES_IN_SECOND_SET, 13) // or with the second set's own sound to follow
 COST(BOSS_DIES_SCORE, 30)         // $FC21 to sub_D902
 COST(BOSS_DIES_ENDS, 8)           // $FC33 to $F6F6
 COST(BOSS_BURNS_ON, 54)           // $F701, and back, for a boss, kind 5: its next shape,

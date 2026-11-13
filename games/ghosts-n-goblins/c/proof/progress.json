@@ -4,12 +4,6 @@
   "codeMap": {"functions":301,"bytes":26978},
   "proven": {"functions":0,"bytes":0},
   "recordings": {
-    "across-the-water": {
-      "frames": 15700,
-      "matched": 15700,
-      "differs": [],
-      "functions": []
-    },
     "boss-dies": {
       "frames": 6640,
       "matched": 6640,
@@ -139,6 +133,12 @@
     "stage-2-begins": {
       "frames": 8260,
       "matched": 8260,
+      "differs": [],
+      "functions": []
+    },
+    "stage-2-clear": {
+      "frames": 17100,
+      "matched": 17100,
       "differs": [],
       "functions": []
     },
