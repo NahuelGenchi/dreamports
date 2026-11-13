@@ -2,6 +2,11 @@
 // hangs from the ceiling where the stage's list puts it until Arthur is below it, lets go in one of the rounds its own
 // number and the game's count of rounds pick, drops toward his height, and then flies at him in a wave, its two wing
 // shapes by its count. One hit kills it, for 100 points, and it falls the way the weapon was going.
+//
+// Kind $0B, sub_04_B56F, waits in the ground, every 32 rounds looking for Arthur within 24 lines of its height. Seen,
+// it picks one of three ways to shoot by its count, blinks for 16 rounds as it comes up, and stands open, sparking off
+// the weapons that hit it, for 16 rounds more; then, with both shots' objects free, it shoots kind $2A, from its
+// place, 16 lines higher, or both, and closes. Weapons that hit it closed don't count. Four hits kill it, for 300.
 
 #include "game.h"
 
@@ -139,4 +144,168 @@ void bat(uint8_t object) {
   if (flag(object, DROPS)) { took(BAT_DROPPING); drops(object); return; }
   took(BAT_HANGING);
   hangs(object);
+}
+
+// ---- kind $0B, sub_04_B56F
+
+enum { SHOOTS = 0x30, RISES = 0x02, OPEN = 0x04 };
+#define WAITS(object) RAM[OBJECT_STATE + (object)]
+
+static void clear_flag(uint8_t object, uint8_t which) {
+  RAM[OBJECT_FLAGS + object] &= (uint8_t)~which;
+  took(OBJECT_FLAG_CHANGED);
+  flags_read(object);
+}
+
+// What touches it, 8 by 16: Arthur is hit, and a weapon sparks, $41 open or $45 closed.
+static void shooter_tests(uint8_t object, uint8_t spark) {
+  RAM[0x26] = 0x08;
+  RAM[0x27] = 0x10;
+  int arthur_touched;
+  uint8_t weapon = enemy_touch_tests(object, &arthur_touched);
+  if (weapon) {
+    RAM[OBJECT_FLAGS + weapon] = spark;
+    took(SHOOTER_WEAPON_SPARKS);
+  } else took(arthur_touched ? SHOOTER_TOUCHED_ARTHUR : BRANCH_TAKEN);
+}
+
+// $B6A7: while it's closed or coming up, a hit doesn't count.
+static void tests_closed(uint8_t object) {
+  uint8_t hits = HITS(object);
+  took(SHOOTER_TESTS_CLOSED);
+  shooter_tests(object, 0x45);
+  HITS(object) = hits;
+  took(SHOOTER_TESTS_CLOSED_END);
+}
+
+// sub_04_B6EA: a shot in the 21st or 22nd object, at its place, heading for Arthur's side.
+static void shoot_from(uint8_t object, uint8_t shot) {
+  took(BIG_THROW_PLACED);   // sub_FA2E with its call
+  RAM[OBJECT_Y + shot] = RAM[OBJECT_Y + object];
+  RAM[OBJECT_Y_SCREEN + shot] = RAM[OBJECT_Y_SCREEN + object];
+  RAM[OBJECT_SCREEN_Y + shot] = RAM[OBJECT_SCREEN_Y + object];
+  RAM[OBJECT_X + shot] = RAM[OBJECT_X + object];
+  RAM[OBJECT_X_SCREEN + shot] = RAM[OBJECT_X_SCREEN + object];
+  RAM[OBJECT_SCREEN_X + shot] = RAM[OBJECT_SCREEN_X + object];
+  RAM[OBJECT_FLAGS + shot] = 0x40;
+  RAM[OBJECT_KIND + shot] = 0x2A;
+  RAM[OBJECT_SHAPE + shot] = 0x8A;
+  RAM[OBJECT_HEADING + shot] = 0x04;
+  took(SHOOTER_SHOT_SET);
+  if (arthur_is_right_of(object)) { took(SHOOTER_SHOT_RIGHT); return; }
+  RAM[OBJECT_HEADING + shot] = 0x0C;
+  took(SHOOTER_SHOT_LEFT);
+}
+// sub_04_B6C6: from its place, by a jump.
+static void shoot_low(uint8_t object) { took(SHOOTER_SLOT_LOW); shoot_from(object, 0x14); }
+// sub_04_B6CB: 16 lines higher, on the screen above past its top.
+static void shoot_high(uint8_t object) {
+  took(SHOOTER_SLOT_HIGH);
+  shoot_from(object, 0x15);
+  uint8_t y = RAM[OBJECT_Y + 0x15];
+  RAM[OBJECT_Y + 0x15] = (uint8_t)(y - 0x10);
+  if (y >= 0x10) { took(SHOOTER_HIGH_SAME_SCREEN); return; }
+  RAM[OBJECT_Y + 0x15] = (uint8_t)(y - 0x20);
+  RAM[OBJECT_Y_SCREEN + 0x15]--;
+  took(SHOOTER_HIGH_SCREEN_ABOVE);
+}
+
+// $B5B3: in the ground, looking for Arthur every 32 rounds.
+static void shooter_waits(uint8_t object) {
+  uint8_t *count = &RAM[OBJECT_COUNT + object];
+  RAM[OBJECT_COLOURS + object] = 0;
+  RAM[OBJECT_SHAPE + object] = 0x7A;
+  ++*count;
+  if (*count & 0x1F) { took(SHOOTER_WAITS); tests_closed(object); return; }
+  uint8_t apart = (uint8_t)(RAM[OBJECT_SCREEN_Y + object] - RAM[OBJECT_SCREEN_Y + ARTHUR]);
+  if (apart < 0xD8 && apart >= 0x18) { took(SHOOTER_ARTHUR_FAR); tests_closed(object); return; }
+  took(apart >= 0xD8 ? SHOOTER_SEES_HIM_BELOW : SHOOTER_SEES_HIM_ABOVE);
+  // how it will shoot, by its count: both shots, the low one, or the high one
+  uint8_t way = *count & 0x60, shoots;
+  if (way < 0x20) { shoots = 0x20; took(SHOOTER_PICKS_BOTH); }
+  else if (way < 0x40) { shoots = 0x10; took(SHOOTER_PICKS_LOW); }
+  else { shoots = 0; took(SHOOTER_PICKS_HIGH); }
+  RAM[OBJECT_FLAGS + object] |= shoots;
+  took(SHOOTER_PICKED);
+  flags_read(object);
+  set_flag(object, RISES);
+  WAITS(object) = 0;
+  took(SHOOTER_RISE_STATE);
+  tests_closed(object);
+}
+
+// $B606: coming up, blinking, for 16 rounds.
+static void shooter_rises(uint8_t object) {
+  uint8_t *count = &RAM[OBJECT_COUNT + object];
+  ++*count;
+  RAM[OBJECT_COLOURS + object] = (*count >> 1) & 1;
+  ++WAITS(object);
+  if (WAITS(object) < 0x10) { took(SHOOTER_RISES_ON); tests_closed(object); return; }
+  RAM[OBJECT_COLOURS + object] = 1;
+  took(SHOOTER_RISEN);
+  clear_flag(object, RISES);
+  set_flag(object, OPEN);
+  WAITS(object) = 0;
+  took(SHOOTER_RISEN_STATE);
+  tests_closed(object);
+}
+
+// $B62F: open, for 16 rounds, and then it shoots if both shots' objects are free.
+static void shooter_open(uint8_t object) {
+  took(SHOOTER_TESTS_OPEN);
+  shooter_tests(object, 0x41);
+  if (++WAITS(object) >= 0x10) {
+    if (RAM[OBJECT_FLAGS + 0x14]) took(SHOOTER_FIRST_SLOT_TAKEN);
+    else if (RAM[OBJECT_FLAGS + 0x15]) took(SHOOTER_SECOND_SLOT_TAKEN);
+    else {
+      took(SHOOTER_SHOOTS);
+      sound_play(0x1A);
+      uint8_t shoots = RAM[OBJECT_FLAGS + object] & SHOOTS;
+      took(SHOOTER_SHOT_WAY);
+      flags_read(object);
+      if (!shoots) { took(SHOOTER_SHOOTS_HIGH); shoot_high(object); took(JUMPS); }
+      else if (shoots == 0x10) { took(SHOOTER_SHOOTS_LOW); shoot_low(object); took(JUMPS); }
+      else { took(SHOOTER_SHOOTS_BOTH); shoot_low(object); took(CALLS); shoot_high(object); }
+      RAM[OBJECT_FLAGS + object] = 0xC0;
+      took(SHOOTER_CLOSES);
+      return;
+    }
+  } else took(SHOOTER_OPEN_ON);
+  // $B65E: its open shapes by its way of shooting, turned round with Arthur on its left
+  RAM[OBJECT_SHAPE + object] = (uint8_t)(0x7B + ((RAM[OBJECT_FLAGS + object] >> 4) & 3));
+  took(SHOOTER_OPEN_SHAPE);
+  flags_read(object);
+  if (RAM[OBJECT_SCREEN_X + object] < RAM[OBJECT_SCREEN_X + ARTHUR]) { took(SHOOTER_FACES_RIGHT); return; }
+  RAM[OBJECT_SHAPE + object] += 0x10;
+  took(SHOOTER_FACES_LEFT);
+}
+
+void cave_shooter(uint8_t object) {
+  if (flag(object, HIT)) { took(BAT_DEAD); enemy_burns_away(object); return; }
+  took(BAT_HANGING);
+  show_object(object);
+  if (!object_in_view(object)) {
+    RAM[OBJECT_FLAGS + object] = 0x40;   // out of the view it's back in the ground, its way of shooting forgotten
+    took(SHOOTER_HIDDEN);
+    return;
+  }
+  if (HITS(object) >= 4) {
+    took(SHOOTER_KILLED);
+    sound_play(0x1F);
+    set_flag(object, HIT);
+    RAM[OBJECT_COUNT + object] = 0;
+    RAM[0x26] = 0;
+    RAM[0x27] = 3;   // 300 points
+    took(BAT_KILLED_SCORE);
+    add_score(object, 0x16);   // Y, from the objects' task's look-up of its kind
+    took(JUMPS);
+    enemy_burns_away(object);
+    return;
+  }
+  took(SHOOTER_ALIVE);
+  if (flag(object, OPEN)) { took(BAT_FLYING); shooter_open(object); return; }
+  took(BAT_NOT_FLYING);
+  if (flag(object, RISES)) { took(BAT_DROPPING); shooter_rises(object); return; }
+  took(BAT_HANGING);
+  shooter_waits(object);
 }
