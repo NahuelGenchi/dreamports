@@ -187,7 +187,7 @@ void results_start(int level, int rings, int courseTime, int longEnd, int nextFr
   r.wait = (r.ring > r.time ? r.ring : r.time) / STEP + BASE_WAIT;
   r.countdown = NEXT_ACT_AFTER;
   r.fadeSpeed = FADE_SPEED;
-  load_graphics(level, 0);
+  load_graphics(level, ctx.character);
   read_text(r.bandText, TEXT_BAND, BAND_LENGTH);
   read_text(r.lineText, TEXT_LINE, LINE_LENGTH);
   read_text(r.ringLabel, TEXT_RING, LABEL);

@@ -78,7 +78,8 @@ ActTask *item_box_spawn(Slot *slot) {
   ItemBox *b = OBJECT_NEW(ItemBox);
   if (!b) return NULL;
   const Entity *en = &slot->e;
-  int icon = ICONS[en->kind & 15];   // the 1-up's is Sonic's face, the first of the characters'
+  // the 1-up's is the face of the character playing (gSelectedCharacter), from Sonic's, the first of them
+  int icon = ICONS[en->kind & 15] + ((en->kind & 15) == 0 ? ctx.character : 0);
   b->o.slot = slot;
   b->o.x = en->x;
   object_sprite(&b->o.sprite, ANIM_ITEM_BOX, 0, 0, ORDER_BOX, PRIORITY_FRONT, 0, 0);

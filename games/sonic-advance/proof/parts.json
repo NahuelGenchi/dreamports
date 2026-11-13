@@ -31,7 +31,7 @@
     { "name": "Special stage 7" },
     { "name": "The normal ending", "recording": "x-zone-credits-an-emerald-short", "frames": [8741, 19799] },
     { "name": "The true ending" },
-    { "name": "Playing as Tails" },
+    { "name": "Playing as Tails", "recording": "tails-neo-green-hill", "frames": [1829, 11626] },
     { "name": "Playing as Knuckles" },
     { "name": "Playing as Amy" },
     { "name": "Time Attack" },
