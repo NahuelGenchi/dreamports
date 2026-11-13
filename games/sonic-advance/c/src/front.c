@@ -166,6 +166,7 @@ void front_play(int level) {
     return;
   }
   destroy_tasks(0x2000, 0x3000); act_start(startLevel, -1, 0);
+  act.byCourseSelect = 1;
   sound_late(LOAD_ACT_COURSE_SELECT, startLevel);
   // an act whose objects first run on its first frame steps the rings once more on its hand-over frame than the
   // original's stage init does

@@ -78,6 +78,7 @@ typedef struct {
   int restarted;                   // made again after a life lost (HandleLifeLost), at the last checkpoint passed
   int playerGone;                  // the last life lost: the player's task has ended, and the game over runs
   int fromStartPoint;              // opened by the recording's start point, past its card: only the first act it starts
+  int byCourseSelect;              // made inside the course select's task (0x2000): that frame runs only the tasks after it
   int loadFrames;                  // the frames left that the next act spends loading after its first (act_task)
   int bossFlash;                   // a hit boss drawn into the OBJ window: BOSS_FLASH_WHITE or BOSS_FLASH_WINDOW
   int blendOff;                    // a boss's task cleared the blending this frame

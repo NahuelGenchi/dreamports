@@ -378,6 +378,10 @@ static void draw_frame(void) {
   // sprites are already where the camera has them
   int spriteX = camX, spriteY = camY;
   if (act.afterLevel && act.frames == 1) camX = camY = 0;
+  // the course select's act whose stage init draws its layers from its corner shows them there on its first picture
+  // after its load, and its background where it starts: the camera's task, first run then, only sets itself going
+  int fromCorner = act.byCourseSelect && row->layersOnFirstLoad && act.frames == 2;
+  if (fromCorner) camX = camY = 0;
   // the act has no blend, and its first frames keep the course select's display, as the original does
   // (Ice Mountain's background update sets its blend in the camera's task, which the title card's end clears)
   if (!row->ownsBlend) { e.bldCnt = 0; e.bldAlpha = 0x0010; }
@@ -400,8 +404,9 @@ static void draw_frame(void) {
   int layerX = camX - act.cam.wrappedThisFrame;
   fill_layer(0xF000, LAYER_FRONT, layerX, camY);
   fill_layer(0xF800, LAYER_BACK, layerX, camY);
-  // the zone's StageBgUpdate
-  if (row->drawBackground) row->drawBackground(camX, camY);
+  // the zone's StageBgUpdate, which the camera's first run leaves for the next
+  if (fromCorner) e.bgScroll[6] = e.bgScroll[7] = 0;
+  else if (row->drawBackground) row->drawBackground(camX, camY);
 
   player_draw(shownSet ? &shown : &act.player, spriteX, spriteY);
   // Amy's hearts, whose task (0x3001) runs just after hers
@@ -756,7 +761,10 @@ static void act_frame(void) {
   // (Task_CallUpdateCamera), and counts the animated tiles from the frame after that, in UpdateCamera
   int camRuns = act.cam.started && act.frames > 1;
   if (act.frames > 0) objects_run_before_camera();
-  if (camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
+  // the camera's task (0x0F00) doesn't run on the frame the course select makes the act, which runs only the tasks after
+  // the course select's own
+  int made = act.byCourseSelect && act.frames == 0;
+  if (!made && camera_update(&act.cam, &act.player)) act.cam.bgUpdates++;
   // UpdateCamera's fnBgUpdate
   // after the act before, the stage's background update and its animated tiles run from the act's second frame, a
   // frame before the camera
