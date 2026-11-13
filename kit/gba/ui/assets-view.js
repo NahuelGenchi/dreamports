@@ -10,6 +10,7 @@ import { connectedPads } from '../input.js';
 import { padsHeld } from './pad-nav.js';
 import { pickedTheme, isDark } from './theme.js';
 import { brandTag } from './rom-setup.js';
+import { goTo } from './steps.js';
 
 const escape = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const BACK = '<svg viewBox="0 0 7 7" width="14" height="14" shape-rendering="crispEdges" aria-hidden="true"><path d="M3 0h1v1H3zM2 1h1v1H2zM1 2h1v1H1zM0 3h7v1H0zM1 4h1v1H1zM2 5h1v1H2zM3 6h1v1H3z" fill="currentColor"/></svg>';
@@ -58,7 +59,7 @@ export function createAssetsView(host, { back, brand, rom, parts }) {
     </div>`;
   const body = host.querySelector('.assets-body'), backEl = host.querySelector('.setup-back'), scroller = host.querySelector('.setup-scroll');
 
-  backEl.addEventListener('click', () => { location.href = back.href; });
+  backEl.addEventListener('click', () => goTo(back.href));
 
   // the launcher's look, picked in its settings or else the device's
   function paint() {

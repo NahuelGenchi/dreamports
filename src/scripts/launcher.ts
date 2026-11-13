@@ -6,6 +6,7 @@
 
 import { showTitle } from '../lib/title';
 import { hrefOf } from './controls';
+import { goTo, stepTo } from '../../kit/gba/ui/steps.js';
 import { playHref, playLabel } from '../lib/languages.mjs';
 import type { ColourName, PoseName } from '../lib/mark';
 import { LOGO_KEYS, copyMark, fetchOpeningMark, logoKept, showLogo } from './mark';
@@ -726,11 +727,12 @@ function start(launcher: HTMLElement) {
 
   // ---------- Systems ----------
 
-  // a system's Dreamports take the row, a step on in the browser's history, so its back button leads to the systems again
+  // a system's Dreamports take the row, a step on in the browser's history where the site adds steps (steps.js), so its
+  // back button leads to the systems again
   function enterSystem(id: string) {
     if (switching || busy() || state.system === id) return;
     state.system = id;
-    history.pushState({ system: FILTERS[state.filter].key }, '', rowAddress());
+    stepTo({ system: FILTERS[state.filter].key }, rowAddress());
     sound.play('open');
     swapRow(1, () => buildRow(null));
   }
@@ -895,7 +897,7 @@ function start(launcher: HTMLElement) {
       // from the systems that's a step on, as picking the system is; from another system it takes that one's place
       const step = state.system === null;
       state.system = of;
-      if (step) history.pushState({ system: FILTERS[state.filter].key }, '', rowAddress());
+      if (step) stepTo({ system: FILTERS[state.filter].key }, rowAddress());
       else history.replaceState(history.state, '', rowAddress());
     }
     searchBox.hidden = true;
@@ -1061,20 +1063,20 @@ function start(launcher: HTMLElement) {
     const id = slot?.dataset.card;
     const card = id ? document.getElementById(id) : null;
     if (card instanceof HTMLDialogElement) openCard(card, { opener });
-    else if (slot?.dataset.href) window.location.assign(slot.dataset.href);
+    else if (slot?.dataset.href) goTo(slot.dataset.href);
     else nope();
   }
 
   // ---------- Cards ----------
 
-  // Each card has the address of the page it stands for. Opening one from the menu adds a step
-  // to the browser's history, so the back button closes it again.
+  // Each card has the address of the page it stands for. Opening one from the menu adds a step to the browser's
+  // history where the site adds steps (steps.js), so the back button closes it again.
   function addressOf(dlg: HTMLDialogElement) {
     if (dlg === aboutCard) return '/about/' + (state.aboutSec === 'dreamport' ? '' : '#' + state.aboutSec);
     return dlg.dataset.path ?? location.pathname;
   }
   function enterAddress(dlg: HTMLDialogElement, how: Address) {
-    if (how === 'push') history.pushState({ card: true, under: !!dlg.dataset.parent }, '', addressOf(dlg));
+    if (how === 'push') stepTo({ card: true, under: !!dlg.dataset.parent }, addressOf(dlg));
     else if (how === 'replace') history.replaceState(history.state, '', addressOf(dlg));
     if (dlg.dataset.title) document.title = dlg.dataset.title;
   }
@@ -1981,7 +1983,7 @@ function start(launcher: HTMLElement) {
     const href = to.hostname === 'dreamports.net' ? location.origin + to.pathname : link;
     const slotEl = slots[sel()];
     if (!slotEl || slotEl.dataset.game !== dlg.dataset.game) {
-      window.location.assign(href);
+      goTo(href);
       return;
     }
     state.launching = true;
@@ -2044,7 +2046,7 @@ function start(launcher: HTMLElement) {
     blackout.hidden = false;
     boBack.hidden = true;
     leaving = true;
-    window.location.assign(href);
+    goTo(href);
     // if the game takes long to open, offer a way back
     clearTimeout(blackTimer);
     blackTimer = window.setTimeout(() => {
