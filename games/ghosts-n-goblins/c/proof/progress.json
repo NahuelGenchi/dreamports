@@ -100,6 +100,12 @@
       "differs": [],
       "functions": []
     },
+    "frog-pot": {
+      "frames": 31200,
+      "matched": 31200,
+      "differs": [],
+      "functions": []
+    },
     "game-over": {
       "frames": 5400,
       "matched": 5400,

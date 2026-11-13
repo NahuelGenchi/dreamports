@@ -215,10 +215,76 @@ static void throw_shape(void) {
   took(STATE & 0x02 ? ARTHUR_THROW_GOES_ON : ARTHUR_THROW_OVER);
 }
 
+// The frog, Arthur's state $10, from the pot of the fourth stage's bridge ($BACE). Its shapes are in two routines: the
+// walk's at $E317, two steps by his walk's count, and the jump's at $DFD9, one; facing left they're $10 on. Neither
+// flashes after a hit. Each counts its rounds at $0647, and at $F0 he's himself again, with sound $22, in the colours
+// of his armour or of himself without it. The frog's own walk and jump are the ones his state's $10 already holds
+// still and keeps from turning in the air.
+enum { FROG = 0x10, FROG_ROUNDS = 0xF0 };
+
+// $E337 and $DFED: a round of the frog counted, and his own self back after the last
+static void frog_counts(int in_the_air) {
+  RAM[0x0647 + ARTHUR]++;
+  took(FROG_COUNTED);
+  if (RAM[0x0647 + ARTHUR] < FROG_ROUNDS) { took(in_the_air ? FROG_STAYS_IN_THE_AIR : FROG_STAYS); return; }
+  if (in_the_air) {
+    took(FROG_ENDS_IN_THE_AIR);
+    STATE &= (uint8_t)~FROG;
+    took(FROG_ENDS_SOUND_IN_THE_AIR);
+    sound_play(0x22);
+    took(FROG_ENDS_COLOURS_IN_THE_AIR);
+  } else {
+    took(FROG_ENDS_SOUND);
+    sound_play(0x22);
+    took(FROG_ENDS);
+    STATE &= (uint8_t)~FROG;
+    took(FROG_ENDS_COLOURS);
+  }
+  COLOURS = 8;
+  took(FROG_ARMOUR_LOOKED_AT);
+  if (!(FLAGS & WITHOUT_ARMOUR)) { took(FROG_ENDS_IN_ARMOUR); return; }
+  took(FROG_ENDS_WITHOUT_ARMOUR);
+  COLOURS = 2;
+  took(FROG_ENDS_WITHOUT_ARMOUR_STORED);
+}
+
+// $E317: the frog's walk, two shapes by his walk's count
+static void frog_walk_shape(void) {
+  took(FROG_WALK_BEGINS);
+  COLOURS = 3;
+  took(FROG_WALK_COLOURED);
+  SHAPE = (uint8_t)(0x76 + ((COUNT >> 2) & 1));
+  took(FROG_SHAPED);
+  if (!(FLAGS & TURNED)) took(FROG_FACES_RIGHT);
+  else {
+    took(FROG_WALK_FACES_LEFT);
+    SHAPE = (uint8_t)(SHAPE + 0x10);
+    took(FROG_FACES_LEFT_STORED);
+  }
+  frog_counts(0);
+}
+
+// $DFD9: the frog in the air
+static void frog_jump_shape(void) {
+  took(FROG_JUMP_BEGINS);
+  COLOURS = 3;
+  took(FROG_JUMP_COLOURED);
+  SHAPE = 0x77;
+  took(FROG_SHAPED);
+  if (!(FLAGS & TURNED)) took(FROG_FACES_RIGHT);
+  else {
+    took(FROG_JUMP_FACES_LEFT);
+    SHAPE = 0x87;
+    took(FROG_FACES_LEFT_STORED);
+  }
+  frog_counts(1);
+}
+
 // sub_E35E and sub_E3B9: his shape. The copy's list at $E3DC gives the six steps of his walk, and his shapes without
-// armour are 32 on from those with it, and the ones facing left 4 on. His other states, at $E317, $E36B and $E382, and
-// his flashing after he's hit, at $E3BE, aren't ported yet.
+// armour are 32 on from those with it, and the ones facing left 4 on. The frog's are at $E317 (above); his look in the
+// last stages, at $E36B, isn't ported yet.
 static void choose_shape(void) {
+  if (STATE & FROG) { frog_walk_shape(); return; }
   if (STATE & 0x02) {
     took(ARTHUR_THROW_SHAPE);
     throw_shape();
@@ -374,6 +440,7 @@ static int jump_way_blocked(void) {
 
 // sub_DF93: his shape in a jump, by the way he faces, or a throw's.
 static void jump_shape(void) {
+  if (STATE & FROG) { frog_jump_shape(); return; }
   if (STATE & 0x02) {
     took(JUMP_THROW_SHAPE);
     throw_shape();
@@ -387,8 +454,8 @@ static void jump_shape(void) {
 
 // $DDF7: a jump in a stage, when A is pressed: straight up, or across the way Left or Right says, with the same six
 // rounds up and the same fall as sub_E1EE's. In the air B throws and Left and Right turn him, and a hit ends the jump:
-// `hit` says so. His look in the last stages, at $DFA0, a state that holds him, at $DFD9, and a fall off the bottom
-// of the picture, at $E1BA, aren't ported yet. Called each turn until it's DONE.
+// `hit` says so. His look in the last stages, at $DFA0, and a fall off the bottom of the picture, at $E1BA, aren't
+// ported yet. Called each turn until it's DONE.
 static wait stage_jump(uint8_t *step, int *hit) {
   enum { BEGIN, RISE, RISEN, FALL, FELL, LONG_FALL, LONG_FALL_AGAIN };
   *hit = 0;
