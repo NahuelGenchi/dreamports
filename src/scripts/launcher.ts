@@ -1728,7 +1728,7 @@ function start(launcher: HTMLElement) {
       // downloads open in a new tab, so the menu stays as it was. If the browser blocks the
       // new tab, the menu stays and says so, and a second press opens the download here.
       if (blocked === href) {
-        window.location.assign(href);
+        goTo(href);
         return;
       }
       const tab = window.open(href, '_blank');
