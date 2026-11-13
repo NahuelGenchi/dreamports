@@ -247,3 +247,28 @@ test('the games whose code or recordings a step changes', () => {
   assert.equal(gameAt('HEAD', 'sonic-advance'), true);
   assert.equal(gameAt('HEAD', 'a-new-game'), false);
 });
+
+test('a part the step proves and main didn\'t is what the step changed, from its first frame (#1258)', () => {
+  // a stage whose code other recordings already ran: the first new code comes only at its end, at frame 1900
+  const stage = { name: 'Special stage 1', recording: 'a-test', frames: [400, 1850] };
+  const fresh = { main: mainWith({ recordings: {} }), name: 'a-test', file: FILE, text: RECORDING, frames: 2000, ran: f => (f >= 1900 ? ['0805E1B0'] : ['08000000']) };
+  assert.deepEqual(firstChanged({ ...fresh, differs: [] }), { frame: 1900, why: 'where the original first runs code main\'s proof doesn\'t count, at 0805E1B0' });
+  assert.deepEqual(firstChanged({ ...fresh, differs: [], parts: [stage] }), { frame: 400, why: 'where Special stage 1 starts, a part main didn\'t prove' });
+  // before the Dreamport has played, the part is the guess too
+  assert.equal(firstChanged({ ...fresh, differs: null, parts: [stage] }).frame, 400);
+  // a part whose frames still differ isn't proven by this step, so it says nothing of what the step changed
+  assert.equal(firstChanged({ ...fresh, differs: [[1000, 1000]], parts: [stage] }).frame, 1900);
+  // a recording main proved the same, newly named for a part: the part, though no frame changed
+  const proved = mainWith({ recordings: { 'a-test': { frames: 2000, matched: 2000, differs: [] } } });
+  const same = { main: proved, name: 'a-test', file: FILE, text: RECORDING, frames: 2000 };
+  assert.equal(firstChanged({ ...same, differs: [] }), null);
+  assert.deepEqual(firstChanged({ ...same, differs: [], parts: [stage] }), { frame: 400, why: 'where Special stage 1 starts, a part main didn\'t prove' });
+  // a part main named and proved the same is nothing new
+  const named = { ...proved, parts: [stage] };
+  assert.equal(firstChanged({ ...same, main: named, differs: [], parts: [stage] }), null);
+  // a change that can be seen before the part comes first, and a change only heard comes after the part
+  const earlier = mainWith({ recordings: { 'a-test': { frames: 2000, matched: 300, differs: [[300, 300]] } } });
+  assert.equal(firstChanged({ ...same, main: earlier, differs: [], parts: [stage] }).frame, 300);
+  const heard = mainWith({ recordings: { 'a-test': { frames: 2000, matched: 1999, differs: [[200, 200]], soundDiffers: [[200, 200]] } } });
+  assert.equal(firstChanged({ ...same, main: heard, differs: [], parts: [stage] }).frame, 400);
+});

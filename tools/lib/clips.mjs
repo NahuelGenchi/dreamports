@@ -35,9 +35,10 @@ export function mainBase() {
 
 /**
  * The commit this branch started from on main, and what main's proof of the game's version held there: { base,
- * recordings, proven, files }, with `recordings` null when main has no proof of it yet, or null when this folder has no
- * main to read. `proven` is every function main's proof counts, as the code map writes their addresses, and `files`
- * reads a recording's file as main has it. Nothing is fetched: it's the main the branch was made from.
+ * recordings, proven, parts, files }, with `recordings` null when main has no proof of it yet, or null when this folder
+ * has no main to read. `proven` is every function main's proof counts, as the code map writes their addresses, `parts`
+ * the game's parts as main's parts.json lists them (every version shares it), and `files` reads a recording's file as
+ * main has it. Nothing is fetched: it's the main the branch was made from.
  * @param {string} game such as sonic-advance or sonic-battle/c
  */
 export function mainProof(game) {
@@ -49,7 +50,21 @@ export function mainProof(game) {
     progress = JSON.parse(file(`games/${game}/proof/progress.json`) ?? 'null');
   } catch { /* main's is broken, so it proves nothing */ }
   const recordings = progress?.recordings ?? null;
-  return { base, recordings, proven: new Set(Object.values(recordings ?? {}).flatMap(r => r.functions ?? [])), files: file };
+  let parts = [];
+  try {
+    parts = JSON.parse(file(`games/${game.split('/')[0]}/proof/parts.json`) ?? '{}').parts ?? [];
+  } catch { /* main's is broken, so it names no part */ }
+  return { base, recordings, proven: new Set(Object.values(recordings ?? {}).flatMap(r => r.functions ?? [])), parts, files: file };
+}
+
+/**
+ * Whether main proved `part`, of the recording `name`: its parts.json named that recording and those frames for it,
+ * and main's proof of the recording ran past them with none of them differing.
+ */
+function mainProved(main, name, { name: part, frames: [a, b] }) {
+  const named = (main.parts ?? []).some(p => p.name === part && p.recording === name && p.frames?.[0] === a && p.frames?.[1] === b);
+  const was = main.recordings?.[name];
+  return named && !!was && was.frames > b && !(was.differs ?? []).some(([x, y]) => x <= b && y >= a);
 }
 
 /** Where a step's change starts in a recording, as prove prints it. */
@@ -68,12 +83,28 @@ export function changedText(changed) {
  * recording's file as it is now, at `file` in the repository, `ran(frame)` the addresses of the functions the original
  * ran in each of its frames, or null with no code map, and `differs` the stretches that differ now, or null when they
  * aren't known yet, which takes what main differed in as the guess. `sound` is the stretches whose sound differs now
- * and `picture` those whose picture does.
+ * and `picture` those whose picture does. `parts` are the game's parts that name this recording now, as parts.json
+ * lists them: one main didn't prove is what the step is about from its first frame, whatever code ran before or in it,
+ * as a part's code can be counted already by other recordings (#1258).
  * @returns {{ frame: number, why: string, heard?: true } | null}
  */
-export function firstChanged({ main, name, file, text, frames, ran = null, differs = null, sound = null, picture = null }) {
+export function firstChanged({ main, name, file, text, frames, ran = null, differs = null, sound = null, picture = null, parts = [] }) {
   if (!main) return { frame: 0, why: 'as this folder has no main to compare with' };
   if (!main.recordings) return { frame: 0, why: 'as main has no proof of this version yet' };
+  const changed = changedOnly({ main, name, file, text, frames, ran, differs, sound, picture });
+  // the first part this step proves that main didn't: the clip shows it, unless something that can be seen changed sooner.
+  // Once the Dreamport has played, a part counts only when its frames match now
+  const matches = ([a, b]) => !differs || !differs.some(([x, y]) => x <= b && y >= a);
+  const fresh = parts.filter(part => Array.isArray(part.frames) && part.frames[0] < frames && matches(part.frames) && !mainProved(main, name, part))
+    .sort((x, y) => x.frames[0] - y.frames[0])[0];
+  if (fresh && (!changed || changed.heard || fresh.frames[0] < changed.frame)) {
+    return { frame: fresh.frames[0], why: `where ${fresh.name} starts, a part main didn't prove` };
+  }
+  return changed;
+}
+
+// firstChanged, by what the frames and the code say alone
+function changedOnly({ main, name, file, text, frames, ran, differs, sound, picture }) {
   const was = main.recordings[name];
   // the frames main proved are these frames only when main's recording is this one
   if (was && main.files(file) === String(text)) {

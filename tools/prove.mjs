@@ -377,7 +377,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const recordingText = readFileSync(recording.file, 'utf8'), recordingFile = relative(REPO, recording.file).replaceAll('\\', '/');
     // (a frame's list comes as a Uint32Array, whose own map would turn the addresses back into numbers)
     const ranAt = codeMap && first.ran ? f => Array.from(first.ran[originalOf[f]] ?? [], i => hex(codeMap.functions[i].address)) : null;
-    const changeOf = (differs, sound = null, picture = null) => firstChanged({ main, name, file: recordingFile, text: recordingText, frames, ran: ranAt, differs, sound, picture });
+    const changeOf = (differs, sound = null, picture = null) => firstChanged({ main, name, file: recordingFile, text: recordingText, frames, ran: ranAt, differs, sound, picture, parts });
     const guessed = quick ? null : changeOf(null);
     const compareSound = soundOf(first.sound, machine), heardOf = Array.from(originalOf, g => g + 1);
     // the frames next to a stretch only the original has, whose sound isn't compared: the original's runs into or out

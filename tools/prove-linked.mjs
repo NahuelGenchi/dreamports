@@ -6,6 +6,7 @@
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { REPO, resultFolder } from './lib/paths.mjs';
+import { readParts } from './lib/proof-files.mjs';
 import { expand } from './lib/recording.mjs';
 import { openDreamport } from './lib/dreamport.mjs';
 import { runLinked } from './gba/linked.mjs';
@@ -125,7 +126,8 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
     // proof, as nothing here says which code ran, and how many pictures are one colour or the same as the one before,
     // from the original's, as the Dreamport's are the same where it matters, which `apart` measures
     const text = readFileSync(recording.file, 'utf8'), recordingFile = relative(REPO, recording.file).replaceAll('\\', '/');
-    changed = firstChanged({ main, name, file: recordingFile, text, frames, differs: stretches });
+    const own = readParts(game).filter(p => p.recording === name && Array.isArray(p.frames) && p.frames.length === 2);
+    changed = firstChanged({ main, name, file: recordingFile, text, frames, differs: stretches, parts: own });
     const pictures = clipAt.map(f => Array.from({ length: players }, (_, p) => first.pictures.get(`${f + 1}:${p}`)));
     const oneColour = pictures.filter(([own]) => own.every(c => c === own[0])).length;
     const same = pictures.filter((now, i) => i > 0 && clipAt[i - 1] === clipAt[i] - 1 && now.every((own, p) => own.every((c, at) => c === pictures[i - 1][p][at]))).length;
