@@ -828,7 +828,11 @@ COST(TOP_TIME, 52)                // sub_D82B with its call
 COST(STAGE_START_NO_BANNER, 8)    // $D1B0 to $D1DD, for the first two sets of stages,
 COST(STAGE_START_TILES, 50)       // or $D1B0 to sub_EECF, with its call, for the third and fourth: their own tiles,
 COST(STAGE_START_TILES_LATER, 48) // or for the fifth and sixth
-COST(STAGE_START_WEAPON, 31)      // $D1DD to $D203, with a weapon that has no place of its own at the top
+COST(STAGE_START_WEAPON, 17)      // $D1DD to $D1EE: the weapon held,
+COST(STAGE_START_WEAPON_LANCE, 22) // or the demonstration's lance
+COST(STAGE_START_OWN_COLOURS, 14) // $D1EE to $D203: a weapon in its own colours,
+COST(STAGE_START_TORCH_COLOURS, 15) // or the torch's, by $D1FE,
+COST(STAGE_START_AXE_COLOURS, 21) // or the axe's, by $D1F9
 COST(STAGE_START_COUNTS, 141)     // $D203 to $D27D, for a stage that isn't the last
 COST(STAGE_START_TIME, 11)        // $D27D to sub_CAFD
 COST(STAGE_MUSIC_BEGINS, 21)      // sub_CAFD to sub_ED72
@@ -1469,8 +1473,9 @@ COST(FLIER_SEES_HIM, 8)           // $A04C to sub_04_A37F
 COST(FLIER_SLEEPS_ON, 13)         // $A05A, and back
 COST(FLIER_WOKEN_BY_HIT, 12)      // or to sub_04_A37F
 
-// ---- a moving platform, kind $0E, sub_04_B84D (platform.c)
-COST(PLATFORM_BEGINS, 17)         // $B84D to $B864
+// ---- a moving platform, kind $0E, sub_04_B84D, and the eyeball raft, kind $0D, from $B85A (platform.c)
+COST(PLATFORM_BEGINS, 17)         // $B84D to $B864,
+COST(RAFT_BEGINS, 14)             // or for kind $0D, $B85A to $B864
 COST(PLATFORM_IN_VIEW, 3)         // $B86A to $B86F,
 COST(PLATFORM_OUT_OF_VIEW, 2)     // or to sub_F346
 COST(PLATFORM_LEFT_END, 34)       // $B86F to $B888: its left end, and how far it is,
@@ -1500,7 +1505,10 @@ COST(PLATFORM_LIFTS, 12)          // $B90D to $B916: his place down, 12 pixels a
 COST(PLATFORM_SAME_SCREEN, 13)    // $B916 to $B931, on its own screen,
 COST(PLATFORM_SCREEN_ABOVE, 25)   // or the one above
 COST(PLATFORM_CARRIES, 8)         // $B931 to the call of sub_EFDA
-COST(PLATFORM_CARRIED, 42)        // $B93A to the call of sub_F181: his place across, moved as it moves
+COST(PLATFORM_CARRIES_PART, 9)    // $B93A to $B940: his place across, moved as it moves, a store at a time,
+COST(PLATFORM_CARRIES_ACROSS, 11) // to $B948,
+COST(PLATFORM_CARRIES_SCREEN, 11) // to $B950,
+COST(PLATFORM_CARRIED, 11)        // and to the call of sub_F181
 COST(PLATFORM_ENDS, 12)           // $B95A, and back
 
 

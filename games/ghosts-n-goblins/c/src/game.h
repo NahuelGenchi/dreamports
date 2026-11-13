@@ -201,7 +201,7 @@ void zombies_come(uint8_t *x);
 void move_object(uint8_t object, uint8_t speed);
 /** sub_EFDA: how far `speed` goes the way an object is heading, left in $77, $73, $7B, $78, $74 and $7C. */
 void find_move(uint8_t object, uint8_t speed);
-/** sub_04_B84D, kind $0E: a platform that moves from side to side (platform.c). */
+/** sub_04_B84D, kind $0E: a platform that moves from side to side, and from $B85A kind $0D, the eyeball raft (platform.c). */
 void platform(uint8_t object);
 /** sub_F099: moves an object down by what's in $77 and $73, screens and pixels. */
 void move_down(uint8_t object);

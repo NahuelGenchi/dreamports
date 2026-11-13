@@ -3,7 +3,8 @@
 // each. When Arthur comes down onto it he's held: his flag $10 is set, which his own turn reads as ground under him,
 // he's put 12 pixels above it, and he's moved across as it moves. The first stage has one, over the water.
 //
-// The other kind that shares the routine, from $B85A, with another shape and width, isn't ported yet.
+// The fourth stage's eyeball rafts, kind $0D, run the same routine from $B85A, with their own shape and colours and a
+// narrower top to stand on.
 
 #include "game.h"
 
@@ -15,9 +16,10 @@ static uint8_t list(uint16_t address) { return cart(4, address); }
 void platform(uint8_t object) {
   uint8_t state = RAM[OBJECT_STATE + object], *heading = &RAM[OBJECT_HEADING + object];
   uint16_t place = (uint16_t)(RAM[OBJECT_X_SCREEN + object] << 8 | RAM[OBJECT_X + object]);
-  RAM[OBJECT_SHAPE + object] = 0x60;
-  RAM[OBJECT_COLOURS + object] = 0x0C;
-  took(PLATFORM_BEGINS);
+  int raft = RAM[OBJECT_KIND + object] == 0x0D;
+  RAM[OBJECT_SHAPE + object] = raft ? 0x5F : 0x60;
+  RAM[OBJECT_COLOURS + object] = raft ? 0x00 : 0x0C;
+  took(raft ? RAFT_BEGINS : PLATFORM_BEGINS);
   show_object(object);
   if (object_in_view(object)) took(PLATFORM_IN_VIEW);
   else {
@@ -87,10 +89,13 @@ void platform(uint8_t object) {
   find_move(object, list((uint16_t)(SPEEDS + state)));
   uint32_t his_place = (uint32_t)(RAM[OBJECT_X_SCREEN + ARTHUR] << 16 | RAM[OBJECT_X + ARTHUR] << 8 | RAM[OBJECT_X_PART + ARTHUR]);
   his_place += (uint32_t)(RAM[0x78] << 16 | RAM[0x74] << 8 | RAM[0x7C]);
-  took(PLATFORM_CARRIED);
+  took(PLATFORM_CARRIES_PART);
   RAM[OBJECT_X_PART + ARTHUR] = (uint8_t)his_place;
+  took(PLATFORM_CARRIES_ACROSS);
   RAM[OBJECT_X + ARTHUR] = (uint8_t)(his_place >> 8);
+  took(PLATFORM_CARRIES_SCREEN);
   RAM[OBJECT_X_SCREEN + ARTHUR] = (uint8_t)(his_place >> 16);
+  took(PLATFORM_CARRIED);
   place_on_screen(ARTHUR);
   took(PLATFORM_ENDS);
 }
