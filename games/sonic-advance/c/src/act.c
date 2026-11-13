@@ -494,15 +494,18 @@ void act_player_died(void) {
   act.clockStopped = 1;
   play_song(act.player.drownSeconds < 0 ? SE_DROWNED : SE_LIFE_LOST);
 }
-// Task_PlayerHandleDeath's HandleLifeLost: his rings and a life go, and with lives left every task goes and the act starts
-// over at the end of Sonic's task (restart_act), so nothing after it runs this frame. The game over the last life brings
-// isn't in C yet: the act stays as it is.
+// Task_PlayerHandleDeath's HandleLifeLost: his task ends, his rings and a life go, and with lives left every task goes and
+// the act starts over at the end of it (restart_act), so nothing after it runs this frame. The last life brings the game
+// over, with the act running on behind it; with no continue left, as the C has no special stages to earn one in
+// (CreateGameOverScreen(OVER_CAUSE_TIME_UP))
 static int lifeLost;
 void act_life_lost(void) {
-  if (lifeLost || act.lives <= 0) return;
+  if (lifeLost || act.playerGone) return;
   act.ringCount = 0;
   act.lives = (act.lives - 1) & 0xFF;
-  if (act.lives != 0) lifeLost = 1;
+  if (act.lives != 0) { lifeLost = 1; return; }
+  act.playerGone = 1;
+  gameover_start();
 }
 // a frame of the course clock, where the act's task doesn't run it: gCheckpointTime counts up whichever way the clock goes
 static void clock_step(void) {
@@ -668,6 +671,24 @@ static void go_to_congratulations(void) {
   else congratulations_after_write();
 }
 
+// Task_8056AC8, once the game over's song has ended: the music stops and the save is written, then every task goes and
+// the game goes back to the SEGA logo
+static void sega_logo_after_write(void) {
+  sound_vsync_on();
+  act_active = 0;
+  create_sega_logo();
+}
+static void go_to_sega_logo(void) {
+  destroy_tasks(0, 0xFFFF);
+  act_tasks_destroy_all();
+  act.task = NULL;
+  clear_queues();
+  stop_all_songs();
+  sound_vsync_off();
+  if (save_write()) engine_stall(WRITE_FRAMES, sega_logo_after_write);
+  else sega_logo_after_write();
+}
+
 void act_go_to_next_level(void) {
   go_to_next_level();
 }
@@ -734,6 +755,8 @@ static void act_frame(void) {
   int objectsRun = act.frames > 0 || row->runsFromFirstFrame;
   if (row->beforeObjects) row->beforeObjects();
   if (objectsRun) objects_run_before_hud();
+  // the game over's tasks, made after the objects' at their priority
+  if (gameover_step()) { go_to_sega_logo(); return; }
   // the title card's task (0x2100) runs before Sonic's and the clock's, so the frame it ends frees the pad and starts
   // the clock; its pieces and fade go over the act, and it sets the display while it shows, after draw_frame
   int cardShows = !act.cardDone;
@@ -774,12 +797,17 @@ static void act_frame(void) {
   // gives him to run off (HOLD_RIGHT)
   if (act.player.ignoreInput)
     in = act.player.heldRight ? (PlayerInput){ .right = 1 } : act.player.heldLeft ? (PlayerInput){ .left = 1 } : (PlayerInput){0};
-  player_step(&act.player, &in);
-  if (lifeLost) { lifeLost = 0; restart_act(); return; }
-  // a start point's first act frame is the held A's jump, one frame after it began, when it has the word for it
-  if (act.drawn == 0 && act.fromStartPoint && gba_start_number("jump", 0)) player_start_jump(&act.player);
-  player_animate(&act.player, &in);
-  player_tails_step(&act.player);
+  // after the last life, the player's task has gone
+  if (!act.playerGone) {
+    player_step(&act.player, &in);
+    if (lifeLost) { lifeLost = 0; restart_act(); return; }
+    // a start point's first act frame is the held A's jump, one frame after it began, when it has the word for it
+    if (act.drawn == 0 && act.fromStartPoint && gba_start_number("jump", 0)) player_start_jump(&act.player);
+    if (!act.playerGone) {
+      player_animate(&act.player, &in);
+      player_tails_step(&act.player);
+    }
+  }
   sonic_shown();
   // the CPU partner's task, just after Sonic's (0x3001)
   if (act.hasPartner) { partner_task(!act.cardDone); partnerShown = act.partner; }
@@ -820,6 +848,7 @@ static void act_frame(void) {
   // (after the act before, its tasks first run on the act's second frame, as its objects do)
   if (row->afterFrame) row->afterFrame(1);
   results_display();
+  gameover_display();
 }
 
 // the act's music, as the course select leaves it: the stage music manager (Task_StageMusicManager, priority 0x4000)

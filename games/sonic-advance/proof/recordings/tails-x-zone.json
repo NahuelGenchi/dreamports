@@ -1,6 +1,6 @@
 {
-  "about": "From power-on with Tails having reached level 12: to the course select, down to that level and A on it, then running right and jumping.",
-  "frames": 7400,
+  "about": "From power-on with Tails having reached level 12: to the course select, down to that level and A on it, then running right and jumping, until the boss takes Tails' last life: the game over, and back to the SEGA logo once its song ends.",
+  "frames": 7700,
   "start": "unlocked=12&character=1",
   "held": [
     [0,[]],
@@ -123,5 +123,5 @@
     [7352,["RIGHT"]]
   ],
   "onlyInOriginal": [{"at":1701,"frames":126,"held":[[50,["RIGHT"]],[53,[]],[69,["A"]],[75,[]]],"sets":[{"frame":9,"address":"0300516A","bytes":2,"value":12}],"about":"The character select, which the Dreamport does not have yet: Right moves to Tails and A picks them, with their progress set, which leads to the course select."}],
-  "clip": {"at":2458,"frames":300}
+  "clip": {"at":7040,"frames":300}
 }
