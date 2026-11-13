@@ -65,6 +65,8 @@ struct PaletteAnim {
 typedef struct {
   Stage stage;
   Player player;
+  Player partner;                  // Tails as the CPU's partner (gPartner), when the character select's code brought him
+  int hasPartner;
   Camera cam;
   Hud hud;
   int tick, frames, courseTime, ringCount, lives, score;
@@ -98,10 +100,17 @@ extern int act_active;
 /** The original's stage clock, gStageTime: the act's own frame count less the frames the level's row says the
  *  original doesn't count yet (`stageClockAhead`). */
 int act_stage_time(void);
-void act_brake_dust(void);
 void act_brake_dust_at(int x, int y);
-void act_dash_dust(void);
+void act_dash_dust_of(const Player *p);
+void act_brake_dust_of(const Player *p);
 void act_insta_shield(void);
+/** The CPU partner (partner.c): made as the act starts, after the title card, from the act's start; Sonic's buttons each
+ *  frame, or NULL while his controls are held; and his task, `card` while the title card holds him. */
+void partner_start(void);
+void partner_hear(const PlayerInput *in);
+void partner_task(int card);
+/** Tails' tail swipe's effect, following him (Player_Tails_InitGfx_TailSwipe). */
+void act_tail_swipe(const Player *p);
 void act_freeze_camera(void);
 void act_player_died(void);
 void act_life_lost(void);
@@ -138,8 +147,8 @@ void act_next_bg_palette(uint16_t *pal);
 // Sonic drowns, a number of the drowning countdown over him, and the drowning music, started and stopped
 void water_splash(int x);
 void water_bubble(int x, int y, int dx, int group);
-void water_drowned_bubbles(void);
-void water_countdown(int n);
+void water_drowned_bubbles(const Player *p);
+void water_countdown(const Player *p, int n);
 void water_drowning_music(void);
 void water_drowning_music_stop(void);
 void titlecard_start(int level, int character, int after);

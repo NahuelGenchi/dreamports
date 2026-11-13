@@ -355,7 +355,7 @@ static void late_tiles_draw(void);
 
 // Sonic as his task (0x3000) left him: his sprite is drawn from this, so a task after his that moves or turns him, as a
 // shot that hurts him or a hang bar, shows on the next frame's picture (drawSonic in engine/game.js)
-static Player shown;
+static Player shown, partnerShown;
 static int shownSet;
 static void sonic_shown(void) { shown = act.player; shownSet = 1; }
 
@@ -396,6 +396,8 @@ static void draw_frame(void) {
   if (row->drawBackground) row->drawBackground(camX, camY);
 
   player_draw(shownSet ? &shown : &act.player, spriteX, spriteY);
+  // and the CPU partner as his task (0x3001) left him, just after Sonic
+  if (act.hasPartner) player_draw(shownSet ? &partnerShown : &act.partner, spriteX, spriteY);
   shownSet = 0;
 }
 
@@ -721,6 +723,8 @@ static void act_frame(void) {
     act.player.heldDirs = 0;
   }
   act.player.wasIgnoreInput = act.player.ignoreInput;
+  // the CPU partner hears Sonic's buttons, or nothing while the card or an object holds them (sub_804D13C)
+  if (act.hasPartner) partner_hear(!act.cardDone || act.player.ignoreInput ? NULL : &in);
   // an object holding him takes the pad from him: he reads nothing held or pressed, or only right held as the goal post
   // gives him to run off (HOLD_RIGHT)
   if (act.player.ignoreInput)
@@ -730,6 +734,8 @@ static void act_frame(void) {
   if (act.drawn == 0 && act.fromStartPoint && gba_start_number("jump", 0)) player_start_jump(&act.player);
   player_animate(&act.player, &in);
   sonic_shown();
+  // the CPU partner's task, just after Sonic's (0x3001)
+  if (act.hasPartner) { partner_task(!act.cardDone); partnerShown = act.partner; }
   if (row->palettesAfterSonic)
     for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
   if (act.frames > 0 || row->runsFromFirstFrame) objects_run_late();
@@ -739,6 +745,7 @@ static void act_frame(void) {
   // the stage clock's task (0xFF00): the course time counts once the card has ended, the stage's tick every frame; it
   // keeps this frame's gravity as the last (gPrevStageFlags), so a flip turns his Y speed around once
   act.player.wasInverted = act.player.inverted;
+  act.partner.wasInverted = act.partner.inverted;
   if (!act.clockStopped) {
     act.clockTime++;
     if (act.timerReversed) {
@@ -990,6 +997,10 @@ void act_start(int level, int cardSkip, int preFrames) {
   // heap's first
   vram_reset();
   titlecard_start(level, ctx.character, comingOn);
+  // the players come after the card's task (CreateGameStage): Sonic's sprite has its fixed place, and the CPU partner,
+  // which the character select's code brings along with Sonic in the single-player game, takes his two from the heap. The
+  // Moon Zone, the extra stage, has none (GameStageStart).
+  if (ctx.partner && ctx.character == 0 && level != LEVEL_THE_MOON) partner_start();
   objects_start(level, act.stage.paletteCount > 0);
   if (row->runsFromFirstFrame) start_palette_animations();
   if (act.fromStartPoint) {
