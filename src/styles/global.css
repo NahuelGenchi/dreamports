@@ -1306,11 +1306,19 @@ kbd {
 }
 
 .corner-group {
+  position: relative;
   display: flex;
   /* as wide as its buttons, like each of them */
   flex: none;
   gap: 10px;
   pointer-events: auto;
+}
+
+/* Back to the systems on its way out: it fades where it stood while the buttons after it glide into its place (#1208) */
+.corner.is-leaving {
+  position: absolute;
+  top: 0;
+  pointer-events: none;
 }
 
 .corner {

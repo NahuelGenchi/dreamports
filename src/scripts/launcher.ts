@@ -302,7 +302,7 @@ function start(launcher: HTMLElement) {
     const games = 'Games: ' + (inside?.dataset.title ?? f.label) + (words.length ? `, matching ${state.search}` : '');
     rowEl.setAttribute('aria-label', f.systems && !words.length && !inside ? 'Systems' : games);
     // inside a system, its name stands over the row and Back leads to the systems
-    sysHead.hidden = btnSystems.hidden = !inside;
+    showInside(!!inside);
     if (inside) {
       sysName.textContent = inside.dataset.title!;
       $('.sys-icon', sysHead).style.setProperty('--icon', `url(${inside.dataset.icon})`);
@@ -313,6 +313,53 @@ function start(launcher: HTMLElement) {
     applySel(false, slots[sel()] !== on);
     void rowEl.offsetWidth;
     rowEl.classList.remove('no-anim');
+  }
+
+  // Back takes the place before Settings and About, so they move over for it. They glide there while Back and the
+  // system's name fade in or out, as the row does, instead of all of it changing in one frame (#1208). With calm motion,
+  // or behind a card, it changes at once.
+  let insideRun = 0;
+  function showInside(inside: boolean) {
+    const leaving = btnSystems.classList.contains('is-leaving');
+    if (inside === (!btnSystems.hidden && !leaving)) return;
+    const run = ++insideRun;
+    const group = btnSystems.parentElement!;
+    const others = $$('.corner', group).filter((el) => el !== btnSystems);
+    const from = others.map((el) => el.getBoundingClientRect().left);
+    const was = btnSystems.getBoundingClientRect().left - group.getBoundingClientRect().left;
+    // how strong Back and the name show now, so a turn back part way through a fade goes on from there
+    const strength = [btnSystems, sysHead].map((el) => (el.hidden ? 0 : Number(getComputedStyle(el).opacity)));
+    for (const el of [btnSystems, sysHead, ...others]) for (const a of el.getAnimations()) a.cancel();
+    const settle = () => {
+      btnSystems.classList.toggle('is-leaving', false);
+      btnSystems.style.left = '';
+      btnSystems.inert = false;
+      sysHead.hidden = btnSystems.hidden = !inside;
+    };
+    settle();
+    if (calm() || !state.ready || state.open) return;
+    if (!inside) {
+      // Back stays where it stood, out of the others' way and out of reach, while it fades
+      sysHead.hidden = btnSystems.hidden = false;
+      btnSystems.classList.toggle('is-leaving', true);
+      btnSystems.style.left = `${was - parseFloat(getComputedStyle(btnSystems).marginLeft)}px`;
+      btnSystems.inert = true;
+    }
+    const fades = [btnSystems, sysHead].map((el, i) =>
+      el.animate([{ opacity: strength[i] }, { opacity: inside ? 1 : 0 }], { duration: inside ? 300 : 170, easing: 'ease', fill: 'forwards' }),
+    );
+    others.forEach((el, i) => {
+      const dx = from[i] - el.getBoundingClientRect().left;
+      if (dx) el.animate([{ translate: `${dx}px 0` }, { translate: '0 0' }], { duration: 300, easing: 'cubic-bezier(.2,.9,.3,1)' });
+    });
+    Promise.all(fades.map((a) => a.finished)).then(
+      () => {
+        if (run !== insideRun) return;
+        settle();
+        for (const a of fades) a.cancel();
+      },
+      () => {},
+    );
   }
 
   function slotX(d: number) {
