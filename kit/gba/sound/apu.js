@@ -7,6 +7,8 @@
 export const CPU_HZ = 16777216, TICK = 256;
 const WAVE_START = 24;       // as mGBA has a wave note's first step, past its period
 const SEQ_PERIOD = 32768;   // the frame sequencer steps at 512 Hz
+const OFF_PERIOD = 32768;   // a square's step at pitch 0, where the sound switched off leaves it
+const WAITS = 64;           // the writes that can wait for their place in the frame (APU_WAITS in the C kit)
 const DUTY = [[0, 0, 0, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, 1, 1, 1], [0, 1, 1, 1, 1, 1, 1, 0]];
 
 const envelope = () => ({ vol: 0, up: false, period: 0, timer: 0 });
@@ -41,6 +43,21 @@ export function createApu() {
   }
   const lengthOn = nrx4 => !!(reg(nrx4) & 0x40);
 
+  // ---- the console's own count of the squares (exact) ----
+  // mGBA moves a square on lazily: at each write to one of its registers and, while it plays with an envelope that can
+  // still sound, at every sample (each 256 cycles from power-on) and frame sequencer step. Between those its count and
+  // the kit's agree, as a square counts its time against the pitch it has. They part only where the pitch changes with
+  // no catch-up, which switching the sound off does: it zeroes the pitch, and the time since the square's last
+  // catch-up is then counted at pitch 0. So the exact mode keeps mGBA's count beside the kit's and takes it at the
+  // switch-off.
+  const sqLast = [0, 0], sqIndex = [0, 0], held = [0, 0, 0, 0];
+  function catchUp(i, at) {
+    const period = sqPeriod(sq[i]), since = at - sqLast[i];
+    if (since >= period) { const n = Math.floor(since / period); sqIndex[i] += n; sqLast[i] += n * period; }
+  }
+  // mGBA's GBAudioRun moves on a square that plays with an envelope that isn't silent for good (dead != 2)
+  const advancing = i => sq[i].on && !(sq[i].env.vol === 0 && (!sq[i].env.up || !sq[i].env.period));
+
   function sweepNext() {
     const v = reg(0x60), d = sweep.shadow >> (v & 7);
     const f = v & 8 ? sweep.shadow - d : sweep.shadow + d;
@@ -62,7 +79,7 @@ export function createApu() {
     } else if (ch === 2) {
       ch3.on = !!(reg(0x70) & 0x80);
       if (!ch3.len) ch3.len = 256;
-      ch3.timer = wavePeriod() + (api.at === null ? 0 : WAVE_START);
+      ch3.timer = wavePeriod() + (api.at === null && !api.exact ? 0 : WAVE_START);
     } else {
       ch4.on = (reg(0x79) & 0xF8) !== 0;
       if (!ch4.len) ch4.len = 64;
@@ -71,15 +88,20 @@ export function createApu() {
     }
   }
 
-  // with `at` set (soundMainAt in m4a.js), the wave voice's writes wait for their place in the console's frame, counted from
-  // the start of this chip's: the wave's phase lasts from note to note, and each note's length in cycles decides how far it moves
-  const waveWrites = [];
+  // with `at` set (soundMainAt in m4a.js), the wave voice's writes wait for their place in the console's frame, counted
+  // from the start of this chip's: the wave's phase lasts from note to note, and each note's length in cycles decides
+  // how far it moves. With `psgAt` set (psgAt in m4a.js), the writes to all four channels, the wave's samples and the
+  // sides they play on wait for theirs in the same way, as a square's phase lasts from note to note too
+  const waits = [];
   const isWave = r => (r >= 0x70 && r <= 0x75) || (r >= 0x90 && r < 0xA0);
+  const isPsg = r => (r >= 0x60 && r <= 0x81 && r !== 0x6E && r !== 0x6F && r !== 0x76 && r !== 0x77 && r !== 0x7E && r !== 0x7F) || (r >= 0x90 && r <= 0x9F);
   function write(r, v) {
-    if (api.at === null || !isWave(r)) return writeNow(r, v);
-    let i = waveWrites.length;
-    while (i && waveWrites[i - 1].in > api.at) i--;
-    waveWrites.splice(i, 0, { in: api.at, r, v });
+    const at = api.at !== null && isWave(r) ? api.at : api.psgAt >= 0 && isPsg(r) ? api.psgAt : -1;
+    if (at < 0) return writeNow(r, v);
+    if (waits.length >= WAITS) return;
+    let i = waits.length;
+    while (i && waits[i - 1].in > at) i--;
+    waits.splice(i, 0, { in: at, r, v });
   }
 
   function writeNow(r, v) {
@@ -92,6 +114,21 @@ export function createApu() {
     }
     if (r < 0x60 || r >= 0xB0) return;
     if (r < 0x82 && !(reg(0x84) & 0x80)) return;   // the PSG registers ignore writes while the PSG is off
+    if (api.exact && (reg(0x84) & 0x80)) {
+      // a write to a square's register catches it up first, and one to the master volume or sides catches up those
+      // that play; switching the sound off leaves each where its last catch-up left it, counted on at pitch 0
+      if (r === 0x60 || r === 0x62 || r === 0x63 || r === 0x64 || r === 0x65) catchUp(0, api.clock);
+      if (r === 0x68 || r === 0x69 || r === 0x6C || r === 0x6D) catchUp(1, api.clock);
+      if (r === 0x80 || r === 0x81) for (const i of [0, 1]) if (advancing(i)) catchUp(i, api.clock);
+      if (r === 0x84 && !(v & 0x80)) {
+        for (const i of [0, 1]) {
+          const since = api.clock - sqLast[i];
+          sq[i].pos = (sqIndex[i] + Math.floor(since / OFF_PERIOD)) & 7; sq[i].since = since % OFF_PERIOD;
+        }
+      }
+    }
+    // switched on, the frame sequencer starts its steps again (mGBA's frame 7, then 0 at the next)
+    if (r === 0x84 && api.exact && (v & 0x80) && !(reg(0x84) & 0x80)) seqStep = 0;
     regs[r - 0x60] = v;
     switch (r) {
       case 0x62: case 0x68: sq[r === 0x62 ? 0 : 1].len = 64 - (v & 63); break;
@@ -105,8 +142,15 @@ export function createApu() {
       }
       case 0x70: if (!(v & 0x80)) ch3.on = false; break;
       case 0x72: ch3.len = 256 - v; break;
+      // mGBA's NR32 reloads the wave's sample from the front of the first bank, playing or not
+      case 0x73: if (api.exact) ch3.sample = wave[0][rot[0]]; break;
       case 0x74: ch3.freq = (ch3.freq & 0x700) | v; break;
-      case 0x75: ch3.freq = (ch3.freq & 0xFF) | (v & 7) << 8; if (v & 0x80) trigger(2); break;
+      case 0x75:
+        ch3.freq = (ch3.freq & 0xFF) | (v & 7) << 8;
+        if (v & 0x80) trigger(2);
+        // mGBA starts the wave's next step over at any write to NR34 while it plays, restart or not
+        else if (api.exact && ch3.on) ch3.timer = wavePeriod() + WAVE_START;
+        break;
       case 0x78: ch4.len = 64 - (v & 63); break;
       case 0x79: if (!(v & 0xF8)) ch4.on = false; break;
       case 0x7D: if (v & 0x80) trigger(3); break;
@@ -114,6 +158,7 @@ export function createApu() {
         if (!(v & 0x80)) {
           regs.fill(0, 0, 0x22);
           for (const c of [...sq, ch3, ch4]) c.on = false;
+          if (api.exact) sq[0].freq = sq[1].freq = 0;   // NR13, NR14, NR23 and NR24 written 0, as mGBA does
         }
         break;
     }
@@ -124,9 +169,16 @@ export function createApu() {
       const b = ((reg(0x70) >> 6) & 1) ^ 1, i = (r - 0x90) * 2;
       return wave[b][(i + rot[b]) & 31] << 4 | wave[b][(i + 1 + rot[b]) & 31];
     }
-    // SOUNDCNT_X's low bits say which channels are still sounding, so a length counter that ran out shows here; a wave
-    // note still waiting for its place in the frame is already sounding, for the sound library that started it
-    if (r === 0x84) return (reg(0x84) & 0x80) | (sq[0].on ? 1 : 0) | (sq[1].on ? 2 : 0) | (ch3.on || waveWrites.some(w => w.r === 0x75 && w.v & 0x80) ? 4 : 0) | (ch4.on ? 8 : 0);
+    // SOUNDCNT_X's low bits say which channels are still sounding, so a length counter that ran out shows here; a note
+    // still waiting for its place in the frame is already sounding, for the sound library that started it
+    if (r === 0x84) {
+      let waiting = 0;
+      for (const w of waits) if (w.v & 0x80) waiting |= w.r === 0x65 ? 1 : w.r === 0x6D ? 2 : w.r === 0x75 ? 4 : w.r === 0x7D ? 8 : 0;
+      return (reg(0x84) & 0x80) | (sq[0].on || (waiting & 1) ? 1 : 0) | (sq[1].on || (waiting & 2) ? 2 : 0)
+        | (ch3.on || (waiting & 4) ? 4 : 0) | (ch4.on || (waiting & 8) ? 8 : 0);
+    }
+    // a register read back while a write to it waits gives what was written, as the library reads its own writes
+    if (api.psgAt >= 0) for (let i = waits.length - 1; i >= 0; i--) if (waits[i].r === r) return waits[i].v & 0xFF;
     return regs[r - 0x60];
   }
 
@@ -168,19 +220,50 @@ export function createApu() {
   // counts the time since its last step against the pitch it has now, so one that was silent at a slow pitch, as the
   // sound library leaves it when it stops a note, starts its next note on time
   function run(cycles) {
-    while (waveWrites.length && waveWrites[0].in <= cycles) {
-      const { in: wait, r, v } = waveWrites.shift();
+    while (waits.length && waits[0].in <= cycles) {
+      const { in: wait, r, v } = waits.shift();
       runChip(wait);
       cycles -= wait;
-      for (const w of waveWrites) w.in -= wait;
+      for (const w of waits) w.in -= wait;
       writeNow(r, v);
     }
-    for (const w of waveWrites) w.in -= cycles;
+    for (const w of waits) w.in -= cycles;
     runChip(cycles);
   }
 
+  // in exact mode the chip runs up to each frame sequencer step, where a sweep changes the pitch, and mGBA's count
+  // catches up the squares that play at the last sample before each stretch's end
   function runChip(cycles) {
-    if (!(reg(0x84) & 0x80)) return;
+    if (!api.exact) { stepChip(cycles); api.clock += cycles; return; }
+    while (cycles > 0) {
+      const step = Math.min(cycles, seqTimer), end = api.clock + step, sample = end - (end + api.powerOn) % TICK;
+      if ((reg(0x84) & 0x80) && sample > api.clock) for (const i of [0, 1]) if (advancing(i)) catchUp(i, sample);
+      stepChip(step);
+      holdSamples();
+      api.clock = end;
+      cycles -= step;
+    }
+  }
+
+  // mGBA mixes each channel's last sample whether it plays or not: a channel that stops leaves its level where it was
+  function holdSamples() {
+    for (const i of [0, 1]) if (sq[i].on) held[i] = DUTY[reg(i ? 0x68 : 0x62) >> 6][sq[i].pos] * sq[i].env.vol;
+    if (ch4.on) held[3] = ch4.out * ch4.env.vol;
+  }
+
+  function stepChip(cycles) {
+    if (!(reg(0x84) & 0x80)) {
+      if (!api.exact) return;
+      // the squares count the time while the sound is off and catch it up at the pitch they have once it's on, and
+      // the frame sequencer keeps its time, stepping nothing (mGBA)
+      for (const c of sq) {
+        c.since += cycles;
+        if (c.since >= OFF_PERIOD && !c.freq) { c.pos = (c.pos + Math.floor(c.since / OFF_PERIOD)) & 7; c.since %= OFF_PERIOD; }
+      }
+      seqTimer -= cycles;
+      while (seqTimer <= 0) seqTimer += SEQ_PERIOD;
+      return;
+    }
     for (const c of sq) {
       c.since += cycles;
       const period = sqPeriod(c);
@@ -223,10 +306,17 @@ export function createApu() {
   const out = [0, 0];
   function mix(fifoA, fifoB) {
     const on = !!(reg(0x84) & 0x80), nr51 = reg(0x81) & ~(api.muted * 0x11);
-    const s1 = on && sq[0].on ? DUTY[reg(0x62) >> 6][sq[0].pos] * sq[0].env.vol : 0;
-    const s2 = on && sq[1].on ? DUTY[reg(0x68) >> 6][sq[1].pos] * sq[1].env.vol : 0;
-    const s3 = on && ch3.on ? waveSample() : 0;
-    const s4 = on && ch4.on ? ch4.out * ch4.env.vol : 0;
+    let s1 = on && sq[0].on ? DUTY[reg(0x62) >> 6][sq[0].pos] * sq[0].env.vol : 0;
+    let s2 = on && sq[1].on ? DUTY[reg(0x68) >> 6][sq[1].pos] * sq[1].env.vol : 0;
+    let s3 = on && ch3.on ? waveSample() : 0;
+    let s4 = on && ch4.on ? ch4.out * ch4.env.vol : 0;
+    // in exact mode a stopped channel keeps its last sample, and the wave's follows its volume register as mGBA's does
+    if (on && api.exact) {
+      if (!sq[0].on) s1 = held[0];
+      if (!sq[1].on) s2 = held[1];
+      if (!ch3.on) s3 = waveSample();
+      if (!ch4.on) s4 = held[3];
+    }
     let r = (nr51 & 1 ? s1 : 0) + (nr51 & 2 ? s2 : 0) + (nr51 & 4 ? s3 : 0) + (nr51 & 8 ? s4 : 0);
     let l = (nr51 & 0x10 ? s1 : 0) + (nr51 & 0x20 ? s2 : 0) + (nr51 & 0x40 ? s3 : 0) + (nr51 & 0x80 ? s4 : 0);
     const nr50 = reg(0x80), cnt = reg(0x82) | reg(0x83) << 8, shift = 4 - (cnt & 3);
@@ -243,9 +333,21 @@ export function createApu() {
     return out;
   }
 
-  // `muted`: channels 1–4 (bits 0–3) left out of the mix, as m4a.js mutes the music's
-  const api = { read, write, run, mix, regs, muted: 0, at: null,
-    /** Moves the wave's waiting writes `cycles` later, for a frame found to have taken that much longer. */
-    waveLater(cycles) { for (const w of waveWrites) w.in += cycles; } };
+  // `muted`: channels 1–4 (bits 0–3) left out of the mix, as m4a.js mutes the music's; `psgAt`: where the next write to a
+  // channel lands, or -1 for at once; `late`: how far past the console's frame start the chip's frame began, on a
+  // whole sample (synth.js); `clock`: the chip's cycles since it was made
+  const api = { read, write, run, mix, regs, muted: 0, at: null, psgAt: -1, late: 0, exact: false, powerOn: 0, clock: 0,
+    /** Moves the waiting writes `cycles` later, for a frame found to have taken that much longer. */
+    waveLater(cycles) { for (const w of waits) w.in += cycles; },
+    /** The squares and the frame sequencer as mGBA counts them from the console's power-on, `powerOnBefore` cycles
+     *  before the chip's clock started (apu_exact in the C kit). */
+    exactFrom(powerOnBefore) {
+      api.exact = true; api.powerOn = powerOnBefore;
+      const sincePowerOn = api.clock + powerOnBefore;
+      // since power-on the squares have stood at step 0 with the pitch at 0, the chip's own state until now
+      for (const i of [0, 1]) { sqLast[i] = -powerOnBefore; sqIndex[i] = 0; sq[i].pos = 0; sq[i].since = sincePowerOn; }
+      // and the frame sequencer has stepped every SEQ_PERIOD from power-on
+      seqTimer = SEQ_PERIOD - (sincePowerOn % SEQ_PERIOD);
+    } };
   return api;
 }

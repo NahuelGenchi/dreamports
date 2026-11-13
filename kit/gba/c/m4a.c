@@ -21,6 +21,14 @@ enum { MO_VOL = 1, MO_PIT = 2 };
 enum { NR10 = 0x60, NR30 = 0x70, NR32 = 0x73, NR34 = 0x75, NR50 = 0x80, NR51 = 0x81, SOUNDCNT_H = 0x82, SOUNDCNT_X = 0x84, SOUNDBIAS_H = 0x89, WAVE_RAM = 0x90 };
 #define IDLE_PLAYER 400   // about what a player takes in a frame it starts nothing
 
+static const int16_t SONIC_BATTLE_COSTS[COSTS], SONIC_ADVANCE_COSTS[COSTS];
+
+// the cycles one place in SoundMain takes in the game's version of the library (M4A_COSTS in sound.h)
+#ifndef M4A_COST_HOOK
+#define M4A_COST_HOOK(m, site)
+#endif
+static void cost(M4a *m, int site) { M4A_COST_HOOK(m, site); m->cycles += m->costs[site]; }
+
 static int s8(int v) { return (int8_t)(uint8_t)v; }
 static int u8(int v) { return v & 0xFF; }
 static int min(int a, int b) { return a < b ? a : b; }
@@ -43,15 +51,6 @@ static const uint8_t CGB_REGS[4][5] = {
   { 0x70, 0x72, 0x73, 0x74, 0x75 },
   { 0x71, 0x78, 0x79, 0x7C, 0x7D },
 };
-// what these commands take over the others', 0xB1 up
-static int command_cycles(int cmd) {
-  switch (cmd) {
-    case 0xB1: return 8; case 0xB2: return 12; case 0xB3: return 28; case 0xB4: return -48; case 0xBB: return -5;
-    case 0xBC: return 81; case 0xBD: return 81; case 0xBE: return -245; case 0xBF: return 229; case 0xCE: return -114;
-    default: return 0;
-  }
-}
-
 // noise: clock shift and divider from high to low, three dividers per shift, then the fastest four
 static int noise(int i) { return i < 56 ? ((13 - (i >> 2)) << 4) | (7 - (i & 3)) : 59 - i; }
 
@@ -94,10 +93,34 @@ static void clear_track(M4aTrack *T) {
   T->flags = EXIST; T->bendRange = 2; T->volPublic = 64; T->lfoSpeed = 22; T->voice.type = 1;
 }
 
-// with `psgAt`, the writes to the sound chip's channels land at that place in its frame: SoundMain's plus what it has
-// counted so far, as the original's land where its work has reached; the game's own calls write at once
+#define LINE_CYCLES 1232
+#define VISIBLE_LINES 160
+
+// how far into SoundMain its count of `cycles` reaches once the DMA that halts the CPU on the way is added: the FIFO
+// refills, every 16 samples, and while the game has it on, the H-blank DMA at the end of each visible line
+static int with_dma(const M4a *m, int start, int cycles) {
+  const SoundLayout *l = &m->layout;
+  int refill = l->fifoCost ? 16 * ((CPU_HZ + m->layout.mode.rate / 2) / m->layout.mode.rate) : 0, reach = cycles;
+  for (int again = 0; again < 8; again++) {
+    int halted = 0, end = start + reach;
+    if (refill) for (int at = l->fifoAt; at < end; at += refill) if (at >= start) halted += l->fifoCost;
+    if (m->hblank) for (int n = 0; n < VISIBLE_LINES; n++) {
+      int at = l->hblankAt + n * LINE_CYCLES;
+      if (at >= end) break;
+      if (at >= start) halted += m->hblank;
+    }
+    if (cycles + halted == reach) break;
+    reach = cycles + halted;
+  }
+  return reach;
+}
+
+// with `psgAt`, the writes to the sound chip's channels land at that place in its frame: SoundMain's, as late as this
+// frame's starts, plus what it has counted so far and the DMA on the way, as the original's land where its work has
+// reached. The chip's frame starts on a whole sample, `late` cycles past the console's. The game's own calls write at once
 static void io_write(M4a *m, int reg, int v) {
-  m->io->psgAt = !m->layout.psgAt || !m->inFrame ? -1 : m->layout.psgAt + m->cycles;
+  int start = m->layout.psgAt + m->late;
+  m->io->psgAt = !m->layout.psgAt || !m->inFrame ? -1 : start - m->io->late + with_dma(m, start, m->cycles);
   apu_write(m->io, reg, v);
 }
 static int io_read(M4a *m, int reg) { return apu_read(m->io, reg); }
@@ -105,6 +128,7 @@ static int io_read(M4a *m, int reg) { return apu_read(m->io, reg); }
 void m4a_init(M4a *m, const uint8_t *rom, uint32_t romSize, const SoundLayout *layout, Apu *io) {
   __builtin_memset(m, 0, sizeof *m);
   m->rom = rom; m->romSize = romSize; m->layout = *layout; m->io = io;
+  m->costs = layout->library == LIBRARY_SONIC_ADVANCE ? SONIC_ADVANCE_COSTS : SONIC_BATTLE_COSTS;
   const SoundMode *mode = &layout->mode;
   m->numChans = min(max(mode->channels, 1), M4A_CHANNELS);
   m->masterVol = mode->volume;
@@ -124,6 +148,8 @@ void m4a_init(M4a *m, const uint8_t *rom, uint32_t romSize, const SoundLayout *l
     // the player table's own byte (unk_A, MPlayOpen's unk_B): when set, a song doesn't take the player from a higher one
     P->guarded = rom8(m, at + 10) != 0;
     P->trackCount = min(rom8(m, at + 8), M4A_TRACKS);
+    // Sonic Advance's MPlayOpen leaves a player paused until a song starts on it, which its MPlayMain then passes by
+    if (layout->library == LIBRARY_SONIC_ADVANCE) P->status = PAUSE;
     for (int t = 0; t < P->trackCount; t++) new_track(&P->tracks[t], tracks + 0x50 * t);
   }
 
@@ -140,51 +166,69 @@ void m4a_init(M4a *m, const uint8_t *rom, uint32_t romSize, const SoundLayout *l
 
 // ---- pitch ----
 
-static uint32_t midi_key_to_freq(const M4a *m, uint32_t wav, int key, int fine) {
+// how many cycles of wait the multiplier adds for an operand, which it reads a byte at a time from the top while the
+// rest are zeros (unsigned, as umull reads it), from 1 to 4
+static int mul_bytes(uint32_t x) { return !(x >> 8) ? 1 : !(x >> 16) ? 2 : !(x >> 24) ? 3 : 4; }
+
+static uint32_t midi_key_to_freq(M4a *m, uint32_t wav, int key, int fine) {
   uint32_t f = (uint32_t)fine << 24;
-  if (key > 178) { key = 178; f = 255u << 24; }
+  if (key > 178) { cost(m, COST_FREQ_TOP); key = 178; f = 255u << 24; } else cost(m, COST_FREQ);
   uint32_t f1 = FREQ[key % 12] >> (14 - key / 12);
   uint32_t f2 = FREQ[(key + 1) % 12] >> (14 - (key + 1) / 12);
-  return umulhi(u32(m, wav + 4 - ROM_BASE), f1 + umulhi(f2 - f1, f));
+  // umul3232H32 twice, its wait set by the second operand of each
+  uint32_t x = f1 + umulhi(f2 - f1, f);
+  cost(m, COST_FREQ_MUL1 + mul_bytes(f) - 1);
+  cost(m, COST_FREQ2_MUL1 + mul_bytes(x) - 1);
+  return umulhi(u32(m, wav + 4 - ROM_BASE), x);
 }
 
-static int midi_key_to_cgb_freq(int ch, int key, int fine) {
-  if (ch == 4) return noise(key <= 20 ? 0 : min(key - 21, 59));
+static int midi_key_to_cgb_freq(M4a *m, int ch, int key, int fine) {
+  if (ch == 4) {
+    cost(m, key <= 20 ? COST_NOISE_LOW : key - 21 > 59 ? COST_NOISE_HIGH : COST_NOISE);
+    return noise(key <= 20 ? 0 : min(key - 21, 59));
+  }
   int k;
-  if (key <= 35) { k = 0; fine = 0; } else { k = key - 36; if (k > 130) { k = 130; fine = 255; } }
+  if (key <= 35) { cost(m, COST_TONE_LOW); k = 0; fine = 0; }
+  else { k = key - 36; if (k > 130) { cost(m, COST_TONE_HIGH); k = 130; fine = 255; } else cost(m, COST_TONE); }
   int v1 = CGB_FREQ[k % 12] >> (k / 12), v2 = CGB_FREQ[(k + 1) % 12] >> ((k + 1) / 12);
   return v1 + ((fine * (v2 - v1)) >> 8) + 2048;
 }
 
 // ---- tracks ----
 
-static void trk_vol_pit_set(M4aTrack *T) {
+static void trk_vol_pit_set(M4a *m, M4aTrack *T) {
   if (T->flags & 0x01) {
+    cost(m, COST_SET_VOLUME);
     int x = (T->vol * T->volPublic) >> 5;
-    if (T->modType == 1) x = (x * (T->modCalc + 128)) >> 7;
+    if (T->modType == 1) { cost(m, COST_SET_TREMOLO); x = (x * (T->modCalc + 128)) >> 7; }
     int y = 2 * T->pan + T->panPublic;
-    if (T->modType == 2) y += T->modCalc;
+    if (T->modType == 2) { cost(m, COST_SET_PAN_LFO); y += T->modCalc; }
+    cost(m, y < -128 ? COST_SET_PAN_LOW : y > 127 ? COST_SET_PAN_HIGH : COST_SET_PAN);
     y = max(-128, min(127, y));
     T->volRCalc = u8(((y + 128) * x) >> 8);
     T->volLCalc = u8(((127 - y) * x) >> 8);
-  }
+  } else cost(m, COST_SET_NO_VOLUME);
   if (T->flags & 0x04) {
+    cost(m, COST_SET_PITCH);
     int p = (T->tune + T->bend * T->bendRange) * 4 + (T->keyShift << 8) + (T->keyShiftPublic << 8) + T->pitchPublic;
-    if (T->modType == 0) p += 16 * T->modCalc;
+    if (T->modType == 0) { cost(m, COST_SET_VIBRATO); p += 16 * T->modCalc; }
     T->keyShiftCalc = s8(p >> 8);
     T->pitchCalc = u8(p);
-  }
+  } else cost(m, COST_SET_NO_PITCH);
   T->flags &= ~0x05;
 }
 
-static void chn_vol_set(M4aChannel *C, const M4aTrack *T) {
+static void chn_vol_set(M4a *m, M4aChannel *C, const M4aTrack *T) {
   int rp = C->rhythmPan, vel = C->velocity;
-  C->rightVol = min(255, (T->volRCalc * ((128 + rp) * vel)) >> 14);
-  C->leftVol = min(255, (T->volLCalc * ((127 - rp) * vel)) >> 14);
+  int r = (T->volRCalc * ((128 + rp) * vel)) >> 14, l = (T->volLCalc * ((127 - rp) * vel)) >> 14;
+  cost(m, COST_CHANNEL_VOLUME + (r > 255) + 2 * (l > 255));
+  C->rightVol = min(255, r);
+  C->leftVol = min(255, l);
 }
 
-static void clear_chain(M4aChannel *C) {
+static void clear_chain(M4a *m, M4aChannel *C) {
   M4aTrack *T = C->track;
+  cost(m, !T ? COST_CHAIN_NONE : !C->prev && !C->next ? COST_CHAIN_ALONE : !C->prev ? COST_CHAIN_FIRST : !C->next ? COST_CHAIN_LAST : COST_CHAIN_MIDDLE);
   if (!T) return;
   if (C->prev) C->prev->next = C->next; else T->chan = C->next;
   if (C->next) C->next->prev = C->prev;
@@ -206,10 +250,13 @@ static void cgb_osc_off(M4a *m, int ch) {
 }
 
 static void track_stop(M4a *m, M4aTrack *T) {
-  if (!(T->flags & EXIST)) return;
+  if (!(T->flags & EXIST)) { cost(m, COST_STOP_ABSENT); return; }
+  if (!T->chan) cost(m, COST_STOP_NO_CHANNELS);
   for (M4aChannel *C = T->chan; C; C = C->next) {
+    cost(m, COST_STOP_CHANNEL);
     if (C->status) {
-      if (C->type & 7) cgb_osc_off(m, C->type & 7);
+      cost(m, COST_STOP_CHANNEL_ON);
+      if (C->type & 7) { cost(m, COST_CALL); cgb_osc_off(m, C->type & 7); }
       C->status = 0;
     }
     C->track = NULL;
@@ -217,7 +264,8 @@ static void track_stop(M4a *m, M4aTrack *T) {
   T->chan = NULL;
 }
 
-static void clear_mod_m(M4aTrack *T) {
+static void clear_mod_m(M4a *m, M4aTrack *T) {
+  cost(m, T->modType == 0 ? COST_LFO_CLEAR_PITCH : COST_LFO_CLEAR_VOLUME);
   T->modCalc = 0; T->lfoSpeedCounter = 0;
   T->flags |= T->modType == 0 ? PITCHG : VOLCHG;
 }
@@ -225,12 +273,17 @@ static void clear_mod_m(M4aTrack *T) {
 // ---- commands 0xB1 to 0xCE ----
 
 static int arg(M4a *m, M4aTrack *T) { return r8(m, T->cmdPtr++); }
-static uint32_t ptr_arg(M4a *m, M4aTrack *T) { return u32(m, T->cmdPtr - ROM_BASE); }
+// a command's argument as the library reads it, through its check that the address is in the cartridge, or not
+static int checked_arg(M4a *m, M4aTrack *T) { cost(m, COST_ARG); return arg(m, T); }
+static int unchecked_arg(M4a *m, M4aTrack *T) { cost(m, COST_ARG_UNCHECKED); return arg(m, T); }
+static uint32_t ptr_arg(M4a *m, M4aTrack *T) { cost(m, COST_POINTER); return u32(m, T->cmdPtr - ROM_BASE); }
 
-static void fine(M4aTrack *T) {
+static void fine(M4a *m, M4aTrack *T) {
+  if (!T->chan) cost(m, COST_FINE_NO_CHANNELS);
   for (M4aChannel *C = T->chan; C; C = C->next) {
-    if (C->status & ON) C->status |= STOP;
-    clear_chain(C);
+    cost(m, COST_FINE_CHANNEL);
+    if (C->status & ON) { cost(m, COST_FINE_CHANNEL_ON); C->status |= STOP; }
+    clear_chain(m, C);
   }
   T->flags = 0;
 }
@@ -238,7 +291,7 @@ static void go_to(M4a *m, M4aTrack *T) { T->cmdPtr = ptr_arg(m, T); }
 
 // reads and writes the players' shared scratch bytes, or jumps on a comparison with them
 static void memacc(M4a *m, M4aTrack *T) {
-  int op = arg(m, T), at = arg(m, T), data = arg(m, T);
+  int op = checked_arg(m, T), at = checked_arg(m, T), data = checked_arg(m, T);
   uint8_t *mem = m->memAcc;
   int v = mem[at];
   switch (op) {
@@ -263,26 +316,32 @@ static void memacc(M4a *m, M4aTrack *T) {
 }
 
 static void xcmd(M4a *m, M4aTrack *T) {
-  int sub = arg(m, T);
+  int sub = checked_arg(m, T);
   switch (sub) {
     case 1: T->voice.wav = ptr_arg(m, T); T->cmdPtr += 4; return;
-    case 2: T->voice.type = (uint8_t)arg(m, T); return;
-    case 4: T->voice.attack = (uint8_t)arg(m, T); return;
-    case 5: T->voice.decay = (uint8_t)arg(m, T); return;
-    case 6: T->voice.sustain = (uint8_t)arg(m, T); return;
-    case 7: T->voice.release = (uint8_t)arg(m, T); return;
-    case 8: T->echoVolume = arg(m, T); return;
-    case 9: T->echoLength = arg(m, T); return;
-    case 10: T->voice.length = (uint8_t)arg(m, T); return;
-    case 11: T->voice.panSweep = (uint8_t)arg(m, T); return;
-    default: fine(T);
+    case 2: T->voice.type = (uint8_t)checked_arg(m, T); return;
+    case 4: T->voice.attack = (uint8_t)checked_arg(m, T); return;
+    case 5: T->voice.decay = (uint8_t)checked_arg(m, T); return;
+    case 6: T->voice.sustain = (uint8_t)checked_arg(m, T); return;
+    case 7: T->voice.release = (uint8_t)checked_arg(m, T); return;
+    case 8: T->echoVolume = checked_arg(m, T); return;
+    case 9: T->echoLength = checked_arg(m, T); return;
+    case 10: T->voice.length = (uint8_t)checked_arg(m, T); return;
+    case 11: T->voice.panSweep = (uint8_t)checked_arg(m, T); return;
+    default: fine(m, T);
   }
 }
 
 static void eot(M4a *m, M4aTrack *T) {
-  if (r8(m, T->cmdPtr) < 0x80) T->key = arg(m, T);
+  if (r8(m, T->cmdPtr) < 0x80) { cost(m, COST_EOT_KEY); T->key = arg(m, T); } else cost(m, COST_EOT_NO_KEY);
+  if (!T->chan) cost(m, COST_EOT_NO_CHANNELS);
   for (M4aChannel *C = T->chan; C; C = C->next) {
-    if ((C->status & (START | ENV)) && !(C->status & STOP) && C->midiKey == T->key) { C->status |= STOP; return; }
+    if (!(C->status & (START | ENV))) { cost(m, COST_EOT_SILENT); continue; }
+    if (C->status & STOP) { cost(m, COST_EOT_STOPPING); continue; }
+    if (C->midiKey != T->key) { cost(m, COST_EOT_OTHER_KEY); continue; }
+    cost(m, COST_EOT_STOPS);
+    C->status |= STOP;
+    return;
   }
 }
 
@@ -290,11 +349,11 @@ static void command(M4a *m, M4aPlayer *P, M4aTrack *T, int cmd) {
   switch (cmd) {
     case 0xB2: go_to(m, T); return;
     case 0xB3:   // PATT
-      if (T->patternLevel >= 3) { fine(T); return; }
+      if (T->patternLevel >= 3) { fine(m, T); return; }
       T->patternStack[T->patternLevel++] = T->cmdPtr + 4;
       go_to(m, T);
       return;
-    case 0xB4: if (T->patternLevel) T->cmdPtr = T->patternStack[--T->patternLevel]; return;   // PEND
+    case 0xB4: cost(m, T->patternLevel ? COST_PATTERN_END : COST_PATTERN_END_NONE); if (T->patternLevel) T->cmdPtr = T->patternStack[--T->patternLevel]; return;   // PEND
     case 0xB5: {   // REPT
       int n = r8(m, T->cmdPtr);
       if (n == 0) { T->cmdPtr++; go_to(m, T); return; }
@@ -303,23 +362,29 @@ static void command(M4a *m, M4aPlayer *P, M4aTrack *T, int cmd) {
       return;
     }
     case 0xB9: memacc(m, T); return;
-    case 0xBA: T->priority = arg(m, T); return;
-    case 0xBB: P->tempoD = arg(m, T) * 2; P->tempoI = (P->tempoD * P->tempoU) >> 8; return;
-    case 0xBC: T->keyShift = s8(arg(m, T)); T->flags |= PITCHG; return;
-    case 0xBD: { int i = arg(m, T); T->voice = voice_at(m, P->voicegroup - ROM_BASE + i * 12); return; }
-    case 0xBE: T->vol = arg(m, T); T->flags |= VOLCHG; return;
-    case 0xBF: T->pan = s8(arg(m, T) - 0x40); T->flags |= VOLCHG; return;
-    case 0xC0: T->bend = s8(arg(m, T) - 0x40); T->flags |= PITCHG; return;
-    case 0xC1: T->bendRange = arg(m, T); T->flags |= PITCHG; return;
-    case 0xC2: T->lfoSpeed = arg(m, T); if (!T->lfoSpeed) clear_mod_m(T); return;
-    case 0xC3: T->lfoDelay = arg(m, T); return;
-    case 0xC4: T->modDepth = arg(m, T); if (!T->modDepth) clear_mod_m(T); return;
-    case 0xC5: { int t = arg(m, T); if (t != T->modType) { T->modType = t; T->flags |= VOLCHG | PITCHG; } return; }
-    case 0xC8: T->tune = s8(arg(m, T) - 0x40); T->flags |= PITCHG; return;
-    case 0xCC: { int reg = arg(m, T); io_write(m, 0x60 + reg, arg(m, T)); return; }
+    case 0xBA: T->priority = checked_arg(m, T); return;
+    case 0xBB: P->tempoD = checked_arg(m, T) * 2; P->tempoI = (P->tempoD * P->tempoU) >> 8; return;
+    case 0xBC: T->keyShift = s8(checked_arg(m, T)); T->flags |= PITCHG; return;
+    case 0xBD: { int i = arg(m, T); for (int w = 0; w < 3; w++) cost(m, COST_VOICE_WORD); T->voice = voice_at(m, P->voicegroup - ROM_BASE + i * 12); return; }
+    case 0xBE: T->vol = checked_arg(m, T); T->flags |= VOLCHG; return;
+    case 0xBF: T->pan = s8(checked_arg(m, T) - 0x40); T->flags |= VOLCHG; return;
+    case 0xC0: T->bend = s8(checked_arg(m, T) - 0x40); T->flags |= PITCHG; return;
+    case 0xC1: T->bendRange = checked_arg(m, T); T->flags |= PITCHG; return;
+    case 0xC2: T->lfoSpeed = unchecked_arg(m, T); cost(m, T->lfoSpeed ? COST_LFO_SPEED : COST_LFO_SPEED_OFF); if (!T->lfoSpeed) clear_mod_m(m, T); return;
+    case 0xC3: T->lfoDelay = checked_arg(m, T); return;
+    case 0xC4: T->modDepth = unchecked_arg(m, T); cost(m, T->modDepth ? COST_DEPTH : COST_DEPTH_OFF); if (!T->modDepth) clear_mod_m(m, T); return;
+    case 0xC5: {
+      int t = checked_arg(m, T);
+      if (t == T->modType) { cost(m, COST_MOD_TYPE_SAME); return; }
+      cost(m, COST_MOD_TYPE_NEW);
+      T->modType = t; T->flags |= VOLCHG | PITCHG;
+      return;
+    }
+    case 0xC8: T->tune = s8(checked_arg(m, T) - 0x40); T->flags |= PITCHG; return;
+    case 0xCC: { int reg = checked_arg(m, T); io_write(m, 0x60 + reg, checked_arg(m, T)); return; }
     case 0xCD: xcmd(m, T); return;
     case 0xCE: eot(m, T); return;
-    default: fine(T);   // FINE, and the ones this version of the library doesn't have
+    default: fine(m, T);   // FINE, and the ones this version of the library doesn't have
   }
 }
 
@@ -335,16 +400,22 @@ static M4aChannel *pick_channel(M4a *m, int prio, const M4aTrack *T) {
   uint32_t bestTrack = T->addr;
   for (int i = 0; i < m->numChans; i++) {
     M4aChannel *C = &m->chans[i];
-    if (!(C->status & ON)) { m->cycles += 13; return C; }
+    if (i) cost(m, COST_PICK_NEXT);
+    if (!(C->status & ON)) { cost(m, COST_PICK_FREE); return C; }
     if (C->status & STOP) {
-      if (!stopping) { stopping = 1; bestPrio = C->priority; bestTrack = track_addr(C); best = C; m->cycles += 46; continue; }
-    } else if (stopping) { m->cycles += 42; continue; }
+      if (!stopping) { stopping = 1; bestPrio = C->priority; bestTrack = track_addr(C); best = C; cost(m, COST_PICK_FIRST_STOPPING); continue; }
+      cost(m, COST_PICK_STOPPING_AGAIN);
+    } else if (stopping) { cost(m, COST_PICK_SKIP); continue; }
+    else cost(m, COST_PICK_COMPARE);
     uint32_t tr = track_addr(C);
-    if (C->priority < bestPrio) { bestPrio = C->priority; bestTrack = tr; best = C; m->cycles += 56; }
+    if (C->priority < bestPrio) { bestPrio = C->priority; bestTrack = tr; best = C; cost(m, COST_PICK_LOWER); }
     else if (C->priority == bestPrio) {
-      if (tr > bestTrack) { bestTrack = tr; best = C; m->cycles += 68; } else if (tr == bestTrack) { best = C; m->cycles += 70; } else m->cycles += 70;
-    } else m->cycles += 56;
+      if (tr > bestTrack) { bestTrack = tr; best = C; cost(m, COST_PICK_LATER); }
+      else if (tr == bestTrack) { best = C; cost(m, COST_PICK_SAME); }
+      else cost(m, COST_PICK_EARLIER);
+    } else cost(m, COST_PICK_HIGHER);
   }
+  cost(m, best ? COST_PICK_FOUND : COST_PICK_NONE);
   return best;
 }
 
@@ -352,11 +423,11 @@ static void plynote(M4a *m, int idx, M4aPlayer *P, M4aTrack *T) {
   T->gateTime = CLOCK[idx];
   if (r8(m, T->cmdPtr) < 0x80) {
     T->key = arg(m, T);
-    m->cycles += 18;
+    cost(m, COST_NOTE_KEY);
     if (r8(m, T->cmdPtr) < 0x80) {
       T->velocity = arg(m, T);
-      m->cycles += 18;
-      if (r8(m, T->cmdPtr) < 0x80) { T->gateTime = u8(T->gateTime + arg(m, T)); m->cycles += 18; }
+      cost(m, COST_NOTE_VELOCITY);
+      if (r8(m, T->cmdPtr) < 0x80) { T->gateTime = u8(T->gateTime + arg(m, T)); cost(m, COST_NOTE_GATE); }
     }
   }
   int rhythmPan = 0, key = T->key;
@@ -368,18 +439,27 @@ static void plynote(M4a *m, int idx, M4aPlayer *P, M4aTrack *T) {
     M4aVoice S = voice_at(m, V.wav - ROM_BASE + n * 12);
     if (S.type & 0xC0) return;
     if (V.type & 0x80) {
+      cost(m, S.panSweep & 0x80 ? COST_DRUM_PAN : COST_DRUM_NO_PAN);
       if (S.panSweep & 0x80) rhythmPan = s8((S.panSweep - 0xC0) * 2);
       key = S.key;
-      m->cycles += 118;
+      cost(m, COST_DRUM);
     }
     V = S;
   }
+  // the voice is the track's own copy in memory, or a key split's or drum kit's from the cartridge, which reads slower
+  int fromRom = (T->voice.type & 0xC0) != 0;
   int prio = min(P->priority + T->priority, 255);
   int cgb = V.type & 7;
+  cost(m, cgb ? COST_VOICE_CGB1 + cgb - 1 : COST_VOICE_DS);
   M4aChannel *C;
   if (cgb) {
     C = &m->cgbChans[cgb - 1];
-    m->cycles -= cgb == 4 ? 98 : 2;
+    cost(m, cgb == 4 ? COST_CGB_NOISE : COST_CGB_TONE);
+    if (!(C->status & ON)) cost(m, COST_CGB_FREE);
+    else if (C->status & STOP) cost(m, COST_CGB_STOPPING);
+    else if (C->priority < prio) cost(m, COST_CGB_LOWER);
+    else if (C->priority > prio) cost(m, COST_CGB_HIGHER);
+    else cost(m, track_addr(C) < T->addr ? COST_CGB_SAME_EARLIER : COST_CGB_SAME_LATER);
     if ((C->status & ON) && !(C->status & STOP)) {
       if (C->priority > prio) return;
       if (C->priority == prio && track_addr(C) < T->addr) return;
@@ -388,29 +468,37 @@ static void plynote(M4a *m, int idx, M4aPlayer *P, M4aTrack *T) {
     C = pick_channel(m, prio, T);
     if (!C) return;
   }
-  if (C->track) m->cycles += C->next ? 12 : 24;
-  if (T->chan) m->cycles -= 4;
-  if (T->flags & 0x01) m->cycles += 80;
-  if (T->flags & 0x04) m->cycles += 50;
-  clear_chain(C);
+  if (C->track) cost(m, C->next ? COST_TAKEN_HAS_NEXT : COST_TAKEN_LAST);
+  cost(m, fromRom ? COST_VOICE_ROM : COST_VOICE_RAM);
+  if (T->chan) cost(m, COST_TRACK_HAD_CHANNELS);
+  if (T->flags & 0x01) cost(m, COST_NOTE_VOLUME);
+  if (T->flags & 0x04) cost(m, COST_NOTE_PITCH);
+  cost(m, COST_CHAIN_CALL);
+  clear_chain(m, C);
+  // the original looks at the track's chain once the channel has left it
+  cost(m, T->chan ? COST_NOTE_JOINS : COST_NOTE_FIRST);
+  if (T->chan) cost(m, T->chan->type & 7 ? COST_JOINS_CGB : COST_JOINS_DS);
+  cost(m, cgb ? COST_NOTE_CGB : COST_NOTE_DS);
   C->prev = NULL; C->next = T->chan;
   if (T->chan) T->chan->prev = C;
   T->chan = C; C->track = T; C->music = P == &m->players[0];
   T->lfoDelayCounter = T->lfoDelay;
-  if (T->lfoDelay) clear_mod_m(T);
-  trk_vol_pit_set(T);
+  if (T->lfoDelay) { cost(m, COST_NOTE_LFO_DELAY); clear_mod_m(m, T); }
+  trk_vol_pit_set(m, T);
   C->gateTime = T->gateTime; C->midiKey = T->key; C->velocity = T->velocity;
   C->priority = prio; C->key = key; C->rhythmPan = rhythmPan;
   C->type = V.type; C->wav = V.wav;
   C->attack = V.attack; C->decay = V.decay; C->sustain = V.sustain; C->release = V.release;
   C->echoVol = T->echoVolume; C->echoLen = T->echoLength;
-  chn_vol_set(C, T);
+  chn_vol_set(m, C, T);
   int k = max(0, C->key + T->keyShiftCalc);
   if (cgb) {
     C->length = V.length;
     int ps = V.panSweep;
+    cost(m, ps & 0x80 ? COST_SWEEP_OFF : ps & 0x70 ? COST_SWEEP : COST_SWEEP_NONE);
     C->sweep = (ps & 0x80) || !(ps & 0x70) ? 0x08 : ps;
-    C->freq = (uint32_t)midi_key_to_cgb_freq(cgb, k, T->pitchCalc);
+    cost(m, COST_CALL);
+    C->freq = (uint32_t)midi_key_to_cgb_freq(m, cgb, k, T->pitchCalc);
   } else {
     C->freq = midi_key_to_freq(m, C->wav, k, T->pitchCalc);
   }
@@ -428,50 +516,58 @@ static int mul_wait(uint32_t rs) {
 // ---- the sequencer ----
 
 static void tick_track(M4a *m, M4aPlayer *P, M4aTrack *T) {
-  m->cycles += 46 + (T->chan ? 1 : 0) + (T->flags & TRACK_START ? 255 : 0);
+  cost(m, COST_TRACK);
+  if (T->chan) cost(m, COST_TRACK_CHANNELS);
+  if (T->flags & TRACK_START) cost(m, COST_TRACK_STARTS);
   for (M4aChannel *C = T->chan; C; C = C->next) {
     if (C->status & ON) {
       if (C->gateTime) {
-        if (--C->gateTime == 0) { C->status |= STOP; m->cycles += 32; } else m->cycles += 24;
-      } else m->cycles += 18;
-    } else { clear_chain(C); m->cycles += 112; }
-    if (C->next) m->cycles += 14;
+        if (--C->gateTime == 0) { C->status |= STOP; cost(m, COST_GATE_ENDS); } else cost(m, COST_GATE);
+      } else cost(m, COST_NO_GATE);
+    } else { cost(m, COST_CHAIN_CALL); clear_chain(m, C); cost(m, COST_CHANNEL_GONE); }
+    if (C->next) cost(m, COST_CHANNEL_NEXT);
   }
   if (T->flags & TRACK_START) clear_track(T);
   while (T->wait == 0) {
     int b = r8(m, T->cmdPtr), cmd = b;
-    m->cycles += 36;
-    if (b < 0x80) { cmd = T->runningStatus; m->cycles += 19; }
-    else { T->cmdPtr++; m->cycles += 24; if (b >= 0xBD) T->runningStatus = b; }
-    if (cmd >= 0xCF) { m->cycles += 773; plynote(m, cmd - 0xCF, P, T); }
+    cost(m, COST_BYTE);
+    if (b < 0x80) { cmd = T->runningStatus; cost(m, COST_RUNNING_STATUS); }
+    else { T->cmdPtr++; cost(m, COST_COMMAND_BYTE); if (b >= 0xBD) { cost(m, COST_STATUS_KEPT); T->runningStatus = b; } else cost(m, COST_STATUS_NOT_KEPT); }
+    if (cmd >= 0xCF) { cost(m, COST_NOTE); cost(m, COST_CALL); plynote(m, cmd - 0xCF, P, T); }
     else if (cmd >= 0xB1) {
       P->cmd = cmd - 0xB1;
-      m->cycles += 120 + command_cycles(cmd);
+      cost(m, COST_COMMAND); cost(m, COST_CMD_B1 + cmd - 0xB1); cost(m, COST_CALL); cost(m, COST_DISPATCH);
       command(m, P, T, cmd);
       if (T->flags == 0) return;
+      cost(m, COST_DISPATCH_GOES_ON);
     } else {
-      m->cycles += 19;
+      cost(m, COST_WAIT);
       // a track that starts on a byte below 0x80 has no command to repeat: the JavaScript engine's wait is then NaN,
       // which never counts down to 0, so the track stops where it is, as it does here
       T->wait = cmd >= 0x80 ? CLOCK[cmd - 0x80] : -0x40000000;
     }
-    m->cycles += 13;
+    cost(m, COST_NEXT_BYTE);
   }
   T->wait--;
-  m->cycles += 6;
+  cost(m, COST_WAITS);
   // the vibrato/tremolo LFO: a triangle, stepped on ticks only
-  if (!T->lfoSpeed) m->cycles += 6;
-  else if (!T->modDepth) m->cycles += 6;
+  if (!T->lfoSpeed) cost(m, COST_NO_LFO);
+  else if (!T->modDepth) cost(m, COST_NO_DEPTH);
   if (T->lfoSpeed && T->modDepth) {
-    m->cycles += 12;
-    if (T->lfoDelayCounter) { T->lfoDelayCounter--; m->cycles += 14; return; }
-    m->cycles += 50;
+    cost(m, COST_LFO);
+    if (T->lfoDelayCounter) { T->lfoDelayCounter--; cost(m, COST_LFO_DELAY); return; }
+    cost(m, COST_LFO_STEP);
     int sum = T->lfoSpeedCounter + T->lfoSpeed;
     T->lfoSpeedCounter = u8(sum);
     // the falling half uses the sum before it wraps, as the original does
-    int v = u8(sum - 64) & 0x80 ? s8(sum) : 128 - sum;
+    int falling = u8(sum - 64) & 0x80, v = falling ? s8(sum) : 128 - sum;
+    cost(m, falling ? COST_LFO_FALLING : COST_LFO_RISING);
+    // the multiply's wait, by the triangle's value, signed
+    uint32_t x = (uint32_t)v;
+    cost(m, COST_LFO_MUL1 + ((x >> 8 == 0 || x >> 8 == 0xFFFFFF) ? 0 : (x >> 16 == 0 || x >> 16 == 0xFFFF) ? 1 : (x >> 24 == 0 || x >> 24 == 0xFF) ? 2 : 3));
     int mod = (T->modDepth * v) >> 6;
     if (u8(mod) != u8(T->modCalc)) {
+      cost(m, T->modType == 0 ? COST_LFO_PITCH : COST_LFO_VOLUME);
       T->modCalc = s8(mod);
       T->flags |= T->modType == 0 ? PITCHG : VOLCHG;
     }
@@ -479,16 +575,24 @@ static void tick_track(M4a *m, M4aPlayer *P, M4aTrack *T) {
 }
 
 static void fade_out_body(M4a *m, M4aPlayer *P) {
-  if (!P->fadeInterval) return;
-  if (--P->fadeCounter != 0) return;
+  if (!P->fadeInterval) { cost(m, COST_FADE_NONE); return; }
+  if (--P->fadeCounter != 0) { cost(m, COST_FADE_WAIT); return; }
   P->fadeCounter = P->fadeInterval;
   if (P->fadeOV & 2) {
+    cost(m, COST_FADE_IN);
     P->fadeOV += 16;
-    if (P->fadeOV >= 256) { P->fadeOV = 256; P->fadeInterval = 0; }
+    if (P->fadeOV >= 256) { cost(m, COST_FADE_IN_DONE); P->fadeOV = 256; P->fadeInterval = 0; } else cost(m, COST_FADE_IN_GOES_ON);
   } else {
+    cost(m, COST_FADE_OUT);
     P->fadeOV -= 16;
     if (P->fadeOV <= 0) {
-      for (int i = 0; i < P->trackCount; i++) { track_stop(m, &P->tracks[i]); if (!(P->fadeOV & 1)) P->tracks[i].flags = 0; }
+      cost(m, COST_FADE_OUT_DONE);
+      for (int i = 0; i < P->trackCount; i++) {
+        cost(m, COST_FADE_STOP_TRACK);
+        track_stop(m, &P->tracks[i]);
+        if (!(P->fadeOV & 1)) { cost(m, COST_FADE_CLEAR_TRACK); P->tracks[i].flags = 0; }
+      }
+      cost(m, P->fadeOV & 1 ? COST_FADE_PAUSE_KEEPS : COST_FADE_PAUSE);
       P->status = P->fadeOV & 1 ? P->status | PAUSE : PAUSE;
       P->fadeInterval = 0;
       return;
@@ -496,54 +600,60 @@ static void fade_out_body(M4a *m, M4aPlayer *P) {
   }
   for (int i = 0; i < P->trackCount; i++) {
     M4aTrack *T = &P->tracks[i];
-    if (T->flags & EXIST) { T->volPublic = P->fadeOV >> 2; T->flags |= VOLCHG; }
+    cost(m, COST_FADE_TRACK);
+    if (i < P->trackCount - 1) cost(m, COST_FADE_TRACK_NEXT);
+    if (T->flags & EXIST) { cost(m, COST_FADE_TRACK_VOLUME); T->volPublic = P->fadeOV >> 2; T->flags |= VOLCHG; }
   }
 }
 
 static void player_main(M4a *m, M4aPlayer *P) {
-  if (P->status & PAUSE) { m->cycles += 87; return; }
-  m->cycles += 144;
+  if (P->status & PAUSE) { cost(m, COST_PLAYER_PAUSED); return; }
+  cost(m, COST_PLAYER);
   fade_out_body(m, P);
-  if (P->status & PAUSE) return;
+  if (P->status & PAUSE) { cost(m, COST_STOPPED_BY_FADE); return; }
+  cost(m, COST_RUNS);
   int t = P->tempoC + P->tempoI;
   for (;;) {
     P->tempoC = t & 0xFFFF;
-    m->cycles += 3;
+    cost(m, COST_TEMPO);
     if (t < 150) break;
-    m->cycles += 13;
+    cost(m, COST_TICK);
     uint32_t mask = 0;
     for (int i = 0; i < P->trackCount; i++) {
       M4aTrack *T = &P->tracks[i];
-      if (T->flags & EXIST) { mask |= 1u << i; tick_track(m, P, T); m->cycles += 5; } else m->cycles += 25;
-      m->cycles += i < P->trackCount - 1 ? 28 : 20;
+      if (T->flags & EXIST) { mask |= 1u << i; tick_track(m, P, T); cost(m, COST_TRACK_TICKED); } else cost(m, COST_TRACK_ABSENT);
+      cost(m, i < P->trackCount - 1 ? COST_TRACK_NEXT : COST_TRACK_LAST);
     }
-    m->cycles += 15;
+    cost(m, COST_TICK_DONE);
     P->clock++;
-    if (!mask) { P->status = PAUSE; return; }
+    if (!mask) { cost(m, COST_TICK_ENDS_ALL); P->status = PAUSE; return; }
+    cost(m, COST_TICK_GOES_ON);
     P->status = mask;
     t = P->tempoC - 150;
   }
-  m->cycles += 25;
+  cost(m, COST_VP_TRACKS);
   for (int i = 0; i < P->trackCount; i++) {
     M4aTrack *T = &P->tracks[i];
-    if (!(T->flags & EXIST)) { m->cycles += 1; continue; }
-    if (!(T->flags & 0x0F)) { m->cycles += 70; continue; }
-    m->cycles += 49;
-    trk_vol_pit_set(T);
+    cost(m, i < P->trackCount - 1 ? COST_VP_TRACK_NEXT : COST_VP_TRACK_LAST);
+    if (!(T->flags & EXIST)) { cost(m, COST_VP_ABSENT); continue; }
+    if (!(T->flags & 0x0F)) { cost(m, COST_VP_UNCHANGED); continue; }
+    cost(m, COST_VP_CHANGED);
+    cost(m, T->chan ? COST_VP_CHANNELS : COST_VP_NO_CHANNELS);
+    trk_vol_pit_set(m, T);
     for (M4aChannel *C = T->chan; C; C = C->next) {
-      m->cycles += C->next ? 6 : 0;
-      if (!(C->status & ON)) { clear_chain(C); m->cycles += 62; continue; }
+      cost(m, C->next ? COST_VP_CHANNEL_HAS_NEXT : COST_VP_CHANNEL_LAST);
+      if (!(C->status & ON)) { cost(m, COST_CHAIN_CALL); clear_chain(m, C); cost(m, COST_VP_CHANNEL_GONE); continue; }
       int cgb = C->type & 7;
-      m->cycles += 36;
+      cost(m, COST_VP_CHANNEL);
       if (T->flags & VOLCHG) {
-        chn_vol_set(C, T);
-        m->cycles += 34;
-        if (cgb) C->cgbStatus |= MO_VOL;
-      } else m->cycles += 6;
+        chn_vol_set(m, C, T);
+        cost(m, COST_VP_VOLUME);
+        if (cgb) { cost(m, COST_VP_VOLUME_CGB); C->cgbStatus |= MO_VOL; }
+      } else cost(m, COST_VP_NO_VOLUME);
       if (T->flags & PITCHG) {
         int key = max(0, C->key + T->keyShiftCalc);
-        m->cycles += 270;   // with 0x08048f0c's two calls of umul3232H32, in ARM from the cartridge
-        if (cgb) { C->freq = (uint32_t)midi_key_to_cgb_freq(cgb, key, T->pitchCalc); C->cgbStatus |= MO_PIT; }
+        cost(m, COST_VP_PITCH);   // in Sonic Battle with 0x08048f0c's two calls of umul3232H32, in ARM from the cartridge
+        if (cgb) { cost(m, COST_CALL); C->freq = (uint32_t)midi_key_to_cgb_freq(m, cgb, key, T->pitchCalc); C->cgbStatus |= MO_PIT; }
         else C->freq = midi_key_to_freq(m, C->wav, key, T->pitchCalc);
       }
     }
@@ -554,11 +664,11 @@ static void player_main(M4a *m, M4aPlayer *P) {
 // ---- PSG channels ----
 
 // in this version of the library, a channel that is mostly on one side plays on that side only
-static void cgb_mod_vol(M4aChannel *C) {
+static void cgb_mod_vol(M4a *m, M4aChannel *C) {
   int r = C->rightVol, l = C->leftVol, pan, goal;
-  if (r >= l && r >> 1 >= l) { pan = 0x0F; goal = min(15, (r + l) >> 4); }
-  else if (l > r && l >> 1 >= r) { pan = 0xF0; goal = min(15, (r + l) >> 4); }
-  else { pan = 0xFF; goal = (r + l) >> 4; }
+  if (r >= l && r >> 1 >= l) { cost(m, COST_CGB_PAN_RIGHT); pan = 0x0F; goal = min(15, (r + l) >> 4); }
+  else if (l > r && l >> 1 >= r) { cost(m, COST_CGB_PAN_LEFT); pan = 0xF0; goal = min(15, (r + l) >> 4); }
+  else { cost(m, COST_CGB_PAN_BOTH); pan = 0xFF; goal = (r + l) >> 4; }
   C->envelopeGoal = goal;
   C->sustainGoal = (goal * C->sustain + 15) >> 4;
   C->pan = pan & C->panMask;
@@ -568,7 +678,8 @@ enum { AT_STEP, AT_STEP_DONE, AT_DECAY_START, AT_SUSTAIN_START, AT_SUSTAIN, AT_E
 
 // the software envelope follows the hardware one, writing the registers and retriggering at each phase change
 static void cgb_sound(M4a *m) {
-  m->cycles += m->c15 ? 253 : 251;
+  cost(m, COST_CGB);
+  if (m->c15) cost(m, COST_CGB_COUNTING);
   if (m->musicMuted) {
     int mask = 0;
     for (int i = 0; i < 4; i++) if (m->cgbChans[i].music) mask |= 1 << i;
@@ -577,143 +688,180 @@ static void cgb_sound(M4a *m) {
   m->c15 = m->c15 ? m->c15 - 1 : 14;
   for (int ch = 1; ch <= 4; ch++) {
     M4aChannel *C = &m->cgbChans[ch - 1];
-    if (!(C->status & ON)) continue;
+    if (!(C->status & ON)) { cost(m, COST_CGB_SILENT); continue; }
     const uint8_t *R = CGB_REGS[ch - 1];
     int nr0 = R[0], nr1 = R[1], nr2 = R[2], nr3 = R[3], nr4 = R[4];
-    int c15 = m->c15, dir = io_read(m, nr2), at;
-    m->cycles += ch == 3 ? 205 : 199;
+    int c15 = m->c15, dir = io_read(m, nr2), at, stored = 0;   // stored: the step's counter came in already set
+    cost(m, COST_CGB_ON1 + ch - 1);
     if (C->status & START) {
-      if (C->status & STOP) at = AT_OFF;
+      if (C->status & STOP) { cost(m, COST_CGB_START_STOPPED); at = AT_OFF; }
       else {
         C->status = 3; C->cgbStatus = MO_PIT | MO_VOL;
-        m->cycles += ch == 3 ? 78 : 29;
-        cgb_mod_vol(C);
+        cost(m, ch == 3 ? COST_CGB_START_WAVE : COST_CGB_START);
+        cgb_mod_vol(m, C);
         if (ch == 3) {
           if (C->wav != C->current) {
+            cost(m, COST_CGB_WAVE_NEW);
             wave_at(m);
             io_write(m, NR30, 0x40);
             for (int i = 0; i < 16; i++) io_write(m, WAVE_RAM + i, r8(m, C->wav + i));
             C->current = C->wav;
-          }
+          } else cost(m, COST_CGB_WAVE_SAME);
           wave_at(m); io_write(m, NR30, 0); io_write(m, nr1, C->length);
+          cost(m, C->length ? COST_CGB_LENGTH_WAVE : COST_CGB_NO_LENGTH_WAVE);
           C->nrx4 = C->length ? 0xC0 : 0x80;
         } else {
+          cost(m, ch == 1 ? COST_CGB_START1 : ch == 2 ? COST_CGB_START2 : COST_CGB_START4);
           if (ch == 1) io_write(m, nr0, C->sweep);
           if (ch == 4) { io_write(m, nr1, C->length); io_write(m, nr3, u8((int)(C->wav << 3))); }
           else io_write(m, nr1, u8((int)((C->wav << 6) + C->length)));
           dir = C->attack + 8;
+          cost(m, C->length ? COST_CGB_LENGTH : COST_CGB_NO_LENGTH);
           C->nrx4 = C->length ? 0x40 : 0x00;
         }
         C->envelopeCtr = C->attack;
-        if (s8(C->attack)) { C->envelopeVol = 0; at = AT_STEP_DONE; } else at = AT_DECAY_START;
+        if (s8(C->attack)) { cost(m, COST_CGB_ATTACK); C->envelopeVol = 0; at = AT_STEP_DONE; }
+        else { cost(m, COST_CGB_NO_ATTACK); at = AT_DECAY_START; }
       }
     } else if ((C->status & IEC) || (m->layout.voicesEndOnChip && !(io_read(m, SOUNDCNT_X) >> (ch - 1) & 1))) {
       // an echo counting down, or, in a game whose library checks, a voice the chip's length counter has ended
-      m->cycles += 5;
+      cost(m, COST_CGB_ECHO);
       C->echoLen = u8(C->echoLen - 1);
       at = s8(C->echoLen) <= 0 ? AT_OFF : AT_DONE;
+      cost(m, at == AT_OFF ? COST_CGB_ECHO_ENDS : COST_CGB_ECHO_GOES_ON);
     } else if ((C->status & STOP) && (C->status & ENV)) {
+      cost(m, COST_CGB_RELEASE);
       C->status &= ~ENV; C->envelopeCtr = C->release;
-      if (s8(C->release)) { C->cgbStatus |= MO_VOL; if (ch != 3) dir = C->release; at = AT_STEP_DONE; }
-      else at = AT_ECHO;
-    } else at = AT_STEP;
+      if (s8(C->release)) {
+        cost(m, COST_CGB_RELEASE_STEPS);
+        C->cgbStatus |= MO_VOL;
+        if (ch != 3) dir = C->release; else cost(m, COST_CGB_RELEASE_WAVE);
+        at = AT_STEP_DONE;
+      } else { cost(m, COST_CGB_RELEASE_NONE); at = AT_ECHO; }
+    } else { cost(m, C->status & STOP ? COST_CGB_STOPPED_NO_ENVELOPE : COST_CGB_PLAYING); at = AT_STEP; }
 
     // the envelope steps; every 15th frame it steps twice to keep up with the hardware's 64 Hz
     while (at != AT_DONE && at != AT_OFF) {
       switch (at) {
         case AT_STEP:
-          at = AT_STEP_DONE;
-          if (C->envelopeCtr != 0) { m->cycles -= 62; break; }
-          if (ch == 3) C->cgbStatus |= MO_VOL;
-          cgb_mod_vol(C);
+          at = AT_STEP_DONE; stored = 0;
+          if (C->envelopeCtr != 0) { cost(m, COST_ENV_WAIT); break; }
+          cost(m, COST_ENV_STEP);
+          if (ch == 3) { cost(m, COST_ENV_STEP_WAVE); C->cgbStatus |= MO_VOL; }
+          cgb_mod_vol(m, C);
           switch (C->status & ENV) {
             case 0:
-              m->cycles += 100;
+              cost(m, COST_ENV_RELEASE);
               C->envelopeVol = u8(C->envelopeVol - 1);
-              if (s8(C->envelopeVol) <= 0) at = AT_ECHO; else C->envelopeCtr = C->release;
+              if (s8(C->envelopeVol) <= 0) { cost(m, COST_ENV_RELEASE_ENDS); at = AT_ECHO; }
+              else { cost(m, COST_ENV_RELEASE_ON); C->envelopeCtr = C->release; stored = 1; }
               break;
-            case 1: m->cycles += 98; at = AT_SUSTAIN; break;
+            case 1: cost(m, COST_ENV_SUSTAIN); cost(m, COST_ENV_SUSTAIN_STEP); at = AT_SUSTAIN; break;
             case 2:
-              m->cycles += 116;
+              cost(m, COST_ENV_DECAY); cost(m, COST_ENV_DECAY_STEP);
               C->envelopeVol = u8(C->envelopeVol - 1);
-              if (s8(C->envelopeVol) <= s8(C->sustainGoal)) at = AT_SUSTAIN_START; else C->envelopeCtr = C->decay;
+              if (s8(C->envelopeVol) <= s8(C->sustainGoal)) { cost(m, COST_ENV_DECAY_ENDS); at = AT_SUSTAIN_START; }
+              else { cost(m, COST_ENV_DECAY_ON); C->envelopeCtr = C->decay; stored = 1; }
               break;
             default:
-              m->cycles += 116;
+              cost(m, COST_ENV_ATTACK); cost(m, COST_ENV_ATTACK_STEP);
               C->envelopeVol = u8(C->envelopeVol + 1);
-              if (C->envelopeVol >= C->envelopeGoal) at = AT_DECAY_START; else C->envelopeCtr = C->attack;
+              if (C->envelopeVol >= C->envelopeGoal) { cost(m, COST_ENV_ATTACK_ENDS); at = AT_DECAY_START; }
+              else { cost(m, COST_ENV_ATTACK_ON); C->envelopeCtr = C->attack; stored = 1; }
           }
           break;
         case AT_DECAY_START:
-          m->cycles += 107;
+          cost(m, COST_ENV_DECAY_START);
           C->status--; C->envelopeCtr = C->decay;
           if (C->decay) {
+            cost(m, COST_ENV_DECAY_STARTS);
             C->cgbStatus |= MO_VOL; C->envelopeVol = C->envelopeGoal;
-            if (ch != 3) dir = C->decay;
-            at = AT_STEP_DONE;
-          } else at = AT_SUSTAIN_START;
+            if (ch != 3) dir = C->decay; else cost(m, COST_ENV_DECAY_WAVE);
+            at = AT_STEP_DONE; stored = 0;
+          } else { cost(m, COST_ENV_DECAY_NONE); at = AT_SUSTAIN_START; }
           break;
         case AT_SUSTAIN_START:
-          m->cycles += 50;
-          if (C->sustain == 0) { C->status &= ~ENV; at = AT_ECHO; break; }
+          cost(m, COST_ENV_SUSTAIN_START);
+          if (C->sustain == 0) { cost(m, COST_ENV_SUSTAIN_NONE); C->status &= ~ENV; at = AT_ECHO; break; }
+          cost(m, COST_ENV_SUSTAIN_STARTS);
           C->status--; C->cgbStatus |= MO_VOL;
-          if (ch != 3) dir = 0x08;
+          if (ch != 3) dir = 0x08; else cost(m, COST_ENV_SUSTAIN_WAVE);
           at = AT_SUSTAIN;
           break;
         case AT_SUSTAIN:
-          m->cycles -= 16;
+          cost(m, COST_ENV_SUSTAIN_SET); cost(m, COST_ENV_SUSTAIN_SET_DONE);
           C->envelopeVol = C->sustainGoal; C->envelopeCtr = 7;
-          at = AT_STEP_DONE;
+          at = AT_STEP_DONE; stored = 1;
           break;
         case AT_ECHO:
-          m->cycles += 57;
+          cost(m, COST_ENV_ECHO);
           C->envelopeVol = (C->envelopeGoal * C->echoVol + 0xFF) >> 8;
-          if (!C->envelopeVol) { at = AT_OFF; break; }
+          if (!C->envelopeVol) { cost(m, COST_ENV_ECHO_OFF); at = AT_OFF; break; }
+          cost(m, COST_ENV_ECHO_ON);
           C->status |= IEC; C->cgbStatus |= MO_VOL;
-          if (ch != 3) dir = 0x08;
+          if (ch != 3) dir = 0x08; else cost(m, COST_ENV_ECHO_WAVE);
           at = AT_DONE;
           break;
         case AT_STEP_DONE:
-          m->cycles += 98;
+          cost(m, COST_ENV_STEP_DONE);
+          cost(m, stored ? COST_ENV_COUNTER_SET : COST_ENV_COUNTER_KEPT);
           C->envelopeCtr = u8(C->envelopeCtr - 1);
-          if (c15 == 0) { c15 = -1; at = AT_STEP; } else at = AT_DONE;
+          if (c15 == 0) { cost(m, COST_ENV_AGAIN); c15 = -1; at = AT_STEP; } else { cost(m, COST_ENV_DONE); at = AT_DONE; }
           break;
       }
     }
-    if (at == AT_OFF) { m->cycles += 62; cgb_osc_off(m, ch); C->status = 0; C->cgbStatus = 0; continue; }
+    if (at == AT_OFF) {
+      cost(m, COST_CGB_OFF); cost(m, COST_CGB_OFF1 + ch - 1);
+      cgb_osc_off(m, ch); C->status = 0; C->cgbStatus = 0;
+      continue;
+    }
 
     if (C->cgbStatus & MO_PIT) {
-      m->cycles += ch == 3 ? 79 : 123;
+      cost(m, ch == 3 ? COST_CGB_PITCH_WAVE : COST_CGB_PITCH);
+      cost(m, COST_CGB_PITCH1 + ch - 1);
       // "fixed" voices round the frequency to what the PWM rate can play
       if (ch < 4 && (C->type & 0x08)) {
+        cost(m, COST_CGB_FIXED);
         int bias = io_read(m, SOUNDBIAS_H);
-        if (bias < 0x40) C->freq = (C->freq + 2) & 0x7FC;
-        else if (bias < 0x80) C->freq = (C->freq + 1) & 0x7FE;
+        if (bias < 0x40) { cost(m, COST_CGB_FIXED_FINE); C->freq = (C->freq + 2) & 0x7FC; }
+        else if (bias < 0x80) { cost(m, COST_CGB_FIXED_HALF); C->freq = (C->freq + 1) & 0x7FE; }
+        else cost(m, COST_CGB_FIXED_NONE);
       }
       if (ch == 3) wave_at(m);
       io_write(m, nr3, ch == 4 ? (io_read(m, nr3) & 0x08) | (int)C->freq : u8((int)C->freq));
       C->nrx4 = u8((C->nrx4 & 0xC0) + (int)(C->freq >> 8));
+      // the high byte goes out an instruction block after the low one
+      cost(m, ch == 4 ? COST_CGB_PITCH_HIGH4 : COST_CGB_PITCH_HIGH);
       io_write(m, nr4, C->nrx4);
-    }
+      cost(m, COST_CGB_PITCH_DONE1 + ch - 1);
+    } else cost(m, COST_CGB_NO_PITCH);
     if (C->cgbStatus & MO_VOL) {
-      if (ch == 3) m->cycles += 69;
+      cost(m, COST_CGB_VOLUME1 + ch - 1);
+      if (ch == 3) cost(m, COST_CGB_VOLUME_WAVE);
       io_write(m, NR51, (io_read(m, NR51) & ~C->panMask) | C->pan);
       if (ch == 3) {
         wave_at(m);
         // past the table, as a voice on both sides can go, the JavaScript engine's value is undefined, written as 0
         io_write(m, NR32, C->envelopeVol >= 0 && C->envelopeVol < 16 ? CGB3_VOL[C->envelopeVol] : 0);
-        if (C->nrx4 & 0x80) { io_write(m, NR30, 0x80); io_write(m, NR34, C->nrx4); C->nrx4 &= 0x7F; }
+        cost(m, COST_CGB_WAVE_VOLUME);
+        if (C->nrx4 & 0x80) { cost(m, COST_CGB_WAVE_RESTART); io_write(m, NR30, 0x80); io_write(m, NR34, C->nrx4); C->nrx4 &= 0x7F; }
       } else {
         io_write(m, nr2, u8((dir & 0x0F) + (C->envelopeVol << 4)));
         io_write(m, nr4, C->nrx4 | 0x80);
-        if (ch == 1 && !(io_read(m, NR10) & 0x08)) io_write(m, nr4, C->nrx4 | 0x80);
+        if (ch == 1) {
+          cost(m, COST_CGB_SWEEP_CHECK);
+          if (!(io_read(m, NR10) & 0x08)) { cost(m, COST_CGB_SWEEP_RESTART); io_write(m, nr4, C->nrx4 | 0x80); }
+        }
       }
-    }
+    } else cost(m, COST_CGB_NO_VOLUME);
+    cost(m, COST_CGB_DONE1 + ch - 1);
     C->cgbStatus = 0;
   }
 }
 
 // ---- DirectSound mixer ----
+
+// The mixer's cycles are counted as Sonic Battle's, in every version: only a game that reads them, as it does, needs them.
 
 // one channel's envelope for this frame; 0 when the channel stops before it is mixed
 static int envelope(M4a *m, M4aChannel *C) {
@@ -862,7 +1010,9 @@ int m4a_frame(M4a *m) {
   m->dmaCounter = s8(dc) > 0 ? dc : m->framesPerDma;
   // SoundMain's way in, to the first player, and its way from the PSG to the channels and out, and 0x08049744's
   // restarting the DMA in the V-blank before it, on the frames it takes
-  m->cycles = 344 + (s8(dc) > 0 ? 0 : 110);
+  m->cycles = 0;
+  cost(m, COST_FRAME);
+  if (s8(dc) <= 0) cost(m, COST_FRAME_DMA);
   m->inFrame = 1;
   for (int i = 0; i < m->layout.players; i++) {
     M4aPlayer *P = &m->players[i];
@@ -872,6 +1022,7 @@ int m4a_frame(M4a *m) {
   }
   cgb_sound(m);
   m->inFrame = 0;
+  m->hblank = m->late = 0;
   m->callAt = FRAME_CYCLES; m->earlyCost = 0;
   return mix(m);
 }
@@ -1004,3 +1155,70 @@ void m4a_tempo_control(M4a *m, int p, int tempo) {
   M4aPlayer *P = player(m, p);
   if (P) { P->tempoU = tempo; P->tempoI = (P->tempoD * tempo) >> 8; }
 }
+
+// ---- what each place costs, by version of the library ----
+
+static const int16_t SONIC_BATTLE_COSTS[COSTS] = {
+#define X(name, cycles) cycles,
+  M4A_COSTS(X)
+#undef X
+};
+
+// Sonic Advance's, measured on its code in mGBA: every stretch of its SoundMain up to each write to a square's pitch
+// counted instruction by instruction, with the DMA that lands in it taken out (#1240)
+static const int16_t SONIC_ADVANCE_COSTS[COSTS] = {
+  [COST_FRAME] = 14, [COST_PLAYER_PAUSED] = 10, [COST_PLAYER] = 81, [COST_FADE_NONE] = 8, [COST_FADE_WAIT] = 35,
+  [COST_FADE_IN] = 115, [COST_FADE_IN_DONE] = 18, [COST_FADE_IN_GOES_ON] = 8, [COST_FADE_TRACK] = 14,
+  [COST_FADE_TRACK_VOLUME] = 14, [COST_FADE_TRACK_NEXT] = 8, [COST_TEMPO] = 4, [COST_TICK] = 42,
+  [COST_TRACK_TICKED] = 32, [COST_TRACK_ABSENT] = 10, [COST_TRACK_NEXT] = 24, [COST_TICK_ENDS_ALL] = 16,
+  [COST_TICK_GOES_ON] = 14, [COST_TRACK_CHANNELS] = 14, [COST_TRACK_STARTS] = 185, [COST_GATE_ENDS] = 20,
+  [COST_GATE] = 12, [COST_NO_GATE] = 6, [COST_CHANNEL_GONE] = 30, [COST_CHANNEL_NEXT] = 26, [COST_BYTE] = 23,
+  [COST_RUNNING_STATUS] = 12, [COST_COMMAND_BYTE] = 14, [COST_STATUS_KEPT] = 4, [COST_STATUS_NOT_KEPT] = 8,
+  [COST_NOTE] = 168, [COST_COMMAND] = 45, [COST_DISPATCH_GOES_ON] = 10, [COST_WAIT] = 44, [COST_NEXT_BYTE] = 4,
+  [COST_WAITS] = 16, [COST_NO_DEPTH] = 24, [COST_LFO] = 6, [COST_LFO_DELAY] = 30, [COST_LFO_STEP] = 32,
+  [COST_LFO_RISING] = 36, [COST_LFO_FALLING] = 38, [COST_LFO_PITCH] = 18, [COST_LFO_VOLUME] = 16, [COST_CMD_B1] = 44,
+  [COST_CMD_B3] = 31, [COST_CMD_B4] = 12, [COST_CMD_BA] = 22, [COST_CMD_BB] = 32, [COST_CMD_BC] = 30,
+  [COST_CMD_BD] = 104, [COST_CMD_BE] = 30, [COST_CMD_BF] = 32, [COST_CMD_C0] = 32, [COST_CMD_C1] = 30,
+  [COST_CMD_C2] = 32, [COST_CMD_C3] = 22, [COST_CMD_C4] = 24, [COST_CMD_C5] = 24, [COST_CMD_CE] = 29, [COST_ARG] = 45,
+  [COST_ARG_UNCHECKED] = 23, [COST_POINTER] = 96, [COST_VOICE_WORD] = 22, [COST_PATTERN_END] = 15,
+  [COST_PATTERN_END_NONE] = 8, [COST_DEPTH] = 8, [COST_DEPTH_OFF] = 12, [COST_MOD_TYPE_SAME] = 8,
+  [COST_MOD_TYPE_NEW] = 20, [COST_LFO_CLEAR_PITCH] = 36, [COST_FINE_NO_CHANNELS] = 12, [COST_FINE_CHANNEL] = 60,
+  [COST_FINE_CHANNEL_ON] = 8, [COST_EOT_KEY] = 16, [COST_EOT_NO_KEY] = 10, [COST_EOT_NO_CHANNELS] = 8,
+  [COST_EOT_STOPS] = 36, [COST_NOTE_KEY] = 19, [COST_NOTE_VELOCITY] = 17, [COST_DRUM] = 98, [COST_DRUM_PAN] = -6,
+  [COST_DRUM_NO_PAN] = -6, [COST_VOICE_RAM] = 138, [COST_VOICE_ROM] = 151, [COST_VOICE_DS] = 28,
+  [COST_VOICE_CGB4] = 28, [COST_CGB_TONE] = 28, [COST_CGB_FREE] = 38, [COST_CGB_STOPPING] = 44, [COST_CGB_LOWER] = 52,
+  [COST_CGB_SAME_LATER] = 66, [COST_CGB_HIGHER] = 48, [COST_PICK_FREE] = 51, [COST_PICK_FIRST_STOPPING] = 22,
+  [COST_PICK_STOPPING_AGAIN] = 16, [COST_PICK_SKIP] = 18, [COST_PICK_COMPARE] = 16, [COST_PICK_LOWER] = 16,
+  [COST_PICK_HIGHER] = 16, [COST_PICK_LATER] = 28, [COST_PICK_SAME] = 26, [COST_PICK_EARLIER] = 30,
+  [COST_PICK_NEXT] = 24, [COST_PICK_FOUND] = 61, [COST_PICK_NONE] = 46, [COST_TAKEN_HAS_NEXT] = 18,
+  [COST_TAKEN_LAST] = 18, [COST_NOTE_FIRST] = 12, [COST_NOTE_JOINS] = 15, [COST_NOTE_DS] = 24, [COST_NOTE_CGB] = 42,
+  [COST_NOTE_LFO_DELAY] = 6, [COST_SWEEP_OFF] = 26, [COST_SWEEP_NONE] = 12, [COST_CALL] = 8, [COST_CHAIN_NONE] = 8,
+  [COST_CHAIN_ALONE] = 18, [COST_CHAIN_FIRST] = 14, [COST_CHAIN_LAST] = 21, [COST_CHAIN_MIDDLE] = 17,
+  [COST_CHAIN_CALL] = 55, [COST_VP_TRACKS] = 28, [COST_VP_TRACK_NEXT] = 22, [COST_VP_ABSENT] = 8,
+  [COST_VP_UNCHANGED] = 14, [COST_VP_CHANGED] = 38, [COST_VP_NO_CHANNELS] = 8, [COST_VP_CHANNELS] = 4,
+  [COST_VP_CHANNEL_HAS_NEXT] = 8, [COST_VP_CHANNEL] = 34, [COST_VP_VOLUME] = 32, [COST_VP_VOLUME_CGB] = 2,
+  [COST_VP_NO_VOLUME] = 18, [COST_VP_PITCH] = 52, [COST_SET_VOLUME] = 114, [COST_SET_NO_VOLUME] = 48,
+  [COST_SET_TREMOLO] = 4, [COST_SET_PAN] = 16, [COST_SET_PITCH] = 48, [COST_SET_NO_PITCH] = 8, [COST_SET_VIBRATO] = 10,
+  [COST_CHANNEL_VOLUME] = 62, [COST_FREQ] = 235, [COST_FREQ_MUL1] = -13, [COST_FREQ_MUL4] = -13,
+  [COST_NOISE_HIGH] = 86, [COST_NOISE] = 90, [COST_TONE] = 182, [COST_CGB] = 547, [COST_CGB_COUNTING] = 2,
+  [COST_CGB_SILENT] = 44, [COST_CGB_ON1] = 67, [COST_CGB_ON2] = 59, [COST_CGB_ON3] = 67, [COST_CGB_ON4] = 131,
+  [COST_CGB_START] = 72, [COST_CGB_START_WAVE] = 162, [COST_CGB_PAN_RIGHT] = 92, [COST_CGB_PAN_BOTH] = 88,
+  [COST_CGB_WAVE_SAME] = 8, [COST_CGB_WAVE_NEW] = 79, [COST_CGB_START1] = 44, [COST_CGB_START2] = 30,
+  [COST_CGB_START4] = 40, [COST_CGB_NO_LENGTH] = 42, [COST_CGB_ATTACK] = 68, [COST_CGB_NO_ATTACK] = 26,
+  [COST_CGB_PLAYING] = 72, [COST_CGB_STOPPED_NO_ENVELOPE] = 80, [COST_CGB_RELEASE] = 92, [COST_CGB_RELEASE_NONE] = 8,
+  [COST_CGB_RELEASE_STEPS] = 76, [COST_ENV_WAIT] = 62, [COST_ENV_STEP] = 28, [COST_ENV_STEP_WAVE] = 2,
+  [COST_ENV_RELEASE] = 16, [COST_ENV_SUSTAIN] = 12, [COST_ENV_DECAY] = 40, [COST_ENV_ATTACK] = 58,
+  [COST_ENV_RELEASE_ON] = 92, [COST_ENV_RELEASE_ENDS] = 10, [COST_ENV_SUSTAIN_STEP] = 58, [COST_ENV_DECAY_ON] = 92,
+  [COST_ENV_DECAY_ENDS] = 74, [COST_ENV_ATTACK_ON] = 68, [COST_ENV_ATTACK_ENDS] = 10, [COST_ENV_DECAY_START] = 2,
+  [COST_ENV_DECAY_NONE] = 72, [COST_ENV_DECAY_STARTS] = 80, [COST_ENV_DECAY_WAVE] = -6, [COST_ENV_SUSTAIN_START] = 4,
+  [COST_ENV_SUSTAIN_NONE] = -46, [COST_ENV_SUSTAIN_STARTS] = 24, [COST_ENV_SUSTAIN_WAVE] = -6,
+  [COST_ENV_SUSTAIN_SET] = 14, [COST_ENV_SUSTAIN_SET_DONE] = 16, [COST_ENV_ECHO] = 50, [COST_ENV_STEP_DONE] = 10,
+  [COST_ENV_COUNTER_SET] = 2, [COST_ENV_COUNTER_KEPT] = 16, [COST_ENV_AGAIN] = -52, [COST_ENV_DONE] = 16,
+  [COST_CGB_OFF1] = 109, [COST_CGB_OFF2] = 101, [COST_CGB_OFF3] = 115, [COST_CGB_OFF4] = 45, [COST_CGB_PITCH] = -10,
+  [COST_CGB_PITCH_WAVE] = 6, [COST_CGB_PITCH1] = 16, [COST_CGB_PITCH2] = 16, [COST_CGB_PITCH3] = 6,
+  [COST_CGB_PITCH4] = -20, [COST_CGB_FIXED] = 64, [COST_CGB_PITCH_HIGH] = 32, [COST_CGB_PITCH_HIGH4] = 24,
+  [COST_CGB_PITCH_DONE1] = 10, [COST_CGB_PITCH_DONE2] = 10, [COST_CGB_PITCH_DONE3] = 4, [COST_CGB_PITCH_DONE4] = 74,
+  [COST_CGB_NO_PITCH] = 16, [COST_CGB_VOLUME1] = 61, [COST_CGB_VOLUME2] = 61, [COST_CGB_VOLUME3] = 67,
+  [COST_CGB_VOLUME4] = -3, [COST_CGB_WAVE_VOLUME] = -4, [COST_CGB_WAVE_RESTART] = 20, [COST_CGB_SWEEP_CHECK] = 12,
+  [COST_CGB_NO_VOLUME] = -4, [COST_CGB_DONE1] = -10, [COST_CGB_DONE2] = -10, [COST_CGB_DONE3] = -4
+};

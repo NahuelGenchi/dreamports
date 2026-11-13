@@ -129,7 +129,9 @@ function fadeOut(t) {
     return;
   }
   e.stopAllSongs();
-  const after = () => createSegaLogo(ctx);
+  // the sound engine is off while the save is written (m4aSoundVSyncOff), so its frames stop with the screen's
+  e.soundVSyncOff();
+  const after = () => { e.soundVSyncOn(); createSegaLogo(ctx); };
   if (ctx.save.write()) e.stall(WRITE_FRAMES, after);
   else after();
 }

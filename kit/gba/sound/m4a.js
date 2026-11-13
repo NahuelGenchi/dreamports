@@ -7,6 +7,8 @@
 // version of the library, which can differ in small ways, such as how a PSG channel pans (cgbModVol): check it
 // against that game's decompilation.
 
+import { COST, COSTS, LIBRARY } from './costs.js';
+
 const ROM_BASE = 0x08000000;
 
 /** Each side of the mixed samples' buffer (PCM_DMA_BUF_SIZE). */
@@ -111,7 +113,7 @@ function newChannel() {
  *   and counts (tables.js), and the game's sound mode (soundMode)
  * @param {{read(reg: number): number, write(reg: number, value: number): void}} io the sound registers
  */
-const FRAME_CYCLES = 280896;
+const FRAME_CYCLES = 280896, CPU_HZ = 16777216;
 
 export function createM4A(rom, layout, io) {
   const u32 = at => (rom[at] | rom[at + 1] << 8 | rom[at + 2] << 16 | rom[at + 3] << 24) >>> 0;
@@ -119,6 +121,9 @@ export function createM4A(rom, layout, io) {
 
   if (!layout.mode) throw new Error("The sound engine needs the game's sound mode (layout.mode).");
   const { channels: NUM_CHANS, volume: MASTER_VOL, samples: SAMPLES, framesPerDma: FRAMES_PER_DMA, divFreq: DIV_FREQ, reverb } = soundMode(layout.mode);
+  // what each place in SoundMain costs in the game's version of the library (costs.js)
+  const library = layout.library ?? LIBRARY.sonicBattle, costs = COSTS[library];
+  const cost = site => { cycles += costs[site]; };
   const info = { reverb, dmaCounter: 0, c15: 0, pcm: new Int8Array(2 * HALF), memAcc: new Uint8Array(256) };
   // what is left out of the output: `music` silences the notes of the first music player (the BGM's), as the
   // second and later GBAs of a multiplayer game do on one page, where the first one's music is heard
@@ -137,31 +142,82 @@ export function createM4A(rom, layout, io) {
       tempoC: 0, fadeInterval: 0, fadeCounter: 0, fadeOV: 0, voicegroup: 0,
       tracks: Array.from({ length: count }, (_, t) => newTrack(tracks + 0x50 * t)),
     });
+    // Sonic Advance's MPlayOpen leaves a player paused until a song starts on it, which its MPlayMain then passes by
+    if (library === LIBRARY.sonicAdvance) players[i].status = PAUSE;
   }
 
+  // how many of the console's cycles this frame's SoundMain takes, as mGBA counts its instructions (WAITCNT 0x4014)
+  let cycles = 0;
+  // about what a player takes in a frame it starts nothing
+  const IDLE_PLAYER = 400;
+  let inFrame = false, callAt = FRAME_CYCLES, earlyCost = 0, earlyPlayer = null;
+  const LINE_CYCLES = 1232, VISIBLE_LINES = 160;
+  // how far into SoundMain its count of `cycles` reaches once the DMA that halts the CPU on the way is added: the FIFO
+  // refills, every 16 samples, and while the game has it on, the H-blank DMA at the end of each visible line
+  function withDma(start, count) {
+    const refill = fifoCost ? 16 * Math.floor((CPU_HZ + (layout.mode.rate >> 1)) / layout.mode.rate) : 0;
+    let reach = count;
+    for (let again = 0; again < 8; again++) {
+      let halted = 0;
+      const end = start + reach;
+      if (refill) for (let at = fifoAt; at < end; at += refill) if (at >= start) halted += fifoCost;
+      if (hblank) for (let n = 0; n < VISIBLE_LINES; n++) {
+        const at = hblankAt + n * LINE_CYCLES;
+        if (at >= end) break;
+        if (at >= start) halted += hblank;
+      }
+      if (count + halted === reach) break;
+      reach = count + halted;
+    }
+    return reach;
+  }
+  // with `psgAt`, the writes to the sound chip's channels land at that place in its frame: SoundMain's, as late as this
+  // frame's starts, plus what it has counted so far and the DMA on the way, as the original's land where its work has
+  // reached. The chip's frame starts on a whole sample, `late` cycles past the console's. The game's own calls write at once
+  function ioWrite(reg, v) {
+    const start = psgAt + late;
+    io.psgAt = !psgAt || !inFrame ? -1 : start - io.late + withDma(start, cycles);
+    io.write(reg, v);
+  }
+  let hblank = 0, late = 0;   // this frame's H-blank DMA, in cycles a line, and how late its SoundMain starts
+  // SoundMain's place in the frame, and where the DMA lands in it (psgAt and dmaAt), held through a restart in the layout
+  let psgAt = layout.psgAt ?? 0, fifoAt = layout.fifoAt ?? 0, fifoCost = layout.fifoCost ?? 0, hblankAt = layout.hblankAt ?? 0;
+
   // the registers MPlayExtender and SoundInit set
-  io.write(SOUNDCNT_X, 0x8F);
-  io.write(NR50, 0); io.write(NR51, 0);
-  for (const [nr2, nr4] of [[0x63, 0x65], [0x69, 0x6D], [0x79, 0x7D]]) { io.write(nr2, 0x08); io.write(nr4, 0x80); }
-  io.write(NR30, 0);
-  io.write(NR50, 0x77);
-  io.write(SOUNDCNT_H, 0x0E); io.write(SOUNDCNT_H + 1, 0xA9);
-  io.write(SOUNDBIAS_H, (io.read(SOUNDBIAS_H) & 0x3F) | 0x40);
+  ioWrite(SOUNDCNT_X, 0x8F);
+  ioWrite(NR50, 0); ioWrite(NR51, 0);
+  for (const [nr2, nr4] of [[0x63, 0x65], [0x69, 0x6D], [0x79, 0x7D]]) { ioWrite(nr2, 0x08); ioWrite(nr4, 0x80); }
+  ioWrite(NR30, 0);
+  ioWrite(NR50, 0x77);
+  ioWrite(SOUNDCNT_H, 0x0E); ioWrite(SOUNDCNT_H + 1, 0xA9);
+  ioWrite(SOUNDBIAS_H, (io.read(SOUNDBIAS_H) & 0x3F) | 0x40);
 
   // ---- pitch ----
 
+  // how many cycles of wait the multiplier adds for an operand, which it reads a byte at a time from the top while the
+  // rest are zeros (unsigned, as umull reads it), from 1 to 4
+  const mulBytes = x => !(x >>> 8) ? 1 : !(x >>> 16) ? 2 : !(x >>> 24) ? 3 : 4;
+
   function midiKeyToFreq(wav, key, fine) {
     fine = (fine << 24) >>> 0;
-    if (key > 178) { key = 178; fine = (255 << 24) >>> 0; }
+    if (key > 178) { cost(COST.FREQ_TOP); key = 178; fine = (255 << 24) >>> 0; } else cost(COST.FREQ);
     const f1 = FREQ[key % 12] >>> (14 - Math.floor(key / 12));
     const f2 = FREQ[(key + 1) % 12] >>> (14 - Math.floor((key + 1) / 12));
-    return umulhi(u32(wav + 4 - ROM_BASE), (f1 + umulhi((f2 - f1) >>> 0, fine)) >>> 0);
+    // umul3232H32 twice, its wait set by the second operand of each
+    const x = (f1 + umulhi((f2 - f1) >>> 0, fine)) >>> 0;
+    cost(COST.FREQ_MUL1 + mulBytes(fine) - 1);
+    cost(COST.FREQ2_MUL1 + mulBytes(x) - 1);
+    return umulhi(u32(wav + 4 - ROM_BASE), x);
   }
 
   function midiKeyToCgbFreq(ch, key, fine) {
-    if (ch === 4) return NOISE[key <= 20 ? 0 : Math.min(key - 21, 59)];
+    if (ch === 4) {
+      cost(key <= 20 ? COST.NOISE_LOW : key - 21 > 59 ? COST.NOISE_HIGH : COST.NOISE);
+      return NOISE[key <= 20 ? 0 : Math.min(key - 21, 59)];
+    }
     let k;
-    if (key <= 35) { k = 0; fine = 0; } else { k = key - 36; if (k > 130) { k = 130; fine = 255; } }
+    if (key <= 35) { cost(COST.TONE_LOW); k = 0; fine = 0; }
+    else { k = key - 36; if (k > 130) { cost(COST.TONE_HIGH); k = 130; fine = 255; } else cost(COST.TONE); }
     const v1 = CGB_FREQ[k % 12] >> Math.floor(k / 12), v2 = CGB_FREQ[(k + 1) % 12] >> Math.floor((k + 1) / 12);
     return v1 + ((fine * (v2 - v1)) >> 8) + 2048;
   }
@@ -170,31 +226,37 @@ export function createM4A(rom, layout, io) {
 
   function trkVolPitSet(T) {
     if (T.flags & 0x01) {
+      cost(COST.SET_VOLUME);
       let x = (T.vol * T.volPublic) >>> 5;
-      if (T.modType === 1) x = (x * (T.modCalc + 128)) >> 7;
+      if (T.modType === 1) { cost(COST.SET_TREMOLO); x = (x * (T.modCalc + 128)) >> 7; }
       let y = 2 * T.pan + T.panPublic;
-      if (T.modType === 2) y += T.modCalc;
+      if (T.modType === 2) { cost(COST.SET_PAN_LFO); y += T.modCalc; }
+      cost(y < -128 ? COST.SET_PAN_LOW : y > 127 ? COST.SET_PAN_HIGH : COST.SET_PAN);
       y = Math.max(-128, Math.min(127, y));
       T.volRCalc = u8(((y + 128) * x) >> 8);
       T.volLCalc = u8(((127 - y) * x) >> 8);
-    }
+    } else cost(COST.SET_NO_VOLUME);
     if (T.flags & 0x04) {
+      cost(COST.SET_PITCH);
       let p = (T.tune + T.bend * T.bendRange) * 4 + (T.keyShift << 8) + (T.keyShiftPublic << 8) + T.pitchPublic;
-      if (T.modType === 0) p += 16 * T.modCalc;
+      if (T.modType === 0) { cost(COST.SET_VIBRATO); p += 16 * T.modCalc; }
       T.keyShiftCalc = s8(p >> 8);
       T.pitchCalc = u8(p);
-    }
+    } else cost(COST.SET_NO_PITCH);
     T.flags &= ~0x05;
   }
 
   function chnVolSet(C, T) {
     const rp = C.rhythmPan, vel = C.velocity;
-    C.rightVol = Math.min(255, (T.volRCalc * ((128 + rp) * vel)) >> 14);
-    C.leftVol = Math.min(255, (T.volLCalc * ((127 - rp) * vel)) >> 14);
+    const r = (T.volRCalc * ((128 + rp) * vel)) >> 14, l = (T.volLCalc * ((127 - rp) * vel)) >> 14;
+    cost(COST.CHANNEL_VOLUME + (r > 255 ? 1 : 0) + (l > 255 ? 2 : 0));
+    C.rightVol = Math.min(255, r);
+    C.leftVol = Math.min(255, l);
   }
 
   function clearChain(C) {
     const T = C.track;
+    cost(!T ? COST.CHAIN_NONE : !C.prev && !C.next ? COST.CHAIN_ALONE : !C.prev ? COST.CHAIN_FIRST : !C.next ? COST.CHAIN_LAST : COST.CHAIN_MIDDLE);
     if (!T) return;
     if (C.prev) C.prev.next = C.next; else T.chan = C.next;
     if (C.next) C.next.prev = C.prev;
@@ -206,16 +268,19 @@ export function createM4A(rom, layout, io) {
   function waveAt() { if (layout.soundMainAt) io.at = inFrame ? FRAME_CYCLES + layout.soundMainAt + cycles - earlyCost : callAt; }
 
   function cgbOscOff(ch) {
-    if (ch === 3) { waveAt(); io.write(NR30, 0); return; }
+    if (ch === 3) { waveAt(); ioWrite(NR30, 0); return; }
     const [, , nr2, , nr4] = CGB_REGS[ch - 1];
-    io.write(nr2, 0x08); io.write(nr4, 0x80);
+    ioWrite(nr2, 0x08); ioWrite(nr4, 0x80);
   }
 
   function trackStop(T) {
-    if (!(T.flags & EXIST)) return;
+    if (!(T.flags & EXIST)) { cost(COST.STOP_ABSENT); return; }
+    if (!T.chan) cost(COST.STOP_NO_CHANNELS);
     for (let C = T.chan; C; C = C.next) {
+      cost(COST.STOP_CHANNEL);
       if (C.status) {
-        if (C.type & 7) cgbOscOff(C.type & 7);
+        cost(COST.STOP_CHANNEL_ON);
+        if (C.type & 7) { cost(COST.CALL); cgbOscOff(C.type & 7); }
         C.status = 0;
       }
       C.track = null;
@@ -224,6 +289,7 @@ export function createM4A(rom, layout, io) {
   }
 
   function clearModM(T) {
+    cost(T.modType === 0 ? COST.LFO_CLEAR_PITCH : COST.LFO_CLEAR_VOLUME);
     T.modCalc = 0; T.lfoSpeedCounter = 0;
     T.flags |= T.modType === 0 ? PITCHG : VOLCHG;
   }
@@ -231,11 +297,16 @@ export function createM4A(rom, layout, io) {
   // ---- commands 0xB1 … 0xCE ----
 
   const arg = T => r8(T.cmdPtr++);
-  const ptrArg = T => u32(T.cmdPtr - ROM_BASE);
+  // a command's argument as the library reads it, through its check that the address is in the cartridge, or not
+  const checkedArg = T => { cost(COST.ARG); return arg(T); };
+  const uncheckedArg = T => { cost(COST.ARG_UNCHECKED); return arg(T); };
+  const ptrArg = T => { cost(COST.POINTER); return u32(T.cmdPtr - ROM_BASE); };
 
   function fine(P, T) {
+    if (!T.chan) cost(COST.FINE_NO_CHANNELS);
     for (let C = T.chan; C; C = C.next) {
-      if (C.status & ON) C.status |= STOP;
+      cost(COST.FINE_CHANNEL);
+      if (C.status & ON) { cost(COST.FINE_CHANNEL_ON); C.status |= STOP; }
       clearChain(C);
     }
     T.flags = 0;
@@ -246,7 +317,10 @@ export function createM4A(rom, layout, io) {
     T.patternStack[T.patternLevel++] = T.cmdPtr + 4;
     goto(P, T);
   }
-  function pend(P, T) { if (T.patternLevel) T.cmdPtr = T.patternStack[--T.patternLevel]; }
+  function pend(P, T) {
+    cost(T.patternLevel ? COST.PATTERN_END : COST.PATTERN_END_NONE);
+    if (T.patternLevel) T.cmdPtr = T.patternStack[--T.patternLevel];
+  }
   function rept(P, T) {
     const n = r8(T.cmdPtr);
     if (n === 0) { T.cmdPtr++; goto(P, T); return; }
@@ -256,7 +330,7 @@ export function createM4A(rom, layout, io) {
   // reads and writes the players' shared scratch bytes, or jumps on a comparison with them (untested: none of the
   // songs checked so far uses it)
   function memacc(P, T) {
-    const op = arg(T), at = arg(T), data = arg(T), mem = info.memAcc, v = mem[at];
+    const op = checkedArg(T), at = checkedArg(T), data = checkedArg(T), mem = info.memAcc, v = mem[at];
     const ops = [
       () => { mem[at] = data; }, () => { mem[at] += data; }, () => { mem[at] -= data; },
       () => { mem[at] = mem[data]; }, () => { mem[at] += mem[data]; }, () => { mem[at] -= mem[data]; },
@@ -268,46 +342,57 @@ export function createM4A(rom, layout, io) {
     }
   }
   function xcmd(P, T) {
-    const sub = arg(T);
+    const sub = checkedArg(T);
     switch (sub) {
       case 1: T.voice = { ...T.voice, wav: ptrArg(T) }; T.cmdPtr += 4; return;
-      case 2: T.voice = { ...T.voice, type: arg(T) }; return;
-      case 4: T.voice = { ...T.voice, attack: arg(T) }; return;
-      case 5: T.voice = { ...T.voice, decay: arg(T) }; return;
-      case 6: T.voice = { ...T.voice, sustain: arg(T) }; return;
-      case 7: T.voice = { ...T.voice, release: arg(T) }; return;
-      case 8: T.echoVolume = arg(T); return;
-      case 9: T.echoLength = arg(T); return;
-      case 10: T.voice = { ...T.voice, length: arg(T) }; return;
-      case 11: T.voice = { ...T.voice, panSweep: arg(T) }; return;
+      case 2: T.voice = { ...T.voice, type: checkedArg(T) }; return;
+      case 4: T.voice = { ...T.voice, attack: checkedArg(T) }; return;
+      case 5: T.voice = { ...T.voice, decay: checkedArg(T) }; return;
+      case 6: T.voice = { ...T.voice, sustain: checkedArg(T) }; return;
+      case 7: T.voice = { ...T.voice, release: checkedArg(T) }; return;
+      case 8: T.echoVolume = checkedArg(T); return;
+      case 9: T.echoLength = checkedArg(T); return;
+      case 10: T.voice = { ...T.voice, length: checkedArg(T) }; return;
+      case 11: T.voice = { ...T.voice, panSweep: checkedArg(T) }; return;
       default: fine(P, T);
     }
   }
   function eot(P, T) {
-    if (r8(T.cmdPtr) < 0x80) T.key = arg(T);
+    if (r8(T.cmdPtr) < 0x80) { cost(COST.EOT_KEY); T.key = arg(T); } else cost(COST.EOT_NO_KEY);
+    if (!T.chan) cost(COST.EOT_NO_CHANNELS);
     for (let C = T.chan; C; C = C.next) {
-      if ((C.status & (START | ENV)) && !(C.status & STOP) && C.midiKey === T.key) { C.status |= STOP; return; }
+      if (!(C.status & (START | ENV))) { cost(COST.EOT_SILENT); continue; }
+      if (C.status & STOP) { cost(COST.EOT_STOPPING); continue; }
+      if (C.midiKey !== T.key) { cost(COST.EOT_OTHER_KEY); continue; }
+      cost(COST.EOT_STOPS);
+      C.status |= STOP;
+      return;
     }
   }
 
   const COMMANDS = [
     fine, goto, patt, pend, rept, fine, fine, fine, memacc,
-    (P, T) => { T.priority = arg(T); },
-    (P, T) => { P.tempoD = arg(T) * 2; P.tempoI = (P.tempoD * P.tempoU) >> 8; },
-    (P, T) => { T.keyShift = s8(arg(T)); T.flags |= PITCHG; },
-    (P, T) => { T.voice = voiceAt(rom, P.voicegroup - ROM_BASE + arg(T) * 12); },
-    (P, T) => { T.vol = arg(T); T.flags |= VOLCHG; },
-    (P, T) => { T.pan = s8(arg(T) - 0x40); T.flags |= VOLCHG; },
-    (P, T) => { T.bend = s8(arg(T) - 0x40); T.flags |= PITCHG; },
-    (P, T) => { T.bendRange = arg(T); T.flags |= PITCHG; },
-    (P, T) => { T.lfoSpeed = arg(T); if (!T.lfoSpeed) clearModM(T); },
-    (P, T) => { T.lfoDelay = arg(T); },
-    (P, T) => { T.modDepth = arg(T); if (!T.modDepth) clearModM(T); },
-    (P, T) => { const t = arg(T); if (t !== T.modType) { T.modType = t; T.flags |= VOLCHG | PITCHG; } },
+    (P, T) => { T.priority = checkedArg(T); },
+    (P, T) => { P.tempoD = checkedArg(T) * 2; P.tempoI = (P.tempoD * P.tempoU) >> 8; },
+    (P, T) => { T.keyShift = s8(checkedArg(T)); T.flags |= PITCHG; },
+    (P, T) => { const i = arg(T); for (let w = 0; w < 3; w++) cost(COST.VOICE_WORD); T.voice = voiceAt(rom, P.voicegroup - ROM_BASE + i * 12); },
+    (P, T) => { T.vol = checkedArg(T); T.flags |= VOLCHG; },
+    (P, T) => { T.pan = s8(checkedArg(T) - 0x40); T.flags |= VOLCHG; },
+    (P, T) => { T.bend = s8(checkedArg(T) - 0x40); T.flags |= PITCHG; },
+    (P, T) => { T.bendRange = checkedArg(T); T.flags |= PITCHG; },
+    (P, T) => { T.lfoSpeed = uncheckedArg(T); cost(T.lfoSpeed ? COST.LFO_SPEED : COST.LFO_SPEED_OFF); if (!T.lfoSpeed) clearModM(T); },
+    (P, T) => { T.lfoDelay = checkedArg(T); },
+    (P, T) => { T.modDepth = uncheckedArg(T); cost(T.modDepth ? COST.DEPTH : COST.DEPTH_OFF); if (!T.modDepth) clearModM(T); },
+    (P, T) => {
+      const t = checkedArg(T);
+      if (t === T.modType) { cost(COST.MOD_TYPE_SAME); return; }
+      cost(COST.MOD_TYPE_NEW);
+      T.modType = t; T.flags |= VOLCHG | PITCHG;
+    },
     fine, fine,
-    (P, T) => { T.tune = s8(arg(T) - 0x40); T.flags |= PITCHG; },
+    (P, T) => { T.tune = s8(checkedArg(T) - 0x40); T.flags |= PITCHG; },
     fine, fine, fine,
-    (P, T) => { const reg = arg(T); io.write(0x60 + reg, arg(T)); },
+    (P, T) => { const reg = checkedArg(T); ioWrite(0x60 + reg, checkedArg(T)); },
     xcmd, eot,
   ];
 
@@ -317,17 +402,24 @@ export function createM4A(rom, layout, io) {
   // ones (or, when none is releasing, among the playing ones), ties going to the later track
   function pickChannel(prio, T) {
     let best = null, bestPrio = prio, bestTrack = T.addr, stopping = false;
-    for (const C of chans) {
-      if (!(C.status & ON)) { cycles += 13; return C; }
+    for (let i = 0; i < chans.length; i++) {
+      const C = chans[i];
+      if (i) cost(COST.PICK_NEXT);
+      if (!(C.status & ON)) { cost(COST.PICK_FREE); return C; }
       if (C.status & STOP) {
-        if (!stopping) { stopping = true; bestPrio = C.priority; bestTrack = C.track ? C.track.addr : 0; best = C; cycles += 46; continue; }
-      } else if (stopping) { cycles += 42; continue; }
+        if (!stopping) { stopping = true; bestPrio = C.priority; bestTrack = C.track ? C.track.addr : 0; best = C; cost(COST.PICK_FIRST_STOPPING); continue; }
+        cost(COST.PICK_STOPPING_AGAIN);
+      } else if (stopping) { cost(COST.PICK_SKIP); continue; }
+      else cost(COST.PICK_COMPARE);
       const tr = C.track ? C.track.addr : 0;
-      if (C.priority < bestPrio) { bestPrio = C.priority; bestTrack = tr; best = C; cycles += 56; }
+      if (C.priority < bestPrio) { bestPrio = C.priority; bestTrack = tr; best = C; cost(COST.PICK_LOWER); }
       else if (C.priority === bestPrio) {
-        if (tr > bestTrack) { bestTrack = tr; best = C; cycles += 68; } else if (tr === bestTrack) { best = C; cycles += 70; } else cycles += 70;
-      } else cycles += 56;
+        if (tr > bestTrack) { bestTrack = tr; best = C; cost(COST.PICK_LATER); }
+        else if (tr === bestTrack) { best = C; cost(COST.PICK_SAME); }
+        else cost(COST.PICK_EARLIER);
+      } else cost(COST.PICK_HIGHER);
     }
+    cost(best ? COST.PICK_FOUND : COST.PICK_NONE);
     return best;
   }
 
@@ -335,11 +427,11 @@ export function createM4A(rom, layout, io) {
     T.gateTime = CLOCK[idx];
     if (r8(T.cmdPtr) < 0x80) {
       T.key = arg(T);
-      cycles += 18;
+      cost(COST.NOTE_KEY);
       if (r8(T.cmdPtr) < 0x80) {
         T.velocity = arg(T);
-        cycles += 18;
-        if (r8(T.cmdPtr) < 0x80) { T.gateTime = u8(T.gateTime + arg(T)); cycles += 18; }
+        cost(COST.NOTE_VELOCITY);
+        if (r8(T.cmdPtr) < 0x80) { T.gateTime = u8(T.gateTime + arg(T)); cost(COST.NOTE_GATE); }
       }
     }
     let rhythmPan = 0, V = T.voice, key = T.key;
@@ -350,36 +442,52 @@ export function createM4A(rom, layout, io) {
       const S = voiceAt(rom, V.wav - ROM_BASE + n * 12);
       if (S.type & 0xC0) return;
       if (V.type & 0x80) {
+        cost(S.panSweep & 0x80 ? COST.DRUM_PAN : COST.DRUM_NO_PAN);
         if (S.panSweep & 0x80) rhythmPan = s8((S.panSweep - 0xC0) * 2);
         key = S.key;
-        cycles += 118;
+        cost(COST.DRUM);
       }
       V = S;
     }
+    // the voice is the track's own copy in memory, or a key split's or drum kit's from the cartridge, which reads slower
+    const fromRom = (T.voice.type & 0xC0) !== 0;
     const prio = Math.min(P.priority + T.priority, 255);
     const cgb = V.type & 7;
+    cost(cgb ? COST.VOICE_CGB1 + cgb - 1 : COST.VOICE_DS);
     let C;
     if (cgb) {
       C = cgbChans[cgb - 1];
-      cycles -= cgb === 4 ? 98 : 2;
+      cost(cgb === 4 ? COST.CGB_NOISE : COST.CGB_TONE);
+      const tr = C.track ? C.track.addr : 0;
+      if (!(C.status & ON)) cost(COST.CGB_FREE);
+      else if (C.status & STOP) cost(COST.CGB_STOPPING);
+      else if (C.priority < prio) cost(COST.CGB_LOWER);
+      else if (C.priority > prio) cost(COST.CGB_HIGHER);
+      else cost(tr < T.addr ? COST.CGB_SAME_EARLIER : COST.CGB_SAME_LATER);
       if ((C.status & ON) && !(C.status & STOP)) {
         if (C.priority > prio) return;
-        if (C.priority === prio && (C.track ? C.track.addr : 0) < T.addr) return;
+        if (C.priority === prio && tr < T.addr) return;
       }
     } else {
       C = pickChannel(prio, T);
       if (!C) return;
     }
-    if (C.track) cycles += C.next ? 12 : 24;
-    if (T.chan) cycles -= 4;
-    if (T.flags & 0x01) cycles += 80;
-    if (T.flags & 0x04) cycles += 50;
+    if (C.track) cost(C.next ? COST.TAKEN_HAS_NEXT : COST.TAKEN_LAST);
+    cost(fromRom ? COST.VOICE_ROM : COST.VOICE_RAM);
+    if (T.chan) cost(COST.TRACK_HAD_CHANNELS);
+    if (T.flags & 0x01) cost(COST.NOTE_VOLUME);
+    if (T.flags & 0x04) cost(COST.NOTE_PITCH);
+    cost(COST.CHAIN_CALL);
     clearChain(C);
+    // the original looks at the track's chain once the channel has left it
+    cost(T.chan ? COST.NOTE_JOINS : COST.NOTE_FIRST);
+    if (T.chan) cost(T.chan.type & 7 ? COST.JOINS_CGB : COST.JOINS_DS);
+    cost(cgb ? COST.NOTE_CGB : COST.NOTE_DS);
     C.prev = null; C.next = T.chan;
     if (T.chan) T.chan.prev = C;
     T.chan = C; C.track = T; C.music = P === players[0];
     T.lfoDelayCounter = T.lfoDelay;
-    if (T.lfoDelay) clearModM(T);
+    if (T.lfoDelay) { cost(COST.NOTE_LFO_DELAY); clearModM(T); }
     trkVolPitSet(T);
     C.gateTime = T.gateTime; C.midiKey = T.key; C.velocity = T.velocity;
     C.priority = prio; C.key = key; C.rhythmPan = rhythmPan;
@@ -391,7 +499,9 @@ export function createM4A(rom, layout, io) {
     if (cgb) {
       C.length = V.length;
       const ps = V.panSweep;
+      cost(ps & 0x80 ? COST.SWEEP_OFF : ps & 0x70 ? COST.SWEEP : COST.SWEEP_NONE);
       C.sweep = (ps & 0x80) || !(ps & 0x70) ? 0x08 : ps;
+      cost(COST.CALL);
       C.freq = midiKeyToCgbFreq(cgb, k, T.pitchCalc);
     } else {
       C.freq = midiKeyToFreq(C.wav, k, T.pitchCalc);
@@ -400,13 +510,6 @@ export function createM4A(rom, layout, io) {
     T.flags &= 0xF0;
   }
 
-  // how many of the console's cycles this frame's SoundMain takes, as mGBA counts its instructions (WAITCNT 0x4014)
-  let cycles = 0;
-  // about what a player takes in a frame it starts nothing
-  const IDLE_PLAYER = 400;
-  let inFrame = false, callAt = FRAME_CYCLES, earlyCost = 0, earlyPlayer = null;
-  // what these commands take over the others', 0xB1 up
-  const COMMAND_CYCLES = { 0xB1: 8, 0xB2: 12, 0xB3: 28, 0xB4: -48, 0xBB: -5, 0xBC: 81, 0xBD: 81, 0xBE: -245, 0xBF: 229, 0xCE: -114 };
   let locked = false;   // m4aSoundVSyncOff's lock: SoundMain does nothing until m4aSoundVSyncOn
   const mulWait = rs => {
     rs >>>= 0;
@@ -419,46 +522,53 @@ export function createM4A(rom, layout, io) {
   // ---- the sequencer ----
 
   function tickTrack(P, T) {
-    cycles += 46 + (T.chan ? 1 : 0) + (T.flags & TRACK_START ? 255 : 0);
+    cost(COST.TRACK);
+    if (T.chan) cost(COST.TRACK_CHANNELS);
+    if (T.flags & TRACK_START) cost(COST.TRACK_STARTS);
     for (let C = T.chan; C; C = C.next) {
       if (C.status & ON) {
         if (C.gateTime) {
-          if (--C.gateTime === 0) { C.status |= STOP; cycles += 32; } else cycles += 24;
-        } else cycles += 18;
-      } else { clearChain(C); cycles += 112; }
-      if (C.next) cycles += 14;
+          if (--C.gateTime === 0) { C.status |= STOP; cost(COST.GATE_ENDS); } else cost(COST.GATE);
+        } else cost(COST.NO_GATE);
+      } else { cost(COST.CHAIN_CALL); clearChain(C); cost(COST.CHANNEL_GONE); }
+      if (C.next) cost(COST.CHANNEL_NEXT);
     }
     if (T.flags & TRACK_START) clearTrack(T);
     while (T.wait === 0) {
       const b = r8(T.cmdPtr);
       let cmd = b;
-      cycles += 36;
-      if (b < 0x80) { cmd = T.runningStatus; cycles += 19; }
-      else { T.cmdPtr++; cycles += 24; if (b >= 0xBD) T.runningStatus = b; }
-      if (cmd >= 0xCF) { cycles += 773; plynote(cmd - 0xCF, P, T); }
+      cost(COST.BYTE);
+      if (b < 0x80) { cmd = T.runningStatus; cost(COST.RUNNING_STATUS); }
+      else { T.cmdPtr++; cost(COST.COMMAND_BYTE); if (b >= 0xBD) { cost(COST.STATUS_KEPT); T.runningStatus = b; } else cost(COST.STATUS_NOT_KEPT); }
+      if (cmd >= 0xCF) { cost(COST.NOTE); cost(COST.CALL); plynote(cmd - 0xCF, P, T); }
       else if (cmd >= 0xB1) {
         P.cmd = cmd - 0xB1;
-        cycles += 120 + (COMMAND_CYCLES[cmd] ?? 0);
+        cost(COST.COMMAND); cost(COST.CMD_B1 + cmd - 0xB1); cost(COST.CALL); cost(COST.DISPATCH);
         COMMANDS[cmd - 0xB1](P, T);
         if (T.flags === 0) return;
-      } else { cycles += 19; T.wait = CLOCK[cmd - 0x80]; }
-      cycles += 13;
+        cost(COST.DISPATCH_GOES_ON);
+      } else { cost(COST.WAIT); T.wait = CLOCK[cmd - 0x80]; }
+      cost(COST.NEXT_BYTE);
     }
     T.wait--;
-    cycles += 6;
+    cost(COST.WAITS);
     // the vibrato/tremolo LFO: a triangle, stepped on ticks only
-    if (!T.lfoSpeed) cycles += 6;
-    else if (!T.modDepth) cycles += 6;
+    if (!T.lfoSpeed) cost(COST.NO_LFO);
+    else if (!T.modDepth) cost(COST.NO_DEPTH);
     if (T.lfoSpeed && T.modDepth) {
-      cycles += 12;
-      if (T.lfoDelayCounter) { T.lfoDelayCounter--; cycles += 14; return; }
-      cycles += 50;
+      cost(COST.LFO);
+      if (T.lfoDelayCounter) { T.lfoDelayCounter--; cost(COST.LFO_DELAY); return; }
+      cost(COST.LFO_STEP);
       const sum = T.lfoSpeedCounter + T.lfoSpeed;
       T.lfoSpeedCounter = u8(sum);
       // the falling half uses the sum before it wraps, as the original does
-      const v = u8(sum - 64) & 0x80 ? s8(sum) : 128 - sum;
+      const falling = u8(sum - 64) & 0x80, v = falling ? s8(sum) : 128 - sum;
+      cost(falling ? COST.LFO_FALLING : COST.LFO_RISING);
+      // the multiply's wait, by the triangle's value, signed
+      cost(COST.LFO_MUL1 + mulWait(v) - 1);
       const m = (T.modDepth * v) >> 6;
       if (u8(m) !== u8(T.modCalc)) {
+        cost(T.modType === 0 ? COST.LFO_PITCH : COST.LFO_VOLUME);
         T.modCalc = s8(m);
         T.flags |= T.modType === 0 ? PITCHG : VOLCHG;
       }
@@ -466,71 +576,87 @@ export function createM4A(rom, layout, io) {
   }
 
   function fadeOutBody(P) {
-    if (!P.fadeInterval) return;
-    if (--P.fadeCounter !== 0) return;
+    if (!P.fadeInterval) { cost(COST.FADE_NONE); return; }
+    if (--P.fadeCounter !== 0) { cost(COST.FADE_WAIT); return; }
     P.fadeCounter = P.fadeInterval;
     if (P.fadeOV & 2) {
+      cost(COST.FADE_IN);
       P.fadeOV += 16;
-      if (P.fadeOV >= 256) { P.fadeOV = 256; P.fadeInterval = 0; }
+      if (P.fadeOV >= 256) { cost(COST.FADE_IN_DONE); P.fadeOV = 256; P.fadeInterval = 0; } else cost(COST.FADE_IN_GOES_ON);
     } else {
+      cost(COST.FADE_OUT);
       P.fadeOV -= 16;
       if (P.fadeOV <= 0) {
-        for (const T of P.tracks) { trackStop(T); if (!(P.fadeOV & 1)) T.flags = 0; }
+        cost(COST.FADE_OUT_DONE);
+        for (const T of P.tracks) {
+          cost(COST.FADE_STOP_TRACK);
+          trackStop(T);
+          if (!(P.fadeOV & 1)) { cost(COST.FADE_CLEAR_TRACK); T.flags = 0; }
+        }
+        cost(P.fadeOV & 1 ? COST.FADE_PAUSE_KEEPS : COST.FADE_PAUSE);
         P.status = P.fadeOV & 1 ? (P.status | PAUSE) >>> 0 : PAUSE;
         P.fadeInterval = 0;
         return;
       }
     }
-    for (const T of P.tracks) if (T.flags & EXIST) { T.volPublic = P.fadeOV >> 2; T.flags |= VOLCHG; }
+    P.tracks.forEach((T, i) => {
+      cost(COST.FADE_TRACK);
+      if (i < P.tracks.length - 1) cost(COST.FADE_TRACK_NEXT);
+      if (T.flags & EXIST) { cost(COST.FADE_TRACK_VOLUME); T.volPublic = P.fadeOV >> 2; T.flags |= VOLCHG; }
+    });
   }
 
   function playerMain(P) {
-    if (P.status & PAUSE) { cycles += 87; return; }
-    cycles += 144;
+    if (P.status & PAUSE) { cost(COST.PLAYER_PAUSED); return; }
+    cost(COST.PLAYER);
     fadeOutBody(P);
-    if (P.status & PAUSE) return;
+    if (P.status & PAUSE) { cost(COST.STOPPED_BY_FADE); return; }
+    cost(COST.RUNS);
     let t = P.tempoC + P.tempoI;
     for (;;) {
       P.tempoC = t & 0xFFFF;
-      cycles += 3;
+      cost(COST.TEMPO);
       if (t < 150) break;
-      cycles += 13;
+      cost(COST.TICK);
       let mask = 0;
       P.tracks.forEach((T, i) => {
-        if (T.flags & EXIST) { mask |= 1 << i; tickTrack(P, T); cycles += 5; } else cycles += 25;
-        cycles += i < P.tracks.length - 1 ? 28 : 20;
+        if (T.flags & EXIST) { mask |= 1 << i; tickTrack(P, T); cost(COST.TRACK_TICKED); } else cost(COST.TRACK_ABSENT);
+        cost(i < P.tracks.length - 1 ? COST.TRACK_NEXT : COST.TRACK_LAST);
       });
-      cycles += 15;
+      cost(COST.TICK_DONE);
       P.clock = (P.clock + 1) >>> 0;
-      if (!mask) { P.status = PAUSE; return; }
+      if (!mask) { cost(COST.TICK_ENDS_ALL); P.status = PAUSE; return; }
+      cost(COST.TICK_GOES_ON);
       P.status = mask;
       t = P.tempoC - 150;
     }
-    cycles += 25;
-    for (const T of P.tracks) {
-      if (!(T.flags & EXIST)) { cycles += 1; continue; }
-      if (!(T.flags & 0x0F)) { cycles += 70; continue; }
-      cycles += 49;
+    cost(COST.VP_TRACKS);
+    P.tracks.forEach((T, i) => {
+      cost(i < P.tracks.length - 1 ? COST.VP_TRACK_NEXT : COST.VP_TRACK_LAST);
+      if (!(T.flags & EXIST)) { cost(COST.VP_ABSENT); return; }
+      if (!(T.flags & 0x0F)) { cost(COST.VP_UNCHANGED); return; }
+      cost(COST.VP_CHANGED);
+      cost(T.chan ? COST.VP_CHANNELS : COST.VP_NO_CHANNELS);
       trkVolPitSet(T);
       for (let C = T.chan; C; C = C.next) {
-        cycles += C.next ? 6 : 0;
-        if (!(C.status & ON)) { clearChain(C); cycles += 62; continue; }
+        cost(C.next ? COST.VP_CHANNEL_HAS_NEXT : COST.VP_CHANNEL_LAST);
+        if (!(C.status & ON)) { cost(COST.CHAIN_CALL); clearChain(C); cost(COST.VP_CHANNEL_GONE); continue; }
         const cgb = C.type & 7;
-        cycles += 36;
+        cost(COST.VP_CHANNEL);
         if (T.flags & VOLCHG) {
           chnVolSet(C, T);
-          cycles += 34;
-          if (cgb) C.cgbStatus |= MO_VOL;
-        } else cycles += 6;
+          cost(COST.VP_VOLUME);
+          if (cgb) { cost(COST.VP_VOLUME_CGB); C.cgbStatus |= MO_VOL; }
+        } else cost(COST.VP_NO_VOLUME);
         if (T.flags & PITCHG) {
           const key = Math.max(0, C.key + T.keyShiftCalc);
-          cycles += 270;   // with 0x08048f0c's two calls of umul3232H32, in ARM from the cartridge
-          if (cgb) { C.freq = midiKeyToCgbFreq(cgb, key, T.pitchCalc); C.cgbStatus |= MO_PIT; }
+          cost(COST.VP_PITCH);   // in Sonic Battle with 0x08048f0c's two calls of umul3232H32, in ARM from the cartridge
+          if (cgb) { cost(COST.CALL); C.freq = midiKeyToCgbFreq(cgb, key, T.pitchCalc); C.cgbStatus |= MO_PIT; }
           else C.freq = midiKeyToFreq(C.wav, key, T.pitchCalc);
         }
       }
       T.flags &= 0xF0;
-    }
+    });
   }
 
   // ---- PSG channels ----
@@ -539,9 +665,9 @@ export function createM4A(rom, layout, io) {
   function cgbModVol(C) {
     const r = C.rightVol, l = C.leftVol;
     let pan, goal;
-    if (r >= l && r >> 1 >= l) { pan = 0x0F; goal = Math.min(15, (r + l) >> 4); }
-    else if (l > r && l >> 1 >= r) { pan = 0xF0; goal = Math.min(15, (r + l) >> 4); }
-    else { pan = 0xFF; goal = (r + l) >> 4; }
+    if (r >= l && r >> 1 >= l) { cost(COST.CGB_PAN_RIGHT); pan = 0x0F; goal = Math.min(15, (r + l) >> 4); }
+    else if (l > r && l >> 1 >= r) { cost(COST.CGB_PAN_LEFT); pan = 0xF0; goal = Math.min(15, (r + l) >> 4); }
+    else { cost(COST.CGB_PAN_BOTH); pan = 0xFF; goal = (r + l) >> 4; }
     C.envelopeGoal = goal;
     C.sustainGoal = (goal * C.sustain + 15) >> 4;
     C.pan = pan & C.panMask;
@@ -549,146 +675,184 @@ export function createM4A(rom, layout, io) {
 
   // the software envelope follows the hardware one, writing the registers and retriggering at each phase change
   function cgbSound() {
-    cycles += info.c15 ? 253 : 251;
+    cost(COST.CGB);
+    if (info.c15) cost(COST.CGB_COUNTING);
     if (muted.music) io.muted = cgbChans.reduce((m, C, i) => m | (C.music ? 1 << i : 0), 0);
     info.c15 = info.c15 ? info.c15 - 1 : 14;
     for (let ch = 1; ch <= 4; ch++) {
       const C = cgbChans[ch - 1];
-      if (!(C.status & ON)) continue;
+      if (!(C.status & ON)) { cost(COST.CGB_SILENT); continue; }
       const [nr0, nr1, nr2, nr3, nr4] = CGB_REGS[ch - 1];
-      let c15 = info.c15, dir = io.read(nr2), at;
-      cycles += ch === 3 ? 205 : 199;
+      let c15 = info.c15, dir = io.read(nr2), at, stored = false;   // stored: the step's counter came in already set
+      cost(COST.CGB_ON1 + ch - 1);
       if (C.status & START) {
-        if (C.status & STOP) at = 'off';
+        if (C.status & STOP) { cost(COST.CGB_START_STOPPED); at = 'off'; }
         else {
           C.status = 3; C.cgbStatus = MO_PIT | MO_VOL;
-          cycles += ch === 3 ? 78 : 29;
+          cost(ch === 3 ? COST.CGB_START_WAVE : COST.CGB_START);
           cgbModVol(C);
           if (ch === 3) {
             if (C.wav !== C.current) {
+              cost(COST.CGB_WAVE_NEW);
               waveAt();
-              io.write(NR30, 0x40);
-              for (let i = 0; i < 16; i++) io.write(WAVE_RAM + i, r8(C.wav + i));
+              ioWrite(NR30, 0x40);
+              for (let i = 0; i < 16; i++) ioWrite(WAVE_RAM + i, r8(C.wav + i));
               C.current = C.wav;
-            }
-            waveAt(); io.write(NR30, 0); io.write(nr1, C.length);
+            } else cost(COST.CGB_WAVE_SAME);
+            waveAt(); ioWrite(NR30, 0); ioWrite(nr1, C.length);
+            cost(C.length ? COST.CGB_LENGTH_WAVE : COST.CGB_NO_LENGTH_WAVE);
             C.nrx4 = C.length ? 0xC0 : 0x80;
           } else {
-            if (ch === 1) io.write(nr0, C.sweep);
-            if (ch === 4) { io.write(nr1, C.length); io.write(nr3, u8(C.wav << 3)); }
-            else io.write(nr1, u8((C.wav << 6) + C.length));
+            cost(ch === 1 ? COST.CGB_START1 : ch === 2 ? COST.CGB_START2 : COST.CGB_START4);
+            if (ch === 1) ioWrite(nr0, C.sweep);
+            if (ch === 4) { ioWrite(nr1, C.length); ioWrite(nr3, u8(C.wav << 3)); }
+            else ioWrite(nr1, u8((C.wav << 6) + C.length));
             dir = C.attack + 8;
+            cost(C.length ? COST.CGB_LENGTH : COST.CGB_NO_LENGTH);
             C.nrx4 = C.length ? 0x40 : 0x00;
           }
           C.envelopeCtr = C.attack;
-          if (s8(C.attack)) { C.envelopeVol = 0; at = 'stepDone'; } else at = 'decayStart';
+          if (s8(C.attack)) { cost(COST.CGB_ATTACK); C.envelopeVol = 0; at = 'stepDone'; }
+          else { cost(COST.CGB_NO_ATTACK); at = 'decayStart'; }
         }
       } else if ((C.status & IEC) || (layout.voicesEndOnChip && !(io.read(SOUNDCNT_X) >> (ch - 1) & 1))) {
         // an echo counting down, or, in a game whose library checks, a voice the chip's length counter has ended
-        cycles += 5;
+        cost(COST.CGB_ECHO);
         C.echoLen = u8(C.echoLen - 1);
         at = s8(C.echoLen) <= 0 ? 'off' : 'done';
+        cost(at === 'off' ? COST.CGB_ECHO_ENDS : COST.CGB_ECHO_GOES_ON);
       } else if ((C.status & STOP) && (C.status & ENV)) {
+        cost(COST.CGB_RELEASE);
         C.status &= ~ENV; C.envelopeCtr = C.release;
-        if (s8(C.release)) { C.cgbStatus |= MO_VOL; if (ch !== 3) dir = C.release; at = 'stepDone'; }
-        else at = 'echo';
-      } else at = 'step';
+        if (s8(C.release)) {
+          cost(COST.CGB_RELEASE_STEPS);
+          C.cgbStatus |= MO_VOL;
+          if (ch !== 3) dir = C.release; else cost(COST.CGB_RELEASE_WAVE);
+          at = 'stepDone';
+        } else { cost(COST.CGB_RELEASE_NONE); at = 'echo'; }
+      } else { cost(C.status & STOP ? COST.CGB_STOPPED_NO_ENVELOPE : COST.CGB_PLAYING); at = 'step'; }
 
       // the envelope steps; every 15th frame it steps twice to keep up with the hardware's 64 Hz
       while (at !== 'done' && at !== 'off') {
         switch (at) {
           case 'step':
-            at = 'stepDone';
-            if (C.envelopeCtr !== 0) { cycles -= 62; break; }
-            if (ch === 3) C.cgbStatus |= MO_VOL;
+            at = 'stepDone'; stored = false;
+            if (C.envelopeCtr !== 0) { cost(COST.ENV_WAIT); break; }
+            cost(COST.ENV_STEP);
+            if (ch === 3) { cost(COST.ENV_STEP_WAVE); C.cgbStatus |= MO_VOL; }
             cgbModVol(C);
             switch (C.status & ENV) {
               case 0:
-                cycles += 100;
+                cost(COST.ENV_RELEASE);
                 C.envelopeVol = u8(C.envelopeVol - 1);
-                if (s8(C.envelopeVol) <= 0) at = 'echo'; else C.envelopeCtr = C.release;
+                if (s8(C.envelopeVol) <= 0) { cost(COST.ENV_RELEASE_ENDS); at = 'echo'; }
+                else { cost(COST.ENV_RELEASE_ON); C.envelopeCtr = C.release; stored = true; }
                 break;
-              case 1: cycles += 98; at = 'sustain'; break;
+              case 1: cost(COST.ENV_SUSTAIN); cost(COST.ENV_SUSTAIN_STEP); at = 'sustain'; break;
               case 2:
-                cycles += 116;
+                cost(COST.ENV_DECAY); cost(COST.ENV_DECAY_STEP);
                 C.envelopeVol = u8(C.envelopeVol - 1);
-                if (s8(C.envelopeVol) <= s8(C.sustainGoal)) at = 'sustainStart'; else C.envelopeCtr = C.decay;
+                if (s8(C.envelopeVol) <= s8(C.sustainGoal)) { cost(COST.ENV_DECAY_ENDS); at = 'sustainStart'; }
+                else { cost(COST.ENV_DECAY_ON); C.envelopeCtr = C.decay; stored = true; }
                 break;
               default:
-                cycles += 116;
+                cost(COST.ENV_ATTACK); cost(COST.ENV_ATTACK_STEP);
                 C.envelopeVol = u8(C.envelopeVol + 1);
-                if (C.envelopeVol >= C.envelopeGoal) at = 'decayStart'; else C.envelopeCtr = C.attack;
+                if (C.envelopeVol >= C.envelopeGoal) { cost(COST.ENV_ATTACK_ENDS); at = 'decayStart'; }
+                else { cost(COST.ENV_ATTACK_ON); C.envelopeCtr = C.attack; stored = true; }
             }
             break;
           case 'decayStart':
-            cycles += 107;
+            cost(COST.ENV_DECAY_START);
             C.status--; C.envelopeCtr = C.decay;
             if (C.decay) {
+              cost(COST.ENV_DECAY_STARTS);
               C.cgbStatus |= MO_VOL; C.envelopeVol = C.envelopeGoal;
-              if (ch !== 3) dir = C.decay;
-              at = 'stepDone';
-            } else at = 'sustainStart';
+              if (ch !== 3) dir = C.decay; else cost(COST.ENV_DECAY_WAVE);
+              at = 'stepDone'; stored = false;
+            } else { cost(COST.ENV_DECAY_NONE); at = 'sustainStart'; }
             break;
           case 'sustainStart':
-            cycles += 50;
-            if (C.sustain === 0) { C.status &= ~ENV; at = 'echo'; break; }
+            cost(COST.ENV_SUSTAIN_START);
+            if (C.sustain === 0) { cost(COST.ENV_SUSTAIN_NONE); C.status &= ~ENV; at = 'echo'; break; }
+            cost(COST.ENV_SUSTAIN_STARTS);
             C.status--; C.cgbStatus |= MO_VOL;
-            if (ch !== 3) dir = 0x08;
+            if (ch !== 3) dir = 0x08; else cost(COST.ENV_SUSTAIN_WAVE);
             at = 'sustain';
             break;
           case 'sustain':
-            cycles -= 16;
+            cost(COST.ENV_SUSTAIN_SET); cost(COST.ENV_SUSTAIN_SET_DONE);
             C.envelopeVol = C.sustainGoal; C.envelopeCtr = 7;
-            at = 'stepDone';
+            at = 'stepDone'; stored = true;
             break;
           case 'echo':
-            cycles += 57;
+            cost(COST.ENV_ECHO);
             C.envelopeVol = (C.envelopeGoal * C.echoVol + 0xFF) >> 8;
-            if (!C.envelopeVol) { at = 'off'; break; }
+            if (!C.envelopeVol) { cost(COST.ENV_ECHO_OFF); at = 'off'; break; }
+            cost(COST.ENV_ECHO_ON);
             C.status |= IEC; C.cgbStatus |= MO_VOL;
-            if (ch !== 3) dir = 0x08;
+            if (ch !== 3) dir = 0x08; else cost(COST.ENV_ECHO_WAVE);
             at = 'done';
             break;
           case 'stepDone':
-            cycles += 98;
+            cost(COST.ENV_STEP_DONE);
+            cost(stored ? COST.ENV_COUNTER_SET : COST.ENV_COUNTER_KEPT);
             C.envelopeCtr = u8(C.envelopeCtr - 1);
-            if (c15 === 0) { c15 = -1; at = 'step'; } else at = 'done';
+            if (c15 === 0) { cost(COST.ENV_AGAIN); c15 = -1; at = 'step'; } else { cost(COST.ENV_DONE); at = 'done'; }
             break;
         }
       }
-      if (at === 'off') { cycles += 62; cgbOscOff(ch); C.status = 0; C.cgbStatus = 0; continue; }
+      if (at === 'off') {
+        cost(COST.CGB_OFF); cost(COST.CGB_OFF1 + ch - 1);
+        cgbOscOff(ch); C.status = 0; C.cgbStatus = 0;
+        continue;
+      }
 
       if (C.cgbStatus & MO_PIT) {
-        cycles += ch === 3 ? 79 : 123;
+        cost(ch === 3 ? COST.CGB_PITCH_WAVE : COST.CGB_PITCH);
+        cost(COST.CGB_PITCH1 + ch - 1);
         // "fixed" voices round the frequency to what the PWM rate can play
         if (ch < 4 && (C.type & 0x08)) {
+          cost(COST.CGB_FIXED);
           const bias = io.read(SOUNDBIAS_H);
-          if (bias < 0x40) C.freq = (C.freq + 2) & 0x7FC;
-          else if (bias < 0x80) C.freq = (C.freq + 1) & 0x7FE;
+          if (bias < 0x40) { cost(COST.CGB_FIXED_FINE); C.freq = (C.freq + 2) & 0x7FC; }
+          else if (bias < 0x80) { cost(COST.CGB_FIXED_HALF); C.freq = (C.freq + 1) & 0x7FE; }
+          else cost(COST.CGB_FIXED_NONE);
         }
         if (ch === 3) waveAt();
-        io.write(nr3, ch === 4 ? (io.read(nr3) & 0x08) | C.freq : u8(C.freq));
+        ioWrite(nr3, ch === 4 ? (io.read(nr3) & 0x08) | C.freq : u8(C.freq));
         C.nrx4 = u8((C.nrx4 & 0xC0) + (C.freq >> 8));
-        io.write(nr4, C.nrx4);
-      }
+        // the high byte goes out an instruction block after the low one
+        cost(ch === 4 ? COST.CGB_PITCH_HIGH4 : COST.CGB_PITCH_HIGH);
+        ioWrite(nr4, C.nrx4);
+        cost(COST.CGB_PITCH_DONE1 + ch - 1);
+      } else cost(COST.CGB_NO_PITCH);
       if (C.cgbStatus & MO_VOL) {
-        if (ch === 3) cycles += 69;
-        io.write(NR51, (io.read(NR51) & ~C.panMask) | C.pan);
+        cost(COST.CGB_VOLUME1 + ch - 1);
+        if (ch === 3) cost(COST.CGB_VOLUME_WAVE);
+        ioWrite(NR51, (io.read(NR51) & ~C.panMask) | C.pan);
         if (ch === 3) {
           waveAt();
-          io.write(NR32, CGB3_VOL[C.envelopeVol]);
-          if (C.nrx4 & 0x80) { io.write(NR30, 0x80); io.write(NR34, C.nrx4); C.nrx4 &= 0x7F; }
+          ioWrite(NR32, CGB3_VOL[C.envelopeVol]);
+          cost(COST.CGB_WAVE_VOLUME);
+          if (C.nrx4 & 0x80) { cost(COST.CGB_WAVE_RESTART); ioWrite(NR30, 0x80); ioWrite(NR34, C.nrx4); C.nrx4 &= 0x7F; }
         } else {
-          io.write(nr2, u8((dir & 0x0F) + (C.envelopeVol << 4)));
-          io.write(nr4, C.nrx4 | 0x80);
-          if (ch === 1 && !(io.read(NR10) & 0x08)) io.write(nr4, C.nrx4 | 0x80);
+          ioWrite(nr2, u8((dir & 0x0F) + (C.envelopeVol << 4)));
+          ioWrite(nr4, C.nrx4 | 0x80);
+          if (ch === 1) {
+            cost(COST.CGB_SWEEP_CHECK);
+            if (!(io.read(NR10) & 0x08)) { cost(COST.CGB_SWEEP_RESTART); ioWrite(nr4, C.nrx4 | 0x80); }
+          }
         }
-      }
+      } else cost(COST.CGB_NO_VOLUME);
+      cost(COST.CGB_DONE1 + ch - 1);
       C.cgbStatus = 0;
     }
   }
 
   // ---- DirectSound mixer ----
+
+  // The mixer's cycles are counted as Sonic Battle's, in every version: only a game that reads them, as it does, needs them.
 
   // one channel's envelope for this frame; false when the channel stops before it is mixed
   function envelope(C) {
@@ -873,7 +1037,9 @@ export function createM4A(rom, layout, io) {
       info.dmaCounter = s8(dc) > 0 ? dc : FRAMES_PER_DMA;
       // SoundMain's way in, to the first player, and its way from the PSG to the channels and out, and 0x08049744's
       // restarting the DMA in the V-blank before it, on the frames it takes
-      cycles = 344 + (s8(dc) > 0 ? 0 : 110);
+      cycles = 0;
+      cost(COST.FRAME);
+      if (s8(dc) <= 0) cost(COST.FRAME_DMA);
       inFrame = true;
       for (const P of players) {
         const before = cycles;
@@ -882,6 +1048,7 @@ export function createM4A(rom, layout, io) {
       }
       cgbSound();
       inFrame = false;
+      hblank = late = 0;
       callAt = FRAME_CYCLES; earlyCost = 0;
       return mix();
     },
@@ -914,6 +1081,16 @@ export function createM4A(rom, layout, io) {
     },
     /** With `soundMainAt`, the cycle the game's next calls come at, counted from the start of the chip's frame */
     waveAt(at) { callAt = at; },
+    /** The place in the frame SoundMain starts at, from which its writes to the squares land as its work reaches them */
+    psgAt(at) { psgAt = at; },
+    /** The sound chip keeps its time from power-on, `powerOnBefore` cycles before its first frame (apu.js exactFrom) */
+    chipClock(powerOnBefore) { io.exactFrom(powerOnBefore); },
+    /** Where the FIFO's refill DMA lands in the frame and what it takes, and where the H-blank DMA's first line does */
+    dmaAt(at, cost, hblankLine) { fifoAt = at; fifoCost = cost; hblankAt = hblankLine; },
+    /** The next frame's H-blank DMA, in cycles a line, while the game has it on */
+    hblankDma(perLine) { hblank = perLine; },
+    /** How late the next frame's SoundMain starts, as the game's own work runs past its place */
+    late(by) { late = by; },
     /** Song n, started next, comes before SoundMain in the original's frame, which is too late here: this frame's SoundMain
      *  takes what the song's first frame costs off its wave writes, and the last frame's, which it belongs to, adds it. */
     beforeSoundMain(n) { earlyPlayer = song(n).player; },

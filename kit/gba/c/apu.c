@@ -9,6 +9,7 @@
 
 #define WAVE_START 24       // as mGBA has a wave note's first step, past its period
 #define SEQ_PERIOD 32768    // the frame sequencer steps at 512 Hz
+#define OFF_PERIOD 32768    // a square's step at pitch 0, where the sound switched off leaves it
 
 static const uint8_t DUTY[4][8] = { { 0, 0, 0, 0, 0, 0, 0, 1 }, { 1, 0, 0, 0, 0, 0, 0, 1 }, { 1, 0, 0, 0, 0, 1, 1, 1 }, { 0, 1, 1, 1, 1, 1, 1, 0 } };
 
@@ -39,6 +40,35 @@ static int noise_period(const Apu *a) {
 }
 static int length_on(const Apu *a, int nrx4) { return (REG(nrx4) & 0x40) != 0; }
 
+// ---- the console's own count of the squares (apu_exact) ----
+// mGBA moves a square on lazily: at each write to one of its registers and, while it plays with an envelope that can
+// still sound, at every sample (each 256 cycles from power-on) and frame sequencer step. Between those its count and
+// the kit's agree, as a square counts its time against the pitch it has. They part only where the pitch changes with no
+// catch-up, which switching the sound off does: it zeroes the pitch, and the time since the square's last catch-up is
+// then counted at pitch 0. So the exact mode keeps mGBA's count beside the kit's and takes it at the switch-off.
+
+static void catch_up(Apu *a, int i, long long at) {
+  long long period = sq_period(&a->sq[i]), since = at - a->sqLast[i];
+  if (since >= period) { long long n = since / period; a->sqIndex[i] += n; a->sqLast[i] += n * period; }
+}
+// mGBA's GBAudioRun moves on a square that plays with an envelope that isn't silent for good (dead != 2)
+static int advancing(const Apu *a, int i) {
+  const ApuSquare *c = &a->sq[i];
+  return c->on && !(c->env.vol == 0 && (!c->env.up || !c->env.period));
+}
+
+void apu_exact(Apu *a, int powerOnBefore) {
+  a->exact = 1; a->powerOn = powerOnBefore;
+  long long sincePowerOn = a->clock + powerOnBefore;
+  // since power-on the squares have stood at step 0 with the pitch at 0, the chip's own state until now
+  for (int i = 0; i < 2; i++) {
+    a->sqLast[i] = -(long long)powerOnBefore; a->sqIndex[i] = 0;
+    a->sq[i].pos = 0; a->sq[i].since = (int)sincePowerOn;
+  }
+  // and the frame sequencer has stepped every SEQ_PERIOD from power-on
+  a->seqTimer = SEQ_PERIOD - (int)(sincePowerOn % SEQ_PERIOD);
+}
+
 static int sweep_next(Apu *a) {
   int v = REG(0x60), d = a->sweepShadow >> (v & 7);
   int f = v & 8 ? a->sweepShadow - d : a->sweepShadow + d;
@@ -61,7 +91,7 @@ static void trigger(Apu *a, int ch) {
   } else if (ch == 2) {
     a->ch3.on = (REG(0x70) & 0x80) != 0;
     if (!a->ch3.len) a->ch3.len = 256;
-    a->ch3.timer = wave_period(a) + (a->hasAt ? WAVE_START : 0);
+    a->ch3.timer = wave_period(a) + (a->hasAt || a->exact ? WAVE_START : 0);
   } else {
     a->ch4.on = (REG(0x79) & 0xF8) != 0;
     if (!a->ch4.len) a->ch4.len = 64;
@@ -80,6 +110,21 @@ static void write_now(Apu *a, int r, int v) {
   }
   if (r < 0x60 || r >= 0xB0) return;
   if (r < 0x82 && !(REG(0x84) & 0x80)) return;   // the PSG registers ignore writes while the PSG is off
+  if (a->exact && (REG(0x84) & 0x80)) {
+    // a write to a square's register catches it up first, and one to the master volume or sides catches up those that
+    // play; switching the sound off leaves each where its last catch-up left it
+    if (r == 0x60 || r == 0x62 || r == 0x63 || r == 0x64 || r == 0x65) catch_up(a, 0, a->clock);
+    if (r == 0x68 || r == 0x69 || r == 0x6C || r == 0x6D) catch_up(a, 1, a->clock);
+    if (r == 0x80 || r == 0x81) for (int i = 0; i < 2; i++) if (advancing(a, i)) catch_up(a, i, a->clock);
+    // counted at pitch 0, which the switch-off leaves, so the span stays small however long the square went uncaught
+    if (r == 0x84 && !(v & 0x80))
+      for (int i = 0; i < 2; i++) {
+        long long since = a->clock - a->sqLast[i];
+        a->sq[i].pos = (int)((a->sqIndex[i] + since / OFF_PERIOD) & 7); a->sq[i].since = (int)(since % OFF_PERIOD);
+      }
+  }
+  // switched on, the frame sequencer starts its steps again (mGBA's frame 7, then 0 at the next)
+  if (r == 0x84 && a->exact && (v & 0x80) && !(REG(0x84) & 0x80)) a->seqStep = 0;
   a->regs[r - 0x60] = (uint8_t)v;
   switch (r) {
     case 0x62: case 0x68: a->sq[r == 0x62 ? 0 : 1].len = 64 - (v & 63); break;
@@ -94,8 +139,15 @@ static void write_now(Apu *a, int r, int v) {
     }
     case 0x70: if (!(v & 0x80)) a->ch3.on = 0; break;
     case 0x72: a->ch3.len = 256 - v; break;
+    // mGBA's NR32 reloads the wave's sample from the front of the first bank, playing or not
+    case 0x73: if (a->exact) a->ch3.sample = a->wave[0][a->rot[0]]; break;
     case 0x74: a->ch3.freq = (a->ch3.freq & 0x700) | v; break;
-    case 0x75: a->ch3.freq = (a->ch3.freq & 0xFF) | (v & 7) << 8; if (v & 0x80) trigger(a, 2); break;
+    case 0x75:
+      a->ch3.freq = (a->ch3.freq & 0xFF) | (v & 7) << 8;
+      if (v & 0x80) trigger(a, 2);
+      // mGBA starts the wave's next step over at any write to NR34 while it plays, restart or not
+      else if (a->exact && a->ch3.on) a->ch3.timer = wave_period(a) + WAVE_START;
+      break;
     case 0x78: a->ch4.len = 64 - (v & 63); break;
     case 0x79: if (!(v & 0xF8)) a->ch4.on = 0; break;
     case 0x7D: if (v & 0x80) trigger(a, 3); break;
@@ -103,6 +155,7 @@ static void write_now(Apu *a, int r, int v) {
       if (!(v & 0x80)) {
         __builtin_memset(a->regs, 0, 0x22);
         a->sq[0].on = a->sq[1].on = a->ch3.on = a->ch4.on = 0;
+        if (a->exact) a->sq[0].freq = a->sq[1].freq = 0;   // NR13, NR14, NR23 and NR24 written 0, as mGBA does
       }
       break;
   }
@@ -181,8 +234,20 @@ static void step_wave(Apu *a) {
   a->rot[0] = (a->rot[0] + 1) & 31; a->rot[1] = (a->rot[1] + 1) & 31;
 }
 
-static void run_chip(Apu *a, int cycles) {
-  if (!(REG(0x84) & 0x80)) return;
+static void step_chip(Apu *a, int cycles) {
+  if (!(REG(0x84) & 0x80)) {
+    if (!a->exact) return;
+    // the squares count the time while the sound is off and catch it up at the pitch they have once it's on, and the
+    // frame sequencer keeps its time, stepping nothing (mGBA)
+    for (int i = 0; i < 2; i++) {
+      ApuSquare *c = &a->sq[i];
+      c->since += cycles;
+      if (c->since >= OFF_PERIOD && !c->freq) { c->pos = (c->pos + c->since / OFF_PERIOD) & 7; c->since %= OFF_PERIOD; }
+    }
+    a->seqTimer -= cycles;
+    while (a->seqTimer <= 0) a->seqTimer += SEQ_PERIOD;
+    return;
+  }
   for (int i = 0; i < 2; i++) {
     ApuSquare *c = &a->sq[i];
     c->since += cycles;
@@ -211,6 +276,28 @@ static void run_chip(Apu *a, int cycles) {
   }
   a->seqTimer -= cycles;
   while (a->seqTimer <= 0) { a->seqTimer += SEQ_PERIOD; frame_sequencer(a); }
+}
+
+// mGBA mixes each channel's last sample whether it plays or not: a channel that stops leaves its level where it was
+static void hold_samples(Apu *a) {
+  for (int i = 0; i < 2; i++) if (a->sq[i].on) a->held[i] = DUTY[REG(i ? 0x68 : 0x62) >> 6][a->sq[i].pos] * a->sq[i].env.vol;
+  if (a->ch4.on) a->held[3] = a->ch4.out * a->ch4.env.vol;
+}
+
+// in exact mode the chip runs up to each frame sequencer step, where a sweep changes the pitch, and mGBA's count catches
+// up the squares that play at the last sample before each stretch's end
+static void run_chip(Apu *a, int cycles) {
+  if (!a->exact) { step_chip(a, cycles); a->clock += cycles; return; }
+  while (cycles > 0) {
+    int step = cycles < a->seqTimer ? cycles : a->seqTimer;
+    long long end = a->clock + step, sample = end - (end + a->powerOn) % APU_TICK;
+    if ((REG(0x84) & 0x80) && sample > a->clock)
+      for (int i = 0; i < 2; i++) if (advancing(a, i)) catch_up(a, i, sample);
+    step_chip(a, step);
+    hold_samples(a);
+    a->clock = end;
+    cycles -= step;
+  }
 }
 
 // advances every oscillator by `cycles`; the squares' duty steps run even while they are silent. As in mGBA, a square
@@ -249,6 +336,13 @@ void apu_mix(const Apu *a, int fifoA, int fifoB, int out[2]) {
   int s2 = on && a->sq[1].on ? DUTY[REG(0x68) >> 6][a->sq[1].pos] * a->sq[1].env.vol : 0;
   int s3 = on && a->ch3.on ? wave_sample(a) : 0;
   int s4 = on && a->ch4.on ? a->ch4.out * a->ch4.env.vol : 0;
+  // in exact mode a stopped channel keeps its last sample, and the wave's follows its volume register as mGBA's does
+  if (on && a->exact) {
+    if (!a->sq[0].on) s1 = a->held[0];
+    if (!a->sq[1].on) s2 = a->held[1];
+    if (!a->ch3.on) s3 = wave_sample(a);
+    if (!a->ch4.on) s4 = a->held[3];
+  }
   int r = (nr51 & 1 ? s1 : 0) + (nr51 & 2 ? s2 : 0) + (nr51 & 4 ? s3 : 0) + (nr51 & 8 ? s4 : 0);
   int l = (nr51 & 0x10 ? s1 : 0) + (nr51 & 0x20 ? s2 : 0) + (nr51 & 0x40 ? s3 : 0) + (nr51 & 0x80 ? s4 : 0);
   int nr50 = REG(0x80), cnt = REG(0x82) | REG(0x83) << 8, shift = 4 - (cnt & 3);

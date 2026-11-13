@@ -8,6 +8,8 @@
 import { createSprite, updateSprite, displaySprite } from '../gba/sprite.js';
 import { KEY } from '../gba/engine.js';
 import { SONG } from '../sound/songs.js';
+import { LOAD } from '../sound/timing.js';
+import { LEVELS } from '../rom/levels.js';
 import { createUiTask, uiGfxStackInit, loadUiGfx, createFade, fadeStep } from './ui.js';
 import { createCharacterSelect } from './charselect.js';
 import { createCourseSelect } from './courseselect.js';
@@ -124,7 +126,12 @@ function show(lobby) {
 
 // the choices (gUnknown_0868B6C4): the act again, the character select, the course select, and the title screen
 const CHOICE_SCREENS = [
-  ctx => ctx.play(ctx.level),
+  ctx => {
+    ctx.play(ctx.level);
+    ctx.engine.soundLate(LOAD.ACT_TIME_ATTACK, ctx.level, ctx.character);
+    ctx.engine.playStageMusic(LEVELS[ctx.level].music);
+    ctx.musicStarted = true;
+  },
   ctx => createCharacterSelect(ctx, ctx.character),
   ctx => createCourseSelect(ctx),
   ctx => ctx.title(true),

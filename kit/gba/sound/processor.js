@@ -33,6 +33,7 @@ export class GbaSoundProcessor extends AudioWorkletProcessor {
       });
     } else if (data.type === 'call') this.synths[data.gba ?? 0]?.call(data.name, ...data.args);
     else if (data.type === 'reset') for (const synth of this.synths) synth.restart();
+    else if (data.type === 'skip') this.synths[data.gba ?? 0]?.skipFrames(data.frames);
     else if (data.type === 'gain') this.gain = this.raw ? 1 : data.value;
     else if (data.type === 'raw') { this.raw = true; this.gain = 1; }
   }

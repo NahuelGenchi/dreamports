@@ -113,12 +113,19 @@ export function madeUpSongs(random, { songs = 12 } = {}) {
 const OPS = {
   songStart: 3, songStartOrChange: 4, songStartOrContinue: 5, songStop: 6, playerStart: 7, playerStop: 8, playerContinue: 9,
   immInit: 10, pitchControl: 11, volumeControl: 12, panpotControl: 13, fadeIn: 14, fadeOut: 15, tempoControl: 16,
-  allStop: 17, allContinue: 18, vsyncOff: 19, vsyncOn: 20,
+  allStop: 17, allContinue: 18, vsyncOff: 19, vsyncOn: 20, psgAt: 23, chipClock: 24, dmaAt: 25, hblankDma: 26, late: 27,
 };
+/** Sonic Advance's way of timing its squares' writes (games/sonic-advance/c/src/main.c), for a test of the engines in it */
+export const SONIC_ADVANCE_TIMING = { library: 1, psgAt: 52558, fifoAt: 54918, fifoCost: 58, hblankAt: 54727, powerOnBefore: 71058 };
 const OP_SETUP = 1;
 
 /** A random call a game makes between frames, as [name, ...args] the JavaScript engine takes. */
 export function randomCall(random, layout) {
+  return randomCallOf(random, layout, false);
+}
+/** The same, with the timing calls of a game whose squares' writes land on the original's cycles among them */
+export function randomTimedCall(random, layout) { return randomCallOf(random, layout, true); }
+function randomCallOf(random, layout, timed) {
   const song = () => random.int(layout.songs), player = () => random.int(layout.players);
   const calls = [
     () => ['songStart', song()], () => ['songStart', song()], () => ['songStop', song()],
@@ -128,6 +135,7 @@ export function randomCall(random, layout) {
     () => ['panpotControl', player(), 0xFFFF, random.int(128) - 64], () => ['fadeIn', player(), 1 + random.int(8)],
     () => ['fadeOut', player(), 1 + random.int(8)], () => ['tempoControl', 0, 0x80 + random.int(0x180)],
     () => ['allStop'], () => ['allContinue'], () => ['vsyncOff'], () => ['vsyncOn'],
+    ...(timed ? [() => ['hblankDma', random.chance(0.5) ? 0 : 2 + random.int(5)], () => ['late', random.int(25000)], () => ['late', random.int(800)]] : []),
   ];
   return calls[random.int(calls.length)]();
 }
@@ -135,17 +143,21 @@ export function randomCall(random, layout) {
 /**
  * Plays the same on both engines, a frame of the console's at a time, `frames` frames, with `calls(frame)` giving the
  * calls made before each frame, and returns the first frame whose samples differ, or -1. `c` is the C kit's sound as
- * WebAssembly, with the copy in its memory.
+ * WebAssembly, with the copy in its memory. With `timing` (SONIC_ADVANCE_TIMING), both play as that game's version of
+ * the library, with the squares' writes on its cycles, the chip's time kept from power-on, and the calls that move
+ * SoundMain and its DMA as the game makes them.
  */
-export function playBoth(rom, layout, c, frames, calls) {
-  const js = createSynth(rom, layout, 65536);
+export function playBoth(rom, layout, c, frames, calls, timing = null) {
+  const library = timing?.library ?? 0;
+  const js = createSynth(rom, { ...layout, library }, 65536);
   const m = layout.mode;
   c.dp_sound_output(65536, 1);
   c.dp_sound_call(OP_SETUP, layout.playerTable, layout.players | m.channels << 8 | m.volume << 16 | (m.reverb ?? 0) << 24,
-    m.rate | (layout.voicesEndOnChip ? 1 << 16 : 0), layout.soundMainAt ?? 0);
+    m.rate | (layout.voicesEndOnChip ? 1 << 16 : 0) | library << 17, layout.soundMainAt ?? 0);
   const max = c.dp_sound_render_max();
+  const first = timing ? [['psgAt', timing.psgAt], ['dmaAt', timing.fifoAt, timing.fifoCost, timing.hblankAt], ['chipClock', timing.powerOnBefore]] : [];
   for (let f = 0, played = 0; f < frames; f++) {
-    for (const [name, ...args] of calls(f)) {
+    for (const [name, ...args] of [...(f === 0 ? first : []), ...calls(f)]) {
       js.call(name, ...args);
       c.dp_sound_call(OPS[name], args[0] ?? 0, args[1] ?? 0, args[2] ?? 0, 0);
     }

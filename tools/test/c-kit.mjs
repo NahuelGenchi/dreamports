@@ -25,7 +25,7 @@ import { C_BASE, buildGame, buildNative, buildWasm, cKit } from '../lib/c.mjs';
 import { CONSOLES } from '../../kit/consoles.js';
 import { madeUpGame } from './made-up-game.mjs';
 import { PALETTE_AT, RAM, START as NES_START, TIMER, madeUpNes } from './made-up-nes.mjs';
-import { madeUpSongs, playBoth, randomCall } from './c-kit/songs.mjs';
+import { madeUpSongs, playBoth, randomCall, randomTimedCall, SONIC_ADVANCE_TIMING } from './c-kit/songs.mjs';
 import { copyOf } from '../lib/copies.mjs';
 import { Rom } from '../../kit/gba/rom/rom.js';
 
@@ -217,6 +217,16 @@ const playWithCalls = (bytes, layout, runs, what) => {
   }
   check(true, `${what}: ${runs} runs of ${SONG_FRAMES} frames with a game's calls between them sound the same to the sample`);
 };
+// as Sonic Advance's version of the library, with its squares' writes on the original's cycles (#1240): the calls that
+// move SoundMain late and turn the H-blank DMA on come among the others
+const playTimed = (bytes, layout, runs, what) => {
+  for (let k = 0; k < runs; k++) {
+    const r = random(SEED + 300 + k);
+    const at = playBoth(bytes, layout, withCopy(bytes), SONG_FRAMES, f => (f === 0 ? [['songStart', k % layout.songs]] : r.chance(0.1) ? [randomTimedCall(r, layout)] : []), SONIC_ADVANCE_TIMING);
+    if (at >= 0) { check(false, `${what}: timed as Sonic Advance's, run ${k} sounds different from frame ${at}`); return; }
+  }
+  check(true, `${what}: ${runs} runs of ${SONG_FRAMES} frames timed as Sonic Advance's sound the same to the sample`);
+};
 for (let k = 0; k < SONG_RUNS; k++) {
   const { rom: songs, layout } = madeUpSongs(random(SEED + 100 + k));
   const bytes = new Uint8Array(songs);
@@ -229,6 +239,7 @@ for (let k = 0; k < SONG_RUNS; k++) {
   const bytes = new Uint8Array(songs);
   playEach(bytes, layout, 600, 'made-up songs');
   playWithCalls(bytes, layout, SONG_RUNS, 'made-up songs');
+  playTimed(bytes, layout, SONG_RUNS, 'made-up songs');
 }
 // the games whose sound layout the test knows, with the copy their proof uses
 const GAMES_WITH_SOUND = {
@@ -244,6 +255,7 @@ for (const [game, { sha1, layout: layoutOf }] of Object.entries(GAMES_WITH_SOUND
   const layout = await layoutOf(new Rom(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length)));
   playEach(bytes, layout, Number(process.env.COPY_FRAMES || 240), game);
   playWithCalls(bytes, layout, SONG_RUNS, game);
+  playTimed(bytes, layout, SONG_RUNS, game);
 }
 
 // a new game's starting point in JavaScript, and its version in C in the game's c/, with a second game in C that keeps

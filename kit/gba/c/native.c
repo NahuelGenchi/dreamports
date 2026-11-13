@@ -4,8 +4,8 @@
 //
 //   game <copy.gba> <buttons> <frames.out> [<start point> [<sound.out>]]
 //
-// <buttons> holds one line a frame, the frame's KEYINPUT bits as a number (input.js KEY), and <frames.out> gets
-// 240 × 160 words a frame, red in the lowest byte. The save memory is kept beside it, in <frames.out>.sav. <start
+// <buttons> holds one line a frame, the frame's KEYINPUT bits as a number (input.js KEY), each frame's V-blank finding
+// the next line's held, and <frames.out> gets 240 × 160 words a frame, red in the lowest byte. The save memory is kept beside it, in <frames.out>.sav. <start
 // point> is the words the page's address would give the game, such as unlocked=1, which gba_start_point reads, or ""
 // for none. With <sound.out>, it also gets each frame's sound as the proof tools hear it (proof.js `heard`): the
 // samples a frame's time holds at the console's mix rate, 1097 or 1098, left and right, as 16-bit numbers in its
@@ -20,6 +20,7 @@ uint8_t *dp_rom(uint32_t size);
 char *dp_start_point(uint32_t size);
 void dp_start(void);
 void dp_step(uint32_t keys);
+void dp_vblank_keys(uint32_t keys);
 uint32_t *dp_draw(void);
 void dp_sound_output(int rate, int raw);
 float *dp_sound_render(int count);
@@ -72,11 +73,16 @@ int main(int argc, char **argv) {
   if (argc == 6 && !heard) fail("Can't write the sound", argv[5]);
   dp_sound_output(MIX_RATE, 1);
   dp_start();
-  unsigned long keys;
+  unsigned long keys, next;
   // the samples a frame holds, as proof.js counts them: a frame is 280896 / 256 = 1097.25 of them
   long long played = 0;
-  while (fscanf(buttons, "%lu", &keys) == 1) {
+  // each frame's V-blank finds the next frame's buttons held, as the proof tools give them (gba_vblank_keys)
+  int more = fscanf(buttons, "%lu", &keys) == 1;
+  while (more) {
+    more = fscanf(buttons, "%lu", &next) == 1;
+    if (more) dp_vblank_keys((uint32_t)next);
     dp_step((uint32_t)keys);
+    keys = next;
     if (heard) {
       int count = (int)((played + 1) * 109725 / 100 - played * 109725 / 100), max = dp_sound_render_max();
       played++;

@@ -15,7 +15,9 @@
 #define UI_ENTRY 28
 
 typedef struct UiGfxEntry { struct UiGfxEntry *next; Graphics graphics; } UiGfxEntry;
-static struct { UiGfxEntry *first; UiGfxEntry gfx[UI_GFX_SLOTS]; UiSlot slots[UI_GLYPH_SLOTS]; } ui;
+// the slots are the task's own, or those a screen keeps in memory of its own from one time to the next
+static UiSlot ownSlots[UI_GLYPH_SLOTS];
+static struct { UiGfxEntry *first; UiGfxEntry gfx[UI_GFX_SLOTS]; UiSlot *slots; } ui = { .slots = ownSlots };
 
 static void ui_task(Task *t) { (void)t; }
 static void ui_task_destroyed(Task *t) { (void)t; e.uiTask = NULL; }
@@ -26,7 +28,16 @@ static void ui_task_destroyed(Task *t) { (void)t; e.uiTask = NULL; }
  */
 void create_ui_task(void) {
   if (e.uiTask) return;
+  memset(ownSlots, 0, sizeof ownSlots);
+  create_ui_task_keeping(ownSlots);
+}
+
+/** sub_80535FC for a screen whose task is made in memory that keeps the slots from one time to the next, as the special
+ *  stages' is: they start as `slots`, 30 of them, and stay there. */
+void create_ui_task_keeping(UiSlot *slots) {
+  if (e.uiTask) return;
   memset(&ui, 0, sizeof ui);
+  ui.slots = slots;
   e.uiTask = create_task(ui_task, &ui, UI_TASK_PRIORITY, 0, ui_task_destroyed);
   ui_gfx_stack_init();
 }
@@ -168,6 +179,29 @@ void draw_ui_letters(const char *text, const UiText *o) {
     int small = c > 0x60;
     uint32_t glyph = (a2 + (small ? c - 0x11 : c - GLYPH_BASE) * slot->unk4) & 0xFFFF & ~0xC00u;
     if (!put_glyph(((o->unk8 + i) >> 3) & 0xFF, (a0 + (small ? 8 : 0)) & 0xFFFF, a1, glyph)) break;
+  }
+}
+
+/**
+ * sub_8052C84: `o->unkE` glyphs of `text` from slot `o->unk10` as semi-transparent sprites, side by side from (o->unkA,
+ * o->unkC), scaled by o->unk0 across and o->unk2 down (8.8) and turned by o->unk4 through affine parameters o->unk6, as
+ * double-size sprites; unscaled and unturned, plain ones.
+ */
+void draw_ui_text_affine(const char *text, const UiText *o) {
+  const UiSlot *slot = &ui.slots[o->unk10];
+  uint32_t r8 = 0, r0 = 0;
+  if (o->unk4 != 0 || o->unk0 != 0x100 || o->unk2 != 0x100) {
+    set_ui_affine(o->unk4, o->unk0, o->unk2, o->unk6);
+    r8 = o->unk6;
+    r0 = 3;
+  }
+  uint32_t order = (o->unk8 >> 3) & 0xFF;
+  for (int i = 0; i < s16(o->unkE); i++) {
+    uint32_t x = ((uint32_t)(slot->unkA * i << 3) + o->unkA) & 0x1FF;
+    uint32_t a0 = (slot->unk9 << 14) | (o->unkC & 0xFF) | (r0 << 8) | 0x400;
+    uint32_t a1 = (slot->unk8 << 14) | (r8 << 9) | x;
+    uint32_t a2 = ((uint32_t)o->unk12 << 12) + slot->unk0 + (uint32_t)slot->unk4 * (text_at(text, i) - GLYPH_BASE);
+    if (!put_glyph(order, a0, a1, a2)) break;
   }
 }
 

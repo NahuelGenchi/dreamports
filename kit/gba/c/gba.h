@@ -72,6 +72,12 @@ void gba_draw_frame(uint32_t *out);
 #define gba_start_number kit_start_number
 #define gba_alloc kit_alloc
 
+/** The buttons held at the V-blank that ends this frame, as KEYINPUT has them, for a game that reads them there as
+ *  well as at the frame's start, as a soft reset's V-blank does: what the page finds held as the frame ends, or what a
+ *  proof tool says the next frame holds, as the original's frames are counted from the V-blank before them
+ *  (input.js nextHeld). Without either, the frame's own buttons. */
+uint16_t gba_vblank_keys(void);
+
 // The sound: Nintendo's sound engine (MusicPlayer2000, or "m4a") and the sound hardware, playing the songs and
 // sounds in the player's copy, as the JavaScript kit's sound/ does to the sample. gba_sound_start finds the engine's
 // tables and starts it with the game's sound mode, from its DEFAULT_SOUND_MODE: `players` music players, `channels`
@@ -80,6 +86,12 @@ void gba_draw_frame(uint32_t *out);
 // plays at the start of the next sound frame, as the original's calls during a frame are sequenced on the next, and
 // each is named for the sound library's function it stands for.
 int gba_sound_start(int players, int channels, int volume, int rate, int reverb);
+/** The versions of the sound library the kit knows, for gba_sound_start_library. Sonic Battle's is the one the engine's
+ *  cycle counts were first measured on, and the one gba_sound_start takes; Sonic Advance's has every place in SoundMain
+ *  measured on its own code, cycle for cycle (#1240). */
+enum { LIBRARY_SONIC_BATTLE, LIBRARY_SONIC_ADVANCE, LIBRARIES };
+/** gba_sound_start for a game with another version of the library: what SoundMain's work costs, and how it starts. */
+int gba_sound_start_library(int library, int players, int channels, int volume, int rate, int reverb);
 /** The same with the music players' table at `playerTable` in the copy, as the JavaScript kit's soundLayout takes it:
  *  `voicesEndOnChip` for a game whose voices end on the chip, and `soundMainAt` where SoundMain's wave write lands. */
 int gba_sound_start_layout(uint32_t playerTable, int players, int channels, int volume, int rate, int reverb,
@@ -91,6 +103,21 @@ int gba_sound_start_layout(uint32_t playerTable, int players, int channels, int 
  *  does before it, so a game can give it for one screen and 0, the default, which writes at once, for the rest; a reset
  *  of the engine goes back to the place it had when it started. */
 void gba_sound_psg_at(int cycles);
+/** For a game whose square notes have to keep the original's phase from power-on, with gba_sound_psg_at: the sound
+ *  chip's squares and frame sequencer count their time as mGBA does from the console's power-on, `powerOnBefore` cycles
+ *  before the chip's clock started (kit/gba/notes/a-squares-phase-runs-from-power-on.md). */
+void gba_sound_chip_clock(int powerOnBefore);
+/** With gba_sound_psg_at, the DMA that halts the CPU while SoundMain runs, in the chip's frame: the sound FIFO's first
+ *  refill each frame, one every 16 samples after it, each taking `fifoCost` cycles, and the first visible line's
+ *  H-blank, where the H-blank DMA gba_sound_hblank_dma names lands, one a line after it. Like gba_sound_psg_at, given
+ *  before gba_sound_start it holds from the start and through a reset of the engine. */
+void gba_sound_dma_at(int fifoAt, int fifoCost, int hblankAt);
+/** The H-blank DMA a frame's V-blank starts, while the game has one on, for the next sound frame's SoundMain, which
+ *  runs as its first lines are drawn: the cycles it takes from the CPU at each visible line. */
+void gba_sound_hblank_dma(int cycles);
+/** The next sound frame's SoundMain starts `cycles` later than it does in others, where the game's own work runs past
+ *  its place, as it does where the original loads a screen. */
+void gba_sound_late(int cycles);
 /** After gba_sound_start, for a game whose picture depends on how long the console's sound work takes, as the
  *  JavaScript kit's countCycles: a silent engine of its own runs a frame as each of the game's frames ends, so what
  *  gba_sound_frame_cycles says is the same in a player's browser as under the proof tools. */
@@ -110,6 +137,10 @@ void gba_sound_reset(void);
 void gba_sound_play(int song);
 /** The number of the music player song `song` plays on, from the copy's song table, or -1. */
 int gba_sound_song_player(int song);
+/** How many frames song `song` plays on music player `player` before it ends, counted as a task that watches the
+ *  player's status from the frame after it starts sees it, such as one that waits for a jingle to end (the JavaScript
+ *  kit's songFrames): an engine of its own plays it, unheard. Up to a minute's worth. */
+int gba_sound_song_frames(int player, int song);
 /** m4aSongNumStartOrChange: starts the song unless it is already playing on its player */
 void gba_sound_play_or_change(int song);
 /** m4aSongNumStartOrContinue: restarts a different song or an ended one, and lets a stopped one go on */

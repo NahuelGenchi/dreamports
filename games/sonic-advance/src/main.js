@@ -22,6 +22,7 @@ import { DEMOS, readDemoTape, BACKGROUND_TILES } from './engine/demo.js';
 import { createSpecialStageRun } from './special/run.js';
 import { createNormalEnding } from './engine/normalending.js';
 import { createSound } from './sound/audio.js';
+import { SOUND_TIMING, POWER_ON_BEFORE } from './sound/timing.js';
 import { SCREEN_W, SCREEN_H, VIEW_MAX_W, VIEW_MAX_H } from './engine/constants.js';
 import { THE_MOON, ALL_EMERALDS } from './engine/unlock.js';
 import { openSave } from './engine/save.js';
@@ -65,6 +66,13 @@ const firstLevel = Number(params.get('level') ?? 0) | 0;
 // that save `&sonic=N`, `&tails=N`, `&knuckles=N` and `&amy=N` are the others' progress, and `&emeralds=N` its Chaos
 // Emeralds, a bit each, for the recordings of the Moon Zone's rule (unlock.js)
 const unlocked = params.has('unlocked') ? Number(params.get('unlocked')) & 0xFFFF : null;
+// `?put=F&put-x=X&put-y=Y&put-camera-x=CX&put-camera-y=CY` puts the character's centre at (X, Y) and the camera at (CX,
+// CY) as the page's frame F starts, if an act is playing then: where a recording's `sets` put the original's, as Amy over
+// Neo Green Hill act 1's special spring in soft-reset-special-stage
+const put = params.has('put') ? {
+  at: Number(params.get('put')), x: Number(params.get('put-x') ?? 0), y: Number(params.get('put-y') ?? 0),
+  cameraX: Number(params.get('put-camera-x') ?? 0), cameraY: Number(params.get('put-camera-y') ?? 0),
+} : null;
 // a multiplayer stage (`?level=14`) is played by `&players=N` players, 2 to 4 (2 if not given), each on their
 // own screen; `&seed=` and `&chao=` set what the link hands the GBAs as the round starts (the shared random
 // number and the Chao's place, 0–7)
@@ -94,6 +102,10 @@ stage.classList.toggle('debug', debug);   // the panel shows the player's speed 
 
 const input = createInput();
 input.bindTouch(touch);
+// the page's frame since power-on, as a recording counts them, for `put`: every screen reads the buttons once a frame
+let pageFrame = -1;
+const pollButtons = input.poll;
+input.poll = () => { pageFrame++; pollButtons(); };
 // with ?proof in the address a proof tool runs the game frame by frame on this player's buttons (the kit's proof.js)
 proof?.watch(screen, input);
 const sound = createSound();
@@ -420,7 +432,9 @@ const setup = createRomSetup(picker, {
   ],
   onChange: () => queueMicrotask(showRomCount),   // once the page is set up
   onPlay() {
-    sound.load(sa1.buffer, sa1.assets.sound, players).catch(err => console.warn('No sound:', err));
+    // Sonic Advance's library, with the squares written on the original's cycles from power-on (sound/timing.js)
+    sound.load(sa1.buffer, { ...sa1.assets.sound, ...SOUND_TIMING }, players).catch(err => console.warn('No sound:', err));
+    sound.call('chipClock', POWER_ON_BEFORE);
     start(sa1.buffer, sa1.assets);
   },
 });
@@ -481,19 +495,19 @@ function start(buffer, assets, back = null, afterReset = false) {
     // the code's partner comes along with Sonic only (GameStageStart)
     partner = picked.partner && character === 0;
     if (level === undefined) play(assets.character === character && !!assets.partner === partner ? assets : extractAgain(sa1.buffer, assets, { level: assets.first, character, partner }));
-    else playChosen(level, frameCount);
-  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level'), select: !params.has('unlocked') || params.has('select'), onGameStart: proofSave, prepareDemo, back, softReset, afterReset });
+    else playChosen(level, frameCount, picked);
+  }, { character, levels: () => ({ current: currentLevel, started: startLevel }), courseSelect: !params.has('level'), select: !params.has('unlocked') || params.has('select'), onGameStart: proofSave, prepareDemo, back, softReset, afterReset, only: Number(params.get('only') ?? 0) });
   fitScreen();
   screen.focus();
 }
 
 // the act the course select started, its zone decoded from the ROM unless it's the one the game opened with
-async function playChosen(level, frameCount) {
+async function playChosen(level, frameCount, { byCourseSelect = false, musicStarted = false } = {}) {
   const from = sa1;
   const same = from.assets.first === level && from.assets.character === character && !!from.assets.partner === partner;
   const assets = same ? from.assets : await extractAssets(from.buffer, () => {}, { level, character, partner });
   if (sa1 !== from || stage.hidden) return;   // the player left the game meanwhile
-  play(assets, null, null, { level, frameCount, timeAttack });
+  play(assets, null, null, { level, frameCount, timeAttack, byCourseSelect, musicStarted });
 }
 
 // gDemoPlayCounter, the demo the title screen starts next, and gPseudoRandom as the last demo left it: a demo goes on
@@ -557,9 +571,10 @@ function play(assets, resume = null, carry = null, chosen = null) {
   if (!resume && !carry && !demo) startLevel = chosen ? chosen.level : levelPick ? assets.first : 0;
   game = createGame(screen, assets, input, sound, {
     resume, carry, save, startLevel, continues, levelPick, frameCount: chosen?.frameCount, demo, seed: randomSeed,
+    put: put && { ...put, now: () => pageFrame === put.at },
     onSpecialStage: handover => enterSpecialStage(assets, handover),
     onNextZone: next => nextZone(next),
-    timeAttack: chosen?.timeAttack,
+    timeAttack: chosen?.timeAttack, byCourseSelect: chosen?.byCourseSelect, musicStarted: chosen?.musicStarted,
     createTimeAttackResult: result => createTimeAttackOverlay({ rom, offsets: assets.info.offsets, sound, save, ...result }),
     // a Time Attack run is over (results, a life lost or A in the pause menu): the lobby, on the frame after
     onTimeAttackEnd: () => queueMicrotask(() => toLobby()),

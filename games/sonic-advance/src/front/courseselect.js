@@ -14,6 +14,8 @@ import { createSprite, updateSprite, displaySprite, SPRITE } from '../gba/sprite
 import { KEY } from '../gba/engine.js';
 import { REG } from '../../../../kit/gba/video.js';
 import { SONG } from '../sound/songs.js';
+import { LOAD, ACTS_WITH_LINES, LINES_DMA } from '../sound/timing.js';
+import { LEVELS } from '../rom/levels.js';
 import { moonOpensFor } from '../engine/unlock.js';
 import { createUiTask, uiGfxStackInit, uiGraphics, loadUiGfx, createFade, fadeStep } from './ui.js';
 import { createMainMenu } from './title.js';
@@ -243,7 +245,18 @@ function fadeOut(t) {
     } else if (state.ending === CHOSEN && ctx.gameMode === TIME_ATTACK) {
       ctx.level = state.level - 1;
       createTimeAttackCard(ctx);
-    } else if (state.ending === CHOSEN) ctx.play(state.level - 1);
+    } else if (state.ending === CHOSEN) {
+      // the course select makes the act inside its own task: the act's stage init starts its song then, fading in
+      // (StageInit_ZoneNActM, MusManager_UpdateBgmParams), the act's first frame draws its background by the line, and
+      // the loading the act takes makes the next SoundMain late; the act's own frames go on after it (game.js)
+      const level = state.level - 1;
+      ctx.play(level);
+      e.soundLate(LOAD.ACT_COURSE_SELECT, level, ctx.character);
+      e.playStageMusicFadingIn(LEVELS[level].music);
+      if (ACTS_WITH_LINES.has(level)) e.soundHblankDma(LINES_DMA);
+      ctx.byCourseSelect = true;
+      ctx.musicStarted = true;
+    }
     else if (state.records) createTimeAttackMenu(ctx);
     else if (ctx.select) createCharacterSelect(ctx);
     else createMainMenu(ctx, true);

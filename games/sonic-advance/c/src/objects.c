@@ -53,6 +53,8 @@ void act_tasks_destroy(int lo, int hi) {
   destroying = 0;
 }
 
+/** The act's task list stops after the task running now, for the rest of this frame (the JavaScript's tasks.stop()). */
+void act_tasks_stop(void) { following = NULL; }
 void act_tasks_run(int from, int to) {
   ActTask *t = first;
   while (t && t->priority < from) t = t->next;

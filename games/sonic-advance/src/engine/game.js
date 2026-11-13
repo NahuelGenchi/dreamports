@@ -50,6 +50,10 @@ import { createDemoInput, createDemoManager, DEMO_MANAGER, DEMOS } from './demo.
 import { openSave, saveActCleared, saveMoonOpened, WRITE_FRAMES } from './save.js';
 import { playerControls } from './input.js';
 import { fixes, lifeMore } from './fixes.js';
+import { soundLate, LOAD, ACTS_WITH_LINES, LINES_DMA } from '../sound/timing.js';
+
+// Secret Base act 1 and Ice Mountain, whose line-by-line effects are on some of the time
+const SECRET_BASE_1 = 2, ICE_MOUNTAIN_1 = 6, ICE_MOUNTAIN_2 = 7;
 
 const MAX_BRAKE_DUST = 20;   // the original keeps a pool of 20 brake dust clouds
 const EFFECTS = 0x4001;      // the priority of Sonic's effects' tasks, as of the item boxes' (ITEM_TASKS)
@@ -259,8 +263,18 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
   state.layersAtStart = !!options.levelPick && !options.resume;
   state.demoFirst = !!demo;   // and in a demo so has the background (renderer.js)
   let extraLife = false, loading = false, lagging = false, starMusic = false;
-  // the act's music, as the course select leaves it: it starts on the frame after the act is made, and fades in, as a
-  // song the music manager starts over does (the recordings course-select-first-act and course-select-all-rows)
+  // The frame's line-by-line effects, which the H-blank DMA copies in as the screen is drawn, a line of two 16-bit values
+  // at a time (the C's set_hblank_copy): the backgrounds that scroll by the line, Secret Base act 1's once it is inside
+  // and its spotlights' windows, and Ice Mountain's waves. The DMA takes the CPU from SoundMain (sound/timing.js).
+  let wavesThisFrame = false;
+  function linesThisFrame() {
+    if (ACTS_WITH_LINES.has(state.level)) return true;
+    if (state.level === SECRET_BASE_1) return Math.floor(state.cam.x) - state.cam.wrapped >= 1488 || !!state.spotlights?.blend?.drawn;
+    return wavesThisFrame;
+  }
+
+  // the act's music, as the course select leaves it: it starts with the act, fading in as a song the music manager starts
+  // over does, from the course select itself (courseselect.js), whose task makes the act, or else on the frame after
   let musicStarts = false;
   let restart = null;   // what comes at the end of this frame: the act over again (restartAct, continueAct), the
                         // next act, or the game's start
@@ -861,8 +875,12 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       state.results = null;
       tasks.stop();
       sound.stopAll();
+      // the sound engine is off while the save is written (m4aSoundVSyncOff), and on again for the next act; the
+      // normal ending after X Zone turns it on once its own write is done (normalending.js)
+      sound.vsyncOff?.();
       // the next zone's game starts on the act's first frame, so the frame the loading takes is counted here
-      const next = assets.acts[state.level + 1] ? () => { startNextAct(); loading = true; } : () => {
+      const next = assets.acts[state.level + 1] ? () => { sound.vsyncOn?.(); startNextAct(); soundLate(sound, LOAD.ACT_NEXT, state.level, character); loading = true; } : () => {
+        if (state.level !== X_ZONE) { sound.vsyncOn?.(); soundLate(sound, LOAD.ACT_NEXT, state.level + 1, character); }
         ended = true;
         options.onNextZone?.({
           level: state.level + 1, score: state.score, lives: state.lives, seed: state.seed, continues: state.continues,
@@ -910,6 +928,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     state.gameOver = null; state.timeOver = null;
     startCard();
     sound.playStageMusic(stage.music);
+    soundLate(sound, LOAD.ACT_AGAIN, state.level, character);
     extras?.init();
     loading = true; starMusic = false;
   }
@@ -929,7 +948,10 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       input.jumpPressed = false; input.attackPressed = false; input.boostPressed = false;
       const end = runGameOver(state.gameOver, sound, a, b);
       if (!end) return true;
-      const after = end === 'continue' ? continueAct : () => { toTitle = true; };
+      // the music stops and the sound engine is off while the save is written (m4aSoundVSyncOff)
+      sound.stopAll();
+      sound.vsyncOff?.();
+      const after = end === 'continue' ? () => { sound.vsyncOn?.(); continueAct(); } : () => { sound.vsyncOn?.(); toTitle = true; };
       if (save.write()) { saving = WRITE_FRAMES; afterSave = after; } else restart = after;
       tasks.stop();
       return true;
@@ -994,6 +1016,8 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
       ctx.view = state.view = viewOf(state.cam, viewW, viewH, state.view);
       // once it moves, it updates the zone's background (backgrounds.js)
       if (moves) { state.cam.bgUpdates++; BACKGROUND_UPDATE[stage.backgroundScroll]?.(ctx, state.cam); }
+      // Ice Mountain's update waves its background by the line while the water covers the whole screen
+      wavesThisFrame = moves && (state.level === ICE_MOUNTAIN_1 || state.level === ICE_MOUNTAIN_2) && state.water?.line === 0;
       extras?.background(ctx.cam);
     }],
     [0x2000, ctx => collectRings(ctx)],
@@ -1197,6 +1221,12 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
 
   function runFrame() {
     input.poll?.();
+    // a start point's `put` (main.js): the character's centre and the camera where the recording's sets put the
+    // original's, as this frame starts
+    if (options.put?.now()) {
+      player.x = options.put.x; player.y = options.put.y;
+      state.cam.x = options.put.cameraX; state.cam.y = options.put.cameraY;
+    }
     startPressed = input.start && !startHeld; startHeld = input.start;
     if (saving > 0) {
       if (--saving > 0) return;
@@ -1221,6 +1251,12 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     endFrame();
     watchFrame();
     if (state.water) endWaterFrame(state.water);
+    // the course select drew the act's first frame (courseselect.js), and this one is spent loading it; a frame the act
+    // ends in (its results', a life lost, the game over's) draws nothing
+    const ending = frozen || restart || saving > 0;
+    // and a Time Attack act's first frame, made by its card's task, is past the V-blank whose DMA the original starts
+    if (linesThisFrame() && !ending && !(madeBy >= 0 && (options.byCourseSelect || timeAttack))) sound.call?.('hblankDma', LINES_DMA);
+    wavesThisFrame = false;
     if (madeBy >= 0) { madeBy = -1; loading = options.frameCount === undefined; lagging = !!options.timeAttack; }
     if (restart) { const start = restart; restart = null; start(); }
     if (toTitle) { options.onTitle?.(demoLeftWith); return; }
@@ -1288,7 +1324,7 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
     start(ownLoop = true) {
       input.enabled = true; clock.reset();
       if (ownLoop) frame = requestAnimationFrame(loop);
-      if (options.frameCount !== undefined && !demo) musicStarts = true;
+      if (options.frameCount !== undefined && !demo) musicStarts = !options.musicStarted;
       else sound.playStageMusic(stage.music, !options.levelPick);
     },
     stop() { input.enabled = false; input.release(); cancelAnimationFrame(frame); sound.stopAll(); },

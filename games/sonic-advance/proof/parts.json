@@ -10,7 +10,7 @@
     { "name": "The course select", "recording": "course-select-first-act", "frames": [3751, 3874] },
     { "name": "Neo Green Hill Zone act 1", "recording": "sonic-neo-green-hill", "frames": [1779, 7364], "reaches": "act-end" },
     { "name": "Neo Green Hill Zone act 2", "recording": "neo-green-hill-act-2", "frames": [4230, 12641], "reaches": "act-end", "needs": ["Neo Green Hill Zone act 1"] },
-    { "name": "Secret Base Zone act 1", "recording": "secret-base-act-1", "frames": [1891, 11655], "reaches": "act-end" },
+    { "name": "Secret Base Zone act 1", "recording": "secret-base-act-1", "frames": [2130, 11894], "reaches": "act-end" },
     { "name": "Secret Base Zone act 2", "recording": "sonic-secret-base-act-2", "frames": [1957, 10324], "reaches": "act-end", "needs": ["Secret Base Zone act 1"] },
     { "name": "Casino Paradise Zone act 1", "recording": "sonic-casino-paradise", "frames": [1979, 6393], "reaches": "act-end" },
     { "name": "Casino Paradise Zone act 2", "recording": "sonic-casino-paradise-act-2", "frames": [4767, 12441], "reaches": "act-end", "needs": ["Casino Paradise Zone act 1"] },

@@ -50,6 +50,8 @@ enum {
   FLAGS_PAUSE_GAME = 0x400, FLAGS_PAUSED = 0x800, FLAGS_NO_RESET = 0x8000,
 };
 enum { TASK_INACTIVE = 0x1, TASK_DESTROY_DISABLED = 0x2, TASK_RUNS_PAUSED = 0x4 };
+// A, B, Start and Select held together at a V-blank restart the game (VBlankIntr's SoftReset)
+#define SOFT_RESET_KEYS (KEY_A | KEY_B | KEY_SELECT | KEY_START)
 #define HBLANK_BUFFER (160 * 4)
 #define HEAP_END 0xFFFFFFFFu
 
@@ -103,6 +105,7 @@ typedef struct {
   void (*hblankCallbacks[4])(int line);
   int numHblankCallbacks;
   void (*vblankCallback)(void);   // gVBlankCallbacks, the one a task asks for this frame, run in the next V-blank's update
+  void (*softReset)(void);        // what the V-blank does when it finds the soft reset's buttons held (vblank)
   // the keys (gInput and the rest)
   uint16_t input, prevInput, pressed, released, repeated;
   uint8_t repeatCounters[10], firstRepeat[10], nextRepeat[10];
@@ -125,6 +128,9 @@ extern SpriteRow spriteRow;
 void sprite_row_byte(uint32_t at, uint32_t v);
 
 void engine_init(void);
+void engine_clear_video(void);
+/** A new engine for a new start, with the soft reset's V-blank (front.c). */
+void front_new_engine(void);
 Task *create_task(TaskMain main, void *data, uint16_t priority, uint16_t flags, TaskMain dtor);
 void destroy_task(Task *t);
 void destroy_tasks(uint16_t lo, uint16_t hi);
@@ -160,10 +166,10 @@ void fade_out_sound(int player, int speed);
 void stop_all_songs(void);
 /** The stage's music manager (music.c), which runs on the sound's side after each frame's calls: the act's song starting
  *  (MUSIC_STAGE_IN fading in, MUSIC_STAGE as it is), the results switching it off, a boss's state, an extra life's
- *  jingle, invincibility's song, the drowning music, and what it reads of Sonic each frame (MUSIC_PLAYER: invincible, speed
- *  shoes and alive, bits 0 to 2). */
+ *  jingle, invincibility's song, the drowning music, what it reads of Sonic each frame (MUSIC_PLAYER: invincible, speed
+ *  shoes and alive, bits 0 to 2), and the pause menu's start (MUSIC_PAUSE with its sound). */
 enum { MUSIC_STAGE = SOUND_OP_MANAGER, MUSIC_STAGE_IN, MUSIC_OFF, MUSIC_STATE, MUSIC_ONE_UP, MUSIC_STAR, MUSIC_DROWNING,
-  MUSIC_PLAYER };
+  MUSIC_PLAYER, MUSIC_PAUSE };
 /** the music's tempo (m4aMPlayTempoControl): normal, and doubled while Sonic has speed shoes (PLAYER_SPEED_UP_MUSIC_TEMPO) */
 enum { TEMPO_NORMAL = 0x100, TEMPO_SPEED_UP = 0x200 };
 void music_call(int op, int a);
@@ -177,6 +183,12 @@ enum { SONG_INTRO = 1, SONG_TITLE_FANFARE = 2, SONG_CHARACTER_SELECTION = 3, SON
 void play_song_or_change(int song);
 void sound_vsync_off(void);
 void sound_vsync_on(void);
+/** The loads that hold the original's SoundMain past its place (soundlate.c): the screen names the load as it starts,
+ *  with the level or character it's for, and the kit hears how late SoundMain runs in the frame it falls in. */
+enum { LOAD_CHARACTER_SELECT, LOAD_TURN_RIGHT, LOAD_TURN_LEFT, LOAD_ACT_NEW_GAME, LOAD_ACT_COURSE_SELECT, LOAD_ACT_NEXT,
+       LOAD_ACT_AGAIN };
+void sound_late(int load, int detail);
+void sound_late_step(void);   // once a frame, at its end
 
 /** The BIOS's Div: rounded toward 0; a division by 0 gives ±1, as mGBA's BIOS does. */
 static inline int32_t bios_div(int32_t a, int32_t b) { return b == 0 ? (a < 0 ? -1 : 1) : a / b; }
@@ -249,6 +261,7 @@ typedef struct { uint16_t unk0, unk2, unk4, unk6, unk8, unkA, unkC, unkE, unk10,
 typedef uint8_t (*Glyphs)(const void *text, int i);
 
 void create_ui_task(void);
+void create_ui_task_keeping(UiSlot *slots);
 void ui_gfx_stack_init(void);
 UiSlot *ui_slots(void);
 void ui_graphics(int id, uint32_t *tiles, uint32_t *palette, UiSlot *layout);
@@ -260,6 +273,7 @@ void set_ui_affine(int angle, int sx, int sy, int index);
 void draw_ui_text(const char *text, const UiText *o, int solid);
 void draw_ui_glyphs(const char *text, const UiText *o, int behind);
 void draw_ui_text_rotated(const char *text, const UiText *o);
+void draw_ui_text_affine(const char *text, const UiText *o);
 void draw_ui_letters(const char *text, const UiText *o);
 
 // --- a spotlight's beam (front/spotlight.js) ---------------------------------------------------------------------
@@ -324,6 +338,7 @@ typedef struct {
   int select;   // the main menu's Game Start opens the character select, unless a start point leaves it out
   int currentLevel, startLevel;   // gCurrentLevel and gMultiplayerCurrentLevel, for the Moon Zone's rule
   int done;   // the front end has handed over to what isn't in C yet
+  int afterReset;   // the game has started again from a soft reset, until it next starts an act
   VsLink vsLink;
   int missing[PLAYERS_MAX];   // gMultiplayerMissingHeartbeats: the frames each GBA of the link hasn't been heard from
   uint32_t seed;              // the game's random numbers (PSEUDO_RANDOM_32)

@@ -40,9 +40,23 @@ static void draw_first_act(int camX, int camY) {
   e.bgScroll[6] = (uint16_t)((camX * 16) / (78 * 16)); e.bgScroll[7] = (uint16_t)(512 - SCREEN_H);
 }
 
+// The course select makes the act inside its own task (0x2000), so on that frame only the tasks after it run, not the
+// spotlights' manager and beams the stage init made at its priority: they first run on the frame after.
+static void first_act_before_objects(void) {
+  if (!(act.byCourseSelect && act.frames == 0)) spotlights_frame();
+}
+
 // Act 1's beams write the frame's window table after its own, and in a frame that is shown their fade goes back into
-// the registers the frame reset
+// the registers the frame reset. On the frame the course select makes the act no beam has drawn, and the screen is black:
+// CreateSpotlights has darkened everything all the way, over layer maps the camera hasn't filled yet. The C's maps are
+// filled on that frame already, so it darkens the backdrop too, which their tiles' gaps would show.
 static void first_act_after_frame(int shown) {
+  if (shown && act.byCourseSelect && act.frames == 1) {
+    e.dispCnt &= ~0x6000;
+    e.bldCnt = 0x3FFF;
+    e.bldY = 16;
+    return;
+  }
   spotlights_beams();
   if (shown) spotlights_apply();
 }
@@ -54,7 +68,7 @@ const Level ACT_SECRET_BASE_1 = {
   .bgCnt = 0x9C0B,   // 256 × 512, priority 3, map 28 (0xE000), character base 2
   // the spotlights' manager (0x2000) was made before the entities manager, so it reads Sonic before the objects move
   // him, and its beams leave WIN0V and WIN1V as they last set them on the frames they don't draw
-  .start = spotlights_start, .beforeObjects = spotlights_frame, .afterFrame = first_act_after_frame,
+  .start = spotlights_start, .beforeObjects = first_act_before_objects, .afterFrame = first_act_after_frame,
   .drawBackground = draw_first_act,
   .ownsWindows = 1, .layersOnFirstLoad = 1,
 };
