@@ -1,6 +1,6 @@
 // The way back to dreamports.net, from a game's start screen (rom-setup.js) and its settings (quit-view.js).
 
-import { addsSteps } from './steps.js';
+import { addsSteps, goTo } from './steps.js';
 
 let home = '/';
 
@@ -26,6 +26,5 @@ function cameFromMenu() {
  */
 export function leave() {
   if (cameFromMenu()) history.back();
-  else if (addsSteps) location.href = home;
-  else location.replace(location.origin + new URL(home, location.href).pathname);
+  else goTo(addsSteps ? home : location.origin + new URL(home, location.href).pathname);
 }
