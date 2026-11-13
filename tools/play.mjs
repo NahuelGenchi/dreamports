@@ -51,6 +51,7 @@ export async function run(args) {
       source, until, held: expand(recording.held, until),
       // the stretches only the original has before the player takes over, which the new recording needs too
       onlyInOriginal: recording.onlyInOriginal.filter(gap => gap.at <= until),
+      sets: (recording.sets ?? []).filter(set => set.frame < until),
     };
   }
 
@@ -120,7 +121,7 @@ export async function run(args) {
   mkdirSync(join(sharedProofFolder(game), 'recordings'), { recursive: true });
   writeRecording(file, {
     about: start ? `Plays ${start.source}'s presses up to frame ${start.until}, then: what this recording plays, in a sentence or two.` : 'What this recording plays, in a sentence or two.',
-    frames: held.length, held: compress(held), onlyInOriginal: start?.onlyInOriginal ?? [], start: startPoint ?? undefined,
+    frames: held.length, held: compress(held), onlyInOriginal: start?.onlyInOriginal ?? [], sets: start?.sets ?? [], start: startPoint ?? undefined,
   });
   const reach = startPoint && !start?.onlyInOriginal.length ? ` Its "onlyInOriginal" has to say how the original gets to that start point (tools/README.md, Start points).` : '';
   console.log(`Written: games/${game}/proof/recordings/${name}.json, ${held.length} frames. Say what it plays in its "about", then run npm run dp -- prove ${game} ${name}.${reach}`);

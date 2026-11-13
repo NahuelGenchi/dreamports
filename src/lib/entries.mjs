@@ -144,7 +144,8 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
  * the original was given values in its memory on the way. It's compared as any other frame, but it might not be how a
  * player gets there, so a part proven this way is proven again from power-on once the game reaches it.
  */
-export const fromStartPoint = (recording, frame) => Boolean(recording.start) || (recording.onlyInOriginal ?? []).some(g => g.sets?.length && g.at <= frame);
+export const fromStartPoint = (recording, frame) => Boolean(recording.start) || (recording.sets ?? []).some(s => s.frame <= frame)
+  || (recording.onlyInOriginal ?? []).some(g => g.sets?.length && g.at <= frame);
 
 // gameplay proven: each part parts.json lists, proven when a measured recording plays it, from the first frame of
 // it to the last, with no frame that differs and none the original has and the Dreamport lacks

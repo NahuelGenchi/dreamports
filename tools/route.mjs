@@ -175,7 +175,8 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
     const held = [...expand(source.held, cut), ...moves.map(mask => namesOf(mask, KEY)), ...Array.from({ length: then }, () => [])];
     const about = from === null ? source.about : `Plays ${sourceName}'s presses up to frame ${cut}, then the presses the route finder found from there to ${goalText}: say what it plays.`;
     mkdirSync(join(sharedProofFolder(game), 'recordings'), { recursive: true });
-    writeRecording(file, { about, frames: held.length, held: compress(held), onlyInOriginal: source.onlyInOriginal.filter(gap => gap.at <= cut), start: source.start });
+    writeRecording(file, { about, frames: held.length, held: compress(held), onlyInOriginal: source.onlyInOriginal.filter(gap => gap.at <= cut),
+      sets: (source.sets ?? []).filter(set => set.frame < cut), start: source.start });
     console.log(`Found in ${took}${speed}: ${count(moves.length)} frames of presses from frame ${cut} reach ${goalText}, and played again from power-on they still do.${room}`);
     console.log(`Written: ${written}, ${count(held.length)} frames${then ? `, the last ${then} with nothing held` : ''}. Say what it plays in its "about", then npm run dp -- prove ${game} ${name} compares it with the Dreamport.`);
     return 0;

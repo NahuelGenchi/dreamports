@@ -13,6 +13,9 @@
 //     optional, writes values to the original's work RAM as those frames run, which is how it gets to a part with no
 //     need to play everything before it: [{ "frame", "address", "bytes", "value", "about" }], with `frame` counted the
 //     same way, `address` in hexadecimal as the code map has it, and `bytes` 1, 2 or 4.
+//   "sets": optional, the same, written to the original's work RAM as it plays the recording's own frames, with `frame`
+//     one of the recording's: for a recording the Dreamport plays all of, menus too, where the original still needs
+//     something the Dreamport's start point gives, such as progress.
 //   "start": optional, a start point: what the Dreamport's address adds, such as "level=2&character=1", so it opens at
 //     the part this recording plays. tools/README.md, Start points.
 //   "players": optional, 2 to 4: the recording is of that many GBAs on one link, each from power-on with the Dreamport's page at
@@ -55,7 +58,8 @@ export function checkStart(start, where) {
   }
 }
 
-/** Checks the values a stretch only the original has writes to its memory, and throws with what is wrong. */
+/** Checks the values written to the original's memory, by a stretch only it has or as it plays the recording, and throws
+ *  with what is wrong. */
 function checkSets(sets, frames, where) {
   if (!Array.isArray(sets)) throw new Error(`${where}: "sets" is a list of { frame, address, bytes, value }`);
   for (const set of sets) {
@@ -63,7 +67,7 @@ function checkSets(sets, frames, where) {
     const aligned = typeof address === 'string' && /^[0-9A-Fa-f]{8}$/.test(address) && parseInt(address, 16) % bytes === 0;
     const fits = Number.isInteger(value) && value >= 0 && value < 2 ** (8 * bytes);
     if (!isFrame(frame) || frame >= frames || ![1, 2, 4].includes(bytes) || !aligned || !fits) {
-      throw new Error(`${where}: ${JSON.stringify(set)} isn't a frame of the stretch, an address of eight hexadecimal digits at a multiple of its bytes, 1, 2 or 4 of them, and a value that fits them`);
+      throw new Error(`${where}: ${JSON.stringify(set)} isn't a frame of ${where.endsWith('"sets"') ? 'the recording' : 'the stretch'}, an address of eight hexadecimal digits at a multiple of its bytes, 1, 2 or 4 of them, and a value that fits them`);
     }
   }
 }
@@ -75,6 +79,7 @@ export function readRecording(file) {
   if (!Number.isInteger(frames) || frames < 1) throw new Error(`${file}: "frames" is how many frames it runs`);
   if (start !== undefined) checkStart(start, file);
   checkHeld(held, frames, file);
+  if (recording.sets !== undefined) checkSets(recording.sets, frames, `${file}, "sets"`);
   if (recording.players !== undefined) {
     const { players, others } = recording;
     if (![2, 3, 4].includes(players) || !Array.isArray(others) || others.length !== players - 1) throw new Error(`${file}: "players" is 2 to 4, and "others" the held lists of the players after the first`);
@@ -114,7 +119,8 @@ export function expand(held = [], frames) {
  * The buttons the original is given at every frame, with the stretches only it has in their places, for what a list of
  * presses leads to. It's for real play, so it stops at values written to the original's memory.
  */
-export function originalButtons({ frames, held, onlyInOriginal = [] }) {
+export function originalButtons({ frames, held, onlyInOriginal = [], sets = [] }) {
+  if (sets.length) throw new Error('This list of presses writes values to the original\'s memory, and a game\'s card shows only real play.');
   const out = [], own = expand(held, frames);
   let gap = 0;
   const addStretches = frame => {
@@ -134,8 +140,8 @@ export function originalButtons({ frames, held, onlyInOriginal = [] }) {
 /**
  * How the original plays a recording's first `frames` frames, all of them unless told: `originalHeld`, the buttons it
  * holds at each of its own frames, with the stretches only it has in their places, `originalOf`, which of its frames
- * each of the recording's is, and `sets`, the values those stretches write to its memory, each at the original's frame,
- * in the order of their frames. `keysLate` is for a game that reads its buttons just after the V-blank, whose values
+ * each of the recording's is, and `sets`, the values those stretches and the recording's own `sets` write to its memory,
+ * each at the original's frame, in the order of their frames. `keysLate` is for a game that reads its buttons just after the V-blank, whose values
  * are then written a frame later, as its buttons are given (original.json's keysAfterVBlank).
  */
 export function originalPlay(recording, { frames = recording.frames, keysLate = false } = {}) {
@@ -152,6 +158,9 @@ export function originalPlay(recording, { frames = recording.frames, keysLate = 
     originalHeld.push(held[frame]);
   }
   for (; gap < stretches.length && stretches[gap].at <= frames; gap++) addStretch(stretches[gap]);
+  for (const set of recording.sets ?? []) {
+    if (set.frame < frames) sets.push({ ...set, frame: originalOf[set.frame] + (keysLate ? 1 : 0), address: parseInt(set.address, 16) });
+  }
   sets.sort((a, b) => a.frame - b.frame);
   return { held, originalOf, originalHeld, sets };
 }
@@ -169,10 +178,11 @@ export function compress(perFrame) {
 }
 
 /** Writes a recording, a change of buttons to a line, so a change to it reads well in a diff. */
-export function writeRecording(file, { about, frames, held, onlyInOriginal = [], clip, start }) {
+export function writeRecording(file, { about, frames, held, onlyInOriginal = [], sets = [], clip, start }) {
   const lines = held.map(change => '    ' + JSON.stringify(change));
   const parts = [`  "about": ${JSON.stringify(about)}`, ...(start ? [`  "start": ${JSON.stringify(start)}`] : []), `  "frames": ${frames}`, `  "held": [\n${lines.join(',\n')}\n  ]`];
   if (onlyInOriginal.length) parts.push(`  "onlyInOriginal": ${JSON.stringify(onlyInOriginal)}`);
+  if (sets.length) parts.push(`  "sets": ${JSON.stringify(sets)}`);
   if (clip) parts.push(`  "clip": ${JSON.stringify(clip)}`);
   writeFileSync(file, `{\n${parts.join(',\n')}\n}\n`);
 }

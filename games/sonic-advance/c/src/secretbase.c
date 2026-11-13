@@ -56,7 +56,7 @@ const Level ACT_SECRET_BASE_1 = {
   // him, and its beams leave WIN0V and WIN1V as they last set them on the frames they don't draw
   .start = spotlights_start, .beforeObjects = spotlights_frame, .afterFrame = first_act_after_frame,
   .drawBackground = draw_first_act,
-  .ownsWindows = 1,
+  .ownsWindows = 1, .layersOnFirstLoad = 1,
 };
 
 const Level ACT_SECRET_BASE_2 = {
