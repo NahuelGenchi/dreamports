@@ -110,7 +110,7 @@ static void power_on(void) {
 // Which of sub_C2A1's three ends a controller's read takes, by its A button now and when last read.
 static cost pad_end(uint8_t was_held, uint8_t held) { return !held ? PAD_A_NOT_HELD : was_held ? PAD_A_STILL_HELD : PAD_A_NEWLY_HELD; }
 
-void read_pads(uint8_t ran_ahead) {
+void read_pads(uint8_t guessed) {
   nes_write(0x4016, 1);
   nes_write(0x4016, 0);
   for (int pad = 0; pad < 2; pad++) {
@@ -122,20 +122,30 @@ void read_pads(uint8_t ran_ahead) {
       RAM[0x40] = bit < 7 ? held : RAM[0x40];
     }
     uint8_t before = RAM[0x42 + pad * 2];
-    if (ran_ahead) took_instead(pad_end(before & 0x80, before & 0x80), pad_end(before & 0x80, held & 0x80));
+    if (guessed) {
+      uint8_t assumed = guessed & PAD_GUESSED_HELD << pad ? 0x80 : 0;
+      took_instead(pad_end(assumed, assumed), pad_end(before & 0x80, held & 0x80));
+    }
     RAM[0x41] = before;
     RAM[0x42 + pad * 2] = held;
     RAM[0x43 + pad * 2] = (held & 0x80) && (before & 0x80) ? held & 0x7F : held;
   }
 }
 
-// How long sub_C278 takes, which depends on each A button, now and when last read. When the interrupt runs ahead of the
-// kit's frame, this frame's buttons aren't known yet: A is taken as it was, and read_pads puts the time right.
-static void pads_take_time(void) {
+// When the interrupt runs ahead of the kit's frame, this frame's buttons aren't known yet: each A is taken as it was
+// last read, and the guess goes with the read, so read_pads can put the time right. It may run two frames ahead, before
+// the last read has come, so the guess is kept rather than worked out again then.
+static uint8_t pads_guess(void) {
+  if (!interrupt_runs_ahead()) return 0;
+  return (uint8_t)(PAD_GUESSED | (RAM[0x42] & 0x80 ? PAD_GUESSED_HELD : 0) | (RAM[0x44] & 0x80 ? PAD_GUESSED_HELD << 1 : 0));
+}
+
+// How long sub_C278 takes, which depends on each A button, now and when last read.
+static void pads_take_time(uint8_t guessed) {
   took(PADS_BEGIN);
   for (int pad = 0; pad < 2; pad++) {
     uint8_t was_held = RAM[0x42 + pad * 2] & 0x80;
-    uint8_t held = interrupt_runs_ahead() ? was_held : (nes_buttons() >> (pad * 8)) & BUTTON_A;
+    uint8_t held = guessed ? was_held : (nes_buttons() >> (pad * 8)) & BUTTON_A;
     took(PAD_BEGINS);
     took_times(PAD_BIT, 8);
     took_times(GOES_ROUND, 7);
@@ -153,8 +163,9 @@ void vblank_interrupt(void) {
   hardware_write(0x2000, PPU_CONTROL);
   vblank_draws();
   took(VBLANK_TO_PADS);
-  hardware_read_pads();
-  pads_take_time();
+  uint8_t guessed = pads_guess();
+  hardware_read_pads(guessed);
+  pads_take_time(guessed);
   took(VBLANK_TO_SOUND);
   time_check('S', 0);
   sound_frame();

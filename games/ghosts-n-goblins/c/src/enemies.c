@@ -206,6 +206,19 @@ uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched) {
   took(ENEMY_TESTS_BEGIN);
   flags_past_page(enemy, 2);
   uint8_t weapon = weapon_that_touches(enemy);
+  if (weapon && RAM[OBJECT_KIND + weapon] == AXE) {
+    // $F5B5: the axe flies on through what it hits, and hits each enemy once, the last it hit kept in its state
+    if (RAM[OBJECT_STATE + weapon] == enemy) {
+      took(AXE_HIT_IT_ALREADY);
+      weapon = 0;
+    } else {
+      RAM[OBJECT_STATE + weapon] = enemy;
+      RAM[0x0647 + enemy]++;
+      RAM[OBJECT_FLAGS + weapon] = 0x40;
+      took(AXE_HITS);
+      return weapon;
+    }
+  }
   if (weapon) {
     RAM[OBJECT_STATE + weapon] = enemy;
     RAM[OBJECT_FLAGS + weapon] = 0;
@@ -455,12 +468,16 @@ void pot(uint8_t object) {
   else {
     RAM[OBJECT_FLAGS + object] |= RAM[OBJECT_FLAGS + carrier] & OBJECT_FLAG_SHOWN;
     took(POT_SHOWN_AS_CARRIER);
+    if (carrier >= 0x10) took(READ_PAST_PAGE);   // the carrier's flags, and its own, read past a page
+    if (object >= 0x10) took(READ_PAST_PAGE);
   }
   took(POT_CARRIER_LOOKED_AT);
+  if (carrier >= 0x10) took(READ_PAST_PAGE);
   if (!(RAM[OBJECT_FLAGS + carrier] & HIT)) { took(POT_IS_KEPT); return; }
   RAM[OBJECT_FLAGS + object] |= SINKS;   // for a pot, the flag that says it falls
   RAM[OBJECT_HEADING + object] = 0x08;
   took(POT_FALLS);
+  if (object >= 0x10) took(READ_PAST_PAGE);   // its flags, set by sub_F30D
 }
 
 // ---- the flying knights of the first stage's last screens
@@ -1012,6 +1029,25 @@ void thrown(uint8_t object) {
   RAM[0x26] = RAM[0x27] = 6;
   took(THROWN_FLIES);
   shot_tests(object);
+}
+
+/** $F461, kind $2A: the cave shooter's shot, four shapes by its count. With the cross, a weapon that hits it stops it. */
+void cave_shot(uint8_t object) {
+  RAM[OBJECT_COLOURS + object] = 0;
+  took(THROWN_BEGINS);
+  if (!shot_moves(object, 0x10, SHOT_GONE)) return;
+  took(BRANCH_TAKEN);
+  show_object(object);
+  RAM[OBJECT_COUNT + object]++;
+  RAM[OBJECT_SHAPE + object] = (uint8_t)(0xAC + ((RAM[OBJECT_COUNT + object] >> 1) & 3));
+  RAM[0x26] = RAM[0x27] = 6;
+  took(CAVE_SHOT_FLIES);
+  int arthur_touched;
+  uint8_t weapon = enemy_touch_tests(object, &arthur_touched);
+  if (!weapon) { took(arthur_touched ? CAVE_SHOT_TOUCHED : CAVE_SHOT_NOTHING); return; }
+  if (WEAPON_HELD != 0x4F) { took(CAVE_SHOT_WEAPON); return; }
+  RAM[OBJECT_FLAGS + object] = 0;
+  took(CAVE_SHOT_STOPPED);
 }
 
 /** $F524, kind $30: a boss's shot, which flies level. */

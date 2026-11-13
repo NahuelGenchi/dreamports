@@ -49,7 +49,7 @@ void took_instead(cost assumed, cost real);
 void hardware_write(uint16_t address, uint8_t value);
 void hardware_ppu_latch(void);              // a read of $2002, which makes the next write of $2006 the first of two
 void hardware_send_sprites(uint8_t page);   // a write of $4014
-void hardware_read_pads(void);              // sub_C278's reads, which happen when the frame comes
+void hardware_read_pads(uint8_t guessed);   // sub_C278's reads, which happen when the frame comes, with the A buttons guessed if they're not known yet
 void vblank_interrupt_wanted(uint8_t on);
 // a loop that waits for V-blank
 void loop_begins(uint8_t instructions);
@@ -185,6 +185,8 @@ enum { FIRST_WEAPON = 0x11, WEAPONS = 3, LANCE = 0x23, DAGGER = 0x24, TORCH = 0x
 uint8_t weapon_that_touches(uint8_t enemy);
 /** $EB75 and $EB84, kinds $23 and $24: a lance's or a dagger's turn (weapons.c). */
 void weapon(uint8_t object);
+/** $ECAF, kind $26: the axe, which rises and falls as it flies (weapons.c). */
+void axe(uint8_t object);
 /** sub_D8FC: adds what's in $26 and $27 to the score, tens and hundreds. `x` and `y` are the processor's registers, which it keeps. */
 void add_score(uint8_t x, uint8_t y);
 /** sub_D902: the same with thousands and ten thousands, from $24 and $25. */
@@ -252,6 +254,9 @@ void rising_thing(uint8_t object);
 void lift(uint8_t object);
 /** sub_04_B45B, kind $0A: a bat of the third stage's cave (cave.c). */
 void bat(uint8_t object);
+/** sub_04_B56F, kind $0B: the cave's shooter in the ground (cave.c); $F461, kind $2A: its shot (enemies.c). */
+void cave_shooter(uint8_t object);
+void cave_shot(uint8_t object);
 void water_crow(uint8_t object);
 void falling_thing(uint8_t object);
 /** $F6F6: an enemy that a weapon has killed burns away. */
@@ -270,7 +275,10 @@ enum { BLOCK_SOLID = 0xC6 };
 // ---- the buttons, as V-blank reads them: A, B, Select, Start, Up, Down, Left, Right from bit 7 down
 #define PAD_1 RAM[0x42]
 enum { PAD_START = 0x10, PAD_SELECT = 0x20, PAD_A = 0x80, PAD_B = 0x40, PAD_LEFT = 0x02, PAD_RIGHT = 0x01 };
-void read_pads(uint8_t ran_ahead);  // sub_C278, when the kit's frame comes: `ran_ahead` if its time was counted before that
+/** The A buttons the interrupt took as held when it ran ahead of the kit's frame: PAD_GUESSED, and PAD_GUESSED_HELD
+ *  shifted by the controller's number for each held. */
+enum { PAD_GUESSED = 0x01, PAD_GUESSED_HELD = 0x02 };
+void read_pads(uint8_t guessed);  // sub_C278, when the kit's frame comes: `guessed` if its time was counted before that
 
 // ---- the sound (sound.c)
 void sound_reset(void);        // sub_ED72
