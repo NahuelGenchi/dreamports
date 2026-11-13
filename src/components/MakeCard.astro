@@ -3,7 +3,8 @@
 // its cover and, once it has code, the way to play it as it is, which opens its page in the Dreamports row; its name; Help make it, the
 // sentence to paste into a coding agent, which copies when pressed, how many pieces are free to take, and a link to
 // its game's issue, to talk about it; its progress, the same two bars as on the game's page for each language, C first
-// and the others folded under Other languages, each with one line on where it stands (#1241); and its latest step, with the earlier ones folded. Who leads it, what waits for review and the code map stay
+// and the others folded under Other languages, which open with a glide (#1243), each with one line on where it stands
+// (#1241); and its latest step, with the earlier ones folded. Who leads it, what waits for review and the code map stay
 // on GitHub. It comes from the entry and the proof/ folder, like the game's page, and its pieces and steps from GitHub
 // as the site is built (src/lib/making.ts).
 import Facts from './Facts.astro';
@@ -93,7 +94,11 @@ const Heading = open ? 'h2' : 'h3';
               </svg>
               Other languages
             </summary>
-            {others.map((version) => <LanguageProgress version={version} />)}
+            <div class="mk-more">
+              <div class="mk-more-in">
+                {others.map((version) => <LanguageProgress version={version} />)}
+              </div>
+            </div>
           </details>
         )}
       </Facts>
