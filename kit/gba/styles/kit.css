@@ -307,10 +307,17 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 .stage {
   --t-frame: #4a5d94; --t-fill: #0b1240; --t-ink: #eef4ff; --t-held: #8fd1ff; --t-held-ink: #0a1738;
   --pad: clamp(104px, 32vmin, 148px); --edge: 14px;
+  /* the page draws under the iPhone's notch, rounded corners and home bar (the viewport tag's viewport-fit=cover), so
+     the game's black reaches every side instead of a colour iOS picks; the buttons keep clear of them, as far from the
+     notch's side as from a plain edge */
+  --edge-top: max(var(--edge), env(safe-area-inset-top, 0px));
+  --edge-bottom: max(var(--edge), env(safe-area-inset-bottom, 0px));
+  --edge-left: calc(var(--edge) + env(safe-area-inset-left, 0px));
+  --edge-right: calc(var(--edge) + env(safe-area-inset-right, 0px));
   --t-opacity: .6;   /* the settings' Button opacity sets it */
 }
 .settings-open {
-  position: fixed; z-index: 3; top: var(--edge); left: var(--edge); display: grid; place-items: center;
+  position: fixed; z-index: 3; top: var(--edge-top); left: var(--edge-left); display: grid; place-items: center;
   width: 44px; height: 44px; margin: 2px; padding: 0; border: 0; background: var(--t-fill); color: var(--t-ink);
   opacity: calc(var(--t-opacity) * .7); touch-action: none; cursor: pointer;
   box-shadow: 0 -2px var(--t-frame), 0 2px var(--t-frame), -2px 0 var(--t-frame), 2px 0 var(--t-frame);
@@ -344,7 +351,7 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 
   /* the d-pad: one cross, its frame and its fill, with the arm or arms held lit */
   .dpad {
-    left: var(--edge); bottom: var(--edge); isolation: isolate; width: var(--pad); height: var(--pad);
+    left: var(--edge-left); bottom: var(--edge-bottom); isolation: isolate; width: var(--pad); height: var(--pad);
     display: grid; grid-template: repeat(3, 1fr) / repeat(3, 1fr);
   }
   .dpad::before, .dpad::after {
@@ -368,7 +375,7 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
   }
 
   /* A, B, X and Y in the Xbox controller's diamond, as pixel circles, their letters in its colours */
-  .face { right: var(--edge); bottom: var(--edge); width: var(--pad); height: var(--pad); }
+  .face { right: var(--edge-right); bottom: var(--edge-bottom); width: var(--pad); height: var(--pad); }
   .round {
     --circle: polygon(25% 0, 75% 0, 75% 12.5%, 87.5% 12.5%, 87.5% 25%, 100% 25%, 100% 75%, 87.5% 75%, 87.5% 87.5%, 75% 87.5%,
       75% 100%, 25% 100%, 25% 87.5%, 12.5% 87.5%, 12.5% 75%, 0 75%, 0 25%, 12.5% 25%, 12.5% 12.5%, 25% 12.5%);
@@ -386,19 +393,19 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
   /* the shoulder buttons above the d-pad and the diamond, the triggers outside */
   .touch .pill { height: 30px; min-width: 64px; margin: 2px; padding: 0 10px; }
   .touch .pill:not(.held) { background: var(--t-fill); }
-  .shoulders { bottom: calc(var(--edge) + var(--pad) + 16px); width: var(--pad); display: flex; gap: 8px; }
-  .shoulders.left { left: var(--edge); }
-  .shoulders.right { right: var(--edge); }
+  .shoulders { bottom: calc(var(--edge-bottom) + var(--pad) + 16px); width: var(--pad); display: flex; gap: 8px; }
+  .shoulders.left { left: var(--edge-left); }
+  .shoulders.right { right: var(--edge-right); }
   .touch .shoulders .pill { flex: 1; min-width: 0; padding: 0; }
   .touch :is(.select, .start) { width: 72px; padding: 0; }
-  .touch .select { top: calc(var(--edge) + 60px); left: var(--edge); }
-  .touch .start { top: var(--edge); right: var(--edge); }
+  .touch .select { top: calc(var(--edge-top) + 60px); left: var(--edge-left); }
+  .touch .start { top: var(--edge-top); right: var(--edge-right); }
 }
 @media (pointer: coarse) and (orientation: portrait) {
-  .stage { padding-top: calc(var(--edge) + 60px); }
+  .stage { padding-top: calc(var(--edge-top) + 60px); }
   .touch :is(.select, .start) { top: auto; right: auto; left: 50%; transform: translateX(-50%); }
-  .touch .select { bottom: calc(var(--edge) + var(--pad) / 2 + 6px); }
-  .touch .start { bottom: calc(var(--edge) + var(--pad) / 2 - 40px); }
+  .touch .select { bottom: calc(var(--edge-bottom) + var(--pad) / 2 + 6px); }
+  .touch .start { bottom: calc(var(--edge-bottom) + var(--pad) / 2 - 40px); }
 }
 
 /* the asset viewer (ui/assets-view.js), drawn like the start screen: each part on the launcher's paper in a
