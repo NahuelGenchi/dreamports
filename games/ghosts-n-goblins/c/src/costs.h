@@ -318,7 +318,8 @@ COST(OBJECT_OUT_OF_VIEW_DOWN, 14) // or not, down,
 COST(OBJECT_OUT_OF_VIEW_ACROSS, 18) // or across
 COST(PRINCESS_TURN, 27)                // $F3E9, and back
 COST(PICK_UP_BEGINS, 7)           // $BA09
-COST(PICK_UP_OUT_OF_VIEW, 62)     // $BA12 to $BB8B, and back
+COST(PICK_UP_HIDES, 14)           // $BA12 to sub_F346's store of its flags,
+COST(PICK_UP_OUT_OF_VIEW, 48)     // and to $BB8B, and back
 COST(PICK_UP_IN_VIEW, 48)         // $BA12 to the call of sub_F68E,
 COST(PICK_UP_FLASHES, 8)          // with its other colour every fourth round
 COST(PICK_UP_CANNOT_BE_TOUCHED, 16) // sub_F68E when Arthur's flags say so
@@ -495,6 +496,7 @@ COST(ARTHUR_GOES_UP, 12)          // $DB40 to $DC6B,
 COST(ARTHUR_GOES_DOWN, 11)        // or to $DD65
 COST(BLOCK_AT_ARTHUR, 53)         // sub_E9CE with its call, to the block at his place,
 COST(BLOCK_BELOW_ARTHUR, 49)      // or sub_EA2F, to the one 11 pixels below
+COST(BLOCK_BELOW_ARTHUR_NEXT_SCREEN, 11) // sub_EA2F past the screen's 240 lines, $EA44 to $EA4B, more than the branch past it
 COST(LADDER_BLOCK_BELOW_ITS, 13)  // $DC41, and back: a block before a ladder's,
 COST(LADDER_BLOCK_IS, 17)         // one of a ladder's,
 COST(LADDER_BLOCK_PAST_ITS, 16)   // or one after them
@@ -551,8 +553,8 @@ COST(FOLLOW_DOWN, 32)             // sub_DB99 to $DBAE
 COST(FOLLOW_DOWN_NEXT_SCREEN, 14) // $DBB0, past the screen's 240 lines
 COST(FOLLOW_DOWN_NEXT_SCREEN_CARRIED, 8) // or past 255, by the branch at $DBA8
 COST(FOLLOW_DOWN_APART, 42)       // $DBB9 to $DBD4, on the view's own screen,
-COST(FOLLOW_DOWN_SCREEN_BELOW, 15) // or to $DBE3 on another, below
-COST(FOLLOW_DOWN_SCREEN_ABOVE, 17) // or above
+COST(FOLLOW_DOWN_SCREEN_BELOW, 14) // or on another, below, to $DBE5, more than the branch at $DBD4 taken
+COST(FOLLOW_DOWN_SCREEN_ABOVE, 12) // or above
 COST(FOLLOW_UP_NEAR, 17)          // $DBE5 on, and back
 COST(FOLLOW_UP_FAR, 21)
 COST(FOLLOW_DOWN_NEAR, 16)
@@ -1689,15 +1691,21 @@ COST(BIG_STRETCH_RIGHT, 9)        // $ACA2 to $ACAE: heading right,
 COST(BIG_STRETCH_LEFT, 15)        // or left
 COST(BIG_WALK_THROWS, 5)          // $ACB1 to $AD17
 COST(BIG_WALKS, 3)                // or to $ACB6
-COST(BIG_FLOOR_AHEAD_RIGHT, 43)   // sub_04_AE24 with its call, to sub_FFAC's jump to $FFCD: heading right,
-COST(BIG_FLOOR_AHEAD_LEFT, 41)    // or sub_FFBE, heading left
-COST(BIG_FLOOR_SAME_SCREEN, 26)   // $FFCD to $EA55: 16 lines down, on its screen,
-COST(BIG_FLOOR_NEXT_SCREEN, 37)   // or the next one down
+COST(BIG_FLOOR_X_RIGHT, 28)       // sub_04_AE24 with its call, a write at a time: by sub_FFAC to the store of the place 2 pixels ahead, heading right,
+COST(BIG_FLOOR_X_LEFT, 29)        // or by sub_FFBE, heading left
+COST(BIG_PLACE_SCREEN_ACROSS, 9)  // to the store of its screen across,
+COST(BIG_FLOOR_SCREEN_DOWN_RIGHT, 10) // to $FFCD's store of its screen down, by a jump,
+COST(BIG_FLOOR_SCREEN_DOWN_LEFT, 7)   // or straight on
+COST(BIG_PLACE_LINE, 11)          // to the store of its line,
+COST(BIG_PLACE_SAME_SCREEN, 11)   // and to $EA55 on its screen,
+COST(BIG_PLACE_NEXT_LINE, 11)     // or past its 240 lines, to the store of the line on the next,
+COST(BIG_PLACE_NEXT_SCREEN, 3)    // to the count of the screen,
+COST(BIG_PLACE_NEXT_DONE, 8)      // and to $EA55
 COST(BIG_NO_FLOOR, 13)            // $AE2E or $AE3E, and back: no floor ahead,
-COST(BIG_WALL_AHEAD_RIGHT, 30)    // or floor, and sub_E9F1 with its call to $EA0E,
-COST(BIG_WALL_AHEAD_LEFT, 27)     // or sub_EA01
-COST(BIG_WALL_SAME_SCREEN, 29)    // $EA0E to $EA55: 4 lines down, on its screen,
-COST(BIG_WALL_NEXT_SCREEN, 40)    // or the next one down
+COST(BIG_WALL_X, 18)              // or floor, and sub_E9F1 or sub_EA01 with its call, to the store of the place 8 pixels ahead,
+COST(BIG_WALL_SCREEN_RIGHT, 12)   // to $EA0E's store of its screen across, by a jump, heading right,
+COST(BIG_WALL_SCREEN_LEFT, 9)     // or straight on, heading left
+COST(BIG_WALL_SCREEN_DOWN, 7)     // to the store of its screen down
 COST(BIG_WALL, 13)                // $AE35 or $AE45, and back: a wall,
 COST(BIG_NO_WALL_RIGHT, 15)       // or none, heading right,
 COST(BIG_NO_WALL_LEFT, 12)        // or left

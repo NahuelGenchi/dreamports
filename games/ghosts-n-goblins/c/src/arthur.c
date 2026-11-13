@@ -143,8 +143,8 @@ static void placed(int with_buttons) {
 
 static void flash_after_a_hit(void);
 
-// sub_E9CE and sub_EA2F: the block of the stage at his place, or 11 pixels below it. A place whose 11 pixels below are
-// on the next screen down, at $EA44, isn't ported yet.
+// sub_E9CE and sub_EA2F: the block of the stage at his place, or 11 pixels below it, which at $EA44 can be on the next
+// screen down: a screen is 240 pixels high.
 static uint8_t block_at_him(uint8_t below) {
   RAM[0x22] = below;
   RAM[0x77] = Y_SCREEN;
@@ -152,6 +152,11 @@ static uint8_t block_at_him(uint8_t below) {
   RAM[0x78] = X_SCREEN;
   RAM[0x74] = X;
   took(below ? BLOCK_BELOW_ARTHUR : BLOCK_AT_ARTHUR);
+  if (below && RAM[0x73] >= 0xF0) {
+    RAM[0x73] = (uint8_t)(RAM[0x73] + 0x10);
+    RAM[0x77]++;
+    took(BLOCK_BELOW_ARTHUR_NEXT_SCREEN);
+  }
   return block_at_stage_place();
 }
 
