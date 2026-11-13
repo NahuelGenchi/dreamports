@@ -321,7 +321,7 @@ static void start_stage(void) {
 
 // sub_D596: the stage's own objects, from where its bank's list at $8038 points, eight bytes each: the screen Arthur has
 // to reach, a kind, and where it is. Each is placed once Arthur is on its screen, in the first free object. Only the
-// kinds the table at $D5FB sends to $D71B, $D72B, $D804, $D6B9 and $D670 are ported, which are placed as they're listed.
+// kinds the table at $D5FB sends to $D71B, $D72B, $D804, $D6B9, $D6A9 and $D670 are ported, which are placed as they're listed.
 static uint8_t listed_byte(uint16_t listed, uint8_t on) {
   if ((listed & 0xFF) + on > 0xFF) took(READ_PAST_PAGE);
   return peek((uint16_t)(listed + on));
@@ -341,8 +341,9 @@ static void place_stage_objects(void) {
   if (RAM[0x24] == 0xFF) took(READ_PAST_PAGE);   // the entry's second byte, when its first is a page's last
   // a kind's own routine: $D71B, whose state starts at 0, or $D72B, whose state the list gives, which $D804 jumps to
   // and $D6B9, which leaves the state as the object's last user left it, and which $D670 jumps to
-  // and $D706, a moving platform's, which gives it a heading and a shape too
-  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, PLATFORM = 0xD706, BOSS = 0xD673 , COUNT_LISTED = 0xD692, LEFT_OUT = 0xD66D };
+  // and $D706, a moving platform's, which gives it a heading and a shape too. $D6A9 is $D6B9 with the count first
+  // set to $CA, which $D6C1 clears again.
+  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, STATE_KEPT_COUNTED = 0xD6A9, PLATFORM = 0xD706, BOSS = 0xD673 , COUNT_LISTED = 0xD692, LEFT_OUT = 0xD66D };
   uint16_t routine = ram16(0x22);
   if (routine == STATE_LISTED_TOO) { took(JUMPS); routine = STATE_LISTED; }
   if (routine == STATE_KEPT_TOO) { took(JUMPS); routine = STATE_KEPT; }
@@ -352,6 +353,8 @@ static void place_stage_objects(void) {
     took(STAGE_OBJECT_LEFT_OUT);
     return;
   }
+  int counted = routine == STATE_KEPT_COUNTED;
+  if (counted) routine = STATE_KEPT;
   if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT && routine != PLATFORM && routine != BOSS && routine != COUNT_LISTED) return;
   uint8_t object;
   if (routine == BOSS) {
@@ -375,7 +378,8 @@ static void place_stage_objects(void) {
       took(STAGE_OBJECT_NO_ROOM);
       return;
     }
-    took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : routine == STATE_LISTED ? STAGE_OBJECT_STATE_LISTED : routine == PLATFORM ? STAGE_OBJECT_PLATFORM : routine == COUNT_LISTED ? STAGE_OBJECT_COUNT_LISTED : STAGE_OBJECT_STATE_KEPT);
+    took(routine == STATE_ZERO ? STAGE_OBJECT_STATE : routine == STATE_LISTED ? STAGE_OBJECT_STATE_LISTED : routine == PLATFORM ? STAGE_OBJECT_PLATFORM : routine == COUNT_LISTED ? STAGE_OBJECT_COUNT_LISTED : counted ? STAGE_OBJECT_STATE_KEPT_COUNTED : STAGE_OBJECT_STATE_KEPT);
+    if (counted) RAM[OBJECT_COUNT + object] = RAM[0xCA];
   }
   last_index = object;
   if (routine == PLATFORM) {
@@ -397,20 +401,16 @@ static void place_stage_objects(void) {
   took(STAGE_OBJECT_FILLED);
 }
 
-// $8400 in bank 2: what comes at Arthur by itself: the zombies and the flying knights (enemies.c), the forest's enemies
-// (forest.c), and four other routines, at $8574, $867A, $880A and $8748, which have nothing to do in the first stage and
-// aren't ported yet, but for where the last begins.
+// $8400 in bank 2: what comes at Arthur by itself: the zombies, the flying knights and the second set of stages'
+// crows (enemies.c), kind 7 by the apartments (apartments.c), the forest's enemies (forest.c), and two other routines,
+// at $867A and $880A, which have nothing to do in the first two stages and aren't ported yet.
 static void stage_dangers(void) {
   took(DANGERS_OTHERS);
-  if (STAGE_SET == 1) {
-    // $874E: in the second set of stages, on Arthur's fifth screen and his seventh to tenth, a count at $0718 runs
-    // down, and what comes at its end, from $875E, isn't ported yet
-    uint8_t screen = RAM[OBJECT_X_SCREEN + ARTHUR];
-    took(screen == 4 ? TOWER_DANGER_FIFTH_SCREEN : screen < 6 ? TOWER_DANGER_BEFORE : screen < 0x0A ? TOWER_DANGER_LATER_SCREENS : TOWER_DANGER_PAST);
-  }
   zombies_come(&last_index);
   knights_come(&last_index);
+  apartments_come(&last_index);
   forest_enemies_come(&last_index);
+  tower_crows_come(&last_index);
 }
 
 // $D38D: the stage's time, which the top of the picture shows as a minute and two digits of seconds. V-blank counts

@@ -118,6 +118,60 @@ void zombies_come(uint8_t *x) {
   took(RETURNS);
 }
 
+/** sub_02_8748: in the second set of stages, on Arthur's fifth screen and on his seventh to tenth, a count at $0718
+ *  runs down, sooner the harder the game is, and at its end a crow, kind $14, comes at his height, so far across from
+ *  him and up or down as the next of the 16 places in the copy's list at $87DA says, facing him. */
+void tower_crows_come(uint8_t *x) {
+  enum { CROW = 0x14, TURNED = 0x04 };
+  if (RAM[0xCF] != 1) return;   // its first test, and its return, are counted in DANGERS_OTHERS
+  uint8_t screen = RAM[OBJECT_X_SCREEN + ARTHUR];
+  took(screen == 4 ? TOWER_DANGER_FIFTH_SCREEN : screen < 6 ? TOWER_DANGER_BEFORE : screen < 0x0A ? TOWER_DANGER_LATER_SCREENS : TOWER_DANGER_PAST);
+  if (screen != 4 && (screen < 6 || screen >= 0x0A)) return;
+  // $875E
+  if (--RAM[0x0718]) { took(TOWER_CROW_NOT_YET); return; }
+  RAM[0x0718] = (uint8_t)(0x70 - ROUNDS_BETWEEN);
+  took(TOWER_CROW_COMES);
+  took(CALLS);
+  uint8_t object = free_object();
+  if (object == NO_OBJECT) { took(TOWER_CROW_NONE_FREE); return; }
+  RAM[OBJECT_FLAGS + object] = IN_USE;
+  RAM[OBJECT_KIND + object] = CROW;
+  RAM[OBJECT_COUNT + object] = 8;
+  RAM[0x0647 + object] = 0;
+  RAM[OBJECT_STATE + object] = 0;
+  took(TOWER_CROW_SET_UP);
+  ZOMBIES_PLACE = (ZOMBIES_PLACE + 1) & 0x0F;
+  took(ZOMBIE_PLACE_CHOSEN);
+  RAM[0x25] = ZOMBIES_PLACE;
+  uint8_t i = (uint8_t)(ZOMBIES_PLACE * 3);
+  uint16_t listed = (uint16_t)(0x87DA + i);
+  uint16_t across = (uint16_t)((RAM[OBJECT_X_SCREEN + ARTHUR] << 8 | RAM[OBJECT_X + ARTHUR]) + (cart(2, (uint16_t)(listed + 1)) << 8 | cart(2, listed)));
+  RAM[OBJECT_X + object] = (uint8_t)across;
+  RAM[OBJECT_X_SCREEN + object] = (uint8_t)(across >> 8);
+  RAM[OBJECT_Y + object] = RAM[OBJECT_Y + ARTHUR];
+  RAM[OBJECT_Y_SCREEN + object] = RAM[OBJECT_Y_SCREEN + ARTHUR];
+  int8_t down = (int8_t)cart(2, (uint16_t)(listed + 2));
+  RAM[0x77] = down < 0 ? 0xFF : 0;
+  RAM[0x73] = (uint8_t)down;
+  took(down < 0 ? TOWER_CROW_PLACED_UP : TOWER_CROW_PLACED_DOWN);
+  for (int k = 0; k < 3; k++) if ((listed & 0xFF) + k > 0xFF) took(READ_PAST_PAGE);   // the list's three reads, by X
+  *x = object;
+  took(CALLS);
+  move_down(object);
+  RAM[OBJECT_FLAGS + object] &= (uint8_t)~TURNED;   // sub_F332
+  took(OBJECT_FLAG_CHANGED);
+  flags_past_page(object, 1);
+  RAM[OBJECT_HEADING + object] = 0x04;
+  took(TOWER_CROW_HEADS);
+  if (arthur_is_right_of(object)) { took(TOWER_CROW_FACES_RIGHT); return; }
+  took(TOWER_CROW_FACES_LEFT);
+  RAM[OBJECT_FLAGS + object] |= TURNED;             // sub_F30D
+  took(OBJECT_FLAG_CHANGED);
+  flags_past_page(object, 1);
+  RAM[OBJECT_HEADING + object] = 0x0C;
+  took(TOWER_CROW_HEADS_LEFT);
+}
+
 // sub_F5A0: what touches an enemy this round, whose half width and half height are in $26 and $27. The first of
 // Arthur's three weapons that's flying, hasn't hit anything yet and touches it is gone, and is the answer: the enemy's
 // hits, at $0647, count it. With none, Arthur is hit if he touches it.
@@ -877,6 +931,19 @@ void forest_shot(uint8_t object) {
     if (past_page) took(READ_PAST_PAGE);
     took(heading == LEFT ? FOREST_SHOT_FLIES_LEFT : FOREST_SHOT_FLIES_RIGHT);
   }
+  shot_tests(object);
+}
+
+/** $F504, kind $2F: what the big man throws: it flies the way it was thrown and hits Arthur if it touches him. */
+void thrown(uint8_t object) {
+  RAM[OBJECT_COLOURS + object] = 0;
+  took(THROWN_BEGINS);
+  if (!shot_moves(object, 0x14, SHOT_GONE)) return;
+  took(BRANCH_TAKEN);
+  show_object(object);
+  RAM[OBJECT_SHAPE + object] = 0xC7;
+  RAM[0x26] = RAM[0x27] = 6;
+  took(THROWN_FLIES);
   shot_tests(object);
 }
 

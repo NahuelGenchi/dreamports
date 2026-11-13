@@ -51,13 +51,65 @@ static void screen_blocks(uint8_t screen) {
   BLOCK = peek((uint16_t)(ram16(0x54) + BLOCK_AT));
 }
 
-// $EA55, with sub_EA66: the block at the place in $77, $73, $78 and $74, read with the stage's own bank switched in.
+// $EA55, with sub_EA66 and sub_E945: the block at the place in $77, $73, $78 and $74, read with the stage's own bank
+// switched in. Enemies and weapons ask for it in the middle of their turns, so a frame can end inside it, and it's
+// counted a write at a time: the screen's place among its 240-block lists is worked out in steps, in $54 and $55 and
+// in $47 and $48.
 uint8_t block_at_stage_place(void) {
+  took(BLOCK_BANK_READ);
   RAM[0xD4] = BANK_NOW;
+  took(BLOCK_BANK_KEPT);
   switch_bank(BANK_HOME);
-  took(STAGE_BLOCK);
-  block_at_place();
+  took(BLOCK_BANK_SET);
+  RAM[0x22] = AT_Y_SCREEN;
+  uint8_t before = 0;
+  if (!RAM[0x22]) took(BLOCK_TOP_ROW);
+  else {
+    // a stage more than one screen high lists its screens a row at a time, each row as long as the copy's list at $EB30 says
+    took(BLOCK_ROWS_BEGIN);
+    for (;;) {
+      before = (uint8_t)(before + cart(7, (uint16_t)(0xEB30 + RAM[0xCF] * 2)));
+      RAM[0x22]--;
+      if (!RAM[0x22]) break;
+      took(BLOCK_ROW_ADDED);
+    }
+    took(BLOCK_ROWS_ADDED);
+  }
+  SCREEN_AT = (uint8_t)(before + AT_X_SCREEN);
+  took(BLOCK_SCREEN_KEPT);
+  if ((RAM[STAGE_SCREENS] + SCREEN_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
+  RAM[0x72] = peek((uint16_t)(ram16(STAGE_SCREENS) + SCREEN_AT));
+  took(BLOCK_SCREEN_READ);
+  RAM[0x55] = (uint8_t)(RAM[0x72] + peek(0x800F));
+  took(BLOCK_LIST_HIGH);
+  RAM[0x54] = peek(0x800E);
+  took(BLOCK_LIST_LOW);
+  RAM[0x47] = RAM[0x72];
+  took(BLOCK_SIXTEENTHS);
+  RAM[0x48] = 0;
+  took(BLOCK_SIXTEENTHS_HIGH);
+  for (int i = 0; i < 4; i++) {   // times 16: a 256-byte step for each screen, less 16 each, is 240
+    uint8_t carry = RAM[0x47] >> 7;
+    RAM[0x47] = (uint8_t)(RAM[0x47] << 1);
+    took(BLOCK_SHIFT);
+    RAM[0x48] = (uint8_t)(RAM[0x48] << 1 | carry);
+    took(BLOCK_SHIFT);
+  }
+  uint16_t list = (uint16_t)(ram16(0x54) - ram16(0x47));
+  took(BLOCK_LIST_TAKEN);
+  RAM[0x54] = (uint8_t)list;
+  took(BLOCK_LIST_LOW_TAKEN);
+  RAM[0x55] = (uint8_t)(list >> 8);
+  took(BLOCK_LIST_HIGH_TAKEN);
+  BLOCK_AT = (uint8_t)(AT_X >> 4);
+  took(BLOCK_COLUMN);
+  BLOCK_AT = (uint8_t)(BLOCK_AT + (AT_Y & 0xF0));
+  took(BLOCK_ROW);
+  if ((RAM[0x54] + BLOCK_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
+  BLOCK = peek((uint16_t)(ram16(0x54) + BLOCK_AT));
+  took(BLOCK_READ);
   switch_bank(RAM[0xD4]);
+  took(BLOCK_BANK_BACK);
   return BLOCK;
 }
 

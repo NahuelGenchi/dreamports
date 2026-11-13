@@ -67,13 +67,18 @@ void weapon(uint8_t object) {
   }
   took(WEAPON_NOT_SPENT);
   // sub_E9CA: the block four pixels above its place. A place whose four pixels above are on the screen above, at
-  // $E9E5, isn't ported yet.
-  RAM[0x22] = 4;
-  RAM[0x77] = RAM[OBJECT_Y_SCREEN + object];
-  RAM[0x73] = (uint8_t)(RAM[OBJECT_Y + object] - 4);
-  RAM[0x78] = RAM[OBJECT_X_SCREEN + object];
-  RAM[0x74] = RAM[OBJECT_X + object];
+  // $E9E5, isn't ported yet. Counted a write at a time.
   took(WEAPON_BLOCK_ABOVE);
+  RAM[0x22] = 4;
+  took(WEAPON_BLOCK_ROW);
+  RAM[0x77] = RAM[OBJECT_Y_SCREEN + object];
+  took(WEAPON_BLOCK_LINE);
+  RAM[0x73] = (uint8_t)(RAM[OBJECT_Y + object] - 4);
+  took(WEAPON_BLOCK_SCREEN_ACROSS);
+  RAM[0x78] = RAM[OBJECT_X_SCREEN + object];
+  took(WEAPON_BLOCK_ROW);
+  RAM[0x74] = RAM[OBJECT_X + object];
+  took(WEAPON_BLOCK_PLACED);
   uint8_t block = block_at_stage_place();
   if (block != 0xD0 && block != 0xDF) { took(WEAPON_FLIES_ON); return; }
   // $EBB0: one of a gravestone's two blocks stops it, with a sound
