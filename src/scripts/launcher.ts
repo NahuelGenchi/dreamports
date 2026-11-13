@@ -755,6 +755,9 @@ function start(launcher: HTMLElement) {
     void gone.offsetWidth;
     gone.style.translate = '';
     gone.style.setProperty('--at', String(to));
+    // It fades as it goes. With three filters it went on past the edge, but with two the place it glides to is the
+    // other side value's, in sight: there it showed beside itself and then vanished in one frame (#1210).
+    gone.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 260, easing: 'ease', fill: 'forwards' });
     setTimeout(() => gone.remove(), 450);
   }
 
