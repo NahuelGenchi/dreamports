@@ -171,7 +171,8 @@ COST(TITLE_GAME_PLAYED_BEFORE, 6) // with six more once a game has been played, 
 COST(TITLE_GAME_GOES_ON, 101)     // or $C456 by $C553 to that call: the third line, with one player
 
 // ---- the sprites' task, $F34F and sub_04_8000 (sprites.c)
-COST(SPRITES_TASK_BEGINS, 15)     // $F34F to the call
+COST(SPRITES_TASK_BEGINS, 2)      // $F34F to the store of the bank,
+COST(SPRITES_TASK_BANK_SET, 13)   // and to the call
 COST(SPRITES_SWAP_READ, 11)       // sub_04_8089, for each of five lists: the two objects' bytes read,
 COST(SPRITES_SWAP_FIRST_STORED, 8) // the first's stored,
 COST(SPRITES_SWAP_FOURTH_STORED, 4) // and the fourth's
@@ -215,7 +216,8 @@ COST(SPRITES_COPY_SPRITE, 5)      // $8070: each sprite's four bytes:
 COST(SPRITES_COPY_READ, 4)        // a byte read,
 COST(SPRITES_COPY_STORED, 14)     // stored, and counted
 COST(SPRITES_COPY_SPRITE_DONE, 10) // $8080 to $8085
-COST(SPRITES_TASK_ENDS, 19)       // $F359 to the call that yields
+COST(SPRITES_TASK_ENDS, 5)        // $F359 to the store of the bank,
+COST(SPRITES_TASK_BANK_BACK, 14)  // and to the call that yields
 COST(SPRITES_TASK_AGAIN, 3)       // $F364: round again
 
 // ---- the tiles' task, $E569 (screen.c)
@@ -379,6 +381,8 @@ COST(WAY_RIGHT_AND_BELOW, 81)     // sub_EF25 to $EF99, for a place less than a 
 COST(WAY_RIGHT_AND_ABOVE, 147)    // to the right and above,
 COST(WAY_LEFT_AND_BELOW, 147)     // to the left and not above,
 COST(WAY_LEFT_AND_ABOVE, 114)     // or to the left and above
+COST(WAY_SCREENS_HALVED_FOR_FIRST, 29)   // $EF86: both halved while the first is a screen or more,
+COST(WAY_SCREENS_HALVED_FOR_SECOND, 33)  // or the second
 COST(WAY_HALVED_FOR_FIRST, 21)    // $EF99: both halved while the first is 16 or more,
 COST(WAY_HALVED_FOR_SECOND, 27)   // or the second,
 COST(WAY_SMALL_ENOUGH, 15)        // and on to $EFAC
@@ -1599,7 +1603,10 @@ COST(DEVIL_STOPS, 58)             // $A9BC, and by sub_F311, back: its 16th roun
 COST(DEVIL_FLIES, 46)             // or to sub_F03E, with its call: its first two times,
 COST(DEVIL_FLIES_THIRD_TIME, 40)  // its third,
 COST(DEVIL_FLIES_LATER, 38)       // or later
-COST(DEVIL_SHAPE, 47)             // $AA33 to sub_F2E7, with sub_F576
+COST(DEVIL_SHAPE_BEGINS, 2)       // $AA33 to the store of its colours,
+COST(DEVIL_SHAPE_COLOURS, 7)      // to the store of its shape,
+COST(DEVIL_SHAPE_FIRST, 27)       // to sub_F576's store of the shape its count picks,
+COST(DEVIL_SHAPE_WINGS, 11)       // and to sub_F2E7
 COST(DEVIL_SHAPE_KEPT, 9)         // $AA43, and back
 COST(DEVIL_SHAPE_TURNED, 21)
 
