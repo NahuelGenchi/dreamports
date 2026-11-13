@@ -61,7 +61,8 @@ export async function loadGame(url, rom, { save = null, query = globalThis.locat
       if (globalThis.dreamportsProof) dreamportsProof.video = video;
     },
   };
-  return { game, video, sound, step: keys => { game.dp_step(keys); sound.frameDone(); } };
+  // `next`, when given, is what the frame's V-blank finds held (input.js nextGbaKeys), for gba_vblank_keys
+  return { game, video, sound, step: (keys, next) => { if (next !== undefined) game.dp_vblank_keys(next); game.dp_step(keys); sound.frameDone(); } };
 }
 
 // a game that plays no sound: its calls stay with it, and nothing hears them

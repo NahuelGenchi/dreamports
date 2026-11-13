@@ -257,6 +257,9 @@ void gba_sound_apply(M4a *m, const SoundCall *c);
  *  them, and then decides; it runs where the sound does, on the audio thread for a player. The cycle counter
  *  (gba_sound_count_cycles) gets the engine's calls alone. */
 void game_sound_frame(M4a *m, const SoundCall *calls, int count);
+/** A soft reset's gba_sound_reset, where the sound runs: a game's music manager starts again from nothing with the
+ *  engine, as the JavaScript kit makes its manager anew (sound/synth.js restart). */
+void game_sound_reset(void);
 
 /** The end of one of the game's frames, which the kit calls after game_step: the cycle counter's frame. */
 void gba_sound_frame_done(void);

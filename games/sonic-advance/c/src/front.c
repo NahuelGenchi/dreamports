@@ -12,6 +12,9 @@ void dp_sound_skip_frames(int frames);
 // the frames after power-on before the game starts: the console is still starting up, the screen white (forced blank),
 // and gFrameCount isn't counted yet (VBlankIntr, which counts it, starts with GameInit)
 #define STARTUP_FRAMES 6
+// the frames from a soft reset's V-blank to the first screen: the BIOS forces the screen blank at once, and the game's
+// start (EngineInit, GameInit) runs before the next frames show anything
+#define RESET_FRAMES 6
 
 Front ctx;
 static int startingUp;
@@ -82,10 +85,15 @@ static void power_on(int skipIntro) {
   else create_sega_logo();
 }
 
+// the V-blank found A, B, Start and Select held: the frame ends there, and the game starts again once it is over
+static int resetting;
+static void soft_reset_seen(void) { resetting = 1; }
+
 /** The front end from power-on: the screen forced blank until the game starts. */
 void front_start(void) {
   memset(&ctx, 0, sizeof ctx);
   engine_init();
+  e.softReset = soft_reset_seen;
   read_start_point();
   sprites.anims = rom_ptr(OFFSET_SPRITE_TABLES);
   sprites.dims = rom_ptr(OFFSET_SPRITE_TABLES + 4);
@@ -97,6 +105,39 @@ void front_start(void) {
   startingUp = STARTUP_FRAMES;
 }
 
+/**
+ * VBlankIntr's SoftReset: the game starts again, from the title screen (GameInit with FLAGS_SKIP_INTRO) once
+ * RESET_FRAMES of blank screen have gone by, with the save as it is and the character last chosen. The sound engine
+ * starts again from nothing, the sound chip going on as it was; the act, if it was running, stops; the engine and the
+ * video hardware are as the console's start leaves them, so the frame the reset is in already shows the blank, as the
+ * JavaScript version's page draws it (main.js softReset, front.js afterReset).
+ */
+static void soft_reset(void) {
+  resetting = 0;
+  gba_sound_reset();
+  if (act_active) {
+    // gCurrentLevel stays the act's
+    ctx.currentLevel = act_level();
+    act_soft_reset();
+  }
+  Front was = ctx;
+  memset(&ctx, 0, sizeof ctx);
+  ctx.character = was.character;
+  ctx.select = was.select;
+  ctx.currentLevel = was.currentLevel;
+  ctx.startLevel = was.startLevel;
+  ctx.afterReset = 1;
+  engine_init();
+  e.softReset = soft_reset_seen;
+  memset(gba_vram, 0, sizeof gba_vram);
+  memset(gba_pal, 0, sizeof gba_pal);
+  memset(gba_oam, 0, sizeof gba_oam);
+  for (unsigned reg = 0; reg < GBA_IO_HALFWORDS * 2; reg += 2) gba_write(reg, 0);
+  gba_update_colors();
+  gba_write(REG_DISPCNT, 0x80);
+  startingUp = RESET_FRAMES;
+}
+
 /** A frame, with the buttons in `keys` held. */
 void front_step(uint16_t keys) {
   pageFrame++;
@@ -106,14 +147,16 @@ void front_step(uint16_t keys) {
     link_frame_done();
   } else if (startingUp > 0) {
     if (--startingUp == 0) {
-      sound_vsync_on();
-      power_on(0);
+      // after a soft reset the sound engine runs on, as m4aSoundInit leaves it
+      if (!ctx.afterReset) sound_vsync_on();
+      power_on(ctx.afterReset);
     }
   } else if (!ctx.done) {
     e.keys = keys;
     engine_run();
     link_frame_done();   // a GBA with no cable has a link of its own, with nothing on it
   }
+  if (resetting) soft_reset();
   engine_draw_setup();
 }
 

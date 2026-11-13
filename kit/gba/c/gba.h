@@ -72,6 +72,12 @@ void gba_draw_frame(uint32_t *out);
 #define gba_start_number kit_start_number
 #define gba_alloc kit_alloc
 
+/** The buttons held at the V-blank that ends this frame, as KEYINPUT has them, for a game that reads them there as
+ *  well as at the frame's start, as a soft reset's V-blank does: what the page finds held as the frame ends, or what a
+ *  proof tool says the next frame holds, as the original's frames are counted from the V-blank before them
+ *  (input.js nextHeld). Without either, the frame's own buttons. */
+uint16_t gba_vblank_keys(void);
+
 // The sound: Nintendo's sound engine (MusicPlayer2000, or "m4a") and the sound hardware, playing the songs and
 // sounds in the player's copy, as the JavaScript kit's sound/ does to the sample. gba_sound_start finds the engine's
 // tables and starts it with the game's sound mode, from its DEFAULT_SOUND_MODE: `players` music players, `channels`

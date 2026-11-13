@@ -128,6 +128,7 @@ void act_life_lost(void);
 void gameover_start(void);
 int gameover_step(void);
 void gameover_display(void);
+void gameover_stop(void);
 // what the objects hand to the act: the goal post, the checkpoints and the special springs (goal.c, checkpoints.c,
 // specialspring.c)
 int act_goal_passed(void);
@@ -176,6 +177,8 @@ void act_frame_now(void);
 void rings_skip_first_update(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
+void act_soft_reset(void);
+int act_level(void);
 void act_song_playing(void);
 // what a zone's own code asks of the act (levels.h): one step of a palette animation, the tiles of frame `frame` of
 // the stage's animation copied now, and the frames of the act's music before the first one shown rendered there

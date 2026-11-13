@@ -12,9 +12,20 @@ EXPORT("dp_start") void dp_start(void) {
   kit_screen(SCREEN_W, SCREEN_H);
   game_start();
 }
+// the buttons the frame's V-blank finds held, when the page has said, and the frame's own
+static uint16_t vblankKeys, stepKeys;
+static int vblankKeysGiven;
+uint16_t gba_vblank_keys(void) { return vblankKeysGiven ? vblankKeys : stepKeys; }
+/** The buttons the next frame's step will find held at its V-blank, said before it runs. */
+EXPORT("dp_vblank_keys") void dp_vblank_keys(uint32_t keys) {
+  vblankKeys = (uint16_t)keys;
+  vblankKeysGiven = 1;
+}
 /** Runs one frame with the buttons in `keys` held. */
 EXPORT("dp_step") void dp_step(uint32_t keys) {
+  stepKeys = (uint16_t)keys;
   game_step((uint16_t)keys);
+  vblankKeysGiven = 0;
   gba_sound_frame_done();
 }
 /** Draws the frame, and gives where its 240 × 160 words are. */

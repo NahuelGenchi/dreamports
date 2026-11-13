@@ -25,6 +25,14 @@ static const int BOSS_SONGS[] = { 29, 30, 31, 32, 49, 50, 25 };
 static int stageSong = -1, starting, off, drown, oneUp, star, boss;
 static int invincible, speedUp, alive = 1;
 
+// a soft reset's new sound engine has a manager as new, with no stage music
+void game_sound_reset(void) {
+  stageSong = -1;
+  starting = off = drown = oneUp = star = boss = 0;
+  invincible = speedUp = 0;
+  alive = 1;
+}
+
 void music_call(int op, int a) { gba_sound_manager_call(op, a, 0, 0); }
 
 static void bgm_params(M4a *m) {

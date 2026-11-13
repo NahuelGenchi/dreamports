@@ -85,6 +85,8 @@ void gba_sound_apply(M4a *m, const SoundCall *c) {
 __attribute__((weak)) void game_sound_frame(M4a *m, const SoundCall *calls, int count) {
   for (int i = 0; i < count; i++) gba_sound_apply(m, &calls[i]);
 }
+// and nothing of its own to start again when the engine does
+__attribute__((weak)) void game_sound_reset(void) {}
 
 static void clear_buffers(void) {
   __builtin_memset(playingBuf, 0, sizeof playingBuf);
@@ -138,6 +140,7 @@ static void take(int op, int a, int b, int c, int d) {
     m4a_init(&engine, gba_rom, gba_rom_size, &layout, &apu);
     queued = 0;
     clear_buffers();
+    game_sound_reset();
     return;
   }
   if (queued < CALLS) queue[queued++] = call;

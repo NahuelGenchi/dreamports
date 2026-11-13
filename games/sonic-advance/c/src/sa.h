@@ -50,6 +50,8 @@ enum {
   FLAGS_PAUSE_GAME = 0x400, FLAGS_PAUSED = 0x800, FLAGS_NO_RESET = 0x8000,
 };
 enum { TASK_INACTIVE = 0x1, TASK_DESTROY_DISABLED = 0x2, TASK_RUNS_PAUSED = 0x4 };
+// A, B, Start and Select held together at a V-blank restart the game (VBlankIntr's SoftReset)
+#define SOFT_RESET_KEYS (KEY_A | KEY_B | KEY_SELECT | KEY_START)
 #define HBLANK_BUFFER (160 * 4)
 #define HEAP_END 0xFFFFFFFFu
 
@@ -103,6 +105,7 @@ typedef struct {
   void (*hblankCallbacks[4])(int line);
   int numHblankCallbacks;
   void (*vblankCallback)(void);   // gVBlankCallbacks, the one a task asks for this frame, run in the next V-blank's update
+  void (*softReset)(void);        // what the V-blank does when it finds the soft reset's buttons held (vblank)
   // the keys (gInput and the rest)
   uint16_t input, prevInput, pressed, released, repeated;
   uint8_t repeatCounters[10], firstRepeat[10], nextRepeat[10];
@@ -330,6 +333,7 @@ typedef struct {
   int select;   // the main menu's Game Start opens the character select, unless a start point leaves it out
   int currentLevel, startLevel;   // gCurrentLevel and gMultiplayerCurrentLevel, for the Moon Zone's rule
   int done;   // the front end has handed over to what isn't in C yet
+  int afterReset;   // the game has started again from a soft reset, until it next starts an act
   VsLink vsLink;
   int missing[PLAYERS_MAX];   // gMultiplayerMissingHeartbeats: the frames each GBA of the link hasn't been heard from
   uint32_t seed;              // the game's random numbers (PSEUDO_RANDOM_32)

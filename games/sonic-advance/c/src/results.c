@@ -207,6 +207,8 @@ void results_start(int level, int rings, int courseTime, int longEnd, int nextFr
 }
 
 int results_active(void) { return r.active; }
+/** A soft reset: the results go with the act. */
+void results_stop(void) { r.active = 0; }
 
 // one sprite into OAM from its attribute words
 static void put_oam(int order, uint16_t a0, uint16_t a1, int pal, int tile) {

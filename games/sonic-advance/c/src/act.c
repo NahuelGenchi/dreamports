@@ -711,6 +711,19 @@ void act_go_to_next_level(void) {
   go_to_next_level();
 }
 
+/** The level the act plays (gCurrentLevel). */
+int act_level(void) { return act.stage.level; }
+
+/** A soft reset (front.c): the act stops where it is, its objects, its results and its game over with it. */
+void act_soft_reset(void) {
+  act_tasks_destroy_all();
+  act.task = NULL;
+  results_stop();
+  gameover_stop();
+  lifeLost = 0;
+  act_active = 0;
+}
+
 int act_goal_passed(void) { return act.goalReached; }
 // past the goal post the clock stops and the rings manager neither takes nor draws rings
 void act_goal_reached(void) { act.goalReached = 1; act.clockStopped = 1; act.ringsStopped = 1; }
@@ -1060,6 +1073,8 @@ static int startPointSpent;   // a start point has opened its act, so the acts a
 
 void act_start(int level, int cardSkip, int preFrames) {
   memset(&act, 0, sizeof act);
+  // the screens after a soft reset are over once an act starts (front.c)
+  ctx.afterReset = 0;
   act.fromStartPoint = gba_start_point("level") != NULL && !startPointSpent;
   startPointSpent |= act.fromStartPoint;
   // gPseudoRandom is one sequence for the whole game: the act goes on with what the front left

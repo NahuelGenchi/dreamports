@@ -19,6 +19,7 @@ void results_display(void);
 
 /** 1 from results_start until results_run returns 0. */
 int results_active(void);
+void results_stop(void);
 
 /** The total frames the results run for, matching world.stageResults in JS (r.wait + 285). */
 int results_wait_total(void);
