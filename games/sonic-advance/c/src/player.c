@@ -1,15 +1,19 @@
-// Sonic's movement, animation and drawing, translated from the JavaScript version's engine/player.js, engine/animator.js
-// and the part of engine/game.js that draws him (drawSonic), a function at a time and in the same order. His speeds are
-// doubles of pixels a frame, as there; the original does its arithmetic on 8.8 integers, so q8 turns a speed into one
-// where it matters. The other characters, the boost modes and the Sonic Advance 2 tricks are left out.
+// Sonic's movement, animation and drawing, and Tails' as the CPU's partner, translated from the JavaScript version's
+// engine/player.js, engine/animator.js and the part of engine/game.js that draws them (drawSonic, drawTails), a function
+// at a time and in the same order. Their speeds are doubles of pixels a frame, as there; the original does its arithmetic
+// on 8.8 integers, so q8 turns a speed into one where it matters. Knuckles and Amy, the boost modes and the Sonic Advance 2
+// tricks are left out.
 
 #include "objects.h"
 #include "terrain.h"
+#include "bosses.h"
 
 // Sonic's sound effects (sound/songs.js)
 enum {
   SE_SPIN = 109, SE_SPIN_DASH_RELEASE = 110, SE_SLIDE = 111, SE_AIR_DASH = 112, SE_INSTA_SHIELD = 113, SE_BRAKE = 115,
   SE_JUMP = 116, SE_SOMERSAULT = 121, SE_GRINDING = 114,
+  SE_TAILS_FLYING = 120,   // SE_TAILS_PROPELLER_FLYING: Tails' flight, started again on each of its frames
+  SE_DROWNING = 27,        // MUS_DROWNING, which the partner's water never stops
 };
 
 // physics (PHYSICS in engine/constants.js), in pixels a frame
@@ -61,6 +65,13 @@ enum {
   DROWNED_BUBBLE_ABOVE = 12,
   SE_WATERFALL_SURFACE_HIT = 190,
 };
+// Tails' flight (TAILS in engine/constants.js; Player_Tails_InitFlying, Player_Tails_8047A3C): 240 frames, counted down
+// every other frame; a press lifts him 24/256 a frame for up to 31 frames while he rises slower than 0.75, and otherwise
+// he sinks by 8/256 a frame
+enum { FLY_TIME = 240, FLY_LIFT_FRAMES = 32 };
+#define FLY_LIFT (24.0 / 256)
+#define FLY_FALL (8.0 / 256)
+#define FLY_RISE_MAX 0.75
 // ANIMATION: the walk cycle plays at his speed, never slower than half, and the run starts at 4.5
 #define RUN_SPEED 4.5
 #define BRAKE_TURN_SPEED 1.5
@@ -102,6 +113,29 @@ void player_init(Player *p, int x, int y) {
   p->sprite.palId = 0;
   p->sprite.oamFlags = (uint16_t)(PLAYER_ORDER << 6);
   p->sprite.frameFlags = DEFAULT_PRIORITY << 12;
+}
+
+// the table of each character's first animation (gPlayerCharacterIdleAnims, offsets.characterAnims), which the
+// character states before Sonic's own moves count from
+enum { CHARACTER_ANIMS = 0x4A6F04 };
+// his tails, as a spin shows them (SA1_ANIM_CHAR(TAILS, SPIN_ATTACK), variant 1), at OAM order 17 just behind him
+enum { TAILS_SPIN_ANIM = 107, TAILS_SPIN_VARIANT = 1, TAILS_ORDER = 17, TAILS_TILES = 16, PARTNER_BODY_TILES = 64 / 8 * (64 / 8),
+       PARTNER_MATRIX = 1 };
+
+void player_init_partner(Player *p, int x, int y) {
+  player_init(p, x, y);
+  p->character = CHARACTER_TAILS; p->cpu = 1;
+  // AllocateCharacterStageGfx: room for the largest frame of Sonic's run, from the heap; the body goes through the rotation
+  // matrix of his player number when it is rotated
+  p->sprite.graphics.dest = vram_malloc(PARTNER_BODY_TILES);
+  p->sprite.frameFlags |= PARTNER_MATRIX;
+  // AllocateCharacterMidAirGfx
+  sprite_init(&p->tails);
+  p->tails.graphics.dest = vram_malloc(TAILS_TILES);
+  p->tails.graphics.anim = TAILS_SPIN_ANIM; p->tails.variant = TAILS_SPIN_VARIANT;
+  p->tails.palId = 0;
+  p->tails.oamFlags = (uint16_t)(TAILS_ORDER << 6);
+  p->tails.frameFlags = DEFAULT_PRIORITY << 12 | SPRITE_ROT_SCALE_ENABLE | 4;
 }
 
 // --- moving --------------------------------------------------------------------------------------------------------------
@@ -147,10 +181,11 @@ static void along_surface(Player *p) {
 static void bounds(Player *p) {
   Camera *c = &act.cam;
   // past the act's loop point (sub_80232D0), Sonic and the camera go back by its distance while the camera moves and
-  // follows him; the background leaves it out
-  if (act.stage.loopX >= 0 && p->x >= act.stage.loopX && c->speedX != 0 && !c->locked) {
+  // follows him; the background leaves it out. The CPU partner goes back with Sonic, never by himself.
+  if (!p->cpu && act.stage.loopX >= 0 && p->x >= act.stage.loopX && c->speedX != 0 && !c->locked) {
     p->x += act.stage.loopShift; c->x += act.stage.loopShift; c->wrapped += act.stage.loopShift;
     c->wrappedThisFrame += act.stage.loopShift;
+    if (act.hasPartner) act.partner.x += act.stage.loopShift;
   }
   double maxX = c->maxX + 240 - 1.0 / 256, maxY = c->maxY + 160 - 1.0 / 256;
   if (!p->dead && (p->inverted ? p->y <= c->minY : p->y >= maxY)) {
@@ -204,7 +239,7 @@ static int try_spin_dash(Player *p, const Control *c) {
     p->state = PS_SPIN_DASH; p->spinDashing = 1; p->dashAccel = 0;
     sensors_set_offset_y(p, BALL_SPRITE_OFFSET_Y);
     play_song(SE_SPIN);
-    act_dash_dust();
+    act_dash_dust_of(p);
     return 1;
   }
   if (!c->down) {
@@ -215,7 +250,7 @@ static int try_spin_dash(Player *p, const Control *c) {
     p->gsp = rom_s16(SPIN_DASH_SPEEDS + (uint32_t)i * 2) / 256.0 * p->facing;
     p->curled = 1; p->state = PS_SPIN;
     play_song(SE_SPIN_DASH_RELEASE);
-    act_freeze_camera();
+    if (!p->cpu) act_freeze_camera();   // the camera is Sonic's
     return 1;   // the release frame doesn't move
   }
   int a = p->dashAccel;
@@ -224,7 +259,7 @@ static int try_spin_dash(Player *p, const Control *c) {
   if (c->jumpPressed) {
     // each rev replays the spin sound, raised by the decayed charge in semitones
     gba_sound_play_pitched(SE_SPIN, a & ~0x7F);
-    p->state = PS_SPIN_DASH_REV;
+    if (p->character != CHARACTER_TAILS) p->state = PS_SPIN_DASH_REV;   // only Sonic has a rev's animation
     a += DASH_REV;
     if (a < DASH_REV_MIN) a = DASH_REV_MIN;
   }
@@ -232,8 +267,27 @@ static int try_spin_dash(Player *p, const Control *c) {
   return 1;
 }
 
-void player_end_attack(Player *p) {
+// ends the combo, the mid-air moves and the spin dash (also Player_TransitionCancelFlyingAndBoost), and stops the sound of
+// Tails' flight unless `keepPropeller`
+static void end_attack(Player *p, int keepPropeller) {
   p->attack = 0; p->attackNext = 0; p->midAir = 0; p->jumped = 0; p->spinDashing = 0; p->halfPipe = 0;
+  if (p->character == CHARACTER_TAILS && !keepPropeller) stop_song(SE_TAILS_FLYING);
+}
+void player_end_attack(Player *p) { end_attack(p, 0); }
+
+// Tails' tail swipe on the ground (sub_80480C4): as Sonic's combo, not while he revs a spin dash, pushes, or stands on a
+// wall or the ceiling; its first frame is his whole frame. Its effect comes with it.
+static int try_swipe(Player *p, const Control *c) {
+  int floor = (p->rotation + 0x40) & 0xFF;
+  if (p->spinDashing || p->pushing || floor == 0 || floor >= 0x80 || !c->attackPressed) return 0;
+  p->attack = 1; p->state = PS_TAIL_SWIPE;
+  act_tail_swipe(p);
+  return 1;
+}
+// the swipe's frames (sub_8048110): the ground speed eases off by half the deceleration
+static void swipe_step(Player *p) {
+  p->gsp = toward0(p->gsp, decel(p) / 2);
+  along_surface(p);
 }
 
 // the B-button combo on the ground (sub_8047668): true while it owns the frame. It doesn't start while Sonic revs a
@@ -437,10 +491,11 @@ static void ground_step(Player *p, const Control *c) {
     return;
   } else if (p->attack != 0) {
     slope(p);
-    attack_step(p, c);
+    if (p->character == CHARACTER_TAILS) swipe_step(p);
+    else attack_step(p, c);
     sensors_wall_push(p, 1);   // the rolling check: a wall stops the combo's moves without starting a push
   } else {
-    if (attack_step(p, c)) return;
+    if (p->character == CHARACTER_TAILS ? try_swipe(p, c) : attack_step(p, c)) return;
     if (try_spin_dash(p, c)) { bounds(p); follow_ground(p); return; }
     if (try_jump(p, c)) return;
     slope(p);
@@ -483,6 +538,62 @@ static void air_drag(Player *p) {
   p->xsp = p->xsp > 0 ? (p->xsp - drag > 0 ? p->xsp - drag : 0) : p->xsp < 0 ? (p->xsp - drag < 0 ? p->xsp - drag : 0) : 0;
 }
 
+// RandomlySpawnAirBubbles under water: on every 8th frame of the stage clock, one time in four, a bubble at his centre,
+// moving with him, small or a group. The original's random offsets, up to 15 px across and 8 px up or down, are taken off
+// his 8.8 position, so they move it by as many 1/256 px.
+static void swim_bubbles(Player *p) {
+  if (act_stage_time() % 8 != 0 || (act_random() & 0x300) != 0) return;
+  int dx = (int)((act_random() & 0xF00) >> 8), dy = (int)((act_random() & 0xF00) >> 8) - 8;
+  water_bubble(q8(p->x) - (p->facing > 0 ? -dx : dx), q8(p->y) - dy, q8(p->xsp), (act_random() & 0x100) != 0);
+}
+
+// how he flies (Player_Tails_8047990): tired out once the time is up; under water swimming, turning while left or right
+// is held against the way he faces, and letting bubbles out; in the air flying the same way, with the propeller's sound
+// going. A turn in the air plays out once begun; the water's turn is checked as the air's is, as in the original, so it
+// lasts one frame, and a turn from the air goes on in the water.
+static void flight_state(Player *p) {
+  int held = p->held[0], against = ((held & DPAD_LEFT) && p->facing > 0) || ((held & DPAD_RIGHT) && p->facing < 0);
+  if (p->flyTime == 0) {
+    p->state = PS_FLY_TIRED;
+    stop_song(SE_TAILS_FLYING);
+  } else if (p->water) {
+    if (against) p->state = PS_SWIM_TURN;
+    else if (p->state != PS_FLY_TURN) p->state = PS_SWIM;
+    swim_bubbles(p);
+    stop_song(SE_TAILS_FLYING);
+  } else {
+    if (against) p->state = PS_FLY_TURN;
+    else if (p->state != PS_FLY_TURN) p->state = PS_FLY;
+    play_song_or_change(SE_TAILS_FLYING);
+  }
+}
+
+// Tails takes off (Player_Tails_InitFlying), uncurling with his feet in place, with 8 seconds of flight; this frame's
+// gravity still pulls him
+static void start_flying(Player *p) {
+  if (p->curled) uncurl(p);
+  p->flyTime = FLY_TIME;
+  flight_state(p);
+}
+
+// a frame of flight (Player_Tails_8047A3C): the time runs down every other frame; a press lifts him while he rises slower
+// than 0.75, until 31 frames have lifted him or he rises faster, and otherwise he sinks. He stops at the camera's top edge.
+static void fly_step(Player *p, const Control *c) {
+  if ((act_stage_time() & 1) != 0 && p->flyTime != 0) p->flyTime--;
+  if (p->midAir != 1) {
+    if (p->ysp >= -FLY_RISE_MAX) {
+      p->ysp -= FLY_LIFT;
+      if (++p->midAir == FLY_LIFT_FRAMES) p->midAir = 1;
+    } else p->midAir = 1;
+  } else {
+    if (c->jumpPressed && p->ysp >= -FLY_RISE_MAX && p->flyTime != 0) p->midAir = 2;
+    p->ysp += FLY_FALL;
+  }
+  int top = act.cam.minY;
+  if (p->y < top) { p->y = top; if (p->ysp < 0) p->ysp = 0; }
+  flight_state(p);
+}
+
 static void air_step(Player *p, const Control *c) {
   // knocked back, he flies on as he was thrown: no moves, no control and no drag, but his tilt still eases back
   if (p->state == PS_HURT) {
@@ -493,8 +604,8 @@ static void air_step(Player *p, const Control *c) {
     sensors_air(p);
     return;
   }
-  // the double-tap dash, only while curled up (sub_8047714)
-  if (p->curled && p->jumped && p->midAir == 0) {
+  // Sonic's double-tap dash, only while curled up (sub_8047714)
+  if (p->character == CHARACTER_SONIC && p->curled && p->jumped && p->midAir == 0) {
     int tap = double_tap(p);
     if (tap) {
       p->midAir = 2; p->state = PS_AIR_DASH;
@@ -503,15 +614,21 @@ static void air_step(Player *p, const Control *c) {
       play_song(SE_AIR_DASH);
     }
   }
-  // jump cap, or once the rise has slowed the insta-shield (Player_8044670)
-  if (p->jumped) {
+  // jump cap, or once the rise has slowed Sonic's insta-shield or Tails' flight (Player_8044670); in flight, its own step
+  // instead (Player_Tails_8047A3C)
+  int flying = p->character == CHARACTER_TAILS && p->midAir != 0 && !p->curled;
+  if (flying) fly_step(p, c);
+  else if (p->jumped) {
     double cap = p->water ? WATER_JUMP_RELEASE_CAP : JUMP_RELEASE_CAP;
     if (p->ysp < -cap) { if (!c->jump) p->ysp = -cap; }
     else if (p->midAir == 0 && c->jumpPressed) {
       p->airLock = 0; p->midAir = 1;
-      p->state = PS_INSTA_SHIELD;
-      play_song(SE_INSTA_SHIELD);
-      act_insta_shield();
+      if (p->character == CHARACTER_TAILS) start_flying(p);
+      else {
+        p->state = PS_INSTA_SHIELD;
+        play_song(SE_INSTA_SHIELD);
+        act_insta_shield();
+      }
     }
   } else if (!p->forcedRoll && p->ysp < -RISE_CAP) p->ysp = -RISE_CAP;
 
@@ -520,7 +637,7 @@ static void air_step(Player *p, const Control *c) {
   if (p->ysp < 0) air_drag(p);
   bounds(p);
   move(p);
-  p->ysp += gravity(p);
+  if (!flying) p->ysp += gravity(p);
   tumble(p);
   sensors_air(p);
 }
@@ -552,7 +669,7 @@ void player_knock_aside(Player *p, double xsp, double ysp) {
   p->invulnerable = INVULNERABLE_FRAMES;
   p->xsp = xsp; p->ysp = ysp;
   p->air = 1; p->pushing = 0;
-  player_end_attack(p);
+  end_attack(p, 1);   // as a hit, Tails' propeller goes on
   p->airLock = 0;
   p->onObject = NULL;
   p->state = PS_HURT;
@@ -610,7 +727,7 @@ static void surface_splash(Player *p) {
 // doubles his Y speed. Under water a second goes every 60 frames: at 12, 10, 8, 6, 4 and 2 a number counts down over him, at
 // 11 the drowning music starts and below 0 he drowns; every 16th frame of the clock he breathes out a bubble, one time in
 // four. Out of the water the count starts over and the drowning music stops.
-static void water_step(Player *p) {
+void player_water_step(Player *p) {
   int level = water_level();
   if (level >= 0 && (int)__builtin_floor(p->y) - WATER_BELOW >= level) {
     if (!p->water) {
@@ -621,12 +738,13 @@ static void water_step(Player *p) {
     }
     if (--p->drownFrames < 1) {
       int second = p->drownSeconds--;
-      if (second == DROWNING_MUSIC_AT) water_drowning_music();
-      else if (countdown_number(second) >= 0) water_countdown(countdown_number(second));
+      // the drowning music is Sonic's; the CPU partner's countdown is over him
+      if (second == DROWNING_MUSIC_AT) { if (!p->cpu) water_drowning_music(); }
+      else if (countdown_number(second) >= 0) water_countdown(p, countdown_number(second));
       if (p->drownSeconds < 0) {
         p->dead = 1; p->ysp = 0;
         water_bubble((int)__builtin_floor(p->x * 256), (int)__builtin_floor(p->y * 256) - DROWNED_BUBBLE_ABOVE * 256, 0, 1);
-        water_drowned_bubbles();
+        water_drowned_bubbles(p);
       }
       p->drownFrames = DROWN_SECOND;
     }
@@ -641,7 +759,7 @@ static void water_step(Player *p) {
       surface_splash(p);
     }
     drown_count_reset(p);
-    if (level >= 0) water_drowning_music_stop();
+    if (level >= 0 && !p->cpu) water_drowning_music_stop();
   }
   if (p->surfaceT != 0) p->surfaceT--;
 }
@@ -684,7 +802,7 @@ void player_step(Player *p, const PlayerInput *in) {
   p->jumpPressed = c.jumpPressed; p->attackPressed = c.attackPressed;
 
   if (p->dead) { dead_step(p); return; }
-  water_step(p);
+  player_water_step(p);
   if (p->override || p->carried) return;   // an object moves him, and his own code doesn't run
   if (p->air) air_step(p, &c);
   else ground_step(p, &c);
@@ -710,6 +828,21 @@ static const uint16_t ANIMATIONS[PA_COUNT][2] = {
   [PS_GRABBED] = {98, 0},
   [PS_MOON_GAZE] = {397, 0}, [PS_MOON_TRANSFORM] = {398, 0}, [PS_MOON_FLY] = {399, 0},
 };
+
+// Tails' own (TAILS_ANIMATIONS in rom/extract.js); his others are Sonic's moved by his first animation
+// (characterAnimations), where Sonic's own moves have none
+static const uint16_t TAILS_ANIMATIONS[PA_COUNT][2] = {
+  [PS_FLY] = {155, 0}, [PS_FLY_TURN] = {156, 0}, [PS_FLY_TIRED] = {157, 0}, [PS_FLY_LAND] = {158, 0},
+  [PS_SWIM] = {145, 0}, [PS_SWIM_TURN] = {146, 0}, [PS_TAIL_SWIPE] = {149, 0},
+};
+static void animation_of(const Player *p, int name, uint16_t *anim, uint8_t *variant) {
+  if (p->character == CHARACTER_TAILS && TAILS_ANIMATIONS[name][0]) {
+    *anim = TAILS_ANIMATIONS[name][0]; *variant = (uint8_t)TAILS_ANIMATIONS[name][1];
+    return;
+  }
+  *anim = (uint16_t)(ANIMATIONS[name][0] + rom_u16(CHARACTER_ANIMS + (uint32_t)p->character * 2));
+  *variant = (uint8_t)ANIMATIONS[name][1];
+}
 
 // the walk cycle plays at his speed, never slower than half
 static int walk_cycle_speed(double speed) {
@@ -762,6 +895,12 @@ static void after_animation(Player *p) {
     case PS_CROUCH_END: p->state = p->gsp != 0 ? PS_WALK : PS_IDLE; break;
     case PS_LOOK_UP_END: p->state = PS_IDLE; break;
     case PS_TURN: case PS_BREATHE: p->state = PS_WALK; break;
+    case PS_FLY_TURN: p->state = PS_FLY; break;
+    case PS_SWIM_TURN: p->state = PS_SWIM; break;
+    case PS_TAIL_SWIPE:
+      p->attack = 0; p->attackNext = 0; p->chain = 0;
+      p->state = p->gsp != 0 ? PS_WALK : PS_IDLE;
+      break;
     case PS_SPRING: case PS_SPRING_PEAK: p->state = PS_SPRING_FALL; break;
     case PS_SPIN_ATTACK: case PS_SLIDE_END:
       player_end_attack(p); p->state = p->gsp != 0 ? PS_WALK : PS_IDLE; break;
@@ -784,8 +923,8 @@ static void after_animation(Player *p) {
 // animation or variant restarts the sprite, so bouncing and walking, which share one, carry on where the cycle was.
 static void choose(Player *p, int name, int restart) {
   Sprite *s = &p->sprite;
-  uint16_t anim = ANIMATIONS[name][0];
-  uint8_t variant = ANIMATIONS[name][1];
+  uint16_t anim; uint8_t variant;
+  animation_of(p, name, &anim, &variant);
   if (anim != s->graphics.anim || variant != s->variant) {
     s->hitboxes[0].index = s->hitboxes[1].index = -1;
     s->hitboxes[0].left = s->hitboxes[0].top = s->hitboxes[0].right = s->hitboxes[0].bottom = 0;
@@ -804,7 +943,7 @@ void player_animate(Player *p, const PlayerInput *in) {
   if (p->death == PLAYER_GONE) return;
   choose(p, pick(p, in), p->animRestart);
   p->animRestart = 0;
-  if (p->state == PS_BRAKE && act_stage_time() % 4 == 0) act_brake_dust();
+  if (p->state == PS_BRAKE && act_stage_time() % 4 == 0) act_brake_dust_of(p);
   for (int guard = 0; guard < 4; guard++) {
     // a hitbox a frame sets is turned with him, as the sprite system applies its flips when it sets one; the frames drawn
     // through the rotation hardware have their flips cleared first (sub_8024B10), so theirs are never turned
@@ -827,6 +966,35 @@ void player_animate(Player *p, const PlayerInput *in) {
   if (p->invincible > 0) p->invincible--;
 }
 
+// --- Tails' tails (sub_8024F74) ----------------------------------------------------------------------------------------------
+// The way he moves is worked out each frame, straight ahead of him when he is still. Only while he is curled up (charState
+// 5) are they shown, as a second sprite just behind him (OAM order 17) through the next rotation matrix of the frame, turned
+// that way and mirrored as his rotated frames are, and only then does their animation run, at half speed under water. They
+// blink with him. (In a marble track he shows them another way, Task_8047D04, which no act in C has yet.)
+void player_tails_step(Player *p) {
+  p->tailsShown = 0;
+  if (p->character != CHARACTER_TAILS) return;
+  int vx = s16(q8(p->xsp)), vy = s16(q8(p->ysp));
+  p->tailsShift = vx != 0 || vy != 0 ? ((arc_tan2(vx, vy) >> 8) + 0x40) & 0xFF : p->facing < 0 ? 0xC0 : 0x40;
+  if (p->state != PS_SPIN) return;
+  p->tailsMatrix = boss_matrix();
+  p->tails.animSpeed = p->water ? ANIM_NORMAL_SPEED >> 1 : ANIM_NORMAL_SPEED;
+  update_sprite(&p->tails, 0);
+  p->tailsShown = !p->hidden;
+}
+
+static void tails_draw(Player *p, int sx, int sy) {
+  Sprite *s = &p->tails;
+  int right = (p->facing > 0) != (p->inverted != 0), rotation = p->tailsShift << 2;
+  Transform tf;
+  tf.rotation = (uint16_t)(p->inverted ? (512 - rotation) & 1023 : rotation);
+  tf.qScaleX = (int16_t)(right ? -p->scale : p->scale); tf.qScaleY = (int16_t)p->scale;
+  tf.x = (int16_t)(sx - (right ? 1 : 0)); tf.y = (int16_t)sy;
+  s->frameFlags = (s->frameFlags & ~(uint32_t)SPRITE_ROT_SCALE) | (uint32_t)p->tailsMatrix | SPRITE_ROT_SCALE_ENABLE;
+  transform_sprite(s, &tf);
+  display_sprite(s);
+}
+
 // --- drawing --------------------------------------------------------------------------------------------------------------------
 // Sonic's sprite (OAM order 16): the walk frames go through the rotation hardware (matrix 0, normal size) and follow the
 // slope, mirrored with a negative scale when he faces right, which also moves him 1 px left; facing left, the original
@@ -843,7 +1011,8 @@ void player_draw(Player *p, int camX, int camY) {
   int sx = (int)__builtin_floor(p->x) - camX, sy = (int)__builtin_floor(p->y) - camY;
   int priority = p->death != PLAYER_ALIVE || p->front ? 1 : p->prio;
   s->frameFlags &= ~(SPRITE_PRIORITY | SPRITE_X_FLIP | SPRITE_Y_FLIP | SPRITE_ROT_SCALE | SPRITE_ROT_SCALE_ENABLE | SPRITE_DOUBLE_SIZE);
-  s->frameFlags |= (uint32_t)priority << 12;
+  // through the rotation matrix of his player number (AllocateCharacterStageGfx)
+  s->frameFlags |= (uint32_t)priority << 12 | (p->cpu ? PARTNER_MATRIX : 0);
   if (rotated) {
     int right = (p->facing > 0) != (p->inverted != 0);
     int rotation = p->drawRotation;
@@ -862,4 +1031,5 @@ void player_draw(Player *p, int camX, int camY) {
   display_sprite(s);
   // the animation's priority stays as its commands left it
   s->frameFlags = (s->frameFlags & ~SPRITE_PRIORITY) | (uint32_t)p->prio << 12;
+  if (p->tailsShown) tails_draw(p, sx, sy);
 }

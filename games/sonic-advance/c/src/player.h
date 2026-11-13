@@ -1,5 +1,6 @@
-// Sonic: his state, movement and animation, translated from the JavaScript version's engine/player.js and
-// engine/animator.js. The characters other than Sonic, the boost modes and the Sonic Advance 2 tricks are not here; the fields the objects will read and set (onto him, holding his controls, curling him up) are.
+// Sonic, and Tails as the CPU's partner: their state, movement and animation, translated from the JavaScript version's
+// engine/player.js and engine/animator.js. Knuckles and Amy, the boost modes and the Sonic Advance 2 tricks are not here;
+// the fields the objects will read and set (onto him, holding his controls, curling him up) are.
 
 #ifndef SA_PLAYER_H
 #define SA_PLAYER_H
@@ -7,6 +8,7 @@
 #include "sa.h"
 
 enum { LAYER_FRONT = 0, LAYER_BACK = 1 };
+enum { CHARACTER_SONIC = 0, CHARACTER_TAILS = 1 };
 enum { SHIELD_NONE, SHIELD_NORMAL, SHIELD_MAGNETIC };
 
 // the d-pad bits of the input history (the mid-air dash reads it)
@@ -30,6 +32,9 @@ typedef enum {
   PS_FLOAT,                 // lifted by a whirlwind (CHARSTATE_37)
   PS_GRABBED,               // held in Egg X's claw
   PS_MOON_GAZE, PS_MOON_TRANSFORM, PS_MOON_FLY,   // X Zone's way to the Moon Zone
+  // Tails' own: flying, turning in flight, tired out and landing as the CPU's partner (charStates 53 to 56), swimming and
+  // turning under water (57 and 58), and the tail swipe (60)
+  PS_FLY, PS_FLY_TURN, PS_FLY_TIRED, PS_FLY_LAND, PS_SWIM, PS_SWIM_TURN, PS_TAIL_SWIPE,
   PA_BORED, PA_RUN, PA_BRAKE_TURN,   // bored of waiting, running, and turning round after a skid
   PA_COUNT
 } PlayerAnim;
@@ -40,6 +45,8 @@ typedef struct {
 } PlayerInput;
 
 typedef struct {
+  int character;                // CHARACTER_SONIC or CHARACTER_TAILS
+  int cpu;                      // the CPU's partner (gPartner), whose camera, music and loop are Sonic's
   double x, y, gsp, xsp, ysp;   // his centre, and his speeds in pixels a frame: along the surface, and in X and Y
   int facing;                   // 1 right, -1 left
   int state, prevState;         // PS_*, and the one his animation was last picked for
@@ -53,7 +60,9 @@ typedef struct {
   int spinDashing;
   int dashAccel;                // the spin dash's charge, in 1/256 px
   int offsetY;                  // from his centre to the ground sensors
-  int midAir;                   // mid-air move used this jump: 1 insta-shield, 2 dash
+  int midAir;                   // mid-air move used this jump: 1 insta-shield, 2 dash; Tails' flight, 2 to 31 rising after
+                                // a press
+  int flyTime;                  // Tails: frames of flight left, counted down every other frame (flyingDuration)
   int attack, attackNext;       // step of the B-button combo, and the move queued after the somersault
   int idleT;                    // frames until he gets bored
   int invulnerable, invincible, speedUp;   // frames of blinking, invincibility and speed shoes left
@@ -84,17 +93,27 @@ typedef struct {
   int jumpPressed, attackPressed;
   int held[DPAD_HISTORY], pressed[DPAD_HISTORY];
   Sprite sprite;                // his graphics, kept by the animation
+  Sprite tails;                 // Tails' tails, a second sprite shown while he is curled up (AllocateCharacterMidAirGfx)
+  int tailsShift;               // the way he moves, which turns his tails (w.tf.shift)
+  int tailsShown, tailsMatrix;  // his tails drawn this frame, through this rotation matrix (gOamMatrixIndex)
 } Player;
 
 enum { PLAYER_ALIVE = 0, PLAYER_FALLING, PLAYER_GONE };
 enum { NO_TRACK = 0x7F, FULL_SCALE = 0x100 };
 
 void player_init(Player *p, int x, int y);
+/** Tails as InitializePlayer makes him for the CPU's partner: his sprites from the heap, the body with room for Sonic's
+ *  run (ALLOC_TILES(SA1_ANIM_SONIC_RUN)) and his tails 16 tiles. */
+void player_init_partner(Player *p, int x, int y);
 /** One frame of his movement, before his animation. */
 void player_step(Player *p, const PlayerInput *in);
 /** Picks and steps his animation after the movement, and decides whether he is drawn. */
 void player_animate(Player *p, const PlayerInput *in);
 void player_draw(Player *p, int camX, int camY);
+/** Player_HandleWater: in and out of the water, and the drowning count (the start of his frame). */
+void player_water_step(Player *p);
+/** Tails' tails after his animation: the way they turn, and their own animation while he is curled up (sub_8024F74). */
+void player_tails_step(Player *p);
 /** The hooks for the objects: out of a ball and into one, keeping his feet in place. */
 void player_stand_up(Player *p);
 void player_curl_up(Player *p);

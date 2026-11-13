@@ -131,8 +131,9 @@ static void put_ring(Sprite *s, int *drawn, int x, int y) {
   (*drawn)++;
 }
 
-static void collect_rings(const Player *p) {
-  int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y), oy = p->offsetY;
+// the box is worked out once, from Sonic's height (`oy`), and the CPU partner is tested with it too
+static void collect_rings(const Player *p, int oy) {
+  int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
   int l = px - HALF_WIDTH, r = px + HALF_WIDTH, t = py - oy, b = py + oy;
   // the original keeps region indices in u16s: a search that starts left of or above the map wraps to 65535 and finds
   // nothing; its bottom and right edges come in by a ring's height and half its width
@@ -187,8 +188,12 @@ int rings_task(ActTask *t) {
   if (skipUpdate) skipUpdate = 0;
   else update_sprite(&ringSprite, 0);
   const Player *p = &act.player;
-  // the rings can't be taken while Sonic is knocked back and blinking, or dead
-  if (!act.ringsStopped && p->dead == 0 && !(p->state == PS_HURT && p->invulnerable)) collect_rings(p);
+  // the rings can't be taken while a player is knocked back and blinking, or dead, nor by the CPU partner held in a claw
+  if (!act.ringsStopped) {
+    if (p->dead == 0 && !(p->state == PS_HURT && p->invulnerable)) collect_rings(p, p->offsetY);
+    const Player *q = &act.partner;
+    if (act.hasPartner && q->dead == 0 && !(q->state == PS_HURT && q->invulnerable) && q->state != PS_GRABBED) collect_rings(q, p->offsetY);
+  }
   draw_rings();
   return 1;
 }

@@ -107,8 +107,7 @@ void water_bubble(int x, int y, int dx, int group) {
 
 /** Task_SpawnBubblesAfterDrowning: on every 4th frame of the clock, one time in four, one or two bubbles near his centre */
 static int drowned_run(ActTask *t) {
-  (void)t;
-  const Player *p = &act.player;
+  const Player *p = (const Player *)t->data;
   if (!p->dead) return 0;
   if (!(act_stage_time() & 3) && !(act_random() & 0x300)) {
     int n = (int)((act_random() & 0x100) >> 8);
@@ -123,7 +122,7 @@ static int drowned_run(ActTask *t) {
 }
 
 /** SpawnBubblesAfterDrowning */
-void water_drowned_bubbles(void) { act_task_add(drowned_run, NULL, NULL, PRIORITY_EFFECTS); }
+void water_drowned_bubbles(const Player *p) { act_task_add(drowned_run, NULL, (void *)p, PRIORITY_EFFECTS); }
 
 // --- the drowning countdown --------------------------------------------------------------------------------------------------
 typedef struct { Object o; int x, y, t; } Countdown;
@@ -140,11 +139,10 @@ static int countdown_run(ActTask *t) {
   return 1;
 }
 
-/** SpawnDrowningCountdownNum: `n`, 5 to 0, over Sonic */
-void water_countdown(int n) {
+/** SpawnDrowningCountdownNum: `n`, 5 to 0, over Sonic or the CPU partner */
+void water_countdown(const Player *p, int n) {
   Countdown *c = OBJECT_NEW(Countdown);
   if (!c) return;
-  const Player *p = &act.player;
   c->x = (int)__builtin_floor(p->x * 256) - cam_x() * 256;
   c->y = (int)__builtin_floor(p->y * 256) - cam_y() * 256;
   object_sprite_at(&c->o.sprite, vram_malloc(COUNTDOWN_TILES), ANIM_DROWN_COUNTDOWN, 5 - n, ORDER_EFFECT, PRIORITY_EFFECT, 0, 0);
