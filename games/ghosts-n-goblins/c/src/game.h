@@ -246,6 +246,8 @@ uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched);
 uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched);
 /** $F770: an enemy that a weapon has hit falls for six rounds, the way its flag $02 says, and is gone (enemies.c). */
 void hit_enemy_falls(uint8_t object);
+/** sub_04_B9AD, kind $0F: a flame of the fourth stage's bridge, burning while Arthur is near (bridge.c). */
+void bridge_flame(uint8_t object);
 /** sub_04_A89E, kind 6: the small blue devil of the second stage's towers (devil.c). */
 void devil(uint8_t object);
 /** sub_04_9DA2 and sub_04_9D5F, kinds $36 and $37: the second stage's objects that go up and down, and that fall (platform.c). */
