@@ -9,6 +9,7 @@
 
 #define WAVE_START 24       // as mGBA has a wave note's first step, past its period
 #define SEQ_PERIOD 32768    // the frame sequencer steps at 512 Hz
+#define OFF_PERIOD 32768    // a square's step at pitch 0, where the sound switched off leaves it
 
 static const uint8_t DUTY[4][8] = { { 0, 0, 0, 0, 0, 0, 0, 1 }, { 1, 0, 0, 0, 0, 0, 0, 1 }, { 1, 0, 0, 0, 0, 1, 1, 1 }, { 0, 1, 1, 1, 1, 1, 1, 0 } };
 
@@ -115,8 +116,12 @@ static void write_now(Apu *a, int r, int v) {
     if (r == 0x60 || r == 0x62 || r == 0x63 || r == 0x64 || r == 0x65) catch_up(a, 0, a->clock);
     if (r == 0x68 || r == 0x69 || r == 0x6C || r == 0x6D) catch_up(a, 1, a->clock);
     if (r == 0x80 || r == 0x81) for (int i = 0; i < 2; i++) if (advancing(a, i)) catch_up(a, i, a->clock);
+    // counted at pitch 0, which the switch-off leaves, so the span stays small however long the square went uncaught
     if (r == 0x84 && !(v & 0x80))
-      for (int i = 0; i < 2; i++) { a->sq[i].pos = (int)(a->sqIndex[i] & 7); a->sq[i].since = (int)(a->clock - a->sqLast[i]); }
+      for (int i = 0; i < 2; i++) {
+        long long since = a->clock - a->sqLast[i];
+        a->sq[i].pos = (int)((a->sqIndex[i] + since / OFF_PERIOD) & 7); a->sq[i].since = (int)(since % OFF_PERIOD);
+      }
   }
   // switched on, the frame sequencer starts its steps again (mGBA's frame 7, then 0 at the next)
   if (r == 0x84 && a->exact && (v & 0x80) && !(REG(0x84) & 0x80)) a->seqStep = 0;
@@ -234,7 +239,11 @@ static void step_chip(Apu *a, int cycles) {
     if (!a->exact) return;
     // the squares count the time while the sound is off and catch it up at the pitch they have once it's on, and the
     // frame sequencer keeps its time, stepping nothing (mGBA)
-    for (int i = 0; i < 2; i++) a->sq[i].since += cycles;
+    for (int i = 0; i < 2; i++) {
+      ApuSquare *c = &a->sq[i];
+      c->since += cycles;
+      if (c->since >= OFF_PERIOD && !c->freq) { c->pos = (c->pos + c->since / OFF_PERIOD) & 7; c->since %= OFF_PERIOD; }
+    }
     a->seqTimer -= cycles;
     while (a->seqTimer <= 0) a->seqTimer += SEQ_PERIOD;
     return;

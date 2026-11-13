@@ -44,7 +44,7 @@ export function createSynth(rom, layout, rate, manager = runCalls) {
   // the cycle counts start again from 0 with each frame, so they stay small whole numbers: a growing one would
   // become a new object at every step on the audio thread
   function tick() {
-    if (cycle >= nextFrame) { cycle -= nextFrame; frameStart = 0; nextFrame = FRAME_CYCLES; frame(); }
+    if (cycle >= nextFrame) { cycle -= nextFrame; frameStart = 0; nextFrame = FRAME_CYCLES; apu.late = cycle; frame(); }
     const i = Math.floor((cycle - frameStart) / SAMPLE_CYCLES);
     apu.run(TICK);
     const out = apu.mix(playing[i], playing[n + i]);

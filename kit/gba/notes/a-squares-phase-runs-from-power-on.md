@@ -1,0 +1,7 @@
+# A square's phase runs from the console's power-on, so Sonic Advance's squares are written on the original's cycles.
+
+About: the GBA kit's sound in C; kit/gba/sound/apu.js; kit/gba/sound/m4a.js
+
+Proof: #1240; amy-x-zone; character-select
+
+mGBA moves a square only at its own register writes, at each sample while it plays with an envelope that can still sound, and at the frame sequencer's steps, all counted from power-on, and switching the sound off zeroes its pitch without moving it. A note's phase is what is left of that history, so on amy-x-zone's two-square frames, such as 6279, the mix came out half a wave out of step. With gba_sound_chip_clock the chip keeps that time from power-on, 71,058 cycles before the kit's chip starts in Sonic Advance. With Sonic Advance's own library every place in SoundMain costs what mGBA counts for it, and with the FIFO refills and the H-blank DMA added (gba_sound_dma_at, gba_sound_hblank_dma) each write lands within a few cycles of the original's. Where the game loads a screen SoundMain starts late, by as much as 21,216 cycles; the game's one table of loads says how late each is, as measured. Three things are left: SoundMain's start moves by up to 8 cycles either way from frame to frame, a game call that stops a square mid-frame is written at the frame's start, and a recording from a start point has no history from power-on, so a write near a step's edge can slip there.
