@@ -1031,6 +1031,24 @@ void thrown(uint8_t object) {
   shot_tests(object);
 }
 
+/** $F3F1, kind $28: the cave dragon's fire, which flies the way it was breathed, blinking. */
+void dragon_fire(uint8_t object) {
+  took(DRAGON_FIRE_BEGINS);
+  if (!shot_moves(object, 0x1E, SHOT_GONE)) return;
+  took(BRANCH_TAKEN);
+  show_object(object);
+  RAM[OBJECT_COUNT + object]++;
+  took(DRAGON_FIRE_BLINKS);
+  RAM[OBJECT_COLOURS + object] = (uint8_t)((RAM[OBJECT_COUNT + object] >> 2) & 1);
+  took(DRAGON_FIRE_SHAPE);
+  RAM[OBJECT_SHAPE + object] = 0x4D;
+  took(DRAGON_FIRE_SHAPE_TURNS);
+  RAM[OBJECT_SHAPE + object] = (uint8_t)(0x4D + ((RAM[OBJECT_COUNT + object] >> 2) & 1));
+  RAM[0x26] = RAM[0x27] = 6;
+  took(DRAGON_FIRE_FLIES);
+  shot_tests(object);
+}
+
 /** $F461, kind $2A: the cave shooter's shot, four shapes by its count. With the cross, a weapon that hits it stops it. */
 void cave_shot(uint8_t object) {
   RAM[OBJECT_COLOURS + object] = 0;

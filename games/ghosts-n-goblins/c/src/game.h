@@ -257,6 +257,11 @@ void bat(uint8_t object);
 /** sub_04_B56F, kind $0B: the cave's shooter in the ground (cave.c); $F461, kind $2A: its shot (enemies.c). */
 void cave_shooter(uint8_t object);
 void cave_shot(uint8_t object);
+/** sub_04_B0E3, kind $15: the cave dragon's head; sub_04_B355, kinds $16 to $1D: its pieces (dragon.c). */
+void dragon_head(uint8_t object);
+void dragon_piece(uint8_t object);
+/** $F3F1, kind $28: the dragon's fire (enemies.c). */
+void dragon_fire(uint8_t object);
 void water_crow(uint8_t object);
 void falling_thing(uint8_t object);
 /** $F6F6: an enemy that a weapon has killed burns away. */

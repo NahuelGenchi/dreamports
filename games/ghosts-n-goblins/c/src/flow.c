@@ -324,6 +324,86 @@ static void start_stage(void) {
   stage_music();
 }
 
+// $D740, kind $15: the cave's dragon, a head and eight pieces behind it, kinds $16 to $1D. It waits until nine of the
+// objects from the second to the 16th could be taken, then takes nine with sub_DA28, at places from the list's plus the
+// copy's lists at $D807, $D810, $D819 and $D822, and keeps their numbers at $06FE on. Only the head is shown at first.
+static uint8_t listed_byte(uint16_t listed, uint8_t on);
+static uint8_t dragon_could_take(uint8_t object) {
+  uint8_t flags = RAM[OBJECT_FLAGS + object];
+  if (object >= 0x10) took(READ_PAST_PAGE);
+  if (flags & OBJECT_FLAG_SHOWN) { took(DRAGON_OBJECT_SHOWN); return 0; }
+  if (!flags) { took(DRAGON_OBJECT_FREE); return 1; }
+  static const struct { uint8_t kind; cost takes; } STAYING[] = {
+    { 0x0F, DRAGON_OBJECT_KIND_F }, { 0x10, DRAGON_OBJECT_KIND_10 }, { 0x11, DRAGON_OBJECT_KIND_11 }, { 0x05, DRAGON_OBJECT_KIND_5 },
+  };
+  uint8_t kind = RAM[OBJECT_KIND + object];
+  for (unsigned k = 0; k < sizeof STAYING / sizeof *STAYING; k++) if (kind == STAYING[k].kind) { took(STAYING[k].takes); return 0; }
+  took(DRAGON_OBJECT_OTHER_KIND);
+  return 1;
+}
+static void place_dragon(uint16_t listed) {
+  enum { HEAD = 0x15, LAST = 0x1D, PARTS = 0x06FE };
+  took(DRAGON_COUNT_BEGINS);
+  RAM[0x22] = 0;
+  for (uint8_t object = 1; object < 0x11; object++) {
+    RAM[0x22] += dragon_could_take(object);
+    took(object < 0x10 ? DRAGON_COUNT_NEXT : DRAGON_COUNT_OVER);
+  }
+  if (RAM[0x22] < 9) { took(DRAGON_NOT_YET); last_index = 0x11; return; }
+  took(DRAGON_MADE_BEGINS);
+  for (RAM[0x22] = HEAD; RAM[0x22] <= LAST; RAM[0x22]++) {
+    uint8_t object = take_object(), part = (uint8_t)(RAM[0x22] - HEAD);
+    took(DRAGON_PART_FLAGS);
+    RAM[OBJECT_FLAGS + object] = listed_byte(listed, 7);
+    took(DRAGON_PART_SHAPE);
+    RAM[OBJECT_SHAPE + object] = 0xA7;
+    if (RAM[0x22] == HEAD) took(DRAGON_HEAD_KEPT);
+    else {
+      took(DRAGON_PIECE_FLAGS);
+      RAM[OBJECT_FLAGS + object] = 0x40;
+      took(DRAGON_PIECE_SHAPE);
+      RAM[OBJECT_SHAPE + object] = 0x99;
+      took(DRAGON_PIECE_KIND);
+    }
+    RAM[OBJECT_KIND + object] = RAM[0x22];
+    took(DRAGON_PART_HITS);
+    RAM[0x0647 + object] = 0;
+    took(DRAGON_PART_PLACE);
+    RAM[OBJECT_X + object] = listed_byte(listed, 3);
+    took(DRAGON_PART_PLACE);
+    RAM[OBJECT_X_SCREEN + object] = listed_byte(listed, 4);
+    took(DRAGON_PART_PLACE);
+    RAM[OBJECT_Y + object] = listed_byte(listed, 5);
+    took(DRAGON_PART_PLACE);
+    RAM[OBJECT_Y_SCREEN + object] = listed_byte(listed, 6);
+    uint16_t x = (uint16_t)((RAM[OBJECT_X_SCREEN + object] << 8 | RAM[OBJECT_X + object]) + (cart(7, (uint16_t)(0xD810 + part)) << 8 | cart(7, (uint16_t)(0xD807 + part))));
+    uint16_t y = (uint16_t)((RAM[OBJECT_Y_SCREEN + object] << 8 | RAM[OBJECT_Y + object]) + (cart(7, (uint16_t)(0xD822 + part)) << 8 | cart(7, (uint16_t)(0xD819 + part))));
+    took(DRAGON_PART_ACROSS);
+    RAM[OBJECT_X + object] = (uint8_t)x;
+    took(DRAGON_PART_SCREEN);
+    RAM[OBJECT_X_SCREEN + object] = (uint8_t)(x >> 8);
+    took(DRAGON_PART_DOWN);
+    RAM[OBJECT_Y + object] = (uint8_t)y;
+    took(DRAGON_PART_SCREEN);
+    RAM[OBJECT_Y_SCREEN + object] = (uint8_t)(y >> 8);
+    took(DRAGON_PART_COLOURS);
+    RAM[OBJECT_COLOURS + object] = 0;
+    took(DRAGON_PART_KEPT);
+    RAM[PARTS + part] = object;
+    took(RAM[0x22] < LAST ? DRAGON_PART_NEXT : DRAGON_PARTS_MADE);
+  }
+  uint8_t head = RAM[PARTS];
+  last_index = head;
+  took(DRAGON_HEAD_READ);
+  took(OBJECT_FLAG_READ);
+  if (head >= 0x10) took(READ_PAST_PAGE);
+  if (RAM[OBJECT_FLAGS + head] & 0x04) {
+    RAM[0xC3]++;   // a boss the stage counts
+    took(DRAGON_COUNTED);
+  } else took(DRAGON_NOT_COUNTED);
+  STAGE_OBJECTS_PLACED++;
+}
+
 // sub_D596: the stage's own objects, from where its bank's list at $8038 points, eight bytes each: the screen Arthur has
 // to reach, a kind, and where it is. Each is placed once Arthur is on its screen, in the first free object. Only the
 // kinds the table at $D5FB sends to $D71B, $D72B, $D804, $D6B9, $D6A9 and $D670 are ported, which are placed as they're listed.
@@ -348,7 +428,7 @@ static void place_stage_objects(void) {
   // and $D6B9, which leaves the state as the object's last user left it, and which $D670 jumps to
   // and $D706, a moving platform's, which gives it a heading and a shape too. $D6A9 is $D6B9 with the count first
   // set to $CA, which $D6C1 clears again.
-  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, STATE_KEPT_COUNTED = 0xD6A9, PLATFORM = 0xD706, PLATFORM_TOO = 0xD6F1, BOSS = 0xD673 , COUNT_LISTED = 0xD692, LEFT_OUT = 0xD66D };
+  enum { DRAGON = 0xD740, STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, STATE_KEPT_COUNTED = 0xD6A9, PLATFORM = 0xD706, PLATFORM_TOO = 0xD6F1, BOSS = 0xD673 , COUNT_LISTED = 0xD692, LEFT_OUT = 0xD66D };
   uint16_t routine = ram16(0x22);
   if (routine == STATE_LISTED_TOO) { took(JUMPS); routine = STATE_LISTED; }
   if (routine == STATE_KEPT_TOO) { took(JUMPS); routine = STATE_KEPT; }
@@ -359,6 +439,7 @@ static void place_stage_objects(void) {
     took(STAGE_OBJECT_LEFT_OUT);
     return;
   }
+  if (routine == DRAGON) { place_dragon(listed); return; }
   int counted = routine == STATE_KEPT_COUNTED;
   if (counted) routine = STATE_KEPT;
   if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT && routine != PLATFORM && routine != BOSS && routine != COUNT_LISTED) return;

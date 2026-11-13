@@ -813,6 +813,9 @@ wait objects_task(void) {
         case 0x0B: cave_shooter(object); break;
         case 0x21: waiting_enemy(object); break;
         case 0x2A: cave_shot(object); break;
+        case 0x15: dragon_head(object); break;
+        case 0x16: case 0x17: case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C: case 0x1D: dragon_piece(object); break;
+        case 0x28: dragon_fire(object); break;
         case 0x2F: thrown(object); break;
         case 0x0C: lift(object); break;
         case 0x0E: platform(object); break;

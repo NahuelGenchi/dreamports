@@ -892,6 +892,146 @@ COST(STAGE_BOSS_NO_ROOM, 8)        // $D676, and back
 COST(STAGE_BOSS_READ, 16)          // $D676 to $D681: its flags in the list
 COST(STAGE_BOSS_COUNTED, 7)        // which count it among the stage's bosses
 COST(STAGE_BOSS_STATE, 17)         // $D685 to $D6C1
+COST(DRAGON_COUNT_BEGINS, 7)      // $D740 to $D746: the cave's dragon counts the objects it could take,
+COST(DRAGON_OBJECT_SHOWN, 7)      // one that's shown, which it couldn't,
+COST(DRAGON_OBJECT_FREE, 14)      // or one that's free, counted,
+COST(DRAGON_OBJECT_KIND_F, 17)    // or one in use and not shown, of a kind that stays: $0F,
+COST(DRAGON_OBJECT_KIND_10, 21)   // $10,
+COST(DRAGON_OBJECT_KIND_11, 25)   // $11,
+COST(DRAGON_OBJECT_KIND_5, 29)    // or 5,
+COST(DRAGON_OBJECT_OTHER_KIND, 33) // or of another kind, counted
+COST(DRAGON_COUNT_NEXT, 7)        // $D762: the next,
+COST(DRAGON_COUNT_OVER, 6)        // or none left
+COST(DRAGON_NOT_YET, 13)          // $D767, and back: fewer than nine,
+COST(DRAGON_MADE_BEGINS, 13)      // or on to sub_DA28's call
+COST(DRAGON_PART_FLAGS, 11)       // $D775 to the store of a part's flags from the list,
+COST(DRAGON_PART_SHAPE, 7)        // to the store of its shape,
+COST(DRAGON_HEAD_KEPT, 16)        // to the store of its kind for the head,
+COST(DRAGON_PIECE_FLAGS, 14)      // or for a piece behind it, to the store of other flags,
+COST(DRAGON_PIECE_SHAPE, 7)       // and of its own shape,
+COST(DRAGON_PIECE_KIND, 8)        // and to the store of its kind
+COST(DRAGON_PART_HITS, 7)         // to the store of its hits,
+COST(DRAGON_PART_PLACE, 12)       // to the store of each of the four bytes of the list's place,
+COST(DRAGON_PART_ACROSS, 25)      // to the store of its place across, from the copy's lists,
+COST(DRAGON_PART_SCREEN, 13)      // to the store of a screen,
+COST(DRAGON_PART_DOWN, 15)        // to the store of its place down,
+COST(DRAGON_PART_COLOURS, 7)      // to the store of its colours,
+COST(DRAGON_PART_KEPT, 7)         // to the store of its number at $06FE on,
+COST(DRAGON_PART_NEXT, 20)        // and to sub_DA28's call for the next,
+COST(DRAGON_PARTS_MADE, 18)       // or to $D7F7 after the last
+COST(DRAGON_HEAD_READ, 4)         // the head's number, before its flag $04's test
+COST(DRAGON_COUNTED, 18)          // $D7FD, and back: a boss the stage counts,
+COST(DRAGON_NOT_COUNTED, 15)      // or not
+COST(DRAGON_NOT_FIFTH_SET, 8)     // sub_04_B0E3 or sub_04_B355 to sub_F2E3, outside the fifth set: the cave dragon's head or a piece
+COST(DRAGON_BURNING, 5)           // $B0FC or $B367 to $F6F6: it's burning,
+COST(DRAGON_ALIVE, 4)             // or the head isn't, to sub_F0A3,
+COST(DRAGON_PIECE_ALIVE, 3)       // or a piece isn't, to $B36C
+COST(DRAGON_HEAD_OUT_OF_VIEW, 2)  // $B104 to sub_F346: the head, out of the view,
+COST(DRAGON_HEAD_ASLEEP_AWAY, 8)  // asleep there, and back,
+COST(DRAGON_HEAD_AWAKE_AWAY, 3)   // or awake, to $B153,
+COST(DRAGON_HEAD_IN_VIEW, 3)      // or in the view, to sub_F321
+COST(DRAGON_HEAD_BOX, 10)         // $B112 to sub_F585: 8 by 6
+COST(DRAGON_NOT_TOUCHED, 3)       // $B11D to $B135: nothing touched it,
+COST(DRAGON_TOUCHED_ARTHUR, 7)    // or Arthur did, to sub_F311,
+COST(DRAGON_HIT, 15)              // or a weapon hit it that isn't the lance,
+COST(DRAGON_HIT_BY_LANCE, 14)     // or the lance did, to $B12A,
+COST(DRAGON_LANCE_SPARKS, 9)      // which takes the hit back, to the store of the lance's flags,
+COST(DRAGON_LANCE_SPARKED, 5)     // and on to sub_F311
+COST(DRAGON_UNHIT, 7)             // $B135 to $B153: no hits,
+COST(DRAGON_HITS_COUNTED, 11)     // one to five, to sub_F311,
+COST(DRAGON_HEAD_KILLED, 12)      // or six, to the store of its count
+COST(DRAGON_DIES, 28)             // to sub_ED51, with sub_F7A5,
+COST(DRAGON_DIES_QUIET, 14)       // $B146 to $B329, with the stage's music stopped
+COST(DRAGON_DIES_PART_GONE, 13)   // $B329 to $B338: a part that's gone already,
+COST(DRAGON_DIES_PART_HIT, 19)    // or one that's given a hit, to burn away
+COST(DRAGON_DIES_NEXT, 7)         // $B338: the next,
+COST(DRAGON_DIES_LAST, 6)         // or none left
+COST(DRAGON_DIES_BURNS, 9)        // $B33D to sub_F305
+COST(DRAGON_DIES_SCORE, 20)       // $B347 to sub_D902, through $C8C1: 1,000 points
+COST(DRAGON_MUSIC, 10)            // $B153 to sub_F2EF: the boss's music
+COST(DRAGON_AWAKE, 3)             // $B15E to $B184: awake,
+COST(DRAGON_ASLEEP, 10)           // or asleep, to sub_F687, 32 by 32,
+COST(DRAGON_WAKES, 3)             // which wakes it when Arthur's within, to $B175,
+COST(DRAGON_WAITS, 15)            // or counts a round,
+COST(DRAGON_STILL_WAITS, 9)       // and back,
+COST(DRAGON_WAITED, 2)            // or wakes it after 64, to $B175
+COST(DRAGON_WOKEN, 15)            // $B178 to $B184
+COST(DRAGON_POINT_LEVEL_ABOVE, 19) // $B184 to $B196: its loop's place is within 16 pixels above,
+COST(DRAGON_POINT_FAR_DOWN, 23)   // or further away down, to $B1B0,
+COST(DRAGON_POINT_LEVEL_BELOW, 22) // or within 16 below, to $B196
+COST(DRAGON_POINT_ACROSS_LEFT, 15) // $B196 to $B1A5: within 16 pixels to the left,
+COST(DRAGON_POINT_FAR_ACROSS, 19) // or further away across, to $B1B0,
+COST(DRAGON_POINT_ACROSS_RIGHT, 18) // or within 16 to the right
+COST(DRAGON_POINT_NEXT, 18)       // $B1A5 to $B1B0: on to the next place
+COST(DRAGON_POINT_NOT_FIFTH, 8)   // $B1B0 to $B1C8, outside the fifth set
+COST(DRAGON_PLACE_PAST_SCREEN, 50) // $B1C8 to $B1F2: the place down, past a screen's 240 lines,
+COST(DRAGON_PLACE_NEXT_SCREEN, 57) // or on the next screen,
+COST(DRAGON_PLACE_SAME_SCREEN, 40) // or on the view's
+COST(DRAGON_PLACES, 54)           // $B1F2 to sub_EF25: the place across, and its own
+COST(DRAGON_HEADS, 18)            // $B217 to sub_F03E
+COST(DRAGON_SHAPE_KEPT, 9)        // $B222 to sub_FA87: heading straight down or up,
+COST(DRAGON_SHAPE_SET, 16)        // or not, to the store of its shape by the side it heads,
+COST(DRAGON_SHAPE_STORED, 5)      // and on to sub_FA87
+COST(DRAGON_FACES_AWAY_RIGHT, 20) // $B235, and back: Arthur's to the right, and it faces left,
+COST(DRAGON_FACES_HIM_RIGHT, 12)  // or right, to $B24B,
+COST(DRAGON_FACES_AWAY_LEFT, 19)  // or he's to the left, and it faces right,
+COST(DRAGON_FACES_HIM_LEFT, 11)   // or left
+COST(DRAGON_COUNTS, 7)            // $B24B to sub_F2F3: a round counted
+COST(DRAGON_MOUTH_OPENS, 23)      // $B251, and back: its mouth open, in its first three rounds,
+COST(DRAGON_MOUTH_CLOSES, 11)     // or after them, to sub_F33A,
+COST(DRAGON_MOUTH_SHUT, 3)        // or shut, to $B261
+COST(DRAGON_NOT_TIME, 15)         // $B261, and back: not a 64th round,
+COST(DRAGON_FIRE_TIME, 8)         // or one, to $B268
+COST(DRAGON_FIRE_TEST_PAST_D0, 15) // $B268 to $B277 or $B277 to $B286: Arthur's distance across, or down, past $D0,
+COST(DRAGON_FIRE_TEST_FAILS, 25)  // or one that stops the fire, and back,
+COST(DRAGON_FIRE_TEST_PASSES, 18) // or one that doesn't
+COST(DRAGON_FIRE_FIRST_SLOT, 10)  // $B286 to $B293: the 21st object free,
+COST(DRAGON_FIRE_SECOND_SLOT, 18) // or the 22nd,
+COST(DRAGON_FIRE_NO_SLOT, 25)     // or neither, and back
+COST(DRAGON_FIRE_MADE, 82)        // $B293 to sub_EF25: the fire at its place, and the way to Arthur
+COST(DRAGON_FIRE_HEADED, 4)       // $B2CA to the store of the fire's heading,
+COST(DRAGON_FIRE_STORE, 7)        // to the store of its flags, or of its kind,
+COST(DRAGON_FIRE_MOUTH, 12)       // to the head's shape with its mouth open,
+COST(DRAGON_FIRE_DONE, 13)        // $B2E1, and back
+COST(DRAGON_PART_OTHER_KIND, 18)  // $B3A8 or $B3E3 on: a part that's become another kind,
+COST(DRAGON_PART_FREE, 24)        // or is free,
+COST(DRAGON_PART_BURNING, 27)     // or burning,
+COST(DRAGON_PART_LAST_FOUND, 28)  // or there, the last, to $B3C2,
+COST(DRAGON_PART_AHEAD_FOUND, 29) // or the one ahead, to $B40B
+COST(DRAGON_PART_LOOKS_ON, 8)     // $B3BE or $B3F9: the part before it,
+COST(DRAGON_PART_LOOKED, 7)       // or none
+COST(DRAGON_PIECE_SHAPED, 7)      // $B36C to sub_F346
+COST(DRAGON_PIECE_IN_VIEW, 2)     // $B377 to sub_F321 in the view,
+COST(DRAGON_PIECE_AWAY, 3)        // or past it out of the view
+COST(DRAGON_HEAD_GONE, 13)        // $B37C to the store of a piece's flags when the head is gone,
+COST(DRAGON_HEAD_GONE_STORED, 5)  // and to $B38E,
+COST(DRAGON_HEAD_AWAKE, 15)       // or awake, to $B38E,
+COST(DRAGON_HEAD_ASLEEP_PIECE, 20) // or asleep, and back
+COST(DRAGON_PIECE_TESTS, 20)      // $B38E to sub_F5A0 with its call, 8 by 8, shown,
+COST(DRAGON_PIECE_HIDDEN, 7)      // or not, to $B39C
+COST(DRAGON_PIECE_HIT, 17)        // $B39C to sub_ED51, through sub_F7B9: hit,
+COST(DRAGON_TAIL_SEARCH, 5)       // $B3A4 to $B3A8
+COST(DRAGON_TAIL_BURNS, 6)        // $B3C2 to the store of the last part's flags,
+COST(DRAGON_TAIL_HITS, 7)         // to the store of the piece's hits,
+COST(DRAGON_TAIL_COUNT, 5)        // to the store of the last part's count,
+COST(DRAGON_TAIL_SCORE, 19)       // and to sub_D8FC, through $C8BE: 200 points
+COST(DRAGON_PIECE_UNHIT, 7)       // $B39C to $B3DB: not hit,
+COST(DRAGON_FOLLOW_BEGINS, 11)    // to $B3E3
+COST(DRAGON_PIECE_LEFT_ALONE, 21) // $B3FD to sub_D8FC, through $C8BE: no part ahead, 200 points and gone
+COST(DRAGON_FOLLOW_PLACES, 56)    // $B40B to $B433: its place and the one ahead's
+COST(DRAGON_FOLLOW_LEVEL_ABOVE, 13) // $B433 to $B440: within 12 pixels above,
+COST(DRAGON_FOLLOW_FAR_DOWN, 17)  // or further down, to sub_EF25,
+COST(DRAGON_FOLLOW_LEVEL_BELOW, 16) // or within 12 below
+COST(DRAGON_FOLLOW_LEVEL_LEFT, 13) // $B440 to $B453: within 12 pixels to the left,
+COST(DRAGON_FOLLOW_LEVEL_RIGHT, 17) // or to the right,
+COST(DRAGON_FOLLOW_FAR_ACROSS, 16) // or further across, to sub_EF25
+COST(DRAGON_FOLLOW_HEADED, 5)     // $B450, the store of its heading
+COST(DRAGON_FOLLOW_MOVES, 10)     // $B453 to sub_F03E
+COST(DRAGON_FIRE_BEGINS, 10)      // $F3F1 to sub_F0A0's call of sub_F03E, less the call sub_F0A3's count stands for: the dragon's fire
+COST(DRAGON_FIRE_BLINKS, 17)      // $F3FE to the store of its colours,
+COST(DRAGON_FIRE_SHAPE, 7)        // to the store of its shape,
+COST(DRAGON_FIRE_SHAPE_TURNS, 27) // with sub_F576, to the store of the next,
+COST(DRAGON_FIRE_FLIES, 22)       // and to $F54D
 COST(STAGE_OBJECT_STATE, 17)      // $D71E to $D6C1, for a kind whose state starts at 0,
 COST(STAGE_OBJECT_STATE_LISTED, 22) // or $D72E to $D6C1, for one whose state the list gives,
 COST(STAGE_OBJECT_PLATFORM, 39)   // or $D709 to $D6C1, for a moving platform: its heading and shape too,
