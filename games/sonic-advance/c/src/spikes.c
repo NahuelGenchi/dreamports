@@ -53,11 +53,12 @@ static void side(Spikes *sp, Player *p) {
 static int spikes_run(ActTask *t) {
   Spikes *sp = (Spikes *)t->data;
   const Entity *en = &sp->o.slot->e;
-  Player *p = &act.player;
-  switch (sp->kind) {
-    case SPIKES_UP: if (p->inverted) bumping(sp, p); else landing(sp, p); break;
-    case SPIKES_DOWN: if (p->inverted) landing(sp, p); else bumping(sp, p); break;
-    default: side(sp, p); break;
+  FOR_EACH_PLAYER(p) {
+    switch (sp->kind) {
+      case SPIKES_UP: if (p->inverted) bumping(sp, p); else landing(sp, p); break;
+      case SPIKES_DOWN: if (p->inverted) landing(sp, p); else bumping(sp, p); break;
+      default: side(sp, p); break;
+    }
   }
   if (off_cam(en->x, en->y)) return 0;
   object_draw(&sp->o.sprite, en->x, en->y);

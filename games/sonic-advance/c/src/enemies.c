@@ -163,30 +163,41 @@ void enemy_defeat(int x, int y) {
   if (p->chain < SCORE_KINDS - 1) p->chain++;
 }
 
+// Sonic, then the CPU partner (PLAYER(i) for each single-player character)
+static Player *player_of(int i) { return i == 0 ? &act.player : act.hasPartner ? &act.partner : NULL; }
+
 int enemy_attack(const Sprite *s, int x, int y) {
   const Hitbox *hb = object_box(s, 0);
-  Player *p = &act.player;
-  if (!hb || p->dead) return 0;
-  int px = enemy_sonic_x(), py = enemy_sonic_y();
-  const Hitbox *body = object_box(&p->sprite, 0), *attack = object_box(&p->sprite, 1);
-  if (attack && collide_overlap(x, y, hb, px, py, attack)) {
-    if (p->ysp > 0) p->ysp = -p->ysp;
-    enemy_defeat(x, y);
-    return 1;
-  }
-  if (body && collide_overlap(x, y, hb, px, py, body)) {
-    if (p->invincible > 0) { enemy_defeat(x, y); return 1; }
-    world_damage(p);
+  if (!hb) return 0;
+  for (int i = 0; i < 2; i++) {
+    Player *p = player_of(i);
+    if (!p || p->dead) continue;
+    int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
+    const Hitbox *body = object_box(&p->sprite, 0), *attack = object_box(&p->sprite, 1);
+    if (attack && collide_overlap(x, y, hb, px, py, attack)) {
+      if (p->ysp > 0) p->ysp = -p->ysp;
+      enemy_defeat(x, y);
+      return 1;
+    }
+    if (body && collide_overlap(x, y, hb, px, py, body)) {
+      if (p->invincible > 0) { enemy_defeat(x, y); return 1; }
+      world_damage(p);
+    }
   }
   return 0;
 }
 
 int enemy_projectile(const Sprite *s, int x, int y) {
   const Hitbox *hb = object_box(s, 0);
-  Player *p = &act.player;
-  if (!hb || p->dead) return 0;
-  const Hitbox *body = object_box(&p->sprite, 0);
-  if (!body || !collide_overlap(x, y, hb, enemy_sonic_x(), enemy_sonic_y(), body)) return 0;
-  world_damage(p);
-  return 1;
+  if (!hb) return 0;
+  int touched = 0;
+  for (int i = 0; i < 2; i++) {
+    Player *p = player_of(i);
+    if (!p || p->dead) continue;
+    const Hitbox *body = object_box(&p->sprite, 0);
+    if (!body || !collide_overlap(x, y, hb, (int)__builtin_floor(p->x), (int)__builtin_floor(p->y), body)) continue;
+    world_damage(p);
+    touched = 1;
+  }
+  return touched;
 }

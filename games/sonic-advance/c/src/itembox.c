@@ -46,13 +46,15 @@ static int item_box_run(ActTask *t) {
     int d = terrain_tile_floor(en->x, en->y + b->dy, 1, 8);
     if (d < 0) { b->dy += d; b->hopping = 0; }
   }
+  // the CPU partner only ever stands on it or bumps it, and does so first (his bump doesn't count)
+  if (act.hasPartner) collide_platform(&b->o, en->x, en->y + b->dy, box_of(b), &act.partner);
   // standing on it, or without his attack box, it is only solid: he can stand on it or bump it from below, but not break it
   // (the original checks slot 1 here, where the decompiled C reads slot 0)
   int solid = p->onObject == &b->o || !object_box(&p->sprite, 1);
   int res = solid ? collide_platform(&b->o, en->x, en->y + b->dy, box_of(b), p) : collide_item_box(en->x, en->y + b->dy, box_of(b), p);
   if (res & COLLIDE_FROM_BELOW) { b->vy = HOP_SPEED; b->hopping = 1; }
   else if (!solid && (res & (COLLIDE_LANDED | COLLIDE_PUSHING))) {
-    if (p->onObject == &b->o) { p->onObject = NULL; p->pushing = 0; p->air = 1; }
+    FOR_EACH_PLAYER(q) if (q->onObject == &b->o) { q->onObject = NULL; q->pushing = 0; q->air = 1; }
     play_song(SE_ITEM_BOX_BREAK);
     dust_cloud(en->x, en->y + b->dy);
     b->phase = PHASE_RISING; b->n = 0;
