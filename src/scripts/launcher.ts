@@ -1062,6 +1062,13 @@ function start(launcher: HTMLElement) {
   // how far a game's page had scrolled when a page under it took its place, to come back to
   let leftAt = [0, 0];
 
+  // The menu behind a card is out of sight, so it is out of reach too: Tab stays on the card, and on the sound's button,
+  // which every screen shows (#1204)
+  const menuParts = [$('.filters', launcher), stage, corners, padHint];
+  function menuAway(away: boolean) {
+    for (const part of menuParts) part.inert = away;
+  }
+
   // changes the row with no transition: every part of it with no-anim, or only a game's light with light-now
   function rowAtOnce(how: 'no-anim' | 'light-now', change: () => void) {
     rowEl.classList.add(how);
@@ -1086,6 +1093,7 @@ function start(launcher: HTMLElement) {
     if (dlg === settingsCard) syncSettings();
     state.view = state.open = dlg;
     state.opener = opener;
+    menuAway(true);
     // what the row's recording is showing goes along with the game's picture
     const frame = !opts.instant && !replacing && hasHero(dlg) ? rowFrame() : null;
     sleepRow();
@@ -1142,6 +1150,8 @@ function start(launcher: HTMLElement) {
     if (!dlg) return;
     state.view = null;
     state.open = null;
+    // the menu is within reach again as it comes back, unless another card takes this one's place
+    if (!opts.swap) menuAway(false);
     if (!opts.quiet) sound.play('close');
     if (hasHero(dlg)) {
       stop(showScr);
