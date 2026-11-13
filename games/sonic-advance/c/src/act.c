@@ -304,7 +304,7 @@ static void hud_update(int draw) {
   if (draw) {
     // the icons: the ring over the ring count and the character's face by the lives, at OAM order 3
     put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, HUD_RING, 6, 0);
-    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, HUD_FACE, 0, 0);
+    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, HUD_FACE, ctx.character, 0);
     if (act.ringCount == 0) {
       // white, red, red, white, then the white zero the bytes after the string make; past those, on the first frame of a
       // counter that starts at 40 or more, a character code of 0, the tiles 64 before the font's (sub_8053BAC, hud_load)
@@ -436,32 +436,33 @@ static void late_tiles_draw(void) {
 }
 void act_copy_tiles(int frame) { late_tiles_copy(frame); }
 
+// UI graphics 39, which the character select loads into sprite VRAM from tile 1: its tiles 19 and 20 are the two a
+// zero-ring count reads past its string on its first frame (sub_8053BAC). They stay there until the player's own frames
+// write over them, as Tails' larger ones do on the card and Sonic's only later. The Dreamport's recordings that skip the
+// character select still find them there, but in an act whose row has them blank. After the act before, the player's
+// own frames have long been over them, and they stay his.
+static void menu_leftovers(void) {
+  if (act.stage.row->blankZeroTiles) { memset(gba_vram + OBJ_VRAM + (HUD_WHITE - 64) * 32, 0, 2 * 32); return; }
+  uint32_t leftTiles, leftPalette;
+  UiSlot layout;
+  ui_graphics(39, &leftTiles, &leftPalette, &layout);
+  copy_rom(leftTiles + 19 * 32, OBJ_VRAM + (HUD_WHITE - 64) * 32, 2 * 32);
+}
+
 // the HUD's tiles and colours (hudGraphics): the white and red digits, the ring and the face. The original loads
 // them as the HUD starts, after the title card's frame, which is why the card's own palette 6 is loaded later too.
 static void hud_load(void) {
   uint32_t fontTiles, fontPalette, faceTiles, facePalette, ringTiles, ringPalette;
   UiSlot layout;
   ui_graphics(0, &fontTiles, &fontPalette, &layout);
-  ui_graphics(1, &faceTiles, &facePalette, &layout);
+  ui_graphics(1 + ctx.character, &faceTiles, &facePalette, &layout);   // UIGFX_UI_ICON_SONIC + gSelectedCharacter
   ui_graphics(5, &ringTiles, &ringPalette, &layout);
   copy_rom(fontTiles + 32 * 32, OBJ_VRAM + HUD_WHITE * 32, 22 * 32);
   copy_rom(fontTiles + 224 * 32, OBJ_VRAM + HUD_RED * 32, 22 * 32);
   copy_rom(ringTiles, OBJ_VRAM + HUD_RING * 32, 16 * 32);
   copy_rom(faceTiles, OBJ_VRAM + HUD_FACE * 32, 4 * 32);
-  // UI graphics 39, which the character select loads into sprite VRAM from tile 1 and nothing writes over before the act:
-  // its tiles 19 and 20 are the two a zero-ring count reads past its string on its first frame (sub_8053BAC). The
-  // Dreamport's recordings that skip the character select still find them there, but in an act whose row has them blank
-  // After the act before, Sonic's own frames have long been over them, and they stay his
-  if (!act.afterLevel) {
-    if (act.stage.row->blankZeroTiles) memset(gba_vram + OBJ_VRAM + (HUD_WHITE - 64) * 32, 0, 2 * 32);
-    else {
-      uint32_t leftTiles, leftPalette;
-      ui_graphics(39, &leftTiles, &leftPalette, &layout);
-      copy_rom(leftTiles + 19 * 32, OBJ_VRAM + (HUD_WHITE - 64) * 32, 2 * 32);
-    }
-  }
   for (int i = 0; i < 16; i++) e.objPalette[6 * 16 + i] = (uint16_t)rom_u16(fontPalette + i * 2);
-  for (int i = 0; i < 16; i++) e.objPalette[i] = (uint16_t)rom_u16(facePalette + i * 2);
+  for (int i = 0; i < 16; i++) e.objPalette[ctx.character * 16 + i] = (uint16_t)rom_u16(facePalette + i * 2);
   e.flags |= FLAGS_UPDATE_OBJ_PALETTES;
 }
 
@@ -493,8 +494,19 @@ void act_player_died(void) {
   act.clockStopped = 1;
   play_song(act.player.drownSeconds < 0 ? SE_DROWNED : SE_LIFE_LOST);
 }
-// the act starting over with a life less is not here yet
-void act_life_lost(void) {}
+// Task_PlayerHandleDeath's HandleLifeLost: his task ends, his rings and a life go, and with lives left every task goes and
+// the act starts over at the end of it (restart_act), so nothing after it runs this frame. The last life brings the game
+// over, with the act running on behind it; with no continue left, as the C has no special stages to earn one in
+// (CreateGameOverScreen(OVER_CAUSE_TIME_UP))
+static int lifeLost;
+void act_life_lost(void) {
+  if (lifeLost || act.playerGone) return;
+  act.ringCount = 0;
+  act.lives = (act.lives - 1) & 0xFF;
+  if (act.lives != 0) { lifeLost = 1; return; }
+  act.playerGone = 1;
+  gameover_start();
+}
 // a frame of the course clock, where the act's task doesn't run it: gCheckpointTime counts up whichever way the clock goes
 static void clock_step(void) {
   act.clockTime++;
@@ -510,7 +522,8 @@ static void clock_step(void) {
 void act_stage_results(int nextFrame) {
   int level = act.stage.level;
   save_add_ring_bank(act.ringCount);
-  if (level != LEVEL_X_ZONE && save_unlocked_level(0) < level + 1) save_set_unlocked_level(0, (uint16_t)(level + 1));
+  if (level != LEVEL_X_ZONE && save_unlocked_level(ctx.character) < level + 1)
+    save_set_unlocked_level(ctx.character, (uint16_t)(level + 1));
   int courseTime = act.courseTime;
   if (level == LEVEL_EGG_ROCKET) {
     // the rocket's clock counts down, so the time bonus goes by the time the act took (gCheckpointTime), less the
@@ -583,6 +596,41 @@ static void next_act_after_write(void) {
   next_act();
 }
 
+// HandleLifeLost with lives left (restartAct in the JavaScript's game.js): every task goes, and the act starts over
+// (CreateGameStage) with its title card from black, the player at the last checkpoint he passed or the act's start
+// without one, and the CPU partner at the act's start, flying back from there. The score, the lives, the stage clock, the
+// checkpoint and the game's random numbers carry on; the course time goes back to the checkpoint's (to 0 if it had run
+// past 10:00). The act's music starts again at once, and the original spends the whole next frame loading the act.
+#define MAX_COURSE_TIME (10 * 3600)
+static int restarting, respawnIndex, respawnX, respawnY;
+static void restart_act(void) {
+  Act was = act;
+  uint32_t seed = act_random_state();
+  destroy_tasks(0, 0xFFFF);
+  act_tasks_destroy_all();
+  act.task = NULL;
+  clear_queues();
+  restarting = 1;
+  respawnIndex = was.checkpointIndex; respawnX = was.checkpointX; respawnY = was.checkpointY;
+  act_start(was.stage.level, -1, 0);
+  restarting = 0;
+  act.restarted = 1;
+  act.lives = was.lives; act.score = was.score; act.tick = was.tick;
+  act_random_seed(seed);
+  act.checkpointIndex = was.checkpointIndex; act.checkpointX = was.checkpointX; act.checkpointY = was.checkpointY;
+  act.checkpointTime = was.checkpointIndex && was.courseTime < MAX_COURSE_TIME ? was.checkpointTime : 0;
+  act.courseTime = act.clockTime = act.checkpointTime;
+  act.musicStarts = 0;
+  music_call(MUSIC_STAGE, act.stage.music);
+  act.stallLoad = 0; act.loadFrames = 2;
+  titlecard_made(0);
+  // the new act's tasks after the ones that went run at once, unseen, as after the act before
+  objects_set_drawing(0);
+  objects_run_before_hud();
+  objects_run_after_hud();
+  objects_set_drawing(1);
+}
+
 // GoToNextLevel: every task goes, the act's objects with their sprites' VRAM, the queues stop, the music stops, and
 // the save is written (the screen keeping its frame while the flash takes it), before the next act starts on the
 // frame the write ends; the black of an act that isn't in C shows on that frame too, as the original's stage start's
@@ -623,6 +671,24 @@ static void go_to_congratulations(void) {
   else congratulations_after_write();
 }
 
+// Task_8056AC8, once the game over's song has ended: the music stops and the save is written, then every task goes and
+// the game goes back to the SEGA logo
+static void sega_logo_after_write(void) {
+  sound_vsync_on();
+  act_active = 0;
+  create_sega_logo();
+}
+static void go_to_sega_logo(void) {
+  destroy_tasks(0, 0xFFFF);
+  act_tasks_destroy_all();
+  act.task = NULL;
+  clear_queues();
+  stop_all_songs();
+  sound_vsync_off();
+  if (save_write()) engine_stall(WRITE_FRAMES, sega_logo_after_write);
+  else sega_logo_after_write();
+}
+
 void act_go_to_next_level(void) {
   go_to_next_level();
 }
@@ -647,7 +713,7 @@ static void hud_begin(void) {
   act.hud.active = 1;
   const Level *row = act.stage.row;
   act.hud.flash = row->zeroFlashesInSixteens ? (act.stage.hudFlash + 7) & 31
-    : act.afterLevel ? HUD_FLASH_AFTER : hud_flash();
+    : act.afterLevel || act.restarted ? HUD_FLASH_AFTER : hud_flash();
 }
 
 static void act_frame(void) {
@@ -663,7 +729,7 @@ static void act_frame(void) {
       dp_sound_render(count);
     }
   }
-  if (act.tick == 0) {
+  if (act.frames == 0) {
     // the first frame takes the screen from the course select or the act before, whose sprites go with it, those drawn
     // earlier this frame too
     clear_oam();
@@ -689,6 +755,8 @@ static void act_frame(void) {
   int objectsRun = act.frames > 0 || row->runsFromFirstFrame;
   if (row->beforeObjects) row->beforeObjects();
   if (objectsRun) objects_run_before_hud();
+  // the game over's tasks, made after the objects' at their priority
+  if (gameover_step()) { go_to_sega_logo(); return; }
   // the title card's task (0x2100) runs before Sonic's and the clock's, so the frame it ends frees the pad and starts
   // the clock; its pieces and fade go over the act, and it sets the display while it shows, after draw_frame
   int cardShows = !act.cardDone;
@@ -729,10 +797,17 @@ static void act_frame(void) {
   // gives him to run off (HOLD_RIGHT)
   if (act.player.ignoreInput)
     in = act.player.heldRight ? (PlayerInput){ .right = 1 } : act.player.heldLeft ? (PlayerInput){ .left = 1 } : (PlayerInput){0};
-  player_step(&act.player, &in);
-  // a start point's first act frame is the held A's jump, one frame after it began, when it has the word for it
-  if (act.drawn == 0 && act.fromStartPoint && gba_start_number("jump", 0)) player_start_jump(&act.player);
-  player_animate(&act.player, &in);
+  // after the last life, the player's task has gone
+  if (!act.playerGone) {
+    player_step(&act.player, &in);
+    if (lifeLost) { lifeLost = 0; restart_act(); return; }
+    // a start point's first act frame is the held A's jump, one frame after it began, when it has the word for it
+    if (act.drawn == 0 && act.fromStartPoint && gba_start_number("jump", 0)) player_start_jump(&act.player);
+    if (!act.playerGone) {
+      player_animate(&act.player, &in);
+      player_tails_step(&act.player);
+    }
+  }
   sonic_shown();
   // the CPU partner's task, just after Sonic's (0x3001)
   if (act.hasPartner) { partner_task(!act.cardDone); partnerShown = act.partner; }
@@ -773,6 +848,7 @@ static void act_frame(void) {
   // (after the act before, its tasks first run on the act's second frame, as its objects do)
   if (row->afterFrame) row->afterFrame(1);
   results_display();
+  gameover_display();
 }
 
 // the act's music, as the course select leaves it: the stage music manager (Task_StageMusicManager, priority 0x4000)
@@ -926,6 +1002,7 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
     player_step(&act.player, &in);
     // a card with its own timing starts Sonic's animation on its 15th frame and the palette animations on its 16th
     if (!row->cardStepsOn || act.tick >= 15) player_animate(&act.player, &in);
+    player_tails_step(&act.player);
     sonic_shown();
     if (act.tick > 0) objects_run_late();
     if (!row->cardStepsOn || act.tick >= 16)
@@ -975,7 +1052,10 @@ void act_start(int level, int cardSkip, int preFrames) {
   load_stage(level);
   const Level *row = act.stage.row;
   act.bgAnimFrame = 0; act.bgAnimShown = 0; act.bgAnimDelay = 0;
-  player_init(&act.player, act.stage.spawnX, act.stage.spawnY);
+  // after a life lost, the player starts again at the last checkpoint passed (SetStageSpawnPos)
+  int again = restarting && respawnIndex;
+  player_init(&act.player, again ? respawnX : act.stage.spawnX, again ? respawnY : act.stage.spawnY);
+  if (!comingOn && !restarting) menu_leftovers();
   create_camera(&act.cam, &act.player);
   act.startCamX = (int)act.cam.x; act.startCamY = (int)act.cam.y;
   act.lives = 3; act.score = 0; act.ringCount = 0;
@@ -1000,6 +1080,8 @@ void act_start(int level, int cardSkip, int preFrames) {
   // the players come after the card's task (CreateGameStage): Sonic's sprite has its fixed place, and the CPU partner,
   // which the character select's code brings along with Sonic in the single-player game, takes his two from the heap. The
   // Moon Zone, the extra stage, has none (GameStageStart).
+  // Tails played by the pad has his body at Sonic's fixed place, and his tails from the heap as the partner's are
+  if (ctx.character == CHARACTER_TAILS) player_become_tails(&act.player);
   if (ctx.partner && ctx.character == 0 && level != LEVEL_THE_MOON) partner_start();
   objects_start(level, act.stage.paletteCount > 0);
   if (row->runsFromFirstFrame) start_palette_animations();

@@ -124,11 +124,16 @@ enum { TAILS_SPIN_ANIM = 107, TAILS_SPIN_VARIANT = 1, TAILS_ORDER = 17, TAILS_TI
 
 void player_init_partner(Player *p, int x, int y) {
   player_init(p, x, y);
-  p->character = CHARACTER_TAILS; p->cpu = 1;
+  p->cpu = 1;
   // AllocateCharacterStageGfx: room for the largest frame of Sonic's run, from the heap; the body goes through the rotation
   // matrix of his player number when it is rotated
   p->sprite.graphics.dest = vram_malloc(PARTNER_BODY_TILES);
   p->sprite.frameFlags |= PARTNER_MATRIX;
+  player_become_tails(p);
+}
+
+void player_become_tails(Player *p) {
+  p->character = CHARACTER_TAILS;
   // AllocateCharacterMidAirGfx
   sprite_init(&p->tails);
   p->tails.graphics.dest = vram_malloc(TAILS_TILES);

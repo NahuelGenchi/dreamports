@@ -75,6 +75,8 @@ typedef struct {
   uint32_t seed;
   int goalReached, ringsStopped;   // past the goal; past the goal or a beaten boss, the rings manager neither takes nor draws
   int afterLevel;                  // made by GoToNextLevel after the act before, rather than by the course select
+  int restarted;                   // made again after a life lost (HandleLifeLost), at the last checkpoint passed
+  int playerGone;                  // the last life lost: the player's task has ended, and the game over runs
   int fromStartPoint;              // opened by the recording's start point, past its card: only the first act it starts
   int loadFrames;                  // the frames left that the next act spends loading after its first (act_task)
   int bossFlash;                   // a hit boss drawn into the OBJ window: BOSS_FLASH_WHITE or BOSS_FLASH_WINDOW
@@ -114,6 +116,10 @@ void act_tail_swipe(const Player *p);
 void act_freeze_camera(void);
 void act_player_died(void);
 void act_life_lost(void);
+/** The game over (gameover.c): made as the last life is lost, its tasks each frame, and its display. */
+void gameover_start(void);
+int gameover_step(void);
+void gameover_display(void);
 // what the objects hand to the act: the goal post, the checkpoints and the special springs (goal.c, checkpoints.c,
 // specialspring.c)
 int act_goal_passed(void);
