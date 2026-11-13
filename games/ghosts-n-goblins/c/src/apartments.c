@@ -244,26 +244,34 @@ enum { THROWN = 0x2F };
 #define WALK_SPEED_ADDED RAM[0xD2]
 
 // sub_04_AE24: whether its way ahead is shut: no floor under the place 2 pixels ahead, or a wall 8 pixels ahead.
-static void block_place(uint8_t object, int16_t ahead, uint8_t down, cost same, cost next) {
+// Each place is counted a write at a time, as a frame can end inside one: its pixel and screen across, cost
+// `across` and `screen` before them, its screen down `to_down` after, then its line, on a screen 240 lines high.
+static void block_place(uint8_t object, int16_t ahead, uint8_t down, cost across, cost screen, cost to_down) {
   uint16_t x = (uint16_t)((RAM[OBJECT_X_SCREEN + object] << 8 | RAM[OBJECT_X + object]) + ahead);
+  took(across);
   RAM[0x74] = (uint8_t)x;
+  took(screen);
   RAM[0x78] = (uint8_t)(x >> 8);
+  took(to_down);
   RAM[0x77] = RAM[OBJECT_Y_SCREEN + object];
+  took(BIG_PLACE_LINE);
   uint8_t y = (uint8_t)(RAM[OBJECT_Y + object] + down);
   RAM[0x73] = y;
-  if (y < 0xF0) { took(same); return; }
+  if (y < 0xF0) { took(BIG_PLACE_SAME_SCREEN); return; }
+  took(BIG_PLACE_NEXT_LINE);
   RAM[0x73] = (uint8_t)(y + 0x10);   // past a screen's 240 lines, on the next screen down
+  took(BIG_PLACE_NEXT_SCREEN);
   RAM[0x77]++;
-  took(next);
+  took(BIG_PLACE_NEXT_DONE);
 }
 static int way_shut(uint8_t object) {
   int right = RAM[OBJECT_HEADING + object] == 0x04;
-  took(right ? BIG_FLOOR_AHEAD_RIGHT : BIG_FLOOR_AHEAD_LEFT);
   if (object >= 0x0F) took(READ_PAST_PAGE);
-  block_place(object, right ? 2 : -2, 0x10, BIG_FLOOR_SAME_SCREEN, BIG_FLOOR_NEXT_SCREEN);   // sub_FFAC or sub_FFBE
+  if (right) block_place(object, 2, 0x10, BIG_FLOOR_X_RIGHT, BIG_PLACE_SCREEN_ACROSS, BIG_FLOOR_SCREEN_DOWN_RIGHT);   // sub_FFAC
+  else block_place(object, -2, 0x10, BIG_FLOOR_X_LEFT, BIG_PLACE_SCREEN_ACROSS, BIG_FLOOR_SCREEN_DOWN_LEFT);         // sub_FFBE
   if (block_at_stage_place() < BLOCK_SOLID) { took(BIG_NO_FLOOR); return 1; }
-  took(right ? BIG_WALL_AHEAD_RIGHT : BIG_WALL_AHEAD_LEFT);
-  block_place(object, right ? 8 : -8, 4, BIG_WALL_SAME_SCREEN, BIG_WALL_NEXT_SCREEN);         // sub_E9F1 or sub_EA01
+  if (right) block_place(object, 8, 4, BIG_WALL_X, BIG_WALL_SCREEN_RIGHT, BIG_WALL_SCREEN_DOWN);   // sub_E9F1
+  else block_place(object, -8, 4, BIG_WALL_X, BIG_WALL_SCREEN_LEFT, BIG_WALL_SCREEN_DOWN);         // sub_EA01
   if (block_at_stage_place() >= BLOCK_SOLID) { took(BIG_WALL); return 1; }
   took(right ? BIG_NO_WALL_RIGHT : BIG_NO_WALL_LEFT);
   return 0;

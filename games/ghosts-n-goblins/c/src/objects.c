@@ -96,11 +96,11 @@ void place_on_screen(uint8_t object) {
 int object_in_view(uint8_t object) {
   took(CALLS);
   object_place(object, 1);
-  took(PLACE_SCREEN_COUNTED);
   B_Y_SCREEN++;
-  view_place();
   took(PLACE_SCREEN_COUNTED);
+  view_place();
   A_Y_SCREEN++;
+  took(PLACE_SCREEN_COUNTED);
   second_from_first();
   took(A_Y_SCREEN ? OBJECT_OUT_OF_VIEW_DOWN : A_X_SCREEN ? OBJECT_OUT_OF_VIEW_ACROSS : OBJECT_IN_VIEW);
   return A_Y_SCREEN == 0 && A_X_SCREEN == 0;
@@ -114,6 +114,12 @@ int on_the_ground(uint8_t object) {
   RAM[0x73] = (uint8_t)(RAM[OBJECT_Y + object] + 0x0B);
   RAM[0x78] = RAM[OBJECT_X_SCREEN + object];
   RAM[0x74] = RAM[OBJECT_X + object];
+  if (RAM[0x73] >= 0xF0) {
+    // $EA44: 11 pixels below is on the next screen down, as a screen is 240 pixels high
+    RAM[0x73] = (uint8_t)(RAM[0x73] + 0x10);
+    RAM[0x77]++;
+    took(BLOCK_BELOW_ARTHUR_NEXT_SCREEN);
+  }
   RAM[0x22] = block_at_stage_place();
   // $E3F3: in the first set of stages the blocks $76 and $77 are solid across half their width: the right half of
   // $76, the left of $77
@@ -651,9 +657,11 @@ static void pick_up(uint8_t object) {
   show_object(object);
   if (!object_in_view(object)) {
     // $BA14: hidden while it's out of the view. What the third set of stages does with it then, at $BB72, isn't ported yet.
+    took(PICK_UP_HIDES);
+    if (object >= 0x10) took(READ_PAST_PAGE);   // its flags, hidden and read, are in the next page
     RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
     took(PICK_UP_OUT_OF_VIEW);
-    if (object >= 0x10) took_times(READ_PAST_PAGE, 2);   // its flags, hidden and read, are in the next page
+    if (object >= 0x10) took(READ_PAST_PAGE);
     return;
   }
   uint8_t thing = RAM[OBJECT_STATE + object];
