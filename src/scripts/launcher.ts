@@ -1215,12 +1215,21 @@ function start(launcher: HTMLElement) {
       }).currentTime = started;
     });
   }
+  // Where a part of a view is and how strong it shows right now, with whatever was moving it stopped. A view closed
+  // while it is still coming in leaves from there: started from its resting place, every part of it would show whole
+  // for a frame, even those that had not yet appeared (#1209).
+  function leaveFrom(el: HTMLElement) {
+    const now = getComputedStyle(el);
+    const from = { opacity: now.opacity, transform: now.transform };
+    for (const a of el.getAnimations()) a.cancel();
+    return from;
+  }
   function viewOut(dlg: HTMLDialogElement) {
-    if (calm()) return dlg.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }).finished.catch(() => {});
+    if (calm()) return dlg.animate([{ opacity: leaveFrom(dlg).opacity }, { opacity: 0 }], { duration: 120, fill: 'forwards' }).finished.catch(() => {});
     const d = Math.round(clamp(Math.min(W, H) * 0.02, 6, 16));
     const runs: Promise<unknown>[] = viewParts(dlg).map(
       (el) =>
-        el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateY(${d}px)` }], {
+        el.animate([leaveFrom(el), { opacity: 0, transform: `translateY(${d}px)` }], {
           duration: 160,
           easing: 'cubic-bezier(.4,0,1,1)',
           fill: 'forwards',
@@ -1232,16 +1241,17 @@ function start(launcher: HTMLElement) {
   // a game's picture flies back to its place in the row, or fades if the row has moved on
   function heroBack(dlg: HTMLDialogElement) {
     const hero = $('.show-wrap', dlg);
-    for (const a of hero.getAnimations()) a.cancel();
+    // from wherever its flight in had brought it
+    const left = leaveFrom(hero);
     const slotEl = slots[sel()];
     const tile = slotEl && slotEl.dataset.game === dlg.dataset.game ? slotEl.querySelector('.tile') : null;
     const from = hero.getBoundingClientRect();
     const to = tile?.getBoundingClientRect();
-    if (!to || !to.width || !from.width) return hero.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: 'forwards' }).finished;
+    if (!to || !to.width || !from.width) return hero.animate([{ opacity: left.opacity }, { opacity: 0 }], { duration: 160, fill: 'forwards' }).finished;
     const dx = to.left + to.width / 2 - (from.left + from.width / 2);
     const dy = to.top + to.height / 2 - (from.top + from.height / 2);
     return hero.animate(
-      [{ transform: 'none' }, { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${(to.width / from.width).toFixed(3)})` }],
+      [{ transform: left.transform }, { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${(to.width / from.width).toFixed(3)})` }],
       { duration: 380, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'forwards' },
     ).finished;
   }
