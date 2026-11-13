@@ -1,5 +1,5 @@
-// Sonic, Tails or Knuckles as the character played, and Tails as the CPU's partner: their state, movement and animation,
-// translated from the JavaScript version's engine/player.js and engine/animator.js. Amy, the boost modes and the Sonic
+// Sonic, Tails, Knuckles or Amy as the character played, and Tails as the CPU's partner: their state, movement and
+// animation, translated from the JavaScript version's engine/player.js and engine/animator.js. The boost modes and the Sonic
 // Advance 2 tricks are not here; the fields the objects will read and set (onto him, holding his controls, curling him
 // up) are.
 
@@ -9,7 +9,7 @@
 #include "sa.h"
 
 enum { LAYER_FRONT = 0, LAYER_BACK = 1 };
-enum { CHARACTER_SONIC = 0, CHARACTER_TAILS = 1, CHARACTER_KNUCKLES = 2 };
+enum { CHARACTER_SONIC = 0, CHARACTER_TAILS = 1, CHARACTER_KNUCKLES = 2, CHARACTER_AMY = 3 };
 // Knuckles' glide flags (w.kf.flags): not yet down, and a wall stopped him
 enum { GLIDE_UP = 0x2, GLIDE_WALL = 0x20 };
 // Knuckles' midAir: gliding, dropping from it, sliding after it, climbing, onto a ledge, and floating on the water
@@ -49,6 +49,9 @@ typedef enum {
   PS_GLIDE, PS_GLIDE_TURN0, PS_GLIDE_TURN1, PS_GLIDE_TURN2, PS_GLIDE_TURN3, PS_GLIDE_DROP, PS_DROP_LAND, PS_GLIDE_SLIDE,
   PS_WALL_GRAB, PS_CLIMB, PS_CLIMB_UP, PS_CLIMB_DOWN, PS_LEDGE_CLIMB, PS_LEDGE_TOP,
   PS_PUNCH1, PS_PUNCH2, PS_PUNCH3, PS_UPPERCUT, PS_WATER_FLOAT, PS_WATER_FLOAT_UP,
+  // Amy's own (charStates 85 to 93): rising from a jump with no curl, the leap off her hammer, her two swings, the hammer in
+  // the air and swirled down, her dive, its slam and slide, and the pose that ends it
+  PS_HAMMER_RISE, PS_HAMMER_LEAP, PS_HAMMER, PS_HAMMER2, PS_HAMMER_AIR, PS_HAMMER_SWIRL, PS_DIVE, PS_DIVE_SLAM, PS_DIVE_END,
   PA_BORED, PA_RUN, PA_BRAKE_TURN,   // bored of waiting, running, and turning round after a skid
   PA_COUNT
 } PlayerAnim;
@@ -59,7 +62,7 @@ typedef struct {
 } PlayerInput;
 
 typedef struct {
-  int character;                // CHARACTER_SONIC or CHARACTER_TAILS
+  int character;                // CHARACTER_*
   int cpu;                      // the CPU's partner (gPartner), whose camera, music and loop are Sonic's
   double x, y, gsp, xsp, ysp;   // his centre, and his speeds in pixels a frame: along the surface, and in X and Y
   int facing;                   // 1 right, -1 left
@@ -77,6 +80,8 @@ typedef struct {
   int midAir;                   // mid-air move used this jump: 1 insta-shield, 2 dash; Tails' flight, 2 to 31 rising after
                                 // a press
   int glideShift, glideFlags;  // Knuckles' glide heading (w.kf.shift: 0 right, 0x80 left, turning between) and GLIDE_* flags
+  int hammerJump;               // Amy, MOVESTATE_2000000: in the air with no hammer and no jump cap (her hammer's leap, a bounce)
+  int dive;                     // Amy, MOVESTATE_4000000: her dive, with its slide (sub_80495F0)
   int waterCrossed;             // MOVESTATE_1000: he went into the water or out of it this frame
   int lookEase;                 // this frame's extra easing of the camera's look (LOOK_EASE_*), Knuckles'
   int flyTime;                  // Tails: frames of flight left, counted down every other frame (flyingDuration)
@@ -133,6 +138,18 @@ void player_draw(Player *p, int camX, int camY);
 int player_climbing(const Player *p);
 /** Knuckles gliding or sliding on after a glide, whom an object he lands on leaves in the air (sub_800C934). */
 int player_gliding(const Player *p);
+/** What Amy's hammer hits (Coll_AmyHammer_Spring): one of her swings, while its attack box is out, on the object's box
+ *  `hb` at (x, y). */
+int player_hammer_hits(const Player *p, int x, int y, const Hitbox *hb);
+/** A speed 1.5 times as fast, as the original works it out in 1/256 px: what a spring her hammer hits gives her. */
+double player_hammer_speed(double v);
+/** Sent back off a boss his attack box hit: the way he came, or Amy with half her speed across (Coll_Player_Enemy). */
+void player_bounce_off_boss(Player *p);
+/** The state an object throws her into the air with, where it curls up the others (charState 85 for 5). */
+int player_thrown_state(const Player *p);
+/** Amy's dive turned into its slam or its slide (MOVESTATE_4000000 with unk62), which an object she lands on leaves in the
+ *  air (Coll_Player_Platform). */
+int player_slamming(const Player *p);
 /** Player_HandleWater: in and out of the water, and the drowning count (the start of his frame). */
 void player_water_step(Player *p);
 /** Tails' tails after his animation: the way they turn, and their own animation while he is curled up (sub_8024F74). */

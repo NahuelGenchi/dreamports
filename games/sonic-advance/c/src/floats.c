@@ -43,6 +43,7 @@ static int float_run(ActTask *t) {
     // Player_TransitionCancelFlyingAndBoost, which in this game leaves the roll jump's air lock alone
     player_end_attack(p); p->pushing = 0;
     p->state = whirlwind ? PS_FLOAT : PS_SPRING;
+    if (p->character == CHARACTER_AMY) p->hammerJump = 1;
     if (terrain_tile_floor(x, y, p->layer, 8) > UNCURL_ABOVE) { p->curled = 0; p->airLock = 0; }
   }
   return 1;

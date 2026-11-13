@@ -11,7 +11,7 @@ enum {
   ANIM_WATERFALL = 464, ANIM_WATERFALL_ANGEL_ISLAND = 552,
   ORDER_OBJECT = 18, PRIORITY_FRONT = 2,
   SE_BREAK = 167,
-  SE_GRIND_START = 114, SE_GRIND_END = 116,
+  SE_GRIND_START = 114, SE_GRIND_END = 116, SE_AMY_GRINDING = 134,
   DEBRIS = 4, DEBRIS_FRAMES = 60,
 };
 
@@ -122,7 +122,8 @@ static int boulder_run(ActTask *t) {
   Boulder *b = (Boulder *)t->data;
   Slot *en = b->o.slot;
   const Hitbox *hb = box(&b->o, 0);
-  if (hb && breaks(&b->o, en->e.x, en->e.y)) {
+  // or Amy's hammer (Coll_AmyHammer_Spring)
+  if (hb && (breaks(&b->o, en->e.x, en->e.y) || player_hammer_hits(&act.player, en->e.x, en->e.y, hb))) {
     play_song(SE_BREAK);
     dust_cloud(en->e.x, en->e.y);
     debris_new(en);
@@ -380,14 +381,14 @@ static int grind_run(ActTask *t) {
       p->grinding = 1;
       p->layer ^= 1;
       p->front = 1;
-      play_song(SE_GRIND_START);
+      play_song(p->character == CHARACTER_AMY ? SE_AMY_GRINDING : SE_GRIND_START);
       grind_sparks_start();
     }
   } else if (!p->dead && inside && p->grinding) {
     int far = x > en->e.x + (w >> 1);
     if (far || (e.input & KEY_A)) {
       p->ysp = far ? -4.875 : -7.0;
-      stop_song(SE_GRIND_START);
+      stop_song(p->character == CHARACTER_AMY ? SE_AMY_GRINDING : SE_GRIND_START);
       play_song(SE_GRIND_END);
       player_end_attack(p);
       p->state = far ? PS_SPRING : PS_RAIL_JUMP;

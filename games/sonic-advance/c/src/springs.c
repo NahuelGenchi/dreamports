@@ -58,9 +58,12 @@ static const Hitbox *box_of(const Spring *sp, int slot) { return object_box(&sp-
 static int up(Spring *sp, Player *p) {
   const Entity *e = &sp->o.slot->e;
   if (p->carried) return 0;
-  if (!(collide_platform(&sp->o, e->x, e->y, box_of(sp, 0), p) & COLLIDE_LANDED)) return 0;
+  // Amy's hammer launches her too, half as fast again (Coll_AmyHammer_Spring)
+  int landed = (collide_platform(&sp->o, e->x, e->y, box_of(sp, 0), p) & COLLIDE_LANDED) != 0;
+  int hammered = !landed && player_hammer_hits(p, e->x, e->y, box_of(sp, 0));
+  if (!landed && !hammered) return 0;
   player_land(p);
-  p->ysp = -sp->speed;
+  p->ysp = hammered ? player_hammer_speed(-sp->speed) : -sp->speed;
   throw_up(sp, p);
   return 1;
 }
@@ -105,19 +108,21 @@ static int diagonal(Spring *sp, Player *p) {
   const Hitbox *trigger = box_of(sp, 1);
   Hitbox probe = { 0, -TRIGGER_HALF_WIDTH, (int8_t)-(p->offsetY + 1), TRIGGER_HALF_WIDTH, (int8_t)(p->offsetY + 1) };
   int px = (int)__builtin_floor(p->x), py = (int)__builtin_floor(p->y);
-  if (!trigger || !collide_overlap(e->x, e->y, trigger, px, py, &probe)) {
+  int hammered = player_hammer_hits(p, e->x, e->y, box_of(sp, 0));
+  if (!hammered && (!trigger || !collide_overlap(e->x, e->y, trigger, px, py, &probe))) {
     collide_platform(&sp->o, e->x, e->y, box_of(sp, 0), p);
     return 0;
   }
   p->curled = 0; p->airLock = 0;   // even without a launch, and without standing him up
   int upLeft = sp->kind == SPRING_BIG_UPLEFT || sp->kind == SPRING_SMALL_UPLEFT;
-  int dir = upLeft && px < e->x - TRIGGER_OUT ? -1 : px > e->x + TRIGGER_OUT ? 1 : 0;
+  int dir = upLeft && (hammered || px < e->x - TRIGGER_OUT) ? -1 : hammered || px > e->x + TRIGGER_OUT ? 1 : 0;
   if (!dir) {
     collide_platform(&sp->o, e->x, e->y, box_of(sp, 0), p);
     return 0;
   }
-  p->ysp = p->inverted ? sp->speed : -sp->speed;   // under flipped gravity, still world up
-  p->xsp = sp->speed * dir;
+  double speed = hammered ? player_hammer_speed(sp->speed) : sp->speed;
+  p->ysp = p->inverted ? speed : -speed;   // under flipped gravity, still world up
+  p->xsp = speed * dir;
   throw_up(sp, p);
   return 1;
 }
@@ -172,10 +177,12 @@ static int hidden_hit(HiddenSpring *h, Player *p) {
   const Entity *e = &h->o.slot->e;
   const Hitbox *hb = object_box(s, 0);
   Hitbox body = collide_body(p);
-  if (p->dead || p->carried || !hb ||
-      !collide_overlap(e->x, e->y, hb, (int)__builtin_floor(p->x), (int)__builtin_floor(p->y), &body)) return 0;
+  int hammered = !p->dead && !p->carried && player_hammer_hits(p, e->x, e->y, hb);
+  if (!hammered && (p->dead || p->carried || !hb ||
+      !collide_overlap(e->x, e->y, hb, (int)__builtin_floor(p->x), (int)__builtin_floor(p->y), &body))) return 0;
   player_land(p);
-  p->ysp = -((s8(e->d[1]) << 6) / 256.0);
+  double speed = -((s8(e->d[1]) << 6) / 256.0);
+  p->ysp = hammered ? player_hammer_speed(speed) : speed;
   hidden_throw(h, p);
   sprite_start(s, 1);
   play_song(SE_SPRING);

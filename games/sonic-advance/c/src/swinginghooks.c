@@ -33,10 +33,11 @@ static int next_index(void) {
 // Player_TransitionCancelFlyingAndBoost; his speeds and whether he is in the air stay as they were
 static void cancel(Player *p) { player_end_attack(p); p->pushing = 0; }
 
-// thrown off it, curled up (it leaving with him, or his jump)
+// thrown off it, curled up (it leaving with him, or his jump); Amy standing, as she rises from a jump (charState 85)
 static void let_go(Player *p) {
   cancel(p);
   p->carried = 0; p->air = 1; p->onObject = NULL;
+  if (p->character == CHARACTER_AMY) { p->curled = 0; p->state = PS_HAMMER_RISE; player_stand_up(p); return; }
   p->curled = 1; p->state = PS_SPIN;
   player_curl_up(p);
 }

@@ -75,14 +75,16 @@ static void driven(RunWheel *w, Player *p, const Hitbox *hb) {
     w->count = 0;
     if (p->air) {
       p->onObject = NULL;
-      p->xsp = clamp(q(p->xsp), -JUMP_MAX, JUMP_MAX) / 256.0;
+      // Amy's dive keeps its speed
+      if (!p->dive) p->xsp = clamp(q(p->xsp), -JUMP_MAX, JUMP_MAX) / 256.0;
     } else if (collide_platform(&w->o, w->o.x, w->y, hb, p) & COLLIDE_LANDED) {
       p->gsp = clamp(q(p->gsp), -ATTACK_MAX, ATTACK_MAX) / 256.0;
     }
   } else p->x = w->o.x - p->xsp;
   anim_speed(w);
   int gsp = q(p->gsp);
-  w->speed = gsp - DRIVE_LESS;
+  // Amy crouching on it (charState 2) drives it as she is
+  w->speed = p->character == CHARACTER_AMY && p->state == PS_CROUCH ? gsp : gsp - DRIVE_LESS;
   if (w->speed > 0) w->speed *= 2;
   if (w->speed > MAX_SPEED) w->speed = MAX_SPEED;
   w->along += w->speed;

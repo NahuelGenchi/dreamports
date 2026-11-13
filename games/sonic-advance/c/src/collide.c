@@ -44,8 +44,9 @@ static int vertical(const void *o, int ox, int oy, const Hitbox *hb, Player *p, 
   p->ysp = 0;
   if (steep) p->gsp = 0;
   p->onObject = o;
-  // Knuckles gliding or sliding on after a glide stays in the air, his speeds as they were: his own step stands him up
-  if (!player_gliding(p)) p->air = 0;
+  // Knuckles gliding or sliding on after a glide stays in the air, his speeds as they were: his own step stands him up. Amy
+  // slamming a dive stays in the air too, though she lands
+  if (!player_gliding(p) && !player_slamming(p)) p->air = 0;
   *flags |= COLLIDE_LANDED;
   if (!stoodHere) {
     if (!player_gliding(p)) { player_land(p); p->gsp = p->xsp; }
@@ -124,7 +125,7 @@ int collide_platform_top(const void *o, int ox, int oy, const Hitbox *hb, Player
   if (((ol <= l && orr >= l) || (ol >= l && r >= ol)) && ((ot <= t && ob >= t) || (ot >= t && b >= ot)) && p->ysp >= 0) {
     int offsetY = p->offsetY;
     p->onObject = o;
-    if (!player_gliding(p)) p->air = 0;
+    if (!player_gliding(p) && !player_slamming(p)) p->air = 0;
     if (!stoodHere) {
       if (!player_gliding(p)) { player_land(p); p->gsp = p->xsp; }
       p->rotation = 0;

@@ -119,7 +119,7 @@ static void square_collide(Square *sq, Player *p, int dx, int dy) {
       sq->touched = 0;
       p->gsp = 0;
       player_end_attack(p); p->pushing = 0;
-      p->state = p->air ? PS_SPIN : PS_WALK;
+      p->state = p->air ? player_thrown_state(p) : PS_WALK;
     }
   }
   // a second test while he is above its middle and not rising, which lands him on it

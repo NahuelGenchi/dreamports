@@ -32,10 +32,12 @@ static int wait(SpecialSpring *sp) {
   const Entity *e = &sp->o.slot->e;
   Player *p = &act.player;
   int landed = !p->dead && (collide_platform(&sp->o, e->x, e->y, box_of(sp), p) & COLLIDE_LANDED) != 0;
-  if (landed) {
+  // or Amy's hammer, half as fast again (Coll_AmyHammer_Spring)
+  int hammered = !p->dead && !landed && player_hammer_hits(p, e->x, e->y, box_of(sp));
+  if (landed || hammered) {
     player_land(p);
     p->onObject = NULL; p->air = 1;
-    p->ysp = -LAUNCH_SPEED;
+    p->ysp = hammered ? player_hammer_speed(-LAUNCH_SPEED) : -LAUNCH_SPEED;
     p->state = PS_SPRING_RISE;
     sp->heldX = cam_x(); sp->heldY = cam_y();
     if (!plain(p)) { p->carried = 1; act.clockStopped = 1; }
