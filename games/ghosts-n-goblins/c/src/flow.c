@@ -288,8 +288,9 @@ static void next_part(void) {
 }
 
 // $D16E: a stage starts: Arthur's task, the picture, the top of the picture, the stage's counts all at their start, a
-// round every three frames from here on, and the stage's music. What stages after the second set up, at $D1B5 and
-// $D26A, and two weapons' own places at the top, at $D1F9, aren't ported yet.
+// round every three frames from here on, and the stage's music. From the third stage on, $D1B5 sends V-blank 32 bytes
+// of tiles to the picture's memory at $0680, from $CD6D, or $CD4D from the fifth. What the last stage sets up, at $D26A,
+// and two weapons' own places at the top, at $D1F9, aren't ported yet.
 static void start_stage(void) {
   took(STAGE_START_ARTHUR);
   start_task(TASK_ARTHUR);
@@ -297,7 +298,11 @@ static void start_stage(void) {
   picture_on();
   took(DEMONSTRATION ? STAGE_START_NO_TOP : STAGE_START_TOP);
   if (!DEMONSTRATION) start_top_of_picture();
-  took(STAGE_START_NO_BANNER);
+  if (RAM[0xCF] >> 1) {
+    int later = RAM[0xCF] >> 1 == 2;
+    took(later ? STAGE_START_TILES_LATER : STAGE_START_TILES);
+    queue_rows(later ? 0xCD4D : 0xCD6D, 0x0680, 1, 0x20);
+  } else took(STAGE_START_NO_BANNER);
   took(STAGE_START_WEAPON);
   RAM[OBJECT_SHAPE + WEAPON_SHOWN] = RAM[0xC5 + PLAYER];
   RAM[OBJECT_FLAGS + WEAPON_SHOWN] = OBJECT_FLAG_SHOWN;
