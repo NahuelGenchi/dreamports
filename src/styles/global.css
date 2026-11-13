@@ -1225,9 +1225,13 @@ kbd {
   flex: none;
 }
 
+/* a title too long for the screen, as on a phone, goes on to a second line, so the name and its tag are always whole
+   (#1207); the label's other lines keep to one */
 .np-name {
   font-size: 14px;
   line-height: 18px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .np-detail {
