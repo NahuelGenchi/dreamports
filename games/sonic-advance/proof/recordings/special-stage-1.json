@@ -1,7 +1,7 @@
 {
-  "about": "From power-on with nothing saved, A on the language screen, Start early in the intro, on the title and in its menu, A on Game Start, Right to Amy on the character select and A, then Neo Green Hill Zone act 1, where at frame 2168 Amy is put in the air over the act's special spring with the camera on it, as the start point puts the Dreamport's: she lands on it and rises into special stage 1, played with the direction pad and jumping and then left alone to its end, its results and the white before the act comes back.",
+  "about": "From power-on with nothing saved, A on the language screen, Start early in the intro, on the title and in its menu, A on Game Start, Right to Amy on the character select and A, then Neo Green Hill Zone act 1, where at frame 2168 Amy is put in the air over the act's special spring with the camera on it, as the start point puts the Dreamport's: she lands on it and rises into special stage 1, played with the direction pad and jumping and then left alone to its end and its results, after which Neo Green Hill Zone act 1 comes back with its title card and Amy by the spring, left alone.",
   "start": "put=2168&put-x=10926&put-y=398&put-camera-x=10806&put-camera-y=348",
-  "frames": 5915,
+  "frames": 7374,
   "held": [
     [0,[]],
     [150,["A"]],
@@ -52,5 +52,5 @@
     [3340,[]]
   ],
   "sets": [{"frame": 2168, "address": "03005A20", "bytes": 4, "value": 2797056}, {"frame": 2168, "address": "03005A24", "bytes": 4, "value": 101888}, {"frame": 2168, "address": "030059D0", "bytes": 2, "value": 10806}, {"frame": 2168, "address": "030059D2", "bytes": 2, "value": 348}],
-  "clip": {"at": 5600, "frames": 300}
+  "clip": {"at": 5850, "frames": 300}
 }

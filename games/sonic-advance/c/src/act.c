@@ -189,7 +189,12 @@ void act_next_bg_palette(uint16_t *pal) {
   for (int i = 0; i < 256; i++) pal[i] = e.bgPalette[i];
   for (int i = 0; i < act.palCount && i < 16; i++) { PaletteAnim copy = paletteAnims[i]; palette_animation_into(&copy, pal); }
 }
-static void palette_animation_task(Task *t) { palette_animation_step((PaletteAnim *)t->data); }
+// on the frame the original spends loading the act it comes back to from a special stage, no task runs, the palette
+// animations' among them (act_come_back)
+static void palette_animation_task(Task *t) {
+  if (e.frameCount < act.palettesFrom) return;
+  palette_animation_step((PaletteAnim *)t->data);
+}
 static void start_palette_animations(void) {
   if (act.palStarted) return;
   act.palStarted = 1;
@@ -676,6 +681,7 @@ void act_come_back(void) {
   act.checkpointIndex = was.checkpointIndex; act.checkpointX = was.checkpointX; act.checkpointY = was.checkpointY;
   act.checkpointTime = was.checkpointIndex && was.courseTime < MAX_COURSE_TIME ? was.checkpointTime : 0;
   act.courseTime = was.courseTime; act.clockTime = was.clockTime;
+  act.palettesFrom = e.frameCount + 2;
   act.musicStarts = 0;
   music_call(MUSIC_STAGE, act.stage.music);
   act.stallLoad = 0; act.loadFrames = 2;
