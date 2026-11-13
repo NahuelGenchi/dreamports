@@ -50,11 +50,11 @@ static int floor_of(double v) { return (int)__builtin_floor(v); }
 /** Player_TransitionCancelFlyingAndBoost */
 static void cancel(Player *p) { player_end_attack(p); p->pushing = 0; }
 
-/** Off it and in the air, curled up as a spin attack (CHARSTATE_SPINATTACK) */
+/** Off it and in the air, curled up as a spin attack (CHARSTATE_SPINATTACK), or Amy as she rises from a jump (85) */
 static void knock_off(Stone *n, Player *p) {
   cancel(p);
   p->onObject = NULL; p->air = 1;
-  p->state = PS_SPIN;
+  p->state = player_thrown_state(p);
   n->riding = 0;
 }
 

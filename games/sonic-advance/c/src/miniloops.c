@@ -35,7 +35,7 @@ static int part(Player *p, int kind) {
       player_curl_up(p); p->state = PS_SPIN;
       p->ignoreInput = 1; no_presses(p);
       p->carried = 0;
-      play_song_or_change(SE_SPIN);
+      if (p->character != CHARACTER_AMY) play_song_or_change(SE_SPIN);   // Amy has no spin's sound
       return 0;
     // Task_MiniLoop_Base: the forced roll ends, and his controls come back with the buttons he holds not counting as presses
     case MINI_LOOP_BASE:

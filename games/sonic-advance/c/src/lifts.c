@@ -74,7 +74,7 @@ static int lift_run(ActTask *t) {
       p->xsp = p->gsp = 0; p->ysp = -THROW;
       player_end_attack(p); p->pushing = 0;
       l->t = 0; l->wait = WAIT; l->phase = DROPPING;
-      p->state = PS_SPIN;
+      p->state = player_thrown_state(p);   // Amy's is charState 85
     }
     show(l, x, y, HEIGHT, LINKS_TOP);
     return 1;

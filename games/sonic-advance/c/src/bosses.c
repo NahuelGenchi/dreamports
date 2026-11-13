@@ -333,8 +333,7 @@ int boss_hit(const Sprite *s, int x, int y) {
   const Hitbox *body = object_box(&p->sprite, 0), *attack = object_box(&p->sprite, 1);
   int px = enemy_sonic_x(), py = enemy_sonic_y();
   if (attack && collide_overlap(x, y, b0, px, py, attack)) {
-    p->xsp = -p->xsp;
-    p->ysp = -p->ysp;
+    player_bounce_off_boss(p);
     return HIT_ENEMY;
   }
   if (body && collide_overlap(x, y, b0, px, py, body)) {
@@ -372,8 +371,7 @@ int boss_hit26(const Sprite *s, int x, int y) {
   const Hitbox *body = object_box(&p->sprite, 0), *attack = object_box(&p->sprite, 1);
   int px = enemy_sonic_x(), py = enemy_sonic_y();
   if (attack && b0 && p->air && collide_overlap(x, y, b0, px, py, attack)) {
-    p->xsp = -p->xsp;
-    p->ysp = -p->ysp;
+    player_bounce_off_boss(p);
     return HIT_ENEMY;
   }
   if (body && ((b0 && collide_overlap(x, y, b0, px, py, body)) || (b1 && collide_overlap(x, y, b1, px, py, body)))) {

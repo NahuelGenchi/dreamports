@@ -114,7 +114,8 @@ static void effect_make(const Player *p, int kind, int anim, int variant, int x,
   if (kind == EFFECT_BRAKE) brakeDust++;
 }
 
-void effects_start(void) { brakeDust = 0; }
+static int heartsShownCount, heartsLive;
+void effects_start(void) { brakeDust = 0; heartsShownCount = 0; heartsLive = 0; }
 
 // brake dust stays where it appeared, flipped by the game's random numbers (CreateBrakingDustEffect), with no more than
 // the pool holds
@@ -140,4 +141,103 @@ void act_float_splash(const Player *p) {
 void act_insta_shield(void) {
   const Player *p = &act.player;
   effect_make(p, EFFECT_SHIELD, ANIM_INSTA_SHIELD, VARIANT_INSTA_SHIELD, whole(p->x), whole(p->y), p->facing > 0, 0);
+}
+
+// --- Amy's hearts (amy_attack_heart_effect.c, engine/amyhearts.js) --------------------------------------------------------
+// A task at 0x3001, just after hers, made with each swing of her hammer, which ends when her move does and takes its hearts
+// with it. Its pattern, read from the copy (sHeartOffsets: four of eight [when, x, y], a when of -1 ending one), gives when
+// each heart comes, in her animation's time, and where, from where she is then. A heart takes 4 tiles from the heap as it
+// comes and gives them back the frame after its animation ends. The hearts are drawn just after her, as her task and theirs
+// put them in the OAM one after the other.
+enum {
+  PRIORITY_HEARTS = 0x3001, MAX_HEARTS = 4, HEART_TILES = 4, ANIM_HEART = 759, ORDER_HEART = 16, HEART_PRIORITY = 2,
+  HEART_OFFSETS = 0x4A6924, HEART_ROWS = 8, HEART_ROW_BYTES = 6, HEART_SPEED_SCALE = 16,
+};
+typedef struct {
+  Object o;
+  const Player *p;
+  int state, kind, fresh;
+  uint16_t time, frame;
+  int used[MAX_HEARTS], x[MAX_HEARTS], y[MAX_HEARTS];
+  Sprite hearts[MAX_HEARTS];
+} Hearts;
+// the hearts' tasks this frame drew, in the order they ran, which act.c puts in the OAM after her
+static Hearts *heartsShown[2];
+
+static void hearts_end(ActTask *t) {
+  Hearts *h = (Hearts *)t->data;
+  for (int i = 0; i < MAX_HEARTS; i++) if (h->used[i]) vram_free(h->hearts[i].graphics.dest);
+  heartsLive--;
+  object_end(t);
+}
+
+// HandleAnimFrame: the next heart, in the first slot that's free, which decides which of two hearts is in front
+static void heart_new(Hearts *h, int frame) {
+  const Player *p = h->p;
+  int i = 0;
+  while (i < MAX_HEARTS && h->used[i]) i++;
+  if (i == MAX_HEARTS) return;
+  uint32_t row = HEART_OFFSETS + (uint32_t)(h->kind * HEART_ROWS + frame) * HEART_ROW_BYTES;
+  int dx = rom_s16(row + 2), dy = rom_s16(row + 4);
+  h->used[i] = 1;
+  h->x[i] = (int)__builtin_floor(p->x) + (p->facing < 0 ? -dx : dx);
+  h->y[i] = (int)__builtin_floor(p->y) + (p->inverted ? -dy : dy);
+  Sprite *s = &h->hearts[i];
+  sprite_init(s);
+  s->graphics.dest = vram_malloc(HEART_TILES);
+  s->oamFlags = (uint16_t)(ORDER_HEART << 6);
+  s->graphics.size = 0;
+  s->graphics.anim = ANIM_HEART; s->variant = 0;
+  s->animCursor = 0; s->qAnimDelay = 0; s->prevVariant = 0xFF;
+  s->animSpeed = p->sprite.animSpeed;
+  s->palId = 0;
+  s->frameFlags = HEART_PRIORITY << 12;
+}
+
+static int hearts_run(ActTask *t) {
+  Hearts *h = (Hearts *)t->data;
+  const Player *p = h->p;
+  // made by her task just before its place in the list, it first runs on the next frame; after the last swing's task, which
+  // the list reaches after hers, it runs on this one
+  if (h->fresh) { h->fresh = 0; return 1; }
+  if (p->state != h->state) return 0;
+  for (int i = 0; i < MAX_HEARTS; i++)
+    if (h->used[i] && (h->hearts[i].frameFlags & SPRITE_ANIM_OVER)) { h->used[i] = 0; vram_free(h->hearts[i].graphics.dest); }
+  // the time passes by her animation's speed; a when of -1 is never reached
+  uint16_t when = (uint16_t)(rom_s16(HEART_OFFSETS + (uint32_t)(h->kind * HEART_ROWS + h->frame) * HEART_ROW_BYTES) * HEART_SPEED_SCALE);
+  if (when != 0xFFFF) {
+    uint16_t was = h->time;
+    h->time = (uint16_t)(h->time + p->sprite.animSpeed);
+    if (was >= when) {
+      heart_new(h, h->frame);
+      h->frame = (uint16_t)((h->frame + 1) & 7);
+      if (h->frame == 0) h->time = 0;
+    }
+  }
+  int any = 0;
+  for (int i = 0; i < MAX_HEARTS; i++) {
+    if (!h->used[i]) continue;
+    update_sprite(&h->hearts[i], 0);
+    any = 1;
+  }
+  if (any && heartsShownCount < 2) heartsShown[heartsShownCount++] = h;
+  return 1;
+}
+
+void act_amy_hearts(const Player *p) {
+  if (p->character != CHARACTER_AMY || p->cpu) return;
+  Hearts *h = PLAIN_NEW(Hearts);
+  if (!h) return;
+  h->p = p; h->state = p->state; h->kind = p->state - PS_HAMMER;
+  h->time = 0; h->frame = 0; h->fresh = heartsLive == 0;
+  for (int i = 0; i < MAX_HEARTS; i++) h->used[i] = 0;
+  if (object_task_ending(&h->o, hearts_run, hearts_end, PRIORITY_HEARTS)) heartsLive++;
+}
+
+void act_amy_hearts_draw(void) {
+  for (int k = 0; k < heartsShownCount; k++) {
+    Hearts *h = heartsShown[k];
+    for (int i = 0; i < MAX_HEARTS; i++) if (h->used[i]) object_draw(&h->hearts[i], h->x[i], h->y[i]);
+  }
+  heartsShownCount = 0;
 }

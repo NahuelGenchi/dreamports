@@ -200,6 +200,8 @@ static int bounce_throw(Platform *pf, Player *p) {
   else if (p->held[0] & DPAD_RIGHT) p->facing = 1;
   p->ysp = -BOUNCE_UP;
   p->state = PS_BOUNCE; p->rotation = 0;
+  // Amy bounces off with no hammer and no jump cap (MOVESTATE_2000000)
+  if (p->character == CHARACTER_AMY) p->hammerJump = 1;
   player_stand_up(p);
   return 1;
 }

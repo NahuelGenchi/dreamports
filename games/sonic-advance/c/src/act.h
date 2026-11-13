@@ -117,6 +117,9 @@ void act_tail_swipe(const Player *p);
 void act_uppercut_flame(const Player *p);
 /** Knuckles' splash while he floats on the water (Player_Knuckles_InitGfx_FloatSplash, Task_KnucklesFloatSplash). */
 void act_float_splash(const Player *p);
+/** Amy's hearts for the swing of her hammer she has just started (CreateAmyAttackHeartEffect), and drawing them after her. */
+void act_amy_hearts(const Player *p);
+void act_amy_hearts_draw(void);
 void act_freeze_camera(void);
 void act_player_died(void);
 void act_life_lost(void);

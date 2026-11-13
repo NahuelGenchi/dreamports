@@ -1,7 +1,7 @@
-// Sonic's, Tails' and Knuckles' movement, animation and drawing, and Tails' as the CPU's partner, translated from the
-// JavaScript version's engine/player.js, engine/animator.js and the part of engine/game.js that draws them (drawSonic,
+// Sonic's, Tails', Knuckles' and Amy's movement, animation and drawing, and Tails' as the CPU's partner, translated from
+// the JavaScript version's engine/player.js, engine/animator.js and the part of engine/game.js that draws them (drawSonic,
 // drawTails), a function at a time and in the same order. Their speeds are doubles of pixels a frame, as there; the
-// original does its arithmetic on 8.8 integers, so q8 turns a speed into one where it matters. Amy, the boost modes and the
+// original does its arithmetic on 8.8 integers, so q8 turns a speed into one where it matters. The boost modes and the
 // Sonic Advance 2 tricks are left out.
 
 #include "objects.h"
@@ -15,6 +15,7 @@ enum {
   SE_TAILS_FLYING = 120,   // SE_TAILS_PROPELLER_FLYING: Tails' flight, started again on each of its frames
   SE_DROWNING = 27,        // MUS_DROWNING, which the partner's water never stops
   SE_PUNCH_2 = 126, SE_PUNCH_3 = 127,   // Knuckles' second punch, and his third
+  SE_AMY_HAMMER = 130, SE_AMY_SWIRL = 131, SE_AMY_GRINDING = 134,   // Amy's hammer in the air, swirled down, and her grinding
 };
 
 // physics (PHYSICS in engine/constants.js), in pixels a frame
@@ -108,6 +109,20 @@ enum {
   LEDGE_STEP = HALF_WIDTH + 3, LEDGE_CEILING = 9, LEDGE_REACH = 2,
   FLOAT_BELOW = 4,          // floating, his centre stays this far under the water's line
 };
+// Amy (AMY in engine/constants.js): her hammer's leap goes 6 px a frame from the ground (3.375 under water); her dive is
+// thrown 4 along the ground (2.5) and rises 1.25 (0.75); its slam slides on at 2 at least (1.25), slowing as Knuckles'
+// slide does, into a pose that holds left and right for 15 frames; her second swing adds 3, and a swing slows by 0.375
+#define LEAP_SPEED 6.0
+#define LEAP_WATER_SPEED 3.375
+#define DIVE_SPEED 4.0
+#define DIVE_WATER_SPEED 2.5
+#define DIVE_RISE 1.25
+#define DIVE_WATER_RISE 0.75
+#define DIVE_SLIDE_SPEED 2.0
+#define DIVE_SLIDE_WATER_SPEED 1.25
+#define SWING2_SPEED 3.0
+#define SWING_FRICTION 0.375
+enum { DIVE_SLIDE_LOCK = 15, DIVE_FOLLOW = 7 };
 // ANIMATION: the walk cycle plays at his speed, never slower than half, and the run starts at 4.5
 #define RUN_SPEED 4.5
 #define BRAKE_TURN_SPEED 1.5
@@ -260,15 +275,31 @@ static int double_tap(const Player *p) {
 }
 
 // --- the moves ------------------------------------------------------------------------------------------------------------
+static int is_amy(const Player *p) { return p->character == CHARACTER_AMY; }
+
+// Amy's jump (Player_TryJump): she stays uncurled (charState 85), and with down held she dives (91), thrown along the ground
+// as well as up. Returns how fast she leaves the ground.
+static double amy_jump(Player *p, const Control *c) {
+  if (!c->down) { p->state = PS_HAMMER_RISE; return jump_speed(p); }
+  p->state = PS_DIVE; p->hammerJump = 0; p->dive = 1; p->jumped = 0; p->glideFlags = GLIDE_UP;
+  int along = q8(p->water ? DIVE_WATER_SPEED : DIVE_SPEED), rot = p->rotation & 0xFF, dir = p->facing < 0 ? -1 : 1;
+  p->xsp = ((dir * along * cos8(rot)) >> 8) / 256.0;
+  p->ysp = ((dir * along * sin8(rot)) >> 8) / 256.0;
+  return p->water ? DIVE_WATER_RISE : DIVE_RISE;
+}
+
 // jumps away from the surface, if there are at least 4 px of room that way
 static int try_jump(Player *p, const Control *c) {
   if (!c->jumpPressed || sensors_clearance(p, sensors_act_angle(p) + 0x80) < ROOM_TO_JUMP) return 0;
   p->air = 1; p->jumped = 1; p->pushing = 0; p->state = PS_SPIN;
-  int a = (p->rotation - 0x40) & 0xFF, jump = q8(jump_speed(p));
+  double up = is_amy(p) ? amy_jump(p, c) : jump_speed(p);
+  int a = (p->rotation - 0x40) & 0xFF, jump = q8(up);
   p->xsp = (q8(p->xsp) + ((jump * cos8(a)) >> 8)) / 256.0;
   p->ysp = (q8(p->ysp) + ((jump * sin8(a)) >> 8)) / 256.0;
-  if (p->curled) p->airLock = 1;   // jumping out of a roll keeps the roll's momentum
-  else curl(p);
+  if (!is_amy(p)) {
+    if (p->curled) p->airLock = 1;   // jumping out of a roll keeps the roll's momentum
+    else curl(p);
+  }
   play_song(SE_JUMP);
   return 1;
 }
@@ -313,6 +344,7 @@ static int try_spin_dash(Player *p, const Control *c) {
 static void end_attack(Player *p, int keepPropeller) {
   p->attack = 0; p->attackNext = 0; p->midAir = 0; p->jumped = 0; p->spinDashing = 0; p->halfPipe = 0;
   if (p->character == CHARACTER_TAILS && !keepPropeller) stop_song(SE_TAILS_FLYING);
+  if (is_amy(p)) { p->hammerJump = 0; p->dive = 0; }
 }
 void player_end_attack(Player *p) { end_attack(p, 0); }
 
@@ -431,6 +463,8 @@ static void walk_input(Player *p, const Control *c) {
       else if (p->state != PS_CROUCH_END && p->state != PS_LOOK_UP_END) p->state = PS_IDLE;
       stand_height(p);
     }
+    // Amy crouches on the move, with no roll, slowing as she would braking
+    if (is_amy(p) && p->state == PS_CROUCH) p->gsp = toward0(p->gsp, decel(p));
   }
   // standing still on level ground stops the push, and at an edge he balances; not in his act-clear pose
   if (!((p->rotation + 0x20) & 0xC0) && p->gsp == 0) {
@@ -449,7 +483,7 @@ static void look_input(Player *p, const Control *c) {
   if (c->up && !c->down) { if (p->gsp == 0) p->state = PS_LOOK_UP; }
   else if (c->down && !c->up) {
     p->state = PS_CROUCH;
-    if (p->gsp != 0) { curl(p); p->state = PS_SPIN; play_song(SE_SPIN); }
+    if (p->gsp != 0 && !is_amy(p)) { curl(p); p->state = PS_SPIN; play_song(SE_SPIN); }
   } else if (!c->up && !c->down) {
     if (p->state == PS_CROUCH) p->state = PS_CROUCH_END;
     else if (p->state == PS_LOOK_UP) p->state = PS_LOOK_UP_END;
@@ -497,12 +531,12 @@ static int try_rail_jump(Player *p, const Control *c) {
   if (!c->jumpPressed) return 0;
   p->layer ^= 1;
   if (sensors_clearance(p, sensors_act_angle(p) + 0x80) < ROOM_TO_JUMP) { p->layer ^= 1; return 0; }
-  stop_song(SE_GRINDING);
-  p->air = 1; p->jumped = 1; p->pushing = 0; p->grinding = 0; p->state = PS_SPIN;
+  stop_song(is_amy(p) ? SE_AMY_GRINDING : SE_GRINDING);
+  p->air = 1; p->jumped = 1; p->pushing = 0; p->grinding = 0; p->state = player_thrown_state(p);
   p->ysp = (q8(jump_speed(p)) * sin8((p->rotation - 0x40) & 0xFF) >> 8) / 256.0;
   play_song(SE_JUMP);
   p->front = 0;
-  curl(p);
+  if (!is_amy(p)) curl(p);
   return 1;
 }
 
@@ -572,6 +606,58 @@ static int knuckles_ground(Player *p, const Control *c) {
   return 0;
 }
 
+// --- Amy on the ground ------------------------------------------------------------------------------------------------------
+// what her hammer hits: the moves that swing it (charStates 87 to 90), while their animation has its box out
+int player_hammer_hits(const Player *p, int x, int y, const Hitbox *hb) {
+  if (!is_amy(p) || !hb || (p->state != PS_HAMMER && p->state != PS_HAMMER2 && p->state != PS_HAMMER_AIR && p->state != PS_HAMMER_SWIRL)) return 0;
+  const Hitbox *atk = object_box(&p->sprite, 1);
+  return atk && collide_overlap(x, y, hb, (int)__builtin_floor(p->x), (int)__builtin_floor(p->y), atk);
+}
+double player_hammer_speed(double v) { int q = q8(v); return (q + (q >> 1)) / 256.0; }
+int player_thrown_state(const Player *p) { return is_amy(p) ? PS_HAMMER_RISE : PS_SPIN; }
+int player_slamming(const Player *p) { return is_amy(p) && p->dive && p->attack != 0; }
+void player_bounce_off_boss(Player *p) {
+  p->xsp = is_amy(p) ? (q8(p->xsp) >> 1) / 256.0 : -p->xsp;
+  p->ysp = -p->ysp;
+}
+
+// her hammer on the ground (sub_8049370): a swing where the ground allows it, or with down held and at least 4 px of room
+// above her, a leap away from the surface with the jump's sound
+static int try_hammer(Player *p, const Control *c, int level) {
+  if (!c->attackPressed || p->halfPipe) return 0;   // not while a half-pipe lifts her (MOVESTATE_8000)
+  if (!c->down) {
+    if (!level) return 0;
+    p->attack = 1; p->state = PS_HAMMER;
+    act_amy_hearts(p);
+    return 1;
+  }
+  if (sensors_clearance(p, sensors_act_angle(p) + 0x80) < ROOM_TO_JUMP) return 0;
+  p->state = PS_HAMMER_LEAP;
+  push_along(p, q8(p->water ? LEAP_WATER_SPEED : LEAP_SPEED), p->rotation - 0x40);
+  p->air = 1; p->pushing = 0; p->jumped = 1; p->dive = 0; p->hammerJump = 1;
+  play_song(SE_JUMP);
+  return 1;
+}
+
+// Amy on the ground (sub_80494E8): with no swing going, her hammer, her jump or a walk. A swing slows her by 0.375 a frame,
+// and a press during the first one queues the second. True if it took the whole frame.
+static int amy_ground(Player *p, const Control *c) {
+  int floor = (p->rotation + 0x40) & 0xFF, level = !p->pushing && floor != 0 && floor < 0x80;
+  if (p->attack == 0) {
+    if (try_hammer(p, c, level)) return 1;
+    if (try_jump(p, c)) return 1;
+    slope(p);
+    walk_step(p, c);
+    return 0;
+  }
+  if (p->attack == 1 && level && p->attackNext == 0 && c->attackPressed) p->attackNext = 1;
+  slope(p);
+  p->gsp = toward0(p->gsp, SWING_FRICTION);
+  along_surface(p);
+  sensors_wall_push(p, 1);
+  return 0;
+}
+
 static void ground_step(Player *p, const Control *c) {
   if (p->curled) {
     if (try_jump(p, c)) return;
@@ -588,6 +674,8 @@ static void ground_step(Player *p, const Control *c) {
     int started = knuckles_ground(p, c);
     if (started == 1) return;
     if (started == 2) { bounds(p); follow_ground(p); return; }
+  } else if (is_amy(p)) {
+    if (amy_ground(p, c)) return;
   } else if (p->attack != 0) {
     slope(p);
     if (p->character == CHARACTER_TAILS) swipe_step(p);
@@ -1002,6 +1090,77 @@ static void knuckles_air(Player *p, const Control *c) {
   }
 }
 
+// --- Amy in the air ------------------------------------------------------------------------------------------------------------
+// her dive (sub_80495F0): no control in the air. A press turns it into a slam (charState 92) that slides on from where it
+// lands, at 2 px a frame at least (1.25 under water), slowing by 24/256 with dust every 4th frame, into a short pose that
+// holds left and right for 15 frames; off the edge of what it slides on she carries on falling
+static void dive_step(Player *p, const Control *c) {
+  bounds(p);
+  move(p);
+  p->ysp += gravity(p);
+  tumble(p);
+  if (p->attack == 0) {
+    if (c->attackPressed) { p->state = PS_DIVE_SLAM; p->attack = 1; }
+    sensors_air(p);
+    return;
+  }
+  sensors_glide(p);
+  if (p->attack == 1) {
+    if (p->glideFlags & GLIDE_UP) return;
+    int least = q8(p->water ? DIVE_SLIDE_WATER_SPEED : DIVE_SLIDE_SPEED), now = q8(p->xsp);
+    p->xsp = (p->facing < 0 ? -(least > -now ? least : -now) : (least > now ? least : now)) / 256.0;
+    p->gsp = p->xsp;
+    p->attack = 2;
+    play_song(SE_SLIDE);
+    return;
+  }
+  if (!(p->glideFlags & GLIDE_UP)) {
+    int going;
+    if (p->xsp <= 0) { p->xsp += GLIDE_SLIDE_FRICTION; going = p->xsp < 0; }
+    else { p->xsp -= GLIDE_SLIDE_FRICTION; going = p->xsp > 0; }
+    if (!going) {
+      p->gsp = 0; p->xsp = 0; p->ysp = 0;
+      stand_from_glide(p);
+      p->dive = 0; p->lock = DIVE_SLIDE_LOCK; p->state = PS_DIVE_END;
+      return;
+    }
+  }
+  if (act_stage_time() % SLIDE_DUST_EVERY == 0)
+    act_brake_dust_at((int)__builtin_floor(p->x), (int)__builtin_floor(p->y) + (p->inverted ? -p->offsetY : p->offsetY));
+  sensors_glide(p);
+  SensorPair f = sensors_floor_under(p);
+  if (f.d < DIVE_FOLLOW) { p->y += p->inverted ? -f.d : f.d; p->rotation = f.rot; }
+  else if (!p->onObject) { p->attack = 1; p->glideFlags |= GLIDE_UP; }
+}
+
+// Amy in the air (sub_80497AC): her dive, or as anyone jumps, with her hammer unless she leapt or bounced
+static void amy_air(Player *p, const Control *c) {
+  if (p->dive) { dive_step(p, c); return; }
+  if (!p->hammerJump) {
+    if (p->attack == 0 && c->attackPressed) {   // sub_804948C
+      p->attack = 1;
+      int swirl = c->down;
+      play_song(swirl ? SE_AMY_SWIRL : SE_AMY_HAMMER);
+      if (swirl) p->xsp = 0;
+      p->state = swirl ? PS_HAMMER_SWIRL : PS_HAMMER_AIR;
+      act_amy_hearts(p);
+    }
+    // the jump cap (Player_8044670): she has no move of her own to start once the rise has slowed
+    if (p->jumped) {
+      double cap = p->water ? WATER_JUMP_RELEASE_CAP : JUMP_RELEASE_CAP;
+      if (p->ysp < -cap) { if (!c->jump) p->ysp = -cap; }
+      else if (p->midAir == 0 && c->jumpPressed) { p->airLock = 0; p->midAir = 1; }
+    } else if (!p->forcedRoll && p->ysp < -RISE_CAP) p->ysp = -RISE_CAP;
+  }
+  air_control(p, c, p->state != PS_BOUNCE);
+  if (p->ysp < 0) air_drag(p);
+  bounds(p);
+  move(p);
+  p->ysp += gravity(p);
+  tumble(p);
+  sensors_air(p);
+}
+
 static void air_step(Player *p, const Control *c) {
   if (is_knuckles(p)) { knuckles_air(p, c); return; }
   // knocked back, he flies on as he was thrown: no moves, no control and no drag, but his tilt still eases back
@@ -1013,6 +1172,7 @@ static void air_step(Player *p, const Control *c) {
     sensors_air(p);
     return;
   }
+  if (is_amy(p)) { amy_air(p, c); return; }
   // Sonic's double-tap dash, only while curled up (sub_8047714)
   if (p->character == CHARACTER_SONIC && p->curled && p->jumped && p->midAir == 0) {
     int tap = double_tap(p);
@@ -1257,8 +1417,15 @@ static const uint16_t KNUCKLES_ANIMATIONS[PA_COUNT][2] = {
   [PS_PUNCH2] = {249, 1}, [PS_PUNCH3] = {250, 0}, [PS_UPPERCUT] = {250, 1}, [PS_WATER_FLOAT] = {269, 0},
   [PS_WATER_FLOAT_UP] = {271, 0},
 };
+// Amy's own (AMY_ANIMATIONS)
+static const uint16_t AMY_ANIMATIONS[PA_COUNT][2] = {
+  [PS_HAMMER_RISE] = {308, 0}, [PS_HAMMER_LEAP] = {373, 0}, [PS_HAMMER] = {348, 0}, [PS_HAMMER2] = {353, 0},
+  [PS_HAMMER_AIR] = {376, 0}, [PS_HAMMER_SWIRL] = {377, 0}, [PS_DIVE] = {374, 0}, [PS_DIVE_SLAM] = {375, 0},
+  [PS_DIVE_END] = {375, 1},
+};
 static void animation_of(const Player *p, int name, uint16_t *anim, uint8_t *variant) {
-  const uint16_t (*own)[2] = p->character == CHARACTER_TAILS ? TAILS_ANIMATIONS : is_knuckles(p) ? KNUCKLES_ANIMATIONS : NULL;
+  const uint16_t (*own)[2] = p->character == CHARACTER_TAILS ? TAILS_ANIMATIONS : is_knuckles(p) ? KNUCKLES_ANIMATIONS
+    : is_amy(p) ? AMY_ANIMATIONS : NULL;
   if (own && own[name][0]) {
     *anim = own[name][0]; *variant = (uint8_t)own[name][1];
     return;
@@ -1296,6 +1463,9 @@ static int pick_animation(Player *p, const PlayerInput *in) {
     case PS_HALF_PIPE_LOW: case PS_HALF_PIPE_MID: case PS_HALF_PIPE_HIGH:
       p->sprite.animSpeed = (uint8_t)walk_cycle_speed(speed);
       return p->state;
+    case PS_HAMMER_RISE:
+      if (p->ysp >= -SPRING_PEAK_SPEED) p->state = PS_SPRING_PEAK;
+      return PS_HAMMER_RISE;
     case PS_SPRING_RISE:
       // the animation was picked before the state changes, so the top-out one starts on the next frame
       if (p->ysp >= -SPRING_PEAK_SPEED) p->state = PS_SPRING_PEAK;
@@ -1318,6 +1488,17 @@ static void after_animation(Player *p) {
     case PS_CROUCH_END: p->state = p->gsp != 0 ? PS_WALK : PS_IDLE; break;
     case PS_LOOK_UP_END: p->state = PS_IDLE; break;
     case PS_TURN: case PS_BREATHE: p->state = PS_WALK; break;
+    // Amy's swings: another queued goes on to the second, 3 faster with its hearts, and otherwise she walks on or stands;
+    // the end of a dive's slide takes her chain too
+    case PS_HAMMER:
+      if (p->attackNext != 0) {
+        p->attackNext = 0; p->attack++; p->state = PS_HAMMER2;
+        p->gsp += SWING2_SPEED * p->facing;
+        act_amy_hearts(p);
+      } else { p->attack = 0; p->state = p->gsp != 0 ? PS_WALK : PS_IDLE; }
+      break;
+    case PS_HAMMER2: p->attack = 0; p->state = p->gsp != 0 ? PS_WALK : PS_IDLE; break;
+    case PS_DIVE_END: p->attack = 0; p->attackNext = 0; p->state = PS_IDLE; p->chain = 0; break;
     case PS_FLY_TURN: p->state = PS_FLY; break;
     case PS_SWIM_TURN: p->state = PS_SWIM; break;
     case PS_TAIL_SWIPE:
