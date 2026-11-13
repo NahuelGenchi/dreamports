@@ -375,7 +375,13 @@ int results_run(void) {
       cam->speedX = 0; cam->speedY = 0;
       if ((uint32_t)((int)__builtin_floor(p->x) - (int)__builtin_floor(cam->x) + 64) > 368u) {
         p->xsp = 0; p->gsp = 0;
-        // the CPU partner is stopped here too when he is past the screen, but this version has none
+        // and the CPU partner too when he is past it, held still with nothing pressed
+        Player *q = &act.partner;
+        if (act.hasPartner && (int)__builtin_floor(q->x) - (int)__builtin_floor(cam->x) > 304) {
+          q->carried = 1; q->ignoreInput = 1; q->heldRight = q->heldLeft = 0;
+          q->jumpPressed = 0; q->attackPressed = 0;
+          q->xsp = 0; q->gsp = 0;
+        }
       }
       if (k > r.wait + FADE_AFTER) {
         if (r.level < FINAL_LEVEL_FROM) fade_out();   // X Zone's and the Moon's stay on the screen

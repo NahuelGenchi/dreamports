@@ -190,9 +190,10 @@ static ActTask *stand_in(Slot *slot) { return act_task_add(stand_in_run, NULL, s
 static int toggle_run(ActTask *t) {
   Slot *slot = (Slot *)t->data;
   const Entity *e = &slot->e;
-  Player *p = &act.player;
-  int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y);
-  if (x >= e->x && x <= e->x + e->d[2] * 8 && y >= e->y && y <= e->y + e->d[3] * 8) p->layer = e->kind == TOGGLE_FRONT ? LAYER_FRONT : LAYER_BACK;
+  FOR_EACH_PLAYER(p) {
+    int x = (int)__builtin_floor(p->x), y = (int)__builtin_floor(p->y);
+    if (x >= e->x && x <= e->x + e->d[2] * 8 && y >= e->y && y <= e->y + e->d[3] * 8) p->layer = e->kind == TOGGLE_FRONT ? LAYER_FRONT : LAYER_BACK;
+  }
   return stand_in_run(t);
 }
 static ActTask *toggle_spawn(Slot *slot) { return act_task_add(toggle_run, NULL, slot, PRIORITY_OBJECTS); }

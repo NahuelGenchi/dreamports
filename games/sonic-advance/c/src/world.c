@@ -21,6 +21,8 @@ void world_extra_life(void) { world_life_more(); music_call(MUSIC_ONE_UP, 0); }
 // dies; false while he is invincible or still blinking from the last hit
 int world_damage(Player *p) {
   if (!player_hurt(p)) return 0;
+  // the CPU partner has no rings to lose, or shield, and doesn't die of a hit
+  if (p->cpu) return 1;
   if (p->shield) {
     play_song(SE_LIFE_LOST);
     p->shield = SHIELD_NONE;

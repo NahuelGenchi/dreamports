@@ -136,8 +136,9 @@ static int spring_run(ActTask *t) {
   Spring *sp = (Spring *)t->data;
   Sprite *s = &sp->o.sprite;
   const Entity *e = &sp->o.slot->e;
-  int hit = collide(sp, &act.player);
-  if (hit) play_song(SE_SPRING);
+  // each player in turn, whatever the last one did, and the spring's sound for each it throws
+  int hit = 0;
+  FOR_EACH_PLAYER(p) if (collide(sp, p)) { hit = 1; play_song(SE_SPRING); }
   if (off_cam(e->x, e->y)) return 0;
   if (sp->launching) {
     // a hit during the launch restarts it, except on the diagonal springs
@@ -187,11 +188,12 @@ static int hidden_spring_run(ActTask *t) {
   const Entity *e = &h->o.slot->e;
   if (!h->launching) {
     // its launch's first frame shows on the next one
-    h->launching = hidden_hit(h, &act.player);
+    // sub_8095224: each player in turn
+    FOR_EACH_PLAYER(p) h->launching |= hidden_hit(h, p);
     if (off_cam(e->x, e->y)) return 0;
     return 1;
   }
-  hidden_hit(h, &act.player);
+  FOR_EACH_PLAYER(p) hidden_hit(h, p);
   if (sprite_step(s)) {
     h->launching = 0;
     sprite_start(s, 0);
