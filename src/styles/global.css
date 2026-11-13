@@ -1303,6 +1303,8 @@ kbd {
 
 .corner-group {
   display: flex;
+  /* as wide as its buttons, like each of them */
+  flex: none;
   gap: 10px;
   pointer-events: auto;
 }
@@ -1310,6 +1312,9 @@ kbd {
 .corner {
   --frame: var(--line);
   display: inline-flex;
+  /* its own size in any bar: Firefox counts an icon as nothing when it works out how far a button may shrink, so in a
+     bar too narrow for its buttons each one closed in until its icon stood outside it (#1212) */
+  flex: none;
   align-items: center;
   gap: 8px;
   height: 34px;
@@ -2876,6 +2881,11 @@ dialog.card[open] {
     overflow: auto hidden;
   }
 
+}
+
+/* The bottom bar stops fitting sooner than the top one: inside a system Back joins its buttons, and with their keys
+   showing the five of them need 373 px (#1212). A phone's are narrower, with no keys, and still fit. */
+@media (max-width: 379px) {
   .corners {
     overflow: auto hidden;
   }

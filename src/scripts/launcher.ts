@@ -626,13 +626,21 @@ function start(launcher: HTMLElement) {
 
   // ---------- Filters ----------
 
+  // Whether focus is on what a new row takes away: one of the row's places, or Back to the systems, which goes with a
+  // system's row. Focus then goes to the place the new row is on, instead of being left on nothing (#1211).
+  // Firefox goes on naming a button as the one in focus for a moment after it's hidden, so one out of use doesn't count.
+  const focusOnRow = () => {
+    const at = document.activeElement;
+    return rowEl.contains(at) || (!btnSystems.hidden && !btnSystems.inert && btnSystems.contains(at));
+  };
+
   // the row gives way to another: it slides out to one side, and what `build` makes comes in from the other
   function swapRow(dir: number, build: () => void) {
     switching = true;
     const outCls = dir > 0 ? 'out-l' : 'out-r';
     const inCls = dir > 0 ? 'in-r' : 'in-l';
     const swap = () => {
-      const hadFocus = rowEl.contains(document.activeElement);
+      const hadFocus = focusOnRow();
       rowEl.classList.remove(outCls);
       rowEl.classList.add(inCls);
       build();
@@ -1062,6 +1070,13 @@ function start(launcher: HTMLElement) {
   // how far a game's page had scrolled when a page under it took its place, to come back to
   let leftAt = [0, 0];
 
+  // The menu behind a card is out of sight, so it is out of reach too: Tab stays on the card, and on the sound's button,
+  // which every screen shows (#1204)
+  const menuParts = [$('.filters', launcher), stage, corners, padHint];
+  function menuAway(away: boolean) {
+    for (const part of menuParts) part.inert = away;
+  }
+
   // changes the row with no transition: every part of it with no-anim, or only a game's light with light-now
   function rowAtOnce(how: 'no-anim' | 'light-now', change: () => void) {
     rowEl.classList.add(how);
@@ -1086,6 +1101,7 @@ function start(launcher: HTMLElement) {
     if (dlg === settingsCard) syncSettings();
     state.view = state.open = dlg;
     state.opener = opener;
+    menuAway(true);
     // what the row's recording is showing goes along with the game's picture
     const frame = !opts.instant && !replacing && hasHero(dlg) ? rowFrame() : null;
     sleepRow();
@@ -1142,6 +1158,8 @@ function start(launcher: HTMLElement) {
     if (!dlg) return;
     state.view = null;
     state.open = null;
+    // the menu is within reach again as it comes back, unless another card takes this one's place
+    if (!opts.swap) menuAway(false);
     if (!opts.quiet) sound.play('close');
     if (hasHero(dlg)) {
       stop(showScr);
@@ -1215,12 +1233,21 @@ function start(launcher: HTMLElement) {
       }).currentTime = started;
     });
   }
+  // Where a part of a view is and how strong it shows right now, with whatever was moving it stopped. A view closed
+  // while it is still coming in leaves from there: started from its resting place, every part of it would show whole
+  // for a frame, even those that had not yet appeared (#1209).
+  function leaveFrom(el: HTMLElement) {
+    const now = getComputedStyle(el);
+    const from = { opacity: now.opacity, transform: now.transform };
+    for (const a of el.getAnimations()) a.cancel();
+    return from;
+  }
   function viewOut(dlg: HTMLDialogElement) {
-    if (calm()) return dlg.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }).finished.catch(() => {});
+    if (calm()) return dlg.animate([{ opacity: leaveFrom(dlg).opacity }, { opacity: 0 }], { duration: 120, fill: 'forwards' }).finished.catch(() => {});
     const d = Math.round(clamp(Math.min(W, H) * 0.02, 6, 16));
     const runs: Promise<unknown>[] = viewParts(dlg).map(
       (el) =>
-        el.animate([{ opacity: 1, transform: 'none' }, { opacity: 0, transform: `translateY(${d}px)` }], {
+        el.animate([leaveFrom(el), { opacity: 0, transform: `translateY(${d}px)` }], {
           duration: 160,
           easing: 'cubic-bezier(.4,0,1,1)',
           fill: 'forwards',
@@ -1232,16 +1259,17 @@ function start(launcher: HTMLElement) {
   // a game's picture flies back to its place in the row, or fades if the row has moved on
   function heroBack(dlg: HTMLDialogElement) {
     const hero = $('.show-wrap', dlg);
-    for (const a of hero.getAnimations()) a.cancel();
+    // from wherever its flight in had brought it
+    const left = leaveFrom(hero);
     const slotEl = slots[sel()];
     const tile = slotEl && slotEl.dataset.game === dlg.dataset.game ? slotEl.querySelector('.tile') : null;
     const from = hero.getBoundingClientRect();
     const to = tile?.getBoundingClientRect();
-    if (!to || !to.width || !from.width) return hero.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, fill: 'forwards' }).finished;
+    if (!to || !to.width || !from.width) return hero.animate([{ opacity: left.opacity }, { opacity: 0 }], { duration: 160, fill: 'forwards' }).finished;
     const dx = to.left + to.width / 2 - (from.left + from.width / 2);
     const dy = to.top + to.height / 2 - (from.top + from.height / 2);
     return hero.animate(
-      [{ transform: 'none' }, { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${(to.width / from.width).toFixed(3)})` }],
+      [{ transform: left.transform }, { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${(to.width / from.width).toFixed(3)})` }],
       { duration: 380, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'forwards' },
     ).finished;
   }
@@ -2522,6 +2550,7 @@ function start(launcher: HTMLElement) {
   // the browser's back and forward buttons open and close cards, and switch filters
   function followAddress(first: boolean) {
     if (state.launching) return;
+    const hadFocus = focusOnRow();
     const path = location.pathname;
     let card: HTMLDialogElement | null = null;
     let game: string | null = null;
@@ -2567,6 +2596,8 @@ function start(launcher: HTMLElement) {
         rowEl.classList.remove('no-anim');
       }
     }
+    // the browser's Back out of a system builds the row again under the focus it had
+    if (hadFocus && !card && !focusOnRow()) slots[sel()]?.focus({ preventScroll: true });
     if (card) {
       // a card that is open in the page's HTML gives way to the one the address asks for
       for (const d of cards) if (d.open && d !== card && d !== state.open) d.close();
@@ -2623,6 +2654,10 @@ function start(launcher: HTMLElement) {
     launcher.classList.add('is-laid');
     void topbar.offsetWidth;
     topbar.style.transition = '';
+    // the page's own card asked for focus while all of it still waited out of sight, which a browser refuses, so it
+    // asks again now that it shows (#1205)
+    const at = document.activeElement;
+    if (state.open && (!at || at === document.body)) focusStart(state.open)?.focus({ preventScroll: true });
   });
   // the page's own card, if it has one, opens over the menu
   followAddress(true);

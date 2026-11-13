@@ -65,7 +65,7 @@ static int ending(Goal *g) {
   if (g->frames++ > FRAMES_BEFORE_RESULTS && (p->state == PS_ACT_CLEAR_RUN || rocket)) {
     // the goal goes with the act: it stays marked as there, so that it isn't made again
     g->o.slot->gone = 1;
-    act_stage_results();
+    act_stage_results(0);
     return 0;
   }
   return passed(g);
