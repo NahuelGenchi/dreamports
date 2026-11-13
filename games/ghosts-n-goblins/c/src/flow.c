@@ -303,8 +303,14 @@ static void start_stage(void) {
     took(later ? STAGE_START_TILES_LATER : STAGE_START_TILES);
     queue_rows(later ? 0xCD4D : 0xCD6D, 0x0680, 1, 0x20);
   } else took(STAGE_START_NO_BANNER);
-  took(STAGE_START_WEAPON);
-  RAM[OBJECT_SHAPE + WEAPON_SHOWN] = RAM[0xC5 + PLAYER];
+  // $D1DD: the weapon held, shown under the top words (the lance in the demonstration), in the torch's or the axe's
+  // own colours
+  RAM[OBJECT_SHAPE + WEAPON_SHOWN] = DEMONSTRATION ? 0x40 : RAM[0xC5 + PLAYER];
+  took(DEMONSTRATION ? STAGE_START_WEAPON_LANCE : STAGE_START_WEAPON);
+  uint8_t held = RAM[OBJECT_SHAPE + WEAPON_SHOWN];
+  took(held == 0x44 ? STAGE_START_TORCH_COLOURS : held == 0x36 ? STAGE_START_AXE_COLOURS : STAGE_START_OWN_COLOURS);
+  if (held == 0x44) RAM[OBJECT_COLOURS + WEAPON_SHOWN] = 2;
+  else if (held == 0x36) RAM[OBJECT_COLOURS + WEAPON_SHOWN] = 1;
   RAM[OBJECT_FLAGS + WEAPON_SHOWN] = OBJECT_FLAG_SHOWN;
   RAM[OBJECT_SCREEN_Y + WEAPON_SHOWN] = 0xD4;
   RAM[OBJECT_SCREEN_X + WEAPON_SHOWN] = 0x80;
