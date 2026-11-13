@@ -1,6 +1,7 @@
-// Sonic, and Tails as the CPU's partner: their state, movement and animation, translated from the JavaScript version's
-// engine/player.js and engine/animator.js. Knuckles and Amy, the boost modes and the Sonic Advance 2 tricks are not here;
-// the fields the objects will read and set (onto him, holding his controls, curling him up) are.
+// Sonic or Tails as the character played, and Tails as the CPU's partner: their state, movement and animation, translated
+// from the JavaScript version's engine/player.js and engine/animator.js. Knuckles and Amy, the boost modes and the Sonic
+// Advance 2 tricks are not here; the fields the objects will read and set (onto him, holding his controls, curling him
+// up) are.
 
 #ifndef SA_PLAYER_H
 #define SA_PLAYER_H
@@ -105,6 +106,8 @@ void player_init(Player *p, int x, int y);
 /** Tails as InitializePlayer makes him for the CPU's partner: his sprites from the heap, the body with room for Sonic's
  *  run (ALLOC_TILES(SA1_ANIM_SONIC_RUN)) and his tails 16 tiles. */
 void player_init_partner(Player *p, int x, int y);
+/** Tails as his character: his tails' sprite from the heap (AllocateCharacterMidAirGfx), after the body's. */
+void player_become_tails(Player *p);
 /** One frame of his movement, before his animation. */
 void player_step(Player *p, const PlayerInput *in);
 /** Picks and steps his animation after the movement, and decides whether he is drawn. */
