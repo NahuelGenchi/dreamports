@@ -327,6 +327,8 @@ function start(launcher: HTMLElement) {
     const others = $$('.corner', group).filter((el) => el !== btnSystems);
     const from = others.map((el) => el.getBoundingClientRect().left);
     const was = btnSystems.getBoundingClientRect().left - group.getBoundingClientRect().left;
+    // how strong Back and the name show now, so a turn back part way through a fade goes on from there
+    const strength = [btnSystems, sysHead].map((el) => (el.hidden ? 0 : Number(getComputedStyle(el).opacity)));
     for (const el of [btnSystems, sysHead, ...others]) for (const a of el.getAnimations()) a.cancel();
     const settle = () => {
       btnSystems.classList.toggle('is-leaving', false);
@@ -343,8 +345,9 @@ function start(launcher: HTMLElement) {
       btnSystems.style.left = `${was - parseFloat(getComputedStyle(btnSystems).marginLeft)}px`;
       btnSystems.inert = true;
     }
-    const fade = inside ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 1 }, { opacity: 0 }];
-    const fades = [btnSystems, sysHead].map((el) => el.animate(fade, { duration: inside ? 300 : 170, easing: 'ease', fill: 'forwards' }));
+    const fades = [btnSystems, sysHead].map((el, i) =>
+      el.animate([{ opacity: strength[i] }, { opacity: inside ? 1 : 0 }], { duration: inside ? 300 : 170, easing: 'ease', fill: 'forwards' }),
+    );
     others.forEach((el, i) => {
       const dx = from[i] - el.getBoundingClientRect().left;
       if (dx) el.animate([{ translate: `${dx}px 0` }, { translate: '0 0' }], { duration: 300, easing: 'cubic-bezier(.2,.9,.3,1)' });
