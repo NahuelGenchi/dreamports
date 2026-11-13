@@ -493,14 +493,30 @@ void act_player_died(void) {
 }
 // the act starting over with a life less is not here yet
 void act_life_lost(void) {}
+// a frame of the course clock, where the act's task doesn't run it: gCheckpointTime counts up whichever way the clock goes
+static void clock_step(void) {
+  act.clockTime++;
+  if (act.timerReversed) {
+    if (--act.courseTime <= 0) act.courseTime = 0;
+  } else act.courseTime++;
+}
+
+#define EGG_ROCKET_COUNTDOWN (3 * 3600)
 // CreateStageResults, as the goal hands over: the act's rings into the save's ring bank and the next level unlocked
 // (X Zone's way to the Moon Zone decides that itself, and isn't here yet), then the results' tasks, which first run
-// this frame, after the goal's
-void act_stage_results(void) {
+// this frame, after the goal's, or with `nextFrame` on the next one
+void act_stage_results(int nextFrame) {
   int level = act.stage.level;
   save_add_ring_bank(act.ringCount);
   if (level != LEVEL_X_ZONE && save_unlocked_level(0) < level + 1) save_set_unlocked_level(0, (uint16_t)(level + 1));
-  results_start(level, act.ringCount, act.courseTime, level == LEVEL_X_ZONE, 0);
+  int courseTime = act.courseTime;
+  if (level == LEVEL_EGG_ROCKET) {
+    // the rocket's clock counts down, so the time bonus goes by the time the act took (gCheckpointTime), less the
+    // countdown's 3:00; and the sky behind stops where it is
+    egg_rocket_results();
+    courseTime = act.clockTime <= EGG_ROCKET_COUNTDOWN ? 1 : act.clockTime - EGG_ROCKET_COUNTDOWN;
+  }
+  results_start(level, act.ringCount, courseTime, level == LEVEL_X_ZONE, nextFrame);
 }
 
 // GoToNextLevel, once the save is written: the next act, made inside the task as the course select makes one, with the
@@ -539,8 +555,8 @@ static void next_act(void) {
   start_music();
   if (act.task) destroy_task(act.task);
   act.task = create_task(act_task, NULL, 0x0F00, 0, NULL);
-  // how long the stage takes the original to load: a frame for a zone's second act, two for a new zone
-  act.stallLoad = 0; act.loadFrames = nextLevel & 1 ? 2 : 3;
+  // how long the stage takes the original to load: a frame for a zone's second act and for X Zone, two for a new zone
+  act.stallLoad = 0; act.loadFrames = nextLevel & 1 || nextLevel == LEVEL_X_ZONE ? 2 : 3;
   titlecard_made(1);
   // the objects' tasks are after the results' in the list, so they run at once, unseen: the rings' spin and the
   // first objects' animations are a step on when the act's own first frame comes
@@ -717,6 +733,7 @@ static void act_frame(void) {
   // keeps this frame's gravity as the last (gPrevStageFlags), so a flip turns his Y speed around once
   act.player.wasInverted = act.player.inverted;
   if (!act.clockStopped) {
+    act.clockTime++;
     if (act.timerReversed) {
       if (--act.courseTime <= 0) {
         // time up stops the clock (STAGE_FLAG__ACT_START), so this happens once
@@ -847,9 +864,7 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
       // the frames after the card only settle the HUD's task, which starts as the card ends: the stage keeps the frame it
       // ended on, and only the clock and the HUD move on
       if (!act.clockStopped) {
-        if (act.timerReversed) {
-          if (--act.courseTime <= 0) act.courseTime = 0;
-        } else act.courseTime++;
+        clock_step();
       }
       hud_update(0);
       after++;
@@ -891,9 +906,7 @@ static void pre_run(int cardSkip, int preFrames, int prelude) {
     water_card_flush();   // the card's part in the water, after the palette animations as in the task list
     if (row->afterFrame && !loading) row->afterFrame(0);
     if (!act.clockStopped && !(row->cardStepsOn && cardJustEnded)) {
-      if (act.timerReversed) {
-        if (--act.courseTime <= 0) act.courseTime = 0;
-      } else act.courseTime++;
+      clock_step();
     }
     if (wasDone && row->cardStepsOn) {
       // the act keeps stepping through the frames after its card, as its first recording starts there: the HUD's

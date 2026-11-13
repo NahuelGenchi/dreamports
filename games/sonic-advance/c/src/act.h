@@ -68,6 +68,7 @@ typedef struct {
   Camera cam;
   Hud hud;
   int tick, frames, courseTime, ringCount, lives, score;
+  int clockTime;   // gCheckpointTime: the frames the course clock has run this act, counted up even when it counts down
   int timerReversed;
   uint32_t seed;
   int goalReached, ringsStopped;   // past the goal; past the goal or a beaten boss, the rings manager neither takes nor draws
@@ -108,7 +109,7 @@ void act_life_lost(void);
 // specialspring.c)
 int act_goal_passed(void);
 void act_goal_reached(void);
-void act_stage_results(void);
+void act_stage_results(int nextFrame);
 void act_go_to_next_level(void);
 int act_checkpoint_index(void);
 void act_checkpoint_pass(int index, int x, int y);
