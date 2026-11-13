@@ -248,6 +248,9 @@ void hit_enemy_falls(uint8_t object);
 void devil(uint8_t object);
 /** sub_04_9DA2 and sub_04_9D5F, kinds $36 and $37: the second stage's objects that go up and down, and that fall (platform.c). */
 void rising_thing(uint8_t object);
+/** sub_04_B707, kind $0C: a lift over the second stage's water (platform.c); $F8E9, kind $13: a crow of the water (enemies.c). */
+void lift(uint8_t object);
+void water_crow(uint8_t object);
 void falling_thing(uint8_t object);
 /** $F6F6: an enemy that a weapon has killed burns away. */
 void enemy_burns_away(uint8_t object);

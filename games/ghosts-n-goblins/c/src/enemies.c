@@ -597,6 +597,19 @@ void knight(uint8_t object) {
 
 // $F9CC: a crow in flight goes the way it faced at its speed, more the harder the game is, up and down by the 16 heights
 // in the copy's list at $FA0E, with two shapes for its wings, until it's out of the view.
+// $F9F0: its two wing shapes, two rounds each, turned round for one that faces left.
+static void crow_wings(uint8_t object) {
+  uint8_t *count = &RAM[OBJECT_COUNT + object];
+  ++*count;
+  RAM[OBJECT_SHAPE + object] = (uint8_t)(0xBB + ((*count >> 1) & 1));
+  took(CROW_WINGS);
+  took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
+  if (!(RAM[OBJECT_FLAGS + object] & SINKS)) { took(CROW_FLIES_RIGHT); return; }
+  RAM[OBJECT_SHAPE + object] += 0x10;   // for a crow, the flag that says it faces left
+  took(CROW_FLIES_LEFT);
+}
+
 static void crow_flies(uint8_t object) {
   uint8_t *count = &RAM[OBJECT_COUNT + object];
   took(OBJECT_SHOWN_READ);
@@ -615,63 +628,27 @@ static void crow_flies(uint8_t object) {
   took(CROW_WAVE);
   took(CALLS);
   move_down(object);
-  ++*count;
-  RAM[OBJECT_SHAPE + object] = (uint8_t)(0xBB + ((*count >> 1) & 1));
-  took(CROW_WINGS);
-  took(OBJECT_FLAG_READ);
-  flags_past_page(object, 1);
-  if (!(RAM[OBJECT_FLAGS + object] & SINKS)) { took(CROW_FLIES_RIGHT); return; }
-  RAM[OBJECT_SHAPE + object] += 0x10;   // for a crow, the flag that says it faces left
-  took(CROW_FLIES_LEFT);
+  crow_wings(object);
 }
 
-/** $F93D, kind $14: a crow. It sits, flag $02, facing Arthur, for 24 rounds while it's shown, cawing in four of them,
- *  and then flies. A weapon kills it for 100 points, as it does a zombie. */
-void crow(uint8_t object) {
+// $F960: hit. Its flag that said it sits now says the weapon was heading left, for the way it falls.
+static void crow_hit(uint8_t object, uint8_t weapon) {
+  uint8_t *flags = &RAM[OBJECT_FLAGS + object];
+  *flags &= (uint8_t)~WALKS;
+  *flags |= (RAM[OBJECT_HEADING + weapon] >> 2) & WALKS;
+  *flags |= HIT;
+  took(CROW_HIT);
+  sound_play(0x16);
+  RAM[OBJECT_COUNT + object] = 0;
+  RAM[0x26] = 0;
+  RAM[0x27] = 1;   // 100 points
+  took(CROW_HIT_SCORE);
+  add_score(object, weapon);
+}
+
+// $F98C: perched, facing Arthur, for 24 rounds while it's shown, cawing in four of them, and then it takes off.
+static void crow_sits(uint8_t object) {
   uint8_t *flags = &RAM[OBJECT_FLAGS + object], *count = &RAM[OBJECT_COUNT + object];
-  place_on_screen(object);
-  RAM[OBJECT_COLOURS + object] = 0;
-  took(CROW_BEGINS);
-  took(OBJECT_FLAG_READ);
-  flags_past_page(object, 1);
-  if (*flags & HIT) {
-    took(CROW_DEAD);
-    hit_enemy_falls(object);
-    return;
-  }
-  took(CROW_ALIVE);
-  show_object(object);
-  if (object_in_view(object)) took(ENEMY_IN_VIEW);
-  else {
-    took(ENEMY_OUT_OF_VIEW);
-    hide_object(object);
-  }
-  RAM[0x26] = RAM[0x27] = 4;
-  took(CROW_TESTS);
-  uint8_t weapon = touch_tests(object);
-  if (RAM[0x0647 + object]) {
-    // $F960: hit. Its flag that said it sits now says the weapon was heading left, for the way it falls.
-    *flags &= (uint8_t)~WALKS;
-    *flags |= (RAM[OBJECT_HEADING + weapon] >> 2) & WALKS;
-    *flags |= HIT;
-    took(CROW_HIT);
-    sound_play(0x16);
-    *count = 0;
-    RAM[0x26] = 0;
-    RAM[0x27] = 1;   // 100 points
-    took(CROW_HIT_SCORE);
-    add_score(object, weapon);
-    return;
-  }
-  took(CROW_NOT_HIT);
-  took(OBJECT_FLAG_READ);
-  flags_past_page(object, 1);
-  if (!(*flags & WALKS)) {
-    took(CROW_FLIES);
-    crow_flies(object);
-    return;
-  }
-  took(CROW_SITS);
   took(OBJECT_SHOWN_READ);
   flags_past_page(object, 1);
   if (!(*flags & OBJECT_FLAG_SHOWN)) { took(CROW_HIDDEN); return; }
@@ -700,6 +677,96 @@ void crow(uint8_t object) {
     RAM[OBJECT_SHAPE + object]++;
     took(CROW_CAWS);
   }
+}
+
+/** $F93D, kind $14: a crow. It sits, flag $02, facing Arthur, for 24 rounds while it's shown, cawing in four of them,
+ *  and then flies. A weapon kills it for 100 points, as it does a zombie. */
+void crow(uint8_t object) {
+  uint8_t *flags = &RAM[OBJECT_FLAGS + object];
+  place_on_screen(object);
+  RAM[OBJECT_COLOURS + object] = 0;
+  took(CROW_BEGINS);
+  took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
+  if (*flags & HIT) {
+    took(CROW_DEAD);
+    hit_enemy_falls(object);
+    return;
+  }
+  took(CROW_ALIVE);
+  show_object(object);
+  if (object_in_view(object)) took(ENEMY_IN_VIEW);
+  else {
+    took(ENEMY_OUT_OF_VIEW);
+    hide_object(object);
+  }
+  RAM[0x26] = RAM[0x27] = 4;
+  took(CROW_TESTS);
+  uint8_t weapon = touch_tests(object);
+  if (RAM[0x0647 + object]) { crow_hit(object, weapon); return; }
+  took(CROW_NOT_HIT);
+  took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
+  if (!(*flags & WALKS)) {
+    took(CROW_FLIES);
+    crow_flies(object);
+    return;
+  }
+  took(CROW_SITS);
+  crow_sits(object);
+}
+
+/** $F8E9, kind $13: a crow of the second stage's water, in its own colours. Perched, it does as a crow does and then
+ *  aims at Arthur, by sub_FA58; flying, it goes straight the way it was aimed, faster, with the crow's wing shapes and
+ *  no wave. */
+void water_crow(uint8_t object) {
+  uint8_t *flags = &RAM[OBJECT_FLAGS + object];
+  RAM[OBJECT_COLOURS + object] = 0x02;
+  took(CROW_BEGINS);
+  took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
+  if (*flags & HIT) {
+    took(CROW_DEAD);
+    hit_enemy_falls(object);
+    return;
+  }
+  took(CROW_ALIVE);
+  show_object(object);
+  if (object_in_view(object)) took(WATER_CROW_IN_VIEW);
+  else {
+    took(ENEMY_OUT_OF_VIEW);
+    hide_object(object);
+  }
+  RAM[0x26] = RAM[0x27] = 4;
+  took(CROW_TESTS);
+  uint8_t weapon = touch_tests(object);
+  if (RAM[0x0647 + object]) { took(JUMPS); crow_hit(object, weapon); return; }
+  took(CROW_NOT_HIT);
+  took(OBJECT_FLAG_READ);
+  flags_past_page(object, 1);
+  if (*flags & WALKS) {
+    took(WATER_CROW_SITS);
+    crow_sits(object);
+    took(WATER_CROW_AIMS);
+    RAM[OBJECT_HEADING + object] = way_to_arthur(object);
+    took(WATER_CROW_AIMED);
+    *flags |= (RAM[OBJECT_HEADING + object] >> 1) & SINKS;   // aimed left, it faces left
+    took(WATER_CROW_FACES);
+    flags_past_page(object, 1);
+    return;
+  }
+  took(WATER_CROW_FLIES);
+  took(OBJECT_SHOWN_READ);
+  flags_past_page(object, 1);
+  if (!(*flags & OBJECT_FLAG_SHOWN)) {
+    took(CROW_GONE);
+    remove_object(object);
+    return;
+  }
+  took(WATER_CROW_SPEED);
+  move_object(object, (uint8_t)(0x18 + RAM[0xD3]));
+  took(JUMPS);
+  crow_wings(object);
 }
 
 // sub_04_9FA5: a plant's half width and half height, for what touches it.

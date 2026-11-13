@@ -136,6 +136,12 @@
       "differs": [],
       "functions": []
     },
+    "stage-2-clear": {
+      "frames": 17100,
+      "matched": 17100,
+      "differs": [],
+      "functions": []
+    },
     "stage-clear": {
       "frames": 7320,
       "matched": 7320,

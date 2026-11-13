@@ -23,14 +23,16 @@ enum { VIEW_X = 0x64, VIEW_X_SCREEN = 0x65, VIEW_Y = 0x67, VIEW_Y_SCREEN = 0x68 
 
 // sub_F321 and sub_F346
 void show_object(uint8_t object) {
-  RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN;
-  took(OBJECT_SHOWN);
+  took(OBJECT_SHOWN_READ_FLAGS);
   if (object >= 0x10) took(READ_PAST_PAGE);   // the flags of the objects from the 17th on are in the next page
+  RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN;
+  took(OBJECT_SHOWN_STORED);
 }
 void hide_object(uint8_t object) {
-  RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
-  took(OBJECT_SHOWN);
+  took(OBJECT_SHOWN_READ_FLAGS);
   if (object >= 0x10) took(READ_PAST_PAGE);
+  RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
+  took(OBJECT_SHOWN_STORED);
 }
 
 // sub_F0BC: the object's place, as the second of the two. `timed` counts it a write at a time, with its call, for the
@@ -734,7 +736,9 @@ wait objects_task(void) {
         case 0x07: window_thing(object); break;
         case 0x08: big_man(object); break;
         case 0x2F: thrown(object); break;
+        case 0x0C: lift(object); break;
         case 0x0E: platform(object); break;
+        case 0x13: water_crow(object); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object); break;
         case 0x12: pot(object); break;

@@ -248,3 +248,67 @@ void falling_thing(uint8_t object) {
   took(OBJECT_FLAG_CHANGED);
   took(RETURNS);
 }
+
+/** sub_04_B707, kind $0C: a lift over the second stage's water, which goes up and down at its state's speed. In the
+ *  view it turns below the 16th line of a screen under the first, going up, and past the 224th going down; out of
+ *  the view it turns every round, and it doesn't move in a round it turns while shown. Arthur stands on it as on
+ *  kind $36, if he's coming down onto it within 16 pixels across and 18 lines above. */
+void lift(uint8_t object) {
+  uint8_t *heading = &RAM[OBJECT_HEADING + object];
+  int turns;
+  RAM[OBJECT_SHAPE + object] = 0x6F;
+  RAM[OBJECT_COLOURS + object] = 0x01;
+  *heading &= DOWN;
+  took(LIFT_BEGINS);
+  if (object >= 0x0F) took(READ_PAST_PAGE);
+  show_object(object);
+  if (!object_in_view(object)) {
+    took(LIFT_OUT_OF_VIEW);
+    hide_object(object);
+    took(JUMPS);
+    turns = 1;
+  } else {
+    took(LIFT_IN_VIEW);
+    if (object >= 0x0F) took(READ_PAST_PAGE);
+    uint8_t screen = RAM[OBJECT_Y_SCREEN + object], line = RAM[OBJECT_Y + object];
+    if (*heading & DOWN) {
+      if (!screen) { took(LIFT_DOWN_FIRST_SCREEN); turns = 0; }
+      else if (line >= 0xE0) { took(LIFT_AT_BOTTOM); turns = 1; }
+      else { took(LIFT_GOES_DOWN); turns = 0; }
+    } else {
+      if (!screen) { took(LIFT_UP_FIRST_SCREEN); turns = 0; }
+      else if (line >= 0x10) { took(LIFT_GOES_UP); turns = 0; }
+      else { took(LIFT_AT_TOP); turns = 1; }
+    }
+  }
+  int moves = 1;
+  if (turns) {
+    *heading ^= DOWN;
+    took(LIFT_TURNS);
+    if (object >= 0x0F) took(READ_PAST_PAGE);
+    took(OBJECT_SHOWN_READ);
+    if (object >= 0x10) took(READ_PAST_PAGE);
+    moves = !(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN);
+    took(moves ? LIFT_TURNED_HIDDEN : LIFT_TURNED_SHOWN);
+  }
+  if (moves) {
+    took(LIFT_MOVES);
+    move_object(object, cart(4, (uint16_t)(SPEEDS_BY_STATE + RAM[OBJECT_STATE + object])));
+  }
+  place_on_screen(object);
+  took(OBJECT_SHOWN_READ);
+  if (object >= 0x10) took(READ_PAST_PAGE);
+  if (!(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN)) { took(LIFT_NOT_SHOWN); return; }
+  // $B767: whether Arthur is coming down onto it
+  if (RAM[OBJECT_STATE + ARTHUR] & RISES) { took(LIFT_ARTHUR_RISES); return; }
+  if (RAM[OBJECT_FLAGS + ARTHUR] & HELD) { took(LIFT_ARTHUR_HELD); return; }
+  took(LIFT_LOOKS);
+  place_on_screen(object);
+  uint8_t own = RAM[OBJECT_SCREEN_Y + object], his = RAM[OBJECT_SCREEN_Y + ARTHUR];
+  if (own < his) { took(LIFT_ARTHUR_BELOW); return; }
+  if ((uint8_t)(own - his) >= 0x12) { took(LIFT_ARTHUR_HIGH); return; }
+  uint8_t across = (uint8_t)(RAM[OBJECT_SCREEN_X + object] - RAM[OBJECT_SCREEN_X + ARTHUR]);
+  if (across >= 0x10 && across < 0xF0) { took(LIFT_ARTHUR_OFF); return; }
+  took(across < 0x10 ? LIFT_ARTHUR_ON_NEAR : LIFT_ARTHUR_ON_FAR);
+  thing_holds(object);
+}

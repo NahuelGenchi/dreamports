@@ -310,7 +310,8 @@ COST(OBJECT_PLACED_OTHER_SCREEN, 16) // or on another screen than the view's, to
 COST(OBJECT_PLACED_LINE_TAKEN, 6) // and on to the store of its line
 COST(OBJECT_PLACED_LINE, 8)       // to the store of its place across,
 COST(OBJECT_PLACED_ACROSS, 11)    // and back
-COST(OBJECT_SHOWN, 23)            // sub_F321 or sub_F346, with its call
+COST(OBJECT_SHOWN_READ_FLAGS, 12) // sub_F321 or sub_F346, with its call, to the store of its flags,
+COST(OBJECT_SHOWN_STORED, 11)     // and back
 COST(OBJECT_FLAG_READ, 22)        // one of the flag tests from sub_F2E3 on, with its call,
 COST(OBJECT_SHOWN_READ, 18)       // or sub_F2FF's
 COST(OBJECT_IN_VIEW, 19)          // sub_F0A3 after its three calls, and back: in the view,
@@ -652,6 +653,7 @@ COST(ARTHUR_LANDS, 30)            // $E29E to $DB65, with sub_E166
 COST(ARTHUR_FALLS_ON, 20)         // $E29E to the call of sub_DF3E
 COST(ARTHUR_FELL_LOW, 27)         // sub_DF3E, into sub_DB99,
 COST(ARTHUR_FELL_HIGH, 31)        // or back
+COST(ARTHUR_FELL_NEXT_SCREEN, 15) // more, past his screen's 240 lines, onto the next ($DF49)
 COST(ARTHUR_FELL_ABOVE_HALF, 9)   // $E2B5
 COST(ARTHUR_FELL_BELOW_HALF, 14)  // or with its call of sub_DB99
 COST(ARTHUR_FALL_STRAIGHT, 17)    // $E2C2 to $E2E1, with neither Left nor Right held,
@@ -688,6 +690,7 @@ COST(STAGE_JUMP_NOT_HELD, 2)      // or not,
 COST(STAGE_JUMP_LANDS, 56)        // and on the ground: $DE69 or $DEAC to $DB65, with sub_E166
 COST(WAY_AHEAD_LEFT, 67)          // sub_DF62 with its call, to the block ahead of him: heading left,
 COST(WAY_AHEAD_RIGHT, 69)         // or right
+COST(WAY_AHEAD_NEXT_SCREEN, 11)   // more, with the place 4 below him on the next screen down ($EA21)
 COST(WAY_SOLID, 18)               // and after it, and back: the block is solid,
 COST(WAY_LEFT_FREE, 25)           // or isn't, and he's clear of the picture's left edge,
 COST(WAY_LEFT_EDGE, 26)           // or at it,
@@ -696,6 +699,8 @@ COST(WAY_RIGHT_EDGE, 28)          // or at it
 COST(JUMP_BLOCKED, 3)             // $E22C, $E250 or $E278: something's in his way,
 COST(JUMP_DRIFTS, 16)             // or nothing is: to sub_F03E
 COST(ARTHUR_RISES, 45)            // sub_DF04 with its call: up, on his screen and below the picture's top rows
+COST(ARTHUR_RISES_PAST_TOP, 13)   // more, past the top of his screen, onto the one above ($DF15)
+COST(ARTHUR_RISES_VIEW_UP, 17)    // more, in the picture's top 48 lines, with the view asked to move up ($DF24)
 COST(ARTHUR_RISE_COUNTED, 7)      // $E237
 COST(JUMP_STILL_IN_AIR, 3)        // $E23F or $E268,
 COST(JUMP_LANDS, 33)              // or $E23F with sub_E166, and back,
@@ -1506,7 +1511,7 @@ COST(BOSS_CHARGE_OVER, 38)        // $FE7D, with sub_F336, and back: 24 rounds a
 COST(BOSS_CHARGE_MOVES, 40)       // or to sub_F0A0
 COST(BOSS_DIES, 38)               // $FC04 to sub_ED51, with sub_F7A5: ten hits
 COST(BOSS_DIES_ELSEWHERE, 8)      // $FC13 to sub_F305,
-COST(BOSS_DIES_IN_SECOND_SET, 12) // or with the second set's own sound to follow
+COST(BOSS_DIES_IN_SECOND_SET, 13) // or with the second set's own sound to follow
 COST(BOSS_DIES_SCORE, 30)         // $FC21 to sub_D902
 COST(BOSS_DIES_ENDS, 8)           // $FC33 to $F6F6
 COST(BOSS_BURNS_ON, 54)           // $F701, and back, for a boss, kind 5: its next shape,
@@ -1760,6 +1765,35 @@ COST(BIG_FLOOR_WAY_SHUT, 8)       // $AE19, and back: the way's shut,
 COST(BIG_FLOOR_STEPS, 13)         // or open, to sub_F03E, by a jump
 COST(THROWN_BEGINS, 17)           // $F504 to sub_F0A0's call of sub_F03E: what the big man throws
 COST(THROWN_FLIES, 18)            // $F516 to $F54D, less sub_F321
+COST(LIFT_BEGINS, 25)             // sub_04_B707 to sub_F321: a lift over the water
+COST(LIFT_OUT_OF_VIEW, 2)         // $B71F to sub_F346: out of the view, where it turns,
+COST(LIFT_IN_VIEW, 9)             // or in it, to $B72C
+COST(LIFT_DOWN_FIRST_SCREEN, 9)   // heading down, on the stage's first screen down, to $B756,
+COST(LIFT_AT_BOTTOM, 17)          // or past a lower screen's 224th line, to $B749, where it turns,
+COST(LIFT_GOES_DOWN, 19)          // or above it, to $B756
+COST(LIFT_UP_FIRST_SCREEN, 10)    // heading up, on the first screen, to $B756,
+COST(LIFT_GOES_UP, 18)            // or below a lower screen's 16th line,
+COST(LIFT_AT_TOP, 17)             // or above it, to $B749
+COST(LIFT_TURNS, 11)              // $B749 to sub_F2FF
+COST(LIFT_TURNED_SHOWN, 3)        // $B754 to $B75F, shown: no move this round,
+COST(LIFT_TURNED_HIDDEN, 2)       // or hidden, to $B756
+COST(LIFT_MOVES, 14)              // $B756 to sub_F03E, with its call, at its state's speed
+COST(LIFT_NOT_SHOWN, 9)           // $B765, and back
+COST(LIFT_ARTHUR_RISES, 17)       // or Arthur is rising, and back,
+COST(LIFT_ARTHUR_HELD, 24)        // or held by something already, and back,
+COST(LIFT_LOOKS, 19)              // or neither, to sub_F181
+COST(LIFT_ARTHUR_BELOW, 19)       // $B779, and back: he's below it,
+COST(LIFT_ARTHUR_HIGH, 23)        // or 18 lines or more above it,
+COST(LIFT_ARTHUR_OFF, 41)         // or 16 pixels or more to either side,
+COST(LIFT_ARTHUR_ON_NEAR, 31)     // or on it, to $B795, with it on his right,
+COST(LIFT_ARTHUR_ON_FAR, 34)      // or his left
+COST(WATER_CROW_IN_VIEW, 4)       // $F8FC to $F901, across a page: a crow of the water, in the view
+COST(WATER_CROW_SITS, 8)          // $F90F to $F98C, with its call: perched
+COST(WATER_CROW_AIMS, 68)         // $F914, sub_FA58 with its call, to sub_EF25 with its call
+COST(WATER_CROW_AIMED, 11)        // $FA83, and back
+COST(WATER_CROW_FACES, 19)        // $F917, and back: aimed left, it faces left
+COST(WATER_CROW_FLIES, 3)         // or flying, $F90F to $F921
+COST(WATER_CROW_SPEED, 16)        // $F924 to sub_F03E, with its call
 COST(TOWER_CROW_NOT_YET, 9)       // $875E to the return DANGERS_OTHERS counts: the count isn't out,
 COST(TOWER_CROW_COMES, 19)        // or is, and starts again: to the call of sub_DA18
 COST(TOWER_CROW_SET_UP, 35)       // $876E to the call of sub_02_84D7
