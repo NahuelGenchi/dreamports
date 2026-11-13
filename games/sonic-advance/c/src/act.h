@@ -113,6 +113,10 @@ void partner_hear(const PlayerInput *in);
 void partner_task(int card);
 /** Tails' tail swipe's effect, following him (Player_Tails_InitGfx_TailSwipe). */
 void act_tail_swipe(const Player *p);
+/** Knuckles' uppercut flame, which follows him as the tail swipe's effect does (Player_Knuckles_InitGfx_UppercutFlame). */
+void act_uppercut_flame(const Player *p);
+/** Knuckles' splash while he floats on the water (Player_Knuckles_InitGfx_FloatSplash, Task_KnucklesFloatSplash). */
+void act_float_splash(const Player *p);
 void act_freeze_camera(void);
 void act_player_died(void);
 void act_life_lost(void);

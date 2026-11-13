@@ -37,6 +37,18 @@ void sensors_air(Player *p);
 int sensors_act_angle(const Player *p);
 /** sub_8022F58: the room above Sonic, or beyond him, in the act's direction `angle`. */
 int sensors_clearance(const Player *p, int angle);
+/** What a pair of sensors finds: the nearer distance, its surface's angle (0 for none or an odd one), and the other's. */
+typedef struct { int d, rot, out; } SensorPair;
+/** His floor under him (sub_8029B88), and the act's floor and ceiling whichever way gravity pulls (sub_8029B0C,
+ *  sub_8029AC0). */
+SensorPair sensors_floor_under(const Player *p);
+SensorPair sensors_act_floor(const Player *p);
+SensorPair sensors_act_ceiling(const Player *p);
+/** The wall to his left (dir -1) or right, with its sensors at his top and bottom (sub_8029A28, sub_8029A74). */
+SensorPair sensors_wall_beside(const Player *p, int dir);
+/** sub_8022838: the collision of Knuckles' glide, his drop from it and his slide after it. Walls stop him and set
+ *  GLIDE_WALL in his glideFlags, and the ground, as standing on an object, clears GLIDE_UP. */
+void sensors_glide(Player *p);
 /** Player_HandleSpriteYOffsetChange: moves his centre so his feet stay put when the offset changes. */
 void sensors_set_offset_y(Player *p, int offsetY);
 

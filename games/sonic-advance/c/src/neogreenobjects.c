@@ -372,6 +372,8 @@ static int grind_run(ActTask *t) {
   int w = d2(en) * 8, h = d3(en) * 8;
   int x = fl(p->x), y = fl(p->y);
   int inside = x >= en->e.x && x <= en->e.x + w && y >= en->e.y && y <= en->e.y + h;
+  // Tails and Knuckles never ride them, and the rail's task then stays, in range or not
+  if (p->character == CHARACTER_TAILS || p->character == CHARACTER_KNUCKLES) return 1;
   if (en->e.kind == 19) {
     if (!p->dead && inside && !p->grinding && p->ysp >= 0 && p->xsp > 0) {
       if (p->xsp < 0.5) p->xsp = 0.5;

@@ -1,5 +1,5 @@
-// Sonic or Tails as the character played, and Tails as the CPU's partner: their state, movement and animation, translated
-// from the JavaScript version's engine/player.js and engine/animator.js. Knuckles and Amy, the boost modes and the Sonic
+// Sonic, Tails or Knuckles as the character played, and Tails as the CPU's partner: their state, movement and animation,
+// translated from the JavaScript version's engine/player.js and engine/animator.js. Amy, the boost modes and the Sonic
 // Advance 2 tricks are not here; the fields the objects will read and set (onto him, holding his controls, curling him
 // up) are.
 
@@ -9,7 +9,14 @@
 #include "sa.h"
 
 enum { LAYER_FRONT = 0, LAYER_BACK = 1 };
-enum { CHARACTER_SONIC = 0, CHARACTER_TAILS = 1 };
+enum { CHARACTER_SONIC = 0, CHARACTER_TAILS = 1, CHARACTER_KNUCKLES = 2 };
+// Knuckles' glide flags (w.kf.flags): not yet down, and a wall stopped him
+enum { GLIDE_UP = 0x2, GLIDE_WALL = 0x20 };
+// Knuckles' midAir: gliding, dropping from it, sliding after it, climbing, onto a ledge, and floating on the water
+enum { KN_GLIDE = 1, KN_DROP = 2, KN_SLIDE = 3, KN_CLIMB = 4, KN_LEDGE = 5, KN_FLOAT = 9 };
+// how the camera's look eases on one of his frames: left as it is (a jump off the water), once more while he glides
+// (sub_8048980), and once more again while he climbs (Player_8047280)
+enum { LOOK_EASE_NONE, LOOK_EASE_STILL, LOOK_EASE_GLIDE, LOOK_EASE_CLIMB };
 enum { SHIELD_NONE, SHIELD_NORMAL, SHIELD_MAGNETIC };
 
 // the d-pad bits of the input history (the mid-air dash reads it)
@@ -36,6 +43,12 @@ typedef enum {
   // Tails' own: flying, turning in flight, tired out and landing as the CPU's partner (charStates 53 to 56), swimming and
   // turning under water (57 and 58), and the tail swipe (60)
   PS_FLY, PS_FLY_TURN, PS_FLY_TIRED, PS_FLY_LAND, PS_SWIM, PS_SWIM_TURN, PS_TAIL_SWIPE,
+  // Knuckles' own (charStates 62 to 84): gliding and turning round in a glide (under water he swims, PS_SWIM), the drop
+  // from it and its landing, the slide after it, on a wall (grabbing it, climbing, still, up and down, and up onto its
+  // ledge), the punches and the uppercut, and floating on the water
+  PS_GLIDE, PS_GLIDE_TURN0, PS_GLIDE_TURN1, PS_GLIDE_TURN2, PS_GLIDE_TURN3, PS_GLIDE_DROP, PS_DROP_LAND, PS_GLIDE_SLIDE,
+  PS_WALL_GRAB, PS_CLIMB, PS_CLIMB_UP, PS_CLIMB_DOWN, PS_LEDGE_CLIMB, PS_LEDGE_TOP,
+  PS_PUNCH1, PS_PUNCH2, PS_PUNCH3, PS_UPPERCUT, PS_WATER_FLOAT, PS_WATER_FLOAT_UP,
   PA_BORED, PA_RUN, PA_BRAKE_TURN,   // bored of waiting, running, and turning round after a skid
   PA_COUNT
 } PlayerAnim;
@@ -63,6 +76,9 @@ typedef struct {
   int offsetY;                  // from his centre to the ground sensors
   int midAir;                   // mid-air move used this jump: 1 insta-shield, 2 dash; Tails' flight, 2 to 31 rising after
                                 // a press
+  int glideShift, glideFlags;  // Knuckles' glide heading (w.kf.shift: 0 right, 0x80 left, turning between) and GLIDE_* flags
+  int waterCrossed;             // MOVESTATE_1000: he went into the water or out of it this frame
+  int lookEase;                 // this frame's extra easing of the camera's look (LOOK_EASE_*), Knuckles'
   int flyTime;                  // Tails: frames of flight left, counted down every other frame (flyingDuration)
   int attack, attackNext;       // step of the B-button combo, and the move queued after the somersault
   int idleT;                    // frames until he gets bored
@@ -113,6 +129,10 @@ void player_step(Player *p, const PlayerInput *in);
 /** Picks and steps his animation after the movement, and decides whether he is drawn. */
 void player_animate(Player *p, const PlayerInput *in);
 void player_draw(Player *p, int camX, int camY);
+/** Knuckles on a wall, grabbing it, climbing or pulling himself up its ledge (sub_80549FC). */
+int player_climbing(const Player *p);
+/** Knuckles gliding or sliding on after a glide, whom an object he lands on leaves in the air (sub_800C934). */
+int player_gliding(const Player *p);
 /** Player_HandleWater: in and out of the water, and the drowning count (the start of his frame). */
 void player_water_step(Player *p);
 /** Tails' tails after his animation: the way they turn, and their own animation while he is curled up (sub_8024F74). */

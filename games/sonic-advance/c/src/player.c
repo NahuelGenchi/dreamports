@@ -1,8 +1,8 @@
-// Sonic's movement, animation and drawing, and Tails' as the CPU's partner, translated from the JavaScript version's
-// engine/player.js, engine/animator.js and the part of engine/game.js that draws them (drawSonic, drawTails), a function
-// at a time and in the same order. Their speeds are doubles of pixels a frame, as there; the original does its arithmetic
-// on 8.8 integers, so q8 turns a speed into one where it matters. Knuckles and Amy, the boost modes and the Sonic Advance 2
-// tricks are left out.
+// Sonic's, Tails' and Knuckles' movement, animation and drawing, and Tails' as the CPU's partner, translated from the
+// JavaScript version's engine/player.js, engine/animator.js and the part of engine/game.js that draws them (drawSonic,
+// drawTails), a function at a time and in the same order. Their speeds are doubles of pixels a frame, as there; the
+// original does its arithmetic on 8.8 integers, so q8 turns a speed into one where it matters. Amy, the boost modes and the
+// Sonic Advance 2 tricks are left out.
 
 #include "objects.h"
 #include "terrain.h"
@@ -14,6 +14,7 @@ enum {
   SE_JUMP = 116, SE_SOMERSAULT = 121, SE_GRINDING = 114,
   SE_TAILS_FLYING = 120,   // SE_TAILS_PROPELLER_FLYING: Tails' flight, started again on each of its frames
   SE_DROWNING = 27,        // MUS_DROWNING, which the partner's water never stops
+  SE_PUNCH_2 = 126, SE_PUNCH_3 = 127,   // Knuckles' second punch, and his third
 };
 
 // physics (PHYSICS in engine/constants.js), in pixels a frame
@@ -72,13 +73,48 @@ enum { FLY_TIME = 240, FLY_LIFT_FRAMES = 32 };
 #define FLY_LIFT (24.0 / 256)
 #define FLY_FALL (8.0 / 256)
 #define FLY_RISE_MAX 0.75
+// Knuckles (KNUCKLES in engine/constants.js): the glide starts at 3 px a frame, slowing his fall by 1.5, gains 6/256 a frame
+// up to 3 and 3/256 more (6 more with speed shoes) up to 18 heading straight, loses 9/256 (3 more with shoes) under water
+// above 3, and his fall eases by 24/256 toward 0.5; the slide after it slows by 24/256; he climbs at 0.75 (0.5 under water)
+// and leaps off a wall 2.625 up and 3 away; each punch adds 3 and slows by 96/256 a frame; the uppercut rises 2 (1 under
+// water) and goes 2 forward; floating he rises 24/256 a frame up to 1; a landing holds left and right for 15 frames
+#define GLIDE_SPEED 3.0
+#define GLIDE_SLOW 1.5
+#define GLIDE_ACCEL (6.0 / 256)
+#define GLIDE_STRAIGHT_ACCEL (3.0 / 256)
+#define GLIDE_SHOES_ACCEL (6.0 / 256)
+#define GLIDE_MAX 18.0
+#define GLIDE_WATER_DECEL (9.0 / 256)
+#define GLIDE_WATER_SHOES_DECEL (3.0 / 256)
+#define GLIDE_FALL 0.5
+#define GLIDE_FALL_STEP (24.0 / 256)
+#define GLIDE_SLIDE_FRICTION (24.0 / 256)
+#define CLIMB_SPEED 0.75
+#define CLIMB_WATER_SPEED 0.5
+#define WALL_JUMP_Y 2.625
+#define WALL_JUMP_X 3.0
+#define PUNCH_SPEED 3.0
+#define PUNCH_FRICTION (96.0 / 256)
+#define UPPERCUT_UP 2.0
+#define UPPERCUT_WATER_UP 1.0
+#define UPPERCUT_FORWARD 2.0
+#define FLOAT_RISE (24.0 / 256)
+#define FLOAT_MAX_RISE 1.0
+enum {
+  GLIDE_OFFSET_Y = 6,       // from his centre to his feet in a glide
+  LAND_LOCK = 15,
+  SLIDE_DUST_EVERY = 4,     // the slide's dust at his feet, every 4th frame of the clock
+  SLIDE_FOLLOW = 12,        // the slide follows ground less than this far under him
+  LEDGE_STEP = HALF_WIDTH + 3, LEDGE_CEILING = 9, LEDGE_REACH = 2,
+  FLOAT_BELOW = 4,          // floating, his centre stays this far under the water's line
+};
 // ANIMATION: the walk cycle plays at his speed, never slower than half, and the run starts at 4.5
 #define RUN_SPEED 4.5
 #define BRAKE_TURN_SPEED 1.5
 enum { ANIM_NORMAL_SPEED = 0x10, ANIM_MIN_WALK_SPEED = 0x08 };
 
 // what the pad says to the movement code: left and right hide up and down
-typedef struct { int dir, sideways, up, down, jump, jumpPressed, attackPressed; } Control;
+typedef struct { int dir, sideways, left, right, up, down, jump, jumpPressed, attackPressed; } Control;
 
 // --- numbers ------------------------------------------------------------------------------------------------------------
 static int js_round(double v) { return (int)__builtin_floor(v + 0.5); }
@@ -482,6 +518,60 @@ static void grind_step(Player *p, const Control *c) {
   along_surface(p);
 }
 
+// --- Knuckles on the ground ---------------------------------------------------------------------------------------------------
+static int is_knuckles(const Player *p) { return p->character == CHARACTER_KNUCKLES; }
+int player_climbing(const Player *p) { return is_knuckles(p) && p->state >= PS_WALL_GRAB && p->state <= PS_LEDGE_TOP; }
+int player_gliding(const Player *p) { return is_knuckles(p) && (p->midAir == KN_GLIDE || p->midAir == KN_SLIDE); }
+// his own states (charState 62 and up), which standing up from a glide ends; under water his glide is PS_SWIM
+static int knuckles_state(int state) { return (state >= PS_GLIDE && state <= PS_WATER_FLOAT_UP) || state == PS_SWIM; }
+
+// speed added along angle `a` (8.8)
+static void push_along(Player *p, int speed, int a) {
+  a &= 0xFF;
+  p->xsp = (q8(p->xsp) + ((speed * cos8(a)) >> 8)) / 256.0;
+  p->ysp = (q8(p->ysp) + ((speed * sin8(a)) >> 8)) / 256.0;
+}
+
+// the first punch (sub_8048ADC), not while he revs a spin dash, pushes, or stands on a wall or the ceiling
+static int try_punch(Player *p, const Control *c) {
+  if (p->spinDashing || s8(p->rotation + 0x40) <= 0 || p->pushing || !c->attackPressed) return 0;
+  p->gsp += PUNCH_SPEED * p->facing;
+  p->attack = 1; p->state = PS_PUNCH1;
+  return 1;
+}
+
+// the uppercut (sub_8048B38), if there are at least 4 px of room above him, and otherwise he stops as on landing: up from
+// the surface and forward along it, with its flame
+static void uppercut(Player *p) {
+  if (sensors_clearance(p, sensors_act_angle(p) + 0x80) < ROOM_TO_JUMP) { player_land(p); return; }
+  p->air = 1; p->grinding = 0; p->pushing = 0;
+  push_along(p, q8(p->water ? UPPERCUT_WATER_UP : UPPERCUT_UP), p->rotation - 0x40);
+  push_along(p, q8(UPPERCUT_FORWARD) * p->facing, p->rotation);
+  p->state = PS_UPPERCUT;
+  act_uppercut_flame(p);
+}
+
+// Knuckles on his feet, not rolling (sub_8048CB0): B starts his punches, each slowing him by 96/256 a frame, and the third
+// becomes an uppercut. The frame a punch starts he moves as he did. 1 when a jump started, 2 a spin dash.
+static int knuckles_ground(Player *p, const Control *c) {
+  if (p->attack == 0) {
+    if (try_punch(p, c)) return 0;
+    if (try_spin_dash(p, c)) return 2;
+    if (try_jump(p, c)) return 1;
+    slope(p);
+    walk_step(p, c);
+    return 0;
+  }
+  slope(p);
+  // sub_8048C3C: B during the first two punches queues the next; the third tries the uppercut each frame
+  if (p->attack == 3) { uppercut(p); return 0; }
+  if (c->attackPressed) p->attackNext = 1;
+  p->gsp = toward0(p->gsp, PUNCH_FRICTION);
+  along_surface(p);
+  sensors_wall_push(p, 1);
+  return 0;
+}
+
 static void ground_step(Player *p, const Control *c) {
   if (p->curled) {
     if (try_jump(p, c)) return;
@@ -494,6 +584,10 @@ static void ground_step(Player *p, const Control *c) {
     move(p);
     follow_ground(p);
     return;
+  } else if (is_knuckles(p)) {
+    int started = knuckles_ground(p, c);
+    if (started == 1) return;
+    if (started == 2) { bounds(p); follow_ground(p); return; }
   } else if (p->attack != 0) {
     slope(p);
     if (p->character == CHARACTER_TAILS) swipe_step(p);
@@ -599,7 +693,317 @@ static void fly_step(Player *p, const Control *c) {
   flight_state(p);
 }
 
+// --- Knuckles in the air ------------------------------------------------------------------------------------------------------
+static void drown_count_reset(Player *p);
+
+// left or right and the drag in the air (Player_AirInputControls), none while knocked back
+static void air_input(Player *p, const Control *c) {
+  if (p->state == PS_HURT) return;
+  air_control(p, c, p->state != PS_BOUNCE);
+  if (p->ysp < 0) air_drag(p);
+}
+
+// the frame he goes into the water not rising, he floats (MOVESTATE_1000), uncurled with his centre where it is
+static void try_float(Player *p) {
+  if (!p->waterCrossed || !p->water || p->ysp < 0) return;
+  p->midAir = KN_FLOAT; p->curled = 0; p->airLock = 0;
+  p->state = PS_WATER_FLOAT;
+  act_float_splash(p);
+}
+
+// floating (Player_Knuckles_SwimFloat_8048D74): down lets him sink; under water he rises by 24/256 a frame up to 1, and at
+// 4 px under the line he stops there, his breath back and the drowning music stopped; up looks up
+static void float_step(Player *p, const Control *c) {
+  if (c->down) { p->state = PS_SPRING_PEAK; p->midAir = 0; return; }
+  if (p->water) { p->ysp -= FLOAT_RISE; if (p->ysp < -FLOAT_MAX_RISE) p->ysp = -FLOAT_MAX_RISE; }
+  int level = water_level();
+  if ((int)__builtin_floor(p->y) - FLOAT_BELOW < level) {
+    p->y = level + FLOAT_BELOW; p->ysp = 0; p->water = 1;
+    drown_count_reset(p);
+    water_drowning_music_stop();
+  }
+  if (c->up) p->state = PS_WATER_FLOAT_UP;
+  else {
+    if (p->state != PS_WATER_FLOAT) act_float_splash(p);
+    p->state = PS_WATER_FLOAT;
+  }
+}
+
+// his glide heads left from a quarter turn round from right
+static int glides_left(const Player *p) { return s8(p->glideShift + 0x40) <= 0; }
+
+// the glide starts (Player_Knuckles_InitGlide): uncurled at 6 px from his centre to his feet, his centre where it is,
+// slowing his fall by 1.5, at 3 the way he faces (1.5 under water)
+static void start_glide(Player *p) {
+  p->curled = 0; p->offsetY = GLIDE_OFFSET_Y;
+  p->ysp += GLIDE_SLOW; if (p->ysp < 0) p->ysp = 0;
+  int g = q8(GLIDE_SPEED);
+  if (p->water) g >>= 1;
+  p->gsp = p->xsp = g * p->facing / 256.0;
+  p->glideShift = p->facing < 0 ? 0x80 : 0;
+  p->rotation = 0;
+  p->glideFlags = GLIDE_UP;
+}
+
+// the jump cap, or once the rise has slowed his glide (Player_8044670)
+static void knuckles_jump_cap(Player *p, const Control *c) {
+  if (p->jumped) {
+    double cap = p->water ? WATER_JUMP_RELEASE_CAP : JUMP_RELEASE_CAP;
+    if (p->ysp < -cap) { if (!c->jump) p->ysp = -cap; }
+    else if (p->midAir == 0 && c->jumpPressed && p->state != PS_HURT) { p->airLock = 0; p->midAir = KN_GLIDE; start_glide(p); }
+  } else if (!p->forcedRoll && p->ysp < -RISE_CAP) p->ysp = -RISE_CAP;
+}
+
+// a frame of glide (sub_8048980): its speed and heading, held left or right turning him round 2/256 of a turn a frame, a
+// turn begun going on to its end; his X speed follows the heading and his fall eases toward 0.5. On each of these frames
+// the camera's look also eases back.
+static void glide_physics(Player *p, const Control *c) {
+  p->lookEase = LOOK_EASE_GLIDE;
+  if (p->midAir != KN_GLIDE) return;
+  int g = q8(p->gsp), s = p->glideShift, shoes = pace(p) == 2;
+  if (g < 0) g = -g;
+  if (g < q8(GLIDE_SPEED)) g += q8(GLIDE_ACCEL);
+  else if (g < q8(GLIDE_MAX) && (s & 0x7F) == 0) g += q8(GLIDE_STRAIGHT_ACCEL) + (shoes ? q8(GLIDE_SHOES_ACCEL) : 0);
+  if (p->water && g > q8(GLIDE_SPEED)) {
+    g -= q8(GLIDE_WATER_DECEL) + (shoes ? q8(GLIDE_WATER_SHOES_DECEL) : 0);
+    if (g < q8(GLIDE_SPEED)) g = q8(GLIDE_SPEED);
+  }
+  p->gsp = (glides_left(p) ? -g : g) / 256.0;
+  int turn = s8(s) < 0 ? -s8(s) : s8(s);
+  if (c->left) { if (s != 0x80) s = (turn + 2) & 0xFF; }
+  else if (c->right) { if (s != 0) s = (-turn + 2) & 0xFF; }
+  else if (s & 0x7F) s = (s + 2) & 0xFF;
+  p->glideShift = s;
+  p->xsp = ((cos8(s) * g) >> 8) / 256.0;
+  p->ysp = (q8(p->ysp) + (q8(p->ysp) < q8(GLIDE_FALL) ? 1 : -1) * q8(GLIDE_FALL_STEP)) / 256.0;
+}
+
+// how he glides (Player_Knuckles_GlideUpdateAnim): straight, or under water swimming and letting bubbles out, facing left
+// only when heading straight left; turning, one of four frames by how far round
+static void glide_anim(Player *p) {
+  int s = p->glideShift;
+  p->pushing = 0; p->facing = 1;
+  if ((s & 0x7F) == 0) {
+    if (p->water) { p->state = PS_SWIM; swim_bubbles(p); }
+    else p->state = PS_GLIDE;
+    if (s == 0x80) p->facing = -1;
+  } else {
+    int turn = s8(s) < 0 ? -s8(s) : s8(s);
+    p->state = PS_GLIDE_TURN0 + ((turn & 0x7F) >> 5);
+  }
+}
+
+// stood up out of the glide or the climb (sub_8022318), his feet 14 px under his centre: curled, he uncurls keeping his
+// feet in place; otherwise his centre stays where it is
+static void stand_from_glide(Player *p) {
+  if (p->curled) {
+    p->curled = 0; p->state = PS_IDLE;
+    int dy = p->offsetY - SPRITE_OFFSET_Y;
+    if (p->inverted) dy = -dy;
+    if (s8(p->rotation + 0x40) <= 0) dy = -dy;
+    p->y += dy;
+  }
+  p->offsetY = SPRITE_OFFSET_Y;
+  p->air = 0; p->pushing = 0; p->airLock = 0; p->jumped = 0; p->halfPipe = 0;
+  p->chain = 0; p->midAir = 0;
+  if (knuckles_state(p->state)) p->state = PS_IDLE;
+}
+
+// letting go of the glide or losing the wall (sub_8049348): he drops, standing height from his centre
+static void start_drop(Player *p) {
+  p->midAir = KN_DROP; p->state = PS_GLIDE_DROP;
+  p->offsetY = SPRITE_OFFSET_Y;
+  p->glideFlags |= GLIDE_UP;
+}
+
+// the glide's frame after it moves (sub_8048230): touching down on a steep slope stands him up, on flatter ground he slides
+// on with the slide's sound; a wall he grabs, if it is flat for his height and the ground under its foot leaves room, and
+// otherwise he drops; letting go of jump drops him with a quarter of his X speed
+static void glide_step(Player *p, const Control *c) {
+  sensors_glide(p);
+  if (!(p->glideFlags & GLIDE_UP)) {
+    p->facing = p->xsp <= 0 ? -1 : 1;
+    if ((p->rotation + 0x20) & 0xC0) {
+      p->facing = glides_left(p) ? -1 : 1;
+      p->ysp = 0;
+      stand_from_glide(p);
+      p->state = p->gsp != 0 ? PS_WALK : PS_IDLE;
+    } else {
+      p->midAir = KN_SLIDE; p->state = PS_GLIDE_SLIDE;
+      play_song(SE_SLIDE);
+    }
+  } else if (p->glideFlags & GLIDE_WALL) {
+    int dir = glides_left(p) ? -1 : 1;
+    SensorPair w = sensors_wall_beside(p, dir);
+    p->facing = dir;
+    if (w.d != w.out) { start_drop(p); return; }
+    if (w.d != 0) {
+      // the ground at the wall's foot, a pixel past his feet; not looked at to the right under flipped gravity
+      if (dir < 0 || !p->inverted) {
+        int up = p->inverted ? -1 : 1;
+        int foot = terrain_scan(PROBE_FLOOR, (int)__builtin_floor(p->y) + up * (1 + p->offsetY), (int)__builtin_floor(p->x) + dir * (1 + HALF_WIDTH), p->layer, 8 * up).d;
+        if (foot < 0) { start_drop(p); return; }
+      }
+      p->x += dir * w.d;
+    }
+    p->gsp = 0; p->xsp = 0; p->ysp = 0;
+    p->midAir = KN_CLIMB; p->glideShift = 3; p->state = PS_WALL_GRAB;
+  } else if (!c->jump) {
+    p->midAir = KN_DROP; p->state = PS_GLIDE_DROP;
+    p->facing = p->xsp <= 0 ? -1 : 1;
+    p->xsp = (q8(p->xsp) >> 2) / 256.0;
+    p->offsetY = SPRITE_OFFSET_Y;
+  } else glide_anim(p);
+}
+
+// the drop (sub_80484CC): air control and gravity after he moves; landing stops him, and on flat ground he lands into a
+// crouch that holds left and right for 15 frames
+static void drop_step(Player *p, const Control *c) {
+  air_input(p, c);
+  p->ysp += gravity(p);
+  sensors_glide(p);
+  if (p->glideFlags & GLIDE_UP) return;
+  p->gsp = 0; p->xsp = 0; p->ysp = 0;
+  p->offsetY = SPRITE_OFFSET_Y;
+  stand_from_glide(p);
+  if (!((p->rotation + 0x20) & 0xC0)) { p->lock = LAND_LOCK; p->state = PS_DROP_LAND; }
+}
+
+// sliding on (sub_8048524): dust at his feet every 4th frame; he follows the ground less than 12 px under him, and with
+// none, unless he is on an object, he drops at standing height
+static void slide_on(Player *p) {
+  if (act_stage_time() % SLIDE_DUST_EVERY == 0)
+    act_brake_dust_at((int)__builtin_floor(p->x), (int)__builtin_floor(p->y) + (p->inverted ? -p->offsetY : p->offsetY));
+  sensors_glide(p);
+  SensorPair f = sensors_floor_under(p);
+  if (f.d < SLIDE_FOLLOW) { p->y += p->inverted ? -f.d : f.d; p->rotation = f.rot; }
+  else if (!p->onObject) { p->midAir = KN_DROP; sensors_set_offset_y(p, SPRITE_OFFSET_Y); p->glideFlags |= GLIDE_UP; }
+}
+
+// the slide after a glide (sub_80485CC): while jump is held and he hasn't stopped he slides on, slowing, and otherwise he
+// gets up at standing height, into the end of a crouch, holding left and right for 15 frames
+static void slide_step(Player *p, const Control *c) {
+  if (c->jump) {
+    if (p->xsp <= 0) { p->xsp += GLIDE_SLIDE_FRICTION; if (p->xsp < 0) { slide_on(p); return; } }
+    else { p->xsp -= GLIDE_SLIDE_FRICTION; if (p->xsp > 0) { slide_on(p); return; } }
+  }
+  p->gsp = 0; p->xsp = 0; p->ysp = 0;
+  p->y += (p->inverted ? -1 : 1) * (p->offsetY - SPRITE_OFFSET_Y);
+  stand_from_glide(p);
+  p->lock = LAND_LOCK; p->state = PS_CROUCH_END;
+}
+
+// the wall he climbs, 2 px past his side at his centre's height (sub_8048650), whose angle he takes (a quarter turn where
+// it has none); the original reads its angle from an unset byte when nothing is there, which here leaves his angle as it was
+static int climb_wall(Player *p) {
+  int dir = p->facing;
+  Scan r = terrain_scan(PROBE_WALL, (int)__builtin_floor(p->x) + dir * (LEDGE_REACH + HALF_WIDTH), (int)__builtin_floor(p->y), p->layer, 8 * dir);
+  if (r.hasRot) p->rotation = r.rot & 1 ? (dir < 0 ? 0x40 : 0xC0) : r.rot;
+  return r.d;
+}
+
+// down the wall onto the ground
+static void climb_stand(Player *p, SensorPair f) {
+  p->y += f.d; p->rotation = f.rot;
+  stand_from_glide(p);
+  p->state = PS_GLIDE_DROP;
+}
+
+// climbing (sub_80486E8), standing on nothing: up climbs while the wall reaches his head, and onto the ledge where it ends,
+// stopped by a ceiling 9 px over him; down climbs while it reaches his feet, until the ground; still, he keeps to it until
+// the ground. Off the wall, or on an object, he drops. Jump leaps off it, 2.625 up and 3 away, curled up.
+static void climb_step(Player *p, const Control *c) {
+  int up = p->inverted ? -1 : 1;
+  if (p->onObject) { start_drop(p); return; }
+  p->gsp = 0; p->xsp = 0; p->ysp = 0;
+  if (p->state != PS_WALL_GRAB) p->state = PS_CLIMB;
+  int s = q8(p->water ? CLIMB_WATER_SPEED : CLIMB_SPEED);
+  if (pace(p) == 2) s <<= 1;
+  if (c->up || c->down) {
+    int dy = up * p->offsetY * (c->up ? -1 : 1);
+    p->y += dy;
+    int d = climb_wall(p);
+    p->y -= dy;
+    if (c->up) {
+      if (d > LEDGE_REACH) {
+        p->state = PS_LEDGE_CLIMB;
+        p->y -= up * p->offsetY;
+        p->midAir = KN_LEDGE; p->glideShift = 0;
+        return;
+      }
+      if (d >= 0) {
+        p->y -= up * LEDGE_CEILING;
+        int ceiling = sensors_act_ceiling(p).d;
+        p->y += up * LEDGE_CEILING;
+        p->state = PS_CLIMB_UP;
+        if (ceiling < 0) p->y -= ceiling;
+        else p->ysp = -s / 256.0;
+        p->lookEase = LOOK_EASE_CLIMB;
+      }
+    } else {
+      if (d > 0) { start_drop(p); return; }
+      SensorPair f = sensors_act_floor(p);
+      if (f.d < 0) { climb_stand(p, f); return; }
+      p->state = PS_CLIMB_DOWN; p->ysp = s / 256.0;
+      p->lookEase = LOOK_EASE_CLIMB;
+    }
+  } else {
+    if (climb_wall(p) > 0) { start_drop(p); return; }
+    SensorPair f = sensors_act_floor(p);
+    if (f.d < 0) { climb_stand(p, f); return; }
+  }
+  if (c->jumpPressed) {
+    p->facing = -p->facing;
+    p->ysp = -WALL_JUMP_Y; p->xsp = WALL_JUMP_X * p->facing;
+    p->curled = 1; p->air = 1; p->jumped = 1; p->offsetY = BALL_SPRITE_OFFSET_Y;
+    p->state = PS_SPIN; p->midAir = 0;
+  }
+}
+
+// Knuckles in the air (sub_8048E34, and Player_Knuckles_8049000's case for a jump), by midAir: going into the water not
+// rising floats him; the glide, the drop from it, the slide after it and the climb move first and then run their own step;
+// the ledge climb only waits for its animation
+static void knuckles_air(Player *p, const Control *c) {
+  if (p->curled || p->midAir == 0) {
+    // after the uppercut, none of the jump's control
+    if (p->curled || p->attack == 0) {
+      knuckles_jump_cap(p, c);
+      try_float(p);
+      air_input(p, c);
+    } else try_float(p);
+    bounds(p);
+    move(p);
+    p->ysp += gravity(p);
+    tumble(p);
+    sensors_air(p);
+    return;
+  }
+  if (p->midAir == KN_FLOAT) {
+    // a jump off the water goes half as high, and leaves the camera's look as it is this frame
+    if (try_jump(p, c)) { p->ysp = (q8(p->ysp) >> 1) / 256.0; p->midAir = 0; p->lookEase = LOOK_EASE_STILL; return; }
+    air_input(p, c);
+    bounds(p);
+    move(p);
+    float_step(p, c);
+    p->ysp += gravity(p);
+    tumble(p);
+    sensors_air(p);
+    return;
+  }
+  if (p->midAir == KN_DROP) try_float(p);
+  glide_physics(p, c);
+  bounds(p);
+  move(p);
+  switch (p->midAir) {
+    case KN_GLIDE: glide_step(p, c); break;
+    case KN_DROP: drop_step(p, c); break;
+    case KN_SLIDE: slide_step(p, c); break;
+    case KN_CLIMB: climb_step(p, c); break;
+  }
+}
+
 static void air_step(Player *p, const Control *c) {
+  if (is_knuckles(p)) { knuckles_air(p, c); return; }
   // knocked back, he flies on as he was thrown: no moves, no control and no drag, but his tilt still eases back
   if (p->state == PS_HURT) {
     bounds(p);
@@ -721,8 +1125,9 @@ static int countdown_number(int second) {
 static void drown_count_reset(Player *p) { p->drownFrames = DROWN_SECOND; p->drownSeconds = DROWN_SECONDS; }
 
 // a splash at the line with its sound, at most one every 10 frames
+// none while Knuckles floats on the water
 static void surface_splash(Player *p) {
-  if (p->surfaceT >= 1) return;
+  if (p->surfaceT >= 1 || (is_knuckles(p) && p->midAir == KN_FLOAT)) return;
   p->surfaceT = SURFACE_EFFECT_DELAY;
   water_splash((int)__builtin_floor(p->x));
   play_song(SE_WATERFALL_SURFACE_HIT);
@@ -734,9 +1139,10 @@ static void surface_splash(Player *p) {
 // four. Out of the water the count starts over and the drowning music stops.
 void player_water_step(Player *p) {
   int level = water_level();
+  p->waterCrossed = 0;
   if (level >= 0 && (int)__builtin_floor(p->y) - WATER_BELOW >= level) {
     if (!p->water) {
-      p->water = 1;
+      p->water = 1; p->waterCrossed = 1;
       p->xsp = (q8(p->xsp) >> 1) / 256.0;
       p->ysp = (q8(p->ysp) >> 2) / 256.0;
       surface_splash(p);
@@ -759,7 +1165,7 @@ void player_water_step(Player *p) {
     }
   } else {
     if (p->water) {
-      p->water = 0;
+      p->water = 0; p->waterCrossed = 1;
       p->ysp = (s16(q8(p->ysp) << 1)) / 256.0;
       surface_splash(p);
     }
@@ -801,10 +1207,12 @@ void player_step(Player *p, const PlayerInput *in) {
 
   Control c = {
     .dir = in->left && !in->right ? -1 : in->right && !in->left ? 1 : 0, .sideways = sideways,
+    .left = in->left, .right = in->right,
     .up = in->up && !sideways, .down = in->down && !sideways,
     .jump = in->jump, .jumpPressed = in->jumpPressed, .attackPressed = in->attackPressed,
   };
   p->jumpPressed = c.jumpPressed; p->attackPressed = c.attackPressed;
+  p->lookEase = LOOK_EASE_NONE;
 
   if (p->dead) { dead_step(p); return; }
   player_water_step(p);
@@ -840,9 +1248,19 @@ static const uint16_t TAILS_ANIMATIONS[PA_COUNT][2] = {
   [PS_FLY] = {155, 0}, [PS_FLY_TURN] = {156, 0}, [PS_FLY_TIRED] = {157, 0}, [PS_FLY_LAND] = {158, 0},
   [PS_SWIM] = {145, 0}, [PS_SWIM_TURN] = {146, 0}, [PS_TAIL_SWIPE] = {149, 0},
 };
+// Knuckles' own (KNUCKLES_ANIMATIONS)
+static const uint16_t KNUCKLES_ANIMATIONS[PA_COUNT][2] = {
+  [PS_GLIDE] = {260, 0}, [PS_GLIDE_TURN0] = {261, 0}, [PS_GLIDE_TURN1] = {261, 1}, [PS_GLIDE_TURN2] = {261, 2},
+  [PS_GLIDE_TURN3] = {261, 3}, [PS_SWIM] = {245, 0}, [PS_GLIDE_DROP] = {263, 0}, [PS_DROP_LAND] = {263, 1},
+  [PS_GLIDE_SLIDE] = {262, 0}, [PS_WALL_GRAB] = {264, 0}, [PS_CLIMB] = {265, 2}, [PS_CLIMB_UP] = {265, 0},
+  [PS_CLIMB_DOWN] = {265, 1}, [PS_LEDGE_CLIMB] = {265, 3}, [PS_LEDGE_TOP] = {265, 4}, [PS_PUNCH1] = {249, 0},
+  [PS_PUNCH2] = {249, 1}, [PS_PUNCH3] = {250, 0}, [PS_UPPERCUT] = {250, 1}, [PS_WATER_FLOAT] = {269, 0},
+  [PS_WATER_FLOAT_UP] = {271, 0},
+};
 static void animation_of(const Player *p, int name, uint16_t *anim, uint8_t *variant) {
-  if (p->character == CHARACTER_TAILS && TAILS_ANIMATIONS[name][0]) {
-    *anim = TAILS_ANIMATIONS[name][0]; *variant = (uint8_t)TAILS_ANIMATIONS[name][1];
+  const uint16_t (*own)[2] = p->character == CHARACTER_TAILS ? TAILS_ANIMATIONS : is_knuckles(p) ? KNUCKLES_ANIMATIONS : NULL;
+  if (own && own[name][0]) {
+    *anim = own[name][0]; *variant = (uint8_t)own[name][1];
     return;
   }
   *anim = (uint16_t)(ANIMATIONS[name][0] + rom_u16(CHARACTER_ANIMS + (uint32_t)p->character * 2));
@@ -907,6 +1325,25 @@ static void after_animation(Player *p) {
       p->state = p->gsp != 0 ? PS_WALK : PS_IDLE;
       break;
     case PS_SPRING: case PS_SPRING_PEAK: p->state = PS_SPRING_FALL; break;
+    // Knuckles' punches: another queued goes on to the next, 3 faster with its sound, and otherwise he stands
+    case PS_PUNCH1: case PS_PUNCH2:
+      if (p->attackNext != 0) {
+        p->attack++; p->attackNext = 0;
+        play_song(p->state == PS_PUNCH2 ? SE_PUNCH_3 : SE_PUNCH_2);
+        p->state = p->state == PS_PUNCH1 ? PS_PUNCH2 : PS_PUNCH3;
+        p->gsp += PUNCH_SPEED * p->facing;
+      } else { p->attack = 0; p->attackNext = 0; p->state = PS_IDLE; p->chain = 0; p->gsp = 0; }
+      break;
+    // up onto the ledge: 9 px onto it and stood up, 14 px up (down the act under flipped gravity, by his new height)
+    case PS_LEDGE_CLIMB:
+      p->x += LEDGE_STEP * p->facing;
+      p->offsetY = SPRITE_OFFSET_Y;
+      p->y += p->inverted ? p->offsetY : -SPRITE_OFFSET_Y;
+      p->state = PS_LEDGE_TOP; p->attack++;
+      break;
+    case PS_LEDGE_TOP: p->rotation = 0; player_land(p); break;
+    case PS_DROP_LAND: player_land(p); break;
+    case PS_WALL_GRAB: p->state = PS_CLIMB; break;
     case PS_SPIN_ATTACK: case PS_SLIDE_END:
       player_end_attack(p); p->state = p->gsp != 0 ? PS_WALK : PS_IDLE; break;
     case PS_SOMERSAULT:
