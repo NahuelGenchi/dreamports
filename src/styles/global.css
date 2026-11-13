@@ -3846,7 +3846,24 @@ dialog.card[open] {
   line-height: 40px;
 }
 
-/* under its progress's two bars, where it stands */
+/* a language's progress in the Make row: its name over its two bars, and under them where it stands (#1241) */
+.mk-lang h4 {
+  margin: 14px 0 0;
+  color: var(--blue);
+  font: 400 15px/22px var(--font);
+}
+
+.mk-lang + .mk-lang {
+  margin-top: 18px;
+  padding-top: 4px;
+  border-top: 2px solid var(--line);
+}
+
+/* the other languages, folded under C's */
+.mk-others {
+  margin-top: 6px;
+}
+
 .mk-next {
   margin: 12px 0 0;
   color: var(--dim);
@@ -3975,7 +3992,8 @@ dialog.card[open] {
   font: 400 12.5px/20px var(--font);
 }
 
-.mk-earlier summary {
+.mk-earlier summary,
+.mk-others > summary {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -3988,11 +4006,13 @@ dialog.card[open] {
   list-style: none;
 }
 
-.mk-earlier summary::-webkit-details-marker {
+.mk-earlier summary::-webkit-details-marker,
+.mk-others > summary::-webkit-details-marker {
   display: none;
 }
 
-.mk-earlier summary svg {
+.mk-earlier summary svg,
+.mk-others > summary svg {
   flex: none;
   width: 10px;
   height: 10px;
@@ -4000,7 +4020,8 @@ dialog.card[open] {
   transition: rotate 0.2s ease;
 }
 
-.mk-earlier[open] summary svg {
+.mk-earlier[open] summary svg,
+.mk-others[open] > summary svg {
   rotate: 90deg;
 }
 

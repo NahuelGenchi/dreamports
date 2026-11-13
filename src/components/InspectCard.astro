@@ -16,7 +16,7 @@ import PixelIcon from './PixelIcon.astro';
 import Tile from './Tile.astro';
 import ViewBar from './ViewBar.astro';
 import { achievementsUrl, filterFor, gameUrl, pageTitle, type Game } from '../lib/site';
-import { dreamportView, unnamed } from '../lib/dreamports';
+import { dreamportView } from '../lib/dreamports';
 import { LANGUAGES, playHref, playOrder } from '../lib/languages.mjs';
 
 interface Props {
@@ -42,7 +42,7 @@ const [howMany, another] = languages.length === 2 ? ['two languages', 'the other
 // its progress, a version at a time: the numbers of the one Play opens, under their plain names, with each other
 // version's beside them, hidden until the player picks its language. Each is in a block of its own, which the check
 // of what the pages show reads up to its end (src/lib/cards.mjs), so nothing inside a block is a <div>.
-const versions = languages.map((language) => unnamed([dreamport, ...dreamport.versions].find((version) => version.language === language)!));
+const versions = languages.map((language) => [dreamport, ...dreamport.versions].find((version) => version.language === language)!);
 // Every page holds every game's card, so each game's headings get ids of their own.
 const body = (game.rendered?.html ?? '').replace(/<h([2-6]) id="([^"]+)"/g, `<h$1 id="${id}-$2"`);
 ---

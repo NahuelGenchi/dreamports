@@ -2,18 +2,18 @@
 // A Dreamport's page in the Make row, in the menu's place (#142), with only what a newcomer needs to help make it:
 // its cover and, once it has code, the way to play it as it is, which opens its page in the Dreamports row; its name; Help make it, the
 // sentence to paste into a coding agent, which copies when pressed, how many pieces are free to take, and a link to
-// its game's issue, to talk about it; its progress, the same two bars as on the game's page, with one line on where it
-// stands; and its latest step, with the earlier ones folded. Who leads it, what waits for review and the code map stay
+// its game's issue, to talk about it; its progress, the same two bars as on the game's page for each language, C first
+// and the others folded under Other languages, each with one line on where it stands (#1241); and its latest step, with the earlier ones folded. Who leads it, what waits for review and the code map stay
 // on GitHub. It comes from the entry and the proof/ folder, like the game's page, and its pieces and steps from GitHub
 // as the site is built (src/lib/making.ts).
 import Facts from './Facts.astro';
 import GameTitle from './GameTitle.astro';
-import Meter from './Meter.astro';
-import Parts from './Parts.astro';
+import LanguageProgress from './LanguageProgress.astro';
 import Tile from './Tile.astro';
 import ViewBar from './ViewBar.astro';
 import { MAKE_GUIDE_URL, gameUrl, makeUrl, pageTitle, type Game } from '../lib/site';
 import { dreamportView, makeView, released } from '../lib/dreamports';
+import { playOrder } from '../lib/languages.mjs';
 import type { Making } from '../lib/making';
 
 interface Props {
@@ -28,6 +28,9 @@ const { game, open = false, github } = Astro.props;
 const { data } = game;
 const view = makeView(data, github);
 const progress = await dreamportView(data);
+// every version's progress, the one Play opens first (C when it has one), and the others behind Other languages
+const all = [progress, ...progress.versions];
+const [first, ...others] = playOrder(all.map((version) => version.language)).map((language) => all.find((version) => version.language === language)!);
 const [latest, ...earlier] = view.steps;
 const id = game.id;
 const Title = open ? 'h1' : 'h2';
@@ -81,15 +84,18 @@ const Heading = open ? 'h2' : 'h3';
         </p>
       </section>
       <Facts facts={[]} id={`mk-progress-${id}`} heading="Progress">
-        <Meter measure={progress.ported} />
-        <Parts measure={progress.gameplay} parts={progress.parts} evidence={progress.evidence} />
-        {progress.versions.map((version) => (
-          <>
-            <Meter measure={version.ported} />
-            <Parts measure={version.gameplay} parts={version.parts} evidence={version.evidence} />
-          </>
-        ))}
-        <p class="mk-next" slot="end">{view.summary}</p>
+        <LanguageProgress version={first} />
+        {others.length > 0 && (
+          <details class="mk-others">
+            <summary>
+              <svg viewBox="0 0 10 10" fill="currentColor" aria-hidden="true">
+                <path d="M2 0h2v2h2v2h2v2H6v2H4v2H2z" />
+              </svg>
+              Other languages
+            </summary>
+            {others.map((version) => <LanguageProgress version={version} />)}
+          </details>
+        )}
       </Facts>
       {
         latest && (
