@@ -10,6 +10,7 @@ enum {
 };
 enum {
   ANIM_SPRING = 455, ORDER_SPRING = 18, PRIORITY_FRONT = 2,
+  SPRING_TILES = 16,   // ALLOC_TILES(SA1_ANIM_SPRING): its 32 x 32 box, whichever way the spring faces
   PALETTE_YELLOW_SPRING = 36, YELLOW_BANK = 8,   // the weaker up springs draw with this palette, in the bank after the red one's (gObjPalette[8 * 16])
   SE_SPRING = 170,
   TRIGGER_OUT = 20,       // how far out on its side Sonic's centre must be for a diagonal spring to launch him
@@ -210,7 +211,7 @@ ActTask *hidden_spring_spawn(Slot *slot) {
   h->o.x = en->x;
   h->d0 = en->d[0] & 0xFF;
   Sprite *s = &h->o.sprite;
-  object_sprite(s, ANIM_SPRING, 0, 1, ORDER_SPRING, PRIORITY_FRONT, 0, 0);
+  object_sprite_at(s, vram_malloc(SPRING_TILES), ANIM_SPRING, 0, ORDER_SPRING, PRIORITY_FRONT, 0, 0);
   sprite_step(s);
   return object_task(&h->o, hidden_spring_run, PRIORITY_OBJECTS);
 }
@@ -228,7 +229,7 @@ ActTask *spring_spawn(Slot *slot) {
   sp->idle = LOOKS[look].idle;
   sp->launch = LOOKS[look].launch;
   Sprite *s = &sp->o.sprite;
-  object_sprite(s, ANIM_SPRING, sp->idle, sp->launch, ORDER_SPRING, PRIORITY_FRONT, LOOKS[look].flipX, LOOKS[look].flipY);
+  object_sprite_at(s, vram_malloc(SPRING_TILES), ANIM_SPRING, sp->idle, ORDER_SPRING, PRIORITY_FRONT, LOOKS[look].flipX, LOOKS[look].flipY);
   if (sp->kind == SPRING_UP && !(sp->d0 & 2)) {
     // the weaker up springs are yellow: they skip the animation's red palette and draw with another, in the next bank
     s->frameFlags |= SPRITE_KEEP_PALETTE;

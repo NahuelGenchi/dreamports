@@ -24,7 +24,8 @@ enum {
   BALL_SPRITE_OFFSET_Y = 9,
 };
 
-typedef struct { Object o; Sprite splash; } WaterBridge;
+// its one sprite is the splash Sonic makes on it, whose tiles go back with it (TaskDestructor_WaterBridge)
+typedef struct { Object o; } WaterBridge;
 typedef struct { Object o; } BridgeSplash;
 
 static void no_presses(Player *p) { p->jumpPressed = 0; p->attackPressed = 0; }
@@ -57,8 +58,8 @@ static int water_bridge_run(ActTask *t) {
       p->state = PS_HURT;
       p->curled = 0; sensors_set_offset_y(p, BALL_SPRITE_OFFSET_Y);
       p->ignoreInput = 1; no_presses(p);
-      sprite_step(&b->splash);
-      object_draw(&b->splash, x, feet - SOX);
+      sprite_step(&b->o.sprite);
+      object_draw(&b->o.sprite, x, feet - SOX);
       return 1;
     }
   }
@@ -72,7 +73,7 @@ ActTask *water_bridge_spawn(Slot *slot) {
   if (!b) return NULL;
   b->o.slot = slot;
   b->o.x = slot->e.x;
-  object_sprite(&b->splash, ANIM_SLIDE_SPLASH, 0, 0, SPLASH_ORDER, PRIORITY_BACK, 0, 0);
+  object_sprite(&b->o.sprite, ANIM_SLIDE_SPLASH, 0, 0, SPLASH_ORDER, PRIORITY_BACK, 0, 0);
   return object_task(&b->o, water_bridge_run, PRIORITY_OBJECTS);
 }
 

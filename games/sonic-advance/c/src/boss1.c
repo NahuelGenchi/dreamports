@@ -19,7 +19,7 @@ enum {
   ANIM_BEATEN = 612,
   ANIM_BELT0 = 613, ANIM_BELT1 = 614, ANIM_BELT2 = 615, ANIM_BELT3 = 616,
   BODY_ORDER = 19, EGGMAN_ORDER = 18, PART_ORDER = 17,
-  BODY_TILES = 64, EGGMAN_TILES = 8,
+  BODY_TILES = 70, EGGMAN_TILES = 8,   // ALLOC_TILES: the body's 80 x 56 box, Eggman's 32 x 16
   ARMS = 5, ARM_STEP = 16, HAMMER_REACH = 96, PIVOT_UP = 36,
   SWING_LOW = -568, SWING_HIGH = 56,
   WAIT = 120, HITS_BEATEN = 8, HITS_LAST = 7, FLASH = 0x20, FLASH_LAST = 0x40,
@@ -414,7 +414,13 @@ static int arm_run(ActTask *t) {
   if (objects_drawing()) display_sprite(s);
   return 1;
 }
-static void arm_end(ActTask *t) { object_end(t); }
+// TaskDestructor_EHTArm and _EHTHammer: the piece's tiles go back as its task ends
+static void part_end(ActTask *t) {
+  PartTask *pt = (PartTask *)t->data;
+  if (pt->arm) { arms[pt->arm->i] = NULL; object_free(&pt->arm->o); }
+  if (pt->hammer) { if (hammer == pt->hammer) hammer = NULL; object_free(&pt->hammer->o); }
+  object_release(pt);
+}
 static Arm *arm_new(int i) {
   Arm *a = OBJECT_NEW(Arm);
   if (!a) return NULL;
@@ -424,7 +430,7 @@ static Arm *arm_new(int i) {
   PartTask *pt = OBJECT_NEW(PartTask);
   if (!pt) return NULL;
   pt->arm = a;
-  if (!act_task_add(arm_run, arm_end, pt, PRIORITY_OBJECTS_ + i)) return NULL;
+  if (!act_task_add(arm_run, part_end, pt, PRIORITY_OBJECTS_ + i)) return NULL;
   return a;
 }
 static int hammer_run(ActTask *t) {
@@ -476,7 +482,6 @@ static int hammer_run(ActTask *t) {
   if (objects_drawing()) display_sprite(s);
   return 1;
 }
-static void hammer_end(ActTask *t) { object_end(t); }
 static Hammer *hammer_new(void) {
   Hammer *h = OBJECT_NEW(Hammer);
   if (!h) return NULL;
@@ -485,7 +490,7 @@ static Hammer *hammer_new(void) {
   PartTask *pt = OBJECT_NEW(PartTask);
   if (!pt) return NULL;
   pt->hammer = h;
-  if (!act_task_add(hammer_run, hammer_end, pt, PRIORITY_OBJECTS_ + ARMS)) return NULL;
+  if (!act_task_add(hammer_run, part_end, pt, PRIORITY_OBJECTS_ + ARMS)) return NULL;
   return h;
 }
 
@@ -522,8 +527,8 @@ ActTask *egg_hammer_tank_spawn(Slot *slot) {
   act.cam.maxX = b->x0 - 64 - DISPLAY_WIDTH;
   act.cam.minX = b->x0 - 64 - 360;
   boss_music(0x10);
-  // the original gives the body the whole tile count its scripts can load, which the tool's own count comes short of
-  object_sprite_at(&b->o.sprite, vram_malloc((uint32_t)sprite_tiles(ANIM_BODY, BODY_PLAIN, BODY_SECOND) + 16), ANIM_BODY, BODY_PLAIN, BODY_ORDER, ENEMY_PRIORITY, 0, 0);
+  // ALLOC_TILES(SA1_ANIM_BOSS_1_BODY): the animation's 80 x 56 box, 70 tiles
+  object_sprite_at(&b->o.sprite, vram_malloc(BODY_TILES), ANIM_BODY, BODY_PLAIN, BODY_ORDER, ENEMY_PRIORITY, 0, 0);
   object_sprite(&b->s2, ANIM_EGGMAN_BOSS, EGGMAN_STILL, EGGMAN_HURT, EGGMAN_ORDER, ENEMY_PRIORITY, 0, 0);
   // neither sprite takes a step until the fight starts (CreateEntity_EggHammerTank)
   return act_task_add(tank_run, tank_end, b, PRIORITY_OBJECTS_);

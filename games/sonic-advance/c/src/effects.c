@@ -17,7 +17,8 @@ void dust_cloud(int x, int y) {
   Dust *d = OBJECT_NEW(Dust);
   if (!d) return;
   d->x = x; d->y = y;
-  object_sprite(&d->o.sprite, ANIM_DUST_CLOUD, 0, 0, ORDER_EFFECT, PRIORITY_FRONT, 0, 0);
+  // CreateDustCloud: at its fixed place in sprite VRAM, not from the heap
+  object_sprite_at(&d->o.sprite, OBJ_VRAM + VRAM_DUST_CLOUD, ANIM_DUST_CLOUD, 0, ORDER_EFFECT, PRIORITY_FRONT, 0, 0);
   object_task(&d->o, dust_run, PRIORITY_OBJECTS);
 }
 

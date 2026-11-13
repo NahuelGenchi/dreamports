@@ -21,6 +21,9 @@ enum { Z_RHINO_PATROL, Z_RHINO_TURN, Z_RHINO_REV };
 enum { Z_KERO_IDLE, Z_KERO_JUMP, Z_KERO_CROAK };
 enum { EFFECT_COCONUT, EFFECT_COCONUT_PIECE, EFFECT_BUZZER_SHOT, EFFECT_GAMI_SHOT };
 enum { SHOT_PRIORITY = 0x9000 };
+// the coconut and the two shots draw from fixed places in sprite VRAM (vram_hardcoded.h), shared by all of their kind; a
+// coconut's piece takes 16 tiles from the heap, whatever its frames need (CreateKikiProjectilePiece)
+enum { COCONUT_PIECE_TILES = 16 };
 
 typedef struct {
   Object o;
@@ -136,7 +139,7 @@ static void add_piece(int x, int y) {
   Effect *p = effect_new(EFFECT_COCONUT_PIECE);
   if (!p) return;
   p->x = x; p->y = y;
-  object_sprite(&p->o.sprite, ANIM_COCONUT_PIECE, 0, 0, ORDER_EFFECT, ENEMY_PRIORITY, 0, 0);
+  object_sprite_at(&p->o.sprite, vram_malloc(COCONUT_PIECE_TILES), ANIM_COCONUT_PIECE, 0, ORDER_EFFECT, ENEMY_PRIORITY, 0, 0);
   sprite_step(&p->o.sprite);
   object_task(&p->o, piece_run, PRIORITY_OBJECTS);
 }
@@ -151,7 +154,7 @@ static void add_coconut(int x, int y) {
   if (vx > 60) vx = 60;
   f->x = f->x0 = x; f->y = f->y0 = y;
   f->vx = vx; f->vy = -512; f->acc = 0; f->bounces = 0; f->resting = 0; f->rest = 0;
-  object_sprite(&f->o.sprite, ANIM_COCONUT, 0, 0, ORDER_EFFECT, ENEMY_PRIORITY, 0, 0);
+  object_sprite_at(&f->o.sprite, OBJ_VRAM + VRAM_KIKI_SHOT, ANIM_COCONUT, 0, ORDER_EFFECT, ENEMY_PRIORITY, 0, 0);
   sprite_step(&f->o.sprite);
   object_task(&f->o, coconut_run, PRIORITY_OBJECTS);
 }
@@ -178,7 +181,7 @@ static void add_buzzer_shot(int x, int y) {
   f->vy = sin1024(a) / 38;
   f->qx = x * 256; f->qy = y * 256;
   f->x = x; f->y = y;
-  object_sprite(&f->o.sprite, ANIM_BUZZER_SHOT, 0, 0, ORDER_EFFECT, ENEMY_PRIORITY, 0, 0);
+  object_sprite_at(&f->o.sprite, OBJ_VRAM + VRAM_BUZZER_SHOT, ANIM_BUZZER_SHOT, 0, ORDER_EFFECT, ENEMY_PRIORITY, 0, 0);
   sprite_step(&f->o.sprite);
   object_task(&f->o, buzzer_shot_run, SHOT_PRIORITY);
 }
@@ -189,7 +192,7 @@ static void add_gami_shot(int x4, int dx, int y) {
   if (!f) return;
   f->x4 = x4; f->dx = dx;
   f->x = x4 >> 2; f->y = y; f->vy = -512;
-  object_sprite(&f->o.sprite, ANIM_GAMIGAMI_SHOT, 0, 0, 9, ENEMY_PRIORITY, 0, 0);
+  object_sprite_at(&f->o.sprite, OBJ_VRAM + VRAM_GAMIGAMI_SHOT, ANIM_GAMIGAMI_SHOT, 0, 9, ENEMY_PRIORITY, 0, 0);
   sprite_step(&f->o.sprite);
   object_task(&f->o, gami_shot_run, PRIORITY_SONIC);
 }
