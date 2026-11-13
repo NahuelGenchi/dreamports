@@ -470,6 +470,16 @@ static void vblank(void) {
   else e.flags &= ~FLAGS_PAUSED;
 }
 
+/** The video hardware as the console's start leaves it: VRAM, the colours and OAM clear, every display register 0. The
+ *  JavaScript version starts a new one (video.js createVideo) for the special stage and after a soft reset. */
+void engine_clear_video(void) {
+  memset(gba_vram, 0, sizeof gba_vram);
+  memset(gba_pal, 0, sizeof gba_pal);
+  memset(gba_oam, 0, sizeof gba_oam);
+  for (unsigned reg = 0; reg < GBA_IO_HALFWORDS * 2; reg += 2) gba_write(reg, 0);
+  gba_update_colors();
+}
+
 /** The V-blank of a frame that runs with no picture, such as the title card's that a start point skips. */
 void engine_vblank_unseen(void) {
   e.flagsPreVBlank = e.flags;

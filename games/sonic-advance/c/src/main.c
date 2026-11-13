@@ -29,6 +29,7 @@ void game_start(void) {
   gba_sound_count_cycles();
   save_open();
   front_start();
+  if (front_special_start_point()) return;
   int level = (int)gba_start_number("level", -1);
   if (level >= 0 && !gba_start_number("power", 0)) {
     act_active = 1;

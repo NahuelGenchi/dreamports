@@ -128,6 +128,9 @@ extern SpriteRow spriteRow;
 void sprite_row_byte(uint32_t at, uint32_t v);
 
 void engine_init(void);
+void engine_clear_video(void);
+/** A new engine for a new start, with the soft reset's V-blank (front.c). */
+void front_new_engine(void);
 Task *create_task(TaskMain main, void *data, uint16_t priority, uint16_t flags, TaskMain dtor);
 void destroy_task(Task *t);
 void destroy_tasks(uint16_t lo, uint16_t hi);
@@ -163,10 +166,10 @@ void fade_out_sound(int player, int speed);
 void stop_all_songs(void);
 /** The stage's music manager (music.c), which runs on the sound's side after each frame's calls: the act's song starting
  *  (MUSIC_STAGE_IN fading in, MUSIC_STAGE as it is), the results switching it off, a boss's state, an extra life's
- *  jingle, invincibility's song, the drowning music, and what it reads of Sonic each frame (MUSIC_PLAYER: invincible, speed
- *  shoes and alive, bits 0 to 2). */
+ *  jingle, invincibility's song, the drowning music, what it reads of Sonic each frame (MUSIC_PLAYER: invincible, speed
+ *  shoes and alive, bits 0 to 2), and the pause menu's start (MUSIC_PAUSE with its sound). */
 enum { MUSIC_STAGE = SOUND_OP_MANAGER, MUSIC_STAGE_IN, MUSIC_OFF, MUSIC_STATE, MUSIC_ONE_UP, MUSIC_STAR, MUSIC_DROWNING,
-  MUSIC_PLAYER };
+  MUSIC_PLAYER, MUSIC_PAUSE };
 /** the music's tempo (m4aMPlayTempoControl): normal, and doubled while Sonic has speed shoes (PLAYER_SPEED_UP_MUSIC_TEMPO) */
 enum { TEMPO_NORMAL = 0x100, TEMPO_SPEED_UP = 0x200 };
 void music_call(int op, int a);
@@ -258,6 +261,7 @@ typedef struct { uint16_t unk0, unk2, unk4, unk6, unk8, unkA, unkC, unkE, unk10,
 typedef uint8_t (*Glyphs)(const void *text, int i);
 
 void create_ui_task(void);
+void create_ui_task_keeping(UiSlot *slots);
 void ui_gfx_stack_init(void);
 UiSlot *ui_slots(void);
 void ui_graphics(int id, uint32_t *tiles, uint32_t *palette, UiSlot *layout);
@@ -269,6 +273,7 @@ void set_ui_affine(int angle, int sx, int sy, int index);
 void draw_ui_text(const char *text, const UiText *o, int solid);
 void draw_ui_glyphs(const char *text, const UiText *o, int behind);
 void draw_ui_text_rotated(const char *text, const UiText *o);
+void draw_ui_text_affine(const char *text, const UiText *o);
 void draw_ui_letters(const char *text, const UiText *o);
 
 // --- a spotlight's beam (front/spotlight.js) ---------------------------------------------------------------------

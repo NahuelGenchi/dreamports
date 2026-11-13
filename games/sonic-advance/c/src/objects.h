@@ -35,6 +35,9 @@ struct ActTask {
 ActTask *act_task_add(ActRun run, ActEnd end, void *data, int priority);
 /** Runs the tasks of priority `from` up to, not including, `to`. */
 void act_tasks_run(int from, int to);
+void act_tasks_stop(void);
+/** Where the first interactable of `kind` in `level` is, as rom/entities.js reads them: 0 when there is none. */
+int entities_find(int level, int kind, int *x, int *y);
 
 // --- the entities (rom/entities.js) ------------------------------------------------------------------------------
 typedef struct { int x, y, kind, d[4]; } Entity;

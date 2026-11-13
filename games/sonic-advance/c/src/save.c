@@ -45,10 +45,12 @@ void save_open(void) {
   save.keep = 1;
   // a start point's save is the game's own, kept nowhere, as the JavaScript version's openSave(null) gives it: it
   // doesn't read the cartridge's, so the language screen comes as it does at a first start
-  if (gba_start_point("unlocked")) {
+  if (gba_start_point("unlocked") || gba_start_point("special")) {
     empty_save(save.bytes);
     save.exists = 0;
     save.keep = 0;
+    // the special stage's start point writes it at once (main.js), so the game has one if it starts again
+    if (gba_start_point("special")) save_write();
     return;
   }
   save.exists = get32(flash, 0) == SECURITY && get32(flash, CHECKSUM) == checksum(flash);   // SaveGameExists

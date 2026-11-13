@@ -6,6 +6,7 @@
 #include "objects.h"
 #include "results.h"
 #include "bosses.h"
+#include "special.h"
 
 int moon_opens(void);
 
@@ -377,6 +378,7 @@ static void draw_frame(void) {
   // the first frame after the act before draws the stage's layers from its corner, where its making left them; the
   // sprites are already where the camera has them
   int spriteX = camX, spriteY = camY;
+  if (act.cam.held) { camX = act.cam.layerX; camY = act.cam.layerY; act.cam.held = 0; }
   if (act.afterLevel && act.frames == 1) camX = camY = 0;
   // the course select's act whose stage init draws its layers from its corner shows them there on its first picture
   // after its load, and its background where it starts: the camera's task, first run then, only sets itself going
@@ -512,7 +514,8 @@ void act_player_died(void) {
 }
 // Task_PlayerHandleDeath's HandleLifeLost: his task ends, his rings and a life go, and with lives left every task goes and
 // the act starts over at the end of it (restart_act), so nothing after it runs this frame. The last life brings the game
-// over, with the act running on behind it; with no continue left, as the C has no special stages to earn one in
+// over, with the act running on behind it; with no continue left, as the continue's countdown isn't in C yet, though a
+// special stage gives continues (spGame.continues)
 // (CreateGameOverScreen(OVER_CAUSE_TIME_UP))
 static int lifeLost;
 void act_life_lost(void) {
@@ -620,6 +623,10 @@ static void next_act_after_write(void) {
 // past 10:00). The act's music starts again at once, and the original spends the whole next frame loading the act.
 #define MAX_COURSE_TIME (10 * 3600)
 static int restarting, respawnIndex, respawnX, respawnY;
+// the special stages (below): the act as the character left it, and the spring that sent them out of it
+enum { SPECIAL_SPRING = 102, START_LIVES = 3 };
+static Act actLeft;
+static int specialPending, specialX, specialY;
 static void restart_act(void) {
   Act was = act;
   uint32_t seed = act_random_state();
@@ -643,6 +650,36 @@ static void restart_act(void) {
   act.stallLoad = 0; act.loadFrames = 2;
   titlecard_made(0);
   // the new act's tasks after the ones that went run at once, unseen, as after the act before
+  objects_set_drawing(0);
+  objects_run_before_hud();
+  objects_run_after_hud();
+  objects_set_drawing(1);
+}
+
+// sub_805D4F0, as the special stage's results end: the act starts again (CreateGameStage) as after a life lost but with
+// none lost, its checkpoint 16 px up and left of the spring the character left on, with its title card, and the original
+// spends the next frame loading it. The checkpoint then goes back to the one he had passed, and the special springs are
+// plain until the act starts over. The course time, the stage clock, the rings and the last checkpoint passed are what
+// they were when he left; the score, the lives and the game's random numbers what the special stage leaves. (No
+// recording plays this yet.)
+void act_come_back(void) {
+  Act was = actLeft;
+  restarting = 1;
+  respawnIndex = 1; respawnX = specialX - 16; respawnY = specialY - 16;
+  act_start(was.stage.level, -1, 0);
+  restarting = 0;
+  act_active = 1;
+  act.restarted = 1;
+  act.player.plainSprings = 1;
+  act.lives = spGame.lives; act.score = (int)spGame.score; act.tick = was.tick; act.ringCount = was.ringCount;
+  act_random_seed(spGame.seed);
+  act.checkpointIndex = was.checkpointIndex; act.checkpointX = was.checkpointX; act.checkpointY = was.checkpointY;
+  act.checkpointTime = was.checkpointIndex && was.courseTime < MAX_COURSE_TIME ? was.checkpointTime : 0;
+  act.courseTime = was.courseTime; act.clockTime = was.clockTime;
+  act.musicStarts = 0;
+  music_call(MUSIC_STAGE, act.stage.music);
+  act.stallLoad = 0; act.loadFrames = 2;
+  titlecard_made(0);
   objects_set_drawing(0);
   objects_run_before_hud();
   objects_run_after_hud();
@@ -732,12 +769,50 @@ int act_checkpoint_index(void) { return act.checkpointIndex; }
 void act_checkpoint_pass(int index, int x, int y) {
   act.checkpointIndex = index; act.checkpointX = x; act.checkpointY = y; act.checkpointTime = act.courseTime;
 }
-// the C version has no special stages yet, so a special spring is a plain spring, as the JavaScript version's is without
-// one; act_special_stage is then never reached
-int act_special_stages(void) { return 0; }
-void act_special_stage(int x, int y) { (void)x; (void)y; }
-// the special spring holds the camera where it was, so what is drawn after it this frame is placed from there
-void act_hold_camera(int x, int y) { act.cam.x = x; act.cam.y = y; }
+// --- the special stages (special.h) ------------------------------------------------------------------------------
+// A special spring sends the character out of the act: no task after it runs this frame, and once the frame is over the
+// act hands what the special stage needs over to it (front.c), as the JavaScript's handOver does. Coming back after the
+// results, the act starts again from the spring (act_come_back).
+int act_special_stages(void) { return 1; }
+void act_special_stage(int x, int y) {
+  specialPending = 1; specialX = x; specialY = y;
+  act_tasks_stop();
+}
+int act_special_pending(void) { return specialPending; }
+// what the act hands over: the score, the lives and the game's random numbers, with the save's emeralds and buttons
+static void hand_over(int level, int score, int lives, uint32_t seed) {
+  spGame.level = level; spGame.character = ctx.character; spGame.score = (uint32_t)score; spGame.lives = lives;
+  spGame.seed = seed; spGame.emeralds = SAVE_CHAOS_EMERALDS; spGame.btnConfig = save.bytes[0x1B];
+}
+/** The act's frame a special spring ended is over: the act stops, every music player with it, and the special stage
+ *  starts. */
+void act_to_special_stage(void) {
+  specialPending = 0;
+  hand_over(act.stage.level, act.score, act.lives, act_random_state());
+  actLeft = act;
+  act_tasks_destroy_all();
+  act.task = NULL;
+  act_active = 0;
+  stop_all_songs();
+  special_stage_enter();
+}
+/** A start point's `special`: what the act would hand over had the character gone straight from its start at a new game
+ *  to its special spring (the JavaScript's specialSpringStart). 0 for an act without a special spring. */
+int act_special_start_point(int level) {
+  int x, y;
+  if (!entities_find(level, SPECIAL_SPRING, &x, &y)) return 0;
+  memset(&actLeft, 0, sizeof actLeft);
+  actLeft.stage.level = level;
+  specialX = x; specialY = y;
+  hand_over(level, 0, START_LIVES, 0);
+  return 1;
+}
+// the special spring holds the camera where it was, after the camera's task has moved it and drawn the layers there, so
+// what is drawn after it this frame is placed from there, and the layers stay where they were drawn
+void act_hold_camera(int x, int y) {
+  if (!act.cam.held) { act.cam.held = 1; act.cam.layerX = (int)act.cam.x; act.cam.layerY = (int)act.cam.y; }
+  act.cam.x = x; act.cam.y = y;
+}
 
 // the HUD starts: its zero-ring flash from the act's own value, or where a counter that flashes in sixteens begins
 static void hud_begin(void) {
@@ -747,8 +822,18 @@ static void hud_begin(void) {
     : act.afterLevel || act.restarted ? HUD_FLASH_AFTER : hud_flash();
 }
 
+// A start point's `put=F&put-x=X&put-y=Y&put-camera-x=CX&put-camera-y=CY`: the character's centre at (X, Y) and the
+// camera at (CX, CY) as the page's frame F starts, where a recording's sets put the original's, as Amy over Neo Green
+// Hill act 1's special spring in soft-reset-special-stage
+static void put_start_point(void) {
+  if (!gba_start_point("put") || front_frame() != (uint32_t)gba_start_number("put", -1)) return;
+  act.player.x = (double)gba_start_number("put-x", 0); act.player.y = (double)gba_start_number("put-y", 0);
+  act.cam.x = (double)gba_start_number("put-camera-x", 0); act.cam.y = (double)gba_start_number("put-camera-y", 0);
+}
+
 static void act_frame(void) {
   const Level *row = act.stage.row;
+  put_start_point();
   if (musicSync) {
     musicSync = 0;
     // the act's music starts on the frame after its first picture: the frames before the recording's first one are the
@@ -789,6 +874,13 @@ static void act_frame(void) {
   int objectsRun = act.frames > 0 || row->runsFromFirstFrame;
   if (row->beforeObjects) row->beforeObjects();
   if (objectsRun) objects_run_before_hud();
+  // a special spring sent the character out of the act: nothing after it runs this frame. The camera's task had already
+  // updated the zone's background where it moved, with the H-blank copy that the frame's V-blank still starts
+  if (specialPending) {
+    if (row->drawBackground) row->drawBackground(act.cam.held ? act.cam.layerX : (int)act.cam.x, act.cam.held ? act.cam.layerY : (int)act.cam.y);
+    act.cam.held = 0;
+    return;
+  }
   // the game over's tasks, made after the objects' at their priority
   if (gameover_step()) { go_to_sega_logo(); return; }
   // the title card's task (0x2100) runs before Sonic's and the clock's, so the frame it ends frees the pad and starts

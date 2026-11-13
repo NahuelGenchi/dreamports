@@ -47,6 +47,7 @@ typedef struct {
   int bgX, bgY;
   int wrapped;   // how far the act's loop point has moved the camera, which the background leaves out (unk20)
   int wrappedThisFrame;   // the loop point's shift on this frame, which the layer maps are drawn without (the camera's task runs before it)
+  int held, layerX, layerY;   // a special spring held it this frame, after its task had drawn the layers at (layerX, layerY)
 } Camera;
 
 typedef struct {
@@ -178,6 +179,10 @@ void rings_skip_first_update(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
 void act_soft_reset(void);
+int act_special_pending(void);
+void act_to_special_stage(void);
+int act_special_start_point(int level);
+void act_come_back(void);
 int act_level(void);
 void act_song_playing(void);
 // what a zone's own code asks of the act (levels.h): one step of a palette animation, the tiles of frame `frame` of
@@ -187,6 +192,7 @@ void act_copy_tiles(int frame);
 void act_render_music_at_first_frame(void);
 void act_task(Task *t);
 uint32_t front_frame(void);
+int front_special_start_point(void);
 
 // Secret Base act 1's spotlights (engine/spotlights.js), in actspot.c
 void spotlights_start(void);

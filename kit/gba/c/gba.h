@@ -137,6 +137,10 @@ void gba_sound_reset(void);
 void gba_sound_play(int song);
 /** The number of the music player song `song` plays on, from the copy's song table, or -1. */
 int gba_sound_song_player(int song);
+/** How many frames song `song` plays on music player `player` before it ends, counted as a task that watches the
+ *  player's status from the frame after it starts sees it, such as one that waits for a jingle to end (the JavaScript
+ *  kit's songFrames): an engine of its own plays it, unheard. Up to a minute's worth. */
+int gba_sound_song_frames(int player, int song);
 /** m4aSongNumStartOrChange: starts the song unless it is already playing on its player */
 void gba_sound_play_or_change(int song);
 /** m4aSongNumStartOrContinue: restarts a different song or an ended one, and lets a stopped one go on */

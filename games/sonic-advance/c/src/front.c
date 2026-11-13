@@ -6,6 +6,7 @@
 #include "sa.h"
 #include "page.h"
 #include "act.h"
+#include "special.h"
 
 void dp_sound_skip_frames(int frames);
 
@@ -89,11 +90,17 @@ static void power_on(int skipIntro) {
 static int resetting;
 static void soft_reset_seen(void) { resetting = 1; }
 
+/** A new engine, as the JavaScript version's page makes one for each new start (gba/engine.js createEngine): for the
+ *  special stage, the act after it, and the game after a soft reset. */
+void front_new_engine(void) {
+  engine_init();
+  e.softReset = soft_reset_seen;
+}
+
 /** The front end from power-on: the screen forced blank until the game starts. */
 void front_start(void) {
   memset(&ctx, 0, sizeof ctx);
-  engine_init();
-  e.softReset = soft_reset_seen;
+  front_new_engine();
   read_start_point();
   sprites.anims = rom_ptr(OFFSET_SPRITE_TABLES);
   sprites.dims = rom_ptr(OFFSET_SPRITE_TABLES + 4);
@@ -108,13 +115,16 @@ void front_start(void) {
 /**
  * VBlankIntr's SoftReset: the game starts again, from the title screen (GameInit with FLAGS_SKIP_INTRO) once
  * RESET_FRAMES of blank screen have gone by, with the save as it is and the character last chosen. The sound engine
- * starts again from nothing, the sound chip going on as it was; the act, if it was running, stops; the engine and the
- * video hardware are as the console's start leaves them, so the frame the reset is in already shows the blank, as the
- * JavaScript version's page draws it (main.js softReset, front.js afterReset).
+ * starts again from nothing, the sound chip going on as it was; the act or the special stage, if it was running, stops;
+ * the engine and the video hardware are as the console's start leaves them, so the frame the reset is in already shows
+ * the blank, as the JavaScript version's page draws it (main.js softReset, front.js afterReset).
  */
 static void soft_reset(void) {
   resetting = 0;
   gba_sound_reset();
+  // the screen that was running stops every music player as the game starts again, on the new engine, as the
+  // JavaScript version's page stops it (main.js start)
+  stop_all_songs();
   if (act_active) {
     // gCurrentLevel stays the act's
     ctx.currentLevel = act_level();
@@ -127,15 +137,25 @@ static void soft_reset(void) {
   ctx.currentLevel = was.currentLevel;
   ctx.startLevel = was.startLevel;
   ctx.afterReset = 1;
-  engine_init();
-  e.softReset = soft_reset_seen;
-  memset(gba_vram, 0, sizeof gba_vram);
-  memset(gba_pal, 0, sizeof gba_pal);
-  memset(gba_oam, 0, sizeof gba_oam);
-  for (unsigned reg = 0; reg < GBA_IO_HALFWORDS * 2; reg += 2) gba_write(reg, 0);
-  gba_update_colors();
+  spGame.continues = 0;
+  front_new_engine();
+  engine_clear_video();
   gba_write(REG_DISPCNT, 0x80);
   startingUp = RESET_FRAMES;
+}
+
+/**
+ * A start point's `special` (main.js `?special`): the game opens at the special stage the act `level` (0 if not given)
+ * leads to, as if the character had just left it on its special spring at a new game's start, with a save of its own
+ * kept nowhere. gFrameCount is where the original's is at a new game's act (game.js START_FRAME_COUNT).
+ */
+#define START_FRAME_COUNT 3838
+int front_special_start_point(void) {
+  if (!gba_start_point("special") || !act_special_start_point((int)gba_start_number("level", 0))) return 0;
+  startingUp = 0;
+  e.frameCount = START_FRAME_COUNT;
+  special_stage_enter();
+  return 1;
 }
 
 /** A frame, with the buttons in `keys` held. */
@@ -145,6 +165,8 @@ void front_step(uint16_t keys) {
     e.keys = keys;
     engine_run();
     link_frame_done();
+    // a special spring sent the character out of the act this frame: the special stage, from the next
+    if (act_special_pending()) act_to_special_stage();
   } else if (startingUp > 0) {
     if (--startingUp == 0) {
       // after a soft reset the sound engine runs on, as m4aSoundInit leaves it

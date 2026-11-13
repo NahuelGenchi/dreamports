@@ -12,7 +12,9 @@
 // stopping (m4aMPlayAllStop, as the act ends) leaves it with no stage music. A boss sets its state
 // (gMusicManagerState.unk1): 0x10 and a boss song's index starts that song, which then takes the stage music's place
 // (0x20); 0x30 stops it and brings the stage music back, and after every boss but Egg Wrecker and Egg Drillster the
-// manager switches itself off for the rest of the act. The pause menu isn't in C yet.
+// manager switches itself off for the rest of the act. The pause menu stops every music player but its sound's own and
+// plays its sound (Task_PauseMenuInit), after the manager has run on that frame; the manager's task doesn't run while the
+// game is paused, nor on the frame the menu closes and every player goes on (m4aMPlayAllContinue).
 
 #include "sa.h"
 #include "sound.h"
@@ -24,6 +26,7 @@ static const int BOSS_SONGS[] = { 29, 30, 31, 32, 49, 50, 25 };
 
 static int stageSong = -1, starting, off, drown, oneUp, star, boss;
 static int invincible, speedUp, alive = 1;
+static int paused, resuming;
 
 // a soft reset's new sound engine has a manager as new, with no stage music
 void game_sound_reset(void) {
@@ -31,6 +34,7 @@ void game_sound_reset(void) {
   starting = off = drown = oneUp = star = boss = 0;
   invincible = speedUp = 0;
   alive = 1;
+  paused = resuming = 0;
 }
 
 void music_call(int op, int a) { gba_sound_manager_call(op, a, 0, 0); }
@@ -83,13 +87,29 @@ static void manage(M4a *m) {
 #undef IS
 }
 
+// the pause menu's start: MPlayStop on every music player but `song`'s, then m4aSongNumStart(song); the manager rests
+// until every player goes on
+static void pause(M4a *m, int song) {
+  int its = m4a_song_player(m, song);
+  for (int p = 0; p < m->layout.players; p++) if (p != its) m4a_player_stop(m, p);
+  m4a_song_start(m, song);
+  paused = 1;
+}
+
 void game_sound_frame(M4a *m, const SoundCall *calls, int count) {
+  int ran = 0;
   for (int i = 0; i < count; i++) {
-    if (calls[i].op >= SOUND_OP_MANAGER) own(m, &calls[i]);
+    if (calls[i].op == MUSIC_PAUSE) {
+      if (!ran && !paused) manage(m);
+      ran = 1;
+      pause(m, calls[i].a);
+    } else if (calls[i].op >= SOUND_OP_MANAGER) own(m, &calls[i]);
     else {
       if (calls[i].op == OP_ALL_STOP) stageSong = -1;
+      if (calls[i].op == OP_ALL_CONTINUE) resuming = 1;
       gba_sound_apply(m, &calls[i]);
     }
   }
-  manage(m);
+  if (!ran && !paused) manage(m);
+  if (resuming) { resuming = 0; paused = 0; }
 }

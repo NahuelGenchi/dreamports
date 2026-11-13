@@ -221,6 +221,24 @@ void gba_sound_play(int song) { take(OP_START, song, 0, 0, 0); }
 int gba_sound_song_player(int song) {
   return running && song >= 0 && song < layout.songs ? gba_rom[layout.songTable + song * 8 + 4] : -1;
 }
+int gba_sound_song_frames(int player, int song) {
+  enum { LIMIT = 60 * 60 };
+  static Apu a;
+  static M4a m;
+  if (!running || player < 0 || player >= layout.players) return LIMIT;
+  SoundLayout plain = layout;
+  plain.psgAt = 0;   // the chip's writes land at once: only the player's status is counted
+  apu_init(&a);
+  m4a_init(&m, gba_rom, gba_rom_size, &plain, &a);
+  m4a_player_start(&m, player, song);
+  for (int n = 1; n < LIMIT; n++) {
+    m4a_frame(&m);
+    apu_run(&a, FRAME_CYCLES);
+    uint32_t status = m.players[player].status;
+    if ((status & 0x80000000u) || (status & 0xFFFF) == 0) return n;
+  }
+  return LIMIT;
+}
 void gba_sound_play_or_change(int song) { take(OP_START_OR_CHANGE, song, 0, 0, 0); }
 void gba_sound_start_or_continue(int song) { take(OP_START_OR_CONTINUE, song, 0, 0, 0); }
 void gba_sound_stop(int song) { take(OP_STOP, song, 0, 0, 0); }
