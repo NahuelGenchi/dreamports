@@ -97,6 +97,11 @@ static int way_blocked(void) {
   RAM[0x77] = Y_SCREEN;
   RAM[0x73] = (uint8_t)(Y + 4);
   took(left ? WAY_AHEAD_LEFT : WAY_AHEAD_RIGHT);
+  if (RAM[0x73] >= 0xF0) {   // $EA21: on the next screen down
+    RAM[0x73] = (uint8_t)(RAM[0x73] + 0x10);
+    RAM[0x77]++;
+    took(WAY_AHEAD_NEXT_SCREEN);
+  }
   int solid = block_at_stage_place() >= BLOCK_SOLID, edge = left ? SCREEN_X < 0x10 : SCREEN_X >= 0xF0;
   took(solid ? WAY_SOLID : left ? (edge ? WAY_LEFT_EDGE : WAY_LEFT_FREE) : edge ? WAY_RIGHT_EDGE : WAY_RIGHT_FREE);
   RAM[0xD1] = solid || edge ? 0x80 : 0;
@@ -122,10 +127,15 @@ static uint8_t direction(void) {
   return cart(7, (uint16_t)(0xE307 + (PAD_NOW & 0x0F)));
 }
 
-// sub_DF3E: down by some pixels, with the view after him once he's low in the picture. Onto the next screen down, at
-// $DF49, isn't ported yet.
+// sub_DF3E: down by some pixels, onto the next screen down past a screen's 240 lines ($DF49), with the view after him
+// once he's low in the picture.
 static void fall_by(uint8_t pixels) {
   Y += pixels;
+  if (Y >= 0xF0) {
+    Y += 0x10;
+    Y_SCREEN++;
+    took(ARTHUR_FELL_NEXT_SCREEN);
+  }
   took(SCREEN_Y >= 0x90 ? ARTHUR_FELL_LOW : ARTHUR_FELL_HIGH);
   if (SCREEN_Y >= 0x90) view_follows_down();
 }
@@ -245,6 +255,25 @@ static uint8_t jump_height(void) {
 // sub_E1EE: a jump, six rounds up and then down until he's on the ground or off the bottom of the picture, by the heights
 // the copy's list at $DEFD gives, and then 7 pixels a round, drifting the way he's heading unless something's in the way.
 // Called each turn until it's DONE.
+// sub_DF04: up by the jump's height for this round, onto the screen above past the top of his own ($DF15), and with
+// the view asked to move up as far when he's in the picture's top 48 lines ($DF24).
+static void rise(void) {
+  uint8_t height = jump_height();
+  Y = (uint8_t)(Y - height);
+  if (Y >= 0xF0) {
+    Y -= 0x10;
+    Y_SCREEN--;
+    took(ARTHUR_RISES_PAST_TOP);
+  }
+  if (SCREEN_Y < 0x30) {
+    if ((0xDEFD & 0xFF) + COUNT > 0xFF) took(READ_PAST_PAGE);
+    RAM[0x5F + 1] = (uint8_t)-height;
+    RAM[0x5F + 2] = height ? 0xFF : 0;
+    took(ARTHUR_RISES_VIEW_UP);
+  }
+  took(ARTHUR_RISES);
+}
+
 static wait jump(uint8_t *step) {
   enum { BEGIN, RISE, RISEN, FALL, FELL, LONG_FALL, LONG_FALL_AGAIN };
   for (;;) switch (*step) {
@@ -266,8 +295,7 @@ static wait jump(uint8_t *step) {
       break;
     case RISE:
       drift(0x0C);
-      Y -= jump_height();   // sub_DF04. Past the top of his screen, at $DF15, isn't ported yet.
-      took(ARTHUR_RISES);
+      rise();
       placed(0);
       *step = RISEN;
       return YIELDS;
@@ -395,8 +423,7 @@ static wait stage_jump(uint8_t *step, int *hit) {
       }
       took(STAGE_JUMP_NOT_HIT);
       drift_unless(jump_way_blocked(), 0x0C);
-      Y -= jump_height();
-      took(ARTHUR_RISES);
+      rise();
       jump_shape();
       placed(1);
       *step = RISEN;

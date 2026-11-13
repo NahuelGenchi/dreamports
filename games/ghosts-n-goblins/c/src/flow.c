@@ -343,10 +343,11 @@ static void place_stage_objects(void) {
   // and $D6B9, which leaves the state as the object's last user left it, and which $D670 jumps to
   // and $D706, a moving platform's, which gives it a heading and a shape too. $D6A9 is $D6B9 with the count first
   // set to $CA, which $D6C1 clears again.
-  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, STATE_KEPT_COUNTED = 0xD6A9, PLATFORM = 0xD706, BOSS = 0xD673 , COUNT_LISTED = 0xD692, LEFT_OUT = 0xD66D };
+  enum { STATE_ZERO = 0xD71B, STATE_LISTED = 0xD72B, STATE_LISTED_TOO = 0xD804, STATE_KEPT = 0xD6B9, STATE_KEPT_TOO = 0xD670, STATE_KEPT_COUNTED = 0xD6A9, PLATFORM = 0xD706, PLATFORM_TOO = 0xD6F1, BOSS = 0xD673 , COUNT_LISTED = 0xD692, LEFT_OUT = 0xD66D };
   uint16_t routine = ram16(0x22);
   if (routine == STATE_LISTED_TOO) { took(JUMPS); routine = STATE_LISTED; }
   if (routine == STATE_KEPT_TOO) { took(JUMPS); routine = STATE_KEPT; }
+  if (routine == PLATFORM_TOO) routine = PLATFORM;   // $D6F1 is the same as $D706, a byte for a byte
   if (routine == LEFT_OUT) {
     // $D66D: a kind the list names that comes by itself instead, as the zombies do
     STAGE_OBJECTS_PLACED++;
