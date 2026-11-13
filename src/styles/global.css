@@ -1699,6 +1699,11 @@ dialog.card[open] {
   display: none;
 }
 
+/* a line that has nothing more to say keeps its place until Settings is left, so nothing moves under a finger (#1206) */
+.set-desc.is-held {
+  visibility: hidden;
+}
+
 .switch {
   flex: none;
   display: inline-flex;

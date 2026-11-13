@@ -1341,7 +1341,14 @@ function start(launcher: HTMLElement) {
     unfinishedSwitch.setAttribute('aria-checked', String(state.unfinished));
     $<HTMLInputElement>('#theme-light', settingsCard).checked = !isDark();
     $<HTMLInputElement>('#theme-dark', settingsCard).checked = isDark();
-    $('#theme-desc', settingsCard).textContent = state.theme ? '' : 'Follows your device until you pick one.';
+    // The line under Look has nothing to say once a look is picked (#209), but while Settings stays up it keeps its
+    // place, unseen: taking it away at once moves the choice just pressed from under the finger, and every row below it
+    // (#1206). It is gone the next time Settings opens.
+    const themeDesc = $('#theme-desc', settingsCard);
+    const held = !!state.theme && state.open === settingsCard && !!themeDesc.textContent;
+    if (!state.theme) themeDesc.textContent = 'Follows your device until you pick one.';
+    else if (!held) themeDesc.textContent = '';
+    themeDesc.classList.toggle('is-held', held);
     $<HTMLInputElement>('#motion-full', settingsCard).checked = !calm();
     $<HTMLInputElement>('#motion-calm', settingsCard).checked = calm();
     $<HTMLInputElement>(`#pose-${state.logoPose}`, settingsCard).checked = true;
