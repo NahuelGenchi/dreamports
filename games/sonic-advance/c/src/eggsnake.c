@@ -449,7 +449,9 @@ static int escape(EggSnake *b) {
       if (x - cam_x() > DISPLAY_WIDTH + 120) {
         b->phase++;
         b->timer = 180;
-        act_stage_results();
+        // the results' tasks (0x2120) go into the list between this task (0x2100) and the one the list already holds
+        // as next, so they first run on the next frame
+        act_stage_results(1);
       }
       break;
     case 5:

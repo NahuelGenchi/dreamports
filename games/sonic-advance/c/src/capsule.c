@@ -137,8 +137,8 @@ static int walk_off_run(ActTask *t) {
   Player *p = &act.player;
   if (w->posing) {
     if (!p->air) p->state = PS_ACT_CLEAR_POSE;
-    if ((p->sprite.frameFlags & SPRITE_ANIM_OVER) && w->after++ > POSE_AFTER) { act_stage_results(); return 0; }
-    if (w->after == 0 && w->waited++ > POSE_WAIT) { act_stage_results(); return 0; }
+    if ((p->sprite.frameFlags & SPRITE_ANIM_OVER) && w->after++ > POSE_AFTER) { act_stage_results(0); return 0; }
+    if (w->after == 0 && w->waited++ > POSE_WAIT) { act_stage_results(0); return 0; }
     return 1;
   }
   int sx = s16(sonic_x() - cam_x()), right = sx > CENTRE;

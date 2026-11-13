@@ -126,6 +126,8 @@ ActTask *spiked_barrel_spawn(Slot *slot);         // 93
 ActTask *conveyor_belt_object_spawn(Slot *slot);  // 99
 ActTask *propeller_spawn(Slot *slot);             // 103
 ActTask *egg_rocket_checkpoint_spawn(Slot *slot);
+/** The results have started: Egg Rocket's background stops (gCamera.unk50 |= 0x2000). */
+void egg_rocket_results(void);
 ActTask *square_platform_spawn(Slot *slot);
 ActTask *spiked_platform_spawn(Slot *slot);
 ActTask *barrel_spawn(Slot *slot);

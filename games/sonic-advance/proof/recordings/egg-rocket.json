@@ -1,7 +1,8 @@
 {
-  "about": "From power-on with Sonic having reached level 10: through the course select to Egg Rocket Zone, then climbing the rocket past its separations to the capsule at the top.",
-  "start": "unlocked=10&character=0",
-  "frames": 38383,
+  "about": "From power-on with Sonic having reached level 10: through the course select to Egg Rocket Zone, then climbing the rocket past its separations to the capsule at the top, its results, and on into Cosmic Angel Zone.",
+  "start": "unlocked=10&character=0&only=166",
+  "frames": 39383,
+  "clip": { "at": 38900, "frames": 300 },
   "held": [
     [0,[]],
     [150,["A"]],

@@ -59,8 +59,9 @@ static void bg3_screen(int size, int base) {
 /** StageBgUpdate_Zone6Act1 */
 static void background_update(void) {
   int x = (int)act.cam.x - act.cam.wrapped, bossIndex = act_checkpoint_index(), t = stage_time();
-  view.bg0On = 0;
+  // stopped, the layers keep what the last update gave them, BG0 on among it, but not its H-blank split
   if (view.flags & BG_STOPPED) return;
+  view.bg0On = 0;
   if (bossIndex == 0) {
     // BG3 is the full 256 × 512 map, on the launch tower in the sunset
     bg3_screen(BGCNT_256X512, CAM_SCREENBASE_BACK_C + 2);
@@ -117,6 +118,8 @@ static void background_update(void) {
     }
   }
 }
+
+void egg_rocket_results(void) { view.flags |= BG_STOPPED; }
 
 // UpdateCamera's fnBgUpdate, which runs with its RenderMetatileLayers
 static void camera_moved(int runs) {

@@ -1,7 +1,8 @@
 {
-  "about": "From power-on with Sonic having reached level 11: through the course select to Cosmic Angel Zone, then across the act, past its enemies and gravity switches, through the Egg Snake fight to the act's end and its results.",
-  "start": "unlocked=11&character=0",
-  "frames": 16897,
+  "about": "From power-on with Sonic having reached level 11: through the course select to Cosmic Angel Zone, then across the act, past its enemies and gravity switches, through the Egg Snake fight to the act's end, its results, and on into X Zone.",
+  "start": "unlocked=11&character=0&only=166",
+  "frames": 17897,
+  "clip": { "at": 17500, "frames": 300 },
   "held": [
     [0,[]],
     [150,["A"]],
