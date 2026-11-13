@@ -31,11 +31,14 @@ export function findMusicPlayers(rom, players) {
  * The layout the engine needs (m4a.js): both tables, how many songs there are, the game's sound `mode` (soundMode
  * in m4a.js), and `voicesEndOnChip` for a game whose CgbSound reads SOUNDCNT_X to end a voice whose length ran out,
  * which not every version of the sound library does, and `soundMainAt` for a game whose wave voice has to keep its
- * phase through many notes: the cycle of the console's frame its SoundMain starts at.
+ * phase through many notes: the cycle of the console's frame its SoundMain starts at. `library` is the version of the
+ * sound library, which sets what each place in SoundMain costs (costs.js); `psgAt`, `fifoAt`, `fifoCost` and
+ * `hblankAt` are the engine's psgAt and dmaAt, for a game whose squares' writes land on the original's cycles.
  */
-export function soundLayout(rom, playerTable, { players, mode, voicesEndOnChip = false, soundMainAt = 0 }) {
+export function soundLayout(rom, playerTable, { players, mode, voicesEndOnChip = false, soundMainAt = 0, library = 0, psgAt = 0,
+  fifoAt = 0, fifoCost = 0, hblankAt = 0 }) {
   const songTable = playerTable + players * 12;
   let songs = 0;
   while (songTable + (songs + 1) * 8 <= rom.size && isSong(rom, songTable + songs * 8, players)) songs++;
-  return { playerTable, songTable, players, songs, mode, voicesEndOnChip, soundMainAt };
+  return { playerTable, songTable, players, songs, mode, voicesEndOnChip, soundMainAt, library, psgAt, fifoAt, fifoCost, hblankAt };
 }

@@ -7,6 +7,8 @@
 import { createSprite, updateSprite, displaySprite } from '../gba/sprite.js';
 import { REG } from '../../../../kit/gba/video.js';
 import { SONG } from '../sound/songs.js';
+import { LOAD } from '../sound/timing.js';
+import { LEVELS } from '../rom/levels.js';
 import { createUiTask, uiGfxStackInit, uiGraphics, loadUiGfx, drawUiText, createFade, fadeStep } from './ui.js';
 import { put16 } from '../gba/lines.js';
 import { KEY } from '../gba/engine.js';
@@ -105,7 +107,11 @@ function run(t) {
     e.bldCnt = 0;
     e.bldY = 0;
     e.destroyTask(t);
+    // the card's task makes the act, whose stage init starts its song then, at full volume in Time Attack
     ctx.play(ctx.level);
+    e.soundLate(LOAD.ACT_TIME_ATTACK, ctx.level, ctx.character);
+    e.playStageMusic(LEVELS[ctx.level].music);
+    ctx.musicStarted = true;
     return;
   }
   if (frame === FADE_AT) {

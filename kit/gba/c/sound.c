@@ -21,6 +21,7 @@ static M4a engine;
 static SoundLayout layout;
 static int running;          // the engine has a layout
 static int psgAt;            // gba_sound_psg_at's last place, for the next setup
+static int fifoAt, fifoCost, hblankAt;   // gba_sound_dma_at's, the same way
 static int handOver;         // the calls go to the page, for the audio thread
 static SoundCall queue[CALLS], taken[CALLS];
 static int queued, takenCount;
@@ -69,6 +70,10 @@ void gba_sound_apply(M4a *m, const SoundCall *c) {
     case OP_VSYNC_ON: m4a_vsync_on(m); break;
     case OP_WAVE_AT: m4a_wave_at(m, c->a); break;
     case OP_PSG_AT: m->layout.psgAt = c->a; break;
+    case OP_CHIP_CLOCK: apu_exact(m->io, c->a); break;
+    case OP_DMA_AT: m->layout.fifoAt = c->a; m->layout.fifoCost = c->b; m->layout.hblankAt = c->c; break;
+    case OP_HBLANK_DMA: m->hblank = c->a; break;
+    case OP_LATE: m->late = c->a; break;
     // frames that played before a start point, each the engine's frame and then the chip's, as the clock runs them,
     // with what they mixed left unheard
     case OP_PLAYED_FOR: for (int i = 0; i < c->a; i++) { m4a_frame(m); apu_run(m->io, FRAME_CYCLES); } break;
@@ -80,6 +85,8 @@ void gba_sound_apply(M4a *m, const SoundCall *c) {
 __attribute__((weak)) void game_sound_frame(M4a *m, const SoundCall *calls, int count) {
   for (int i = 0; i < count; i++) gba_sound_apply(m, &calls[i]);
 }
+// and nothing of its own to start again when the engine does
+__attribute__((weak)) void game_sound_reset(void) {}
 
 static void clear_buffers(void) {
   __builtin_memset(playingBuf, 0, sizeof playingBuf);
@@ -90,7 +97,8 @@ static void clear_buffers(void) {
 static void setup(int a, int b, int c, int d) {
   layout.playerTable = (uint32_t)a; layout.players = b & 0xFF; layout.mode.channels = (b >> 8) & 0xFF;
   layout.mode.volume = (b >> 16) & 0xFF; layout.mode.reverb = (b >> 24) & 0x7F; layout.mode.rate = c & 0xFFFF;
-  layout.voicesEndOnChip = (c >> 16) & 1; layout.soundMainAt = d; layout.psgAt = psgAt;
+  layout.voicesEndOnChip = (c >> 16) & 1; layout.library = (c >> 17) & 0xF; layout.soundMainAt = d; layout.psgAt = psgAt;
+  layout.fifoAt = fifoAt; layout.fifoCost = fifoCost; layout.hblankAt = hblankAt;
   layout.songTable = layout.playerTable + layout.players * 12;
   // the songs the engine has, as tables.js counts them
   layout.songs = 0;
@@ -132,6 +140,7 @@ static void take(int op, int a, int b, int c, int d) {
     m4a_init(&engine, gba_rom, gba_rom_size, &layout, &apu);
     queued = 0;
     clear_buffers();
+    game_sound_reset();
     return;
   }
   if (queued < CALLS) queue[queued++] = call;
@@ -169,9 +178,14 @@ int gba_sound_start_layout(uint32_t playerTable, int players, int channels, int 
 }
 
 int gba_sound_start(int players, int channels, int volume, int rate, int reverb) {
+  return gba_sound_start_library(LIBRARY_SONIC_BATTLE, players, channels, volume, rate, reverb);
+}
+
+int gba_sound_start_library(int library, int players, int channels, int volume, int rate, int reverb) {
   uint32_t at;
-  if (!gba_rom || players < 1 || players > M4A_PLAYERS || !find_music_players(players, &at)) return 0;
-  return gba_sound_start_layout(at, players, channels, volume, rate, reverb, 0, 0);
+  if (!gba_rom || players < 1 || players > M4A_PLAYERS || library < 0 || library >= LIBRARIES || !find_music_players(players, &at)) return 0;
+  take(OP_SETUP, (int)at, players | channels << 8 | volume << 16 | (reverb & 0x7F) << 24, rate | library << 17, 0);
+  return 1;
 }
 
 int gba_sound_count_cycles(void) {
@@ -207,6 +221,24 @@ void gba_sound_play(int song) { take(OP_START, song, 0, 0, 0); }
 int gba_sound_song_player(int song) {
   return running && song >= 0 && song < layout.songs ? gba_rom[layout.songTable + song * 8 + 4] : -1;
 }
+int gba_sound_song_frames(int player, int song) {
+  enum { LIMIT = 60 * 60 };
+  static Apu a;
+  static M4a m;
+  if (!running || player < 0 || player >= layout.players) return LIMIT;
+  SoundLayout plain = layout;
+  plain.psgAt = 0;   // the chip's writes land at once: only the player's status is counted
+  apu_init(&a);
+  m4a_init(&m, gba_rom, gba_rom_size, &plain, &a);
+  m4a_player_start(&m, player, song);
+  for (int n = 1; n < LIMIT; n++) {
+    m4a_frame(&m);
+    apu_run(&a, FRAME_CYCLES);
+    uint32_t status = m.players[player].status;
+    if ((status & 0x80000000u) || (status & 0xFFFF) == 0) return n;
+  }
+  return LIMIT;
+}
 void gba_sound_play_or_change(int song) { take(OP_START_OR_CHANGE, song, 0, 0, 0); }
 void gba_sound_start_or_continue(int song) { take(OP_START_OR_CONTINUE, song, 0, 0, 0); }
 void gba_sound_stop(int song) { take(OP_STOP, song, 0, 0, 0); }
@@ -225,6 +257,13 @@ void gba_sound_pan(int player, int bits, int pan) { take(OP_PANPOT, player, bits
 void gba_sound_imm_init(int player) { take(OP_IMM_INIT, player, 0, 0, 0); }
 void gba_sound_wave_at(int at) { take(OP_WAVE_AT, at, 0, 0, 0); }
 void gba_sound_psg_at(int cycles) { psgAt = cycles; take(OP_PSG_AT, cycles, 0, 0, 0); }
+void gba_sound_chip_clock(int powerOnBefore) { take(OP_CHIP_CLOCK, powerOnBefore, 0, 0, 0); }
+void gba_sound_dma_at(int at, int cost, int hblank) {
+  fifoAt = at; fifoCost = cost; hblankAt = hblank;
+  take(OP_DMA_AT, at, cost, hblank, 0);
+}
+void gba_sound_hblank_dma(int cycles) { take(OP_HBLANK_DMA, cycles, 0, 0, 0); }
+void gba_sound_late(int cycles) { take(OP_LATE, cycles, 0, 0, 0); }
 void gba_sound_fade_in(int player, int speed) { take(OP_FADE_IN, player, speed, 0, 0); }
 void gba_sound_fade_out(int player, int speed) { take(OP_FADE_OUT, player, speed, 0, 0); }
 void gba_sound_tempo(int tempo) { take(OP_TEMPO, 0, tempo, 0, 0); }
@@ -250,7 +289,7 @@ static void frame(void) {
 
 // the cycle counts start again from 0 with each frame, so they stay small
 static void tick(void) {
-  if (cycle >= nextFrame) { cycle -= nextFrame; nextFrame = FRAME_CYCLES; frame(); }
+  if (cycle >= nextFrame) { cycle -= nextFrame; nextFrame = FRAME_CYCLES; apu.late = cycle; frame(); }
   int n = engine.samples, i = cycle / (FRAME_CYCLES / n);
   apu_run(&apu, APU_TICK);
   int out[2];

@@ -508,15 +508,25 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // the clip: the recording's, or five seconds from a second before what this step changed, ending before the first
     // frame that differs, or else the last five seconds (lib/clips.mjs)
     const changed = quick ? null : changeOf(differing, soundDiffers, stretchesOf(pictureDifferent));
-    const clip = clipAt ?? clipWindow({ frames, changed, firstDifference });
-    if (!quick && !clipAt) {
+    let clip = clipAt ?? clipWindow({ frames, changed, firstDifference });
+    const keepClip = async () => {
+      if (quick || clipAt) return;
       const wantedNow = [];
       for (let f = clip[0]; f <= clip[1]; f++) if (!keptFrames.has(f)) wantedNow.push(f);
       for (const f of await page.evaluate(`__proof.keep(${JSON.stringify(wantedNow)})`)) keptFrames.add(f);
-    }
+    };
+    await keepClip();
     // all of the clip that's kept: a console with a large screen keeps fewer pictures
     const clipFrames = [];
-    if (!quick) for (let f = clip[0]; f <= clip[1]; f++) if (keptFrames.has(f)) clipFrames.push(f);
+    const clipKept = () => { clipFrames.length = 0; if (!quick) for (let f = clip[0]; f <= clip[1]; f++) if (keptFrames.has(f)) clipFrames.push(f); };
+    clipKept();
+    // a change found only once the recording has played, such as a frame that matches now, can be long gone from the
+    // pictures the page keeps: the clip then goes where it would with no change
+    if (!quick && !clipAt && !clipFrames.length && changed) {
+      clip = clipWindow({ frames, changed: null, firstDifference });
+      await keepClip();
+      clipKept();
+    }
 
     // the original's pictures of those frames, then the stills and the clip, which mark the frames whose sound differs
     say('making the pictures and the clip…');

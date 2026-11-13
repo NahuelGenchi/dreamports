@@ -152,7 +152,8 @@ async function start() {
     for (let i = 0; i < n && !chosen; i++) {
       for (const p of shown) {
         p.input.poll();
-        p.game.step(p.input.gbaKeys());
+        // and what the frame's V-blank finds held, which a soft reset reads
+        p.game.step(p.input.gbaKeys(), p.input.nextGbaKeys());
       }
       if (vsCount) {
         carry();

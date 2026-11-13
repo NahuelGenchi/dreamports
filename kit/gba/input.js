@@ -122,6 +122,13 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
     for (const b of buttons) if (input[b] && layout.gba?.[b]) bits |= KEY[layout.gba[b]];
     return bits;
   };
+  /** nextHeld's buttons as gbaKeys gives them: what the V-blank at the end of this step finds held, for a game in C
+   *  (c/gba.h gba_vblank_keys). */
+  input.nextGbaKeys = () => {
+    let bits = 0;
+    for (const b of input.nextHeld()) if (layout.gba?.[b]) bits |= KEY[layout.gba[b]];
+    return bits;
+  };
 
   // the game's buttons a controller holds, `on(i)` telling whether its button i (standard layout) is down
   function padHolds(isDown, now = {}) {

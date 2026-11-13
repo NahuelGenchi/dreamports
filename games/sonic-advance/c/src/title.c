@@ -104,10 +104,14 @@ void create_title_screen(int playMusic) {
 }
 
 // Task_LoadGameLogo: the background and the sprites shown, the logo's picture loaded, and the screen less white each
-// frame. The first screen after a soft reset, which isn't in C yet, takes a frame longer.
+// frame. The first screen after a soft reset has all of the title's graphics to copy at once, which takes longer than
+// the V-blank: its first frame shows the layers on with the graphics in but not the maps, and the tasks wait a frame.
 static void fade_in(Task *t) {
   e.dispCnt |= 0x100 | 0x1000;
-  if (title.qBlend == BLEND_END) draw_background(&title.bg2);
+  if (title.qBlend == BLEND_END) {
+    draw_background(&title.bg2);
+    if (ctx.afterReset) engine_lag(1, 1);
+  }
   title.qBlend = s16(title.qBlend - BLEND_STEP);
   e.bldY = (uint16_t)(title.qBlend >> 8);
   if (title.qBlend <= 0) {

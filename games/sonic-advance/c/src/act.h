@@ -47,6 +47,7 @@ typedef struct {
   int bgX, bgY;
   int wrapped;   // how far the act's loop point has moved the camera, which the background leaves out (unk20)
   int wrappedThisFrame;   // the loop point's shift on this frame, which the layer maps are drawn without (the camera's task runs before it)
+  int held, layerX, layerY;   // a special spring held it this frame, after its task had drawn the layers at (layerX, layerY)
 } Camera;
 
 typedef struct {
@@ -78,6 +79,7 @@ typedef struct {
   int restarted;                   // made again after a life lost (HandleLifeLost), at the last checkpoint passed
   int playerGone;                  // the last life lost: the player's task has ended, and the game over runs
   int fromStartPoint;              // opened by the recording's start point, past its card: only the first act it starts
+  int byCourseSelect;              // made inside the course select's task (0x2000): that frame runs only the tasks after it
   int loadFrames;                  // the frames left that the next act spends loading after its first (act_task)
   int bossFlash;                   // a hit boss drawn into the OBJ window: BOSS_FLASH_WHITE or BOSS_FLASH_WINDOW
   int blendOff;                    // a boss's task cleared the blending this frame
@@ -127,6 +129,7 @@ void act_life_lost(void);
 void gameover_start(void);
 int gameover_step(void);
 void gameover_display(void);
+void gameover_stop(void);
 // what the objects hand to the act: the goal post, the checkpoints and the special springs (goal.c, checkpoints.c,
 // specialspring.c)
 int act_goal_passed(void);
@@ -175,6 +178,12 @@ void act_frame_now(void);
 void rings_skip_first_update(void);
 void act_start(int level, int cardSkip, int preFrames);
 void act_queue(int level, int cardSkip, int preFrames);
+void act_soft_reset(void);
+int act_special_pending(void);
+void act_to_special_stage(void);
+int act_special_start_point(int level);
+void act_come_back(void);
+int act_level(void);
 void act_song_playing(void);
 // what a zone's own code asks of the act (levels.h): one step of a palette animation, the tiles of frame `frame` of
 // the stage's animation copied now, and the frames of the act's music before the first one shown rendered there
@@ -183,6 +192,7 @@ void act_copy_tiles(int frame);
 void act_render_music_at_first_frame(void);
 void act_task(Task *t);
 uint32_t front_frame(void);
+int front_special_start_point(void);
 
 // Secret Base act 1's spotlights (engine/spotlights.js), in actspot.c
 void spotlights_start(void);

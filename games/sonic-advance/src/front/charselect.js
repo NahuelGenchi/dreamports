@@ -16,6 +16,7 @@
 import { createSprite, updateSprite, displaySprite, displaySpriteBackground } from '../gba/sprite.js';
 import { KEY, TASK } from '../gba/engine.js';
 import { SONG } from '../sound/songs.js';
+import { LOAD } from '../sound/timing.js';
 import { SINE } from '../engine/trig.js';
 import { createUiTask, uiGfxStackInit, uiGraphics, loadUiGfx, drawUiText, drawUiGlyphs, glyphs, createFade, fadeStep } from './ui.js';
 import { createMainMenu } from './title.js';
@@ -69,6 +70,7 @@ const line = (unkA, unkC, unkE, unk10, unk12, unk8) => ({ unkA, unkC, unkE, unk1
  */
 export function createCharacterSelect(ctx, selected = 0) {
   const e = ctx.engine, gfx = id => uiGraphics(e.rom, ctx.offsets.uiGraphics, id);
+  e.soundLate(LOAD.CHARACTER_SELECT, -1, ctx.character);
   ctx.missing.fill(0);
   const shared = { engine: e, offsets: ctx.offsets };
   createUiTask(e);
@@ -186,6 +188,7 @@ function choose(t) {
   const ready = screen.frames >>> 0 > READY;
   const startTurn = way => {
     if (screen.turning) return;
+    e.soundLate(way === 1 ? LOAD.TURN_RIGHT : LOAD.TURN_LEFT, screen.shown & 3, ctx.character);
     screen.turning = way;
     screen.turnFrames = 0x10;
     e.playSong(SONG.SHIFT);
@@ -391,6 +394,7 @@ function leave(t) {
     }
     // Loading the act takes the GBA (mGBA) past the next V-blank, so it starts a frame later, and the windows and the
     // blend the original turns off here never reach the screen, which stays black.
+    e.soundLate(LOAD.ACT_NEW_GAME, 0, ctx.character);
     t.main = () => { e.destroyTask(t); ctx.play(); };
   } else if (screen.frames > PICK_WAIT) fadeStep(e, screen.fade);
 }

@@ -27,6 +27,8 @@ static struct {
 } over;
 
 int gameover_active(void) { return over.active; }
+/** A soft reset: the game over goes with the act. */
+void gameover_stop(void) { over.active = 0; }
 
 // sub_8055C50: the countdown's digits, its OK and its black band into their heap blocks, with their colours over the
 // HUD font's

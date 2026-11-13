@@ -100,6 +100,7 @@ static void character(Sprite *s, uint32_t dest, int x, int variant, uint16_t oam
 
 /** CreateCharacterSelectionScreen: `selected` is the character the row starts on. */
 void create_character_select(int selected) {
+  sound_late(LOAD_CHARACTER_SELECT, -1);
   vs_reset_missing();
   screen.taken = 0;
   create_ui_task();
@@ -218,6 +219,7 @@ static void watch_code(uint16_t pressed) {
 
 static void start_turn(int way) {
   if (screen.turning) return;
+  sound_late(way == 1 ? LOAD_TURN_RIGHT : LOAD_TURN_LEFT, screen.shown & 3);
   screen.turning = way;
   screen.turnFrames = 0x10;
   play_song(SONG_SHIFT);
@@ -465,6 +467,7 @@ static void leave(Task *t) {
     // blend the original turns off here never reach the screen, which stays black.
     music_call(MUSIC_STAGE, SONG_NEO_GREEN_HILL_1);   // StageInit_ZoneNActM's music, a frame ahead of the act's first picture
     act_song_playing();
+    sound_late(LOAD_ACT_NEW_GAME, LEVEL_NEO_GREEN_HILL_1);
     t->main = to_act;
   } else if (screen.frames > PICK_WAIT) fade_step(&screen.fade);
 }

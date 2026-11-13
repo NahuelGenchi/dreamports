@@ -44,7 +44,7 @@ export function createSynth(rom, layout, rate, manager = runCalls) {
   // the cycle counts start again from 0 with each frame, so they stay small whole numbers: a growing one would
   // become a new object at every step on the audio thread
   function tick() {
-    if (cycle >= nextFrame) { cycle -= nextFrame; frameStart = 0; nextFrame = FRAME_CYCLES; frame(); }
+    if (cycle >= nextFrame) { cycle -= nextFrame; frameStart = 0; nextFrame = FRAME_CYCLES; apu.late = cycle; frame(); }
     const i = Math.floor((cycle - frameStart) / SAMPLE_CYCLES);
     apu.run(TICK);
     const out = apu.mix(playing[i], playing[n + i]);
@@ -70,6 +70,10 @@ export function createSynth(rom, layout, rate, manager = runCalls) {
     /** Queues an engine call (songStart, pitchControl, …), or one for the game's music manager, for the start
      *  of the next frame. */
     call(name, ...args) { queue.push([name, args]); },
+    /** `frames` frames of the engine at once, with nothing rendered, for a start point that leaves out frames the
+     *  original's sound engine ran: the calls queued so far go in the first, and the sound chip's time doesn't move
+     *  (the C kit's dp_sound_skip_frames) */
+    skipFrames(frames) { for (let i = 0; i < frames; i++) frame(); },
     /** Fills `left` and `right` with the next samples, in [-1, 1] times `gain`. */
     render(left, right, gain = 1, dcBlock = true) {
       // the running fractions in local variables while the block is made: kept outside the function, each new

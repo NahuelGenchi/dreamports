@@ -78,7 +78,7 @@ export function powerOn(ctx, skipIntro = false) {
  * Returns { stop, step, draw, setView }: setView(w, h) draws a widescreen view of w × h from then on (the
  * original 240 × 160 is the default); step() and draw() are for checking, a frame at a time.
  */
-export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true, select = true, onGameStart, prepareDemo = () => {}, back = null, softReset, afterReset = false, link = null, id = 0, count = 1, driven = false, vs = null, resume = null } = {}) {
+export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, { character = 0, levels = () => ({ current: 0, started: 0 }), courseSelect = true, select = true, onGameStart, prepareDemo = () => {}, back = null, softReset, afterReset = false, link = null, id = 0, count = 1, driven = false, vs = null, resume = null, only = 0 } = {}) {
   const video = createVideo();
   const engine = createEngine(video, rom, sound);
   video.write(REG.DISPCNT, 0x80);   // forced blank, until the game starts
@@ -115,7 +115,11 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
     // with a known place for its picture have
     onGameStart,
     toCourseSelect: () => courseSelect && (ctx.gameMode === 1 || save.unlockedLevel(ctx.character) !== 0) && !!offsets.courseSelectBackground,
-    startGame: () => { if (ctx.toCourseSelect()) createCourseSelect(ctx); else ctx.play(); },
+    startGame: () => {
+      // the frames the original's character select ran, which a start point names as `only`: its sound engine ran them
+      if (only > 0) sound.skipFrames?.(only);
+      if (ctx.toCourseSelect()) createCourseSelect(ctx); else ctx.play();
+    },
   };
 
   if (resume) {
@@ -155,10 +159,15 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
   // demo's, or else black
   if (back || resume) { out.fillStyle = back?.white || resume ? '#FFF' : '#000'; out.fillRect(0, 0, canvas.width, canvas.height); }
 
+  // from power-on the sound engine waits for GameInit's m4aSoundInit, as the console starts up
+  if (startingUp > 0 && !afterReset) sound.vsyncOff?.();
   function step() {
     input.poll?.();
     if (startingUp > 0) {
-      if (--startingUp === 0) powerOn(ctx, afterReset);
+      if (--startingUp === 0) {
+        if (!afterReset) sound.vsyncOn?.();
+        powerOn(ctx, afterReset);
+      }
       return;
     }
     engine.keys = keysOf(input);
@@ -187,7 +196,7 @@ export function createFrontEnd(canvas, rom, offsets, input, sound, save, play, {
       if (demo || chosen !== undefined) { out.fillStyle = '#000'; out.fillRect(0, 0, canvas.width, canvas.height); }
       if (chosen === undefined && !select && !demo) stop();
       else { cancelAnimationFrame(frame); input.release(); }
-      play(chosen, engine.frameCount + 1, { character: ctx.character, partner: ctx.partner, demo, vram: video.vram, timeAttack: ctx.gameMode === 1 });
+      play(chosen, engine.frameCount + 1, { character: ctx.character, partner: ctx.partner, demo, vram: video.vram, timeAttack: ctx.gameMode === 1, byCourseSelect: !!ctx.byCourseSelect, musicStarted: !!ctx.musicStarted });
       return;
     }
     frame = requestAnimationFrame(loop);

@@ -16,7 +16,7 @@ import { openSave, WRITE_FRAMES } from './save.js';
 // since it was last written, and one more.
 const SAVE_FRAMES = 15;
 
-const SILENT = { play() {}, stopAll() {} };
+const SILENT = { play() {}, stopAll() {}, vsyncOn() {} };
 
 /**
  * `from`: 'congratulations' after X Zone's results, or 'credits' (the true ending's onCredits). `emeralds`:
@@ -45,9 +45,13 @@ export function createNormalEnding(canvas, assets, input, sound = SILENT, { from
   const congratulations = () => {
     state.scene = createCongratulations(anims, sound, { random, onCredits: credits });
   };
+  // once the write is done the sound engine X Zone's results turned off goes on again (m4aSoundVSyncOn) and the
+  // congratulations are made, their song with them; their main task runs from the frame after
+  const begin = () => { sound.vsyncOn?.(); congratulations(); };
   if (from === 'congratulations') {
     sound.stopAll();
     state.saving = save.write() ? SAVE_FRAMES : SAVE_FRAMES - WRITE_FRAMES;
+    if (state.saving === 1) begin();
   } else credits();
 
   function step() {
@@ -55,9 +59,7 @@ export function createNormalEnding(canvas, assets, input, sound = SILENT, { from
     // the flash write that keeps the CPU busy for a few frames has the interrupts off: no V-blank sees the buttons
     const stalled = state.saving > 1;
     if (state.ended) return;
-    if (state.saving > 0) {
-      if (--state.saving === 0) congratulations();
-    }
+    if (state.saving > 0 && --state.saving === 1) begin();
     // the congratulations' main task runs on the frame the save's wait ends
     if (state.saving === 0) state.scene.step();
     if (!stalled && onSoftReset && holdsSoftReset(input)) { state.reset = true; onSoftReset(); }

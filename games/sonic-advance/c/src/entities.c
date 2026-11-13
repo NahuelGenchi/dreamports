@@ -68,6 +68,22 @@ static void read_list(uint32_t table, int level, int list, int size) {
   }
 }
 
+int entities_find(int level, int kind, int *x, int *y) {
+  Grid g;
+  if (!grid_load(TABLE_INTERACTABLES, level, &g)) return 0;
+  for (int r = 0; r < g.regionsX * g.regionsY; r++) {
+    int at = grid_records(&g, r);
+    if (at < 0) continue;
+    for (; g.data[at] != 0xFF; at += 7) {
+      if (g.data[at + 2] != kind) continue;
+      *x = g.data[at] * 8 + (r % g.regionsX) * REGION_SIZE;
+      *y = g.data[at + 1] * 8 + (r / g.regionsX) * REGION_SIZE;
+      return 1;
+    }
+  }
+  return 0;
+}
+
 void entities_load(int level) {
   Grid g;
   slotCount = 0;
