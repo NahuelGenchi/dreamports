@@ -404,6 +404,8 @@ static void draw_frame(void) {
   if (row->drawBackground) row->drawBackground(camX, camY);
 
   player_draw(shownSet ? &shown : &act.player, spriteX, spriteY);
+  // Amy's hearts, whose task (0x3001) runs just after hers
+  act_amy_hearts_draw();
   // and the CPU partner as his task (0x3001) left him, just after Sonic
   if (act.hasPartner) player_draw(shownSet ? &partnerShown : &act.partner, spriteX, spriteY);
   shownSet = 0;
@@ -1093,6 +1095,8 @@ void act_start(int level, int cardSkip, int preFrames) {
   if (ctx.character == CHARACTER_TAILS) player_become_tails(&act.player);
   // Knuckles needs no sprite but his body
   if (ctx.character == CHARACTER_KNUCKLES) act.player.character = CHARACTER_KNUCKLES;
+  // and neither does Amy
+  if (ctx.character == CHARACTER_AMY) act.player.character = CHARACTER_AMY;
   if (ctx.partner && ctx.character == 0 && level != LEVEL_THE_MOON) partner_start();
   objects_start(level, act.stage.paletteCount > 0);
   if (row->runsFromFirstFrame) start_palette_animations();

@@ -1,0 +1,22 @@
+---
+// One version's progress on a game's page in the Make row: its language's name over its two numbers, under their plain
+// names, and one line on where it stands (#1241). The check of what the pages show reads the block up to its end
+// (src/lib/cards.mjs), so nothing inside it is a <div>.
+import Meter from './Meter.astro';
+import Parts from './Parts.astro';
+import { partsSummary, type ProgressView } from '../lib/dreamports';
+import { LANGUAGES } from '../lib/languages.mjs';
+
+interface Props {
+  version: ProgressView;
+}
+
+const { version } = Astro.props;
+---
+
+<div class="mk-lang" data-language={version.language}>
+  <h4>{LANGUAGES[version.language].name}</h4>
+  <Meter measure={version.ported} />
+  <Parts measure={version.gameplay} parts={version.parts} evidence={version.evidence} />
+  <p class="mk-next">{partsSummary(version.parts)}</p>
+</div>

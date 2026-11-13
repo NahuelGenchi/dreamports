@@ -43,7 +43,6 @@ typedef struct {
   int x4, dx;
 } Effect;
 
-static int fdiv(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 static int iof(double v) { return (int)__builtin_floor(v); }
 static int cos1024(int a) { return SINE[(a + 256) & 1023]; }
 static int sin1024(int a) { return SINE[a & 1023]; }
@@ -73,7 +72,7 @@ static int coconut_run(ActTask *t) {
   if (!f->resting) {
     f->vy = s16(f->vy + 40);
     f->acc = s16(f->acc + f->vx);
-    f->x = f->x0 + fdiv(f->acc, 40);
+    f->x = f->x0 + f->acc / 40;   // the BIOS divide, rounding toward 0 as C's does
     f->y = s16(f->y + (f->vy >> 8));
     if (f->vy > 0) {
       int d = terrain_tile_floor(f->x, f->y, ENEMY_LAYER, 8);

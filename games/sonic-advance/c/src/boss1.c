@@ -248,7 +248,7 @@ static int hit_test(EggTank *b, int x, int y) {
   if (!b0 || !b1) return HIT_NONE;
   if (attack) {
     if (body && collide_overlap(x, y, b1, px, py, body)) { world_damage(p); return HIT_PLAYER; }
-    if (collide_overlap(x, y, b0, px, py, attack)) { p->xsp = -p->xsp; p->ysp = -p->ysp; return HIT_ENEMY; }
+    if (collide_overlap(x, y, b0, px, py, attack)) { player_bounce_off_boss(p); return HIT_ENEMY; }
   }
   if (body && collide_overlap(x, y, b0, px, py, body)) { world_damage(p); return HIT_PLAYER; }
   return HIT_NONE;

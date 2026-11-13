@@ -57,10 +57,13 @@ static void side(MovingSpring *ms, Player *p) {
 static int spring_collide(MovingSpring *ms, Player *p) {
   if (p->dead) return 0;
   int thrown = 0;
-  if (p->onObject == &ms->o) {
+  // Amy's hammer launches her half as fast again, unless she stands on it
+  int hammered = player_hammer_hits(p, ms->o.x, ms->y, object_box(&ms->o.sprite, 0));
+  if (p->onObject == &ms->o || hammered) {
+    int standing = p->onObject == &ms->o;
     p->air = 1; p->pushing = 0; player_end_attack(p);
     p->state = PS_SPRING; p->animRestart = 1;
-    p->ysp = -THROW_SPEED;
+    p->ysp = hammered && !standing ? player_hammer_speed(-THROW_SPEED) : -THROW_SPEED;
     play_song(SE_SPRING);
     thrown = 1;
   }

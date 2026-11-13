@@ -1,16 +1,16 @@
 // Whether a Dreamport's cards show the two numbers its proof/ folder makes, and each of its versions in other languages
 // theirs (src/lib/languages.mjs) (docs/LIVE-SITE.md): its card in the Dreamports row, at /dreamports/<id>/, which shows
 // a version at a time, the one Play opens, each in a block of its own under the numbers' plain names; its card in the
-// Make row, at /make/<game>/, which shows them all, named by language, as "Code ported in C"; and its place in that
-// row, at /make/. The build reads its own pages with this (src/integrations/live-site.mjs), and
+// Make row, at /make/<game>/, which shows them all, each in a block of its own under its language's name, the one Play
+// opens first and the others folded under it (#1241); and its place in that row, at /make/. The build reads its own pages with this (src/integrations/live-site.mjs), and
 // .github/live-site/watch.mjs reads dreamports.net's, so what's checked is what a visitor gets.
 import { hasCode, isBeingMade, numbersText, pageOf, shortPercent } from './entries.mjs';
 import { LANGUAGES, playOrder } from './languages.mjs';
 
 const CODE = 'Code ported', GAMEPLAY = 'Gameplay proven';
 const METER = /<span class="meter-head">\s*<span>([^<]+)<\/span>\s*<span class="meter-num">([^<]+)<\/span>\s*<\/span>\s*<span class="meter-bar"[^>]*>\s*<i style="width: ?([\d.]+)%/g;
-// a version's block on a game's page, which holds no <div> of its own (src/components/InspectCard.astro)
-const BLOCK = /<div\b([^>]*\bclass="plays"[^>]*)>([^]*?)<\/div>/g;
+// a version's block on a card, which holds no <div> of its own (src/components/InspectCard.astro, LanguageProgress.astro)
+const BLOCK = /<div\b([^>]*\bdata-language="[^"]*"[^>]*)>([^]*?)<\/div>/g;
 
 // a card as its page has it, or nothing when there's no such card
 const cardIn = (html, card) => new RegExp(`<dialog\\b[^>]*\\bid="${card}"[^]*?</dialog>`).exec(html)?.[0];
@@ -27,31 +27,47 @@ function meterProblem(meters, label, percent) {
   return null;
 }
 
-// what's wrong with a card that shows every version's numbers at once, each named by its language
-function namedProblems(card, versions) {
-  const meters = metersIn(card);
+// a card's blocks, one per version, in the order the page has them, each with its language, whether it's hidden and its meters
+const blocksIn = card => [...card.matchAll(BLOCK)].map(([, attributes, html]) => ({
+  language: /\bdata-language="([^"]*)"/.exec(attributes)?.[1],
+  hidden: /\shidden\b/.test(attributes),
+  meters: metersIn(html),
+}));
+
+// what's wrong with a version's numbers in its own block, under their plain names, and with `also`, what else is wrong
+// with the block
+function blockProblems(blocks, versions, also = () => []) {
   return versions.flatMap(({ language, proof }) => {
-    const named = language === 'js' ? '' : ` in ${LANGUAGES[language].name}`;
-    return [meterProblem(meters, CODE + named, proof?.ported?.percent), meterProblem(meters, GAMEPLAY + named, proof?.gameplay?.percent)];
+    const block = blocks.find(block => block.language === language), name = LANGUAGES[language].name;
+    if (!block) return [`has no numbers for its version in ${name}`];
+    const wrong = [meterProblem(block.meters, CODE, proof?.ported?.percent), meterProblem(block.meters, GAMEPLAY, proof?.gameplay?.percent)]
+      .filter(Boolean).map(what => (versions.length > 1 ? `${what}, for its version in ${name}` : what));
+    return [...wrong, ...also(block, language)];
   });
+}
+
+// what's wrong with a card in the Make row, which shows every version's numbers, the one Play opens first and the
+// others folded under it
+function makeProblems(card, versions) {
+  const blocks = blocksIn(card);
+  const first = playOrder(versions.map(version => version.language))[0];
+  const wrong = blockProblems(blocks, versions);
+  const shown = blocks[0]?.language;
+  if (shown && shown !== first && versions.some(version => version.language === shown)) {
+    wrong.push(`shows the numbers of its version in ${LANGUAGES[shown].name} first, and Play opens the one in ${LANGUAGES[first].name}`);
+  }
+  return wrong;
 }
 
 // what's wrong with a card that shows a version at a time: each version's numbers in a block of its own, and only the
 // block of the version Play opens first not hidden
 function apartProblems(card, versions) {
-  const blocks = new Map([...card.matchAll(BLOCK)].map(([, attributes, html]) => [
-    /\bdata-language="([^"]*)"/.exec(attributes)?.[1],
-    { hidden: /\shidden\b/.test(attributes), meters: metersIn(html) },
-  ]));
   const first = playOrder(versions.map(version => version.language))[0];
-  return versions.flatMap(({ language, proof }) => {
-    const block = blocks.get(language), name = LANGUAGES[language].name;
-    if (!block) return [`has no numbers for its version in ${name}`];
-    const wrong = [meterProblem(block.meters, CODE, proof?.ported?.percent), meterProblem(block.meters, GAMEPLAY, proof?.gameplay?.percent)]
-      .filter(Boolean).map(what => (versions.length > 1 ? `${what}, for its version in ${name}` : what));
-    if (block.hidden && language === first) wrong.push(`hides the numbers of its version in ${name}, the one Play opens`);
-    if (!block.hidden && language !== first) wrong.push(`shows the numbers of its version in ${name} at first, and Play opens the one in ${LANGUAGES[first].name}`);
-    return wrong;
+  return blockProblems(blocksIn(card), versions, (block, language) => {
+    const name = LANGUAGES[language].name;
+    if (block.hidden && language === first) return [`hides the numbers of its version in ${name}, the one Play opens`];
+    if (!block.hidden && language !== first) return [`shows the numbers of its version in ${name} at first, and Play opens the one in ${LANGUAGES[first].name}`];
+    return [];
   });
 }
 
@@ -74,7 +90,7 @@ export async function problemsWith(dreamports, read) {
     const all = [{ language, proof }, ...versions];
     const cards = [
       ...(hasCode(proof) ? [{ path: `/dreamports/${id}/`, card: `inspect-${id}`, where: 'in the Dreamports row', problemsOf: apartProblems }] : []),
-      ...(making ? [{ path: `/make/${game}/`, card: `make-${id}`, where: 'in the Make row', problemsOf: namedProblems }] : []),
+      ...(making ? [{ path: `/make/${game}/`, card: `make-${id}`, where: 'in the Make row', problemsOf: makeProblems }] : []),
     ];
     for (const { path, card, where, problemsOf } of cards) {
       const html = await page(path);

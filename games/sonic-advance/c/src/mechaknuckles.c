@@ -504,7 +504,7 @@ static int boss_run(ActTask *t) {
   if (!p->dead && b1 && body && collide_overlap(bx, by, b1, px, py, body)) { world_damage(p); hurt = 1; }
   if (!hurt && b->blink <= 0) {
     if (b0 && attack && !p->dead && collide_overlap(bx, by, b0, px, py, attack)) {
-      p->xsp = -p->xsp; p->ysp = -p->ysp;
+      player_bounce_off_boss(p);
       if ((b->state == IDLE_2 || b->state == COVER) && !p->air) {
         if (b->state != COVER) {
           going = 0; b->next = COVER;

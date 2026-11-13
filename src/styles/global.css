@@ -3846,7 +3846,95 @@ dialog.card[open] {
   line-height: 40px;
 }
 
-/* under its progress's two bars, where it stands */
+/* a language's progress in the Make row: its name over its two bars, and under them where it stands (#1241) */
+.mk-lang h4 {
+  margin: 14px 0 0;
+  color: var(--blue);
+  font: 400 15px/22px var(--font);
+}
+
+.mk-lang + .mk-lang {
+  margin-top: 18px;
+  padding-top: 4px;
+  border-top: 2px solid var(--line);
+}
+
+/* the other languages, folded under C's. With the page's script (data-glide) they open with a glide (#1243): the
+   space opens, then each line arrives in turn and the bars fill as their numbers count (launcher.ts). Closing is
+   quicker and plain, and with calm motion it all happens at once. */
+.mk-others {
+  margin-top: 6px;
+}
+
+.mk-others[data-glide] > .mk-more {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 320ms var(--glide);
+}
+
+.mk-others[data-glide].is-open > .mk-more {
+  grid-template-rows: 1fr;
+  transition-duration: 520ms;
+}
+
+.mk-more-in {
+  min-height: 0;
+}
+
+/* clipped only while it moves, so nothing inside, such as a focus ring, is cut once it's open */
+.mk-others[data-glide]:not(.is-settled) .mk-more-in {
+  overflow: hidden;
+}
+
+.mk-lang > * {
+  --row: 0;
+}
+
+.mk-lang > :nth-child(2) {
+  --row: 1;
+}
+
+.mk-lang > :nth-child(3) {
+  --row: 2;
+}
+
+.mk-lang > :nth-child(n + 4) {
+  --row: 3;
+}
+
+.mk-others[data-glide] .mk-lang > * {
+  opacity: 0;
+  translate: 0 8px;
+  transition:
+    opacity 200ms ease,
+    translate 200ms ease;
+}
+
+.mk-others[data-glide].is-open .mk-lang > * {
+  opacity: 1;
+  translate: 0 0;
+  transition:
+    opacity 380ms ease,
+    translate 520ms var(--glide);
+  transition-delay: calc(60ms + var(--row) * 70ms);
+}
+
+.mk-others[data-glide] .meter-bar i {
+  scale: 0 1;
+  transform-origin: left;
+  transition: scale 160ms ease;
+}
+
+.mk-others[data-glide].is-open .meter-bar i {
+  scale: 1 1;
+  transition: scale 760ms var(--glide);
+  transition-delay: calc(180ms + var(--row) * 70ms);
+}
+
+:root[data-motion='calm'] .mk-others[data-glide] :is(.mk-more, .mk-lang > *, .meter-bar i, summary svg) {
+  transition: none;
+}
+
 .mk-next {
   margin: 12px 0 0;
   color: var(--dim);
@@ -3975,7 +4063,8 @@ dialog.card[open] {
   font: 400 12.5px/20px var(--font);
 }
 
-.mk-earlier summary {
+.mk-earlier summary,
+.mk-others > summary {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -3988,11 +4077,13 @@ dialog.card[open] {
   list-style: none;
 }
 
-.mk-earlier summary::-webkit-details-marker {
+.mk-earlier summary::-webkit-details-marker,
+.mk-others > summary::-webkit-details-marker {
   display: none;
 }
 
-.mk-earlier summary svg {
+.mk-earlier summary svg,
+.mk-others > summary svg {
   flex: none;
   width: 10px;
   height: 10px;
@@ -4000,8 +4091,13 @@ dialog.card[open] {
   transition: rotate 0.2s ease;
 }
 
-.mk-earlier[open] summary svg {
+.mk-earlier[open] summary svg,
+.mk-others:is([open]:not([data-glide]), .is-open) > summary svg {
   rotate: 90deg;
+}
+
+.mk-others[data-glide] > summary svg {
+  transition: rotate 480ms var(--glide);
 }
 
 .mk-earlier ol {

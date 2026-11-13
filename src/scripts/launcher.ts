@@ -6,6 +6,7 @@
 
 import { showTitle } from '../lib/title';
 import { hrefOf } from './controls';
+import { goTo, stepTo } from '../../kit/gba/ui/steps.js';
 import { playHref, playLabel } from '../lib/languages.mjs';
 import type { ColourName, PoseName } from '../lib/mark';
 import { LOGO_KEYS, copyMark, fetchOpeningMark, logoKept, showLogo } from './mark';
@@ -726,11 +727,12 @@ function start(launcher: HTMLElement) {
 
   // ---------- Systems ----------
 
-  // a system's Dreamports take the row, a step on in the browser's history, so its back button leads to the systems again
+  // a system's Dreamports take the row, a step on in the browser's history where the site adds steps (steps.js), so its
+  // back button leads to the systems again
   function enterSystem(id: string) {
     if (switching || busy() || state.system === id) return;
     state.system = id;
-    history.pushState({ system: FILTERS[state.filter].key }, '', rowAddress());
+    stepTo({ system: FILTERS[state.filter].key }, rowAddress());
     sound.play('open');
     swapRow(1, () => buildRow(null));
   }
@@ -895,7 +897,7 @@ function start(launcher: HTMLElement) {
       // from the systems that's a step on, as picking the system is; from another system it takes that one's place
       const step = state.system === null;
       state.system = of;
-      if (step) history.pushState({ system: FILTERS[state.filter].key }, '', rowAddress());
+      if (step) stepTo({ system: FILTERS[state.filter].key }, rowAddress());
       else history.replaceState(history.state, '', rowAddress());
     }
     searchBox.hidden = true;
@@ -1061,20 +1063,20 @@ function start(launcher: HTMLElement) {
     const id = slot?.dataset.card;
     const card = id ? document.getElementById(id) : null;
     if (card instanceof HTMLDialogElement) openCard(card, { opener });
-    else if (slot?.dataset.href) window.location.assign(slot.dataset.href);
+    else if (slot?.dataset.href) goTo(slot.dataset.href);
     else nope();
   }
 
   // ---------- Cards ----------
 
-  // Each card has the address of the page it stands for. Opening one from the menu adds a step
-  // to the browser's history, so the back button closes it again.
+  // Each card has the address of the page it stands for. Opening one from the menu adds a step to the browser's
+  // history where the site adds steps (steps.js), so the back button closes it again.
   function addressOf(dlg: HTMLDialogElement) {
     if (dlg === aboutCard) return '/about/' + (state.aboutSec === 'dreamport' ? '' : '#' + state.aboutSec);
     return dlg.dataset.path ?? location.pathname;
   }
   function enterAddress(dlg: HTMLDialogElement, how: Address) {
-    if (how === 'push') history.pushState({ card: true, under: !!dlg.dataset.parent }, '', addressOf(dlg));
+    if (how === 'push') stepTo({ card: true, under: !!dlg.dataset.parent }, addressOf(dlg));
     else if (how === 'replace') history.replaceState(history.state, '', addressOf(dlg));
     if (dlg.dataset.title) document.title = dlg.dataset.title;
   }
@@ -1837,6 +1839,76 @@ function start(launcher: HTMLElement) {
     });
   }
 
+  // The other languages on a Dreamport's page in the Make row open with a glide (#1243): the space opens, then each line
+  // arrives in turn and the bars fill, each number counting with its bar (global.css). Closing is quicker and plain, a
+  // press halfway turns it back from where it is, and with calm motion it opens and closes at once. Without this script
+  // it's a plain fold.
+  for (const fold of $$<HTMLDetailsElement>('.mk-others', launcher)) {
+    const summary = $(':scope > summary', fold);
+    const room = $(':scope > .mk-more', fold);
+    fold.dataset.glide = '';
+    // each number is wherever its bar is, and its own words again once the bar has arrived
+    const count = () => {
+      const meters = $$('.meter', room).flatMap((meter) => {
+        const number = $('.meter-num', meter);
+        const says = number.textContent ?? '';
+        return says.endsWith('%') ? [{ number, says, bar: $('.meter-bar i', meter), track: $('.meter-bar', meter) }] : [];
+      });
+      let frame = 0;
+      const tick = () => {
+        let moving = false;
+        for (const { number, says, bar, track } of meters) {
+          if (bar.getAnimations().length) {
+            moving = true;
+            number.textContent = `${Math.round((bar.getBoundingClientRect().width / track.getBoundingClientRect().width) * 100)}%`;
+          } else number.textContent = says;
+        }
+        if (moving) frame = requestAnimationFrame(tick);
+      };
+      frame = requestAnimationFrame(tick);
+      return () => {
+        cancelAnimationFrame(frame);
+        for (const { number, says } of meters) number.textContent = says;
+      };
+    };
+    let stop = () => {};
+    const shut = () => {
+      if (!fold.classList.contains('is-open')) fold.open = false;
+    };
+    room.addEventListener('transitionend', (e) => {
+      if (e.target !== room) return;
+      if (fold.classList.contains('is-open')) fold.classList.add('is-settled');
+      else shut();
+    });
+    summary.addEventListener('click', (e) => {
+      e.preventDefault();
+      const opening = !fold.classList.contains('is-open');
+      stop();
+      fold.classList.remove('is-settled');
+      if (calm()) {
+        fold.classList.toggle('is-open', opening);
+        fold.classList.toggle('is-settled', opening);
+        fold.open = opening;
+        return;
+      }
+      if (opening) {
+        fold.open = true;
+        // the closed height first, so that the glide starts from it
+        void room.offsetHeight;
+        fold.classList.add('is-open');
+        stop = count();
+      } else {
+        fold.classList.remove('is-open');
+        // nothing to glide back from when it hadn't started to open
+        if (!room.getBoundingClientRect().height) shut();
+      }
+    });
+    // opened some other way, such as by the browser's find in page
+    fold.addEventListener('toggle', () => {
+      if (fold.open && !fold.classList.contains('is-open')) fold.classList.add('is-open', 'is-settled');
+    });
+  }
+
   // the sentence on a Dreamport's page in the Make row copies when pressed, and its icon turns into a tick for a moment
   for (const button of $$<HTMLButtonElement>('.mk-copy', launcher)) {
     const text = button.dataset.copy!;
@@ -1911,7 +1983,7 @@ function start(launcher: HTMLElement) {
     const href = to.hostname === 'dreamports.net' ? location.origin + to.pathname : link;
     const slotEl = slots[sel()];
     if (!slotEl || slotEl.dataset.game !== dlg.dataset.game) {
-      window.location.assign(href);
+      goTo(href);
       return;
     }
     state.launching = true;
@@ -1974,7 +2046,7 @@ function start(launcher: HTMLElement) {
     blackout.hidden = false;
     boBack.hidden = true;
     leaving = true;
-    window.location.assign(href);
+    goTo(href);
     // if the game takes long to open, offer a way back
     clearTimeout(blackTimer);
     blackTimer = window.setTimeout(() => {

@@ -125,7 +125,7 @@ export interface ProgressView {
 export interface DreamportView extends ProgressView {
   game: Fact[];
   achievements: readonly AchievementView[];
-  // its versions in other languages, such as C, with numbers of their own, named in their labels
+  // its versions in other languages, such as C, with numbers of their own
   versions: ProgressView[];
   // the links under the numbers: where to help make it, and the lead's team preview
   progress: Fact[];
@@ -173,12 +173,11 @@ export const systemFor = ({ data }: Game): System => systemOf((proofFile(data.ga
 export const fullyPorted = ({ data }: Game): boolean =>
   languagesOf(data.game).some((language) => proofFor(data.game, language)?.ported?.percent === 100);
 
-// What a Dreamport's page in the Make row shows besides its two bars (#142): one line on where it stands, the sentence
+// What a Dreamport's page in the Make row shows besides its progress (#142): the sentence
 // that gets a newcomer's coding agent ready to help (#141), and its game's issue, where it's talked about; and from
 // GitHub (#143, src/lib/making.ts), how many pieces are free to take and its steps, the latest first. Who leads it,
 // what waits for review and the code map stay on GitHub.
 export interface MakeView {
-  summary: string;
   prompt: string;
   talk: string;
   // nothing when GitHub couldn't be read for this build; its place in the row says nothing while no piece is free
@@ -193,17 +192,9 @@ const dayOf = (iso: string) => {
 };
 
 export function makeView(data: Dreamport, github?: Making): MakeView {
-  const parts = mainProof(data.game)?.gameplay?.parts ?? [];
-  const proven = parts.filter((part) => part.proven).length;
-  const next = parts.find((part) => !part.proven);
-  const summary = [
-    parts.length ? `${proven} of ${parts.length} parts proven.` : 'No parts listed yet.',
-    next ? ` Up next: ${next.name}.` : '',
-  ].join('');
   const count = github?.free ?? 0;
   const pieces = `${count} ${count === 1 ? 'piece' : 'pieces'}`;
   return {
-    summary,
     prompt: `Set up ${CODE_URL} and help me make ${data.title}.`,
     talk: `${SOURCE_URL}/issues/${data.issue}`,
     free: github && {
@@ -220,25 +211,25 @@ export function makeView(data: Dreamport, github?: Making): MakeView {
 
 const CODE = 'Code ported', GAMEPLAY = 'Gameplay proven';
 
-/**
- * A version's two numbers under their plain names, with no language in them, as a game's page shows them: one version
- * at a time, the one Play opens.
- */
-export const unnamed = (view: ProgressView): ProgressView => ({
-  ...view,
-  ported: { ...view.ported, label: CODE },
-  gameplay: { ...view.gameplay, label: GAMEPLAY },
-});
+/** Where a version stands, under its two bars in the Make row, such as "12 of 40 parts proven. Up next: Title screen." */
+export function partsSummary(parts: PartView[]): string {
+  const proven = parts.filter((part) => part.proven).length;
+  const next = parts.find((part) => !part.proven);
+  return [
+    parts.length ? `${proven} of ${parts.length} parts proven.` : 'No parts listed yet.',
+    next ? ` Up next: ${next.name}.` : '',
+  ].join('');
+}
 
-// a game's two numbers, or with `language`, its version's, whose labels name the language, as in "Code ported in C"
+// a game's two numbers, or with `language`, its version's, under their plain names: wherever they show, they're under
+// their language's name or in its own block (#1241)
 function progressView(game: string, proof: Proof | null, language = 'js'): ProgressView {
   const { ported = null, gameplay = null } = proof ?? {};
-  const named = (label: string) => (language === 'js' ? label : `${label} in ${LANGUAGES[language as keyof typeof LANGUAGES].name}`);
   const version = versionName(game, language);
   return {
     language: language as keyof typeof LANGUAGES,
-    ported: { label: named(CODE), percent: ported?.percent ?? null, text: shortPercent(ported?.percent) },
-    gameplay: { label: named(GAMEPLAY), percent: gameplay?.percent ?? null, text: shortPercent(gameplay?.percent) },
+    ported: { label: CODE, percent: ported?.percent ?? null, text: shortPercent(ported?.percent) },
+    gameplay: { label: GAMEPLAY, percent: gameplay?.percent ?? null, text: shortPercent(gameplay?.percent) },
     parts: partsOf(game, gameplay),
     evidence: [
       ...(ported ? [{ value: 'The port map', href: `${SOURCE_URL}/blob/main/games/${version}/proof/port-map.json` }] : []),

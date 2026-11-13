@@ -1,3 +1,5 @@
+import { goTo } from '../../kit/gba/ui/steps.js';
+
 // The browser shows a link's address in a bubble while the pointer is over it, which has no place on a launcher's own
 // controls (#213). So once this runs, every way around the site keeps its address in data-href instead of href, and
 // goes on working as a link: pressed, with Enter, or in a new tab with a modifier or the middle button. A link that
@@ -27,7 +29,7 @@ addEventListener('click', (e) => {
   const a = controlOf(e);
   if (!a || e.defaultPrevented) return;
   if (e.ctrlKey || e.metaKey || e.shiftKey) window.open(a.dataset.href, '_blank');
-  else location.assign(a.dataset.href!);
+  else goTo(a.dataset.href!);
 });
 addEventListener('auxclick', (e) => {
   const a = controlOf(e);
