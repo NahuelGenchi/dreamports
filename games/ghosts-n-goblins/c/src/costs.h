@@ -141,7 +141,7 @@ COST(TITLE_LOGO_COUNTED, 5)       // $C68C
 COST(TITLE_SCORE_DIGITS, 148)     // sub_C744 with its call
 COST(TITLE_ROW_SET_UP, 39)        // a row's source, place and size, to sub_EECF
 COST(TITLE_TWO_PLAYERS, 6)        // $C6C3 or $C702: the second player's are drawn too,
-COST(TITLE_ONE_PLAYER, 5)         // or aren't
+COST(TITLE_ONE_PLAYER, 8)         // or aren't, with the jump past them or the one that yields
 COST(TITLE_NOT_PLAYED_YET, 6)     // $C775: no third line,
 COST(TITLE_PLAYED, 5)             // or one,
 COST(TITLE_THIRD_LINE, 36)        // $C779 to sub_EECF
@@ -168,6 +168,7 @@ COST(TITLE_TIME_AND_BLINK, 92)    // $C4D1 to $C44B
 COST(TITLE_START_STILL_HELD, 9)   // $C456 to the call that yields
 COST(TITLE_GAME_BEGINS, 119)      // $C456 to $C53B, and from there to the call that starts the game's task,
 COST(TITLE_GAME_PLAYED_BEFORE, 6) // with six more once a game has been played, when it looks at the chosen line
+COST(TITLE_GAME_GOES_ON, 101)     // or $C456 by $C553 to that call: the third line, with one player
 
 // ---- the sprites' task, $F34F and sub_04_8000 (sprites.c)
 COST(SPRITES_TASK_BEGINS, 2)      // $F34F to the store of the bank,
@@ -422,6 +423,9 @@ COST(ARTHUR_DIES, 47)             // or $E171 to the call that yields, without h
 COST(ARTHUR_DEATH_SOUND, 8)       // $E1AF to sub_ED51
 COST(ARTHUR_FALLEN, 26)           // $E1B7 to the call that sleeps: his bones
 COST(ARTHUR_GONE, 11)             // $E1E7 to the call that ends his task
+COST(ARTHUR_TIME_IS_OVER, 14)      // $E171 to sub_ED51 by $E1C2, with the stage's time over
+COST(ARTHUR_TIME_OVER_SHAPE, 20)   // $E1C7 to the call that yields
+COST(ARTHUR_TIME_OVER_FALLEN, 23)  // $E1D7 to the call that sleeps, with no jump to it
 COST(GROUND_LOOKED_AT, 74)        // sub_E3E3 and sub_EA2F, with their calls, less the block's
 COST(ARTHUR_ON_GROUND, 3)         // $DB01
 COST(ARTHUR_IN_AIR, 5)            // $DB01 to $E28E
@@ -968,6 +972,10 @@ COST(LIFE_OVER_BACK_FROM_THIRD, 44)    // or the third place, which starts again
 COST(LIFE_OVER_BACK_FROM_SIXTH, 36)    // or the sixth, from the fifth,
 COST(LIFE_OVER_BACK_FROM_SEVENTH, 39)  // or the seventh
 COST(LIFE_LOST, 20)               // $C8FF back to $C8FC, with a life left
+COST(LAST_LIFE_LOST, 18)          // or to $C90C, with none
+COST(GAME_OVER_SOUND, 8)          // $CBB0 to sub_ED51
+COST(GAME_OVER_SLEEPS, 13)        // $CBB5 to sub_C313, by a jump
+COST(GAME_OVER_TITLE_STARTS, 13)  // $C912 to sub_C2BC, with its call
 
 // ---- the rows' list, sub_EECF (screen.c)
 COST(ROWS_MARK_BEGINS, 2)         // sub_EECF, to the store that marks the list busy

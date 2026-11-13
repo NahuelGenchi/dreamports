@@ -40,12 +40,13 @@ enum { SONG_ACT_CLEAR = 33, SONG_BOSS_CLEAR = 34, SONG_FINAL_CLEAR = 35, SONG_RE
 #define LINE_PALETTE 12
 #define FONT_PALETTE 6
 
-// where each piece's tiles lie in the results' VRAM block, in tiles
-#define BAND_AT 0
-#define LINE_AT (BAND_AT + BAND_TILES)
-#define LETTERS_AT (LINE_AT + NAME_TILES + TEXT_TILES)
+// where each piece's tiles lie: the band at a place of its own in the sprites' tiles, which the next act's title card
+// draws from too (sub_80550F8), the line in one block from the heap, and the letters and the digits in another
+#define BAND_VRAM (OBJ_VRAM + 0x1000)
+#define LINE_BLOCK_TILES (NAME_TILES + TEXT_TILES)
+#define LETTERS_AT 0
 #define DIGITS_AT (LETTERS_AT + LETTER_TILES)
-#define BLOCK_TILES (DIGITS_AT + DIGIT_TILES)
+#define FONT_BLOCK_TILES (DIGITS_AT + DIGIT_TILES)
 
 // the texts, after the title card's tables: [offset in the card's table, length]
 #define TEXT_RING 0x8C
@@ -90,8 +91,7 @@ typedef struct {
 typedef struct {
   int active, level, wait, longEnd, frame, ring, time, countdown, skipFirst, fading, display;
   int fadeLevel, fadeSpeed, bldY;
-  int tile0;              // the block's first tile
-  uint32_t vram;
+  uint32_t vram, fontVram;   // the line's block, and the letters' and digits'
   Slot_ slot[SLOTS];
   int bandText[BAND_LENGTH], lineText[LINE_LENGTH], ringLabel[LABEL], timeLabel[LABEL];
   Piece p[PIECES];
@@ -144,27 +144,28 @@ static void load_graphics(int level, int character) {
   // the text tiles of the line by level: the first act's, the second act's (0x50 on), X Zone's and the Moon Zone's
   int textAt = level == LEVEL_THE_MOON ? 0xF0 : level == LEVEL_X_ZONE ? 0xA0 : level & 1 ? 0x50 : 0;
 
-  r.vram = vram_malloc(BLOCK_TILES);
-  r.tile0 = (int)((r.vram - OBJ_VRAM) >> 5);
-  r.slot[SLOT_BAND].tile = r.tile0 + BAND_AT;
-  r.slot[SLOT_LINE].tile = r.tile0 + LINE_AT;
-  r.slot[SLOT_LETTERS].tile = r.tile0 + LETTERS_AT;
-  r.slot[SLOT_DIGITS].tile = r.tile0 + DIGITS_AT;
+  r.vram = vram_malloc(LINE_BLOCK_TILES);
+  r.fontVram = vram_malloc(FONT_BLOCK_TILES);
+  int fontTile = (int)((r.fontVram - OBJ_VRAM) >> 5);
+  r.slot[SLOT_BAND].tile = (int)((BAND_VRAM - OBJ_VRAM) >> 5);
+  r.slot[SLOT_LINE].tile = (int)((r.vram - OBJ_VRAM) >> 5);
+  r.slot[SLOT_LETTERS].tile = fontTile + LETTERS_AT;
+  r.slot[SLOT_DIGITS].tile = fontTile + DIGITS_AT;
   r.slot[SLOT_BAND].pal = FONT_PALETTE; r.slot[SLOT_LETTERS].pal = FONT_PALETTE; r.slot[SLOT_DIGITS].pal = FONT_PALETTE;
   r.slot[SLOT_LINE].pal = LINE_PALETTE;
 
   copyCount = 0;
-  copy_in(barTiles, r.vram + BAND_AT * TILE, BAND_TILES * TILE);
-  copy_in(nameTiles, r.vram + LINE_AT * TILE, NAME_TILES * TILE);
-  copy_in(textTiles + (uint32_t)textAt * TILE, r.vram + (LINE_AT + NAME_TILES) * TILE, TEXT_TILES * TILE);
+  copy_in(barTiles, BAND_VRAM, BAND_TILES * TILE);
+  copy_in(nameTiles, r.vram, NAME_TILES * TILE);
+  copy_in(textTiles + (uint32_t)textAt * TILE, r.vram + NAME_TILES * TILE, TEXT_TILES * TILE);
   // the font's letters it uses, in the order sub_8056FE4 puts them: R S T U, M N O, B, E, G, I and the blank
   static const int LETTERS[][2] = { { 100, 8 }, { 90, 6 }, { 68, 2 }, { 74, 2 }, { 78, 2 }, { 82, 2 }, { 146, 2 } };
   int to = 0;
   for (int i = 0; i < 7; i++) {
-    copy_in(fontTiles + (uint32_t)LETTERS[i][0] * TILE, r.vram + (LETTERS_AT + to) * TILE, (uint32_t)LETTERS[i][1] * TILE);
+    copy_in(fontTiles + (uint32_t)LETTERS[i][0] * TILE, r.fontVram + (LETTERS_AT + to) * TILE, (uint32_t)LETTERS[i][1] * TILE);
     to += LETTERS[i][1];
   }
-  copy_in(fontTiles + DIGIT_FROM_TILE * TILE, r.vram + DIGITS_AT * TILE, DIGIT_TILES * TILE);
+  copy_in(fontTiles + DIGIT_FROM_TILE * TILE, r.fontVram + DIGITS_AT * TILE, DIGIT_TILES * TILE);
 
   // OBJ palette 6 is the font's, palette 12 the line's with the name's first six colours over them
   for (int i = 0; i < 16; i++) e.objPalette[FONT_PALETTE * 16 + i] = (uint16_t)rom_u16(fontPalette + (uint32_t)i * 2);
@@ -385,7 +386,7 @@ int results_run(void) {
   }
   // the frame the next act starts keeps the last frame's sprites: it draws nothing new
   r.display = r.fading || r.bldY;
-  if (next) { r.active = 0; r.display = 0; vram_free(r.vram); return 0; }
+  if (next) { r.active = 0; r.display = 0; vram_free(r.vram); vram_free(r.fontVram); return 0; }
   r.frame++;
   band_task(&r.p[PIECE_BAND], k);
   line_task(&r.p[PIECE_LINE], k);

@@ -64,6 +64,12 @@
       "differs": [],
       "functions": []
     },
+    "game-over": {
+      "frames": 5400,
+      "matched": 5400,
+      "differs": [],
+      "functions": []
+    },
     "game-start": {
       "frames": 2440,
       "matched": 2440,
@@ -121,6 +127,12 @@
     "stage-clear": {
       "frames": 7320,
       "matched": 7320,
+      "differs": [],
+      "functions": []
+    },
+    "time-runs-out": {
+      "frames": 14600,
+      "matched": 14600,
       "differs": [],
       "functions": []
     },
