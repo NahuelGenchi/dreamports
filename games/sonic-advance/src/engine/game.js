@@ -1221,6 +1221,12 @@ export function createGame(canvas, assets, buttons, sound = SILENT, options = {}
 
   function runFrame() {
     input.poll?.();
+    // a start point's `put` (main.js): the character's centre and the camera where the recording's sets put the
+    // original's, as this frame starts
+    if (options.put?.now()) {
+      player.x = options.put.x; player.y = options.put.y;
+      state.cam.x = options.put.cameraX; state.cam.y = options.put.cameraY;
+    }
     startPressed = input.start && !startHeld; startHeld = input.start;
     if (saving > 0) {
       if (--saving > 0) return;

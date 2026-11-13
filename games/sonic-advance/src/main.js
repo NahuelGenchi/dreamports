@@ -66,6 +66,13 @@ const firstLevel = Number(params.get('level') ?? 0) | 0;
 // that save `&sonic=N`, `&tails=N`, `&knuckles=N` and `&amy=N` are the others' progress, and `&emeralds=N` its Chaos
 // Emeralds, a bit each, for the recordings of the Moon Zone's rule (unlock.js)
 const unlocked = params.has('unlocked') ? Number(params.get('unlocked')) & 0xFFFF : null;
+// `?put=F&put-x=X&put-y=Y&put-camera-x=CX&put-camera-y=CY` puts the character's centre at (X, Y) and the camera at (CX,
+// CY) as the page's frame F starts, if an act is playing then: where a recording's `sets` put the original's, as Amy over
+// Neo Green Hill act 1's special spring in soft-reset-special-stage
+const put = params.has('put') ? {
+  at: Number(params.get('put')), x: Number(params.get('put-x') ?? 0), y: Number(params.get('put-y') ?? 0),
+  cameraX: Number(params.get('put-camera-x') ?? 0), cameraY: Number(params.get('put-camera-y') ?? 0),
+} : null;
 // a multiplayer stage (`?level=14`) is played by `&players=N` players, 2 to 4 (2 if not given), each on their
 // own screen; `&seed=` and `&chao=` set what the link hands the GBAs as the round starts (the shared random
 // number and the Chao's place, 0–7)
@@ -95,6 +102,10 @@ stage.classList.toggle('debug', debug);   // the panel shows the player's speed 
 
 const input = createInput();
 input.bindTouch(touch);
+// the page's frame since power-on, as a recording counts them, for `put`: every screen reads the buttons once a frame
+let pageFrame = -1;
+const pollButtons = input.poll;
+input.poll = () => { pageFrame++; pollButtons(); };
 // with ?proof in the address a proof tool runs the game frame by frame on this player's buttons (the kit's proof.js)
 proof?.watch(screen, input);
 const sound = createSound();
@@ -560,6 +571,7 @@ function play(assets, resume = null, carry = null, chosen = null) {
   if (!resume && !carry && !demo) startLevel = chosen ? chosen.level : levelPick ? assets.first : 0;
   game = createGame(screen, assets, input, sound, {
     resume, carry, save, startLevel, continues, levelPick, frameCount: chosen?.frameCount, demo, seed: randomSeed,
+    put: put && { ...put, now: () => pageFrame === put.at },
     onSpecialStage: handover => enterSpecialStage(assets, handover),
     onNextZone: next => nextZone(next),
     timeAttack: chosen?.timeAttack, byCourseSelect: chosen?.byCourseSelect, musicStarted: chosen?.musicStarted,
