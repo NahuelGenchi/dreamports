@@ -47,7 +47,7 @@ static void keep(uint8_t kind, uint16_t address, uint8_t value) {
 
 void hardware_write(uint16_t address, uint8_t value) { keep(WRITE, address, value); }
 void hardware_ppu_latch(void) { keep(PPU_LATCH, 0x2002, 0); }
-void hardware_read_pads(void) { keep(PADS, 0x4016, interrupt_runs_ahead()); }
+void hardware_read_pads(uint8_t guessed) { keep(PADS, 0x4016, guessed); }
 
 // A write of $4014: the page of sprites as it is at this moment.
 void hardware_send_sprites(uint8_t page) {

@@ -331,6 +331,7 @@ COST(PICK_UP_CANNOT_BE_TOUCHED, 16) // sub_F68E when Arthur's flags say so
 COST(PICK_UP_LEFT, 35)            // $BA3F to $BB6A, and back
 COST(PICK_UP_BONUS, 55)           // $BA3F to sub_D902: one of the four things that only give points
 COST(PICK_UP_BONUS_SOUND, 8)      // $BAC6 to sub_ED51
+COST(PICK_UP_WEAPON_TAKEN, 61)   // $BA3F to sub_F708: a weapon, which Arthur holds from now on
 COST(GRAVESTONE_BEGINS, 80)       // sub_04_BF0B to $BF23: a gravestone, which is never shown
 COST(GRAVESTONE_OUT_OF_VIEW, 9)   // $BF26, and back,
 COST(GRAVESTONE_IN_VIEW, 41)      // or to sub_F5F9
@@ -350,6 +351,20 @@ COST(HIDDEN_ARMOUR_NOT_NEEDED, 19) // or to sub_F708, for one who has it
 COST(HIDDEN_BECOMES_POT, 47)      // $BBCA to sub_F099: a pot, further on and up
 COST(HIDDEN_POT_FALLS, 42)        // $BBEB, with $BC81, and back
 COST(HIDDEN_STAYS, 34)            // sub_04_BB67 for an object that isn't shown, in a stage that isn't of the third set, and back
+COST(WAITING_OUT_OF_VIEW, 5)      // sub_04_9E32's $9E38 to $BB67, with sub_F346's call apart: an enemy waiting unseen,
+COST(WAITING_IN_VIEW, 17)         // or to sub_F68E,
+COST(WAITING_NOT_TOUCHED, 8)      // $9E49 to $BB67, through $9EA5,
+COST(WAITING_TOUCHED, 10)         // or to the store of its flags,
+COST(WAITING_STATE, 17)           // to the store of its state,
+COST(WAITING_KIND, 9)             // to the store of its kind,
+COST(WAITING_FLIER, 4)            // to sub_F309 for the flier,
+COST(WAITING_NOT_FLIER, 5)        // or past it,
+COST(WAITING_COUNT, 9)            // to the store of its count,
+COST(WAITING_RIGHT, 12)           // to the store of $23 for a place to the right,
+COST(WAITING_LEFT, 16)            // or to the left,
+COST(WAITING_MOVED_ACROSS, 27)    // and the place across, to the store of its screen,
+COST(WAITING_DOWN, 19)            // to sub_F099 for a place lower,
+COST(WAITING_UP, 23)              // or higher
 COST(PICK_UP_ARMOUR_TAKEN, 101)   // $BA3F to sub_F708's end, and back: the armour, in the opening scene
 COST(PICK_UP_ARMOUR_SOUND, 7)     // and $BA83 to sub_ED51 outside it, more than the branch past it
 COST(OBJECT_REMOVED, 42)          // sub_F708, and back, for a kind it doesn't count
@@ -596,7 +611,9 @@ COST(WEAPON_IS_CROSS, 23)
 COST(WEAPON_FACES, 34)            // $E10D to sub_F2E7: the way Arthur faces
 COST(THROW_STANDING, 3)           // $E129: thrown from ten pixels up,
 COST(THROW_CROUCHING, 7)          // or four
-COST(WEAPON_HEIGHT, 17)           // $E12F to $E149, on Arthur's screen
+COST(WEAPON_HEIGHT, 17)           // $E12F to $E149, on Arthur's screen,
+COST(WEAPON_SCREEN_ABOVE, 8)      // or, less the branch taken, $E13A to the store of its line on the screen above,
+COST(WEAPON_SCREEN_ABOVE_STORED, 13) // and to the store of that screen, at $E149
 COST(WEAPON_HEADING_LOOKED_AT, 7) // $E149 to $E14E
 COST(WEAPON_HEADS_RIGHT, 3)       // $E14E to $E161,
 COST(WEAPON_LEFT_SHAPE_KEPT, 11)  // or left, with a shape that has no other,
@@ -618,6 +635,8 @@ COST(WEAPON_NOT_SPENT, 2)         // $EBA3
 COST(WEAPON_BLOCK_ABOVE, 11)      // sub_E9CA with its call, to the store of the four pixels above its place,
 COST(WEAPON_BLOCK_ROW, 7)         // to the store of its screen down, or $EA50's of its pixel across,
 COST(WEAPON_BLOCK_LINE, 12)       // to the store of its line,
+COST(WEAPON_BLOCK_SCREEN_ABOVE, 12) // or, for four pixels above its screen's top, $E9E1 to $E9EA's store,
+COST(WEAPON_BLOCK_SCREEN_ABOVE_LINE, 2) // and to $E9EC's store of the screen above, with the rest as below, a cycle less
 COST(WEAPON_BLOCK_SCREEN_ACROSS, 13) // to $EA4E's store of its screen across,
 COST(WEAPON_BLOCK_PLACED, 3)      // and to $EA55
 COST(WEAPON_FLIES_ON, 15)         // $EBA8, and back: not a gravestone
@@ -631,6 +650,17 @@ COST(WEAPON_SPENT_STAYS, 11)      // or $EBD1 to sub_F2EB
 COST(WEAPON_STOPPED_SHAPE_RIGHT, 24) // $EBE2, and back: its shape against a gravestone, heading right,
 COST(WEAPON_STOPPED_SHAPE_LEFT, 30)  // or left
 COST(WEAPON_SPARK_SHAPE, 31)      // $EBE2 to $EC01, and back: a spark's shape
+COST(AXE_COUNTED, 13)            // $ECB2 to $ECBA: the axe's rounds, after sub_F32A
+COST(AXE_RISES_BY_LIST, 21)       // to sub_F099, by the list at $ED07 in its first 16,
+COST(AXE_FALLS, 15)               // or eight pixels down after them
+COST(AXE_SHAPE, 12)               // $ECD4 to the store of its shape,
+COST(AXE_COLOURS, 7)              // to the store of its colours,
+COST(AXE_COLOURS_STORED, 5)       // and to sub_E9CA
+COST(AXE_NOT_SOLID, 11)           // $ECE8 to $EB90: the block above isn't solid,
+COST(AXE_SOLID, 19)               // or is, and isn't a gravestone's,
+COST(AXE_STOPPED_BY_D0, 9)        // or is one of a gravestone's two blocks,
+COST(AXE_STOPPED_BY_DF, 12)       // or the other:
+COST(AXE_STOPPED, 7)              // to the store of its rounds, and on to sub_F305
 
 // ---- the score, sub_D8FC (flow.c)
 COST(SCORE_TENS_AND_HUNDREDS, 8)  // sub_D8FC to $D902: nothing for the thousands
@@ -1032,6 +1062,8 @@ COST(WEAPON_HIT, 8)               // or back
 COST(WEAPON_STOPS, 70)            // $F5A8 to $F5E2, and back: a lance or a dagger is gone, and the enemy's hits are counted
 COST(WEAPONS_NONE, 8)             // $F60F, and back: none touches
 COST(ENEMY_NO_WEAPON_HIT, 30)     // $F5A8 to sub_F68E
+COST(AXE_HIT_IT_ALREADY, 20)      // $F5AA to $F5B9: the axe hit this enemy last, and passes it, less the branch above
+COST(AXE_HITS, 77)                // $F5A8 to $F5E2, and back: the axe hits another, and flies on
 COST(ENEMY_NOT_TOUCHED, 9)        // $F5E6, and back,
 COST(ENEMY_TOUCHES_ARTHUR, 20)    // or with Arthur's flag that says he's hit
 COST(GAME_ROUND_AFTER, 19)        // $D58D to $D595
@@ -1832,6 +1864,50 @@ COST(BAT_WAVE_UP, 38)             // $B502 to sub_F03E, with its call, up,
 COST(BAT_WAVE_DOWN, 40)           // or down
 COST(BAT_WAVE_BACK, 12)           // $B527 to $B52E
 COST(BAT_SHAPE, 17)               // $B52E to sub_F576, by a jump
+COST(SHOOTER_HIDDEN, 15)          // sub_04_B594, and back: the cave's shooter, out of the view
+COST(SHOOTER_KILLED, 23)          // or in it with four hits, to sub_ED51, by sub_F7B4
+COST(SHOOTER_ALIVE, 11)           // or fewer, to sub_F2EB
+COST(SHOOTER_WAITS, 35)           // $B5B3, and by $B603 to $B6A7: not one of its 32nd rounds,
+COST(SHOOTER_ARTHUR_FAR, 54)      // or one, with Arthur 24 lines or more from its height,
+COST(SHOOTER_SEES_HIM_BELOW, 45)  // or nearer, below it, to $B5DC,
+COST(SHOOTER_SEES_HIM_ABOVE, 49)  // or above
+COST(SHOOTER_PICKS_BOTH, 15)      // $B5DC to $B5F5: both shots,
+COST(SHOOTER_PICKS_LOW, 20)       // or the low one,
+COST(SHOOTER_PICKS_HIGH, 18)      // or the high one
+COST(SHOOTER_PICKED, 9)           // $B5F5 to sub_F309
+COST(SHOOTER_RISE_STATE, 10)      // $B5FE to $B6A7
+COST(SHOOTER_RISES_ON, 39)        // $B606 to $B6A7: coming up, blinking,
+COST(SHOOTER_RISEN, 42)           // or its 16th round, to sub_F32E
+COST(SHOOTER_RISEN_STATE, 10)     // $B627 to $B6A7
+COST(SHOOTER_TESTS_CLOSED, 23)    // $B6A7 to sub_F5A0, with its call, its hits kept
+COST(SHOOTER_TESTS_CLOSED_END, 15) // $B6C1, and back, its hits put back
+COST(SHOOTER_TESTS_OPEN, 16)      // $B62F to sub_F5A0, with its call
+COST(SHOOTER_WEAPON_SPARKS, 13)   // $B63A or $B6B6 to $B645 or $B6C1: a weapon hit it,
+COST(SHOOTER_TOUCHED_ARTHUR, 7)   // or Arthur touched it
+COST(SHOOTER_OPEN_ON, 16)         // $B645 to $B65E: open, before its 16th round,
+COST(SHOOTER_FIRST_SLOT_TAKEN, 25) // or after it, the 21st object in use, to $B65E,
+COST(SHOOTER_SECOND_SLOT_TAKEN, 39) // or the 22nd,
+COST(SHOOTER_SHOOTS, 55)          // or neither, to sub_ED51
+COST(SHOOTER_SHOT_WAY, 6)         // $B684 to $B689
+COST(SHOOTER_SHOOTS_HIGH, 8)      // to sub_04_B6CB, with its call: the high shot,
+COST(SHOOTER_SHOOTS_LOW, 13)      // or to sub_04_B6C6: the low one,
+COST(SHOOTER_SHOOTS_BOTH, 14)     // or both
+COST(SHOOTER_SLOT_LOW, 5)         // sub_04_B6C6 to sub_04_B6EA, by a jump
+COST(SHOOTER_SLOT_HIGH, 8)        // sub_04_B6CB to sub_04_B6EA, with its call
+COST(SHOOTER_SHOT_SET, 21)        // $B6ED to sub_FA87
+COST(SHOOTER_SHOT_RIGHT, 9)       // and back: Arthur on its right,
+COST(SHOOTER_SHOT_LEFT, 15)       // or its left
+COST(SHOOTER_HIGH_SAME_SCREEN, 22) // $B6D0, and back: 16 lines up on its screen,
+COST(SHOOTER_HIGH_SCREEN_ABOVE, 41) // or on the screen above
+COST(SHOOTER_CLOSES, 13)          // $B6A1, and back
+COST(SHOOTER_OPEN_SHAPE, 23)      // $B65E to $B66D
+COST(SHOOTER_FACES_RIGHT, 17)     // and back: Arthur on its right,
+COST(SHOOTER_FACES_LEFT, 29)      // or its left
+COST(CAVE_SHOT_FLIES, 38)         // $F473 to sub_F5A0, with its call: the shooter's shot
+COST(CAVE_SHOT_NOTHING, 9)        // $F48B, and back: nothing touched it,
+COST(CAVE_SHOT_TOUCHED, 12)       // or Arthur,
+COST(CAVE_SHOT_WEAPON, 22)        // or a weapon, without the cross,
+COST(CAVE_SHOT_STOPPED, 31)       // or with it, by sub_F734
 COST(TOWER_CROW_NOT_YET, 9)       // $875E to the return DANGERS_OTHERS counts: the count isn't out,
 COST(TOWER_CROW_COMES, 19)        // or is, and starts again: to the call of sub_DA18
 COST(TOWER_CROW_SET_UP, 35)       // $876E to the call of sub_02_84D7
