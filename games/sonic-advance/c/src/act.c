@@ -846,6 +846,7 @@ int act_special_pending(void) { return specialPending; }
 static void hand_over(int level, int score, int lives, uint32_t seed) {
   spGame.level = level; spGame.character = ctx.character; spGame.score = (uint32_t)score; spGame.lives = lives;
   spGame.seed = seed; spGame.emeralds = SAVE_CHAOS_EMERALDS; spGame.btnConfig = save.bytes[0x1B];
+  spGame.byCourseSelect = act.byCourseSelect;
 }
 /** The act's frame a special spring ended is over: the act stops, every music player with it, and the special stage
  *  starts. */

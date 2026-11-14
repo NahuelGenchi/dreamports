@@ -32,10 +32,11 @@ static inline int32_t sp_div(int32_t a, int32_t b) { return b == 0 ? 0 : a / b; 
 /**
  * What the act hands the special stage and gets back (run.js ctx.game): the level and the character, the save's
  * record of the Chaos Emeralds (a bit per stage), the continues the player has (gUnknown_0300543C), the score, the
- * lives, the game's random numbers (gPseudoRandom, which the special stage goes on with) and the save's button setting.
+ * lives, whether the act was started from the course select, the game's random numbers (gPseudoRandom, which the
+ * special stage goes on with) and the save's button setting.
  */
 typedef struct {
-  int level, character, emeralds, continues, btnConfig, lives;
+  int level, character, emeralds, continues, btnConfig, lives, byCourseSelect;
   uint32_t score, seed;
 } SpecialGame;
 extern SpecialGame spGame;
