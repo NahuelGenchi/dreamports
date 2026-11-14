@@ -5,6 +5,7 @@
 
 #include "objects.h"
 #include "terrain.h"
+#include "extra.h"
 
 enum {
   ANIM_RING = 707, ANIM_RING_SPARKLE = 708,
@@ -251,7 +252,7 @@ void scatter_ceilings(void) { scatterCeilings = 1; }
 void scatter_launch(int x, int y, int n, int layer, int inverted) {
   if (n == 0) return;
   if (n > SCATTER_SLOTS) n = SCATTER_SLOTS;
-  play_song(SE_RINGS_LOST);
+  if (act.stage.level != LEVEL_THE_MOON) play_song(SE_RINGS_LOST);
   int r3 = SCATTER_SPEED_START, vx = 0, vy = 0, launched = 0;
   for (int i = 0; i < SCATTER_SLOTS; i++) {
     if (scatter[i].life) continue;
@@ -290,21 +291,24 @@ int scatter_task(ActTask *t) {
       scatter[i].life = 0;
       continue;
     }
+    int moon = act.stage.level == LEVEL_THE_MOON;
+    int floorRx = moon ? rx - cx + moon_ground_scroll(cx, act_stage_time()) : rx;
     if (up ? scatter[i].vy < 0 : scatter[i].vy > 0) {
-      int d = up ? terrain_tile_floor(rx, ry - 2 * TILE, scatter[i].layer, -8) : terrain_tile_floor(rx, ry, scatter[i].layer, 8);
+      int d = up ? terrain_tile_floor(floorRx, ry - 2 * TILE, scatter[i].layer, -8) : terrain_tile_floor(floorRx, ry, scatter[i].layer, 8);
       if (d <= 0) {
         scatter[i].y += (up ? -d : d) * 256;
         scatter[i].vy = (scatter[i].vy >> 2) - scatter[i].vy;
       }
     }
     if (scatterCeilings && !up && scatter[i].vy < 0) {
-      int d = terrain_tile_probe(PROBE_FLOOR, ry - 16, rx, scatter[i].layer, -8).d;
+      int d = terrain_tile_probe(PROBE_FLOOR, ry - 16, floorRx, scatter[i].layer, -8).d;
       if (d <= 0) {
         scatter[i].y -= d * 256;
         scatter[i].vy = (scatter[i].vy >> 2) - scatter[i].vy;
       }
     }
-    scatter[i].vy += up ? -SCATTER_GRAVITY : SCATTER_GRAVITY;
+    int grav = moon ? MOON_SCATTER_GRAVITY : SCATTER_GRAVITY;
+    scatter[i].vy += up ? -grav : grav;
     // drawn where it was before the bounce, blinking in its last 32 frames with Sonic's blink
     if (sx + TILE > 0 && sx + TILE < DISPLAY_WIDTH + 2 * TILE && sy > -TILE && sy < DISPLAY_HEIGHT + TILE
         && (scatter[i].life >= SCATTER_BLINK_BELOW || (act_stage_time() & 2) == 0)) put_ring(s, &drawn, sx, sy);

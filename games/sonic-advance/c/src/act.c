@@ -7,6 +7,7 @@
 #include "results.h"
 #include "bosses.h"
 #include "special.h"
+#include "extra.h"
 static void leave_for_lobby(void);
 
 int moon_opens(void);
@@ -103,6 +104,10 @@ static void load_stage(int level) {
   e.flags |= FLAGS_UPDATE_BG_PALETTES;
   // the background's tiles at the second character block, and its map (DrawBackground, copy_backgrounds)
   copy_rom(s->background.tiles, 0x8000, s->background.tilesSize);
+  if (level == LEVEL_THE_MOON) {
+    moon_load_stage();
+    return;
+  }
   // The map goes into the screen BG3CNT names, a row of 32 tiles after another. A screen 512 px wide is two 32-tile
   // blocks side by side, as X Zone's 37 × 23 map needs; Secret Base act 2 takes the first 32 × 32 of its map, and Ice
   // Mountain the first 32 × 64 (sStageBgDimensions)
@@ -403,6 +408,17 @@ static void draw_frame(void) {
   if (act.bossFlash == BOSS_FLASH_WINDOW) { e.dispCnt |= 0x8000; e.winRegs[5] = 0x3F3F; }
   else if (act.bossFlash) { e.dispCnt |= 0x8000; e.winRegs[5] = 0x3F1F; e.bldCnt = 0xBF; e.bldY = 0x10; }
   act.drawn++;
+  if (act.stage.level == LEVEL_THE_MOON) {
+    e.dispCnt = (uint16_t)(act.cardDone ? 0x1F41 : 0x3F41);
+    e.bldCnt = 0; e.winRegs[5] = 0;
+    int groundX = moon_ground_scroll(camX, act_stage_time() - 1);
+    e.bgScroll[0] = (uint16_t)(groundX & 7); e.bgScroll[1] = (uint16_t)(camY & 7);
+    fill_layer(0xF800, LAYER_BACK, groundX, camY);
+    if (row->drawBackground) row->drawBackground(camX, camY);
+    supersonic_draw(shownSet ? &shown : &act.player, spriteX, spriteY);
+    shownSet = 0;
+    return;
+  }
   // RenderMetatileLayers: BG1 and BG2 scroll by the camera's sub-tile part, their maps filled from the metatiles
   e.bgScroll[2] = (uint16_t)(camX & 7); e.bgScroll[3] = (uint16_t)(camY & 7);
   e.bgScroll[4] = (uint16_t)(camX & 7); e.bgScroll[5] = (uint16_t)(camY & 7);
@@ -486,7 +502,9 @@ static void hud_load(void) {
   copy_rom(ringTiles, OBJ_VRAM + HUD_RING * 32, 16 * 32);
   copy_rom(faceTiles, OBJ_VRAM + HUD_FACE * 32, 4 * 32);
   for (int i = 0; i < 16; i++) e.objPalette[6 * 16 + i] = (uint16_t)rom_u16(fontPalette + i * 2);
-  for (int i = 0; i < 16; i++) e.objPalette[ctx.character * 16 + i] = (uint16_t)rom_u16(facePalette + i * 2);
+  if (act.stage.level != LEVEL_THE_MOON) {
+    for (int i = 0; i < 16; i++) e.objPalette[ctx.character * 16 + i] = (uint16_t)rom_u16(facePalette + i * 2);
+  }
   e.flags |= FLAGS_UPDATE_OBJ_PALETTES;
 }
 
@@ -623,7 +641,7 @@ static void next_act(void) {
   if (act.task) destroy_task(act.task);
   act.task = create_task(act_task, NULL, 0x0F00, 0, NULL);
   // how long the stage takes the original to load: a frame for a zone's second act and for X Zone, two for a new zone
-  act.stallLoad = 0; act.loadFrames = nextLevel & 1 || nextLevel == LEVEL_X_ZONE ? 2 : 3;
+  act.stallLoad = 0; act.loadFrames = nextLevel == LEVEL_THE_MOON ? 1 : (nextLevel & 1 || nextLevel == LEVEL_X_ZONE ? 2 : 3);
   titlecard_made(1);
   // the objects' tasks are after the results' in the list, so they run at once, unseen: the rings' spin and the
   // first objects' animations are a step on when the act's own first frame comes
@@ -917,6 +935,7 @@ static void act_frame(void) {
     hud_load();
     hud_begin();
     actHudFlash = -1;
+    if (act.stage.level == LEVEL_THE_MOON) { act.player.ignoreInput = 0; moon_warning_start(); }
   }
   // the camera's task first runs on the frame after the one that makes the act, where it only sets itself going
   // (Task_CallUpdateCamera), and counts the animated tiles from the frame after that, in UpdateCamera
@@ -989,18 +1008,29 @@ static void act_frame(void) {
     in = act.player.heldRight ? (PlayerInput){ .right = 1 } : act.player.heldLeft ? (PlayerInput){ .left = 1 } : (PlayerInput){0};
   // after the last life, the player's task has gone
   if (!act.playerGone) {
-    player_step(&act.player, &in);
-    if (lifeLost) {
-      lifeLost = 0;
-      if (time_attack()) leave_for_lobby();
-      else restart_act();
-      return;
-    }
-    // a start point's first act frame is the held A's jump, one frame after it began, when it has the word for it
-    if (act.drawn == 0 && act.fromStartPoint && gba_start_number("jump", 0)) player_start_jump(&act.player);
-    if (!act.playerGone) {
-      player_animate(&act.player, &in);
-      player_tails_step(&act.player);
+    if (act.stage.level == LEVEL_THE_MOON) {
+      supersonic_step(&act.player, &in);
+      if (lifeLost) {
+        lifeLost = 0;
+        if (time_attack()) leave_for_lobby();
+        else restart_act();
+        return;
+      }
+      if (!act.playerGone) supersonic_animate(&act.player);
+    } else {
+      player_step(&act.player, &in);
+      if (lifeLost) {
+        lifeLost = 0;
+        if (time_attack()) leave_for_lobby();
+        else restart_act();
+        return;
+      }
+      // a start point's first act frame is the held A's jump, one frame after it began, when it has the word for it
+      if (act.drawn == 0 && act.fromStartPoint && gba_start_number("jump", 0)) player_start_jump(&act.player);
+      if (!act.playerGone) {
+        player_animate(&act.player, &in);
+        player_tails_step(&act.player);
+      }
     }
   }
   sonic_shown();
@@ -1265,11 +1295,12 @@ void act_start(int level, int cardSkip, int preFrames) {
   act.bgAnimFrame = 0; act.bgAnimShown = 0; act.bgAnimDelay = 0;
   // after a life lost, the player starts again at the last checkpoint passed (SetStageSpawnPos)
   int again = restarting && respawnIndex;
-  player_init(&act.player, again ? respawnX : act.stage.spawnX, again ? respawnY : act.stage.spawnY);
+  if (level == LEVEL_THE_MOON) supersonic_init(&act.player, act.stage.spawnX, act.stage.spawnY);
+  else player_init(&act.player, again ? respawnX : act.stage.spawnX, again ? respawnY : act.stage.spawnY);
   if (!comingOn && !restarting) menu_leftovers();
   create_camera(&act.cam, &act.player);
   act.startCamX = (int)act.cam.x; act.startCamY = (int)act.cam.y;
-  act.lives = 3; act.score = 0; act.ringCount = 0;
+  act.lives = 3; act.score = 0; act.ringCount = level == LEVEL_THE_MOON ? MOON_START_RINGS : 0;
   act.clockStopped = 1; act.firstCard = 1; act.cardFrame = 0; act.bossFlash = 0;
   act.hud.active = 0; act.hud.flash = hud_flash();
   act.started = 0; act.drawn = 0;
