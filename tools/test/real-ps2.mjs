@@ -1,8 +1,8 @@
 // npm run test:real-ps2: the PlayStation 2's real emulator, Play!, built as it's built on a contributor's computer,
 // at the commit tools/consoles.mjs fixes, running a small program written here (made-up-ps2.mjs) twice. Both runs must
 // show the same pictures and give the same sound, at the numbers kit/consoles.js says, every sample the emulator mixes
-// in the frame it was mixed in, and the picture must be the one the program draws. It isn't run on every pull request, as the emulator takes several minutes to build, and on Linux alone,
-// as that's where the tools give it a graphics context (docs/CONSOLES.md).
+// in the frame it was mixed in, and the picture must be the one the program draws. It isn't run on every pull request, as the emulator takes several minutes to build, and on Linux and
+// macOS alone, as that's where the tools give it a graphics context (docs/CONSOLES.md).
 
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

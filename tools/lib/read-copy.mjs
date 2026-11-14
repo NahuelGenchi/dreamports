@@ -84,6 +84,47 @@ async function disc(file) {
   return null;
 }
 
+/**
+ * A whole file on a disc, by its name in the disc's top folder, such as SLUS_205.73, read a sector at a time from
+ * however the disc's sectors are laid out, or null when it has none of that name. For the program a PlayStation 2 game
+ * boots, which its code map is made from (ps2/functions.mjs).
+ */
+export async function readDiscFile(path, name) {
+  const files = await dataFiles(path);
+  const file = await open(files[0]);
+  try {
+    const read = async (at, length) => {
+      const bytes = Buffer.alloc(length);
+      const { bytesRead } = await file.read(bytes, 0, length, at);
+      return bytes.subarray(0, bytesRead);
+    };
+    for (const [sector, data] of SECTORS) {
+      const volume = await read(16 * sector + data, 2048);
+      if (ascii(volume, 1, 5) !== 'CD001') continue;
+      const folder = await read(volume.readUInt32LE(158) * sector + data, Math.min(volume.readUInt32LE(166), 0x10000));
+      for (let at = 0; at + 33 < folder.length;) {
+        if (!folder[at]) { at = (Math.floor(at / 2048) + 1) * 2048; continue; }
+        if (ascii(folder, at + 33, folder[at + 32]).replace(/;\d+$/, '').toUpperCase() === name.toUpperCase()) {
+          const first = folder.readUInt32LE(at + 2), size = folder.readUInt32LE(at + 10), whole = Buffer.alloc(size);
+          for (let done = 0, n = 0; done < size; n++, done += 2048) (await read((first + n) * sector + data, Math.min(2048, size - done))).copy(whole, done);
+          return whole;
+        }
+        at += folder[at];
+      }
+      return null;
+    }
+    return null;
+  } finally {
+    await file.close();
+  }
+}
+
+/** The name of the program a PlayStation 2 disc boots, as its SYSTEM.CNF says, such as SLUS_205.73. */
+export async function bootFile(path) {
+  const boot = (await readDiscFile(path, 'SYSTEM.CNF'))?.toString('latin1') ?? '';
+  return /BOOT2\s*=\s*[^\\:]*:\\?([^;\s]+)/i.exec(boot)?.[1] ?? null;
+}
+
 // the files a .cue names, in order, which hold the disc
 const dataFiles = async path => {
   if (extname(path).toLowerCase() !== '.cue') return [path];
