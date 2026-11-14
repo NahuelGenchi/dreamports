@@ -2277,6 +2277,8 @@ The art's four backgrounds (each a 256-colour palette, then its tiles and its ma
 
 These are the decompilation's EU addresses less `0x7124`.
 
+**How it was checked.** `sonic-the-moon` goes on from the Moon Zone through the whole true ending to the last frame of the staff credits, and the Dreamport in C matches the original on every frame in mGBA 0.10.5. Two things the decompilation doesn't show: the V-blank after `CreateExtraStageResults` copies the night scene's three layers, about 45 KB, which takes more than a frame, so its tasks first run two frames after it, not one; and over the fourth picture all three congratulation lines count on from the main task's count plus `0x14B`, though `Task_8067E68` writes those counts through `tasks2C`, the cloud tasks' old pointers.
+
 **Opening the Moon.** The ROM's own test is the same in Egg X's defeat (`boss_x3_egg_x.c`, which then goes to the Moon instead of the normal ending), in `CreateStageResults` and in the course select (`course_select.c`). It passes when:
 
 - the character is Sonic;

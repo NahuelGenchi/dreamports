@@ -21,7 +21,7 @@
 #include "results.h"
 
 // the songs and sounds the results play (songs.js)
-enum { SONG_ACT_CLEAR = 33, SONG_BOSS_CLEAR = 34, SONG_FINAL_CLEAR = 35, SONG_RESULTS_COUNT = 140, SONG_RESULTS_DONE = 141 };
+enum { SONG_ACT_CLEAR = 33, SONG_BOSS_CLEAR = 34, SONG_FINAL_CLEAR = 35, SONG_EXTRA_CLEAR = 36, SONG_RESULTS_COUNT = 140, SONG_RESULTS_DONE = 141 };
 
 #define UI_FONT 0
 #define UI_RESULT_SONIC 11
@@ -201,8 +201,8 @@ void results_start(int level, int rings, int courseTime, int longEnd, int nextFr
   figure(ring->text, r.ringLabel, r.ring);
   figure(time->text, r.timeLabel, r.time);
 
-  // the act-clear jingle: X Zone's, a zone's second act's (after its boss), or an act's
-  play_song(level == LEVEL_X_ZONE ? SONG_FINAL_CLEAR : level & 1 ? SONG_BOSS_CLEAR : SONG_ACT_CLEAR);
+  // the act-clear jingle: the Moon's, X Zone's, a zone's second act's (after its boss), or an act's
+  play_song(level == LEVEL_THE_MOON ? SONG_EXTRA_CLEAR : level == LEVEL_X_ZONE ? SONG_FINAL_CLEAR : level & 1 ? SONG_BOSS_CLEAR : SONG_ACT_CLEAR);
   music_call(MUSIC_OFF, 0);
 }
 

@@ -90,10 +90,15 @@ Task *create_task(TaskMain main, void *data, uint16_t priority, uint16_t flags, 
 }
 
 /** TaskDestroy: a task already destroyed, or one of the list's ends, stays as it is. */
+// a task keeping the CPU busy for whole frames (the flash's erase or write)
+static struct { int frames; void (*then)(void); Task *task, *next; } stall;
+
 void destroy_task(Task *t) {
   if (!t || t->flags & TASK_DESTROY_DISABLED || !t->prev || !t->next) return;
   if (t->dtor) t->dtor(t);
   if (t == nextTask) nextTask = t->next;
+  // the tasks a stall's follow-up goes on with, as gNextTask: none of the old ones once it destroys them all
+  if (t == stall.next) stall.next = t->next;
   t->prev->next = t->next; t->next->prev = t->prev;
   freeTasks[--numTasks] = t;
   t->parent = t->prev = NULL; t->main = dummy; t->priority = 0; t->flags = 0; t->data = NULL;
@@ -112,8 +117,6 @@ void destroy_tasks(uint16_t lo, uint16_t hi) {
   }
 }
 
-// a task keeping the CPU busy for whole frames (the flash's erase or write)
-static struct { int frames; void (*then)(void); Task *task, *next; } stall;
 static int stalling, linesOffSoon;
 /**
  * Whether the line interrupts (H-blank and V-count) are off for the picture drawn now: through a stall, which has the

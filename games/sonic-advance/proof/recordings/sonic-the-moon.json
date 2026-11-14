@@ -1,8 +1,8 @@
 {
-  "about": "From power-on with all seven Chaos Emeralds and every character past X Zone: X Zone from the course select, then the Moon Zone, where Super Sonic lands the Super Egg Robo's eight hits before its first laser, as the original drops frames under the laser's work, and its fall, the fade to white and the save, up to the true ending.",
-  "frames": 10933,
+  "about": "From power-on with all seven Chaos Emeralds and every character past X Zone: X Zone from the course select, then the Moon Zone, where Super Sonic lands the Super Egg Robo's eight hits before its first laser, as the original drops frames under the laser's work, its fall, the fade to white and the save, and the true ending to the end of the staff credits.",
+  "frames": 24323,
   "start": "unlocked=13&tails=13&knuckles=13&amy=13&emeralds=127",
-  "clip": { "at": 10560, "frames": 300 },
+  "clip": { "at": 13300, "frames": 300 },
   "onlyInOriginal": [
     {
       "at": 1701,

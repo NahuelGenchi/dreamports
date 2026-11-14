@@ -364,6 +364,7 @@ void front_draw(void);
 void create_language_screen(int newGame);
 void create_sega_logo(void);
 void create_congratulations(void);
+void create_true_ending(void);
 void create_staff_credits(void);
 void create_emerald_message(void);
 void create_intro(void);
