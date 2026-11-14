@@ -23,6 +23,11 @@ static uint32_t *memory;
 static uint64_t registers[0x63];
 static uint64_t shown[7];   // PMODE, SMODE2, DISPFB1, DISPLAY1, DISPFB2, DISPLAY2, BGCOLOR
 static uint32_t list_hash = 0x811C9DC5, list_count;
+// the frame's whole list, as the proof tools write the original's (tools/lib/draw-lists.mjs), for them to say which
+// write differs: each thing its letter and what was written, a picture's length and hash in place of its bytes
+#define LIST_ROOM (16 * 1024 * 1024)
+static uint8_t *list_bytes;
+static uint32_t list_size, list_full;
 
 // A corner as it was written: where it is in sixteenths of a pixel, its depth, its colour with its alpha in the top byte,
 // and where it is in its texture, as floats over Q (s, t, q) and as sixteenths of a texel (u, v)
@@ -30,20 +35,44 @@ struct corner { int32_t x, y; uint32_t z, colour; float s, t, q; int32_t u, v; }
 static struct corner corners[3];
 static int corner_count;
 
-static void add_to_list(const void *data, size_t length) {
+static void keep_in_list(const void *data, size_t length) {
+  if (list_size + length > LIST_ROOM) { list_full = 1; return; }
+  __builtin_memcpy(list_bytes + list_size, data, length);
+  list_size += (uint32_t)length;
+}
+
+static void add_to_list(char kind, const void *data, size_t length) {
   const uint8_t *bytes = data;
-  for (size_t i = 0; i < length; i++) list_hash = (list_hash ^ bytes[i]) * 0x01000193u;
+  uint32_t own = 0x811C9DC5;
+  for (size_t i = 0; i < length; i++) {
+    list_hash = (list_hash ^ bytes[i]) * 0x01000193u;
+    own = (own ^ bytes[i]) * 0x01000193u;
+  }
   list_count++;
+  keep_in_list(&kind, 1);
+  if (kind == 'I') {
+    uint32_t about[2] = { (uint32_t)length, own };
+    keep_in_list(about, sizeof about);
+  } else {
+    keep_in_list(data, length);
+  }
 }
 
 void gs_power(void) {
   memory = kit_alloc(GS_MEMORY_WORDS * 4);
+  list_bytes = kit_alloc(LIST_ROOM);
   gs_list_start();
 }
 
 void gs_list_start(void) {
   list_hash = 0x811C9DC5;
   list_count = 0;
+  list_size = 0;
+  list_full = 0;
+}
+const uint8_t *gs_list_bytes(uint32_t *size) {
+  *size = list_full ? 0xFFFFFFFF : list_size;
+  return list_bytes;
 }
 uint32_t gs_list_hash(void) { return list_hash; }
 uint32_t gs_list_count(void) { return list_count; }
@@ -530,7 +559,7 @@ void gs_write(uint8_t reg, uint64_t value) {
   uint8_t written[9];
   written[0] = reg;
   __builtin_memcpy(written + 1, &value, 8);
-  add_to_list(written, sizeof written);
+  add_to_list('R', written, sizeof written);
   if (reg >= sizeof registers / sizeof registers[0]) return;
   registers[reg] = value;
   if (reg == GS_PRIM) corner_count = 0;
@@ -546,7 +575,7 @@ void gs_write(uint8_t reg, uint64_t value) {
 }
 
 void gs_image(const void *data, uint32_t length) {
-  add_to_list(data, length);
+  add_to_list('I', data, length);
   transfer_data(data, length);
 }
 
@@ -557,7 +586,7 @@ void gs_screen(uint32_t address, uint32_t value) {
     // what the screen shows of the framebuffer is part of the list, and its border's colour isn't
     if (i < 6) {
       uint32_t pair[2] = { address, value };
-      add_to_list(pair, sizeof pair);
+      add_to_list('S', pair, sizeof pair);
     }
     shown[i] = address & 4 ? (shown[i] & 0xFFFFFFFFull) | (uint64_t)value << 32 : (shown[i] & ~0xFFFFFFFFull) | value;
   }

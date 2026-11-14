@@ -25,6 +25,17 @@ EXPORT("dp_step") void dp_step(uint32_t buttons) {
 /** The draw list of the last frame run: its hash, and how many things were written. */
 EXPORT("dp_draw_list") uint32_t dp_draw_list(void) { return frame_hash; }
 EXPORT("dp_draw_list_count") uint32_t dp_draw_list_count(void) { return frame_count; }
+/** The last frame's whole list, for the proof tools to say which write differs: where it is, and how many bytes, or
+ *  0xFFFFFFFF when it was too long to keep (gs.c). */
+EXPORT("dp_draw_list_bytes") const uint8_t *dp_draw_list_bytes(void) {
+  uint32_t size;
+  return gs_list_bytes(&size);
+}
+EXPORT("dp_draw_list_size") uint32_t dp_draw_list_size(void) {
+  uint32_t size;
+  gs_list_bytes(&size);
+  return size;
+}
 /** Draws the frame, and gives where its words are, dp_width() × dp_height() of them. */
 EXPORT("dp_draw") uint32_t *dp_draw(void) {
   game_draw();

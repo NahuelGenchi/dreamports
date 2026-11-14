@@ -47,6 +47,7 @@ import { goalsNamed, heldOver, readRoute } from './lib/route.mjs';
 import { recordingHash, mainProof, firstChanged, clipWindow, newFramesIn, clipProblems, changedText } from './lib/clips.mjs';
 import { keepRecord, recordOf } from './lib/same-proof.mjs';
 import { DIFFERS_AS_BEFORE, provenBefore, worseThan } from './lib/as-before.mjs';
+import { firstApart, listsIn } from './lib/draw-lists.mjs';
 
 const BATCH = 120;
 const STILLS = 600, STATES = 20;
@@ -561,6 +562,28 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       writeFileSync(join(out, file), Buffer.from(s.png, 'base64'));
       return { frame, pixels: s.pixels, box: s.box };
     };
+    // for a game proven by draw lists, which write of the first frame whose list differs isn't the original's: the
+    // original plays to that frame again with its lists written out, and the two are compared thing by thing
+    let listApart = null;
+    if (drawLists && firstPicture >= 0) {
+      const ours = await page.evaluate('__proof.drawList()');
+      if (!ours || ours.frame !== firstPicture) listApart = { frame: firstPicture, unknown: 'the Dreamport\'s list of that frame was too long to keep' };
+      else {
+        say('playing the original to the frame whose draw list differs, with its list written out…');
+        const at = originalOf[firstPicture] + 1, dump = join(LOCAL, 'tmp', `draw-lists-${process.pid}-${name}.bin`);
+        mkdirSync(join(LOCAL, 'tmp'), { recursive: true });
+        process.env.DP_DRAW_DUMP = dump;
+        try {
+          await runOriginal({ copy, frames: at + 1, buttons: masks, sets });
+          const theirs = listsIn(readFileSync(dump))[at] ?? [];
+          const apart = firstApart(theirs, listsIn(Buffer.from(ours.bytes, 'base64'))[0] ?? []);
+          listApart = apart ? { frame: firstPicture, ...apart } : { frame: firstPicture, unknown: 'the two lists written out are the same, though their hashes aren\'t' };
+        } finally {
+          delete process.env.DP_DRAW_DUMP;
+          rmSync(dump, { force: true });
+        }
+      }
+    }
     const difference = firstDifference >= 0 ? await still(firstDifference, 'first-difference.png', true) : null;
     const newDifference = firstNew >= 0 ? await still(firstNew, 'first-new-difference.png', true) : null;
     const pictureDifference = firstPicture >= 0 && firstPicture !== firstDifference ? await still(firstPicture, 'first-picture-difference.png', true) : null;
@@ -613,7 +636,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
 
     const outside = first.outside;
     const report = {
-      recording: name, recordingFile, recordingSha1: recordingHash(recordingText), frames, matched, ...(stopped ? { stopped } : {}), differs: differing, neverInPlay: neverSeen, firstDifference: difference, ...(pictureDifference ? { firstPictureDifference: pictureDifference } : {}), onlyInOriginal, oneColour, parts: partsFound, stills, pixels: stillsFound, states,
+      recording: name, recordingFile, recordingSha1: recordingHash(recordingText), frames, matched, ...(stopped ? { stopped } : {}), differs: differing, neverInPlay: neverSeen, firstDifference: difference, ...(pictureDifference ? { firstPictureDifference: pictureDifference } : {}), ...(listApart ? { drawListApart: listApart } : {}), onlyInOriginal, oneColour, parts: partsFound, stills, pixels: stillsFound, states,
       sound: { heard: madeSound, differs: soundDiffers, firstDifference: firstSound, ...(unheard.size ? { notCompared: stretchesOf([...unheard].sort((a, b) => a - b)) } : {}), ...(compareSound.dips.length ? { dips: stretchesOf(compareSound.dips) } : {}) },
       ...(wasDifferent ? { sinceLastProven: { differs: newly, firstDifference: newDifference, matches: fixed } } : {}),
       clip: {
@@ -644,6 +667,14 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       const picture = pictureDifference ? `, and the first picture that differs is ${at(pictureDifference)}` : firstPicture < 0 ? ', and every picture is the same' : '';
       log(`${name}: ${matched} of ${frames} frames the same, pictures and sound. The first that differs is ${at(difference)}${picture}.`);
       log(`  Frames that differ: ${listed(differing)}.`);
+    }
+    if (listApart?.unknown) log(`  Frame ${listApart.frame}'s draw list differs, and which write can't be said: ${listApart.unknown}.`);
+    else if (listApart) {
+      const { frame, write, original, dreamport, before, counts } = listApart;
+      log(`  Frame ${frame}'s draw list first differs at write ${write.toLocaleString('en-US')} of the original's ${counts.original.toLocaleString('en-US')} (the Dreamport's has ${counts.dreamport.toLocaleString('en-US')}):`);
+      log(`    the original:  ${original}`);
+      log(`    the Dreamport: ${dreamport}`);
+      if (before.length) log(`    after the same ${before.length === 1 ? 'write' : `${before.length} writes`}: ${before.join('; ')}`);
     }
     if (stopped) log(`  The Dreamport stopped at frame ${stopped.frame}, throwing ${stopped.error}, so it and every frame after differ. A path the game hasn't ported yet says so this way.`);
     for (const { from, to, why } of neverSeen) {

@@ -22,6 +22,8 @@
   // how many samples a frame with no sound stands for
   const SILENCE = Math.floor(__console.sound * __console.frame[0] / __console.frame[1]);
   let heard = false, pictureDiffered = false, ownWidth = 0, ownHeight = 0;
+  // for a game proven by draw lists, the whole list of the first frame whose list differs, as the kit kept it
+  let firstList = null;
 
   // Nobody sees this page, so nothing waits for a display. The game's loops ask for the next display frame as they do
   // anywhere, and instead of 60 times a second those callbacks run as soon as a frame is wanted, and only then.
@@ -211,6 +213,7 @@
         hashes.push(hash);
         if (first) pictureDiffered = true;
         if (first || wantedStates.has(frame)) keepState(frame);
+        if (first && __drawLists) firstList = { frame, bytes: dreamportsProof.drawListBytes?.() ?? null };
         // a game's own word that no player could ever see this frame
         if (dreamportsProof.neverInPlay) neverInPlay.push({ frame, why: dreamportsProof.neverInPlay });
         // a game with no sound, or a kit from before the tools heard it, is silent
@@ -237,6 +240,10 @@
       for (const frame of frames) if (!kept.has(frame) && inRing(frame)) kept.set(frame, fromRing(frame));
       return frames.filter(frame => kept.has(frame));
     },
+
+    /** For a game proven by draw lists, the first frame whose list differs and its whole list in base64, or null when
+     *  every list was the same, or a list too long to keep. */
+    drawList() { return firstList?.bytes ? { frame: firstList.frame, bytes: toBase64(firstList.bytes) } : null; },
 
     /** What the console held at a frame kept, in base64, or null. */
     state(frame) {
