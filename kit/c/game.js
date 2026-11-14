@@ -117,7 +117,14 @@ export async function loadGame(url, bytes, { console: id, save = null, query } =
     step(buttons) {
       game.dp_step(buttons);
       // the frame's draw list, on a console whose kit keeps one, for the proof tools (kit/ps2/c/ps2.c)
-      if (globalThis.dreamportsProof && game.dp_draw_list) dreamportsProof.drawList = game.dp_draw_list() >>> 0;
+      if (globalThis.dreamportsProof && game.dp_draw_list) {
+        dreamportsProof.drawList = game.dp_draw_list() >>> 0;
+        // the frame's whole list, read only when it's wanted, as it's the last frame's until the next one runs
+        dreamportsProof.drawListBytes = () => {
+          const size = game.dp_draw_list_size() >>> 0;
+          return size === 0xFFFFFFFF ? null : new Uint8Array(game.memory.buffer, game.dp_draw_list_bytes(), size).slice();
+        };
+      }
       sound.frameDone();
     },
     draw() {

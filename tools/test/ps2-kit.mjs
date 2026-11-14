@@ -111,6 +111,12 @@ function main() {
   run = dp('prove', inC(GAMES.solid), 'still');
   found = report(GAMES.solid);
   check(run.status !== 0 && found.firstDifference?.frame > 0, `one sum done with a computer's rounding, not the console's, is found: at frame ${found.firstDifference?.frame}`);
+  // and which write it is: a corner of the turning triangle, the 20th, 22nd or 24th of the frame's 24 things, after 12 that
+  // set up the frame and 6 of the still triangle's, each corner after its colour
+  const apart = found.drawListApart ?? {};
+  check(apart.frame === found.firstDifference?.frame && [20, 22, 24].includes(apart.write) && /^XYZ2 = /.test(apart.original) && /^XYZ2 = /.test(apart.dreamport) && apart.original !== apart.dreamport && apart.counts?.original === 24 && apart.counts?.dreamport === 24 && apart.before?.length === 4,
+    `prove says which write differs: write ${apart.write} of ${apart.counts?.original}, the original's ${apart.original}, the Dreamport's ${apart.dreamport}`);
+  check(/draw list first differs at write \d+ of the original's 24/.test(run.out) && run.out.includes(`the original:  ${apart.original}`), 'and prints it, with the writes before it');
   writeGame(GAMES.solid);
 
   // the same Dreamport measured by its pictures, to say how far the kit's triangles are from the emulator's

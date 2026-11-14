@@ -134,3 +134,42 @@ export function summaryOf(bytes, { from = 0, to = Infinity } = {}) {
   }
   return found;
 }
+
+/** A dump's lists, frame by frame: each an array of what thingsIn gives, 'F' and 'P' left out. */
+export function listsIn(bytes) {
+  const lists = [];
+  let list = [];
+  for (const thing of thingsIn(bytes)) {
+    if (thing.kind === 'F') { lists.push(list); list = []; }
+    else if (thing.kind !== 'P') list.push(thing);
+  }
+  if (list.length) lists.push(list);
+  return lists;
+}
+
+const hex = (value, digits) => `0x${value.toString(16).toUpperCase().padStart(digits, '0')}`;
+/** One thing of a list in words: a register and its 64 bits, half of a screen register, or a picture. */
+export function describe(thing) {
+  if (!thing) return 'nothing, as the list has ended';
+  if (thing.kind === 'R') return `${REGISTERS[thing.register] ?? `register ${hex(thing.register, 2)}`} = ${hex(thing.value, 16)}`;
+  if (thing.kind === 'S') return `${SCREEN[thing.address & 0xF0] ?? hex(thing.address, 8)}${thing.address & 4 ? ', its high half,' : ''} = ${hex(thing.value, 8)}`;
+  return `a picture of ${thing.length.toLocaleString('en-US')} bytes, whose bytes hash to ${hex(thing.hash, 8)}`;
+}
+const same = (a, b) => a && b && a.kind === b.kind && a.register === b.register && a.value === b.value && a.address === b.address && a.length === b.length && a.hash === b.hash;
+
+/**
+ * Where two lists of a frame first part: { write, original, dreamport, before, counts }, `write` counting from 1, with
+ * what each has there in words, the `context` things before it, which both have, and how many things each list holds;
+ * or null when they're the same.
+ */
+export function firstApart(original, dreamport, context = 4) {
+  const longest = Math.max(original.length, dreamport.length);
+  for (let i = 0; i < longest; i++) {
+    if (same(original[i], dreamport[i])) continue;
+    return {
+      write: i + 1, original: describe(original[i]), dreamport: describe(dreamport[i]),
+      before: original.slice(Math.max(0, i - context), i).map(describe), counts: { original: original.length, dreamport: dreamport.length },
+    };
+  }
+  return null;
+}

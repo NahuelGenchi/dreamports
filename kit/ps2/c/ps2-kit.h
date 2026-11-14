@@ -12,5 +12,7 @@ void gs_list_start(void);
 /** The hash of what has been written since, as the proof tools hash the original's, and how many things that was. */
 uint32_t gs_list_hash(void);
 uint32_t gs_list_count(void);
+/** The whole list since it started, its size in `size`, or 0xFFFFFFFF there when it was too long to keep. */
+const uint8_t *gs_list_bytes(uint32_t *size);
 
 #endif
