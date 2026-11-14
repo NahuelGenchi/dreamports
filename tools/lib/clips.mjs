@@ -97,7 +97,9 @@ export function firstChanged({ main, name, file, text, frames, ran = null, diffe
   const matches = ([a, b]) => !differs || !differs.some(([x, y]) => x <= b && y >= a);
   const fresh = parts.filter(part => Array.isArray(part.frames) && part.frames[0] < frames && matches(part.frames) && !mainProved(main, name, part))
     .sort((x, y) => x.frames[0] - y.frames[0])[0];
-  if (fresh && (!changed || changed.heard || fresh.frames[0] < changed.frame)) {
+  // a new recording counts as changed from its first frame when no frame of it shows anything new, which a part it newly
+  // proves always beats: otherwise its clip would show the way there from power-on (#1293)
+  if (fresh && (!changed || changed.heard || changed.whole || fresh.frames[0] < changed.frame)) {
     return { frame: fresh.frames[0], why: `where ${fresh.name} starts, a part main didn't prove` };
   }
   return changed;
@@ -132,9 +134,9 @@ function changedOnly({ main, name, file, text, frames, ran, differs, sound, pict
       const fresh = (ran(frame) ?? []).find(address => !main.proven.has(address));
       if (fresh) return { frame, why: `where the original first runs code main's proof doesn't count, at ${fresh}` };
     }
-    return { frame: 0, why: 'as main didn\'t prove this recording as it is, though it proves all the code it runs' };
+    return { frame: 0, why: 'as main didn\'t prove this recording as it is, though it proves all the code it runs', whole: true };
   }
-  return { frame: 0, why: 'as main didn\'t prove this recording as it is, and no code map says which of its code is new' };
+  return { frame: 0, why: 'as main didn\'t prove this recording as it is, and no code map says which of its code is new', whole: true };
 }
 
 /**

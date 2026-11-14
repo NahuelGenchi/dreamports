@@ -2,6 +2,7 @@
   "about": "From power-on with nothing saved: the menus, Sonic in the character select with Ice Mountain Zone act 2 open, the course select down to Ice Mountain Zone act 2 and A on it, and the act's title card, all played in both; then at frame 2446 Sonic is put in the air over the act's special spring with the camera on it, as the start point puts the Dreamport's: he lands on it and rises into special stage 5, left alone to its end and its results, after which Ice Mountain Zone act 2 comes back with its title card and Sonic by the spring, left alone.",
   "start": "unlocked=7&select=1&put=2446&put-x=6032&put-y=638&put-camera-x=5912&put-camera-y=588",
   "frames": 8300,
+  "clip": { "at": 2900, "frames": 300 },
   "held": [
     [0,[]],
     [150,["A"]],

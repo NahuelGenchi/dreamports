@@ -248,6 +248,22 @@ test('the games whose code or recordings a step changes', () => {
   assert.equal(gameAt('HEAD', 'a-new-game'), false);
 });
 
+test('a new recording that runs no new code clips from the part it newly proves, not from power-on (#1293)', () => {
+  // special stage 5's recording: new to main, its original running only code main's proof already counts
+  const stage = { name: 'Special stage 5', recording: 'a-test', frames: [400, 1850] };
+  const fresh = { main: mainWith({ recordings: {} }), name: 'a-test', file: FILE, text: RECORDING, frames: 2000, ran: () => ['08000000'] };
+  assert.equal(firstChanged({ ...fresh, differs: [] }).frame, 0);
+  assert.deepEqual(firstChanged({ ...fresh, differs: [], parts: [stage] }), { frame: 400, why: 'where Special stage 5 starts, a part main didn\'t prove' });
+  assert.equal(firstChanged({ ...fresh, differs: null, parts: [stage] }).frame, 400);
+  // with no code map to say what's new, the same
+  assert.equal(firstChanged({ ...fresh, ran: null, differs: [], parts: [stage] }).frame, 400);
+  // and so its clip starts a second before the stage, with every frame of it new
+  const changed = firstChanged({ ...fresh, differs: [], parts: [stage] });
+  const [a, b] = clipWindow({ frames: 2000, changed, firstDifference: -1 });
+  assert.ok(a >= 400 - CLIP_FRAMES / 2 && a <= 400);
+  assert.ok(newFramesIn(Array.from({ length: b - a + 1 }, (_, i) => a + i), changed) * 2 >= CLIP_FRAMES);
+});
+
 test('a part the step proves and main didn\'t is what the step changed, from its first frame (#1258)', () => {
   // a stage whose code other recordings already ran: the first new code comes only at its end, at frame 1900
   const stage = { name: 'Special stage 1', recording: 'a-test', frames: [400, 1850] };
