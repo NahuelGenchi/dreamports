@@ -39,7 +39,7 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   const keepAt = [...new Set(asked)].filter(f => f >= 0 && f < frames);
   // the clip: the recording's, or the last five seconds, with the Dreamport's screens above and the original's below
   const clipAt = quick ? [] : Array.from({ length: Math.min(frames, recording.clip?.frames ?? CLIP_FRAMES) }, (_, i) => (recording.clip?.at ?? Math.max(0, frames - CLIP_FRAMES)) + i).filter(f => f < frames);
-  const first = await runLinked({ copy, players, frames: frames + 1, buttons: bits, pictures: [...new Set([...keepAt, ...clipAt])].map(f => f + 1) });
+  const first = await runLinked({ copy, players, frames: frames + 1, buttons: bits, pictures: [...new Set([...keepAt, ...clipAt])].sort((a, b) => a - b).map(f => f + 1) });
   const expected = Array.from({ length: frames }, (_, f) => Array.from({ length: players }, (_, p) => first.hashes[(f + 1) * players + p]));
 
   say('starting the Dreamport…');
