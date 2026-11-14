@@ -1,0 +1,39 @@
+{
+  "about": "From power-on with nothing saved: the menus, Sonic in the character select with Casino Paradise Zone act 1 open, the course select down to Casino Paradise Zone act 1 and A on it, and the act's title card, all played in both; then at frame 2374 Sonic is put in the air over the act's special spring with the camera on it, as the start point puts the Dreamport's: he lands on it and rises into special stage 3, left alone but for a turn to the right that misses a bomb, to its end and its results, after which Casino Paradise Zone act 1 comes back with its title card and Sonic by the spring, left alone.",
+  "start": "unlocked=4&select=1&put=2374&put-x=5104&put-y=206&put-camera-x=4984&put-camera-y=156",
+  "frames": 8000,
+  "held": [
+    [0,[]],
+    [150,["A"]],
+    [156,[]],
+    [950,["START"]],
+    [956,[]],
+    [1300,["START"]],
+    [1306,[]],
+    [1550,["START"]],
+    [1556,[]],
+    [1650,["A"]],
+    [1656,[]],
+    [1770,["A"]],
+    [1776,[]],
+    [1956,["DOWN"]],
+    [1962,[]],
+    [1980,["DOWN"]],
+    [1986,[]],
+    [2004,["DOWN"]],
+    [2010,[]],
+    [2028,["DOWN"]],
+    [2034,[]],
+    [2052,["A"]],
+    [2058,[]],
+    [4150,["RIGHT"]],
+    [4170,[]]
+  ],
+  "sets": [
+    {"frame": 1710, "address": "03005168", "bytes": 2, "value": 4},
+    {"frame": 2374, "address": "03005A20", "bytes": 4, "value": 1306624},
+    {"frame": 2374, "address": "03005A24", "bytes": 4, "value": 52736},
+    {"frame": 2374, "address": "030059D0", "bytes": 2, "value": 4984},
+    {"frame": 2374, "address": "030059D2", "bytes": 2, "value": 156}
+  ]
+}
