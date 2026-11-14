@@ -140,6 +140,11 @@
     },
     {
       "name": "Stage 4: The eyeball rafts and the fire bridge",
+      "recording": "stage-4-clear",
+      "frames": [
+        27227,
+        33373
+      ],
       "needs": [
         "Arthur moving",
         "The armor and lives",
