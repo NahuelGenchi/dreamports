@@ -76,7 +76,20 @@ static void set_up_layers(void) {
 // --- the fall ------------------------------------------------------------------------------------------------------
 static Mover fall;
 static struct { int unk30; int32_t xs[16], ys[16]; Sprite s; } streaks;
-static struct { int unk30; Sprite s; } word;
+static struct { uint32_t unk30; Sprite s; } word;
+
+// The word's task doesn't set its count (unk30): it starts from what the act left in that work RAM, at 0x030028D8, which
+// was the field 0x18 into the data of an act's task at priority 0x2000 (Task 0x080931FC). The engine keeps no such
+// memory, so these are the values measured in mGBA 0.10.5 for each act whose spring a recording reaches after a start
+// from the course select; a new game's run (special stage 1) leaves one that counts as 0. Only its count mod 60 shows.
+static uint32_t word_leftover(void) {
+  if (!spGame.byCourseSelect) return 0;
+  switch (spGame.level) {
+    case 3: return 0x08106FD0;   // Secret Base act 2 (special-stage-2)
+    case 4: return 0x08360394;   // Casino Paradise act 1 (special-stage-3)
+    default: return 0;
+  }
+}
 static struct { int unk18; Task *fallTask, *streaksTask, *wordTask; Fade fade; } intro;
 
 static void fall_step(Task *t);
@@ -130,8 +143,7 @@ static void intro_fall(Task *t) {
     fall.unk30 = 0;
     e.bgScroll[1] = 0;
     intro.fade = create_fade(0, 1, 2, 0, FADE_STEP, 1);
-    // word.unk30 is left as the heap has it: 0 from a fresh start, or 28 mod 60 after the course select's tasks
-    word.unk30 = spGame.byCourseSelect ? 28 : 0;
+    word.unk30 = word_leftover();
     sprite(&word.s, 0xC80, ANIM_WORD, 0, 120, 120, 0, 0);
     intro.wordTask = create_task(word_step, &word, 0x2120, 0, NULL);
     update_sprite(&word.s, 0);
