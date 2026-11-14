@@ -433,7 +433,8 @@ static void draw_frame(void) {
   if (fromCorner) e.bgScroll[6] = e.bgScroll[7] = 0;
   else if (row->drawBackground) row->drawBackground(camX, camY);
 
-  player_draw(shownSet ? &shown : &act.player, spriteX, spriteY);
+  // in a round his own player's task draws him, from his packets
+  if (!chaohunt_active()) player_draw(shownSet ? &shown : &act.player, spriteX, spriteY);
   // Amy's hearts, whose task (0x3001) runs just after hers
   act_amy_hearts_draw();
   // and the CPU partner as his task (0x3001) left him, just after Sonic
@@ -972,6 +973,8 @@ static void act_frame(void) {
   // the title card's task (0x2100) runs before Sonic's and the clock's, so the frame it ends frees the pad and starts
   // the clock; its pieces and fade go over the act, and it sets the display while it shows, after draw_frame
   int cardShows = !act.cardDone;
+  // a round's players (0x2000) run just before the card
+  if (chaohunt_active()) mp_players_run();
   if (cardShows) card_update((e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
   // the results' task (0x2100) and its pieces' (0x2120); the frame they end, the next act takes over
   if (time_attack_result_active() && !time_attack_result_run()) { go_to_next_level(); return; }
@@ -1038,6 +1041,8 @@ static void act_frame(void) {
     }
   }
   sonic_shown();
+  // in a round, his packet for the others, at the end of his frame (sub_8024B10)
+  if (chaohunt_active()) mp_send(&act.player, playerSpriteFresh);
   // the CPU partner's task, just after Sonic's (0x3001)
   if (act.hasPartner) { partner_task(!act.cardDone); partnerShown = act.partner; }
   if (row->palettesAfterSonic)
@@ -1341,6 +1346,8 @@ void act_start(int level, int cardSkip, int preFrames) {
   // and neither does Amy
   if (ctx.character == CHARACTER_AMY) act.player.character = CHARACTER_AMY;
   if (ctx.partner && ctx.character == 0 && level != LEVEL_THE_MOON) partner_start();
+  // a round of Chao Hunt makes a task for every player on the link, and its own managers
+  if (chaohunt_active()) chaohunt_setup();
   objects_start(level, act.stage.paletteCount > 0);
   if (row->runsFromFirstFrame) start_palette_animations();
   if (act.fromStartPoint) {

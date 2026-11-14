@@ -3,13 +3,46 @@
 #ifndef SA_CHAOHUNT_H
 #define SA_CHAOHUNT_H
 
-#include <stdint.h>
+#include "sa.h"
+#include "player.h"
 
 typedef struct {
   int active;      // a round is being played (gGameMode 4)
   int id, count;   // this GBA's number on the link, and how many play
   int chaoPlace;   // the Chao's place among the stage's eight, as the link handed it
+  int itemEffect;  // gPlayer.itemEffect: 0x80 while the title card holds him (teleporting), 0x20 invisible, 0x40 confused
+  int charRings[PLAYERS_MAX];   // gMultiplayerCharRings: the Chao each player holds
+  int ranks[PLAYERS_MAX];       // gMultiplayerRanks: each player's result, -1 while the round runs
 } Round;
+
+// a player as the round sees it (MultiplayerPlayer)
+typedef struct {
+  int made, id;
+  Sprite s;
+  Transform tf;
+  int x, y;            // pos
+  int dx, dy;          // unk44, unk48: how far its last packet moved it
+  int16_t qvx, qvy;    // unk66, unk68: that in 1/256 px, 0 after a jump of more than 64 px
+  uint16_t flags;      // unk54: its packet's flags
+  uint8_t items;       // unk57: its packet's item effects
+  uint32_t state;      // unk5C: 1 out of the round, 2 the title card still running, 4 carried, 0x10000 << n carrying Chao n
+  int wait;            // unk60: frames before it can be touched again
+  int missed;          // unk61: frames since its last packet
+  int standsOn;        // unk64: which player it stands on
+  int offsetY;         // unk58[0]
+} MpPlayer;
+
+extern MpPlayer mpPlayers[PLAYERS_MAX];
+void mp_player_create(int id, int x, int y);
+void mp_players_run(void);
+void mp_players_stop(void);
+void mp_send(const Player *p, int fresh);
+/** gOamMatrixIndex: the next rotation matrix in this frame for a round's sprites turned through the hardware. */
+int mp_next_matrix(void);
+// the arrows toward the other players (mphud.c)
+void mp_indicator_create(int id);
+void mp_indicators_run(void);
+void mp_indicators_stop(void);
 
 extern Round hunt;
 
@@ -17,6 +50,8 @@ extern Round hunt;
 int chaohunt_active(void);
 /** Player `player`'s start place in multiplayer stage `level`. */
 void chaohunt_spawn(int level, int player, int32_t *x, int32_t *y);
+/** The stage's multiplayer init: a task for every player, Sonic waiting out the title card. */
+void chaohunt_setup(void);
 /** Starts the round the VS menus chose. */
 void chaohunt_start(int level, int chao);
 

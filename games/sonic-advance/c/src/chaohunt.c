@@ -31,6 +31,21 @@ void chaohunt_spawn(int level, int player, int32_t *x, int32_t *y) {
   *y = rom_s16(at + 2);
 }
 
+void chaohunt_setup(void) {
+  // AllocateCharacterStageGfx: in a round Sonic's own sprite loads neither tiles nor colours; his player's task does
+  act.player.sprite.frameFlags |= SPRITE_KEEP_PALETTE | SPRITE_KEEP_TILES;
+  int32_t x, y;
+  chaohunt_spawn(act.stage.level, hunt.id, &x, &y);
+  for (int i = 0; i < PLAYERS_MAX; i++) hunt.ranks[i] = -1;
+  // every player's task starts where this GBA's own player starts, until its packets come in
+  // and an arrow toward each other player
+  for (int i = 0; i < hunt.count; i++) {
+    mp_player_create(i, x, y);
+    if (i != hunt.id) mp_indicator_create(i);
+  }
+  hunt.itemEffect = 0x80;
+}
+
 /** The VS menus have chosen the round: Chao Hunt's `level`, with the Chao at place `chao`. */
 void chaohunt_start(int level, int chao) {
   memset(&hunt, 0, sizeof hunt);
