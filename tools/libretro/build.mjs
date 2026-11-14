@@ -56,8 +56,13 @@ function buildHere(machine, log, tools) {
   run(what, 'git', ['fetch', '-q', '--depth', '1', 'origin', core.commit], source);
   run(what, 'git', ['checkout', '-q', '--force', 'FETCH_HEAD'], source);
   if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1'], source);
-  const folder = join(source, core.folder ?? '');
-  run(`Building ${name}'s emulator`, tools?.make ?? 'make', [`-j${buildJobs()}`, ...(core.make ?? [])], folder, tools?.env);
+  const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
+  if (core.cmake) {
+    run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), '-DCMAKE_BUILD_TYPE=Release', ...core.cmake], source, tools?.env);
+    run(building, 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
+  } else {
+    run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...(core.make ?? [])], folder, tools?.env);
+  }
   copyFileSync(join(folder, `${core.built}${EXTENSION}`), file);
 }
 
@@ -65,6 +70,8 @@ function buildHere(machine, log, tools) {
 export function buildReference(machine, log) {
   const { core, name } = machine;
   if (core.needs) throw new Error(`${name} can't run in the tools yet: ${core.needs} (docs/CONSOLES.md).`);
+  // said before a build of several minutes that couldn't run here
+  if (core.graphics && process.platform !== 'linux') throw new Error(`${name} can't run in the tools on this computer yet: its emulator draws with OpenGL, and the tools give it a context only on Linux so far (docs/CONSOLES.md).`);
   mkdirSync(FOLDER, { recursive: true });
   const built = existsSync(HOST) && isCurrent(HOST_SOURCE, HOST, [EXPLORE]) && (core.local ? isCurrent(join(REPO, core.local), coreFile(core)) : existsSync(coreFile(core)));
   if (built) return;
