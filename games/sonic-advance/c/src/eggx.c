@@ -866,7 +866,7 @@ ActTask *egg_x_spawn(Slot *slot) {
   b->x0 = slot->e.x; b->y0 = slot->e.y;
   b->qx = 116 << 8; b->qy = 232 << 8;
   b->timer = 120;
-  b->hits = save.bytes[0x18] ? 2 : 0;
+  b->hits = difficulty_easy() ? 2 : 0;
   b->main = eggx_wait_for_camera;
 
   for (int i = 0; i < 16; i++) e.objPalette[12 * 16 + i] = 0x7FFF;

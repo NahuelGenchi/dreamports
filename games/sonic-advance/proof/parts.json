@@ -34,7 +34,7 @@
     { "name": "Playing as Tails", "recording": "tails-neo-green-hill", "frames": [1829, 11626] },
     { "name": "Playing as Knuckles", "recording": "knuckles-neo-green-hill", "frames": [1849, 8346] },
     { "name": "Playing as Amy", "recording": "amy-neo-green-hill", "frames": [1869, 8166] },
-    { "name": "Time Attack" },
+    { "name": "Time Attack", "recording": "time-attack-result", "frames": [1781, 10144] },
     { "name": "VS, for 2 to 4 players" },
     { "name": "The Options menu", "recording": "options-menu", "frames": [1741, 2644] },
     { "name": "Player data, with the name input and the VS record" },

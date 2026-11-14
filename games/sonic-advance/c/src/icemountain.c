@@ -225,6 +225,9 @@ static void water_vblank(void) {
 
 /** Task_StageWaterTask, after the stage clock: the level moves a step toward its target every other frame, and the
  *  screen's line where it starts is kept for the V-blank (sub_8011A4C), which the background update then reads */
+/** The act has its water's task (0xFFFE), which the pause menu's comes after. */
+int water_runs(void) { return water.on; }
+
 void water_task(void) {
   if (!water.on) return;
   if (act_stage_time() & 1) {

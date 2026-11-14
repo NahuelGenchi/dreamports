@@ -77,6 +77,7 @@ typedef struct {
   int goalReached, ringsStopped;   // past the goal; past the goal or a beaten boss, the rings manager neither takes nor draws
   int afterLevel;                  // made by GoToNextLevel after the act before, rather than by the course select
   int restarted;                   // made again after a life lost (HandleLifeLost), at the last checkpoint passed
+  int noPause;                     // STAGE_FLAG__DISABLE_PAUSE_MENU past the card: a life lost, or the results
   int playerGone;                  // the last life lost: the player's task has ended, and the game over runs
   int fromStartPoint;              // opened by the recording's start point, past its card: only the first act it starts
   int byCourseSelect;              // made inside the course select's task (0x2000): that frame runs only the tasks after it
@@ -151,7 +152,9 @@ void act_random_seed(uint32_t seed);
 void water_create(int level, uint32_t mask);
 void water_card(int ending);
 void water_card_flush(void);
+void act_made_at_card_priority(void);
 void water_task(void);
+int water_runs(void);
 int water_line_on_screen(void);
 /** gWater.currentWaterLevel: the water line's height in the world, -1 in an act without water. */
 int water_level(void);

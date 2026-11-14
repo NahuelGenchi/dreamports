@@ -183,6 +183,12 @@ void player_init_partner(Player *p, int x, int y) {
   player_become_tails(p);
 }
 
+/** The player's task's destructor: the sprites it took from the heap go back (Tails's tails, a partner's body). */
+void player_free(Player *p) {
+  if (p->character == CHARACTER_TAILS) vram_free(p->tails.graphics.dest);
+  if (p->cpu) vram_free(p->sprite.graphics.dest);
+}
+
 void player_become_tails(Player *p) {
   p->character = CHARACTER_TAILS;
   // AllocateCharacterMidAirGfx
@@ -203,6 +209,13 @@ static double decel(const Player *p) { return (p->water ? WATER_DECELERATION : D
 static double top_speed(const Player *p) { return (p->water ? WATER_MAX_RUN_SPEED : MAX_RUN_SPEED) * pace(p); }
 static double gravity(const Player *p) { return p->water ? WATER_GRAVITY : GRAVITY; }   // PLAYERFN_UPDATE_AIR_FALL_SPEED
 static double jump_speed(const Player *p) { return p->water ? WATER_JUMP_SPEED : JUMP_SPEED; }
+
+/** The time up (Task_GameStage): his shield and items go, and he dies thrown up as high as a jump. */
+void player_time_up(Player *p) {
+  p->shield = SHIELD_NONE; p->invincible = 0; p->speedUp = 0;
+  p->ysp = -jump_speed(p);
+  p->dead = 1;
+}
 
 // a frame's move (PLAYERFN_UPDATE_POSITION): gravity flipped since the stage clock last ran turns his Y speed around,
 // and flipped, it moves him up the act

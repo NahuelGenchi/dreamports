@@ -27,7 +27,6 @@ enum {
   HEAD_ORDER = 22, EGGMAN_IN_ORDER = 21, SEGMENT_ORDER = 23, LASER_ORDER = 21, SHOT_ORDER = 15,
   MOBILE_ORDER = 19, EGGMAN_OUT_ORDER = 18,
   SE_BOSS_HIT = 143, SE_EXPLOSION = 144,
-  SAVE_DIFFICULTY = 0x18,
 };
 
 static const int16_t SWAY[9] = { 512, 512, 512, 512, 563, 614, 1536, 2304, 2304 };
@@ -729,7 +728,7 @@ ActTask *egg_snake_spawn(Slot *slot) {
   b->qx = 0x1000;
   b->speed = 0x200;
   b->body = 1;
-  if (save.bytes[SAVE_DIFFICULTY] != 0) b->hits = 2;
+  if (difficulty_easy()) b->hits = 2;
   b->step = intro;
   object_sprite_at(&b->o.sprite, vram_malloc(HEAD_TILES), ANIM_HEAD, HEAD_SHUT, HEAD_ORDER, ENEMY_PRIORITY, 0, 0);
   object_sprite_at(&b->s2, vram_malloc(EGGMAN_IN_TILES), ANIM_EGGMAN_IN, EGG_SHUT, EGGMAN_IN_ORDER, ENEMY_PRIORITY, 0, 0);

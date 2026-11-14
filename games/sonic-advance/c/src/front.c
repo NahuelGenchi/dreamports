@@ -240,6 +240,20 @@ void front_play(int level) {
 }
 void front_start_demo(void) { ctx.done = 1; }
 
+/** The act a Time Attack card hands over to, made inside the card's task (TimeAttack card's Task_806BBC0). */
+void front_time_attack_play(int level) {
+  act_active = 1;
+  actHudFlash = 1;
+  destroy_tasks(0x2000, 0x3000);
+  act_start(level, -1, 0);
+  act.byCourseSelect = 1;
+  sound_late(LOAD_ACT_TIME_ATTACK, level);
+  act_frame_now();
+  act_made_at_card_priority();
+  // its loading takes two V-blanks, the second not counted in the frame counter
+  act.stallLoad = 2;
+}
+
 // the sound the screens start, on the kit's sound engine (gba/engine.js's playSong and the rest)
 void play_song(int song) { gba_sound_play(song); }                            // m4aSongNumStart
 void play_song_or_continue(int song) { gba_sound_start_or_continue(song); }  // m4aSongNumStartOrContinue

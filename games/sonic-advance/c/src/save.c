@@ -85,6 +85,27 @@ void save_moon_opened(void) {
   uint16_t cur = save_unlocked_level(0);
   if (cur < LEVEL_THE_MOON + 1) save_set_unlocked_level(0, (uint16_t)(LEVEL_THE_MOON + 1));
 }
+#define TIME_RECORDS 0x20
+#define RECORD_LEVELS 18
+#define RECORDS_PER_COURSE 3
+static uint32_t record_at(int character, int level, int rank) {
+  return TIME_RECORDS + (uint32_t)((character * RECORD_LEVELS + level) * RECORDS_PER_COURSE + rank) * 4;
+}
+uint32_t save_time_record(int character, int level, int rank) { return get32(save.bytes, record_at(character, level, rank)); }
+int save_register_time_record(int character, int level, uint32_t time) {
+  for (int rank = 0; rank < RECORDS_PER_COURSE; rank++) {
+    uint32_t record = get32(save.bytes, record_at(character, level, rank));
+    if (time >= record) continue;
+    set32(save.bytes, record_at(character, level, rank), time);
+    for (int next = rank + 1; next < RECORDS_PER_COURSE; next++) {
+      uint32_t slower = get32(save.bytes, record_at(character, level, next));
+      set32(save.bytes, record_at(character, level, next), record);
+      record = slower;
+    }
+    return rank == 0;
+  }
+  return 0;
+}
 uint32_t save_player_id(void) { return get32(save.bytes, 0x04); }
 void save_set_player_id(uint32_t id) { set32(save.bytes, 0x04, id); }
 

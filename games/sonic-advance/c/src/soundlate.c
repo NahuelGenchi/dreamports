@@ -58,6 +58,9 @@ static const struct {
   { LOAD_ACT_NEXT, LEVEL_X_ZONE, ANY, 1, 5082 },
   // X Zone again after a life is lost (amy-x-zone 5887, tails-x-zone 4048 and 5604, knuckles-x-zone 4068)
   { LOAD_ACT_AGAIN, LEVEL_X_ZONE, ANY, 1, 7202 },
+  // a Time Attack act, from its card or the lobby's choice to run it again, the frame after (time-attack-card 2505,
+  // time-attack-result 10143)
+  { LOAD_ACT_TIME_ATTACK, ANY, ANY, 1, 6990 },
 };
 
 static struct { int frames, cycles; } pending;
