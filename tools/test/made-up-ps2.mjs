@@ -12,6 +12,10 @@
 // A third, madeUpPs2OnVu1, draws as a real game does: a program on vector unit 1 turns a square's four corners by a
 // matrix, divides them by their depth and gives the GS a PACKED packet, each frame, with the matrix the main processor
 // has turned (ps2-kit.mjs).
+//
+// A fourth, madeUpPs2Textured, puts three textures in the GS's memory as it starts, an 8-bit one with a 32-bit palette,
+// a 4-bit one with a 16-bit palette and a 32-bit one with alpha, and draws them each frame into a 16-bit framebuffer:
+// at their size and moving, larger and repeating, with decal, by floats, and blended with the alpha test.
 
 import { createHash } from 'node:crypto';
 
@@ -66,14 +70,14 @@ const SQUARE_AT = 11;   // the first of the square's corners, in WRITES
 const PACKET = [WRITES.length | 0x8000, 0x10000000, 0xE, 0, ...WRITES.flatMap(([register, [low, high]]) => [low, high, register, 0])];
 
 // what both programs start with: the screen, and the packet's place kept in S1
-const setUp = packetAt => [
+const setUp = (packetAt, shownFormat = 0) => [
   // SetGsCrt: interlaced, NTSC, in fields, each showing every other line of the 448
   addiu(V1, ZERO, 2), addiu(A0, ZERO, 1), addiu(A1, ZERO, 2), addiu(A2, ZERO, 0), SYSCALL,
   // the screen: circuit 1 alone, showing the framebuffer at 0, 640 by 448 on an NTSC screen, at four clocks a pixel
   lui(T0, GS >>> 16),
   ...li(T1, 0xFF25), sw(T1, PMODE, T0), sw(ZERO, PMODE + 4, T0),
   addiu(T1, ZERO, 1), sw(T1, SMODE2, T0), sw(ZERO, SMODE2 + 4, T0),
-  ...li(T1, FBW << 9), sw(T1, DISPFB1, T0), sw(ZERO, DISPFB1 + 4, T0),
+  ...li(T1, FBW << 9 | shownFormat << 15), sw(T1, DISPFB1, T0), sw(ZERO, DISPFB1 + 4, T0),
   ...li(T1, (656 | 36 << 12 | 3 << 23) >>> 0), sw(T1, DISPLAY1, T0),
   ...li(T1, (WIDTH * 4 - 1 | (HEIGHT - 1) << 12) >>> 0), sw(T1, DISPLAY1 + 4, T0),
   sw(ZERO, BGCOLOR, T0), sw(ZERO, BGCOLOR + 4, T0),
@@ -86,9 +90,9 @@ const waitForVBlank = [
   here('wait'), lw(T1, 0, T0), andi(T1, T1, 8), beq(T1, ZERO, 'wait'), NOP,
 ];
 // the packet to the GIF, or with `to` and `from` to another of the DMA controller's channels, waiting until it's gone
-const send = (packet, to = GIF_DMA, from = S1) => [
+const send = (packet, to = GIF_DMA, from = S1, name = String(to)) => [
   ...li(T0, to), sw(from, MADR, T0), addiu(T1, ZERO, packet.length / 4), sw(T1, QWC, T0), addiu(T1, ZERO, 0x101), sw(T1, 0, T0),
-  here(`sending${to}`), lw(T3, 0, T0), andi(T3, T3, 0x100), bne(T3, ZERO, `sending${to}`), NOP,
+  here(`sending${name}`), lw(T3, 0, T0), andi(T3, T3, 0x100), bne(T3, ZERO, `sending${name}`), NOP,
 ];
 
 function program(packetAt) {
@@ -258,6 +262,79 @@ function programOnVu1(packetAt) {
   ];
 }
 
+// The textured program's packets, as 32-bit words. A tag of `count` register writes, each its 64 bits and its number, and
+// a tag of `count` 128-bit pieces of a picture
+const writesTag = (count, ends) => [count | (ends ? 0x8000 : 0), 0x10000000, 0xE, 0];
+const imageTag = (count, ends) => [count | (ends ? 0x8000 : 0), 0x08000000, 0, 0];
+const write = (register, low, high = 0) => [low >>> 0, high >>> 0, register, 0];
+const words = list => list.flat();
+/** Where the textures and palettes are, in the GS's 256-byte blocks, past the 16-bit framebuffer's 2240. */
+export const TEXTURE_BLOCKS = { t8: 2304, t8Palette: 2320, t4: 2336, t4Palette: 2344, t32: 2352 };
+const SIXTEEN_BIT = 0x0A;
+// a picture of `width` by `height` pixels moved into the GS's memory at `block`, 64 pixels across, from 32-bit words
+function upload(block, format, width, height, data, ends) {
+  const head = [write(0x50, 0, block | 1 << 16 | format << 24), write(0x51, 0, 0), write(0x52, width, height), write(0x53, 0)];
+  while (data.length % 4) data.push(0);
+  return words([writesTag(head.length, false), ...head, imageTag(data.length / 4, ends), data]);
+}
+const packBytes = bytes => Array.from({ length: Math.ceil(bytes.length / 4) }, (_, i) => (bytes[i * 4] | (bytes[i * 4 + 1] ?? 0) << 8 | (bytes[i * 4 + 2] ?? 0) << 16 | (bytes[i * 4 + 3] ?? 0) << 24) >>> 0);
+/** Each palette entry's colour, the 8-bit texture's index at each texel, and the 32-bit texture's colour, every channel a
+ *  multiple of 8 so a 16-bit framebuffer keeps it whole. */
+export const paletteColour = i => ((i * 37 & 0xF8) | (i * 91 & 0xF8) << 8 | (i * 53 & 0xF8) << 16 | 0x80 << 24) >>> 0;
+export const t8Index = (x, y) => (x * 7 + y * 3) & 255;
+export const t32Colour = (x, y) => ((x * 16) | (y * 16) << 8 | 0x80 << 16 | ((x + y) & 1 ? 0x40 : 0) << 24) >>> 0;
+export const UPLOAD = words([
+  upload(TEXTURE_BLOCKS.t8, 0x13, 16, 16, packBytes(Array.from({ length: 256 }, (_, n) => t8Index(n & 15, n >> 4))), false),
+  // the 256-entry palette in a block of 16 by 16, entries 8 to 15 and 16 to 23 changing places in every 32
+  upload(TEXTURE_BLOCKS.t8Palette, 0x00, 16, 16, Array.from({ length: 256 }, (_, j) => paletteColour((j & ~0x18) | (j & 8) << 1 | (j & 16) >> 1)), false),
+  upload(TEXTURE_BLOCKS.t4, 0x14, 8, 8, packBytes(Array.from({ length: 32 }, (_, n) => ((n * 2 % 8) ^ (n >> 2)) & 15 | (((n * 2 + 1) % 8) ^ (n >> 2) & 15) << 4)), false),
+  upload(TEXTURE_BLOCKS.t4Palette, 0x02, 8, 2, Array.from({ length: 8 }, (_, n) => (0x8000 | (n * 2 * 3 & 31) | (n * 2 * 5 & 31) << 5 | (n * 2 * 7 & 31) << 10 | (0x8000 | ((n * 2 + 1) * 3 & 31) | ((n * 2 + 1) * 5 & 31) << 5 | ((n * 2 + 1) * 7 & 31) << 10) << 16) >>> 0), false),
+  upload(TEXTURE_BLOCKS.t32, 0x00, 16, 16, Array.from({ length: 256 }, (_, n) => t32Colour(n & 15, n >> 4)), true),
+]);
+const tex0 = ({ block, format, size, tcc, tfx, palette = 0, paletteFormat = 0, load = 0 }) => {
+  const low = block | 1 << 14 | format << 20 | size << 26 | (size & 3) << 30, high = size >> 2 | tcc << 2 | tfx << 3 | palette << 5 | paletteFormat << 19 | load << 29;
+  return [low >>> 0, high >>> 0];
+};
+const XY = (x, y) => (x << 4 | y << 20) >>> 0;
+/** The moving sprite's first corner, across, at each frame, and where its two places are among the frame's writes. */
+export const MOVING_Y = 40;
+const FRAME_WRITES = [
+  write(0x4C, FBW << 16 | SIXTEEN_BIT << 24), write(0x40, (WIDTH - 1) << 16, (HEIGHT - 1) << 16), write(0x18, 0), write(0x4E, 0, 1),
+  write(0x1A, 1), write(0x3B, 0x80, 0x80), write(0x46, 1), write(0x47, 0x30000), write(0x00, 6), write(0x01, 0x80301008, 0x3F800000),
+  write(0x05, XY(0, 0)), write(0x05, XY(WIDTH, HEIGHT)), write(0x3F, 0), write(0x14, 0), write(0x08, 0),
+  // the 8-bit texture, its palette loaded, at its size and moving, then twice its size and repeating
+  write(0x06, ...tex0({ block: TEXTURE_BLOCKS.t8, format: 0x13, size: 4, tcc: 1, tfx: 0, palette: TEXTURE_BLOCKS.t8Palette, load: 1 })),
+  write(0x00, 6 | 1 << 4 | 1 << 8), write(0x01, 0x80808080, 0x3F800000),
+  write(0x03, 0), write(0x05, XY(0, MOVING_Y)), write(0x03, 16 << 4 | 16 << 20), write(0x05, XY(16, MOVING_Y + 16)),
+  write(0x03, 0), write(0x05, XY(100, 100)), write(0x03, 32 << 4 | 32 << 20), write(0x05, XY(164, 164)),
+  // the 4-bit texture with its 16-bit palette, as a decal, four times its size
+  write(0x06, ...tex0({ block: TEXTURE_BLOCKS.t4, format: 0x14, size: 3, tcc: 0, tfx: 1, palette: TEXTURE_BLOCKS.t4Palette, paletteFormat: 2, load: 1 })),
+  write(0x03, 0), write(0x05, XY(220, 100)), write(0x03, 8 << 4 | 8 << 20), write(0x05, XY(252, 132)),
+  // the 32-bit texture, blended halfway by its alpha, its texels with none left out
+  write(0x06, ...tex0({ block: TEXTURE_BLOCKS.t32, format: 0x00, size: 4, tcc: 1, tfx: 0 })),
+  write(0x47, 1 | 5 << 1 | 0x10 << 4 | 0x30000), write(0x42, 0x44), write(0x00, 6 | 1 << 4 | 1 << 6 | 1 << 8),
+  write(0x03, 0), write(0x05, XY(300, 100)), write(0x03, 16 << 4 | 16 << 20), write(0x05, XY(364, 164)),
+  // and by floats over Q, not blended
+  write(0x00, 6 | 1 << 4), write(0x02, bitsOf(0), bitsOf(0)), write(0x05, XY(400, 100)), write(0x02, bitsOf(1), bitsOf(1)), write(0x05, XY(432, 132)),
+];
+export const MOVING_AT = FRAME_WRITES.findIndex(([low, , register]) => register === 0x05 && low === XY(0, MOVING_Y));
+export const FRAME_PACKET = words([writesTag(FRAME_WRITES.length, true), ...FRAME_WRITES]);
+
+function programTextured(packetAt) {
+  const S2 = 18, first = 16 + MOVING_AT * 16, second = first + 32;
+  return [
+    ...setUp(packetAt, SIXTEEN_BIT), ...li(S2, packetAt + FRAME_PACKET.length * 4), addiu(S0, ZERO, 0),
+    ...send(UPLOAD, GIF_DMA, S2, 'upload'),
+    here('frame'),
+    ...waitForVBlank,
+    sll(T1, S0, 4), ...li(T2, MOVING_Y << 20), or(T1, T1, T2), sw(T1, first, S1),
+    addiu(T1, S0, 16), sll(T1, T1, 4), ...li(T2, (MOVING_Y + 16) << 20), or(T1, T1, T2), sw(T1, second, S1),
+    ...send(FRAME_PACKET),
+    addiu(S0, S0, 1), andi(S0, S0, 255),
+    j('frame'), NOP,
+  ];
+}
+
 function assemble(code) {
   const places = {}, words = [];
   for (const item of code) {
@@ -275,6 +352,8 @@ function assemble(code) {
 export const madeUpPs2 = () => elfOf(program, PACKET);
 /** The program in three dimensions, the same way. */
 export const madeUpPs2In3d = () => elfOf(programIn3d, PACKET_3D);
+/** The textured program, the same way. */
+export const madeUpPs2Textured = () => elfOf(programTextured, [...FRAME_PACKET, ...UPLOAD]);
 /** The program whose shapes a program on vector unit 1 makes, the same way. */
 export const madeUpPs2OnVu1 = () => elfOf(programOnVu1, [...PACKET_BEFORE, ...VIF_PACKET]);
 
