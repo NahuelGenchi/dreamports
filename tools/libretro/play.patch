@@ -5,11 +5,59 @@ is one frame of the console: the console waits at each V-blank, before it reads 
 for the next frame, the frontend serves the GS's calls until it has got there, and every block of sound is kept and
 handed over with the frame it was mixed in, 45 samples at a time (docs/CONSOLES.md, The PlayStation 2).
 
+It also keeps each frame's draw list: a hash of everything the console gave the GS that decides its picture, in the order
+given, every register write, every picture sent and what the screen shows of the framebuffer, which the frontend asks for
+with dreamports_draw_list. That's what a 3D game is proven by (docs/STANDARD.md).
+
 diff --git a/Source/gs/GSHandler.cpp b/Source/gs/GSHandler.cpp
-index 57e58ba..3739a85 100644
+index 57e58ba..1665eb3 100644
 --- a/Source/gs/GSHandler.cpp
 +++ b/Source/gs/GSHandler.cpp
-@@ -2213,6 +2213,21 @@ void CGSHandler::ProcessSingleFrame()
+@@ -456,6 +456,21 @@ uint32 CGSHandler::ReadPrivRegister(uint32 nAddress)
+ 
+ void CGSHandler::WritePrivRegister(uint32 nAddress, uint32 nData)
+ {
++	switch(nAddress & ~0x0F)
++	{
++	case GS_PMODE:
++	case GS_SMODE2:
++	case GS_DISPFB1:
++	case GS_DISPLAY1:
++	case GS_DISPFB2:
++	case GS_DISPLAY2:
++	{
++		// what the screen shows of the framebuffer is part of the draw list
++		uint32 shown[2] = {nAddress, nData};
++		AddToDrawList(shown, sizeof(shown));
++	}
++	break;
++	}
+ 	switch(nAddress & ~0x0F)
+ 	{
+ 	case GS_PMODE:
+@@ -621,6 +636,7 @@ void CGSHandler::FeedImageData(const void* data, uint32 length)
+ {
+ 	assert(m_writeBufferProcessIndex == m_writeBufferSize);
+ 	SubmitWriteBuffer();
++	AddToDrawList(data, length);
+ 
+ #ifdef _DEBUG
+ 	m_transferCount++;
+@@ -675,6 +691,13 @@ void CGSHandler::ProcessWriteBuffer(const CGsPacketMetadata* metadata)
+ 	for(uint32 writeIndex = m_writeBufferProcessIndex; writeIndex < m_writeBufferSize; writeIndex++)
+ 	{
+ 		const auto& write = m_currentWriteBuffer[writeIndex];
++		{
++			// each register write, as its register and the 64 bits written to it
++			uint8 written[9];
++			written[0] = write.first;
++			memcpy(written + 1, &write.second, 8);
++			AddToDrawList(written, sizeof(written));
++		}
+ 		switch(write.first)
+ 		{
+ 		case GS_REG_SIGNAL:
+@@ -2213,6 +2236,21 @@ void CGSHandler::ProcessSingleFrame()
  	m_flipped = false;
  }
  
@@ -32,14 +80,28 @@ index 57e58ba..3739a85 100644
  {
  	throw std::runtime_error("Screenshot feature is not implemented in current backend.");
 diff --git a/Source/gs/GSHandler.h b/Source/gs/GSHandler.h
-index 66bfe59..f34666f 100644
+index 66bfe59..41f9723 100644
 --- a/Source/gs/GSHandler.h
 +++ b/Source/gs/GSHandler.h
-@@ -901,6 +901,7 @@ public:
+@@ -901,6 +901,21 @@ public:
  	void SendGSCall(const CMailBox::FunctionType&, bool = false, bool = false);
  
  	void ProcessSingleFrame();
 +	void ProcessPendingCalls(unsigned int);
++
++	// The draw list: everything the console has given the GS that decides its picture, hashed in the order given
++	// (FNV-1a), with how many things that was. The frontend reads it at each V-blank and starts it again.
++	uint32 m_drawListHash = 0x811C9DC5;
++	uint32 m_drawListCount = 0;
++	void AddToDrawList(const void* data, size_t length)
++	{
++		auto bytes = static_cast<const uint8*>(data);
++		for(size_t i = 0; i < length; i++)
++		{
++			m_drawListHash = (m_drawListHash ^ bytes[i]) * 0x01000193;
++		}
++		m_drawListCount++;
++	}
  
  	FlipCompleteEvent OnFlipComplete;
  	NewFrameEvent OnNewFrame;
@@ -93,7 +155,7 @@ index 42067f7..ef20871 100644
  
  bool CSH_LibreAudio::HasFreeBuffers()
 diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
-index 8a07c26..4c9d1a5 100644
+index 8a07c26..3197c5b 100644
 --- a/Source/ui_libretro/main_libretro.cpp
 +++ b/Source/ui_libretro/main_libretro.cpp
 @@ -19,6 +19,9 @@
@@ -106,7 +168,7 @@ index 8a07c26..4c9d1a5 100644
  
  #define LOG_NAME "LIBRETRO"
  
-@@ -37,6 +40,37 @@ struct retro_hw_render_callback g_hw_render
+@@ -37,6 +40,56 @@ struct retro_hw_render_callback g_hw_render
  {
  };
  
@@ -120,12 +182,31 @@ index 8a07c26..4c9d1a5 100644
 +static uint64_t g_vblanksAllowed = 0;
 +static uint64_t g_framesRun = 0;
 +
++// the draw list of the frame that has just ended, for the frontend to ask for (dreamports_draw_list)
++static uint32_t g_drawListHash = 0;
++static uint32_t g_drawListCount = 0;
++
 +void WaitAtVBlank()
 +{
 +	std::unique_lock<std::mutex> lock(g_vblankMutex);
++	if(auto gs = m_virtualMachine ? m_virtualMachine->GetGSHandler() : nullptr)
++	{
++		g_drawListHash = gs->m_drawListHash;
++		g_drawListCount = gs->m_drawListCount;
++		gs->m_drawListHash = 0x811C9DC5;
++		gs->m_drawListCount = 0;
++	}
 +	g_vblanksReached++;
 +	g_vblankCondition.notify_all();
 +	g_vblankCondition.wait(lock, [] { return g_vblanksAllowed >= g_vblanksReached; });
++}
++
++// What the console gave the GS in the frame the last retro_run ran: its hash and how many things it was
++extern "C" RETRO_API void dreamports_draw_list(uint32_t* hash, uint32_t* count)
++{
++	std::lock_guard<std::mutex> lock(g_vblankMutex);
++	*hash = g_drawListHash;
++	*count = g_drawListCount;
 +}
 +
 +static void AllowVBlanks(uint64_t count)
@@ -144,7 +225,7 @@ index 8a07c26..4c9d1a5 100644
  int g_res_factor = 1;
  CGSHandler::PRESENTATION_MODE g_presentation_mode = CGSHandler::PRESENTATION_MODE::PRESENTATION_MODE_FIT;
  bool g_forceBilinearTextures = false;
-@@ -446,15 +480,24 @@ void retro_run()
+@@ -446,15 +499,24 @@ void retro_run()
  
  	if(m_virtualMachine)
  	{
@@ -172,7 +253,7 @@ index 8a07c26..4c9d1a5 100644
  	}
  }
  
-@@ -554,7 +597,7 @@ void retro_init()
+@@ -554,7 +616,7 @@ void retro_init()
  	if(g_environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
  		libretro_supports_bitmasks = true;
  
@@ -181,7 +262,7 @@ index 8a07c26..4c9d1a5 100644
  
  	m_virtualMachine = new CPS2VM();
  	m_virtualMachine->Initialize();
-@@ -574,6 +617,7 @@ void retro_deinit()
+@@ -574,6 +636,7 @@ void retro_deinit()
  
  	if(m_virtualMachine)
  	{
