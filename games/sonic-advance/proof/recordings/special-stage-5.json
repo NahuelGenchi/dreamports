@@ -1,0 +1,43 @@
+{
+  "about": "From power-on with nothing saved: the menus, Sonic in the character select with Ice Mountain Zone act 2 open, the course select down to Ice Mountain Zone act 2 and A on it, and the act's title card, all played in both; then at frame 2446 Sonic is put in the air over the act's special spring with the camera on it, as the start point puts the Dreamport's: he lands on it and rises into special stage 5, left alone to its end and its results, after which Ice Mountain Zone act 2 comes back with its title card and Sonic by the spring, left alone.",
+  "start": "unlocked=7&select=1&put=2446&put-x=6032&put-y=638&put-camera-x=5912&put-camera-y=588",
+  "frames": 8300,
+  "held": [
+    [0,[]],
+    [150,["A"]],
+    [156,[]],
+    [950,["START"]],
+    [956,[]],
+    [1300,["START"]],
+    [1306,[]],
+    [1550,["START"]],
+    [1556,[]],
+    [1650,["A"]],
+    [1656,[]],
+    [1770,["A"]],
+    [1776,[]],
+    [1956,["DOWN"]],
+    [1962,[]],
+    [1980,["DOWN"]],
+    [1986,[]],
+    [2004,["DOWN"]],
+    [2010,[]],
+    [2028,["DOWN"]],
+    [2034,[]],
+    [2052,["DOWN"]],
+    [2058,[]],
+    [2076,["DOWN"]],
+    [2082,[]],
+    [2100,["DOWN"]],
+    [2106,[]],
+    [2124,["A"]],
+    [2130,[]]
+  ],
+  "sets": [
+    {"frame": 1710, "address": "03005168", "bytes": 2, "value": 7},
+    {"frame": 2446, "address": "03005A20", "bytes": 4, "value": 1544192},
+    {"frame": 2446, "address": "03005A24", "bytes": 4, "value": 163328},
+    {"frame": 2446, "address": "030059D0", "bytes": 2, "value": 5912},
+    {"frame": 2446, "address": "030059D2", "bytes": 2, "value": 588}
+  ]
+}
