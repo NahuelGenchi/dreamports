@@ -1,11 +1,15 @@
 // The small PlayStation 2 programs of tools/test/made-up-ps2.mjs as Dreamports in C, on the PlayStation 2's kit in C
-// (kit/ps2/c/): the flat one, a square crossing a background, and with IN_3D the one in three dimensions, two shaded
-// triangles that cross, one turning. Each writes the GS what its program writes, in its order, so its draw list is the
-// program's. The test fills in the numbers, which are the programs' own (ps2-kit.mjs).
+// (kit/ps2/c/): the flat one, a square crossing a background, the one in three dimensions, two shaded triangles that
+// cross, one turning, and the one whose square a program on vector unit 1 turns and gives the GS as a packet. Each gives
+// the GS what its program gives it, in its order, so its draw list is the program's. The test fills in the numbers, which
+// are the programs' own, and which program this is (ps2-kit.mjs).
 
 #include "ps2.h"
 
-#define IN_3D @IN_3D@
+#define FLAT 0
+#define IN_3D 1
+#define ON_VU1 2
+#define PROGRAM @PROGRAM@
 #define FBW (SCREEN_W / 64)
 #define ONE 0x3F800000ull
 // a corner as the GS takes it: where it is, in sixteenths of a pixel, and its depth
@@ -17,6 +21,7 @@ static float of_bits(uint32_t bits) {
   return value;
 }
 
+// the flat program's square, and the others' turning point
 static int32_t square_x;
 static float x, y;
 
@@ -29,11 +34,11 @@ void game_start(void) {
   gs_screen(GS_DISPFB1 + 4, 0);
   gs_screen(GS_DISPLAY1, 656 | 36 << 12 | 3 << 23);
   gs_screen(GS_DISPLAY1 + 4, (SCREEN_W * 4 - 1) | (SCREEN_H - 1) << 12);
-  x = @RADIUS@;
+  x = PROGRAM == ON_VU1 ? 1 : @RADIUS@;
   y = 0;
 }
 
-#if IN_3D
+#if PROGRAM == IN_3D
 static const uint32_t still[3][4] = @STILL@;
 static const uint32_t turning[3][2] = @TURNING@;
 
@@ -80,6 +85,64 @@ void game_step(uint32_t buttons) {
 #endif
   y = ee_add(ee_mul(x, sine), ee_mul(y, cosine));
   x = turned;
+}
+#elif PROGRAM == ON_VU1
+// the square's corners, each a place and a colour, as the program has them in the unit's memory
+static const float places[@CORNER_COUNT@][4] = @PLACES@;
+static const uint32_t colours[@CORNER_COUNT@][4] = @COLOURS@;
+
+// a register's number and its 64 bits, as a packet's data has them
+static uint64_t *put(uint64_t *at, uint8_t reg, uint64_t value) {
+  at[0] = value;
+  at[1] = reg;
+  return at + 2;
+}
+
+void game_step(uint32_t buttons) {
+  const float cosine = of_bits(@COS_BITS@), sine = of_bits(@SIN_BITS@);
+  // what the main processor gives the GS itself, as a packet through the GIF
+  uint64_t before[2 + 11 * 2], *at = before + 2;
+  before[0] = 11 | 0x8000 | 1ull << 60;
+  before[1] = 0xE;
+  at = put(at, GS_FRAME_1, (uint64_t)FBW << 16);
+  at = put(at, GS_SCISSOR_1, (uint64_t)(SCREEN_W - 1) << 16 | (uint64_t)(SCREEN_H - 1) << 48);
+  at = put(at, GS_XYOFFSET_1, 0);
+  at = put(at, GS_ZBUF_1, (SCREEN_W * SCREEN_H * 4 + 8191) / 8192);
+  at = put(at, GS_PRMODECONT, 1);
+  at = put(at, GS_TEST_1, 0x30000);
+  at = put(at, GS_PRIM, 6);
+  at = put(at, GS_RGBAQ, @BACKGROUND_3D@ | ONE << 32);
+  at = put(at, GS_XYZ2, XYZ(0, 0, 0));
+  at = put(at, GS_XYZ2, XYZ(SCREEN_W, SCREEN_H, 0));
+  at = put(at, GS_TEST_1, 0x50000);
+  gif_send(before, sizeof before);
+
+  // the matrix as the main processor leaves it: its first two columns are the turn
+  const vu_vector matrix[4] = { { .f = { x, y, 0, @DEPTH_ACROSS@ } }, { .f = { -y, x, 0, 0 } }, { .f = { 0, 0, 1, 0 } }, { .f = { @MIDDLE_X@, @MIDDLE_Y@, 0, 1 } } };
+  // the program on vector unit 1, an instruction a line: each corner by the matrix, over its depth, in sixteenths
+  struct { uint32_t tag[4]; struct { uint32_t colour[4]; vu_vector place; } corners[@CORNER_COUNT@]; } packet = { .tag = @VU1_TAG@ };
+  vu_vector acc, turned, whole = { .u = { 0, 0, 0, 0 } };
+  for (int i = 0; i < @CORNER_COUNT@; i++) {
+    vu_vector place = { .f = { places[i][0], places[i][1], places[i][2], places[i][3] } };
+    vu_mulf(&acc, &matrix[0], place.f[0], VU_XYZW);              // MULAx
+    vu_maddf(&acc, &acc, &matrix[1], place.f[1], VU_XYZW);       // MADDAy
+    vu_maddf(&acc, &acc, &matrix[2], place.f[2], VU_XYZW);       // MADDAz
+    vu_maddf(&turned, &acc, &matrix[3], place.f[3], VU_XYZW);    // MADDw
+    float q = ee_div(1, turned.f[3]);                            // DIV Q, vf0w, vf7w
+#if @PLAIN_SUMS@
+    // a computer's own division, which the test uses to see that the proof finds it
+    q = 1 / turned.f[3];
+#endif
+    vu_mulf(&turned, &turned, q, VU_XYZ);                        // MULq
+    vu_ftoi(&whole, &turned, 4, VU_XYZ);                         // FTOI4
+    for (int c = 0; c < 4; c++) packet.corners[i].colour[c] = colours[i][c];
+    packet.corners[i].place = whole;
+  }
+  gif_packet(&packet, sizeof packet);                            // XGKICK
+
+  float next = ee_sub(ee_mul(x, cosine), ee_mul(y, sine));
+  y = ee_add(ee_mul(x, sine), ee_mul(y, cosine));
+  x = next;
 }
 #else
 void game_step(uint32_t buttons) {
