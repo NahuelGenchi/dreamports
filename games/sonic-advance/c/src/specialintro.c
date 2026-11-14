@@ -87,6 +87,7 @@ static uint32_t word_leftover(void) {
   switch (spGame.level) {
     case 3: return 0x08106FD0;   // Secret Base act 2 (special-stage-2)
     case 4: return 0x08360394;   // Casino Paradise act 1 (special-stage-3)
+    case 6: return 0x08108B18;   // Ice Mountain act 1 (special-stage-4)
     default: return 0;
   }
 }
