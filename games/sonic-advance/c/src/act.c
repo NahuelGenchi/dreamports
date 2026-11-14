@@ -705,12 +705,14 @@ static void restart_act(void) {
 // plain until the act starts over. The course time, the stage clock, the rings and the last checkpoint passed are what
 // they were when he left; the score, the lives and the game's random numbers what the special stage leaves. (No
 // recording plays this yet.)
+static int comingBack;
+int act_coming_back(void) { return comingBack; }
 void act_come_back(void) {
   Act was = actLeft;
-  restarting = 1;
+  restarting = 1; comingBack = 1;
   respawnIndex = 1; respawnX = specialX - 16; respawnY = specialY - 16;
   act_start(was.stage.level, -1, 0);
-  restarting = 0;
+  restarting = 0; comingBack = 0;
   act_active = 1;
   act.restarted = 1;
   act.player.plainSprings = 1;

@@ -25,7 +25,7 @@
     { "name": "Special stage 1", "recording": "special-stage-1", "frames": [2224, 5914] },
     { "name": "Special stage 2", "recording": "special-stage-2", "frames": [2406, 6087] },
     { "name": "Special stage 3", "recording": "special-stage-3", "frames": [2430, 6304] },
-    { "name": "Special stage 4" },
+    { "name": "Special stage 4", "recording": "special-stage-4", "frames": [2478, 6189] },
     { "name": "Special stage 5" },
     { "name": "Special stage 6" },
     { "name": "Special stage 7" },

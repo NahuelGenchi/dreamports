@@ -81,7 +81,9 @@ static void create_background(void) {
   snow.targetTilesX = 32; snow.targetTilesY = 32;
   snow.flags = BG_DISABLE_PALETTE_UPDATE;
   snow.tilemapId = TM_ICE_PARADISE_SNOW;
-  snowFrame = snowDelay = 0;
+  // back from a special stage, the snow's animation is a step further on by the act's first frame than after any
+  // other start (measured in mGBA 0.10.5 by special-stage-4)
+  snowFrame = 0; snowDelay = act_coming_back() ? 1 : 0;
   view.updated = 0;
   draw_background(&snow);
 }

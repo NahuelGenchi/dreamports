@@ -106,6 +106,8 @@ extern int act_active;
 /** The original's stage clock, gStageTime: the act's own frame count less the frames the level's row says the
  *  original doesn't count yet (`stageClockAhead`). */
 int act_stage_time(void);
+/** 1 while the act starts again after a special stage (act_come_back). */
+int act_coming_back(void);
 void act_brake_dust_at(int x, int y);
 void act_dash_dust_of(const Player *p);
 void act_brake_dust_of(const Player *p);
