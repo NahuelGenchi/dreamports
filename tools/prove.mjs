@@ -257,7 +257,7 @@ async function laneFor({ game, quick, paced, asked, askedState, before }) {
       try {
         if (recording.players && own.some(part => part.reaches !== undefined)) throw new Error('A recording that links several consoles can\'t prove a part that names what it reaches yet, as only one console\'s memory is read.');
         const result = recording.players ? await proveLinked({ page, game, recording, copy, server, main, quick, asked, log, say })
-          : await prove({ page, reference, game, recording, copy, server, codeMap, main, before: before[name], asked, askedState, parts: own, couldProve: partsItCouldProve(name, parts), kinds, route, keysLate: original.keysAfterVBlank === true, paced, quick, log, say });
+          : await prove({ page, reference, game, recording, copy, server, codeMap, main, before: before[name], asked, askedState, parts: own, couldProve: partsItCouldProve(name, parts), kinds, route, keysLate: original.keysAfterVBlank === true, drawLists: original.provenBy === 'draw lists', paced, quick, log, say });
         // what the original shows is checked however the frames compare, and a linked recording, played by more than one
         // console, isn't read
         const wrong = showsProblems(name, result.shows, recording.players ? [] : kinds);
@@ -308,7 +308,7 @@ const stretchesOf = frames => {
 const listed = stretches => stretches.slice(0, 8).map(([a, b]) => (a === b ? `${a}` : `${a} to ${b}`)).join(', ')
   + (stretches.length > 8 ? `, and ${stretches.length - 8} more stretches` : '');
 
-async function prove({ page, reference, game, recording, copy, server, codeMap, main, before, asked, askedState, parts, couldProve, kinds, route, keysLate, paced, quick, log, say }) {
+async function prove({ page, reference, game, recording, copy, server, codeMap, main, before, asked, askedState, parts, couldProve, kinds, route, keysLate, drawLists, paced, quick, log, say }) {
   const { name, frames } = recording;
   const { machine, KEY, runOriginal } = reference;
   const out = resultFolder(game, name);
@@ -322,7 +322,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
   {
     await openDreamport(page, server, game, copy, { query: `?proof${recording.start ? `&${recording.start}` : ''}` });
     await page.evaluate(`window.__makeFilter = ${makeFilter}`);
-    await page.evaluate(`window.__quick = ${quick && !asked.length}; window.__paced = ${paced}; window.__console = ${JSON.stringify({ id: machine.id, screen: machine.screen, frame: machine.frame, sound: machine.sound })};`);
+    await page.evaluate(`window.__quick = ${quick && !asked.length}; window.__paced = ${paced}; window.__drawLists = ${!!drawLists}; window.__console = ${JSON.stringify({ id: machine.id, screen: machine.screen, frame: machine.frame, sound: machine.sound })};`);
     await page.evaluate(IN_PAGE);
     const buttons = await page.evaluate('dreamportsProof.buttons');
     // the recording's buttons as the Dreamport names them, and as the console's buttons for the original
@@ -360,7 +360,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const stills = [...new Set([...asked, ...(quick ? [] : boundaries)])].filter(f => f >= 0 && f < frames).sort((a, b) => a - b);
     const sure = new Set(stills);
     if (!quick) for (let [f, last] = clipAt ?? clipWindow({ frames, changed: null, firstDifference: -1 }); f <= last && f < frames; f++) if (f >= 0) sure.add(f);
-    const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, sound: true, sets, reads, pictures: [...sure].sort((a, b) => a - b).map(f => originalOf[f] + 1) });
+    const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, sound: true, sets, reads, draws: !!drawLists, pictures: [...sure].sort((a, b) => a - b).map(f => originalOf[f] + 1) });
     if (reads.length && first.outside.reads?.length !== reads.length) throw new Error("The program that runs the original read nothing of its memory: npm run dp -- setup builds it again.");
     const showing = kinds.length ? shownOf(kinds, first.outside.reads.slice(reads.length - kinds.length)) : null;
     // the frames over which each goal held, and the parts whose goal doesn't come true within their own
@@ -371,7 +371,11 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const unreached = parts.filter(part => part.reaches !== undefined && reachedAt(goalsHeld[part.reaches], part.frames) === null)
       .map(part => ({ name: part.name, goal: part.reaches, frames: part.frames, why: whyUnreached(part.reaches, goalsHeld[part.reaches], part.frames) }));
     checkSizes(first.outside.sizes, machine, Array.from(originalOf, g => g + 1), (_, frame) => frame);
-    const expected = Array.from(originalOf, g => first.hashes[g + 1]);
+    // what a frame is compared by: its picture, or for a game proven by draw lists, as a 3D game is, what it gave the
+    // console's graphics chip that frame (docs/STANDARD.md), which stands where the picture's hash does from here on
+    if (drawLists && !first.draws) throw new Error(`${machine.name}'s emulator keeps no draw lists, which this game is proven by (original.json).`);
+    const compared = drawLists ? first.draws.hashes : first.hashes;
+    const expected = Array.from(originalOf, g => compared[g + 1]);
     // where this step's change starts, as main's proof tells it, for the clip to start a second before (lib/clips.mjs):
     // a guess now, from main alone, and known once the Dreamport has played
     const recordingText = readFileSync(recording.file, 'utf8'), recordingFile = relative(REPO, recording.file).replaceAll('\\', '/');

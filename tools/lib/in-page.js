@@ -203,7 +203,11 @@
           [ownWidth, ownHeight] = [image.width, image.height];
           sizes.push([frame, ownWidth, ownHeight]);
         }
-        const hash = reduce(image, frame), first = !pictureDiffered && hash !== expected[i];
+        // the picture is kept either way, for the stills and the clip. A game proven by draw lists is compared by what it
+        // gave the graphics chip this frame, which its kit says (kit/ps2/c/ps2.c)
+        const pictured = reduce(image, frame);
+        if (__drawLists && typeof dreamportsProof.drawList !== 'number') throw new Error('The game is proven by draw lists, and its kit keeps none.');
+        const hash = __drawLists ? dreamportsProof.drawList : pictured, first = !pictureDiffered && hash !== expected[i];
         hashes.push(hash);
         if (first) pictureDiffered = true;
         if (first || wantedStates.has(frame)) keepState(frame);

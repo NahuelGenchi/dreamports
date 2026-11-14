@@ -1,0 +1,35 @@
+// @TITLE_C@: the game's own code, in C, on the PlayStation 2's kit in C (kit/ps2/c/ps2.h), with the console's screen,
+// frame, sound and buttons in console.h, which the build makes from kit/consoles.js. src/main.js runs it on the page,
+// built to WebAssembly as src/game.wasm (kit/ps2/c/README.md).
+
+#include "ps2.h"
+
+// once, with the player's copy in kit_copy: the screen, an NTSC one showing the framebuffer at the start of the GS's memory
+void game_start(void) {
+  gs_screen(GS_PMODE, 0xFF25);
+  gs_screen(GS_SMODE2, 1);
+  gs_screen(GS_DISPFB1, (SCREEN_W / 64) << 9);
+  gs_screen(GS_DISPLAY1, 656 | 36 << 12 | 3 << 23);
+  gs_screen(GS_DISPLAY1 + 4, (SCREEN_W * 4 - 1) | (SCREEN_H - 1) << 12);
+}
+
+// what the original does each frame, writing the GS's registers as it does, with its sums done the EE's way (ee_add
+// and the rest). To begin with, one sprite over the whole screen: blue, and green while a button is held
+void game_step(uint32_t buttons) {
+  gs_write(GS_FRAME_1, (uint64_t)(SCREEN_W / 64) << 16);
+  gs_write(GS_SCISSOR_1, (uint64_t)(SCREEN_W - 1) << 16 | (uint64_t)(SCREEN_H - 1) << 48);
+  gs_write(GS_XYOFFSET_1, 0);
+  gs_write(GS_TEST_1, 0x30000);
+  gs_write(GS_ZBUF_1, 1ull << 32);
+  gs_write(GS_PRMODECONT, 1);
+  gs_write(GS_PRIM, 6);
+  gs_write(GS_RGBAQ, buttons ? 0x8000FF00 : 0x80FF0000);
+  gs_write(GS_XYZ2, 0);
+  gs_write(GS_XYZ2, (uint64_t)(SCREEN_W << 4) | (uint64_t)(SCREEN_H << 4) << 16);
+}
+
+// its picture: what the screen shows of what the GS drew
+void game_draw(void) { gs_show(); }
+
+// its sound, CONSOLE_SOUND_RATE samples a second, which starts as silence
+void game_sound(float *left, float *right, int count) {}

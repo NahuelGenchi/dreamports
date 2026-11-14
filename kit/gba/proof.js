@@ -18,6 +18,8 @@
 // - `heard`: in play mode, what the last frame sounded like: an Int16Array of its samples, left and right, at the
 //   console's mix rate (65536 a second) and in its 10-bit units around the bias, or null for a game with no sound
 // - `video`: in play mode, the video hardware (video.js) that drew the last frame, which prove compares with the original's
+// - `drawList`: in play mode, on a console whose kit keeps one, the hash of what the last frame gave the console's graphics
+//   chip, which a game proven by draw lists is compared by (kit/c/game.js, docs/STANDARD.md)
 // - `neverInPlay`: in play mode, why no player could ever see the last frame, as a game's code says with its own words when
 //   a start point has left it somewhere it never is in real play, or null; prove fails on it (tools/README.md, Start points)
 // - `pictures()`: in play mode, what every screen of the page shows, when it has several players (watch(screen, input, slot)),

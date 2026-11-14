@@ -19,6 +19,8 @@ function cartridge(bytes) {
   if (ascii(bytes, 0, 3) === 'NES' && bytes[3] === 0x1A) return { console: 'nes' };
   if (ascii(bytes, 0, 6) === 'MADEUP') return { console: 'made-up' };
   if (ascii(bytes, 0, 8) === 'PS-X EXE') return { console: 'ps1' };
+  // a program for the PlayStation 2's processor, as its ELF file's flags say
+  if (bytes.length >= 52 && bytes.readUInt32BE(0) === 0x7F454C46 && bytes.readUInt16LE(18) === 8 && bytes.readUInt32LE(36) === 0x20924001) return { console: 'ps2' };
   const magic = bytes.length >= 4 ? bytes.readUInt32BE(0) : 0;
   // a Nintendo 64 cartridge's first word, in the three orders copies come in
   if (magic === 0x80371240 || magic === 0x37804012 || magic === 0x40123780) {
