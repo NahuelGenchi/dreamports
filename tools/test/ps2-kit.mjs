@@ -1,9 +1,11 @@
 // npm run test:ps2-kit: the PlayStation 2's kit in C (kit/ps2/c/) and `prove` on a game proven by draw lists, as a 3D
-// game is (docs/STANDARD.md). The two small programs of made-up-ps2.mjs run on the console's real emulator, and their
+// game is (docs/STANDARD.md). The small programs of made-up-ps2.mjs run on the console's real emulator, and their
 // Dreamports in C (made-up-ps2.c) on the kit, in folders of their own that it removes after, so no game's copy is needed:
 //
 // - the one in three dimensions is proven by its draw list, every frame, and one that does its sums with a computer's
 //   rounding is found out;
+// - the one whose shapes a program on vector unit 1 makes is proven by its draw list too, its Dreamport being that program
+//   written again in C with the kit's GIF and the unit's sums;
 // - the flat one is proven by its pictures, pixel for pixel, which is the kit's own drawing against the emulator's.
 //
 // It isn't run on every pull request, as the emulator takes minutes to build, and on Linux alone (docs/CONSOLES.md).
@@ -13,9 +15,9 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { BACKGROUND, BACKGROUND_3D, COS, LOAD_AT, MIDDLE, RADIUS, SIN, SQUARE, SQUARE_SIZE, SQUARE_Y, STEP, STILL, TURNING, madeUpPs2, madeUpPs2In3d } from './made-up-ps2.mjs';
+import { BACKGROUND, BACKGROUND_3D, COS, LOAD_AT, MIDDLE, RADIUS, SIN, SQUARE, SQUARE_SIZE, SQUARE_Y, STEP, STILL, TURNING, CORNERS, CORNER_DEPTH, DEPTH_ACROSS, VU1_TAG, madeUpPs2, madeUpPs2In3d, madeUpPs2OnVu1 } from './made-up-ps2.mjs';
 
-const GAMES = { solid: 'test-ps2-3d', flat: 'test-ps2-flat' };
+const GAMES = { solid: 'test-ps2-3d', flat: 'test-ps2-flat', vu1: 'test-ps2-vu1' };
 const WORK = join(LOCAL, 'test-ps2-kit');
 const COPIES = join(LOCAL, 'copies.json');
 const STATUS = join(REPO, 'docs', 'STATUS.md');
@@ -46,7 +48,9 @@ const table = rows => `{ ${rows.map(row => `{ ${row.map(hex).join(', ')} }`).joi
 // a program's Dreamport in C: made-up-ps2.c with the program's numbers filled in
 function writeGame(game, { plainSums = false } = {}) {
   const numbers = {
-    IN_3D: game === GAMES.solid ? 1 : 0, PLAIN_SUMS: plainSums ? 1 : 0, RADIUS, COS_BITS: hex(bitsOf(COS)), SIN_BITS: hex(bitsOf(SIN)), MIDDLE_X: MIDDLE[0], MIDDLE_Y: MIDDLE[1],
+    PROGRAM: game === GAMES.solid ? 'IN_3D' : game === GAMES.vu1 ? 'ON_VU1' : 'FLAT', PLAIN_SUMS: plainSums ? 1 : 0, RADIUS, COS_BITS: hex(bitsOf(COS)), SIN_BITS: hex(bitsOf(SIN)), MIDDLE_X: MIDDLE[0], MIDDLE_Y: MIDDLE[1],
+    CORNER_COUNT: CORNERS.length, PLACES: `{ ${CORNERS.map(([x, y]) => `{ ${x}, ${y}, ${CORNER_DEPTH}, 1 }`).join(', ')} }`, COLOURS: table(CORNERS.map(([, , ...colour]) => [...colour, 0x80])),
+    DEPTH_ACROSS: `${DEPTH_ACROSS}f`, VU1_TAG: `{ ${VU1_TAG.map(hex).join(', ')} }`,
     STILL: table(STILL), TURNING: table(TURNING), BACKGROUND_3D: hex(BACKGROUND_3D), BACKGROUND: hex(BACKGROUND), SQUARE: hex(SQUARE), SQUARE_Y, SQUARE_SIZE, STEP,
   };
   const code = readFileSync(join(REPO, 'tools', 'test', 'made-up-ps2.c'), 'utf8').replace(/@([A-Z_0-9]+)@/g, (_, key) => numbers[key]);
@@ -111,6 +115,18 @@ function main() {
   run = dp('prove', inC(GAMES.solid), 'still');
   found = report(GAMES.solid);
   said(`by its pictures the same Dreamport matches ${found.matched} of ${found.frames} frames, as the kit shades a triangle its own way: ${JSON.stringify(found.firstDifference)}`);
+
+  console.log('A program whose shapes come from vector unit 1, and its Dreamport in C, proven by draw lists');
+  setUp(GAMES.vu1, madeUpPs2OnVu1(), { provenBy: 'draw lists' });
+  writeGame(GAMES.vu1);
+  run = dp('prove', inC(GAMES.vu1), 'still');
+  found = report(GAMES.vu1);
+  check(run.status === 0 && found.matched === FRAMES, `the unit's program written again in C, with the kit's GIF and the unit's sums, gives the GS what the original does, every frame: ${found.matched} of ${found.frames}, ${JSON.stringify(found.firstDifference)}`);
+  if (run.status) console.log(run.out);
+  writeGame(GAMES.vu1, { plainSums: true });
+  run = dp('prove', inC(GAMES.vu1), 'still');
+  found = report(GAMES.vu1);
+  check(run.status !== 0 && found.firstDifference?.frame >= 0, `a division done with a computer's rounding, not the unit's, is found: at frame ${found.firstDifference?.frame}`);
 
   console.log('A flat program and its Dreamport in C, proven by its pictures');
   setUp(GAMES.flat, madeUpPs2());

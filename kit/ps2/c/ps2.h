@@ -32,6 +32,13 @@ void gs_screen(uint32_t address, uint32_t value);
 /** Paints the page's picture with what the screen shows of the framebuffer, at the console's size. For game_draw. */
 void gs_show(void);
 
+/** Sends the GIF everything in `bytes` bytes of packets, as a DMA transfer to it does: each tag's registers become
+ *  the GS's writes. */
+void gif_send(const void *data, uint32_t bytes);
+/** Sends the GIF one packet, to the tag that ends it, of `most` bytes at most, as a vector unit's XGKICK does, and gives
+ *  how many bytes it was. */
+uint32_t gif_packet(const void *data, uint32_t most);
+
 // The EE's float sums: each result is cut towards zero, where a computer rounds to the nearest, so a sum done with a
 // plain + lands a last bit away, and a turning model's corner is a sixteenth of a pixel out within a hundred frames.
 float ee_add(float a, float b);
@@ -39,5 +46,32 @@ float ee_sub(float a, float b);
 float ee_mul(float a, float b);
 /** A float as a whole number, what's after its point dropped, as the EE's CVT.W.S makes it. */
 int32_t ee_to_int(float value);
+/** A whole number as a float. */
+float ee_from_int(int32_t value);
+/** A division, cut the same way. By zero it gives the largest float there is, with the sign the two make. */
+float ee_div(float a, float b);
+/** The square root of a float taken without its sign, cut the same way. */
+float ee_sqrt(float value);
+
+// The vector units' sums, for a program on one written again in C. A vector is four floats, x, y, z and w, or the same
+// bits as whole numbers. `dest` names the fields an instruction writes, as its bits do: VU_X | VU_Y, VU_XYZW.
+typedef union { float f[4]; int32_t i[4]; uint32_t u[4]; } vu_vector;
+enum { VU_X = 8, VU_Y = 4, VU_Z = 2, VU_W = 1, VU_XYZ = 14, VU_XYZW = 15 };
+// ADD, SUB, MUL, and MADD and MSUB with the accumulator: with a whole vector
+void vu_add(vu_vector *fd, const vu_vector *fs, const vu_vector *ft, int dest);
+void vu_sub(vu_vector *fd, const vu_vector *fs, const vu_vector *ft, int dest);
+void vu_mul(vu_vector *fd, const vu_vector *fs, const vu_vector *ft, int dest);
+void vu_madd(vu_vector *fd, const vu_vector *acc, const vu_vector *fs, const vu_vector *ft, int dest);
+void vu_msub(vu_vector *fd, const vu_vector *acc, const vu_vector *fs, const vu_vector *ft, int dest);
+// the same with one float for every field, as ADDx, MULq, MADDw, MULi and the like take one field, Q or I. The same
+// functions write the accumulator, as ADDA, MULA and MADDA do, when `fd` is it
+void vu_addf(vu_vector *fd, const vu_vector *fs, float with, int dest);
+void vu_subf(vu_vector *fd, const vu_vector *fs, float with, int dest);
+void vu_mulf(vu_vector *fd, const vu_vector *fs, float with, int dest);
+void vu_maddf(vu_vector *fd, const vu_vector *acc, const vu_vector *fs, float with, int dest);
+void vu_msubf(vu_vector *fd, const vu_vector *acc, const vu_vector *fs, float with, int dest);
+/** FTOI0, 4, 12 and 15: floats as whole numbers with `bits` bits after the point. ITOF is the other way. */
+void vu_ftoi(vu_vector *ft, const vu_vector *fs, int bits, int dest);
+void vu_itof(vu_vector *ft, const vu_vector *fs, int bits, int dest);
 
 #endif

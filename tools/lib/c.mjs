@@ -22,7 +22,7 @@ export const C_BASE = fileURLToPath(new URL('../../kit/c/', import.meta.url));
 const OWN = {
   gba: { folder: fileURLToPath(new URL('../../kit/gba/c/', import.meta.url)), sources: ['gba.c', 'video.c', 'apu.c', 'm4a.c', 'sound.c'] },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
-  ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'ee.c'], header: true },
+  ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gif.c', 'ee.c', 'vu.c'], header: true },
 };
 
 const ident = name => name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
