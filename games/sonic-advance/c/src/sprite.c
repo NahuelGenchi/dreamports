@@ -221,15 +221,20 @@ void display_sprite_background(Sprite *s) {
   e.bgScroll[bg * 2 + 1] = (uint16_t)((rom_s16(d + 10) - s->y) % 8);
 }
 
-// sub_80039E4: the frame's pieces, a text layer's map entries each, the tiles laid out as OAM's are
+// sub_80039E4: the frame's pieces, a text or affine layer's map entries each, the tiles laid out as OAM's are
 void write_sprite_map(Sprite *s) {
   if (s->dimensions == NO_FRAME) return;
   uint32_t d = s->dimensions, bg = (s->frameFlags >> 15) & 3, cnt = e.bgCnt[bg];
-  if ((rom_u8(d) & 3) || s->frameFlags & (SPRITE_X_FLIP | SPRITE_Y_FLIP) || cnt & 0x80) return;   // not ported
-  uint32_t base = ((cnt & 0x1F00) << 3) >> 1;
-  int first = (int)(s->graphics.dest - ((cnt >> 2) & 3) * 0x4000) >> 5;
+  if ((rom_u8(d) & 3) || (s->frameFlags & (SPRITE_X_FLIP | SPRITE_Y_FLIP))) return;
+  int affine = bg >= 2 && (e.dispCnt & 3) != 0;
+  if (!affine && (cnt & 0x80)) return;
+  uint32_t charBase = ((cnt >> 2) & 3) * 0x4000u;
+  uint32_t base = ((cnt >> 8) & 0x1Fu) * 0x800u;
+  int tileShift = (cnt & 0x80) ? 6 : 5;
+  int first = (int)(s->graphics.dest - charBase) >> tileShift;
   uint32_t oamData = rom_ptr(sprites.oam + s->graphics.anim * 4);
   int left = (s->x - rom_s16(d + 8)) & ~0xF, top = s->y - rom_s16(d + 10);
+  int mapCols = affine ? (16 << ((cnt >> 14) & 3)) : 32;
   for (uint32_t i = 0; i < rom_u16(d + 2); i++) {
     uint32_t src = oamData + (rom_u8(d + 1) + i) * 6, a0 = rom_u16(src), a1 = rom_u16(src + 2), a2 = rom_u16(src + 4);
     const uint8_t *size = OBJ_SIZES[((a0 & 0xC000) >> 12) | ((a1 & 0xC000) >> 14)];
@@ -238,9 +243,14 @@ void write_sprite_map(Sprite *s) {
     int tile = (int)(a2 & 0x3FF) + first;
     for (int y = 0; y < size[1] >> 3; y++) {
       for (int x = 0; x < size[0] >> 3; x++) {
-        uint32_t at = (base + ((row + y) & 31) * 32 + ((column + x) & 31)) * 2;
-        uint16_t v = (uint16_t)(palette | (uint32_t)tile++);
-        if (at + 1 < 0x18000) { gba_vram[at] = (uint8_t)v; gba_vram[at + 1] = (uint8_t)(v >> 8); }
+        if (affine) {
+          uint32_t at = base + (uint32_t)((row + y) * mapCols + (column + x));
+          if (at < 0x18000) gba_vram[at] = (uint8_t)(tile++ & 0xFF);
+        } else {
+          uint32_t at = base + (uint32_t)(((row + y) & 31) * 32 + ((column + x) & 31)) * 2u;
+          uint16_t v = (uint16_t)(palette | (uint32_t)tile++);
+          if (at + 1 < 0x18000) { gba_vram[at] = (uint8_t)v; gba_vram[at + 1] = (uint8_t)(v >> 8); }
+        }
       }
     }
   }

@@ -297,7 +297,7 @@ int titlecard_run(int pressed) {
 void titlecard_display(void) {
   if (!card.display) return;
   // OBJ and window 0 on, BG1, BG2 and BG3 on, 1D OAM, and BG0 as the stage's background update left it
-  e.dispCnt = (uint16_t)(0x3E40 | (e.dispCnt & 0x100));
+  e.dispCnt = (uint16_t)((act.stage.level == LEVEL_THE_MOON ? 0x3F41 : 0x3E40) | (e.dispCnt & 0x100));
   e.winRegs[0] = 0x00F0; e.winRegs[2] = 0x00A0;
   e.bldCnt = 0x3FFF; e.bldAlpha = 0x0010; e.bldY = (uint16_t)card.bldY;
 }

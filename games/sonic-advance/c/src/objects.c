@@ -4,6 +4,7 @@
 
 #include "objects.h"
 #include "enemies.h"
+#include "extra.h"
 
 // --- the task list (createTasks) -----------------------------------------------------------------------------------
 enum { MAX_ACT_TASKS = 192 };
@@ -316,6 +317,7 @@ static const struct { int kind; Spawn spawn; } ENEMIES[] = {
   { 28, egg_wrecker_spawn },
   { 29, egg_drillster_spawn },
   { 30, egg_x_spawn },
+  { 31, super_egg_robo_spawn },
 };
 
 ActTask *entity_spawn(Slot *slot) {

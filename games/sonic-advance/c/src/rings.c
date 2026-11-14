@@ -5,6 +5,7 @@
 
 #include "objects.h"
 #include "terrain.h"
+#include "extra.h"
 
 enum {
   ANIM_RING = 707, ANIM_RING_SPARKLE = 708,
@@ -251,7 +252,7 @@ void scatter_ceilings(void) { scatterCeilings = 1; }
 void scatter_launch(int x, int y, int n, int layer, int inverted) {
   if (n == 0) return;
   if (n > SCATTER_SLOTS) n = SCATTER_SLOTS;
-  play_song(SE_RINGS_LOST);
+  if (act.stage.level != LEVEL_THE_MOON) play_song(SE_RINGS_LOST);
   int r3 = SCATTER_SPEED_START, vx = 0, vy = 0, launched = 0;
   for (int i = 0; i < SCATTER_SLOTS; i++) {
     if (scatter[i].life) continue;
@@ -268,6 +269,27 @@ void scatter_launch(int x, int y, int n, int layer, int inverted) {
     scatter[i].vx = vx;
     scatter[i].vy = inverted ? -vy : vy;
     r3 = -r3; vx = -vx;
+    if (++launched >= n) return;
+  }
+}
+
+/** InitScatteringRings_ExtraBossCapsule: up to 32 rings from (x, y), in the free slots. Each takes a random one of two
+ *  speeds, at an angle that goes round from a random start by 16 to 79 steps of 256 each time. */
+void scatter_launch_capsule(int x, int y, int n, int layer) {
+  if (n == 0) return;
+  if (n > 32) n = 32;
+  uint32_t angle = ((act_random() & 0xFF000u) >> 12) | 0x10;
+  int launched = 0;
+  for (int i = 0; i < SCATTER_SLOTS; i++) {
+    if (scatter[i].life) continue;
+    scatter[i].life = SCATTER_LIFE;
+    scatter[i].layer = layer;
+    scatter[i].x = x * 256; scatter[i].y = y * 256;
+    int shift = (int)((act_random() & 0x1000u) >> 12) + 5, a = (int)(angle & 0xFF) * 4;
+    int vx = SINE[a] >> shift, vy = SINE[a + 256] >> shift;
+    vx -= vx >> 2; vy -= vy >> 2;
+    scatter[i].vx = vx; scatter[i].vy = vy;
+    angle += ((act_random() & 0x3F000u) >> 12) + 16;
     if (++launched >= n) return;
   }
 }
@@ -290,21 +312,24 @@ int scatter_task(ActTask *t) {
       scatter[i].life = 0;
       continue;
     }
+    int moon = act.stage.level == LEVEL_THE_MOON;
+    int floorRx = moon ? rx - cx + moon_ground_scroll(cx, act_stage_time()) : rx;
     if (up ? scatter[i].vy < 0 : scatter[i].vy > 0) {
-      int d = up ? terrain_tile_floor(rx, ry - 2 * TILE, scatter[i].layer, -8) : terrain_tile_floor(rx, ry, scatter[i].layer, 8);
+      int d = up ? terrain_tile_floor(floorRx, ry - 2 * TILE, scatter[i].layer, -8) : terrain_tile_floor(floorRx, ry, scatter[i].layer, 8);
       if (d <= 0) {
         scatter[i].y += (up ? -d : d) * 256;
         scatter[i].vy = (scatter[i].vy >> 2) - scatter[i].vy;
       }
     }
     if (scatterCeilings && !up && scatter[i].vy < 0) {
-      int d = terrain_tile_probe(PROBE_FLOOR, ry - 16, rx, scatter[i].layer, -8).d;
+      int d = terrain_tile_probe(PROBE_FLOOR, ry - 16, floorRx, scatter[i].layer, -8).d;
       if (d <= 0) {
         scatter[i].y -= d * 256;
         scatter[i].vy = (scatter[i].vy >> 2) - scatter[i].vy;
       }
     }
-    scatter[i].vy += up ? -SCATTER_GRAVITY : SCATTER_GRAVITY;
+    int grav = moon ? MOON_SCATTER_GRAVITY : SCATTER_GRAVITY;
+    scatter[i].vy += up ? -grav : grav;
     // drawn where it was before the bounce, blinking in its last 32 frames with Sonic's blink
     if (sx + TILE > 0 && sx + TILE < DISPLAY_WIDTH + 2 * TILE && sy > -TILE && sy < DISPLAY_HEIGHT + TILE
         && (scatter[i].life >= SCATTER_BLINK_BELOW || (act_stage_time() & 2) == 0)) put_ring(s, &drawn, sx, sy);

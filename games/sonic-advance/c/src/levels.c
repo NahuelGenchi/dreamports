@@ -2,6 +2,7 @@
 // one line that is its own, from NOT_IN_C to the row in its zone's file.
 
 #include "levels.h"
+#include "extra.h"
 #include <stddef.h>
 
 // a level that isn't in C yet: nothing starts it, and the game stops safely where it would have (front.c, act.c),
@@ -39,7 +40,7 @@ static const Level *const LEVELS[LEVEL_COUNT] = {
   // Zone 7, the last fight
   [LEVEL_X_ZONE] = &ACT_X_ZONE,
   // and the one after it, with every Chaos Emerald
-  [LEVEL_THE_MOON] = NOT_IN_C_WITH(MUS_EXTRA_BOSS),
+  [LEVEL_THE_MOON] = &ACT_THE_MOON,
   // the VS mode's Chao Hunt stages, the first
   [LEVEL_CHAO_HUNT_A] = NOT_IN_C_WITH(MUS_NEO_GREEN_HILL__ACT_1),
   // the second

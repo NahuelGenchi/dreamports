@@ -184,12 +184,13 @@ static Bolts *bolts_new(uint32_t dest, int anim, int variant) {
 }
 
 // its tiles sit at a fixed place, shared by every explosion; its animation's script plays the explosion's sound
-void boss_explosion_at(int qx, int qy, int order) {
+Sprite *boss_explosion_at(int qx, int qy, int order) {
   Bolts *b = bolts_new(OBJ_VRAM + VRAM_EXPLOSION, ANIM_EXPLOSION, 0);
-  if (!b) return;
+  if (!b) return NULL;
   b->qx = qx; b->qy = qy;
   b->o.sprite.oamFlags = (uint16_t)(order << 6);
   b->o.sprite.frameFlags = (uint32_t)ENEMY_PRIORITY << 12 | (act_random() & EXPLOSION_FLIPS);
+  return &b->o.sprite;
 }
 void boss_explosion(int qx, int qy) { boss_explosion_at(qx, qy, EXPLOSION_ORDER); }
 
