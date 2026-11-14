@@ -131,7 +131,7 @@ static void intro_fall(Task *t) {
     e.bgScroll[1] = 0;
     intro.fade = create_fade(0, 1, 2, 0, FADE_STEP, 1);
     // word.unk30 is left as the heap has it: 0 from a fresh start, or 28 mod 60 after the course select's tasks
-    word.unk30 = spStageIndex ? 28 : 0;
+    word.unk30 = spGame.byCourseSelect ? 28 : 0;
     sprite(&word.s, 0xC80, ANIM_WORD, 0, 120, 120, 0, 0);
     intro.wordTask = create_task(word_step, &word, 0x2120, 0, NULL);
     update_sprite(&word.s, 0);
