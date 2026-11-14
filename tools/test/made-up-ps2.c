@@ -1,6 +1,7 @@
 // The small PlayStation 2 programs of tools/test/made-up-ps2.mjs as Dreamports in C, on the PlayStation 2's kit in C
 // (kit/ps2/c/): the flat one, a square crossing a background, the one in three dimensions, two shaded triangles that
-// cross, one turning, and the one whose square a program on vector unit 1 turns and gives the GS as a packet. Each gives
+// cross, one turning, the one whose square a program on vector unit 1 turns and gives the GS as a packet, and the one
+// that draws textured sprites into a 16-bit framebuffer. Each gives
 // the GS what its program gives it, in its order, so its draw list is the program's. The test fills in the numbers, which
 // are the programs' own, and which program this is (ps2-kit.mjs).
 
@@ -9,6 +10,7 @@
 #define FLAT 0
 #define IN_3D 1
 #define ON_VU1 2
+#define TEXTURED 3
 #define PROGRAM @PROGRAM@
 #define FBW (SCREEN_W / 64)
 #define ONE 0x3F800000ull
@@ -30,12 +32,17 @@ void game_start(void) {
   gs_screen(GS_PMODE + 4, 0);
   gs_screen(GS_SMODE2, 1);
   gs_screen(GS_SMODE2 + 4, 0);
-  gs_screen(GS_DISPFB1, FBW << 9);
+  gs_screen(GS_DISPFB1, FBW << 9 | @SHOWN_FORMAT@ << 15);
   gs_screen(GS_DISPFB1 + 4, 0);
   gs_screen(GS_DISPLAY1, 656 | 36 << 12 | 3 << 23);
   gs_screen(GS_DISPLAY1 + 4, (SCREEN_W * 4 - 1) | (SCREEN_H - 1) << 12);
   x = PROGRAM == ON_VU1 ? 1 : @RADIUS@;
   y = 0;
+#if PROGRAM == TEXTURED
+  // the textures and their palettes into the GS's memory, as the program sends them
+  static const uint32_t upload[] = @UPLOAD@;
+  gif_send(upload, sizeof upload);
+#endif
 }
 
 #if PROGRAM == IN_3D
@@ -85,6 +92,16 @@ void game_step(uint32_t buttons) {
 #endif
   y = ee_add(ee_mul(x, sine), ee_mul(y, cosine));
   x = turned;
+}
+#elif PROGRAM == TEXTURED
+static uint32_t frame_packet[] = @FRAME_PACKET@;
+
+void game_step(uint32_t buttons) {
+  // the moving sprite's two corners, then the packet, as the program sends it
+  frame_packet[4 + @MOVING_AT@ * 4] = (uint32_t)(square_x << 4 | @MOVING_Y@ << 20);
+  frame_packet[4 + (@MOVING_AT@ + 2) * 4] = (uint32_t)((square_x + 16) << 4 | (@MOVING_Y@ + 16) << 20);
+  gif_send(frame_packet, sizeof frame_packet);
+  square_x = (square_x + 1) & 255;
 }
 #elif PROGRAM == ON_VU1
 // the square's corners, each a place and a colour, as the program has them in the unit's memory
