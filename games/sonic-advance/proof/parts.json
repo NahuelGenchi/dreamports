@@ -27,7 +27,7 @@
     { "name": "Special stage 3", "recording": "special-stage-3", "frames": [2430, 6304] },
     { "name": "Special stage 4", "recording": "special-stage-4", "frames": [2478, 6189] },
     { "name": "Special stage 5", "recording": "special-stage-5", "frames": [2502, 6688] },
-    { "name": "Special stage 6" },
+    { "name": "Special stage 6", "recording": "special-stage-6", "frames": [2550, 6374] },
     { "name": "Special stage 7" },
     { "name": "The normal ending", "recording": "x-zone-credits-an-emerald-short", "frames": [8741, 19799] },
     { "name": "The true ending", "recording": "sonic-the-moon", "frames": [10914, 24322] },
