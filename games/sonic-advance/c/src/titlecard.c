@@ -87,6 +87,8 @@ void titlecard_start(int level, int character, int after) {
   memcpy(jpTiles + 12 * CARD_TILE, &gba_rom[jp.tiles + 8 * CARD_TILE], 4 * CARD_TILE);
   memcpy(jpTiles + (12 - jpCount) * CARD_TILE, &gba_rom[jp.tiles + jpFirst * CARD_TILE], (size_t)jpCount * CARD_TILE);
   memcpy(jpTiles, &gba_rom[jp.tiles + 8 * CARD_TILE], CARD_TILE);
+  // a multiplayer stage's Japanese name is a picture of its own, 16 tiles of UI graphics 18 for each stage
+  if (level > LEVEL_THE_MOON) memcpy(jpTiles, &gba_rom[card_gfx(18).tiles + (uint32_t)(level - LEVEL_CHAO_HUNT_A) * 16 * CARD_TILE], 16 * CARD_TILE);
   // the act number: "ACT" and the act's digit after it
   memcpy(actTiles, &gba_rom[actGfx.tiles], 8 * CARD_TILE);
   memcpy(actTiles + 8 * CARD_TILE, &gba_rom[actGfx.tiles + 8 * CARD_TILE + (level & 1) * 4 * CARD_TILE], 4 * CARD_TILE);

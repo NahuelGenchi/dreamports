@@ -4,6 +4,7 @@
 // the logos (logos.c). What isn't in C yet stops the game where it starts, with the screen as it was.
 
 #include "sa.h"
+#include "chaohunt.h"
 #include "page.h"
 #include "act.h"
 #include "special.h"
@@ -197,10 +198,11 @@ void front_random_seed(uint32_t seed) { ctx.seed = seed; }
 void front_vs_round(int level, int chao) {
   ctx.roundLevel = level;
   ctx.roundChao = chao;
-  ctx.done = 1;
+  if (level_in_c(level)) chaohunt_start(level, chao);
+  else ctx.done = 1;
 }
-/** The round the VS menus chose, for the page: its level, or 0 while they are still choosing. */
-EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.roundLevel; }
+/** The round the VS menus chose when it isn't in C, for the page: its level, or 0 while they choose or it plays. */
+EXPORT("dp_vs_round") int dp_vs_round(void) { return ctx.done ? ctx.roundLevel : 0; }
 
 // The acts in C (levels.c), which the course select's rows start with their title cards. A start point's `level` opens
 // a level, past its card when it asks; from the menus, an act that isn't in C yet, and Options, stops safely where the

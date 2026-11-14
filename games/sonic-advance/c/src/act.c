@@ -4,6 +4,7 @@
 // function at a time; every comment names the original's function where one is rewritten.
 
 #include "objects.h"
+#include "chaohunt.h"
 #include "results.h"
 #include "bosses.h"
 #include "special.h"
@@ -1301,6 +1302,12 @@ void act_start(int level, int cardSkip, int preFrames) {
   // after a life lost, the player starts again at the last checkpoint passed (SetStageSpawnPos)
   int again = restarting && respawnIndex;
   if (level == LEVEL_THE_MOON) supersonic_init(&act.player, act.stage.spawnX, act.stage.spawnY);
+  else if (chaohunt_active()) {
+    // each player starts at their own place in the stage (gSpawnPositions_Modes_4_and_5)
+    int32_t x, y;
+    chaohunt_spawn(level, hunt.id, &x, &y);
+    player_init(&act.player, x, y);
+  }
   else player_init(&act.player, again ? respawnX : act.stage.spawnX, again ? respawnY : act.stage.spawnY);
   if (!comingOn && !restarting) menu_leftovers();
   create_camera(&act.cam, &act.player);
