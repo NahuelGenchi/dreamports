@@ -27,6 +27,8 @@ int moon_ground_scroll(int camX, int tick);
 void moon_load_stage(void);
 void moon_warning_start(void);
 void moon_defeated(void);
+/** The robot's task has started the save (CreateExtraStageResults): the frame's other tasks don't run. */
+int moon_saving(void);
 
 // Super Sonic (supersonic.c)
 void supersonic_init(Player *p, int x, int y);

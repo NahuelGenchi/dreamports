@@ -114,7 +114,14 @@ void destroy_tasks(uint16_t lo, uint16_t hi) {
 
 // a task keeping the CPU busy for whole frames (the flash's erase or write)
 static struct { int frames; void (*then)(void); Task *task, *next; } stall;
-static int stalling;
+static int stalling, linesOffSoon;
+/**
+ * Whether the line interrupts (H-blank and V-count) are off for the picture drawn now: through a stall, which has the
+ * interrupts off. engine_lines_off_soon() says the next frame's tasks start a stall early on, while this frame's
+ * picture is still being drawn, so they are off for it too.
+ */
+static int lines_off(void) { return linesOffSoon || stalling; }
+void engine_lines_off_soon(void) { linesOffSoon = 1; }
 static void run_tasks(Task *from) {
   int paused = e.flags & FLAGS_PAUSED;
   for (Task *t = from; t; t = nextTask) {
@@ -488,6 +495,7 @@ void engine_vblank_unseen(void) {
 
 /** One frame: the keys, the tasks and the V-blank. Then the kit draws it. */
 void engine_run(void) {
+  linesOffSoon = 0;
   if (lagging) {
     lagging--;
     e.frameCount++;
@@ -523,12 +531,14 @@ static void hblank_line(int y) {
     copy_hblank_line(hdma.target, hdmaAt, hdma.size);
     hdmaAt += hdma.size;
   }
+  // the H-blank DMA goes on with the interrupts off, the line interrupts don't
+  if (lines_off()) return;
   if (vcount.on && y + 1 == vcount.line) e.vcountIntr();
   for (int i = 0; i < numHblankIntrs; i++) hblankIntrs[i](y);
 }
 /** Sets the kit's drawing of this frame up, with the H-blank DMA its V-blank started. */
 void engine_draw_setup(void) {
   hdmaAt = hdma.at;
-  if (vcount.on && vcount.line == 0) e.vcountIntr();
+  if (!lines_off() && vcount.on && vcount.line == 0) e.vcountIntr();
   gba_on_hblank(hdma.on || vcount.on || numHblankIntrs ? hblank_line : NULL);
 }

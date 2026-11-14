@@ -24,7 +24,12 @@ static void bg1_hblank(int line) {
   else gba_write(REG_BG0HOFS + 4, 0);
 }
 
+// the robot's task has started the save (moon_defeated)
+static int saving;
+int moon_saving(void) { return saving; }
+
 static void moon_start(void) {
+  saving = 0;
   memset(&moon_disp, 0, sizeof moon_disp);
   memset(bg1Offsets, 0, sizeof bg1Offsets);
   brakeDustLeft = MAX_BRAKE_DUST;
@@ -146,14 +151,20 @@ void moon_boss_brake_dust(int x, int y, int dx) {
 // --- defeat -> true ending (stops safely on white until true ending is in C) -----------------------------------
 static void stop_on_white(Task *t) { destroy_task(t); ctx.done = 1; }
 static void after_moon_save(void) {
+  sound_vsync_on();
   act_tasks_stop();
   e.dispCnt = 0x1F41; e.bldCnt = 0xBF; e.bldY = 16;
   act_active = 0;
   create_task(stop_on_white, NULL, 0x0F00, 0, NULL);
 }
 
+// CreateExtraStageResults' start: the save marks the Moon beaten, every song stops and the sound engine is off while the
+// save is written with the interrupts off, so the screen keeps its last picture without BG1's line scrolls
 void moon_defeated(void) {
-  save_moon_opened();
+  saving = 1;
+  save_moon_beaten();
+  stop_all_songs();
+  sound_vsync_off();
   if (save_write()) engine_stall(WRITE_FRAMES, after_moon_save);
   else after_moon_save();
 }

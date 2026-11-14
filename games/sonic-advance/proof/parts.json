@@ -21,7 +21,7 @@
     { "name": "Egg Rocket Zone", "recording": "egg-rocket", "frames": [2125, 38382], "reaches": "act-end" },
     { "name": "Cosmic Angel Zone", "recording": "sonic-cosmic-angel", "frames": [2111, 16892], "reaches": "act-end" },
     { "name": "X Zone", "recording": "x-zone-the-moon-opens", "frames": [2173, 9609], "reaches": "act-end" },
-    { "name": "The Moon Zone" },
+    { "name": "The Moon Zone", "recording": "sonic-the-moon", "frames": [9610, 10932] },
     { "name": "Special stage 1", "recording": "special-stage-1", "frames": [2224, 5914] },
     { "name": "Special stage 2", "recording": "special-stage-2", "frames": [2406, 6087] },
     { "name": "Special stage 3" },

@@ -273,6 +273,27 @@ void scatter_launch(int x, int y, int n, int layer, int inverted) {
   }
 }
 
+/** InitScatteringRings_ExtraBossCapsule: up to 32 rings from (x, y), in the free slots. Each takes a random one of two
+ *  speeds, at an angle that goes round from a random start by 16 to 79 steps of 256 each time. */
+void scatter_launch_capsule(int x, int y, int n, int layer) {
+  if (n == 0) return;
+  if (n > 32) n = 32;
+  uint32_t angle = ((act_random() & 0xFF000u) >> 12) | 0x10;
+  int launched = 0;
+  for (int i = 0; i < SCATTER_SLOTS; i++) {
+    if (scatter[i].life) continue;
+    scatter[i].life = SCATTER_LIFE;
+    scatter[i].layer = layer;
+    scatter[i].x = x * 256; scatter[i].y = y * 256;
+    int shift = (int)((act_random() & 0x1000u) >> 12) + 5, a = (int)(angle & 0xFF) * 4;
+    int vx = SINE[a] >> shift, vy = SINE[a + 256] >> shift;
+    vx -= vx >> 2; vy -= vy >> 2;
+    scatter[i].vx = vx; scatter[i].vy = vy;
+    angle += ((act_random() & 0x3F000u) >> 12) + 16;
+    if (++launched >= n) return;
+  }
+}
+
 int scatter_task(ActTask *t) {
   (void)t;
   Sprite *s = &scatterSprite;

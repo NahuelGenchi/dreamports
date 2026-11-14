@@ -46,7 +46,8 @@ void boss_cam_bounds(int minY, int maxY, int minX, int maxX);
 void boss_shake(int amplitude, int fade, int step, int frames, int flags);
 BossPart *boss_part(int x, int y, int tiles, int anim, int variant);
 /** sub_8017540: an explosion at (qx, qy) in 1/256 px, at OAM order `order`. */
-void boss_explosion_at(int qx, int qy, int order);
+/** An explosion at (qx, qy) drawn at `order`; its sprite, or NULL when there was no room for it. */
+Sprite *boss_explosion_at(int qx, int qy, int order);
 /** The same at the bosses' usual order, 20. */
 void boss_explosion(int qx, int qy);
 /** A piece of debris and an explosion from (x, y), falling `ay`/256 px a frame faster each frame. */

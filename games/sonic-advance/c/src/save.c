@@ -85,6 +85,11 @@ void save_moon_opened(void) {
   uint16_t cur = save_unlocked_level(0);
   if (cur < LEVEL_THE_MOON + 1) save_set_unlocked_level(0, (uint16_t)(LEVEL_THE_MOON + 1));
 }
+/** CreateExtraStageResults: the Moon beaten, the first unlocked level is 15 and unk424 is set. */
+void save_moon_beaten(void) {
+  save_set_unlocked_level(0, 15);
+  save.bytes[0x424] = 1;
+}
 #define TIME_RECORDS 0x20
 #define RECORD_LEVELS 18
 #define RECORDS_PER_COURSE 3

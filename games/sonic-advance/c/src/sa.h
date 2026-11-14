@@ -138,6 +138,7 @@ Task *create_task(TaskMain main, void *data, uint16_t priority, uint16_t flags, 
 void destroy_task(Task *t);
 void destroy_tasks(uint16_t lo, uint16_t hi);
 void engine_stall(int frames, void (*then)(void));
+void engine_lines_off_soon(void);
 void engine_lag(int frames, int late);
 void queue_graphics(Graphics *g);
 // applies what the graphics queue holds now, as a V-blank does, for frames a start point runs with no V-blank
@@ -298,6 +299,7 @@ void save_empty(void);
 void save_erase(void);
 void save_set_unlocked_level(int character, uint16_t level);
 void save_moon_opened(void);
+void save_moon_beaten(void);
 void save_add_ring_bank(int rings);
 /** The `rank`th best time (frames) of `character` in `level`, 10:00 when there is none. */
 uint32_t save_time_record(int character, int level, int rank);

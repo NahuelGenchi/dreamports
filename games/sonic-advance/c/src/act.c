@@ -1075,6 +1075,8 @@ static void act_frame(void) {
   // the water's task (0xFFFE), after the clock's
   if (act.frames > 0) water_task();
   act.frames++;
+  // the Moon's save ends the frame in the robot's task: nothing after it draws, such as the ground's new column
+  if (act.stage.level == LEVEL_THE_MOON && moon_saving()) return;
   draw_frame();
   // the first frame after the act before still has the layers where the stage's making left them, at 0
   if (act.afterLevel && act.frames == 1) for (int i = 2; i < 8; i++) e.bgScroll[i] = 0;

@@ -246,6 +246,8 @@ void rings_start_point(void);
 int rings_task(ActTask *t);
 int scatter_task(ActTask *t);
 void scatter_launch(int x, int y, int n, int layer, int inverted);
+/** InitScatteringRings_ExtraBossCapsule: a broken ring capsule's rings, each at a random angle and one of two speeds. */
+void scatter_launch_capsule(int x, int y, int n, int layer);
 /** From now until the act starts again, the scattered rings also bounce off ceilings while they rise (a boss's). */
 void scatter_ceilings(void);
 /** A ring taken at (x, y): counted, with its sparkle and sound; ring_effect is the sparkle and sound alone. */

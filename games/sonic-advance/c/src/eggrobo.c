@@ -23,7 +23,7 @@ enum {
   VRAM_ROCK0 = OBJ_VRAM + 0x2E80,
   VRAM_ROCK1 = OBJ_VRAM + 0x3080,
   VRAM_ROCK2 = OBJ_VRAM + 0x3100,
-  SE_ITEM_BOX = 148, SE_ROCK_BREAK = 211, SE_LASER = 212,
+  SE_ITEM_BOX = 138, SE_ROCK_BREAK = 126, SE_LASER = 155,
 };
 
 enum {
@@ -220,7 +220,8 @@ static void spawn_halves(int qx, int qy) {
     h->spin = s16(((act_random() << 13) >> 21) - (4 << 8));
     h->scaleX = (i & 1) ? -256 : 256;
     if (i & 1) h->vx = s16(-h->vx);
-    object_sprite_at(&h->o.sprite, vram_malloc(CAPSULE_TILES), ANIM_CAPSULE_HALF, 0, 12, 1, 0, 0);
+    // both halves draw from the capsule's fixed place (VRAM_RESERVED_BOSS_XTRA_CAPSULE), not from the heap
+    object_sprite_at(&h->o.sprite, VRAM_CAPSULE, ANIM_CAPSULE_HALF, 0, 12, 1, 0, 0);
     object_task(&h->o, capsule_half_run, PRIORITY_PARTS + 1);
   }
 }
@@ -245,7 +246,7 @@ static int capsule_capture(Capsule *c) {
   if (!struck(&c->o.sprite, c->qx >> 8, c->qy >> 8)) return 0;
   if (supersonic_dashing(p)) {
     play_song(SE_ITEM_BOX);
-    scatter_launch(c->qx >> 8, c->qy >> 8, 8, p->layer, 0);
+    scatter_launch_capsule(c->qx >> 8, c->qy >> 8, 8, p->layer);
     spawn_halves(c->qx, c->qy);
     return -1;
   }
@@ -787,11 +788,14 @@ static int robo_run(ActTask *t) {
       moon_disp.bldY = (uint16_t)fade;
     }
     if (fade == 16) { g_robo = NULL; moon_defeated(); return 0; }
+    // the next frame's fade is the last, and its save turns the interrupts off as this frame's picture is drawn
+    if (((boss->timer + 1 - 120) >> 2) == 16) engine_lines_off_soon();
     if (!(act_stage_time() & 0xF) || (boss->state == 14 && !(act_stage_time() & 7))) {
       int dx = (int)((act_random() << 10) >> 18) - (32 << 8);
       int dy = (int)((act_random() << 9) >> 17) - (64 << 8);
-      act_random();
-      boss_explosion_at(boss->qx + (boss->offsetX << 8) + dx, boss->qy + (boss->baseY << 8) + dy, 14);
+      // sub_8017540 draws its flips, which the robot then replaces with plain priority 1 (frameFlags 0x1000)
+      Sprite *blast = boss_explosion_at(boss->qx + (boss->offsetX << 8) + dx, boss->qy + (boss->baseY << 8) + dy, 14);
+      if (blast) blast->frameFlags = 1u << 12;
     }
     if (boss->timer < 0x7FFF) boss->timer++;
   } else if (boss->state > 1 && --boss->capsule <= 0) {
