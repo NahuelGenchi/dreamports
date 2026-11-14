@@ -3,6 +3,7 @@
 // compiler for itself and builds in a folder with a plain name, keeping only the programs (../gba/windows.mjs).
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +19,9 @@ const EXPLORE = join(HERE, '..', 'lib', 'explore.h');
 const EXTENSION = { win32: '.dll', darwin: '.dylib' }[process.platform] ?? '.so';
 const WINDOWS = process.platform === 'win32';
 export const HOST = join(FOLDER, WINDOWS ? 'host.exe' : 'host');
-export const coreFile = core => join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}${EXTENSION}`);
+// a core with a patch of the project's own has the patch's hash in its name too, so a build without it is never used
+const patchHash = core => core.patch ? `-${createHash('sha1').update(readFileSync(join(REPO, core.patch))).digest('hex').slice(0, 8)}` : '';
+export const coreFile = core => join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}${patchHash(core)}${EXTENSION}`);
 
 function run(what, program, args, cwd, env) {
   try {
@@ -56,6 +59,7 @@ function buildHere(machine, log, tools) {
   run(what, 'git', ['fetch', '-q', '--depth', '1', 'origin', core.commit], source);
   run(what, 'git', ['checkout', '-q', '--force', 'FETCH_HEAD'], source);
   if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1'], source);
+  if (core.patch) run(`Patching ${name}'s emulator`, 'git', ['apply', join(REPO, core.patch)], source);
   const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
     run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), '-DCMAKE_BUILD_TYPE=Release', ...core.cmake], source, tools?.env);

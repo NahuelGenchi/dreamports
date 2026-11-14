@@ -1,0 +1,191 @@
+Play! (https://github.com/jpd002/Play-, BSD licence, Copyright (c) 2006-2026 Jean-Philip Desjardins) runs the
+PlayStation 2 on a thread of its own, a frame or two ahead of its libretro frontend. The tools apply this change of
+Dreamports' own to its source before building it (tools/consoles.mjs, tools/libretro/build.mjs), so that each retro_run
+is one frame of the console: the console waits at each V-blank, before it reads the buttons, until the frontend asks
+for the next frame, the frontend serves the GS's calls until it has got there, and every block of sound is kept and
+handed over with the frame it was mixed in, 45 samples at a time (docs/CONSOLES.md, The PlayStation 2).
+
+diff --git a/Source/gs/GSHandler.cpp b/Source/gs/GSHandler.cpp
+index 57e58ba..3739a85 100644
+--- a/Source/gs/GSHandler.cpp
++++ b/Source/gs/GSHandler.cpp
+@@ -2213,6 +2213,21 @@ void CGSHandler::ProcessSingleFrame()
+ 	m_flipped = false;
+ }
+ 
++// Serves whatever calls are waiting, after waiting for one at most this many milliseconds, flip or not
++void CGSHandler::ProcessPendingCalls(unsigned int waitMs)
++{
++	assert(!m_gsThreaded);
++	if(waitMs != 0)
++	{
++		m_mailBox.WaitForCall(waitMs);
++	}
++	while(m_mailBox.IsPending())
++	{
++		m_mailBox.ReceiveCall();
++	}
++	m_flipped = false;
++}
++
+ Framework::CBitmap CGSHandler::GetScreenshot()
+ {
+ 	throw std::runtime_error("Screenshot feature is not implemented in current backend.");
+diff --git a/Source/gs/GSHandler.h b/Source/gs/GSHandler.h
+index 66bfe59..f34666f 100644
+--- a/Source/gs/GSHandler.h
++++ b/Source/gs/GSHandler.h
+@@ -901,6 +901,7 @@ public:
+ 	void SendGSCall(const CMailBox::FunctionType&, bool = false, bool = false);
+ 
+ 	void ProcessSingleFrame();
++	void ProcessPendingCalls(unsigned int);
+ 
+ 	FlipCompleteEvent OnFlipComplete;
+ 	NewFrameEvent OnNewFrame;
+diff --git a/Source/ui_libretro/PH_Libretro_Input.cpp b/Source/ui_libretro/PH_Libretro_Input.cpp
+index 3f9a1ea..46ec710 100644
+--- a/Source/ui_libretro/PH_Libretro_Input.cpp
++++ b/Source/ui_libretro/PH_Libretro_Input.cpp
+@@ -5,6 +5,7 @@ extern bool libretro_supports_bitmasks;
+ extern retro_input_poll_t g_input_poll_cb;
+ extern retro_input_state_t g_input_state_cb;
+ extern std::map<int, int> g_ds2_to_retro_btn_map;
++extern void WaitAtVBlank();
+ 
+ void CPH_Libretro_Input::UpdateInputState()
+ {
+@@ -47,6 +48,7 @@ void CPH_Libretro_Input::UpdateInputState()
+ 
+ void CPH_Libretro_Input::Update(uint8* ram)
+ {
++	WaitAtVBlank();
+ 	std::lock_guard<std::mutex> lock(m_input_mutex);
+ 	for(auto* interface : m_interfaces)
+ 	{
+diff --git a/Source/ui_libretro/SH_LibreAudio.cpp b/Source/ui_libretro/SH_LibreAudio.cpp
+index 42067f7..ef20871 100644
+--- a/Source/ui_libretro/SH_LibreAudio.cpp
++++ b/Source/ui_libretro/SH_LibreAudio.cpp
+@@ -14,19 +14,15 @@ CSoundHandler* CSH_LibreAudio::HandlerFactory()
+ void CSH_LibreAudio::Write(int16* buffer, unsigned int sampleCount, unsigned int sampleRate)
+ {
+ 	std::lock_guard<std::mutex> lock(m_buffer_lock);
+-	m_buffer.resize(sampleCount * sizeof(int16));
+-	memcpy(m_buffer.data(), buffer, sampleCount * sizeof(int16));
++	m_buffer.insert(m_buffer.end(), buffer, buffer + sampleCount);
+ }
+ 
+ void CSH_LibreAudio::ProcessBuffer()
+ {
+-	if(!m_buffer.empty())
+-	{
+-		std::lock_guard<std::mutex> lock(m_buffer_lock);
+-		if(g_set_audio_sample_batch_cb)
+-			g_set_audio_sample_batch_cb(m_buffer.data(), m_buffer.size() / (2 * sizeof(int16)));
+-		m_buffer.clear();
+-	}
++	std::lock_guard<std::mutex> lock(m_buffer_lock);
++	if(!m_buffer.empty() && g_set_audio_sample_batch_cb)
++		g_set_audio_sample_batch_cb(m_buffer.data(), m_buffer.size() / 2);
++	m_buffer.clear();
+ }
+ 
+ bool CSH_LibreAudio::HasFreeBuffers()
+diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
+index 8a07c26..4c9d1a5 100644
+--- a/Source/ui_libretro/main_libretro.cpp
++++ b/Source/ui_libretro/main_libretro.cpp
+@@ -19,6 +19,9 @@
+ 
+ #include <vector>
+ #include <cstdlib>
++#include <condition_variable>
++#include <cstdint>
++#include <mutex>
+ 
+ #define LOG_NAME "LIBRETRO"
+ 
+@@ -37,6 +40,37 @@ struct retro_hw_render_callback g_hw_render
+ {
+ };
+ 
++// One frame of the console for each retro_run, so the same buttons at the same frames give the same pictures and sound.
++// The console's thread waits at each V-blank, before it reads the buttons, until the frontend asks for the next frame
++// (WaitAtVBlank, from the pad handler), and the frontend serves the GS's calls until the console has got there.
++// Never destroyed, as the console's thread can still be waiting on them when the frontend ends
++static std::mutex& g_vblankMutex = *new std::mutex;
++static std::condition_variable& g_vblankCondition = *new std::condition_variable;
++static uint64_t g_vblanksReached = 0;
++static uint64_t g_vblanksAllowed = 0;
++static uint64_t g_framesRun = 0;
++
++void WaitAtVBlank()
++{
++	std::unique_lock<std::mutex> lock(g_vblankMutex);
++	g_vblanksReached++;
++	g_vblankCondition.notify_all();
++	g_vblankCondition.wait(lock, [] { return g_vblanksAllowed >= g_vblanksReached; });
++}
++
++static void AllowVBlanks(uint64_t count)
++{
++	std::lock_guard<std::mutex> lock(g_vblankMutex);
++	g_vblanksAllowed = count;
++	g_vblankCondition.notify_all();
++}
++
++static bool HasReachedVBlank(uint64_t count)
++{
++	std::lock_guard<std::mutex> lock(g_vblankMutex);
++	return g_vblanksReached >= count;
++}
++
+ int g_res_factor = 1;
+ CGSHandler::PRESENTATION_MODE g_presentation_mode = CGSHandler::PRESENTATION_MODE::PRESENTATION_MODE_FIT;
+ bool g_forceBilinearTextures = false;
+@@ -446,15 +480,24 @@ void retro_run()
+ 
+ 	if(m_virtualMachine)
+ 	{
++		// this frame's buttons, read as the console passes the V-blank that starts it, then the frame, to the next V-blank
+ 		auto pad = m_virtualMachine->GetPadHandler();
+ 		if(pad)
+ 			static_cast<CPH_Libretro_Input*>(pad)->UpdateInputState();
++		AllowVBlanks(g_framesRun);
++
++		auto gs = m_virtualMachine->GetGSHandler();
++		while(!HasReachedVBlank(g_framesRun + 1))
++		{
++			if(gs)
++				gs->ProcessPendingCalls(1);
++		}
++		if(gs)
++			gs->ProcessPendingCalls(0);
++		g_framesRun++;
+ 
+ 		if(m_virtualMachine->GetSoundHandler())
+ 			static_cast<CSH_LibreAudio*>(m_virtualMachine->GetSoundHandler())->ProcessBuffer();
+-
+-		if(m_virtualMachine->GetGSHandler())
+-			m_virtualMachine->GetGSHandler()->ProcessSingleFrame();
+ 	}
+ }
+ 
+@@ -554,7 +597,7 @@ void retro_init()
+ 	if(g_environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
+ 		libretro_supports_bitmasks = true;
+ 
+-	CAppConfig::GetInstance().RegisterPreferenceInteger(PREF_AUDIO_SPUBLOCKCOUNT, 22);
++	CAppConfig::GetInstance().RegisterPreferenceInteger(PREF_AUDIO_SPUBLOCKCOUNT, 1);
+ 
+ 	m_virtualMachine = new CPS2VM();
+ 	m_virtualMachine->Initialize();
+@@ -574,6 +617,7 @@ void retro_deinit()
+ 
+ 	if(m_virtualMachine)
+ 	{
++		AllowVBlanks(UINT64_MAX);
+ 		m_virtualMachine->PauseAsync();
+ 		auto gsHandler = static_cast<CGSH_OpenGL_Libretro*>(m_virtualMachine->GetGSHandler());
+ 		if(gsHandler)
