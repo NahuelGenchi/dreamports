@@ -337,7 +337,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 
 | File | What it holds |
 | :--- | :--- |
-| `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum, `keysAfterVBlank` for a game that reads its buttons just after the V-blank, `screen` for a game on another console that [chooses its own size](../docs/CONSOLES.md#how-a-console-is-known), and `shows` for what a recording can be named for, as [What a recording shows](#what-a-recording-shows) says |
+| `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum, `keysAfterVBlank` for a game that reads its buttons just after the V-blank, `screen` for a game on another console that [chooses its own size](../docs/CONSOLES.md#how-a-console-is-known), `provenBy` for a game compared by its draw lists and not its pictures, as a 3D game is (`"draw lists"`, [The PlayStation 2](../docs/CONSOLES.md#the-playstation-2)), and `shows` for what a recording can be named for, as [What a recording shows](#what-a-recording-shows) says |
 | `recordings/` | Recorded play, one file per recording |
 | `route.json` | Optional: where the original keeps the few values `route` reads as it searches, and the goals the game names, as [Finding a route](#what-a-game-says-of-its-original) says. A part can name one of those goals as what it reaches |
 | `code-map.json` | The code map |

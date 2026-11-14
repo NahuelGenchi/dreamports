@@ -114,7 +114,12 @@ export async function loadGame(url, bytes, { console: id, save = null, query } =
   game.dp_start();
   sound.started();
   return {
-    step(buttons) { game.dp_step(buttons); sound.frameDone(); },
+    step(buttons) {
+      game.dp_step(buttons);
+      // the frame's draw list, on a console whose kit keeps one, for the proof tools (kit/ps2/c/ps2.c)
+      if (globalThis.dreamportsProof && game.dp_draw_list) dreamportsProof.drawList = game.dp_draw_list() >>> 0;
+      sound.frameDone();
+    },
     draw() {
       const at = game.dp_draw(), width = game.dp_width(), height = game.dp_height();
       return { width, height, pixels: new Uint32Array(game.memory.buffer, at, width * height) };

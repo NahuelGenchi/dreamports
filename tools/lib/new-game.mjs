@@ -10,7 +10,7 @@ import { sizesIn } from './screens.mjs';
 const kit = name => new URL(`../gba/new-game/${name}`, import.meta.url);
 const otherKit = name => new URL(`../libretro/new-game/${name}`, import.meta.url);
 // the consoles with a kit in C of their own besides the Game Boy Advance, whose starting point in C is on it
-const OWN_C_START = { nes: 'c/nes.c.template' };
+const OWN_C_START = { nes: 'c/nes.c.template', ps2: 'c/ps2.c.template' };
 const js = text => `'${text.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
 const html = text => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
