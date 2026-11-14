@@ -26,7 +26,8 @@ The first time a game on a console needs its core, the tools fetch it from its m
 | A made-up console | [`tools/test/made-up-core.c`](../tools/test/made-up-core.c) | `npm run test:consoles` plays a whole game on it, on every pull request |
 | NES | FCEUmm | `npm run test:real-console` builds the real emulator and proves a small program of the project's own on it, every frame of picture and sound, from presses written out and from a recording made with `play`, the same each time, on every pull request. [Mega Man Dreamport](../games/mega-man/) in C, on the NES's kit in C, proves its title screen on the owner's copy, every frame, picture and sound |
 | Super Nintendo, Game Boy, Game Boy Color, Mega Drive, PlayStation, Nintendo 64 | Snes9x, Gambatte, Genesis Plus GX, PCSX ReARMed, Parallel N64 | Each built and run with a small program, twice, the same both times, its numbers checked against `kit/consoles.js`. `prove` hasn't compared anything on them yet |
-| PlayStation 2, PlayStation Portable | None yet | Their emulators draw with a graphics context, which `host.c` doesn't offer yet, and the tools say so |
+| PlayStation 2 | Play! | Built and run with a small program of the project's own, [`made-up-ps2.mjs`](../tools/test/made-up-ps2.mjs), twice, the same both times, its numbers checked against `kit/consoles.js`, on Linux alone so far: `npm run test:real-ps2`. `prove` hasn't compared anything on it yet, and its buttons and sound aren't tied to frames yet ([The PlayStation 2](#the-playstation-2)) |
+| PlayStation Portable | None yet | No emulator has been chosen for it yet, and the tools say so |
 
 The first game on a console is what proves it. When a console's numbers are wrong the tools say which, such as an emulator mixing another number of samples a second than `kit/consoles.js` says, or running at another speed.
 
@@ -41,6 +42,7 @@ These are the numbers each emulator gave for a small program, once it had set up
 | Super Nintendo | 60.0988 | 32,040 | 256 by 224 | 823 KB | 128 KB |
 | Mega Drive | 59.9227 | 44,100 | 320 by 224 | 1 MB | 64 KB |
 | PlayStation | 60 | 44,100 | 320 by 240 | 4.5 MB | 2 MB |
+| PlayStation 2 | 60 | 44,100 | 640 by 448 | 40 MB | 32 MB |
 | Nintendo 64 | 60.02 | The game's choice, heard at 44,100 | 640 by 240 | 17 MB | 8 MB |
 
 **Screens.** An emulator may not show the whole screen unless told to, as FCEUmm cuts the NES's to 224 lines, which is why it has settings for that. A game can also choose its own size: a Mega Drive game can use 256 or 320 across, a PlayStation game many sizes, and a Nintendo 64 game can show twice the lines. Such a game lists its sizes in its `proof/original.json`. Each frame is compared at the size it has, so it can change partway, and the same pixels in another shape are another picture. `prove` stops when the original shows a size the game doesn't list, and gives the line to write, leaving out frames only the original has, as nothing compares them. When the Dreamport's picture is another size than the original's, `prove` says at which frame. The stills and clips `prove` makes have room for the largest width and height listed, with a smaller picture filled with black on the right and below. A capture is cut to the size its moment shows, so no band of black reaches a game's card, and `capture` stops only at a picture too large for what the game lists, which would lose its edges. Genesis Plus GX showed a small program at 256 by 224 and then 320 by 224 as it chose, with 256 by 192 on its very first frame, which nothing compares. So far only the made-up console has proved a game at its own size.
@@ -55,7 +57,17 @@ These are the numbers each emulator gave for a small program, once it had set up
 
 **Buttons.** The NES's were pressed in a recording. The Mega Drive's and Nintendo 64's agree with their emulators' source, and the rest are still only as chosen.
 
-**Building.** Each builds with a compiler and `make` alone. Parallel N64 is built with no recompiler and no OpenGL, so it needs no assembler or graphics libraries, and runs on its interpreter.
+**Building.** Each builds with a compiler and `make` alone, but for Play!, which needs CMake too. Parallel N64 is built with no recompiler and no OpenGL, so it needs no assembler or graphics libraries, and runs on its interpreter.
+
+## The PlayStation 2
+
+Play! runs it, built from [its makers' source](https://github.com/jpd002/Play-) under a BSD licence. It starts a game or a program with its own stand-in for the console's BIOS, so nobody needs a file from their own console and everyone gets the same frames. The other emulator with a libretro core, the libretro PCSX2, runs more games and draws on the processor, but it won't start without a BIOS, and a BIOS's version can change what a game shows.
+
+**Its pictures.** Play! draws only with OpenGL, so `host.c` gives a core that asks a graphics context with no window, from EGL, and a framebuffer it reads each picture back from. It asks Mesa for llvmpipe, which draws on the processor, so the picture doesn't depend on the computer's graphics card, and stops with a sentence if it gets anything else. Play! is built for OpenGL ES 3, which needs no GLU or GLEW. That's Linux alone so far: on another computer the tools say so before building anything. Two computers with different versions of Mesa could still draw some things differently, which a 3D game will show (#618).
+
+**Its own folder.** Play! keeps its settings and memory cards in the person's home folder, so each run is given an empty one of its own, as every core's saves are, and nothing carries from one run to the next.
+
+**What isn't tied to frames yet.** Play! runs the console on a thread of its own, which can be a frame or two ahead of what the tools ask for. Pictures come out in the same order whatever the timing, which is why the small program's frames match. But it copies the buttons in at each V-blank from whatever the tools last gave, so a recording's presses could land a frame apart from one run to the next. The small program reads no buttons, as that needs the console's second processor started, so it can't show this either way. Its sound does show it: Play! mixes 990 samples at a time and hands over only the latest block when a frame is asked for, so a block written while another waits is lost. Over 600 frames of the small program's silence it handed over 297,000 samples, about 29,700 a second of the 44,100 it says, a block every other frame, and in one run of three it lost one more, which put every later block a frame off, in 431 of the 600 frames. Tying buttons and sound to frames, so that `prove` can compare a game, is the next step for this console. Until then `real-ps2.mjs` says how the sound came out without failing on it.
 
 ## What's different from the Game Boy Advance
 
