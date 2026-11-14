@@ -249,6 +249,7 @@ void front_time_attack_play(int level) {
   act.byCourseSelect = 1;
   sound_late(LOAD_ACT_TIME_ATTACK, level);
   act_frame_now();
+  act_made_at_card_priority();
   // its loading takes two V-blanks, the second not counted in the frame counter
   act.stallLoad = 2;
 }

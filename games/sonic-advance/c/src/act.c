@@ -506,7 +506,9 @@ void act_random_seed(uint32_t seed) {
 static uint32_t act_random_state(void) { return act.stage.row->sharedRandom ? ctx.seed : act.seed; }
 
 // --- what Sonic's moves ask of the act (the world's hooks in engine/game.js) --------------------------------------------
-enum { SE_LIFE_LOST = 119, SE_DROWNED = 192, SPIN_DASH_FREEZE = 10 };
+enum { SE_LIFE_LOST = 119, SE_DROWNED = 192, SE_TIME_UP = 166, SPIN_DASH_FREEZE = 10 };
+// the save's time limit, 1 when it's off (timeLimitDisabled)
+#define SAVE_TIME_LIMIT_OFF 0x1A
 
 // brake dust stays where it appeared, flipped by the game's random numbers (CreateBrakingDustEffect): the effect itself
 // isn't here yet, but its draw moves the sequence the fireworks' positions come from on
@@ -544,12 +546,25 @@ static void clock_step(void) {
 }
 
 #define EGG_ROCKET_COUNTDOWN (3 * 3600)
+// CreateStageResults in Time Attack: the act's rings into the save's ring bank, nothing unlocked, and in place of the
+// results the Time Attack result over the act, for the time the act took (Egg Rocket's by gCheckpointTime)
+static void time_attack_results(int nextFrame) {
+  int level = act.stage.level;
+  save_add_ring_bank(act.ringCount);
+  int courseTime = act.courseTime;
+  if (level == LEVEL_EGG_ROCKET) {
+    egg_rocket_results();
+    courseTime = act.clockTime <= EGG_ROCKET_COUNTDOWN ? 1 : act.clockTime - EGG_ROCKET_COUNTDOWN;
+  }
+  time_attack_result_start(level, (uint32_t)courseTime, nextFrame);
+}
 // CreateStageResults, as the goal hands over: the act's rings into the save's ring bank and the next level unlocked
 // (X Zone's way to the Moon Zone decides that itself, and isn't here yet), then the results' tasks, which first run
 // this frame, after the goal's, or with `nextFrame` on the next one
 void act_stage_results(int nextFrame) {
   int level = act.stage.level;
   act.noPause = 1;
+  if (time_attack()) { time_attack_results(nextFrame); return; }
   save_add_ring_bank(act.ringCount);
   if (level != LEVEL_X_ZONE && save_unlocked_level(ctx.character) < level + 1)
     save_set_unlocked_level(ctx.character, (uint16_t)(level + 1));
@@ -700,7 +715,9 @@ void act_come_back(void) {
 // GoToNextLevel: every task goes, the act's objects with their sprites' VRAM, the queues stop, the music stops, and
 // the save is written (the screen keeping its frame while the flash takes it), before the next act starts on the
 // frame the write ends; the black of an act that isn't in C shows on that frame too, as the original's stage start's
+static void time_attack_to_lobby(void);
 static void go_to_next_level(void) {
+  if (time_attack()) { time_attack_to_lobby(); return; }
   nextLevel = act.stage.level + 1;
   // what the objects' tasks drew this frame, before the results' task ended it, is on the screen for a frame as the
   // next act loads: the animals of a capsule, flying on
@@ -740,19 +757,35 @@ static void go_to_congratulations(void) {
 // Time Attack's life lost and pause menu end the run: every task goes, the stage's with every music player
 // (TaskDestructor_GameStage's m4aMPlayAllStop), the queues stop, and the lobby comes, for the act that was played, with
 // the game's random numbers where the act left them
-static void leave_for_lobby(void) {
+static void end_run(void) {
   front_random_seed(act_random_state());
   ctx.currentLevel = act.stage.level;
   destroy_tasks(0, 0xFFFF);
   act_tasks_destroy_all();
+  time_attack_result_stop();
   player_free(&act.player);
   if (act.hasPartner) player_free(&act.partner);
   act.task = NULL;
   stop_all_songs();
   clear_queues();
   clear_bg_sprites();
+}
+static void leave_for_lobby(void) {
+  end_run();
   act_active = 0;
   create_time_attack_lobby();
+}
+// GoToNextLevel in Time Attack: as the run ends, the sound engine off while the save is written, then the lobby
+static void lobby_after_write(void) {
+  sound_vsync_on();
+  act_active = 0;
+  create_time_attack_lobby();
+}
+static void time_attack_to_lobby(void) {
+  end_run();
+  sound_vsync_off();
+  if (save_write()) engine_stall(WRITE_FRAMES, lobby_after_write);
+  else lobby_after_write();
 }
 
 // Task_8056AC8, once the game over's song has ended: the music stops and the save is written, then every task goes and
@@ -783,6 +816,7 @@ int act_level(void) { return act.stage.level; }
 /** A soft reset (front.c): the act stops where it is, its objects, its results and its game over with it. */
 void act_soft_reset(void) {
   act_tasks_destroy_all();
+  time_attack_result_stop();
   act.task = NULL;
   results_stop();
   gameover_stop();
@@ -917,6 +951,7 @@ static void act_frame(void) {
   int cardShows = !act.cardDone;
   if (cardShows) card_update((e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
   // the results' task (0x2100) and its pieces' (0x2120); the frame they end, the next act takes over
+  if (time_attack_result_active() && !time_attack_result_run()) { go_to_next_level(); return; }
   if (results_active() && !results_run()) {
     if (act.stage.level != LEVEL_X_ZONE) { go_to_next_level(); return; }
     if (!moon_opens()) { go_to_congratulations(); return; }
@@ -995,8 +1030,14 @@ static void act_frame(void) {
         if (act.stage.level == LEVEL_EGG_ROCKET) boss_shake(0x800, 8, 16, -1, SHAKE_VERTICAL | SHAKE_HORIZONTAL | SHAKE_RANDOM);
         act.player.dead = 1;
       }
-    } else {
-      act.courseTime++;
+    } else if (++act.courseTime > MAX_COURSE_TIME) {
+      // past 10:00 the clock stops, and with the time limit on, or in Time Attack whatever it is, it's a time up: his
+      // shield and items go, and he dies thrown up as high as a jump, with SE_TIME_UP
+      act.clockStopped = 1;
+      if (!save.bytes[SAVE_TIME_LIMIT_OFF] || time_attack()) {
+        player_time_up(&act.player);
+        play_song(SE_TIME_UP);
+      }
     }
   }
   act.tick++;
@@ -1012,6 +1053,7 @@ static void act_frame(void) {
   // (after the act before, its tasks first run on the act's second frame, as its objects do)
   if (row->afterFrame) row->afterFrame(1);
   results_display();
+  time_attack_result_display();
   gameover_display();
 }
 
@@ -1070,6 +1112,13 @@ void act_task(Task *t) {
     return;
   }
   act_frame();
+}
+
+/** The Time Attack card makes the act from its task at 0x2000, so the act's palette animations, made at that priority
+ *  with it, run once on that frame too (notes/the-time-attack-card-makes-the-act-a-priority-lower.md). */
+void act_made_at_card_priority(void) {
+  if (!act.palStarted) return;
+  for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
 }
 
 /** Keeps the screen black for this frame, as a menu's last frame is, while the act's first picture waits for the

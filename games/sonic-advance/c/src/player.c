@@ -210,6 +210,13 @@ static double top_speed(const Player *p) { return (p->water ? WATER_MAX_RUN_SPEE
 static double gravity(const Player *p) { return p->water ? WATER_GRAVITY : GRAVITY; }   // PLAYERFN_UPDATE_AIR_FALL_SPEED
 static double jump_speed(const Player *p) { return p->water ? WATER_JUMP_SPEED : JUMP_SPEED; }
 
+/** The time up (Task_GameStage): his shield and items go, and he dies thrown up as high as a jump. */
+void player_time_up(Player *p) {
+  p->shield = SHIELD_NONE; p->invincible = 0; p->speedUp = 0;
+  p->ysp = -jump_speed(p);
+  p->dead = 1;
+}
+
 // a frame's move (PLAYERFN_UPDATE_POSITION): gravity flipped since the stage clock last ran turns his Y speed around,
 // and flipped, it moves him up the act
 static void move(Player *p) {

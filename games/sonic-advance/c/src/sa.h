@@ -381,6 +381,12 @@ void create_time_attack_card(void);
 void front_time_attack_play(int level);
 void create_time_attack_record(int level);
 void create_time_attack_lobby(void);
+// the Time Attack result over the act (timeattackresult.c)
+void time_attack_result_start(int level, uint32_t record, int nextFrame);
+int time_attack_result_active(void);
+int time_attack_result_run(void);
+void time_attack_result_display(void);
+void time_attack_result_stop(void);
 /** CreatePauseMenu (pausemenu.c); in Time Attack, A calls `toLobby` once every task has gone. */
 void pause_menu_create(void (*toLobby)(void), int later);
 /** sub_806A02C: the seven glyphs of a time, M:SS:CC, as the UI font has them, and a 0 after them. */

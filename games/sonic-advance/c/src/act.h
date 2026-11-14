@@ -152,6 +152,7 @@ void act_random_seed(uint32_t seed);
 void water_create(int level, uint32_t mask);
 void water_card(int ending);
 void water_card_flush(void);
+void act_made_at_card_priority(void);
 void water_task(void);
 int water_runs(void);
 int water_line_on_screen(void);
