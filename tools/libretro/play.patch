@@ -9,8 +9,11 @@ It also keeps each frame's draw list: a hash of everything the console gave the 
 given, every register write, every picture sent and what the screen shows of the framebuffer, which the frontend asks for
 with dreamports_draw_list. That's what a 3D game is proven by (docs/STANDARD.md).
 
+When the environment's DP_DRAW_DUMP names a file, the whole list goes there too, from the first V-blank on, a picture's
+bytes left out, for the tools to count what a game's lists hold (tools/lib/draw-lists.mjs).
+
 diff --git a/Source/gs/GSHandler.cpp b/Source/gs/GSHandler.cpp
-index 57e58ba..1665eb3 100644
+index 57e58ba..bd6316f 100644
 --- a/Source/gs/GSHandler.cpp
 +++ b/Source/gs/GSHandler.cpp
 @@ -456,6 +456,21 @@ uint32 CGSHandler::ReadPrivRegister(uint32 nAddress)
@@ -28,7 +31,7 @@ index 57e58ba..1665eb3 100644
 +	{
 +		// what the screen shows of the framebuffer is part of the draw list
 +		uint32 shown[2] = {nAddress, nData};
-+		AddToDrawList(shown, sizeof(shown));
++		AddToDrawList('S', shown, sizeof(shown));
 +	}
 +	break;
 +	}
@@ -39,11 +42,18 @@ index 57e58ba..1665eb3 100644
  {
  	assert(m_writeBufferProcessIndex == m_writeBufferSize);
  	SubmitWriteBuffer();
-+	AddToDrawList(data, length);
++	AddToDrawList('I', data, length);
  
  #ifdef _DEBUG
  	m_transferCount++;
-@@ -675,6 +691,13 @@ void CGSHandler::ProcessWriteBuffer(const CGsPacketMetadata* metadata)
+@@ -672,9 +688,20 @@ void CGSHandler::ProcessWriteBuffer(const CGsPacketMetadata* metadata)
+ 		    });
+ 	}
+ #endif
++	if(metadata && m_writeBufferProcessIndex < m_writeBufferSize)
++	{
++		NoteInDrawListDump('P', static_cast<uint8>(metadata->pathIndex));
++	}
  	for(uint32 writeIndex = m_writeBufferProcessIndex; writeIndex < m_writeBufferSize; writeIndex++)
  	{
  		const auto& write = m_currentWriteBuffer[writeIndex];
@@ -52,12 +62,12 @@ index 57e58ba..1665eb3 100644
 +			uint8 written[9];
 +			written[0] = write.first;
 +			memcpy(written + 1, &write.second, 8);
-+			AddToDrawList(written, sizeof(written));
++			AddToDrawList('R', written, sizeof(written));
 +		}
  		switch(write.first)
  		{
  		case GS_REG_SIGNAL:
-@@ -2213,6 +2236,21 @@ void CGSHandler::ProcessSingleFrame()
+@@ -2213,6 +2240,21 @@ void CGSHandler::ProcessSingleFrame()
  	m_flipped = false;
  }
  
@@ -80,10 +90,17 @@ index 57e58ba..1665eb3 100644
  {
  	throw std::runtime_error("Screenshot feature is not implemented in current backend.");
 diff --git a/Source/gs/GSHandler.h b/Source/gs/GSHandler.h
-index 66bfe59..41f9723 100644
+index 66bfe59..478f3d1 100644
 --- a/Source/gs/GSHandler.h
 +++ b/Source/gs/GSHandler.h
-@@ -901,6 +901,21 @@ public:
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include <cstdio>
+ #include <thread>
+ #include <vector>
+ #include <functional>
+@@ -901,6 +902,45 @@ public:
  	void SendGSCall(const CMailBox::FunctionType&, bool = false, bool = false);
  
  	void ProcessSingleFrame();
@@ -93,14 +110,38 @@ index 66bfe59..41f9723 100644
 +	// (FNV-1a), with how many things that was. The frontend reads it at each V-blank and starts it again.
 +	uint32 m_drawListHash = 0x811C9DC5;
 +	uint32 m_drawListCount = 0;
-+	void AddToDrawList(const void* data, size_t length)
++	// When the frontend opens one, a file the whole list goes to as well, for the tools to read what a game's lists
++	// hold: each thing as a letter and what was written, 'R' a register and its 64 bits, 'S' an address and half of one
++	// of the screen's registers, 'I' a picture's length and the hash of its bytes, which stay out of the file, and from
++	// the others 'P', the path the register writes after it came by, and 'F', the end of a frame.
++	FILE* m_drawListDump = nullptr;
++	void AddToDrawList(char kind, const void* data, size_t length)
 +	{
 +		auto bytes = static_cast<const uint8*>(data);
++		uint32 own = 0x811C9DC5;
 +		for(size_t i = 0; i < length; i++)
 +		{
 +			m_drawListHash = (m_drawListHash ^ bytes[i]) * 0x01000193;
++			own = (own ^ bytes[i]) * 0x01000193;
 +		}
 +		m_drawListCount++;
++		if(!m_drawListDump) return;
++		fputc(kind, m_drawListDump);
++		if(kind == 'I')
++		{
++			uint32 about[2] = {static_cast<uint32>(length), own};
++			fwrite(about, 4, 2, m_drawListDump);
++		}
++		else
++		{
++			fwrite(data, 1, length, m_drawListDump);
++		}
++	}
++	void NoteInDrawListDump(char kind, uint8 value)
++	{
++		if(!m_drawListDump) return;
++		fputc(kind, m_drawListDump);
++		if(kind == 'P') fputc(value, m_drawListDump);
 +	}
  
  	FlipCompleteEvent OnFlipComplete;
@@ -155,7 +196,7 @@ index 42067f7..ef20871 100644
  
  bool CSH_LibreAudio::HasFreeBuffers()
 diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
-index 8a07c26..3197c5b 100644
+index 8a07c26..fe66fce 100644
 --- a/Source/ui_libretro/main_libretro.cpp
 +++ b/Source/ui_libretro/main_libretro.cpp
 @@ -19,6 +19,9 @@
@@ -168,7 +209,7 @@ index 8a07c26..3197c5b 100644
  
  #define LOG_NAME "LIBRETRO"
  
-@@ -37,6 +40,56 @@ struct retro_hw_render_callback g_hw_render
+@@ -37,6 +40,65 @@ struct retro_hw_render_callback g_hw_render
  {
  };
  
@@ -193,6 +234,15 @@ index 8a07c26..3197c5b 100644
 +	{
 +		g_drawListHash = gs->m_drawListHash;
 +		g_drawListCount = gs->m_drawListCount;
++		// the whole list to a file, when the environment names one, opened once the GS is there
++		static bool asked = false;
++		if(!asked)
++		{
++			asked = true;
++			if(auto path = getenv("DP_DRAW_DUMP")) gs->m_drawListDump = fopen(path, "wb");
++		}
++		gs->NoteInDrawListDump('F', 0);
++		if(gs->m_drawListDump) fflush(gs->m_drawListDump);
 +		gs->m_drawListHash = 0x811C9DC5;
 +		gs->m_drawListCount = 0;
 +	}
@@ -225,7 +275,7 @@ index 8a07c26..3197c5b 100644
  int g_res_factor = 1;
  CGSHandler::PRESENTATION_MODE g_presentation_mode = CGSHandler::PRESENTATION_MODE::PRESENTATION_MODE_FIT;
  bool g_forceBilinearTextures = false;
-@@ -446,15 +499,24 @@ void retro_run()
+@@ -446,15 +508,24 @@ void retro_run()
  
  	if(m_virtualMachine)
  	{
@@ -253,7 +303,7 @@ index 8a07c26..3197c5b 100644
  	}
  }
  
-@@ -554,7 +616,7 @@ void retro_init()
+@@ -554,7 +625,7 @@ void retro_init()
  	if(g_environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
  		libretro_supports_bitmasks = true;
  
@@ -262,7 +312,7 @@ index 8a07c26..3197c5b 100644
  
  	m_virtualMachine = new CPS2VM();
  	m_virtualMachine->Initialize();
-@@ -574,6 +636,7 @@ void retro_deinit()
+@@ -574,6 +645,7 @@ void retro_deinit()
  
  	if(m_virtualMachine)
  	{
