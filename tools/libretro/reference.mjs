@@ -2,6 +2,7 @@
 
 import { linkSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
+import { threadId } from 'node:worker_threads';
 import { LOCAL } from '../lib/paths.mjs';
 import { playReference, runReference } from '../lib/run-reference.mjs';
 import { checkSizes } from '../lib/screens.mjs';
@@ -12,9 +13,9 @@ const FROM = join(LOCAL, 'tmp');
 // The copy under a name that says nothing, in the folder the core runs from, as a core can read things into a name, and two
 // people with the same copy would see different games: FCEUmm takes "(E)" or "(a)" anywhere in the path for a European copy.
 // A disc's .cue keeps its own, as it names its tracks from where it is. { path, done }, `done` being what removes it.
-// Recordings played at the same time run in one process, so each run's link has its own number after the process's.
+// Recordings played at the same time run in one process, so each run's link has its own name, `run` (forRun).
 function plainlyNamed(copy, run) {
-  const extension = extname(copy).toLowerCase(), link = join(FROM, `copy-${process.pid}-${run}${extension}`);
+  const extension = extname(copy).toLowerCase(), link = join(FROM, `copy-${run}${extension}`);
   if (extension !== '.cue') {
     mkdirSync(FROM, { recursive: true });
     rmSync(link, { force: true });
@@ -31,6 +32,8 @@ function plainlyNamed(copy, run) {
   return { path: copy, done() {} };
 }
 
+// how many runs this thread has started. prove plays each recording in a thread of its own, and every thread has its own
+// count, so a run's name has the process's number, the thread's and the count, or two threads' would be the same
 let runs = 0;
 
 export function libretroReference(machine) {
@@ -41,8 +44,8 @@ export function libretroReference(machine) {
   // one shared folder pulled it from under a core another recording was loading. Where a game chooses its sound's rate,
   // the one the tools hear it at. { env, path, done }: the copy's link and the saves go when `done` is called
   const forRun = copy => {
-    const run = ++runs, named = plainlyNamed(copy, run);
-    const system = join(LOCAL, 'libretro', 'system', machine.id), saves = join(LOCAL, 'libretro', 'saves', machine.id, `${process.pid}-${run}`);
+    const run = `${process.pid}-${threadId}-${++runs}`, named = plainlyNamed(copy, run);
+    const system = join(LOCAL, 'libretro', 'system', machine.id), saves = join(LOCAL, 'libretro', 'saves', machine.id, run);
     rmSync(saves, { recursive: true, force: true });
     mkdirSync(saves, { recursive: true });
     mkdirSync(system, { recursive: true });

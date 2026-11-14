@@ -472,6 +472,13 @@ function start(launcher: HTMLElement) {
   function move(dir: number) {
     if (!busy()) select(sel() + dir);
   }
+  // the arrow keys walk the row, so focus comes back to it from the last button used: Enter then
+  // opens what is highlighted rather than pressing that button again
+  function moveKeyed(dir: number) {
+    if (busy()) return;
+    if (!rowEl.contains(document.activeElement)) slots[sel()]?.focus({ preventScroll: true });
+    select(sel() + dir);
+  }
 
   function bump(dir: number) {
     sound.play('edge');
@@ -2311,14 +2318,14 @@ function start(launcher: HTMLElement) {
         if (onTab) {
           prevFilter();
           FILTERS[state.filter].tab.focus();
-        } else move(-1);
+        } else moveKeyed(-1);
         break;
       case 'ArrowRight':
         e.preventDefault();
         if (onTab) {
           nextFilter();
           FILTERS[state.filter].tab.focus();
-        } else move(1);
+        } else moveKeyed(1);
         break;
       case 'ArrowUp':
         // from the results back up to the search field
