@@ -452,10 +452,10 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 .unlock {
   position: absolute; top: calc(var(--dot) * var(--margin)); right: calc(var(--dot) * var(--margin));
   width: calc(var(--dot) * var(--w)); height: calc(var(--dot) * var(--h));
-  filter: drop-shadow(0 calc(var(--dot) * 1) calc(var(--dot) * 2) rgba(0, 0, 0, .4));
+  overflow: hidden; filter: drop-shadow(0 calc(var(--dot) * 1) calc(var(--dot) * 2) rgba(0, 0, 0, .4));
   will-change: transform;
 }
-.unlock-box { position: absolute; inset: 0; overflow: hidden; background: var(--box); }
+.unlock-box { position: absolute; inset: 0; overflow: hidden; background: var(--box); will-change: transform; }
 .unlock canvas { position: absolute; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
 .unlock-trophy { left: calc(var(--dot) * var(--trophy-x)); top: calc(var(--dot) * var(--trophy-y)); }
 .unlock-strip { position: absolute; top: 0; bottom: 0; left: calc(var(--dot) * var(--text-x)); right: 0; overflow: hidden; }

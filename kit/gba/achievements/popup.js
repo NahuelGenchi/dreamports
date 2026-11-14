@@ -108,18 +108,20 @@ export function createUnlockPopup(host, screen, sound = () => null) {
       await el.animate([{ opacity: 0 }, { opacity: 1, offset: at(200) }, { opacity: 1, offset: at(SHOWN - 300) }, { opacity: 0 }], timing).finished;
     } else {
       // slide_v, then unfold with slide_h, the hold, fold with slide_h, and slide_v back: folded, the box shows only
-      // the trophy's square, kept at the right; unfolding, the title comes from half its width to the left
+      // the trophy's square, kept at the right; unfolding, the title comes from half its width to the left. The box
+      // slides inside the popup, which cuts it at its right edge, so every move is a transform: a clip-path animation
+      // waited for the busy game in Firefox while the transforms ran, which left the box open but cut to its trophy
       const folded = (w - TEXT_X) * dot, up = -(MARGIN + H) * dot, half = -CELL_W * line.length * dot / 2;
       const steps = [0, MOVE, 2 * MOVE, 2 * MOVE + HOLD, 3 * MOVE + HOLD, SHOWN];
       const frames = values => values.map((v, k) => ({ ...v, offset: at(steps[k]), easing: OUT_QUAD }));
       await Promise.all([
         el.animate(frames([
-          { transform: `translate(${folded}px, ${up}px)` }, { transform: `translate(${folded}px, 0)` }, { transform: 'none' },
-          { transform: 'none' }, { transform: `translate(${folded}px, 0)` }, { transform: `translate(${folded}px, ${up}px)` },
+          { transform: `translateY(${up}px)` }, { transform: 'none' }, { transform: 'none' },
+          { transform: 'none' }, { transform: 'none' }, { transform: `translateY(${up}px)` },
         ]), timing).finished,
         box.animate(frames([
-          { clipPath: `inset(0 ${folded}px 0 0)` }, { clipPath: `inset(0 ${folded}px 0 0)` }, { clipPath: 'inset(0)' },
-          { clipPath: 'inset(0)' }, { clipPath: `inset(0 ${folded}px 0 0)` }, { clipPath: `inset(0 ${folded}px 0 0)` },
+          { transform: `translateX(${folded}px)` }, { transform: `translateX(${folded}px)` }, { transform: 'none' },
+          { transform: 'none' }, { transform: `translateX(${folded}px)` }, { transform: `translateX(${folded}px)` },
         ]), timing).finished,
         words.animate(frames([
           { transform: `translateX(${half}px)` }, { transform: `translateX(${half}px)` }, { transform: 'none' },
