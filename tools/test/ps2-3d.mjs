@@ -10,11 +10,12 @@
 //
 // It isn't run on every pull request, as the emulator takes minutes to build, and on Linux alone (docs/CONSOLES.md).
 
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LOCAL } from '../lib/paths.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { libretroReference } from '../libretro/reference.mjs';
+import { summaryOf, thingsIn } from '../lib/draw-lists.mjs';
 import { BACKGROUND_3D, COS, MIDDLE, RADIUS, SIN, STILL, TURNING, madeUpPs2, madeUpPs2In3d } from './made-up-ps2.mjs';
 
 const FRAMES = 600;
@@ -114,6 +115,26 @@ async function main() {
   const first = await run(solid), second = await run(solid);
   check(first.draws.hashes.every((hash, frame) => hash === second.draws.hashes[frame]), 'the original gives the same draw list in both runs, every frame');
   check(new Set(first.draws.hashes).size > FRAMES / 2 && first.draws.counts[1] === 24, `the triangle turns: ${new Set(first.draws.hashes).size} different draw lists, ${first.draws.counts[1]} writes a frame`);
+
+  // the whole lists, written out, are what the hashes were of, and count up to what the program draws (lib/draw-lists.mjs)
+  const dump = join(WORK, 'lists.bin');
+  process.env.DP_DRAW_DUMP = dump;
+  try {
+    await run(solid);
+  } finally {
+    delete process.env.DP_DRAW_DUMP;
+  }
+  const listed = [];
+  let list = [];
+  for (const thing of thingsIn(readFileSync(dump))) {
+    if (thing.kind === 'F') { listed.push(hashOf(list)); list = []; }
+    else if (thing.kind === 'R') list.push([thing.register, Number(thing.value & 0xFFFFFFFFn), Number(thing.value >> 32n)]);
+    else if (thing.kind === 'S') list.push({ screen: [thing.address, thing.value] });
+  }
+  // the file starts at the first V-blank, so the first frame's list, the screen's registers, isn't in it
+  check(listed.length === FRAMES && listed.every((hash, frame) => !frame || hash === first.draws.hashes[frame]), `the lists written out whole are the ones hashed, on every frame after the first: ${listed.length} frames`);
+  const counted = summaryOf(readFileSync(dump), { from: 1 });
+  check(counted.shapes.triangles === 2 * (FRAMES - 1) && counted.shapes.sprites === FRAMES - 1 && counted.drawn['shaded between corners'] === 2 * (FRAMES - 1) && counted.depthTests['as near or nearer'] === 2 * (FRAMES - 1), `and count up to what the program draws: ${JSON.stringify(counted.shapes)}`);
 
   const written = drawLists(), expected = Array.from({ length: FRAMES }, () => hashOf(written.next().value));
   const wrong = first.draws.hashes.findIndex((hash, frame) => hash !== expected[frame]);

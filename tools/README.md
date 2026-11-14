@@ -278,6 +278,18 @@ A line such as `08001234:  4801  ldr r0, =0x03000010  @ 0x0800123C`, made up for
 
 [GBATEK](https://problemkaputt.de/gbatek.htm) describes every instruction, register and BIOS call. Rewrite what the function does, not each instruction: readable JavaScript, with names that say what things are, and every number taken from the instructions. Name the function in a comment, by its address or its name in the code map, so the port map counts it, and prove the step. Sonic Battle Dreamport's `newScreen`, in [`games/sonic-battle/src/core.js`](../games/sonic-battle/src/core.js), rewrites `0x08016078`, which its decompilation has no C for.
 
+## Counting what a game draws
+
+On the PlayStation 2, where a 3D game is proven by its draw list, `draws` says what a game's lists hold, before any of it is written again:
+
+```
+npm run dp -- draws <copy> [--frames <n>] [--from <presses.json>] [--between <first>-<last>]
+```
+
+It plays the original from power-on for `--frames` frames, 600 unless said, with nothing held, or with the presses in `--from`, a file like a recording: `{ "frames": 4200, "held": [[0, []], [1850, ["START"]], [1880, []]] }`. Then it counts what the game gave the console's graphics chip, in the frames `--between` names or all of them after the first: how many things a frame, the shapes and how they're drawn, the textures' formats, palettes and sizes, the blending, the depth and alpha tests, what it's all drawn into, the pictures moved, and which path the register writes came by. Writes that come from vector unit 1 mean the game's shapes are made by a program on that unit, which its Dreamport has to do the sums of.
+
+It prints counts and nothing else, and keeps nothing: the lists' file it reads is removed as it ends. It takes the copy's path, so it works before the game has a folder here.
+
 ## Proving a part
 
 A part, such as a game's logos or one of its acts, is proven by a recording that plays the whole of it, from its first frame to its last, so a recording that skips any of it with Start doesn't prove it. It may end with a press that moves the game on, the way a player leaves it: Sonic Advance Dreamport's title screen is frames 902 to 1252 of `neo-green-hill-act-1`, which ends it with Start. These steps prove one:
