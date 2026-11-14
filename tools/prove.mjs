@@ -258,7 +258,7 @@ async function laneFor({ game, quick, paced, asked, askedState, before }) {
       try {
         if (recording.players && own.some(part => part.reaches !== undefined)) throw new Error('A recording that links several consoles can\'t prove a part that names what it reaches yet, as only one console\'s memory is read.');
         const result = recording.players ? await proveLinked({ page, game, recording, copy, server, main, quick, asked, log, say })
-          : await prove({ page, reference, game, recording, copy, server, codeMap, main, before: before[name], asked, askedState, parts: own, couldProve: partsItCouldProve(name, parts), kinds, route, keysLate: original.keysAfterVBlank === true, drawLists: original.provenBy === 'draw lists', paced, quick, log, say });
+          : await prove({ page, reference, game, recording, copy, server, codeMap, main, before: before[name], asked, askedState, parts: own, couldProve: partsItCouldProve(name, parts), kinds, route, keysLate: original.keysAfterVBlank === true, drawLists: (original.provenBy ?? reference.machine.provenBy) === 'draw lists', paced, quick, log, say });
         // what the original shows is checked however the frames compare, and a linked recording, played by more than one
         // console, isn't read
         const wrong = showsProblems(name, result.shows, recording.players ? [] : kinds);
@@ -671,7 +671,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (listApart?.unknown) log(`  Frame ${listApart.frame}'s draw list differs, and which write can't be said: ${listApart.unknown}.`);
     else if (listApart) {
       const { frame, write, original, dreamport, before, counts } = listApart;
-      log(`  Frame ${frame}'s draw list first differs at write ${write.toLocaleString('en-US')} of the original's ${counts.original.toLocaleString('en-US')} (the Dreamport's has ${counts.dreamport.toLocaleString('en-US')}):`);
+      const lengths = counts.original ? `of the original's ${counts.original.toLocaleString('en-US')} (the Dreamport's has ${counts.dreamport.toLocaleString('en-US')})` : `(the original gave the GS nothing that frame, and the Dreamport ${counts.dreamport.toLocaleString('en-US')} things)`;
+      log(`  Frame ${frame}'s draw list first differs at write ${write.toLocaleString('en-US')} ${lengths}:`);
       log(`    the original:  ${original}`);
       log(`    the Dreamport: ${dreamport}`);
       if (before.length) log(`    after the same ${before.length === 1 ? 'write' : `${before.length} writes`}: ${before.join('; ')}`);

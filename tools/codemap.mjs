@@ -1,7 +1,7 @@
 // npm run dp -- codemap <game> [--from <list> | --fill]: makes games/<game>/proof/code-map.json, every function in the
 // original with its address and its size, and nothing of its code. It's what code ported is measured against.
 // Without --from, it finds the functions in the contributor's copy itself, in a Game Boy Advance game
-// (gba/functions.mjs) or an NES game (nes/functions.mjs). With --from, it takes them from a list: a decompilation's
+// (gba/functions.mjs), an NES game (nes/functions.mjs) or a PlayStation 2 game (ps2/functions.mjs). With --from, it takes them from a list: a decompilation's
 // symbols, as `nm -S` prints them from its ELF file, or a CSV with an address on each line and its size or its end, as
 // a disassembler such as Ghidra exports its list of functions. A list can stop short, so what the tools find in the
 // copy beyond it is added, and it can name data as a function, so those are left out. With --fill, the same is done to
@@ -14,6 +14,7 @@ import { copyWith } from './lib/copies.mjs';
 import { readAnyCopy } from './lib/read-copy.mjs';
 import * as gbaFunctions from './gba/functions.mjs';
 import * as nesFunctions from './nes/functions.mjs';
+import * as ps2Functions from './ps2/functions.mjs';
 
 // where code runs on the Game Boy Advance: the cartridge and the two work RAMs
 const CODE = [[0x08000000, 0x0A000000], [0x03000000, 0x03008000], [0x02000000, 0x02040000]];
@@ -36,6 +37,13 @@ const FINDERS = {
     address: address => address,
     name: (value, copy) => nesFunctions.nesNames(value, nesFunctions.nesProgram(copy).banks)[0]?.[1],
   },
+  // a PlayStation 2 game's program, read off its disc, as a disc can be far larger than its program
+  ps2: {
+    ...ps2Functions,
+    file: 'tools/ps2/functions.mjs',
+    read: ps2Functions.ps2Program,
+    address: address => address,
+  },
 };
 
 export async function run(args) {
@@ -52,7 +60,7 @@ export async function run(args) {
   // the tools find functions only in some consoles' code, and take another console's from a disassembler's list
   const finder = FINDERS[original.console];
   if (!finder && !list && !fill) throw new Error(`The tools can't find the functions in ${original.console} code themselves: --from <list> takes them from a decompilation or a disassembler.`);
-  const theCopy = finder ? readFileSync(copy.path) : null;
+  const theCopy = finder ? (finder.read ? await finder.read(copy.path) : readFileSync(copy.path)) : null;
   const FOUND = `the proof tools (${finder?.file})`;
   const filled = listed => {
     if (!finder) return listed;

@@ -62,7 +62,7 @@ function buildHere(machine, log, tools) {
   if (core.patch) run(`Patching ${name}'s emulator`, 'git', ['apply', join(REPO, core.patch)], source);
   const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
-    run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), '-DCMAKE_BUILD_TYPE=Release', ...core.cmake], source, tools?.env);
+    run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), '-DCMAKE_BUILD_TYPE=Release', ...core.cmake, ...(core.cmakeOn?.[process.platform] ?? [])], source, tools?.env);
     run(building, 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
     run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...(core.make ?? [])], folder, tools?.env);
@@ -75,7 +75,7 @@ export function buildReference(machine, log) {
   const { core, name } = machine;
   if (core.needs) throw new Error(`${name} can't run in the tools yet: ${core.needs} (docs/CONSOLES.md).`);
   // said before a build of several minutes that couldn't run here
-  if (core.graphics && process.platform !== 'linux') throw new Error(`${name} can't run in the tools on this computer yet: its emulator draws with OpenGL, and the tools give it a context only on Linux so far (docs/CONSOLES.md).`);
+  if (core.graphics && process.platform === 'win32') throw new Error(`${name} can't run in the tools on Windows yet: its emulator draws with OpenGL, and the tools give it a context only on Linux and macOS so far (docs/CONSOLES.md).`);
   mkdirSync(FOLDER, { recursive: true });
   const built = existsSync(HOST) && isCurrent(HOST_SOURCE, HOST, [EXPLORE]) && (core.local ? isCurrent(join(REPO, core.local), coreFile(core)) : existsSync(coreFile(core)));
   if (built) return;

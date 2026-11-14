@@ -30,9 +30,9 @@
 // PlayStation 2's does with the tools' patch (play.patch): a hash of everything the console gave its graphics chip that
 // frame, and how many things that was, 32 bits each. That's what a 3D game is proven by (docs/STANDARD.md).
 //
-// A core that draws with OpenGL, as the PlayStation 2's does, gets a graphics context with no window, from EGL, on Mesa's
-// llvmpipe, which draws on the processor, so a picture doesn't depend on the computer's graphics card. It stops with a
-// sentence on a computer that can't give one, which so far is any but Linux. The environment's DP_ANY_GRAPHICS lets it
+// A core that draws with OpenGL, as the PlayStation 2's does, gets a graphics context with no window: on Linux from EGL,
+// on Mesa's llvmpipe, which draws on the processor, so a picture doesn't depend on the computer's graphics card, and on
+// a Mac from CGL, on Apple's OpenGL. It stops with a sentence on a computer that can't give one, which is Windows so far. The environment's DP_ANY_GRAPHICS lets it
 // draw on whatever the computer has instead, only for the check that shows why it mustn't (tools/test/ps2-3d.mjs). The JSON
 // on stderr says what drew, under "drawnBy".
 
@@ -186,7 +186,8 @@ static void* readAll(const char* path, size_t* size) {
 #define GL_RENDERER 0x1F01
 #define GL_PACK_ALIGNMENT 0x0D05
 
-static void* (*eglGetProcAddress)(const char*);
+// what finds an OpenGL function by its name on this computer: EGL's on Linux, the OpenGL framework itself on a Mac
+static void* (*glFunction)(const char*);
 static unsigned framebuffer;
 static char drawnBy[128];   // the renderer's own name for itself
 static uint8_t* readBack;
@@ -196,18 +197,45 @@ static uintptr_t currentFramebuffer(void) {
 }
 
 static void* procAddress(const char* name) {
-	return eglGetProcAddress(name);
+	return glFunction(name);
 }
 
-// why there's no context, or NULL once there is one, current on this thread, with the core's framebuffer bound
-static const char* makeGraphics(unsigned width, unsigned height) {
-#ifdef _WIN32
-	(void) width;
-	(void) height;
-	return "which the tools offer only on Linux so far";
-#else
-	// Mesa's drawing on the processor, whatever graphics card the computer has, so every computer draws the same
-	bool any = getenv("DP_ANY_GRAPHICS") != NULL;
+#if defined(__APPLE__)
+// A Mac's: Apple's OpenGL, a core profile with no window, from CGL, found when it's wanted so the host builds with a
+// compiler alone. It draws on the Mac's graphics chip, so its pictures can differ from Linux's in small ways, which a
+// game proven by draw lists, as a PlayStation 2 game is, doesn't depend on (docs/CONSOLES.md). Untried on a Mac so far.
+#define CGL_PFA_OPENGL_PROFILE 99
+#define CGL_OPENGL_CORE_3_2 0x3200
+#define CGL_PFA_COLOR_SIZE 8
+#define CGL_PFA_ALPHA_SIZE 11
+#define CGL_PFA_DEPTH_SIZE 12
+#define CGL_PFA_STENCIL_SIZE 13
+static void* openGl;
+static void* frameworkFunction(const char* name) {
+	return dlsym(openGl, name);
+}
+static const char* makeContext(bool any) {
+	(void) any;
+	if (graphics->contextType != CONTEXT_OPENGL_CORE && graphics->contextType != CONTEXT_OPENGL) return "of OpenGL ES, which a Mac has none of";
+	openGl = dlopen("/System/Library/Frameworks/OpenGL.framework/OpenGL", RTLD_NOW | RTLD_LOCAL);
+	if (!openGl) return "which needs Apple's OpenGL, and this Mac's wouldn't load";
+	int (*choose)(const int*, void**, int*) = dlsym(openGl, "CGLChoosePixelFormat");
+	int (*create)(void*, void*, void**) = dlsym(openGl, "CGLCreateContext");
+	int (*makeCurrent)(void*) = dlsym(openGl, "CGLSetCurrentContext");
+	if (!choose || !create || !makeCurrent) return "which needs CGL, and this Mac's OpenGL has none";
+	const int wanted[] = { CGL_PFA_OPENGL_PROFILE, CGL_OPENGL_CORE_3_2, CGL_PFA_COLOR_SIZE, 24, CGL_PFA_ALPHA_SIZE, 8, CGL_PFA_DEPTH_SIZE, 24, CGL_PFA_STENCIL_SIZE, 8, 0 };
+	void* format = NULL;
+	void* context = NULL;
+	int count = 0;
+	if (choose(wanted, &format, &count) || !format) return "of a kind this Mac's OpenGL can't make";
+	if (create(format, NULL, &context) || !context || makeCurrent(context)) return "and this Mac's OpenGL wouldn't make one";
+	glFunction = frameworkFunction;
+	return NULL;
+}
+#elif !defined(_WIN32)
+// Linux's: EGL with no window, on Mesa's llvmpipe, which draws on the processor, whatever graphics card the computer
+// has, so every computer draws the same
+static const char* makeContext(bool any) {
 	if (!any) {
 		setenv("LIBGL_ALWAYS_SOFTWARE", "1", 1);
 		setenv("GALLIUM_DRIVER", "llvmpipe", 1);
@@ -215,13 +243,13 @@ static const char* makeGraphics(unsigned width, unsigned height) {
 	setenv("MESA_SHADER_CACHE_DISABLE", "true", 1);
 	void* egl = dlopen("libEGL.so.1", RTLD_NOW | RTLD_LOCAL);
 	if (!egl) return "which needs EGL, from Mesa, and this computer has none";
-	eglGetProcAddress = (void* (*)(const char*)) dlsym(egl, "eglGetProcAddress");
-	void* (*getPlatformDisplay)(unsigned, void*, const intptr_t*) = eglGetProcAddress("eglGetPlatformDisplay");
-	unsigned (*initialize)(void*, int*, int*) = eglGetProcAddress("eglInitialize");
-	unsigned (*bindApi)(unsigned) = eglGetProcAddress("eglBindAPI");
-	unsigned (*chooseConfig)(void*, const int*, void**, int, int*) = eglGetProcAddress("eglChooseConfig");
-	void* (*createContext)(void*, void*, void*, const int*) = eglGetProcAddress("eglCreateContext");
-	unsigned (*makeCurrent)(void*, void*, void*, void*) = eglGetProcAddress("eglMakeCurrent");
+	glFunction = (void* (*)(const char*)) dlsym(egl, "eglGetProcAddress");
+	void* (*getPlatformDisplay)(unsigned, void*, const intptr_t*) = glFunction("eglGetPlatformDisplay");
+	unsigned (*initialize)(void*, int*, int*) = glFunction("eglInitialize");
+	unsigned (*bindApi)(unsigned) = glFunction("eglBindAPI");
+	unsigned (*chooseConfig)(void*, const int*, void**, int, int*) = glFunction("eglChooseConfig");
+	void* (*createContext)(void*, void*, void*, const int*) = glFunction("eglCreateContext");
+	unsigned (*makeCurrent)(void*, void*, void*, void*) = glFunction("eglMakeCurrent");
 	if (!getPlatformDisplay || !initialize || !bindApi || !chooseConfig || !createContext || !makeCurrent) return "which needs EGL 1.5, and this computer's is older";
 	void* display = getPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, NULL, NULL);
 	int major, minor, count;
@@ -238,19 +266,35 @@ static const char* makeGraphics(unsigned width, unsigned height) {
 	if (graphics->contextType == CONTEXT_OPENGL_CORE) version[4] = EGL_CONTEXT_OPENGL_PROFILE_MASK;
 	void* context = createContext(display, config, NULL, version);
 	if (!context || !makeCurrent(display, NULL, NULL, context)) return "of a version this computer's EGL can't make";
+	return NULL;
+}
+#endif
 
-	const char* (*getString)(unsigned) = eglGetProcAddress("glGetString");
+// why there's no context, or NULL once there is one, current on this thread, with the core's framebuffer bound
+static const char* makeGraphics(unsigned width, unsigned height) {
+#ifdef _WIN32
+	(void) width;
+	(void) height;
+	return "which the tools offer only on Linux and macOS so far";
+#else
+	bool any = getenv("DP_ANY_GRAPHICS") != NULL;
+	const char* why = makeContext(any);
+	if (why) return why;
+	const char* (*getString)(unsigned) = glFunction("glGetString");
 	const char* renderer = getString(GL_RENDERER);
 	// what drew it, with nothing in it that would end the JSON it's said in
 	for (size_t i = 0; renderer && renderer[i] && i < sizeof drawnBy - 1; i++) drawnBy[i] = renderer[i] == '"' || renderer[i] == '\\' ? '\'' : renderer[i];
+#ifndef __APPLE__
 	if (!any && (!renderer || !strstr(renderer, "llvmpipe"))) return "and this computer's draws on its graphics card, not with Mesa's llvmpipe, so its pictures could differ from everyone else's";
-	void (*genFramebuffers)(int, unsigned*) = eglGetProcAddress("glGenFramebuffers");
-	void (*bindFramebuffer)(unsigned, unsigned) = eglGetProcAddress("glBindFramebuffer");
-	void (*genRenderbuffers)(int, unsigned*) = eglGetProcAddress("glGenRenderbuffers");
-	void (*bindRenderbuffer)(unsigned, unsigned) = eglGetProcAddress("glBindRenderbuffer");
-	void (*renderbufferStorage)(unsigned, unsigned, int, int) = eglGetProcAddress("glRenderbufferStorage");
-	void (*framebufferRenderbuffer)(unsigned, unsigned, unsigned, unsigned) = eglGetProcAddress("glFramebufferRenderbuffer");
-	unsigned (*checkFramebuffer)(unsigned) = eglGetProcAddress("glCheckFramebufferStatus");
+#endif
+	void (*genFramebuffers)(int, unsigned*) = glFunction("glGenFramebuffers");
+	void (*bindFramebuffer)(unsigned, unsigned) = glFunction("glBindFramebuffer");
+	void (*genRenderbuffers)(int, unsigned*) = glFunction("glGenRenderbuffers");
+	void (*bindRenderbuffer)(unsigned, unsigned) = glFunction("glBindRenderbuffer");
+	void (*renderbufferStorage)(unsigned, unsigned, int, int) = glFunction("glRenderbufferStorage");
+	void (*framebufferRenderbuffer)(unsigned, unsigned, unsigned, unsigned) = glFunction("glFramebufferRenderbuffer");
+	unsigned (*checkFramebuffer)(unsigned) = glFunction("glCheckFramebufferStatus");
+	if (!genFramebuffers || !bindFramebuffer || !genRenderbuffers || !bindRenderbuffer || !renderbufferStorage || !framebufferRenderbuffer || !checkFramebuffer) return "without the framebuffer functions it needs";
 	unsigned buffers[2];
 	genFramebuffers(1, &framebuffer);
 	bindFramebuffer(GL_FRAMEBUFFER, framebuffer);
@@ -273,9 +317,9 @@ static const char* makeGraphics(unsigned width, unsigned height) {
 static const void* drawnPicture(unsigned width, unsigned height, size_t* pitch) {
 	static void (*bindFramebuffer)(unsigned, unsigned), (*pixelStore)(unsigned, int), (*readPixels)(int, int, int, int, unsigned, unsigned, void*);
 	if (!readPixels) {
-		bindFramebuffer = eglGetProcAddress("glBindFramebuffer");
-		pixelStore = eglGetProcAddress("glPixelStorei");
-		readPixels = eglGetProcAddress("glReadPixels");
+		bindFramebuffer = glFunction("glBindFramebuffer");
+		pixelStore = glFunction("glPixelStorei");
+		readPixels = glFunction("glReadPixels");
 	}
 	bindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
 	pixelStore(GL_PACK_ALIGNMENT, 1);

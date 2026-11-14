@@ -8,7 +8,7 @@
 // - on a computer with a graphics card Mesa knows, the card and Mesa's llvmpipe are given the same draw list and draw
 //   different pictures, while a flat program's pictures come out the same.
 //
-// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux alone (docs/CONSOLES.md).
+// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux and macOS alone (docs/CONSOLES.md).
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

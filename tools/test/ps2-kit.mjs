@@ -10,7 +10,7 @@
 //   palettes, blending and 16-bit framebuffer against the emulator's;
 // - the flat one is proven by its pictures, pixel for pixel, which is the kit's own drawing against the emulator's.
 //
-// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux alone (docs/CONSOLES.md).
+// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux and macOS alone (docs/CONSOLES.md).
 
 import { spawnSync, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -120,7 +120,7 @@ function main() {
   writeGame(GAMES.solid);
 
   // the same Dreamport measured by its pictures, to say how far the kit's triangles are from the emulator's
-  writeFileSync(join(proofFolder(GAMES.solid), 'original.json'), `${JSON.stringify({ ...solid, provenBy: undefined }, null, 2)}\n`);
+  writeFileSync(join(proofFolder(GAMES.solid), 'original.json'), `${JSON.stringify({ ...solid, provenBy: 'pictures' }, null, 2)}\n`);
   run = dp('prove', inC(GAMES.solid), 'still');
   found = report(GAMES.solid);
   said(`by its pictures the same Dreamport matches ${found.matched} of ${found.frames} frames, as the kit shades a triangle its own way: ${JSON.stringify(found.firstDifference)}`);
@@ -138,7 +138,7 @@ function main() {
   check(run.status !== 0 && found.firstDifference?.frame >= 0, `a division done with a computer's rounding, not the unit's, is found: at frame ${found.firstDifference?.frame}`);
 
   console.log('Textured sprites in a 16-bit framebuffer, and their Dreamport in C, proven by their pictures');
-  setUp(GAMES.textured, madeUpPs2Textured());
+  setUp(GAMES.textured, madeUpPs2Textured(), { provenBy: 'pictures' });
   writeGame(GAMES.textured);
   run = dp('prove', inC(GAMES.textured), 'still');
   found = report(GAMES.textured);
@@ -146,7 +146,7 @@ function main() {
   if (run.status) console.log(run.out);
 
   console.log('A flat program and its Dreamport in C, proven by its pictures');
-  setUp(GAMES.flat, madeUpPs2());
+  setUp(GAMES.flat, madeUpPs2(), { provenBy: 'pictures' });
   writeGame(GAMES.flat);
   run = dp('prove', inC(GAMES.flat), 'still');
   found = report(GAMES.flat);
