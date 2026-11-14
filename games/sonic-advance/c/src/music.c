@@ -105,7 +105,8 @@ void game_sound_frame(M4a *m, const SoundCall *calls, int count) {
       pause(m, calls[i].a);
     } else if (calls[i].op >= SOUND_OP_MANAGER) own(m, &calls[i]);
     else {
-      if (calls[i].op == OP_ALL_STOP) stageSong = -1;
+      // the manager's task has gone with the act, and with it any pause it was resting for
+      if (calls[i].op == OP_ALL_STOP) { stageSong = -1; paused = 0; }
       if (calls[i].op == OP_ALL_CONTINUE) resuming = 1;
       gba_sound_apply(m, &calls[i]);
     }

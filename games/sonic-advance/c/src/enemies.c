@@ -7,7 +7,6 @@
 enum {
   SE_ENEMY_DEFEAT = 138,
   ANIM_SCORE = 709, ORDER_SCORE = 0,
-  SAVE_DIFFICULTY = 0x18,    // 0 normal, 1 easy
   SCORE_RISE = 60, SCORE_HOLD = 30,
   SCORE_KINDS = 5,
   ANIMAL_ORDER = 17,
@@ -26,7 +25,7 @@ EnemyData enemy_data(const Entity *e) {
 
 int enemy_gone(int spawnX, int spawnY, int x, int y) { return off_display(spawnX, spawnY) && off_cam(x, y); }
 
-int enemy_left_out_on_easy(int zone) { return act.stage.zone == zone && save.bytes[SAVE_DIFFICULTY] != 0; }
+int enemy_left_out_on_easy(int zone) { return act.stage.zone == zone && difficulty_easy(); }
 
 void enemy_sprite(Sprite *s, int anim, int first, int last, int order) {
   object_sprite(s, anim, first, last, order, ENEMY_PRIORITY, 0, 0);

@@ -31,6 +31,9 @@ enum {
   OFFSET_SPRITE_TABLES = 0x0D868C, OFFSET_TILEMAPS = 0x4A6C40, OFFSET_UI_GRAPHICS = 0x680A38,
   OFFSET_INTRO_GRAPHICS = 0x69EC10, OFFSET_INTRO_TABLES = 0x684178, OFFSET_LANGUAGE_BACKGROUND = 0x6C7BD0,
   OFFSET_COURSE_SELECT_BACKGROUND = 0x69A6D0, OFFSET_OPTIONS_BACKGROUND = 0x6C5650,
+  OFFSET_TIME_ATTACK_MENU = 0x6959D0, OFFSET_TIME_ATTACK_CARDS = 0x684670,
+  OFFSET_TIME_ATTACK_LOBBY_TABLES = 0x684580, OFFSET_TIME_ATTACK_LOBBY_PICTURE = 0x6C71D0,
+  OFFSET_TIME_ATTACK_RECORD_TABLES = 0x683FD0,
   OFFSET_NAME_INPUT_MAPS = 0x67DC38, OFFSET_NAME_INPUT_CHARS = 0x681340, OFFSET_TITLE_CARD = 0x681274,
   OFFSET_RINGS = 0x0B7F4C, OFFSET_INTERACTABLES = 0x0B7F94, OFFSET_ITEM_BOXES = 0x0B7FDC,
 };
@@ -177,6 +180,7 @@ enum { SONG_INTRO = 1, SONG_TITLE_FANFARE = 2, SONG_CHARACTER_SELECTION = 3, SON
   SONG_SEGA_RING = 102, SONG_SELECT = 106,
   SONG_RETURN = 107, SONG_MENU_CURSOR = 108, SONG_BOSS_FIGHT = 29,
   SONG_SHIFT = 103, SONG_JUMP = 116, SONG_RING = 117,
+  SONG_VS_RECORD = 10, SONG_TIME_ATTACK_LOBBY = 155,
   SONG_COURSE_SELECTION = 4, SONG_VS_PLEASE_WAIT = 5, SONG_VS_LOBBY = 6, SONG_PLAYER_DATA = 48,
   SONG_VS_LOBBY_HELLO = 156, SONG_VS_LOBBY_CLOSED = 160,
   SONG_CONNECTION_SUCCESS = 301, SONG_CONNECTION_ERROR = 302, SONG_CONNECTION_CLOSED = 303 };
@@ -186,7 +190,7 @@ void sound_vsync_on(void);
 /** The loads that hold the original's SoundMain past its place (soundlate.c): the screen names the load as it starts,
  *  with the level or character it's for, and the kit hears how late SoundMain runs in the frame it falls in. */
 enum { LOAD_CHARACTER_SELECT, LOAD_TURN_RIGHT, LOAD_TURN_LEFT, LOAD_ACT_NEW_GAME, LOAD_ACT_COURSE_SELECT, LOAD_ACT_NEXT,
-       LOAD_ACT_AGAIN };
+       LOAD_ACT_AGAIN, LOAD_ACT_TIME_ATTACK };
 void sound_late(int load, int detail);
 void sound_late_step(void);   // once a frame, at its end
 
@@ -295,6 +299,10 @@ void save_erase(void);
 void save_set_unlocked_level(int character, uint16_t level);
 void save_moon_opened(void);
 void save_add_ring_bank(int rings);
+/** The `rank`th best time (frames) of `character` in `level`, 10:00 when there is none. */
+uint32_t save_time_record(int character, int level, int rank);
+/** RegisterTimeRecord: `time` among the three best, the slower ones moving down a place; true when it is the best. */
+int save_register_time_record(int character, int level, uint32_t time);
 #define SAVE_UI_LANGUAGE (save.bytes[0x19])
 #define SAVE_CHAOS_EMERALDS (save.bytes[0x1C])
 #define SAVE_PLAYER_NAME (save.bytes + 0x10)            // six characters of the UI font, and two unused
@@ -366,9 +374,26 @@ void front_start_game(void);   // the main menu's Game Start: the course select 
 void create_main_menu(int back);
 void create_character_select(int character);
 void create_course_select(void);
+void create_course_select_records(void);
+void create_time_attack_menu(void);
+void create_time_attack_card(void);
+/** The act a Time Attack card hands over to, made inside the card's task. */
+void front_time_attack_play(int level);
+void create_time_attack_record(int level);
+void create_time_attack_lobby(void);
+/** CreatePauseMenu (pausemenu.c); in Time Attack, A calls `toLobby` once every task has gone. */
+void pause_menu_create(void (*toLobby)(void), int later);
+/** sub_806A02C: the seven glyphs of a time, M:SS:CC, as the UI font has them, and a 0 after them. */
+void time_codes(uint32_t time, char out[8]);
+/** A sprite of a table's row at `at` (its room in tiles, animation and variant), with its room taken from the heap. */
+void table_sprite(Sprite *s, uint32_t at);
 
 // --- the VS menus (vs.c and the screens after it) ------------------------------------------------------------------
 enum { GAME_MODE_SINGLE_PLAYER = 0, GAME_MODE_TIME_ATTACK = 1, GAME_MODE_RACE = 2, GAME_MODE_CHAO_HUNT = 4 };
+/** The act runs for a record (GAME_MODE_TIME_ATTACK): normal difficulty, no 1-UPs or special springs, no lives. */
+static inline int time_attack(void) { return ctx.gameMode == GAME_MODE_TIME_ATTACK; }
+/** The save's difficulty is easy for the act, as Time Attack always plays it on normal. */
+static inline int difficulty_easy(void) { return !time_attack() && save.bytes[0x18] != 0; }
 void vs_sprite(Sprite *s, uint16_t anim, uint32_t dest, int x, int y, uint16_t oamFlags, int variant, uint32_t frameFlags);
 void vs_background(Background *bg, uint16_t tilemapId, uint32_t layoutVram, uint16_t w, uint16_t h);
 void vs_clear_map(int bg, uint8_t lastRow);

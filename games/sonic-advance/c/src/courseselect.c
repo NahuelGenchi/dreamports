@@ -6,8 +6,9 @@
 // with the choice blinking and starts that act, and B goes back.
 //
 // With a start point, which leaves out the character select, B goes back to the main menu, where the character select
-// would go back to (CreateMainMenu(1)). Time Attack's card and records, and the link play's way through this screen,
-// aren't in C yet: every press here starts the act through front_play, which stops where the acts begin.
+// would go back to (CreateMainMenu(1)). In Time Attack mode (gGameMode 1) A on an act shows the card before the run
+// (timeattackcard.c), or the records screen (timeattackrecord.c) when the Time Attack menu asked for the records, and
+// B goes back to the character select or the menu. The link play's way through this screen isn't in C yet.
 
 #include "sa.h"
 #include "act.h"
@@ -84,9 +85,9 @@ static void screen_sprite(Sprite *s, uint16_t anim, uint32_t dest) {
   s->animSpeed = 0x10;
 }
 
-// how many rows the character has (the first of them is never shown, so one more than they can choose). The records'
-// thirteen rows aren't in C yet, as Time Attack isn't.
-static int course_rows(void) {
+// how many rows the character has (the first of them is never shown, so one more than they can choose)
+static int course_rows(int records) {
+  if (records) return 13;   // arg0: every act, for the records
   int unlocked = save_unlocked_level(ctx.character);
   int rows = (unlocked + 2) & 0xFF;
   if (rows == 0) rows = 1;
@@ -140,9 +141,9 @@ static void move_scroll(void) {
   screen.scroll = (int)((uint32_t)(screen.scroll + bios_div((screen.scrollTo - screen.scroll) * 2, 10)) & 0xFFFF);
 }
 
-/** CreateCourseSelect, 0x08061914. The records' rows and the Time Attack card aren't in C yet. */
-void create_course_select(void) {
-  int rows = course_rows();
+/** CreateCourseSelect, 0x08061914: with `records`, the one the Time Attack menu's Records opens. */
+static void course_select(int records) {
+  int rows = course_rows(records);
   play_song(SONG_COURSE_SELECTION);
   create_ui_task();
   ui_gfx_stack_init();
@@ -155,7 +156,7 @@ void create_course_select(void) {
 
   memset(&screen, 0, sizeof screen);
   screen.rows = rows;
-  screen.records = 0;
+  screen.records = records;
   screen.frame = 0; screen.ending = 0; screen.shown = 0;
   screen.scroll = 0x14; screen.scrollTo = 0x14; screen.level = 1;
   screen.fade = create_fade(0, 1, 2, 0, 0x200, 1);
@@ -180,9 +181,21 @@ void create_course_select(void) {
   }
   screen.tasks[2] = create_task(slide_zones, &screen, 0x2030, 0, NULL);
   create_task(watch_start_point, NULL, 0x1FFF, 0, NULL);
+  // the records come with the slide done: the picture whole and the lists where they stay
+  if (records) {
+    e.bgScroll[1] = 0x14;
+    e.bgCnt[0] = 0x9D83;
+    screen.frame = SLIDE_END;
+    main->main = choose_act;
+    screen.tasks[1]->main = show_acts;
+    screen.tasks[2]->main = show_zones;
+    load_row3();
+  }
   fade_step(&screen.fade);
-  (void)main;
 }
+
+void create_course_select(void) { course_select(0); }
+void create_course_select_records(void) { course_select(1); }
 
 // a start point at an act opens it at the A that would have chosen it, while the original plays its title card
 static int take_start_point(Task *t) {
@@ -289,7 +302,12 @@ static void fade_out(Task *t) {
     e.bgCnt[1] = 0x1806;
     for (int i = 0; i < 3; i++) destroy_task(screen.tasks[i]);
     destroy_task(t);
-    if (screen.ending == CHOSEN) front_play(screen.level - 1);
+    if (screen.ending == CHOSEN && screen.records) create_time_attack_record(screen.level - 1);
+    else if (screen.ending == CHOSEN && ctx.gameMode == GAME_MODE_TIME_ATTACK) {
+      ctx.currentLevel = screen.level - 1;
+      create_time_attack_card();
+    } else if (screen.ending == CHOSEN) front_play(screen.level - 1);
+    else if (screen.records) create_time_attack_menu();
     else if (ctx.select) create_character_select(0);
     else create_main_menu(1);
     return;

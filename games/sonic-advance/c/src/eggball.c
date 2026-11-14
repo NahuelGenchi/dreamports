@@ -472,7 +472,7 @@ ActTask *egg_ball_spawn(Slot *slot) {
   b->o.slot = slot;
   b->o.x = slot->e.x;
   b->x0 = slot->e.x; b->y0 = slot->e.y;
-  b->hits = save.bytes[0x18] ? 2 : 0;
+  b->hits = difficulty_easy() ? 2 : 0;
   b->phase = start;
   b->s2.graphics.dest = HEAP_END;   // nothing to free if the task can't be made
   object_sprite_at(&b->o.sprite, vram_malloc(MOBILE_TILES), ANIM_MOBILE, 0, MOBILE_ORDER, ENEMY_PRIORITY, 0, 0);

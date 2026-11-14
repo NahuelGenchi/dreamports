@@ -129,6 +129,7 @@ void player_init(Player *p, int x, int y);
 void player_init_partner(Player *p, int x, int y);
 /** Tails as his character: his tails' sprite from the heap (AllocateCharacterMidAirGfx), after the body's. */
 void player_become_tails(Player *p);
+void player_free(Player *p);
 /** One frame of his movement, before his animation. */
 void player_step(Player *p, const PlayerInput *in);
 /** Picks and steps his animation after the movement, and decides whether he is drawn. */

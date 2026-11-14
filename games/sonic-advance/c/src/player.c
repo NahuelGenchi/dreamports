@@ -183,6 +183,12 @@ void player_init_partner(Player *p, int x, int y) {
   player_become_tails(p);
 }
 
+/** The player's task's destructor: the sprites it took from the heap go back (Tails's tails, a partner's body). */
+void player_free(Player *p) {
+  if (p->character == CHARACTER_TAILS) vram_free(p->tails.graphics.dest);
+  if (p->cpu) vram_free(p->sprite.graphics.dest);
+}
+
 void player_become_tails(Player *p) {
   p->character = CHARACTER_TAILS;
   // AllocateCharacterMidAirGfx

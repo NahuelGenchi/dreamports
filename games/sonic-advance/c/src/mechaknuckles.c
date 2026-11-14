@@ -548,7 +548,7 @@ ActTask *mecha_knuckles_spawn(Slot *slot) {
   b->spawnX = slot->e.x; b->spawnY = slot->e.y;
   b->qx = Q(208); b->qy = -Q(32);
   b->phase = 0;
-  int difficulty = save.bytes[0x18] != 0;
+  int difficulty = difficulty_easy();
   b->lives = 8 - difficulty * 2;
   b->half = 4 - difficulty;
   b->state = b->next = ACTIVATE;

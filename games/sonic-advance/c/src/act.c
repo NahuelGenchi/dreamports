@@ -7,6 +7,7 @@
 #include "results.h"
 #include "bosses.h"
 #include "special.h"
+static void leave_for_lobby(void);
 
 int moon_opens(void);
 
@@ -318,7 +319,7 @@ static void hud_update(int draw) {
   if (draw) {
     // the icons: the ring over the ring count and the character's face by the lives, at OAM order 3
     put_oam(ORDER_ICONS, -2, -1, OBJ_32x32, HUD_RING, 6, 0);
-    put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, HUD_FACE, ctx.character, 0);
+    if (!time_attack()) put_oam(ORDER_ICONS, 2, 144, OBJ_16x16, HUD_FACE, ctx.character, 0);
     if (act.ringCount == 0) {
       // white, red, red, white, then the white zero the bytes after the string make; past those, on the first frame of a
       // counter that starts at 40 or more, a character code of 0, the tiles 64 before the font's (sub_8053BAC, hud_load)
@@ -346,7 +347,7 @@ static void hud_update(int draw) {
     else { t[0] = act.courseTime / 3600; t[1] = 10; t[2] = sec / 10; t[3] = sec % 10; t[4] = 10; t[5] = hundredths / 10; t[6] = hundredths % 10; }
     for (int i = 0; i < 7; i++) hud_glyph(t[i] + red, 25 + i * 8, 12);
     int lives = act.lives > 9 ? 9 : act.lives == 0 ? 0 : act.lives - 1;
-    hud_glyph(lives, 22, 143);
+    if (!time_attack()) hud_glyph(lives, 22, 143);
     if (act.timerReversed) {
       if (act.courseTime < 20 * 60 && act.courseTime % 60 == 0 && act.courseTime != 0) play_song(139);
     } else {
@@ -525,6 +526,9 @@ void act_player_died(void) {
 static int lifeLost;
 void act_life_lost(void) {
   if (lifeLost || act.playerGone) return;
+  act.noPause = 1;
+  // Time Attack: every task goes and the lobby comes, with no life lost
+  if (time_attack()) { lifeLost = 1; return; }
   act.ringCount = 0;
   act.lives = (act.lives - 1) & 0xFF;
   if (act.lives != 0) { lifeLost = 1; return; }
@@ -545,6 +549,7 @@ static void clock_step(void) {
 // this frame, after the goal's, or with `nextFrame` on the next one
 void act_stage_results(int nextFrame) {
   int level = act.stage.level;
+  act.noPause = 1;
   save_add_ring_bank(act.ringCount);
   if (level != LEVEL_X_ZONE && save_unlocked_level(ctx.character) < level + 1)
     save_set_unlocked_level(ctx.character, (uint16_t)(level + 1));
@@ -730,6 +735,24 @@ static void go_to_congratulations(void) {
   sound_vsync_off();
   if (save_write()) engine_stall(WRITE_FRAMES, congratulations_after_write);
   else congratulations_after_write();
+}
+
+// Time Attack's life lost and pause menu end the run: every task goes, the stage's with every music player
+// (TaskDestructor_GameStage's m4aMPlayAllStop), the queues stop, and the lobby comes, for the act that was played, with
+// the game's random numbers where the act left them
+static void leave_for_lobby(void) {
+  front_random_seed(act_random_state());
+  ctx.currentLevel = act.stage.level;
+  destroy_tasks(0, 0xFFFF);
+  act_tasks_destroy_all();
+  player_free(&act.player);
+  if (act.hasPartner) player_free(&act.partner);
+  act.task = NULL;
+  stop_all_songs();
+  clear_queues();
+  clear_bg_sprites();
+  act_active = 0;
+  create_time_attack_lobby();
 }
 
 // Task_8056AC8, once the game over's song has ended: the music stops and the save is written, then every task goes and
@@ -932,7 +955,12 @@ static void act_frame(void) {
   // after the last life, the player's task has gone
   if (!act.playerGone) {
     player_step(&act.player, &in);
-    if (lifeLost) { lifeLost = 0; restart_act(); return; }
+    if (lifeLost) {
+      lifeLost = 0;
+      if (time_attack()) leave_for_lobby();
+      else restart_act();
+      return;
+    }
     // a start point's first act frame is the held A's jump, one frame after it began, when it has the word for it
     if (act.drawn == 0 && act.fromStartPoint && gba_start_number("jump", 0)) player_start_jump(&act.player);
     if (!act.playerGone) {
@@ -951,6 +979,10 @@ static void act_frame(void) {
   music_call(MUSIC_PLAYER, (sonic->invincible > 0) | (sonic->speedUp > 0) << 1 | !sonic->dead << 2);
   // the stage clock's task (0xFF00): the course time counts once the card has ended, the stage's tick every frame; it
   // keeps this frame's gravity as the last (gPrevStageFlags), so a flip turns his Y speed around once
+  // in the single-player game Start opens the pause menu from when the title card ends until a life is lost or the
+  // results start. Its task comes last among the act's, so it runs this frame only after the water's, which has its
+  // priority; otherwise from the next frame
+  if (act.cardDone && !act.noPause && (e.pressed & KEY_START)) pause_menu_create(leave_for_lobby, !water_runs());
   act.player.wasInverted = act.player.inverted;
   act.partner.wasInverted = act.partner.inverted;
   if (!act.clockStopped) {
@@ -989,7 +1021,8 @@ static void act_frame(void) {
 static void start_music(void) {
   if (!act.musicStarts) return;
   act.musicStarts = 0;
-  music_call(act.afterLevel ? MUSIC_STAGE : MUSIC_STAGE_IN, act.stage.music);
+  // Time Attack's start at full volume too
+  music_call(act.afterLevel || time_attack() ? MUSIC_STAGE : MUSIC_STAGE_IN, act.stage.music);
 }
 
 static void act_loaded(void) {
