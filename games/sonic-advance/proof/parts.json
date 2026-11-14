@@ -22,7 +22,7 @@
     { "name": "Cosmic Angel Zone", "recording": "sonic-cosmic-angel", "frames": [2111, 16892], "reaches": "act-end" },
     { "name": "X Zone", "recording": "x-zone-the-moon-opens", "frames": [2173, 9609], "reaches": "act-end" },
     { "name": "The Moon Zone" },
-    { "name": "Special stage 1" },
+    { "name": "Special stage 1", "recording": "special-stage-1", "frames": [2224, 5914] },
     { "name": "Special stage 2" },
     { "name": "Special stage 3" },
     { "name": "Special stage 4" },

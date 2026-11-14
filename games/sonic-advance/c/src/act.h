@@ -91,6 +91,7 @@ typedef struct {
   Task *task;
   int stallLoad, musicStarts;
   int palCount, palStarted;
+  uint32_t palettesFrom;   // gFrameCount from which the palette animations' tasks run (a return from a special stage)
   struct PaletteAnim *pal;
   // the title card's graphics and state (titlecard.c), and where its pieces are
   int cardGraphic;
