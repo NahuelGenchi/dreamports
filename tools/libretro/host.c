@@ -26,9 +26,15 @@
 // On a console whose games choose their own sound's rate, as a Nintendo 64's do, the core says when it changes, and the
 // environment's DP_SOUND_RATE gives the one rate the tools hear it at.
 //
+// The environment's DP_DRAWS, when it's set, names a file for each frame's draw list, from a core that keeps one, as the
+// PlayStation 2's does with the tools' patch (play.patch): a hash of everything the console gave its graphics chip that
+// frame, and how many things that was, 32 bits each. That's what a 3D game is proven by (docs/STANDARD.md).
+//
 // A core that draws with OpenGL, as the PlayStation 2's does, gets a graphics context with no window, from EGL, on Mesa's
 // llvmpipe, which draws on the processor, so a picture doesn't depend on the computer's graphics card. It stops with a
-// sentence on a computer that can't give one, which so far is any but Linux.
+// sentence on a computer that can't give one, which so far is any but Linux. The environment's DP_ANY_GRAPHICS lets it
+// draw on whatever the computer has instead, only for the check that shows why it mustn't (tools/test/ps2-3d.mjs). The JSON
+// on stderr says what drew, under "drawnBy".
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -182,6 +188,7 @@ static void* readAll(const char* path, size_t* size) {
 
 static void* (*eglGetProcAddress)(const char*);
 static unsigned framebuffer;
+static char drawnBy[128];   // the renderer's own name for itself
 static uint8_t* readBack;
 
 static uintptr_t currentFramebuffer(void) {
@@ -200,8 +207,11 @@ static const char* makeGraphics(unsigned width, unsigned height) {
 	return "which the tools offer only on Linux so far";
 #else
 	// Mesa's drawing on the processor, whatever graphics card the computer has, so every computer draws the same
-	setenv("LIBGL_ALWAYS_SOFTWARE", "1", 1);
-	setenv("GALLIUM_DRIVER", "llvmpipe", 1);
+	bool any = getenv("DP_ANY_GRAPHICS") != NULL;
+	if (!any) {
+		setenv("LIBGL_ALWAYS_SOFTWARE", "1", 1);
+		setenv("GALLIUM_DRIVER", "llvmpipe", 1);
+	}
 	setenv("MESA_SHADER_CACHE_DISABLE", "true", 1);
 	void* egl = dlopen("libEGL.so.1", RTLD_NOW | RTLD_LOCAL);
 	if (!egl) return "which needs EGL, from Mesa, and this computer has none";
@@ -231,7 +241,9 @@ static const char* makeGraphics(unsigned width, unsigned height) {
 
 	const char* (*getString)(unsigned) = eglGetProcAddress("glGetString");
 	const char* renderer = getString(GL_RENDERER);
-	if (!renderer || !strstr(renderer, "llvmpipe")) return "and this computer's draws on its graphics card, not with Mesa's llvmpipe, so its pictures could differ from everyone else's";
+	// what drew it, with nothing in it that would end the JSON it's said in
+	for (size_t i = 0; renderer && renderer[i] && i < sizeof drawnBy - 1; i++) drawnBy[i] = renderer[i] == '"' || renderer[i] == '\\' ? '\'' : renderer[i];
+	if (!any && (!renderer || !strstr(renderer, "llvmpipe"))) return "and this computer's draws on its graphics card, not with Mesa's llvmpipe, so its pictures could differ from everyone else's";
 	void (*genFramebuffers)(int, unsigned*) = eglGetProcAddress("glGenFramebuffers");
 	void (*bindFramebuffer)(unsigned, unsigned) = eglGetProcAddress("glBindFramebuffer");
 	void (*genRenderbuffers)(int, unsigned*) = eglGetProcAddress("glGenRenderbuffers");
@@ -641,6 +653,12 @@ int main(int argc, char** argv) {
 	FILE* soundFile = strcmp(argv[7], "-") ? fopen(argv[7], "wb") : NULL;
 	uint8_t* memory = retro_get_memory_data(MEMORY_SYSTEM_RAM);
 	size_t memorySize = retro_get_memory_size(MEMORY_SYSTEM_RAM);
+	void (*drawList)(uint32_t*, uint32_t*) = dlsym(library, "dreamports_draw_list");
+	FILE* drawsFile = getenv("DP_DRAWS") ? fopen(getenv("DP_DRAWS"), "wb") : NULL;
+	if (drawsFile && !drawList) {
+		fprintf(err, "The core keeps no draw lists, which this game is proven by.\n");
+		return 2;
+	}
 	size_t readsSize = 0;
 	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
 	size_t readCount = readsSize / 12, nextRead = 0;
@@ -678,12 +696,18 @@ int main(int argc, char** argv) {
 			fwrite(&count, 4, 1, soundFile);
 			fwrite(samples, 2, sampleCount, soundFile);
 		}
+		if (drawsFile) {
+			uint32_t drawn[2];
+			drawList(&drawn[0], &drawn[1]);
+			fwrite(drawn, 4, 2, drawsFile);
+		}
 	}
 	if (soundFile) fclose(soundFile);
+	if (drawsFile) fclose(drawsFile);
 	fflush(out);
 	fprintf(err, "{\"cartridge\":0,\"memory\":0,\"rate\":%g,\"fps\":%g,\"sizes\":[", wantedRate ? wantedRate : av.sampleRate, av.fps);
 	for (size_t i = 0; i < sizeCount; i++) fprintf(err, "%s[%u,%u,%u]", i ? "," : "", sizes[i * 3], sizes[i * 3 + 1], sizes[i * 3 + 2]);
-	fprintf(err, "],\"reads\":[");
+	fprintf(err, "],\"drawnBy\":\"%s\",\"reads\":[", drawnBy);
 	for (size_t i = 0; i < readCount; i++) fprintf(err, "%s%u", i ? "," : "", readValues[i]);
 	fprintf(err, "]}\n");
 	fflush(err);

@@ -3,7 +3,7 @@
 
 import { threadId } from 'node:worker_threads';
 import { spawn } from 'node:child_process';
-import { closeSync, mkdirSync, openSync, readSync, writeFileSync, rmSync } from 'node:fs';
+import { closeSync, mkdirSync, openSync, readFileSync, readSync, writeFileSync, rmSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { LOCAL } from './paths.mjs';
 
@@ -45,16 +45,17 @@ function soundIn(file, frames) {
  * (15-bit colour, width x height), the states asked for (bytes), with `sound` { lengths, read(frame), close() }, each
  * frame's sound as it's needed (an Int16Array, overwritten by the next, of left and right samples, in 10-bit units
  * around the bias) or else null, and the last line the program wrote to stderr, as JSON, with the values `reads` asked
- * for under `reads`, in its order.
+ * for under `reads`, in its order. With `draws`, for a console whose emulator keeps draw lists (libretro/host.c), also
+ * `draws` { hashes, counts }: for each frame, the hash of what the console gave its graphics chip and how many things.
  */
-export async function runReference({ program, args, env, width, height, stateBytes = 0, buttonBytes = 2, frames, buttons, functions = [], pictures = [], sound = false, sets = [], states = [], reads = [] }) {
+export async function runReference({ program, args, env, width, height, stateBytes = 0, buttonBytes = 2, frames, buttons, functions = [], pictures = [], sound = false, sets = [], states = [], reads = [], draws = false }) {
   const folder = join(LOCAL, 'tmp');
   mkdirSync(folder, { recursive: true });
   const id = `${process.pid}-${threadId}-${Date.now()}-${++runs}`;
   const files = {
     buttons: join(folder, `buttons-${id}.bin`), functions: join(folder, `functions-${id}.bin`), pictures: join(folder, `pictures-${id}.bin`),
     sound: join(folder, `sound-${id}.bin`), sets: join(folder, `sets-${id}.bin`), states: join(folder, `states-${id}.bin`),
-    reads: join(folder, `reads-${id}.bin`),
+    reads: join(folder, `reads-${id}.bin`), draws: join(folder, `draws-${id}.bin`),
   };
   writeFileSync(files.buttons, new Uint8Array((buttonBytes === 4 ? Uint32Array : Uint16Array).from(buttons).buffer));
   const list = new Uint32Array(functions.length * 2);
@@ -68,7 +69,7 @@ export async function runReference({ program, args, env, width, height, stateByt
     // its files by their plain names, from their folder: only the copy's path has to survive the trip whatever it's called
     const names = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, basename(file)]));
     if (!sound) names.sound = '-';
-    const child = spawn(program, args(names), { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env, ...(reads.length ? { DP_READS: names.reads } : {}) } });
+    const child = spawn(program, args(names), { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env, ...(reads.length ? { DP_READS: names.reads } : {}), ...(draws ? { DP_DRAWS: names.draws } : {}) } });
     // with no functions, its size is known, and it needs no second copy of itself to end up in one piece
     const size = functions.length ? 0 : frames * 12 + pictures.length * width * height * 2 + states.length * stateBytes;
     const out = [], err = [], whole = Buffer.allocUnsafeSlow(size);
@@ -104,7 +105,12 @@ export async function runReference({ program, args, env, width, height, stateByt
         at += stateBytes;
       }
     }
-    return { hashes, plain, ran, pictures: shown, states: held, sound: sound ? soundIn(files.sound, frames) : null, outside: JSON.parse(stderr.split('\n').pop()) };
+    let drawn = null;
+    if (draws) {
+      const pairs = new Uint32Array(new Uint8Array(readFileSync(files.draws)).buffer);
+      drawn = { hashes: pairs.filter((_, i) => i % 2 === 0), counts: pairs.filter((_, i) => i % 2 === 1) };
+    }
+    return { hashes, plain, ran, pictures: shown, states: held, sound: sound ? soundIn(files.sound, frames) : null, draws: drawn, outside: JSON.parse(stderr.split('\n').pop()) };
   } finally {
     for (const file of Object.values(files)) rmSync(file, { force: true });
   }
