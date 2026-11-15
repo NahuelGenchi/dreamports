@@ -13,10 +13,10 @@
 // from seed. The hand moves with the d-pad, and A rocks the egg, pets the Chao, pulls a plant up, or opens an icon's
 // screen: the left one's rock-paper-scissors game (gardenrps.c), the right one's card game (gardencards.c). L slides the
 // shop in, where A buys a fruit or takes the egg, which the hand carries, puts down on the grass and picks up again; a
-// fruit given to the Chao, it eats, its mood, belly and skills going up. The Chao's other moods, what it does with fruit
-// on the grass and the shop's things, a skill's level up, the pause and going back to Sonic Advance (#1314) and the
-// link cable aren't in C yet: a press or a moment that needs one stops the garden where it is, with the screen as it
-// was.
+// fruit given to the Chao, it eats, its mood, belly and skills going up. Start pauses the garden: Continue goes on, and
+// Save & Exit writes the garden's save to the cartridge's flash and starts Sonic Advance again. The Chao's other moods,
+// what it does with fruit on the grass and the shop's things, a skill's level up and the link cable aren't in C yet: a
+// press or a moment that needs one stops the garden where it is, with the screen as it was.
 
 #include "garden.h"
 
@@ -44,6 +44,9 @@ enum { UNPACKED = UNPACK_FRAMES - 1, SOUND_INIT = 21, INIT_GARDEN = 22, SONG_STA
 #define SE_TOUCH 0x15
 #define SE_GAUGE_EXPANDS 0x16
 #define SE_HATCH 0x21
+#define SE_MOVE 0x0B
+#define SE_CANCEL 0x0D
+#define SE_PAUSE 0x0E
 #define SE_PUT 0x16       // the same sound as SE_GAUGE_EXPANDS
 #define SE_BUY 0x19
 #define SE_CANT 0x1C
@@ -185,12 +188,8 @@ static void new_game_state(void) {
   tcgSave[0x1C] = 0xFF;
 }
 
-// the cartridge's flash sector `n`, or NULL when the save memory doesn't keep it: the kit keeps Sonic Advance's own save
-// only, so the garden's sectors read as flash that was never written
-static const uint8_t *flash_sector(int n) {
-  (void)n;
-  return NULL;
-}
+// the cartridge's flash sector `n`, as the kit's save memory keeps the whole flash with Sonic Advance's save (save.c)
+static uint8_t *flash_sector(int n) { return gba_save(FLASH_BYTES) + n * SECTOR_SIZE; }
 static void read_sector(int n) {
   const uint8_t *s = flash_sector(n);
   if (s) memcpy(tcgSave, s, SAVE_BYTES);
@@ -546,9 +545,12 @@ static uint8_t handBusy;         // 0x030009BC: the hand or the Chao is in the m
 static uint8_t menuEdge;         // 0x030009B8
 
 static int stopped;
+static int running;   // frames since the menu's A, from 1, or 0 before it and after the garden is left
 static int lagging;   // frames the loop still misses
 static int songAfterLag;   // a song that starts in the last of them
+static int vsyncAfterLag;  // the sound engine goes on in the last of them, as after a flash write
 #define PICTURE_FRAMES 5
+#define FLASH_FRAMES 17
 static void open_icon(const Obj *icon);
 /** A moment that isn't in C yet: the garden stops there, its screen as it was. */
 static void not_in_c(void) { stopped = 1; }
@@ -564,14 +566,96 @@ static void fade_in(Obj *o) {
   }
 }
 
-/** 0x02001D5C (sub_0200218c): Start pauses the garden, once nothing else is over it; the pause isn't in C yet (#1314). */
+/** SaveGameState, 0x020003AC: the save marked, numbered, with the rings and the seed, and summed, written to the next of
+ *  the six sectors round, with every music player stopped and the sound engine held while the flash takes it. */
+static void write_save(void) {
+  set_le16(tcgSave, 2, SAVE_MARK);
+  set_save32(4, ++saveVersion);
+  set_save32(SAVE_RINGS, rings);
+  set_save32(SAVE_SEED, seed);
+  set_le16(tcgSave, 0, save_crc(tcgSave + 2, SAVE_BYTES - 2));
+  gba_sound_stop_all();
+  gba_sound_vsync_off();
+  if (++saveSector > SECTORS - 1) saveSector = 0;
+  uint8_t *sector = flash_sector(FIRST_SECTOR + saveSector);
+  memset(sector, 0xFF, SECTOR_SIZE);
+  memcpy(sector, tcgSave, SAVE_BYTES);
+  gba_save_write();
+  // the flash takes the sector for FLASH_FRAMES, the loop and the sound engine held
+  lagging = FLASH_FRAMES;
+  vsyncAfterLag = 1;
+}
+
+static void pause_menu(Obj *o);
+static void pause_leaves(Obj *o);
+static void fade_away_start(void);
+/** 0x02001D5C (sub_0200218c): Start pauses the garden, once nothing else is over it, for 8 frames after the last pause:
+ *  every music player stops, and the menu opens on Continue. */
 static void pause_watch(Obj *o) {
   if (g.flags & 0x7F) return;
   if ((o->state == 0 || --o->state == 0) && (input.pressed & KEY_START)) {
-    not_in_c();
+    gba_sound_stop_all();
+    gba_sound_play(SE_PAUSE);
+    o->y = 0;
+    o->state = 8;
+    o->main = pause_menu;
+    g.flags |= 0x80;
     return;
   }
   g.flags &= 0x7F;
+}
+
+// the menu's two lines, the one the cursor is on lit, and the cursor, a Chao's head that bobs every 16 frames
+static void pause_cursor(const Obj *o) {
+  queue_map(from_program(0x0201887Eu + (g.frames & 0x10 ? 0 : 8)), 0x0E010u + (uint32_t)(o->y * 2 + 1) * 64, 2, 2, 0x31E5);
+}
+static void draw_pause(const Obj *o) {
+  queue_map(from_program(0x020187BEu + (uint32_t)(o->y * 48 + g.language * 96)), 0x0E014u + (uint32_t)(o->y * 2 + 1) * 64, 12, 2, 0x416B);
+  pause_cursor(o);
+  queue_map(from_program(0x0201863Eu + g.language * 192u), 0x0E00Eu, 16, 6, 0x316B);
+}
+
+/** 0x02001DC4: Up and Down move the cursor; after 8 frames, A or Start on Continue, or B, closes the menu and the music
+ *  goes on, and A or Start on Save & Exit leaves the garden. */
+static void pause_menu(Obj *o) {
+  int waits = o->state && --o->state;
+  if (!waits && (input.pressed & (KEY_A | KEY_B | KEY_START))) {
+    int back = input.held & KEY_B;
+    if (!back && o->y == 1) {
+      gba_sound_play(SE_CONFIRM);
+      o->state = 45;
+      o->main = pause_leaves;
+      return;
+    }
+    gba_sound_continue_all();
+    gba_sound_play(back ? SE_CANCEL : SE_CONFIRM);
+    o->state = 8;
+    o->main = pause_watch;
+    queue_map(NULL, 0x0E000u, 0xFF, 0, 0);
+    return;
+  }
+  if (input.pressed & KEY_DOWN) {
+    if (++o->y > 1) o->y = 1;
+    else gba_sound_play(SE_MOVE);
+  } else if (input.pressed & KEY_UP) {
+    if (--o->y < 0) o->y = 0;
+    else gba_sound_play(SE_MOVE);
+  }
+  draw_pause(o);
+}
+
+/** 0x02001F34: Save & Exit, after 45 frames more of the menu: the save written, and the garden fades out to white with
+ *  nothing after it, which takes the game back to Sonic Advance. */
+static void pause_leaves(Obj *o) {
+  pause_cursor(o);
+  if (o->state) {
+    o->state--;
+    return;
+  }
+  write_save();
+  g.after = NULL;
+  g.main = fade_away_start;
+  g.flags |= 3;
 }
 
 /** 0x02003240: the leaves a pulled plant leaves behind, which wither away once it's out, a step every 10 frames. */
@@ -2152,7 +2236,18 @@ static void fade_away(void) {
   g.fade++;
   gba_write(REG_BLDY, g.fade);
   gba_write(REG_BLDALPHA, (uint16_t)(((16 - g.fade) & 0xFE) << 7 | g.fade));
-  if (g.fade > 15) g.main = g.after;
+  if (g.fade > 15) {
+    // with nothing after it, the garden is left: every music player stops, the sound engine is held, and the BIOS's
+    // SoftReset starts Sonic Advance again from its cartridge (0x02001A54)
+    if (!g.after) {
+      gba_sound_stop_all();
+      gba_sound_vsync_off();
+      running = 0;
+      front_after_garden();
+      return;
+    }
+    g.main = g.after;
+  }
 }
 /** 0x02001A04. */
 static void fade_away_start(void) {
@@ -2208,7 +2303,6 @@ void garden_unpack_halfwords(uint32_t from, uint16_t *to, int count) {
 
 // ---- the program's start ----
 
-static int running;   // frames since the menu's A, from 1, or 0 before it
 static uint32_t config[3];   // what Sonic Advance leaves at 0x02000008: its ring bank, its language and a seed
 
 /**
@@ -2268,6 +2362,10 @@ void garden_step(void) {
       if (--lagging == 0 && songAfterLag) {
         gba_sound_play(songAfterLag);
         songAfterLag = 0;
+      }
+      if (!lagging && vsyncAfterLag) {
+        gba_sound_vsync_on();
+        vsyncAfterLag = 0;
       }
       return;
     }

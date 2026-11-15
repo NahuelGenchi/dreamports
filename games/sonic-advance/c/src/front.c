@@ -17,6 +17,8 @@ void dp_sound_skip_frames(int frames);
 // the frames from a soft reset's V-blank to the first screen: the BIOS forces the screen blank at once, and the game's
 // start (EngineInit, GameInit) runs before the next frames show anything
 #define RESET_FRAMES 6
+// the frames from Tiny Chao Garden's SoftReset to the logos: the reset, the cartridge's start and GameInit
+#define GARDEN_RESET_FRAMES 6
 
 Front ctx;
 static int startingUp;
@@ -143,6 +145,22 @@ static void soft_reset(void) {
   engine_clear_video();
   gba_write(REG_DISPCNT, 0x80);
   startingUp = RESET_FRAMES;
+}
+
+/**
+ * Tiny Chao Garden's Save & Exit: the BIOS's SoftReset starts the cartridge's game again, as at power-on but with the
+ * console started and the save there, so the logos come, and its sound engine starts again from nothing with the
+ * cartridge's songs, the sound chip going on as it was, and waits for GameInit's m4aSoundInit. The garden's program
+ * stays in the work RAM, which the reset leaves as it is, for the next time.
+ */
+void front_after_garden(void) {
+  memset(&ctx, 0, sizeof ctx);
+  front_new_engine();
+  engine_clear_video();
+  gba_write(REG_DISPCNT, 0x80);
+  gba_sound_start_after_program(LIBRARY_SONIC_ADVANCE, 4, 5, 15, 10512, 0);
+  sound_vsync_off();
+  startingUp = GARDEN_RESET_FRAMES;
 }
 
 /**

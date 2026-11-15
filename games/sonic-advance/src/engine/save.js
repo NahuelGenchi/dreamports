@@ -65,10 +65,13 @@ function emptySave() {
   return bytes;
 }
 
-// SaveGameExists: the save the browser keeps, if it is one (its security and checksum right)
+// SaveGameExists: the save the browser keeps, if it is one (its security and checksum right). The version in C keeps the
+// whole flash, where Tiny Chao Garden's save comes after this one (games/sonic-advance/c/src/save.c), so the save is its
+// first SIZE bytes
 function readStored(flashMemory) {
-  const bytes = flashMemory.read();
-  if (bytes?.length !== SIZE) return null;
+  const kept = flashMemory.read();
+  if (!kept || kept.length < SIZE) return null;
+  const bytes = kept.slice(0, SIZE);
   const view = new DataView(bytes.buffer);
   return view.getUint32(0, true) === SECURITY && view.getUint32(CHECKSUM, true) === checksum(bytes) ? bytes : null;
 }
@@ -156,7 +159,10 @@ export function openSave(storage = browserStorage()) {
       view.setUint32(0, SECURITY, true);
       view.setUint32(CHECKSUM, checksum(bytes), true);
       flash = bytes.slice();
-      if (flashMemory.write(flash)) {
+      // what the flash holds after the save, Tiny Chao Garden's, stays as it is
+      const kept = flashMemory.read(), whole = kept?.length > SIZE ? kept.slice() : flash;
+      if (whole !== flash) whole.set(flash);
+      if (flashMemory.write(whole)) {
         try { storage?.removeItem(EMERALDS_KEY); } catch { /* storage blocked */ }   // the save has them now
       }
       return true;

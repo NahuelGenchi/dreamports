@@ -294,6 +294,8 @@ Task *create_spotlight_beam(Beam *beam);
 #define ALL_EMERALDS 0x7F
 #define MOON_BEATEN 15
 typedef struct { uint8_t bytes[SAVE_SIZE]; int exists, keep; } Save;
+// the cartridge's flash memory: Sonic Advance's save at its start, Tiny Chao Garden's in its sectors 10 to 15
+#define FLASH_BYTES 0x10000
 extern Save save;
 void save_open(void);
 int save_write(void);
@@ -364,6 +366,8 @@ void front_step(uint16_t keys);
 /** Tiny Chao Garden (garden.c): the main menu hands over to its program, which runs every frame from then on. */
 void garden_load(void);
 int garden_running(void);
+/** Tiny Chao Garden's Save & Exit has reset the console: Sonic Advance starts again from its cartridge (front.c). */
+void front_after_garden(void);
 void garden_step(void);
 void front_draw(void);
 

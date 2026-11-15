@@ -151,8 +151,8 @@ static void take(int op, int a, int b, int c, int d) {
   }
   if (op == OP_PROGRAM) return;
   if (op == OP_SETUP) {
-    // a soft reset into a program leaves the sound chip as it was
-    if (!((c >> 21) & 1)) apu_init(&apu);
+    // a soft reset into a program, or from one back into the copy, leaves the sound chip as it was
+    if (!((c >> 21) & 3)) apu_init(&apu);
     m4a_init(&engine, gba_rom, gba_rom_size, &layout, &apu);
     queued = 0;
     cycle = nextFrame = 0;
@@ -211,6 +211,13 @@ int gba_sound_start_program(uint32_t romOffset, uint32_t size, uint32_t playerTa
   if (playerTable < RAM_BASE || playerTable + (uint32_t)players * 12 + 16 > RAM_BASE + programSize) return 0;
   take(OP_SETUP, (int)(playerTable - ROM_BASE), players | channels << 8 | volume << 16 | (reverb & 0x7F) << 24,
     rate | library << 17 | 1 << 21, 0);
+  return 1;
+}
+
+int gba_sound_start_after_program(int library, int players, int channels, int volume, int rate, int reverb) {
+  uint32_t at;
+  if (!gba_rom || players < 1 || players > M4A_PLAYERS || library < 0 || library >= LIBRARIES || !find_music_players(players, &at)) return 0;
+  take(OP_SETUP, (int)at, players | channels << 8 | volume << 16 | (reverb & 0x7F) << 24, rate | library << 17 | 1 << 22, 0);
   return 1;
 }
 
