@@ -7,7 +7,10 @@
 //   ROM        the contributor's copy, only ever read
 //   FRAMES     how many frames to run
 //   BUTTONS    a file with the buttons held at each frame: 16 bits each, a bit per button as KEYINPUT has them
-//   FUNCTIONS  a file with the code map's functions, each its address and its size (32 bits each), or -
+//   FUNCTIONS  a file with where the code map's functions run, or -: each its address, its size, its place in the code
+//              map, whether to check its bytes (1) or not (0), and its first 8 bytes (32 bits each, 6 in all). A function
+//              runs when the processor reaches its address, and one whose bytes are checked only when they're there, as
+//              in the work RAM, where a game can put other code at the same address at another time
 //   PICTURES   a file with the frames whose whole picture to write (32 bits each, in order), or -
 //   SOUND      a file to write each frame's sound to, or -
 //   SETS       a file with values to write to the work RAM as each frame starts, in the order of their frames, or -: each
@@ -18,9 +21,13 @@
 // order of their frames: each its frame, its address and how many bytes (32 bits each). The JSON on stderr then has
 // them, in that order, under "reads", which is how the tools learn what the original holds, such as who is playing.
 //
+// The environment's DP_RAM_CODE, when it's set, names a file to write the code that runs in the work RAM to, for the
+// code map (codemap.mjs): each time an instruction runs at an address there with other bytes than the last time,
+// its frame, its address (+1 for Thumb) and its bytes (32 bits each).
+//
 // For each frame it writes to stdout: a hash of the picture (FNV-1a over each pixel's 15-bit colour, as the
 // console has it), the picture's one colour if every pixel has it or else 0xFFFFFFFF, the number of functions that
-// ran in the frame and their places in FUNCTIONS (32 bits each), then the picture itself if PICTURES names the
+// ran in the frame and their places in the code map (32 bits each), then the picture itself if PICTURES names the
 // frame (240 x 160 pixels of 16 bits, the console's 15-bit colour), then what the console held as it drew the frame if
 // STATES names it: the display registers (0x58 bytes), the colours (0x400), the sprites (0x400) and the video memory
 // (0x18000), as lib/state.mjs reads them.
@@ -62,7 +69,7 @@ static void quiet(struct mLogger* logger, int category, enum mLogLevel level, co
 static struct mLogger logger = { .log = quiet };
 
 // The parts of the console's memory code can run from: the cartridge (ROM), and the work RAM games copy code into.
-struct region { uint32_t base, size; uint32_t* first; uint8_t* inside; uint8_t* outside; long seen; };
+struct region { uint32_t base, size; uint32_t* first; uint8_t* inside; uint8_t* outside; long seen; uint32_t* lastCode; uint8_t* ranCode; };
 static struct region regions[] = {
 	{ 0x08000000, 0x02000000 },  // the cartridge
 	{ 0x03000000, 0x00008000 },  // internal work RAM
@@ -116,6 +123,12 @@ static uint32_t readValue(struct mCore* core, uint32_t address, uint32_t bytes) 
 	if (bytes == 1) return core->rawRead8(core, address, -1);
 	if (bytes == 2) return core->rawRead16(core, address, -1);
 	return core->rawRead32(core, address, -1);
+}
+
+// whether the 8 bytes at `address` are a function's first, as FUNCTIONS has them
+static int sameBytes(struct mCore* core, uint32_t address, uint32_t low, uint32_t high) {
+	return core->rawRead16(core, address, -1) == (low & 0xFFFF) && core->rawRead16(core, address + 2, -1) == low >> 16
+		&& core->rawRead16(core, address + 4, -1) == (high & 0xFFFF) && core->rawRead16(core, address + 6, -1) == high >> 16;
 }
 
 static void* readAll(const char* path, size_t* size) {
@@ -267,31 +280,45 @@ int main(int argc, char** argv) {
 	uint32_t* pictures = readAll(argv[5], &picturesSize);
 	uint32_t* sets = readAll(argv[7], &setsSize);
 	uint32_t* states = readAll(argv[8], &statesSize);
-	size_t functionCount = functionsSize / 8, pictureCount = picturesSize / 4, nextPicture = 0, setCount = setsSize / 16, nextSet = 0;
+	size_t functionCount = functionsSize / 24, pictureCount = picturesSize / 4, nextPicture = 0, setCount = setsSize / 16, nextSet = 0;
 	size_t stateCount = statesSize / 4, nextState = 0;
 	size_t readsSize = 0;
 	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
 	size_t readCount = readsSize / 12, nextRead = 0;
 	uint32_t* readValues = calloc(readCount ? readCount : 1, sizeof(uint32_t));
 
-	// where each function starts (its place + 1), which addresses are inside one, and code seen outside them all
+	// the code that runs in the work RAM, for the code map, and what last ran at each of its addresses
+	FILE* ramCode = getenv("DP_RAM_CODE") ? fopen(getenv("DP_RAM_CODE"), "wb") : NULL;
+	if (getenv("DP_RAM_CODE") && !ramCode) { fprintf(stderr, "Can't write %s\n", getenv("DP_RAM_CODE")); exit(2); }
+
+	// where each function starts, as the first of the functions there (its place in FUNCTIONS + 1) and the next after
+	// each, which addresses are inside one, and code seen outside them all
 	for (size_t i = 0; i < REGIONS; i++) {
 		regions[i].first = calloc(regions[i].size / 2, sizeof(uint32_t));
 		regions[i].inside = calloc(regions[i].size / 2, 1);
 		regions[i].outside = calloc(regions[i].size / 2, 1);
+		if (ramCode && i) {
+			regions[i].lastCode = calloc(regions[i].size / 2, sizeof(uint32_t));
+			regions[i].ranCode = calloc(regions[i].size / 2, 1);
+		}
 	}
+	uint32_t* nextThere = calloc(functionCount ? functionCount : 1, sizeof(uint32_t));
+	size_t places = 1;
 	for (size_t i = 0; i < functionCount; i++) {
-		uint32_t start = functions[i * 2] & ~1u, size = functions[i * 2 + 1];
+		uint32_t start = functions[i * 6] & ~1u, size = functions[i * 6 + 1];
+		if (functions[i * 6 + 2] + 1 > places) places = functions[i * 6 + 2] + 1;
 		struct region* region = regionOf(start);
 		if (!region) continue;
-		region->first[(start - region->base) / 2] = i + 1;
+		uint32_t* there = &region->first[(start - region->base) / 2];
+		nextThere[i] = *there;
+		*there = i + 1;
 		for (uint32_t at = start; at < start + size && at - region->base < region->size; at += 2) {
 			region->inside[(at - region->base) / 2] = 1;
 		}
 	}
-	long* lastRan = calloc(functionCount ? functionCount : 1, sizeof(long));
-	uint32_t* ran = malloc((functionCount ? functionCount : 1) * sizeof(uint32_t));
-	for (size_t i = 0; i < functionCount; i++) lastRan[i] = -1;
+	long* lastRan = calloc(places, sizeof(long));
+	uint32_t* ran = malloc(places * sizeof(uint32_t));
+	for (size_t i = 0; i < places; i++) lastRan[i] = -1;
 
 	struct mCore* core = openCopy(argv[1]);
 	FILE* soundFile = NULL;
@@ -315,17 +342,33 @@ int main(int argc, char** argv) {
 		// emulator's own loop ends a frame an instruction sooner, and the game's frames then come out differently
 		while (gba->video.frameCounter == frameCounter) {
 			while (cpu->cycles >= cpu->nextEvent) cpu->irqh.processEvents(cpu);
-			struct region* region = functionCount ? regionOf(cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM)) : NULL;
+			struct region* region = functionCount || ramCode ? regionOf(cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM)) : NULL;
 			if (region) {
-				uint32_t pc = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
-				uint32_t slot = (pc - region->base) / 2, function = region->first[slot];
-				if (function && lastRan[function - 1] != frame) {
-					lastRan[function - 1] = frame;
-					ran[count++] = function - 1;
+				int thumb = cpu->executionMode == MODE_THUMB;
+				uint32_t pc = cpu->gprs[ARM_PC] - (thumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
+				uint32_t slot = (pc - region->base) / 2;
+				// the first function starting here whose bytes are those it was found with
+				for (uint32_t there = region->first[slot]; there; there = nextThere[there - 1]) {
+					const uint32_t* watched = &functions[(there - 1) * 6];
+					if (watched[3] & 1 && !sameBytes(core, pc, watched[4], watched[5])) continue;
+					if (lastRan[watched[2]] != frame) {
+						lastRan[watched[2]] = frame;
+						ran[count++] = watched[2];
+					}
+					break;
 				}
 				if (!region->inside[slot] && !region->outside[slot]) {
 					region->outside[slot] = 1;
 					region->seen++;
+				}
+				if (region->lastCode) {
+					uint32_t code = thumb ? core->rawRead16(core, pc, -1) : core->rawRead32(core, pc, -1);
+					if (!region->ranCode[slot] || region->lastCode[slot] != code) {
+						region->ranCode[slot] = 1;
+						region->lastCode[slot] = code;
+						uint32_t record[3] = { (uint32_t) frame, pc | (uint32_t) thumb, code };
+						fwrite(record, 4, 3, ramCode);
+					}
 				}
 			}
 			ARMRun(cpu);
@@ -352,6 +395,7 @@ int main(int argc, char** argv) {
 	}
 	fflush(stdout);
 	if (soundFile) fclose(soundFile);
+	if (ramCode) fclose(ramCode);
 	fprintf(stderr, "{\"cartridge\":%ld,\"memory\":%ld,\"reads\":[", regions[0].seen, regions[1].seen + regions[2].seen);
 	for (size_t i = 0; i < readCount; i++) fprintf(stderr, "%s%u", i ? "," : "", readValues[i]);
 	fprintf(stderr, "]}\n");

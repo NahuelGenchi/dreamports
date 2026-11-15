@@ -5,9 +5,10 @@
 // memory to run there isn't found, so a decompilation's list (codemap --from) is better where there is one. Such a
 // list can still stop short, so this follows the functions it lists too, and fillFunctions adds what it finds beyond
 // them. It can also name data as a function, which startsInData tells. Last, it looks in what's left between the
-// functions for those nothing calls or points at.
+// functions for those nothing calls or points at. findInMemory does the same for code the game runs in its work RAM,
+// from the code that ran there.
 
-const BASE = 0x08000000;
+const CARTRIDGE = 0x08000000;
 const HEADER = 0xC0;
 // how far past the code that's called a function only data points at can be: further than this, it's data that
 // happens to look like code
@@ -27,22 +28,27 @@ export function looksLikeArm(words) {
 
 /** Each function found, as { address, size, thumb }, sorted by address. `listed` are functions a list already knows,
  *  as { address, size }: their code is followed too, as nothing else may lead to it. `pool` collects the data the
- *  code uses: the words it loads, which are never code, as after a BL used as a long jump, and its jump tables. */
-export function findFunctions(bytes, listed = [], pool = new Set()) {
-  const size = bytes.length;
+ *  code uses: the words it loads, which are never code, as after a BL used as a long jump, and its jump tables.
+ *  `bytes` are the cartridge's, or with `base`, those of the memory from there: then only what the listed functions
+ *  lead to is code, as memory holds data beside it, and nothing is looked for in tables or between the functions. */
+export function findFunctions(bytes, listed = [], pool = new Set(), { base: BASE = CARTRIDGE } = {}) {
+  const size = bytes.length, cartridge = BASE === CARTRIDGE;
   const inRom = address => address >= BASE && address < BASE + size;
   const u16 = address => bytes[address - BASE] | bytes[address - BASE + 1] << 8;
   const u32 = address => (bytes[address - BASE] | bytes[address - BASE + 1] << 8 | bytes[address - BASE + 2] << 16 | bytes[address - BASE + 3] << 24) >>> 0;
-  const found = new Map();   // address → { thumb, end, called }: `called` when code calls it, not only points at it
+  // address → { thumb, end, called, ran }: `called` when code calls it, not only points at it, and `ran` when it's
+  // known to have run
+  const found = new Map();
   const queue = [];
-  const add = (address, thumb, called) => {
+  const add = (address, thumb, called, ran = false) => {
     if (!inRom(address) || address % (thumb ? 2 : 4)) return;
     const known = found.get(address);
     if (known) {
       known.called ||= called;
+      known.ran ||= ran;
       return;
     }
-    found.set(address, { thumb, end: address, called });
+    found.set(address, { thumb, end: address, called, ran });
     queue.push(address);
   };
   const isPointer = value => value & 1 && inRom(value - 1);
@@ -206,7 +212,7 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
       if (!f) continue;
       const traced = f.thumb ? traceThumb(address) : traceArm(address);
       // a function address that led to data, not code: forgotten, with what it seemed to call
-      if (traced.bad && !f.called) {
+      if (traced.bad && !f.called && !f.ran) {
         found.delete(address);
         continue;
       }
@@ -238,14 +244,14 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
   for (let pass = 0; pass < 2; pass++) {
     found.clear();
     // the cartridge starts with a branch over its header, to the ARM code that starts the game
-    if (size >= 4 && (u32(BASE) & 0x0F000000) === 0x0A000000) {
+    if (cartridge && size >= 4 && (u32(BASE) & 0x0F000000) === 0x0A000000) {
       found.set(BASE, { thumb: false, end: BASE + 4, called: true });
       add(BASE + 8 + ((u32(BASE) & 0xFFFFFF) << 8 >> 6), false, true);
       roots.add(BASE + 8 + ((u32(BASE) & 0xFFFFFF) << 8 >> 6));
     }
     // the function addresses in the game's tables: those that start as functions do, and, in a table that has one of
     // those, the others that read as code
-    for (let at = BASE; at + 4 <= BASE + size;) {
+    for (let at = BASE; cartridge && at + 4 <= BASE + size;) {
       if (!isPointer(u32(at))) {
         at += 4;
         continue;
@@ -260,12 +266,12 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
       }
       at = next;
     }
-    for (const { address } of listed) add(address, !startsArm(address), false);
+    for (const { address, thumb, ran } of listed) add(address, thumb ?? !startsArm(address), false, !!ran);
     follow();
     // what nothing calls or points at: what's left between the functions, past any zeros and NOPs, which only pad, that
     // starts as a function does or reads as code up to a return before the next one
     const tried = new Set();
-    for (let more = true; more;) {
+    for (let more = cartridge; more;) {
       more = false;
       const spans = [...found].map(([address, f]) => [address, f.end]);
       for (const f of listed) if (inRom(f.address)) spans.push([f.address, f.address + f.size]);
@@ -296,12 +302,42 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
   }
   // each function ends where the next one starts, at the latest, and what's left of a function that runs on past
   // the ones starting inside it goes to the last of them
-  const list = [...found].map(([address, f]) => ({ address, end: f.end, thumb: f.thumb })).sort((a, b) => a.address - b.address);
+  const list = [...found].map(([address, f]) => ({ address, end: f.end, thumb: f.thumb, called: f.called })).sort((a, b) => a.address - b.address);
   let furthest = 0;
   return list.map((f, i) => {
     furthest = Math.max(furthest, f.end);
-    return { address: f.address, size: Math.min(furthest, list[i + 1]?.address ?? Infinity) - f.address, thumb: f.thumb };
+    return { address: f.address, size: Math.min(furthest, list[i + 1]?.address ?? Infinity) - f.address, thumb: f.thumb, ...(cartridge ? {} : { called: f.called }) };
   });
+}
+
+/** The functions of code the game ran in its work RAM, as findFunctions finds them, from `bytes` read from `base` on,
+ *  each with `starts` when it surely starts a function: code calls it, or it starts as functions do. `ran` is each
+ *  instruction that ran, as { address, thumb }: the code follows from those that start as functions do, and then from
+ *  the first of each stretch that ran and isn't in a function yet, until every one is. */
+export function findInMemory(bytes, base, ran) {
+  const inside = address => address >= base && address < base + bytes.length;
+  const at = address => bytes[address - base] | bytes[address - base + 1] << 8;
+  const listed = new Map();
+  for (const { address, thumb } of ran) {
+    if (!inside(address + 3)) continue;
+    const op = thumb ? at(address) : (at(address) | at(address + 2) << 16) >>> 0;
+    // PUSH {…, lr} or STMFD sp!, {…, lr}
+    if (thumb ? (op & 0xFF00) === 0xB500 : (op & 0xFFFF4000) >>> 0 === 0xE92D4000) listed.set(address, thumb);
+  }
+  const prologue = new Set(listed.keys());
+  const sorted = [...ran].filter(r => inside(r.address + 1)).sort((a, b) => a.address - b.address);
+  for (;;) {
+    // code that ran is code, wherever the tracing might take it for data
+    const found = findFunctions(bytes, [...listed].map(([address, thumb]) => ({ address, size: 0, thumb, ran: true })), new Set(), { base });
+    let next = 0;
+    const missing = sorted.find(r => {
+      while (next < found.length && found[next].address + found[next].size <= r.address) next++;
+      const f = found[next];
+      return !(f && r.address >= f.address) && !listed.has(r.address);
+    });
+    if (!missing) return found.map(({ called, ...f }) => ({ ...f, starts: called || prologue.has(f.address) }));
+    listed.set(missing.address, missing.thumb);
+  }
 }
 
 /** Those of a list's functions that start in the data of the code before them, as a disassembler's list can: on a
@@ -309,7 +345,7 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
 export function startsInData(bytes, listed) {
   const pool = new Set();
   const functions = new Set(findFunctions(bytes, [], pool).map(f => f.address));
-  const padding = address => pool.has(address + 2) && address % 4 === 2 && !bytes[address - BASE] && !bytes[address - BASE + 1];
+  const padding = address => pool.has(address + 2) && address % 4 === 2 && !bytes[address - CARTRIDGE] && !bytes[address - CARTRIDGE + 1];
   return listed.filter(({ address }) => !functions.has(address) && (pool.has(address) || padding(address)));
 }
 

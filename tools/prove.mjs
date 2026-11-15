@@ -24,7 +24,7 @@ import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { REPO, LOCAL, resultFolder } from './lib/paths.mjs';
-import { readOriginal, readRecordings, readCodeMap, readProgress, writeProgress, readParts, hex } from './lib/proof-files.mjs';
+import { readOriginal, readRecordings, readCodeMap, readProgress, writeProgress, readParts, watchesOf, cartridgeOf } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { originalPlay, namesNeverInPlay } from './lib/recording.mjs';
 import { serveRepository } from './lib/server.mjs';
@@ -166,7 +166,7 @@ export async function run(args) {
   const totals = { original: original.sha1 };
   if (codeMap) {
     const proven = new Set(Object.values(progress.recordings).flatMap(r => r.functions));
-    Object.assign(totals, measure(codeMap.functions.map(f => ({ address: hex(f.address), size: f.size })), proven));
+    Object.assign(totals, measure(codeMap.functions.map(f => ({ address: f.key, size: f.size })), proven));
   } else {
     console.log(`\nNo code map yet, so no code ported: npm run dp -- codemap ${game} makes one.`);
   }
@@ -345,7 +345,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // the original: every frame's picture shows what the frame before worked out, so one more frame than the
     // buttons, and the Dreamport's frame f is the original's frame originalOf[f] + 1. Its sound lines up the same way
     say('playing the original…');
-    const functions = codeMap?.functions ?? [];
+    const functions = codeMap ? watchesOf(codeMap, cartridgeOf(copy)) : [];
     // what its parts say they reach, read as each of the recording's frames ends (src/lib/reaches.mjs), and what it
     // holds of each kind original.json lists under `shows`, such as who is playing, as its last frame ends
     const aims = goalsNamed(parts, route, `games/${versionOf(game).game}/proof/`);
@@ -381,7 +381,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // a guess now, from main alone, and known once the Dreamport has played
     const recordingText = readFileSync(recording.file, 'utf8'), recordingFile = relative(REPO, recording.file).replaceAll('\\', '/');
     // (a frame's list comes as a Uint32Array, whose own map would turn the addresses back into numbers)
-    const ranAt = codeMap && first.ran ? f => Array.from(first.ran[originalOf[f]] ?? [], i => hex(codeMap.functions[i].address)) : null;
+    const ranAt = codeMap && first.ran ? f => Array.from(first.ran[originalOf[f]] ?? [], i => codeMap.functions[i].key) : null;
     const changeOf = (differs, sound = null, picture = null) => firstChanged({ main, name, file: recordingFile, text: recordingText, frames, ran: ranAt, differs, sound, picture, parts });
     const guessed = quick ? null : changeOf(null);
     const compareSound = soundOf(first.sound, machine), heardOf = Array.from(originalOf, g => g + 1);
@@ -732,8 +732,9 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (stills.length && (asked.length || firstDifference >= 0)) log(`  Stills of ${asked.length ? 'the frames asked for' : ''}${asked.length && parts.length && !quick ? ', and of ' : ''}${parts.length && !quick ? 'each part\'s first and last frames, with the one before and the one after' : ''}: ${where}/stills/`);
     if (fixed.length) log(`  Matches where it differed when last proven: ${listed(fixed)}.`);
     if (page.errors.length) log(`  The page reported ${page.errors.length} errors; ${where}/report.json lists them.`);
-    if (codeMap && first.outside.cartridge) {
-      log(`  Instructions that ran in the cartridge outside every function of the code map: ${first.outside.cartridge}. npm run dp -- codemap ${versionOf(game).game} --fill adds what the map is missing.`);
+    if (codeMap && (first.outside.cartridge || first.outside.memory)) {
+      const where = [first.outside.cartridge && `${first.outside.cartridge} in the cartridge`, first.outside.memory && `${first.outside.memory} in the work RAM`].filter(Boolean).join(' and ');
+      log(`  Instructions that ran outside every function of the code map: ${where}. npm run dp -- codemap ${versionOf(game).game} --fill adds what the map is missing.`);
     }
     if (!quick) log(`  Clip, ${(file.length / 1e6).toFixed(2)} MB, frames ${clip[0]} to ${clip[1]}: ${where}/clip.mp4`);
     if (!quick && file.length > CLIP_LIMIT) log('  The clip is still over 2 MB: a shorter "clip" in the recording makes it lighter.');
@@ -742,7 +743,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (!quick) log(`  What this step changed: ${changedText(changed)}${changed ? (changed.heard ? ', so share leaves this clip out when another shows a change that can be seen' : '') : ', so share leaves this clip out'}.`);
     if (changed) for (const problem of problems) log(`  share won't put this clip in a pull request: ${problem}`);
     if (showing) log(`  What the original shows as it ends: ${Object.entries(showing).map(([kind, value]) => `its ${kind} is ${typeof value === 'number' ? `${value}, which original.json gives no name` : value}`).join('; ')}.`);
-    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(showing ? { shows: showing } : {}), ...(goalsHeld ? { reached: goalsHeld } : {}), unreached, changed: !!changed, functions: [...proven].sort((a, b) => a - b).map(i => hex(codeMap.functions[i].address)) };
+    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(showing ? { shows: showing } : {}), ...(goalsHeld ? { reached: goalsHeld } : {}), unreached, changed: !!changed, functions: [...proven].sort((a, b) => a - b).map(i => codeMap.functions[i].key) };
     }
   }
 }

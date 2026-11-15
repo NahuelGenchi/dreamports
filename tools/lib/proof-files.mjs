@@ -2,7 +2,9 @@
 // progress.json and port-map.json, in games/<game>/<language>/proof/ (src/lib/languages.mjs):
 // - original.json: the copy of the original the proof is measured on, { console, name, title, code, sha1 }, and for a game
 //   that chooses its own screen, `screen` (lib/screens.mjs)
-// - code-map.json: every function in that copy, its address and size, and nothing of its code
+// - code-map.json: every function in that copy, its address and size, and nothing of its code: those in the cartridge,
+//   those the game makes in its work RAM, by their address there and their first bytes, and where the game copies
+//   the cartridge's code to run it
 // - recordings/<name>.json: recorded play (recording.mjs)
 // - progress.json: what prove found, recording by recording, and the % it makes
 // - parts.json: the game's parts, each with the recording and frames that prove it once there are some, and its
@@ -80,22 +82,68 @@ export function readPartsFile(game) {
 /** The game's parts, as parts.json lists them, or none when there's no parts.json yet. */
 export const readParts = game => readPartsFile(game).parts ?? [];
 
-/** The code map, with each function as { address, size, name }, sorted by address; or null when there's none yet. */
+/** The code map, with each function as { key, address, size, name, bytes }, sorted by address, and `copies` [{ ram,
+ *  cartridge, size }]; or null when there's none yet. A function's key is how the proof files count it: its address,
+ *  as eight hexadecimal digits, and for one the game makes in its work RAM, a slash and its first 8 bytes, as 16 more,
+ *  `bytes`, since a game can put other code at the same address at another time. A copy is a stretch of the
+ *  cartridge's code the game copies into its work RAM to run there, which counts as the cartridge's functions. */
 export function readCodeMap(game) {
   const file = join(sharedProofFolder(game), 'code-map.json');
-  if (!existsSync(file)) return null;
-  const map = JSON.parse(readFileSync(file, 'utf8'));
-  const functions = map.functions.map(([address, size, name]) => ({ address: parseInt(address, 16), size, name }));
-  functions.sort((a, b) => a.address - b.address);
-  return { ...map, functions };
+  return existsSync(file) ? parseCodeMap(JSON.parse(readFileSync(file, 'utf8'))) : null;
 }
 
-/** Writes a code map, a function to a line. */
-export function writeCodeMap(game, { original, from, functions }) {
+/** A code map's JSON, read as readCodeMap gives it. */
+export function parseCodeMap(map) {
+  const functions = map.functions.map(([key, size, name]) => ({ key, address: parseInt(key, 16), size, name, ...(key.includes('/') ? { bytes: key.split('/')[1] } : {}) }));
+  functions.sort((a, b) => a.address - b.address || a.key.localeCompare(b.key));
+  const copies = (map.copies ?? []).map(([ram, cartridge, size]) => ({ ram: parseInt(ram, 16), cartridge: parseInt(cartridge, 16), size }));
+  return { ...map, functions, copies };
+}
+
+/** A function's key in the proof files: its address, and for one the game makes in its work RAM, its first bytes. */
+export const functionKey = f => hex(f.address) + (f.bytes ? `/${f.bytes}` : '');
+
+/** Writes a code map, a function to a line, and the copies after. */
+export function writeCodeMap(game, map) {
   mkdirSync(sharedProofFolder(game), { recursive: true });
-  const lines = functions.map(f => '    ' + JSON.stringify([hex(f.address), f.size, ...(f.name ? [f.name] : [])]));
-  writeFileSync(join(sharedProofFolder(game), 'code-map.json'),
-    `{\n  "original": ${JSON.stringify(original)},\n  "from": ${JSON.stringify(from)},\n  "functions": [\n${lines.join(',\n')}\n  ]\n}\n`);
+  writeFileSync(join(sharedProofFolder(game), 'code-map.json'), formatCodeMap(map));
+}
+
+/** A code map's text, as writeCodeMap writes it. */
+export function formatCodeMap({ original, from, functions, copies = [] }) {
+  const lines = functions.map(f => '    ' + JSON.stringify([functionKey(f), f.size, ...(f.name ? [f.name] : [])]));
+  const copied = copies.map(c => '    ' + JSON.stringify([hex(c.ram), hex(c.cartridge), c.size]));
+  return `{\n  "original": ${JSON.stringify(original)},\n  "from": ${JSON.stringify(from)},\n  "functions": [\n${lines.join(',\n')}\n  ]${copies.length ? `,\n  "copies": [\n${copied.join(',\n')}\n  ]` : ''}\n}\n`;
+}
+
+// 16 hexadecimal digits, the bytes in order, as two little-endian words
+const wordsOf = text => [0, 8].map(at => [0, 2, 4, 6].reduce((word, i) => word | parseInt(text.slice(at + i, at + i + 2), 16) << (i * 4), 0) >>> 0);
+/** 8 bytes as a key writes them. */
+export const bytesText = bytes => Array.from(bytes.subarray(0, 8), b => b.toString(16).toUpperCase().padStart(2, '0')).join('');
+
+/** A copy's bytes at a cartridge address, read from the file only when asked: the code map's copies are a Game Boy
+ *  Advance's, whose cartridge starts at 0x08000000, the only console whose code that runs the tools see yet. */
+export function cartridgeOf(path) {
+  let bytes = null;
+  return (address, count) => {
+    bytes ??= readFileSync(path);
+    return bytes.subarray(address - 0x08000000, address - 0x08000000 + count);
+  };
+}
+
+/** Where the code map's functions run, for the program that plays the original (lib/run-reference.mjs): each at its
+ *  address, those the game makes in RAM only with their bytes there, and each cartridge function a copy holds where the
+ *  copy runs, with its bytes, so it counts when the copy is there. `cartridge(address, bytes)` reads the copy's bytes. */
+export function watchesOf(codeMap, cartridge) {
+  const watches = codeMap.functions.map((f, index) => ({ address: f.address, size: f.size, index, ...(f.bytes ? { bytes: wordsOf(f.bytes) } : {}) }));
+  for (const copy of codeMap.copies ?? []) {
+    codeMap.functions.forEach((f, index) => {
+      if (f.bytes || f.address < copy.cartridge || f.address >= copy.cartridge + copy.size) return;
+      const at = f.address - copy.cartridge;
+      watches.push({ address: copy.ram + at, size: Math.min(f.size, copy.size - at), index, bytes: wordsOf(bytesText(cartridge(f.address, 8))) });
+    });
+  }
+  return watches;
 }
 
 /** What prove found so far, or a new record. */

@@ -79,7 +79,9 @@ export function readOriginal(text) {
   return good ? found : null;
 }
 
-const CODE_MAP = /^\{\s*"original":\s*"([0-9a-f]{40})",\s*"from":\s*"([A-Za-z0-9 _.,:()/'-]{1,200})",\s*"functions":\s*\[\s*(?:\["[0-9A-F]{8}",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\]\s*\}\s*$/;
+// its functions, each its address, with a function the game makes in its work RAM its first 8 bytes after a slash, and
+// its size, and the stretches of the cartridge the game copies into its work RAM, each where, from where and how long
+const CODE_MAP = /^\{\s*"original":\s*"([0-9a-f]{40})",\s*"from":\s*"([A-Za-z0-9 _.,:()/'-]{1,200})",\s*"functions":\s*\[\s*(?:\["[0-9A-F]{8}(?:\/[0-9A-F]{16})?",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\](?:,\s*"copies":\s*\[\s*(?:\["[0-9A-F]{8}",\s*"[0-9A-F]{8}",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\])?\s*\}\s*$/;
 
 /** The code map's source, when the code map has only functions in order, of this copy, where its console's code is, or else null. */
 export function readCodeMap(text, sha1, console = 'gba') {
@@ -87,7 +89,9 @@ export function readCodeMap(text, sha1, console = 'gba') {
   if (!found || found[1] !== sha1) return null;
   const { functions } = JSON.parse(text);
   const inOrder = functions.every(([address], i) => i === 0 || functions[i - 1][0] < address);
-  return inOrder && functions.every(([address]) => headerOf(console).address.test(address)) ? found[2] : null;
+  // a function in the work RAM, with its bytes, is a Game Boy Advance's (tools/codemap.mjs)
+  const where = address => (address.includes('/') ? console === 'gba' && /^0[23]/.test(address) : headerOf(console).address.test(address));
+  return inOrder && functions.every(([address]) => where(address)) ? found[2] : null;
 }
 
 /** The sizes a game's capture can be: twice a width and a height its screen has, its console's (kit/consoles.js) or those its original.json says. */

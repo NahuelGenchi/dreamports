@@ -1,9 +1,11 @@
 {
   "original": "30db467effa5014806d42db57e2299398a51355b",
-  "from": "Found in the copy by the proof tools (tools/gba/functions.mjs)",
+  "from": "Found in the copy by the proof tools (tools/gba/functions.mjs), and the code the game's recordings run in the work RAM, found by playing them in the original",
   "functions": [
+    ["03007DA0/9342F8D100000000",34],
     ["08000000",4],
-    ["080000C0",264],
+    ["080000C0",60],
+    ["080000FC",204],
     ["080001CC",32],
     ["080001EC",152],
     ["08000284",124],
@@ -4720,5 +4722,17 @@
     ["080CE04C",2],
     ["080CE050",48],
     ["080CE080",48]
+  ],
+  "copies": [
+    ["03000000","080B9544",932],
+    ["03001EF0","080000FC",208],
+    ["03007D68","080C6B34",46],
+    ["03007D70","080C6B34",46],
+    ["03007D80","080C6A74",34],
+    ["03007DC4","080C6A74",34],
+    ["03007DD0","080B8920",4],
+    ["03007DD8","080B8920",4],
+    ["03007E24","080B8920",4],
+    ["03007E2C","080B8920",4]
   ]
 }
