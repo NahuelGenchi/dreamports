@@ -9,8 +9,9 @@
 const uint8_t *garden_at(uint32_t address);
 /** The garden's next random number, 0 to 32767 (0x02001114). */
 int garden_random(void);
-/** The buttons newly pressed this frame, and whether the game's language is other than Japanese. */
+/** The buttons newly pressed this frame, those held, and whether the game's language is other than Japanese. */
 uint16_t garden_pressed(void);
+uint16_t garden_held(void);
 int garden_language(void);
 /** Rings won, to the garden's count, which holds 99,999. */
 void garden_add_rings(int rings);
@@ -27,7 +28,8 @@ void garden_not_in_c(void);
 void garden_unpack_vram(uint32_t from, uint32_t vramAddress);
 void garden_unpack_halfwords(uint32_t from, uint16_t *to, int count);
 
-/** The left icon's game (gardenrps.c), from its first frame. */
+/** The left icon's game (gardenrps.c) and the right one's (gardencards.c), from their first frames. */
 void garden_rps(void);
+void garden_cards(void);
 
 #endif
