@@ -28,6 +28,9 @@ interface Props {
 const { game, open = false, github } = Astro.props;
 const { data } = game;
 const view = makeView(data, github);
+// the prompt as shown, in pieces with a place to break between them, so a narrow line breaks its address after a
+// slash ("dreamports.net/ code") rather than inside a word. What's copied is the prompt itself, from data-copy.
+const promptParts = view.prompt.split(/(?<=[^/]\/)(?!\/)/);
 const progress = await dreamportView(data);
 // every version's progress, the one Play opens first (C when it has one), and the others behind Other languages
 const all = [progress, ...progress.versions];
@@ -73,13 +76,13 @@ const Heading = open ? 'h2' : 'h3';
           up, makes a free piece of the game and sends it for you.
         </p>
         <button type="button" class="mk-copy" data-copy={view.prompt} aria-label={`Copy: ${view.prompt}`} autofocus>
-          {view.prompt}
+          {promptParts.map((part, i) => <>{i > 0 && <wbr />}{part}</>)}
           <svg class="mk-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path class="i-copy" fill-rule="evenodd" d="M5 1h10v10h-2V3H5zM1 5h10v10H1zM3 7v6h6V7z" />
             <path class="i-done" d="M2 7h2v2H2zM4 9h2v2H4zM6 11h2v2H6zM8 9h2v2H8zM10 7h2v2h-2zM12 5h2v2h-2zM14 3h2v2h-2z" />
           </svg>
         </button>
-        <noscript><p class="mk-line">{view.prompt}</p></noscript>
+        <noscript><p class="mk-line">{promptParts.map((part, i) => <>{i > 0 && <wbr />}{part}</>)}</p></noscript>
         <p class="mk-talk">
           {view.free && `${view.free.line} `}<a href={view.talk}>Talk about it on GitHub ↗</a>
         </p>

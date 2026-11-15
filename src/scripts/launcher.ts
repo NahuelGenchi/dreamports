@@ -1195,7 +1195,12 @@ function start(launcher: HTMLElement) {
     if (dlg === aboutCard) return aboutLinks.find((a) => a.getAttribute('aria-current') === 'true') ?? null;
     const box = dlg.querySelector<HTMLInputElement>('.gate-form .check input');
     if (box) return box.checked ? $('.gate-buttons .btn', dlg) : box;
-    return $$('[autofocus]', dlg).find((el) => !el.closest('[hidden]')) ?? null;
+    const marked = $$('[autofocus]', dlg).find((el) => !el.closest('[hidden]')) ?? null;
+    // on a touch screen nothing needs focus to be pressed, and iOS scrolls the side a focused control stands in until
+    // the control shows, which opened Make's page held sideways part way down its text (#1323): the side itself
+    // takes focus there, at its top
+    if (root.dataset.input === 'touch') return marked?.closest<HTMLElement>('.ins-text') ?? marked;
+    return marked;
   }
 
   interface CloseOptions {
