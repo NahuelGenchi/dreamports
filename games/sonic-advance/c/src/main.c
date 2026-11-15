@@ -38,4 +38,12 @@ void game_start(void) {
 }
 
 // what the original does each frame, writing the video hardware's registers, VRAM, colours and sprites as it does
-void game_step(uint16_t keys) { front_step(keys); sound_late_step(); }
+// From the main menu's Tiny Chao Garden on, the garden's program runs instead (garden.c).
+void game_step(uint16_t keys) {
+  if (garden_running()) {
+    garden_step(keys);
+    return;
+  }
+  front_step(keys);
+  sound_late_step();
+}
