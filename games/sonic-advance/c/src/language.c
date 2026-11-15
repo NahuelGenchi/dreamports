@@ -4,9 +4,12 @@
 // bottom, all of it in the language the cursor is on. Once it has faded in, Up or Down moves the cursor to the other
 // one. A or Start keeps the choice in the save; the screen fades out to black over 32 frames, the music stops, the save
 // is written (14 frames in which nothing runs) and the SEGA logo starts. At power-on the screen leaves its sixth sprite
-// (A OK) out, though it loads it. The Options menu's LANGUAGE, which opens it too, isn't in C yet.
+// (A OK) out, though it loads it. The Options menu's LANGUAGE opens it too: there B goes back too, leaving the save as it
+// was, and once black the Options menu opens again.
 
 #include "sa.h"
+
+void create_options_menu(void);
 
 typedef struct { uint16_t anims[2]; uint8_t variant, tiles; int16_t x, y; } LangSprite;
 // the sprites: by the language (0 Japanese, 1 English) their animation, then their variant, their tiles and where
@@ -145,7 +148,10 @@ static void fade_out(Task *t) {
   e.bldCnt = 0;
   e.bldY = 0;
   destroy_task(t);
-  if (!screen.at) return;   // the Options menu isn't in C yet
+  if (!screen.at) {
+    create_options_menu();
+    return;
+  }
   // the sound engine is off while the save is written (m4aSoundVSyncOff), so its frames stop with the screen's
   stop_all_songs();
   sound_vsync_off();
