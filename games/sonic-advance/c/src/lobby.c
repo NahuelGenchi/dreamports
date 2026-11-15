@@ -1,25 +1,34 @@
-// The VS lobby, translated from front/lobby.js (SAT-R's src/game/sa1/multiplayer/chao_message.c:
-// CreateMultiplayerResultsScreen, with the modes that need no round before them): once the GBAs are linked, a strip for
-// each player slides in from alternate sides, out of white, with a Chao and a message for how the player stands against
-// the others, and the player's name. Mode 0, the lobby, plays its song, holds the strips for 240 frames (a sound 45 frames
-// in) and slides them out, and the game choice follows (gameselect.c). Mode 2, a link that was closed, does the same and
-// goes to the title screen.
+// The VS lobby and a round's results, translated from front/lobby.js and engine/mpresults.js (SAT-R's
+// src/game/sa1/multiplayer/chao_message.c: CreateMultiplayerResultsScreen): a strip for each player slides in from
+// alternate sides, out of white, with a Chao and a message, and the player's name. Mode 0, the lobby, once the GBAs are
+// linked, shows how each player stands against the others, plays its song, holds the strips for 240 frames (a sound 45
+// frames in) and slides them out, and the game choice follows (gameselect.c). Mode 2, a link that was closed, does the same
+// and goes to the title screen. Mode 1, after a round, shows how each player did: making it counts the round in the save's
+// VS record, it plays the winner's, the loser's or the draw music, and it holds until a player presses A or for 0x707
+// frames, every GBA following the first to press it (a packet of kind 0xB0); then the save is written (14 frames with the
+// interrupts off) and the continue screen follows (vscontinue.c).
 //
 // Each Chao and message is a task of its own, and the names another, all children of the screen's task.
 
 #include "sa.h"
+#include "chaohunt.h"
 
 // the USA copy's numbers: the Chao and the messages in Japanese and English, the player rows' tilemap, and the colours
 // the names take from the UI graphics
 enum { ANIM_AVATAR = 885, TILEMAP = 88, UIGFX_FONT = 0, UIGFX_FONT_COLOURS = 60 };
 static const uint16_t ANIM_MESSAGE[2] = { 897, 883 };
 enum { STRIP = 0x28, BACKGROUND_COLOUR = 0x7B60, HOLD = 240, SOUND_AT = 0x2D, SLIDE = 0x10 };
+// a round's results: the hold, the packet the first to press A sends, the music and the sound for a win, a loss or a draw
+enum { RESULTS_HOLD = 0x707, KIND_DONE = 0xB0, MAX_SCORE = 99 };
+enum { WIN, LOSS, DRAW, NONE = -1 };
+static const int RESULT_MUSIC[3] = { 7, 8, 9 }, RESULT_SOUND[3] = { 157, 158, 159 };
 enum { NAME_X = 10, NAME_Y = 0x14, NAME_STEP = 8, NAME_CHARS = 6 };
 #define WIN(a, b) ((uint16_t)(((a) << 8) | (b)))
 
 typedef struct { Sprite s; int x, y, i; } Mover;
 static struct {
   int mode, count, top, frame;   // unk54
+  int result;                    // unk56: in mode 1, this GBA's player's result
   int16_t slide[PLAYERS_MAX];    // unk50, unk48, unk52
   uint8_t variants[PLAYERS_MAX];
   Mover movers[PLAYERS_MAX * 2];
@@ -48,9 +57,44 @@ static void variants_of(void) {
   screen.variants[id] = better > worse ? 1 : better < worse ? 6 : 0;
 }
 
+static void count_up(uint8_t *at) { if (*at < MAX_SCORE) (*at)++; }
+
+// sub_803AB60, after a Chao Hunt round (mode 1): each strip's variants, this player's result, and the round in the VS record.
+// Two players read as a win, a loss or a draw each; more, by how many won
+static void round_outcome(void) {
+  const int *ranks = hunt.ranks;
+  int id = link_id(), n = screen.count, foes[PLAYERS_MAX] = { NONE, NONE, NONE, NONE };
+  if (n == 2) {
+    for (int i = 0; i < n; i++) screen.variants[i] = (uint8_t)(ranks[i] == 0 ? 2 : ranks[i] == 4 ? 4 : 3);
+    screen.result = ranks[id] == 0 ? WIN : ranks[id] == 4 ? DRAW : LOSS;
+    for (int i = 0; i < n; i++) {
+      if (i == id) continue;
+      foes[i] = ranks[i] == 0 ? (ranks[id] == 0 ? DRAW : LOSS) : ranks[i] == 4 ? DRAW : ranks[id] == 0 ? WIN : DRAW;
+    }
+  } else {
+    int winners = 0;
+    for (int i = 0; i < n; i++) if (ranks[i] == 0) winners++;
+    for (int i = 0; i < n; i++)
+      screen.variants[i] = (uint8_t)(winners == 1 ? (ranks[i] == 0 ? 2 : 3) : winners == 0 ? 4 : ranks[i] == 0 ? 4 : 3);
+    if (winners == 1) {
+      screen.result = ranks[id] == 0 ? WIN : LOSS;
+      for (int i = 0; i < n; i++) if (i != id) foes[i] = ranks[i] == 0 ? LOSS : ranks[id] == 0 ? WIN : NONE;
+    } else if (winners == 0) {
+      screen.result = DRAW;
+      for (int i = 0; i < n; i++) if (i != id) foes[i] = DRAW;
+    } else screen.result = ranks[id] == 0 ? DRAW : LOSS;
+  }
+  // RecordOwnMultiplayerResult (0x425 to 0x427) and RecordMultiplayerResult, at most 99 of each
+  count_up(&save.bytes[0x425 + screen.result]);
+  for (int i = 0; i < n; i++) {
+    const uint8_t *record = foes[i] == NONE ? NULL : vs_record(i);
+    if (record) count_up((uint8_t *)record + 12 + foes[i]);
+  }
+}
+
 static void init(Task *t);
 
-/** CreateMultiplayerResultsScreen: `mode` 0 for the lobby, 2 for a closed link. */
+/** CreateMultiplayerResultsScreen: `mode` 0 for the lobby, 1 after a round, 2 for a closed link. */
 void create_lobby(int mode) {
   int connections = vs_connections(), count = 0;
   vs_reset_missing();
@@ -60,7 +104,7 @@ void create_lobby(int mode) {
   screen.count = count;
   screen.top = count == 2 ? 0x28 : count == 3 ? 0x14 : 0;
   screen.slide[0] = -240; screen.slide[1] = 240; screen.slide[2] = -240; screen.slide[3] = 240;
-  variants_of();
+  if (mode == 1) round_outcome(); else variants_of();
   create_task(init, &screen, 0x2000, 0, NULL);
   e.dispCnt = 0x3140;
   e.bgCnt[0] = 0x4803;
@@ -80,8 +124,11 @@ void create_lobby(int mode) {
   draw_background(&screen.bg);
   e.bgPalette[0] = BACKGROUND_COLOUR;
   e.flags |= FLAGS_UPDATE_BG_PALETTES;
-  play_song(mode == 0 ? SONG_VS_LOBBY : SONG_CONNECTION_CLOSED);
+  play_song(mode == 0 ? SONG_VS_LOBBY : mode == 1 ? RESULT_MUSIC[screen.result] : SONG_CONNECTION_CLOSED);
 }
+
+/** The round's results, as its white completes. */
+void create_vs_results(void) { create_lobby(1); }
 
 // LINK_HEARTBEAT: a GBA of the round not heard from for too long is a lost link
 static int lost(void) { return vs_link_lost(); }
@@ -198,14 +245,26 @@ static void slide_in(Task *t) {
   show_strips();
 }
 
-// sub_803B944: the strips stay for 240 frames
+// sub_803B944: the strips stay for 240 frames, or after a round until a player presses A
 static void hold(Task *t) {
   if (lost()) return;
-  if (++screen.frame >= HOLD) {
-    t->main = slide_out;
-    screen.frame = 0;
+  if (screen.mode != 1) {
+    if (++screen.frame >= HOLD) {
+      t->main = slide_out;
+      screen.frame = 0;
+    }
+    if (screen.frame == SOUND_AT) play_song(screen.mode == 0 ? SONG_VS_LOBBY_HELLO : SONG_VS_LOBBY_CLOSED);
+  } else {
+    ++screen.frame;
+    int seen = 0;
+    for (int i = 0; i < PLAYERS_MAX; i++) if (packet_kind(link_slot(i)) == KIND_DONE) seen = 1;
+    if ((e.pressed & KEY_A) || screen.frame > RESULTS_HOLD || seen) {
+      t->main = slide_out;
+      screen.frame = 0;
+      if (!seen) { uint8_t *send = link_send(); send[0] = KIND_DONE; send[1] = 0; }
+    }
+    if (screen.frame == SOUND_AT) play_song(RESULT_SOUND[screen.result]);
   }
-  if (screen.frame == SOUND_AT) play_song(screen.mode == 0 ? SONG_VS_LOBBY_HELLO : SONG_VS_LOBBY_CLOSED);
   show_strips();
 }
 
@@ -231,6 +290,11 @@ static void slide_out(Task *t) {
   show_strips();
 }
 
+static void after_write(void) {
+  sound_vsync_on();
+  create_vs_continue();
+}
+
 // sub_803BC64: white again, and the screen after
 static void fade_out(Task *t) {
   (void)t;
@@ -242,7 +306,13 @@ static void fade_out(Task *t) {
   destroy_tasks(0, 0xFFFF);
   clear_queues();
   if (screen.mode == 0) create_game_select();
-  else {
+  else if (screen.mode == 1) {
+    // the save is written with the sound engine and the interrupts off, the white holding for its frames
+    stop_all_songs();
+    sound_vsync_off();
+    if (save_write()) engine_stall(WRITE_FRAMES, after_write);
+    else after_write();
+  } else {
     vs_leave_link();
     create_title_screen(1);
   }

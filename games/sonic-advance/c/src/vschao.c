@@ -3,7 +3,7 @@
 // first GBA, the parent, picks the stage with Up and Down and A, and the others wait with a "please wait" text in the
 // middle and follow the stage it shows. Once the parent has chosen, every GBA answers, and the parent, hearing all of
 // them, sends the stage and the places of the Chao (three of the stage's eight, different from each other) and the round
-// starts, which isn't in C yet (front.c).
+// starts (chaohunt.c).
 //
 // The GBAs tell each other over the link: 0x50 with the stage they show, 0x51 once chosen (the parent) or once they know
 // (the others), and 0x52 from the parent, with the stage and the Chao's places.

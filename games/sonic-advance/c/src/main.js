@@ -5,8 +5,8 @@
 // `?vs=N` starts the game as N linked GBAs, 2 to 4, each on its own screen from power-on, as the JavaScript version's
 // front/vsfront.js does: every GBA is a WebAssembly of its own, all are stepped together a frame at a time, and the page is
 // the link cable between them (link.c). The first two players share the keyboard, the others play with controllers, and
-// only the first GBA's sound is heard. Once the VS menus have chosen the round, which isn't in C yet, the screens go black,
-// as the original's are while its stage loads. It names no dreamportsProof.neverInPlay: the GBAs start from power-on,
+// only the first GBA's sound is heard. A round on a stage that isn't in C yet (Forest Chao Garden is) leaves the screens
+// black, as the original's are while its stage loads. It names no dreamportsProof.neverInPlay: the GBAs start from power-on,
 // and every frame of the menus is one a player sees.
 
 import '../../../../kit/gba/canvas.js';
@@ -164,7 +164,7 @@ async function start() {
       for (const p of shown) {
         p.game.video.drawFrame(p.pixels);
         p.out.putImageData(p.image, 0, 0);
-        // the round isn't in C yet: black, as the original's screens are while its stage loads
+        // a round on a stage that isn't in C yet: black, as the original's screens are while its stage loads
         if (chosen) { p.out.fillStyle = '#000'; p.out.fillRect(0, 0, SCREEN_W, SCREEN_H); }
       }
     }
