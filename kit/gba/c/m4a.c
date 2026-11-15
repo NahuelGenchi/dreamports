@@ -1013,6 +1013,14 @@ static int mix(M4a *m) {
   return base;
 }
 
+int m4a_missed_frame(M4a *m) {
+  if (m->locked) return 0;
+  // the V-blank's bookkeeping alone: the DMA goes on round the samples, and plays what it holds there from before
+  int dc = u8(m->dmaCounter - 1);
+  m->dmaCounter = s8(dc) > 0 ? dc : m->framesPerDma;
+  return (m->dmaCounter <= 1 ? 0 : m->framesPerDma - (m->dmaCounter - 1)) * m->samples;
+}
+
 int m4a_frame(M4a *m) {
   if (m->locked) return 0;
   int dc = u8(m->dmaCounter - 1);

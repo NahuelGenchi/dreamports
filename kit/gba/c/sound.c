@@ -96,6 +96,7 @@ void gba_sound_apply(M4a *m, const SoundCall *c) {
     case OP_DMA_AT: m->layout.fifoAt = c->a; m->layout.fifoCost = c->b; m->layout.hblankAt = c->c; break;
     case OP_HBLANK_DMA: m->hblank = c->a; break;
     case OP_LATE: m->late = c->a; break;
+    case OP_MISSED: m->missed = c->a; break;
     // frames that played before a start point, each the engine's frame and then the chip's, as the clock runs them,
     // with what they mixed left unheard
     case OP_PLAYED_FOR: for (int i = 0; i < c->a; i++) { m4a_frame(m); apu_run(m->io, FRAME_CYCLES); } break;
@@ -303,6 +304,7 @@ void gba_sound_dma_at(int at, int cost, int hblank) {
 }
 void gba_sound_hblank_dma(int cycles) { take(OP_HBLANK_DMA, cycles, 0, 0, 0); }
 void gba_sound_late(int cycles) { take(OP_LATE, cycles, 0, 0, 0); }
+void gba_sound_missed(int frames) { take(OP_MISSED, frames, 0, 0, 0); }
 void gba_sound_fade_in(int player, int speed) { take(OP_FADE_IN, player, speed, 0, 0); }
 void gba_sound_fade_out(int player, int speed) { take(OP_FADE_OUT, player, speed, 0, 0); }
 void gba_sound_tempo(int tempo) { take(OP_TEMPO, 0, tempo, 0, 0); }
@@ -321,6 +323,15 @@ static void frame(void) {
   queued = 0;
   int n = engine.samples;
   if (engine.locked) { __builtin_memset(playing, 0, 2 * n); __builtin_memset(pending, 0, 2 * n); return; }
+  // a frame SoundMain misses: the engine stands still, the chip goes on with its last notes, and the DMA goes on round
+  // the DirectSound samples, playing those of some frames before again
+  if (engine.missed > 0) {
+    engine.missed--;
+    int again = m4a_missed_frame(&engine);
+    __builtin_memcpy(pending, engine.pcm + again, n);
+    __builtin_memcpy(pending + n, engine.pcm + PCM_HALF + again, n);
+    return;
+  }
   int base = m4a_frame(&engine);
   __builtin_memcpy(pending, engine.pcm + base, n);
   __builtin_memcpy(pending + n, engine.pcm + PCM_HALF + base, n);
