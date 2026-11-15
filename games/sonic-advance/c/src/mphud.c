@@ -97,3 +97,94 @@ void mp_indicators_run(void) {
 }
 
 void mp_indicators_stop(void) { memset(indicators, 0, sizeof indicators); }
+
+// (the USA copy's numbers: the digits are 905, where the decompilation's copy has 907)
+// The HUD (CreateChaoHuntHUD, Task_ChaoHuntHUD), made as the title card ends: the clock, which blinks red in its last minute,
+// and each player's Chao count over a backdrop in their character's colours
+
+enum { ANIM_COUNTER_BACKDROP = 606, ANIM_TIMER_DIGITS = 905, SE_TIMER = 139, MINUTE = 3600 };
+
+// the clock's hundredths for each of a second's 60 frames, as two decimal digits (gUnknown_080E0234)
+static const uint8_t HUNDREDTHS[60] = {
+  0, 2, 3, 5, 7, 8, 16, 18, 19, 21, 23, 24, 32, 34, 35, 37, 39, 40, 48, 50, 51, 53, 55, 56, 64, 66, 67, 69, 71, 72,
+  80, 82, 83, 85, 87, 88, 96, 98, 99, 101, 103, 104, 112, 114, 115, 117, 119, 120, 128, 130, 131, 133, 135, 136,
+  144, 146, 147, 149, 151, 152,
+};
+
+static struct { int made; Sprite backdrop, white[11], red[11]; } hud;
+
+// Base10DigitsToHexNibbles
+static int bcd(int n) {
+  int out = 0, shift = 0;
+  while (n > 0 && shift < 32) { out |= (n % 10) << shift; n /= 10; shift += 4; }
+  return out;
+}
+
+static void hud_sprite(Sprite *s, uint32_t dest, uint16_t oamFlags, uint16_t anim, int variant, uint32_t frameFlags) {
+  sprite_init(s);
+  s->x = 0; s->y = 0;
+  s->graphics.dest = dest;
+  s->oamFlags = oamFlags;
+  s->graphics.size = 0;
+  s->graphics.anim = anim;
+  s->variant = (uint8_t)variant;
+  s->animCursor = 0;
+  s->qAnimDelay = 0;
+  s->prevVariant = 0xFF;
+  s->animSpeed = 0x10;
+  s->palId = 0;
+  s->frameFlags = frameFlags;
+  update_sprite(s, 0);
+}
+
+void mp_hud_create(void) {
+  memset(&hud, 0, sizeof hud);
+  hud.made = 1;
+  hud_sprite(&hud.backdrop, vram_malloc(16), 5 << 6, ANIM_COUNTER_BACKDROP, 0, SPRITE_KEEP_PALETTE);
+  hud.backdrop.y = 8;
+  uint32_t white = 0, red = 0;
+  for (int i = 0; i < 11; i++) {
+    if (i == 0) white = vram_malloc(22);
+    hud_sprite(&hud.white[i], white + (uint32_t)i * 64, 0x100, ANIM_TIMER_DIGITS, i, 0);
+    if (i == 0) red = vram_malloc(22);
+    hud_sprite(&hud.red[i], red + (uint32_t)i * 64, 0x100, ANIM_TIMER_DIGITS, i + 11, 0);
+  }
+}
+
+static void show_at(Sprite *s, int x, int y) { s->x = (int16_t)x; s->y = (int16_t)y; display_sprite(s); }
+
+static void hud_task(void) {
+  int t = act.courseTime;
+  Sprite *set = t < MINUTE && (t & 2) ? hud.red : hud.white;
+  if (!act.clockStopped && t < MINUTE && t % 60 == 0) play_song(SE_TIMER);
+  show_at(&set[10], 24, 32);
+  show_at(&set[10], 48, 32);
+  int seconds = t / 60, hs = HUNDREDTHS[t - seconds * 60];
+  show_at(&set[hs >> 4], 56, 32);
+  show_at(&set[hs & 0xF], 64, 32);
+  int minutes = seconds / 60, ss = bcd(seconds - minutes * 60);
+  show_at(&set[(ss >> 4) & 0xF], 32, 32);
+  show_at(&set[ss & 0xF], 40, 32);
+  show_at(&set[bcd(minutes - minutes / 60 * 60) & 0xF], 16, 32);
+  int connections = vs_connections();
+  for (int i = 0; i < PLAYERS_MAX; i++) {
+    if (!(connections >> i & 1)) break;
+    Sprite *b = &hud.backdrop;
+    b->x = (int16_t)(i * 20 + 8); b->y = 8;
+    b->palId = (uint8_t)(ctx.vsLink.characters[i] & 3);
+    display_sprite(b);
+    int n = bcd(hunt.charRings[i]);
+    if (n >= 0x100) {
+      show_at(&hud.white[(n >> 8) & 0xF], b->x + 3, 14);
+      show_at(&hud.white[(n >> 4) & 0xF], b->x + 11, 14);
+      show_at(&hud.white[n & 0xF], b->x + 19, 14);
+    } else if (n >= 0x10) {
+      show_at(&hud.white[(n >> 4) & 0xF], b->x + 7, 14);
+      show_at(&hud.white[n & 0xF], b->x + 15, 14);
+    } else show_at(&hud.white[n & 0xF], b->x + 11, 14);
+  }
+}
+
+/** The HUD's task (0x2000), made after the players' and so run after them. */
+void mp_hud_run(void) { if (hud.made) hud_task(); }
+void mp_hud_stop(void) { memset(&hud, 0, sizeof hud); }

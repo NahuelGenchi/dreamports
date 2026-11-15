@@ -366,7 +366,10 @@ static void hud_update(int draw) {
 // --- the title card (titlecard.c) ------------------------------------------------------------------------------------
 static void card_update(int pressed) {
   if (act.cardDone) return;
-  if (!titlecard_run(pressed)) act.clockStopped = 0;
+  if (!titlecard_run(pressed)) {
+    act.clockStopped = 0;
+    if (chaohunt_active()) chaohunt_card_end();
+  }
 }
 
 // --- the frame (engine/game.js) ----------------------------------------------------------------------------------
@@ -936,6 +939,7 @@ static void act_frame(void) {
     // earlier this frame too
     clear_oam();
   }
+  if (act.cardDone && !act.hud.active && act.started && chaohunt_active()) act.hud.active = 1;
   if (act.cardDone && !act.hud.active && act.started) {
     hud_load();
     hud_begin();
@@ -975,7 +979,8 @@ static void act_frame(void) {
   int cardShows = !act.cardDone;
   // a round's players (0x2000) run just before the card
   if (chaohunt_active()) mp_players_run();
-  if (cardShows) card_update((e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
+  // in a round nobody can cut the card short
+  if (cardShows) card_update(!chaohunt_active() && (e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
   // the results' task (0x2100) and its pieces' (0x2120); the frame they end, the next act takes over
   if (time_attack_result_active() && !time_attack_result_run()) { go_to_next_level(); return; }
   if (results_active() && !results_run()) {
@@ -984,7 +989,7 @@ static void act_frame(void) {
   }
   // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180), and the objects' tasks from
   // its priority after it, so an icicle (0x2200) that hurts Sonic takes his rings after the HUD has shown them
-  if (act.cardDone && !act.hud.gone) hud_update(1);
+  if (act.cardDone && !act.hud.gone && !chaohunt_active()) hud_update(1);
   if (objectsRun) objects_run_after_hud();
   PlayerInput in = {
     .left = (e.input & KEY_LEFT) != 0, .right = (e.input & KEY_RIGHT) != 0,
@@ -994,6 +999,9 @@ static void act_frame(void) {
   };
   // the title card holds Sonic with jump and attack held, never pressed, and ignores the pad
   if (!act.cardDone) { in.left = in.right = in.up = in.down = 0; in.jump = in.attack = 1; }
+  // in a round, on the stage's first frame the camera's spectator target is still the first GBA, so every other GBA's
+  // player reads no buttons (Player_HandleInputs), and the card's hold keeps it so: their idle count runs from the start
+  if (!act.cardDone && chaohunt_active() && hunt.id != 0) in.jump = in.attack = 0;
   // the buttons held on the card's last frame, when Sonic takes the controls, aren't presses
   if (cardShows) in.jumpPressed = in.attackPressed = 0;
   // the start point's first frame reads the right and A the original has held there, never pressed
@@ -1056,7 +1064,7 @@ static void act_frame(void) {
   // in the single-player game Start opens the pause menu from when the title card ends until a life is lost or the
   // results start. Its task comes last among the act's, so it runs this frame only after the water's, which has its
   // priority; otherwise from the next frame
-  if (act.cardDone && !act.noPause && (e.pressed & KEY_START)) pause_menu_create(leave_for_lobby, !water_runs());
+  if (act.cardDone && !act.noPause && !chaohunt_active() && (e.pressed & KEY_START)) pause_menu_create(leave_for_lobby, !water_runs());
   act.player.wasInverted = act.player.inverted;
   act.partner.wasInverted = act.partner.inverted;
   if (!act.clockStopped) {
@@ -1066,8 +1074,12 @@ static void act_frame(void) {
         // time up stops the clock (STAGE_FLAG__ACT_START), so this happens once
         act.courseTime = 0;
         act.clockStopped = 1;
-        if (act.stage.level == LEVEL_EGG_ROCKET) boss_shake(0x800, 8, 16, -1, SHAKE_VERTICAL | SHAKE_HORIZONTAL | SHAKE_RANDOM);
-        act.player.dead = 1;
+        // a round's clock ends the round (CreateMultiplayerFinishTransition)
+        if (chaohunt_active()) chaohunt_finish();
+        else {
+          if (act.stage.level == LEVEL_EGG_ROCKET) boss_shake(0x800, 8, 16, -1, SHAKE_VERTICAL | SHAKE_HORIZONTAL | SHAKE_RANDOM);
+          act.player.dead = 1;
+        }
       }
     } else if (++act.courseTime > MAX_COURSE_TIME) {
       // past 10:00 the clock stops, and with the time limit on, or in Time Attack whatever it is, it's a time up: his

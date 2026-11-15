@@ -44,6 +44,20 @@ void chaohunt_setup(void) {
     if (i != hunt.id) mp_indicator_create(i);
   }
   hunt.itemEffect = 0x80;
+  // three minutes on a clock running down (GameStageStart)
+  act.courseTime = 3 * 3600;
+  act.timerReversed = 1;
+}
+
+void chaohunt_card_end(void) {
+  for (int i = 0; i < PLAYERS_MAX; i++) mpPlayers[i].state &= ~2u;
+  act.player.invulnerable = 120;
+  hunt.itemEffect &= ~0x80;
+  mp_hud_create();
+}
+
+void chaohunt_finish(void) {
+  hunt.over = 1;
 }
 
 /** The VS menus have chosen the round: Chao Hunt's `level`, with the Chao at place `chao`. */

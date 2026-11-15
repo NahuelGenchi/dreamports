@@ -13,6 +13,7 @@ typedef struct {
   int itemEffect;  // gPlayer.itemEffect: 0x80 while the title card holds him (teleporting), 0x20 invisible, 0x40 confused
   int charRings[PLAYERS_MAX];   // gMultiplayerCharRings: the Chao each player holds
   int ranks[PLAYERS_MAX];       // gMultiplayerRanks: each player's result, -1 while the round runs
+  int over;                     // the clock has run out
 } Round;
 
 // a player as the round sees it (MultiplayerPlayer)
@@ -43,6 +44,14 @@ int mp_next_matrix(void);
 void mp_indicator_create(int id);
 void mp_indicators_run(void);
 void mp_indicators_stop(void);
+// the HUD, made as the card ends (mphud.c)
+void mp_hud_create(void);
+void mp_hud_run(void);
+void mp_hud_stop(void);
+/** The title card's end: the players can be touched, Sonic blinks for two seconds, and the HUD appears. */
+void chaohunt_card_end(void);
+/** The clock has run out: the round is over (CreateMultiplayerFinishTransition). */
+void chaohunt_finish(void);
 
 extern Round hunt;
 
