@@ -1,0 +1,74 @@
+{
+  "about": "As tiny-chao-garden, from power-on with nothing saved to Tiny Chao Garden, and then left alone for three minutes more. The egg swells and stretches, breaks in two, and its halves blink away as the new Chao greets the garden, its name, CHILD and its bars on the panel. Left to itself it walks about, turning back from the edges and the pond, with a footstep's sound, and now and then sits, lies down or cries, its mood and belly going down with time, while plants come up in the grass. The recording stops as the Chao walks.",
+  "frames": 14400,
+  "clip": {
+    "at": 3540,
+    "frames": 300
+  },
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      150,
+      [
+        "A"
+      ]
+    ],
+    [
+      156,
+      []
+    ],
+    [
+      950,
+      [
+        "START"
+      ]
+    ],
+    [
+      956,
+      []
+    ],
+    [
+      1300,
+      [
+        "START"
+      ]
+    ],
+    [
+      1306,
+      []
+    ],
+    [
+      1550,
+      [
+        "START"
+      ]
+    ],
+    [
+      1556,
+      []
+    ],
+    [
+      1650,
+      [
+        "UP"
+      ]
+    ],
+    [
+      1654,
+      []
+    ],
+    [
+      1680,
+      [
+        "A"
+      ]
+    ],
+    [
+      1684,
+      []
+    ]
+  ]
+}

@@ -8,9 +8,11 @@
 // What's here: A on Tiny Chao Garden in the main menu, the program unpacked and started, with its save, its own sound
 // engine and the garden's tiles, maps and colours; then the garden left alone: its fade in from white, the field, the
 // pond and the trees, the panel with the Chao's bars and the ring count from the save, the two icons, the hand and the
-// egg as it waits, with the garden's music. The egg hatching (#1311), the hand moving and what it picks (#1312), the
-// icons' screens (#1313), the pause and going back to Sonic Advance (#1314) and the link cable aren't in C yet: a press
-// or a moment that needs one stops the garden where it is, with the screen as it was.
+// egg as it waits, with the garden's music; then the egg hatching, the new Chao with its name and bars on the panel,
+// standing, walking, sitting, lying and crying as it chooses, and the plants that come up in the grass from seed. The Chao's other
+// moods and what it does with fruit and toys, the hand moving and what it picks (#1312), the icons' screens (#1313),
+// the pause and going back to Sonic Advance (#1314) and the link cable aren't in C yet: a press or a moment that needs
+// one stops the garden where it is, with the screen as it was.
 
 #include "sa.h"
 
@@ -25,11 +27,14 @@
 // what the frames since the menu's A hold: the program unpacking, then its start (GameInit), its sound engine starting
 // (m4aSoundInit), InitGarden, which takes until its song starts, and the garden's first frame; mGBA's frames 1730,
 // 1745, 1752, 1753, 1758 and 1759 of the recording
-enum { UNPACKED = 14, SOUND_INIT = 21, INIT_GARDEN = 22, SONG_STARTS = 27, FIRST_FRAME = 28 };
+#define UNPACK_FRAMES 15
+enum { UNPACKED = UNPACK_FRAMES - 1, SOUND_INIT = 21, INIT_GARDEN = 22, SONG_STARTS = 27, FIRST_FRAME = 28 };
 
 // the garden's sound mode (m4aSoundInit's 0x0093F400) and its music players' table
 #define PLAYER_TABLE 0x020129DCu
 #define MUS_GARDEN 1
+#define SE_CHAO_WALK 0x0F
+#define SE_HATCH 0x21
 
 static uint8_t *prog;     // the program as the work RAM holds it
 static uint8_t *work;     // WORK_RAM
@@ -119,11 +124,26 @@ static uint8_t tcgSave[SAVE_BYTES];
 #define SAVE_RINGS 0x0C
 #define SAVE_TIMER 0x10
 #define SAVE_SEED 0x18
+#define SAVE_CHAO_X 0x1D
+#define SAVE_CHAO_Y 0x1E
 #define SAVE_EGG_X 0x1F
 #define SAVE_EGG_Y 0x20
+#define SAVE_SEEDS 0x37       // 16 seeds, each where it is, x then y, or 0
 #define SAVE_CHAO 0x58        // the Chao's kind, or 0xFF with none
 #define SAVE_EGG 0x59         // the egg's kind, or 0xFF with none
 #define SAVE_RINGS_SHOWN 0x64 // the ring count, its bytes the other way round
+// the Chao: its name's seven letters, its age, the egg it came from, its mood and belly, three more needs, its five
+// skills, and each skill's level
+#define SAVE_NAME 0x6A
+#define SAVE_AGE 0x71
+#define SAVE_FROM_EGG 0x72
+#define SAVE_MOOD 0x73
+#define SAVE_BELLY 0x74
+#define SAVE_SLEEP 0x75
+#define SAVE_BORED 0x76
+#define SAVE_SKILLS 0x78
+#define SAVE_LEVELS 0x88
+#define SAVE_LIFE 0xD0
 static uint32_t save32(int offset) { return le32(tcgSave, offset); }
 static void set_save32(int offset, uint32_t v) { set_le32(tcgSave, offset, v); }
 
@@ -138,14 +158,14 @@ static uint16_t save_crc(const uint8_t *bytes, int count) {
   return (uint16_t)~crc;
 }
 
-/** 0x02001CB0 (sub_02008810): one to one and a half minutes, in frames. */
-static uint32_t egg_minutes(void) { return (uint32_t)(random_below(30) + 60) * 60; }
+/** 0x02001CB0 (sub_02008810): the wait for the garden's next seed, one to one and a half minutes, in frames. */
+static uint32_t seed_minutes(void) { return (uint32_t)(random_below(30) + 60) * 60; }
 
-/** InitGameState, 0x02000368: no Chao and no egg, nothing bought, and the next egg's wait. */
+/** InitGameState, 0x02000368: no Chao and no egg, nothing in the garden, and the wait for its first seed. */
 static void new_game_state(void) {
   memset(tcgSave + 0x08, 0, 0x50);
   memset(tcgSave + 0x58, 0xFF, 0x12);
-  set_save32(SAVE_TIMER, egg_minutes());
+  set_save32(SAVE_TIMER, seed_minutes());
   tcgSave[0x1C] = 0xFF;
 }
 
@@ -203,7 +223,7 @@ struct Obj {
   uint8_t id, prev, next, changed;   // its place, the ones before and after it, and what it last drew
   uint16_t timer;
   int16_t x;
-  uint16_t unusedC;
+  uint16_t fracY;
   int16_t y;
   uint32_t parts;                    // its sprite: the parts of its frame, an address in the program
   uint16_t tile;                     // added to each part's tile
@@ -218,6 +238,11 @@ struct Obj {
 #define FREE_OBJECTS 70
 static Obj objs[OBJECTS];
 static uint8_t freeIds[FREE_OBJECTS], liveCount, nextFree, nextReturn;
+// an object's place with its fraction: `x` and `y` are the top halves of 32-bit numbers, over `timer` and `fracY`
+static int32_t x_fixed(const Obj *o) { return (int32_t)((uint32_t)(uint16_t)o->x << 16 | o->timer); }
+static int32_t y_fixed(const Obj *o) { return (int32_t)((uint32_t)(uint16_t)o->y << 16 | o->fracY); }
+static void set_x_fixed(Obj *o, int32_t v) { o->timer = (uint16_t)v; o->x = (int16_t)((uint32_t)v >> 16); }
+static void set_y_fixed(Obj *o, int32_t v) { o->fracY = (uint16_t)v; o->y = (int16_t)((uint32_t)v >> 16); }
 static uint32_t obj_value(const Obj *o) { return o->value[0] | (uint32_t)o->value[1] << 16; }
 static void set_obj_value(Obj *o, uint32_t v) { o->value[0] = (uint16_t)v; o->value[1] = (uint16_t)(v >> 16); }
 
@@ -255,7 +280,7 @@ static Obj *create(ObjFn fn, Obj *beside, int before) {
     beside->next = id;
   }
   o->state = o->attr2 = o->attr1 = o->attr0 = 0;
-  o->unusedC = 0;
+  o->fracY = 0;
   o->timer = 0;
   o->changed = 0;
   o->matrix = -1;
@@ -313,6 +338,36 @@ static void sprites_init(void) {
   for (int i = 0; i < 32; i++) matrices[i] = (uint8_t)(i * 2);
   matrixCount = matrixNext = matrixReturn = 0;
 }
+
+/** 0x02000F70 (sub_020012f8): a rotation matrix for a sprite, as the top byte of its second attribute, or -1 with none
+ *  left. */
+static int matrix_take(void) {
+  if (matrixCount > 0x1F) return -1;
+  int m = (int8_t)matrices[matrixNext++];
+  matrixNext &= 0x1F;
+  matrixCount++;
+  return m;
+}
+/** 0x02000FB4 (sub_0200133c): the matrix is free again. */
+static void matrix_give(uint8_t m) {
+  matrices[matrixReturn++] = m;
+  matrixReturn &= 0x1F;
+  matrixCount--;
+}
+/** The BIOS's ObjAffineSet with no turn: a matrix that draws its sprite at 256 / `sx` of its width and 256 / `sy` of its
+ *  height, among the sprites the next frame shows. */
+static void matrix_scale(uint8_t m, int sx, int sy) {
+  uint16_t (*s)[4] = &oamBuffer[m * 2];
+  s[0][3] = (uint16_t)sx;
+  s[1][3] = 0;
+  s[2][3] = 0;
+  s[3][3] = (uint16_t)sy;
+}
+
+/** 0x0200145C and 0x02001470 (sub_0200182c, sub_02001840): the sine and cosine of an angle of 256 to the turn, from the
+ *  program's table. */
+static int sine(int angle) { return (int16_t)p16(0x02018174u + (uint32_t)(angle & 0xFF) * 2); }
+static int cosine(int angle) { return sine(angle + 0xC0); }
 
 /** 0x02000E64 (sub_02001088): the layers' sprites, each its frame's parts, into the sprites the next frame shows, and
  *  the rest hidden. */
@@ -455,15 +510,15 @@ static uint16_t chaoColours[16];   // a Chao's own colours, for kinds past the p
 // ---- the garden's objects ----
 
 static Obj *chaoObj, *handObj;   // gUnknown_03001510, gUnknown_0300150C
-static uint8_t chaoCount;        // gUnknown_0300159B
+static uint8_t fruitCount;       // gUnknown_0300159B: the seeds and fruit lying in the garden
 static uint8_t gardenObjects;    // gUnknown_0300159A
 static uint8_t chaoKind;         // gUnknown_0300152F
 static uint8_t chaoShown;        // gUnknown_0300152E
-static uint8_t gardenState;      // gUnknown_0300152D
+static uint8_t chaoState;        // gUnknown_0300152D: what a Chao starts by doing
 static uint8_t heldFruit;        // gUnknown_03001530
 static uint8_t pauseState;       // gUnknown_03001509
 static uint16_t dispCnt;         // gUnknown_0300152A
-static uint8_t linkWaiting;      // 0x030009BC
+static uint8_t chaoGreets;       // 0x030009BC
 static uint8_t menuEdge;         // 0x030009B8
 
 static int stopped;
@@ -491,14 +546,65 @@ static void pause_watch(Obj *o) {
   g.flags &= 0x7F;
 }
 
-/** 0x02002F88 (sub_02003424): with fewer than 16 Chao, the wait for a new egg counts down while nothing is over the
- *  garden; the egg it brings isn't in C yet. */
-static void egg_clock(Obj *o) {
-  (void)o;
-  if (g.flags & 0xF3 || chaoCount > 15) return;
+static void seedling(Obj *o);
+/** 0x02003168: a seed in the grass, drawn by its height. What comes of it isn't in C yet. */
+static void seedling(Obj *o) {
+  if (g.flags & 0x10) return;
+  if (!(g.flags & 0x80) && o->state != 0 && o->state != 2 && o->state <= 4) { not_in_c(); return; }
+  sort_add(o->id, o->sortY);
+}
+/** 0x02003088: a new seed comes up over 64 frames, from nothing to its size, settling down onto its place. */
+static void seed_grows(Obj *o) {
+  if (g.flags & 0x10) return;
+  if (!(g.flags & 0x80)) {
+    o->extra[1]++;
+    if ((int8_t)o->extra[1] > 0x3F) {
+      matrix_give(o->attr1);
+      o->y = o->sortY;
+      o->attr1 = 0;
+      o->attr0 = 0;
+      o->matrix = 3;
+      o->main = seedling;
+    } else {
+      o->y = (int16_t)(((0x40 - (int8_t)o->extra[1]) >> 3) + o->sortY);
+      int scale = 0x4000 / (int8_t)o->extra[1];
+      matrix_scale(o->attr1, scale, scale);
+    }
+  }
+  sort_add(o->id, o->sortY);
+}
+
+/** 0x02002F88 (sub_02003424): with fewer than 16 seeds, the wait for a new one counts down while nothing is over the
+ *  garden; then one comes up somewhere on the grass, and the wait starts again. */
+static void seed_clock(Obj *o) {
+  if (g.flags & 0xF3 || fruitCount > 15) return;
   uint32_t left = save32(SAVE_TIMER) - 1;
   set_save32(SAVE_TIMER, left);
-  if (left == 0) not_in_c();
+  if (left != 0) return;
+  set_save32(SAVE_TIMER, seed_minutes());
+  uint16_t x, y;
+  for (;;) {
+    x = (uint16_t)(random_below(0xA0) + 8);
+    y = (uint16_t)(random_below(0x88) + 0x18);
+    uint32_t tile = p16(0x020199E0u + (uint32_t)((y >> 3) * 22 + (x >> 3)) * 2);
+    if (tile == 9 || tile == 13) break;
+    random15();
+  }
+  int slot = 0;
+  while (slot < 16 && tcgSave[SAVE_SEEDS + slot * 2]) slot++;
+  Obj *n = create(seed_grows, o, 0);
+  tcgSave[SAVE_SEEDS + slot * 2] = (uint8_t)x;
+  n->x = (uint8_t)x;
+  tcgSave[SAVE_SEEDS + slot * 2 + 1] = (uint8_t)y;
+  n->sortY = (uint8_t)y;
+  n->parts = 0x02018B9Cu;
+  n->tile = 0x109;
+  n->attr0 = 1;
+  n->attr1 = (uint8_t)matrix_take();
+  n->attr2 = 0x1C;
+  n->arg = (uint8_t)slot;
+  n->extra[1] = 0;
+  fruitCount++;
 }
 
 // the panel's seven bars (0x030009E8): its value, a blink, its level, whether to draw it, and what it last drew
@@ -535,6 +641,7 @@ static int draw_bar(int i) {
 }
 
 static uint16_t ringDigits[5];   // 0x03000A20
+static uint16_t nameTiles[7], stageTiles[7];   // 0x030009C8, 0x030009D8
 
 static void panel(Obj *o);
 /** 0x02002464 (sub_020089B0): the panel: its ring turns every 6 frames, and its count is drawn on the first. */
@@ -574,19 +681,57 @@ static void panel(Obj *o) {
   }
   if (chaoKind == o->changed) {
     if (chaoKind == 0xFF) return;
-    not_in_c();
+    // the hand over the panel shows what a bar is (#1312)
+    if (!(g.flags & 0x95) && handObj->x > 0xB5) { not_in_c(); return; }
+    if (g.flags & 0xD3) { not_in_c(); return; }
+    // Mood and Belly go to the Chao's a step a frame, and the rest are drawn again when they change
+    for (int i = 0; i < 2; i++) {
+      uint8_t now = tcgSave[SAVE_MOOD + i];
+      if (now == bars[i].level) continue;
+      if (now > bars[i].level) { not_in_c(); return; }
+      bars[i].level--;
+      if (draw_bar(i)) { not_in_c(); return; }
+    }
+    for (int i = 2; i < 7; i++) {
+      if (g.frames & 1) {
+        if (tcgSave[SAVE_LEVELS + i - 2] > bars[i].value || tcgSave[SAVE_SKILLS + i - 2] != bars[i].level) { not_in_c(); return; }
+      }
+      if (draw_bar(i)) { not_in_c(); return; }
+    }
     return;
   }
   o->changed = chaoKind;
-  if (chaoKind != 0xFF) {
-    not_in_c();
+  if (chaoKind == 0xFF) {
+    // no Chao: no name, and every bar empty
+    queue_map(NULL, 0x0F042u, 7, 2, 0xE1);
+    for (int i = 0; i < 7; i++) {
+      bars[i].level = 0;
+      bars[i].value = 0;
+      bars[i].dirty = 1;
+      bars[i].blink = 1;
+      bars[i].drawn = 0xFF;
+      draw_bar(i);
+    }
     return;
   }
-  // no Chao: no name, and every bar empty
-  queue_map(NULL, 0x0F042u, 7, 2, 0xE1);
+  // a Chao: its name, its stage of life in the game's language, the last letter left for which of the stage's three it
+  // is, and its bars
+  for (int i = 0; i < 7; i++) nameTiles[i] = (uint16_t)(0x2AF + tcgSave[SAVE_NAME + i]);
+  queue_map((const uint8_t *)nameTiles, 0x0F042u, 7, 1, 0);
+  int age = tcgSave[SAVE_AGE];
+  if (age > 0x12) age = 0x13;
+  if (age != 0) age += 2;
   for (int i = 0; i < 7; i++) {
-    bars[i].level = 0;
-    bars[i].value = 0;
+    stageTiles[i] = (uint16_t)p8(0x02018942u + (uint32_t)(g.language * 0x38 + age / 3 * 7 + i));
+    if (!stageTiles[i]) stageTiles[i] = (uint16_t)(age % 3 + 0x1E68);
+  }
+  queue_map((const uint8_t *)stageTiles, 0x0F082u, 7, 1, 0x2AF);
+  for (int i = 0; i < 7; i++) {
+    if (i <= 1) bars[i].level = tcgSave[SAVE_MOOD + i];
+    else {
+      bars[i].value = tcgSave[SAVE_LEVELS + i - 2];
+      bars[i].level = tcgSave[SAVE_SKILLS + i - 2];
+    }
     bars[i].dirty = 1;
     bars[i].blink = 1;
     bars[i].drawn = 0xFF;
@@ -608,7 +753,7 @@ static void link_icon_start(Obj *o) {
 /** 0x02002A1C: the cable's state, which has no other console on it, so the sign stays out of sight. */
 static void link_icon(Obj *o) {
   (void)o;
-  linkWaiting = 0;
+  chaoGreets = 0;
 }
 
 static void hand(Obj *o);
@@ -663,8 +808,136 @@ static void egg_start(Obj *o) {
   o->main = egg;
   egg(o);
 }
-/** 0x02003A30: the egg waits, counting while nothing is over the garden, and drawn by its height. With no egg in the
- *  save it goes (not in C), and its hatching isn't in C yet (#1311). */
+// what the Chao is doing; the others aren't in C yet
+enum { CHAO_STANDS = 0, CHAO_WAITS = 2, CHAO_HATCHED = 9, CHAO_GREETS = 10, CHAO_WALKS = 22, CHAO_SLEEPS = 23, CHAO_SITS = 25,
+       CHAO_SITS_DOWN = 26, CHAO_LIES = 27, CHAO_DYING = 32, CHAO_CRIES = 45 };
+
+/** 0x02001AFC (sub_02001e74): a new Chao: one of ten names in the game's language, its mood and belly full, and what it
+ *  gains from each of its five skills, shared out one of three ways. */
+static void new_chao(void) {
+  memset(tcgSave + SAVE_NAME, 0, 0x7EE);
+  tcgSave[SAVE_FROM_EGG] = tcgSave[SAVE_EGG];
+  tcgSave[0x69] = 0;
+  tcgSave[0x62] = 0;
+  chaoKind = 0;
+  tcgSave[SAVE_CHAO] = 0;
+  chaoState = CHAO_HATCHED;
+  int name = random_below(10);
+  for (int i = 0; i < 7; i++) tcgSave[SAVE_NAME + i] = (uint8_t)p8(0x020188B6u + (uint32_t)(g.language * 0x46 + name * 7 + i));
+  tcgSave[SAVE_BELLY] = 100;
+  tcgSave[SAVE_MOOD] = 100;
+  uint8_t *gains = tcgSave + 0x80;
+  switch (random_below(3)) {
+    case 0: {
+      // 0 to 4, each once
+      uint8_t left[5] = { 0, 1, 2, 3, 4 };
+      for (int i = 0; i < 4; i++) {
+        int pick = random_below(5 - i);
+        gains[i] = left[pick];
+        for (; pick <= 3; pick++) left[pick] = left[pick + 1];
+      }
+      gains[4] = left[0];
+      break;
+    }
+    case 1:
+      for (int i = 0; i < 5; i++) gains[i] = (uint8_t)(random_below(3) + 1);
+      break;
+    case 2: {
+      // 12 between them, none over 5
+      memset(gains, 0, 5);
+      for (int left = 12; left;) {
+        for (int i = 0; i < 5 && left; i++) {
+          if (gains[i] > 4) continue;
+          int more = random_below(left > 4 ? 6 : left + 1);
+          if (gains[i] + more > 5) continue;
+          gains[i] = (uint8_t)(gains[i] + more);
+          left -= more;
+        }
+      }
+      break;
+    }
+  }
+  memset(tcgSave + 0x85, 0xFF, 3);
+  memset(tcgSave + SAVE_LEVELS, 1, 8);
+}
+
+/** 0x02003CAC: half of the egg's shell: the top half flies up and falls back, and both blink away, faster and faster and
+ *  then slower, and the egg is gone from the save. */
+static void shell(Obj *o) {
+  if (g.flags & 0x10) return;
+  if (!(g.flags & 0x80)) {
+    if (o->changed) {
+      set_y_fixed(o, y_fixed(o) - (int16_t)o->value[1] * 256);
+      o->value[1] = (uint16_t)(o->value[1] - o->value[0]);
+    }
+    o->extra[0]--;
+    if (o->state == 0) {
+      if (o->extra[0] == 0) {
+        o->extra[0] = o->extra[1];
+        o->extra[1] -= 2;
+        if (o->extra[1] == 0) o->state = o->extra[1] = o->extra[0] = 1;
+        return;
+      }
+    } else {
+      if (o->extra[0] != 0) return;
+      o->extra[0] = o->extra[1];
+      o->extra[1] += 2;
+      if ((int8_t)o->extra[1] > 9) {
+        if (o->changed) {
+          matrix_give(o->attr1);
+          tcgSave[SAVE_EGG] = 0xFF;
+        }
+        destroy(o);
+        return;
+      }
+    }
+  }
+  sort_add(o->id, o->sortY);
+}
+
+/** 0x02003AE4: the egg hatching: every other frame it widens, then stretches up, twice over, and then it breaks: its two
+ *  halves, and the new Chao where it stood. Hatching under a screen over the garden isn't in C. */
+static void egg_hatches(Obj *o) {
+  if (g.flags & 0x60) { not_in_c(); return; }
+  if (!(g.flags & 0x83) && (g.frames & 1)) {
+    if (!(o->state & 1)) {
+      o->extra[0]++;
+      if (o->extra[0] == 8 || o->extra[0] == 0x10) o->state++;
+    } else {
+      o->extra[1]++;
+      if (o->extra[1] == 8) o->state++;
+      else if (o->extra[1] == 0x11) {
+        if (tcgSave[SAVE_EGG]) { not_in_c(); return; }
+        Obj *top = create(shell, o, 0), *bottom = create(shell, o, 0);
+        top->changed = 1;
+        top->x = bottom->x = o->x;
+        bottom->y = (int16_t)(o->sortY - 6);
+        top->y = (int16_t)(o->sortY - 8);
+        top->sortY = bottom->sortY = o->sortY;
+        top->parts = bottom->parts = o->parts;
+        top->attr1 = bottom->attr1 = o->attr1;
+        top->attr2 = bottom->attr2 = o->attr2;
+        top->extra[0] = bottom->extra[0] = 0x14;
+        top->extra[1] = bottom->extra[1] = 6;
+        top->value[1] = 0x1C0;
+        top->value[0] = 0x10;
+        bottom->tile = 0x198;
+        top->tile = 0x194;
+        tcgSave[SAVE_CHAO_X] = (uint8_t)o->x;
+        tcgSave[SAVE_CHAO_Y] = (uint8_t)(o->sortY - 1);
+        new_chao();
+        destroy(o);
+        return;
+      }
+    }
+  }
+  matrix_scale(o->attr1, 0x1000 / ((int8_t)o->extra[0] + 0x10), 0x1000 / ((int8_t)o->extra[1] + 0x10));
+  o->y = (int16_t)(o->sortY - ((int8_t)o->extra[1] >> 1));
+  sort_add(o->id, o->sortY);
+}
+
+/** 0x02003A30: the egg waits, counting while nothing is over the garden and there is no Chao, and drawn by its height;
+ *  then it starts to hatch, with its sound. With no egg in the save it goes (not in C). */
 static void egg(Obj *o) {
   if (g.flags & 0x10) return;
   if (tcgSave[SAVE_EGG] == 0xFF) { not_in_c(); return; }
@@ -674,18 +947,395 @@ static void egg(Obj *o) {
       o->state = 0;
       o->timer = 1800;
     } else if (--o->timer == 0) {
-      not_in_c();
+      o->parts = 0x02018BA4u;
+      o->attr1 = (uint8_t)matrix_take();
+      o->extra[1] = o->extra[0] = 0;
+      o->state = 0;
+      o->matrix = -1;
+      o->main = egg_hatches;
+      egg_hatches(o);
+      gba_sound_play(SE_HATCH);
       return;
     }
   }
   sort_add(o->id, o->sortY);
 }
 
-/** 0x02003D5C (sub_020041E0): the Chao; with none, nothing is shown for it. */
+// ---- the Chao: what it does, and the four sprites that follow it ----
+
+// the Chao's object keeps these in the places a drawn object keeps its sprite's
+#define behaviour attr1
+#define heading attr0      // 0 to 11, a twelfth of a turn each
+#define drawY attr2
+#define countdown tile
+static uint16_t chaoTimers[6];   // 0x030009A8: its needs' clocks
+static uint16_t chaoRests;       // 0x030009B6
+static uint8_t nearby[8];        // 0x03000DD0: what it has seen in the garden
+static uint32_t nearest;         // 0x030009A4
+
+/** 0x0200583C: a new way to walk, up to two twelfths of a turn from the old one, at 3/16 of a pixel a frame. */
+static void chao_turns(Obj *o) {
+  int way = (int8_t)(random_below(5) + o->heading - 2);
+  if (way > 11) way -= 12;
+  else if (way < 0) way += 12;
+  o->heading = (uint8_t)way;
+  int angle = (int)p8(0x02018D3Eu + (uint32_t)way);
+  o->value[1] = (uint16_t)(sine(angle) * 48);
+  o->value[0] = (uint16_t)(cosine(angle) * 48);
+  o->fracY = 0;
+  o->timer = 0;
+}
+
+/** 0x020058A4: which way a heading faces: 0 for the two ways the sprite's own picture faces, then 1 to 3. */
+static int facing(int way) {
+  if (way <= 1) return 0;
+  if (way <= 4) return 1;
+  if (way <= 7) return 2;
+  if (way <= 10) return 3;
+  return 0;
+}
+
+/** 0x02005180: a step the way it's heading, turning back from the field's edges. */
+static void chao_steps(Obj *o) {
+  set_x_fixed(o, x_fixed(o) + (int16_t)o->value[1]);
+  set_y_fixed(o, y_fixed(o) + (int16_t)o->value[0]);
+  if ((uint16_t)(o->x - 0x14) > 0x88) {
+    o->x = (int16_t)(o->x <= 0x13 ? o->x + 1 : o->x - 1);
+    o->value[1] = (uint16_t)-o->value[1];
+    int way = (int8_t)(6 - o->heading);
+    if (way < 0) way += 12;
+    else if (way > 11) way -= 12;
+    o->heading = (uint8_t)way;
+  }
+  if ((uint16_t)(o->y - 0x20) > 0x78) {
+    o->y = (int16_t)(o->y <= 0x1F ? o->y + 1 : o->y - 1);
+    o->value[0] = (uint16_t)-o->value[0];
+    int way = (int8_t)(12 - o->heading);
+    if (way < 0) way += 12;
+    else if (way > 11) way -= 12;
+    o->heading = (uint8_t)way;
+  }
+}
+
+// a random number less `chance`, as 16 bits: negative one time in 32768 / chance
+static int16_t less(int16_t roll, int chance) { return (int16_t)(roll - chance); }
+
+/** 0x02005220: what the Chao does next, for 3 to 5 seconds: after anything but a walk, a walk; after a walk, another, or
+ *  by chance and by its needs it sits, lies down or cries. Its other choices aren't in C yet. */
+static void chao_chooses(Obj *o) {
+  o->changed = 0;
+  if (!save32(SAVE_LIFE)) { o->behaviour = CHAO_DYING; return; }
+  o->countdown = (uint16_t)((random_below(3) + 3) * 60);
+  if (o->behaviour == CHAO_SLEEPS) { o->behaviour = CHAO_SITS; return; }
+  if (o->behaviour != CHAO_WALKS) goto walks;
+  if (less((int16_t)random15(), 0x2666) < 0) { chao_turns(o); return; }
+  if (tcgSave[SAVE_SLEEP] > 199) { o->state = 0; o->behaviour = CHAO_SLEEPS; return; }
+  // hungry, it looks for what there is to eat
+  if (tcgSave[SAVE_BELLY] <= 0x42) for (int i = 0; i < 8; i++) if (nearby[i]) { not_in_c(); return; }
+  if (tcgSave[0x35]) { not_in_c(); return; }
+  int16_t roll = less((int16_t)random15(), 0x0CCC);
+  if (roll < 0) { not_in_c(); return; }
+  if ((roll = less(roll, 0x666)) < 0) { o->behaviour = CHAO_LIES; return; }
+  if ((roll = less(roll, 0x666)) < 0) { o->behaviour = CHAO_SITS_DOWN; return; }
+  if ((roll = less(roll, 0x666)) < 0) { o->behaviour = CHAO_SITS; return; }
+  if (less(roll, 0x666) < 0) { not_in_c(); return; }
+  roll = less((int16_t)random15(), 0x1FFF);
+  if (roll < 0) {
+    if (!tcgSave[SAVE_BELLY]) { not_in_c(); return; }
+    if (tcgSave[SAVE_BELLY] > 0x42) goto walks;
+    o->behaviour = CHAO_CRIES;
+    o->arg = 0x14;
+    o->state = 0;
+    return;
+  }
+  if ((roll = less(roll, 0x1FFF)) < 0) {
+    if (tcgSave[SAVE_SLEEP] > 0x95) { not_in_c(); return; }
+    goto walks;
+  }
+  if ((roll = less(roll, 0x1FFF)) < 0) {
+    if (tcgSave[SAVE_MOOD] > 0x32 && tcgSave[SAVE_MOOD] <= 0xA5) goto walks;
+    not_in_c();
+    return;
+  }
+  if (less(roll, 0x1999) < 0) {
+    if (tcgSave[SAVE_BORED] > 0x63) { not_in_c(); return; }
+    goto walks;
+  }
+  roll = less((int16_t)random15(), 0x1333);
+  if (roll < 0) { not_in_c(); return; }
+  if ((roll = less(roll, 0x0CCC)) < 0) { not_in_c(); return; }
+  if ((roll = less(roll, 0x1333)) < 0) { not_in_c(); return; }
+  if (less(roll, 0x3FFF) >= 0 || tcgSave[SAVE_BELLY] <= 0x42) { not_in_c(); return; }
+walks:
+  chao_turns(o);
+  o->behaviour = CHAO_WALKS;
+}
+
+/** 0x02003F20: the Chao's frame: its needs change with time (bored and sleepy more, belly and mood less), and then what it's
+ *  doing: it stands a second and a half when it hatches and greets the garden, walks, turning back from the edges and
+ *  the pond, or sits, lies or cries until it chooses again. */
+static void chao_lives(Obj *o) {
+  if (g.flags & 0x92 || g.flags & 0x20) { not_in_c(); return; }
+  uint16_t *t = chaoTimers;
+  if (--t[0] == 0) { t[0] = 180; if (tcgSave[SAVE_BORED] <= 199) tcgSave[SAVE_BORED]++; }
+  if (--t[1] == 0) { t[1] = 60; if (tcgSave[SAVE_SLEEP] <= 199) tcgSave[SAVE_SLEEP]++; }
+  if (--t[2] == 0) { t[2] = 180; if (tcgSave[SAVE_BELLY]) tcgSave[SAVE_BELLY]--; }
+  if (tcgSave[SAVE_BELLY] > 0xBD && --t[3] == 0) { t[3] = 360; if (tcgSave[SAVE_MOOD] <= 199) tcgSave[SAVE_MOOD]++; }
+  // its mood goes down with time, slower the fuller it is, and faster with the garden full of fruit; a full Chao with
+  // little about keeps its mood
+  int kept = 0;
+  if (tcgSave[SAVE_BELLY] > 0x6D) {
+    if (fruitCount <= 3) {
+      t[4] = (uint16_t)((tcgSave[SAVE_BELLY] / 20 + 4) * 60);
+      t[5] = (uint16_t)((12 - fruitCount / 2) * 60);
+      kept = 1;
+    }
+  } else if (--t[4] == 0) {
+    t[4] = (uint16_t)((tcgSave[SAVE_BELLY] / 20 + 4) * 60);
+    if (tcgSave[SAVE_MOOD]) tcgSave[SAVE_MOOD]--;
+  }
+  if (!kept && fruitCount > 3 && --t[5] == 0) {
+    t[5] = (uint16_t)((12 - fruitCount / 2) * 60);
+    if (tcgSave[SAVE_MOOD]) tcgSave[SAVE_MOOD]--;
+  }
+  if (chaoRests) chaoRests--;
+  if (tcgSave[SAVE_MOOD]) set_save32(SAVE_LIFE, 0x34BC0);
+  else if (save32(SAVE_LIFE)) set_save32(SAVE_LIFE, save32(SAVE_LIFE) - 1);
+  o->extra[0] = 3;
+  switch (o->behaviour) {
+    case CHAO_HATCHED:
+      o->changed = 0;
+      o->countdown = 90;
+      o->behaviour = CHAO_GREETS;
+      // fallthrough
+    case CHAO_GREETS:
+      chaoGreets = 1;
+      o->extra[0] = 0;
+      if (--o->countdown == 0) o->behaviour = CHAO_STANDS;
+      break;
+    case CHAO_WALKS:
+      chao_steps(o);
+      // out of the pond the way it came
+      if (p8(0x02019D50u + (uint32_t)((o->y >> 3) * 22 + (o->x >> 3)))) {
+        set_x_fixed(o, x_fixed(o) - (int16_t)o->value[1]);
+        set_y_fixed(o, y_fixed(o) - (int16_t)o->value[0]);
+        o->value[1] = (uint16_t)-o->value[1];
+        o->value[0] = (uint16_t)-o->value[0];
+        o->heading = (uint8_t)(o->heading + 6);
+        if (o->heading > 11) o->heading -= 12;
+      }
+      if (--o->countdown == 0) chao_chooses(o);
+      break;
+    case CHAO_SITS: case CHAO_SITS_DOWN: case CHAO_LIES:
+      if (--o->countdown == 0) chao_chooses(o);
+      break;
+    case CHAO_CRIES:
+      if (--o->arg == 0) {
+        o->arg = 0x14;
+        if (++o->state > 5) chao_chooses(o);
+      }
+      break;
+    case 1: case CHAO_WAITS:
+      if (--o->countdown == 0) chao_chooses(o);
+      break;
+    case CHAO_STANDS:
+      o->changed = 0;
+      o->countdown = 90;
+      o->behaviour = CHAO_WAITS;
+      if (--o->countdown == 0) chao_chooses(o);
+      break;
+    default:
+      not_in_c();
+      return;
+  }
+  // 0x0200513C: where its sprites go, where the save keeps it, and nothing seen yet
+  o->drawY = (uint8_t)(o->y - o->extra[1]);
+  o->sortY = (uint8_t)o->y;
+  tcgSave[SAVE_CHAO_X] = (uint8_t)o->x;
+  tcgSave[SAVE_CHAO_Y] = (uint8_t)o->y;
+  memset(nearby, 0, sizeof nearby);
+  nearest = 0;
+}
+
+/** 0x02005F94: the Chao's shadow, under everything. */
+static void chao_shadow(Obj *o) {
+  if (g.flags & 0x10) return;
+  if (!chaoShown) { destroy(o); return; }
+  const Obj *c = &objs[o->unused1B];
+  o->x = c->x;
+  o->y = c->sortY;
+  if (!(c->changed & 1)) sort_add(o->id, 0);
+}
+
+// 0x02018A4C: for each of the Chao's frames, where its ball floats, where its eyes are, and which eyes
+static int frame_place(int frame, int which) { return (int8_t)p8(0x02018A4Cu + (uint32_t)(frame * 5 + which)); }
+
+/** 0x02005D5C: the ball over the Chao's head, its shape by the Chao's mood: it follows the head, an eighth of the way
+ *  across and a quarter of the way up each frame, and bobs. */
+static void chao_ball(Obj *o) {
+  if (g.flags & 0x10) return;
+  if (!chaoShown) { destroy(o); return; }
+  const Obj *body = &objs[o->unused1B];
+  if (!(g.flags & 0x80)) {
+    int shape = 0;
+    switch (body->changed & 0x78) {
+      case 0x10: shape = g.frames & 0x10 ? 3 : 4; break;
+      case 0x08: shape = g.frames & 0x08 ? 5 : 6; break;
+      case 0x20: shape = 2; break;
+      case 0x40: shape = 1; break;
+    }
+    o->parts = 0x020189FCu + (uint32_t)shape * 8;
+    int dx = frame_place(body->state, 0), dy = frame_place(body->state, 1);
+    if (!(int8_t)body->extra[0]) dx = (int8_t)(-dx - 6);
+    set_x_fixed(o, x_fixed(o) + (int32_t)((uint32_t)(dx + body->x - o->x) << 16) / 8);
+    set_obj_value(o, obj_value(o) + (uint32_t)((int32_t)((uint32_t)(dy + body->y - (int16_t)o->value[1]) << 16) >> 2));
+    o->y = (int16_t)(o->value[1] + cosine(o->state) / 128);
+    o->state += 4;
+  }
+  if (!(body->changed & 1)) sort_add(o->id, body->sortY);
+}
+
+/** 0x02005E7C: the Chao's eyes, shut for 5 frames every 3 seconds, and now and then twice in a row, or as the Chao
+ *  shuts them itself; drawn only while shut. */
+static void chao_eyes(Obj *o) {
+  if (g.flags & 0x10) return;
+  if (!chaoShown) { destroy(o); return; }
+  const Obj *body = &objs[o->unused1B];
+  if (!(g.flags & 0x80)) {
+    if (body->changed & 4) o->changed = 1;
+    else if (!o->changed) {
+      if (++o->arg < (o->state & 1 ? 11 : 180)) return;
+      o->arg = 0;
+      o->changed = 1;
+      return;
+    } else if (++o->arg > 4) {
+      o->arg = 0;
+      o->changed = 0;
+      o->state++;
+    }
+  }
+  int frame = body->state, dx = frame_place(frame, 2), kind = frame_place(frame, 4) & 0xFF;
+  if (!dx) return;
+  if (!(int8_t)body->extra[0]) {
+    dx = (int8_t)-dx;
+    if (kind) kind = 1;
+  }
+  o->x = (int16_t)(dx + body->x);
+  o->y = (int16_t)(frame_place(frame, 3) + body->y);
+  o->parts = 0x02018A34u + (uint32_t)kind * 8;
+  if (o->changed && !(body->changed & 1)) sort_add(o->id, body->sortY);
+}
+
+/** 0x020058C8: the Chao's body, where the Chao is, its frame by what it's doing and the way it faces, the picture's
+ *  own way or mirrored: its steps, four frames 18 frames apart with a footstep's sound each time round. */
+static void chao_body(Obj *o) {
+  if (g.flags & 0x10) return;
+  if (!chaoShown) { destroy(o); return; }
+  if (!(g.flags & 0x80)) {
+    const Obj *c = &objs[o->unused1B];
+    o->changed = c->changed;
+    o->x = c->x;
+    o->y = c->drawY;
+    o->sortY = c->sortY;
+    int frame, own = 1, way;
+    uint8_t *step = (uint8_t *)&o->value[1];
+    switch (c->behaviour) {
+      case CHAO_STANDS: case 1: case CHAO_WAITS: case CHAO_HATCHED: frame = 0x1B; break;
+      case CHAO_GREETS: frame = 0x28; break;
+      case CHAO_WALKS:
+        if (++step[0] > 0x11) {
+          step[0] = 0;
+          if (!(++step[1] & 3) && !(g.flags & 3)) gba_sound_play(SE_CHAO_WALK);
+        }
+        way = facing(c->heading);
+        if (!way) { own = 0; way = 2; }
+        frame = (way - 1) * 3 + (int)p8(0x02018D4Au + (step[1] & 3u));
+        break;
+      case CHAO_SITS:
+        way = facing(c->heading);
+        if (!way) { own = 0; way = 2; }
+        else if (way == 3) way = 1;
+        frame = way + 0x1A;
+        break;
+      case CHAO_SITS_DOWN:
+        way = facing(c->heading);
+        if (!way) { own = 0; way = 2; }
+        frame = (way - 1) * 3;
+        break;
+      case CHAO_LIES: frame = 0x30; break;
+      case CHAO_CRIES: frame = c->state ? (c->state & 1) + 0x2B : 0; break;
+      default: not_in_c(); return;
+    }
+    o->parts = own ? 0x020189B4u : 0x020189D4u;
+    o->tile = (uint16_t)(frame * 9 + 0x1A4);
+    o->state = (uint8_t)frame;
+    o->extra[0] = (uint8_t)own;
+  }
+  if (!(o->changed & 1)) sort_add(o->id, o->sortY);
+}
+
+/** 0x02003D5C (sub_020041E0): with no Chao, nothing is shown for it; when there is one, its shadow, its ball, its eyes and
+ *  its body, each following the one before, its colours, its place from the save, and its needs' clocks. */
 static void chao(Obj *o) {
-  (void)o;
-  if (tcgSave[SAVE_CHAO] != 0xFF) { not_in_c(); return; }
-  chaoShown = 0;
+  if (tcgSave[SAVE_CHAO] == 0xFF) {
+    chaoShown = 0;
+    return;
+  }
+  chaoShown = 1;
+  Obj *shadow = create(chao_shadow, o, 0);
+  shadow->parts = 0x020189F4u;
+  shadow->tile = 0x16C;
+  shadow->attr0 = 4;
+  shadow->attr2 = 0x1C;
+  shadow->unused1B = o->id;
+  Obj *ball = create(chao_ball, o, 0);
+  ball->tile = 0x16C;
+  ball->attr2 = 0x0C;
+  ball->state = 1;
+  Obj *eyes = create(chao_eyes, o, 0);
+  eyes->tile = 0x16C;
+  eyes->attr2 = 0x0C;
+  Obj *body = create(chao_body, o, 0);
+  body->attr2 = 0x0C;
+  body->unused1B = o->id;
+  body->matrix = 0;
+  ball->unused1B = body->id;
+  eyes->unused1B = body->id;
+  // its colours: its egg's, or, grown, its stage's
+  int colours = tcgSave[SAVE_FROM_EGG];
+  if (colours > 11) {
+    for (int i = 0; i < 16; i++) chaoColours[i] = (uint16_t)(tcgSave[0xA0 + i * 2] << 8 | tcgSave[0xA1 + i * 2]);
+    colours = 14;
+  } else if (!colours) {
+    colours = tcgSave[SAVE_AGE];
+    if (colours > 0x12) colours = 1;
+    if (colours) colours += 2;
+    colours %= 3;
+    if (colours) colours += 11;
+  }
+  paletteAsk.chaoKind = (uint8_t)colours;
+  paletteAsk.chao = 1;
+  if (!tcgSave[SAVE_CHAO_X]) {
+    tcgSave[SAVE_CHAO_X] = 0x58;
+    tcgSave[SAVE_CHAO_Y] = 0x68;
+  }
+  o->x = tcgSave[SAVE_CHAO_X];
+  o->sortY = tcgSave[SAVE_CHAO_Y];
+  o->y = o->sortY;
+  o->heading = (uint8_t)random_below(12);
+  o->behaviour = chaoState;
+  o->extra[1] = 0;
+  ball->x = (int16_t)(o->x + 1);
+  ball->value[1] = (uint16_t)(o->y - 0x17);
+  chaoTimers[0] = 180;
+  chaoTimers[1] = 60;
+  chaoTimers[2] = 180;
+  chaoTimers[3] = 360;
+  chaoTimers[4] = (uint16_t)((tcgSave[SAVE_BELLY] / 20 + 4) * 60);
+  chaoTimers[5] = (uint16_t)((12 - fruitCount / 2) * 60);
+  chaoRests = 0;
+  o->main = chao_lives;
+  chao_lives(o);
 }
 
 static void icon(Obj *o);
@@ -759,13 +1409,13 @@ static void init_garden(void) {
   copy_map(from_program(0x020199E0u), 0xF800, 22, 20, 0x200);
   paletteAsk.eggDone = paletteAsk.chaoDone = paletteAsk.egg = paletteAsk.chao = 0;
   objects_init();
-  create(egg_clock, &objs[1], 1);
-  chaoCount = 0;
-  for (int i = 0; i < 16; i++) if (tcgSave[0x37 + i * 2]) { not_in_c(); return; }
+  create(seed_clock, &objs[1], 1);
+  fruitCount = 0;
+  for (int i = 0; i < 16; i++) if (tcgSave[SAVE_SEEDS + i * 2]) { not_in_c(); return; }
   chaoKind = tcgSave[SAVE_CHAO];
   create(icon_start, &objs[0], 0)->arg = 1;
   create(icon_start, &objs[0], 0)->arg = 0;
-  gardenState = 0;
+  chaoState = 0;
   chaoObj = create(chao, &objs[0], 0);
   create(panel_start, &objs[0], 0);
   for (int i = 0; i < 3; i++) if (tcgSave[0x31 + i * 2]) { not_in_c(); return; }
@@ -851,7 +1501,8 @@ void garden_load(void) {
   gba_lz77(gba_rom + PROGRAM_AT, gba_rom_size - PROGRAM_AT, prog, PROGRAM_SIZE);
   config[0] = le32(save.bytes, 0x428);
   config[1] = SAVE_UI_LANGUAGE;
-  config[2] = e.frameCount + le32(save.bytes, 0x42C);
+  // the frame count goes on through the V-blanks of the frames the unpacking takes
+  config[2] = e.frameCount + UNPACK_FRAMES + le32(save.bytes, 0x42C);
   memset(&g, 0, sizeof g);
   stopped = 0;
   running = 1;
@@ -882,6 +1533,7 @@ void garden_step(uint16_t keys) {
   else if (frame == INIT_GARDEN) {
     if (read_input(keys)) init_garden();
     else not_in_c();
+    g.frames++;
   } else if (frame == SONG_STARTS) gba_sound_play(MUS_GARDEN);
   else if (frame >= FIRST_FRAME) {
     if (!read_input(keys)) { not_in_c(); return; }

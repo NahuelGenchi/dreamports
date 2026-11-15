@@ -2487,6 +2487,19 @@ SAT-R's `chao_garden/` decompiles Sonic Advance 2's build of the program; Sonic 
 
 Its sound engine is the program's own: 4 players, 4 DirectSound channels, volume 15, 10512 Hz, with the music players' table at `0x020129DC` and the garden's music as song 1, which the kit plays from the unpacked copy (`gba_sound_start_program`).
 
+The egg and the Chao, with nothing done to them (`tiny-chao-hatches`):
+
+| What | Address | What it does |
+| :--- | :--- | :--- |
+| Egg hatching | `0x02003AE4` | Every other frame it widens, then stretches, twice over, by a rotation matrix (`ObjAffineSet`); then two shell halves and the new Chao |
+| Shell half | `0x02003CAC` | The top one flies up and falls; both blink away, and the egg leaves the save |
+| New Chao | `0x02001AFC` (`sub_02001e74`) | One of ten names, mood and belly 100, and five skill gains shared out one of three ways |
+| Chao | `0x02003F20` | Its needs' clocks, then a switch over 51 things it can be doing; `0x02005220` chooses the next by chance and need, `0x0200583C` a new way to walk, `0x02005180` a step |
+| Body, eyes, ball, shadow | `0x020058C8`, `0x02005E7C`, `0x02005D5C`, `0x02005F94` | Four sprites that follow it; the body's frame is by what it does and the way it faces |
+| Plant | `0x02003088`, `0x02003168` | When the save's wait runs out (`0x02002F88`), one grows over 64 frames somewhere on the grass |
+
+The seed the menu leaves is the frame count after the 15 frames the unpacking takes, as the V-blank goes on counting through them. The Chao's name is the first number drawn after the save's, so a wrong seed shows there first.
+
 In `tiny-chao-garden`, as `prove` counts frames, the menu hands over at 1729, the program starts at 1744, its sound engine at 1751, `InitGarden` runs from 1752 to 1757, where its song starts, and the garden's first frame is 1758. The fade in from white ends at 1773, and the egg's wait of 1,800 frames, which counts only once nothing is over the garden, ends at 3572, where it starts to hatch.
 
 ## Sonic Advance 2, for Boost Mode
