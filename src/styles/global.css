@@ -349,6 +349,13 @@ kbd {
 .mk-s3 { stop-color: var(--mk-s3); }
 .mk-eye { fill: var(--mk-eye); }
 
+/* the eye while it closes into the lid, as the logo moves into the pose asleep (src/scripts/mark-morph.ts) */
+.mk-eye-line {
+  stroke: var(--mk-eye);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 /* its eye closed, in the pose asleep */
 .mk-lid {
   fill: none;
@@ -1680,30 +1687,89 @@ dialog.card[open] {
   font: 400 13.5px/20px var(--font);
 }
 
-/* the logo's row shows it as picked, before its words, and has two choices, its pose over its colour; they go under
-   the words where a row is too narrow for both */
+/* the logo's row: its name, then the logo, big and in the middle so a change to it is easy to watch, then its two
+   choices, its pose over its colour, both the same width (#1328) */
 .set-logo {
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: 14px;
+  padding-bottom: 16px;
 }
 
-.set-logo .set-text {
-  flex: 1 1 9em;
+.set-logo .set-label {
+  justify-self: start;
+}
+
+/* where there's room beside the logo, its choices go on the right, as every other row's do, and the logo keeps the
+   middle: the row is then short enough for Settings to fit a laptop's screen with nothing to scroll */
+@media (min-width: 700px) {
+  .set-logo {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    padding-bottom: 14px;
+  }
+
+  .set-logo .set-label,
+  .set-logo .set-after {
+    grid-column: 1 / -1;
+  }
+
+  .set-logo .set-mark {
+    grid-column: 2;
+    margin: 0;
+  }
+
+  .set-logo .set-picks {
+    grid-column: 3;
+    justify-self: end;
+    justify-items: end;
+  }
 }
 
 .set-mark {
-  width: 44px;
-  height: 44px;
+  width: 96px;
+  height: 96px;
+  margin: 14px 0;
+  /* a pose picked under calm motion fades in (src/scripts/mark-morph.ts) */
+  transition: opacity 0.14s ease;
+}
+
+/* a colour picked flows through the logo */
+.set-mark stop {
+  transition: stop-color 0.5s ease;
+}
+
+.set-mark .mk-eye {
+  transition:
+    fill 0.5s ease,
+    stroke 0.5s ease;
+}
+
+.set-mark :is(.mk-line, .mk-lid) {
+  transition: stroke 0.5s ease;
+}
+
+.set-mark.is-out {
+  opacity: 0;
 }
 
 .set-picks {
   display: grid;
-  justify-items: end;
-  gap: 6px;
+  justify-items: center;
+  gap: 8px;
 }
 
-/* a line under a row's choices, the whole row wide */
+.set-picks .seg {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  width: min(228px, 100%);
+  text-align: center;
+}
+
+/* a line under the logo's choices */
 .set-after {
-  flex: 1 1 100%;
+  justify-self: start;
   margin-top: 0;
 }
 
@@ -1711,9 +1777,9 @@ dialog.card[open] {
   display: none;
 }
 
-/* a line that has nothing more to say keeps its place until Settings is left, so nothing moves under a finger (#1206) */
-.set-desc.is-held {
-  visibility: hidden;
+/* a switch's frame ends where a choice's does, so the two line up down the right of Settings */
+.card-settings .switch {
+  margin-right: -2px;
 }
 
 .switch {
@@ -1802,8 +1868,20 @@ dialog.card[open] {
   outline-offset: 2px;
 }
 
+/* in Settings the note's links have a line of their own under it */
+.card-settings .card-note {
+  margin: 14px 2px 0;
+}
+
 .card-note {
   margin: 18px 2px 4px;
+  color: var(--dim);
+  font: 400 13.5px/20px var(--font);
+}
+
+/* what can be done about the note, on a line of its own under it */
+.card-links {
+  margin: 10px 2px 4px;
   color: var(--dim);
   font: 400 13.5px/20px var(--font);
 }
@@ -2657,8 +2735,9 @@ dialog.card[open] {
     flex-wrap: wrap;
   }
 
-  .set-picks {
-    justify-items: start;
+  /* in Settings a row is its name and its switch or choice, on one line, the choice on the right (#1328) */
+  .card-settings .set-row {
+    flex-wrap: nowrap;
   }
 
   .about {
@@ -2922,13 +3001,18 @@ dialog.card[open] {
 
 :root[data-motion='calm'] .row,
 :root[data-motion='calm'] .t-mark,
-:root[data-motion='calm'] .switch-knob {
+:root[data-motion='calm'] .switch-knob,
+:root[data-motion='calm'] .set-mark :is(stop, .mk-eye, .mk-line, .mk-lid) {
   transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-motion='full']) .twinkle {
     animation: none;
+  }
+
+  :root:not([data-motion='full']) .set-mark :is(stop, .mk-eye, .mk-line, .mk-lid) {
+    transition: none;
   }
 }
 
