@@ -2464,6 +2464,31 @@ The team screen is `sub_8018AE0`'s second task: each GBA starts with the players
 
 Only read in the code, not checked against a recording: the ceiling Chao places of Space Chao Garden (the Chao wasn't taken to place 5, 6 or 7 in any run), 3 to 4 players on stages 15–17 (only 2 were recorded there), a platform's room event received, confusion, the 3-player layout, and the sounds (the round-over sound, its fade, and the results screen's music and sound). The original-game bugs found along the way stay in, and are listed on issue #56.
 
+## Tiny Chao Garden
+
+A on Tiny Chao Garden fades the main menu to white (`bldCnt` 0xBF), and `LoadTinyChaoGarden` stops the music, turns the sound engine's V-sync off and unpacks the garden's program, LZ77 at `0x9BE78`, 0x21E00 bytes, into the work RAM at `0x02000000`. That takes the console 15 frames. It then leaves the program three words at `0x02000008`, the save's ring bank (`0x428`), its language (`0x19`) and the frame count plus the save's checksum, and soft resets into it. The C version is `c/src/garden.c`, which reads the program's tables, pictures and sprite frames from the same unpacked copy.
+
+SAT-R's `chao_garden/` decompiles Sonic Advance 2's build of the program; Sonic Advance's is a different one, with the same code in other places. Its parts, by where they start in Sonic Advance's build:
+
+| What | Address | Decompilation |
+| :--- | :--- | :--- |
+| `GameInit`, the main loop | `0x02000138`, `0x02000104` | `GameInit`, `AgbMain` |
+| `LoadGameState`, flash sectors 10 to 15, marked 0x0817 | `0x02000204` | `LoadGameState` |
+| `InitGarden`, its pictures | `0x020014F8`, `0x02001864` | `InitGarden`, `sub_02001c60` |
+| The garden's frame | `0x0200196C` | `sub_02001D68` |
+| Objects: create, destroy, run | `0x02000C8C`, `0x02000D38`, `0x02000C60` | `sub_02000d04`, `sub_02000ed4`, `sub_02000eac` |
+| Sprites: layers, sort by height, build | `0x02000DD8`, `0x02001050`, `0x02000E64` | `sub_02001254`, `sub_0200117c`, `sub_02001088` |
+| Queues: registers, map stretches | `0x0200122C`, `0x02001344` | `sub_02001698`, `sub_020017b0` |
+| Fade in, pause | `0x02001CCC`, `0x02001D5C` | `sub_020088b0`, `sub_0200218c` |
+| Panel, its bars | `0x02002464`, `0x020028C8` | `sub_020089B0` |
+| Egg | `0x02003980` | `sub_02003e04` |
+| Chao | `0x02003D5C` | `sub_020041E0` |
+| Icons, shop, hand, cable sign | `0x02005FEC`, `0x0200604C`, `0x0200329C`, `0x020029EC` | `sub_020074c0`, `sub_02007500`, `sub_02008A04`, `sub_020089D4` |
+
+Its sound engine is the program's own: 4 players, 4 DirectSound channels, volume 15, 10512 Hz, with the music players' table at `0x020129DC` and the garden's music as song 1, which the kit plays from the unpacked copy (`gba_sound_start_program`).
+
+In `tiny-chao-garden`, as `prove` counts frames, the menu hands over at 1729, the program starts at 1744, its sound engine at 1751, `InitGarden` runs from 1752 to 1757, where its song starts, and the garden's first frame is 1758. The fade in from white ends at 1773, and the egg's wait of 1,800 frames, which counts only once nothing is over the garden, ends at 3572, where it starts to hatch.
+
 ## Sonic Advance 2, for Boost Mode
 
 The optional Boost Mode (see the [README](../README.md#sonic-advance-2-boost-mode)) reads a few things from your own Sonic Advance 2 ROM, in your browser. Like the Sonic Advance ROM, it is never uploaded; it is kept in this browser's IndexedDB under a key of its own. The ROM is recognized by its header (title `SONICADVANC2`, a game code starting with `A2N`). Only the USA version (`A2NE`) has been tested. Sonic Advance 2 keeps its sprites and its sound engine in the same formats as Sonic Advance, so [`src/rom/sa2.js`](../src/rom/sa2.js) finds them with the same searches. [`src/rom/sa2boost.js`](../src/rom/sa2boost.js) then reads what Boost Mode uses.

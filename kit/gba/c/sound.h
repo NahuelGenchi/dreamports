@@ -72,6 +72,10 @@ typedef struct {
   // with psgAt, the DMA that halts the CPU while SoundMain runs, in the chip's frame: the FIFO refills' first place and
   // what each costs, and where the first visible line's H-blank DMA lands (gba_sound_dma_at)
   int fifoAt, fifoCost, hblankAt;
+  // a program the game unpacked into the console's work RAM, whose own engine's tables and songs are there: the engine
+  // reads addresses from 0x02000000 in it (gba_sound_start_program), or nothing
+  const uint8_t *ram;
+  uint32_t ramSize;
 } SoundLayout;
 
 // The places in SoundMain where m4a.c counts the console's cycles, each with what it costs in Sonic Battle's library.
@@ -246,7 +250,7 @@ enum {
   OP_SETUP = 1, OP_RESET, OP_START, OP_START_OR_CHANGE, OP_START_OR_CONTINUE, OP_STOP, OP_PLAYER_START, OP_PLAYER_STOP,
   OP_PLAYER_CONTINUE, OP_IMM_INIT, OP_PITCH, OP_VOLUME, OP_PANPOT, OP_FADE_IN, OP_FADE_OUT, OP_TEMPO, OP_ALL_STOP,
   OP_ALL_CONTINUE, OP_VSYNC_OFF, OP_VSYNC_ON, OP_WAVE_AT, OP_PLAYED_FOR, OP_PSG_AT, OP_CHIP_CLOCK, OP_DMA_AT,
-  OP_HBLANK_DMA, OP_LATE,
+  OP_HBLANK_DMA, OP_LATE, OP_PROGRAM,
 };
 
 typedef struct { int32_t op, a, b, c, d; } SoundCall;

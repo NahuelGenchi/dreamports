@@ -1,0 +1,74 @@
+{
+  "about": "From power-on with nothing saved: A on the language screen, the logos left alone, Start twice on the title screen and the main menu, as in options-menu, then Up to Tiny Chao Garden and A, which fades the menu out to white and starts the garden's program. The garden fades in from white with its music and is left alone: the egg waits in the field by the pond, the hand above it, the panel's bars empty and its ring turning by a count of 0. The recording stops on the frame before the egg starts to hatch, 1,800 frames after the fade in ends.",
+  "frames": 3572,
+  "clip": {
+    "at": 1700,
+    "frames": 300
+  },
+  "held": [
+    [
+      0,
+      []
+    ],
+    [
+      150,
+      [
+        "A"
+      ]
+    ],
+    [
+      156,
+      []
+    ],
+    [
+      950,
+      [
+        "START"
+      ]
+    ],
+    [
+      956,
+      []
+    ],
+    [
+      1300,
+      [
+        "START"
+      ]
+    ],
+    [
+      1306,
+      []
+    ],
+    [
+      1550,
+      [
+        "START"
+      ]
+    ],
+    [
+      1556,
+      []
+    ],
+    [
+      1650,
+      [
+        "UP"
+      ]
+    ],
+    [
+      1654,
+      []
+    ],
+    [
+      1680,
+      [
+        "A"
+      ]
+    ],
+    [
+      1684,
+      []
+    ]
+  ]
+}

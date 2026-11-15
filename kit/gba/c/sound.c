@@ -45,6 +45,28 @@ static int counting;
 static SoundCall counterQueue[CALLS];
 static int counterQueued;
 
+// a program the game unpacked from its copy into the console's work RAM, with a sound engine of its own, whose tables and
+// songs the engine then reads (gba_sound_start_program): unpacked here too, so the audio thread's copy has it as well
+static uint8_t *program;
+static uint32_t programSize, programRoom;
+#define ROM_BASE 0x08000000u
+#define RAM_BASE 0x02000000u
+// a byte at an address less ROM_BASE, as the engine reads them (m4a.c rom8): the copy, or the program
+static int mem8(uint32_t at) {
+  if (at < gba_rom_size) return gba_rom[at];
+  uint32_t r = at - (RAM_BASE - ROM_BASE);
+  return r < programSize ? program[r] : 0;
+}
+static uint32_t mem32(uint32_t at) { return mem8(at) | mem8(at + 1) << 8 | mem8(at + 2) << 16 | (uint32_t)mem8(at + 3) << 24; }
+// whether a song's header is somewhere the engine reads
+static int readable(uint32_t ptr) {
+  return (ptr >= ROM_BASE && ptr < ROM_BASE + gba_rom_size) || (ptr >= RAM_BASE && ptr < RAM_BASE + programSize);
+}
+static void load_program(uint32_t romOffset, uint32_t size) {
+  if (size > programRoom) { program = gba_alloc(size); programRoom = size; }
+  programSize = romOffset < gba_rom_size ? gba_lz77(gba_rom + romOffset, gba_rom_size - romOffset, program, size) : 0;
+}
+
 // ---- the game's calls ----
 
 static void apply(M4a *m, const SoundCall *c) { gba_sound_apply(m, c); }
@@ -100,15 +122,16 @@ static void setup(int a, int b, int c, int d) {
   layout.voicesEndOnChip = (c >> 16) & 1; layout.library = (c >> 17) & 0xF; layout.soundMainAt = d; layout.psgAt = psgAt;
   layout.fifoAt = fifoAt; layout.fifoCost = fifoCost; layout.hblankAt = hblankAt;
   layout.songTable = layout.playerTable + layout.players * 12;
+  // a program's engine reads its own tables, and the copy's goes on with none
+  layout.ram = (c >> 21) & 1 ? program : NULL;
+  layout.ramSize = (c >> 21) & 1 ? programSize : 0;
   // the songs the engine has, as tables.js counts them
   layout.songs = 0;
   for (;;) {
     uint32_t at = layout.songTable + layout.songs * 8;
-    if (at + 8 > gba_rom_size) break;
-    const uint8_t *s = gba_rom + at;
-    uint32_t ptr = s[0] | s[1] << 8 | s[2] << 16 | (uint32_t)s[3] << 24;
-    int ms = s[4] | s[5] << 8;
-    if (!(ptr >= 0x08000000u && ptr < 0x08000000u + gba_rom_size) || ms >= layout.players || (s[6] | s[7] << 8) != ms) break;
+    uint32_t ptr = mem32(at);
+    int ms = mem8(at + 4) | mem8(at + 5) << 8;
+    if (!readable(ptr) || ms >= layout.players || (mem8(at + 6) | mem8(at + 7) << 8) != ms) break;
     layout.songs++;
   }
   running = 1;
@@ -119,13 +142,16 @@ static void take(int op, int a, int b, int c, int d) {
   // the counter has every call but these, which the JavaScript kit doesn't send it either: a start point moves it on
   // with gba_sound_frames_gone_by
   if (counting && op != OP_SETUP && op != OP_RESET && op != OP_PLAYED_FOR && counterQueued < CALLS) counterQueue[counterQueued++] = call;
+  if (op == OP_PROGRAM) load_program((uint32_t)a, (uint32_t)b);
   if (op == OP_SETUP) setup(a, b, c, d);
   if (handOver) {
     if (takenCount < CALLS) taken[takenCount++] = call;
     return;
   }
+  if (op == OP_PROGRAM) return;
   if (op == OP_SETUP) {
-    apu_init(&apu);
+    // a soft reset into a program leaves the sound chip as it was
+    if (!((c >> 21) & 1)) apu_init(&apu);
     m4a_init(&engine, gba_rom, gba_rom_size, &layout, &apu);
     queued = 0;
     cycle = nextFrame = 0;
@@ -177,6 +203,16 @@ int gba_sound_start_layout(uint32_t playerTable, int players, int channels, int 
   return 1;
 }
 
+int gba_sound_start_program(uint32_t romOffset, uint32_t size, uint32_t playerTable, int library, int players, int channels,
+                            int volume, int rate, int reverb) {
+  if (!gba_rom || romOffset >= gba_rom_size || players < 1 || players > M4A_PLAYERS || library < 0 || library >= LIBRARIES) return 0;
+  take(OP_PROGRAM, (int)romOffset, (int)size, 0, 0);
+  if (playerTable < RAM_BASE || playerTable + (uint32_t)players * 12 + 16 > RAM_BASE + programSize) return 0;
+  take(OP_SETUP, (int)(playerTable - ROM_BASE), players | channels << 8 | volume << 16 | (reverb & 0x7F) << 24,
+    rate | library << 17 | 1 << 21, 0);
+  return 1;
+}
+
 int gba_sound_start(int players, int channels, int volume, int rate, int reverb) {
   return gba_sound_start_library(LIBRARY_SONIC_BATTLE, players, channels, volume, rate, reverb);
 }
@@ -222,7 +258,7 @@ void gba_sound_reset(void) { take(OP_RESET, 0, 0, 0, 0); }
 void gba_sound_played_for(int frames) { if (frames > 0) take(OP_PLAYED_FOR, frames, 0, 0, 0); }
 void gba_sound_play(int song) { take(OP_START, song, 0, 0, 0); }
 int gba_sound_song_player(int song) {
-  return running && song >= 0 && song < layout.songs ? gba_rom[layout.songTable + song * 8 + 4] : -1;
+  return running && song >= 0 && song < layout.songs ? mem8(layout.songTable + song * 8 + 4) : -1;
 }
 int gba_sound_song_frames(int player, int song) {
   enum { LIMIT = 60 * 60 };
@@ -251,7 +287,7 @@ void gba_sound_continue_player(int player) { take(OP_PLAYER_CONTINUE, player, 0,
 /** m4aSongNumStart, then m4aMPlayImmInit and m4aMPlayPitchControl on its player (pitch in 1/256 semitones) */
 void gba_sound_play_pitched(int song, int pitch) {
   if (!running || song < 0 || song >= layout.songs) return;
-  int p = gba_rom[layout.songTable + song * 8 + 4];
+  int p = mem8(layout.songTable + song * 8 + 4);
   take(OP_START, song, 0, 0, 0); take(OP_IMM_INIT, p, 0, 0, 0); take(OP_PITCH, p, 0xFFFF, pitch, 0);
 }
 void gba_sound_pitch(int player, int bits, int pitch) { take(OP_PITCH, player, bits, pitch, 0); }

@@ -72,6 +72,14 @@ void gba_draw_frame(uint32_t *out);
 #define gba_start_number kit_start_number
 #define gba_alloc kit_alloc
 
+/** The BIOS's LZ77UnCompWram: unpacks the LZ77 data at `src`, of which `srcSize` bytes can be read, into `dst`, at
+ *  most `max` bytes, and returns how many it wrote. */
+uint32_t gba_lz77(const uint8_t *src, uint32_t srcSize, uint8_t *dst, uint32_t max);
+/** The BIOS's LZ77UnCompVram into gba_vram from byte `at`: VRAM takes halfwords, so each even byte waits for the odd one
+ *  after it, and a copy that reads the waiting byte gets what VRAM held there before
+ *  (kit/gba/notes/lz77-to-vram-writes-a-halfword-at-a-time.md). Returns how many bytes it wrote. */
+uint32_t gba_lz77_vram(const uint8_t *src, uint32_t srcSize, uint32_t at);
+
 /** The buttons held at the V-blank that ends this frame, as KEYINPUT has them, for a game that reads them there as
  *  well as at the frame's start, as a soft reset's V-blank does: what the page finds held as the frame ends, or what a
  *  proof tool says the next frame holds, as the original's frames are counted from the V-blank before them
@@ -96,6 +104,13 @@ int gba_sound_start_library(int library, int players, int channels, int volume, 
  *  `voicesEndOnChip` for a game whose voices end on the chip, and `soundMainAt` where SoundMain's wave write lands. */
 int gba_sound_start_layout(uint32_t playerTable, int players, int channels, int volume, int rate, int reverb,
                            int voicesEndOnChip, int soundMainAt);
+/** For a game that soft resets into a program it unpacked into the console's work RAM, with a sound engine of its own, as
+ *  Sonic Advance does into Tiny Chao Garden: the program, LZ77 at `romOffset` in the copy and `size` bytes unpacked at
+ *  0x02000000, is unpacked where the sound runs too, and the engine starts again from nothing with the program's tables,
+ *  its music players' table at `playerTable`, an address in the program, and its sound mode, as the program's
+ *  m4aSoundInit leaves it. The sound chip goes on as it was. Songs played after it are the program's. */
+int gba_sound_start_program(uint32_t romOffset, uint32_t size, uint32_t playerTable, int library, int players, int channels,
+                            int volume, int rate, int reverb);
 /** For a game whose SoundMain runs well into the console's frame: from the next sound frame, SoundMain's writes to the
  *  sound chip's four channels land `cycles` into its frame plus what SoundMain has counted so far, while the game's own
  *  calls write at once, as a square's phase lasts from note to note

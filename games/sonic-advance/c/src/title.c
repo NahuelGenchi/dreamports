@@ -3,9 +3,9 @@
 // over 49 frames, then the logo zooms in from four times its size over 13, slowing as it comes. A second after the
 // copyright line shows, "PRESS START" blinks above it, on and off every 32 frames, and Start opens the main menu: the
 // five items where "PRESS START" was, the chosen one lit. Up and Down move through them, wrapping round, with the key
-// repeat, and A on Game Start, VS, Time Attack or Options fades the screen to black and stops the music. Game Start
-// opens the character select, or the course select once the character has progress in the save; the rest, and the
-// title screen's demos, aren't in C yet. A on Tiny Chao Garden does nothing.
+// repeat, and A on Game Start, VS, Time Attack or Options fades the screen to black and stops the music, and on Tiny
+// Chao Garden to white. Game Start opens the character select, or the course select once the character has progress in
+// the save, and Tiny Chao Garden its program (garden.c); the title screen's demos aren't in C yet.
 //
 // The logo, "PRESS START" and the menu's items are in the save's language, Japanese or English; the copyright line is
 // the international release's in both.
@@ -25,7 +25,7 @@ static const uint16_t ANIM_PRESS_START[2] = { 778, 779 };
 #define PRESS_START_TILES (23 * 2)
 #define COPYRIGHT_TILES (3 * 30)
 enum { MENU_ITEMS = 5, MENU_TOP = 93, MENU_SPACE = 14 };
-enum { GAME_START = 0, VS = 1, TIME_ATTACK = 2, OPTIONS = 3 };
+enum { GAME_START = 0, VS = 1, TIME_ATTACK = 2, OPTIONS = 3, TINY_CHAO_GARDEN = 4 };
 static const uint8_t ITEM_TILES[5] = { 28, 16, 28, 20, 40 };
 static const uint8_t ITEM_VARIANTS[10] = { 1, 1, 2, 2, 3, 3, 4, 4, 5, 5 };   // by item, then language
 #define BLEND_STEP 0x55
@@ -268,12 +268,12 @@ static void choose_item(Task *t) {
     destroy_task(t);
     return;
   }
-  // Tiny Chao Garden's screen isn't built: A on it does nothing (the original fades out to it too)
-  if (e.pressed & KEY_A && menu.selectedItem <= OPTIONS) {
+  // A fades the screen out: to black, or, for Tiny Chao Garden, to white, which leaves the sprites out
+  if (e.pressed & KEY_A) {
     play_song(SONG_SELECT);
     t->main = fade_out;
     menu.unk1B0 = 0;
-    e.bldCnt = 0xFF;   // 0xBF for Tiny Chao Garden
+    e.bldCnt = menu.selectedItem == TINY_CHAO_GARDEN ? 0xBF : 0xFF;
     e.bldY = 0;
   }
 }
@@ -296,7 +296,8 @@ static void fade_out(Task *t) {
 
 // Task_800DEE4: the items' tiles freed and the music stopped (a song started on its player, the player cleared and the
 // song stopped), then Game Start's way on: the character select, or the course select once the character has progress;
-// or the windows and the blend off, and the Time Attack or Options menu
+// or the windows and the blend off, and the Time Attack or Options menu, or Tiny Chao Garden. The garden's soft reset
+// leaves this frame before its V-blank, so the blend the menu turns off never reaches the screen, which stays white
 static void leave_menu(Task *t) {
   int item = menu.selectedItem;
   for (int i = 0; i < MENU_ITEMS; i++) vram_free(menu.items[i].graphics.dest);
@@ -306,6 +307,10 @@ static void leave_menu(Task *t) {
   if (item == GAME_START) {
     ctx.gameMode = SINGLE_PLAYER;
     front_start_game();
+    return;
+  }
+  if (item == TINY_CHAO_GARDEN) {
+    garden_load();
     return;
   }
   e.dispCnt &= ~0x6000;
