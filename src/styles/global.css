@@ -3637,7 +3637,7 @@ dialog.card[open] {
     --rail: 58px;
     --hero-sideways: min(
       (100vw - max(18px, env(safe-area-inset-left, 0px)) - max(24px, env(safe-area-inset-right, 0px)) - var(--rail)) * 0.47,
-      (100dvh - 150px - env(safe-area-inset-bottom, 0px)) * 1.54
+      (100dvh - 156px - env(safe-area-inset-bottom, 0px)) * 1.54
     );
   }
 
@@ -3662,11 +3662,13 @@ dialog.card[open] {
   .view .inspect {
     --hero: var(--hero-sideways);
     /* the picture with its frame is 0.646 of its width tall (.show-tile); under it 12px of gap, the box to tick
-       (34px and 2px of margin on each side), 6px of gap and the 42px buttons */
-    --stack: calc(var(--hero) * 0.646 + 98px);
+       (40px and 2px of margin on each side), 6px of gap and the 42px buttons */
+    --stack: calc(var(--hero) * 0.646 + 104px);
     /* at least the right side's soft top edge (14px) and the title's lift (7px) */
     --roof: max(22px, (100dvh - env(safe-area-inset-bottom, 0px) - var(--stack)) / 2);
-    grid-template-columns: auto minmax(0, 1fr);
+    /* the left side is as wide as the picture and no wider: left to its own width it took that of the box to
+       tick's words on one line, which for a long name squeezed the right side until its rows slid sideways */
+    grid-template-columns: var(--hero) minmax(0, 1fr);
     column-gap: 28px;
     padding-left: calc(max(18px, env(safe-area-inset-left, 0px)) + var(--rail));
   }
@@ -3687,12 +3689,18 @@ dialog.card[open] {
     min-width: min-content;
   }
 
+  /* room for a long name's two lines, so the left side is as tall for every game */
   .view .gate-form .check {
-    min-height: 34px;
+    min-height: 40px;
   }
 
   .view .ins-show .btn {
     min-height: 42px;
+  }
+
+  /* a row of a game's own settings puts its choices under its name where they don't fit beside it */
+  .view .game-set .set-row {
+    flex-wrap: wrap;
   }
 
   .view :is(.gate-form .check, .ins-show .btn) {
@@ -4160,7 +4168,7 @@ dialog.card[open] {
   .view .make {
     --hero: var(--hero-sideways);
     --stack: calc(var(--hero) * 0.646 + 58px);
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: var(--hero) minmax(0, 1fr);
   }
 
   .view .make:not(:has(.mk-play)) {
