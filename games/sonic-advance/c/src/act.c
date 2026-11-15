@@ -10,6 +10,7 @@
 #include "special.h"
 #include "extra.h"
 static void leave_for_lobby(void);
+static void round_to_results(void);
 
 int moon_opens(void);
 
@@ -795,6 +796,16 @@ static void end_run(void) {
   clear_queues();
   clear_bg_sprites();
 }
+// Task_TransitionToResultsScreen, its white complete: every task goes, the music with the stage's, the packet is zeroed and
+// the results screen comes (mpresults.c)
+static void round_to_results(void) {
+  end_run();
+  mp_players_stop();
+  hunt.active = 0;
+  act_active = 0;
+  memset(link_send(), 0, PACKET_SIZE);
+  create_vs_results();
+}
 static void leave_for_lobby(void) {
   end_run();
   act_active = 0;
@@ -979,8 +990,11 @@ static void act_frame(void) {
   // the title card's task (0x2100) runs before Sonic's and the clock's, so the frame it ends frees the pad and starts
   // the clock; its pieces and fade go over the act, and it sets the display while it shows, after draw_frame
   int cardShows = !act.cardDone;
-  // a round's players (0x2000) run just before the card
-  if (chaohunt_active()) mp_players_run();
+  // a round's players (0x2000) run just before the card; once its end has whitened the screen, the results screen takes over
+  if (chaohunt_active()) {
+    mp_players_run();
+    if (hunt.whiteDone) { round_to_results(); return; }
+  }
   // in a round nobody can cut the card short
   if (cardShows) card_update(!chaohunt_active() && (e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
   // the results' task (0x2100) and its pieces' (0x2120); the frame they end, the next act takes over

@@ -84,4 +84,8 @@ void chaohunt_setup(void);
 /** Starts the round the VS menus chose. */
 void chaohunt_start(int level, int chao);
 
+/** The round's results screen (mpresults.c), and the continue screen after it (vscontinue.c). */
+void create_vs_results(void);
+void create_vs_continue(void);
+
 #endif
