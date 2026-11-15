@@ -913,6 +913,8 @@ Three screens from the Options menu's PLAYER DATA. The menu is `CreatePlayerData
 
 The engine's VRAM, palette RAM, OAM, display registers, picture and save match the recording's on every frame of the four runs, from 1150 to their ends, the frame count written into `unk4` included. The port's last write is byte for byte the flash's latest sector. The exceptions are the ones the Options menu's checks already show: the main menu's first two frames back from the Options menu, and 341 bytes of sprite tiles nothing draws (see [The sound test](#the-sound-test)). Run 2 at first matched up to the main menu, which the port drew in English then; with the [language screen](#the-language-screen)'s part it matches on every frame, the Japanese main menu included.
 
+The recording `player-data` plays the part from power-on with nothing saved: PLAYER DATA from the Options menu, the VS record with no records scrolled to its end and back, the name input saving a new name, and OK back to the Options menu (frames 1840 to 3119). Both the JavaScript version and the C version (`playerdata.c`, `vsrecord.c`, with the name input going back to the player data menu outside game mode 2) play every frame of it as mGBA does, picture and sound.
+
 In Chrome 156 and Firefox 159 (headless, a new profile each), the page played runs 1, 2 and 4 from power-on with the same saves stored, run 4's L and R on the keyboard's <kbd>Q</kbd> and <kbd>E</kbd>. At 21 frames across the three screens, both browsers drew the screen pixel for pixel as mGBA did, and neither console showed an error from the game.
 
 ### Title card

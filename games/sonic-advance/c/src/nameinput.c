@@ -12,8 +12,8 @@
 // characters glow, dimming and brightening every 47 frames.
 //
 // The name is kept as the bar's tiles, two rows of two a character, which go into layer 1's map every frame, in the rows
-// above the grid that the scroll has taken out of view. In C the name input comes only from the VS menus, which go on to
-// the mode select (modeselect.c) after it; the player data menu it leads to otherwise isn't in C yet.
+// above the grid that the scroll has taken out of view. From the VS menus it goes on to the mode select (modeselect.c),
+// and from the player data menu back to that menu (playerdata.c).
 
 #include "sa.h"
 
@@ -272,12 +272,14 @@ static void name_loop(Task *t) {
   e.bgScroll[3] = (uint16_t)(((((uint16_t)input.top) << 4) - 0x30) & 0x1FF);
 }
 
-// once the name is in the save: layers 1 and 2's maps cleared in the next V-blank, and the mode select
+// once the name is in the save: layers 1 and 2's maps cleared in the next V-blank, and the mode select when the VS menus
+// opened it (game mode 2), else the player data menu
 static void after(void) {
   destroy_task(e.curTask);
   vs_clear_map(1, 0x20);
   vs_clear_map(2, 0x20);
-  create_mode_select();
+  if (ctx.gameMode == GAME_MODE_RACE) create_mode_select();
+  else create_player_data_menu();
 }
 static void after_write(void) {
   sound_vsync_on();
