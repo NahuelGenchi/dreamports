@@ -1,6 +1,6 @@
 // The save, translated from engine/save.js (SAT-R's src/game/sa1/save.c, and CreateEmptySaveGame in src/game/game.c):
 // Sonic Advance's one save, struct SaveGame, the 0x430 bytes the cartridge's flash memory keeps, which the kit's save
-// memory holds here (gba_save). At power-on the game reads the save (SaveGameExists), or starts an empty one
+// memory holds here (gba_save), with the rest of the flash, where Tiny Chao Garden keeps its own (garden.c). At power-on the game reads the save (SaveGameExists), or starts an empty one
 // (CreateEmptySaveGame) and the language screen; then it changes the save in memory as it goes, and writes it at set
 // moments (WriteSaveGame). engine/save.js lists its fields. The save's bytes are the same as the JavaScript version's,
 // so the two share it (main.js), and a player keeps their save whichever they play.
@@ -41,7 +41,7 @@ static void empty_save(uint8_t *bytes) {
 
 /** The save at power-on: the one the save memory keeps, if it is one (its security and checksum right), or an empty one. */
 void save_open(void) {
-  flash = gba_save(SAVE_SIZE);
+  flash = gba_save(FLASH_BYTES);
   save.keep = 1;
   // a start point's save is the game's own, kept nowhere, as the JavaScript version's openSave(null) gives it: it
   // doesn't read the cartridge's, so the language screen comes as it does at a first start

@@ -111,6 +111,10 @@ int gba_sound_start_layout(uint32_t playerTable, int players, int channels, int 
  *  m4aSoundInit leaves it. The sound chip goes on as it was. Songs played after it are the program's. */
 int gba_sound_start_program(uint32_t romOffset, uint32_t size, uint32_t playerTable, int library, int players, int channels,
                             int volume, int rate, int reverb);
+/** gba_sound_start_library for the copy's own game once such a program soft resets back into it, as Tiny Chao Garden's
+ *  Save & Exit does into Sonic Advance: the engine starts again from nothing with the copy's tables, and the sound chip
+ *  goes on as it was. */
+int gba_sound_start_after_program(int library, int players, int channels, int volume, int rate, int reverb);
 /** For a game whose SoundMain runs well into the console's frame: from the next sound frame, SoundMain's writes to the
  *  sound chip's four channels land `cycles` into its frame plus what SoundMain has counted so far, while the game's own
  *  calls write at once, as a square's phase lasts from note to note
