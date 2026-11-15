@@ -3631,12 +3631,51 @@ dialog.card[open] {
 }
 
 @media (max-height: 500px) and (min-width: 641px) {
-  /* a phone held sideways: a smaller picture, so it, the box and the button fit the height, and
-     a smaller title, so the game's name stays on one line */
+  /* a phone held sideways, on a game's page and its Make page (#1323). The height is what's short, so Back keeps
+     its corner in a rail of its own beside the page instead of a bar under it, and both sides get the full height. */
+  .view:is(.card-inspect, .card-make) {
+    --rail: 58px;
+    --hero-sideways: min(
+      (100vw - max(18px, env(safe-area-inset-left, 0px)) - max(24px, env(safe-area-inset-right, 0px)) - var(--rail)) * 0.47,
+      (100dvh - 150px - env(safe-area-inset-bottom, 0px)) * 1.54
+    );
+  }
+
+  :root:not([data-input='touch']).js .view:is(.card-inspect, .card-make) {
+    /* Back with its key beside it is wider */
+    --rail: 82px;
+  }
+
+  .view:is(.card-inspect, .card-make) .view-bar {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: auto;
+    padding-right: 0;
+    padding-bottom: 10px;
+  }
+
+  /* The picture as big as the height allows. What shows on the left (the picture, then the box to tick and Play, or
+     Make's one button) sits in the middle of the height, and the title starts level with the picture's frame, so
+     both sides share one top line. Its height is worked out rather than centred by the browser, because the right
+     side needs the same number, and because the line kept free under Play for its note would push the rest up. */
+  .view .inspect {
+    --hero: var(--hero-sideways);
+    /* the picture with its frame is 0.646 of its width tall (.show-tile); under it 12px of gap, the box to tick
+       (34px and 2px of margin on each side), 6px of gap and the 42px buttons */
+    --stack: calc(var(--hero) * 0.646 + 98px);
+    /* at least the right side's soft top edge (14px) and the title's lift (7px) */
+    --roof: max(22px, (100dvh - env(safe-area-inset-bottom, 0px) - var(--stack)) / 2);
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 28px;
+    padding-left: calc(max(18px, env(safe-area-inset-left, 0px)) + var(--rail));
+  }
+
   .view .ins-show {
-    --hero: min(40vw, (100dvh - 222px - env(safe-area-inset-bottom, 0px)) * 1.54);
+    --hero: inherit;
+    justify-content: flex-start;
     gap: 12px;
-    padding-top: 12px;
+    padding: var(--roof) 0 10px;
   }
 
   /* the picture is narrow here, so words wrap inside the box and the buttons, which
@@ -3674,12 +3713,15 @@ dialog.card[open] {
   }
 
   .view .ins-text {
-    padding: 16px 6px 28px 0;
+    padding: var(--roof) 6px 28px 0;
     -webkit-mask-image: linear-gradient(transparent, #000 14px, #000 calc(100% - 28px), transparent);
     mask-image: linear-gradient(transparent, #000 14px, #000 calc(100% - 28px), transparent);
   }
 
+  /* smaller, so the game's name stays on one line, and lifted by the room the font leaves above its capitals, so
+     the letters start level with the picture's frame */
   .view .ins-title {
+    margin-top: -7px;
     font-size: 22px;
     line-height: 30px;
   }
@@ -4114,24 +4156,36 @@ dialog.card[open] {
 }
 
 @media (max-height: 500px) and (min-width: 641px) {
-  /* a phone held sideways: a smaller picture, and less room above */
-  .view .make,
-  .view .make .ins-show {
-    --hero: min(34vw, (100dvh - 158px - env(safe-area-inset-bottom, 0px)) * 1.54);
+  /* a phone held sideways: laid out as a game's page (#1323), with one button, or none, under the picture */
+  .view .make {
+    --hero: var(--hero-sideways);
+    --stack: calc(var(--hero) * 0.646 + 58px);
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .view .make:not(:has(.mk-play)) {
+    --stack: calc(var(--hero) * 0.646);
   }
 
   .view .make .ins-show {
+    --hero: inherit;
     gap: 12px;
-    padding-top: 16px;
+    padding: var(--roof) 0 10px;
   }
 
   .view .make .ins-text {
-    padding-top: 16px;
+    padding-top: var(--roof);
+  }
+
+  /* the button as tall as Play on a game's page: 42px, and 2px of margin on each side */
+  .view .make .mk-play {
+    min-height: 42px;
   }
 
   .view .mk-title {
-    font-size: 26px;
-    line-height: 32px;
+    margin-top: -7px;
+    font-size: 22px;
+    line-height: 30px;
   }
 }
 
