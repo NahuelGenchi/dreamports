@@ -923,6 +923,8 @@ static void put_start_point(void) {
 static void act_frame(void) {
   const Level *row = act.stage.row;
   put_start_point();
+  // a round's room events from the others come in first (Task_MultiplayerEventMgr_Receive, priority 1)
+  if (chaohunt_active()) chaohunt_receive();
   if (musicSync) {
     musicSync = 0;
     // the act's music starts on the frame after its first picture: the frames before the recording's first one are the
@@ -1067,6 +1069,8 @@ static void act_frame(void) {
   if (act.cardDone && !act.noPause && !chaohunt_active() && (e.pressed & KEY_START)) pause_menu_create(leave_for_lobby, !water_runs());
   act.player.wasInverted = act.player.inverted;
   act.partner.wasInverted = act.partner.inverted;
+  // a round's shared random numbers and item turn move on whether the clock runs or not (Task_GameStage)
+  if (chaohunt_active()) chaohunt_clock();
   if (!act.clockStopped) {
     act.clockTime++;
     if (act.timerReversed) {
@@ -1094,6 +1098,8 @@ static void act_frame(void) {
   act.tick++;
   // the water's task (0xFFFE), after the clock's
   if (act.frames > 0) water_task();
+  // and a round's room events going out (0xFFFE)
+  if (chaohunt_active()) chaohunt_send();
   act.frames++;
   // the Moon's save ends the frame in the robot's task: nothing after it draws, such as the ground's new column
   if (act.stage.level == LEVEL_THE_MOON && moon_saving()) return;

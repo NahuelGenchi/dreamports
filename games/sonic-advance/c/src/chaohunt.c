@@ -31,7 +31,9 @@ void chaohunt_spawn(int level, int player, int32_t *x, int32_t *y) {
   *y = rom_s16(at + 2);
 }
 
+static void events_start(void);
 void chaohunt_setup(void) {
+  events_start();
   // AllocateCharacterStageGfx: in a round Sonic's own sprite loads neither tiles nor colours; his player's task does
   act.player.sprite.frameFlags |= SPRITE_KEEP_PALETTE | SPRITE_KEEP_TILES;
   int32_t x, y;
@@ -67,6 +69,8 @@ void chaohunt_start(int level, int chao) {
   hunt.id = link_id();
   hunt.count = link_count();
   hunt.chaoPlace = chao;
+  // the seed the parent's Start handed every GBA in the mode select
+  hunt.random = ctx.vsLink.seed;
   // each GBA plays the character its player picked in the VS character select
   ctx.character = ctx.vsLink.characters[hunt.id] & 3;
   ctx.partner = 0;
@@ -74,4 +78,92 @@ void chaohunt_start(int level, int chao) {
   act_hold_black();
   // the VS screen's task ends itself as it asks for the round: the stage starts from the next frame
   act_queue(level, -1, 0);
+}
+
+// --- the room events (mp_event_mgr.c, mp_event_recv_mgr.c) -------------------------------------------------------------
+// Things one player does that matter to the others go one at a time. A GBA queues them (16 slots of 8 bytes, never cleared,
+// so a short event leaves the bytes of the one before it in its slot), sends the next once every other GBA has acknowledged
+// the last by flipping its bit 0x1000 << id in their flags, and toggles its own bit with each new one. A receiving GBA
+// handles an event when the sender's bit differs from its own copy, then flips its copy as the acknowledgement.
+
+enum { QUEUE = 16, EVENT_SIZE = 6, KIND_STAGE = 0x1000, ITEM_TURN = 0x1FF, ITEM_GENERATION = 0xFFF, CONFUSION_TIME = 600 };
+enum { EVENT_PLATFORM = 1, EVENT_MYSTERY_BOX = 5, EVENT_ITEM = 6, EVENT_GOAL = 7, EVENT_CHAO = 9, SE_CHAO_HUH = 163 };
+static uint8_t queue[QUEUE][8];
+static int written, sent;
+
+static uint16_t flags_of(const uint8_t *packet) { return (uint16_t)(packet[8] | packet[9] << 8); }
+
+void chaohunt_send_event(int type, int a, int b, int c, int d) {
+  uint8_t *slot = queue[written];
+  slot[0] = (uint8_t)type;
+  if (type == EVENT_PLATFORM || type == EVENT_MYSTERY_BOX) { slot[1] = (uint8_t)a; slot[2] = (uint8_t)b; slot[3] = (uint8_t)c; slot[4] = (uint8_t)d; }
+  else if (type == EVENT_ITEM) slot[1] = (uint8_t)a;
+  else if (type == EVENT_CHAO) { slot[1] = (uint8_t)a; slot[2] = (uint8_t)b; }
+  written = (written + 1) & (QUEUE - 1);
+}
+
+static void events_start(void) { memset(queue, 0, sizeof queue); written = sent = 0; }
+
+int chaohunt_queue_empty(void) { return written == sent; }
+
+// what another player's room event does on this GBA
+static void receive_event(const uint8_t *ev, int from) {
+  MpPlayer *own = &mpPlayers[hunt.id];
+  switch (ev[0]) {
+    case EVENT_MYSTERY_BOX: entities_set_d1(ev[1], ev[2], ev[3], ev[4]); break;
+    case EVENT_ITEM:
+      if ((own->state & 1) || act.player.dead || hunt.ranks[hunt.id] != -1) break;
+      if (ev[1] == 0) { hunt.itemEffect |= 0x40; hunt.confusion = CONFUSION_TIME; }
+      break;
+    case EVENT_GOAL: break;
+    case EVENT_CHAO:
+      mpPlayers[from].state &= ~(0x10000u << ev[1]);
+      mpPlayers[ev[2]].state |= 0x10000u << ev[1];
+      play_song(SE_CHAO_HUH);
+      break;
+    default: break;
+  }
+}
+
+void chaohunt_receive(void) {
+  uint8_t *send = link_send();
+  for (int i = 0; i < hunt.count; i++) {
+    if (i == hunt.id) continue;
+    const uint8_t *r = link_slot(i);
+    if (!r) continue;
+    uint16_t bit = (uint16_t)(0x1000 << i), mine = flags_of(send);
+    if (packet_kind(r) == KIND_STAGE && (flags_of(r) & bit) != (mine & bit)) {
+      if (r[0xE] > 0 && r[0xE] < 10) receive_event(r + 0xE, i);
+      mine ^= bit;
+      send[8] = (uint8_t)mine; send[9] = (uint8_t)(mine >> 8);
+    }
+  }
+}
+
+void chaohunt_send(void) {
+  uint8_t *send = link_send();
+  uint16_t bit = (uint16_t)(0x1000 << hunt.id), mine = flags_of(send) & bit;
+  for (int i = 0; i < hunt.count; i++) {
+    const uint8_t *r = link_slot(i);
+    if (!r) return;
+    if (packet_kind(r) == KIND_STAGE && (mine == 0) != !(flags_of(r) & bit)) return;
+  }
+  if (written == sent) memset(send + 0xE, 0, EVENT_SIZE);
+  else {
+    memcpy(send + 0xE, queue[sent], EVENT_SIZE);
+    sent = (sent + 1) & (QUEUE - 1);
+    uint16_t f = flags_of(send) ^ bit;
+    send[8] = (uint8_t)f; send[9] = (uint8_t)(f >> 8);
+  }
+}
+
+// the stage's frames since it started move the shared random numbers on every 512, and with them the mystery boxes' turn
+// (its generation every 4096)
+void chaohunt_clock(void) {
+  int t = act.tick + 1;
+  if ((t & ITEM_TURN) == 0) {
+    hunt.random = hunt.random * 0x196225u + 0x3C6EF35Fu;
+    if ((t & ITEM_GENERATION) == 0) hunt.itemTurn = (hunt.itemTurn & 0xF) | ((((hunt.itemTurn >> 4) + 1) << 4) & 0xF0);
+    hunt.itemTurn = (hunt.itemTurn & 0xF8) | (int)(hunt.random & 7);
+  }
 }
