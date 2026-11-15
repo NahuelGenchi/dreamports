@@ -16,6 +16,7 @@ const Level ACT_CHAO_HUNT_A = {
   .song = 12, .hudFlash = 90, LEVEL_PALETTES(PALETTES_A), .paletteVariants = VARIANTS_A,
   .bgCnt = 0x1D0B,   // 256 × 256, priority 3, map 29 (0xE800), character base 2
   .drawBackground = draw_sky_and_sea,
+  .sharedRandom = 1,   // brake dust's flips go on from the VS menus' random numbers
 };
 
 // gSpawnPositions_Modes_4_and_5: four start places for each multiplayer stage, right after the per-level table
@@ -48,6 +49,7 @@ void chaohunt_setup(void) {
   // the Chao, at the place the link handed every GBA
   mp_chao_create(hunt.chaoPlace, 0);
   hunt.itemEffect = 0x80;
+  hunt.actStart = 1;
   act.cam.hold = 1;
   // three minutes on a clock running down (GameStageStart)
   act.courseTime = 3 * 3600;
@@ -58,10 +60,14 @@ void chaohunt_card_end(void) {
   for (int i = 0; i < PLAYERS_MAX; i++) mpPlayers[i].state &= ~2u;
   act.player.invulnerable = 120;
   hunt.itemEffect &= ~0x80;
+  hunt.actStart = 0;
   mp_hud_create();
 }
 
-void chaohunt_finish(void) { mp_finish_start(); }
+void chaohunt_finish(void) {
+  hunt.actStart = 1;
+  mp_finish_start();
+}
 
 /** The VS menus have chosen the round: Chao Hunt's `level`, with the Chao at place `chao`. */
 void chaohunt_start(int level, int chao) {
@@ -115,6 +121,12 @@ static void receive_event(const uint8_t *ev, int from) {
     case EVENT_ITEM:
       if ((own->state & 1) || act.player.dead || hunt.ranks[hunt.id] != -1) break;
       if (ev[1] == 0) { hunt.itemEffect |= 0x40; hunt.confusion = CONFUSION_TIME; }
+      else if (ev[1] == 1) {
+        // darkness, while the sender or this player has a Chao, or nobody does
+        int chao = 0;
+        for (int i = 0; i < PLAYERS_MAX && mpPlayers[i].made; i++) chao += hunt.charRings[i];
+        if ((mpPlayers[from].state & 0x70000) || (own->state & 0x70000) || chao == 0) mp_darkness_start();
+      }
       break;
     case EVENT_GOAL: break;
     case EVENT_CHAO:

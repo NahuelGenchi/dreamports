@@ -423,6 +423,8 @@ static void draw_frame(void) {
   // a hit boss's flash: the OBJ window on, everything in it brightened all the way (sub_802D870)
   if (act.bossFlash == BOSS_FLASH_WINDOW) { e.dispCnt |= 0x8000; e.winRegs[5] = 0x3F3F; }
   else if (act.bossFlash) { e.dispCnt |= 0x8000; e.winRegs[5] = 0x3F1F; e.bldCnt = 0xBF; e.bldY = 0x10; }
+  // a round's darkness and invisible players, which its tasks set as the original sets its display
+  if (chaohunt_active()) mp_display();
   act.drawn++;
   if (act.stage.level == LEVEL_THE_MOON) {
     e.dispCnt = (uint16_t)(act.cardDone ? 0x1F41 : 0x3F41);

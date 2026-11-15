@@ -87,7 +87,7 @@ void mp_chao_take(int id) { chao.playerA = id; }
 static int move_to(Chao *c, int x, int y) {
   const MpPlayer *m = &mpPlayers[c->playerA];
   int16_t dx = (int16_t)(x - (c->qx >> 8)), dy = (int16_t)(y - (c->qy >> 8));
-  if (dx > 0 || (dx == 0 && (m->s.frameFlags & SPRITE_X_FLIP))) c->s.frameFlags |= SPRITE_X_FLIP;
+  if (dx > 0 || (dx == 0 && (m->o.sprite.frameFlags & SPRITE_X_FLIP))) c->s.frameFlags |= SPRITE_X_FLIP;
   else c->s.frameFlags &= ~SPRITE_X_FLIP;
   if (dx == 0 && dy == 0) return 1;
   int16_t ux = dx, uy = dy;
@@ -114,7 +114,7 @@ static int move_to(Chao *c, int x, int y) {
 static void jump_off(Chao *c) {
   const MpPlayer *m = &mpPlayers[c->playerA];
   c->vx = (c->s.frameFlags & SPRITE_X_FLIP) ? -JUMP_X : JUMP_X;
-  c->vy = (m->s.frameFlags & SPRITE_Y_FLIP) ? JUMP_Y : -JUMP_Y;
+  c->vy = (m->o.sprite.frameFlags & SPRITE_Y_FLIP) ? JUMP_Y : -JUMP_Y;
   c->s.graphics.anim = ANIM_SHOCKED; c->s.variant = 0;
   c->phase = FALLING;
 }
@@ -129,7 +129,7 @@ static void sitting(Chao *c) {
     for (int pid = 0; pid < PLAYERS_MAX && mpPlayers[pid].made; pid++) {
       MpPlayer *m = &mpPlayers[pid];
       if (m->flags & 4) continue;
-      if (!collide_overlap(c->qx >> 8, c->qy >> 8, &s->hitboxes[0], m->x, m->y, &m->s.hitboxes[0])) continue;
+      if (!collide_overlap(c->qx >> 8, c->qy >> 8, &s->hitboxes[0], m->x, m->y, &m->o.sprite.hitboxes[0])) continue;
       m->state |= 0x10000u << c->id;
       c->playerA = c->playerB = pid;
       c->phase = FOLLOWING;
@@ -149,11 +149,11 @@ static void following(Chao *c) {
   uint32_t angle = (uint32_t)act_stage_time() * 16;
   int theta;
   uint16_t y;
-  if (m->s.frameFlags & SPRITE_Y_FLIP) { s->frameFlags |= SPRITE_Y_FLIP; y = (uint16_t)(m->y + HEAD); theta = (int)((angle + 0x200) & 0x3FF); }
+  if (m->o.sprite.frameFlags & SPRITE_Y_FLIP) { s->frameFlags |= SPRITE_Y_FLIP; y = (uint16_t)(m->y + HEAD); theta = (int)((angle + 0x200) & 0x3FF); }
   else { s->frameFlags &= ~SPRITE_Y_FLIP; y = (uint16_t)(m->y - HEAD); theta = (int)(angle & 0x3FF); }
-  uint16_t x = (uint16_t)((m->s.frameFlags & SPRITE_X_FLIP) ? m->x - BEHIND : m->x + BEHIND);
+  uint16_t x = (uint16_t)((m->o.sprite.frameFlags & SPRITE_X_FLIP) ? m->x - BEHIND : m->x + BEHIND);
   if ((int16_t)x == (c->qx >> 8)) {
-    int charAnim = m->s.graphics.anim - (int16_t)IDLE_ANIMS[ctx.vsLink.characters[m->id] & 3];
+    int charAnim = m->o.sprite.graphics.anim - (int16_t)IDLE_ANIMS[ctx.vsLink.characters[m->id] & 3];
     s->graphics.anim = charAnim == CHAR_ANIM_BORED ? ANIM_TURN : ANIM_DIAGONAL_R;
   } else s->graphics.anim = ANIM_HOVER;
   s->variant = 0;
@@ -167,7 +167,7 @@ static void following(Chao *c) {
 static void falling(Chao *c) {
   const MpPlayer *m = &mpPlayers[c->playerA];
   Sprite *s = &c->s;
-  int up = (m->s.frameFlags & SPRITE_Y_FLIP) != 0;
+  int up = (m->o.sprite.frameFlags & SPRITE_Y_FLIP) != 0;
   c->vy += up ? -FALL : FALL;
   c->qx += c->vx; c->qy += c->vy;
   int res = terrain_tile_floor(c->qx >> 8, c->qy >> 8, (m->flags >> 7) & 1, up ? -8 : 8);

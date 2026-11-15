@@ -1412,6 +1412,7 @@ static const uint16_t ANIMATIONS[PA_COUNT][2] = {
   [PS_HANG] = {41, 0}, [PS_HANG_MOVE] = {41, 1},
   [PS_REACT] = {24, 0},
   [PS_GRABBED] = {98, 0},
+  [PS_MP_KNOCKED] = {81, 0},
   [PS_MOON_GAZE] = {397, 0}, [PS_MOON_TRANSFORM] = {398, 0}, [PS_MOON_FLY] = {399, 0},
 };
 
@@ -1598,6 +1599,8 @@ void player_animate(Player *p, const PlayerInput *in) {
   p->prio = (int)((s->frameFlags & SPRITE_PRIORITY) >> 12);
   p->prevState = p->state;
   p->hidden = !p->dead && (p->invisible || (p->invulnerable > 0 && (act_stage_time() & 2)));
+  // a round's packet is made before the blinking counts down (sub_8024B10)
+  p->invulnerableSent = p->invulnerable;
   // dead, the timers count down only on the frame he dies: the tasks that take over from then on leave them
   if (p->dead && p->invulnerable == 1) return;
   if (p->state != PS_HURT && p->invulnerable > 0) p->invulnerable--;

@@ -39,6 +39,7 @@ typedef enum {
   PS_BREATHE,               // taking a breath from an air bubble (CHARSTATE_27)
   PS_FLOAT,                 // lifted by a whirlwind (CHARSTATE_37)
   PS_GRABBED,               // held in Egg X's claw
+  PS_MP_KNOCKED,            // knocked in a round while both attack (charState 41): it looks its own, and he steers as in a fall
   PS_MOON_GAZE, PS_MOON_TRANSFORM, PS_MOON_FLY,   // X Zone's way to the Moon Zone
   // Tails' own: flying, turning in flight, tired out and landing as the CPU's partner (charStates 53 to 56), swimming and
   // turning under water (57 and 58), and the tail swipe (60)
@@ -88,6 +89,7 @@ typedef struct {
   int attack, attackNext;       // step of the B-button combo, and the move queued after the somersault
   int idleT;                    // frames until he gets bored
   int invulnerable, invincible, speedUp;   // frames of blinking, invincibility and speed shoes left
+  int invulnerableSent;         // the blinking's frames left before this frame counted one down, as a round's packet has them
   int hidden;                   // left out of this frame's drawing
   int prio;                     // his sprite's priority, as his animation's commands leave it
   int dead, death, countdown;   // dead, the stage of the death (PLAYER_DEATH_*), and frames to the restart
