@@ -38,6 +38,8 @@ void act_tasks_run(int from, int to);
 void act_tasks_stop(void);
 /** Where the first interactable of `kind` in `level` is, as rom/entities.js reads them: 0 when there is none. */
 int entities_find(int level, int kind, int *x, int *y);
+/** A room event's mystery item box count: d1 of the interactable `id` of region (rx, ry). */
+void entities_set_d1(int rx, int ry, int id, int d1);
 
 // --- the entities (rom/entities.js) ------------------------------------------------------------------------------
 typedef struct { int x, y, kind, d[4]; } Entity;
@@ -49,6 +51,7 @@ typedef struct {
   int list;
   ActTask *live;
   int gone;
+  int regionX, regionY, id;   // its region, and its place among that region's records of its list, as room events name it
 } Slot;
 
 /** A level's entity list, decompressed from the copy (rom/entities.js readGrid): the grid of 256 x 256 px regions, with
@@ -71,6 +74,7 @@ ActTask *spikes_spawn(Slot *slot);
 ActTask *hiding_spikes_spawn(Slot *slot);
 ActTask *platform_spawn(Slot *slot);
 ActTask *item_box_spawn(Slot *slot);
+ActTask *mystery_box_spawn(Slot *slot);   // 115, in a round of Chao Hunt
 ActTask *bumper_spawn(Slot *slot);
 ActTask *flipper_spawn(Slot *slot);
 ActTask *flipper_blue_spawn(Slot *slot);

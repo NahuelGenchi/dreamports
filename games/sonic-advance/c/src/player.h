@@ -123,6 +123,8 @@ typedef struct {
 enum { PLAYER_ALIVE = 0, PLAYER_FALLING, PLAYER_GONE };
 enum { NO_TRACK = 0x7F, FULL_SCALE = 0x100 };
 
+/** Whether his sprite's animation started over in his last frame, for a round's packet (sub_8024B10). */
+extern int playerSpriteFresh;
 void player_init(Player *p, int x, int y);
 /** Tails as InitializePlayer makes him for the CPU's partner: his sprites from the heap, the body with room for Sonic's
  *  run (ALLOC_TILES(SA1_ANIM_SONIC_RUN)) and his tails 16 tiles. */

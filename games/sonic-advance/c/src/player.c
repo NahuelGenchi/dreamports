@@ -1574,11 +1574,15 @@ static void choose(Player *p, int name, int restart) {
 // walking, bouncing and in a marble track he is drawn through the rotation hardware
 static int drawn_rotated(const Player *p) { return p->state == PS_WALK || p->state == PS_BOUNCE || p->state == PS_MARBLE_TRACK; }
 
+int playerSpriteFresh;
 void player_animate(Player *p, const PlayerInput *in) {
   Sprite *s = &p->sprite;
   if (p->death == PLAYER_GONE) return;
   choose(p, pick(p, in), p->animRestart);
   p->animRestart = 0;
+  // sub_8024B10 notes whether the animation starts over before updating it: its packet says so to the others (the
+  // original compares prevAnim, a 16-bit value, with 0xFF)
+  playerSpriteFresh = s->prevVariant == 0xFF || s->prevAnim == 0xFF;
   if (p->state == PS_BRAKE && act_stage_time() % 4 == 0) act_brake_dust_of(p);
   for (int guard = 0; guard < 4; guard++) {
     // a hitbox a frame sets is turned with him, as the sprite system applies its flips when it sets one; the frames drawn

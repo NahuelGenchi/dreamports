@@ -4,11 +4,13 @@
 // function at a time; every comment names the original's function where one is rewritten.
 
 #include "objects.h"
+#include "chaohunt.h"
 #include "results.h"
 #include "bosses.h"
 #include "special.h"
 #include "extra.h"
 static void leave_for_lobby(void);
+static void round_to_results(void);
 
 int moon_opens(void);
 
@@ -365,7 +367,10 @@ static void hud_update(int draw) {
 // --- the title card (titlecard.c) ------------------------------------------------------------------------------------
 static void card_update(int pressed) {
   if (act.cardDone) return;
-  if (!titlecard_run(pressed)) act.clockStopped = 0;
+  if (!titlecard_run(pressed)) {
+    act.clockStopped = 0;
+    if (chaohunt_active()) chaohunt_card_end();
+  }
 }
 
 // --- the frame (engine/game.js) ----------------------------------------------------------------------------------
@@ -432,7 +437,8 @@ static void draw_frame(void) {
   if (fromCorner) e.bgScroll[6] = e.bgScroll[7] = 0;
   else if (row->drawBackground) row->drawBackground(camX, camY);
 
-  player_draw(shownSet ? &shown : &act.player, spriteX, spriteY);
+  // in a round his own player's task draws him, from his packets
+  if (!chaohunt_active()) player_draw(shownSet ? &shown : &act.player, spriteX, spriteY);
   // Amy's hearts, whose task (0x3001) runs just after hers
   act_amy_hearts_draw();
   // and the CPU partner as his task (0x3001) left him, just after Sonic
@@ -790,6 +796,16 @@ static void end_run(void) {
   clear_queues();
   clear_bg_sprites();
 }
+// Task_TransitionToResultsScreen, its white complete: every task goes, the music with the stage's, the packet is zeroed and
+// the results screen comes (mpresults.c)
+static void round_to_results(void) {
+  end_run();
+  mp_players_stop();
+  hunt.active = 0;
+  act_active = 0;
+  memset(link_send(), 0, PACKET_SIZE);
+  create_vs_results();
+}
 static void leave_for_lobby(void) {
   end_run();
   act_active = 0;
@@ -918,6 +934,8 @@ static void put_start_point(void) {
 static void act_frame(void) {
   const Level *row = act.stage.row;
   put_start_point();
+  // a round's room events from the others come in first (Task_MultiplayerEventMgr_Receive, priority 1)
+  if (chaohunt_active()) chaohunt_receive();
   if (musicSync) {
     musicSync = 0;
     // the act's music starts on the frame after its first picture: the frames before the recording's first one are the
@@ -934,6 +952,7 @@ static void act_frame(void) {
     // earlier this frame too
     clear_oam();
   }
+  if (act.cardDone && !act.hud.active && act.started && chaohunt_active()) act.hud.active = 1;
   if (act.cardDone && !act.hud.active && act.started) {
     hud_load();
     hud_begin();
@@ -971,7 +990,13 @@ static void act_frame(void) {
   // the title card's task (0x2100) runs before Sonic's and the clock's, so the frame it ends frees the pad and starts
   // the clock; its pieces and fade go over the act, and it sets the display while it shows, after draw_frame
   int cardShows = !act.cardDone;
-  if (cardShows) card_update((e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
+  // a round's players (0x2000) run just before the card; once its end has whitened the screen, the results screen takes over
+  if (chaohunt_active()) {
+    mp_players_run();
+    if (hunt.whiteDone) { round_to_results(); return; }
+  }
+  // in a round nobody can cut the card short
+  if (cardShows) card_update(!chaohunt_active() && (e.pressed & (KEY_A | KEY_B | KEY_UP | KEY_DOWN | KEY_LEFT | KEY_RIGHT)) != 0);
   // the results' task (0x2100) and its pieces' (0x2120); the frame they end, the next act takes over
   if (time_attack_result_active() && !time_attack_result_run()) { go_to_next_level(); return; }
   if (results_active() && !results_run()) {
@@ -980,7 +1005,7 @@ static void act_frame(void) {
   }
   // the HUD's task runs before Sonic's and before the clock, as the original makes it (0x2180), and the objects' tasks from
   // its priority after it, so an icicle (0x2200) that hurts Sonic takes his rings after the HUD has shown them
-  if (act.cardDone && !act.hud.gone) hud_update(1);
+  if (act.cardDone && !act.hud.gone && !chaohunt_active()) hud_update(1);
   if (objectsRun) objects_run_after_hud();
   PlayerInput in = {
     .left = (e.input & KEY_LEFT) != 0, .right = (e.input & KEY_RIGHT) != 0,
@@ -990,6 +1015,9 @@ static void act_frame(void) {
   };
   // the title card holds Sonic with jump and attack held, never pressed, and ignores the pad
   if (!act.cardDone) { in.left = in.right = in.up = in.down = 0; in.jump = in.attack = 1; }
+  // in a round, on the stage's first frame the camera's spectator target is still the first GBA, so every other GBA's
+  // player reads no buttons (Player_HandleInputs), and the card's hold keeps it so: their idle count runs from the start
+  if (!act.cardDone && chaohunt_active() && hunt.id != 0) in.jump = in.attack = 0;
   // the buttons held on the card's last frame, when Sonic takes the controls, aren't presses
   if (cardShows) in.jumpPressed = in.attackPressed = 0;
   // the start point's first frame reads the right and A the original has held there, never pressed
@@ -1037,6 +1065,8 @@ static void act_frame(void) {
     }
   }
   sonic_shown();
+  // in a round, his packet for the others, at the end of his frame (sub_8024B10)
+  if (chaohunt_active()) mp_send(&act.player, playerSpriteFresh);
   // the CPU partner's task, just after Sonic's (0x3001)
   if (act.hasPartner) { partner_task(!act.cardDone); partnerShown = act.partner; }
   if (row->palettesAfterSonic)
@@ -1050,9 +1080,11 @@ static void act_frame(void) {
   // in the single-player game Start opens the pause menu from when the title card ends until a life is lost or the
   // results start. Its task comes last among the act's, so it runs this frame only after the water's, which has its
   // priority; otherwise from the next frame
-  if (act.cardDone && !act.noPause && (e.pressed & KEY_START)) pause_menu_create(leave_for_lobby, !water_runs());
+  if (act.cardDone && !act.noPause && !chaohunt_active() && (e.pressed & KEY_START)) pause_menu_create(leave_for_lobby, !water_runs());
   act.player.wasInverted = act.player.inverted;
   act.partner.wasInverted = act.partner.inverted;
+  // a round's shared random numbers and item turn move on whether the clock runs or not (Task_GameStage)
+  if (chaohunt_active()) chaohunt_clock();
   if (!act.clockStopped) {
     act.clockTime++;
     if (act.timerReversed) {
@@ -1060,8 +1092,12 @@ static void act_frame(void) {
         // time up stops the clock (STAGE_FLAG__ACT_START), so this happens once
         act.courseTime = 0;
         act.clockStopped = 1;
-        if (act.stage.level == LEVEL_EGG_ROCKET) boss_shake(0x800, 8, 16, -1, SHAKE_VERTICAL | SHAKE_HORIZONTAL | SHAKE_RANDOM);
-        act.player.dead = 1;
+        // a round's clock ends the round (CreateMultiplayerFinishTransition)
+        if (chaohunt_active()) chaohunt_finish();
+        else {
+          if (act.stage.level == LEVEL_EGG_ROCKET) boss_shake(0x800, 8, 16, -1, SHAKE_VERTICAL | SHAKE_HORIZONTAL | SHAKE_RANDOM);
+          act.player.dead = 1;
+        }
       }
     } else if (++act.courseTime > MAX_COURSE_TIME) {
       // past 10:00 the clock stops, and with the time limit on, or in Time Attack whatever it is, it's a time up: his
@@ -1076,6 +1112,8 @@ static void act_frame(void) {
   act.tick++;
   // the water's task (0xFFFE), after the clock's
   if (act.frames > 0) water_task();
+  // and a round's room events going out (0xFFFE)
+  if (chaohunt_active()) chaohunt_send();
   act.frames++;
   // the Moon's save ends the frame in the robot's task: nothing after it draws, such as the ground's new column
   if (act.stage.level == LEVEL_THE_MOON && moon_saving()) return;
@@ -1085,6 +1123,8 @@ static void act_frame(void) {
   // the card's fade first: a stage's own tasks, such as Secret Base's spotlights, run after the card's and have the
   // last word on the display
   if (cardShows) titlecard_display();
+  // a round's end whitens the picture
+  if (chaohunt_active()) mp_finish_display();
   // (after the act before, its tasks first run on the act's second frame, as its objects do)
   if (row->afterFrame) row->afterFrame(1);
   results_display();
@@ -1301,6 +1341,12 @@ void act_start(int level, int cardSkip, int preFrames) {
   // after a life lost, the player starts again at the last checkpoint passed (SetStageSpawnPos)
   int again = restarting && respawnIndex;
   if (level == LEVEL_THE_MOON) supersonic_init(&act.player, act.stage.spawnX, act.stage.spawnY);
+  else if (chaohunt_active()) {
+    // each player starts at their own place in the stage (gSpawnPositions_Modes_4_and_5)
+    int32_t x, y;
+    chaohunt_spawn(level, hunt.id, &x, &y);
+    player_init(&act.player, x, y);
+  }
   else player_init(&act.player, again ? respawnX : act.stage.spawnX, again ? respawnY : act.stage.spawnY);
   if (!comingOn && !restarting) menu_leftovers();
   create_camera(&act.cam, &act.player);
@@ -1334,6 +1380,8 @@ void act_start(int level, int cardSkip, int preFrames) {
   // and neither does Amy
   if (ctx.character == CHARACTER_AMY) act.player.character = CHARACTER_AMY;
   if (ctx.partner && ctx.character == 0 && level != LEVEL_THE_MOON) partner_start();
+  // a round of Chao Hunt makes a task for every player on the link, and its own managers
+  if (chaohunt_active()) chaohunt_setup();
   objects_start(level, act.stage.paletteCount > 0);
   if (row->runsFromFirstFrame) start_palette_animations();
   if (act.fromStartPoint) {

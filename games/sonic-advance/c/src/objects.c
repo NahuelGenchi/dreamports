@@ -280,6 +280,7 @@ static const struct { int first, last; Spawn spawn; } INTERACTABLES[] = {
   { 93, 93, spiked_barrel_spawn },
   { 99, 99, conveyor_belt_object_spawn },
   { 103, 103, propeller_spawn },
+  { 115, 115, mystery_box_spawn },
 };
 
 // the enemies by their kind numbers (the ENEMIES table)

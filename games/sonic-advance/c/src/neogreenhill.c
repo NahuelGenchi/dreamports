@@ -7,7 +7,7 @@
 // Neo Green Hill's background: three cloud bands drift with the stage clock, the big clouds and islands stay still,
 // and the sea scrolls faster toward the bottom of the screen. Each line's scroll goes in through the H-blank, as the
 // original's StageBgUpdate_Zone1Acts12 does, which leaves out the loop wrap (x -= cam->sa2__unk20).
-static void draw_sky_and_sea(int camX, int camY) {
+void draw_sky_and_sea(int camX, int camY) {
   (void)camY;
   camX -= act.cam.wrapped;
   int bgHeight = act.stage.background.yTiles * 8;

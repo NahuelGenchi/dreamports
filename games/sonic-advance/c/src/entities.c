@@ -56,9 +56,10 @@ static void read_list(uint32_t table, int level, int list, int size) {
   for (int r = 0; r < g.regionsX * g.regionsY; r++) {
     int at = grid_records(&g, r);
     if (at < 0) continue;
-    for (; g.data[at] != 0xFF && slotCount < MAX_SLOTS; at += size) {
+    for (int id = 0; g.data[at] != 0xFF && slotCount < MAX_SLOTS; at += size, id++) {
       Slot *s = &slots[slotCount];
       memset(s, 0, sizeof *s);
+      s->regionX = r % g.regionsX; s->regionY = r / g.regionsX; s->id = id;
       s->e.x = g.data[at] * 8 + (r % g.regionsX) * REGION_SIZE;
       s->e.y = g.data[at + 1] * 8 + (r / g.regionsX) * REGION_SIZE;
       s->e.kind = g.data[at + 2];
@@ -69,6 +70,13 @@ static void read_list(uint32_t table, int level, int list, int size) {
       s->list = list;
       slotRegion[slotCount++] = (uint16_t)r;
     }
+  }
+}
+
+void entities_set_d1(int rx, int ry, int id, int d1) {
+  for (int i = 0; i < slotCount; i++) {
+    Slot *s = &slots[i];
+    if (s->list == ENTITY_INTERACTABLE && s->regionX == rx && s->regionY == ry && s->id == id) { s->e.d[1] = d1; return; }
   }
 }
 

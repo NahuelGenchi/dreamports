@@ -42,7 +42,7 @@ static const Level *const LEVELS[LEVEL_COUNT] = {
   // and the one after it, with every Chaos Emerald
   [LEVEL_THE_MOON] = &ACT_THE_MOON,
   // the VS mode's Chao Hunt stages, the first
-  [LEVEL_CHAO_HUNT_A] = NOT_IN_C_WITH(MUS_NEO_GREEN_HILL__ACT_1),
+  [LEVEL_CHAO_HUNT_A] = &ACT_CHAO_HUNT_A,
   // the second
   [LEVEL_CHAO_HUNT_B] = NOT_IN_C_WITH(MUS_SECRET_BASE__ACT_1),
   // the third
