@@ -41,7 +41,7 @@ void game_start(void) {
 // From the main menu's Tiny Chao Garden on, the garden's program runs instead (garden.c).
 void game_step(uint16_t keys) {
   if (garden_running()) {
-    garden_step(keys);
+    garden_step();
     return;
   }
   front_step(keys);

@@ -364,7 +364,7 @@ void front_step(uint16_t keys);
 /** Tiny Chao Garden (garden.c): the main menu hands over to its program, which runs every frame from then on. */
 void garden_load(void);
 int garden_running(void);
-void garden_step(uint16_t keys);
+void garden_step(void);
 void front_draw(void);
 
 void create_language_screen(int newGame);
