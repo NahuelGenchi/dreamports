@@ -1,6 +1,7 @@
 // The effects that objects leave behind. Translated from the JavaScript version's engine/defeat.js (dustCloud).
 
 #include "objects.h"
+#include "chaohunt.h"
 
 enum { ANIM_DUST_CLOUD = 407, ORDER_EFFECT = 15, PRIORITY_FRONT = 2 };
 
@@ -225,7 +226,8 @@ static int hearts_run(ActTask *t) {
 }
 
 void act_amy_hearts(const Player *p) {
-  if (p->character != CHARACTER_AMY || p->cpu) return;
+  // none in the VS mode (CreateAmyAttackHeartEffect's IS_MULTI_PLAYER)
+  if (p->character != CHARACTER_AMY || p->cpu || chaohunt_active()) return;
   Hearts *h = PLAIN_NEW(Hearts);
   if (!h) return;
   h->p = p; h->state = p->state; h->kind = p->state - PS_HAMMER;

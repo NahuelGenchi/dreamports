@@ -30,7 +30,7 @@ static const int16_t PLACES[4][8][2] = {
 };
 
 typedef struct {
-  int made, id, phase;
+  int made, started, id, phase;
   int playerA, playerB;   // whom it goes to, and whom it is with (0xFF for nobody)
   int32_t qx, qy, vx, vy;
   Sprite s;
@@ -194,6 +194,8 @@ static void landing(Chao *c) {
 void mp_chao_run(void) {
   Chao *c = &chao;
   if (!c->made) return;
+  // made in the stage init, its task first runs on the frame after
+  if (!c->started) { c->started = 1; return; }
   switch (c->phase) {
     case SITTING: sitting(c); break;
     case FOLLOWING: following(c); break;

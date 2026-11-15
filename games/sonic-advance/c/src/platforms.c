@@ -27,6 +27,8 @@ enum {
 static const struct { int level, thin, brick, bounce; } ANIMATIONS[] = {
   { 0, 463, 0, 462 }, { 1, 463, 0, 462 }, { 2, 506, 0, 499 }, { 3, 506, 0, 499 }, { 4, 495, 0, 0 }, { 5, 495, 0, 0 }, { 6, 523, 0, 543 },
   { 7, 523, 0, 543 }, { 8, 535, 0, 543 }, { 9, 535, 0, 543 }, { 10, 517, 0, 507 }, { 11, 598, 0, 601 }, { 12, 605, 574, 0 },
+  // the VS mode's four stages, which take zones 1, 2, 3 and 6's (sPlatformThinAnims, sBounceBlockAnims)
+  { 14, 463, 0, 462 }, { 15, 506, 0, 499 }, { 16, 495, 0, 543 }, { 17, 598, 0, 601 },
 };
 enum { FALL_STILL, FALL_WAITING, FALL_FALLING };
 

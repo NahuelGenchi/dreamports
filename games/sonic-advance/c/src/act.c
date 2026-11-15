@@ -1394,7 +1394,12 @@ void act_start(int level, int cardSkip, int preFrames) {
   // a round of Chao Hunt makes a task for every player on the link, and its own managers
   if (chaohunt_active()) chaohunt_setup();
   objects_start(level, act.stage.paletteCount > 0);
+  // a round's stage init makes them too, as no load frame follows it (Neo Green Hill's water in Forest Chao Garden)
   if (row->runsFromFirstFrame) start_palette_animations();
+  else if (chaohunt_active()) {
+    start_palette_animations();
+    act.palettesFrom = e.frameCount + 1;
+  }
   if (act.fromStartPoint) {
     // a start point opens the act past its card: the card's frames run with no picture, with what the act's row does
     // before and in them
