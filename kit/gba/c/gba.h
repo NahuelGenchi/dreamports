@@ -133,6 +133,10 @@ void gba_sound_hblank_dma(int cycles);
 /** The next sound frame's SoundMain starts `cycles` later than it does in others, where the game's own work runs past
  *  its place, as it does where the original loads a screen. */
 void gba_sound_late(int cycles);
+/** The game's SoundMain doesn't run in the next `frames` sound frames, as when its loop is held up past their V-blanks
+ *  by a long piece of work: the engine stands still, the sound chip goes on with its last notes, and the DMA goes on
+ *  round the DirectSound samples, so those of some frames before play again. */
+void gba_sound_missed(int frames);
 /** After gba_sound_start, for a game whose picture depends on how long the console's sound work takes, as the
  *  JavaScript kit's countCycles: a silent engine of its own runs a frame as each of the game's frames ends, so what
  *  gba_sound_frame_cycles says is the same in a player's browser as under the proof tools. */

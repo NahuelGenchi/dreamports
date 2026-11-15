@@ -11,11 +11,12 @@
 // egg as it waits, with the garden's music; then the egg hatching, the new Chao with its name and bars on the panel,
 // standing, walking, sitting, lying and crying as it chooses, and the plants that come up in the grass from seed. The
 // hand moves with the d-pad, and A rocks the egg, pets the Chao or pulls a plant up. The Chao's other moods, what it
-// does with fruit and toys, what the hand picks up and carries, which comes from the shop, the icons' screens (#1313),
-// the pause and going back to Sonic Advance (#1314) and the link cable aren't in C yet: a press or a moment that needs
-// one stops the garden where it is, with the screen as it was.
+// does with fruit and toys, what the hand picks up and carries, which comes from the shop, the right icon's game and
+// the shop (#1313), the pause and going back to Sonic Advance (#1314) and the link cable aren't in C yet: a press or a
+// moment that needs one stops the garden where it is, with the screen as it was. A on the left icon opens its game,
+// rock-paper-scissors (gardenrps.c).
 
-#include "sa.h"
+#include "garden.h"
 
 // the program in the copy, LZ77, and its size unpacked at the start of the work RAM
 #define PROGRAM_AT 0x9BE78u
@@ -35,6 +36,7 @@ enum { UNPACKED = UNPACK_FRAMES - 1, SOUND_INIT = 21, INIT_GARDEN = 22, SONG_STA
 #define PLAYER_TABLE 0x020129DCu
 #define MUS_GARDEN 1
 #define SE_CHAO_WALK 0x0F
+#define SE_CONFIRM 0x0C
 #define SE_PULLED 0x0D
 #define SE_PET 0x13
 #define SE_TOUCH 0x15
@@ -71,6 +73,7 @@ static void write_registers(uint32_t list, int count) {
 
 static struct {
   void (*main)(void);   // what each frame runs
+  void (*after)(void);  // and what runs once the screen has faded out to white
   uint32_t frames;      // frames since the garden started
   uint16_t fade;
   uint8_t flags;        // 1 while it fades in, 0x80 while paused, and the rest for the screens over the garden
@@ -527,6 +530,10 @@ static uint8_t handBusy;         // 0x030009BC: the hand or the Chao is in the m
 static uint8_t menuEdge;         // 0x030009B8
 
 static int stopped;
+static int lagging;   // frames the loop still misses
+static int songAfterLag;   // a song that starts in the last of them
+#define PICTURE_FRAMES 5
+static void open_icon(const Obj *icon);
 /** A moment that isn't in C yet: the garden stops there, its screen as it was. */
 static void not_in_c(void) { stopped = 1; }
 
@@ -983,8 +990,12 @@ static void hand(Obj *o) {
       chaoObj->behaviour = CHAO_PETTED;
       return;
     }
-    // the icons' screens, and what it picks up
-    if (kind != 4 || !(g.flags & 4)) { not_in_c(); return; }
+    if (kind == 4 && !(g.flags & 4)) {
+      open_icon(thing);
+      return;
+    }
+    // what it picks up comes from the shop
+    if (kind != 4) { not_in_c(); return; }
   }
 }
 
@@ -1709,6 +1720,69 @@ static void garden_frame(void) {
   build_sprites();
 }
 
+// ---- the screens the icons open ----
+
+/** 0x02001A20: the garden fades out to white over 16 frames, and then the icon's screen runs. */
+static void fade_away(void) {
+  gba_write(REG_BLDCNT, 0x8BF);
+  g.fade++;
+  gba_write(REG_BLDY, g.fade);
+  gba_write(REG_BLDALPHA, (uint16_t)(((16 - g.fade) & 0xFE) << 7 | g.fade));
+  if (g.fade > 15) g.main = g.after;
+}
+/** 0x02001A04. */
+static void fade_away_start(void) {
+  g.fade = 0;
+  g.main = fade_away;
+  fade_away();
+}
+
+/** A on an icon: the garden's music fades out, and its screen with it: the left one's game, or the right one's, which
+ *  isn't in C yet. */
+static void open_icon(const Obj *icon) {
+  if (!icon->arg) { not_in_c(); return; }
+  gba_sound_fade_out(0, 1);
+  gba_sound_play(SE_CONFIRM);
+  g.after = garden_rps;
+  g.main = fade_away_start;
+  g.flags |= 3;
+}
+
+void garden_back(void) {
+  garden_pictures();
+  paletteAsk.chao = paletteAsk.chaoDone;
+  paletteAsk.egg = paletteAsk.eggDone;
+  heldFruit = 0xFF;
+  create(fade_in, &objs[0], 0)->arg = 16;
+  dispCnt = 0x1F40;
+  queue_only_register(REG_DISPCNT, dispCnt);
+  // unpacking the garden's pictures takes the console 5 more frames, and its music starts in the last
+  lagging = PICTURE_FRAMES;
+  gba_sound_missed(PICTURE_FRAMES);
+  songAfterLag = MUS_GARDEN;
+  g.flags = 1;
+  g.main = garden_frame;
+}
+
+const uint8_t *garden_at(uint32_t address) { return at(address); }
+int garden_random(void) { return random15(); }
+uint16_t garden_pressed(void) { return input.pressed; }
+int garden_language(void) { return g.language; }
+void garden_run(void (*frame)(void)) { g.main = frame; }
+void garden_not_in_c(void) { not_in_c(); }
+void garden_lag(int frames) { lagging = frames; }
+void garden_add_rings(int won) {
+  rings += (uint32_t)won;
+  if (rings > 99999) rings = 99999;
+}
+void garden_unpack_vram(uint32_t from, uint32_t vramAddress) { unpack_vram(from, vramAddress); }
+void garden_unpack_halfwords(uint32_t from, uint16_t *to, int count) {
+  // unpacked aside first: nothing here copies from a byte still waiting for its halfword
+  static uint8_t bytes[0x400];
+  uint32_t n = gba_lz77(at(from), PROGRAM_SIZE - (from - RAM), bytes, sizeof bytes);
+  for (uint32_t i = 0; i + 1 < n && (int)(i / 2) < count; i += 2) to[i / 2] = (uint16_t)le16(bytes, (int)i);
+}
+
 // ---- the program's start ----
 
 static int running;   // frames since the menu's A, from 1, or 0 before it
@@ -1766,6 +1840,14 @@ void garden_step(void) {
     g.frames++;
   } else if (frame == SONG_STARTS) gba_sound_play(MUS_GARDEN);
   else if (frame >= FIRST_FRAME) {
+    // work that ran past a V-blank: the loop misses those frames whole, buttons and all
+    if (lagging) {
+      if (--lagging == 0 && songAfterLag) {
+        gba_sound_play(songAfterLag);
+        songAfterLag = 0;
+      }
+      return;
+    }
     if (!read_input(keys)) { not_in_c(); return; }
     g.main();
     g.frames++;

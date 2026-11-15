@@ -40,13 +40,14 @@ EXPORT("dp_pal") uint16_t *dp_pal(void) { return gba_pal; }
 EXPORT("dp_oam") uint16_t *dp_oam(void) { return gba_oam; }
 EXPORT("dp_io") uint16_t *dp_io(void) { return gba_io; }
 
-// LZ77UnCompWram and LZ77UnCompVram: a header of 0x10 and the unpacked size, then groups of a flag byte and eight pieces,
+// LZ77UnCompWram and LZ77UnCompVram: a header of the kind, 0x10, and the unpacked size, then groups of a flag byte and eight pieces,
 // each a byte as it is, or, with its flag set, a copy of 3 to 18 bytes from 1 to 4096 bytes back: the first byte holds
 // the length less 3 and the distance's top bits, the second the rest of the distance less 1. `put` writes a byte and
 // `got` reads one back, from wherever the unpacked bytes go.
 static uint32_t lz77(const uint8_t *src, uint32_t srcSize, uint32_t max, void (*put)(void *, uint32_t, uint8_t),
                      uint8_t (*got)(void *, uint32_t), void *to) {
-  if (srcSize < 4 || src[0] != 0x10) return 0;
+  // the BIOS never looks at the header's first byte, the kind, and some games' data has another there
+  if (srcSize < 4) return 0;
   uint32_t size = src[1] | src[2] << 8 | (uint32_t)src[3] << 16, at = 4, out = 0;
   if (size > max) size = max;
   while (out < size && at < srcSize) {
