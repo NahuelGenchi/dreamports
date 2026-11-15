@@ -9,8 +9,9 @@
 // engine and the garden's tiles, maps and colours; then the garden left alone: its fade in from white, the field, the
 // pond and the trees, the panel with the Chao's bars and the ring count from the save, the two icons, the hand and the
 // egg as it waits, with the garden's music; then the egg hatching, the new Chao with its name and bars on the panel,
-// standing, walking, sitting, lying and crying as it chooses, and the plants that come up in the grass from seed. The Chao's other
-// moods and what it does with fruit and toys, the hand moving and what it picks (#1312), the icons' screens (#1313),
+// standing, walking, sitting, lying and crying as it chooses, and the plants that come up in the grass from seed. The
+// hand moves with the d-pad, and A rocks the egg, pets the Chao or pulls a plant up. The Chao's other moods, what it
+// does with fruit and toys, what the hand picks up and carries, which comes from the shop, the icons' screens (#1313),
 // the pause and going back to Sonic Advance (#1314) and the link cable aren't in C yet: a press or a moment that needs
 // one stops the garden where it is, with the screen as it was.
 
@@ -34,6 +35,10 @@ enum { UNPACKED = UNPACK_FRAMES - 1, SOUND_INIT = 21, INIT_GARDEN = 22, SONG_STA
 #define PLAYER_TABLE 0x020129DCu
 #define MUS_GARDEN 1
 #define SE_CHAO_WALK 0x0F
+#define SE_PULLED 0x0D
+#define SE_PET 0x13
+#define SE_TOUCH 0x15
+#define SE_GAUGE_EXPANDS 0x16
 #define SE_HATCH 0x21
 
 static uint8_t *prog;     // the program as the work RAM holds it
@@ -228,7 +233,7 @@ struct Obj {
   uint32_t parts;                    // its sprite: the parts of its frame, an address in the program
   uint16_t tile;                     // added to each part's tile
   uint8_t attr0, attr1, attr2;       // or'd into each part's attributes' top bytes
-  uint8_t state, arg, unused1B;
+  uint8_t state, arg, link;
   int8_t matrix;                     // its rotation's matrix, or -1
   uint8_t sortY;
   uint8_t extra[2];
@@ -518,7 +523,7 @@ static uint8_t chaoState;        // gUnknown_0300152D: what a Chao starts by doi
 static uint8_t heldFruit;        // gUnknown_03001530
 static uint8_t pauseState;       // gUnknown_03001509
 static uint16_t dispCnt;         // gUnknown_0300152A
-static uint8_t chaoGreets;       // 0x030009BC
+static uint8_t handBusy;         // 0x030009BC: the hand or the Chao is in the middle of something
 static uint8_t menuEdge;         // 0x030009B8
 
 static int stopped;
@@ -546,11 +551,45 @@ static void pause_watch(Obj *o) {
   g.flags &= 0x7F;
 }
 
-static void seedling(Obj *o);
-/** 0x02003168: a seed in the grass, drawn by its height. What comes of it isn't in C yet. */
+/** 0x02003240: the leaves a pulled plant leaves behind, which wither away once it's out, a step every 10 frames. */
+static void plant_leaves(Obj *o) {
+  if (g.flags & 0x10) return;
+  if (!(g.flags & 0x80) && o->changed && ++o->state > 9) {
+    o->state = 0;
+    o->tile += 2;
+    if (o->tile > 0x193) { destroy(o); return; }
+  }
+  sort_add(o->id, o->sortY);
+}
+
+/** 0x02003168: a plant in the grass, drawn by its height. The hand pulling it moves it on: its leaves stay where it
+ *  stood, and once it's out it goes, from the garden and the save. */
 static void seedling(Obj *o) {
   if (g.flags & 0x10) return;
-  if (!(g.flags & 0x80) && o->state != 0 && o->state != 2 && o->state <= 4) { not_in_c(); return; }
+  if (!(g.flags & 0x80)) {
+    if (o->state == 1) {
+      Obj *leaves = create(plant_leaves, o, 0);
+      leaves->x = o->x;
+      leaves->sortY = (uint8_t)o->y;
+      leaves->y = leaves->sortY;
+      leaves->parts = 0x02018BB4u;
+      leaves->tile = 0x18E;
+      leaves->attr2 = 0x8C;
+      o->link = leaves->id;
+      o->state++;
+    } else if (o->state == 3 || o->state == 4) {
+      if (o->state == 3) {
+        objs[o->link].changed = 1;
+        o->state++;
+      }
+      if (o->changed) {
+        tcgSave[SAVE_SEEDS + o->arg * 2] = 0;
+        fruitCount--;
+        destroy(o);
+        return;
+      }
+    }
+  }
   sort_add(o->id, o->sortY);
 }
 /** 0x02003088: a new seed comes up over 64 frames, from nothing to its size, settling down onto its place. */
@@ -681,16 +720,19 @@ static void panel(Obj *o) {
   }
   if (chaoKind == o->changed) {
     if (chaoKind == 0xFF) return;
-    // the hand over the panel shows what a bar is (#1312)
-    if (!(g.flags & 0x95) && handObj->x > 0xB5) { not_in_c(); return; }
+    // the hand over the panel draws the name again, lit while it's on it, where A changes it (#1313)
+    if (!(g.flags & 0x95) && handObj->x > 0xB5) {
+      int lit = handObj->x > 0xBA && handObj->y <= 7 && !(g.flags & 0x20) && !pauseState;
+      queue_map((const uint8_t *)nameTiles, 0x0F042u, 7, 1, lit ? 0xA000 : 0);
+      if (lit && (input.pressed & KEY_A) && !(input.held & 0xF0) && !(g.flags & 2)) { not_in_c(); return; }
+    }
     if (g.flags & 0xD3) { not_in_c(); return; }
     // Mood and Belly go to the Chao's a step a frame, and the rest are drawn again when they change
     for (int i = 0; i < 2; i++) {
       uint8_t now = tcgSave[SAVE_MOOD + i];
       if (now == bars[i].level) continue;
-      if (now > bars[i].level) { not_in_c(); return; }
-      bars[i].level--;
-      if (draw_bar(i)) { not_in_c(); return; }
+      bars[i].level = (uint8_t)(now > bars[i].level ? bars[i].level + 1 : bars[i].level - 1);
+      if (draw_bar(i)) gba_sound_play(SE_GAUGE_EXPANDS);
     }
     for (int i = 2; i < 7; i++) {
       if (g.frames & 1) {
@@ -753,8 +795,18 @@ static void link_icon_start(Obj *o) {
 /** 0x02002A1C: the cable's state, which has no other console on it, so the sign stays out of sight. */
 static void link_icon(Obj *o) {
   (void)o;
-  chaoGreets = 0;
+  handBusy = 0;
 }
+
+// what the Chao is doing; the others aren't in C yet
+enum { CHAO_STANDS = 0, CHAO_WAITS = 2, CHAO_HATCHED = 9, CHAO_GREETS = 10, CHAO_PETTED = 16, CHAO_ENJOYS = 17, CHAO_PLEASED = 18, CHAO_CHEERS = 19, CHAO_WALKS = 22, CHAO_SLEEPS = 23, CHAO_SITS = 25,
+       CHAO_SITS_DOWN = 26, CHAO_LIES = 27, CHAO_DYING = 32, CHAO_CRIES = 45 };
+
+// the Chao's object keeps these in the places a drawn object keeps its sprite's
+#define behaviour attr1
+#define heading attr0      // 0 to 11, a twelfth of a turn each
+#define drawY attr2
+#define countdown tile
 
 static void hand(Obj *o);
 /** 0x0200329C (sub_02008A04): the hand, over the field. */
@@ -767,7 +819,100 @@ static void hand_start(Obj *o) {
   o->value[0] = 0x10F;
   o->main = hand;
 }
-/** 0x020032C4: the hand drawn in the second layer; its moves, and A, aren't in C yet (#1312). */
+/** 0x020037A0: the hand pulls a plant up: it takes hold, tugs it up a pixel and lets it back, tugs again, and with
+ *  a pop the plant comes out in an arc and is gone. */
+static void hand_pulls(Obj *o) {
+  handBusy = 1;
+  if (!(g.flags & 0x80)) {
+    Obj *plant = &objs[o->link];
+    switch (o->state) {
+      case 0: case 3:
+        if (++o->arg <= 7) break;
+        o->arg = 0;
+        if (o->state == 0) plant->state++;
+        o->state++;
+        break;
+      case 1: case 4:
+        o->y--;
+        plant->y--;
+        o->arg = 0;
+        o->state++;
+        break;
+      case 2: case 5:
+        if (++o->arg <= 15) break;
+        o->arg = 0;
+        if (o->state == 2) {
+          o->y++;
+          plant->y++;
+        } else {
+          gba_sound_play(SE_PULLED);
+          plant->state++;
+        }
+        o->state++;
+        break;
+      case 6:
+        plant->y = (int16_t)(plant->sortY - (cosine(o->arg) >> 4));
+        o->y = (int16_t)(plant->y - 0x10);
+        o->arg += 5;
+        if (o->arg <= 0x3F) break;
+        o->arg = 0;
+        o->tile = 0xB4;
+        o->state++;
+        break;
+      case 7:
+        if (++o->arg <= 11) break;
+        o->main = hand;
+        plant->changed = 1;
+        break;
+    }
+  }
+  o->attr2 = 0x1C;
+  sort_add(o->id, o->sortY);
+}
+
+/** 0x020038D4: the hand pets what it's on, the egg or the Chao: for 64 frames it strokes from side to side, twice up
+ *  and down, with its sound three times. */
+static void hand_pets(Obj *o) {
+  handBusy = 1;
+  if (!(g.flags & 0x80)) {
+    if (o->arg == 0 || o->arg == 0x42 || o->arg == 0x81) gba_sound_play(SE_PET);
+    const Obj *petted = &objs[o->link];
+    o->x = (int16_t)(petted->x - cosine(o->arg << 1) / 0x41 + (int8_t)o->extra[0]);
+    o->y = (int16_t)(petted->y - sine(o->arg << 2) / 0xC0 - (int8_t)o->extra[1]);
+    o->arg += 3;
+    if (o->arg > 0xBF) o->main = hand;
+  }
+  o->attr2 = 0x1C;
+  sort_add(o->id, o->sortY);
+}
+
+// the hand starts to pet `petted`, from `up` pixels above its place
+static void pet(Obj *o, const Obj *petted, int up) {
+  o->extra[0] = 0;
+  o->extra[1] = (uint8_t)up;
+  o->sortY = (uint8_t)(petted->sortY + 1);
+  o->tile = 0xB8;
+  o->arg = 0;
+  o->state = 0;
+  o->link = petted->id;
+  o->main = hand_pets;
+  o->x = petted->x;
+  o->y = (int16_t)(petted->y - up);
+  handBusy = 1;
+}
+
+// 0x02018CB4: what the hand can touch of each kind of thing, from its place: left, width, top, height
+static int touches(const Obj *thing, int kind, int x, int y) {
+  uint32_t box = 0x02018CB4u + (uint32_t)kind * 4;
+  int16_t left = (int16_t)(thing->x + (int8_t)p8(box)), right = (int16_t)(left + (int8_t)p8(box + 1));
+  int16_t top = (int16_t)(thing->y + (int8_t)p8(box + 2)), bottom = (int16_t)(top + (int8_t)p8(box + 3));
+  return x >= left && x <= right && y >= top && y <= bottom;
+}
+
+/** 0x020032C4: the hand, drawn in the second layer. The d-pad moves it, faster the longer it's held, to 3.5 pixels a
+ *  frame, or about 2.5 each way on a diagonal, inside the screen. A acts on what its finger is on, the nearest thing
+ *  first: it rocks the egg, which hatches a second after the third time, pets the Chao when it can be, which leaves what
+ *  it was doing, or pulls a plant up. What it carries, and the icons, aren't in C yet (#1313). */
 static void hand(Obj *o) {
   if (g.flags & 0x50) { not_in_c(); return; }
   if (g.flags & 0x20) { not_in_c(); return; }
@@ -775,11 +920,72 @@ static void hand(Obj *o) {
   o->attr2 = 0x14;
   layer_add(o->id, 1);
   if (g.flags & 0x83) return;
-  if (input.held & 0xF0) { not_in_c(); return; }
+  if (o->changed) { not_in_c(); return; }
+  if (input.held & 0xF0) {
+    o->tile = 0xAC;
+    o->value[1] = (uint16_t)(o->value[1] * 261 >> 8);
+    if (o->value[1] > 0x380) o->value[1] = 0x380;
+    o->value[0] = (uint16_t)(o->value[0] * 261 >> 8);
+    if (o->value[0] > 0x279) o->value[0] = 0x279;
+    int straight = o->value[1], slant = o->value[0], dx = 0, dy = 0;
+    switch (input.held & 0xF0) {
+      case KEY_UP: dy = -straight; break;
+      case KEY_DOWN: dy = straight; break;
+      case KEY_LEFT: dx = -straight; break;
+      case KEY_RIGHT: dx = straight; break;
+      case KEY_UP | KEY_LEFT: dx = dy = -slant; break;
+      case KEY_UP | KEY_RIGHT: dx = slant; dy = -slant; break;
+      case KEY_DOWN | KEY_LEFT: dx = -slant; dy = slant; break;
+      case KEY_DOWN | KEY_RIGHT: dx = dy = slant; break;
+    }
+    set_x_fixed(o, x_fixed(o) + dx * 256);
+    set_y_fixed(o, y_fixed(o) + dy * 256);
+    if (o->x <= 0x0F) o->x = 0x10;
+    else if (o->x > 0xDF) o->x = 0xDF;
+    if (o->y <= 3) o->y = 4;
+    else if (o->y > 0x8F) o->y = 0x8F;
+    return;
+  }
   o->value[1] = 0x180;
   o->value[0] = 0x10F;
-  if (o->changed) { not_in_c(); return; }
-  if (input.pressed & KEY_A) not_in_c();
+  if (!(input.pressed & KEY_A)) return;
+  if (o->x <= (int8_t)menuEdge || !sortedLast) return;
+  int16_t x = (int16_t)(o->x - 8), y = (int16_t)(o->y + 8);
+  for (int i = sortedLast - 1; i >= 0; i--) {
+    Obj *thing = &objs[sorted[i]];
+    int kind = (uint8_t)thing->matrix;
+    if (kind == 0xFF || !touches(thing, kind, x, y)) continue;
+    if (kind == 3) {
+      gba_sound_play(SE_TOUCH);
+      o->x = thing->x;
+      o->y = (int16_t)(thing->y - 0x10);
+      o->sortY = (uint8_t)(thing->sortY + 1);
+      o->tile = 0xB0;
+      o->arg = 0;
+      o->state = 0;
+      o->link = thing->id;
+      o->main = hand_pulls;
+      handBusy = 1;
+      return;
+    }
+    if (kind == 1) {
+      // an egg with a Chao about is picked up (not in C)
+      if (!chaoKind || !tcgSave[SAVE_CHAO]) { not_in_c(); return; }
+      pet(o, thing, 0x11);
+      thing->state++;
+      return;
+    }
+    if (kind == 0) {
+      if (!(chaoObj->extra[0] & 2)) continue;
+      if (chaoObj->behaviour == 0x22 || chaoObj->behaviour == CHAO_SLEEPS) { not_in_c(); return; }
+      pet(o, thing, 0x17);
+      chaoObj->changed = 0;
+      chaoObj->behaviour = CHAO_PETTED;
+      return;
+    }
+    // the icons' screens, and what it picks up
+    if (kind != 4 || !(g.flags & 4)) { not_in_c(); return; }
+  }
 }
 
 static void egg(Obj *o);
@@ -808,10 +1014,6 @@ static void egg_start(Obj *o) {
   o->main = egg;
   egg(o);
 }
-// what the Chao is doing; the others aren't in C yet
-enum { CHAO_STANDS = 0, CHAO_WAITS = 2, CHAO_HATCHED = 9, CHAO_GREETS = 10, CHAO_WALKS = 22, CHAO_SLEEPS = 23, CHAO_SITS = 25,
-       CHAO_SITS_DOWN = 26, CHAO_LIES = 27, CHAO_DYING = 32, CHAO_CRIES = 45 };
-
 /** 0x02001AFC (sub_02001e74): a new Chao: one of ten names in the game's language, its mood and belly full, and what it
  *  gains from each of its five skills, shared out one of three ways. */
 static void new_chao(void) {
@@ -963,11 +1165,6 @@ static void egg(Obj *o) {
 
 // ---- the Chao: what it does, and the four sprites that follow it ----
 
-// the Chao's object keeps these in the places a drawn object keeps its sprite's
-#define behaviour attr1
-#define heading attr0      // 0 to 11, a twelfth of a turn each
-#define drawY attr2
-#define countdown tile
 static uint16_t chaoTimers[6];   // 0x030009A8: its needs' clocks
 static uint16_t chaoRests;       // 0x030009B6
 static uint8_t nearby[8];        // 0x03000DD0: what it has seen in the garden
@@ -1109,7 +1306,7 @@ static void chao_lives(Obj *o) {
       o->behaviour = CHAO_GREETS;
       // fallthrough
     case CHAO_GREETS:
-      chaoGreets = 1;
+      handBusy = 1;
       o->extra[0] = 0;
       if (--o->countdown == 0) o->behaviour = CHAO_STANDS;
       break;
@@ -1128,6 +1325,35 @@ static void chao_lives(Obj *o) {
       break;
     case CHAO_SITS: case CHAO_SITS_DOWN: case CHAO_LIES:
       if (--o->countdown == 0) chao_chooses(o);
+      break;
+    case CHAO_PETTED:
+      o->countdown = 63;
+      o->behaviour = CHAO_ENJOYS;
+      // fallthrough
+    case CHAO_ENJOYS:
+      // a second of being petted, and it's bored no more; its mood goes up 20, unless it was petted in the last half
+      // minute
+      o->extra[0] = 0;
+      if (--o->countdown) break;
+      tcgSave[SAVE_BORED] = 0;
+      if (chaoRests) chao_chooses(o);
+      else {
+        tcgSave[SAVE_MOOD] = (uint8_t)(tcgSave[SAVE_MOOD] + 20);
+        if (tcgSave[SAVE_MOOD] > 200) tcgSave[SAVE_MOOD] = 200;
+        o->behaviour = CHAO_PLEASED;
+      }
+      chaoRests = 1800;
+      break;
+    case CHAO_PLEASED:
+      o->state = 0;
+      o->arg = 0x14;
+      o->behaviour = CHAO_CHEERS;
+      // fallthrough
+    case CHAO_CHEERS:
+      if (--o->arg == 0) {
+        o->arg = 0x14;
+        if (++o->state > 5) chao_chooses(o);
+      }
       break;
     case CHAO_CRIES:
       if (--o->arg == 0) {
@@ -1161,7 +1387,7 @@ static void chao_lives(Obj *o) {
 static void chao_shadow(Obj *o) {
   if (g.flags & 0x10) return;
   if (!chaoShown) { destroy(o); return; }
-  const Obj *c = &objs[o->unused1B];
+  const Obj *c = &objs[o->link];
   o->x = c->x;
   o->y = c->sortY;
   if (!(c->changed & 1)) sort_add(o->id, 0);
@@ -1175,7 +1401,7 @@ static int frame_place(int frame, int which) { return (int8_t)p8(0x02018A4Cu + (
 static void chao_ball(Obj *o) {
   if (g.flags & 0x10) return;
   if (!chaoShown) { destroy(o); return; }
-  const Obj *body = &objs[o->unused1B];
+  const Obj *body = &objs[o->link];
   if (!(g.flags & 0x80)) {
     int shape = 0;
     switch (body->changed & 0x78) {
@@ -1200,7 +1426,7 @@ static void chao_ball(Obj *o) {
 static void chao_eyes(Obj *o) {
   if (g.flags & 0x10) return;
   if (!chaoShown) { destroy(o); return; }
-  const Obj *body = &objs[o->unused1B];
+  const Obj *body = &objs[o->link];
   if (!(g.flags & 0x80)) {
     if (body->changed & 4) o->changed = 1;
     else if (!o->changed) {
@@ -1232,7 +1458,7 @@ static void chao_body(Obj *o) {
   if (g.flags & 0x10) return;
   if (!chaoShown) { destroy(o); return; }
   if (!(g.flags & 0x80)) {
-    const Obj *c = &objs[o->unused1B];
+    const Obj *c = &objs[o->link];
     o->changed = c->changed;
     o->x = c->x;
     o->y = c->drawY;
@@ -1240,7 +1466,9 @@ static void chao_body(Obj *o) {
     int frame, own = 1, way;
     uint8_t *step = (uint8_t *)&o->value[1];
     switch (c->behaviour) {
-      case CHAO_STANDS: case 1: case CHAO_WAITS: case CHAO_HATCHED: frame = 0x1B; break;
+      case CHAO_STANDS: case 1: case CHAO_WAITS: case CHAO_HATCHED: case CHAO_PETTED: case CHAO_PLEASED: frame = 0x1B; break;
+      case CHAO_ENJOYS: frame = (int)p8(0x02018D4Au + ((handObj->arg + 0x10) >> 5 & 3u)) + 0x31; break;
+      case CHAO_CHEERS: frame = (c->state & 1) + 0x27; break;
       case CHAO_GREETS: frame = 0x28; break;
       case CHAO_WALKS:
         if (++step[0] > 0x11) {
@@ -1287,7 +1515,7 @@ static void chao(Obj *o) {
   shadow->tile = 0x16C;
   shadow->attr0 = 4;
   shadow->attr2 = 0x1C;
-  shadow->unused1B = o->id;
+  shadow->link = o->id;
   Obj *ball = create(chao_ball, o, 0);
   ball->tile = 0x16C;
   ball->attr2 = 0x0C;
@@ -1297,10 +1525,10 @@ static void chao(Obj *o) {
   eyes->attr2 = 0x0C;
   Obj *body = create(chao_body, o, 0);
   body->attr2 = 0x0C;
-  body->unused1B = o->id;
+  body->link = o->id;
   body->matrix = 0;
-  ball->unused1B = body->id;
-  eyes->unused1B = body->id;
+  ball->link = body->id;
+  eyes->link = body->id;
   // its colours: its egg's, or, grown, its stage's
   int colours = tcgSave[SAVE_FROM_EGG];
   if (colours > 11) {
@@ -1523,8 +1751,10 @@ static void game_init(void) {
 
 /** A frame from the menu's A: the program's start, then AgbMain's loop, a frame each: the buttons, then what the garden
  *  runs. Its SoundMain is the kit's. */
-void garden_step(uint16_t keys) {
+void garden_step(void) {
   int frame = running++;
+  // the garden reads the buttons as its frame starts, just after the V-blank, where the console's frame has them
+  uint16_t keys = gba_vblank_keys();
   gba_on_hblank(NULL);
   if (stopped) return;
   if (frame == UNPACKED) game_init();
