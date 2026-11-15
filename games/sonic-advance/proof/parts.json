@@ -39,7 +39,7 @@
     { "name": "The Options menu", "recording": "options-menu", "frames": [1741, 2644] },
     { "name": "Player data, with the name input and the VS record", "recording": "player-data", "frames": [1840, 3119] },
     { "name": "The sound test", "recording": "sound-test", "frames": [1910, 3249] },
-    { "name": "The language screen, from the Options menu" },
+    { "name": "The language screen, from the Options menu", "recording": "language-screen", "frames": [1930, 2559] },
     { "name": "Tiny Chao Garden" }
   ]
 }
