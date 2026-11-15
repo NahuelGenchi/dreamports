@@ -58,10 +58,7 @@ void chaohunt_card_end(void) {
   mp_hud_create();
 }
 
-void chaohunt_finish(void) {
-  hunt.over = 1;
-  mp_finish_start();
-}
+void chaohunt_finish(void) { mp_finish_start(); }
 
 /** The VS menus have chosen the round: Chao Hunt's `level`, with the Chao at place `chao`. */
 void chaohunt_start(int level, int chao) {

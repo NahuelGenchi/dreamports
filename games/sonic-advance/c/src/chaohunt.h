@@ -13,7 +13,6 @@ typedef struct {
   int itemEffect;  // gPlayer.itemEffect: 0x80 while the title card holds him (teleporting), 0x20 invisible, 0x40 confused
   int charRings[PLAYERS_MAX];   // gMultiplayerCharRings: the Chao each player holds
   int ranks[PLAYERS_MAX];       // gMultiplayerRanks: each player's result, -1 while the round runs
-  int over;                     // the clock has run out
   int whiteDone;                // the round's end has whitened the screen: the results screen comes next
   uint32_t random;              // gMultiplayerPseudoRandom: the players' shared random numbers
   int itemTurn;                 // gRandomItemBox: which mystery item box shows (low 3 bits) and its generation (high 4)
