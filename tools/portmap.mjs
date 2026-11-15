@@ -25,24 +25,26 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { gameFolder, proofFolder, sharedProofFolder } from './lib/paths.mjs';
-import { hex, proofVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
+import { proofVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { LANGUAGES, OTHER_LANGUAGES, versionOf } from '../src/lib/languages.mjs';
 import { nesNames } from './nes/functions.mjs';
 
-// a label's word and its address, or a number's
-const NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_0?|0x0?)(8[0-9A-Fa-f]{6})\b/g;
-// the cartridge's first address, which code uses as the base of every address in it, not as a function
-const BASE = 0x08000000;
+// a label's word and its address, or a number's: in the cartridge, or in the work RAMs, where a game copies or unpacks
+// code to run it
+const NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_0?|0x0?)([238][0-9A-Fa-f]{6})\b/g;
+// the first addresses of the cartridge and of the work RAMs, which code uses as the base of every address in them, not
+// as functions
+const BASES = new Set([0x08000000, 0x02000000, 0x03000000]);
 
 // the names in a line of a game's code, as [name, address, whether it's a label] for each console's code map. A Game
-// Boy Advance address is the cartridge's; an NES one is the offset in the program, from a label such as sub_04_923F
+// Boy Advance address is the cartridge's or the work RAM's; an NES one is the offset in the program, from a label such as sub_04_923F
 // (nes/functions.mjs), in a program of as many banks as the code map reaches, as its last bank always has code.
 function namer(console, codeMap) {
   if (console === 'nes') {
     const banks = Math.floor(Math.max(...codeMap.functions.map(f => f.address)) / 0x4000) + 1;
     return line => nesNames(line, banks).map(([name, offset]) => [name, offset, true]);
   }
-  return line => [...line.matchAll(NAME)].map(([name, label, digits]) => [name, (parseInt(digits, 16) | BASE) & ~1, Boolean(label)]).filter(([, address]) => address !== BASE);
+  return line => [...line.matchAll(NAME)].map(([name, label, digits]) => [name, parseInt(digits, 16) & ~1, Boolean(label)]).filter(([, address]) => !BASES.has(address));
 }
 
 export async function run(args) {
@@ -79,8 +81,21 @@ export function portMap(game) {
   const original = readOriginal(game);
   const codeMap = readCodeMap(game);
   if (!codeMap) throw new Error(`games/${versionOf(game).game}/proof/ has no code map yet: npm run dp -- codemap ${versionOf(game).game} makes one.`);
-  const starts = new Set(codeMap.functions.map(f => f.address));
-  const spans = [...codeMap.functions].sort((a, b) => a.address - b.address);
+  // the functions starting at each address: in the cartridge one, and in the work RAM any the game puts there, and
+  // each cartridge function a copy holds, where the copy runs
+  const starts = new Map(), spans = [];
+  const at = (address, size, f) => {
+    if (!starts.has(address)) starts.set(address, []);
+    starts.get(address).push(f);
+    spans.push({ address, size });
+  };
+  for (const f of codeMap.functions) at(f.address, f.size, f);
+  for (const copy of codeMap.copies) {
+    for (const f of codeMap.functions) {
+      if (!f.bytes && f.address >= copy.cartridge && f.address < copy.cartridge + copy.size) at(copy.ram + f.address - copy.cartridge, f.size, f);
+    }
+  }
+  spans.sort((a, b) => a.address - b.address);
   const inside = address => {
     let low = 0, high = spans.length - 1;
     while (low <= high) {
@@ -91,6 +106,7 @@ export function portMap(game) {
     }
     return false;
   };
+  const order = new Map(codeMap.functions.map((f, i) => [f.key, i]));
   const shifts = readShifts(game);
   const names = namer(original.console, codeMap);
   const functions = new Map(), unmatched = new Map();
@@ -99,17 +115,20 @@ export function portMap(game) {
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
       for (let [name, address, label] of names(line)) {
         if (label) address -= shifts.find(s => address >= s.from && address <= s.to)?.by ?? 0;
-        const found = starts.has(address);
+        const found = starts.get(address);
         if (!found && !inside(address)) continue;
-        const list = found ? functions : unmatched, key = found ? address : name;
-        if (!list.has(key)) list.set(key, `${where}:${i + 1}`);
+        // a name in the work RAM counts each function the game puts at that address
+        for (const key of found ? found.map(f => f.key) : [name]) {
+          const list = found ? functions : unmatched;
+          if (!list.has(key)) list.set(key, `${where}:${i + 1}`);
+        }
       }
     });
   }
   return {
     original: original.sha1,
     from: `The original's functions that games/${game}/ names, found by npm run dp -- portmap${game.includes('/') ? ` ${game}` : ''}`,
-    functions: [...functions].sort(([a], [b]) => a - b).map(([address, where]) => [hex(address), where]),
+    functions: [...functions].sort(([a], [b]) => order.get(a) - order.get(b)).map(([key, where]) => [key, where]),
     unmatched: [...unmatched].sort(([a], [b]) => a.localeCompare(b)).map(([name, where]) => [name, where]),
   };
 }

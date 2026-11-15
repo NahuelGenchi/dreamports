@@ -167,6 +167,11 @@ test('the code map holds only functions in order, of this copy', () => {
   assert.equal(readCodeMap(map('<b>hi</b>', good), SHA1), null);
   assert.equal(readCodeMap(map('The tools', [['080000C0', 200], ['08000000', 4]]), SHA1), null);
   assert.equal(readCodeMap(map('The tools', [['02000000', 4]]), SHA1), null);
+  // what the game makes in its work RAM, by its bytes, and where it copies the cartridge's code
+  const withRam = [['02000000/E92D4000E3A00001', 8], ['08000000', 4], ['080000C0', 200]];
+  assert.equal(readCodeMap(map('The tools', withRam), SHA1), 'The tools');
+  assert.equal(readCodeMap(`${map('The tools', good).slice(0, -2)},"copies":[["03000000","080000C0",64]]}\n`, SHA1), 'The tools');
+  assert.equal(readCodeMap(map('The tools', [['02000000/E92D4000', 8]]), SHA1), null);
   assert.equal(readCodeMap(map('The tools', []), SHA1), null);
   assert.equal(readCodeMap(`{"note":"words",${map('The tools', good).slice(1)}`, SHA1), null);
   assert.equal(readCodeMap(`${map('The tools', good)}// words`, SHA1), null);
