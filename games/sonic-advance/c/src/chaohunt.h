@@ -5,6 +5,7 @@
 
 #include "sa.h"
 #include "player.h"
+#include "objects.h"
 
 typedef struct {
   int active;      // a round is being played (gGameMode 4)
@@ -18,12 +19,14 @@ typedef struct {
   int itemTurn;                 // gRandomItemBox: which mystery item box shows (low 3 bits) and its generation (high 4)
   int invisibleTimer;           // itemEffect20Timer: frames of invisibility left
   int confusion;                // timerConfusion: frames of confusion left
+  int actStart;                 // STAGE_FLAG__ACT_START: the title card, and the round's end
+  int objWindow;                // DISPCNT_OBJWIN_ON in gDispCnt: an invisible player has shown through the object window
 } Round;
 
 // a player as the round sees it (MultiplayerPlayer)
 typedef struct {
   int made, id;
-  Sprite s;
+  Object o;            // its sprite (o.sprite), and what this GBA's Sonic stands on when he stands on this player
   Transform tf;
   int x, y;            // pos
   int dx, dy;          // unk44, unk48: how far its last packet moved it
@@ -35,6 +38,7 @@ typedef struct {
   int missed;          // unk61: frames since its last packet
   int standsOn;        // unk64: which player it stands on
   int offsetY;         // unk58[0]
+  uint32_t touch;      // unk4C: what the solidity test found last
 } MpPlayer;
 
 extern MpPlayer mpPlayers[PLAYERS_MAX];
@@ -42,8 +46,16 @@ void mp_player_create(int id, int x, int y);
 void mp_players_run(void);
 void mp_players_stop(void);
 void mp_send(const Player *p, int fresh);
+/** What touching player `m` does to this GBA's Sonic (mpcontact.c). */
+void mp_contact(MpPlayer *m);
 /** gOamMatrixIndex: the next rotation matrix in this frame for a round's sprites turned through the hardware. */
 int mp_next_matrix(void);
+// the Chao (chao.c)
+void mp_chao_create(int place, int id);
+int mp_chao_holder(void);
+void mp_chao_take(int id);
+void mp_chao_run(void);
+void mp_chao_stop(void);
 // the arrows toward the other players (mphud.c)
 void mp_indicator_create(int id);
 void mp_indicators_run(void);
@@ -58,6 +70,12 @@ void mp_results_run(void);
 int mp_finish_run(void);
 void mp_finish_display(void);
 void mp_finish_stop(void);
+// the darkness another player's mystery item box brings (mphud.c)
+void mp_darkness_start(void);
+void mp_darkness_run(void);
+void mp_darkness_stop(void);
+/** The round's say on the display, after the act's drawing has set it for the frame. */
+void mp_display(void);
 /** The title card's end: the players can be touched, Sonic blinks for two seconds, and the HUD appears. */
 void chaohunt_card_end(void);
 /** CreateRoomEvent: an event for the other GBAs, queued until each has heard the one before (mp_event_mgr.c). */

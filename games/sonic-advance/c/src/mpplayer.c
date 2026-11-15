@@ -24,7 +24,7 @@ int mp_next_matrix(void) {
 
 // what a packet of kind 0x1000 says about its player (MultiSioData_0_4)
 static void receive(MpPlayer *m, const uint8_t *r) {
-  Sprite *s = &m->s;
+  Sprite *s = &m->o.sprite;
   m->missed = 0;
   int x = s16_at(r + 2), y = s16_at(r + 4);
   m->dx = x - m->x; m->dy = y - m->y;
@@ -48,11 +48,13 @@ static void receive(MpPlayer *m, const uint8_t *r) {
   m->offsetY = (int8_t)r[0xB] >> 3;
   s->animSpeed = r[0xC];
   m->tf.rotation = (uint16_t)(r[0xD] * 4);
+  // untouchable, it lets go of Sonic standing on it
+  if ((m->flags & 4) && act.player.onObject == &m->o) { act.player.onObject = NULL; act.player.air = 1; }
 }
 
 // Task_CreateMultiplayerPlayer
 static void player_task(MpPlayer *m) {
-  Sprite *s = &m->s;
+  Sprite *s = &m->o.sprite;
   const uint8_t *r = link_slot(m->id);
   if (r) m->missed = 0;
   if (r && packet_kind(r) == KIND_STAGE) receive(m, r);
@@ -66,6 +68,8 @@ static void player_task(MpPlayer *m) {
   m->tf.x = s->x; m->tf.y = s->y;
   if (m->flags & 0x800) { s->prevVariant = 0xFF; s->hitboxes[0].index = -1; s->hitboxes[1].index = -1; }
   update_sprite(s, 0);
+  // what touching it does to this GBA's Sonic
+  mp_contact(m);
 
   // how it is drawn: through the rotation hardware, mirrored by a negative scale, or flipped
   if (m->flags & 1) {
@@ -87,6 +91,12 @@ static void player_task(MpPlayer *m) {
       || (m->wait == 0 && !(m->flags & 4) && !(m->state & 2))) {
     s->oamFlags = (m->flags & 0x80) ? 0x440 : 0x400;
     s->frameFlags &= ~SPRITE_OBJ_MODE;
+    // an invisible player is only a window onto the far background on the others' screens
+    if ((m->items & 0x20) && m->wait == 0 && m->id != hunt.id) {
+      s->frameFlags |= 0x100;
+      hunt.objWindow = 1;
+      e.winRegs[5] = 0x83F;
+    }
     display_sprite(s);
   }
 }
@@ -101,7 +111,7 @@ void mp_player_create(int id, int x, int y) {
   m->standsOn = id;
   m->state = 2;
   m->x = x; m->y = y;
-  Sprite *s = &m->s;
+  Sprite *s = &m->o.sprite;
   sprite_init(s);
   // the others' tiles come from the heap; this GBA's own player shares Sonic's, at the start of the sprites' memory
   s->graphics.dest = id != hunt.id ? vram_malloc(64) : OBJ_VRAM;
@@ -123,14 +133,16 @@ void mp_player_create(int id, int x, int y) {
 /** The players' tasks (0x2000), which the act runs before the title card's (0x2100) and Sonic's (0x3000). */
 void mp_players_run(void) {
   for (int i = 0; i < PLAYERS_MAX; i++) if (mpPlayers[i].made) player_task(&mpPlayers[i]);
+  mp_chao_run();
   mp_hud_run();
   if (mp_finish_run()) hunt.whiteDone = 1;
   mp_indicators_run();
   mp_results_run();
+  mp_darkness_run();
 }
 
 /** The round is over: the players' tasks go with the stage's. */
-void mp_players_stop(void) { memset(mpPlayers, 0, sizeof mpPlayers); mp_indicators_stop(); mp_hud_stop(); mp_finish_stop(); }
+void mp_players_stop(void) { memset(mpPlayers, 0, sizeof mpPlayers); mp_indicators_stop(); mp_hud_stop(); mp_finish_stop(); mp_chao_stop(); mp_darkness_stop(); }
 
 /**
  * sub_8024B10's packet, at the end of Sonic's frame: where he is and how he looks, with the items he has. `fresh` is
@@ -155,7 +167,7 @@ void mp_send(const Player *p, int fresh) {
   flags = rotated ? flags | 1 : flags & ~1;
   flags = p->facing > 0 ? flags | 2 : flags & ~2;
   flags = p->inverted ? flags | 8 : flags & ~8;
-  flags = (p->dead || (own->state & 1) || p->invulnerable != 0) ? flags | 4 : flags & ~4;
+  flags = (p->dead || (own->state & 1) || p->invulnerableSent != 0) ? flags | 4 : flags & ~4;
   flags = (own->state & 1) ? flags | 0x100 : flags & ~0x100;
   flags = p->invisible ? flags | 0x40 : flags & ~0x40;
   flags = (uint16_t)((flags & ~0x30) | ((s->frameFlags & SPRITE_PRIORITY) >> 8));
@@ -163,7 +175,13 @@ void mp_send(const Player *p, int fresh) {
   flags = fresh ? flags | 0x800 : flags & ~0x800;
   own->standsOn = hunt.id;
   for (int i = 0; i < hunt.count; i++)
-    if (i != hunt.id && p->onObject == &mpPlayers[i].s) own->standsOn = i;
+    if (i != hunt.id && p->onObject == &mpPlayers[i].o) own->standsOn = i;
   flags = (uint16_t)((flags & ~0x600) | own->standsOn << 9);
   send[8] = (uint8_t)flags; send[9] = (uint8_t)(flags >> 8);
+  // then his invisibility runs out, and with it the window the others' screens showed him through on his own
+  if ((hunt.itemEffect & 0x20) && --hunt.invisibleTimer <= 0) {
+    hunt.itemEffect &= ~0x20;
+    hunt.objWindow = 0;
+    e.winRegs[5] = 0x3F;
+  }
 }

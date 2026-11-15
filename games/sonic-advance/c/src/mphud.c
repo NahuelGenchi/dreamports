@@ -189,6 +189,71 @@ static void hud_task(void) {
 void mp_hud_run(void) { if (hud.made) hud_task(); }
 void mp_hud_stop(void) { memset(&hud, 0, sizeof hud); }
 
+// --- the darkness another player's mystery item box brings (mp_unk_0.c) ----------------------------------------------------
+
+// each line's lit half width round the screen's middle (sWin0Ranges), which line n's H-blank sets for line n + 1
+static const uint8_t LIGHT[SCREEN_H] = {
+  0, 12, 0, 12, 0, 12, 0, 12, 0, 11, 0, 11, 0, 11, 0, 11, 0, 11, 15, 19, 22, 24, 27, 29, 30, 32, 34, 35, 37, 38,
+  39, 41, 42, 43, 44, 45, 46, 47, 48, 49, 49, 50, 51, 52, 52, 53, 54, 54, 55, 55, 56, 57, 57, 58, 58, 58, 59, 59,
+  60, 60, 60, 61, 61, 61, 61, 62, 62, 62, 62, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 63, 64, 63, 63, 63, 63, 63,
+  63, 63, 63, 63, 63, 63, 62, 62, 62, 62, 61, 61, 61, 61, 60, 60, 60, 59, 59, 58, 58, 58, 57, 57, 56, 55, 55, 54,
+  54, 53, 52, 52, 51, 50, 49, 49, 48, 47, 46, 45, 44, 43, 42, 41, 39, 38, 37, 35, 34, 32, 30, 29, 27, 24, 22, 19,
+  15, 11, 16, 11, 16, 11, 16, 11, 16, 11, 17, 12, 17, 12, 17, 12, 17, 12,
+};
+enum { DARK_STEP = 64, DARK_FULL = 0x1000, DARK_TIME = 600, LIT_TOP = 17, LIT_BOTTOM = SCREEN_H - 16 };
+enum { DARK_RISING = 1, DARK_HOLDING, DARK_FALLING };
+static struct { int phase, level, hold, window; } dark;
+
+static uint16_t lit(int line) { return (uint16_t)((SCREEN_W / 2 - LIGHT[line]) << 8 | (SCREEN_W / 2 + LIGHT[line])); }
+static void dark_vblank(void) { gba_write(REG_WIN0H, lit(0)); }
+static void dark_hblank(int line) { if (line < SCREEN_H) gba_write(REG_WIN0H, lit(line)); }
+
+/** sub_801C704: everything but a lit oval in the screen's middle darkens over 64 frames, stays dark for 600, and lightens. */
+void mp_darkness_start(void) {
+  dark.phase = DARK_RISING; dark.level = 0; dark.hold = DARK_TIME;
+  dark.window = 0;
+  e.winRegs[4] = 0x1F;      // inside window 0 every layer, no darkening
+  e.winRegs[5] = 0x3F;      // outside every layer, darkened (and nothing at all through an object window)
+}
+
+// TaskDestructor_801C980 turns window 0 and the darkening off, which the act's drawing does each frame the task isn't there
+static void dark_end(void) { dark.phase = 0; }
+
+// Task_801C770, Task_801C810 and Task_801C8D4: the level's whole sixteenths are the brightness decrease
+static void darkness_task(void) {
+  if (dark.phase == DARK_RISING) {
+    dark.level += DARK_STEP;
+    if (dark.level == DARK_FULL) dark.phase = DARK_HOLDING;
+    dark.window = 1;
+  } else if (dark.phase == DARK_HOLDING) {
+    if (--dark.hold == 0) dark.phase = DARK_FALLING;
+    if (hunt.ranks[hunt.id] != -1) { dark_end(); return; }
+  } else {
+    dark.level -= DARK_STEP;
+    if (dark.level < 0 || hunt.ranks[hunt.id] != -1) { dark_end(); return; }
+  }
+  e.vblankCallback = dark_vblank;
+  e.hblankCallbacks[e.numHblankCallbacks++] = dark_hblank;
+  e.flags |= FLAGS_HBLANK_CALLBACKS;
+}
+
+/** The darkness's task (0x2000), made by a room event and so run after the round's other tasks. */
+void mp_darkness_run(void) { if (dark.phase) darkness_task(); }
+void mp_darkness_stop(void) { if (dark.phase) dark_end(); hunt.objWindow = 0; }
+
+/**
+ * The display the round's tasks keep, which the act's drawing sets afresh each frame: window 0 on, a lit oval, and the
+ * rest darkened while the darkness lasts; the object window on once an invisible player has shown through it.
+ */
+void mp_display(void) {
+  if (hunt.objWindow) e.dispCnt |= 0x8000;
+  if (!dark.phase) return;
+  e.dispCnt |= 0x2000;
+  e.bldCnt = 0x3FDF;        // a decrease of every layer and the sprites, not the backdrop
+  e.bldY = (uint16_t)(dark.level >> 8);
+  if (dark.window) e.winRegs[2] = LIT_TOP << 8 | LIT_BOTTOM;
+}
+
 // --- the round's end (mp_finish.c): each player's result over their head, then the fade to white -------------------------
 
 enum { ANIM_RESULT = 902, SONG_ROUND_OVER = 304, FINISH_WAIT = 240, FADE_STEP = 0x40, FADE_END = 0x1000 };

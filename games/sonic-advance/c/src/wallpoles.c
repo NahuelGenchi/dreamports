@@ -91,7 +91,8 @@ ActTask *wall_pole_spawn(Slot *slot) {
   w->o.x = en->x;
   w->dir = en->kind == WALL_POLE_RIGHT ? -1 : 1;   // the way it points out of its wall
   w->phase = PHASE_WAITING;
-  int anim = act.stage.zone == ZONE_NEO_GREEN_HILL ? ANIM_POLE_NEO_GREEN_HILL : ANIM_POLE_FLAG;
+  // Forest Chao Garden has Neo Green Hill's bars too
+  int anim = act.stage.zone == ZONE_NEO_GREEN_HILL || act.stage.level == LEVEL_CHAO_HUNT_A ? ANIM_POLE_NEO_GREEN_HILL : ANIM_POLE_FLAG;
   // its first frame's box is set before its first run, which steps it on as the original does
   object_sprite(&w->o.sprite, anim, VARIANT_REST, VARIANT_SWING, ORDER_POLE, PRIORITY_FRONT, w->dir < 0, 0);
   sprite_step(&w->o.sprite);

@@ -48,6 +48,7 @@ typedef struct {
   int wrapped;   // how far the act's loop point has moved the camera, which the background leaves out (unk20)
   int wrappedThisFrame;   // the loop point's shift on this frame, which the layer maps are drawn without (the camera's task runs before it)
   int held, layerX, layerY;   // a special spring held it this frame, after its task had drawn the layers at (layerX, layerY)
+  int hold;                   // frames more before its task starts (a round's camera starts a frame late)
 } Camera;
 
 typedef struct {

@@ -272,17 +272,28 @@ static void update_look(Camera *c, const Player *p) {
 }
 static int camera_update(Camera *c, const Player *p) {
   c->wrappedThisFrame = 0;
+  // in a round the camera's task starts a frame later than in an act (its eased offset first changes on the stage's fourth
+  // frame), which the decompilation doesn't explain
+  if (c->hold > 0) { c->hold--; return 0; }
   if (!c->started) { c->started = 1; return 0; }
+  // and it centres on this GBA's player task, where its own packets put it two frames ago, not on Sonic
+  // (gCamera.spectatorTarget is always this GBA in SA1)
+  double followX = p->x, followY = p->y;
+  int followOffset = p->offsetY;
+  if (chaohunt_active()) {
+    const MpPlayer *own = &mpPlayers[hunt.id];
+    followX = own->x; followY = own->y; followOffset = own->offsetY;
+  }
   c->x = clamp((int)c->x, c->minX, c->maxX - 1);
   c->y = clamp((int)c->y, c->minY, c->maxY - 1);
   update_look(c, p);
   if (c->freeze > 0) c->freeze--;
   else if (!c->locked) {
-    c->targetX = (int)__builtin_floor(p->x) + c->shiftX - SCREEN_W / 2;
-    int want = (p->offsetY - 4) * (p->inverted ? -1 : 1);
+    c->targetX = (int)__builtin_floor(followX) + c->shiftX - SCREEN_W / 2;
+    int want = (followOffset - 4) * (p->inverted ? -1 : 1);
     if (c->offsetY < want) c->offsetY = c->offsetY + 5 < want ? c->offsetY + 5 : want;
     else if (c->offsetY > want) c->offsetY = c->offsetY - 5 > want ? c->offsetY - 5 : want;
-    c->targetY = (int)__builtin_floor(p->y) + c->shiftY - SCREEN_H / 2 + c->look + c->offsetY;
+    c->targetY = (int)__builtin_floor(followY) + c->shiftY - SCREEN_H / 2 + c->look + c->offsetY;
   }
   int dx = (int)c->targetX - (int)c->x;
   // at most its speed a frame, which the results set to 0 to hold it
@@ -412,6 +423,8 @@ static void draw_frame(void) {
   // a hit boss's flash: the OBJ window on, everything in it brightened all the way (sub_802D870)
   if (act.bossFlash == BOSS_FLASH_WINDOW) { e.dispCnt |= 0x8000; e.winRegs[5] = 0x3F3F; }
   else if (act.bossFlash) { e.dispCnt |= 0x8000; e.winRegs[5] = 0x3F1F; e.bldCnt = 0xBF; e.bldY = 0x10; }
+  // a round's darkness and invisible players, which its tasks set as the original sets its display
+  if (chaohunt_active()) mp_display();
   act.drawn++;
   if (act.stage.level == LEVEL_THE_MOON) {
     e.dispCnt = (uint16_t)(act.cardDone ? 0x1F41 : 0x3F41);
@@ -1383,7 +1396,12 @@ void act_start(int level, int cardSkip, int preFrames) {
   // a round of Chao Hunt makes a task for every player on the link, and its own managers
   if (chaohunt_active()) chaohunt_setup();
   objects_start(level, act.stage.paletteCount > 0);
+  // a round's stage init makes them too, as no load frame follows it (Neo Green Hill's water in Forest Chao Garden)
   if (row->runsFromFirstFrame) start_palette_animations();
+  else if (chaohunt_active()) {
+    start_palette_animations();
+    act.palettesFrom = e.frameCount + 1;
+  }
   if (act.fromStartPoint) {
     // a start point opens the act past its card: the card's frames run with no picture, with what the act's row does
     // before and in them
