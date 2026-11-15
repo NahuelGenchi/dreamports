@@ -11,10 +11,9 @@
 // egg as it waits, with the garden's music; then the egg hatching, the new Chao with its name and bars on the panel,
 // standing, walking, sitting, lying and crying as it chooses, and the plants that come up in the grass from seed. The
 // hand moves with the d-pad, and A rocks the egg, pets the Chao or pulls a plant up. The Chao's other moods, what it
-// does with fruit and toys, what the hand picks up and carries, which comes from the shop, the right icon's game and
-// the shop (#1313), the pause and going back to Sonic Advance (#1314) and the link cable aren't in C yet: a press or a
+// does with fruit and toys, what the hand picks up and carries, which comes from the shop, the shop (#1313), the pause and going back to Sonic Advance (#1314) and the link cable aren't in C yet: a press or a
 // moment that needs one stops the garden where it is, with the screen as it was. A on the left icon opens its game,
-// rock-paper-scissors (gardenrps.c).
+// rock-paper-scissors (gardenrps.c), and A on the right one its card game (gardencards.c).
 
 #include "garden.h"
 
@@ -1737,13 +1736,11 @@ static void fade_away_start(void) {
   fade_away();
 }
 
-/** A on an icon: the garden's music fades out, and its screen with it: the left one's game, or the right one's, which
- *  isn't in C yet. */
+/** A on an icon: the garden's music fades out, and its screen with it: the left one's game or the right one's. */
 static void open_icon(const Obj *icon) {
-  if (!icon->arg) { not_in_c(); return; }
   gba_sound_fade_out(0, 1);
   gba_sound_play(SE_CONFIRM);
-  g.after = garden_rps;
+  g.after = icon->arg ? garden_rps : garden_cards;
   g.main = fade_away_start;
   g.flags |= 3;
 }
@@ -1767,6 +1764,7 @@ void garden_back(void) {
 const uint8_t *garden_at(uint32_t address) { return at(address); }
 int garden_random(void) { return random15(); }
 uint16_t garden_pressed(void) { return input.pressed; }
+uint16_t garden_held(void) { return input.held; }
 int garden_language(void) { return g.language; }
 void garden_run(void (*frame)(void)) { g.main = frame; }
 void garden_not_in_c(void) { not_in_c(); }
