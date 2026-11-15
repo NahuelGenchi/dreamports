@@ -9,9 +9,9 @@
 // END, or B anywhere on the menu, fades it out to black, writes the save (14 frames in which nothing runs) and goes
 // back to the main menu, which fades in with Game Start chosen and no music.
 //
-// A on PLAYER DATA fades the menu out to black over 32 frames, the music going on, and opens the player data menu
-// (playerdata.c), which comes back to this menu with the cursor on PLAYER DATA. SOUND TEST and LANGUAGE open screens that
-// aren't in C yet, so A on them does nothing, as Tiny Chao Garden's does on the main menu. Erasing the save in the browser isn't in the kit in C yet, so DELETE GAME DATA
+// A on PLAYER DATA or SOUND TEST fades the menu out to black over 32 frames, the music going on, and opens the player
+// data menu (playerdata.c) or the sound test (soundtest.c), which come back to this menu with the cursor on PLAYER DATA.
+// LANGUAGE opens a screen that isn't in C yet, so A on it does nothing, as Tiny Chao Garden's does on the main menu. Erasing the save in the browser isn't in the kit in C yet, so DELETE GAME DATA
 // empties the save in memory only: the save the browser keeps comes back on a reload until the next write.
 
 #include "sa.h"
@@ -140,8 +140,8 @@ void create_options_menu(void) {
   play_song(SONG_OPTIONS);
 }
 
-// Task_OptionsMenuMain: once the fade has come in, Up and Down choose and A picks; B ends the menu. A on PLAYER DATA fades
-// the menu out first, and the player data menu opens once it is black.
+// Task_OptionsMenuMain: once the fade has come in, Up and Down choose and A picks; B ends the menu. A on PLAYER DATA or
+// SOUND TEST fades the menu out first, and its screen opens once it is black.
 static void choose_item(Task *t) {
   menu.state = 0;
   e.bgScroll[0] = 0;
@@ -155,11 +155,11 @@ static void choose_item(Task *t) {
         menu.cursor = (menu.cursor + 1) % ITEMS;
       }
       if (e.pressed & KEY_A) {
-        if (menu.cursor == ITEM_PLAYER_DATA) {
+        if (menu.cursor == ITEM_PLAYER_DATA || menu.cursor == ITEM_SOUND_TEST) {
           play_song(SONG_SELECT);
           menu.fade.unk4 = 1;
           menu.fade.unk6 = 0;
-        } else if (menu.cursor != ITEM_SOUND_TEST && menu.cursor != ITEM_LANGUAGE) {
+        } else if (menu.cursor != ITEM_LANGUAGE) {
           play_song(SONG_SELECT);
           menu.state = 1;
           switch (menu.cursor) {
@@ -182,6 +182,14 @@ static void choose_item(Task *t) {
       menu.state = 1;
       destroy_task(t);
       create_player_data_menu();
+      return;
+    } else if (menu.cursor == ITEM_SOUND_TEST) {
+      // OptionsSelectSoundTest: black, the character select's music stopped (song 3, which isn't playing: the menu's own
+      // goes on until the sound test fades it out), and the sound test
+      menu.state = 1;
+      stop_song(SONG_CHARACTER_SELECTION);
+      destroy_task(t);
+      create_sound_test();
       return;
     }
   }

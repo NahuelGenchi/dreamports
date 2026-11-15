@@ -125,6 +125,10 @@ int gba_sound_count_cycles(void);
 /** With gba_sound_count_cycles, how many of the console's cycles the last frame's SoundMain took, as the JavaScript
  *  kit's frameCycles(), or -1 without it. */
 int gba_sound_frame_cycles(void);
+/** With gba_sound_count_cycles, music player `player`'s status (MusicPlayerInfo's status) in that silent engine, as a
+ *  game that reads its players finds it in a frame, such as a sound test that watches whether a song still plays; 0
+ *  without it. */
+uint32_t gba_sound_player_status(int player);
 /** With gba_sound_count_cycles, `frames` frames of SoundMain with nothing playing, for a start point that leaves out
  *  what led to it, as the JavaScript kit's framesGoneBy(). */
 void gba_sound_frames_gone_by(int frames);
