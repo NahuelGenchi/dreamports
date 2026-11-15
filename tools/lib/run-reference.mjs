@@ -34,8 +34,10 @@ function soundIn(file, frames) {
 }
 
 /**
- * Runs `frames` frames of the original from power-on. `buttons` holds each frame's buttons as bits, `functions` the code
- * map's ({ address, size }), `pictures` the frames whose whole picture is wanted, in order, `sets` the values to write to
+ * Runs `frames` frames of the original from power-on. `buttons` holds each frame's buttons as bits, `functions` where
+ * the code map's functions run ({ address, size, index, bytes }, as watchesOf in proof-files.mjs makes them: `index`
+ * its place in the code map, by default its place here, and `bytes` its first 8 bytes as two words when it only counts
+ * with those there), `ramCode` whether to list the code that runs in the work RAM, `pictures` the frames whose whole picture is wanted, in order, `sets` the values to write to
  * the work RAM as a frame starts ({ frame, address, bytes, value }), in the order of their frames, and `states` the
  * frames whose state is wanted, in order, and `reads` the values to read from the work RAM as a frame ends
  * ({ frame, address, bytes }), in the order of their frames. `program` and `args(files)` say what to run, and `width`, `height`,
@@ -45,21 +47,22 @@ function soundIn(file, frames) {
  * (15-bit colour, width x height), the states asked for (bytes), with `sound` { lengths, read(frame), close() }, each
  * frame's sound as it's needed (an Int16Array, overwritten by the next, of left and right samples, in 10-bit units
  * around the bias) or else null, and the last line the program wrote to stderr, as JSON, with the values `reads` asked
- * for under `reads`, in its order. With `draws`, for a console whose emulator keeps draw lists (libretro/host.c), also
+ * for under `reads`, in its order. With `ramCode`, also `ramCode`: { frame, address, thumb, code } for each time an
+ * instruction ran at an address of the work RAM with other bytes than the last time. With `draws`, for a console whose emulator keeps draw lists (libretro/host.c), also
  * `draws` { hashes, counts }: for each frame, the hash of what the console gave its graphics chip and how many things.
  */
-export async function runReference({ program, args, env, width, height, stateBytes = 0, buttonBytes = 2, frames, buttons, functions = [], pictures = [], sound = false, sets = [], states = [], reads = [], draws = false }) {
+export async function runReference({ program, args, env, width, height, stateBytes = 0, buttonBytes = 2, frames, buttons, functions = [], ramCode = false, pictures = [], sound = false, sets = [], states = [], reads = [], draws = false }) {
   const folder = join(LOCAL, 'tmp');
   mkdirSync(folder, { recursive: true });
   const id = `${process.pid}-${threadId}-${Date.now()}-${++runs}`;
   const files = {
     buttons: join(folder, `buttons-${id}.bin`), functions: join(folder, `functions-${id}.bin`), pictures: join(folder, `pictures-${id}.bin`),
     sound: join(folder, `sound-${id}.bin`), sets: join(folder, `sets-${id}.bin`), states: join(folder, `states-${id}.bin`),
-    reads: join(folder, `reads-${id}.bin`), draws: join(folder, `draws-${id}.bin`),
+    reads: join(folder, `reads-${id}.bin`), draws: join(folder, `draws-${id}.bin`), ramCode: join(folder, `ram-code-${id}.bin`),
   };
   writeFileSync(files.buttons, new Uint8Array((buttonBytes === 4 ? Uint32Array : Uint16Array).from(buttons).buffer));
-  const list = new Uint32Array(functions.length * 2);
-  functions.forEach((f, i) => { list[i * 2] = f.address; list[i * 2 + 1] = f.size; });
+  const list = new Uint32Array(functions.length * 6);
+  functions.forEach((f, i) => list.set([f.address, f.size, f.index ?? i, f.bytes ? 1 : 0, f.bytes?.[0] ?? 0, f.bytes?.[1] ?? 0], i * 6));
   writeFileSync(files.functions, new Uint8Array(list.buffer));
   writeFileSync(files.pictures, new Uint8Array(Uint32Array.from(pictures).buffer));
   writeFileSync(files.sets, new Uint8Array(Uint32Array.from(sets.flatMap(({ frame, address, bytes, value }) => [frame, address, bytes, value])).buffer));
@@ -69,7 +72,7 @@ export async function runReference({ program, args, env, width, height, stateByt
     // its files by their plain names, from their folder: only the copy's path has to survive the trip whatever it's called
     const names = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, basename(file)]));
     if (!sound) names.sound = '-';
-    const child = spawn(program, args(names), { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env, ...(reads.length ? { DP_READS: names.reads } : {}), ...(draws ? { DP_DRAWS: names.draws } : {}) } });
+    const child = spawn(program, args(names), { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env, ...(reads.length ? { DP_READS: names.reads } : {}), ...(draws ? { DP_DRAWS: names.draws } : {}), ...(ramCode ? { DP_RAM_CODE: names.ramCode } : {}) } });
     // with no functions, its size is known, and it needs no second copy of itself to end up in one piece
     const size = functions.length ? 0 : frames * 12 + pictures.length * width * height * 2 + states.length * stateBytes;
     const out = [], err = [], whole = Buffer.allocUnsafeSlow(size);
@@ -110,7 +113,13 @@ export async function runReference({ program, args, env, width, height, stateByt
       const pairs = new Uint32Array(new Uint8Array(readFileSync(files.draws)).buffer);
       drawn = { hashes: pairs.filter((_, i) => i % 2 === 0), counts: pairs.filter((_, i) => i % 2 === 1) };
     }
-    return { hashes, plain, ran, pictures: shown, states: held, sound: sound ? soundIn(files.sound, frames) : null, draws: drawn, outside: JSON.parse(stderr.split('\n').pop()) };
+    let codeInRam = null;
+    if (ramCode) {
+      const words = new Uint32Array(new Uint8Array(readFileSync(files.ramCode)).buffer);
+      codeInRam = [];
+      for (let i = 0; i + 3 <= words.length; i += 3) codeInRam.push({ frame: words[i], address: words[i + 1] & ~1, thumb: !!(words[i + 1] & 1), code: words[i + 2] });
+    }
+    return { hashes, plain, ran, pictures: shown, states: held, sound: sound ? soundIn(files.sound, frames) : null, draws: drawn, ...(codeInRam ? { ramCode: codeInRam } : {}), outside: JSON.parse(stderr.split('\n').pop()) };
   } finally {
     for (const file of Object.values(files)) rmSync(file, { force: true });
   }

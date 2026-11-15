@@ -278,7 +278,11 @@
     ["0804633C","src/sound/gax.js:370"],
     ["080463B0","src/sound/gax.js:385"],
     ["08046434","src/sound/gax.js:385"],
-    ["08046D3C","src/sound/gax.js:61"]
+    ["08046D3C","src/sound/gax.js:61"],
+    ["08F51914","src/movie.js:67"],
+    ["08F51ACC","src/movie.js:96"],
+    ["08F52080","src/core.js:775"],
+    ["08F52100","src/core.js:775"]
   ],
   "unmatched": [
 
