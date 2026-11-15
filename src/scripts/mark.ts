@@ -67,18 +67,6 @@ export async function showLogo(pose: PoseName, colour: ColourName) {
   }
 }
 
-/** Draws a mark the page left empty, as a copy of another one on it with ids of its own: the one in Settings, which
- *  the page then doesn't have to carry twice. */
-export function copyMark(to: SVGSVGElement, from: SVGSVGElement) {
-  if (to.childElementCount) return;
-  const own = (svg: string) => svg.replaceAll(`${from.dataset.id}-`, `${to.dataset.id}-`);
-  to.setAttribute('viewBox', from.getAttribute('viewBox') ?? '');
-  to.innerHTML = own(from.innerHTML);
-  if (from.dataset.pose) to.dataset.pose = from.dataset.pose;
-  const first = drawn.get(from);
-  if (first) drawn.set(to, { viewBox: first.viewBox, svg: own(first.svg) });
-}
-
 /** Shows what the browser has kept. A page with nothing kept is left as it was drawn. */
 export function showLogoKept() {
   const { pose, colour } = logoKept();

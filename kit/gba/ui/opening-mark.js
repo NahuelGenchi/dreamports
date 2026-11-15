@@ -4,7 +4,7 @@
 // drawn when the site is built, one set per pick under /icons/<pose>-<colour>/ (src/lib/mark-icons.ts there, which
 // stops the build if these names stop matching its own). A player with no pick loads nothing more.
 (() => {
-  const POSES = ['leap', 'jump', 'dive', 'rise', 'sleep'];
+  const POSES = ['leap', 'jump', 'sleep'];
   const COLOURS = ['deep', 'soft', 'lagoon'];
   const kept = (key) => {
     try {

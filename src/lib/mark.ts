@@ -20,7 +20,7 @@ export interface Pose {
   land: [number, number, number];
 }
 
-export const POSES = ['leap', 'jump', 'dive', 'rise', 'sleep'] as const;
+export const POSES = ['leap', 'jump', 'sleep'] as const;
 export type PoseName = (typeof POSES)[number];
 export const COLOURS = ['deep', 'soft', 'lagoon'] as const;
 export type ColourName = (typeof COLOURS)[number];

@@ -9,7 +9,7 @@ import { hrefOf } from './controls';
 import { goTo, stepTo } from '../../kit/gba/ui/steps.js';
 import { playHref, playLabel } from '../lib/languages.mjs';
 import type { ColourName, PoseName } from '../lib/mark';
-import { LOGO_KEYS, copyMark, fetchOpeningMark, logoKept, showLogo } from './mark';
+import { LOGO_KEYS, fetchOpeningMark, logoKept, showLogo } from './mark';
 
 type Input = 'keys' | 'pad' | 'touch';
 type Motion = 'auto' | 'full' | 'calm';
@@ -1157,7 +1157,7 @@ function start(launcher: HTMLElement) {
       opener = state.opener;
       closeView({ instant: true, quiet: true, keepFocus: true, address: false, swap: true });
     }
-    if (dlg === settingsCard) syncSettings();
+    if (dlg === settingsCard) syncSettings(true);
     state.view = state.open = dlg;
     state.opener = opener;
     menuAway(true);
@@ -1394,27 +1394,26 @@ function start(launcher: HTMLElement) {
   // settings
   const sndSwitch = $('#snd-switch', settingsCard);
   const unfinishedSwitch = $('#unfinished-switch', settingsCard);
-  function syncSettings() {
-    copyMark($<SVGSVGElement>('#set-mark', settingsCard), $<SVGSVGElement>('.t-mark .mark', target));
+  const settingsMark = $<SVGSVGElement>('#set-mark', settingsCard);
+  function syncSettings(opening = false) {
+    // The logo as picked. With Settings up, a pose just picked is moved into, or faded to under calm motion (#1328);
+    // nothing is drawn while Settings has never been opened.
+    // Its code is fetched only now (src/scripts/mark-morph.ts); if it can't be, Settings shows no logo and still works.
+    if (opening || state.open === settingsCard) {
+      const [pose, how] = [state.logoPose, opening ? 'at-once' : calm() ? 'fade' : 'move'] as const;
+      void import('./mark-morph').then((morph) => morph.showSettingsLogo(settingsMark, pose, how)).catch(() => {});
+    }
     sndSwitch.setAttribute('aria-checked', String(state.sound));
     unfinishedSwitch.setAttribute('aria-checked', String(state.unfinished));
     $<HTMLInputElement>('#theme-light', settingsCard).checked = !isDark();
     $<HTMLInputElement>('#theme-dark', settingsCard).checked = isDark();
-    // The line under Look has nothing to say once a look is picked (#209), but while Settings stays up it keeps its
-    // place, unseen: taking it away at once moves the choice just pressed from under the finger, and every row below it
-    // (#1206). It is gone the next time Settings opens.
-    const themeDesc = $('#theme-desc', settingsCard);
-    const held = !!state.theme && state.open === settingsCard && !!themeDesc.textContent;
-    if (!state.theme) themeDesc.textContent = 'Follows your device until you pick one.';
-    else if (!held) themeDesc.textContent = '';
-    themeDesc.classList.toggle('is-held', held);
     $<HTMLInputElement>('#motion-full', settingsCard).checked = !calm();
     $<HTMLInputElement>('#motion-calm', settingsCard).checked = calm();
     $<HTMLInputElement>(`#pose-${state.logoPose}`, settingsCard).checked = true;
     $<HTMLInputElement>(`#colour-${state.logoColour}`, settingsCard).checked = true;
     const kept: string[] = [];
     if (store.get('sound')) kept.push('menu sounds on');
-    if (store.get('theme')) kept.push(store.get('theme') + ' look');
+    if (store.get('theme')) kept.push(store.get('theme') + ' appearance');
     if (store.get('motion')) kept.push(store.get('motion') + ' motion');
     if (store.get('unfinished')) kept.push('unfinished Dreamports shown');
     if (store.get(LOGO_KEYS.pose) || store.get(LOGO_KEYS.colour)) kept.push('your logo');

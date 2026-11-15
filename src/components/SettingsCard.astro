@@ -1,5 +1,6 @@
 ---
-// Settings: menu sounds, light or dark, full or calm motion, whether unfinished Dreamports show, and the logo's pose and colour. It needs JavaScript,
+// Settings: menu sounds, light or dark, full or calm motion, whether unfinished Dreamports show, and the logo's pose and colour. Each
+// has its name on the left and its switch or choice on the right, with no line of description (#1328). It needs JavaScript,
 // like everything it changes, so the menu shows its button only when JavaScript runs.
 import ViewBar from './ViewBar.astro';
 import { COLOURS, POSES } from '../lib/mark';
@@ -12,50 +13,36 @@ const named = (word: string) => word[0].toUpperCase() + word.slice(1);
     <h2 class="card-title" id="settings-title">Settings</h2>
     <div class="set-list">
       <div class="set-row">
-        <div class="set-text">
-          <span class="set-label" id="snd-label">Menu sounds</span>
-          <span class="set-desc">Soft clicks and chimes as you move.</span>
-        </div>
+        <span class="set-label" id="snd-label">Menu sounds</span>
         <button type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="snd-label" id="snd-switch" autofocus>
           <span class="switch-track"><span class="switch-knob"></span></span>
         </button>
       </div>
       <div class="set-row">
-        <div class="set-text">
-          <span class="set-label" id="theme-label">Look</span>
-          <span class="set-desc" id="theme-desc">Follows your device until you pick one.</span>
-        </div>
+        <span class="set-label" id="theme-label">Appearance</span>
         <div class="seg" role="radiogroup" aria-labelledby="theme-label">
           <input type="radio" name="theme" id="theme-light" value="light" /><label for="theme-light">Light</label>
           <input type="radio" name="theme" id="theme-dark" value="dark" /><label for="theme-dark">Dark</label>
         </div>
       </div>
       <div class="set-row">
-        <div class="set-text">
-          <span class="set-label" id="motion-label">Motion</span>
-          <span class="set-desc">Calm keeps the games still and swaps the slides for fades.</span>
-        </div>
+        <span class="set-label" id="motion-label">Motion</span>
         <div class="seg" role="radiogroup" aria-labelledby="motion-label">
           <input type="radio" name="motion" id="motion-full" value="full" /><label for="motion-full">Full</label>
           <input type="radio" name="motion" id="motion-calm" value="calm" /><label for="motion-calm">Calm</label>
         </div>
       </div>
       <div class="set-row">
-        <div class="set-text">
-          <span class="set-label" id="unfinished-label">Unfinished Dreamports</span>
-          <span class="set-desc">Show the ones whose code isn’t all ported yet.</span>
-        </div>
+        <span class="set-label" id="unfinished-label">Unfinished Dreamports</span>
         <button type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="unfinished-label" id="unfinished-switch">
           <span class="switch-track"><span class="switch-knob"></span></span>
         </button>
       </div>
       <div class="set-row set-logo">
-        {/* the logo as picked: the script draws it, as a copy of the launch's mark, so the page doesn't carry it twice (src/scripts/mark.ts) */}
-        <svg class="mark set-mark" id="set-mark" data-mark="whole" data-id="mark-set" aria-hidden="true" focusable="false"></svg>
-        <div class="set-text">
-          <span class="set-label">Logo</span>
-          <span class="set-desc">Its pose and its colour.</span>
-        </div>
+        <span class="set-label">Logo</span>
+        {/* the logo as picked, big enough to watch it change: the script draws it and moves it from pose to pose
+            (src/scripts/mark-morph.ts), so the page doesn't carry it twice */}
+        <svg class="mark set-mark" id="set-mark" aria-hidden="true" focusable="false"></svg>
         <div class="set-picks">
           <div class="seg" role="radiogroup" aria-label="Logo pose">
             {
@@ -85,8 +72,8 @@ const named = (word: string) => word[0].toUpperCase() + word.slice(1);
         </span>
       </div>
     </div>
-    <p class="card-note">
-      <span id="memory-note">What you change here stays in this browser.</span>{' '}
+    <p class="card-note" id="memory-note">What you change here stays in this browser.</p>
+    <p class="card-links">
       <span id="forget-wrap" hidden><button type="button" class="linkish" id="btn-forget">Forget my choices</button> ·{' '}</span>
       <a class="linkish" id="btn-privacy" href="/about/#privacy">Your privacy</a>
     </p>
