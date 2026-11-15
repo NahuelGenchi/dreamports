@@ -44,6 +44,12 @@ void mp_players_stop(void);
 void mp_send(const Player *p, int fresh);
 /** gOamMatrixIndex: the next rotation matrix in this frame for a round's sprites turned through the hardware. */
 int mp_next_matrix(void);
+// the Chao (chao.c)
+void mp_chao_create(int place, int id);
+int mp_chao_holder(void);
+void mp_chao_take(int id);
+void mp_chao_run(void);
+void mp_chao_stop(void);
 // the arrows toward the other players (mphud.c)
 void mp_indicator_create(int id);
 void mp_indicators_run(void);

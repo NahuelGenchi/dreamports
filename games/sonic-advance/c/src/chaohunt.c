@@ -45,7 +45,10 @@ void chaohunt_setup(void) {
     mp_player_create(i, x, y);
     if (i != hunt.id) mp_indicator_create(i);
   }
+  // the Chao, at the place the link handed every GBA
+  mp_chao_create(hunt.chaoPlace, 0);
   hunt.itemEffect = 0x80;
+  act.cam.hold = 1;
   // three minutes on a clock running down (GameStageStart)
   act.courseTime = 3 * 3600;
   act.timerReversed = 1;
@@ -115,6 +118,7 @@ static void receive_event(const uint8_t *ev, int from) {
       break;
     case EVENT_GOAL: break;
     case EVENT_CHAO:
+      if (ev[1] == 0) mp_chao_take(ev[2]);
       mpPlayers[from].state &= ~(0x10000u << ev[1]);
       mpPlayers[ev[2]].state |= 0x10000u << ev[1];
       play_song(SE_CHAO_HUH);

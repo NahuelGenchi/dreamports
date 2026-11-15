@@ -123,6 +123,7 @@ void mp_player_create(int id, int x, int y) {
 /** The players' tasks (0x2000), which the act runs before the title card's (0x2100) and Sonic's (0x3000). */
 void mp_players_run(void) {
   for (int i = 0; i < PLAYERS_MAX; i++) if (mpPlayers[i].made) player_task(&mpPlayers[i]);
+  mp_chao_run();
   mp_hud_run();
   if (mp_finish_run()) hunt.whiteDone = 1;
   mp_indicators_run();
@@ -130,7 +131,7 @@ void mp_players_run(void) {
 }
 
 /** The round is over: the players' tasks go with the stage's. */
-void mp_players_stop(void) { memset(mpPlayers, 0, sizeof mpPlayers); mp_indicators_stop(); mp_hud_stop(); mp_finish_stop(); }
+void mp_players_stop(void) { memset(mpPlayers, 0, sizeof mpPlayers); mp_indicators_stop(); mp_hud_stop(); mp_finish_stop(); mp_chao_stop(); }
 
 /**
  * sub_8024B10's packet, at the end of Sonic's frame: where he is and how he looks, with the items he has. `fresh` is
