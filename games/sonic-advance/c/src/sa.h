@@ -32,6 +32,7 @@ enum {
   OFFSET_INTRO_GRAPHICS = 0x69EC10, OFFSET_INTRO_TABLES = 0x684178, OFFSET_LANGUAGE_BACKGROUND = 0x6C7BD0,
   OFFSET_COURSE_SELECT_BACKGROUND = 0x69A6D0, OFFSET_OPTIONS_BACKGROUND = 0x6C5650,
   OFFSET_PLAYER_DATA_BACKGROUND = 0x6C5C10, OFFSET_VS_RECORD_BACKGROUNDS = 0x6847B0,
+  OFFSET_SOUND_TEST_SONGS = 0x683F74, OFFSET_SOUND_TEST_BACKGROUND = 0x67CF38,
   OFFSET_TIME_ATTACK_MENU = 0x6959D0, OFFSET_TIME_ATTACK_CARDS = 0x684670,
   OFFSET_TIME_ATTACK_LOBBY_TABLES = 0x684580, OFFSET_TIME_ATTACK_LOBBY_PICTURE = 0x6C71D0,
   OFFSET_TIME_ATTACK_RECORD_TABLES = 0x683FD0,
@@ -418,6 +419,8 @@ void create_name_input(void);
 // the Options menu's PLAYER DATA (playerdata.c) and its VS RECORD (vsrecord.c)
 void create_player_data_menu(void);
 void create_vs_record(void);
+// the Options menu's SOUND TEST (soundtest.c)
+void create_sound_test(void);
 void create_multipack_outcome(int outcome);
 void create_link_error(void);
 void create_lobby(int mode);

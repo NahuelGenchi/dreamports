@@ -202,6 +202,9 @@ int gba_sound_count_cycles(void) {
 }
 
 int gba_sound_frame_cycles(void) { return counting ? counter.frameCycles : -1; }
+uint32_t gba_sound_player_status(int player) {
+  return counting && player >= 0 && player < M4A_PLAYERS ? counter.players[player].status : 0;
+}
 
 void gba_sound_frames_gone_by(int frames) {
   if (!counting) return;
