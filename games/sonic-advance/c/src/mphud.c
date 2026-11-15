@@ -188,3 +188,92 @@ static void hud_task(void) {
 /** The HUD's task (0x2000), made after the players' and so run after them. */
 void mp_hud_run(void) { if (hud.made) hud_task(); }
 void mp_hud_stop(void) { memset(&hud, 0, sizeof hud); }
+
+// --- the round's end (mp_finish.c): each player's result over their head, then the fade to white -------------------------
+
+enum { ANIM_RESULT = 902, SONG_ROUND_OVER = 304, FINISH_WAIT = 240, FADE_STEP = 0x40, FADE_END = 0x1000 };
+
+static struct { int made; Sprite s; } results[PLAYERS_MAX];
+static struct { int made, frame, whitening; } finish;
+
+// CreateMultiplayerFinishResult: in Chao Hunt the variant is the rank (0 won, 1 lost), 2 a draw (rank 4) and 1 for rank 5
+static void result_create(int id, int rank) {
+  results[id].made = 1;
+  hunt.ranks[id] = rank < 6 ? rank : hunt.count - 1;
+  Sprite *s = &results[id].s;
+  sprite_init(s);
+  s->graphics.size = 0;
+  s->graphics.anim = ANIM_RESULT;
+  s->variant = (uint8_t)(rank == 5 ? 1 : rank == 4 ? 2 : rank);
+  s->graphics.dest = vram_malloc(12);
+  s->prevVariant = 0xFF;
+  s->oamFlags = 0;
+  s->qAnimDelay = 0;
+  s->animSpeed = 0x10;
+  s->palId = 0;
+  s->frameFlags = 0;
+  update_sprite(s, 0);
+}
+
+/** CreateMultiplayerFinishTransition: the round-over sound, and each player's result from the Chao they hold, ties drawn. */
+void mp_finish_start(void) {
+  memset(&finish, 0, sizeof finish);
+  finish.made = 1;
+  music_call(MUSIC_OFF, 0);
+  play_song(SONG_ROUND_OVER);
+  uint8_t order[4] = { 0, 1, 2, 3 }, counts[4] = { 0 };
+  for (int i = 0; i < PLAYERS_MAX; i++) counts[i] = (uint8_t)hunt.charRings[i];
+  for (int i = 0; i < 4; i++) {
+    for (int j = 0; j < 3 - i; j++) {
+      if (counts[j] < counts[j + 1]) {
+        uint8_t c = counts[j]; counts[j] = counts[j + 1]; counts[j + 1] = c;
+        uint8_t o = order[j]; order[j] = order[j + 1]; order[j + 1] = o;
+      }
+    }
+  }
+  for (int i = 0; i < 4; i++) {
+    if (i != 0) hunt.ranks[order[i]] = counts[i] == counts[0] ? 4 : 1;
+    else hunt.ranks[order[0]] = counts[0] == counts[1] ? 4 : 0;
+  }
+  for (int i = 0; i < PLAYERS_MAX; i++) if (mpPlayers[i].made) result_create(i, hunt.ranks[i] & 0xFF);
+}
+
+// Task_DisplayResult (0x2010): over the player, 32 px above (below with gravity turned over)
+static void result_task(int id) {
+  Sprite *s = &results[id].s;
+  const MpPlayer *m = &mpPlayers[id];
+  s->x = (int16_t)(m->x - (int)act.cam.x);
+  s->y = (int16_t)(m->y - (int)act.cam.y + (act.player.inverted ? 32 : -32));
+  display_sprite(s);
+}
+
+void mp_results_run(void) {
+  for (int i = 0; i < PLAYERS_MAX; i++) if (results[i].made) result_task(i);
+}
+
+/**
+ * Task_TransitionWaitForResults and Task_TransitionToResultsScreen (0x2000): once this GBA's room events are all out, 241
+ * frames more, then the sound fades and the screen whitens over 64 frames. True on the frame the white is complete.
+ */
+int mp_finish_run(void) {
+  if (!finish.made) return 0;
+  if (!finish.whitening) {
+    if (chaohunt_queue_empty() && finish.frame++ > FINISH_WAIT) {
+      for (int player = 0; player < 4; player++) fade_out_sound(player, 4);
+      finish.frame = 0;
+      finish.whitening = 1;
+    }
+    return 0;
+  }
+  finish.frame += FADE_STEP;
+  return finish.frame >= FADE_END;
+}
+
+/** The blending the transition sets, after the act's picture: lightening all of it, by bldY. */
+void mp_finish_display(void) {
+  if (!finish.whitening) return;
+  e.bldCnt = 0xBF;
+  e.bldY = (uint16_t)(finish.frame >= FADE_END ? 0 : finish.frame >> 8);
+}
+
+void mp_finish_stop(void) { memset(&finish, 0, sizeof finish); memset(results, 0, sizeof results); }

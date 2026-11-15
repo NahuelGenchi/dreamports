@@ -1109,6 +1109,8 @@ static void act_frame(void) {
   // the card's fade first: a stage's own tasks, such as Secret Base's spotlights, run after the card's and have the
   // last word on the display
   if (cardShows) titlecard_display();
+  // a round's end whitens the picture
+  if (chaohunt_active()) mp_finish_display();
   // (after the act before, its tasks first run on the act's second frame, as its objects do)
   if (row->afterFrame) row->afterFrame(1);
   results_display();

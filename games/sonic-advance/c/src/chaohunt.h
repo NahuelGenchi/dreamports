@@ -14,6 +14,7 @@ typedef struct {
   int charRings[PLAYERS_MAX];   // gMultiplayerCharRings: the Chao each player holds
   int ranks[PLAYERS_MAX];       // gMultiplayerRanks: each player's result, -1 while the round runs
   int over;                     // the clock has run out
+  int whiteDone;                // the round's end has whitened the screen: the results screen comes next
   uint32_t random;              // gMultiplayerPseudoRandom: the players' shared random numbers
   int itemTurn;                 // gRandomItemBox: which mystery item box shows (low 3 bits) and its generation (high 4)
   int invisibleTimer;           // itemEffect20Timer: frames of invisibility left
@@ -52,6 +53,12 @@ void mp_indicators_stop(void);
 void mp_hud_create(void);
 void mp_hud_run(void);
 void mp_hud_stop(void);
+// the round's end (mphud.c)
+void mp_finish_start(void);
+void mp_results_run(void);
+int mp_finish_run(void);
+void mp_finish_display(void);
+void mp_finish_stop(void);
 /** The title card's end: the players can be touched, Sonic blinks for two seconds, and the HUD appears. */
 void chaohunt_card_end(void);
 /** CreateRoomEvent: an event for the other GBAs, queued until each has heard the one before (mp_event_mgr.c). */

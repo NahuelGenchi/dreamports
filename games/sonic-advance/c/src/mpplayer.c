@@ -124,11 +124,13 @@ void mp_player_create(int id, int x, int y) {
 void mp_players_run(void) {
   for (int i = 0; i < PLAYERS_MAX; i++) if (mpPlayers[i].made) player_task(&mpPlayers[i]);
   mp_hud_run();
+  if (mp_finish_run()) hunt.whiteDone = 1;
   mp_indicators_run();
+  mp_results_run();
 }
 
 /** The round is over: the players' tasks go with the stage's. */
-void mp_players_stop(void) { memset(mpPlayers, 0, sizeof mpPlayers); mp_indicators_stop(); mp_hud_stop(); }
+void mp_players_stop(void) { memset(mpPlayers, 0, sizeof mpPlayers); mp_indicators_stop(); mp_hud_stop(); mp_finish_stop(); }
 
 /**
  * sub_8024B10's packet, at the end of Sonic's frame: where he is and how he looks, with the items he has. `fresh` is
