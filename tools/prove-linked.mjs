@@ -39,6 +39,9 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   const keepAt = [...new Set(asked)].filter(f => f >= 0 && f < frames);
   // the clip: the recording's, or the last five seconds, with the Dreamport's screens above and the original's below
   const clipAt = quick ? [] : Array.from({ length: Math.min(frames, recording.clip?.frames ?? CLIP_FRAMES) }, (_, i) => (recording.clip?.at ?? Math.max(0, frames - CLIP_FRAMES)) + i).filter(f => f < frames);
+  // the clip's first, middle and last frames, kept as pictures beside it, as prove keeps a one-console clip's
+  const clipStills = clipAt.length ? [...new Set([clipAt[0], clipAt[clipAt.length >> 1], clipAt.at(-1)])] : [];
+  const pictured = [...new Set([...keepAt, ...clipStills])];
   const first = await runLinked({ copy, players, frames: frames + 1, buttons: bits, pictures: [...new Set([...keepAt, ...clipAt])].sort((a, b) => a - b).map(f => f + 1) });
   const expected = Array.from({ length: frames }, (_, f) => Array.from({ length: players }, (_, p) => first.hashes[(f + 1) * players + p]));
 
@@ -60,7 +63,7 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
     const count = Math.min(BATCH, frames - from);
     say(`frame ${from + count} of ${frames}`);
     const batch = Array.from({ length: count }, (_, i) => ({ players: lists.map(list => ({ held: buttonsOf(list[from + i]), ...(from + i + 1 < frames ? { next: buttonsOf(list[from + i + 1]) } : {}) })) }));
-    const wanted = keepAt.filter(f => f >= from && f < from + count);
+    const wanted = pictured.filter(f => f >= from && f < from + count);
     const played = await page.evaluate(`__linked.run(${from}, ${JSON.stringify(batch)}, ${JSON.stringify(expected.slice(from, from + count))}, ${JSON.stringify(wanted)}, ${JSON.stringify(clipAt.filter(f => f >= from && f < from + count))})`);
     for (let i = 0; i < played.length; i++) {
       const f = from + i;
@@ -122,6 +125,12 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
     }
     server.serve('/proof/originals', null);
     writeFileSync(join(out, 'clip.mp4'), clipFile);
+    // and its first, middle and last frames, the Dreamport's screens above and the original's below, as the video has
+    // them: share shows a clip in a pull request by clip-middle.png
+    ['clip-start.png', 'clip-middle.png', 'clip-end.png'].forEach((label, k) => {
+      const f = [clipAt[0], clipAt[clipAt.length >> 1], clipAt.at(-1)][k];
+      if (shown[f]) sheet(shown[f], Array.from({ length: players }, (_, p) => first.pictures.get(`${f + 1}:${p}`)), label);
+    });
     // what share checks before a pull request shows the clip (lib/clips.mjs): what this step changed, from main's
     // proof, as nothing here says which code ran, and how many pictures are one colour or the same as the one before,
     // from the original's, as the Dreamport's are the same where it matters, which `apart` measures
