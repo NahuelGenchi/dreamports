@@ -144,3 +144,14 @@ test('a sorted branch is said in a few words, with the value it tests when it ha
   assert.equal(kindText({ kind: 'path', sides: [] }), 'by the path');
   assert.equal(kindText({ kind: 'same', sides: [] }), 'never differed');
 });
+
+test('the functions that started in a recording\'s matching frames are those whose first instruction ran', async () => {
+  const { startedIn } = await import('../lib/played.mjs');
+  const codeMap = { functions: [{ key: '08000000', address: 0x08000000, size: 8 }, { key: '08000008', address: 0x08000008, size: 4 }, { key: '0800000C', address: 0x0800000C, size: 4 }] };
+  const layout = layoutOf(codeMap), set = new Uint8Array(layout.bytes);
+  const ran = place => { set[place * 3 >> 3] |= 1 << (place * 3 & 7); };
+  ran(layout.first[0]);          // the first function's first instruction
+  ran(layout.first[1] + 1);      // the second's second, not its first
+  assert.deepEqual(startedIn(set, codeMap), ['08000000']);
+  assert.deepEqual(startedIn(new Uint8Array(layout.bytes), codeMap), []);
+});
