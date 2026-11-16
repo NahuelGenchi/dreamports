@@ -21,7 +21,7 @@
   const filter = __makeFilter(__console.sound);
   // how many samples a frame with no sound stands for
   const SILENCE = Math.floor(__console.sound * __console.frame[0] / __console.frame[1]);
-  let heard = false, pictureDiffered = false, ownWidth = 0, ownHeight = 0;
+  let heard = false, pictureDiffered = false, ownWidth = 0, ownHeight = 0, savesSeen = false;
   // for a game proven by draw lists, the whole list of the first frame whose list differs, as the kit kept it
   let firstList = null;
 
@@ -185,6 +185,10 @@
      *  A game that throws stops there, with `stopped` saying what it threw. */
     async run(from, held, expected, stopsFrom = Infinity, after = null) {
       const hashes = [], sound = [], neverInPlay = [], sizes = [], saves = [];
+      // what the game wrote to its save memory as it started, before its first frame, as a cartridge with no save does
+      // at power-on: the frame before the first
+      if (!savesSeen && dreamportsProof.saved) saves.push({ frame: from - 1, bytes: toBase64(dreamportsProof.saved) });
+      savesSeen = true;
       for (let i = 0; i < held.length; i++) {
         const frame = from + i;
         dreamportsProof.video = null;   // a game can draw some screens with a renderer of its own

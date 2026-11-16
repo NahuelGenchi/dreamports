@@ -37,7 +37,7 @@ import { compareState, describeState } from './lib/state.mjs';
 import { fromStartPoint, gameplayText, leftToDo, measure, percentText } from '../src/lib/entries.mjs';
 import { readProof } from './readme.mjs';
 import { referenceOf } from './lib/reference.mjs';
-import { compareSaves, readLeftover } from './lib/saves.mjs';
+import { compareSaves, fromFrame, readLeftover } from './lib/saves.mjs';
 import { CELL, contentIn, finderOf, layoutOf, playedIn, writePlayed } from './lib/played.mjs';
 import { checkSizes, firstOtherSize } from './lib/screens.mjs';
 import { notesAbout } from './notes.mjs';
@@ -508,8 +508,10 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       for (const f of first.ran[originalOf[frame]]) proven.add(f);
     }
     // what the game saved, next to what the original's cartridge holds after each of its writes (lib/saves.mjs)
-    // a write the original made before the Dreamport's first frame, on its way to a start point, isn't the Dreamport's to make
-    const saved = first.saves ? compareSaves(first.saves.filter(change => change.frame >= originalOf[0]), ownSaves, readLeftover(game)) : null;
+    // a write the original made before the Dreamport's first frame, on its way to a start point, isn't the Dreamport's to
+    // make, and then neither is one the Dreamport made as it started, before that frame
+    const theirSaves = first.saves ? fromFrame(first.saves, originalOf[0]) : null;
+    const saved = first.saves ? compareSaves(theirSaves.changes, theirSaves.before ? ownSaves.filter(change => change.frame >= 0) : ownSaves, readLeftover(game)) : null;
     // what of the original's code ran in those frames, for gameplay proven, with the code the game made in memory
     let played = null;
     if (seesPlayed) {

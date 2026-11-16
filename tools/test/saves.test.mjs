@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ONE_WRITE, compareSaves, writesIn } from '../lib/saves.mjs';
+import { ONE_WRITE, compareSaves, fromFrame, writesIn } from '../lib/saves.mjs';
 import { proofOf } from '../../src/lib/entries.mjs';
 
 const bytes = (...values) => Uint8Array.from(values);
@@ -35,4 +35,11 @@ test('a proof says how many of the original\'s writes came out the same, and whe
   });
   assert.deepEqual(proof.saves, { original: 3, same: 2, differ: ['b', 'c'] });
   assert.equal(proofOf('made-up', { original: { name: 'Made Up', sha1: 'abc' }, progress: { original: 'abc', recordings: { d: row(null) } } }).saves, undefined);
+});
+
+test('a write the original began before a start point goes whole, and one after it stays', () => {
+  const changes = [{ frame: 26, bytes: bytes(1) }, { frame: 40, bytes: bytes(1, 2) }, { frame: 900, bytes: bytes(9) }];
+  assert.deepEqual(fromFrame(changes, 40), { changes: [changes[2]], before: 1 }, 'its last change came at the start point, and it still began before');
+  assert.deepEqual(fromFrame(changes, 0), { changes, before: 0 });
+  assert.deepEqual(fromFrame([], 40), { changes: [], before: 0 });
 });

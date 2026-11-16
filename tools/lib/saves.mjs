@@ -65,3 +65,21 @@ export function readLeftover(game) {
     return stretch;
   });
 }
+
+/**
+ * The changes of the original's save memory that a Dreamport starting at the original's frame `start` could make: a
+ * write that began before it, on the original's way to a start point, isn't the Dreamport's to make, whenever its last
+ * change came. Returns { changes, before }: what's left, and how many writes went.
+ */
+export function fromFrame(changes, start) {
+  const kept = [];
+  let before = 0, dropping = false;
+  changes.forEach((change, i) => {
+    if (!i || change.frame - changes[i - 1].frame > ONE_WRITE) {
+      dropping = change.frame < start;
+      if (dropping) before++;
+    }
+    if (!dropping) kept.push(change);
+  });
+  return { changes: kept, before };
+}

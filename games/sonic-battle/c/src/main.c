@@ -535,11 +535,8 @@ void startFightFromPoint(void) {
 /** The game starts again from the logos, as Delete data in the options does (0x08000210): a new save's name and
  *  language, and the screen's state reset. */
 void restartFromStart(void) {
-  for (int i = 0; i < 6; i++) g.name[i] = 0;
-  g.mini_games_open = 1;
-  g.language = 1;
-  g.saved_language = 1;
-  g.frames = 1;
+  // the game reads the new save Delete data wrote, and counts on from it (0x080216e4)
+  saveOpen();
   g.restarted = 1;
   g.start_up = 0;
   logosSetup();
@@ -561,13 +558,14 @@ void game_start(void) {
   gba_write(REG_BG2X, 0); gba_write(REG_BG2X + 2, 0); gba_write(REG_BG2Y, 0); gba_write(REG_BG2Y + 2, 0);
   gba_write(REG_BG3PA, 0x100); gba_write(REG_BG3PA + 2, 0); gba_write(REG_BG3PA + 4, 0); gba_write(REG_BG3PA + 6, 0x100);
   gba_write(REG_BG3X, 0); gba_write(REG_BG3X + 2, 0); gba_write(REG_BG3Y, 0); gba_write(REG_BG3Y + 2, 0);
+  // a recording's start point plays apart from the player's save: the language, name, mini-games or screen it asks for
+  g.save_apart = gba_start_number("language", -1) >= 0 || gba_start_number("name", 0) || gba_start_number("open", -1) >= 0 ||
+                 gba_start_point("fight") != 0 || gba_start_point("skills") != 0;
+  // 0x080216e4: the save the flash keeps, or a new one, written at once
+  saveOpen();
   {
-    // the language the save keeps, or a start point's, or a new save's
-    uint8_t *save = gba_save(8);
     int asked = (int)gba_start_number("language", -1);
-    int saved = save[0] == 0xA5 ? save[1] : -1;
-    g.language = asked >= 0 ? asked : saved >= 0 ? saved : 1;
-    g.saved_language = g.language;
+    if (asked >= 0) g.language = g.saved_language = asked;
   }
   g.keys.inverted = 0xFFFF;
   g.keys.timer = 15;
@@ -580,7 +578,7 @@ void game_start(void) {
   if (name) g.name[0] = (uint16_t)name;
   // 0x03002188: which of the Mini-games screen's entries the save has opened, one bit each, a new save's only the
   // first, or a start point's
-  g.mini_games_open = (int)gba_start_number("open", 1) & 0xFF;
+  if (gba_start_number("open", -1) >= 0) g.mini_games_open = (int)gba_start_number("open", 1) & 0xFF;
   if (gba_start_point("fight")) {
     g.start_up = 1;
     g.callback = startFightFromPoint;
