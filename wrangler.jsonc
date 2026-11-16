@@ -29,7 +29,10 @@
   "vars": {
     "GOOGLE_CLIENT_ID": "688081000228-e4dciu1p1tameag927vuqch8q32n1tmb.apps.googleusercontent.com",
     "DISCORD_CLIENT_ID": "1565515672354558032",
-    "GITHUB_CLIENT_ID": "Iv23li98a7JtNiBVJyCL"
+    "GITHUB_CLIENT_ID": "Iv23li98a7JtNiBVJyCL",
+    // Cloudflare Turnstile's public key for players' reports (docs/REPORTS.md). Its secret, TURNSTILE_SECRET, and
+    // the key the owner's tools read the reports with, REPORTS_KEY, are kept by Cloudflare like the others.
+    "TURNSTILE_SITEKEY": "0x4AAAAAAGEKIkFKk96vif-F"
   },
   // The site's only public address. Cloudflare creates its DNS record and HTTPS certificate.
   "routes": [{ "pattern": "dreamports.net", "custom_domain": true }],
@@ -43,7 +46,11 @@
     "vars": {
       "GOOGLE_CLIENT_ID": "688081000228-e4dciu1p1tameag927vuqch8q32n1tmb.apps.googleusercontent.com",
       "DISCORD_CLIENT_ID": "1565515672354558032",
-      "GITHUB_CLIENT_ID": "Iv23li98a7JtNiBVJyCL"
+      "GITHUB_CLIENT_ID": "Iv23li98a7JtNiBVJyCL",
+      // Turnstile's own keys for testing, which Cloudflare publishes and which always pass: a preview takes
+      // reports into its own database, to try the whole way, and keeps no robot out.
+      "TURNSTILE_SITEKEY": "1x00000000000000000000AA",
+      "TURNSTILE_SECRET": "1x0000000000000000000000000000000AA"
     },
     "d1_databases": [
       {

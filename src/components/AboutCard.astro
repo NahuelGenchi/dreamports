@@ -4,6 +4,7 @@
 import OwnGameSteps from './OwnGameSteps.astro';
 import ViewBar from './ViewBar.astro';
 import { MINIMUM_AGE } from '../lib/players';
+import { KEPT_DAYS as REPORT_DAYS } from '../../kit/gba/report.js';
 import { CONTACT_EMAIL, GITHUB_NOTICES_URL, OWNER_URL, SOURCE_URL, SUGGEST_URL, pageTitle } from '../lib/site';
 
 interface Props {
@@ -162,6 +163,16 @@ const sections = [
           achievements, and what you’ve earned so it shows at once. Your profile is private unless you make it public;
           then anyone can see your name, the day you joined and your achievements, and nothing else. From your
           profile you can download everything it keeps, or delete it for good.
+        </p>
+        <p>
+          When something in a game looks wrong, “Report a problem” in its settings sends us what you just played:
+          the buttons you pressed since the game started, and which of a few reasons you picked. It sends no save, no
+          game files, no message and nothing about you, and only when you press Send. Reports are deleted after
+          {REPORT_DAYS} days. To keep robots out, the report is checked first by
+          <a href="https://www.cloudflare.com/products/turnstile/">Cloudflare Turnstile</a>, which looks at your
+          browser for a moment, out of sight, under Cloudflare’s
+          <a href="https://www.cloudflare.com/turnstile-privacy-policy/">Turnstile privacy terms</a>. It runs only
+          when you open that page of the settings.
         </p>
         <p>
           To see which pages people read, the site counts visits with <a href="https://www.cloudflare.com/web-analytics/">Cloudflare Web Analytics</a>.

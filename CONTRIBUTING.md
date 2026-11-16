@@ -7,7 +7,7 @@ Thanks for helping Dreamports! Keep the work small, traceable, and honest about 
 You don't need to write code to make Dreamports better. With a free GitHub account you can:
 
 - **Report a problem** on the site: a broken link, a page that looks wrong on your phone, a typo.
-- **Report something a game got wrong.** While you play, open the game's settings and choose **Save this session's presses**. It saves a small file with the buttons you held, and nothing else: no save, no copy of the game, nothing about you. Attach it to an issue and say what looked wrong, and anyone with their own copy can play exactly what you played.
+- **Report something a game got wrong.** While you play, open the game's settings and choose **Report a problem**. Pick what went wrong and press Send. It sends the buttons you pressed, and nothing else: no save, no copy of the game, nothing about you. You need no account.
 - **Share an idea** for something the site could do.
 - **Help make a Dreamport.** Each game's tasks are listed under its game's issue. Comment `/claim` on a free one to take it, so nobody else does the same work, as [Claims and teams](docs/TEAMS.md) explains.
 - **Try work in progress.** Each game's page in the [Make tab](https://dreamports.net/make/) lists its latest steps, and each step's pull request links a preview of it. Nobody has reviewed them, so play only previews from people you trust, as [Previews](docs/PREVIEWS.md) explains.

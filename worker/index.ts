@@ -4,11 +4,18 @@
 
 import { ACHIEVEMENT_PATTERN, GAME_PATTERN, MINIMUM_AGE, NAME_PATTERN, achievementsListOf, isWay, type Way } from '../src/lib/players';
 import { Cancelled, WayError, accountOf, b64url, signInPage, type Flight, type WayEnv } from './ways';
+import { KEPT_DAYS, MOST_PACKED, readReport } from '../kit/gba/report.js';
 
 interface Env extends WayEnv {
   ASSETS: Fetcher;
   // the accounts' database; without it, as in a copy of the site with no database, the API says so
   DB?: D1Database;
+  // players' reports (docs/REPORTS.md): Turnstile's public key for the widget and its secret, which keep scripts
+  // out, and the key the owner's tools read the reports with. REPORTS_UNCHECKED is for a copy run on a computer
+  TURNSTILE_SITEKEY?: string;
+  TURNSTILE_SECRET?: string;
+  REPORTS_KEY?: string;
+  REPORTS_UNCHECKED?: string;
 }
 
 // the cookies: only this site's own pages over HTTPS get them, and no script can read them. The
@@ -24,6 +31,13 @@ const FLIGHT_MS = 10 * 60_000;
 // a game can't have kept an achievement before this, or after now
 const FIRST_DAY = Date.UTC(2026, 0, 1);
 const MOST_PER_GAME = 500;
+// players' reports: how many one sender may send in an hour and in a day, how many the site takes in a day, how much
+// it keeps in all; how long it keeps one is the kit's KEPT_DAYS
+const REPORTS_AN_HOUR = 5;
+const REPORTS_A_DAY = 20;
+const REPORTS_A_DAY_IN_ALL = 200;
+const REPORTS_BYTES_IN_ALL = 500_000_000;
+const HOUR = 3_600_000;
 
 export default {
   async fetch(request, env) {
@@ -124,6 +138,25 @@ const SCHEMA = [
     earned INTEGER NOT NULL,
     PRIMARY KEY (player, game, id)
   ) WITHOUT ROWID`,
+  // a player's report: the presses of their visit, packed, and the reason they chose. The sender is the SHA-256 of
+  // their address with the day and a secret, so no address is kept and one sender can't be followed past a day; the
+  // hash is of what was sent, so the same report twice is kept once
+  `CREATE TABLE IF NOT EXISTS reports (
+    id TEXT PRIMARY KEY,
+    created INTEGER NOT NULL,
+    sender TEXT NOT NULL,
+    hash TEXT NOT NULL UNIQUE,
+    game TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    start TEXT NOT NULL,
+    kept_save INTEGER NOT NULL,
+    frames INTEGER NOT NULL,
+    buttons TEXT NOT NULL,
+    held TEXT NOT NULL,
+    bytes INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS reports_created ON reports (created)`,
+  `CREATE INDEX IF NOT EXISTS reports_sender ON reports (sender, created)`,
 ];
 
 let schema: Promise<unknown> | null = null;
@@ -293,7 +326,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   if (!db) return json({ error: 'Profiles aren’t available on this copy of the site.' }, 503);
   // only the site's own pages can change anything; the cookies' SameSite=Lax already keeps other
   // sites' forms out
-  if (request.method !== 'GET' && request.method !== 'HEAD' && request.headers.get('Origin') !== url.origin) {
+  if (request.method !== 'GET' && request.method !== 'HEAD' && request.headers.get('Origin') !== url.origin && !ownerAsks(request, env)) {
     return json({ error: 'That came from another site.' }, 403);
   }
   try {
@@ -460,6 +493,8 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
       return json({ player: await profile(db, player) });
     }
 
+    if (url.pathname === '/api/reports' || url.pathname.startsWith('/api/reports/')) return await reports(request, env, db, url);
+
     // a public profile; a private one, like a missing one, isn't there
     const named = /^\/api\/players\/([^/]+)$/.exec(url.pathname);
     if (named && request.method === 'GET') {
@@ -475,6 +510,80 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     if (error instanceof Problem) return json({ error: error.message }, error.status);
     console.error(error);
     return json({ error: 'Something went wrong. Try again in a moment.' }, 500);
+  }
+}
+
+// ---------- Reports ----------
+
+// the owner's tools, which read the reports and say which they have (tools/reports.mjs), by the key only they hold
+function ownerAsks(request: Request, env: Env) {
+  const given = request.headers.get('Authorization') ?? '';
+  return !!env.REPORTS_KEY && env.REPORTS_KEY.length >= 32 && given === `Bearer ${env.REPORTS_KEY}`;
+}
+
+// whether Turnstile says a person sent this: its token is checked with Cloudflare, once. With no secret, a copy of
+// the site takes no report, but one run on a computer with REPORTS_UNCHECKED set in its .dev.vars, for trying it
+async function passes(env: Env, token: unknown, address: string) {
+  if (!env.TURNSTILE_SECRET) return env.REPORTS_UNCHECKED === 'on this computer';
+  if (typeof token !== 'string' || !token || token.length > 2048) return false;
+  const answer = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ secret: env.TURNSTILE_SECRET, response: token, remoteip: address }),
+  });
+  return answer.ok && (await answer.json<{ success?: boolean }>()).success === true;
+}
+
+async function reports(request: Request, env: Env, db: D1Database, url: URL): Promise<Response> {
+  const now = Date.now();
+  const route = `${request.method} ${url.pathname}`;
+  switch (route) {
+    // what the settings need to send one: Turnstile's public key, and whether the site still takes reports today
+    case 'GET /api/reports/open': {
+      const today = await db.prepare('SELECT COUNT(*) AS n FROM reports WHERE created > ?').bind(now - DAY).first<number>('n');
+      return json({ sitekey: env.TURNSTILE_SITEKEY ?? null, open: (today ?? 0) < REPORTS_A_DAY_IN_ALL });
+    }
+    case 'POST /api/reports': {
+      const text = await request.text();
+      if (text.length > MOST_PACKED + 4096) throw new Problem(413, 'That’s too long to send.');
+      let sent: Record<string, unknown>;
+      try { sent = JSON.parse(text); } catch { throw new Problem(400, 'The request wasn’t readable.'); }
+      const report = readReport(sent?.report);
+      if (typeof report === 'string') throw new Problem(400, report);
+      const address = request.headers.get('CF-Connecting-IP') ?? '';
+      if (!(await passes(env, sent.token, address))) throw new Problem(403, 'That couldn’t be checked. Try again.');
+      // who sent it, for a day: never the address itself
+      const sender = await hashOf(`${address} ${Math.floor(now / DAY)} ${env.TURNSTILE_SECRET ?? ''}`);
+      const hash = await hashOf(JSON.stringify(report));
+      const counts = await db.batch<{ n: number }>([
+        db.prepare('SELECT COUNT(*) AS n FROM reports WHERE hash = ?').bind(hash),
+        db.prepare('SELECT COUNT(*) AS n FROM reports WHERE sender = ? AND created > ?').bind(sender, now - HOUR),
+        db.prepare('SELECT COUNT(*) AS n FROM reports WHERE sender = ? AND created > ?').bind(sender, now - DAY),
+        db.prepare('SELECT COUNT(*) AS n FROM reports WHERE created > ?').bind(now - DAY),
+        db.prepare('SELECT COALESCE(SUM(bytes), 0) AS n FROM reports'),
+      ]);
+      const [same, hour, day, all, bytes] = counts.map((result) => result.results[0]?.n ?? 0);
+      // the same report again is the one already kept
+      if (same) return json({ ok: true });
+      if (hour >= REPORTS_AN_HOUR || day >= REPORTS_A_DAY) throw new Problem(429, 'That’s a lot of reports. Try again later.');
+      if (all >= REPORTS_A_DAY_IN_ALL || bytes >= REPORTS_BYTES_IN_ALL) throw new Problem(429, 'We’ve had all the reports we can take today. Try again tomorrow.');
+      await db.batch([
+        db.prepare('DELETE FROM reports WHERE created < ?').bind(now - KEPT_DAYS * DAY),
+        db.prepare('INSERT OR IGNORE INTO reports (id, created, sender, hash, game, reason, start, kept_save, frames, buttons, held, bytes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(random(12), now, sender, hash, report.game, report.reason, report.start, report.keptSave ? 1 : 0, report.frames, report.buttons.join(' '), report.held, report.held.length),
+      ]);
+      return json({ ok: true }, 201);
+    }
+    // the owner's tools: the reports since one, oldest first, a few at a time, with nothing of who sent them
+    case 'GET /api/reports': {
+      if (!ownerAsks(request, env)) throw new Problem(404, 'Nothing here.');
+      const after = Number(url.searchParams.get('after') ?? 0);
+      const rows = await db.prepare('SELECT id, created, game, reason, start, kept_save, frames, buttons, held FROM reports WHERE created > ? ORDER BY created LIMIT 50')
+        .bind(Number.isFinite(after) ? after : 0).all<Record<string, unknown>>();
+      return json({ reports: rows.results });
+    }
+    default:
+      throw new Problem(404, 'Nothing here.');
   }
 }
 
