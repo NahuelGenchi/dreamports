@@ -132,7 +132,7 @@ static int put_glyph(uint32_t order, uint32_t a0, uint32_t a1, uint32_t a2) {
  * `o->unk10`, side by side from (o->unkA, o->unkC), in palette `o->unk12` at OAM order `o->unk8 >> 3`.
  */
 void draw_ui_text(const char *text, const UiText *o, int solid) {
-  if (!o->unk16) return;   // rows of text (unk16 = 0) aren't ported
+  if (!o->unk16) return;   // rows of text (unk16 = 0) aren't ported dp:stop 0x08052F44 0x08053098
   const UiSlot *slot = &ui.slots[o->unk10];
   uint32_t step = slot->unkA * 8, order = (o->unk8 >> 3) & 0xFF;
   uint32_t a0 = (slot->unk9 << 14) + (o->unkC & 0xFF) + (solid ? 0 : 0x400);
@@ -150,7 +150,7 @@ void draw_ui_text(const char *text, const UiText *o, int solid) {
  * and sub_805345C's are in priority 2, behind layers of priority 0 to 2.
  */
 void draw_ui_glyphs(const char *text, const UiText *o, int behind) {
-  if (!o->unk16 && !behind) return;   // rows of text (unk16 = 0) aren't ported
+  if (!o->unk16 && !behind) return;   // rows of text (unk16 = 0) aren't ported dp:stop 0x080531E8
   const UiSlot *slot = &ui.slots[o->unk10];
   uint32_t step = slot->unkA * 8;
   uint32_t a0 = (slot->unk9 << 14) + (o->unkC & 0xFF);

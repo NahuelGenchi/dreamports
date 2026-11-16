@@ -121,7 +121,7 @@ function putGlyph(e, o, order, a0, a1, a2, trueX, trueY) {
  * `o.unk8 >> 3`. `o` = { unk8, unkA, unkC, unkE, unk10, unk12, unk16 } (GameOverB).
  */
 export function drawUiText(e, text, o, solid = false) {
-  if (!o.unk16) throw new Error('sub_8052F78: rows of text (unk16 = 0) are not ported.');
+  if (!o.unk16) throw new Error('sub_8052F78: rows of text (unk16 = 0) are not ported.');   // dp:stop 0x08052F44 0x08053098
   const slot = e.uiTask.data.slots[o.unk10];
   const step = slot.unkA * 8, order = (o.unk8 >> 3) & 0xFF;
   const a0 = (slot.unk9 << 14) + (o.unkC & 0xFF) + (solid ? 0 : 0x400);
@@ -139,7 +139,7 @@ export function drawUiText(e, text, o, solid = false) {
  * and sub_805345C's are in priority 2, behind layers of priority 0 to 2.
  */
 export function drawUiGlyphs(e, text, o, behind = false) {
-  if (!o.unk16 && !behind) throw new Error('sub_805321C: rows of text (unk16 = 0) are not ported.');
+  if (!o.unk16 && !behind) throw new Error('sub_805321C: rows of text (unk16 = 0) are not ported.');   // dp:stop 0x080531E8
   const slot = e.uiTask.data.slots[o.unk10];
   const step = slot.unkA * 8;
   const a0 = (slot.unk9 << 14) + (o.unkC & 0xFF);

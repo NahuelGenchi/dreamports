@@ -98,7 +98,7 @@ static void choose(Task *t) {
       if (!(connections >> i & 1)) break;
       if (packet_kind(link_slot(i)) != CHOOSING) everyone = 0;
     }
-    if ((everyone && (e.pressed & KEY_A) && screen.mode == 1) || screen.chosen) {
+    if ((everyone && (e.pressed & KEY_A) && screen.mode == 1) || screen.chosen) {   // dp:stop 0x08018700
       screen.chosen = 1;
       set_kind(send, CHOSEN);
     }

@@ -97,7 +97,7 @@ function choose(t) {
       if (!(connections >> i & 1)) break;
       if ((view.slot(i)?.kind ?? 0) !== CHOOSING) everyone = false;
     }
-    // Race isn't in the game yet, so A on its row does nothing, as Single-Pak's does in the mode select
+    // Race isn't in the game yet, so A on its row does nothing, as Single-Pak's does in the mode select dp:stop 0x08018700
     if ((everyone && (e.pressed & KEY.A) && screen.mode === 1) || screen.chosen) {
       screen.chosen = 1;
       send.kind = CHOSEN;

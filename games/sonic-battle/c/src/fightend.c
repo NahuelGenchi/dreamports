@@ -53,7 +53,7 @@ static uint16_t pressedKeys(int i) {
 /** 0x0801a228: whether a fighter has won, by the fight's rule: mode 2 counts the points each fighter reached, and the
  *  others go by time and points. Only the score rule is reached by a start point so far. */
 int fightWinner(int mode) {
-  if (read8(SETUP_ + 8) != 0) return 255;   // team fights aren't reached yet
+  if (read8(SETUP_ + 8) != 0) return 255;   // team fights aren't reached yet dp:stop 0x0801A228
   if (mode == 2) {
     int wins = 0;
     for (int i = 0; i < 4; i++) {
@@ -211,7 +211,7 @@ void beginEnding(void) {
 
 void battleAfterWait(void) {
   int player = (int)read32(PLAYER_);
-  if ((pressedKeys(player) & 8) && countUntilDone() == 30) unsupported();   // 0x0801c8f0, pausing
+  if ((pressedKeys(player) & 8) && countUntilDone() == 30) unsupported();   // 0x0801c8f0, pausing dp:stop 0x0801C8F0
   // 0x0801bb1a, the way 0x0801b394 draws after a win: the fight's frame with the ending's HUD mode, whose first
   // draw only marks the banner as started
   drawFightFrameHud(player, read8(SETUP_ + 135) != 0 ? hudMode() : 0);
@@ -268,10 +268,10 @@ void resultTransition(void) {
   if (stepFade()) {
     int mode = read8(SETUP_ + 125);
     if (mode == 0 || mode == 1) g.callback = resultScreen;
-    else if (mode == 2) unsupported();
-    else if (mode == 3) unsupported();
-    else if (mode == 4) unsupported();
-    else if (mode == 5) unsupported();
+    else if (mode == 2) unsupported();   // dp:stop 0x0801BD90
+    else if (mode == 3) unsupported();   // dp:stop 0x0801BD90
+    else if (mode == 4) unsupported();   // dp:stop 0x0801BD90
+    else if (mode == 5) unsupported();   // dp:stop 0x0801BD90
   }
   g.after_wait = resultTransitionAfterWait;
 }

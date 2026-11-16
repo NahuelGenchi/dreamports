@@ -368,5 +368,29 @@
     ["0x08014fc0","src/hud.js:517"],
     ["0x08049DFE","src/sound.js:23"],
     ["0x0804b100","src/hud.js:42"]
+  ],
+  "stops": [
+    ["0801A898","src/fight.js:161","0x0801A898"],
+    ["080288B4","src/lobby.js:147","0x080288B4"],
+    ["0803A260","src/menu.js:169","0x0803A260"],
+    ["08032594","src/mini-games.js:368","0x08032594"],
+    ["08001B0C","src/moves.js:622","0x08002780"],
+    ["0800597C","src/moves.js:814","0x0800597C"],
+    ["0800486C","src/moves.js:1286","0x0800486C"],
+    ["0800486C","src/moves.js:1290","0x0800486C"],
+    ["0800486C","src/moves.js:1291","0x0800486C"],
+    ["0800486C","src/moves.js:1292","0x0800486C"],
+    ["0800486C","src/moves.js:1294","0x0800486C"],
+    ["0800444C","src/moves.js:1440","0x0800444C"],
+    ["0800BB88","src/moves.js:1524","0x0800BB88"],
+    ["0800BB88","src/moves.js:1588","0x0800BB88"],
+    ["0800EAEC","src/moves.js:1669","0x0800EAEC"],
+    ["0800C728","src/moves.js:1784","0x0800C728"],
+    ["0800CEC8","src/moves.js:1886","0x0800CEC8"],
+    ["0801BD90","src/moves.js:1981","0x0801BD90"],
+    ["080220A4","src/skills.js:150","0x080220A4"],
+    ["08023038","src/skills.js:159","0x08023038"],
+    ["080227EC","src/skills.js:374","0x080227EC"],
+    ["0803E74C","src/title.js:154","0x0803E74C"]
   ]
 }

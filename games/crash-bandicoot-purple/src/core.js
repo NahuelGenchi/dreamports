@@ -348,7 +348,7 @@ function* writeSave(c, frames) {
 }
 
 // 0x080156F0's 0x0802C79C with 0x0802C8F8, and 0x08030548, which takes Erase Game away while no save holds a game (0x0801CA34),
-// as none does: this Dreamport keeps no saves yet (0x0801C0D0), so each line says New Game. The result is where it goes on to
+// as none does: this Dreamport keeps no saves yet (0x0801C0D0), so each line says New Game. The result is where it goes on to dp:stop 0x0801C0D0
 function* loadSaveLoop(c) {
   const { rom } = c;
   for (let n = 0; n < SAVE_LOAD_FRAMES; n++) yield;
@@ -415,8 +415,8 @@ function* mainMenuLoop(c) {
     count++;
     let move = 0;
     // 0x0801C148: L and R held, with nothing else, go to the screen for a code (0x080691D4's state 30), with a sound of their own
-    if (c.held === (KEY.L | KEY.R)) { playSound(c, CODE_SOUND); leaving = 'elsewhere'; }
-    else if (c.pressed & KEY.A) { playSound(c, MENU_SOUND); leaving = selected === 0 ? 'story' : 'elsewhere'; }
+    if (c.held === (KEY.L | KEY.R)) { playSound(c, CODE_SOUND); leaving = 'elsewhere'; }   // dp:stop 0x0801C148
+    else if (c.pressed & KEY.A) { playSound(c, MENU_SOUND); leaving = selected === 0 ? 'story' : 'elsewhere'; }   // dp:stop 0x0801C19C
     else if (c.pressed & KEY.B) { playSound(c, BACK_SOUND); leaving = 'save'; }
     else if (c.pressed & KEY.UP) move = MENU_LINES.length - 1;
     else if (c.pressed & KEY.DOWN) move = 1;
@@ -468,7 +468,7 @@ const AKU_AKU = 0x082FD3CC, AKU_AKU_LEAVING = 0x082FD39C, SOUND_AKU_AKU_LEAVING 
 
 // The clock the actors' animations go by (0x02007284) at the first picture: how many frames they've run by then, as mGBA
 // measures it, where the count Aku Aku floats by (0x0200762C) starts, and the random seed (0x02000000). 0x08015324 seeds it from that count
-// as the level loads, which depends on how long the screens before it took, and that count isn't kept yet, so this is what it comes to
+// as the level loads, which depends on how long the screens before it took, and that count isn't kept yet, so this is what it comes to dp:stop 0x08015324
 // in the recordings that reach the hub
 const HUB_CLOCK = -1, FLOAT_START = 0, RANDOM_SEED = 0xF33;
 // How many frames the screen stays white when the hub starts again after a fall: the console's timing, as mGBA measures it

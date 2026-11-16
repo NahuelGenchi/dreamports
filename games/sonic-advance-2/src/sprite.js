@@ -93,7 +93,7 @@ function command(c, s, at) {
     case -10: s.animCursor += 4; return RUNNING;
     case -11: s.animCursor += 2; s.frameFlags = (s.frameFlags & ~SPRITE.PRIORITY) | (rom.u32(at + 4) << 12); return RUNNING;
     case -12: s.animCursor += 2; s.oamFlags = (rom.u32(at + 4) << 6) & 0xFFFF; return RUNNING;
-    default: throw new Error(`Animation command ${id} isn't known.`);
+    default: throw new Error(`Animation command ${id} isn't known.`);   // dp:stop 0x08004558
   }
 }
 

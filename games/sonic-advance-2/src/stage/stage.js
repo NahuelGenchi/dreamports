@@ -127,7 +127,7 @@ function createColourLoader(c, anim) {
 }
 
 // 0x0802F75C, with a button pressed, and what the title card's other tasks do as that ends them: the numbers and the
-// countdown, the character's colours, and the windows off. The card itself isn't made
+// countdown, the character's colours, and the windows off. The card itself isn't made dp:stop 0x0802F75C
 function leaveTitleCard(t) {
   const stage = t.data, { c } = stage, { rom } = c;
   c.destroyTask(t);

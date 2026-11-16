@@ -28,7 +28,7 @@ static void draw_ready_screen(void) {
   took(GAME_READY_COLOURS);
   queue_background_palette(0xCB46);            // sub_CB8B
   took(GAME_READY_WORDS);
-  queue_rows(0xCBD2, 0x218B, 2, 9);            // sub_C9F6. A second player's own words, at $CA0D, aren't ported yet.
+  queue_rows(0xCBD2, 0x218B, 2, 9);            // sub_C9F6. A second player's own words, at $CA0D, aren't ported yet. dp:stop sub_CA0D
   took(GAME_READY_FIRST_PLAYER);
   RAM[OBJECT_SHAPE + 1] = 0x1D;
   RAM[OBJECT_SCREEN_Y + 1] = 0x7C;
@@ -36,7 +36,7 @@ static void draw_ready_screen(void) {
   RAM[OBJECT_COLOURS + 1] = 0x02;
   RAM[OBJECT_FLAGS + 1] = OBJECT_FLAG_SHOWN;
   took(GAME_READY_HEAD);
-  // the lives left after this one, as two digits, the first empty below ten. Ten or more, at $C9BA, isn't ported yet.
+  // the lives left after this one, as two digits, the first empty below ten. Ten or more, at $C9BA, isn't ported yet. dp:stop sub_C9BA
   RAM[0xA0] = (uint8_t)(RAM[LIVES + PLAYER] - 1);
   RAM[0x9F] = 0xFF;
   took(GAME_READY_LIVES);
@@ -165,7 +165,7 @@ static uint8_t show_score(void) {
 }
 
 // The score is six digits and a seventh that's always 0, a byte each, the two players' turn about from $04E0. The best
-// score, seven digits at $8D, takes any score that passes it. The life a score gives, at $D9BF, isn't ported yet.
+// score, seven digits at $8D, takes any score that passes it. The life a score gives, at $D9BF, isn't ported yet. dp:stop sub_D9BF
 void add_score(uint8_t x, uint8_t y) {
   RAM[0x25] = RAM[0x24] = 0;
   took(SCORE_TENS_AND_HUNDREDS);
@@ -226,7 +226,7 @@ static void start_top_of_picture(void) {
   RAM[OBJECT_SHAPE + TOP_WORDS] = 0xFF;
   RAM[OBJECT_COLOURS + TOP_WORDS] = 0x20;
   took(TOP_WORDS_PLACED);
-  // sub_D9F8: the lives left after this one. Ten or more, at $DA08, isn't ported yet.
+  // sub_D9F8: the lives left after this one. Ten or more, at $DA08, isn't ported yet. dp:stop sub_DA08
   RAM[0x22] = 0;
   RAM[0x0702] = (uint8_t)(RAM[LIVES + PLAYER] - 1);
   RAM[0x0700] = 0;
@@ -290,7 +290,7 @@ static void next_part(void) {
 // $D16E: a stage starts: Arthur's task, the picture, the top of the picture, the stage's counts all at their start, a
 // round every three frames from here on, and the stage's music. From the third stage on, $D1B5 sends V-blank 32 bytes
 // of tiles to the picture's memory at $0680, from $CD6D, or $CD4D from the fifth. What the last stage sets up, at $D26A,
-// and two weapons' own places at the top, at $D1F9, aren't ported yet.
+// and two weapons' own places at the top, at $D1F9, aren't ported yet. dp:stop sub_D26A
 static void start_stage(void) {
   took(STAGE_START_ARTHUR);
   start_task(TASK_ARTHUR);
@@ -448,7 +448,7 @@ static void place_stage_objects(void) {
   if (routine == DRAGON) { place_dragon(listed); return; }
   int counted = routine == STATE_KEPT_COUNTED;
   if (counted) routine = STATE_KEPT;
-  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT && routine != PLATFORM && routine != BOSS && routine != COUNT_LISTED) return;
+  if (routine != STATE_ZERO && routine != STATE_LISTED && routine != STATE_KEPT && routine != PLATFORM && routine != BOSS && routine != COUNT_LISTED) return;   // the other kinds aren't ported yet. dp:stop sub_D596
   uint8_t object;
   if (routine == BOSS) {
     // $D673: the boss has to be there, so it may take the place of something that isn't in the picture. The stage's
@@ -496,7 +496,7 @@ static void place_stage_objects(void) {
 
 // $8400 in bank 2: what comes at Arthur by itself: the zombies, the flying knights and the second set of stages'
 // crows (enemies.c), kind 7 by the apartments (apartments.c), the forest's enemies (forest.c), and two other routines,
-// at $867A and $880A, which have nothing to do in the first two stages and aren't ported yet.
+// at $867A and $880A, which have nothing to do in the first two stages and aren't ported yet. dp:stop sub_02_867A sub_02_880A
 static void stage_dangers(void) {
   took(DANGERS_OTHERS);
   zombies_come(&last_index);
@@ -543,7 +543,7 @@ static void count_time_down(void) {
 
 // $D284: the game's turn each round of a stage: this player's buttons, the stage's colours again every fourth round,
 // the stage's time, its objects and its dangers. Start, which pauses, at $D88C, the end of the stage, at $D341, and what
-// happens when Arthur dies aren't ported yet.
+// happens when Arthur dies aren't ported yet. dp:stop sub_D88C
 // sub_D529: the stage's last boss is gone. Every object after Arthur's is cleared, and the key, kind $1E, starts at the
 // top of the screen the copy's list at $D56E gives for the stage's set, $50 across, with sound $0C. $EB stops the
 // stage's own objects and dangers from here on.
@@ -635,7 +635,7 @@ static int stage_round(void) {
 // $D408 and $C8FF: a life is over, once Arthur's task has said so at $81. The sound stops, the weapon he had is kept for
 // his next life, the stage's tasks stop, and with a life left the next begins as a game does, but for the opening
 // scene, which $A6 now keeps away. Three places send him back to an earlier one: the third, a stage's last part with
-// its boss, to the second, and the sixth and seventh to the fifth. A second player's turn, at $C91E, isn't ported yet.
+// its boss, to the second, and the sixth and seventh to the fifth. A second player's turn, at $C91E, isn't ported yet. dp:stop sub_C91E
 // It says whether a life is left: with none the game is over, at $C90C.
 static int lose_life(void) {
   took(CALLS);
@@ -853,7 +853,7 @@ wait game_task(void) {
       for (int i = 0; i < 0x10; i++) RAM[ATTRIBUTES + 0x18 + i] = cart(7, (uint16_t)(0xCBEE + i));
       for (int i = 0; i < 0x80; i++) RAM[ATTRIBUTES + 0x40 + i] = 0xFF;
       took(GAME_ATTRIBUTES);
-      took(GAME_NO_STAGE_CHOICE);   // the stage the title screen's secret chooses, at $D065, isn't ported yet
+      took(GAME_NO_STAGE_CHOICE);   // the stage the title screen's secret chooses, at $D065, isn't ported yet dp:stop sub_D065
       *step = SCENE_START;
       took(CALLS);
       return picture_off();
@@ -976,7 +976,7 @@ wait game_task(void) {
       break;
     case STAGE_OBJECT_TILES_BEGIN:
       // $D101: the stage's objects' tiles, from the tables at $CCA9 and $CCB0, and their colours, from $CB26. The last
-      // stage's own colours, at $D132, aren't ported yet.
+      // stage's own colours, at $D132, aren't ported yet. dp:stop sub_D132
       switch_bank(cart(7, (uint16_t)(0xCCA9 + STAGE_SET)));
       took(GAME_STAGE_OBJECT_TILES);
       *step = STAGE_OBJECT_TILES;
@@ -1056,7 +1056,7 @@ wait game_task(void) {
       switch_bank(BANK_HOME);
       took(GAME_READY_BANK_BACK);
       // $D442: the player's next place, which the next life starts at. After the last, at $D46B, the game goes round
-      // again harder, and the last stage has a way of its own, at $D451: neither is ported yet.
+      // again harder, and the last stage has a way of its own, at $D451: neither is ported yet. dp:stop sub_D46B sub_D451
       BANK_HOME = 1;
       switch_bank(1);
       STAGE++;

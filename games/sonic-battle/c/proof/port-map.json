@@ -406,5 +406,33 @@
     ["0x0800d9a4","src/moves.c:1876"],
     ["0x0800e572","src/moves.c:1790"],
     ["0x0801bb1a","src/fightend.c:215"]
+  ],
+  "stops": [
+    ["0801C4BC","src/demo.c:92","0x0801C4BC"],
+    ["0801A228","src/fightend.c:56","0x0801A228"],
+    ["0801C8F0","src/fightend.c:214","0x0801C8F0"],
+    ["0801BD90","src/fightend.c:271","0x0801BD90"],
+    ["0801BD90","src/fightend.c:272","0x0801BD90"],
+    ["0801BD90","src/fightend.c:273","0x0801BD90"],
+    ["0801BD90","src/fightend.c:274","0x0801BD90"],
+    ["080288B4","src/lobby.c:114","0x080288B4"],
+    ["0803A260","src/menu.c:327","0x0803A260"],
+    ["08032594","src/minigames.c:356","0x08032594"],
+    ["08001B0C","src/moves.c:573","0x080022C4"],
+    ["08001B0C","src/moves.c:595","0x08002780"],
+    ["0800597C","src/moves.c:721","0x0800597C"],
+    ["0800486C","src/moves.c:1192","0x0800486C"],
+    ["0800486C","src/moves.c:1196","0x0800486C"],
+    ["0800486C","src/moves.c:1197","0x0800486C"],
+    ["0800486C","src/moves.c:1198","0x0800486C"],
+    ["0800486C","src/moves.c:1200","0x0800486C"],
+    ["0800BB88","src/moves.c:1469","0x0800BB88"],
+    ["0800BB88","src/moves.c:1535","0x0800BB88"],
+    ["0800EAEC","src/moves.c:1735","0x0800EAEC"],
+    ["0800C728","src/moves.c:1830","0x0800C728"],
+    ["0800CEC8","src/moves.c:1914","0x0800CEC8"],
+    ["0801C28C","src/moves.c:2017","0x0801C28C"],
+    ["0801BD90","src/moves.c:2039","0x0801BD90"],
+    ["08023038","src/skills.c:328","0x08023038"]
   ]
 }

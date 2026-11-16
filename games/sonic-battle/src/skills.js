@@ -147,7 +147,7 @@ function choosing(c, node) {
       node.reused = chosen;
       node.run = editEntry;
       c.sound?.play(EDIT.SOUND_ENTER);
-    }
+    }   // A on the other three, whose screens aren't ported dp:stop 0x080220A4
   } else if ((pressed & KEY.B) && moving.row !== LAST) {
     moving.row = LAST;
     c.sound?.play(SOUND_MOVE);
@@ -156,7 +156,7 @@ function choosing(c, node) {
 
 /** 0x08023038: every colour fades to black, and then the story map comes back, which isn't ported, so it stops. */
 function leaving(c, node) {
-  if (fadeToBlack(c, PALETTE, 512)) node.run = () => {};
+  if (fadeToBlack(c, PALETTE, 512)) node.run = () => {};   // dp:stop 0x08023038
 }
 
 // Edit skills (0x080221e0 onwards). The screen is the same list of nodes as the main menu: a header for the
@@ -371,7 +371,7 @@ function editLeave(c, node) {
   c.menu.x = 256 - Math.trunc((256 - c.menu.x) / 2);
   queueRegister(c, 16, (-c.menu.x) & 0x1FF);
   queueRegister(c, 20, (-c.menu.x) & 0x1FF);
-  if (c.menu.x > 255) node.run = () => {};
+  if (c.menu.x > 255) node.run = () => {};   // dp:stop 0x080227EC
 }
 
 /** 0x08021f04: the frame wrapper, the screen's own count of frames and then the list. */

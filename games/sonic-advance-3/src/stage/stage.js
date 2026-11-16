@@ -16,7 +16,7 @@ const tilemapOf = (level, n) => level * 4 + n;
 const CAMERA_MAX = 0xD0220, RESPAWN = 0xD13C8;
 const DISPLAY_W = 240, DISPLAY_H = 160;
 const HUB = 2, FIRST_ACT = 3;
-// 0x08002618: the songs of the first zone's overworld and its first act, the others of which aren't ported yet
+// 0x08002618: the songs of the first zone's overworld and its first act, the others of which aren't ported yet dp:stop 0x08002618
 const SONG_ROUTE_99 = 0xA, SONG_ROUTE_99_ACT_1 = 0x14;
 
 /** 0x08050624 and 0x08051308, what Route 99's overworld does with the backgrounds. */

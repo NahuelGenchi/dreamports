@@ -231,8 +231,8 @@ export function createEngine(video, rom, sound) {
     while (bgCursor !== bgIndex) {
       const bg = bgQueue[bgCursor];
       bgCursor = (bgCursor + 1) % BG_QUEUE;
-      if (bg.flags & 0x20) throw new Error('Scrolled background copies are not ported.');
-      if (bg.flags & 0x40) throw new Error('Stage map copies are not ported.');
+      if (bg.flags & 0x20) throw new Error('Scrolled background copies are not ported.');   // dp:stop 0x08002B20
+      if (bg.flags & 0x40) throw new Error('Stage map copies are not ported.');   // dp:stop 0x08002B20
       const id = bg.flags & 3, size = e.bgCnt[id] >> 14;
       const affine = id >= 2 && (e.dispCnt & 3) !== 0;
       const bytes = affine ? 1 : 2, stride = (affine ? 0x10 << size : 32) * bytes;

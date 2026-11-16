@@ -20,5 +20,10 @@
   ],
   "unmatched": [
 
+  ],
+  "stops": [
+    ["0001123F","src/main.c:305","sub_04_923F"],
+    ["0001C483","src/main.c:468","sub_C483"],
+    ["0001F9F7","src/main.c:646","sub_FA10"]
   ]
 }

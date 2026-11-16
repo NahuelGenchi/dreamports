@@ -325,7 +325,7 @@ static void cursorStart(Node *node) {
 
 /** 0x08023038: every colour fades to black, and then the story map comes back, which isn't ported, so it stops. */
 static void leaving(Node *node) {
-  if (fadeToBlack(PALETTE, 512)) node->run = nothing;
+  if (fadeToBlack(PALETTE, 512)) node->run = nothing;   // dp:stop 0x08023038
 }
 
 /** 0x080244bc: the choice the player picked moves to the top left, behind the screen that comes. */

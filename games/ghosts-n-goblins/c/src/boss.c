@@ -13,7 +13,7 @@
 // begins. Every 64th step is a leap, flag $20, at $FEA4: the same jump at speed $2E, and it turns round as it lands.
 //
 // Ten hits kill it, at $FC10: sound $13, with another, $0D, asked for 32 rounds on, 2,000 points, and it burns away.
-// The last stage's boss, which $CF marks, isn't ported yet.
+// The last stage's boss, which $CF marks, isn't ported yet. dp:stop sub_FBC4
 
 #include "game.h"
 

@@ -570,7 +570,7 @@ void setState(int i, int state) {
     }
     FACE_CAMERA();
   } else if (state == 252 || state == 253) {
-    if (read8(rec + 198) == 0) notPorted("080022C4");   // a knock-out's cry and what it throws
+    if (read8(rec + 198) == 0) notPorted("080022C4");   // a knock-out's cry and what it throws dp:stop 0x080022C4
   }
   // 0x08001b0c's charge and release for the special attacks, by the switch at 0x0800241a on the character: a held R
   // keeps the charge going, and letting go fires
@@ -592,7 +592,7 @@ void setState(int i, int state) {
     if (read8(rec + 23) != 0) return;
     for (int k = 0; k < 12; k++) {
       uint32_t thing = 0x030017D0 + (uint32_t)k * 68;
-      if (read8(thing + 53) == i && read16(thing + 56) == 35) notPorted("08002780");
+      if (read8(thing + 53) == i && read16(thing + 56) == 35) notPorted("08002780");   // dp:stop 0x08002780
     }
   } else if (state == 22) {
     if (read8(rec + 23) == 8) write16(rec + SPEED_Z, (uint16_t)(256 - (read16(rec + Z) - read16(rec + 52))));
@@ -718,7 +718,7 @@ void moveFighter(int i) {
   for (int j = 0; j < 4; j++) if (j != i && isActive(j)) pushApart(i, j);
   int character = read8(rec + CHARACTER_NOW), state = read16(rec + STATE);
   if ((character == 2 && state == 278) || (character == 3 && state == 0x115)) write16(rec + Z, read16(rec + GROUND));
-  else if (character == 20 && state == 22) notPorted("0800597C");
+  else if (character == 20 && state == 22) notPorted("0800597C");   // dp:stop 0x0800597C
   Meeting met = meetWalls(reads16(rec + X), reads16(rec + Y), reads16(rec + OLD_X), reads16(rec + OLD_Y));
   write8(rec + BUMPED, (uint8_t)met.bits);
   if (met.bits & 15) {
@@ -1189,15 +1189,15 @@ void fighterAct(int i) {
     if (read8(victim + 127) & 0xF0) write8(SETUP_ + 11 + i, read8(SETUP_ + 11 + i) + 1);
     write8(victim + 127, 15);
   }
-  if (read8(rec + 157) != 0 || read8(rec + 156) != 0) notPorted("0800486C");
+  if (read8(rec + 157) != 0 || read8(rec + 156) != 0) notPorted("0800486C");   // dp:stop 0x0800486C
   landOrFall(i);
   if (read8(rec + PAUSE) != 0) return;
   uint32_t flags = read32(rec + FLAGS);
-  if ((flags & 0x800000) && (flags & 0x2000000) && (flags & 0x4000000)) notPorted("0800486C");
-  if (read16(rec + STATE) == 16) notPorted("0800486C");
-  if ((flags & 0x80000) && reads16(rec + SCRIPT_FRAME) > 6) notPorted("0800486C");
+  if ((flags & 0x800000) && (flags & 0x2000000) && (flags & 0x4000000)) notPorted("0800486C");   // dp:stop 0x0800486C
+  if (read16(rec + STATE) == 16) notPorted("0800486C");   // dp:stop 0x0800486C
+  if ((flags & 0x80000) && reads16(rec + SCRIPT_FRAME) > 6) notPorted("0800486C");   // dp:stop 0x0800486C
   uint16_t keys = pressed(i);
-  if (read16(rec + STATE) == 4 && (keys & 2)) notPorted("0800486C");
+  if (read16(rec + STATE) == 4 && (keys & 2)) notPorted("0800486C");   // dp:stop 0x0800486C
   if (flags & FLAG_GROUNDED) {
     if ((keys & 0xF0) && pressedBefore(i, 5, 5, keys) && !(flags & 0x40000) && !noDash(read16(rec + STATE))) setState(i, 4);
     int state = read16(rec + STATE);
@@ -1466,7 +1466,7 @@ static void shapeThingPicture(uint32_t thing, int kind, int part) {
     write16(field, (uint16_t)picture);
     return;
   } else {
-    notPorted("0800BB88");
+    notPorted("0800BB88");   // dp:stop 0x0800BB88
     return;
   }
   write16(field, (uint16_t)picture);
@@ -1532,7 +1532,7 @@ static void runThingScript(int k, uint32_t script) {
         } else if (op == 0xFFFE) {
           write16(thing + THING_SCRIPT_AT, 0xFFFF);
           write8(thing + THING_FRAME, 255);
-        } else notPorted("0800BB88");
+        } else notPorted("0800BB88");   // dp:stop 0x0800BB88
         write16(thing + THING_SCRIPT_AT, read16(thing + THING_SCRIPT_AT) + 1);
         if (MARKED()) break;
       }
@@ -1732,7 +1732,7 @@ static void thingHit(int k, int kind) {
       return;
     }
   }
-  if (inList(THING_HITS_LATER, sizeof THING_HITS_LATER / sizeof THING_HITS_LATER[0], kind)) notPorted("0800EAEC");
+  if (inList(THING_HITS_LATER, sizeof THING_HITS_LATER / sizeof THING_HITS_LATER[0], kind)) notPorted("0800EAEC");   // dp:stop 0x0800EAEC
 }
 
 /**
@@ -1827,7 +1827,7 @@ void updateThings(void) {
     uint32_t script = thingScript(kind);
     // the switch at 0x0800c7dc sends a kind with no script to 0x0800cec8, which runs only its own steps
     if (read32(0x0800C7DCu + (uint32_t)(uint16_t)(kind - 3) * 4) != 0x0800CEC8u) {
-      if (!script) notPorted("0800C728");
+      if (!script) notPorted("0800C728");   // dp:stop 0x0800C728
       runThingScript(k, script);
     }
     // 0x0800cec8: it follows its owner, or moves on its own
@@ -1911,7 +1911,7 @@ void updateThings(void) {
     }
     if (kind == 121) stepAmySet(thing, k);
     if (kind == 200) chaosSetFeelsFighters(thing);
-    if (inList(THING_STEPS_LATER, sizeof THING_STEPS_LATER / sizeof THING_STEPS_LATER[0], kind)) notPorted("0800CEC8");
+    if (inList(THING_STEPS_LATER, sizeof THING_STEPS_LATER / sizeof THING_STEPS_LATER[0], kind)) notPorted("0800CEC8");   // dp:stop 0x0800CEC8
     thingHit(k, read16(thing + THING_KIND));
   }
   int shake = read8(0x030016CC);
@@ -2014,7 +2014,7 @@ void trainingFrame(void) {
     else if (keys & 16) write16(CAMERA_TURN, read16(CAMERA_TURN) + 128);
     else write16(CAMERA_TURN, 0);
   } else if (state == 53) {
-    if (pressed(player) & 0x200) notPorted("0801C28C");
+    if (pressed(player) & 0x200) notPorted("0801C28C");   // dp:stop 0x0801C28C
   } else write16(CAMERA_TURN, 0);
   startFighterEffects();
   updateThings();
@@ -2036,7 +2036,7 @@ void trainingFrame(void) {
 
 void trainingAfterWait(void) {
   int player = (int)read32(PLAYER_);
-  if ((pressed(player) & 8) && read8(record(player) + HEALTH) != 0) notPorted("0801BD90");
+  if ((pressed(player) & 8) && read8(record(player) + HEALTH) != 0) notPorted("0801BD90");   // dp:stop 0x0801BD90
   if (stepFade()) endFade();
   followFighter(player);
   setHeightShift();

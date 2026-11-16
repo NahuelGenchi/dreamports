@@ -130,7 +130,7 @@ static void new_round(void) {
     hide(BELT_SPRITE + i);
   }
   if (beltState.round == 0) set_clock(30);
-  else garden_not_in_c();
+  else garden_not_in_c();   // dp:stop 0x0200A800
 }
 /** 0x0200A8C8. */
 static void belt_start(void) {
@@ -167,7 +167,7 @@ static void belt_frame(void) {
         }
         fly(sprite, &h->x, &h->y, h->vx, h->vy);
         break;
-      case WON: garden_not_in_c(); return;
+      case WON: garden_not_in_c(); return;   // dp:stop 0x0200A8EC
       case GONE: break;
       default:
         if (h->along < 0 && h->along + beltState.speed >= 0) {
@@ -301,7 +301,7 @@ static void hands_frame(void) {
             h->vy = (int8_t)speed_part(angle + 0xC000);
             gba_sound_play(SE_WIN);
           } else {
-            garden_not_in_c();
+            garden_not_in_c();   // dp:stop 0x0200ACCC
             return;
           }
           t->count = 0;
@@ -468,7 +468,7 @@ static void back_to_garden(void) {
 
 /** 0x0200B4E0: a frame of the game. */
 void garden_rps(void) {
-  if (game.paused) { garden_not_in_c(); return; }
+  if (game.paused) { garden_not_in_c(); return; }   // dp:stop 0x0200B4E0
   switch (game.phase) {
     case SETS_UP:
       pictures();
@@ -510,7 +510,7 @@ void garden_rps(void) {
       break;
     default: break;
   }
-  if (game.canPause && (garden_pressed() & KEY_START)) { garden_not_in_c(); return; }
+  if (game.canPause && (garden_pressed() & KEY_START)) { garden_not_in_c(); return; }   // dp:stop 0x0200B4E0
   game_rings_roll();
   roll_stock();
   if (clock_.heard != clock_.seconds) {

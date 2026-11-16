@@ -87,7 +87,7 @@ function chooseMode(t) {
     if (++screen.mode >= PAK_COUNT) screen.mode = MULTI_PAK;
     screen.qBand = 0;
   }
-  // A on Single-Pak does nothing for now: its waiting screen needs the multiboot transfer, which isn't built, and
+  // A on Single-Pak does nothing for now: its waiting screen needs the multiboot transfer, which isn't built, and dp:stop 0x0800E648
   // there is nothing to go on to
   if ((e.pressed & KEY.A) && screen.mode === MULTI_PAK) {
     screen.leaving = 0;

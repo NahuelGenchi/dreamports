@@ -97,7 +97,7 @@ function command(c, s, at) {
     case -10: s.animCursor += 4; return at;                                              // its own address ends the frame's commands
     case -11: s.animCursor += 2; s.frameFlags = (s.frameFlags & ~PRIORITY) | (rom.u32(at + 4) << 12); return RUNNING;
     case -12: s.animCursor += 2; s.oamFlags = (rom.u32(at + 4) << 6) & 0xFFFF; return RUNNING;
-    default: throw new Error(`Animation command ${id} isn't ported yet.`);
+    default: throw new Error(`Animation command ${id} isn't ported yet.`);   // dp:stop 0x080BF0C4
   }
 }
 

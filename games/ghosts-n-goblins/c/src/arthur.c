@@ -282,7 +282,7 @@ static void frog_jump_shape(void) {
 
 // sub_E35E and sub_E3B9: his shape. The copy's list at $E3DC gives the six steps of his walk, and his shapes without
 // armour are 32 on from those with it, and the ones facing left 4 on. The frog's are at $E317 (above); his look in the
-// last stages, at $E36B, isn't ported yet.
+// last stages, at $E36B, isn't ported yet. dp:stop sub_E36B
 static void choose_shape(void) {
   if (STATE & FROG) { frog_walk_shape(); return; }
   if (STATE & 0x02) {
@@ -455,7 +455,7 @@ static void jump_shape(void) {
 // $DDF7: a jump in a stage, when A is pressed: straight up, or across the way Left or Right says, with the same six
 // rounds up and the same fall as sub_E1EE's. In the air B throws and Left and Right turn him, and a hit ends the jump:
 // `hit` says so. His look in the last stages, at $DFA0, and a fall off the bottom of the picture, at $E1BA, aren't
-// ported yet. Called each turn until it's DONE.
+// ported yet. Called each turn until it's DONE. dp:stop sub_DFA0 sub_E1BA
 static wait stage_jump(uint8_t *step, int *hit) {
   enum { BEGIN, RISE, RISEN, FALL, FELL, LONG_FALL, LONG_FALL_AGAIN };
   *hit = 0;
@@ -612,7 +612,7 @@ static void make_weapon(uint8_t weapon) {
 }
 
 // sub_E01E: B throws his weapon, once for each press, while one of its objects is free: two, or three for the dagger.
-// $85 says B was held the round before. The demonstration's own throws, at $E029, aren't ported yet.
+// $85 says B was held the round before. The demonstration's own throws, at $E029, aren't ported yet. dp:stop sub_E029
 static void throw_button(void) {
   enum { THROWS = 0x02, BUSY = 0x12 };
   if (STATE & BUSY) { took(ARTHUR_BUTTONS_BUSY); return; }
@@ -1054,7 +1054,7 @@ wait arthur_task(void) {
       *step = STAGE_TURN;
       break;
     case STAGE_FALLS:
-      // $E28E: 6 pixels a round until he's on the ground. Off the bottom of the picture, at $E2AD, isn't ported yet.
+      // $E28E: 6 pixels a round until he's on the ground. Off the bottom of the picture, at $E2AD, isn't ported yet. dp:stop sub_E2AD
       took(ARTHUR_FALL_CHECKS);
       if (FLAGS & HELD) { took(ARTHUR_FALL_HELD); *step = STAGE_STANDS; break; }
       if (on_the_ground(ARTHUR)) {

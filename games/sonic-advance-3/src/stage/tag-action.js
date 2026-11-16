@@ -215,8 +215,8 @@ export function releaseMove(p, partner) {
   partner.layer = p.layer;
   partner.flags = (partner.flags & ~GRAVITY_SWITCHED) | (p.flags & GRAVITY_SWITCHED);
   if (!(p.flags & FLAG.IN_AIR) && partner.character === TAILS) throwWithTails(p, partner);
-  else if (p.flags & FLAG.IN_AIR) p.behave = startFalling;
-  else p.behave = startStanding;
+  else if (p.flags & FLAG.IN_AIR) p.behave = startFalling;   // dp:stop sub_800BF78
+  else p.behave = startStanding;   // dp:stop sub_800BF78
 }
 
 // sub_800EF50: Tails stays where it is and the one charged throws itself up from there

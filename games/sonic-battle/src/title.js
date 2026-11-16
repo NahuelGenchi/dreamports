@@ -151,7 +151,7 @@ function fadeToAttract(c) {
     setBlend(c, 0, 0, 0, 0, 0, 0);
     c.video.pal.fill(0, 0, 256);
     queueRegister(c, REG.DISPCNT, 0x1F40);
-    c.callback = afterTitle;
+    c.callback = afterTitle;   // the attract mode isn't ported dp:stop 0x0803E74C
   }
 }
 

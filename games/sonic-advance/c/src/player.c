@@ -1613,7 +1613,7 @@ void player_animate(Player *p, const PlayerInput *in) {
 // The way he moves is worked out each frame, straight ahead of him when he is still. Only while he is curled up (charState
 // 5) are they shown, as a second sprite just behind him (OAM order 17) through the next rotation matrix of the frame, turned
 // that way and mirrored as his rotated frames are, and only then does their animation run, at half speed under water. They
-// blink with him. (In a marble track he shows them another way, Task_8047D04, which no act in C has yet.)
+// blink with him. (In a marble track he shows them another way, Task_8047D04, which no act in C has yet.) dp:stop 0x08047CD0
 void player_tails_step(Player *p) {
   p->tailsShown = 0;
   if (p->character != CHARACTER_TAILS) return;

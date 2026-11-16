@@ -158,7 +158,7 @@ function choosing(c) {
   if (chosen > 8) {
     write8(c, CHOSEN, 0);
     for (let i = 0; i < 4; i++) fn08017964(c, i);
-    if (setup(c, 125) !== 4) throw new Error('0x0801a898: only Training mode is ported.');
+    if (setup(c, 125) !== 4) throw new Error('0x0801a898: only Training mode is ported.');   // dp:stop 0x0801A898
     c.callback = fn0801c28c;
   } else if (chosen !== 0) {
     write8(c, CHOSEN, chosen + 1);

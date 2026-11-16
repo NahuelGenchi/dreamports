@@ -225,9 +225,9 @@ void display_sprite_background(Sprite *s) {
 void write_sprite_map(Sprite *s) {
   if (s->dimensions == NO_FRAME) return;
   uint32_t d = s->dimensions, bg = (s->frameFlags >> 15) & 3, cnt = e.bgCnt[bg];
-  if ((rom_u8(d) & 3) || (s->frameFlags & (SPRITE_X_FLIP | SPRITE_Y_FLIP))) return;
+  if ((rom_u8(d) & 3) || (s->frameFlags & (SPRITE_X_FLIP | SPRITE_Y_FLIP))) return;   // dp:stop 0x080039E4
   int affine = bg >= 2 && (e.dispCnt & 3) != 0;
-  if (!affine && (cnt & 0x80)) return;
+  if (!affine && (cnt & 0x80)) return;   // dp:stop 0x080039E4
   uint32_t charBase = ((cnt >> 2) & 3) * 0x4000u;
   uint32_t base = ((cnt >> 8) & 0x1Fu) * 0x800u;
   int tileShift = (cnt & 0x80) ? 6 : 5;

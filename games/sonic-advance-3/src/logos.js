@@ -25,7 +25,7 @@ const NOT_LATER = {
 const BEFORE_A_LOGO = 10, LOGO = 150, AFTER_SEGA = 10, AFTER_SONIC_TEAM = 0x78;
 
 /** 0x080A1D14, CreateGameIntroState. */
-export function gameIntro(c, state) {
+export function gameIntro(c, state) {   // dp:stop 0x080A1D14
   const s = {
     c, state, skippable: false, meadowScroll: 0, count: 0, shown: 0,
     lines: new Uint16Array(LINES * HALVES_A_LINE), nextLines: new Uint16Array(LINES * HALVES_A_LINE),

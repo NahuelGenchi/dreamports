@@ -117,7 +117,7 @@ static void choose(Task *t) {
   (void)t;
   if (c.pressed & (KEY_A | KEY_START)) {
     play_song(SE_SELECT);
-    c.language = (uint8_t)screen.choice;
+    c.language = (uint8_t)screen.choice;   // dp:stop 0x0808FC64
   } else if (c.repeated & (KEY_UP | KEY_DOWN)) {
     play_song(SE_DPAD_SELECT);
     if (c.repeated & KEY_UP) screen.choice = screen.choice == 0 ? LANGUAGES - 1 : screen.choice - 1;

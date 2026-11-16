@@ -723,5 +723,16 @@
     ["Task_80103C4","src/front/timeattack.js:104"],
     ["Task_80159C8","src/engine/boostmode.js:47"],
     ["Task_801951C","src/engine/mphud.js:76"]
+  ],
+  "stops": [
+    ["08020A1C","src/engine/hidingspikes.js:9","0x08020A1C"],
+    ["08018700","src/front/gameselect.js:100","0x08018700"],
+    ["0800E648","src/front/modeselect.js:90","0x0800E648"],
+    ["08052F44","src/front/ui.js:124","0x08052F44"],
+    ["08053098","src/front/ui.js:124","0x08053098"],
+    ["080531E8","src/front/ui.js:142","0x080531E8"],
+    ["08002958","src/gba/engine.js:234","0x08002B20"],
+    ["08002958","src/gba/engine.js:235","0x08002B20"],
+    ["080037D0","src/gba/sprite.js:217","0x080039E4"]
   ]
 }

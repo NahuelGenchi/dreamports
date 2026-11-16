@@ -6,7 +6,7 @@
 // down ones) and hurt; otherwise the up ones hurt him as he lands on them, as the plain spikes do, and the
 // down ones when he bumps them from below. On the frames they aren't up they drop him if he stands on them
 // and stop him pushing them. The data bytes aren't read. With the gravity flipped the two kinds swap their
-// tests, which this game doesn't have yet.
+// tests, which this game doesn't have yet. dp:stop 0x08020A1C
 
 import { makeSprite, startAnim, animate, offCam } from './objects.js';
 import { platform, overlap, LANDED, FROM_BELOW, PUSHING } from './collide.js';

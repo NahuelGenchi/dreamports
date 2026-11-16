@@ -221,7 +221,7 @@ uint8_t free_object(void) {
   return object;
 }
 
-// For the kinds it doesn't count: the ones it does, at $F70F and $F722, aren't ported yet.
+// For the kinds it doesn't count: the ones it does, at $F70F and $F722, aren't ported yet. dp:stop sub_F70F sub_F722
 void remove_object(uint8_t object) {
   RAM[0x0647 + object] = 0;
   RAM[OBJECT_FLAGS + object] = 0;
@@ -568,7 +568,7 @@ int weapon_touches(uint8_t weapon, uint8_t enemy) {
 }
 
 // sub_04_BF0B, kind $20: a gravestone, an object that's never shown and that counts the weapons that touch it. What
-// its fifteenth hit brings, at $BF42, and its two other states, at $F6F6 and $BF5F, aren't ported yet.
+// its fifteenth hit brings, at $BF42, and its two other states, at $F6F6 and $BF5F, aren't ported yet. dp:stop sub_04_BF42 sub_04_BF5F
 static void gravestone(uint8_t object) {
   RAM[OBJECT_FLAGS + object] &= (uint8_t)~OBJECT_FLAG_SHOWN;
   RAM[OBJECT_COLOURS + object] = 0;
@@ -713,7 +713,7 @@ static void map_marker(uint8_t object) {
 // lists at $BB2D, by which thing it is, and it flashes another colour every fourth round. When Arthur touches the
 // armour he has it: his flags say so, the tiles' task sends the armoured Arthur's tiles, and the object is gone. A
 // weapon becomes his, the four things at $BAAC give points, and the pot at $BACE turns him into a frog. The others,
-// at $BA99, $BAE0 and $BB11, and the kinds $F708 keeps after they're picked up aren't ported yet.
+// at $BA99, $BAE0 and $BB11, and the kinds $F708 keeps after they're picked up aren't ported yet. dp:stop sub_04_BA99 sub_04_BAE0 sub_04_BB11
 static void pick_up(uint8_t object) {
   enum { ARMOUR = 5, FROG_POT = 0x0B, WITHOUT_ARMOUR = 0x20 };
   RAM[OBJECT_COUNT + object]++;
@@ -848,7 +848,7 @@ wait objects_task(void) {
         case AXE: axe(object); break;
         case 0x33: princess(object); break;
         case 0x34: satan(object); break;
-      }
+      }   // the other kinds do nothing yet. dp:stop sub_04_9CC8
       place_on_screen(object);
     }
     took(OBJECT_NEXT);

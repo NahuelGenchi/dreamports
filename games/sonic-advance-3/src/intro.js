@@ -301,7 +301,7 @@ function characterTask(t) {
 }
 
 // 0x0809B6D0, sub_809BA58: the character's pictures where it is, each frame, with the list of its pose. The poses here are
-// coming in, stopped and going; the character select's others aren't ported.
+// coming in, stopped and going; the character select's others aren't ported. dp:stop 0x0809B6D0
 function showCharacter(s) {
   const { c } = s, { rom } = c, character = rom.u8(DISPLAY_ORDER + s.tagIndex);
   if (s.pose === STOPPED) s.stopped = true;

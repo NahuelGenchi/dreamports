@@ -324,7 +324,7 @@ static void leaving(Node *node) {
   if (!fadeToBlack(PALETTE, 512)) return;
   if (selection == MINI_GAMES) g.callback = startMiniGames;
   else if (selection == OPTIONS) g.callback = startOptions;
-  else node->run = nothing;
+  else node->run = nothing;   // dp:stop 0x0803A260
 }
 
 /** 0x08028238 and 0x08028270: an arrow takes its place, and draws from the next frame on. */

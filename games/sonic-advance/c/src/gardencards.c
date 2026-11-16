@@ -469,7 +469,7 @@ static void sign_flashes(int colour, const uint16_t lit[3], const uint16_t dim[3
 
 /** 0x020090E8: a frame of the game. */
 void garden_cards(void) {
-  if (game.paused) { garden_not_in_c(); return; }
+  if (game.paused) { garden_not_in_c(); return; }   // dp:stop 0x020090E8
   switch (game.phase) {
     case SETS_UP:
       pictures();
@@ -581,6 +581,6 @@ void garden_cards(void) {
       break;
     default: break;
   }
-  if (game.canPause && (garden_pressed() & KEY_START)) { garden_not_in_c(); return; }
+  if (game.canPause && (garden_pressed() & KEY_START)) { garden_not_in_c(); return; }   // dp:stop 0x020090E8
   game_rings_roll();
 }

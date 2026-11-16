@@ -6,7 +6,7 @@
 // takes the Chao the one knocked carries over to the other. Each sees the other as their packets show them, and himself as
 // his own packets show him, two frames ago.
 //
-// Not in C yet: team play's teammates (sub_80181E0), and Tails and Knuckles carrying another player (room event 8).
+// Not in C yet: team play's teammates (sub_80181E0), and Tails and Knuckles carrying another player (room event 8). dp:stop 0x08018194
 
 #include "objects.h"
 #include "terrain.h"
