@@ -6,6 +6,8 @@ When something in a Dreamport looks wrong, the player opens its settings, choose
 
 A report is the buttons the player held at each frame since the game started, which is all a recording is (`tools/README.md`, Recording play), with the game and its version, the address's start point when there is one, whether the game began from a save, and which of four reasons the player picked. There is no box to type in, so a report can't carry a message, a link or anything personal. It holds no save, no copy of the game and nothing of who sent it.
 
+As Send report is pressed the view shows the report going, then how it ended: sent, or not, with the reason picked and what to do next.
+
 The kit keeps the presses in memory while the game runs (`kit/gba/session.js`) and sends nothing until the player presses Send (`kit/gba/ui/report-view.js`). What a report may hold, how its presses are packed and how one is checked are in one file all sides share, `kit/gba/report.js`.
 
 ## What the site does with one
