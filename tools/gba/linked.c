@@ -19,7 +19,8 @@
 // sprites (0x400) and the video memory (0x18000), as lib/state.mjs reads them.
 //
 // The environment's DP_PLAYED, when it's set, names a file to write what ran to, on every console, for gameplay proven,
-// as original.c writes it (ran.h): an instruction counts in a frame when any of the consoles ran it then.
+// as original.c writes it (ran.h): an instruction counts in a frame when any of the consoles ran it then. DP_CONTENT
+// names one for the cartridge's data they used, the same way (used.h), each console's memory followed by itself.
 //
 // mGBA links its cores by letting the first GBA run ahead and the others follow with the cycles it gives them
 // (MultiplayerController in mGBA's Qt frontend does it with a thread for each). Here one thread runs them in turn, so
@@ -39,6 +40,7 @@
 
 #include "on-windows.h"
 #include "ran.h"
+#include "used.h"
 
 #define WIDTH 240
 #define HEIGHT 160
@@ -269,6 +271,10 @@ int main(int argc, char** argv) {
 			return 1;
 		}
 		player->core->reset(player->core);
+		if (getenv("DP_CONTENT")) {
+			if (!i) usedOpen(getenv("DP_CONTENT"), (uint32_t) ((struct GBA*) player->core->board)->memory.romSize);
+			usedWatch(player->core->cpu);
+		}
 		player->awake = 1;
 		player->startFrame = ((struct GBA*) player->core->board)->video.frameCounter;
 		GBASIOLockstepNodeCreate(&player->node);
@@ -280,6 +286,7 @@ int main(int argc, char** argv) {
 		while (nextState < stateCount && states[nextState] < (uint32_t) frame) nextState++;
 		wantState = nextState < stateCount && states[nextState] == (uint32_t) frame;
 		runningFrame = frame;
+		usedFrame(frame);
 		if (frame == 0) for (int i = 0; i < playerCount; i++) players[i].core->setKeys(players[i].core, buttonsSize >= 2 * playerCount ? buttons[i] : 0);
 		for (int i = 0; i < playerCount; i++) players[i].done = 0;
 		for (;;) {
@@ -300,6 +307,7 @@ int main(int argc, char** argv) {
 				if (!moved) { fprintf(stderr, "The linked GBAs wait for each other at frame %ld\n", frame); return 1; }
 			}
 		}
+		usedEndFrame();
 		while (nextPicture < pictureCount && pictures[nextPicture] < (uint32_t) frame) nextPicture++;
 		int wantPicture = nextPicture < pictureCount && pictures[nextPicture] == (uint32_t) frame;
 		for (int i = 0; i < playerCount; i++) {
@@ -312,6 +320,7 @@ int main(int argc, char** argv) {
 	}
 	fflush(stdout);
 	ranClose();
+	usedClose();
 	for (int i = 0; i < playerCount; i++) players[i].core->deinit(players[i].core);
 	return 0;
 }
