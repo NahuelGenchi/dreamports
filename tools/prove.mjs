@@ -285,7 +285,7 @@ async function laneFor({ game, quick, paced, asked, askedState, before }) {
       const own = parts.filter(p => p.recording === name && Array.isArray(p.frames) && p.frames.length === 2 && p.frames.every(Number.isInteger));
       try {
         if (recording.players && own.some(part => part.reaches !== undefined)) throw new Error('A recording that links several consoles can\'t prove a part that names what it reaches yet, as only one console\'s memory is read.');
-        const result = recording.players ? await proveLinked({ page, game, recording, copy, server, main, quick, asked, log, say })
+        const result = recording.players ? await proveLinked({ page, game, recording, copy, server, main, quick, asked, codeMap: reference.seesInstructions === true ? codeMap : null, log, say })
           : await prove({ page, reference, game, recording, copy, server, codeMap, main, before: before[name], asked, askedState, parts: own, couldProve: partsItCouldProve(name, parts), kinds, route, keysLate: original.keysAfterVBlank === true, drawLists: (original.provenBy ?? reference.machine.provenBy) === 'draw lists', paced, quick, log, say });
         // what the original shows is checked however the frames compare, and a linked recording, played by more than one
         // console, isn't read

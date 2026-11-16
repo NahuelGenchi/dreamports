@@ -18,6 +18,9 @@
 // console held as it drew the frame if STATES names it: the display registers (0x58 bytes), the colours (0x400), the
 // sprites (0x400) and the video memory (0x18000), as lib/state.mjs reads them.
 //
+// The environment's DP_PLAYED, when it's set, names a file to write what ran to, on every console, for gameplay proven,
+// as original.c writes it (ran.h): an instruction counts in a frame when any of the consoles ran it then.
+//
 // mGBA links its cores by letting the first GBA run ahead and the others follow with the cycles it gives them
 // (MultiplayerController in mGBA's Qt frontend does it with a thread for each). Here one thread runs them in turn, so
 // a run is the same every time: a GBA runs until it has to wait for another, or has drawn its frame.
@@ -35,6 +38,7 @@
 #include <string.h>
 
 #include "on-windows.h"
+#include "ran.h"
 
 #define WIDTH 240
 #define HEIGHT 160
@@ -203,7 +207,11 @@ static int runPlayer(struct player* player, int untilFrame) {
 			cpu->irqh.processEvents(cpu);
 			if (player->blocked) return 1;
 		}
+		// what ran, on whichever console, in the frame being played (ran.h)
+		uint32_t next = 0;
+		struct played* now = played.file ? ranBefore(player->core, runningFrame, &next) : NULL;
 		ARMRun(cpu);
+		ranAfter(cpu, now, next, runningFrame);
 		ran = 1;
 		if (untilFrame && gba->video.frameCounter != player->startFrame) {
 			// the frame this one ends: a GBA that waited for another may have gone on across the next frame's start, which
@@ -238,6 +246,7 @@ int main(int argc, char** argv) {
 	uint32_t* states = readAll(argv[6], &statesSize);
 	size_t pictureCount = picturesSize / 4, nextPicture = 0, stateCount = statesSize / 4, nextState = 0;
 
+	if (getenv("DP_PLAYED")) ranOpen(getenv("DP_PLAYED"));
 	mLogSetDefaultLogger(&logger);
 	GBASIOLockstepInit(&lockstep);
 	mLockstepInit(&lockstep.d);
@@ -302,6 +311,7 @@ int main(int argc, char** argv) {
 		}
 	}
 	fflush(stdout);
+	ranClose();
 	for (int i = 0; i < playerCount; i++) players[i].core->deinit(players[i].core);
 	return 0;
 }
