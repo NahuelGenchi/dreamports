@@ -5,6 +5,7 @@
 // off. While a proof tool runs the game (proof.js), the tool's frames hold the buttons instead.
 
 import { proof } from './proof.js';
+import { createSession } from './session.js';
 
 const DPAD = { up: 12, down: 13, left: 14, right: 15 };
 const DEAD_ZONE = 0.5;
@@ -52,6 +53,9 @@ export function playerPads(player, count) {
 export function createInput(layout, { keys = layout.keys, pads = connectedPads } = {}) {
   const { buttons, edges = [], extras = {} } = layout;
   const input = { enabled: false, layout };
+  // what the game read at every frame of this visit, for the settings to save as a recording (session.js); a proof
+  // tool keeps its own
+  input.session = proof ? null : createSession(layout);
   for (const b of buttons) input[b] = false;
   for (const b of edges) input[`${b}Pressed`] = false;
   const on = {};                        // the extras turned on
@@ -171,6 +175,7 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
       read();
     }
     if (proofs() && proof.input === input) proof.record(seen());
+    input.session?.read(seen());
   };
   function read() {
     if (!input.enabled) return;

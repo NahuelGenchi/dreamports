@@ -37,6 +37,7 @@ import { holdClocks } from '../../../kit/gba/clock.js';
 import { proof } from '../../../kit/gba/proof.js';
 import { fixes } from './engine/fixes.js';
 import { createSheet } from '../../../kit/gba/ui/sheet.js';
+import { bindSession, sessionRow } from '../../../kit/gba/ui/settings.js';
 import { createControlsView } from '../../../kit/gba/ui/controls-view.js';
 import { createQuitView } from '../../../kit/gba/ui/quit-view.js';
 import { createAssetsSheetView } from '../../../kit/gba/ui/assets-view.js';
@@ -230,6 +231,11 @@ achievementsButton.addEventListener('click', () => sheet.go('achievements'));
 // every key and every controller button, and what each does
 createControlsView(sheet, { controls: CONTROLS, tokens: TOKENS, note: NOTE });
 document.getElementById('controls-open').addEventListener('click', () => sheet.go('controls'));
+// the session's presses as a file, for someone who saw something wrong to send in (kit/gba/session.js)
+if (input.session) {
+  document.getElementById('controls-open').closest('.rows').insertAdjacentHTML('beforeend', sessionRow());
+  bindSession(settingsView, input);
+}
 
 // the way out of the game, with the question first
 createQuitView(sheet);

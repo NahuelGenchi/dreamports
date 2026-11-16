@@ -10,6 +10,7 @@ import { holdClocks } from '../clock.js';
 import { createSheet } from './sheet.js';
 import { createControlsView, SETTINGS_CONTROLS } from './controls-view.js';
 import { createQuitView } from './quit-view.js';
+import { recordingText } from '../session.js';
 
 const pixels = (w, h, d) => `<svg viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges" aria-hidden="true"><path d="${d}"/></svg>`;
 const SLIDERS = pixels(9, 9, 'M0 1h9v1H0zM5 0h2v3H5zM0 4h9v1H0zM1 3h2v3H1zM0 7h9v1H0zM4 6h2v3H4z');
@@ -17,7 +18,11 @@ const PAUSED = pixels(7, 9, 'M0 0h2v9H0zM5 0h2v9H5z');
 const PLAY = pixels(4, 7, 'M0 0h1v7H0zM1 1h1v5H1zM2 2h1v3H2zM3 3h1v1H3z');
 const PAD = '<svg viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true"><path fill-rule="evenodd" d="M0 1h9v7H0zM1 2v5h7V2z"/><path d="M2 3h1v1H2zM4 3h1v1H4zM6 3h1v1H6zM3 5h3v1H3z"/></svg>';
 const CHEVRON = pixels(3, 5, 'M0 0h1v1h1v1h1v1H2v1H1v1H0z');
+const SAVE = pixels(9, 9, 'M4 0h1v5H4zM2 3h1v1H2zM3 4h1v1H3zM5 4h1v1H5zM6 3h1v1H6zM0 6h1v3H0zM8 6h1v3H8zM0 8h9v1H0z');
 const LEAVE = pixels(9, 9, 'M4 1h1v1H4zM3 2h1v1H3zM2 3h1v1H2zM1 4h7v1H1zM2 5h1v1H2zM3 6h1v1H3zM4 7h1v1H4z');
+
+// under the row that saves a session's presses, until it has
+const SESSION_HINT = 'Only the buttons you held, as a file';
 
 /**
  * Adds the settings to `stage`, the game's part of the page, for the player whose buttons `input` reads
@@ -46,6 +51,7 @@ export function createSettings(stage, input, { what = {}, note = '', touch = nul
                   <span class="row-text">Controls</span>
                   ${CHEVRON.replace('<svg', '<svg class="chev"')}
                 </button></li>
+                ${input.session ? sessionRow() : ''}
                 ${touch ? `<li class="opacity-row"><label class="row" for="button-opacity">
                   <span class="row-text">Button opacity<span class="row-hint">The buttons drawn around the game</span></span>
                   <input type="range" id="button-opacity">
@@ -79,7 +85,7 @@ export function createSettings(stage, input, { what = {}, note = '', touch = nul
   createQuitView(sheet);
   settings.querySelector('[data-quit]').addEventListener('click', () => sheet.go('quit'));
   if (touch) touch.bindSlider(settings.querySelector('#button-opacity'));
-
+  bindSession(settings, input);
   // a finger opens them as it lifts, so iOS doesn't bring up its magnifier on one held down; the mouse and the
   // keyboard click
   let tappedAt = -Infinity;
@@ -94,6 +100,45 @@ export function createSettings(stage, input, { what = {}, note = '', touch = nul
     if (sheet.isOpen) sheet.close(); else sheet.open();
   });
   return sheet;
+}
+
+/** The settings' row that saves the session's presses, for a list of rows; bindSession makes it work. */
+export function sessionRow() {
+  return `<li><button type="button" class="row" data-session>
+                  ${SAVE}
+                  <span class="row-text">Save this session's presses<span class="row-hint" data-session-hint>${SESSION_HINT}</span></span>
+                </button></li>`;
+}
+
+/**
+ * Makes the row sessionRow gives work, in `root`: it saves the buttons held since the game started, as a recording
+ * file, for someone who saw something wrong to send in. Only presses, and only when asked (session.js). A phone shares
+ * the file, and anything else downloads it. A game that makes its own settings calls both, as Sonic Advance Dreamport
+ * does.
+ */
+export function bindSession(root, input) {
+  root.querySelector('[data-session]')?.addEventListener('click', async () => {
+    const hint = root.querySelector('[data-session-hint]');
+    if (!input.session.frames) { hint.textContent = 'Nothing to save yet: the game hasn\'t started'; return; }
+    const title = document.title.replace(/\s+[|·—-].*$/, '').trim() || 'this game';
+    const recording = input.session.recording(`A player's session of ${title}, saved from its settings: say what it plays, and what looked wrong.`, location.search);
+    // named for the game and its version, as the page's address has them: sonic-advance-c-session.json
+    const name = `${location.pathname.split('/').filter(part => part && !['play', 'games'].includes(part) && /^[a-z0-9-]+$/.test(part)).join('-') || 'game'}-session.json`;
+    const file = new File([recordingText(recording)], name, { type: 'application/json' });
+    const seconds = Math.round(recording.frames / 60);
+    const saved = `Saved ${seconds < 90 ? `${seconds} seconds` : `${Math.round(seconds / 60)} minutes`} of presses${recording.keptSave ? ', from a game with a save' : ''}`;
+    try {
+      if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file] });
+      else {
+        const link = Object.assign(document.createElement('a'), { href: URL.createObjectURL(file), download: name });
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(link.href), 60000);
+      }
+      hint.textContent = saved;
+    } catch {
+      hint.textContent = SESSION_HINT;   // the share sheet was closed: nothing was saved
+    }
+  });
 }
 
 // a key as the settings name it, by its KeyboardEvent.code

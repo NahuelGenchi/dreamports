@@ -345,6 +345,9 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
   mkdirSync(out, { recursive: true });
   // which of the original's frames is each of the Dreamport's: the same, but for the frames only the original has
   const { held, originalOf, originalHeld, sets } = originalPlay(recording, { keysLate });
+  // a player's session saved from the settings holds no save (kit/gba/session.js): one that began from a save plays
+  // differently from the frame the game first read it
+  if (recording.keptSave) log(`\n${name} is a player's session that began from a game with a save, which a recording doesn't hold: the original starts with nothing saved, so it may differ from where the game first reads its save.`);
   const onlyInOriginal = originalHeld.length - frames;
 
   say('starting the Dreamport…');
