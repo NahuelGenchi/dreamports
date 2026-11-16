@@ -33,6 +33,8 @@
     ["08011454","src/front/options.js:362"],
     ["08011720","src/front/options.js:352"],
     ["08011C48","src/front/playerdata.js:121"],
+    ["08012C5C","src/engine/save.js:80"],
+    ["08012D4C","src/engine/save.js:175"],
     ["08012F20","src/engine/save.js:42"],
     ["080161F0","src/engine/capsule.js:49"],
     ["08016604","src/engine/capsule.js:114"],

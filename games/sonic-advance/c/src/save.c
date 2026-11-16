@@ -9,11 +9,14 @@
 #include "levels.h"
 
 #define CHECKSUM 0x42C
+#define SAVE_SECTOR 0x1000
+#define SAVE_SECTORS 10   // the flash's first ten, of sixteen: Tiny Chao Garden has the rest (garden.c)
 #define SECURITY 0x4F524950u
 #define MAX_COURSE_TIME (10 * 3600)
 
 Save save;
 static uint8_t *flash;   // the cartridge's save memory, as the kit keeps it
+static int sector;       // the sector the save is in (0x0300508C), or -1 for none
 
 static uint32_t get32(const uint8_t *b, uint32_t at) { return b[at] | b[at + 1] << 8 | b[at + 2] << 16 | (uint32_t)b[at + 3] << 24; }
 static void set32(uint8_t *b, uint32_t at, uint32_t v) { b[at] = (uint8_t)v; b[at + 1] = (uint8_t)(v >> 8); b[at + 2] = (uint8_t)(v >> 16); b[at + 3] = (uint8_t)(v >> 24); }
@@ -43,6 +46,7 @@ static void empty_save(uint8_t *bytes) {
 void save_open(void) {
   flash = gba_save(FLASH_BYTES);
   save.keep = 1;
+  sector = -1;
   // a start point's save is the game's own, kept nowhere, as the JavaScript version's openSave(null) gives it: it
   // doesn't read the cartridge's, so the language screen comes as it does at a first start
   if (gba_start_point("unlocked") || gba_start_point("special")) {
@@ -53,8 +57,15 @@ void save_open(void) {
     if (gba_start_point("special")) save_write();
     return;
   }
-  save.exists = get32(flash, 0) == SECURITY && get32(flash, CHECKSUM) == checksum(flash);   // SaveGameExists
-  if (save.exists) memcpy(save.bytes, flash, SAVE_SIZE);
+  // LoadSaveGame, 0x08012C5C: the save is in the last of the game's sectors that holds one, counting from the first and
+  // stopping at one never written (from the second, when the first was never written)
+  for (int i = get32(flash, 0) == SECURITY ? 0 : 1; i < SAVE_SECTORS; i++) {
+    const uint8_t *held = flash + i * SAVE_SECTOR;
+    if (get32(held, 0) != SECURITY) break;
+    if (get32(held, CHECKSUM) == checksum(held)) sector = i;
+  }
+  save.exists = sector >= 0;   // SaveGameExists
+  if (save.exists) memcpy(save.bytes, flash + sector * SAVE_SECTOR, SAVE_SIZE);
   else empty_save(save.bytes);
 }
 
@@ -66,16 +77,24 @@ void save_open(void) {
 void save_add_ring_bank(int rings) { set32(save.bytes, 0x428, le32(save.bytes, 0x428) + (uint32_t)(int16_t)rings); }
 
 int save_write(void) {
-  if (save.exists) {
+  // 0x08012D4C: nothing when the sector the save is in holds these bytes. Otherwise the sector after the next is
+  // erased, so that reading stops there, and the next takes the save: ten sectors round, each written a tenth as often
+  if (sector >= 0) {
     int same = 1;
-    for (int i = 0; i < SAVE_SIZE && same; i++) same = flash[i] == save.bytes[i];
+    for (int i = 0; i < SAVE_SIZE && same; i++) same = flash[sector * SAVE_SECTOR + i] == save.bytes[i];
     if (same) return 0;
   }
+  int next = sector + 1 > SAVE_SECTORS - 1 ? 0 : sector + 1;
+  memset(flash + (next + 1) % SAVE_SECTORS * SAVE_SECTOR, 0xFF, SAVE_SECTOR);
   set32(save.bytes, 0, SECURITY);
   set32(save.bytes, CHECKSUM, checksum(save.bytes));
-  memcpy(flash, save.bytes, SAVE_SIZE);
+  sector = next;
+  // the flash takes a whole sector: the save, and what the console's memory holds after it
+  memset(flash + sector * SAVE_SECTOR, 0, SAVE_SECTOR);
+  memcpy(flash + sector * SAVE_SECTOR, save.bytes, SAVE_SIZE);
   save.exists = 1;
-  if (save.keep) gba_save_write();
+  // a start point's save is kept nowhere, but the proof tools see it written, to compare it with the cartridge's
+  if (save.keep || gba_start_point("proof")) gba_save_write();
   return 1;
 }
 
@@ -117,5 +136,10 @@ void save_set_player_id(uint32_t id) { set32(save.bytes, 0x04, id); }
 // CreateEmptySaveGame, as DELETE GAME DATA's YES does it in the Options menu: the save in memory empty again
 void save_empty(void) { empty_save(save.bytes); }
 
-// sub_8012F6C, the flash erased: the next write keeps the save whatever it holds
-void save_erase(void) { save.exists = 0; }
+// sub_8012F6C, 0x08012F20: the game's ten sectors erased, and the next write goes to the second
+void save_erase(void) {
+  memset(flash, 0xFF, SAVE_SECTORS * SAVE_SECTOR);
+  sector = 0;
+  save.exists = 0;
+  if (save.keep || gba_start_point("proof")) gba_save_write();
+}

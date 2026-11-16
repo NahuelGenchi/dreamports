@@ -14,7 +14,7 @@ extern const uint8_t *kit_copy;
 extern uint32_t kit_copy_size;
 
 /**
- * The cartridge's save memory, `size` bytes, with what the browser kept of it, or zeros the first time. It is the
+ * The cartridge's save memory, `size` bytes, with what the browser kept of it, or 0xFF in every byte the first time, as a cartridge never written holds. It is the
  * same memory every call. What its bytes mean is the game's, which calls kit_save_write when the original writes it.
  */
 uint8_t *kit_save(uint32_t size);

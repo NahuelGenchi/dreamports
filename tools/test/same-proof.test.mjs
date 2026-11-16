@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
 import { clipLinks } from '../lib/clips.mjs';
-import { changesOf, recordLines, recordLinks, recordProblems, stateAt, treesNow, versionIn } from '../lib/same-proof.mjs';
+import { changesOf, recordLines, recordLinks, framesOf, recordProblems, stateAt, treesNow, versionIn } from '../lib/same-proof.mjs';
 import { foreignLinks, keepClip, keepProof, missingLines, savedLines, stillGood } from '../share.mjs';
 import { checkClips } from '../clips-check.mjs';
 import { REPO } from '../lib/paths.mjs';
@@ -24,6 +24,8 @@ test('a whole proof of the commit\'s own files, whose progress.json is main\'s, 
 test('a proof that isn\'t main\'s shows in a clip, whatever the record says', () => {
   assert.match(recordProblems(record({ progress: 'p2' }), V, state({ progress: 'p2' }))[0], /isn't main's, so the step changes what the proof shows/);
   assert.match(recordProblems(record(), V, state({ mains: null }))[0], /main has no proof of a-game\/c yet/);
+  assert.deepEqual(recordProblems(record({ progress: 'p2' }), V, state({ progress: 'p2', shown: 's1', mainsShown: 's1' })), [], 'a proof that differs from main\'s only in its saves stands, as no frame shows a save');
+  assert.equal(framesOf(JSON.stringify({ recordings: { a: { frames: 3, saves: { original: 1, dreamport: 1, same: 1 } } } })), JSON.stringify({ recordings: { a: { frames: 3 } } }));
 });
 
 test('a record of other files, another proof or fewer recordings doesn\'t stand, and neither does none', () => {

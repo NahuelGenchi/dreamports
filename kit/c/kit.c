@@ -58,6 +58,8 @@ uint8_t *kit_save(uint32_t size) {
   if (!save_bytes) {
     save_bytes = kit_alloc(size);
     save_size = size;
+    // a cartridge's unwritten flash, EEPROM or SRAM holds 0xFF, as a player's first visit does
+    __builtin_memset(save_bytes, 0xFF, size);
     host_save_read(save_bytes, size);
   }
   return save_bytes;
