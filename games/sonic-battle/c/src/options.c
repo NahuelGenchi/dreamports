@@ -428,12 +428,8 @@ static void leaveToMenu(Node *node) {
   g.vblank_work = 0;
   g.line_work = 0;
   // 0x08021980 reads the save back, and 0x080217d0 only writes it when it has changed
-  if (g.language != g.saved_language) {
-    uint8_t *save = gba_save(8);
+  if (saveWrite(0, 1)) {
     g.saved_language = g.language;
-    save[0] = 0xA5;
-    save[1] = (uint8_t)g.language;
-    gba_save_write();
     g.saving_frames = SAVING_FRAMES;
   } else g.saving_frames = READING_FRAMES;
   g.callback = saving;
@@ -451,12 +447,7 @@ static void leaveDeleting(Node *node) {
   if (!fadeToBlack(PALETTE, 512)) return;
   g.vblank_work = 0;
   g.line_work = 0;
-  {
-    uint8_t *save = gba_save(8);
-    save[0] = 0;
-    save[1] = 0;
-    gba_save_write();
-  }
+  saveDelete();
   g.language = 1;
   g.saved_language = 1;
   g.mini_games_open = 1;

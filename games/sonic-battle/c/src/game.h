@@ -87,6 +87,7 @@ typedef struct {
   int counter, blend_target, blend;
   int menu_choice;
   int mini_games_open;
+  int save_apart;   // a start point's play, whose save is kept nowhere (save.c)
   int language, saved_language;
   int restarted;
   int saving_frames;
@@ -122,6 +123,12 @@ int32_t reads32(uint32_t address);
 void write8(uint32_t address, uint8_t value);
 void write16(uint32_t address, uint16_t value);
 void write32(uint32_t address, uint32_t value);
+
+// save.c: the save as the cartridge keeps it
+void saveOpen(void);
+void saveNew(void);
+int saveWrite(int always, int vblanks);
+void saveDelete(void);
 void copy16(uint32_t from, uint32_t to, uint32_t count);
 void copy32(uint32_t from, uint32_t to, uint32_t count);
 void fill16(uint32_t to, uint16_t value, uint32_t count);

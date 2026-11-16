@@ -457,6 +457,7 @@ static void entering(Node *node) {
 static void fadeOut(Node *node) {
   (void)node;
   if (!fadeToBlack(PALETTE, 512)) return;
+  saveWrite(0, 0);   // 0x080217d0
   savingFrames = SAVING_FRAMES;
   g.callback = nameSavingScreen;
 }
