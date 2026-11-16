@@ -241,9 +241,9 @@ export function provenUnits(game, codeMap) {
  * each function of the code map with something unplayed, { key, address, size, total, played, never, ways }: its
  * instructions and branch ways, how many were played, whether it never ran at all, and `ways`, the addresses of the
  * branches played only one way, with the way never gone ('taken' or 'not taken'). `content` is the stretches of the
- * cartridge's data never used, as [first address, last address], the longest first.
+ * cartridge's data never used, as [first address, last address], the longest first, or none without `cartridge`.
  */
-export function untouchedOf(game, codeMap, cartridge) {
+export function untouchedOf(game, codeMap, cartridge = null) {
   const layout = layoutOf(codeMap), played = readPlayed(game), same = played.places === layout.places;
   const ran = new Uint8Array(layout.bytes), code = unpack(same ? played.code : null, layout.bytes);
   for (const text of Object.values(same ? played.recordings ?? {} : {})) {
@@ -266,6 +266,7 @@ export function untouchedOf(game, codeMap, cartridge) {
     }
     if (done < total) functions.push({ key: f.key, address: f.address, size: f.size, total, played: done, never: done === 0, ways });
   });
+  if (!cartridge) return { functions, content: [] };
   // the cartridge's data never used, cell by cell, joined into stretches
   const rom = cartridge(CARTRIDGE, 0x02000000), holds = contentCells(codeMap, rom), read = new Uint8Array(holds.length), content = [];
   for (const text of Object.values(same ? played.content ?? {} : {})) {
@@ -281,6 +282,43 @@ export function untouchedOf(game, codeMap, cartridge) {
   content.sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]) || a[0] - b[0]);
   return { functions, content };
 }
+
+/**
+ * What's left of a version as pieces someone can take, once its parts are all played through (tools/tasks.mjs):
+ * `functions` from untouchedOf, `parts` the game's, in a player's order, each { name, recording }, and `ran` each
+ * recording's functions that ran in matching frames, by its name (progress.json). A function played in part goes with
+ * the first part whose recording ran it, as "What's left of <part>"; one no part's recording ran, and those never
+ * played, go by where they are in the original, as "Code never played around <address>", a stretch of 0x10000 each,
+ * and one that most parts' recordings ran, as "What's left of the code the parts share around <address>".
+ * Returns [{ name, recording, functions }], the parts' pieces first, each piece's functions those with most left first.
+ */
+export function leftoverPieces(functions, parts, ran) {
+  // the first part whose recording ran each function, and how many parts' recordings did: one most of them ran is
+  // the game's own machinery, no part's in particular
+  const partOf = new Map(), shared = new Map();
+  for (const part of parts) {
+    for (const key of new Set(ran[part.recording] ?? [])) {
+      if (!partOf.has(key)) partOf.set(key, part);
+      shared.set(key, (shared.get(key) ?? 0) + 1);
+    }
+  }
+  const proven = parts.filter(part => ran[part.recording]).length;
+  const pieces = new Map();
+  const into = (name, recording, order, f) => {
+    if (!pieces.has(name)) pieces.set(name, { name, recording, order, functions: [] });
+    pieces.get(name).functions.push(f);
+  };
+  for (const f of functions) {
+    const part = f.never ? null : partOf.get(f.key), block = hex8(f.address & ~0xFFFF);
+    if (part && shared.get(f.key) * 2 > proven && proven > 2) into(`What's left of the code the parts share around ${block}`, part.recording, parts.length + (f.address >>> 16), f);
+    else if (part) into(`What's left of ${part.name}`, part.recording, parts.indexOf(part), f);
+    else into(`Code never played around ${block}`, null, parts.length + 0x10000 + (f.address >>> 16), f);
+  }
+  return [...pieces.values()].sort((a, b) => a.order - b.order).map(({ name, recording, functions: list }) => ({
+    name, recording, functions: list.sort((a, b) => (b.total - b.played) - (a.total - a.played) || a.address - b.address),
+  }));
+}
+const hex8 = address => address.toString(16).toUpperCase().padStart(8, '0');
 
 /** A version's played.json, or a new one. */
 export function readPlayed(game) {

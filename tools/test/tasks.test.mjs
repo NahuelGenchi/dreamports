@@ -6,7 +6,8 @@ import { field } from '../lib/claims.mjs';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { holdGame, missingParts, taskText, taskTitled } from '../tasks.mjs';
+import { holdGame, leftoverText, missingParts, taskText, taskTitled } from '../tasks.mjs';
+import { leftoverPieces } from '../lib/played.mjs';
 
 const parts = [
   { name: 'The logos', recording: 'logos', frames: [0, 389] },
@@ -118,4 +119,30 @@ test('a task in C is written from the original and waits for nothing in JavaScri
   assert.match(text, /never waiting for it/);
   assert.doesNotMatch(text, /finished for it first/);
   assert.match(text, /shows the part as proven in C/);
+});
+
+test('what\'s left of a version becomes pieces: by the part that reaches it, shared code and code never played by where they are', () => {
+  const parts = [{ name: 'The title', recording: 'title' }, { name: 'Act 1', recording: 'act-1' }, { name: 'Act 2', recording: 'act-2' }, { name: 'The ending', recording: 'ending' }];
+  const ran = { title: ['08000100', '08010000'], 'act-1': ['08000100', '08020000', '08020400'], 'act-2': ['08000100', '08020000'], ending: ['08000100'] };
+  const f = (key, total, played, ways = []) => ({ key, address: parseInt(key, 16), size: 64, total, played, never: played === 0, ways });
+  const pieces = leftoverPieces([
+    f('08000100', 50, 40),                                   // every part's recording ran it
+    f('08020000', 30, 10, [[0x08020010, 'taken']]),          // act 1's first, and act 2's
+    f('08020400', 20, 19),
+    f('08010000', 10, 9),
+    f('08031000', 40, 0), f('08032000', 80, 0),              // never played
+  ], parts, ran);
+  assert.deepEqual(pieces.map(p => [p.name, p.recording, p.functions.map(each => each.key)]), [
+    ["What's left of The title", 'title', ['08010000']],
+    ["What's left of Act 1", 'act-1', ['08020000', '08020400']],
+    ["What's left of the code the parts share around 08000000", 'title', ['08000100']],
+    ['Code never played around 08030000', null, ['08032000', '08031000']],
+  ]);
+
+  const text = leftoverText('made-up/c', pieces[1]);
+  assert.match(text, /^### Game folder\n\nmade-up\n/);
+  assert.match(text, /- `08020000`: 20 of 30 to play; to play: `08020010` taken/);
+  assert.match(text, /npm run dp -- route made-up\/c <name> --from act-1 --goal untouched/);
+  assert.match(text, /### Done when\n\n`npm run dp -- untouched made-up\/c --all` no longer lists these functions/);
+  assert.match(leftoverText('made-up/c', pieces[3]), /- `08032000`: never played, 80 instructions and branch ways\n- `08031000`/);
 });

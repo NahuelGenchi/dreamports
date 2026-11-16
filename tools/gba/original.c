@@ -68,7 +68,9 @@
 //   With DP_PROVEN in the environment, a file of what's been played of the cartridge's code already (32 bits each: an
 //   instruction's place, its offset in the cartridge in halfwords, times four, plus 0 when it has run, 1 when its
 //   branch has been taken and 2 when it hasn't been), the search can look for anything else: the value at 0xFFFF0000,
-//   which no console has, is then how many things not in the file happened in the frame just played.
+//   which no console has, is then how many things not in the file happened in the frame just played. With DP_TARGET
+//   too, "ADDRESS WHAT" (the address in hexadecimal, and 0, 1 or 2 as above), it counts that one thing alone, at an
+//   address of the cartridge or of the work RAM: an instruction running, or its branch going one way.
 //
 // original ROM live
 //   Plays along with a person, for capture: for each frame it reads the buttons held from stdin (16 bits, as in
@@ -486,7 +488,7 @@ static int playAlong(const char* path) {
 // What's been played of the cartridge's code, for a search for what hasn't (DP_PROVEN): a bit for each thing that can
 // happen at each halfword, and for each halfword whether it's a conditional branch, found the first time it runs
 #define UNTOUCHED 0xFFFF0000u
-static struct { uint8_t* played; uint8_t* kind; uint32_t slots; } proven;
+static struct { uint8_t* played; uint8_t* kind; uint32_t slots; int aimed; uint32_t target; int what; } proven;
 static _Thread_local uint32_t untouched;   // how many things not played yet happened in this console's last frame
 
 static void readProven(const char* path) {
@@ -497,6 +499,12 @@ static void readProven(const char* path) {
 	proven.kind = calloc(proven.slots, 1);
 	for (size_t i = 0; i < size / 4; i++) if (list[i] / 4 < proven.slots) proven.played[list[i] / 4] |= (uint8_t) (1 << (list[i] & 3));
 	free(list);
+	unsigned target, what;
+	if (getenv("DP_TARGET") && sscanf(getenv("DP_TARGET"), "%x %u", &target, &what) == 2 && what < HAPPENINGS) {
+		proven.aimed = 1;
+		proven.target = target & ~1u;
+		proven.what = (int) what;
+	}
 }
 
 static void searchFrame(void* console, uint32_t buttons) {
@@ -511,6 +519,15 @@ static void searchFrame(void* console, uint32_t buttons) {
 		while (cpu->cycles >= cpu->nextEvent) cpu->irqh.processEvents(cpu);
 		int thumb = cpu->executionMode == MODE_THUMB;
 		uint32_t pc = cpu->gprs[ARM_PC] - (thumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM), slot = (pc - regions[0].base) / 2;
+		if (proven.aimed) {
+			// one thing alone: the instruction at the target running, or its branch going the way that's wanted
+			ARMRun(cpu);
+			if (pc != proven.target) continue;
+			uint32_t after = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
+			int straight = after == pc + (thumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
+			if (proven.what == RAN || (proven.what == NOT_TAKEN) == straight) untouched++;
+			continue;
+		}
 		if (!proven.played || slot >= proven.slots) {
 			ARMRun(cpu);
 			continue;

@@ -29,7 +29,7 @@ import { join, relative } from 'node:path';
 import os from 'node:os';
 import { LOCAL, REPO, sharedProofFolder } from './lib/paths.mjs';
 import { readCodeMap, readOriginal, readRecordings } from './lib/proof-files.mjs';
-import { provenUnits } from './lib/played.mjs';
+import { NOT_TAKEN, RAN, TAKEN, provenUnits, untouchedOf } from './lib/played.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { compress, expand, originalPlay, writeRecording } from './lib/recording.mjs';
 import { referenceOf } from './lib/reference.mjs';
@@ -69,7 +69,7 @@ export async function run(args) {
 
 // one search, to one goal: 0 when the recording now reaches it, 1 when it stopped short
 async function search({ args, value, game, name, goalText, from, minutes, then, seed, threads }) {
-  let provenFile = null;
+  let provenFile = null, target = null;
   const original = readOriginal(game), base = versionOf(game).game;
   const reference = await referenceOf(original);
   const { KEY, machine } = reference;
@@ -93,13 +93,22 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
 
   // what to search for: `untouched` is anything of the cartridge's code this version hasn't played in a matching frame,
   // which the program counts each frame as a value of its own (gba/original.c, DP_PROVEN)
-  const untouched = goalText === 'untouched';
+  // `untouched:<address>` is one thing alone: the branch there going the way nobody has played, or an instruction
+  // that never ran running, in the cartridge or in code the game runs from its work RAM
+  const untouched = /^untouched(?::[0-9A-Fa-f]{7,8})?$/.test(goalText);
   if (untouched) {
     const codeMap = readCodeMap(game);
     if (reference.seesInstructions !== true || !codeMap) throw new Error("--goal untouched needs a code map and a console whose instructions the tools see run.");
     route.values = { ...route.values, untouched: { address: 'FFFF0000', bytes: 4 } };
-    route.goals = { ...route.goals, untouched: 'untouched>0' };
+    route.goals = { ...route.goals, [goalText]: 'untouched>0' };
     provenFile = Buffer.from(provenUnits(game, codeMap).buffer);
+    if (goalText.includes(':')) {
+      const address = parseInt(goalText.split(':')[1], 16);
+      const f = untouchedOf(game, codeMap).functions.find(each => address >= each.address && address < each.address + each.size);
+      if (!f) throw new Error(`Nothing is left to play at ${goalText.split(':')[1]}, or it's in no function of the code map: npm run dp -- untouched ${game} --all lists what is.`);
+      const way = f.ways.find(([at]) => at === address)?.[1];
+      target = `${address.toString(16)} ${way === 'taken' ? TAKEN : way === 'not taken' ? NOT_TAKEN : RAN}`;
+    }
   }
   // a goal the game names, which may have a grid of its own, or a condition written out
   const named = route.goals?.[goalText], ownGoal = named && typeof named === 'object' ? named : { when: named ?? goalText };
@@ -123,7 +132,7 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
   const way = originalPlay(source, { frames: cut, keysLate });
   const masks = way.originalHeld.map(list => list.reduce((mask, b) => mask | (KEY[b] ?? 0), 0));
   if (keysLate) masks.unshift(0);
-  const searching_ = () => ({ ...reference.searchOriginal({ copy: copy.path, spec: 'spec.txt' }), ...(provenFile ? { env: { DP_PROVEN: 'proven.bin' } } : {}) });
+  const searching_ = () => ({ ...reference.searchOriginal({ copy: copy.path, spec: 'spec.txt' }), ...(provenFile ? { env: { DP_PROVEN: 'proven.bin', ...(target ? { DP_TARGET: target } : {}) } } : {}) });
   const searcher = searching_();
   const pack = list => Buffer.from((searcher.buttonBytes === 4 ? Uint32Array : Uint16Array).from(list).buffer);
   const prefix = pack(masks), sets = Buffer.from(Uint32Array.from(way.sets.flatMap(({ frame, address, bytes, value: v }) => [frame, address, bytes, v])).buffer);
