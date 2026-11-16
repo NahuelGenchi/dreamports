@@ -34,6 +34,14 @@
 // memory holds: the first time one runs, its place in the code map, its address, its size, and its bytes, to a whole
 // word (the tools count its instructions and branches from them, and keep none: lib/played.mjs).
 //
+// DP_WHY, when it's set, is an address and a file, such as "0802C48A why.bin": what the conditional branch at that
+// address went by, each time it ran (npm run dp -- untouched <version> --why <address>). The program follows where each
+// register's value came from, a place in memory or a number in the code, and at the branch says what the last
+// instruction that set the flags compared. A record is twelve 32-bit words: the comparing instruction's address, its two
+// values, where each came from (an address, or 0) and what kind that is (0 worked out, 1 read from memory, 2 a number
+// in the code, +4 when changed since, and the bytes read in the next byte), the way the branch went (1 taken, 2 not),
+// how many times it went so with those, and the first frame it did; one record for each different set, up to WHY_MOST.
+//
 // DP_CONTENT, when it's set, names a file to write the cartridge's data the game used to, for gameplay proven too: the
 // cartridge in cells of 32 bytes, each with the stretches of frames something of it was used in. A record is three
 // 32-bit words: the cell's number, and the first and last frame of a stretch. Data is used when the game reads it and
@@ -80,6 +88,7 @@
 #include <mgba/core/log.h>
 #include <mgba/gba/core.h>
 #include <mgba/internal/arm/arm.h>
+#include <mgba/internal/arm/decoder.h>
 #include <mgba/internal/gba/gba.h>
 #include <mgba/internal/gba/savedata.h>
 #include <stdarg.h>
@@ -484,6 +493,110 @@ static int playAlong(const char* path) {
 	return 0;
 }
 
+// What a branch went by, for DP_WHY: where each register's value came from, the last comparison, and what the branch
+// at the target did with it
+#define WHY_MOST 4096
+#define FROM_MEMORY 1
+#define FROM_CODE 2
+#define CHANGED_SINCE 4
+struct came { uint32_t address; uint32_t kind; };
+static struct {
+	FILE* file;
+	uint32_t target;
+	struct came from[16];
+	struct { uint32_t pc, a, b; struct came fromA, fromB; } compared;
+	uint32_t loaded, loadedBytes;
+	int didLoad;
+	struct ARMMemory memory;
+	uint32_t (*records)[12];
+	size_t count;
+} why;
+
+static uint32_t whyLoad32(struct ARMCore* cpu, uint32_t address, int* cycles) { why.loaded = address & ~3u; why.loadedBytes = 4; why.didLoad = 1; return why.memory.load32(cpu, address, cycles); }
+static uint32_t whyLoad16(struct ARMCore* cpu, uint32_t address, int* cycles) { why.loaded = address & ~1u; why.loadedBytes = 2; why.didLoad = 1; return why.memory.load16(cpu, address, cycles); }
+static uint32_t whyLoad8(struct ARMCore* cpu, uint32_t address, int* cycles) { why.loaded = address; why.loadedBytes = 1; why.didLoad = 1; return why.memory.load8(cpu, address, cycles); }
+
+static void watchWhy(struct ARMCore* cpu, const char* asked) {
+	char path[4096];
+	unsigned target;
+	if (sscanf(asked, "%x %4095[^\n]", &target, path) != 2 || !(why.file = fopen(path, "wb"))) { fprintf(stderr, "DP_WHY takes an address and a file to write\n"); exit(2); }
+	why.target = target & ~1u;
+	why.records = calloc(WHY_MOST, sizeof(*why.records));
+	why.memory = cpu->memory;
+	cpu->memory.load32 = whyLoad32;
+	cpu->memory.load16 = whyLoad16;
+	cpu->memory.load8 = whyLoad8;
+}
+
+// one instruction with DP_WHY: it runs, and what it wrote to a register is traced to where that came from
+static void runWhy(struct ARMCore* cpu, long frame) {
+	int thumb = cpu->executionMode == MODE_THUMB;
+	uint32_t pc = cpu->gprs[ARM_PC] - (thumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
+	struct ARMInstructionInfo info;
+	if (thumb) ARMDecodeThumb((uint16_t) cpu->prefetch[0], &info);
+	else ARMDecodeARM(cpu->prefetch[0], &info);
+	uint32_t before[16];
+	memcpy(before, cpu->gprs, sizeof(before));
+	why.didLoad = 0;
+	ARMRun(cpu);
+	int format = info.operandFormat, mnemonic = info.mnemonic;
+	int to = format & ARM_OPERAND_REGISTER_1 ? info.op1.reg & 15 : -1;
+	struct came result = { 0, 0 };
+	int known = 0;
+	if (mnemonic == ARM_MN_LDR && to >= 0 && why.didLoad) {
+		// read from memory, or from the numbers the code keeps beside itself
+		result = (struct came) { why.loaded, (why.loaded >> 24 == 8 || why.loaded >> 24 == 9 ? FROM_CODE : FROM_MEMORY) | why.loadedBytes << 8 };
+		known = 1;
+	} else if (to >= 0 && format & ARM_OPERAND_AFFECTED_1 && mnemonic != ARM_MN_LDM && mnemonic != ARM_MN_BL && mnemonic != ARM_MN_BX && !why.didLoad) {
+		// worked out from registers and numbers: it keeps where one came from when nothing else from memory went in
+		struct came sources[3];
+		int count = 0, numbers = 0;
+		if (format & ARM_OPERAND_REGISTER_2) sources[count++] = why.from[info.op2.reg & 15];
+		else if (format & ARM_OPERAND_IMMEDIATE_2) numbers++;
+		if (format & ARM_OPERAND_REGISTER_3) sources[count++] = why.from[info.op3.reg & 15];
+		else if (format & ARM_OPERAND_IMMEDIATE_3) numbers++;
+		// with two operands and no move, the first is worked on too
+		int moves = mnemonic == ARM_MN_MOV || mnemonic == ARM_MN_MVN || mnemonic == ARM_MN_NEG;
+		if (!(format & ARM_OPERAND_3) && !moves) sources[count++] = why.from[to];
+		int fromMemory = 0, unknown = 0;
+		for (int i = 0; i < count; i++) {
+			if ((sources[i].kind & 3) == FROM_MEMORY) { fromMemory++; result = sources[i]; }
+			else if (!(sources[i].kind & 3)) unknown++;
+		}
+		if (unknown || fromMemory > 1) result = (struct came) { 0, 0 };
+		else if (fromMemory == 1) { if (!(moves && count == 1)) result.kind |= CHANGED_SINCE; }
+		else result = (struct came) { 0, FROM_CODE };
+		known = 1;
+	}
+	// any other register an instruction changed, such as those a call or a pop leaves, came from nowhere that's followed
+	for (int reg = 0; reg < 15; reg++) {
+		if (reg == to && known) why.from[reg] = result;
+		else if (cpu->gprs[reg] != before[reg]) why.from[reg] = (struct came) { 0, 0 };
+	}
+	// what set the flags: a comparison's two sides, or what an instruction left, against nothing
+	if (mnemonic == ARM_MN_CMP || mnemonic == ARM_MN_CMN || mnemonic == ARM_MN_TST || mnemonic == ARM_MN_TEQ) {
+		why.compared.pc = pc;
+		why.compared.a = before[info.op1.reg & 15];
+		why.compared.fromA = why.from[info.op1.reg & 15];
+		if (format & ARM_OPERAND_REGISTER_2) { why.compared.b = before[info.op2.reg & 15]; why.compared.fromB = why.from[info.op2.reg & 15]; }
+		else { why.compared.b = (uint32_t) info.op2.immediate; why.compared.fromB = (struct came) { 0, FROM_CODE }; }
+	} else if (info.affectsCPSR && to >= 0 && format & ARM_OPERAND_AFFECTED_1) {
+		why.compared.pc = pc;
+		why.compared.a = cpu->gprs[to];
+		why.compared.fromA = why.from[to];
+		why.compared.b = 0;
+		why.compared.fromB = (struct came) { 0, FROM_CODE };
+	}
+	if (pc != why.target || !branches(info.opcode, thumb)) return;
+	uint32_t after = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
+	uint32_t way = after == pc + (thumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM) ? NOT_TAKEN : TAKEN;
+	uint32_t record[12] = { why.compared.pc, why.compared.a, why.compared.b, why.compared.fromA.address, why.compared.fromA.kind, why.compared.fromB.address, why.compared.fromB.kind, way, 1, (uint32_t) frame, 0, 0 };
+	for (size_t i = 0; i < why.count; i++) {
+		if (!memcmp(why.records[i], record, 8 * sizeof(uint32_t))) { why.records[i][8]++; return; }
+	}
+	if (why.count < WHY_MOST) memcpy(why.records[why.count++], record, sizeof(record));
+}
+
 // what the search needs of a console (lib/explore.h), for each one it runs
 // What's been played of the cartridge's code, for a search for what hasn't (DP_PROVEN): a bit for each thing that can
 // happen at each halfword, and for each halfword whether it's a conditional branch, found the first time it runs
@@ -655,6 +768,7 @@ int main(int argc, char** argv) {
 	struct GBA* gba = core->board;
 
 	if (getenv("DP_CONTENT")) watchContent(cpu, gba, getenv("DP_CONTENT"));
+	if (getenv("DP_WHY")) watchWhy(cpu, getenv("DP_WHY"));
 	// the save memory as the last frame left it
 	FILE* saves = getenv("DP_SAVES") ? fopen(getenv("DP_SAVES"), "wb") : NULL;
 	if (getenv("DP_SAVES") && !saves) { fprintf(stderr, "Can't write %s\n", getenv("DP_SAVES")); exit(2); }
@@ -719,7 +833,8 @@ int main(int argc, char** argv) {
 					}
 				}
 			}
-			ARMRun(cpu);
+			if (why.file) runWhy(cpu, frame);
+			else ARMRun(cpu);
 			// a conditional branch went one of its two ways
 			if (now) {
 				uint32_t pc = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
@@ -776,6 +891,10 @@ int main(int argc, char** argv) {
 	fprintf(stderr, "{\"cartridge\":%ld,\"memory\":%ld,\"reads\":[", regions[0].seen, regions[1].seen + regions[2].seen);
 	for (size_t i = 0; i < readCount; i++) fprintf(stderr, "%s%u", i ? "," : "", readValues[i]);
 	fprintf(stderr, "]}\n");
+	if (why.file) {
+		fwrite(why.records, sizeof(*why.records), why.count, why.file);
+		fclose(why.file);
+	}
 	core->deinit(core);
 	return 0;
 }

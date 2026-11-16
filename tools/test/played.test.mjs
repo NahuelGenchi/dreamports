@@ -97,3 +97,11 @@ test('gameplay proven is never 100% until everything is played, and the numbers 
   assert.equal(proofOf('made-up', both({ total: 10, read: 9, percent: 90 })).gameplay.percent, 75);
   assert.throws(() => proofOf('made-up', both({ total: 10, read: 11, percent: 100 })), /"content" doesn't add up/);
 });
+
+test('a side of what a branch went by says what it held and where that came from', async () => {
+  const { sideText } = await import('../untouched.mjs');
+  assert.equal(sideText(3, 0x03005084, 1 | 1 << 8), '3, from the byte at 03005084');
+  assert.equal(sideText(60, 0x03005028, 1 | 2 << 8 | 4), '60, from the halfword at 03005028, changed on the way');
+  assert.equal(sideText(0x08049D54, 0, 0), '0x08049D54, worked out from more than one thing');
+  assert.equal(sideText(4, 0, 2), '4, a number in the code');
+});
