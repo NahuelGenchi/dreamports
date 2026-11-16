@@ -18,21 +18,21 @@ let runs = 0;
  * frames whose pictures (of every player) are wanted and `states` those whose console state is wanted. Resolves to
  * { hashes, plain, pictures, states }: `hashes[frame * players + player]` is the picture's hash (as original.c
  * hashes), `plain` its one colour or -1, `pictures` a map from `frame:player` to 15-bit pixels (WIDTH x HEIGHT) and `states`
- * the same to the player's state, as original.c writes it. With `played`, also `played` { records }: what ran on any of the
- * consoles, as original.c writes it for DP_PLAYED.
+ * the same to the player's state, as original.c writes it. With `played`, also `played` { records, content }: what ran on any
+ * of the consoles and the cartridge's data they used, as original.c writes them for DP_PLAYED and DP_CONTENT.
  */
 export async function runLinked({ copy, players, frames, buttons, pictures = [], states = [], played = false, stateBytes = 0x58 + 0x400 + 0x400 + 0x18000 }) {
   const folder = join(LOCAL, 'tmp');
   mkdirSync(folder, { recursive: true });
   const id = `linked-${process.pid}-${threadId}-${Date.now()}-${++runs}`;
-  const files = { buttons: join(folder, `buttons-${id}.bin`), pictures: join(folder, `pictures-${id}.bin`), states: join(folder, `states-${id}.bin`), played: join(folder, `played-${id}.bin`) };
+  const files = { buttons: join(folder, `buttons-${id}.bin`), pictures: join(folder, `pictures-${id}.bin`), states: join(folder, `states-${id}.bin`), played: join(folder, `played-${id}.bin`), content: join(folder, `content-${id}.bin`) };
   const all = new Uint16Array(frames * players);
   for (let f = 0; f < frames; f++) for (let p = 0; p < players; p++) all[f * players + p] = buttons[p][f] ?? 0;
   writeFileSync(files.buttons, new Uint8Array(all.buffer));
   writeFileSync(files.pictures, new Uint8Array(Uint32Array.from(pictures).buffer));
   writeFileSync(files.states, new Uint8Array(Uint32Array.from(states).buffer));
   try {
-    const child = spawn(LINKED, [copy, String(players), String(frames), basename(files.buttons), basename(files.pictures), basename(files.states)], { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...(played ? { DP_PLAYED: basename(files.played) } : {}) } });
+    const child = spawn(LINKED, [copy, String(players), String(frames), basename(files.buttons), basename(files.pictures), basename(files.states)], { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...(played ? { DP_PLAYED: basename(files.played), DP_CONTENT: basename(files.content) } : {}) } });
     const out = [], err = [];
     child.stdout.on('data', chunk => out.push(chunk));
     child.stderr.on('data', chunk => err.push(chunk));
@@ -62,7 +62,8 @@ export async function runLinked({ copy, players, frames, buttons, pictures = [],
     }
     // what ran on any of the consoles, as original.c writes it for DP_PLAYED, five words a record
     const records = played ? new Uint32Array(new Uint8Array(readFileSync(files.played)).buffer) : null;
-    return { hashes, plain, pictures: shown, states: held, message: stderr, ...(records ? { played: { records } } : {}) };
+    const content = played ? new Uint32Array(new Uint8Array(readFileSync(files.content)).buffer) : null;
+    return { hashes, plain, pictures: shown, states: held, message: stderr, ...(records ? { played: { records, content } } : {}) };
   } finally {
     for (const file of Object.values(files)) rmSync(file, { force: true });
   }

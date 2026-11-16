@@ -160,13 +160,13 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   say('');
   // what of the original's code ran on any console in the frames where every screen matched (lib/played.mjs): the
   // page's frame f is the original's frame f + 1, which the original works out in its frame f. The cartridge's data
-  // those frames used isn't followed on linked consoles yet, so none counts from here.
+  // those frames used counts the same way.
   let played = null;
   if (seesPlayed) {
     const matchedInOriginal = new Uint8Array(frames + 1), differing = new Set(differ);
     for (let f = 0; f < hashes.length; f++) if (!differing.has(f)) matchedInOriginal[f] = 1;
     const cartridge = cartridgeOf(copy);
-    played = { set: playedIn(first.played.records, matchedInOriginal, layoutOf(codeMap), finderOf(codeMap, cartridge, new Map())), made: [], used: contentIn(new Uint32Array(0), matchedInOriginal, Math.ceil(cartridge(0x08000000, 0x02000000).length / CELL)) };
+    played = { set: playedIn(first.played.records, matchedInOriginal, layoutOf(codeMap), finderOf(codeMap, cartridge, new Map())), made: [], used: contentIn(first.played.content, matchedInOriginal, Math.ceil(cartridge(0x08000000, 0x02000000).length / CELL)) };
   }
   return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], ...(played ? { played } : {}), changed: !!changed, functions: [] };
 }
