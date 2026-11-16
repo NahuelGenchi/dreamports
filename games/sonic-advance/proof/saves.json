@@ -1,0 +1,85 @@
+{
+  "about": "Sonic Advance (USA)'s save memory, a 64 KB flash in sixteen sectors of 4,096 bytes: what of it isn't the game's save, and so isn't compared with a Dreamport's (docs/STANDARD.md#saves)",
+  "leftover": [
+    [
+      "00000430",
+      "00000FFF",
+      "Sector 0 of the game's ten. Its write (0x08012D4C) hands the flash its 0x430-byte save in the console's memory and the flash takes the whole sector, so what the memory held after the save goes in too. Its read (0x08012C5C) and its check before a write read back 0x430 bytes of a sector and no more."
+    ],
+    [
+      "00001430",
+      "00001FFF",
+      "Sector 1 of the game's ten. Its write (0x08012D4C) hands the flash its 0x430-byte save in the console's memory and the flash takes the whole sector, so what the memory held after the save goes in too. Its read (0x08012C5C) and its check before a write read back 0x430 bytes of a sector and no more."
+    ],
+    [
+      "00002430",
+      "00002FFF",
+      "Sector 2 of the game's ten. Its write (0x08012D4C) hands the flash its 0x430-byte save in the console's memory and the flash takes the whole sector, so what the memory held after the save goes in too. Its read (0x08012C5C) and its check before a write read back 0x430 bytes of a sector and no more."
+    ],
+    [
+      "00003430",
+      "00003FFF",
+      "Sector 3 of the game's ten. Its write (0x08012D4C) hands the flash its 0x430-byte save in the console's memory and the flash takes the whole sector, so what the memory held after the save goes in too. Its read (0x08012C5C) and its check before a write read back 0x430 bytes of a sector and no more."
+    ],
+    [
+      "00004430",
+      "00004FFF",
+      "Sector 4 of the game's ten. Its write (0x08012D4C) hands the flash its 0x430-byte save in the console's memory and the flash takes the whole sector, so what the memory held after the save goes in too. Its read (0x08012C5C) and its check before a write read back 0x430 bytes of a sector and no more."
+    ],
+    [
+      "00005430",
+      "00005FFF",
+      "Sector 5 of the game's ten. Its write (0x08012D4C) hands the flash its 0x430-byte save in the console's memory and the flash takes the whole sector, so what the memory held after the save goes in too. Its read (0x08012C5C) and its check before a write read back 0x430 bytes of a sector and no more."
+    ],
+    [
+      "00006430",
+      "00006FFF",
+      "Sector 6 of the game's ten. Its write (0x08012D4C) hands the flash its 0x430-byte save in the console's memory and the flash takes the whole sector, so what the memory held after the save goes in too. Its read (0x08012C5C) and its check before a write read back 0x430 bytes of a sector and no more."
+    ],
+    [
+      "00007430",
+      "00007FFF",
+      "Sector 7 of the game's ten. Its write (0x08012D4C) hands the flash its 0x430-byte save in the console's memory and the flash takes the whole sector, so what the memory held after the save goes in too. Its read (0x08012C5C) and its check before a write read back 0x430 bytes of a sector and no more."
+    ],
+    [
+      "00008430",
+      "00008FFF",
+      "Sector 8 of the game's ten. Its write (0x08012D4C) hands the flash its 0x430-byte save in the console's memory and the flash takes the whole sector, so what the memory held after the save goes in too. Its read (0x08012C5C) and its check before a write read back 0x430 bytes of a sector and no more."
+    ],
+    [
+      "00009430",
+      "00009FFF",
+      "Sector 9 of the game's ten. Its write (0x08012D4C) hands the flash its 0x430-byte save in the console's memory and the flash takes the whole sector, so what the memory held after the save goes in too. Its read (0x08012C5C) and its check before a write read back 0x430 bytes of a sector and no more."
+    ],
+    [
+      "0000A858",
+      "0000AFFF",
+      "Sector 10, one of Tiny Chao Garden's six. Its write (0x020003AC, in the console's memory) hands the flash its 0x858-byte save and the flash takes the whole sector, so what the memory held after the save goes in too. Its read takes 0x858 bytes of a sector and checks them, and no more."
+    ],
+    [
+      "0000B858",
+      "0000BFFF",
+      "Sector 11, one of Tiny Chao Garden's six. Its write (0x020003AC, in the console's memory) hands the flash its 0x858-byte save and the flash takes the whole sector, so what the memory held after the save goes in too. Its read takes 0x858 bytes of a sector and checks them, and no more."
+    ],
+    [
+      "0000C858",
+      "0000CFFF",
+      "Sector 12, one of Tiny Chao Garden's six. Its write (0x020003AC, in the console's memory) hands the flash its 0x858-byte save and the flash takes the whole sector, so what the memory held after the save goes in too. Its read takes 0x858 bytes of a sector and checks them, and no more."
+    ],
+    [
+      "0000D858",
+      "0000DFFF",
+      "Sector 13, one of Tiny Chao Garden's six. Its write (0x020003AC, in the console's memory) hands the flash its 0x858-byte save and the flash takes the whole sector, so what the memory held after the save goes in too. Its read takes 0x858 bytes of a sector and checks them, and no more."
+    ],
+    [
+      "0000E858",
+      "0000EFFF",
+      "Sector 14, one of Tiny Chao Garden's six. Its write (0x020003AC, in the console's memory) hands the flash its 0x858-byte save and the flash takes the whole sector, so what the memory held after the save goes in too. Its read takes 0x858 bytes of a sector and checks them, and no more."
+    ],
+    [
+      "0000F858",
+      "0000FFFF",
+      "Sector 15, one of Tiny Chao Garden's six. Its write (0x020003AC, in the console's memory) hands the flash its 0x858-byte save and the flash takes the whole sector, so what the memory held after the save goes in too. Its read takes 0x858 bytes of a sector and checks them, and no more."
+    ]
+  ]
+}

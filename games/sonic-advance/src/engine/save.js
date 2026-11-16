@@ -65,15 +65,28 @@ function emptySave() {
   return bytes;
 }
 
-// SaveGameExists: the save the browser keeps, if it is one (its security and checksum right). The version in C keeps the
-// whole flash, where Tiny Chao Garden's save comes after this one (games/sonic-advance/c/src/save.c), so the save is its
-// first SIZE bytes
-function readStored(flashMemory) {
+// The cartridge's flash: sixteen sectors of SECTOR bytes, the game's save in the first SAVE_SECTORS of them, a sector at a
+// time, and Tiny Chao Garden's in the rest (games/sonic-advance/c/src/garden.c). A flash never written holds 0xFF.
+const SECTOR = 0x1000, SAVE_SECTORS = 10, FLASH_BYTES = 0x10000;
+
+// what the browser keeps of the flash, whole: a save kept before the game wrote sectors was its first bytes alone
+function readFlash(flashMemory) {
+  const whole = new Uint8Array(FLASH_BYTES).fill(0xFF);
   const kept = flashMemory.read();
-  if (!kept || kept.length < SIZE) return null;
-  const bytes = kept.slice(0, SIZE);
-  const view = new DataView(bytes.buffer);
-  return view.getUint32(0, true) === SECURITY && view.getUint32(CHECKSUM, true) === checksum(bytes) ? bytes : null;
+  if (kept) whole.set(kept.subarray(0, FLASH_BYTES));
+  return whole;
+}
+
+// LoadSaveGame, 0x08012C5C: the sector the save is in, the last of the game's that holds one, counting from the first
+// and stopping at one never written (from the second, when the first was never written), or -1 (SaveGameExists)
+function savedSector(whole) {
+  const view = new DataView(whole.buffer);
+  let found = -1;
+  for (let i = view.getUint32(0, true) === SECURITY ? 0 : 1; i < SAVE_SECTORS; i++) {
+    if (view.getUint32(i * SECTOR, true) !== SECURITY) break;
+    if (view.getUint32(i * SECTOR + CHECKSUM, true) === checksum(whole.subarray(i * SECTOR, i * SECTOR + SIZE))) found = i;
+  }
+  return found;
 }
 
 /**
@@ -83,15 +96,17 @@ function readStored(flashMemory) {
  */
 export function openSave(storage = browserStorage()) {
   const flashMemory = cartridgeSave(SAVE_KEY, storage);
-  let flash = readStored(flashMemory);   // what the flash holds: the save as last written, or null before the first
-  const bytes = flash ? flash.slice() : emptySave(), view = new DataView(bytes.buffer);
-  if (!flash) {
+  const whole = readFlash(flashMemory);
+  let sector = savedSector(whole);   // the sector the save is in (0x0300508C), or -1 before the first write
+  let exists = sector >= 0;
+  const bytes = exists ? whole.slice(sector * SECTOR, sector * SECTOR + SIZE) : emptySave(), view = new DataView(bytes.buffer);
+  if (!exists) {
     try { bytes[0x1C] = Number(storage?.getItem(EMERALDS_KEY)) & ALL_EMERALDS; } catch { /* none kept */ }
   }
   return {
     bytes,
     /** SaveGameExists: whether the flash holds a save (none before the first write, or once erased). */
-    get exists() { return flash !== null; },
+    get exists() { return exists; },
     get unk4() { return view.getUint32(0x04, true); },
     set unk4(v) { view.setUint32(0x04, v >>> 0, true); },
     /** The name's eight bytes, as a view into the save. */
@@ -143,10 +158,12 @@ export function openSave(storage = browserStorage()) {
     },
     unlockedLevel: character => view.getUint16(0x08 + character * 2, true),
     setUnlockedLevel(character, level) { view.setUint16(0x08 + character * 2, level, true); },
-    /** sub_8012F6C: the flash erased, so the browser keeps no save until the next write. */
+    /** sub_8012F6C, 0x08012F20: the game's ten sectors erased, and the next write goes to the second. */
     erase() {
-      flash = null;
-      flashMemory.erase();
+      whole.fill(0xFF, 0, SAVE_SECTORS * SECTOR);
+      sector = 0;
+      exists = false;
+      flashMemory.write(whole);
     },
     /** CreateEmptySaveGame: the save in memory empty again. */
     reset() { bytes.set(emptySave()); },
@@ -155,13 +172,18 @@ export function openSave(storage = browserStorage()) {
      * kept. Returns whether it was written, which takes WRITE_FRAMES.
      */
     write() {
-      if (flash && flash.every((b, i) => b === bytes[i])) return false;
+      // 0x08012D4C: nothing when the sector the save is in holds these bytes. Otherwise the sector after the next is
+      // erased, so that reading stops there, and the next takes the save: ten sectors round
+      if (sector >= 0 && bytes.every((b, i) => b === whole[sector * SECTOR + i])) return false;
+      const next = sector + 1 > SAVE_SECTORS - 1 ? 0 : sector + 1, after = (next + 1) % SAVE_SECTORS;
+      whole.fill(0xFF, after * SECTOR, (after + 1) * SECTOR);
       view.setUint32(0, SECURITY, true);
       view.setUint32(CHECKSUM, checksum(bytes), true);
-      flash = bytes.slice();
-      // what the flash holds after the save, Tiny Chao Garden's, stays as it is
-      const kept = flashMemory.read(), whole = kept?.length > SIZE ? kept.slice() : flash;
-      if (whole !== flash) whole.set(flash);
+      sector = next;
+      // the flash takes a whole sector: the save, and what the console's memory holds after it
+      whole.fill(0, sector * SECTOR, (sector + 1) * SECTOR);
+      whole.set(bytes, sector * SECTOR);
+      exists = true;
       if (flashMemory.write(whole)) {
         try { storage?.removeItem(EMERALDS_KEY); } catch { /* storage blocked */ }   // the save has them now
       }

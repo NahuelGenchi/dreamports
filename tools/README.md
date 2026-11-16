@@ -145,6 +145,8 @@ To find where a game keeps something, look in its notes (`npm run dp -- notes <g
 
 A game's `proof/unreachable.json` lists what nothing can reach, as `{ "about", "code": [[first, last, why]], "content": [[first, last, why]] }`, with addresses in the cartridge as the code map writes them. Those stretches don't count towards gameplay proven while they stay unplayed ([Done](../docs/STANDARD.md#done)).
 
+A game's `proof/saves.json` lists the bytes of its save memory that aren't its save, as `{ "about", "leftover": [[first, last, why]] }`, with bytes counted from the start of the save memory in eight hexadecimal digits. `prove` leaves them out when it compares what a Dreamport saved with the cartridge's ([Saves](../docs/STANDARD.md#saves)), and when a save differs it says the first byte that does and what each side holds there.
+
 ### What it can't do
 
 It searches for a way, not for a good one: the presses it finds look like nobody's play, with hops that do nothing, and it takes hits. A part with nothing to reach, such as a menu, is still written by hand. It needs the reference emulator to copy its state out and bring it back, which mGBA does and nearly every libretro core does, and on those other consoles it searches with one console at a time. It has been run on the Game Boy Advance and on the made-up console of the tools' tests only.
@@ -366,6 +368,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 | `code-map.json` | The code map |
 | `progress.json` | Each recording's results and the code that ran in matching play, written by `prove` |
 | `unreachable.json` | Optional: the stretches of the cartridge nothing can reach, each with why, which don't count towards gameplay proven, read by a person before it goes in |
+| `saves.json` | Optional: the bytes of the save memory that aren't the game's save, each stretch with why the original never reads them, which `prove` doesn't compare, read by a person before it goes in |
 | `played.json` | What of the original's code was played in each recording's matching frames, and where its instructions and branches are, as sets of places in the code map's functions, written by `prove`; nothing of the code itself |
 | `port-map.json` | The port map: the functions the game's code names, the names that land inside one but not at its start, and the stops, each a path the code says it hasn't ported, written by `portmap` |
 | `names.json` | Optional: how far the release the game's labels come from is from the copy's, stretch by stretch, for `portmap` and `read` |

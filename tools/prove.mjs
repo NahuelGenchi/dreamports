@@ -37,7 +37,7 @@ import { compareState, describeState } from './lib/state.mjs';
 import { fromStartPoint, gameplayText, leftToDo, measure, percentText } from '../src/lib/entries.mjs';
 import { readProof } from './readme.mjs';
 import { referenceOf } from './lib/reference.mjs';
-import { compareSaves } from './lib/saves.mjs';
+import { compareSaves, readLeftover } from './lib/saves.mjs';
 import { CELL, contentIn, finderOf, layoutOf, playedIn, writePlayed } from './lib/played.mjs';
 import { checkSizes, firstOtherSize } from './lib/screens.mjs';
 import { notesAbout } from './notes.mjs';
@@ -508,7 +508,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       for (const f of first.ran[originalOf[frame]]) proven.add(f);
     }
     // what the game saved, next to what the original's cartridge holds after each of its writes (lib/saves.mjs)
-    const saved = first.saves ? compareSaves(first.saves, ownSaves) : null;
+    // a write the original made before the Dreamport's first frame, on its way to a start point, isn't the Dreamport's to make
+    const saved = first.saves ? compareSaves(first.saves.filter(change => change.frame >= originalOf[0]), ownSaves, readLeftover(game)) : null;
     // what of the original's code ran in those frames, for gameplay proven, with the code the game made in memory
     let played = null;
     if (seesPlayed) {
@@ -785,8 +786,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (!quick) log(`  What this step changed: ${changedText(changed)}${changed ? (changed.heard ? ', so share leaves this clip out when another shows a change that can be seen' : '') : ', so share leaves this clip out'}.`);
     if (changed) for (const problem of problems) log(`  share won't put this clip in a pull request: ${problem}`);
     if (saved?.first) {
-      const { write, frame, at } = saved.first;
-      log(`  Saves: the original wrote its save ${saved.original} time${saved.original === 1 ? '' : 's'} and the Dreamport ${saved.dreamport}, ${saved.same} the same. The first that differs is write ${write}${frame === null ? ', which the original never made' : `, at the original's frame ${frame}`}${at === null ? (frame === null ? '' : ', which the Dreamport never made') : `, from byte ${at} of the save memory`}.`);
+      const { write, frame, at, original: theirs, dreamport: mine } = saved.first;
+      log(`  Saves: the original wrote its save ${saved.original} time${saved.original === 1 ? '' : 's'} and the Dreamport ${saved.dreamport}, ${saved.same} the same. The first that differs is write ${write}${frame === null ? ', which the original never made' : `, at the original's frame ${frame}`}${at === null ? (frame === null ? '' : ', which the Dreamport never made') : `, from byte ${at} of the save memory, where the original's holds ${theirs ?? 'nothing'} and the Dreamport's ${mine ?? 'nothing'}`}.`);
     }
     if (showing) log(`  What the original shows as it ends: ${Object.entries(showing).map(([kind, value]) => `its ${kind} is ${typeof value === 'number' ? `${value}, which original.json gives no name` : value}`).join('; ')}.`);
     return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(played ? { played } : {}), ...(saved && (saved.original || saved.dreamport) ? { saves: { original: saved.original, dreamport: saved.dreamport, same: saved.same } } : {}), ...(showing ? { shows: showing } : {}), ...(goalsHeld ? { reached: goalsHeld } : {}), unreached, changed: !!changed, functions: [...proven].sort((a, b) => a - b).map(i => codeMap.functions[i].key) };

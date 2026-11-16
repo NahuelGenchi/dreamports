@@ -19,8 +19,9 @@ test('a write is the same only byte for byte, and the first that differs is name
   assert.deepEqual(compareSaves(original, [{ frame: 98, bytes: bytes(1, 2, 3, 4) }, { frame: 899, bytes: bytes(5, 6, 7, 8) }]),
     { original: 2, dreamport: 2, same: 2, first: null });
   assert.deepEqual(compareSaves(original, [{ frame: 98, bytes: bytes(1, 2, 3, 4) }, { frame: 899, bytes: bytes(5, 6, 0, 8) }]),
-    { original: 2, dreamport: 2, same: 1, first: { write: 2, frame: 900, at: 2 } });
-  assert.deepEqual(compareSaves(original, [{ frame: 98, bytes: bytes(1, 2, 3) }]).first, { write: 1, frame: 100, at: 3 }, 'a shorter save memory differs past its end');
+    { original: 2, dreamport: 2, same: 1, first: { write: 2, frame: 900, at: 2, original: 7, dreamport: 0 } });
+  assert.equal(compareSaves(original, [{ frame: 98, bytes: bytes(1, 2, 3, 4) }, { frame: 899, bytes: bytes(5, 6, 0, 8) }], [[2, 2]]).same, 2, 'a byte the game lists as not its save isn\'t compared');
+  assert.deepEqual(compareSaves(original, [{ frame: 98, bytes: bytes(1, 2, 3) }]).first, { write: 1, frame: 100, at: 3, original: 4, dreamport: null }, 'a shorter save memory differs past its end');
   assert.deepEqual(compareSaves(original, []), { original: 2, dreamport: 0, same: 0, first: { write: 1, frame: 100, at: null } });
   assert.deepEqual(compareSaves([], [{ frame: 5, bytes: bytes(1) }]), { original: 0, dreamport: 1, same: 0, first: { write: 1, frame: null, at: null } });
   assert.deepEqual(compareSaves([], []), { original: 0, dreamport: 0, same: 0, first: null });
