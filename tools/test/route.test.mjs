@@ -170,3 +170,19 @@ test('how many consoles search at once: the idle cores, or what\'s asked', () =>
   assert.equal(consolesAtOnce('3', { cores: 64, load: 0 }), 3);
   for (const wrong of ['0', 'many', '33', '']) assert.throws(() => consolesAtOnce(wrong), /--at-once takes/);
 });
+
+test('a search looks at its part from where it starts, and stops counting play after a branch tested at set moments', async () => {
+  const { framesFrom, lostAfter } = await import('../route.mjs');
+  const frames = framesFrom(2800, 7374);
+  assert.equal(frames[0], 2800, 'nothing before the start, where the game may be in another part');
+  assert.equal(frames.at(-1), 4600);
+  assert.equal(frames.length, 16);
+  assert.deepEqual(framesFrom(100, 101), [100], 'a recording that ends there shows nothing of the part');
+  assert.deepEqual(framesFrom(10, 14), [10, 11, 12, 13]);
+  const record = (times, frame) => ({ times, frame });
+  assert.equal(lostAfter([record(1, 5220)], 2800), 5340, 'two seconds past the one time it ran');
+  assert.equal(lostAfter([record(1, 5220), record(2, 9000)], 2800), 9120, 'past the last of a few');
+  assert.equal(lostAfter([record(577, 7016)], 2800), null, 'a branch that runs all the time has no moment');
+  assert.equal(lostAfter([record(1, 2000)], 2800), null, 'nor one that last ran before the search starts');
+  assert.equal(lostAfter([], 2800), null);
+});
