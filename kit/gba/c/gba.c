@@ -90,3 +90,38 @@ uint32_t gba_lz77_vram(const uint8_t *src, uint32_t srcSize, uint32_t at) {
   VramOut v = { at, 0 };
   return at < sizeof gba_vram ? lz77(src, srcSize, sizeof gba_vram - at, put_vram, got_vram, &v) : 0;
 }
+
+// The BIOS's Sqrt and ArcTan2 (gba.h)
+int gba_sqrt(uint32_t n) {
+  uint32_t r = 0, bit = 1u << 30;
+  while (bit > n) bit >>= 2;
+  while (bit) {
+    if (n >= r + bit) { n -= r + bit; r = (r >> 1) + bit; } else r >>= 1;
+    bit >>= 2;
+  }
+  return (int)r;
+}
+
+// the BIOS's ArcTan, which ArcTan2 calls
+static int arctan(int i) {
+  int a = -(i * i >> 14), b = (0xA9 * a >> 14) + 0x390;
+  b = (b * a >> 14) + 0x91C;
+  b = (b * a >> 14) + 0xFB6;
+  b = (b * a >> 14) + 0x16AA;
+  b = (b * a >> 14) + 0x2081;
+  b = (b * a >> 14) + 0x3651;
+  b = (b * a >> 14) + 0xA2F9;
+  return i * b >> 16;
+}
+int gba_arctan2(int x, int y) {
+  if (!y) return x >= 0 ? 0 : 0x8000;
+  if (!x) return y >= 0 ? 0x4000 : 0xC000;
+  if (y >= 0) {
+    if (x >= 0) { if (x >= y) return arctan((y << 14) / x); }
+    else if (-x >= y) return arctan((y << 14) / x) + 0x8000;
+    return 0x4000 - arctan((x << 14) / y);
+  }
+  if (x <= 0) { if (-x > -y) return arctan((y << 14) / x) + 0x8000; }
+  else if (x >= -y) return arctan((y << 14) / x) + 0x10000;
+  return 0xC000 - arctan((x << 14) / y);
+}
