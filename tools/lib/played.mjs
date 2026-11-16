@@ -321,6 +321,21 @@ export function leftoverPieces(functions, parts, ran) {
 const hex8 = address => address.toString(16).toUpperCase().padStart(8, '0');
 
 /** A version's played.json, or a new one. */
+/**
+ * The recordings in whose matching frames the instruction at `address` ran, with what it did there: each as
+ * { name, taken, notTaken }, or none when the address is in no function of the code map or nothing has run it.
+ */
+export function ranIn(game, codeMap, address) {
+  const layout = layoutOf(codeMap), played = readPlayed(game);
+  const index = codeMap.functions.findIndex(f => address >= f.address && address < f.address + f.size);
+  if (index < 0 || played.places !== layout.places) return [];
+  const place = layout.first[index] + ((address - codeMap.functions[index].address) >> 1);
+  return Object.entries(played.recordings ?? {}).map(([name, text]) => {
+    const set = unpack(text, layout.bytes);
+    return has(set, place * 3 + RAN) ? { name, taken: has(set, place * 3 + TAKEN), notTaken: has(set, place * 3 + NOT_TAKEN) } : null;
+  }).filter(Boolean);
+}
+
 export function readPlayed(game) {
   const file = join(proofFolder(game), 'played.json');
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : { recordings: {} };
