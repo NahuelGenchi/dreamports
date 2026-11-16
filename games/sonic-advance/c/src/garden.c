@@ -50,6 +50,8 @@ enum { UNPACKED = UNPACK_FRAMES - 1, SOUND_INIT = 21, INIT_GARDEN = 22, SONG_STA
 #define SE_PUT 0x16       // the same sound as SE_GAUGE_EXPANDS
 #define SE_BUY 0x19
 #define SE_CANT 0x1C
+#define SE_SNORE 0x14
+#define SE_SPEAKS 0x1F
 
 static uint8_t *prog;     // the program as the work RAM holds it
 static uint8_t *work;     // WORK_RAM
@@ -913,8 +915,11 @@ static void link_icon(Obj *o) {
 
 // what the Chao is doing; the others aren't in C yet
 enum { CHAO_STANDS = 0, CHAO_WAITS = 2, CHAO_HATCHED = 9, CHAO_GREETS = 10, CHAO_GIVEN = 13, CHAO_BITES = 14,
-       CHAO_EATS = 15, CHAO_PETTED = 16, CHAO_ENJOYS = 17, CHAO_PLEASED = 18, CHAO_CHEERS = 19, CHAO_WALKS = 22, CHAO_SLEEPS = 23, CHAO_SITS = 25,
-       CHAO_SITS_DOWN = 26, CHAO_LIES = 27, CHAO_LOOKS = 28, CHAO_LOOKS_ABOUT = 29, CHAO_DYING = 32, CHAO_CRIES = 45 };
+       CHAO_EATS = 15, CHAO_PETTED = 16, CHAO_ENJOYS = 17, CHAO_PLEASED = 18, CHAO_CHEERS = 19, CHAO_WALKS = 22, CHAO_SLEEPS = 23,
+       CHAO_WAKES = 24, CHAO_SITS = 25, CHAO_SITS_DOWN = 26, CHAO_LIES = 27, CHAO_LOOKS = 28, CHAO_LOOKS_ABOUT = 29,
+       CHAO_REMARKS = 30, CHAO_REMARKING = 31, CHAO_DYING = 32, CHAO_SAYS = 39, CHAO_SAYING = 40, CHAO_SAYS_HUNGRY = 41,
+       CHAO_SAYING_HUNGRY = 42, CHAO_STARVES = 43, CHAO_SULKS = 44, CHAO_CRIES = 45, CHAO_YAWNS = 46, CHAO_GRUMBLES = 47,
+       CHAO_GLAD = 48, CHAO_SAD = 49, CHAO_BORED = 50 };
 
 // the Chao's object keeps these in the places a drawn object keeps its sprite's
 #define behaviour attr1
@@ -1034,7 +1039,7 @@ static int touches(const Obj *thing, int kind, int x, int y) {
 static void hand(Obj *o) {
   if (g.flags & 0x50) { not_in_c(); return; }
   if (g.flags & 0x20) { not_in_c(); return; }
-  if (pauseState) { not_in_c(); return; }
+  if (pauseState) return;
   o->attr2 = 0x14;
   layer_add(o->id, 1);
   if (g.flags & 0x83) return;
@@ -1394,8 +1399,68 @@ static void chao_steps(Obj *o) {
 // a random number less `chance`, as 16 bits: negative one time in 32768 / chance
 static int16_t less(int16_t roll, int chance) { return (int16_t)(roll - chance); }
 
+static void work16(int i, uint16_t v) { set_le16(work, i * 2, v); }
+
+/** 0x02001FA4: `lines` lines of a message into the work RAM's map, `wide` entries a row, from row `top` and one entry in:
+ *  0x5F then a byte under 0x80 picks the colour, 0x5F then one above ends the line, and 0xFF turns to the other 256
+ *  letters. */
+static void message_lines(const uint8_t *p, int wide, int lines, int top) {
+  uint16_t colour = 0, page = 0;
+  for (int line = 0; line < lines; line++) {
+    int i = 1 + (line + top) * wide;
+    for (int c = *p++;; c = *p++) {
+      if (c == 0x5F) {
+        int n = *p++;
+        if (n >= 0x80) break;
+        colour = (uint16_t)((n & 0xF) << 12);
+      } else if (c == 0xFF) page = page ? 0 : 0x100;
+      else work16(i++, (uint16_t)(colour + page + c + 0x2AF));
+    }
+  }
+}
+
+/** 0x020022D8: the Chao's speech bubble with message `msg` in the game's language, in the work RAM's map: its frame, the
+ *  words, and its tail toward the Chao, at the bottom when the Chao is low on the screen and the bubble above it, else
+ *  at the top. Its size with the frame goes in `wide` and `tall`; 0 for a message there isn't. */
+static int bubble(int msg, int *wide, int *tall) {
+  int i = 0;
+  while (i <= 0x71 && p8(0x02021D8Cu + (uint32_t)i) != (uint32_t)msg) i++;
+  if (i > 0x71) return 0;
+  const uint8_t *p = at(p32(0x020219FCu + (uint32_t)(i * 8 + g.language * 4)));
+  int w = *p++, h = *p++, n = 0;
+  work16(n++, 0x160);
+  for (int j = 0; j < w; j++) work16(n++, 0x161);
+  work16(n++, 0x163);
+  for (int r = 0; r < h; r++) {
+    work16(n++, 0x164);
+    for (int j = 0; j < w; j++) work16(n++, 0x165);
+    work16(n++, 0x166);
+  }
+  work16(n++, 0x167);
+  for (int j = 0; j < w; j++) work16(n++, 0x168);
+  work16(n, 0x16A);
+  int x = w / 2 + (chaoObj->x - 0x58) / 8;
+  x = (x < 0 ? 0 : x >= w ? w - 1 : x) + 1;
+  if (chaoObj->y > 0x5F) work16((h + 1) * (w + 2) + x, 0x169);
+  else work16(x, 0x162);
+  message_lines(p, w + 2, h, 1);
+  *wide = (uint8_t)(w + 2);
+  *tall = (uint8_t)(h + 2);
+  return 1;
+}
+
+/** The bubble on the screen at the next frame, above the Chao or below it, with its sound, and half a second before A
+ *  can close it. */
+static void bubble_shows(Obj *o, int wide, int tall) {
+  int row = o->y > 0x5F ? (o->y >> 3) - (tall + 3) : (o->y >> 3) + 1;
+  queue_map(work, (uint32_t)(0x0E816 - (wide & 0xFE) + row * 64), wide, tall, 0xC000);
+  gba_sound_play(SE_SPEAKS);
+  o->countdown = 0x1E;
+}
+
 /** 0x02005220: what the Chao does next, for 3 to 5 seconds: after anything but a walk, a walk; after a walk, another, or
- *  by chance and by its needs it sits, lies down or cries. Its other choices aren't in C yet. */
+ *  by chance and by its needs it sits, lies down, says something or shows how it feels. Looking for fruit when it's
+ *  hungry isn't in C yet. */
 static void chao_chooses(Obj *o) {
   o->changed = 0;
   if (!save32(SAVE_LIFE)) { o->behaviour = CHAO_DYING; return; }
@@ -1408,38 +1473,64 @@ static void chao_chooses(Obj *o) {
   if (tcgSave[SAVE_BELLY] <= 0x42) for (int i = 0; i < 8; i++) if (nearby[i]) { not_in_c(); return; }
   if (tcgSave[0x35]) { not_in_c(); return; }
   int16_t roll = less((int16_t)random15(), 0x0CCC);
-  if (roll < 0) { not_in_c(); return; }
+  if (roll < 0) { o->behaviour = CHAO_REMARKS; return; }
   if ((roll = less(roll, 0x666)) < 0) { o->behaviour = CHAO_LIES; return; }
   if ((roll = less(roll, 0x666)) < 0) { o->behaviour = CHAO_SITS_DOWN; return; }
   if ((roll = less(roll, 0x666)) < 0) { o->behaviour = CHAO_SITS; return; }
   if (less(roll, 0x666) < 0) { o->behaviour = CHAO_LOOKS; return; }
+  // by its needs: starving or hungry, sleepy, its mood, bored
+  int belly = tcgSave[SAVE_BELLY], mood = tcgSave[SAVE_MOOD], bored = tcgSave[SAVE_BORED];
   roll = less((int16_t)random15(), 0x1FFF);
   if (roll < 0) {
-    if (!tcgSave[SAVE_BELLY]) { not_in_c(); return; }
-    if (tcgSave[SAVE_BELLY] > 0x42) goto walks;
+    if (!belly) { o->countdown = 0x78; o->behaviour = CHAO_STARVES; return; }
+    if (belly > 0x42) goto walks;
     o->behaviour = CHAO_CRIES;
     o->arg = 0x14;
     o->state = 0;
     return;
   }
   if ((roll = less(roll, 0x1FFF)) < 0) {
-    if (tcgSave[SAVE_SLEEP] > 0x95) { not_in_c(); return; }
-    goto walks;
+    if (tcgSave[SAVE_SLEEP] <= 0x95) goto walks;
+    o->behaviour = CHAO_YAWNS;
+    o->arg = 0xF;
+    o->state = 0;
+    return;
   }
   if ((roll = less(roll, 0x1FFF)) < 0) {
-    if (tcgSave[SAVE_MOOD] > 0x32 && tcgSave[SAVE_MOOD] <= 0xA5) goto walks;
-    not_in_c();
+    if (mood > 0xBD) { o->behaviour = CHAO_GLAD; o->arg = 0x1E; o->state = 0; }
+    else if (mood > 0xA5) o->behaviour = CHAO_PLEASED;
+    else if (!mood) { o->behaviour = CHAO_SAD; o->arg = 0x1E; o->state = 0; }
+    else if (mood <= 0x32 && fruitCount > 9) { o->behaviour = CHAO_GRUMBLES; o->arg = 0xF; o->state = 0; }
+    else goto walks;
     return;
   }
   if (less(roll, 0x1999) < 0) {
-    if (tcgSave[SAVE_BORED] > 0x63) { not_in_c(); return; }
-    goto walks;
+    if (bored <= 0x63) goto walks;
+    o->countdown = 0x78;
+    o->behaviour = bored > 0x84 ? CHAO_SULKS : CHAO_BORED;
+    return;
   }
+  // or it says something, about itself or what it needs: the bubble's message is its state
   roll = less((int16_t)random15(), 0x1333);
-  if (roll < 0) { not_in_c(); return; }
-  if ((roll = less(roll, 0x0CCC)) < 0) { not_in_c(); return; }
-  if ((roll = less(roll, 0x1333)) < 0) { not_in_c(); return; }
-  if (less(roll, 0x3FFF) >= 0 || tcgSave[SAVE_BELLY] <= 0x42) { not_in_c(); return; }
+  if (roll < 0) {
+    o->state = tcgSave[0xCD] ? 0x65 : random15() <= 0x3FFF ? 0x63 : 0x61;
+  } else if ((roll = less(roll, 0x0CCC)) < 0) {
+    o->state = tcgSave[0xCE] ? 0x77 : 0x67;
+  } else if ((roll = less(roll, 0x1333)) < 0) {
+    o->state = random15() <= 0x3FFF ? 0x69 : 0x6B;
+  } else if (less(roll, 0x3FFF) < 0) {
+    if (belly > 0x42) goto walks;
+    if (belly > 0x32) o->state = 0x6D;
+    else {
+      o->state = !belly ? 0x75 : belly <= 0x10 ? 0x73 : belly <= 0x21 ? 0x71 : 0x6F;
+      o->behaviour = CHAO_SAYS_HUNGRY;
+      return;
+    }
+  } else if (tcgSave[0xCF]) {
+    o->state = 0x81;
+  } else goto walks;
+  o->behaviour = CHAO_SAYS;
+  return;
 walks:
   chao_turns(o);
   o->behaviour = CHAO_WALKS;
@@ -1505,6 +1596,89 @@ static void chao_lives(Obj *o) {
     case CHAO_SITS: case CHAO_SITS_DOWN: case CHAO_LIES:
       if (--o->countdown == 0) chao_chooses(o);
       break;
+    case CHAO_SLEEPS:
+      // asleep until it isn't sleepy, a point every 4 frames; woken, it's grumpy, its mood down a fifth
+      o->extra[0] = 2;
+      if (g.flags & 0x20) { o->countdown = 1; o->behaviour = 1; break; }
+      if (o->state) {
+        if (--o->state) break;
+        if (tcgSave[SAVE_SLEEP] <= 0x27) { chao_chooses(o); break; }
+        tcgSave[SAVE_MOOD] = (uint8_t)(tcgSave[SAVE_MOOD] - tcgSave[SAVE_MOOD] / 5);
+        o->countdown = 0x5A;
+        o->behaviour = CHAO_WAKES;
+        o->changed = 0xC;
+        break;
+      }
+      if (!(g.frames & 3) && --tcgSave[SAVE_SLEEP] == 0) chao_chooses(o);
+      break;
+    case CHAO_WAKES: case CHAO_STARVES: case CHAO_SULKS: case CHAO_BORED:
+      if (g.flags & 0x20) { o->behaviour = CHAO_STANDS; break; }
+      if (--o->countdown == 0) chao_chooses(o);
+      break;
+    case CHAO_YAWNS: case CHAO_GRUMBLES:
+      if (g.flags & 0x20) { o->behaviour = CHAO_STANDS; break; }
+      if (--o->arg == 0) {
+        o->arg = 0xF;
+        if (++o->state > 7) chao_chooses(o);
+      }
+      break;
+    case CHAO_GLAD: case CHAO_SAD:
+      if (g.flags & 0x20) { o->behaviour = CHAO_STANDS; break; }
+      if (--o->arg == 0) {
+        o->arg = 0x1E;
+        if (++o->state > 3) chao_chooses(o);
+      }
+      break;
+    case CHAO_REMARKS: {
+      if (g.flags & 0x20) { o->behaviour = CHAO_STANDS; break; }
+      // one of 94 remarks it hasn't made yet, the next one along when it has made this one; all of them again once
+      // it has made them all, or nothing after three times round
+      uint8_t *made = &tcgSave[0xC0];
+      if (tcgSave[0xCC] > 0x5D) memset(made, 0, 13);
+      made[3] |= 0x20;
+      int m = random_below(0x5E);
+      if (m > 0x1C) m++;
+      int byte = m >> 3, bit = m & 7, laps = 0;
+      while (made[byte] >> bit & 1) {
+        if (++bit > 7) {
+          bit = 0;
+          if (++byte > 11) byte = 0;
+        }
+        if (byte == 11 && bit == 7) {
+          byte = bit = 0;
+          if (++laps > 2) break;
+        }
+      }
+      if (laps > 2) { tcgSave[0xCC] = 0x5E; chao_chooses(o); break; }
+      m = byte << 3 | bit;
+      made[byte] |= (uint8_t)(1 << bit);
+      tcgSave[0xCC]++;
+      int wide, tall;
+      if (!bubble(m + 0x39, &wide, &tall)) { chao_chooses(o); break; }
+      bubble_shows(o, wide, tall);
+      o->behaviour = CHAO_REMARKING;
+    }
+      // fallthrough
+    case CHAO_REMARKING: case CHAO_SAYING: case CHAO_SAYING_HUNGRY:
+      // the garden held still under the bubble until A closes it
+      handBusy = 1;
+      o->extra[0] = 0;
+      pauseState = 1;
+      if (o->countdown) o->countdown--;
+      if ((input.pressed & KEY_A) && !o->countdown) {
+        queue_map(NULL, 0x0E800u, 0xFF, 0, 0);
+        pauseState = 0;
+        chao_chooses(o);
+      }
+      break;
+    case CHAO_SAYS: case CHAO_SAYS_HUNGRY: {
+      if (g.flags & 0x20) { o->behaviour = CHAO_STANDS; break; }
+      int wide = 0, tall = 0;
+      bubble(o->state + 0x39, &wide, &tall);
+      bubble_shows(o, wide, tall);
+      o->behaviour = o->behaviour == CHAO_SAYS ? CHAO_SAYING : CHAO_SAYING_HUNGRY;
+      break;
+    }
     case CHAO_PETTED:
       o->countdown = 63;
       o->behaviour = CHAO_ENJOYS;
@@ -1684,7 +1858,7 @@ static void chao_body(Obj *o) {
   if (g.flags & 0x10) return;
   if (!chaoShown) { destroy(o); return; }
   if (!(g.flags & 0x80)) {
-    const Obj *c = &objs[o->link];
+    Obj *c = &objs[o->link];
     o->changed = c->changed;
     o->x = c->x;
     o->y = c->drawY;
@@ -1731,6 +1905,23 @@ static void chao_body(Obj *o) {
         break;
       case CHAO_LOOKS_ABOUT: frame = c->state ? 0x42 : 0x30; break;
       case CHAO_CRIES: frame = c->state ? (c->state & 1) + 0x2B : 0; break;
+      case CHAO_SLEEPS:
+        // asleep, the picture's own way or mirrored, breathing, and snoring every 128 frames
+        if (facing(c->heading)) c->changed &= 0x7F;
+        else { own = 0; c->changed |= 0x80; }
+        frame = g.frames & 0x60 ? 0x36 : 0x35;
+        if ((g.frames & 0x7F) == 0x20 && !(g.flags & 3)) gba_sound_play(SE_SNORE);
+        break;
+      case CHAO_REMARKS: frame = 0x1B; break;
+      case CHAO_REMARKING: case CHAO_SAYS: case CHAO_SAYING: frame = 0; break;
+      case CHAO_SAYS_HUNGRY: case CHAO_SAYING_HUNGRY: frame = 0x2C; break;
+      case CHAO_STARVES: frame = g.frames & 0x18 ? 0x3F : 0x3E; break;
+      case CHAO_SULKS: frame = g.frames & 0x18 ? 0x41 : 0x40; break;
+      case CHAO_BORED: frame = 0x34; break;
+      case CHAO_YAWNS: frame = c->state == 1 || c->state == 6 || c->state == 7 ? 0x3C : c->state >= 2 && c->state <= 5 ? 0x3D : 0; break;
+      case CHAO_GRUMBLES: frame = c->state < 3 || c->state > 7 ? 0x1D : c->state & 1 ? 0x1E : 0x1F; break;
+      case CHAO_GLAD: frame = c->state == 1 ? 0x29 : c->state == 2 || c->state == 3 ? 0x2A : 0; break;
+      case CHAO_SAD: frame = c->state == 1 ? 0x20 : c->state == 2 || c->state == 3 ? 0x21 : 0; break;
       default: not_in_c(); return;
     }
     o->parts = own ? 0x020189B4u : 0x020189D4u;
