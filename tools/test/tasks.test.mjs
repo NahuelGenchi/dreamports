@@ -6,7 +6,7 @@ import { field } from '../lib/claims.mjs';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { holdGame, leftoverText, missingParts, taskText, taskTitled } from '../tasks.mjs';
+import { holdGame, leftoverText, missingParts, taskText, taskTitled, keepTaking } from '../tasks.mjs';
 import { leftoverPieces } from '../lib/played.mjs';
 
 const parts = [
@@ -145,4 +145,16 @@ test('what\'s left of a version becomes pieces: by the part that reaches it, sha
   assert.match(text, /npm run dp -- route made-up\/c <name> --from act-1 --goal untouched/);
   assert.match(text, /### Done when\n\n`npm run dp -- untouched made-up\/c --all` no longer lists these functions/);
   assert.match(leftoverText('made-up/c', pieces[3]), /- `08032000`: never played, 80 instructions and branch ways\n- `08031000`/);
+
+  // with what untouched --sort found, each branch says what it tests, and the piece how many are of each kind
+  const sorted = new Map([[0x08020010, { kind: 'same', held: [[0, 4]], sides: [{ address: 0x0300505C, bytes: 1, held: [0], against: [4] }] }]]);
+  const told = leftoverText('made-up/c', pieces[1], sorted);
+  assert.match(told, /`08020010` taken \(never differed: the byte at `0300505C` held 0 against 4\)/);
+  assert.match(told, /Of its branches gone one way only, as `npm run dp -- untouched made-up\/c --sort` found them: 1 compare something that never differed in any recording/);
+  assert.equal(leftoverText('made-up/c', pieces[1], new Map()), text, 'a branch it didn\'t sort says nothing more');
+  // written again, a task keeps what it says of who took it
+  const taken = text.replace("- [ ] I'm taking this task myself.", "- [x] I'm taking this task myself.\n\nTaken by someone.");
+  assert.ok(keepTaking(told, taken).endsWith("- [x] I'm taking this task myself.\n\nTaken by someone."));
+  assert.ok(keepTaking(told, taken).startsWith(told.slice(0, told.indexOf('### Taking it'))));
+  assert.equal(keepTaking(told, 'a text with no such part'), told);
 });

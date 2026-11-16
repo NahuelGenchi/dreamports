@@ -16,6 +16,9 @@
 // (lib/played.mjs, docs/STANDARD.md#done): a task for what's left of each part, the functions its recording ran with
 // instructions or branch ways never played, one for the code most parts share, by where it is, and one for each stretch
 // of code that never ran. Each lists its functions and says how to reach them. One whose task is open already is left.
+// Where `npm run dp -- untouched <version> --sort` has been run on the computer, each branch a task lists says what it
+// tests, and the task how many of its branches are of each kind. --update writes the leftover tasks already open again
+// from what's left now, with --yes, each keeping what it says of who took it.
 
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
@@ -26,27 +29,29 @@ import { nameKey, pieceOf, planOf, taskTitle } from '../src/lib/pieces.mjs';
 import { LANGUAGES, playOrder, versionName, versionOf } from '../src/lib/languages.mjs';
 import { UPSTREAM, api } from './lib/github.mjs';
 import { field, readClaims } from './lib/claims.mjs';
+import { kindText, readSorted } from './untouched.mjs';
+import { readOriginal } from './lib/proof-files.mjs';
 import { dreamports } from './readme.mjs';
 
-const USAGE = 'Usage: npm run dp -- tasks <game>[/c] [--repo <owner/name>] [--yes]';
+const USAGE = 'Usage: npm run dp -- tasks <game>[/c] [--repo <owner/name>] [--yes] [--update]';
 const WAIT_MS = 90_000, EVERY_MS = 5_000;
 
 export async function run(args) {
-  const { game: name, repo = UPSTREAM, yes = false } = options(args);
-  if (name.includes('/')) return openTasks(name, repo, yes);
+  const { game: name, repo = UPSTREAM, yes = false, update = false } = options(args);
+  if (name.includes('/')) return openTasks(name, repo, yes, update);
   // a game alone: each of its versions, C's first (src/lib/languages.mjs)
   const { game } = versionOf(name);
   const dreamport = dreamports().find(d => d.game === game);
   const languages = dreamport ? playOrder([dreamport.language ?? 'js', ...dreamport.versions.map(v => v.language)]) : ['js'];
   for (const [index, language] of languages.entries()) {
     if (index) console.log('');
-    await openTasks(versionName(game, language), repo, yes);
+    await openTasks(versionName(game, language), repo, yes, update);
   }
   return 0;
 }
 
 // the tasks of one version, as the start of this file says
-async function openTasks(version, repo, yes) {
+async function openTasks(version, repo, yes, update = false) {
   const { game, language } = versionOf(version);
   const file = readPartsFile(game), parts = file.parts ?? [];
   if (!parts.length) throw new Error(`games/${game}/proof/parts.json lists no parts yet, and each task is one of them.`);
@@ -68,7 +73,7 @@ async function openTasks(version, repo, yes) {
     console.log(`Every foundation and part of ${version} has its task already, under ${where}.`);
     const versionProof = language === main ? dreamport?.proof : inVersion?.proof;
     const through = versionProof?.gameplay && versionProof.gameplay.proven === versionProof.gameplay.total;
-    return through && readPlayed(version).places ? openLeftovers({ version, repo, yes, parts, where, game, language }) : 0;
+    return through && readPlayed(version).places ? openLeftovers({ version, repo, yes, update, parts, where, game, language }) : 0;
   }
   if (!yes) {
     console.log(`A task for each of these ${wanted.length} would go under ${where} in ${repo}, public and in your name:\n${wanted.map(p => `  ${p.name}`).join('\n')}`);
@@ -103,10 +108,14 @@ async function openTasks(version, repo, yes) {
 }
 
 // the tasks for what's left of a version whose parts are all played through, as the start of this file says
-async function openLeftovers({ version, repo, yes, parts, where, game, language }) {
+async function openLeftovers({ version, repo, yes, update, parts, where, game, language }) {
   const ran = Object.fromEntries(Object.entries(readProgress(version).recordings).map(([name, r]) => [name, r.functions ?? []]));
   const pieces = leftoverPieces(untouchedOf(version, readCodeMap(version)).functions, parts.filter(part => part.recording), ran);
+  // what each branch tests, when untouched --sort has been run here: the tasks say it
+  const sorted = readSorted(version, readOriginal(version).sha1);
+  if (!sorted) console.log(`npm run dp -- untouched ${version} --sort hasn't been run on this computer, so the tasks won't say what each branch tests.`);
   const open = api(`repos/${repo}/issues?state=open&sort=created&direction=desc&per_page=100`) ?? [];
+  if (update) return updateLeftovers({ version, repo, yes, pieces, sorted, open, game, language });
   const wanted = pieces.filter(piece => !taskTitled(open, taskTitle(piece.name, language), game));
   if (!wanted.length) {
     console.log(pieces.length ? `Every piece of what's left of ${version} has its task open already.` : `Nothing is left to play of ${version}'s code.`);
@@ -122,7 +131,7 @@ async function openLeftovers({ version, repo, yes, parts, where, game, language 
   let opened = 0;
   try {
     for (const piece of wanted) {
-      const issue = api(`repos/${repo}/issues`, { method: 'POST', body: { title: taskTitle(piece.name, language), body: leftoverText(version, piece) } });
+      const issue = api(`repos/${repo}/issues`, { method: 'POST', body: { title: taskTitle(piece.name, language), body: leftoverText(version, piece, sorted) } });
       opened++;
       console.log(`#${issue.number} ${piece.name}${await underItsGame(repo, issue.number) ? '' : `: the bot hasn't put it under ${where} yet, and will`}`);
     }
@@ -133,20 +142,61 @@ async function openLeftovers({ version, repo, yes, parts, where, game, language 
   return 0;
 }
 
+// --update: the leftover tasks already open, written again from what's left now and what its branches test
+async function updateLeftovers({ version, repo, yes, pieces, sorted, open, game, language }) {
+  const changed = pieces.map(piece => ({ piece, issue: taskTitled(open, taskTitle(piece.name, language), game) })).filter(({ issue }) => issue)
+    .map(({ piece, issue }) => ({ piece, issue, body: keepTaking(leftoverText(version, piece, sorted), issue.body ?? '') })).filter(({ issue, body }) => body !== (issue.body ?? '').replace(/\r\n/g, '\n'));
+  if (!changed.length) {
+    console.log(`Every open task for what's left of ${version} says what's left now already.`);
+    return 0;
+  }
+  if (!yes) {
+    console.log(`\nThe text of these ${changed.length} open tasks would be written again in ${repo}, public and in your name, each keeping what it says of who took it:\n${changed.map(({ piece, issue }) => `  #${issue.number} ${piece.name}`).join('\n')}`);
+    console.log('\nNothing was changed: --yes changes them, once you have said yes.');
+    return 0;
+  }
+  for (const { piece, issue, body } of changed) {
+    api(`repos/${repo}/issues/${issue.number}`, { method: 'PATCH', body: { body } });
+    console.log(`#${issue.number} ${piece.name}: written again`);
+  }
+  console.log(`\nWrote ${changed.length} task${changed.length === 1 ? '' : 's'} again.`);
+  return 0;
+}
+
+/** A task's new text with the old text's last part, Taking it, as it was: who took it stays. */
+export function keepTaking(text, old) {
+  const heading = '### Taking it', at = old.replace(/\r\n/g, '\n').indexOf(heading);
+  return at < 0 ? text : `${text.slice(0, text.indexOf(heading))}${old.replace(/\r\n/g, '\n').slice(at)}`;
+}
+
 /**
  * The Task issue for a piece of what's left (leftoverPieces), under the headings of the Task form: its functions with
- * most left, each with the branches gone one way only and the way to play, and how to reach them.
+ * most left, each with the branches gone one way only and the way to play, and how to reach them. With `sorted`, what
+ * untouched --sort found of each branch (untouched.mjs's readSorted), each branch says its kind and the value it
+ * tests, and the piece how many of its branches are of each kind.
  */
-export function leftoverText(version, piece) {
+export function leftoverText(version, piece, sorted = null) {
   const { game } = versionOf(version), most = piece.functions.slice(0, 12);
-  const line = f => `- \`${f.key}\`: ${f.never ? `never played, ${f.total.toLocaleString('en')} instructions and branch ways` : `${(f.total - f.played).toLocaleString('en')} of ${f.total.toLocaleString('en')} to play`}${f.ways.length ? `; to play: ${f.ways.slice(0, 4).map(([at, way]) => `\`${hex(at)}\` ${way}`).join(', ')}${f.ways.length > 4 ? `, and ${f.ways.length - 4} more` : ''}` : ''}`;
+  const way = ([at, word]) => `\`${hex(at)}\` ${word}${sorted?.has(at) ? ` (${kindText(sorted.get(at))})` : ''}`;
+  const line = f => `- \`${f.key}\`: ${f.never ? `never played, ${f.total.toLocaleString('en')} instructions and branch ways` : `${(f.total - f.played).toLocaleString('en')} of ${f.total.toLocaleString('en')} to play`}${f.ways.length ? `; to play: ${f.ways.slice(0, 4).map(way).join(', ')}${f.ways.length > 4 ? ` and ${f.ways.length - 4} more` : ''}` : ''}`;
   const from = piece.recording ? `--from ${piece.recording}` : '--from <a recording that gets near it>';
+  // how many of the piece's branches are of each kind, the plainest to reach first
+  const kinds = {};
+  for (const f of piece.functions) for (const [at] of f.ways) if (sorted?.has(at)) kinds[sorted.get(at).kind] = (kinds[sorted.get(at).kind] ?? 0) + 1;
+  const count = (kind, words) => (kinds[kind] ? [`${kinds[kind].toLocaleString('en')} ${words}`] : []);
+  const sums = [
+    ...count('moves', 'compare something that changes in play, so playing differently or `route --goal untouched:<address>` reaches the other way'),
+    ...count('differs', 'compare something that differs by recording, such as the character, or a count tested once'),
+    ...count('same', "compare something that never differed in any recording, often the game's mode or a setting, which needs a recording that starts differently"),
+    ...count('path', 'go by the path: a flag set earlier or what a function gave back, so another path has to be played first'),
+  ];
+  const sorting = sums.length ? ['', `Of its branches gone one way only, as \`npm run dp -- untouched ${version} --sort\` found them: ${sums.join('; ')}.`] : [];
   return [
     '### Game folder', '', game, '',
     '### Kind', '', 'Something else', '',
     '### What it is', '',
     `${piece.name}: code of the original that has never been played next to the Dreamport, though ${piece.recording ? 'its part is played through' : 'every part is played through'}. Gameplay proven counts every instruction and each way of every branch (\`docs/STANDARD.md#done\`), and these ${piece.functions.length === 1 ? 'is the function' : `are the ${piece.functions.length} functions`} with something left, as \`npm run dp -- untouched ${version} --all\` lists them${piece.functions.length > most.length ? `, the ${most.length} with most first` : ''}:`,
-    '', ...most.map(line), '',
+    '', ...most.map(line), ...sorting, '',
     `\`npm run dp -- route ${version} <name> ${from} --goal untouched\` finds presses that reach code not played yet, or with \`--goal untouched:<address>\` one branch's way; \`npm run dp -- untouched ${version} --why <address>\` says first what a branch tests and what it held, as one that tests the character, the mode or a setting needs a recording that starts differently, and no search reaches it; \`npm run dp -- read ${game} <address>\` prints the code. Port what the recording stops on, mark with \`dp:stop\` what has to wait, and prove it.`,
     '',
     '### Done when', '',
@@ -207,6 +257,7 @@ function options(args) {
       if (!/^[\w.-]+\/[\w.-]+$/.test(args[i + 1] ?? '')) throw new Error(`--repo needs a repository, as owner/name.\n${USAGE}`);
       found.repo = args[++i];
     } else if (arg === '--yes') found.yes = true;
+    else if (arg === '--update') found.update = true;
     else if (arg.startsWith('--')) throw new Error(`tasks has no ${arg}.\n${USAGE}`);
     else found.rest.push(arg);
   }

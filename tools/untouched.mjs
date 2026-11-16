@@ -315,3 +315,23 @@ async function decided(game, { original, codeMap, copy, write }) {
   console.log(`Written: games/${base}/proof/unreachable.json, ${listed.ways.length} ways. npm run dp -- prove <version> counts them out of gameplay proven.`);
   return 0;
 }
+
+/**
+ * What untouched --sort last found of a version's branches, from .dreamports/untouched/ on this computer: a Map from a
+ * branch's address to { kind, sides, held }, or null when it hasn't been run for this copy of the original.
+ */
+export function readSorted(version, sha1) {
+  const file = join(LOCAL, 'untouched', `${version.replace('/', '-')}.json`);
+  if (!existsSync(file)) return null;
+  const kept = JSON.parse(readFileSync(file, 'utf8'));
+  if (kept.original !== sha1) return null;
+  return new Map(kept.branches.map(b => [parseInt(b.address, 16), { kind: b.kind, held: b.held ?? [], sides: b.sides.map(side => ({ ...side, address: parseInt(side.address, 16) })) }]));
+}
+
+/** A sorted branch in a few words, for a task: its kind, and the value of the work memory it tests, when it has one. */
+export function kindText(sorted) {
+  const words = { moves: 'changes in play', differs: 'differs by recording', same: 'never differed', path: 'by the path', unseen: 'not seen again' };
+  const [side] = sorted.sides;
+  const tested = side && sorted.kind !== 'moves' ? `: the ${sized(side.bytes)} at \`${hex(side.address)}\` held ${some(side.held, 3)} against ${some(side.against, 3)}` : '';
+  return `${words[sorted.kind] ?? sorted.kind}${tested}`;
+}
