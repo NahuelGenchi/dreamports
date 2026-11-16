@@ -30,7 +30,7 @@ import { join, relative } from 'node:path';
 import os from 'node:os';
 import { LOCAL, REPO, sharedProofFolder } from './lib/paths.mjs';
 import { readCodeMap, readOriginal, readRecordings } from './lib/proof-files.mjs';
-import { NOT_TAKEN, RAN, TAKEN, provenUnits, untouchedOf } from './lib/played.mjs';
+import { NOT_TAKEN, RAN, TAKEN, provenUnits, ranIn, untouchedOf } from './lib/played.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { compress, expand, originalPlay, writeRecording } from './lib/recording.mjs';
 import { referenceOf } from './lib/reference.mjs';
@@ -74,6 +74,7 @@ export async function run(args) {
 async function search({ args, value, game, name, goalText, from, minutes, then, seed, threads }) {
   let provenFile = null, target = null;
   const steering = {};   // the values an aimed search adds to its grid, with their sizes
+  let ownLost = null;    // where an aimed search stops counting play, when it works that out
   const original = readOriginal(game), base = versionOf(game).game;
   const reference = await referenceOf(original);
   const { KEY, machine } = reference;
@@ -117,7 +118,14 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
       // what the branch tests, from a recording that ran it: the search spreads over those values too, so it keeps each
       // step towards the other way (untouched.mjs)
       if (way) {
-        const { name: asked, records } = await whyOf(game, { original, codeMap, copy, address, log: console.log });
+        // in the recording the search starts from when that one ran the branch, as its frames are then the search's own
+        const inSource = ranIn(game, codeMap, address).some(each => each.name === sourceName);
+        const { name: asked, records } = await whyOf(game, { original, codeMap, copy, address, asked: inSource ? sourceName : null, log: console.log });
+        const after = inSource && value('--lost') === null ? lostAfter(records, cut) : null;
+        if (after !== null) {
+          ownLost = `frames>${after}`;
+          console.log(`The branch ran only at set moments in ${sourceName}, the last in frame ${after - 120}, so play past frame ${after} doesn't count: --lost says otherwise.`);
+        }
         testedValues(records).forEach((tested, i) => {
           const key = `tested${i + 1}`;
           route.values[key] = { address: hex(tested.address), bytes: tested.bytes };
@@ -137,13 +145,29 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
     for (const [n, size] of Object.entries(sides)) if (!(n in route.values) || !(size > 0)) throw new Error(`${flag} takes values and sizes, such as x:16,y:16, and the values are ${Object.keys(route.values).join(', ')}.`);
     return sides;
   };
-  const cells = { ...sidesOf('--cells', ownGoal.cells ?? route.cells), ...steering }, apart = sidesOf('--apart', ownGoal.apart ?? route.apart);
+  let ownCells = ownGoal.cells ?? route.cells, ownApart = ownGoal.apart ?? route.apart;
+  // a search for untouched code in a part where the game's place values don't move, such as a special stage, spreads
+  // over time: the frames played, two seconds to a cell
+  if (untouched && value('--cells') === null) {
+    const rows = Object.keys(ownCells ?? {}).map(n => route.values[n]).filter(v => v?.address).map(v => ({ address: parseInt(v.address, 16), bytes: v.bytes }));
+    const frames = framesFrom(cut, source.frames);
+    // a recording that ends where the search starts shows nothing of the part, so its grid stays the game's
+    if (rows.length === Object.keys(ownCells ?? {}).length && rows.length && frames.length > 1) {
+      const read = await readAt({ original, reference, copy, recording: source, frames, rows });
+      if (rows.every((_, i) => frames.every((__, k) => read[k * rows.length + i] === read[i]))) {
+        console.log(`${Object.keys(ownCells).join(' and ')} don't change from frame ${cut} of ${sourceName}, so the search spreads over the frames played: --cells says otherwise.`);
+        ownCells = { frames: 120 };
+        if (value('--apart') === null) ownApart = {};
+      }
+    }
+  }
+  const cells = { ...sidesOf('--cells', ownCells), ...steering }, apart = sidesOf('--apart', ownApart);
   if (!Object.keys(cells).length || Object.keys(cells).length + Object.keys(apart).length > 6) throw new Error('--cells and --apart take up to six values between them, and --cells at least one.');
   const [waitFrames, waitStates] = (value('--wait') ?? '').split(':').map(Number);
   const wait = value('--wait') === null ? ownGoal.wait ?? route.wait : { frames: waitFrames, states: waitStates };
   if (checkWait(wait)) throw new Error(`--wait takes how many frames apart and how many states, such as 90:3. ${checkWait(wait)}`);
   // play that can't go on: what the game says, and what --lost adds, such as "frames>5300" for a search that has a frame to be there by
-  const lostTexts = [...(route.lost ?? []), ...(value('--lost') ? [value('--lost')] : [])];
+  const lostTexts = [...(route.lost ?? []), ...(value('--lost') ? [value('--lost')] : ownLost ? [ownLost] : [])];
   const lost = lostTexts.map(text => parseCondition(text, route.values, '"lost"'));
   const buttons = route.buttons ?? defaultButtons(KEY);
 
@@ -253,6 +277,41 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
   return 1;
 }
 
+/**
+ * What the original holds at `frames` of a recording, each frame as the search sees it, once it has run that frame's
+ * buttons: for each frame in turn, the value of each of `rows` ({ address, bytes }).
+ */
+async function readAt({ original, reference, copy, recording, frames, rows }) {
+  const keysLate = original.keysAfterVBlank === true;
+  const way = originalPlay(recording, { keysLate });
+  const masks = way.originalHeld.map(list => list.reduce((mask, b) => mask | (reference.KEY[b] ?? 0), 0));
+  if (keysLate) masks.unshift(0);
+  reference.ensureOriginal(console.log);
+  const reads = frames.flatMap(f => rows.map(({ address, bytes }) => ({ frame: way.originalOf[f] + (keysLate ? 1 : 0), address, bytes })));
+  const played = await reference.runOriginal({ copy: copy.path, frames: masks.length + 1, buttons: masks, sets: way.sets, reads });
+  const read = played.outside.reads ?? [];
+  if (read.length !== reads.length) throw new Error('The program that runs the original read nothing of its memory: npm run dp -- setup builds it again.');
+  return read;
+}
+
+/** The frames of a recording of `length` frames to look at from `cut` on, for whether a part's place values move: up
+ *  to sixteen, to the recording's end or thirty seconds on. */
+export function framesFrom(cut, length) {
+  const first = Math.min(cut, length - 1), last = Math.min(length - 1, cut + 1800);
+  const frames = new Set(Array.from({ length: 16 }, (_, i) => Math.round(first + (last - first) * i / 15)));
+  return [...frames].sort((a, b) => a - b);
+}
+
+/**
+ * Where an aimed search stops counting play, from what its branch went by in the recording it starts from (records as
+ * untouched.mjs's whyOf gives them): a branch that ran three times or fewer is tested at set moments, so play two
+ * seconds past the last of them is lost. Null for a branch that runs all the time, or one that last ran before `cut`.
+ */
+export function lostAfter(records, cut) {
+  const times = records.reduce((sum, r) => sum + r.times, 0), last = Math.max(-1, ...records.map(r => r.frame));
+  return times && times <= 3 && last >= cut ? last + 120 : null;
+}
+
 // What the original holds at frames of a recording: the game's values, or a stretch of its work memory where it changes.
 async function look(game, name, framesText, memory) {
   const original = readOriginal(game), reference = await referenceOf(original);
@@ -278,16 +337,7 @@ async function look(game, name, framesText, memory) {
     const found = Object.entries(route.values).filter(([, v]) => v.found).map(([n]) => n);
     if (found.length) console.log(`Not shown, as only the search finds where they are: ${found.join(', ')}.`);
   }
-  const keysLate = original.keysAfterVBlank === true;
-  const way = originalPlay(recording, { keysLate });
-  const masks = way.originalHeld.map(list => list.reduce((mask, b) => mask | (reference.KEY[b] ?? 0), 0));
-  if (keysLate) masks.unshift(0);
-  reference.ensureOriginal(console.log);
-  // each frame as the search sees it: what the original holds once it has run that frame's buttons
-  const reads = frames.flatMap(f => rows.map(({ address, bytes }) => ({ frame: way.originalOf[f] + (keysLate ? 1 : 0), address, bytes })));
-  const played = await reference.runOriginal({ copy: copy.path, frames: masks.length + 1, buttons: masks, sets: way.sets, reads });
-  const read = played.outside.reads ?? [];
-  if (read.length !== reads.length) throw new Error('The program that runs the original read nothing of its memory: npm run dp -- setup builds it again.');
+  const read = await readAt({ original, reference, copy, recording, frames, rows });
   const lines = rows.map((row, i) => {
     const held = frames.map((_, k) => read[k * rows.length + i]);
     if (memory && held.every(v => v === held[0])) return null;
