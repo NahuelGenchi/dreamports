@@ -37,6 +37,7 @@ import { compareState, describeState } from './lib/state.mjs';
 import { fromStartPoint, gameplayText, measure, percentText } from '../src/lib/entries.mjs';
 import { readProof } from './readme.mjs';
 import { referenceOf } from './lib/reference.mjs';
+import { compareSaves } from './lib/saves.mjs';
 import { CELL, contentIn, finderOf, layoutOf, playedIn, writePlayed } from './lib/played.mjs';
 import { checkSizes, firstOtherSize } from './lib/screens.mjs';
 import { notesAbout } from './notes.mjs';
@@ -196,6 +197,10 @@ export async function run(args) {
     console.log([ported && `Code ported: ${percentText(ported.percent)}${totals.proven ? `, ${totals.proven.functions} of ${totals.codeMap.functions} functions` : ''}.`,
       gameplay && `Gameplay proven: ${gameplayText(gameplay)}.`].filter(Boolean).join(' '));
     // what keeps it from done, whatever the numbers say (docs/STANDARD.md#stops)
+    const { saves } = readProof(game) ?? {};
+    if (saves?.differ.length) {
+      console.log(`Saves: ${saves.same} of the original's ${saves.original} writes of its save come out the same in the Dreamport. They differ in ${saves.differ.length} recording${saves.differ.length === 1 ? '' : 's'}: ${saves.differ.slice(0, 8).join(', ')}${saves.differ.length > 8 ? ` and ${saves.differ.length - 8} more` : ''}.`);
+    }
     if (ported && (ported.stops || ported.unnamed)) {
       console.log([ported.stops && `Stops, paths the code says it hasn't ported: ${ported.stops}, in ${ported.stopped} function${ported.stopped === 1 ? '' : 's'}, which don't count as ported.`,
         ported.unnamed && `Functions of the original no code names yet: ${ported.unnamed}.`,
@@ -225,6 +230,7 @@ const keptOf = result => ({
   ...(result.neverInPlay.length ? { neverInPlay: result.neverInPlay } : {}),
   ...(result.shows ? { shows: result.shows } : {}),
   ...(result.reached ? { reached: result.reached } : {}),
+  ...(result.saves ? { saves: result.saves } : {}),
   functions: result.functions,
 });
 
@@ -383,7 +389,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (!quick) for (let [f, last] = clipAt ?? clipWindow({ frames, changed: null, firstDifference: -1 }); f <= last && f < frames; f++) if (f >= 0) sure.add(f);
     // with a code map, every instruction that ran and each way every branch went, where the program says them
     const seesPlayed = !quick && !!codeMap && reference.seesInstructions === true;
-    const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, played: seesPlayed, sound: true, sets, reads, draws: !!drawLists, pictures: [...sure].sort((a, b) => a - b).map(f => originalOf[f] + 1) });
+    const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, played: seesPlayed, saves: !quick && reference.seesSaves === true, sound: true, sets, reads, draws: !!drawLists, pictures: [...sure].sort((a, b) => a - b).map(f => originalOf[f] + 1) });
     if (reads.length && first.outside.reads?.length !== reads.length) throw new Error("The program that runs the original read nothing of its memory: npm run dp -- setup builds it again.");
     const showing = kinds.length ? shownOf(kinds, first.outside.reads.slice(reads.length - kinds.length)) : null;
     // the frames over which each goal held, and the parts whose goal doesn't come true within their own
@@ -421,7 +427,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // --quick goes on no further than the first difference and what's asked for
     const lastAsked = Math.max(-1, ...asked, ...askedState);
     // each frame's picture hash, and how its sound differs, or null when it's the same
-    const hashes = [], heard = [], sounds = [], keptFrames = new Set(), neverInPlay = [], ownSizes = [];
+    const hashes = [], heard = [], sounds = [], keptFrames = new Set(), neverInPlay = [], ownSizes = [], ownSaves = [];
     const differs = f => hashes[f] !== expected[f] || sounds[f] !== null;
     let firstDifference = -1, firstNew = -1, firstPicture = -1, stopped = null;
     // the frames whose state to compare: those asked for, and the first picture that differs
@@ -437,6 +443,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       hashes.push(...played.hashes);
       heard.push(...played.sound);
       neverInPlay.push(...played.neverInPlay);
+      for (const { frame, bytes } of played.saves ?? []) ownSaves.push({ frame, bytes: Buffer.from(bytes, 'base64') });
       ownSizes.push(...played.sizes);
       if (played.stopped) stopped = { frame: hashes.length, error: played.stopped };
       // a frame's sound is measured with the frame after it, so the batch's last waits for the next batch, unless it's the last
@@ -498,6 +505,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       matchedInOriginal[originalOf[frame]] = 1;
       for (const f of first.ran[originalOf[frame]]) proven.add(f);
     }
+    // what the game saved, next to what the original's cartridge holds after each of its writes (lib/saves.mjs)
+    const saved = first.saves ? compareSaves(first.saves, ownSaves) : null;
     // what of the original's code ran in those frames, for gameplay proven, with the code the game made in memory
     let played = null;
     if (seesPlayed) {
@@ -773,8 +782,12 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // a recording the step changed nothing in has nothing to say about its clip, which share leaves out
     if (!quick) log(`  What this step changed: ${changedText(changed)}${changed ? (changed.heard ? ', so share leaves this clip out when another shows a change that can be seen' : '') : ', so share leaves this clip out'}.`);
     if (changed) for (const problem of problems) log(`  share won't put this clip in a pull request: ${problem}`);
+    if (saved?.first) {
+      const { write, frame, at } = saved.first;
+      log(`  Saves: the original wrote its save ${saved.original} time${saved.original === 1 ? '' : 's'} and the Dreamport ${saved.dreamport}, ${saved.same} the same. The first that differs is write ${write}${frame === null ? ', which the original never made' : `, at the original's frame ${frame}`}${at === null ? (frame === null ? '' : ', which the Dreamport never made') : `, from byte ${at} of the save memory`}.`);
+    }
     if (showing) log(`  What the original shows as it ends: ${Object.entries(showing).map(([kind, value]) => `its ${kind} is ${typeof value === 'number' ? `${value}, which original.json gives no name` : value}`).join('; ')}.`);
-    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(played ? { played } : {}), ...(showing ? { shows: showing } : {}), ...(goalsHeld ? { reached: goalsHeld } : {}), unreached, changed: !!changed, functions: [...proven].sort((a, b) => a - b).map(i => codeMap.functions[i].key) };
+    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(played ? { played } : {}), ...(saved && (saved.original || saved.dreamport) ? { saves: { original: saved.original, dreamport: saved.dreamport, same: saved.same } } : {}), ...(showing ? { shows: showing } : {}), ...(goalsHeld ? { reached: goalsHeld } : {}), unreached, changed: !!changed, functions: [...proven].sort((a, b) => a - b).map(i => codeMap.functions[i].key) };
     }
   }
 }

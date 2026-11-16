@@ -24,6 +24,8 @@ export function cartridgeSave(key, storage = browserStorage()) {
       }
     },
     write(bytes) {
+      // the proof tools compare what's saved with what the original's cartridge holds (kit/gba/proof.js)
+      if (globalThis.dreamportsProof) globalThis.dreamportsProof.saved = bytes.slice();
       if (!storage) return false;
       let text = '';
       for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
