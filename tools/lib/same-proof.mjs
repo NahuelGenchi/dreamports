@@ -57,18 +57,31 @@ export function treesNow(version) {
 }
 
 /**
+ * A progress.json's text without what each recording's saves came to, which no frame shows: a step that only changes
+ * how a game saves changes no frame, and its proof still stands in for a clip.
+ */
+export function framesOf(text) {
+  try {
+    const progress = JSON.parse(text);
+    for (const row of Object.values(progress.recordings ?? {})) delete row.saves;
+    return JSON.stringify(progress);
+  } catch {
+    return text;
+  }
+}
+
+/**
  * What a commit holds of a version, to hold a record to: the game's folder and the kits' as trees, its progress.json
- * and main's, each as a SHA-1 or null when there's none, and how many recordings the game has. `main` is the commit
+ * and main's, each as a SHA-1 or null when there's none, whole and without their saves (`shown`, `mainsShown`), and how many recordings the game has. `main` is the commit
  * of main it's compared with.
  */
 export function stateAt(version, commit, main) {
-  const hashOf = at => {
-    const text = at ? git(['show', `${at}:${proofOf(version)}`]) : null;
-    return text === null ? null : sha1(text);
-  };
+  const textOf = at => (at ? git(['show', `${at}:${proofOf(version)}`]) : null);
+  const hashOf = at => (textOf(at) === null ? null : sha1(textOf(at)));
+  const shownOf = at => (textOf(at) === null ? null : sha1(framesOf(textOf(at))));
   const tree = folder => git(['rev-parse', '-q', '--verify', `${commit}:${folder}`])?.trim() ?? null;
   const recordings = (git(['ls-tree', '--name-only', `${commit}:games/${gameOf(version)}/proof/recordings/`]) ?? '').split('\n').filter(name => name.endsWith('.json')).length;
-  return { trees: { game: tree(`games/${gameOf(version)}`), kit: tree('kit') }, progress: hashOf(commit), mains: hashOf(main), recordings };
+  return { trees: { game: tree(`games/${gameOf(version)}`), kit: tree('kit') }, progress: hashOf(commit), mains: hashOf(main), shown: shownOf(commit), mainsShown: shownOf(main), recordings };
 }
 
 /**
@@ -105,7 +118,7 @@ export function recordProblems(record, version, state) {
   const again = `prove it again with every recording (npm run dp -- prove ${version}), and commit what it writes`;
   if (record?.proof !== 'dreamports' || record.version !== version || !record.trees) return [`There's no record of a whole proof of ${version}: ${again}.`];
   if (state.mains === null) return [`main has no proof of ${version} yet, so there's nothing for this one to be the same as.`];
-  if (state.progress !== state.mains) return [`${proofOf(version)} isn't main's, so the step changes what the proof shows, and a clip shows that.`];
+  if ((state.shown ?? state.progress) !== (state.mainsShown ?? state.mains)) return [`${proofOf(version)} isn't main's, so the step changes what the proof shows, and a clip shows that.`];
   const problems = [];
   if (record.progress !== state.progress) problems.push(`The last whole proof of ${version} didn't come out as the commit has it: ${again}.`);
   if (record.trees.game !== state.trees.game || record.trees.kit !== state.trees.kit) problems.push(`The game's files or its console's kit aren't as they were when ${version} was last proven whole: ${again}.`);
