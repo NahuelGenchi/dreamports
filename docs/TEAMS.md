@@ -34,6 +34,8 @@ A task is one piece of a game: a character, a level, a mode, an achievement, an 
 
 `npm run dp -- tasks <game>` opens a task for each of a game's foundations and parts that has none yet, in each of the game's versions, C's first as it's the default language, so no part has a task in one language and not the other. In each, its foundations come first and then its parts in the order `proof/parts.json` lists them. It opens them one at a time, waiting for the bot to put each under the game's issue, so it takes a few minutes, and a second run for the same game waits for the first to end rather than opening each task again. To take a free task, comment `/claim` on its issue. The first claim wins: the bot assigns the issue to whoever claimed first, and anyone after is told who has it and what's still free. `/release` gives a task back. On a New Dreamport issue, the same two words take and give back the lead.
 
+Once every part of a version is played through, its tasks come from what's still untouched of the original ([Done](STANDARD.md#done)), and the same command opens them: one for what's left of each part, the functions its recording ran with instructions or branch ways never played; one for the code most parts share, by where it is in the original; and one for each stretch of code that never ran. Each lists its functions, with the branches gone one way only, and says how to reach them. They're taken and handed out as any task is, after the parts, and one too big for a single pull request closes with what's left opened again by the same command.
+
 ### What a task needs
 
 A game's tasks aren't one long line. Some can't be finished before another is, and most can, so a game's `proof/parts.json` says which:
