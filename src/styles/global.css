@@ -1687,8 +1687,9 @@ dialog.card[open] {
   font: 400 13.5px/20px var(--font);
 }
 
-/* the logo's row: its name, then the logo, big and in the middle so a change to it is easy to watch, then its two
-   choices, its pose over its colour, both the same width (#1328) */
+/* the logo's row: its name, then the logo, big and in the middle so a change to it is easy to watch, then under it
+   its two choices, both the same width: side by side where both fit on a line, and its pose over its colour where
+   they don't, as on a phone held upright (#1328, #1334) */
 .set-logo {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1699,32 +1700,6 @@ dialog.card[open] {
 
 .set-logo .set-label {
   justify-self: start;
-}
-
-/* where there's room beside the logo, its choices go on the right, as every other row's do, and the logo keeps the
-   middle: the row is then short enough for Settings to fit a laptop's screen with nothing to scroll */
-@media (min-width: 700px) {
-  .set-logo {
-    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-    align-items: center;
-    padding-bottom: 14px;
-  }
-
-  .set-logo .set-label,
-  .set-logo .set-after {
-    grid-column: 1 / -1;
-  }
-
-  .set-logo .set-mark {
-    grid-column: 2;
-    margin: 0;
-  }
-
-  .set-logo .set-picks {
-    grid-column: 3;
-    justify-self: end;
-    justify-items: end;
-  }
 }
 
 .set-mark {
@@ -1755,14 +1730,25 @@ dialog.card[open] {
 }
 
 .set-picks {
-  display: grid;
-  justify-items: center;
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 12px;
+  width: 100%;
+}
+
+/* a screen wide enough for the two side by side is often a short one, a laptop's: the logo takes a little less room
+   over and under it there, so Settings fits with nothing to scroll */
+@media (min-width: 700px) {
+  .set-mark {
+    margin: 6px 0;
+  }
 }
 
 .set-picks .seg {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  flex: none;
   width: min(228px, 100%);
   text-align: center;
 }
@@ -3677,6 +3663,13 @@ dialog.card[open] {
   max-width: 760px;
   padding-top: 30px;
   padding-bottom: 24px;
+}
+
+/* Settings with its logo's two choices side by side is as tall as a laptop's screen: a little less under it there */
+@media (min-width: 700px) {
+  .view.card-settings .card-body {
+    padding-bottom: 16px;
+  }
 }
 
 /* a Dreamport's Achievements page, in the same column: its name and how many are earned stay in place, and the list
