@@ -115,16 +115,23 @@ test('a search steers by the sides of a branch\'s comparison that are values of 
   assert.deepEqual(testedValues([]), []);
 });
 
-test('a branch is sorted by what the value it tests held in each recording that ran it', async () => {
+test('a branch is sorted by whether what it compared changed, whatever that was worked out from', async () => {
   const { sortBranch } = await import('../untouched.mjs');
   const record = (a, over = {}) => ({ pc: 0x08000010, a, b: 4, fromA: 0x0300505C, kindA: 1 | 1 << 8, fromB: 0, kindB: 2, went: TAKEN, times: 3, frame: 10, more: false, ...over });
+  const worked = { fromA: 0, kindA: 0 }, number = { fromA: 0, kindA: 2 };
   assert.equal(sortBranch(new Map([['one', [record(0), record(2)]], ['two', [record(0)]]])).kind, 'moves', 'two things within one recording');
+  assert.equal(sortBranch(new Map([['one', [record(0, worked), record(2, worked)]]])).kind, 'moves', 'and so does a value worked out from several');
   assert.equal(sortBranch(new Map([['one', [record(0)]], ['two', [record(3)]]])).kind, 'differs', 'one thing in each, not the same in all');
   const same = sortBranch(new Map([['one', [record(0)]], ['two', [record(0)]]]));
   assert.equal(same.kind, 'same');
   assert.deepEqual(same.sides, [{ address: 0x0300505C, bytes: 1, held: [0], against: [4] }]);
-  assert.equal(sortBranch(new Map([['one', [record(0), record(0, { more: true, fromA: 0, kindA: 0 })]]])).kind, 'moves', 'more sets than it keeps is a value that moves');
-  assert.equal(sortBranch(new Map([['one', [record(0, { fromA: 0, kindA: 0 })]]])).kind, 'unfollowed');
-  assert.equal(sortBranch(new Map([['one', [record(0, { fromA: 0x08001234, kindA: 2 | 4 << 8 })]]])).kind, 'unfollowed', 'the cartridge\'s own numbers are nothing to change');
-  assert.equal(sortBranch(new Map()).kind, 'unfollowed');
+  assert.deepEqual(same.held, [[0, 4]]);
+  assert.equal(sortBranch(new Map([['one', [record(0), record(0, { more: true, ...worked })]]])).kind, 'moves', 'more sets than it keeps is a value that moves');
+  const unnamed = sortBranch(new Map([['one', [record(0, worked)]]]));
+  assert.equal(unnamed.kind, 'same', 'a value worked out, the same everywhere, is still sorted');
+  assert.deepEqual(unnamed.sides, [], 'with no value of the work memory to name');
+  assert.equal(sortBranch(new Map([['one', [record(4, number)]], ['two', [record(4, number)]]])).kind, 'code', 'two numbers in the code, always the same');
+  assert.equal(sortBranch(new Map([['one', [record(0, number), record(1, number)]]])).kind, 'moves', 'a count in a loop is numbers in the code that change');
+  assert.equal(sortBranch(new Map([['one', [record(0, { fromA: 0x08001234, kindA: 3 | 2 << 8 })]]])).kind, 'same', 'the cartridge\'s data isn\'t a number in the code');
+  assert.equal(sortBranch(new Map()).kind, 'unseen');
 });

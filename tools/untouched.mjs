@@ -4,9 +4,9 @@
 // that matched, those that ran with branches gone only one way, each with the address of the branch and the way nobody
 // has played, and the stretches of the cartridge's data never used. It prints the biggest of each; --all prints every
 // one. `npm run dp -- untouched <version> --sort` sorts every branch gone one way only by what it tests, each recording
-// played once for all the branches it ran: those whose value changed while they ran, those whose value differs from one
-// recording to another, those that held the same everywhere, and those the tools can't follow, with the values most
-// branches wait on. `npm run dp -- untouched <version> --why <address> [--in <recording>]` says what the branch at an address went
+// played once for all the branches it ran: those that compared something that changed while they ran, something that differs
+// from one recording to another, something that was the same everywhere, and two numbers in the code, with the values
+// most branches wait on. `npm run dp -- untouched <version> --why <address> [--in <recording>]` says what the branch at an address went
 // by in a recording that ran it: what the original compared, where each side came from in its memory, and what it
 // held each time, so that what has to be different for the other way is known before anyone looks for it: a value the
 // buttons change is found by playing or by `route`, and one they don't, such as the character or a setting, by a
@@ -72,6 +72,7 @@ export function sideText(value, address, kind) {
   const from = kind & 3, changed = kind & 4 ? ', changed on the way' : '';
   if (from === 1) return `${number(value)}, from the ${sized(kind >> 8 & 0xFF)} at ${hex(address)}${changed}`;
   if (from === 2) return `${number(value)}, a number in the code`;
+  if (from === 3) return `${number(value)}, from the ${sized(kind >> 8 & 0xFF)} of the cartridge's data at ${hex(address)}${changed}`;
   return `${number(value)}, worked out from more than one thing`;
 }
 
@@ -178,29 +179,39 @@ function sidesOf(records) {
 }
 
 /**
- * Sorts a branch by what it went by in each recording that ran it (`byRecording`, a Map from a recording's name to the
- * branch's records there): { kind, sides }. `kind` is "moves" when a value of the work memory it tests held more
- * than one thing within one recording, so it changes as the game is played; "differs" when it held one thing in each
- * recording but not the same in all, which is how a choice made before the part looks, and also what play left at a
- * moment tested once; "same" when it held the same in every recording that ran it, so nothing has ever shown another;
- * and "unfollowed" when what it tests isn't one value of the work memory. `sides` is each such value's address, bytes,
- * and what it held and was against anywhere.
+ * Sorts a branch by what it compared in each recording that ran it (`byRecording`, a Map from a recording's name to
+ * the branch's records there): { kind, sides, held }. What it compared is the pair of values, whatever they were worked
+ * out from, so a place plus a size sorts as well as a value read straight from memory. `kind` is "moves" when the pair
+ * was more than one thing within one recording, so it changes as the game is played; "differs" when it was one thing
+ * in each recording but not the same in all, which is how a choice made before the part looks, and also what play left
+ * at a moment tested once; "code" when it was the same everywhere and both sides were numbers in the code, so the
+ * branch's other way can't happen as far as anything shows; "same" when it was the same everywhere otherwise, so
+ * nothing has ever shown another; and "unseen" when it didn't run as a conditional branch. `sides` is each value of
+ * the work memory a side came straight from, with its address, bytes, and what it held and was against anywhere, and
+ * `held` the pairs seen, as [a, b].
  */
 export function sortBranch(byRecording) {
-  const all = new Map();
-  let moves = false;
+  const all = new Map(), pairs = new Map();
+  let moves = false, ran = false, code = true;
   for (const records of byRecording.values()) {
-    const past = records.some(r => r.more);
+    const own = new Set();
+    for (const r of records) {
+      ran = true;
+      if (r.more) { moves = true; continue; }
+      own.add(`${r.a} ${r.b}`);
+      pairs.set(`${r.a} ${r.b}`, [r.a, r.b]);
+      if ((r.kindA & 3) !== 2 || (r.kindB & 3) !== 2) code = false;
+    }
+    if (own.size > 1) moves = true;
     for (const [address, side] of sidesOf(records)) {
-      if (side.held.size > 1 || past) moves = true;
       if (!all.has(address)) all.set(address, { bytes: side.bytes, held: new Set(), against: new Set() });
       for (const v of side.held) all.get(address).held.add(v);
       for (const v of side.against) all.get(address).against.add(v);
     }
   }
   const sides = [...all].map(([address, side]) => ({ address, bytes: side.bytes, held: [...side.held].sort((a, b) => a - b), against: [...side.against].sort((a, b) => a - b) }));
-  const kind = !sides.length ? 'unfollowed' : moves ? 'moves' : sides.some(side => side.held.length > 1) ? 'differs' : 'same';
-  return { kind, sides };
+  const kind = !ran ? 'unseen' : moves ? 'moves' : pairs.size > 1 ? 'differs' : code ? 'code' : 'same';
+  return { kind, sides, held: [...pairs.values()] };
 }
 
 const some = (values, most = 6) => `${values.slice(0, most).map(number).join(', ')}${values.length > most ? ` and ${values.length - most} more` : ''}`;
@@ -227,13 +238,14 @@ async function sort(game, { original, codeMap, copy, all, atOnce }) {
   const sorted = branches.map(b => ({ ...b, ...sortBranch(went.get(b.address)), recordings: [...went.get(b.address).keys()] }));
   const of = kind => sorted.filter(b => b.kind === kind);
   const words = {
-    moves: 'test a value that changed while the branch ran in one recording, so playing differently, or a search, can reach the other way',
-    differs: 'test a value that held one thing in each recording but not the same in all: a choice made before the part, such as the character, or what play had left at a moment tested once',
-    same: 'test a value that held the same in every recording that ran them, so no recording has ever shown another: often the mode or a setting, which a recording that starts differently changes',
-    unfollowed: "test something the tools can't follow to one value of the work memory: read the code",
+    moves: 'compare something that changed while the branch ran in one recording, so playing differently, or a search, can reach the other way',
+    differs: 'compare something that was one thing in each recording but not the same in all: a choice made before the part, such as the character, or what play had left at a moment tested once',
+    same: 'compare something that was the same in every recording that ran them, so no recording has ever shown another: often the mode or a setting, which a recording that starts differently changes',
+    code: "compare two numbers in the code, the same every time, so their other way can't happen as far as anything shows: read each, and list in unreachable.json those that truly can't",
+    unseen: "didn't run as a conditional branch when played again",
   };
   console.log(`\nOf the ${count(sorted.length)} branches:`);
-  for (const kind of ['moves', 'differs', 'same', 'unfollowed']) console.log(`  ${count(of(kind).length)} ${words[kind]}.`);
+  for (const kind of ['moves', 'differs', 'same', 'code', 'unseen']) if (of(kind).length || kind !== 'unseen') console.log(`  ${count(of(kind).length)} ${words[kind]}.`);
   console.log(`And ${count(never.length)} functions never ran at all, so nothing says what their branches test: something has to call them first.`);
 
   // the values most branches test without ever seeing another: one recording that changes one of them opens many
@@ -249,7 +261,8 @@ async function sort(game, { original, codeMap, copy, all, atOnce }) {
       }
     }
     const list = [...groups].sort((x, y) => y[1].branches.length - x[1].branches.length);
-    console.log(`\nThe values behind the ${count(of(kind).length)} that ${kind === 'same' ? 'held the same everywhere' : 'differ by recording'}, by how many branches test each:`);
+    const named = of(kind).filter(b => b.sides.length).length;
+    console.log(`\nOf the ${count(of(kind).length)} that ${kind === 'same' ? 'were the same everywhere' : 'differ by recording'}, ${count(named)} compare a value read straight from the work memory. Those values, by how many branches test each:`);
     for (const [address, g] of list.slice(0, all ? Infinity : 15)) {
       const held = [...g.held].sort((a, b) => a - b), against = [...g.against].sort((a, b) => a - b);
       console.log(`  the ${sized(g.bytes)} at ${hex(address)}: ${count(g.branches.length)} branches. Between them it held ${some(held)}, against ${some(against)}.${all ? ` Branches: ${g.branches.map(b => hex(b.address)).join(', ')}.` : ''}`);
@@ -257,14 +270,14 @@ async function sort(game, { original, codeMap, copy, all, atOnce }) {
     if (!all && list.length > 15) console.log(`  and ${count(list.length - 15)} more values: --all prints them, with each one's branches.`);
   }
   if (all) {
-    for (const kind of ['moves', 'unfollowed']) {
-      console.log(`\nThe ${count(of(kind).length)} that ${kind === 'moves' ? 'changed while they ran' : "the tools can't follow"}: ${of(kind).map(b => `${hex(b.address)} ${b.way}`).join(', ')}.`);
+    for (const kind of ['moves', 'code']) {
+      console.log(`\nThe ${count(of(kind).length)} that ${kind === 'moves' ? 'changed while they ran' : 'compare two numbers in the code'}: ${of(kind).map(b => `${hex(b.address)} ${b.way}`).join(', ')}.`);
     }
   }
   const folder = join(LOCAL, 'untouched');
   mkdirSync(folder, { recursive: true });
   const file = join(folder, `${game.replace('/', '-')}.json`);
-  writeFileSync(file, `${JSON.stringify({ version: game, original: original.sha1, branches: sorted.map(b => ({ address: hex(b.address), way: b.way, function: b.key, kind: b.kind, recordings: b.recordings, sides: b.sides.map(s => ({ ...s, address: hex(s.address) })) })) })}\n`);
+  writeFileSync(file, `${JSON.stringify({ version: game, original: original.sha1, branches: sorted.map(b => ({ address: hex(b.address), way: b.way, function: b.key, kind: b.kind, recordings: b.recordings, held: b.held.slice(0, 8), sides: b.sides.map(s => ({ ...s, address: hex(s.address) })) })) })}\n`);
   console.log(`\nEvery branch with its kind, its values and the recordings that ran it is in .dreamports/untouched/${game.replace('/', '-')}.json, on this computer. npm run dp -- untouched ${game} --why <address> says more of one.`);
   return 0;
 }
