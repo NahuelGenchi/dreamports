@@ -34,13 +34,15 @@
 // memory holds: the first time one runs, its place in the code map, its address, its size, and its bytes, to a whole
 // word (the tools count its instructions and branches from them, and keep none: lib/played.mjs).
 //
-// DP_WHY, when it's set, is an address and a file, such as "0802C48A why.bin": what the conditional branch at that
-// address went by, each time it ran (npm run dp -- untouched <version> --why <address>). The program follows where each
-// register's value came from, a place in memory or a number in the code, and at the branch says what the last
-// instruction that set the flags compared. A record is twelve 32-bit words: the comparing instruction's address, its two
-// values, where each came from (an address, or 0) and what kind that is (0 worked out, 1 read from memory, 2 a number
-// in the code, +4 when changed since, and the bytes read in the next byte), the way the branch went (1 taken, 2 not),
-// how many times it went so with those, and the first frame it did; one record for each different set, up to WHY_MOST.
+// DP_WHY, when it's set, is two files, such as "branches.bin why.bin": the addresses of conditional branches, a 32-bit
+// word each, and where to write what each went by, each time it ran (npm run dp -- untouched <version> --why
+// <address>, and --sort for many at once). The program follows where each register's value came from, a place in
+// memory or a number in the code, and at a branch says what the last instruction that set the flags compared. A record
+// is twelve 32-bit words: the comparing instruction's address, its two values, where each came from (an address, or 0)
+// and what kind that is (0 worked out, 1 read from memory, 2 a number in the code, +4 when changed since, and the bytes
+// read in the next byte), the way the branch went (1 taken, 2 not), how many times it went so with those, the first
+// frame it did, the branch's address, and 0. One record for each different set, up to WHY_EACH for a branch: the times
+// it went a way with any other set come in a last record for that way, whose twelfth word is 1 and whose values are 0.
 //
 // DP_CONTENT, when it's set, names a file to write the cartridge's data the game used to, for gameplay proven too: the
 // cartridge in cells of 32 bytes, each with the stretches of frames something of it was used in. A record is three
@@ -495,20 +497,24 @@ static int playAlong(const char* path) {
 
 // What a branch went by, for DP_WHY: where each register's value came from, the last comparison, and what the branch
 // at the target did with it
-#define WHY_MOST 4096
+#define WHY_EACH 24
+#define WHY_SLOTS (1u << 18)
 #define FROM_MEMORY 1
 #define FROM_CODE 2
 #define CHANGED_SINCE 4
 struct came { uint32_t address; uint32_t kind; };
 static struct {
 	FILE* file;
-	uint32_t target;
+	uint32_t* targets;         // the branches asked about, in order
+	size_t targetCount;
+	uint8_t* sets;             // how many different sets each has so far
+	uint32_t (*more)[3];       // and the times it went each way with a set past WHY_EACH, with the first frame
 	struct came from[16];
 	struct { uint32_t pc, a, b; struct came fromA, fromB; } compared;
 	uint32_t loaded, loadedBytes;
 	int didLoad;
 	struct ARMMemory memory;
-	uint32_t (*records)[12];
+	uint32_t (*records)[12];   // a hash table of WHY_SLOTS, a record's ninth word 0 where there's none
 	size_t count;
 } why;
 
@@ -516,12 +522,19 @@ static uint32_t whyLoad32(struct ARMCore* cpu, uint32_t address, int* cycles) { 
 static uint32_t whyLoad16(struct ARMCore* cpu, uint32_t address, int* cycles) { why.loaded = address & ~1u; why.loadedBytes = 2; why.didLoad = 1; return why.memory.load16(cpu, address, cycles); }
 static uint32_t whyLoad8(struct ARMCore* cpu, uint32_t address, int* cycles) { why.loaded = address; why.loadedBytes = 1; why.didLoad = 1; return why.memory.load8(cpu, address, cycles); }
 
+static int byAddress(const void* a, const void* b) { return (*(const uint32_t*) a > *(const uint32_t*) b) - (*(const uint32_t*) a < *(const uint32_t*) b); }
+
 static void watchWhy(struct ARMCore* cpu, const char* asked) {
-	char path[4096];
-	unsigned target;
-	if (sscanf(asked, "%x %4095[^\n]", &target, path) != 2 || !(why.file = fopen(path, "wb"))) { fprintf(stderr, "DP_WHY takes an address and a file to write\n"); exit(2); }
-	why.target = target & ~1u;
-	why.records = calloc(WHY_MOST, sizeof(*why.records));
+	char list[4096], path[4096];
+	size_t size;
+	if (sscanf(asked, "%4095s %4095[^\n]", list, path) != 2 || !(why.file = fopen(path, "wb"))) { fprintf(stderr, "DP_WHY takes a file of branches and a file to write\n"); exit(2); }
+	why.targets = readAll(list, &size);
+	why.targetCount = size / 4;
+	for (size_t i = 0; i < why.targetCount; i++) why.targets[i] &= ~1u;
+	qsort(why.targets, why.targetCount, 4, byAddress);
+	why.sets = calloc(why.targetCount + 1, 1);
+	why.more = calloc(why.targetCount + 1, sizeof(*why.more));
+	why.records = calloc(WHY_SLOTS, sizeof(*why.records));
 	why.memory = cpu->memory;
 	cpu->memory.load32 = whyLoad32;
 	cpu->memory.load16 = whyLoad16;
@@ -587,14 +600,30 @@ static void runWhy(struct ARMCore* cpu, long frame) {
 		why.compared.b = 0;
 		why.compared.fromB = (struct came) { 0, FROM_CODE };
 	}
-	if (pc != why.target || !branches(info.opcode, thumb)) return;
+	if (!branches(info.opcode, thumb)) return;
+	uint32_t* asked = bsearch(&pc, why.targets, why.targetCount, 4, byAddress);
+	if (!asked) return;
+	size_t which = (size_t) (asked - why.targets);
 	uint32_t after = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
 	uint32_t way = after == pc + (thumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM) ? NOT_TAKEN : TAKEN;
-	uint32_t record[12] = { why.compared.pc, why.compared.a, why.compared.b, why.compared.fromA.address, why.compared.fromA.kind, why.compared.fromB.address, why.compared.fromB.kind, way, 1, (uint32_t) frame, 0, 0 };
-	for (size_t i = 0; i < why.count; i++) {
-		if (!memcmp(why.records[i], record, 8 * sizeof(uint32_t))) { why.records[i][8]++; return; }
+	uint32_t record[12] = { why.compared.pc, why.compared.a, why.compared.b, why.compared.fromA.address, why.compared.fromA.kind, why.compared.fromB.address, why.compared.fromB.kind, way, 1, (uint32_t) frame, pc, 0 };
+	uint32_t hash = pc * 2654435761u;
+	for (int i = 0; i < 8; i++) hash = (hash ^ record[i]) * 16777619u;
+	for (uint32_t slot = hash & (WHY_SLOTS - 1), tried = 0; tried < WHY_SLOTS; slot = (slot + 1) & (WHY_SLOTS - 1), tried++) {
+		uint32_t* held = why.records[slot];
+		if (held[8] && held[10] == pc && !memcmp(held, record, 8 * sizeof(uint32_t))) { held[8]++; return; }
+		if (held[8]) continue;
+		if (why.sets[which] < WHY_EACH && why.count < WHY_SLOTS / 2) {
+			memcpy(held, record, sizeof(record));
+			why.sets[which]++;
+			why.count++;
+			return;
+		}
+		break;
 	}
-	if (why.count < WHY_MOST) memcpy(why.records[why.count++], record, sizeof(record));
+	// one set too many for this branch: counted, without its values
+	if (!why.more[which][0] && !why.more[which][1]) why.more[which][2] = (uint32_t) frame;
+	why.more[which][way == TAKEN ? 0 : 1]++;
 }
 
 // what the search needs of a console (lib/explore.h), for each one it runs
@@ -898,7 +927,13 @@ int main(int argc, char** argv) {
 	for (size_t i = 0; i < readCount; i++) fprintf(stderr, "%s%u", i ? "," : "", readValues[i]);
 	fprintf(stderr, "]}\n");
 	if (why.file) {
-		fwrite(why.records, sizeof(*why.records), why.count, why.file);
+		for (uint32_t slot = 0; slot < WHY_SLOTS; slot++) if (why.records[slot][8]) fwrite(why.records[slot], 4, 12, why.file);
+		for (size_t i = 0; i < why.targetCount; i++) {
+			for (int way = 0; way < 2; way++) {
+				uint32_t record[12] = { 0, 0, 0, 0, 0, 0, 0, way ? NOT_TAKEN : TAKEN, why.more[i][way], why.more[i][2], why.targets[i], 1 };
+				if (why.more[i][way]) fwrite(record, 4, 12, why.file);
+			}
+		}
 		fclose(why.file);
 	}
 	core->deinit(core);
