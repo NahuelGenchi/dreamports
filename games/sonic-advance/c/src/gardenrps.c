@@ -254,30 +254,6 @@ static int speed_part(int angle) {
   return v >> 11;
 }
 
-// the BIOS's ArcTan and ArcTan2, as the console works them out
-static int arctan(int i) {
-  int a = -(i * i >> 14), b = (0xA9 * a >> 14) + 0x390;
-  b = (b * a >> 14) + 0x91C;
-  b = (b * a >> 14) + 0xFB6;
-  b = (b * a >> 14) + 0x16AA;
-  b = (b * a >> 14) + 0x2081;
-  b = (b * a >> 14) + 0x3651;
-  b = (b * a >> 14) + 0xA2F9;
-  return i * b >> 16;
-}
-static int arctan2(int x, int y) {
-  if (!y) return x >= 0 ? 0 : 0x8000;
-  if (!x) return y >= 0 ? 0x4000 : 0xC000;
-  if (y >= 0) {
-    if (x >= 0) { if (x >= y) return arctan((y << 14) / x); }
-    else if (-x >= y) return arctan((y << 14) / x) + 0x8000;
-    return 0x4000 - arctan((x << 14) / y);
-  }
-  if (x <= 0) { if (-x > -y) return arctan((y << 14) / x) + 0x8000; }
-  else if (x >= -y) return arctan((y << 14) / x) + 0x10000;
-  return 0xC000 - arctan((x << 14) / y);
-}
-
 // a thrown hand has left the screen: one fewer in stock, and the next comes, or with too few left there's no more
 static void spent(MyHand *t, int sprite) {
   if (--stock.left > 2) t->state = NEXT_COMES;
@@ -310,14 +286,14 @@ static void hands_frame(void) {
           if (dx < -reach || dx >= reach) continue;
           int by = t->kind + 2 - h->kind;
           if (by == 0 || by == 3) {
-            int angle = arctan2(dx, dy) ^ 0x8000;
+            int angle = gba_arctan2(dx, dy) ^ 0x8000;
             t->state = BOUNCES;
             t->vx = (int8_t)speed_part(angle);
             t->vy = (int8_t)speed_part(angle + 0xC000);
             t->x = (int16_t)home;
             gba_sound_play(SE_DRAW);
           } else if (by == 1 || by == 4) {
-            int angle = arctan2(dx, dy);
+            int angle = gba_arctan2(dx, dy);
             t->state = BEAT_ONE;
             h->state = BEATEN;
             beltState.unbeaten--;

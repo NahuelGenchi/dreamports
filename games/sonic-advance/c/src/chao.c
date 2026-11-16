@@ -37,16 +37,6 @@ typedef struct {
 } Chao;
 static Chao chao;
 
-static int isqrt(uint32_t n) {
-  uint32_t r = 0, bit = 1u << 30;
-  while (bit > n) bit >>= 2;
-  while (bit) {
-    if (n >= r + bit) { n -= r + bit; r = (r >> 1) + bit; } else r >>= 1;
-    bit >>= 2;
-  }
-  return (int)r;
-}
-
 static void show(Chao *c, int dy) {
   c->s.x = (int16_t)((c->qx >> 8) - (int)act.cam.x);
   c->s.y = (int16_t)((c->qy >> 8) - dy - (int)act.cam.y);
@@ -102,7 +92,7 @@ static int move_to(Chao *c, int x, int y) {
   if (smallX && !smallY) angle = uy > 0 ? 256 : 768;
   else if (smallY && !smallX) angle = ux > 0 ? 0 : 512;
   else angle = (uint16_t)quick_angle(uy, ux);
-  int dist = isqrt((uint32_t)(dx * dx + dy * dy)) << 8;
+  int dist = gba_sqrt((uint32_t)(dx * dx + dy * dy)) << 8;
   if (dist > MAX_STEP) dist = MAX_STEP;
   else if (dist == 0) dist = 1;
   c->qx += (dist * SINE[(angle + 256) & 1023]) >> 14;
