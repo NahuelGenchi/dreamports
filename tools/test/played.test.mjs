@@ -135,3 +135,12 @@ test('a branch is sorted by whether what it compared changed, whatever that was 
   assert.equal(sortBranch(new Map([['one', [record(0, { fromA: 0x08001234, kindA: 3 | 2 << 8 })]]])).kind, 'same', 'the cartridge\'s data isn\'t a number in the code');
   assert.equal(sortBranch(new Map()).kind, 'unseen');
 });
+
+test('a sorted branch is said in a few words, with the value it tests when it has one to name', async () => {
+  const { kindText } = await import('../untouched.mjs');
+  const side = { address: 0x03005078, bytes: 2, held: [1, 2, 3, 6, 11], against: [9] };
+  assert.equal(kindText({ kind: 'differs', sides: [side] }), 'differs by recording: the halfword at `03005078` held 1, 2, 3 and 2 more against 9');
+  assert.equal(kindText({ kind: 'moves', sides: [side] }), 'changes in play', 'a value that moves needs no more said');
+  assert.equal(kindText({ kind: 'path', sides: [] }), 'by the path');
+  assert.equal(kindText({ kind: 'same', sides: [] }), 'never differed');
+});
