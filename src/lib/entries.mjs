@@ -75,7 +75,7 @@ export const portedFunctions = (portMap, progress) => {
  */
 /**
  * @typedef {{ name: string, proven: boolean, recording: string | null, frames: [number, number] | null, difference: number | null, gap: number | null, unreached: string | null, fromStart: boolean }} Part
- * @typedef {{ percent: number, proven: number, total: number, parts: Part[], units?: { total: number, played: number } }} Gameplay
+ * @typedef {{ percent: number, proven: number, total: number, parts: Part[], units?: { total: number, played: number }, code?: number, content?: { total: number, read: number, percent: number } }} Gameplay
  * @typedef {{ percent: number, functions: number, named: number, played: number, unmatched: number, stops: number, stopped: number, unnamed: number }} Ported
  * @typedef {{ copy: string, percent: number | null, recordings: number, codeMap: { functions: number, bytes: number } | null,
  *   proven: { functions: number, bytes: number } | null, ported: Ported | null, gameplay: Gameplay | null }} Proof
@@ -158,6 +158,15 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
       problems.push(`${at}progress.json's "played" doesn't add up. It only comes from npm run dp -- prove.`);
     }
     Object.assign(result.gameplay, { percent, units: { total, played } });
+    // and of its data used in matching frames, in cells of the cartridge: the lower of the two is the number, so
+    // neither the code nor the content can pass for the other
+    if (progress.content) {
+      const { total: cells, read, percent: ofContent } = progress.content;
+      if (!Number.isInteger(cells) || !Number.isInteger(read) || read > cells || ofContent !== playedPercent(read, cells)) {
+        problems.push(`${at}progress.json's "content" doesn't add up. It only comes from npm run dp -- prove.`);
+      }
+      Object.assign(result.gameplay, { percent: Math.min(percent, ofContent), code: percent, content: { total: cells, read, percent: ofContent } });
+    }
   }
   if (problems.length) throw new Error(`${game}'s proof doesn't add up:\n${problems.map(p => `- ${p}`).join('\n')}`);
   return result;
@@ -241,7 +250,7 @@ export const playedPercent = (played, total) => (total ? Math.floor(played / tot
  * @param {Gameplay} gameplay
  */
 export const gameplayText = gameplay => (gameplay.units
-  ? `${percentText(gameplay.percent)}, ${gameplay.units.played.toLocaleString('en')} of ${gameplay.units.total.toLocaleString('en')} instructions and branch ways played, and ${gameplay.proven} of ${gameplay.total} parts played through`
+  ? `${percentText(gameplay.percent)}, ${gameplay.content ? `the lower of its code, ${percentText(gameplay.code)}, ` : ''}${gameplay.units.played.toLocaleString('en')} of ${gameplay.units.total.toLocaleString('en')} instructions and branch ways played, ${gameplay.content ? `and its content, ${percentText(gameplay.content.percent)}, ${gameplay.content.read.toLocaleString('en')} of ${gameplay.content.total.toLocaleString('en')} cells of data used, with` : 'and'} ${gameplay.proven} of ${gameplay.total} parts played through`
   : `${percentText(gameplay.percent)}, ${gameplay.proven} of ${gameplay.total} parts`);
 
 /** A % as the site and the README write it, such as 11.19%, or null when there's none. */

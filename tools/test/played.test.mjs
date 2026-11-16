@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NOT_TAKEN, RAN, TAKEN, finderOf, instructionsOf, layoutOf, playedIn } from '../lib/played.mjs';
+import { CELL, NOT_TAKEN, RAN, TAKEN, contentCells, contentIn, finderOf, instructionsOf, layoutOf, playedIn } from '../lib/played.mjs';
 import { gameplayText, playedPercent, proofOf } from '../../src/lib/entries.mjs';
 
 const thumb = (...ops) => Uint8Array.from(ops.flatMap(op => [op & 0xFF, op >> 8]));
@@ -58,6 +58,18 @@ test('code in the work RAM is the cartridge\'s where a copy holds those bytes, o
   assert.equal(inMemory(0x03000002, 0x1234, true), null);
 });
 
+test('the cartridge\'s data counts in cells: those outside the code that hold something, once used in a frame that matched', () => {
+  // four cells: a function, data, 32 bytes all the same, and data next to a function
+  const rom = new Uint8Array(CELL * 4).map((_, i) => i & 0xFF);
+  rom.fill(0xFF, CELL * 2, CELL * 3);
+  const map = { functions: [{ key: '08000000', address: 0x08000000, size: CELL }, { key: '08000060', address: 0x08000060, size: 8 }] };
+  const holds = contentCells(map, rom), has = (set, n) => (set[n >> 3] >> (n & 7) & 1) === 1;
+  assert.deepEqual([0, 1, 2, 3].map(cell => has(holds, cell)), [false, true, false, true]);
+  // cell 1 used in frames 0 to 1, which differ, and 4 to 5; cell 3 only where the frames differ
+  const used = contentIn(Uint32Array.from([1, 0, 1, 1, 4, 5, 3, 0, 1, 9, 2, 3]), Uint8Array.from([0, 0, 1, 1, 1, 0]), 4);
+  assert.deepEqual([0, 1, 2, 3].map(cell => has(used, cell)), [false, true, false, false]);
+});
+
 test('gameplay proven is never 100% until everything is played, and the numbers say what it\'s made of', () => {
   assert.equal(playedPercent(99999, 100000), 99.99);
   assert.equal(playedPercent(100000, 100000), 100);
@@ -73,4 +85,15 @@ test('gameplay proven is never 100% until everything is played, and the numbers 
   const byParts = proofOf('made-up', files(null)).gameplay;
   assert.equal(gameplayText(byParts), '0%, 0 of 1 parts');
   assert.throws(() => proofOf('made-up', files({ total: 8, played: 6, percent: 80 })), /"played" doesn't add up/);
+  // with the content counted, the number is the lower of the two
+  const both = content => {
+    const all = files({ total: 8, played: 6, percent: 75 });
+    all.progress.content = content;
+    return all;
+  };
+  const lower = proofOf('made-up', both({ total: 10, read: 3, percent: 30 })).gameplay;
+  assert.deepEqual([lower.percent, lower.code, lower.content], [30, 75, { total: 10, read: 3, percent: 30 }]);
+  assert.equal(gameplayText(lower), '30%, the lower of its code, 75%, 6 of 8 instructions and branch ways played, and its content, 30%, 3 of 10 cells of data used, with 0 of 1 parts played through');
+  assert.equal(proofOf('made-up', both({ total: 10, read: 9, percent: 90 })).gameplay.percent, 75);
+  assert.throws(() => proofOf('made-up', both({ total: 10, read: 11, percent: 100 })), /"content" doesn't add up/);
 });

@@ -4,6 +4,7 @@
   "codeMap": {"functions":2489,"bytes":689456},
   "proven": {"functions":1905,"bytes":558826},
   "played": {"total":328043,"played":225680,"percent":68.79},
+  "content": {"total":200999,"read":128519,"percent":63.94},
   "recordings": {
     "amy-angel-island": {
       "frames": 3400,

@@ -35,6 +35,16 @@ test('pages that show what the proof makes have nothing wrong', async () => {
   assert.deepEqual(await problemsWith([one], reader()), []);
 });
 
+test('a number under 1% is read as the page writes it, with its sign escaped', async () => {
+  const small = made('one', 5.35, 0.56);
+  const pages = {
+    '/dreamports/one-dreamport/': card('inspect-one-dreamport', ['5%', 5.35], ['&lt;1%', 0.56]),
+    '/make/one/': card('make-one-dreamport', ['5%', 5.35], ['&lt;1%', 0.56]),
+    '/make/': slot('one-dreamport', 'Code ported 5% · Gameplay proven &lt;1%'),
+  };
+  assert.deepEqual(await problemsWith([small], reader(pages)), []);
+});
+
 test('a card in the Make row showing old numbers is found, and the page and the number named', async () => {
   const stale = { ...PAGES, '/make/one/': card('make-one-dreamport', ['4%', 4.37], ['5%', 5.26]) };
   const problems = await problemsWith([one], reader(stale));

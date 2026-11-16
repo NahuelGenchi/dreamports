@@ -37,7 +37,7 @@ import { compareState, describeState } from './lib/state.mjs';
 import { fromStartPoint, gameplayText, measure, percentText } from '../src/lib/entries.mjs';
 import { readProof } from './readme.mjs';
 import { referenceOf } from './lib/reference.mjs';
-import { finderOf, layoutOf, playedIn, writePlayed } from './lib/played.mjs';
+import { CELL, contentIn, finderOf, layoutOf, playedIn, writePlayed } from './lib/played.mjs';
 import { checkSizes, firstOtherSize } from './lib/screens.mjs';
 import { notesAbout } from './notes.mjs';
 import { proveLinked } from './prove-linked.mjs';
@@ -173,14 +173,16 @@ export async function run(args) {
   }
   // what of the original's code was played in matching frames, the recordings not played now as they were (lib/played.mjs)
   if (codeMap && reference.seesInstructions === true) {
-    const sets = new Map(), made = new Map();
+    const sets = new Map(), used = new Map(), made = new Map();
     recordings.forEach((recording, at) => {
       if (!results[at].played) return;
       sets.set(recording.name, results[at].played.set);
+      used.set(recording.name, results[at].played.used);
       for (const [index, bytes] of results[at].played.made) made.set(index, bytes);
     });
-    const { total, played, percent } = writePlayed(game, { original: original.sha1, codeMap, cartridge: cartridgeOf(copyWith(original.sha1).path), sets, made, all });
+    const { total, played, percent, content } = writePlayed(game, { original: original.sha1, codeMap, cartridge: cartridgeOf(copyWith(original.sha1).path), sets, used, made, all });
     totals.played = { total, played, percent };
+    totals.content = content;
   }
   writeProgress(game, { ...totals, recordings: progress.recordings });
   // what a whole proof found, which share can show in place of a clip when the step changed no frame (lib/same-proof.mjs)
@@ -500,7 +502,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     let played = null;
     if (seesPlayed) {
       const made = new Map(first.played.made.filter(m => codeMap.functions[m.index]?.bytes).map(m => [m.index, m.bytes]));
-      played = { set: playedIn(first.played.records, matchedInOriginal, layoutOf(codeMap), finderOf(codeMap, cartridgeOf(copy), made)), made: [...made] };
+      const cells = Math.ceil(cartridgeOf(copy)(0x08000000, 0x02000000).length / CELL);
+      played = { set: playedIn(first.played.records, matchedInOriginal, layoutOf(codeMap), finderOf(codeMap, cartridgeOf(copy), made)), made: [...made], used: contentIn(first.played.content, matchedInOriginal, cells) };
     }
     const differing = stretchesOf(different), soundDiffers = stretchesOf(soundDifferent);
     // the frames the game says no player could ever see, which fail however they compare: { from, to, why }

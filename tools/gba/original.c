@@ -34,6 +34,14 @@
 // memory holds: the first time one runs, its place in the code map, its address, its size, and its bytes, to a whole
 // word (the tools count its instructions and branches from them, and keep none: lib/played.mjs).
 //
+// DP_CONTENT, when it's set, names a file to write the cartridge's data the game used to, for gameplay proven too: the
+// cartridge in cells of 32 bytes, each with the stretches of frames something of it was used in. A record is three
+// 32-bit words: the cell's number, and the first and last frame of a stretch. Data is used when the game reads it and
+// does anything with it but copy it into its work RAM; what it copies there, or has the BIOS unpack there, is followed,
+// and counts where it came from in the cartridge once it's read from the work RAM and used (a byte the BIOS unpacked
+// counts as the place as far through the packed data as it is through what came out). Data a game unpacks with code
+// of its own counts as it's read, as unpacking it is using it.
+//
 // For each frame it writes to stdout: a hash of the picture (FNV-1a over each pixel's 15-bit colour, as the
 // console has it), the picture's one colour if every pixel has it or else 0xFFFFFFFF, the number of functions that
 // ran in the frame and their places in the code map (32 bits each), then the picture itself if PICTURES names the
@@ -150,6 +158,184 @@ static struct played* playedAt(struct mCore* core, struct region* region, uint32
 static int branches(uint32_t code, int thumb) {
 	if (thumb) return (code & 0xF000) == 0xD000 && (code >> 8 & 0xF) < 0xE;
 	return (code & 0x0E000000) == 0x0A000000 && code >> 28 < 0xE;
+}
+
+// The cartridge's data the game used, for DP_CONTENT. Every read and write the processor, the BIOS and DMA make goes
+// through the watchers below, which follow the data into the work RAM.
+#define CELL 32
+#define EWRAM_BYTES 0x40000
+#define IWRAM_BYTES 0x8000
+static struct {
+	FILE* file;
+	long frame;
+	uint32_t romSize;
+	uint32_t* start;       // for each cell, the stretch of frames it's in the middle of
+	long* last;
+	uint32_t* from;        // for each byte of the work RAM, external then internal, where in the cartridge it came from, +1, or 0
+	struct ARMMemory memory;                   // the emulator's own reads and writes
+	void (*swi16)(struct ARMCore*, int);
+	void (*swi32)(struct ARMCore*, int);
+	// the last thing read, until what's done with it shows whether it was used or copied
+	uint32_t pending[4], value;
+	int size;
+	// while the BIOS unpacks from the cartridge into the work RAM: what it read and where it wrote
+	int unpacking;
+	uint32_t readLow, readHigh, wroteLow, wroteHigh;
+} content;
+
+static void cellUsed(uint32_t offset) {
+	uint32_t cell = offset / CELL;
+	if (content.last[cell] == content.frame) return;
+	if (content.last[cell] != content.frame - 1) {
+		if (content.last[cell] >= 0) {
+			uint32_t record[3] = { cell, content.start[cell], (uint32_t) content.last[cell] };
+			fwrite(record, 4, 3, content.file);
+		}
+		content.start[cell] = (uint32_t) content.frame;
+	}
+	content.last[cell] = content.frame;
+}
+
+// where a byte of memory came from in the cartridge, +1: the cartridge itself, or what the work RAM holds of it
+static uint32_t* ramFrom(uint32_t address) {
+	if (address >> 24 == 2) return &content.from[address & (EWRAM_BYTES - 1)];
+	if (address >> 24 == 3) return &content.from[EWRAM_BYTES + (address & (IWRAM_BYTES - 1))];
+	return NULL;
+}
+static uint32_t cameFrom(uint32_t address) {
+	if (address >> 24 >= 8 && address >> 24 <= 13) {
+		uint32_t offset = address & 0x01FFFFFF;
+		return offset < content.romSize ? offset + 1 : 0;
+	}
+	uint32_t* from = ramFrom(address);
+	return from ? *from : 0;
+}
+
+// what was read last was used after all
+static void usePending(void) {
+	for (int i = 0; i < content.size; i++) if (content.pending[i]) cellUsed(content.pending[i] - 1);
+	content.size = 0;
+}
+
+static void wasRead(uint32_t address, uint32_t value, int size) {
+	usePending();
+	if (content.unpacking) {
+		uint32_t from = cameFrom(address);
+		if (from && address >> 24 >= 8) {
+			if (from - 1 < content.readLow) content.readLow = from - 1;
+			if (from - 1 + size - 1 > content.readHigh) content.readHigh = from - 1 + size - 1;
+		}
+		return;
+	}
+	int any = 0;
+	for (int i = 0; i < size; i++) any |= (content.pending[i] = cameFrom(address + i)) != 0;
+	if (!any) return;
+	content.value = value;
+	content.size = size;
+}
+
+static void wasWritten(uint32_t address, uint32_t value, int size) {
+	uint32_t* to = ramFrom(address);
+	uint32_t mask = size == 4 ? 0xFFFFFFFF : (1u << size * 8) - 1;
+	// what was just read, written as it is into the work RAM: a copy, which is followed there
+	int copy = to && content.size == size && (content.value & mask) == (value & mask);
+	if (to) {
+		if (content.unpacking) {
+			if (address < content.wroteLow) content.wroteLow = address;
+			if (address + size - 1 > content.wroteHigh) content.wroteHigh = address + size - 1;
+		}
+		for (int i = 0; i < size; i++) {
+			uint32_t* each = ramFrom(address + i);
+			if (each) *each = copy ? content.pending[i] : 0;
+		}
+	}
+	if (copy) content.size = 0;
+	else if (content.size == size && (content.value & mask) == (value & mask)) usePending();   // written elsewhere: used
+}
+
+static uint32_t watchLoad32(struct ARMCore* cpu, uint32_t address, int* cycles) {
+	uint32_t value = content.memory.load32(cpu, address, cycles);
+	wasRead(address & ~3u, value, 4);
+	return value;
+}
+static uint32_t watchLoad16(struct ARMCore* cpu, uint32_t address, int* cycles) {
+	uint32_t value = content.memory.load16(cpu, address, cycles);
+	wasRead(address & ~1u, value, 2);
+	return value;
+}
+static uint32_t watchLoad8(struct ARMCore* cpu, uint32_t address, int* cycles) {
+	uint32_t value = content.memory.load8(cpu, address, cycles);
+	wasRead(address, value, 1);
+	return value;
+}
+static void watchStore32(struct ARMCore* cpu, uint32_t address, int32_t value, int* cycles) {
+	wasWritten(address & ~3u, (uint32_t) value, 4);
+	content.memory.store32(cpu, address, value, cycles);
+}
+static void watchStore16(struct ARMCore* cpu, uint32_t address, int16_t value, int* cycles) {
+	wasWritten(address & ~1u, (uint16_t) value, 2);
+	content.memory.store16(cpu, address, value, cycles);
+}
+static void watchStore8(struct ARMCore* cpu, uint32_t address, int8_t value, int* cycles) {
+	wasWritten(address, (uint8_t) value, 1);
+	content.memory.store8(cpu, address, value, cycles);
+}
+
+// a BIOS call. One that unpacks data of the cartridge into the work RAM (BitUnPack to Diff16bitUnFilter, 0x10 to
+// 0x18) leaves each byte it wrote coming from as far through what it read as the byte is through what it wrote
+static void watchSwi(struct ARMCore* cpu, int number, void (*swi)(struct ARMCore*, int), int immediate) {
+	uint32_t source = cpu->gprs[0], target = cpu->gprs[1];
+	usePending();
+	if (number < 0x10 || number > 0x18 || !ramFrom(target) || source >> 24 < 8 || source >> 24 > 13) {
+		swi(cpu, immediate);
+		usePending();
+		return;
+	}
+	content.unpacking = 1;
+	content.readLow = content.wroteLow = 0xFFFFFFFF;
+	content.readHigh = content.wroteHigh = 0;
+	swi(cpu, immediate);
+	content.unpacking = 0;
+	if (content.readLow > content.readHigh || content.wroteLow > content.wroteHigh) return;
+	uint64_t read = content.readHigh - content.readLow + 1, wrote = content.wroteHigh - content.wroteLow + 1;
+	for (uint32_t i = 0; i < wrote; i++) {
+		uint32_t* to = ramFrom(content.wroteLow + i);
+		if (to) *to = content.readLow + (uint32_t) (i * read / wrote) + 1;
+	}
+}
+static void watchSwi16(struct ARMCore* cpu, int immediate) { watchSwi(cpu, immediate & 0xFF, content.swi16, immediate); }
+static void watchSwi32(struct ARMCore* cpu, int immediate) { watchSwi(cpu, immediate >> 16 & 0xFF, content.swi32, immediate); }
+
+static void watchContent(struct ARMCore* cpu, struct GBA* gba, const char* path) {
+	content.file = fopen(path, "wb");
+	if (!content.file) { fprintf(stderr, "Can't write %s\n", path); exit(2); }
+	content.romSize = (uint32_t) gba->memory.romSize;
+	uint32_t cells = content.romSize / CELL + 1;
+	content.start = calloc(cells, sizeof(uint32_t));
+	content.last = malloc(cells * sizeof(long));
+	for (uint32_t i = 0; i < cells; i++) content.last[i] = -1;
+	content.from = calloc(EWRAM_BYTES + IWRAM_BYTES, sizeof(uint32_t));
+	content.memory = cpu->memory;
+	cpu->memory.load32 = watchLoad32;
+	cpu->memory.load16 = watchLoad16;
+	cpu->memory.load8 = watchLoad8;
+	cpu->memory.store32 = watchStore32;
+	cpu->memory.store16 = watchStore16;
+	cpu->memory.store8 = watchStore8;
+	content.swi16 = cpu->irqh.swi16;
+	content.swi32 = cpu->irqh.swi32;
+	cpu->irqh.swi16 = watchSwi16;
+	cpu->irqh.swi32 = watchSwi32;
+}
+
+static void endContent(void) {
+	usePending();
+	for (uint32_t cell = 0; cell < content.romSize / CELL + 1; cell++) {
+		if (content.last[cell] < 0) continue;
+		uint32_t record[3] = { cell, content.start[cell], (uint32_t) content.last[cell] };
+		fwrite(record, 4, 3, content.file);
+	}
+	fclose(content.file);
 }
 
 // The console's sound as mGBA mixes it: each sample comes through its audio stream, scaled by mGBA's master volume
@@ -406,7 +592,10 @@ int main(int argc, char** argv) {
 	struct ARMCore* cpu = core->cpu;
 	struct GBA* gba = core->board;
 
+	if (getenv("DP_CONTENT")) watchContent(cpu, gba, getenv("DP_CONTENT"));
+
 	for (long frame = 0; frame < frames; frame++) {
+		content.frame = frame;
 		core->setKeys(core, (size_t) frame < buttonsSize / 2 ? buttons[frame] : 0);
 		for (; nextSet < setCount && sets[nextSet * 4] == (uint32_t) frame; nextSet++) {
 			setValue(core, sets[nextSet * 4 + 1], sets[nextSet * 4 + 2], sets[nextSet * 4 + 3]);
@@ -470,6 +659,7 @@ int main(int argc, char** argv) {
 				happened(now, pc == next ? NOT_TAKEN : TAKEN, frame);
 			}
 		}
+		if (content.file) usePending();
 		for (; nextRead < readCount && reads[nextRead * 3] == (uint32_t) frame; nextRead++) {
 			readValues[nextRead] = readValue(core, reads[nextRead * 3 + 1], reads[nextRead * 3 + 2]);
 		}
@@ -493,6 +683,7 @@ int main(int argc, char** argv) {
 	fflush(stdout);
 	if (soundFile) fclose(soundFile);
 	if (ramCode) fclose(ramCode);
+	if (content.file) endContent();
 	if (played.file) {
 		for (size_t i = 0; i < played.count; i++) endStretches(&played.list[i]);
 		fclose(played.file);

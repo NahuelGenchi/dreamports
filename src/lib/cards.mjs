@@ -16,7 +16,9 @@ const BLOCK = /<div\b([^>]*\bdata-language="[^"]*"[^>]*)>([^]*?)<\/div>/g;
 const cardIn = (html, card) => new RegExp(`<dialog\\b[^>]*\\bid="${card}"[^]*?</dialog>`).exec(html)?.[0];
 
 // the meters in some of a page by their names, each with what it says and how far its bar fills
-const metersIn = html => new Map([...html.matchAll(METER)].map(([, label, text, width]) => [label, { text, width: Number(width) }]));
+// a page's text as a visitor reads it: a number under 1% is written &lt;1% in the page
+const plain = text => text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+const metersIn = html => new Map([...html.matchAll(METER)].map(([, label, text, width]) => [label, { text: plain(text), width: Number(width) }]));
 
 // what's wrong with one of a card's two numbers
 function meterProblem(meters, label, percent) {
@@ -100,7 +102,7 @@ export async function problemsWith(dreamports, read) {
     }
     if (making) {
       const row = await page('/make/');
-      const shown = row ? [...row.matchAll(new RegExp(`<a\\b[^>]*\\bdata-card="make-${id}"[^>]*\\bdata-numbers="([^"]*)"`, 'g'))].map(match => match[1]) : [];
+      const shown = row ? [...row.matchAll(new RegExp(`<a\\b[^>]*\\bdata-card="make-${id}"[^>]*\\bdata-numbers="([^"]*)"`, 'g'))].map(match => plain(match[1])) : [];
       const numbers = numbersText(proof);
       if (!shown.length) problems.push(`/make/: ${entry.title} has no numbers in the Make row.`);
       for (const text of new Set(shown)) {

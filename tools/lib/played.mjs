@@ -8,8 +8,14 @@
 //   "original": the copy's SHA-1,
 //   "percent", "units": { "total", "played" }: gameplay proven, and what it's made of,
 //   "code": which places in the code map's functions hold an instruction, and which of those a conditional branch,
-//   "recordings": { name: what ran in the recording's matching frames }
+//   "recordings": { name: what ran in the recording's matching frames },
+//   "content": { name: the cartridge's data used in the recording's matching frames }
 // }
+//
+// The cartridge's data counts the same way: in cells of 32 bytes, each once the game has used something of it in a
+// frame that matched (DP_CONTENT: read it and done anything with it but copy it into the work RAM, where it's followed).
+// The cells that count are those with a byte outside every function of the code map, but those whose 32 bytes are
+// all the same, which hold nothing.
 //
 // "code" and each recording's are sets of numbers, deflated and written in base64. A place is two bytes of a function,
 // numbered through the code map's functions in order, and takes three numbers: in a recording's, that it ran, that its
@@ -24,6 +30,8 @@ import { looksLikeArm } from '../gba/functions.mjs';
 import { playedPercent } from '../../src/lib/entries.mjs';
 
 export const RAN = 0, TAKEN = 1, NOT_TAKEN = 2;
+/** How many bytes of the cartridge a cell of its data is (gba/original.c). */
+export const CELL = 32;
 const INSTRUCTION = 0, BRANCH = 1;
 const CARTRIDGE = 0x08000000;
 
@@ -156,6 +164,36 @@ export function playedIn(records, matched, layout, find) {
   return set;
 }
 
+/** The cartridge's data used in a recording's matching frames, as a set of cells: `records` as the original's program
+ *  writes them for DP_CONTENT (three words each: the cell, and the first and last frame of a stretch). */
+export function contentIn(records, matched, cells) {
+  const before = new Uint32Array(matched.length + 1);
+  for (let frame = 0; frame < matched.length; frame++) before[frame + 1] = before[frame] + (matched[frame] ? 1 : 0);
+  const set = new Uint8Array(Math.ceil(cells / 8));
+  for (let i = 0; i + 3 <= records.length; i += 3) {
+    const from = records[i + 1], to = Math.min(records[i + 2], matched.length - 1);
+    if (records[i] < cells && from <= to && before[to + 1] !== before[from]) put(set, records[i]);
+  }
+  return set;
+}
+
+/** The cells of a cartridge that hold data, as a set: those with a byte outside every function of the code map, but
+ *  those whose bytes are all the same. `rom` is the whole copy. */
+export function contentCells(codeMap, rom) {
+  const cells = Math.ceil(rom.length / CELL), code = new Uint8Array(rom.length), set = new Uint8Array(Math.ceil(cells / 8));
+  for (const f of codeMap.functions) if (!f.bytes && f.address >= CARTRIDGE) code.fill(1, f.address - CARTRIDGE, f.address - CARTRIDGE + f.size);
+  for (let cell = 0; cell < cells; cell++) {
+    const from = cell * CELL, to = Math.min(from + CELL, rom.length);
+    let data = false, same = true;
+    for (let at = from; at < to; at++) {
+      data ||= !code[at];
+      same &&= rom[at] === rom[from];
+    }
+    if (data && !same) put(set, cell);
+  }
+  return set;
+}
+
 /** A version's played.json, or a new one. */
 export function readPlayed(game) {
   const file = join(proofFolder(game), 'played.json');
@@ -167,9 +205,10 @@ export function readPlayed(game) {
  * recordings just proven (name → set), the others stay as the file has them, and those not in `all` go. `made` holds the
  * bytes of the functions the game made in memory in those runs (place in the code map → bytes), and `cartridge` reads
  * the copy. Where each function's instructions and branches are comes from its bytes, followed from its start and from
- * what ran; a function made in memory that didn't run now keeps what the file knew of it. Returns { percent, total, played }.
+ * what ran; a function made in memory that didn't run now keeps what the file knew of it. `used` holds the cartridge's
+ * data those recordings used (name → set of cells). Returns { percent, total, played, content: { total, read, percent } }.
  */
-export function writePlayed(game, { original, codeMap, cartridge, sets, made, all }) {
+export function writePlayed(game, { original, codeMap, cartridge, sets, used, made, all }) {
   const layout = layoutOf(codeMap), before = readPlayed(game);
   const sameMap = before.original === original && before.places === layout.places;
   const recordings = {};
@@ -210,8 +249,28 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, made, al
     }
   });
   const percent = playedPercent(played, total);
+  // the cartridge's data: the cells that count, and those some recording used in its matching frames
+  const rom = cartridge(CARTRIDGE, 0x02000000), holds = contentCells(codeMap, rom), cellBytes = holds.length;
+  const content = {};
+  for (const name of [...all].sort()) {
+    if (used.has(name)) content[name] = pack(used.get(name));
+    else if (sameMap && before.content?.[name]) content[name] = before.content[name];
+  }
+  let cellsTotal = 0, cellsRead = 0;
+  const read = new Uint8Array(cellBytes);
+  for (const text of Object.values(content)) {
+    const set = unpack(text, cellBytes);
+    for (let i = 0; i < cellBytes; i++) read[i] |= set[i];
+  }
+  for (let cell = 0; cell < cellBytes * 8; cell++) {
+    if (!has(holds, cell)) continue;
+    cellsTotal++;
+    if (has(read, cell)) cellsRead++;
+  }
+  const ofContent = { total: cellsTotal, read: cellsRead, percent: playedPercent(cellsRead, cellsTotal) };
   const text = `{\n  "original": ${JSON.stringify(original)},\n  "percent": ${percent},\n  "units": ${JSON.stringify({ total, played })},\n  "places": ${layout.places},\n`
-    + `  "code": ${JSON.stringify(pack(code))},\n  "recordings": {\n${Object.entries(recordings).map(([name, set]) => `    ${JSON.stringify(name)}: ${JSON.stringify(set)}`).join(',\n')}\n  }\n}\n`;
+    + `  "code": ${JSON.stringify(pack(code))},\n  "recordings": {\n${Object.entries(recordings).map(([name, set]) => `    ${JSON.stringify(name)}: ${JSON.stringify(set)}`).join(',\n')}\n  },\n`
+    + `  "cells": ${JSON.stringify(ofContent)},\n  "content": {\n${Object.entries(content).map(([name, set]) => `    ${JSON.stringify(name)}: ${JSON.stringify(set)}`).join(',\n')}\n  }\n}\n`;
   writeFileSync(join(proofFolder(game), 'played.json'), text);
-  return { percent, total, played };
+  return { percent, total, played, content: ofContent };
 }
