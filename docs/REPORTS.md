@@ -4,7 +4,9 @@ When something in a Dreamport looks wrong, the player opens its settings, choose
 
 ## What a report is
 
-A report is the buttons the player held at each frame since the game started, which is all a recording is (`tools/README.md`, Recording play), with the game and its version, the address's start point when there is one, whether the game began from a save, and which of four reasons the player picked. There is no box to type in, so a report can't carry a message, a link or anything personal. It holds no save, no copy of the game and nothing of who sent it.
+A report is the buttons the player held at each frame since the game started, which is all a recording is (`tools/README.md`, Recording play), with the game and its version, the address's start point when there is one, the save the game began from when it had one, and which of four reasons the player picked. There is no box to type in, so a report can't carry a message or a link. It holds no copy of the game, and nothing of who sent it beyond what that save holds.
+
+The save goes because the same presses play something else from another save: the first report a player sent matched the original for 1,838 frames and then differed, as its game had begun from a save it didn't carry. It is the save memory as it was when the visit started, which the kit notes before the game writes over it (`kit/gba/save.js`), packed: a cartridge's save memory is mostly bytes never written, so 64 KB comes to a few thousand characters. A save holds the player's progress, records and settings in that game, and any name they typed in it, as Sonic Advance and Sonic Battle ask for one, with the names of those they played against in Sonic Advance. The view says so under its button, and the site's About card too. A report takes 24,000 characters of save at most, and one whose save is bigger, or can't be packed by an old browser, goes without it and says only that the game began from one.
 
 As Send report is pressed the view shows the report going, then how it ended: sent, or not, with the reason picked and what to do next.
 
@@ -12,7 +14,7 @@ The kit keeps the presses in memory while the game runs (`kit/gba/session.js`) a
 
 ## What the site does with one
 
-The Worker (`worker/index.ts`) takes a report at `POST /api/reports`. It reads it with the same check the tools use, and refuses anything that isn't presses for a named game: a change out of order, a button the report doesn't name, or more than about two hours of play. It keeps it in the accounts' database, in a table of its own, with no address: the sender is kept only as a hash of their address with the day and a secret, so one sender can be counted for a day and never followed past it.
+The Worker (`worker/index.ts`) takes a report at `POST /api/reports`. It reads it with the same check the tools use, and refuses anything that isn't presses for a named game: a change out of order, a button the report doesn't name, or more than about two hours of play. A save has to unpack to no more than a cartridge's biggest save memory, 128 KB, and is kept beside its report and deleted with it. It keeps it in the accounts' database, in a table of its own, with no address: the sender is kept only as a hash of their address with the day and a secret, so one sender can be counted for a day and never followed past it.
 
 ## Keeping robots and floods out
 
@@ -34,9 +36,9 @@ A pull request's preview uses the keys Cloudflare publishes for testing Turnstil
 
 ## Reading them
 
-`npm run dp -- reports` fetches the reports sent since the last time and writes each as a recording in `.dreamports/reports/<game>/`, on the owner's computer. Only the owner's key reads them: the site holds it as its secret `REPORTS_KEY`, and the tools read it from `.dreamports/reports.key`, which never goes in a commit. To try one, copy its file into the game's `proof/recordings/` under a name of its own and run `npm run dp -- prove <version> <name> --quick`. Where every frame matches, the Dreamport did what the cartridge does, and there's nothing to fix. Where it differs, that's a bug worth an issue.
+`npm run dp -- reports` fetches the reports sent since the last time and writes each as a recording in `.dreamports/reports/<game>/`, on the owner's computer, with the save it began from beside it, as `<name>.<key>.sav`: the save memory's bytes, which are the cartridge's own where the Dreamport saves as its cartridge does ([Saves](STANDARD.md#saves)). Only the owner's key reads them: the site holds it as its secret `REPORTS_KEY`, and the tools read it from `.dreamports/reports.key`, which never goes in a commit. To try one, copy its file into the game's `proof/recordings/` under a name of its own and run `npm run dp -- prove <version> <name> --quick`. Where every frame matches, the Dreamport did what the cartridge does, and there's nothing to fix. Where it differs, that's a bug worth an issue.
 
-A report from a game with a save says so, as the original starts with nothing saved and may differ from where the game first read it.
+`prove` still starts both games with nothing saved, so a report from a game with a save may differ from where the game first read it, and the tools say which reports those are. Starting both from the report's save is [#1441](https://github.com/NahuelGenchi/dreamports/issues/1441).
 
 ## What's set up at Cloudflare
 
@@ -44,4 +46,4 @@ A report from a game with a save says so, as the original starts with nothing sa
 - The Worker's secret `REPORTS_KEY`.
 - A rate limiting rule on the zone for `POST /api/reports`.
 
-The Dreamports team added reports on 16 November 2026, in [#1354](https://github.com/NahuelGenchi/dreamports/issues/1354).
+The Dreamports team added reports on 16 November 2026, in [#1354](https://github.com/NahuelGenchi/dreamports/issues/1354), and the save a report carries the same day, in [#1440](https://github.com/NahuelGenchi/dreamports/issues/1440).

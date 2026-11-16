@@ -3,7 +3,7 @@
 // them at power-on and writes them when the original does. Where storage is blocked or full, the game keeps its
 // save in memory for as long as the page is open.
 
-import { noteKeptSave } from './session.js';
+import { noteStartSave } from './session.js';
 
 /** The browser's storage, or null where it is blocked. */
 export function browserStorage() {
@@ -16,12 +16,15 @@ export function browserStorage() {
  * keeps `bytes` and returns whether they were kept; `erase` forgets them.
  */
 export function cartridgeSave(key, storage = browserStorage()) {
+  // what a visit began from, before the game writes over it: a player's report carries it (session.js)
+  if (storage) {
+    try { noteStartSave(key, storage.getItem(key)); } catch { /* storage blocked */ }
+  }
   return {
     read() {
       try {
         const text = storage?.getItem(key);
         if (!text) return null;
-        noteKeptSave();   // a session that began from a save says so, as a recording holds none (session.js)
         return Uint8Array.from(atob(text), c => c.charCodeAt(0));
       } catch {
         return null;   // storage blocked, or not what this keeps

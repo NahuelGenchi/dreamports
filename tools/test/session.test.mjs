@@ -3,7 +3,8 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSession, noteKeptSave, recordingText, startOf } from '../../kit/gba/session.js';
+import { createSession, noteStartSave, recordingText, savesAtStart, startOf } from '../../kit/gba/session.js';
+import { cartridgeSave } from '../../kit/gba/save.js';
 import { expand } from '../lib/recording.mjs';
 
 const LAYOUT = { buttons: ['left', 'right', 'jump', 'boost'], gba: { left: 'LEFT', right: 'RIGHT', jump: 'A' } };
@@ -44,8 +45,24 @@ test('the file is a recording a line to a change, and says when the game began f
   const text = recordingText(session.recording('A session.'));
   assert.equal(text, '{\n  "about": "A session.",\n  "frames": 2,\n  "held": [\n    [0,["LEFT"]],\n    [1,[]]\n  ]\n}\n');
   assert.deepEqual(Object.keys(JSON.parse(text)), ['about', 'frames', 'held'], 'presses, and nothing of the game or of who played');
-  noteKeptSave();
-  const kept = JSON.parse(recordingText(createSession(LAYOUT).recording('A session.')));
-  assert.equal(kept.keptSave, true);
-  assert.deepEqual(kept.held, []);
+  // a key that held nothing as the game started isn't a save
+  noteStartSave('made-up-empty', null);
+  assert.deepEqual(savesAtStart(), []);
+  assert.equal(createSession(LAYOUT).recording('A session.').keptSave, undefined);
+});
+
+test('the save a visit began from is kept, whatever the game writes after', () => {
+  const kept = new Map([['made-up-save', btoa('\x01\x02\xFF')]]);
+  const storage = { getItem: key => kept.get(key) ?? null, setItem: (key, text) => kept.set(key, text), removeItem: key => kept.delete(key) };
+  const save = cartridgeSave('made-up-save', storage);
+  assert.deepEqual([...save.read()], [1, 2, 255]);
+  save.write(Uint8Array.of(9, 9, 9, 9));
+  // the game's other saves opened later, and the same key opened again, change nothing of it
+  cartridgeSave('made-up-save', storage);
+  cartridgeSave('made-up-other', storage);
+  cartridgeSave('made-up-apart', null);
+  assert.deepEqual(savesAtStart().map(({ key, bytes }) => [key, [...bytes]]), [['made-up-save', [1, 2, 255]]]);
+  const recording = JSON.parse(recordingText(createSession(LAYOUT).recording('A session.')));
+  assert.equal(recording.keptSave, true);
+  assert.deepEqual(recording.held, []);
 });

@@ -3,7 +3,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FEWEST_FRAMES, MOST_PACKED, packHeld, readReport, unpackHeld } from '../../kit/gba/report.js';
+import { deflateRawSync } from 'node:zlib';
+import { randomBytes } from 'node:crypto';
+import { FEWEST_FRAMES, MOST_PACKED, MOST_SAVE_BYTES, MOST_SAVES_PACKED, packHeld, packSave, packSaves, readReport, savesUnpack, unpackHeld, unpackSave } from '../../kit/gba/report.js';
 import { createSession } from '../../kit/gba/session.js';
 import { recordingOf } from '../reports.mjs';
 
@@ -22,9 +24,10 @@ test('presses pack small and come back as they were', () => {
 
 test('a report is read back with nothing but what a report holds', () => {
   const read = readReport({ ...report(), note: 'something typed', email: 'someone', token: 'x' });
-  assert.deepEqual(Object.keys(read), ['game', 'reason', 'start', 'keptSave', 'frames', 'buttons', 'held']);
+  assert.deepEqual(Object.keys(read), ['game', 'reason', 'start', 'keptSave', 'saves', 'frames', 'buttons', 'held']);
   assert.equal(read.start, '');
   assert.equal(read.keptSave, false);
+  assert.deepEqual(read.saves, []);
   assert.equal(readReport(report({ start: 'unlocked=8&character=3', keptSave: true })).start, 'unlocked=8&character=3');
 });
 
@@ -107,4 +110,74 @@ test('waiting reports go when the site takes them, and wait on when it doesn\'t'
   assert.equal(waitingReports(storage, now + 20).length, 1, 'the one out of reach waits on');
   assert.equal(await sendWaitingReports(async () => 201, storage, now + 30), 1);
   assert.equal(held.has('dreamports.reports'), false, 'and nothing is left behind');
+});
+
+// a cartridge's flash as a long-played game leaves it: sixteen sectors of 4 KB, each a save of some 1,200 bytes that
+// don't pack, a little changed from the one before, and bytes never written
+function flash() {
+  const bytes = new Uint8Array(0x10000).fill(0xFF), save = new Uint8Array(randomBytes(0x4E0));
+  for (let sector = 0; sector < 16; sector++) {
+    save.set(randomBytes(32), sector * 64);
+    bytes.fill(0, sector * 0x1000, (sector + 1) * 0x1000);
+    bytes.set(save, sector * 0x1000);
+  }
+  return bytes;
+}
+
+test('a save packs small and comes back byte for byte', async () => {
+  const bytes = flash();
+  const packed = await packSave(bytes);
+  assert.ok(packed.length < MOST_SAVES_PACKED / 2, `${packed.length} characters`);
+  assert.ok(Buffer.from(await unpackSave(packed)).equals(bytes), 'the same bytes');
+  // a first save, one sector written, is a few hundred characters
+  const first = new Uint8Array(0x10000).fill(0xFF);
+  first.set(bytes.subarray(0, 0x430));
+  assert.ok((await packSave(first)).length < 2500);
+  assert.equal(await packSave(new Uint8Array(0)), null);
+  assert.equal(await packSave(new Uint8Array(MOST_SAVE_BYTES + 1)), null);
+});
+
+test('what isn\'t a packed save unpacks to nothing', async () => {
+  assert.equal(await unpackSave('not base64!'), null);
+  assert.equal(await unpackSave(btoa('these are not deflated bytes at all')), null);
+  assert.equal(await unpackSave(deflateRawSync(new Uint8Array(0)).toString('base64')), null);
+  // a few hundred bytes that would unpack to megabytes are stopped at a save memory's size
+  const bomb = deflateRawSync(new Uint8Array(8_000_000)).toString('base64');
+  assert.ok(bomb.length < MOST_SAVES_PACKED);
+  assert.equal(await unpackSave(bomb), null);
+  assert.equal(await savesUnpack(readReport(report({ saves: [{ key: 'made-up-save', packed: bomb }] }))), false);
+});
+
+test('a report carries the saves its game began from', async () => {
+  const first = new Uint8Array(0x10000).fill(0xFF);
+  first.set(flash().subarray(0, 0x430));
+  const saves = await packSaves([{ key: 'made-up-save', bytes: first }, { key: 'made-up.name', bytes: Uint8Array.of(1, 2, 3) }]);
+  assert.deepEqual(saves.map(save => save.key), ['made-up-save', 'made-up.name']);
+  const read = readReport(report({ saves }));
+  assert.equal(JSON.stringify(read.saves), JSON.stringify(saves));
+  assert.equal(read.keptSave, true, 'a report with a save began from one');
+  assert.equal(await savesUnpack(read), true);
+  // the site gives it back, and the tools have the bytes again
+  const kept = recordingOf({ id: 'ADcC3d8DddTeGROW', created: Date.UTC(2026, 10, 16), game: read.game, reason: read.reason, start: read.start, kept_save: 1, saves, frames: read.frames, buttons: read.buttons.join(' '), held: read.held });
+  assert.ok(Buffer.from(await unpackSave(kept.saves[0].packed)).equals(first), 'the same bytes');
+  assert.equal(kept.recording.keptSave, true);
+  // one too big to send goes without: the report still says it began from a save
+  assert.equal((await packSaves([{ key: 'made-up-save', bytes: new Uint8Array(randomBytes(0x10000)) }])).length, 0);
+  assert.equal((await packSaves([{ key: 'Not A Key', bytes: first }])).length, 0);
+});
+
+test('what isn\'t a save is refused', async () => {
+  const packed = await packSave(Uint8Array.of(1, 2, 3));
+  const refused = saves => assert.equal(typeof readReport(report({ saves })), 'string', JSON.stringify(saves).slice(0, 80));
+  refused('a save');
+  refused([null]);
+  refused([{ key: 'made-up-save' }]);
+  refused([{ key: '../etc', packed }]);
+  refused([{ key: 'made-up-save', packed: '<script>' }]);
+  refused([{ key: 'made-up-save', packed: '' }]);
+  refused([{ key: 'made-up-save', packed }, { key: 'made-up-save', packed }]);
+  refused(Array.from({ length: 5 }, (_, i) => ({ key: `save-${i}`, packed })));
+  refused([{ key: 'a', packed: 'AAAA'.repeat(MOST_SAVES_PACKED / 8) }, { key: 'b', packed: 'AAAA'.repeat(MOST_SAVES_PACKED / 8 + 1) }]);
+  // and what a save carries besides its key and bytes is dropped
+  assert.deepEqual(readReport(report({ saves: [{ key: 'made-up-save', packed, note: 'typed' }] })).saves, [{ key: 'made-up-save', packed }]);
 });

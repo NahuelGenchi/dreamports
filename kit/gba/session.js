@@ -1,14 +1,27 @@
 // A visit's presses, for the settings' "Save this session's presses" (ui/settings.js): what the game read at every
 // frame since it started, kept as a list of changes, which is all a recording is (tools/README.md, Recording play).
 // A player who sees something wrong saves them as a file and sends it in, and `npm run dp -- prove` then plays it next
-// to the original like any recording. It holds the buttons held and nothing else: no save, no copy of the game and
-// nothing of who played. It's kept in memory only, for as long as the page is open, and written only when the player
-// asks.
+// to the original like any recording. It holds the buttons held and nothing else: no copy of the game and nothing of
+// who played. It's kept in memory only, for as long as the page is open, and written only when the player asks.
 
-// whether the game read a save the browser kept as it started (save.js): a recording holds no save, so one that began
-// from a save says so, as the original, played from power-on with nothing saved, won't have it
-let keptSave = false;
-export function noteKeptSave() { keptSave = true; }
+// The save memory the browser kept as the game started (save.js), by its key, as the text storage held: the game
+// writes over it as it plays, so what a visit began from is known only if it's kept from the start. A recording holds
+// no save, so one that began from a save says so, and a report carries these with it (report.js), as the original,
+// played from power-on with nothing saved, won't have them.
+const startSaves = new Map();
+/** Notes what storage kept under `key` as the game started: the first time for a key is the one that counts. */
+export function noteStartSave(key, text) {
+  if (!startSaves.has(key)) startSaves.set(key, typeof text === 'string' && text ? text : null);
+}
+/** The saves the visit began from, each { key, bytes }: only keys that held one, and only what reads as a save. */
+export function savesAtStart() {
+  const saves = [];
+  for (const [key, text] of startSaves) {
+    if (text === null) continue;
+    try { saves.push({ key, bytes: Uint8Array.from(atob(text), c => c.charCodeAt(0)) }); } catch { /* not what save.js keeps */ }
+  }
+  return saves;
+}
 
 /**
  * A session of one player's `layout` (input.js): { read(frame), frames, recording(about) }. `read` takes what the game
@@ -34,7 +47,7 @@ export function createSession(layout) {
     },
     recording(about, query = '') {
       const start = startOf(query);
-      return { about, ...(start ? { start } : {}), ...(keptSave ? { keptSave: true } : {}), frames, held: held.map(([frame, buttons]) => [frame, [...buttons]]) };
+      return { about, ...(start ? { start } : {}), ...(savesAtStart().length ? { keptSave: true } : {}), frames, held: held.map(([frame, buttons]) => [frame, [...buttons]]) };
     },
   };
 }

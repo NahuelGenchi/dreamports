@@ -4,7 +4,7 @@
 
 import { ACHIEVEMENT_PATTERN, GAME_PATTERN, MINIMUM_AGE, NAME_PATTERN, achievementsListOf, isWay, type Way } from '../src/lib/players';
 import { Cancelled, WayError, accountOf, b64url, signInPage, type Flight, type WayEnv } from './ways';
-import { KEPT_DAYS, MOST_PACKED, readReport } from '../kit/gba/report.js';
+import { KEPT_DAYS, MOST_PACKED, MOST_SAVES_PACKED, readReport, savesUnpack } from '../kit/gba/report.js';
 
 interface Env extends WayEnv {
   ASSETS: Fetcher;
@@ -155,6 +155,14 @@ const SCHEMA = [
     held TEXT NOT NULL,
     bytes INTEGER NOT NULL
   )`,
+  // the save memory a report's game began from, packed, by the key the browser keeps it under: a table of its own,
+  // as most reports have none. A report's bytes count its saves too
+  `CREATE TABLE IF NOT EXISTS report_saves (
+    report TEXT NOT NULL,
+    key TEXT NOT NULL,
+    packed TEXT NOT NULL,
+    PRIMARY KEY (report, key)
+  ) WITHOUT ROWID`,
   `CREATE INDEX IF NOT EXISTS reports_created ON reports (created)`,
   `CREATE INDEX IF NOT EXISTS reports_sender ON reports (sender, created)`,
 ];
@@ -545,11 +553,12 @@ async function reports(request: Request, env: Env, db: D1Database, url: URL): Pr
     }
     case 'POST /api/reports': {
       const text = await request.text();
-      if (text.length > MOST_PACKED + 4096) throw new Problem(413, 'That’s too long to send.');
+      if (text.length > MOST_PACKED + MOST_SAVES_PACKED + 4096) throw new Problem(413, 'That’s too long to send.');
       let sent: Record<string, unknown>;
       try { sent = JSON.parse(text); } catch { throw new Problem(400, 'The request wasn’t readable.'); }
       const report = readReport(sent?.report);
       if (typeof report === 'string') throw new Problem(400, report);
+      if (!(await savesUnpack(report))) throw new Problem(400, 'Its save isn’t a save.');
       const address = request.headers.get('CF-Connecting-IP') ?? '';
       if (!(await passes(env, sent.token, address))) throw new Problem(403, 'That couldn’t be checked. Try again.');
       // who sent it, for a day: never the address itself
@@ -567,10 +576,15 @@ async function reports(request: Request, env: Env, db: D1Database, url: URL): Pr
       if (same) return json({ ok: true });
       if (hour >= REPORTS_AN_HOUR || day >= REPORTS_A_DAY) throw new Problem(429, 'That’s a lot of reports. Try again later.');
       if (all >= REPORTS_A_DAY_IN_ALL || bytes >= REPORTS_BYTES_IN_ALL) throw new Problem(429, 'We’ve had all the reports we can take today. Try again tomorrow.');
+      const id = random(12);
+      const size = report.held.length + report.saves.reduce((sum, save) => sum + save.packed.length, 0);
       await db.batch([
         db.prepare('DELETE FROM reports WHERE created < ?').bind(now - KEPT_DAYS * DAY),
+        db.prepare('DELETE FROM report_saves WHERE report NOT IN (SELECT id FROM reports)'),
         db.prepare('INSERT OR IGNORE INTO reports (id, created, sender, hash, game, reason, start, kept_save, frames, buttons, held, bytes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-          .bind(random(12), now, sender, hash, report.game, report.reason, report.start, report.keptSave ? 1 : 0, report.frames, report.buttons.join(' '), report.held, report.held.length),
+          .bind(id, now, sender, hash, report.game, report.reason, report.start, report.keptSave ? 1 : 0, report.frames, report.buttons.join(' '), report.held, size),
+        // only for the report just kept: a report already there, by its hash, keeps the saves it came with
+        ...report.saves.map((save) => db.prepare('INSERT OR IGNORE INTO report_saves (report, key, packed) SELECT id, ?, ? FROM reports WHERE id = ?').bind(save.key, save.packed, id)),
       ]);
       return json({ ok: true }, 201);
     }
@@ -580,7 +594,11 @@ async function reports(request: Request, env: Env, db: D1Database, url: URL): Pr
       const after = Number(url.searchParams.get('after') ?? 0);
       const rows = await db.prepare('SELECT id, created, game, reason, start, kept_save, frames, buttons, held FROM reports WHERE created > ? ORDER BY created LIMIT 50')
         .bind(Number.isFinite(after) ? after : 0).all<Record<string, unknown>>();
-      return json({ reports: rows.results });
+      if (!rows.results.length) return json({ reports: [] });
+      // each with the saves its game began from
+      const saves = await db.prepare(`SELECT report, key, packed FROM report_saves WHERE report IN (${rows.results.map(() => '?').join(', ')})`)
+        .bind(...rows.results.map((row) => row.id)).all<{ report: string; key: string; packed: string }>();
+      return json({ reports: rows.results.map((row) => ({ ...row, saves: saves.results.filter((save) => save.report === row.id).map(({ key, packed }) => ({ key, packed })) })) });
     }
     default:
       throw new Problem(404, 'Nothing here.');
