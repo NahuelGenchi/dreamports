@@ -336,6 +336,32 @@ export function ranIn(game, codeMap, address) {
   }).filter(Boolean);
 }
 
+/**
+ * For each recording, which of `addresses` ran in its matching frames: a Map from the recording's name to those
+ * addresses, the recordings that ran none left out.
+ */
+export function ranBy(game, codeMap, addresses) {
+  const layout = layoutOf(codeMap), played = readPlayed(game), by = new Map();
+  if (played.places !== layout.places) return by;
+  const starts = codeMap.functions.map((f, index) => ({ f, index })).sort((x, y) => x.f.address - y.f.address);
+  const places = addresses.map(address => {
+    // the last function that starts at or before it
+    let low = 0, high = starts.length - 1, found = -1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      if (starts[middle].f.address <= address) { found = middle; low = middle + 1; } else high = middle - 1;
+    }
+    const at = found < 0 ? null : starts[found];
+    return at && address < at.f.address + at.f.size ? layout.first[at.index] + ((address - at.f.address) >> 1) : -1;
+  });
+  for (const [name, text] of Object.entries(played.recordings ?? {})) {
+    const set = unpack(text, layout.bytes);
+    const ran = addresses.filter((_, i) => places[i] >= 0 && has(set, places[i] * 3 + RAN));
+    if (ran.length) by.set(name, ran);
+  }
+  return by;
+}
+
 export function readPlayed(game) {
   const file = join(proofFolder(game), 'played.json');
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : { recordings: {} };
