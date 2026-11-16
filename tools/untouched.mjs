@@ -226,8 +226,11 @@ async function sort(game, { original, codeMap, copy, all, atOnce }) {
   const branches = functions.filter(f => !f.never).flatMap(f => f.ways.map(([address, way]) => ({ address, way, key: f.key })));
   const never = functions.filter(f => f.never);
   const by = ranBy(game, codeMap, branches.map(b => b.address));
-  const names = [...by.keys()], threads = atOnce > 0 ? atOnce : Math.max(1, Math.floor(os.availableParallelism() / 2));
+  // what a branch went by is read from one console, so a recording that links several is left out
+  const linked = new Set([...by.keys()].filter(name => readRecordings(game, [name])[0].players));
+  const names = [...by.keys()].filter(name => !linked.has(name)), threads = atOnce > 0 ? atOnce : Math.max(1, Math.floor(os.availableParallelism() / 2));
   console.log(`${count(branches.length)} branches of ${game} have gone one way only. Playing the ${names.length} recordings that ran any of them, ${threads} at once, to see what each went by…`);
+  if (linked.size) console.log(`${linked.size} of the recordings that ran some link several consoles, which this can't read a branch from, so a branch only they ran isn't sorted: ${[...linked].join(', ')}.`);
   (await referenceOf(original)).ensureOriginal(console.log);
   const went = new Map(branches.map(b => [b.address, new Map()]));
   let next = 0, done = 0;
@@ -246,7 +249,7 @@ async function sort(game, { original, codeMap, copy, all, atOnce }) {
     differs: 'compare something that was one thing in each recording but not the same in all: a choice made before the part, such as the character, or what play had left at a moment tested once',
     same: 'compare something that was the same in every recording that ran them, so no recording has ever shown another: often the mode or a setting, which a recording that starts differently changes',
     path: 'compare numbers the code had set on the way there, the same every time, such as a flag set earlier or what a function gave back: the way they go depends on the path that led to them, so another path has to be played first',
-    unseen: "didn't run as a conditional branch when played again",
+    unseen: "didn't run as a conditional branch in a recording this can read: only one that links several consoles ran them, or they didn't run so when played again",
   };
   console.log(`\nOf the ${count(sorted.length)} branches:`);
   for (const kind of ['moves', 'differs', 'same', 'path', 'unseen']) if (of(kind).length || kind !== 'unseen') console.log(`  ${count(of(kind).length)} ${words[kind]}.`);
@@ -330,7 +333,7 @@ export function readSorted(version, sha1) {
 
 /** A sorted branch in a few words, for a task: its kind, and the value of the work memory it tests, when it has one. */
 export function kindText(sorted) {
-  const words = { moves: 'changes in play', differs: 'differs by recording', same: 'never differed', path: 'by the path', unseen: 'not seen again' };
+  const words = { moves: 'changes in play', differs: 'differs by recording', same: 'never differed', path: 'by the path', unseen: 'not read: only a linked recording ran it' };
   const [side] = sorted.sides;
   const tested = side && sorted.kind !== 'moves' ? `: the ${sized(side.bytes)} at \`${hex(side.address)}\` held ${some(side.held, 3)} against ${some(side.against, 3)}` : '';
   return `${words[sorted.kind] ?? sorted.kind}${tested}`;
