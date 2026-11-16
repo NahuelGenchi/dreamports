@@ -7,7 +7,8 @@ static uint8_t *save;
 
 void game_start(void) {
   save = gba_save(32);
-  save[0]++;
+  // a save memory never written holds 0xFF, as a cartridge's does
+  save[0] = save[0] == 0xFF ? 1 : save[0] + 1;
   gba_save_write();
 }
 
