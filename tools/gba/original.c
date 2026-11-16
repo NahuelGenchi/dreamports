@@ -39,8 +39,8 @@
 // <address>, and --sort for many at once). The program follows where each register's value came from, a place in
 // memory or a number in the code, and at a branch says what the last instruction that set the flags compared. A record
 // is twelve 32-bit words: the comparing instruction's address, its two values, where each came from (an address, or 0)
-// and what kind that is (0 worked out, 1 read from memory, 2 a number in the code, +4 when changed since, and the bytes
-// read in the next byte), the way the branch went (1 taken, 2 not), how many times it went so with those, the first
+// and what kind that is (0 worked out, 1 read from memory, 2 a number in the code, 3 read from the cartridge's data,
+// +4 when changed since, and the bytes read in the next byte), the way the branch went (1 taken, 2 not), how many times it went so with those, the first
 // frame it did, the branch's address, and 0. One record for each different set, up to WHY_EACH for a branch: the times
 // it went a way with any other set come in a last record for that way, whose twelfth word is 1 and whose values are 0.
 //
@@ -501,6 +501,7 @@ static int playAlong(const char* path) {
 #define WHY_SLOTS (1u << 18)
 #define FROM_MEMORY 1
 #define FROM_CODE 2
+#define FROM_DATA 3
 #define CHANGED_SINCE 4
 struct came { uint32_t address; uint32_t kind; };
 static struct {
@@ -558,7 +559,9 @@ static void runWhy(struct ARMCore* cpu, long frame) {
 	int known = 0;
 	if (mnemonic == ARM_MN_LDR && to >= 0 && why.didLoad) {
 		// read from memory, or from the numbers the code keeps beside itself
-		result = (struct came) { why.loaded, (why.loaded >> 24 == 8 || why.loaded >> 24 == 9 ? FROM_CODE : FROM_MEMORY) | why.loadedBytes << 8 };
+		// the numbers a function keeps beside itself are read by where the code is; anything else of the cartridge is its data
+		int cartridge = why.loaded >> 24 == 8 || why.loaded >> 24 == 9;
+		result = (struct came) { why.loaded, (!cartridge ? FROM_MEMORY : info.memory.baseReg == ARM_PC ? FROM_CODE : FROM_DATA) | why.loadedBytes << 8 };
 		known = 1;
 	} else if (to >= 0 && format & ARM_OPERAND_AFFECTED_1 && mnemonic != ARM_MN_LDM && mnemonic != ARM_MN_BL && mnemonic != ARM_MN_BX && !why.didLoad) {
 		// worked out from registers and numbers: it keeps where one came from when nothing else from memory went in
@@ -573,7 +576,7 @@ static void runWhy(struct ARMCore* cpu, long frame) {
 		if (!(format & ARM_OPERAND_3) && !moves) sources[count++] = why.from[to];
 		int fromMemory = 0, unknown = 0;
 		for (int i = 0; i < count; i++) {
-			if ((sources[i].kind & 3) == FROM_MEMORY) { fromMemory++; result = sources[i]; }
+			if ((sources[i].kind & 3) == FROM_MEMORY || (sources[i].kind & 3) == FROM_DATA) { fromMemory++; result = sources[i]; }
 			else if (!(sources[i].kind & 3)) unknown++;
 		}
 		if (unknown || fromMemory > 1) result = (struct came) { 0, 0 };
