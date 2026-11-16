@@ -794,16 +794,60 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 .sheet[data-view="quit"] :is(.sheet-close, .sheet-paused) { display: none; }
 .settings-body.quit-body { grid-template-columns: minmax(0, 1fr); }
 .quit-note { margin: 0 2px 4px; line-height: 22px; }
-/* reporting a problem (ui/report-view.js) stays small too: what it was, one of a few, and the button that sends */
+/* reporting a problem (ui/report-view.js) stays small too. Its two panels, the form and what became of the report,
+   share one place, so the view keeps the form's size while one fades out and the other in */
 .sheet[data-view="report"] { width: 480px; height: auto; }
 .settings-body.report-body { grid-template-columns: minmax(0, 1fr); }
+.report-stack { display: grid; min-width: 0; }
+/* one goes before the other comes: the panel leaving fades out quickly, and the one arriving waits for it, then rises
+   into place as it fades in */
+.report-stack > * { grid-area: 1 / 1; min-width: 0; transition: opacity .34s ease .2s, transform .46s cubic-bezier(.2, .8, .2, 1) .2s, visibility 0s; }
+.report-stack > [inert] { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .18s ease, transform .18s ease, visibility 0s linear .18s; }
+.report-form[inert] { transform: translateY(-8px); }
+.report-state[inert] { transform: translateY(12px); }
 .report-note { margin: 0 2px 4px; line-height: 22px; }
-.report-promise, .report-status { margin: 0 2px; color: var(--dim); font-size: 13.5px; line-height: 20px; }
-.report-status { min-height: 20px; color: var(--ink); }
-.report-check:empty { display: none; }
+.report-promise { margin: 0 2px; color: var(--dim); font-size: 13.5px; line-height: 20px; }
 .row[role="radio"] { grid-template-columns: 16px minmax(0, 1fr); }
-.dot { width: 12px; height: 12px; margin: 2px; box-shadow: 0 0 0 2px var(--line); }
+.dot { width: 12px; height: 12px; margin: 2px; box-shadow: 0 0 0 2px var(--line); transition: background-color .16s ease, box-shadow .16s ease; }
 [aria-checked="true"] > .dot { background: var(--sky); box-shadow: 0 0 0 2px var(--sky); }
+.report-state { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 8px 2px; text-align: center; }
+.report-words { display: grid; gap: 6px; justify-items: center; }
+.report-head { margin: 0; font: inherit; font-size: 19px; line-height: 26px; outline: 0; }
+.report-reason { margin: 0; padding: 4px 10px; background: var(--hover); color: var(--ink); font-size: 13.5px; line-height: 20px; }
+.report-reason:empty, .report-detail:empty { display: none; }
+.report-detail { margin: 0; max-width: 34ch; color: var(--dim); font-size: 14px; line-height: 21px; }
+.report-check:empty { display: none; }
+.report-actions { display: grid; gap: 10px; width: 100%; margin-top: 6px; }
+.report-actions:not(:has(button:not([hidden]))) { visibility: hidden; height: 48px; }
+/* with Try again beside it, Back to the game is the quieter of the two */
+.report-actions [data-again]:not([hidden]) + .resume { background: none; color: var(--ink) !important; box-shadow: 0 -2px var(--sky), 0 2px var(--sky), -2px 0 var(--sky), 2px 0 var(--sky); }
+/* the view's buttons have square icons, where Back to the game's is a narrow one */
+.report-body .resume svg { width: 14px; height: 14px; }
+.report-body [data-done] svg { width: 8px; }
+/* the ring: eight squares on a grid of thirteen, a light running round them while the report goes, then all lit under
+   a tick that draws itself from the left, half lit over a tray when the report waits, or dimmed under a cross */
+.report-mark { --cell: 6px; position: relative; width: calc(var(--cell) * 13); height: calc(var(--cell) * 13); margin-bottom: 2px; }
+.report-mark i {
+  position: absolute; left: calc(var(--x) * var(--cell)); top: calc(var(--y) * var(--cell)); width: var(--cell); height: var(--cell);
+  background: var(--blue); opacity: .2; transition: opacity .4s ease, background-color .4s ease;
+}
+[data-state="going"] .report-mark i { animation: report-ring 1.04s linear infinite; animation-delay: calc(var(--i) * .13s - 1.04s); }
+[data-state="sent"] .report-mark i { opacity: 1; transition-delay: calc(var(--i) * .035s); }
+[data-state="failed"] .report-mark i { background: var(--faint); opacity: .55; }
+.report-mark span { position: absolute; inset: 0; color: var(--ink); clip-path: inset(0 100% 0 0); transition: clip-path 0s; }
+.report-mark svg { display: block; width: 100%; height: 100%; }
+span.report-tray { clip-path: inset(0 0 100% 0); }
+[data-state="sent"] .report-tick, [data-state="kept"] .report-tray, [data-state="failed"] .report-cross { clip-path: inset(0); transition: clip-path .42s cubic-bezier(.2, .8, .2, 1) .22s; }
+[data-state="sent"] .report-tick, [data-state="kept"] .report-tray { color: var(--blue); }
+/* kept to send later: the ring half lit, over a tray, drawn from the top */
+[data-state="kept"] .report-mark i { opacity: .55; transition-delay: calc(var(--i) * .035s); }
+@keyframes report-ring { 0% { opacity: 1; } 55%, 100% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) .report-stack > *, :root:not([data-motion="full"]) .report-mark :is(i, span) { transition-duration: 0s !important; transition-delay: 0s !important; transform: none; }
+  :root:not([data-motion="full"]) [data-state="going"] .report-mark i { animation: none; opacity: .6; }
+}
+:root[data-motion="calm"] .report-stack > *, :root[data-motion="calm"] .report-mark :is(i, span) { transition-duration: 0s !important; transition-delay: 0s !important; transform: none; }
+:root[data-motion="calm"] [data-state="going"] .report-mark i { animation: none; opacity: .6; }
 @media (pointer: coarse) {
   .sheet-back, .sheet-close { width: 44px; height: 44px; }
   .sheet :is(.rom-actions button) { height: 44px; }

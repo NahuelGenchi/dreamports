@@ -6,6 +6,8 @@ When something in a Dreamport looks wrong, the player opens its settings, choose
 
 A report is the buttons the player held at each frame since the game started, which is all a recording is (`tools/README.md`, Recording play), with the game and its version, the address's start point when there is one, whether the game began from a save, and which of four reasons the player picked. There is no box to type in, so a report can't carry a message, a link or anything personal. It holds no save, no copy of the game and nothing of who sent it.
 
+As Send report is pressed the view shows the report going, then how it ended: sent, or not, with the reason picked and what to do next.
+
 The kit keeps the presses in memory while the game runs (`kit/gba/session.js`) and sends nothing until the player presses Send (`kit/gba/ui/report-view.js`). What a report may hold, how its presses are packed and how one is checked are in one file all sides share, `kit/gba/report.js`.
 
 ## What the site does with one
@@ -24,7 +26,9 @@ The site runs on Cloudflare's free plan, where the Worker runs at most 100,000 t
 | The whole site | 200 reports a day and 500 MB kept in all |
 | Each report | At least five seconds of play, the same report kept once, deleted after 90 days |
 
-The edge rule is the zone's one free rate limiting rule. Past the site's daily limit the settings say to try again tomorrow. A copy of a Dreamport run somewhere that takes no reports saves the presses as a file from the same button.
+The edge rule is the zone's one free rate limiting rule.
+
+No limit is the player's to wait out. Where the site can't take a report at that moment, because it has had too many, the check didn't pass or the connection is down, the game keeps the report in the browser's own storage on the player's device and says **Report saved**. The next time a Dreamport opens it sends what waited, out of sight (`kit/gba/report-outbox.js`). Three reports wait at most, for a week at most, and nothing leaves the device until it's sent. Only a report the site says isn't one is turned down for good. A copy of a Dreamport run somewhere that takes no reports saves the presses as a file from the same button.
 
 A pull request's preview uses the keys Cloudflare publishes for testing Turnstile, which always pass, and its own database, so the whole way can be tried there and nothing of it reaches the live site.
 

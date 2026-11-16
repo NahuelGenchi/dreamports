@@ -65,3 +65,46 @@ test('a session becomes a report, and a report the recording it was', () => {
   assert.equal(recordingOf({ id: 'ADcC3d8DddTeGROW', created: 1, game: '../x', reason: 'looked', frames: 400, buttons: '', held: '' }), null, 'what the site sends is checked again');
   assert.equal(recordingOf({ id: '../../x', created: 1, game: 'made-up', reason: 'looked', frames: 400, buttons: '', held: '' }), null, 'and its name can\'t lead anywhere');
 });
+
+test('a report that can\'t go yet waits on the device, a few at most and for a week at most', async () => {
+  const { WAITING_DAYS, WAITING_MOST, keepReport, waitingReports } = await import('../../kit/gba/report-outbox.js');
+  const held = new Map();
+  const storage = { getItem: key => held.get(key) ?? null, setItem: (key, value) => held.set(key, value), removeItem: key => held.delete(key) };
+  const now = Date.UTC(2026, 10, 16), DAY = 86_400_000;
+  assert.deepEqual(waitingReports(storage, now), []);
+  assert.equal(keepReport(report(), storage, now), true);
+  assert.equal(keepReport(report(), storage, now + 1000), true, 'the same report again is still one');
+  assert.equal(waitingReports(storage, now + 2000).length, 1);
+  for (let i = 1; i <= WAITING_MOST + 1; i++) keepReport(report({ frames: 600 + i }), storage, now + i * 1000);
+  const waiting = waitingReports(storage, now + 60_000);
+  assert.equal(waiting.length, WAITING_MOST);
+  assert.equal(waiting.at(-1).report.frames, 600 + WAITING_MOST + 1, 'the newest are the ones kept');
+  assert.deepEqual(waitingReports(storage, now + WAITING_DAYS * DAY + 60_000), [], 'and none past a week');
+  // what's in the storage is checked like anything sent: a report, or nothing
+  held.set('dreamports.reports', JSON.stringify([{ report: { game: '../x' }, kept: now }, 'junk', { report: report(), kept: now }]));
+  assert.equal(waitingReports(storage, now + 1000).length, 1);
+  held.set('dreamports.reports', 'not json');
+  assert.deepEqual(waitingReports(storage, now), []);
+  assert.equal(keepReport(report(), null, now), false, 'with no storage, it says it wasn\'t kept');
+  assert.equal(keepReport(report(), { getItem: () => null, setItem() { throw new Error('full'); } }, now), false);
+});
+
+test('waiting reports go when the site takes them, and wait on when it doesn\'t', async () => {
+  const { keepReport, outcomeOf, sendWaitingReports, waitingReports } = await import('../../kit/gba/report-outbox.js');
+  assert.deepEqual([201, 200, 429, 403, 500, 0, 400, 413].map(outcomeOf), ['sent', 'sent', 'later', 'later', 'later', 'later', 'refused', 'refused']);
+  const held = new Map();
+  const storage = { getItem: key => held.get(key) ?? null, setItem: (key, value) => held.set(key, value), removeItem: key => held.delete(key) };
+  const now = Date.UTC(2026, 10, 16);
+  for (let i = 1; i <= 3; i++) keepReport(report({ frames: 600 + i }), storage, now + i);
+  // the site is still full: nothing goes, and it stops at the first
+  let asked = 0;
+  assert.equal(await sendWaitingReports(async () => { asked++; return 429; }, storage, now + 10), 0);
+  assert.equal(asked, 1);
+  assert.equal(waitingReports(storage, now + 10).length, 3);
+  // then it takes one, turns one down for good, and is out of reach for the last
+  const answers = [201, 400, 0];
+  assert.equal(await sendWaitingReports(async () => answers.shift(), storage, now + 20), 1);
+  assert.equal(waitingReports(storage, now + 20).length, 1, 'the one out of reach waits on');
+  assert.equal(await sendWaitingReports(async () => 201, storage, now + 30), 1);
+  assert.equal(held.has('dreamports.reports'), false, 'and nothing is left behind');
+});
