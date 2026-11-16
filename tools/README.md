@@ -16,6 +16,7 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `capture` | Lets you play the original in a window, and keeps a real moment of it for the game's card, or with `--open`, `--pick` and `--from` does that while the game is being made, with nothing waiting for anyone |
 | `codemap` | Makes the code map: every function in the original, with its address and size |
 | `new` | Writes a claimed game's first files: its page, its code on the kit with everything wired in, its license and its entry |
+| `untouched` | Lists what gameplay proven leaves untouched in a version: functions never played, branches gone one way only, and data never used |
 | `portmap` | Makes the port map: each function of the original the Dreamport's code names, and where, and each path it says it hasn't ported |
 | `read` | Prints one of the original's functions, its instructions, from your copy, for code its decompilation has no C for |
 | `share` | Publishes a preview of a game on GitHub Pages from your own fork, with the clips of what the step changed for its pull request |
@@ -137,6 +138,12 @@ The search knows nothing of any game. A game tells it where its original keeps t
 A value the game keeps in memory it hands out as it goes, such as a boss's health, has no address of its own. It has `found` in place of `address`: the stretch of memory to look through (`from`, `to`, `step`), the `mark` that's beside it, such as the address of a function its record points to, and from the mark where the record's own address is (`pointer`, `pointerBytes`, `base`) and where in the record the value is (`offset`). It reads -1 while no record is there, which makes "the boss has come" a goal, `boss>=0`.
 
 To find where a game keeps something, look in its notes (`npm run dp -- notes <game>`) and its decompilation's names first. Then check it: `npm run dp -- route <game> <recording> --at <frames>` prints the game's values at those frames of a recording, and with `--memory <from>-<to>` every value in that stretch of work memory that isn't the same at all of them, which is how a value that changes when something happens is found.
+
+### What nobody has played yet
+
+`--goal untouched` searches for code the version hasn't played in a frame that matched, in place of a goal the game names: the tools give the program what's been played of the cartridge's code, from the version's `played.json`, and it counts, each frame, the instructions and branch ways not among them, which the search reads as a value of its own. It ends at the first frame with any, so the recording it writes reaches something new; prove it, port what it stops on, and search again from it. It looks only at the cartridge's code, not at what a game runs from its work RAM. `npm run dp -- untouched <version>` lists everything that's left: the functions never played, those with branches gone one way only, with each branch's address and the way to play, and the stretches of the cartridge's data never used, the biggest first, or all of them with `--all`.
+
+A game's `proof/unreachable.json` lists what nothing can reach, as `{ "about", "code": [[first, last, why]], "content": [[first, last, why]] }`, with addresses in the cartridge as the code map writes them. Those stretches don't count towards gameplay proven while they stay unplayed ([Done](../docs/STANDARD.md#done)).
 
 ### What it can't do
 
@@ -358,6 +365,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 | `route.json` | Optional: where the original keeps the few values `route` reads as it searches, and the goals the game names, as [Finding a route](#what-a-game-says-of-its-original) says. A part can name one of those goals as what it reaches |
 | `code-map.json` | The code map |
 | `progress.json` | Each recording's results and the code that ran in matching play, written by `prove` |
+| `unreachable.json` | Optional: the stretches of the cartridge nothing can reach, each with why, which don't count towards gameplay proven, read by a person before it goes in |
 | `played.json` | What of the original's code was played in each recording's matching frames, and where its instructions and branches are, as sets of places in the code map's functions, written by `prove`; nothing of the code itself |
 | `port-map.json` | The port map: the functions the game's code names, the names that land inside one but not at its start, and the stops, each a path the code says it hasn't ported, written by `portmap` |
 | `names.json` | Optional: how far the release the game's labels come from is from the copy's, stretch by stretch, for `portmap` and `read` |

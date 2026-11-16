@@ -297,9 +297,27 @@ export const numbersText = proof => [
 export const hasCode = proof => (proof?.ported?.percent ?? 0) > 0;
 
 /**
- * Whether a Dreamport has a place in the Make row: once its entry has a real capture for its card, until every part
- * of it is proven.
+ * What still keeps a Dreamport from done, as a list of plain sentences, none when it's done: it's the same game as its
+ * original only once all its code is ported and all of it proven, with no stop left, every function named and every
+ * save as the original's (docs/STANDARD.md#done).
+ * @param {Proof | null | undefined} proof
+ * @returns {string[]}
+ */
+export function leftToDo(proof) {
+  const left = [], plural = (n, word) => `${n.toLocaleString('en')} ${word}${n === 1 ? '' : 's'}`;
+  if (proof?.ported?.percent !== 100) left.push(`code ported is ${percentText(proof?.ported?.percent) ?? 'not measured yet'}`);
+  if (proof?.gameplay?.percent !== 100) left.push(`gameplay proven is ${percentText(proof?.gameplay?.percent) ?? 'not measured yet'}`);
+  if (proof?.ported?.stops) left.push(`${plural(proof.ported.stops, 'stop')} in its code`);
+  if (proof?.ported?.unnamed) left.push(`${plural(proof.ported.unnamed, 'function')} of the original no code names`);
+  if (proof?.saves?.differ.length) left.push(`its saves differ from the original's in ${plural(proof.saves.differ.length, 'recording')}`);
+  return left;
+}
+
+/**
+ * Whether a Dreamport has a place in the Make row: once its entry has a real capture for its card, until it's done,
+ * with nothing left to do (leftToDo). Until 16 November 2026 that was every part proven, which Sonic Advance Dreamport
+ * in C reached with paths of its original never played (#1345).
  * @param {{ screen?: unknown }} entry
  * @param {Proof | null | undefined} proof
  */
-export const isBeingMade = (entry, proof) => !!entry.screen && proof?.gameplay?.percent !== 100;
+export const isBeingMade = (entry, proof) => !!entry.screen && leftToDo(proof).length > 0;

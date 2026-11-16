@@ -8,6 +8,7 @@ const TOOLS = {
   prove: 'Plays each recording in the original and in the Dreamport, compares every frame, and updates the numbers (--stills: pictures of frames; --state: what the console holds at them)',
   capture: 'Lets you play the original in a window and keep a real moment of it for the game\'s card (--open: in the background; --pick: takes the best of what was played; --from: of a list of presses)',
   draws: 'Counts what a PlayStation 2 game gives its graphics chip, from your copy: its shapes, textures and the rest, which is what its kit has to draw (--frames, --from: a list of presses, --between: only these frames)',
+  untouched: 'Lists what gameplay proven leaves untouched in a version: functions never played, branches gone one way only, and data never used',
   codemap: 'Makes the code map: every function in the original, with its address and size',
   new: 'Writes a claimed game\'s first files: its page, its code on the kit with everything wired in, its license and its entry',
   portmap: 'Makes the port map: each function of the original the Dreamport\'s code names, and where',
