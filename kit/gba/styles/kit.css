@@ -794,6 +794,16 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 .sheet[data-view="quit"] :is(.sheet-close, .sheet-paused) { display: none; }
 .settings-body.quit-body { grid-template-columns: minmax(0, 1fr); }
 .quit-note { margin: 0 2px 4px; line-height: 22px; }
+/* reporting a problem (ui/report-view.js) stays small too: what it was, one of a few, and the button that sends */
+.sheet[data-view="report"] { width: 480px; height: auto; }
+.settings-body.report-body { grid-template-columns: minmax(0, 1fr); }
+.report-note { margin: 0 2px 4px; line-height: 22px; }
+.report-promise, .report-status { margin: 0 2px; color: var(--dim); font-size: 13.5px; line-height: 20px; }
+.report-status { min-height: 20px; color: var(--ink); }
+.report-check:empty { display: none; }
+.row[role="radio"] { grid-template-columns: 16px minmax(0, 1fr); }
+.dot { width: 12px; height: 12px; margin: 2px; box-shadow: 0 0 0 2px var(--line); }
+[aria-checked="true"] > .dot { background: var(--sky); box-shadow: 0 0 0 2px var(--sky); }
 @media (pointer: coarse) {
   .sheet-back, .sheet-close { width: 44px; height: 44px; }
   .sheet :is(.rom-actions button) { height: 44px; }
