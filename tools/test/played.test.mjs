@@ -130,7 +130,7 @@ test('a branch is sorted by whether what it compared changed, whatever that was 
   const unnamed = sortBranch(new Map([['one', [record(0, worked)]]]));
   assert.equal(unnamed.kind, 'same', 'a value worked out, the same everywhere, is still sorted');
   assert.deepEqual(unnamed.sides, [], 'with no value of the work memory to name');
-  assert.equal(sortBranch(new Map([['one', [record(4, number)]], ['two', [record(4, number)]]])).kind, 'code', 'two numbers in the code, always the same');
+  assert.equal(sortBranch(new Map([['one', [record(4, number)]], ['two', [record(4, number)]]])).kind, 'path', 'numbers the code set on the way there, always the same');
   assert.equal(sortBranch(new Map([['one', [record(0, number), record(1, number)]]])).kind, 'moves', 'a count in a loop is numbers in the code that change');
   assert.equal(sortBranch(new Map([['one', [record(0, { fromA: 0x08001234, kindA: 3 | 2 << 8 })]]])).kind, 'same', 'the cartridge\'s data isn\'t a number in the code');
   assert.equal(sortBranch(new Map()).kind, 'unseen');

@@ -196,14 +196,16 @@ export function contentCells(codeMap, rom) {
 
 /**
  * What a game says nothing can reach, from games/<game>/proof/unreachable.json, which every version shares:
- * { "about", "code": [[from, to, why]], "content": [[from, to, why]] }, each a stretch of the cartridge, its first and
- * last address in hexadecimal, with why nothing reaches it, such as code left from the game's making that nothing calls.
- * A person reads each before it goes in, as it takes that stretch out of what gameplay proven counts, while it stays
- * unplayed. Returns { code, content }, each a list of [from, to] as numbers.
+ * { "about", "code": [[from, to, why]], "content": [[from, to, why]], "ways": [[address, way, why]] }. `code` and
+ * `content` are stretches of the cartridge, each its first and last address in hexadecimal, with why nothing reaches
+ * it, such as code left from the game's making that nothing calls. `ways` are branches one way of which can't happen,
+ * "taken" or "not taken", as the code itself decides them (lib/decided.mjs). A person reads each before it goes in, as
+ * it takes something out of what gameplay proven counts, while it stays unplayed. Returns { code, content }, each a
+ * list of [from, to] as numbers, and `ways`, a Map from a branch's address to TAKEN or NOT_TAKEN.
  */
 export function readUnreachable(game) {
   const file = join(sharedProofFolder(game), 'unreachable.json');
-  if (!existsSync(file)) return { code: [], content: [] };
+  if (!existsSync(file)) return { code: [], content: [], ways: new Map() };
   const listed = JSON.parse(readFileSync(file, 'utf8'));
   const stretches = (list, word) => (list ?? []).map(([from, to, why]) => {
     const stretch = [parseInt(from, 16), parseInt(to, 16)];
@@ -212,7 +214,13 @@ export function readUnreachable(game) {
     }
     return stretch;
   });
-  return { code: stretches(listed.code, 'code'), content: stretches(listed.content, 'content') };
+  const ways = new Map((listed.ways ?? []).map(([address, way, why]) => {
+    if (!/^[0-9A-F]{8}$/.test(address) || !['taken', 'not taken'].includes(way) || typeof why !== 'string' || !why.trim()) {
+      throw new Error(`${file}: "ways" lists branches as [address, "taken" or "not taken", why], the address as eight capital hexadecimal digits.`);
+    }
+    return [parseInt(address, 16), way === 'taken' ? TAKEN : NOT_TAKEN];
+  }));
+  return { code: stretches(listed.code, 'code'), content: stretches(listed.content, 'content'), ways };
 }
 const within = (stretches, address) => stretches.some(([from, to]) => address >= from && address <= to);
 
@@ -246,6 +254,7 @@ export function provenUnits(game, codeMap) {
 export function untouchedOf(game, codeMap, cartridge = null) {
   const layout = layoutOf(codeMap), played = readPlayed(game), same = played.places === layout.places;
   const ran = new Uint8Array(layout.bytes), code = unpack(same ? played.code : null, layout.bytes);
+  const { ways: ruledOut } = readUnreachable(game);
   for (const text of Object.values(same ? played.recordings ?? {} : {})) {
     const set = unpack(text, layout.bytes);
     for (let i = 0; i < set.length; i++) ran[i] |= set[i];
@@ -259,8 +268,10 @@ export function untouchedOf(game, codeMap, cartridge = null) {
       const went = [has(ran, place * 3 + RAN), has(ran, place * 3 + TAKEN), has(ran, place * 3 + NOT_TAKEN)];
       if (has(code, place * 3 + INSTRUCTION)) total++;
       if (has(code, place * 3 + BRANCH)) {
-        total += 2;
-        if (went[RAN] && went[TAKEN] !== went[NOT_TAKEN]) ways.push([at, went[TAKEN] ? 'not taken' : 'taken']);
+        // a way the game's list says can't happen isn't one to play
+        const out = f.bytes ? undefined : ruledOut.get(at);
+        total += [TAKEN, NOT_TAKEN].filter(way => went[way] || way !== out).length;
+        if (went[RAN] && went[TAKEN] !== went[NOT_TAKEN] && (went[TAKEN] ? NOT_TAKEN : TAKEN) !== out) ways.push([at, went[TAKEN] ? 'not taken' : 'taken']);
       }
       done += went.filter(Boolean).length;
     }
@@ -413,7 +424,9 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, used, ma
       // what the game's list says nothing can reach doesn't count while it stays unplayed
       const out = !f.bytes && within(unreachable.code, f.address + (place - first) * 2);
       if (has(code, place * 3 + INSTRUCTION) && (went[RAN] || !out)) total++;
-      if (has(code, place * 3 + BRANCH)) total += out ? went.slice(1).filter(Boolean).length : 2;
+      // a branch's two ways count, but one the game's list says can't happen, while nothing has gone that way
+      const ruledOut = f.bytes ? undefined : unreachable.ways.get(f.address + (place - first) * 2);
+      if (has(code, place * 3 + BRANCH)) total += out ? went.slice(1).filter(Boolean).length : [TAKEN, NOT_TAKEN].filter(way => went[way] || way !== ruledOut).length;
       played += went.filter(Boolean).length;
     }
   });
