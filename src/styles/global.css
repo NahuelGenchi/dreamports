@@ -3730,7 +3730,25 @@ dialog.card[open] {
     --rail: 82px;
   }
 
-  .view:is(.card-inspect, .card-make) .view-bar {
+  /* Settings and Profile too (#1335): their bar took 68px of a screen some 390px tall, empty but for Back, and cut
+     off what they hold where it started. They keep their middle where the rail leaves room for it. */
+  .view:is(.card-settings, .card-profile) {
+    --rail: 58px;
+  }
+
+  :root:not([data-input='touch']).js .view:is(.card-settings, .card-profile) {
+    --rail: 82px;
+  }
+
+  .view:is(.card-settings, .card-profile) .card-body {
+    --side: calc((100% - 760px) / 2 + 24px);
+    max-width: none;
+    padding-left: max(max(18px, env(safe-area-inset-left, 0px)) + var(--rail), var(--side));
+    padding-right: max(24px, env(safe-area-inset-right, 0px), var(--side));
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .view:is(.card-inspect, .card-make, .card-settings, .card-profile) .view-bar {
     position: absolute;
     left: 0;
     bottom: 0;
