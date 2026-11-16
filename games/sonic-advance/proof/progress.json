@@ -3,6 +3,7 @@
   "percent": 70.78,
   "codeMap": {"functions":2489,"bytes":689456},
   "proven": {"functions":1591,"bytes":487990},
+  "played": {"total":323103,"played":196406,"percent":60.78},
   "recordings": {
     "amy-angel-island": {
       "frames": 3400,

@@ -11,7 +11,7 @@ import { parse } from 'yaml';
 import { REPO } from './lib/paths.mjs';
 import { versionsOf } from './lib/proof-files.mjs';
 import { versionOf, versionTitle } from '../src/lib/languages.mjs';
-import { ENTRY, mapOf, percentText, proofOf } from '../src/lib/entries.mjs';
+import { ENTRY, gameplayText, mapOf, percentText, proofOf } from '../src/lib/entries.mjs';
 import { progressMap } from '../src/lib/progress-map.mjs';
 
 export const STATUS = 'docs/STATUS.md';
@@ -178,7 +178,7 @@ function table(list) {
   const numbers = (name, proof) => {
     const map = text => `[${text}](../${mapOf(name)})`;
     const { gameplay } = proof;
-    return [map(percentText(proof.ported.percent)), gameplay ? map(`${percentText(gameplay.percent)}, ${gameplay.proven} of ${gameplay.total} parts`) : 'No parts listed yet'];
+    return [map(percentText(proof.ported.percent)), gameplay ? map(gameplayText(gameplay)) : 'No parts listed yet'];
   };
   // a version in another language has a row of its own under the game's, with no way to play it from here yet
   const rows = list.flatMap(({ entry, name: main, language: mainIn, proof, versions }) => {

@@ -3,6 +3,7 @@
   "percent": 21.02,
   "codeMap": {"functions":4720,"bytes":842030},
   "proven": {"functions":884,"bytes":176984},
+  "played": {"total":406850,"played":65236,"percent":16.03},
   "recordings": {
     "beating-an-enemy": {
       "frames": 960,

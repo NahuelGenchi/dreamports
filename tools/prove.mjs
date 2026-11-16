@@ -34,9 +34,10 @@ import { atOnce } from './lib/at-once.mjs';
 import { mp4 } from './lib/mp4.mjs';
 import { makeFilter, soundOf, NEAR } from './lib/sound.mjs';
 import { compareState, describeState } from './lib/state.mjs';
-import { fromStartPoint, measure, percentText } from '../src/lib/entries.mjs';
+import { fromStartPoint, gameplayText, measure, percentText } from '../src/lib/entries.mjs';
 import { readProof } from './readme.mjs';
 import { referenceOf } from './lib/reference.mjs';
+import { finderOf, layoutOf, playedIn, writePlayed } from './lib/played.mjs';
 import { checkSizes, firstOtherSize } from './lib/screens.mjs';
 import { notesAbout } from './notes.mjs';
 import { proveLinked } from './prove-linked.mjs';
@@ -170,6 +171,17 @@ export async function run(args) {
   } else {
     console.log(`\nNo code map yet, so no code ported: npm run dp -- codemap ${game} makes one.`);
   }
+  // what of the original's code was played in matching frames, the recordings not played now as they were (lib/played.mjs)
+  if (codeMap && reference.seesInstructions === true) {
+    const sets = new Map(), made = new Map();
+    recordings.forEach((recording, at) => {
+      if (!results[at].played) return;
+      sets.set(recording.name, results[at].played.set);
+      for (const [index, bytes] of results[at].played.made) made.set(index, bytes);
+    });
+    const { total, played, percent } = writePlayed(game, { original: original.sha1, codeMap, cartridge: cartridgeOf(copyWith(original.sha1).path), sets, made, all });
+    totals.played = { total, played, percent };
+  }
   writeProgress(game, { ...totals, recordings: progress.recordings });
   // what a whole proof found, which share can show in place of a clip when the step changed no frame (lib/same-proof.mjs)
   if (!names.length) {
@@ -180,7 +192,7 @@ export async function run(args) {
   try {
     const { ported, gameplay } = readProof(game) ?? {};
     console.log([ported && `Code ported: ${percentText(ported.percent)}${totals.proven ? `, ${totals.proven.functions} of ${totals.codeMap.functions} functions` : ''}.`,
-      gameplay && `Gameplay proven: ${percentText(gameplay.percent)}, ${gameplay.proven} of ${gameplay.total} parts.`].filter(Boolean).join(' '));
+      gameplay && `Gameplay proven: ${gameplayText(gameplay)}.`].filter(Boolean).join(' '));
     // what keeps it from done, whatever the numbers say (docs/STANDARD.md#stops)
     if (ported && (ported.stops || ported.unnamed)) {
       console.log([ported.stops && `Stops, paths the code says it hasn't ported: ${ported.stops}, in ${ported.stopped} function${ported.stopped === 1 ? '' : 's'}, which don't count as ported.`,
@@ -367,7 +379,9 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const stills = [...new Set([...asked, ...(quick ? [] : boundaries)])].filter(f => f >= 0 && f < frames).sort((a, b) => a - b);
     const sure = new Set(stills);
     if (!quick) for (let [f, last] = clipAt ?? clipWindow({ frames, changed: null, firstDifference: -1 }); f <= last && f < frames; f++) if (f >= 0) sure.add(f);
-    const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, sound: true, sets, reads, draws: !!drawLists, pictures: [...sure].sort((a, b) => a - b).map(f => originalOf[f] + 1) });
+    // with a code map, every instruction that ran and each way every branch went, where the program says them
+    const seesPlayed = !quick && !!codeMap && reference.seesInstructions === true;
+    const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, played: seesPlayed, sound: true, sets, reads, draws: !!drawLists, pictures: [...sure].sort((a, b) => a - b).map(f => originalOf[f] + 1) });
     if (reads.length && first.outside.reads?.length !== reads.length) throw new Error("The program that runs the original read nothing of its memory: npm run dp -- setup builds it again.");
     const showing = kinds.length ? shownOf(kinds, first.outside.reads.slice(reads.length - kinds.length)) : null;
     // the frames over which each goal held, and the parts whose goal doesn't come true within their own
@@ -470,6 +484,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // what matched, picture and sound, and the functions that ran in those frames
     let matched = 0;
     const proven = new Set(), different = [], soundDifferent = [], pictureDifferent = [];
+    const matchedInOriginal = new Uint8Array(originalHeld.length + 1);
     for (let frame = 0; frame < hashes.length; frame++) {
       if (sounds[frame]) soundDifferent.push(frame);
       if (hashes[frame] !== expected[frame]) pictureDifferent.push(frame);
@@ -478,7 +493,14 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
         continue;
       }
       matched++;
+      matchedInOriginal[originalOf[frame]] = 1;
       for (const f of first.ran[originalOf[frame]]) proven.add(f);
+    }
+    // what of the original's code ran in those frames, for gameplay proven, with the code the game made in memory
+    let played = null;
+    if (seesPlayed) {
+      const made = new Map(first.played.made.filter(m => codeMap.functions[m.index]?.bytes).map(m => [m.index, m.bytes]));
+      played = { set: playedIn(first.played.records, matchedInOriginal, layoutOf(codeMap), finderOf(codeMap, cartridgeOf(copy), made)), made: [...made] };
     }
     const differing = stretchesOf(different), soundDiffers = stretchesOf(soundDifferent);
     // the frames the game says no player could ever see, which fail however they compare: { from, to, why }
@@ -749,7 +771,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (!quick) log(`  What this step changed: ${changedText(changed)}${changed ? (changed.heard ? ', so share leaves this clip out when another shows a change that can be seen' : '') : ', so share leaves this clip out'}.`);
     if (changed) for (const problem of problems) log(`  share won't put this clip in a pull request: ${problem}`);
     if (showing) log(`  What the original shows as it ends: ${Object.entries(showing).map(([kind, value]) => `its ${kind} is ${typeof value === 'number' ? `${value}, which original.json gives no name` : value}`).join('; ')}.`);
-    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(showing ? { shows: showing } : {}), ...(goalsHeld ? { reached: goalsHeld } : {}), unreached, changed: !!changed, functions: [...proven].sort((a, b) => a - b).map(i => codeMap.functions[i].key) };
+    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(played ? { played } : {}), ...(showing ? { shows: showing } : {}), ...(goalsHeld ? { reached: goalsHeld } : {}), unreached, changed: !!changed, functions: [...proven].sort((a, b) => a - b).map(i => codeMap.functions[i].key) };
     }
   }
 }

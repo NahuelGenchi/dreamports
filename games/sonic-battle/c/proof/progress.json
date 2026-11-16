@@ -3,6 +3,7 @@
   "percent": 56.06,
   "codeMap": {"functions":1345,"bytes":326492},
   "proven": {"functions":602,"bytes":183022},
+  "played": {"total":128052,"played":56423,"percent":44.06},
   "recordings": {
     "air-attack": {
       "frames": 640,

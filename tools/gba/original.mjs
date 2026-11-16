@@ -10,6 +10,9 @@ export const KEY = { A: 0x1, B: 0x2, SELECT: 0x4, START: 0x8, RIGHT: 0x10, LEFT:
 
 export const WIDTH = 240, HEIGHT = 160;
 
+/** The program that plays the original says every instruction that ran and each way every branch went (lib/played.mjs). */
+export const seesInstructions = true;
+
 /** Builds the reference emulator if it isn't built yet. */
 export function ensureOriginal(log) {
   if (!isBuilt()) build(log);

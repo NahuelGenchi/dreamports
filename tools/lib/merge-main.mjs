@@ -12,6 +12,8 @@ const MAP = /^\.github\/readme\/progress\/[^/]+\.svg$/;
 // a game's, or its version's in another language, such as games/sonic-battle/c/proof/ (src/lib/languages.mjs)
 const PORT_MAP = /^games\/[^/]+(?:\/[^/]+)?\/proof\/port-map\.json$/;
 const PROGRESS = /^games\/([^/]+(?:\/[^/]+)?)\/proof\/progress\.json$/;
+// what was played of the original's code (lib/played.mjs), which prove writes again with progress.json
+const PLAYED = /^games\/[^/]+(?:\/[^/]+)?\/proof\/played\.json$/;
 const ENTRY = /^games\/([^/]+)\/entry\.md$/;
 
 const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 2 ** 28, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -58,7 +60,7 @@ function bothStatus(base, ours, theirs) {
 /** The text a conflict in a file the tools write settles to, or undefined when it isn't one. */
 function settled(cwd, file) {
   const [base, ours, theirs] = [1, 2, 3].map(number => side(cwd, number, file));
-  if (MAP.test(file) || PORT_MAP.test(file)) return theirs;
+  if (MAP.test(file) || PORT_MAP.test(file) || PLAYED.test(file)) return theirs;
   if (PROGRESS.test(file) && ours !== null && theirs !== null) {
     try {
       return bothProgress(ours, theirs);

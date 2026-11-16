@@ -25,7 +25,7 @@ import { UPSTREAM, api, signedInAs, findFork, pagesOf } from './lib/github.mjs';
 import { readClaims, leadOf, teamBuildOf, teamBranch } from './lib/claims.mjs';
 import { versionsOf, readProgress, readCodeMap } from './lib/proof-files.mjs';
 import { LANGUAGES, versionOf } from '../src/lib/languages.mjs';
-import { mapOf, percentText } from '../src/lib/entries.mjs';
+import { gameplayText, mapOf, percentText } from '../src/lib/entries.mjs';
 import { STATUS, dreamports, readProof } from './readme.mjs';
 // loaded now, before a piece is merged, so add runs the lead's own tools whatever the piece holds
 import { run as prove } from './prove.mjs';
@@ -197,7 +197,7 @@ async function send(game, rest, { fork: wanted, team, title: named, task, as, dr
     '',
     ...(task ? [`**Task:** ${UPSTREAM}#${task}`] : []),
     `**Code ported:** ${proof?.ported ? percentText(proof.ported.percent) : 'not measured'}`,
-    `**Gameplay proven:** ${proof?.gameplay ? `${percentText(proof.gameplay.percent)}, ${proof.gameplay.proven} of ${proof.gameplay.total} parts` : 'not measured'}`,
+    `**Gameplay proven:** ${proof?.gameplay ? gameplayText(proof.gameplay) : 'not measured'}`,
     ...(site ? [`**Preview:** ${site}${as}/ (not reviewed by the Dreamports team)`] : []),
     '',
     `The numbers are this branch's, as its proof files give them. The lead takes it in with \`npm run dp -- team ${game} add <this pull request's number>\`, which proves it again first.`,
@@ -274,7 +274,7 @@ async function add(game, rest, { fork: wanted, all = false, yes = false }) {
   const versions = versionsOf(game);
   const measured = () => Object.fromEntries(versions.map(v => [v, { proof: readProof(v), progress: readProgress(v) }]));
   const before = measured();
-  const generated = new Set([STATUS, ...versions.flatMap(v => [`games/${v}/proof/progress.json`, `games/${v}/proof/port-map.json`, mapOf(v)])]);
+  const generated = new Set([STATUS, ...versions.flatMap(v => [`games/${v}/proof/progress.json`, `games/${v}/proof/played.json`, `games/${v}/proof/port-map.json`, mapOf(v)])]);
   if (git(['merge', '--no-ff', '--no-commit', piece], { quiet: true }) === null) {
     const clashes = git(['diff', '--name-only', '--diff-filter=U']).split('\n').filter(Boolean);
     const real = clashes.filter(f => !generated.has(f));
