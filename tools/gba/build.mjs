@@ -26,6 +26,8 @@ const HARNESS = fileURLToPath(new URL('./original.c', import.meta.url));
 const READER_SOURCE = fileURLToPath(new URL('./read.c', import.meta.url));
 const LINKED_SOURCE = fileURLToPath(new URL('./linked.c', import.meta.url));
 const ON_WINDOWS = fileURLToPath(new URL('./on-windows.h', import.meta.url));
+// what ran of the original, which both programs that run it write (ran.h)
+const RAN = fileURLToPath(new URL('./ran.h', import.meta.url));
 // the route finder's search, which the program that runs the original includes (lib/explore.h)
 const EXPLORE = fileURLToPath(new URL('../lib/explore.h', import.meta.url));
 /** The program that runs the original (original.c). */
@@ -37,9 +39,9 @@ export const READER = join(FOLDER, process.platform === 'win32' ? 'read.exe' : '
 const STAMP = join(FOLDER, 'built.json');
 
 const sha1 = (...files) => files.reduce((hash, file) => hash.update(readFileSync(file)), createHash('sha1')).digest('hex');
-const harness = () => sha1(HARNESS, ON_WINDOWS, EXPLORE);
+const harness = () => sha1(HARNESS, ON_WINDOWS, EXPLORE, RAN);
 const reader = () => sha1(READER_SOURCE, ON_WINDOWS);
-const linked = () => sha1(LINKED_SOURCE, ON_WINDOWS);
+const linked = () => sha1(LINKED_SOURCE, ON_WINDOWS, RAN);
 const built = () => {
   try { return JSON.parse(readFileSync(STAMP, 'utf8')); } catch { return {}; }
 };
@@ -104,6 +106,7 @@ function buildHere(log, windows) {
   };
   beside(ON_WINDOWS);
   beside(EXPLORE);
+  beside(RAN);
   const made = program => join(WORK, basename(program));
   // on macOS, mGBA's library asks Apple's CoreFoundation where the program is, and on Windows it needs Windows' own
   // libraries, and -static so the programs run once the compiler has gone

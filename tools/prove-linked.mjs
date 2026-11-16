@@ -6,7 +6,8 @@
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { REPO, resultFolder } from './lib/paths.mjs';
-import { readParts } from './lib/proof-files.mjs';
+import { cartridgeOf, readParts } from './lib/proof-files.mjs';
+import { CELL, contentIn, finderOf, layoutOf, playedIn } from './lib/played.mjs';
 import { expand } from './lib/recording.mjs';
 import { openDreamport } from './lib/dreamport.mjs';
 import { runLinked } from './gba/linked.mjs';
@@ -24,7 +25,7 @@ const KEYS = { A: 1, B: 2, SELECT: 4, START: 8, RIGHT: 16, LEFT: 32, UP: 64, DOW
 export const heldOf = recording => [recording.held, ...(recording.others ?? [])];
 
 /** Plays a recording with players. Resolves like prove's: { frames, matched, differs, functions, ... }. */
-export async function proveLinked({ page, game, recording, copy, server, main = null, quick, asked = [], log = console.log, say = () => {} }) {
+export async function proveLinked({ page, game, recording, copy, server, main = null, quick, asked = [], codeMap = null, log = console.log, say = () => {} }) {
   const { name, frames, players } = recording;
   const out = resultFolder(game, name);
   rmSync(out, { recursive: true, force: true });
@@ -42,7 +43,9 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   // the clip's first, middle and last frames, kept as pictures beside it, as prove keeps a one-console clip's
   const clipStills = clipAt.length ? [...new Set([clipAt[0], clipAt[clipAt.length >> 1], clipAt.at(-1)])] : [];
   const pictured = [...new Set([...keepAt, ...clipStills])];
-  const first = await runLinked({ copy, players, frames: frames + 1, buttons: bits, pictures: [...new Set([...keepAt, ...clipAt])].sort((a, b) => a - b).map(f => f + 1) });
+  // what ran on the consoles, for gameplay proven, when the game has a code map to count it in
+  const seesPlayed = !quick && !!codeMap;
+  const first = await runLinked({ copy, players, frames: frames + 1, buttons: bits, played: seesPlayed, pictures: [...new Set([...keepAt, ...clipAt])].sort((a, b) => a - b).map(f => f + 1) });
   const expected = Array.from({ length: frames }, (_, f) => Array.from({ length: players }, (_, p) => first.hashes[(f + 1) * players + p]));
 
   say('starting the Dreamport…');
@@ -155,5 +158,15 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   if (clipFile) log(`  What this step changed: ${changedText(changed)}${changed ? '' : ', so share leaves this clip out'}.`);
   if (changed) for (const problem of problems) log(`  share won't put this clip in a pull request: ${problem}`);
   say('');
-  return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], changed: !!changed, functions: [] };
+  // what of the original's code ran on any console in the frames where every screen matched (lib/played.mjs): the
+  // page's frame f is the original's frame f + 1, which the original works out in its frame f. The cartridge's data
+  // those frames used isn't followed on linked consoles yet, so none counts from here.
+  let played = null;
+  if (seesPlayed) {
+    const matchedInOriginal = new Uint8Array(frames + 1), differing = new Set(differ);
+    for (let f = 0; f < hashes.length; f++) if (!differing.has(f)) matchedInOriginal[f] = 1;
+    const cartridge = cartridgeOf(copy);
+    played = { set: playedIn(first.played.records, matchedInOriginal, layoutOf(codeMap), finderOf(codeMap, cartridge, new Map())), made: [], used: contentIn(new Uint32Array(0), matchedInOriginal, Math.ceil(cartridge(0x08000000, 0x02000000).length / CELL)) };
+  }
+  return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], ...(played ? { played } : {}), changed: !!changed, functions: [] };
 }
