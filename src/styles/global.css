@@ -397,7 +397,8 @@ kbd {
 
 /* The rows of labels behind it all (Labels.astro, docs/LABELS.md), the site's own scenes in every place nobody
    has asked for: quiet, tinted the site's blue, fainter around the game, out of the way of every press, and gone in
-   the full-screen views and while a game opens. Only the rows move, each as one layer, so nothing is drawn again as
+   the full-screen views and while a game opens. A game's page keeps them, so the same place is behind its picture
+   from the row to the page and back (#1417). Only the rows move, each as one layer, so nothing is drawn again as
    they drift. */
 .labels {
   --labels-o: 0.32;
@@ -418,7 +419,7 @@ kbd {
   opacity: 1;
 }
 
-.launcher[data-view] .labels,
+.launcher[data-view]:not([data-view='inspect'], [data-view='make'], [data-view='achievements']) .labels,
 .launcher.is-launching .labels {
   opacity: 0;
   transition-duration: 0.3s;
@@ -454,7 +455,7 @@ kbd {
   animation-name: labels-right;
 }
 
-.launcher[data-view] .label-track {
+.launcher[data-view]:not([data-view='inspect'], [data-view='make'], [data-view='achievements']) .label-track {
   animation-play-state: paused;
 }
 
@@ -3064,8 +3065,19 @@ dialog.card[open] {
   opacity: 0;
 }
 
-.launcher:is([data-view='inspect'], [data-view='make'], [data-view='achievements']) .slot.is-sel .lift {
+.launcher:is([data-view='inspect'], [data-view='make'], [data-view='achievements']) .slot.is-sel .lift,
+.launcher.is-landing .slot.is-sel .lift {
   visibility: hidden;
+}
+
+/* a game's picture on its way back to the row: its place there has no light yet, as the picture brings its own */
+.launcher.is-landing .slot .glow {
+  opacity: 0;
+}
+
+/* and what its page was playing gives way to the row's picture as it lifts off, before it has gone far */
+.view .show-tile .screen:not(.is-awake) .clip {
+  transition-duration: 0.07s;
 }
 
 .launcher > dialog.view {

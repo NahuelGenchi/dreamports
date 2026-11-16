@@ -652,11 +652,12 @@ function start(launcher: HTMLElement) {
   let awake: HTMLElement | null = null;
   let wakeTimer = 0;
   let wakeRun = 0;
-  function sleepRow() {
+  // keep: its recording goes on playing, for the picture flying to a game's page to show (startShow)
+  function sleepRow(keep = false) {
     clearTimeout(wakeTimer);
     wakeRun++;
     if (awake) {
-      stop(awake);
+      if (!keep) stop(awake);
       awake = null;
     }
   }
@@ -1163,11 +1164,14 @@ function start(launcher: HTMLElement) {
     menuAway(true);
     // what the row's recording is showing goes along with the game's picture
     const frame = !opts.instant && !replacing && hasHero(dlg) ? rowFrame() : null;
-    sleepRow();
+    endFlight();
+    const live = frame ? awake : null;
+    sleepRow(!!live);
     for (const a of dlg.getAnimations({ subtree: true })) a.cancel();
     // nothing of the row shows between two cards, and a game's light passes to its page at once, so it never shows twice
     rowAtOnce(replacing ? 'no-anim' : 'light-now', () => {
       launcher.dataset.view = dlg.dataset.card;
+      launcher.classList.remove('is-landing');
     });
     if (dlg.open) dlg.close();
     dlg.show();
@@ -1181,8 +1185,8 @@ function start(launcher: HTMLElement) {
       $('.ins-text', dlg).scrollTop = under ? leftAt[0] : 0;
       $('.inspect', dlg).scrollTop = under ? leftAt[1] : 0;
       if (!under) resetExtras(dlg, !!opts.instant);
-      startShow(dlg, !opts.instant && !replacing, frame);
-    }
+      startShow(dlg, !opts.instant && !replacing, frame, live);
+    } else if (live) stop(live);
     if (!opts.instant) viewIn(dlg, replacing);
     (link ?? focusStart(dlg))?.focus({ preventScroll: true });
     if (!opts.instant) sound.play('open');
@@ -1226,6 +1230,7 @@ function start(launcher: HTMLElement) {
     if (!opts.swap) menuAway(false);
     if (!opts.quiet) sound.play('close');
     if (hasHero(dlg)) {
+      endFlight();
       stop(showScr);
       showScr = null;
       if (!opts.swap && !calm()) ownStill(dlg);
@@ -1235,12 +1240,26 @@ function start(launcher: HTMLElement) {
     const rowBack = () => {
       delete launcher.dataset.view;
     };
+    // A game's picture flies back to its place in the row while the rest of the menu returns around it, so the menu is
+    // whole as it lands (#1417): until then that place stays empty and unlit, as the picture and its light are on their way
+    const landing = !opts.instant && !opts.swap && !calm() && hasHero(dlg) && slots[sel()]?.dataset.game === dlg.dataset.game;
+    if (landing) {
+      rowAtOnce('light-now', () => {
+        launcher.classList.add('is-landing');
+        rowBack();
+      });
+    }
     const finish = () => {
       if (state.view === dlg) return;
       if (dlg.open) dlg.close();
       for (const a of dlg.getAnimations({ subtree: true })) a.cancel();
       if (opts.swap || state.view || state.launching) return;
-      if ('view' in launcher.dataset) rowAtOnce('light-now', rowBack);
+      if ('view' in launcher.dataset || launcher.classList.contains('is-landing')) {
+        rowAtOnce('light-now', () => {
+          rowBack();
+          launcher.classList.remove('is-landing');
+        });
+      }
       if (!opts.keepFocus) {
         const back = opener && opener.isConnected && launcher.contains(opener) && !opener.closest('dialog') ? opener : null;
         (back ?? slots[sel()]).focus({ preventScroll: true });
@@ -1252,7 +1271,7 @@ function start(launcher: HTMLElement) {
       return;
     }
     // the row starts back before a view with no picture to fly has quite gone, so the screen is never empty
-    if (calm() || !hasHero(dlg)) {
+    if (!landing) {
       setTimeout(() => {
         if (!state.view && !state.launching) rowBack();
       }, calm() ? 60 : 110);
@@ -1561,34 +1580,71 @@ function start(launcher: HTMLElement) {
 
   // inspect: the game's screen grows out of the row and wakes up
   let showScr: HTMLElement | null = null;
-  function startShow(dlg: HTMLDialogElement, animate: boolean, frame: HTMLCanvasElement | null = null) {
+  // The picture on its way from the row to a game's page shows the row's recording, still playing, and the page's own
+  // recording wakes over it only once it has landed (#1417): woken part way, two recordings showed at once on a moving
+  // picture, with the light of the wake passing over both. `frame` is the row's recording as drawn on the page, `live`
+  // the row's screen it is drawn from.
+  let flight: { frame: HTMLCanvasElement; live: HTMLElement | null; draw: number } | null = null;
+  function endFlight(fade = false) {
+    if (!flight) return;
+    const { frame, live, draw } = flight;
+    flight = null;
+    cancelAnimationFrame(draw);
+    // the row's recording stops, unless the row has woken it again since
+    if (live && live !== awake) stop(live);
+    if (fade) setTimeout(() => frame.remove(), 240);
+    else frame.remove();
+  }
+  function startShow(dlg: HTMLDialogElement, animate: boolean, frame: HTMLCanvasElement | null = null, live: HTMLElement | null = null) {
     const showTile = $('.show-tile', dlg);
     const scr = showTile.querySelector<HTMLElement>('.screen[data-clip]');
+    let landed: Promise<unknown> = Promise.resolve();
+    const fly = () => {
+      if (calm() || !animate) return false;
+      const tile = slots[sel()]?.querySelector('.tile');
+      if (!tile || slots[sel()].dataset.game !== dlg.dataset.game) return false;
+      const hero = $('.show-wrap', dlg);
+      const from = tile.getBoundingClientRect();
+      const to = hero.getBoundingClientRect();
+      if (!from.width || !to.width) return false;
+      const dx = from.left + from.width / 2 - (to.left + to.width / 2);
+      const dy = from.top + from.height / 2 - (to.top + to.height / 2);
+      landed = hero
+        .animate(
+          [{ transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${(from.width / to.width).toFixed(3)})` }, { transform: 'none' }],
+          { duration: 560, easing: 'cubic-bezier(.2,.9,.3,1)' },
+        )
+        .finished.catch(() => {});
+      return true;
+    };
+    if (fly() && frame && scr) {
+      // under the page's recording, which fades in over it
+      $('.clip', scr).before(frame);
+      const vid = live?.querySelector<HTMLVideoElement>('.clip');
+      const pen = frame.getContext('2d');
+      const draw = () => {
+        if (flight?.frame !== frame) return;
+        if (vid && vid.readyState >= 2) pen?.drawImage(vid, 0, 0, frame.width, frame.height);
+        flight.draw = requestAnimationFrame(draw);
+      };
+      flight = { frame, live, draw: requestAnimationFrame(draw) };
+      // landed: the row's recording stops there, and what it last showed stays until the page's has covered it
+      landed.then(() => {
+        if (flight?.frame !== frame) return;
+        cancelAnimationFrame(flight.draw);
+        if (live && live !== awake) stop(live);
+        flight.live = null;
+      });
+    } else if (live) stop(live);
     if (scr && !calm()) {
       showScr = scr;
-      play(scr).then((src) => {
+      Promise.all([play(scr), landed]).then(([src]) => {
         if (showScr === scr && state.open === dlg) {
           scr.classList.add('is-awake');
           scan(scr);
+          if (flight?.frame === frame) endFlight(true);
         } else drop(scr, src);
       });
-    }
-    if (calm() || !animate) return;
-    const tile = slots[sel()]?.querySelector('.tile');
-    if (!tile || slots[sel()].dataset.game !== dlg.dataset.game) return;
-    const hero = $('.show-wrap', dlg);
-    const from = tile.getBoundingClientRect();
-    const to = hero.getBoundingClientRect();
-    if (!from.width || !to.width) return;
-    const dx = from.left + from.width / 2 - (to.left + to.width / 2);
-    const dy = from.top + from.height / 2 - (to.top + to.height / 2);
-    hero.animate(
-      [{ transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${(from.width / to.width).toFixed(3)})` }, { transform: 'none' }],
-      { duration: 560, easing: 'cubic-bezier(.2,.9,.3,1)' },
-    );
-    if (frame && scr) {
-      $('.clip', scr).after(frame);
-      frame.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, delay: 120, fill: 'forwards' }).finished.catch(() => {}).then(() => frame.remove());
     }
   }
   // the frame the row's recording is on, which would otherwise change in one frame to the game's still as it lifts off
