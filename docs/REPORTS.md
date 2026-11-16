@@ -26,7 +26,9 @@ The site runs on Cloudflare's free plan, where the Worker runs at most 100,000 t
 | The whole site | 200 reports a day and 500 MB kept in all |
 | Each report | At least five seconds of play, the same report kept once, deleted after 90 days |
 
-The edge rule is the zone's one free rate limiting rule. Past the site's daily limit the settings say to try again tomorrow. A copy of a Dreamport run somewhere that takes no reports saves the presses as a file from the same button.
+The edge rule is the zone's one free rate limiting rule.
+
+No limit is the player's to wait out. Where the site can't take a report at that moment, because it has had too many, the check didn't pass or the connection is down, the game keeps the report in the browser's own storage on the player's device and says **Report saved**. The next time a Dreamport opens it sends what waited, out of sight (`kit/gba/report-outbox.js`). Three reports wait at most, for a week at most, and nothing leaves the device until it's sent. Only a report the site says isn't one is turned down for good. A copy of a Dreamport run somewhere that takes no reports saves the presses as a file from the same button.
 
 A pull request's preview uses the keys Cloudflare publishes for testing Turnstile, which always pass, and its own database, so the whole way can be tried there and nothing of it reaches the live site.
 

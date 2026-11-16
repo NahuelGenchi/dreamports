@@ -825,7 +825,7 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 .report-body .resume svg { width: 14px; height: 14px; }
 .report-body [data-done] svg { width: 8px; }
 /* the ring: eight squares on a grid of thirteen, a light running round them while the report goes, then all lit under
-   a tick that draws itself from the left, or dimmed under a cross */
+   a tick that draws itself from the left, half lit over a tray when the report waits, or dimmed under a cross */
 .report-mark { --cell: 6px; position: relative; width: calc(var(--cell) * 13); height: calc(var(--cell) * 13); margin-bottom: 2px; }
 .report-mark i {
   position: absolute; left: calc(var(--x) * var(--cell)); top: calc(var(--y) * var(--cell)); width: var(--cell); height: var(--cell);
@@ -836,8 +836,11 @@ main:has(> .stage:not([hidden])) > .opening { display: none; }
 [data-state="failed"] .report-mark i { background: var(--faint); opacity: .55; }
 .report-mark span { position: absolute; inset: 0; color: var(--ink); clip-path: inset(0 100% 0 0); transition: clip-path 0s; }
 .report-mark svg { display: block; width: 100%; height: 100%; }
-[data-state="sent"] .report-tick, [data-state="failed"] .report-cross { clip-path: inset(0); transition: clip-path .42s cubic-bezier(.2, .8, .2, 1) .22s; }
-[data-state="sent"] .report-tick { color: var(--blue); }
+span.report-tray { clip-path: inset(0 0 100% 0); }
+[data-state="sent"] .report-tick, [data-state="kept"] .report-tray, [data-state="failed"] .report-cross { clip-path: inset(0); transition: clip-path .42s cubic-bezier(.2, .8, .2, 1) .22s; }
+[data-state="sent"] .report-tick, [data-state="kept"] .report-tray { color: var(--blue); }
+/* kept to send later: the ring half lit, over a tray, drawn from the top */
+[data-state="kept"] .report-mark i { opacity: .55; transition-delay: calc(var(--i) * .035s); }
 @keyframes report-ring { 0% { opacity: 1; } 55%, 100% { opacity: .2; } }
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-motion="full"]) .report-stack > *, :root:not([data-motion="full"]) .report-mark :is(i, span) { transition-duration: 0s !important; transition-delay: 0s !important; transform: none; }
