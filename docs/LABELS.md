@@ -51,4 +51,4 @@ About one row in five, among those furthest from the game, holds the site's invi
 
 They're quiet on purpose. Each label and scene is tinted the site's blue once, as it's drawn, through the filters in `src/components/Labels.astro`, so the moving rows cost a phone nothing more. Rows show at 32% in light mode and 30% in dark, and fade to about a third of that around the game, where the page's own background lies over them. The games beside the chosen one have the page's colour behind them, so the rows don't show through.
 
-They stand still when motion is calm, fade away in the full-screen views and while a game opens, and never take a press. The rows' code is `src/scripts/labels.ts`, their look is in `src/styles/global.css`, and the build's checks are `src/lib/labels.mjs`, tested by `tools/test/labels.test.mjs`.
+They stand still when motion is calm, fade away in the full-screen views and while a game opens, stay behind a game's page, and never take a press. The rows' code is `src/scripts/labels.ts`, their look is in `src/styles/global.css`, and the build's checks are `src/lib/labels.mjs`, tested by `tools/test/labels.test.mjs`.
