@@ -348,6 +348,16 @@ export function ranIn(game, codeMap, address) {
 }
 
 /**
+ * The functions of the code map that started in a recording's matching frames, from what ran there (`set`, as playedIn
+ * gives it): those whose first instruction ran, by their keys, in the code map's order. It's what a recording's row
+ * lists as found running, for a recording whose program says what ran and not which functions started.
+ */
+export function startedIn(set, codeMap) {
+  const layout = layoutOf(codeMap);
+  return codeMap.functions.filter((f, index) => has(set, layout.first[index] * 3 + RAN)).map(f => f.key);
+}
+
+/**
  * For each recording, which of `addresses` ran in its matching frames: a Map from the recording's name to those
  * addresses, the recordings that ran none left out.
  */

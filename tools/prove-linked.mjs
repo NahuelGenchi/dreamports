@@ -7,7 +7,7 @@ import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { REPO, resultFolder } from './lib/paths.mjs';
 import { cartridgeOf, readParts } from './lib/proof-files.mjs';
-import { CELL, contentIn, finderOf, layoutOf, playedIn } from './lib/played.mjs';
+import { CELL, contentIn, finderOf, layoutOf, playedIn, startedIn } from './lib/played.mjs';
 import { expand } from './lib/recording.mjs';
 import { openDreamport } from './lib/dreamport.mjs';
 import { runLinked } from './gba/linked.mjs';
@@ -160,7 +160,8 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   say('');
   // what of the original's code ran on any console in the frames where every screen matched (lib/played.mjs): the
   // page's frame f is the original's frame f + 1, which the original works out in its frame f. The cartridge's data
-  // those frames used counts the same way.
+  // those frames used counts the same way, and the functions that started in them are those the row lists as found
+  // running, for code ported.
   let played = null;
   if (seesPlayed) {
     const matchedInOriginal = new Uint8Array(frames + 1), differing = new Set(differ);
@@ -168,5 +169,5 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
     const cartridge = cartridgeOf(copy);
     played = { set: playedIn(first.played.records, matchedInOriginal, layoutOf(codeMap), finderOf(codeMap, cartridge, new Map())), made: [], used: contentIn(first.played.content, matchedInOriginal, Math.ceil(cartridge(0x08000000, 0x02000000).length / CELL)) };
   }
-  return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], ...(played ? { played } : {}), changed: !!changed, functions: [] };
+  return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], ...(played ? { played } : {}), changed: !!changed, functions: played ? startedIn(played.set, codeMap) : [] };
 }
