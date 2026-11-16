@@ -1,0 +1,37 @@
+{
+  "about": "What of Sonic Advance (USA)'s cartridge nothing can reach, each with why (docs/STANDARD.md#done)",
+  "code": [],
+  "content": [],
+  "ways": [
+    [
+      "0809778C",
+      "taken",
+      "The branch at 0809778C goes by the flags the instruction at 0809778A sets from numbers in the code alone, in the run of instructions from 08097760, which no instruction of the cartridge branches or calls into and no word of the cartridge points into, so it's never taken."
+    ],
+    [
+      "08097922",
+      "taken",
+      "The branch at 08097922 goes by the flags the instruction at 08097920 sets from numbers in the code alone, in the run of instructions from 08097918, which no instruction of the cartridge branches or calls into and no word of the cartridge points into, so it's never taken."
+    ],
+    [
+      "0809795A",
+      "taken",
+      "The branch at 0809795A goes by the flags the instruction at 08097958 sets from numbers in the code alone, in the run of instructions from 08097950, which no instruction of the cartridge branches or calls into and no word of the cartridge points into, so it's never taken."
+    ],
+    [
+      "08099BCE",
+      "taken",
+      "The branch at 08099BCE goes by the flags the instruction at 08099BCC sets from numbers in the code alone, in the run of instructions from 08099BBC, which no instruction of the cartridge branches or calls into and no word of the cartridge points into, so it's never taken."
+    ],
+    [
+      "0809A26E",
+      "taken",
+      "The branch at 0809A26E goes by the flags the instruction at 0809A26C sets from numbers in the code alone, in the run of instructions from 0809A260, which no instruction of the cartridge branches or calls into and no word of the cartridge points into, so it's never taken."
+    ],
+    [
+      "0809A3FC",
+      "taken",
+      "The branch at 0809A3FC goes by the flags the instruction at 0809A3FA sets from numbers in the code alone, in the run of instructions from 0809A3CA, which no instruction of the cartridge branches or calls into and no word of the cartridge points into, so it's never taken."
+    ]
+  ]
+}

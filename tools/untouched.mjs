@@ -5,23 +5,26 @@
 // has played, and the stretches of the cartridge's data never used. It prints the biggest of each; --all prints every
 // one. `npm run dp -- untouched <version> --sort` sorts every branch gone one way only by what it tests, each recording
 // played once for all the branches it ran: those that compared something that changed while they ran, something that differs
-// from one recording to another, something that was the same everywhere, and two numbers in the code, with the values
-// most branches wait on. `npm run dp -- untouched <version> --why <address> [--in <recording>]` says what the branch at an address went
+// from one recording to another, something that was the same everywhere, and numbers the code set on the way there, with the
+// values most branches wait on. `npm run dp -- untouched <version> --decided` lists the branches the code itself
+// decides, worked out from the cartridge alone (lib/decided.mjs), one way of which can't happen, and with --write
+// puts them in the game's unreachable.json, for a person to read before they go in. `npm run dp -- untouched <version> --why <address> [--in <recording>]` says what the branch at an address went
 // by in a recording that ran it: what the original compared, where each side came from in its memory, and what it
 // held each time, so that what has to be different for the other way is known before anyone looks for it: a value the
 // buttons change is found by playing or by `route`, and one they don't, such as the character or a setting, by a
 // recording that starts differently. `npm run dp -- route <version> <name> --from <recording> --goal untouched` then finds presses that reach code
 // not played yet, and `npm run dp -- read <game> <address>` prints the code at an address.
 
-import { readCodeMap, readOriginal, cartridgeOf, hex } from './lib/proof-files.mjs';
+import { readCodeMap, readOriginal, readRecordings, cartridgeOf, hex, proofVersions } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { referenceOf } from './lib/reference.mjs';
 import { NOT_TAKEN, TAKEN, ranBy, ranIn, readPlayed, untouchedOf } from './lib/played.mjs';
 import os from 'node:os';
+import { decidedBranches } from './lib/decided.mjs';
+import { versionOf } from '../src/lib/languages.mjs';
 import { originalPlay } from './lib/recording.mjs';
-import { readRecordings } from './lib/proof-files.mjs';
-import { LOCAL } from './lib/paths.mjs';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { LOCAL, sharedProofFolder } from './lib/paths.mjs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const count = n => n.toLocaleString('en');
@@ -29,13 +32,14 @@ const count = n => n.toLocaleString('en');
 export async function run(args) {
   const flagged = flag => (args.includes(flag) ? args[args.indexOf(flag) + 1] ?? '' : null);
   const all = args.includes('--all'), [game] = args.filter((a, i) => !a.startsWith('--') && !['--why', '--in', '--at-once'].includes(args[i - 1]));
-  if (!game || flagged('--why') === '' || flagged('--in') === '') throw new Error('Usage: npm run dp -- untouched <version> [--all]\n       npm run dp -- untouched <version> --why <address> [--in <recording>]\n       npm run dp -- untouched <version> --sort [--all] [--at-once <how many>]');
+  if (!game || flagged('--why') === '' || flagged('--in') === '') throw new Error('Usage: npm run dp -- untouched <version> [--all]\n       npm run dp -- untouched <version> --why <address> [--in <recording>]\n       npm run dp -- untouched <version> --sort [--all] [--at-once <how many>]\n       npm run dp -- untouched <version> --decided [--write]');
   const original = readOriginal(game), codeMap = readCodeMap(game);
   if (!codeMap) throw new Error(`games/${game.split('/')[0]}/proof/ has no code map yet: npm run dp -- codemap ${game.split('/')[0]} makes one.`);
   if ((await referenceOf(original)).seesInstructions !== true) throw new Error("The tools don't see this console's instructions run yet, so they can't say what's untouched.");
   if (!readPlayed(game).places) throw new Error(`games/${game}/proof/played.json isn't there yet: npm run dp -- prove ${game} writes it.`);
   const copy = copyWith(original.sha1);
   if (!copy) throw new Error(`It reads ${original.name}, SHA-1 ${original.sha1}. Show the tools your copy first: npm run dp -- rom <file>.`);
+  if (args.includes('--decided')) return decided(game, { original, codeMap, copy, write: args.includes('--write') });
   if (args.includes('--sort')) return sort(game, { original, codeMap, copy, all, atOnce: Number(flagged('--at-once') ?? 0) });
   if (flagged('--why') !== null) return why(game, { original, codeMap, copy, address: flagged('--why'), asked: flagged('--in') });
   const { functions, content } = untouchedOf(game, codeMap, cartridgeOf(copy.path));
@@ -184,8 +188,8 @@ function sidesOf(records) {
  * out from, so a place plus a size sorts as well as a value read straight from memory. `kind` is "moves" when the pair
  * was more than one thing within one recording, so it changes as the game is played; "differs" when it was one thing
  * in each recording but not the same in all, which is how a choice made before the part looks, and also what play left
- * at a moment tested once; "code" when it was the same everywhere and both sides were numbers in the code, so the
- * branch's other way can't happen as far as anything shows; "same" when it was the same everywhere otherwise, so
+ * at a moment tested once; "path" when it was the same everywhere and both sides were numbers the code had set on the way there,
+ * such as a flag set earlier or what a function gave back, so the way it goes depends on the path that led to it; "same" when it was the same everywhere otherwise, so
  * nothing has ever shown another; and "unseen" when it didn't run as a conditional branch. `sides` is each value of
  * the work memory a side came straight from, with its address, bytes, and what it held and was against anywhere, and
  * `held` the pairs seen, as [a, b].
@@ -210,7 +214,7 @@ export function sortBranch(byRecording) {
     }
   }
   const sides = [...all].map(([address, side]) => ({ address, bytes: side.bytes, held: [...side.held].sort((a, b) => a - b), against: [...side.against].sort((a, b) => a - b) }));
-  const kind = !ran ? 'unseen' : moves ? 'moves' : pairs.size > 1 ? 'differs' : code ? 'code' : 'same';
+  const kind = !ran ? 'unseen' : moves ? 'moves' : pairs.size > 1 ? 'differs' : code ? 'path' : 'same';
   return { kind, sides, held: [...pairs.values()] };
 }
 
@@ -241,11 +245,11 @@ async function sort(game, { original, codeMap, copy, all, atOnce }) {
     moves: 'compare something that changed while the branch ran in one recording, so playing differently, or a search, can reach the other way',
     differs: 'compare something that was one thing in each recording but not the same in all: a choice made before the part, such as the character, or what play had left at a moment tested once',
     same: 'compare something that was the same in every recording that ran them, so no recording has ever shown another: often the mode or a setting, which a recording that starts differently changes',
-    code: "compare two numbers in the code, the same every time, so their other way can't happen as far as anything shows: read each, and list in unreachable.json those that truly can't",
+    path: 'compare numbers the code had set on the way there, the same every time, such as a flag set earlier or what a function gave back: the way they go depends on the path that led to them, so another path has to be played first',
     unseen: "didn't run as a conditional branch when played again",
   };
   console.log(`\nOf the ${count(sorted.length)} branches:`);
-  for (const kind of ['moves', 'differs', 'same', 'code', 'unseen']) if (of(kind).length || kind !== 'unseen') console.log(`  ${count(of(kind).length)} ${words[kind]}.`);
+  for (const kind of ['moves', 'differs', 'same', 'path', 'unseen']) if (of(kind).length || kind !== 'unseen') console.log(`  ${count(of(kind).length)} ${words[kind]}.`);
   console.log(`And ${count(never.length)} functions never ran at all, so nothing says what their branches test: something has to call them first.`);
 
   // the values most branches test without ever seeing another: one recording that changes one of them opens many
@@ -270,8 +274,8 @@ async function sort(game, { original, codeMap, copy, all, atOnce }) {
     if (!all && list.length > 15) console.log(`  and ${count(list.length - 15)} more values: --all prints them, with each one's branches.`);
   }
   if (all) {
-    for (const kind of ['moves', 'code']) {
-      console.log(`\nThe ${count(of(kind).length)} that ${kind === 'moves' ? 'changed while they ran' : 'compare two numbers in the code'}: ${of(kind).map(b => `${hex(b.address)} ${b.way}`).join(', ')}.`);
+    for (const kind of ['moves', 'path']) {
+      console.log(`\nThe ${count(of(kind).length)} that ${kind === 'moves' ? 'changed while they ran' : 'compare numbers set on the way there'}: ${of(kind).map(b => `${hex(b.address)} ${b.way}`).join(', ')}.`);
     }
   }
   const folder = join(LOCAL, 'untouched');
@@ -279,5 +283,35 @@ async function sort(game, { original, codeMap, copy, all, atOnce }) {
   const file = join(folder, `${game.replace('/', '-')}.json`);
   writeFileSync(file, `${JSON.stringify({ version: game, original: original.sha1, branches: sorted.map(b => ({ address: hex(b.address), way: b.way, function: b.key, kind: b.kind, recordings: b.recordings, held: b.held.slice(0, 8), sides: b.sides.map(s => ({ ...s, address: hex(s.address) })) })) })}\n`);
   console.log(`\nEvery branch with its kind, its values and the recordings that ran it is in .dreamports/untouched/${game.replace('/', '-')}.json, on this computer. npm run dp -- untouched ${game} --why <address> says more of one.`);
+  return 0;
+}
+
+/** Why a branch the code decides can't go its other way, for the game's unreachable.json. */
+export function decidedWhy({ address, way, from, by }) {
+  return `The branch at ${hex(address)} goes by the flags the instruction at ${hex(by)} sets from numbers in the code alone, in the run of instructions from ${hex(from)}, which no instruction of the cartridge branches or calls into and no word of the cartridge points into, so it's never ${way}.`;
+}
+
+// the branches the code itself decides, worked out from the cartridge alone, and with `write` put in the game's list
+async function decided(game, { original, codeMap, copy, write }) {
+  const base = versionOf(game).game;
+  const found = decidedBranches(new Uint8Array(readFileSync(copy.path)), codeMap.functions);
+  // nothing of it may ever have been played: a way that happened in any version's recordings can't be one that can't
+  const versions = proofVersions().filter(version => versionOf(version).game === base && readCodeMap(version));
+  const played = found.filter(d => versions.some(version => ranIn(version, readCodeMap(version), d.address).some(each => (d.way === 'taken' ? each.taken : each.notTaken))));
+  if (played.length) throw new Error(`The tools worked out that ${played.map(d => `${hex(d.address)} is never ${d.way}`).join(', ')}, and a recording has played it so: that's the tools' fault, so nothing was written. Say so in an issue, with this line.`);
+  console.log(`${count(found.length)} conditional branches of ${base} are decided by the code itself, worked out from the cartridge alone, and none has gone its other way in any recording of ${versions.join(', ')}:`);
+  for (const d of found) console.log(`  ${hex(d.address)} is never ${d.way}: the flags come from ${hex(d.by)}, in the run from ${hex(d.from)}.`);
+  if (!write) {
+    console.log(`--write puts them in games/${base}/proof/unreachable.json, where a person reads each before it goes in.`);
+    return 0;
+  }
+  const file = join(sharedProofFolder(game), 'unreachable.json');
+  const listed = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : { about: `What of ${original.name}'s cartridge nothing can reach, each with why (docs/STANDARD.md#done)` };
+  const others = (listed.ways ?? []).filter(([address]) => !found.some(d => hex(d.address) === address));
+  listed.code ??= [];
+  listed.content ??= [];
+  listed.ways = [...others, ...found.map(d => [hex(d.address), d.way, decidedWhy(d)])].sort((a, b) => a[0].localeCompare(b[0]));
+  writeFileSync(file, `${JSON.stringify(listed, null, 2)}\n`);
+  console.log(`Written: games/${base}/proof/unreachable.json, ${listed.ways.length} ways. npm run dp -- prove <version> counts them out of gameplay proven.`);
   return 0;
 }
