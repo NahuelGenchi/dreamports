@@ -18,7 +18,7 @@ import { readClaims, leadOf, teamBuildOf, gatheredIn } from './lib/claims.mjs';
 import { readOriginal, readPartsFile } from './lib/proof-files.mjs';
 import { dreamports } from './readme.mjs';
 import { notesOfGame } from './notes.mjs';
-import { pageOf, percentText } from '../src/lib/entries.mjs';
+import { gameplayText, pageOf, percentText } from '../src/lib/entries.mjs';
 import { nameKey, pieceName, pieceOf, planOf, whatCanStart } from '../src/lib/pieces.mjs';
 import { LANGUAGES, OTHER_LANGUAGES, mainLanguage, playOrder, versionOf } from '../src/lib/languages.mjs';
 import { existsSync } from 'node:fs';
@@ -204,11 +204,11 @@ function show(game, local, claims, team, all) {
   row('Lead', lead ? `@${lead}` : `nobody${home ? ': /claim on its game\'s issue makes you its lead' : ''}`);
   row('Game issue', homeUrl ? `${homeUrl}, which lists its pieces, and where it's talked about` : 'none yet');
   row(`Code ported${named}`, proof?.ported ? percentText(proof.ported.percent) : local ? 'not measured yet: it needs a code map' : 'not measured yet');
-  row(`Gameplay proven${named}`, proof?.gameplay ? `${percentText(proof.gameplay.percent)}, ${proof.gameplay.proven} of ${proof.gameplay.total} parts` : local ? 'not measured yet: it needs a list of its parts' : 'not measured yet');
+  row(`Gameplay proven${named}`, proof?.gameplay ? gameplayText(proof.gameplay) : local ? 'not measured yet: it needs a list of its parts' : 'not measured yet');
   for (const { name, language, proof: theirs } of versions) {
     const called = LANGUAGES[language].name;
     row(`Code ported in ${called}`, theirs?.ported ? `${percentText(theirs.ported.percent)}, in games/${name}/` : 'not measured yet');
-    row(`Gameplay proven in ${called}`, theirs?.gameplay ? `${percentText(theirs.gameplay.percent)}, ${theirs.gameplay.proven} of ${theirs.gameplay.total} parts` : 'not measured yet');
+    row(`Gameplay proven in ${called}`, theirs?.gameplay ? gameplayText(theirs.gameplay) : 'not measured yet');
   }
   const fromStart = (proof?.gameplay?.parts ?? []).filter(part => part.proven && part.fromStart);
   if (fromStart.length) row('From a start point', fromStart.map(part => part.name), 'each proven again from power-on once the game reaches it');

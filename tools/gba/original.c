@@ -25,6 +25,15 @@
 // code map (codemap.mjs): each time an instruction runs at an address there with other bytes than the last time,
 // its frame, its address (+1 for Thumb) and its bytes (32 bits each).
 //
+// The environment's DP_PLAYED, when it's set, names a file to write what ran to, for gameplay proven (lib/played.mjs):
+// every instruction that ran, in the cartridge or the work RAM, and for a conditional branch each of its two ways, taken
+// and not, each with the stretches of frames it happened in. A record is five 32-bit words: the instruction's address
+// (+1 for Thumb), its bytes, what happened (0 it ran, 1 its branch was taken, 2 it wasn't), and the first and the last
+// frame of a stretch of frames that each had it. An address of the work RAM that later holds other bytes starts anew.
+// DP_PLAYED_CODE, with it, names a file for the functions the game makes in its work RAM, which only the console's
+// memory holds: the first time one runs, its place in the code map, its address, its size, and its bytes, to a whole
+// word (the tools count its instructions and branches from them, and keep none: lib/played.mjs).
+//
 // For each frame it writes to stdout: a hash of the picture (FNV-1a over each pixel's 15-bit colour, as the
 // console has it), the picture's one colour if every pixel has it or else 0xFFFFFFFF, the number of functions that
 // ran in the frame and their places in the code map (32 bits each), then the picture itself if PICTURES names the
@@ -69,7 +78,7 @@ static void quiet(struct mLogger* logger, int category, enum mLogLevel level, co
 static struct mLogger logger = { .log = quiet };
 
 // The parts of the console's memory code can run from: the cartridge (ROM), and the work RAM games copy code into.
-struct region { uint32_t base, size; uint32_t* first; uint8_t* inside; uint8_t* outside; long seen; uint32_t* lastCode; uint8_t* ranCode; };
+struct region { uint32_t base, size; uint32_t* first; uint8_t* inside; uint8_t* outside; long seen; uint32_t* lastCode; uint8_t* ranCode; uint32_t* played; };
 static struct region regions[] = {
 	{ 0x08000000, 0x02000000 },  // the cartridge
 	{ 0x03000000, 0x00008000 },  // internal work RAM
@@ -82,6 +91,65 @@ static struct region* regionOf(uint32_t address) {
 		if (address - regions[i].base < regions[i].size) return &regions[i];
 	}
 	return NULL;
+}
+
+// What ran, for DP_PLAYED: an instruction, with the stretch of frames each thing that can happen at it is in the middle of
+enum { RAN, TAKEN, NOT_TAKEN, HAPPENINGS };
+struct played { uint32_t address, code, start[HAPPENINGS]; long last[HAPPENINGS]; };
+static struct { FILE* file; struct played* list; size_t count, capacity; } played;
+
+static void writeStretch(const struct played* p, int what) {
+	uint32_t record[5] = { p->address, p->code, (uint32_t) what, p->start[what], (uint32_t) p->last[what] };
+	fwrite(record, 4, 5, played.file);
+}
+
+// an instruction's stretches so far, written and begun again, as when its address holds other bytes
+static void endStretches(struct played* p) {
+	for (int what = 0; what < HAPPENINGS; what++) {
+		if (p->last[what] >= 0) writeStretch(p, what);
+		p->last[what] = -1;
+	}
+}
+
+static void happened(struct played* p, int what, long frame) {
+	if (p->last[what] == frame) return;
+	if (p->last[what] != frame - 1) {
+		if (p->last[what] >= 0) writeStretch(p, what);
+		p->start[what] = (uint32_t) frame;
+	}
+	p->last[what] = frame;
+}
+
+// the instruction at `pc`, as the list has it: new the first time it runs, and begun again with other bytes there
+static struct played* playedAt(struct mCore* core, struct region* region, uint32_t pc, int thumb) {
+	uint32_t* at = &region->played[(pc - region->base) / 2];
+	int ram = region->base != 0x08000000;
+	if (*at && !ram) return &played.list[*at - 1];
+	uint32_t code = thumb ? core->rawRead16(core, pc, -1) : core->rawRead32(core, pc, -1);
+	if (*at) {
+		struct played* p = &played.list[*at - 1];
+		if (p->code == code && p->address == (pc | (uint32_t) thumb)) return p;
+		endStretches(p);
+		p->address = pc | (uint32_t) thumb;
+		p->code = code;
+		return p;
+	}
+	if (played.count == played.capacity) {
+		played.capacity = played.capacity ? played.capacity * 2 : 1 << 16;
+		played.list = realloc(played.list, played.capacity * sizeof(struct played));
+	}
+	struct played* p = &played.list[played.count++];
+	p->address = pc | (uint32_t) thumb;
+	p->code = code;
+	for (int what = 0; what < HAPPENINGS; what++) p->last[what] = -1;
+	*at = (uint32_t) played.count;
+	return p;
+}
+
+// whether an instruction is a conditional branch: Thumb's B<cond>, or ARM's B or BL with a condition
+static int branches(uint32_t code, int thumb) {
+	if (thumb) return (code & 0xF000) == 0xD000 && (code >> 8 & 0xF) < 0xE;
+	return (code & 0x0E000000) == 0x0A000000 && code >> 28 < 0xE;
 }
 
 // The console's sound as mGBA mixes it: each sample comes through its audio stream, scaled by mGBA's master volume
@@ -291,12 +359,19 @@ int main(int argc, char** argv) {
 	FILE* ramCode = getenv("DP_RAM_CODE") ? fopen(getenv("DP_RAM_CODE"), "wb") : NULL;
 	if (getenv("DP_RAM_CODE") && !ramCode) { fprintf(stderr, "Can't write %s\n", getenv("DP_RAM_CODE")); exit(2); }
 
+	played.file = getenv("DP_PLAYED") ? fopen(getenv("DP_PLAYED"), "wb") : NULL;
+	if (getenv("DP_PLAYED") && !played.file) { fprintf(stderr, "Can't write %s\n", getenv("DP_PLAYED")); exit(2); }
+
+	FILE* playedCode = played.file && getenv("DP_PLAYED_CODE") ? fopen(getenv("DP_PLAYED_CODE"), "wb") : NULL;
+	uint8_t* codeWritten = calloc(functionsSize / 24 + 1, 1);
+
 	// where each function starts, as the first of the functions there (its place in FUNCTIONS + 1) and the next after
 	// each, which addresses are inside one, and code seen outside them all
 	for (size_t i = 0; i < REGIONS; i++) {
 		regions[i].first = calloc(regions[i].size / 2, sizeof(uint32_t));
 		regions[i].inside = calloc(regions[i].size / 2, 1);
 		regions[i].outside = calloc(regions[i].size / 2, 1);
+		if (played.file) regions[i].played = calloc(regions[i].size / 2, sizeof(uint32_t));
 		if (ramCode && i) {
 			regions[i].lastCode = calloc(regions[i].size / 2, sizeof(uint32_t));
 			regions[i].ranCode = calloc(regions[i].size / 2, 1);
@@ -342,7 +417,9 @@ int main(int argc, char** argv) {
 		// emulator's own loop ends a frame an instruction sooner, and the game's frames then come out differently
 		while (gba->video.frameCounter == frameCounter) {
 			while (cpu->cycles >= cpu->nextEvent) cpu->irqh.processEvents(cpu);
-			struct region* region = functionCount || ramCode ? regionOf(cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM)) : NULL;
+			struct played* now = NULL;
+			uint32_t next = 0;
+			struct region* region = functionCount || ramCode || played.file ? regionOf(cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM)) : NULL;
 			if (region) {
 				int thumb = cpu->executionMode == MODE_THUMB;
 				uint32_t pc = cpu->gprs[ARM_PC] - (thumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
@@ -351,6 +428,15 @@ int main(int argc, char** argv) {
 				for (uint32_t there = region->first[slot]; there; there = nextThere[there - 1]) {
 					const uint32_t* watched = &functions[(there - 1) * 6];
 					if (watched[3] & 1 && !sameBytes(core, pc, watched[4], watched[5])) continue;
+					if (playedCode && watched[3] & 1 && !codeWritten[there - 1]) {
+						codeWritten[there - 1] = 1;
+						uint32_t head[3] = { watched[2], pc, watched[1] };
+						fwrite(head, 4, 3, playedCode);
+						for (uint32_t at = 0; at < watched[1]; at += 4) {
+							uint32_t word = core->rawRead32(core, pc + at, -1);
+							fwrite(&word, 4, 1, playedCode);
+						}
+					}
 					if (lastRan[watched[2]] != frame) {
 						lastRan[watched[2]] = frame;
 						ran[count++] = watched[2];
@@ -360,6 +446,12 @@ int main(int argc, char** argv) {
 				if (!region->inside[slot] && !region->outside[slot]) {
 					region->outside[slot] = 1;
 					region->seen++;
+				}
+				if (played.file) {
+					now = playedAt(core, region, pc, thumb);
+					happened(now, RAN, frame);
+					next = branches(now->code, thumb) ? pc + (thumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM) : 0;
+					if (!next) now = NULL;
 				}
 				if (region->lastCode) {
 					uint32_t code = thumb ? core->rawRead16(core, pc, -1) : core->rawRead32(core, pc, -1);
@@ -372,6 +464,11 @@ int main(int argc, char** argv) {
 				}
 			}
 			ARMRun(cpu);
+			// a conditional branch went one of its two ways
+			if (now) {
+				uint32_t pc = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
+				happened(now, pc == next ? NOT_TAKEN : TAKEN, frame);
+			}
 		}
 		for (; nextRead < readCount && reads[nextRead * 3] == (uint32_t) frame; nextRead++) {
 			readValues[nextRead] = readValue(core, reads[nextRead * 3 + 1], reads[nextRead * 3 + 2]);
@@ -396,6 +493,11 @@ int main(int argc, char** argv) {
 	fflush(stdout);
 	if (soundFile) fclose(soundFile);
 	if (ramCode) fclose(ramCode);
+	if (played.file) {
+		for (size_t i = 0; i < played.count; i++) endStretches(&played.list[i]);
+		fclose(played.file);
+		if (playedCode) fclose(playedCode);
+	}
 	fprintf(stderr, "{\"cartridge\":%ld,\"memory\":%ld,\"reads\":[", regions[0].seen, regions[1].seen + regions[2].seen);
 	for (size_t i = 0; i < readCount; i++) fprintf(stderr, "%s%u", i ? "," : "", readValues[i]);
 	fprintf(stderr, "]}\n");

@@ -66,14 +66,16 @@ export const portedFunctions = (portMap, progress) => {
  *   play, but those with a stop in them, over the code map, or null without a code map; with it, `stops`, the paths
  *   the code says it hasn't ported, `stopped`, the functions they're in, and `unnamed`, the functions of the code map
  *   no code names yet;
- * - gameplay: gameplay proven, the parts of the game played from start to end with every frame matching, over every
- *   part parts.json lists, or null without it.
+ * - gameplay: gameplay proven, or null without parts.json: where prove saw the original's instructions run
+ *   (progress.json's `played`), the instructions and branch ways played in matching frames over all the code map's
+ *   functions have, as `units`; or else the parts played from start to end with every frame matching, over every part
+ *   parts.json lists. `proven`, `total` and `parts` are the parts either way.
  * Throws, naming every problem, when the files don't agree, such as a % that isn't what the code map and the proven
  * functions make, or a port map that names a function the code map doesn't have.
  */
 /**
  * @typedef {{ name: string, proven: boolean, recording: string | null, frames: [number, number] | null, difference: number | null, gap: number | null, unreached: string | null, fromStart: boolean }} Part
- * @typedef {{ percent: number, proven: number, total: number, parts: Part[] }} Gameplay
+ * @typedef {{ percent: number, proven: number, total: number, parts: Part[], units?: { total: number, played: number } }} Gameplay
  * @typedef {{ percent: number, functions: number, named: number, played: number, unmatched: number, stops: number, stopped: number, unnamed: number }} Ported
  * @typedef {{ copy: string, percent: number | null, recordings: number, codeMap: { functions: number, bytes: number } | null,
  *   proven: { functions: number, bytes: number } | null, ported: Ported | null, gameplay: Gameplay | null }} Proof
@@ -148,6 +150,15 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
     problems.push(`${at}${portMap ? 'port-map.json' : 'progress.json'} needs a ${shared}code-map.json to be measured against.`);
   }
   if (parts) result.gameplay = gameplayOf(shared, parts, progress?.recordings ?? {}, recorded, problems, at !== shared);
+  // where the tools see the original's instructions run, gameplay proven is the share of its code played in matching
+  // frames, every instruction and each way of every branch, and the parts are what a player would call them
+  if (result.gameplay && progress?.played) {
+    const { total, played, percent } = progress.played;
+    if (!Number.isInteger(total) || !Number.isInteger(played) || played > total || percent !== playedPercent(played, total)) {
+      problems.push(`${at}progress.json's "played" doesn't add up. It only comes from npm run dp -- prove.`);
+    }
+    Object.assign(result.gameplay, { percent, units: { total, played } });
+  }
   if (problems.length) throw new Error(`${game}'s proof doesn't add up:\n${problems.map(p => `- ${p}`).join('\n')}`);
   return result;
 }
@@ -220,6 +231,18 @@ function gameplayOf(at, file, measured, recorded, problems, version = false) {
   const proven = list.filter(p => p.proven).length;
   return { percent: share(proven, list.length), proven, total: list.length, parts: list };
 }
+
+/** Gameplay proven from what was played: never 100% until every instruction and every way of every branch is. */
+export const playedPercent = (played, total) => (total ? Math.floor(played / total * 10000) / 100 : 0);
+
+/**
+ * Gameplay proven in words, after its %: the share of the original's code played in matching frames with the parts
+ * played through, or, where the tools don't see instructions run, the parts alone.
+ * @param {Gameplay} gameplay
+ */
+export const gameplayText = gameplay => (gameplay.units
+  ? `${percentText(gameplay.percent)}, ${gameplay.units.played.toLocaleString('en')} of ${gameplay.units.total.toLocaleString('en')} instructions and branch ways played, and ${gameplay.proven} of ${gameplay.total} parts played through`
+  : `${percentText(gameplay.percent)}, ${gameplay.proven} of ${gameplay.total} parts`);
 
 /** A % as the site and the README write it, such as 11.19%, or null when there's none. */
 export const percentText = percent => (percent === null || percent === undefined ? null : `${percent.toLocaleString('en', { maximumFractionDigits: 2 })}%`);

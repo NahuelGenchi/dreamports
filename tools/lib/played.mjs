@@ -1,0 +1,217 @@
+// What of the original's code has been played next to a Dreamport, for gameplay proven
+// (docs/STANDARD.md#how-progress-is-measured): every instruction of the code map's functions counts once it has run
+// in a frame that matched, and every conditional branch twice, once for each of its two ways, taken and not. The
+// program that plays the original says what ran and in which frames (gba/original.c, DP_PLAYED); prove keeps, for each
+// recording, what ran in its matching frames, in games/<version>/proof/played.json:
+//
+// {
+//   "original": the copy's SHA-1,
+//   "percent", "units": { "total", "played" }: gameplay proven, and what it's made of,
+//   "code": which places in the code map's functions hold an instruction, and which of those a conditional branch,
+//   "recordings": { name: what ran in the recording's matching frames }
+// }
+//
+// "code" and each recording's are sets of numbers, deflated and written in base64. A place is two bytes of a function,
+// numbered through the code map's functions in order, and takes three numbers: in a recording's, that it ran, that its
+// branch was taken, and that it wasn't; in "code", that it's an instruction, and that it's a conditional branch. They say
+// where the original's instructions are and nothing of what they are, as the code map does.
+
+import { deflateRawSync, inflateRawSync } from 'node:zlib';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { proofFolder } from './paths.mjs';
+import { looksLikeArm } from '../gba/functions.mjs';
+import { playedPercent } from '../../src/lib/entries.mjs';
+
+export const RAN = 0, TAKEN = 1, NOT_TAKEN = 2;
+const INSTRUCTION = 0, BRANCH = 1;
+const CARTRIDGE = 0x08000000;
+
+const has = (set, n) => (set[n >> 3] >> (n & 7) & 1) === 1;
+const put = (set, n) => { set[n >> 3] |= 1 << (n & 7); };
+const pack = set => deflateRawSync(set, { level: 9 }).toString('base64');
+const unpack = (text, bytes) => {
+  const set = new Uint8Array(bytes);
+  if (text) set.set(inflateRawSync(Buffer.from(text, 'base64')).subarray(0, bytes));
+  return set;
+};
+
+/** Where each of the code map's functions has its places: { first, places, bytes }, `first[i]` the place of function
+ *  i's first two bytes, and `bytes` how long a set of all of them is. */
+export function layoutOf(codeMap) {
+  const first = new Uint32Array(codeMap.functions.length + 1);
+  codeMap.functions.forEach((f, i) => { first[i + 1] = first[i] + Math.ceil(f.size / 2); });
+  const places = first[codeMap.functions.length];
+  return { first, places, bytes: Math.ceil(places * 3 / 8) };
+}
+
+// Thumb instructions the console's processor doesn't have, a return, and a write to pc: where a function's code ends
+const invalid = op => (op & 0xFF00) === 0xDE00 || (op & 0xF800) === 0xE800 || (op & 0xFF00) === 0xB100 || (op & 0xFE00) === 0xB200
+  || (op & 0xFE00) === 0xB600 || (op & 0xFC00) === 0xB800 || (op & 0xFE00) === 0xBE00;
+const leaves = op => (op & 0xFF00) === 0xBD00 || (op & 0xFF87) === 0x4700 || (op & 0xFF87) === 0x4687 || (op & 0xFF87) === 0x4487;
+
+/**
+ * The instructions of a function, from its bytes: follows its code from its start and from every place of it known to
+ * have run (`seeds`, offsets), through each branch's two ways, to where it returns or leaves, and gives the offsets
+ * that hold an instruction and, of those, the conditional branches: { instructions, branches }. A switch's cases are
+ * found only from where they ran, as its table isn't read.
+ */
+export function instructionsOf(bytes, seeds = []) {
+  const size = bytes.length, u16 = at => bytes[at] | bytes[at + 1] << 8, u32 = at => (u16(at) | u16(at + 2) << 16) >>> 0;
+  const arm = size >= 16 && size % 4 === 0 && looksLikeArm([0, 4, 8, 12].map(u32));
+  const instructions = new Set(), branches = new Set(), work = [0, ...seeds];
+  while (work.length) {
+    let pc = work.pop();
+    while (pc >= 0 && pc + (arm ? 4 : 2) <= size && !instructions.has(pc)) {
+      if (arm) {
+        const op = u32(pc), always = op >>> 28 === 0xE;
+        instructions.add(pc);
+        if ((op & 0x0E000000) === 0x0A000000) {
+          const target = pc + 8 + ((op & 0xFFFFFF) << 8 >> 6);
+          if (op >>> 28 < 0xE) {
+            branches.add(pc);
+            work.push(target);
+          } else if (!(op & 0x01000000)) {
+            pc = target;
+            continue;
+          }
+        } else if (always && ((op & 0x0FFFFFF0) === 0x012FFF10 || (op & 0x0E108000) === 0x08108000 || (op & 0x0C10F000) === 0x0410F000
+          || ((op & 0x0C00F000) === 0x0000F000 && (op & 0x01900000) !== 0x01000000))) break;
+        pc += 4;
+        continue;
+      }
+      const op = u16(pc);
+      if ((op & 0xF800) === 0xF000 && pc + 4 <= size && (u16(pc + 2) & 0xF800) === 0xF800) {
+        // BL, in two halves, each a step of the processor's
+        instructions.add(pc).add(pc + 2);
+        pc += 4;
+        continue;
+      }
+      if (invalid(op) || (op & 0xF800) === 0xF800) break;
+      instructions.add(pc);
+      if ((op & 0xF000) === 0xD000 && (op >> 8 & 0xF) < 0xE) {
+        branches.add(pc);
+        work.push(pc + 4 + ((op & 0xFF) << 24 >> 23));
+      } else if ((op & 0xF800) === 0xE000) {
+        pc = pc + 4 + ((op & 0x7FF) << 21 >> 20);
+        continue;
+      } else if (leaves(op)) break;
+      pc += 2;
+    }
+  }
+  return { instructions, branches };
+}
+
+/**
+ * Finds the function an instruction that ran is in, for a code map: `find(address, code, thumb)` gives
+ * [the function's place in the code map, the offset in it] or null. An address in the work RAM is a copy of the
+ * cartridge's code, when the cartridge has those bytes there (`cartridge(address, count)` reads them), or else in a
+ * function the game makes there, when the bytes `made` has for it (place in the code map → bytes) are those.
+ */
+export function finderOf(codeMap, cartridge, made) {
+  const own = [], inMemory = [];
+  codeMap.functions.forEach((f, index) => (f.bytes ? inMemory : own).push({ ...f, index }));
+  const within = (list, address) => list.filter(f => address >= f.address && address < f.address + f.size);
+  const inCartridge = address => {
+    let low = 0, high = own.length - 1;
+    while (low <= high) {
+      const middle = (low + high) >> 1, f = own[middle];
+      if (address < f.address) high = middle - 1;
+      else if (address >= f.address + f.size) low = middle + 1;
+      else return [f.index, address - f.address];
+    }
+    return null;
+  };
+  const same = (bytes, at, code, thumb) => bytes && at + (thumb ? 2 : 4) <= bytes.length
+    && (bytes[at] | bytes[at + 1] << 8) === (code & 0xFFFF) && (thumb || (bytes[at + 2] | bytes[at + 3] << 8) === code >>> 16);
+  return (address, code, thumb) => {
+    if (address >= CARTRIDGE) return inCartridge(address);
+    for (const copy of codeMap.copies ?? []) {
+      if (address < copy.ram || address >= copy.ram + copy.size) continue;
+      const from = copy.cartridge + address - copy.ram;
+      if (same(cartridge(from, 4), 0, code, thumb)) return inCartridge(from);
+    }
+    for (const f of within(inMemory, address)) {
+      if (same(made.get(f.index), address - f.address, code, thumb)) return [f.index, address - f.address];
+    }
+    return null;
+  };
+}
+
+/**
+ * What ran in a recording's matching frames, as a set: `records` as the original's program writes them (five words
+ * each: address, +1 for Thumb, the bytes, what happened, the first and last frame of a stretch), `matched[frame]`
+ * whether that frame of the original matched, and `find` from finderOf.
+ */
+export function playedIn(records, matched, layout, find) {
+  const before = new Uint32Array(matched.length + 1);
+  for (let frame = 0; frame < matched.length; frame++) before[frame + 1] = before[frame] + (matched[frame] ? 1 : 0);
+  const set = new Uint8Array(layout.bytes);
+  for (let i = 0; i + 5 <= records.length; i += 5) {
+    const from = records[i + 3], to = Math.min(records[i + 4], matched.length - 1);
+    if (from > to || before[to + 1] === before[from]) continue;
+    const found = find(records[i] & ~1, records[i + 1], (records[i] & 1) === 1);
+    if (found) put(set, (layout.first[found[0]] + (found[1] >> 1)) * 3 + records[i + 2]);
+  }
+  return set;
+}
+
+/** A version's played.json, or a new one. */
+export function readPlayed(game) {
+  const file = join(proofFolder(game), 'played.json');
+  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : { recordings: {} };
+}
+
+/**
+ * Works out a version's played.json again and writes it: `sets` holds what ran in the matching frames of the
+ * recordings just proven (name → set), the others stay as the file has them, and those not in `all` go. `made` holds the
+ * bytes of the functions the game made in memory in those runs (place in the code map → bytes), and `cartridge` reads
+ * the copy. Where each function's instructions and branches are comes from its bytes, followed from its start and from
+ * what ran; a function made in memory that didn't run now keeps what the file knew of it. Returns { percent, total, played }.
+ */
+export function writePlayed(game, { original, codeMap, cartridge, sets, made, all }) {
+  const layout = layoutOf(codeMap), before = readPlayed(game);
+  const sameMap = before.original === original && before.places === layout.places;
+  const recordings = {};
+  for (const name of [...all].sort()) {
+    if (sets.has(name)) recordings[name] = pack(sets.get(name));
+    else if (sameMap && before.recordings?.[name]) recordings[name] = before.recordings[name];
+  }
+  // everything that ran in some recording's matching frames
+  const ran = new Uint8Array(layout.bytes);
+  for (const text of Object.values(recordings)) {
+    const set = unpack(text, layout.bytes);
+    for (let i = 0; i < set.length; i++) ran[i] |= set[i];
+  }
+  const known = unpack(sameMap ? before.code : null, layout.bytes), code = new Uint8Array(layout.bytes);
+  let total = 0, played = 0;
+  codeMap.functions.forEach((f, index) => {
+    const first = layout.first[index], places = layout.first[index + 1] - first;
+    const bytes = f.bytes ? made.get(index) : cartridge(f.address, f.size);
+    if (bytes) {
+      const seeds = [];
+      for (let place = 0; place < places; place++) if (has(ran, (first + place) * 3 + RAN)) seeds.push(place * 2);
+      const { instructions, branches } = instructionsOf(bytes, seeds);
+      for (const at of instructions) put(code, (first + (at >> 1)) * 3 + INSTRUCTION);
+      for (const at of branches) put(code, (first + (at >> 1)) * 3 + BRANCH);
+    } else {
+      for (let place = 0; place < places; place++) {
+        for (const what of [INSTRUCTION, BRANCH]) if (has(known, (first + place) * 3 + what)) put(code, (first + place) * 3 + what);
+      }
+    }
+    for (let place = first; place < first + places; place++) {
+      const went = [has(ran, place * 3 + RAN), has(ran, place * 3 + TAKEN), has(ran, place * 3 + NOT_TAKEN)];
+      // what ran is an instruction, and what went a way a branch, whatever following the code found
+      if (went[RAN]) put(code, place * 3 + INSTRUCTION);
+      if (went[TAKEN] || went[NOT_TAKEN]) put(code, place * 3 + BRANCH);
+      if (has(code, place * 3 + INSTRUCTION)) total++;
+      if (has(code, place * 3 + BRANCH)) total += 2;
+      played += went.filter(Boolean).length;
+    }
+  });
+  const percent = playedPercent(played, total);
+  const text = `{\n  "original": ${JSON.stringify(original)},\n  "percent": ${percent},\n  "units": ${JSON.stringify({ total, played })},\n  "places": ${layout.places},\n`
+    + `  "code": ${JSON.stringify(pack(code))},\n  "recordings": {\n${Object.entries(recordings).map(([name, set]) => `    ${JSON.stringify(name)}: ${JSON.stringify(set)}`).join(',\n')}\n  }\n}\n`;
+  writeFileSync(join(proofFolder(game), 'played.json'), text);
+  return { percent, total, played };
+}

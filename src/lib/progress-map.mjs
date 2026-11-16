@@ -57,7 +57,7 @@ export function progressMap(game, files, title) {
   if (code.percent !== proof.ported.percent) throw new Error(`${game}'s progress map makes code ported ${code.percent}%, but its numbers say ${proof.ported.percent}%.`);
   const { gameplay } = proof;
   const portedText = `${percentText(code.percent)} (${count(code.proven.bytes)}/${count(code.codeMap.bytes)} bytes)`;
-  const gameplayText = gameplay ? `${percentText(gameplay.percent)} (${gameplay.proven}/${gameplay.total} parts)` : 'no list of parts yet';
+  const gameplayText = gameplay ? `${percentText(gameplay.percent)} (${gameplay.units ? `${count(gameplay.units.played)}/${count(gameplay.units.total)} instructions and branch ways, ` : ''}${gameplay.proven}/${gameplay.total} parts)` : 'no list of parts yet';
 
   const language = LANGUAGES[versionOf(game).language].name;
   const number = (label, percent) => [label, percentText(percent) ?? 'not yet', badgeColour(percent)];

@@ -3,6 +3,7 @@
   "percent": 13.21,
   "codeMap": {"functions":2913,"bytes":619930},
   "proven": {"functions":351,"bytes":81918},
+  "played": {"total":295395,"played":27791,"percent":9.4},
   "recordings": {
     "first-start": {
       "frames": 2450,
