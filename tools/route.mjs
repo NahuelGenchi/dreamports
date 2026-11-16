@@ -28,7 +28,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join, relative } from 'node:path';
 import os from 'node:os';
 import { LOCAL, REPO, sharedProofFolder } from './lib/paths.mjs';
-import { readOriginal, readRecordings } from './lib/proof-files.mjs';
+import { readCodeMap, readOriginal, readRecordings } from './lib/proof-files.mjs';
+import { provenUnits } from './lib/played.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { compress, expand, originalPlay, writeRecording } from './lib/recording.mjs';
 import { referenceOf } from './lib/reference.mjs';
@@ -68,6 +69,7 @@ export async function run(args) {
 
 // one search, to one goal: 0 when the recording now reaches it, 1 when it stopped short
 async function search({ args, value, game, name, goalText, from, minutes, then, seed, threads }) {
+  let provenFile = null;
   const original = readOriginal(game), base = versionOf(game).game;
   const reference = await referenceOf(original);
   const { KEY, machine } = reference;
@@ -89,7 +91,16 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
   const cut = cutText === undefined ? source.frames : Number(cutText);
   if (!Number.isInteger(cut) || cut < 1 || cut > source.frames) throw new Error(`--from ${sourceName}:<frame> takes ${sourceName} up to a frame from 1 to ${source.frames}, its length.`);
 
-  // what to search for
+  // what to search for: `untouched` is anything of the cartridge's code this version hasn't played in a matching frame,
+  // which the program counts each frame as a value of its own (gba/original.c, DP_PROVEN)
+  const untouched = goalText === 'untouched';
+  if (untouched) {
+    const codeMap = readCodeMap(game);
+    if (reference.seesInstructions !== true || !codeMap) throw new Error("--goal untouched needs a code map and a console whose instructions the tools see run.");
+    route.values = { ...route.values, untouched: { address: 'FFFF0000', bytes: 4 } };
+    route.goals = { ...route.goals, untouched: 'untouched>0' };
+    provenFile = Buffer.from(provenUnits(game, codeMap).buffer);
+  }
   // a goal the game names, which may have a grid of its own, or a condition written out
   const named = route.goals?.[goalText], ownGoal = named && typeof named === 'object' ? named : { when: named ?? goalText };
   const goal = [parseCondition(ownGoal.when, route.values, named ? `the goal "${goalText}"` : `--goal, which isn't one of the game's (${Object.keys(route.goals ?? {}).join(', ') || 'it names none'}), read as a condition`)];
@@ -112,7 +123,8 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
   const way = originalPlay(source, { frames: cut, keysLate });
   const masks = way.originalHeld.map(list => list.reduce((mask, b) => mask | (KEY[b] ?? 0), 0));
   if (keysLate) masks.unshift(0);
-  const searcher = reference.searchOriginal({ copy: copy.path, spec: 'spec.txt' });
+  const searching_ = () => ({ ...reference.searchOriginal({ copy: copy.path, spec: 'spec.txt' }), ...(provenFile ? { env: { DP_PROVEN: 'proven.bin' } } : {}) });
+  const searcher = searching_();
   const pack = list => Buffer.from((searcher.buttonBytes === 4 ? Uint32Array : Uint16Array).from(list).buffer);
   const prefix = pack(masks), sets = Buffer.from(Uint32Array.from(way.sets.flatMap(({ frame, address, bytes, value: v }) => [frame, address, bytes, v])).buffer);
 
@@ -126,6 +138,7 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
   const spent = existsSync(archiveFile) ? before?.seconds ?? 0 : 0;
   const files = { prefix: 'prefix.bin', sets: way.sets.length ? 'sets.bin' : '-', archive: 'archive.bin', out: 'route.bin' };
   writeFileSync(join(folder, 'prefix.bin'), prefix);
+  if (provenFile) writeFileSync(join(folder, 'proven.bin'), provenFile);
   writeFileSync(join(folder, 'sets.bin'), sets);
   rmSync(join(folder, 'route.bin'), { force: true });
   writeFileSync(join(folder, 'spec.txt'), specText({ route, goal, lost, cells, apart, wait, buttons, KEY, files, seed, seconds: Math.round(minutes * 60), stale: STALE, megabytes: roomForStates(), threads }));
@@ -167,7 +180,8 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
     writeFileSync(join(check, 'prefix.bin'), pack([...masks, ...moves]));
     writeFileSync(join(check, 'sets.bin'), sets);
     writeFileSync(join(check, 'spec.txt'), specText({ route, goal, lost, cells, apart, wait, buttons, KEY, files, seed, seconds: 1, stale: 1, megabytes: 100 }));
-    const again = await searching(reference.searchOriginal({ copy: copy.path, spec: 'spec.txt' }), check, () => {});
+    if (provenFile) writeFileSync(join(check, 'proven.bin'), provenFile);
+    const again = await searching(searching_(), check, () => {});
     rmSync(check, { recursive: true, force: true });
     if (again.word !== 'there') {
       throw new Error(`The search reached ${goalText} after ${count(moves.length)} frames, but played again from power-on the same presses didn't, so nothing was written. That's the tools' fault, not the game's: say so in an issue, with this line.`);

@@ -25,7 +25,7 @@
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { proofFolder } from './paths.mjs';
+import { proofFolder, sharedProofFolder } from './paths.mjs';
 import { looksLikeArm } from '../gba/functions.mjs';
 import { playedPercent } from '../../src/lib/entries.mjs';
 
@@ -194,6 +194,94 @@ export function contentCells(codeMap, rom) {
   return set;
 }
 
+/**
+ * What a game says nothing can reach, from games/<game>/proof/unreachable.json, which every version shares:
+ * { "about", "code": [[from, to, why]], "content": [[from, to, why]] }, each a stretch of the cartridge, its first and
+ * last address in hexadecimal, with why nothing reaches it, such as code left from the game's making that nothing calls.
+ * A person reads each before it goes in, as it takes that stretch out of what gameplay proven counts, while it stays
+ * unplayed. Returns { code, content }, each a list of [from, to] as numbers.
+ */
+export function readUnreachable(game) {
+  const file = join(sharedProofFolder(game), 'unreachable.json');
+  if (!existsSync(file)) return { code: [], content: [] };
+  const listed = JSON.parse(readFileSync(file, 'utf8'));
+  const stretches = (list, word) => (list ?? []).map(([from, to, why]) => {
+    const stretch = [parseInt(from, 16), parseInt(to, 16)];
+    if (!/^[0-9A-F]{8}$/.test(from) || !/^[0-9A-F]{8}$/.test(to) || stretch[0] > stretch[1] || typeof why !== 'string' || !why.trim()) {
+      throw new Error(`${file}: "${word}" lists stretches as [first address, last address, why], the addresses as eight capital hexadecimal digits.`);
+    }
+    return stretch;
+  });
+  return { code: stretches(listed.code, 'code'), content: stretches(listed.content, 'content') };
+}
+const within = (stretches, address) => stretches.some(([from, to]) => address >= from && address <= to);
+
+/**
+ * What's been played of the cartridge's own code in a version's matching frames, for a search for what hasn't
+ * (gba/original.c, DP_PROVEN): for each thing, its place in the cartridge in halfwords, times four, plus what it is.
+ */
+export function provenUnits(game, codeMap) {
+  const layout = layoutOf(codeMap), played = readPlayed(game), ran = new Uint8Array(layout.bytes), units = [];
+  for (const text of Object.values(played.places === layout.places ? played.recordings ?? {} : {})) {
+    const set = unpack(text, layout.bytes);
+    for (let i = 0; i < set.length; i++) ran[i] |= set[i];
+  }
+  codeMap.functions.forEach((f, index) => {
+    if (f.bytes || f.address < CARTRIDGE) return;
+    for (let place = layout.first[index]; place < layout.first[index + 1]; place++) {
+      const slot = (f.address - CARTRIDGE) / 2 + place - layout.first[index];
+      for (const what of [RAN, TAKEN, NOT_TAKEN]) if (has(ran, place * 3 + what)) units.push(slot * 4 + what);
+    }
+  });
+  return Uint32Array.from(units);
+}
+
+/**
+ * What a version's played.json leaves untouched, for people and for tasks: { functions, content }. `functions` has, for
+ * each function of the code map with something unplayed, { key, address, size, total, played, never, ways }: its
+ * instructions and branch ways, how many were played, whether it never ran at all, and `ways`, the addresses of the
+ * branches played only one way, with the way never gone ('taken' or 'not taken'). `content` is the stretches of the
+ * cartridge's data never used, as [first address, last address], the longest first.
+ */
+export function untouchedOf(game, codeMap, cartridge) {
+  const layout = layoutOf(codeMap), played = readPlayed(game), same = played.places === layout.places;
+  const ran = new Uint8Array(layout.bytes), code = unpack(same ? played.code : null, layout.bytes);
+  for (const text of Object.values(same ? played.recordings ?? {} : {})) {
+    const set = unpack(text, layout.bytes);
+    for (let i = 0; i < set.length; i++) ran[i] |= set[i];
+  }
+  const functions = [];
+  codeMap.functions.forEach((f, index) => {
+    let total = 0, done = 0;
+    const ways = [];
+    for (let place = layout.first[index]; place < layout.first[index + 1]; place++) {
+      const at = f.address + (place - layout.first[index]) * 2;
+      const went = [has(ran, place * 3 + RAN), has(ran, place * 3 + TAKEN), has(ran, place * 3 + NOT_TAKEN)];
+      if (has(code, place * 3 + INSTRUCTION)) total++;
+      if (has(code, place * 3 + BRANCH)) {
+        total += 2;
+        if (went[RAN] && went[TAKEN] !== went[NOT_TAKEN]) ways.push([at, went[TAKEN] ? 'not taken' : 'taken']);
+      }
+      done += went.filter(Boolean).length;
+    }
+    if (done < total) functions.push({ key: f.key, address: f.address, size: f.size, total, played: done, never: done === 0, ways });
+  });
+  // the cartridge's data never used, cell by cell, joined into stretches
+  const rom = cartridge(CARTRIDGE, 0x02000000), holds = contentCells(codeMap, rom), read = new Uint8Array(holds.length), content = [];
+  for (const text of Object.values(same ? played.content ?? {} : {})) {
+    const set = unpack(text, holds.length);
+    for (let i = 0; i < set.length; i++) read[i] |= set[i];
+  }
+  for (let cell = 0; cell < holds.length * 8; cell++) {
+    if (!has(holds, cell) || has(read, cell)) continue;
+    const from = CARTRIDGE + cell * CELL, last = content.at(-1);
+    if (last && last[1] + 1 === from) last[1] = from + CELL - 1;
+    else content.push([from, from + CELL - 1]);
+  }
+  content.sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]) || a[0] - b[0]);
+  return { functions, content };
+}
+
 /** A version's played.json, or a new one. */
 export function readPlayed(game) {
   const file = join(proofFolder(game), 'played.json');
@@ -209,7 +297,7 @@ export function readPlayed(game) {
  * data those recordings used (name → set of cells). Returns { percent, total, played, content: { total, read, percent } }.
  */
 export function writePlayed(game, { original, codeMap, cartridge, sets, used, made, all }) {
-  const layout = layoutOf(codeMap), before = readPlayed(game);
+  const layout = layoutOf(codeMap), before = readPlayed(game), unreachable = readUnreachable(game);
   const sameMap = before.original === original && before.places === layout.places;
   const recordings = {};
   for (const name of [...all].sort()) {
@@ -243,8 +331,10 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, used, ma
       // what ran is an instruction, and what went a way a branch, whatever following the code found
       if (went[RAN]) put(code, place * 3 + INSTRUCTION);
       if (went[TAKEN] || went[NOT_TAKEN]) put(code, place * 3 + BRANCH);
-      if (has(code, place * 3 + INSTRUCTION)) total++;
-      if (has(code, place * 3 + BRANCH)) total += 2;
+      // what the game's list says nothing can reach doesn't count while it stays unplayed
+      const out = !f.bytes && within(unreachable.code, f.address + (place - first) * 2);
+      if (has(code, place * 3 + INSTRUCTION) && (went[RAN] || !out)) total++;
+      if (has(code, place * 3 + BRANCH)) total += out ? went.slice(1).filter(Boolean).length : 2;
       played += went.filter(Boolean).length;
     }
   });
@@ -264,6 +354,7 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, used, ma
   }
   for (let cell = 0; cell < cellBytes * 8; cell++) {
     if (!has(holds, cell)) continue;
+    if (!has(read, cell) && within(unreachable.content, CARTRIDGE + cell * CELL)) continue;
     cellsTotal++;
     if (has(read, cell)) cellsRead++;
   }

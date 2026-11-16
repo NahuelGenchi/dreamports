@@ -34,7 +34,7 @@ import { atOnce } from './lib/at-once.mjs';
 import { mp4 } from './lib/mp4.mjs';
 import { makeFilter, soundOf, NEAR } from './lib/sound.mjs';
 import { compareState, describeState } from './lib/state.mjs';
-import { fromStartPoint, gameplayText, measure, percentText } from '../src/lib/entries.mjs';
+import { fromStartPoint, gameplayText, leftToDo, measure, percentText } from '../src/lib/entries.mjs';
 import { readProof } from './readme.mjs';
 import { referenceOf } from './lib/reference.mjs';
 import { compareSaves } from './lib/saves.mjs';
@@ -201,6 +201,8 @@ export async function run(args) {
     if (saves?.differ.length) {
       console.log(`Saves: ${saves.same} of the original's ${saves.original} writes of its save come out the same in the Dreamport. They differ in ${saves.differ.length} recording${saves.differ.length === 1 ? '' : 's'}: ${saves.differ.slice(0, 8).join(', ')}${saves.differ.length > 8 ? ` and ${saves.differ.length - 8} more` : ''}.`);
     }
+    const left = leftToDo(readProof(game));
+    console.log(left.length ? `Not done yet (docs/STANDARD.md#done): ${left.join('; ')}. npm run dp -- untouched ${game} lists what hasn't been played.` : 'Done: all of the original is ported and proven.');
     if (ported && (ported.stops || ported.unnamed)) {
       console.log([ported.stops && `Stops, paths the code says it hasn't ported: ${ported.stops}, in ${ported.stopped} function${ported.stopped === 1 ? '' : 's'}, which don't count as ported.`,
         ported.unnamed && `Functions of the original no code names yet: ${ported.unnamed}.`,

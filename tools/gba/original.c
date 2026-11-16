@@ -65,6 +65,11 @@
 //   what to search for, as lib/explore.h reads it. Nothing is drawn as it searches, which changes nothing the game
 //   can see, and it prints how far it has got.
 //
+//   With DP_PROVEN in the environment, a file of what's been played of the cartridge's code already (32 bits each: an
+//   instruction's place, its offset in the cartridge in halfwords, times four, plus 0 when it has run, 1 when its
+//   branch has been taken and 2 when it hasn't been), the search can look for anything else: the value at 0xFFFF0000,
+//   which no console has, is then how many things not in the file happened in the frame just played.
+//
 // original ROM live
 //   Plays along with a person, for capture: for each frame it reads the buttons held from stdin (16 bits, as in
 //   BUTTONS), runs the frame just as above, and writes to stdout its picture, how many samples of sound it made, then
@@ -478,22 +483,55 @@ static int playAlong(const char* path) {
 }
 
 // what the search needs of a console (lib/explore.h), for each one it runs
+// What's been played of the cartridge's code, for a search for what hasn't (DP_PROVEN): a bit for each thing that can
+// happen at each halfword, and for each halfword whether it's a conditional branch, found the first time it runs
+#define UNTOUCHED 0xFFFF0000u
+static struct { uint8_t* played; uint8_t* kind; uint32_t slots; } proven;
+static _Thread_local uint32_t untouched;   // how many things not played yet happened in this console's last frame
+
+static void readProven(const char* path) {
+	size_t size;
+	uint32_t* list = readAll(path, &size);
+	proven.slots = regions[0].size / 2;
+	proven.played = calloc(proven.slots, 1);
+	proven.kind = calloc(proven.slots, 1);
+	for (size_t i = 0; i < size / 4; i++) if (list[i] / 4 < proven.slots) proven.played[list[i] / 4] |= (uint8_t) (1 << (list[i] & 3));
+	free(list);
+}
+
 static void searchFrame(void* console, uint32_t buttons) {
 	struct mCore* core = console;
 	struct ARMCore* cpu = core->cpu;
 	struct GBA* gba = core->board;
 	core->setKeys(core, buttons);
+	untouched = 0;
 	// an instruction at a time, as main plays every frame
 	int32_t frameCounter = gba->video.frameCounter;
 	while (gba->video.frameCounter == frameCounter) {
 		while (cpu->cycles >= cpu->nextEvent) cpu->irqh.processEvents(cpu);
+		int thumb = cpu->executionMode == MODE_THUMB;
+		uint32_t pc = cpu->gprs[ARM_PC] - (thumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM), slot = (pc - regions[0].base) / 2;
+		if (!proven.played || slot >= proven.slots) {
+			ARMRun(cpu);
+			continue;
+		}
+		if (!proven.kind[slot]) proven.kind[slot] = branches(thumb ? core->rawRead16(core, pc, -1) : core->rawRead32(core, pc, -1), thumb) ? 2 : 1;
+		if (!(proven.played[slot] & 1 << RAN)) untouched++;
 		ARMRun(cpu);
+		if (proven.kind[slot] == 2) {
+			uint32_t after = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
+			if (!(proven.played[slot] & 1 << (after == pc + (thumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM) ? NOT_TAKEN : TAKEN))) untouched++;
+		}
 	}
 }
 static void searchSave(void* console, void* to) { ((struct mCore*) console)->saveState(console, to); }
 static void searchLoad(void* console, const void* from) { ((struct mCore*) console)->loadState(console, from); }
 static int searchRead(void* console, uint32_t address, uint32_t bytes, uint32_t* value) {
 	struct mCore* core = console;
+	if (address == UNTOUCHED && proven.played) {
+		*value = untouched;
+		return 1;
+	}
 	struct region* region = regionOf(address);
 	if (!region || region == &regions[0] || address - region->base + bytes > region->size) return 0;
 	*value = bytes == 1 ? core->rawRead8(core, address, -1) : bytes == 2 ? core->rawRead16(core, address, -1) : core->rawRead32(core, address, -1);
@@ -522,6 +560,7 @@ static struct ex_machine searchConsole(void) {
 static int findRoute(const char* path, const char* spec) {
 	mLogSetDefaultLogger(&logger);
 	searchedCopy = path;
+	if (getenv("DP_PROVEN")) readProven(getenv("DP_PROVEN"));
 	return exploreRoute(searchConsole(), searchConsole, spec, 2);
 }
 

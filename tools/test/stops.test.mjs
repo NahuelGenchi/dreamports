@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { STOP, namesAndStops } from '../portmap.mjs';
-import { portedFunctions, proofOf, stoppedFunctions } from '../../src/lib/entries.mjs';
+import { isBeingMade, leftToDo, portedFunctions, proofOf, stoppedFunctions } from '../../src/lib/entries.mjs';
 
 const names = line => [...line.matchAll(/0x0?([238][0-9A-F]{6})/g)].map(([name, digits]) => [name, parseInt(digits, 16), false]);
 
@@ -52,4 +52,16 @@ test('a port map from before stops counts as one with none', () => {
   const portMap = { functions: [['08001000', 'src/a.c:1']], unmatched: [] };
   assert.deepEqual([...stoppedFunctions(portMap)], []);
   assert.deepEqual([...portedFunctions(portMap, progress(['08002000']))].sort(), ['08001000', '08002000']);
+});
+
+test('a Dreamport is done only with both numbers whole, no stop, every function named and every save the same', () => {
+  const whole = { ported: { percent: 100, stops: 0, unnamed: 0 }, gameplay: { percent: 100 } };
+  assert.deepEqual(leftToDo(whole), []);
+  assert.equal(isBeingMade({ screen: 'x.webm' }, whole), false);
+  assert.deepEqual(leftToDo({ ported: { percent: 100, stops: 2, unnamed: 1 }, gameplay: { percent: 99.99 }, saves: { original: 3, same: 2, differ: ['a'] } }),
+    ['gameplay proven is 99.99%', '2 stops in its code', '1 function of the original no code names', "its saves differ from the original's in 1 recording"]);
+  // every part proven no longer makes it done
+  assert.equal(isBeingMade({ screen: 'x.webm' }, { ...whole, ported: { percent: 100, stops: 1, unnamed: 0 } }), true);
+  assert.equal(isBeingMade({}, { ported: { percent: 5 }, gameplay: { percent: 0 } }), false, 'not before its card has a capture');
+  assert.deepEqual(leftToDo(null), ['code ported is not measured yet', 'gameplay proven is not measured yet']);
 });
