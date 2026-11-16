@@ -4,6 +4,7 @@
   "codeMap": {"functions":4720,"bytes":842030},
   "proven": {"functions":251,"bytes":53632},
   "played": {"total":406442,"played":15258,"percent":3.75},
+  "content": {"total":348455,"read":1981,"percent":0.56},
   "recordings": {
     "beating-an-enemy": {
       "frames": 960,

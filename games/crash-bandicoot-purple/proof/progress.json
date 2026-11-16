@@ -4,6 +4,7 @@
   "codeMap": {"functions":2732,"bytes":295154},
   "proven": {"functions":816,"bytes":122434},
   "played": {"total":132998,"played":40002,"percent":30.07},
+  "content": {"total":466713,"read":30242,"percent":6.47},
   "recordings": {
     "crash-on-foot": {
       "frames": 6036,

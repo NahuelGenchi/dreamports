@@ -4,6 +4,7 @@
   "codeMap": {"functions":1345,"bytes":326492},
   "proven": {"functions":602,"bytes":183022},
   "played": {"total":128052,"played":56423,"percent":44.06},
+  "content": {"total":375666,"read":34261,"percent":9.12},
   "recordings": {
     "air-attack": {
       "frames": 640,
