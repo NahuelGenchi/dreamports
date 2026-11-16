@@ -601,6 +601,7 @@ static void runWhy(struct ARMCore* cpu, long frame) {
 // What's been played of the cartridge's code, for a search for what hasn't (DP_PROVEN): a bit for each thing that can
 // happen at each halfword, and for each halfword whether it's a conditional branch, found the first time it runs
 #define UNTOUCHED 0xFFFF0000u
+#define FRAMES 0xFFFF0004u
 static struct { uint8_t* played; uint8_t* kind; uint32_t slots; int aimed; uint32_t target; int what; } proven;
 static _Thread_local uint32_t untouched;   // how many things not played yet happened in this console's last frame
 
@@ -660,6 +661,11 @@ static int searchRead(void* console, uint32_t address, uint32_t bytes, uint32_t*
 	struct mCore* core = console;
 	if (address == UNTOUCHED && proven.played) {
 		*value = untouched;
+		return 1;
+	}
+	if (address == FRAMES) {
+		// how long the console has played, for a part of a game with no place to spread over
+		*value = (uint32_t) ((struct GBA*) core->board)->video.frameCounter;
 		return 1;
 	}
 	struct region* region = regionOf(address);

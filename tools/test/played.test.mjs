@@ -105,3 +105,12 @@ test('a side of what a branch went by says what it held and where that came from
   assert.equal(sideText(0x08049D54, 0, 0), '0x08049D54, worked out from more than one thing');
   assert.equal(sideText(4, 0, 2), '4, a number in the code');
 });
+
+test('a search steers by the sides of a branch\'s comparison that are values of the work memory', async () => {
+  const { testedValues } = await import('../untouched.mjs');
+  const record = (over = {}) => ({ pc: 0x08029A3A, a: 60, b: 6, fromA: 0x03005028, kindA: 1 | 2 << 8, fromB: 0x03005078, kindB: 1 | 2 << 8, went: TAKEN, times: 1, frame: 5184, ...over });
+  assert.deepEqual(testedValues([record()]), [{ address: 0x03005028, bytes: 2, held: 60, against: 6 }, { address: 0x03005078, bytes: 2, held: 6, against: 60 }]);
+  assert.deepEqual(testedValues([record({ fromB: 0, kindB: 2 })]), [{ address: 0x03005028, bytes: 2, held: 60, against: 6 }], 'a number in the code is nothing to steer by');
+  assert.deepEqual(testedValues([record({ fromA: 0x08001234, kindA: 2 | 4 << 8, fromB: 0, kindB: 0 })]), [], 'nor is the cartridge, or what was worked out');
+  assert.deepEqual(testedValues([]), []);
+});

@@ -70,16 +70,18 @@ export function sideText(value, address, kind) {
   return `${number(value)}, worked out from more than one thing`;
 }
 
-// what the branch at an address went by, in a recording that ran it
-async function why(game, { original, codeMap, copy, address: text, asked }) {
-  if (!/^(?:0x)?[0-9A-Fa-f]{7,8}$/.test(text)) throw new Error('--why takes the address of a branch, such as 0802C48A, as npm run dp -- untouched lists them.');
-  const address = parseInt(text, 16) & ~1;
+/**
+ * What the branch at `address` went by in a recording that ran it, `asked` or the first that did (gba/original.c,
+ * DP_WHY): { name, ran, records }, each record { pc, a, b, fromA, kindA, fromB, kindB, went, times, frame }, the most
+ * frequent first. `name` is null when no recording has run it.
+ */
+export async function whyOf(game, { original, codeMap, copy, address, asked = null, log = () => {} }) {
   const ran = ranIn(game, codeMap, address);
   const reference = await referenceOf(original);
-  const name = asked ?? ran[0]?.name;
-  if (!name) throw new Error(`No recording of ${game} has run ${hex(address)} in a frame that matched, so there's nothing to say of it yet: --in <recording> names one of the game's that gets there anyway.`);
+  const name = asked ?? ran[0]?.name ?? null;
+  if (!name) return { name, ran, records: [] };
   const [recording] = readRecordings(game, [name]);
-  if (recording.players) throw new Error('--why plays one console, and this recording links several.');
+  if (recording.players) throw new Error('What a branch went by is read from one console, and this recording links several.');
   const keysLate = original.keysAfterVBlank === true;
   const way = originalPlay(recording, { frames: recording.frames, keysLate });
   const masks = way.originalHeld.map(list => list.reduce((mask, b) => mask | (reference.KEY[b] ?? 0), 0));
@@ -87,7 +89,7 @@ async function why(game, { original, codeMap, copy, address: text, asked }) {
   const folder = join(LOCAL, 'tmp');
   mkdirSync(folder, { recursive: true });
   const file = join(folder, `why-${process.pid}.bin`);
-  reference.ensureOriginal(console.log);
+  reference.ensureOriginal(log);
   let words;
   try {
     await reference.runOriginal({ copy: copy.path, frames: masks.length, buttons: masks, sets: way.sets, env: { DP_WHY: `${hex(address)} ${file}` } });
@@ -95,19 +97,40 @@ async function why(game, { original, codeMap, copy, address: text, asked }) {
   } finally {
     rmSync(file, { force: true });
   }
-  const others = ran.filter(each => each.name !== name).map(each => each.name);
-  if (!words.length) {
-    console.log(`${hex(address)} didn't run as a conditional branch in ${name}${others.length ? `. These ran it too: ${others.slice(0, 8).join(', ')}` : ''}.`);
-    return 1;
-  }
   const records = [];
   for (let i = 0; i + 12 <= words.length; i += 12) {
     const [pc, a, b, fromA, kindA, fromB, kindB, went, times, frame] = words.subarray(i, i + 12);
     records.push({ pc, a, b, fromA, kindA, fromB, kindB, went, times, frame });
   }
+  records.sort((x, y) => y.times - x.times);
+  return { name, ran, records };
+}
+
+/**
+ * The values of the original's memory a branch tests, for a search to spread over (route.mjs): from what it went by
+ * most often, each side that came from the work memory, as { address, bytes, held, against }, `against` being what
+ * the other side held.
+ */
+export function testedValues(records) {
+  const [most] = records;
+  if (!most) return [];
+  const side = (value, address, kind, against) => ((kind & 3) === 1 && [2, 3].includes(address >>> 24) ? [{ address, bytes: kind >> 8 & 0xFF, held: value, against }] : []);
+  return [...side(most.a, most.fromA, most.kindA, most.b), ...side(most.b, most.fromB, most.kindB, most.a)];
+}
+
+// what the branch at an address went by, in a recording that ran it
+async function why(game, { original, codeMap, copy, address: text, asked }) {
+  if (!/^(?:0x)?[0-9A-Fa-f]{7,8}$/.test(text)) throw new Error('--why takes the address of a branch, such as 0802C48A, as npm run dp -- untouched lists them.');
+  const address = parseInt(text, 16) & ~1;
+  const { name, ran, records } = await whyOf(game, { original, codeMap, copy, address, asked, log: console.log });
+  if (!name) throw new Error(`No recording of ${game} has run ${hex(address)} in a frame that matched, so there's nothing to say of it yet: --in <recording> names one of the game's that gets there anyway.`);
+  const others = ran.filter(each => each.name !== name).map(each => each.name);
+  if (!records.length) {
+    console.log(`${hex(address)} didn't run as a conditional branch in ${name}${others.length ? `. These ran it too: ${others.slice(0, 8).join(', ')}` : ''}.`);
+    return 1;
+  }
   const count = went => records.filter(r => r.went === went).reduce((sum, r) => sum + r.times, 0);
   console.log(`The branch at ${hex(address)} in ${name}: taken ${times(count(TAKEN))}, not taken ${times(count(NOT_TAKEN))}. It went by what the instruction before it left, each time one of these:`);
-  records.sort((x, y) => y.times - x.times);
   for (const r of records.slice(0, 12)) {
     console.log(`  ${r.went === TAKEN ? 'Taken' : 'Not taken'} ${times(r.times)}, first in frame ${r.frame}: at ${hex(r.pc)}, ${sideText(r.a, r.fromA, r.kindA)}, against ${sideText(r.b, r.fromB, r.kindB)}.`);
   }

@@ -14,7 +14,8 @@
 // power-on to be sure of them and writes the recording, or when nothing new has turned up for a long while or its time
 // is over, where it says how far it got, with a map of every place it reached and pictures of where it stopped, which
 // stay on this computer. --minutes says how long it may take (10), --cells changes the grid ("x:16,y:16"), --apart what
-// tells a place's states apart and --wait how it keeps states from later on ("90:3"), --at-once says how many consoles
+// tells a place's states apart and --wait how it keeps states from later on ("90:3"), --lost adds play that can't go on
+// ("frames>5300"), --at-once says how many consoles
 // search at the same time, --then adds frames with nothing held after the goal, --seed changes its dice, --fresh
 // forgets what it found before and --replace writes over a recording that's there.
 //
@@ -36,10 +37,12 @@ import { referenceOf } from './lib/reference.mjs';
 import { fromColours, png } from './lib/png.mjs';
 import { checkWait, defaultButtons, holds, namesOf, parseCondition, placesOf, readArchive, readRoute, searchFingerprint, specText } from './lib/route.mjs';
 import { versionOf } from '../src/lib/languages.mjs';
+import { testedValues, whyOf } from './untouched.mjs';
+import { hex } from './lib/proof-files.mjs';
 
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const USAGE = 'Usage: npm run dp -- route <game> <name> --goal <goal> [--from <recording>[:<frame>]] [--minutes <how long>] [--cells <value>:<size>,…] [--apart <value>:<size>,…] [--wait <frames>:<states>] [--then <frames>] [--seed <number>] [--at-once <how many>] [--fresh] [--replace]\n       npm run dp -- route <game> <recording> --at <frames> [--memory <from>-<to>[:<bytes>]]';
-const FLAGS = ['--goal', '--from', '--minutes', '--cells', '--apart', '--wait', '--then', '--seed', '--at-once', '--at', '--memory'];
+const USAGE = 'Usage: npm run dp -- route <game> <name> --goal <goal> [--from <recording>[:<frame>]] [--minutes <how long>] [--cells <value>:<size>,…] [--apart <value>:<size>,…] [--wait <frames>:<states>] [--lost <condition>] [--then <frames>] [--seed <number>] [--at-once <how many>] [--fresh] [--replace]\n       npm run dp -- route <game> <recording> --at <frames> [--memory <from>-<to>[:<bytes>]]';
+const FLAGS = ['--lost', '--goal', '--from', '--minutes', '--cells', '--apart', '--wait', '--then', '--seed', '--at-once', '--at', '--memory'];
 const count = n => n.toLocaleString('en');
 const clock = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
 
@@ -70,6 +73,7 @@ export async function run(args) {
 // one search, to one goal: 0 when the recording now reaches it, 1 when it stopped short
 async function search({ args, value, game, name, goalText, from, minutes, then, seed, threads }) {
   let provenFile = null, target = null;
+  const steering = {};   // the values an aimed search adds to its grid, with their sizes
   const original = readOriginal(game), base = versionOf(game).game;
   const reference = await referenceOf(original);
   const { KEY, machine } = reference;
@@ -95,6 +99,8 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
   // which the program counts each frame as a value of its own (gba/original.c, DP_PROVEN)
   // `untouched:<address>` is one thing alone: the branch there going the way nobody has played, or an instruction
   // that never ran running, in the cartridge or in code the game runs from its work RAM
+  // `frames`, how long the console has played, is a value any search can spread over, for a part with no place values
+  if (reference.seesInstructions === true) route.values = { ...route.values, frames: { address: 'FFFF0004', bytes: 4 } };
   const untouched = /^untouched(?::[0-9A-Fa-f]{7,8})?$/.test(goalText);
   if (untouched) {
     const codeMap = readCodeMap(game);
@@ -108,6 +114,18 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
       if (!f) throw new Error(`Nothing is left to play at ${goalText.split(':')[1]}, or it's in no function of the code map: npm run dp -- untouched ${game} --all lists what is.`);
       const way = f.ways.find(([at]) => at === address)?.[1];
       target = `${address.toString(16)} ${way === 'taken' ? TAKEN : way === 'not taken' ? NOT_TAKEN : RAN}`;
+      // what the branch tests, from a recording that ran it: the search spreads over those values too, so it keeps each
+      // step towards the other way (untouched.mjs)
+      if (way) {
+        const { name: asked, records } = await whyOf(game, { original, codeMap, copy, address, log: console.log });
+        testedValues(records).forEach((tested, i) => {
+          const key = `tested${i + 1}`;
+          route.values[key] = { address: hex(tested.address), bytes: tested.bytes };
+          steering[key] = Math.max(1, Math.ceil(Math.abs(tested.held - tested.against) / 16));
+          console.log(`The branch tests the ${tested.bytes === 1 ? 'byte' : tested.bytes === 2 ? 'halfword' : 'word'} at ${hex(tested.address)}, which held ${tested.held} against ${tested.against} in ${asked}: the search spreads over it too, as ${key}.`);
+        });
+        if (asked && !Object.keys(steering).length) console.log(`What the branch tests in ${asked} isn't one value of the work memory, so the search has nothing more to steer by: npm run dp -- untouched ${game} --why ${hex(address)} says what it is.`);
+      }
     }
   }
   // a goal the game names, which may have a grid of its own, or a condition written out
@@ -119,12 +137,14 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
     for (const [n, size] of Object.entries(sides)) if (!(n in route.values) || !(size > 0)) throw new Error(`${flag} takes values and sizes, such as x:16,y:16, and the values are ${Object.keys(route.values).join(', ')}.`);
     return sides;
   };
-  const cells = sidesOf('--cells', ownGoal.cells ?? route.cells), apart = sidesOf('--apart', ownGoal.apart ?? route.apart);
+  const cells = { ...sidesOf('--cells', ownGoal.cells ?? route.cells), ...steering }, apart = sidesOf('--apart', ownGoal.apart ?? route.apart);
   if (!Object.keys(cells).length || Object.keys(cells).length + Object.keys(apart).length > 6) throw new Error('--cells and --apart take up to six values between them, and --cells at least one.');
   const [waitFrames, waitStates] = (value('--wait') ?? '').split(':').map(Number);
   const wait = value('--wait') === null ? ownGoal.wait ?? route.wait : { frames: waitFrames, states: waitStates };
   if (checkWait(wait)) throw new Error(`--wait takes how many frames apart and how many states, such as 90:3. ${checkWait(wait)}`);
-  const lost = (route.lost ?? []).map(text => parseCondition(text, route.values, '"lost"'));
+  // play that can't go on: what the game says, and what --lost adds, such as "frames>5300" for a search that has a frame to be there by
+  const lostTexts = [...(route.lost ?? []), ...(value('--lost') ? [value('--lost')] : [])];
+  const lost = lostTexts.map(text => parseCondition(text, route.values, '"lost"'));
   const buttons = route.buttons ?? defaultButtons(KEY);
 
   // the original's side of the way there, as prove gives it
@@ -139,7 +159,7 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
 
   // where it keeps what it finds, which it goes on from when nothing it starts from has changed
   const folder = join(LOCAL, 'routes', base, name);
-  const fingerprint = searchFingerprint({ original: original.sha1, prefix, sets, route, cells, apart, wait, lost: route.lost ?? [], buttons });
+  const fingerprint = searchFingerprint({ original: original.sha1, prefix, sets, route, cells, apart, wait, lost: lostTexts, buttons });
   const kept = join(folder, 'search.json'), archiveFile = join(folder, 'archive.bin');
   const before = existsSync(kept) ? JSON.parse(readFileSync(kept, 'utf8')) : null;
   if (args.includes('--fresh') || before?.fingerprint !== fingerprint) rmSync(folder, { recursive: true, force: true });
