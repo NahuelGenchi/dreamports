@@ -144,7 +144,7 @@ function input(c, node) {
   const { repeated } = c.keys;
   if (repeated & KEY.A) {
     if (c.lobby.count > 1) {
-      node.run = () => {};         // the link's transfer screens aren't ported
+      node.run = () => {};         // the link's transfer screens aren't ported dp:stop 0x080288B4
       c.sound?.play(SOUND_MADE);
       fadeSongOut(c, SONG, 60);
     }

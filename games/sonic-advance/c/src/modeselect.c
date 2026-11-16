@@ -106,7 +106,7 @@ static void choose_mode(Task *t) {
     if (++screen.mode >= PAK_COUNT) screen.mode = MULTI_PAK;
     screen.qBand = 0;
   }
-  if ((e.pressed & KEY_A) && screen.mode == MULTI_PAK) {
+  if ((e.pressed & KEY_A) && screen.mode == MULTI_PAK) {   // dp:stop 0x0800E648
     screen.leaving = 0;
     play_song(SONG_SELECT);
     e.bldCnt = 0xFF;

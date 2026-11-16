@@ -89,7 +89,7 @@ void demoAfterWait(void) {
   if (countUntilDone() == 0) {
     if (stepFade()) endFade();
   } else {
-    __builtin_trap();   // the clock ran out or Start was pressed, which no recording reaches yet
+    __builtin_trap();   // the clock ran out or Start was pressed, which no recording reaches yet dp:stop 0x0801C4BC
   }
   uint16_t turn = (uint16_t)(read16(CAMERA_TURN) + 16);
   if ((int16_t)turn > 0x2000) turn = 0;

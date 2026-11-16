@@ -529,7 +529,7 @@ export function hurtPlayer(p) {
   if (p.flags & GRINDING) leaveRail(p);
   stopBoost(p);
   p.camOffsetY = 0;
-  if (p.isLeader && stage.act >= 3) {
+  if (p.isLeader && stage.act >= 3) {   // dp:stop Player_8014550
     const rings = stage.rings;
     stage.rings = 0;
     dropRings(stage, p, rings);

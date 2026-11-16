@@ -181,6 +181,12 @@ export async function run(args) {
     const { ported, gameplay } = readProof(game) ?? {};
     console.log([ported && `Code ported: ${percentText(ported.percent)}${totals.proven ? `, ${totals.proven.functions} of ${totals.codeMap.functions} functions` : ''}.`,
       gameplay && `Gameplay proven: ${percentText(gameplay.percent)}, ${gameplay.proven} of ${gameplay.total} parts.`].filter(Boolean).join(' '));
+    // what keeps it from done, whatever the numbers say (docs/STANDARD.md#stops)
+    if (ported && (ported.stops || ported.unnamed)) {
+      console.log([ported.stops && `Stops, paths the code says it hasn't ported: ${ported.stops}, in ${ported.stopped} function${ported.stopped === 1 ? '' : 's'}, which don't count as ported.`,
+        ported.unnamed && `Functions of the original no code names yet: ${ported.unnamed}.`,
+        `games/${game}/proof/port-map.json lists the stops.`].filter(Boolean).join(' '));
+    }
   } catch (error) {
     console.log(error.message);
   }

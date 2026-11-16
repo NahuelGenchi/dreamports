@@ -239,7 +239,7 @@ static void copy_backgrounds(void) {
     Background *bg = bgQueue[bgCursor];
     bgCursor = (bgCursor + 1) % BG_QUEUE;
     // scrolled background copies (0x20) and stage maps (0x40) aren't in C yet
-    if (bg->flags & 0x60) continue;
+    if (bg->flags & 0x60) continue;   // dp:stop 0x08002B20
     int id = bg->flags & 3, size = e.bgCnt[id] >> 14;
     int affine = id >= 2 && (e.dispCnt & 3) != 0;
     int bytes = affine ? 1 : 2, stride = (affine ? 0x10 << size : 32) * bytes;

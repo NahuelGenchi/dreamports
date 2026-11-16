@@ -353,7 +353,7 @@ static void leaveToEntry(Node *node) {
  * cartridge into work RAM and restarts into it, which isn't ported, so it stops.
  */
 static void leaveToItsProgram(Node *node) {
-  if (fadeToWhite(PALETTE, 512)) node->run = nothing;
+  if (fadeToWhite(PALETTE, 512)) node->run = nothing;   // dp:stop 0x08032594
 }
 
 static void nothing(Node *node) { (void)node; }

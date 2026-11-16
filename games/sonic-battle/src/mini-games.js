@@ -365,7 +365,7 @@ function leaveToEntry(c, node) {
  * cartridge into work RAM for another console and restarts into it, which isn't ported, so it stops.
  */
 function leaveToItsProgram(c, node) {
-  if (fadeToWhite(c, PALETTE, 512)) node.run = () => {};
+  if (fadeToWhite(c, PALETTE, 512)) node.run = () => {};   // dp:stop 0x08032594
 }
 
 /** 0x0801f914: half way from where it is to where it's going, rounded toward where it's going. */

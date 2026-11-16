@@ -6,7 +6,7 @@
 // shock, falls to the ground, lands and goes over to its new player. It sees each player as their task does: as that
 // player's GBA sent them two frames ago.
 //
-// Team play's other two Chao (Task_8028518 and Task_80286B0) aren't in C yet.
+// Team play's other two Chao (Task_8028518 and Task_80286B0) aren't in C yet. dp:stop 0x080284E8 0x08028680
 
 #include "objects.h"
 #include "terrain.h"

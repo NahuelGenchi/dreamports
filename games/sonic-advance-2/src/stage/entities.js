@@ -54,9 +54,9 @@ function spawnRange(em, range) {
     for (let rx = lowX >> 8; rx * REGION < highX && rx < regionsX; rx++) {
       eachInRegion(data, regionsX, rx, ry, range, at => {
         const spring = SPRINGS[data.getUint8(at + 2)];
-        if (spring !== undefined) createSpring(stage, data, at, rx, ry, spring);
+        if (spring !== undefined) createSpring(stage, data, at, rx, ry, spring);   // dp:stop 0x080089CC
       });
-      eachInRegion(enemies, regionsX, rx, ry, range, at => MAKERS[enemies.getUint8(at + 2)]?.(stage, enemies, at, rx, ry));
+      eachInRegion(enemies, regionsX, rx, ry, range, at => MAKERS[enemies.getUint8(at + 2)]?.(stage, enemies, at, rx, ry));   // dp:stop 0x080089CC
     }
   }
 }

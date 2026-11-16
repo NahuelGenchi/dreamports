@@ -619,7 +619,7 @@ function setState(c, i, state) {
     if (read8(c, rec + 23) !== 0) return;
     for (let k = 0; k < 12; k++) {
       const thing = 0x030017D0 + k * 68;
-      if (read8(c, thing + 53) === i && read16(c, thing + 56) === 35) notPorted('08002780', 'a fighter that flies to its ring');
+      if (read8(c, thing + 53) === i && read16(c, thing + 56) === 35) notPorted('08002780', 'a fighter that flies to its ring');   // dp:stop 0x08002780
     }
   } else if (state === 22) {
     if (read8(c, rec + 23) === 8) write16(c, rec + SPEED_Z, 256 - (read16(c, rec + Z) - read16(c, rec + 52)));
@@ -811,7 +811,7 @@ function moveFighter(c, i) {
   if ((character === 2 && state === 278) || (character === 3 && state === 0x115)) {
     write16(c, rec + Z, read16(c, rec + GROUND));
   } else if (character === 20 && state === 22) {
-    notPorted('0800597C', 'the character 20 state 22');
+    notPorted('0800597C', 'the character 20 state 22');   // dp:stop 0x0800597C
   }
   const met = meetWalls(c, reads16(c, rec + X), reads16(c, rec + Y), reads16(c, rec + OLD_X), reads16(c, rec + OLD_Y));
   write8(c, rec + BUMPED, met.bits);
@@ -1283,15 +1283,15 @@ function fighterAct(c, i) {
     if (read8(c, victim + 127) & 0xF0) write8(c, SETUP + 11 + i, read8(c, SETUP + 11 + i) + 1);
     write8(c, victim + 127, 15);
   }
-  if (read8(c, rec + 157) !== 0 || read8(c, rec + 156) !== 0) notPorted('0800486C', 'a super attack');
+  if (read8(c, rec + 157) !== 0 || read8(c, rec + 156) !== 0) notPorted('0800486C', 'a super attack');   // dp:stop 0x0800486C
   landOrFall(c, i);
   if (read8(c, rec + PAUSE) !== 0) return;
   let flags = read32(c, rec + FLAGS);
-  if ((flags & 0x800000) && (flags & 0x2000000) && (flags & 0x4000000)) notPorted('0800486C', 'a charged attack');
-  if (read16(c, rec + STATE) === 16) notPorted('0800486C', 'state 16');
-  if ((flags & 0x80000) && reads16(c, rec + SCRIPT_FRAME) > 6) notPorted('0800486C', 'a charge let go');
+  if ((flags & 0x800000) && (flags & 0x2000000) && (flags & 0x4000000)) notPorted('0800486C', 'a charged attack');   // dp:stop 0x0800486C
+  if (read16(c, rec + STATE) === 16) notPorted('0800486C', 'state 16');   // dp:stop 0x0800486C
+  if ((flags & 0x80000) && reads16(c, rec + SCRIPT_FRAME) > 6) notPorted('0800486C', 'a charge let go');   // dp:stop 0x0800486C
   const keys = pressed(c, i);
-  if (read16(c, rec + STATE) === 4 && (keys & 2)) notPorted('0800486C', 'a charge held');
+  if (read16(c, rec + STATE) === 4 && (keys & 2)) notPorted('0800486C', 'a charge held');   // dp:stop 0x0800486C
   if (flags & FLAG_GROUNDED) {
     if ((keys & PAD) && pressedBefore(c, i, 5, 5, keys) && !(flags & 0x40000) && !NO_DASH.has(read16(c, rec + STATE))) {
       setState(c, i, 4);
@@ -1437,7 +1437,7 @@ function landOrFall(c, i) {
   } else inAir();
   // Training's fighters never lose health
   if (read8(c, SETUP + 125) === 4) for (let j = 0; j < 4; j++) write8(c, record(j) + HEALTH, 100);
-  if (read8(c, rec + HEALTH) === 0) notPorted('0800444C', 'a fighter out of health');
+  if (read8(c, rec + HEALTH) === 0) notPorted('0800444C', 'a fighter out of health');   // dp:stop 0x0800444C
   const flags = read32(c, rec + FLAGS), now = read16(c, rec + STATE);
   if (flags & FLAG_LANDED) {
     if (now === 0x145) { setState(c, i, 70); return; }
@@ -1521,7 +1521,7 @@ function shapeThingPicture(c, thing, kind, part) {
     write16(c, field, picture);
     return;
   } else {
-    notPorted('0800BB88', `a picture of a thing of kind ${kind}`);
+    notPorted('0800BB88', `a picture of a thing of kind ${kind}`);   // dp:stop 0x0800BB88
   }
   write16(c, field, picture);
   const frame = ((picture - away) >> 4) * 2;
@@ -1585,7 +1585,7 @@ function runThingScript(c, k, script) {
         else if (op === 0xFFFE) {
           write16(c, thing + 22, 0xFFFF);
           write8(c, thing + 24, 255);
-        } else notPorted('0800BB88', `a word of a thing's script, ${w.toString(16)}`);
+        } else notPorted('0800BB88', `a word of a thing's script, ${w.toString(16)}`);   // dp:stop 0x0800BB88
         write16(c, thing + 22, read16(c, thing + 22) + 1);
         if (marked()) break;
       }
@@ -1666,7 +1666,7 @@ function shotMeetsWall(c, thing) {
 /** 0x0800eaec: a thing's hit, for the kinds that have one. */
 function thingHit(c, k, kind) {
   if (THING_HITS.has(kind)) thingHitsFighters(c, k, ...THING_HITS.get(kind));
-  else if (THING_HITS_LATER.has(kind)) notPorted('0800EAEC', `the hit of a thing of kind ${kind}`);
+  else if (THING_HITS_LATER.has(kind)) notPorted('0800EAEC', `the hit of a thing of kind ${kind}`);   // dp:stop 0x0800EAEC
 }
 
 /**
@@ -1781,7 +1781,7 @@ function updateThings(c) {
       write8(c, thing + 54, wait - 1);
       continue;
     }
-    if (!THING_SCRIPTS.has(kind)) notPorted('0800C728', `a thing of kind ${kind}`);
+    if (!THING_SCRIPTS.has(kind)) notPorted('0800C728', `a thing of kind ${kind}`);   // dp:stop 0x0800C728
     runThingScript(c, k, THING_SCRIPTS.get(kind));
     // 0x0800cec8: it follows its owner, or moves on its own
     if (read8(c, thing + 51) === 1) {
@@ -1883,7 +1883,7 @@ function updateThings(c) {
       }
     }
     if (kind === 121) stepAmySet(c, thing, k);
-    if (THING_STEPS_LATER.has(kind)) notPorted('0800CEC8', `the steps of a thing of kind ${kind} after it moves`);
+    if (THING_STEPS_LATER.has(kind)) notPorted('0800CEC8', `the steps of a thing of kind ${kind} after it moves`);   // dp:stop 0x0800CEC8
     thingHit(c, k, read16(c, thing + 56));
   }
   const shake = read8(c, 0x030016CC);
@@ -1978,7 +1978,7 @@ function trainingFrame(c) {
 // 0x0801c28c after its wait: pausing, the fade, the view, and everything drawn
 function trainingAfterWait(c) {
   const player = read32(c, PLAYER);
-  if ((pressed(c, player) & 8) && read8(c, record(player) + HEALTH) !== 0) notPorted('0801BD90', 'pausing');
+  if ((pressed(c, player) & 8) && read8(c, record(player) + HEALTH) !== 0) notPorted('0801BD90', 'pausing');   // dp:stop 0x0801BD90
   if (stepFade(c)) endFade(c);
   followFighter(c, player);
   fn080182ac(c);

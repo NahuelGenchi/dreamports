@@ -833,7 +833,7 @@ static void panel(Obj *o) {
     if (!(g.flags & 0x95) && handObj->x > 0xB5) {
       int lit = handObj->x > 0xBA && handObj->y <= 7 && !(g.flags & 0x20) && !pauseState;
       queue_map((const uint8_t *)nameTiles, 0x0F042u, 7, 1, lit ? 0xA000 : 0);
-      if (lit && (input.pressed & KEY_A) && !(input.held & 0xF0) && !(g.flags & 2)) { not_in_c(); return; }
+      if (lit && (input.pressed & KEY_A) && !(input.held & 0xF0) && !(g.flags & 2)) { not_in_c(); return; }   // dp:stop 0x02002488
     }
     if (g.flags & 0xD3) return;
     // Mood and Belly go to the Chao's a step a frame
@@ -846,7 +846,7 @@ static void panel(Obj *o) {
     // the skills too, every other frame; a level up counts up its number (not in C)
     for (int i = 2; i < 7; i++) {
       if (g.frames & 1) {
-        if (tcgSave[SAVE_LEVELS + i - 2] > bars[i].value) { not_in_c(); return; }
+        if (tcgSave[SAVE_LEVELS + i - 2] > bars[i].value) { not_in_c(); return; }   // dp:stop 0x02002488
         uint8_t now = tcgSave[SAVE_SKILLS + i - 2];
         if (now != bars[i].level) {
           bars[i].level = (uint8_t)(now > bars[i].level ? bars[i].level + 1 : bars[i].level - 1);
@@ -907,7 +907,7 @@ static void link_icon_start(Obj *o) {
   o->extra[1] = o->extra[0] = 0;
   o->main = link_icon;
 }
-/** 0x02002A1C: the cable's state, which has no other console on it, so the sign stays out of sight. */
+/** 0x02002A1C: the cable's state, which has no other console on it, so the sign stays out of sight. dp:stop 0x02002A1C */
 static void link_icon(Obj *o) {
   (void)o;
   handBusy = 0;
@@ -1037,8 +1037,8 @@ static int touches(const Obj *thing, int kind, int x, int y) {
  *  it was doing, pulls a plant up, opens an icon's screen, or picks up a fruit, or an egg with a Chao about, to carry.
  *  The shop's things it picks up aren't in C yet. */
 static void hand(Obj *o) {
-  if (g.flags & 0x50) { not_in_c(); return; }
-  if (g.flags & 0x20) { not_in_c(); return; }
+  if (g.flags & 0x50) { not_in_c(); return; }   // dp:stop 0x020032C4
+  if (g.flags & 0x20) { not_in_c(); return; }   // dp:stop 0x020032C4
   if (pauseState) return;
   o->attr2 = 0x14;
   layer_add(o->id, 1);
@@ -1103,7 +1103,7 @@ static void hand(Obj *o) {
       return;
     }
     // the shop's things are picked up too (not in C)
-    if ((unsigned)(kind - 5) <= 2) { not_in_c(); return; }
+    if ((unsigned)(kind - 5) <= 2) { not_in_c(); return; }   // dp:stop 0x020032C4
     if (kind == 2 || (kind == 1 && (!chaoKind || !tcgSave[SAVE_CHAO]))) {
       // a fruit, or an egg with a Chao about, goes into the hand
       gba_sound_play(SE_TOUCH);
@@ -1122,7 +1122,7 @@ static void hand(Obj *o) {
     }
     if (kind == 0) {
       if (!(chaoObj->extra[0] & 2)) continue;
-      if (chaoObj->behaviour == 0x22 || chaoObj->behaviour == CHAO_SLEEPS) { not_in_c(); return; }
+      if (chaoObj->behaviour == 0x22 || chaoObj->behaviour == CHAO_SLEEPS) { not_in_c(); return; }   // dp:stop 0x020032C4
       pet(o, thing, 0x17);
       chaoObj->changed = 0;
       chaoObj->behaviour = CHAO_PETTED;
@@ -1247,7 +1247,7 @@ static void shell(Obj *o) {
 /** 0x02003AE4: the egg hatching: every other frame it widens, then stretches up, twice over, and then it breaks: its two
  *  halves, and the new Chao where it stood. Hatching under a screen over the garden isn't in C. */
 static void egg_hatches(Obj *o) {
-  if (g.flags & 0x60) { not_in_c(); return; }
+  if (g.flags & 0x60) { not_in_c(); return; }   // dp:stop 0x02003AE4
   if (!(g.flags & 0x83) && (g.frames & 1)) {
     if (!(o->state & 1)) {
       o->extra[0]++;
@@ -1256,7 +1256,7 @@ static void egg_hatches(Obj *o) {
       o->extra[1]++;
       if (o->extra[1] == 8) o->state++;
       else if (o->extra[1] == 0x11) {
-        if (tcgSave[SAVE_EGG]) { not_in_c(); return; }
+        if (tcgSave[SAVE_EGG]) { not_in_c(); return; }   // dp:stop 0x02003AE4
         Obj *top = create(shell, o, 0), *bottom = create(shell, o, 0);
         top->changed = 1;
         top->x = bottom->x = o->x;
@@ -1289,7 +1289,7 @@ static void egg_hatches(Obj *o) {
  *  then it starts to hatch, with its sound. With no egg in the save it goes (not in C). */
 static void egg(Obj *o) {
   if (g.flags & 0x10) return;
-  if (tcgSave[SAVE_EGG] == 0xFF) { not_in_c(); return; }
+  if (tcgSave[SAVE_EGG] == 0xFF) { not_in_c(); return; }   // dp:stop 0x02003A30
   if (o->state > 2 && o->timer > 60) o->timer = 60;
   if (!(g.flags & 0xE3)) {
     if (!chaoKind || !tcgSave[SAVE_CHAO]) {
@@ -1505,7 +1505,7 @@ static void chao_chooses(Obj *o) {
   if (tcgSave[SAVE_SLEEP] > 199) { o->state = 0; o->behaviour = CHAO_SLEEPS; return; }
   // hungry, it looks for what there is to eat
   if (tcgSave[SAVE_BELLY] <= 0x42 && chao_sees_fruit(o)) return;
-  if (tcgSave[0x35]) { not_in_c(); return; }
+  if (tcgSave[0x35]) { not_in_c(); return; }   // dp:stop 0x02005220
   int16_t roll = less((int16_t)random15(), 0x0CCC);
   if (roll < 0) { o->behaviour = CHAO_REMARKS; return; }
   if ((roll = less(roll, 0x666)) < 0) { o->behaviour = CHAO_LIES; return; }
@@ -1576,7 +1576,7 @@ walks:
 static void chao_lives(Obj *o) {
   // still while a screen comes or goes
   if (g.flags & 0x92) return;
-  if (g.flags & 0x20) { not_in_c(); return; }
+  if (g.flags & 0x20) { not_in_c(); return; }   // dp:stop 0x02003F20
   uint16_t *t = chaoTimers;
   if (--t[0] == 0) { t[0] = 180; if (tcgSave[SAVE_BORED] <= 199) tcgSave[SAVE_BORED]++; }
   if (--t[1] == 0) { t[1] = 60; if (tcgSave[SAVE_SLEEP] <= 199) tcgSave[SAVE_SLEEP]++; }
@@ -1781,7 +1781,7 @@ static void chao_lives(Obj *o) {
       for (int k = 0; k < 5; k++) {
         int v = (int8_t)row[2 + k] * 10 + tcgSave[SAVE_SKILLS + k];
         // past 99 a skill levels up (not in C)
-        if (v > 99) { not_in_c(); return; }
+        if (v > 99) { not_in_c(); return; }   // dp:stop 0x02003F20
         tcgSave[SAVE_SKILLS + k] = (uint8_t)(v < 0 ? 0 : v);
       }
       Obj *fruit = create(fruit_eaten_start, o, 0);
@@ -1834,7 +1834,7 @@ static void chao_lives(Obj *o) {
       if (--o->countdown == 0) chao_chooses(o);
       break;
     default:
-      not_in_c();
+      not_in_c();   // dp:stop 0x02003F20
       return;
   }
   // 0x0200513C: where its sprites go, where the save keeps it, and nothing seen yet
@@ -1986,7 +1986,7 @@ static void chao_body(Obj *o) {
       case CHAO_GRUMBLES: frame = c->state < 3 || c->state > 7 ? 0x1D : c->state & 1 ? 0x1E : 0x1F; break;
       case CHAO_GLAD: frame = c->state == 1 ? 0x29 : c->state == 2 || c->state == 3 ? 0x2A : 0; break;
       case CHAO_SAD: frame = c->state == 1 ? 0x20 : c->state == 2 || c->state == 3 ? 0x21 : 0; break;
-      default: not_in_c(); return;
+      default: not_in_c(); return;   // dp:stop 0x020058C8
     }
     o->parts = own ? 0x020189B4u : 0x020189D4u;
     o->tile = (uint16_t)(frame * 9 + 0x1A4);
@@ -2214,7 +2214,7 @@ static void thing_on_sale(Obj *o) {
   if (g.flags & 0x10) return;
   int shopX = objs[o->link].x;
   if (shopX <= -0x30) { destroy(o); return; }
-  if (under_hand(o, shopX)) { not_in_c(); return; }
+  if (under_hand(o, shopX)) { not_in_c(); return; }   // dp:stop 0x02006858
   o->x = (int16_t)(shopX + 8);
   sort_add(o->id, 0xA1);
 }
@@ -2246,7 +2246,7 @@ static void shop_opens(Obj *o) {
     else if (eggOnSale != 0xFF) kind = eggOnSale;
     else {
       // one time in four, while 0x68 of the save is clear, it's one of the kinds the Chao could have been (not in C)
-      if (!tcgSave[0x68] && random15() <= 0x1FFF) { not_in_c(); return; }
+      if (!tcgSave[0x68] && random15() <= 0x1FFF) { not_in_c(); return; }   // dp:stop 0x020061D4
       int r = random15();
       kind = r <= 0x1999 ? 0 : r <= 0x3332 ? 2 : r <= 0x4665 ? 1 : r <= 0x5998 ? 3 : r <= 0x6665 ? 4 : r <= 0x7332 ? 6 : 5;
       eggOnSale = (uint8_t)kind;
@@ -2303,7 +2303,7 @@ static void held_fruit(Obj *o) {
         h->changed = 0;
         h->tile = 0xB4;
         // too full for it, the Chao pushes it away (not in C)
-        if ((int8_t)p8(0x0200E8D5u + o->arg * 7u) * 10 > 200 - tcgSave[SAVE_BELLY]) { not_in_c(); return; }
+        if ((int8_t)p8(0x0200E8D5u + o->arg * 7u) * 10 > 200 - tcgSave[SAVE_BELLY]) { not_in_c(); return; }   // dp:stop 0x02006A74
         c->behaviour = 0x0D;
         c->changed = 0x10;
         c->link = o->arg;
@@ -2314,7 +2314,7 @@ static void held_fruit(Obj *o) {
         destroy(o);
         return;
       }
-      if (o->y > 0x9F) { not_in_c(); return; }
+      if (o->y > 0x9F) { not_in_c(); return; }   // dp:stop 0x02006A74
       if (!field_at(o->x, o->y)) {
         gba_sound_play(SE_PUT);
         h->changed = 0;
@@ -2339,7 +2339,7 @@ static void held_fruit_start(Obj *o) {
 /** 0x02007120: a fruit on the grass, which the Chao can see. */
 static void fruit_lies(Obj *o) {
   if (g.flags & 0x10) return;
-  if (tcgSave[SAVE_FRUIT + o->state] == 0xFF) { not_in_c(); return; }
+  if (tcgSave[SAVE_FRUIT + o->state] == 0xFF) { not_in_c(); return; }   // dp:stop 0x02007120
   nearby[o->state] = o->id;
   sort_add(o->id, o->sortY);
 }
@@ -2376,7 +2376,7 @@ static void held_egg(Obj *o) {
     o->y = (int16_t)(h->y + 0x13);
     tcgSave[SAVE_EGG_Y] = (uint8_t)o->y;
     if ((input.pressed & KEY_A) && h->x > (int8_t)menuEdge && !(input.held & 0xF0)) {
-      if (o->y > 0x9F) { not_in_c(); return; }
+      if (o->y > 0x9F) { not_in_c(); return; }   // dp:stop 0x02006D14
       if (!field_at(o->x, o->y)) {
         gba_sound_play(SE_PUT);
         h->changed = 0;
@@ -2413,16 +2413,16 @@ static void init_garden(void) {
   objects_init();
   create(seed_clock, &objs[1], 1);
   fruitCount = 0;
-  for (int i = 0; i < 16; i++) if (tcgSave[SAVE_SEEDS + i * 2]) { not_in_c(); return; }
+  for (int i = 0; i < 16; i++) if (tcgSave[SAVE_SEEDS + i * 2]) { not_in_c(); return; }   // dp:stop 0x020014F8
   chaoKind = tcgSave[SAVE_CHAO];
   create(icon_start, &objs[0], 0)->arg = 1;
   create(icon_start, &objs[0], 0)->arg = 0;
   chaoState = 0;
   chaoObj = create(chao, &objs[0], 0);
   create(panel_start, &objs[0], 0);
-  for (int i = 0; i < 3; i++) if (tcgSave[0x31 + i * 2]) { not_in_c(); return; }
+  for (int i = 0; i < 3; i++) if (tcgSave[0x31 + i * 2]) { not_in_c(); return; }   // dp:stop 0x020014F8
   gardenObjects = 0;
-  for (int i = 0; i < 8; i++) if (tcgSave[0x5A + i] != 0xFF) { not_in_c(); return; }
+  for (int i = 0; i < 8; i++) if (tcgSave[0x5A + i] != 0xFF) { not_in_c(); return; }   // dp:stop 0x020014F8
   eggOnSale = 0xFF;
   if (tcgSave[SAVE_EGG] != 0xFF) create(egg_start, &objs[0], 0)->arg = tcgSave[SAVE_EGG];
   create(shop_start, &objs[0], 0);
@@ -2608,7 +2608,7 @@ void garden_step(void) {
     gba_sound_start_program(PROGRAM_AT, PROGRAM_SIZE, PLAYER_TABLE, LIBRARY_SONIC_ADVANCE, 4, 4, 15, 10512, 0);
   else if (frame == INIT_GARDEN) {
     if (read_input(keys)) init_garden();
-    else not_in_c();
+    else not_in_c();   // dp:stop 0x02000B50
     g.frames++;
   } else if (frame == SONG_STARTS) gba_sound_play(MUS_GARDEN);
   else if (frame >= FIRST_FRAME) {
@@ -2624,7 +2624,7 @@ void garden_step(void) {
       }
       return;
     }
-    if (!read_input(keys)) { not_in_c(); return; }
+    if (!read_input(keys)) { not_in_c(); return; }   // dp:stop 0x02000B50
     g.main();
     g.frames++;
   }

@@ -166,7 +166,7 @@ function leaving(c, node) {
   if (!fadeToBlack(c, PALETTE, 512)) return;
   if (c.menu.selection === MINI_GAMES) c.callback = miniGames;
   else if (c.menu.selection === OPTIONS) c.callback = options;
-  else node.run = () => {};
+  else node.run = () => {};   // dp:stop 0x0803A260
 }
 
 /** 0x08028238 and 0x08028270: an arrow takes its place, and draws from the next frame on. */

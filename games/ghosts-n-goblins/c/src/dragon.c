@@ -4,7 +4,7 @@
 //
 // A hit on any piece burns away the last one, for 200 points. The head takes six hits, not counting the lance's, and
 // then burns away for 1,000 points, and the pieces left with it. The head breathes fire, kind $28, at Arthur.
-// What the fifth set of stages adds, at $B0E9, $B1B6 and $B35B, isn't ported yet.
+// What the fifth set of stages adds, at $B0E9, $B1B6 and $B35B, isn't ported yet. dp:stop sub_04_B0E9 sub_04_B1B6 sub_04_B35B
 
 #include "game.h"
 

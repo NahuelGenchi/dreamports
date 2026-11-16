@@ -33,7 +33,7 @@ const SPACE_VARIANT = 0x4D, SPACE_ANIM = 0x404;
 const tile = (rom, at) => ({ anim: rom.u16(at), variant: rom.u8(at + 2), count: rom.u32(at + 4) });
 
 /** 0x0809198C: the screen's task, its sprites and its layers. `from` is where it was opened from, 0 at the first start. */
-export function nameEntry(c, from = 0) {
+export function nameEntry(c, from = 0) {   // dp:stop 0x0809198C
   c.dispCnt = 0x1340;
   const s = initialState(c, from);
   const t = c.createTask(fadeIn, s, 0x101);
@@ -173,7 +173,7 @@ function fadeOut(t) {
   t.main = beforeTheLogos;
 }
 
-// The black the logos start from. Writing the save (0x08001E58) isn't ported yet.
+// The black the logos start from. Writing the save (0x08001E58) isn't ported yet. dp:stop 0x08001E58
 function beforeTheLogos(t) {
   const s = t.data, { c } = s;
   if (--s.black > 0) return;

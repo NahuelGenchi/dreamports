@@ -587,7 +587,7 @@ function fadeOut(t) {
   }
   c.bldY = 0x10;
   m.message = 0xB;
-  t.main = goToSelectedScreen;
+  t.main = goToSelectedScreen;   // dp:stop 0x080878EC
 }
 
 // 0x08087B90, Task_3F0_8087F18: the same for the time attack's page
@@ -611,7 +611,7 @@ function leaveTimeAttack(t) {
     return;
   }
   c.bldY = 0x10;
-  leaveForTheNext(c, t);
+  leaveForTheNext(c, t);   // dp:stop 0x08087B90
 }
 
 // A stand-in for the original's Task_TransitionToSelectedMode, which opens the screen the button leads to, none of which is ported yet

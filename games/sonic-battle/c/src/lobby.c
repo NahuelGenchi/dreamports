@@ -111,7 +111,7 @@ static void input(Node *node) {
   uint16_t repeated = g.keys.repeated;
   if (repeated & KEY_A) {
     if (players > 1) {
-      node->run = nothing;         // the link's transfer screens aren't ported
+      node->run = nothing;         // the link's transfer screens aren't ported dp:stop 0x080288B4
       gba_sound_play(SOUND_MADE);
       menuFadeSongOut(LOBBY_SONG, SONG_MADE);
     }

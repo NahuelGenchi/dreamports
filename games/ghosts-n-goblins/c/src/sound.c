@@ -185,7 +185,7 @@ static void tune_voice(uint8_t *voice, uint16_t registers) {
 
 // $84D0: the effect on the second pulse. Each of its steps is six bytes: how long it lasts, a pitch to start from, or $FF
 // to go on from where it is, how much the pitch changes each frame, the volume, and a last byte for the timer's high
-// register. $FF as a step's first byte ends it. The step $FE, which repeats ($859E), isn't ported yet.
+// register. $FF as a step's first byte ends it. The step $FE, which repeats ($859E), isn't ported yet. dp:stop sub_03_859E
 static void effect_voice(uint8_t *voice, uint16_t registers) {
   took(EFFECT_BEGINS);
   if (--voice[V_LEFT]) {

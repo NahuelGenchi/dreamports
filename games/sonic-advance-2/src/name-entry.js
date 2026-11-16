@@ -331,6 +331,6 @@ function fadeOut(t) {
   if (!updateFade(c, screen.fade)) render(c, screen);
   else {
     c.destroyTask(t);
-    startStage(c, 0);
+    startStage(c, 0);   // dp:stop 0x08067EA4
   }
 }

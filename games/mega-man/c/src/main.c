@@ -302,7 +302,7 @@ static int sound(void) {
     RUN(2 + 2 + 2 + 5 + 6);                 // the same at $1D
     RUN(3 + 2 + 3);                         // lda $EF, lsr, bcc
     RUN(3 + 2 + 3);                         // lda $41, lsr, bcc
-    RUN(2 + 5 + 2 + 5 + 3);                 // ldy #0, lda ($EC),y, iny, ora ($EC),y, beq: it plays nothing
+    RUN(2 + 5 + 2 + 5 + 3);                 // ldy #0, lda ($EC),y, iny, ora ($EC),y, beq: it plays nothing dp:stop sub_04_923F
     RUN(3 + 2 + 2 + 3 + 2 + 2 + 3);         // lda $EF, lsr, bcs, ldx $EB, inx, inx, ldy $EE
     quiet(RAM(0xEE), (uint16_t)(0x4000 + RAM(0xEB) + 2));
     RAM(0xEF) >>= 1;
@@ -465,7 +465,7 @@ static void load_stage_tiles(void) {
 static void load_stage_colours(void) {
   RUN(6);                                   // jsr $C483
   stage_bank();
-  RUN(3 + 2 + 2 + 2);                       // lda $31, cmp #6, bcc, lda #$D0
+  RUN(3 + 2 + 2 + 2);                       // lda $31, cmp #6, bcc, lda #$D0 dp:stop sub_C483
   RAM(PALETTE) = 0xD0;
   RAM(PALETTE + 1) = 0x8C;
   RUN(3 + 2 + 3 + 3 + 2);                   // sta $35, lda #$8C, sta $36, jmp $C49F, lda #$20
@@ -643,6 +643,6 @@ void game_step(uint32_t buttons) {
   if (waited & 1) RUN(3);
   frame_waited();
   // $FA10: Start, alone, leaves the title screen, which the next part ports. Until then the title waits.
-  RUN(3 + 2 + 3);                           // lda $14, cmp #8, bne
+  RUN(3 + 2 + 3);                           // lda $14, cmp #8, bne dp:stop sub_FA10
   frame_wait();
 }

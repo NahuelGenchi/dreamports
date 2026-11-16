@@ -1,7 +1,7 @@
 // The title card an act starts with: a white band closing in with the act's name, the characters' names and the act's
 // emblem, which then opens on the stage. Rewritten from CreateStageIntro, at 0x08056B74, and its tasks.
 //
-// A medal shows only once it's been earned, which nothing can do yet.
+// A medal shows only once it's been earned, which nothing can do yet. dp:stop 0x08056B74
 
 import { createSprite, updateSprite, displaySprite, transformSprite, SPRITE } from '../sprite.js';
 import { SINE } from './trig.js';

@@ -214,7 +214,7 @@ export function displaySpriteBackground(e, tables, s) {
 function writeSpriteMap(e, tables, s) {
   if (s.dimensions === -1) return;
   const rom = e.rom, d = s.dimensions, bg = (s.frameFlags >> 15) & 3, cnt = e.bgCnt[bg];
-  if ((rom.u8(d) & 3) || s.frameFlags & (SPRITE.X_FLIP | SPRITE.Y_FLIP) || cnt & 0x80) throw new Error('sub_80039E4: flipped frames and 256-colour layers are not ported.');
+  if ((rom.u8(d) & 3) || s.frameFlags & (SPRITE.X_FLIP | SPRITE.Y_FLIP) || cnt & 0x80) throw new Error('sub_80039E4: flipped frames and 256-colour layers are not ported.');   // dp:stop 0x080039E4
   const map = new Uint16Array(e.video.vram.buffer), base = ((cnt & 0x1F00) << 3) >> 1;
   const first = (s.graphics.dest - ((cnt >> 2) & 3) * 0x4000) >> 5;
   const oamData = rom.u32(tables.oam + s.graphics.anim * 4) - 0x08000000;

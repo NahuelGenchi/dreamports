@@ -499,5 +499,26 @@
     ["0x080A3E90","src/intro.js:475"],
     ["CreateSomeTask_809BF3C","src/intro.js:264"],
     ["sub_809BA58","src/intro.js:303"]
+  ],
+  "stops": [
+    ["080978CC","src/character-select.js:45","0x080978CC"],
+    ["08098180","src/character-select.js:471","0x08098180"],
+    ["080993D0","src/character-select.js:638","0x080993D0"],
+    ["0809B6D0","src/intro.js:304","0x0809B6D0"],
+    ["080A1D14","src/logos.js:28","0x080A1D14"],
+    ["080878EC","src/menu.js:590","0x080878EC"],
+    ["08087B90","src/menu.js:614","0x08087B90"],
+    ["0809198C","src/name-entry.js:36","0x0809198C"],
+    ["08001E58","src/name-entry.js:176","0x08001E58"],
+    ["080BF0C4","src/sprite.js:100","0x080BF0C4"],
+    ["0803854C","src/stage/entities.js:164","sub_8038548"],
+    ["0802D6FC","src/stage/entities.js:440","sub_802D6CC"],
+    ["0804E5C8","src/stage/entities.js:468","sub_804E5CC"],
+    ["080145A4","src/stage/player.js:532","Player_8014550"],
+    ["08002618","src/stage/stage.js:19","0x08002618"],
+    ["0800BF88","src/stage/tag-action.js:218","sub_800BF78"],
+    ["0800BF88","src/stage/tag-action.js:219","sub_800BF78"],
+    ["08056B74","src/stage/title-card.js:4","0x08056B74"],
+    ["0808A848","src/title.js:338","0x0808A848"]
   ]
 }

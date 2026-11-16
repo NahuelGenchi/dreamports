@@ -88,7 +88,7 @@ static void choose(Task *t) {
         screen.pick = shown;
       }
       play_song(SONG_SELECT);
-      // the Chao Hunt stage choice (sub_8062F90); the teams aren't in the game yet, so A on them does nothing
+      // the Chao Hunt stage choice (sub_8062F90); the teams aren't in the game yet, so A on them does nothing dp:stop 0x08018E80
       ctx.gameMode = GAME_MODE_CHAO_HUNT;
       destroy_task(t);
       create_vs_chao_select();

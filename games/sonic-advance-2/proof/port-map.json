@@ -112,5 +112,12 @@
   ],
   "unmatched": [
 
+  ],
+  "stops": [
+    ["08067EA4","src/name-entry.js:334","0x08067EA4"],
+    ["08004558","src/sprite.js:96","0x08004558"],
+    ["080089CC","src/stage/entities.js:57","0x080089CC"],
+    ["080089CC","src/stage/entities.js:59","0x080089CC"],
+    ["0802F75C","src/stage/stage.js:130","0x0802F75C"]
   ]
 }

@@ -44,7 +44,7 @@ static void heading_past_page(uint8_t object) {
 
 // sub_02_88F6: every sixth of the enemies that come by themselves carries a pot. It holds the usual thing, unless it's the
 // fourth pot: then the copy's list at $8963 says what, by the set of stages and how many pots there have been, and a
-// weapon Arthur already has is passed over for the next. The fifth set of stages on, at $8928, isn't ported yet.
+// weapon Arthur already has is passed over for the next. The fifth set of stages on, at $8928, isn't ported yet. dp:stop sub_02_8928
 void sixth_carries_a_pot(uint8_t object, uint8_t *x) {
   took(ZOMBIE_COUNT_BEGINS);
   if (++ZOMBIES_COUNTED < 6) { took(ZOMBIE_NOT_SIXTH); return; }
@@ -794,7 +794,7 @@ static void plant_box(void) {
 
 // $9F25: a plant with its mouth open. After 16 rounds it shoots, if one of the two shots' objects, $14 and $15, is free:
 // the shot starts at the plant's place, eight pixels up, headed for Arthur, with sound $1A. A plant in the top eight
-// pixels of a screen, at $9F5C, isn't ported yet.
+// pixels of a screen, at $9F5C, isn't ported yet. dp:stop sub_04_9F5C
 static void plant_shoots(uint8_t object) {
   enum { FIRST_SHOT = 0x14, SHOTS = 2, SHOT = 0x2B };
   plant_box();
@@ -848,7 +848,7 @@ static void plant_shoots(uint8_t object) {
 // $F6F6: an enemy that a weapon has killed burns away where it is, eight shapes from the copy's list at $F760, two
 // rounds each, and is gone. The kinds 5, 9 and $15, the bosses, burn with the bigger shapes at $F768, and one that's
 // gone takes one off the stage's count of bosses at $C3, if its flag $04 says it was counted: with none left, $C4 has
-// the key come. Kind $1F, which sets $BF, isn't ported yet.
+// the key come. Kind $1F, which sets $BF, isn't ported yet. dp:stop sub_F6F6
 void enemy_burns_away(uint8_t object) {
   uint8_t *count = &RAM[OBJECT_COUNT + object], kind = RAM[OBJECT_KIND + object];
   int boss = kind == 0x05 || kind == 0x09 || kind == 0x15;
@@ -959,7 +959,7 @@ static int shot_moves(uint8_t object, uint8_t speed, cost gone) {
 }
 
 // $F54D: a shot hits Arthur if it touches him, within the box in $26 and $27. With the cross a weapon can stop it, at
-// $F557, which isn't ported yet.
+// $F557, which isn't ported yet. dp:stop sub_F557
 static void shot_tests(uint8_t object) {
   place_on_screen(object);
   took(SHOT_TESTS);

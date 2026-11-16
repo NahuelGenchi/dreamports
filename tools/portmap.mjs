@@ -1,7 +1,9 @@
 // npm run dp -- portmap [<game>] [--check]: writes games/<game>/proof/port-map.json, the port map: each function of
 // the original that the Dreamport's code names, with the first place it names it, and every name that lands inside a
 // function of the code map but not at its start, so it can be put right. It's what code ported is measured with, beside the functions
-// that ran in matching play (docs/STANDARD.md#how-progress-is-measured). Without a game it does every game with a
+// that ran in matching play (docs/STANDARD.md#how-progress-is-measured). It also lists the Dreamport's stops: each
+// path of the original its code says it hasn't ported, with the function of the original the path is in, which doesn't
+// count towards code ported while it has one (docs/STANDARD.md#stops). Without a game it does every game with a
 // code map. With --check it changes nothing and fails when a port map is out of date, which `npm run check` uses.
 // A version in another language has a port map of its own, of its own code, as in `npm run dp -- portmap sonic-battle/c`,
 // which writes games/sonic-battle/c/proof/port-map.json from the C in games/sonic-battle/c/ (src/lib/languages.mjs).
@@ -17,6 +19,11 @@
 //   "shifts": [{ "from": "0801C130", "to": "0803AB60", "by": 48 }, ...]: a label from `from` to `to` names the
 //     function `by` bytes earlier in the copy
 // }
+//
+// A stop is the words dp:stop in a line of the code, in a comment where the path would be, and after them the
+// address in the original of what isn't ported, written as a name is: `// dp:stop 0x0800486C`. Every name after the
+// words on that line is a stop, and none of them a name. The address can be anywhere in the function, such as the
+// branch not taken, or its start when none of it is ported.
 //
 // On the NES, where the program is in banks the cartridge switches, a name is a label with the bank in it: sub_04_923F
 // is $923F with bank 4 switched in at $8000, and sub_C39C, with no bank, is in the last bank, always at $C000. The code
@@ -35,6 +42,8 @@ const NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_0?|0x0?)([238][0-9A-Fa-f]{6})\b/g;
 // the first addresses of the cartridge and of the work RAMs, which code uses as the base of every address in them, not
 // as functions
 const BASES = new Set([0x08000000, 0x02000000, 0x03000000]);
+// the words that mark a stop, in any language's code
+export const STOP = /\bdp:stop\b/;
 
 // the names in a line of a game's code, as [name, address, whether it's a label] for each console's code map. A Game
 // Boy Advance address is the cartridge's or the work RAM's; an NES one is the offset in the program, from a label such as sub_04_923F
@@ -45,6 +54,12 @@ function namer(console, codeMap) {
     return line => nesNames(line, banks).map(([name, offset]) => [name, offset, true]);
   }
   return line => [...line.matchAll(NAME)].map(([name, label, digits]) => [name, parseInt(digits, 16) & ~1, Boolean(label)]).filter(([, address]) => !BASES.has(address));
+}
+
+/** A line's names as [those before the stop's words, those after them]: its names, and its stops. */
+export function namesAndStops(line, names) {
+  const at = line.search(STOP);
+  return at < 0 ? [names(line), []] : [names(line.slice(0, at)), names(line.slice(at))];
 }
 
 export async function run(args) {
@@ -66,7 +81,7 @@ export async function run(args) {
     }
     mkdirSync(proofFolder(game), { recursive: true });
     writeFileSync(file, text);
-    console.log(`Written: games/${game}/proof/port-map.json, ${map.functions.length} functions named, ${map.unmatched.length} name${map.unmatched.length === 1 ? '' : 's'} inside a function but not at its start.`);
+    console.log(`Written: games/${game}/proof/port-map.json, ${map.functions.length} functions named, ${map.unmatched.length} name${map.unmatched.length === 1 ? '' : 's'} inside a function but not at its start, ${map.stops.length} stop${map.stops.length === 1 ? '' : 's'}.`);
   }
   if (check) {
     if (stale.length) throw new Error(stale.map(game => `games/${game}/proof/port-map.json is out of date: npm run dp -- portmap ${game} writes it again.`).join('\n'));
@@ -76,7 +91,7 @@ export async function run(args) {
   return 0;
 }
 
-/** A game's port map, from its code and its code map: { original, from, functions, unmatched }. */
+/** A game's port map, from its code and its code map: { original, from, functions, unmatched, stops }. */
 export function portMap(game) {
   const original = readOriginal(game);
   const codeMap = readCodeMap(game);
@@ -87,7 +102,7 @@ export function portMap(game) {
   const at = (address, size, f) => {
     if (!starts.has(address)) starts.set(address, []);
     starts.get(address).push(f);
-    spans.push({ address, size });
+    spans.push({ address, size, f });
   };
   for (const f of codeMap.functions) at(f.address, f.size, f);
   for (const copy of codeMap.copies) {
@@ -106,15 +121,25 @@ export function portMap(game) {
     }
     return false;
   };
+  // the functions `address` is in: those that start there, or else every one around it, as in the work RAM a game can
+  // put one program's code where another's was
+  const around = address => starts.get(address) ?? [...new Set(spans.filter(s => address >= s.address && address < s.address + s.size).map(s => s.f))];
   const order = new Map(codeMap.functions.map((f, i) => [f.key, i]));
   const shifts = readShifts(game);
   const names = namer(original.console, codeMap);
-  const functions = new Map(), unmatched = new Map();
+  const functions = new Map(), unmatched = new Map(), stops = [];
+  const shifted = (address, label) => (label ? address - (shifts.find(s => address >= s.from && address <= s.to)?.by ?? 0) : address);
   for (const file of codeFiles(gameFolder(game), versionOf(game).language)) {
     const where = relative(gameFolder(game), file).split(sep).join('/');
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
-      for (let [name, address, label] of names(line)) {
-        if (label) address -= shifts.find(s => address >= s.from && address <= s.to)?.by ?? 0;
+      const [named, stopped] = namesAndStops(line, names);
+      // a stop, in each function of the original its address is in, or in none the code map has
+      for (const [name, plain, label] of stopped) {
+        const found = around(shifted(plain, label));
+        for (const key of found.length ? found.map(f => f.key) : [null]) stops.push([key, `${where}:${i + 1}`, name]);
+      }
+      for (let [name, address, label] of named) {
+        address = shifted(address, label);
         const found = starts.get(address);
         if (!found && !inside(address)) continue;
         // a name in the work RAM counts each function the game puts at that address
@@ -130,6 +155,7 @@ export function portMap(game) {
     from: `The original's functions that games/${game}/ names, found by npm run dp -- portmap${game.includes('/') ? ` ${game}` : ''}`,
     functions: [...functions].sort(([a], [b]) => order.get(a) - order.get(b)).map(([key, where]) => [key, where]),
     unmatched: [...unmatched].sort(([a], [b]) => a.localeCompare(b)).map(([name, where]) => [name, where]),
+    stops,
   };
 }
 
@@ -161,7 +187,7 @@ export function readShifts(game) {
 }
 
 // a function or a name to a line
-function format({ original, from, functions, unmatched }) {
+function format({ original, from, functions, unmatched, stops }) {
   const lines = list => list.map(item => '    ' + JSON.stringify(item)).join(',\n');
-  return `{\n  "original": ${JSON.stringify(original)},\n  "from": ${JSON.stringify(from)},\n  "functions": [\n${lines(functions)}\n  ],\n  "unmatched": [\n${lines(unmatched)}\n  ]\n}\n`;
+  return `{\n  "original": ${JSON.stringify(original)},\n  "from": ${JSON.stringify(from)},\n  "functions": [\n${lines(functions)}\n  ],\n  "unmatched": [\n${lines(unmatched)}\n  ],\n  "stops": [\n${lines(stops)}\n  ]\n}\n`;
 }

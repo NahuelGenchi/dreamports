@@ -217,7 +217,7 @@ wait title_task(void) {
       return YIELDS;
     case COUNT_DOWN: {
       // $C4D1: the time left, and the chosen line's colours, which blink through the four at $C628. When the time runs
-      // out the original plays its demonstration, $C4F9, which isn't ported yet, so here the title screen stays.
+      // out the original plays its demonstration, $C4F9, which isn't ported yet, so here the title screen stays. dp:stop sub_C4F9
       uint16_t left = ram16(TITLE_TIME);
       set_ram16(TITLE_TIME, (uint16_t)(left - 1));
       if (left == 0) set_ram16(TITLE_TIME, 0);
@@ -236,7 +236,7 @@ wait title_task(void) {
       for (int i = 0; i < 4; i++) RAM[ATTRIBUTES + 0x2A + i] = 0;
       if (GAME_PLAYED && PLAYERS_CHOSEN == 2) {
         // $C553: the third line goes on from the place the last game ended at, with three lives again and no
-        // opening scene. What two players choose then, at $C563, isn't ported yet.
+        // opening scene. What two players choose then, at $C563, isn't ported yet. dp:stop sub_C563
         RAM[0xA6] = 0xFF;
         RAM[0x0715] = 3;
         RAM[0x94] = 0;

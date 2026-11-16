@@ -335,7 +335,7 @@ function idle(t) {
     showCorner(c, s);
     s.cornerFrames++;
   }
-  s.timer++;
+  s.timer++;   // dp:stop 0x0808A848
   s.blink++;
 }
 

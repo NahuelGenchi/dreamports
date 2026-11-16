@@ -161,7 +161,7 @@ function createFactoryRing(m, at, x, y) {
   }, null, 0x2100);
 }
 
-// 0x0803.. CreateEntity_Omochao and sub_8038548: Omochao hovering, which picking up isn't ported yet
+// 0x0803.. CreateEntity_Omochao and sub_8038548: Omochao hovering, which picking up isn't ported yet dp:stop sub_8038548
 function createOmochao(m, at, x, y) {
   const { stage } = m, { c } = stage, meX = m.data.getUint8(at);
   const s = createSprite({ tiles: stage.allocTiles(9), anim: ANIM_OMOCHAO, variant: 1, oamFlags: 24 << 6, frameFlags: 0x1000 });
@@ -437,7 +437,7 @@ function layerToggle(layer) {
 }
 
 // CreateEntity_ItemBox, sub_802C35C, Task_ItemBoxInit and sub_802D6CC: a box with what's in it on top, which nothing happens
-// to yet when a character touches it
+// to yet when a character touches it dp:stop sub_802D6CC
 function createItemBox(m, at, x, y) {
   const { stage } = m, { c } = stage, { rom } = c, meX = m.data.getUint8(at), item = m.data.getUint8(at + 2);
   const s = createSprite({ tiles: stage.allocTiles(ITEM_BOX_TILES), anim: ANIM_ITEM_BOX, variant: 0, oamFlags: 24 << 6, frameFlags: 0x1000 });
@@ -465,7 +465,7 @@ function createItemBox(m, at, x, y) {
   }, null, 0x2000);
 }
 
-// CreateEntity_ChaoInStage and sub_804E5CC: a Chao, which nothing happens to yet when a character finds it
+// CreateEntity_ChaoInStage and sub_804E5CC: a Chao, which nothing happens to yet when a character finds it dp:stop sub_804E5CC
 function createChao(m, at, x, y) {
   const { stage } = m, { c } = stage, meX = m.data.getUint8(at), pose = m.data.getUint8(at + 7) >> 4;
   const s = createSprite({ tiles: stage.allocTiles(20), anim: ANIM_FIRST_CHAO + pose, variant: 0, oamFlags: 24 << 6, frameFlags: 0x1000 });

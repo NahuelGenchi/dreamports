@@ -39,15 +39,21 @@ export function measure(functions, proven) {
   };
 }
 
+/** The functions of the original with a stop in them: a path the Dreamport's code says it hasn't ported. */
+export const stoppedFunctions = portMap => new Set((portMap?.stops ?? []).map(([address]) => address).filter(Boolean));
+
 /**
  * The functions that count toward code ported, by their addresses in the code map: those the port map names and those
- * that ran in recorded play where every frame matched. The two numbers and the progress map (progress-map.mjs) both
- * count these, so they can't disagree.
+ * that ran in recorded play where every frame matched, but any with a stop in it, as it isn't all written yet. The two
+ * numbers and the progress map (progress-map.mjs) both count these, so they can't disagree.
  */
-export const portedFunctions = (portMap, progress) => new Set([
-  ...(portMap?.functions ?? []).map(([address]) => address),
-  ...Object.values(progress?.recordings ?? {}).flatMap(r => r.functions ?? []),
-]);
+export const portedFunctions = (portMap, progress) => {
+  const stopped = stoppedFunctions(portMap);
+  return new Set([
+    ...(portMap?.functions ?? []).map(([address]) => address),
+    ...Object.values(progress?.recordings ?? {}).flatMap(r => r.functions ?? []),
+  ].filter(address => !stopped.has(address)));
+};
 
 /**
  * What a Dreamport's proof/ folder measures, from its files, each parsed, or undefined when it's missing:
@@ -57,7 +63,9 @@ export const portedFunctions = (portMap, progress) => new Set([
  * - percent, codeMap, proven: the code that ran in recorded play where every frame matched, as prove measured it
  *   (`percent` null until there's a code map and a proven recording);
  * - ported: code ported, the functions the Dreamport's code names in its port map and those that ran in matching
- *   play, over the code map, or null without a code map;
+ *   play, but those with a stop in them, over the code map, or null without a code map; with it, `stops`, the paths
+ *   the code says it hasn't ported, `stopped`, the functions they're in, and `unnamed`, the functions of the code map
+ *   no code names yet;
  * - gameplay: gameplay proven, the parts of the game played from start to end with every frame matching, over every
  *   part parts.json lists, or null without it.
  * Throws, naming every problem, when the files don't agree, such as a % that isn't what the code map and the proven
@@ -66,7 +74,7 @@ export const portedFunctions = (portMap, progress) => new Set([
 /**
  * @typedef {{ name: string, proven: boolean, recording: string | null, frames: [number, number] | null, difference: number | null, gap: number | null, unreached: string | null, fromStart: boolean }} Part
  * @typedef {{ percent: number, proven: number, total: number, parts: Part[] }} Gameplay
- * @typedef {{ percent: number, functions: number, named: number, played: number, unmatched: number }} Ported
+ * @typedef {{ percent: number, functions: number, named: number, played: number, unmatched: number, stops: number, stopped: number, unnamed: number }} Ported
  * @typedef {{ copy: string, percent: number | null, recordings: number, codeMap: { functions: number, bytes: number } | null,
  *   proven: { functions: number, bytes: number } | null, ported: Ported | null, gameplay: Gameplay | null }} Proof
  * @returns {Proof | null}
@@ -122,6 +130,8 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
     }
     const named = new Set((portMap?.functions ?? []).map(([address]) => address));
     missing(named, 'port-map.json');
+    const stopped = stoppedFunctions(portMap);
+    missing(stopped, 'port-map.json');
     const ported = measure(functions, portedFunctions(portMap, progress));
     result.ported = {
       percent: ported.percent,
@@ -130,6 +140,9 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
       // ran in matching play, but the code doesn't name them
       played: [...played].filter(address => !named.has(address) && known.has(address)).length,
       unmatched: portMap?.unmatched?.length ?? 0,
+      stops: portMap?.stops?.length ?? 0,
+      stopped: stopped.size,
+      unnamed: functions.filter(f => !named.has(f.address)).length,
     };
   } else if (progress?.percent !== undefined || portMap) {
     problems.push(`${at}${portMap ? 'port-map.json' : 'progress.json'} needs a ${shared}code-map.json to be measured against.`);

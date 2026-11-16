@@ -42,7 +42,7 @@ const PAIR_SHOWN = 22, ANNOUNCING = 23, LEAVING = 29, LEFT_ON_THE_RIGHT = 36, GO
 const FADE_IN = 0x3FFF, FADE_OUT_AFTER = 0x3FBF;
 
 /** 0x080978CC, CreateCharacterSelect: the screen's task, its layers and sprites, and its music. */
-export function createCharacterSelect(c) {
+export function createCharacterSelect(c) {   // dp:stop 0x080978CC
   c.dispCnt = 0x1541;
   const cs = { c, language: c.save.language, players: [0, 0] };
   setUpPositions(cs);
@@ -468,7 +468,7 @@ function fadeOut(t) {
     c.bldY = 0x10;
     cs.charX = cs.chosenX = Q(310);
     cs.pose = LEAVING;
-    // the way on from here isn't ported: the screen stays white
+    // the way on from here isn't ported: the screen stays white dp:stop 0x08098180
     t.main = leaving;
   }
 }
@@ -635,7 +635,7 @@ function partnerComes(t) {
   }
 }
 
-// 0x080993D0: waiting for the partner's choice. B, which goes back to the main character's, isn't ported.
+// 0x080993D0: waiting for the partner's choice. B, which goes back to the main character's, isn't ported. dp:stop 0x080993D0
 function choosingPartner(t) {
   const cs = t.data, { c } = cs;
   turn(cs);
