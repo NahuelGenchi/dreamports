@@ -917,7 +917,7 @@ static void link_icon(Obj *o) {
 enum { CHAO_STANDS = 0, CHAO_WAITS = 2, CHAO_HATCHED = 9, CHAO_GREETS = 10, CHAO_GIVEN = 13, CHAO_BITES = 14,
        CHAO_EATS = 15, CHAO_PETTED = 16, CHAO_ENJOYS = 17, CHAO_PLEASED = 18, CHAO_CHEERS = 19, CHAO_WALKS = 22, CHAO_SLEEPS = 23,
        CHAO_WAKES = 24, CHAO_SITS = 25, CHAO_SITS_DOWN = 26, CHAO_LIES = 27, CHAO_LOOKS = 28, CHAO_LOOKS_ABOUT = 29,
-       CHAO_REMARKS = 30, CHAO_REMARKING = 31, CHAO_DYING = 32, CHAO_SAYS = 39, CHAO_SAYING = 40, CHAO_SAYS_HUNGRY = 41,
+       CHAO_REMARKS = 30, CHAO_REMARKING = 31, CHAO_DYING = 32, CHAO_GOES_FOR_FRUIT = 36, CHAO_SAYS = 39, CHAO_SAYING = 40, CHAO_SAYS_HUNGRY = 41,
        CHAO_SAYING_HUNGRY = 42, CHAO_STARVES = 43, CHAO_SULKS = 44, CHAO_CRIES = 45, CHAO_YAWNS = 46, CHAO_GRUMBLES = 47,
        CHAO_GLAD = 48, CHAO_SAD = 49, CHAO_BORED = 50 };
 
@@ -1350,6 +1350,7 @@ static void fruit_eaten_start(Obj *o) {
 static uint16_t chaoTimers[6];   // 0x030009A8: its needs' clocks
 static uint16_t chaoRests;       // 0x030009B6
 static uint8_t nearby[8];        // 0x03000DD0: what it has seen in the garden
+static uint8_t fruitSought;      // 0x03000998: the fruit it's going for
 static uint32_t nearest;         // 0x030009A4
 
 /** 0x0200583C: a new way to walk, up to two twelfths of a turn from the old one, at 3/16 of a pixel a frame. */
@@ -1458,9 +1459,42 @@ static void bubble_shows(Obj *o, int wide, int tall) {
   o->countdown = 0x1E;
 }
 
+/** 0x020052A6: hungry, the Chao looks for a fruit lying ahead of it, at most two twelfths of a turn either way of its
+ *  heading and 39 pixels off, and goes for the first it sees: it heads straight for it, 3/16 of a pixel a frame, with an
+ *  exclamation mark for a second. */
+static int chao_sees_fruit(Obj *o) {
+  int left = o->heading - 2, right = o->heading + 2;
+  if (left < 0) left += 12;
+  if (right > 11) right -= 12;
+  uint8_t a = (uint8_t)(left * 21), b = (uint8_t)(right * 21);
+  int x = o->x, y = o->y;
+  int16_t ax = (int16_t)(x + sine(a)), ay = (int16_t)(y + cosine(a));
+  int16_t bx = (int16_t)(x + sine(b)), by = (int16_t)(y + cosine(b));
+  for (int i = 0; i < 8; i++) {
+    if (!nearby[i]) continue;
+    int fx = tcgSave[SAVE_FRUIT_PLACES + i * 2], fy = tcgSave[SAVE_FRUIT_PLACES + i * 2 + 1];
+    // on the right side of both edges of the view, and near enough
+    if ((x - ax) * (fy - y) + (y - ay) * (x - fx) > 0) continue;
+    if ((x - bx) * (fy - y) + (y - by) * (x - fx) < 0) continue;
+    int16_t dx = (int16_t)(fx - x), dy = (int16_t)(fy - y);
+    int far = (uint16_t)gba_sqrt((uint32_t)(dx * dx + dy * dy));
+    if (far > 0x27) continue;
+    o->behaviour = CHAO_GOES_FOR_FRUIT;
+    o->changed = 0x40;
+    o->countdown = (uint16_t)((far << 16) / 0x3000);
+    o->arg = (uint8_t)(gba_arctan2(dx, dy) >> 8);
+    o->state = 0x3C;
+    o->value[1] = (uint16_t)(sine(o->arg) * 48);
+    o->value[0] = (uint16_t)(cosine(o->arg) * 48);
+    o->link = (uint8_t)i;
+    fruitSought = nearby[i];
+    return 1;
+  }
+  return 0;
+}
+
 /** 0x02005220: what the Chao does next, for 3 to 5 seconds: after anything but a walk, a walk; after a walk, another, or
- *  by chance and by its needs it sits, lies down, says something or shows how it feels. Looking for fruit when it's
- *  hungry isn't in C yet. */
+ *  by chance and by its needs it goes for a fruit it sees, sits, lies down, says something or shows how it feels. */
 static void chao_chooses(Obj *o) {
   o->changed = 0;
   if (!save32(SAVE_LIFE)) { o->behaviour = CHAO_DYING; return; }
@@ -1470,7 +1504,7 @@ static void chao_chooses(Obj *o) {
   if (less((int16_t)random15(), 0x2666) < 0) { chao_turns(o); return; }
   if (tcgSave[SAVE_SLEEP] > 199) { o->state = 0; o->behaviour = CHAO_SLEEPS; return; }
   // hungry, it looks for what there is to eat
-  if (tcgSave[SAVE_BELLY] <= 0x42) for (int i = 0; i < 8; i++) if (nearby[i]) { not_in_c(); return; }
+  if (tcgSave[SAVE_BELLY] <= 0x42 && chao_sees_fruit(o)) return;
   if (tcgSave[0x35]) { not_in_c(); return; }
   int16_t roll = less((int16_t)random15(), 0x0CCC);
   if (roll < 0) { o->behaviour = CHAO_REMARKS; return; }
@@ -1596,6 +1630,35 @@ static void chao_lives(Obj *o) {
     case CHAO_SITS: case CHAO_SITS_DOWN: case CHAO_LIES:
       if (--o->countdown == 0) chao_chooses(o);
       break;
+    case CHAO_GOES_FOR_FRUIT: {
+      if (g.flags & 0x20) { o->behaviour = CHAO_STANDS; break; }
+      // the fruit gone, it sits down puzzled
+      if (!nearby[o->link]) {
+        o->changed = (uint8_t)((o->changed & 0xBF) | 0x20);
+        o->behaviour = CHAO_SITS_DOWN;
+        o->countdown = 0x3C;
+        break;
+      }
+      set_x_fixed(o, x_fixed(o) + (int16_t)o->value[1]);
+      set_y_fixed(o, y_fixed(o) + (int16_t)o->value[0]);
+      if (p8(0x02019D50u + (uint32_t)((o->y >> 3) * 22 + (o->x >> 3)))) {
+        set_x_fixed(o, x_fixed(o) - (int16_t)o->value[1]);
+        set_y_fixed(o, y_fixed(o) - (int16_t)o->value[0]);
+        chao_chooses(o);
+        break;
+      }
+      if (o->state && --o->state == 0) o->changed &= 0xBF;
+      if (--o->countdown) break;
+      // there: it picks the fruit up to eat, as if given it, facing it
+      Obj *fruit = &objs[fruitSought];
+      o->behaviour = CHAO_GIVEN;
+      o->changed = (int8_t)(uint8_t)(o->arg - 0x40) >= 0 ? 0x10 : 0x90;
+      o->link = fruit->arg;
+      tcgSave[SAVE_FRUIT + fruit->state] = 0xFF;
+      gardenObjects--;
+      fruit->main = destroy;
+      break;
+    }
     case CHAO_SLEEPS:
       // asleep until it isn't sleepy, a point every 4 frames; woken, it's grumpy, its mood down a fifth
       o->extra[0] = 2;
@@ -1873,12 +1936,13 @@ static void chao_body(Obj *o) {
       case CHAO_ENJOYS: frame = (int)p8(0x02018D4Au + ((handObj->arg + 0x10) >> 5 & 3u)) + 0x31; break;
       case CHAO_CHEERS: frame = (c->state & 1) + 0x27; break;
       case CHAO_GREETS: frame = 0x28; break;
-      case CHAO_WALKS:
+      case CHAO_WALKS: case CHAO_GOES_FOR_FRUIT:
         if (++step[0] > 0x11) {
           step[0] = 0;
           if (!(++step[1] & 3) && !(g.flags & 3)) gba_sound_play(SE_CHAO_WALK);
         }
-        way = facing(c->heading);
+        // walking its way, or toward a fruit, by the fruit's direction in quarter turns
+        way = c->behaviour == CHAO_WALKS ? facing(c->heading) : (uint8_t)(c->arg + 0x20) >> 6;
         if (!way) { own = 0; way = 2; }
         frame = (way - 1) * 3 + (int)p8(0x02018D4Au + (step[1] & 3u));
         break;
