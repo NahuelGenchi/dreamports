@@ -3723,7 +3723,38 @@ dialog.card[open] {
     --rail: 82px;
   }
 
-  .view:is(.card-inspect, .card-make) .view-bar {
+  /* Every other view too (#1335): Settings, a profile, About and a game's Achievements. Their bar took 68px of a
+     screen some 390px tall, empty but for Back, and cut off what they hold where it started. Each keeps its middle
+     where the rail leaves room for it, and starts beside the rail where it doesn't. */
+  .view:is(.card-settings, .card-profile, .card-about, .card-achievements) {
+    --rail: 58px;
+    /* where the rail ends, from the screen's left edge */
+    --past-rail: calc(max(18px, env(safe-area-inset-left, 0px)) + var(--rail));
+  }
+
+  :root:not([data-input='touch']).js .view:is(.card-settings, .card-profile, .card-about, .card-achievements) {
+    --rail: 82px;
+  }
+
+  /* About is as wide as the screen up to 1120px, and Achievements up to 1000px: past that each is in the middle,
+     with that much room beside it already */
+  .view .about {
+    padding-left: max(0px, var(--past-rail) - max(0px, (100vw - 1120px) / 2));
+  }
+
+  .view .ach-page .ach-top {
+    padding-left: max(24px, var(--past-rail) - max(0px, (100vw - 1000px) / 2));
+  }
+
+  .view:is(.card-settings, .card-profile) .card-body {
+    --side: calc((100% - 760px) / 2 + 24px);
+    max-width: none;
+    padding-left: max(var(--past-rail), var(--side));
+    padding-right: max(24px, env(safe-area-inset-right, 0px), var(--side));
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .view .view-bar {
     position: absolute;
     left: 0;
     bottom: 0;
