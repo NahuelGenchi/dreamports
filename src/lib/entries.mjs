@@ -69,7 +69,9 @@ export const portedFunctions = (portMap, progress) => {
  * - gameplay: gameplay proven, or null without parts.json: where prove saw the original's instructions run
  *   (progress.json's `played`), the instructions and branch ways played in matching frames over all the code map's
  *   functions have, as `units`; or else the parts played from start to end with every frame matching, over every part
- *   parts.json lists. `proven`, `total` and `parts` are the parts either way.
+ *   parts.json lists. `proven`, `total` and `parts` are the parts either way;
+ * - saves, when a recording saved: { original, same, differ }, the original's writes of its save memory in the
+ *   recordings, how many the Dreamport left the same, and the names of the recordings where the two differ.
  * Throws, naming every problem, when the files don't agree, such as a % that isn't what the code map and the proven
  * functions make, or a port map that names a function the code map doesn't have.
  */
@@ -167,6 +169,16 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
       }
       Object.assign(result.gameplay, { percent: Math.min(percent, ofContent), code: percent, content: { total: cells, read, percent: ofContent } });
     }
+  }
+  // what the recordings saved next to the original: the original's writes of its save memory, how many the Dreamport
+  // left the same, and the recordings where they differ, or where the Dreamport wrote one the original didn't
+  const saving = recordings.filter(([, r]) => r.saves);
+  if (saving.length) {
+    result.saves = {
+      original: saving.reduce((sum, [, r]) => sum + r.saves.original, 0),
+      same: saving.reduce((sum, [, r]) => sum + r.saves.same, 0),
+      differ: saving.filter(([, r]) => r.saves.same < Math.max(r.saves.original, r.saves.dreamport)).map(([name]) => name),
+    };
   }
   if (problems.length) throw new Error(`${game}'s proof doesn't add up:\n${problems.map(p => `- ${p}`).join('\n')}`);
   return result;

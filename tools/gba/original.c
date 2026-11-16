@@ -42,6 +42,11 @@
 // counts as the place as far through the packed data as it is through what came out). Data a game unpacks with code
 // of its own counts as it's read, as unpacking it is using it.
 //
+// DP_SAVES, when it's set, names a file to write the cartridge's save memory to each time it changes, so the tools can
+// compare what a Dreamport saves with it (lib/saves.mjs): for each frame that ends with other bytes in it than the
+// frame before, the frame, how many bytes the memory has, and the bytes, to a whole word. The file stays on the
+// contributor's computer, and goes when it's been read.
+//
 // For each frame it writes to stdout: a hash of the picture (FNV-1a over each pixel's 15-bit colour, as the
 // console has it), the picture's one colour if every pixel has it or else 0xFFFFFFFF, the number of functions that
 // ran in the frame and their places in the code map (32 bits each), then the picture itself if PICTURES names the
@@ -69,6 +74,7 @@
 #include <mgba/gba/core.h>
 #include <mgba/internal/arm/arm.h>
 #include <mgba/internal/gba/gba.h>
+#include <mgba/internal/gba/savedata.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -593,6 +599,11 @@ int main(int argc, char** argv) {
 	struct GBA* gba = core->board;
 
 	if (getenv("DP_CONTENT")) watchContent(cpu, gba, getenv("DP_CONTENT"));
+	// the save memory as the last frame left it
+	FILE* saves = getenv("DP_SAVES") ? fopen(getenv("DP_SAVES"), "wb") : NULL;
+	if (getenv("DP_SAVES") && !saves) { fprintf(stderr, "Can't write %s\n", getenv("DP_SAVES")); exit(2); }
+	uint8_t* saved = NULL;
+	size_t savedSize = 0;
 
 	for (long frame = 0; frame < frames; frame++) {
 		content.frame = frame;
@@ -660,6 +671,22 @@ int main(int argc, char** argv) {
 			}
 		}
 		if (content.file) usePending();
+		if (saves) {
+			// the game's first use of its save memory tells the emulator what kind it is, and so how big
+			size_t size = gba->memory.savedata.data ? GBASavedataSize(&gba->memory.savedata) : 0;
+			if (size != savedSize) {
+				saved = realloc(saved, size ? size : 1);
+				memset(saved, 0xFF, size);
+				savedSize = size;
+			}
+			if (size && memcmp(saved, gba->memory.savedata.data, size)) {
+				memcpy(saved, gba->memory.savedata.data, size);
+				uint32_t head[2] = { (uint32_t) frame, (uint32_t) size }, none = 0;
+				fwrite(head, 4, 2, saves);
+				fwrite(saved, 1, size, saves);
+				if (size % 4) fwrite(&none, 1, 4 - size % 4, saves);
+			}
+		}
 		for (; nextRead < readCount && reads[nextRead * 3] == (uint32_t) frame; nextRead++) {
 			readValues[nextRead] = readValue(core, reads[nextRead * 3 + 1], reads[nextRead * 3 + 2]);
 		}
@@ -683,6 +710,7 @@ int main(int argc, char** argv) {
 	fflush(stdout);
 	if (soundFile) fclose(soundFile);
 	if (ramCode) fclose(ramCode);
+	if (saves) fclose(saves);
 	if (content.file) endContent();
 	if (played.file) {
 		for (size_t i = 0; i < played.count; i++) endStretches(&played.list[i]);

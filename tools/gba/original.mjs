@@ -13,6 +13,9 @@ export const WIDTH = 240, HEIGHT = 160;
 /** The program that plays the original says every instruction that ran and each way every branch went (lib/played.mjs). */
 export const seesInstructions = true;
 
+/** It also gives the cartridge's save memory each time it changes (lib/saves.mjs). */
+export const seesSaves = true;
+
 /** Builds the reference emulator if it isn't built yet. */
 export function ensureOriginal(log) {
   if (!isBuilt()) build(log);

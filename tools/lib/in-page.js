@@ -184,18 +184,19 @@
      *  It stops after the first frame from `stopsFrom` on whose picture isn't. `after` is what the frame after the last holds. Each size the pictures changed to comes too, as [frame, width, height].
      *  A game that throws stops there, with `stopped` saying what it threw. */
     async run(from, held, expected, stopsFrom = Infinity, after = null) {
-      const hashes = [], sound = [], neverInPlay = [], sizes = [];
+      const hashes = [], sound = [], neverInPlay = [], sizes = [], saves = [];
       for (let i = 0; i < held.length; i++) {
         const frame = from + i;
         dreamportsProof.video = null;   // a game can draw some screens with a renderer of its own
         dreamportsProof.neverInPlay = null;
+        dreamportsProof.saved = null;
         // `next`: what the frame after holds, which a V-blank that reads the buttons finds held (kit/gba/proof.js)
         let image;
         try {
           image = await played({ held: held[i], next: held[i + 1] ?? after ?? undefined });
         } catch (error) {
           // the game stopped, as one does on a path it hasn't ported yet: this frame and the rest differ
-          return { hashes, sound, neverInPlay, sizes, stopped: String(error) };
+          return { hashes, sound, neverInPlay, sizes, saves, stopped: String(error) };
         }
         if (!image) throw new Error('The game handed over no picture.');
         if (__console.id === 'gba' && (image.width !== WIDTH || image.height !== HEIGHT)) {
@@ -216,6 +217,8 @@
         if (first && __drawLists) firstList = { frame, bytes: dreamportsProof.drawListBytes?.() ?? null };
         // a game's own word that no player could ever see this frame
         if (dreamportsProof.neverInPlay) neverInPlay.push({ frame, why: dreamportsProof.neverInPlay });
+        // what the game wrote to its save memory in this frame, the last if more than once (kit/gba/save.js)
+        if (dreamportsProof.saved) saves.push({ frame, bytes: toBase64(dreamportsProof.saved) });
         // a game with no sound, or a kit from before the tools heard it, is silent
         const samples = dreamportsProof.heard ?? null, energies = new Float64Array(16);
         if (samples) { filter(samples, energies); heard = true; }
@@ -223,7 +226,7 @@
         if (first) kept.set(frame, fromRing(frame));
         if (frame >= stopsFrom && hash !== expected[i]) break;
       }
-      return { hashes, sound, neverInPlay, sizes };
+      return { hashes, sound, neverInPlay, sizes, saves };
     },
 
     /** The frames whose state to keep as they're played, besides the first whose picture differs. */
