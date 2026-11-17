@@ -39,6 +39,21 @@ export const LINKED = join(FOLDER, process.platform === 'win32' ? 'linked.exe' :
 /** The program that prints the original's instructions (read.c). */
 export const READER = join(FOLDER, process.platform === 'win32' ? 'read.exe' : 'read');
 const STAMP = join(FOLDER, 'built.json');
+// The program that calls one function of the original at a time, for the function check (call.c), with a stamp of its
+// own: the check builds it when it's missing, and nothing else waits for it.
+const CALLER_SOURCE = fileURLToPath(new URL('./call.c', import.meta.url));
+export const CALLER = join(FOLDER, process.platform === 'win32' ? 'call.exe' : 'call');
+const CALLER_STAMP = join(FOLDER, 'built-call.json');
+const caller = () => sha1(CALLER_SOURCE, ON_WINDOWS);
+/** Whether the program that calls the original's functions is built, from this version of mGBA and of call.c. */
+export function isCallerBuilt() {
+  try {
+    const stamp = JSON.parse(readFileSync(CALLER_STAMP, 'utf8'));
+    return existsSync(CALLER) && stamp.mgba === MGBA_VERSION && stamp.caller === caller();
+  } catch {
+    return false;
+  }
+}
 
 const sha1 = (...files) => files.reduce((hash, file) => hash.update(readFileSync(file)), createHash('sha1')).digest('hex');
 const harness = () => sha1(HARNESS, ON_WINDOWS, EXPLORE, RAN, USED);
@@ -134,6 +149,10 @@ function buildHere(log, windows) {
   run(compiler, ['-O2', '-o', made(READER), beside(READER_SOURCE), decoder, ...headers, ...library], 'Building the program that prints the original\'s instructions', windows?.env);
   log('Building the program that runs linked copies of the original…');
   run(compiler, ['-O2', '-o', made(LINKED), beside(LINKED_SOURCE), ...headers, ...library], 'Building the program that runs linked copies of the original', windows?.env);
+  log('Building the program that calls the original\'s functions…');
+  run(compiler, ['-O2', '-o', made(CALLER), beside(CALLER_SOURCE), ...headers, ...library], 'Building the program that calls the original\'s functions', windows?.env);
+  if (windows) copyFileSync(made(CALLER), CALLER);
+  writeFileSync(CALLER_STAMP, JSON.stringify({ mgba, caller: caller() }) + '\n');
   if (windows) {
     copyFileSync(made(ORIGINAL), ORIGINAL);
     copyFileSync(made(READER), READER);

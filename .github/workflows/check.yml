@@ -36,3 +36,5 @@ jobs:
       - run: npm run test:consoles
       - run: npm run test:real-console
       - run: npm run test:match
+      # the function check, with a third small program of the project's own, built into a made-up cartridge and run in mGBA
+      - run: npm run test:twin
