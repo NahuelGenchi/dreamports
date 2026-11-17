@@ -1421,13 +1421,61 @@ kbd {
   fill: currentColor;
 }
 
-/* a game, opened inside the page by Play (#1443): black comes up over the menu, the game's page loads behind the
-   cover, and the cover lifts off it once the game has drawn */
+/* a game, opened inside the page by Play (#1443): the menu goes to night, the game's page loads behind the cover, and
+   the night comes off it once the game has drawn. What plays between them draws on two layers of its own, one over the
+   game and one under it (#1446, src/scripts/launch-transitions.ts) */
 .game {
   position: fixed;
   inset: 0;
   z-index: 10;
-  background: #000;
+  background: #050a24;
+}
+
+.game.is-waiting {
+  visibility: hidden;
+}
+
+.game-fx {
+  position: fixed;
+  inset: 0;
+  z-index: 11;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.game-fx-back {
+  z-index: 9;
+}
+
+.game-fx > * {
+  position: absolute;
+}
+
+.game-fx-night {
+  inset: 0;
+  background: #050a24;
+}
+
+.game-fx-grid {
+  left: 0;
+  top: 0;
+  width: 100%;
+  image-rendering: pixelated;
+}
+
+.game-fx-beam {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 3px;
+  margin-top: -1.5px;
+  background: #bfe6ff;
+  box-shadow: 0 0 18px 4px #8fd1ff;
+}
+
+.game-fx-flyer {
+  transform-origin: 0 0;
+  image-rendering: pixelated;
 }
 
 .game-frame {
@@ -1446,7 +1494,7 @@ kbd {
   place-items: center;
   padding-left: max(24px, env(safe-area-inset-left, 0px));
   padding-right: max(24px, env(safe-area-inset-right, 0px));
-  background: #000;
+  background: #050a24;
   text-align: center;
 }
 
@@ -1461,7 +1509,7 @@ kbd {
   --mk-s3: #8fd1ff;
 }
 
-/* a game that opens at once shows black alone; one that takes longer says what's opening */
+/* a game that opens at once shows night alone; one that takes longer says what's opening */
 .game-cover .bo-inner {
   opacity: 0;
   animation: game-wait 0.3s ease-out 0.7s forwards;
@@ -1477,7 +1525,7 @@ kbd {
   }
 }
 
-/* under the black, nothing of the menu draws */
+/* under the night, nothing of the menu draws */
 .launcher.is-under {
   visibility: hidden;
 }
@@ -1628,6 +1676,13 @@ dialog.card[open] {
 
 .set-row + .set-row {
   border-top: 2px solid var(--line);
+}
+
+/* on a wide screen that isn't tall, such as a laptop's, the rows close up so that all of Settings shows at once (#1446) */
+@media (min-width: 700px) and (max-height: 820px) {
+  .set-row {
+    padding-block: 10px;
+  }
 }
 
 .set-text {
