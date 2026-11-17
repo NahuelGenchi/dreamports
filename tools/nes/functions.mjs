@@ -18,36 +18,19 @@
 // code names it as `sub_04_923F`, a word, the bank in two hexadecimal digits and the address the console sees, or as
 // `sub_C39C` in the last bank (nesAddress).
 
+import { INSTRUCTIONS, LENGTH } from './6502.mjs';
+
 const BANK = 0x4000;
 const HEADER = 16;
 // the mappers whose program is laid out as above: none, MMC1, UNROM, CNROM, and UNROM's look-alikes
 const MAPPERS = new Set([0, 1, 2, 3, 71, 94]);
 
-// the 6502's instructions, by opcode: what each is and how its operand is read. Opcodes missing aren't instructions
-// any NES game's own code uses, so data read as code soon meets one.
-const OPS = [];
-for (const [names, modes] of [
-  ['ORA AND EOR ADC STA LDA CMP SBC', 'izx zp imm abs izy zpx aby abx'],
-]) {
-  names.split(' ').forEach((name, i) => modes.split(' ').forEach((mode, j) => {
-    if (name === 'STA' && mode === 'imm') return;
-    OPS[i << 5 | j << 2 | 1] = { name, mode };
-  }));
-}
-Object.entries({
-  0x00: 'BRK imp', 0x06: 'ASL zp', 0x08: 'PHP imp', 0x0A: 'ASL acc', 0x0E: 'ASL abs', 0x10: 'BPL rel', 0x16: 'ASL zpx', 0x18: 'CLC imp', 0x1E: 'ASL abx',
-  0x20: 'JSR abs', 0x24: 'BIT zp', 0x26: 'ROL zp', 0x28: 'PLP imp', 0x2A: 'ROL acc', 0x2C: 'BIT abs', 0x2E: 'ROL abs', 0x30: 'BMI rel', 0x36: 'ROL zpx', 0x38: 'SEC imp', 0x3E: 'ROL abx',
-  0x40: 'RTI imp', 0x46: 'LSR zp', 0x48: 'PHA imp', 0x4A: 'LSR acc', 0x4C: 'JMP abs', 0x4E: 'LSR abs', 0x50: 'BVC rel', 0x56: 'LSR zpx', 0x58: 'CLI imp', 0x5E: 'LSR abx',
-  0x60: 'RTS imp', 0x66: 'ROR zp', 0x68: 'PLA imp', 0x6A: 'ROR acc', 0x6C: 'JMP ind', 0x6E: 'ROR abs', 0x70: 'BVS rel', 0x76: 'ROR zpx', 0x78: 'SEI imp', 0x7E: 'ROR abx',
-  0x84: 'STY zp', 0x86: 'STX zp', 0x88: 'DEY imp', 0x8A: 'TXA imp', 0x8C: 'STY abs', 0x8E: 'STX abs', 0x90: 'BCC rel', 0x94: 'STY zpx', 0x96: 'STX zpy', 0x98: 'TYA imp', 0x9A: 'TXS imp',
-  0xA0: 'LDY imm', 0xA2: 'LDX imm', 0xA4: 'LDY zp', 0xA6: 'LDX zp', 0xA8: 'TAY imp', 0xAA: 'TAX imp', 0xAC: 'LDY abs', 0xAE: 'LDX abs', 0xB0: 'BCS rel', 0xB4: 'LDY zpx', 0xB6: 'LDX zpy', 0xB8: 'CLV imp', 0xBA: 'TSX imp', 0xBC: 'LDY abx', 0xBE: 'LDX aby',
-  0xC0: 'CPY imm', 0xC4: 'CPY zp', 0xC6: 'DEC zp', 0xC8: 'INY imp', 0xCA: 'DEX imp', 0xCC: 'CPY abs', 0xCE: 'DEC abs', 0xD0: 'BNE rel', 0xD6: 'DEC zpx', 0xD8: 'CLD imp', 0xDE: 'DEC abx',
-  0xE0: 'CPX imm', 0xE4: 'CPX zp', 0xE6: 'INC zp', 0xE8: 'INX imp', 0xEA: 'NOP imp', 0xEC: 'CPX abs', 0xEE: 'INC abs', 0xF0: 'BEQ rel', 0xF6: 'INC zpx', 0xF8: 'SED imp', 0xFE: 'INC abx',
-}).forEach(([op, text]) => {
-  const [name, mode] = text.split(' ');
-  OPS[op] = { name, mode };
-});
-const LENGTH = { imp: 1, acc: 1, imm: 2, zp: 2, zpx: 2, zpy: 2, izx: 2, izy: 2, rel: 2, abs: 3, abx: 3, aby: 3, ind: 3 };
+/** Whether the tools know which bank is where on a cartridge of this mapper. */
+export const followsBanks = mapper => MAPPERS.has(mapper);
+
+// the 6502's documented instructions, by opcode. The others aren't instructions any NES game's own code uses, so data
+// read as code soon meets one.
+const OPS = INSTRUCTIONS.map(instruction => (instruction.undocumented ? undefined : instruction));
 // BRK is an instruction, but no game's code runs one on purpose: a zero is padding or data
 const isCode = op => OPS[op] && op !== 0x00;
 const ENDS = new Set(['RTS', 'RTI', 'JMP']);
@@ -100,12 +83,15 @@ export function nesNames(line, banks) {
 
 /** Each function found, as { address, size }, with the address its offset in the program, sorted by address.
  *  `listed` are functions a list already knows, whose code is followed too. `pool` collects the bytes the code reads
- *  as data: its tables of addresses. */
-export function findFunctions(bytes, listed = [], pool = new Set()) {
+ *  as data: its tables of addresses. `notes` collects more of what following the code found, for `read`: in `words`
+ *  (a Set), where each whole address of a table starts, its low byte and then its high, and in `leads` (a Map), for
+ *  the offset of each JSR, JMP and RTS, the offsets the code was followed to from there, and in `walked` (a Map), the
+ *  offset of each instruction the code reaches, with its length. */
+export function findFunctions(bytes, listed = [], pool = new Set(), notes = {}) {
   const program = nesProgram(bytes);
   if (!program) throw new Error("That copy isn't an NES game's.");
   const { prg, banks, mapper } = program;
-  if (!MAPPERS.has(mapper)) throw new Error(`The tools can't follow the banks of an NES game on mapper ${mapper} yet: --from <list> takes its functions from a disassembler.`);
+  if (!followsBanks(mapper)) throw new Error(`The tools can't follow the banks of an NES game on mapper ${mapper} yet: --from <list> takes its functions from a disassembler.`);
   const last = banks <= 2 ? null : banks - 1;
   const size = prg.length;
   // the bank an offset is in, and the one it sees itself in at $8000-$BFFF
@@ -221,6 +207,7 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
       if (to === null || !readsAsCode(to)) break;
       if (to > Math.min(l, h) && sameWindow(to, l)) first = Math.min(first, to);
       pool.add(l).add(h);
+      if (h === l + 1) notes.words?.add(l);
       out.push(to);
       last = i;
     }
@@ -237,6 +224,12 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
     const work = [[start, { a: null, x: null, y: null, bank: context, from: {}, part: null, parts: {} }]];
     const extent = { end: start + 1 };
     let bad = false;
+    const lead = (list, from, to, bank) => {
+      list.push([to, bank]);
+      if (!notes.leads) return;
+      if (!notes.leads.has(from)) notes.leads.set(from, new Set());
+      notes.leads.get(from).add(to);
+    };
     while (work.length) {
       let [pc, regs] = work.pop();
       // where A came from: a table read with an index, as { table: offset }
@@ -258,21 +251,22 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
         const length = LENGTH[mode];
         if (!sameWindow(pc, pc + length - 1)) break;
         for (let i = 0; i < length; i++) seen.add(pc + i);
+        notes.walked?.set(pc, length);
         extent.end = Math.max(extent.end, pc + length);
         const operand = length === 3 ? u16(pc + 1) : length === 2 ? u8(pc + 1) : null;
         const next = pc + length;
         if (name === 'JSR') {
           const to = target(operand, regs.bank);
           if (to !== null) {
-            calls.push([to, regs.bank]);
+            lead(calls, pc, to, regs.bank);
             if (readsListAfterCall(to)) {
               // the list after the call, read by the routine: the address of each case, while they read as code
-              for (const t of readTable(next, next + 1, 2, 0, regs.bank, extent)) jumps.push([t, regs.bank]);
+              for (const t of readTable(next, next + 1, 2, 0, regs.bank, extent)) lead(jumps, pc, t, regs.bank);
               break;
             }
             // a call to a JMP ($xx) alone: through the pointer this code just built
             const pointer = jumpsThrough(to);
-            if (pointer !== null) for (const t of through(pointer)) jumps.push([t, regs.bank]);
+            if (pointer !== null) for (const t of through(pointer)) lead(jumps, pc, t, regs.bank);
             const switched = switches(to, regs.a);
             if (switched !== undefined) regs.bank = switched;
           }
@@ -295,18 +289,18 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
             pc = to;
             continue;
           }
-          jumps.push([to, regs.bank]);
+          lead(jumps, pc, to, regs.bank);
           break;
         }
         if (name === 'JMP') {
           // JMP ($xxxx): through a pointer the code just built from two tables, or one kept in the program
           const tabled = through(operand);
-          for (const t of tabled) jumps.push([t, regs.bank]);
+          for (const t of tabled) lead(jumps, pc, t, regs.bank);
           if (!tabled.length && operand >= 0x8000) {
             const at = programOffset(operand, regs.bank, banks);
             if (at !== null && at + 1 < size) {
               const to = programOffset(u16(at), regs.bank, banks);
-              if (to !== null) jumps.push([to, regs.bank]);
+              if (to !== null) lead(jumps, pc, to, regs.bank);
             }
           }
           break;
@@ -314,7 +308,7 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
         if (name === 'RTS') {
           // the RTS trick: an address from two tables, less one, pushed high byte first
           const [hi, lo] = pushed.slice(-2);
-          if (hi && lo) for (const t of readTable(lo.table, hi.table, lo.step, 1, regs.bank)) jumps.push([t, regs.bank]);
+          if (hi && lo) for (const t of readTable(lo.table, hi.table, lo.step, 1, regs.bank)) lead(jumps, pc, t, regs.bank);
           break;
         }
         if (name === 'RTI') break;
@@ -334,7 +328,7 @@ export function findFunctions(bytes, listed = [], pool = new Set()) {
           // once the stack is put there
           stacked.push(aFrom);
           const [lo, hi] = stacked.slice(-2);
-          if (lo && hi && lo.table !== hi.table) for (const t of readTable(lo.table, hi.table, lo.step, 1, regs.bank)) jumps.push([t, regs.bank]);
+          if (lo && hi && lo.table !== hi.table) for (const t of readTable(lo.table, hi.table, lo.step, 1, regs.bank)) lead(jumps, pc, t, regs.bank);
         }
         if (mode === 'zp' && !['LDA', 'LDX', 'LDY', 'STA', 'CMP', 'CPX', 'CPY', 'BIT', 'ORA', 'AND', 'EOR', 'ADC', 'SBC'].includes(name)) delete regs.parts[operand];
         const part = regs.part;
