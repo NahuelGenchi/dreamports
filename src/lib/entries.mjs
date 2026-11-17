@@ -156,10 +156,9 @@ export function proofOf(game, { original, map, progress, portMap, parts, proofs,
     };
     // each function's proof, in a version that keeps them: of a twin the code still has, with no stop in it
     if (proofs) {
-      const lines = Array.isArray(proofs.functions) ? proofs.functions : [];
-      if (!Array.isArray(proofs.functions) || !lines.every(line => Array.isArray(line) && ['bytes', 'memory'].includes(line[1]))) {
-        problems.push(`${at}proofs.json isn't as npm run dp -- match and npm run dp -- twin write it.`);
-      }
+      const all = Array.isArray(proofs.functions) ? proofs.functions : [];
+      const lines = all.filter(line => Array.isArray(line) && typeof line[0] === 'string' && ['bytes', 'memory'].includes(line[1]));
+      if (!Array.isArray(proofs.functions) || lines.length !== all.length) problems.push(`${at}proofs.json isn't as npm run dp -- match and npm run dp -- twin write it.`);
       missing(lines.map(([address]) => address), 'proofs.json');
       const holds = lines.filter(([address]) => named.has(address) && !stopped.has(address));
       const kind = which => holds.filter(line => line[1] === which).length;
