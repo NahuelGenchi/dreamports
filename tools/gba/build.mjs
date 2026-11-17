@@ -62,16 +62,25 @@ function run(command, args, what, env) {
 
 /** Builds what is missing, saying each step. */
 export function build(log = console.log) {
+  withBuildTools(log, tools => buildHere(log, tools));
+}
+
+/** Does `work` with what builds here: on Windows a compiler and CMake got for this once and cleared away after
+ *  (windows.mjs), which `work` is given, and anywhere else the computer's own, when it's given null. */
+export function withBuildTools(log, work) {
   mkdirSync(FOLDER, { recursive: true });
-  if (process.platform !== 'win32') return buildHere(log, null);
+  if (process.platform !== 'win32') return work(null);
   rmSync(WINDOWS_BUILD, { recursive: true, force: true });
   try {
-    buildHere(log, windowsTools(log));
+    return work(windowsTools(log));
   } finally {
     // it's about a gigabyte, and a later build gets it all again. One that won't go is emptied by the next build
     try { rmSync(WINDOWS_BUILD, { recursive: true, force: true }); } catch {}
   }
 }
+
+/** Builds the reference emulator with those tools. */
+export const buildWith = (log, tools) => buildHere(log, tools);
 
 function buildHere(log, windows) {
   let { mgba, source } = built();

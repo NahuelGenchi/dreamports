@@ -1,7 +1,7 @@
 // The proof tools, started with `npm run dp -- <tool>`. tools/README.md says what each does.
 
 const TOOLS = {
-  setup: 'Builds the reference emulator the original runs in, on this computer',
+  setup: 'Builds the reference emulator the original runs in, and the Game Boy Advance\'s compiler, on this computer',
   rom: 'Checks a copy of a game, says which game and version it is, and remembers where it is',
   play: 'Opens a game in a browser with your copy, and with --record keeps what you play as a recording (--from: after another\'s presses; --start: at a start point)',
   route: 'Finds the presses that take the original from where a recording leaves it to a goal, such as an act\'s end, and writes them as a recording (--from: after another\'s presses; --minutes: how long it may search)',
@@ -14,6 +14,7 @@ const TOOLS = {
   new: 'Writes a claimed game\'s first files: its page, its code on the kit with everything wired in, its license and its entry',
   portmap: 'Makes the port map: each function of the original the Dreamport\'s code names, and where',
   read: 'Prints one of the original\'s functions, its ARM or Thumb instructions, from your copy, for code its decompilation lacks',
+  match: 'Builds a Game Boy Advance game\'s C with the compiler the original was built with, and says which functions come out as the original\'s bytes',
   share: 'Publishes a preview on GitHub Pages from your fork, with the clips of what the step changed for its pull request',
   find: 'Shows where a game stands: its lead, its numbers, its team build, who has claimed what, its free tasks and what the others wait on',
   tasks: 'Opens a Task issue for each of a game\'s foundations and parts that has none yet, foundations first',

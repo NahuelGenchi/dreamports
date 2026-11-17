@@ -38,10 +38,10 @@ import { nesNames } from './nes/functions.mjs';
 
 // a label's word and its address, or a number's: in the cartridge, or in the work RAMs, where a game copies or unpacks
 // code to run it
-const NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_0?|0x0?)([238][0-9A-Fa-f]{6})\b/g;
+export const NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_0?|0x0?)([238][0-9A-Fa-f]{6})\b/g;
 // the first addresses of the cartridge and of the work RAMs, which code uses as the base of every address in them, not
 // as functions
-const BASES = new Set([0x08000000, 0x02000000, 0x03000000]);
+export const BASES = new Set([0x08000000, 0x02000000, 0x03000000]);
 // the words that mark a stop, in any language's code
 export const STOP = /\bdp:stop\b/;
 
@@ -163,7 +163,7 @@ export function portMap(game) {
 const SOURCES = { js: /\.m?js$/, c: /\.[ch]$/ };
 // the version's code: every file of its language in its folder, but its proof, and for the JavaScript one, the
 // folders of the versions in other languages
-function codeFiles(folder, language, top = true) {
+export function codeFiles(folder, language, top = true) {
   const files = [];
   const others = new Set(top && language === 'js' ? OTHER_LANGUAGES.map(key => LANGUAGES[key].folder) : []);
   for (const entry of readdirSync(folder, { withFileTypes: true })) {

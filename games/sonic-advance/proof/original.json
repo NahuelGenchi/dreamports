@@ -4,6 +4,10 @@
   "title": "SONICADVANCE",
   "code": "ASOE",
   "sha1": "d842afa7dd1e84de08addb94a51506f1bcafd551",
+  "compiler": {
+    "name": "agbcc",
+    "flags": ["-mthumb-interwork", "-O2", "-fprologue-bugfix"]
+  },
   "shows": {
     "character": {
       "address": "03005084",
