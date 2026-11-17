@@ -16,6 +16,12 @@ export const seesInstructions = true;
 /** It also gives the cartridge's save memory each time it changes (lib/saves.mjs). */
 export const seesSaves = true;
 
+/** It can start the original from a save memory, a file given as `startSave`, in place of one never written. */
+export const startsFromSave = true;
+
+/** A file's size that is a Game Boy Advance cartridge's save memory: its EEPROM, SRAM or flash. */
+export const isSaveMemory = size => [0x200, 0x2000, 0x8000, 0x10000, 0x20000].includes(size);
+
 /** Builds the reference emulator if it isn't built yet. */
 export function ensureOriginal(log) {
   if (!isBuilt()) build(log);
@@ -24,9 +30,10 @@ export function ensureOriginal(log) {
 /** Runs the original along with a person, as lib/run-reference.mjs says. */
 export const playOriginal = copy => playReference({ program: ORIGINAL, args: [copy, 'live'], width: WIDTH, height: HEIGHT });
 
-/** Runs `frames` frames of the original from power-on, as lib/run-reference.mjs says, its sound 65536 samples a second. */
-export const runOriginal = ({ copy, ...rest }) => runReference({
-  ...rest, program: ORIGINAL, width: WIDTH, height: HEIGHT, stateBytes: STATE_BYTES,
+/** Runs `frames` frames of the original from power-on, as lib/run-reference.mjs says, its sound 65536 samples a second.
+ *  With `startSave`, a file, its cartridge holds that save as it starts. */
+export const runOriginal = ({ copy, startSave, ...rest }) => runReference({
+  ...rest, ...(startSave ? { env: { ...rest.env, DP_SAVE_START: startSave } } : {}), program: ORIGINAL, width: WIDTH, height: HEIGHT, stateBytes: STATE_BYTES,
   args: names => [copy, String(rest.frames), names.buttons, names.functions, names.pictures, names.sound, names.sets, names.states],
 });
 

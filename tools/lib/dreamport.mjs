@@ -18,8 +18,9 @@ export async function buildIfC(game) {
 }
 
 /** Loads games/<game>/ with `query`, gives it the copy and, when `start`, presses Play and waits for the game. `game`
- *  can be a version in another language, such as sonic-battle/c (src/lib/languages.mjs). */
-export async function openDreamport(page, server, game, copy, { query = '', start = true } = {}) {
+ *  can be a version in another language, such as sonic-battle/c (src/lib/languages.mjs). `saves`, each key's bytes, are
+ *  the saves the game starts from under the proof tools, as a player's report carries them (kit/gba/save.js). */
+export async function openDreamport(page, server, game, copy, { query = '', start = true, saves = null } = {}) {
   if (!existsSync(join(gameFolder(game), 'index.html'))) {
     // a game that started in C has no JavaScript version, and the tools name its version in C (src/lib/languages.mjs)
     const others = otherVersions(game);
@@ -27,6 +28,11 @@ export async function openDreamport(page, server, game, copy, { query = '', star
       : `games/${game}/ has no index.html, the page the game starts from.`);
   }
   await buildIfC(game);
+  if (saves) {
+    // there before any of the page's code runs, as a game may open its save as it loads
+    const given = Object.fromEntries(Object.entries(saves).map(([key, bytes]) => [key, Buffer.from(bytes).toString('base64')]));
+    await page.send('Page.addScriptToEvaluateOnNewDocument', { source: `globalThis.dreamportsProofSaves = ${JSON.stringify(given)};` });
+  }
   await go(page, `${server.url}/games/${game}/${query}`);
   await until(page, `document.querySelector('.setup')?.dataset.restored === 'true' && !!document.querySelector('.rom input[type=file]')`, 'the game\'s start screen, where it takes the copy');
   // what it says about this copy: a page that kept one from last time has read that by now, and has Play ready before it starts reading this

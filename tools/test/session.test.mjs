@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createSession, noteStartSave, recordingText, savesAtStart, startOf } from '../../kit/gba/session.js';
-import { cartridgeSave } from '../../kit/gba/save.js';
+import { cartridgeSave, proofStorage } from '../../kit/gba/save.js';
 import { expand } from '../lib/recording.mjs';
 
 const LAYOUT = { buttons: ['left', 'right', 'jump', 'boost'], gba: { left: 'LEFT', right: 'RIGHT', jump: 'A' } };
@@ -65,4 +65,16 @@ test('the save a visit began from is kept, whatever the game writes after', () =
   const recording = JSON.parse(recordingText(createSession(LAYOUT).recording('A session.')));
   assert.equal(recording.keptSave, true);
   assert.deepEqual(recording.held, []);
+});
+
+test('a proof tool gives the game the saves a report began from, and they last the run', () => {
+  globalThis.dreamportsProofSaves = { 'made-up-given': btoa('\x07\x08') };
+  const storage = proofStorage();
+  const save = cartridgeSave('made-up-given', storage);
+  assert.deepEqual([...save.read()], [7, 8]);
+  assert.equal(save.write(Uint8Array.of(1)), true);
+  assert.deepEqual([...cartridgeSave('made-up-given', proofStorage()).read()], [1], 'what the game writes it reads back');
+  assert.equal(cartridgeSave('made-up-none', storage).read(), null);
+  assert.equal(globalThis.localStorage?.getItem?.('made-up-given') ?? null, null, 'and nothing of it is kept in the browser');
+  delete globalThis.dreamportsProofSaves;
 });

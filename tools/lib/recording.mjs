@@ -23,10 +23,14 @@
 //   "clip": optional, the frames the clip shows: { "at", "frames" }, with at least 300 frames, five seconds, or all of
 //     a shorter recording's, which share refuses until it runs on further. Without one, prove's clip starts a second
 //     before the first frame the step changed (lib/clips.mjs)
+//   "saves": optional, and only in a player's report, kept in .dreamports/reports/ (docs/REPORTS.md): the saves the
+//     game began from, { "<key>": "<file>" }, each a file beside the recording, under the key the Dreamport keeps
+//     it by. prove starts the Dreamport from them, and the original from the one that is a cartridge's save memory. A
+//     save is a player's own, so a recording in a game's folder has none: it never goes in a commit.
 // }
 
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { CLIP_FRAMES } from './clips.mjs';
 
 const isFrame = n => Number.isInteger(n) && n >= 0;
@@ -72,6 +76,24 @@ function checkSets(sets, frames, where) {
   }
 }
 
+// a save's key, as the kit keeps it in the browser, and its file's name, beside the recording
+const SAVE_KEY = /^[a-z0-9][a-z0-9.-]{0,39}$/, SAVE_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.sav$/;
+
+/** Checks a recording's "saves", { key: file }, each file beside the recording `file`, and throws with what is wrong. */
+function checkSaves(saves, file) {
+  if (!saves || typeof saves !== 'object' || Array.isArray(saves)) throw new Error(`${file}: "saves" is { "<key>": "<file>" }, the saves a player's report began from`);
+  for (const [key, name] of Object.entries(saves)) {
+    if (!SAVE_KEY.test(key) || typeof name !== 'string' || !SAVE_FILE.test(name)) throw new Error(`${file}: "saves" has ${JSON.stringify(key)}: ${JSON.stringify(name)}, which isn't a save's key and a .sav file's name`);
+    if (!existsSync(join(dirname(file), name))) throw new Error(`${file}: its save ${name} isn't beside it`);
+  }
+}
+
+/** The saves a recording starts from, each key's bytes, read from beside its file, or null when it has none. */
+export function startSavesOf(recording) {
+  const entries = Object.entries(recording.saves ?? {});
+  return entries.length ? Object.fromEntries(entries.map(([key, name]) => [key, { file: join(dirname(recording.file), name), bytes: new Uint8Array(readFileSync(join(dirname(recording.file), name))) }])) : null;
+}
+
 /** Reads and checks a recording. */
 export function readRecording(file) {
   const recording = JSON.parse(readFileSync(file, 'utf8'));
@@ -80,6 +102,7 @@ export function readRecording(file) {
   if (start !== undefined) checkStart(start, file);
   checkHeld(held, frames, file);
   if (recording.sets !== undefined) checkSets(recording.sets, frames, `${file}, "sets"`);
+  if (recording.saves !== undefined) checkSaves(recording.saves, file);
   if (recording.players !== undefined) {
     const { players, others } = recording;
     if (![2, 3, 4].includes(players) || !Array.isArray(others) || others.length !== players - 1) throw new Error(`${file}: "players" is 2 to 4, and "others" the held lists of the players after the first`);
@@ -178,11 +201,12 @@ export function compress(perFrame) {
 }
 
 /** Writes a recording, a change of buttons to a line, so a change to it reads well in a diff. */
-export function writeRecording(file, { about, frames, held, onlyInOriginal = [], sets = [], clip, start }) {
+export function writeRecording(file, { about, frames, held, onlyInOriginal = [], sets = [], clip, start, saves }) {
   const lines = held.map(change => '    ' + JSON.stringify(change));
   const parts = [`  "about": ${JSON.stringify(about)}`, ...(start ? [`  "start": ${JSON.stringify(start)}`] : []), `  "frames": ${frames}`, `  "held": [\n${lines.join(',\n')}\n  ]`];
   if (onlyInOriginal.length) parts.push(`  "onlyInOriginal": ${JSON.stringify(onlyInOriginal)}`);
   if (sets.length) parts.push(`  "sets": ${JSON.stringify(sets)}`);
   if (clip) parts.push(`  "clip": ${JSON.stringify(clip)}`);
+  if (saves && Object.keys(saves).length) parts.push(`  "saves": ${JSON.stringify(saves)}`);
   writeFileSync(file, `{\n${parts.join(',\n')}\n}\n`);
 }

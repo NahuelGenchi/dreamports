@@ -7,7 +7,7 @@ import { deflateRawSync } from 'node:zlib';
 import { randomBytes } from 'node:crypto';
 import { FEWEST_FRAMES, MOST_PACKED, MOST_SAVE_BYTES, MOST_SAVES_PACKED, packHeld, packSave, packSaves, readReport, savesUnpack, unpackHeld, unpackSave } from '../../kit/gba/report.js';
 import { createSession } from '../../kit/gba/session.js';
-import { recordingOf } from '../reports.mjs';
+import { partingLine, recordingOf } from '../reports.mjs';
 
 const CHANGES = [[0, []], [50, ['A']], [65, []], [104, ['A', 'START']], [400, ['LEFT']]];
 const report = (over = {}) => ({ game: 'sonic-advance/c', reason: 'looked', frames: 600, ...packHeld(CHANGES), ...over });
@@ -180,4 +180,13 @@ test('what isn\'t a save is refused', async () => {
   refused([{ key: 'a', packed: 'AAAA'.repeat(MOST_SAVES_PACKED / 8) }, { key: 'b', packed: 'AAAA'.repeat(MOST_SAVES_PACKED / 8 + 1) }]);
   // and what a save carries besides its key and bytes is dropped
   assert.deepEqual(readReport(report({ saves: [{ key: 'made-up-save', packed, note: 'typed' }] })).saves, [{ key: 'made-up-save', packed }]);
+});
+
+test('playing a report says where the Dreamport and the original part ways', () => {
+  const same = partingLine('report-a', { result: { frames: 600, matched: 600, differs: [], soundDiffers: [] } });
+  assert.match(same, /^report-a: the Dreamport and the original stay the same for all 600 frames/);
+  const parted = partingLine('report-a', { result: { frames: 3000, matched: 1838, differs: [[1838, 1838]], soundDiffers: [] } }, '.dreamports/results/made-up/report-a/first-difference.png');
+  assert.equal(parted, 'report-a: the Dreamport and the original part ways at frame 1838 of 3000, 31 seconds in, in what they show: .dreamports/results/made-up/report-a/first-difference.png.');
+  assert.match(partingLine('report-a', { result: { frames: 3000, matched: 90, differs: [[90, 90]], soundDiffers: [[90, 90]] } }), /at frame 90 of 3000, 2 seconds in, in their sound\.$/);
+  assert.equal(partingLine('report-a', { error: 'report-a: The game didn\'t start.' }), 'report-a: couldn\'t be played. The game didn\'t start.');
 });

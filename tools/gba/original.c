@@ -57,6 +57,10 @@
 // frame before, the frame, how many bytes the memory has, and the bytes, to a whole word. The file stays on the
 // contributor's computer, and goes when it's been read.
 //
+// DP_SAVE_START, when it's set, names a file with the cartridge's save memory as the game starts, in place of one
+// never written: a player's report carries the save their game began from, and the same presses play something else
+// from another (docs/REPORTS.md). The file is read and never written. What DP_SAVES writes is then what changed since.
+//
 // For each frame it writes to stdout: a hash of the picture (FNV-1a over each pixel's 15-bit colour, as the
 // console has it), the picture's one colour if every pixel has it or else 0xFFFFFFFF, the number of functions that
 // ran in the frame and their places in the code map (32 bits each), then the picture itself if PICTURES names the
@@ -93,6 +97,7 @@
 #include <mgba/internal/arm/decoder.h>
 #include <mgba/internal/gba/gba.h>
 #include <mgba/internal/gba/savedata.h>
+#include <mgba-util/vfs.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -195,6 +200,27 @@ static uint16_t picture[WIDTH * HEIGHT];
 static struct sound sound;
 
 // no configuration from the computer: no BIOS file and default settings, the same on every computer
+// the save memory the game starts from (DP_SAVE_START), kept to tell what the game writes from what it began with
+static uint8_t* startSave;
+static size_t startSaveSize;
+
+// gives the emulator a copy of the file's bytes as the cartridge's save memory, so the file itself is never written
+static void loadStartSave(struct mCore* core) {
+	const char* path = getenv("DP_SAVE_START");
+	if (!path) return;
+	FILE* file = fopen(path, "rb");
+	if (!file) { fprintf(stderr, "Can't read %s\n", path); exit(2); }
+	fseek(file, 0, SEEK_END);
+	long size = ftell(file);
+	fseek(file, 0, SEEK_SET);
+	if (size < 1 || size > 0x20000) { fprintf(stderr, "%s isn't a cartridge's save memory\n", path); exit(2); }
+	startSave = malloc((size_t) size);
+	if (fread(startSave, 1, (size_t) size, file) != (size_t) size) { fprintf(stderr, "Can't read %s\n", path); exit(2); }
+	fclose(file);
+	startSaveSize = (size_t) size;
+	if (!core->loadSave(core, VFileMemChunk(startSave, startSaveSize))) { fprintf(stderr, "mGBA can't take the save\n"); exit(2); }
+}
+
 static struct mCore* openCopy(const char* path) {
 	mLogSetDefaultLogger(&logger);
 	struct mCore* core = GBACoreCreate();
@@ -205,6 +231,7 @@ static struct mCore* openCopy(const char* path) {
 		fprintf(stderr, "mGBA can't open the copy\n");
 		exit(1);
 	}
+	loadStartSave(core);
 	return core;
 }
 
@@ -644,6 +671,8 @@ int main(int argc, char** argv) {
 			if (size != savedSize) {
 				saved = realloc(saved, size ? size : 1);
 				memset(saved, 0xFF, size);
+				// a game that started from a save has that in it before it writes anything
+				if (startSave) memcpy(saved, startSave, startSaveSize < size ? startSaveSize : size);
 				savedSize = size;
 			}
 			if (size && memcmp(saved, gba->memory.savedata.data, size)) {
