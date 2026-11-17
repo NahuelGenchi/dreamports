@@ -1,7 +1,9 @@
 // npm run dp -- reports [--site <address>]: fetches the reports players sent from a Dreamport's settings since the last
 // time (docs/REPORTS.md), and writes each as a recording in .dreamports/reports/<game>/, on this computer, ready to be
-// played next to the original. A report is the buttons a player held and the reason they chose, and nothing of who
-// sent it. Only the owner's key reads them: it's kept in .dreamports/reports.key, which never goes in a commit, and
+// played next to the original. A report is the buttons a player held, the reason they chose and the save their game
+// started from when it had one, which is written beside the recording as <name>.<key>.sav: the save memory's bytes, as
+// a cartridge holds them where the Dreamport saves as its cartridge does (docs/STANDARD.md#saves). Nothing of who sent
+// it beyond what that save holds. Only the owner's key reads them: it's kept in .dreamports/reports.key, which never goes in a commit, and
 // the site holds the same key as its secret REPORTS_KEY.
 //
 // To try one, copy its file into the game's proof/recordings/ under a name of its own and run
@@ -11,19 +13,23 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LOCAL } from './lib/paths.mjs';
 import { writeRecording } from './lib/recording.mjs';
-import { REASONS, readReport, unpackHeld } from '../kit/gba/report.js';
+import { REASONS, readReport, unpackHeld, unpackSave } from '../kit/gba/report.js';
 
 const SITE = 'https://dreamports.net';
 const FOLDER = join(LOCAL, 'reports'), KEY = join(LOCAL, 'reports.key'), SEEN = join(FOLDER, 'seen.json');
 
-/** A report as the site gives it, as the recording it is: { name, version, recording }, or null when it isn't one. */
+/**
+ * A report as the site gives it, as the recording it is: { name, version, recording, saves }, or null when it isn't
+ * one. `saves` are the saves its game began from, each { key, packed }.
+ */
 export function recordingOf(row) {
-  const report = readReport({ game: row.game, reason: row.reason, start: row.start, keptSave: row.kept_save === 1, frames: row.frames, buttons: String(row.buttons ?? '').split(' ').filter(Boolean), held: row.held });
+  const report = readReport({ game: row.game, reason: row.reason, start: row.start, keptSave: row.kept_save === 1, saves: row.saves ?? [], frames: row.frames, buttons: String(row.buttons ?? '').split(' ').filter(Boolean), held: row.held });
   if (typeof report === 'string' || !/^[A-Za-z0-9_-]{8,32}$/.test(String(row.id))) return null;
   const day = new Date(Number(row.created)).toISOString().slice(0, 10);
   return {
     name: `report-${day}-${String(row.id).toLowerCase().replace(/[^a-z0-9]/g, '')}`,
     version: report.game,
+    saves: report.saves,
     recording: {
       about: `A player's report of ${report.game}, sent from its settings on ${day}: ${REASONS[report.reason].toLowerCase()}. Say what it plays once it's been looked at.`,
       ...(report.start ? { start: report.start } : {}),
@@ -57,7 +63,15 @@ export async function run(args) {
       mkdirSync(folder, { recursive: true });
       const { keptSave, ...recording } = read.recording;
       writeRecording(join(folder, `${read.name}.json`), recording);
-      kept.push(`${read.version}: ${read.name}, ${Math.round(recording.frames / 60)} seconds${keptSave ? ', from a game with a save' : ''}`);
+      // the saves it began from, beside it: what isn't a save is left out
+      let saves = 0;
+      for (const { key, packed } of read.saves) {
+        const bytes = await unpackSave(packed);
+        if (!bytes) continue;
+        writeFileSync(join(folder, `${read.name}.${key}.sav`), bytes);
+        saves++;
+      }
+      kept.push(`${read.version}: ${read.name}, ${Math.round(recording.frames / 60)} seconds${saves ? `, with the save it began from (${read.name}.*.sav)` : keptSave ? ', from a game with a save it doesn\'t carry' : ''}`);
     }
     if (reports.length < 50) break;
   }
@@ -70,6 +84,6 @@ export async function run(args) {
   console.log(`${kept.length} new report${kept.length === 1 ? '' : 's'} from ${site}, each a recording in .dreamports/reports/, on this computer:`);
   for (const line of kept) console.log(`  ${line}`);
   if (kept.length < found) console.log(`${found - kept.length} more weren't reports, and were left out.`);
-  console.log('To try one, copy its file into the game\'s proof/recordings/ and prove it with --quick. One from a game with a save may differ from where the game first reads it.');
+  console.log('To try one, copy its file into the game\'s proof/recordings/ and prove it with --quick. One from a game with a save may differ from where the game first reads it: prove starts from nothing saved, so its save is beside it for a look until it can start from one.');
   return 0;
 }

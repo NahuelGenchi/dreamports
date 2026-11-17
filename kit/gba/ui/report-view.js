@@ -1,7 +1,8 @@
 // Reporting a problem, a view of the settings (sheet.js): a player who saw something wrong picks what it was and
 // presses Send report, and the site gets the buttons they held since the game started, which is all it takes to play
-// it again next to the original (../session.js, ../report.js). Nothing is typed, and nothing else is sent: no save, no
-// copy of the game and nothing of who played. Cloudflare's Turnstile checks, out of sight, that a person is sending
+// it again next to the original (../session.js, ../report.js), with the save the game started from when it had one,
+// as the same presses play something else from another save. Nothing is typed, and nothing else is sent: no copy of
+// the game and nothing of who played beyond what that save holds, their progress and the name they typed in the game. Cloudflare's Turnstile checks, out of sight, that a person is sending
 // it, and shows itself only when it has to. Where the site takes no reports, such as a copy of a Dreamport somewhere
 // else, the same button saves the presses as a file.
 //
@@ -15,8 +16,8 @@
 // report is kept on the player's device and sent for them the next time a Dreamport opens (../report-outbox.js): the
 // view says Report saved, and nobody is asked to wait or to come back.
 
-import { REASONS, FEWEST_FRAMES, packHeld } from '../report.js';
-import { recordingText } from '../session.js';
+import { REASONS, FEWEST_FRAMES, packHeld, packSaves } from '../report.js';
+import { recordingText, savesAtStart } from '../session.js';
 import { keepReport, outcomeOf, sendWaitingReports, waitingReports } from '../report-outbox.js';
 
 const pixels = (w, h, d) => `<svg viewBox="0 0 ${w} ${h}" shape-rendering="crispEdges" aria-hidden="true"><path d="${d}"/></svg>`;
@@ -33,7 +34,7 @@ const CROSS = pixels(13, 13, 'M4 4h1v1H4zM5 5h1v1H5zM6 6h1v1H6zM7 7h1v1H7zM8 8h1
 const SHOWN_GOING = 900;
 const CHEVRON = '<svg class="chev" viewBox="0 0 3 5" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h1v1h1v1h1v1H2v1H1v1H0z"/></svg>';
 const TURNSTILE = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-const PROMISE = 'Sends only the buttons you pressed. No save, no game files, nothing about you.';
+const PROMISE = 'Sends the buttons you pressed and your save in this game, with the name you typed in it. Nothing else about you.';
 
 /** The settings' row that opens the view, for a list of rows; createReportView makes it work. */
 export function reportRow() {
@@ -47,10 +48,13 @@ export function reportRow() {
 // the game and its version, as the page's address has them: sonic-advance, or sonic-advance/c
 const gameOf = path => path.split('/').filter(part => part && !['play', 'games'].includes(part) && /^[a-z0-9-]+$/.test(part)).slice(0, 2).join('/');
 
-/** What a session sends as its report (../report.js), with the reason the player chose. */
-export function reportOf(session, reason, { path = location.pathname, query = location.search } = {}) {
+/**
+ * What a session sends as its report (../report.js), with the reason the player chose and the saves the visit began
+ * from, `saves` (../session.js).
+ */
+export async function reportOf(session, reason, { path = location.pathname, query = location.search, saves = savesAtStart() } = {}) {
   const recording = session.recording('', query);
-  return { game: gameOf(path), reason, start: recording.start ?? '', keptSave: recording.keptSave === true, frames: recording.frames, ...packHeld(recording.held) };
+  return { game: gameOf(path), reason, start: recording.start ?? '', keptSave: saves.length > 0, saves: await packSaves(saves), frames: recording.frames, ...packHeld(recording.held) };
 }
 
 // Turnstile's script, asked for once, the first time the view opens
@@ -238,7 +242,7 @@ export function createReportView(sheet, root, input) {
       setTimeout(() => URL.revokeObjectURL(link.href), 60000);
       return { state: 'sent', title: 'Saved as a file', more: 'This copy of the game takes no reports. Send the file to whoever runs it.' };
     }
-    const report = reportOf(input.session, reason);
+    const report = await reportOf(input.session, reason);
     // out of reach, or full for today: it waits
     if (!site?.open) return kept(report);
     const word = await checked();
