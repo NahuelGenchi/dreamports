@@ -36,5 +36,7 @@ jobs:
       - run: npm run test:c-kit
       - run: npm run test:consoles
       - run: npm run test:real-console
+      # the function check, with a small program of the project's own built into a made-up cartridge, which mGBA runs
+      - run: npm run test:twin
       - run: npm run test:match
       - run: npm run test:nes-twin
