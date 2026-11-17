@@ -28,7 +28,7 @@ export function proofAt(game, read, list) {
     const recordings = Object.fromEntries(list(`${shared}/recordings`).filter(name => name.endsWith('.json')).map(name => [name.slice(0, -5), json(`${shared}/recordings/${name}`)]));
     return proofOf(game, {
       original: json(`${shared}/original.json`), map: json(`${shared}/code-map.json`), progress: json(`${own}/progress.json`),
-      portMap: json(`${own}/port-map.json`), parts: json(`${shared}/parts.json`), recordings,
+      portMap: json(`${own}/port-map.json`), parts: json(`${shared}/parts.json`), proofs: json(`${own}/proofs.json`), recordings,
     });
   } catch {
     return null;

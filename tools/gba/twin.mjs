@@ -14,6 +14,13 @@
 // the original says which values each call read from memory and which numbers it compared with or loaded, and the
 // calls after it change those values, mostly to those numbers and the ones beside them, so a `>` written as `>=`
 // meets the one value that tells them apart.
+//
+// The same memory is a proof of the paths the calls took, and of no other. So the program also says which of the
+// function's own instructions each call ran and which way each went on, and a function counts as proven only when,
+// over the calls compared, every instruction of the original's ran and each of its branches went both ways
+// (pathsLeft). One whose calls left a path out is said to be the same as far as they went, with the first of what
+// never ran. In a version that keeps its proofs (../lib/proofs.mjs), each function proven is kept there as proven by
+// the same memory, and one that differs loses that line. Only this tool and `match` write them.
 
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -25,6 +32,8 @@ import { hex, readCodeMap, readOriginal } from '../lib/proof-files.mjs';
 import { copyWith } from '../lib/copies.mjs';
 import { cKit, SAME_FLAGS, twinsFolder, WASM_FLAGS } from '../lib/c.mjs';
 import { versionTwins } from '../lib/twins.mjs';
+import { asksForProofs, keepProofs, keptText } from '../lib/proofs.mjs';
+import { instructionsOf, readUnreachable, waysLeft } from '../lib/played.mjs';
 import { namesOf, placeAddresses } from '../lib/wasm-addresses.mjs';
 import { versionOf } from '../../src/lib/languages.mjs';
 import { resolve } from '../read.mjs';
@@ -62,6 +71,8 @@ export const DEFAULTS = {
 // how many calls may be made for each one that has to be compared, and how many with nothing compared before a
 // function is given up on
 const TRIES = 4, HOPELESS = 400;
+// the fewest calls of a function a proof by the same memory is made of
+export const KEPT_FROM = 1000;
 // how often the memory goes back to how the original left it: after this many calls, or this many in a row that
 // couldn't be compared, so made-up values don't pile up until nothing runs any more
 const FRESH_EVERY = 256, FRESH_AFTER = 12;
@@ -153,10 +164,11 @@ class Original {
   }
 
   /** One call, as call.c answers it: how it `ended`, what it `gave`, the `hardware` it used, where it `leftFor`, the
-   *  values it read, the numbers it loaded, the `pairs` of values it compared, and each stretch of the image it changed. */
-  async call({ address, args, changes, limit }) {
+   *  values it read, the numbers it loaded, the `pairs` of values it compared, each stretch of the image it changed,
+   *  and, of the `span` bytes the function is long, each instruction that `ran`, with the ways it went on. */
+  async call({ address, span = 0, args, changes, limit }) {
     const registers = [0, 1, 2, 3].map(i => args[i] ?? 0), onStack = args.slice(4);
-    this.ask('c', [address, ...registers, limit, onStack.length, ...onStack, changes.length, ...changes.flat()]);
+    this.ask('c', [address, span, ...registers, limit, onStack.length, ...onStack, changes.length, ...changes.flat()]);
     const head = await this.take(36);
     const [ended, gave, steps, hardware, leftFor, readCount, numberCount, pairCount, runCount] = Array.from({ length: 9 }, (_, i) => head.readUInt32LE(i * 4));
     const lists = await this.take(readCount * 8 + numberCount * 4 + pairCount * 8);
@@ -169,7 +181,10 @@ class Original {
       const where = run.readUInt32LE(0), length = run.readUInt32LE(4);
       runs.push({ at: where, bytes: Buffer.from(await this.take(length)) });
     }
-    return { ended, gave, steps, hardware, leftFor, reads, numbers, pairs, runs };
+    // each of the function's own instructions that ran, with the ways it went on (call.c)
+    const ranCount = (await this.take(4)).readUInt32LE(0), list = await this.take(ranCount * 8);
+    const ran = Array.from({ length: ranCount }, (_, i) => [list.readUInt32LE(i * 8), list.readUInt32LE(i * 8 + 4)]);
+    return { ended, gave, steps, hardware, leftFor, reads, numbers, pairs, runs, ran };
   }
 
   close() {
@@ -566,7 +581,7 @@ export async function compareCalls({ original, twins, start, functions, options,
   await original.set(mirror);
   // the addresses of the functions the module has twins of, for a value that is a pointer to code
   const code = functions.map(f => f.address);
-  for (const f of functions) Object.assign(f, { compared: 0, tried: 0, aside: { never: 0, left: 0, unbuilt: 0, mismatch: 0 }, fields: new Map(), good: [], result: null });
+  for (const f of functions) Object.assign(f, { compared: 0, tried: 0, aside: { never: 0, left: 0, unbuilt: 0, mismatch: 0 }, fields: new Map(), good: [], result: null, ran: new Map() });
   let since = 0, lost = 0;
   for (;;) {
     const open = functions.filter(f => !f.result && f.compared < calls && f.tried < calls * TRIES && !(f.tried >= HOPELESS && !f.compared));
@@ -611,7 +626,7 @@ export async function compareCalls({ original, twins, start, functions, options,
         changed.push([address, bytes, (value & mask) >>> 0]);
       }
     }
-    const theirs = await original.call({ address: f.address, args, changes: changed, limit });
+    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit });
     const expected = Buffer.from(mirror);
     for (const [address, bytes, value] of changed) write(expected, inImage(address), bytes, value);
     // each value it read, by what it held: one that was compared with something is worth setting to that, and to
@@ -695,6 +710,8 @@ export async function compareCalls({ original, twins, start, functions, options,
       if (f.good.length < 32) f.good.push(args);
       else f.good[choose.below(32)] = args;
       if (f.returns) choose.gave(theirs.gave);
+      // the original's own instructions this call ran, and the ways each went on: only a call compared counts
+      for (const [where, ways] of theirs.ran) f.ran.set(where, (f.ran.get(where) ?? 0) | ways);
       continue;
     }
     let where = 0;
@@ -707,6 +724,31 @@ export async function compareCalls({ original, twins, start, functions, options,
     await twins.set(mirror);
   }
   twins.stop();
+}
+
+/**
+ * What the calls compared left out of a function of the original: `bytes` are the function's, `address` where it is,
+ * `ran` a Map of each of its instructions that ran to the ways it went on, as call.c says them, and `ruledOut` the
+ * branch ways the game's unreachable.json says can't happen (../lib/played.mjs). Answers { total, left }: how many
+ * instructions and branch ways it has, and each that never ran, as [address, 'never ran', 'never taken' or
+ * 'always taken']. Its instructions are found from its start through both ways of every branch, from where it
+ * ran, and from each word of it that isn't an instruction and holds an address inside it, as the table of a switch
+ * does, so a case no call reached is seen as left out.
+ */
+export function pathsLeft(bytes, address, ran, ruledOut = new Map()) {
+  const seeds = new Set([...ran.keys()].map(where => where - address).filter(offset => offset >= 0 && offset < bytes.length));
+  let found;
+  for (;;) {
+    found = instructionsOf(bytes, [...seeds]);
+    const before = seeds.size;
+    for (let word = (4 - address % 4) % 4; word + 4 <= bytes.length; word += 4) {
+      if (found.instructions.has(word) || found.instructions.has(word + 2)) continue;
+      const target = (((bytes[word] | bytes[word + 1] << 8 | bytes[word + 2] << 16 | bytes[word + 3] << 24) & ~1) >>> 0) - address;
+      if (target > 0 && target < bytes.length && !found.instructions.has(target)) seeds.add(target);
+    }
+    if (seeds.size === before) break;
+  }
+  return waysLeft(found, address, ran, ruledOut);
 }
 
 /** What a call was, in words: its number, what it was given and what was changed for it. */
@@ -752,13 +794,13 @@ export function outcome(f, { calls, seconds }) {
  * Answers { error }, when it didn't build, { missing }, the values with no address, or { functions }, each with its
  * `kind` and `line` as outcome gives them, and those with no address as { name, address: null }.
  */
-export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], files = [], console: id = 'gba', shifts = [], build = openBuild({ root, includes, files, console: id, shifts }), only = null, addressOf, isArm = () => false, options = {}, seed = options.seed ?? DEFAULTS.seed }) {
+export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], files = [], console: id = 'gba', shifts = [], build = openBuild({ root, includes, files, console: id, shifts }), only = null, addressOf, isArm = () => false, sizeOf = () => null, ruledOut = new Map(), options = {}, seed = options.seed ?? DEFAULTS.seed }) {
   const all = { ...DEFAULTS, ...options };
   const built = await build.link({ file, only, addressOf });
   if (built.error) return { error: built.error };
   if (built.missing.length) return { missing: built.missing };
   const { twins, unknown } = built.unit;
-  const functions = built.calls.map(f => ({ ...f, address: f.address | (isArm(f.address) ? 0 : 1) }));
+  const functions = built.calls.map(f => ({ ...f, address: f.address | (isArm(f.address) ? 0 : 1), span: (f.address >= CARTRIDGE && sizeOf(f.address)) || 0 }));
   if (functions.length) {
     const runner = new Twins({ module: built.module, copy, seconds: all.seconds });
     try {
@@ -768,13 +810,26 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
     }
   }
   const asked = name => only === null || twins.find(twin => twin.name === name).address === only;
+  let rom = null;
+  const cartridge = (address, size) => (rom ??= readFileSync(copy)).subarray(address - CARTRIDGE, address - CARTRIDGE + size);
   return {
     functions: [
-      ...functions.map(f => ({ name: f.name, address: f.address & ~1, line: f.line, compared: f.compared, ...outcome(f, all) })),
+      ...functions.map(f => ({ name: f.name, address: f.address & ~1, line: f.line, compared: f.compared, ...whole(f, outcome(f, all), cartridge, ruledOut) })),
       ...twins.filter(twin => twin.address === null && only === null).map(twin => ({ name: twin.name, address: null, line: twin.line })),
       ...unknown.filter(asked).map(name => ({ name, address: twins.find(twin => twin.name === name).address, kind: 'unchecked', line: 'the check can\'t read what it takes and gives back.' })),
     ],
   };
+}
+
+// a function found the same, with whether its calls took every path of the original's, which is what makes it a
+// proof: `whole`, and after its line what they left out
+function whole(f, found, cartridge, ruledOut) {
+  if (found.kind !== 'same') return found;
+  if (!f.span) return { ...found, whole: false, line: `${found.line}, but the code map has no function there, so which of its paths ran can't be said, and it isn't proven` };
+  const { total, left } = pathsLeft(cartridge(f.address & ~1, f.span), f.address & ~1, f.ran, ruledOut);
+  if (!left.length) return { ...found, whole: true, line: `${found.line}, which took every path of the original's` };
+  const first = left.slice(0, 3).map(([where, how]) => `${at(where)} ${how}`).join(', ');
+  return { ...found, whole: false, left, line: `${found.line}, but they left out ${count(left.length)} of the original's ${count(total)} instructions and branch ways, such as ${first}: it's the same as far as they went, and isn't proven until calls take those too` };
 }
 
 const LABELS = { same: 'The same memory', differs: 'Differs', never: 'Never came back', stopped: 'Stopped', few: 'Too few calls', unchecked: 'Not checked' };
@@ -818,10 +873,15 @@ export async function twin(game, options = {}) {
   const header = await twinsFolder(folder);
   const build = openBuild({ root: folder, files, shifts, console: original.console, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
+  // what goes in the version's proofs, when it keeps them (../lib/proofs.mjs)
+  const sizes = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.size]));
+  const { ways: ruledOut } = readUnreachable(game);
+  const proven = [], differing = [];
   try {
     for (const file of chosen) {
       const result = await checkFile({
         original: opened.original, start: opened.start, copy: copy.path, file, build, only, addressOf, isArm, options: all,
+        sizeOf: address => sizes.get(address) ?? null, ruledOut,
       });
       const where = inRepo(file);
       if (result.error) {
@@ -843,6 +903,8 @@ export async function twin(game, options = {}) {
           continue;
         }
         totals[f.kind]++;
+        if (f.whole) proven.push({ key: hex(f.address), calls: f.compared });
+        else if (['differs', 'never', 'stopped'].includes(f.kind)) differing.push(hex(f.address));
         log(`  ${LABELS[f.kind]}  ${at(f.address)} ${f.name}${f.kind === 'same' ? ', ' : ': '}${f.line}`);
       }
     }
@@ -855,5 +917,11 @@ export async function twin(game, options = {}) {
   }
   const checked = Object.values(totals).reduce((sum, n) => sum + n, 0);
   log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, ${count(all.frames)} frames in (seed ${all.seed}).`);
+  if (totals.same) log(`${count(proven.length)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
+  // a proof is found with the game's own names, and over enough calls to be worth the name
+  if (!asksForProofs(game)) return totals.differs || totals.never || totals.stopped ? 3 : 0;
+  if (all.addresses) log('Nothing was kept as proven: --addresses is for trying a file out, and a proof is found with the game\'s own names.');
+  else if (all.calls < KEPT_FROM) log(`Nothing was kept as proven: a proof by the same memory is over ${count(KEPT_FROM)} calls or more.`);
+  else for (const line of keptText(game, keepProofs(game, { kind: 'memory', proven, failed: differing }), 'memory')) log(line);
   return totals.differs || totals.never || totals.stopped ? 3 : 0;
 }

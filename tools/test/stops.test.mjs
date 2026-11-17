@@ -59,6 +59,19 @@ test('a port map from before stops counts as one with none', () => {
   assert.equal(proofOf('made-up', files(portMap)).ported.percent, 25);
 });
 
+test('a version that keeps its functions\' proofs isn\'t done while one has none, and one that keeps none is asked for none', () => {
+  const portMap = { functions: [['08001000', 'c/a.c:1'], ['08002000', 'c/a.c:9'], ['08003000', 'c/b.c:3']], unmatched: [], stops: [['08002000', 'c/a.c:12', '0x08002020']] };
+  const lines = [['08001000', 'bytes', 'a'.repeat(16), 'b'.repeat(16)], ['08002000', 'memory', 'a'.repeat(16), 'b'.repeat(16), 2000], ['08003000', 'memory', 'a'.repeat(16), 'b'.repeat(16), 2000]];
+  const proof = proofOf('made-up/c', { ...files(portMap), proofs: { original: 'abc', functions: lines } });
+  // the function with a stop isn't proven, whatever its line says, and the fourth has no twin at all
+  assert.deepEqual(proof.proofs, { bytes: 1, memory: 1, unproven: 2 });
+  assert.ok(leftToDo(proof).includes('2 functions with no proof'));
+  assert.equal(proofOf('made-up/c', files(portMap)).proofs, undefined);
+  assert.ok(!leftToDo(proofOf('made-up/c', files(portMap))).some(line => /proof/.test(line)));
+  assert.throws(() => proofOf('made-up/c', { ...files(portMap), proofs: { original: 'other', functions: [] } }), /proofs\.json is for another copy/);
+  assert.throws(() => proofOf('made-up/c', { ...files(portMap), proofs: { original: 'abc', functions: [['08009999', 'bytes', 'a', 'b']] } }), /proofs\.json counts 1 function the code map doesn't have/);
+});
+
 test('a Dreamport is done only with both numbers whole, no stop, every function named and every save the same', () => {
   const whole = { ported: { percent: 100, stops: 0, unnamed: 0 }, gameplay: { percent: 100 } };
   assert.deepEqual(leftToDo(whole), []);

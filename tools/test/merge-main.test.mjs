@@ -47,6 +47,19 @@ function both(mine, theirs) {
   git('switch', '-q', 'work');
 }
 
+test('proofs both sides added are both kept, a function to a line, and the branch\'s own where both have one', () => {
+  const PROOFS = 'games/one/c/proof/proofs.json';
+  const proofs = lines => `{\n  "original": "x",\n  "from": "the tools",\n  "functions": [\n${lines.map(line => `    ${JSON.stringify(line)}`).join(',\n')}\n  ]\n}\n`;
+  put({ [PROOFS]: proofs([['08000100', 'bytes', 'a', 'b']]) });
+  git('switch', '-q', 'main');
+  git('merge', '-q', 'work');
+  git('switch', '-q', 'work');
+  both({ [PROOFS]: proofs([['08000100', 'bytes', 'a', 'b'], ['08000180', 'memory', 'mine', 'b', 2000], ['08000200', 'bytes', 'c', 'd']]) },
+    { [PROOFS]: proofs([['08000100', 'bytes', 'a', 'b'], ['08000180', 'bytes', 'main', 'b'], ['08000300', 'bytes', 'e', 'f']]) });
+  assert.deepEqual(startMerge(cwd, 'main').conflicts, []);
+  assert.deepEqual(JSON.parse(read(PROOFS)).functions, [['08000100', 'bytes', 'a', 'b'], ['08000180', 'memory', 'mine', 'b', 2000], ['08000200', 'bytes', 'c', 'd'], ['08000300', 'bytes', 'e', 'f']]);
+});
+
 test('a branch with main in it has nothing to do', () => {
   assert.deepEqual(startMerge(cwd, 'main'), { upToDate: true, conflicts: [] });
   assert.equal(merging(cwd), false);

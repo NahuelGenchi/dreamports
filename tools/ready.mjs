@@ -1,5 +1,7 @@
-// npm run dp -- ready <game> [--no-worse]: everything a step has to pass before it goes out, in one go: the port map,
-// every recording, `npm run check` and `npm run build`. With --no-worse, which `update` gives it for a merge, recordings
+// npm run dp -- ready <game> [--no-worse] [--task <function or task>]: everything a step has to pass before it goes out, in one go: the port map,
+// every recording, `npm run check` and `npm run build`. For a version made a function at a time (lib/proofs.mjs) it
+// goes by each function's proof too: every proof kept has to hold still, and with --task, a function's address or a
+// task's name, each function of that task has to have its proof (`npm run dp -- proofs <version> --check`). With --no-worse, which `update` gives it for a merge, recordings
 // may differ as long as no frame that matched before does (lib/as-before.mjs). It prints what prove found and, of the rest, only what's wrong, with
 // the whole of it kept in .dreamports/ready/, as their full output costs an agent thousands of tokens on every request after it.
 
@@ -9,6 +11,7 @@ import { join } from 'node:path';
 import { REPO, LOCAL } from './lib/paths.mjs';
 import { merging } from './lib/merge-main.mjs';
 import { DIFFERS_AS_BEFORE } from './lib/as-before.mjs';
+import { asksForProofs } from './lib/proofs.mjs';
 
 const KEPT_LINES = 30;
 
@@ -16,8 +19,10 @@ const npm = script => (process.env.npm_execpath ? [process.execPath, [process.en
 const tool = (...args) => [process.execPath, [join(REPO, 'tools', 'dp.mjs'), ...args]];
 
 export async function run(args) {
-  const [game] = args.filter(arg => !arg.startsWith('--'));
-  if (!game) throw new Error('Usage: npm run dp -- ready <game> [--no-worse]');
+  const at = args.indexOf('--task'), task = at < 0 ? null : args[at + 1];
+  const [game] = args.filter((arg, i) => !arg.startsWith('--') && (at < 0 || i !== at + 1));
+  if (!game || (at >= 0 && !task)) throw new Error('Usage: npm run dp -- ready <game> [--no-worse] [--task <function or task>]');
+  if (task && !asksForProofs(game)) throw new Error(`${game} keeps no proofs, so it has no task of functions: its tasks are its parts.`);
   const noWorse = args.includes('--no-worse');
   const folder = join(LOCAL, 'ready');
   mkdirSync(folder, { recursive: true });
@@ -32,6 +37,8 @@ export async function run(args) {
     console.log(`${name}: failed. Its last ${Math.min(lines.length, KEPT_LINES)} lines, of ${lines.length} kept in .dreamports/ready/:\n${lines.slice(-KEPT_LINES).join('\n')}`);
   };
   step('port map', tool('portmap', game));
+  // a version made a function at a time: its proofs hold, and its task's functions each have one
+  if (asksForProofs(game)) step('proofs', tool('proofs', game, '--check', ...(task ? ['--task', task] : [])));
   // what the recordings found is the point, so it shows as prove says it: in full where there's news, and summed up
   // where a recording came out as when last proven. Frames that differ fail the step
   const proved = spawnSync(...tool('prove', game), { cwd: REPO, stdio: 'inherit' });

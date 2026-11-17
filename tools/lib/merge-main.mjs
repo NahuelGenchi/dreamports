@@ -15,6 +15,8 @@ const PROGRESS = /^games\/([^/]+(?:\/[^/]+)?)\/proof\/progress\.json$/;
 // what was played of the original's code (lib/played.mjs), which prove writes again with progress.json
 const PLAYED = /^games\/[^/]+(?:\/[^/]+)?\/proof\/played\.json$/;
 const ENTRY = /^games\/([^/]+)\/entry\.md$/;
+// each function's proof, in a version that keeps them (lib/proofs.mjs)
+const PROOFS = /^games\/[^/]+(?:\/[^/]+)?\/proof\/proofs\.json$/;
 
 const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 2 ** 28, stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 const lines = text => text.split('\n').filter(Boolean);
@@ -48,6 +50,18 @@ function bothProgress(ours, theirs) {
   return `${JSON.stringify({ ...main, recordings }, null, 2)}\n`;
 }
 
+/**
+ * Both sides' proofs, a function to a line: each side proved its own functions, so a line only one side has stays,
+ * and where both have one the branch's does, as it's of the branch's own code. A line that no longer holds once the
+ * two are together is found by `npm run dp -- proofs --check`, which `ready` runs after the merge.
+ */
+function bothProofs(ours, theirs) {
+  const mine = JSON.parse(ours), main = JSON.parse(theirs);
+  const lines = new Map([...(main.functions ?? []), ...(mine.functions ?? [])].map(line => [line[0], line]));
+  const text = [...lines.values()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(line => `    ${JSON.stringify(line)}`);
+  return `{\n  "original": ${JSON.stringify(main.original)},\n  "from": ${JSON.stringify(main.from)},\n  "functions": [${text.length ? `\n${text.join(',\n')}\n  ` : ''}]\n}\n`;
+}
+
 /** docs/STATUS.md with main's table and whichever side changed the words around it, or null when both did. */
 function bothStatus(base, ours, theirs) {
   const [was, mine, main] = [base, ours, theirs].map(text => (text === null ? null : splitTable(text)));
@@ -64,6 +78,13 @@ function settled(cwd, file) {
   if (PROGRESS.test(file) && ours !== null && theirs !== null) {
     try {
       return bothProgress(ours, theirs);
+    } catch {
+      return undefined;
+    }
+  }
+  if (PROOFS.test(file) && ours !== null && theirs !== null) {
+    try {
+      return bothProofs(ours, theirs);
     } catch {
       return undefined;
     }

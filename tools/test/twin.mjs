@@ -15,22 +15,13 @@ import { fileURLToPath } from 'node:url';
 import { LOCAL } from '../lib/paths.mjs';
 import { withBuildTools } from '../gba/build.mjs';
 import { buildCompilers, isCompilerBuilt } from '../gba/agbcc.mjs';
-import { assemble } from '../gba/thumb.mjs';
 import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
 import { checkFile, ensureCaller, openOriginal } from '../gba/twin.mjs';
-import { madeUpGame } from './made-up-game.mjs';
+import { cartridge, compiler, FUNCTIONS, NAMED, VIA } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
-const compiler = { name: 'agbcc', flags: ['-mthumb-interwork', '-O2', '-fprologue-bugfix'] };
-const CARTRIDGE = 0x08000000;
-// where the made-up cartridge has each function, as the program's comments say, and each value the program names
-const FUNCTIONS = { Fall: 0x08000200, Scale: 0x08000240, Sum: 0x08000280, Paint: 0x080002C0, Step: 0x08000300, Skip: 0x08000320, Choose: 0x08000340, Run: 0x08000380 };
-const NAMED = new Map([['gBall', 0x03000100], ['gFrame', 0x03000020], ['gHandler', 0x03000040], ['gSteps', 0x08000600]]);
-// what the compiler calls to call through a pointer: one instruction each, which the test puts in the cartridge itself
-const VIA = { _call_via_r0: 0x08000500, _call_via_r1: 0x08000504, _call_via_r2: 0x08000508, _call_via_r3: 0x0800050C };
-const STEPS = [1, 2, 5, 9];
 const CALLS = 400;
 
 const failures = [];
@@ -38,32 +29,6 @@ const check = (ok, what) => {
   console.log(`  ${ok ? 'ok' : 'FAILED'}: ${what}`);
   if (!ok) failures.push(what);
 };
-
-// The made-up cartridge, from the assembly the compiler wrote: a header and a loop that does nothing, each function's
-// bytes where FUNCTIONS says, with each place the assembler left filled in, and the few bytes the program doesn't define.
-function cartridge(assembly) {
-  const { sections, symbols, relocations } = assemble(assembly);
-  const text = Buffer.from(sections['.text'].bytes), { rom } = madeUpGame({ size: 0x1000 });
-  const all = [...symbols].filter(([, symbol]) => symbol.function).map(([name, symbol]) => ({ name, at: symbol.at })).sort((a, b) => a.at - b.at);
-  all.forEach((f, i) => { f.until = all[i + 1]?.at ?? text.length; });
-  const around = at => all.find(f => at >= f.at && at < f.until);
-  const moved = at => { const f = around(at); return FUNCTIONS[f.name] + at - f.at; };
-  for (const { at, kind, name, addend } of relocations) {
-    const symbol = symbols.get(name);
-    const target = symbol?.section === '.text' ? moved(symbol.at) + addend + (symbol.function ? 1 : 0) : (NAMED.get(name) ?? VIA[name]) + addend;
-    if (kind === 'word') text.writeUInt32LE(target, at);
-    else {
-      const jump = (target & ~1) - (moved(at) + 4);
-      text.writeUInt16LE(0xF000 | ((jump >> 12) & 0x7FF), at);
-      text.writeUInt16LE(0xF800 | ((jump >> 1) & 0x7FF), at + 2);
-    }
-  }
-  for (const f of all) text.copy(rom, FUNCTIONS[f.name] - CARTRIDGE, f.at, f.until);
-  // bx r0 to bx r3
-  Object.values(VIA).forEach((address, register) => rom.writeUInt16LE(0x4700 | register << 3, address - CARTRIDGE));
-  Buffer.from(STEPS).copy(rom, NAMED.get('gSteps') - CARTRIDGE);
-  return rom;
-}
 
 rmSync(work, { recursive: true, force: true });
 mkdirSync(work, { recursive: true });
@@ -100,9 +65,12 @@ const program = (...replaced) => {
   writeFileSync(join(folder, 'program.c'), source);
   return join(folder, 'program.c');
 };
+// how long the cartridge's functions are, as a game's code map says it
+const lengths = new Map(first.functions.map(f => [FUNCTIONS[f.name], f.length]));
+const sizeOf = address => lengths.get(address) ?? null;
 const checking = async (file, options = {}, more = {}) => {
   const result = await checkFile({
-    original, start, copy, file, addressOf, options: { calls: CALLS, seconds: 1, ...options }, ...more,
+    original, start, copy, file, addressOf, sizeOf, options: { calls: CALLS, seconds: 1, ...options }, ...more,
   });
   return { ...result, by: Object.fromEntries((result.functions ?? []).map(f => [f.name, f])) };
 };
@@ -114,6 +82,13 @@ try {
   for (const name of Object.keys(FUNCTIONS)) {
     check(right.by[name]?.kind === 'same' && right.by[name].compared === CALLS, `${name} leaves the same memory over ${CALLS} calls${right.by[name]?.kind === 'same' ? '' : `: ${right.by[name]?.line}`}`);
   }
+
+  check(Object.keys(FUNCTIONS).every(name => right.by[name]?.whole === true), `and their calls took every path of the original's, which makes each a proof${Object.keys(FUNCTIONS).filter(name => right.by[name]?.whole !== true).map(name => `: ${name}, ${right.by[name]?.line}`).join('')}`);
+  const still = await checking(program(), { changes: false });
+  check(still.by.Fall?.kind === 'same' && still.by.Fall.whole === false && /left out/.test(still.by.Fall.line) && /never taken|always taken/.test(still.by.Fall.line),
+    `calls that never take a branch of the original's leave the same memory and are no proof: ${still.by.Fall?.line}`);
+  const unmapped = await checking(program(), {}, { sizeOf: () => null });
+  check(unmapped.by.Step?.kind === 'same' && unmapped.by.Step.whole === false, 'and neither is a function the code map doesn\'t have');
 
   console.log('A twin with > turned to >=:');
   const spoiled = program(['if (y > FLOOR)', 'if (y >= FLOOR)']);
