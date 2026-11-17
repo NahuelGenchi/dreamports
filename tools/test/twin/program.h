@@ -32,9 +32,9 @@ extern const u8 gSteps[4];
 // on the console a byte written to video memory is the hardware's to deal with
 #define VIDEO8(address, value) (*(volatile u8 *)(address) = (value))
 #else
-// and in a Dreamport the kit does what the hardware would (console.c stands in for it here)
-void video_put8(u32 address, u8 value);
-#define VIDEO8(address, value) video_put8(address, value)
+// and in a Dreamport the kit does what the hardware would, in its own video memory (kit/gba/c/gba.h)
+#include "gba.h"
+#define VIDEO8(address, value) gba_vram_write8((address) - TILES, value)
 #endif
 
 void Fall(void);

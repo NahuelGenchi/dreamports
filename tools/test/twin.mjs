@@ -1,10 +1,13 @@
 // npm run test:twin: tries the function check (../twin.mjs) with a program of the project's own (twin/program.c), so
 // it needs nobody's copy of any game. The console's own compiler builds the program into a made-up cartridge, each
 // function at the address its comment names, and the reference emulator runs that as the original. The same C is the
-// twins. Then the check has to say every twin leaves the same memory, and has to find each twin the test spoils: a
-// `>` turned to `>=`, found only because what the function reads is changed; a byte written to video memory as if it
-// were plain memory; a function reached only through a pointer; a twin that never comes back, stopped and not hung;
-// and a twin that calls something nothing built defines, which is said and not guessed at.
+// twins, built on the console's kit as a game's are. Then the check has to say every twin leaves the same memory, and
+// has to find each twin the test spoils: a `>` turned to `>=`, found only because what the function reads is changed;
+// a byte written to the kit's video memory as if it were plain memory, where the kit does what the hardware would; a
+// function reached only through a pointer; a twin that never comes back, stopped and not hung; and a twin that calls
+// something nothing built defines, which is said and not guessed at. A twin that names a function and a value of
+// another file is linked with that file, one written with the build's twins.h, as a game that keeps the console's
+// memory is, is checked as it is, and one that takes a struct as it is leaves the rest of its file checked.
 
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -13,7 +16,8 @@ import { LOCAL } from '../lib/paths.mjs';
 import { withBuildTools } from '../gba/build.mjs';
 import { buildCompilers, isCompilerBuilt } from '../gba/agbcc.mjs';
 import { assemble } from '../gba/thumb.mjs';
-import { addressFinder, matchFile } from '../gba/match.mjs';
+import { twinsHeader } from '../lib/c.mjs';
+import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
 import { checkFile, ensureCaller, openOriginal } from '../gba/twin.mjs';
 import { madeUpGame } from './made-up-game.mjs';
 
@@ -84,19 +88,21 @@ const { original, start, stack } = await openOriginal(copy, 2);
 check(stack >= 0x03007000 && stack < 0x03008000, `the original's functions are called on the game's own stack, at 0x0${stack.toString(16).toUpperCase()}`);
 // the program as it is, or with one thing replaced, in a folder of its own
 let variants = 0;
-const program = (replace = null) => {
-  if (!replace) return join(HERE, 'program.c');
+const program = (...replaced) => {
+  if (!replaced.length) return join(HERE, 'program.c');
   const folder = join(work, `changed-${++variants}`);
   cpSync(HERE, folder, { recursive: true });
-  const source = readFileSync(join(HERE, 'program.c'), 'utf8');
-  if (!source.includes(replace[0])) throw new Error(`The program has no "${replace[0]}" for the test to change.`);
-  writeFileSync(join(folder, 'program.c'), source.replace(replace[0], replace[1]));
+  let source = readFileSync(join(HERE, 'program.c'), 'utf8');
+  for (const [from, to] of replaced) {
+    if (!source.includes(from)) throw new Error(`The program has no "${from}" for the test to change.`);
+    source = source.replace(from, to);
+  }
+  writeFileSync(join(folder, 'program.c'), source);
   return join(folder, 'program.c');
 };
 const checking = async (file, options = {}, more = {}) => {
   const result = await checkFile({
-    original, start, copy, file, addressOf, options: { calls: CALLS, seconds: 1, ...options },
-    definedIn: name => (name === 'video_put8' ? join(file, '..', 'console.c') : null), ...more,
+    original, start, copy, file, addressOf, options: { calls: CALLS, seconds: 1, ...options }, ...more,
   });
   return { ...result, by: Object.fromEntries((result.functions ?? []).map(f => [f.name, f])) };
 };
@@ -122,9 +128,9 @@ try {
   check(other.by.Fall?.kind === 'differs', 'and another seed finds it too');
 
   console.log('A byte written to video memory:');
-  const plain = await checking(program(['VIDEO8(TILES + at, colour);', '*(u8 *)(TILES + at) = colour;']));
+  const plain = await checking(program(['VIDEO8(TILES + at, colour);', 'gba_vram[at] = colour;']));
   check(plain.by.Paint?.kind === 'differs' && /at 0x060000[0-9A-F]{2}, in the video memory/.test(plain.by.Paint.line), `a twin that writes one byte of a background tile differs, as the console writes two: ${plain.by.Paint?.line}`);
-  const sprite = await checking(program(['VIDEO8(SPRITE_TILES + at, colour);', '*(u8 *)(SPRITE_TILES + at) = colour;']));
+  const sprite = await checking(program(['VIDEO8(SPRITE_TILES + at, colour);', 'gba_vram[SPRITE_TILES - TILES + at] = colour;']));
   check(sprite.by.Paint?.kind === 'differs' && /at 0x060100[0-9A-F]{2}, in the video memory/.test(sprite.by.Paint.line), `and one that writes a sprite's tile differs, as the console drops it: ${sprite.by.Paint?.line}`);
   check(sameBut(plain, ['Paint']) && sameBut(sprite, ['Paint']), 'and every other twin is still the same');
 
@@ -134,6 +140,21 @@ try {
   const chosen = await checking(program(['which & 1 ? Step : Skip', 'which & 1 ? Skip : Step']));
   check(chosen.by.Choose?.kind === 'differs' && /at 0x0300004[0-3]/.test(chosen.by.Choose.line), `and a twin that keeps the address of the wrong function differs where the address is kept: ${chosen.by.Choose?.line}`);
 
+  console.log('A twin over two files, and one written with the build\'s twins.h:');
+  const split = program(['gFrame += 3;', 'gFrame += step_size() + kNothing;'], ['#include "program.h"', '#include "program.h"\nu32 step_size(void);\nextern const u32 kNothing;']);
+  const beside = join(split, '..', 'more.c');
+  writeFileSync(beside, '#include "program.h"\nconst u32 kNothing = 0;\n/** what Step moves the frame on by */\nu32 step_size(void) { return 3; }\n');
+  const joined = await checking(split, {}, { files: [split, beside] });
+  check(sameBut(joined, []), `a function and a value another file of the version defines are found by what that file built defines${joined.error ? `: ${joined.error}` : joined.missing ? `: no address for ${joined.missing}` : ''}`);
+  const apart = await checking(split);
+  check(apart.missing?.includes('kNothing'), 'and without that file the value has no address, which is said');
+  const headers = join(work, 'twins');
+  mkdirSync(headers, { recursive: true });
+  writeFileSync(join(headers, 'twins.h'), twinsHeader(twinsIn(readFileSync(join(HERE, 'program.c'), 'utf8')), NAMED));
+  const named = program(['#include "program.h"', '#include "program.h"\n#include "twins.h"'], ['which & 1 ? Step : Skip', 'which & 1 ? TWIN_ADDRESS(Step) : TWIN_ADDRESS(Skip)'], ['if (gHandler) gHandler();', 'if (gHandler) TWIN(gHandler)();']);
+  const written = await checking(named, {}, { includes: [join(named, '..'), headers] });
+  check(sameBut(written, []), `a twin that names functions by their addresses with twins.h, and calls through its table, leaves the same memory${written.error ? `: ${written.error}` : ''}`);
+
   console.log('A twin that never comes back:');
   const began = Date.now();
   const stuck = await checking(program(['return value * gSteps[kind & 3] + gFrame;', 'if (kind == 7) for (;;) gFrame++;\n  return value * gSteps[kind & 3] + gFrame;']));
@@ -141,11 +162,13 @@ try {
   check(sameBut(stuck, ['Scale']) && Date.now() - began < 60000, 'and the others are still checked, in a thread started again');
 
   console.log('What can\'t be checked:');
-  const alone = await checking(program(), {}, { definedIn: () => null });
-  check(alone.by.Paint?.kind === 'unchecked' && /the twin calls video_put8/.test(alone.by.Paint.line), `a twin that calls something nothing built defines isn't checked, and which is said: ${alone.by.Paint?.line}`);
+  const alone = await checking(program(['VIDEO8(TILES + at, colour);', '{ void nothing_built(void); nothing_built(); }']));
+  check(alone.by.Paint?.kind === 'unchecked' && /the twin calls nothing_built/.test(alone.by.Paint.line), `a twin that calls something nothing built defines isn't checked, and which is said: ${alone.by.Paint?.line}`);
   check(sameBut(alone, ['Paint']), 'and the others are');
   const one = await checking(program(), {}, { only: FUNCTIONS.Sum });
   check(one.functions?.length === 1 && one.by.Sum?.kind === 'same', 'one function can be checked by itself');
+  const whole = await checking(program(['/** Run, 0x08000380', 'struct Pair { s32 a, b; };\n/** Take, 0x080003C0: one of a pair, given whole */\ns32 Take(struct Pair pair) { return pair.a; }\n\n/** Run, 0x08000380']));
+  check(whole.by.Take?.kind === 'unchecked' && /can't read what it takes/.test(whole.by.Take.line) && sameBut(whole, []), `a twin that takes a struct as it is isn't called, and the rest of its file is checked${whole.error ? `: ${whole.error}` : ''}`);
   const nameless = await checking(program(), {}, { addressOf: name => (name === 'gFrame' ? null : addressOf(name)) });
   check(nameless.missing?.includes('gFrame'), 'a value with no address stops the file, and its name is said');
   const broken = await checking(program(['gFrame += 3;', 'gFrame += ;']));

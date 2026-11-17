@@ -89,7 +89,7 @@ export function sectionsOf(bytes) {
 }
 
 const CUSTOM = 0, IMPORT = 2, EXPORT = 7, CODE = 10, DATA = 11;
-const SYMBOL_TABLE = 8, UNDEFINED = 0x10, EXPLICIT_NAME = 0x40;
+const SYMBOL_TABLE = 8, LOCAL = 0x02, UNDEFINED = 0x10, EXPLICIT_NAME = 0x40;
 const FUNCTION = 0, DATA_SYMBOL = 1, SECTION_SYMBOL = 3;
 // the kinds of place a linker fills in: a function's number in the table, as a signed number or as four bytes, and an
 // address in memory, as an unsigned or a signed number or as four bytes
@@ -153,14 +153,14 @@ function symbolsOf(bytes, sections, imported) {
           r.skip();
           r.skip();
         }
-        symbols.push({ kind, name, undefined: undefined_ });
+        symbols.push({ kind, name, undefined: undefined_, local: (flags & LOCAL) !== 0 });
       } else if (kind === SECTION_SYMBOL) {
         r.skip();
         symbols.push({ kind });
       } else {
         const index = r.u32();
         const name = !undefined_ || flags & EXPLICIT_NAME ? r.name() : kind === FUNCTION ? imported[index] : null;
-        symbols.push({ kind, name, index, undefined: undefined_ });
+        symbols.push({ kind, name, index, undefined: undefined_, local: (flags & LOCAL) !== 0, asked: (flags & EXPLICIT_NAME) !== 0 });
       }
     }
     return symbols;
@@ -205,6 +205,27 @@ function callsThroughPointers(bytes, from, to) {
   }
   if (r.at !== to) throw new Error('A function of the module doesn\'t end where it says.');
   return found;
+}
+
+/**
+ * What a file of C built by itself, an object as the compiler writes one, gives the files it's linked with and asks
+ * of them, by name: the functions and the values it `defines`, but its own static ones, and the `functions` and
+ * `values` it names and doesn't define. A function the C itself says comes from outside, as the kit's page does, isn't
+ * asked of anyone.
+ */
+export function namesOf(object) {
+  const bytes = Uint8Array.from(object);
+  const sections = sectionsOf(bytes);
+  const { imported } = importsAndExports(bytes, sections);
+  const defines = new Set(), functions = new Set(), values = new Set();
+  for (const symbol of symbolsOf(bytes, sections, imported)) {
+    if ((symbol.kind !== FUNCTION && symbol.kind !== DATA_SYMBOL) || symbol.name === null) continue;
+    if (!symbol.undefined) {
+      if (!symbol.local) defines.add(symbol.name);
+    } else if (symbol.kind === DATA_SYMBOL) values.add(symbol.name);
+    else if (!symbol.asked) functions.add(symbol.name);
+  }
+  return { defines, functions: [...functions].filter(name => !defines.has(name)), values: [...values].filter(name => !defines.has(name)) };
 }
 
 /**

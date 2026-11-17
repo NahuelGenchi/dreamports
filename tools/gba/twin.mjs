@@ -5,8 +5,10 @@
 //
 // The twins are built from the same C the console's compiler builds, with the compiler `npm ci` brings, and then
 // given the console's addresses (../lib/wasm-addresses.mjs): each value they name sits where the console has it, a
-// function's address is the original's, and a call through a pointer finds the twin. Only the files with the
-// functions being checked are built, and the files with what those call.
+// function's address is the original's, and a call through a pointer finds the twin. They're built on the console's
+// kit, the folders and sources the game's own build takes (../lib/c.mjs), so a twin's hardware work is the kit's and
+// what it leaves in the kit's video memory, colours and sprites is what's compared. Each file is built once, and a
+// file's check links it with the files that define what it names, found by what each one built says it defines.
 //
 // What a function is given decides which of its paths run, so the check learns as it goes. The program that calls
 // the original says which values each call read from memory and which numbers it compared with or loaded, and the
@@ -15,22 +17,22 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, relative, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { gameFolder, REPO, sharedProofFolder } from '../lib/paths.mjs';
+import { REPO } from '../lib/paths.mjs';
 import { hex, readCodeMap, readOriginal } from '../lib/proof-files.mjs';
 import { copyWith } from '../lib/copies.mjs';
-import { placeAddresses } from '../lib/wasm-addresses.mjs';
+import { cKit, SAME_FLAGS, twinsFolder, WASM_FLAGS } from '../lib/c.mjs';
+import { versionTwins } from '../lib/twins.mjs';
+import { namesOf, placeAddresses } from '../lib/wasm-addresses.mjs';
 import { versionOf } from '../../src/lib/languages.mjs';
-import { codeFiles, readShifts } from '../portmap.mjs';
-import { readAddresses } from '../match.mjs';
 import { resolve } from '../read.mjs';
 import { build, CALLER, isBuilt, isCallerBuilt } from './build.mjs';
 import { looksLikeArm } from './functions.mjs';
 import { readCopy } from './header.mjs';
 import { addressFinder, twinsIn } from './match.mjs';
-import { addressAt, CARTRIDGE, IMAGE, inImage } from './twin-memory.mjs';
+import { addressAt, CARTRIDGE, IMAGE, inImage, REGIONS } from './twin-memory.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
 // the names the check adds to a module: what calls a twin, what finds the twin of an address, and what's called for an
@@ -38,10 +40,15 @@ const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
 const CALL = '__twin_call_', CODE = '__twin_code', NO_CODE = '__twin_no_code';
 // the module's own values and stack go above everything the console has, so they're never in its way
 const OWN_BASE = 0x0A000000;
-// how a twin is built: as the kit builds a game's C, with what the console's compiler takes for granted, a char with
-// no sign and code that reads through any pointer
-const FLAGS = ['--target=wasm32', '-std=gnu11', '-O2', '-fwrapv', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks', '-funsigned-char', '-ffreestanding',
-  '-nostdlib', '-mbulk-memory', '-msign-ext', '-mnontrapping-fptoint', '-w', '-Wno-int-conversion'];
+// How a twin is built: as the game's own build builds C, with what its console's compiler takes for granted, which
+// the kit names (cKit's twinFlags). What's the check's own: GNU C, which C written for the console's compiler is, and
+// no warnings, which are the game's build's to give.
+const flagsFor = kit => [...WASM_FLAGS, '-std=gnu11', ...SAME_FLAGS, ...kit.twinFlags, '-w', '-Wno-int-conversion'];
+// where the compiler finds the kit's folders and any other folder outside the C's own, beside the C: the compiler
+// `npm ci` brings doesn't find a file through a folder above
+const KIT = '__kit', ELSEWHERE = '__from';
+// what of the kit the thread that runs the twins reaches by name: its video memory, colours and sprites, and the copy
+const KIT_NAMES = [...REGIONS.filter(region => region.kit).map(region => region.kit), 'kit_copy', 'kit_copy_size'];
 
 /** What the check does unless it's told otherwise. */
 export const DEFAULTS = {
@@ -232,15 +239,65 @@ class Twins {
 // ---------------------------------------------------------------------------------------------------------------
 // Building the twins.
 
-// a folder's C, as the folders of names and bytes the compiler is given
-function treeOf(folder) {
+// a folder's C, as the folders of names and bytes the compiler is given: every folder under it, or only its own files
+function treeOf(folder, deep = true) {
   const files = {};
   for (const entry of readdirSync(folder, { withFileTypes: true })) {
     if (entry.isDirectory()) {
-      if (!entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== 'proof') files[entry.name] = treeOf(join(folder, entry.name));
+      if (deep && !entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== 'proof') files[entry.name] = treeOf(join(folder, entry.name));
     } else if (/\.(c|h|inc)$/.test(entry.name)) files[entry.name] = readFileSync(join(folder, entry.name));
   }
   return files;
+}
+
+let clang = null;
+// the compiler `npm ci` brings, ready
+async function compiler() {
+  if (!clang) {
+    try {
+      clang = await import('@yowasp/clang');
+    } catch {
+      throw new Error('The compiler for WebAssembly isn\'t here: run npm ci in the repository\'s folder first.');
+    }
+    await clang.runLLVM(null, {}, { fetchProgress: () => {} });
+  }
+  return clang;
+}
+
+// one run of the compiler: { made }, the file it was asked for, or { error }, what it said
+async function compile(args, files, out) {
+  const { runClang } = await compiler();
+  let said = '', built;
+  const stderr = bytes => { if (bytes) said += Buffer.from(bytes).toString('utf8'); };
+  try {
+    built = await runClang(['clang', ...args, '-o', out], files, { stdout: stderr, stderr });
+  } catch (error) {
+    return { error: (said.trim() || String(error.message ?? error).trim()).replace(/In file included from __twin_unit\d+\.c:1:\n/g, '') };
+  }
+  return built?.[out] ? { made: built[out] } : { error: said.trim() || 'the compiler wrote nothing.' };
+}
+
+// Each console's kit, built once for every check this program makes: its folders as the compiler is given them, how
+// they're named to it, each of its sources built by itself, and every name those define.
+const kits = new Map();
+function kitBuilt(id) {
+  if (!kits.has(id)) {
+    kits.set(id, (async () => {
+      const kit = cKit(id), flags = flagsFor(kit);
+      const tree = Object.fromEntries(kit.folders.map((folder, i) => [String(i), treeOf(folder, false)]));
+      const includes = kit.folders.flatMap((_, i) => ['-I', `${KIT}/${i}`]);
+      const objects = {}, defines = new Set();
+      for (const source of kit.sources) {
+        const name = `${KIT}_${Object.keys(objects).length}.o`;
+        const built = await compile([...flags, ...includes, '-c', `${KIT}/${kit.folders.findIndex(folder => !relative(folder, dirname(source)))}/${basename(source)}`], { [KIT]: tree }, name);
+        if (built.error) throw new Error(`The kit didn't build for the function check:\n${built.error}`);
+        objects[name] = built.made;
+        for (const defined of namesOf(built.made).defines) defines.add(defined);
+      }
+      return { flags, tree, includes, objects, defines };
+    })());
+  }
+  return kits.get(id);
 }
 
 // how many bits a type written with one of C's own names or the usual short ones holds, and whether it has a sign:
@@ -279,73 +336,142 @@ export function signatureOf(text, name) {
 }
 
 /**
- * Builds files of C to one module with the console's addresses.
- *   root: the folder the C is in, and includes: the folders it includes from
- *   units: [{ file, twins: [{ name, address }], calls: [{ name, params, returns }] }], each file with the functions it
- *     defines and the ones the check will call
- *   addressOf(name): where the console keeps a value, or null
- * Answers { module, missing, imports }, as placeAddresses does, or { error } with what the compiler said.
+ * A version's C, ready to be built for the check a file at a time, each file once however many checks link it.
+ *   root: the folder the C is in, and includes: the folders it includes from, besides the kit's
+ *   files: every .c file of the version, where what a file names and doesn't define is looked for
+ *   console: whose kit it's built on
+ *   shifts: how far the labels' release is from the copy (portmap.mjs)
+ * Answers { unit(file), link({ file, only, addressOf }) }.
  */
-export async function buildTwins({ root, includes, units, addressOf }) {
-  let clang;
-  try {
-    clang = await import('@yowasp/clang');
-  } catch {
-    throw new Error('The compiler for WebAssembly isn\'t here: run npm ci in the repository\'s folder first.');
-  }
-  await clang.runLLVM(null, {}, { fetchProgress: () => {} });
+export function openBuild({ root, includes = [root], files = [], console: id = 'gba', shifts = [] }) {
   const inRoot = path => relative(root, path).split(sep).join('/') || '.';
-  const files = treeOf(root), made = {}, addresses = new Map();
-  units.forEach((unit, i) => {
-    // the file itself, then a function for each twin the check calls, which takes and gives whole words and leaves
-    // the compiler to make of them what the twin takes, and what finds the file's twins by their addresses
-    const lines = [`#include "${inRoot(unit.file)}"`];
-    for (const { name, params, returns } of unit.calls) {
-      const given = params.map((_, n) => `unsigned a${n}`).join(', ') || 'void', passed = params.map((_, n) => `a${n}`).join(', ');
-      lines.push(returns ? `unsigned ${CALL}${name}(${given}) { return (unsigned)${name}(${passed}); }` : `unsigned ${CALL}${name}(${given}) { ${name}(${passed}); return 0; }`);
-    }
-    const cases = [];
-    for (const { name, address } of unit.twins) {
-      if (address === null || addresses.has(name)) continue;
-      addresses.set(name, address);
-      if (!cases.some(([other]) => other === address)) cases.push([address, name]);
-    }
-    // left as it's written: made faster, it becomes a list of the functions kept as data, which would be filled in
-    // with the original's addresses like any other
-    lines.push(`__attribute__((optnone, noinline)) void *${CODE}_${i}(unsigned address) {`, '  switch (address) {', ...cases.map(([address, name]) => `  case 0x${hex(address)}u: return (void *)${name};`), '  }', '  return 0;', '}');
-    made[`__twin_unit${i}.c`] = Buffer.from(`${lines.join('\n')}\n`);
+  const inside = folder => !inRoot(folder).startsWith('..') && !isAbsolute(inRoot(folder));
+  const source = treeOf(root), elsewhere = {};
+  const given = includes.map(folder => {
+    if (inside(folder)) return inRoot(folder);
+    const n = Object.keys(elsewhere).length;
+    elsewhere[n] = treeOf(folder, false);
+    return `${ELSEWHERE}/${n}`;
   });
-  made['__twin_code.c'] = Buffer.from([
-    ...units.map((_, i) => `void *${CODE}_${i}(unsigned address);`),
-    `void *${NO_CODE}(unsigned address);`,
-    `void *${CODE}(unsigned address) {`,
-    '  void *twin;',
-    // a function of the module's own, with no address in the original, is kept as the module numbers it
-    `  if (address < 0x02000000u) return (void *)address;`,
-    '  address &= ~1u;',
-    ...units.map((_, i) => `  if ((twin = ${CODE}_${i}(address))) return twin;`),
-    `  return ${NO_CODE}(address);`,
-    '}', '',
-  ].join('\n'));
-  // beside the C, in the folder it's in: the compiler `npm ci` brings doesn't find a file through a folder above
-  Object.assign(files, made);
-  const exported = [CODE, '__stack_pointer', ...units.flatMap(unit => unit.calls.map(({ name }) => `${CALL}${name}`))];
-  const args = ['clang', ...FLAGS, ...includes.flatMap(folder => ['-I', inRoot(folder)]), '-Wl,--no-entry', '-Wl,--allow-undefined', '-Wl,--emit-relocs',
-    `-Wl,--global-base=${OWN_BASE}`, '-Wl,-z,stack-size=1048576', ...exported.map(name => `-Wl,--export=${name}`), '-o', 'twins.wasm',
-    ...Object.keys(made)];
-  let said = '', built;
-  const stderr = bytes => { if (bytes) said += Buffer.from(bytes).toString('utf8'); };
-  try {
-    built = await clang.runClang(args, files, { stdout: stderr, stderr });
-  } catch (error) {
-    return { error: (said.trim() || String(error.message ?? error).trim()).replace(/In file included from __twin_unit\d+\.c:1:\n/g, '') };
-  }
-  if (!built?.['twins.wasm']) return { error: said.trim() || 'the compiler wrote nothing.' };
-  // a Thumb function's address is kept odd, as the original keeps it
-  return placeAddresses({
-    module: built['twins.wasm'], addressOf, translate: CODE, own: name => name.startsWith(CODE),
-    codeOf: name => (addresses.has(name) ? addresses.get(name) | 1 : null),
-  });
+  const units = new Map();
+  let everyOther = null;
+
+  // One file, built by itself: the file, then a function for each of its twins the check can call, which takes and
+  // gives whole words and leaves the compiler to make of them what the twin takes, and what finds the file's twins by
+  // their addresses. Answers { file, n, twins, calls, unknown } with { object, names } or { error }.
+  const unit = file => {
+    if (!units.has(file)) {
+      const n = units.size;
+      units.set(file, (async () => {
+        const kit = await kitBuilt(id);
+        const text = readFileSync(file, 'utf8');
+        const twins = twinsIn(text, shifts), calls = [], unknown = [];
+        for (const twin of twins) {
+          if (twin.address === null) continue;
+          const signature = signatureOf(text, twin.name);
+          if (signature) calls.push({ ...twin, ...signature, call: `${CALL}${n}_${twin.name}` });
+          else unknown.push(twin.name);
+        }
+        const cases = [];
+        for (const { name, address } of twins) if (address !== null && !cases.some(([other]) => other === address)) cases.push([address, name]);
+        const name = `__twin_unit${n}.c`;
+        const build = () => {
+          const lines = [`#include "${inRoot(file)}"`];
+          // each named for its file too, as two files can each have a function of their own with one name
+          for (const { name: twin, params, returns, call } of calls) {
+            const taken = params.map((_, i) => `unsigned a${i}`).join(', ') || 'void', passed = params.map((_, i) => `a${i}`).join(', ');
+            lines.push(returns ? `unsigned ${call}(${taken}) { return (unsigned)${twin}(${passed}); }` : `unsigned ${call}(${taken}) { ${twin}(${passed}); return 0; }`);
+          }
+          // left as it's written: made faster, it becomes a list of the functions kept as data, which would be filled in
+          // with the original's addresses like any other
+          lines.push(`__attribute__((optnone, noinline)) void *${CODE}_${n}(unsigned address) {`, '  switch (address) {', ...cases.map(([address, twin]) => `  case 0x${hex(address)}u: return (void *)${twin};`), '  }', '  return 0;', '}');
+          return compile([...kit.flags, ...given.flatMap(folder => ['-I', folder]), ...kit.includes, '-c', name],
+            { ...source, [name]: Buffer.from(`${lines.join('\n')}\n`), [KIT]: kit.tree, [ELSEWHERE]: elsewhere }, `__twin_unit${n}.o`);
+        };
+        let built = await build();
+        // A twin that takes or gives something whole words can't be made into, a struct as it is, can't be called from
+        // here: the compiler says so of the line that calls it, and the file is built again without those calls.
+        const refused = new Set([...(built.error ?? '').matchAll(new RegExp(`^${name.replace('.', '\\.')}:(\\d+):\\d+: error`, 'gm'))].map(found => calls[found[1] - 2]).filter(Boolean));
+        if (refused.size) {
+          for (const call of refused) unknown.push(call.name);
+          calls.splice(0, calls.length, ...calls.filter(call => !refused.has(call)));
+          built = await build();
+        }
+        return { file, n, twins, calls, unknown, ...(built.error ? { error: built.error } : { object: built.made, names: namesOf(built.made) }) };
+      })());
+    }
+    return units.get(file);
+  };
+
+  // which file of the version defines each name, from every file that builds: found once, the first time a file
+  // names something that neither it nor the kit defines
+  const definers = () => {
+    everyOther ??= (async () => {
+      const by = new Map();
+      for (const file of files) {
+        const other = await unit(file);
+        for (const name of other.names?.defines ?? []) if (!by.has(name)) by.set(name, other);
+      }
+      return by;
+    })();
+    return everyOther;
+  };
+
+  /**
+   * The module for one file's check: the file, the files that define what it names, and those that define what they
+   * name, on the kit, with the console's addresses. `only` is the address of the one function to call, or null for
+   * every twin of the file, and addressOf(name) where the console keeps a value, or null.
+   * Answers { error }, what the compiler said, or { unit, module, missing, imports }, as placeAddresses gives them.
+   */
+  const link = async ({ file, only = null, addressOf }) => {
+    const first = await unit(file);
+    if (first.error) return { error: first.error };
+    const kit = await kitBuilt(id);
+    const linked = [first], defined = new Set(first.names.defines);
+    // a value the console has an address for is the console's; anything else is looked for in the version's files
+    const wanted = names => [...names.functions, ...names.values.filter(name => addressOf(name) === null)];
+    const queue = wanted(first.names);
+    while (queue.length) {
+      const name = queue.pop();
+      if (defined.has(name) || kit.defines.has(name)) continue;
+      const other = (await definers()).get(name);
+      if (!other || linked.includes(other)) continue;
+      linked.push(other);
+      for (const each of other.names.defines) defined.add(each);
+      queue.push(...wanted(other.names));
+    }
+    const addresses = new Map();
+    for (const each of linked) for (const { name, address } of each.twins) if (address !== null && !addresses.has(name)) addresses.set(name, address);
+    const code = [
+      ...linked.map(each => `void *${CODE}_${each.n}(unsigned address);`),
+      `void *${NO_CODE}(unsigned address);`,
+      `void *${CODE}(unsigned address) {`,
+      '  void *twin;',
+      // a function of the module's own, with no address in the original, is kept as the module numbers it
+      '  if (address < 0x02000000u) return (void *)address;',
+      '  address &= ~1u;',
+      ...linked.map(each => `  if ((twin = ${CODE}_${each.n}(address))) return twin;`),
+      `  return ${NO_CODE}(address);`,
+      '}',
+      // for C that names a twin by its address itself, with the build's twins.h, when the file with its table isn't here
+      `__attribute__((weak)) void *kit_twin(unsigned address) { return ${CODE}(address); }`, '',
+    ].join('\n');
+    const calls = first.calls.filter(call => only === null || call.address === only);
+    const objects = Object.fromEntries(linked.map(each => [`__twin_unit${each.n}.o`, each.object]));
+    const built = await compile([...kit.flags, '-Wl,--no-entry', '-Wl,--allow-undefined', '-Wl,--emit-relocs', `-Wl,--global-base=${OWN_BASE}`, '-Wl,-z,stack-size=1048576',
+      ...[CODE, '__stack_pointer', ...calls.map(({ call }) => call)].map(name => `-Wl,--export=${name}`), ...KIT_NAMES.map(name => `-Wl,--export-if-defined=${name}`),
+      '__twin_code.c', ...Object.keys(objects), ...Object.keys(kit.objects)], { '__twin_code.c': Buffer.from(code), ...objects, ...kit.objects }, 'twins.wasm');
+    if (built.error) return { error: built.error };
+    // a Thumb function's address is kept odd, as the original keeps it
+    return {
+      unit: first, calls,
+      ...placeAddresses({
+        module: built.made, addressOf, translate: CODE, own: name => name.startsWith(CODE),
+        codeOf: name => (addresses.has(name) ? addresses.get(name) | 1 : null),
+      }),
+    };
+  };
+  return { unit, link };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -428,7 +554,8 @@ const write = (image, where, bytes, value) => {
 
 /**
  * Calls each function of `functions` in the original and its twin until `calls` calls of it were compared, each
- * call from the memory the last one left. A function is { name, address (odd for Thumb), params, returns }.
+ * call from the memory the last one left. A function is { name, address (odd for Thumb), params, returns, call },
+ * `call` the name the module gives what calls its twin.
  * Fills each in with `compared`, `tried`, what couldn't be compared and why (`aside`), and `result` when its twin
  * differed, stopped or never came back.
  */
@@ -535,7 +662,7 @@ export async function compareCalls({ original, twins, start, functions, options,
       continue;
     }
     for (const run of theirs.runs) run.bytes.copy(expected, run.at);
-    const ours = await twins.call(`${CALL}${f.name}`, args, changed);
+    const ours = await twins.call(f.call, args, changed);
     const call = { number: f.compared + 1, args, changed, hardware: theirs.hardware };
     if (ours.never) {
       f.result = { kind: 'never', ...call };
@@ -616,47 +743,22 @@ export function outcome(f, { calls, seconds }) {
  * Checks the twins of one file.
  *   original, start: what calls the original and the memory to start from, as openOriginal gives them
  *   copy: the contributor's copy, whose cartridge the twins read their data from
- *   file, root, includes: the file, the folder its C is in and the folders it includes from
- *   shifts: how far the labels' release is from the copy (portmap.mjs)
+ *   file: the file, and build: what builds it, as openBuild gives it, or else root, includes, files, console and
+ *     shifts, which openBuild takes
  *   only: the address of the one function to check, or null for every twin of the file
- *   definedIn(name): the file of the version that defines a function, for what the twins call, or null
  *   addressOf(name): where the console keeps a value, or the original a function, or null
  *   isArm(address): whether the original's function there is ARM code
  *   options: as DEFAULTS
  * Answers { error }, when it didn't build, { missing }, the values with no address, or { functions }, each with its
  * `kind` and `line` as outcome gives them, and those with no address as { name, address: null }.
  */
-export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], shifts = [], only = null, definedIn = () => null, addressOf, isArm = () => false, options = {}, seed = options.seed ?? DEFAULTS.seed }) {
+export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], files = [], console: id = 'gba', shifts = [], build = openBuild({ root, includes, files, console: id, shifts }), only = null, addressOf, isArm = () => false, options = {}, seed = options.seed ?? DEFAULTS.seed }) {
   const all = { ...DEFAULTS, ...options };
-  const text = readFileSync(file, 'utf8');
-  const twins = twinsIn(text, shifts);
-  const unit = { file, twins, calls: [] };
-  const unknown = [];
-  for (const twin of twins) {
-    if (twin.address === null || (only !== null && twin.address !== only)) continue;
-    const signature = signatureOf(text, twin.name);
-    if (!signature) unknown.push(twin.name);
-    else unit.calls.push({ ...twin, ...signature });
-  }
-  // the file, and each file that defines what it calls, until nothing more is found
-  const units = [unit];
-  let built;
-  for (let round = 0; ; round++) {
-    built = await buildTwins({ root, includes, units, addressOf });
-    if (built.error) {
-      if (units.length === 1) return { error: built.error };
-      // a file brought in for what it defines that doesn't build is left out, and what it defines stays unbuilt
-      units.pop();
-      built = await buildTwins({ root, includes, units, addressOf });
-      break;
-    }
-    const more = round < 8 ? [...new Set(built.imports.map(definedIn).filter(other => other && !units.some(u => u.file === other)))] : [];
-    if (!more.length) break;
-    for (const other of more) units.push({ file: other, twins: twinsIn(readFileSync(other, 'utf8'), shifts), calls: [] });
-  }
+  const built = await build.link({ file, only, addressOf });
   if (built.error) return { error: built.error };
   if (built.missing.length) return { missing: built.missing };
-  const functions = unit.calls.map(f => ({ ...f, address: f.address | (isArm(f.address) ? 0 : 1) }));
+  const { twins, unknown } = built.unit;
+  const functions = built.calls.map(f => ({ ...f, address: f.address | (isArm(f.address) ? 0 : 1) }));
   if (functions.length) {
     const runner = new Twins({ module: built.module, copy, seconds: all.seconds });
     try {
@@ -665,11 +767,12 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
       runner.stop();
     }
   }
+  const asked = name => only === null || twins.find(twin => twin.name === name).address === only;
   return {
     functions: [
       ...functions.map(f => ({ name: f.name, address: f.address & ~1, line: f.line, compared: f.compared, ...outcome(f, all) })),
       ...twins.filter(twin => twin.address === null && only === null).map(twin => ({ name: twin.name, address: null, line: twin.line })),
-      ...unknown.map(name => ({ name, address: twins.find(twin => twin.name === name).address, kind: 'unchecked', line: 'the check can\'t read what it takes and gives back.' })),
+      ...unknown.filter(asked).map(name => ({ name, address: twins.find(twin => twin.name === name).address, kind: 'unchecked', line: 'the check can\'t read what it takes and gives back.' })),
     ],
   };
 }
@@ -691,24 +794,9 @@ export async function twin(game, options = {}) {
   if (!copy) throw new Error(`twin calls the functions of ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
   if ((await readCopy(copy.path))?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
 
-  const folder = gameFolder(game), shifts = readShifts(game);
   const starts = new Set(codeMap.functions.filter(f => !f.bytes).map(f => f.address));
-  const named = new Map();
-  const own = join(sharedProofFolder(game), 'addresses.json');
-  if (all.addresses && !existsSync(all.addresses)) throw new Error(`${all.addresses} isn't a file.`);
-  for (const file of [...(existsSync(own) ? [own] : []), ...(all.addresses ? [all.addresses] : [])]) {
-    for (const [name, address] of readAddresses(file)) named.set(name, address);
-  }
-  // every function the version defines, by name: a file calls the others' by theirs
-  const files = codeFiles(folder, 'c').filter(file => file.endsWith('.c'));
-  const twinsOf = new Map(files.map(file => [file, twinsIn(readFileSync(file, 'utf8'), shifts)]));
-  const twins = new Map(), definedIn = new Map();
-  for (const [file, defined] of twinsOf) {
-    for (const { name, address } of defined) {
-      if (address !== null) twins.set(name, (twins.get(name) ?? new Set()).add(address));
-      if (!definedIn.has(name)) definedIn.set(name, file);
-    }
-  }
+  // every function the version defines, by name, and every name with an address, as match and the build read them
+  const { folder, shifts, files, twinsOf, twins, named } = versionTwins(game, all.addresses ?? null);
   const addressOf = addressFinder({ named, twins, shifts, startsFunction: address => starts.has(address) });
 
   let chosen = files.filter(file => twinsOf.get(file).some(t => t.address !== null)), only = null;
@@ -726,13 +814,14 @@ export async function twin(game, options = {}) {
   const isArm = address => address >= CARTRIDGE && address % 4 === 0 && address - CARTRIDGE + 16 <= rom.length
     && looksLikeArm([0, 4, 8, 12].map(offset => rom.readUInt32LE(address - CARTRIDGE + offset)));
   const opened = await openOriginal(copy.path, all.frames);
+  // the game's own folders, then the build's twins.h for a game that includes it, on the kit of the game's console
+  const header = await twinsFolder(folder);
+  const build = openBuild({ root: folder, files, shifts, console: original.console, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
   try {
     for (const file of chosen) {
       const result = await checkFile({
-        original: opened.original, start: opened.start, copy: copy.path, file, root: folder, shifts, only, addressOf, isArm, options: all,
-        includes: [dirname(file), ...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : [])],
-        definedIn: name => definedIn.get(name) ?? null,
+        original: opened.original, start: opened.start, copy: copy.path, file, build, only, addressOf, isArm, options: all,
       });
       const where = inRepo(file);
       if (result.error) {
