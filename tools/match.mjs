@@ -23,10 +23,10 @@
 // The original is reached only through the reader `read` uses (gba/read.c), and nothing of it is printed: what match
 // prints is each function's name, address, length and how much of it differs.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
-import { gameFolder, LOCAL, REPO, sharedProofFolder } from './lib/paths.mjs';
+import { LOCAL, REPO } from './lib/paths.mjs';
 import { hex, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { versionOf } from '../src/lib/languages.mjs';
@@ -34,52 +34,15 @@ import { readCopy } from './gba/header.mjs';
 import { READER, withBuildTools } from './gba/build.mjs';
 import { ensureOriginal } from './gba/original.mjs';
 import { buildCompilers, isCompilerBuilt } from './gba/agbcc.mjs';
-import { addressFinder, matchFile, readCompiler, twinsIn } from './gba/match.mjs';
-import { codeFiles, readShifts } from './portmap.mjs';
+import { addressFinder, matchFile, readCompiler } from './gba/match.mjs';
+import { readAddresses, versionTwins } from './lib/twins.mjs';
 import { resolve } from './read.mjs';
 
 const USAGE = 'Usage: npm run dp -- match <version> [<file or function>] [--addresses <file>]';
 const count = n => n.toLocaleString('en-US');
 const inRepo = path => relative(REPO, path).split(sep).join('/');
 
-/** The names and addresses in a file shaped as proof/addresses.json, as a Map of name to address. */
-export function readAddresses(file) {
-  const where = inRepo(file).startsWith('..') ? file : inRepo(file);
-  let found;
-  try {
-    found = JSON.parse(readFileSync(file, 'utf8'));
-  } catch (error) {
-    throw new Error(`${where} can't be read: ${error.message}`);
-  }
-  const entries = Object.entries(found?.addresses ?? {});
-  if (!found?.addresses || typeof found.addresses !== 'object' || !entries.every(([name, address]) => /^[A-Za-z_]\w*$/.test(name) && typeof address === 'string' && /^[0-9A-F]{8}$/.test(address))) {
-    throw new Error(`${where} needs "addresses": { "<name>": "<address>" }, with each address as eight capital hexadecimal digits.`);
-  }
-  return new Map(entries.map(([name, address]) => [name, parseInt(address, 16)]));
-}
-
-// what reads the original: the program `read` runs, asked for Thumb code with no list of functions, so every halfword
-// comes back as it is. Each line is an address, one or two halfwords, or a word, and what mGBA's decoder makes of them.
-function reader(copy) {
-  return (address, bytes) => {
-    const result = spawnSync(READER, [copy, '0', 'thumb', hex(address), String(bytes)], { input: '', encoding: 'utf8', maxBuffer: 64 << 20 });
-    if (result.error || result.status !== 0) throw new Error(`mGBA's decoder didn't run: ${result.error?.message ?? result.stderr.trim()}`);
-    const halfwords = [], lines = [];
-    for (const line of result.stdout.split('\n')) {
-      const m = /^[0-9A-F]{8}:\s+((?:[0-9A-F]{4,8} ?)+)\s*\t?(.*)$/.exec(line);
-      if (!m) continue;
-      for (const [i, token] of m[1].trim().split(' ').entries()) {
-        const value = parseInt(token, 16);
-        if (token.length === 8) halfwords.push(value & 0xFFFF, value >>> 16);
-        else halfwords.push(value);
-        lines.push(i ? '' : m[2].trim(), ...(token.length === 8 ? [''] : []));
-      }
-    }
-    const buffer = Buffer.alloc(Math.min(bytes, halfwords.length * 2));
-    for (let i = 0; i * 2 + 1 < buffer.length; i++) buffer.writeUInt16LE(halfwords[i], i * 2);
-    return { bytes: buffer, lines };
-  };
-}
+export { readAddresses };
 
 export async function run(args) {
   const rest = [];
@@ -104,23 +67,9 @@ export async function run(args) {
   if (!copy) throw new Error(`match compares with ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
   if ((await readCopy(copy.path))?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
 
-  const folder = gameFolder(game), shifts = readShifts(game);
   const sizes = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.size]));
-  const named = new Map();
-  const own = join(sharedProofFolder(game), 'addresses.json');
-  if (more && !existsSync(resolvePath(more))) throw new Error(`${more} isn't a file.`);
-  for (const file of [...(existsSync(own) ? [own] : []), ...(more ? [resolvePath(more)] : [])]) {
-    for (const [name, address] of readAddresses(file)) named.set(name, address);
-  }
-  // every twin of the version, by name: a file calls the others' by theirs
-  const files = codeFiles(folder, 'c').filter(file => file.endsWith('.c'));
-  const twins = new Map(), twinsOf = new Map();
-  for (const file of files) {
-    twinsOf.set(file, twinsIn(readFileSync(file, 'utf8'), shifts));
-    for (const { name, address } of twinsOf.get(file)) {
-      if (address !== null) twins.set(name, (twins.get(name) ?? new Set()).add(address));
-    }
-  }
+  // every twin of the version, by name, as a file calls the others' by theirs, and every name with an address
+  const { folder, shifts, files, twinsOf, twins, named } = versionTwins(game, more ? resolvePath(more) : null);
   const addressOf = addressFinder({ named, twins, shifts, startsFunction: address => sizes.has(address) });
 
   // what to build: every file, the one named, or the one with the twin of the function named

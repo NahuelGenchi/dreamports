@@ -1,4 +1,4 @@
-// npm run dp -- twin <version> [<function>] [--calls <n>] [--seed <n>] [--frames <n>] [--seconds <n>] [--addresses <file>]:
+// npm run dp -- twin <version> [<function>] [--calls <n>] [--seed <n>] [--seconds <n>] and each console's own options:
 // the function check. It runs one function of the original in the reference emulator and its twin, built as a
 // Dreamport, from the same memory, thousands of times, with what the function reads changed between calls, and
 // compares what each leaves in the console's memory, its work memory and its video memory, and what each gave back.
@@ -10,17 +10,24 @@
 // was given and what was changed for it, the first address that differs and what each side left there. The same
 // seed makes the same calls again, so a difference can be had again after a fix.
 //
-//   --calls     how many calls of each function are compared, 2,000 unless said
+//   --calls     how many calls of each function are compared: 2,000 unless said, and on the NES 5,000 of each kind
 //   --seed      what the calls are made up from, 1 unless said
+//   --seconds   how long a twin may take over one call before it's stopped: 2 unless said, and on the NES a fifth of one
+// and on the Game Boy Advance (gba/twin.mjs):
 //   --frames    how long the original plays from power-on before the first call, 600 frames unless said
-//   --seconds   how long a twin may take over one call before it's stopped, 2 unless said
 //   --addresses another file of names and addresses, shaped as the game's proof/addresses.json (match.mjs)
+// and on the NES, where each twin has a contract beside it and several functions can be named (nes/twin.mjs):
+//   --memories  takes real memories from the game's recordings, or those named, for the calls to start from
+//   --from      another folder of the game's C than its src/
+//   --without   bytes of the work memory left out of what's compared
 //
-// Each console has its own way of calling one function of its original, in its folder here, which exports
-// `twin(game, options)` and prints what it finds. `options` are the ones above, by their names, with the function as
-// `function` and as the one name in `functions`. It answers how the check ends, 0, or 3 when a twin differed, stopped
-// or never came back, or { same, tried }, how many twins were the same of those tried. A console with options of its
-// own exports `run(args)` too, and is given the command's words as they were typed.
+// The console is the game's. Each has its own way of calling one function of its original, in its folder here, which
+// exports `twin(game, options)` and prints what it finds. `options` are the ones above, by their names, with the
+// function as `function` and as the one name in `functions`. It answers how the check ends, 0, or 3 when a twin
+// differed, stopped or never came back, or { same, tried }, how many twins were the same of those tried. A console
+// with options of its own, as the NES has, exports `run(args)` too, which is given the command's words as they were
+// typed, reads them itself and answers the same way. Either way the tool ends with 0, or with 3 when a twin isn't
+// the same.
 
 import { existsSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
@@ -29,7 +36,10 @@ import { gameFolder } from './lib/paths.mjs';
 import { readOriginal } from './lib/proof-files.mjs';
 import { CONSOLES } from './consoles.mjs';
 
-const USAGE = 'Usage: npm run dp -- twin <version> [<function>] [--calls <n>] [--seed <n>] [--frames <n>] [--seconds <n>] [--addresses <file>]';
+const SHARED = 'npm run dp -- twin <version> [<function>] [--calls <n>] [--seed <n>] [--seconds <n>]';
+const USAGE = `Usage: ${SHARED}, and each console's own options (npm run dp -- help twin).`;
+// the options of the consoles whose check takes them from here, which today is the Game Boy Advance's
+const USAGE_HERE = `Usage: ${SHARED} [--frames <n>] [--addresses <file>]`;
 // the consoles the check knows, and where each one's is
 const CHECKS = { gba: './gba/twin.mjs', nes: './nes/twin.mjs' };
 const NUMBERS = { '--calls': 'calls', '--seed': 'seed', '--frames': 'frames', '--seconds': 'seconds' };
@@ -54,15 +64,15 @@ export async function run(args) {
     const flag = args[i];
     if (NUMBERS[flag]) {
       const value = Number(args[++i]);
-      if (!Number.isInteger(value) || value < (flag === '--calls' || flag === '--seconds' ? 1 : 0)) throw new Error(`${flag} needs a whole number. ${USAGE}`);
+      if (!Number.isInteger(value) || value < (flag === '--calls' || flag === '--seconds' ? 1 : 0)) throw new Error(`${flag} needs a whole number. ${USAGE_HERE}`);
       options[NUMBERS[flag]] = value;
     } else if (flag === '--addresses') {
-      if (!args[++i]) throw new Error(`--addresses needs a file. ${USAGE}`);
+      if (!args[++i]) throw new Error(`--addresses needs a file. ${USAGE_HERE}`);
       options.addresses = resolvePath(args[i]);
-    } else if (flag.startsWith('--')) throw new Error(`twin has no ${flag}. ${USAGE}`);
+    } else if (flag.startsWith('--')) throw new Error(`twin has no ${flag}. ${USAGE_HERE}`);
     else rest.push(flag);
   }
   const [game, what] = rest;
-  if (!game || rest.length > 2) throw new Error(USAGE);
+  if (!game || rest.length > 2) throw new Error(USAGE_HERE);
   return ended(await check.twin(game, { ...options, function: what, functions: what ? [what] : [] }));
 }

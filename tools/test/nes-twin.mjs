@@ -4,12 +4,16 @@
 // emulator's is. Every twin has to be the same as its original, from random memories and from memories made up here.
 // Then one line of the twins is changed at a time, and the check has to find each: a wrong number, a wrong flag in a
 // contract, a register a contract leaves out, a place in a table that doesn't wrap round at 256, a wrong time, a twin
-// that falls over, and one that never returns, which a time limit stops.
+// that falls over, and one that never returns, which a time limit stops. Last, the same program as a game of its own,
+// checked through the tool everyone runs, npm run dp -- twin (../twin.mjs), which hands the NES's check the command.
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LOCAL } from '../lib/paths.mjs';
+import { LOCAL, REPO, gameFolder, proofFolder } from '../lib/paths.mjs';
+import { startingFiles } from '../lib/new-game.mjs';
 import { buildCheck, checkTwins, contractsIn } from '../nes/twin.mjs';
 import { madeUpTwins } from './made-up-nes.mjs';
 
@@ -124,6 +128,53 @@ console.log('One line changed at a time:');
     said = error.message;
   }
   check(/didn't build/.test(said) && /add_to_totals/.test(said) && /game\.c/.test(said), 'a contract that calls a function the C doesn\'t have stops the build, naming it');
+}
+
+// The tool as it's typed: the program as a game in games/, for as long as this takes, with its copy shown to the tools.
+{
+  console.log('Through npm run dp -- twin:');
+  const NAME = 'test-nes-twin', VERSION = `${NAME}/c`, COPIES = join(LOCAL, 'copies.json');
+  const dp = (...args) => {
+    const { status, stdout, stderr } = spawnSync(process.execPath, [join(REPO, 'tools', 'dp.mjs'), ...args], { cwd: REPO, encoding: 'utf8', maxBuffer: 2 ** 24 });
+    return { status, out: stdout + stderr };
+  };
+  const tidy = () => { for (const path of [gameFolder(NAME), join(LOCAL, 'twin', NAME)]) rmSync(path, { recursive: true, force: true }); };
+  const write = text => {
+    mkdirSync(join(gameFolder(VERSION), 'src'), { recursive: true });
+    writeFileSync(join(gameFolder(VERSION), 'src', 'game.c'), text);
+  };
+  const copies = existsSync(COPIES) ? readFileSync(COPIES) : null;
+  tidy();
+  try {
+    mkdirSync(proofFolder(NAME), { recursive: true });
+    const original = { console: 'nes', name: 'Test NES Twin (World)', title: 'twins', code: '', sha1: createHash('sha1').update(readFileSync(copy)).digest('hex') };
+    writeFileSync(join(proofFolder(NAME), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
+    // a version is known by its page, which is written as `new` writes one
+    mkdirSync(gameFolder(VERSION), { recursive: true });
+    writeFileSync(join(gameFolder(VERSION), 'index.html'), startingFiles(NAME, original, { language: 'c' })['index.html']);
+    write(game);
+    let run = dp('rom', copy);
+    check(run.status === 0 && run.out.includes(NAME), 'rom knows the program\'s copy');
+    run = dp('twin', VERSION, '--calls', '300');
+    check(run.status === 0 && /6 of 6 twins the same as the original on every call/.test(run.out), `every twin of a version is checked, and it ends with 0: ${run.out.trim().split('\n').at(-1)}`);
+    check(/300 calls from random memories/.test(run.out) && (run.out.match(/the same on all 300 calls/g) ?? []).length === 6, 'with as many calls as --calls says, a line for each twin');
+    run = dp('twin', '--seed', '9', VERSION, 'add_to_total', 'sub_C440', '--calls', '300', '--seconds', '1');
+    check(run.status === 0 && /2 of 2 twins the same/.test(run.out), `functions are named by the twin's name or the original's, with an option before the version: ${run.out.trim().split('\n').at(-1)}`);
+    run = dp('twin', NAME, 'pick', '--calls', '300');
+    check(run.status === 0 && /1 of 1 twins the same/.test(run.out), 'the game\'s name alone means its version in C');
+    write(game.replace('RAM[0x22]++;', 'RAM[0x22] += 2;'));
+    run = dp('twin', VERSION, '--calls', '300');
+    check(run.status === 3 && /5 of 6 twins the same/.test(run.out) && /add_to_total\(A\): differs/.test(run.out), `a twin that differs ends it with 3, as on the Game Boy Advance: ${run.out.trim().split('\n').at(-1)}`);
+    run = dp('twin', VERSION, '--frames', '10');
+    check(run.status === 1 && /--frames isn't one of its options/.test(run.out) && /npm run dp -- twin/.test(run.out), 'an option of another console\'s check is refused, with how the tool is typed');
+    run = dp('twin', VERSION, 'nothing_here');
+    check(run.status === 1 && /No contract is for nothing_here/.test(run.out), 'and so is a function with no contract');
+  } finally {
+    tidy();
+    if (copies) writeFileSync(COPIES, copies);
+    else rmSync(COPIES, { force: true });
+  }
+  check(!existsSync(gameFolder(NAME)), 'nothing is left behind');
 }
 
 rmSync(work, { recursive: true, force: true });

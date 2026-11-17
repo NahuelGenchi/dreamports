@@ -1,7 +1,8 @@
 // Runs the twins for the function check (twin.mjs), in a thread of its own: a twin that never comes back can't be
 // stopped from inside, so the check stops the whole thread and starts another. It holds the module the twins were
-// built to, with the console's memory at the console's addresses and the contributor's copy where the cartridge is,
-// and is told what to do in messages:
+// built to, with the console's memory at the console's addresses and the contributor's copy where the cartridge is.
+// Twins built on the kit keep the video memory, the colours and the sprites where the kit does, so that is where those
+// parts of the image go and come from, and the kit is told the copy is the cartridge. It is told what to do in messages:
 //
 //   { set: image }                        puts the image, the console's five memories one after another (call.c), in
 //                                         the module's memory. Answers { done: true }.
@@ -32,11 +33,18 @@ const memory = new Uint8Array(exports.memory.buffer), view = new DataView(export
 const rom = readFileSync(workerData.copy);
 if (CARTRIDGE + rom.length > memory.length) throw new Error('The twins\' memory doesn\'t reach the end of the cartridge.');
 memory.set(rom, CARTRIDGE);
+// each memory of the image where this module has it: the kit's own, for the ones the kit keeps
+const regions = REGIONS.map(region => ({ ...region, address: exports[region.kit]?.value ?? region.address }));
+// the kit's copy of the game is the cartridge, for a twin that reads its data through the kit
+if (exports.kit_copy && exports.kit_copy_size) {
+  view.setUint32(exports.kit_copy.value, CARTRIDGE, true);
+  view.setUint32(exports.kit_copy_size.value, rom.length, true);
+}
 // where the module's own stack starts, to put it back after a twin stopped partway
 const stack = exports.__stack_pointer?.value;
 
 function give(image) {
-  for (const { at, address, bytes } of REGIONS) memory.set(image.subarray(at, at + bytes), address);
+  for (const { at, address, bytes } of regions) memory.set(image.subarray(at, at + bytes), address);
 }
 
 parentPort.on('message', message => {
@@ -63,7 +71,7 @@ parentPort.on('message', message => {
     return;
   }
   const image = new Uint8Array(IMAGE);
-  for (const { at, address, bytes } of REGIONS) image.set(memory.subarray(address, address + bytes), at);
+  for (const { at, address, bytes } of regions) image.set(memory.subarray(address, address + bytes), at);
   parentPort.postMessage({ gave, image }, [image.buffer]);
 });
 parentPort.postMessage({ ready: true });

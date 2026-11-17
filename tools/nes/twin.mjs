@@ -3,8 +3,11 @@
 // a game's bytes back, as its games were written by hand in the processor's own language, so this is the only proof a
 // twin has there (docs/STANDARD.md).
 //
-//   node tools/nes/twin.mjs <version> [<function>...] [--calls <n>] [--seed <n>] [--memories [<recording>...]]
-//                                     [--from <folder>] [--without <bytes>] [--limit <milliseconds>]
+//   npm run dp -- twin <version> [<function>...] [--calls <n>] [--seed <n>] [--seconds <n>] [--memories [<recording>...]]
+//                                [--from <folder>] [--without <bytes>] [--limit <milliseconds>]
+//
+// It's the NES's side of the one tool (../twin.mjs), which gives it the command as it was typed, and it runs by itself
+// too, as node tools/nes/twin.mjs with the same words.
 //
 // The original's side is FCEUmm's own processor, the one the proof's emulator runs every game on: its x6502.c, built
 // as its makers wrote it from the source the tools fetch for the reference emulator (twin/original.c). The twin's
@@ -65,7 +68,7 @@ import { versionOf } from '../../src/lib/languages.mjs';
 import { INSTRUCTIONS } from './6502.mjs';
 import { nesName, nesNames, nesProgram } from './functions.mjs';
 
-const USAGE = 'Usage: node tools/nes/twin.mjs <version> [<function>...] [--calls <n>] [--seed <n>] [--memories [<recording>...]] [--from <folder>] [--without <bytes>] [--limit <milliseconds>]';
+const USAGE = 'Usage: npm run dp -- twin <version> [<function>...] [--calls <n>] [--seed <n>] [--seconds <n>] [--memories [<recording>...]] [--from <folder>] [--without <bytes>] [--limit <milliseconds>]';
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 // the files of FCEUmm's processor, in its source's src/, and the two of the tools' own that stand in for the rest of it
 const PROCESSOR = ['x6502.c', 'x6502.h', 'x6502struct.h', 'ops.h', 'fceu-types.h'];
@@ -354,6 +357,8 @@ function options(args) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--calls' || arg === '--seed' || arg === '--limit') flags[arg.slice(2)] = number(arg.slice(2), args[++i]);
+    // how long one call may take as the tool says it on every console, in seconds
+    else if (arg === '--seconds') flags.limit = number('seconds', args[++i]) * 1000;
     else if (arg === '--from') flags.from = args[++i];
     else if (arg === '--without') flags.without = String(args[++i] ?? '').split(',').map(byte => parseInt(byte.replace(/^\$/, ''), 16));
     else if (arg === '--memories') {
@@ -367,12 +372,13 @@ function options(args) {
   return { rest, flags };
 }
 
-/** The tool by itself: 0 when every twin checked is the same as the original, 1 when one differs. */
+/** The tool, given the command's words: 0 when every twin checked is the same as the original, and 3 when one
+ *  differs, never returns or falls over, as on every console. */
 export async function run(args) {
   const { rest: [game, ...functions], flags } = options(args);
   if (!game) throw new Error(USAGE);
   const { same, tried } = await twin(game, { ...flags, functions });
-  return same === tried ? 0 : 1;
+  return same === tried ? 0 : 3;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

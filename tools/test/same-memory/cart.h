@@ -28,10 +28,8 @@ enum { KEY_A = 0x1, KEY_B = 0x2, KEY_SELECT = 0x4, KEY_START = 0x8, KEY_RIGHT = 
 #define KEYS() (~*(volatile u16 *)0x04000130 & 0x3FF)
 #define CODE(function) function
 #define CALL(pointer) pointer
-extern const u16 gWave[8];
 #else
-// built for a Dreamport: the hardware is the kit's, memory names a function by its address in the cartridge, and the
-// cartridge's own data is read where the cartridge has it
+// built for a Dreamport: the hardware is the kit's, and memory names a function by its address in the cartridge
 #include "gba.h"
 #include "twins.h"
 typedef uint8_t u8;
@@ -48,8 +46,11 @@ extern u16 cart_keys;
 #define KEYS() cart_keys
 #define CODE(function) TWIN_ADDRESS(function)
 #define CALL(pointer) TWIN(pointer)
-#define gWave ((const u16 *)ADDRESS_gWave)
 #endif
+
+// the cartridge's own data, named as plain C names it in both builds: the cartridge defines it (cart.c), and a
+// Dreamport's build puts the name where the cartridge has it, in the player's copy (proof/addresses.json)
+extern const u16 gWave[8];
 
 /** Something on the screen: a sprite that one function moves each frame. The list's links and the functions are kept
  *  as the console keeps them, as 32-bit addresses. */
