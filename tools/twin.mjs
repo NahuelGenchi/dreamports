@@ -17,12 +17,15 @@
 //   --addresses another file of names and addresses, shaped as the game's proof/addresses.json (match.mjs)
 //
 // Each console has its own way of calling one function of its original, in its folder here, which exports
-// `twin(game, options)`: it prints what it finds and answers 0, or 3 when a twin differed, stopped or never came
-// back. `options` are the ones above, by their names, with the function as `function`.
+// `twin(game, options)` and prints what it finds. `options` are the ones above, by their names, with the function as
+// `function` and as the one name in `functions`. It answers how the check ends, 0, or 3 when a twin differed, stopped
+// or never came back, or { same, tried }, how many twins were the same of those tried. A console with options of its
+// own exports `run(args)` too, and is given the command's words as they were typed.
 
 import { existsSync } from 'node:fs';
 import { resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gameFolder } from './lib/paths.mjs';
 import { readOriginal } from './lib/proof-files.mjs';
 import { CONSOLES } from './consoles.mjs';
 
@@ -31,7 +34,21 @@ const USAGE = 'Usage: npm run dp -- twin <version> [<function>] [--calls <n>] [-
 const CHECKS = { gba: './gba/twin.mjs', nes: './nes/twin.mjs' };
 const NUMBERS = { '--calls': 'calls', '--seed': 'seed', '--frames': 'frames', '--seconds': 'seconds' };
 
+// how a console's check ended, as a number: its own, or 3 when not every twin tried was the same
+const ended = answer => (typeof answer === 'number' ? answer : answer && answer.same !== answer.tried ? 3 : 0);
+
 export async function run(args) {
+  // the console is the game's, and the game is the first word that names one: an option's value can come before it
+  const words = args.filter(arg => !arg.startsWith('--'));
+  const first = words.find(word => existsSync(gameFolder(word.split('/')[0]))) ?? words[0];
+  if (!first) throw new Error(USAGE);
+  const known = Object.keys(CHECKS).filter(id => existsSync(fileURLToPath(new URL(CHECKS[id], import.meta.url))));
+  const { console: id } = readOriginal(first);
+  if (!known.includes(id)) {
+    throw new Error(`twin calls the functions of ${known.map(each => `the ${CONSOLES[each].name}`).join(' and ')}, and no other console's yet (docs/CONSOLES.md).`);
+  }
+  const check = await import(CHECKS[id]);
+  if (check.run) return ended(await check.run(args));
   const rest = [], options = {};
   for (let i = 0; i < args.length; i++) {
     const flag = args[i];
@@ -47,11 +64,5 @@ export async function run(args) {
   }
   const [game, what] = rest;
   if (!game || rest.length > 2) throw new Error(USAGE);
-  const original = readOriginal(game);
-  const known = Object.keys(CHECKS).filter(id => existsSync(fileURLToPath(new URL(CHECKS[id], import.meta.url))));
-  if (!known.includes(original.console)) {
-    throw new Error(`twin calls the functions of ${known.map(id => `the ${CONSOLES[id].name}`).join(' and ')}, and no other console's yet (docs/CONSOLES.md).`);
-  }
-  const { twin } = await import(CHECKS[original.console]);
-  return twin(game, { ...options, function: what });
+  return ended(await check.twin(game, { ...options, function: what, functions: what ? [what] : [] }));
 }
