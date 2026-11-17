@@ -10,6 +10,10 @@
 // comes from the copy, so it goes only to the terminal, and to .dreamports/read/, which the ignore rules keep out of
 // commits. A coding agent that reads it sends it to the company that runs the agent's model, as it does anything it
 // reads. After it come any notes people left on that function (docs/NOTES.md).
+//
+// On an NES game it prints the function's 6502 instructions, which the tools' own decoder reads (nes/6502.mjs,
+// nes/read.mjs): <function> is a bank and an address, such as 04:923F, a label as a game's code names it, such as
+// sub_04_923F or sub_C39C, or an offset in the program as the code map numbers it, and --bytes is its only option.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -17,12 +21,14 @@ import { join } from 'node:path';
 import { LOCAL } from './lib/paths.mjs';
 import { hex, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
-import { readCopy } from './gba/header.mjs';
+import { readAnyCopy } from './lib/read-copy.mjs';
+import { CONSOLES } from './consoles.mjs';
 import { findFunctions, looksLikeArm } from './gba/functions.mjs';
 import { MGBA_VERSION, READER } from './gba/build.mjs';
 import { ensureOriginal } from './gba/original.mjs';
 import { readShifts } from './portmap.mjs';
 import { NOTES_CAUTION, notesAbout, showAll } from './notes.mjs';
+import { readNes } from './nes/read.mjs';
 
 const USAGE = 'Usage: npm run dp -- read <game> <address or name> [--arm | --thumb] [--bytes <n>] [--frame <n>]';
 const CARTRIDGE = 0x08000000;
@@ -33,20 +39,40 @@ const MEMORY = [[0x02000000, 0x02040000], [0x03000000, 0x03008000]];
 const SOME_BYTES = 256, FRAMES = 60;
 // a line of an instruction or of data, not the line that says the mode changes
 const LINE = /^[0-9A-F]{8}:/;
+// the consoles whose instructions read knows, and what reads each
+const READERS = { gba: readGba, nes: readNes };
+const KNOWN = Object.keys(READERS).map(id => `the ${CONSOLES[id].name}`).join(' and ');
 
 export async function run(args) {
   const { rest, flags } = options(args);
   const [game, what] = rest;
   if (!game || !what || rest.length > 2) throw new Error(USAGE);
   const original = readOriginal(game);
-  if (original.console !== 'gba') throw new Error(`read knows the Game Boy Advance's instructions, through mGBA's decoder, and no other console's yet: a disassembler on this computer reads ${original.console} code (docs/CONSOLES.md).`);
+  const reader = READERS[original.console];
+  if (!reader) throw new Error(`read knows the instructions of ${KNOWN}, and no other console's yet: a disassembler on this computer reads ${original.console} code (docs/CONSOLES.md).`);
   const codeMap = readCodeMap(game);
   if (!codeMap) throw new Error(`games/${game}/proof/ has no code map yet: npm run dp -- codemap ${game} makes one.`);
   const copy = copyWith(original.sha1);
   if (!copy) throw new Error(`read reads ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
-  if ((await readCopy(copy.path))?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
+  if ((await readAnyCopy(copy.path, original.console))?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
   const bytes = readFileSync(copy.path);
+  const { key, text, has } = reader({ game, what, original, codeMap, copy, bytes, flags });
+  const folder = join(LOCAL, 'read', game);
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, `${key}.txt`), text);
+  console.log(text);
+  console.log(`Also kept in .dreamports/read/${game}/${key}.txt. It comes from your copy of the game: never put it in a commit, an issue or a pull request. A coding agent that reads it sends it to the company that runs the agent's model.`);
+  const notes = notesAbout(game, has);
+  if (notes.length) {
+    console.log(`\nNotes on this function, from people who worked on it. ${NOTES_CAUTION}\n`);
+    showAll(notes);
+  }
+  return 0;
+}
 
+// what read prints for a Game Boy Advance game: { key, text, has }, the name its file is kept by, the text, and whether
+// something a note is about is in what it read
+function readGba({ game, what, original, codeMap, copy, bytes, flags }) {
   const { address, label, kind } = resolve(game, codeMap, what);
   const inMemory = MEMORY.some(([from, to]) => address >= from && address < to);
   if (!inMemory && (address < CARTRIDGE || address >= CARTRIDGE + bytes.length)) {
@@ -120,21 +146,11 @@ export async function run(args) {
     ...(inMemory ? [`Read from the console's memory ${frames} frames after power-on, as the game left it then: --frame <n> reads it at another.`] : []),
     `Each line is an address, the bytes there and the instruction they make, as mGBA ${MGBA_VERSION}'s debugger shows it. tools/README.md, Reading the original's instructions, explains them.`,
   ];
-  const text = [...head, '', ...lines, ''].join('\n');
-  const folder = join(LOCAL, 'read', game);
-  mkdirSync(folder, { recursive: true });
-  writeFileSync(join(folder, `${hex(start)}.txt`), text);
-  console.log(text);
-  console.log(`Also kept in .dreamports/read/${game}/${hex(start)}.txt. It comes from your copy of the game: never put it in a commit, an issue or a pull request. A coding agent that reads it sends it to the company that runs the agent's model.`);
-  const notes = notesAbout(game, about => {
+  const has = about => {
     const at = addressOf(game, codeMap, about);
     return at >= start && at < start + length;
-  });
-  if (notes.length) {
-    console.log(`\nNotes on this function, from people who worked on it. ${NOTES_CAUTION}\n`);
-    showAll(notes);
-  }
-  return 0;
+  };
+  return { key: hex(start), text: [...head, '', ...lines, ''].join('\n'), has };
 }
 
 // the address something in a note's About: line means, or -1 when it isn't a function

@@ -1,48 +1,14 @@
 // The NES function finder (tools/nes/functions.mjs) on two small programs written here, with nothing from any game in
-// them: the made-up one the real-console test runs, and a 64 KB UNROM one with code in two switched banks, a bank
+// them: the made-up one the real-console test runs, a 64 KB UNROM one (made-up-nes.mjs) with code in two switched banks, a bank
 // switch through a routine, and the three kinds of table the finder follows.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { findFunctions, nesName, nesNames, programOffset } from '../nes/functions.mjs';
 import { readList } from '../codemap.mjs';
-import { madeUpNes } from './made-up-nes.mjs';
+import { madeUpNes, madeUpUnrom as unrom } from './made-up-nes.mjs';
 
 const BANK = 0x4000;
-
-// a 64 KB UNROM program: four banks, the last at $C000
-function unrom() {
-  const prg = Buffer.alloc(4 * BANK, 0xFF);
-  const at = (address, bank = 3) => bank * BANK + (address & 0x3FFF);
-  const put = (address, bytes, bank) => Buffer.from(bytes).copy(prg, at(address, bank));
-  const word = a => [a & 255, a >> 8];
-  // the reset: bank 1 by a write the bus agrees with, a call there, bank 2 by the routine at $C090, a call there, then
-  // a jump through a table of whole addresses
-  put(0xC000, [0x78, 0xA9, 0x01, 0xAA, 0x9D, 0x00, 0xC1, 0x20, 0x00, 0x80, 0xA9, 0x02, 0x20, 0x90, 0xC0, 0x20, 0x10, 0x80,
-    0xA2, 0x00, 0xBD, 0x20, 0xC1, 0x85, 0x00, 0xBD, 0x21, 0xC1, 0x85, 0x01, 0x6C, 0x00, 0x00]);
-  // the V-blank interrupt: an address from two tables of low and high bytes, pushed for an RTS
-  put(0xC040, [0xA2, 0x00, 0xBD, 0x42, 0xC1, 0x48, 0xBD, 0x40, 0xC1, 0x48, 0x60]);
-  // the other interrupt: a call to a routine that reads the list of addresses after it
-  put(0xC060, [0x20, 0x70, 0xC0, ...word(0xC240), ...word(0xC250), 0x00, 0x00]);
-  put(0xC070, [0x0A, 0xA8, 0x68, 0x85, 0x02, 0x68, 0x85, 0x03, 0xC8, 0xB1, 0x02, 0x85, 0x04, 0xC8, 0xB1, 0x02, 0x85, 0x05, 0x6C, 0x04, 0x00]);
-  // switches to the bank in A
-  put(0xC090, [0x85, 0x10, 0xAA, 0x9D, 0x00, 0xC1, 0x60]);
-  put(0xC100, [0, 1, 2, 3]);
-  put(0xC120, [...word(0xC200), ...word(0xC210)]);
-  put(0xC140, [0x1F, 0x2F, 0xC2, 0xC2]);
-  for (const a of [0xC200, 0xC210, 0xC220, 0xC230, 0xC240, 0xC250]) put(a, [0x60]);
-  // code nothing leads to, between the others
-  put(0xC300, [0xAD, 0x00, 0x03, 0x8D, 0x07, 0x20, 0xE8, 0x60]);
-  put(0x8000, [0xA9, 0x00, 0x60], 1);
-  put(0x8010, [0xA2, 0x01, 0x60], 2);
-  // the same at $8010 in bank 0, which nothing switches in
-  put(0x8010, [0xA2, 0x01, 0x60], 0);
-  prg.writeUInt16LE(0xC040, at(0xFFFA));
-  prg.writeUInt16LE(0xC000, at(0xFFFC));
-  prg.writeUInt16LE(0xC060, at(0xFFFE));
-  const header = Buffer.from([0x4E, 0x45, 0x53, 0x1A, 4, 0, 0x21, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
-  return Buffer.concat([header, prg]);
-}
 
 test('follows the code into the banks it switches in, and through its tables', () => {
   const found = findFunctions(unrom()).map(f => nesName(f.address, 4));
